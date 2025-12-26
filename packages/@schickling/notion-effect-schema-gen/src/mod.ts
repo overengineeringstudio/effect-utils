@@ -8,14 +8,17 @@ export const generateSchemaFromNotionDb = (databaseId: string): Effect.Effect<st
     // TODO: Implement Notion API integration
     // TODO: Introspect database schema
     // TODO: Generate Effect schema code
-    
+
     yield* Effect.logInfo(`Generating schema for Notion database: ${databaseId}`)
-    
+
     // Placeholder return
     return `// Generated Effect schema for database ${databaseId}\n// TODO: Implement actual generation`
   })
 
-export const writeSchemaToFile = (schema: string, outputPath: string): Effect.Effect<void, Error> =>
+export const writeSchemaToFile = (
+  _schema: string,
+  outputPath: string,
+): Effect.Effect<void, Error> =>
   Effect.gen(function* () {
     yield* Effect.logInfo(`Writing schema to: ${outputPath}`)
     // TODO: Implement file writing

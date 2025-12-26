@@ -5,19 +5,20 @@ import { generateSchemaFromNotionDb } from './mod.js'
 
 const cli = Effect.gen(function* () {
   const args = process.argv.slice(2)
-  
+
   if (args.length === 0) {
     yield* Effect.logError('Usage: notion-effect-schema-gen <database-id>')
     yield* Effect.fail(new Error('Missing database ID'))
   }
-  
-  const databaseId = args[0]!
+
+  const databaseId = args[0]
+  if (!databaseId) {
+    return yield* Effect.fail(new Error('Database ID is required'))
+  }
   const schema = yield* generateSchemaFromNotionDb(databaseId)
-  
+
   yield* Effect.log(schema)
 })
 
 // TODO: Use proper Effect runtime setup
-cli.pipe(
-  Effect.runPromise
-).catch(console.error)
+cli.pipe(Effect.runPromise).catch(console.error)
