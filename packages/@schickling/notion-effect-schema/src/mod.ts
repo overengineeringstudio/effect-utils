@@ -56,10 +56,14 @@ export const NumberElement = Schema.Struct({
 
 export type NumberElement = typeof NumberElement.Type
 
-export const NumberFromNumberElement = Schema.transform(NumberElement, Schema.NullOr(Schema.Number), {
-  decode: (_) => _.number,
-  encode: () => notYetImplemented(),
-})
+export const NumberFromNumberElement = Schema.transform(
+  NumberElement,
+  Schema.NullOr(Schema.Number),
+  {
+    decode: (_) => _.number,
+    encode: () => notYetImplemented(),
+  },
+)
 
 export const NumberFromNumberElementNonNull = NumberFromNumberElement.pipe(
   Schema.filter((_): _ is number => _ !== null),
@@ -118,16 +122,22 @@ export const SelectElement = Schema.Struct({
 
 export type SelectElement = typeof SelectElement.Type
 
-export const StringFromSelectElement = Schema.transform(SelectElement, Schema.NullOr(Schema.String), {
-  decode: (_) => _.select?.name ?? null,
-  encode: () => notYetImplemented(),
-})
+export const StringFromSelectElement = Schema.transform(
+  SelectElement,
+  Schema.NullOr(Schema.String),
+  {
+    decode: (_) => _.select?.name ?? null,
+    encode: () => notYetImplemented(),
+  },
+)
 
 export const StringFromSelectElementNonNull = StringFromSelectElement.pipe(
   Schema.filter((_): _ is string => _ !== null),
 )
 
-export const StringLitFromSelectElement = <Literals extends ReadonlyArray<string | number | boolean>>(
+export const StringLitFromSelectElement = <
+  Literals extends ReadonlyArray<string | number | boolean>,
+>(
   ...literals: Literals
 ) =>
   Schema.transform(SelectElement, Schema.NullOr(Schema.Literal(...literals)), {
@@ -135,7 +145,9 @@ export const StringLitFromSelectElement = <Literals extends ReadonlyArray<string
     encode: () => notYetImplemented(),
   })
 
-export const StringLitFromSelectElementNonNull = <Literals extends ReadonlyArray<string | number | boolean>>(
+export const StringLitFromSelectElementNonNull = <
+  Literals extends ReadonlyArray<string | number | boolean>,
+>(
   ...literals: Literals
 ) => StringLitFromSelectElement(...literals).pipe(Schema.filter((_): _ is string => _ !== null))
 
@@ -217,4 +229,3 @@ export const DateElementNonNull = Schema.Struct({
 }).annotations({ title: 'Notion.DateElementNonNull' })
 
 export type DateElementNonNull = typeof DateElementNonNull.Type
-

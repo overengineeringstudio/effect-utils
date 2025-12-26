@@ -17,9 +17,9 @@
     "test": "echo \"TODO: Add tests\""
   },
   "peerDependencies": {
-    "effect": "^3.10.0"
+    "effect": "^3.19.13"
   },
   "devDependencies": {
-    "effect": "^3.10.0"
+    "effect": "^3.19.13"
   }
 }

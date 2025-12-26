@@ -20,11 +20,11 @@
     "@schickling/notion-effect-schema": "workspace:*"
   },
   "peerDependencies": {
-    "effect": "^3.10.0",
-    "@effect/platform": "^0.69.0"
+    "effect": "^3.19.13",
+    "@effect/platform": "^0.94.0"
   },
   "devDependencies": {
-    "effect": "^3.10.0",
-    "@effect/platform": "^0.69.0"
+    "effect": "^3.19.13",
+    "@effect/platform": "^0.94.0"
   }
 }
