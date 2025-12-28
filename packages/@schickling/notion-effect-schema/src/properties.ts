@@ -1,6 +1,6 @@
 import { Option, Schema } from 'effect'
-import { docsPath, NotionUUID, SelectColor } from './common.ts'
-import { RichText, RichTextArray } from './rich-text.ts'
+import { docsPath, NotionUUID, SelectColor, shouldNeverHappen } from './common.ts'
+import { RichText, RichTextArray, TextLink } from './rich-text.ts'
 import { PartialUser, User } from './users.ts'
 
 // -----------------------------------------------------------------------------
@@ -33,6 +33,30 @@ export const SelectOption = Schema.Struct({
 export type SelectOption = typeof SelectOption.Type
 
 // -----------------------------------------------------------------------------
+// Write Schemas (for create/update payloads)
+// -----------------------------------------------------------------------------
+
+/**
+ * Minimal rich text schema accepted in Notion write requests.
+ *
+ * @see https://developers.notion.com/reference/rich-text#text
+ */
+export const TextRichTextWrite = Schema.Struct({
+  type: Schema.Literal('text'),
+  text: Schema.Struct({
+    content: Schema.String,
+    link: Schema.optional(Schema.NullOr(TextLink)),
+  }),
+}).annotations({
+  identifier: 'Notion.TextRichTextWrite',
+  title: 'Text Rich Text (Write)',
+  description: 'Minimal text rich text object accepted in Notion write requests.',
+  [docsPath]: 'rich-text#text',
+})
+
+export type TextRichTextWrite = typeof TextRichTextWrite.Type
+
+// -----------------------------------------------------------------------------
 // Title Property
 // -----------------------------------------------------------------------------
 
@@ -48,7 +72,7 @@ export const TitleProperty = Schema.Struct({
   type: Schema.Literal('title').annotations({
     description: 'Property type identifier.',
   }),
-  title: Schema.NonEmptyArray(RichText).annotations({
+  title: Schema.Array(RichText).annotations({
     description: 'Title content as rich text array.',
   }),
 }).annotations({
@@ -60,6 +84,35 @@ export const TitleProperty = Schema.Struct({
 
 export type TitleProperty = typeof TitleProperty.Type
 
+/**
+ * Title property write payload (for create/update page requests).
+ *
+ * @see https://developers.notion.com/reference/page#page-property-value
+ */
+export const TitleWrite = Schema.Struct({
+  title: Schema.Array(TextRichTextWrite),
+}).annotations({
+  identifier: 'Notion.TitleWrite',
+  title: 'Title (Write)',
+  description: 'Write payload for a title property (used in page create/update).',
+  [docsPath]: 'page#page-property-value',
+})
+
+export type TitleWrite = typeof TitleWrite.Type
+
+export const TitleWriteFromString = Schema.transform(Schema.String, TitleWrite, {
+  strict: false,
+  decode: (str) => ({
+    title: [{ type: 'text', text: { content: str } }],
+  }),
+  encode: (write) => write.title.map((rt) => rt.text.content).join(''),
+}).annotations({
+  identifier: 'Notion.TitleWriteFromString',
+  title: 'Title (Write) From String',
+  description: 'Transform a plain string into a title write payload.',
+  [docsPath]: 'page#page-property-value',
+})
+
 /** Transforms for Title property. */
 export const Title = {
   /** The raw TitleProperty schema. */
@@ -69,56 +122,26 @@ export const Title = {
   raw: Schema.transform(TitleProperty, RichTextArray, {
     strict: false,
     decode: (prop) => prop.title,
-    encode: (title) => ({
-      id: 'title',
-      type: 'title' as const,
-      title:
-        title.length > 0
-          ? (title as [RichText, ...RichText[]])
-          : [
-              {
-                type: 'text' as const,
-                text: { content: '', link: null },
-                annotations: {
-                  bold: false,
-                  italic: false,
-                  strikethrough: false,
-                  underline: false,
-                  code: false,
-                  color: 'default' as const,
-                },
-                plain_text: '',
-                href: null,
-              },
-            ],
-    }),
+    encode: () =>
+      shouldNeverHappen(
+        'Title.raw encode is not supported. Use TitleWrite / TitleWriteFromString.',
+      ),
   }),
 
   /** Transform to plain string. */
   asString: Schema.transform(TitleProperty, Schema.String, {
     strict: false,
     decode: (prop) => prop.title.map((rt) => rt.plain_text).join(''),
-    encode: (str) => ({
-      id: 'title',
-      type: 'title' as const,
-      title: [
-        {
-          type: 'text' as const,
-          text: { content: str, link: null },
-          annotations: {
-            bold: false,
-            italic: false,
-            strikethrough: false,
-            underline: false,
-            code: false,
-            color: 'default' as const,
-          },
-          plain_text: str,
-          href: null,
-        },
-      ],
-    }),
+    encode: () =>
+      shouldNeverHappen(
+        'Title.asString encode is not supported. Use TitleWrite / TitleWriteFromString.',
+      ),
   }),
+
+  Write: {
+    Schema: TitleWrite,
+    fromString: TitleWriteFromString,
+  },
 } as const
 
 // -----------------------------------------------------------------------------
@@ -149,6 +172,35 @@ export const RichTextProperty = Schema.Struct({
 
 export type RichTextProperty = typeof RichTextProperty.Type
 
+/**
+ * Rich text property write payload (for create/update page requests).
+ *
+ * @see https://developers.notion.com/reference/page#page-property-value
+ */
+export const RichTextWrite = Schema.Struct({
+  rich_text: Schema.Array(TextRichTextWrite),
+}).annotations({
+  identifier: 'Notion.RichTextWrite',
+  title: 'Rich Text (Write)',
+  description: 'Write payload for a rich text property (used in page create/update).',
+  [docsPath]: 'page#page-property-value',
+})
+
+export type RichTextWrite = typeof RichTextWrite.Type
+
+export const RichTextWriteFromString = Schema.transform(Schema.String, RichTextWrite, {
+  strict: false,
+  decode: (str) => ({
+    rich_text: [{ type: 'text', text: { content: str } }],
+  }),
+  encode: (write) => write.rich_text.map((rt) => rt.text.content).join(''),
+}).annotations({
+  identifier: 'Notion.RichTextWriteFromString',
+  title: 'Rich Text (Write) From String',
+  description: 'Transform a plain string into a rich text write payload.',
+  [docsPath]: 'page#page-property-value',
+})
+
 /** Transforms for RichText property. */
 export const RichTextProp = {
   /** The raw RichTextProperty schema. */
@@ -158,37 +210,20 @@ export const RichTextProp = {
   raw: Schema.transform(RichTextProperty, RichTextArray, {
     strict: false,
     decode: (prop) => prop.rich_text,
-    encode: (richText) => ({
-      id: 'rich_text',
-      type: 'rich_text' as const,
-      rich_text: richText,
-    }),
+    encode: () =>
+      shouldNeverHappen(
+        'RichTextProp.raw encode is not supported. Use RichTextWrite / RichTextWriteFromString.',
+      ),
   }),
 
   /** Transform to plain string. */
   asString: Schema.transform(RichTextProperty, Schema.String, {
     strict: false,
     decode: (prop) => prop.rich_text.map((rt) => rt.plain_text).join(''),
-    encode: (str) => ({
-      id: 'rich_text',
-      type: 'rich_text' as const,
-      rich_text: [
-        {
-          type: 'text' as const,
-          text: { content: str, link: null },
-          annotations: {
-            bold: false,
-            italic: false,
-            strikethrough: false,
-            underline: false,
-            code: false,
-            color: 'default' as const,
-          },
-          plain_text: str,
-          href: null,
-        },
-      ],
-    }),
+    encode: () =>
+      shouldNeverHappen(
+        'RichTextProp.asString encode is not supported. Use RichTextWrite / RichTextWriteFromString.',
+      ),
   }),
 
   /** Transform to Option<string> (empty becomes None). */
@@ -198,30 +233,16 @@ export const RichTextProp = {
       const text = prop.rich_text.map((rt) => rt.plain_text).join('')
       return text.trim() === '' ? Option.none() : Option.some(text)
     },
-    encode: (opt) => ({
-      id: 'rich_text',
-      type: 'rich_text' as const,
-      rich_text: Option.match(opt, {
-        onNone: () => [],
-        onSome: (str) => [
-          {
-            type: 'text' as const,
-            text: { content: str, link: null },
-            annotations: {
-              bold: false,
-              italic: false,
-              strikethrough: false,
-              underline: false,
-              code: false,
-              color: 'default' as const,
-            },
-            plain_text: str,
-            href: null,
-          },
-        ],
-      }),
-    }),
+    encode: () =>
+      shouldNeverHappen(
+        'RichTextProp.asOption encode is not supported. Use RichTextWrite / RichTextWriteFromString.',
+      ),
   }),
+
+  Write: {
+    Schema: RichTextWrite,
+    fromString: RichTextWriteFromString,
+  },
 } as const
 
 // -----------------------------------------------------------------------------
@@ -253,6 +274,33 @@ export const NumberProperty = Schema.Struct({
 
 export type NumberProperty = typeof NumberProperty.Type
 
+/**
+ * Number property write payload (for create/update page requests).
+ *
+ * @see https://developers.notion.com/reference/page#page-property-value
+ */
+export const NumberWrite = Schema.Struct({
+  number: Schema.NullOr(Schema.Number),
+}).annotations({
+  identifier: 'Notion.NumberWrite',
+  title: 'Number (Write)',
+  description: 'Write payload for a number property (used in page create/update).',
+  [docsPath]: 'page#page-property-value',
+})
+
+export type NumberWrite = typeof NumberWrite.Type
+
+export const NumberWriteFromNumber = Schema.transform(Schema.NullOr(Schema.Number), NumberWrite, {
+  strict: false,
+  decode: (number) => ({ number }),
+  encode: (write) => write.number,
+}).annotations({
+  identifier: 'Notion.NumberWriteFromNumber',
+  title: 'Number (Write) From Number',
+  description: 'Transform a number (or null) into a number write payload.',
+  [docsPath]: 'page#page-property-value',
+})
+
 /** Transforms for Number property. */
 export const Num = {
   /** The raw NumberProperty schema. */
@@ -262,22 +310,20 @@ export const Num = {
   raw: Schema.transform(NumberProperty, Schema.NullOr(Schema.Number), {
     strict: false,
     decode: (prop) => prop.number,
-    encode: (num) => ({
-      id: 'number',
-      type: 'number' as const,
-      number: num,
-    }),
+    encode: () =>
+      shouldNeverHappen(
+        'Num.raw encode is not supported. Use NumberWrite / NumberWriteFromNumber.',
+      ),
   }),
 
   /** Transform to Option<number>. */
   asOption: Schema.transform(NumberProperty, Schema.OptionFromSelf(Schema.Number), {
     strict: false,
     decode: (prop) => (prop.number === null ? Option.none() : Option.some(prop.number)),
-    encode: (opt) => ({
-      id: 'number',
-      type: 'number' as const,
-      number: Option.getOrNull(opt),
-    }),
+    encode: () =>
+      shouldNeverHappen(
+        'Num.asOption encode is not supported. Use NumberWrite / NumberWriteFromNumber.',
+      ),
   }),
 
   /** Transform to required number (fails if null). */
@@ -291,13 +337,17 @@ export const Num = {
     {
       strict: false,
       decode: (prop) => prop.number,
-      encode: (num) => ({
-        id: 'number',
-        type: 'number' as const,
-        number: num,
-      }),
+      encode: () =>
+        shouldNeverHappen(
+          'Num.asNumber encode is not supported. Use NumberWrite / NumberWriteFromNumber.',
+        ),
     },
   ),
+
+  Write: {
+    Schema: NumberWrite,
+    fromNumber: NumberWriteFromNumber,
+  },
 } as const
 
 // -----------------------------------------------------------------------------
@@ -328,6 +378,33 @@ export const CheckboxProperty = Schema.Struct({
 
 export type CheckboxProperty = typeof CheckboxProperty.Type
 
+/**
+ * Checkbox property write payload (for create/update page requests).
+ *
+ * @see https://developers.notion.com/reference/page#page-property-value
+ */
+export const CheckboxWrite = Schema.Struct({
+  checkbox: Schema.Boolean,
+}).annotations({
+  identifier: 'Notion.CheckboxWrite',
+  title: 'Checkbox (Write)',
+  description: 'Write payload for a checkbox property (used in page create/update).',
+  [docsPath]: 'page#page-property-value',
+})
+
+export type CheckboxWrite = typeof CheckboxWrite.Type
+
+export const CheckboxWriteFromBoolean = Schema.transform(Schema.Boolean, CheckboxWrite, {
+  strict: false,
+  decode: (checkbox) => ({ checkbox }),
+  encode: (write) => write.checkbox,
+}).annotations({
+  identifier: 'Notion.CheckboxWriteFromBoolean',
+  title: 'Checkbox (Write) From Boolean',
+  description: 'Transform a boolean into a checkbox write payload.',
+  [docsPath]: 'page#page-property-value',
+})
+
 /** Transforms for Checkbox property. */
 export const Checkbox = {
   /** The raw CheckboxProperty schema. */
@@ -337,23 +414,26 @@ export const Checkbox = {
   raw: Schema.transform(CheckboxProperty, Schema.Boolean, {
     strict: false,
     decode: (prop) => prop.checkbox,
-    encode: (checked) => ({
-      id: 'checkbox',
-      type: 'checkbox' as const,
-      checkbox: checked,
-    }),
+    encode: () =>
+      shouldNeverHappen(
+        'Checkbox.raw encode is not supported. Use CheckboxWrite / CheckboxWriteFromBoolean.',
+      ),
   }),
 
   /** Alias for raw (checkbox is always boolean). */
   asBoolean: Schema.transform(CheckboxProperty, Schema.Boolean, {
     strict: false,
     decode: (prop) => prop.checkbox,
-    encode: (checked) => ({
-      id: 'checkbox',
-      type: 'checkbox' as const,
-      checkbox: checked,
-    }),
+    encode: () =>
+      shouldNeverHappen(
+        'Checkbox.asBoolean encode is not supported. Use CheckboxWrite / CheckboxWriteFromBoolean.',
+      ),
   }),
+
+  Write: {
+    Schema: CheckboxWrite,
+    fromBoolean: CheckboxWriteFromBoolean,
+  },
 } as const
 
 // -----------------------------------------------------------------------------
@@ -384,6 +464,63 @@ export const SelectProperty = Schema.Struct({
 
 export type SelectProperty = typeof SelectProperty.Type
 
+/**
+ * Select option write object accepted by Notion.
+ * Can reference an option by name (commonly used) or by id.
+ *
+ * @see https://developers.notion.com/reference/page#page-property-value
+ */
+export const SelectOptionWrite = Schema.Union(
+  Schema.Struct({ id: NotionUUID }),
+  Schema.Struct({ name: Schema.String }),
+).annotations({
+  identifier: 'Notion.SelectOptionWrite',
+  title: 'Select Option (Write)',
+  description: 'A select option reference for write requests.',
+  [docsPath]: 'page#page-property-value',
+})
+
+export type SelectOptionWrite = typeof SelectOptionWrite.Type
+
+/**
+ * Select property write payload (for create/update page requests).
+ *
+ * @see https://developers.notion.com/reference/page#page-property-value
+ */
+export const SelectWrite = Schema.Struct({
+  select: Schema.NullOr(SelectOptionWrite),
+}).annotations({
+  identifier: 'Notion.SelectWrite',
+  title: 'Select (Write)',
+  description: 'Write payload for a select property (used in page create/update).',
+  [docsPath]: 'page#page-property-value',
+})
+
+export type SelectWrite = typeof SelectWrite.Type
+
+export const SelectWriteFromName = Schema.transform(Schema.NullOr(Schema.String), SelectWrite, {
+  strict: false,
+  decode: (name) => ({
+    select: name === null ? null : { name },
+  }),
+  encode: (write) => {
+    if (write.select === null) {
+      return null
+    }
+
+    if ('name' in write.select) {
+      return write.select.name
+    }
+
+    return shouldNeverHappen('SelectWriteFromName cannot encode option referenced by id.')
+  },
+}).annotations({
+  identifier: 'Notion.SelectWriteFromName',
+  title: 'Select (Write) From Name',
+  description: 'Transform an option name (or null) into a select write payload.',
+  [docsPath]: 'page#page-property-value',
+})
+
 /** Transforms for Select property. */
 export const Select = {
   /** The raw SelectProperty schema. */
@@ -393,36 +530,30 @@ export const Select = {
   raw: Schema.transform(SelectProperty, Schema.NullOr(SelectOption), {
     strict: false,
     decode: (prop) => prop.select,
-    encode: (opt) => ({
-      id: 'select',
-      type: 'select' as const,
-      select: opt,
-    }),
+    encode: () =>
+      shouldNeverHappen(
+        'Select.raw encode is not supported. Use SelectWrite / SelectWriteFromName.',
+      ),
   }),
 
   /** Transform to Option<SelectOption>. */
   asOption: Schema.transform(SelectProperty, Schema.OptionFromSelf(SelectOption), {
     strict: false,
     decode: (prop) => (prop.select === null ? Option.none() : Option.some(prop.select)),
-    encode: (opt) => ({
-      id: 'select',
-      type: 'select' as const,
-      select: Option.getOrNull(opt),
-    }),
+    encode: () =>
+      shouldNeverHappen(
+        'Select.asOption encode is not supported. Use SelectWrite / SelectWriteFromName.',
+      ),
   }),
 
   /** Transform to Option<string> (option name). */
   asString: Schema.transform(SelectProperty, Schema.OptionFromSelf(Schema.String), {
     strict: false,
     decode: (prop) => (prop.select === null ? Option.none() : Option.some(prop.select.name)),
-    encode: (opt) => ({
-      id: 'select',
-      type: 'select' as const,
-      select: Option.match(opt, {
-        onNone: () => null,
-        onSome: (name) => ({ id: '', name, color: 'default' as const }),
-      }),
-    }),
+    encode: () =>
+      shouldNeverHappen(
+        'Select.asString encode is not supported. Use SelectWrite / SelectWriteFromName.',
+      ),
   }),
 
   /** Transform to required string (fails if null). */
@@ -436,13 +567,17 @@ export const Select = {
     {
       strict: false,
       decode: (prop) => prop.select.name,
-      encode: (name) => ({
-        id: 'select',
-        type: 'select' as const,
-        select: { id: '', name, color: 'default' as const },
-      }),
+      encode: () =>
+        shouldNeverHappen(
+          'Select.asStringRequired encode is not supported. Use SelectWrite / SelectWriteFromName.',
+        ),
     },
   ),
+
+  Write: {
+    Schema: SelectWrite,
+    fromName: SelectWriteFromName,
+  },
 } as const
 
 // -----------------------------------------------------------------------------
@@ -473,6 +608,46 @@ export const MultiSelectProperty = Schema.Struct({
 
 export type MultiSelectProperty = typeof MultiSelectProperty.Type
 
+/**
+ * Multi-select property write payload (for create/update page requests).
+ *
+ * @see https://developers.notion.com/reference/page#page-property-value
+ */
+export const MultiSelectWrite = Schema.Struct({
+  multi_select: Schema.Array(SelectOptionWrite),
+}).annotations({
+  identifier: 'Notion.MultiSelectWrite',
+  title: 'Multi-Select (Write)',
+  description: 'Write payload for a multi-select property (used in page create/update).',
+  [docsPath]: 'page#page-property-value',
+})
+
+export type MultiSelectWrite = typeof MultiSelectWrite.Type
+
+export const MultiSelectWriteFromNames = Schema.transform(
+  Schema.Array(Schema.String),
+  MultiSelectWrite,
+  {
+    strict: false,
+    decode: (names) => ({
+      multi_select: names.map((name) => ({ name })),
+    }),
+    encode: (write) =>
+      write.multi_select.map((opt) => {
+        if ('name' in opt) {
+          return opt.name
+        }
+
+        return shouldNeverHappen('MultiSelectWriteFromNames cannot encode option referenced by id.')
+      }),
+  },
+).annotations({
+  identifier: 'Notion.MultiSelectWriteFromNames',
+  title: 'Multi-Select (Write) From Names',
+  description: 'Transform option names into a multi-select write payload.',
+  [docsPath]: 'page#page-property-value',
+})
+
 /** Transforms for MultiSelect property. */
 export const MultiSelect = {
   /** The raw MultiSelectProperty schema. */
@@ -482,23 +657,26 @@ export const MultiSelect = {
   raw: Schema.transform(MultiSelectProperty, Schema.Array(SelectOption), {
     strict: false,
     decode: (prop) => prop.multi_select,
-    encode: (options) => ({
-      id: 'multi_select',
-      type: 'multi_select' as const,
-      multi_select: options,
-    }),
+    encode: () =>
+      shouldNeverHappen(
+        'MultiSelect.raw encode is not supported. Use MultiSelectWrite / MultiSelectWriteFromNames.',
+      ),
   }),
 
   /** Transform to array of option names. */
   asStrings: Schema.transform(MultiSelectProperty, Schema.Array(Schema.String), {
     strict: false,
     decode: (prop) => prop.multi_select.map((opt) => opt.name),
-    encode: (names) => ({
-      id: 'multi_select',
-      type: 'multi_select' as const,
-      multi_select: names.map((name) => ({ id: '', name, color: 'default' as const })),
-    }),
+    encode: () =>
+      shouldNeverHappen(
+        'MultiSelect.asStrings encode is not supported. Use MultiSelectWrite / MultiSelectWriteFromNames.',
+      ),
   }),
+
+  Write: {
+    Schema: MultiSelectWrite,
+    fromNames: MultiSelectWriteFromNames,
+  },
 } as const
 
 // -----------------------------------------------------------------------------
@@ -529,6 +707,45 @@ export const StatusProperty = Schema.Struct({
 
 export type StatusProperty = typeof StatusProperty.Type
 
+/**
+ * Status property write payload (for create/update page requests).
+ *
+ * @see https://developers.notion.com/reference/page#page-property-value
+ */
+export const StatusWrite = Schema.Struct({
+  status: Schema.NullOr(SelectOptionWrite),
+}).annotations({
+  identifier: 'Notion.StatusWrite',
+  title: 'Status (Write)',
+  description: 'Write payload for a status property (used in page create/update).',
+  [docsPath]: 'page#page-property-value',
+})
+
+export type StatusWrite = typeof StatusWrite.Type
+
+export const StatusWriteFromName = Schema.transform(Schema.NullOr(Schema.String), StatusWrite, {
+  strict: false,
+  decode: (name) => ({
+    status: name === null ? null : { name },
+  }),
+  encode: (write) => {
+    if (write.status === null) {
+      return null
+    }
+
+    if ('name' in write.status) {
+      return write.status.name
+    }
+
+    return shouldNeverHappen('StatusWriteFromName cannot encode option referenced by id.')
+  },
+}).annotations({
+  identifier: 'Notion.StatusWriteFromName',
+  title: 'Status (Write) From Name',
+  description: 'Transform a status name (or null) into a status write payload.',
+  [docsPath]: 'page#page-property-value',
+})
+
 /** Transforms for Status property. */
 export const Status = {
   /** The raw StatusProperty schema. */
@@ -538,26 +755,26 @@ export const Status = {
   raw: Schema.transform(StatusProperty, Schema.NullOr(SelectOption), {
     strict: false,
     decode: (prop) => prop.status,
-    encode: (opt) => ({
-      id: 'status',
-      type: 'status' as const,
-      status: opt,
-    }),
+    encode: () =>
+      shouldNeverHappen(
+        'Status.raw encode is not supported. Use StatusWrite / StatusWriteFromName.',
+      ),
   }),
 
   /** Transform to Option<string> (status name). */
   asString: Schema.transform(StatusProperty, Schema.OptionFromSelf(Schema.String), {
     strict: false,
     decode: (prop) => (prop.status === null ? Option.none() : Option.some(prop.status.name)),
-    encode: (opt) => ({
-      id: 'status',
-      type: 'status' as const,
-      status: Option.match(opt, {
-        onNone: () => null,
-        onSome: (name) => ({ id: '', name, color: 'default' as const }),
-      }),
-    }),
+    encode: () =>
+      shouldNeverHappen(
+        'Status.asString encode is not supported. Use StatusWrite / StatusWriteFromName.',
+      ),
   }),
+
+  Write: {
+    Schema: StatusWrite,
+    fromName: StatusWriteFromName,
+  },
 } as const
 
 // -----------------------------------------------------------------------------
@@ -614,6 +831,58 @@ export const DateProperty = Schema.Struct({
 
 export type DateProperty = typeof DateProperty.Type
 
+/**
+ * Date value write object accepted by Notion.
+ * In write requests, `end` / `time_zone` are optional.
+ *
+ * @see https://developers.notion.com/reference/page#page-property-value
+ */
+export const DateValueWrite = Schema.Struct({
+  start: Schema.String,
+  end: Schema.optional(Schema.NullOr(Schema.String)),
+  time_zone: Schema.optional(Schema.NullOr(Schema.String)),
+}).annotations({
+  identifier: 'Notion.DateValueWrite',
+  title: 'Date Value (Write)',
+  description: 'Date value object accepted in Notion write requests.',
+  [docsPath]: 'page#page-property-value',
+})
+
+export type DateValueWrite = typeof DateValueWrite.Type
+
+/**
+ * Date property write payload (for create/update page requests).
+ *
+ * @see https://developers.notion.com/reference/page#page-property-value
+ */
+export const DateWrite = Schema.Struct({
+  date: Schema.NullOr(DateValueWrite),
+}).annotations({
+  identifier: 'Notion.DateWrite',
+  title: 'Date (Write)',
+  description: 'Write payload for a date property (used in page create/update).',
+  [docsPath]: 'page#page-property-value',
+})
+
+export type DateWrite = typeof DateWrite.Type
+
+export const DateWriteFromStart = Schema.transform(Schema.String, DateWrite, {
+  strict: false,
+  decode: (start) => ({ date: { start } }),
+  encode: (write) => {
+    if (write.date === null) {
+      return ''
+    }
+
+    return write.date.start
+  },
+}).annotations({
+  identifier: 'Notion.DateWriteFromStart',
+  title: 'Date (Write) From Start',
+  description: 'Transform a start date/time string into a date write payload.',
+  [docsPath]: 'page#page-property-value',
+})
+
 /** Transforms for Date property. */
 export const DateProp = {
   /** The raw DateProperty schema. */
@@ -623,37 +892,36 @@ export const DateProp = {
   raw: Schema.transform(DateProperty, Schema.NullOr(DateValue), {
     strict: false,
     decode: (prop) => prop.date,
-    encode: (date) => ({
-      id: 'date',
-      type: 'date' as const,
-      date,
-    }),
+    encode: () =>
+      shouldNeverHappen(
+        'DateProp.raw encode is not supported. Use DateWrite / DateWriteFromStart.',
+      ),
   }),
 
   /** Transform to Option<DateValue>. */
   asOption: Schema.transform(DateProperty, Schema.OptionFromSelf(DateValue), {
     strict: false,
     decode: (prop) => (prop.date === null ? Option.none() : Option.some(prop.date)),
-    encode: (opt) => ({
-      id: 'date',
-      type: 'date' as const,
-      date: Option.getOrNull(opt),
-    }),
+    encode: () =>
+      shouldNeverHappen(
+        'DateProp.asOption encode is not supported. Use DateWrite / DateWriteFromStart.',
+      ),
   }),
 
   /** Transform to Option<Date> (start date only, parsed). */
   asDate: Schema.transform(DateProperty, Schema.OptionFromSelf(Schema.DateFromSelf), {
     strict: false,
     decode: (prop) => (prop.date === null ? Option.none() : Option.some(new Date(prop.date.start))),
-    encode: (opt) => ({
-      id: 'date',
-      type: 'date' as const,
-      date: Option.match(opt, {
-        onNone: () => null,
-        onSome: (d) => ({ start: d.toISOString(), end: null, time_zone: null }),
-      }),
-    }),
+    encode: () =>
+      shouldNeverHappen(
+        'DateProp.asDate encode is not supported. Use DateWrite / DateWriteFromStart.',
+      ),
   }),
+
+  Write: {
+    Schema: DateWrite,
+    fromStart: DateWriteFromStart,
+  },
 } as const
 
 // -----------------------------------------------------------------------------
@@ -685,6 +953,33 @@ export const UrlProperty = Schema.Struct({
 
 export type UrlProperty = typeof UrlProperty.Type
 
+/**
+ * URL property write payload (for create/update page requests).
+ *
+ * @see https://developers.notion.com/reference/page#page-property-value
+ */
+export const UrlWrite = Schema.Struct({
+  url: Schema.NullOr(Schema.String),
+}).annotations({
+  identifier: 'Notion.UrlWrite',
+  title: 'URL (Write)',
+  description: 'Write payload for a URL property (used in page create/update).',
+  [docsPath]: 'page#page-property-value',
+})
+
+export type UrlWrite = typeof UrlWrite.Type
+
+export const UrlWriteFromString = Schema.transform(Schema.NullOr(Schema.String), UrlWrite, {
+  strict: false,
+  decode: (url) => ({ url }),
+  encode: (write) => write.url,
+}).annotations({
+  identifier: 'Notion.UrlWriteFromString',
+  title: 'URL (Write) From String',
+  description: 'Transform a URL string (or null) into a URL write payload.',
+  [docsPath]: 'page#page-property-value',
+})
+
 /** Transforms for URL property. */
 export const Url = {
   /** The raw UrlProperty schema. */
@@ -694,23 +989,22 @@ export const Url = {
   raw: Schema.transform(UrlProperty, Schema.NullOr(Schema.String), {
     strict: false,
     decode: (prop) => prop.url,
-    encode: (url) => ({
-      id: 'url',
-      type: 'url' as const,
-      url,
-    }),
+    encode: () =>
+      shouldNeverHappen('Url.raw encode is not supported. Use UrlWrite / UrlWriteFromString.'),
   }),
 
   /** Transform to Option<string>. */
   asOption: Schema.transform(UrlProperty, Schema.OptionFromSelf(Schema.String), {
     strict: false,
     decode: (prop) => (prop.url === null ? Option.none() : Option.some(prop.url)),
-    encode: (opt) => ({
-      id: 'url',
-      type: 'url' as const,
-      url: Option.getOrNull(opt),
-    }),
+    encode: () =>
+      shouldNeverHappen('Url.asOption encode is not supported. Use UrlWrite / UrlWriteFromString.'),
   }),
+
+  Write: {
+    Schema: UrlWrite,
+    fromString: UrlWriteFromString,
+  },
 } as const
 
 // -----------------------------------------------------------------------------
@@ -742,6 +1036,33 @@ export const EmailProperty = Schema.Struct({
 
 export type EmailProperty = typeof EmailProperty.Type
 
+/**
+ * Email property write payload (for create/update page requests).
+ *
+ * @see https://developers.notion.com/reference/page#page-property-value
+ */
+export const EmailWrite = Schema.Struct({
+  email: Schema.NullOr(Schema.String),
+}).annotations({
+  identifier: 'Notion.EmailWrite',
+  title: 'Email (Write)',
+  description: 'Write payload for an email property (used in page create/update).',
+  [docsPath]: 'page#page-property-value',
+})
+
+export type EmailWrite = typeof EmailWrite.Type
+
+export const EmailWriteFromString = Schema.transform(Schema.NullOr(Schema.String), EmailWrite, {
+  strict: false,
+  decode: (email) => ({ email }),
+  encode: (write) => write.email,
+}).annotations({
+  identifier: 'Notion.EmailWriteFromString',
+  title: 'Email (Write) From String',
+  description: 'Transform an email string (or null) into an email write payload.',
+  [docsPath]: 'page#page-property-value',
+})
+
 /** Transforms for Email property. */
 export const Email = {
   /** The raw EmailProperty schema. */
@@ -751,23 +1072,26 @@ export const Email = {
   raw: Schema.transform(EmailProperty, Schema.NullOr(Schema.String), {
     strict: false,
     decode: (prop) => prop.email,
-    encode: (email) => ({
-      id: 'email',
-      type: 'email' as const,
-      email,
-    }),
+    encode: () =>
+      shouldNeverHappen(
+        'Email.raw encode is not supported. Use EmailWrite / EmailWriteFromString.',
+      ),
   }),
 
   /** Transform to Option<string>. */
   asOption: Schema.transform(EmailProperty, Schema.OptionFromSelf(Schema.String), {
     strict: false,
     decode: (prop) => (prop.email === null ? Option.none() : Option.some(prop.email)),
-    encode: (opt) => ({
-      id: 'email',
-      type: 'email' as const,
-      email: Option.getOrNull(opt),
-    }),
+    encode: () =>
+      shouldNeverHappen(
+        'Email.asOption encode is not supported. Use EmailWrite / EmailWriteFromString.',
+      ),
   }),
+
+  Write: {
+    Schema: EmailWrite,
+    fromString: EmailWriteFromString,
+  },
 } as const
 
 // -----------------------------------------------------------------------------
@@ -799,6 +1123,37 @@ export const PhoneNumberProperty = Schema.Struct({
 
 export type PhoneNumberProperty = typeof PhoneNumberProperty.Type
 
+/**
+ * Phone number property write payload (for create/update page requests).
+ *
+ * @see https://developers.notion.com/reference/page#page-property-value
+ */
+export const PhoneNumberWrite = Schema.Struct({
+  phone_number: Schema.NullOr(Schema.String),
+}).annotations({
+  identifier: 'Notion.PhoneNumberWrite',
+  title: 'Phone Number (Write)',
+  description: 'Write payload for a phone number property (used in page create/update).',
+  [docsPath]: 'page#page-property-value',
+})
+
+export type PhoneNumberWrite = typeof PhoneNumberWrite.Type
+
+export const PhoneNumberWriteFromString = Schema.transform(
+  Schema.NullOr(Schema.String),
+  PhoneNumberWrite,
+  {
+    strict: false,
+    decode: (phone_number) => ({ phone_number }),
+    encode: (write) => write.phone_number,
+  },
+).annotations({
+  identifier: 'Notion.PhoneNumberWriteFromString',
+  title: 'Phone Number (Write) From String',
+  description: 'Transform a phone number string (or null) into a phone number write payload.',
+  [docsPath]: 'page#page-property-value',
+})
+
 /** Transforms for PhoneNumber property. */
 export const PhoneNumber = {
   /** The raw PhoneNumberProperty schema. */
@@ -808,23 +1163,26 @@ export const PhoneNumber = {
   raw: Schema.transform(PhoneNumberProperty, Schema.NullOr(Schema.String), {
     strict: false,
     decode: (prop) => prop.phone_number,
-    encode: (phone) => ({
-      id: 'phone_number',
-      type: 'phone_number' as const,
-      phone_number: phone,
-    }),
+    encode: () =>
+      shouldNeverHappen(
+        'PhoneNumber.raw encode is not supported. Use PhoneNumberWrite / PhoneNumberWriteFromString.',
+      ),
   }),
 
   /** Transform to Option<string>. */
   asOption: Schema.transform(PhoneNumberProperty, Schema.OptionFromSelf(Schema.String), {
     strict: false,
     decode: (prop) => (prop.phone_number === null ? Option.none() : Option.some(prop.phone_number)),
-    encode: (opt) => ({
-      id: 'phone_number',
-      type: 'phone_number' as const,
-      phone_number: Option.getOrNull(opt),
-    }),
+    encode: () =>
+      shouldNeverHappen(
+        'PhoneNumber.asOption encode is not supported. Use PhoneNumberWrite / PhoneNumberWriteFromString.',
+      ),
   }),
+
+  Write: {
+    Schema: PhoneNumberWrite,
+    fromString: PhoneNumberWriteFromString,
+  },
 } as const
 
 // -----------------------------------------------------------------------------
@@ -855,6 +1213,40 @@ export const PeopleProperty = Schema.Struct({
 
 export type PeopleProperty = typeof PeopleProperty.Type
 
+/**
+ * People property write payload (for create/update page requests).
+ * Notion expects an array of user references (by id).
+ *
+ * @see https://developers.notion.com/reference/page#page-property-value
+ */
+export const PeopleWrite = Schema.Struct({
+  people: Schema.Array(
+    Schema.Struct({
+      id: NotionUUID,
+    }),
+  ),
+}).annotations({
+  identifier: 'Notion.PeopleWrite',
+  title: 'People (Write)',
+  description: 'Write payload for a people property (used in page create/update).',
+  [docsPath]: 'page#page-property-value',
+})
+
+export type PeopleWrite = typeof PeopleWrite.Type
+
+export const PeopleWriteFromIds = Schema.transform(Schema.Array(NotionUUID), PeopleWrite, {
+  strict: false,
+  decode: (ids) => ({
+    people: ids.map((id) => ({ id })),
+  }),
+  encode: (write) => write.people.map((p) => p.id),
+}).annotations({
+  identifier: 'Notion.PeopleWriteFromIds',
+  title: 'People (Write) From IDs',
+  description: 'Transform user IDs into a people write payload.',
+  [docsPath]: 'page#page-property-value',
+})
+
 /** Transforms for People property. */
 export const People = {
   /** The raw PeopleProperty schema. */
@@ -864,26 +1256,26 @@ export const People = {
   raw: Schema.transform(PeopleProperty, Schema.Array(User), {
     strict: false,
     decode: (prop) => prop.people,
-    encode: (users) => ({
-      id: 'people',
-      type: 'people' as const,
-      people: users,
-    }),
+    encode: () =>
+      shouldNeverHappen(
+        'People.raw encode is not supported. Use PeopleWrite / PeopleWriteFromIds.',
+      ),
   }),
 
   /** Transform to array of user IDs. */
   asIds: Schema.transform(PeopleProperty, Schema.Array(Schema.String), {
     strict: false,
     decode: (prop) => prop.people.map((u) => u.id),
-    encode: (ids) => ({
-      id: 'people',
-      type: 'people' as const,
-      people: ids.map((id) => ({
-        object: 'user' as const,
-        id,
-      })) as User[],
-    }),
+    encode: () =>
+      shouldNeverHappen(
+        'People.asIds encode is not supported. Use PeopleWrite / PeopleWriteFromIds.',
+      ),
   }),
+
+  Write: {
+    Schema: PeopleWrite,
+    fromIds: PeopleWriteFromIds,
+  },
 } as const
 
 // -----------------------------------------------------------------------------
@@ -923,6 +1315,40 @@ export const RelationProperty = Schema.Struct({
 
 export type RelationProperty = typeof RelationProperty.Type
 
+/**
+ * Relation property write payload (for create/update page requests).
+ * Notion expects an array of page references (by id).
+ *
+ * @see https://developers.notion.com/reference/page#page-property-value
+ */
+export const RelationWrite = Schema.Struct({
+  relation: Schema.Array(
+    Schema.Struct({
+      id: NotionUUID,
+    }),
+  ),
+}).annotations({
+  identifier: 'Notion.RelationWrite',
+  title: 'Relation (Write)',
+  description: 'Write payload for a relation property (used in page create/update).',
+  [docsPath]: 'page#page-property-value',
+})
+
+export type RelationWrite = typeof RelationWrite.Type
+
+export const RelationWriteFromIds = Schema.transform(Schema.Array(NotionUUID), RelationWrite, {
+  strict: false,
+  decode: (ids) => ({
+    relation: ids.map((id) => ({ id })),
+  }),
+  encode: (write) => write.relation.map((r) => r.id),
+}).annotations({
+  identifier: 'Notion.RelationWriteFromIds',
+  title: 'Relation (Write) From IDs',
+  description: 'Transform page IDs into a relation write payload.',
+  [docsPath]: 'page#page-property-value',
+})
+
 /** Transforms for Relation property. */
 export const Relation = {
   /** The raw RelationProperty schema. */
@@ -932,12 +1358,16 @@ export const Relation = {
   asIds: Schema.transform(RelationProperty, Schema.Array(Schema.String), {
     strict: false,
     decode: (prop) => prop.relation.map((r) => r.id),
-    encode: (ids) => ({
-      id: 'relation',
-      type: 'relation' as const,
-      relation: ids.map((id) => ({ id })),
-    }),
+    encode: () =>
+      shouldNeverHappen(
+        'Relation.asIds encode is not supported. Use RelationWrite / RelationWriteFromIds.',
+      ),
   }),
+
+  Write: {
+    Schema: RelationWrite,
+    fromIds: RelationWriteFromIds,
+  },
 } as const
 
 // -----------------------------------------------------------------------------
@@ -1028,6 +1458,47 @@ export const FilesProperty = Schema.Struct({
 
 export type FilesProperty = typeof FilesProperty.Type
 
+/**
+ * Files property write payload (for create/update page requests).
+ * Notion accepts external files in write requests.
+ *
+ * @see https://developers.notion.com/reference/page#page-property-value
+ */
+export const FilesWrite = Schema.Struct({
+  files: Schema.Array(
+    Schema.Struct({
+      type: Schema.Literal('external'),
+      name: Schema.optional(Schema.String),
+      external: Schema.Struct({
+        url: Schema.String,
+      }),
+    }),
+  ),
+}).annotations({
+  identifier: 'Notion.FilesWrite',
+  title: 'Files (Write)',
+  description: 'Write payload for a files property (used in page create/update).',
+  [docsPath]: 'page#page-property-value',
+})
+
+export type FilesWrite = typeof FilesWrite.Type
+
+export const FilesWriteFromUrls = Schema.transform(Schema.Array(Schema.String), FilesWrite, {
+  strict: false,
+  decode: (urls) => ({
+    files: urls.map((url) => ({
+      type: 'external' as const,
+      external: { url },
+    })),
+  }),
+  encode: (write) => write.files.map((f) => f.external.url),
+}).annotations({
+  identifier: 'Notion.FilesWriteFromUrls',
+  title: 'Files (Write) From URLs',
+  description: 'Transform external URLs into a files write payload.',
+  [docsPath]: 'page#page-property-value',
+})
+
 /** Transforms for Files property. */
 export const Files = {
   /** The raw FilesProperty schema. */
@@ -1037,27 +1508,24 @@ export const Files = {
   raw: Schema.transform(FilesProperty, Schema.Array(FileObject), {
     strict: false,
     decode: (prop) => prop.files,
-    encode: (files) => ({
-      id: 'files',
-      type: 'files' as const,
-      files,
-    }),
+    encode: () =>
+      shouldNeverHappen('Files.raw encode is not supported. Use FilesWrite / FilesWriteFromUrls.'),
   }),
 
   /** Transform to array of URLs. */
   asUrls: Schema.transform(FilesProperty, Schema.Array(Schema.String), {
     strict: false,
     decode: (prop) => prop.files.map((f) => (f.type === 'external' ? f.external.url : f.file.url)),
-    encode: (urls) => ({
-      id: 'files',
-      type: 'files' as const,
-      files: urls.map((url) => ({
-        type: 'external' as const,
-        name: url.split('/').pop() ?? 'file',
-        external: { url },
-      })),
-    }),
+    encode: () =>
+      shouldNeverHappen(
+        'Files.asUrls encode is not supported. Use FilesWrite / FilesWriteFromUrls.',
+      ),
   }),
+
+  Write: {
+    Schema: FilesWrite,
+    fromUrls: FilesWriteFromUrls,
+  },
 } as const
 
 // -----------------------------------------------------------------------------
@@ -1114,11 +1582,7 @@ export const Formula = {
   raw: Schema.transform(FormulaProperty, FormulaValue, {
     strict: false,
     decode: (prop) => prop.formula,
-    encode: (formula) => ({
-      id: 'formula',
-      type: 'formula' as const,
-      formula,
-    }),
+    encode: () => shouldNeverHappen('Formula.raw encode is not supported (formula is read-only).'),
   }),
 } as const
 
@@ -1160,22 +1624,16 @@ export const CreatedTime = {
   raw: Schema.transform(CreatedTimeProperty, Schema.String, {
     strict: false,
     decode: (prop) => prop.created_time,
-    encode: (time) => ({
-      id: 'created_time',
-      type: 'created_time' as const,
-      created_time: time,
-    }),
+    encode: () =>
+      shouldNeverHappen('CreatedTime.raw encode is not supported (created_time is read-only).'),
   }),
 
   /** Transform to Date object. */
   asDate: Schema.transform(CreatedTimeProperty, Schema.DateFromSelf, {
     strict: false,
     decode: (prop) => new Date(prop.created_time),
-    encode: (date) => ({
-      id: 'created_time',
-      type: 'created_time' as const,
-      created_time: date.toISOString(),
-    }),
+    encode: () =>
+      shouldNeverHappen('CreatedTime.asDate encode is not supported (created_time is read-only).'),
   }),
 } as const
 
@@ -1216,22 +1674,16 @@ export const CreatedBy = {
   raw: Schema.transform(CreatedByProperty, PartialUser, {
     strict: false,
     decode: (prop) => prop.created_by,
-    encode: (user) => ({
-      id: 'created_by',
-      type: 'created_by' as const,
-      created_by: user,
-    }),
+    encode: () =>
+      shouldNeverHappen('CreatedBy.raw encode is not supported (created_by is read-only).'),
   }),
 
   /** Transform to user ID. */
   asId: Schema.transform(CreatedByProperty, Schema.String, {
     strict: false,
     decode: (prop) => prop.created_by.id,
-    encode: (id) => ({
-      id: 'created_by',
-      type: 'created_by' as const,
-      created_by: { object: 'user' as const, id },
-    }),
+    encode: () =>
+      shouldNeverHappen('CreatedBy.asId encode is not supported (created_by is read-only).'),
   }),
 } as const
 
@@ -1273,22 +1725,20 @@ export const LastEditedTime = {
   raw: Schema.transform(LastEditedTimeProperty, Schema.String, {
     strict: false,
     decode: (prop) => prop.last_edited_time,
-    encode: (time) => ({
-      id: 'last_edited_time',
-      type: 'last_edited_time' as const,
-      last_edited_time: time,
-    }),
+    encode: () =>
+      shouldNeverHappen(
+        'LastEditedTime.raw encode is not supported (last_edited_time is read-only).',
+      ),
   }),
 
   /** Transform to Date object. */
   asDate: Schema.transform(LastEditedTimeProperty, Schema.DateFromSelf, {
     strict: false,
     decode: (prop) => new Date(prop.last_edited_time),
-    encode: (date) => ({
-      id: 'last_edited_time',
-      type: 'last_edited_time' as const,
-      last_edited_time: date.toISOString(),
-    }),
+    encode: () =>
+      shouldNeverHappen(
+        'LastEditedTime.asDate encode is not supported (last_edited_time is read-only).',
+      ),
   }),
 } as const
 
@@ -1329,22 +1779,16 @@ export const LastEditedBy = {
   raw: Schema.transform(LastEditedByProperty, PartialUser, {
     strict: false,
     decode: (prop) => prop.last_edited_by,
-    encode: (user) => ({
-      id: 'last_edited_by',
-      type: 'last_edited_by' as const,
-      last_edited_by: user,
-    }),
+    encode: () =>
+      shouldNeverHappen('LastEditedBy.raw encode is not supported (last_edited_by is read-only).'),
   }),
 
   /** Transform to user ID. */
   asId: Schema.transform(LastEditedByProperty, Schema.String, {
     strict: false,
     decode: (prop) => prop.last_edited_by.id,
-    encode: (id) => ({
-      id: 'last_edited_by',
-      type: 'last_edited_by' as const,
-      last_edited_by: { object: 'user' as const, id },
-    }),
+    encode: () =>
+      shouldNeverHappen('LastEditedBy.asId encode is not supported (last_edited_by is read-only).'),
   }),
 } as const
 
@@ -1397,31 +1841,15 @@ export const UniqueId = {
       const { prefix, number } = prop.unique_id
       return prefix ? `${prefix}-${number}` : String(number)
     },
-    encode: (str) => {
-      const match = str.match(/^([A-Z]+)-(\d+)$/)
-      if (match?.[1] && match[2]) {
-        return {
-          id: 'unique_id',
-          type: 'unique_id' as const,
-          unique_id: { prefix: match[1], number: parseInt(match[2], 10) },
-        }
-      }
-      return {
-        id: 'unique_id',
-        type: 'unique_id' as const,
-        unique_id: { prefix: null, number: parseInt(str, 10) },
-      }
-    },
+    encode: () =>
+      shouldNeverHappen('UniqueId.asString encode is not supported (unique_id is read-only).'),
   }),
 
   /** Transform to just the number. */
   asNumber: Schema.transform(UniqueIdProperty, Schema.Number, {
     strict: false,
     decode: (prop) => prop.unique_id.number,
-    encode: (num) => ({
-      id: 'unique_id',
-      type: 'unique_id' as const,
-      unique_id: { prefix: null, number: num },
-    }),
+    encode: () =>
+      shouldNeverHappen('UniqueId.asNumber encode is not supported (unique_id is read-only).'),
   }),
 } as const

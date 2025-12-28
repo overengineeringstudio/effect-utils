@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { Effect } from 'effect'
-import { generateSchemaFromNotionDb } from './mod.js'
+import { generateSchemaFromNotionDb } from './mod.ts'
 
 const cli = Effect.gen(function* () {
   const args = process.argv.slice(2)

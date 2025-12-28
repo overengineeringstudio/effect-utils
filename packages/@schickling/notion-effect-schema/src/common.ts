@@ -115,3 +115,29 @@ export const SelectColor = Schema.Literal(
 })
 
 export type SelectColor = typeof SelectColor.Type
+
+// -----------------------------------------------------------------------------
+// Errors
+// -----------------------------------------------------------------------------
+
+export const isDevEnv = (): boolean => {
+  if (typeof process === 'undefined') {
+    return false
+  }
+
+  if (typeof process.env === 'undefined') {
+    return false
+  }
+
+  return process.env.NODE_ENV !== 'production'
+}
+
+export const shouldNeverHappen = (msg?: string, ...args: unknown[]): never => {
+  console.error(msg, ...args)
+  if (isDevEnv()) {
+    // biome-ignore lint/suspicious/noDebugger: intentional breakpoint for impossible states during development
+    debugger
+  }
+
+  throw new Error(`This should never happen: ${msg}`)
+}

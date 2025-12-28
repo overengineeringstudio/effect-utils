@@ -39,6 +39,8 @@ export class NotionApiError extends Schema.TaggedError<NotionApiError>()('Notion
   code: NotionErrorCode,
   /** Human-readable error message */
   message: Schema.String,
+  /** Retry delay in seconds (from retry-after header, typically for rate limits) */
+  retryAfterSeconds: Schema.OptionFromSelf(Schema.Number),
   /** Request ID for Notion support (from x-request-id header) */
   requestId: Schema.optionalWith(Schema.String, { as: 'Option' }),
   /** Original request URL for debugging */

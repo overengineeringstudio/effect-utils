@@ -59,6 +59,21 @@ describe('buildRequest', () => {
     }).pipe(Effect.provideService(NotionConfig, { authToken: 'secret-token' })),
   )
 
+  it.effect('returns NotionApiError for JSON-encoding failures', () =>
+    Effect.gen(function* () {
+      const body: Record<string, unknown> = {}
+      body.self = body
+
+      const error = yield* buildRequest('POST', '/databases/123/query', body).pipe(Effect.flip)
+
+      expect(error).toBeInstanceOf(NotionApiError)
+      expect(error.code).toBe('invalid_request')
+      expect(error.status).toBe(0)
+      expect(Option.getOrNull(error.url)).toBe(`${NOTION_API_BASE_URL}/databases/123/query`)
+      expect(Option.getOrNull(error.method)).toBe('POST')
+    }).pipe(Effect.provideService(NotionConfig, { authToken: 'test-token' })),
+  )
+
   it.effect('includes body for POST requests', () =>
     Effect.gen(function* () {
       const body = { filter: { property: 'Status', select: { equals: 'Done' } } }
@@ -177,6 +192,26 @@ describe('executeRequest', () => {
       ),
     ),
   )
+
+  it.effect('captures retry-after for rate limited responses', () =>
+    Effect.gen(function* () {
+      const result = yield* get('/databases/123', TestSchema).pipe(Effect.flip)
+
+      expect(result.code).toBe('rate_limited')
+      expect(Option.getOrNull(result.retryAfterSeconds)).toBe(2)
+    }).pipe(
+      Effect.provide(
+        createTestLayer(() => ({
+          status: 429,
+          body: sampleResponses.error(429, 'rate_limited', 'Rate limited'),
+          headers: {
+            'retry-after': '2',
+            'x-ratelimit-remaining': '0',
+          },
+        })),
+      ),
+    ),
+  )
 })
 
 describe('post', () => {
@@ -226,6 +261,7 @@ describe('NotionApiError.isRetryable', () => {
         status: 429,
         code: 'rate_limited',
         message: 'Rate limited',
+        retryAfterSeconds: Option.none(),
         requestId: Option.none(),
         url: Option.none(),
         method: Option.none(),
@@ -240,6 +276,7 @@ describe('NotionApiError.isRetryable', () => {
         status: 500,
         code: 'internal_server_error',
         message: 'Server error',
+        retryAfterSeconds: Option.none(),
         requestId: Option.none(),
         url: Option.none(),
         method: Option.none(),
@@ -254,6 +291,7 @@ describe('NotionApiError.isRetryable', () => {
         status: 503,
         code: 'service_unavailable',
         message: 'Service unavailable',
+        retryAfterSeconds: Option.none(),
         requestId: Option.none(),
         url: Option.none(),
         method: Option.none(),
@@ -268,6 +306,7 @@ describe('NotionApiError.isRetryable', () => {
         status: 400,
         code: 'invalid_request',
         message: 'Bad request',
+        retryAfterSeconds: Option.none(),
         requestId: Option.none(),
         url: Option.none(),
         method: Option.none(),
@@ -282,6 +321,7 @@ describe('NotionApiError.isRetryable', () => {
         status: 404,
         code: 'object_not_found',
         message: 'Not found',
+        retryAfterSeconds: Option.none(),
         requestId: Option.none(),
         url: Option.none(),
         method: Option.none(),
