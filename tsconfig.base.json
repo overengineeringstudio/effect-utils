@@ -4,6 +4,7 @@
     "lib": ["ES2022"],
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "allowJs": false,

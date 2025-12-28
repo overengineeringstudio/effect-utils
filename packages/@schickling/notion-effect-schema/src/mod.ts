@@ -1,231 +1,107 @@
-import { Schema } from 'effect'
+/**
+ * Effect schemas for the Notion API.
+ *
+ * @see https://developers.notion.com/reference
+ * @module
+ */
 
-// TODO: Replace with proper utility function
-const notYetImplemented = (): never => {
-  throw new Error('Not yet implemented')
-}
-
-export const FileAttachment = Schema.Struct({
-  id: Schema.String,
-  type: Schema.String,
-  files: Schema.Array(Schema.suspend(() => FileItem)),
-}).annotations({ title: 'Notion.FileAttachment' })
-
-export type FileAttachment = typeof FileAttachment.Type
-
-export const FileAttachmentNonEmpty = Schema.Struct({
-  id: Schema.String,
-  type: Schema.String,
-  files: Schema.NonEmptyArray(Schema.suspend(() => FileItem)),
-}).annotations({ title: 'Notion.FileAttachmentNonEmpty' })
-
-export type FileAttachmentNonEmpty = typeof FileAttachmentNonEmpty.Type
-
-export const FileAttachmentSingle = Schema.Struct({
-  id: Schema.String,
-  type: Schema.String,
-  files: Schema.Tuple(Schema.suspend(() => FileItem)),
-}).annotations({ title: 'Notion.FileAttachmentSingle' })
-
-export type FileAttachmentSingle = typeof FileAttachmentSingle.Type
-
-export const FileItem = Schema.Struct({
-  name: Schema.String,
-  type: Schema.String,
-  file: Schema.Struct({
-    url: Schema.String,
-    expiry_time: Schema.String,
-  }),
-}).annotations({ title: 'Notion.FileItem' })
-
-export type FileItem = typeof FileItem.Type
-
-export const RelationSingle = Schema.Struct({
-  id: Schema.String,
-  type: Schema.Literal('relation'),
-  relation: Schema.Tuple(Schema.Struct({ id: Schema.String })),
-}).annotations({ title: 'Notion.Relation' })
-
-export type RelationSingle = typeof RelationSingle.Type
-
-export const NumberElement = Schema.Struct({
-  id: Schema.String,
-  type: Schema.Literal('number'),
-  number: Schema.NullOr(Schema.Number),
-}).annotations({ title: 'Notion.NumberElement' })
-
-export type NumberElement = typeof NumberElement.Type
-
-export const NumberFromNumberElement = Schema.transform(
-  NumberElement,
-  Schema.NullOr(Schema.Number),
-  {
-    decode: (_) => _.number,
-    encode: () => notYetImplemented(),
-  },
-)
-
-export const NumberFromNumberElementNonNull = NumberFromNumberElement.pipe(
-  Schema.filter((_): _ is number => _ !== null),
-)
-
-export const FormulaElement = Schema.Struct({
-  id: Schema.String,
-  type: Schema.Literal('formula'),
-  formula: Schema.Struct({
-    number: Schema.Number,
-  }),
-}).annotations({ title: 'Notion.FormulaElement' })
-
-export type FormulaElement = typeof FormulaElement.Type
-
-export const NumberFromFormulaElement = Schema.transform(FormulaElement, Schema.Number, {
-  decode: (_) => _.formula.number,
-  encode: () => notYetImplemented(),
-})
-
-export const RichTextElement = Schema.Struct({
-  id: Schema.String,
-  type: Schema.Literal('rich_text'),
-  rich_text: Schema.Array(Schema.suspend(() => RichText)),
-}).annotations({ title: 'Notion.RichTextElement' })
-
-export type RichTextElement = typeof RichTextElement.Type
-
-export const StringFromRichTextElement = Schema.transform(RichTextElement, Schema.String, {
-  decode: (_) => _.rich_text.map((_) => _.plain_text).join('\n'),
-  encode: () => notYetImplemented(),
-})
-
-export const StringFromRichTextElementNonEmpty = StringFromRichTextElement.pipe(
-  Schema.filter((_): _ is string => _.trim() !== ''),
-)
-
-export const CheckboxElement = Schema.Struct({
-  id: Schema.String,
-  type: Schema.Literal('checkbox'),
-  checkbox: Schema.Boolean,
-}).annotations({ title: 'Notion.CheckboxElement' })
-
-export type CheckboxElement = typeof CheckboxElement.Type
-
-export const BooleanFromCheckboxElement = Schema.transform(CheckboxElement, Schema.Boolean, {
-  decode: (_) => _.checkbox,
-  encode: () => notYetImplemented(),
-})
-
-export const SelectElement = Schema.Struct({
-  id: Schema.String,
-  type: Schema.Literal('select'),
-  select: Schema.NullOr(Schema.suspend(() => SelectOption)),
-}).annotations({ title: 'Notion.SelectElement' })
-
-export type SelectElement = typeof SelectElement.Type
-
-export const StringFromSelectElement = Schema.transform(
-  SelectElement,
-  Schema.NullOr(Schema.String),
-  {
-    decode: (_) => _.select?.name ?? null,
-    encode: () => notYetImplemented(),
-  },
-)
-
-export const StringFromSelectElementNonNull = StringFromSelectElement.pipe(
-  Schema.filter((_): _ is string => _ !== null),
-)
-
-export const StringLitFromSelectElement = <
-  Literals extends ReadonlyArray<string | number | boolean>,
->(
-  ...literals: Literals
-) =>
-  Schema.transform(SelectElement, Schema.NullOr(Schema.Literal(...literals)), {
-    decode: (_) => _.select?.name ?? null,
-    encode: () => notYetImplemented(),
-  })
-
-export const StringLitFromSelectElementNonNull = <
-  Literals extends ReadonlyArray<string | number | boolean>,
->(
-  ...literals: Literals
-) => StringLitFromSelectElement(...literals).pipe(Schema.filter((_): _ is string => _ !== null))
-
-export const MultiSelectElement = Schema.Struct({
-  id: Schema.String,
-  type: Schema.Literal('multi_select'),
-  multi_select: Schema.Array(Schema.suspend(() => SelectOption)),
-}).annotations({ title: 'Notion.MultiSelectElement' })
-
-export type MultiSelectElement = typeof MultiSelectElement.Type
-
-export const TitleElement = Schema.Struct({
-  id: Schema.String,
-  type: Schema.Literal('title'),
-  title: Schema.NonEmptyArray(Schema.suspend(() => RichText)),
-}).annotations({ title: 'Notion.TitleElement' })
-
-export type TitleElement = typeof TitleElement.Type
-
-export const StringFromTitleElement = Schema.transform(TitleElement, Schema.String, {
-  decode: (_) =>
-    _.title
-      .filter((_) => _.plain_text !== '')
-      .map((_) => _.plain_text)
-      .join(' '),
-  encode: () => notYetImplemented(),
-})
-
-export const RichText = Schema.Struct({
-  type: Schema.String,
-  text: Schema.Struct({
-    content: Schema.String,
-    link: Schema.NullOr(Schema.Any),
-  }),
-  annotations: Schema.Struct({
-    bold: Schema.Boolean,
-    italic: Schema.Boolean,
-    strikethrough: Schema.Boolean,
-    underline: Schema.Boolean,
-    code: Schema.Boolean,
-    color: Schema.String,
-  }),
-  plain_text: Schema.String,
-  href: Schema.NullOr(Schema.Any),
-}).annotations({ title: 'Notion.RichText' })
-
-export type RichText = typeof RichText.Type
-
-export const SelectOption = Schema.Struct({
-  id: Schema.String,
-  name: Schema.String,
-  color: Schema.String,
-}).annotations({ title: 'Notion.SelectOption' })
-
-export type SelectOption = typeof SelectOption.Type
-
-export const DateElement = Schema.Struct({
-  id: Schema.String,
-  type: Schema.Literal('date'),
-  date: Schema.NullOr(
-    Schema.Struct({
-      start: Schema.Date,
-      end: Schema.NullOr(Schema.Date),
-      time_zone: Schema.NullOr(Schema.String),
-    }),
-  ),
-}).annotations({ title: 'Notion.DateElement' })
-
-export type DateElement = typeof DateElement.Type
-
-export const DateElementNonNull = Schema.Struct({
-  id: Schema.String,
-  type: Schema.Literal('date'),
-  date: Schema.Struct({
-    start: Schema.Date,
-    end: Schema.NullOr(Schema.Date),
-    time_zone: Schema.NullOr(Schema.String),
-  }),
-}).annotations({ title: 'Notion.DateElementNonNull' })
-
-export type DateElementNonNull = typeof DateElementNonNull.Type
+// Common utilities and primitives
+export {
+  docsPath,
+  type ISO8601DateTime,
+  ISO8601DateTime as ISO8601DateTimeSchema,
+  NOTION_DOCS_BASE,
+  type NotionColor,
+  NotionColor as NotionColorSchema,
+  type NotionUUID,
+  NotionUUID as NotionUUIDSchema,
+  resolveDocsUrl,
+  type SelectColor,
+  SelectColor as SelectColorSchema,
+} from './common.ts'
+// Object schemas (Database, Page, Block)
+export {
+  type Block,
+  Block as BlockSchema,
+  type BlockParent,
+  BlockParent as BlockParentSchema,
+  type BlockType,
+  BlockType as BlockTypeSchema,
+  type CustomEmojiIcon,
+  CustomEmojiIcon as CustomEmojiIconSchema,
+  type Database,
+  Database as DatabaseSchema,
+  type DatabaseParent,
+  DatabaseParent as DatabaseParentSchema,
+  type DataSource,
+  DataSource as DataSourceSchema,
+  type EmojiIcon,
+  EmojiIcon as EmojiIconSchema,
+  type ExternalFile,
+  ExternalFile as ExternalFileSchema,
+  type FileObject,
+  FileObject as FileObjectSchema,
+  type Icon,
+  Icon as IconSchema,
+  type NotionFile,
+  NotionFile as NotionFileSchema,
+  type Page,
+  Page as PageSchema,
+  type PageParent,
+  PageParent as PageParentSchema,
+} from './objects.ts'
+// Property schemas
+export * from './properties.ts'
+// Rich text schemas
+export {
+  type DatabaseMention,
+  DatabaseMention as DatabaseMentionSchema,
+  type DateMention,
+  DateMention as DateMentionSchema,
+  type EquationRichText,
+  EquationRichText as EquationRichTextSchema,
+  type LinkPreviewMention,
+  LinkPreviewMention as LinkPreviewMentionSchema,
+  type MentionContent,
+  MentionContent as MentionContentSchema,
+  type MentionRichText,
+  MentionRichText as MentionRichTextSchema,
+  type PageMention,
+  PageMention as PageMentionSchema,
+  type RichText,
+  RichText as RichTextSchema,
+  type RichTextArray,
+  RichTextArray as RichTextArraySchema,
+  RichTextArrayAsString,
+  type TemplateMention,
+  TemplateMention as TemplateMentionSchema,
+  type TemplateMentionDate,
+  TemplateMentionDate as TemplateMentionDateSchema,
+  type TemplateMentionUser,
+  TemplateMentionUser as TemplateMentionUserSchema,
+  type TextAnnotations,
+  TextAnnotations as TextAnnotationsSchema,
+  type TextLink,
+  TextLink as TextLinkSchema,
+  type TextRichText,
+  TextRichText as TextRichTextSchema,
+  type UserMention,
+  UserMention as UserMentionSchema,
+} from './rich-text.ts'
+// User schemas
+export {
+  type Bot,
+  Bot as BotSchema,
+  type BotData,
+  BotData as BotDataSchema,
+  type BotOwner,
+  BotOwner as BotOwnerSchema,
+  type PartialUser,
+  PartialUser as PartialUserSchema,
+  type Person,
+  Person as PersonSchema,
+  type PersonData,
+  PersonData as PersonDataSchema,
+  type User,
+  User as UserSchema,
+} from './users.ts'
