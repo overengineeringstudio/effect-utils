@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Determinate Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+
+      - uses: DeterminateSystems/flakehub-cache-action@main
+
+      - uses: HatsuneMiku3939/direnv-action@v1
+        timeout-minutes: 5
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        run: pnpm tsc --build tsconfig.all.json
+
+      - name: Lint
+        run: biome check
+
+      - name: Unit tests
+        run: pnpm --filter @schickling/notion-effect-client test:unit

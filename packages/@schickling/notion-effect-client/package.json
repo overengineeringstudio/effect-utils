@@ -14,17 +14,21 @@
   },
   "scripts": {
     "build": "tsc --build",
-    "test": "echo \"TODO: Add tests\""
+    "test": "vitest run",
+    "test:unit": "vitest run --exclude '**/integration/**'",
+    "test:integration": "vitest run 'src/test/integration'"
   },
   "dependencies": {
     "@schickling/notion-effect-schema": "workspace:*"
   },
   "peerDependencies": {
-    "effect": "^3.19.13",
-    "@effect/platform": "^0.94.0"
+    "@effect/platform": "^0.94.0",
+    "effect": "^3.19.13"
   },
   "devDependencies": {
+    "@effect/platform": "^0.94.0",
+    "@effect/vitest": "^0.27.0",
     "effect": "^3.19.13",
-    "@effect/platform": "^0.94.0"
+    "vitest": "^3.2.4"
   }
 }

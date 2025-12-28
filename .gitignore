@@ -9,3 +9,11 @@ node_modules
 # TypeScript
 *.tsbuildinfo
 dist
+
+# Direnv
+.direnv
+.envrc.local
+
+# Devenv
+.devenv
+.devenv*

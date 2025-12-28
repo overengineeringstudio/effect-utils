@@ -1,0 +1,5 @@
+# Notion Integration Test Environment
+# Copy this file to .envrc.local and fill in your values
+
+# Notion API Token (get from https://www.notion.so/my-integrations)
+export NOTION_TOKEN="secret_xxx"
