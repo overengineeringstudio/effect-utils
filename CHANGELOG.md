@@ -15,6 +15,18 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@schickling/notion-effect-schema-gen**: Full CLI implementation for schema generation
+  - `generate` subcommand: Introspects a Notion database and generates Effect schemas
+    - `--output` / `-o`: Output file path for generated schema
+    - `--name` / `-n`: Custom name for the generated schema (defaults to database title)
+    - `--token` / `-t`: Notion API token (defaults to NOTION_TOKEN env var)
+    - `--transform`: Per-property transform configuration (e.g., `Status=raw`)
+  - `introspect` subcommand: Displays database schema information
+  - Configurable property transforms per type (raw, asString, asOption, asNumber, etc.)
+  - Support for all 21 Notion property types with sensible defaults
+  - Generated code includes proper Effect Schema imports and type exports
+  - Unit tests for code generation functionality
+
 - **@schickling/notion-effect-schema**: Core Notion object schemas
   - `Database`, `Page`, `Block` with full field definitions
   - Parent types: `DatabaseParent`, `PageParent`, `BlockParent`
