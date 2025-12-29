@@ -3,6 +3,7 @@ import {
   generateSchemaCode,
   getAvailableTransforms,
   getDefaultTransform,
+  isReadOnlyProperty,
   PROPERTY_TRANSFORMS,
 } from './codegen.ts'
 import type { DatabaseInfo, PropertyInfo } from './introspect.ts'
@@ -30,13 +31,13 @@ describe('codegen', () => {
       expect(code).toContain('RichTextProperty')
       expect(code).toContain('NumberProperty')
       expect(code).toContain('CheckboxProperty')
-      expect(code).toContain('export const TestdatabasePageProperties = Schema.Struct({')
+      expect(code).toContain('export const TestDatabasePageProperties = Schema.Struct({')
       expect(code).toContain('Name: TitleProperty.asString')
       expect(code).toContain('Description: RichTextProperty.asString')
       expect(code).toContain('Count: NumberProperty.asNumber')
       expect(code).toContain('Done: CheckboxProperty.asBoolean')
       expect(code).toContain(
-        'export type TestdatabasePageProperties = typeof TestdatabasePageProperties.Type',
+        'export type TestDatabasePageProperties = typeof TestDatabasePageProperties.Type',
       )
     })
 
@@ -250,6 +251,126 @@ describe('codegen', () => {
         expect(PROPERTY_TRANSFORMS[type]).toBeDefined()
         expect(PROPERTY_TRANSFORMS[type]).toContain('raw')
       }
+    })
+  })
+
+  describe('isReadOnlyProperty', () => {
+    it('should return true for read-only properties', () => {
+      expect(isReadOnlyProperty('formula')).toBe(true)
+      expect(isReadOnlyProperty('rollup')).toBe(true)
+      expect(isReadOnlyProperty('created_time')).toBe(true)
+      expect(isReadOnlyProperty('created_by')).toBe(true)
+      expect(isReadOnlyProperty('last_edited_time')).toBe(true)
+      expect(isReadOnlyProperty('last_edited_by')).toBe(true)
+      expect(isReadOnlyProperty('unique_id')).toBe(true)
+    })
+
+    it('should return false for writable properties', () => {
+      expect(isReadOnlyProperty('title')).toBe(false)
+      expect(isReadOnlyProperty('rich_text')).toBe(false)
+      expect(isReadOnlyProperty('number')).toBe(false)
+      expect(isReadOnlyProperty('select')).toBe(false)
+      expect(isReadOnlyProperty('checkbox')).toBe(false)
+    })
+  })
+
+  describe('generateSchemaCode with options', () => {
+    it('should generate Write schema when includeWrite is true', () => {
+      const dbInfo: DatabaseInfo = {
+        id: 'test-db-id',
+        name: 'Test',
+        url: 'https://notion.so/test',
+        properties: [
+          { id: 'prop1', name: 'Name', type: 'title' },
+          { id: 'prop2', name: 'Status', type: 'select' },
+          { id: 'prop3', name: 'CreatedAt', type: 'created_time' },
+        ],
+      }
+
+      const code = generateSchemaCode(dbInfo, 'Test', { includeWrite: true })
+
+      // Should have both Read and Write schemas
+      expect(code).toContain('// Read Schema')
+      expect(code).toContain('// Write Schema')
+      expect(code).toContain('export const TestPageProperties = Schema.Struct({')
+      expect(code).toContain('export const TestPageWrite = Schema.Struct({')
+
+      // Write schema should include writable properties
+      expect(code).toContain('TitleWriteFromString')
+      expect(code).toContain('SelectWriteFromName')
+
+      // Read schema includes all properties including read-only
+      expect(code).toContain('CreatedTimeProperty')
+
+      // But Write schema should NOT include CreatedAt (read-only property)
+      // Verify by checking the Write schema section doesn't have it
+      const writeSchemaSection = code.split('// Write Schema')[1]
+      expect(writeSchemaSection).not.toContain('CreatedAt:')
+    })
+
+    it('should generate typed options when typedOptions is true', () => {
+      const dbInfo: DatabaseInfo = {
+        id: 'test-db-id',
+        name: 'Test',
+        url: 'https://notion.so/test',
+        properties: [
+          {
+            id: 'prop1',
+            name: 'Status',
+            type: 'select',
+            select: {
+              options: [
+                { id: '1', name: 'Not Started', color: 'gray' },
+                { id: '2', name: 'In Progress', color: 'blue' },
+                { id: '3', name: 'Done', color: 'green' },
+              ],
+            },
+          },
+          {
+            id: 'prop2',
+            name: 'Priority',
+            type: 'multi_select',
+            multi_select: {
+              options: [
+                { id: '1', name: 'High', color: 'red' },
+                { id: '2', name: 'Low', color: 'gray' },
+              ],
+            },
+          },
+        ],
+      }
+
+      const code = generateSchemaCode(dbInfo, 'Test', { typedOptions: true })
+
+      // Should have typed options section
+      expect(code).toContain('// Typed Options')
+
+      // Should have literal types for select options
+      expect(code).toContain('export const TestStatusOption = Schema.Literal(')
+      expect(code).toContain("'Not Started'")
+      expect(code).toContain("'In Progress'")
+      expect(code).toContain("'Done'")
+
+      // Should have literal types for multi_select options
+      expect(code).toContain('export const TestPriorityOption = Schema.Literal(')
+      expect(code).toContain("'High'")
+      expect(code).toContain("'Low'")
+    })
+
+    it('should preserve PascalCase in names', () => {
+      const dbInfo: DatabaseInfo = {
+        id: 'test',
+        name: 'Test',
+        url: 'https://notion.so/test',
+        properties: [{ id: 'prop', name: 'Title', type: 'title' }],
+      }
+
+      // Input already in PascalCase should be preserved
+      expect(generateSchemaCode(dbInfo, 'MyDatabase')).toContain('MyDatabasePageProperties')
+      expect(generateSchemaCode(dbInfo, 'TestDB')).toContain('TestDBPageProperties')
+
+      // Hyphenated should become PascalCase
+      expect(generateSchemaCode(dbInfo, 'my-test-db')).toContain('MyTestDbPageProperties')
     })
   })
 })

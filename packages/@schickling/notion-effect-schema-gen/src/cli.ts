@@ -5,9 +5,9 @@ import { FetchHttpClient } from '@effect/platform'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { NotionConfig, NotionDatabases } from '@schickling/notion-effect-client'
 import { Console, Effect, Layer } from 'effect'
-import { generateSchemaCode } from './codegen.ts'
+import { type GenerateOptions, generateSchemaCode } from './codegen.ts'
 import { introspectDatabase, type PropertyTransformConfig } from './introspect.ts'
-import { writeSchemaToFile } from './output.ts'
+import { formatCode, writeSchemaToFile } from './output.ts'
 
 // -----------------------------------------------------------------------------
 // Common Options
@@ -45,6 +45,23 @@ const transformOption = Options.keyValueMap('transform').pipe(
   Options.optional,
 )
 
+const dryRunOption = Options.boolean('dry-run').pipe(
+  Options.withAlias('d'),
+  Options.withDescription('Preview generated code without writing to file'),
+  Options.withDefault(false),
+)
+
+const includeWriteOption = Options.boolean('include-write').pipe(
+  Options.withAlias('w'),
+  Options.withDescription('Include Write schemas for creating/updating pages'),
+  Options.withDefault(false),
+)
+
+const typedOptionsOption = Options.boolean('typed-options').pipe(
+  Options.withDescription('Generate typed literal unions for select/status options'),
+  Options.withDefault(false),
+)
+
 const generateCommand = Command.make(
   'generate',
   {
@@ -53,8 +70,11 @@ const generateCommand = Command.make(
     name: nameOption,
     token: tokenOption,
     transform: transformOption,
+    dryRun: dryRunOption,
+    includeWrite: includeWriteOption,
+    typedOptions: typedOptionsOption,
   },
-  ({ databaseId, output, name, token, transform }) =>
+  ({ databaseId, output, name, token, transform, dryRun, includeWrite, typedOptions }) =>
     Effect.gen(function* () {
       const authToken = token.pipe(
         Effect.orElse(() =>
@@ -77,6 +97,13 @@ const generateCommand = Command.make(
         }
       }
 
+      // Build generate options
+      const generateOptions: GenerateOptions = {
+        transforms: transformConfig,
+        includeWrite,
+        typedOptions,
+      }
+
       const configLayer = Layer.succeed(NotionConfig, { authToken: resolvedToken })
 
       const program = Effect.gen(function* () {
@@ -86,12 +113,23 @@ const generateCommand = Command.make(
         const schemaName = name._tag === 'Some' ? name.value : dbInfo.name
         yield* Console.log(`Generating schema "${schemaName}"...`)
 
-        const code = generateSchemaCode(dbInfo, schemaName, transformConfig)
+        const rawCode = generateSchemaCode(dbInfo, schemaName, generateOptions)
+        const code = yield* formatCode(rawCode)
 
-        yield* Console.log(`Writing to ${output}...`)
-        yield* writeSchemaToFile(code, output)
-
-        yield* Console.log(`✓ Schema generated successfully!`)
+        if (dryRun) {
+          yield* Console.log('')
+          yield* Console.log('--- Generated Code (dry-run) ---')
+          yield* Console.log('')
+          yield* Console.log(code)
+          yield* Console.log('')
+          yield* Console.log('--- End Generated Code ---')
+          yield* Console.log('')
+          yield* Console.log(`Would write to: ${output}`)
+        } else {
+          yield* Console.log(`Writing to ${output}...`)
+          yield* writeSchemaToFile(code, output)
+          yield* Console.log(`✓ Schema generated successfully!`)
+        }
       })
 
       yield* program.pipe(Effect.provide(Layer.merge(configLayer, FetchHttpClient.layer)))

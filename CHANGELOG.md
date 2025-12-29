@@ -21,11 +21,18 @@ All notable changes to this project will be documented in this file.
     - `--name` / `-n`: Custom name for the generated schema (defaults to database title)
     - `--token` / `-t`: Notion API token (defaults to NOTION_TOKEN env var)
     - `--transform`: Per-property transform configuration (e.g., `Status=raw`)
+    - `--dry-run` / `-d`: Preview generated code without writing to file
+    - `--include-write` / `-w`: Include Write schemas for creating/updating pages
+    - `--typed-options`: Generate typed literal unions for select/status options
   - `introspect` subcommand: Displays database schema information
+  - Config file support (`.notion-schema-gen.json`) for multi-database projects
   - Configurable property transforms per type (raw, asString, asOption, asNumber, etc.)
   - Support for all 21 Notion property types with sensible defaults
+  - Improved PascalCase handling that preserves existing casing
+  - Auto-formatting with Biome when available
+  - Uses Effect FileSystem and Path for file operations
   - Generated code includes proper Effect Schema imports and type exports
-  - Unit tests for code generation functionality
+  - Comprehensive unit tests for code generation functionality
 
 - **@schickling/notion-effect-schema**: Core Notion object schemas
   - `Database`, `Page`, `Block` with full field definitions
