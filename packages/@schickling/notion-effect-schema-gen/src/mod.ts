@@ -9,11 +9,15 @@
 
 // Code generation
 export {
+  type GenerateOptions,
   generateSchemaCode,
   getAvailableTransforms,
   getDefaultTransform,
+  isReadOnlyProperty,
   PROPERTY_TRANSFORMS,
 } from './codegen.ts'
+// Config
+export { type DatabaseConfig, loadConfig, type SchemaGenConfig } from './config.ts'
 // Introspection
 export {
   type DatabaseInfo,
@@ -28,6 +32,5 @@ export {
   type SelectOption,
   type StatusGroup,
 } from './introspect.ts'
-
 // Output
 export { formatCode, writeSchemaToFile } from './output.ts'
