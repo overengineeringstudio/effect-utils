@@ -1,26 +1,33 @@
-import { Effect } from 'effect'
+/**
+ * Schema generation for Notion databases.
+ *
+ * This module provides functionality to introspect Notion databases
+ * and generate Effect schemas from their property definitions.
+ *
+ * @module
+ */
 
-// Placeholder for code generation logic
-// This will introspect a Notion database schema and generate Effect schemas
+// Code generation
+export {
+  generateSchemaCode,
+  getAvailableTransforms,
+  getDefaultTransform,
+  PROPERTY_TRANSFORMS,
+} from './codegen.ts'
+// Introspection
+export {
+  type DatabaseInfo,
+  type FormulaConfig,
+  introspectDatabase,
+  type NotionPropertyType,
+  type NumberFormat,
+  type PropertyInfo,
+  type PropertyTransformConfig,
+  type RelationConfig,
+  type RollupConfig,
+  type SelectOption,
+  type StatusGroup,
+} from './introspect.ts'
 
-export const generateSchemaFromNotionDb = (databaseId: string): Effect.Effect<string, Error> =>
-  Effect.gen(function* () {
-    // TODO: Implement Notion API integration
-    // TODO: Introspect database schema
-    // TODO: Generate Effect schema code
-
-    yield* Effect.logInfo(`Generating schema for Notion database: ${databaseId}`)
-
-    // Placeholder return
-    return `// Generated Effect schema for database ${databaseId}\n// TODO: Implement actual generation`
-  })
-
-export const writeSchemaToFile = (
-  _schema: string,
-  outputPath: string,
-): Effect.Effect<void, Error> =>
-  Effect.gen(function* () {
-    yield* Effect.logInfo(`Writing schema to: ${outputPath}`)
-    // TODO: Implement file writing
-    yield* Effect.die('Not implemented yet')
-  })
+// Output
+export { formatCode, writeSchemaToFile } from './output.ts'
