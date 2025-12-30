@@ -1,0 +1,30 @@
+{
+  "name": "@schickling/effect-schema-form",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/mod.ts"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": "./dist/mod.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "peerDependencies": {
+    "effect": "^3.19.13",
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.3",
+    "effect": "^3.19.13",
+    "react": "^19.2.3",
+    "vitest": "^3.2.3"
+  }
+}

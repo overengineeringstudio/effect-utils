@@ -15,6 +15,23 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@schickling/effect-schema-form**: Headless form component for Effect Schemas
+  - Schema introspection utilities (`analyzeSchema`, `getStructProperties`, `analyzeTaggedStruct`)
+  - Field type detection: string, number, boolean, literal, struct, unknown
+  - Context + hooks API pattern for custom rendering
+  - `SchemaFormProvider` for design system integration
+  - `useSchemaForm` hook for building custom form UIs
+  - Support for optional fields, tagged structs, and literal unions
+  - `formatLiteralLabel` utility for human-readable label formatting
+
+- **@schickling/effect-schema-form-aria**: Styled React Aria implementation
+  - Pre-configured `AriaSchemaForm` component with accessible UI
+  - `ariaRenderers` object for use with `SchemaFormProvider`
+  - Individual styled components: `TextField`, `NumberField`, `BooleanField`, `LiteralField`
+  - `FieldGroup` and `FieldWrapper` layout components
+  - Tailwind CSS styling with design token support
+  - Automatic segmented control/select switching for literal fields
+
 - **@schickling/notion-effect-schema**: Core Notion object schemas
   - `Database`, `Page`, `Block` with full field definitions
   - Parent types: `DatabaseParent`, `PageParent`, `BlockParent`
