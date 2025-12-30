@@ -1,77 +1,29 @@
-# effect-notion
+# @overeng Effect Utils
 
-[Effect](https://effect.website) schemas and tools for working with the Notion API.
-
-Uses the [Notion HTTP API](https://developers.notion.com/reference) directly via `@effect/platform` HttpClient (no dependency on `@notionhq/client`).
+A collection of [Effect](https://effect.website) utilities and integrations.
 
 ## Packages
 
-### [@schickling/notion-effect-client](./packages/@schickling/notion-effect-client)
+### Notion Integration
 
-Effect-native HTTP client for the Notion API with proper error handling, automatic pagination, and observability.
+| Package | Description |
+|---------|-------------|
+| [@overeng/notion-effect-client](./packages/@overeng/notion-effect-client) | Effect-native HTTP client for the Notion API |
+| [@overeng/notion-effect-schema](./packages/@overeng/notion-effect-schema) | Effect schemas for Notion API types |
+| [@overeng/notion-effect-schema-gen](./packages/@overeng/notion-effect-schema-gen) | CLI tool for Notion schema generation |
 
-```ts
-import { Effect, Layer } from 'effect'
-import { FetchHttpClient } from '@effect/platform'
-import { NotionConfigLive, NotionDatabases, NotionPages } from '@schickling/notion-effect-client'
+### Schema Forms
 
-const program = Effect.gen(function* () {
-  // Query a database with automatic pagination
-  const result = yield* NotionDatabases.query({
-    databaseId: 'your-database-id',
-    filter: { property: 'Status', select: { equals: 'active' } },
-  })
+| Package | Description |
+|---------|-------------|
+| [@overeng/effect-schema-form](./packages/@overeng/effect-schema-form) | Headless form component for Effect Schemas |
+| [@overeng/effect-schema-form-aria](./packages/@overeng/effect-schema-form-aria) | React Aria implementation with Tailwind CSS ([Storybook](https://overeng-effect-utils-schema-form-aria.vercel.app)) |
 
-  // Or use streaming for large datasets
-  const allPages = yield* NotionDatabases.queryStream({
-    databaseId: 'your-database-id',
-  }).pipe(Stream.runCollect)
+### React Integration
 
-  // Create a page
-  const page = yield* NotionPages.create({
-    parent: { type: 'database_id', database_id: 'your-database-id' },
-    properties: {
-      Name: { title: [{ text: { content: 'New Task' } }] },
-    },
-  })
-
-  return { result, page }
-})
-
-const MainLayer = Layer.mergeAll(
-  NotionConfigLive({ authToken: process.env.NOTION_TOKEN! }),
-  FetchHttpClient.layer,
-)
-
-program.pipe(Effect.provide(MainLayer), Effect.runPromise)
-```
-
-### [@schickling/notion-effect-schema](./packages/@schickling/notion-effect-schema)
-
-Effect schemas for Notion API property types with convenient transform variants.
-
-```ts
-import { Schema } from 'effect'
-import { Title, Checkbox, Select, DateProp } from '@schickling/notion-effect-schema'
-
-// Parse raw Notion properties
-const rawTitle = Title.raw  // Full Notion title structure
-const titleString = Title.asString  // Extracts plain text
-
-// Transform to clean types
-const isComplete = Checkbox.asBoolean  // boolean
-const status = Select.asOption  // Option<string>
-const dueDate = DateProp.asDate  // Option<Date>
-```
-
-### [@schickling/notion-effect-schema-gen](./packages/@schickling/notion-effect-schema-gen)
-
-CLI tool to introspect Notion database schemas and generate corresponding Effect schemas.
-
-```bash
-# Generate Effect schema from Notion database
-notion-effect-schema-gen <database-id> > generated-schema.ts
-```
+| Package | Description |
+|---------|-------------|
+| [@overeng/effect-react](./packages/@overeng/effect-react) | React integration for Effect runtime |
 
 ## Development
 
@@ -81,7 +33,13 @@ pnpm build
 pnpm test
 ```
 
-### Running tests
+### Type Checking
+
+```bash
+pnpm tsc --build tsconfig.all.json
+```
+
+### Running Tests
 
 ```bash
 # Unit tests only

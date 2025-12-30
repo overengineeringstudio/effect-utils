@@ -1,0 +1,34 @@
+{
+  "name": "@overeng/notion-effect-client",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/mod.ts"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": "./dist/mod.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "test": "vitest run",
+    "test:unit": "vitest run --exclude '**/integration/**'",
+    "test:integration": "vitest run 'src/test/integration'"
+  },
+  "dependencies": {
+    "@overeng/notion-effect-schema": "workspace:*"
+  },
+  "peerDependencies": {
+    "@effect/platform": "^0.94.0",
+    "effect": "^3.19.13"
+  },
+  "devDependencies": {
+    "@effect/platform": "^0.94.0",
+    "@effect/vitest": "^0.27.0",
+    "effect": "^3.19.13",
+    "vitest": "^3.2.4"
+  }
+}

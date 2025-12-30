@@ -1,0 +1,28 @@
+{
+  "name": "@overeng/notion-effect-schema",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/mod.ts"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": "./dist/mod.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "peerDependencies": {
+    "effect": "^3.19.13"
+  },
+  "devDependencies": {
+    "@effect/vitest": "^0.27.0",
+    "effect": "^3.19.13",
+    "vitest": "^3.2.4"
+  }
+}

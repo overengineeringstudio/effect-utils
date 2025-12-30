@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- **@schickling/notion-effect-client**: Schema-aware typed queries and page retrieval
+- **@overeng/notion-effect-client**: Schema-aware typed queries and page retrieval
   - `TypedPage<T>` interface combining page metadata with decoded properties
   - `PageDecodeError` for schema decoding failures
   - `NotionDatabases.query()`: Now accepts optional `schema` parameter for typed results
@@ -14,7 +14,7 @@ All notable changes to this project will be documented in this file.
   - `NotionPages.retrieve()`: Now accepts optional `schema` parameter for typed retrieval
   - All methods return `TypedPage<T>` when schema is provided, with `id`, `createdTime`, `url`, `properties`, and `_raw` access
 
-- **@schickling/notion-effect-schema-gen**: Database API wrapper generation
+- **@overeng/notion-effect-schema-gen**: Database API wrapper generation
   - `--include-api` / `-a` flag: Generate typed database API wrapper alongside schema
   - Generated API file includes:
     - `query()`: Stream-based query with auto-pagination
@@ -28,10 +28,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-- **@schickling/notion-effect-schema-gen**: Critical fixes to generated schema code
+- **@overeng/notion-effect-schema-gen**: Critical fixes to generated schema code
   - Fixed import references to use correct transform namespaces (e.g., `Title`, `Select`, `Num` instead of `TitleProperty`, `SelectProperty`, `NumberProperty`)
   - Fixed write schema generation to use nested Write APIs (e.g., `Title.Write.fromString` instead of `TitleWriteFromString`)
-  - Generated schemas now correctly work with `@schickling/notion-effect-schema` package
+  - Generated schemas now correctly work with `@overeng/notion-effect-schema` package
   - Added integration tests verifying generated schemas decode/encode properly with actual Notion API data structures
   - Added runtime validation helpers to generated code:
     - Read helpers: `decode{Name}Properties`, `decode{Name}PropertiesEffect`
@@ -39,16 +39,26 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Renamed all packages from `@schickling` scope to `@overeng` scope
 - TypeScript builds now emit ESM JavaScript to `dist/` with source maps and declaration maps.
 - Property "read" transforms are now decode-only; write payloads are modeled separately via `*Write` schemas / transforms.
 - Notion HTTP client retry behavior:
   - Treats request-body JSON encoding failures as typed `NotionApiError` (instead of defects).
   - Respects `retry-after` on 429 responses when retrying.
 - Updated dependencies to latest versions (effect ^3.19.13, @effect/platform ^0.94.0)
+- Moved all dependencies to pnpm catalog for centralized version management
 
 ### Added
 
-- **@schickling/effect-schema-form**: Headless form component for Effect Schemas
+- **@overeng/effect-react**: React integration for Effect runtime
+  - `makeReactAppLayer` for layer-based app initialization with React
+  - `useServiceContext` hook for accessing Effect services from React components
+  - `LoadingState` context for tracking app initialization progress
+  - `ServiceContext` utilities for running effects with a provided runtime
+  - React hooks: `useAsyncEffectUnsafe`, `useInterval`, `useStateRefWithReactiveInput`
+  - `cuid` and `slug` utilities for generating unique IDs
+
+- **@overeng/effect-schema-form**: Headless form component for Effect Schemas
   - Schema introspection utilities (`analyzeSchema`, `getStructProperties`, `analyzeTaggedStruct`)
   - Field type detection: string, number, boolean, literal, struct, unknown
   - Context + hooks API pattern for custom rendering
@@ -57,7 +67,7 @@ All notable changes to this project will be documented in this file.
   - Support for optional fields, tagged structs, and literal unions
   - `formatLiteralLabel` utility for human-readable label formatting
 
-- **@schickling/effect-schema-form-aria**: Styled React Aria implementation
+- **@overeng/effect-schema-form-aria**: Styled React Aria implementation
   - Pre-configured `AriaSchemaForm` component with accessible UI
   - `ariaRenderers` object for use with `SchemaFormProvider`
   - Individual styled components: `TextField`, `NumberField`, `BooleanField`, `LiteralField`
@@ -65,7 +75,7 @@ All notable changes to this project will be documented in this file.
   - Tailwind CSS styling with design token support
   - Automatic segmented control/select switching for literal fields
 
-- **@schickling/notion-effect-schema-gen**: Full CLI implementation for schema generation
+- **@overeng/notion-effect-schema-gen**: Full CLI implementation for schema generation
   - `generate` subcommand: Introspects a Notion database and generates Effect schemas
     - `--output` / `-o`: Output file path for generated schema
     - `--name` / `-n`: Custom name for the generated schema (defaults to database title)
@@ -86,7 +96,7 @@ All notable changes to this project will be documented in this file.
   - Deterministic code generation (no timestamps); header includes generator version
   - Comprehensive unit tests for code generation functionality
 
-- **@schickling/notion-effect-schema**: Core Notion object schemas
+- **@overeng/notion-effect-schema**: Core Notion object schemas
   - `Database`, `Page`, `Block` with full field definitions
   - Parent types: `DatabaseParent`, `PageParent`, `BlockParent`
   - File objects: `ExternalFile`, `NotionFile`, `FileObject`
@@ -94,7 +104,7 @@ All notable changes to this project will be documented in this file.
   - Block type enum covering all 27 Notion block types
   - `DataSource` for database data sources
 
-- **@schickling/notion-effect-schema**: Comprehensive Effect schemas
+- **@overeng/notion-effect-schema**: Comprehensive Effect schemas
   - Foundation schemas: `NotionUUID`, `ISO8601DateTime`, `NotionColor`, `SelectColor`
   - Rich text support: `RichText`, `TextAnnotations`, `MentionRichText`, `EquationRichText`
   - User schemas: `Person`, `Bot`, `PartialUser`, `User` union
@@ -104,7 +114,7 @@ All notable changes to this project will be documented in this file.
   - Custom `docsPath` annotation linking each schema to official Notion API docs
   - Proper Effect `Option` handling for nullable/optional fields
 
-- **@schickling/notion-effect-client**: Comprehensive test suite with real API integration
+- **@overeng/notion-effect-client**: Comprehensive test suite with real API integration
   - Unit tests for internal HTTP utilities
     - `parseRateLimitHeaders`, `buildRequest`, `get`, `post` functions
     - `NotionApiError.isRetryable` logic
@@ -124,9 +134,9 @@ Initial release of effect-notion monorepo.
 
 ### Added
 
-- **@schickling/notion-effect-schema**: Effect schemas for the Notion HTTP API
-- **@schickling/notion-effect-client**: Effect-native HTTP client for the Notion API
-- **@schickling/notion-effect-schema-gen**: CLI tool for schema generation
+- **@overeng/notion-effect-schema**: Effect schemas for the Notion HTTP API
+- **@overeng/notion-effect-client**: Effect-native HTTP client for the Notion API
+- **@overeng/notion-effect-schema-gen**: CLI tool for schema generation
 
 ### Infrastructure
 
