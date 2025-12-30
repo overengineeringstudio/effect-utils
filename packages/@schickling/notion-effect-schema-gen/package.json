@@ -17,15 +17,21 @@
   },
   "scripts": {
     "build": "tsc --build",
-    "test": "echo \"TODO: Add tests\""
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
+    "@effect/cli": "^0.62.0",
+    "@effect/platform": "^0.94.0",
+    "@effect/platform-node": "^0.78.0",
+    "@schickling/notion-effect-client": "workspace:*",
     "@schickling/notion-effect-schema": "workspace:*"
   },
   "peerDependencies": {
     "effect": "^3.19.13"
   },
   "devDependencies": {
-    "effect": "^3.19.13"
+    "effect": "^3.19.13",
+    "vitest": "^3.1.1"
   }
 }

@@ -4,10 +4,43 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **@schickling/notion-effect-client**: Schema-aware typed queries and page retrieval
+  - `TypedPage<T>` interface combining page metadata with decoded properties
+  - `PageDecodeError` for schema decoding failures
+  - `NotionDatabases.query()`: Now accepts optional `schema` parameter for typed results
+  - `NotionDatabases.queryStream()`: Now accepts optional `schema` parameter for typed streaming
+  - `NotionPages.retrieve()`: Now accepts optional `schema` parameter for typed retrieval
+  - All methods return `TypedPage<T>` when schema is provided, with `id`, `createdTime`, `url`, `properties`, and `_raw` access
+
+- **@schickling/notion-effect-schema-gen**: Database API wrapper generation
+  - `--include-api` / `-a` flag: Generate typed database API wrapper alongside schema
+  - Generated API file includes:
+    - `query()`: Stream-based query with auto-pagination
+    - `queryAll()`: Collect all results
+    - `get()`: Retrieve single page by ID
+    - `create()`: Create page (when `--include-write` enabled)
+    - `update()`: Update page (when `--include-write` enabled)
+    - `archive()`: Archive page
+  - Config file support: `includeApi` option in database and defaults config
+  - API file written to `{output}.api.ts` (e.g., `tasks.ts` → `tasks.api.ts`)
+
+### Fixed
+
+- **@schickling/notion-effect-schema-gen**: Critical fixes to generated schema code
+  - Fixed import references to use correct transform namespaces (e.g., `Title`, `Select`, `Num` instead of `TitleProperty`, `SelectProperty`, `NumberProperty`)
+  - Fixed write schema generation to use nested Write APIs (e.g., `Title.Write.fromString` instead of `TitleWriteFromString`)
+  - Generated schemas now correctly work with `@schickling/notion-effect-schema` package
+  - Added integration tests verifying generated schemas decode/encode properly with actual Notion API data structures
+  - Added runtime validation helpers to generated code:
+    - Read helpers: `decode{Name}Properties`, `decode{Name}PropertiesEffect`
+    - Write helpers: `decode{Name}Write`, `decode{Name}WriteEffect`, `encode{Name}Write`, `encode{Name}WriteEffect`
+
 ### Changed
 
 - TypeScript builds now emit ESM JavaScript to `dist/` with source maps and declaration maps.
-- Property “read” transforms are now decode-only; write payloads are modeled separately via `*Write` schemas / transforms.
+- Property "read" transforms are now decode-only; write payloads are modeled separately via `*Write` schemas / transforms.
 - Notion HTTP client retry behavior:
   - Treats request-body JSON encoding failures as typed `NotionApiError` (instead of defects).
   - Respects `retry-after` on 429 responses when retrying.
@@ -31,6 +64,27 @@ All notable changes to this project will be documented in this file.
   - `FieldGroup` and `FieldWrapper` layout components
   - Tailwind CSS styling with design token support
   - Automatic segmented control/select switching for literal fields
+
+- **@schickling/notion-effect-schema-gen**: Full CLI implementation for schema generation
+  - `generate` subcommand: Introspects a Notion database and generates Effect schemas
+    - `--output` / `-o`: Output file path for generated schema
+    - `--name` / `-n`: Custom name for the generated schema (defaults to database title)
+    - `--token` / `-t`: Notion API token (defaults to NOTION_TOKEN env var)
+    - `--transform`: Per-property transform configuration (e.g., `Status=raw`)
+    - `--dry-run` / `-d`: Preview generated code without writing to file
+    - `--include-write` / `-w`: Include Write schemas for creating/updating pages
+    - `--typed-options`: Generate typed literal unions for select/status options
+  - `introspect` subcommand: Displays database schema information
+  - `generate-config` subcommand: Generates schemas for all databases from config
+  - Config file support (`.notion-schema-gen.json`) for multi-database projects
+  - Configurable property transforms per type (raw, asString, asOption, asNumber, etc.)
+  - Support for all 21 Notion property types with sensible defaults
+  - Improved PascalCase handling that preserves existing casing
+  - Auto-formatting with Biome when available
+  - Uses Effect FileSystem and Path for file operations
+  - Generated code includes proper Effect Schema imports and type exports
+  - Deterministic code generation (no timestamps); header includes generator version
+  - Comprehensive unit tests for code generation functionality
 
 - **@schickling/notion-effect-schema**: Core Notion object schemas
   - `Database`, `Page`, `Block` with full field definitions

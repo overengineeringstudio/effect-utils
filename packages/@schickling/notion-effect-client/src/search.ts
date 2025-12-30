@@ -1,5 +1,5 @@
 import type { HttpClient } from '@effect/platform'
-import { Effect, Option, Schema, type Stream } from 'effect'
+import { Chunk, Effect, Option, Schema, Stream } from 'effect'
 import type { NotionConfig } from './config.ts'
 import type { NotionApiError } from './error.ts'
 import { post } from './internal/http.ts'
@@ -7,7 +7,6 @@ import {
   PaginatedResponse,
   type PaginatedResult,
   type PaginationOptions,
-  paginatedStream,
   toPaginatedResult,
 } from './internal/pagination.ts'
 
@@ -56,6 +55,31 @@ export interface SearchOptions extends PaginationOptions {
 // Service Implementation
 // -----------------------------------------------------------------------------
 
+/** Internal helper to build search body */
+const buildSearchBody = (opts: SearchOptions): Record<string, unknown> => {
+  const body: Record<string, unknown> = {}
+  if (opts.query !== undefined) body.query = opts.query
+  if (opts.filter !== undefined) body.filter = opts.filter
+  if (opts.sort !== undefined) body.sort = opts.sort
+  if (opts.startCursor !== undefined) body.start_cursor = opts.startCursor
+  if (opts.pageSize !== undefined) body.page_size = opts.pageSize
+  return body
+}
+
+/** Internal raw search - used by both search and searchStream */
+const searchRaw = (
+  opts: SearchOptions,
+): Effect.Effect<
+  PaginatedResult<SearchResult>,
+  NotionApiError,
+  NotionConfig | HttpClient.HttpClient
+> =>
+  Effect.gen(function* () {
+    const body = buildSearchBody(opts)
+    const response = yield* post('/search', body, SearchResponseSchema)
+    return toPaginatedResult(response)
+  }).pipe(Effect.withSpan('NotionSearch.search'))
+
 /**
  * Search pages and databases.
  *
@@ -69,34 +93,7 @@ export const search = (
   PaginatedResult<SearchResult>,
   NotionApiError,
   NotionConfig | HttpClient.HttpClient
-> =>
-  Effect.gen(function* () {
-    const body: Record<string, unknown> = {}
-
-    if (opts.query !== undefined) {
-      body.query = opts.query
-    }
-
-    if (opts.filter !== undefined) {
-      body.filter = opts.filter
-    }
-
-    if (opts.sort !== undefined) {
-      body.sort = opts.sort
-    }
-
-    if (opts.startCursor !== undefined) {
-      body.start_cursor = opts.startCursor
-    }
-
-    if (opts.pageSize !== undefined) {
-      body.page_size = opts.pageSize
-    }
-
-    const response = yield* post('/search', body, SearchResponseSchema)
-
-    return toPaginatedResult(response)
-  }).pipe(Effect.withSpan('NotionSearch.search'))
+> => searchRaw(opts)
 
 /**
  * Search pages and databases with automatic pagination.
@@ -108,31 +105,25 @@ export const search = (
 export const searchStream = (
   opts: Omit<SearchOptions, 'startCursor'> = {},
 ): Stream.Stream<SearchResult, NotionApiError, NotionConfig | HttpClient.HttpClient> =>
-  paginatedStream((cursor) =>
-    Effect.gen(function* () {
-      const body: Record<string, unknown> = {}
+  Stream.unfoldChunkEffect(Option.some(Option.none<string>()), (maybeNextCursor) =>
+    Option.match(maybeNextCursor, {
+      onNone: () => Effect.succeed(Option.none()),
+      onSome: (cursor) => {
+        const searchOpts: SearchOptions = Option.isSome(cursor)
+          ? { ...opts, startCursor: cursor.value }
+          : { ...opts }
+        return searchRaw(searchOpts).pipe(
+          Effect.map((result) => {
+            const chunk = Chunk.fromIterable(result.results)
 
-      if (opts.query !== undefined) {
-        body.query = opts.query
-      }
+            if (!result.hasMore || Option.isNone(result.nextCursor)) {
+              return Option.some([chunk, Option.none()] as const)
+            }
 
-      if (opts.filter !== undefined) {
-        body.filter = opts.filter
-      }
-
-      if (opts.sort !== undefined) {
-        body.sort = opts.sort
-      }
-
-      if (Option.isSome(cursor)) {
-        body.start_cursor = cursor.value
-      }
-
-      if (opts.pageSize !== undefined) {
-        body.page_size = opts.pageSize
-      }
-
-      return yield* post('/search', body, SearchResponseSchema)
+            return Option.some([chunk, Option.some(Option.some(result.nextCursor.value))] as const)
+          }),
+        )
+      },
     }),
   )
 

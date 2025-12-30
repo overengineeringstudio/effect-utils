@@ -1,6 +1,10 @@
-import { PageSchema } from '@schickling/notion-effect-schema'
-import { Effect } from 'effect'
+import type { HttpClient } from '@effect/platform'
+import { type Page, PageSchema } from '@schickling/notion-effect-schema'
+import { Effect, type Schema } from 'effect'
+import type { NotionConfig } from './config.ts'
+import type { NotionApiError } from './error.ts'
 import { get, patch, post } from './internal/http.ts'
+import { decodePage, type PageDecodeError, type TypedPage } from './typed-page.ts'
 
 // -----------------------------------------------------------------------------
 // Types
@@ -11,10 +15,22 @@ export type PageParent =
   | { readonly type: 'database_id'; readonly database_id: string }
   | { readonly type: 'page_id'; readonly page_id: string }
 
-/** Options for retrieving a page */
-export interface RetrievePageOptions {
+/** Base options for retrieving a page */
+export interface RetrievePageOptionsBase {
   /** Page ID to retrieve */
   readonly pageId: string
+}
+
+/** Options for retrieving a page (without schema = raw Page result) */
+export interface RetrievePageOptions extends RetrievePageOptionsBase {
+  /** Schema to decode page properties (omit for raw Page result) */
+  readonly schema?: undefined
+}
+
+/** Options for retrieving a page with schema-based decoding */
+export interface RetrievePageWithSchemaOptions<TProperties, I, R> extends RetrievePageOptionsBase {
+  /** Schema to decode page properties */
+  readonly schema: Schema.Schema<TProperties, I, R>
 }
 
 /** Options for creating a page */
@@ -63,11 +79,58 @@ export interface ArchivePageOptions {
 /**
  * Retrieve a page by ID.
  *
+ * Returns raw Page result, or TypedPage result when a schema is provided.
+ *
+ * @example
+ * ```ts
+ * // Without schema - returns raw Page object
+ * const raw = yield* NotionPages.retrieve({ pageId: 'abc123' })
+ *
+ * // With schema - returns typed page with decoded properties
+ * const TaskSchema = Schema.Struct({
+ *   Name: Title.asString,
+ *   Status: Select.asOption,
+ * })
+ * const typed = yield* NotionPages.retrieve({
+ *   pageId: 'abc123',
+ *   schema: TaskSchema,
+ * })
+ * // typed.properties.Name is string
+ * ```
+ *
  * @see https://developers.notion.com/reference/retrieve-a-page
  */
-export const retrieve = Effect.fn('NotionPages.retrieve')(function* (opts: RetrievePageOptions) {
-  return yield* get(`/pages/${opts.pageId}`, PageSchema)
-})
+export function retrieve(
+  opts: RetrievePageOptions,
+): Effect.Effect<Page, NotionApiError, NotionConfig | HttpClient.HttpClient>
+export function retrieve<TProperties, I, R>(
+  opts: RetrievePageWithSchemaOptions<TProperties, I, R>,
+): Effect.Effect<
+  TypedPage<TProperties>,
+  NotionApiError | PageDecodeError,
+  NotionConfig | HttpClient.HttpClient | R
+>
+export function retrieve<TProperties, I, R>(
+  opts: RetrievePageOptions | RetrievePageWithSchemaOptions<TProperties, I, R>,
+): Effect.Effect<
+  Page | TypedPage<TProperties>,
+  NotionApiError | PageDecodeError,
+  NotionConfig | HttpClient.HttpClient | R
+> {
+  return Effect.gen(function* () {
+    const page = yield* get(`/pages/${opts.pageId}`, PageSchema)
+
+    if (opts.schema !== undefined) {
+      return yield* decodePage(page, opts.schema)
+    }
+
+    return page
+  }).pipe(
+    Effect.withSpan('NotionPages.retrieve', {
+      attributes: { 'notion.page_id': opts.pageId },
+    }),
+  )
+}
 
 /**
  * Create a new page.

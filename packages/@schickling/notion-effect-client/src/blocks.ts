@@ -1,6 +1,6 @@
 import type { HttpClient } from '@effect/platform'
 import { type Block, BlockSchema } from '@schickling/notion-effect-schema'
-import { Effect, Option, Schema, type Stream } from 'effect'
+import { Chunk, Effect, Option, Schema, Stream } from 'effect'
 import type { NotionConfig } from './config.ts'
 import type { NotionApiError } from './error.ts'
 import { del, get, patch } from './internal/http.ts'
@@ -8,7 +8,6 @@ import {
   PaginatedResponse,
   type PaginatedResult,
   type PaginationOptions,
-  paginatedStream,
   toPaginatedResult,
 } from './internal/pagination.ts'
 
@@ -74,6 +73,29 @@ export const retrieve = Effect.fn('NotionBlocks.retrieve')(function* (opts: Retr
   return yield* get(`/blocks/${opts.blockId}`, BlockSchema)
 })
 
+/** Internal helper to build query params for block children */
+const buildBlockChildrenParams = (opts: RetrieveBlockChildrenOptions): string => {
+  const params = new URLSearchParams()
+  if (opts.startCursor !== undefined) params.set('start_cursor', opts.startCursor)
+  if (opts.pageSize !== undefined) params.set('page_size', String(opts.pageSize))
+  return params.toString()
+}
+
+/** Internal raw retrieveChildren - used by both retrieveChildren and retrieveChildrenStream */
+const retrieveChildrenRaw = (
+  opts: RetrieveBlockChildrenOptions,
+): Effect.Effect<PaginatedResult<Block>, NotionApiError, NotionConfig | HttpClient.HttpClient> =>
+  Effect.gen(function* () {
+    const queryString = buildBlockChildrenParams(opts)
+    const path = `/blocks/${opts.blockId}/children${queryString ? `?${queryString}` : ''}`
+    const response = yield* get(path, BlockChildrenResponseSchema)
+    return toPaginatedResult(response)
+  }).pipe(
+    Effect.withSpan('NotionBlocks.retrieveChildren', {
+      attributes: { 'notion.block_id': opts.blockId },
+    }),
+  )
+
 /**
  * Retrieve block children with pagination.
  *
@@ -84,28 +106,7 @@ export const retrieve = Effect.fn('NotionBlocks.retrieve')(function* (opts: Retr
 export const retrieveChildren = (
   opts: RetrieveBlockChildrenOptions,
 ): Effect.Effect<PaginatedResult<Block>, NotionApiError, NotionConfig | HttpClient.HttpClient> =>
-  Effect.gen(function* () {
-    const params = new URLSearchParams()
-
-    if (opts.startCursor !== undefined) {
-      params.set('start_cursor', opts.startCursor)
-    }
-
-    if (opts.pageSize !== undefined) {
-      params.set('page_size', String(opts.pageSize))
-    }
-
-    const queryString = params.toString()
-    const path = `/blocks/${opts.blockId}/children${queryString ? `?${queryString}` : ''}`
-
-    const response = yield* get(path, BlockChildrenResponseSchema)
-
-    return toPaginatedResult(response)
-  }).pipe(
-    Effect.withSpan('NotionBlocks.retrieveChildren', {
-      attributes: { 'notion.block_id': opts.blockId },
-    }),
-  )
+  retrieveChildrenRaw(opts)
 
 /**
  * Retrieve block children with automatic pagination.
@@ -117,22 +118,25 @@ export const retrieveChildren = (
 export const retrieveChildrenStream = (
   opts: Omit<RetrieveBlockChildrenOptions, 'startCursor'>,
 ): Stream.Stream<Block, NotionApiError, NotionConfig | HttpClient.HttpClient> =>
-  paginatedStream((cursor) =>
-    Effect.gen(function* () {
-      const params = new URLSearchParams()
+  Stream.unfoldChunkEffect(Option.some(Option.none<string>()), (maybeNextCursor) =>
+    Option.match(maybeNextCursor, {
+      onNone: () => Effect.succeed(Option.none()),
+      onSome: (cursor) => {
+        const childrenOpts: RetrieveBlockChildrenOptions = Option.isSome(cursor)
+          ? { ...opts, startCursor: cursor.value }
+          : { ...opts }
+        return retrieveChildrenRaw(childrenOpts).pipe(
+          Effect.map((result) => {
+            const chunk = Chunk.fromIterable(result.results)
 
-      if (Option.isSome(cursor)) {
-        params.set('start_cursor', cursor.value)
-      }
+            if (!result.hasMore || Option.isNone(result.nextCursor)) {
+              return Option.some([chunk, Option.none()] as const)
+            }
 
-      if (opts.pageSize !== undefined) {
-        params.set('page_size', String(opts.pageSize))
-      }
-
-      const queryString = params.toString()
-      const path = `/blocks/${opts.blockId}/children${queryString ? `?${queryString}` : ''}`
-
-      return yield* get(path, BlockChildrenResponseSchema)
+            return Option.some([chunk, Option.some(Option.some(result.nextCursor.value))] as const)
+          }),
+        )
+      },
     }),
   )
 

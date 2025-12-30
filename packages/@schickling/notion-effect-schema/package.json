@@ -14,12 +14,15 @@
   },
   "scripts": {
     "build": "tsc --build",
-    "test": "echo \"TODO: Add tests\""
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "peerDependencies": {
     "effect": "^3.19.13"
   },
   "devDependencies": {
-    "effect": "^3.19.13"
+    "@effect/vitest": "^0.27.0",
+    "effect": "^3.19.13",
+    "vitest": "^3.2.4"
   }
 }

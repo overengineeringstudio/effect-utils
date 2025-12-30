@@ -1,5 +1,5 @@
 import type { HttpClient } from '@effect/platform'
-import { Effect, Option, Schema, type Stream } from 'effect'
+import { Chunk, Effect, Option, Schema, Stream } from 'effect'
 import type { NotionConfig } from './config.ts'
 import type { NotionApiError } from './error.ts'
 import { get } from './internal/http.ts'
@@ -7,7 +7,6 @@ import {
   PaginatedResponse,
   type PaginatedResult,
   type PaginationOptions,
-  paginatedStream,
   toPaginatedResult,
 } from './internal/pagination.ts'
 
@@ -55,6 +54,25 @@ export const retrieve = Effect.fn('NotionUsers.retrieve')(function* (opts: Retri
   return yield* get(`/users/${opts.userId}`, UserSchema)
 })
 
+/** Internal helper to build query params */
+const buildListParams = (opts: ListUsersOptions): string => {
+  const params = new URLSearchParams()
+  if (opts.startCursor !== undefined) params.set('start_cursor', opts.startCursor)
+  if (opts.pageSize !== undefined) params.set('page_size', String(opts.pageSize))
+  return params.toString()
+}
+
+/** Internal raw list - used by both list and listStream */
+const listRaw = (
+  opts: ListUsersOptions,
+): Effect.Effect<PaginatedResult<User>, NotionApiError, NotionConfig | HttpClient.HttpClient> =>
+  Effect.gen(function* () {
+    const queryString = buildListParams(opts)
+    const path = `/users${queryString ? `?${queryString}` : ''}`
+    const response = yield* get(path, ListUsersResponseSchema)
+    return toPaginatedResult(response)
+  }).pipe(Effect.withSpan('NotionUsers.list'))
+
 /**
  * List all users with pagination.
  *
@@ -65,24 +83,7 @@ export const retrieve = Effect.fn('NotionUsers.retrieve')(function* (opts: Retri
 export const list = (
   opts: ListUsersOptions = {},
 ): Effect.Effect<PaginatedResult<User>, NotionApiError, NotionConfig | HttpClient.HttpClient> =>
-  Effect.gen(function* () {
-    const params = new URLSearchParams()
-
-    if (opts.startCursor !== undefined) {
-      params.set('start_cursor', opts.startCursor)
-    }
-
-    if (opts.pageSize !== undefined) {
-      params.set('page_size', String(opts.pageSize))
-    }
-
-    const queryString = params.toString()
-    const path = `/users${queryString ? `?${queryString}` : ''}`
-
-    const response = yield* get(path, ListUsersResponseSchema)
-
-    return toPaginatedResult(response)
-  }).pipe(Effect.withSpan('NotionUsers.list'))
+  listRaw(opts)
 
 /**
  * List all users with automatic pagination.
@@ -94,22 +95,25 @@ export const list = (
 export const listStream = (
   opts: Omit<ListUsersOptions, 'startCursor'> = {},
 ): Stream.Stream<User, NotionApiError, NotionConfig | HttpClient.HttpClient> =>
-  paginatedStream((cursor) =>
-    Effect.gen(function* () {
-      const params = new URLSearchParams()
+  Stream.unfoldChunkEffect(Option.some(Option.none<string>()), (maybeNextCursor) =>
+    Option.match(maybeNextCursor, {
+      onNone: () => Effect.succeed(Option.none()),
+      onSome: (cursor) => {
+        const listOpts: ListUsersOptions = Option.isSome(cursor)
+          ? { ...opts, startCursor: cursor.value }
+          : { ...opts }
+        return listRaw(listOpts).pipe(
+          Effect.map((result) => {
+            const chunk = Chunk.fromIterable(result.results)
 
-      if (Option.isSome(cursor)) {
-        params.set('start_cursor', cursor.value)
-      }
+            if (!result.hasMore || Option.isNone(result.nextCursor)) {
+              return Option.some([chunk, Option.none()] as const)
+            }
 
-      if (opts.pageSize !== undefined) {
-        params.set('page_size', String(opts.pageSize))
-      }
-
-      const queryString = params.toString()
-      const path = `/users${queryString ? `?${queryString}` : ''}`
-
-      return yield* get(path, ListUsersResponseSchema)
+            return Option.some([chunk, Option.some(Option.some(result.nextCursor.value))] as const)
+          }),
+        )
+      },
     }),
   )
 

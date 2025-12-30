@@ -164,7 +164,12 @@ const mapHttpClientError = (
   })
 
 /**
- * Execute a Notion API request with error handling and optional retry.
+ * Execute a Notion API request with error handling and automatic retry.
+ *
+ * Retry behavior:
+ * - Retryable: rate_limited, internal_server_error, service_unavailable, gateway_timeout
+ * - Non-retryable: invalid_request, unauthorized, object_not_found, etc.
+ * - Uses exponential backoff, respecting retry-after header for rate limits
  */
 export const executeRequest = <A, I, R>(
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
