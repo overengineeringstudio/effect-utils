@@ -106,9 +106,15 @@ importers:
 
   packages/@schickling/notion-effect-schema:
     devDependencies:
+      '@effect/vitest':
+        specifier: ^0.27.0
+        version: 0.27.0(effect@3.19.13)(vitest@3.2.4(@types/node@22.19.3)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2))
       effect:
         specifier: ^3.19.13
         version: 3.19.13
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.3)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2)
 
   packages/@schickling/notion-effect-schema-gen:
     dependencies:

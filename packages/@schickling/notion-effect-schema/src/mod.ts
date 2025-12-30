@@ -51,7 +51,7 @@ export {
   PageParent as PageParentSchema,
 } from './objects.ts'
 // Property schemas
-export * from './properties.ts'
+export * from './properties/mod.ts'
 // Rich text schemas
 export {
   type DatabaseMention,
