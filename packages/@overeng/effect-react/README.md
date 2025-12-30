@@ -14,7 +14,6 @@ pnpm add @overeng/effect-react effect react
 - **useEffectRunner** - Run effects with automatic error handling
 - **useEffectCallback** - Create stable callbacks that run effects
 - **useEffectOnMount** - Run effects when components mount
-- **cuid/slug** - Generate collision-resistant unique IDs
 
 ## Usage
 
@@ -100,7 +99,7 @@ import { EffectProvider, extractErrorMessage } from '@overeng/effect-react'
 const App = () => (
   <EffectProvider
     layer={AppLayer}
-    onError={(cause, runtime) => {
+    onError={(cause) => {
       // Custom error handling - show toast, log to service, etc.
       const message = extractErrorMessage(cause)
       showToast({ type: 'error', message })
@@ -165,11 +164,3 @@ Get the raw Effect runtime from context.
 #### `extractErrorMessage(cause)`
 
 Extract a user-friendly error message from a Cause.
-
-#### `cuid()`
-
-Generate a collision-resistant unique ID.
-
-#### `slug()`
-
-Generate a short slug-style ID.
