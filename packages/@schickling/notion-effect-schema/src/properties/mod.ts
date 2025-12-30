@@ -1,41 +1,20 @@
 // Re-export all property modules
 
-// Common types shared across property modules
+// Audit properties (CreatedTime, CreatedBy, LastEditedTime, LastEditedBy) - read-only
 export {
-  SelectOption,
-  type SelectOption as SelectOptionType,
-  SelectOptionWrite,
-  type SelectOptionWrite as SelectOptionWriteType,
-  TextRichTextWrite,
-  type TextRichTextWrite as TextRichTextWriteType,
-} from './common.ts'
-
-// Text properties (Title, RichText)
-export {
-  Title,
-  TitleProperty,
-  type TitleProperty as TitlePropertyType,
-  TitleWrite,
-  type TitleWrite as TitleWriteType,
-  TitleWriteFromString,
-  RichTextProp,
-  RichTextProperty,
-  type RichTextProperty as RichTextPropertyType,
-  RichTextWrite,
-  type RichTextWrite as RichTextWriteType,
-  RichTextWriteFromString,
-} from './text.ts'
-
-// Number property
-export {
-  Num,
-  NumberProperty,
-  type NumberProperty as NumberPropertyType,
-  NumberWrite,
-  type NumberWrite as NumberWriteType,
-  NumberWriteFromNumber,
-} from './number.ts'
-
+  CreatedBy,
+  CreatedByProperty,
+  type CreatedByProperty as CreatedByPropertyType,
+  CreatedTime,
+  CreatedTimeProperty,
+  type CreatedTimeProperty as CreatedTimePropertyType,
+  LastEditedBy,
+  LastEditedByProperty,
+  type LastEditedByProperty as LastEditedByPropertyType,
+  LastEditedTime,
+  LastEditedTimeProperty,
+  type LastEditedTimeProperty as LastEditedTimePropertyType,
+} from './audit.ts'
 // Boolean property (Checkbox)
 export {
   Checkbox,
@@ -45,28 +24,47 @@ export {
   type CheckboxWrite as CheckboxWriteType,
   CheckboxWriteFromBoolean,
 } from './boolean.ts'
-
-// Select properties (Select, MultiSelect, Status)
+// Common types shared across property modules
 export {
-  Select,
-  SelectProperty,
-  type SelectProperty as SelectPropertyType,
-  SelectWrite,
-  type SelectWrite as SelectWriteType,
-  SelectWriteFromName,
-  MultiSelect,
-  MultiSelectProperty,
-  type MultiSelectProperty as MultiSelectPropertyType,
-  MultiSelectWrite,
-  type MultiSelectWrite as MultiSelectWriteType,
-  MultiSelectWriteFromNames,
-  Status,
-  StatusProperty,
-  type StatusProperty as StatusPropertyType,
-  StatusWrite,
-  type StatusWrite as StatusWriteType,
-  StatusWriteFromName,
-} from './select.ts'
+  SelectOption,
+  type SelectOption as SelectOptionType,
+  SelectOptionWrite,
+  type SelectOptionWrite as SelectOptionWriteType,
+  TextRichTextWrite,
+  type TextRichTextWrite as TextRichTextWriteType,
+} from './common.ts'
+// Computed properties (Formula, UniqueId) - read-only
+export {
+  Formula,
+  FormulaProperty,
+  type FormulaProperty as FormulaPropertyType,
+  FormulaValue,
+  type FormulaValue as FormulaValueType,
+  UniqueId,
+  UniqueIdProperty,
+  type UniqueIdProperty as UniqueIdPropertyType,
+} from './computed.ts'
+// Contact properties (Url, Email, PhoneNumber)
+export {
+  Email,
+  EmailProperty,
+  type EmailProperty as EmailPropertyType,
+  EmailWrite,
+  type EmailWrite as EmailWriteType,
+  EmailWriteFromString,
+  PhoneNumber,
+  PhoneNumberProperty,
+  type PhoneNumberProperty as PhoneNumberPropertyType,
+  PhoneNumberWrite,
+  type PhoneNumberWrite as PhoneNumberWriteType,
+  PhoneNumberWriteFromString,
+  Url,
+  UrlProperty,
+  type UrlProperty as UrlPropertyType,
+  UrlWrite,
+  type UrlWrite as UrlWriteType,
+  UrlWriteFromString,
+} from './contact.ts'
 
 // Date property
 export {
@@ -81,31 +79,30 @@ export {
   type DateWrite as DateWriteType,
   DateWriteFromStart,
 } from './date.ts'
-
-// Contact properties (Url, Email, PhoneNumber)
+// Number property
 export {
-  Url,
-  UrlProperty,
-  type UrlProperty as UrlPropertyType,
-  UrlWrite,
-  type UrlWrite as UrlWriteType,
-  UrlWriteFromString,
-  Email,
-  EmailProperty,
-  type EmailProperty as EmailPropertyType,
-  EmailWrite,
-  type EmailWrite as EmailWriteType,
-  EmailWriteFromString,
-  PhoneNumber,
-  PhoneNumberProperty,
-  type PhoneNumberProperty as PhoneNumberPropertyType,
-  PhoneNumberWrite,
-  type PhoneNumberWrite as PhoneNumberWriteType,
-  PhoneNumberWriteFromString,
-} from './contact.ts'
+  Num,
+  NumberProperty,
+  type NumberProperty as NumberPropertyType,
+  NumberWrite,
+  type NumberWrite as NumberWriteType,
+  NumberWriteFromNumber,
+} from './number.ts'
 
 // Reference properties (People, Relation, Files)
 export {
+  ExternalFile,
+  type ExternalFile as ExternalFileType,
+  FileObject,
+  type FileObject as FileObjectType,
+  Files,
+  FilesProperty,
+  type FilesProperty as FilesPropertyType,
+  FilesWrite,
+  type FilesWrite as FilesWriteType,
+  FilesWriteFromUrls,
+  NotionFile,
+  type NotionFile as NotionFileType,
   People,
   PeopleProperty,
   type PeopleProperty as PeoplePropertyType,
@@ -118,44 +115,40 @@ export {
   RelationWrite,
   type RelationWrite as RelationWriteType,
   RelationWriteFromIds,
-  Files,
-  FilesProperty,
-  type FilesProperty as FilesPropertyType,
-  FilesWrite,
-  type FilesWrite as FilesWriteType,
-  FilesWriteFromUrls,
-  FileObject,
-  type FileObject as FileObjectType,
-  ExternalFile,
-  type ExternalFile as ExternalFileType,
-  NotionFile,
-  type NotionFile as NotionFileType,
 } from './reference.ts'
-
-// Computed properties (Formula, UniqueId) - read-only
+// Select properties (Select, MultiSelect, Status)
 export {
-  Formula,
-  FormulaProperty,
-  type FormulaProperty as FormulaPropertyType,
-  FormulaValue,
-  type FormulaValue as FormulaValueType,
-  UniqueId,
-  UniqueIdProperty,
-  type UniqueIdProperty as UniqueIdPropertyType,
-} from './computed.ts'
-
-// Audit properties (CreatedTime, CreatedBy, LastEditedTime, LastEditedBy) - read-only
+  MultiSelect,
+  MultiSelectProperty,
+  type MultiSelectProperty as MultiSelectPropertyType,
+  MultiSelectWrite,
+  type MultiSelectWrite as MultiSelectWriteType,
+  MultiSelectWriteFromNames,
+  Select,
+  SelectProperty,
+  type SelectProperty as SelectPropertyType,
+  SelectWrite,
+  type SelectWrite as SelectWriteType,
+  SelectWriteFromName,
+  Status,
+  StatusProperty,
+  type StatusProperty as StatusPropertyType,
+  StatusWrite,
+  type StatusWrite as StatusWriteType,
+  StatusWriteFromName,
+} from './select.ts'
+// Text properties (Title, RichText)
 export {
-  CreatedTime,
-  CreatedTimeProperty,
-  type CreatedTimeProperty as CreatedTimePropertyType,
-  CreatedBy,
-  CreatedByProperty,
-  type CreatedByProperty as CreatedByPropertyType,
-  LastEditedTime,
-  LastEditedTimeProperty,
-  type LastEditedTimeProperty as LastEditedTimePropertyType,
-  LastEditedBy,
-  LastEditedByProperty,
-  type LastEditedByProperty as LastEditedByPropertyType,
-} from './audit.ts'
+  RichTextProp,
+  RichTextProperty,
+  type RichTextProperty as RichTextPropertyType,
+  RichTextWrite,
+  type RichTextWrite as RichTextWriteType,
+  RichTextWriteFromString,
+  Title,
+  TitleProperty,
+  type TitleProperty as TitlePropertyType,
+  TitleWrite,
+  type TitleWrite as TitleWriteType,
+  TitleWriteFromString,
+} from './text.ts'

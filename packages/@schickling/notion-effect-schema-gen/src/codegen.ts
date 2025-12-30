@@ -424,12 +424,16 @@ export function generateSchemaCode(
   lines.push(`/**`)
   lines.push(` * Decode properties from unknown data (throws on failure).`)
   lines.push(` */`)
-  lines.push(`export const decode${pascalName}Properties = Schema.decodeUnknownSync(${pascalName}PageProperties)`)
+  lines.push(
+    `export const decode${pascalName}Properties = Schema.decodeUnknownSync(${pascalName}PageProperties)`,
+  )
   lines.push(``)
   lines.push(`/**`)
   lines.push(` * Decode properties from unknown data (returns Effect).`)
   lines.push(` */`)
-  lines.push(`export const decode${pascalName}PropertiesEffect = Schema.decodeUnknown(${pascalName}PageProperties)`)
+  lines.push(
+    `export const decode${pascalName}PropertiesEffect = Schema.decodeUnknown(${pascalName}PageProperties)`,
+  )
 
   // Write schema (if enabled)
   if (includeWrite && writePropertyFields) {
@@ -453,12 +457,16 @@ export function generateSchemaCode(
     lines.push(`/**`)
     lines.push(` * Decode write data from simple types (throws on failure).`)
     lines.push(` */`)
-    lines.push(`export const decode${pascalName}Write = Schema.decodeUnknownSync(${pascalName}PageWrite)`)
+    lines.push(
+      `export const decode${pascalName}Write = Schema.decodeUnknownSync(${pascalName}PageWrite)`,
+    )
     lines.push(``)
     lines.push(`/**`)
     lines.push(` * Decode write data from simple types (returns Effect).`)
     lines.push(` */`)
-    lines.push(`export const decode${pascalName}WriteEffect = Schema.decodeUnknown(${pascalName}PageWrite)`)
+    lines.push(
+      `export const decode${pascalName}WriteEffect = Schema.decodeUnknown(${pascalName}PageWrite)`,
+    )
     lines.push(``)
     lines.push(`/**`)
     lines.push(` * Encode write data back to simple types (throws on failure).`)
@@ -468,7 +476,9 @@ export function generateSchemaCode(
     lines.push(`/**`)
     lines.push(` * Encode write data back to simple types (returns Effect).`)
     lines.push(` */`)
-    lines.push(`export const encode${pascalName}WriteEffect = Schema.encode(${pascalName}PageWrite)`)
+    lines.push(
+      `export const encode${pascalName}WriteEffect = Schema.encode(${pascalName}PageWrite)`,
+    )
   }
 
   lines.push(``)

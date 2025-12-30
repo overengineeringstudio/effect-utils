@@ -403,16 +403,26 @@ describe('codegen', () => {
       // Test read schema helpers
       const readCode = generateSchemaCode(dbInfo, 'Test')
 
-      expect(readCode).toContain('export const decodeTestProperties = Schema.decodeUnknownSync(TestPageProperties)')
-      expect(readCode).toContain('export const decodeTestPropertiesEffect = Schema.decodeUnknown(TestPageProperties)')
+      expect(readCode).toContain(
+        'export const decodeTestProperties = Schema.decodeUnknownSync(TestPageProperties)',
+      )
+      expect(readCode).toContain(
+        'export const decodeTestPropertiesEffect = Schema.decodeUnknown(TestPageProperties)',
+      )
 
       // Test write schema helpers
       const writeCode = generateSchemaCode(dbInfo, 'Test', { includeWrite: true })
 
-      expect(writeCode).toContain('export const decodeTestWrite = Schema.decodeUnknownSync(TestPageWrite)')
-      expect(writeCode).toContain('export const decodeTestWriteEffect = Schema.decodeUnknown(TestPageWrite)')
+      expect(writeCode).toContain(
+        'export const decodeTestWrite = Schema.decodeUnknownSync(TestPageWrite)',
+      )
+      expect(writeCode).toContain(
+        'export const decodeTestWriteEffect = Schema.decodeUnknown(TestPageWrite)',
+      )
       expect(writeCode).toContain('export const encodeTestWrite = Schema.encodeSync(TestPageWrite)')
-      expect(writeCode).toContain('export const encodeTestWriteEffect = Schema.encode(TestPageWrite)')
+      expect(writeCode).toContain(
+        'export const encodeTestWriteEffect = Schema.encode(TestPageWrite)',
+      )
     })
   })
 })
