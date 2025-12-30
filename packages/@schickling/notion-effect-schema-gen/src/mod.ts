@@ -17,7 +17,12 @@ export {
   PROPERTY_TRANSFORMS,
 } from './codegen.ts'
 // Config
-export { type DatabaseConfig, loadConfig, mergeWithDefaults, type SchemaGenConfig } from './config.ts'
+export {
+  type DatabaseConfig,
+  loadConfig,
+  mergeWithDefaults,
+  type SchemaGenConfig,
+} from './config.ts'
 // Introspection
 export {
   type DatabaseInfo,

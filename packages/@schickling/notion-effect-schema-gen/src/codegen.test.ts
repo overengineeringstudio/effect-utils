@@ -95,7 +95,7 @@ describe('codegen', () => {
         Website: 'asString',
       }
 
-      const code = generateSchemaCode(dbInfo, 'Test', transformConfig)
+      const code = generateSchemaCode(dbInfo, 'Test', { transforms: transformConfig })
 
       expect(code).toContain('Status: SelectProperty.raw')
       expect(code).toContain('Tags: MultiSelectProperty.raw')
@@ -114,7 +114,7 @@ describe('codegen', () => {
         Status: 'invalidTransform',
       }
 
-      const code = generateSchemaCode(dbInfo, 'Test', transformConfig)
+      const code = generateSchemaCode(dbInfo, 'Test', { transforms: transformConfig })
 
       // Should fall back to default (asOption for select)
       expect(code).toContain('Status: SelectProperty.asOption')

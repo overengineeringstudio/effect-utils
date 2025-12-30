@@ -131,9 +131,9 @@ export const loadConfig = (
       .readFileString(resolvedPath)
       .pipe(Effect.mapError((error) => new Error(`Failed to read config: ${error.message}`)))
 
-    const config = yield* Schema.decodeUnknown(Schema.parseJson(SchemaGenConfigSchema))(content).pipe(
-      Effect.mapError((error) => new Error(`Invalid config file: ${error.message}`)),
-    )
+    const config = yield* Schema.decodeUnknown(Schema.parseJson(SchemaGenConfigSchema))(
+      content,
+    ).pipe(Effect.mapError((error) => new Error(`Invalid config file: ${error.message}`)))
 
     return { config, path: resolvedPath }
   })

@@ -255,7 +255,7 @@ const generateWritePropertyField = (property: PropertyInfo): string | null => {
 const generateTypedOptions = (
   property: PropertyInfo,
   pascalName: string,
-): { typeName: string; code: string } | null {
+): { typeName: string; code: string } | null => {
   let options: readonly { name: string }[] | undefined
 
   if (property.type === 'select' && property.select?.options) {
@@ -285,36 +285,26 @@ const generateTypedOptions = (
 }
 
 const parseGenerateOptions = (
-  transformConfigOrOptions: PropertyTransformConfig | GenerateOptions | undefined,
-): Required<Pick<GenerateOptions, 'includeWrite' | 'typedOptions'>> &
-  Pick<GenerateOptions, 'generatorVersion'> & { transforms: PropertyTransformConfig } => {
-  if (!transformConfigOrOptions) {
+  options: GenerateOptions | undefined,
+): Required<Pick<GenerateOptions, 'includeWrite' | 'typedOptions'>> & {
+  transforms: PropertyTransformConfig
+  generatorVersion?: string
+} => {
+  if (!options) {
     return {
       includeWrite: false,
       typedOptions: false,
       transforms: {},
-      generatorVersion: undefined,
-    }
-  }
-
-  const values = Object.values(transformConfigOrOptions)
-  const looksLikeOptions = values.some((v) => typeof v !== 'string')
-
-  if (looksLikeOptions) {
-    const options = transformConfigOrOptions as GenerateOptions
-    return {
-      includeWrite: options.includeWrite ?? false,
-      typedOptions: options.typedOptions ?? false,
-      transforms: options.transforms ?? {},
-      generatorVersion: options.generatorVersion,
     }
   }
 
   return {
-    includeWrite: false,
-    typedOptions: false,
-    transforms: transformConfigOrOptions as PropertyTransformConfig,
-    generatorVersion: undefined,
+    includeWrite: options.includeWrite ?? false,
+    typedOptions: options.typedOptions ?? false,
+    transforms: options.transforms ?? {},
+    ...(options.generatorVersion !== undefined
+      ? { generatorVersion: options.generatorVersion }
+      : {}),
   }
 }
 
@@ -328,10 +318,9 @@ const parseGenerateOptions = (
 export function generateSchemaCode(
   dbInfo: DatabaseInfo,
   schemaName: string,
-  transformConfigOrOptions: PropertyTransformConfig | GenerateOptions = {},
+  options?: GenerateOptions,
 ): string {
-  const { includeWrite, typedOptions, transforms, generatorVersion } =
-    parseGenerateOptions(transformConfigOrOptions)
+  const { includeWrite, typedOptions, transforms, generatorVersion } = parseGenerateOptions(options)
 
   const pascalName = toTopLevelIdentifier(schemaName)
 

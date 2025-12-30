@@ -25,6 +25,7 @@ All notable changes to this project will be documented in this file.
     - `--include-write` / `-w`: Include Write schemas for creating/updating pages
     - `--typed-options`: Generate typed literal unions for select/status options
   - `introspect` subcommand: Displays database schema information
+  - `generate-config` subcommand: Generates schemas for all databases from config
   - Config file support (`.notion-schema-gen.json`) for multi-database projects
   - Configurable property transforms per type (raw, asString, asOption, asNumber, etc.)
   - Support for all 21 Notion property types with sensible defaults
@@ -32,6 +33,7 @@ All notable changes to this project will be documented in this file.
   - Auto-formatting with Biome when available
   - Uses Effect FileSystem and Path for file operations
   - Generated code includes proper Effect Schema imports and type exports
+  - Deterministic code generation (no timestamps); header includes generator version
   - Comprehensive unit tests for code generation functionality
 
 - **@schickling/notion-effect-schema**: Core Notion object schemas
