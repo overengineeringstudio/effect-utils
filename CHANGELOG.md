@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Documentation
+
+- **@overeng/notion-effect-schema-gen**: Added comprehensive README with usage examples for CLI and programmatic API
+
 ### Added
 
 - **@overeng/notion-effect-client**: Schema-aware typed queries and page retrieval
