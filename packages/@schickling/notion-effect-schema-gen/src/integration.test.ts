@@ -51,13 +51,14 @@ describe('integration', () => {
     } = require('@schickling/notion-effect-schema')
 
     // Create a test schema matching what would be generated
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const TestPageProperties = Schema.Struct({
       Name: Title.asString,
       Description: RichTextProp.asString,
       Count: Num.asNumber,
       Done: Checkbox.asBoolean,
       Status: Select.asOption,
-    })
+    }) as unknown as Schema.Schema<any>
 
     // Mock Notion API property response (with proper structure including required fields)
     const mockProperties = {
@@ -123,7 +124,13 @@ describe('integration', () => {
     }
 
     // Decode the properties (this verifies the schema actually works)
-    const decoded = Schema.decodeUnknownSync(TestPageProperties)(mockProperties)
+    const decoded = Schema.decodeUnknownSync(TestPageProperties)(mockProperties) as {
+      Name: string
+      Description: string
+      Count: number
+      Done: boolean
+      Status: { _tag: string }
+    }
 
     // Verify the decoded result
     expect(decoded.Name).toBe('Test Task')
@@ -155,11 +162,12 @@ describe('integration', () => {
     // Verify write schemas can decode simple types
     const { Title, Select, Checkbox } = require('@schickling/notion-effect-schema')
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const TestPageWrite = Schema.Struct({
       Name: Title.Write.fromString,
       Status: Select.Write.fromName,
       Done: Checkbox.Write.fromBoolean,
-    })
+    }) as unknown as Schema.Schema<any>
 
     const inputData = {
       Name: 'New Task',
@@ -168,7 +176,11 @@ describe('integration', () => {
     }
 
     // Decode the simple types into Notion API format
-    const decoded = Schema.decodeUnknownSync(TestPageWrite)(inputData)
+    const decoded = Schema.decodeUnknownSync(TestPageWrite)(inputData) as {
+      Name: { title: Array<{ type: string; text: { content: string } }> }
+      Status: { select: { name: string } | null }
+      Done: { checkbox: boolean }
+    }
 
     // Verify the decoded result has the correct Notion API format
     expect(decoded.Name).toHaveProperty('title')
