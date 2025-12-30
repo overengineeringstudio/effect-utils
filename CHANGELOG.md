@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **@schickling/notion-effect-schema-gen**: Critical fixes to generated schema code
+  - Fixed import references to use correct transform namespaces (e.g., `Title`, `Select`, `Num` instead of `TitleProperty`, `SelectProperty`, `NumberProperty`)
+  - Fixed write schema generation to use nested Write APIs (e.g., `Title.Write.fromString` instead of `TitleWriteFromString`)
+  - Generated schemas now correctly work with `@schickling/notion-effect-schema` package
+  - Added integration tests verifying generated schemas decode/encode properly with actual Notion API data structures
+  - Added runtime validation helpers to generated code:
+    - Read helpers: `decode{Name}Properties`, `decode{Name}PropertiesEffect`
+    - Write helpers: `decode{Name}Write`, `decode{Name}WriteEffect`, `encode{Name}Write`, `encode{Name}WriteEffect`
+
 ### Changed
 
 - TypeScript builds now emit ESM JavaScript to `dist/` with source maps and declaration maps.

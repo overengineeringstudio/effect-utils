@@ -74,47 +74,46 @@ const DEFAULT_TRANSFORMS: Record<string, string> = {
   button: 'raw',
 }
 
-/** Property type to schema import mapping (read) */
-const PROPERTY_SCHEMA_IMPORTS: Record<string, string> = {
-  title: 'TitleProperty',
-  rich_text: 'RichTextProperty',
-  number: 'NumberProperty',
-  select: 'SelectProperty',
-  multi_select: 'MultiSelectProperty',
-  status: 'StatusProperty',
-  date: 'DateProperty',
-  people: 'PeopleProperty',
-  files: 'FilesProperty',
-  checkbox: 'CheckboxProperty',
-  url: 'UrlProperty',
-  email: 'EmailProperty',
-  phone_number: 'PhoneNumberProperty',
-  formula: 'FormulaProperty',
-  relation: 'RelationProperty',
-  rollup: 'RollupProperty',
-  created_time: 'CreatedTimeProperty',
-  created_by: 'CreatedByProperty',
-  last_edited_time: 'LastEditedTimeProperty',
-  last_edited_by: 'LastEditedByProperty',
-  unique_id: 'UniqueIdProperty',
+/** Property type to transform namespace mapping (read) */
+const PROPERTY_TRANSFORM_NAMESPACES: Record<string, string> = {
+  title: 'Title',
+  rich_text: 'RichTextProp',
+  number: 'Num',
+  select: 'Select',
+  multi_select: 'MultiSelect',
+  status: 'Status',
+  date: 'DateProp',
+  people: 'People',
+  files: 'Files',
+  checkbox: 'Checkbox',
+  url: 'Url',
+  email: 'Email',
+  phone_number: 'PhoneNumber',
+  formula: 'Formula',
+  relation: 'Relation',
+  created_time: 'CreatedTime',
+  created_by: 'CreatedBy',
+  last_edited_time: 'LastEditedTime',
+  last_edited_by: 'LastEditedBy',
+  unique_id: 'UniqueId',
 }
 
-/** Property type to write schema import mapping */
-const WRITE_SCHEMA_IMPORTS: Record<string, string> = {
-  title: 'TitleWriteFromString',
-  rich_text: 'RichTextWriteFromString',
-  number: 'NumberWriteFromNumber',
-  select: 'SelectWriteFromName',
-  multi_select: 'MultiSelectWriteFromNames',
-  status: 'StatusWriteFromName',
-  date: 'DateWriteFromStart',
-  people: 'PeopleWriteFromIds',
-  files: 'FilesWriteFromUrls',
-  checkbox: 'CheckboxWriteFromBoolean',
-  url: 'UrlWriteFromString',
-  email: 'EmailWriteFromString',
-  phone_number: 'PhoneNumberWriteFromString',
-  relation: 'RelationWriteFromIds',
+/** Property type to write transform method mapping */
+const WRITE_TRANSFORM_METHODS: Record<string, string> = {
+  title: 'fromString',
+  rich_text: 'fromString',
+  number: 'fromNumber',
+  select: 'fromName',
+  multi_select: 'fromNames',
+  status: 'fromName',
+  date: 'fromStart',
+  people: 'fromIds',
+  files: 'fromUrls',
+  checkbox: 'fromBoolean',
+  url: 'fromString',
+  email: 'fromString',
+  phone_number: 'fromString',
+  relation: 'fromIds',
 }
 
 /** Read-only property types (cannot be written) */
@@ -211,8 +210,8 @@ const generatePropertyField = (
   property: PropertyInfo,
   transformConfig: PropertyTransformConfig,
 ): string => {
-  const schemaName = PROPERTY_SCHEMA_IMPORTS[property.type]
-  if (!schemaName) {
+  const namespace = PROPERTY_TRANSFORM_NAMESPACES[property.type]
+  if (!namespace) {
     return 'Schema.Unknown'
   }
 
@@ -226,7 +225,7 @@ const generatePropertyField = (
     transform = DEFAULT_TRANSFORMS[property.type] ?? 'raw'
   }
 
-  return `${schemaName}.${transform}`
+  return `${namespace}.${transform}`
 }
 
 /**
@@ -237,12 +236,14 @@ const generateWritePropertyField = (property: PropertyInfo): string | null => {
     return null
   }
 
-  const writeSchema = WRITE_SCHEMA_IMPORTS[property.type]
-  if (!writeSchema) {
+  const namespace = PROPERTY_TRANSFORM_NAMESPACES[property.type]
+  const writeMethod = WRITE_TRANSFORM_METHODS[property.type]
+
+  if (!namespace || !writeMethod) {
     return null
   }
 
-  return writeSchema
+  return `${namespace}.Write.${writeMethod}`
 }
 
 // -----------------------------------------------------------------------------
@@ -324,21 +325,13 @@ export function generateSchemaCode(
 
   const pascalName = toTopLevelIdentifier(schemaName)
 
-  // Collect required imports
-  const readImports = new Set<string>()
-  const writeImports = new Set<string>()
+  // Collect required imports (transform namespaces only - write schemas are nested)
+  const requiredNamespaces = new Set<string>()
 
   for (const prop of dbInfo.properties) {
-    const schemaImport = PROPERTY_SCHEMA_IMPORTS[prop.type]
-    if (schemaImport) {
-      readImports.add(schemaImport)
-    }
-
-    if (includeWrite) {
-      const writeImport = WRITE_SCHEMA_IMPORTS[prop.type]
-      if (writeImport) {
-        writeImports.add(writeImport)
-      }
+    const namespace = PROPERTY_TRANSFORM_NAMESPACES[prop.type]
+    if (namespace) {
+      requiredNamespaces.add(namespace)
     }
   }
 
@@ -354,8 +347,7 @@ export function generateSchemaCode(
   }
 
   // Sort imports alphabetically
-  const allImports = new Set([...readImports, ...writeImports])
-  const sortedImports = Array.from(allImports).sort()
+  const sortedImports = Array.from(requiredNamespaces).sort()
 
   // Generate read property fields
   const readPropertyFields = dbInfo.properties
@@ -427,6 +419,18 @@ export function generateSchemaCode(
   lines.push(``)
   lines.push(`export type ${pascalName}PageProperties = typeof ${pascalName}PageProperties.Type`)
 
+  // Runtime validation helpers for read schema
+  lines.push(``)
+  lines.push(`/**`)
+  lines.push(` * Decode properties from unknown data (throws on failure).`)
+  lines.push(` */`)
+  lines.push(`export const decode${pascalName}Properties = Schema.decodeUnknownSync(${pascalName}PageProperties)`)
+  lines.push(``)
+  lines.push(`/**`)
+  lines.push(` * Decode properties from unknown data (returns Effect).`)
+  lines.push(` */`)
+  lines.push(`export const decode${pascalName}PropertiesEffect = Schema.decodeUnknown(${pascalName}PageProperties)`)
+
   // Write schema (if enabled)
   if (includeWrite && writePropertyFields) {
     lines.push(``)
@@ -443,6 +447,28 @@ export function generateSchemaCode(
     lines.push(`})`)
     lines.push(``)
     lines.push(`export type ${pascalName}PageWrite = typeof ${pascalName}PageWrite.Type`)
+
+    // Runtime validation helpers for write schema
+    lines.push(``)
+    lines.push(`/**`)
+    lines.push(` * Decode write data from simple types (throws on failure).`)
+    lines.push(` */`)
+    lines.push(`export const decode${pascalName}Write = Schema.decodeUnknownSync(${pascalName}PageWrite)`)
+    lines.push(``)
+    lines.push(`/**`)
+    lines.push(` * Decode write data from simple types (returns Effect).`)
+    lines.push(` */`)
+    lines.push(`export const decode${pascalName}WriteEffect = Schema.decodeUnknown(${pascalName}PageWrite)`)
+    lines.push(``)
+    lines.push(`/**`)
+    lines.push(` * Encode write data back to simple types (throws on failure).`)
+    lines.push(` */`)
+    lines.push(`export const encode${pascalName}Write = Schema.encodeSync(${pascalName}PageWrite)`)
+    lines.push(``)
+    lines.push(`/**`)
+    lines.push(` * Encode write data back to simple types (returns Effect).`)
+    lines.push(` */`)
+    lines.push(`export const encode${pascalName}WriteEffect = Schema.encode(${pascalName}PageWrite)`)
   }
 
   lines.push(``)
