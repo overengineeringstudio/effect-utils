@@ -1,0 +1,37 @@
+{
+  "name": "@overeng/notion-effect-schema-gen",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/mod.ts"
+  },
+  "publishConfig": {
+    "access": "public",
+    "bin": {
+      "notion-effect-schema-gen": "./dist/cli.js"
+    },
+    "exports": {
+      ".": "./dist/mod.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@effect/cli": "catalog:",
+    "@effect/platform": "catalog:",
+    "@effect/platform-node": "catalog:",
+    "@overeng/notion-effect-client": "workspace:*",
+    "@overeng/notion-effect-schema": "workspace:*"
+  },
+  "peerDependencies": {
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "effect": "catalog:",
+    "vitest": "catalog:"
+  }
+}
