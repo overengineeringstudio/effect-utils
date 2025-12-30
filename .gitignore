@@ -17,3 +17,6 @@ dist
 # Devenv
 .devenv
 .devenv*
+
+# Storybook
+storybook-static
