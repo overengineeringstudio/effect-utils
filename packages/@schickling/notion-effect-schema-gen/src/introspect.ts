@@ -162,6 +162,9 @@ export const introspectDatabase = (
 
     const name = db.title.map((t) => t.plain_text).join('') || 'UnnamedDatabase'
 
+    const sortByName = <TItem extends { name: string }>(items: readonly TItem[]): TItem[] =>
+      items.slice().sort((a, b) => a.name.localeCompare(b.name))
+
     const rawProperties = db.properties ?? {}
     const properties: PropertyInfo[] = []
 
@@ -186,7 +189,7 @@ export const introspectDatabase = (
           const selectConfig = prop.select as { options?: SelectOption[] }
           if (selectConfig?.options) {
             ;(propertyInfo as { select?: typeof propertyInfo.select }).select = {
-              options: selectConfig.options.toSorted((a, b) => a.name.localeCompare(b.name)),
+              options: sortByName(selectConfig.options),
             }
           }
           break
@@ -195,7 +198,7 @@ export const introspectDatabase = (
           const multiSelectConfig = prop.multi_select as { options?: SelectOption[] }
           if (multiSelectConfig?.options) {
             ;(propertyInfo as { multi_select?: typeof propertyInfo.multi_select }).multi_select = {
-              options: multiSelectConfig.options.toSorted((a, b) => a.name.localeCompare(b.name)),
+              options: sortByName(multiSelectConfig.options),
             }
           }
           break
@@ -207,7 +210,7 @@ export const introspectDatabase = (
           }
           if (statusConfig) {
             ;(propertyInfo as { status?: typeof propertyInfo.status }).status = {
-              options: (statusConfig.options ?? []).toSorted((a, b) => a.name.localeCompare(b.name)),
+              options: sortByName(statusConfig.options ?? []),
               groups: statusConfig.groups ?? [],
             }
           }
@@ -252,6 +255,6 @@ export const introspectDatabase = (
       id: db.id,
       name,
       url: db.url,
-      properties: properties.toSorted((a, b) => a.name.localeCompare(b.name)),
+      properties: sortByName(properties),
     }
   })

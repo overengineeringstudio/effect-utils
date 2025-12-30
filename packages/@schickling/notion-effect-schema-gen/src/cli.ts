@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
+import { fileURLToPath } from 'node:url'
 import { Args, Command, Options } from '@effect/cli'
 import { FetchHttpClient, FileSystem } from '@effect/platform'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { NotionConfig, NotionDatabases } from '@schickling/notion-effect-client'
-import { fileURLToPath } from 'node:url'
 import { Console, Effect, Layer, Option, Schema } from 'effect'
 import { type GenerateOptions, generateSchemaCode } from './codegen.ts'
 import { loadConfig, mergeWithDefaults } from './config.ts'
@@ -23,14 +23,16 @@ const getGeneratorVersion = Effect.gen(function* () {
   const content = yield* fs.readFileString(pkgJsonPath)
   const pkg = yield* Schema.decodeUnknown(Schema.parseJson(GeneratorPackageJsonSchema))(content)
   return pkg.version
-}).pipe(
-  Effect.orElseSucceed(() => 'unknown'),
-)
+}).pipe(Effect.orElseSucceed(() => 'unknown'))
 
 const resolveNotionToken = (token: Option.Option<string>, configToken?: string) =>
-  Effect.sync(() => (Option.isSome(token) ? token.value : (configToken ?? process.env.NOTION_TOKEN))).pipe(
+  Effect.sync(() =>
+    Option.isSome(token) ? token.value : (configToken ?? process.env.NOTION_TOKEN),
+  ).pipe(
     Effect.flatMap((t) =>
-      t ? Effect.succeed(t) : Effect.fail(new Error('NOTION_TOKEN env var, config token, or --token is required')),
+      t
+        ? Effect.succeed(t)
+        : Effect.fail(new Error('NOTION_TOKEN env var, config token, or --token is required')),
     ),
   )
 
