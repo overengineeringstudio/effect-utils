@@ -1,3 +1,4 @@
+import { Checkbox, Num, RichTextProp, Select, Title } from '@schickling/notion-effect-schema'
 import { Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { generateSchemaCode } from './codegen.ts'
@@ -21,7 +22,7 @@ describe('integration', () => {
     const code = generateSchemaCode(dbInfo, 'TestDatabase')
 
     // Verify it's valid TypeScript (basic smoke test)
-    expect(code).toContain('import { Schema } from \'effect\'')
+    expect(code).toContain("import { Schema } from 'effect'")
     expect(code).toContain('export const TestDatabasePageProperties')
     expect(code).toContain('export type TestDatabasePageProperties')
 
@@ -41,24 +42,14 @@ describe('integration', () => {
   })
 
   it('should generate schemas that can decode actual Notion API responses', () => {
-    // Import the actual transform namespaces to verify they exist and work
-    const {
-      Title,
-      RichTextProp,
-      Num,
-      Checkbox,
-      Select,
-    } = require('@schickling/notion-effect-schema')
-
     // Create a test schema matching what would be generated
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const TestPageProperties = Schema.Struct({
       Name: Title.asString,
       Description: RichTextProp.asString,
       Count: Num.asNumber,
       Done: Checkbox.asBoolean,
       Status: Select.asOption,
-    }) as unknown as Schema.Schema<any>
+    })
 
     // Mock Notion API property response (with proper structure including required fields)
     const mockProperties = {
@@ -124,13 +115,7 @@ describe('integration', () => {
     }
 
     // Decode the properties (this verifies the schema actually works)
-    const decoded = Schema.decodeUnknownSync(TestPageProperties)(mockProperties) as {
-      Name: string
-      Description: string
-      Count: number
-      Done: boolean
-      Status: { _tag: string }
-    }
+    const decoded = Schema.decodeUnknownSync(TestPageProperties)(mockProperties)
 
     // Verify the decoded result
     expect(decoded.Name).toBe('Test Task')
@@ -160,14 +145,11 @@ describe('integration', () => {
     expect(code).toContain('Done: Checkbox.Write.fromBoolean')
 
     // Verify write schemas can decode simple types
-    const { Title, Select, Checkbox } = require('@schickling/notion-effect-schema')
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const TestPageWrite = Schema.Struct({
       Name: Title.Write.fromString,
       Status: Select.Write.fromName,
       Done: Checkbox.Write.fromBoolean,
-    }) as unknown as Schema.Schema<any>
+    })
 
     const inputData = {
       Name: 'New Task',
@@ -176,11 +158,7 @@ describe('integration', () => {
     }
 
     // Decode the simple types into Notion API format
-    const decoded = Schema.decodeUnknownSync(TestPageWrite)(inputData) as {
-      Name: { title: Array<{ type: string; text: { content: string } }> }
-      Status: { select: { name: string } | null }
-      Done: { checkbox: boolean }
-    }
+    const decoded = Schema.decodeUnknownSync(TestPageWrite)(inputData)
 
     // Verify the decoded result has the correct Notion API format
     expect(decoded.Name).toHaveProperty('title')
