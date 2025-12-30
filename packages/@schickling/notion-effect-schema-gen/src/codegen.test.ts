@@ -27,15 +27,15 @@ describe('codegen', () => {
 
       expect(code).toContain("import { Schema } from 'effect'")
       expect(code).toContain("from '@schickling/notion-effect-schema'")
-      expect(code).toContain('TitleProperty')
-      expect(code).toContain('RichTextProperty')
-      expect(code).toContain('NumberProperty')
-      expect(code).toContain('CheckboxProperty')
+      expect(code).toContain('Title,')
+      expect(code).toContain('RichTextProp,')
+      expect(code).toContain('Num,')
+      expect(code).toContain('Checkbox,')
       expect(code).toContain('export const TestDatabasePageProperties = Schema.Struct({')
-      expect(code).toContain('Name: TitleProperty.asString')
-      expect(code).toContain('Description: RichTextProperty.asString')
-      expect(code).toContain('Count: NumberProperty.asNumber')
-      expect(code).toContain('Done: CheckboxProperty.asBoolean')
+      expect(code).toContain('Name: Title.asString')
+      expect(code).toContain('Description: RichTextProp.asString')
+      expect(code).toContain('Count: Num.asNumber')
+      expect(code).toContain('Done: Checkbox.asBoolean')
       expect(code).toContain(
         'export type TestDatabasePageProperties = typeof TestDatabasePageProperties.Type',
       )
@@ -72,9 +72,9 @@ describe('codegen', () => {
 
       const code = generateSchemaCode(dbInfo, 'Test')
 
-      expect(code).toContain("'Due Date': DateProperty.asOption")
-      expect(code).toContain("'Project Name': TitleProperty.asString")
-      expect(code).toContain("'User\\'s Choice': SelectProperty.asOption")
+      expect(code).toContain("'Due Date': DateProp.asOption")
+      expect(code).toContain("'Project Name': Title.asString")
+      expect(code).toContain("'User\\'s Choice': Select.asOption")
     })
 
     it('should respect custom transform configuration', () => {
@@ -97,9 +97,9 @@ describe('codegen', () => {
 
       const code = generateSchemaCode(dbInfo, 'Test', { transforms: transformConfig })
 
-      expect(code).toContain('Status: SelectProperty.raw')
-      expect(code).toContain('Tags: MultiSelectProperty.raw')
-      expect(code).toContain('Website: UrlProperty.asString')
+      expect(code).toContain('Status: Select.raw')
+      expect(code).toContain('Tags: MultiSelect.raw')
+      expect(code).toContain('Website: Url.asString')
     })
 
     it('should fall back to default transform for invalid config', () => {
@@ -117,7 +117,7 @@ describe('codegen', () => {
       const code = generateSchemaCode(dbInfo, 'Test', { transforms: transformConfig })
 
       // Should fall back to default (asOption for select)
-      expect(code).toContain('Status: SelectProperty.asOption')
+      expect(code).toContain('Status: Select.asOption')
     })
 
     it('should convert name to PascalCase', () => {
@@ -151,32 +151,31 @@ describe('codegen', () => {
 
       const code = generateSchemaCode(dbInfo, 'Test')
 
-      expect(code).toContain('Status: SelectProperty.asOption, // Current task status')
+      expect(code).toContain('Status: Select.asOption, // Current task status')
     })
 
     it('should handle all property types with default transforms', () => {
       const propertyTypes: Array<{ type: PropertyInfo['type']; expected: string }> = [
-        { type: 'title', expected: 'TitleProperty.asString' },
-        { type: 'rich_text', expected: 'RichTextProperty.asString' },
-        { type: 'number', expected: 'NumberProperty.asNumber' },
-        { type: 'select', expected: 'SelectProperty.asOption' },
-        { type: 'multi_select', expected: 'MultiSelectProperty.asStrings' },
-        { type: 'status', expected: 'StatusProperty.asOption' },
-        { type: 'date', expected: 'DateProperty.asOption' },
-        { type: 'people', expected: 'PeopleProperty.asIds' },
-        { type: 'files', expected: 'FilesProperty.asUrls' },
-        { type: 'checkbox', expected: 'CheckboxProperty.asBoolean' },
-        { type: 'url', expected: 'UrlProperty.asOption' },
-        { type: 'email', expected: 'EmailProperty.asOption' },
-        { type: 'phone_number', expected: 'PhoneNumberProperty.asOption' },
-        { type: 'formula', expected: 'FormulaProperty.raw' },
-        { type: 'relation', expected: 'RelationProperty.asIds' },
-        { type: 'rollup', expected: 'RollupProperty.raw' },
-        { type: 'created_time', expected: 'CreatedTimeProperty.asDate' },
-        { type: 'created_by', expected: 'CreatedByProperty.raw' },
-        { type: 'last_edited_time', expected: 'LastEditedTimeProperty.asDate' },
-        { type: 'last_edited_by', expected: 'LastEditedByProperty.raw' },
-        { type: 'unique_id', expected: 'UniqueIdProperty.raw' },
+        { type: 'title', expected: 'Title.asString' },
+        { type: 'rich_text', expected: 'RichTextProp.asString' },
+        { type: 'number', expected: 'Num.asNumber' },
+        { type: 'select', expected: 'Select.asOption' },
+        { type: 'multi_select', expected: 'MultiSelect.asStrings' },
+        { type: 'status', expected: 'Status.asOption' },
+        { type: 'date', expected: 'DateProp.asOption' },
+        { type: 'people', expected: 'People.asIds' },
+        { type: 'files', expected: 'Files.asUrls' },
+        { type: 'checkbox', expected: 'Checkbox.asBoolean' },
+        { type: 'url', expected: 'Url.asOption' },
+        { type: 'email', expected: 'Email.asOption' },
+        { type: 'phone_number', expected: 'PhoneNumber.asOption' },
+        { type: 'formula', expected: 'Formula.raw' },
+        { type: 'relation', expected: 'Relation.asIds' },
+        { type: 'created_time', expected: 'CreatedTime.asDate' },
+        { type: 'created_by', expected: 'CreatedBy.raw' },
+        { type: 'last_edited_time', expected: 'LastEditedTime.asDate' },
+        { type: 'last_edited_by', expected: 'LastEditedBy.raw' },
+        { type: 'unique_id', expected: 'UniqueId.raw' },
       ]
 
       for (const { type, expected } of propertyTypes) {
@@ -312,12 +311,12 @@ describe('codegen', () => {
       expect(code).toContain('export const TestPageProperties = Schema.Struct({')
       expect(code).toContain('export const TestPageWrite = Schema.Struct({')
 
-      // Write schema should include writable properties
-      expect(code).toContain('TitleWriteFromString')
-      expect(code).toContain('SelectWriteFromName')
+      // Write schema should include writable properties using nested Write API
+      expect(code).toContain('Title.Write.fromString')
+      expect(code).toContain('Select.Write.fromName')
 
       // Read schema includes all properties including read-only
-      expect(code).toContain('CreatedTimeProperty')
+      expect(code).toContain('CreatedTime')
 
       // But Write schema should NOT include CreatedAt (read-only property)
       // Verify by checking the Write schema section doesn't have it
@@ -388,6 +387,32 @@ describe('codegen', () => {
 
       // Hyphenated should become PascalCase
       expect(generateSchemaCode(dbInfo, 'my-test-db')).toContain('MyTestDbPageProperties')
+    })
+
+    it('should generate runtime validation helpers', () => {
+      const dbInfo: DatabaseInfo = {
+        id: 'test-db-id',
+        name: 'Test',
+        url: 'https://notion.so/test',
+        properties: [
+          { id: 'prop1', name: 'Name', type: 'title' },
+          { id: 'prop2', name: 'Status', type: 'select' },
+        ],
+      }
+
+      // Test read schema helpers
+      const readCode = generateSchemaCode(dbInfo, 'Test')
+
+      expect(readCode).toContain('export const decodeTestProperties = Schema.decodeUnknownSync(TestPageProperties)')
+      expect(readCode).toContain('export const decodeTestPropertiesEffect = Schema.decodeUnknown(TestPageProperties)')
+
+      // Test write schema helpers
+      const writeCode = generateSchemaCode(dbInfo, 'Test', { includeWrite: true })
+
+      expect(writeCode).toContain('export const decodeTestWrite = Schema.decodeUnknownSync(TestPageWrite)')
+      expect(writeCode).toContain('export const decodeTestWriteEffect = Schema.decodeUnknown(TestPageWrite)')
+      expect(writeCode).toContain('export const encodeTestWrite = Schema.encodeSync(TestPageWrite)')
+      expect(writeCode).toContain('export const encodeTestWriteEffect = Schema.encode(TestPageWrite)')
     })
   })
 })
