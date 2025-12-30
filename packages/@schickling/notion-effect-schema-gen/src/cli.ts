@@ -6,7 +6,7 @@ import { FetchHttpClient, FileSystem } from '@effect/platform'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { NotionConfig, NotionDatabases } from '@schickling/notion-effect-client'
 import { Console, Effect, Layer, Option, Schema } from 'effect'
-import { type GenerateOptions, generateSchemaCode } from './codegen.ts'
+import { type GenerateOptions, generateApiCode, generateSchemaCode } from './codegen.ts'
 import { loadConfig, mergeWithDefaults } from './config.ts'
 import { introspectDatabase, type PropertyTransformConfig } from './introspect.ts'
 import { formatCode, writeSchemaToFile } from './output.ts'
@@ -25,14 +25,10 @@ const getGeneratorVersion = Effect.gen(function* () {
   return pkg.version
 }).pipe(Effect.orElseSucceed(() => 'unknown'))
 
-const resolveNotionToken = (token: Option.Option<string>, configToken?: string) =>
-  Effect.sync(() =>
-    Option.isSome(token) ? token.value : (configToken ?? process.env.NOTION_TOKEN),
-  ).pipe(
+const resolveNotionToken = (token: Option.Option<string>) =>
+  Effect.sync(() => (Option.isSome(token) ? token.value : process.env.NOTION_TOKEN)).pipe(
     Effect.flatMap((t) =>
-      t
-        ? Effect.succeed(t)
-        : Effect.fail(new Error('NOTION_TOKEN env var, config token, or --token is required')),
+      t ? Effect.succeed(t) : Effect.fail(new Error('NOTION_TOKEN env var or --token is required')),
     ),
   )
 
@@ -85,6 +81,12 @@ const typedOptionsOption = Options.boolean('typed-options').pipe(
   Options.withDefault(false),
 )
 
+const includeApiOption = Options.boolean('include-api').pipe(
+  Options.withAlias('a'),
+  Options.withDescription('Generate a typed database API wrapper alongside the schema'),
+  Options.withDefault(false),
+)
+
 const generateCommand = Command.make(
   'generate',
   {
@@ -96,8 +98,19 @@ const generateCommand = Command.make(
     dryRun: dryRunOption,
     includeWrite: includeWriteOption,
     typedOptions: typedOptionsOption,
+    includeApi: includeApiOption,
   },
-  ({ databaseId, output, name, token, transform, dryRun, includeWrite, typedOptions }) =>
+  ({
+    databaseId,
+    output,
+    name,
+    token,
+    transform,
+    dryRun,
+    includeWrite,
+    typedOptions,
+    includeApi,
+  }) =>
     Effect.gen(function* () {
       const resolvedToken = yield* resolveNotionToken(token)
       const generatorVersion = yield* getGeneratorVersion
@@ -115,6 +128,7 @@ const generateCommand = Command.make(
         transforms: transformConfig,
         includeWrite,
         typedOptions,
+        includeApi,
         generatorVersion,
       }
 
@@ -132,17 +146,42 @@ const generateCommand = Command.make(
 
         if (dryRun) {
           yield* Console.log('')
-          yield* Console.log('--- Generated Code (dry-run) ---')
+          yield* Console.log('--- Generated Schema Code (dry-run) ---')
           yield* Console.log('')
           yield* Console.log(code)
           yield* Console.log('')
-          yield* Console.log('--- End Generated Code ---')
+          yield* Console.log('--- End Generated Schema Code ---')
           yield* Console.log('')
           yield* Console.log(`Would write to: ${output}`)
+
+          if (includeApi) {
+            const rawApiCode = generateApiCode(dbInfo, schemaName, generateOptions)
+            const apiCode = yield* formatCode(rawApiCode)
+            const apiOutput = output.replace(/\.ts$/, '.api.ts')
+
+            yield* Console.log('')
+            yield* Console.log('--- Generated API Code (dry-run) ---')
+            yield* Console.log('')
+            yield* Console.log(apiCode)
+            yield* Console.log('')
+            yield* Console.log('--- End Generated API Code ---')
+            yield* Console.log('')
+            yield* Console.log(`Would write to: ${apiOutput}`)
+          }
         } else {
           yield* Console.log(`Writing to ${output}...`)
           yield* writeSchemaToFile(code, output)
           yield* Console.log(`✓ Schema generated successfully!`)
+
+          if (includeApi) {
+            const rawApiCode = generateApiCode(dbInfo, schemaName, generateOptions)
+            const apiCode = yield* formatCode(rawApiCode)
+            const apiOutput = output.replace(/\.ts$/, '.api.ts')
+
+            yield* Console.log(`Writing API to ${apiOutput}...`)
+            yield* writeSchemaToFile(apiCode, apiOutput)
+            yield* Console.log(`✓ API generated successfully!`)
+          }
         }
       })
 
@@ -238,7 +277,7 @@ const generateFromConfigCommand = Command.make(
         Option.isSome(config) ? config.value : undefined,
       )
 
-      const resolvedToken = yield* resolveNotionToken(token, schemaConfig.token)
+      const resolvedToken = yield* resolveNotionToken(token)
       const generatorVersion = yield* getGeneratorVersion
 
       const configLayer = Layer.succeed(NotionConfig, { authToken: resolvedToken })
@@ -257,27 +296,55 @@ const generateFromConfigCommand = Command.make(
           const schemaName = merged.name ?? dbInfo.name
           yield* Console.log(`Generating schema "${schemaName}"...`)
 
-          const rawCode = generateSchemaCode(dbInfo, schemaName, {
+          const generateOptions = {
             transforms: merged.transforms ?? {},
             includeWrite: merged.includeWrite ?? false,
             typedOptions: merged.typedOptions ?? false,
+            includeApi: merged.includeApi ?? false,
             generatorVersion,
-          })
+          }
+
+          const rawCode = generateSchemaCode(dbInfo, schemaName, generateOptions)
           const code = yield* formatCode(rawCode)
 
           if (dryRun) {
             yield* Console.log('')
-            yield* Console.log('--- Generated Code (dry-run) ---')
+            yield* Console.log('--- Generated Schema Code (dry-run) ---')
             yield* Console.log('')
             yield* Console.log(code)
             yield* Console.log('')
-            yield* Console.log('--- End Generated Code ---')
+            yield* Console.log('--- End Generated Schema Code ---')
             yield* Console.log('')
             yield* Console.log(`Would write to: ${merged.output}`)
+
+            if (generateOptions.includeApi) {
+              const rawApiCode = generateApiCode(dbInfo, schemaName, generateOptions)
+              const apiCode = yield* formatCode(rawApiCode)
+              const apiOutput = merged.output.replace(/\.ts$/, '.api.ts')
+
+              yield* Console.log('')
+              yield* Console.log('--- Generated API Code (dry-run) ---')
+              yield* Console.log('')
+              yield* Console.log(apiCode)
+              yield* Console.log('')
+              yield* Console.log('--- End Generated API Code ---')
+              yield* Console.log('')
+              yield* Console.log(`Would write to: ${apiOutput}`)
+            }
           } else {
             yield* Console.log(`Writing to ${merged.output}...`)
             yield* writeSchemaToFile(code, merged.output)
             yield* Console.log(`✓ Schema generated successfully!`)
+
+            if (generateOptions.includeApi) {
+              const rawApiCode = generateApiCode(dbInfo, schemaName, generateOptions)
+              const apiCode = yield* formatCode(rawApiCode)
+              const apiOutput = merged.output.replace(/\.ts$/, '.api.ts')
+
+              yield* Console.log(`Writing API to ${apiOutput}...`)
+              yield* writeSchemaToFile(apiCode, apiOutput)
+              yield* Console.log(`✓ API generated successfully!`)
+            }
           }
         }
       })

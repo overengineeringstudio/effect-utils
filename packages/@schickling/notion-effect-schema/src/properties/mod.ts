@@ -1,4 +1,34 @@
-// Re-export all property modules
+/**
+ * Notion property schemas with read/write transforms.
+ *
+ * Each property type follows a consistent pattern:
+ *
+ * - `FooProperty` - Read schema matching Notion API response (includes `id`, `type`, metadata)
+ * - `FooWrite` - Write schema for create/update (minimal payload)
+ * - `FooWriteFromX` - Transform from simple type to write payload
+ * - `Foo` - Namespace with transforms:
+ *   - `Foo.Property` - The raw property schema
+ *   - `Foo.raw` / `Foo.asString` / `Foo.asOption` - Read transforms (decode-only)
+ *   - `Foo.Write.fromString` etc. - Write transforms
+ *
+ * Read transforms intentionally fail on encode (use Write schemas instead).
+ * This separation ensures type safety: reads decode API responses, writes encode user input.
+ *
+ * @example
+ * ```ts
+ * // Reading from Notion API
+ * const PageProps = Schema.Struct({
+ *   Name: Title.asString,        // TitleProperty → string
+ *   Status: Select.asOption,     // SelectProperty → Option<string>
+ * })
+ *
+ * // Writing to Notion API
+ * const PageWrite = Schema.Struct({
+ *   Name: Title.Write.fromString,   // string → { title: [...] }
+ *   Status: Select.Write.fromName,  // string → { select: { name } }
+ * })
+ * ```
+ */
 
 // Audit properties (CreatedTime, CreatedBy, LastEditedTime, LastEditedBy) - read-only
 export {

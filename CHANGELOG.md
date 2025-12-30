@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **@schickling/notion-effect-client**: Schema-aware typed queries and page retrieval
+  - `TypedPage<T>` interface combining page metadata with decoded properties
+  - `PageDecodeError` for schema decoding failures
+  - `NotionDatabases.query()`: Now accepts optional `schema` parameter for typed results
+  - `NotionDatabases.queryStream()`: Now accepts optional `schema` parameter for typed streaming
+  - `NotionPages.retrieve()`: Now accepts optional `schema` parameter for typed retrieval
+  - All methods return `TypedPage<T>` when schema is provided, with `id`, `createdTime`, `url`, `properties`, and `_raw` access
+
+- **@schickling/notion-effect-schema-gen**: Database API wrapper generation
+  - `--include-api` / `-a` flag: Generate typed database API wrapper alongside schema
+  - Generated API file includes:
+    - `query()`: Stream-based query with auto-pagination
+    - `queryAll()`: Collect all results
+    - `get()`: Retrieve single page by ID
+    - `create()`: Create page (when `--include-write` enabled)
+    - `update()`: Update page (when `--include-write` enabled)
+    - `archive()`: Archive page
+  - Config file support: `includeApi` option in database and defaults config
+  - API file written to `{output}.api.ts` (e.g., `tasks.ts` → `tasks.api.ts`)
+
 ### Fixed
 
 - **@schickling/notion-effect-schema-gen**: Critical fixes to generated schema code

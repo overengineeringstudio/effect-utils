@@ -33,7 +33,10 @@ export type {
   DatabaseFilter,
   DatabaseSort,
   QueryDatabaseOptions,
+  QueryDatabaseOptionsBase,
+  QueryDatabaseWithSchemaOptions,
   RetrieveDatabaseOptions,
+  TypedPaginatedResult,
 } from './databases.ts'
 // Services
 export { NotionDatabases } from './databases.ts'
@@ -46,12 +49,15 @@ export type {
   CreatePageOptions,
   PageParent,
   RetrievePageOptions,
+  RetrievePageOptionsBase,
+  RetrievePageWithSchemaOptions,
   UpdatePageOptions,
 } from './pages.ts'
 export { NotionPages } from './pages.ts'
 export type { SearchFilter, SearchOptions, SearchSort } from './search.ts'
-
 export { NotionSearch } from './search.ts'
+// Typed page utilities
+export { PageDecodeError, type TypedPage } from './typed-page.ts'
 export type { ListUsersOptions, RetrieveUserOptions } from './users.ts'
 export { NotionUsers } from './users.ts'
 

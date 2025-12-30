@@ -18,19 +18,20 @@ export interface DatabaseConfig {
   readonly includeWrite?: boolean | undefined
   /** Generate typed options for select/status */
   readonly typedOptions?: boolean | undefined
+  /** Generate a typed database API wrapper */
+  readonly includeApi?: boolean | undefined
   /** Property-specific transforms */
   readonly transforms?: PropertyTransformConfig | undefined
 }
 
 /** Root configuration schema */
 export interface SchemaGenConfig {
-  /** Notion API token (can also use NOTION_TOKEN env var) */
-  readonly token?: string | undefined
   /** Default options applied to all databases */
   readonly defaults?:
     | {
         readonly includeWrite?: boolean | undefined
         readonly typedOptions?: boolean | undefined
+        readonly includeApi?: boolean | undefined
         readonly transforms?: PropertyTransformConfig | undefined
       }
     | undefined
@@ -44,15 +45,16 @@ const DatabaseConfigSchema = Schema.Struct({
   name: Schema.optional(Schema.String),
   includeWrite: Schema.optional(Schema.Boolean),
   typedOptions: Schema.optional(Schema.Boolean),
+  includeApi: Schema.optional(Schema.Boolean),
   transforms: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
 })
 
 const SchemaGenConfigSchema = Schema.Struct({
-  token: Schema.optional(Schema.String),
   defaults: Schema.optional(
     Schema.Struct({
       includeWrite: Schema.optional(Schema.Boolean),
       typedOptions: Schema.optional(Schema.Boolean),
+      includeApi: Schema.optional(Schema.Boolean),
       transforms: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
     }),
   ),
@@ -149,6 +151,7 @@ export const mergeWithDefaults = (
 
   const includeWrite = database.includeWrite ?? defaults.includeWrite
   const typedOptions = database.typedOptions ?? defaults.typedOptions
+  const includeApi = database.includeApi ?? defaults.includeApi
   const transforms: PropertyTransformConfig = {
     ...(defaults.transforms ?? {}),
     ...(database.transforms ?? {}),
@@ -160,6 +163,7 @@ export const mergeWithDefaults = (
     ...(database.name !== undefined ? { name: database.name } : {}),
     ...(includeWrite !== undefined ? { includeWrite } : {}),
     ...(typedOptions !== undefined ? { typedOptions } : {}),
+    ...(includeApi !== undefined ? { includeApi } : {}),
     ...(Object.keys(transforms).length > 0 ? { transforms } : {}),
   }
 }
