@@ -1,125 +1,175 @@
 # @overeng/effect-react
 
-React integration for [Effect](https://effect.website). Provides utilities for integrating Effect runtime with React applications.
+React integration for [Effect](https://effect.website). Provides a context-based approach for running Effect with React applications.
 
 ## Installation
 
 ```bash
-pnpm add @overeng/effect-react effect react react-dom
+pnpm add @overeng/effect-react effect react
 ```
 
 ## Features
 
-- **Layer-based app initialization** - Bootstrap React apps with Effect layers
-- **Service context propagation** - Access Effect services from React components
-- **Loading state management** - Track initialization progress
-- **React hooks** - Utilities for working with async effects in React
+- **EffectProvider** - Initialize Effect runtime from a Layer and provide it to React components
+- **useEffectRunner** - Run effects with automatic error handling
+- **useEffectCallback** - Create stable callbacks that run effects
+- **useEffectOnMount** - Run effects when components mount
+- **cuid/slug** - Generate collision-resistant unique IDs
 
 ## Usage
 
-### Basic App Setup
+### Basic Setup
 
 ```tsx
-import { makeReactAppLayer, LoadingState } from '@overeng/effect-react'
-import { Effect, Layer, SubscriptionRef } from 'effect'
+import { EffectProvider, useEffectRunner } from '@overeng/effect-react'
+import { Effect, Layer, Logger } from 'effect'
 
 // Define your app layer
-const AppServicesLayer = Layer.mergeAll(
-  DatabaseLayer,
-  ApiClientLayer,
-  // ... other services
+const AppLayer = Layer.mergeAll(
+  Logger.pretty,
+  // ... your services
 )
 
-// Create the React app layer
-const AppLayer = makeReactAppLayer({
-  getRootEl: () => document.getElementById('root')!,
-  render: (props) => {
-    switch (props._tag) {
-      case 'Loading':
-        return <LoadingScreen state={props.readyState} />
-      case 'Error':
-        return <ErrorScreen cause={props.errorCause} />
-      case 'Ready':
-        return <App />
-    }
-  },
-  layer: AppServicesLayer,
-})
-
-// Bootstrap the app
-const LoadingStateLayer = Layer.effect(
-  LoadingState<{ message: string }>(),
-  SubscriptionRef.make({ message: 'Initializing...' }),
+// Wrap your app with EffectProvider
+const App = () => (
+  <EffectProvider
+    layer={AppLayer}
+    Loading={() => <div>Loading...</div>}
+    Error={({ cause, onRetry }) => (
+      <div>
+        <pre>{Cause.pretty(cause)}</pre>
+        <button onClick={onRetry}>Retry</button>
+      </div>
+    )}
+  >
+    <MainApp />
+  </EffectProvider>
 )
 
-const MainLayer = Layer.provide(AppLayer, LoadingStateLayer)
-
-Effect.runFork(Layer.launch(MainLayer))
-```
-
-### Using Service Context
-
-```tsx
-import { useServiceContext } from '@overeng/effect-react'
-import { Effect } from 'effect'
-
-const MyComponent = () => {
-  const ctx = useServiceContext<MyServices>()
+// Use effects in your components
+const MainApp = () => {
+  const runEffect = useEffectRunner()
 
   const handleClick = () => {
-    ctx.runWithErrorLog(
+    runEffect(
       Effect.gen(function* () {
-        const api = yield* ApiClient
-        yield* api.fetchData()
-      })
+        yield* Effect.log('Button clicked!')
+        // Use your services here
+      }).pipe(Effect.withSpan('button.click'))
     )
   }
 
-  return <button onClick={handleClick}>Fetch</button>
+  return <button onClick={handleClick}>Click me</button>
 }
 ```
 
-### React Hooks
+### Running Effects
 
 ```tsx
-import { useInterval, useAsyncEffectUnsafe } from '@overeng/effect-react'
+import { useEffectRunner, useEffectCallback, useEffectOnMount } from '@overeng/effect-react'
 
-// Run intervals with automatic cleanup
 const MyComponent = () => {
-  useInterval(() => console.log('tick'), true, 1000)
-  return <div>...</div>
+  // Option 1: Get a runner function
+  const runEffect = useEffectRunner()
+
+  const handleSave = () => {
+    const cancel = runEffect(saveData())
+    // cancel() to abort
+  }
+
+  // Option 2: Create a stable callback
+  const handleLoad = useEffectCallback(loadData())
+
+  // Option 3: Run on mount
+  useEffectOnMount(initializeComponent())
+
+  return (
+    <div>
+      <button onClick={handleSave}>Save</button>
+      <button onClick={handleLoad}>Load</button>
+    </div>
+  )
 }
+```
 
-// Run async effects in useEffect
+### Custom Error Handling
+
+```tsx
+import { EffectProvider, extractErrorMessage } from '@overeng/effect-react'
+
+const App = () => (
+  <EffectProvider
+    layer={AppLayer}
+    onError={(cause, runtime) => {
+      // Custom error handling - show toast, log to service, etc.
+      const message = extractErrorMessage(cause)
+      showToast({ type: 'error', message })
+    }}
+  >
+    <MainApp />
+  </EffectProvider>
+)
+```
+
+### Accessing the Runtime Directly
+
+```tsx
+import { useRuntime } from '@overeng/effect-react'
+import { Runtime } from 'effect'
+
 const MyComponent = () => {
-  useAsyncEffectUnsafe(async () => {
-    await fetchData()
-  }, [])
-  return <div>...</div>
+  const runtime = useRuntime<MyServices>()
+
+  // Use runtime directly for advanced cases
+  const result = Runtime.runSync(runtime)(myEffect)
+
+  return <div>{result}</div>
 }
 ```
 
 ## API Reference
 
-### `makeReactAppLayer`
+### Components
 
-Creates a layer that initializes and renders a React app with Effect integration.
+#### `EffectProvider<TEnv, TErr>`
 
-### `useServiceContext<TCtx>()`
+Provider component that initializes an Effect runtime from a Layer.
 
-Hook to access the Effect service context from React components.
-
-### `LoadingState<TProps>()`
-
-Context tag for tracking app initialization progress.
+Props:
+- `layer` - The Layer to build the runtime from
+- `Loading` - Component to show while loading (optional)
+- `Error` - Component to show on error (optional)
+- `onError` - Handler called when effects fail (optional)
+- `children` - React children
 
 ### Hooks
 
-- `useAsyncEffectUnsafe(effect, deps)` - Run async effects in useEffect
-- `useInterval(callback, isActive, delay)` - Managed interval with cleanup
-- `useStateRefWithReactiveInput(inputState)` - State ref that syncs with external input
+#### `useEffectRunner<TEnv>()`
+
+Returns a function to run effects with automatic error handling. Returns a cancel function.
+
+#### `useEffectCallback<TEnv, TA, TE>(effect)`
+
+Create a stable callback that runs an effect when called.
+
+#### `useEffectOnMount<TEnv, TA, TE>(effect)`
+
+Run an effect when the component mounts. Cancels on unmount.
+
+#### `useRuntime<TEnv>()`
+
+Get the raw Effect runtime from context.
 
 ### Utilities
 
-- `cuid()` - Generate collision-resistant unique IDs
-- `slug()` - Generate short slug-style IDs
+#### `extractErrorMessage(cause)`
+
+Extract a user-friendly error message from a Cause.
+
+#### `cuid()`
+
+Generate a collision-resistant unique ID.
+
+#### `slug()`
+
+Generate a short slug-style ID.

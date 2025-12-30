@@ -30,9 +30,6 @@ catalogs:
     '@types/react':
       specifier: 19.2.3
       version: 19.2.3
-    '@types/react-dom':
-      specifier: 19.0.3
-      version: 19.0.3
     '@vitejs/plugin-react':
       specifier: 4.5.2
       version: 4.5.2
@@ -86,18 +83,12 @@ importers:
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.3
-      '@types/react-dom':
-        specifier: 'catalog:'
-        version: 19.0.3(@types/react@19.2.3)
       effect:
         specifier: 'catalog:'
         version: 3.19.13
       react:
         specifier: 'catalog:'
         version: 19.2.3
-      react-dom:
-        specifier: 'catalog:'
-        version: 19.2.3(react@19.2.3)
       vitest:
         specifier: 'catalog:'
         version: 3.2.4(@types/node@22.19.3)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2)
@@ -1858,11 +1849,6 @@ packages:
 
   '@types/node@22.19.3':
     resolution: {integrity: sha512-1N9SBnWYOJTrNZCdh/yJE+t910Y128BoyY+zBLWhL3r0TYzlTmFdXrPwHL9DyFZmlEXNQQolTZh3KHV31QDhyA==}
-
-  '@types/react-dom@19.0.3':
-    resolution: {integrity: sha512-0Knk+HJiMP/qOZgMyNFamlIjw9OFCsyC2ZbigmEEyXXixgre6IQpm/4V+r3qH4GC1JPvRJKInw+on2rV6YZLeA==}
-    peerDependencies:
-      '@types/react': ^19.0.0
 
   '@types/react@19.2.3':
     resolution: {integrity: sha512-k5dJVszUiNr1DSe8Cs+knKR6IrqhqdhpUwzqhkS8ecQTSf3THNtbfIp/umqHMpX2bv+9dkx3fwDv/86LcSfvSg==}
@@ -4789,10 +4775,6 @@ snapshots:
   '@types/node@22.19.3':
     dependencies:
       undici-types: 6.21.0
-
-  '@types/react-dom@19.0.3(@types/react@19.2.3)':
-    dependencies:
-      '@types/react': 19.2.3
 
   '@types/react@19.2.3':
     dependencies:

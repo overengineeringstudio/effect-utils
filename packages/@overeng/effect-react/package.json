@@ -19,15 +19,12 @@
   },
   "peerDependencies": {
     "effect": "catalog:",
-    "react": "catalog:",
-    "react-dom": "catalog:"
+    "react": "catalog:"
   },
   "devDependencies": {
     "@types/react": "catalog:",
-    "@types/react-dom": "catalog:",
     "effect": "catalog:",
     "react": "catalog:",
-    "react-dom": "catalog:",
     "vitest": "catalog:"
   }
 }
