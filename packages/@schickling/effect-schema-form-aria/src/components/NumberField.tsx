@@ -53,8 +53,7 @@ export const NumberField = ({
             value={isEnabled ? value : ''}
             onChange={(e) => {
               const target = e.target as HTMLInputElement
-              const num = target.value ? Number(target.value) : 0
-              onChange(num)
+              onChange(target.value === '' ? undefined : Number(target.value))
             }}
             className="w-20 px-2 py-0.5 text-sm rounded border border-border bg-input text-ink focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
           />

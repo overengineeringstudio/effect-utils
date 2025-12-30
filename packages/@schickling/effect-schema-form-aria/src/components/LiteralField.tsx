@@ -58,8 +58,12 @@ export const LiteralField = ({
     label: formatLiteralLabel(lit),
   }))
 
+  const segmentedOptions = isOptional
+    ? [{ value: '', label: '—' }, ...options]
+    : options
+
   // Use segmented control for small option sets
-  if (options.length <= MAX_SEGMENTED_OPTIONS) {
+  if (segmentedOptions.length <= MAX_SEGMENTED_OPTIONS) {
     return (
       <FieldWrapper description={hint}>
         <div className="grid gap-1">
@@ -67,15 +71,15 @@ export const LiteralField = ({
           <ToggleButtonGroup
             aria-label={label ?? id}
             selectionMode="single"
-            selectedKeys={value !== undefined ? [value] : []}
+            selectedKeys={value !== undefined ? [value] : isOptional ? [''] : []}
             onSelectionChange={(keys) => {
-              const selected = [...keys][0] as string | undefined
-              onChange(selected)
+              const selected = [...keys][0]
+              onChange(selected === '' || selected === undefined ? undefined : String(selected))
             }}
             isDisabled={isDisabled}
             className="flex rounded-lg border border-border overflow-hidden"
           >
-            {options.map((opt) => (
+            {segmentedOptions.map((opt) => (
               <ToggleButton
                 key={opt.value}
                 id={opt.value}
@@ -95,7 +99,9 @@ export const LiteralField = ({
     <Select
       id={id}
       selectedKey={value ?? null}
-      onSelectionChange={(key) => onChange(key as string | undefined)}
+      onSelectionChange={(key) =>
+        onChange(key === '' || key === null || key === undefined ? undefined : String(key))
+      }
       isDisabled={isDisabled}
       className="grid gap-1.5"
     >

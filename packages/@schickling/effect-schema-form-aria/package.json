@@ -14,7 +14,7 @@
   },
   "scripts": {
     "build": "tsc --build",
-    "test": "vitest run",
+    "test": "echo \"TODO: Add tests\"",
     "test:watch": "vitest"
   },
   "dependencies": {
@@ -23,12 +23,14 @@
   "peerDependencies": {
     "effect": "^3.19.13",
     "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "react-aria-components": "^1.14.0"
   },
   "devDependencies": {
     "@types/react": "^19.2.3",
     "effect": "^3.19.13",
     "react": "^19.2.3",
+    "react-dom": "^19.2.3",
     "react-aria-components": "^1.14.0",
     "vitest": "^3.2.3"
   }

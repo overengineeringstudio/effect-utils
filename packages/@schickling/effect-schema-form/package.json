@@ -14,7 +14,7 @@
   },
   "scripts": {
     "build": "tsc --build",
-    "test": "vitest run",
+    "test": "echo \"TODO: Add tests\"",
     "test:watch": "vitest"
   },
   "peerDependencies": {

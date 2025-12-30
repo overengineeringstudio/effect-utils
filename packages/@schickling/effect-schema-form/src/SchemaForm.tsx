@@ -108,8 +108,9 @@ export const SchemaForm = <T extends Record<string, unknown>>({
     ...propRenderers,
   }
 
-  // Use content properties for tagged structs, all properties otherwise
-  const fieldsToRender = showTagHeader && tagInfo.isTagged ? tagInfo.contentProperties : allFields
+  // Always hide the internal `_tag` field from the rendered fields.
+  // `showTagHeader` controls presentation (e.g. grouping), not whether `_tag` is editable.
+  const fieldsToRender = tagInfo.isTagged ? tagInfo.contentProperties : allFields
 
   // Create the renderField function
   const renderField = (field: PropertyInfo): ReactNode => {
