@@ -23,24 +23,24 @@
     "@overeng/effect-schema-form": "workspace:*"
   },
   "peerDependencies": {
-    "effect": "^3.19.13",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "react-aria-components": "^1.14.0"
+    "effect": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-aria-components": "catalog:"
   },
   "devDependencies": {
-    "@storybook/react": "10.1.11",
-    "@storybook/react-vite": "10.1.11",
-    "@tailwindcss/vite": "^4.1.10",
-    "@types/react": "^19.2.3",
-    "@vitejs/plugin-react": "^4.5.2",
-    "effect": "^3.19.13",
-    "react": "^19.2.3",
-    "react-dom": "^19.2.3",
-    "react-aria-components": "^1.14.0",
-    "storybook": "10.1.11",
-    "tailwindcss": "^4.1.10",
-    "vite": "^6.3.5",
-    "vitest": "^3.2.3"
+    "@storybook/react": "catalog:",
+    "@storybook/react-vite": "catalog:",
+    "@tailwindcss/vite": "catalog:",
+    "@types/react": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "effect": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-aria-components": "catalog:",
+    "storybook": "catalog:",
+    "tailwindcss": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
   }
 }

@@ -18,13 +18,13 @@
     "test:watch": "vitest"
   },
   "peerDependencies": {
-    "effect": "^3.19.13",
-    "react": "^19.0.0"
+    "effect": "catalog:",
+    "react": "catalog:"
   },
   "devDependencies": {
-    "@types/react": "^19.2.3",
-    "effect": "^3.19.13",
-    "react": "^19.2.3",
-    "vitest": "^3.2.3"
+    "@types/react": "catalog:",
+    "effect": "catalog:",
+    "react": "catalog:",
+    "vitest": "catalog:"
   }
 }

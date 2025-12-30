@@ -22,13 +22,13 @@
     "@overeng/notion-effect-schema": "workspace:*"
   },
   "peerDependencies": {
-    "@effect/platform": "^0.94.0",
-    "effect": "^3.19.13"
+    "@effect/platform": "catalog:",
+    "effect": "catalog:"
   },
   "devDependencies": {
-    "@effect/platform": "^0.94.0",
-    "@effect/vitest": "^0.27.0",
-    "effect": "^3.19.13",
-    "vitest": "^3.2.4"
+    "@effect/platform": "catalog:",
+    "@effect/vitest": "catalog:",
+    "effect": "catalog:",
+    "vitest": "catalog:"
   }
 }

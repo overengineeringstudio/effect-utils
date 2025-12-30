@@ -18,11 +18,11 @@
     "test:watch": "vitest"
   },
   "peerDependencies": {
-    "effect": "^3.19.13"
+    "effect": "catalog:"
   },
   "devDependencies": {
-    "@effect/vitest": "^0.27.0",
-    "effect": "^3.19.13",
-    "vitest": "^3.2.4"
+    "@effect/vitest": "catalog:",
+    "effect": "catalog:",
+    "vitest": "catalog:"
   }
 }

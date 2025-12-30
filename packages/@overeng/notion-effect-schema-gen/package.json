@@ -21,17 +21,17 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@effect/cli": "^0.62.0",
-    "@effect/platform": "^0.94.0",
-    "@effect/platform-node": "^0.78.0",
+    "@effect/cli": "catalog:",
+    "@effect/platform": "catalog:",
+    "@effect/platform-node": "catalog:",
     "@overeng/notion-effect-client": "workspace:*",
     "@overeng/notion-effect-schema": "workspace:*"
   },
   "peerDependencies": {
-    "effect": "^3.19.13"
+    "effect": "catalog:"
   },
   "devDependencies": {
-    "effect": "^3.19.13",
-    "vitest": "^3.1.1"
+    "effect": "catalog:",
+    "vitest": "catalog:"
   }
 }
