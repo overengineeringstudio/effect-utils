@@ -1,4 +1,4 @@
-import { type CommandExecutor, FileSystem, Path } from '@effect/platform'
+import { Command, type CommandExecutor, FileSystem, Path } from '@effect/platform'
 import { Effect } from 'effect'
 
 /**
@@ -44,16 +44,6 @@ export const formatCode = (
 > =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const path = yield* Path.Path
-
-    // Check if biome is available in node_modules
-    const cwd = process.cwd()
-    const biomePath = path.join(cwd, 'node_modules', '.bin', 'biome')
-    const biomeExists = yield* fs.exists(biomePath).pipe(Effect.orElseSucceed(() => false))
-
-    if (!biomeExists) {
-      return code
-    }
 
     // Create temp file for formatting
     const tempFile = yield* fs.makeTempFile({ prefix: 'notion-schema-gen-', suffix: '.ts' })
@@ -61,21 +51,11 @@ export const formatCode = (
     const formatted = yield* Effect.gen(function* () {
       yield* fs.writeFileString(tempFile, code)
 
-      // Use child_process for biome since CommandExecutor may not be available
-      const result = yield* Effect.try({
-        try: () => {
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
-          const { execSync } = require('node:child_process') as typeof import('node:child_process')
-          execSync(`npx biome format --write "${tempFile}"`, {
-            stdio: 'ignore',
-            timeout: 10000,
-          })
-          return true
-        },
-        catch: () => false,
-      })
+      const exitCode = yield* Command.exitCode(
+        Command.make('biome', 'format', '--write', tempFile),
+      ).pipe(Effect.catchAll(() => Effect.succeed(1)))
 
-      if (result) {
+      if (exitCode === 0) {
         return yield* fs.readFileString(tempFile)
       }
       return code

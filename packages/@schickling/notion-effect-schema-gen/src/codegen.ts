@@ -12,6 +12,8 @@ export interface GenerateOptions {
   readonly typedOptions?: boolean
   /** Property-specific transform configuration */
   readonly transforms?: PropertyTransformConfig
+  /** Version of the generator CLI/package (included in generated header comment) */
+  readonly generatorVersion?: string
 }
 
 // -----------------------------------------------------------------------------
@@ -139,7 +141,7 @@ const READ_ONLY_PROPERTIES = new Set([
  * - "TestDatabase" -> "TestDatabase" (preserved)
  * - "my test DB" -> "MyTestDb"
  */
-function toPascalCase(str: string): string {
+const toPascalCase = (str: string): string => {
   // Split on non-alphanumeric characters
   const words = str.split(/[^a-zA-Z0-9]+/).filter(Boolean)
 
@@ -162,36 +164,53 @@ function toPascalCase(str: string): string {
 /**
  * Sanitize a property name for use as a TypeScript key
  */
-function sanitizePropertyKey(name: string): string {
+const sanitizePropertyKey = (name: string): string => {
   // If it's a valid identifier, use it as-is
   if (/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name)) {
     return name
   }
   // Otherwise, quote it
-  return `'${name.replace(/'/g, "\\'")}'`
+  return toSingleQuotedStringLiteral(name)
 }
 
 /**
  * Sanitize an option name for use in a Schema.Literal
  */
-function sanitizeLiteralValue(name: string): string {
-  return `'${name.replace(/'/g, "\\'")}'`
+const sanitizeLiteralValue = (name: string): string => {
+  return toSingleQuotedStringLiteral(name)
 }
+
+const toSingleQuotedStringLiteral = (value: string): string => {
+  const json = JSON.stringify(value)
+  const inner = json.slice(1, -1)
+  return `'${inner.replace(/'/g, "\\'")}'`
+}
+
+const sanitizeLineComment = (comment: string): string =>
+  comment.replaceAll('\r\n', ' ').replaceAll('\n', ' ').replaceAll('\r', ' ')
 
 /**
  * Generate a valid TypeScript identifier from a property name
  */
-function toIdentifier(name: string): string {
+const toIdentifier = (name: string): string => {
   return toPascalCase(name).replace(/[^a-zA-Z0-9_$]/g, '')
+}
+
+const toTopLevelIdentifier = (name: string): string => {
+  const identifier = toIdentifier(name)
+  if (/^[a-zA-Z_$]/.test(identifier)) {
+    return identifier
+  }
+  return `_${identifier}`
 }
 
 /**
  * Generate the schema field expression for a property (read)
  */
-function generatePropertyField(
+const generatePropertyField = (
   property: PropertyInfo,
   transformConfig: PropertyTransformConfig,
-): string {
+): string => {
   const schemaName = PROPERTY_SCHEMA_IMPORTS[property.type]
   if (!schemaName) {
     return 'Schema.Unknown'
@@ -213,7 +232,7 @@ function generatePropertyField(
 /**
  * Generate the write schema field expression for a property
  */
-function generateWritePropertyField(property: PropertyInfo): string | null {
+const generateWritePropertyField = (property: PropertyInfo): string | null => {
   if (READ_ONLY_PROPERTIES.has(property.type)) {
     return null
   }
@@ -233,7 +252,7 @@ function generateWritePropertyField(property: PropertyInfo): string | null {
 /**
  * Generate typed literal union for select/multi_select/status options
  */
-function generateTypedOptions(
+const generateTypedOptions = (
   property: PropertyInfo,
   pascalName: string,
 ): { typeName: string; code: string } | null {
@@ -254,11 +273,49 @@ function generateTypedOptions(
   const propIdentifier = toIdentifier(property.name)
   const typeName = `${pascalName}${propIdentifier}Option`
 
-  const literals = options.map((o) => sanitizeLiteralValue(o.name)).join(', ')
+  const literals = options
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((o) => sanitizeLiteralValue(o.name))
+    .join(', ')
 
   const code = `export const ${typeName} = Schema.Literal(${literals})\nexport type ${typeName} = typeof ${typeName}.Type`
 
   return { typeName, code }
+}
+
+const parseGenerateOptions = (
+  transformConfigOrOptions: PropertyTransformConfig | GenerateOptions | undefined,
+): Required<Pick<GenerateOptions, 'includeWrite' | 'typedOptions'>> &
+  Pick<GenerateOptions, 'generatorVersion'> & { transforms: PropertyTransformConfig } => {
+  if (!transformConfigOrOptions) {
+    return {
+      includeWrite: false,
+      typedOptions: false,
+      transforms: {},
+      generatorVersion: undefined,
+    }
+  }
+
+  const values = Object.values(transformConfigOrOptions)
+  const looksLikeOptions = values.some((v) => typeof v !== 'string')
+
+  if (looksLikeOptions) {
+    const options = transformConfigOrOptions as GenerateOptions
+    return {
+      includeWrite: options.includeWrite ?? false,
+      typedOptions: options.typedOptions ?? false,
+      transforms: options.transforms ?? {},
+      generatorVersion: options.generatorVersion,
+    }
+  }
+
+  return {
+    includeWrite: false,
+    typedOptions: false,
+    transforms: transformConfigOrOptions as PropertyTransformConfig,
+    generatorVersion: undefined,
+  }
 }
 
 // -----------------------------------------------------------------------------
@@ -273,19 +330,10 @@ export function generateSchemaCode(
   schemaName: string,
   transformConfigOrOptions: PropertyTransformConfig | GenerateOptions = {},
 ): string {
-  // Handle both old and new API
-  let options: GenerateOptions
-  if ('includeWrite' in transformConfigOrOptions || 'typedOptions' in transformConfigOrOptions) {
-    options = transformConfigOrOptions as GenerateOptions
-  } else {
-    options = { transforms: transformConfigOrOptions as PropertyTransformConfig }
-  }
+  const { includeWrite, typedOptions, transforms, generatorVersion } =
+    parseGenerateOptions(transformConfigOrOptions)
 
-  const transformConfig = options.transforms ?? {}
-  const includeWrite = options.includeWrite ?? false
-  const typedOptions = options.typedOptions ?? false
-
-  const pascalName = toPascalCase(schemaName)
+  const pascalName = toTopLevelIdentifier(schemaName)
 
   // Collect required imports
   const readImports = new Set<string>()
@@ -324,8 +372,8 @@ export function generateSchemaCode(
   const readPropertyFields = dbInfo.properties
     .map((prop) => {
       const key = sanitizePropertyKey(prop.name)
-      const field = generatePropertyField(prop, transformConfig)
-      const comment = prop.description ? ` // ${prop.description}` : ''
+      const field = generatePropertyField(prop, transforms)
+      const comment = prop.description ? ` // ${sanitizeLineComment(prop.description)}` : ''
       return `  ${key}: ${field},${comment}`
     })
     .join('\n')
@@ -345,11 +393,10 @@ export function generateSchemaCode(
 
   // Build the code
   const lines: string[] = [
-    `// Generated by notion-effect-schema-gen`,
+    `// Generated by notion-effect-schema-gen${generatorVersion ? ` v${generatorVersion}` : ''}`,
     `// Database: ${dbInfo.name}`,
     `// ID: ${dbInfo.id}`,
     `// URL: ${dbInfo.url}`,
-    `// Generated at: ${new Date().toISOString()}`,
     ``,
     `import { Schema } from 'effect'`,
   ]
