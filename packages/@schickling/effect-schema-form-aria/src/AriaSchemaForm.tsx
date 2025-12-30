@@ -6,7 +6,7 @@ import {
 import type { Schema } from 'effect'
 import type { ReactNode } from 'react'
 import { FieldGroup, FieldGroupEmpty } from './components/FieldGroup.tsx'
-import { ariaRenderers } from './renderers.ts'
+import { ariaRenderers } from './renderers.tsx'
 
 /** Props for AriaSchemaForm component */
 export interface AriaSchemaFormProps<T extends Record<string, unknown>> {

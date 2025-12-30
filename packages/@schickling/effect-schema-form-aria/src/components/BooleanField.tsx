@@ -36,7 +36,7 @@ export const BooleanField = ({
       isSelected={value}
       onChange={onChange}
       isDisabled={isDisabled}
-      className="group flex items-center gap-2 text-sm text-ink cursor-pointer -ml-1.5"
+      className="group flex items-center gap-2 text-sm text-ink cursor-pointer"
     >
       <div className="size-4 shrink-0 rounded border border-border bg-input group-data-[selected]:bg-primary group-data-[selected]:border-primary flex items-center justify-center transition-colors">
         <svg

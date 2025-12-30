@@ -58,9 +58,7 @@ export const LiteralField = ({
     label: formatLiteralLabel(lit),
   }))
 
-  const segmentedOptions = isOptional
-    ? [{ value: '', label: '—' }, ...options]
-    : options
+  const segmentedOptions = isOptional ? [{ value: '', label: '—' }, ...options] : options
 
   // Use segmented control for small option sets
   if (segmentedOptions.length <= MAX_SEGMENTED_OPTIONS) {
