@@ -1,17 +1,38 @@
 #!/usr/bin/env node
 
 import { Args, Command, Options } from '@effect/cli'
-import { FetchHttpClient } from '@effect/platform'
+import { FetchHttpClient, FileSystem } from '@effect/platform'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { NotionConfig, NotionDatabases } from '@schickling/notion-effect-client'
-import { Console, Effect, Layer } from 'effect'
+import { fileURLToPath } from 'node:url'
+import { Console, Effect, Layer, Option, Schema } from 'effect'
 import { type GenerateOptions, generateSchemaCode } from './codegen.ts'
+import { loadConfig, mergeWithDefaults } from './config.ts'
 import { introspectDatabase, type PropertyTransformConfig } from './introspect.ts'
 import { formatCode, writeSchemaToFile } from './output.ts'
 
 // -----------------------------------------------------------------------------
 // Common Options
 // -----------------------------------------------------------------------------
+
+const GeneratorPackageJsonSchema = Schema.Struct({ version: Schema.String })
+
+const getGeneratorVersion = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem
+  const pkgJsonPath = fileURLToPath(new URL('../package.json', import.meta.url))
+  const content = yield* fs.readFileString(pkgJsonPath)
+  const pkg = yield* Schema.decodeUnknown(Schema.parseJson(GeneratorPackageJsonSchema))(content)
+  return pkg.version
+}).pipe(
+  Effect.orElseSucceed(() => 'unknown'),
+)
+
+const resolveNotionToken = (token: Option.Option<string>, configToken?: string) =>
+  Effect.sync(() => (Option.isSome(token) ? token.value : (configToken ?? process.env.NOTION_TOKEN))).pipe(
+    Effect.flatMap((t) =>
+      t ? Effect.succeed(t) : Effect.fail(new Error('NOTION_TOKEN env var, config token, or --token is required')),
+    ),
+  )
 
 const tokenOption = Options.text('token').pipe(
   Options.withAlias('t'),
@@ -76,22 +97,12 @@ const generateCommand = Command.make(
   },
   ({ databaseId, output, name, token, transform, dryRun, includeWrite, typedOptions }) =>
     Effect.gen(function* () {
-      const authToken = token.pipe(
-        Effect.orElse(() =>
-          Effect.sync(() => process.env.NOTION_TOKEN).pipe(
-            Effect.flatMap((t) => (t ? Effect.succeed(t) : Effect.fail('missing'))),
-          ),
-        ),
-        Effect.catchAll(() =>
-          Effect.fail(new Error('NOTION_TOKEN environment variable or --token flag required')),
-        ),
-      )
-
-      const resolvedToken = yield* authToken
+      const resolvedToken = yield* resolveNotionToken(token)
+      const generatorVersion = yield* getGeneratorVersion
 
       // Build transform config from CLI options
       const transformConfig: PropertyTransformConfig = {}
-      if (transform._tag === 'Some') {
+      if (Option.isSome(transform)) {
         for (const [key, value] of transform.value) {
           transformConfig[key] = value
         }
@@ -102,6 +113,7 @@ const generateCommand = Command.make(
         transforms: transformConfig,
         includeWrite,
         typedOptions,
+        generatorVersion,
       }
 
       const configLayer = Layer.succeed(NotionConfig, { authToken: resolvedToken })
@@ -149,18 +161,7 @@ const introspectCommand = Command.make(
   { databaseId: introspectDatabaseIdArg, token: tokenOption },
   ({ databaseId, token }) =>
     Effect.gen(function* () {
-      const authToken = token.pipe(
-        Effect.orElse(() =>
-          Effect.sync(() => process.env.NOTION_TOKEN).pipe(
-            Effect.flatMap((t) => (t ? Effect.succeed(t) : Effect.fail('missing'))),
-          ),
-        ),
-        Effect.catchAll(() =>
-          Effect.fail(new Error('NOTION_TOKEN environment variable or --token flag required')),
-        ),
-      )
-
-      const resolvedToken = yield* authToken
+      const resolvedToken = yield* resolveNotionToken(token)
 
       const configLayer = Layer.succeed(NotionConfig, { authToken: resolvedToken })
 
@@ -215,11 +216,80 @@ const introspectCommand = Command.make(
 ).pipe(Command.withDescription('Introspect a Notion database and display its schema'))
 
 // -----------------------------------------------------------------------------
+// Generate From Config Command
+// -----------------------------------------------------------------------------
+
+const configOption = Options.file('config').pipe(
+  Options.withAlias('c'),
+  Options.withDescription(
+    'Path to config file (defaults to searching for .notion-schema-gen.json in current/parent dirs)',
+  ),
+  Options.optional,
+)
+
+const generateFromConfigCommand = Command.make(
+  'generate-config',
+  { config: configOption, token: tokenOption, dryRun: dryRunOption },
+  ({ config, token, dryRun }) =>
+    Effect.gen(function* () {
+      const { config: schemaConfig, path: resolvedConfigPath } = yield* loadConfig(
+        Option.isSome(config) ? config.value : undefined,
+      )
+
+      const resolvedToken = yield* resolveNotionToken(token, schemaConfig.token)
+      const generatorVersion = yield* getGeneratorVersion
+
+      const configLayer = Layer.succeed(NotionConfig, { authToken: resolvedToken })
+
+      const program = Effect.gen(function* () {
+        yield* Console.log(`Using config: ${resolvedConfigPath}`)
+        yield* Console.log(`Generating ${schemaConfig.databases.length} schema(s)...`)
+
+        for (const dbConfig of schemaConfig.databases) {
+          const merged = mergeWithDefaults(dbConfig, schemaConfig.defaults)
+
+          yield* Console.log('')
+          yield* Console.log(`Introspecting database ${merged.id}...`)
+          const dbInfo = yield* introspectDatabase(merged.id)
+
+          const schemaName = merged.name ?? dbInfo.name
+          yield* Console.log(`Generating schema "${schemaName}"...`)
+
+          const rawCode = generateSchemaCode(dbInfo, schemaName, {
+            transforms: merged.transforms ?? {},
+            includeWrite: merged.includeWrite ?? false,
+            typedOptions: merged.typedOptions ?? false,
+            generatorVersion,
+          })
+          const code = yield* formatCode(rawCode)
+
+          if (dryRun) {
+            yield* Console.log('')
+            yield* Console.log('--- Generated Code (dry-run) ---')
+            yield* Console.log('')
+            yield* Console.log(code)
+            yield* Console.log('')
+            yield* Console.log('--- End Generated Code ---')
+            yield* Console.log('')
+            yield* Console.log(`Would write to: ${merged.output}`)
+          } else {
+            yield* Console.log(`Writing to ${merged.output}...`)
+            yield* writeSchemaToFile(code, merged.output)
+            yield* Console.log(`✓ Schema generated successfully!`)
+          }
+        }
+      })
+
+      yield* program.pipe(Effect.provide(Layer.merge(configLayer, FetchHttpClient.layer)))
+    }),
+).pipe(Command.withDescription('Generate schemas for all databases in a config file'))
+
+// -----------------------------------------------------------------------------
 // Main CLI
 // -----------------------------------------------------------------------------
 
 const command = Command.make('notion-effect-schema-gen').pipe(
-  Command.withSubcommands([generateCommand, introspectCommand]),
+  Command.withSubcommands([generateCommand, introspectCommand, generateFromConfigCommand]),
   Command.withDescription('Generate Effect schemas from Notion databases'),
 )
 

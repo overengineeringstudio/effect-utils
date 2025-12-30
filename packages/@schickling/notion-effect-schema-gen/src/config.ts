@@ -75,14 +75,14 @@ const CONFIG_FILE_NAMES = [
  */
 const findConfigFile = (
   startDir: string,
-): Effect.Effect<string | null, never, FileSystem.FileSystem | Path.Path> =>
+): Effect.Effect<string | undefined, never, FileSystem.FileSystem | Path.Path> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
 
     let currentDir = startDir
 
-    while (currentDir !== path.dirname(currentDir)) {
+    while (true) {
       for (const fileName of CONFIG_FILE_NAMES) {
         const filePath = path.join(currentDir, fileName)
         const exists = yield* fs.exists(filePath).pipe(Effect.orElseSucceed(() => false))
@@ -90,10 +90,14 @@ const findConfigFile = (
           return filePath
         }
       }
-      currentDir = path.dirname(currentDir)
+      const parentDir = path.dirname(currentDir)
+      if (parentDir === currentDir) {
+        break
+      }
+      currentDir = parentDir
     }
 
-    return null
+    return undefined
   })
 
 /**
@@ -127,15 +131,7 @@ export const loadConfig = (
       .readFileString(resolvedPath)
       .pipe(Effect.mapError((error) => new Error(`Failed to read config: ${error.message}`)))
 
-    const json = yield* Effect.try({
-      try: () => JSON.parse(content) as unknown,
-      catch: (error) =>
-        new Error(
-          `Failed to parse config JSON: ${error instanceof Error ? error.message : String(error)}`,
-        ),
-    })
-
-    const config = yield* Schema.decodeUnknown(SchemaGenConfigSchema)(json).pipe(
+    const config = yield* Schema.decodeUnknown(Schema.parseJson(SchemaGenConfigSchema))(content).pipe(
       Effect.mapError((error) => new Error(`Invalid config file: ${error.message}`)),
     )
 
@@ -145,38 +141,25 @@ export const loadConfig = (
 /**
  * Merge database config with defaults
  */
-export function mergeWithDefaults(
+export const mergeWithDefaults = (
   database: DatabaseConfig,
   defaults?: SchemaGenConfig['defaults'],
-): DatabaseConfig {
+): DatabaseConfig => {
   if (!defaults) return database
 
-  const merged: DatabaseConfig = {
+  const includeWrite = database.includeWrite ?? defaults.includeWrite
+  const typedOptions = database.typedOptions ?? defaults.typedOptions
+  const transforms: PropertyTransformConfig = {
+    ...(defaults.transforms ?? {}),
+    ...(database.transforms ?? {}),
+  }
+
+  return {
     id: database.id,
     output: database.output,
+    ...(database.name !== undefined ? { name: database.name } : {}),
+    ...(includeWrite !== undefined ? { includeWrite } : {}),
+    ...(typedOptions !== undefined ? { typedOptions } : {}),
+    ...(Object.keys(transforms).length > 0 ? { transforms } : {}),
   }
-
-  if (database.name !== undefined) {
-    ;(merged as { name?: string }).name = database.name
-  }
-
-  const includeWrite = database.includeWrite ?? defaults.includeWrite
-  if (includeWrite !== undefined) {
-    ;(merged as { includeWrite?: boolean }).includeWrite = includeWrite
-  }
-
-  const typedOptions = database.typedOptions ?? defaults.typedOptions
-  if (typedOptions !== undefined) {
-    ;(merged as { typedOptions?: boolean }).typedOptions = typedOptions
-  }
-
-  const mergedTransforms = {
-    ...defaults.transforms,
-    ...database.transforms,
-  }
-  if (Object.keys(mergedTransforms).length > 0) {
-    ;(merged as { transforms?: PropertyTransformConfig }).transforms = mergedTransforms
-  }
-
-  return merged
 }
