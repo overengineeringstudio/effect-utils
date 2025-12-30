@@ -120,10 +120,7 @@ export const searchStream = (
               return Option.some([chunk, Option.none()] as const)
             }
 
-            return Option.some([
-              chunk,
-              Option.some(Option.some(result.nextCursor.value)),
-            ] as const)
+            return Option.some([chunk, Option.some(Option.some(result.nextCursor.value))] as const)
           }),
         )
       },
