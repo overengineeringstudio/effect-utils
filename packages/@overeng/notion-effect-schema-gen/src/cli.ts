@@ -5,7 +5,7 @@ import { Args, Command, Options } from '@effect/cli'
 import { FetchHttpClient, FileSystem } from '@effect/platform'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { NotionConfig, NotionDatabases } from '@overeng/notion-effect-client'
-import { Console, Effect, Layer, Option, Schema } from 'effect'
+import { Cause, Console, Effect, Layer, Option, Schema } from 'effect'
 import { type GenerateOptions, generateApiCode, generateSchemaCode } from './codegen.ts'
 import { loadConfig, mergeWithDefaults } from './config.ts'
 import { computeDiff, formatDiff, hasDifferences, parseGeneratedFile } from './diff.ts'
@@ -358,6 +358,23 @@ const generateFromConfigCommand = Command.make(
 // Diff Command
 // -----------------------------------------------------------------------------
 
+export class GeneratedSchemaFileParseError extends Schema.TaggedError<GeneratedSchemaFileParseError>()(
+  'GeneratedSchemaFileParseError',
+  {
+    file: Schema.String,
+    message: Schema.String,
+  },
+) {}
+
+export class SchemaDriftDetectedError extends Schema.TaggedError<SchemaDriftDetectedError>()(
+  'SchemaDriftDetectedError',
+  {
+    databaseId: Schema.String,
+    file: Schema.String,
+    message: Schema.String,
+  },
+) {}
+
 const diffDatabaseIdArg = Args.text({ name: 'database-id' }).pipe(
   Args.withDescription('The Notion database ID to compare against'),
 )
@@ -391,6 +408,13 @@ const diffCommand = Command.make(
         // Read and parse the existing generated file
         const fileContent = yield* fs.readFileString(file)
         const parsedSchema = parseGeneratedFile(fileContent)
+        if (!parsedSchema.readSchemaFound) {
+          return yield* new GeneratedSchemaFileParseError({
+            file,
+            message:
+              'Could not find a "*PageProperties = Schema.Struct({ ... })" read schema in file',
+          })
+        }
 
         // Introspect the live database
         yield* Console.log(`Introspecting database ${databaseId}...`)
@@ -407,7 +431,11 @@ const diffCommand = Command.make(
 
         // Exit with code 1 if differences found and --exit-code is set
         if (exitCode && hasDifferences(diff)) {
-          yield* Effect.fail(new Error('Schema drift detected'))
+          return yield* new SchemaDriftDetectedError({
+            databaseId,
+            file,
+            message: 'Schema drift detected',
+          })
         }
       })
 
@@ -436,4 +464,28 @@ const cli = Command.run(command, {
   version: '0.1.0',
 })
 
-cli(process.argv).pipe(Effect.provide(NodeContext.layer), NodeRuntime.runMain)
+const hasTag = (u: unknown): u is { readonly _tag: string } =>
+  typeof u === 'object' &&
+  u !== null &&
+  '_tag' in u &&
+  typeof (u as { readonly _tag?: unknown })._tag === 'string'
+
+cli(process.argv).pipe(
+  Effect.tapErrorCause((cause) => {
+    if (Cause.isInterruptedOnly(cause)) {
+      return Effect.void
+    }
+
+    return Option.match(Cause.failureOption(cause), {
+      onNone: () => Effect.logError(cause),
+      onSome: (error) => {
+        const unknownError: unknown = error
+        return hasTag(unknownError) && unknownError._tag === 'SchemaDriftDetectedError'
+          ? Effect.void
+          : Effect.logError(cause)
+      },
+    })
+  }),
+  Effect.provide(NodeContext.layer),
+  NodeRuntime.runMain({ disableErrorReporting: true }),
+)

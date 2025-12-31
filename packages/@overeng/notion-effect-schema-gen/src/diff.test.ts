@@ -16,6 +16,7 @@ import { Schema } from 'effect'
 
       expect(result.databaseId).toBe('abc123-def456')
       expect(result.databaseName).toBe('Test Database')
+      expect(result.readSchemaFound).toBe(false)
     })
 
     it('should parse simple property names', () => {
@@ -35,6 +36,7 @@ export const TestPageProperties = Schema.Struct({
         { name: 'Count', namespace: 'Num', transform: 'asNumber' },
         { name: 'Done', namespace: 'Checkbox', transform: 'asBoolean' },
       ])
+      expect(result.readSchemaFound).toBe(true)
     })
 
     it('should parse quoted property names with spaces', () => {
@@ -51,6 +53,7 @@ export const TestPageProperties = Schema.Struct({
         { name: 'Due Date', namespace: 'DateProp', transform: 'asOption' },
         { name: 'Project Name', namespace: 'Title', transform: 'asString' },
       ])
+      expect(result.readSchemaFound).toBe(true)
     })
 
     it('should handle properties with comments', () => {
@@ -67,6 +70,7 @@ export const TestPageProperties = Schema.Struct({
         { name: 'Status', namespace: 'Select', transform: 'asOption' },
         { name: 'Priority', namespace: 'Select', transform: 'raw' },
       ])
+      expect(result.readSchemaFound).toBe(true)
     })
 
     it('should handle empty file', () => {
@@ -75,6 +79,7 @@ export const TestPageProperties = Schema.Struct({
       expect(result.databaseId).toBeUndefined()
       expect(result.databaseName).toBeUndefined()
       expect(result.properties).toEqual([])
+      expect(result.readSchemaFound).toBe(false)
     })
 
     it('should handle file without schema struct', () => {
@@ -86,6 +91,7 @@ const foo = 'bar'
 
       expect(result.databaseId).toBe('abc123')
       expect(result.properties).toEqual([])
+      expect(result.readSchemaFound).toBe(false)
     })
   })
 
@@ -104,6 +110,7 @@ const foo = 'bar'
       const generated = {
         databaseId: 'abc123',
         databaseName: 'Test',
+        readSchemaFound: true,
         properties: [{ name: 'Name', namespace: 'Title', transform: 'asString' }],
       }
 
@@ -129,6 +136,7 @@ const foo = 'bar'
       const generated = {
         databaseId: 'abc123',
         databaseName: 'Test',
+        readSchemaFound: true,
         properties: [
           { name: 'Name', namespace: 'Title', transform: 'asString' },
           { name: 'OldField', namespace: 'RichTextProp', transform: 'asString' },
@@ -156,6 +164,7 @@ const foo = 'bar'
       const generated = {
         databaseId: 'abc123',
         databaseName: 'Test',
+        readSchemaFound: true,
         properties: [{ name: 'Status', namespace: 'Select', transform: 'asOption' }],
       }
 
@@ -181,6 +190,7 @@ const foo = 'bar'
       const generated = {
         databaseId: 'different-id',
         databaseName: 'Test',
+        readSchemaFound: true,
         properties: [],
       }
 
@@ -203,6 +213,7 @@ const foo = 'bar'
       const generated = {
         databaseId: 'abc123',
         databaseName: 'Test',
+        readSchemaFound: true,
         properties: [
           { name: 'Name', namespace: 'Title', transform: 'asString' },
           { name: 'Count', namespace: 'Num', transform: 'asNumber' },
@@ -324,6 +335,8 @@ const foo = 'bar'
 
       expect(lines.some((l) => l.includes('WARNING'))).toBe(true)
       expect(lines.some((l) => l.includes('does not match'))).toBe(true)
+      expect(lines.some((l) => l.includes('database ID mismatch'))).toBe(true)
+      expect(lines.some((l) => l.includes('Summary:'))).toBe(true)
     })
   })
 
@@ -336,6 +349,16 @@ const foo = 'bar'
           options: [],
         }),
       ).toBe(false)
+    })
+
+    it('should return true for database ID mismatch', () => {
+      expect(
+        hasDifferences({
+          databaseIdMatch: false,
+          properties: [],
+          options: [],
+        }),
+      ).toBe(true)
     })
 
     it('should return true for property differences', () => {

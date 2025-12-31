@@ -6,7 +6,7 @@ import {
   isReadOnlyProperty,
   PROPERTY_TRANSFORMS,
 } from './codegen.ts'
-import type { DatabaseInfo, PropertyInfo } from './introspect.ts'
+import type { DatabaseInfo, NotionPropertyType, PropertyInfo } from './introspect.ts'
 
 describe('codegen', () => {
   describe('generateSchemaCode', () => {
@@ -261,7 +261,9 @@ describe('codegen', () => {
         'last_edited_time',
         'last_edited_by',
         'unique_id',
-      ]
+        'verification',
+        'button',
+      ] as const satisfies readonly NotionPropertyType[]
 
       for (const type of expectedTypes) {
         expect(PROPERTY_TRANSFORMS[type]).toBeDefined()

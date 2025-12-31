@@ -1,3 +1,4 @@
+import { DEFAULT_TRANSFORMS, PROPERTY_TRANSFORM_NAMESPACES } from './codegen.ts'
 import type { DatabaseInfo, NotionPropertyType } from './introspect.ts'
 
 // -----------------------------------------------------------------------------
@@ -16,12 +17,13 @@ export interface ParsedSchema {
   readonly databaseId: string | undefined
   readonly databaseName: string | undefined
   readonly properties: readonly ParsedProperty[]
+  readonly readSchemaFound: boolean
 }
 
 /** A single property difference */
 export interface PropertyDiff {
   readonly name: string
-  readonly type: 'added' | 'removed' | 'type_changed' | 'transform_changed'
+  readonly type: 'added' | 'removed' | 'type_changed'
   readonly live?: { readonly type: NotionPropertyType; readonly transform: string }
   readonly generated?: { readonly namespace: string; readonly transform: string }
 }
@@ -44,56 +46,12 @@ export interface DiffResult {
 // Namespace Mappings
 // -----------------------------------------------------------------------------
 
-/** Map namespace names back to property types */
-const NAMESPACE_TO_TYPE: Record<string, NotionPropertyType> = {
-  Title: 'title',
-  RichTextProp: 'rich_text',
-  Num: 'number',
-  Select: 'select',
-  MultiSelect: 'multi_select',
-  Status: 'status',
-  DateProp: 'date',
-  People: 'people',
-  Files: 'files',
-  Checkbox: 'checkbox',
-  Url: 'url',
-  Email: 'email',
-  PhoneNumber: 'phone_number',
-  Formula: 'formula',
-  Relation: 'relation',
-  CreatedTime: 'created_time',
-  CreatedBy: 'created_by',
-  LastEditedTime: 'last_edited_time',
-  LastEditedBy: 'last_edited_by',
-  UniqueId: 'unique_id',
-}
-
-/** Default transform for each property type */
-const DEFAULT_TRANSFORMS: Record<string, string> = {
-  title: 'asString',
-  rich_text: 'asString',
-  number: 'asNumber',
-  select: 'asOption',
-  multi_select: 'asStrings',
-  status: 'asOption',
-  date: 'asOption',
-  people: 'asIds',
-  files: 'asUrls',
-  checkbox: 'asBoolean',
-  url: 'asOption',
-  email: 'asOption',
-  phone_number: 'asOption',
-  formula: 'raw',
-  relation: 'asIds',
-  rollup: 'raw',
-  created_time: 'asDate',
-  created_by: 'raw',
-  last_edited_time: 'asDate',
-  last_edited_by: 'raw',
-  unique_id: 'raw',
-  verification: 'raw',
-  button: 'raw',
-}
+/** Map namespace names back to property types (derived from codegen mappings) */
+const NAMESPACE_TO_TYPE: Record<string, NotionPropertyType> = Object.fromEntries(
+  Object.entries(PROPERTY_TRANSFORM_NAMESPACES).flatMap(([propertyType, namespace]) =>
+    namespace === undefined ? [] : [[namespace, propertyType]],
+  ),
+) as Record<string, NotionPropertyType>
 
 // -----------------------------------------------------------------------------
 // Parsing
@@ -108,6 +66,7 @@ export const parseGeneratedFile = (content: string): ParsedSchema => {
   let databaseId: string | undefined
   let databaseName: string | undefined
   const properties: ParsedProperty[] = []
+  let readSchemaFound = false
 
   // Extract database ID from header comment
   for (const line of lines) {
@@ -124,13 +83,14 @@ export const parseGeneratedFile = (content: string): ParsedSchema => {
   // Find the Read Schema section and extract properties
   let inReadSchema = false
   let braceDepth = 0
+  let hasOpened = false
 
   for (const line of lines) {
     // Look for the start of the read schema struct
-    if (line.includes('PageProperties = Schema.Struct({')) {
+    if (!inReadSchema && /PageProperties\s*=\s*Schema\.Struct\s*\(/.test(line)) {
       inReadSchema = true
-      braceDepth = 1
-      continue
+      braceDepth = 0
+      hasOpened = false
     }
 
     if (inReadSchema) {
@@ -140,8 +100,13 @@ export const parseGeneratedFile = (content: string): ParsedSchema => {
         if (char === '}') braceDepth--
       }
 
+      if (!hasOpened && braceDepth > 0) {
+        hasOpened = true
+        readSchemaFound = true
+      }
+
       // Stop when we close the struct
-      if (braceDepth === 0) {
+      if (hasOpened && braceDepth === 0) {
         inReadSchema = false
         break
       }
@@ -149,6 +114,10 @@ export const parseGeneratedFile = (content: string): ParsedSchema => {
       // Parse property line
       // Matches: PropertyName: Namespace.transform,
       // Or: 'Property Name': Namespace.transform,
+      if (!hasOpened) {
+        continue
+      }
+
       const propMatch = line.match(
         /^\s*(?:'([^']+)'|"([^"]+)"|([a-zA-Z_$][a-zA-Z0-9_$]*))\s*:\s*([A-Za-z]+)\.([a-zA-Z]+)\s*,/,
       )
@@ -163,7 +132,7 @@ export const parseGeneratedFile = (content: string): ParsedSchema => {
     }
   }
 
-  return { databaseId, databaseName, properties }
+  return { databaseId, databaseName, properties, readSchemaFound }
 }
 
 /**
@@ -222,9 +191,6 @@ export const computeDiff = (live: DatabaseInfo, generated: ParsedSchema): DiffRe
       })
     }
 
-    // Note: We don't flag transform changes since transforms are intentional choices
-    // by the user. We could add this as an opt-in feature later.
-
     // Note: Options comparison is not implemented yet as it would require
     // parsing the typed options from the generated file.
   }
@@ -251,7 +217,7 @@ export const formatDiff = (diff: DiffResult, databaseId: string, filePath: strin
     lines.push('WARNING: Database ID does not match!')
   }
 
-  const hasChanges = diff.properties.length > 0 || diff.options.length > 0
+  const hasChanges = !diff.databaseIdMatch || diff.properties.length > 0 || diff.options.length > 0
 
   if (!hasChanges) {
     lines.push('')
@@ -266,7 +232,10 @@ export const formatDiff = (diff: DiffResult, databaseId: string, filePath: strin
   const added = diff.properties.filter((p) => p.type === 'added')
   const removed = diff.properties.filter((p) => p.type === 'removed')
   const typeChanged = diff.properties.filter((p) => p.type === 'type_changed')
-  const transformChanged = diff.properties.filter((p) => p.type === 'transform_changed')
+
+  if (!diff.databaseIdMatch) {
+    lines.push('  ! database ID mismatch')
+  }
 
   for (const prop of added) {
     lines.push(`  + ${prop.name} (${prop.live?.type}) - new property in Notion`)
@@ -282,12 +251,6 @@ export const formatDiff = (diff: DiffResult, databaseId: string, filePath: strin
     lines.push(`  ~ ${prop.name}: type changed (${oldType} -> ${prop.live?.type})`)
   }
 
-  for (const prop of transformChanged) {
-    lines.push(
-      `  ~ ${prop.name}: transform changed (${prop.generated?.transform} -> ${prop.live?.transform})`,
-    )
-  }
-
   for (const opt of diff.options) {
     lines.push(`  ~ ${opt.name}: options changed`)
     for (const added of opt.added) {
@@ -300,10 +263,10 @@ export const formatDiff = (diff: DiffResult, databaseId: string, filePath: strin
 
   lines.push('')
   const counts: string[] = []
+  if (!diff.databaseIdMatch) counts.push('database id mismatch')
   if (added.length > 0) counts.push(`${added.length} added`)
   if (removed.length > 0) counts.push(`${removed.length} removed`)
   if (typeChanged.length > 0) counts.push(`${typeChanged.length} type changed`)
-  if (transformChanged.length > 0) counts.push(`${transformChanged.length} transform changed`)
   if (diff.options.length > 0) counts.push(`${diff.options.length} options changed`)
   lines.push(`Summary: ${counts.join(', ')}`)
 
@@ -314,4 +277,4 @@ export const formatDiff = (diff: DiffResult, databaseId: string, filePath: strin
  * Check if the diff result has any differences.
  */
 export const hasDifferences = (diff: DiffResult): boolean =>
-  diff.properties.length > 0 || diff.options.length > 0
+  !diff.databaseIdMatch || diff.properties.length > 0 || diff.options.length > 0

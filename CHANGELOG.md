@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Documentation
+
+- **@overeng/notion-effect-schema-gen**: Added comprehensive README with usage examples for CLI and programmatic API
+
 ### Added
 
 - **@overeng/notion-effect-schema-gen**: `diff` command for detecting schema drift
@@ -13,12 +17,6 @@ All notable changes to this project will be documented in this file.
   - `--exit-code`: Exit with code 1 if differences found (useful for CI)
   - Parses generated schema files to extract property definitions
   - Displays formatted diff output with summary
-
-### Documentation
-
-- **@overeng/notion-effect-schema-gen**: Added comprehensive README with usage examples for CLI and programmatic API
-
-### Added
 
 - **@overeng/notion-effect-client**: Schema-aware typed queries and page retrieval
   - `TypedPage<T>` interface combining page metadata with decoded properties
