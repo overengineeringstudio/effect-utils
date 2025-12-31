@@ -8,6 +8,7 @@ import { NotionConfig, NotionDatabases } from '@overeng/notion-effect-client'
 import { Console, Effect, Layer, Option, Schema } from 'effect'
 import { type GenerateOptions, generateApiCode, generateSchemaCode } from './codegen.ts'
 import { loadConfig, mergeWithDefaults } from './config.ts'
+import { computeDiff, formatDiff, hasDifferences, parseGeneratedFile } from './diff.ts'
 import { introspectDatabase, type PropertyTransformConfig } from './introspect.ts'
 import { formatCode, writeSchemaToFile } from './output.ts'
 
@@ -354,11 +355,79 @@ const generateFromConfigCommand = Command.make(
 ).pipe(Command.withDescription('Generate schemas for all databases in a config file'))
 
 // -----------------------------------------------------------------------------
+// Diff Command
+// -----------------------------------------------------------------------------
+
+const diffDatabaseIdArg = Args.text({ name: 'database-id' }).pipe(
+  Args.withDescription('The Notion database ID to compare against'),
+)
+
+const diffFileOption = Options.file('file').pipe(
+  Options.withAlias('f'),
+  Options.withDescription('Path to the existing generated schema file'),
+)
+
+const exitCodeOption = Options.boolean('exit-code').pipe(
+  Options.withDescription('Exit with code 1 if differences are found (for CI)'),
+  Options.withDefault(false),
+)
+
+const diffCommand = Command.make(
+  'diff',
+  {
+    databaseId: diffDatabaseIdArg,
+    file: diffFileOption,
+    token: tokenOption,
+    exitCode: exitCodeOption,
+  },
+  ({ databaseId, file, token, exitCode }) =>
+    Effect.gen(function* () {
+      const resolvedToken = yield* resolveNotionToken(token)
+      const fs = yield* FileSystem.FileSystem
+
+      const configLayer = Layer.succeed(NotionConfig, { authToken: resolvedToken })
+
+      const program = Effect.gen(function* () {
+        // Read and parse the existing generated file
+        const fileContent = yield* fs.readFileString(file)
+        const parsedSchema = parseGeneratedFile(fileContent)
+
+        // Introspect the live database
+        yield* Console.log(`Introspecting database ${databaseId}...`)
+        const dbInfo = yield* introspectDatabase(databaseId)
+
+        // Compute diff
+        const diff = computeDiff(dbInfo, parsedSchema)
+
+        // Format and display results
+        const lines = formatDiff(diff, databaseId, file)
+        for (const line of lines) {
+          yield* Console.log(line)
+        }
+
+        // Exit with code 1 if differences found and --exit-code is set
+        if (exitCode && hasDifferences(diff)) {
+          yield* Effect.fail(new Error('Schema drift detected'))
+        }
+      })
+
+      yield* program.pipe(Effect.provide(Layer.merge(configLayer, FetchHttpClient.layer)))
+    }),
+).pipe(
+  Command.withDescription('Compare a Notion database schema with a generated file to detect drift'),
+)
+
+// -----------------------------------------------------------------------------
 // Main CLI
 // -----------------------------------------------------------------------------
 
 const command = Command.make('notion-effect-schema-gen').pipe(
-  Command.withSubcommands([generateCommand, introspectCommand, generateFromConfigCommand]),
+  Command.withSubcommands([
+    generateCommand,
+    introspectCommand,
+    generateFromConfigCommand,
+    diffCommand,
+  ]),
   Command.withDescription('Generate Effect schemas from Notion databases'),
 )
 

@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **@overeng/notion-effect-schema-gen**: `diff` command for detecting schema drift
+  - Compares current Notion database schema against an existing generated TypeScript file
+  - Reports added properties (new in Notion), removed properties (no longer in Notion), and type changes
+  - `--file` / `-f`: Path to existing generated schema file (required)
+  - `--exit-code`: Exit with code 1 if differences found (useful for CI)
+  - Parses generated schema files to extract property definitions
+  - Displays formatted diff output with summary
+
 ### Documentation
 
 - **@overeng/notion-effect-schema-gen**: Added comprehensive README with usage examples for CLI and programmatic API
