@@ -9,6 +9,9 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: devenv shell bash -- -e {0}
     steps:
       - uses: actions/checkout@v4
 
@@ -17,8 +20,9 @@ jobs:
 
       - uses: DeterminateSystems/flakehub-cache-action@main
 
-      - uses: HatsuneMiku3939/direnv-action@v1
-        timeout-minutes: 5
+      - name: Install devenv
+        run: nix profile install nixpkgs#devenv
+        shell: bash
 
       - run: pnpm install --frozen-lockfile
 
