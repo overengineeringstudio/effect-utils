@@ -96,7 +96,7 @@ export const SchemaForm = <T extends Record<string, unknown>>({
   onChange,
   renderers: propRenderers,
   children,
-  showTagHeader = true,
+  showTagHeader: _showTagHeader = true,
   wrapper,
 }: SchemaFormProps<T>): ReactNode => {
   const contextValue = useSchemaFormContext()
