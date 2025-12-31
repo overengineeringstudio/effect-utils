@@ -1,4 +1,9 @@
-import type { DatabaseInfo, PropertyInfo, PropertyTransformConfig } from './introspect.ts'
+import type {
+  DatabaseInfo,
+  NotionPropertyType,
+  PropertyInfo,
+  PropertyTransformConfig,
+} from './introspect.ts'
 
 // -----------------------------------------------------------------------------
 // Types
@@ -23,7 +28,7 @@ export interface GenerateOptions {
 // -----------------------------------------------------------------------------
 
 /** Available transforms for each property type */
-export const PROPERTY_TRANSFORMS: Record<string, readonly string[]> = {
+export const PROPERTY_TRANSFORMS: Record<NotionPropertyType, readonly string[]> = {
   title: ['raw', 'asString'],
   rich_text: ['raw', 'asString'],
   number: ['raw', 'asNumber', 'asOption'],
@@ -50,7 +55,7 @@ export const PROPERTY_TRANSFORMS: Record<string, readonly string[]> = {
 } as const
 
 /** Default transform for each property type */
-const DEFAULT_TRANSFORMS: Record<string, string> = {
+export const DEFAULT_TRANSFORMS: Record<NotionPropertyType, string> = {
   title: 'asString',
   rich_text: 'asString',
   number: 'asNumber',
@@ -77,7 +82,7 @@ const DEFAULT_TRANSFORMS: Record<string, string> = {
 }
 
 /** Property type to transform namespace mapping (read) */
-const PROPERTY_TRANSFORM_NAMESPACES: Record<string, string> = {
+export const PROPERTY_TRANSFORM_NAMESPACES: Partial<Record<NotionPropertyType, string>> = {
   title: 'Title',
   rich_text: 'RichTextProp',
   number: 'Num',
@@ -101,7 +106,7 @@ const PROPERTY_TRANSFORM_NAMESPACES: Record<string, string> = {
 }
 
 /** Property type to write transform method mapping */
-const WRITE_TRANSFORM_METHODS: Record<string, string> = {
+const WRITE_TRANSFORM_METHODS: Partial<Record<NotionPropertyType, string>> = {
   title: 'fromString',
   rich_text: 'fromString',
   number: 'fromNumber',
@@ -494,14 +499,26 @@ export function generateSchemaCode(
  * Get available transforms for a property type
  */
 export function getAvailableTransforms(propertyType: string): readonly string[] {
-  return PROPERTY_TRANSFORMS[propertyType] ?? ['raw']
+  const isNotionPropertyType = (u: string): u is NotionPropertyType =>
+    Object.hasOwn(PROPERTY_TRANSFORMS, u)
+
+  if (isNotionPropertyType(propertyType)) {
+    return PROPERTY_TRANSFORMS[propertyType]
+  }
+  return ['raw']
 }
 
 /**
  * Get the default transform for a property type
  */
 export function getDefaultTransform(propertyType: string): string {
-  return DEFAULT_TRANSFORMS[propertyType] ?? 'raw'
+  const isNotionPropertyType = (u: string): u is NotionPropertyType =>
+    Object.hasOwn(DEFAULT_TRANSFORMS, u)
+
+  if (isNotionPropertyType(propertyType)) {
+    return DEFAULT_TRANSFORMS[propertyType]
+  }
+  return 'raw'
 }
 
 /**

@@ -80,6 +80,35 @@ Generate schemas for multiple databases from a config file:
 notion-effect-schema-gen generate-config [-c <config-file>]
 ```
 
+### `diff`
+
+Detect schema drift between a live Notion database and an existing generated schema file:
+
+```bash
+notion-effect-schema-gen diff <database-id> --file ./src/schemas/tasks.ts
+```
+
+Use `--exit-code` to exit with code `1` when differences are found (useful for CI):
+
+```bash
+notion-effect-schema-gen diff <database-id> --file ./src/schemas/tasks.ts --exit-code
+```
+
+Example output:
+
+```text
+Comparing database abc123... with ./src/schemas/tasks.ts
+
+Database ID matches
+
+Changes detected:
+  + NewField (rich_text) - new property in Notion
+  - OldField (select) - removed from Notion
+  ~ Status: type changed (select -> status)
+
+Summary: 1 added, 1 removed, 1 type changed
+```
+
 ## Config File
 
 For multi-database projects, create `.notion-schema-gen.json`:
