@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **@overeng/react-inspector**: Added as git submodule for Effect Schema-aware data inspection
+  - DevTools-style object/table/DOM inspectors for React
+  - Enriched display of Effect Schema types with type names and custom formatting
+  - Runs on port 9001 (separate from effect-schema-form-aria Storybook on 6006)
+  - Maintains its own tooling (tsup, ESLint) - excluded from monorepo biome config
+
 ### Documentation
 
 - **@overeng/notion-effect-schema-gen**: Added comprehensive README with usage examples for CLI and programmatic API
