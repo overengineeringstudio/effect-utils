@@ -24,7 +24,7 @@ A collection of [Effect](https://effect.website) utilities and integrations.
 | Package | Description |
 |---------|-------------|
 | [@overeng/effect-react](./packages/@overeng/effect-react) | React integration for Effect runtime |
-| [@overeng/react-inspector](./packages/@overeng/react-inspector) | DevTools-style inspectors with Effect Schema support (submodule) |
+| [@overeng/react-inspector](./packages/@overeng/react-inspector) | DevTools-style inspectors with Effect Schema support ([Storybook](https://overeng-effect-utils-react-inspector.vercel.app)) |
 
 ## Development
 
