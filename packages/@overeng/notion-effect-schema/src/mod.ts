@@ -88,6 +88,8 @@ export {
   type UserMention,
   UserMention as UserMentionSchema,
 } from './rich-text.ts'
+// Rich text utilities
+export { RichTextUtils, toHtml, toMarkdown, toPlainText } from './rich-text-utils.ts'
 // User schemas
 export {
   type Bot,
