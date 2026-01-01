@@ -6,7 +6,8 @@
     { "path": "./packages/@overeng/notion-effect-client" },
     { "path": "./packages/@overeng/effect-schema-form" },
     { "path": "./packages/@overeng/effect-schema-form-aria" },
-    { "path": "./packages/@overeng/effect-react" }
+    { "path": "./packages/@overeng/effect-react" },
+    { "path": "./packages/@overeng/react-inspector" }
   ],
   "files": []
 }

@@ -1,0 +1,54 @@
+{
+  "name": "@overeng/react-inspector",
+  "version": "8.0.0",
+  "description": "Power of Browser DevTools inspectors right inside your React app",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.tsx"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "require": "./dist/index.cjs",
+        "import": "./dist/index.js"
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "test": "vitest run src",
+    "test:watch": "vitest src",
+    "storybook": "storybook dev -p 9001",
+    "build-storybook": "storybook build"
+  },
+  "dependencies": {
+    "is-dom": "1.1.0"
+  },
+  "peerDependencies": {
+    "effect": "catalog:",
+    "react": "catalog:"
+  },
+  "peerDependenciesMeta": {
+    "effect": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@storybook/react": "catalog:",
+    "@storybook/react-vite": "catalog:",
+    "@testing-library/react": "16.3.1",
+    "@testing-library/user-event": "14.6.1",
+    "@types/is-dom": "1.1.2",
+    "@types/react": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "effect": "catalog:",
+    "happy-dom": "18.0.1",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "storybook": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  }
+}
