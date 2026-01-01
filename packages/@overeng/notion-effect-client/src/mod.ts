@@ -55,9 +55,23 @@ export type {
   BlockTransformer,
   BlockTransformerEffect,
   BlockTransformers,
+  BlockWithData,
   PageToMarkdownOptions,
 } from './markdown.ts'
-export { NotionMarkdown } from './markdown.ts'
+export {
+  BlockHelpers,
+  getBlockCaption,
+  getBlockRichText,
+  getBlockUrl,
+  getCalloutIcon,
+  getChildDatabaseTitle,
+  getChildPageTitle,
+  getCodeLanguage,
+  getEquationExpression,
+  getTableRowCells,
+  isTodoChecked,
+  NotionMarkdown,
+} from './markdown.ts'
 export type {
   ArchivePageOptions,
   CreatePageOptions,

@@ -1,13 +1,14 @@
 import { describe, it } from '@effect/vitest'
+import { RichTextUtils } from '@overeng/notion-effect-schema'
 import { Effect } from 'effect'
 import { expect } from 'vitest'
-import { NotionMarkdown } from '../../markdown.ts'
+import { BlockHelpers, NotionMarkdown } from '../../markdown.ts'
 import { IntegrationTestLayer, SKIP_INTEGRATION, TEST_IDS } from './setup.ts'
 
 describe.skipIf(SKIP_INTEGRATION)('NotionMarkdown (integration)', () => {
   describe('pageToMarkdown', () => {
     it.effect(
-      'converts a page with blocks to markdown',
+      'converts all block types correctly',
       () =>
         Effect.gen(function* () {
           const markdown = yield* NotionMarkdown.pageToMarkdown({
@@ -18,9 +19,49 @@ describe.skipIf(SKIP_INTEGRATION)('NotionMarkdown (integration)', () => {
           expect(typeof markdown).toBe('string')
           expect(markdown.length).toBeGreaterThan(0)
 
-          // Should contain some expected markdown elements
-          // The page has: paragraph, bullet list, code block, etc.
-          expect(markdown).toContain('-') // Bullet list items
+          // Headings
+          expect(markdown).toMatch(/^# Heading 1$/m)
+          expect(markdown).toMatch(/^## Heading 2$/m)
+          expect(markdown).toMatch(/^### Heading 3$/m)
+
+          // Paragraphs
+          expect(markdown).toContain('simple paragraph')
+
+          // Lists
+          expect(markdown).toContain('- First bullet')
+          expect(markdown).toContain('1. First numbered')
+
+          // Quote
+          expect(markdown).toContain('> This is a quote')
+
+          // Code block
+          expect(markdown).toContain('```typescript')
+          expect(markdown).toContain('Hello, World!')
+
+          // To-do items
+          expect(markdown).toContain('[ ] Unchecked todo')
+          expect(markdown).toContain('[x] Checked todo')
+
+          // Divider
+          expect(markdown).toContain('---')
+
+          // Toggle (details/summary)
+          expect(markdown).toContain('<details>')
+          expect(markdown).toContain('<summary>')
+
+          // Callout (blockquote with icon)
+          expect(markdown).toMatch(/>\s*💡/)
+
+          // Equation
+          expect(markdown).toContain('$$')
+          expect(markdown).toContain('E = mc^2')
+
+          // Table
+          expect(markdown).toContain('| Header 1 |')
+          expect(markdown).toContain('| Cell A1 |')
+
+          // Table of contents
+          expect(markdown).toContain('[TOC]')
         }).pipe(Effect.provide(IntegrationTestLayer)),
       { timeout: 60000 },
     )
@@ -73,23 +114,29 @@ describe.skipIf(SKIP_INTEGRATION)('NotionMarkdown (integration)', () => {
     )
 
     it.effect(
-      'supports custom transformers',
+      'supports custom transformers with BlockHelpers',
       () =>
         Effect.gen(function* () {
           const markdown = yield* NotionMarkdown.pageToMarkdown({
             pageId: TEST_IDS.pageWithBlocks,
             transformers: {
-              // Custom transformer that adds a marker
+              // Custom transformer using BlockHelpers
               paragraph: (block, children) => {
-                const typeData = block.paragraph as { rich_text?: { plain_text: string }[] }
-                const text = typeData?.rich_text?.map((rt) => rt.plain_text).join('') ?? ''
+                const text = RichTextUtils.toPlainText(BlockHelpers.getRichText(block))
                 return `[P] ${text}${children ? `\n${children}` : ''}`
+              },
+              // Custom callout using BlockHelpers
+              callout: (block, children) => {
+                const icon = BlockHelpers.getCalloutIcon(block)
+                const text = RichTextUtils.toPlainText(BlockHelpers.getRichText(block))
+                return `[CALLOUT ${icon}] ${text}${children ? `\n${children}` : ''}`
               },
             },
           })
 
-          // Should have our custom marker for paragraphs
+          // Should have our custom markers
           expect(markdown).toContain('[P]')
+          expect(markdown).toContain('[CALLOUT 💡]')
         }).pipe(Effect.provide(IntegrationTestLayer)),
       { timeout: 60000 },
     )

@@ -21,15 +21,35 @@ import type { NotionApiError } from './error.ts'
 // Types
 // -----------------------------------------------------------------------------
 
-/** Custom transformer for a specific block type (sync version) */
-export type BlockTransformer = (
-  block: Block & { [key: string]: unknown },
-  children: string,
-) => string
+/**
+ * Custom transformer for a specific block type (sync version).
+ *
+ * Use the block helper functions to access block-specific data safely:
+ * - `getBlockRichText(block)` - Get rich text content
+ * - `getBlockCaption(block)` - Get media caption
+ * - `getBlockUrl(block)` - Get URL from media/embed blocks
+ * - `isTodoChecked(block)` - Check if to-do is checked
+ * - `getCodeLanguage(block)` - Get code block language
+ * - `getCalloutIcon(block)` - Get callout emoji icon
+ *
+ * @example
+ * ```ts
+ * const imageTransformer: BlockTransformer = (block) => {
+ *   const url = getBlockUrl(block)
+ *   const caption = RichTextUtils.toPlainText(getBlockCaption(block))
+ *   return url ? `<InfoImage src="${url}" alt="${caption}" />` : ''
+ * }
+ * ```
+ */
+export type BlockTransformer = (block: BlockWithData, children: string) => string
 
-/** Custom transformer for a specific block type (Effect version) */
+/**
+ * Custom transformer for a specific block type (Effect version).
+ *
+ * @see BlockTransformer for helper functions
+ */
 export type BlockTransformerEffect = (
-  block: Block & { [key: string]: unknown },
+  block: BlockWithData,
   children: string,
 ) => Effect.Effect<string, never, never>
 
@@ -53,23 +73,60 @@ export interface BlocksToMarkdownOptions {
 export interface PageToMarkdownOptions extends BlocksToMarkdownOptions, RetrieveNestedOptions {}
 
 // -----------------------------------------------------------------------------
-// Block Content Extraction
+// Block Type Helpers
 // -----------------------------------------------------------------------------
 
-/** Get rich text content from a block */
-const getBlockRichText = (block: Block & { [key: string]: unknown }): RichTextArray => {
+/** Block with type-specific data accessible via block[block.type] */
+export type BlockWithData = Block & { readonly [key: string]: unknown }
+
+// -----------------------------------------------------------------------------
+// Block Content Extraction Helpers
+// -----------------------------------------------------------------------------
+
+/**
+ * Get rich text content from a block.
+ *
+ * Works with paragraph, headings, lists, quotes, callouts, and other text-based blocks.
+ *
+ * @example
+ * ```ts
+ * const richText = getBlockRichText(block)
+ * const plainText = RichTextUtils.toPlainText(richText)
+ * ```
+ */
+export const getBlockRichText = (block: BlockWithData): RichTextArray => {
   const typeData = block[block.type] as { rich_text?: RichTextArray } | undefined
   return typeData?.rich_text ?? []
 }
 
-/** Get caption from media blocks */
-const getBlockCaption = (block: Block & { [key: string]: unknown }): RichTextArray => {
+/**
+ * Get caption from media blocks (image, video, audio, file, pdf, embed, bookmark).
+ *
+ * @example
+ * ```ts
+ * const caption = getBlockCaption(block)
+ * const captionText = RichTextUtils.toPlainText(caption)
+ * ```
+ */
+export const getBlockCaption = (block: BlockWithData): RichTextArray => {
   const typeData = block[block.type] as { caption?: RichTextArray } | undefined
   return typeData?.caption ?? []
 }
 
-/** Get URL from various block types */
-const getBlockUrl = (block: Block & { [key: string]: unknown }): string | undefined => {
+/**
+ * Get URL from various block types (image, video, audio, file, pdf, bookmark, embed, link_preview).
+ *
+ * Handles both external URLs and Notion-hosted file URLs.
+ *
+ * @example
+ * ```ts
+ * const url = getBlockUrl(block)
+ * if (url) {
+ *   return `<img src="${url}" />`
+ * }
+ * ```
+ */
+export const getBlockUrl = (block: BlockWithData): string | undefined => {
   const typeData = block[block.type] as
     | {
         url?: string
@@ -84,22 +141,101 @@ const getBlockUrl = (block: Block & { [key: string]: unknown }): string | undefi
   return undefined
 }
 
-/** Check if a to-do block is checked */
-const isTodoChecked = (block: Block & { [key: string]: unknown }): boolean => {
+/**
+ * Check if a to-do block is checked.
+ *
+ * @example
+ * ```ts
+ * const checkbox = isTodoChecked(block) ? '[x]' : '[ ]'
+ * ```
+ */
+export const isTodoChecked = (block: BlockWithData): boolean => {
   const typeData = block[block.type] as { checked?: boolean } | undefined
   return typeData?.checked ?? false
 }
 
-/** Get code block language */
-const getCodeLanguage = (block: Block & { [key: string]: unknown }): string => {
+/**
+ * Get code block language.
+ *
+ * @example
+ * ```ts
+ * const lang = getCodeLanguage(block)
+ * return `\`\`\`${lang}\n${code}\n\`\`\``
+ * ```
+ */
+export const getCodeLanguage = (block: BlockWithData): string => {
   const typeData = block[block.type] as { language?: string } | undefined
   return typeData?.language ?? ''
 }
 
-/** Get callout icon */
-const getCalloutIcon = (block: Block & { [key: string]: unknown }): string => {
+/**
+ * Get callout icon (emoji).
+ *
+ * @example
+ * ```ts
+ * const icon = getCalloutIcon(block)
+ * return `> ${icon} ${text}`
+ * ```
+ */
+export const getCalloutIcon = (block: BlockWithData): string => {
   const typeData = block[block.type] as { icon?: { emoji?: string } } | undefined
   return typeData?.icon?.emoji ?? ''
+}
+
+/**
+ * Get child page title.
+ *
+ * @example
+ * ```ts
+ * const title = getChildPageTitle(block)
+ * return `[${title}](/pages/${block.id})`
+ * ```
+ */
+export const getChildPageTitle = (block: BlockWithData): string => {
+  const typeData = block[block.type] as { title?: string } | undefined
+  return typeData?.title ?? 'Untitled'
+}
+
+/**
+ * Get child database title.
+ *
+ * @example
+ * ```ts
+ * const title = getChildDatabaseTitle(block)
+ * return `[${title}](/databases/${block.id})`
+ * ```
+ */
+export const getChildDatabaseTitle = (block: BlockWithData): string => {
+  const typeData = block[block.type] as { title?: string } | undefined
+  return typeData?.title ?? 'Untitled Database'
+}
+
+/**
+ * Get table row cells as rich text arrays.
+ *
+ * @example
+ * ```ts
+ * const cells = getTableRowCells(block)
+ * const row = cells.map(cell => RichTextUtils.toPlainText(cell)).join(' | ')
+ * ```
+ */
+export const getTableRowCells = (block: BlockWithData): readonly RichTextArray[] => {
+  const typeData = block[block.type] as { cells?: RichTextArray[] } | undefined
+  return typeData?.cells ?? []
+}
+
+/**
+ * Get equation expression.
+ *
+ * @example
+ * ```ts
+ * const expr = getEquationExpression(block)
+ * return `$$\n${expr}\n$$`
+ * ```
+ */
+export const getEquationExpression = (block: BlockWithData): string => {
+  const typeData = block[block.type] as { expression?: string } | undefined
+  return typeData?.expression ?? ''
 }
 
 // -----------------------------------------------------------------------------
@@ -292,8 +428,7 @@ const linkPreviewTransformer: BlockTransformer = (block) => {
 
 /** Default transformer for equation blocks */
 const equationTransformer: BlockTransformer = (block) => {
-  const typeData = block[block.type] as { expression?: string } | undefined
-  const expression = typeData?.expression ?? ''
+  const expression = getEquationExpression(block)
   return `$$\n${expression}\n$$`
 }
 
@@ -314,15 +449,13 @@ const syncedBlockTransformer: BlockTransformer = (_, children) => children
 
 /** Default transformer for child page blocks */
 const childPageTransformer: BlockTransformer = (block) => {
-  const typeData = block[block.type] as { title?: string } | undefined
-  const title = typeData?.title ?? 'Untitled'
+  const title = getChildPageTitle(block)
   return `[${title}]()`
 }
 
 /** Default transformer for child database blocks */
 const childDatabaseTransformer: BlockTransformer = (block) => {
-  const typeData = block[block.type] as { title?: string } | undefined
-  const title = typeData?.title ?? 'Untitled Database'
+  const title = getChildDatabaseTitle(block)
   return `[${title}]()`
 }
 
@@ -334,8 +467,7 @@ const tableTransformer: BlockTransformer = (_, children) => {
 
 /** Default transformer for table row blocks (basic) */
 const tableRowTransformer: BlockTransformer = (block) => {
-  const typeData = block[block.type] as { cells?: RichTextArray[] } | undefined
-  const cells = typeData?.cells ?? []
+  const cells = getTableRowCells(block)
   const cellTexts = cells.map((cell) => richTextToMd(cell))
   return `| ${cellTexts.join(' | ')} |`
 }
@@ -559,8 +691,45 @@ export const pageToMarkdown = (
 }
 
 // -----------------------------------------------------------------------------
-// Namespace Export
+// Namespace Exports
 // -----------------------------------------------------------------------------
+
+/**
+ * Block helper utilities for custom transformers.
+ *
+ * Use these helpers to safely extract data from Notion blocks without casts.
+ *
+ * @example
+ * ```ts
+ * const imageTransformer: BlockTransformer = (block) => {
+ *   const url = BlockHelpers.getUrl(block)
+ *   const caption = RichTextUtils.toPlainText(BlockHelpers.getCaption(block))
+ *   return url ? `<InfoImage src="${url}" alt="${caption}" />` : ''
+ * }
+ * ```
+ */
+export const BlockHelpers = {
+  /** Get rich text content from a block */
+  getRichText: getBlockRichText,
+  /** Get caption from media blocks */
+  getCaption: getBlockCaption,
+  /** Get URL from various block types */
+  getUrl: getBlockUrl,
+  /** Check if a to-do block is checked */
+  isTodoChecked,
+  /** Get code block language */
+  getCodeLanguage,
+  /** Get callout icon (emoji) */
+  getCalloutIcon,
+  /** Get child page title */
+  getChildPageTitle,
+  /** Get child database title */
+  getChildDatabaseTitle,
+  /** Get table row cells */
+  getTableRowCells,
+  /** Get equation expression */
+  getEquationExpression,
+} as const
 
 /**
  * Notion Markdown converter utilities.
@@ -574,11 +743,15 @@ export const pageToMarkdown = (
  * const tree = yield* NotionBlocks.retrieveAsTree({ blockId: pageId })
  * const markdown = yield* NotionMarkdown.treeToMarkdown({ tree })
  *
- * // With custom transformers
+ * // With custom transformers using BlockHelpers
  * const markdown = yield* NotionMarkdown.pageToMarkdown({
  *   pageId: '...',
  *   transformers: {
- *     image: (block) => `![](${block.image?.external?.url})`,
+ *     image: (block) => {
+ *       const url = BlockHelpers.getUrl(block)
+ *       const caption = RichTextUtils.toPlainText(BlockHelpers.getCaption(block))
+ *       return url ? `<InfoImage src="${url}" alt="${caption}" />` : ''
+ *     },
  *   },
  * })
  * ```
