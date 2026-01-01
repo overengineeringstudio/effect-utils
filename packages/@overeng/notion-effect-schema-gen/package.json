@@ -24,6 +24,13 @@
     "@effect/cli": "catalog:",
     "@effect/platform": "catalog:",
     "@effect/platform-node": "catalog:",
+    "@effect/printer": "catalog:",
+    "@effect/printer-ansi": "catalog:",
+    "@effect/typeclass": "catalog:",
+    "@effect/cluster": "catalog:",
+    "@effect/sql": "catalog:",
+    "@effect/experimental": "catalog:",
+    "@effect/workflow": "catalog:",
     "@overeng/notion-effect-client": "workspace:*",
     "@overeng/notion-effect-schema": "workspace:*"
   },
