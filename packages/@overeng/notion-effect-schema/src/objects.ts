@@ -281,15 +281,8 @@ export const BlockType = Schema.Literal(
 
 export type BlockType = typeof BlockType.Type
 
-/**
- * Notion Block object.
- *
- * Contains common properties shared by all block types.
- * Block-type-specific content is available via the property matching the `type` field.
- *
- * @see https://developers.notion.com/reference/block
- */
-export const Block = Schema.Struct({
+/** Base block fields shared by all block types */
+const BlockBase = Schema.Struct({
   object: Schema.Literal('block'),
   id: NotionUUID,
   parent: BlockParent,
@@ -301,7 +294,23 @@ export const Block = Schema.Struct({
   has_children: Schema.Boolean,
   archived: Schema.Boolean,
   in_trash: Schema.Boolean,
-}).annotations({
+})
+
+/**
+ * Notion Block object.
+ *
+ * Contains common properties shared by all block types.
+ * Block-type-specific content is available via the property matching the `type` field
+ * (e.g., `block.paragraph`, `block.heading_1`, etc.).
+ *
+ * The schema preserves additional properties to retain block-type-specific data.
+ *
+ * @see https://developers.notion.com/reference/block
+ */
+export const Block = Schema.extend(
+  BlockBase,
+  Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+).annotations({
   identifier: 'Notion.Block',
   [docsPath]: 'block',
 })

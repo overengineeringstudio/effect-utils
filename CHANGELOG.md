@@ -6,6 +6,24 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/notion-effect-client**: Block helpers and Markdown converter improvements
+  - `BlockHelpers` namespace with typed utilities for custom transformers:
+    - `getRichText(block)` - Extract rich text content
+    - `getCaption(block)` - Get media block captions
+    - `getUrl(block)` - Get URL from image/video/file/embed/bookmark blocks
+    - `isTodoChecked(block)` - Check to-do status
+    - `getCodeLanguage(block)` - Get code block language
+    - `getCalloutIcon(block)` - Get callout emoji
+    - `getChildPageTitle(block)` / `getChildDatabaseTitle(block)` - Get titles
+    - `getTableRowCells(block)` - Get table row cells
+    - `getEquationExpression(block)` - Get equation expression
+  - `BlockWithData` type for blocks with type-specific data
+  - All helpers also exported as standalone functions
+  - Rich Text utilities: `toPlainText`, `toMarkdown`, `toHtml` via `RichTextUtils`
+  - Recursive block fetching: `NotionBlocks.retrieveAllNested` (flat stream), `NotionBlocks.retrieveAsTree` (tree)
+  - Markdown converter: `NotionMarkdown.pageToMarkdown`, `NotionMarkdown.treeToMarkdown`, `NotionMarkdown.blocksToMarkdown`
+  - Custom transformer support for all 27 block types
+
 - **@overeng/react-inspector**: Added as git submodule for Effect Schema-aware data inspection
   - DevTools-style object/table/DOM inspectors for React
   - Enriched display of Effect Schema types with type names and custom formatting
@@ -47,6 +65,10 @@ All notable changes to this project will be documented in this file.
   - API file written to `{output}.api.ts` (e.g., `tasks.ts` → `tasks.api.ts`)
 
 ### Fixed
+
+- **@overeng/notion-effect-schema**: Fixed `BlockSchema` to preserve type-specific properties
+  - Block objects now correctly retain their type-specific data (e.g., `block.paragraph`, `block.heading_1`)
+  - Previously, decoding would strip these properties, breaking markdown conversion and block helpers
 
 - **@overeng/notion-effect-schema-gen**: Critical fixes to generated schema code
   - Fixed import references to use correct transform namespaces (e.g., `Title`, `Select`, `Num` instead of `TitleProperty`, `SelectProperty`, `NumberProperty`)

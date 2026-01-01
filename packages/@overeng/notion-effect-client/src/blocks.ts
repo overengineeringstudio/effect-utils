@@ -1,5 +1,5 @@
 import type { HttpClient } from '@effect/platform'
-import { type Block, BlockSchema } from '@overeng/notion-effect-schema'
+import { type Block, BlockSchema, type BlockType } from '@overeng/notion-effect-schema'
 import { Chunk, Effect, Option, Schema, Stream } from 'effect'
 import type { NotionConfig } from './config.ts'
 import type { NotionApiError } from './error.ts'
@@ -180,6 +180,224 @@ export const deleteBlock = Effect.fn('NotionBlocks.delete')(function* (opts: Del
 })
 
 // -----------------------------------------------------------------------------
+// Recursive Block Fetching Types
+// -----------------------------------------------------------------------------
+
+/** Block types that can have nested children */
+const BLOCK_TYPES_WITH_CHILDREN: ReadonlySet<BlockType> = new Set([
+  'toggle',
+  'callout',
+  'quote',
+  'bulleted_list_item',
+  'numbered_list_item',
+  'to_do',
+  'column_list',
+  'column',
+  'table',
+  'synced_block',
+  'template',
+])
+
+/** Block with depth information for flat stream output */
+export interface BlockWithDepth {
+  /** The block object */
+  readonly block: Block
+  /** Depth level (0 = top-level) */
+  readonly depth: number
+  /** Parent block ID (null for top-level blocks) */
+  readonly parentId: string | null
+}
+
+/** Tree node for hierarchical block structure */
+export interface BlockTreeNode {
+  /** The block object */
+  readonly block: Block
+  /** Children blocks as tree nodes */
+  readonly children: readonly BlockTreeNode[]
+}
+
+/** Block tree (array of root-level nodes) */
+export type BlockTree = readonly BlockTreeNode[]
+
+/** Options for recursive block fetching */
+export interface RetrieveNestedOptions {
+  /** Block ID (page or block) to retrieve children for */
+  readonly blockId: string
+  /** Maximum depth to recurse (undefined = unlimited) */
+  readonly maxDepth?: number
+  /** Block types to skip fetching children for */
+  readonly skipChildrenFor?: readonly BlockType[]
+  /** Concurrency for parallel child fetching (default: 3) */
+  readonly concurrency?: number
+  /** Page size for pagination (default: 100) */
+  readonly pageSize?: number
+}
+
+// -----------------------------------------------------------------------------
+// Recursive Block Fetching Implementation
+// -----------------------------------------------------------------------------
+
+/** Check if a block can have children that need fetching */
+const canHaveChildren = (block: Block, skipTypes: ReadonlySet<BlockType>): boolean => {
+  if (!block.has_children) return false
+  if (skipTypes.has(block.type)) return false
+  return BLOCK_TYPES_WITH_CHILDREN.has(block.type)
+}
+
+/**
+ * Retrieve all nested blocks as a flat stream with depth information.
+ *
+ * Recursively fetches children for block types that support nesting
+ * (toggles, callouts, columns, etc.) and emits them in depth-first order.
+ *
+ * @example
+ * ```ts
+ * const blocks = NotionBlocks.retrieveAllNested({
+ *   blockId: pageId,
+ *   maxDepth: 10,
+ * })
+ *
+ * yield* Stream.runForEach(blocks, (item) =>
+ *   Effect.log(`${'  '.repeat(item.depth)}${item.block.type}`)
+ * )
+ * ```
+ *
+ * @see https://developers.notion.com/reference/get-block-children
+ */
+export const retrieveAllNested = (
+  opts: RetrieveNestedOptions,
+): Stream.Stream<BlockWithDepth, NotionApiError, NotionConfig | HttpClient.HttpClient> => {
+  const skipTypes = new Set(opts.skipChildrenFor ?? [])
+  const maxDepth = opts.maxDepth
+  const concurrency = opts.concurrency ?? 3
+  const pageSize = opts.pageSize ?? 100
+
+  const fetchBlocksRecursive = (
+    blockId: string,
+    parentId: string | null,
+    depth: number,
+  ): Stream.Stream<BlockWithDepth, NotionApiError, NotionConfig | HttpClient.HttpClient> => {
+    // Bail if we've exceeded max depth
+    if (maxDepth !== undefined && depth > maxDepth) {
+      return Stream.empty
+    }
+
+    // Fetch direct children
+    const childrenStream = retrieveChildrenStream({ blockId, pageSize })
+
+    // For each child, emit it and recursively fetch its children
+    return Stream.flatMap(
+      childrenStream,
+      (block) => {
+        const item: BlockWithDepth = { block, depth, parentId }
+
+        // Check if we should recurse into this block's children
+        if (canHaveChildren(block, skipTypes)) {
+          // Emit this block, then recurse into its children
+          return Stream.concat(
+            Stream.succeed(item),
+            fetchBlocksRecursive(block.id, block.id, depth + 1),
+          )
+        }
+
+        // Just emit this block
+        return Stream.succeed(item)
+      },
+      { concurrency },
+    )
+  }
+
+  return fetchBlocksRecursive(opts.blockId, null, 0).pipe(
+    Stream.tapError((error) =>
+      Effect.logError('Failed to retrieve nested blocks', {
+        blockId: opts.blockId,
+        error,
+      }),
+    ),
+  )
+}
+
+/**
+ * Retrieve all nested blocks as a tree structure.
+ *
+ * Recursively fetches children for block types that support nesting
+ * and returns a hierarchical tree structure.
+ *
+ * @example
+ * ```ts
+ * const tree = yield* NotionBlocks.retrieveAsTree({
+ *   blockId: pageId,
+ * })
+ *
+ * for (const node of tree) {
+ *   console.log(node.block.type, node.children.length)
+ * }
+ * ```
+ *
+ * @see https://developers.notion.com/reference/get-block-children
+ */
+export const retrieveAsTree = (
+  opts: RetrieveNestedOptions,
+): Effect.Effect<BlockTree, NotionApiError, NotionConfig | HttpClient.HttpClient> => {
+  const skipTypes = new Set(opts.skipChildrenFor ?? [])
+  const maxDepth = opts.maxDepth
+  const concurrency = opts.concurrency ?? 3
+  const pageSize = opts.pageSize ?? 100
+
+  const fetchTreeRecursive = (
+    blockId: string,
+    depth: number,
+  ): Effect.Effect<BlockTree, NotionApiError, NotionConfig | HttpClient.HttpClient> =>
+    Effect.gen(function* () {
+      // Bail if we've exceeded max depth
+      if (maxDepth !== undefined && depth > maxDepth) {
+        return [] as const
+      }
+
+      // Fetch direct children
+      const childrenStream = retrieveChildrenStream({ blockId, pageSize })
+      const children = yield* Stream.runCollect(childrenStream).pipe(
+        Effect.map((chunk) => [...chunk]),
+      )
+
+      // For each child, recursively fetch its children if applicable
+      const nodes = yield* Effect.forEach(
+        children,
+        (block) =>
+          Effect.gen(function* () {
+            let nodeChildren: BlockTree = []
+
+            if (canHaveChildren(block, skipTypes)) {
+              nodeChildren = yield* fetchTreeRecursive(block.id, depth + 1)
+            }
+
+            const node: BlockTreeNode = {
+              block,
+              children: nodeChildren,
+            }
+            return node
+          }),
+        { concurrency },
+      )
+
+      return nodes
+    }).pipe(
+      Effect.withSpan('NotionBlocks.fetchTreeRecursive', {
+        attributes: {
+          'notion.block_id': blockId,
+          'notion.depth': depth,
+        },
+      }),
+    )
+
+  return fetchTreeRecursive(opts.blockId, 0).pipe(
+    Effect.withSpan('NotionBlocks.retrieveAsTree', {
+      attributes: { 'notion.block_id': opts.blockId },
+    }),
+  )
+}
+
+// -----------------------------------------------------------------------------
 // Namespace Export
 // -----------------------------------------------------------------------------
 
@@ -191,4 +409,8 @@ export const NotionBlocks = {
   append,
   update,
   delete: deleteBlock,
+  /** Retrieve all nested blocks as a flat stream with depth info */
+  retrieveAllNested,
+  /** Retrieve all nested blocks as a tree structure */
+  retrieveAsTree,
 } as const

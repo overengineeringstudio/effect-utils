@@ -10,17 +10,25 @@ export const SKIP_MUTATIONS = process.env.CI === 'true'
 
 /** Test fixture IDs from the Notion test environment */
 export const TEST_IDS = {
-  rootPage: '2d7f141b18dc803ab532f33fb8c5d434',
-  database: 'df25270a27a1437cb4fb0a0038b570ba',
-  dataSource: '939ffd13-5698-4dcc-bc44-42b282fba959',
-  pageWithBlocks: '2d7f141b18dc8112b6e8d85570594dba',
-  emptyPage: '2d7f141b18dc8191ad8ed68a5351573c',
-  nestedPage: '1e6342690eb645e98068c99ff15298e6',
+  /** Root page: @overeng/notion-effect-client API test env */
+  rootPage: '2dbf141b18dc8133b921c786d2b00ecf',
+  /** Test Database */
+  database: '2adfbc6627894baf94e5e919a826c3f4',
+  /** Test Database data source */
+  dataSource: '7d8ab748-1f94-4211-a128-883256e3f559',
+  /** Page with various block types */
+  pageWithBlocks: '2dbf141b18dc8134b0a3e197c32ca3e8',
+  /** Empty page for mutation tests */
+  emptyPage: '2dbf141b18dc818e8439ec9ff7d889eb',
+  /** Page with deeply nested blocks for recursive fetching tests */
+  nestedPage: '2dbf141b18dc8171939df328b6ad9735',
+  /** Page with rich text formatting for testing */
+  richTextPage: '2dbf141b18dc8180965adcff3dd7178b',
   /** Database row IDs */
   rows: {
-    alpha: '2d7f141b18dc81708454e1a89fd84e64',
-    beta: '2d7f141b18dc81c0bd0cf3ccb0f74d58',
-    gamma: '2d7f141b18dc812d9445d9bed26af852',
+    alpha: '2dbf141b18dc81debf3fca3c05af1000',
+    beta: '2dbf141b18dc8161b35cf708809be7e0',
+    gamma: '2dbf141b18dc81b39286dd8d74c29775',
   },
 } as const
 

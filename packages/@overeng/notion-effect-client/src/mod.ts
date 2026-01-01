@@ -16,9 +16,13 @@ import { type NotionClientConfig, NotionConfig } from './config.ts'
 
 export type {
   AppendBlockChildrenOptions,
+  BlockTree,
+  BlockTreeNode,
+  BlockWithDepth,
   DeleteBlockOptions,
   RetrieveBlockChildrenOptions,
   RetrieveBlockOptions,
+  RetrieveNestedOptions,
   UpdateBlockOptions,
 } from './blocks.ts'
 export { NotionBlocks } from './blocks.ts'
@@ -44,6 +48,30 @@ export { NotionDatabases } from './databases.ts'
 export { NotionApiError, NotionErrorCode, NotionErrorResponse } from './error.ts'
 // Pagination utilities
 export type { PaginatedResult, PaginationOptions } from './internal/pagination.ts'
+// Markdown converter
+export type {
+  AnyBlockTransformer,
+  BlocksToMarkdownOptions,
+  BlockTransformer,
+  BlockTransformerEffect,
+  BlockTransformers,
+  BlockWithData,
+  PageToMarkdownOptions,
+} from './markdown.ts'
+export {
+  BlockHelpers,
+  getBlockCaption,
+  getBlockRichText,
+  getBlockUrl,
+  getCalloutIcon,
+  getChildDatabaseTitle,
+  getChildPageTitle,
+  getCodeLanguage,
+  getEquationExpression,
+  getTableRowCells,
+  isTodoChecked,
+  NotionMarkdown,
+} from './markdown.ts'
 export type {
   ArchivePageOptions,
   CreatePageOptions,
