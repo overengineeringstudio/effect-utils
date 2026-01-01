@@ -17,14 +17,14 @@ A collection of [Effect](https://effect.website) utilities and integrations.
 | Package | Description |
 |---------|-------------|
 | [@overeng/effect-schema-form](./packages/@overeng/effect-schema-form) | Headless form component for Effect Schemas |
-| [@overeng/effect-schema-form-aria](./packages/@overeng/effect-schema-form-aria) | React Aria implementation with Tailwind CSS ([Storybook](https://overeng-effect-utils-schema-form-aria.vercel.app)) |
+| [@overeng/effect-schema-form-aria](./packages/@overeng/effect-schema-form-aria) | React Aria implementation with Tailwind CSS ([Storybook](https://overeng-effect-utils-schema-form-ar.vercel.app)) |
 
 ### React Integration
 
 | Package | Description |
 |---------|-------------|
 | [@overeng/effect-react](./packages/@overeng/effect-react) | React integration for Effect runtime |
-| [@overeng/react-inspector](./packages/@overeng/react-inspector) | DevTools-style inspectors with Effect Schema support ([Storybook](https://overeng-effect-utils-react-inspector.vercel.app)) |
+| [@overeng/react-inspector](./packages/@overeng/react-inspector) | DevTools-style inspectors with Effect Schema support ([Storybook](https://overeng-effect-utils-react-inspecto.vercel.app)) |
 
 ## Development
 

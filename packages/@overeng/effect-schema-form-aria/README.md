@@ -2,7 +2,7 @@
 
 Styled React Aria implementation for `@overeng/effect-schema-form`. Provides accessible, styled form components using React Aria Components and Tailwind CSS.
 
-[**Storybook**](https://overeng-effect-utils-schema-form-aria.vercel.app) - Interactive component documentation and examples
+[**Storybook**](https://overeng-effect-utils-schema-form-ar.vercel.app) - Interactive component documentation and examples
 
 ## Installation
 
