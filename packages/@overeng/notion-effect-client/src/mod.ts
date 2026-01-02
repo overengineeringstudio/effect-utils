@@ -82,6 +82,9 @@ export type {
   UpdatePageOptions,
 } from './pages.ts'
 export { NotionPages } from './pages.ts'
+// Schema helpers for database metadata
+export type { RelationTarget, RollupConfig } from './schema-helpers.ts'
+export { SchemaHelpers } from './schema-helpers.ts'
 export type { SearchFilter, SearchOptions, SearchSort } from './search.ts'
 export { NotionSearch } from './search.ts'
 // Typed page utilities

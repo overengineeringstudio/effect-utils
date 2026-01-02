@@ -4,7 +4,40 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **@overeng/notion-effect-schema**: New `PropertySchema` discriminated union for typed database property definitions
+  - Full support for all 23 Notion property types using `Schema.TaggedStruct`
+  - `SelectOptionConfig`, `StatusGroupConfig` for select/multi-select/status options
+  - `NumberFormat`, `RollupFunction` enums
+  - All property schemas exported individually (e.g., `SelectPropertySchema`, `RelationPropertySchema`)
+
+- **@overeng/notion-effect-client**: New `SchemaHelpers` module for database schema introspection
+  - `getProperties({ schema })` - Get all properties as typed `PropertySchema[]`
+  - `getProperty({ schema, name })` - Get single property by name
+  - `getPropertyByTag({ schema, name, tag })` - Get property filtered by type
+  - `getSelectOptions({ schema, property })` - Get select property options
+  - `getMultiSelectOptions({ schema, property })` - Get multi-select options
+  - `getStatusOptions({ schema, property })` - Get status options
+  - `getAnySelectOptions({ schema, property })` - Get options from any select-like property
+  - `getRelationTarget({ schema, property })` - Get relation target database info
+  - `getFormulaExpression({ schema, property })` - Get formula expression
+  - `getNumberFormat({ schema, property })` - Get number format
+  - `getRollupConfig({ schema, property })` - Get rollup configuration
+  - `getUniqueIdPrefix({ schema, property })` - Get unique ID prefix
+
 ### Changed
+
+- **@overeng/notion-effect-schema**: Renamed `Database` to `DatabaseSchema` for clarity (breaking change)
+  - The type represents the schema/structure of a database, not the data itself
+
+- **@overeng/notion-effect-cli**: Refactored introspect.ts to use new typed `PropertySchema` from schema package
+  - Removed manual property type definitions in favor of shared schemas
+
+- **@overeng/notion-effect-cli**: Generated schemas now include Effect Schema annotations
+  - Schemas include `identifier` and `description` annotations for better debugging/tooling
+  - Property fields with descriptions now have JSDoc comments instead of inline comments
+  - Typed options (when `--typed-options` is used) also include `identifier` annotations
 
 - Renamed **@overeng/notion-effect-schema-gen** to **@overeng/notion-effect-cli** to support more general-purpose CLI functionality
   - Binary name changed from `notion-effect-schema-gen` to `notion-effect-cli`

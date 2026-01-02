@@ -151,7 +151,11 @@ describe('codegen', () => {
 
       const code = generateSchemaCode(dbInfo, 'Test')
 
-      expect(code).toContain('Status: Select.asOption, // Current task status')
+      expect(code).toContain('/** Current task status */')
+      expect(code).toContain('Status: Select.asOption,')
+      // Should include schema annotations
+      expect(code).toContain("identifier: 'TestPageProperties'")
+      expect(code).toContain("description: 'Read schema for Test database pages'")
     })
 
     it('should handle all property types with default transforms', () => {
@@ -324,6 +328,11 @@ describe('codegen', () => {
       // Verify by checking the Write schema section doesn't have it
       const writeSchemaSection = code.split('// Write Schema')[1]
       expect(writeSchemaSection).not.toContain('CreatedAt:')
+
+      // Should include schema annotations for both Read and Write schemas
+      expect(code).toContain("identifier: 'TestPageProperties'")
+      expect(code).toContain("identifier: 'TestPageWrite'")
+      expect(code).toContain("description: 'Write schema for Test database pages'")
     })
 
     it('should generate typed options when typedOptions is true', () => {
@@ -373,6 +382,10 @@ describe('codegen', () => {
       expect(code).toContain('export const TestPriorityOption = Schema.Literal(')
       expect(code).toContain("'High'")
       expect(code).toContain("'Low'")
+
+      // Typed options should have schema annotations
+      expect(code).toContain("identifier: 'TestStatusOption'")
+      expect(code).toContain("identifier: 'TestPriorityOption'")
     })
 
     it('should preserve PascalCase in names', () => {

@@ -3,63 +3,44 @@ import {
   type NotionApiError,
   type NotionConfig,
   NotionDatabases,
+  SchemaHelpers,
 } from '@overeng/notion-effect-client'
+import type {
+  NumberFormat,
+  PropertySchema,
+  PropertySchemaTag,
+  SelectOptionConfig,
+  StatusGroupConfig,
+} from '@overeng/notion-effect-schema'
 import { Effect } from 'effect'
 
 // -----------------------------------------------------------------------------
-// Types
+// Types (re-exported for backwards compatibility and convenience)
 // -----------------------------------------------------------------------------
 
 /** Supported Notion property types */
-export type NotionPropertyType =
-  | 'title'
-  | 'rich_text'
-  | 'number'
-  | 'select'
-  | 'multi_select'
-  | 'status'
-  | 'date'
-  | 'people'
-  | 'files'
-  | 'checkbox'
-  | 'url'
-  | 'email'
-  | 'phone_number'
-  | 'formula'
-  | 'relation'
-  | 'rollup'
-  | 'created_time'
-  | 'created_by'
-  | 'last_edited_time'
-  | 'last_edited_by'
-  | 'unique_id'
-  | 'verification'
-  | 'button'
+export type NotionPropertyType = PropertySchemaTag
 
 /** Select/multi-select option */
-export interface SelectOption {
-  readonly id: string
-  readonly name: string
-  readonly color: string
-}
+export type SelectOption = SelectOptionConfig
 
 /** Status group */
-export interface StatusGroup {
-  readonly id: string
-  readonly name: string
-  readonly color: string
-  readonly option_ids: readonly string[]
-}
+export type StatusGroup = StatusGroupConfig
+
+/** Number format */
+export type { NumberFormat }
 
 /** Relation configuration */
 export interface RelationConfig {
   readonly database_id: string
   readonly type: 'single_property' | 'dual_property'
-  readonly single_property?: Record<string, never>
-  readonly dual_property?: {
-    readonly synced_property_id: string
-    readonly synced_property_name: string
-  }
+  readonly single_property?: Record<string, never> | undefined
+  readonly dual_property?:
+    | {
+        readonly synced_property_id: string
+        readonly synced_property_name: string
+      }
+    | undefined
 }
 
 /** Rollup configuration */
@@ -76,54 +57,12 @@ export interface FormulaConfig {
   readonly expression: string
 }
 
-/** Number format */
-export type NumberFormat =
-  | 'number'
-  | 'number_with_commas'
-  | 'percent'
-  | 'dollar'
-  | 'canadian_dollar'
-  | 'euro'
-  | 'pound'
-  | 'yen'
-  | 'ruble'
-  | 'rupee'
-  | 'won'
-  | 'yuan'
-  | 'real'
-  | 'lira'
-  | 'franc'
-  | 'hong_kong_dollar'
-  | 'new_zealand_dollar'
-  | 'krona'
-  | 'norwegian_krone'
-  | 'mexican_peso'
-  | 'rand'
-  | 'new_taiwan_dollar'
-  | 'danish_krone'
-  | 'zloty'
-  | 'baht'
-  | 'forint'
-  | 'koruna'
-  | 'shekel'
-  | 'chilean_peso'
-  | 'philippine_peso'
-  | 'dirham'
-  | 'colombian_peso'
-  | 'riyal'
-  | 'ringgit'
-  | 'leu'
-  | 'argentine_peso'
-  | 'uruguayan_peso'
-  | 'singapore_dollar'
-
 /** Introspected property information */
 export interface PropertyInfo {
   readonly id: string
   readonly name: string
   readonly type: NotionPropertyType
   readonly description?: string | undefined
-  // Type-specific configuration
   readonly select?: { readonly options: readonly SelectOption[] }
   readonly multi_select?: { readonly options: readonly SelectOption[] }
   readonly status?: {
@@ -148,6 +87,65 @@ export interface DatabaseInfo {
 export type PropertyTransformConfig = Record<string, string>
 
 // -----------------------------------------------------------------------------
+// Helpers
+// -----------------------------------------------------------------------------
+
+const sortByName = <TItem extends { name: string }>(items: readonly TItem[]): TItem[] =>
+  items.slice().sort((a, b) => a.name.localeCompare(b.name))
+
+/** Convert PropertySchema to PropertyInfo */
+const toPropertyInfo = (prop: PropertySchema): PropertyInfo => {
+  const base: PropertyInfo = {
+    id: prop.id,
+    name: prop.name,
+    type: prop._tag,
+    description: prop.description ?? undefined,
+  }
+
+  switch (prop._tag) {
+    case 'select':
+      return { ...base, select: { options: sortByName(prop.select.options) } }
+    case 'multi_select':
+      return { ...base, multi_select: { options: sortByName(prop.multi_select.options) } }
+    case 'status':
+      return {
+        ...base,
+        status: {
+          options: sortByName(prop.status.options),
+          groups: prop.status.groups,
+        },
+      }
+    case 'relation':
+      return {
+        ...base,
+        relation: {
+          database_id: prop.relation.database_id,
+          type: prop.relation.type,
+          single_property: prop.relation.single_property,
+          dual_property: prop.relation.dual_property,
+        },
+      }
+    case 'rollup':
+      return {
+        ...base,
+        rollup: {
+          relation_property_name: prop.rollup.relation_property_name,
+          relation_property_id: prop.rollup.relation_property_id,
+          rollup_property_name: prop.rollup.rollup_property_name,
+          rollup_property_id: prop.rollup.rollup_property_id,
+          function: prop.rollup.function,
+        },
+      }
+    case 'formula':
+      return { ...base, formula: { expression: prop.formula.expression } }
+    case 'number':
+      return { ...base, number: { format: prop.number.format } }
+    default:
+      return base
+  }
+}
+
+// -----------------------------------------------------------------------------
 // Introspection
 // -----------------------------------------------------------------------------
 
@@ -162,99 +160,13 @@ export const introspectDatabase = (
 
     const name = db.title.map((t) => t.plain_text).join('') || 'UnnamedDatabase'
 
-    const sortByName = <TItem extends { name: string }>(items: readonly TItem[]): TItem[] =>
-      items.slice().sort((a, b) => a.name.localeCompare(b.name))
-
-    const rawProperties = db.properties ?? {}
-    const properties: PropertyInfo[] = []
-
-    for (const [propName, propValue] of Object.entries(rawProperties)) {
-      const prop = propValue as {
-        id: string
-        type: NotionPropertyType
-        description?: string
-        [key: string]: unknown
-      }
-
-      const propertyInfo: PropertyInfo = {
-        id: prop.id,
-        name: propName,
-        type: prop.type,
-        description: prop.description,
-      }
-
-      // Extract type-specific configuration
-      switch (prop.type) {
-        case 'select': {
-          const selectConfig = prop.select as { options?: SelectOption[] }
-          if (selectConfig?.options) {
-            ;(propertyInfo as { select?: typeof propertyInfo.select }).select = {
-              options: sortByName(selectConfig.options),
-            }
-          }
-          break
-        }
-        case 'multi_select': {
-          const multiSelectConfig = prop.multi_select as { options?: SelectOption[] }
-          if (multiSelectConfig?.options) {
-            ;(propertyInfo as { multi_select?: typeof propertyInfo.multi_select }).multi_select = {
-              options: sortByName(multiSelectConfig.options),
-            }
-          }
-          break
-        }
-        case 'status': {
-          const statusConfig = prop.status as {
-            options?: SelectOption[]
-            groups?: StatusGroup[]
-          }
-          if (statusConfig) {
-            ;(propertyInfo as { status?: typeof propertyInfo.status }).status = {
-              options: sortByName(statusConfig.options ?? []),
-              groups: statusConfig.groups ?? [],
-            }
-          }
-          break
-        }
-        case 'relation': {
-          const relationConfig = prop.relation as RelationConfig
-          if (relationConfig) {
-            ;(propertyInfo as { relation?: typeof propertyInfo.relation }).relation = relationConfig
-          }
-          break
-        }
-        case 'rollup': {
-          const rollupConfig = prop.rollup as RollupConfig
-          if (rollupConfig) {
-            ;(propertyInfo as { rollup?: typeof propertyInfo.rollup }).rollup = rollupConfig
-          }
-          break
-        }
-        case 'formula': {
-          const formulaConfig = prop.formula as FormulaConfig
-          if (formulaConfig) {
-            ;(propertyInfo as { formula?: typeof propertyInfo.formula }).formula = formulaConfig
-          }
-          break
-        }
-        case 'number': {
-          const numberConfig = prop.number as { format?: NumberFormat }
-          if (numberConfig?.format) {
-            ;(propertyInfo as { number?: typeof propertyInfo.number }).number = {
-              format: numberConfig.format,
-            }
-          }
-          break
-        }
-      }
-
-      properties.push(propertyInfo)
-    }
+    const typedProperties = SchemaHelpers.getProperties({ schema: db })
+    const properties = typedProperties.map(toPropertyInfo)
 
     return {
       id: db.id,
       name,
       url: db.url,
-      properties: sortByName(properties),
+      properties,
     }
   })
