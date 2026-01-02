@@ -11,7 +11,6 @@ Full-featured Effect-native Notion API client with type-safe schema generation.
 #### [@overeng/notion-effect-client](./packages/@overeng/notion-effect-client)
 Effect-native HTTP client for the Notion API with typed queries
 
-**Key Features:**
 - **Schema-aware queries** - Pass Effect schemas to get fully typed results with automatic decoding
 - **Markdown conversion** - Convert pages/blocks to Markdown with customizable transformers
 - **Streaming API** - Auto-pagination via Effect Streams for all list operations
@@ -19,7 +18,6 @@ Effect-native HTTP client for the Notion API with typed queries
 #### [@overeng/notion-effect-schema](./packages/@overeng/notion-effect-schema)
 Comprehensive Effect schemas for all Notion API types
 
-**Key Features:**
 - **Complete coverage** - Schemas for all 27 block types and 21+ property types
 - **Property transforms** - `asString`, `asNumber`, `asOption` variants for ergonomic access
 - **Write support** - Dedicated write schemas for creating/updating pages
@@ -27,7 +25,6 @@ Comprehensive Effect schemas for all Notion API types
 #### [@overeng/notion-effect-cli](./packages/@overeng/notion-effect-cli)
 CLI tool to generate type-safe schemas from your Notion databases
 
-**Key Features:**
 - **Schema generation** - Generate typed schemas from live Notion databases
 - **Drift detection** - Track schema changes with `diff` command for CI/CD
 - **API wrapper generation** - Generate typed CRUD operations with `--include-api`
@@ -41,7 +38,6 @@ Headless form library for Effect Schemas with accessible React Aria implementati
 | [@overeng/effect-schema-form](./packages/@overeng/effect-schema-form) | Headless form component with schema introspection |
 | [@overeng/effect-schema-form-aria](./packages/@overeng/effect-schema-form-aria) | Styled React Aria components with Tailwind CSS ([Storybook](https://overeng-effect-utils-schema-form-ar.vercel.app)) |
 
-**Key Features:**
 - **Schema introspection** - Automatically generate form fields from Effect Schema structure
 - **Headless architecture** - Bring your own components or use pre-built React Aria implementation
 - **Tagged struct support** - Automatic handling of discriminated unions with labeled groups
@@ -57,7 +53,6 @@ React hooks and utilities for building Effect-powered applications.
 | [@overeng/effect-react](./packages/@overeng/effect-react) | React integration for Effect runtime with hooks and context providers |
 | [@overeng/react-inspector](./packages/@overeng/react-inspector) | DevTools-style inspectors with Effect Schema support ([Storybook](https://overeng-effect-utils-react-inspecto.vercel.app)) |
 
-**Key Features:**
 - **EffectProvider** - Initialize Effect runtime from a Layer and provide to React tree
 - **Hooks API** - `useEffectRunner`, `useEffectCallback`, `useEffectOnMount` for running effects in components
 - **Automatic error handling** - Built-in error boundaries with custom error components
@@ -68,14 +63,7 @@ React hooks and utilities for building Effect-powered applications.
 
 | Package | Description |
 |---------|-------------|
-| [@overeng/utils](./packages/@overeng/utils) | Shared utilities including file system-backed distributed locks |
-
-**Key Features:**
-- **File system-backed distributed locks** - Coordinate across multiple Node.js processes on a single machine
-- **TTL-based expiration** - Automatic cleanup of crashed processes via time-to-live
-- **File system watching** - Push-based notifications when permits are released
-- **Atomic operations** - Write-to-temp-then-rename for safe concurrent access
-- **Effect-native** - Re-exports and extends [effect-distributed-lock](https://github.com/ethanniser/effect-distributed-lock)
+| [@overeng/utils](./packages/@overeng/utils) | File system-backed distributed locks with TTL expiration and atomic operations |
 
 ## Quick Start
 
