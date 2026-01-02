@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import * as Command from '@effect/platform/Command'
 import * as CommandExecutor from '@effect/platform/CommandExecutor'
-import type * as PlatformError from '@effect/platform/PlatformError'
+import type { PlatformError } from '@effect/platform/Error'
 import {
   Cause,
   Effect,
@@ -44,7 +44,7 @@ export const cmd: (
     | undefined,
 ) => Effect.Effect<
   CommandExecutor.ExitCode,
-  PlatformError.PlatformError | CmdError,
+  PlatformError | CmdError,
   CommandExecutor.CommandExecutor | CurrentWorkingDirectory
 > = Effect.fn('cmd')(function* (commandInput, options) {
   const cwd = yield* CurrentWorkingDirectory
@@ -101,15 +101,13 @@ export const cmd: (
     : runWithoutLogging(baseArgs)
 
   if (exitCode !== SUCCESS_EXIT_CODE) {
-    return yield* Effect.fail(
-      CmdError.make({
-        command: command!,
-        args,
-        cwd,
-        env: options?.env ?? {},
-        stderr: stderrMode,
-      }),
-    )
+    return yield* new CmdError({
+      command: command!,
+      args,
+      cwd,
+      env: options?.env ?? {},
+      stderr: stderrMode,
+    })
   }
 
   return exitCode
@@ -122,7 +120,7 @@ export const cmdText: (
     runInShell?: boolean
     env?: Record<string, string | undefined>
   },
-) => Effect.Effect<string, PlatformError.PlatformError, CommandExecutor.CommandExecutor | CurrentWorkingDirectory> =
+) => Effect.Effect<string, PlatformError, CommandExecutor.CommandExecutor | CurrentWorkingDirectory> =
   Effect.fn('cmdText')(function* (commandInput, options) {
     const cwd = yield* CurrentWorkingDirectory
     const [command, ...args] = Array.isArray(commandInput)

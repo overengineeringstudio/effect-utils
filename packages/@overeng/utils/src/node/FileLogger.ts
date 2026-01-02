@@ -1,6 +1,7 @@
 import * as fs from 'node:fs'
 import path from 'node:path'
 import util from 'node:util'
+import * as Array from 'effect/Array'
 import {
   Cause,
   Effect,
@@ -12,7 +13,6 @@ import {
   Logger,
   type LogLevel,
   LogSpan,
-  ReadonlyArray,
 } from 'effect'
 
 export const makeFileLogger = (
@@ -43,14 +43,14 @@ export const makeFileLogger = (
     }),
   )
 
-const withColor = (text: string, ...colors: ReadonlyArray<string>) => {
+const withColor = (text: string, ...colors: readonly string[]) => {
   let out = ''
   for (let i = 0; i < colors.length; i++) {
     out += `\x1b[${colors[i]}m`
   }
   return `${out}${text}\x1b[0m`
 }
-const withColorNoop = (text: string, ..._colors: ReadonlyArray<string>) => text
+const withColorNoop = (text: string, ..._colors: readonly string[]) => text
 
 const colors = {
   bold: '1',
@@ -65,7 +65,7 @@ const colors = {
   bgBrightRed: '101',
 } as const
 
-const logLevelColors: Record<LogLevel.LogLevel['_tag'], ReadonlyArray<string>> = {
+const logLevelColors: Record<LogLevel.LogLevel['_tag'], readonly string[]> = {
   None: [],
   All: [],
   Trace: [colors.gray],
@@ -134,7 +134,7 @@ export const prettyLoggerTty = (options: {
       options.onLog?.(str)
     }
 
-    const message = ReadonlyArray.ensure(message_)
+    const message = Array.ensure(message_)
 
     let firstLine =
       color(`[${options.formatDate(date)}]`, colors.white) +
