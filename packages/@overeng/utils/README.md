@@ -10,6 +10,13 @@ pnpm add @overeng/utils
 
 ## Features
 
+### Key Features
+
+- Workspace-aware command helpers (`cmd`, `cmdText`) with optional logging and retention
+- Effect-native access to current working directory via `CurrentWorkingDirectory`
+- Workspace root service backed by `WORKSPACE_ROOT` via `EffectUtilsWorkspace`
+- File system-backed distributed locks with TTL expiration and atomic operations
+
 ### Distributed Lock / Semaphore
 
 This package re-exports and extends [effect-distributed-lock](https://github.com/ethanniser/effect-distributed-lock) with additional backing implementations.
