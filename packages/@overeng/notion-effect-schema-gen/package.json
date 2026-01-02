@@ -31,6 +31,7 @@
     "@effect/sql": "catalog:",
     "@effect/experimental": "catalog:",
     "@effect/workflow": "catalog:",
+    "@effect/rpc": "catalog:",
     "@overeng/notion-effect-client": "workspace:*",
     "@overeng/notion-effect-schema": "workspace:*"
   },

@@ -3,6 +3,8 @@
   "type": "module",
   "private": true,
   "scripts": {
+    "prepare": "effect-language-service patch",
+    "typecheck:watch": "tsc --build tsconfig.all.json --watch",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "lint": "biome check .",
@@ -10,14 +12,17 @@
     "typecheck": "tsc --build tsconfig.all.json"
   },
   "devDependencies": {
+    "@effect/language-service": "catalog:",
     "@biomejs/biome": "^2.3.10",
-    "@effect/platform": "^0.94.0",
-    "@types/node": "^22.10.5",
-    "effect": "^3.19.13",
     "typescript": "^5.9.3"
   },
   "packageManager": "pnpm@9.15.0",
   "workspaces": [
     "packages/*"
-  ]
+  ],
+  "pnpm": {
+    "patchedDependencies": {
+      "effect-distributed-lock@0.0.10": "patches/effect-distributed-lock@0.0.10.patch"
+    }
+  }
 }

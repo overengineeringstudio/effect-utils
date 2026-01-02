@@ -61,6 +61,41 @@ const SchemaGenConfigSchema = Schema.Struct({
   databases: Schema.Array(DatabaseConfigSchema),
 })
 
+export class ConfigNotFoundError extends Schema.TaggedError<ConfigNotFoundError>()(
+  'ConfigNotFoundError',
+  {
+    message: Schema.String,
+    searchStartDir: Schema.String,
+    fileNames: Schema.Array(Schema.String),
+  },
+) {}
+
+export class ConfigFileNotFoundError extends Schema.TaggedError<ConfigFileNotFoundError>()(
+  'ConfigFileNotFoundError',
+  {
+    message: Schema.String,
+    path: Schema.String,
+  },
+) {}
+
+export class ConfigReadError extends Schema.TaggedError<ConfigReadError>()('ConfigReadError', {
+  message: Schema.String,
+  path: Schema.String,
+  cause: Schema.Defect,
+}) {}
+
+export class ConfigParseError extends Schema.TaggedError<ConfigParseError>()('ConfigParseError', {
+  message: Schema.String,
+  path: Schema.String,
+  cause: Schema.Defect,
+}) {}
+
+export type ConfigError =
+  | ConfigNotFoundError
+  | ConfigFileNotFoundError
+  | ConfigReadError
+  | ConfigParseError
+
 // -----------------------------------------------------------------------------
 // Config Loading
 // -----------------------------------------------------------------------------
@@ -71,6 +106,9 @@ const CONFIG_FILE_NAMES = [
   'notion-schema-gen.json',
   '.notion-schema-gen.config.json',
 ]
+
+const formatUnknownErrorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error)
 
 /**
  * Find config file in directory or parent directories
@@ -110,32 +148,54 @@ export const loadConfig = (
   configPath?: string,
 ): Effect.Effect<
   { config: SchemaGenConfig; path: string },
-  Error,
+  ConfigError,
   FileSystem.FileSystem | Path.Path
 > =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
 
-    const resolvedPath = configPath ?? (yield* findConfigFile(process.cwd()))
+    const searchStartDir = process.cwd()
+    const resolvedPath = configPath ?? (yield* findConfigFile(searchStartDir))
 
     if (!resolvedPath) {
-      return yield* Effect.fail(
-        new Error(`No config file found. Create one of: ${CONFIG_FILE_NAMES.join(', ')}`),
-      )
+      return yield* new ConfigNotFoundError({
+        message: `No config file found. Create one of: ${CONFIG_FILE_NAMES.join(', ')}`,
+        searchStartDir,
+        fileNames: CONFIG_FILE_NAMES,
+      })
     }
 
     const exists = yield* fs.exists(resolvedPath).pipe(Effect.orElseSucceed(() => false))
     if (!exists) {
-      return yield* Effect.fail(new Error(`Config file not found: ${resolvedPath}`))
+      return yield* new ConfigFileNotFoundError({
+        message: `Config file not found: ${resolvedPath}`,
+        path: resolvedPath,
+      })
     }
 
-    const content = yield* fs
-      .readFileString(resolvedPath)
-      .pipe(Effect.mapError((error) => new Error(`Failed to read config: ${error.message}`)))
+    const content = yield* fs.readFileString(resolvedPath).pipe(
+      Effect.mapError(
+        (cause) =>
+          new ConfigReadError({
+            message: `Failed to read config: ${formatUnknownErrorMessage(cause)}`,
+            path: resolvedPath,
+            cause,
+          }),
+      ),
+    )
 
     const config = yield* Schema.decodeUnknown(Schema.parseJson(SchemaGenConfigSchema))(
       content,
-    ).pipe(Effect.mapError((error) => new Error(`Invalid config file: ${error.message}`)))
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new ConfigParseError({
+            message: `Invalid config file: ${formatUnknownErrorMessage(cause)}`,
+            path: resolvedPath,
+            cause,
+          }),
+      ),
+    )
 
     return { config, path: resolvedPath }
   })

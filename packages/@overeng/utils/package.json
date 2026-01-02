@@ -1,34 +1,38 @@
 {
-  "name": "@overeng/notion-effect-client",
+  "name": "@overeng/utils",
   "version": "0.1.0",
   "type": "module",
   "private": true,
   "exports": {
-    ".": "./src/mod.ts"
+    ".": "./src/isomorphic/mod.ts",
+    "./node": "./src/node/mod.ts"
   },
   "publishConfig": {
     "access": "public",
     "exports": {
-      ".": "./dist/mod.js"
+      ".": "./dist/isomorphic/mod.js",
+      "./node": "./dist/node/mod.js"
     }
   },
   "scripts": {
     "build": "tsc --build",
     "test": "vitest run",
-    "test:unit": "vitest run --exclude '**/integration/**'",
-    "test:integration": "vitest run 'src/test/integration'"
+    "test:watch": "vitest"
   },
   "dependencies": {
-    "@overeng/notion-effect-schema": "workspace:*"
+    "effect-distributed-lock": "0.0.10"
   },
   "peerDependencies": {
     "@effect/platform": "catalog:",
+    "@effect/platform-node": "catalog:",
+    "@effect/rpc": "catalog:",
     "effect": "catalog:"
   },
   "devDependencies": {
     "@effect/platform": "catalog:",
+    "@effect/platform-node": "catalog:",
+    "@effect/rpc": "catalog:",
     "@effect/vitest": "catalog:",
-    "@types/node": "catalog:",
     "effect": "catalog:",
     "vitest": "catalog:"
   }

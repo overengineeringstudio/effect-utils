@@ -69,6 +69,8 @@ All notable changes to this project will be documented in this file.
 - **@overeng/notion-effect-schema**: Fixed `BlockSchema` to preserve type-specific properties
   - Block objects now correctly retain their type-specific data (e.g., `block.paragraph`, `block.heading_1`)
   - Previously, decoding would strip these properties, breaking markdown conversion and block helpers
+- **@overeng/notion-effect-client**: Removed yieldable-error `Effect.fail` usage and simplified search result literal schema
+- **@overeng/notion-effect-schema-gen**: Replaced global `Error` failures with tagged config/token errors
 
 - **@overeng/notion-effect-schema-gen**: Critical fixes to generated schema code
   - Fixed import references to use correct transform namespaces (e.g., `Title`, `Select`, `Num` instead of `TitleProperty`, `SelectProperty`, `NumberProperty`)
@@ -89,6 +91,7 @@ All notable changes to this project will be documented in this file.
   - Respects `retry-after` on 429 responses when retrying.
 - Updated dependencies to latest versions (effect ^3.19.13, @effect/platform ^0.94.0)
 - Moved all dependencies to pnpm catalog for centralized version management
+- Updated pnpm catalog versions (Effect 3.19.14, @effect/platform 0.94.1, TypeScript 5.9.3, Vite 7.3.0, Vitest 3.2.4, Tailwind 4.1.18) and added @effect/rpc for peer compatibility
 
 ### Added
 

@@ -18,6 +18,13 @@ import { formatCode, writeSchemaToFile } from './output.ts'
 
 const GeneratorPackageJsonSchema = Schema.Struct({ version: Schema.String })
 
+class NotionTokenMissingError extends Schema.TaggedError<NotionTokenMissingError>()(
+  'NotionTokenMissingError',
+  {
+    message: Schema.String,
+  },
+) {}
+
 const getGeneratorVersion = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
   const pkgJsonPath = fileURLToPath(new URL('../package.json', import.meta.url))
@@ -29,7 +36,13 @@ const getGeneratorVersion = Effect.gen(function* () {
 const resolveNotionToken = (token: Option.Option<string>) =>
   Effect.sync(() => (Option.isSome(token) ? token.value : process.env.NOTION_TOKEN)).pipe(
     Effect.flatMap((t) =>
-      t ? Effect.succeed(t) : Effect.fail(new Error('NOTION_TOKEN env var or --token is required')),
+      t
+        ? Effect.succeed(t)
+        : Effect.fail(
+            new NotionTokenMissingError({
+              message: 'NOTION_TOKEN env var or --token is required',
+            }),
+          ),
     ),
   )
 
