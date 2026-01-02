@@ -6,6 +6,17 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Monorepo CLI**: Added `mono` CLI for streamlined development workflow
+  - `mono build` - Build all packages
+  - `mono test [--unit|--integration] [--watch]` - Run tests with filtering options
+  - `mono lint [--fix]` - Run Biome linter
+  - `mono ts [--watch] [--clean]` - TypeScript type checking
+  - `mono clean` - Remove build artifacts
+  - `mono check` - Run all checks (ts + lint + test)
+  - Available directly in PATH via `scripts/bin/mono` wrapper
+  - VSCode tasks.json for easy command palette integration
+  - CI-aware output with GitHub Actions log grouping
+
 - **@overeng/notion-effect-client**: Block helpers and Markdown converter improvements
   - `BlockHelpers` namespace with typed utilities for custom transformers:
     - `getRichText(block)` - Extract rich text content

@@ -1,0 +1,210 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    // ============================================================
+    // install
+    // ============================================================
+    {
+      "label": "install",
+      "type": "shell",
+      "command": "pnpm install",
+      "problemMatcher": [],
+      "presentation": {
+        "focus": true,
+        "panel": "shared",
+        "group": "install",
+        "showReuseMessage": false,
+        "clear": false,
+        "close": true
+      }
+    },
+
+    // ============================================================
+    // ts
+    // ============================================================
+    {
+      "label": "ts",
+      "type": "shell",
+      "command": "mono ts",
+      "problemMatcher": ["$tsc"],
+      "presentation": {
+        "focus": false,
+        "panel": "shared",
+        "group": "ts",
+        "showReuseMessage": false,
+        "clear": false
+      }
+    },
+    {
+      "label": "ts:watch",
+      "type": "shell",
+      "command": "mono ts --watch",
+      "problemMatcher": ["$tsc-watch"],
+      "isBackground": true,
+      "presentation": {
+        "focus": false,
+        "panel": "shared",
+        "group": "ts",
+        "showReuseMessage": false,
+        "clear": false
+      }
+    },
+    {
+      "label": "ts:clean",
+      "type": "shell",
+      "command": "mono ts --clean",
+      "problemMatcher": ["$tsc"],
+      "presentation": {
+        "focus": false,
+        "panel": "shared",
+        "group": "ts",
+        "showReuseMessage": false,
+        "clear": false
+      }
+    },
+    {
+      "label": "ts:clean:watch",
+      "type": "shell",
+      "command": "mono ts --clean --watch",
+      "problemMatcher": ["$tsc-watch"],
+      "isBackground": true,
+      "presentation": {
+        "focus": false,
+        "panel": "shared",
+        "group": "ts",
+        "showReuseMessage": false,
+        "clear": false
+      }
+    },
+
+    // ============================================================
+    // lint
+    // ============================================================
+    {
+      "label": "lint",
+      "type": "shell",
+      "command": "mono lint",
+      "problemMatcher": [],
+      "presentation": {
+        "focus": false,
+        "panel": "shared",
+        "group": "lint",
+        "showReuseMessage": false,
+        "clear": true
+      }
+    },
+    {
+      "label": "lint:fix",
+      "type": "shell",
+      "command": "mono lint --fix",
+      "problemMatcher": [],
+      "presentation": {
+        "focus": true,
+        "panel": "shared",
+        "group": "lint",
+        "showReuseMessage": false,
+        "clear": true
+      }
+    },
+
+    // ============================================================
+    // test
+    // ============================================================
+    {
+      "label": "test",
+      "type": "shell",
+      "command": "mono test",
+      "problemMatcher": [],
+      "presentation": {
+        "focus": true,
+        "panel": "shared",
+        "group": "test",
+        "showReuseMessage": false,
+        "clear": true
+      }
+    },
+    {
+      "label": "test:unit",
+      "type": "shell",
+      "command": "mono test --unit",
+      "problemMatcher": [],
+      "presentation": {
+        "focus": true,
+        "panel": "shared",
+        "group": "test",
+        "showReuseMessage": false,
+        "clear": true
+      }
+    },
+    {
+      "label": "test:integration",
+      "type": "shell",
+      "command": "mono test --integration",
+      "problemMatcher": [],
+      "presentation": {
+        "focus": true,
+        "panel": "shared",
+        "group": "test",
+        "showReuseMessage": false,
+        "clear": true
+      }
+    },
+    {
+      "label": "test:watch",
+      "type": "shell",
+      "command": "mono test --watch",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "focus": true,
+        "panel": "shared",
+        "group": "test",
+        "showReuseMessage": false,
+        "clear": true
+      }
+    },
+
+    // ============================================================
+    // misc
+    // ============================================================
+    {
+      "label": "build",
+      "type": "shell",
+      "command": "mono build",
+      "problemMatcher": ["$tsc"],
+      "presentation": {
+        "focus": true,
+        "panel": "shared",
+        "group": "misc",
+        "showReuseMessage": false,
+        "clear": false
+      }
+    },
+    {
+      "label": "clean",
+      "type": "shell",
+      "command": "mono clean",
+      "problemMatcher": [],
+      "presentation": {
+        "focus": false,
+        "panel": "shared",
+        "group": "misc",
+        "showReuseMessage": false,
+        "clear": false
+      }
+    },
+    {
+      "label": "check",
+      "type": "shell",
+      "command": "mono check",
+      "problemMatcher": ["$tsc"],
+      "presentation": {
+        "focus": true,
+        "panel": "shared",
+        "group": "misc",
+        "showReuseMessage": false,
+        "clear": true
+      }
+    }
+  ]
+}
