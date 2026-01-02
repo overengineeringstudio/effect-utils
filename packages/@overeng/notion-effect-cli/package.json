@@ -1,5 +1,5 @@
 {
-  "name": "@overeng/notion-effect-schema-gen",
+  "name": "@overeng/notion-effect-cli",
   "version": "0.1.0",
   "type": "module",
   "private": true,
@@ -9,7 +9,7 @@
   "publishConfig": {
     "access": "public",
     "bin": {
-      "notion-effect-schema-gen": "./dist/cli.js"
+      "notion-effect-cli": "./dist/cli.js"
     },
     "exports": {
       ".": "./dist/mod.js"
