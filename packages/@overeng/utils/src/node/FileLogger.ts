@@ -1,7 +1,6 @@
 import * as fs from 'node:fs'
 import path from 'node:path'
 import util from 'node:util'
-import * as Array from 'effect/Array'
 import {
   Cause,
   Effect,
@@ -14,6 +13,7 @@ import {
   type LogLevel,
   LogSpan,
 } from 'effect'
+import * as EffectArray from 'effect/Array'
 
 export const makeFileLogger = (
   logFilePath: string,
@@ -121,83 +121,85 @@ export const prettyLoggerTty = (options: {
   readonly onLog?: (str: string) => void
 }) => {
   const color = options.colors ? withColor : withColorNoop
-  return Logger.make<unknown, string>(({ annotations, cause, date, fiberId, logLevel, message: message_, spans }) => {
-    let str = ''
+  return Logger.make<unknown, string>(
+    ({ annotations, cause, date, fiberId, logLevel, message: message_, spans }) => {
+      let str = ''
 
-    const log = (...inputs: any[]) => {
-      str += `${consoleLogToString(...inputs)}\n`
-      options.onLog?.(str)
-    }
-
-    const logIndented = (...inputs: any[]) => {
-      str += `${consoleLogToString(...inputs).replace(/^/gm, '  ')}\n`
-      options.onLog?.(str)
-    }
-
-    const message = Array.ensure(message_)
-
-    let firstLine =
-      color(`[${options.formatDate(date)}]`, colors.white) +
-      ` ${color(logLevel.label, ...logLevelColors[logLevel._tag])}` +
-      ` (${FiberId.threadName(fiberId)})`
-
-    if (List.isCons(spans)) {
-      const now = date.getTime()
-      const render = LogSpan.render(now)
-      for (const span of spans) {
-        firstLine += ` ${render(span)}`
+      const log = (...inputs: any[]) => {
+        str += `${consoleLogToString(...inputs)}\n`
+        options.onLog?.(str)
       }
-    }
 
-    firstLine += ':'
-    let messageIndex = 0
-    if (message.length > 0) {
-      const firstMaybeString = structuredMessage(message[0])
-      if (typeof firstMaybeString === 'string') {
-        firstLine += ` ${color(firstMaybeString, colors.bold, colors.cyan)}`
-        messageIndex++
+      const logIndented = (...inputs: any[]) => {
+        str += `${consoleLogToString(...inputs).replace(/^/gm, '  ')}\n`
+        options.onLog?.(str)
       }
-    }
 
-    log(firstLine)
+      const message = EffectArray.ensure(message_)
 
-    if (!Cause.isEmpty(cause)) {
-      logIndented(Cause.pretty(cause, { renderErrorCause: true }))
-    }
+      let firstLine =
+        color(`[${options.formatDate(date)}]`, colors.white) +
+        ` ${color(logLevel.label, ...logLevelColors[logLevel._tag])}` +
+        ` (${FiberId.threadName(fiberId)})`
 
-    if (messageIndex < message.length) {
-      for (; messageIndex < message.length; messageIndex++) {
-        const msg = message[messageIndex]
-        if (typeof msg === 'object' && msg !== null) {
-          logIndented(
-            util.inspect(structuredMessage(msg), {
-              depth: 3,
-              colors: false,
-              compact: false,
-              breakLength: 120,
-            }),
-          )
-        } else {
-          logIndented(Inspectable.redact(msg))
+      if (List.isCons(spans)) {
+        const now = date.getTime()
+        const render = LogSpan.render(now)
+        for (const span of spans) {
+          firstLine += ` ${render(span)}`
         }
       }
-    }
 
-    if (HashMap.size(annotations) > 0) {
-      for (const [key, value] of annotations) {
-        const formattedValue =
-          typeof value === 'object' && value !== null
-            ? util.inspect(structuredMessage(value), {
+      firstLine += ':'
+      let messageIndex = 0
+      if (message.length > 0) {
+        const firstMaybeString = structuredMessage(message[0])
+        if (typeof firstMaybeString === 'string') {
+          firstLine += ` ${color(firstMaybeString, colors.bold, colors.cyan)}`
+          messageIndex++
+        }
+      }
+
+      log(firstLine)
+
+      if (!Cause.isEmpty(cause)) {
+        logIndented(Cause.pretty(cause, { renderErrorCause: true }))
+      }
+
+      if (messageIndex < message.length) {
+        for (; messageIndex < message.length; messageIndex++) {
+          const msg = message[messageIndex]
+          if (typeof msg === 'object' && msg !== null) {
+            logIndented(
+              util.inspect(structuredMessage(msg), {
                 depth: 3,
                 colors: false,
                 compact: false,
                 breakLength: 120,
-              })
-            : Inspectable.redact(value)
-        logIndented(color(`${key}:`, colors.bold, colors.white), formattedValue)
+              }),
+            )
+          } else {
+            logIndented(Inspectable.redact(msg))
+          }
+        }
       }
-    }
 
-    return str
-  })
+      if (HashMap.size(annotations) > 0) {
+        for (const [key, value] of annotations) {
+          const formattedValue =
+            typeof value === 'object' && value !== null
+              ? util.inspect(structuredMessage(value), {
+                  depth: 3,
+                  colors: false,
+                  compact: false,
+                  breakLength: 120,
+                })
+              : Inspectable.redact(value)
+          logIndented(color(`${key}:`, colors.bold, colors.white), formattedValue)
+        }
+      }
+
+      return str
+    },
+  )
 }

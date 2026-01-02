@@ -2,7 +2,7 @@
 
 import { Command, Options } from '@effect/cli'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
-import { cmd, CurrentWorkingDirectory } from '@overeng/utils/node'
+import { CurrentWorkingDirectory, cmd } from '@overeng/utils/node'
 import { Cause, Console, Effect, Layer, Schema } from 'effect'
 
 const IS_CI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true'

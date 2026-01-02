@@ -56,7 +56,9 @@ describe('cmd helper', () => {
       expect(archives.length).toBe(1)
       const archivedPath = path.join(archiveDir, archives[0]!)
       const archivedLog = fs.readFileSync(archivedPath, 'utf8')
-      const archivedStdoutLines = archivedLog.split('\n').filter((line) => line.includes('[stdout]'))
+      const archivedStdoutLines = archivedLog
+        .split('\n')
+        .filter((line) => line.includes('[stdout]'))
       expect(archivedStdoutLines.length).toBeGreaterThan(0)
       for (const line of archivedStdoutLines) {
         expect(line).toContain('[stdout] first')

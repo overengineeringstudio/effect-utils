@@ -1,6 +1,6 @@
 import { FileSystem, Path } from '@effect/platform'
 import * as CommandExecutor from '@effect/platform/CommandExecutor'
-import { cmd, CurrentWorkingDirectory } from '@overeng/utils/node'
+import { CurrentWorkingDirectory, cmd } from '@overeng/utils/node'
 import { Effect } from 'effect'
 
 /**

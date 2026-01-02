@@ -50,7 +50,9 @@ export const cmd: (
   const cwd = yield* CurrentWorkingDirectory
 
   const asArray = Array.isArray(commandInput)
-  const parts = asArray ? (commandInput as (string | undefined)[]).filter(isNotUndefined) : undefined
+  const parts = asArray
+    ? (commandInput as (string | undefined)[]).filter(isNotUndefined)
+    : undefined
   const [command, ...args] = asArray ? (parts as string[]) : (commandInput as string).split(' ')
 
   const debugEnvStr = Object.entries(options?.env ?? {})
@@ -62,17 +64,19 @@ export const cmd: (
     ...(options?.logFileName ? { logFileName: options.logFileName } : {}),
     ...(options?.logRetention ? { logRetention: options.logRetention } : {}),
   } as const
-  const { input: finalInput, subshell: needsShell, logPath } = yield* applyLoggingToCommand(
-    commandInput,
-    loggingOpts,
-  )
+  const {
+    input: finalInput,
+    subshell: needsShell,
+    logPath,
+  } = yield* applyLoggingToCommand(commandInput, loggingOpts)
 
   const stdoutMode = options?.stdout ?? 'inherit'
   const stderrMode = options?.stderr ?? 'inherit'
   const useShell = (options?.shell ? true : false) || needsShell
 
   const commandDebugStr =
-    debugEnvStr + (Array.isArray(finalInput) ? (finalInput as string[]).join(' ') : (finalInput as string))
+    debugEnvStr +
+    (Array.isArray(finalInput) ? (finalInput as string[]).join(' ') : (finalInput as string))
   const subshellStr = useShell ? ' (in subshell)' : ''
 
   yield* Effect.logDebug(`Running '${commandDebugStr}' in '${cwd}'${subshellStr}`)
@@ -120,31 +124,34 @@ export const cmdText: (
     runInShell?: boolean
     env?: Record<string, string | undefined>
   },
-) => Effect.Effect<string, PlatformError, CommandExecutor.CommandExecutor | CurrentWorkingDirectory> =
-  Effect.fn('cmdText')(function* (commandInput, options) {
-    const cwd = yield* CurrentWorkingDirectory
-    const [command, ...args] = Array.isArray(commandInput)
-      ? commandInput.filter(isNotUndefined)
-      : commandInput.split(' ')
-    const debugEnvStr = Object.entries(options?.env ?? {})
-      .map(([key, value]) => `${key}='${value}' `)
-      .join('')
+) => Effect.Effect<
+  string,
+  PlatformError,
+  CommandExecutor.CommandExecutor | CurrentWorkingDirectory
+> = Effect.fn('cmdText')(function* (commandInput, options) {
+  const cwd = yield* CurrentWorkingDirectory
+  const [command, ...args] = Array.isArray(commandInput)
+    ? commandInput.filter(isNotUndefined)
+    : commandInput.split(' ')
+  const debugEnvStr = Object.entries(options?.env ?? {})
+    .map(([key, value]) => `${key}='${value}' `)
+    .join('')
 
-    const commandDebugStr = debugEnvStr + [command, ...args].join(' ')
-    const subshellStr = options?.runInShell ? ' (in subshell)' : ''
+  const commandDebugStr = debugEnvStr + [command, ...args].join(' ')
+  const subshellStr = options?.runInShell ? ' (in subshell)' : ''
 
-    yield* Effect.logDebug(`Running '${commandDebugStr}' in '${cwd}'${subshellStr}`)
-    yield* Effect.annotateCurrentSpan({ 'span.label': commandDebugStr, command, cwd })
+  yield* Effect.logDebug(`Running '${commandDebugStr}' in '${cwd}'${subshellStr}`)
+  yield* Effect.annotateCurrentSpan({ 'span.label': commandDebugStr, command, cwd })
 
-    return yield* Command.make(command!, ...args).pipe(
-      // inherit = Stream stderr to process.stderr, pipe = Stream stderr to process.stdout
-      Command.stderr(options?.stderr ?? 'inherit'),
-      Command.workingDirectory(cwd),
-      options?.runInShell ? Command.runInShell(true) : identity,
-      Command.env(options?.env ?? {}),
-      Command.string,
-    )
-  })
+  return yield* Command.make(command!, ...args).pipe(
+    // inherit = Stream stderr to process.stderr, pipe = Stream stderr to process.stdout
+    Command.stderr(options?.stderr ?? 'inherit'),
+    Command.workingDirectory(cwd),
+    options?.runInShell ? Command.runInShell(true) : identity,
+    Command.env(options?.env ?? {}),
+    Command.string,
+  )
+})
 
 export class CmdError extends Schema.TaggedError<CmdError>()('CmdError', {
   command: Schema.String,
@@ -163,7 +170,14 @@ type TRunBaseArgs = {
   readonly useShell: boolean
 }
 
-const runWithoutLogging = ({ commandInput, cwd, env, stdoutMode, stderrMode, useShell }: TRunBaseArgs) =>
+const runWithoutLogging = ({
+  commandInput,
+  cwd,
+  env,
+  stdoutMode,
+  stderrMode,
+  useShell,
+}: TRunBaseArgs) =>
   buildCommand(commandInput, useShell).pipe(
     Command.stdin('inherit'),
     Command.stdout(stdoutMode),
@@ -235,7 +249,9 @@ const runWithLogging = ({
       // Acquire/start the command and make sure we kill it on interruption.
       const runningProcess = yield* Effect.acquireRelease(command.pipe(Command.start), (proc) =>
         proc.isRunning.pipe(
-          Effect.flatMap((running) => (running ? proc.kill().pipe(Effect.catchAll(() => Effect.void)) : Effect.void)),
+          Effect.flatMap((running) =>
+            running ? proc.kill().pipe(Effect.catchAll(() => Effect.void)) : Effect.void,
+          ),
           Effect.ignore,
         ),
       )
@@ -265,7 +281,9 @@ const runWithLogging = ({
 
       // Dump any buffered data and finish both stream fibers before we return.
       const flushOutputs = Effect.gen(function* () {
-        const stillRunning = yield* runningProcess.isRunning.pipe(Effect.catchAll(() => Effect.succeed(false)))
+        const stillRunning = yield* runningProcess.isRunning.pipe(
+          Effect.catchAll(() => Effect.succeed(false)),
+        )
         if (stillRunning) {
           yield* Effect.ignore(runningProcess.kill())
         }
@@ -309,7 +327,10 @@ const makeStreamHandler = ({
 }: {
   readonly channel: 'stdout' | 'stderr'
   readonly mirrorTarget?: NodeJS.WriteStream
-  readonly appendLog: (args: { channel: 'stdout' | 'stderr'; content: string }) => Effect.Effect<void, never>
+  readonly appendLog: (args: {
+    channel: 'stdout' | 'stderr'
+    content: string
+  }) => Effect.Effect<void, never>
 }): TStreamHandler => {
   let buffer = ''
 
@@ -390,7 +411,10 @@ const emitSegment = ({
   readonly content: string
   readonly terminator: TLineTerminator
   readonly mirrorTarget?: NodeJS.WriteStream
-  readonly appendLog: (args: { channel: 'stdout' | 'stderr'; content: string }) => Effect.Effect<void, never>
+  readonly appendLog: (args: {
+    channel: 'stdout' | 'stderr'
+    content: string
+  }) => Effect.Effect<void, never>
 }) =>
   Effect.gen(function* () {
     if (mirrorTarget) {
@@ -402,7 +426,11 @@ const emitSegment = ({
     yield* appendLog({ channel, content: contentForLog })
   })
 
-const mirrorSegment = (target: NodeJS.WriteStream, content: string, terminator: TLineTerminator) => {
+const mirrorSegment = (
+  target: NodeJS.WriteStream,
+  content: string,
+  terminator: TLineTerminator,
+) => {
   switch (terminator) {
     case 'newline': {
       target.write(`${content}\n`)
