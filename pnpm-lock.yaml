@@ -183,44 +183,7 @@ importers:
         specifier: 'catalog:'
         version: 4.0.16(@types/node@25.0.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2)
 
-  packages/@overeng/notion-effect-client:
-    dependencies:
-      '@overeng/notion-effect-schema':
-        specifier: workspace:*
-        version: link:../notion-effect-schema
-    devDependencies:
-      '@effect/platform':
-        specifier: 'catalog:'
-        version: 0.94.1(effect@3.19.14)
-      '@effect/vitest':
-        specifier: 'catalog:'
-        version: 0.27.0(effect@3.19.14)(vitest@4.0.16(@types/node@25.0.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2))
-      '@types/node':
-        specifier: 'catalog:'
-        version: 25.0.3
-      effect:
-        specifier: 'catalog:'
-        version: 3.19.14
-      vitest:
-        specifier: 'catalog:'
-        version: 4.0.16(@types/node@25.0.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2)
-
-  packages/@overeng/notion-effect-schema:
-    devDependencies:
-      '@effect/vitest':
-        specifier: 'catalog:'
-        version: 0.27.0(effect@3.19.14)(vitest@4.0.16(@types/node@25.0.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2))
-      '@types/node':
-        specifier: 'catalog:'
-        version: 25.0.3
-      effect:
-        specifier: 'catalog:'
-        version: 3.19.14
-      vitest:
-        specifier: 'catalog:'
-        version: 4.0.16(@types/node@25.0.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2)
-
-  packages/@overeng/notion-effect-schema-gen:
+  packages/@overeng/notion-effect-cli:
     dependencies:
       '@effect/cli':
         specifier: 'catalog:'
@@ -262,6 +225,43 @@ importers:
         specifier: workspace:*
         version: link:../notion-effect-schema
     devDependencies:
+      effect:
+        specifier: 'catalog:'
+        version: 3.19.14
+      vitest:
+        specifier: 'catalog:'
+        version: 4.0.16(@types/node@25.0.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2)
+
+  packages/@overeng/notion-effect-client:
+    dependencies:
+      '@overeng/notion-effect-schema':
+        specifier: workspace:*
+        version: link:../notion-effect-schema
+    devDependencies:
+      '@effect/platform':
+        specifier: 'catalog:'
+        version: 0.94.1(effect@3.19.14)
+      '@effect/vitest':
+        specifier: 'catalog:'
+        version: 0.27.0(effect@3.19.14)(vitest@4.0.16(@types/node@25.0.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2))
+      '@types/node':
+        specifier: 'catalog:'
+        version: 25.0.3
+      effect:
+        specifier: 'catalog:'
+        version: 3.19.14
+      vitest:
+        specifier: 'catalog:'
+        version: 4.0.16(@types/node@25.0.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2)
+
+  packages/@overeng/notion-effect-schema:
+    devDependencies:
+      '@effect/vitest':
+        specifier: 'catalog:'
+        version: 0.27.0(effect@3.19.14)(vitest@4.0.16(@types/node@25.0.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2))
+      '@types/node':
+        specifier: 'catalog:'
+        version: 25.0.3
       effect:
         specifier: 'catalog:'
         version: 3.19.14
