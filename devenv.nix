@@ -17,6 +17,6 @@
 
   enterShell = ''
     export WORKSPACE_ROOT="$PWD"
-    export PATH="$WORKSPACE_ROOT/node_modules/.bin:$PATH"
+    export PATH="$WORKSPACE_ROOT/scripts/bin:$WORKSPACE_ROOT/node_modules/.bin:$PATH"
   '';
 }
