@@ -1,37 +1,36 @@
 #!/usr/bin/env bun
 
-import { spawn } from 'node:child_process'
 import { Command, Options } from '@effect/cli'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
-import { Cause, Console, Effect, Schema } from 'effect'
+import { cmd, CurrentWorkingDirectory } from '@overeng/utils/node'
+import { Cause, Console, Effect, Layer, Schema } from 'effect'
 
-const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT ?? process.cwd()
 const IS_CI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true'
 
 // -----------------------------------------------------------------------------
 // Helpers
 // -----------------------------------------------------------------------------
 
-const runCommand = (cmd: string, args: string[], options?: { cwd?: string }) =>
-  Effect.tryPromise({
-    try: () =>
-      new Promise<void>((resolve, reject) => {
-        const proc = spawn(cmd, args, {
-          cwd: options?.cwd ?? WORKSPACE_ROOT,
-          stdio: 'inherit',
-          shell: true,
-        })
-        proc.on('close', (code) => {
-          if (code === 0) resolve()
-          else reject(new Error(`Command "${cmd} ${args.join(' ')}" exited with code ${code}`))
-        })
-        proc.on('error', reject)
-      }),
-    catch: (error) =>
-      new CommandError({
-        command: `${cmd} ${args.join(' ')}`,
-        message: error instanceof Error ? error.message : String(error),
-      }),
+const formatCommandErrorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error)
+
+const runCommand = (command: string, args: string[], options?: { cwd?: string }) =>
+  Effect.gen(function* () {
+    const defaultCwd = process.env.WORKSPACE_ROOT ?? (yield* CurrentWorkingDirectory)
+    const cwd = options?.cwd ?? defaultCwd
+
+    return yield* cmd([command, ...args], { shell: true }).pipe(
+      Effect.provide(CurrentWorkingDirectory.fromPath(cwd)),
+      Effect.asVoid,
+      Effect.catchAll((error) =>
+        Effect.fail(
+          new CommandError({
+            command: `${command} ${args.join(' ')}`,
+            message: formatCommandErrorMessage(error),
+          }),
+        ),
+      ),
+    )
   })
 
 const ciGroup = (name: string) =>
@@ -289,6 +288,6 @@ cli(process.argv).pipe(
     }
     return Effect.logError(cause)
   }),
-  Effect.provide(NodeContext.layer),
+  Effect.provide(Layer.mergeAll(NodeContext.layer, CurrentWorkingDirectory.live)),
   NodeRuntime.runMain({ disableErrorReporting: true }),
 )

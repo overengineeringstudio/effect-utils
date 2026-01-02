@@ -33,7 +33,8 @@
     "@effect/workflow": "catalog:",
     "@effect/rpc": "catalog:",
     "@overeng/notion-effect-client": "workspace:*",
-    "@overeng/notion-effect-schema": "workspace:*"
+    "@overeng/notion-effect-schema": "workspace:*",
+    "@overeng/utils": "workspace:*"
   },
   "peerDependencies": {
     "effect": "catalog:"
