@@ -9,6 +9,7 @@ import type {
   NumberFormat,
   PropertySchema,
   PropertySchemaTag,
+  RollupFunction,
   SelectOptionConfig,
   StatusGroupConfig,
 } from '@overeng/notion-effect-schema'
@@ -49,7 +50,7 @@ export interface RollupConfig {
   readonly relation_property_id: string
   readonly rollup_property_name: string
   readonly rollup_property_id: string
-  readonly function: string
+  readonly function: RollupFunction
 }
 
 /** Formula configuration */

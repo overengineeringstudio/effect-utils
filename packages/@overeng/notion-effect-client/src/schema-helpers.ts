@@ -2,6 +2,7 @@ import type {
   DatabaseSchema,
   NumberFormat,
   PropertySchema,
+  RollupFunction,
   SelectOptionConfig,
 } from '@overeng/notion-effect-schema'
 import { PropertySchema as PropertySchemaCodec } from '@overeng/notion-effect-schema'
@@ -10,6 +11,29 @@ import { Array as Arr, Option, Order, Schema } from 'effect'
 // -----------------------------------------------------------------------------
 // Property Parsing
 // -----------------------------------------------------------------------------
+
+const isRecord = (u: unknown): u is Record<string, unknown> =>
+  typeof u === 'object' && u !== null && !Array.isArray(u)
+
+const normalizeDatabasePropertyDefinition = (args: {
+  name: string
+  raw: unknown
+}): Option.Option<Record<string, unknown>> => {
+  if (!isRecord(args.raw)) {
+    return Option.none()
+  }
+
+  const typeValue = args.raw.type
+  if (typeof typeValue !== 'string') {
+    return Option.none()
+  }
+
+  return Option.some({
+    ...args.raw,
+    name: args.name,
+    _tag: typeValue,
+  })
+}
 
 /**
  * Parse raw database properties into typed PropertySchema array.
@@ -21,13 +45,17 @@ export const getProperties = (args: { schema: DatabaseSchema }): PropertySchema[
   const results: PropertySchema[] = []
 
   for (const [name, rawValue] of Object.entries(rawProperties)) {
-    const raw = rawValue as Record<string, unknown>
-    const withName = { ...raw, name }
-
-    const decoded = Schema.decodeUnknownOption(PropertySchemaCodec)(withName)
-    if (Option.isSome(decoded)) {
-      results.push(decoded.value)
+    const normalized = normalizeDatabasePropertyDefinition({ name, raw: rawValue })
+    if (Option.isNone(normalized)) {
+      continue
     }
+
+    const decoded = Schema.decodeUnknownOption(PropertySchemaCodec)(normalized.value)
+    if (Option.isNone(decoded)) {
+      continue
+    }
+
+    results.push(decoded.value)
   }
 
   return Arr.sort(
@@ -56,9 +84,11 @@ export const getPropertyByTag = <TTag extends PropertySchema['_tag']>(args: {
   tag: TTag
 }): Option.Option<Extract<PropertySchema, { _tag: TTag }>> => {
   const prop = getProperty({ schema: args.schema, name: args.name })
-  return Option.flatMap(prop, (p) =>
-    p._tag === args.tag ? Option.some(p as Extract<PropertySchema, { _tag: TTag }>) : Option.none(),
-  )
+
+  const hasTag = (p: PropertySchema): p is Extract<PropertySchema, { _tag: TTag }> =>
+    p._tag === args.tag
+
+  return Option.flatMap(prop, (p) => (hasTag(p) ? Option.some(p) : Option.none()))
 }
 
 // -----------------------------------------------------------------------------
@@ -195,7 +225,7 @@ export interface RollupConfig {
   readonly relationPropertyId: string
   readonly rollupPropertyName: string
   readonly rollupPropertyId: string
-  readonly function: string
+  readonly function: RollupFunction
 }
 
 /**
