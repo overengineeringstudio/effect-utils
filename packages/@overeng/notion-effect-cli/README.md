@@ -289,7 +289,7 @@ import {
   introspectDatabase,
   generateSchemaCode,
   formatCode,
-} from '@overeng/notion-effect-schema-gen'
+} from '@overeng/notion-effect-cli'
 
 const program = Effect.gen(function* () {
   const dbInfo = yield* introspectDatabase('abc123...')
