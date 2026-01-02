@@ -19,7 +19,10 @@ export {
   type SelectColor,
   SelectColor as SelectColorSchema,
 } from './common.ts'
-// Object schemas (Database, Page, Block)
+
+// Object schemas (DatabaseSchema, Page, Block)
+// NOTE: ExternalFile, FileObject, NotionFile are intentionally not re-exported
+// from objects.ts as they conflict with properties/reference.ts exports
 export {
   type Block,
   Block as BlockSchema,
@@ -29,29 +32,27 @@ export {
   BlockType as BlockTypeSchema,
   type CustomEmojiIcon,
   CustomEmojiIcon as CustomEmojiIconSchema,
-  type Database,
-  Database as DatabaseSchema,
   type DatabaseParent,
   DatabaseParent as DatabaseParentSchema,
+  DatabaseSchema,
   type DataSource,
   DataSource as DataSourceSchema,
   type EmojiIcon,
   EmojiIcon as EmojiIconSchema,
-  type ExternalFile,
-  ExternalFile as ExternalFileSchema,
-  type FileObject,
-  FileObject as FileObjectSchema,
   type Icon,
   Icon as IconSchema,
-  type NotionFile,
-  NotionFile as NotionFileSchema,
   type Page,
   Page as PageSchema,
   type PageParent,
   PageParent as PageParentSchema,
 } from './objects.ts'
-// Property schemas
+
+// Property schemas (page property values)
 export * from './properties/mod.ts'
+
+// Property schemas (database property definitions)
+export * from './property-schema.ts'
+
 // Rich text schemas
 export {
   type DatabaseMention,
@@ -88,8 +89,10 @@ export {
   type UserMention,
   UserMention as UserMentionSchema,
 } from './rich-text.ts'
+
 // Rich text utilities
 export { RichTextUtils, toHtml, toMarkdown, toPlainText } from './rich-text-utils.ts'
+
 // User schemas
 export {
   type Bot,

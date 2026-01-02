@@ -165,11 +165,12 @@ export const DataSource = Schema.Struct({
 export type DataSource = typeof DataSource.Type
 
 /**
- * Notion Database object.
+ * Notion Database schema/metadata object.
+ * Represents the structure and configuration of a database, not its contents.
  *
  * @see https://developers.notion.com/reference/database
  */
-export const Database = Schema.Struct({
+export const DatabaseSchema = Schema.Struct({
   object: Schema.Literal('database'),
   id: NotionUUID,
   created_time: ISO8601DateTime,
@@ -191,11 +192,11 @@ export const Database = Schema.Struct({
   /** Property schema definitions - moved to data source level but may still appear */
   properties: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
 }).annotations({
-  identifier: 'Notion.Database',
+  identifier: 'Notion.DatabaseSchema',
   [docsPath]: 'database',
 })
 
-export type Database = typeof Database.Type
+export type DatabaseSchema = typeof DatabaseSchema.Type
 
 // -----------------------------------------------------------------------------
 // Page Object

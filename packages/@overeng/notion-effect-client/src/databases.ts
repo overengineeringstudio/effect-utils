@@ -1,5 +1,6 @@
 import type { HttpClient } from '@effect/platform'
-import { DatabaseSchema, type Page, PageSchema } from '@overeng/notion-effect-schema'
+import type { Page } from '@overeng/notion-effect-schema'
+import { DatabaseSchema, PageSchema } from '@overeng/notion-effect-schema'
 import { Chunk, Effect, Option, type Schema, Stream } from 'effect'
 import type { NotionConfig } from './config.ts'
 import type { NotionApiError } from './error.ts'

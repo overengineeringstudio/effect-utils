@@ -253,7 +253,7 @@ const checkCommand = Command.make('check', {}, () =>
     yield* ciGroupEnd
 
     yield* ciGroup('Running tests')
-    yield* runCommand('pnpm', ['-r', 'test', '--', 'run'])
+    yield* runCommand('pnpm', ['-r', 'test'])
     yield* ciGroupEnd
 
     yield* Console.log('\n✓ All checks passed')

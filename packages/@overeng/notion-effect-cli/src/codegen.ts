@@ -287,7 +287,13 @@ const generateTypedOptions = (
     .map((o) => sanitizeLiteralValue(o.name))
     .join(', ')
 
-  const code = `export const ${typeName} = Schema.Literal(${literals})\nexport type ${typeName} = typeof ${typeName}.Type`
+  const descPart = property.description
+    ? `,\n  description: ${toSingleQuotedStringLiteral(property.description)},`
+    : ''
+  const code = `export const ${typeName} = Schema.Literal(${literals}).annotations({
+  identifier: '${typeName}'${descPart}
+})
+export type ${typeName} = typeof ${typeName}.Type`
 
   return { typeName, code }
 }
@@ -363,8 +369,9 @@ export function generateSchemaCode(
     .map((prop) => {
       const key = sanitizePropertyKey(prop.name)
       const field = generatePropertyField(prop, transforms)
-      const comment = prop.description ? ` // ${sanitizeLineComment(prop.description)}` : ''
-      return `  ${key}: ${field},${comment}`
+      // Add JSDoc comment if description is available
+      const jsdoc = prop.description ? `  /** ${sanitizeLineComment(prop.description)} */\n` : ''
+      return `${jsdoc}  ${key}: ${field},`
     })
     .join('\n')
 
@@ -375,7 +382,11 @@ export function generateSchemaCode(
           const writeField = generateWritePropertyField(prop)
           if (!writeField) return null
           const key = sanitizePropertyKey(prop.name)
-          return `  ${key}: ${writeField},`
+          // Add JSDoc comment if description is available
+          const jsdoc = prop.description
+            ? `  /** ${sanitizeLineComment(prop.description)} */\n`
+            : ''
+          return `${jsdoc}  ${key}: ${writeField},`
         })
         .filter(Boolean)
         .join('\n')
@@ -424,6 +435,9 @@ export function generateSchemaCode(
   lines.push(` */`)
   lines.push(`export const ${pascalName}PageProperties = Schema.Struct({`)
   lines.push(readPropertyFields)
+  lines.push(`}).annotations({`)
+  lines.push(`  identifier: '${pascalName}PageProperties',`)
+  lines.push(`  description: 'Read schema for ${dbInfo.name} database pages',`)
   lines.push(`})`)
   lines.push(``)
   lines.push(`export type ${pascalName}PageProperties = typeof ${pascalName}PageProperties.Type`)
@@ -457,6 +471,9 @@ export function generateSchemaCode(
     lines.push(` */`)
     lines.push(`export const ${pascalName}PageWrite = Schema.Struct({`)
     lines.push(writePropertyFields)
+    lines.push(`}).annotations({`)
+    lines.push(`  identifier: '${pascalName}PageWrite',`)
+    lines.push(`  description: 'Write schema for ${dbInfo.name} database pages',`)
     lines.push(`})`)
     lines.push(``)
     lines.push(`export type ${pascalName}PageWrite = typeof ${pascalName}PageWrite.Type`)
