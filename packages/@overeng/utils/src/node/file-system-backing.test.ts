@@ -39,7 +39,8 @@ const makeNodeFsLayer = (): Layer.Layer<FileSystem.FileSystem | Path.Path> => {
     realPath: () => Effect.die('not implemented'),
     remove: (filePath: string) =>
       Effect.sync(() => fs.rmSync(filePath, { recursive: true, force: true })),
-    rename: (oldPath: string, newPath: string) => Effect.sync(() => fs.renameSync(oldPath, newPath)),
+    rename: (oldPath: string, newPath: string) =>
+      Effect.sync(() => fs.renameSync(oldPath, newPath)),
     sink: () => Effect.die('not implemented'),
     stat: () => Effect.die('not implemented'),
     stream: () => Effect.die('not implemented'),
