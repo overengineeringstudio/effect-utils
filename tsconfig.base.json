@@ -22,7 +22,19 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "plugins": [
+      {
+        "name": "@effect/language-service",
+        "reportSuggestionsAsWarningsInTsc": true,
+        "pipeableMinArgCount": 2,
+        "diagnosticSeverity": {
+          "missedPipeableOpportunity": "suggestion",
+          "schemaUnionOfLiterals": "warning",
+          "anyUnknownInErrorContext": "warning"
+        }
+      }
+    ]
   },
   "exclude": ["node_modules", "dist"]
 }

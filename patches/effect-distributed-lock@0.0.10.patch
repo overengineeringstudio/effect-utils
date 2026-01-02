@@ -1,0 +1,77 @@
+diff --git a/package.json b/package.json
+index d6a7cfa5b885dd6681acb736b04c26e838347f1d..edc64f8e1225937a0be3d95f8042fb3191ea2e49 100644
+--- a/package.json
++++ b/package.json
+@@ -17,7 +17,11 @@
+     "check": "tsc --noEmit"
+   },
+   "exports": {
+-    ".": "./dist/index.js"
++    ".": {
++      "types": "./src/index.ts",
++      "import": "./src/index.ts",
++      "default": "./src/index.ts"
++    }
+   },
+   "devDependencies": {
+     "@types/bun": "latest",
+diff --git a/src/Backing.ts b/src/Backing.ts
+index 719e578bf82c0219709ed9122c18dc01a9c5b481..52ad99f4a6405c5cea31d9978dbe2fff0f21b2ca 100644
+--- a/src/Backing.ts
++++ b/src/Backing.ts
+@@ -13,7 +13,7 @@ export class SemaphoreBackingError extends Data.TaggedError(
+   readonly operation: string;
+   readonly cause: unknown;
+ }> {
+-  get message() {
++  override get message() {
+     return `Backing store error during "${this.operation}": ${this.cause}`;
+   }
+ }
+diff --git a/src/DistributedSemaphore.ts b/src/DistributedSemaphore.ts
+index 893ee7ff367b69170718a694b6e3503fdb57ad63..848a5b307bc75d57d702aedab767a2de5ce70d29 100644
+--- a/src/DistributedSemaphore.ts
++++ b/src/DistributedSemaphore.ts
+@@ -378,7 +378,7 @@ export const make = (
+         const identifier = options?.identifier ?? crypto.randomUUID();
+         const resolvedOptions: AcquireOptions = {
+           identifier,
+-          acquiredExternally: options?.acquiredExternally,
++          acquiredExternally: options?.acquiredExternally ?? false,
+         };
+ 
+         // We use a semaphore to ensure that only one acquire attempt is made at a time.
+diff --git a/src/Errors.ts b/src/Errors.ts
+index a1417268542acd0351f9210876b0cb40db63a205..88b203e2ab877c28aeedc0682147271a538bc07d 100644
+--- a/src/Errors.ts
++++ b/src/Errors.ts
+@@ -6,7 +6,7 @@ import { Data } from "effect";
+ export class LockLostError extends Data.TaggedError("LockLostError")<{
+   readonly key: string;
+ }> {
+-  get message() {
++  override get message() {
+     return `Permits for "${this.key}" were lost (TTL expired or taken by another holder)`;
+   }
+ }
+@@ -19,7 +19,7 @@ export class LockNotAcquiredError extends Data.TaggedError(
+ )<{
+   readonly key: string;
+ }> {
+-  get message() {
++  override get message() {
+     return `Lock for "${this.key}" was not acquired`;
+   }
+ }
+diff --git a/src/index.ts b/src/index.ts
+index b9b7a917ac9a80f349a56ea8c486c5e8bcaa22b1..1e98c9ee9241cc51e39050af6855ad167a1342fe 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -57,5 +57,5 @@ export * as DistributedSemaphore from "./DistributedSemaphore.js";
+ // Errors
+ export { LockLostError } from "./Errors.js";
+ 
+-// Redis backing
+-export * as RedisBacking from "./RedisBacking.js";
++// Redis backing (optional, requires ioredis)
++// export * as RedisBacking from "./RedisBacking.js";

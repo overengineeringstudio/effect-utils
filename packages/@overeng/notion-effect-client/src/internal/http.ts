@@ -193,7 +193,7 @@ export const executeRequest = <A, I, R>(
 
       if (response.status >= 400) {
         const error = yield* parseErrorResponse(response, `${NOTION_API_BASE_URL}${path}`, method)
-        return yield* Effect.fail(error)
+        return yield* error
       }
 
       const json = yield* response.json.pipe(
@@ -232,7 +232,7 @@ export const executeRequest = <A, I, R>(
       const error = result.left
 
       if (!error.isRetryable || retries >= maxRetries) {
-        return yield* Effect.fail(error)
+        return yield* error
       }
 
       const retryAfterMs = Option.match(error.retryAfterSeconds, {

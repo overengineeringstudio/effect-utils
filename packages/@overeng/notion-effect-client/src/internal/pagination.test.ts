@@ -1,5 +1,5 @@
 import { describe, it } from '@effect/vitest'
-import { Effect, Option, Stream } from 'effect'
+import { Effect, Option, Schema, Stream } from 'effect'
 import { expect } from 'vitest'
 import {
   type PaginatedResponse,
@@ -7,6 +7,13 @@ import {
   paginationParams,
   toPaginatedResult,
 } from './pagination.ts'
+
+class PaginationNetworkError extends Schema.TaggedError<PaginationNetworkError>()(
+  'PaginationNetworkError',
+  {
+    message: Schema.String,
+  },
+) {}
 
 describe('paginationParams', () => {
   it.effect('returns empty object when no options provided', () =>
@@ -183,12 +190,14 @@ describe('paginatedStream', () => {
 
   it.effect('propagates errors from fetch function', () =>
     Effect.gen(function* () {
-      const stream = paginatedStream((_cursor) => Effect.fail(new Error('Network error')))
+      const stream = paginatedStream((_cursor) =>
+        Effect.fail(new PaginationNetworkError({ message: 'Network error' })),
+      )
 
       const result = yield* Stream.runCollect(stream).pipe(Effect.flip)
 
-      expect(result).toBeInstanceOf(Error)
-      expect((result as Error).message).toBe('Network error')
+      expect(result._tag).toBe('PaginationNetworkError')
+      expect(result.message).toBe('Network error')
     }),
   )
 

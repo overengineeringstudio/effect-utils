@@ -16,7 +16,7 @@ import {
 
 /** Search result can be a page or database - allows any additional properties */
 const SearchResultSchema = Schema.Struct({
-  object: Schema.Union(Schema.Literal('page'), Schema.Literal('database')),
+  object: Schema.Literal('page', 'database'),
   id: Schema.String,
 }).annotations({ identifier: 'SearchResult' })
 
