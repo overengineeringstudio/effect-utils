@@ -1,11 +1,11 @@
-# @overeng/notion-effect-schema-gen
+# @overeng/notion-effect-cli
 
 CLI and library for generating type-safe [Effect](https://effect.website) schemas from Notion databases.
 
 ## Installation
 
 ```bash
-pnpm add @overeng/notion-effect-schema-gen
+pnpm add @overeng/notion-effect-cli
 ```
 
 ## Quick Start
@@ -22,7 +22,7 @@ pnpm add @overeng/notion-effect-schema-gen
 export NOTION_TOKEN="secret_..."
 
 # Generate schema for a database
-notion-effect-schema-gen generate <database-id> -o ./src/schemas/tasks.ts
+notion-effect-cli generate <database-id> -o ./src/schemas/tasks.ts
 ```
 
 This produces a fully typed Effect schema that works with `@overeng/notion-effect-client`:
@@ -48,7 +48,7 @@ export type TasksPageProperties = typeof TasksPageProperties.Type
 Generate a schema from a single database:
 
 ```bash
-notion-effect-schema-gen generate <database-id> -o <output-file> [options]
+notion-effect-cli generate <database-id> -o <output-file> [options]
 ```
 
 | Option | Description |
@@ -67,7 +67,7 @@ notion-effect-schema-gen generate <database-id> -o <output-file> [options]
 Inspect a database's schema:
 
 ```bash
-notion-effect-schema-gen introspect <database-id>
+notion-effect-cli introspect <database-id>
 ```
 
 Outputs property names, types, and available options.
@@ -77,7 +77,7 @@ Outputs property names, types, and available options.
 Generate schemas for multiple databases from a config file:
 
 ```bash
-notion-effect-schema-gen generate-config [-c <config-file>]
+notion-effect-cli generate-config [-c <config-file>]
 ```
 
 ### `diff`
@@ -85,13 +85,13 @@ notion-effect-schema-gen generate-config [-c <config-file>]
 Detect schema drift between a live Notion database and an existing generated schema file:
 
 ```bash
-notion-effect-schema-gen diff <database-id> --file ./src/schemas/tasks.ts
+notion-effect-cli diff <database-id> --file ./src/schemas/tasks.ts
 ```
 
 Use `--exit-code` to exit with code `1` when differences are found (useful for CI):
 
 ```bash
-notion-effect-schema-gen diff <database-id> --file ./src/schemas/tasks.ts --exit-code
+notion-effect-cli diff <database-id> --file ./src/schemas/tasks.ts --exit-code
 ```
 
 Example output:
@@ -172,7 +172,7 @@ program.pipe(Effect.provide(MainLayer), Effect.runPromise)
 When using `--include-api`, a typed API module is generated alongside the schema:
 
 ```bash
-notion-effect-schema-gen generate <db-id> -o ./src/schemas/tasks.ts --include-api
+notion-effect-cli generate <db-id> -o ./src/schemas/tasks.ts --include-api
 ```
 
 This creates `tasks.ts` (schema) and `tasks.api.ts` (API wrapper):

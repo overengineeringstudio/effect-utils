@@ -14,7 +14,7 @@ import * as FileSystemBacking from './file-system-backing.ts'
  * dependency issues with @effect/rpc.
  */
 const makeNodeFsLayer = (): Layer.Layer<FileSystem.FileSystem | Path.Path> => {
-  const nodeFs: FileSystem.FileSystem = {
+  const nodeFs = {
     access: () => Effect.void,
     chmod: () => Effect.void,
     chown: () => Effect.void,
@@ -23,21 +23,24 @@ const makeNodeFsLayer = (): Layer.Layer<FileSystem.FileSystem | Path.Path> => {
     exists: (filePath: string) => Effect.sync(() => fs.existsSync(filePath)),
     link: () => Effect.void,
     makeDirectory: (dirPath: string, options?: { recursive?: boolean }) =>
-      Effect.try(() => fs.mkdirSync(dirPath, { recursive: options?.recursive ?? false })),
+      Effect.sync(() => {
+        fs.mkdirSync(dirPath, { recursive: options?.recursive ?? false })
+      }),
     makeTempDirectory: (options?: { prefix?: string }) =>
       Effect.sync(() => fs.mkdtempSync(path.join(os.tmpdir(), options?.prefix ?? 'effect-'))),
-    makeTempDirectoryScoped: () => Effect.void,
+    makeTempDirectoryScoped: () => Effect.die('not implemented'),
     makeTempFile: () => Effect.die('not implemented'),
     makeTempFileScoped: () => Effect.die('not implemented'),
     open: () => Effect.die('not implemented'),
-    readDirectory: (dirPath: string) => Effect.try(() => fs.readdirSync(dirPath)),
-    readFile: (filePath: string) => Effect.try(() => new Uint8Array(fs.readFileSync(filePath))),
-    readFileString: (filePath: string) => Effect.try(() => fs.readFileSync(filePath, 'utf-8')),
+    readDirectory: (dirPath: string) => Effect.sync(() => fs.readdirSync(dirPath)),
+    readFile: (filePath: string) => Effect.sync(() => new Uint8Array(fs.readFileSync(filePath))),
+    readFileString: (filePath: string) => Effect.sync(() => fs.readFileSync(filePath, 'utf-8')),
     readLink: () => Effect.die('not implemented'),
     realPath: () => Effect.die('not implemented'),
     remove: (filePath: string) =>
-      Effect.try(() => fs.rmSync(filePath, { recursive: true, force: true })),
-    rename: (oldPath: string, newPath: string) => Effect.try(() => fs.renameSync(oldPath, newPath)),
+      Effect.sync(() => fs.rmSync(filePath, { recursive: true, force: true })),
+    rename: (oldPath: string, newPath: string) =>
+      Effect.sync(() => fs.renameSync(oldPath, newPath)),
     sink: () => Effect.die('not implemented'),
     stat: () => Effect.die('not implemented'),
     stream: () => Effect.die('not implemented'),
@@ -47,25 +50,26 @@ const makeNodeFsLayer = (): Layer.Layer<FileSystem.FileSystem | Path.Path> => {
     watch: () => Effect.die('not implemented'),
     writeFile: () => Effect.void,
     writeFileString: (filePath: string, content: string) =>
-      Effect.try(() => fs.writeFileSync(filePath, content)),
+      Effect.sync(() => fs.writeFileSync(filePath, content)),
   } as FileSystem.FileSystem
 
-  const nodePath: Path.Path = {
-    basename: (filePath, suffix) => path.basename(filePath, suffix),
-    dirname: (filePath) => path.dirname(filePath),
-    extname: (filePath) => path.extname(filePath),
-    fromFileUrl: (url) => new URL(url).pathname,
-    isAbsolute: (filePath) => path.isAbsolute(filePath),
-    join: (...paths) => path.join(...paths),
-    normalize: (filePath) => path.normalize(filePath),
-    parse: (filePath) => path.parse(filePath),
-    relative: (from, to) => path.relative(from, to),
-    resolve: (...paths) => path.resolve(...paths),
+  const nodePath = {
+    [Path.TypeId]: Path.TypeId,
+    basename: (filePath: string, suffix?: string) => path.basename(filePath, suffix),
+    dirname: (filePath: string) => path.dirname(filePath),
+    extname: (filePath: string) => path.extname(filePath),
+    fromFileUrl: (url: URL) => Effect.sync(() => new URL(url).pathname),
+    isAbsolute: (filePath: string) => path.isAbsolute(filePath),
+    join: (...paths: string[]) => path.join(...paths),
+    normalize: (filePath: string) => path.normalize(filePath),
+    parse: (filePath: string) => path.parse(filePath),
+    relative: (from: string, to: string) => path.relative(from, to),
+    resolve: (...paths: string[]) => path.resolve(...paths),
     sep: path.sep,
-    toFileUrl: (filePath) => `file://${filePath}`,
-    toNamespacedPath: (filePath) => filePath,
-    format: (pathObject) => path.format(pathObject),
-  }
+    toFileUrl: (filePath: string) => Effect.sync(() => new URL(`file://${filePath}`)),
+    toNamespacedPath: (filePath: string) => filePath,
+    format: (pathObject: Partial<path.ParsedPath>) => path.format(pathObject),
+  } as Path.Path
 
   return Layer.mergeAll(
     Layer.succeed(FileSystem.FileSystem, nodeFs),

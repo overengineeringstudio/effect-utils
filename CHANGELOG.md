@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Renamed **@overeng/notion-effect-schema-gen** to **@overeng/notion-effect-cli** to support more general-purpose CLI functionality
+  - Binary name changed from `notion-effect-schema-gen` to `notion-effect-cli`
+  - All commands remain the same: `generate`, `introspect`, `generate-config`, `diff`
+
 ### Added
 
 - **Monorepo CLI**: Added `mono` CLI for streamlined development workflow
@@ -43,11 +49,11 @@ All notable changes to this project will be documented in this file.
 
 ### Documentation
 
-- **@overeng/notion-effect-schema-gen**: Added comprehensive README with usage examples for CLI and programmatic API
+- **@overeng/notion-effect-cli**: Added comprehensive README with usage examples for CLI and programmatic API
 
 ### Added
 
-- **@overeng/notion-effect-schema-gen**: `diff` command for detecting schema drift
+- **@overeng/notion-effect-cli**: `diff` command for detecting schema drift
   - Compares current Notion database schema against an existing generated TypeScript file
   - Reports added properties (new in Notion), removed properties (no longer in Notion), and type changes
   - `--file` / `-f`: Path to existing generated schema file (required)
@@ -63,7 +69,7 @@ All notable changes to this project will be documented in this file.
   - `NotionPages.retrieve()`: Now accepts optional `schema` parameter for typed retrieval
   - All methods return `TypedPage<T>` when schema is provided, with `id`, `createdTime`, `url`, `properties`, and `_raw` access
 
-- **@overeng/notion-effect-schema-gen**: Database API wrapper generation
+- **@overeng/notion-effect-cli**: Database API wrapper generation
   - `--include-api` / `-a` flag: Generate typed database API wrapper alongside schema
   - Generated API file includes:
     - `query()`: Stream-based query with auto-pagination
@@ -81,9 +87,9 @@ All notable changes to this project will be documented in this file.
   - Block objects now correctly retain their type-specific data (e.g., `block.paragraph`, `block.heading_1`)
   - Previously, decoding would strip these properties, breaking markdown conversion and block helpers
 - **@overeng/notion-effect-client**: Removed yieldable-error `Effect.fail` usage and simplified search result literal schema
-- **@overeng/notion-effect-schema-gen**: Replaced global `Error` failures with tagged config/token errors
+- **@overeng/notion-effect-cli**: Replaced global `Error` failures with tagged config/token errors
 
-- **@overeng/notion-effect-schema-gen**: Critical fixes to generated schema code
+- **@overeng/notion-effect-cli**: Critical fixes to generated schema code
   - Fixed import references to use correct transform namespaces (e.g., `Title`, `Select`, `Num` instead of `TitleProperty`, `SelectProperty`, `NumberProperty`)
   - Fixed write schema generation to use nested Write APIs (e.g., `Title.Write.fromString` instead of `TitleWriteFromString`)
   - Generated schemas now correctly work with `@overeng/notion-effect-schema` package
@@ -131,7 +137,7 @@ All notable changes to this project will be documented in this file.
   - Tailwind CSS styling with design token support
   - Automatic segmented control/select switching for literal fields
 
-- **@overeng/notion-effect-schema-gen**: Full CLI implementation for schema generation
+- **@overeng/notion-effect-cli**: Full CLI implementation for schema generation
   - `generate` subcommand: Introspects a Notion database and generates Effect schemas
     - `--output` / `-o`: Output file path for generated schema
     - `--name` / `-n`: Custom name for the generated schema (defaults to database title)
@@ -192,7 +198,7 @@ Initial release of effect-notion monorepo.
 
 - **@overeng/notion-effect-schema**: Effect schemas for the Notion HTTP API
 - **@overeng/notion-effect-client**: Effect-native HTTP client for the Notion API
-- **@overeng/notion-effect-schema-gen**: CLI tool for schema generation
+- **@overeng/notion-effect-cli**: CLI tool for schema generation
 
 ### Infrastructure
 

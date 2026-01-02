@@ -2,12 +2,13 @@
   "extends": "./tsconfig.base.json",
   "references": [
     { "path": "./packages/@overeng/notion-effect-schema" },
-    { "path": "./packages/@overeng/notion-effect-schema-gen" },
+    { "path": "./packages/@overeng/notion-effect-cli" },
     { "path": "./packages/@overeng/notion-effect-client" },
     { "path": "./packages/@overeng/effect-schema-form" },
     { "path": "./packages/@overeng/effect-schema-form-aria" },
     { "path": "./packages/@overeng/effect-react" },
-    { "path": "./packages/@overeng/react-inspector" }
+    { "path": "./packages/@overeng/react-inspector" },
+    { "path": "./packages/@overeng/utils" }
   ],
   "files": []
 }
