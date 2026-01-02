@@ -153,41 +153,44 @@ const tsCleanOption = Options.boolean('clean').pipe(
   Options.withDefault(false),
 )
 
-const tsCommand = Command.make('ts', { watch: tsWatchOption, clean: tsCleanOption }, ({ watch, clean }) =>
-  Effect.gen(function* () {
-    if (clean) {
-      yield* Console.log('Cleaning build artifacts...')
-      yield* runCommand('find', [
-        'packages',
-        '-path',
-        '*node_modules*',
-        '-prune',
-        '-o',
-        '\\(',
-        '-name',
-        'dist',
-        '-type',
-        'd',
-        '-o',
-        '-name',
-        '*.tsbuildinfo',
-        '\\)',
-        '-exec',
-        'rm',
-        '-rf',
-        '{}',
-        '+',
-      ])
-    }
+const tsCommand = Command.make(
+  'ts',
+  { watch: tsWatchOption, clean: tsCleanOption },
+  ({ watch, clean }) =>
+    Effect.gen(function* () {
+      if (clean) {
+        yield* Console.log('Cleaning build artifacts...')
+        yield* runCommand('find', [
+          'packages',
+          '-path',
+          '*node_modules*',
+          '-prune',
+          '-o',
+          '\\(',
+          '-name',
+          'dist',
+          '-type',
+          'd',
+          '-o',
+          '-name',
+          '*.tsbuildinfo',
+          '\\)',
+          '-exec',
+          'rm',
+          '-rf',
+          '{}',
+          '+',
+        ])
+      }
 
-    yield* ciGroup('Type checking')
-    const args = watch
-      ? ['--build', 'tsconfig.all.json', '--watch']
-      : ['--build', 'tsconfig.all.json']
-    yield* runCommand('tsc', args)
-    yield* ciGroupEnd
-    yield* Console.log('✓ Type check complete')
-  }),
+      yield* ciGroup('Type checking')
+      const args = watch
+        ? ['--build', 'tsconfig.all.json', '--watch']
+        : ['--build', 'tsconfig.all.json']
+      yield* runCommand('tsc', args)
+      yield* ciGroupEnd
+      yield* Console.log('✓ Type check complete')
+    }),
 ).pipe(Command.withDescription('Run TypeScript type checking'))
 
 // -----------------------------------------------------------------------------
