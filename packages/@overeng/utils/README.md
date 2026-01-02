@@ -10,6 +10,13 @@ pnpm add @overeng/utils
 
 ## Features
 
+### Key Features
+
+- Workspace-aware command helpers (`cmd`, `cmdText`) with optional logging and retention
+- Effect-native access to current working directory via `CurrentWorkingDirectory`
+- Workspace root service backed by `WORKSPACE_ROOT` via `EffectUtilsWorkspace`
+- File system-backed distributed locks with TTL expiration and atomic operations
+
 ### Distributed Lock / Semaphore
 
 This package re-exports and extends [effect-distributed-lock](https://github.com/ethanniser/effect-distributed-lock) with additional backing implementations.
@@ -86,6 +93,43 @@ Re-exports from [`effect-distributed-lock`](https://github.com/ethanniser/effect
 ### Node (`@overeng/utils/node`)
 
 - `FileSystemBacking` - File-based backing implementation for Node.js
+- `CurrentWorkingDirectory` - Service capturing process CWD, with test overrides
+- `EffectUtilsWorkspace` - Workspace root service backed by `WORKSPACE_ROOT`
+- `cmd` - Command runner returning exit codes with optional logging/retention
+- `cmdText` - Command runner returning stdout as text
+
+### Workspace Helpers
+
+`CurrentWorkingDirectory` exposes the current working directory through the Effect
+environment so it can be overridden in tests or nested executions. Utilities like
+`cmd` and `cmdText` read from this service.
+
+```ts
+import { NodeContext } from '@effect/platform-node'
+import { Effect, Layer } from 'effect'
+import { cmd, CurrentWorkingDirectory } from '@overeng/utils/node'
+
+const program = Effect.gen(function* () {
+  yield* cmd(['echo', 'hello'])
+})
+
+program.pipe(
+  Effect.provide(Layer.mergeAll(NodeContext.layer, CurrentWorkingDirectory.live)),
+  Effect.runPromise,
+)
+```
+
+Use `EffectUtilsWorkspace` when you want a workspace root derived from `WORKSPACE_ROOT`:
+
+```ts
+import { Effect, Layer } from 'effect'
+import { EffectUtilsWorkspace } from '@overeng/utils/node'
+
+const WorkspaceLayer = Layer.mergeAll(
+  EffectUtilsWorkspace.live,
+  EffectUtilsWorkspace.toCwd('packages'),
+)
+```
 
 ## Known Issues
 

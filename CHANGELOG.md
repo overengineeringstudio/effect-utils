@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/utils**: Workspace helpers (`CurrentWorkingDirectory`, `EffectUtilsWorkspace`) and command utilities (`cmd`, `cmdText`) with optional log capture/retention
 - **Monorepo CLI**: Added `mono` CLI for streamlined development workflow
   - `mono build` - Build all packages
   - `mono test [--unit|--integration] [--watch]` - Run tests with filtering options

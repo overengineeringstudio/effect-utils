@@ -1,4 +1,5 @@
 import { FileSystem, Path } from '@effect/platform'
+import { CurrentWorkingDirectory } from '@overeng/utils/node'
 import { Effect, Schema } from 'effect'
 import type { PropertyTransformConfig } from './introspect.ts'
 
@@ -149,12 +150,12 @@ export const loadConfig = (
 ): Effect.Effect<
   { config: SchemaGenConfig; path: string },
   ConfigError,
-  FileSystem.FileSystem | Path.Path
+  FileSystem.FileSystem | Path.Path | CurrentWorkingDirectory
 > =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
 
-    const searchStartDir = process.cwd()
+    const searchStartDir = yield* CurrentWorkingDirectory
     const resolvedPath = configPath ?? (yield* findConfigFile(searchStartDir))
 
     if (!resolvedPath) {

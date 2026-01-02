@@ -63,7 +63,13 @@ React hooks and utilities for building Effect-powered applications.
 
 | Package | Description |
 |---------|-------------|
-| [@overeng/utils](./packages/@overeng/utils) | File system-backed distributed locks with TTL expiration and atomic operations |
+| [@overeng/utils](./packages/@overeng/utils) | Distributed locks plus workspace-aware command helpers |
+
+Key features:
+
+- Workspace-aware command helpers with optional logging/retention
+- Effect-native CWD and workspace root services for Node tooling
+- File system-backed distributed locks with TTL expiration and atomic operations
 
 ## Quick Start
 

@@ -1,4 +1,6 @@
-import { Command, type CommandExecutor, FileSystem, Path } from '@effect/platform'
+import { FileSystem, Path } from '@effect/platform'
+import type * as CommandExecutor from '@effect/platform/CommandExecutor'
+import { type CurrentWorkingDirectory, cmd } from '@overeng/utils/node'
 import { Effect } from 'effect'
 
 /**
@@ -40,7 +42,7 @@ export const formatCode = (
 ): Effect.Effect<
   string,
   never,
-  FileSystem.FileSystem | Path.Path | CommandExecutor.CommandExecutor
+  FileSystem.FileSystem | Path.Path | CommandExecutor.CommandExecutor | CurrentWorkingDirectory
 > =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -51,11 +53,12 @@ export const formatCode = (
     const formatted = yield* Effect.gen(function* () {
       yield* fs.writeFileString(tempFile, code)
 
-      const exitCode = yield* Command.exitCode(
-        Command.make('biome', 'format', '--write', tempFile),
-      ).pipe(Effect.catchAll(() => Effect.succeed(1)))
+      const didFormat = yield* cmd(['biome', 'format', '--write', tempFile]).pipe(
+        Effect.as(true),
+        Effect.catchAll(() => Effect.succeed(false)),
+      )
 
-      if (exitCode === 0) {
+      if (didFormat) {
         return yield* fs.readFileString(tempFile)
       }
       return code

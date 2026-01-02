@@ -5,6 +5,7 @@ import { Args, Command, Options } from '@effect/cli'
 import { FetchHttpClient, FileSystem } from '@effect/platform'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { NotionConfig, NotionDatabases } from '@overeng/notion-effect-client'
+import { CurrentWorkingDirectory } from '@overeng/utils/node'
 import { Cause, Console, Effect, Layer, Option, Schema } from 'effect'
 import { type GenerateOptions, generateApiCode, generateSchemaCode } from './codegen.ts'
 import { loadConfig, mergeWithDefaults } from './config.ts'
@@ -499,6 +500,6 @@ cli(process.argv).pipe(
       },
     })
   }),
-  Effect.provide(NodeContext.layer),
+  Effect.provide(Layer.mergeAll(NodeContext.layer, CurrentWorkingDirectory.live)),
   NodeRuntime.runMain({ disableErrorReporting: true }),
 )

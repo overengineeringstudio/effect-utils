@@ -135,6 +135,9 @@ For multi-database projects, create `.notion-schema-gen.json`:
 }
 ```
 
+Config discovery starts from `CurrentWorkingDirectory` (defaults to the process CWD).
+When using the programmatic API, you can override it with `CurrentWorkingDirectory.fromPath`.
+
 ## Usage with notion-effect-client
 
 ### Basic Query
@@ -281,6 +284,7 @@ Or in config:
 import { Effect, Layer } from 'effect'
 import { FetchHttpClient, NodeContext } from '@effect/platform-node'
 import { NotionConfigLive } from '@overeng/notion-effect-client'
+import { CurrentWorkingDirectory } from '@overeng/utils/node'
 import {
   introspectDatabase,
   generateSchemaCode,
@@ -304,6 +308,7 @@ const MainLayer = Layer.mergeAll(
   NotionConfigLive({ authToken: process.env.NOTION_TOKEN! }),
   FetchHttpClient.layer,
   NodeContext.layer,
+  CurrentWorkingDirectory.live,
 )
 
 program.pipe(Effect.provide(MainLayer), Effect.runPromise)
