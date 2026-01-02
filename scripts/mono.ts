@@ -88,12 +88,12 @@ const testCommand = Command.make(
   { unit: testUnitOption, integration: testIntegrationOption, watch: testWatchOption },
   ({ unit, integration, watch }) =>
     Effect.gen(function* () {
-      const watchArgs = watch && !IS_CI ? [] : ['run']
-      const ciArgs = IS_CI ? ['--reporter=verbose'] : []
+      const ciArgs = IS_CI ? ['--', '--reporter=verbose'] : []
+      const scriptName = watch && !IS_CI ? 'test:watch' : 'test'
 
       if (unit) {
         yield* ciGroup('Running unit tests')
-        yield* runCommand('pnpm', ['-r', 'test', '--', ...watchArgs, ...ciArgs])
+        yield* runCommand('pnpm', ['-r', scriptName, ...ciArgs])
         yield* ciGroupEnd
       } else if (integration) {
         yield* ciGroup('Running integration tests')
@@ -102,14 +102,12 @@ const testCommand = Command.make(
           '--filter',
           '@overeng/notion-effect-client',
           'test:integration',
-          '--',
-          ...watchArgs,
           ...ciArgs,
         ])
         yield* ciGroupEnd
       } else {
         yield* ciGroup('Running all tests')
-        yield* runCommand('pnpm', ['-r', 'test', '--', ...watchArgs, ...ciArgs])
+        yield* runCommand('pnpm', ['-r', scriptName, ...ciArgs])
         yield* ciGroupEnd
       }
 
