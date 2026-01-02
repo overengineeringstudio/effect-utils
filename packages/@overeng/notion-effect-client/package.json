@@ -28,6 +28,7 @@
   "devDependencies": {
     "@effect/platform": "catalog:",
     "@effect/vitest": "catalog:",
+    "@types/node": "catalog:",
     "effect": "catalog:",
     "vitest": "catalog:"
   }
