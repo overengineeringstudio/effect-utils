@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import * as Command from '@effect/platform/Command'
-import * as CommandExecutor from '@effect/platform/CommandExecutor'
+import type * as CommandExecutor from '@effect/platform/CommandExecutor'
 import type { PlatformError } from '@effect/platform/Error'
 import {
   Cause,
@@ -72,7 +72,7 @@ export const cmd: (
 
   const stdoutMode = options?.stdout ?? 'inherit'
   const stderrMode = options?.stderr ?? 'inherit'
-  const useShell = (options?.shell ? true : false) || needsShell
+  const useShell = !!options?.shell || needsShell
 
   const commandDebugStr =
     debugEnvStr +
@@ -302,7 +302,8 @@ const runWithLogging = ({
 const buildCommand = (input: string | string[], useShell: boolean) => {
   if (Array.isArray(input)) {
     const [command, ...args] = input
-    return Command.make(command!, ...args)
+    if (!command) throw new Error('Command cannot be empty')
+    return Command.make(command, ...args)
   }
 
   if (useShell) {
@@ -310,7 +311,8 @@ const buildCommand = (input: string | string[], useShell: boolean) => {
   }
 
   const [command, ...args] = input.split(' ')
-  return Command.make(command!, ...args)
+  if (!command) throw new Error('Command cannot be empty')
+  return Command.make(command, ...args)
 }
 
 type TLineTerminator = 'newline' | 'carriage-return' | 'none'
@@ -386,9 +388,11 @@ const makeStreamHandler = ({
             } else {
               terminator = 'carriage-return'
             }
-          } else {
-            index = newlineIndex!
+          } else if (newlineIndex !== -1) {
+            index = newlineIndex
             terminator = 'newline'
+          } else {
+            throw new Error('Expected newline or carriage return')
           }
 
           const line = buffer.slice(0, index)

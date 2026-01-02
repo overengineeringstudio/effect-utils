@@ -26,6 +26,7 @@ export const isDevEnv = (): boolean => {
 /**
  * Throws a clear error for impossible states while offering a breakpoint in dev.
  */
+// biome-ignore lint/suspicious/noExplicitAny: variadic args needed for console.error compatibility
 export const shouldNeverHappen = (msg?: string, ...args: any[]): never => {
   console.error(msg, ...args)
   if (isDevEnv()) {
