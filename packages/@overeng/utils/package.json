@@ -5,13 +5,15 @@
   "private": true,
   "exports": {
     ".": "./src/isomorphic/mod.ts",
-    "./node": "./src/node/mod.ts"
+    "./node": "./src/node/mod.ts",
+    "./browser": "./src/browser/mod.ts"
   },
   "publishConfig": {
     "access": "public",
     "exports": {
       ".": "./dist/isomorphic/mod.js",
-      "./node": "./dist/node/mod.js"
+      "./node": "./dist/node/mod.js",
+      "./browser": "./dist/browser/mod.js"
     }
   },
   "scripts": {
