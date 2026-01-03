@@ -25,7 +25,7 @@ export class OPFSNotSupportedError extends Schema.TaggedError<OPFSNotSupportedEr
   },
 ) {
   static readonly notAvailable = new OPFSNotSupportedError({
-    message: 'OPFS is not available: navigator.storage is undefined',
+    message: 'OPFS is not available: navigator.storage.getDirectory is not supported',
   })
 }
 
@@ -40,9 +40,13 @@ export class OPFSError extends Schema.TaggedError<OPFSError>()('OPFSError', {
 
 /**
  * Checks if OPFS is supported in the current environment.
+ * Verifies both navigator.storage and the getDirectory method exist.
+ * Note: Some browsers (Safari, Firefox) expose navigator.storage but not getDirectory.
  */
 export const isOPFSSupported = (): boolean =>
-  typeof navigator !== 'undefined' && navigator.storage !== undefined
+  typeof navigator !== 'undefined' &&
+  navigator.storage !== undefined &&
+  typeof navigator.storage.getDirectory === 'function'
 
 /**
  * Gets the OPFS root directory handle.
@@ -53,7 +57,10 @@ export const getRootHandle: Effect.Effect<FileSystemDirectoryHandle, OPFSNotSupp
     if (!isOPFSSupported()) {
       return Effect.fail(OPFSNotSupportedError.notAvailable)
     }
-    return Effect.promise(() => navigator.storage.getDirectory())
+    return Effect.tryPromise({
+      try: () => navigator.storage.getDirectory(),
+      catch: () => OPFSNotSupportedError.notAvailable,
+    })
   })
 
 /**
