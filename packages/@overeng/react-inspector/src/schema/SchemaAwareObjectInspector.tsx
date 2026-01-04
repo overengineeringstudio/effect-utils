@@ -1,20 +1,21 @@
-import React, { useMemo } from 'react';
-import type { ComponentProps, FC } from 'react';
-import type { Schema as S } from 'effect';
-import { SchemaProvider } from './SchemaContext.tsx';
-import { createSchemaAwareNodeRenderer } from './SchemaAwareNodeRenderer.tsx';
+import type { Schema as S } from 'effect'
+import React, { useMemo } from 'react'
+import type { ComponentProps, FC } from 'react'
+
+import { createSchemaAwareNodeRenderer } from './SchemaAwareNodeRenderer.tsx'
+import { SchemaProvider } from './SchemaContext.tsx'
 
 export interface SchemaAwareObjectInspectorDeps {
   /** Original ObjectRootLabel component */
-  ObjectRootLabel: FC<{ name?: string; data: unknown }>;
+  ObjectRootLabel: FC<{ name?: string; data: unknown }>
   /** Original ObjectLabel component */
-  ObjectLabel: FC<{ name: string; data: unknown; isNonenumerable?: boolean }>;
+  ObjectLabel: FC<{ name: string; data: unknown; isNonenumerable?: boolean }>
   /** Original ObjectName component */
-  ObjectName: FC<{ name: string; dimmed?: boolean }>;
+  ObjectName: FC<{ name: string; dimmed?: boolean }>
   /** Original ObjectValue component */
-  ObjectValue: FC<{ object: unknown }>;
+  ObjectValue: FC<{ object: unknown }>
   /** Original ObjectPreview component */
-  ObjectPreview: FC<{ data: unknown }>;
+  ObjectPreview: FC<{ data: unknown }>
 }
 
 /**
@@ -27,51 +28,61 @@ export interface SchemaAwareObjectInspectorDeps {
  */
 export const withSchemaSupport = <TInspector extends FC<any>>(
   ObjectInspector: TInspector,
-  deps: SchemaAwareObjectInspectorDeps
-): FC<ComponentProps<TInspector> & { schema?: S.Schema.AnyNoContext; schemas?: S.Schema.AnyNoContext[] }> => {
+  deps: SchemaAwareObjectInspectorDeps,
+): FC<
+  ComponentProps<TInspector> & { schema?: S.Schema.AnyNoContext; schemas?: S.Schema.AnyNoContext[] }
+> => {
   const SchemaAwareObjectInspector: FC<
-    ComponentProps<TInspector> & { schema?: S.Schema.AnyNoContext; schemas?: S.Schema.AnyNoContext[] }
+    ComponentProps<TInspector> & {
+      schema?: S.Schema.AnyNoContext
+      schemas?: S.Schema.AnyNoContext[]
+    }
   > = ({ schema, schemas, nodeRenderer, ...props }) => {
-    const schemaNodeRenderer = useMemo(() => createSchemaAwareNodeRenderer(deps), [deps]);
+    const schemaNodeRenderer = useMemo(() => createSchemaAwareNodeRenderer(deps), [deps])
 
-    const Inspector = ObjectInspector as FC<any>;
+    const Inspector = ObjectInspector as FC<any>
 
     if (schema || (schemas && schemas.length > 0)) {
       return (
         <SchemaProvider schema={schema} schemas={schemas}>
           <Inspector {...props} nodeRenderer={schemaNodeRenderer} />
         </SchemaProvider>
-      );
+      )
     }
 
-    return <Inspector {...props} nodeRenderer={nodeRenderer} />;
-  };
+    return <Inspector {...props} nodeRenderer={nodeRenderer} />
+  }
 
-  return SchemaAwareObjectInspector;
-};
+  return SchemaAwareObjectInspector
+}
 
 /**
  * Simple HOC for cases where you don't need nested schema support.
  * Just wraps the inspector with SchemaProvider context.
  */
 export const withSchemaContext = <TInspector extends FC<any>>(
-  ObjectInspector: TInspector
-): FC<ComponentProps<TInspector> & { schema?: S.Schema.AnyNoContext; schemas?: S.Schema.AnyNoContext[] }> => {
+  ObjectInspector: TInspector,
+): FC<
+  ComponentProps<TInspector> & { schema?: S.Schema.AnyNoContext; schemas?: S.Schema.AnyNoContext[] }
+> => {
   const SchemaAwareObjectInspector: FC<
-    ComponentProps<TInspector> & { schema?: S.Schema.AnyNoContext; schemas?: S.Schema.AnyNoContext[] }
+    ComponentProps<TInspector> & {
+      schema?: S.Schema.AnyNoContext
+      schemas?: S.Schema.AnyNoContext[]
+    }
   > = ({ schema, schemas, ...props }) => {
-    const inspector = <ObjectInspector {...(props as ComponentProps<TInspector>)} />;
+    const inspector = <ObjectInspector {...(props as ComponentProps<TInspector>)} />
 
     if (schema || (schemas && schemas.length > 0)) {
       return (
         <SchemaProvider schema={schema} schemas={schemas}>
           {inspector}
         </SchemaProvider>
-      );
+      )
     }
 
-    return inspector;
-  };
+    return inspector
+  }
 
-  return SchemaAwareObjectInspector;
-};
+  return SchemaAwareObjectInspector
+}

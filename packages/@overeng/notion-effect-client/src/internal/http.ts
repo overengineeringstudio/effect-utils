@@ -5,6 +5,7 @@ import {
   type HttpClientResponse,
 } from '@effect/platform'
 import { Duration, Effect, Option, Schema } from 'effect'
+
 import { NOTION_API_BASE_URL, NOTION_API_VERSION, NotionConfig } from '../config.ts'
 import { NotionApiError, NotionErrorResponse } from '../error.ts'
 
@@ -14,6 +15,35 @@ export interface RateLimitInfo {
   readonly remaining: number
   /** Seconds until rate limit resets */
   readonly resetAfterSeconds: number
+}
+
+/** Options for building a Notion API request */
+export interface BuildRequestOptions {
+  readonly method: 'GET' | 'POST' | 'PATCH' | 'DELETE'
+  readonly path: string
+  readonly body?: unknown
+}
+
+/** Options for executing a Notion API request */
+export interface ExecuteRequestOptions<A, I, R> {
+  readonly method: 'GET' | 'POST' | 'PATCH' | 'DELETE'
+  readonly path: string
+  readonly responseSchema: Schema.Schema<A, I, R>
+  readonly body?: unknown
+}
+
+/** Options for POST request */
+export interface PostRequestOptions<A, I, R> {
+  readonly path: string
+  readonly body: unknown
+  readonly responseSchema: Schema.Schema<A, I, R>
+}
+
+/** Options for PATCH request */
+export interface PatchRequestOptions<A, I, R> {
+  readonly path: string
+  readonly body: unknown
+  readonly responseSchema: Schema.Schema<A, I, R>
 }
 
 /**
@@ -52,11 +82,15 @@ export const parseRateLimitHeaders = (
 /**
  * Build a Notion API request with proper headers.
  */
-export const buildRequest = (
-  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
-  path: string,
-  body?: unknown,
-): Effect.Effect<HttpClientRequest.HttpClientRequest, NotionApiError, NotionConfig> =>
+export const buildRequest = ({
+  method,
+  path,
+  body,
+}: BuildRequestOptions): Effect.Effect<
+  HttpClientRequest.HttpClientRequest,
+  NotionApiError,
+  NotionConfig
+> =>
   Effect.gen(function* () {
     const config = yield* NotionConfig
     const requestUrl = `${NOTION_API_BASE_URL}${path}`
@@ -94,6 +128,7 @@ export const buildRequest = (
 /**
  * Parse error response from Notion API.
  */
+// oxlint-disable-next-line eslint(max-params) -- internal helper with cohesive request context
 const parseErrorResponse = (
   response: HttpClientResponse.HttpClientResponse,
   requestUrl: string,
@@ -148,6 +183,7 @@ const parseErrorResponse = (
 /**
  * Map HttpClientError to NotionApiError.
  */
+// oxlint-disable-next-line eslint(max-params) -- internal helper with cohesive request context
 const mapHttpClientError = (
   error: HttpClientError.HttpClientError,
   path: string,
@@ -171,12 +207,16 @@ const mapHttpClientError = (
  * - Non-retryable: invalid_request, unauthorized, object_not_found, etc.
  * - Uses exponential backoff, respecting retry-after header for rate limits
  */
-export const executeRequest = <A, I, R>(
-  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
-  path: string,
-  responseSchema: Schema.Schema<A, I, R>,
-  body?: unknown,
-): Effect.Effect<A, NotionApiError, NotionConfig | HttpClient.HttpClient | R> =>
+export const executeRequest = <A, I, R>({
+  method,
+  path,
+  responseSchema,
+  body,
+}: ExecuteRequestOptions<A, I, R>): Effect.Effect<
+  A,
+  NotionApiError,
+  NotionConfig | HttpClient.HttpClient | R
+> =>
   Effect.gen(function* () {
     const config = yield* NotionConfig
     const client = yield* HttpClient.HttpClient
@@ -186,7 +226,7 @@ export const executeRequest = <A, I, R>(
     const retryBaseDelay = config.retryBaseDelay ?? 1000
 
     const makeRequest = Effect.gen(function* () {
-      const request = yield* buildRequest(method, path, body)
+      const request = yield* buildRequest({ method, path, body })
       const response = yield* client
         .execute(request)
         .pipe(Effect.mapError((e) => mapHttpClientError(e, path, method)))
@@ -256,27 +296,33 @@ export const get = <A, I, R>(
   path: string,
   responseSchema: Schema.Schema<A, I, R>,
 ): Effect.Effect<A, NotionApiError, NotionConfig | HttpClient.HttpClient | R> =>
-  executeRequest('GET', path, responseSchema)
+  executeRequest({ method: 'GET', path, responseSchema })
 
 /**
  * POST request helper.
  */
-export const post = <A, I, R>(
-  path: string,
-  body: unknown,
-  responseSchema: Schema.Schema<A, I, R>,
-): Effect.Effect<A, NotionApiError, NotionConfig | HttpClient.HttpClient | R> =>
-  executeRequest('POST', path, responseSchema, body)
+export const post = <A, I, R>({
+  path,
+  body,
+  responseSchema,
+}: PostRequestOptions<A, I, R>): Effect.Effect<
+  A,
+  NotionApiError,
+  NotionConfig | HttpClient.HttpClient | R
+> => executeRequest({ method: 'POST', path, responseSchema, body })
 
 /**
  * PATCH request helper.
  */
-export const patch = <A, I, R>(
-  path: string,
-  body: unknown,
-  responseSchema: Schema.Schema<A, I, R>,
-): Effect.Effect<A, NotionApiError, NotionConfig | HttpClient.HttpClient | R> =>
-  executeRequest('PATCH', path, responseSchema, body)
+export const patch = <A, I, R>({
+  path,
+  body,
+  responseSchema,
+}: PatchRequestOptions<A, I, R>): Effect.Effect<
+  A,
+  NotionApiError,
+  NotionConfig | HttpClient.HttpClient | R
+> => executeRequest({ method: 'PATCH', path, responseSchema, body })
 
 /**
  * DELETE request helper.
@@ -285,4 +331,4 @@ export const del = <A, I, R>(
   path: string,
   responseSchema: Schema.Schema<A, I, R>,
 ): Effect.Effect<A, NotionApiError, NotionConfig | HttpClient.HttpClient | R> =>
-  executeRequest('DELETE', path, responseSchema)
+  executeRequest({ method: 'DELETE', path, responseSchema })

@@ -1,7 +1,8 @@
 import { FileSystem, Path } from '@effect/platform'
 import type * as CommandExecutor from '@effect/platform/CommandExecutor'
-import { type CurrentWorkingDirectory, cmd } from '@overeng/utils/node'
 import { Effect } from 'effect'
+
+import { type CurrentWorkingDirectory, cmd } from '@overeng/utils/node'
 
 /**
  * Write generated schema code to a file.

@@ -1,4 +1,5 @@
 import { Schema } from 'effect'
+
 import { docsPath, ISO8601DateTime, NotionUUID } from './common.ts'
 import { RichTextArray } from './rich-text.ts'
 import { PartialUser } from './users.ts'

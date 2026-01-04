@@ -2,6 +2,7 @@ import type { HttpClientRequest } from '@effect/platform'
 import { describe, it } from '@effect/vitest'
 import { Effect, Option, Schema } from 'effect'
 import { expect } from 'vitest'
+
 import { NOTION_API_BASE_URL, NOTION_API_VERSION, NotionConfig } from '../config.ts'
 import { NotionApiError } from '../error.ts'
 import { createTestLayer, sampleResponses } from '../test/test-utils.ts'
@@ -49,7 +50,7 @@ describe('parseRateLimitHeaders', () => {
 describe('buildRequest', () => {
   it.effect('builds request with correct headers', () =>
     Effect.gen(function* () {
-      const request = yield* buildRequest('GET', '/databases/123')
+      const request = yield* buildRequest({ method: 'GET', path: '/databases/123' })
 
       expect(request.method).toBe('GET')
       expect(request.url).toBe(`${NOTION_API_BASE_URL}/databases/123`)
@@ -64,7 +65,11 @@ describe('buildRequest', () => {
       const body: Record<string, unknown> = {}
       body.self = body
 
-      const error = yield* buildRequest('POST', '/databases/123/query', body).pipe(Effect.flip)
+      const error = yield* buildRequest({
+        method: 'POST',
+        path: '/databases/123/query',
+        body,
+      }).pipe(Effect.flip)
 
       expect(error).toBeInstanceOf(NotionApiError)
       expect(error.code).toBe('invalid_request')
@@ -77,7 +82,7 @@ describe('buildRequest', () => {
   it.effect('includes body for POST requests', () =>
     Effect.gen(function* () {
       const body = { filter: { property: 'Status', select: { equals: 'Done' } } }
-      const request = yield* buildRequest('POST', '/databases/123/query', body)
+      const request = yield* buildRequest({ method: 'POST', path: '/databases/123/query', body })
 
       expect(request.method).toBe('POST')
       // Body is set but we can't easily inspect it without reading the stream
@@ -231,11 +236,11 @@ describe('post', () => {
     Effect.gen(function* () {
       let capturedRequest: HttpClientRequest.HttpClientRequest | undefined
 
-      const result = yield* post(
-        '/databases/db-123/query',
-        { filter: { property: 'Status' } },
-        QueryResponseSchema,
-      ).pipe(
+      const result = yield* post({
+        path: '/databases/db-123/query',
+        body: { filter: { property: 'Status' } },
+        responseSchema: QueryResponseSchema,
+      }).pipe(
         Effect.provide(
           createTestLayer((req) => {
             capturedRequest = req

@@ -43,4 +43,4 @@ export const theme = {
   TABLE_DATA_BACKGROUND_IMAGE:
     'linear-gradient(rgba(255, 255, 255, 0), rgba(255, 255, 255, 0) 50%, rgba(51, 139, 255, 0.0980392) 50%, rgba(51, 139, 255, 0.0980392))',
   TABLE_DATA_BACKGROUND_SIZE: '128px 32px',
-};
+}

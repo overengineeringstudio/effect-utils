@@ -1,6 +1,7 @@
 import { describe, it } from '@effect/vitest'
-import { Effect, Option, Schema, Stream } from 'effect'
+import { Chunk, Effect, Option, Schema, Stream } from 'effect'
 import { expect } from 'vitest'
+
 import {
   type PaginatedResponse,
   paginatedStream,
@@ -116,7 +117,7 @@ describe('paginatedStream', () => {
         }),
       )
 
-      const items = yield* Stream.runCollect(stream).pipe(Effect.map((chunk) => [...chunk]))
+      const items = yield* Stream.runCollect(stream).pipe(Effect.map(Chunk.toReadonlyArray))
 
       expect(items).toEqual([{ id: '1' }, { id: '2' }])
       expect(fetchCount).toBe(1)
@@ -161,7 +162,7 @@ describe('paginatedStream', () => {
         }),
       )
 
-      const items = yield* Stream.runCollect(stream).pipe(Effect.map((chunk) => [...chunk]))
+      const items = yield* Stream.runCollect(stream).pipe(Effect.map(Chunk.toReadonlyArray))
 
       expect(items).toEqual([{ id: '1' }, { id: '2' }, { id: '3' }, { id: '4' }, { id: '5' }])
       expect(cursors.length).toBe(3)
@@ -182,7 +183,7 @@ describe('paginatedStream', () => {
         })),
       )
 
-      const items = yield* Stream.runCollect(stream).pipe(Effect.map((chunk) => [...chunk]))
+      const items = yield* Stream.runCollect(stream).pipe(Effect.map(Chunk.toReadonlyArray))
 
       expect(items).toEqual([])
     }),
@@ -228,7 +229,7 @@ describe('paginatedStream', () => {
         }),
       )
 
-      const items = yield* Stream.runCollect(stream).pipe(Effect.map((chunk) => [...chunk]))
+      const items = yield* Stream.runCollect(stream).pipe(Effect.map(Chunk.toReadonlyArray))
 
       expect(items).toEqual([{ id: '1' }, { id: '2' }])
       expect(fetchCount).toBe(2)

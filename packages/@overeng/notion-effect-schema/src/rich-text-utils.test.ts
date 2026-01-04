@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { RichTextArray } from './rich-text.ts'
+
 import { toHtml, toMarkdown, toPlainText } from './rich-text-utils.ts'
+import type { RichTextArray } from './rich-text.ts'
 
 /** Helper to create a text rich text element */
 const makeText = (

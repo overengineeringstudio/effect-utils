@@ -1,4 +1,5 @@
 import { Schema } from 'effect'
+
 import { docsPath, NotionUUID, SelectColor } from '../common.ts'
 import { TextLink } from '../rich-text.ts'
 

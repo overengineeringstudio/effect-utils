@@ -1,5 +1,6 @@
 import { HttpClient, type HttpClientRequest, HttpClientResponse } from '@effect/platform'
-import { Effect, Layer, Stream } from 'effect'
+import { Chunk, Effect, Layer, Stream } from 'effect'
+
 import { type NotionClientConfig, NotionConfig } from '../config.ts'
 
 /** Mock response configuration */
@@ -51,7 +52,7 @@ export const createTestLayer = (
 export const collectStream = <A, E, R>(
   stream: Stream.Stream<A, E, R>,
 ): Effect.Effect<readonly A[], E, R> =>
-  Stream.runCollect(stream).pipe(Effect.map((chunk) => [...chunk]))
+  Stream.runCollect(stream).pipe(Effect.map(Chunk.toReadonlyArray))
 
 /** Sample Notion API responses for testing */
 export const sampleResponses = {

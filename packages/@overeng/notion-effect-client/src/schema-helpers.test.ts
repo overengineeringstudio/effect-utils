@@ -1,7 +1,9 @@
-import { DatabaseSchema } from '@overeng/notion-effect-schema'
-import { shouldNeverHappen } from '@overeng/utils'
 import { Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
+
+import { DatabaseSchema } from '@overeng/notion-effect-schema'
+import { shouldNeverHappen } from '@overeng/utils'
+
 import { SchemaHelpers } from './schema-helpers.ts'
 
 describe('SchemaHelpers', () => {

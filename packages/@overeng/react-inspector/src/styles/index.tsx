@@ -1,1 +1,1 @@
-export { useStyles, themeAcceptor } from './styles';
+export { useStyles, themeAcceptor } from './styles'

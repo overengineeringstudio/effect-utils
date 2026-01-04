@@ -1,12 +1,13 @@
-import React from 'react';
-import type { FC } from 'react';
-import { useSchemaContext } from './SchemaContext.tsx';
+import React from 'react'
+import type { FC } from 'react'
+
+import { useSchemaContext } from './SchemaContext.tsx'
 
 export interface SchemaAwareObjectValueProps {
-  object: unknown;
-  styles?: React.CSSProperties;
+  object: unknown
+  styles?: React.CSSProperties
   /** The original ObjectValue component to wrap */
-  ObjectValue: FC<{ object: unknown; styles?: React.CSSProperties }>;
+  ObjectValue: FC<{ object: unknown; styles?: React.CSSProperties }>
 }
 
 /**
@@ -15,12 +16,16 @@ export interface SchemaAwareObjectValueProps {
  * - `pretty` annotation for custom value formatting
  * - `title` or `identifier` annotation for type names
  */
-export const SchemaAwareObjectValue: FC<SchemaAwareObjectValueProps> = ({ object, styles, ObjectValue }) => {
-  const schemaCtx = useSchemaContext();
+export const SchemaAwareObjectValue: FC<SchemaAwareObjectValueProps> = ({
+  object,
+  styles,
+  ObjectValue,
+}) => {
+  const schemaCtx = useSchemaContext()
 
-  const prettyFormatted = schemaCtx.formatValue(object);
+  const prettyFormatted = schemaCtx.formatValue(object)
   if (prettyFormatted !== undefined) {
-    return <span>{prettyFormatted}</span>;
+    return <span>{prettyFormatted}</span>
   }
 
   if (
@@ -30,15 +35,15 @@ export const SchemaAwareObjectValue: FC<SchemaAwareObjectValueProps> = ({ object
     !(object instanceof RegExp) &&
     !Array.isArray(object)
   ) {
-    const schemaDisplayName = schemaCtx.getDisplayName();
+    const schemaDisplayName = schemaCtx.getDisplayName()
     if (schemaDisplayName && object.constructor?.name === 'Object') {
-      return <span>{schemaDisplayName}</span>;
+      return <span>{schemaDisplayName}</span>
     }
   }
 
   if (styles) {
-    return <ObjectValue object={object} styles={styles} />;
+    return <ObjectValue object={object} styles={styles} />
   }
 
-  return <ObjectValue object={object} />;
-};
+  return <ObjectValue object={object} />
+}

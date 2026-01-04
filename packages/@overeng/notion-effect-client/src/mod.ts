@@ -8,6 +8,7 @@
  */
 
 import { Layer } from 'effect'
+
 import { type NotionClientConfig, NotionConfig } from './config.ts'
 
 // -----------------------------------------------------------------------------

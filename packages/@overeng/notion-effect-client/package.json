@@ -1,8 +1,8 @@
 {
   "name": "@overeng/notion-effect-client",
   "version": "0.1.0",
-  "type": "module",
   "private": true,
+  "type": "module",
   "exports": {
     ".": "./src/mod.ts"
   },
@@ -21,15 +21,15 @@
   "dependencies": {
     "@overeng/notion-effect-schema": "workspace:*"
   },
-  "peerDependencies": {
-    "@effect/platform": "catalog:",
-    "effect": "catalog:"
-  },
   "devDependencies": {
     "@effect/platform": "catalog:",
     "@effect/vitest": "catalog:",
     "@types/node": "catalog:",
     "effect": "catalog:",
     "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "@effect/platform": "catalog:",
+    "effect": "catalog:"
   }
 }

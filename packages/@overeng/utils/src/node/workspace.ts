@@ -1,5 +1,7 @@
 import path from 'node:path'
+
 import { Context, Effect, Layer } from 'effect'
+
 import { shouldNeverHappen } from '../isomorphic/mod.ts'
 
 export type WorkspaceInfo = string

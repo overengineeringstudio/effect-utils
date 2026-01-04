@@ -1,11 +1,13 @@
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
+
 import { FileSystem, Path } from '@effect/platform'
 import { describe, it } from '@effect/vitest'
 import { Duration, Effect, Layer } from 'effect'
 import { DistributedSemaphoreBacking } from 'effect-distributed-lock'
 import { expect } from 'vitest'
+
 import * as FileSystemBacking from './file-system-backing.ts'
 
 /**

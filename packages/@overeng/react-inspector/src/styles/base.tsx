@@ -1,4 +1,4 @@
-import { unselectable } from './unselectable';
+import { unselectable } from './unselectable'
 
 export const createTheme = (theme: any) => ({
   DOMNodePreview: {
@@ -286,4 +286,4 @@ export const createTheme = (theme: any) => ({
     // lineHeight: 14
     ...unselectable,
   },
-});
+})

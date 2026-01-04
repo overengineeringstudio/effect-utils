@@ -68,11 +68,11 @@ export const isDevEnv = (): boolean => {
 /**
  * Throws a clear error for impossible states while offering a breakpoint in dev.
  */
-// biome-ignore lint/suspicious/noExplicitAny: variadic args needed for console.error compatibility
+// oxlint-disable-next-line eslint(max-params) -- variadic args needed for console.error compatibility
 export const shouldNeverHappen = (msg?: string, ...args: any[]): never => {
   console.error(msg, ...args)
   if (isDevEnv()) {
-    // biome-ignore lint/suspicious/noDebugger: intentional breakpoint for impossible states during development
+    // oxlint-disable-next-line eslint(no-debugger) -- intentional breakpoint for impossible states during development
     debugger
   }
 

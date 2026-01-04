@@ -1,4 +1,5 @@
 import { Schema } from 'effect'
+
 import { docsPath, NotionUUID, shouldNeverHappen } from '../common.ts'
 import { User } from '../users.ts'
 

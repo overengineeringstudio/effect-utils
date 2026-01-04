@@ -1,8 +1,8 @@
 {
   "name": "@overeng/utils",
   "version": "0.1.0",
-  "type": "module",
   "private": true,
+  "type": "module",
   "exports": {
     ".": "./src/isomorphic/mod.ts",
     "./node": "./src/node/mod.ts",
@@ -24,12 +24,6 @@
   "dependencies": {
     "effect-distributed-lock": "0.0.10"
   },
-  "peerDependencies": {
-    "@effect/platform": "catalog:",
-    "@effect/platform-node": "catalog:",
-    "@effect/rpc": "catalog:",
-    "effect": "catalog:"
-  },
   "devDependencies": {
     "@effect/platform": "catalog:",
     "@effect/platform-node": "catalog:",
@@ -38,5 +32,11 @@
     "@types/node": "catalog:",
     "effect": "catalog:",
     "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "@effect/platform": "catalog:",
+    "@effect/platform-node": "catalog:",
+    "@effect/rpc": "catalog:",
+    "effect": "catalog:"
   }
 }

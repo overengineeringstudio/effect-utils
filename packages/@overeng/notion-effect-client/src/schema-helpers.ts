@@ -1,3 +1,5 @@
+import { Array as Arr, Option, Order, Schema } from 'effect'
+
 import type {
   DatabaseSchema,
   NumberFormat,
@@ -6,7 +8,6 @@ import type {
   SelectOptionConfig,
 } from '@overeng/notion-effect-schema'
 import { PropertySchema as PropertySchemaCodec } from '@overeng/notion-effect-schema'
-import { Array as Arr, Option, Order, Schema } from 'effect'
 
 // -----------------------------------------------------------------------------
 // Property Parsing

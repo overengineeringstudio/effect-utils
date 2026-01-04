@@ -1,0 +1,10 @@
+{
+  "name": "@overeng/oxc-config",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./lint": "./lint.jsonc",
+    "./fmt": "./fmt.jsonc"
+  }
+}

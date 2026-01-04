@@ -1,6 +1,8 @@
 import type { HttpClient } from '@effect/platform'
-import { type Block, BlockSchema, type BlockType } from '@overeng/notion-effect-schema'
 import { Chunk, Effect, Option, Schema, Stream } from 'effect'
+
+import { type Block, BlockSchema, type BlockType } from '@overeng/notion-effect-schema'
+
 import type { NotionConfig } from './config.ts'
 import type { NotionApiError } from './error.ts'
 import { del, get, patch } from './internal/http.ts'
@@ -156,7 +158,11 @@ export const append = Effect.fn('NotionBlocks.append')(function* (
     body.after = opts.after
   }
 
-  return yield* patch(`/blocks/${opts.blockId}/children`, body, AppendBlockChildrenResponseSchema)
+  return yield* patch({
+    path: `/blocks/${opts.blockId}/children`,
+    body,
+    responseSchema: AppendBlockChildrenResponseSchema,
+  })
 })
 
 /**
@@ -167,7 +173,7 @@ export const append = Effect.fn('NotionBlocks.append')(function* (
 export const update = Effect.fn('NotionBlocks.update')(function* (opts: UpdateBlockOptions) {
   const { blockId, ...body } = opts
 
-  return yield* patch(`/blocks/${blockId}`, body, BlockSchema)
+  return yield* patch({ path: `/blocks/${blockId}`, body, responseSchema: BlockSchema })
 })
 
 /**
@@ -272,6 +278,7 @@ export const retrieveAllNested = (
   const concurrency = opts.concurrency ?? 3
   const pageSize = opts.pageSize ?? 100
 
+  // oxlint-disable-next-line eslint(max-params) -- recursive helper with traversal state
   const fetchBlocksRecursive = (
     blockId: string,
     parentId: string | null,

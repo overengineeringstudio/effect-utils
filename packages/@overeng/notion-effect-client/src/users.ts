@@ -1,5 +1,6 @@
 import type { HttpClient } from '@effect/platform'
 import { Chunk, Effect, Option, Schema, Stream } from 'effect'
+
 import type { NotionConfig } from './config.ts'
 import type { NotionApiError } from './error.ts'
 import { get } from './internal/http.ts'

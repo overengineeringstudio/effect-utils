@@ -1,10 +1,12 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import * as CommandExecutor from '@effect/platform/CommandExecutor'
+
 import { NodeContext } from '@effect/platform-node'
+import * as CommandExecutor from '@effect/platform/CommandExecutor'
 import { describe, it } from '@effect/vitest'
-import { Duration, Effect, Layer, Option } from 'effect'
+import { Effect, Layer } from 'effect'
 import { expect } from 'vitest'
+
 import { shouldNeverHappen } from '../isomorphic/mod.ts'
 import { cmd } from './cmd.ts'
 import { CurrentWorkingDirectory } from './workspace.ts'

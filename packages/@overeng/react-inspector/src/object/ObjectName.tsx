@@ -1,5 +1,6 @@
-import React, { FC } from 'react';
-import { useStyles } from '../styles';
+import React, { FC } from 'react'
+
+import { useStyles } from '../styles'
 
 /**
  * A view for object property names.
@@ -11,15 +12,15 @@ import { useStyles } from '../styles';
  * the property name will be dimmed to show the difference.
  */
 export const ObjectName: FC<any> = ({ name, dimmed = false, styles = {} }) => {
-  const themeStyles = useStyles('ObjectName');
+  const themeStyles = useStyles('ObjectName')
   const appliedStyles = {
     ...themeStyles.base,
     ...(dimmed ? themeStyles['dimmed'] : {}),
     ...styles,
-  };
+  }
 
-  return <span style={appliedStyles}>{name}</span>;
-};
+  return <span style={appliedStyles}>{name}</span>
+}
 
 // ObjectName.propTypes = {
 //   /** Property name */

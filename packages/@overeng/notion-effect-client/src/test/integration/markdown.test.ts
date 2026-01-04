@@ -1,7 +1,9 @@
 import { describe, it } from '@effect/vitest'
-import { RichTextUtils } from '@overeng/notion-effect-schema'
 import { Effect } from 'effect'
 import { expect } from 'vitest'
+
+import { RichTextUtils } from '@overeng/notion-effect-schema'
+
 import { BlockHelpers, NotionMarkdown } from '../../markdown.ts'
 import { IntegrationTestLayer, SKIP_INTEGRATION, TEST_IDS } from './setup.ts'
 

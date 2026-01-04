@@ -1,4 +1,3 @@
-import { formatLiteralLabel } from '@overeng/effect-schema-form'
 import type { ReactNode } from 'react'
 import {
   Button,
@@ -11,6 +10,8 @@ import {
   ToggleButton,
   ToggleButtonGroup,
 } from 'react-aria-components'
+
+import { formatLiteralLabel } from '@overeng/effect-schema-form'
 
 import { FieldWrapper } from './FieldWrapper.tsx'
 

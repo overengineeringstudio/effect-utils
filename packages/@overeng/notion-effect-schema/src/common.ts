@@ -132,10 +132,11 @@ export const isDevEnv = (): boolean => {
   return process.env.NODE_ENV !== 'production'
 }
 
+// oxlint-disable-next-line eslint(max-params) -- variadic args needed for console.error compatibility
 export const shouldNeverHappen = (msg?: string, ...args: unknown[]): never => {
   console.error(msg, ...args)
   if (isDevEnv()) {
-    // biome-ignore lint/suspicious/noDebugger: intentional breakpoint for impossible states during development
+    // oxlint-disable-next-line eslint(no-debugger) -- intentional breakpoint for impossible states during development
     debugger
   }
 

@@ -1,5 +1,6 @@
-import type { ISO8601DateTime, Page } from '@overeng/notion-effect-schema'
 import { Effect, Schema } from 'effect'
+
+import type { ISO8601DateTime, Page } from '@overeng/notion-effect-schema'
 
 /**
  * A page with decoded properties.

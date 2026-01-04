@@ -1,62 +1,60 @@
-import React, { FC } from 'react';
-import { TreeView } from '../tree-view/TreeView';
+import React, { FC } from 'react'
 
-import { ObjectRootLabel } from './ObjectRootLabel';
-import { ObjectLabel } from './ObjectLabel';
-
-import { propertyIsEnumerable } from '../utils/objectPrototype';
-import { getPropertyValue } from '../utils/propertyUtils';
-
-import { themeAcceptor } from '../styles';
+import { themeAcceptor } from '../styles'
+import { TreeView } from '../tree-view/TreeView'
+import { propertyIsEnumerable } from '../utils/objectPrototype'
+import { getPropertyValue } from '../utils/propertyUtils'
+import { ObjectLabel } from './ObjectLabel'
+import { ObjectRootLabel } from './ObjectRootLabel'
 
 const createIterator = (showNonenumerable: any, sortObjectKeys: any) => {
   const objectIterator = function* (data: any) {
-    const shouldIterate = (typeof data === 'object' && data !== null) || typeof data === 'function';
-    if (!shouldIterate) return;
+    const shouldIterate = (typeof data === 'object' && data !== null) || typeof data === 'function'
+    if (!shouldIterate) return
 
-    const dataIsArray = Array.isArray(data);
+    const dataIsArray = Array.isArray(data)
 
     // iterable objects (except arrays)
     if (!dataIsArray && data[Symbol.iterator]) {
-      let i = 0;
+      let i = 0
       for (const entry of data) {
         if (Array.isArray(entry) && entry.length === 2) {
-          const [k, v] = entry;
+          const [k, v] = entry
           yield {
             name: k,
             data: v,
-          };
+          }
         } else {
           yield {
             name: i.toString(),
             data: entry,
-          };
+          }
         }
-        i++;
+        i++
       }
     } else {
-      const keys = Object.getOwnPropertyNames(data);
+      const keys = Object.getOwnPropertyNames(data)
       if (sortObjectKeys === true && !dataIsArray) {
         // Array keys should not be sorted in alphabetical order
-        keys.sort();
+        keys.sort()
       } else if (typeof sortObjectKeys === 'function') {
-        keys.sort(sortObjectKeys);
+        keys.sort(sortObjectKeys)
       }
 
       for (const propertyName of keys) {
         if (propertyIsEnumerable.call(data, propertyName)) {
-          const propertyValue = getPropertyValue(data, propertyName);
+          const propertyValue = getPropertyValue(data, propertyName)
           yield {
             name: propertyName || `""`,
             data: propertyValue,
-          };
+          }
         } else if (showNonenumerable) {
           // To work around the error (happens some time when propertyName === 'caller' || propertyName === 'arguments')
           // 'caller' and 'arguments' are restricted function properties and cannot be accessed in this context
           // http://stackoverflow.com/questions/31921189/caller-and-arguments-are-restricted-function-properties-and-cannot-be-access
-          let propertyValue;
+          let propertyValue
           try {
-            propertyValue = getPropertyValue(data, propertyName);
+            propertyValue = getPropertyValue(data, propertyName)
             // eslint-disable-next-line @typescript-eslint/no-unused-vars
           } catch (e) {
             // console.warn(e)
@@ -67,7 +65,7 @@ const createIterator = (showNonenumerable: any, sortObjectKeys: any) => {
               name: propertyName,
               data: propertyValue,
               isNonenumerable: true,
-            };
+            }
           }
         }
       }
@@ -79,30 +77,35 @@ const createIterator = (showNonenumerable: any, sortObjectKeys: any) => {
           name: '__proto__',
           data: Object.getPrototypeOf(data),
           isNonenumerable: true,
-        };
+        }
       }
     }
-  };
+  }
 
-  return objectIterator;
-};
+  return objectIterator
+}
 
 const defaultNodeRenderer = ({ depth, name, data, isNonenumerable }: any) =>
   depth === 0 ? (
     <ObjectRootLabel name={name} data={data} />
   ) : (
     <ObjectLabel name={name} data={data} isNonenumerable={isNonenumerable} />
-  );
+  )
 
 /**
  * Tree-view for objects
  */
-const ObjectInspector: FC<any> = ({ showNonenumerable = false, sortObjectKeys, nodeRenderer, ...treeViewProps }) => {
-  const dataIterator = createIterator(showNonenumerable, sortObjectKeys);
-  const renderer = nodeRenderer ? nodeRenderer : defaultNodeRenderer;
+const ObjectInspector: FC<any> = ({
+  showNonenumerable = false,
+  sortObjectKeys,
+  nodeRenderer,
+  ...treeViewProps
+}) => {
+  const dataIterator = createIterator(showNonenumerable, sortObjectKeys)
+  const renderer = nodeRenderer ? nodeRenderer : defaultNodeRenderer
 
-  return <TreeView nodeRenderer={renderer} dataIterator={dataIterator} {...treeViewProps} />;
-};
+  return <TreeView nodeRenderer={renderer} dataIterator={dataIterator} {...treeViewProps} />
+}
 
 // ObjectInspector.propTypes = {
 //   /** An integer specifying to which level the tree should be initially expanded. */
@@ -123,6 +126,6 @@ const ObjectInspector: FC<any> = ({ showNonenumerable = false, sortObjectKeys, n
 //   nodeRenderer: PropTypes.func,
 // };
 
-const themedObjectInspector = themeAcceptor(ObjectInspector);
+const themedObjectInspector = themeAcceptor(ObjectInspector)
 
-export { themedObjectInspector as ObjectInspector };
+export { themedObjectInspector as ObjectInspector }

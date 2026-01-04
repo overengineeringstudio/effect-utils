@@ -5,8 +5,10 @@
  */
 
 import type { HttpClient } from '@effect/platform'
-import { type Block, type RichTextArray, RichTextUtils } from '@overeng/notion-effect-schema'
 import { Effect } from 'effect'
+
+import { type Block, type RichTextArray, RichTextUtils } from '@overeng/notion-effect-schema'
+
 import {
   type BlockTree,
   type BlockTreeNode,
@@ -530,6 +532,7 @@ const DEFAULT_TRANSFORMERS: Record<string, BlockTransformer> = {
 // -----------------------------------------------------------------------------
 
 /** Apply a transformer (sync or async) */
+// oxlint-disable-next-line eslint(max-params) -- internal helper with transformer context
 const applyTransformer = (
   transformer: AnyBlockTransformer,
   block: Block & { [key: string]: unknown },

@@ -1,6 +1,7 @@
 import { describe, it } from '@effect/vitest'
 import { Effect } from 'effect'
 import { expect } from 'vitest'
+
 import { NotionPages } from '../../pages.ts'
 import { IntegrationTestLayer, SKIP_INTEGRATION, SKIP_MUTATIONS, TEST_IDS } from './setup.ts'
 

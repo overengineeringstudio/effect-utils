@@ -120,14 +120,14 @@ const tagInfo = analyzeTaggedStruct(TaggedSchema)
 
 ### Supported Field Types
 
-| Type | Schema Example | Description |
-|------|----------------|-------------|
-| `string` | `Schema.String` | Text input |
-| `number` | `Schema.Number`, `Schema.Int` | Number input |
-| `boolean` | `Schema.Boolean` | Checkbox |
-| `literal` | `Schema.Literal('a', 'b')` | Select/segmented control |
-| `struct` | `Schema.Struct({...})` | Nested form group |
-| `unknown` | Other types | Fallback renderer |
+| Type      | Schema Example                | Description              |
+| --------- | ----------------------------- | ------------------------ |
+| `string`  | `Schema.String`               | Text input               |
+| `number`  | `Schema.Number`, `Schema.Int` | Number input             |
+| `boolean` | `Schema.Boolean`              | Checkbox                 |
+| `literal` | `Schema.Literal('a', 'b')`    | Select/segmented control |
+| `struct`  | `Schema.Struct({...})`        | Nested form group        |
+| `unknown` | Other types                   | Fallback renderer        |
 
 ### Types
 

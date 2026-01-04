@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **Monorepo CLI**: Replaced Biome with oxc toolchain (oxlint + oxfmt)
+  - Removed `@biomejs/biome` dependency
+  - `mono lint` now uses oxlint exclusively
+  - `mono fmt [--check]` - Format code with oxfmt (Prettier-compatible, 30× faster)
+  - `mono check` now includes format verification
+  - Added shared oxlint configuration via `@overeng/oxlint-config` package
+
+- **@overeng/oxlint-config**: New package for shared oxlint configuration
+  - Base config with sensible defaults for TypeScript/Effect projects
+  - Rules: `import/no-dynamic-require` (warn), `oxc/no-barrel-file` (warn, except `mod.ts`), `max-params` (warn, max 2), `import/no-commonjs` (error), `import/no-cycle` (warn), `func-style` (warn, prefer expressions/arrows)
+  - Re-exports only allowed from `mod.ts` entry point files
+
 ### Added
 
 - **@overeng/utils**: Force revoke / lock stealing for file-system semaphore backing

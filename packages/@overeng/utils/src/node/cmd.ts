@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+
 import * as Command from '@effect/platform/Command'
 import type * as CommandExecutor from '@effect/platform/CommandExecutor'
 import type { PlatformError } from '@effect/platform/Error'
@@ -15,6 +16,7 @@ import {
   Schema,
   Stream,
 } from 'effect'
+
 import { isNotUndefined } from '../isomorphic/mod.ts'
 import { applyLoggingToCommand } from './cmd-log.ts'
 import * as FileLogger from './FileLogger.ts'
@@ -430,6 +432,7 @@ const emitSegment = ({
     yield* appendLog({ channel, content: contentForLog })
   })
 
+// oxlint-disable-next-line eslint(max-params) -- internal helper with output context
 const mirrorSegment = (
   target: NodeJS.WriteStream,
   content: string,

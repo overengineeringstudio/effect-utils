@@ -23,6 +23,26 @@ export interface GenerateOptions {
   readonly includeApi?: boolean
 }
 
+/** Options for generating schema code */
+export interface GenerateSchemaCodeOptions {
+  /** Database info from introspection */
+  readonly dbInfo: DatabaseInfo
+  /** Name for the generated schema */
+  readonly schemaName: string
+  /** Additional generation options */
+  readonly options?: GenerateOptions
+}
+
+/** Options for generating API code */
+export interface GenerateApiCodeOptions {
+  /** Database info from introspection */
+  readonly dbInfo: DatabaseInfo
+  /** Name for the generated schema */
+  readonly schemaName: string
+  /** Additional generation options */
+  readonly options?: GenerateOptions
+}
+
 // -----------------------------------------------------------------------------
 // Transform Mappings
 // -----------------------------------------------------------------------------
@@ -282,8 +302,7 @@ const generateTypedOptions = (
   const typeName = `${pascalName}${propIdentifier}Option`
 
   const literals = options
-    .slice()
-    .sort((a, b) => a.name.localeCompare(b.name))
+    .toSorted((a, b) => a.name.localeCompare(b.name))
     .map((o) => sanitizeLiteralValue(o.name))
     .join(', ')
 
@@ -331,6 +350,7 @@ const parseGenerateOptions = (
 /**
  * Generate TypeScript code for an Effect schema from database info.
  */
+// oxlint-disable-next-line eslint(func-style), eslint(max-params) -- public API with established signature
 export function generateSchemaCode(
   dbInfo: DatabaseInfo,
   schemaName: string,
@@ -362,7 +382,7 @@ export function generateSchemaCode(
   }
 
   // Sort imports alphabetically
-  const sortedImports = Array.from(requiredNamespaces).sort()
+  const sortedImports = Array.from(requiredNamespaces).toSorted()
 
   // Generate read property fields
   const readPropertyFields = dbInfo.properties
@@ -512,10 +532,8 @@ export function generateSchemaCode(
   return lines.join('\n')
 }
 
-/**
- * Get available transforms for a property type
- */
-export function getAvailableTransforms(propertyType: string): readonly string[] {
+/** Get available transforms for a property type */
+export const getAvailableTransforms = (propertyType: string): readonly string[] => {
   const isNotionPropertyType = (u: string): u is NotionPropertyType =>
     Object.hasOwn(PROPERTY_TRANSFORMS, u)
 
@@ -525,10 +543,8 @@ export function getAvailableTransforms(propertyType: string): readonly string[] 
   return ['raw']
 }
 
-/**
- * Get the default transform for a property type
- */
-export function getDefaultTransform(propertyType: string): string {
+/** Get the default transform for a property type */
+export const getDefaultTransform = (propertyType: string): string => {
   const isNotionPropertyType = (u: string): u is NotionPropertyType =>
     Object.hasOwn(DEFAULT_TRANSFORMS, u)
 
@@ -538,12 +554,9 @@ export function getDefaultTransform(propertyType: string): string {
   return 'raw'
 }
 
-/**
- * Check if a property type is read-only
- */
-export function isReadOnlyProperty(propertyType: string): boolean {
-  return READ_ONLY_PROPERTIES.has(propertyType)
-}
+/** Check if a property type is read-only */
+export const isReadOnlyProperty = (propertyType: string): boolean =>
+  READ_ONLY_PROPERTIES.has(propertyType)
 
 // -----------------------------------------------------------------------------
 // API Code Generation
@@ -555,6 +568,7 @@ export function isReadOnlyProperty(propertyType: string): boolean {
  * This generates functions like `query`, `get`, `create`, `update` that
  * have the database ID and schema baked in.
  */
+// oxlint-disable-next-line eslint(func-style), eslint(max-params) -- public API with established signature
 export function generateApiCode(
   dbInfo: DatabaseInfo,
   schemaName: string,

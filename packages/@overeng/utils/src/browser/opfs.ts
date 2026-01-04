@@ -4,6 +4,7 @@
  */
 
 import { Effect, Option, Schema } from 'effect'
+
 import { prettyBytes } from './pretty-bytes.ts'
 
 // Augment FileSystemDirectoryHandle with async iterator methods not yet in TS DOM lib
@@ -106,6 +107,7 @@ export const getDirHandle = (
  * @param fileName - The name of the file
  * @param options - Options for file creation
  */
+// oxlint-disable-next-line eslint(max-params) -- mirrors Web File API pattern
 export const getFileHandle = (
   dirHandle: FileSystemDirectoryHandle,
   fileName: string,
@@ -293,6 +295,7 @@ export const deleteAll = (dirHandle: FileSystemDirectoryHandle): Effect.Effect<v
  * @param name - The name of the entry to delete
  * @param options - Options for deletion
  */
+// oxlint-disable-next-line eslint(max-params) -- mirrors Web File API pattern
 export const deleteEntry = (
   dirHandle: FileSystemDirectoryHandle,
   name: string,

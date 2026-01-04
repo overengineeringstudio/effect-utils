@@ -1,6 +1,7 @@
 import { describe, it } from '@effect/vitest'
 import { Effect, Option, Schema } from 'effect'
 import { expect } from 'vitest'
+
 import {
   Checkbox,
   CheckboxWriteFromBoolean,

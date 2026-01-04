@@ -1,8 +1,8 @@
 {
   "name": "@overeng/notion-effect-schema",
   "version": "0.1.0",
-  "type": "module",
   "private": true,
+  "type": "module",
   "exports": {
     ".": "./src/mod.ts"
   },
@@ -17,13 +17,13 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
-  "peerDependencies": {
-    "effect": "catalog:"
-  },
   "devDependencies": {
     "@effect/vitest": "catalog:",
     "@types/node": "catalog:",
     "effect": "catalog:",
     "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "effect": "catalog:"
   }
 }

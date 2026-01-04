@@ -1,8 +1,8 @@
 {
   "name": "@overeng/notion-effect-cli",
   "version": "0.1.0",
-  "type": "module",
   "private": true,
+  "type": "module",
   "exports": {
     ".": "./src/mod.ts"
   },
@@ -22,25 +22,25 @@
   },
   "dependencies": {
     "@effect/cli": "catalog:",
+    "@effect/cluster": "catalog:",
+    "@effect/experimental": "catalog:",
     "@effect/platform": "catalog:",
     "@effect/platform-node": "catalog:",
     "@effect/printer": "catalog:",
     "@effect/printer-ansi": "catalog:",
-    "@effect/typeclass": "catalog:",
-    "@effect/cluster": "catalog:",
-    "@effect/sql": "catalog:",
-    "@effect/experimental": "catalog:",
-    "@effect/workflow": "catalog:",
     "@effect/rpc": "catalog:",
+    "@effect/sql": "catalog:",
+    "@effect/typeclass": "catalog:",
+    "@effect/workflow": "catalog:",
     "@overeng/notion-effect-client": "workspace:*",
     "@overeng/notion-effect-schema": "workspace:*",
     "@overeng/utils": "workspace:*"
   },
-  "peerDependencies": {
-    "effect": "catalog:"
-  },
   "devDependencies": {
     "effect": "catalog:",
     "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "effect": "catalog:"
   }
 }

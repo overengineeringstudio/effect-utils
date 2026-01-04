@@ -135,6 +135,7 @@ const MyComponent = () => {
 Provider component that initializes an Effect runtime from a Layer.
 
 Props:
+
 - `layer` - The Layer to build the runtime from
 - `Loading` - Component to show while loading (optional)
 - `Error` - Component to show on error (optional)
