@@ -117,30 +117,10 @@ const testCommand = Command.make(
 ).pipe(Command.withDescription('Run tests across all packages'))
 
 // -----------------------------------------------------------------------------
-// Format Command
-// -----------------------------------------------------------------------------
-
-const formatCheckOption = Options.boolean('check').pipe(
-  Options.withAlias('c'),
-  Options.withDescription('Check formatting without writing changes'),
-  Options.withDefault(false),
-)
-
-const OXC_CONFIG_PATH = 'packages/@overeng/oxc-config'
-
-const formatCommand = Command.make('fmt', { check: formatCheckOption }, ({ check }) =>
-  Effect.gen(function* () {
-    yield* ciGroup('Formatting with oxfmt')
-    const oxfmtArgs = ['-c', `${OXC_CONFIG_PATH}/fmt.jsonc`, ...(check ? ['--check', '.'] : ['.'])]
-    yield* runCommand('oxfmt', oxfmtArgs)
-    yield* ciGroupEnd
-    yield* Console.log('✓ Format complete')
-  }),
-).pipe(Command.withDescription('Format code with oxfmt'))
-
-// -----------------------------------------------------------------------------
 // Lint Command
 // -----------------------------------------------------------------------------
+
+const OXC_CONFIG_PATH = 'packages/@overeng/oxc-config'
 
 const lintFixOption = Options.boolean('fix').pipe(
   Options.withAlias('f'),
@@ -282,11 +262,8 @@ const checkCommand = Command.make('check', {}, () =>
     yield* runCommand('tsc', ['--build', 'tsconfig.all.json'])
     yield* ciGroupEnd
 
-    yield* ciGroup('Formatting')
+    yield* ciGroup('Format + Lint')
     yield* runCommand('oxfmt', ['-c', `${OXC_CONFIG_PATH}/fmt.jsonc`, '--check', '.'])
-    yield* ciGroupEnd
-
-    yield* ciGroup('Linting')
     yield* runCommand('oxlint', ['-c', `${OXC_CONFIG_PATH}/lint.jsonc`, '--import-plugin'])
     yield* ciGroupEnd
 
@@ -306,7 +283,6 @@ const command = Command.make('mono').pipe(
   Command.withSubcommands([
     buildCommand,
     testCommand,
-    formatCommand,
     lintCommand,
     tsCommand,
     cleanCommand,

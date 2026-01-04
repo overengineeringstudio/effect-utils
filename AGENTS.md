@@ -3,7 +3,7 @@
 The `mono` CLI provides shortcuts for common development workflows:
 
 - **TypeScript**: `mono ts [--watch] [--clean]` to type check (use `--clean` to remove build artifacts first)
-- **Linting**: `mono lint` or `mono lint --fix` to run/auto-fix linting checks
+- **Linting**: `mono lint` or `mono lint --fix` to check/fix formatting and lint issues
 - **Testing**: `mono test [--unit|--integration] [--watch]` to run tests
 - **Build**: `mono build` to build all packages
 - **Clean**: `mono clean` to remove all build artifacts
