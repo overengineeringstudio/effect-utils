@@ -76,6 +76,14 @@ Key features:
 
 ## Quick Start
 
+### Enter the dev shell
+
+This repo uses `devenv` to provide a consistent toolchain (including `pnpm` via Corepack). Run commands inside the shell so `mono` can find `pnpm`:
+
+```bash
+devenv shell
+```
+
 ### Install Dependencies
 
 ```bash
@@ -85,44 +93,44 @@ pnpm install
 ### Build All Packages
 
 ```bash
-pnpm build
+mono build
 ```
 
 ### Run Tests
 
 ```bash
-# Unit tests only
-pnpm test:unit
+# Unit tests
+mono test --unit
 
 # Integration tests (requires NOTION_TOKEN for Notion packages)
-NOTION_TOKEN=secret_xxx pnpm test:integration
+NOTION_TOKEN=secret_xxx mono test --integration
 
 # All tests
-NOTION_TOKEN=secret_xxx pnpm test
+NOTION_TOKEN=secret_xxx mono test
 ```
 
 ### Type Checking
 
-Continuous type checking across the entire monorepo:
+Continuous type checking across the entire monorepo (project references):
 
 ```bash
-pnpm typecheck:watch
+mono ts --watch
 ```
 
 Or one-off type check:
 
 ```bash
-pnpm typecheck
+mono ts
 ```
 
 ### Linting
 
 ```bash
-# Check for issues
-pnpm lint
+# Check formatting + lint
+mono lint
 
-# Auto-fix issues
-pnpm lint:fix
+# Auto-fix formatting + lint issues
+mono lint --fix
 ```
 
 ## Package Structure
@@ -141,7 +149,7 @@ This monorepo uses:
 
 - **pnpm workspaces** for package management
 - **TypeScript project references** for incremental builds
-- **Biome** for linting and formatting
+- **oxlint + oxfmt** for linting and formatting
 - **Vitest** for testing
 - **Effect** for core functionality
 

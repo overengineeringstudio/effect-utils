@@ -26,7 +26,7 @@ oxfmt -c packages/@overeng/oxc-config/fmt.jsonc .
 | Rule                        | Severity | Description                                   |
 | --------------------------- | -------- | --------------------------------------------- |
 | `import/no-dynamic-require` | warn     | Disallow dynamic `import()` and `require()`   |
-| `oxc/no-barrel-file`        | warn     | Detect barrel files with >10 re-exports       |
+| `oxc/no-barrel-file`        | warn     | Disallow re-exports outside `mod.ts`          |
 | `max-params`                | warn     | Encourage named arguments (max 2 params)      |
 | `import/no-commonjs`        | error    | Enforce ESM over CommonJS                     |
 | `import/no-cycle`           | warn     | Detect circular dependencies                  |

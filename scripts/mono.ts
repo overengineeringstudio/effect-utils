@@ -144,12 +144,17 @@ const formatCommand = Command.make('fmt', { check: formatCheckOption }, ({ check
 
 const lintFixOption = Options.boolean('fix').pipe(
   Options.withAlias('f'),
-  Options.withDescription('Auto-fix linting issues'),
+  Options.withDescription('Auto-fix formatting and lint issues'),
   Options.withDefault(false),
 )
 
 const lintCommand = Command.make('lint', { fix: lintFixOption }, ({ fix }) =>
   Effect.gen(function* () {
+    yield* ciGroup(fix ? 'Formatting with oxfmt' : 'Formatting check with oxfmt')
+    const oxfmtArgs = ['-c', `${OXC_CONFIG_PATH}/fmt.jsonc`, ...(fix ? ['.'] : ['--check', '.'])]
+    yield* runCommand('oxfmt', oxfmtArgs)
+    yield* ciGroupEnd
+
     yield* ciGroup('Linting with oxlint')
     const oxlintArgs = [
       '-c',
@@ -161,7 +166,7 @@ const lintCommand = Command.make('lint', { fix: lintFixOption }, ({ fix }) =>
     yield* ciGroupEnd
     yield* Console.log('✓ Lint complete')
   }),
-).pipe(Command.withDescription('Run oxlint across the codebase'))
+).pipe(Command.withDescription('Check formatting and run oxlint across the codebase'))
 
 // -----------------------------------------------------------------------------
 // TypeScript Command

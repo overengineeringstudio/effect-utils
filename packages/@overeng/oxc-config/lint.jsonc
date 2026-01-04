@@ -20,9 +20,9 @@
     "import/no-dynamic-require": ["warn", { "esmodule": true }],
 
     // Disallow re-exports except in mod.ts entry points
-    // Use threshold=1 to catch any re-exports, then override for mod.ts
+    // Use threshold=0 to catch any re-exports, then override for mod.ts
     // https://oxc.rs/docs/guide/usage/linter/rules/oxc/no-barrel-file
-    "oxc/no-barrel-file": ["warn", { "threshold": 1 }],
+    "oxc/no-barrel-file": ["warn", { "threshold": 0 }],
 
     // Encourage named arguments pattern via options objects
     // Functions with >2 params should use { options } pattern instead
