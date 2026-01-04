@@ -6,6 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/utils**: Force revoke / lock stealing for file-system semaphore backing
+  - `forceRevoke(options, key, holderId)` - Forcibly revoke a specific holder's permits
+  - `forceRevokeAll(options, key)` - Revoke all holders for a semaphore key
+  - `listHolders(options, key)` - List active holders with permit counts and expiry times
+  - `HolderInfo` type for holder information
+  - `HolderNotFoundError` for when target holder doesn't exist
+  - See upstream feature request: https://github.com/ethanniser/effect-distributed-lock/issues/9
+
 - **@overeng/notion-effect-schema**: New `PropertySchema` discriminated union for typed database property definitions
   - Full support for all 23 Notion property types using `Schema.TaggedStruct`
   - `SelectOptionConfig`, `StatusGroupConfig` for select/multi-select/status options

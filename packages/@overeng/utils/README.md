@@ -73,6 +73,36 @@ program.pipe(
 - TTL-based expiration handles crashed processes with automatic cleanup
 - File system watching provides push-based notifications when permits are released
 
+#### Force Revoke / Lock Stealing
+
+The file-system backing provides additional functions for forcibly revoking locks, useful for recovering from dead processes or administrative intervention:
+
+```typescript
+import { FileSystemBacking } from '@overeng/utils/node'
+import { Effect } from 'effect'
+
+const options = { lockDir: '/tmp/my-app-locks' }
+
+// List all active holders for a key
+const holders = yield* FileSystemBacking.listHolders(options, 'my-resource')
+// Returns: [{ holderId: 'abc', permits: 1, expiresAt: 1234567890 }, ...]
+
+// Force revoke a specific holder's permits
+const revokedPermits = yield* FileSystemBacking.forceRevoke(
+  options,
+  'my-resource',
+  'holder-id-to-revoke',
+)
+
+// Nuclear option: revoke all holders for a key
+const allRevoked = yield* FileSystemBacking.forceRevokeAll(options, 'my-resource')
+// Returns: [{ holderId: 'abc', permits: 1 }, { holderId: 'def', permits: 2 }]
+```
+
+After a force revoke, the victim holder's next TTL refresh will fail, triggering `LockLostError` in their `withPermits` scope.
+
+See upstream feature request: https://github.com/ethanniser/effect-distributed-lock/issues/9
+
 #### Limitations
 
 - **Eventually consistent permit counting**: While individual lock file operations are atomic, the total permit count across holders is read from multiple files
@@ -93,6 +123,12 @@ Re-exports from [`effect-distributed-lock`](https://github.com/ethanniser/effect
 ### Node (`@overeng/utils/node`)
 
 - `FileSystemBacking` - File-based backing implementation for Node.js
+  - `layer` - Create the backing layer
+  - `forceRevoke` - Forcibly revoke a holder's permits
+  - `forceRevokeAll` - Revoke all holders for a key
+  - `listHolders` - List active holders with their info
+  - `HolderInfo` - Type for holder information
+  - `HolderNotFoundError` - Error when target holder doesn't exist
 - `CurrentWorkingDirectory` - Service capturing process CWD, with test overrides
 - `EffectUtilsWorkspace` - Workspace root service backed by `WORKSPACE_ROOT`
 - `cmd` - Command runner returning exit codes with optional logging/retention

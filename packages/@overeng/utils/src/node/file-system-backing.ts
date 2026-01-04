@@ -1,6 +1,13 @@
 import { FileSystem, Path } from '@effect/platform'
-import { Duration, Effect, Layer, Schema, Stream } from 'effect'
+import { Cause, Data, Duration, Effect, Layer, Option, Schema, Stream } from 'effect'
 import { DistributedSemaphoreBacking, SemaphoreBackingError } from 'effect-distributed-lock'
+
+/** Information about a holder's lock state */
+export interface HolderInfo {
+  readonly holderId: string
+  readonly permits: number
+  readonly expiresAt: number
+}
 
 /**
  * Schema for individual holder lock files.
@@ -33,6 +40,14 @@ const getKeyDir = (lockDir: string, key: string): string => `${lockDir}/${encode
 const getHolderPath = (lockDir: string, key: string, holderId: string): string =>
   `${getKeyDir(lockDir, key)}/${encodeURIComponent(holderId)}.lock`
 
+const isNotFoundError = (cause: unknown): boolean => {
+  if (typeof cause !== 'object' || cause === null) return false
+  const record = cause as Record<string, unknown>
+  if (record._tag === 'SystemError' && record.reason === 'NotFound') return true
+  if (record.code === 'ENOENT') return true
+  return false
+}
+
 /**
  * Read a holder's lock file, returning undefined if it doesn't exist or is expired.
  */
@@ -43,25 +58,32 @@ const readHolderLock = (
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
 
-    const exists = yield* fs
-      .exists(filePath)
-      .pipe(
-        Effect.catchAll((cause) =>
-          Effect.fail(new SemaphoreBackingError({ operation: 'exists', cause })),
-        ),
-      )
+    const content = yield* fs.readFileString(filePath).pipe(
+      Effect.catchAllCause((cause) => {
+        const failure = Option.getOrUndefined(Cause.failureOption(cause))
+        if (failure !== undefined && isNotFoundError(failure)) {
+          return Effect.succeed(undefined)
+        }
 
-    if (!exists) {
+        const defect = Option.getOrUndefined(Cause.dieOption(cause))
+        if (defect !== undefined && isNotFoundError(defect)) {
+          return Effect.succeed(undefined)
+        }
+
+        if (failure !== undefined) {
+          return Effect.fail(new SemaphoreBackingError({ operation: 'readFile', cause: failure }))
+        }
+        if (defect !== undefined) {
+          return Effect.fail(new SemaphoreBackingError({ operation: 'readFile', cause: defect }))
+        }
+
+        return Effect.fail(new SemaphoreBackingError({ operation: 'readFile', cause }))
+      }),
+    )
+
+    if (content === undefined) {
       return undefined
     }
-
-    const content = yield* fs
-      .readFileString(filePath)
-      .pipe(
-        Effect.catchAll((cause) =>
-          Effect.fail(new SemaphoreBackingError({ operation: 'readFile', cause })),
-        ),
-      )
 
     const parsed = yield* Schema.decodeUnknown(Schema.parseJson(HolderLockSchema))(content).pipe(
       Effect.catchAll((cause) =>
@@ -143,6 +165,16 @@ const removeHolderLock = (
         ),
       )
   })
+
+/** Error thrown when attempting to revoke permits from a non-existent holder */
+export class HolderNotFoundError extends Data.TaggedError('HolderNotFoundError')<{
+  readonly key: string
+  readonly holderId: string
+}> {
+  override get message(): string {
+    return `Holder "${this.holderId}" not found for key "${this.key}"`
+  }
+}
 
 /**
  * Count active (non-expired) permits in a key's directory.
@@ -354,3 +386,125 @@ export const layer = (
     onPermitsReleased,
   } as DistributedSemaphoreBacking)
 }
+
+/**
+ * Forcibly revoke all permits held by a specific holder.
+ *
+ * This immediately removes the holder's lock file, causing their next refresh
+ * to fail with `LockLostError`. Use this for:
+ * - Recovering from dead/unresponsive processes
+ * - Administrative intervention
+ * - Testing and debugging
+ *
+ * @returns The number of permits that were revoked
+ */
+export const forceRevoke = (
+  options: FileSystemBackingOptions,
+  key: string,
+  targetHolderId: string,
+): Effect.Effect<number, SemaphoreBackingError | HolderNotFoundError, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const { lockDir } = options
+    const holderPath = getHolderPath(lockDir, key, targetHolderId)
+    const now = Date.now()
+
+    const existingLock = yield* readHolderLock(holderPath, now)
+
+    if (existingLock === undefined) {
+      return yield* new HolderNotFoundError({ key, holderId: targetHolderId })
+    }
+
+    yield* removeHolderLock(holderPath)
+
+    return existingLock.permits
+  }).pipe(Effect.withSpan('FileSystemBacking.forceRevoke', { attributes: { key, targetHolderId } }))
+
+/**
+ * List all active (non-expired) holders for a semaphore key.
+ *
+ * Useful for inspecting lock state before force-revoking, or for
+ * administrative visibility into who holds permits.
+ */
+export const listHolders = (
+  options: FileSystemBackingOptions,
+  key: string,
+): Effect.Effect<ReadonlyArray<HolderInfo>, SemaphoreBackingError, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const { lockDir } = options
+    const keyDir = getKeyDir(lockDir, key)
+    const now = Date.now()
+    const fs = yield* FileSystem.FileSystem
+
+    const exists = yield* fs
+      .exists(keyDir)
+      .pipe(
+        Effect.catchAll((cause) =>
+          Effect.fail(new SemaphoreBackingError({ operation: 'exists', cause })),
+        ),
+      )
+
+    if (!exists) {
+      return []
+    }
+
+    const entries = yield* fs
+      .readDirectory(keyDir)
+      .pipe(
+        Effect.catchAll((cause) =>
+          Effect.fail(new SemaphoreBackingError({ operation: 'readDirectory', cause })),
+        ),
+      )
+
+    const holders: HolderInfo[] = []
+
+    for (const entry of entries) {
+      if (!entry.endsWith('.lock')) continue
+
+      const filePath = `${keyDir}/${entry}`
+      const lock = yield* readHolderLock(filePath, now)
+
+      if (lock !== undefined) {
+        const holderId = yield* Effect.try({
+          try: () => decodeURIComponent(entry.slice(0, -5)), // Remove .lock suffix
+          catch: (cause) => new SemaphoreBackingError({ operation: 'decodeURIComponent', cause }),
+        })
+        holders.push({
+          holderId,
+          permits: lock.permits,
+          expiresAt: lock.expiresAt,
+        })
+      }
+    }
+
+    return holders
+  }).pipe(Effect.withSpan('FileSystemBacking.listHolders', { attributes: { key } }))
+
+/**
+ * Forcibly revoke permits from all holders for a semaphore key.
+ *
+ * This is a nuclear option that clears all locks for a key.
+ * Use with caution.
+ *
+ * @returns Array of revoked holders with their permit counts
+ */
+export const forceRevokeAll = (
+  options: FileSystemBackingOptions,
+  key: string,
+): Effect.Effect<
+  ReadonlyArray<{ holderId: string; permits: number }>,
+  SemaphoreBackingError | HolderNotFoundError,
+  FileSystem.FileSystem
+> =>
+  Effect.gen(function* () {
+    const holders = yield* listHolders(options, key)
+    const revoked: Array<{ holderId: string; permits: number }> = []
+
+    for (const holder of holders) {
+      const permits = yield* forceRevoke(options, key, holder.holderId)
+      if (permits > 0) {
+        revoked.push({ holderId: holder.holderId, permits })
+      }
+    }
+
+    return revoked
+  }).pipe(Effect.withSpan('FileSystemBacking.forceRevokeAll', { attributes: { key } }))

@@ -528,4 +528,244 @@ describe('FileSystemBacking', () => {
       }).pipe(Effect.provide(TestLayer), Effect.scoped),
     )
   })
+
+  describe('forceRevoke', () => {
+    it.effect('revokes permits from a holder and returns permit count', () =>
+      Effect.gen(function* () {
+        const fsService = yield* FileSystem.FileSystem
+        const tempDir = yield* fsService.makeTempDirectory()
+        const lockDir = `${tempDir}/locks`
+        const options = { lockDir }
+
+        const backingLayer = FileSystemBacking.layer(options)
+
+        yield* Effect.gen(function* () {
+          const backing = yield* DistributedSemaphoreBacking
+
+          yield* backing.tryAcquire('test-key', 'holder-1', Duration.seconds(30), 5, 3)
+
+          const revoked = yield* FileSystemBacking.forceRevoke(options, 'test-key', 'holder-1')
+          expect(revoked).toBe(3)
+
+          // Holder's lock file should be removed
+          const keyDir = `${lockDir}/test-key`
+          expect(fs.existsSync(`${keyDir}/holder-1.lock`)).toBe(false)
+
+          // Permits should now be available for others
+          const count = yield* backing.getCount('test-key', Duration.seconds(30))
+          expect(count).toBe(0)
+        }).pipe(Effect.provide(backingLayer))
+      }).pipe(Effect.provide(TestLayer), Effect.scoped),
+    )
+
+    it.effect('fails with HolderNotFoundError for non-existent holder', () =>
+      Effect.gen(function* () {
+        const fsService = yield* FileSystem.FileSystem
+        const tempDir = yield* fsService.makeTempDirectory()
+        const lockDir = `${tempDir}/locks`
+        const options = { lockDir }
+
+        const result = yield* FileSystemBacking.forceRevoke(
+          options,
+          'test-key',
+          'nonexistent',
+        ).pipe(Effect.either)
+
+        expect(result._tag).toBe('Left')
+        if (result._tag === 'Left') {
+          expect(result.left._tag).toBe('HolderNotFoundError')
+        }
+      }).pipe(Effect.provide(TestLayer), Effect.scoped),
+    )
+
+    it.effect('allows another holder to acquire after force revoke', () =>
+      Effect.gen(function* () {
+        const fsService = yield* FileSystem.FileSystem
+        const tempDir = yield* fsService.makeTempDirectory()
+        const lockDir = `${tempDir}/locks`
+        const options = { lockDir }
+
+        const backingLayer = FileSystemBacking.layer(options)
+
+        yield* Effect.gen(function* () {
+          const backing = yield* DistributedSemaphoreBacking
+
+          // Holder 1 acquires all permits
+          yield* backing.tryAcquire('test-key', 'holder-1', Duration.seconds(30), 1, 1)
+
+          // Holder 2 cannot acquire
+          const acquired1 = yield* backing.tryAcquire(
+            'test-key',
+            'holder-2',
+            Duration.seconds(30),
+            1,
+            1,
+          )
+          expect(acquired1).toBe(false)
+
+          // Force revoke holder 1
+          yield* FileSystemBacking.forceRevoke(options, 'test-key', 'holder-1')
+
+          // Now holder 2 can acquire
+          const acquired2 = yield* backing.tryAcquire(
+            'test-key',
+            'holder-2',
+            Duration.seconds(30),
+            1,
+            1,
+          )
+          expect(acquired2).toBe(true)
+        }).pipe(Effect.provide(backingLayer))
+      }).pipe(Effect.provide(TestLayer), Effect.scoped),
+    )
+
+    it.effect('causes victim holder refresh to fail', () =>
+      Effect.gen(function* () {
+        const fsService = yield* FileSystem.FileSystem
+        const tempDir = yield* fsService.makeTempDirectory()
+        const lockDir = `${tempDir}/locks`
+        const options = { lockDir }
+
+        const backingLayer = FileSystemBacking.layer(options)
+
+        yield* Effect.gen(function* () {
+          const backing = yield* DistributedSemaphoreBacking
+
+          yield* backing.tryAcquire('test-key', 'holder-1', Duration.seconds(30), 5, 2)
+
+          // Force revoke
+          yield* FileSystemBacking.forceRevoke(options, 'test-key', 'holder-1')
+
+          // Victim's refresh should now fail
+          const refreshed = yield* backing.refresh(
+            'test-key',
+            'holder-1',
+            Duration.seconds(30),
+            5,
+            2,
+          )
+          expect(refreshed).toBe(false)
+        }).pipe(Effect.provide(backingLayer))
+      }).pipe(Effect.provide(TestLayer), Effect.scoped),
+    )
+  })
+
+  describe('listHolders', () => {
+    it.effect('returns empty array when no holders', () =>
+      Effect.gen(function* () {
+        const fsService = yield* FileSystem.FileSystem
+        const tempDir = yield* fsService.makeTempDirectory()
+        const lockDir = `${tempDir}/locks`
+        const options = { lockDir }
+
+        const holders = yield* FileSystemBacking.listHolders(options, 'test-key')
+        expect(holders).toEqual([])
+      }).pipe(Effect.provide(TestLayer), Effect.scoped),
+    )
+
+    it.effect('returns all active holders with their info', () =>
+      Effect.gen(function* () {
+        const fsService = yield* FileSystem.FileSystem
+        const tempDir = yield* fsService.makeTempDirectory()
+        const lockDir = `${tempDir}/locks`
+        const options = { lockDir }
+
+        const backingLayer = FileSystemBacking.layer(options)
+
+        yield* Effect.gen(function* () {
+          const backing = yield* DistributedSemaphoreBacking
+
+          yield* backing.tryAcquire('test-key', 'holder-a', Duration.seconds(30), 10, 2)
+          yield* backing.tryAcquire('test-key', 'holder-b', Duration.seconds(30), 10, 3)
+
+          const holders = yield* FileSystemBacking.listHolders(options, 'test-key')
+
+          expect(holders).toHaveLength(2)
+
+          const holderA = holders.find((h) => h.holderId === 'holder-a')
+          const holderB = holders.find((h) => h.holderId === 'holder-b')
+
+          expect(holderA).toBeDefined()
+          expect(holderA?.permits).toBe(2)
+          expect(typeof holderA?.expiresAt).toBe('number')
+
+          expect(holderB).toBeDefined()
+          expect(holderB?.permits).toBe(3)
+        }).pipe(Effect.provide(backingLayer))
+      }).pipe(Effect.provide(TestLayer), Effect.scoped),
+    )
+
+    it.effect('excludes expired holders', () =>
+      Effect.gen(function* () {
+        const fsService = yield* FileSystem.FileSystem
+        const tempDir = yield* fsService.makeTempDirectory()
+        const lockDir = `${tempDir}/locks`
+        const options = { lockDir }
+        const keyDir = `${lockDir}/${encodeURIComponent('test-key')}`
+        const now = Date.now()
+
+        yield* fsService.makeDirectory(keyDir, { recursive: true })
+        yield* fsService.writeFileString(
+          `${keyDir}/${encodeURIComponent('holder-expired')}.lock`,
+          JSON.stringify({ permits: 2, expiresAt: now - 60_000 }),
+        )
+        yield* fsService.writeFileString(
+          `${keyDir}/${encodeURIComponent('holder-active')}.lock`,
+          JSON.stringify({ permits: 3, expiresAt: now + 60_000 }),
+        )
+
+        const holders = yield* FileSystemBacking.listHolders(options, 'test-key')
+
+        expect(holders).toHaveLength(1)
+        expect(holders[0]?.holderId).toBe('holder-active')
+      }).pipe(Effect.provide(TestLayer), Effect.scoped),
+    )
+  })
+
+  describe('forceRevokeAll', () => {
+    it.effect('revokes all holders and returns their info', () =>
+      Effect.gen(function* () {
+        const fsService = yield* FileSystem.FileSystem
+        const tempDir = yield* fsService.makeTempDirectory()
+        const lockDir = `${tempDir}/locks`
+        const options = { lockDir }
+
+        const backingLayer = FileSystemBacking.layer(options)
+
+        yield* Effect.gen(function* () {
+          const backing = yield* DistributedSemaphoreBacking
+
+          yield* backing.tryAcquire('test-key', 'holder-1', Duration.seconds(30), 10, 2)
+          yield* backing.tryAcquire('test-key', 'holder-2', Duration.seconds(30), 10, 3)
+          yield* backing.tryAcquire('test-key', 'holder-3', Duration.seconds(30), 10, 1)
+
+          const revoked = yield* FileSystemBacking.forceRevokeAll(options, 'test-key')
+
+          expect(revoked).toHaveLength(3)
+          expect(revoked.map((r) => r.holderId).sort()).toEqual([
+            'holder-1',
+            'holder-2',
+            'holder-3',
+          ])
+          expect(revoked.reduce((sum, r) => sum + r.permits, 0)).toBe(6)
+
+          // All permits should now be available
+          const count = yield* backing.getCount('test-key', Duration.seconds(30))
+          expect(count).toBe(0)
+        }).pipe(Effect.provide(backingLayer))
+      }).pipe(Effect.provide(TestLayer), Effect.scoped),
+    )
+
+    it.effect('returns empty array when no holders', () =>
+      Effect.gen(function* () {
+        const fsService = yield* FileSystem.FileSystem
+        const tempDir = yield* fsService.makeTempDirectory()
+        const lockDir = `${tempDir}/locks`
+        const options = { lockDir }
+
+        const revoked = yield* FileSystemBacking.forceRevokeAll(options, 'nonexistent-key')
+        expect(revoked).toEqual([])
+      }).pipe(Effect.provide(TestLayer), Effect.scoped),
+    )
+  })
 })
