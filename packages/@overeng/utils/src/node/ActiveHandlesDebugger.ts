@@ -4,7 +4,7 @@
  * Node.js processes stay alive while there are active handles (timers, sockets, etc.)
  * or pending requests. This module provides Effect-native APIs to inspect these.
  */
-import { Duration, Effect, Schedule, Stream } from 'effect'
+import { Duration, Effect, Runtime, Schedule, Stream } from 'effect'
 
 /** Information about a single active handle */
 export interface HandleInfo {
@@ -55,14 +55,14 @@ const categorizeHandle = (handle: unknown): HandleInfo => {
  *
  * @example
  * ```ts
- * const info = yield* inspectActiveHandles
+ * const info = yield* dumpActiveHandles
  * console.log(`${info.totalHandles} handles, ${info.totalRequests} requests`)
  * for (const h of info.handles) {
  *   console.log(`  ${h.type}: ${h.details}`)
  * }
  * ```
  */
-export const inspectActiveHandles = Effect.sync((): ActiveHandlesInfo => {
+export const dumpActiveHandles = Effect.sync((): ActiveHandlesInfo => {
   // biome-ignore lint/suspicious/noExplicitAny: Node.js internals
   const proc = process as any
   const rawHandles: unknown[] = proc._getActiveHandles?.() ?? []
@@ -92,7 +92,7 @@ export const inspectActiveHandles = Effect.sync((): ActiveHandlesInfo => {
  * ```
  */
 export const logActiveHandles = Effect.gen(function* () {
-  const info = yield* inspectActiveHandles
+  const info = yield* dumpActiveHandles
   yield* Effect.log('Active handles dump', {
     totalHandles: info.totalHandles,
     totalRequests: info.totalRequests,
@@ -124,7 +124,7 @@ export const monitorActiveHandles = (interval: Duration.DurationInput) =>
     yield* Stream.fromSchedule(Schedule.spaced(interval)).pipe(
       Stream.runForEach(() =>
         Effect.gen(function* () {
-          const info = yield* inspectActiveHandles
+          const info = yield* dumpActiveHandles
           const currentTotal = info.totalHandles + info.totalRequests
 
           if (currentTotal !== lastTotal) {
@@ -153,12 +153,18 @@ export const monitorActiveHandles = (interval: Duration.DurationInput) =>
  */
 export const withActiveHandlesDumpOnSigint = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   Effect.gen(function* () {
-    yield* Effect.addFinalizer(() =>
-      Effect.gen(function* () {
-        yield* Effect.log('Dumping active handles on scope close...')
-        yield* logActiveHandles
-      }),
-    )
+    const runtime = yield* Effect.runtime<R>()
 
-    return yield* effect
-  })
+    const handler = () => {
+      try {
+        Runtime.runSync(runtime)(Effect.ignore(logActiveHandles))
+      } finally {
+        process.off('SIGINT', handler)
+        process.kill(process.pid, 'SIGINT')
+      }
+    }
+
+    yield* Effect.sync(() => process.on('SIGINT', handler))
+
+    return yield* effect.pipe(Effect.ensuring(Effect.sync(() => process.off('SIGINT', handler))))
+  }).pipe(Effect.withSpan('withActiveHandlesDumpOnSigint'))

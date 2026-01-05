@@ -68,12 +68,12 @@ const findAvailablePort = (): Promise<number> =>
  * @example
  * ```typescript
  * // playwright.config.ts
- * import { createPlaywrightConfig } from '@overeng/utils/node'
+ * import { createPlaywrightConfig } from '@overeng/utils/node/playwright'
  *
  * export default createPlaywrightConfig({
  *   testDir: './src/browser/__tests__',
  *   webServer: {
- *     command: 'pnpm exec vite --config src/browser/__tests__/vite.config.ts --port {{port}}',
+ *     command: './node_modules/.bin/vite --config src/browser/__tests__/vite.config.ts --port {{port}}',
  *   },
  * })
  * ```

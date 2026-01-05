@@ -99,7 +99,7 @@ export const addTracedFinalizer = (name: string, finalizer: Effect.Effect<void>)
           Effect.logError(`Finalizer failed: ${name}`, {
             finalizer: name,
             cause,
-          }),
+          }).pipe(Effect.andThen(Effect.failCause(cause))),
         ),
       )
 

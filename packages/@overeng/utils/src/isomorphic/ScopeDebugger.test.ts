@@ -101,6 +101,16 @@ describe('ScopeDebugger', () => {
       // Finalizers run in reverse order (LIFO)
       expect(order).toEqual(['third', 'second', 'first'])
     })
+
+    it('does not swallow finalizer failures when debugging enabled', async () => {
+      const program = withScopeDebug(
+        addTracedFinalizer('fails', Effect.die('boom')).pipe(Effect.scoped),
+      )
+
+      const exit = await Effect.runPromiseExit(program)
+
+      expect(exit._tag).toBe('Failure')
+    })
   })
 
   describe('withTracedScope', () => {

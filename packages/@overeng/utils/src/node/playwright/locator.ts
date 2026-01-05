@@ -129,7 +129,7 @@ export const typeHuman: (args: {
   /** Max jitter before typing in milliseconds. */
   jitterMsMax?: number
 }) => Effect.Effect<void, PwOpError> = Effect.fn('pw.locator.typeHuman')(
-  ({ locator, text, delayMsMin = 35, delayMsMax = 95, jitterMsMin = 120, jitterMsMax = 420 }) =>
+  ({ locator, text, delayMsMin = 50, delayMsMax = 50, jitterMsMin = 250, jitterMsMax = 250 }) =>
     Effect.gen(function* () {
       const delay = Math.floor(Math.random() * (delayMsMax - delayMsMin + 1)) + delayMsMin
       const jitter = Math.floor(Math.random() * (jitterMsMax - jitterMsMin + 1)) + jitterMsMin

@@ -72,3 +72,4 @@ export {
 } from './test.ts'
 export * as Wait from './wait.ts'
 export { PwWaitTimeoutError } from './wait.ts'
+export { createPlaywrightConfig } from '../playwright-config.ts'

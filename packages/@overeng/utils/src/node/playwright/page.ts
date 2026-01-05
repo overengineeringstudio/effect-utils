@@ -79,7 +79,10 @@ export const waitForURLChange: (args: {
   ({ waitUntil }) =>
     Effect.gen(function* () {
       const page = yield* PwPage
-      const currentUrl = page.url()
+      const currentUrl = yield* tryPw({
+        op: 'pw.page.url',
+        effect: () => Promise.resolve(page.url()),
+      })
       yield* tryPw({
         op: 'pw.page.waitForURLChange',
         effect: () =>

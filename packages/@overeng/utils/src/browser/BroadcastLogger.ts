@@ -83,6 +83,34 @@ import {
 /** Channel name for broadcasting logs */
 export const BROADCAST_CHANNEL_NAME = 'effect-debug-logs'
 
+const sanitizeForBroadcast = (value: unknown): unknown => {
+  if (value === null || value === undefined) return value
+
+  if (typeof value === 'bigint') return value.toString()
+  if (typeof value === 'function') return `[Function${value.name ? `: ${value.name}` : ''}]`
+  if (typeof value === 'symbol') return value.toString()
+  if (typeof value !== 'object') return value
+
+  if (value instanceof Error) {
+    return { _tag: 'Error', name: value.name, message: value.message, stack: value.stack }
+  }
+
+  const sc = globalThis.structuredClone
+  if (typeof sc === 'function') {
+    try {
+      return sc(value)
+    } catch {
+      // ignore
+    }
+  }
+
+  try {
+    return String(value)
+  } catch {
+    return '[Unserializable]'
+  }
+}
+
 /** Schema for log entries broadcast over BroadcastChannel */
 export class BroadcastLogEntry extends Schema.Class<BroadcastLogEntry>('BroadcastLogEntry')({
   _tag: Schema.Literal('BroadcastLogEntry'),
@@ -100,6 +128,27 @@ export class BroadcastLogEntry extends Schema.Class<BroadcastLogEntry>('Broadcas
 const encodeBroadcastLogEntry = Schema.encodeSync(BroadcastLogEntry)
 const decodeBroadcastLogEntry = Schema.decodeUnknownOption(BroadcastLogEntry)
 
+const makeBroadcastLoggerFromChannel = (channel: BroadcastChannel, source?: string) =>
+  Logger.make<unknown, void>(({ annotations, cause, date, fiberId, logLevel, message, spans }) => {
+    const entry = new BroadcastLogEntry({
+      _tag: 'BroadcastLogEntry',
+      timestamp: date.getTime(),
+      level: logLevel.label,
+      message: (Array.isArray(message) ? message : [message]).map(sanitizeForBroadcast),
+      fiberId: FiberId.threadName(fiberId),
+      spans: [...spans].map((span) => span.label),
+      annotations: Object.fromEntries(
+        HashMap.toEntries(annotations).map(([k, v]) => [k, sanitizeForBroadcast(v)]),
+      ),
+      cause: Cause.isEmpty(cause) ? undefined : Cause.pretty(cause),
+      source,
+    })
+
+    // BroadcastChannel.postMessage doesn't need targetOrigin (unlike window.postMessage)
+    // oxlint-disable-next-line eslint-plugin-unicorn(require-post-message-target-origin)
+    channel.postMessage(encodeBroadcastLogEntry(entry))
+  })
+
 /**
  * Creates a Logger that broadcasts log entries over a BroadcastChannel.
  *
@@ -108,25 +157,7 @@ const decodeBroadcastLogEntry = Schema.decodeUnknownOption(BroadcastLogEntry)
 export const makeBroadcastLogger = (source?: string) => {
   const channel = new BroadcastChannel(BROADCAST_CHANNEL_NAME)
 
-  return Logger.make<unknown, void>(
-    ({ annotations, cause, date, fiberId, logLevel, message, spans }) => {
-      const entry = new BroadcastLogEntry({
-        _tag: 'BroadcastLogEntry',
-        timestamp: date.getTime(),
-        level: logLevel.label,
-        message: Array.isArray(message) ? message : [message],
-        fiberId: FiberId.threadName(fiberId),
-        spans: [...spans].map((span) => span.label),
-        annotations: Object.fromEntries(HashMap.toEntries(annotations)),
-        cause: Cause.isEmpty(cause) ? undefined : Cause.pretty(cause),
-        source,
-      })
-
-      // BroadcastChannel.postMessage doesn't need targetOrigin (unlike window.postMessage)
-      // oxlint-disable-next-line eslint-plugin-unicorn(require-post-message-target-origin)
-      channel.postMessage(encodeBroadcastLogEntry(entry))
-    },
-  )
+  return makeBroadcastLoggerFromChannel(channel, source)
 }
 
 /**
@@ -135,7 +166,13 @@ export const makeBroadcastLogger = (source?: string) => {
  * @param source - Optional identifier for the log source (e.g., worker name)
  */
 export const BroadcastLoggerLive = (source?: string) =>
-  Logger.replace(Logger.defaultLogger, makeBroadcastLogger(source))
+  Logger.replaceScoped(
+    Logger.defaultLogger,
+    Effect.acquireRelease(
+      Effect.sync(() => new BroadcastChannel(BROADCAST_CHANNEL_NAME)),
+      (channel) => Effect.sync(() => channel.close()),
+    ).pipe(Effect.map((channel) => makeBroadcastLoggerFromChannel(channel, source))),
+  )
 
 /**
  * Stream of broadcast log entries from all sources.

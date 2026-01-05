@@ -21,8 +21,9 @@ test.describe('BroadcastLogger integration', () => {
     // Wait for worker to finish
     await expect(page.locator('#status')).toHaveText('Worker done', { timeout: 5000 })
 
-    // Small delay to ensure logs are received
-    await page.waitForTimeout(100)
+    await expect
+      .poll(async () => page.evaluate(() => window.receivedLogs.length), { timeout: 5000 })
+      .toBe(3)
 
     // Check received logs
     const logs = await page.evaluate(() => window.receivedLogs)
@@ -42,7 +43,10 @@ test.describe('BroadcastLogger integration', () => {
     })
 
     await expect(page.locator('#status')).toHaveText('Worker done', { timeout: 5000 })
-    await page.waitForTimeout(100)
+
+    await expect
+      .poll(async () => page.evaluate(() => window.receivedLogs.length), { timeout: 5000 })
+      .toBe(1)
 
     const logs = await page.evaluate(() => window.receivedLogs)
 
@@ -58,7 +62,10 @@ test.describe('BroadcastLogger integration', () => {
     })
 
     await expect(page.locator('#status')).toHaveText('Worker done', { timeout: 5000 })
-    await page.waitForTimeout(100)
+
+    await expect
+      .poll(async () => page.evaluate(() => window.receivedLogs.length), { timeout: 5000 })
+      .toBe(1)
 
     const logs = await page.evaluate(() => window.receivedLogs)
 

@@ -33,10 +33,10 @@
     "@effect/platform-node": "catalog:",
     "@effect/rpc": "catalog:",
     "@effect/vitest": "catalog:",
-    "@playwright/test": "1.57.0",
+    "@playwright/test": "catalog:",
     "@types/node": "catalog:",
     "effect": "catalog:",
-    "vite": "7.3.0",
+    "vite": "catalog:",
     "vitest": "catalog:"
   },
   "peerDependencies": {
@@ -44,6 +44,7 @@
     "@effect/platform": "catalog:",
     "@effect/platform-node": "catalog:",
     "@effect/rpc": "catalog:",
+    "@playwright/test": "catalog:",
     "effect": "catalog:"
   }
 }

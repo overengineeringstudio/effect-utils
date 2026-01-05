@@ -35,9 +35,9 @@ export interface PlaywrightFixtures {
   context: BrowserContext
 }
 
-export interface WithTestCtxParams<ROut, E1, RIn> {
+export interface WithTestCtxParams<ROut, E1> {
   /** Custom layers to provide (merged with defaults). */
-  makeLayer?: () => Layer.Layer<ROut, E1, RIn>
+  makeLayer?: () => Layer.Layer<ROut, E1, never>
   /**
    * Test timeout in milliseconds. Sets Playwright's native test timeout via `test.setTimeout()`.
    * @default 120_000 (2 minutes)
@@ -101,7 +101,7 @@ const DEFAULT_TIMEOUT_MS = 120_000
  * ```
  */
 export const makeWithTestCtx =
-  <ROut = never, E1 = never, RIn = never>(params: WithTestCtxParams<ROut, E1, RIn>) =>
+  <ROut = never, E1 = never>(params: WithTestCtxParams<ROut, E1>) =>
   (fixtures: PlaywrightFixtures) =>
   <A, E, R>(self: Effect.Effect<A, E, R>): Promise<A> =>
     runWithTestCtx({ fixtures, params, self })
@@ -131,21 +131,21 @@ export const makeWithTestCtx =
  * ```
  */
 export const withTestCtx =
-  (fixtures: PlaywrightFixtures, params: WithTestCtxParams<never, never, never> = {}) =>
+  (fixtures: PlaywrightFixtures, params: WithTestCtxParams<never, never> = {}) =>
   <A, E, R>(self: Effect.Effect<A, E, R>): Promise<A> =>
     runWithTestCtx({ fixtures, params, self })
 
-interface RunWithTestCtxArgs<ROut, E1, RIn, A, E, R> {
+interface RunWithTestCtxArgs<ROut, E1, A, E, R> {
   fixtures: PlaywrightFixtures
-  params: WithTestCtxParams<ROut, E1, RIn>
+  params: WithTestCtxParams<ROut, E1>
   self: Effect.Effect<A, E, R>
 }
 
 /**
  * Internal implementation that handles layer composition and Effect execution.
  */
-const runWithTestCtx = <ROut, E1, RIn, A, E, R>(
-  args: RunWithTestCtxArgs<ROut, E1, RIn, A, E, R>,
+const runWithTestCtx = <ROut, E1, A, E, R>(
+  args: RunWithTestCtxArgs<ROut, E1, A, E, R>,
 ): Promise<A> => {
   const { fixtures, params, self } = args
   const {
@@ -186,8 +186,12 @@ const runWithTestCtx = <ROut, E1, RIn, A, E, R>(
       : Logger.minimumLogLevel(LogLevel.Debug)
     : Layer.empty
 
-  const combinedLayer = Layer.mergeAll(playwrightLayers, otelLayer, DefaultLayers, userLayer).pipe(
-    Layer.provide(loggerLayer),
+  const combinedLayer = Layer.mergeAll(
+    playwrightLayers,
+    otelLayer,
+    DefaultLayers,
+    userLayer,
+    loggerLayer,
   )
 
   const effect = self.pipe(Effect.provide(combinedLayer), Effect.scoped)
