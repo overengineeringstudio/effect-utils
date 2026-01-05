@@ -130,7 +130,7 @@ Debug utilities:
 ### Node (`@overeng/utils/node`)
 
 - `makeFileLogger` - Pretty-printed file logger with span support
-- `dumpActiveHandles` - Inspect active Node.js handles preventing exit
+- `inspectActiveHandles` - Inspect active Node.js handles preventing exit
 - `monitorActiveHandles` - Periodic monitoring of active handles
 - `logActiveHandles` - Log active handles to Effect logger
 - `FileSystemBacking` - File-based backing implementation for Node.js
