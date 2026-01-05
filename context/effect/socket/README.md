@@ -33,7 +33,7 @@ ws.send / ws.close -> socket.writer (scoped) / Channel input
 
 - **Client or server calls `CloseEvent`**: send `new CloseEvent(1000, 'reason')` via `socket.writer` to initiate a clean close handshake.
 - **Scope ends without explicit close**: the socket is closed by the underlying finalizer (client: `makeWebSocket` releases with code `1000`; server: `fromWebSocket` closes the `ws`).
-- **Clean close codes**: by default, codes `1000` and `1006` are treated as clean; the read loop completes without failing.
+- **Non-fatal close codes**: in these examples we treat code `1000` as clean, and we often also ignore `1006` (“abnormal closure”) so an abrupt disconnect doesn’t fail the read loop.
 - **Non‑clean close codes**: any other close code (or an error during open/read) completes the read loop with `SocketCloseError` / `SocketGenericError`.
 - **Custom close rules**: `makeWebSocket` / `fromWebSocket` accept `closeCodeIsError` to override what counts as clean.
 - **Open timeout**: if the handshake does not finish in time, `runRaw` fails with a `SocketGenericError` (`OpenTimeout`).
@@ -136,26 +136,32 @@ const server = RpcServer.layer(Api).pipe(
 ## Concrete code examples (commands)
 
 WS echo
+
 - Server: `bun examples/ws-echo-server.ts`
 - Client: `bun examples/ws-echo-client.ts`
 
 WS broadcast
+
 - Server: `bun examples/ws-broadcast-server.ts`
 - Client: `bun examples/ws-broadcast-client.ts`
 
 WS JSON (schema-first)
+
 - Server: `bun examples/ws-json-server.ts`
 - Client: `bun examples/ws-json-client.ts`
 
 HTTP + WS combined
+
 - Server: `bun examples/http-ws-combined.ts`
 - Test HTTP: `curl http://127.0.0.1:8788/`
 
 RPC over WebSocket
+
 - Server: `bun examples/rpc-ws-server.ts`
 - Client: `bun examples/rpc-ws-client.ts`
 
 TCP echo
+
 - Server: `bun examples/tcp-echo-server.ts`
 - Client: `bun examples/tcp-echo-client.ts`
 

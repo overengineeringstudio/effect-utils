@@ -1,4 +1,8 @@
 import { createServer } from 'node:http'
+
+import { NodeRuntime } from '@effect/platform-node'
+import { layer as nodeHttpLayer } from '@effect/platform-node/NodeHttpServer'
+import { layerWebSocket } from '@effect/platform-node/NodeSocketServer'
 import { catchAllCause, empty, get } from '@effect/platform/HttpRouter'
 import { serveEffect } from '@effect/platform/HttpServer'
 import { text } from '@effect/platform/HttpServerResponse'
@@ -6,9 +10,6 @@ import type { CloseEvent, Socket as SocketType } from '@effect/platform/Socket'
 import { toChannelString } from '@effect/platform/Socket'
 import type { Address } from '@effect/platform/SocketServer'
 import { SocketServer } from '@effect/platform/SocketServer'
-import { NodeRuntime } from '@effect/platform-node'
-import { layer as nodeHttpLayer } from '@effect/platform-node/NodeHttpServer'
-import { layerWebSocket } from '@effect/platform-node/NodeSocketServer'
 import { Effect, Layer, Stream } from 'effect'
 
 /**

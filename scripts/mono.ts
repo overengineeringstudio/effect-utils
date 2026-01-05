@@ -1,10 +1,11 @@
 #!/usr/bin/env bun
 
 import { Command, Options } from '@effect/cli'
-import * as PlatformCommand from '@effect/platform/Command'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
-import { CurrentWorkingDirectory, cmd } from '@overeng/utils/node'
+import * as PlatformCommand from '@effect/platform/Command'
 import { Cause, Console, Duration, Effect, Layer, Schema } from 'effect'
+
+import { CurrentWorkingDirectory, cmd } from '@overeng/utils/node'
 
 const IS_CI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true'
 
@@ -14,6 +15,12 @@ const IS_CI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true'
 
 const formatCommandErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
+
+const isDefinedEnvEntry = (entry: [string, string | undefined]): entry is [string, string] =>
+  entry[1] !== undefined
+
+const definedEnv = (env: Record<string, string | undefined>): Record<string, string> =>
+  Object.fromEntries(Object.entries(env).filter(isDefinedEnvEntry))
 
 // oxlint-disable-next-line eslint(max-params) -- internal CLI helper
 const runCommand = (command: string, args: string[], options?: { cwd?: string }) =>
@@ -46,7 +53,7 @@ const runCommandDirect = (
 
     const exitCode = yield* PlatformCommand.make(command, ...args).pipe(
       PlatformCommand.workingDirectory(cwd),
-      PlatformCommand.env(options?.env ?? {}),
+      PlatformCommand.env(definedEnv(options?.env ?? {})),
       PlatformCommand.stdout('inherit'),
       PlatformCommand.stderr('inherit'),
       PlatformCommand.exitCode,
@@ -71,7 +78,7 @@ const startProcess = (
 
     return yield* PlatformCommand.make(command, ...args).pipe(
       PlatformCommand.workingDirectory(cwd),
-      PlatformCommand.env(options?.env ?? {}),
+      PlatformCommand.env(definedEnv(options?.env ?? {})),
       PlatformCommand.stdout('inherit'),
       PlatformCommand.stderr('inherit'),
       PlatformCommand.start,

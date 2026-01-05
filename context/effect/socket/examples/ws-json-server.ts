@@ -1,9 +1,9 @@
+import { NodeRuntime } from '@effect/platform-node'
+import { layerWebSocket } from '@effect/platform-node/NodeSocketServer'
 import type { CloseEvent, Socket as SocketType } from '@effect/platform/Socket'
 import { toChannelString } from '@effect/platform/Socket'
 import type { Address } from '@effect/platform/SocketServer'
 import { SocketServer } from '@effect/platform/SocketServer'
-import { NodeRuntime } from '@effect/platform-node'
-import { layerWebSocket } from '@effect/platform-node/NodeSocketServer'
 import { Effect, Schema, Stream } from 'effect'
 
 /**

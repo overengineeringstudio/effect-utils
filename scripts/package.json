@@ -1,7 +1,7 @@
 {
   "name": "effect-utils-scripts",
-  "type": "module",
   "private": true,
+  "type": "module",
   "dependencies": {
     "@effect/cli": "catalog:",
     "@effect/platform": "catalog:",
