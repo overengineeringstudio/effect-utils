@@ -1,0 +1,14 @@
+{
+  "name": "effect-socket-examples",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@effect/platform": "catalog:",
+    "@effect/platform-node": "catalog:",
+    "@effect/rpc": "catalog:",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:"
+  }
+}

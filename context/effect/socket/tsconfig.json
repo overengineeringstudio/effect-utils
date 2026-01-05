@@ -1,0 +1,12 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": ".",
+    "noEmit": true,
+    "tsBuildInfoFile": "./tsconfig.tsbuildinfo",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node"]
+  },
+  "include": ["examples/**/*.ts"]
+}
