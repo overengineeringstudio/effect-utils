@@ -139,6 +139,10 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 3.19.14
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 25.0.3
 
   packages/@overeng/effect-react:
     devDependencies:

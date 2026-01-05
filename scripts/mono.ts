@@ -2,10 +2,12 @@
 
 import { Command, Options } from '@effect/cli'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
-import * as PlatformCommand from '@effect/platform/Command'
+import type * as CommandExecutor from '@effect/platform/CommandExecutor'
+import type { PlatformError } from '@effect/platform/Error'
+import type { Scope } from 'effect'
 import { Cause, Console, Duration, Effect, Layer, Schema } from 'effect'
 
-import { CurrentWorkingDirectory, cmd } from '@overeng/utils/node'
+import { CurrentWorkingDirectory, cmd, cmdStart } from '@overeng/utils/node'
 
 const IS_CI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true'
 
@@ -16,20 +18,23 @@ const IS_CI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true'
 const formatCommandErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
-const isDefinedEnvEntry = (entry: [string, string | undefined]): entry is [string, string] =>
-  entry[1] !== undefined
-
-const definedEnv = (env: Record<string, string | undefined>): Record<string, string> =>
-  Object.fromEntries(Object.entries(env).filter(isDefinedEnvEntry))
-
 // oxlint-disable-next-line eslint(max-params) -- internal CLI helper
-const runCommand = (command: string, args: string[], options?: { cwd?: string }) =>
+const runCommand = (
+  command: string,
+  args: string[],
+  options?: { cwd?: string; env?: Record<string, string | undefined>; shell?: boolean },
+): Effect.Effect<void, CommandError, CommandExecutor.CommandExecutor | CurrentWorkingDirectory> =>
   Effect.gen(function* () {
     const defaultCwd = process.env.WORKSPACE_ROOT ?? (yield* CurrentWorkingDirectory)
     const cwd = options?.cwd ?? defaultCwd
+    const useShell = options?.shell ?? true
+    const cmdOptions = {
+      shell: useShell,
+      ...(options?.env ? { env: options.env } : {}),
+    }
 
-    return yield* cmd([command, ...args], { shell: true }).pipe(
-      Effect.provide(CurrentWorkingDirectory.fromPath(cwd)),
+    return yield* cmd([command, ...args], cmdOptions).pipe(
+      Effect.provideService(CurrentWorkingDirectory, cwd),
       Effect.asVoid,
       Effect.catchAll((error) =>
         Effect.fail(
@@ -42,46 +47,28 @@ const runCommand = (command: string, args: string[], options?: { cwd?: string })
     )
   })
 
-const runCommandDirect = (
-  command: string,
-  args: string[],
-  options?: { cwd?: string; env?: Record<string, string | undefined> },
-) =>
+const startProcess = (options: {
+  command: string
+  args: string[]
+  cwd?: string
+  env?: Record<string, string | undefined>
+  shell?: boolean
+}): Effect.Effect<
+  CommandExecutor.Process,
+  PlatformError,
+  CommandExecutor.CommandExecutor | CurrentWorkingDirectory | Scope.Scope
+> =>
   Effect.gen(function* () {
     const defaultCwd = process.env.WORKSPACE_ROOT ?? (yield* CurrentWorkingDirectory)
-    const cwd = options?.cwd ?? defaultCwd
-
-    const exitCode = yield* PlatformCommand.make(command, ...args).pipe(
-      PlatformCommand.workingDirectory(cwd),
-      PlatformCommand.env(definedEnv(options?.env ?? {})),
-      PlatformCommand.stdout('inherit'),
-      PlatformCommand.stderr('inherit'),
-      PlatformCommand.exitCode,
-    )
-
-    if (exitCode !== 0) {
-      return yield* new CommandError({
-        command: `${command} ${args.join(' ')}`,
-        message: `Command exited with code ${exitCode}`,
-      })
+    const cwd = options.cwd ?? defaultCwd
+    const useShell = options.shell ?? false
+    const cmdOptions = {
+      shell: useShell,
+      ...(options.env ? { env: options.env } : {}),
     }
-  })
 
-const startProcess = (
-  command: string,
-  args: string[],
-  options?: { cwd?: string; env?: Record<string, string | undefined> },
-) =>
-  Effect.gen(function* () {
-    const defaultCwd = process.env.WORKSPACE_ROOT ?? (yield* CurrentWorkingDirectory)
-    const cwd = options?.cwd ?? defaultCwd
-
-    return yield* PlatformCommand.make(command, ...args).pipe(
-      PlatformCommand.workingDirectory(cwd),
-      PlatformCommand.env(definedEnv(options?.env ?? {})),
-      PlatformCommand.stdout('inherit'),
-      PlatformCommand.stderr('inherit'),
-      PlatformCommand.start,
+    return yield* cmdStart([options.command, ...options.args], cmdOptions).pipe(
+      Effect.provideService(CurrentWorkingDirectory, cwd),
     )
   })
 
@@ -334,22 +321,22 @@ const contextExamplesCommand = Command.make('examples', {}, () =>
     const workspaceRoot = process.env.WORKSPACE_ROOT ?? (yield* CurrentWorkingDirectory)
     const socketCwd = `${workspaceRoot}/context/effect/socket`
 
-    const runWithServer = <TResult, TError, TContext>(
-      label: string,
-      serverArgs: string[],
-      clientEffect: Effect.Effect<TResult, TError, TContext>,
-    ) =>
+    const runWithServer = <TResult, TError, TContext>(options: {
+      label: string
+      serverArgs: string[]
+      clientEffect: Effect.Effect<TResult, TError, TContext>
+    }) =>
       Effect.scoped(
         Effect.gen(function* () {
-          yield* ciGroup(label)
+          yield* ciGroup(options.label)
 
           yield* Effect.acquireRelease(
-            startProcess('bun', serverArgs, { cwd: socketCwd }),
+            startProcess({ command: 'bun', args: options.serverArgs, cwd: socketCwd }),
             (process) => process.kill('SIGTERM').pipe(Effect.catchAll(() => Effect.void)),
           )
 
           yield* Effect.sleep(Duration.seconds(1))
-          return yield* clientEffect
+          return yield* options.clientEffect
         }).pipe(Effect.ensuring(ciGroupEnd)),
       )
 
@@ -362,44 +349,47 @@ const contextExamplesCommand = Command.make('examples', {}, () =>
       'ws.onerror = (error) => { console.error(error); clearTimeout(timeout); process.exit(1) }',
     ].join('; ')
 
-    yield* runWithServer(
-      'WS echo',
-      ['examples/ws-echo-server.ts'],
-      runCommand('bun', ['examples/ws-echo-client.ts'], { cwd: socketCwd }),
-    )
+    yield* runWithServer({
+      label: 'WS echo',
+      serverArgs: ['examples/ws-echo-server.ts'],
+      clientEffect: runCommand('bun', ['examples/ws-echo-client.ts'], { cwd: socketCwd }),
+    })
 
-    yield* runWithServer(
-      'WS broadcast',
-      ['examples/ws-broadcast-server.ts'],
-      runCommand('bun', ['examples/ws-broadcast-client.ts'], { cwd: socketCwd }),
-    )
+    yield* runWithServer({
+      label: 'WS broadcast',
+      serverArgs: ['examples/ws-broadcast-server.ts'],
+      clientEffect: runCommand('bun', ['examples/ws-broadcast-client.ts'], { cwd: socketCwd }),
+    })
 
-    yield* runWithServer(
-      'WS JSON',
-      ['examples/ws-json-server.ts'],
-      runCommand('bun', ['examples/ws-json-client.ts'], { cwd: socketCwd }),
-    )
+    yield* runWithServer({
+      label: 'WS JSON',
+      serverArgs: ['examples/ws-json-server.ts'],
+      clientEffect: runCommand('bun', ['examples/ws-json-client.ts'], { cwd: socketCwd }),
+    })
 
-    yield* runWithServer(
-      'HTTP + WS combined',
-      ['examples/http-ws-combined.ts'],
-      Effect.gen(function* () {
+    yield* runWithServer({
+      label: 'HTTP + WS combined',
+      serverArgs: ['examples/http-ws-combined.ts'],
+      clientEffect: Effect.gen(function* () {
         yield* runCommand('curl', ['-s', 'http://127.0.0.1:8788/'], { cwd: workspaceRoot })
-        yield* runCommandDirect('bun', ['-e', httpWsClientScript], { cwd: workspaceRoot })
+        yield* runCommand('bun', ['-e', httpWsClientScript], {
+          cwd: workspaceRoot,
+          shell: false,
+        })
       }),
-    )
+    })
 
-    yield* runWithServer(
-      'RPC over WebSocket',
-      ['examples/rpc-ws-server.ts'],
-      runCommand('bun', ['examples/rpc-ws-client.ts'], { cwd: socketCwd }),
-    )
+    yield* runWithServer({
+      label: 'RPC over WebSocket',
+      serverArgs: ['examples/rpc-ws-server.ts'],
+      clientEffect: runCommand('bun', ['examples/rpc-ws-client.ts'], { cwd: socketCwd }),
+    })
 
-    yield* runWithServer(
-      'TCP echo',
-      ['examples/tcp-echo-server.ts'],
-      runCommand('bun', ['examples/tcp-echo-client.ts'], { cwd: socketCwd }),
-    )
+    yield* runWithServer({
+      label: 'TCP echo',
+      serverArgs: ['examples/tcp-echo-server.ts'],
+      clientEffect: runCommand('bun', ['examples/tcp-echo-client.ts'], { cwd: socketCwd }),
+    })
 
     yield* Console.log('✓ Context examples complete')
   }),

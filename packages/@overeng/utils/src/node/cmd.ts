@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import * as Command from '@effect/platform/Command'
 import type * as CommandExecutor from '@effect/platform/CommandExecutor'
 import type { PlatformError } from '@effect/platform/Error'
+import type { Scope } from 'effect'
 import {
   Cause,
   Effect,
@@ -25,13 +26,29 @@ import { CurrentWorkingDirectory } from './workspace.ts'
 // Branded zero value so we can compare exit codes without touching internals.
 const SUCCESS_EXIT_CODE: CommandExecutor.ExitCode = 0 as CommandExecutor.ExitCode
 
+/**
+ * Run a command to completion and return its exit code.
+ *
+ * Accepts a command string (split on spaces) or a string array (preferred).
+ * When `shell` is enabled (or implied by logging), the command is executed
+ * through a subshell. Logging options mirror output to a canonical log file
+ * and keep a rolling archive.
+ *
+ * Errors:
+ * - Fails with `CmdError` on non-zero exit codes.
+ * - Propagates `PlatformError` for execution failures.
+ */
 export const cmd: (
   commandInput: string | (string | undefined)[],
   options?:
     | {
+        /** Stream stderr to the terminal or keep it in memory. */
         stderr?: 'inherit' | 'pipe'
+        /** Stream stdout to the terminal or keep it in memory. */
         stdout?: 'inherit' | 'pipe'
+        /** Run in a subshell (required for compound commands). */
         shell?: boolean
+        /** Environment overrides for the command. */
         env?: Record<string, string | undefined>
         /**
          * When provided, streams command output to terminal AND to a canonical log file (`${logDir}/dev.log`) in this directory.
@@ -123,11 +140,96 @@ export const cmd: (
   return exitCode
 })
 
+/**
+ * Start a command and return a running process handle.
+ *
+ * Intended for long-lived tasks (dev servers, watchers) where the caller is
+ * responsible for shutdown. The process inherits stdio by default to keep
+ * output visible in the terminal.
+ *
+ * Notes:
+ * - Returns a `Process` handle that supports `kill`, `exitCode`, `isRunning`, etc.
+ * - Does not wait for completion; call `exitCode` on the returned process if needed.
+ */
+export const cmdStart: (
+  commandInput: string | (string | undefined)[],
+  options?:
+    | {
+        /** Stream stderr to the terminal or keep it in memory. */
+        stderr?: 'inherit' | 'pipe'
+        /** Stream stdout to the terminal or keep it in memory. */
+        stdout?: 'inherit' | 'pipe'
+        /** Run in a subshell (required for compound commands). */
+        shell?: boolean
+        /** Environment overrides for the command. */
+        env?: Record<string, string | undefined>
+      }
+    | undefined,
+) => Effect.Effect<
+  CommandExecutor.Process,
+  PlatformError,
+  CommandExecutor.CommandExecutor | CurrentWorkingDirectory | Scope.Scope
+> = Effect.fn('cmdStart')(function* (commandInput, options) {
+  const cwd = yield* CurrentWorkingDirectory
+
+  const debugEnvStr = Object.entries(options?.env ?? {})
+    .map(([key, value]) => `${key}='${value}' `)
+    .join('')
+  const useShell = !!options?.shell
+  let command: string | undefined
+  let args: string[] = []
+  let normalizedInput: string | string[]
+  let commandDebugStr: string
+
+  if (Array.isArray(commandInput)) {
+    const parts = commandInput.filter(isNotUndefined)
+    ;[command, ...args] = parts
+    normalizedInput = parts
+    commandDebugStr = debugEnvStr + parts.join(' ')
+  } else {
+    ;[command, ...args] = commandInput.split(' ')
+    normalizedInput = commandInput
+    commandDebugStr = debugEnvStr + commandInput
+  }
+
+  if (command === undefined) {
+    return yield* Effect.die('Command is missing')
+  }
+  const subshellStr = useShell ? ' (in subshell)' : ''
+
+  yield* Effect.logDebug(`Starting '${commandDebugStr}' in '${cwd}'${subshellStr}`)
+  yield* Effect.annotateCurrentSpan({
+    'span.label': commandDebugStr,
+    cwd,
+    command,
+    args,
+  })
+
+  return yield* buildCommand(normalizedInput, useShell).pipe(
+    Command.stdin('inherit'),
+    Command.stdout(options?.stdout ?? 'inherit'),
+    Command.stderr(options?.stderr ?? 'inherit'),
+    Command.workingDirectory(cwd),
+    useShell ? Command.runInShell(true) : identity,
+    Command.env(options?.env ?? {}),
+    Command.start,
+  )
+})
+
+/**
+ * Run a command and return stdout as a string.
+ *
+ * Errors:
+ * - Propagates `PlatformError` for execution failures.
+ */
 export const cmdText: (
   commandInput: string | (string | undefined)[],
   options?: {
+    /** Stream stderr to the terminal or pipe to stdout. */
     stderr?: 'inherit' | 'pipe'
+    /** Run in a subshell (required for compound commands). */
     runInShell?: boolean
+    /** Environment overrides for the command. */
     env?: Record<string, string | undefined>
   },
 ) => Effect.Effect<
