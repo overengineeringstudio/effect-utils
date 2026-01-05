@@ -2,9 +2,11 @@ import fs from 'node:fs'
 
 import * as Command from '@effect/platform/Command'
 import type * as CommandExecutor from '@effect/platform/CommandExecutor'
+import type { Process } from '@effect/platform/CommandExecutor'
 import type { PlatformError } from '@effect/platform/Error'
 import {
   Cause,
+  Duration,
   Effect,
   Fiber,
   FiberId,
@@ -13,6 +15,7 @@ import {
   identity,
   List,
   LogLevel,
+  Option,
   Schema,
   Stream,
 } from 'effect'
@@ -42,6 +45,8 @@ export const cmd: (
         logFileName?: string
         /** Optional number of archived logs to retain; defaults to 50 */
         logRetention?: number
+        /** Grace period before escalating from SIGTERM to SIGKILL on cleanup. Defaults to 5 seconds. */
+        killTimeout?: Duration.DurationInput
       }
     | undefined,
 ) => Effect.Effect<
@@ -97,6 +102,7 @@ export const cmd: (
     stdoutMode,
     stderrMode,
     useShell,
+    killTimeout: options?.killTimeout,
   } as const
 
   const exitCode = yield* isNotUndefined(logPath)
@@ -170,6 +176,7 @@ type TRunBaseArgs = {
   readonly stdoutMode: 'inherit' | 'pipe'
   readonly stderrMode: 'inherit' | 'pipe'
   readonly useShell: boolean
+  readonly killTimeout: Duration.DurationInput | undefined
 }
 
 const runWithoutLogging = ({
@@ -202,6 +209,7 @@ const runWithLogging = ({
   stdoutMode,
   stderrMode,
   useShell,
+  killTimeout,
   logPath,
   threadName,
 }: TRunWithLoggingArgs) =>
@@ -248,12 +256,11 @@ const runWithLogging = ({
         Command.env(envWithColor),
       )
 
-      // Acquire/start the command and make sure we kill it on interruption.
+      // Acquire/start the command and make sure we kill the process group on interruption.
+      const killOpts = killTimeout !== undefined ? { timeout: killTimeout } : undefined
       const runningProcess = yield* Effect.acquireRelease(command.pipe(Command.start), (proc) =>
         proc.isRunning.pipe(
-          Effect.flatMap((running) =>
-            running ? proc.kill().pipe(Effect.catchAll(() => Effect.void)) : Effect.void,
-          ),
+          Effect.flatMap((running) => (running ? killProcessGroup(proc, killOpts) : Effect.void)),
           Effect.ignore,
         ),
       )
@@ -287,7 +294,7 @@ const runWithLogging = ({
           Effect.catchAll(() => Effect.succeed(false)),
         )
         if (stillRunning) {
-          yield* Effect.ignore(runningProcess.kill())
+          yield* killProcessGroup(runningProcess, killOpts)
         }
         yield* Effect.ignore(Fiber.join(stdoutFiber))
         yield* Effect.ignore(Fiber.join(stderrFiber))
@@ -300,6 +307,59 @@ const runWithLogging = ({
       return exitCode
     }),
   )
+
+/** Default grace period before escalating from SIGTERM to SIGKILL */
+const DEFAULT_KILL_TIMEOUT: Duration.DurationInput = '5 seconds'
+
+/**
+ * Send a signal to a process group (or individual process as fallback).
+ * On Unix, uses negative PID to signal the entire group.
+ */
+const sendSignalToProcessGroup = (proc: Process, signal: NodeJS.Signals): Effect.Effect<void> => {
+  const isUnix = process.platform !== 'win32'
+
+  if (isUnix) {
+    // Negative PID sends signal to entire process group
+    return Effect.try({
+      try: () => process.kill(-proc.pid, signal),
+      catch: (e) => e as NodeJS.ErrnoException,
+    }).pipe(
+      Effect.catchAll((e) => {
+        // ESRCH = no such process (already dead) - that's fine
+        if (e.code === 'ESRCH') return Effect.void
+        // Other errors: fall back to individual kill (ignore errors)
+        return proc.kill(signal).pipe(Effect.ignore)
+      }),
+    )
+  }
+
+  // Windows: just use individual kill (taskkill /T would need shell)
+  return proc.kill(signal).pipe(Effect.ignore)
+}
+
+/**
+ * Kill a process group with SIGTERM → wait → SIGKILL escalation.
+ * Sends SIGTERM first, waits for graceful exit, then SIGKILL if needed.
+ */
+const killProcessGroup = (
+  proc: Process,
+  options?: { timeout?: Duration.DurationInput },
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    const timeout = options?.timeout ?? DEFAULT_KILL_TIMEOUT
+
+    // Send SIGTERM first
+    yield* sendSignalToProcessGroup(proc, 'SIGTERM')
+
+    // Wait for process to exit gracefully (with timeout)
+    const exited = yield* proc.exitCode.pipe(Effect.timeout(timeout), Effect.option)
+
+    // If still running after timeout, escalate to SIGKILL
+    if (Option.isNone(exited)) {
+      yield* Effect.logDebug(`Process ${proc.pid} didn't exit gracefully, sending SIGKILL`)
+      yield* sendSignalToProcessGroup(proc, 'SIGKILL')
+    }
+  }).pipe(Effect.ignore)
 
 const buildCommand = (input: string | string[], useShell: boolean) => {
   if (Array.isArray(input)) {
