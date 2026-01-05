@@ -1,5 +1,7 @@
 packages:
   - 'packages/**'
+  - 'scripts/**'
+  - 'context/**'
   # Note: packages/@overeng/react-inspector is a git submodule with its own tooling (tsup, ESLint)
   # We include it in the workspace but keep its build system separate
 

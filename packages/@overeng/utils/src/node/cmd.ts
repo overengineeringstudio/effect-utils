@@ -57,6 +57,10 @@ export const cmd: (
     : undefined
   const [command, ...args] = asArray ? (parts as string[]) : (commandInput as string).split(' ')
 
+  if (command === undefined) {
+    return yield* Effect.die('Command is missing')
+  }
+
   const debugEnvStr = Object.entries(options?.env ?? {})
     .map(([key, value]) => `${key}='${value}' `)
     .join('')
@@ -108,7 +112,7 @@ export const cmd: (
 
   if (exitCode !== SUCCESS_EXIT_CODE) {
     return yield* new CmdError({
-      command: command!,
+      command,
       args,
       cwd,
       env: options?.env ?? {},
@@ -135,6 +139,10 @@ export const cmdText: (
   const [command, ...args] = Array.isArray(commandInput)
     ? commandInput.filter(isNotUndefined)
     : commandInput.split(' ')
+
+  if (command === undefined) {
+    return yield* Effect.die('Command is missing')
+  }
   const debugEnvStr = Object.entries(options?.env ?? {})
     .map(([key, value]) => `${key}='${value}' `)
     .join('')
@@ -145,7 +153,7 @@ export const cmdText: (
   yield* Effect.logDebug(`Running '${commandDebugStr}' in '${cwd}'${subshellStr}`)
   yield* Effect.annotateCurrentSpan({ 'span.label': commandDebugStr, command, cwd })
 
-  return yield* Command.make(command!, ...args).pipe(
+  return yield* Command.make(command, ...args).pipe(
     // inherit = Stream stderr to process.stderr, pipe = Stream stderr to process.stdout
     Command.stderr(options?.stderr ?? 'inherit'),
     Command.workingDirectory(cwd),

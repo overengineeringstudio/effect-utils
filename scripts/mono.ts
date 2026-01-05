@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
 
 import { Command, Options } from '@effect/cli'
+import * as PlatformCommand from '@effect/platform/Command'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
-import { Cause, Console, Effect, Layer, Schema } from 'effect'
-
 import { CurrentWorkingDirectory, cmd } from '@overeng/utils/node'
+import { Cause, Console, Duration, Effect, Layer, Schema } from 'effect'
 
 const IS_CI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true'
 
@@ -32,6 +32,49 @@ const runCommand = (command: string, args: string[], options?: { cwd?: string })
           }),
         ),
       ),
+    )
+  })
+
+const runCommandDirect = (
+  command: string,
+  args: string[],
+  options?: { cwd?: string; env?: Record<string, string | undefined> },
+) =>
+  Effect.gen(function* () {
+    const defaultCwd = process.env.WORKSPACE_ROOT ?? (yield* CurrentWorkingDirectory)
+    const cwd = options?.cwd ?? defaultCwd
+
+    const exitCode = yield* PlatformCommand.make(command, ...args).pipe(
+      PlatformCommand.workingDirectory(cwd),
+      PlatformCommand.env(options?.env ?? {}),
+      PlatformCommand.stdout('inherit'),
+      PlatformCommand.stderr('inherit'),
+      PlatformCommand.exitCode,
+    )
+
+    if (exitCode !== 0) {
+      return yield* new CommandError({
+        command: `${command} ${args.join(' ')}`,
+        message: `Command exited with code ${exitCode}`,
+      })
+    }
+  })
+
+const startProcess = (
+  command: string,
+  args: string[],
+  options?: { cwd?: string; env?: Record<string, string | undefined> },
+) =>
+  Effect.gen(function* () {
+    const defaultCwd = process.env.WORKSPACE_ROOT ?? (yield* CurrentWorkingDirectory)
+    const cwd = options?.cwd ?? defaultCwd
+
+    return yield* PlatformCommand.make(command, ...args).pipe(
+      PlatformCommand.workingDirectory(cwd),
+      PlatformCommand.env(options?.env ?? {}),
+      PlatformCommand.stdout('inherit'),
+      PlatformCommand.stderr('inherit'),
+      PlatformCommand.start,
     )
   })
 
@@ -276,6 +319,91 @@ const checkCommand = Command.make('check', {}, () =>
 ).pipe(Command.withDescription('Run all checks (typecheck + format + lint + test)'))
 
 // -----------------------------------------------------------------------------
+// Context Command
+// -----------------------------------------------------------------------------
+
+const contextExamplesCommand = Command.make('examples', {}, () =>
+  Effect.gen(function* () {
+    const workspaceRoot = process.env.WORKSPACE_ROOT ?? (yield* CurrentWorkingDirectory)
+    const socketCwd = `${workspaceRoot}/context/effect/socket`
+
+    const runWithServer = <TResult, TError, TContext>(
+      label: string,
+      serverArgs: string[],
+      clientEffect: Effect.Effect<TResult, TError, TContext>,
+    ) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          yield* ciGroup(label)
+
+          yield* Effect.acquireRelease(
+            startProcess('bun', serverArgs, { cwd: socketCwd }),
+            (process) => process.kill('SIGTERM').pipe(Effect.catchAll(() => Effect.void)),
+          )
+
+          yield* Effect.sleep(Duration.seconds(1))
+          return yield* clientEffect
+        }).pipe(Effect.ensuring(ciGroupEnd)),
+      )
+
+    const httpWsClientScript = [
+      'const ws = new WebSocket("ws://127.0.0.1:8790")',
+      'const timeout = setTimeout(() => { console.error("timeout waiting for message"); ws.close(); process.exit(1) }, 2000)',
+      'ws.onopen = () => ws.send("hello")',
+      'ws.onmessage = (event) => { console.log("recv", event.data); clearTimeout(timeout); ws.close() }',
+      'ws.onclose = () => process.exit(0)',
+      'ws.onerror = (error) => { console.error(error); clearTimeout(timeout); process.exit(1) }',
+    ].join('; ')
+
+    yield* runWithServer(
+      'WS echo',
+      ['examples/ws-echo-server.ts'],
+      runCommand('bun', ['examples/ws-echo-client.ts'], { cwd: socketCwd }),
+    )
+
+    yield* runWithServer(
+      'WS broadcast',
+      ['examples/ws-broadcast-server.ts'],
+      runCommand('bun', ['examples/ws-broadcast-client.ts'], { cwd: socketCwd }),
+    )
+
+    yield* runWithServer(
+      'WS JSON',
+      ['examples/ws-json-server.ts'],
+      runCommand('bun', ['examples/ws-json-client.ts'], { cwd: socketCwd }),
+    )
+
+    yield* runWithServer(
+      'HTTP + WS combined',
+      ['examples/http-ws-combined.ts'],
+      Effect.gen(function* () {
+        yield* runCommand('curl', ['-s', 'http://127.0.0.1:8788/'], { cwd: workspaceRoot })
+        yield* runCommandDirect('bun', ['-e', httpWsClientScript], { cwd: workspaceRoot })
+      }),
+    )
+
+    yield* runWithServer(
+      'RPC over WebSocket',
+      ['examples/rpc-ws-server.ts'],
+      runCommand('bun', ['examples/rpc-ws-client.ts'], { cwd: socketCwd }),
+    )
+
+    yield* runWithServer(
+      'TCP echo',
+      ['examples/tcp-echo-server.ts'],
+      runCommand('bun', ['examples/tcp-echo-client.ts'], { cwd: socketCwd }),
+    )
+
+    yield* Console.log('✓ Context examples complete')
+  }),
+).pipe(Command.withDescription('Run all context socket example scripts'))
+
+const contextCommand = Command.make('context').pipe(
+  Command.withSubcommands([contextExamplesCommand]),
+  Command.withDescription('Run commands for context reference material'),
+)
+
+// -----------------------------------------------------------------------------
 // Main CLI
 // -----------------------------------------------------------------------------
 
@@ -287,6 +415,7 @@ const command = Command.make('mono').pipe(
     tsCommand,
     cleanCommand,
     checkCommand,
+    contextCommand,
   ]),
   Command.withDescription('Monorepo management CLI'),
 )

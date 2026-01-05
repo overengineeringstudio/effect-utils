@@ -6,8 +6,7 @@
   ],
   "type": "module",
   "scripts": {
-    "prepare": "effect-language-service patch",
-    "mono": "bun scripts/mono.ts"
+    "prepare": "effect-language-service patch"
   },
   "devDependencies": {
     "@effect/cli": "catalog:",
