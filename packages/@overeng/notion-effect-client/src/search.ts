@@ -1,5 +1,6 @@
 import type { HttpClient } from '@effect/platform'
 import { Chunk, Effect, Option, Schema, Stream } from 'effect'
+
 import type { NotionConfig } from './config.ts'
 import type { NotionApiError } from './error.ts'
 import { post } from './internal/http.ts'
@@ -76,7 +77,7 @@ const searchRaw = (
 > =>
   Effect.gen(function* () {
     const body = buildSearchBody(opts)
-    const response = yield* post('/search', body, SearchResponseSchema)
+    const response = yield* post({ path: '/search', body, responseSchema: SearchResponseSchema })
     return toPaginatedResult(response)
   }).pipe(Effect.withSpan('NotionSearch.search'))
 

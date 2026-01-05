@@ -1,9 +1,9 @@
-import { Inspector } from '../src';
+import { Inspector } from '../src'
 
 export default {
   title: 'Table Inspector',
   component: Inspector,
-};
+}
 
 export const Simple = {
   name: 'Simple',
@@ -14,7 +14,7 @@ export const Simple = {
       ['John Appleseed', '42 Galaxy drive', '20', '111-111-1111'],
     ],
   },
-};
+}
 
 export const DifferentColumns = {
   name: 'Different Columns',
@@ -25,7 +25,7 @@ export const DifferentColumns = {
       1: { firstName: 'Martin', middleName: 'Luther', lastName: 'King' },
     },
   },
-};
+}
 
 export const DifferentColumnsWithNames = {
   name: 'Different Columns With Names',
@@ -40,7 +40,7 @@ export const DifferentColumnsWithNames = {
       },
     },
   },
-};
+}
 
 export const DataAndColumnsProps = {
   name: 'Data And Columns Props',
@@ -52,7 +52,7 @@ export const DataAndColumnsProps = {
     },
     columns: ['firstName', 'lastName'],
   },
-};
+}
 
 export const Sudoku = {
   name: 'Sudoku',
@@ -70,7 +70,7 @@ export const Sudoku = {
       [0, 0, 7, 5, 8, 0, 3, 1, 0],
     ],
   },
-};
+}
 
 export const Null = {
   name: 'Null',
@@ -78,7 +78,7 @@ export const Null = {
     table: true,
     data: null,
   },
-};
+}
 
 export const Undefined = {
   name: 'Undefined',
@@ -86,7 +86,7 @@ export const Undefined = {
     table: true,
     data: undefined,
   },
-};
+}
 
 export const ArrayOfUndefined = {
   name: 'Array Of Undefined',
@@ -94,7 +94,7 @@ export const ArrayOfUndefined = {
     table: true,
     data: [undefined],
   },
-};
+}
 
 export const ArrayOfAnEmptyObject = {
   name: 'Array Of An Empty Object',
@@ -102,7 +102,7 @@ export const ArrayOfAnEmptyObject = {
     table: true,
     data: [{}],
   },
-};
+}
 
 export const ArrayOfArray = {
   name: 'Array Of Array',
@@ -110,4 +110,4 @@ export const ArrayOfArray = {
     table: true,
     data: [[1, 2]],
   },
-};
+}

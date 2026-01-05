@@ -1,6 +1,8 @@
 import type { HttpClient } from '@effect/platform'
-import { type Page, PageSchema } from '@overeng/notion-effect-schema'
 import { Effect, type Schema } from 'effect'
+
+import { type Page, PageSchema } from '@overeng/notion-effect-schema'
+
 import type { NotionConfig } from './config.ts'
 import type { NotionApiError } from './error.ts'
 import { get, patch, post } from './internal/http.ts'
@@ -155,7 +157,7 @@ export const create = Effect.fn('NotionPages.create')(function* (opts: CreatePag
     body.cover = opts.cover
   }
 
-  return yield* post('/pages', body, PageSchema)
+  return yield* post({ path: '/pages', body, responseSchema: PageSchema })
 })
 
 /**
@@ -182,7 +184,7 @@ export const update = Effect.fn('NotionPages.update')(function* (opts: UpdatePag
     body.cover = opts.cover
   }
 
-  return yield* patch(`/pages/${opts.pageId}`, body, PageSchema)
+  return yield* patch({ path: `/pages/${opts.pageId}`, body, responseSchema: PageSchema })
 })
 
 /**
@@ -191,7 +193,11 @@ export const update = Effect.fn('NotionPages.update')(function* (opts: UpdatePag
  * @see https://developers.notion.com/reference/patch-page
  */
 export const archive = Effect.fn('NotionPages.archive')(function* (opts: ArchivePageOptions) {
-  return yield* patch(`/pages/${opts.pageId}`, { archived: true }, PageSchema)
+  return yield* patch({
+    path: `/pages/${opts.pageId}`,
+    body: { archived: true },
+    responseSchema: PageSchema,
+  })
 })
 
 // -----------------------------------------------------------------------------

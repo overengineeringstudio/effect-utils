@@ -32,7 +32,7 @@ jobs:
       - name: Type check
         run: mono ts
 
-      - name: Lint
+      - name: Format + lint
         run: mono lint
 
       - name: Unit tests

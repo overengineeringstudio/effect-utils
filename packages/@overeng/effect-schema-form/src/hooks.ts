@@ -40,6 +40,7 @@ export interface UseSchemaFormResult<T extends Record<string, unknown>> {
  * )
  * ```
  */
+// oxlint-disable-next-line eslint(max-params) -- React hook convention (schema, value, onChange)
 export const useSchemaForm = <T extends Record<string, unknown>>(
   schema: Schema.Schema<T>,
   value: T,

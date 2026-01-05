@@ -1,7 +1,7 @@
-import React, { FC, ReactNode } from 'react';
+import React, { FC, ReactNode } from 'react'
 
-import { useStyles } from '../styles';
-import { shouldInline } from './shouldInline';
+import { useStyles } from '../styles'
+import { shouldInline } from './shouldInline'
 
 const OpenTag: FC<any> = ({ tagName, attributes, styles }) => {
   return (
@@ -11,9 +11,9 @@ const OpenTag: FC<any> = ({ tagName, attributes, styles }) => {
 
       {(() => {
         if (attributes) {
-          const attributeNodes: ReactNode[] = [];
+          const attributeNodes: ReactNode[] = []
           for (let i = 0; i < attributes.length; i++) {
-            const attribute = attributes[i];
+            const attribute = attributes[i]
             attributeNodes.push(
               <span key={i}>
                 {' '}
@@ -21,17 +21,17 @@ const OpenTag: FC<any> = ({ tagName, attributes, styles }) => {
                 {'="'}
                 <span style={styles.htmlAttributeValue}>{attribute.value}</span>
                 {'"'}
-              </span>
-            );
+              </span>,
+            )
           }
-          return attributeNodes;
+          return attributeNodes
         }
       })()}
 
       {'>'}
     </span>
-  );
-};
+  )
+}
 
 // isChildNode style={{ marginLeft: -12 /* hack: offset placeholder */ }}
 const CloseTag = ({ tagName, isChildNode = false, styles }) => (
@@ -40,7 +40,7 @@ const CloseTag = ({ tagName, isChildNode = false, styles }) => (
     <span style={styles.tagName}>{tagName}</span>
     {'>'}
   </span>
-);
+)
 
 const nameByNodeType = {
   1: 'ELEMENT_NODE',
@@ -50,30 +50,34 @@ const nameByNodeType = {
   9: 'DOCUMENT_NODE',
   10: 'DOCUMENT_TYPE_NODE', // http://stackoverflow.com/questions/6088972/get-doctype-of-an-html-as-string-with-javascript
   11: 'DOCUMENT_FRAGMENT_NODE',
-};
+}
 
 export const DOMNodePreview: FC<any> = ({ isCloseTag, data, expanded }) => {
-  const styles = useStyles('DOMNodePreview');
+  const styles = useStyles('DOMNodePreview')
 
   if (isCloseTag) {
-    return <CloseTag styles={styles.htmlCloseTag} isChildNode tagName={data.tagName} />;
+    return <CloseTag styles={styles.htmlCloseTag} isChildNode tagName={data.tagName} />
   }
 
   switch (data.nodeType) {
     case Node.ELEMENT_NODE:
       return (
         <span>
-          <OpenTag tagName={data.tagName} attributes={data.attributes} styles={styles.htmlOpenTag} />
+          <OpenTag
+            tagName={data.tagName}
+            attributes={data.attributes}
+            styles={styles.htmlOpenTag}
+          />
 
           {shouldInline(data) ? data.textContent : !expanded && '…'}
 
           {!expanded && <CloseTag tagName={data.tagName} styles={styles.htmlCloseTag} />}
         </span>
-      );
+      )
     case Node.TEXT_NODE:
-      return <span>{data.textContent}</span>;
+      return <span>{data.textContent}</span>
     case Node.CDATA_SECTION_NODE:
-      return <span>{'<![CDATA[' + data.textContent + ']]>'}</span>;
+      return <span>{'<![CDATA[' + data.textContent + ']]>'}</span>
     case Node.COMMENT_NODE:
       return (
         <span style={styles.htmlComment}>
@@ -81,9 +85,9 @@ export const DOMNodePreview: FC<any> = ({ isCloseTag, data, expanded }) => {
           {data.textContent}
           {'-->'}
         </span>
-      );
+      )
     case Node.PROCESSING_INSTRUCTION_NODE:
-      return <span>{data.nodeName}</span>;
+      return <span>{data.nodeName}</span>
     case Node.DOCUMENT_TYPE_NODE:
       return (
         <span style={styles.htmlDoctype}>
@@ -94,15 +98,15 @@ export const DOMNodePreview: FC<any> = ({ isCloseTag, data, expanded }) => {
           {data.systemId ? ` "${data.systemId}"` : ''}
           {'>'}
         </span>
-      );
+      )
     case Node.DOCUMENT_NODE:
-      return <span>{data.nodeName}</span>;
+      return <span>{data.nodeName}</span>
     case Node.DOCUMENT_FRAGMENT_NODE:
-      return <span>{data.nodeName}</span>;
+      return <span>{data.nodeName}</span>
     default:
-      return <span>{nameByNodeType[data.nodeType]}</span>;
+      return <span>{nameByNodeType[data.nodeType]}</span>
   }
-};
+}
 
 // DOMNodePreview.propTypes = {
 //   /** If true, just render a close tag */

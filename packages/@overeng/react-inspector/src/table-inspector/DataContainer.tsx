@@ -1,13 +1,12 @@
-import React from 'react';
-import { ObjectValue } from '../object/ObjectValue';
+import React from 'react'
 
-import { hasOwnProperty } from '../utils/objectPrototype';
-
-import { useStyles } from '../styles';
+import { ObjectValue } from '../object/ObjectValue'
+import { useStyles } from '../styles'
+import { hasOwnProperty } from '../utils/objectPrototype'
 
 export const DataContainer = ({ rows, columns, rowsData }) => {
-  const styles = useStyles('TableInspectorDataContainer');
-  const borderStyles = useStyles('TableInspectorLeftBorder');
+  const styles = useStyles('TableInspectorDataContainer')
+  const borderStyles = useStyles('TableInspectorLeftBorder')
 
   return (
     <div style={styles.div}>
@@ -19,7 +18,7 @@ export const DataContainer = ({ rows, columns, rowsData }) => {
               <td style={{ ...styles.td, ...borderStyles.none }}>{row}</td>
 
               {columns.map((column) => {
-                const rowData = rowsData[i];
+                const rowData = rowsData[i]
                 // rowData could be
                 //  object -> index by key
                 //    array -> index by array index
@@ -30,14 +29,18 @@ export const DataContainer = ({ rows, columns, rowsData }) => {
                 //  function -> pass
                 //  symbol
                 //  undefined -> pass
-                if (typeof rowData === 'object' && rowData !== null && hasOwnProperty.call(rowData, column)) {
+                if (
+                  typeof rowData === 'object' &&
+                  rowData !== null &&
+                  hasOwnProperty.call(rowData, column)
+                ) {
                   return (
                     <td key={column} style={{ ...styles.td, ...borderStyles.solid }}>
                       <ObjectValue object={rowData[column]} />
                     </td>
-                  );
+                  )
                 } else {
-                  return <td key={column} style={{ ...styles.td, ...borderStyles.solid }} />;
+                  return <td key={column} style={{ ...styles.td, ...borderStyles.solid }} />
                 }
               })}
             </tr>
@@ -45,5 +48,5 @@ export const DataContainer = ({ rows, columns, rowsData }) => {
         </tbody>
       </table>
     </div>
-  );
-};
+  )
+}

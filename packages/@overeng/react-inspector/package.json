@@ -26,15 +26,6 @@
   "dependencies": {
     "is-dom": "1.1.0"
   },
-  "peerDependencies": {
-    "effect": "catalog:",
-    "react": "catalog:"
-  },
-  "peerDependenciesMeta": {
-    "effect": {
-      "optional": true
-    }
-  },
   "devDependencies": {
     "@storybook/react": "catalog:",
     "@storybook/react-vite": "catalog:",
@@ -50,5 +41,14 @@
     "storybook": "catalog:",
     "vite": "catalog:",
     "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "effect": "catalog:",
+    "react": "catalog:"
+  },
+  "peerDependenciesMeta": {
+    "effect": {
+      "optional": true
+    }
   }
 }

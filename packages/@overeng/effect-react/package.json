@@ -1,8 +1,8 @@
 {
   "name": "@overeng/effect-react",
   "version": "0.1.0",
-  "type": "module",
   "private": true,
+  "type": "module",
   "exports": {
     ".": "./src/mod.ts"
   },
@@ -17,14 +17,14 @@
     "test": "echo \"TODO: Add tests\"",
     "test:watch": "vitest"
   },
-  "peerDependencies": {
-    "effect": "catalog:",
-    "react": "catalog:"
-  },
   "devDependencies": {
     "@types/react": "catalog:",
     "effect": "catalog:",
     "react": "catalog:",
     "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "effect": "catalog:",
+    "react": "catalog:"
   }
 }

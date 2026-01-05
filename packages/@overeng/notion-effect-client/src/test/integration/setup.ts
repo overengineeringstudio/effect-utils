@@ -1,5 +1,6 @@
 import { FetchHttpClient, type HttpClient } from '@effect/platform'
 import { Layer } from 'effect'
+
 import { NotionConfig } from '../../config.ts'
 
 /** Skip integration tests if no token is available */

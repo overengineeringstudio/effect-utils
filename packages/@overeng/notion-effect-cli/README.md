@@ -51,16 +51,16 @@ Generate a schema from a single database:
 notion-effect-cli generate <database-id> -o <output-file> [options]
 ```
 
-| Option | Description |
-|--------|-------------|
-| `-o, --output` | Output file path (required) |
-| `-n, --name` | Custom schema name (defaults to database title) |
-| `-t, --token` | Notion API token (defaults to `NOTION_TOKEN` env var) |
-| `-w, --include-write` | Generate write schemas for creating/updating pages |
-| `-a, --include-api` | Generate a typed API wrapper |
-| `--typed-options` | Generate literal unions for select/status options |
-| `--transform` | Property transform config (e.g., `Status=asString`) |
-| `-d, --dry-run` | Preview generated code without writing |
+| Option                | Description                                           |
+| --------------------- | ----------------------------------------------------- |
+| `-o, --output`        | Output file path (required)                           |
+| `-n, --name`          | Custom schema name (defaults to database title)       |
+| `-t, --token`         | Notion API token (defaults to `NOTION_TOKEN` env var) |
+| `-w, --include-write` | Generate write schemas for creating/updating pages    |
+| `-a, --include-api`   | Generate a typed API wrapper                          |
+| `--typed-options`     | Generate literal unions for select/status options     |
+| `--transform`         | Property transform config (e.g., `Status=asString`)   |
+| `-d, --dry-run`       | Preview generated code without writing                |
 
 ### `introspect`
 
@@ -242,18 +242,18 @@ const program = Effect.gen(function* () {
 
 Transforms control how Notion property types are decoded. Each property type has a default transform and available alternatives:
 
-| Property Type | Default | Available Transforms |
-|---------------|---------|---------------------|
-| `title` | `asString` | `raw`, `asString` |
-| `rich_text` | `asString` | `raw`, `asString` |
-| `number` | `asNumber` | `raw`, `asNumber`, `asOption` |
-| `select` | `asOption` | `raw`, `asOption`, `asString` |
-| `multi_select` | `asStrings` | `raw`, `asStrings` |
-| `status` | `asOption` | `raw`, `asOption`, `asString` |
-| `date` | `asOption` | `raw`, `asDate`, `asOption` |
-| `checkbox` | `asBoolean` | `raw`, `asBoolean` |
-| `url` | `asOption` | `raw`, `asString`, `asOption` |
-| `relation` | `asIds` | `raw`, `asIds` |
+| Property Type  | Default     | Available Transforms          |
+| -------------- | ----------- | ----------------------------- |
+| `title`        | `asString`  | `raw`, `asString`             |
+| `rich_text`    | `asString`  | `raw`, `asString`             |
+| `number`       | `asNumber`  | `raw`, `asNumber`, `asOption` |
+| `select`       | `asOption`  | `raw`, `asOption`, `asString` |
+| `multi_select` | `asStrings` | `raw`, `asStrings`            |
+| `status`       | `asOption`  | `raw`, `asOption`, `asString` |
+| `date`         | `asOption`  | `raw`, `asDate`, `asOption`   |
+| `checkbox`     | `asBoolean` | `raw`, `asBoolean`            |
+| `url`          | `asOption`  | `raw`, `asString`, `asOption` |
+| `relation`     | `asIds`     | `raw`, `asIds`                |
 
 Override transforms via CLI:
 

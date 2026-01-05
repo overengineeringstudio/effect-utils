@@ -1,6 +1,7 @@
-import React from 'react';
-import { useStyles } from '../styles';
-import { TH } from './TH';
+import React from 'react'
+
+import { useStyles } from '../styles'
+import { TH } from './TH'
 
 export const HeaderContainer = ({
   indexColumnText = '(index)',
@@ -12,8 +13,8 @@ export const HeaderContainer = ({
   onTHClick,
   onIndexTHClick,
 }) => {
-  const styles = useStyles('TableInspectorHeaderContainer');
-  const borderStyles = useStyles('TableInspectorLeftBorder');
+  const styles = useStyles('TableInspectorHeaderContainer')
+  const borderStyles = useStyles('TableInspectorLeftBorder')
   return (
     <div style={styles.base}>
       <table style={styles.table}>
@@ -23,7 +24,8 @@ export const HeaderContainer = ({
               borderStyle={borderStyles.none}
               sorted={sorted && sortIndexColumn}
               sortAscending={sortAscending}
-              onClick={onIndexTHClick}>
+              onClick={onIndexTHClick}
+            >
               {indexColumnText}
             </TH>
             {columns.map((column) => (
@@ -32,7 +34,8 @@ export const HeaderContainer = ({
                 key={column}
                 sorted={sorted && sortColumn === column}
                 sortAscending={sortAscending}
-                onClick={onTHClick.bind(null, column)}>
+                onClick={onTHClick.bind(null, column)}
+              >
                 {column}
               </TH>
             ))}
@@ -40,5 +43,5 @@ export const HeaderContainer = ({
         </tbody>
       </table>
     </div>
-  );
-};
+  )
+}

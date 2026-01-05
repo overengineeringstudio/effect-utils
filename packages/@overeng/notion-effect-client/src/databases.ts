@@ -1,7 +1,9 @@
 import type { HttpClient } from '@effect/platform'
+import { Chunk, Effect, Option, type Schema, Stream } from 'effect'
+
 import type { Page } from '@overeng/notion-effect-schema'
 import { DatabaseSchema, PageSchema } from '@overeng/notion-effect-schema'
-import { Chunk, Effect, Option, type Schema, Stream } from 'effect'
+
 import type { NotionConfig } from './config.ts'
 import type { NotionApiError } from './error.ts'
 import { get, post } from './internal/http.ts'
@@ -49,8 +51,11 @@ export interface QueryDatabaseOptions extends QueryDatabaseOptionsBase {
 }
 
 /** Options for querying a database with schema-based decoding */
-export interface QueryDatabaseWithSchemaOptions<TProperties, I, R>
-  extends QueryDatabaseOptionsBase {
+export interface QueryDatabaseWithSchemaOptions<
+  TProperties,
+  I,
+  R,
+> extends QueryDatabaseOptionsBase {
   /** Schema to decode page properties */
   readonly schema: Schema.Schema<TProperties, I, R>
 }
@@ -102,11 +107,11 @@ const queryRaw = (
 ): Effect.Effect<PaginatedResult<Page>, NotionApiError, NotionConfig | HttpClient.HttpClient> =>
   Effect.gen(function* () {
     const body = buildQueryBody(opts)
-    const response = yield* post(
-      `/databases/${opts.databaseId}/query`,
+    const response = yield* post({
+      path: `/databases/${opts.databaseId}/query`,
       body,
-      QueryDatabaseResponseSchema,
-    )
+      responseSchema: QueryDatabaseResponseSchema,
+    })
     return toPaginatedResult(response)
   }).pipe(
     Effect.withSpan('NotionDatabases.query', {

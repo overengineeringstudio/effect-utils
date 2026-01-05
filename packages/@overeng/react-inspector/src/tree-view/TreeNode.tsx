@@ -1,15 +1,17 @@
-import React, { Children, FC, memo } from 'react';
-import { useStyles } from '../styles';
+import React, { Children, FC, memo } from 'react'
+
+import { useStyles } from '../styles'
 
 const Arrow: FC<any> = ({ expanded, styles }) => (
   <span
     style={{
       ...styles.base,
       ...(expanded ? styles.expanded : styles.collapsed),
-    }}>
+    }}
+  >
     ▶
   </span>
-);
+)
 
 export const TreeNode: FC<any> = memo((props) => {
   props = {
@@ -19,11 +21,19 @@ export const TreeNode: FC<any> = memo((props) => {
     shouldShowArrow: false,
     shouldShowPlaceholder: true,
     ...props,
-  };
-  const { expanded, onClick, children, nodeRenderer, title, shouldShowArrow, shouldShowPlaceholder } = props;
+  }
+  const {
+    expanded,
+    onClick,
+    children,
+    nodeRenderer,
+    title,
+    shouldShowArrow,
+    shouldShowPlaceholder,
+  } = props
 
-  const styles = useStyles('TreeNode');
-  const NodeRenderer = nodeRenderer;
+  const styles = useStyles('TreeNode')
+  const NodeRenderer = nodeRenderer
 
   return (
     <li aria-expanded={expanded} role="treeitem" style={styles.treeNodeBase} title={title}>
@@ -40,8 +50,8 @@ export const TreeNode: FC<any> = memo((props) => {
         {expanded ? children : undefined}
       </ol>
     </li>
-  );
-});
+  )
+})
 
 // TreeNode.propTypes = {
 //   name: PropTypes.string,

@@ -1,22 +1,23 @@
-import React from 'react';
-import type { FC } from 'react';
-import { useStyles } from '../styles/index.tsx';
-import { hasOwnProperty } from '../utils/objectPrototype.tsx';
-import { getPropertyValue } from '../utils/propertyUtils.tsx';
-import { SchemaAwareObjectPreview } from './SchemaAwareObjectPreview.tsx';
-import { SchemaProvider, useSchemaContext } from './SchemaContext.tsx';
+import React from 'react'
+import type { FC } from 'react'
+
+import { useStyles } from '../styles/index.tsx'
+import { hasOwnProperty } from '../utils/objectPrototype.tsx'
+import { getPropertyValue } from '../utils/propertyUtils.tsx'
+import { SchemaAwareObjectPreview } from './SchemaAwareObjectPreview.tsx'
+import { SchemaProvider, useSchemaContext } from './SchemaContext.tsx'
 
 export interface SchemaAwareNodeRendererProps {
   /** Original ObjectRootLabel component */
-  ObjectRootLabel: FC<{ name?: string; data: unknown }>;
+  ObjectRootLabel: FC<{ name?: string; data: unknown }>
   /** Original ObjectLabel component */
-  ObjectLabel: FC<{ name: string; data: unknown; isNonenumerable?: boolean }>;
+  ObjectLabel: FC<{ name: string; data: unknown; isNonenumerable?: boolean }>
   /** Original ObjectName component */
-  ObjectName: FC<{ name: string; dimmed?: boolean }>;
+  ObjectName: FC<{ name: string; dimmed?: boolean }>
   /** Original ObjectValue component */
-  ObjectValue: FC<{ object: unknown }>;
+  ObjectValue: FC<{ object: unknown }>
   /** Original ObjectPreview component */
-  ObjectPreview: FC<{ data: unknown }>;
+  ObjectPreview: FC<{ data: unknown }>
 }
 
 /**
@@ -31,12 +32,12 @@ export const createSchemaAwareNodeRenderer = ({
 }: SchemaAwareNodeRendererProps) => {
   /** Schema-aware ObjectValue that uses pretty print and display name */
   const SchemaAwareObjectValue: FC<{ object: unknown; path: string }> = ({ object, path }) => {
-    const rootCtx = useSchemaContext();
-    const schemaCtx = rootCtx.getContextForPath(path);
+    const rootCtx = useSchemaContext()
+    const schemaCtx = rootCtx.getContextForPath(path)
 
-    const prettyFormatted = schemaCtx.formatValue(object);
+    const prettyFormatted = schemaCtx.formatValue(object)
     if (prettyFormatted !== undefined) {
-      return <span>{prettyFormatted}</span>;
+      return <span>{prettyFormatted}</span>
     }
 
     if (
@@ -46,21 +47,21 @@ export const createSchemaAwareNodeRenderer = ({
       !(object instanceof RegExp) &&
       !Array.isArray(object)
     ) {
-      const schemaDisplayName = schemaCtx.getDisplayName();
+      const schemaDisplayName = schemaCtx.getDisplayName()
       if (schemaDisplayName && object.constructor?.name === 'Object') {
-        return <span>{schemaDisplayName}</span>;
+        return <span>{schemaDisplayName}</span>
       }
     }
 
-    return <ObjectValue object={object} />;
-  };
+    return <ObjectValue object={object} />
+  }
 
   /** Schema-aware ObjectPreview that uses schema annotations */
-  const hasOwnPropertyOnObject = (obj: object, prop: string) => hasOwnProperty.call(obj, prop);
+  const hasOwnPropertyOnObject = (obj: object, prop: string) => hasOwnProperty.call(obj, prop)
 
   const SchemaAwareObjectPreviewForPath: FC<{ data: unknown; path: string }> = ({ data, path }) => {
-    const rootCtx = useSchemaContext();
-    const schemaCtx = rootCtx.getContextForPath(path);
+    const rootCtx = useSchemaContext()
+    const schemaCtx = rootCtx.getContextForPath(path)
 
     return (
       <SchemaProvider schema={schemaCtx.schema}>
@@ -74,21 +75,21 @@ export const createSchemaAwareNodeRenderer = ({
           useStyles={useStyles}
         />
       </SchemaProvider>
-    );
-  };
+    )
+  }
 
   /** Schema-aware ObjectLabel that uses path-based schema lookup */
   const SchemaAwareObjectLabel: FC<{
-    name: string | undefined;
-    data: unknown;
-    path: string;
-    isNonenumerable: boolean | undefined;
-    expanded: boolean | undefined;
+    name: string | undefined
+    data: unknown
+    path: string
+    isNonenumerable: boolean | undefined
+    expanded: boolean | undefined
   }> = ({ name, data, path, isNonenumerable = false, expanded }) => {
-    const rootCtx = useSchemaContext();
-    const schemaCtx = rootCtx.getContextForPath(path);
-    const description = schemaCtx.getDescription();
-    const schemaDisplayName = schemaCtx.getDisplayName();
+    const rootCtx = useSchemaContext()
+    const schemaCtx = rootCtx.getContextForPath(path)
+    const description = schemaCtx.getDescription()
+    const schemaDisplayName = schemaCtx.getDisplayName()
 
     const isComplexObject =
       typeof data === 'object' &&
@@ -96,7 +97,7 @@ export const createSchemaAwareNodeRenderer = ({
       !(data instanceof Date) &&
       !(data instanceof RegExp) &&
       !Array.isArray(data) &&
-      data.constructor?.name === 'Object';
+      data.constructor?.name === 'Object'
 
     return (
       <span title={description}>
@@ -118,26 +119,21 @@ export const createSchemaAwareNodeRenderer = ({
           <SchemaAwareObjectValue object={data} path={path} />
         )}
       </span>
-    );
-  };
+    )
+  }
 
   /** Schema-aware ObjectRootLabel */
   const SchemaAwareObjectRootLabel: FC<{
-    name: string | undefined;
-    data: unknown;
-    path: string;
-    expanded: boolean | undefined;
-  }> = ({
-    name,
-    data,
-    path,
-    expanded,
-  }) => {
-    const rootCtx = useSchemaContext();
-    const schemaCtx = rootCtx.getContextForPath(path);
-    const description = schemaCtx.getDescription();
+    name: string | undefined
+    data: unknown
+    path: string
+    expanded: boolean | undefined
+  }> = ({ name, data, path, expanded }) => {
+    const rootCtx = useSchemaContext()
+    const schemaCtx = rootCtx.getContextForPath(path)
+    const description = schemaCtx.getDescription()
 
-    const prettyFormatted = schemaCtx.formatValue(data);
+    const prettyFormatted = schemaCtx.formatValue(data)
     if (prettyFormatted !== undefined) {
       if (typeof name === 'string') {
         return (
@@ -146,12 +142,12 @@ export const createSchemaAwareNodeRenderer = ({
             <span>: </span>
             <span>{prettyFormatted}</span>
           </span>
-        );
+        )
       }
-      return <span title={description}>{prettyFormatted}</span>;
+      return <span title={description}>{prettyFormatted}</span>
     }
 
-    const schemaDisplayName = schemaCtx.getDisplayName();
+    const schemaDisplayName = schemaCtx.getDisplayName()
 
     if (typeof name === 'string') {
       return (
@@ -166,7 +162,7 @@ export const createSchemaAwareNodeRenderer = ({
             title={description}
           />
         </span>
-      );
+      )
     }
 
     return (
@@ -177,32 +173,32 @@ export const createSchemaAwareNodeRenderer = ({
         path={path}
         title={description}
       />
-    );
-  };
+    )
+  }
 
   /** Helper for root preview with schema name */
   const SchemaAwareObjectPreviewWithName: FC<{
-    data: unknown;
-    schemaDisplayName: string | undefined;
-    expanded: boolean | undefined;
-    title: string | undefined;
-    path: string;
+    data: unknown
+    schemaDisplayName: string | undefined
+    expanded: boolean | undefined
+    title: string | undefined
+    path: string
   }> = ({ data, schemaDisplayName, expanded, title, path }) => {
     const isComplexObject =
       typeof data === 'object' &&
       data !== null &&
       !(data instanceof Date) &&
       !(data instanceof RegExp) &&
-      data.constructor?.name === 'Object';
+      data.constructor?.name === 'Object'
 
     /** When expanded, show only the type identifier (no inline preview needed since children are visible) */
     if (expanded && isComplexObject) {
-      const label = schemaDisplayName ?? data.constructor?.name ?? 'Object';
+      const label = schemaDisplayName ?? data.constructor?.name ?? 'Object'
       return (
         <span title={title} style={schemaDisplayName ? { fontStyle: 'italic' } : undefined}>
           {label}
         </span>
-      );
+      )
     }
 
     /** When collapsed, show the full preview with schema name prefix */
@@ -212,15 +208,15 @@ export const createSchemaAwareNodeRenderer = ({
           <span style={{ fontStyle: 'italic' }}>{schemaDisplayName} </span>
           <SchemaAwareObjectPreviewForPath data={data} path={path} />
         </span>
-      );
+      )
     }
 
     return (
       <span title={title} style={{ display: 'contents' }}>
         <SchemaAwareObjectPreviewForPath data={data} path={path} />
       </span>
-    );
-  };
+    )
+  }
 
   /**
    * The node renderer function to pass to ObjectInspector.
@@ -234,21 +230,27 @@ export const createSchemaAwareNodeRenderer = ({
     isNonenumerable,
     expanded,
   }: {
-    depth: number;
-    name: string | undefined;
-    data: unknown;
-    path: string;
-    isNonenumerable: boolean | undefined;
-    expanded: boolean | undefined;
+    depth: number
+    name: string | undefined
+    data: unknown
+    path: string
+    isNonenumerable: boolean | undefined
+    expanded: boolean | undefined
   }) => {
     if (depth === 0) {
-      return <SchemaAwareObjectRootLabel name={name} data={data} path={path} expanded={expanded} />;
+      return <SchemaAwareObjectRootLabel name={name} data={data} path={path} expanded={expanded} />
     }
 
     return (
-      <SchemaAwareObjectLabel name={name} data={data} path={path} isNonenumerable={isNonenumerable} expanded={expanded} />
-    );
-  };
+      <SchemaAwareObjectLabel
+        name={name}
+        data={data}
+        path={path}
+        isNonenumerable={isNonenumerable}
+        expanded={expanded}
+      />
+    )
+  }
 
-  return schemaAwareNodeRenderer;
-};
+  return schemaAwareNodeRenderer
+}

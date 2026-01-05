@@ -205,6 +205,7 @@ export const computeDiff = (live: DatabaseInfo, generated: ParsedSchema): DiffRe
 /**
  * Format a diff result as human-readable output lines.
  */
+// oxlint-disable-next-line eslint(max-params) -- cohesive parameters for formatting context
 export const formatDiff = (diff: DiffResult, databaseId: string, filePath: string): string[] => {
   const lines: string[] = []
 

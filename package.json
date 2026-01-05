@@ -1,25 +1,26 @@
 {
   "name": "effect-notion",
-  "type": "module",
   "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "type": "module",
   "scripts": {
     "prepare": "effect-language-service patch",
     "mono": "bun scripts/mono.ts"
   },
   "devDependencies": {
     "@effect/cli": "catalog:",
+    "@effect/language-service": "catalog:",
     "@effect/platform": "catalog:",
     "@effect/platform-node": "catalog:",
-    "@effect/language-service": "catalog:",
     "@overeng/utils": "workspace:*",
-    "@biomejs/biome": "^2.3.10",
     "effect": "catalog:",
+    "oxfmt": "0.21.0",
+    "oxlint": "1.36.0",
     "typescript": "^5.9.3"
   },
   "packageManager": "pnpm@9.15.0",
-  "workspaces": [
-    "packages/*"
-  ],
   "pnpm": {
     "patchedDependencies": {
       "effect-distributed-lock@0.0.10": "patches/effect-distributed-lock@0.0.10.patch"

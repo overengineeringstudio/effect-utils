@@ -6,4 +6,4 @@ export const unselectable = {
   msUserSelect: 'none',
   OUserSelect: 'none',
   userSelect: 'none',
-};
+}

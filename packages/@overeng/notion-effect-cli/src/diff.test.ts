@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+
 import { computeDiff, formatDiff, hasDifferences, parseGeneratedFile } from './diff.ts'
 import type { DatabaseInfo } from './introspect.ts'
 

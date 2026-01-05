@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **Monorepo CLI**: Replaced Biome with oxc toolchain (oxlint + oxfmt)
+  - Removed `@biomejs/biome` dependency
+  - `mono lint` now uses oxlint exclusively
+  - `mono fmt [--check]` - Format code with oxfmt (Prettier-compatible, 30× faster)
+  - `mono check` now includes format verification
+  - Added shared oxlint/oxfmt configuration via `@overeng/oxc-config` package
+
+- **@overeng/oxc-config**: New package for shared oxlint + oxfmt configuration
+  - Base config with sensible defaults for TypeScript/Effect projects
+  - Rules: `import/no-dynamic-require` (warn), `oxc/no-barrel-file` (warn, except `mod.ts`), `max-params` (warn, max 2), `import/no-commonjs` (error), `import/no-cycle` (warn), `func-style` (warn, prefer expressions/arrows)
+  - Re-exports only allowed from `mod.ts` entry point files
+
 ### Added
 
 - **@overeng/utils**: Force revoke / lock stealing for file-system semaphore backing
@@ -57,10 +71,10 @@ All notable changes to this project will be documented in this file.
 - **Monorepo CLI**: Added `mono` CLI for streamlined development workflow
   - `mono build` - Build all packages
   - `mono test [--unit|--integration] [--watch]` - Run tests with filtering options
-  - `mono lint [--fix]` - Run Biome linter
+  - `mono lint [--fix]` - Check formatting and run oxlint
   - `mono ts [--watch] [--clean]` - TypeScript type checking
   - `mono clean` - Remove build artifacts
-  - `mono check` - Run all checks (ts + lint + test)
+  - `mono check` - Run all checks (ts + fmt + lint + test)
   - Available directly in PATH via `scripts/bin/mono` wrapper
   - VSCode tasks.json for easy command palette integration
   - CI-aware output with GitHub Actions log grouping

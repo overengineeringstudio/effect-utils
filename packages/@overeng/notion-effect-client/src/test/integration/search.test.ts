@@ -1,6 +1,7 @@
 import { describe, it } from '@effect/vitest'
 import { Effect, Stream } from 'effect'
 import { expect } from 'vitest'
+
 import { NotionSearch } from '../../search.ts'
 import { IntegrationTestLayer, SKIP_INTEGRATION } from './setup.ts'
 

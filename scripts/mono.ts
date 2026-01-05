@@ -2,8 +2,9 @@
 
 import { Command, Options } from '@effect/cli'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
-import { CurrentWorkingDirectory, cmd } from '@overeng/utils/node'
 import { Cause, Console, Effect, Layer, Schema } from 'effect'
+
+import { CurrentWorkingDirectory, cmd } from '@overeng/utils/node'
 
 const IS_CI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true'
 
@@ -14,6 +15,7 @@ const IS_CI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true'
 const formatCommandErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
+// oxlint-disable-next-line eslint(max-params) -- internal CLI helper
 const runCommand = (command: string, args: string[], options?: { cwd?: string }) =>
   Effect.gen(function* () {
     const defaultCwd = process.env.WORKSPACE_ROOT ?? (yield* CurrentWorkingDirectory)
@@ -118,21 +120,33 @@ const testCommand = Command.make(
 // Lint Command
 // -----------------------------------------------------------------------------
 
+const OXC_CONFIG_PATH = 'packages/@overeng/oxc-config'
+
 const lintFixOption = Options.boolean('fix').pipe(
   Options.withAlias('f'),
-  Options.withDescription('Auto-fix linting issues'),
+  Options.withDescription('Auto-fix formatting and lint issues'),
   Options.withDefault(false),
 )
 
 const lintCommand = Command.make('lint', { fix: lintFixOption }, ({ fix }) =>
   Effect.gen(function* () {
-    yield* ciGroup('Linting codebase')
-    const args = fix ? ['check', '--write', '.'] : ['check', '.']
-    yield* runCommand('biome', args)
+    yield* ciGroup(fix ? 'Formatting with oxfmt' : 'Formatting check with oxfmt')
+    const oxfmtArgs = ['-c', `${OXC_CONFIG_PATH}/fmt.jsonc`, ...(fix ? ['.'] : ['--check', '.'])]
+    yield* runCommand('oxfmt', oxfmtArgs)
+    yield* ciGroupEnd
+
+    yield* ciGroup('Linting with oxlint')
+    const oxlintArgs = [
+      '-c',
+      `${OXC_CONFIG_PATH}/lint.jsonc`,
+      '--import-plugin',
+      ...(fix ? ['--fix'] : []),
+    ]
+    yield* runCommand('oxlint', oxlintArgs)
     yield* ciGroupEnd
     yield* Console.log('✓ Lint complete')
   }),
-).pipe(Command.withDescription('Run Biome linter across the codebase'))
+).pipe(Command.withDescription('Check formatting and run oxlint across the codebase'))
 
 // -----------------------------------------------------------------------------
 // TypeScript Command
@@ -248,8 +262,9 @@ const checkCommand = Command.make('check', {}, () =>
     yield* runCommand('tsc', ['--build', 'tsconfig.all.json'])
     yield* ciGroupEnd
 
-    yield* ciGroup('Linting')
-    yield* runCommand('biome', ['check', '.'])
+    yield* ciGroup('Format + Lint')
+    yield* runCommand('oxfmt', ['-c', `${OXC_CONFIG_PATH}/fmt.jsonc`, '--check', '.'])
+    yield* runCommand('oxlint', ['-c', `${OXC_CONFIG_PATH}/lint.jsonc`, '--import-plugin'])
     yield* ciGroupEnd
 
     yield* ciGroup('Running tests')
@@ -258,7 +273,7 @@ const checkCommand = Command.make('check', {}, () =>
 
     yield* Console.log('\n✓ All checks passed')
   }),
-).pipe(Command.withDescription('Run all checks (typecheck + lint + test)'))
+).pipe(Command.withDescription('Run all checks (typecheck + format + lint + test)'))
 
 // -----------------------------------------------------------------------------
 // Main CLI
@@ -273,7 +288,7 @@ const command = Command.make('mono').pipe(
     cleanCommand,
     checkCommand,
   ]),
-  Command.withDescription('Monorepo management CLI for kabul'),
+  Command.withDescription('Monorepo management CLI'),
 )
 
 const cli = Command.run(command, {

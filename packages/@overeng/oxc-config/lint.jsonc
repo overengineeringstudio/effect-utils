@@ -1,0 +1,91 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxlint/configuration_schema.json",
+
+  // Enable plugins for additional rule sets
+  "plugins": ["import", "typescript", "unicorn", "oxc"],
+
+  // Rule categories - see https://oxc.rs/docs/guide/usage/linter/rules
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "pedantic": "off",
+    "perf": "warn",
+    "style": "off",
+    "restriction": "off",
+  },
+
+  "rules": {
+    // Disallow dynamic import() and require() - helps with static analysis and bundling
+    // https://oxc.rs/docs/guide/usage/linter/rules/import/no-dynamic-require
+    "import/no-dynamic-require": ["warn", { "esmodule": true }],
+
+    // Disallow re-exports except in mod.ts entry points
+    // Use threshold=0 to catch any re-exports, then override for mod.ts
+    // https://oxc.rs/docs/guide/usage/linter/rules/oxc/no-barrel-file
+    "oxc/no-barrel-file": ["warn", { "threshold": 0 }],
+
+    // Encourage named arguments pattern via options objects
+    // Functions with >2 params should use { options } pattern instead
+    "max-params": ["warn", { "max": 2 }],
+
+    // Disallow CommonJS (require/module.exports) - enforce ESM
+    "import/no-commonjs": "error",
+
+    // Detect circular dependencies
+    "import/no-cycle": "warn",
+
+    // Prefer function expressions over declarations
+    // Note: oxlint doesn't have prefer-arrow-callback yet, so we use func-style
+    // with allowArrowFunctions to encourage expressions/arrows over declarations
+    // https://oxc.rs/docs/guide/usage/linter/rules/eslint/func-style
+    "func-style": ["warn", "expression", { "allowArrowFunctions": true }],
+  },
+
+  "overrides": [
+    {
+      // Allow re-exports in mod.ts entry point files
+      "files": ["**/mod.ts"],
+      "rules": {
+        "oxc/no-barrel-file": "off",
+      },
+    },
+    {
+      // react-inspector is a fork with its own style - don't lint it strictly
+      "files": ["**/react-inspector/**"],
+      "rules": {
+        "func-style": "off",
+        "max-params": "off",
+        "unicorn/no-new-array": "off",
+        "unicorn/no-array-sort": "off",
+        "unicorn/consistent-function-scoping": "off",
+        "import/no-named-as-default": "off",
+      },
+    },
+    {
+      // Allow CSS side-effect imports in storybook previews
+      "files": ["**/.storybook/**"],
+      "rules": {
+        "import/no-unassigned-import": "off",
+      },
+    },
+    {
+      // Test files have more relaxed rules
+      "files": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/*.spec.tsx",
+        "**/*.spec.jsx",
+        "**/test/**",
+      ],
+      "rules": {
+        "max-params": "off",
+        "unicorn/no-array-sort": "off",
+        "unicorn/consistent-function-scoping": "off",
+      },
+    },
+  ],
+
+  // NOTE: TypeScript config support is coming in Q1 2026
+  // See: https://github.com/oxc-project/oxc/issues/17527
+}

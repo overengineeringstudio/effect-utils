@@ -1,10 +1,12 @@
+import type { Schema } from 'effect'
+import type { ReactNode } from 'react'
+
 import {
   formatLiteralLabel,
   SchemaForm,
   type SchemaFormRenderProps,
 } from '@overeng/effect-schema-form'
-import type { Schema } from 'effect'
-import type { ReactNode } from 'react'
+
 import { FieldGroup, FieldGroupEmpty } from './components/FieldGroup.tsx'
 import { ariaRenderers } from './renderers.tsx'
 

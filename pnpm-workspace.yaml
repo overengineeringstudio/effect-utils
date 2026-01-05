@@ -6,19 +6,19 @@ packages:
 catalog:
   # Effect ecosystem
   effect: 3.19.14
-  "@effect/platform": 0.94.1
-  "@effect/platform-node": 0.104.0
-  "@effect/cli": 0.73.0
-  "@effect/vitest": 0.27.0
-  "@effect/printer": 0.47.0
-  "@effect/printer-ansi": 0.47.0
-  "@effect/typeclass": 0.38.0
-  "@effect/cluster": 0.56.0
-  "@effect/sql": 0.49.0
-  "@effect/experimental": 0.58.0
-  "@effect/workflow": 0.16.0
-  "@effect/language-service": 0.63.2
-  "@effect/rpc": 0.73.0
+  '@effect/platform': 0.94.1
+  '@effect/platform-node': 0.104.0
+  '@effect/cli': 0.73.0
+  '@effect/vitest': 0.27.0
+  '@effect/printer': 0.47.0
+  '@effect/printer-ansi': 0.47.0
+  '@effect/typeclass': 0.38.0
+  '@effect/cluster': 0.56.0
+  '@effect/sql': 0.49.0
+  '@effect/experimental': 0.58.0
+  '@effect/workflow': 0.16.0
+  '@effect/language-service': 0.63.2
+  '@effect/rpc': 0.73.0
 
   # React ecosystem
   react: 19.2.3
@@ -26,21 +26,21 @@ catalog:
   react-aria-components: 1.14.0
 
   # Type definitions
-  "@types/react": 19.2.7
-  "@types/react-dom": 19.2.3
-  "@types/node": 25.0.3
+  '@types/react': 19.2.7
+  '@types/react-dom': 19.2.3
+  '@types/node': 25.0.3
 
   # Build tools
   typescript: 5.9.3
   vite: 7.3.0
   vitest: 4.0.16
-  "@vitejs/plugin-react": 5.1.2
+  '@vitejs/plugin-react': 5.1.2
 
   # Styling
   tailwindcss: 4.1.18
-  "@tailwindcss/vite": 4.1.18
+  '@tailwindcss/vite': 4.1.18
 
   # Storybook
   storybook: 10.1.11
-  "@storybook/react": 10.1.11
-  "@storybook/react-vite": 10.1.11
+  '@storybook/react': 10.1.11
+  '@storybook/react-vite': 10.1.11

@@ -37,6 +37,7 @@ export interface FileSystemBackingOptions {
 const getKeyDir = (lockDir: string, key: string): string => `${lockDir}/${encodeURIComponent(key)}`
 
 /** Get the file path for a specific holder's lock */
+// oxlint-disable-next-line eslint(max-params) -- internal helper with cohesive params
 const getHolderPath = (lockDir: string, key: string, holderId: string): string =>
   `${getKeyDir(lockDir, key)}/${encodeURIComponent(holderId)}.lock`
 
@@ -254,6 +255,7 @@ export const layer = (
 ): Layer.Layer<DistributedSemaphoreBacking, never, FileSystem.FileSystem | Path.Path> => {
   const { lockDir } = options
 
+  // oxlint-disable-next-line eslint(max-params) -- implements DistributedSemaphoreBacking interface
   const tryAcquire = (
     key: string,
     holderId: string,
@@ -289,6 +291,7 @@ export const layer = (
       return true
     })
 
+  // oxlint-disable-next-line eslint(max-params) -- implements DistributedSemaphoreBacking interface
   const release = (
     key: string,
     holderId: string,
@@ -321,6 +324,7 @@ export const layer = (
       return toRelease
     })
 
+  // oxlint-disable-next-line eslint(max-params) -- implements DistributedSemaphoreBacking interface
   const refresh = (
     key: string,
     holderId: string,
@@ -398,6 +402,7 @@ export const layer = (
  *
  * @returns The number of permits that were revoked
  */
+// oxlint-disable-next-line eslint(max-params) -- public API matching listHolders pattern
 export const forceRevoke = (
   options: FileSystemBackingOptions,
   key: string,

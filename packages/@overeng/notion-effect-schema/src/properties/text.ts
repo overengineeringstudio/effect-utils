@@ -1,4 +1,5 @@
 import { Option, Schema } from 'effect'
+
 import { docsPath, shouldNeverHappen } from '../common.ts'
 import { RichText, RichTextArray } from '../rich-text.ts'
 import { TextRichTextWrite } from './common.ts'

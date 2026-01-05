@@ -9,6 +9,7 @@ A collection of production-ready [Effect](https://effect.website) utilities and 
 Full-featured Effect-native Notion API client with type-safe schema generation.
 
 #### [@overeng/notion-effect-client](./packages/@overeng/notion-effect-client)
+
 Effect-native HTTP client for the Notion API with typed queries
 
 - **Schema-aware queries** - Pass Effect schemas to get fully typed results with automatic decoding
@@ -16,6 +17,7 @@ Effect-native HTTP client for the Notion API with typed queries
 - **Streaming API** - Auto-pagination via Effect Streams for all list operations
 
 #### [@overeng/notion-effect-schema](./packages/@overeng/notion-effect-schema)
+
 Comprehensive Effect schemas for all Notion API types
 
 - **Complete coverage** - Schemas for all 27 block types and 21+ property types
@@ -23,6 +25,7 @@ Comprehensive Effect schemas for all Notion API types
 - **Write support** - Dedicated write schemas for creating/updating pages
 
 #### [@overeng/notion-effect-cli](./packages/@overeng/notion-effect-cli)
+
 CLI tool to generate type-safe schemas from your Notion databases
 
 - **Schema generation** - Generate typed schemas from live Notion databases
@@ -33,9 +36,9 @@ CLI tool to generate type-safe schemas from your Notion databases
 
 Headless form library for Effect Schemas with accessible React Aria implementation.
 
-| Package | Description |
-|---------|-------------|
-| [@overeng/effect-schema-form](./packages/@overeng/effect-schema-form) | Headless form component with schema introspection |
+| Package                                                                         | Description                                                                                                          |
+| ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| [@overeng/effect-schema-form](./packages/@overeng/effect-schema-form)           | Headless form component with schema introspection                                                                    |
 | [@overeng/effect-schema-form-aria](./packages/@overeng/effect-schema-form-aria) | Styled React Aria components with Tailwind CSS ([Storybook](https://overeng-effect-utils-schema-form-ar.vercel.app)) |
 
 - **Schema introspection** - Automatically generate form fields from Effect Schema structure
@@ -48,9 +51,9 @@ Headless form library for Effect Schemas with accessible React Aria implementati
 
 React hooks and utilities for building Effect-powered applications.
 
-| Package | Description |
-|---------|-------------|
-| [@overeng/effect-react](./packages/@overeng/effect-react) | React integration for Effect runtime with hooks and context providers |
+| Package                                                         | Description                                                                                                                |
+| --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| [@overeng/effect-react](./packages/@overeng/effect-react)       | React integration for Effect runtime with hooks and context providers                                                      |
 | [@overeng/react-inspector](./packages/@overeng/react-inspector) | DevTools-style inspectors with Effect Schema support ([Storybook](https://overeng-effect-utils-react-inspecto.vercel.app)) |
 
 - **EffectProvider** - Initialize Effect runtime from a Layer and provide to React tree
@@ -61,8 +64,8 @@ React hooks and utilities for building Effect-powered applications.
 
 ### Utilities
 
-| Package | Description |
-|---------|-------------|
+| Package                                     | Description                                            |
+| ------------------------------------------- | ------------------------------------------------------ |
 | [@overeng/utils](./packages/@overeng/utils) | Distributed locks plus workspace-aware command helpers |
 
 Key features:
@@ -73,6 +76,14 @@ Key features:
 
 ## Quick Start
 
+### Enter the dev shell
+
+This repo uses `devenv` to provide a consistent toolchain (including `pnpm` via Corepack). Run commands inside the shell so `mono` can find `pnpm`:
+
+```bash
+devenv shell
+```
+
 ### Install Dependencies
 
 ```bash
@@ -82,44 +93,44 @@ pnpm install
 ### Build All Packages
 
 ```bash
-pnpm build
+mono build
 ```
 
 ### Run Tests
 
 ```bash
-# Unit tests only
-pnpm test:unit
+# Unit tests
+mono test --unit
 
 # Integration tests (requires NOTION_TOKEN for Notion packages)
-NOTION_TOKEN=secret_xxx pnpm test:integration
+NOTION_TOKEN=secret_xxx mono test --integration
 
 # All tests
-NOTION_TOKEN=secret_xxx pnpm test
+NOTION_TOKEN=secret_xxx mono test
 ```
 
 ### Type Checking
 
-Continuous type checking across the entire monorepo:
+Continuous type checking across the entire monorepo (project references):
 
 ```bash
-pnpm typecheck:watch
+mono ts --watch
 ```
 
 Or one-off type check:
 
 ```bash
-pnpm typecheck
+mono ts
 ```
 
 ### Linting
 
 ```bash
-# Check for issues
-pnpm lint
+# Check formatting + lint
+mono lint
 
-# Auto-fix issues
-pnpm lint:fix
+# Auto-fix formatting + lint issues
+mono lint --fix
 ```
 
 ## Package Structure
@@ -138,7 +149,7 @@ This monorepo uses:
 
 - **pnpm workspaces** for package management
 - **TypeScript project references** for incremental builds
-- **Biome** for linting and formatting
+- **oxlint + oxfmt** for linting and formatting
 - **Vitest** for testing
 - **Effect** for core functionality
 

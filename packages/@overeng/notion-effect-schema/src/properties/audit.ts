@@ -1,4 +1,5 @@
 import { Schema } from 'effect'
+
 import { docsPath, shouldNeverHappen } from '../common.ts'
 import { PartialUser } from '../users.ts'
 

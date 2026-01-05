@@ -1,6 +1,6 @@
-import React from 'react';
+import React from 'react'
 
-import { Inspector } from '../src';
+import { Inspector } from '../src'
 
 function namedFunction() {
   //
@@ -9,129 +9,129 @@ function namedFunction() {
 export default {
   title: 'Object Inspector',
   component: Inspector,
-};
+}
 
 export const NumberPositive = {
   render: () => <Inspector data={42} />,
   name: 'Number: positive',
-};
+}
 
 export const NumberZero = {
   render: () => <Inspector data={0} />,
   name: 'Number: zero',
-};
+}
 
 export const NumberNegative = {
   render: () => <Inspector data={-1} />,
   name: 'Number: negative',
-};
+}
 
 export const NumberFloat = {
   render: () => <Inspector data={1.5} />,
   name: 'Number: float',
-};
+}
 
 export const NumberExponential = {
   render: () => <Inspector data={1e100} />,
   name: 'Number: exponential',
-};
+}
 
 export const NumberNaN = {
   render: () => <Inspector data={NaN} />,
   name: 'Number: NaN',
-};
+}
 
 export const NumberInfinity = {
   render: () => <Inspector data={Infinity} />,
   name: 'Number: Infinity',
-};
+}
 
 // BigInts
 export const BigIntPositive = {
   render: () => <Inspector data={42n} />,
   name: 'BigInt: positive',
-};
+}
 
 export const BigIntZero = {
   render: () => <Inspector data={0n} />,
   name: 'BigInt: zero',
-};
+}
 
 export const BigIntNegative = {
   render: () => <Inspector data={-1n} />,
   name: 'BigInt: negative',
-};
+}
 
 // Strings
 export const StringEmpty = {
   render: () => <Inspector data="" />,
   name: 'String: empty string',
-};
+}
 
 export const StringSimple = {
   render: () => <Inspector data="hello" />,
   name: 'String: simple',
-};
+}
 
 // Booleans
 export const BooleanTrue = {
   render: () => <Inspector data={true} />,
   name: 'Boolean: true',
-};
+}
 
 export const BooleanFalse = {
   render: () => <Inspector data={false} />,
   name: 'Boolean: false',
-};
+}
 
 // Undefined
 export const UndefinedValue = {
   render: () => <Inspector data={undefined} />,
   name: 'Undefined',
-};
+}
 
 // Null
 export const NullValue = {
   render: () => <Inspector data={null} />,
   name: 'Null',
-};
+}
 
 // Symbols
 export const SymbolTest = {
   render: () => <Inspector data={Symbol.for('test')} />,
   name: 'Symbol: test',
-};
+}
 
 // Arrays
 export const ArrayEmpty = {
   render: () => <Inspector data={[]} />,
   name: 'Array: Empty Array',
-};
+}
 
 export const ArrayEmptyNonenumerable = {
   render: () => <Inspector showNonenumerable data={[]} />,
   name: 'Array: Empty Array (show non-enumerable properties)',
-};
+}
 
 export const ArrayBasic = {
   render: () => <Inspector data={['cold', 'ice']} />,
   name: 'Array: Basic Array',
-};
+}
 
 export const ArrayMixedTypes = {
   render: () => <Inspector data={['a', 1, {}]} />,
   name: 'Array: With different types of elements',
-};
+}
 
 export const ArrayLong = {
-  render: () => <Inspector data={new Array(1000).fill(0).map((x, i) => i + '')} />,
+  render: () => <Inspector data={Array.from({ length: 1000 }, (_, i) => i + '')} />,
   name: 'Array: Long array',
-};
+}
 
 export const ArrayWithBigObjects = {
   render: () => (
     <Inspector
-      data={new Array(100).fill(0).map((x, i) => ({
+      data={Array.from({ length: 100 }, (_, i) => ({
         key: i,
         name: `John #${i}`,
         dateOfBirth: new Date(i * 10e8),
@@ -141,33 +141,33 @@ export const ArrayWithBigObjects = {
     />
   ),
   name: 'Array: With big objects',
-};
+}
 
 export const ArrayUint32Array = {
   render: () => <Inspector data={new Uint32Array(1000)} />,
   name: 'Array: Uint32Array',
-};
+}
 
 // Objects
 export const ObjectDate = {
   render: () => <Inspector data={new Date('2005-04-03')} />,
   name: 'Object: Date',
-};
+}
 
 export const ObjectRegExp = {
   render: () => <Inspector data={/^.*$/} />,
   name: 'Object: Regular Expression',
-};
+}
 
 export const ObjectEmpty = {
   render: () => <Inspector showNonenumerable expandLevel={1} data={{}} />,
   name: 'Object: Empty Object',
-};
+}
 
 export const ObjectEmptyStringKey = {
   render: () => <Inspector data={{ '': 'hi' }} />,
   name: 'Object: Empty String key',
-};
+}
 
 export const ObjectWithGetter = {
   render: () => (
@@ -175,13 +175,13 @@ export const ObjectWithGetter = {
       expandLevel={2}
       data={{
         get prop() {
-          return 'v';
+          return 'v'
         },
       }}
     />
   ),
   name: 'Object: Object with getter property',
-};
+}
 
 export const ObjectWithGetterThatThrows = {
   render: () => (
@@ -189,54 +189,56 @@ export const ObjectWithGetterThatThrows = {
       expandLevel={2}
       data={{
         get prop() {
-          throw new Error();
+          throw new Error()
         },
       }}
     />
   ),
   name: 'Object: Object with getter property that throws',
-};
+}
 
 export const ObjectSimple = {
   render: () => <Inspector showNonenumerable expandLevel={2} data={{ k: 'v' }} />,
   name: 'Object: Simple Object',
-};
+}
 
 export const ObjectSimpleInherited = {
   render: () => <Inspector showNonenumerable expandLevel={2} data={Object.create({ k: 'v' })} />,
   name: 'Object: Simple inherited object',
-};
+}
 
 export const ObjectConstructor = {
   render: () => <Inspector showNonenumerable expandLevel={1} data={Object} />,
   name: 'Object: `Object`',
-};
+}
 
 export const ObjectPrototype = {
   render: () => <Inspector showNonenumerable expandLevel={1} data={Object.prototype} />,
   name: 'Object: `Object.prototype`',
-};
+}
 
 export const ObjectSimpleWithName = {
   render: () => <Inspector showNonenumerable expandLevel={2} name="test" data={{ k: 'v' }} />,
   name: 'Object: Simple Object with name',
-};
+}
 
 export const ObjectCreateNull = {
   render: () => <Inspector showNonenumerable data={Object.create(null)} />,
   name: 'Object: `Object.create(null)` (Empty object with null prototype)',
-};
+}
 
 export const ObjectWithNullPrototype = {
-  render: () => <Inspector showNonenumerable data={Object.assign(Object.create(null), { key: 'value' })} />,
+  render: () => (
+    <Inspector showNonenumerable data={Object.assign(Object.create(null), { key: 'value' })} />
+  ),
   name: 'Object: Object with null prototype',
-};
+}
 
 // Maps
 export const MapEmpty = {
   render: () => <Inspector data={new Map()} />,
   name: 'Map: Empty Map',
-};
+}
 
 export const MapBooleanKeys = {
   render: () => (
@@ -250,7 +252,7 @@ export const MapBooleanKeys = {
     />
   ),
   name: 'Map: Boolean keys',
-};
+}
 
 export const MapRegexKeys = {
   render: () => (
@@ -264,7 +266,7 @@ export const MapRegexKeys = {
     />
   ),
   name: 'Map: Regex keys',
-};
+}
 
 export const MapStringKeys = {
   render: () => (
@@ -278,7 +280,7 @@ export const MapStringKeys = {
     />
   ),
   name: 'Map: String keys',
-};
+}
 
 export const MapObjectKeys = {
   render: () => (
@@ -292,7 +294,7 @@ export const MapObjectKeys = {
     />
   ),
   name: 'Map: Object keys',
-};
+}
 
 export const MapArrayKeys = {
   render: () => (
@@ -306,7 +308,7 @@ export const MapArrayKeys = {
     />
   ),
   name: 'Map: Array keys',
-};
+}
 
 export const MapMapKeys = {
   render: () => (
@@ -320,44 +322,44 @@ export const MapMapKeys = {
     />
   ),
   name: 'Map: Map keys',
-};
+}
 
 // Sets
 export const SetEmpty = {
   render: () => <Inspector data={new Set()} />,
   name: 'Set: Empty Set',
-};
+}
 
 export const SetSimple = {
   render: () => <Inspector data={new Set([1, 2, 3, 4])} />,
   name: 'Set: Simple Set',
-};
+}
 
 export const SetNested = {
   render: () => <Inspector data={new Set([1, 2, 3, new Set([1, 2])])} />,
   name: 'Set: Nested Set',
-};
+}
 
 // Functions
 export const FunctionAnonymous = {
   render: () => <Inspector data={function () {}} />,
   name: 'Functions: anonymous function',
-};
+}
 
 export const FunctionArrow = {
   render: () => <Inspector data={() => {}} />,
   name: 'Functions: anonymous arrow function',
-};
+}
 
 export const FunctionNamed = {
   render: () => <Inspector data={namedFunction} />,
   name: 'Functions: named function',
-};
+}
 
 export const FunctionNamedNonenumerable = {
   render: () => <Inspector showNonenumerable data={namedFunction} />,
   name: 'Functions: named function (show non-enumerable properties)',
-};
+}
 
 // Nested object examples
 export const NestedIceSculpture = {
@@ -382,7 +384,7 @@ export const NestedIceSculpture = {
     />
   ),
   name: 'Nested: Ice sculpture',
-};
+}
 
 export const NestedGithub = {
   render: () => (
@@ -423,7 +425,7 @@ export const NestedGithub = {
     />
   ),
   name: 'Nested: Github',
-};
+}
 
 export const NestedGlossary = {
   render: () => (
@@ -454,7 +456,7 @@ export const NestedGlossary = {
     />
   ),
   name: 'Nested: Glossary',
-};
+}
 
 export const NestedContrived = {
   render: () => (
@@ -471,11 +473,11 @@ export const NestedContrived = {
           'a5-3': {},
         },
         a6: function () {
-          console.log('hello world');
+          console.log('hello world')
         },
         a7: new Date('2005-04-03'),
       }}
     />
   ),
   name: 'Nested: Contrived example',
-};
+}

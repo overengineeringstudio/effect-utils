@@ -1,6 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
+
 import { Effect } from 'effect'
+
 import { isNotUndefined } from '../isomorphic/mod.ts'
 
 export type TCmdLoggingOptions = {

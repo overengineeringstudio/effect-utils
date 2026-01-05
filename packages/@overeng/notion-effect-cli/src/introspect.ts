@@ -1,4 +1,6 @@
 import type { HttpClient } from '@effect/platform'
+import { Effect } from 'effect'
+
 import {
   type NotionApiError,
   type NotionConfig,
@@ -13,7 +15,6 @@ import type {
   SelectOptionConfig,
   StatusGroupConfig,
 } from '@overeng/notion-effect-schema'
-import { Effect } from 'effect'
 
 // -----------------------------------------------------------------------------
 // Types (re-exported for backwards compatibility and convenience)

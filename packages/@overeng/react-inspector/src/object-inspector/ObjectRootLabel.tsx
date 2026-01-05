@@ -1,6 +1,7 @@
-import React, { FC } from 'react';
-import { ObjectName } from '../object/ObjectName';
-import { ObjectPreview } from './ObjectPreview';
+import React, { FC } from 'react'
+
+import { ObjectName } from '../object/ObjectName'
+import { ObjectPreview } from './ObjectPreview'
 
 export const ObjectRootLabel: FC<any> = ({ name, data }) => {
   if (typeof name === 'string') {
@@ -10,8 +11,8 @@ export const ObjectRootLabel: FC<any> = ({ name, data }) => {
         <span>: </span>
         <ObjectPreview data={data} />
       </span>
-    );
+    )
   } else {
-    return <ObjectPreview data={data} />;
+    return <ObjectPreview data={data} />
   }
-};
+}

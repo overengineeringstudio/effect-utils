@@ -1,6 +1,8 @@
-import { Checkbox, Num, RichTextProp, Select, Title } from '@overeng/notion-effect-schema'
 import { Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
+
+import { Checkbox, Num, RichTextProp, Select, Title } from '@overeng/notion-effect-schema'
+
 import { generateSchemaCode } from './codegen.ts'
 import type { DatabaseInfo } from './introspect.ts'
 

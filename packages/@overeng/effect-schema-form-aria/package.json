@@ -1,8 +1,8 @@
 {
   "name": "@overeng/effect-schema-form-aria",
   "version": "0.1.0",
-  "type": "module",
   "private": true,
+  "type": "module",
   "exports": {
     ".": "./src/mod.ts"
   },
@@ -22,12 +22,6 @@
   "dependencies": {
     "@overeng/effect-schema-form": "workspace:*"
   },
-  "peerDependencies": {
-    "effect": "catalog:",
-    "react": "catalog:",
-    "react-dom": "catalog:",
-    "react-aria-components": "catalog:"
-  },
   "devDependencies": {
     "@storybook/react": "catalog:",
     "@storybook/react-vite": "catalog:",
@@ -36,11 +30,17 @@
     "@vitejs/plugin-react": "catalog:",
     "effect": "catalog:",
     "react": "catalog:",
-    "react-dom": "catalog:",
     "react-aria-components": "catalog:",
+    "react-dom": "catalog:",
     "storybook": "catalog:",
     "tailwindcss": "catalog:",
     "vite": "catalog:",
     "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "effect": "catalog:",
+    "react": "catalog:",
+    "react-aria-components": "catalog:",
+    "react-dom": "catalog:"
   }
 }

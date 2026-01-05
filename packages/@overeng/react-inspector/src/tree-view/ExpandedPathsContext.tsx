@@ -1,3 +1,3 @@
-import { createContext } from 'react';
+import { createContext } from 'react'
 
-export const ExpandedPathsContext = createContext<[any, (...args: any[]) => any]>([{}, () => {}]);
+export const ExpandedPathsContext = createContext<[any, (...args: any[]) => any]>([{}, () => {}])

@@ -1,6 +1,8 @@
 import { FileSystem, Path } from '@effect/platform'
-import { CurrentWorkingDirectory } from '@overeng/utils/node'
 import { Effect, Schema } from 'effect'
+
+import { CurrentWorkingDirectory } from '@overeng/utils/node'
+
 import type { PropertyTransformConfig } from './introspect.ts'
 
 // -----------------------------------------------------------------------------
@@ -214,8 +216,8 @@ export const mergeWithDefaults = (
   const typedOptions = database.typedOptions ?? defaults.typedOptions
   const includeApi = database.includeApi ?? defaults.includeApi
   const transforms: PropertyTransformConfig = {
-    ...(defaults.transforms ?? {}),
-    ...(database.transforms ?? {}),
+    ...defaults.transforms,
+    ...database.transforms,
   }
 
   return {

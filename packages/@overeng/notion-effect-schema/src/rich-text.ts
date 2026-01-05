@@ -1,4 +1,5 @@
 import { Schema } from 'effect'
+
 import { docsPath, NotionColor, NotionUUID } from './common.ts'
 
 // -----------------------------------------------------------------------------
