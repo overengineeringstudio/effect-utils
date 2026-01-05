@@ -104,7 +104,7 @@ export const makeWithTestCtx =
   <ROut = never, E1 = never, RIn = never>(params: WithTestCtxParams<ROut, E1, RIn>) =>
   (fixtures: PlaywrightFixtures) =>
   <A, E, R>(self: Effect.Effect<A, E, R>): Promise<A> =>
-    runWithTestCtx(fixtures, params, self)
+    runWithTestCtx({ fixtures, params, self })
 
 /**
  * Wrap an Effect with Playwright test infrastructure.
@@ -133,16 +133,21 @@ export const makeWithTestCtx =
 export const withTestCtx =
   (fixtures: PlaywrightFixtures, params: WithTestCtxParams<never, never, never> = {}) =>
   <A, E, R>(self: Effect.Effect<A, E, R>): Promise<A> =>
-    runWithTestCtx(fixtures, params, self)
+    runWithTestCtx({ fixtures, params, self })
+
+interface RunWithTestCtxArgs<ROut, E1, RIn, A, E, R> {
+  fixtures: PlaywrightFixtures
+  params: WithTestCtxParams<ROut, E1, RIn>
+  self: Effect.Effect<A, E, R>
+}
 
 /**
  * Internal implementation that handles layer composition and Effect execution.
  */
 const runWithTestCtx = <ROut, E1, RIn, A, E, R>(
-  fixtures: PlaywrightFixtures,
-  params: WithTestCtxParams<ROut, E1, RIn>,
-  self: Effect.Effect<A, E, R>,
+  args: RunWithTestCtxArgs<ROut, E1, RIn, A, E, R>,
 ): Promise<A> => {
+  const { fixtures, params, self } = args
   const {
     makeLayer,
     timeout = DEFAULT_TIMEOUT_MS,

@@ -16,10 +16,10 @@ type WorkerMessage =
   | { type: 'emit-error' }
   | { type: 'emit-with-span' }
 
-self.onconnect = (event: MessageEvent) => {
+self.addEventListener('connect', (event: MessageEvent) => {
   const port = event.ports[0]!
 
-  port.onmessage = (e: MessageEvent<WorkerMessage>) => {
+  port.addEventListener('message', (e: MessageEvent<WorkerMessage>) => {
     const msg = e.data
 
     if (msg.type === 'emit-logs') {
@@ -54,7 +54,7 @@ self.onconnect = (event: MessageEvent) => {
         port.postMessage({ type: 'done' })
       })
     }
-  }
+  })
 
   port.start()
-}
+})

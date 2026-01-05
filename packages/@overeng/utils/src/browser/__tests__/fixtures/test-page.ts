@@ -49,11 +49,11 @@ const connectWorker = () => {
   worker.port.start()
   window.workerPort = worker.port
 
-  worker.port.onmessage = (e) => {
+  worker.port.addEventListener('message', (e) => {
     if (e.data.type === 'done') {
       statusEl.textContent = 'Worker done'
     }
-  }
+  })
 
   window.workerReady = true
   statusEl.textContent = 'Worker ready'

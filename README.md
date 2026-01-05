@@ -64,8 +64,8 @@ React hooks and utilities for building Effect-powered applications.
 
 ### Playwright Integration
 
-| Package                                                     | Description                                           |
-| ----------------------------------------------------------- | ----------------------------------------------------- |
+| Package                                                     | Description                                             |
+| ----------------------------------------------------------- | ------------------------------------------------------- |
 | [@overeng/utils/node/playwright](./packages/@overeng/utils) | Effect-native Playwright wrappers with OTEL integration |
 
 - **Service tags** - `PwPage`, `PwBrowserContext` for dependency injection
@@ -75,9 +75,9 @@ React hooks and utilities for building Effect-powered applications.
 
 ### Utilities
 
-| Package                                     | Description                                           |
-| ------------------------------------------- | ----------------------------------------------------- |
-| [@overeng/utils](./packages/@overeng/utils) | Distributed locks, log bridging, and debug utilities  |
+| Package                                     | Description                                          |
+| ------------------------------------------- | ---------------------------------------------------- |
+| [@overeng/utils](./packages/@overeng/utils) | Distributed locks, log bridging, and debug utilities |
 
 Key features:
 

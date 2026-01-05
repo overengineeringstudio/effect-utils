@@ -67,7 +67,18 @@
  *
  * @module
  */
-import { Cause, Effect, FiberId, HashMap, Layer, Logger, LogLevel, Schema, Scope, Stream } from 'effect'
+import {
+  Cause,
+  Effect,
+  FiberId,
+  HashMap,
+  Layer,
+  Logger,
+  LogLevel,
+  Schema,
+  Scope,
+  Stream,
+} from 'effect'
 
 /** Channel name for broadcasting logs */
 export const BROADCAST_CHANNEL_NAME = 'effect-debug-logs'
