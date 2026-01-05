@@ -12,11 +12,6 @@
       ".": "./dist/mod.js"
     }
   },
-  "scripts": {
-    "build": "tsc --build",
-    "test": "vitest run",
-    "test:watch": "vitest"
-  },
   "devDependencies": {
     "@effect/vitest": "catalog:",
     "@types/node": "catalog:",

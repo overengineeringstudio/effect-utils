@@ -5,7 +5,7 @@ Effect-native HTTP client for the Notion API.
 ## Installation
 
 ```bash
-pnpm add @overeng/notion-effect-client
+bun add @overeng/notion-effect-client
 ```
 
 ## Usage

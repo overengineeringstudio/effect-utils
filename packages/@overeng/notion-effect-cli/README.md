@@ -5,7 +5,7 @@ CLI and library for generating type-safe [Effect](https://effect.website) schema
 ## Installation
 
 ```bash
-pnpm add @overeng/notion-effect-cli
+bun add @overeng/notion-effect-cli
 ```
 
 ## Quick Start

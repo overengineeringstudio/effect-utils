@@ -5,7 +5,7 @@ React integration for [Effect](https://effect.website). Provides a context-based
 ## Installation
 
 ```bash
-pnpm add @overeng/effect-react effect react
+bun add @overeng/effect-react effect react
 ```
 
 ## Features

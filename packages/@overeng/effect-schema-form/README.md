@@ -5,7 +5,7 @@ Headless form component for Effect Schemas. Automatically generates form fields 
 ## Installation
 
 ```bash
-pnpm add @overeng/effect-schema-form
+bun add @overeng/effect-schema-form
 ```
 
 ## Usage

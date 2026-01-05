@@ -90,7 +90,7 @@ Key features:
 
 ### Enter the dev shell
 
-This repo uses `devenv` to provide a consistent toolchain (including `pnpm` via Corepack). Run commands inside the shell so `mono` can find `pnpm`:
+This repo uses `devenv` to provide a consistent toolchain. Run commands inside the shell so `mono` can find the required tools:
 
 ```bash
 devenv shell
@@ -99,7 +99,7 @@ devenv shell
 ### Install Dependencies
 
 ```bash
-pnpm install
+bun install
 ```
 
 ### Build All Packages
@@ -159,7 +159,7 @@ Each package follows modern ESM conventions:
 
 This monorepo uses:
 
-- **pnpm workspaces** for package management
+- **bun workspaces** for package management
 - **TypeScript project references** for incremental builds
 - **oxlint + oxfmt** for linting and formatting
 - **Vitest** for testing

@@ -12,12 +12,6 @@
       ".": "./dist/mod.js"
     }
   },
-  "scripts": {
-    "build": "tsc --build",
-    "test": "vitest run",
-    "test:unit": "vitest run --exclude '**/integration/**'",
-    "test:integration": "vitest run 'src/test/integration'"
-  },
   "dependencies": {
     "@overeng/notion-effect-schema": "workspace:*"
   },

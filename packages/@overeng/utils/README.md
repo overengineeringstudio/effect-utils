@@ -5,7 +5,7 @@ Shared Effect utilities for the overeng ecosystem.
 ## Installation
 
 ```bash
-pnpm add @overeng/utils
+bun add @overeng/utils
 ```
 
 ## Features
@@ -287,7 +287,7 @@ const logViewer = logStream.pipe(
 
 ## Known Issues
 
-This package uses a pnpm patch for [`effect-distributed-lock`](https://github.com/ethanniser/effect-distributed-lock)@0.0.10 to work around a packaging issue where the published npm package is missing the `dist` folder.
+This package uses a bun patch for [`effect-distributed-lock`](https://github.com/ethanniser/effect-distributed-lock)@0.0.10 to work around a packaging issue where the published npm package is missing the `dist` folder.
 
 See: https://github.com/ethanniser/effect-distributed-lock/issues/7
 
