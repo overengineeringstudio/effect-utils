@@ -313,7 +313,7 @@ const checkCommand = Command.make('check', {}, () =>
     yield* runCommand('oxlint', ['-c', `${OXC_CONFIG_PATH}/lint.jsonc`, '--import-plugin'])
     yield* ciGroupEnd
 
-    yield* ciGroup('Running tests')
+    yield* ciGroup('Running unit tests')
     yield* runCommand('pnpm', ['-r', 'test'])
     yield* ciGroupEnd
 
