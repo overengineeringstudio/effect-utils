@@ -12,11 +12,6 @@
       ".": "./dist/mod.js"
     }
   },
-  "scripts": {
-    "build": "tsc --build",
-    "test": "echo \"TODO: Add tests\"",
-    "test:watch": "vitest"
-  },
   "devDependencies": {
     "@types/react": "catalog:",
     "effect": "catalog:",

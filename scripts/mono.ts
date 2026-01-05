@@ -93,7 +93,7 @@ class CommandError extends Schema.TaggedError<CommandError>()('CommandError', {
 const buildCommand = Command.make('build', {}, () =>
   Effect.gen(function* () {
     yield* ciGroup('Building all packages')
-    yield* runCommand('pnpm', ['-r', 'build'])
+    yield* runCommand('tsc', ['--build', 'tsconfig.all.json'])
     yield* ciGroupEnd
     yield* Console.log('✓ Build complete')
   }),
@@ -126,35 +126,31 @@ const testCommand = Command.make(
   { unit: testUnitOption, integration: testIntegrationOption, watch: testWatchOption },
   ({ unit, integration, watch }) =>
     Effect.gen(function* () {
-      const ciArgs = IS_CI ? ['--', '--reporter=verbose'] : []
-      const scriptName = watch && !IS_CI ? 'test:watch' : 'test'
+      const watchArg = watch && !IS_CI ? [] : ['run']
+      const reporterArgs = IS_CI ? ['--reporter=verbose'] : []
 
       if (unit) {
         yield* ciGroup('Running unit tests')
-        yield* runCommand('pnpm', ['-r', scriptName, ...ciArgs])
+        yield* runCommand('vitest', [...watchArg, "--exclude='**/integration/**'", ...reporterArgs])
         yield* ciGroupEnd
       } else if (integration) {
         yield* ciGroup('Running integration tests')
         // Run notion-effect-client integration tests
-        yield* runCommand('pnpm', [
-          '-r',
-          '--filter',
-          '@overeng/notion-effect-client',
-          'test:integration',
-          ...ciArgs,
+        yield* runCommand('vitest', [
+          ...watchArg,
+          'packages/@overeng/notion-effect-client/src/test/integration',
+          ...reporterArgs,
         ])
         // Run utils integration tests (browser tests with Playwright)
-        yield* runCommand('pnpm', [
-          '-r',
-          '--filter',
-          '@overeng/utils',
-          'test:integration',
-          ...ciArgs,
+        yield* runCommand('playwright', [
+          'test',
+          '--config',
+          'packages/@overeng/utils/playwright.config.ts',
         ])
         yield* ciGroupEnd
       } else {
         yield* ciGroup('Running all tests')
-        yield* runCommand('pnpm', ['-r', scriptName, ...ciArgs])
+        yield* runCommand('vitest', [...watchArg, ...reporterArgs])
         yield* ciGroupEnd
       }
 
@@ -313,8 +309,8 @@ const checkCommand = Command.make('check', {}, () =>
     yield* runCommand('oxlint', ['-c', `${OXC_CONFIG_PATH}/lint.jsonc`, '--import-plugin'])
     yield* ciGroupEnd
 
-    yield* ciGroup('Running unit tests')
-    yield* runCommand('pnpm', ['-r', 'test'])
+    yield* ciGroup('Running tests')
+    yield* runCommand('vitest', ['run'])
     yield* ciGroupEnd
 
     yield* Console.log('\n✓ All checks passed')

@@ -18,12 +18,6 @@
       "./browser": "./dist/browser/mod.js"
     }
   },
-  "scripts": {
-    "build": "tsc --build",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:integration": "playwright test"
-  },
   "dependencies": {
     "effect-distributed-lock": "0.0.10"
   },

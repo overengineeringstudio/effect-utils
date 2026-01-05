@@ -7,7 +7,7 @@ Power of Browser DevTools inspectors right inside your React app. Fork of [story
 ## Installation
 
 ```bash
-pnpm add @overeng/react-inspector
+bun add @overeng/react-inspector
 ```
 
 ## Usage

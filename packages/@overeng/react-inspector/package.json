@@ -16,13 +16,6 @@
       }
     }
   },
-  "scripts": {
-    "build": "tsc --build",
-    "test": "vitest run src",
-    "test:watch": "vitest src",
-    "storybook": "storybook dev -p 9001",
-    "build-storybook": "storybook build"
-  },
   "dependencies": {
     "is-dom": "1.1.0"
   },

@@ -7,7 +7,7 @@ Styled React Aria implementation for `@overeng/effect-schema-form`. Provides acc
 ## Installation
 
 ```bash
-pnpm add @overeng/effect-schema-form-aria @overeng/effect-schema-form react-aria-components
+bun add @overeng/effect-schema-form-aria @overeng/effect-schema-form react-aria-components
 ```
 
 ## Usage

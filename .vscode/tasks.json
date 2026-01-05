@@ -7,7 +7,7 @@
     {
       "label": "install",
       "type": "shell",
-      "command": "pnpm install",
+      "command": "bun install",
       "problemMatcher": [],
       "presentation": {
         "focus": true,

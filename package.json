@@ -2,7 +2,9 @@
   "name": "effect-notion",
   "private": true,
   "workspaces": [
-    "packages/*"
+    "packages/**",
+    "scripts/**",
+    "context/**"
   ],
   "type": "module",
   "scripts": {
@@ -17,12 +19,43 @@
     "effect": "catalog:",
     "oxfmt": "0.21.0",
     "oxlint": "1.36.0",
-    "typescript": "^5.9.3"
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   },
-  "packageManager": "pnpm@9.15.0",
-  "pnpm": {
-    "patchedDependencies": {
-      "effect-distributed-lock@0.0.10": "patches/effect-distributed-lock@0.0.10.patch"
-    }
+  "catalog": {
+    "effect": "3.19.14",
+    "@effect/platform": "0.94.1",
+    "@effect/platform-node": "0.104.0",
+    "@effect/cli": "0.73.0",
+    "@effect/vitest": "0.27.0",
+    "@effect/printer": "0.47.0",
+    "@effect/printer-ansi": "0.47.0",
+    "@effect/typeclass": "0.38.0",
+    "@effect/cluster": "0.56.0",
+    "@effect/sql": "0.49.0",
+    "@effect/experimental": "0.58.0",
+    "@effect/workflow": "0.16.0",
+    "@effect/language-service": "0.63.2",
+    "@effect/rpc": "0.73.0",
+    "@effect/opentelemetry": "0.60.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-aria-components": "1.14.0",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
+    "@types/node": "25.0.3",
+    "typescript": "5.9.3",
+    "@playwright/test": "1.57.0",
+    "vite": "7.3.0",
+    "vitest": "4.0.16",
+    "@vitejs/plugin-react": "5.1.2",
+    "tailwindcss": "4.1.18",
+    "@tailwindcss/vite": "4.1.18",
+    "storybook": "10.1.11",
+    "@storybook/react": "10.1.11",
+    "@storybook/react-vite": "10.1.11"
+  },
+  "patchedDependencies": {
+    "effect-distributed-lock@0.0.10": "patches/effect-distributed-lock@0.0.10.patch"
   }
 }
