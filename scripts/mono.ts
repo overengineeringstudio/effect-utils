@@ -135,10 +135,19 @@ const testCommand = Command.make(
         yield* ciGroupEnd
       } else if (integration) {
         yield* ciGroup('Running integration tests')
+        // Run notion-effect-client integration tests
         yield* runCommand('pnpm', [
           '-r',
           '--filter',
           '@overeng/notion-effect-client',
+          'test:integration',
+          ...ciArgs,
+        ])
+        // Run utils integration tests (browser tests with Playwright)
+        yield* runCommand('pnpm', [
+          '-r',
+          '--filter',
+          '@overeng/utils',
           'test:integration',
           ...ciArgs,
         ])
@@ -304,7 +313,7 @@ const checkCommand = Command.make('check', {}, () =>
     yield* runCommand('oxlint', ['-c', `${OXC_CONFIG_PATH}/lint.jsonc`, '--import-plugin'])
     yield* ciGroupEnd
 
-    yield* ciGroup('Running tests')
+    yield* ciGroup('Running unit tests')
     yield* runCommand('pnpm', ['-r', 'test'])
     yield* ciGroupEnd
 

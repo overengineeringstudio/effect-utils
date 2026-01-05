@@ -21,6 +21,7 @@ catalog:
   '@effect/workflow': 0.16.0
   '@effect/language-service': 0.63.2
   '@effect/rpc': 0.73.0
+  '@effect/opentelemetry': 0.60.0
 
   # React ecosystem
   react: 19.2.3
@@ -34,6 +35,7 @@ catalog:
 
   # Build tools
   typescript: 5.9.3
+  '@playwright/test': 1.57.0
   vite: 7.3.0
   vitest: 4.0.16
   '@vitejs/plugin-react': 5.1.2

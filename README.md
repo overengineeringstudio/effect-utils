@@ -62,17 +62,29 @@ React hooks and utilities for building Effect-powered applications.
 - **DevTools inspectors** - Browser-style object/table inspectors with Effect Schema awareness
 - **Type-safe runtime access** - Direct access to Effect runtime for advanced use cases
 
+### Playwright Integration
+
+| Package                                                     | Description                                             |
+| ----------------------------------------------------------- | ------------------------------------------------------- |
+| [@overeng/utils/node/playwright](./packages/@overeng/utils) | Effect-native Playwright wrappers with OTEL integration |
+
+- **Service tags** - `PwPage`, `PwBrowserContext` for dependency injection
+- **Structured errors** - All operations wrapped with `PwOpError` for consistent error handling
+- **OTEL spans** - Automatic tracing with cross-process trace propagation
+- **Test helpers** - `withTestCtx` for automatic layer provision in Playwright tests
+
 ### Utilities
 
-| Package                                     | Description                                            |
-| ------------------------------------------- | ------------------------------------------------------ |
-| [@overeng/utils](./packages/@overeng/utils) | Distributed locks plus workspace-aware command helpers |
+| Package                                     | Description                                          |
+| ------------------------------------------- | ---------------------------------------------------- |
+| [@overeng/utils](./packages/@overeng/utils) | Distributed locks, log bridging, and debug utilities |
 
 Key features:
 
+- SharedWorker→Tab log bridging via BroadcastChannel (`@overeng/utils/browser`)
+- Scope/finalizer debugging and active handles monitoring
+- File system-backed distributed locks with TTL expiration
 - Workspace-aware command helpers with optional logging/retention
-- Effect-native CWD and workspace root services for Node tooling
-- File system-backed distributed locks with TTL expiration and atomic operations
 
 ## Quick Start
 

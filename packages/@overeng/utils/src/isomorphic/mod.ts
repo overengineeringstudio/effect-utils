@@ -7,6 +7,9 @@ export {
   SemaphoreBackingError,
 } from 'effect-distributed-lock'
 
+/** Debug utilities for tracing scope and finalizer lifecycle */
+export * from './ScopeDebugger.ts'
+
 import { Schema } from 'effect'
 
 // ============================================================================

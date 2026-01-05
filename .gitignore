@@ -22,3 +22,9 @@ dist
 # Storybook
 storybook-static
 .vercel
+
+# Playwright
+test-results
+playwright-report
+.last-run.json
+blob-report

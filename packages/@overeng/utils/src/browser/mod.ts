@@ -4,6 +4,9 @@ export * from '../isomorphic/mod.ts'
 /** Base64 encoding/decoding utilities */
 export * as base64 from './base64.ts'
 
+/** BroadcastChannel-based logger for SharedWorker → Tab log bridging */
+export * from './BroadcastLogger.ts'
+
 /** Browser detection utilities */
 export * from './browser-detect.ts'
 
