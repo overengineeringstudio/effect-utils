@@ -7,3 +7,12 @@ export * as FileSystemBacking from './file-system-backing.ts'
 
 /** Workspace helpers and command runner utilities */
 export * from './workspace.ts'
+
+/** Pretty-printed file logger */
+export * from './FileLogger.ts'
+
+/** Debug utilities for inspecting active handles preventing process exit */
+export * from './ActiveHandlesDebugger.ts'
+
+/** Playwright config factory for browser integration tests */
+export * from './playwright-config.ts'

@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/isomorphic/mod.ts",
     "./node": "./src/node/mod.ts",
+    "./node/playwright": "./src/node/playwright/mod.ts",
     "./browser": "./src/browser/mod.ts"
   },
   "publishConfig": {
@@ -13,27 +14,33 @@
     "exports": {
       ".": "./dist/isomorphic/mod.js",
       "./node": "./dist/node/mod.js",
+      "./node/playwright": "./dist/node/playwright/mod.js",
       "./browser": "./dist/browser/mod.js"
     }
   },
   "scripts": {
     "build": "tsc --build",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:integration": "playwright test"
   },
   "dependencies": {
     "effect-distributed-lock": "0.0.10"
   },
   "devDependencies": {
+    "@effect/opentelemetry": "catalog:",
     "@effect/platform": "catalog:",
     "@effect/platform-node": "catalog:",
     "@effect/rpc": "catalog:",
     "@effect/vitest": "catalog:",
+    "@playwright/test": "1.57.0",
     "@types/node": "catalog:",
     "effect": "catalog:",
+    "vite": "7.3.0",
     "vitest": "catalog:"
   },
   "peerDependencies": {
+    "@effect/opentelemetry": "catalog:",
     "@effect/platform": "catalog:",
     "@effect/platform-node": "catalog:",
     "@effect/rpc": "catalog:",

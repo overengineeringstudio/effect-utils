@@ -120,8 +120,19 @@ Re-exports from [`effect-distributed-lock`](https://github.com/ethanniser/effect
 - `LockLostError` - Error when lock TTL expires unexpectedly
 - `Backing` - Backing module namespace
 
+Debug utilities:
+
+- `withScopeDebug` - Enable scope/finalizer tracing for an effect
+- `addTracedFinalizer` - Register a finalizer with debug logging
+- `withTracedScope` - Run an effect in a traced scope
+- `traceFinalizer` - Wrap a finalizer effect with tracing
+
 ### Node (`@overeng/utils/node`)
 
+- `makeFileLogger` - Pretty-printed file logger with span support
+- `dumpActiveHandles` - Inspect active Node.js handles preventing exit
+- `monitorActiveHandles` - Periodic monitoring of active handles
+- `logActiveHandles` - Log active handles to Effect logger
 - `FileSystemBacking` - File-based backing implementation for Node.js
   - `layer` - Create the backing layer
   - `forceRevoke` - Forcibly revoke a holder's permits
@@ -133,6 +144,43 @@ Re-exports from [`effect-distributed-lock`](https://github.com/ethanniser/effect
 - `EffectUtilsWorkspace` - Workspace root service backed by `WORKSPACE_ROOT`
 - `cmd` - Command runner returning exit codes with optional logging/retention
 - `cmdText` - Command runner returning stdout as text
+
+### File Logger
+
+`makeFileLogger` creates a Layer that writes pretty-printed logs to a file. Useful for debugging long-running processes or capturing logs from background workers.
+
+```ts
+import { Effect } from 'effect'
+import { makeFileLogger } from '@overeng/utils/node'
+
+const program = Effect.gen(function* () {
+  yield* Effect.log('Application started')
+  yield* Effect.logDebug('Debug details', { config: { port: 3000 } })
+
+  yield* Effect.gen(function* () {
+    yield* Effect.log('Inside operation')
+  }).pipe(Effect.withSpan('my-operation'))
+})
+
+program.pipe(
+  Effect.provide(makeFileLogger('/tmp/app.log', { threadName: 'main' })),
+  Effect.runPromise,
+)
+```
+
+Output in `/tmp/app.log`:
+
+```
+[14:23:45.123 main] INFO (#0): Application started
+[14:23:45.124 main] DEBUG (#0): Debug details
+  { config: { port: 3000 } }
+[14:23:45.125 main] INFO (#0) my-operation (2ms): Inside operation
+```
+
+Options:
+
+- `threadName` - Label to identify the log source (e.g., 'main', 'worker-1')
+- `colors` - Include ANSI color codes (default: false, useful when tailing with `less -R`)
 
 ### Workspace Helpers
 
@@ -164,6 +212,76 @@ import { EffectUtilsWorkspace } from '@overeng/utils/node'
 const WorkspaceLayer = Layer.mergeAll(
   EffectUtilsWorkspace.live,
   EffectUtilsWorkspace.toCwd('packages'),
+)
+```
+
+### Browser (`@overeng/utils/browser`)
+
+Debug utilities for browser environments:
+
+- `BroadcastLoggerLive` - Logger layer that broadcasts via BroadcastChannel (worker side)
+- `makeBroadcastLogger` - Create a broadcast logger for SharedWorkers
+- `makeLogBridgeLive` - Effect-native log bridge with source filtering (tab side)
+- `logStream` - Stream of broadcast log entries for custom processing
+- `formatLogEntry` - Format a log entry for display
+
+Other browser utilities:
+
+- `base64` - Base64 encoding/decoding
+- `OPFS` - Origin Private File System utilities
+- `WebLock` - Web Locks API utilities
+- `prettyBytes` - Byte formatting
+
+### SharedWorker Log Bridging
+
+Capture logs from SharedWorkers and display them in a tab. Supports multiple workers via the `source` identifier.
+
+```ts
+// ═══════════════════════════════════════════════════════════════════════════
+// SharedWorker side (sync-worker.ts)
+// ═══════════════════════════════════════════════════════════════════════════
+import { Effect } from 'effect'
+import { BroadcastLoggerLive } from '@overeng/utils/browser'
+
+const workerProgram = Effect.gen(function* () {
+  yield* Effect.log('Sync worker initialized')
+  yield* Effect.logDebug('Connecting to database...')
+
+  yield* Effect.gen(function* () {
+    yield* Effect.log('Syncing records')
+  }).pipe(Effect.withSpan('sync-operation'))
+}).pipe(
+  // All Effect.log calls broadcast to connected tabs
+  Effect.provide(BroadcastLoggerLive('sync-worker'))
+)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Tab side (main.ts) - Option 1: Effect-native bridge (recommended)
+// ═══════════════════════════════════════════════════════════════════════════
+import { Effect } from 'effect'
+import { makeLogBridgeLive } from '@overeng/utils/browser'
+
+const app = Effect.gen(function* () {
+  yield* Effect.log('App started')
+  // Worker logs appear through Effect's logger with annotations
+}).pipe(
+  Effect.provide(makeLogBridgeLive()),
+  // Or filter to specific workers:
+  // Effect.provide(makeLogBridgeLive({ sources: ['sync-worker'] })),
+  Effect.scoped,
+)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Tab side - Option 2: Stream-based processing
+// ═══════════════════════════════════════════════════════════════════════════
+import { Effect, Stream } from 'effect'
+import { logStream, formatLogEntry } from '@overeng/utils/browser'
+
+const logViewer = logStream.pipe(
+  Stream.filter((entry) => entry.source === 'sync-worker'),
+  Stream.runForEach((entry) =>
+    Effect.sync(() => console.log(formatLogEntry(entry)))
+  ),
 )
 ```
 

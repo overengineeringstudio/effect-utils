@@ -1,4 +1,7 @@
-{ pkgs, ... }:
+{ pkgs, inputs, ... }:
+let
+  playwrightDriver = inputs.playwright-web-flake.packages.${pkgs.system}.playwright-driver;
+in
 {
   languages.javascript = {
     enable = true;
@@ -13,6 +16,7 @@
 
   env = {
     COREPACK_INTEGRITY_KEYS = "0";
+    PLAYWRIGHT_BROWSERS_PATH = playwrightDriver.browsers;
   };
 
   enterShell = ''

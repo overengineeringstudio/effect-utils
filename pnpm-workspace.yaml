@@ -21,6 +21,7 @@ catalog:
   '@effect/workflow': 0.16.0
   '@effect/language-service': 0.63.2
   '@effect/rpc': 0.73.0
+  '@effect/opentelemetry': 0.60.0
 
   # React ecosystem
   react: 19.2.3

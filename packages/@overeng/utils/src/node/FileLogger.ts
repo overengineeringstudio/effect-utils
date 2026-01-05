@@ -16,6 +16,37 @@ import {
 } from 'effect'
 import * as EffectArray from 'effect/Array'
 
+/**
+ * Creates a Layer that replaces the default logger with a pretty-printed file logger.
+ *
+ * The logger writes human-readable, optionally colorized output to the specified file.
+ * It automatically creates parent directories and manages file handle lifecycle via Effect's
+ * scope (closes on scope finalization).
+ *
+ * Output format per log entry:
+ * ```
+ * [HH:MM:SS.mmm threadName] LEVEL (fiber-id) span1 (123ms) span2 (45ms): Message
+ *   Additional structured data indented
+ *   key: value (for annotations)
+ * ```
+ *
+ * @example
+ * ```ts
+ * import { Effect } from 'effect'
+ * import { makeFileLogger } from '@overeng/utils/node'
+ *
+ * const program = Effect.gen(function* () {
+ *   yield* Effect.log('Hello from file logger')
+ *   yield* Effect.logDebug('Debug info', { userId: 123 })
+ * }).pipe(
+ *   Effect.provide(makeFileLogger('/tmp/app.log', { threadName: 'main' }))
+ * )
+ * ```
+ *
+ * @param logFilePath - Absolute or relative path to the log file. Parent directories are created if needed.
+ * @param options.threadName - Label shown in log output to identify the source (e.g., 'main', 'worker-1')
+ * @param options.colors - Whether to include ANSI color codes. Defaults to false (plain text).
+ */
 export const makeFileLogger = (
   logFilePath: string,
   options?: {
@@ -77,12 +108,14 @@ const logLevelColors: Record<LogLevel.LogLevel['_tag'], readonly string[]> = {
   Fatal: [colors.bgBrightRed, colors.black],
 }
 
+/** Formats date as HH:MM:SS.mmm (24-hour local time with milliseconds) */
 export const defaultDateFormat = (date: Date): string =>
   `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}:${date
     .getSeconds()
     .toString()
     .padStart(2, '0')}.${date.getMilliseconds().toString().padStart(3, '0')}`
 
+/** Converts a value to a JSON-serializable form for logging */
 export const structuredMessage = (input: unknown): unknown => {
   switch (typeof input) {
     case 'bigint':
@@ -116,6 +149,17 @@ const consoleLogToString = (...inputs: any[]) => {
     .join(' ')
 }
 
+/**
+ * Creates a pretty-printing logger suitable for TTY or file output.
+ *
+ * This is a lower-level building block used by `makeFileLogger`. Use this directly
+ * when you need custom output handling (e.g., sending to a remote endpoint).
+ *
+ * @param options.colors - Include ANSI color codes in output
+ * @param options.stderr - Unused (legacy parameter)
+ * @param options.formatDate - Custom date formatter, receives Date and returns string prefix
+ * @param options.onLog - Callback invoked with each formatted log string
+ */
 export const prettyLoggerTty = (options: {
   readonly colors: boolean
   readonly stderr: boolean

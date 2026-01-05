@@ -135,10 +135,19 @@ const testCommand = Command.make(
         yield* ciGroupEnd
       } else if (integration) {
         yield* ciGroup('Running integration tests')
+        // Run notion-effect-client integration tests
         yield* runCommand('pnpm', [
           '-r',
           '--filter',
           '@overeng/notion-effect-client',
+          'test:integration',
+          ...ciArgs,
+        ])
+        // Run utils integration tests (browser tests with Playwright)
+        yield* runCommand('pnpm', [
+          '-r',
+          '--filter',
+          '@overeng/utils',
           'test:integration',
           ...ciArgs,
         ])
