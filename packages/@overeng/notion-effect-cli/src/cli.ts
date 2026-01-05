@@ -148,6 +148,7 @@ const generateCommand = Command.make(
         typedOptions,
         includeApi,
         generatorVersion,
+        ...(Option.isSome(name) ? { schemaNameOverride: name.value } : {}),
       }
 
       const configLayer = Layer.succeed(NotionConfig, { authToken: resolvedToken })
@@ -320,6 +321,7 @@ const generateFromConfigCommand = Command.make(
             typedOptions: merged.typedOptions ?? false,
             includeApi: merged.includeApi ?? false,
             generatorVersion,
+            ...(merged.name !== undefined ? { schemaNameOverride: merged.name } : {}),
           }
 
           const rawCode = generateSchemaCode(dbInfo, schemaName, generateOptions)
