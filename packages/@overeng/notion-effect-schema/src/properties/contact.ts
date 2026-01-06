@@ -1,6 +1,6 @@
 import { Option, Schema } from 'effect'
 
-import { docsPath, shouldNeverHappen } from '../common.ts'
+import { docsPath, shouldNeverHappen, withOptionValueSchema } from '../common.ts'
 
 // -----------------------------------------------------------------------------
 // URL Property
@@ -72,12 +72,17 @@ export const Url = {
   }),
 
   /** Transform to Option<string>. */
-  asOption: Schema.transform(UrlProperty, Schema.OptionFromSelf(Schema.String), {
-    strict: false,
-    decode: (prop) => (prop.url === null ? Option.none() : Option.some(prop.url)),
-    encode: () =>
-      shouldNeverHappen('Url.asOption encode is not supported. Use UrlWrite / UrlWriteFromString.'),
-  }),
+  asOption: withOptionValueSchema(
+    Schema.transform(UrlProperty, Schema.OptionFromSelf(Schema.String), {
+      strict: false,
+      decode: (prop) => (prop.url === null ? Option.none() : Option.some(prop.url)),
+      encode: () =>
+        shouldNeverHappen(
+          'Url.asOption encode is not supported. Use UrlWrite / UrlWriteFromString.',
+        ),
+    }),
+    Schema.String,
+  ),
 
   Write: {
     Schema: UrlWrite,
@@ -157,14 +162,17 @@ export const Email = {
   }),
 
   /** Transform to Option<string>. */
-  asOption: Schema.transform(EmailProperty, Schema.OptionFromSelf(Schema.String), {
-    strict: false,
-    decode: (prop) => (prop.email === null ? Option.none() : Option.some(prop.email)),
-    encode: () =>
-      shouldNeverHappen(
-        'Email.asOption encode is not supported. Use EmailWrite / EmailWriteFromString.',
-      ),
-  }),
+  asOption: withOptionValueSchema(
+    Schema.transform(EmailProperty, Schema.OptionFromSelf(Schema.String), {
+      strict: false,
+      decode: (prop) => (prop.email === null ? Option.none() : Option.some(prop.email)),
+      encode: () =>
+        shouldNeverHappen(
+          'Email.asOption encode is not supported. Use EmailWrite / EmailWriteFromString.',
+        ),
+    }),
+    Schema.String,
+  ),
 
   Write: {
     Schema: EmailWrite,
@@ -248,14 +256,18 @@ export const PhoneNumber = {
   }),
 
   /** Transform to Option<string>. */
-  asOption: Schema.transform(PhoneNumberProperty, Schema.OptionFromSelf(Schema.String), {
-    strict: false,
-    decode: (prop) => (prop.phone_number === null ? Option.none() : Option.some(prop.phone_number)),
-    encode: () =>
-      shouldNeverHappen(
-        'PhoneNumber.asOption encode is not supported. Use PhoneNumberWrite / PhoneNumberWriteFromString.',
-      ),
-  }),
+  asOption: withOptionValueSchema(
+    Schema.transform(PhoneNumberProperty, Schema.OptionFromSelf(Schema.String), {
+      strict: false,
+      decode: (prop) =>
+        prop.phone_number === null ? Option.none() : Option.some(prop.phone_number),
+      encode: () =>
+        shouldNeverHappen(
+          'PhoneNumber.asOption encode is not supported. Use PhoneNumberWrite / PhoneNumberWriteFromString.',
+        ),
+    }),
+    Schema.String,
+  ),
 
   Write: {
     Schema: PhoneNumberWrite,

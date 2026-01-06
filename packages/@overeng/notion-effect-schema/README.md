@@ -8,7 +8,7 @@ Effect schemas for the Notion API.
 | --------------- | -------------------------------------------------------------------------- |
 | **Naming**      | Notion terminology (`TitleProperty`, not `TitleElement`)                   |
 | **Transforms**  | Namespace pattern: `Title.raw`, `Title.asString`                           |
-| **Nullability** | `Schema.Option` for nullable fields, `*Required` variants for non-optional |
+| **Nullability** | `Schema.Option` for nullable fields, `Required.some` / `Required.nullable` to enforce presence |
 | **Dates**       | Parsed to `Date` via `Schema.Date`                                         |
 | **Examples**    | Field-level annotations only                                               |
 | **Docs**        | Custom `notionDocsUrl` annotation + JSDoc `@see` links                     |

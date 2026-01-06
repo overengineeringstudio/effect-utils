@@ -1,6 +1,6 @@
 import { Option, Schema } from 'effect'
 
-import { docsPath, shouldNeverHappen } from '../common.ts'
+import { docsPath, shouldNeverHappen, withOptionValueSchema } from '../common.ts'
 
 // -----------------------------------------------------------------------------
 // Number Property
@@ -74,14 +74,17 @@ export const Num = {
   }),
 
   /** Transform to Option<number>. */
-  asOption: Schema.transform(NumberProperty, Schema.OptionFromSelf(Schema.Number), {
-    strict: false,
-    decode: (prop) => (prop.number === null ? Option.none() : Option.some(prop.number)),
-    encode: () =>
-      shouldNeverHappen(
-        'Num.asOption encode is not supported. Use NumberWrite / NumberWriteFromNumber.',
-      ),
-  }),
+  asOption: withOptionValueSchema(
+    Schema.transform(NumberProperty, Schema.OptionFromSelf(Schema.Number), {
+      strict: false,
+      decode: (prop) => (prop.number === null ? Option.none() : Option.some(prop.number)),
+      encode: () =>
+        shouldNeverHappen(
+          'Num.asOption encode is not supported. Use NumberWrite / NumberWriteFromNumber.',
+        ),
+    }),
+    Schema.Number,
+  ),
 
   /** Transform to required number (fails if null). */
   asNumber: Schema.transform(

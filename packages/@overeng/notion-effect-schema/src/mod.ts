@@ -15,6 +15,7 @@ export {
   NotionColor as NotionColorSchema,
   type NotionUUID,
   NotionUUID as NotionUUIDSchema,
+  Required,
   resolveDocsUrl,
   type SelectColor,
   SelectColor as SelectColorSchema,

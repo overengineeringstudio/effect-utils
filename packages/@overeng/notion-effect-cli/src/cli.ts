@@ -5,10 +5,9 @@ import { fileURLToPath } from 'node:url'
 import { Args, Command, Options } from '@effect/cli'
 import { FetchHttpClient, FileSystem } from '@effect/platform'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
-import { Cause, Console, Effect, Layer, Option, Schema } from 'effect'
-
 import { NotionConfig, NotionDatabases } from '@overeng/notion-effect-client'
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
+import { Cause, Console, Effect, Layer, Option, Schema } from 'effect'
 
 import { type GenerateOptions, generateApiCode, generateSchemaCode } from './codegen.ts'
 import { loadConfig } from './config.ts'
@@ -118,7 +117,9 @@ const includeWriteOption = Options.boolean('include-write').pipe(
 )
 
 const typedOptionsOption = Options.boolean('typed-options').pipe(
-  Options.withDescription('Generate typed literal unions for select/status options'),
+  Options.withDescription(
+    'Generate typed literal unions for select/status/multi_select options and use typed property transforms by default',
+  ),
   Options.withDefault(false),
 )
 

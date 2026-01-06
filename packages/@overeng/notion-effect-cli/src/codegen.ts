@@ -54,9 +54,9 @@ export const PROPERTY_TRANSFORMS: Record<NotionPropertyType, readonly string[]> 
   title: ['raw', 'asString'],
   rich_text: ['raw', 'asString'],
   number: ['raw', 'asNumber', 'asOption'],
-  select: ['raw', 'asOption', 'asString'],
-  multi_select: ['raw', 'asStrings'],
-  status: ['raw', 'asOption', 'asString'],
+  select: ['raw', 'asOption', 'asOptionNamed', 'asName', 'asString', 'asPropertyNamed'],
+  multi_select: ['raw', 'asNames', 'asStrings', 'asPropertyNamed'],
+  status: ['raw', 'asName', 'asOption', 'asString', 'asPropertyNamed'],
   date: ['raw', 'asDate', 'asOption'],
   people: ['raw', 'asIds'],
   files: ['raw', 'asUrls'],
@@ -64,9 +64,9 @@ export const PROPERTY_TRANSFORMS: Record<NotionPropertyType, readonly string[]> 
   url: ['raw', 'asString', 'asOption'],
   email: ['raw', 'asString', 'asOption'],
   phone_number: ['raw', 'asString', 'asOption'],
-  formula: ['raw'],
-  relation: ['raw', 'asIds'],
-  rollup: ['raw'],
+  formula: ['raw', 'asBoolean', 'asDate', 'asNumber', 'asString'],
+  relation: ['raw', 'asIds', 'asSingle', 'asSingleId'],
+  rollup: ['raw', 'asArray', 'asBoolean', 'asDate', 'asNumber', 'asString'],
   created_time: ['raw', 'asDate'],
   created_by: ['raw'],
   last_edited_time: ['raw', 'asDate'],
@@ -120,11 +120,73 @@ export const PROPERTY_TRANSFORM_NAMESPACES: Partial<Record<NotionPropertyType, s
   phone_number: 'PhoneNumber',
   formula: 'Formula',
   relation: 'Relation',
+  rollup: 'Rollup',
   created_time: 'CreatedTime',
   created_by: 'CreatedBy',
   last_edited_time: 'LastEditedTime',
   last_edited_by: 'LastEditedBy',
   unique_id: 'UniqueId',
+}
+
+const TYPED_OPTION_PROPERTY_TYPES = new Set<NotionPropertyType>([
+  'select',
+  'multi_select',
+  'status',
+])
+
+const TYPED_OPTION_TRANSFORMS = new Set(['asOptionNamed', 'asName', 'asNames', 'asPropertyNamed'])
+
+const ROLLUP_NUMBER_FUNCTIONS = new Set([
+  'count',
+  'count_values',
+  'unique',
+  'show_unique',
+  'sum',
+  'average',
+  'median',
+  'min',
+  'max',
+  'range',
+  'percent_empty',
+  'percent_not_empty',
+  'percent_checked',
+  'percent_unchecked',
+])
+
+const ROLLUP_BOOLEAN_FUNCTIONS = new Set(['empty', 'not_empty', 'checked', 'unchecked'])
+
+const ROLLUP_DATE_FUNCTIONS = new Set(['earliest_date', 'latest_date', 'date_range'])
+
+const inferRollupTransform = (property: PropertyInfo): string | undefined => {
+  const fn = property.rollup?.function
+  if (!fn) return undefined
+
+  if (fn === 'show_original') return 'asArray'
+  if (ROLLUP_BOOLEAN_FUNCTIONS.has(fn)) return 'asBoolean'
+  if (ROLLUP_DATE_FUNCTIONS.has(fn)) return 'asDate'
+  if (ROLLUP_NUMBER_FUNCTIONS.has(fn)) return 'asNumber'
+
+  return undefined
+}
+
+const inferDefaultTransform = (
+  property: PropertyInfo,
+  typedOptions: { enabled: boolean; typeName?: string },
+): string => {
+  if (typedOptions.enabled && TYPED_OPTION_PROPERTY_TYPES.has(property.type)) {
+    return typedOptions.typeName ? 'asPropertyNamed' : 'Property'
+  }
+
+  if (property.type === 'relation' && property.relation?.type === 'single_property') {
+    return 'asSingle'
+  }
+
+  if (property.type === 'rollup') {
+    const rollupTransform = inferRollupTransform(property)
+    if (rollupTransform) return rollupTransform
+  }
+
+  return DEFAULT_TRANSFORMS[property.type] ?? 'raw'
 }
 
 /** Property type to write transform method mapping */
@@ -236,8 +298,9 @@ const toTopLevelIdentifier = (name: string): string => {
 const generatePropertyField = (options: {
   property: PropertyInfo
   transformConfig: PropertyTransformConfig
+  typedOptions: { enabled: boolean; typeName?: string }
 }): string => {
-  const { property, transformConfig } = options
+  const { property, transformConfig, typedOptions } = options
   const namespace = PROPERTY_TRANSFORM_NAMESPACES[property.type]
   if (!namespace) {
     return 'Schema.Unknown'
@@ -246,11 +309,23 @@ const generatePropertyField = (options: {
   const configuredTransform = transformConfig[property.name]
   const availableTransforms = PROPERTY_TRANSFORMS[property.type] ?? ['raw']
 
-  let transform: string
-  if (configuredTransform && availableTransforms.includes(configuredTransform)) {
-    transform = configuredTransform
-  } else {
-    transform = DEFAULT_TRANSFORMS[property.type] ?? 'raw'
+  const defaultTransform = inferDefaultTransform(property, typedOptions)
+
+  const transform =
+    configuredTransform && availableTransforms.includes(configuredTransform)
+      ? configuredTransform
+      : defaultTransform
+
+  if (transform === 'Property') {
+    return `${namespace}.Property`
+  }
+
+  if (TYPED_OPTION_TRANSFORMS.has(transform)) {
+    if (!typedOptions.typeName) {
+      return `${namespace}.Property`
+    }
+
+    return `${namespace}.${transform}(${typedOptions.typeName})`
   }
 
   return `${namespace}.${transform}`
@@ -445,6 +520,9 @@ export function generateSchemaCode(opts: GenerateSchemaCodeOptions): string {
       }
     }
   }
+  const typedOptionsByPropertyName = new Map(
+    typedOptionsDefs.map((def) => [def.property.name, def.typeName]),
+  )
 
   // Sort imports alphabetically
   const sortedImports = Array.from(requiredNamespaces).toSorted()
@@ -453,7 +531,12 @@ export function generateSchemaCode(opts: GenerateSchemaCodeOptions): string {
   const readPropertyFields = dbInfo.properties
     .map((prop) => {
       const key = sanitizePropertyKey(prop.name)
-      const field = generatePropertyField({ property: prop, transformConfig: transforms })
+      const typeName = typedOptionsByPropertyName.get(prop.name)
+      const field = generatePropertyField({
+        property: prop,
+        transformConfig: transforms,
+        typedOptions: { enabled: typedOptions, ...(typeName ? { typeName } : {}) },
+      })
       // Add JSDoc comment if description is available
       const jsdoc = prop.description ? `  /** ${sanitizeLineComment(prop.description)} */\n` : ''
       return `${jsdoc}  ${key}: ${field},`

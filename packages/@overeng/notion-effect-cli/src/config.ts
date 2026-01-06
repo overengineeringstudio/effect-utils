@@ -1,7 +1,6 @@
 import { FileSystem, Path } from '@effect/platform'
-import { Effect, Schema } from 'effect'
-
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
+import { Effect, Schema } from 'effect'
 
 import type {
   DatabaseConfig,
@@ -29,7 +28,7 @@ export interface ResolvedDatabaseConfig {
   readonly name?: string
   /** Include Write schemas */
   readonly includeWrite?: boolean
-  /** Generate typed options for select/status */
+  /** Generate typed options for select/status/multi_select */
   readonly typedOptions?: boolean
   /** Generate a typed database API wrapper */
   readonly includeApi?: boolean

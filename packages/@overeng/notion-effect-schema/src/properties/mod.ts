@@ -95,7 +95,6 @@ export {
   type UrlWrite as UrlWriteType,
   UrlWriteFromString,
 } from './contact.ts'
-
 // Date property
 export {
   DateProp,
@@ -118,7 +117,6 @@ export {
   type NumberWrite as NumberWriteType,
   NumberWriteFromNumber,
 } from './number.ts'
-
 // Reference properties (People, Relation, Files)
 export {
   ExternalFile,
@@ -146,6 +144,14 @@ export {
   type RelationWrite as RelationWriteType,
   RelationWriteFromIds,
 } from './reference.ts'
+// Rollup properties (read-only)
+export {
+  Rollup,
+  RollupProperty,
+  type RollupProperty as RollupPropertyType,
+  RollupValue,
+  type RollupValue as RollupValueType,
+} from './rollup.ts'
 // Select properties (Select, MultiSelect, Status)
 export {
   MultiSelect,

@@ -9,6 +9,7 @@ import {
   DateWriteFromStart,
   Email,
   EmailWriteFromString,
+  Formula,
   MultiSelect,
   MultiSelectWriteFromNames,
   Num,
@@ -17,8 +18,10 @@ import {
   PhoneNumberWriteFromString,
   Relation,
   RelationWriteFromIds,
+  Required,
   RichTextProp,
   RichTextWriteFromString,
+  Rollup,
   Select,
   SelectWriteFromName,
   Status,
@@ -268,6 +271,27 @@ describe('RichText Property', () => {
       }),
     )
   })
+
+  describe('RichTextProp.asNonEmptyString', () => {
+    it.effect('returns string for non-empty text', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(RichTextProp.asNonEmptyString)(
+          sampleRichTextProperty,
+        )
+        expect(result).toBe('Sample text')
+      }),
+    )
+
+    it.effect('fails for empty text', () =>
+      Effect.gen(function* () {
+        const emptyProp = { ...sampleRichTextProperty, rich_text: [] }
+        const result = yield* Schema.decodeUnknown(RichTextProp.asNonEmptyString)(emptyProp).pipe(
+          Effect.either,
+        )
+        expect(result._tag).toBe('Left')
+      }),
+    )
+  })
 })
 
 // -----------------------------------------------------------------------------
@@ -453,20 +477,78 @@ describe('Select Property', () => {
     )
   })
 
-  describe('Select.asStringRequired', () => {
-    it.effect('returns option name', () =>
+  describe('Select.asName', () => {
+    const Allowed = Schema.Literal('High', 'Low')
+
+    it.effect('returns Some with allowed name', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(Select.asStringRequired)(selectedProperty)
-        expect(result).toBe('High')
+        const result = yield* Schema.decodeUnknown(Select.asName(Allowed))(selectedProperty)
+        expect(Option.isSome(result)).toBe(true)
+        expect(Option.getOrNull(result)).toBe('High')
       }),
     )
 
-    it.effect('fails for null select', () =>
+    it.effect('fails when option name is not allowed', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(Select.asStringRequired)(
-          nullSelectProperty,
-        ).pipe(Effect.flip)
-        expect(result).toBeDefined()
+        const invalidProperty = {
+          ...selectedProperty,
+          select: { ...selectedProperty.select, name: 'Medium' },
+        }
+        const result = yield* Schema.decodeUnknown(Select.asName(Allowed))(invalidProperty).pipe(
+          Effect.either,
+        )
+        expect(result._tag).toBe('Left')
+      }),
+    )
+  })
+
+  describe('Select.asOptionNamed', () => {
+    const Allowed = Schema.Literal('High', 'Low')
+
+    it.effect('returns Some with typed option', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(Select.asOptionNamed(Allowed))(selectedProperty)
+        expect(Option.isSome(result)).toBe(true)
+        expect(Option.getOrNull(result)?.name).toBe('High')
+      }),
+    )
+
+    it.effect('fails when option name is not allowed', () =>
+      Effect.gen(function* () {
+        const invalidProperty = {
+          ...selectedProperty,
+          select: { ...selectedProperty.select, name: 'Medium' },
+        }
+        const result = yield* Schema.decodeUnknown(Select.asOptionNamed(Allowed))(
+          invalidProperty,
+        ).pipe(Effect.either)
+        expect(result._tag).toBe('Left')
+      }),
+    )
+  })
+
+  describe('Select.asPropertyNamed', () => {
+    const Allowed = Schema.Literal('High', 'Low')
+
+    it.effect('returns property with typed option', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(Select.asPropertyNamed(Allowed))(
+          selectedProperty,
+        )
+        expect(result.select?.name).toBe('High')
+      }),
+    )
+
+    it.effect('fails when option name is not allowed', () =>
+      Effect.gen(function* () {
+        const invalidProperty = {
+          ...selectedProperty,
+          select: { ...selectedProperty.select, name: 'Medium' },
+        }
+        const result = yield* Schema.decodeUnknown(Select.asPropertyNamed(Allowed))(
+          invalidProperty,
+        ).pipe(Effect.either)
+        expect(result._tag).toBe('Left')
       }),
     )
   })
@@ -529,6 +611,59 @@ describe('MultiSelect Property', () => {
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(MultiSelect.asStrings)(emptyMultiSelectProperty)
         expect(result).toEqual([])
+      }),
+    )
+  })
+
+  describe('MultiSelect.asNames', () => {
+    const Allowed = Schema.Literal('Tag1', 'Tag2')
+
+    it.effect('decodes to array of allowed names', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(MultiSelect.asNames(Allowed))(
+          multiSelectProperty,
+        )
+        expect(result).toEqual(['Tag1', 'Tag2'])
+      }),
+    )
+
+    it.effect('fails when option name is not allowed', () =>
+      Effect.gen(function* () {
+        const invalidProperty = {
+          ...multiSelectProperty,
+          multi_select: [{ ...multiSelectProperty.multi_select[0], name: 'Tag3' }],
+        }
+        const result = yield* Schema.decodeUnknown(MultiSelect.asNames(Allowed))(
+          invalidProperty,
+        ).pipe(Effect.either)
+        expect(result._tag).toBe('Left')
+      }),
+    )
+  })
+
+  describe('MultiSelect.asPropertyNamed', () => {
+    const Allowed = Schema.Literal('Tag1', 'Tag2')
+
+    it.effect('returns property with typed options', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(MultiSelect.asPropertyNamed(Allowed))(
+          multiSelectProperty,
+        )
+        expect(result.multi_select).toHaveLength(2)
+        expect(result.multi_select[0]?.name).toBe('Tag1')
+      }),
+    )
+
+    it.effect('fails when option name is not allowed', () =>
+      Effect.gen(function* () {
+        const invalidProperty = {
+          ...multiSelectProperty,
+          multi_select: [{ ...multiSelectProperty.multi_select[0], name: 'Tag3' }],
+        }
+        const result = yield* Schema.decodeUnknown(MultiSelect.asPropertyNamed(Allowed))(
+          invalidProperty,
+        ).pipe(Effect.either)
+        expect(result._tag).toBe('Left')
       }),
     )
   })
@@ -599,6 +734,72 @@ describe('Status Property', () => {
     )
   })
 
+  describe('Status.asName', () => {
+    const Allowed = Schema.Literal('In Progress', 'Blocked')
+
+    it.effect('returns Some with allowed status name', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(Status.asName(Allowed))(statusProperty)
+        expect(Option.isSome(result)).toBe(true)
+        expect(Option.getOrNull(result)).toBe('In Progress')
+      }),
+    )
+
+    it.effect('fails when status name is not allowed', () =>
+      Effect.gen(function* () {
+        const invalidProperty = {
+          ...statusProperty,
+          status: { ...statusProperty.status, name: 'Done' },
+        }
+        const result = yield* Schema.decodeUnknown(Status.asName(Allowed))(invalidProperty).pipe(
+          Effect.either,
+        )
+        expect(result._tag).toBe('Left')
+      }),
+    )
+  })
+
+  describe('Status.asOption', () => {
+    it.effect('returns Some with status option', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(Status.asOption)(statusProperty)
+        expect(Option.isSome(result)).toBe(true)
+        expect(Option.getOrNull(result)?.name).toBe('In Progress')
+      }),
+    )
+
+    it.effect('returns None for null status', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(Status.asOption)(nullStatusProperty)
+        expect(Option.isNone(result)).toBe(true)
+      }),
+    )
+  })
+
+  describe('Status.asPropertyNamed', () => {
+    const Allowed = Schema.Literal('In Progress', 'Blocked')
+
+    it.effect('returns property with typed status', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(Status.asPropertyNamed(Allowed))(statusProperty)
+        expect(result.status?.name).toBe('In Progress')
+      }),
+    )
+
+    it.effect('fails when status name is not allowed', () =>
+      Effect.gen(function* () {
+        const invalidProperty = {
+          ...statusProperty,
+          status: { ...statusProperty.status, name: 'Done' },
+        }
+        const result = yield* Schema.decodeUnknown(Status.asPropertyNamed(Allowed))(
+          invalidProperty,
+        ).pipe(Effect.either)
+        expect(result._tag).toBe('Left')
+      }),
+    )
+  })
+
   describe('StatusWriteFromName', () => {
     it.effect('encodes status name to write payload', () =>
       Effect.gen(function* () {
@@ -613,6 +814,215 @@ describe('Status Property', () => {
         const encoded = yield* Schema.decodeUnknown(StatusWriteFromName)(original)
         const decoded = yield* Schema.encode(StatusWriteFromName)(encoded)
         expect(decoded).toBe(original)
+      }),
+    )
+  })
+})
+
+// -----------------------------------------------------------------------------
+// Formula Property Tests
+// -----------------------------------------------------------------------------
+
+describe('Formula Property', () => {
+  const numberFormulaProperty = {
+    id: 'formula',
+    type: 'formula' as const,
+    formula: {
+      type: 'number' as const,
+      number: 42,
+    },
+  }
+
+  const stringFormulaProperty = {
+    id: 'formula',
+    type: 'formula' as const,
+    formula: {
+      type: 'string' as const,
+      string: 'hello',
+    },
+  }
+
+  const booleanFormulaProperty = {
+    id: 'formula',
+    type: 'formula' as const,
+    formula: {
+      type: 'boolean' as const,
+      boolean: true,
+    },
+  }
+
+  const dateFormulaProperty = {
+    id: 'formula',
+    type: 'formula' as const,
+    formula: {
+      type: 'date' as const,
+      date: {
+        start: '2024-01-15',
+        end: null,
+        time_zone: null,
+      },
+    },
+  }
+
+  describe('Formula.asNumber', () => {
+    it.effect('decodes number formula', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(Formula.asNumber)(numberFormulaProperty)
+        expect(result).toBe(42)
+      }),
+    )
+
+    it.effect('fails for non-number formula', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(Formula.asNumber)(stringFormulaProperty).pipe(
+          Effect.either,
+        )
+        expect(result._tag).toBe('Left')
+      }),
+    )
+  })
+
+  describe('Formula.asString', () => {
+    it.effect('decodes string formula', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(Formula.asString)(stringFormulaProperty)
+        expect(result).toBe('hello')
+      }),
+    )
+
+    it.effect('fails for non-string formula', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(Formula.asString)(numberFormulaProperty).pipe(
+          Effect.either,
+        )
+        expect(result._tag).toBe('Left')
+      }),
+    )
+  })
+
+  describe('Formula.asBoolean', () => {
+    it.effect('decodes boolean formula', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(Formula.asBoolean)(booleanFormulaProperty)
+        expect(result).toBe(true)
+      }),
+    )
+  })
+
+  describe('Formula.asDate', () => {
+    it.effect('decodes date formula', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(Formula.asDate)(dateFormulaProperty)
+        expect(result.start).toBe('2024-01-15')
+      }),
+    )
+  })
+})
+
+// -----------------------------------------------------------------------------
+// Rollup Property Tests
+// -----------------------------------------------------------------------------
+
+describe('Rollup Property', () => {
+  const numberRollupProperty = {
+    id: 'rollup',
+    type: 'rollup' as const,
+    rollup: {
+      type: 'number' as const,
+      number: 7,
+    },
+  }
+
+  const stringRollupProperty = {
+    id: 'rollup',
+    type: 'rollup' as const,
+    rollup: {
+      type: 'string' as const,
+      string: 'hello',
+    },
+  }
+
+  const booleanRollupProperty = {
+    id: 'rollup',
+    type: 'rollup' as const,
+    rollup: {
+      type: 'boolean' as const,
+      boolean: true,
+    },
+  }
+
+  const dateRollupProperty = {
+    id: 'rollup',
+    type: 'rollup' as const,
+    rollup: {
+      type: 'date' as const,
+      date: {
+        start: '2024-01-15',
+        end: null,
+        time_zone: null,
+      },
+    },
+  }
+
+  const arrayRollupProperty = {
+    id: 'rollup',
+    type: 'rollup' as const,
+    rollup: {
+      type: 'array' as const,
+      array: ['a', 'b'],
+    },
+  }
+
+  describe('Rollup.asNumber', () => {
+    it.effect('decodes number rollup', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(Rollup.asNumber)(numberRollupProperty)
+        expect(result).toBe(7)
+      }),
+    )
+
+    it.effect('fails for non-number rollup', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(Rollup.asNumber)(stringRollupProperty).pipe(
+          Effect.either,
+        )
+        expect(result._tag).toBe('Left')
+      }),
+    )
+  })
+
+  describe('Rollup.asString', () => {
+    it.effect('decodes string rollup', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(Rollup.asString)(stringRollupProperty)
+        expect(result).toBe('hello')
+      }),
+    )
+  })
+
+  describe('Rollup.asBoolean', () => {
+    it.effect('decodes boolean rollup', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(Rollup.asBoolean)(booleanRollupProperty)
+        expect(result).toBe(true)
+      }),
+    )
+  })
+
+  describe('Rollup.asDate', () => {
+    it.effect('decodes date rollup', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(Rollup.asDate)(dateRollupProperty)
+        expect(result.start).toBe('2024-01-15')
+      }),
+    )
+  })
+
+  describe('Rollup.asArray', () => {
+    it.effect('decodes array rollup', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(Rollup.asArray)(arrayRollupProperty)
+        expect(result).toEqual(['a', 'b'])
       }),
     )
   })
@@ -657,6 +1067,24 @@ describe('Date Property', () => {
     )
   })
 
+  describe('Required.some', () => {
+    const schema = DateProp.asOption.pipe(Required.some('Date is required'))
+
+    it.effect('returns date value', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(schema)(dateProperty)
+        expect(result.start).toBe('2024-01-15')
+      }),
+    )
+
+    it.effect('fails for null date', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(schema)(nullDateProperty).pipe(Effect.either)
+        expect(result._tag).toBe('Left')
+      }),
+    )
+  })
+
   describe('DateProp.asDate', () => {
     it.effect('parses start date to Date object', () =>
       Effect.gen(function* () {
@@ -693,6 +1121,30 @@ describe('Date Property', () => {
       }),
     )
   })
+})
+
+// ---------------------------------------------------------------------------
+// Required Helpers
+// ---------------------------------------------------------------------------
+
+describe('Required.nullable', () => {
+  const schema = Schema.NullOr(Schema.String).pipe(
+    Required.nullable(Schema.String, 'String is required'),
+  )
+
+  it.effect('returns value when present', () =>
+    Effect.gen(function* () {
+      const result = yield* Schema.decodeUnknown(schema)('hello')
+      expect(result).toBe('hello')
+    }),
+  )
+
+  it.effect('fails for null', () =>
+    Effect.gen(function* () {
+      const result = yield* Schema.decodeUnknown(schema)(null).pipe(Effect.either)
+      expect(result._tag).toBe('Left')
+    }),
+  )
 })
 
 // -----------------------------------------------------------------------------
@@ -865,11 +1317,53 @@ describe('Relation Property', () => {
     relation: [{ id: 'page-1' }, { id: 'page-2' }],
   }
 
+  const singleRelationProperty = {
+    id: 'relation',
+    type: 'relation' as const,
+    relation: [{ id: 'page-1' }],
+  }
+
   describe('Relation.asIds', () => {
     it.effect('extracts page IDs', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(Relation.asIds)(relationProperty)
         expect(result).toEqual(['page-1', 'page-2'])
+      }),
+    )
+  })
+
+  describe('Relation.asSingle', () => {
+    it.effect('extracts single relation object', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(Relation.asSingle)(singleRelationProperty)
+        expect(result).toEqual({ id: 'page-1' })
+      }),
+    )
+
+    it.effect('fails for multiple relations', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(Relation.asSingle)(relationProperty).pipe(
+          Effect.either,
+        )
+        expect(result._tag).toBe('Left')
+      }),
+    )
+  })
+
+  describe('Relation.asSingleId', () => {
+    it.effect('extracts single relation ID', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(Relation.asSingleId)(singleRelationProperty)
+        expect(result).toBe('page-1')
+      }),
+    )
+
+    it.effect('fails for multiple relations', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(Relation.asSingleId)(relationProperty).pipe(
+          Effect.either,
+        )
+        expect(result._tag).toBe('Left')
       }),
     )
   })

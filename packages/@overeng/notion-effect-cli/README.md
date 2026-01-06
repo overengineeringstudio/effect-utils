@@ -163,7 +163,7 @@ export default defineConfig({
 | `name`         | Custom schema name (defaults to database title)    |
 | `includeWrite` | Generate write schemas for creating/updating pages |
 | `includeApi`   | Generate a typed API wrapper                       |
-| `typedOptions` | Generate literal unions for select/status options  |
+| `typedOptions` | Generate literal unions for select/status/multi_select options and default select-like properties to typed property transforms |
 | `transforms`   | Property-specific transform configuration          |
 
 Config discovery starts from `CurrentWorkingDirectory` (defaults to the process CWD).

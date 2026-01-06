@@ -76,16 +76,23 @@ export const transforms = {
   select: {
     raw: makeTransform('select', 'raw'),
     asOption: makeTransform('select', 'asOption'),
+    asOptionNamed: makeTransform('select', 'asOptionNamed'),
+    asName: makeTransform('select', 'asName'),
     asString: makeTransform('select', 'asString'),
+    asPropertyNamed: makeTransform('select', 'asPropertyNamed'),
   },
   multi_select: {
     raw: makeTransform('multi_select', 'raw'),
+    asNames: makeTransform('multi_select', 'asNames'),
     asStrings: makeTransform('multi_select', 'asStrings'),
+    asPropertyNamed: makeTransform('multi_select', 'asPropertyNamed'),
   },
   status: {
     raw: makeTransform('status', 'raw'),
+    asName: makeTransform('status', 'asName'),
     asOption: makeTransform('status', 'asOption'),
     asString: makeTransform('status', 'asString'),
+    asPropertyNamed: makeTransform('status', 'asPropertyNamed'),
   },
   date: {
     raw: makeTransform('date', 'raw'),
@@ -121,13 +128,24 @@ export const transforms = {
   },
   formula: {
     raw: makeTransform('formula', 'raw'),
+    asBoolean: makeTransform('formula', 'asBoolean'),
+    asDate: makeTransform('formula', 'asDate'),
+    asNumber: makeTransform('formula', 'asNumber'),
+    asString: makeTransform('formula', 'asString'),
   },
   relation: {
     raw: makeTransform('relation', 'raw'),
     asIds: makeTransform('relation', 'asIds'),
+    asSingle: makeTransform('relation', 'asSingle'),
+    asSingleId: makeTransform('relation', 'asSingleId'),
   },
   rollup: {
     raw: makeTransform('rollup', 'raw'),
+    asArray: makeTransform('rollup', 'asArray'),
+    asBoolean: makeTransform('rollup', 'asBoolean'),
+    asDate: makeTransform('rollup', 'asDate'),
+    asNumber: makeTransform('rollup', 'asNumber'),
+    asString: makeTransform('rollup', 'asString'),
   },
   created_time: {
     raw: makeTransform('created_time', 'raw'),
@@ -174,7 +192,7 @@ export interface DatabaseConfig {
   readonly name?: string
   /** Include Write schemas */
   readonly includeWrite?: boolean
-  /** Generate typed options for select/status */
+  /** Generate typed options for select/status/multi_select */
   readonly typedOptions?: boolean
   /** Generate a typed database API wrapper */
   readonly includeApi?: boolean

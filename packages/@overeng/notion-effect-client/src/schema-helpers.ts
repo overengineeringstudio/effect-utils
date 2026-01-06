@@ -1,4 +1,4 @@
-import { Array as Arr, Option, Order, Schema } from 'effect'
+import { Array as Arr, Effect, Option, Order, Schema } from 'effect'
 
 import type {
   DatabaseSchema,
@@ -8,6 +8,21 @@ import type {
   SelectOptionConfig,
 } from '@overeng/notion-effect-schema'
 import { PropertySchema as PropertySchemaCodec } from '@overeng/notion-effect-schema'
+
+export class SchemaMismatchError extends Schema.TaggedError<SchemaMismatchError>()(
+  'SchemaMismatchError',
+  {
+    databaseId: Schema.String,
+    databaseName: Schema.optional(Schema.String),
+    message: Schema.String,
+    missing: Schema.Array(
+      Schema.Struct({
+        name: Schema.String,
+        expectedTag: Schema.String,
+      }),
+    ),
+  },
+) {}
 
 // -----------------------------------------------------------------------------
 // Property Parsing
@@ -91,6 +106,43 @@ export const getPropertyByTag = <TTag extends PropertySchema['_tag']>(args: {
 
   return Option.flatMap(prop, (p) => (hasTag(p) ? Option.some(p) : Option.none()))
 }
+
+const getDatabaseName = (schema: DatabaseSchema): string | undefined => {
+  const name = schema.title.map((t) => t.plain_text).join('')
+  return name === '' ? undefined : name
+}
+
+export const validateProperties = (args: {
+  schema: DatabaseSchema
+  databaseId: string
+  required: readonly { name: string; tag: PropertySchema['_tag'] }[]
+}): Effect.Effect<void, SchemaMismatchError> =>
+  Effect.gen(function* () {
+    const missing = args.required.filter(
+      (prop) =>
+        Option.isNone(
+          getPropertyByTag({ schema: args.schema, name: prop.name, tag: prop.tag }),
+        ),
+    )
+
+    if (missing.length === 0) {
+      return
+    }
+
+    const message = `Missing or mismatched properties in Notion schema: ${missing
+      .map((prop) => `${prop.name} (${prop.tag})`)
+      .join(', ')}`
+
+    return yield* new SchemaMismatchError({
+      databaseId: args.databaseId,
+      databaseName: getDatabaseName(args.schema),
+      message,
+      missing: missing.map((prop) => ({
+        name: prop.name,
+        expectedTag: prop.tag,
+      })),
+    })
+  })
 
 // -----------------------------------------------------------------------------
 // Select/Multi-Select/Status Helpers
@@ -186,6 +238,25 @@ export const getRelationTarget = (args: {
   }))
 }
 
+export const getRelationTargetOrFail = (args: {
+  schema: DatabaseSchema
+  databaseId: string
+  property: string
+}): Effect.Effect<RelationTarget, SchemaMismatchError> =>
+  Effect.gen(function* () {
+    const target = getRelationTarget({ schema: args.schema, property: args.property })
+    if (Option.isSome(target)) {
+      return target.value
+    }
+
+    return yield* new SchemaMismatchError({
+      databaseId: args.databaseId,
+      databaseName: getDatabaseName(args.schema),
+      message: `Missing ${args.property} relation target in Notion schema`,
+      missing: [{ name: args.property, expectedTag: 'relation' }],
+    })
+  })
+
 // -----------------------------------------------------------------------------
 // Formula Helpers
 // -----------------------------------------------------------------------------
@@ -270,11 +341,13 @@ export const SchemaHelpers = {
   getProperties,
   getProperty,
   getPropertyByTag,
+  validateProperties,
   getSelectOptions,
   getMultiSelectOptions,
   getStatusOptions,
   getAnySelectOptions,
   getRelationTarget,
+  getRelationTargetOrFail,
   getFormulaExpression,
   getNumberFormat,
   getRollupConfig,

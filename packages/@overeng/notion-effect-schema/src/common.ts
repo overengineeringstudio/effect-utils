@@ -1,4 +1,5 @@
-import { Schema } from 'effect'
+import { Option, Schema } from 'effect'
+import * as SchemaAST from 'effect/SchemaAST'
 
 // -----------------------------------------------------------------------------
 // Custom Annotations
@@ -16,6 +17,11 @@ import { Schema } from 'effect'
  * ```
  */
 export const docsPath: unique symbol = Symbol.for('@overeng/notion-effect-schema/docsPath')
+
+/** Annotation key for Option value schema (Notion option helpers only). */
+export const optionValueSchema: unique symbol = Symbol.for(
+  '@overeng/notion-effect-schema/optionValueSchema',
+)
 
 /** Base URL for Notion API documentation */
 export const NOTION_DOCS_BASE = 'https://developers.notion.com/reference'
@@ -141,3 +147,74 @@ export const shouldNeverHappen = (msg?: string, ...args: unknown[]): never => {
 
   throw new Error(`This should never happen: ${msg}`)
 }
+
+// ---------------------------------------------------------------------------
+// Composable helpers
+// ---------------------------------------------------------------------------
+
+const getOptionValueSchema = <TValue, TInput, TContext>(
+  schema: Schema.Schema<Option.Option<TValue>, TInput, TContext>,
+): Schema.Schema<TValue, TValue, never> => {
+  const annotated = SchemaAST.getAnnotation<Schema.Schema<TValue, TValue, never>>(
+    schema.ast,
+    optionValueSchema,
+  )
+
+  if (Option.isSome(annotated)) {
+    return annotated.value
+  }
+
+  return shouldNeverHappen(
+    'Required.some expects an Option schema created by notion-effect-schema option helpers.',
+  )
+}
+
+export const withOptionValueSchema = <TValue, TInput, TContext>(
+  schema: Schema.Schema<Option.Option<TValue>, TInput, TContext>,
+  valueSchema: Schema.Schema<TValue, TValue, never>,
+): Schema.Schema<Option.Option<TValue>, TInput, TContext> =>
+  schema.annotations({ [optionValueSchema]: valueSchema })
+
+export const Required = {
+  some:
+    (message = 'Value is required') =>
+    <TValue, TInput, TOutputContext>(
+      schema: Schema.Schema<Option.Option<TValue>, TInput, TOutputContext>,
+    ): Schema.Schema<TValue, TInput, TOutputContext> => {
+      const valueSchema = getOptionValueSchema(schema)
+      return Schema.transform(
+        schema.pipe(
+          Schema.filter((opt): opt is Option.Some<TValue> => Option.isSome(opt), {
+            message: () => message,
+          }),
+        ),
+        valueSchema,
+        {
+          strict: false,
+          decode: (opt) => Option.getOrThrow(opt),
+          encode: (value) => Option.some(value),
+        },
+      )
+    },
+  nullable:
+    <TValue, TContext>(
+      valueSchema: Schema.Schema<TValue, TValue, TContext>,
+      message = 'Value is required',
+    ) =>
+    <TInput, TOutputContext>(
+      schema: Schema.Schema<TValue | null, TInput, TOutputContext>,
+    ): Schema.Schema<TValue, TInput, TContext | TOutputContext> =>
+      Schema.transform(
+        schema.pipe(
+          Schema.filter((value): value is TValue => value !== null, {
+            message: () => message,
+          }),
+        ),
+        valueSchema,
+        {
+          strict: false,
+          decode: (value) => value,
+          encode: (value) => value,
+        },
+      ),
+} as const

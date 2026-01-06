@@ -362,6 +362,7 @@ describe('codegen', () => {
         { type: 'phone_number', expected: 'PhoneNumber.asOption' },
         { type: 'formula', expected: 'Formula.raw' },
         { type: 'relation', expected: 'Relation.asIds' },
+        { type: 'rollup', expected: 'Rollup.raw' },
         { type: 'created_time', expected: 'CreatedTime.asDate' },
         { type: 'created_by', expected: 'CreatedBy.raw' },
         { type: 'last_edited_time', expected: 'LastEditedTime.asDate' },
@@ -380,6 +381,42 @@ describe('codegen', () => {
         const code = generateSchemaCode({ dbInfo, schemaName: 'Test' })
         expect(code).toContain(`Prop: ${expected}`)
       }
+    })
+
+    it('should infer transforms from relation and rollup metadata', () => {
+      const dbInfo: DatabaseInfo = {
+        id: 'test',
+        name: 'Test',
+        url: 'https://notion.so/test',
+        properties: [
+          {
+            id: 'rel',
+            name: 'Owner',
+            type: 'relation',
+            relation: {
+              database_id: 'db-id',
+              type: 'single_property',
+              single_property: {},
+            },
+          },
+          {
+            id: 'rollup',
+            name: 'Total',
+            type: 'rollup',
+            rollup: {
+              relation_property_name: 'Rel',
+              relation_property_id: 'rel',
+              rollup_property_name: 'Amount',
+              rollup_property_id: 'amount',
+              function: 'sum',
+            },
+          },
+        ],
+      }
+
+      const code = generateSchemaCode(dbInfo, 'Test')
+      expect(code).toContain('Owner: Relation.asSingle')
+      expect(code).toContain('Total: Rollup.asNumber')
     })
 
     it('should handle unknown property types gracefully', () => {
@@ -403,7 +440,10 @@ describe('codegen', () => {
 
       expect(getAvailableTransforms('select')).toContain('raw')
       expect(getAvailableTransforms('select')).toContain('asOption')
+      expect(getAvailableTransforms('select')).toContain('asOptionNamed')
+      expect(getAvailableTransforms('select')).toContain('asName')
       expect(getAvailableTransforms('select')).toContain('asString')
+      expect(getAvailableTransforms('select')).toContain('asPropertyNamed')
 
       expect(getAvailableTransforms('checkbox')).toContain('raw')
       expect(getAvailableTransforms('checkbox')).toContain('asBoolean')
@@ -663,8 +703,8 @@ describe('codegen', () => {
          * Schema for reading pages from the "Test" database.
          */
         export const TestPageProperties = Schema.Struct({
-          Status: Select.asOption,
-          Priority: MultiSelect.asStrings,
+          Status: Select.asPropertyNamed(TestStatusOption),
+          Priority: MultiSelect.asPropertyNamed(TestPriorityOption),
         }).annotations({
           identifier: 'TestPageProperties',
           description: 'Read schema for Test database pages',
