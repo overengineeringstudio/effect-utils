@@ -232,13 +232,12 @@ const toTopLevelIdentifier = (name: string): string => {
   return `_${identifier}`
 }
 
-/**
- * Generate the schema field expression for a property (read)
- */
-const generatePropertyField = (
-  property: PropertyInfo,
-  transformConfig: PropertyTransformConfig,
-): string => {
+/** Generate the schema field expression for a property (read) */
+const generatePropertyField = (options: {
+  property: PropertyInfo
+  transformConfig: PropertyTransformConfig
+}): string => {
+  const { property, transformConfig } = options
   const namespace = PROPERTY_TRANSFORM_NAMESPACES[property.type]
   if (!namespace) {
     return 'Schema.Unknown'
@@ -279,13 +278,12 @@ const generateWritePropertyField = (property: PropertyInfo): string | null => {
 // Typed Options Generation
 // -----------------------------------------------------------------------------
 
-/**
- * Generate typed literal union for select/multi_select/status options
- */
-const generateTypedOptions = (
-  property: PropertyInfo,
-  pascalName: string,
-): { typeName: string; code: string } | null => {
+/** Generate typed literal union for select/multi_select/status options */
+const generateTypedOptions = (opts: {
+  property: PropertyInfo
+  pascalName: string
+}): { typeName: string; code: string } | null => {
+  const { property, pascalName } = opts
   let options: readonly { name: string }[] | undefined
 
   if (property.type === 'select' && property.select?.options) {
@@ -418,15 +416,10 @@ const generateConfigComment = (options: {
 // Main Code Generation
 // -----------------------------------------------------------------------------
 
-/**
- * Generate TypeScript code for an Effect schema from database info.
- */
-// oxlint-disable-next-line eslint(func-style), eslint(max-params) -- public API with established signature
-export function generateSchemaCode(
-  dbInfo: DatabaseInfo,
-  schemaName: string,
-  options?: GenerateOptions,
-): string {
+/** Generate TypeScript code for an Effect schema from database info. */
+// oxlint-disable-next-line eslint(func-style) -- public API
+export function generateSchemaCode(opts: GenerateSchemaCodeOptions): string {
+  const { dbInfo, schemaName, options } = opts
   const { includeWrite, typedOptions, transforms, generatorVersion, schemaNameOverride } =
     parseGenerateOptions(options)
 
@@ -446,7 +439,7 @@ export function generateSchemaCode(
   const typedOptionsDefs: Array<{ property: PropertyInfo; typeName: string; code: string }> = []
   if (typedOptions) {
     for (const prop of dbInfo.properties) {
-      const result = generateTypedOptions(prop, pascalName)
+      const result = generateTypedOptions({ property: prop, pascalName })
       if (result) {
         typedOptionsDefs.push({ property: prop, ...result })
       }
@@ -460,7 +453,7 @@ export function generateSchemaCode(
   const readPropertyFields = dbInfo.properties
     .map((prop) => {
       const key = sanitizePropertyKey(prop.name)
-      const field = generatePropertyField(prop, transforms)
+      const field = generatePropertyField({ property: prop, transformConfig: transforms })
       // Add JSDoc comment if description is available
       const jsdoc = prop.description ? `  /** ${sanitizeLineComment(prop.description)} */\n` : ''
       return `${jsdoc}  ${key}: ${field},`
@@ -651,12 +644,9 @@ export const isReadOnlyProperty = (propertyType: string): boolean =>
  * This generates functions like `query`, `get`, `create`, `update` that
  * have the database ID and schema baked in.
  */
-// oxlint-disable-next-line eslint(func-style), eslint(max-params) -- public API with established signature
-export function generateApiCode(
-  dbInfo: DatabaseInfo,
-  schemaName: string,
-  options?: GenerateOptions,
-): string {
+// oxlint-disable-next-line eslint(func-style) -- public API
+export function generateApiCode(opts: GenerateApiCodeOptions): string {
+  const { dbInfo, schemaName, options } = opts
   const { includeWrite, typedOptions, transforms, generatorVersion, schemaNameOverride } =
     parseGenerateOptions(options)
 

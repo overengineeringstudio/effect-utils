@@ -20,7 +20,7 @@ oxfmt -c packages/@overeng/oxc-config/fmt.jsonc .
 
 - `lint.jsonc` - oxlint rules and overrides
 - `fmt.jsonc` - oxfmt formatting and import sorting
-- `exports-first-plugin.js` - custom JS plugin for oxlint
+- `overeng-plugin.js` - custom JS plugin for oxlint
 
 ## Linting Rules
 
@@ -28,11 +28,32 @@ oxfmt -c packages/@overeng/oxc-config/fmt.jsonc .
 | --------------------------- | -------- | --------------------------------------------- |
 | `import/no-dynamic-require` | warn     | Disallow dynamic `import()` and `require()`   |
 | `oxc/no-barrel-file`        | warn     | Disallow re-exports outside `mod.ts`          |
-| `max-params`                | warn     | Encourage named arguments (max 2 params)      |
+| `overeng/named-args`        | warn     | Enforce named arguments (options objects)     |
 | `import/no-commonjs`        | error    | Enforce ESM over CommonJS                     |
 | `import/no-cycle`           | warn     | Detect circular dependencies                  |
 | `func-style`                | warn     | Prefer function expressions over declarations |
 | `overeng/exports-first`     | warn     | Exports should come before non-exports        |
+
+### `overeng/named-args`
+
+Enforces that functions use named arguments (options objects) instead of multiple positional parameters, improving readability and maintainability.
+
+**Automatically exempt:**
+
+- Callbacks passed as arguments to other functions (e.g., `arr.map((item, idx) => ...)`)
+- Functions with rest parameters (e.g., `(msg, ...args) => ...`)
+- Effect.gen adapter pattern (e.g., `Effect.gen(function* (_) { ... })`)
+
+**Use disable comments for:**
+
+- Interface implementations
+- Effect dual functions for currying
+- API compatibility requirements
+
+```ts
+// oxlint-disable-next-line overeng/named-args -- implements SomeInterface
+const myFunc = (a, b) => { ... }
+```
 
 ## Lint Categories
 
@@ -54,7 +75,7 @@ oxfmt -c packages/@overeng/oxc-config/fmt.jsonc .
 
 ## Custom JS Plugin
 
-The `overeng/exports-first` rule is implemented as an oxlint JS plugin. JS plugins are experimental - see the [oxlint JS plugins blog post](https://oxc.rs/blog/2025-10-09-oxlint-js-plugins.html).
+The `overeng/exports-first` and `overeng/named-args` rules are implemented as oxlint JS plugins. JS plugins are experimental - see the [oxlint JS plugins blog post](https://oxc.rs/blog/2025-10-09-oxlint-js-plugins.html).
 
 An upstream feature request for a native `import/exports-first` rule has been filed: https://github.com/oxc-project/oxc/issues/17706
 

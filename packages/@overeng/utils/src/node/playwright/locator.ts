@@ -193,18 +193,18 @@ export const locator: (
   }).pipe(Effect.withSpan('pw.locator', { attributes: { 'pw.selector': selector } }))
 
 /** Returns a locator by role. Synchronous, no network call. */
-export const getByRole: (
+export const getByRole = (opts: {
   /** ARIA role (e.g. 'button', 'link', 'heading'). */
-  role: Parameters<Page['getByRole']>[0],
+  role: Parameters<Page['getByRole']>[0]
   /** Optional role options (e.g. name, exact). */
-  options?: Parameters<Page['getByRole']>[1],
-) => Effect.Effect<Locator, never, PwPage> = (role, options) =>
+  options?: Parameters<Page['getByRole']>[1]
+}): Effect.Effect<Locator, never, PwPage> =>
   Effect.gen(function* () {
     const page = yield* PwPage
-    return page.getByRole(role, options)
+    return page.getByRole(opts.role, opts.options)
   }).pipe(
     Effect.withSpan('pw.getByRole', {
-      attributes: { 'pw.role': String(role), 'pw.name': options?.name ?? '' },
+      attributes: { 'pw.role': String(opts.role), 'pw.name': opts.options?.name ?? '' },
     }),
   )
 
@@ -219,49 +219,51 @@ export const getByTestId: (
   }).pipe(Effect.withSpan('pw.getByTestId', { attributes: { 'pw.testId': testId } }))
 
 /** Returns a locator by text. Synchronous, no network call. */
-export const getByText: (
+export const getByText = (opts: {
   /** Text to match. */
-  text: string | RegExp,
+  text: string | RegExp
   /** Optional text options (e.g. exact). */
-  options?: Parameters<Page['getByText']>[1],
-) => Effect.Effect<Locator, never, PwPage> = (text, options) =>
+  options?: Parameters<Page['getByText']>[1]
+}): Effect.Effect<Locator, never, PwPage> =>
   Effect.gen(function* () {
     const page = yield* PwPage
-    return page.getByText(text, options)
+    return page.getByText(opts.text, opts.options)
   }).pipe(
     Effect.withSpan('pw.getByText', {
-      attributes: { 'pw.text': typeof text === 'string' ? text : text.source },
+      attributes: { 'pw.text': typeof opts.text === 'string' ? opts.text : opts.text.source },
     }),
   )
 
 /** Returns a locator by label text. Synchronous, no network call. */
-export const getByLabel: (
+export const getByLabel = (opts: {
   /** Label text to match. */
-  text: string | RegExp,
+  text: string | RegExp
   /** Optional text options (e.g. exact). */
-  options?: Parameters<Page['getByLabel']>[1],
-) => Effect.Effect<Locator, never, PwPage> = (text, options) =>
+  options?: Parameters<Page['getByLabel']>[1]
+}): Effect.Effect<Locator, never, PwPage> =>
   Effect.gen(function* () {
     const page = yield* PwPage
-    return page.getByLabel(text, options)
+    return page.getByLabel(opts.text, opts.options)
   }).pipe(
     Effect.withSpan('pw.getByLabel', {
-      attributes: { 'pw.label': typeof text === 'string' ? text : text.source },
+      attributes: { 'pw.label': typeof opts.text === 'string' ? opts.text : opts.text.source },
     }),
   )
 
 /** Returns a locator by placeholder text. Synchronous, no network call. */
-export const getByPlaceholder: (
+export const getByPlaceholder = (opts: {
   /** Placeholder text to match. */
-  text: string | RegExp,
+  text: string | RegExp
   /** Optional text options (e.g. exact). */
-  options?: Parameters<Page['getByPlaceholder']>[1],
-) => Effect.Effect<Locator, never, PwPage> = (text, options) =>
+  options?: Parameters<Page['getByPlaceholder']>[1]
+}): Effect.Effect<Locator, never, PwPage> =>
   Effect.gen(function* () {
     const page = yield* PwPage
-    return page.getByPlaceholder(text, options)
+    return page.getByPlaceholder(opts.text, opts.options)
   }).pipe(
     Effect.withSpan('pw.getByPlaceholder', {
-      attributes: { 'pw.placeholder': typeof text === 'string' ? text : text.source },
+      attributes: {
+        'pw.placeholder': typeof opts.text === 'string' ? opts.text : opts.text.source,
+      },
     }),
   )

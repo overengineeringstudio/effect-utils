@@ -39,21 +39,20 @@ import * as EffectArray from 'effect/Array'
  *   yield* Effect.log('Hello from file logger')
  *   yield* Effect.logDebug('Debug info', { userId: 123 })
  * }).pipe(
- *   Effect.provide(makeFileLogger('/tmp/app.log', { threadName: 'main' }))
+ *   Effect.provide(makeFileLogger({ logFilePath: '/tmp/app.log', threadName: 'main' }))
  * )
  * ```
- *
- * @param logFilePath - Absolute or relative path to the log file. Parent directories are created if needed.
- * @param options.threadName - Label shown in log output to identify the source (e.g., 'main', 'worker-1')
- * @param options.colors - Whether to include ANSI color codes. Defaults to false (plain text).
  */
-export const makeFileLogger = (
-  logFilePath: string,
-  options?: {
-    readonly threadName: string
-    readonly colors?: boolean
-  },
-) =>
+export interface MakeFileLoggerOptions {
+  /** Absolute or relative path to the log file. Parent directories are created if needed. */
+  readonly logFilePath: string
+  /** Label shown in log output to identify the source (e.g., 'main', 'worker-1') */
+  readonly threadName?: string
+  /** Whether to include ANSI color codes. Defaults to false (plain text). */
+  readonly colors?: boolean
+}
+
+export const makeFileLogger = ({ logFilePath, threadName, colors }: MakeFileLoggerOptions) =>
   Layer.unwrapScoped(
     Effect.gen(function* () {
       yield* Effect.sync(() => fs.mkdirSync(path.dirname(logFilePath), { recursive: true }))
@@ -66,9 +65,9 @@ export const makeFileLogger = (
       return Logger.replace(
         Logger.defaultLogger,
         prettyLoggerTty({
-          colors: options?.colors ?? false,
+          colors: colors ?? false,
           stderr: false,
-          formatDate: (date) => `${defaultDateFormat(date)} ${options?.threadName ?? ''}`,
+          formatDate: (date) => `${defaultDateFormat(date)} ${threadName ?? ''}`,
           onLog: (str) => fs.writeSync(logFile, str),
         }),
       )

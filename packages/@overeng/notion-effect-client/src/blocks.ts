@@ -72,7 +72,7 @@ export interface DeleteBlockOptions {
  * @see https://developers.notion.com/reference/retrieve-a-block
  */
 export const retrieve = Effect.fn('NotionBlocks.retrieve')(function* (opts: RetrieveBlockOptions) {
-  return yield* get(`/blocks/${opts.blockId}`, BlockSchema)
+  return yield* get({ path: `/blocks/${opts.blockId}`, responseSchema: BlockSchema })
 })
 
 /** Internal helper to build query params for block children */
@@ -90,7 +90,7 @@ const retrieveChildrenRaw = (
   Effect.gen(function* () {
     const queryString = buildBlockChildrenParams(opts)
     const path = `/blocks/${opts.blockId}/children${queryString ? `?${queryString}` : ''}`
-    const response = yield* get(path, BlockChildrenResponseSchema)
+    const response = yield* get({ path, responseSchema: BlockChildrenResponseSchema })
     return toPaginatedResult(response)
   }).pipe(
     Effect.withSpan('NotionBlocks.retrieveChildren', {
@@ -182,7 +182,7 @@ export const update = Effect.fn('NotionBlocks.update')(function* (opts: UpdateBl
  * @see https://developers.notion.com/reference/delete-a-block
  */
 export const deleteBlock = Effect.fn('NotionBlocks.delete')(function* (opts: DeleteBlockOptions) {
-  return yield* del(`/blocks/${opts.blockId}`, BlockSchema)
+  return yield* del({ path: `/blocks/${opts.blockId}`, responseSchema: BlockSchema })
 })
 
 // -----------------------------------------------------------------------------
@@ -244,7 +244,8 @@ export interface RetrieveNestedOptions {
 // -----------------------------------------------------------------------------
 
 /** Check if a block can have children that need fetching */
-const canHaveChildren = (block: Block, skipTypes: ReadonlySet<BlockType>): boolean => {
+const canHaveChildren = (opts: { block: Block; skipTypes: ReadonlySet<BlockType> }): boolean => {
+  const { block, skipTypes } = opts
   if (!block.has_children) return false
   if (skipTypes.has(block.type)) return false
   return BLOCK_TYPES_WITH_CHILDREN.has(block.type)
@@ -278,12 +279,12 @@ export const retrieveAllNested = (
   const concurrency = opts.concurrency ?? 3
   const pageSize = opts.pageSize ?? 100
 
-  // oxlint-disable-next-line eslint(max-params) -- recursive helper with traversal state
-  const fetchBlocksRecursive = (
-    blockId: string,
-    parentId: string | null,
-    depth: number,
-  ): Stream.Stream<BlockWithDepth, NotionApiError, NotionConfig | HttpClient.HttpClient> => {
+  const fetchBlocksRecursive = (args: {
+    blockId: string
+    parentId: string | null
+    depth: number
+  }): Stream.Stream<BlockWithDepth, NotionApiError, NotionConfig | HttpClient.HttpClient> => {
+    const { blockId, parentId, depth } = args
     // Bail if we've exceeded max depth
     if (maxDepth !== undefined && depth > maxDepth) {
       return Stream.empty
@@ -299,11 +300,11 @@ export const retrieveAllNested = (
         const item: BlockWithDepth = { block, depth, parentId }
 
         // Check if we should recurse into this block's children
-        if (canHaveChildren(block, skipTypes)) {
+        if (canHaveChildren({ block, skipTypes })) {
           // Emit this block, then recurse into its children
           return Stream.concat(
             Stream.succeed(item),
-            fetchBlocksRecursive(block.id, block.id, depth + 1),
+            fetchBlocksRecursive({ blockId: block.id, parentId: block.id, depth: depth + 1 }),
           )
         }
 
@@ -314,7 +315,7 @@ export const retrieveAllNested = (
     )
   }
 
-  return fetchBlocksRecursive(opts.blockId, null, 0).pipe(
+  return fetchBlocksRecursive({ blockId: opts.blockId, parentId: null, depth: 0 }).pipe(
     Stream.tapError((error) =>
       Effect.logError('Failed to retrieve nested blocks', {
         blockId: opts.blockId,
@@ -351,11 +352,12 @@ export const retrieveAsTree = (
   const concurrency = opts.concurrency ?? 3
   const pageSize = opts.pageSize ?? 100
 
-  const fetchTreeRecursive = (
-    blockId: string,
-    depth: number,
-  ): Effect.Effect<BlockTree, NotionApiError, NotionConfig | HttpClient.HttpClient> =>
+  const fetchTreeRecursive = (args: {
+    blockId: string
+    depth: number
+  }): Effect.Effect<BlockTree, NotionApiError, NotionConfig | HttpClient.HttpClient> =>
     Effect.gen(function* () {
+      const { blockId, depth } = args
       // Bail if we've exceeded max depth
       if (maxDepth !== undefined && depth > maxDepth) {
         return [] as const
@@ -374,8 +376,8 @@ export const retrieveAsTree = (
           Effect.gen(function* () {
             let nodeChildren: BlockTree = []
 
-            if (canHaveChildren(block, skipTypes)) {
-              nodeChildren = yield* fetchTreeRecursive(block.id, depth + 1)
+            if (canHaveChildren({ block, skipTypes })) {
+              nodeChildren = yield* fetchTreeRecursive({ blockId: block.id, depth: depth + 1 })
             }
 
             const node: BlockTreeNode = {
@@ -391,13 +393,13 @@ export const retrieveAsTree = (
     }).pipe(
       Effect.withSpan('NotionBlocks.fetchTreeRecursive', {
         attributes: {
-          'notion.block_id': blockId,
-          'notion.depth': depth,
+          'notion.block_id': args.blockId,
+          'notion.depth': args.depth,
         },
       }),
     )
 
-  return fetchTreeRecursive(opts.blockId, 0).pipe(
+  return fetchTreeRecursive({ blockId: opts.blockId, depth: 0 }).pipe(
     Effect.withSpan('NotionBlocks.retrieveAsTree', {
       attributes: { 'notion.block_id': opts.blockId },
     }),

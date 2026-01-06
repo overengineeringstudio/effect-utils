@@ -211,7 +211,7 @@ export const cmdStart: (
     args,
   })
 
-  return yield* buildCommand(normalizedInput, useShell).pipe(
+  return yield* buildCommand({ input: normalizedInput, useShell }).pipe(
     Command.stdin('inherit'),
     Command.stdout(options?.stdout ?? 'inherit'),
     Command.stderr(options?.stderr ?? 'inherit'),
@@ -297,7 +297,7 @@ const runWithoutLogging = ({
   stderrMode,
   useShell,
 }: TRunBaseArgs) =>
-  buildCommand(commandInput, useShell).pipe(
+  buildCommand({ input: commandInput, useShell }).pipe(
     Command.stdin('inherit'),
     Command.stdout(stdoutMode),
     Command.stderr(stderrMode),
@@ -357,7 +357,7 @@ const runWithLogging = ({
           fs.writeSync(logFile, formatted)
         })
 
-      const command = buildCommand(commandInput, useShell).pipe(
+      const command = buildCommand({ input: commandInput, useShell }).pipe(
         Command.stdin('inherit'),
         Command.stdout('pipe'),
         Command.stderr('pipe'),
@@ -367,10 +367,16 @@ const runWithLogging = ({
       )
 
       // Acquire/start the command and make sure we kill the process group on interruption.
-      const killOpts = killTimeout !== undefined ? { timeout: killTimeout } : undefined
       const runningProcess = yield* Effect.acquireRelease(command.pipe(Command.start), (proc) =>
         proc.isRunning.pipe(
-          Effect.flatMap((running) => (running ? killProcessGroup(proc, killOpts) : Effect.void)),
+          Effect.flatMap((running) =>
+            running
+              ? killProcessGroup({
+                  proc,
+                  ...(killTimeout !== undefined ? { timeout: killTimeout } : {}),
+                })
+              : Effect.void,
+          ),
           Effect.ignore,
         ),
       )
@@ -404,7 +410,10 @@ const runWithLogging = ({
           Effect.catchAll(() => Effect.succeed(false)),
         )
         if (stillRunning) {
-          yield* killProcessGroup(runningProcess, killOpts)
+          yield* killProcessGroup({
+            proc: runningProcess,
+            ...(killTimeout !== undefined ? { timeout: killTimeout } : {}),
+          })
         }
         yield* Effect.ignore(Fiber.join(stdoutFiber))
         yield* Effect.ignore(Fiber.join(stderrFiber))
@@ -425,7 +434,11 @@ const DEFAULT_KILL_TIMEOUT: Duration.DurationInput = '5 seconds'
  * Send a signal to a process group (or individual process as fallback).
  * On Unix, uses negative PID to signal the entire group.
  */
-const sendSignalToProcessGroup = (proc: Process, signal: NodeJS.Signals): Effect.Effect<void> => {
+const sendSignalToProcessGroup = (opts: {
+  proc: Process
+  signal: NodeJS.Signals
+}): Effect.Effect<void> => {
+  const { proc, signal } = opts
   const isUnix = process.platform !== 'win32'
 
   if (isUnix) {
@@ -451,15 +464,16 @@ const sendSignalToProcessGroup = (proc: Process, signal: NodeJS.Signals): Effect
  * Kill a process group with SIGTERM → wait → SIGKILL escalation.
  * Sends SIGTERM first, waits for graceful exit, then SIGKILL if needed.
  */
-const killProcessGroup = (
-  proc: Process,
-  options?: { timeout?: Duration.DurationInput },
-): Effect.Effect<void> =>
+const killProcessGroup = (opts: {
+  proc: Process
+  timeout?: Duration.DurationInput
+}): Effect.Effect<void> =>
   Effect.gen(function* () {
-    const timeout = options?.timeout ?? DEFAULT_KILL_TIMEOUT
+    const { proc } = opts
+    const timeout = opts.timeout ?? DEFAULT_KILL_TIMEOUT
 
     // Send SIGTERM first
-    yield* sendSignalToProcessGroup(proc, 'SIGTERM')
+    yield* sendSignalToProcessGroup({ proc, signal: 'SIGTERM' })
 
     // Wait for process to exit gracefully (with timeout)
     const exited = yield* proc.exitCode.pipe(Effect.timeout(timeout), Effect.option)
@@ -467,11 +481,12 @@ const killProcessGroup = (
     // If still running after timeout, escalate to SIGKILL
     if (Option.isNone(exited)) {
       yield* Effect.logDebug(`Process ${proc.pid} didn't exit gracefully, sending SIGKILL`)
-      yield* sendSignalToProcessGroup(proc, 'SIGKILL')
+      yield* sendSignalToProcessGroup({ proc, signal: 'SIGKILL' })
     }
   }).pipe(Effect.ignore)
 
-const buildCommand = (input: string | string[], useShell: boolean) => {
+const buildCommand = (opts: { input: string | string[]; useShell: boolean }) => {
+  const { input, useShell } = opts
   if (Array.isArray(input)) {
     const [command, ...args] = input
     if (!command) throw new Error('Command cannot be empty')
@@ -508,15 +523,17 @@ const makeStreamHandler = ({
 }): TStreamHandler => {
   let buffer = ''
 
-  // Effect's FileLogger expects line-oriented messages, but the subprocess
-  // gives us arbitrary UTF-8 chunks. We keep a tiny line splitter here so the
-  // log and console stay readable (and consistent with the previous `tee`
-  // behaviour).
-  const emit = (content: string, terminator: TLineTerminator) =>
+  /**
+   * Effect's FileLogger expects line-oriented messages, but the subprocess
+   * gives us arbitrary UTF-8 chunks. We keep a tiny line splitter here so the
+   * log and console stay readable (and consistent with the previous `tee`
+   * behaviour).
+   */
+  const emit = (opts: { content: string; terminator: TLineTerminator }) =>
     emitSegment({
       channel,
-      content,
-      terminator,
+      content: opts.content,
+      terminator: opts.terminator,
       ...(mirrorTarget ? { mirrorTarget } : {}),
       appendLog,
     })
@@ -528,12 +545,12 @@ const makeStreamHandler = ({
     if (lastChar === '\r') {
       const line = buffer.slice(0, -1)
       buffer = ''
-      return emit(line, 'carriage-return')
+      return emit({ content: line, terminator: 'carriage-return' })
     }
 
     const line = buffer
     buffer = ''
-    return line.length === 0 ? Effect.void : emit(line, 'none')
+    return line.length === 0 ? Effect.void : emit({ content: line, terminator: 'none' })
   }
 
   return {
@@ -569,7 +586,7 @@ const makeStreamHandler = ({
 
           const line = buffer.slice(0, index)
           buffer = buffer.slice(index + skip)
-          yield* emit(line, terminator)
+          yield* emit({ content: line, terminator })
         }
       }),
     flush: () => consumeBuffer(),
@@ -594,7 +611,7 @@ const emitSegment = ({
 }) =>
   Effect.gen(function* () {
     if (mirrorTarget) {
-      yield* Effect.sync(() => mirrorSegment(mirrorTarget, content, terminator))
+      yield* Effect.sync(() => mirrorSegment({ target: mirrorTarget, content, terminator }))
     }
 
     const contentForLog = terminator === 'carriage-return' ? `${content}\r` : content
@@ -602,12 +619,12 @@ const emitSegment = ({
     yield* appendLog({ channel, content: contentForLog })
   })
 
-// oxlint-disable-next-line eslint(max-params) -- internal helper with output context
-const mirrorSegment = (
-  target: NodeJS.WriteStream,
-  content: string,
-  terminator: TLineTerminator,
-) => {
+const mirrorSegment = (opts: {
+  target: NodeJS.WriteStream
+  content: string
+  terminator: TLineTerminator
+}) => {
+  const { target, content, terminator } = opts
   switch (terminator) {
     case 'newline': {
       target.write(`${content}\n`)

@@ -48,18 +48,18 @@ export const tryPw = <TA>({
  * @example
  * ```typescript
  * // For uncovered operations
- * yield* Pw.try('set-viewport', () => page.setViewportSize({ width: 1200, height: 800 }))
+ * yield* Pw.try({ op: 'set-viewport', effect: () => page.setViewportSize({ width: 1200, height: 800 }) })
  *
  * // Combine with Pw.Step for Playwright trace grouping
- * yield* Pw.try('custom-op', () => somePlaywrightCall()).pipe(Pw.Step.step('Custom operation'))
+ * yield* Pw.try({ op: 'custom-op', effect: () => somePlaywrightCall() }).pipe(Pw.Step.step('Custom operation'))
  * ```
  */
-export const try_: <A>(
+export const try_: <A>(opts: {
   /** Short operation name for span (e.g. 'set-viewport', 'get-cookies'). */
-  op: string,
+  op: string
   /** Promise factory to wrap. */
-  effect: () => PromiseLike<A>,
-) => Effect.Effect<A, PwOpError> = (op, effect) =>
+  effect: () => PromiseLike<A>
+}) => Effect.Effect<A, PwOpError> = ({ op, effect }) =>
   tryPw({ op: `pw.try.${op}`, effect }).pipe(
     Effect.tap(() => Effect.annotateCurrentSpan({ 'pw.try.op': op })),
   )
@@ -69,16 +69,16 @@ export const try_: <A>(
  *
  * @example
  * ```typescript
- * yield* Pw.expect('sidebar-visible', expect(page.locator('aside')).toBeVisible())
- * yield* Pw.expect('title-matches', expect(page).toHaveTitle(/Dashboard/))
+ * yield* Pw.expect({ assertion: 'sidebar-visible', expectPromise: expect(page.locator('aside')).toBeVisible() })
+ * yield* Pw.expect({ assertion: 'title-matches', expectPromise: expect(page).toHaveTitle(/Dashboard/) })
  * ```
  */
-export const expect_: <A>(
+export const expect_: <A>(opts: {
   /** Short assertion name for span (e.g. 'sidebar-visible', 'button-enabled'). */
-  assertion: string,
+  assertion: string
   /** Playwright expect promise (e.g. `expect(locator).toBeVisible()`). */
-  expectPromise: PromiseLike<A>,
-) => Effect.Effect<A, PwOpError> = (assertion, expectPromise) =>
+  expectPromise: PromiseLike<A>
+}) => Effect.Effect<A, PwOpError> = ({ assertion, expectPromise }) =>
   tryPw({ op: `pw.expect.${assertion}`, effect: () => expectPromise }).pipe(
     Effect.tap(() => Effect.annotateCurrentSpan({ 'pw.expect.assertion': assertion })),
   )

@@ -135,10 +135,15 @@ export const parseGeneratedFile = (content: string): ParsedSchema => {
   return { databaseId, databaseName, properties, readSchemaFound }
 }
 
+export interface ComputeDiffOptions {
+  readonly live: DatabaseInfo
+  readonly generated: ParsedSchema
+}
+
 /**
  * Compute the diff between live database schema and a parsed generated file.
  */
-export const computeDiff = (live: DatabaseInfo, generated: ParsedSchema): DiffResult => {
+export const computeDiff = ({ live, generated }: ComputeDiffOptions): DiffResult => {
   const databaseIdMatch = generated.databaseId === live.id
 
   const propertyDiffs: PropertyDiff[] = []
@@ -202,11 +207,16 @@ export const computeDiff = (live: DatabaseInfo, generated: ParsedSchema): DiffRe
   }
 }
 
+export interface FormatDiffOptions {
+  readonly diff: DiffResult
+  readonly databaseId: string
+  readonly filePath: string
+}
+
 /**
  * Format a diff result as human-readable output lines.
  */
-// oxlint-disable-next-line eslint(max-params) -- cohesive parameters for formatting context
-export const formatDiff = (diff: DiffResult, databaseId: string, filePath: string): string[] => {
+export const formatDiff = ({ diff, databaseId, filePath }: FormatDiffOptions): string[] => {
   const lines: string[] = []
 
   lines.push(`Comparing database ${databaseId} with ${filePath}`)

@@ -32,7 +32,10 @@ describe('ScopeDebugger', () => {
 
         yield* withScopeDebug(
           Effect.gen(function* () {
-            yield* addTracedFinalizer('test-cleanup', Effect.log('Cleaning up'))
+            yield* addTracedFinalizer({
+              name: 'test-cleanup',
+              finalizer: Effect.log('Cleaning up'),
+            })
             yield* Effect.log('Doing work')
           }).pipe(Effect.scoped),
         ).pipe(Effect.provide(loggerLayer))
@@ -50,7 +53,7 @@ describe('ScopeDebugger', () => {
         const { getLogs, loggerLayer } = yield* makeTestLogger
 
         yield* Effect.gen(function* () {
-          yield* addTracedFinalizer('test-cleanup', Effect.log('Cleaning up'))
+          yield* addTracedFinalizer({ name: 'test-cleanup', finalizer: Effect.log('Cleaning up') })
           yield* Effect.log('Doing work')
         }).pipe(Effect.scoped, Effect.provide(loggerLayer))
 
@@ -69,18 +72,18 @@ describe('ScopeDebugger', () => {
 
         yield* withScopeDebug(
           Effect.gen(function* () {
-            yield* addTracedFinalizer(
-              'first',
-              Ref.update(order, (arr) => [...arr, 'first']),
-            )
-            yield* addTracedFinalizer(
-              'second',
-              Ref.update(order, (arr) => [...arr, 'second']),
-            )
-            yield* addTracedFinalizer(
-              'third',
-              Ref.update(order, (arr) => [...arr, 'third']),
-            )
+            yield* addTracedFinalizer({
+              name: 'first',
+              finalizer: Ref.update(order, (arr) => [...arr, 'first']),
+            })
+            yield* addTracedFinalizer({
+              name: 'second',
+              finalizer: Ref.update(order, (arr) => [...arr, 'second']),
+            })
+            yield* addTracedFinalizer({
+              name: 'third',
+              finalizer: Ref.update(order, (arr) => [...arr, 'third']),
+            })
           }).pipe(Effect.scoped),
         )
 
@@ -92,7 +95,7 @@ describe('ScopeDebugger', () => {
     it.effect('does not swallow finalizer failures when debugging enabled', () =>
       Effect.gen(function* () {
         const exit = yield* withScopeDebug(
-          addTracedFinalizer('fails', Effect.die('boom')).pipe(Effect.scoped),
+          addTracedFinalizer({ name: 'fails', finalizer: Effect.die('boom') }).pipe(Effect.scoped),
         ).pipe(Effect.exit)
 
         expect(Exit.isFailure(exit)).toBe(true)

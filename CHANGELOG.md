@@ -24,8 +24,9 @@ All notable changes to this project will be documented in this file.
 
 - **@overeng/oxc-config**: New package for shared oxlint + oxfmt configuration
   - Base config with sensible defaults for TypeScript/Effect projects
-  - Rules: `import/no-dynamic-require` (warn), `oxc/no-barrel-file` (warn, except `mod.ts`), `max-params` (warn, max 2), `import/no-commonjs` (error), `import/no-cycle` (warn), `func-style` (warn, prefer expressions/arrows)
+  - Rules: `import/no-dynamic-require` (warn), `oxc/no-barrel-file` (warn, except `mod.ts`), `overeng/named-args` (warn), `import/no-commonjs` (error), `import/no-cycle` (warn), `func-style` (warn, prefer expressions/arrows)
   - Re-exports only allowed from `mod.ts` entry point files
+  - Custom `overeng/named-args` rule enforces named arguments pattern (options objects), with automatic exemptions for callbacks, rest params, and Effect patterns
 
 ### Added
 

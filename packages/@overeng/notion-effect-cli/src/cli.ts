@@ -192,7 +192,7 @@ const generateCommand = Command.make(
         const schemaName = name._tag === 'Some' ? name.value : dbInfo.name
         yield* Console.log(`Generating schema "${schemaName}"...`)
 
-        const rawCode = generateSchemaCode(dbInfo, schemaName, generateOptions)
+        const rawCode = generateSchemaCode({ dbInfo, schemaName, options: generateOptions })
         const code = yield* formatCode(rawCode)
 
         if (dryRun) {
@@ -206,7 +206,7 @@ const generateCommand = Command.make(
           yield* Console.log(`Would write to: ${output}`)
 
           if (includeApi) {
-            const rawApiCode = generateApiCode(dbInfo, schemaName, generateOptions)
+            const rawApiCode = generateApiCode({ dbInfo, schemaName, options: generateOptions })
             const apiCode = yield* formatCode(rawApiCode)
             const apiOutput = output.replace(/\.ts$/, '.api.ts')
 
@@ -225,7 +225,7 @@ const generateCommand = Command.make(
           yield* Console.log(`✓ Schema generated successfully!${writable ? '' : ' (read-only)'}`)
 
           if (includeApi) {
-            const rawApiCode = generateApiCode(dbInfo, schemaName, generateOptions)
+            const rawApiCode = generateApiCode({ dbInfo, schemaName, options: generateOptions })
             const apiCode = yield* formatCode(rawApiCode)
             const apiOutput = output.replace(/\.ts$/, '.api.ts')
 
@@ -354,7 +354,7 @@ const generateFromConfigCommand = Command.make(
             ...(dbConfig.name !== undefined ? { schemaNameOverride: dbConfig.name } : {}),
           }
 
-          const rawCode = generateSchemaCode(dbInfo, schemaName, generateOptions)
+          const rawCode = generateSchemaCode({ dbInfo, schemaName, options: generateOptions })
           const code = yield* formatCode(rawCode)
 
           if (dryRun) {
@@ -368,7 +368,7 @@ const generateFromConfigCommand = Command.make(
             yield* Console.log(`Would write to: ${dbConfig.output}`)
 
             if (generateOptions.includeApi) {
-              const rawApiCode = generateApiCode(dbInfo, schemaName, generateOptions)
+              const rawApiCode = generateApiCode({ dbInfo, schemaName, options: generateOptions })
               const apiCode = yield* formatCode(rawApiCode)
               const apiOutput = dbConfig.output.replace(/\.ts$/, '.api.ts')
 
@@ -387,7 +387,7 @@ const generateFromConfigCommand = Command.make(
             yield* Console.log(`✓ Schema generated successfully!${writable ? '' : ' (read-only)'}`)
 
             if (generateOptions.includeApi) {
-              const rawApiCode = generateApiCode(dbInfo, schemaName, generateOptions)
+              const rawApiCode = generateApiCode({ dbInfo, schemaName, options: generateOptions })
               const apiCode = yield* formatCode(rawApiCode)
               const apiOutput = dbConfig.output.replace(/\.ts$/, '.api.ts')
 
@@ -453,10 +453,10 @@ const diffCommand = Command.make(
         const dbInfo = yield* introspectDatabase(databaseId)
 
         // Compute diff
-        const diff = computeDiff(dbInfo, parsedSchema)
+        const diff = computeDiff({ live: dbInfo, generated: parsedSchema })
 
         // Format and display results
-        const lines = formatDiff(diff, databaseId, file)
+        const lines = formatDiff({ diff, databaseId, filePath: file })
         for (const line of lines) {
           yield* Console.log(line)
         }

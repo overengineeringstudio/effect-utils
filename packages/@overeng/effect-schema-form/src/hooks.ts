@@ -18,13 +18,19 @@ export interface UseSchemaFormResult<T extends Record<string, unknown>> {
   setValues: (values: Partial<T>) => void
 }
 
+export interface UseSchemaFormOptions<T> {
+  readonly schema: Schema.Schema<T>
+  readonly value: T
+  readonly onChange: (value: T) => void
+}
+
 /**
  * Hook for working with a schema form's fields and values.
  *
  * Provides field metadata and value accessors for building custom form UIs.
  *
  * ```tsx
- * const { fields, getValue, setValue, tagInfo } = useSchemaForm(schema, value, onChange)
+ * const { fields, getValue, setValue, tagInfo } = useSchemaForm({ schema, value, onChange })
  *
  * return (
  *   <form>
@@ -40,12 +46,11 @@ export interface UseSchemaFormResult<T extends Record<string, unknown>> {
  * )
  * ```
  */
-// oxlint-disable-next-line eslint(max-params) -- React hook convention (schema, value, onChange)
-export const useSchemaForm = <T extends Record<string, unknown>>(
-  schema: Schema.Schema<T>,
-  value: T,
-  onChange: (value: T) => void,
-): UseSchemaFormResult<T> => {
+export const useSchemaForm = <T extends Record<string, unknown>>({
+  schema,
+  value,
+  onChange,
+}: UseSchemaFormOptions<T>): UseSchemaFormResult<T> => {
   const fields = useMemo(() => getStructProperties(schema as Schema.Schema.AnyNoContext), [schema])
 
   const tagInfo = useMemo(() => analyzeTaggedStruct(schema as Schema.Schema.AnyNoContext), [schema])

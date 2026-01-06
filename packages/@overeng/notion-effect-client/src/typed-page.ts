@@ -44,15 +44,14 @@ export class PageDecodeError extends Schema.TaggedError<PageDecodeError>()('Page
 /**
  * Decode a raw Notion page using a property schema.
  *
- * @param page - Raw Notion page object
- * @param schema - Effect schema for the properties
  * @returns Typed page with decoded properties
  */
-export const decodePage = <TProperties, I, R>(
-  page: Page,
-  schema: Schema.Schema<TProperties, I, R>,
-): Effect.Effect<TypedPage<TProperties>, PageDecodeError, R> =>
+export const decodePage = <TProperties, I, R>(opts: {
+  page: Page
+  schema: Schema.Schema<TProperties, I, R>
+}): Effect.Effect<TypedPage<TProperties>, PageDecodeError, R> =>
   Effect.gen(function* () {
+    const { page, schema } = opts
     const decode = Schema.decodeUnknown(schema)
     const properties = yield* decode(page.properties).pipe(
       Effect.mapError(
@@ -83,8 +82,8 @@ export const decodePage = <TProperties, I, R>(
  *
  * Fails fast on first decode error.
  */
-export const decodePages = <TProperties, I, R>(
-  pages: readonly Page[],
-  schema: Schema.Schema<TProperties, I, R>,
-): Effect.Effect<readonly TypedPage<TProperties>[], PageDecodeError, R> =>
-  Effect.forEach(pages, (page) => decodePage(page, schema))
+export const decodePages = <TProperties, I, R>(opts: {
+  pages: readonly Page[]
+  schema: Schema.Schema<TProperties, I, R>
+}): Effect.Effect<readonly TypedPage<TProperties>[], PageDecodeError, R> =>
+  Effect.forEach(opts.pages, (page) => decodePage({ page, schema: opts.schema }))

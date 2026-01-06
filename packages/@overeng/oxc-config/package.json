@@ -6,7 +6,7 @@
   "exports": {
     "./lint": "./lint.jsonc",
     "./fmt": "./fmt.jsonc",
-    "./exports-first-plugin": "./exports-first-plugin.js"
+    "./plugin": "./src/mod.ts"
   },
   "devDependencies": {
     "eslint": "^9.28.0",

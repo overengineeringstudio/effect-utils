@@ -100,7 +100,12 @@ export const SchemaForm = <T extends Record<string, unknown>>({
   wrapper,
 }: SchemaFormProps<T>): ReactNode => {
   const contextValue = useSchemaFormContext()
-  const { fields: allFields, tagInfo, getValue, setValue } = useSchemaForm(schema, value, onChange)
+  const {
+    fields: allFields,
+    tagInfo,
+    getValue,
+    setValue,
+  } = useSchemaForm({ schema, value, onChange })
 
   // Merge renderers: prop renderers override context renderers
   const renderers: FieldRenderers = {

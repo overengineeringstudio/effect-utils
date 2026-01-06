@@ -67,16 +67,16 @@ export const getRootHandle: Effect.Effect<FileSystemDirectoryHandle, OPFSNotSupp
 /**
  * Gets a directory handle for the given absolute path.
  * Creates intermediate directories if they don't exist when `create` is true.
- *
- * @param absDirPath - Absolute path to the directory (e.g., "/foo/bar/baz")
- * @param options - Options for directory creation
  */
-export const getDirHandle = (
-  absDirPath: string | undefined,
-  options?: { create?: boolean },
-): Effect.Effect<FileSystemDirectoryHandle, OPFSNotSupportedError | OPFSError> =>
+export const getDirHandle = (opts?: {
+  /** Absolute path to the directory (e.g., "/foo/bar/baz") */
+  absDirPath?: string
+  /** Whether to create intermediate directories if they don't exist */
+  create?: boolean
+}): Effect.Effect<FileSystemDirectoryHandle, OPFSNotSupportedError | OPFSError> =>
   Effect.gen(function* () {
     const rootHandle = yield* getRootHandle
+    const absDirPath = opts?.absDirPath
 
     if (absDirPath === undefined || absDirPath === '' || absDirPath === '/') {
       return rootHandle
@@ -87,7 +87,7 @@ export const getDirHandle = (
 
     for (const segment of segments) {
       currentHandle = yield* Effect.tryPromise({
-        try: () => currentHandle.getDirectoryHandle(segment, { create: options?.create ?? false }),
+        try: () => currentHandle.getDirectoryHandle(segment, { create: opts?.create ?? false }),
         catch: (error) =>
           new OPFSError({
             operation: 'getDirectoryHandle',
@@ -102,23 +102,21 @@ export const getDirHandle = (
 
 /**
  * Gets a file handle for the given path within a directory.
- *
- * @param dirHandle - The directory handle to search in
- * @param fileName - The name of the file
- * @param options - Options for file creation
  */
-// oxlint-disable-next-line eslint(max-params) -- mirrors Web File API pattern
-export const getFileHandle = (
-  dirHandle: FileSystemDirectoryHandle,
-  fileName: string,
-  options?: { create?: boolean },
-): Effect.Effect<FileSystemFileHandle, OPFSError> =>
+export const getFileHandle = (opts: {
+  /** The directory handle to search in */
+  dirHandle: FileSystemDirectoryHandle
+  /** The name of the file */
+  fileName: string
+  /** Whether to create the file if it doesn't exist */
+  create?: boolean
+}): Effect.Effect<FileSystemFileHandle, OPFSError> =>
   Effect.tryPromise({
-    try: () => dirHandle.getFileHandle(fileName, { create: options?.create ?? false }),
+    try: () => opts.dirHandle.getFileHandle(opts.fileName, { create: opts.create ?? false }),
     catch: (error) =>
       new OPFSError({
         operation: 'getFileHandle',
-        path: fileName,
+        path: opts.fileName,
         cause: error,
       }),
   })
@@ -178,23 +176,24 @@ export type TreeLine = {
 /**
  * Generates a tree representation of the directory structure.
  * Returns an array of lines that can be printed or processed.
- *
- * @param dirHandle - The directory handle to traverse (defaults to root)
- * @param options - Options for tree generation
  */
-export const getTree = (
-  dirHandle?: FileSystemDirectoryHandle,
-  options?: { depth?: number; prefix?: string },
-): Effect.Effect<readonly TreeLine[], OPFSNotSupportedError | OPFSError> =>
+export const getTree = (opts?: {
+  /** The directory handle to traverse (defaults to root) */
+  dirHandle?: FileSystemDirectoryHandle
+  /** Maximum depth to traverse */
+  depth?: number
+  /** Prefix for indentation (internal use) */
+  prefix?: string
+}): Effect.Effect<readonly TreeLine[], OPFSNotSupportedError | OPFSError> =>
   Effect.gen(function* () {
-    const depth = options?.depth ?? Number.POSITIVE_INFINITY
-    const prefix = options?.prefix ?? ''
+    const depth = opts?.depth ?? Number.POSITIVE_INFINITY
+    const prefix = opts?.prefix ?? ''
 
     if (depth < 0) {
       return []
     }
 
-    const handle = dirHandle === undefined ? yield* getRootHandle : dirHandle
+    const handle = opts?.dirHandle === undefined ? yield* getRootHandle : opts.dirHandle
 
     const lines: TreeLine[] = []
 
@@ -240,7 +239,8 @@ export const getTree = (
               cause: error,
             }),
         })
-        const nestedLines = yield* getTree(nestedHandle, {
+        const nestedLines = yield* getTree({
+          dirHandle: nestedHandle,
           depth: depth - 1,
           prefix: `${prefix}  `,
         })
@@ -253,16 +253,18 @@ export const getTree = (
 
 /**
  * Prints a tree representation of the directory structure to the console.
- *
- * @param dirHandle - The directory handle to traverse (defaults to root)
- * @param options - Options for tree generation
  */
-export const printTree = (
-  dirHandle?: FileSystemDirectoryHandle,
-  options?: { depth?: number },
-): Effect.Effect<void, OPFSNotSupportedError | OPFSError> =>
+export const printTree = (opts?: {
+  /** The directory handle to traverse (defaults to root) */
+  dirHandle?: FileSystemDirectoryHandle
+  /** Maximum depth to traverse */
+  depth?: number
+}): Effect.Effect<void, OPFSNotSupportedError | OPFSError> =>
   Effect.gen(function* () {
-    const lines = yield* getTree(dirHandle, options)
+    const lines = yield* getTree({
+      ...(opts?.dirHandle !== undefined && { dirHandle: opts.dirHandle }),
+      ...(opts?.depth !== undefined && { depth: opts.depth }),
+    })
     for (const line of lines) {
       const sizeStr = line.size ? ` (${line.size})` : ''
       console.log(`${line.prefix}${line.icon} ${line.name}${sizeStr}`)
@@ -290,23 +292,21 @@ export const deleteAll = (dirHandle: FileSystemDirectoryHandle): Effect.Effect<v
 
 /**
  * Deletes a specific entry from a directory.
- *
- * @param dirHandle - The directory containing the entry
- * @param name - The name of the entry to delete
- * @param options - Options for deletion
  */
-// oxlint-disable-next-line eslint(max-params) -- mirrors Web File API pattern
-export const deleteEntry = (
-  dirHandle: FileSystemDirectoryHandle,
-  name: string,
-  options?: { recursive?: boolean },
-): Effect.Effect<void, OPFSError> =>
+export const deleteEntry = (opts: {
+  /** The directory containing the entry */
+  dirHandle: FileSystemDirectoryHandle
+  /** The name of the entry to delete */
+  name: string
+  /** Whether to delete recursively (for directories with contents) */
+  recursive?: boolean
+}): Effect.Effect<void, OPFSError> =>
   Effect.tryPromise({
-    try: () => dirHandle.removeEntry(name, { recursive: options?.recursive ?? false }),
+    try: () => opts.dirHandle.removeEntry(opts.name, { recursive: opts.recursive ?? false }),
     catch: (error) =>
       new OPFSError({
         operation: 'deleteEntry',
-        path: name,
+        path: opts.name,
         cause: error,
       }),
   })
@@ -351,18 +351,17 @@ export const readFileBuffer = (
 
 /**
  * Writes text content to a file.
- *
- * @param fileHandle - The file handle to write to
- * @param content - The text content to write
  */
-export const writeFileText = (
-  fileHandle: FileSystemFileHandle,
-  content: string,
-): Effect.Effect<void, OPFSError> =>
+export const writeFileText = (opts: {
+  /** The file handle to write to */
+  fileHandle: FileSystemFileHandle
+  /** The text content to write */
+  content: string
+}): Effect.Effect<void, OPFSError> =>
   Effect.tryPromise({
     try: async () => {
-      const writable = await fileHandle.createWritable()
-      await writable.write(content)
+      const writable = await opts.fileHandle.createWritable()
+      await writable.write(opts.content)
       await writable.close()
     },
     catch: (error) =>
@@ -374,18 +373,17 @@ export const writeFileText = (
 
 /**
  * Writes binary content to a file.
- *
- * @param fileHandle - The file handle to write to
- * @param content - The binary content to write
  */
-export const writeFileBuffer = (
-  fileHandle: FileSystemFileHandle,
-  content: BufferSource,
-): Effect.Effect<void, OPFSError> =>
+export const writeFileBuffer = (opts: {
+  /** The file handle to write to */
+  fileHandle: FileSystemFileHandle
+  /** The binary content to write */
+  content: BufferSource
+}): Effect.Effect<void, OPFSError> =>
   Effect.tryPromise({
     try: async () => {
-      const writable = await fileHandle.createWritable()
-      await writable.write(content)
+      const writable = await opts.fileHandle.createWritable()
+      await writable.write(opts.content)
       await writable.close()
     },
     catch: (error) =>

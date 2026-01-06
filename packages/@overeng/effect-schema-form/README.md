@@ -62,7 +62,7 @@ const myRenderers = {
 import { useSchemaForm } from '@overeng/effect-schema-form'
 
 const MyCustomForm = ({ schema, value, onChange }) => {
-  const { fields, getValue, setValue, tagInfo } = useSchemaForm(schema, value, onChange)
+  const { fields, getValue, setValue, tagInfo } = useSchemaForm({ schema, value, onChange })
 
   return (
     <form>

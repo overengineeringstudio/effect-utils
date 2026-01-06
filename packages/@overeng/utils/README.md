@@ -163,7 +163,7 @@ const program = Effect.gen(function* () {
 })
 
 program.pipe(
-  Effect.provide(makeFileLogger('/tmp/app.log', { threadName: 'main' })),
+  Effect.provide(makeFileLogger({ logFilePath: '/tmp/app.log', threadName: 'main' })),
   Effect.runPromise,
 )
 ```

@@ -125,16 +125,14 @@ export const buildRequest = ({
     }),
   )
 
-/**
- * Parse error response from Notion API.
- */
-// oxlint-disable-next-line eslint(max-params) -- internal helper with cohesive request context
-const parseErrorResponse = (
-  response: HttpClientResponse.HttpClientResponse,
-  requestUrl: string,
-  requestMethod: string,
-): Effect.Effect<NotionApiError> =>
-  Effect.gen(function* () {
+/** Parse error response from Notion API. */
+const parseErrorResponse = (opts: {
+  response: HttpClientResponse.HttpClientResponse
+  requestUrl: string
+  requestMethod: string
+}): Effect.Effect<NotionApiError> => {
+  const { response, requestUrl, requestMethod } = opts
+  return Effect.gen(function* () {
     const requestId = Option.fromNullable(response.headers['x-request-id'])
     const retryAfterSeconds =
       response.status === 429
@@ -179,24 +177,22 @@ const parseErrorResponse = (
       method: Option.some(requestMethod),
     })
   })
+}
 
-/**
- * Map HttpClientError to NotionApiError.
- */
-// oxlint-disable-next-line eslint(max-params) -- internal helper with cohesive request context
-const mapHttpClientError = (
-  error: HttpClientError.HttpClientError,
-  path: string,
-  method: string,
-): NotionApiError =>
+/** Map HttpClientError to NotionApiError. */
+const mapHttpClientError = (opts: {
+  error: HttpClientError.HttpClientError
+  path: string
+  method: string
+}): NotionApiError =>
   new NotionApiError({
     status: 0,
     code: 'service_unavailable',
-    message: error.message,
+    message: opts.error.message,
     retryAfterSeconds: Option.none(),
     requestId: Option.none(),
-    url: Option.some(`${NOTION_API_BASE_URL}${path}`),
-    method: Option.some(method),
+    url: Option.some(`${NOTION_API_BASE_URL}${opts.path}`),
+    method: Option.some(opts.method),
   })
 
 /**
@@ -229,15 +225,19 @@ export const executeRequest = <A, I, R>({
       const request = yield* buildRequest({ method, path, body })
       const response = yield* client
         .execute(request)
-        .pipe(Effect.mapError((e) => mapHttpClientError(e, path, method)))
+        .pipe(Effect.mapError((error) => mapHttpClientError({ error, path, method })))
 
       if (response.status >= 400) {
-        const error = yield* parseErrorResponse(response, `${NOTION_API_BASE_URL}${path}`, method)
+        const error = yield* parseErrorResponse({
+          response,
+          requestUrl: `${NOTION_API_BASE_URL}${path}`,
+          requestMethod: method,
+        })
         return yield* error
       }
 
       const json = yield* response.json.pipe(
-        Effect.mapError((e) => mapHttpClientError(e, path, method)),
+        Effect.mapError((error) => mapHttpClientError({ error, path, method })),
       )
 
       return yield* Schema.decodeUnknown(responseSchema)(json).pipe(
@@ -289,14 +289,21 @@ export const executeRequest = <A, I, R>({
     }
   }).pipe(Effect.withSpan(`NotionHttp.${method}`, { attributes: { 'notion.path': path } }))
 
-/**
- * GET request helper.
- */
-export const get = <A, I, R>(
-  path: string,
-  responseSchema: Schema.Schema<A, I, R>,
-): Effect.Effect<A, NotionApiError, NotionConfig | HttpClient.HttpClient | R> =>
-  executeRequest({ method: 'GET', path, responseSchema })
+/** Options for GET request */
+export interface GetRequestOptions<A, I, R> {
+  readonly path: string
+  readonly responseSchema: Schema.Schema<A, I, R>
+}
+
+/** GET request helper. */
+export const get = <A, I, R>({
+  path,
+  responseSchema,
+}: GetRequestOptions<A, I, R>): Effect.Effect<
+  A,
+  NotionApiError,
+  NotionConfig | HttpClient.HttpClient | R
+> => executeRequest({ method: 'GET', path, responseSchema })
 
 /**
  * POST request helper.
@@ -324,11 +331,18 @@ export const patch = <A, I, R>({
   NotionConfig | HttpClient.HttpClient | R
 > => executeRequest({ method: 'PATCH', path, responseSchema, body })
 
-/**
- * DELETE request helper.
- */
-export const del = <A, I, R>(
-  path: string,
-  responseSchema: Schema.Schema<A, I, R>,
-): Effect.Effect<A, NotionApiError, NotionConfig | HttpClient.HttpClient | R> =>
-  executeRequest({ method: 'DELETE', path, responseSchema })
+/** Options for DELETE request */
+export interface DeleteRequestOptions<A, I, R> {
+  readonly path: string
+  readonly responseSchema: Schema.Schema<A, I, R>
+}
+
+/** DELETE request helper. */
+export const del = <A, I, R>({
+  path,
+  responseSchema,
+}: DeleteRequestOptions<A, I, R>): Effect.Effect<
+  A,
+  NotionApiError,
+  NotionConfig | HttpClient.HttpClient | R
+> => executeRequest({ method: 'DELETE', path, responseSchema })

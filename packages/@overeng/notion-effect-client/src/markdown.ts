@@ -247,297 +247,174 @@ export const getEquationExpression = (block: BlockWithData): string => {
 /** Convert rich text to markdown */
 const richTextToMd = (richText: RichTextArray): string => RichTextUtils.toMarkdown(richText)
 
-/** Default transformer for paragraph blocks */
-const paragraphTransformer: BlockTransformer = (block, children) => {
-  const text = richTextToMd(getBlockRichText(block))
-  return children ? `${text}\n\n${children}` : text
-}
+/** Indent each line of text */
+// oxlint-disable-next-line overeng/named-args -- internal helper with optional default
+const indentLines = (text: string, indent = '  '): string =>
+  text
+    .split('\n')
+    .map((line) => `${indent}${line}`)
+    .join('\n')
 
-/** Default transformer for heading 1 blocks */
-const heading1Transformer: BlockTransformer = (block) => {
-  const text = richTextToMd(getBlockRichText(block))
-  return `# ${text}`
-}
-
-/** Default transformer for heading 2 blocks */
-const heading2Transformer: BlockTransformer = (block) => {
-  const text = richTextToMd(getBlockRichText(block))
-  return `## ${text}`
-}
-
-/** Default transformer for heading 3 blocks */
-const heading3Transformer: BlockTransformer = (block) => {
-  const text = richTextToMd(getBlockRichText(block))
-  return `### ${text}`
-}
-
-/** Default transformer for bulleted list item blocks */
-const bulletedListItemTransformer: BlockTransformer = (block, children) => {
-  const text = richTextToMd(getBlockRichText(block))
-  if (children) {
-    const indentedChildren = children
-      .split('\n')
-      .map((line) => `  ${line}`)
-      .join('\n')
-    return `- ${text}\n${indentedChildren}`
-  }
-  return `- ${text}`
-}
-
-/** Default transformer for numbered list item blocks */
-const numberedListItemTransformer: BlockTransformer = (block, children) => {
-  const text = richTextToMd(getBlockRichText(block))
-  if (children) {
-    const indentedChildren = children
-      .split('\n')
-      .map((line) => `  ${line}`)
-      .join('\n')
-    return `1. ${text}\n${indentedChildren}`
-  }
-  return `1. ${text}`
-}
-
-/** Default transformer for to-do blocks */
-const todoTransformer: BlockTransformer = (block, children) => {
-  const text = richTextToMd(getBlockRichText(block))
-  const checkbox = isTodoChecked(block) ? '[x]' : '[ ]'
-  if (children) {
-    const indentedChildren = children
-      .split('\n')
-      .map((line) => `  ${line}`)
-      .join('\n')
-    return `- ${checkbox} ${text}\n${indentedChildren}`
-  }
-  return `- ${checkbox} ${text}`
-}
-
-/** Default transformer for toggle blocks */
-const toggleTransformer: BlockTransformer = (block, children) => {
-  const text = richTextToMd(getBlockRichText(block))
-  // Use HTML details/summary for toggles
-  if (children) {
-    return `<details>\n<summary>${text}</summary>\n\n${children}\n</details>`
-  }
-  return `<details>\n<summary>${text}</summary>\n</details>`
-}
-
-/** Default transformer for quote blocks */
-const quoteTransformer: BlockTransformer = (block, children) => {
-  const text = richTextToMd(getBlockRichText(block))
-  const quotedText = text
+/** Quote each line of text */
+const quoteLines = (text: string): string =>
+  text
     .split('\n')
     .map((line) => `> ${line}`)
     .join('\n')
-  if (children) {
-    const quotedChildren = children
-      .split('\n')
-      .map((line) => `> ${line}`)
-      .join('\n')
-    return `${quotedText}\n${quotedChildren}`
-  }
-  return quotedText
-}
-
-/** Default transformer for callout blocks */
-const calloutTransformer: BlockTransformer = (block, children) => {
-  const text = richTextToMd(getBlockRichText(block))
-  const icon = getCalloutIcon(block)
-  const prefix = icon ? `${icon} ` : ''
-  // Use blockquote with icon for callouts
-  const quotedText = `> ${prefix}${text}`
-  if (children) {
-    const quotedChildren = children
-      .split('\n')
-      .map((line) => `> ${line}`)
-      .join('\n')
-    return `${quotedText}\n${quotedChildren}`
-  }
-  return quotedText
-}
-
-/** Default transformer for code blocks */
-const codeTransformer: BlockTransformer = (block) => {
-  const text = richTextToMd(getBlockRichText(block))
-  const language = getCodeLanguage(block)
-  return `\`\`\`${language}\n${text}\n\`\`\``
-}
-
-/** Default transformer for divider blocks */
-const dividerTransformer: BlockTransformer = () => '---'
-
-/** Default transformer for image blocks */
-const imageTransformer: BlockTransformer = (block) => {
-  const url = getBlockUrl(block)
-  const caption = richTextToMd(getBlockCaption(block))
-  if (!url) return ''
-  return `![${caption}](${url})`
-}
-
-/** Default transformer for video blocks */
-const videoTransformer: BlockTransformer = (block) => {
-  const url = getBlockUrl(block)
-  const caption = richTextToMd(getBlockCaption(block))
-  if (!url) return ''
-  return caption ? `[${caption}](${url})` : `[Video](${url})`
-}
-
-/** Default transformer for audio blocks */
-const audioTransformer: BlockTransformer = (block) => {
-  const url = getBlockUrl(block)
-  const caption = richTextToMd(getBlockCaption(block))
-  if (!url) return ''
-  return caption ? `[${caption}](${url})` : `[Audio](${url})`
-}
-
-/** Default transformer for file blocks */
-const fileTransformer: BlockTransformer = (block) => {
-  const url = getBlockUrl(block)
-  const caption = richTextToMd(getBlockCaption(block))
-  if (!url) return ''
-  return caption ? `[${caption}](${url})` : `[File](${url})`
-}
-
-/** Default transformer for PDF blocks */
-const pdfTransformer: BlockTransformer = (block) => {
-  const url = getBlockUrl(block)
-  const caption = richTextToMd(getBlockCaption(block))
-  if (!url) return ''
-  return caption ? `[${caption}](${url})` : `[PDF](${url})`
-}
-
-/** Default transformer for bookmark blocks */
-const bookmarkTransformer: BlockTransformer = (block) => {
-  const url = getBlockUrl(block)
-  const caption = richTextToMd(getBlockCaption(block))
-  if (!url) return ''
-  return caption ? `[${caption}](${url})` : `[${url}](${url})`
-}
-
-/** Default transformer for embed blocks */
-const embedTransformer: BlockTransformer = (block) => {
-  const url = getBlockUrl(block)
-  const caption = richTextToMd(getBlockCaption(block))
-  if (!url) return ''
-  return caption ? `[${caption}](${url})` : `[Embed](${url})`
-}
-
-/** Default transformer for link preview blocks */
-const linkPreviewTransformer: BlockTransformer = (block) => {
-  const url = getBlockUrl(block)
-  if (!url) return ''
-  return `[${url}](${url})`
-}
-
-/** Default transformer for equation blocks */
-const equationTransformer: BlockTransformer = (block) => {
-  const expression = getEquationExpression(block)
-  return `$$\n${expression}\n$$`
-}
-
-/** Default transformer for table of contents blocks */
-const tableOfContentsTransformer: BlockTransformer = () => '[TOC]'
-
-/** Default transformer for breadcrumb blocks */
-const breadcrumbTransformer: BlockTransformer = () => ''
-
-/** Default transformer for column list blocks */
-const columnListTransformer: BlockTransformer = (_, children) => children
-
-/** Default transformer for column blocks */
-const columnTransformer: BlockTransformer = (_, children) => children
-
-/** Default transformer for synced block blocks */
-const syncedBlockTransformer: BlockTransformer = (_, children) => children
-
-/** Default transformer for child page blocks */
-const childPageTransformer: BlockTransformer = (block) => {
-  const title = getChildPageTitle(block)
-  return `[${title}]()`
-}
-
-/** Default transformer for child database blocks */
-const childDatabaseTransformer: BlockTransformer = (block) => {
-  const title = getChildDatabaseTitle(block)
-  return `[${title}]()`
-}
-
-/** Default transformer for table blocks (basic) */
-const tableTransformer: BlockTransformer = (_, children) => {
-  // Tables need special handling - children are table rows
-  return children
-}
-
-/** Default transformer for table row blocks (basic) */
-const tableRowTransformer: BlockTransformer = (block) => {
-  const cells = getTableRowCells(block)
-  const cellTexts = cells.map((cell) => richTextToMd(cell))
-  return `| ${cellTexts.join(' | ')} |`
-}
-
-/** Default transformer for template blocks */
-const templateTransformer: BlockTransformer = (block, children) => {
-  const text = richTextToMd(getBlockRichText(block))
-  return children ? `${text}\n\n${children}` : text
-}
-
-/** Default transformer for link to page blocks */
-const linkToPageTransformer: BlockTransformer = (block) => {
-  const typeData = block[block.type] as { page_id?: string; database_id?: string } | undefined
-  const pageId = typeData?.page_id ?? typeData?.database_id ?? ''
-  return `[Link to page](https://notion.so/${pageId.replace(/-/g, '')})`
-}
-
-/** Default transformer for unsupported blocks */
-const unsupportedTransformer: BlockTransformer = () => ''
 
 /** Default transformers for all block types */
+// oxlint-disable overeng/named-args -- callback implementations for BlockTransformer interface
 const DEFAULT_TRANSFORMERS: Record<string, BlockTransformer> = {
-  paragraph: paragraphTransformer,
-  heading_1: heading1Transformer,
-  heading_2: heading2Transformer,
-  heading_3: heading3Transformer,
-  bulleted_list_item: bulletedListItemTransformer,
-  numbered_list_item: numberedListItemTransformer,
-  to_do: todoTransformer,
-  toggle: toggleTransformer,
-  quote: quoteTransformer,
-  callout: calloutTransformer,
-  code: codeTransformer,
-  divider: dividerTransformer,
-  image: imageTransformer,
-  video: videoTransformer,
-  audio: audioTransformer,
-  file: fileTransformer,
-  pdf: pdfTransformer,
-  bookmark: bookmarkTransformer,
-  embed: embedTransformer,
-  link_preview: linkPreviewTransformer,
-  equation: equationTransformer,
-  table_of_contents: tableOfContentsTransformer,
-  breadcrumb: breadcrumbTransformer,
-  column_list: columnListTransformer,
-  column: columnTransformer,
-  synced_block: syncedBlockTransformer,
-  child_page: childPageTransformer,
-  child_database: childDatabaseTransformer,
-  table: tableTransformer,
-  table_row: tableRowTransformer,
-  template: templateTransformer,
-  link_to_page: linkToPageTransformer,
-  unsupported: unsupportedTransformer,
+  paragraph: (block, children) => {
+    const text = richTextToMd(getBlockRichText(block))
+    return children ? `${text}\n\n${children}` : text
+  },
+
+  heading_1: (block) => `# ${richTextToMd(getBlockRichText(block))}`,
+  heading_2: (block) => `## ${richTextToMd(getBlockRichText(block))}`,
+  heading_3: (block) => `### ${richTextToMd(getBlockRichText(block))}`,
+
+  bulleted_list_item: (block, children) => {
+    const text = richTextToMd(getBlockRichText(block))
+    return children ? `- ${text}\n${indentLines(children)}` : `- ${text}`
+  },
+
+  numbered_list_item: (block, children) => {
+    const text = richTextToMd(getBlockRichText(block))
+    return children ? `1. ${text}\n${indentLines(children)}` : `1. ${text}`
+  },
+
+  to_do: (block, children) => {
+    const text = richTextToMd(getBlockRichText(block))
+    const checkbox = isTodoChecked(block) ? '[x]' : '[ ]'
+    return children ? `- ${checkbox} ${text}\n${indentLines(children)}` : `- ${checkbox} ${text}`
+  },
+
+  toggle: (block, children) => {
+    const text = richTextToMd(getBlockRichText(block))
+    return children
+      ? `<details>\n<summary>${text}</summary>\n\n${children}\n</details>`
+      : `<details>\n<summary>${text}</summary>\n</details>`
+  },
+
+  quote: (block, children) => {
+    const quotedText = quoteLines(richTextToMd(getBlockRichText(block)))
+    return children ? `${quotedText}\n${quoteLines(children)}` : quotedText
+  },
+
+  callout: (block, children) => {
+    const text = richTextToMd(getBlockRichText(block))
+    const icon = getCalloutIcon(block)
+    const prefix = icon ? `${icon} ` : ''
+    const quotedText = `> ${prefix}${text}`
+    return children ? `${quotedText}\n${quoteLines(children)}` : quotedText
+  },
+
+  code: (block) => {
+    const text = richTextToMd(getBlockRichText(block))
+    const language = getCodeLanguage(block)
+    return `\`\`\`${language}\n${text}\n\`\`\``
+  },
+
+  divider: () => '---',
+
+  image: (block) => {
+    const url = getBlockUrl(block)
+    if (!url) return ''
+    return `![${richTextToMd(getBlockCaption(block))}](${url})`
+  },
+
+  video: (block) => {
+    const url = getBlockUrl(block)
+    if (!url) return ''
+    const caption = richTextToMd(getBlockCaption(block))
+    return caption ? `[${caption}](${url})` : `[Video](${url})`
+  },
+
+  audio: (block) => {
+    const url = getBlockUrl(block)
+    if (!url) return ''
+    const caption = richTextToMd(getBlockCaption(block))
+    return caption ? `[${caption}](${url})` : `[Audio](${url})`
+  },
+
+  file: (block) => {
+    const url = getBlockUrl(block)
+    if (!url) return ''
+    const caption = richTextToMd(getBlockCaption(block))
+    return caption ? `[${caption}](${url})` : `[File](${url})`
+  },
+
+  pdf: (block) => {
+    const url = getBlockUrl(block)
+    if (!url) return ''
+    const caption = richTextToMd(getBlockCaption(block))
+    return caption ? `[${caption}](${url})` : `[PDF](${url})`
+  },
+
+  bookmark: (block) => {
+    const url = getBlockUrl(block)
+    if (!url) return ''
+    const caption = richTextToMd(getBlockCaption(block))
+    return caption ? `[${caption}](${url})` : `[${url}](${url})`
+  },
+
+  embed: (block) => {
+    const url = getBlockUrl(block)
+    if (!url) return ''
+    const caption = richTextToMd(getBlockCaption(block))
+    return caption ? `[${caption}](${url})` : `[Embed](${url})`
+  },
+
+  link_preview: (block) => {
+    const url = getBlockUrl(block)
+    return url ? `[${url}](${url})` : ''
+  },
+
+  equation: (block) => `$$\n${getEquationExpression(block)}\n$$`,
+
+  table_of_contents: () => '[TOC]',
+  breadcrumb: () => '',
+
+  column_list: (_, children) => children,
+  column: (_, children) => children,
+  synced_block: (_, children) => children,
+  table: (_, children) => children,
+
+  child_page: (block) => `[${getChildPageTitle(block)}]()`,
+  child_database: (block) => `[${getChildDatabaseTitle(block)}]()`,
+
+  table_row: (block) => {
+    const cells = getTableRowCells(block)
+    return `| ${cells.map((cell) => richTextToMd(cell)).join(' | ')} |`
+  },
+
+  template: (block, children) => {
+    const text = richTextToMd(getBlockRichText(block))
+    return children ? `${text}\n\n${children}` : text
+  },
+
+  link_to_page: (block) => {
+    const typeData = block[block.type] as { page_id?: string; database_id?: string } | undefined
+    const pageId = typeData?.page_id ?? typeData?.database_id ?? ''
+    return `[Link to page](https://notion.so/${pageId.replace(/-/g, '')})`
+  },
+
+  unsupported: () => '',
 }
+// oxlint-enable overeng/named-args
 
 // -----------------------------------------------------------------------------
 // Markdown Conversion Implementation
 // -----------------------------------------------------------------------------
 
 /** Apply a transformer (sync or async) */
-// oxlint-disable-next-line eslint(max-params) -- internal helper with transformer context
-const applyTransformer = (
-  transformer: AnyBlockTransformer,
-  block: Block & { [key: string]: unknown },
-  children: string,
-): Effect.Effect<string, never, never> => {
+const applyTransformer = (opts: {
+  transformer: AnyBlockTransformer
+  block: Block & { [key: string]: unknown }
+  children: string
+}): Effect.Effect<string, never, never> => {
+  const { transformer, block, children } = opts
   const result = transformer(block, children)
   if (Effect.isEffect(result)) {
     return result
@@ -546,14 +423,15 @@ const applyTransformer = (
 }
 
 /** Convert a single block tree node to Markdown */
-const nodeToMarkdown = (
-  node: BlockTreeNode,
-  transformers: BlockTransformers,
-): Effect.Effect<string, never, never> =>
+const nodeToMarkdown = (opts: {
+  node: BlockTreeNode
+  transformers: BlockTransformers
+}): Effect.Effect<string, never, never> =>
   Effect.gen(function* () {
+    const { node, transformers } = opts
     // First, recursively convert all children
     const childMarkdowns = yield* Effect.forEach(node.children, (child) =>
-      nodeToMarkdown(child, transformers),
+      nodeToMarkdown({ node: child, transformers }),
     )
     const childrenMd = childMarkdowns.filter((s) => s.length > 0).join('\n\n')
 
@@ -565,7 +443,7 @@ const nodeToMarkdown = (
 
     // Apply the transformer
     const blockWithData = node.block as Block & { [key: string]: unknown }
-    return yield* applyTransformer(transformer, blockWithData, childrenMd)
+    return yield* applyTransformer({ transformer, block: blockWithData, children: childrenMd })
   })
 
 /**
@@ -585,7 +463,7 @@ export const treeToMarkdown = (opts: {
 
   return Effect.gen(function* () {
     const nodeMarkdowns = yield* Effect.forEach(opts.tree, (node) =>
-      nodeToMarkdown(node, transformers),
+      nodeToMarkdown({ node, transformers }),
     )
 
     return nodeMarkdowns.filter((s) => s.length > 0).join('\n\n')

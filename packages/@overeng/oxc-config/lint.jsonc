@@ -6,7 +6,7 @@
 
   // Custom JS plugins (experimental)
   // See: https://oxc.rs/blog/2025-10-09-oxlint-js-plugins.html
-  "jsPlugins": ["./exports-first-plugin.js"],
+  "jsPlugins": ["./src/mod.ts"],
 
   // Rule categories - see https://oxc.rs/docs/guide/usage/linter/rules
   "categories": {
@@ -28,9 +28,9 @@
     // https://oxc.rs/docs/guide/usage/linter/rules/oxc/no-barrel-file
     "oxc/no-barrel-file": ["warn", { "threshold": 0 }],
 
-    // Encourage named arguments pattern via options objects
-    // Functions with >2 params should use { options } pattern instead
-    "max-params": ["warn", { "max": 2 }],
+    // Enforce named arguments (options objects) instead of positional parameters
+    // Callbacks are automatically exempt; use disable comment for interface implementations
+    "overeng/named-args": "warn",
 
     // Disallow CommonJS (require/module.exports) - enforce ESM
     "import/no-commonjs": "error",
@@ -61,7 +61,7 @@
       "files": ["**/react-inspector/**"],
       "rules": {
         "func-style": "off",
-        "max-params": "off",
+        "overeng/named-args": "off",
         "unicorn/no-new-array": "off",
         "unicorn/no-array-sort": "off",
         "unicorn/consistent-function-scoping": "off",
@@ -94,7 +94,7 @@
         "**/test/**",
       ],
       "rules": {
-        "max-params": "off",
+        "overeng/named-args": "off",
         "unicorn/no-array-sort": "off",
         "unicorn/consistent-function-scoping": "off",
       },
