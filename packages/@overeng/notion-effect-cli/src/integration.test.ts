@@ -21,7 +21,7 @@ describe('integration', () => {
       ],
     }
 
-    const code = generateSchemaCode(dbInfo, 'TestDatabase')
+    const code = generateSchemaCode({ dbInfo, schemaName: 'TestDatabase' })
 
     // Verify it's valid TypeScript (basic smoke test)
     expect(code).toContain("import { Schema } from 'effect'")
@@ -139,7 +139,7 @@ describe('integration', () => {
       ],
     }
 
-    const code = generateSchemaCode(dbInfo, 'Test', { includeWrite: true })
+    const code = generateSchemaCode({ dbInfo, schemaName: 'Test', options: { includeWrite: true } })
 
     // Verify write schema uses nested Write API
     expect(code).toContain('Name: Title.Write.fromString')
@@ -207,7 +207,7 @@ describe('integration', () => {
     }
 
     // Should not throw
-    const code = generateSchemaCode(dbInfo, 'AllTypes')
+    const code = generateSchemaCode({ dbInfo, schemaName: 'AllTypes' })
     expect(code).toBeTruthy()
     expect(code.length).toBeGreaterThan(0)
 

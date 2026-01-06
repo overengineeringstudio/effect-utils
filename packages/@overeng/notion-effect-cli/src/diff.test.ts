@@ -115,7 +115,7 @@ const foo = 'bar'
         properties: [{ name: 'Name', namespace: 'Title', transform: 'asString' }],
       }
 
-      const result = computeDiff(live, generated)
+      const result = computeDiff({ live, generated })
 
       expect(result.databaseIdMatch).toBe(true)
       expect(result.properties).toHaveLength(1)
@@ -144,7 +144,7 @@ const foo = 'bar'
         ],
       }
 
-      const result = computeDiff(live, generated)
+      const result = computeDiff({ live, generated })
 
       expect(result.properties).toHaveLength(1)
       expect(result.properties[0]).toEqual({
@@ -169,7 +169,7 @@ const foo = 'bar'
         properties: [{ name: 'Status', namespace: 'Select', transform: 'asOption' }],
       }
 
-      const result = computeDiff(live, generated)
+      const result = computeDiff({ live, generated })
 
       expect(result.properties).toHaveLength(1)
       expect(result.properties[0]).toEqual({
@@ -195,7 +195,7 @@ const foo = 'bar'
         properties: [],
       }
 
-      const result = computeDiff(live, generated)
+      const result = computeDiff({ live, generated })
 
       expect(result.databaseIdMatch).toBe(false)
     })
@@ -221,7 +221,7 @@ const foo = 'bar'
         ],
       }
 
-      const result = computeDiff(live, generated)
+      const result = computeDiff({ live, generated })
 
       expect(result.databaseIdMatch).toBe(true)
       expect(result.properties).toHaveLength(0)
@@ -237,7 +237,7 @@ const foo = 'bar'
         options: [],
       }
 
-      const lines = formatDiff(diff, 'abc123', './schema.ts')
+      const lines = formatDiff({ diff, databaseId: 'abc123', filePath: './schema.ts' })
 
       expect(lines).toContain('No differences found')
     })
@@ -255,7 +255,7 @@ const foo = 'bar'
         options: [],
       }
 
-      const lines = formatDiff(diff, 'abc123', './schema.ts')
+      const lines = formatDiff({ diff, databaseId: 'abc123', filePath: './schema.ts' })
 
       expect(lines.some((l) => l.includes('+ NewField'))).toBe(true)
       expect(lines.some((l) => l.includes('new property in Notion'))).toBe(true)
@@ -274,7 +274,7 @@ const foo = 'bar'
         options: [],
       }
 
-      const lines = formatDiff(diff, 'abc123', './schema.ts')
+      const lines = formatDiff({ diff, databaseId: 'abc123', filePath: './schema.ts' })
 
       expect(lines.some((l) => l.includes('- OldField'))).toBe(true)
       expect(lines.some((l) => l.includes('removed from Notion'))).toBe(true)
@@ -294,7 +294,7 @@ const foo = 'bar'
         options: [],
       }
 
-      const lines = formatDiff(diff, 'abc123', './schema.ts')
+      const lines = formatDiff({ diff, databaseId: 'abc123', filePath: './schema.ts' })
 
       expect(lines.some((l) => l.includes('~ Status'))).toBe(true)
       expect(lines.some((l) => l.includes('type changed'))).toBe(true)
@@ -318,7 +318,7 @@ const foo = 'bar'
         options: [],
       }
 
-      const lines = formatDiff(diff, 'abc123', './schema.ts')
+      const lines = formatDiff({ diff, databaseId: 'abc123', filePath: './schema.ts' })
 
       expect(lines.some((l) => l.includes('Summary:'))).toBe(true)
       expect(lines.some((l) => l.includes('1 added'))).toBe(true)
@@ -332,7 +332,7 @@ const foo = 'bar'
         options: [],
       }
 
-      const lines = formatDiff(diff, 'abc123', './schema.ts')
+      const lines = formatDiff({ diff, databaseId: 'abc123', filePath: './schema.ts' })
 
       expect(lines.some((l) => l.includes('WARNING'))).toBe(true)
       expect(lines.some((l) => l.includes('does not match'))).toBe(true)

@@ -24,7 +24,7 @@ describe('codegen', () => {
         ],
       }
 
-      const code = generateSchemaCode(dbInfo, 'TestDatabase')
+      const code = generateSchemaCode({ dbInfo, schemaName: 'TestDatabase' })
 
       expect(code).toMatchInlineSnapshot(`
         "// AUTO-GENERATED FILE - DO NOT EDIT MANUALLY
@@ -81,8 +81,10 @@ describe('codegen', () => {
         properties: [{ id: 'title-prop', name: 'Name', type: 'title' }],
       }
 
-      const code = generateSchemaCode(dbInfo, 'TestDatabase', {
-        generatorVersion: '0.1.0',
+      const code = generateSchemaCode({
+        dbInfo,
+        schemaName: 'TestDatabase',
+        options: { generatorVersion: '0.1.0' },
       })
 
       expect(code).toMatchInlineSnapshot(`
@@ -138,7 +140,7 @@ describe('codegen', () => {
         ],
       }
 
-      const code = generateSchemaCode(dbInfo, 'Test')
+      const code = generateSchemaCode({ dbInfo, schemaName: 'Test' })
 
       expect(code).toMatchInlineSnapshot(`
         "// AUTO-GENERATED FILE - DO NOT EDIT MANUALLY
@@ -197,8 +199,12 @@ describe('codegen', () => {
         ],
       }
 
-      const code = generateSchemaCode(dbInfo, 'Test', {
-        transforms: { Status: 'raw', Tags: 'raw', Website: 'asString' },
+      const code = generateSchemaCode({
+        dbInfo,
+        schemaName: 'Test',
+        options: {
+          transforms: { Status: 'raw', Tags: 'raw', Website: 'asString' },
+        },
       })
 
       expect(code).toMatchInlineSnapshot(`
@@ -255,8 +261,12 @@ describe('codegen', () => {
         properties: [{ id: 'prop1', name: 'Status', type: 'select' }],
       }
 
-      const code = generateSchemaCode(dbInfo, 'Test', {
-        transforms: { Status: 'invalidTransform' },
+      const code = generateSchemaCode({
+        dbInfo,
+        schemaName: 'Test',
+        options: {
+          transforms: { Status: 'invalidTransform' },
+        },
       })
 
       expect(code).toContain('Status: Select.asOption')
@@ -270,7 +280,7 @@ describe('codegen', () => {
         properties: [{ id: 'prop1', name: 'Title', type: 'title' }],
       }
 
-      const code = generateSchemaCode(dbInfo, 'my-test-database')
+      const code = generateSchemaCode({ dbInfo, schemaName: 'my-test-database' })
 
       expect(code).toContain('export const MyTestDatabasePageProperties')
       expect(code).toContain('export type MyTestDatabasePageProperties')
@@ -291,7 +301,7 @@ describe('codegen', () => {
         ],
       }
 
-      const code = generateSchemaCode(dbInfo, 'Test')
+      const code = generateSchemaCode({ dbInfo, schemaName: 'Test' })
 
       expect(code).toMatchInlineSnapshot(`
         "// AUTO-GENERATED FILE - DO NOT EDIT MANUALLY
@@ -367,7 +377,7 @@ describe('codegen', () => {
           properties: [{ id: 'prop', name: 'Prop', type }],
         }
 
-        const code = generateSchemaCode(dbInfo, 'Test')
+        const code = generateSchemaCode({ dbInfo, schemaName: 'Test' })
         expect(code).toContain(`Prop: ${expected}`)
       }
     })
@@ -380,7 +390,7 @@ describe('codegen', () => {
         properties: [{ id: 'prop1', name: 'Unknown', type: 'button' as PropertyInfo['type'] }],
       }
 
-      const code = generateSchemaCode(dbInfo, 'Test')
+      const code = generateSchemaCode({ dbInfo, schemaName: 'Test' })
 
       expect(code).toContain('Unknown: Schema.Unknown')
     })
@@ -486,7 +496,11 @@ describe('codegen', () => {
         ],
       }
 
-      const code = generateSchemaCode(dbInfo, 'Test', { includeWrite: true })
+      const code = generateSchemaCode({
+        dbInfo,
+        schemaName: 'Test',
+        options: { includeWrite: true },
+      })
 
       expect(code).toMatchInlineSnapshot(`
         "// AUTO-GENERATED FILE - DO NOT EDIT MANUALLY
@@ -604,7 +618,11 @@ describe('codegen', () => {
         ],
       }
 
-      const code = generateSchemaCode(dbInfo, 'Test', { typedOptions: true })
+      const code = generateSchemaCode({
+        dbInfo,
+        schemaName: 'Test',
+        options: { typedOptions: true },
+      })
 
       expect(code).toMatchInlineSnapshot(`
         "// AUTO-GENERATED FILE - DO NOT EDIT MANUALLY
@@ -675,9 +693,13 @@ describe('codegen', () => {
         properties: [{ id: 'prop', name: 'Title', type: 'title' }],
       }
 
-      expect(generateSchemaCode(dbInfo, 'MyDatabase')).toContain('MyDatabasePageProperties')
-      expect(generateSchemaCode(dbInfo, 'TestDB')).toContain('TestDBPageProperties')
-      expect(generateSchemaCode(dbInfo, 'my-test-db')).toContain('MyTestDbPageProperties')
+      expect(generateSchemaCode({ dbInfo, schemaName: 'MyDatabase' })).toContain(
+        'MyDatabasePageProperties',
+      )
+      expect(generateSchemaCode({ dbInfo, schemaName: 'TestDB' })).toContain('TestDBPageProperties')
+      expect(generateSchemaCode({ dbInfo, schemaName: 'my-test-db' })).toContain(
+        'MyTestDbPageProperties',
+      )
     })
 
     it('should not include @config comment when no options are set', () => {
@@ -688,7 +710,7 @@ describe('codegen', () => {
         properties: [{ id: 'prop1', name: 'Name', type: 'title' }],
       }
 
-      const code = generateSchemaCode(dbInfo, 'Test')
+      const code = generateSchemaCode({ dbInfo, schemaName: 'Test' })
 
       expect(code).not.toContain('@config')
     })
@@ -701,12 +723,16 @@ describe('codegen', () => {
         properties: [{ id: 'prop1', name: 'Name', type: 'title' }],
       }
 
-      const code = generateSchemaCode(dbInfo, 'Test', {
-        includeWrite: true,
-        typedOptions: true,
-        includeApi: true,
-        transforms: { Status: 'asOption', Priority: 'asString' },
-        schemaNameOverride: 'MyCustomName',
+      const code = generateSchemaCode({
+        dbInfo,
+        schemaName: 'Test',
+        options: {
+          includeWrite: true,
+          typedOptions: true,
+          includeApi: true,
+          transforms: { Status: 'asOption', Priority: 'asString' },
+          schemaNameOverride: 'MyCustomName',
+        },
       })
 
       expect(code).toMatchInlineSnapshot(`
@@ -796,8 +822,12 @@ describe('codegen', () => {
         properties: [{ id: 'prop1', name: 'Name', type: 'title' }],
       }
 
-      const code = generateSchemaCode(dbInfo, 'Test', {
-        transforms: { 'Due Date': 'asOption', 'My Status': 'raw' },
+      const code = generateSchemaCode({
+        dbInfo,
+        schemaName: 'Test',
+        options: {
+          transforms: { 'Due Date': 'asOption', 'My Status': 'raw' },
+        },
       })
 
       expect(code).toContain(

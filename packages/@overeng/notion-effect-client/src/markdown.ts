@@ -248,6 +248,7 @@ export const getEquationExpression = (block: BlockWithData): string => {
 const richTextToMd = (richText: RichTextArray): string => RichTextUtils.toMarkdown(richText)
 
 /** Default transformer for paragraph blocks */
+// oxlint-disable-next-line overeng/named-args -- BlockTransformer interface signature
 const paragraphTransformer: BlockTransformer = (block, children) => {
   const text = richTextToMd(getBlockRichText(block))
   return children ? `${text}\n\n${children}` : text
@@ -272,6 +273,7 @@ const heading3Transformer: BlockTransformer = (block) => {
 }
 
 /** Default transformer for bulleted list item blocks */
+// oxlint-disable-next-line overeng/named-args -- BlockTransformer interface signature
 const bulletedListItemTransformer: BlockTransformer = (block, children) => {
   const text = richTextToMd(getBlockRichText(block))
   if (children) {
@@ -285,6 +287,7 @@ const bulletedListItemTransformer: BlockTransformer = (block, children) => {
 }
 
 /** Default transformer for numbered list item blocks */
+// oxlint-disable-next-line overeng/named-args -- BlockTransformer interface signature
 const numberedListItemTransformer: BlockTransformer = (block, children) => {
   const text = richTextToMd(getBlockRichText(block))
   if (children) {
@@ -298,6 +301,7 @@ const numberedListItemTransformer: BlockTransformer = (block, children) => {
 }
 
 /** Default transformer for to-do blocks */
+// oxlint-disable-next-line overeng/named-args -- BlockTransformer interface signature
 const todoTransformer: BlockTransformer = (block, children) => {
   const text = richTextToMd(getBlockRichText(block))
   const checkbox = isTodoChecked(block) ? '[x]' : '[ ]'
@@ -312,6 +316,7 @@ const todoTransformer: BlockTransformer = (block, children) => {
 }
 
 /** Default transformer for toggle blocks */
+// oxlint-disable-next-line overeng/named-args -- BlockTransformer interface signature
 const toggleTransformer: BlockTransformer = (block, children) => {
   const text = richTextToMd(getBlockRichText(block))
   // Use HTML details/summary for toggles
@@ -322,6 +327,7 @@ const toggleTransformer: BlockTransformer = (block, children) => {
 }
 
 /** Default transformer for quote blocks */
+// oxlint-disable-next-line overeng/named-args -- BlockTransformer interface signature
 const quoteTransformer: BlockTransformer = (block, children) => {
   const text = richTextToMd(getBlockRichText(block))
   const quotedText = text
@@ -339,6 +345,7 @@ const quoteTransformer: BlockTransformer = (block, children) => {
 }
 
 /** Default transformer for callout blocks */
+// oxlint-disable-next-line overeng/named-args -- BlockTransformer interface signature
 const calloutTransformer: BlockTransformer = (block, children) => {
   const text = richTextToMd(getBlockRichText(block))
   const icon = getCalloutIcon(block)
@@ -441,12 +448,15 @@ const tableOfContentsTransformer: BlockTransformer = () => '[TOC]'
 const breadcrumbTransformer: BlockTransformer = () => ''
 
 /** Default transformer for column list blocks */
+// oxlint-disable-next-line overeng/named-args -- BlockTransformer interface signature
 const columnListTransformer: BlockTransformer = (_, children) => children
 
 /** Default transformer for column blocks */
+// oxlint-disable-next-line overeng/named-args -- BlockTransformer interface signature
 const columnTransformer: BlockTransformer = (_, children) => children
 
 /** Default transformer for synced block blocks */
+// oxlint-disable-next-line overeng/named-args -- BlockTransformer interface signature
 const syncedBlockTransformer: BlockTransformer = (_, children) => children
 
 /** Default transformer for child page blocks */
@@ -462,6 +472,7 @@ const childDatabaseTransformer: BlockTransformer = (block) => {
 }
 
 /** Default transformer for table blocks (basic) */
+// oxlint-disable-next-line overeng/named-args -- BlockTransformer interface signature
 const tableTransformer: BlockTransformer = (_, children) => {
   // Tables need special handling - children are table rows
   return children
@@ -475,6 +486,7 @@ const tableRowTransformer: BlockTransformer = (block) => {
 }
 
 /** Default transformer for template blocks */
+// oxlint-disable-next-line overeng/named-args -- BlockTransformer interface signature
 const templateTransformer: BlockTransformer = (block, children) => {
   const text = richTextToMd(getBlockRichText(block))
   return children ? `${text}\n\n${children}` : text
@@ -532,12 +544,12 @@ const DEFAULT_TRANSFORMERS: Record<string, BlockTransformer> = {
 // -----------------------------------------------------------------------------
 
 /** Apply a transformer (sync or async) */
-// oxlint-disable-next-line eslint(max-params) -- internal helper with transformer context
-const applyTransformer = (
-  transformer: AnyBlockTransformer,
-  block: Block & { [key: string]: unknown },
-  children: string,
-): Effect.Effect<string, never, never> => {
+const applyTransformer = (opts: {
+  transformer: AnyBlockTransformer
+  block: Block & { [key: string]: unknown }
+  children: string
+}): Effect.Effect<string, never, never> => {
+  const { transformer, block, children } = opts
   const result = transformer(block, children)
   if (Effect.isEffect(result)) {
     return result
@@ -546,14 +558,15 @@ const applyTransformer = (
 }
 
 /** Convert a single block tree node to Markdown */
-const nodeToMarkdown = (
-  node: BlockTreeNode,
-  transformers: BlockTransformers,
-): Effect.Effect<string, never, never> =>
+const nodeToMarkdown = (opts: {
+  node: BlockTreeNode
+  transformers: BlockTransformers
+}): Effect.Effect<string, never, never> =>
   Effect.gen(function* () {
+    const { node, transformers } = opts
     // First, recursively convert all children
     const childMarkdowns = yield* Effect.forEach(node.children, (child) =>
-      nodeToMarkdown(child, transformers),
+      nodeToMarkdown({ node: child, transformers }),
     )
     const childrenMd = childMarkdowns.filter((s) => s.length > 0).join('\n\n')
 
@@ -565,7 +578,7 @@ const nodeToMarkdown = (
 
     // Apply the transformer
     const blockWithData = node.block as Block & { [key: string]: unknown }
-    return yield* applyTransformer(transformer, blockWithData, childrenMd)
+    return yield* applyTransformer({ transformer, block: blockWithData, children: childrenMd })
   })
 
 /**
@@ -585,7 +598,7 @@ export const treeToMarkdown = (opts: {
 
   return Effect.gen(function* () {
     const nodeMarkdowns = yield* Effect.forEach(opts.tree, (node) =>
-      nodeToMarkdown(node, transformers),
+      nodeToMarkdown({ node, transformers }),
     )
 
     return nodeMarkdowns.filter((s) => s.length > 0).join('\n\n')

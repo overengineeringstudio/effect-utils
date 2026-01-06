@@ -39,7 +39,8 @@ export const toPlainText = (richText: RichTextArray): string =>
 // -----------------------------------------------------------------------------
 
 /** Apply markdown formatting based on annotations */
-const applyMarkdownAnnotations = (text: string, annotations: TextAnnotations): string => {
+const applyMarkdownAnnotations = (opts: { text: string; annotations: TextAnnotations }): string => {
+  const { text, annotations } = opts
   if (text === '') return text
 
   let result = text
@@ -73,7 +74,7 @@ const applyMarkdownAnnotations = (text: string, annotations: TextAnnotations): s
 
 /** Convert a single text rich text element to markdown */
 const textRichTextToMarkdown = (rt: TextRichText): string => {
-  let text = applyMarkdownAnnotations(rt.plain_text, rt.annotations)
+  let text = applyMarkdownAnnotations({ text: rt.plain_text, annotations: rt.annotations })
 
   // Apply link if present
   if (rt.href !== null) {
@@ -179,7 +180,8 @@ const getColorStyle = (color: TextAnnotations['color']): string | undefined => {
 }
 
 /** Apply HTML formatting based on annotations */
-const applyHtmlAnnotations = (text: string, annotations: TextAnnotations): string => {
+const applyHtmlAnnotations = (opts: { text: string; annotations: TextAnnotations }): string => {
+  const { text, annotations } = opts
   if (text === '') return text
 
   let result = text
@@ -217,7 +219,7 @@ const applyHtmlAnnotations = (text: string, annotations: TextAnnotations): strin
 /** Convert a single text rich text element to HTML */
 const textRichTextToHtml = (rt: TextRichText): string => {
   const escapedText = escapeHtml(rt.plain_text)
-  let html = applyHtmlAnnotations(escapedText, rt.annotations)
+  let html = applyHtmlAnnotations({ text: escapedText, annotations: rt.annotations })
 
   // Apply link if present
   if (rt.href !== null) {

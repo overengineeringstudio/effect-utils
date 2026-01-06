@@ -131,9 +131,10 @@ export const makeWithTestCtx =
  * ```
  */
 export const withTestCtx =
+  // oxlint-disable-next-line overeng/named-args -- Effect dual function for currying
   (fixtures: PlaywrightFixtures, params: WithTestCtxParams<never, never> = {}) =>
-  <A, E, R>(self: Effect.Effect<A, E, R>): Promise<A> =>
-    runWithTestCtx({ fixtures, params, self })
+    <A, E, R>(self: Effect.Effect<A, E, R>): Promise<A> =>
+      runWithTestCtx({ fixtures, params, self })
 
 interface RunWithTestCtxArgs<ROut, E1, A, E, R> {
   fixtures: PlaywrightFixtures

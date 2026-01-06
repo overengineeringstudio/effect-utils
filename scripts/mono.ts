@@ -18,28 +18,29 @@ const IS_CI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true'
 const formatCommandErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
-// oxlint-disable-next-line eslint(max-params) -- internal CLI helper
-const runCommand = (
-  command: string,
-  args: string[],
-  options?: { cwd?: string; env?: Record<string, string | undefined>; shell?: boolean },
-): Effect.Effect<void, CommandError, CommandExecutor.CommandExecutor | CurrentWorkingDirectory> =>
+const runCommand = (options: {
+  command: string
+  args: string[]
+  cwd?: string
+  env?: Record<string, string | undefined>
+  shell?: boolean
+}): Effect.Effect<void, CommandError, CommandExecutor.CommandExecutor | CurrentWorkingDirectory> =>
   Effect.gen(function* () {
     const defaultCwd = process.env.WORKSPACE_ROOT ?? (yield* CurrentWorkingDirectory)
-    const cwd = options?.cwd ?? defaultCwd
-    const useShell = options?.shell ?? true
+    const cwd = options.cwd ?? defaultCwd
+    const useShell = options.shell ?? true
     const cmdOptions = {
       shell: useShell,
-      ...(options?.env ? { env: options.env } : {}),
+      ...(options.env ? { env: options.env } : {}),
     }
 
-    return yield* cmd([command, ...args], cmdOptions).pipe(
+    return yield* cmd([options.command, ...options.args], cmdOptions).pipe(
       Effect.provideService(CurrentWorkingDirectory, cwd),
       Effect.asVoid,
       Effect.catchAll((error) =>
         Effect.fail(
           new CommandError({
-            command: `${command} ${args.join(' ')}`,
+            command: `${options.command} ${options.args.join(' ')}`,
             message: formatCommandErrorMessage(error),
           }),
         ),
@@ -93,7 +94,7 @@ class CommandError extends Schema.TaggedError<CommandError>()('CommandError', {
 const buildCommand = Command.make('build', {}, () =>
   Effect.gen(function* () {
     yield* ciGroup('Building all packages')
-    yield* runCommand('tsc', ['--build', 'tsconfig.all.json'])
+    yield* runCommand({ command: 'tsc', args: ['--build', 'tsconfig.all.json'] })
     yield* ciGroupEnd
     yield* Console.log('✓ Build complete')
   }),
@@ -131,26 +132,31 @@ const testCommand = Command.make(
 
       if (unit) {
         yield* ciGroup('Running unit tests')
-        yield* runCommand('vitest', [...watchArg, "--exclude='**/integration/**'", ...reporterArgs])
+        yield* runCommand({
+          command: 'vitest',
+          args: [...watchArg, "--exclude='**/integration/**'", ...reporterArgs],
+        })
         yield* ciGroupEnd
       } else if (integration) {
         yield* ciGroup('Running integration tests')
         // Run notion-effect-client integration tests
-        yield* runCommand('vitest', [
-          ...watchArg,
-          'packages/@overeng/notion-effect-client/src/test/integration',
-          ...reporterArgs,
-        ])
+        yield* runCommand({
+          command: 'vitest',
+          args: [
+            ...watchArg,
+            'packages/@overeng/notion-effect-client/src/test/integration',
+            ...reporterArgs,
+          ],
+        })
         // Run utils integration tests (browser tests with Playwright)
-        yield* runCommand('playwright', [
-          'test',
-          '--config',
-          'packages/@overeng/utils/playwright.config.ts',
-        ])
+        yield* runCommand({
+          command: 'playwright',
+          args: ['test', '--config', 'packages/@overeng/utils/playwright.config.ts'],
+        })
         yield* ciGroupEnd
       } else {
         yield* ciGroup('Running all tests')
-        yield* runCommand('vitest', [...watchArg, ...reporterArgs])
+        yield* runCommand({ command: 'vitest', args: [...watchArg, ...reporterArgs] })
         yield* ciGroupEnd
       }
 
@@ -174,7 +180,7 @@ const lintCommand = Command.make('lint', { fix: lintFixOption }, ({ fix }) =>
   Effect.gen(function* () {
     yield* ciGroup(fix ? 'Formatting with oxfmt' : 'Formatting check with oxfmt')
     const oxfmtArgs = ['-c', `${OXC_CONFIG_PATH}/fmt.jsonc`, ...(fix ? ['.'] : ['--check', '.'])]
-    yield* runCommand('oxfmt', oxfmtArgs)
+    yield* runCommand({ command: 'oxfmt', args: oxfmtArgs })
     yield* ciGroupEnd
 
     yield* ciGroup('Linting with oxlint')
@@ -184,7 +190,7 @@ const lintCommand = Command.make('lint', { fix: lintFixOption }, ({ fix }) =>
       '--import-plugin',
       ...(fix ? ['--fix'] : []),
     ]
-    yield* runCommand('oxlint', oxlintArgs)
+    yield* runCommand({ command: 'oxlint', args: oxlintArgs })
     yield* ciGroupEnd
     yield* Console.log('✓ Lint complete')
   }),
@@ -213,34 +219,37 @@ const tsCommand = Command.make(
     Effect.gen(function* () {
       if (clean) {
         yield* Console.log('Cleaning build artifacts...')
-        yield* runCommand('find', [
-          'packages',
-          '-path',
-          '*node_modules*',
-          '-prune',
-          '-o',
-          '\\(',
-          '-name',
-          'dist',
-          '-type',
-          'd',
-          '-o',
-          '-name',
-          '*.tsbuildinfo',
-          '\\)',
-          '-exec',
-          'rm',
-          '-rf',
-          '{}',
-          '+',
-        ])
+        yield* runCommand({
+          command: 'find',
+          args: [
+            'packages',
+            '-path',
+            '*node_modules*',
+            '-prune',
+            '-o',
+            '\\(',
+            '-name',
+            'dist',
+            '-type',
+            'd',
+            '-o',
+            '-name',
+            '*.tsbuildinfo',
+            '\\)',
+            '-exec',
+            'rm',
+            '-rf',
+            '{}',
+            '+',
+          ],
+        })
       }
 
       yield* ciGroup('Type checking')
       const args = watch
         ? ['--build', 'tsconfig.all.json', '--watch']
         : ['--build', 'tsconfig.all.json']
-      yield* runCommand('tsc', args)
+      yield* runCommand({ command: 'tsc', args })
       yield* ciGroupEnd
       yield* Console.log('✓ Type check complete')
     }),
@@ -255,37 +264,31 @@ const cleanCommand = Command.make('clean', {}, () =>
     yield* ciGroup('Cleaning build artifacts')
 
     yield* Console.log('Removing dist directories...')
-    yield* runCommand('find', [
-      '.',
-      '-type',
-      'd',
-      '-name',
-      'dist',
-      '-prune',
-      '-exec',
-      'rm',
-      '-rf',
-      '{}',
-      '+',
-    ])
+    yield* runCommand({
+      command: 'find',
+      args: ['.', '-type', 'd', '-name', 'dist', '-prune', '-exec', 'rm', '-rf', '{}', '+'],
+    })
 
     yield* Console.log('Removing .tsbuildinfo files...')
-    yield* runCommand('find', ['.', '-name', '*.tsbuildinfo', '-delete'])
+    yield* runCommand({ command: 'find', args: ['.', '-name', '*.tsbuildinfo', '-delete'] })
 
     yield* Console.log('Removing storybook-static directories...')
-    yield* runCommand('find', [
-      '.',
-      '-type',
-      'd',
-      '-name',
-      'storybook-static',
-      '-prune',
-      '-exec',
-      'rm',
-      '-rf',
-      '{}',
-      '+',
-    ])
+    yield* runCommand({
+      command: 'find',
+      args: [
+        '.',
+        '-type',
+        'd',
+        '-name',
+        'storybook-static',
+        '-prune',
+        '-exec',
+        'rm',
+        '-rf',
+        '{}',
+        '+',
+      ],
+    })
 
     yield* ciGroupEnd
     yield* Console.log('✓ Clean complete')
@@ -301,16 +304,22 @@ const checkCommand = Command.make('check', {}, () =>
     yield* Console.log('Running all checks...\n')
 
     yield* ciGroup('Type checking')
-    yield* runCommand('tsc', ['--build', 'tsconfig.all.json'])
+    yield* runCommand({ command: 'tsc', args: ['--build', 'tsconfig.all.json'] })
     yield* ciGroupEnd
 
     yield* ciGroup('Format + Lint')
-    yield* runCommand('oxfmt', ['-c', `${OXC_CONFIG_PATH}/fmt.jsonc`, '--check', '.'])
-    yield* runCommand('oxlint', ['-c', `${OXC_CONFIG_PATH}/lint.jsonc`, '--import-plugin'])
+    yield* runCommand({
+      command: 'oxfmt',
+      args: ['-c', `${OXC_CONFIG_PATH}/fmt.jsonc`, '--check', '.'],
+    })
+    yield* runCommand({
+      command: 'oxlint',
+      args: ['-c', `${OXC_CONFIG_PATH}/lint.jsonc`, '--import-plugin'],
+    })
     yield* ciGroupEnd
 
     yield* ciGroup('Running tests')
-    yield* runCommand('vitest', ['run'])
+    yield* runCommand({ command: 'vitest', args: ['run'] })
     yield* ciGroupEnd
 
     yield* Console.log('\n✓ All checks passed')
@@ -357,27 +366,45 @@ const contextExamplesCommand = Command.make('examples', {}, () =>
     yield* runWithServer({
       label: 'WS echo',
       serverArgs: ['examples/ws-echo-server.ts'],
-      clientEffect: runCommand('bun', ['examples/ws-echo-client.ts'], { cwd: socketCwd }),
+      clientEffect: runCommand({
+        command: 'bun',
+        args: ['examples/ws-echo-client.ts'],
+        cwd: socketCwd,
+      }),
     })
 
     yield* runWithServer({
       label: 'WS broadcast',
       serverArgs: ['examples/ws-broadcast-server.ts'],
-      clientEffect: runCommand('bun', ['examples/ws-broadcast-client.ts'], { cwd: socketCwd }),
+      clientEffect: runCommand({
+        command: 'bun',
+        args: ['examples/ws-broadcast-client.ts'],
+        cwd: socketCwd,
+      }),
     })
 
     yield* runWithServer({
       label: 'WS JSON',
       serverArgs: ['examples/ws-json-server.ts'],
-      clientEffect: runCommand('bun', ['examples/ws-json-client.ts'], { cwd: socketCwd }),
+      clientEffect: runCommand({
+        command: 'bun',
+        args: ['examples/ws-json-client.ts'],
+        cwd: socketCwd,
+      }),
     })
 
     yield* runWithServer({
       label: 'HTTP + WS combined',
       serverArgs: ['examples/http-ws-combined.ts'],
       clientEffect: Effect.gen(function* () {
-        yield* runCommand('curl', ['-s', 'http://127.0.0.1:8788/'], { cwd: workspaceRoot })
-        yield* runCommand('bun', ['-e', httpWsClientScript], {
+        yield* runCommand({
+          command: 'curl',
+          args: ['-s', 'http://127.0.0.1:8788/'],
+          cwd: workspaceRoot,
+        })
+        yield* runCommand({
+          command: 'bun',
+          args: ['-e', httpWsClientScript],
           cwd: workspaceRoot,
           shell: false,
         })
@@ -387,13 +414,21 @@ const contextExamplesCommand = Command.make('examples', {}, () =>
     yield* runWithServer({
       label: 'RPC over WebSocket',
       serverArgs: ['examples/rpc-ws-server.ts'],
-      clientEffect: runCommand('bun', ['examples/rpc-ws-client.ts'], { cwd: socketCwd }),
+      clientEffect: runCommand({
+        command: 'bun',
+        args: ['examples/rpc-ws-client.ts'],
+        cwd: socketCwd,
+      }),
     })
 
     yield* runWithServer({
       label: 'TCP echo',
       serverArgs: ['examples/tcp-echo-server.ts'],
-      clientEffect: runCommand('bun', ['examples/tcp-echo-client.ts'], { cwd: socketCwd }),
+      clientEffect: runCommand({
+        command: 'bun',
+        args: ['examples/tcp-echo-client.ts'],
+        cwd: socketCwd,
+      }),
     })
 
     yield* Console.log('✓ Context examples complete')

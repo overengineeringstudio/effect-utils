@@ -546,7 +546,11 @@ describe('FileSystemBacking', () => {
 
           yield* backing.tryAcquire('test-key', 'holder-1', Duration.seconds(30), 5, 3)
 
-          const revoked = yield* FileSystemBacking.forceRevoke(options, 'test-key', 'holder-1')
+          const revoked = yield* FileSystemBacking.forceRevoke({
+            options,
+            key: 'test-key',
+            targetHolderId: 'holder-1',
+          })
           expect(revoked).toBe(3)
 
           // Holder's lock file should be removed
@@ -567,11 +571,11 @@ describe('FileSystemBacking', () => {
         const lockDir = `${tempDir}/locks`
         const options = { lockDir }
 
-        const result = yield* FileSystemBacking.forceRevoke(
+        const result = yield* FileSystemBacking.forceRevoke({
           options,
-          'test-key',
-          'nonexistent',
-        ).pipe(Effect.either)
+          key: 'test-key',
+          targetHolderId: 'nonexistent',
+        }).pipe(Effect.either)
 
         expect(result._tag).toBe('Left')
         if (result._tag === 'Left') {
@@ -606,7 +610,11 @@ describe('FileSystemBacking', () => {
           expect(acquired1).toBe(false)
 
           // Force revoke holder 1
-          yield* FileSystemBacking.forceRevoke(options, 'test-key', 'holder-1')
+          yield* FileSystemBacking.forceRevoke({
+            options,
+            key: 'test-key',
+            targetHolderId: 'holder-1',
+          })
 
           // Now holder 2 can acquire
           const acquired2 = yield* backing.tryAcquire(
@@ -636,7 +644,11 @@ describe('FileSystemBacking', () => {
           yield* backing.tryAcquire('test-key', 'holder-1', Duration.seconds(30), 5, 2)
 
           // Force revoke
-          yield* FileSystemBacking.forceRevoke(options, 'test-key', 'holder-1')
+          yield* FileSystemBacking.forceRevoke({
+            options,
+            key: 'test-key',
+            targetHolderId: 'holder-1',
+          })
 
           // Victim's refresh should now fail
           const refreshed = yield* backing.refresh(
@@ -660,7 +672,7 @@ describe('FileSystemBacking', () => {
         const lockDir = `${tempDir}/locks`
         const options = { lockDir }
 
-        const holders = yield* FileSystemBacking.listHolders(options, 'test-key')
+        const holders = yield* FileSystemBacking.listHolders({ options, key: 'test-key' })
         expect(holders).toEqual([])
       }).pipe(Effect.provide(TestLayer), Effect.scoped),
     )
@@ -680,7 +692,7 @@ describe('FileSystemBacking', () => {
           yield* backing.tryAcquire('test-key', 'holder-a', Duration.seconds(30), 10, 2)
           yield* backing.tryAcquire('test-key', 'holder-b', Duration.seconds(30), 10, 3)
 
-          const holders = yield* FileSystemBacking.listHolders(options, 'test-key')
+          const holders = yield* FileSystemBacking.listHolders({ options, key: 'test-key' })
 
           expect(holders).toHaveLength(2)
 
@@ -716,7 +728,7 @@ describe('FileSystemBacking', () => {
           JSON.stringify({ permits: 3, expiresAt: now + 60_000 }),
         )
 
-        const holders = yield* FileSystemBacking.listHolders(options, 'test-key')
+        const holders = yield* FileSystemBacking.listHolders({ options, key: 'test-key' })
 
         expect(holders).toHaveLength(1)
         expect(holders[0]?.holderId).toBe('holder-active')
@@ -741,7 +753,7 @@ describe('FileSystemBacking', () => {
           yield* backing.tryAcquire('test-key', 'holder-2', Duration.seconds(30), 10, 3)
           yield* backing.tryAcquire('test-key', 'holder-3', Duration.seconds(30), 10, 1)
 
-          const revoked = yield* FileSystemBacking.forceRevokeAll(options, 'test-key')
+          const revoked = yield* FileSystemBacking.forceRevokeAll({ options, key: 'test-key' })
 
           expect(revoked).toHaveLength(3)
           expect(revoked.map((r) => r.holderId).sort()).toEqual([
@@ -765,7 +777,7 @@ describe('FileSystemBacking', () => {
         const lockDir = `${tempDir}/locks`
         const options = { lockDir }
 
-        const revoked = yield* FileSystemBacking.forceRevokeAll(options, 'nonexistent-key')
+        const revoked = yield* FileSystemBacking.forceRevokeAll({ options, key: 'nonexistent-key' })
         expect(revoked).toEqual([])
       }).pipe(Effect.provide(TestLayer), Effect.scoped),
     )

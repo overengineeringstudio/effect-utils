@@ -128,7 +128,15 @@ export class BroadcastLogEntry extends Schema.Class<BroadcastLogEntry>('Broadcas
 const encodeBroadcastLogEntry = Schema.encodeSync(BroadcastLogEntry)
 const decodeBroadcastLogEntry = Schema.decodeUnknownOption(BroadcastLogEntry)
 
-const makeBroadcastLoggerFromChannel = (channel: BroadcastChannel, source?: string) =>
+interface MakeBroadcastLoggerFromChannelOptions {
+  readonly channel: BroadcastChannel
+  readonly source?: string | undefined
+}
+
+const makeBroadcastLoggerFromChannel = ({
+  channel,
+  source,
+}: MakeBroadcastLoggerFromChannelOptions) =>
   Logger.make<unknown, void>(({ annotations, cause, date, fiberId, logLevel, message, spans }) => {
     const entry = new BroadcastLogEntry({
       _tag: 'BroadcastLogEntry',
@@ -157,7 +165,7 @@ const makeBroadcastLoggerFromChannel = (channel: BroadcastChannel, source?: stri
 export const makeBroadcastLogger = (source?: string) => {
   const channel = new BroadcastChannel(BROADCAST_CHANNEL_NAME)
 
-  return makeBroadcastLoggerFromChannel(channel, source)
+  return makeBroadcastLoggerFromChannel({ channel, source })
 }
 
 /**
@@ -171,7 +179,7 @@ export const BroadcastLoggerLive = (source?: string) =>
     Effect.acquireRelease(
       Effect.sync(() => new BroadcastChannel(BROADCAST_CHANNEL_NAME)),
       (channel) => Effect.sync(() => channel.close()),
-    ).pipe(Effect.map((channel) => makeBroadcastLoggerFromChannel(channel, source))),
+    ).pipe(Effect.map((channel) => makeBroadcastLoggerFromChannel({ channel, source }))),
   )
 
 /**

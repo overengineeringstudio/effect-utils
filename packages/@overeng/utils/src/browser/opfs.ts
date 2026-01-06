@@ -71,6 +71,7 @@ export const getRootHandle: Effect.Effect<FileSystemDirectoryHandle, OPFSNotSupp
  * @param absDirPath - Absolute path to the directory (e.g., "/foo/bar/baz")
  * @param options - Options for directory creation
  */
+// oxlint-disable-next-line overeng/named-args -- mirrors Web File API pattern
 export const getDirHandle = (
   absDirPath: string | undefined,
   options?: { create?: boolean },
@@ -107,7 +108,7 @@ export const getDirHandle = (
  * @param fileName - The name of the file
  * @param options - Options for file creation
  */
-// oxlint-disable-next-line eslint(max-params) -- mirrors Web File API pattern
+// oxlint-disable-next-line overeng/named-args -- mirrors Web File API pattern
 export const getFileHandle = (
   dirHandle: FileSystemDirectoryHandle,
   fileName: string,
@@ -182,6 +183,7 @@ export type TreeLine = {
  * @param dirHandle - The directory handle to traverse (defaults to root)
  * @param options - Options for tree generation
  */
+// oxlint-disable-next-line overeng/named-args -- mirrors Web File API pattern
 export const getTree = (
   dirHandle?: FileSystemDirectoryHandle,
   options?: { depth?: number; prefix?: string },
@@ -257,6 +259,7 @@ export const getTree = (
  * @param dirHandle - The directory handle to traverse (defaults to root)
  * @param options - Options for tree generation
  */
+// oxlint-disable-next-line overeng/named-args -- mirrors Web File API pattern
 export const printTree = (
   dirHandle?: FileSystemDirectoryHandle,
   options?: { depth?: number },
@@ -295,7 +298,7 @@ export const deleteAll = (dirHandle: FileSystemDirectoryHandle): Effect.Effect<v
  * @param name - The name of the entry to delete
  * @param options - Options for deletion
  */
-// oxlint-disable-next-line eslint(max-params) -- mirrors Web File API pattern
+// oxlint-disable-next-line overeng/named-args -- mirrors Web File API pattern
 export const deleteEntry = (
   dirHandle: FileSystemDirectoryHandle,
   name: string,
@@ -355,6 +358,7 @@ export const readFileBuffer = (
  * @param fileHandle - The file handle to write to
  * @param content - The text content to write
  */
+// oxlint-disable-next-line overeng/named-args -- mirrors Web File API pattern
 export const writeFileText = (
   fileHandle: FileSystemFileHandle,
   content: string,
@@ -378,6 +382,7 @@ export const writeFileText = (
  * @param fileHandle - The file handle to write to
  * @param content - The binary content to write
  */
+// oxlint-disable-next-line overeng/named-args -- mirrors Web File API pattern
 export const writeFileBuffer = (
   fileHandle: FileSystemFileHandle,
   content: BufferSource,

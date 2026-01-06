@@ -2,7 +2,7 @@ import { RuleTester } from 'eslint'
 import tseslint from 'typescript-eslint'
 import { describe, it } from 'vitest'
 
-import plugin from './exports-first-plugin.js'
+import plugin from './mod.ts'
 
 const ruleTester = new RuleTester({
   languageOptions: {

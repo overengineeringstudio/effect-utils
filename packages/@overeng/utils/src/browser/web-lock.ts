@@ -30,25 +30,16 @@ export const isWebLocksSupported = (): boolean =>
 /**
  * Wraps an Effect with a named lock.
  * The effect will only execute once the lock is acquired.
- *
- * @param options - Lock configuration
- * @param options.lockName - Name of the lock to acquire
- * @param options.onTaken - Optional effect to run if lock is not available (when using ifAvailable)
- * @param options.mode - Lock mode: 'exclusive' (default) or 'shared'
- * @param options.ifAvailable - If true, don't wait for lock, run onTaken instead
  */
 export const withLock =
-  <E2>({
-    lockName,
-    onTaken,
-    options,
-  }: {
+  <E2>(lockOptions: {
     lockName: string
     onTaken?: Effect.Effect<void, E2>
     options?: Omit<LockOptions, 'signal'>
   }) =>
-  <Ctx, E, A>(eff: Effect.Effect<A, E, Ctx>): Effect.Effect<A | undefined, E | E2, Ctx> =>
-    Effect.gen(function* () {
+  <Ctx, E, A>(eff: Effect.Effect<A, E, Ctx>): Effect.Effect<A | undefined, E | E2, Ctx> => {
+    const { lockName, onTaken, options } = lockOptions
+    return Effect.gen(function* () {
       if (!isWebLocksSupported()) {
         return yield* Effect.fail(WebLockNotSupportedError.notAvailable) as Effect.Effect<
           never,
@@ -94,19 +85,15 @@ export const withLock =
 
       return exit.value
     })
+  }
 
-/**
- * Waits to acquire an exclusive lock, holding it until the deferred resolves.
- * Useful for coordinating between tabs where one tab holds a lock until done.
- *
- * @param deferred - Deferred that controls when the lock is released
- * @param lockName - Name of the lock to acquire
- */
-export const waitForDeferredLock = (
-  deferred: Deferred.Deferred<void>,
-  lockName: string,
-): Effect.Effect<void, WebLockNotSupportedError> =>
-  Effect.suspend(() => {
+/** Waits to acquire an exclusive lock, holding it until the deferred resolves. */
+export const waitForDeferredLock = (opts: {
+  deferred: Deferred.Deferred<void>
+  lockName: string
+}): Effect.Effect<void, WebLockNotSupportedError> => {
+  const { deferred, lockName } = opts
+  return Effect.suspend(() => {
     if (!isWebLocksSupported()) {
       return Effect.fail(WebLockNotSupportedError.notAvailable)
     }
@@ -131,20 +118,15 @@ export const waitForDeferredLock = (
         })
     })
   })
+}
 
-/**
- * Attempts to acquire a lock if available, without waiting.
- * Returns true if lock was acquired, false otherwise.
- * Holds the lock until the deferred resolves.
- *
- * @param deferred - Deferred that controls when the lock is released
- * @param lockName - Name of the lock to acquire
- */
-export const tryGetDeferredLock = (
-  deferred: Deferred.Deferred<void>,
-  lockName: string,
-): Effect.Effect<boolean, WebLockNotSupportedError> =>
-  Effect.suspend(() => {
+/** Attempts to acquire a lock if available. Returns true if lock was acquired. */
+export const tryGetDeferredLock = (opts: {
+  deferred: Deferred.Deferred<void>
+  lockName: string
+}): Effect.Effect<boolean, WebLockNotSupportedError> => {
+  const { deferred, lockName } = opts
+  return Effect.suspend(() => {
     if (!isWebLocksSupported()) {
       return Effect.fail(WebLockNotSupportedError.notAvailable)
     }
@@ -162,20 +144,15 @@ export const tryGetDeferredLock = (
       })
     })
   })
+}
 
-/**
- * Forcefully acquires a lock using the steal option.
- * This will break any existing lock held by other contexts.
- * Holds the lock until the deferred resolves.
- *
- * @param deferred - Deferred that controls when the lock is released
- * @param lockName - Name of the lock to steal
- */
-export const stealDeferredLock = (
-  deferred: Deferred.Deferred<void>,
-  lockName: string,
-): Effect.Effect<boolean, WebLockNotSupportedError> =>
-  Effect.suspend(() => {
+/** Forcefully acquires a lock using the steal option. Breaks any existing lock. */
+export const stealDeferredLock = (opts: {
+  deferred: Deferred.Deferred<void>
+  lockName: string
+}): Effect.Effect<boolean, WebLockNotSupportedError> => {
+  const { deferred, lockName } = opts
+  return Effect.suspend(() => {
     if (!isWebLocksSupported()) {
       return Effect.fail(WebLockNotSupportedError.notAvailable)
     }
@@ -193,6 +170,7 @@ export const stealDeferredLock = (
       })
     })
   })
+}
 
 /**
  * Waits for a shared lock to become available.

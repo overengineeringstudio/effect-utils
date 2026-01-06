@@ -6,6 +6,7 @@
  * - Order of finalizer execution
  * - Which finalizers are registered and when
  */
+
 import { Effect, Exit, FiberRef, Scope } from 'effect'
 
 /** Info about a registered finalizer for debugging */
@@ -55,11 +56,12 @@ export const withScopeDebug = <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.
  *
  * @example
  * ```ts
- * yield* addTracedFinalizer('cleanup-database', Effect.log('Closing DB connection'))
+ * yield* addTracedFinalizer({ name: 'cleanup-database', finalizer: Effect.log('Closing DB connection') })
  * ```
  */
-export const addTracedFinalizer = (name: string, finalizer: Effect.Effect<void>) =>
+export const addTracedFinalizer = (opts: { name: string; finalizer: Effect.Effect<void> }) =>
   Effect.gen(function* () {
+    const { name, finalizer } = opts
     const debugEnabled = yield* FiberRef.get(ScopeDebugEnabled)
     const scope = yield* Effect.scope
 
@@ -160,12 +162,16 @@ export const withTracedScope =
  *
  * @example
  * ```ts
- * const tracedCleanup = traceFinalizer('db-cleanup', originalCleanupEffect)
+ * const tracedCleanup = traceFinalizer({ name: 'db-cleanup', finalizer: originalCleanupEffect })
  * yield* Effect.addFinalizer(() => tracedCleanup)
  * ```
  */
-export const traceFinalizer = (name: string, finalizer: Effect.Effect<void>): Effect.Effect<void> =>
+export const traceFinalizer = (opts: {
+  name: string
+  finalizer: Effect.Effect<void>
+}): Effect.Effect<void> =>
   Effect.gen(function* () {
+    const { name, finalizer } = opts
     const debugEnabled = yield* FiberRef.get(ScopeDebugEnabled)
 
     if (!debugEnabled) {

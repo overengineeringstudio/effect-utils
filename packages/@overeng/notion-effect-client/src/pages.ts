@@ -120,10 +120,10 @@ export function retrieve<TProperties, I, R>(
   NotionConfig | HttpClient.HttpClient | R
 > {
   return Effect.gen(function* () {
-    const page = yield* get(`/pages/${opts.pageId}`, PageSchema)
+    const page = yield* get({ path: `/pages/${opts.pageId}`, responseSchema: PageSchema })
 
     if (opts.schema !== undefined) {
-      return yield* decodePage(page, opts.schema)
+      return yield* decodePage({ page, schema: opts.schema })
     }
 
     return page

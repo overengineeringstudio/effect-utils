@@ -54,11 +54,13 @@ export const tryPw = <TA>({
  * yield* Pw.try('custom-op', () => somePlaywrightCall()).pipe(Pw.Step.step('Custom operation'))
  * ```
  */
+// oxlint-disable-next-line overeng/named-args -- concise API for inline usage
 export const try_: <A>(
   /** Short operation name for span (e.g. 'set-viewport', 'get-cookies'). */
   op: string,
   /** Promise factory to wrap. */
   effect: () => PromiseLike<A>,
+  // oxlint-disable-next-line overeng/named-args -- concise API for inline usage
 ) => Effect.Effect<A, PwOpError> = (op, effect) =>
   tryPw({ op: `pw.try.${op}`, effect }).pipe(
     Effect.tap(() => Effect.annotateCurrentSpan({ 'pw.try.op': op })),
@@ -73,11 +75,13 @@ export const try_: <A>(
  * yield* Pw.expect('title-matches', expect(page).toHaveTitle(/Dashboard/))
  * ```
  */
+// oxlint-disable-next-line overeng/named-args -- concise API for inline usage
 export const expect_: <A>(
   /** Short assertion name for span (e.g. 'sidebar-visible', 'button-enabled'). */
   assertion: string,
   /** Playwright expect promise (e.g. `expect(locator).toBeVisible()`). */
   expectPromise: PromiseLike<A>,
+  // oxlint-disable-next-line overeng/named-args -- concise API for inline usage
 ) => Effect.Effect<A, PwOpError> = (assertion, expectPromise) =>
   tryPw({ op: `pw.expect.${assertion}`, effect: () => expectPromise }).pipe(
     Effect.tap(() => Effect.annotateCurrentSpan({ 'pw.expect.assertion': assertion })),

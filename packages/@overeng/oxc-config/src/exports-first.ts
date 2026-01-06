@@ -1,16 +1,11 @@
 /**
- * Oxlint JS plugin that enforces exported declarations appear before non-exported declarations.
+ * exports-first oxlint rule.
  *
+ * Enforce exported declarations appear before non-exported declarations.
  * This helps with code readability by putting the public API at the top of files.
  *
  * The rule is "control-flow aware": private declarations that are referenced by
  * subsequent exports are allowed to appear before those exports.
- *
- * TODO: Remove this custom plugin once upstream support lands.
- * See: https://github.com/oxc-project/oxc/issues/17706
- *
- * NOTE: WASM plugins may become available in the future for better performance.
- * See: https://github.com/oxc-project/oxc/discussions/10342
  *
  * @example
  * // ✅ Good - exports first
@@ -27,32 +22,29 @@
  * export const publicApi = () => {}
  */
 
-/**
- * Check if a node is a declaration that should be tracked.
- * Excludes import statements and type-only declarations (interfaces, type aliases).
- * Type-only declarations are compile-time only and don't affect runtime code organization.
- */
-const isTrackableDeclaration = (node) => {
+// NOTE: Using `any` types because oxlint JS plugin API doesn't have TypeScript definitions yet
+
+/** Check if a node is a declaration that should be tracked. */
+const isTrackableDeclaration = (node: any): boolean => {
   const type = node.type
   return (
     type === 'VariableDeclaration' ||
     type === 'FunctionDeclaration' ||
     type === 'ClassDeclaration' ||
     type === 'TSEnumDeclaration'
-    // Note: TSInterfaceDeclaration and TSTypeAliasDeclaration are excluded
-    // because they are type-only and don't affect runtime code
   )
 }
 
 /** Check if a node is an export declaration (named or default). */
-const isExportDeclaration = (node) =>
+const isExportDeclaration = (node: any): boolean =>
   node.type === 'ExportNamedDeclaration' || node.type === 'ExportDefaultDeclaration'
 
 /** Check if an export is a re-export (no declaration, just re-exporting from another module). */
-const isReExport = (node) => node.type === 'ExportNamedDeclaration' && node.source !== null
+const isReExport = (node: any): boolean =>
+  node.type === 'ExportNamedDeclaration' && node.source !== null
 
 /** Check if this is a type-only export (should be ignored). */
-const isTypeOnlyExport = (node) => {
+const isTypeOnlyExport = (node: any): boolean => {
   if (node.type === 'ExportNamedDeclaration') {
     return node.exportKind === 'type'
   }
@@ -60,15 +52,14 @@ const isTypeOnlyExport = (node) => {
 }
 
 /** Get declared names from a declaration node. */
-const getDeclaredNames = (node) => {
-  const names = new Set()
+const getDeclaredNames = (node: any): Set<string> => {
+  const names = new Set<string>()
 
   if (node.type === 'VariableDeclaration') {
     for (const decl of node.declarations) {
       if (decl.id.type === 'Identifier') {
         names.add(decl.id.name)
       } else if (decl.id.type === 'ObjectPattern') {
-        // Handle destructuring: const { a, b } = ...
         for (const prop of decl.id.properties) {
           if (prop.type === 'Property' && prop.value.type === 'Identifier') {
             names.add(prop.value.name)
@@ -77,7 +68,6 @@ const getDeclaredNames = (node) => {
           }
         }
       } else if (decl.id.type === 'ArrayPattern') {
-        // Handle array destructuring: const [a, b] = ...
         for (const elem of decl.id.elements) {
           if (elem?.type === 'Identifier') {
             names.add(elem.name)
@@ -99,7 +89,9 @@ const getDeclaredNames = (node) => {
 }
 
 /** Collect all identifier references in a node (recursively). */
-const collectReferences = (node, refs = new Set()) => {
+const collectReferences = (opts: { node: any; refs?: Set<string> }): Set<string> => {
+  const { node } = opts
+  const refs = opts.refs ?? new Set()
   if (!node || typeof node !== 'object') return refs
 
   if (node.type === 'Identifier') {
@@ -107,17 +99,16 @@ const collectReferences = (node, refs = new Set()) => {
     return refs
   }
 
-  // Recursively traverse all properties
   for (const key of Object.keys(node)) {
     if (key === 'parent' || key === 'loc' || key === 'range') continue
 
     const value = node[key]
     if (Array.isArray(value)) {
       for (const item of value) {
-        collectReferences(item, refs)
+        collectReferences({ node: item, refs })
       }
     } else if (value && typeof value === 'object') {
-      collectReferences(value, refs)
+      collectReferences({ node: value, refs })
     }
   }
 
@@ -125,14 +116,14 @@ const collectReferences = (node, refs = new Set()) => {
 }
 
 /** Get the declaration part of an export node. */
-const getExportDeclaration = (node) => {
+const getExportDeclaration = (node: any): any => {
   if (node.type === 'ExportNamedDeclaration' || node.type === 'ExportDefaultDeclaration') {
     return node.declaration
   }
   return null
 }
 
-const exportsFirstRule = {
+export const exportsFirstRule = {
   meta: {
     type: 'suggestion',
     docs: {
@@ -144,9 +135,9 @@ const exportsFirstRule = {
         'Exported declaration should come before non-exported declarations. Move this export above non-exported code.',
     },
   },
-  create(context) {
+  create(context: any) {
     return {
-      Program(programNode) {
+      Program(programNode: any) {
         /**
          * Fast-path:
          * - If there are no exports, nothing to report.
@@ -194,30 +185,19 @@ const exportsFirstRule = {
         }
 
         // First pass: collect all non-exported declarations and their positions
-        const nonExportedDecls = [] // { names: Set, node, index }
-        const exports = [] // { node, index, refs: Set }
+        const nonExportedDecls: Array<{ names: Set<string>; node: any; index: number }> = []
+        const exports: Array<{ node: any; index: number; refs: Set<string> }> = []
 
         for (let i = 0; i < programNode.body.length; i++) {
           const node = programNode.body[i]
 
-          // Skip import statements
-          if (node.type === 'ImportDeclaration') {
-            continue
-          }
-
-          // Skip re-exports
-          if (isReExport(node)) {
-            continue
-          }
-
-          // Skip type-only exports
-          if (isTypeOnlyExport(node)) {
-            continue
-          }
+          if (node.type === 'ImportDeclaration') continue
+          if (isReExport(node)) continue
+          if (isTypeOnlyExport(node)) continue
 
           if (isExportDeclaration(node)) {
             const decl = getExportDeclaration(node)
-            const refs = decl ? collectReferences(decl) : new Set()
+            const refs = decl ? collectReferences({ node: decl }) : new Set<string>()
             exports.push({ node, index: i, refs })
           } else if (isTrackableDeclaration(node)) {
             const names = getDeclaredNames(node)
@@ -225,21 +205,17 @@ const exportsFirstRule = {
           }
         }
 
-        // Collect all names referenced by ANY export
-        const referencedByAnyExport = new Set()
+        const referencedByAnyExport = new Set<string>()
         for (const exp of exports) {
           for (const ref of exp.refs) {
             referencedByAnyExport.add(ref)
           }
         }
 
-        // Also include transitive references: if a non-export references another non-export
-        // that is used by an export, the first non-export is also considered "needed"
         let changed = true
         while (changed) {
           changed = false
           for (const decl of nonExportedDecls) {
-            // Check if this declaration is referenced by exports
             let isNeeded = false
             for (const name of decl.names) {
               if (referencedByAnyExport.has(name)) {
@@ -248,10 +224,8 @@ const exportsFirstRule = {
               }
             }
 
-            // If this declaration is needed, add all its references to the needed set
             if (isNeeded) {
-              // Get references from the declaration's initializer
-              const declRefs = collectReferences(decl.node)
+              const declRefs = collectReferences({ node: decl.node })
               for (const ref of declRefs) {
                 if (!referencedByAnyExport.has(ref)) {
                   referencedByAnyExport.add(ref)
@@ -262,12 +236,9 @@ const exportsFirstRule = {
           }
         }
 
-        // Second pass: for each export, check if there are non-exported declarations
-        // before it that are NOT referenced by any export (directly or transitively)
         for (const exp of exports) {
           for (const decl of nonExportedDecls) {
             if (decl.index < exp.index) {
-              // Check if any of the declared names are referenced
               let isReferenced = false
               for (const name of decl.names) {
                 if (referencedByAnyExport.has(name)) {
@@ -277,12 +248,11 @@ const exportsFirstRule = {
               }
 
               if (!isReferenced) {
-                // Found a non-exported declaration before this export that isn't referenced
                 context.report({
                   node: exp.node,
                   messageId: 'exportAfterNonExport',
                 })
-                break // Only report once per export
+                break
               }
             }
           }
@@ -291,15 +261,3 @@ const exportsFirstRule = {
     }
   },
 }
-
-const plugin = {
-  meta: {
-    name: 'overeng',
-    version: '0.1.0',
-  },
-  rules: {
-    'exports-first': exportsFirstRule,
-  },
-}
-
-export default plugin
