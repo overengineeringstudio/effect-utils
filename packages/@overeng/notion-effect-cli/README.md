@@ -12,8 +12,9 @@ bun add @overeng/notion-effect-cli
 
 ### Prerequisites
 
-1. Create a [Notion integration](https://www.notion.so/my-integrations) and copy the "Internal Integration Secret"
-2. Share your database with the integration (open database → "..." menu → "Connections" → add your integration)
+1. [Bun](https://bun.sh) runtime (required for TypeScript config loading)
+2. Create a [Notion integration](https://www.notion.so/my-integrations) and copy the "Internal Integration Secret"
+3. Share your database with the integration (open database → "..." menu → "Connections" → add your integration)
 
 ### Generate a Schema
 

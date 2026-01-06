@@ -13,7 +13,7 @@ All notable changes to this project will be documented in this file.
   - New typed `transforms` helpers (e.g., `transforms.status.asString`) instead of string literals
   - New `outputDir` option for base output directory (paths are relative to it)
   - Import config helpers from `@overeng/notion-effect-cli/config`
-  - Config files are loaded via dynamic import with native TS support (Bun)
+  - CLI now requires Bun runtime for native TypeScript config loading
 
 - **Monorepo CLI**: Replaced Biome with oxc toolchain (oxlint + oxfmt)
   - Removed `@biomejs/biome` dependency
