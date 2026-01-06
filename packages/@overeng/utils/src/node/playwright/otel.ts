@@ -126,7 +126,9 @@ export const makeOtelPlaywrightLayer = (
   return Layer.unwrapEffect(
     Effect.gen(function* () {
       const endpoint = process.env[endpointEnvVar]
-      yield* Effect.logDebug('[pw.otel] Building OTEL layer', { endpoint: endpoint ?? '(not set)' })
+      yield* Effect.logDebug('[pw.otel] Building OTEL layer', {
+        endpoint: endpoint ?? '(not set)',
+      })
       const parentSpan = yield* parentSpanFromEnv(parentSpanEnvVar)
 
       const rootSpanLive = Layer.span('playwright.root', {

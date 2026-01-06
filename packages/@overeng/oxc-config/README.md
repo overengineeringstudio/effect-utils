@@ -24,15 +24,16 @@ oxfmt -c packages/@overeng/oxc-config/fmt.jsonc .
 
 ## Linting Rules
 
-| Rule                        | Severity | Description                                   |
-| --------------------------- | -------- | --------------------------------------------- |
-| `import/no-dynamic-require` | warn     | Disallow dynamic `import()` and `require()`   |
-| `oxc/no-barrel-file`        | warn     | Disallow re-exports outside `mod.ts`          |
-| `overeng/named-args`        | warn     | Enforce named arguments (options objects)     |
-| `import/no-commonjs`        | error    | Enforce ESM over CommonJS                     |
-| `import/no-cycle`           | warn     | Detect circular dependencies                  |
-| `func-style`                | warn     | Prefer function expressions over declarations |
-| `overeng/exports-first`     | warn     | Exports should come before non-exports        |
+| Rule                              | Severity | Description                                   |
+| --------------------------------- | -------- | --------------------------------------------- |
+| `import/no-dynamic-require`       | warn     | Disallow dynamic `import()` and `require()`   |
+| `oxc/no-barrel-file`              | warn     | Disallow re-exports outside `mod.ts`          |
+| `overeng/named-args`              | warn     | Enforce named arguments (options objects)     |
+| `import/no-commonjs`              | error    | Enforce ESM over CommonJS                     |
+| `import/no-cycle`                 | warn     | Detect circular dependencies                  |
+| `func-style`                      | warn     | Prefer function expressions over declarations |
+| `overeng/exports-first`           | warn     | Exports should come before non-exports        |
+| `overeng/jsdoc-require-exports`   | warn     | Require JSDoc on type/wildcard exports        |
 
 ### `overeng/named-args`
 
@@ -55,6 +56,18 @@ Enforces that functions use named arguments (options objects) instead of multipl
 const myFunc = (a, b) => { ... }
 ```
 
+### `overeng/jsdoc-require-exports`
+
+Requires JSDoc comments on:
+- Type definitions: `export interface ...` and `export type X = ...`
+- Named namespace re-exports: `export * as name from '...'`
+
+Does NOT require JSDoc on:
+- Plain wildcard re-exports: `export * from '...'`
+- Type re-exports: `export type { X } from '...'`
+- Typeof-derived types: `export type X = typeof Y.Type`
+- Value exports: `export const`, `export function`, etc.
+
 ## Lint Categories
 
 - `correctness`: error
@@ -73,9 +86,9 @@ const myFunc = (a, b) => { ... }
   2. Internal monorepo (`@overeng/*`)
   3. Relative imports (`./`, `../`)
 
-## Custom JS Plugin
+## Custom JS Plugins
 
-The `overeng/exports-first` and `overeng/named-args` rules are implemented as oxlint JS plugins. JS plugins are experimental - see the [oxlint JS plugins blog post](https://oxc.rs/blog/2025-10-09-oxlint-js-plugins.html).
+The `overeng/exports-first`, `overeng/named-args`, and `overeng/jsdoc-require-exports` rules are implemented as oxlint JS plugins. JS plugins are experimental - see the [oxlint JS plugins blog post](https://oxc.rs/blog/2025-10-09-oxlint-js-plugins.html).
 
 An upstream feature request for a native `import/exports-first` rule has been filed: https://github.com/oxc-project/oxc/issues/17706
 

@@ -9,7 +9,9 @@
     "./plugin": "./src/mod.ts"
   },
   "devDependencies": {
+    "@types/eslint": "^9.6.1",
     "eslint": "^9.28.0",
+    "typescript": "catalog:",
     "typescript-eslint": "^8.34.0",
     "vitest": "catalog:"
   }

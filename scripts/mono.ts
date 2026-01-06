@@ -5,7 +5,7 @@ import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import type * as CommandExecutor from '@effect/platform/CommandExecutor'
 import type { PlatformError } from '@effect/platform/Error'
 import type { Scope } from 'effect'
-import { Cause, Console, Duration, Effect, Layer, Schema } from 'effect'
+import { Cause, Console, Duration, Effect, Layer, Logger, LogLevel, Schema } from 'effect'
 
 import { CurrentWorkingDirectory, cmd, cmdStart } from '@overeng/utils/node'
 
@@ -469,6 +469,12 @@ cli(process.argv).pipe(
     }
     return Effect.logError(cause)
   }),
-  Effect.provide(Layer.mergeAll(NodeContext.layer, CurrentWorkingDirectory.live)),
+  Effect.provide(
+    Layer.mergeAll(
+      NodeContext.layer,
+      CurrentWorkingDirectory.live,
+      Logger.minimumLogLevel(LogLevel.Debug),
+    ),
+  ),
   NodeRuntime.runMain({ disableErrorReporting: true }),
 )

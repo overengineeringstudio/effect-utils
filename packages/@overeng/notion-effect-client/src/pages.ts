@@ -65,7 +65,10 @@ export interface UpdatePageOptions {
     | { readonly type: 'external'; readonly external: { readonly url: string } }
     | null
   /** Page cover image */
-  readonly cover?: { readonly type: 'external'; readonly external: { readonly url: string } } | null
+  readonly cover?: {
+    readonly type: 'external'
+    readonly external: { readonly url: string }
+  } | null
 }
 
 /** Options for archiving a page */
