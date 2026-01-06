@@ -18,6 +18,7 @@
   "devDependencies": {
     "@effect/platform": "catalog:",
     "@effect/vitest": "catalog:",
+    "@overeng/utils": "workspace:*",
     "@types/node": "catalog:",
     "effect": "catalog:",
     "vitest": "catalog:"
