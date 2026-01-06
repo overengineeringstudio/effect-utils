@@ -1,3 +1,5 @@
+/// <reference lib="dom" />
+
 /**
  * Browser detection utilities.
  * Based on user agent parsing for identifying browser environments.

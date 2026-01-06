@@ -1,3 +1,5 @@
+/// <reference lib="dom" />
+
 /**
  * Origin Private File System (OPFS) utilities with Effect integration.
  * Provides type-safe access to the browser's private file system.

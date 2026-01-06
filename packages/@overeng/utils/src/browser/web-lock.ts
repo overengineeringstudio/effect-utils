@@ -1,3 +1,5 @@
+/// <reference lib="dom" />
+
 /**
  * Web Locks API utilities with Effect integration.
  * Provides cross-tab coordination using the browser's Web Locks API.

@@ -1,3 +1,5 @@
+/// <reference lib="dom" />
+
 /**
  * BroadcastChannel-based logger for bridging logs from SharedWorkers to tabs.
  *
