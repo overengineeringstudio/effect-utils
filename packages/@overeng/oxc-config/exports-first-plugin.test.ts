@@ -116,6 +116,22 @@ export type { MyType } from 'types'
       })
     })
 
+    it('allows files with only type exports and re-exports', () => {
+      tsRuleTester.run('exports-first', rule, {
+        valid: [
+          {
+            code: `
+import type { SomeType } from 'types'
+export type { SomeType } from 'types'
+export { something } from 'module'
+export * from 'other'
+`,
+          },
+        ],
+        invalid: [],
+      })
+    })
+
     it('allows export default at top', () => {
       ruleTester.run('exports-first', rule, {
         valid: [
