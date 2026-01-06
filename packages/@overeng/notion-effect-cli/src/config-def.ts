@@ -44,6 +44,7 @@ export interface Transform<TType extends NotionPropertyType = NotionPropertyType
 }
 
 /** Create a transform reference */
+// oxlint-disable-next-line overeng/named-args -- internal factory pattern
 const makeTransform = <TType extends NotionPropertyType>(
   propertyType: TType,
   name: string,

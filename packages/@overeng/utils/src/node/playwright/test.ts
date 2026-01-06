@@ -122,7 +122,7 @@ export const makeWithTestCtx =
  * import { Pw } from '@overeng/utils/node/playwright'
  *
  * test('basic navigation', ({ page, context }) =>
- *   Pw.withTestCtx({ page, context })(
+ *   Pw.withTestCtx({ fixtures: { page, context } })(
  *     Effect.gen(function* () {
  *       yield* Pw.Page.goto({ url: 'https://example.com' })
  *     })
@@ -131,10 +131,9 @@ export const makeWithTestCtx =
  * ```
  */
 export const withTestCtx =
-  // oxlint-disable-next-line overeng/named-args -- Effect dual function for currying
-  (fixtures: PlaywrightFixtures, params: WithTestCtxParams<never, never> = {}) =>
-    <A, E, R>(self: Effect.Effect<A, E, R>): Promise<A> =>
-      runWithTestCtx({ fixtures, params, self })
+  (opts: { fixtures: PlaywrightFixtures; params?: WithTestCtxParams<never, never> }) =>
+  <A, E, R>(self: Effect.Effect<A, E, R>): Promise<A> =>
+    runWithTestCtx({ fixtures: opts.fixtures, params: opts.params ?? {}, self })
 
 interface RunWithTestCtxArgs<ROut, E1, A, E, R> {
   fixtures: PlaywrightFixtures

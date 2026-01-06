@@ -266,6 +266,7 @@ export const loadConfig = (
 /**
  * Merge database config with defaults
  */
+// oxlint-disable-next-line overeng/named-args -- matches main branch convention
 export const mergeWithDefaults = (
   database: DatabaseConfig,
   defaults?: DefaultsConfig,
