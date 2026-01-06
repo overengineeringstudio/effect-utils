@@ -41,8 +41,8 @@ ws.send / ws.close -> socket.writer (scoped) / Channel input
 Example (manual close with a reason):
 
 ```ts
-const write = yield* socket.writer
-yield* write(new Socket.CloseEvent(1000, 'done'))
+const write = yield * socket.writer
+yield * write(new Socket.CloseEvent(1000, 'done'))
 ```
 
 Example (close after a specific message):
@@ -99,8 +99,7 @@ const MessageSchema = Schema.Union(
   Schema.TaggedStruct('echo', { text: Schema.String }),
 )
 
-const decodeMessage = (raw: string) =>
-  Schema.decodeUnknown(Schema.parseJson(MessageSchema))(raw)
+const decodeMessage = (raw: string) => Schema.decodeUnknown(Schema.parseJson(MessageSchema))(raw)
 
 const receive = Stream.fromIterable<Uint8Array | string | CloseEvent>([]).pipe(
   Stream.pipeThroughChannel(Socket.toChannelString(socket)),
@@ -125,10 +124,7 @@ const protocolLayer = RpcServer.layerProtocolSocketServer.pipe(
 
 const server = RpcServer.layer(Api).pipe(
   Layer.provide(
-    Layer.mergeAll(
-      Api.toLayer({ ping: pingHandler, 'math.add': addHandler }),
-      protocolLayer,
-    ),
+    Layer.mergeAll(Api.toLayer({ ping: pingHandler, 'math.add': addHandler }), protocolLayer),
   ),
 )
 ```

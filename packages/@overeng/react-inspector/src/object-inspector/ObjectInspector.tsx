@@ -1,11 +1,12 @@
-import React, { FC } from 'react'
+import React from 'react'
+import type { FC } from 'react'
 
-import { themeAcceptor } from '../styles'
-import { TreeView } from '../tree-view/TreeView'
-import { propertyIsEnumerable } from '../utils/objectPrototype'
-import { getPropertyValue } from '../utils/propertyUtils'
-import { ObjectLabel } from './ObjectLabel'
-import { ObjectRootLabel } from './ObjectRootLabel'
+import { themeAcceptor } from '../styles/index.tsx'
+import { TreeView } from '../tree-view/TreeView.tsx'
+import { propertyIsEnumerable } from '../utils/objectPrototype.tsx'
+import { getPropertyValue } from '../utils/propertyUtils.tsx'
+import { ObjectLabel } from './ObjectLabel.tsx'
+import { ObjectRootLabel } from './ObjectRootLabel.tsx'
 
 const createIterator = (showNonenumerable: any, sortObjectKeys: any) => {
   const objectIterator = function* (data: any) {

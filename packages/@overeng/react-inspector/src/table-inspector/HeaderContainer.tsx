@@ -1,9 +1,19 @@
 import React from 'react'
+import type { FC } from 'react'
 
-import { useStyles } from '../styles'
-import { TH } from './TH'
+import { useStyles } from '../styles/index.tsx'
+import { TH } from './TH.tsx'
 
-export const HeaderContainer = ({
+export const HeaderContainer: FC<{
+  indexColumnText?: string
+  columns?: string[]
+  sorted: boolean
+  sortIndexColumn: boolean
+  sortColumn: string | undefined
+  sortAscending: boolean
+  onTHClick: (col: string) => void
+  onIndexTHClick: () => void
+}> = ({
   indexColumnText = '(index)',
   columns = [],
   sorted,

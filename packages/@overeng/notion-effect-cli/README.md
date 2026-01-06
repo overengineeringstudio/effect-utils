@@ -319,11 +319,7 @@ import { Effect, Layer } from 'effect'
 import { FetchHttpClient, NodeContext } from '@effect/platform-node'
 import { NotionConfigLive } from '@overeng/notion-effect-client'
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
-import {
-  introspectDatabase,
-  generateSchemaCode,
-  formatCode,
-} from '@overeng/notion-effect-cli'
+import { introspectDatabase, generateSchemaCode, formatCode } from '@overeng/notion-effect-cli'
 
 const program = Effect.gen(function* () {
   const dbInfo = yield* introspectDatabase('abc123...')

@@ -1,13 +1,13 @@
-export { chromeLight, chromeDark } from './styles/themes'
+export { chromeLight, chromeDark } from './styles/themes/index.tsx'
 
-import { DOMInspector } from './dom-inspector/DOMInspector'
-import { ObjectInspector } from './object-inspector/ObjectInspector'
-import { ObjectLabel } from './object-inspector/ObjectLabel'
-import { ObjectPreview } from './object-inspector/ObjectPreview'
-import { ObjectRootLabel } from './object-inspector/ObjectRootLabel'
-import { ObjectName } from './object/ObjectName'
-import { ObjectValue } from './object/ObjectValue'
-import { TableInspector } from './table-inspector/TableInspector'
+import { DOMInspector } from './dom-inspector/DOMInspector.tsx'
+import { ObjectInspector } from './object-inspector/ObjectInspector.tsx'
+import { ObjectLabel } from './object-inspector/ObjectLabel.tsx'
+import { ObjectPreview } from './object-inspector/ObjectPreview.tsx'
+import { ObjectRootLabel } from './object-inspector/ObjectRootLabel.tsx'
+import { ObjectName } from './object/ObjectName.tsx'
+import { ObjectValue } from './object/ObjectValue.tsx'
+import { TableInspector } from './table-inspector/TableInspector.tsx'
 
 export {
   TableInspector,
@@ -20,7 +20,8 @@ export {
 }
 
 import isDOM from 'is-dom'
-import React, { ComponentProps, FC } from 'react'
+import React, { type FC } from 'react'
+import type { ComponentProps } from 'react'
 
 export const Inspector: FC<TableInspectorProps | ObjectInspectorProps> = ({
   table = false,
@@ -53,13 +54,13 @@ export {
   useSchemaDisplayInfo,
   type SchemaContextValue,
   type SchemaProviderProps,
-} from './schema/mod'
+} from './schema/mod.tsx'
 
 export {
   withSchemaSupport,
   withSchemaContext,
   type SchemaAwareObjectInspectorDeps,
-} from './schema/SchemaAwareObjectInspector'
-export { createSchemaAwareNodeRenderer } from './schema/SchemaAwareNodeRenderer'
-export { SchemaAwareObjectValue } from './schema/SchemaAwareObjectValue'
-export { SchemaAwareObjectPreview } from './schema/SchemaAwareObjectPreview'
+} from './schema/SchemaAwareObjectInspector.tsx'
+export { createSchemaAwareNodeRenderer } from './schema/SchemaAwareNodeRenderer.tsx'
+export { SchemaAwareObjectValue } from './schema/SchemaAwareObjectValue.tsx'
+export { SchemaAwareObjectPreview } from './schema/SchemaAwareObjectPreview.tsx'

@@ -1,7 +1,8 @@
-import React, { FC, ReactNode } from 'react'
+import React from 'react'
+import type { FC, ReactNode } from 'react'
 
-import { useStyles } from '../styles'
-import { shouldInline } from './shouldInline'
+import { useStyles } from '../styles/index.tsx'
+import { shouldInline } from './shouldInline.tsx'
 
 const OpenTag: FC<any> = ({ tagName, attributes, styles }) => {
   return (
@@ -34,7 +35,15 @@ const OpenTag: FC<any> = ({ tagName, attributes, styles }) => {
 }
 
 // isChildNode style={{ marginLeft: -12 /* hack: offset placeholder */ }}
-const CloseTag = ({ tagName, isChildNode = false, styles }) => (
+const CloseTag = ({
+  tagName,
+  isChildNode = false,
+  styles,
+}: {
+  tagName: string
+  isChildNode?: boolean
+  styles: Record<string, React.CSSProperties>
+}) => (
   <span style={Object.assign({}, styles.base, isChildNode && styles.offsetLeft)}>
     {'</'}
     <span style={styles.tagName}>{tagName}</span>
@@ -42,7 +51,7 @@ const CloseTag = ({ tagName, isChildNode = false, styles }) => (
   </span>
 )
 
-const nameByNodeType = {
+const nameByNodeType: Record<number, string> = {
   1: 'ELEMENT_NODE',
   3: 'TEXT_NODE',
   7: 'PROCESSING_INSTRUCTION_NODE',

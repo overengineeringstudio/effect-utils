@@ -4,12 +4,13 @@
  * https://developer.mozilla.org/en-US/docs/Web/API/Console/table
  */
 
-import React, { FC, useCallback, useState } from 'react'
+import React, { useCallback, useState } from 'react'
+import type { FC } from 'react'
 
-import { themeAcceptor, useStyles } from '../styles'
-import { DataContainer } from './DataContainer'
-import { getHeaders } from './getHeaders'
-import { HeaderContainer } from './HeaderContainer'
+import { themeAcceptor, useStyles } from '../styles/index.tsx'
+import { DataContainer } from './DataContainer.tsx'
+import { getHeaders } from './getHeaders.ts'
+import { HeaderContainer } from './HeaderContainer.tsx'
 
 const TableInspector: FC<any> = ({
   // The JS object you would like to inspect, either an array or an object
@@ -19,7 +20,12 @@ const TableInspector: FC<any> = ({
 }) => {
   const styles = useStyles('TableInspector')
 
-  const [{ sorted, sortIndexColumn, sortColumn, sortAscending }, setState] = useState({
+  const [{ sorted, sortIndexColumn, sortColumn, sortAscending }, setState] = useState<{
+    sorted: boolean
+    sortIndexColumn: boolean
+    sortColumn: string | undefined
+    sortAscending: boolean
+  }>({
     // has user ever clicked the <th> tag to sort?
     sorted: false,
     // is index column sorted?
@@ -40,7 +46,7 @@ const TableInspector: FC<any> = ({
     }))
   }, [])
 
-  const handleTHClick = useCallback((col) => {
+  const handleTHClick = useCallback((col: string) => {
     setState(({ sortColumn, sortAscending }) => ({
       sorted: true,
       sortIndexColumn: false,
@@ -55,7 +61,11 @@ const TableInspector: FC<any> = ({
     return <div />
   }
 
-  let { rowHeaders, colHeaders } = getHeaders(data)
+  const headers = getHeaders(data)
+  if (!headers) {
+    return <div />
+  }
+  let { rowHeaders, colHeaders } = headers
 
   // columns to be displayed are specified
   // NOTE: there's some space for optimization here
@@ -90,14 +100,14 @@ const TableInspector: FC<any> = ({
   }
   if (columnDataWithRowIndexes !== undefined) {
     // apply a mapper before sorting (because we need to access inside a container)
-    const comparator = (mapper, ascending) => {
-      return (a, b) => {
+    const comparator = (mapper: (item: any) => any, ascending: boolean) => {
+      return (a: any, b: any) => {
         const v1 = mapper(a) // the datum
         const v2 = mapper(b)
         const type1 = typeof v1
         const type2 = typeof v2
         // use '<' operator to compare same type of values or compare type precedence order #
-        const lt = (v1, v2) => {
+        const lt = (v1: any, v2: any) => {
           if (v1 < v2) {
             return -1
           } else if (v1 > v2) {
@@ -111,9 +121,10 @@ const TableInspector: FC<any> = ({
           result = lt(v1, v2)
         } else {
           // order of different types
-          const order = {
+          const order: Record<string, number> = {
             string: 0,
             number: 1,
+            bigint: 1,
             object: 2,
             symbol: 3,
             boolean: 4,
@@ -128,10 +139,10 @@ const TableInspector: FC<any> = ({
       }
     }
     const sortedRowIndexes = columnDataWithRowIndexes
-      .sort(comparator((item) => item[0], sortAscending))
-      .map((item) => item[1]) // sorted row indexes
-    rowHeaders = sortedRowIndexes.map((i) => rowHeaders[i])
-    rowsData = sortedRowIndexes.map((i) => rowsData[i])
+      .sort(comparator((item: any) => item[0], sortAscending))
+      .map((item: any) => item[1]) // sorted row indexes
+    rowHeaders = sortedRowIndexes.map((i: number) => rowHeaders[i]) as (string | number)[]
+    rowsData = sortedRowIndexes.map((i: number) => rowsData[i])
   }
 
   return (

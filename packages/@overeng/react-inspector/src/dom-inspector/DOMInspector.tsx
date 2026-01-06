@@ -1,9 +1,10 @@
-import React, { FC } from 'react'
+import React from 'react'
+import type { FC } from 'react'
 
-import { themeAcceptor } from '../styles'
-import { TreeView } from '../tree-view/TreeView'
-import { DOMNodePreview } from './DOMNodePreview'
-import { shouldInline } from './shouldInline'
+import { themeAcceptor } from '../styles/index.tsx'
+import { TreeView } from '../tree-view/TreeView.tsx'
+import { DOMNodePreview } from './DOMNodePreview.tsx'
+import { shouldInline } from './shouldInline.tsx'
 
 const domIterator = function* (data: any) {
   if (data && data.childNodes) {

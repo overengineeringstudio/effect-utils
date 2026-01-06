@@ -1,6 +1,7 @@
-import React, { Children, FC, memo } from 'react'
+import React, { Children, memo } from 'react'
+import type { FC } from 'react'
 
-import { useStyles } from '../styles'
+import { useStyles } from '../styles/index.tsx'
 
 const Arrow: FC<any> = ({ expanded, styles }) => (
   <span

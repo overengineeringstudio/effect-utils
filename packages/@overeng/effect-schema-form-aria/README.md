@@ -38,8 +38,7 @@ Use this when you want to apply the same renderers across multiple forms:
 ```tsx
 import { SchemaFormProvider, SchemaForm } from '@overeng/effect-schema-form'
 import { ariaRenderers } from '@overeng/effect-schema-form-aria'
-
-<SchemaFormProvider renderers={ariaRenderers}>
+;<SchemaFormProvider renderers={ariaRenderers}>
   <SchemaForm schema={FormA} value={dataA} onChange={setDataA} />
   <SchemaForm schema={FormB} value={dataB} onChange={setDataB} />
 </SchemaFormProvider>

@@ -1,9 +1,9 @@
 import React, { useContext, useCallback, useLayoutEffect, useState, memo } from 'react'
 
-import { useStyles } from '../styles'
-import { ExpandedPathsContext } from './ExpandedPathsContext'
-import { DEFAULT_ROOT_PATH, hasChildNodes, getExpandedPaths } from './pathUtils'
-import { TreeNode } from './TreeNode'
+import { useStyles } from '../styles/index.tsx'
+import { ExpandedPathsContext } from './ExpandedPathsContext.tsx'
+import { DEFAULT_ROOT_PATH, hasChildNodes, getExpandedPaths } from './pathUtils.ts'
+import { TreeNode } from './TreeNode.tsx'
 
 const ConnectedTreeNode = memo((props: any) => {
   const { data, dataIterator, path, depth, nodeRenderer } = props
@@ -14,7 +14,7 @@ const ConnectedTreeNode = memo((props: any) => {
   const handleClick = useCallback(
     () =>
       nodeHasChildNodes &&
-      setExpandedPaths((prevExpandedPaths) => ({
+      setExpandedPaths((prevExpandedPaths: Record<string, boolean>) => ({
         ...prevExpandedPaths,
         [path]: !expanded,
       })),
