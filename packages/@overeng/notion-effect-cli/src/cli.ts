@@ -87,7 +87,9 @@ const generateDatabaseIdArg = Args.text({ name: 'database-id' }).pipe(
 
 const outputOption = Options.file('output').pipe(
   Options.withAlias('o'),
-  Options.withDescription('Output file path for generated schema'),
+  Options.withDescription(
+    'Output file path for generated schema (recommend using .gen.ts suffix, e.g., schema.gen.ts)',
+  ),
 )
 
 const nameOption = Options.text('name').pipe(
@@ -126,6 +128,13 @@ const includeApiOption = Options.boolean('include-api').pipe(
   Options.withDefault(false),
 )
 
+const writableOption = Options.boolean('writable').pipe(
+  Options.withDescription(
+    'Keep generated files writable (default: false, files are made read-only to discourage manual edits)',
+  ),
+  Options.withDefault(false),
+)
+
 const generateCommand = Command.make(
   'generate',
   {
@@ -138,6 +147,7 @@ const generateCommand = Command.make(
     includeWrite: includeWriteOption,
     typedOptions: typedOptionsOption,
     includeApi: includeApiOption,
+    writable: writableOption,
   },
   ({
     databaseId,
@@ -149,6 +159,7 @@ const generateCommand = Command.make(
     includeWrite,
     typedOptions,
     includeApi,
+    writable,
   }) =>
     Effect.gen(function* () {
       const resolvedToken = yield* resolveNotionToken(token)
@@ -210,8 +221,8 @@ const generateCommand = Command.make(
           }
         } else {
           yield* Console.log(`Writing to ${output}...`)
-          yield* writeSchemaToFile(code, output)
-          yield* Console.log(`✓ Schema generated successfully!`)
+          yield* writeSchemaToFile({ code, outputPath: output, writable })
+          yield* Console.log(`✓ Schema generated successfully!${writable ? '' : ' (read-only)'}`)
 
           if (includeApi) {
             const rawApiCode = generateApiCode(dbInfo, schemaName, generateOptions)
@@ -219,8 +230,8 @@ const generateCommand = Command.make(
             const apiOutput = output.replace(/\.ts$/, '.api.ts')
 
             yield* Console.log(`Writing API to ${apiOutput}...`)
-            yield* writeSchemaToFile(apiCode, apiOutput)
-            yield* Console.log(`✓ API generated successfully!`)
+            yield* writeSchemaToFile({ code: apiCode, outputPath: apiOutput, writable })
+            yield* Console.log(`✓ API generated successfully!${writable ? '' : ' (read-only)'}`)
           }
         }
       })
@@ -310,8 +321,8 @@ const configOption = Options.file('config').pipe(
 
 const generateFromConfigCommand = Command.make(
   'generate-config',
-  { config: configOption, token: tokenOption, dryRun: dryRunOption },
-  ({ config, token, dryRun }) =>
+  { config: configOption, token: tokenOption, dryRun: dryRunOption, writable: writableOption },
+  ({ config, token, dryRun, writable }) =>
     Effect.gen(function* () {
       const { config: schemaConfig, path: resolvedConfigPath } = yield* loadConfig(
         Option.isSome(config) ? config.value : undefined,
@@ -374,8 +385,8 @@ const generateFromConfigCommand = Command.make(
             }
           } else {
             yield* Console.log(`Writing to ${merged.output}...`)
-            yield* writeSchemaToFile(code, merged.output)
-            yield* Console.log(`✓ Schema generated successfully!`)
+            yield* writeSchemaToFile({ code, outputPath: merged.output, writable })
+            yield* Console.log(`✓ Schema generated successfully!${writable ? '' : ' (read-only)'}`)
 
             if (generateOptions.includeApi) {
               const rawApiCode = generateApiCode(dbInfo, schemaName, generateOptions)
@@ -383,8 +394,8 @@ const generateFromConfigCommand = Command.make(
               const apiOutput = merged.output.replace(/\.ts$/, '.api.ts')
 
               yield* Console.log(`Writing API to ${apiOutput}...`)
-              yield* writeSchemaToFile(apiCode, apiOutput)
-              yield* Console.log(`✓ API generated successfully!`)
+              yield* writeSchemaToFile({ code: apiCode, outputPath: apiOutput, writable })
+              yield* Console.log(`✓ API generated successfully!${writable ? '' : ' (read-only)'}`)
             }
           }
         }

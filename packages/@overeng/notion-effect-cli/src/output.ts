@@ -4,17 +4,35 @@ import { Effect } from 'effect'
 
 import { type CurrentWorkingDirectory, cmd } from '@overeng/utils/node'
 
+/** Options for writing generated schema files */
+export interface WriteSchemaToFileOptions {
+  /** The generated code to write */
+  readonly code: string
+  /** Output file path */
+  readonly outputPath: string
+  /** If true, the file will remain writable; if false (default), file will be made read-only */
+  readonly writable?: boolean
+}
+
+/** Read-only permission (0o444 = r--r--r--) */
+const READ_ONLY_MODE = 0o444
+
+/** Read-write permission (0o644 = rw-r--r--) */
+const READ_WRITE_MODE = 0o644
+
 /**
  * Write generated schema code to a file.
  * Creates parent directories if they don't exist.
+ * By default, makes the file read-only to discourage manual edits.
+ * If the file already exists and is read-only, it will be made writable before writing.
  */
 export const writeSchemaToFile = (
-  code: string,
-  outputPath: string,
+  options: WriteSchemaToFileOptions,
 ): Effect.Effect<void, Error, FileSystem.FileSystem | Path.Path> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
+    const { code, outputPath, writable = false } = options
 
     const dir = path.dirname(outputPath)
 
@@ -24,12 +42,23 @@ export const writeSchemaToFile = (
       yield* fs.makeDirectory(dir, { recursive: true })
     }
 
+    // If file exists, make it writable before overwriting (handles read-only files)
+    const fileExists = yield* fs.exists(outputPath)
+    if (fileExists) {
+      yield* fs.chmod(outputPath, READ_WRITE_MODE)
+    }
+
     yield* fs.writeFileString(outputPath, code)
+
+    // Set file permissions based on writable option
+    if (!writable) {
+      yield* fs.chmod(outputPath, READ_ONLY_MODE)
+    }
   }).pipe(
     Effect.mapError(
       (error) =>
         new Error(
-          `Failed to write schema to ${outputPath}: ${error instanceof Error ? error.message : String(error)}`,
+          `Failed to write schema to ${options.outputPath}: ${error instanceof Error ? error.message : String(error)}`,
         ),
     ),
   )

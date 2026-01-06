@@ -32,6 +32,7 @@
     "@overeng/utils": "workspace:*"
   },
   "devDependencies": {
+    "@effect/vitest": "catalog:",
     "effect": "catalog:",
     "vitest": "catalog:"
   },
