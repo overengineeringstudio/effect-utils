@@ -7,10 +7,13 @@ export * from './pick.ts'
 
 type ValueOfRecord<R extends Record<any, any>> = R extends Record<any, infer V> ? V : never
 
-export const mapObjectValues = <O_In extends Record<string, any>, V_Out>(
-  obj: O_In,
-  mapValue: (key: keyof O_In, val: ValueOfRecord<O_In>) => V_Out,
-): { [K in keyof O_In]: V_Out } => {
+export const mapObjectValues = <O_In extends Record<string, any>, V_Out>({
+  obj,
+  mapValue,
+}: {
+  obj: O_In
+  mapValue: (key: keyof O_In, val: ValueOfRecord<O_In>) => V_Out
+}): { [K in keyof O_In]: V_Out } => {
   const mappedEntries = Object.entries(obj).map(
     ([key, val]) => [key, mapValue(key as keyof O_In, val)] as const,
   )
@@ -37,10 +40,13 @@ export type UndefinedFieldsToNull<T> = PrettifyFlat<{
 export const undefinedFieldsToNull = <T extends {}>(obj: T): UndefinedFieldsToNull<T> =>
   Object.fromEntries(Object.entries(obj).map(([key, val]) => [key, val ?? null])) as any
 
-export const objectWithKeyPrefix = <TObj extends Record<string, any>, TPrefix extends string>(
-  obj: TObj,
-  prefix: TPrefix,
-): { [K in keyof TObj as K extends string ? `${TPrefix}${K}` : never]: TObj[K] } => {
+export const objectWithKeyPrefix = <TObj extends Record<string, any>, TPrefix extends string>({
+  obj,
+  prefix,
+}: {
+  obj: TObj
+  prefix: TPrefix
+}): { [K in keyof TObj as K extends string ? `${TPrefix}${K}` : never]: TObj[K] } => {
   const newObj: Record<string, any> = {}
   for (const [k, v] of Object.entries(obj)) {
     newObj[`${prefix}${k}` as any] = v

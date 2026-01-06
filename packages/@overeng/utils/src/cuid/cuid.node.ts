@@ -23,6 +23,7 @@ const getRandomValue = () => {
   return Math.abs(crypto.randomBytes(4).readInt32BE() / lim)
 }
 
+// oxlint-disable-next-line overeng/named-args -- internal helper
 const pad = (num: number | string, size: number) => {
   const s = `000000000${num}`
   return s.slice(s.length - size)

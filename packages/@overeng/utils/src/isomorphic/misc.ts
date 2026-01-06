@@ -4,7 +4,7 @@ import { shouldNeverHappen } from './core.ts'
 
 export const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-export const times = (n: number, fn: (index: number) => {}): void => {
+export const times = ({ n, fn }: { n: number; fn: (index: number) => {} }): void => {
   for (let i = 0; i < n; i++) {
     fn(i)
   }
@@ -81,12 +81,18 @@ export function casesHandled(unexpectedCase: never): never {
   // oxlint-disable-next-line no-debugger
   debugger
   throw new Error(
-    `A case was not handled for value: ${truncate(objectToString(unexpectedCase), 1000)}`,
+    `A case was not handled for value: ${truncate({ str: objectToString(unexpectedCase), length: 1000 })}`,
   )
 }
 
-export const assertNever = (failIfFalse: boolean, msg?: string | (() => string)): void => {
-  if (failIfFalse === false) {
+export const assertNever = ({
+  condition,
+  msg,
+}: {
+  condition: boolean
+  msg?: string | (() => string)
+}): void => {
+  if (condition === false) {
     const msg_ = typeof msg === 'function' ? msg() : msg
     // biome-ignore lint/suspicious/noDebugger: intentional for dev debugging
     // oxlint-disable-next-line no-debugger
@@ -105,7 +111,7 @@ export const debuggerPipe = <T>(val: T): T => {
 /** Sometimes useful when type definitions say a type is non-null/non-undefined but in during runtime it might be null/undefined */
 export const asNilish = <T>(val: T): T | null | undefined => val
 
-export const truncate = (str: string, length: number): string => {
+export const truncate = ({ str, length }: { str: string; length: number }): string => {
   if (str.length > length) {
     return `${str.slice(0, length)}...`
   } else {
@@ -133,12 +139,12 @@ export const unwrapThunk = <T>(_: T | (() => T)): T => {
 }
 
 /** `end` is not included */
-export const range = (start: number, end: number): number[] => {
+export const range = ({ start, end }: { start: number; end: number }): number[] => {
   const length = end - start
   return Array.from({ length }, (_, i) => start + i)
 }
 
-export const throttle = (fn: () => void, ms: number) => {
+export const throttle = ({ fn, ms }: { fn: () => void; ms: number }) => {
   let shouldWait = false
   let shouldCallAgain = false
 
@@ -171,10 +177,13 @@ export const getTraceParentHeader = (parentSpan: otel.Span) => {
   return `00-${spanContext.traceId}-${spanContext.spanId}-01`
 }
 
-export const assertTag = <TObj extends { _tag: string }, TTag extends TObj['_tag']>(
-  obj: TObj,
-  tag: TTag,
-): Extract<TObj, { _tag: TTag }> => {
+export const assertTag = <TObj extends { _tag: string }, TTag extends TObj['_tag']>({
+  obj,
+  tag,
+}: {
+  obj: TObj
+  tag: TTag
+}): Extract<TObj, { _tag: TTag }> => {
   if (obj._tag !== tag) {
     return shouldNeverHappen(`Expected tag ${tag} but got ${obj._tag}`)
   }
@@ -201,6 +210,7 @@ export const isNonEmptyString = (str: string | undefined | null): str is string 
   return typeof str === 'string' && str.length > 0
 }
 
+// oxlint-disable-next-line overeng/named-args -- debug utility
 export const __debugPassthroughLog = <T>(val: T, key = ''): T => {
   console.log(key, val)
   return val

@@ -25,13 +25,16 @@ const intlDateTimeFormatRelative = {
   }),
 }
 
-// oxlint-disable-next-line max-params
-export const humanizedDate = (
-  timstamp: Timestamp | number,
-  nowMs: number,
-  style: 'short' | 'narrow' = 'short',
-) => {
-  const differenceMs = nowMs - timstamp
+export const humanizedDate = ({
+  timestamp,
+  nowMs,
+  style = 'short',
+}: {
+  timestamp: Timestamp | number
+  nowMs: number
+  style?: 'short' | 'narrow'
+}) => {
+  const differenceMs = nowMs - timestamp
   // Sometimes the timestamp is the future (e.g. for upcoming releases)
   const differenceMsAbs = Math.abs(differenceMs)
 
@@ -44,14 +47,17 @@ export const humanizedDate = (
   } else if (differenceMsAbs < 30 * time.day) {
     return intlDateTimeFormatRelative[style].format(-Math.floor(differenceMs / time.day), 'days')
   } else {
-    return intlDateTimeFormat[style].format(timstamp)
+    return intlDateTimeFormat[style].format(timestamp)
   }
 }
 
-export const humanizedDuration = (
-  durationMs: number,
-  style: 'abbreviated' | 'word' = 'abbreviated',
-) => {
+export const humanizedDuration = ({
+  durationMs,
+  style = 'abbreviated',
+}: {
+  durationMs: number
+  style?: 'abbreviated' | 'word'
+}) => {
   if (durationMs < time.sec) {
     const suffix = style === 'abbreviated' ? 'ms' : ' milliseconds'
     return `${durationMs}${suffix}`
