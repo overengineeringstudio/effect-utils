@@ -33,13 +33,8 @@ describe('codegen', () => {
         // ID: test-db-id
         // URL: https://notion.so/test-db
 
+        import { NotionSchema } from '@overeng/notion-effect-schema'
         import { Schema } from 'effect'
-        import {
-          Checkbox,
-          Num,
-          RichTextProp,
-          Title,
-        } from '@overeng/notion-effect-schema'
 
         // -----------------------------------------------------------------------------
         // Read Schema
@@ -49,10 +44,10 @@ describe('codegen', () => {
          * Schema for reading pages from the "Test Database" database.
          */
         export const TestDatabasePageProperties = Schema.Struct({
-          Name: Title.asString,
-          Description: RichTextProp.asString,
-          Count: Num.asNumber,
-          Done: Checkbox.asBoolean,
+          Name: NotionSchema.title,
+          Description: NotionSchema.richTextString,
+          Count: NotionSchema.number,
+          Done: NotionSchema.checkbox,
         }).annotations({
           identifier: 'TestDatabasePageProperties',
           description: 'Read schema for Test Database database pages',
@@ -94,10 +89,8 @@ describe('codegen', () => {
         // ID: test-db-id
         // URL: https://notion.so/test-db
 
+        import { NotionSchema } from '@overeng/notion-effect-schema'
         import { Schema } from 'effect'
-        import {
-          Title,
-        } from '@overeng/notion-effect-schema'
 
         // -----------------------------------------------------------------------------
         // Read Schema
@@ -107,7 +100,7 @@ describe('codegen', () => {
          * Schema for reading pages from the "Test Database" database.
          */
         export const TestDatabasePageProperties = Schema.Struct({
-          Name: Title.asString,
+          Name: NotionSchema.title,
         }).annotations({
           identifier: 'TestDatabasePageProperties',
           description: 'Read schema for Test Database database pages',
@@ -149,12 +142,8 @@ describe('codegen', () => {
         // ID: test-db-id
         // URL: https://notion.so/test
 
+        import { NotionSchema } from '@overeng/notion-effect-schema'
         import { Schema } from 'effect'
-        import {
-          DateProp,
-          Select,
-          Title,
-        } from '@overeng/notion-effect-schema'
 
         // -----------------------------------------------------------------------------
         // Read Schema
@@ -164,9 +153,9 @@ describe('codegen', () => {
          * Schema for reading pages from the "Test" database.
          */
         export const TestPageProperties = Schema.Struct({
-          'Due Date': DateProp.asOption,
-          'Project Name': Title.asString,
-          'User\\'s Choice': Select.asOption,
+          'Due Date': NotionSchema.dateOption,
+          'Project Name': NotionSchema.title,
+          'User\\'s Choice': NotionSchema.selectOption,
         }).annotations({
           identifier: 'TestPageProperties',
           description: 'Read schema for Test database pages',
@@ -215,12 +204,8 @@ describe('codegen', () => {
         // URL: https://notion.so/test
         // @config { transforms: { Status: raw, Tags: raw, Website: asString } }
 
+        import { NotionSchema } from '@overeng/notion-effect-schema'
         import { Schema } from 'effect'
-        import {
-          MultiSelect,
-          Select,
-          Url,
-        } from '@overeng/notion-effect-schema'
 
         // -----------------------------------------------------------------------------
         // Read Schema
@@ -230,9 +215,9 @@ describe('codegen', () => {
          * Schema for reading pages from the "Test" database.
          */
         export const TestPageProperties = Schema.Struct({
-          Status: Select.raw,
-          Tags: MultiSelect.raw,
-          Website: Url.asString,
+          Status: NotionSchema.selectRaw,
+          Tags: NotionSchema.multiSelectRaw,
+          Website: NotionSchema.urlString,
         }).annotations({
           identifier: 'TestPageProperties',
           description: 'Read schema for Test database pages',
@@ -269,7 +254,7 @@ describe('codegen', () => {
         },
       })
 
-      expect(code).toContain('Status: Select.asOption')
+      expect(code).toContain('Status: NotionSchema.selectOption')
     })
 
     it('should convert name to PascalCase', () => {
@@ -310,10 +295,8 @@ describe('codegen', () => {
         // ID: test-db-id
         // URL: https://notion.so/test
 
+        import { NotionSchema } from '@overeng/notion-effect-schema'
         import { Schema } from 'effect'
-        import {
-          Select,
-        } from '@overeng/notion-effect-schema'
 
         // -----------------------------------------------------------------------------
         // Read Schema
@@ -324,7 +307,7 @@ describe('codegen', () => {
          */
         export const TestPageProperties = Schema.Struct({
           /** Current task status */
-          Status: Select.asOption,
+          Status: NotionSchema.selectOption,
         }).annotations({
           identifier: 'TestPageProperties',
           description: 'Read schema for Test database pages',
@@ -347,27 +330,27 @@ describe('codegen', () => {
 
     it('should handle all property types with default transforms', () => {
       const propertyTypes: Array<{ type: PropertyInfo['type']; expected: string }> = [
-        { type: 'title', expected: 'Title.asString' },
-        { type: 'rich_text', expected: 'RichTextProp.asString' },
-        { type: 'number', expected: 'Num.asNumber' },
-        { type: 'select', expected: 'Select.asOption' },
-        { type: 'multi_select', expected: 'MultiSelect.asStrings' },
-        { type: 'status', expected: 'Status.asOption' },
-        { type: 'date', expected: 'DateProp.asOption' },
-        { type: 'people', expected: 'People.asIds' },
-        { type: 'files', expected: 'Files.asUrls' },
-        { type: 'checkbox', expected: 'Checkbox.asBoolean' },
-        { type: 'url', expected: 'Url.asOption' },
-        { type: 'email', expected: 'Email.asOption' },
-        { type: 'phone_number', expected: 'PhoneNumber.asOption' },
-        { type: 'formula', expected: 'Formula.raw' },
-        { type: 'relation', expected: 'Relation.asIds' },
-        { type: 'rollup', expected: 'Rollup.raw' },
-        { type: 'created_time', expected: 'CreatedTime.asDate' },
-        { type: 'created_by', expected: 'CreatedBy.raw' },
-        { type: 'last_edited_time', expected: 'LastEditedTime.asDate' },
-        { type: 'last_edited_by', expected: 'LastEditedBy.raw' },
-        { type: 'unique_id', expected: 'UniqueId.raw' },
+        { type: 'title', expected: 'NotionSchema.title' },
+        { type: 'rich_text', expected: 'NotionSchema.richTextString' },
+        { type: 'number', expected: 'NotionSchema.number' },
+        { type: 'select', expected: 'NotionSchema.selectOption' },
+        { type: 'multi_select', expected: 'NotionSchema.multiSelectStrings' },
+        { type: 'status', expected: 'NotionSchema.statusOption' },
+        { type: 'date', expected: 'NotionSchema.dateOption' },
+        { type: 'people', expected: 'NotionSchema.peopleIds' },
+        { type: 'files', expected: 'NotionSchema.filesUrls' },
+        { type: 'checkbox', expected: 'NotionSchema.checkbox' },
+        { type: 'url', expected: 'NotionSchema.urlOption' },
+        { type: 'email', expected: 'NotionSchema.emailOption' },
+        { type: 'phone_number', expected: 'NotionSchema.phoneNumberOption' },
+        { type: 'formula', expected: 'NotionSchema.formulaRaw' },
+        { type: 'relation', expected: 'NotionSchema.relationIds' },
+        { type: 'rollup', expected: 'NotionSchema.rollupRaw' },
+        { type: 'created_time', expected: 'NotionSchema.createdTimeDate' },
+        { type: 'created_by', expected: 'NotionSchema.createdByRaw' },
+        { type: 'last_edited_time', expected: 'NotionSchema.lastEditedTimeDate' },
+        { type: 'last_edited_by', expected: 'NotionSchema.lastEditedByRaw' },
+        { type: 'unique_id', expected: 'NotionSchema.uniqueIdProperty' },
       ]
 
       for (const { type, expected } of propertyTypes) {
@@ -414,9 +397,9 @@ describe('codegen', () => {
         ],
       }
 
-      const code = generateSchemaCode(dbInfo, 'Test')
-      expect(code).toContain('Owner: Relation.asSingle')
-      expect(code).toContain('Total: Rollup.asNumber')
+      const code = generateSchemaCode({ dbInfo, schemaName: 'Test' })
+      expect(code).toContain('Owner: NotionSchema.relationSingle')
+      expect(code).toContain('Total: NotionSchema.rollupNumber')
     })
 
     it('should handle unknown property types gracefully', () => {
@@ -550,12 +533,8 @@ describe('codegen', () => {
         // URL: https://notion.so/test
         // @config { includeWrite: true }
 
+        import { NotionSchema } from '@overeng/notion-effect-schema'
         import { Schema } from 'effect'
-        import {
-          CreatedTime,
-          Select,
-          Title,
-        } from '@overeng/notion-effect-schema'
 
         // -----------------------------------------------------------------------------
         // Read Schema
@@ -565,9 +544,9 @@ describe('codegen', () => {
          * Schema for reading pages from the "Test" database.
          */
         export const TestPageProperties = Schema.Struct({
-          Name: Title.asString,
-          Status: Select.asOption,
-          CreatedAt: CreatedTime.asDate,
+          Name: NotionSchema.title,
+          Status: NotionSchema.selectOption,
+          CreatedAt: NotionSchema.createdTimeDate,
         }).annotations({
           identifier: 'TestPageProperties',
           description: 'Read schema for Test database pages',
@@ -594,8 +573,8 @@ describe('codegen', () => {
          * Note: Read-only properties (formula, rollup, created_time, etc.) are excluded.
          */
         export const TestPageWrite = Schema.Struct({
-          Name: Title.Write.fromString,
-          Status: Select.Write.fromName,
+          Name: NotionSchema.titleWriteFromString,
+          Status: NotionSchema.selectWriteFromName,
         }).annotations({
           identifier: 'TestPageWrite',
           description: 'Write schema for Test database pages',
@@ -672,11 +651,8 @@ describe('codegen', () => {
         // URL: https://notion.so/test
         // @config { typedOptions: true }
 
+        import { NotionSchema } from '@overeng/notion-effect-schema'
         import { Schema } from 'effect'
-        import {
-          MultiSelect,
-          Select,
-        } from '@overeng/notion-effect-schema'
 
         // -----------------------------------------------------------------------------
         // Typed Options
@@ -703,8 +679,8 @@ describe('codegen', () => {
          * Schema for reading pages from the "Test" database.
          */
         export const TestPageProperties = Schema.Struct({
-          Status: Select.asPropertyNamed(TestStatusOption),
-          Priority: MultiSelect.asPropertyNamed(TestPriorityOption),
+          Status: NotionSchema.selectPropertyNamed(TestStatusOption),
+          Priority: NotionSchema.multiSelectPropertyNamed(TestPriorityOption),
         }).annotations({
           identifier: 'TestPageProperties',
           description: 'Read schema for Test database pages',
@@ -783,10 +759,8 @@ describe('codegen', () => {
         // URL: https://notion.so/test
         // @config { name: MyCustomName, includeWrite: true, typedOptions: true, includeApi: true, transforms: { Status: asOption, Priority: asString } }
 
+        import { NotionSchema } from '@overeng/notion-effect-schema'
         import { Schema } from 'effect'
-        import {
-          Title,
-        } from '@overeng/notion-effect-schema'
 
         // -----------------------------------------------------------------------------
         // Read Schema
@@ -796,7 +770,7 @@ describe('codegen', () => {
          * Schema for reading pages from the "Test" database.
          */
         export const TestPageProperties = Schema.Struct({
-          Name: Title.asString,
+          Name: NotionSchema.title,
         }).annotations({
           identifier: 'TestPageProperties',
           description: 'Read schema for Test database pages',
@@ -823,7 +797,7 @@ describe('codegen', () => {
          * Note: Read-only properties (formula, rollup, created_time, etc.) are excluded.
          */
         export const TestPageWrite = Schema.Struct({
-          Name: Title.Write.fromString,
+          Name: NotionSchema.titleWriteFromString,
         }).annotations({
           identifier: 'TestPageWrite',
           description: 'Write schema for Test database pages',

@@ -25,17 +25,17 @@ import { Schema } from 'effect'
 // ID: abc123
 
 export const TestPageProperties = Schema.Struct({
-  Name: Title.asString,
-  Count: Num.asNumber,
-  Done: Checkbox.asBoolean,
+  Name: NotionSchema.title,
+  Count: NotionSchema.number,
+  Done: NotionSchema.checkbox,
 })
 `
       const result = parseGeneratedFile(content)
 
       expect(result.properties).toEqual([
-        { name: 'Name', namespace: 'Title', transform: 'asString' },
-        { name: 'Count', namespace: 'Num', transform: 'asNumber' },
-        { name: 'Done', namespace: 'Checkbox', transform: 'asBoolean' },
+        { name: 'Name', transformKey: 'title' },
+        { name: 'Count', transformKey: 'number' },
+        { name: 'Done', transformKey: 'checkbox' },
       ])
       expect(result.readSchemaFound).toBe(true)
     })
@@ -44,15 +44,15 @@ export const TestPageProperties = Schema.Struct({
       const content = `// ID: abc123
 
 export const TestPageProperties = Schema.Struct({
-  'Due Date': DateProp.asOption,
-  'Project Name': Title.asString,
+  'Due Date': NotionSchema.dateOption,
+  'Project Name': NotionSchema.title,
 })
 `
       const result = parseGeneratedFile(content)
 
       expect(result.properties).toEqual([
-        { name: 'Due Date', namespace: 'DateProp', transform: 'asOption' },
-        { name: 'Project Name', namespace: 'Title', transform: 'asString' },
+        { name: 'Due Date', transformKey: 'dateOption' },
+        { name: 'Project Name', transformKey: 'title' },
       ])
       expect(result.readSchemaFound).toBe(true)
     })
@@ -61,15 +61,15 @@ export const TestPageProperties = Schema.Struct({
       const content = `// ID: abc123
 
 export const TestPageProperties = Schema.Struct({
-  Status: Select.asOption, // Current status
-  Priority: Select.raw,
+  Status: NotionSchema.selectOption, // Current status
+  Priority: NotionSchema.selectRaw,
 })
 `
       const result = parseGeneratedFile(content)
 
       expect(result.properties).toEqual([
-        { name: 'Status', namespace: 'Select', transform: 'asOption' },
-        { name: 'Priority', namespace: 'Select', transform: 'raw' },
+        { name: 'Status', transformKey: 'selectOption' },
+        { name: 'Priority', transformKey: 'selectRaw' },
       ])
       expect(result.readSchemaFound).toBe(true)
     })
@@ -112,7 +112,7 @@ const foo = 'bar'
         databaseId: 'abc123',
         databaseName: 'Test',
         readSchemaFound: true,
-        properties: [{ name: 'Name', namespace: 'Title', transform: 'asString' }],
+        properties: [{ name: 'Name', transformKey: 'title' }],
       }
 
       const result = computeDiff({ live, generated })
@@ -139,8 +139,8 @@ const foo = 'bar'
         databaseName: 'Test',
         readSchemaFound: true,
         properties: [
-          { name: 'Name', namespace: 'Title', transform: 'asString' },
-          { name: 'OldField', namespace: 'RichTextProp', transform: 'asString' },
+          { name: 'Name', transformKey: 'title' },
+          { name: 'OldField', transformKey: 'richTextString' },
         ],
       }
 
@@ -150,7 +150,7 @@ const foo = 'bar'
       expect(result.properties[0]).toEqual({
         name: 'OldField',
         type: 'removed',
-        generated: { namespace: 'RichTextProp', transform: 'asString' },
+        generated: { transformKey: 'richTextString' },
       })
     })
 
@@ -166,7 +166,7 @@ const foo = 'bar'
         databaseId: 'abc123',
         databaseName: 'Test',
         readSchemaFound: true,
-        properties: [{ name: 'Status', namespace: 'Select', transform: 'asOption' }],
+        properties: [{ name: 'Status', transformKey: 'selectOption' }],
       }
 
       const result = computeDiff({ live, generated })
@@ -176,7 +176,7 @@ const foo = 'bar'
         name: 'Status',
         type: 'type_changed',
         live: { type: 'status', transform: 'asOption' },
-        generated: { namespace: 'Select', transform: 'asOption' },
+        generated: { transformKey: 'selectOption' },
       })
     })
 
@@ -216,8 +216,8 @@ const foo = 'bar'
         databaseName: 'Test',
         readSchemaFound: true,
         properties: [
-          { name: 'Name', namespace: 'Title', transform: 'asString' },
-          { name: 'Count', namespace: 'Num', transform: 'asNumber' },
+          { name: 'Name', transformKey: 'title' },
+          { name: 'Count', transformKey: 'number' },
         ],
       }
 
@@ -268,7 +268,7 @@ const foo = 'bar'
           {
             name: 'OldField',
             type: 'removed' as const,
-            generated: { namespace: 'RichTextProp', transform: 'asString' },
+            generated: { transformKey: 'richTextString' },
           },
         ],
         options: [],
@@ -288,7 +288,7 @@ const foo = 'bar'
             name: 'Status',
             type: 'type_changed' as const,
             live: { type: 'status' as const, transform: 'asOption' },
-            generated: { namespace: 'Select', transform: 'asOption' },
+            generated: { transformKey: 'selectOption' },
           },
         ],
         options: [],
@@ -312,7 +312,7 @@ const foo = 'bar'
           {
             name: 'OldField',
             type: 'removed' as const,
-            generated: { namespace: 'Title', transform: 'asString' },
+            generated: { transformKey: 'title' },
           },
         ],
         options: [],

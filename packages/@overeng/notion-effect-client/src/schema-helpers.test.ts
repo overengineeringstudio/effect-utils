@@ -1,5 +1,5 @@
-import { Effect, Schema } from 'effect'
 import { describe, it } from '@effect/vitest'
+import { Effect, Schema } from 'effect'
 import { expect } from 'vitest'
 
 import { DatabaseSchema } from '@overeng/notion-effect-schema'

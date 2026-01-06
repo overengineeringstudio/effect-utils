@@ -61,12 +61,12 @@ const results =
 const allPages = yield * NotionDatabases.queryStream({ databaseId: '...' }).pipe(Stream.runCollect)
 
 // Query with typed schema decoding
+import { NotionSchema } from '@overeng/notion-effect-schema'
 import { Schema } from 'effect'
-import { Title, Select } from '@overeng/notion-effect-schema'
 
 const TaskSchema = Schema.Struct({
-  Name: Title.asString,
-  Status: Select.asOption,
+  Name: NotionSchema.title,
+  Status: NotionSchema.selectOption,
 })
 
 const typed =

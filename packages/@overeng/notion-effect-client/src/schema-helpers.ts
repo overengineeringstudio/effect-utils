@@ -118,11 +118,8 @@ export const validateProperties = (args: {
   required: readonly { name: string; tag: PropertySchema['_tag'] }[]
 }): Effect.Effect<void, SchemaMismatchError> =>
   Effect.gen(function* () {
-    const missing = args.required.filter(
-      (prop) =>
-        Option.isNone(
-          getPropertyByTag({ schema: args.schema, name: prop.name, tag: prop.tag }),
-        ),
+    const missing = args.required.filter((prop) =>
+      Option.isNone(getPropertyByTag({ schema: args.schema, name: prop.name, tag: prop.tag })),
     )
 
     if (missing.length === 0) {

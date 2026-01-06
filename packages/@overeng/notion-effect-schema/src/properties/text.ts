@@ -178,7 +178,11 @@ export const RichTextProp = {
   asNonEmptyString: Schema.transform(
     RichTextProperty.pipe(
       Schema.filter(
-        (p) => p.rich_text.map((rt) => rt.plain_text).join('').trim() !== '',
+        (p) =>
+          p.rich_text
+            .map((rt) => rt.plain_text)
+            .join('')
+            .trim() !== '',
         { message: () => 'Rich text must not be empty' },
       ),
     ),

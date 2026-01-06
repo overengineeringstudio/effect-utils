@@ -30,13 +30,13 @@ This produces a fully typed Effect schema that works with `@overeng/notion-effec
 
 ```ts
 // Generated file: tasks.ts
+import { NotionSchema } from '@overeng/notion-effect-schema'
 import { Schema } from 'effect'
-import { Title, Status, DateProp } from '@overeng/notion-effect-schema'
 
 export const TasksPageProperties = Schema.Struct({
-  Name: Title.asString,
-  Status: Status.asOption,
-  'Due Date': DateProp.asOption,
+  Name: NotionSchema.title,
+  Status: NotionSchema.statusOption,
+  'Due Date': NotionSchema.dateOption,
 })
 
 export type TasksPageProperties = typeof TasksPageProperties.Type
@@ -157,14 +157,14 @@ export default defineConfig({
 
 #### Database Options
 
-| Option         | Description                                        |
-| -------------- | -------------------------------------------------- |
-| `output`       | Output file path (relative to `outputDir`)         |
-| `name`         | Custom schema name (defaults to database title)    |
-| `includeWrite` | Generate write schemas for creating/updating pages |
-| `includeApi`   | Generate a typed API wrapper                       |
+| Option         | Description                                                                                                                    |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `output`       | Output file path (relative to `outputDir`)                                                                                     |
+| `name`         | Custom schema name (defaults to database title)                                                                                |
+| `includeWrite` | Generate write schemas for creating/updating pages                                                                             |
+| `includeApi`   | Generate a typed API wrapper                                                                                                   |
 | `typedOptions` | Generate literal unions for select/status/multi_select options and default select-like properties to typed property transforms |
-| `transforms`   | Property-specific transform configuration          |
+| `transforms`   | Property-specific transform configuration                                                                                      |
 
 Config discovery starts from `CurrentWorkingDirectory` (defaults to the process CWD).
 When using the programmatic API, you can override it with `CurrentWorkingDirectory.fromPath`.

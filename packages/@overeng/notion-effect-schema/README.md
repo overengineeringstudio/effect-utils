@@ -4,14 +4,14 @@ Effect schemas for the Notion API.
 
 ## Design Decisions
 
-| Aspect          | Decision                                                                   |
-| --------------- | -------------------------------------------------------------------------- |
-| **Naming**      | Notion terminology (`TitleProperty`, not `TitleElement`)                   |
-| **Transforms**  | Namespace pattern: `Title.raw`, `Title.asString`                           |
-| **Nullability** | `Schema.Option` for nullable fields, `Required.some` / `Required.nullable` to enforce presence |
-| **Dates**       | Parsed to `Date` via `Schema.Date`                                         |
-| **Examples**    | Field-level annotations only                                               |
-| **Docs**        | Custom `notionDocsUrl` annotation + JSDoc `@see` links                     |
+| Aspect          | Decision                                                                                                   |
+| --------------- | ---------------------------------------------------------------------------------------------------------- |
+| **Naming**      | Notion terminology (`TitleProperty`, not `TitleElement`)                                                   |
+| **Transforms**  | One-level facade: `NotionSchema.title`, `NotionSchema.dateOption`, `NotionSchema.selectOption`             |
+| **Nullability** | `Schema.Option` for nullable fields, `NotionSchema.required` / `NotionSchema.nullable` to enforce presence |
+| **Dates**       | Parsed to `Date` via `Schema.Date`                                                                         |
+| **Examples**    | Field-level annotations only                                                                               |
+| **Docs**        | Custom `notionDocsUrl` annotation + JSDoc `@see` links                                                     |
 
 ## Annotations
 

@@ -103,29 +103,74 @@ export const DEFAULT_TRANSFORMS: Record<NotionPropertyType, string> = {
   button: 'raw',
 }
 
-/** Property type to transform namespace mapping (read) */
-export const PROPERTY_TRANSFORM_NAMESPACES: Partial<Record<NotionPropertyType, string>> = {
-  title: 'Title',
-  rich_text: 'RichTextProp',
-  number: 'Num',
-  select: 'Select',
-  multi_select: 'MultiSelect',
-  status: 'Status',
-  date: 'DateProp',
-  people: 'People',
-  files: 'Files',
-  checkbox: 'Checkbox',
-  url: 'Url',
-  email: 'Email',
-  phone_number: 'PhoneNumber',
-  formula: 'Formula',
-  relation: 'Relation',
-  rollup: 'Rollup',
-  created_time: 'CreatedTime',
-  created_by: 'CreatedBy',
-  last_edited_time: 'LastEditedTime',
-  last_edited_by: 'LastEditedBy',
-  unique_id: 'UniqueId',
+/** Property type to NotionSchema transform mapping (read) */
+export const NOTION_SCHEMA_TRANSFORM_KEYS: Partial<
+  Record<NotionPropertyType, Record<string, string>>
+> = {
+  title: { raw: 'titleRaw', asString: 'title' },
+  rich_text: { raw: 'richTextRaw', asString: 'richTextString' },
+  number: { raw: 'numberRaw', asNumber: 'number', asOption: 'numberOption' },
+  select: {
+    raw: 'selectRaw',
+    asOption: 'selectOption',
+    asOptionNamed: 'selectOptionNamed',
+    asName: 'selectName',
+    asString: 'selectString',
+    asPropertyNamed: 'selectPropertyNamed',
+    Property: 'selectProperty',
+  },
+  multi_select: {
+    raw: 'multiSelectRaw',
+    asNames: 'multiSelectNames',
+    asStrings: 'multiSelectStrings',
+    asPropertyNamed: 'multiSelectPropertyNamed',
+    Property: 'multiSelectProperty',
+  },
+  status: {
+    raw: 'statusRaw',
+    asName: 'statusName',
+    asOption: 'statusOption',
+    asString: 'statusString',
+    asPropertyNamed: 'statusPropertyNamed',
+    Property: 'statusProperty',
+  },
+  date: { raw: 'dateRaw', asDate: 'dateDate', asOption: 'dateOption' },
+  people: { raw: 'peopleRaw', asIds: 'peopleIds' },
+  files: { raw: 'filesRaw', asUrls: 'filesUrls' },
+  checkbox: { raw: 'checkboxRaw', asBoolean: 'checkbox' },
+  url: { raw: 'urlRaw', asString: 'urlString', asOption: 'urlOption' },
+  email: { raw: 'emailRaw', asString: 'emailString', asOption: 'emailOption' },
+  phone_number: {
+    raw: 'phoneNumberRaw',
+    asString: 'phoneNumberString',
+    asOption: 'phoneNumberOption',
+  },
+  formula: {
+    raw: 'formulaRaw',
+    asBoolean: 'formulaBoolean',
+    asDate: 'formulaDate',
+    asNumber: 'formulaNumber',
+    asString: 'formulaString',
+  },
+  relation: {
+    raw: 'relationProperty',
+    asIds: 'relationIds',
+    asSingle: 'relationSingle',
+    asSingleId: 'relationSingleId',
+  },
+  rollup: {
+    raw: 'rollupRaw',
+    asArray: 'rollupArray',
+    asBoolean: 'rollupBoolean',
+    asDate: 'rollupDate',
+    asNumber: 'rollupNumber',
+    asString: 'rollupString',
+  },
+  created_time: { raw: 'createdTimeRaw', asDate: 'createdTimeDate' },
+  created_by: { raw: 'createdByRaw', asId: 'createdById' },
+  last_edited_time: { raw: 'lastEditedTimeRaw', asDate: 'lastEditedTimeDate' },
+  last_edited_by: { raw: 'lastEditedByRaw', asId: 'lastEditedById' },
+  unique_id: { raw: 'uniqueIdProperty', asString: 'uniqueIdString', asNumber: 'uniqueIdNumber' },
 }
 
 const TYPED_OPTION_PROPERTY_TYPES = new Set<NotionPropertyType>([
@@ -189,22 +234,22 @@ const inferDefaultTransform = (
   return DEFAULT_TRANSFORMS[property.type] ?? 'raw'
 }
 
-/** Property type to write transform method mapping */
-const WRITE_TRANSFORM_METHODS: Partial<Record<NotionPropertyType, string>> = {
-  title: 'fromString',
-  rich_text: 'fromString',
-  number: 'fromNumber',
-  select: 'fromName',
-  multi_select: 'fromNames',
-  status: 'fromName',
-  date: 'fromStart',
-  people: 'fromIds',
-  files: 'fromUrls',
-  checkbox: 'fromBoolean',
-  url: 'fromString',
-  email: 'fromString',
-  phone_number: 'fromString',
-  relation: 'fromIds',
+/** Property type to NotionSchema write transform mapping */
+const WRITE_TRANSFORM_KEYS: Partial<Record<NotionPropertyType, string>> = {
+  title: 'titleWriteFromString',
+  rich_text: 'richTextWriteFromString',
+  number: 'numberWriteFromNumber',
+  select: 'selectWriteFromName',
+  multi_select: 'multiSelectWriteFromNames',
+  status: 'statusWriteFromName',
+  date: 'dateWriteFromStart',
+  people: 'peopleWriteFromIds',
+  files: 'filesWriteFromUrls',
+  checkbox: 'checkboxWriteFromBoolean',
+  url: 'urlWriteFromString',
+  email: 'emailWriteFromString',
+  phone_number: 'phoneNumberWriteFromString',
+  relation: 'relationWriteFromIds',
 }
 
 /** Read-only property types (cannot be written) */
@@ -301,8 +346,8 @@ const generatePropertyField = (options: {
   typedOptions: { enabled: boolean; typeName?: string }
 }): string => {
   const { property, transformConfig, typedOptions } = options
-  const namespace = PROPERTY_TRANSFORM_NAMESPACES[property.type]
-  if (!namespace) {
+  const transformKeys = NOTION_SCHEMA_TRANSFORM_KEYS[property.type]
+  if (!transformKeys) {
     return 'Schema.Unknown'
   }
 
@@ -316,19 +361,19 @@ const generatePropertyField = (options: {
       ? configuredTransform
       : defaultTransform
 
-  if (transform === 'Property') {
-    return `${namespace}.Property`
-  }
-
   if (TYPED_OPTION_TRANSFORMS.has(transform)) {
     if (!typedOptions.typeName) {
-      return `${namespace}.Property`
+      const fallbackKey = transformKeys.Property
+      return fallbackKey ? `NotionSchema.${fallbackKey}` : 'Schema.Unknown'
     }
-
-    return `${namespace}.${transform}(${typedOptions.typeName})`
+    const transformKey = transformKeys[transform]
+    return transformKey
+      ? `NotionSchema.${transformKey}(${typedOptions.typeName})`
+      : 'Schema.Unknown'
   }
 
-  return `${namespace}.${transform}`
+  const transformKey = transformKeys[transform]
+  return transformKey ? `NotionSchema.${transformKey}` : 'Schema.Unknown'
 }
 
 /**
@@ -339,14 +384,12 @@ const generateWritePropertyField = (property: PropertyInfo): string | null => {
     return null
   }
 
-  const namespace = PROPERTY_TRANSFORM_NAMESPACES[property.type]
-  const writeMethod = WRITE_TRANSFORM_METHODS[property.type]
-
-  if (!namespace || !writeMethod) {
+  const transformKey = WRITE_TRANSFORM_KEYS[property.type]
+  if (!transformKey) {
     return null
   }
 
-  return `${namespace}.Write.${writeMethod}`
+  return `NotionSchema.${transformKey}`
 }
 
 // -----------------------------------------------------------------------------
@@ -500,16 +543,6 @@ export function generateSchemaCode(opts: GenerateSchemaCodeOptions): string {
 
   const pascalName = toTopLevelIdentifier(schemaName)
 
-  // Collect required imports (transform namespaces only - write schemas are nested)
-  const requiredNamespaces = new Set<string>()
-
-  for (const prop of dbInfo.properties) {
-    const namespace = PROPERTY_TRANSFORM_NAMESPACES[prop.type]
-    if (namespace) {
-      requiredNamespaces.add(namespace)
-    }
-  }
-
   // Generate typed options if enabled
   const typedOptionsDefs: Array<{ property: PropertyInfo; typeName: string; code: string }> = []
   if (typedOptions) {
@@ -523,9 +556,6 @@ export function generateSchemaCode(opts: GenerateSchemaCodeOptions): string {
   const typedOptionsByPropertyName = new Map(
     typedOptionsDefs.map((def) => [def.property.name, def.typeName]),
   )
-
-  // Sort imports alphabetically
-  const sortedImports = Array.from(requiredNamespaces).toSorted()
 
   // Generate read property fields
   const readPropertyFields = dbInfo.properties
@@ -578,16 +608,9 @@ export function generateSchemaCode(opts: GenerateSchemaCodeOptions): string {
     `// URL: ${dbInfo.url}`,
     ...(configComment ? [configComment] : []),
     ``,
+    `import { NotionSchema } from '@overeng/notion-effect-schema'`,
     `import { Schema } from 'effect'`,
   ]
-
-  if (sortedImports.length > 0) {
-    lines.push(`import {`)
-    for (const imp of sortedImports) {
-      lines.push(`  ${imp},`)
-    }
-    lines.push(`} from '@overeng/notion-effect-schema'`)
-  }
 
   // Add typed options definitions
   if (typedOptionsDefs.length > 0) {

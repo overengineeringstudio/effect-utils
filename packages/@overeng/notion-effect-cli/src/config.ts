@@ -1,6 +1,7 @@
 import { FileSystem, Path } from '@effect/platform'
-import { CurrentWorkingDirectory } from '@overeng/utils/node'
 import { Effect, Schema } from 'effect'
+
+import { CurrentWorkingDirectory } from '@overeng/utils/node'
 
 import type {
   DatabaseConfig,

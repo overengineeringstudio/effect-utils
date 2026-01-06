@@ -1,7 +1,7 @@
 import { Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { Checkbox, Num, RichTextProp, Select, Title } from '@overeng/notion-effect-schema'
+import { NotionSchema } from '@overeng/notion-effect-schema'
 
 import { generateSchemaCode } from './codegen.ts'
 import type { DatabaseInfo } from './introspect.ts'
@@ -29,28 +29,24 @@ describe('integration', () => {
     expect(code).toContain('export type TestDatabasePageProperties')
 
     // Verify imports are correct
-    expect(code).toContain('Title,')
-    expect(code).toContain('RichTextProp,')
-    expect(code).toContain('Num,')
-    expect(code).toContain('Checkbox,')
-    expect(code).toContain('Select,')
+    expect(code).toContain("import { NotionSchema } from '@overeng/notion-effect-schema'")
 
     // Verify usage is correct
-    expect(code).toContain('Name: Title.asString')
-    expect(code).toContain('Description: RichTextProp.asString')
-    expect(code).toContain('Count: Num.asNumber')
-    expect(code).toContain('Done: Checkbox.asBoolean')
-    expect(code).toContain('Status: Select.asOption')
+    expect(code).toContain('Name: NotionSchema.title')
+    expect(code).toContain('Description: NotionSchema.richTextString')
+    expect(code).toContain('Count: NotionSchema.number')
+    expect(code).toContain('Done: NotionSchema.checkbox')
+    expect(code).toContain('Status: NotionSchema.selectOption')
   })
 
   it('should generate schemas that can decode actual Notion API responses', () => {
     // Create a test schema matching what would be generated
     const TestPageProperties = Schema.Struct({
-      Name: Title.asString,
-      Description: RichTextProp.asString,
-      Count: Num.asNumber,
-      Done: Checkbox.asBoolean,
-      Status: Select.asOption,
+      Name: NotionSchema.title,
+      Description: NotionSchema.richTextString,
+      Count: NotionSchema.number,
+      Done: NotionSchema.checkbox,
+      Status: NotionSchema.selectOption,
     })
 
     // Mock Notion API property response (with proper structure including required fields)
@@ -142,15 +138,15 @@ describe('integration', () => {
     const code = generateSchemaCode({ dbInfo, schemaName: 'Test', options: { includeWrite: true } })
 
     // Verify write schema uses nested Write API
-    expect(code).toContain('Name: Title.Write.fromString')
-    expect(code).toContain('Status: Select.Write.fromName')
-    expect(code).toContain('Done: Checkbox.Write.fromBoolean')
+    expect(code).toContain('Name: NotionSchema.titleWriteFromString')
+    expect(code).toContain('Status: NotionSchema.selectWriteFromName')
+    expect(code).toContain('Done: NotionSchema.checkboxWriteFromBoolean')
 
     // Verify write schemas can decode simple types
     const TestPageWrite = Schema.Struct({
-      Name: Title.Write.fromString,
-      Status: Select.Write.fromName,
-      Done: Checkbox.Write.fromBoolean,
+      Name: NotionSchema.titleWriteFromString,
+      Status: NotionSchema.selectWriteFromName,
+      Done: NotionSchema.checkboxWriteFromBoolean,
     })
 
     const inputData = {
@@ -212,25 +208,25 @@ describe('integration', () => {
     expect(code.length).toBeGreaterThan(0)
 
     // Verify all transforms are included
-    expect(code).toContain('Title.asString')
-    expect(code).toContain('RichTextProp.asString')
-    expect(code).toContain('Num.asNumber')
-    expect(code).toContain('Select.asOption')
-    expect(code).toContain('MultiSelect.asStrings')
-    expect(code).toContain('Status.asOption')
-    expect(code).toContain('DateProp.asOption')
-    expect(code).toContain('People.asIds')
-    expect(code).toContain('Files.asUrls')
-    expect(code).toContain('Checkbox.asBoolean')
-    expect(code).toContain('Url.asOption')
-    expect(code).toContain('Email.asOption')
-    expect(code).toContain('PhoneNumber.asOption')
-    expect(code).toContain('Formula.raw')
-    expect(code).toContain('Relation.asIds')
-    expect(code).toContain('CreatedTime.asDate')
-    expect(code).toContain('CreatedBy.raw')
-    expect(code).toContain('LastEditedTime.asDate')
-    expect(code).toContain('LastEditedBy.raw')
-    expect(code).toContain('UniqueId.raw')
+    expect(code).toContain('NotionSchema.title')
+    expect(code).toContain('NotionSchema.richTextString')
+    expect(code).toContain('NotionSchema.number')
+    expect(code).toContain('NotionSchema.selectOption')
+    expect(code).toContain('NotionSchema.multiSelectStrings')
+    expect(code).toContain('NotionSchema.statusOption')
+    expect(code).toContain('NotionSchema.dateOption')
+    expect(code).toContain('NotionSchema.peopleIds')
+    expect(code).toContain('NotionSchema.filesUrls')
+    expect(code).toContain('NotionSchema.checkbox')
+    expect(code).toContain('NotionSchema.urlOption')
+    expect(code).toContain('NotionSchema.emailOption')
+    expect(code).toContain('NotionSchema.phoneNumberOption')
+    expect(code).toContain('NotionSchema.formulaRaw')
+    expect(code).toContain('NotionSchema.relationIds')
+    expect(code).toContain('NotionSchema.createdTimeDate')
+    expect(code).toContain('NotionSchema.createdByRaw')
+    expect(code).toContain('NotionSchema.lastEditedTimeDate')
+    expect(code).toContain('NotionSchema.lastEditedByRaw')
+    expect(code).toContain('NotionSchema.uniqueIdProperty')
   })
 })

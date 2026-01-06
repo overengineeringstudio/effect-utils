@@ -5,9 +5,10 @@ import { fileURLToPath } from 'node:url'
 import { Args, Command, Options } from '@effect/cli'
 import { FetchHttpClient, FileSystem } from '@effect/platform'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
+import { Cause, Console, Effect, Layer, Option, Schema } from 'effect'
+
 import { NotionConfig, NotionDatabases } from '@overeng/notion-effect-client'
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
-import { Cause, Console, Effect, Layer, Option, Schema } from 'effect'
 
 import { type GenerateOptions, generateApiCode, generateSchemaCode } from './codegen.ts'
 import { loadConfig } from './config.ts'
