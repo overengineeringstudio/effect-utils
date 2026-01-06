@@ -35,6 +35,7 @@ export interface PlaywrightFixtures {
   context: BrowserContext
 }
 
+/** Parameters for configuring test context with custom layers and options. */
 export interface WithTestCtxParams<ROut, E1> {
   /** Custom layers to provide (merged with defaults). */
   makeLayer?: () => Layer.Layer<ROut, E1, never>

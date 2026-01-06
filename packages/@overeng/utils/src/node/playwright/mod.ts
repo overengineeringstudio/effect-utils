@@ -55,11 +55,16 @@
  * @module
  */
 
+/** Browser context operations (cookies, storage, etc). */
 export * as Context from './context.ts'
+/** Locator-based element interactions (click, fill, type, etc). */
 export * as Locator from './locator.ts'
 export { expect_ as expect, PwOpError, try_ as try, tryPw } from './op.ts'
+/** OpenTelemetry integration for cross-process trace propagation. */
 export * as Otel from './otel.ts'
+/** Page-level operations (goto, evaluate, screenshot, etc). */
 export * as Page from './page.ts'
+/** Playwright test step wrappers for Effect spans. */
 export * as Step from './step.ts'
 export { makeTestLayers, PwBrowserContext, PwPage } from './tags.ts'
 export {
@@ -70,6 +75,7 @@ export {
   type WithTestCtxParams,
   withTestCtx,
 } from './test.ts'
+/** Wait/polling utilities with configurable timeouts. */
 export * as Wait from './wait.ts'
 export { PwWaitTimeoutError } from './wait.ts'
 export {

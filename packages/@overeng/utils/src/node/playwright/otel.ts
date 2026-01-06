@@ -70,6 +70,7 @@ export const parentSpanFromEnv = (
     return Tracer.makeExternalSpan({ traceId: ctx.traceId, spanId: ctx.spanId })
   }).pipe(Effect.withSpan('pw.otel.parentSpanFromEnv'))
 
+/** Configuration options for the Playwright OTEL tracing layer. */
 export interface OtelPlaywrightLayerConfig {
   /**
    * Service name for OTEL traces.
@@ -126,7 +127,9 @@ export const makeOtelPlaywrightLayer = (
   return Layer.unwrapEffect(
     Effect.gen(function* () {
       const endpoint = process.env[endpointEnvVar]
-      yield* Effect.logDebug('[pw.otel] Building OTEL layer', { endpoint: endpoint ?? '(not set)' })
+      yield* Effect.logDebug('[pw.otel] Building OTEL layer', {
+        endpoint: endpoint ?? '(not set)',
+      })
       const parentSpan = yield* parentSpanFromEnv(parentSpanEnvVar)
 
       const rootSpanLive = Layer.span('playwright.root', {

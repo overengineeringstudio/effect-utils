@@ -135,6 +135,7 @@ export const parseGeneratedFile = (content: string): ParsedSchema => {
   return { databaseId, databaseName, properties, readSchemaFound }
 }
 
+/** Options for computing the diff between live and generated schemas. */
 export interface ComputeDiffOptions {
   readonly live: DatabaseInfo
   readonly generated: ParsedSchema
@@ -207,6 +208,7 @@ export const computeDiff = ({ live, generated }: ComputeDiffOptions): DiffResult
   }
 }
 
+/** Options for formatting a diff result as human-readable output. */
 export interface FormatDiffOptions {
   readonly diff: DiffResult
   readonly databaseId: string

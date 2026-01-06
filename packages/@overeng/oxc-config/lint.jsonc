@@ -4,7 +4,7 @@
   // Enable plugins for additional rule sets
   "plugins": ["import", "typescript", "unicorn", "oxc"],
 
-  // Custom JS plugins (experimental)
+  // Custom JS plugins (experimental) - TypeScript files work directly, no build step needed
   // See: https://oxc.rs/blog/2025-10-09-oxlint-js-plugins.html
   "jsPlugins": ["./src/mod.ts"],
 
@@ -46,6 +46,9 @@
 
     // Enforce exported declarations come before non-exported declarations (custom plugin)
     "overeng/exports-first": "warn",
+
+    // Require JSDoc comments on type/wildcard exports (custom plugin)
+    "overeng/jsdoc-require-exports": "warn",
   },
 
   "overrides": [
@@ -67,13 +70,22 @@
         "unicorn/consistent-function-scoping": "off",
         "import/no-named-as-default": "off",
         "overeng/exports-first": "off",
+        "overeng/jsdoc-require-exports": "off",
       },
     },
     {
       // Storybook files have a specific pattern (meta before stories)
-      "files": ["**/*.stories.tsx", "**/*.stories.ts", "**/.storybook/**"],
+      "files": ["**/*.stories.tsx", "**/*.stories.ts", "**/*.stories.jsx", "**/.storybook/**"],
       "rules": {
         "overeng/exports-first": "off",
+        "overeng/jsdoc-require-exports": "off",
+      },
+    },
+    {
+      // Config files don't need JSDoc
+      "files": ["**/vitest.config.ts", "**/vite.config.ts", "**/playwright.config.ts"],
+      "rules": {
+        "overeng/jsdoc-require-exports": "off",
       },
     },
     {

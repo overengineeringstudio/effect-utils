@@ -4,6 +4,7 @@ import { Context, Effect, Layer } from 'effect'
 
 import { shouldNeverHappen } from '../isomorphic/mod.ts'
 
+/** Workspace path string (alias for documentation clarity). */
 export type WorkspaceInfo = string
 
 /** Current working directory. */

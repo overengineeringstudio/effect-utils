@@ -5,6 +5,7 @@ import { Effect } from 'effect'
 
 import { isNotUndefined } from '../isomorphic/mod.ts'
 
+/** Options for command output logging with rotation and retention. */
 export type TCmdLoggingOptions = {
   readonly logDir?: string
   readonly logFileName?: string

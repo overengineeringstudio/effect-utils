@@ -26,6 +26,7 @@ export interface WebServerConfig {
   portEnvVar?: string
 }
 
+/** Options for creating a Playwright test configuration. */
 export interface PlaywrightConfigOptions {
   /** Test directory (e.g. './src/browser/__tests__') */
   testDir: string

@@ -11,6 +11,7 @@ export const PaginatedResponse = <A, I, R>(itemSchema: Schema.Schema<A, I, R>) =
     has_more: Schema.Boolean,
   })
 
+/** Shape of a paginated list response from the Notion API. */
 export type PaginatedResponse<A> = {
   readonly object: 'list'
   readonly results: readonly A[]

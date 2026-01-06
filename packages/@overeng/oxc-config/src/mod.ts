@@ -4,6 +4,7 @@
  * This plugin provides custom lint rules for the overeng monorepo:
  * - exports-first: Enforce exported declarations appear before non-exported declarations
  * - named-args: Enforce functions have at most one parameter (use options objects)
+ * - jsdoc-require-exports: Require JSDoc comments on type/wildcard exports
  *
  * TODO: Remove this custom plugin once upstream support lands.
  * See: https://github.com/oxc-project/oxc/issues/17706
@@ -13,6 +14,7 @@
  */
 
 import { exportsFirstRule } from './exports-first.ts'
+import { jsdocRequireExportsRule } from './jsdoc-require-exports.ts'
 import { namedArgsRule } from './named-args.ts'
 
 const plugin = {
@@ -22,6 +24,7 @@ const plugin = {
   },
   rules: {
     'exports-first': exportsFirstRule,
+    'jsdoc-require-exports': jsdocRequireExportsRule,
     'named-args': namedArgsRule,
   },
 }
