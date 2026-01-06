@@ -1,3 +1,12 @@
+/** Re-export core types from effect-distributed-lock */
+export {
+  Backing,
+  DistributedSemaphore,
+  DistributedSemaphoreBacking,
+  LockLostError,
+  SemaphoreBackingError,
+} from 'effect-distributed-lock'
+
 /** Debug utilities for tracing scope and finalizer lifecycle */
 export * from './ScopeDebugger.ts'
 
