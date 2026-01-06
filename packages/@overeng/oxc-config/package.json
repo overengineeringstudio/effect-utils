@@ -5,6 +5,12 @@
   "type": "module",
   "exports": {
     "./lint": "./lint.jsonc",
-    "./fmt": "./fmt.jsonc"
+    "./fmt": "./fmt.jsonc",
+    "./exports-first-plugin": "./exports-first-plugin.js"
+  },
+  "devDependencies": {
+    "eslint": "^9.28.0",
+    "typescript-eslint": "^8.34.0",
+    "vitest": "catalog:"
   }
 }

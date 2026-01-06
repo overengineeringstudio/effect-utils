@@ -4,6 +4,10 @@
   // Enable plugins for additional rule sets
   "plugins": ["import", "typescript", "unicorn", "oxc"],
 
+  // Custom JS plugins (experimental)
+  // See: https://oxc.rs/blog/2025-10-09-oxlint-js-plugins.html
+  "jsPlugins": ["./exports-first-plugin.js"],
+
   // Rule categories - see https://oxc.rs/docs/guide/usage/linter/rules
   "categories": {
     "correctness": "error",
@@ -39,6 +43,9 @@
     // with allowArrowFunctions to encourage expressions/arrows over declarations
     // https://oxc.rs/docs/guide/usage/linter/rules/eslint/func-style
     "func-style": ["warn", "expression", { "allowArrowFunctions": true }],
+
+    // Enforce exported declarations come before non-exported declarations (custom plugin)
+    "overeng/exports-first": "warn",
   },
 
   "overrides": [
@@ -59,6 +66,14 @@
         "unicorn/no-array-sort": "off",
         "unicorn/consistent-function-scoping": "off",
         "import/no-named-as-default": "off",
+        "overeng/exports-first": "off",
+      },
+    },
+    {
+      // Storybook files have a specific pattern (meta before stories)
+      "files": ["**/*.stories.tsx", "**/*.stories.ts", "**/.storybook/**"],
+      "rules": {
+        "overeng/exports-first": "off",
       },
     },
     {

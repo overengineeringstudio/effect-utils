@@ -20,6 +20,7 @@ oxfmt -c packages/@overeng/oxc-config/fmt.jsonc .
 
 - `lint.jsonc` - oxlint rules and overrides
 - `fmt.jsonc` - oxfmt formatting and import sorting
+- `exports-first-plugin.js` - custom JS plugin for oxlint
 
 ## Linting Rules
 
@@ -31,6 +32,7 @@ oxfmt -c packages/@overeng/oxc-config/fmt.jsonc .
 | `import/no-commonjs`        | error    | Enforce ESM over CommonJS                     |
 | `import/no-cycle`           | warn     | Detect circular dependencies                  |
 | `func-style`                | warn     | Prefer function expressions over declarations |
+| `overeng/exports-first`     | warn     | Exports should come before non-exports        |
 
 ## Lint Categories
 
@@ -49,6 +51,12 @@ oxfmt -c packages/@overeng/oxc-config/fmt.jsonc .
   1. External packages (`effect`, `@effect/*`)
   2. Internal monorepo (`@overeng/*`)
   3. Relative imports (`./`, `../`)
+
+## Custom JS Plugin
+
+The `overeng/exports-first` rule is implemented as an oxlint JS plugin. JS plugins are experimental - see the [oxlint JS plugins blog post](https://oxc.rs/blog/2025-10-09-oxlint-js-plugins.html).
+
+An upstream feature request for a native `import/exports-first` rule has been filed: https://github.com/oxc-project/oxc/issues/17706
 
 ## Future
 

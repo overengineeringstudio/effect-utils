@@ -17,6 +17,27 @@ import { introspectDatabase, type PropertyTransformConfig } from './introspect.t
 import { formatCode, writeSchemaToFile } from './output.ts'
 
 // -----------------------------------------------------------------------------
+// Exported Errors
+// -----------------------------------------------------------------------------
+
+export class GeneratedSchemaFileParseError extends Schema.TaggedError<GeneratedSchemaFileParseError>()(
+  'GeneratedSchemaFileParseError',
+  {
+    file: Schema.String,
+    message: Schema.String,
+  },
+) {}
+
+export class SchemaDriftDetectedError extends Schema.TaggedError<SchemaDriftDetectedError>()(
+  'SchemaDriftDetectedError',
+  {
+    databaseId: Schema.String,
+    file: Schema.String,
+    message: Schema.String,
+  },
+) {}
+
+// -----------------------------------------------------------------------------
 // Common Options
 // -----------------------------------------------------------------------------
 
@@ -376,23 +397,6 @@ const generateFromConfigCommand = Command.make(
 // -----------------------------------------------------------------------------
 // Diff Command
 // -----------------------------------------------------------------------------
-
-export class GeneratedSchemaFileParseError extends Schema.TaggedError<GeneratedSchemaFileParseError>()(
-  'GeneratedSchemaFileParseError',
-  {
-    file: Schema.String,
-    message: Schema.String,
-  },
-) {}
-
-export class SchemaDriftDetectedError extends Schema.TaggedError<SchemaDriftDetectedError>()(
-  'SchemaDriftDetectedError',
-  {
-    databaseId: Schema.String,
-    file: Schema.String,
-    message: Schema.String,
-  },
-) {}
 
 const diffDatabaseIdArg = Args.text({ name: 'database-id' }).pipe(
   Args.withDescription('The Notion database ID to compare against'),
