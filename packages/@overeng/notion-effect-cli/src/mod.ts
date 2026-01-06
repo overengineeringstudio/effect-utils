@@ -18,10 +18,20 @@ export {
 } from './codegen.ts'
 // Config
 export {
+  type ConfigError,
+  ConfigFileNotFoundError,
+  ConfigNotFoundError,
+  ConfigParseError,
+  ConfigReadError,
   type DatabaseConfig,
+  type DefaultsConfig,
   loadConfig,
   mergeWithDefaults,
+  type PropertyTransforms,
+  type ResolvedConfig,
+  type ResolvedDatabaseConfig,
   type SchemaGenConfig,
+  type Transform,
 } from './config.ts'
 // Introspection
 export {

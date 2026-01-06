@@ -11,7 +11,7 @@ import { NotionConfig, NotionDatabases } from '@overeng/notion-effect-client'
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
 
 import { type GenerateOptions, generateApiCode, generateSchemaCode } from './codegen.ts'
-import { loadConfig, mergeWithDefaults } from './config.ts'
+import { loadConfig } from './config.ts'
 import { computeDiff, formatDiff, hasDifferences, parseGeneratedFile } from './diff.ts'
 import { introspectDatabase, type PropertyTransformConfig } from './introspect.ts'
 import { formatCode, writeSchemaToFile } from './output.ts'
@@ -314,7 +314,7 @@ const introspectCommand = Command.make(
 const configOption = Options.file('config').pipe(
   Options.withAlias('c'),
   Options.withDescription(
-    'Path to config file (defaults to searching for .notion-schema-gen.json in current/parent dirs)',
+    'Path to config file (defaults to searching for notion-schema-gen.config.ts in current/parent dirs)',
   ),
   Options.optional,
 )
@@ -324,7 +324,7 @@ const generateFromConfigCommand = Command.make(
   { config: configOption, token: tokenOption, dryRun: dryRunOption, writable: writableOption },
   ({ config, token, dryRun, writable }) =>
     Effect.gen(function* () {
-      const { config: schemaConfig, path: resolvedConfigPath } = yield* loadConfig(
+      const { config: resolvedConfig, path: resolvedConfigPath } = yield* loadConfig(
         Option.isSome(config) ? config.value : undefined,
       )
 
@@ -335,25 +335,23 @@ const generateFromConfigCommand = Command.make(
 
       const program = Effect.gen(function* () {
         yield* Console.log(`Using config: ${resolvedConfigPath}`)
-        yield* Console.log(`Generating ${schemaConfig.databases.length} schema(s)...`)
+        yield* Console.log(`Generating ${resolvedConfig.databases.length} schema(s)...`)
 
-        for (const dbConfig of schemaConfig.databases) {
-          const merged = mergeWithDefaults(dbConfig, schemaConfig.defaults)
-
+        for (const dbConfig of resolvedConfig.databases) {
           yield* Console.log('')
-          yield* Console.log(`Introspecting database ${merged.id}...`)
-          const dbInfo = yield* introspectDatabase(merged.id)
+          yield* Console.log(`Introspecting database ${dbConfig.id}...`)
+          const dbInfo = yield* introspectDatabase(dbConfig.id)
 
-          const schemaName = merged.name ?? dbInfo.name
+          const schemaName = dbConfig.name ?? dbInfo.name
           yield* Console.log(`Generating schema "${schemaName}"...`)
 
-          const generateOptions = {
-            transforms: merged.transforms ?? {},
-            includeWrite: merged.includeWrite ?? false,
-            typedOptions: merged.typedOptions ?? false,
-            includeApi: merged.includeApi ?? false,
+          const generateOptions: GenerateOptions = {
+            transforms: dbConfig.transforms ?? {},
+            includeWrite: dbConfig.includeWrite ?? false,
+            typedOptions: dbConfig.typedOptions ?? false,
+            includeApi: dbConfig.includeApi ?? false,
             generatorVersion,
-            ...(merged.name !== undefined ? { schemaNameOverride: merged.name } : {}),
+            ...(dbConfig.name !== undefined ? { schemaNameOverride: dbConfig.name } : {}),
           }
 
           const rawCode = generateSchemaCode(dbInfo, schemaName, generateOptions)
@@ -367,12 +365,12 @@ const generateFromConfigCommand = Command.make(
             yield* Console.log('')
             yield* Console.log('--- End Generated Schema Code ---')
             yield* Console.log('')
-            yield* Console.log(`Would write to: ${merged.output}`)
+            yield* Console.log(`Would write to: ${dbConfig.output}`)
 
             if (generateOptions.includeApi) {
               const rawApiCode = generateApiCode(dbInfo, schemaName, generateOptions)
               const apiCode = yield* formatCode(rawApiCode)
-              const apiOutput = merged.output.replace(/\.ts$/, '.api.ts')
+              const apiOutput = dbConfig.output.replace(/\.ts$/, '.api.ts')
 
               yield* Console.log('')
               yield* Console.log('--- Generated API Code (dry-run) ---')
@@ -384,14 +382,14 @@ const generateFromConfigCommand = Command.make(
               yield* Console.log(`Would write to: ${apiOutput}`)
             }
           } else {
-            yield* Console.log(`Writing to ${merged.output}...`)
-            yield* writeSchemaToFile({ code, outputPath: merged.output, writable })
+            yield* Console.log(`Writing to ${dbConfig.output}...`)
+            yield* writeSchemaToFile({ code, outputPath: dbConfig.output, writable })
             yield* Console.log(`✓ Schema generated successfully!${writable ? '' : ' (read-only)'}`)
 
             if (generateOptions.includeApi) {
               const rawApiCode = generateApiCode(dbInfo, schemaName, generateOptions)
               const apiCode = yield* formatCode(rawApiCode)
-              const apiOutput = merged.output.replace(/\.ts$/, '.api.ts')
+              const apiOutput = dbConfig.output.replace(/\.ts$/, '.api.ts')
 
               yield* Console.log(`Writing API to ${apiOutput}...`)
               yield* writeSchemaToFile({ code: apiCode, outputPath: apiOutput, writable })

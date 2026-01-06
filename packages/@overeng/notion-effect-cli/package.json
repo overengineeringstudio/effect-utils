@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/mod.ts"
+    ".": "./src/mod.ts",
+    "./config": "./src/config-def.ts"
   },
   "publishConfig": {
     "access": "public",
@@ -12,7 +13,8 @@
       "notion-effect-cli": "./dist/cli.js"
     },
     "exports": {
-      ".": "./dist/mod.js"
+      ".": "./dist/mod.js",
+      "./config": "./dist/config-def.js"
     }
   },
   "dependencies": {
