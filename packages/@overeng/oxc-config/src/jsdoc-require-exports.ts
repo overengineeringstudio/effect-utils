@@ -1,17 +1,14 @@
 /**
  * jsdoc-require-exports oxlint rule.
  *
- * Requires JSDoc comments on type-level exports and named namespace re-exports.
- * Type exports and wildcard re-exports need documentation to explain what they expose,
- * since their contents are not immediately visible at the export site.
+ * Requires JSDoc comments on type definitions and named namespace exports.
  *
  * Requires JSDoc on:
- * - Type definitions: `export interface ...` and `export type X = ...`
- * - Named namespace re-exports: `export * as name from '...'`
+ * - Type definitions: `export interface X`, `export type X = ...`
+ * - Named namespace exports: `export * as name from '...'`
  *
  * Does NOT require JSDoc on:
- * - Plain wildcard re-exports: `export * from '...'`
- * - Type re-exports: `export type { X } from '...'`
+ * - Re-exports: `export * from '...'`, `export { X } from '...'`, `export type { X } from '...'`
  * - Typeof-derived types: `export type X = typeof Y.Type`
  * - Value exports: `export const`, `export function`, etc.
  *
@@ -46,8 +43,9 @@ const isDerivedTypeofAlias = (decl: any) => {
 }
 
 /**
- * Check if this is a type definition export (interface or type alias, NOT a re-export).
- * Excludes typeof-derived type aliases since they derive documentation from their source.
+ * Check if this is a type definition export (interface or type alias).
+ * Re-exports (export type { X } from '...') are excluded - the source should have docs.
+ * Typeof-derived type aliases are also excluded since they derive from documented sources.
  */
 const isTypeDefinitionExport = (node: ASTNode) => {
   if (node.type === 'ExportNamedDeclaration') {
