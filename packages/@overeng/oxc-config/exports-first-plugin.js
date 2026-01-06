@@ -147,6 +147,52 @@ const exportsFirstRule = {
   create(context) {
     return {
       Program(programNode) {
+        /**
+         * Fast-path:
+         * - If there are no exports, nothing to report.
+         * - If there are no trackable non-exports, nothing to report.
+         * - If every export appears before the first trackable non-export, nothing to report.
+         *
+         * This avoids the heavier reference collection for the common "already ordered" case.
+         */
+        let hasExport = false
+        let hasTrackableNonExport = false
+        let exportAfterNonExport = false
+
+        for (const node of programNode.body) {
+          // Skip import statements
+          if (node.type === 'ImportDeclaration') {
+            continue
+          }
+
+          // Skip re-exports
+          if (isReExport(node)) {
+            continue
+          }
+
+          // Skip type-only exports
+          if (isTypeOnlyExport(node)) {
+            continue
+          }
+
+          if (isExportDeclaration(node)) {
+            hasExport = true
+            if (hasTrackableNonExport) {
+              exportAfterNonExport = true
+              break
+            }
+            continue
+          }
+
+          if (isTrackableDeclaration(node)) {
+            hasTrackableNonExport = true
+          }
+        }
+
+        if (!hasExport || !hasTrackableNonExport || !exportAfterNonExport) {
+          return
+        }
+
         // First pass: collect all non-exported declarations and their positions
         const nonExportedDecls = [] // { names: Set, node, index }
         const exports = [] // { node, index, refs: Set }
