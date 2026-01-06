@@ -54,7 +54,7 @@ const MainApp = () => {
       Effect.gen(function* () {
         yield* Effect.log('Button clicked!')
         // Use your services here
-      }).pipe(Effect.withSpan('button.click'))
+      }).pipe(Effect.withSpan('button.click')),
     )
   }
 

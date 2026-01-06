@@ -1,4 +1,4 @@
-import { unselectable } from './unselectable'
+import { unselectable } from './unselectable.tsx'
 
 export const createTheme = (theme: any) => ({
   DOMNodePreview: {

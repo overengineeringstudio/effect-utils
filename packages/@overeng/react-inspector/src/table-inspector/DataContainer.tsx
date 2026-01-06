@@ -1,10 +1,15 @@
 import React from 'react'
+import type { FC } from 'react'
 
-import { ObjectValue } from '../object/ObjectValue'
-import { useStyles } from '../styles'
-import { hasOwnProperty } from '../utils/objectPrototype'
+import { ObjectValue } from '../object/ObjectValue.tsx'
+import { useStyles } from '../styles/index.tsx'
+import { hasOwnProperty } from '../utils/objectPrototype.tsx'
 
-export const DataContainer = ({ rows, columns, rowsData }) => {
+export const DataContainer: FC<{
+  rows: (string | number)[]
+  columns: string[]
+  rowsData: unknown[]
+}> = ({ rows, columns, rowsData }) => {
   const styles = useStyles('TableInspectorDataContainer')
   const borderStyles = useStyles('TableInspectorLeftBorder')
 
@@ -36,7 +41,7 @@ export const DataContainer = ({ rows, columns, rowsData }) => {
                 ) {
                   return (
                     <td key={column} style={{ ...styles.td, ...borderStyles.solid }}>
-                      <ObjectValue object={rowData[column]} />
+                      <ObjectValue object={(rowData as Record<string, unknown>)[column]} />
                     </td>
                   )
                 } else {

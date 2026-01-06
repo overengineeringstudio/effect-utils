@@ -1,12 +1,3 @@
-/** Re-export core types from effect-distributed-lock */
-export {
-  Backing,
-  DistributedSemaphore,
-  DistributedSemaphoreBacking,
-  LockLostError,
-  SemaphoreBackingError,
-} from 'effect-distributed-lock'
-
 /** Debug utilities for tracing scope and finalizer lifecycle */
 export * from './ScopeDebugger.ts'
 
@@ -48,35 +39,23 @@ export const isNotNil = <T>(value: T | null | undefined): value is T =>
   value !== null && value !== undefined
 
 // ============================================================================
-// Environment Detection
+// Re-exports from core module (environment detection, defensive programming)
 // ============================================================================
 
-/** Detects non-production environments when running in Node-like runtimes. */
-export const isDevEnv = (): boolean => {
-  if (typeof process === 'undefined') {
-    return false
-  }
-
-  if (typeof process.env === 'undefined') {
-    return false
-  }
-
-  return process.env.NODE_ENV !== 'production'
-}
+export { isDevEnv, shouldNeverHappen } from './core.ts'
 
 // ============================================================================
-// Defensive Programming
+// Re-exports from utility modules
 // ============================================================================
 
-/**
- * Throws a clear error for impossible states while offering a breakpoint in dev.
- */
-export const shouldNeverHappen = (msg?: string, ...args: any[]): never => {
-  console.error(msg, ...args)
-  if (isDevEnv()) {
-    // oxlint-disable-next-line eslint(no-debugger) -- intentional breakpoint for impossible states during development
-    debugger
-  }
-
-  throw new Error(`This should never happen: ${msg}`)
-}
+export * from './misc.ts'
+export * from './timestamp.ts'
+export * from './time.ts'
+export * from './humanized-date.ts'
+export * from './binary.ts'
+export * from './hash.ts'
+export * from './get-env.ts'
+export * from './object/mod.ts'
+export * from './single-item.ts'
+export * from './string.ts'
+export * from './types/mod.ts'

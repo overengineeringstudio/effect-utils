@@ -51,11 +51,7 @@ const backingLayer = FileSystemBacking.layer({
   lockDir: '/tmp/my-app-locks',
 })
 
-program.pipe(
-  Effect.provide(backingLayer),
-  Effect.provide(NodeContext.layer),
-  Effect.runPromise,
-)
+program.pipe(Effect.provide(backingLayer), Effect.provide(NodeContext.layer), Effect.runPromise)
 ```
 
 #### How It Works
@@ -84,18 +80,15 @@ import { Effect } from 'effect'
 const options = { lockDir: '/tmp/my-app-locks' }
 
 // List all active holders for a key
-const holders = yield* FileSystemBacking.listHolders(options, 'my-resource')
+const holders = yield * FileSystemBacking.listHolders(options, 'my-resource')
 // Returns: [{ holderId: 'abc', permits: 1, expiresAt: 1234567890 }, ...]
 
 // Force revoke a specific holder's permits
-const revokedPermits = yield* FileSystemBacking.forceRevoke(
-  options,
-  'my-resource',
-  'holder-id-to-revoke',
-)
+const revokedPermits =
+  yield * FileSystemBacking.forceRevoke(options, 'my-resource', 'holder-id-to-revoke')
 
 // Nuclear option: revoke all holders for a key
-const allRevoked = yield* FileSystemBacking.forceRevokeAll(options, 'my-resource')
+const allRevoked = yield * FileSystemBacking.forceRevokeAll(options, 'my-resource')
 // Returns: [{ holderId: 'abc', permits: 1 }, { holderId: 'def', permits: 2 }]
 ```
 
@@ -252,7 +245,7 @@ const workerProgram = Effect.gen(function* () {
   }).pipe(Effect.withSpan('sync-operation'))
 }).pipe(
   // All Effect.log calls broadcast to connected tabs
-  Effect.provide(BroadcastLoggerLive('sync-worker'))
+  Effect.provide(BroadcastLoggerLive('sync-worker')),
 )
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -279,9 +272,7 @@ import { logStream, formatLogEntry } from '@overeng/utils/browser'
 
 const logViewer = logStream.pipe(
   Stream.filter((entry) => entry.source === 'sync-worker'),
-  Stream.runForEach((entry) =>
-    Effect.sync(() => console.log(formatLogEntry(entry)))
-  ),
+  Stream.runForEach((entry) => Effect.sync(() => console.log(formatLogEntry(entry)))),
 )
 ```
 

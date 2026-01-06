@@ -1,6 +1,7 @@
-import React, { FC } from 'react'
+import React from 'react'
+import type { FC } from 'react'
 
-import { useStyles } from '../styles'
+import { useStyles } from '../styles/index.tsx'
 
 /**
  * A view for object property names.

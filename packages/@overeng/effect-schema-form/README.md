@@ -66,12 +66,12 @@ const MyCustomForm = ({ schema, value, onChange }) => {
 
   return (
     <form>
-      {fields.map(field => (
+      {fields.map((field) => (
         <div key={field.key}>
           <label>{field.meta.title ?? field.key}</label>
           <input
             value={getValue(field.key) ?? ''}
-            onChange={e => setValue(field.key, e.target.value)}
+            onChange={(e) => setValue(field.key, e.target.value)}
           />
           {field.meta.description && <span>{field.meta.description}</span>}
         </div>
@@ -88,7 +88,7 @@ const MyCustomForm = ({ schema, value, onChange }) => {
   {({ fields, renderField, tagInfo }) => (
     <div className="custom-layout">
       {tagInfo.isTagged && <h2>{tagInfo.tagValue}</h2>}
-      {fields.map(field => (
+      {fields.map((field) => (
         <div key={field.key} className="field-wrapper">
           {renderField(field)}
         </div>
@@ -103,7 +103,11 @@ const MyCustomForm = ({ schema, value, onChange }) => {
 ### Schema Introspection
 
 ```tsx
-import { analyzeSchema, getStructProperties, analyzeTaggedStruct } from '@overeng/effect-schema-form'
+import {
+  analyzeSchema,
+  getStructProperties,
+  analyzeTaggedStruct,
+} from '@overeng/effect-schema-form'
 
 // Analyze a single schema
 const meta = analyzeSchema(Schema.String)
@@ -163,7 +167,7 @@ interface FieldRenderers {
 ```tsx
 import { formatLiteralLabel } from '@overeng/effect-schema-form'
 
-formatLiteralLabel('my-option')     // "My Option"
-formatLiteralLabel('someValue')     // "Some Value"
-formatLiteralLabel('snake_case')    // "Snake Case"
+formatLiteralLabel('my-option') // "My Option"
+formatLiteralLabel('someValue') // "Some Value"
+formatLiteralLabel('snake_case') // "Snake Case"
 ```

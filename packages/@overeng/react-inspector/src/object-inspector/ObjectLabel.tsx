@@ -1,8 +1,9 @@
-import React, { FC } from 'react'
+import React from 'react'
+import type { FC } from 'react'
 
-import { ObjectName } from '../object/ObjectName'
-import { ObjectValue } from '../object/ObjectValue'
-import { ObjectPreview } from './ObjectPreview'
+import { ObjectName } from '../object/ObjectName.tsx'
+import { ObjectValue } from '../object/ObjectValue.tsx'
+import { ObjectPreview } from './ObjectPreview.tsx'
 
 /**
  * if isNonenumerable is specified, render the name dimmed

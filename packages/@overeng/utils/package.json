@@ -7,7 +7,12 @@
     ".": "./src/isomorphic/mod.ts",
     "./node": "./src/node/mod.ts",
     "./node/playwright": "./src/node/playwright/mod.ts",
-    "./browser": "./src/browser/mod.ts"
+    "./browser": "./src/browser/mod.ts",
+    "./cuid": {
+      "browser": "./src/cuid/cuid.browser.ts",
+      "node": "./src/cuid/cuid.node.ts",
+      "default": "./src/cuid/mod.ts"
+    }
   },
   "publishConfig": {
     "access": "public",
@@ -15,11 +20,18 @@
       ".": "./dist/isomorphic/mod.js",
       "./node": "./dist/node/mod.js",
       "./node/playwright": "./dist/node/playwright/mod.js",
-      "./browser": "./dist/browser/mod.js"
+      "./browser": "./dist/browser/mod.js",
+      "./cuid": {
+        "browser": "./dist/cuid/cuid.browser.js",
+        "node": "./dist/cuid/cuid.node.js",
+        "default": "./dist/cuid/mod.js"
+      }
     }
   },
   "dependencies": {
-    "effect-distributed-lock": "0.0.10"
+    "@noble/hashes": "1.7.1",
+    "@opentelemetry/api": "catalog:",
+    "effect-distributed-lock": "catalog:"
   },
   "devDependencies": {
     "@effect/opentelemetry": "catalog:",

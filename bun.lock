@@ -33,14 +33,23 @@
       "name": "@overeng/effect-react",
       "version": "0.1.0",
       "devDependencies": {
+        "@storybook/react": "catalog:",
+        "@storybook/react-vite": "catalog:",
         "@types/react": "catalog:",
+        "@vitejs/plugin-react": "catalog:",
         "effect": "catalog:",
         "react": "catalog:",
+        "react-aria-components": "catalog:",
+        "react-dom": "catalog:",
+        "storybook": "catalog:",
+        "vite": "catalog:",
         "vitest": "catalog:",
       },
       "peerDependencies": {
         "effect": "catalog:",
         "react": "catalog:",
+        "react-aria-components": "catalog:",
+        "react-dom": "catalog:",
       },
     },
     "packages/@overeng/effect-schema-form": {
@@ -188,7 +197,9 @@
       "name": "@overeng/utils",
       "version": "0.1.0",
       "dependencies": {
-        "effect-distributed-lock": "0.0.10",
+        "@noble/hashes": "1.7.1",
+        "@opentelemetry/api": "catalog:",
+        "effect-distributed-lock": "catalog:",
       },
       "devDependencies": {
         "@effect/opentelemetry": "catalog:",
@@ -244,6 +255,7 @@
     "@effect/typeclass": "0.38.0",
     "@effect/vitest": "0.27.0",
     "@effect/workflow": "0.16.0",
+    "@opentelemetry/api": "1.9.0",
     "@playwright/test": "1.57.0",
     "@storybook/react": "10.1.11",
     "@storybook/react-vite": "10.1.11",
@@ -253,6 +265,7 @@
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "5.1.2",
     "effect": "3.19.14",
+    "effect-distributed-lock": "0.0.10",
     "react": "19.2.3",
     "react-aria-components": "1.14.0",
     "react-dom": "19.2.3",
@@ -460,6 +473,10 @@
     "@msgpackr-extract/msgpackr-extract-linux-x64": ["@msgpackr-extract/msgpackr-extract-linux-x64@3.0.3", "", { "os": "linux", "cpu": "x64" }, "sha512-cvwNfbP07pKUfq1uH+S6KJ7dT9K8WOE4ZiAcsrSes+UY55E/0jLYc+vq+DO7jlmqRb5zAggExKm0H7O/CBaesg=="],
 
     "@msgpackr-extract/msgpackr-extract-win32-x64": ["@msgpackr-extract/msgpackr-extract-win32-x64@3.0.3", "", { "os": "win32", "cpu": "x64" }, "sha512-x0fWaQtYp4E6sktbsdAqnehxDgEc/VwM7uLsRCYWaiGu0ykYdZPiS8zCWdnjHwyiumousxfBm4SO31eXqwEZhQ=="],
+
+    "@noble/hashes": ["@noble/hashes@1.7.1", "", {}, "sha512-B8XBPsn4vT/KJAGqDzbwztd+6Yte3P4V7iafm24bxgDe/mlRuK6xmWPuCNrKt2vDafZ8MfJLlchDG/vYafQEjQ=="],
+
+    "@opentelemetry/api": ["@opentelemetry/api@1.9.0", "", {}, "sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg=="],
 
     "@opentelemetry/semantic-conventions": ["@opentelemetry/semantic-conventions@1.38.0", "", {}, "sha512-kocjix+/sSggfJhwXqClZ3i9Y/MI0fp7b+g7kCRm6psy2dsf8uApTRclwG18h8Avm7C9+fnt+O36PspJ/OzoWg=="],
 

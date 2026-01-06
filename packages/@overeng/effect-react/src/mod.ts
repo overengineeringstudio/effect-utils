@@ -47,3 +47,14 @@ export {
   useEffectRunner,
   useRuntime,
 } from './context.tsx'
+
+export {
+  type EffectButtonResult,
+  type EffectButtonRunEffect,
+  type EffectButtonState,
+  type UseEffectButtonOptions,
+  formatDuration,
+  useEffectButton,
+} from './effect-button.tsx'
+
+export { type Progress, initialProgress, ProgressReporter } from './progress-reporter.ts'

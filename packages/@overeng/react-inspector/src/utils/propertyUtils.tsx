@@ -1,4 +1,4 @@
-export function getPropertyValue(object, propertyName) {
+export function getPropertyValue(object: object, propertyName: string): unknown {
   const propertyDescriptor = Object.getOwnPropertyDescriptor(object, propertyName)
   if (propertyDescriptor && propertyDescriptor.get) {
     try {
@@ -8,5 +8,5 @@ export function getPropertyValue(object, propertyName) {
     }
   }
 
-  return object[propertyName]
+  return (object as Record<string, unknown>)[propertyName]
 }

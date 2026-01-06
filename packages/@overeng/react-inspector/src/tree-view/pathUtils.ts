@@ -2,11 +2,13 @@ export const DEFAULT_ROOT_PATH = '$'
 
 const WILDCARD = '*'
 
-export function hasChildNodes(data, dataIterator) {
+type DataIterator = (data: unknown) => Generator<{ name: string; data: unknown }>
+
+export function hasChildNodes(data: unknown, dataIterator: DataIterator): boolean {
   return !dataIterator(data).next().done
 }
 
-export const wildcardPathsFromLevel = (level) => {
+export const wildcardPathsFromLevel = (level: number): string[] => {
   // i is depth
   return Array.from({ length: level }, (_, i) =>
     [DEFAULT_ROOT_PATH].concat(Array.from({ length: i }, () => '*')).join('.'),
@@ -14,25 +16,26 @@ export const wildcardPathsFromLevel = (level) => {
 }
 
 export const getExpandedPaths = (
-  data,
-  dataIterator,
-  expandPaths,
-  expandLevel,
-  prevExpandedPaths,
-) => {
+  data: unknown,
+  dataIterator: DataIterator,
+  expandPaths: string[] | undefined,
+  expandLevel: number,
+  prevExpandedPaths: Record<string, boolean>,
+): Record<string, boolean> => {
   const wildcardPaths = wildcardPathsFromLevel(expandLevel)
-    .concat(expandPaths)
-    .filter((path) => typeof path === 'string') // could be undefined
+    .concat(expandPaths ?? [])
+    .filter((path): path is string => typeof path === 'string') // could be undefined
 
   const expandedPaths: string[] = []
   wildcardPaths.forEach((wildcardPath) => {
     const keyPaths = wildcardPath.split('.')
-    const populatePaths = (curData, curPath, depth) => {
+    const populatePaths = (curData: unknown, curPath: string, depth: number) => {
       if (depth === keyPaths.length) {
         expandedPaths.push(curPath)
         return
       }
       const key = keyPaths[depth]
+      if (key === undefined) return
       if (depth === 0) {
         if (
           hasChildNodes(curData, dataIterator) &&
@@ -48,7 +51,7 @@ export const getExpandedPaths = (
             }
           }
         } else {
-          const value = curData[key]
+          const value = (curData as Record<string, unknown>)[key]
           if (hasChildNodes(value, dataIterator)) {
             populatePaths(value, `${curPath}.${key}`, depth + 1)
           }

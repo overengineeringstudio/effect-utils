@@ -1,7 +1,8 @@
-import React, { FC } from 'react'
+import React from 'react'
+import type { FC } from 'react'
 
-import { ObjectName } from '../object/ObjectName'
-import { ObjectPreview } from './ObjectPreview'
+import { ObjectName } from '../object/ObjectName.tsx'
+import { ObjectPreview } from './ObjectPreview.tsx'
 
 export const ObjectRootLabel: FC<any> = ({ name, data }) => {
   if (typeof name === 'string') {

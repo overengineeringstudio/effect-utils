@@ -1,15 +1,14 @@
 {
   "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
-    "composite": true,
     "rootDir": "src",
     "outDir": "./dist",
-    "tsBuildInfoFile": "./tsconfig.tsbuildinfo",
     "jsx": "react-jsx",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "allowJs": true,
     "checkJs": false,
+    "strict": false,
     "noImplicitAny": false,
+    "strictNullChecks": false,
     "exactOptionalPropertyTypes": false,
     "noUncheckedIndexedAccess": false,
     "verbatimModuleSyntax": false,

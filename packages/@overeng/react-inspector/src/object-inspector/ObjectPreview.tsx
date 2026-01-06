@@ -1,10 +1,11 @@
-import React, { FC, ReactNode } from 'react'
+import React from 'react'
+import type { FC, ReactNode } from 'react'
 
-import { ObjectName } from '../object/ObjectName'
-import { ObjectValue } from '../object/ObjectValue'
-import { useStyles } from '../styles'
-import { hasOwnProperty } from '../utils/objectPrototype'
-import { getPropertyValue } from '../utils/propertyUtils'
+import { ObjectName } from '../object/ObjectName.tsx'
+import { ObjectValue } from '../object/ObjectValue.tsx'
+import { useStyles } from '../styles/index.tsx'
+import { hasOwnProperty } from '../utils/objectPrototype.tsx'
+import { getPropertyValue } from '../utils/propertyUtils.tsx'
 
 /* intersperse arr with separator */
 function intersperse(arr: any[], sep: string) {

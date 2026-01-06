@@ -4,22 +4,33 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/mod.ts"
+    ".": "./src/mod.ts",
+    "./react-aria": "./src/react-aria/mod.ts"
   },
   "publishConfig": {
     "access": "public",
     "exports": {
-      ".": "./dist/mod.js"
+      ".": "./dist/mod.js",
+      "./react-aria": "./dist/react-aria/mod.js"
     }
   },
   "devDependencies": {
+    "@storybook/react": "catalog:",
+    "@storybook/react-vite": "catalog:",
     "@types/react": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
     "effect": "catalog:",
     "react": "catalog:",
+    "react-aria-components": "catalog:",
+    "react-dom": "catalog:",
+    "storybook": "catalog:",
+    "vite": "catalog:",
     "vitest": "catalog:"
   },
   "peerDependencies": {
     "effect": "catalog:",
-    "react": "catalog:"
+    "react": "catalog:",
+    "react-aria-components": "catalog:",
+    "react-dom": "catalog:"
   }
 }
