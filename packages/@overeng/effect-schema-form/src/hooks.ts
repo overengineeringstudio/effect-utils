@@ -18,6 +18,7 @@ export interface UseSchemaFormResult<T extends Record<string, unknown>> {
   setValues: (values: Partial<T>) => void
 }
 
+/** Options for the useSchemaForm hook. */
 export interface UseSchemaFormOptions<T> {
   readonly schema: Schema.Schema<T>
   readonly value: T

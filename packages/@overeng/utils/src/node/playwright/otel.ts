@@ -70,6 +70,7 @@ export const parentSpanFromEnv = (
     return Tracer.makeExternalSpan({ traceId: ctx.traceId, spanId: ctx.spanId })
   }).pipe(Effect.withSpan('pw.otel.parentSpanFromEnv'))
 
+/** Configuration options for the Playwright OTEL tracing layer. */
 export interface OtelPlaywrightLayerConfig {
   /**
    * Service name for OTEL traces.

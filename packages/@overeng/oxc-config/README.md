@@ -24,16 +24,16 @@ oxfmt -c packages/@overeng/oxc-config/fmt.jsonc .
 
 ## Linting Rules
 
-| Rule                              | Severity | Description                                   |
-| --------------------------------- | -------- | --------------------------------------------- |
-| `import/no-dynamic-require`       | warn     | Disallow dynamic `import()` and `require()`   |
-| `oxc/no-barrel-file`              | warn     | Disallow re-exports outside `mod.ts`          |
-| `overeng/named-args`              | warn     | Enforce named arguments (options objects)     |
-| `import/no-commonjs`              | error    | Enforce ESM over CommonJS                     |
-| `import/no-cycle`                 | warn     | Detect circular dependencies                  |
-| `func-style`                      | warn     | Prefer function expressions over declarations |
-| `overeng/exports-first`           | warn     | Exports should come before non-exports        |
-| `overeng/jsdoc-require-exports`   | warn     | Require JSDoc on type/wildcard exports        |
+| Rule                            | Severity | Description                                   |
+| ------------------------------- | -------- | --------------------------------------------- |
+| `import/no-dynamic-require`     | warn     | Disallow dynamic `import()` and `require()`   |
+| `oxc/no-barrel-file`            | warn     | Disallow re-exports outside `mod.ts`          |
+| `overeng/named-args`            | warn     | Enforce named arguments (options objects)     |
+| `import/no-commonjs`            | error    | Enforce ESM over CommonJS                     |
+| `import/no-cycle`               | warn     | Detect circular dependencies                  |
+| `func-style`                    | warn     | Prefer function expressions over declarations |
+| `overeng/exports-first`         | warn     | Exports should come before non-exports        |
+| `overeng/jsdoc-require-exports` | warn     | Require JSDoc on type/wildcard exports        |
 
 ### `overeng/named-args`
 
@@ -59,10 +59,12 @@ const myFunc = (a, b) => { ... }
 ### `overeng/jsdoc-require-exports`
 
 Requires JSDoc comments on:
+
 - Type definitions: `export interface ...` and `export type X = ...`
 - Named namespace re-exports: `export * as name from '...'`
 
 Does NOT require JSDoc on:
+
 - Plain wildcard re-exports: `export * from '...'`
 - Type re-exports: `export type { X } from '...'`
 - Typeof-derived types: `export type X = typeof Y.Type`

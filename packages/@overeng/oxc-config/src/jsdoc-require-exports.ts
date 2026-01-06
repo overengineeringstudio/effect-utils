@@ -21,6 +21,7 @@ import type { Rule, SourceCode } from 'eslint'
 type ASTNode = Rule.Node
 
 /** Check if a node has a JSDoc comment (block comment starting with *). */
+// oxlint-disable-next-line overeng/named-args -- simple internal helper
 const hasJsDocComment = (node: ASTNode, sourceCode: SourceCode) => {
   const comments = sourceCode.getCommentsBefore(node)
   for (const comment of comments) {

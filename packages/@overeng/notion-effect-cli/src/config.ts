@@ -75,6 +75,7 @@ export class ConfigParseError extends Schema.TaggedError<ConfigParseError>()('Co
   cause: Schema.Defect,
 }) {}
 
+/** Union of all configuration-related errors. */
 export type ConfigError =
   | ConfigNotFoundError
   | ConfigFileNotFoundError

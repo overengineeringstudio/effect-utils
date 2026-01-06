@@ -1,16 +1,12 @@
 /**
-<<<<<<<< HEAD:packages/@overeng/oxc-config/src/exports-first.ts
  * exports-first oxlint rule.
-========
- * Oxlint JS plugin rule that enforces exported declarations appear before non-exported declarations.
->>>>>>>> a7200fc (Implement JSDoc requirements for type exports and refactor oxlint plugins):packages/@overeng/oxc-config/src/exports-first-plugin.ts
  *
  * Enforce exported declarations appear before non-exported declarations.
  * This helps with code readability by putting the public API at the top of files.
+ *
  * The rule is "control-flow aware": private declarations that are referenced by
  * subsequent exports are allowed to appear before those exports.
  *
-<<<<<<<< HEAD:packages/@overeng/oxc-config/src/exports-first.ts
  * @example
  * // ✅ Good - exports first
  * export const publicApi = () => {}
@@ -31,26 +27,6 @@
 /** Check if a node is a declaration that should be tracked. */
 const isTrackableDeclaration = (node: any): boolean => {
   const type = node.type
-========
- * TODO: Remove this custom rule once upstream support lands.
- * See: https://github.com/oxc-project/oxc/issues/17706
- *
- * NOTE: WASM plugins may become available in the future for better performance.
- * See: https://github.com/oxc-project/oxc/discussions/10342
- */
-
-import type { Rule } from 'eslint'
-
-type ASTNode = Rule.Node
-
-/**
- * Check if a node is a declaration that should be tracked.
- * Excludes import statements and type-only declarations (interfaces, type aliases).
- * Type-only declarations are compile-time only and don't affect runtime code organization.
- */
-const isTrackableDeclaration = (node: ASTNode) => {
-  const type = node.type as string
->>>>>>>> a7200fc (Implement JSDoc requirements for type exports and refactor oxlint plugins):packages/@overeng/oxc-config/src/exports-first-plugin.ts
   return (
     type === 'VariableDeclaration' ||
     type === 'FunctionDeclaration' ||
@@ -60,7 +36,6 @@ const isTrackableDeclaration = (node: ASTNode) => {
 }
 
 /** Check if a node is an export declaration (named or default). */
-<<<<<<<< HEAD:packages/@overeng/oxc-config/src/exports-first.ts
 const isExportDeclaration = (node: any): boolean =>
   node.type === 'ExportNamedDeclaration' || node.type === 'ExportDefaultDeclaration'
 
@@ -70,29 +45,14 @@ const isReExport = (node: any): boolean =>
 
 /** Check if this is a type-only export (should be ignored). */
 const isTypeOnlyExport = (node: any): boolean => {
-========
-const isExportDeclaration = (node: ASTNode) =>
-  node.type === 'ExportNamedDeclaration' || node.type === 'ExportDefaultDeclaration'
-
-/** Check if an export is a re-export (no declaration, just re-exporting from another module). */
-const isReExport = (node: ASTNode) =>
-  node.type === 'ExportNamedDeclaration' && (node as any).source !== null
-
-/** Check if this is a type-only export (should be ignored). */
-const isTypeOnlyExport = (node: ASTNode) => {
->>>>>>>> a7200fc (Implement JSDoc requirements for type exports and refactor oxlint plugins):packages/@overeng/oxc-config/src/exports-first-plugin.ts
   if (node.type === 'ExportNamedDeclaration') {
-    return (node as any).exportKind === 'type'
+    return node.exportKind === 'type'
   }
   return false
 }
 
 /** Get declared names from a declaration node. */
-<<<<<<<< HEAD:packages/@overeng/oxc-config/src/exports-first.ts
 const getDeclaredNames = (node: any): Set<string> => {
-========
-const getDeclaredNames = (node: ASTNode) => {
->>>>>>>> a7200fc (Implement JSDoc requirements for type exports and refactor oxlint plugins):packages/@overeng/oxc-config/src/exports-first-plugin.ts
   const names = new Set<string>()
 
   if (node.type === 'VariableDeclaration') {
@@ -116,13 +76,12 @@ const getDeclaredNames = (node: ASTNode) => {
       }
     }
   } else if (
-    (node.type as string) === 'FunctionDeclaration' ||
-    (node.type as string) === 'ClassDeclaration' ||
-    (node.type as string) === 'TSEnumDeclaration'
+    node.type === 'FunctionDeclaration' ||
+    node.type === 'ClassDeclaration' ||
+    node.type === 'TSEnumDeclaration'
   ) {
-    const id = (node as any).id
-    if (id?.name) {
-      names.add(id.name)
+    if (node.id?.name) {
+      names.add(node.id.name)
     }
   }
 
@@ -130,29 +89,20 @@ const getDeclaredNames = (node: ASTNode) => {
 }
 
 /** Collect all identifier references in a node (recursively). */
-<<<<<<<< HEAD:packages/@overeng/oxc-config/src/exports-first.ts
 const collectReferences = (opts: { node: any; refs?: Set<string> }): Set<string> => {
   const { node } = opts
   const refs = opts.refs ?? new Set()
-========
-const collectReferences = (node: unknown, refs = new Set<string>()): Set<string> => {
->>>>>>>> a7200fc (Implement JSDoc requirements for type exports and refactor oxlint plugins):packages/@overeng/oxc-config/src/exports-first-plugin.ts
   if (!node || typeof node !== 'object') return refs
 
-  const n = node as Record<string, unknown>
-  if (n.type === 'Identifier' && typeof n.name === 'string') {
-    refs.add(n.name)
+  if (node.type === 'Identifier') {
+    refs.add(node.name)
     return refs
   }
 
-<<<<<<<< HEAD:packages/@overeng/oxc-config/src/exports-first.ts
   for (const key of Object.keys(node)) {
-========
-  for (const key of Object.keys(n)) {
->>>>>>>> a7200fc (Implement JSDoc requirements for type exports and refactor oxlint plugins):packages/@overeng/oxc-config/src/exports-first-plugin.ts
     if (key === 'parent' || key === 'loc' || key === 'range') continue
 
-    const value = n[key]
+    const value = node[key]
     if (Array.isArray(value)) {
       for (const item of value) {
         collectReferences({ node: item, refs })
@@ -166,22 +116,14 @@ const collectReferences = (node: unknown, refs = new Set<string>()): Set<string>
 }
 
 /** Get the declaration part of an export node. */
-<<<<<<<< HEAD:packages/@overeng/oxc-config/src/exports-first.ts
 const getExportDeclaration = (node: any): any => {
-========
-const getExportDeclaration = (node: ASTNode) => {
->>>>>>>> a7200fc (Implement JSDoc requirements for type exports and refactor oxlint plugins):packages/@overeng/oxc-config/src/exports-first-plugin.ts
   if (node.type === 'ExportNamedDeclaration' || node.type === 'ExportDefaultDeclaration') {
-    return (node as any).declaration
+    return node.declaration
   }
   return null
 }
 
-<<<<<<<< HEAD:packages/@overeng/oxc-config/src/exports-first.ts
 export const exportsFirstRule = {
-========
-export const exportsFirstRule: Rule.RuleModule = {
->>>>>>>> a7200fc (Implement JSDoc requirements for type exports and refactor oxlint plugins):packages/@overeng/oxc-config/src/exports-first-plugin.ts
   meta: {
     type: 'suggestion',
     docs: {
@@ -195,7 +137,6 @@ export const exportsFirstRule: Rule.RuleModule = {
   },
   create(context: any) {
     return {
-<<<<<<<< HEAD:packages/@overeng/oxc-config/src/exports-first.ts
       Program(programNode: any) {
         /**
          * Fast-path:
@@ -205,22 +146,25 @@ export const exportsFirstRule: Rule.RuleModule = {
          *
          * This avoids the heavier reference collection for the common "already ordered" case.
          */
-========
-      Program(programNode) {
-        // Fast-path optimization:
-        // - If there are no exports, nothing to report.
-        // - If there are no trackable non-exports, nothing to report.
-        // - If every export appears before the first trackable non-export, nothing to report.
-        // This avoids the heavier reference collection for the common "already ordered" case.
->>>>>>>> a7200fc (Implement JSDoc requirements for type exports and refactor oxlint plugins):packages/@overeng/oxc-config/src/exports-first-plugin.ts
         let hasExport = false
         let hasTrackableNonExport = false
         let exportAfterNonExport = false
 
         for (const node of programNode.body) {
-          if (node.type === 'ImportDeclaration') continue
-          if (isReExport(node)) continue
-          if (isTypeOnlyExport(node)) continue
+          // Skip import statements
+          if (node.type === 'ImportDeclaration') {
+            continue
+          }
+
+          // Skip re-exports
+          if (isReExport(node)) {
+            continue
+          }
+
+          // Skip type-only exports
+          if (isTypeOnlyExport(node)) {
+            continue
+          }
 
           if (isExportDeclaration(node)) {
             hasExport = true
@@ -240,17 +184,12 @@ export const exportsFirstRule: Rule.RuleModule = {
           return
         }
 
-<<<<<<<< HEAD:packages/@overeng/oxc-config/src/exports-first.ts
         // First pass: collect all non-exported declarations and their positions
         const nonExportedDecls: Array<{ names: Set<string>; node: any; index: number }> = []
         const exports: Array<{ node: any; index: number; refs: Set<string> }> = []
-========
-        const nonExportedDecls: Array<{ names: Set<string>; node: ASTNode; index: number }> = []
-        const exports: Array<{ node: ASTNode; index: number; refs: Set<string> }> = []
->>>>>>>> a7200fc (Implement JSDoc requirements for type exports and refactor oxlint plugins):packages/@overeng/oxc-config/src/exports-first-plugin.ts
 
         for (let i = 0; i < programNode.body.length; i++) {
-          const node = programNode.body[i] as ASTNode
+          const node = programNode.body[i]
 
           if (node.type === 'ImportDeclaration') continue
           if (isReExport(node)) continue
@@ -258,11 +197,7 @@ export const exportsFirstRule: Rule.RuleModule = {
 
           if (isExportDeclaration(node)) {
             const decl = getExportDeclaration(node)
-<<<<<<<< HEAD:packages/@overeng/oxc-config/src/exports-first.ts
             const refs = decl ? collectReferences({ node: decl }) : new Set<string>()
-========
-            const refs = decl ? collectReferences(decl) : new Set<string>()
->>>>>>>> a7200fc (Implement JSDoc requirements for type exports and refactor oxlint plugins):packages/@overeng/oxc-config/src/exports-first-plugin.ts
             exports.push({ node, index: i, refs })
           } else if (isTrackableDeclaration(node)) {
             const names = getDeclaredNames(node)
@@ -290,11 +225,7 @@ export const exportsFirstRule: Rule.RuleModule = {
             }
 
             if (isNeeded) {
-<<<<<<<< HEAD:packages/@overeng/oxc-config/src/exports-first.ts
               const declRefs = collectReferences({ node: decl.node })
-========
-              const declRefs = collectReferences(decl.node)
->>>>>>>> a7200fc (Implement JSDoc requirements for type exports and refactor oxlint plugins):packages/@overeng/oxc-config/src/exports-first-plugin.ts
               for (const ref of declRefs) {
                 if (!referencedByAnyExport.has(ref)) {
                   referencedByAnyExport.add(ref)
@@ -330,18 +261,3 @@ export const exportsFirstRule: Rule.RuleModule = {
     }
   },
 }
-<<<<<<<< HEAD:packages/@overeng/oxc-config/src/exports-first.ts
-========
-
-const plugin = {
-  meta: {
-    name: 'overeng-exports',
-    version: '0.1.0',
-  },
-  rules: {
-    first: exportsFirstRule,
-  },
-}
-
-export default plugin
->>>>>>>> a7200fc (Implement JSDoc requirements for type exports and refactor oxlint plugins):packages/@overeng/oxc-config/src/exports-first-plugin.ts
