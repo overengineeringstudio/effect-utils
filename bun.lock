@@ -105,6 +105,7 @@
         "@overeng/utils": "workspace:*",
       },
       "devDependencies": {
+        "@effect/vitest": "catalog:",
         "effect": "catalog:",
         "vitest": "catalog:",
       },
@@ -121,6 +122,7 @@
       "devDependencies": {
         "@effect/platform": "catalog:",
         "@effect/vitest": "catalog:",
+        "@overeng/utils": "workspace:*",
         "@types/node": "catalog:",
         "effect": "catalog:",
         "vitest": "catalog:",
@@ -210,6 +212,7 @@
         "@effect/cli": "catalog:",
         "@effect/platform": "catalog:",
         "@effect/platform-node": "catalog:",
+        "@overeng/utils": "workspace:*",
         "effect": "catalog:",
       },
       "devDependencies": {
