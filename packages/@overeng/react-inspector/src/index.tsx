@@ -54,7 +54,7 @@ export {
   useSchemaDisplayInfo,
   type SchemaContextValue,
   type SchemaProviderProps,
-} from './schema/mod.ts'
+} from './schema/mod.tsx'
 
 export {
   withSchemaSupport,
