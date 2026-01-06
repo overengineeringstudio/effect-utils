@@ -1,9 +1,11 @@
+// Generated file - DO NOT EDIT
+// Source: tsconfig.base.json.genie.ts
 {
   "compilerOptions": {
     "target": "ES2023",
     "lib": ["ES2023"],
     "module": "ESNext",
-    "moduleResolution": "bundler",
+    "moduleResolution": "Bundler",
     "allowImportingTsExtensions": true,
     "rewriteRelativeImportExtensions": true,
     "allowSyntheticDefaultImports": true,

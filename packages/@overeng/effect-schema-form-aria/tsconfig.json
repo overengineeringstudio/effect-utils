@@ -1,13 +1,19 @@
+// Generated file - DO NOT EDIT
+// Source: packages/@overeng/effect-schema-form-aria/tsconfig.json.genie.ts
 {
   "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
     "composite": true,
-    "rootDir": "src",
+    "rootDir": ".",
     "outDir": "./dist",
     "tsBuildInfoFile": "./tsconfig.tsbuildinfo",
     "jsx": "react-jsx",
     "lib": ["ES2022", "DOM", "DOM.Iterable"]
   },
   "include": ["src/**/*"],
-  "references": [{ "path": "../effect-schema-form" }]
+  "references": [
+    {
+      "path": "../effect-schema-form"
+    }
+  ]
 }

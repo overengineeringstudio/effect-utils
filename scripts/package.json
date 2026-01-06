@@ -6,6 +6,7 @@
     "@effect/cli": "catalog:",
     "@effect/platform": "catalog:",
     "@effect/platform-node": "catalog:",
+    "@overeng/genie": "workspace:*",
     "@overeng/utils": "workspace:*",
     "effect": "catalog:"
   },

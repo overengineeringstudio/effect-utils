@@ -1,0 +1,34 @@
+{
+  "name": "@overeng/genie",
+  "version": "0.1.0",
+  "private": true,
+  "bin": {
+    "genie": "./bin/genie"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./src/lib/mod.ts",
+    "./cli": "./src/cli.ts"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": "./dist/lib/mod.js",
+      "./cli": "./dist/cli.js"
+    }
+  },
+  "devDependencies": {
+    "@effect/cli": "catalog:",
+    "@effect/platform": "catalog:",
+    "@effect/platform-node": "catalog:",
+    "@types/node": "catalog:",
+    "effect": "catalog:",
+    "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "@effect/cli": "catalog:",
+    "@effect/platform": "catalog:",
+    "@effect/platform-node": "catalog:",
+    "effect": "catalog:"
+  }
+}

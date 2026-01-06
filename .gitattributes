@@ -1,0 +1,8 @@
+# Genie-generated files - collapse in GitHub PR diffs
+# These files are generated from *.genie.ts sources
+package.json linguist-generated=true
+**/package.json linguist-generated=true
+tsconfig.json linguist-generated=true
+**/tsconfig.json linguist-generated=true
+tsconfig.*.json linguist-generated=true
+.github/workflows/*.yml linguist-generated=true

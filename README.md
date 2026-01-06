@@ -86,6 +86,20 @@ Key features:
 - File system-backed distributed locks with TTL expiration
 - Workspace-aware command helpers with optional logging/retention
 
+### Developer Tools
+
+| Package                                               | Description                            |
+| ----------------------------------------------------- | -------------------------------------- |
+| [@overeng/genie](./packages/@overeng/genie)           | TypeScript-based config file generator |
+| [@overeng/oxc-config](./packages/@overeng/oxc-config) | Shared oxlint and oxfmt configuration  |
+
+**Genie** generates `package.json`, `tsconfig.json`, and GitHub workflow files from TypeScript sources (`.genie.ts` files). Features include:
+
+- **Type-safe config** - Define configs as TypeScript with full autocomplete
+- **Consistent formatting** - Auto-formats via oxfmt
+- **Read-only protection** - Generated files are read-only by default
+- **CI integration** - `--check` mode verifies files are up to date
+
 ## Quick Start
 
 ### Enter the dev shell

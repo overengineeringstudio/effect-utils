@@ -1,3 +1,5 @@
+// Generated file - DO NOT EDIT
+// Source: scripts/tsconfig.json.genie.ts
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
@@ -8,5 +10,11 @@
     "lib": ["ES2022"],
     "types": ["node"]
   },
-  "include": ["**/*.ts"]
+  "include": ["**/*.ts"],
+  "exclude": ["*.genie.ts"],
+  "references": [
+    {
+      "path": "../packages/@overeng/genie"
+    }
+  ]
 }

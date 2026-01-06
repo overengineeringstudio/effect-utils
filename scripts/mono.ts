@@ -7,6 +7,7 @@ import type { PlatformError } from '@effect/platform/Error'
 import type { Scope } from 'effect'
 import { Cause, Console, Duration, Effect, Layer, Logger, LogLevel, Schema } from 'effect'
 
+import { genieCommand } from '@overeng/genie/cli'
 import { CurrentWorkingDirectory, cmd, cmdStart } from '@overeng/utils/node'
 
 const IS_CI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true'
@@ -303,6 +304,10 @@ const checkCommand = Command.make('check', {}, () =>
   Effect.gen(function* () {
     yield* Console.log('Running all checks...\n')
 
+    yield* ciGroup('Genie check')
+    yield* runCommand({ command: 'mono', args: ['genie', '--check'] })
+    yield* ciGroupEnd
+
     yield* ciGroup('Type checking')
     yield* runCommand({ command: 'tsc', args: ['--build', 'tsconfig.all.json'] })
     yield* ciGroupEnd
@@ -324,7 +329,7 @@ const checkCommand = Command.make('check', {}, () =>
 
     yield* Console.log('\n✓ All checks passed')
   }),
-).pipe(Command.withDescription('Run all checks (typecheck + format + lint + test)'))
+).pipe(Command.withDescription('Run all checks (genie + typecheck + format + lint + test)'))
 
 // -----------------------------------------------------------------------------
 // Context Command
@@ -452,6 +457,7 @@ const command = Command.make('mono').pipe(
     tsCommand,
     cleanCommand,
     checkCommand,
+    genieCommand,
     contextCommand,
   ]),
   Command.withDescription('Monorepo management CLI'),

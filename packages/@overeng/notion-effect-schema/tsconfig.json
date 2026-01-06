@@ -1,8 +1,10 @@
+// Generated file - DO NOT EDIT
+// Source: packages/@overeng/notion-effect-schema/tsconfig.json.genie.ts
 {
   "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
     "composite": true,
-    "rootDir": "src",
+    "rootDir": ".",
     "outDir": "./dist",
     "tsBuildInfoFile": "./tsconfig.tsbuildinfo"
   },
