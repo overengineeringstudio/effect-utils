@@ -6,6 +6,15 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **@overeng/notion-effect-cli**: Migrated config from JSON to TypeScript (breaking change)
+  - Config file is now `notion-schema-gen.config.ts` instead of `.notion-schema-gen.json`
+  - Databases are now keyed by their Notion ID instead of an array
+  - New `defineConfig` helper with full type checking and autocompletion
+  - New typed `transforms` helpers (e.g., `transforms.status.asString`) instead of string literals
+  - New `outputDir` option for base output directory (paths are relative to it)
+  - Import config helpers from `@overeng/notion-effect-cli/config`
+  - CLI now requires Bun runtime for native TypeScript config loading
+
 - **Monorepo CLI**: Replaced Biome with oxc toolchain (oxlint + oxfmt)
   - Removed `@biomejs/biome` dependency
   - `mono lint` now uses oxlint exclusively

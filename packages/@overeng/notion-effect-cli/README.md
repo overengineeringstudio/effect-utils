@@ -12,8 +12,9 @@ bun add @overeng/notion-effect-cli
 
 ### Prerequisites
 
-1. Create a [Notion integration](https://www.notion.so/my-integrations) and copy the "Internal Integration Secret"
-2. Share your database with the integration (open database → "..." menu → "Connections" → add your integration)
+1. [Bun](https://bun.sh) runtime (required for TypeScript config loading)
+2. Create a [Notion integration](https://www.notion.so/my-integrations) and copy the "Internal Integration Secret"
+3. Share your database with the integration (open database → "..." menu → "Connections" → add your integration)
 
 ### Generate a Schema
 
@@ -111,29 +112,59 @@ Summary: 1 added, 1 removed, 1 type changed
 
 ## Config File
 
-For multi-database projects, create `.notion-schema-gen.json`:
+For multi-database projects, create `notion-schema-gen.config.ts`:
 
-```json
-{
-  "defaults": {
-    "includeWrite": true,
-    "includeApi": true
+```ts
+import { defineConfig, transforms } from '@overeng/notion-effect-cli/config'
+
+export default defineConfig({
+  // Base output directory (optional)
+  outputDir: './src/schemas',
+
+  // Default options applied to all databases
+  defaults: {
+    includeWrite: true,
+    includeApi: true,
   },
-  "databases": [
-    {
-      "id": "abc123...",
-      "output": "./src/schemas/tasks.ts",
-      "name": "Tasks"
+
+  // Databases keyed by their Notion database ID
+  databases: {
+    'abc123-def456-...': {
+      output: 'tasks.ts', // relative to outputDir
+      name: 'Tasks',
     },
-    {
-      "id": "def456...",
-      "output": "./src/schemas/projects.ts",
-      "name": "Projects",
-      "typedOptions": true
-    }
-  ]
-}
+    'def456-ghi789-...': {
+      output: 'projects.ts',
+      name: 'Projects',
+      typedOptions: true,
+      transforms: {
+        // Type-safe transform configuration
+        Status: transforms.status.asString,
+        Priority: transforms.select.asOption,
+      },
+    },
+  },
+})
 ```
+
+### Configuration Options
+
+| Option      | Description                                               |
+| ----------- | --------------------------------------------------------- |
+| `outputDir` | Base directory for output paths (relative to config file) |
+| `defaults`  | Default options applied to all databases                  |
+| `databases` | Record of database configs, keyed by database ID          |
+
+#### Database Options
+
+| Option         | Description                                        |
+| -------------- | -------------------------------------------------- |
+| `output`       | Output file path (relative to `outputDir`)         |
+| `name`         | Custom schema name (defaults to database title)    |
+| `includeWrite` | Generate write schemas for creating/updating pages |
+| `includeApi`   | Generate a typed API wrapper                       |
+| `typedOptions` | Generate literal unions for select/status options  |
+| `transforms`   | Property-specific transform configuration          |
 
 Config discovery starts from `CurrentWorkingDirectory` (defaults to the process CWD).
 When using the programmatic API, you can override it with `CurrentWorkingDirectory.fromPath`.
@@ -263,19 +294,22 @@ notion-effect-schema-gen generate <db-id> -o ./out.ts \
   --transform Priority=raw
 ```
 
-Or in config:
+Or in config with type-safe helpers:
 
-```json
-{
-  "databases": [{
-    "id": "...",
-    "output": "./schema.ts",
-    "transforms": {
-      "Status": "asString",
-      "Priority": "raw"
-    }
-  }]
-}
+```ts
+import { defineConfig, transforms } from '@overeng/notion-effect-cli/config'
+
+export default defineConfig({
+  databases: {
+    '...': {
+      output: './schema.ts',
+      transforms: {
+        Status: transforms.status.asString,
+        Priority: transforms.select.raw,
+      },
+    },
+  },
+})
 ```
 
 ## Programmatic Usage
