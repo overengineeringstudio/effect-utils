@@ -128,6 +128,7 @@ export const notYetImplemented = (msg?: string): never => {
 
 export const noop = () => {}
 
+/** A lazy value - a function that returns T when called */
 export type Thunk<T> = () => T
 
 export const unwrapThunk = <T>(_: T | (() => T)): T => {

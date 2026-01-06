@@ -1,11 +1,17 @@
+// Generated file - DO NOT EDIT
+// Source: packages/@overeng/notion-effect-client/tsconfig.json.genie.ts
 {
   "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
     "composite": true,
-    "rootDir": "src",
+    "rootDir": ".",
     "outDir": "./dist",
     "tsBuildInfoFile": "./tsconfig.tsbuildinfo"
   },
   "include": ["src/**/*"],
-  "references": [{ "path": "../notion-effect-schema" }]
+  "references": [
+    {
+      "path": "../notion-effect-schema"
+    }
+  ]
 }

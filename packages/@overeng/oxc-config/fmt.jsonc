@@ -1,3 +1,5 @@
+// Generated file - DO NOT EDIT
+// Source: packages/@overeng/oxc-config/fmt.jsonc.genie.ts
 {
   "$schema": "https://raw.githubusercontent.com/nicksrandall/oxfmt/refs/heads/main/configuration_schema.json",
   "semi": false,
@@ -6,19 +8,6 @@
   "tabWidth": 2,
   "useTabs": false,
   "trailingComma": "all",
-  // Import sorting configuration
-  // Groups imports into 3 blocks separated by newlines:
-  //
-  // 1. External packages (effect, @effect/*)
-  //    import { Effect } from 'effect'
-  //    import { HttpClient } from '@effect/platform'
-  //
-  // 2. Internal monorepo packages (@overeng/*)
-  //    import { foo } from '@overeng/utils'
-  //
-  // 3. Relative imports (parent, sibling, index)
-  //    import { bar } from '../some-module.ts'
-  //    import { baz } from './local.ts'
   "experimentalSortImports": {
     "groups": ["builtin", "external", "internal", ["parent", "sibling", "index"]],
     "internalPattern": ["@overeng/"],

@@ -161,7 +161,7 @@ const getFunctionContext = (node: any): string => {
 
 export const namedArgsRule = {
   meta: {
-    type: 'suggestion',
+    type: 'suggestion' as const,
     docs: {
       description:
         'Enforce functions use named arguments (options objects) instead of positional parameters',

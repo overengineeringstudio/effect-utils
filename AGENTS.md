@@ -7,9 +7,19 @@ The `mono` CLI provides shortcuts for common development workflows:
 - **Testing**: `mono test [--unit|--integration] [--watch]` to run tests
 - **Build**: `mono build` to build all packages
 - **Clean**: `mono clean` to remove all build artifacts
-- **Check**: `mono check` to run all checks (ts + lint + test)
+- **Genie**: `mono genie [--check] [--watch]` to generate config files from `.genie.ts` sources
+- **Check**: `mono check` to run all checks (genie + ts + lint + test)
 
 If tools aren't directly in `$PATH`, prefix commands with `direnv exec .` (e.g., `direnv exec . mono ts`).
+
+# Genie (Config File Generation)
+
+Config files like `package.json`, `tsconfig.base.json`, and `.github/workflows/ci.yml` are generated from TypeScript source files using genie. The source files have a `.genie.ts` suffix (e.g., `package.json.genie.ts`).
+
+- **Never edit generated files directly** - they are read-only and will be overwritten
+- **Edit the `.genie.ts` source file** and run `mono genie` to regenerate
+- Shared constants (catalog versions, tsconfig options) live in `genie/repo.ts`
+- `mono check` verifies generated files are up to date via `mono genie --check`
 
 # Changelog
 

@@ -20,6 +20,7 @@ export const mapObjectValues = <O_In extends Record<string, any>, V_Out>({
   return Object.fromEntries(mappedEntries) as any
 }
 
+/** Type-safe Object.entries return type */
 export type Entries<T> = { [K in keyof T]: [K, T[K]] }[keyof T][]
 
 export const objectEntries = <T extends Record<string, any>>(obj: T): Entries<T> =>
@@ -33,6 +34,7 @@ export const keyObjectFromObject = <TObj extends Record<string, any>>(
     Object.fromEntries,
   ) as any
 
+/** Convert undefined-able fields to nullable (undefined -> null) */
 export type UndefinedFieldsToNull<T> = PrettifyFlat<{
   [K in keyof T]-?: undefined extends T[K] ? (T[K] & {}) | null : T[K]
 }>

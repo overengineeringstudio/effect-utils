@@ -15,6 +15,7 @@
 import crypto from 'node:crypto'
 import os from 'node:os'
 
+/** Collision-resistant unique identifier string */
 export type Cuid = string
 
 const lim = 2 ** 32 - 1

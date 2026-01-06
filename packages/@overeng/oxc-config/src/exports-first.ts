@@ -125,7 +125,7 @@ const getExportDeclaration = (node: any): any => {
 
 export const exportsFirstRule = {
   meta: {
-    type: 'suggestion',
+    type: 'suggestion' as const,
     docs: {
       description: 'Enforce exported declarations come before non-exported declarations',
       recommended: false,
