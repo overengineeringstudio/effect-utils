@@ -1,7 +1,84 @@
 import { describe, expect, it } from 'vitest'
 
+import type { PropertySchema } from '@overeng/notion-effect-schema'
+
 import { computeDiff, formatDiff, hasDifferences, parseGeneratedFile } from './diff.ts'
-import type { DatabaseInfo } from './introspect.ts'
+import type { DatabaseInfo, PropertyInfo } from './introspect.ts'
+
+const makeProperty = (info: Omit<PropertyInfo, 'schema'>): PropertyInfo => {
+  const schemaBase = {
+    id: info.id,
+    name: info.name,
+    description: info.description ?? null,
+  }
+
+  const schema: PropertySchema = (() => {
+    switch (info.type) {
+      case 'number':
+        return {
+          ...schemaBase,
+          _tag: 'number',
+          number: { format: info.number?.format ?? 'number' },
+        }
+      case 'select':
+        return {
+          ...schemaBase,
+          _tag: 'select',
+          select: { options: info.select?.options ?? [] },
+        }
+      case 'multi_select':
+        return {
+          ...schemaBase,
+          _tag: 'multi_select',
+          multi_select: { options: info.multi_select?.options ?? [] },
+        }
+      case 'status':
+        return {
+          ...schemaBase,
+          _tag: 'status',
+          status: { options: info.status?.options ?? [], groups: info.status?.groups ?? [] },
+        }
+      case 'relation':
+        return {
+          ...schemaBase,
+          _tag: 'relation',
+          relation: info.relation ?? {
+            database_id: '00000000-0000-0000-0000-000000000000',
+            type: 'single_property',
+            single_property: {},
+          },
+        }
+      case 'rollup':
+        return {
+          ...schemaBase,
+          _tag: 'rollup',
+          rollup: {
+            relation_property_name: info.rollup?.relation_property_name ?? 'Relation',
+            relation_property_id: info.rollup?.relation_property_id ?? 'relation',
+            rollup_property_name: info.rollup?.rollup_property_name ?? 'Rollup',
+            rollup_property_id: info.rollup?.rollup_property_id ?? 'rollup',
+            function: info.rollup?.function ?? 'count',
+          },
+        }
+      case 'formula':
+        return {
+          ...schemaBase,
+          _tag: 'formula',
+          formula: { expression: info.formula?.expression ?? '' },
+        }
+      case 'unique_id':
+        return {
+          ...schemaBase,
+          _tag: 'unique_id',
+          unique_id: { prefix: null },
+        }
+      default:
+        return { ...schemaBase, _tag: info.type }
+    }
+  })()
+
+  return { ...info, schema }
+}
 
 describe('diff', () => {
   describe('parseGeneratedFile', () => {
@@ -25,17 +102,17 @@ import { Schema } from 'effect'
 // ID: abc123
 
 export const TestPageProperties = Schema.Struct({
-  Name: Title.asString,
-  Count: Num.asNumber,
-  Done: Checkbox.asBoolean,
+  Name: NotionSchema.title,
+  Count: NotionSchema.number,
+  Done: NotionSchema.checkbox,
 })
 `
       const result = parseGeneratedFile(content)
 
       expect(result.properties).toEqual([
-        { name: 'Name', namespace: 'Title', transform: 'asString' },
-        { name: 'Count', namespace: 'Num', transform: 'asNumber' },
-        { name: 'Done', namespace: 'Checkbox', transform: 'asBoolean' },
+        { name: 'Name', transformKey: 'title' },
+        { name: 'Count', transformKey: 'number' },
+        { name: 'Done', transformKey: 'checkbox' },
       ])
       expect(result.readSchemaFound).toBe(true)
     })
@@ -44,15 +121,15 @@ export const TestPageProperties = Schema.Struct({
       const content = `// ID: abc123
 
 export const TestPageProperties = Schema.Struct({
-  'Due Date': DateProp.asOption,
-  'Project Name': Title.asString,
+  'Due Date': NotionSchema.dateOption,
+  'Project Name': NotionSchema.title,
 })
 `
       const result = parseGeneratedFile(content)
 
       expect(result.properties).toEqual([
-        { name: 'Due Date', namespace: 'DateProp', transform: 'asOption' },
-        { name: 'Project Name', namespace: 'Title', transform: 'asString' },
+        { name: 'Due Date', transformKey: 'dateOption' },
+        { name: 'Project Name', transformKey: 'title' },
       ])
       expect(result.readSchemaFound).toBe(true)
     })
@@ -61,15 +138,15 @@ export const TestPageProperties = Schema.Struct({
       const content = `// ID: abc123
 
 export const TestPageProperties = Schema.Struct({
-  Status: Select.asOption, // Current status
-  Priority: Select.raw,
+  Status: NotionSchema.select(), // Current status
+  Priority: NotionSchema.select().pipe(NotionSchema.asNullable),
 })
 `
       const result = parseGeneratedFile(content)
 
       expect(result.properties).toEqual([
-        { name: 'Status', namespace: 'Select', transform: 'asOption' },
-        { name: 'Priority', namespace: 'Select', transform: 'raw' },
+        { name: 'Status', transformKey: 'select' },
+        { name: 'Priority', transformKey: 'select.asNullable' },
       ])
       expect(result.readSchemaFound).toBe(true)
     })
@@ -102,17 +179,19 @@ const foo = 'bar'
         id: 'abc123',
         name: 'Test',
         url: 'https://notion.so/test',
-        properties: [
-          { id: 'p1', name: 'Name', type: 'title' },
-          { id: 'p2', name: 'NewField', type: 'rich_text' },
-        ],
+        properties: (
+          [
+            { id: 'p1', name: 'Name', type: 'title' },
+            { id: 'p2', name: 'NewField', type: 'rich_text' },
+          ] satisfies Array<Omit<PropertyInfo, 'schema'>>
+        ).map(makeProperty),
       }
 
       const generated = {
         databaseId: 'abc123',
         databaseName: 'Test',
         readSchemaFound: true,
-        properties: [{ name: 'Name', namespace: 'Title', transform: 'asString' }],
+        properties: [{ name: 'Name', transformKey: 'title' }],
       }
 
       const result = computeDiff({ live, generated })
@@ -122,7 +201,7 @@ const foo = 'bar'
       expect(result.properties[0]).toEqual({
         name: 'NewField',
         type: 'added',
-        live: { type: 'rich_text', transform: 'asString' },
+        live: { type: 'rich_text', transform: 'asOption' },
       })
     })
 
@@ -131,7 +210,9 @@ const foo = 'bar'
         id: 'abc123',
         name: 'Test',
         url: 'https://notion.so/test',
-        properties: [{ id: 'p1', name: 'Name', type: 'title' }],
+        properties: (
+          [{ id: 'p1', name: 'Name', type: 'title' }] satisfies Array<Omit<PropertyInfo, 'schema'>>
+        ).map(makeProperty),
       }
 
       const generated = {
@@ -139,8 +220,8 @@ const foo = 'bar'
         databaseName: 'Test',
         readSchemaFound: true,
         properties: [
-          { name: 'Name', namespace: 'Title', transform: 'asString' },
-          { name: 'OldField', namespace: 'RichTextProp', transform: 'asString' },
+          { name: 'Name', transformKey: 'title' },
+          { name: 'OldField', transformKey: 'richTextString' },
         ],
       }
 
@@ -150,7 +231,7 @@ const foo = 'bar'
       expect(result.properties[0]).toEqual({
         name: 'OldField',
         type: 'removed',
-        generated: { namespace: 'RichTextProp', transform: 'asString' },
+        generated: { transformKey: 'richTextString' },
       })
     })
 
@@ -159,14 +240,18 @@ const foo = 'bar'
         id: 'abc123',
         name: 'Test',
         url: 'https://notion.so/test',
-        properties: [{ id: 'p1', name: 'Status', type: 'status' }],
+        properties: (
+          [{ id: 'p1', name: 'Status', type: 'status' }] satisfies Array<
+            Omit<PropertyInfo, 'schema'>
+          >
+        ).map(makeProperty),
       }
 
       const generated = {
         databaseId: 'abc123',
         databaseName: 'Test',
         readSchemaFound: true,
-        properties: [{ name: 'Status', namespace: 'Select', transform: 'asOption' }],
+        properties: [{ name: 'Status', transformKey: 'select' }],
       }
 
       const result = computeDiff({ live, generated })
@@ -176,7 +261,7 @@ const foo = 'bar'
         name: 'Status',
         type: 'type_changed',
         live: { type: 'status', transform: 'asOption' },
-        generated: { namespace: 'Select', transform: 'asOption' },
+        generated: { transformKey: 'select' },
       })
     })
 
@@ -205,10 +290,12 @@ const foo = 'bar'
         id: 'abc123',
         name: 'Test',
         url: 'https://notion.so/test',
-        properties: [
-          { id: 'p1', name: 'Name', type: 'title' },
-          { id: 'p2', name: 'Count', type: 'number' },
-        ],
+        properties: (
+          [
+            { id: 'p1', name: 'Name', type: 'title' },
+            { id: 'p2', name: 'Count', type: 'number' },
+          ] satisfies Array<Omit<PropertyInfo, 'schema'>>
+        ).map(makeProperty),
       }
 
       const generated = {
@@ -216,8 +303,8 @@ const foo = 'bar'
         databaseName: 'Test',
         readSchemaFound: true,
         properties: [
-          { name: 'Name', namespace: 'Title', transform: 'asString' },
-          { name: 'Count', namespace: 'Num', transform: 'asNumber' },
+          { name: 'Name', transformKey: 'title' },
+          { name: 'Count', transformKey: 'number' },
         ],
       }
 
@@ -249,7 +336,7 @@ const foo = 'bar'
           {
             name: 'NewField',
             type: 'added' as const,
-            live: { type: 'rich_text' as const, transform: 'asString' },
+            live: { type: 'rich_text' as const, transform: 'asOption' },
           },
         ],
         options: [],
@@ -268,7 +355,7 @@ const foo = 'bar'
           {
             name: 'OldField',
             type: 'removed' as const,
-            generated: { namespace: 'RichTextProp', transform: 'asString' },
+            generated: { transformKey: 'richTextString' },
           },
         ],
         options: [],
@@ -288,7 +375,7 @@ const foo = 'bar'
             name: 'Status',
             type: 'type_changed' as const,
             live: { type: 'status' as const, transform: 'asOption' },
-            generated: { namespace: 'Select', transform: 'asOption' },
+            generated: { transformKey: 'select' },
           },
         ],
         options: [],
@@ -312,7 +399,7 @@ const foo = 'bar'
           {
             name: 'OldField',
             type: 'removed' as const,
-            generated: { namespace: 'Title', transform: 'asString' },
+            generated: { transformKey: 'title' },
           },
         ],
         options: [],

@@ -1,6 +1,6 @@
 import { Option, Schema } from 'effect'
 
-import { docsPath, shouldNeverHappen } from '../common.ts'
+import { docsPath, shouldNeverHappen, withOptionValueSchema } from '../common.ts'
 
 // -----------------------------------------------------------------------------
 // URL Property
@@ -71,12 +71,35 @@ export const Url = {
       shouldNeverHappen('Url.raw encode is not supported. Use UrlWrite / UrlWriteFromString.'),
   }),
 
+  /** Transform to required string (fails if null). */
+  asString: Schema.transform(
+    UrlProperty.pipe(
+      Schema.filter((prop): prop is typeof prop & { url: string } => prop.url !== null, {
+        message: () => 'URL is required',
+      }),
+    ),
+    Schema.String,
+    {
+      strict: false,
+      decode: (prop) => prop.url,
+      encode: () =>
+        shouldNeverHappen(
+          'Url.asString encode is not supported. Use UrlWrite / UrlWriteFromString.',
+        ),
+    },
+  ),
+
   /** Transform to Option<string>. */
-  asOption: Schema.transform(UrlProperty, Schema.OptionFromSelf(Schema.String), {
-    strict: false,
-    decode: (prop) => (prop.url === null ? Option.none() : Option.some(prop.url)),
-    encode: () =>
-      shouldNeverHappen('Url.asOption encode is not supported. Use UrlWrite / UrlWriteFromString.'),
+  asOption: withOptionValueSchema({
+    schema: Schema.transform(UrlProperty, Schema.OptionFromSelf(Schema.String), {
+      strict: false,
+      decode: (prop) => (prop.url === null ? Option.none() : Option.some(prop.url)),
+      encode: () =>
+        shouldNeverHappen(
+          'Url.asOption encode is not supported. Use UrlWrite / UrlWriteFromString.',
+        ),
+    }),
+    valueSchema: Schema.String,
   }),
 
   Write: {
@@ -156,14 +179,35 @@ export const Email = {
       ),
   }),
 
+  /** Transform to required string (fails if null). */
+  asString: Schema.transform(
+    EmailProperty.pipe(
+      Schema.filter((prop): prop is typeof prop & { email: string } => prop.email !== null, {
+        message: () => 'Email is required',
+      }),
+    ),
+    Schema.String,
+    {
+      strict: false,
+      decode: (prop) => prop.email,
+      encode: () =>
+        shouldNeverHappen(
+          'Email.asString encode is not supported. Use EmailWrite / EmailWriteFromString.',
+        ),
+    },
+  ),
+
   /** Transform to Option<string>. */
-  asOption: Schema.transform(EmailProperty, Schema.OptionFromSelf(Schema.String), {
-    strict: false,
-    decode: (prop) => (prop.email === null ? Option.none() : Option.some(prop.email)),
-    encode: () =>
-      shouldNeverHappen(
-        'Email.asOption encode is not supported. Use EmailWrite / EmailWriteFromString.',
-      ),
+  asOption: withOptionValueSchema({
+    schema: Schema.transform(EmailProperty, Schema.OptionFromSelf(Schema.String), {
+      strict: false,
+      decode: (prop) => (prop.email === null ? Option.none() : Option.some(prop.email)),
+      encode: () =>
+        shouldNeverHappen(
+          'Email.asOption encode is not supported. Use EmailWrite / EmailWriteFromString.',
+        ),
+    }),
+    valueSchema: Schema.String,
   }),
 
   Write: {
@@ -247,14 +291,39 @@ export const PhoneNumber = {
       ),
   }),
 
-  /** Transform to Option<string>. */
-  asOption: Schema.transform(PhoneNumberProperty, Schema.OptionFromSelf(Schema.String), {
-    strict: false,
-    decode: (prop) => (prop.phone_number === null ? Option.none() : Option.some(prop.phone_number)),
-    encode: () =>
-      shouldNeverHappen(
-        'PhoneNumber.asOption encode is not supported. Use PhoneNumberWrite / PhoneNumberWriteFromString.',
+  /** Transform to required string (fails if null). */
+  asString: Schema.transform(
+    PhoneNumberProperty.pipe(
+      Schema.filter(
+        (prop): prop is typeof prop & { phone_number: string } => prop.phone_number !== null,
+        {
+          message: () => 'Phone number is required',
+        },
       ),
+    ),
+    Schema.String,
+    {
+      strict: false,
+      decode: (prop) => prop.phone_number,
+      encode: () =>
+        shouldNeverHappen(
+          'PhoneNumber.asString encode is not supported. Use PhoneNumberWrite / PhoneNumberWriteFromString.',
+        ),
+    },
+  ),
+
+  /** Transform to Option<string>. */
+  asOption: withOptionValueSchema({
+    schema: Schema.transform(PhoneNumberProperty, Schema.OptionFromSelf(Schema.String), {
+      strict: false,
+      decode: (prop) =>
+        prop.phone_number === null ? Option.none() : Option.some(prop.phone_number),
+      encode: () =>
+        shouldNeverHappen(
+          'PhoneNumber.asOption encode is not supported. Use PhoneNumberWrite / PhoneNumberWriteFromString.',
+        ),
+    }),
+    valueSchema: Schema.String,
   }),
 
   Write: {

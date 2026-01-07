@@ -20,7 +20,7 @@
  *       name: 'Tasks',
  *       transforms: {
  *         'Due Date': transforms.date.asDate,
- *         'Priority': transforms.select.asString,
+ *         'Priority': transforms.select.asName,
  *       },
  *     },
  *   },
@@ -76,16 +76,17 @@ export const transforms = {
   select: {
     raw: makeTransform('select', 'raw'),
     asOption: makeTransform('select', 'asOption'),
-    asString: makeTransform('select', 'asString'),
+    asName: makeTransform('select', 'asName'),
   },
   multi_select: {
     raw: makeTransform('multi_select', 'raw'),
-    asStrings: makeTransform('multi_select', 'asStrings'),
+    asOptions: makeTransform('multi_select', 'asOptions'),
+    asNames: makeTransform('multi_select', 'asNames'),
   },
   status: {
     raw: makeTransform('status', 'raw'),
+    asName: makeTransform('status', 'asName'),
     asOption: makeTransform('status', 'asOption'),
-    asString: makeTransform('status', 'asString'),
   },
   date: {
     raw: makeTransform('date', 'raw'),
@@ -121,13 +122,24 @@ export const transforms = {
   },
   formula: {
     raw: makeTransform('formula', 'raw'),
+    asBoolean: makeTransform('formula', 'asBoolean'),
+    asDate: makeTransform('formula', 'asDate'),
+    asNumber: makeTransform('formula', 'asNumber'),
+    asString: makeTransform('formula', 'asString'),
   },
   relation: {
     raw: makeTransform('relation', 'raw'),
     asIds: makeTransform('relation', 'asIds'),
+    asSingle: makeTransform('relation', 'asSingle'),
+    asSingleId: makeTransform('relation', 'asSingleId'),
   },
   rollup: {
     raw: makeTransform('rollup', 'raw'),
+    asArray: makeTransform('rollup', 'asArray'),
+    asBoolean: makeTransform('rollup', 'asBoolean'),
+    asDate: makeTransform('rollup', 'asDate'),
+    asNumber: makeTransform('rollup', 'asNumber'),
+    asString: makeTransform('rollup', 'asString'),
   },
   created_time: {
     raw: makeTransform('created_time', 'raw'),
@@ -174,8 +186,10 @@ export interface DatabaseConfig {
   readonly name?: string
   /** Include Write schemas */
   readonly includeWrite?: boolean
-  /** Generate typed options for select/status */
+  /** Generate typed options for select/status/multi_select */
   readonly typedOptions?: boolean
+  /** Include Notion property metadata annotations */
+  readonly schemaMeta?: boolean
   /** Generate a typed database API wrapper */
   readonly includeApi?: boolean
   /** Property-specific transforms */
@@ -186,6 +200,7 @@ export interface DatabaseConfig {
 export interface DefaultsConfig {
   readonly includeWrite?: boolean
   readonly typedOptions?: boolean
+  readonly schemaMeta?: boolean
   readonly includeApi?: boolean
   readonly transforms?: PropertyTransforms
 }

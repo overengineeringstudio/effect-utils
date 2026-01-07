@@ -1,24 +1,97 @@
-import { Schema } from 'effect'
+import { Option, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { Checkbox, Num, RichTextProp, Select, Title } from '@overeng/notion-effect-schema'
+import type { PropertySchema } from '@overeng/notion-effect-schema'
+import { NotionSchema } from '@overeng/notion-effect-schema'
 
 import { generateSchemaCode } from './codegen.ts'
-import type { DatabaseInfo } from './introspect.ts'
+import type { DatabaseInfo, PropertyInfo } from './introspect.ts'
+
+const makeProperty = (info: Omit<PropertyInfo, 'schema'>): PropertyInfo => {
+  const schemaBase = {
+    id: info.id,
+    name: info.name,
+    description: null,
+  }
+
+  const schema: PropertySchema = (() => {
+    switch (info.type) {
+      case 'number':
+        return { ...schemaBase, _tag: 'number', number: { format: 'number' } }
+      case 'select':
+        return { ...schemaBase, _tag: 'select', select: { options: info.select?.options ?? [] } }
+      case 'multi_select':
+        return {
+          ...schemaBase,
+          _tag: 'multi_select',
+          multi_select: { options: info.multi_select?.options ?? [] },
+        }
+      case 'status':
+        return {
+          ...schemaBase,
+          _tag: 'status',
+          status: {
+            options: info.status?.options ?? [],
+            groups: info.status?.groups ?? [],
+          },
+        }
+      case 'formula':
+        return {
+          ...schemaBase,
+          _tag: 'formula',
+          formula: { expression: info.formula?.expression ?? '' },
+        }
+      case 'relation':
+        return {
+          ...schemaBase,
+          _tag: 'relation',
+          relation: info.relation ?? {
+            database_id: '00000000-0000-0000-0000-000000000000',
+            type: 'single_property',
+            single_property: {},
+          },
+        }
+      case 'rollup':
+        return {
+          ...schemaBase,
+          _tag: 'rollup',
+          rollup: {
+            relation_property_name: info.rollup?.relation_property_name ?? 'Relation',
+            relation_property_id: info.rollup?.relation_property_id ?? 'relation',
+            rollup_property_name: info.rollup?.rollup_property_name ?? 'Rollup',
+            rollup_property_id: info.rollup?.rollup_property_id ?? 'rollup',
+            function: info.rollup?.function ?? 'count',
+          },
+        }
+      case 'unique_id':
+        return {
+          ...schemaBase,
+          _tag: 'unique_id',
+          unique_id: { prefix: null },
+        }
+      default:
+        return { ...schemaBase, _tag: info.type }
+    }
+  })()
+
+  return { ...info, schema }
+}
 
 describe('integration', () => {
   it('should generate valid TypeScript code that compiles', async () => {
+    const properties = [
+      { id: 'title-prop', name: 'Name', type: 'title' },
+      { id: 'text-prop', name: 'Description', type: 'rich_text' },
+      { id: 'num-prop', name: 'Count', type: 'number' },
+      { id: 'check-prop', name: 'Done', type: 'checkbox' },
+      { id: 'select-prop', name: 'Status', type: 'select' },
+    ] satisfies Array<Omit<PropertyInfo, 'schema'>>
+
     const dbInfo: DatabaseInfo = {
       id: 'test-db-id',
       name: 'Test Database',
       url: 'https://notion.so/test-db',
-      properties: [
-        { id: 'title-prop', name: 'Name', type: 'title' },
-        { id: 'text-prop', name: 'Description', type: 'rich_text' },
-        { id: 'num-prop', name: 'Count', type: 'number' },
-        { id: 'check-prop', name: 'Done', type: 'checkbox' },
-        { id: 'select-prop', name: 'Status', type: 'select' },
-      ],
+      properties: properties.map(makeProperty),
     }
 
     const code = generateSchemaCode({ dbInfo, schemaName: 'TestDatabase' })
@@ -29,28 +102,28 @@ describe('integration', () => {
     expect(code).toContain('export type TestDatabasePageProperties')
 
     // Verify imports are correct
-    expect(code).toContain('Title,')
-    expect(code).toContain('RichTextProp,')
-    expect(code).toContain('Num,')
-    expect(code).toContain('Checkbox,')
-    expect(code).toContain('Select,')
+    expect(code).toContain(
+      "import { NotionSchema, notionPropertyMeta } from '@overeng/notion-effect-schema'",
+    )
 
     // Verify usage is correct
-    expect(code).toContain('Name: Title.asString')
-    expect(code).toContain('Description: RichTextProp.asString')
-    expect(code).toContain('Count: Num.asNumber')
-    expect(code).toContain('Done: Checkbox.asBoolean')
-    expect(code).toContain('Status: Select.asOption')
+    expect(code).toContain('Name: NotionSchema.title.annotations({ [notionPropertyMeta]')
+    expect(code).toContain(
+      'Description: NotionSchema.richTextOption.annotations({ [notionPropertyMeta]',
+    )
+    expect(code).toContain('Count: NotionSchema.numberOption.annotations({ [notionPropertyMeta]')
+    expect(code).toContain('Done: NotionSchema.checkbox.annotations({ [notionPropertyMeta]')
+    expect(code).toContain('Status: NotionSchema.select().annotations({ [notionPropertyMeta]')
   })
 
   it('should generate schemas that can decode actual Notion API responses', () => {
     // Create a test schema matching what would be generated
     const TestPageProperties = Schema.Struct({
-      Name: Title.asString,
-      Description: RichTextProp.asString,
-      Count: Num.asNumber,
-      Done: Checkbox.asBoolean,
-      Status: Select.asOption,
+      Name: NotionSchema.title,
+      Description: NotionSchema.richTextOption,
+      Count: NotionSchema.numberOption,
+      Done: NotionSchema.checkbox,
+      Status: NotionSchema.select(),
     })
 
     // Mock Notion API property response (with proper structure including required fields)
@@ -121,36 +194,38 @@ describe('integration', () => {
 
     // Verify the decoded result
     expect(decoded.Name).toBe('Test Task')
-    expect(decoded.Description).toBe('Description text')
-    expect(decoded.Count).toBe(42)
+    expect(Option.getOrNull(decoded.Description)).toBe('Description text')
+    expect(Option.getOrNull(decoded.Count)).toBe(42)
     expect(decoded.Done).toBe(true)
-    expect(decoded.Status._tag).toBe('Some')
+    expect(Option.isSome(decoded.Status)).toBe(true)
   })
 
   it('should generate write schemas that work with Notion API', () => {
+    const properties = [
+      { id: 'prop1', name: 'Name', type: 'title' },
+      { id: 'prop2', name: 'Status', type: 'select' },
+      { id: 'prop3', name: 'Done', type: 'checkbox' },
+    ] satisfies Array<Omit<PropertyInfo, 'schema'>>
+
     const dbInfo: DatabaseInfo = {
       id: 'test-db-id',
       name: 'Test',
       url: 'https://notion.so/test',
-      properties: [
-        { id: 'prop1', name: 'Name', type: 'title' },
-        { id: 'prop2', name: 'Status', type: 'select' },
-        { id: 'prop3', name: 'Done', type: 'checkbox' },
-      ],
+      properties: properties.map(makeProperty),
     }
 
     const code = generateSchemaCode({ dbInfo, schemaName: 'Test', options: { includeWrite: true } })
 
     // Verify write schema uses nested Write API
-    expect(code).toContain('Name: Title.Write.fromString')
-    expect(code).toContain('Status: Select.Write.fromName')
-    expect(code).toContain('Done: Checkbox.Write.fromBoolean')
+    expect(code).toContain('Name: NotionSchema.titleWriteFromString')
+    expect(code).toContain('Status: NotionSchema.selectWriteFromName')
+    expect(code).toContain('Done: NotionSchema.checkboxWriteFromBoolean')
 
     // Verify write schemas can decode simple types
     const TestPageWrite = Schema.Struct({
-      Name: Title.Write.fromString,
-      Status: Select.Write.fromName,
-      Done: Checkbox.Write.fromBoolean,
+      Name: NotionSchema.titleWriteFromString,
+      Status: NotionSchema.selectWriteFromName,
+      Done: NotionSchema.checkboxWriteFromBoolean,
     })
 
     const inputData = {
@@ -178,32 +253,34 @@ describe('integration', () => {
   })
 
   it('should handle all supported property types without errors', () => {
+    const properties = [
+      { id: '1', name: 'Title', type: 'title' },
+      { id: '2', name: 'Text', type: 'rich_text' },
+      { id: '3', name: 'Number', type: 'number' },
+      { id: '4', name: 'Select', type: 'select' },
+      { id: '5', name: 'MultiSelect', type: 'multi_select' },
+      { id: '6', name: 'Status', type: 'status' },
+      { id: '7', name: 'Date', type: 'date' },
+      { id: '8', name: 'People', type: 'people' },
+      { id: '9', name: 'Files', type: 'files' },
+      { id: '10', name: 'Checkbox', type: 'checkbox' },
+      { id: '11', name: 'URL', type: 'url' },
+      { id: '12', name: 'Email', type: 'email' },
+      { id: '13', name: 'Phone', type: 'phone_number' },
+      { id: '14', name: 'Formula', type: 'formula' },
+      { id: '15', name: 'Relation', type: 'relation' },
+      { id: '16', name: 'CreatedTime', type: 'created_time' },
+      { id: '17', name: 'CreatedBy', type: 'created_by' },
+      { id: '18', name: 'LastEditedTime', type: 'last_edited_time' },
+      { id: '19', name: 'LastEditedBy', type: 'last_edited_by' },
+      { id: '20', name: 'UniqueId', type: 'unique_id' },
+    ] satisfies Array<Omit<PropertyInfo, 'schema'>>
+
     const dbInfo: DatabaseInfo = {
       id: 'test',
       name: 'Test',
       url: 'https://notion.so/test',
-      properties: [
-        { id: '1', name: 'Title', type: 'title' },
-        { id: '2', name: 'Text', type: 'rich_text' },
-        { id: '3', name: 'Number', type: 'number' },
-        { id: '4', name: 'Select', type: 'select' },
-        { id: '5', name: 'MultiSelect', type: 'multi_select' },
-        { id: '6', name: 'Status', type: 'status' },
-        { id: '7', name: 'Date', type: 'date' },
-        { id: '8', name: 'People', type: 'people' },
-        { id: '9', name: 'Files', type: 'files' },
-        { id: '10', name: 'Checkbox', type: 'checkbox' },
-        { id: '11', name: 'URL', type: 'url' },
-        { id: '12', name: 'Email', type: 'email' },
-        { id: '13', name: 'Phone', type: 'phone_number' },
-        { id: '14', name: 'Formula', type: 'formula' },
-        { id: '15', name: 'Relation', type: 'relation' },
-        { id: '16', name: 'CreatedTime', type: 'created_time' },
-        { id: '17', name: 'CreatedBy', type: 'created_by' },
-        { id: '18', name: 'LastEditedTime', type: 'last_edited_time' },
-        { id: '19', name: 'LastEditedBy', type: 'last_edited_by' },
-        { id: '20', name: 'UniqueId', type: 'unique_id' },
-      ],
+      properties: properties.map(makeProperty),
     }
 
     // Should not throw
@@ -212,25 +289,25 @@ describe('integration', () => {
     expect(code.length).toBeGreaterThan(0)
 
     // Verify all transforms are included
-    expect(code).toContain('Title.asString')
-    expect(code).toContain('RichTextProp.asString')
-    expect(code).toContain('Num.asNumber')
-    expect(code).toContain('Select.asOption')
-    expect(code).toContain('MultiSelect.asStrings')
-    expect(code).toContain('Status.asOption')
-    expect(code).toContain('DateProp.asOption')
-    expect(code).toContain('People.asIds')
-    expect(code).toContain('Files.asUrls')
-    expect(code).toContain('Checkbox.asBoolean')
-    expect(code).toContain('Url.asOption')
-    expect(code).toContain('Email.asOption')
-    expect(code).toContain('PhoneNumber.asOption')
-    expect(code).toContain('Formula.raw')
-    expect(code).toContain('Relation.asIds')
-    expect(code).toContain('CreatedTime.asDate')
-    expect(code).toContain('CreatedBy.raw')
-    expect(code).toContain('LastEditedTime.asDate')
-    expect(code).toContain('LastEditedBy.raw')
-    expect(code).toContain('UniqueId.raw')
+    expect(code).toContain('NotionSchema.title')
+    expect(code).toContain('NotionSchema.richTextOption')
+    expect(code).toContain('NotionSchema.numberOption')
+    expect(code).toContain('NotionSchema.select()')
+    expect(code).toContain('NotionSchema.multiSelect()')
+    expect(code).toContain('NotionSchema.status()')
+    expect(code).toContain('NotionSchema.dateOption')
+    expect(code).toContain('NotionSchema.peopleIds')
+    expect(code).toContain('NotionSchema.filesUrls')
+    expect(code).toContain('NotionSchema.checkbox')
+    expect(code).toContain('NotionSchema.urlOption')
+    expect(code).toContain('NotionSchema.emailOption')
+    expect(code).toContain('NotionSchema.phoneNumberOption')
+    expect(code).toContain('NotionSchema.formulaRaw')
+    expect(code).toContain('NotionSchema.relationIds')
+    expect(code).toContain('NotionSchema.createdTimeDate')
+    expect(code).toContain('NotionSchema.createdByRaw')
+    expect(code).toContain('NotionSchema.lastEditedTimeDate')
+    expect(code).toContain('NotionSchema.lastEditedByRaw')
+    expect(code).toContain('NotionSchema.uniqueIdProperty')
   })
 })

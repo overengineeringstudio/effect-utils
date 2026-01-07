@@ -5,6 +5,33 @@
  * @module
  */
 
+import type { Schema } from 'effect'
+
+import { Required, asName, asNames, asNullable } from './common.ts'
+import {
+  Checkbox,
+  CreatedBy,
+  CreatedTime,
+  DateProp,
+  Email,
+  Files,
+  Formula,
+  LastEditedBy,
+  LastEditedTime,
+  MultiSelect,
+  Num,
+  People,
+  PhoneNumber,
+  Relation,
+  RichTextProp,
+  Rollup,
+  Select,
+  Status,
+  Title,
+  UniqueId,
+  Url,
+} from './properties/mod.ts'
+
 // Common utilities and primitives
 export {
   docsPath,
@@ -47,11 +74,142 @@ export {
   PageParent as PageParentSchema,
 } from './objects.ts'
 
-// Property schemas (page property values)
-export * from './properties/mod.ts'
-
 // Property schemas (database property definitions)
 export * from './property-schema.ts'
+
+export type { DateValue } from './properties/date.ts'
+
+/**
+ * Select property values as Option<SelectOption>.
+ *
+ * Pass a typed option schema to enforce allowed names.
+ */
+function select(): typeof Select.asOption
+function select<TName extends string>(
+  nameSchema: Schema.Schema<TName>,
+): ReturnType<typeof Select.asOptionNamed<TName>>
+function select<TName extends string>(nameSchema?: Schema.Schema<TName>) {
+  return nameSchema ? Select.asOptionNamed(nameSchema) : Select.asOption
+}
+
+/**
+ * Status property values as Option<SelectOption>.
+ *
+ * Pass a typed option schema to enforce allowed names.
+ */
+function status(): typeof Status.asOption
+function status<TName extends string>(
+  nameSchema: Schema.Schema<TName>,
+): ReturnType<typeof Status.asOptionNamed<TName>>
+function status<TName extends string>(nameSchema?: Schema.Schema<TName>) {
+  return nameSchema ? Status.asOptionNamed(nameSchema) : Status.asOption
+}
+
+/**
+ * Multi-select property values as arrays of SelectOptions.
+ *
+ * Pass a typed option schema to enforce allowed names.
+ */
+function multiSelect(): typeof MultiSelect.raw
+function multiSelect<TName extends string>(
+  nameSchema: Schema.Schema<TName>,
+): ReturnType<typeof MultiSelect.asOptionsNamed<TName>>
+function multiSelect<TName extends string>(nameSchema?: Schema.Schema<TName>) {
+  return nameSchema ? MultiSelect.asOptionsNamed(nameSchema) : MultiSelect.raw
+}
+
+export const NotionSchema = {
+  number: Num.asNumber,
+  numberOption: Num.asOption,
+  numberRaw: Num.raw,
+  checkbox: Checkbox.asBoolean,
+  checkboxRaw: Checkbox.raw,
+  title: Title.asString,
+  titleRaw: Title.raw,
+  richTextString: RichTextProp.asString,
+  richTextNonEmpty: RichTextProp.asNonEmptyString,
+  richTextOption: RichTextProp.asOption,
+  richTextRaw: RichTextProp.raw,
+  dateOption: DateProp.asOption,
+  dateDate: DateProp.asDate,
+  dateRaw: DateProp.raw,
+  select,
+  status,
+  multiSelect,
+  asName,
+  asNames,
+  asNullable,
+  relationIds: Relation.asIds,
+  relationSingle: Relation.asSingle,
+  relationSingleId: Relation.asSingleId,
+  relationProperty: Relation.Property,
+  peopleIds: People.asIds,
+  peopleRaw: People.raw,
+  filesUrls: Files.asUrls,
+  filesRaw: Files.raw,
+  urlString: Url.asString,
+  urlOption: Url.asOption,
+  urlRaw: Url.raw,
+  emailString: Email.asString,
+  emailOption: Email.asOption,
+  emailRaw: Email.raw,
+  phoneNumberString: PhoneNumber.asString,
+  phoneNumberOption: PhoneNumber.asOption,
+  phoneNumberRaw: PhoneNumber.raw,
+  formulaRaw: Formula.raw,
+  formulaNumber: Formula.asNumber,
+  formulaString: Formula.asString,
+  formulaBoolean: Formula.asBoolean,
+  formulaDate: Formula.asDate,
+  rollupRaw: Rollup.raw,
+  rollupNumber: Rollup.asNumber,
+  rollupString: Rollup.asString,
+  rollupBoolean: Rollup.asBoolean,
+  rollupDate: Rollup.asDate,
+  rollupArray: Rollup.asArray,
+  createdTimeRaw: CreatedTime.raw,
+  createdTimeDate: CreatedTime.asDate,
+  createdByRaw: CreatedBy.raw,
+  createdById: CreatedBy.asId,
+  lastEditedTimeRaw: LastEditedTime.raw,
+  lastEditedTimeDate: LastEditedTime.asDate,
+  lastEditedByRaw: LastEditedBy.raw,
+  lastEditedById: LastEditedBy.asId,
+  uniqueIdString: UniqueId.asString,
+  uniqueIdNumber: UniqueId.asNumber,
+  uniqueIdProperty: UniqueId.Property,
+  titleWrite: Title.Write.Schema,
+  titleWriteFromString: Title.Write.fromString,
+  richTextWrite: RichTextProp.Write.Schema,
+  richTextWriteFromString: RichTextProp.Write.fromString,
+  numberWrite: Num.Write.Schema,
+  numberWriteFromNumber: Num.Write.fromNumber,
+  checkboxWrite: Checkbox.Write.Schema,
+  checkboxWriteFromBoolean: Checkbox.Write.fromBoolean,
+  selectWrite: Select.Write.Schema,
+  selectWriteFromName: Select.Write.fromName,
+  multiSelectWrite: MultiSelect.Write.Schema,
+  multiSelectWriteFromNames: MultiSelect.Write.fromNames,
+  statusWrite: Status.Write.Schema,
+  statusWriteFromName: Status.Write.fromName,
+  dateWrite: DateProp.Write.Schema,
+  dateWriteFromStart: DateProp.Write.fromStart,
+  peopleWrite: People.Write.Schema,
+  peopleWriteFromIds: People.Write.fromIds,
+  filesWrite: Files.Write.Schema,
+  filesWriteFromUrls: Files.Write.fromUrls,
+  urlWrite: Url.Write.Schema,
+  urlWriteFromString: Url.Write.fromString,
+  emailWrite: Email.Write.Schema,
+  emailWriteFromString: Email.Write.fromString,
+  phoneNumberWrite: PhoneNumber.Write.Schema,
+  phoneNumberWriteFromString: PhoneNumber.Write.fromString,
+  relationWrite: Relation.Write.Schema,
+  relationWriteFromIds: Relation.Write.fromIds,
+  required: Required.some(),
+  requiredMessage: Required.some,
+  nullable: Required.nullable,
+} as const
 
 // Rich text schemas
 export {

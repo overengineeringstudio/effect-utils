@@ -65,6 +65,7 @@ export interface PropertyInfo {
   readonly name: string
   readonly type: NotionPropertyType
   readonly description?: string | undefined
+  readonly schema: PropertySchema
   readonly select?: { readonly options: readonly SelectOption[] }
   readonly multi_select?: { readonly options: readonly SelectOption[] }
   readonly status?: {
@@ -102,6 +103,7 @@ const toPropertyInfo = (prop: PropertySchema): PropertyInfo => {
     name: prop.name,
     type: prop._tag,
     description: prop.description ?? undefined,
+    schema: prop,
   }
 
   switch (prop._tag) {

@@ -11,7 +11,13 @@
   "include": ["src/**/*", "bin/**/*.ts"],
   "references": [
     {
+      "path": "../notion-effect-client"
+    },
+    {
       "path": "../notion-effect-schema"
+    },
+    {
+      "path": "../utils"
     }
   ]
 }

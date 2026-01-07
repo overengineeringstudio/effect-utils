@@ -1,4 +1,5 @@
-import { Schema } from 'effect'
+import { Option, Schema } from 'effect'
+import * as SchemaAST from 'effect/SchemaAST'
 
 // -----------------------------------------------------------------------------
 // Custom Annotations
@@ -16,6 +17,16 @@ import { Schema } from 'effect'
  * ```
  */
 export const docsPath: unique symbol = Symbol.for('@overeng/notion-effect-schema/docsPath')
+
+/** Annotation key for Option value schema (Notion option helpers only). */
+export const optionValueSchema: unique symbol = Symbol.for(
+  '@overeng/notion-effect-schema/optionValueSchema',
+)
+
+/** Annotation key for select/status option name schema. */
+export const optionNameSchema: unique symbol = Symbol.for(
+  '@overeng/notion-effect-schema/optionNameSchema',
+)
 
 /** Base URL for Notion API documentation */
 export const NOTION_DOCS_BASE = 'https://developers.notion.com/reference'
@@ -141,3 +152,171 @@ export const shouldNeverHappen = (msg?: string, ...args: unknown[]): never => {
 
   throw new Error(`This should never happen: ${msg}`)
 }
+
+// ---------------------------------------------------------------------------
+// Composable helpers
+// ---------------------------------------------------------------------------
+
+const getOptionValueSchema = <TValue, TInput, TContext>(
+  schema: Schema.Schema<Option.Option<TValue>, TInput, TContext>,
+): Schema.Schema<TValue, TValue, never> => {
+  const annotated = SchemaAST.getAnnotation<Schema.Schema<TValue, TValue, never>>(
+    schema.ast,
+    optionValueSchema,
+  )
+
+  if (Option.isSome(annotated)) {
+    return annotated.value
+  }
+
+  return shouldNeverHappen(
+    'Required.some expects an Option schema created by notion-effect-schema option helpers.',
+  )
+}
+
+const getOptionNameSchema = <TName extends string, TValue, TInput, TContext>(
+  schema: Schema.Schema<TValue, TInput, TContext>,
+): Schema.Schema<TName, TName, never> => {
+  const annotated = SchemaAST.getAnnotation<Schema.Schema<TName, TName, never>>(
+    schema.ast,
+    optionNameSchema,
+  )
+
+  if (Option.isSome(annotated)) {
+    return annotated.value
+  }
+
+  return shouldNeverHappen(
+    'NotionSchema.asName expects a select/status schema created by notion-effect-schema helpers.',
+  )
+}
+
+export const withOptionValueSchema = <TValue, TInput, TContext>(options: {
+  schema: Schema.Schema<Option.Option<TValue>, TInput, TContext>
+  valueSchema: Schema.Schema<TValue, TValue, never>
+}): Schema.Schema<Option.Option<TValue>, TInput, TContext> =>
+  options.schema.annotations({ [optionValueSchema]: options.valueSchema })
+
+export const withOptionNameSchema = <TValue, TInput, TContext, TName extends string>(options: {
+  schema: Schema.Schema<TValue, TInput, TContext>
+  nameSchema: Schema.Schema<TName, TName, never>
+}): Schema.Schema<TValue, TInput, TContext> =>
+  options.schema.annotations({ [optionNameSchema]: options.nameSchema })
+
+/**
+ * Convert select/status `Option<SelectOption>` values to `Option<name>`.
+ *
+ * Use after `NotionSchema.select()` or `NotionSchema.status()`:
+ *
+ * ```ts
+ * NotionSchema.select(Allowed).pipe(NotionSchema.asName)
+ * ```
+ *
+ * Typed options are enforced via the upstream schema. Decode-only; use write helpers for updates.
+ */
+export const asName = <TName extends string, TOption extends { name: TName }, TInput, TContext>(
+  schema: Schema.Schema<Option.Option<TOption>, TInput, TContext>,
+): Schema.Schema<Option.Option<TName>, TInput, TContext> => {
+  const nameSchema = getOptionNameSchema<TName, Option.Option<TOption>, TInput, TContext>(schema)
+
+  return withOptionValueSchema({
+    schema: Schema.transform(schema, Schema.OptionFromSelf(nameSchema), {
+      strict: false,
+      decode: (opt) => Option.map(opt, (value) => value.name),
+      encode: () =>
+        shouldNeverHappen(
+          'NotionSchema.asName encode is not supported. Use the write helpers for updates.',
+        ),
+    }),
+    valueSchema: nameSchema,
+  })
+}
+
+/**
+ * Convert multi-select arrays of options to arrays of `name`.
+ *
+ * Use after `NotionSchema.multiSelect()`:
+ *
+ * ```ts
+ * NotionSchema.multiSelect(Allowed).pipe(NotionSchema.asNames)
+ * ```
+ *
+ * Typed options are enforced via the upstream schema. Decode-only; use write helpers for updates.
+ */
+export const asNames = <TName extends string, TOption extends { name: TName }, TInput, TContext>(
+  schema: Schema.Schema<ReadonlyArray<TOption>, TInput, TContext>,
+): Schema.Schema<ReadonlyArray<TName>, TInput, TContext> => {
+  const nameSchema = getOptionNameSchema<TName, ReadonlyArray<TOption>, TInput, TContext>(schema)
+
+  return Schema.transform(schema, Schema.Array(nameSchema), {
+    strict: false,
+    decode: (options) => options.map((option) => option.name),
+    encode: () =>
+      shouldNeverHappen(
+        'NotionSchema.asNames encode is not supported. Use the write helpers for updates.',
+      ),
+  })
+}
+
+/**
+ * Convert Option values to nullable values.
+ *
+ * Expects a schema created by notion-effect-schema Option helpers.
+ */
+export const asNullable = <TValue, TInput, TContext>(
+  schema: Schema.Schema<Option.Option<TValue>, TInput, TContext>,
+): Schema.Schema<TValue | null, TInput, TContext> => {
+  const valueSchema = getOptionValueSchema(schema)
+
+  return Schema.transform(schema, Schema.NullOr(valueSchema), {
+    strict: false,
+    decode: (opt) => Option.getOrNull(opt),
+    encode: (value) => (value === null ? Option.none() : Option.some(value)),
+  })
+}
+
+export const Required = {
+  some:
+    (message = 'Value is required') =>
+    <TValue, TInput, TOutputContext>(
+      schema: Schema.Schema<Option.Option<TValue>, TInput, TOutputContext>,
+    ): Schema.Schema<TValue, TInput, TOutputContext> => {
+      const valueSchema = getOptionValueSchema(schema)
+      return Schema.transform(
+        schema.pipe(
+          Schema.filter((opt): opt is Option.Some<TValue> => Option.isSome(opt), {
+            message: () => message,
+          }),
+        ),
+        valueSchema,
+        {
+          strict: false,
+          decode: (opt) => Option.getOrThrow(opt),
+          encode: (value) => Option.some(value),
+        },
+      )
+    },
+  nullable:
+    <TValue, TContext>(options: {
+      valueSchema: Schema.Schema<TValue, TValue, TContext>
+      message?: string
+    }) =>
+    <TInput, TOutputContext>(
+      schema: Schema.Schema<TValue | null, TInput, TOutputContext>,
+    ): Schema.Schema<TValue, TInput, TContext | TOutputContext> => {
+      const message = options.message ?? 'Value is required'
+      return Schema.transform(
+        schema.pipe(
+          Schema.filter((value): value is TValue => value !== null, {
+            message: () => message,
+          }),
+        ),
+        options.valueSchema,
+        {
+          strict: false,
+          decode: (value) => value,
+          encode: (value) => value,
+        },
+      )
+    },
+} as const

@@ -30,13 +30,13 @@ This produces a fully typed Effect schema that works with `@overeng/notion-effec
 
 ```ts
 // Generated file: tasks.ts
+import { NotionSchema } from '@overeng/notion-effect-schema'
 import { Schema } from 'effect'
-import { Title, Status, DateProp } from '@overeng/notion-effect-schema'
 
 export const TasksPageProperties = Schema.Struct({
-  Name: Title.asString,
-  Status: Status.asOption,
-  'Due Date': DateProp.asOption,
+  Name: NotionSchema.title,
+  Status: NotionSchema.status(),
+  'Due Date': NotionSchema.dateOption,
 })
 
 export type TasksPageProperties = typeof TasksPageProperties.Type
@@ -60,7 +60,7 @@ notion-effect-cli generate <database-id> -o <output-file> [options]
 | `-w, --include-write` | Generate write schemas for creating/updating pages    |
 | `-a, --include-api`   | Generate a typed API wrapper                          |
 | `--typed-options`     | Generate literal unions for select/status options     |
-| `--transform`         | Property transform config (e.g., `Status=asString`)   |
+| `--transform`         | Property transform config (e.g., `Status=asName`)     |
 | `-d, --dry-run`       | Preview generated code without writing                |
 
 ### `introspect`
@@ -139,7 +139,7 @@ export default defineConfig({
       typedOptions: true,
       transforms: {
         // Type-safe transform configuration
-        Status: transforms.status.asString,
+        Status: transforms.status.asName,
         Priority: transforms.select.asOption,
       },
     },
@@ -157,14 +157,14 @@ export default defineConfig({
 
 #### Database Options
 
-| Option         | Description                                        |
-| -------------- | -------------------------------------------------- |
-| `output`       | Output file path (relative to `outputDir`)         |
-| `name`         | Custom schema name (defaults to database title)    |
-| `includeWrite` | Generate write schemas for creating/updating pages |
-| `includeApi`   | Generate a typed API wrapper                       |
-| `typedOptions` | Generate literal unions for select/status options  |
-| `transforms`   | Property-specific transform configuration          |
+| Option         | Description                                                                                         |
+| -------------- | --------------------------------------------------------------------------------------------------- |
+| `output`       | Output file path (relative to `outputDir`)                                                          |
+| `name`         | Custom schema name (defaults to database title)                                                     |
+| `includeWrite` | Generate write schemas for creating/updating pages                                                  |
+| `includeApi`   | Generate a typed API wrapper                                                                        |
+| `typedOptions` | Generate literal unions for select/status/multi_select options and use them in select-like decoders |
+| `transforms`   | Property-specific transform configuration                                                           |
 
 Config discovery starts from `CurrentWorkingDirectory` (defaults to the process CWD).
 When using the programmatic API, you can override it with `CurrentWorkingDirectory.fromPath`.
@@ -278,9 +278,9 @@ Transforms control how Notion property types are decoded. Each property type has
 | `title`        | `asString`  | `raw`, `asString`             |
 | `rich_text`    | `asString`  | `raw`, `asString`             |
 | `number`       | `asNumber`  | `raw`, `asNumber`, `asOption` |
-| `select`       | `asOption`  | `raw`, `asOption`, `asString` |
-| `multi_select` | `asStrings` | `raw`, `asStrings`            |
-| `status`       | `asOption`  | `raw`, `asOption`, `asString` |
+| `select`       | `asOption`  | `raw`, `asOption`, `asName`   |
+| `multi_select` | `asOptions` | `raw`, `asOptions`, `asNames` |
+| `status`       | `asOption`  | `raw`, `asOption`, `asName`   |
 | `date`         | `asOption`  | `raw`, `asDate`, `asOption`   |
 | `checkbox`     | `asBoolean` | `raw`, `asBoolean`            |
 | `url`          | `asOption`  | `raw`, `asString`, `asOption` |
@@ -290,7 +290,7 @@ Override transforms via CLI:
 
 ```bash
 notion-effect-schema-gen generate <db-id> -o ./out.ts \
-  --transform Status=asString \
+  --transform Status=asName \
   --transform Priority=raw
 ```
 
@@ -304,7 +304,7 @@ export default defineConfig({
     '...': {
       output: './schema.ts',
       transforms: {
-        Status: transforms.status.asString,
+        Status: transforms.status.asName,
         Priority: transforms.select.raw,
       },
     },
@@ -327,7 +327,7 @@ const program = Effect.gen(function* () {
   const code = generateSchemaCode(dbInfo, 'Tasks', {
     includeWrite: true,
     typedOptions: true,
-    transforms: { Status: 'asString' },
+    transforms: { Status: 'asName' },
   })
 
   const formatted = yield* formatCode(code)

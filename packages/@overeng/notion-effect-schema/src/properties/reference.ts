@@ -182,6 +182,48 @@ export const Relation = {
       ),
   }),
 
+  /** Transform to a single relation object (fails if not exactly one). */
+  asSingle: Schema.transform(
+    RelationProperty.pipe(
+      Schema.filter(
+        (p): p is typeof p & { relation: [{ id: string }] } => p.relation.length === 1,
+        {
+          message: () => 'Relation must have exactly one item',
+        },
+      ),
+    ),
+    Schema.Struct({ id: NotionUUID }),
+    {
+      strict: false,
+      decode: (prop) => prop.relation[0],
+      encode: () =>
+        shouldNeverHappen(
+          'Relation.asSingle encode is not supported. Use RelationWrite / RelationWriteFromIds.',
+        ),
+    },
+  ),
+
+  /** Transform to a single related page ID (fails if not exactly one). */
+  asSingleId: Schema.transform(
+    RelationProperty.pipe(
+      Schema.filter(
+        (p): p is typeof p & { relation: [{ id: string }] } => p.relation.length === 1,
+        {
+          message: () => 'Relation must have exactly one item',
+        },
+      ),
+    ),
+    NotionUUID,
+    {
+      strict: false,
+      decode: (prop) => prop.relation[0].id,
+      encode: () =>
+        shouldNeverHappen(
+          'Relation.asSingleId encode is not supported. Use RelationWrite / RelationWriteFromIds.',
+        ),
+    },
+  ),
+
   Write: {
     Schema: RelationWrite,
     fromIds: RelationWriteFromIds,

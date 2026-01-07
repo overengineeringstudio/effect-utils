@@ -1,6 +1,6 @@
 import { Option, Schema } from 'effect'
 
-import { docsPath, shouldNeverHappen } from '../common.ts'
+import { docsPath, shouldNeverHappen, withOptionValueSchema } from '../common.ts'
 
 // -----------------------------------------------------------------------------
 // Date Property
@@ -124,23 +124,30 @@ export const DateProp = {
   }),
 
   /** Transform to Option<DateValue>. */
-  asOption: Schema.transform(DateProperty, Schema.OptionFromSelf(DateValue), {
-    strict: false,
-    decode: (prop) => (prop.date === null ? Option.none() : Option.some(prop.date)),
-    encode: () =>
-      shouldNeverHappen(
-        'DateProp.asOption encode is not supported. Use DateWrite / DateWriteFromStart.',
-      ),
+  asOption: withOptionValueSchema({
+    schema: Schema.transform(DateProperty, Schema.OptionFromSelf(DateValue), {
+      strict: false,
+      decode: (prop) => (prop.date === null ? Option.none() : Option.some(prop.date)),
+      encode: () =>
+        shouldNeverHappen(
+          'DateProp.asOption encode is not supported. Use DateWrite / DateWriteFromStart.',
+        ),
+    }),
+    valueSchema: DateValue,
   }),
 
   /** Transform to Option<Date> (start date only, parsed). */
-  asDate: Schema.transform(DateProperty, Schema.OptionFromSelf(Schema.DateFromSelf), {
-    strict: false,
-    decode: (prop) => (prop.date === null ? Option.none() : Option.some(new Date(prop.date.start))),
-    encode: () =>
-      shouldNeverHappen(
-        'DateProp.asDate encode is not supported. Use DateWrite / DateWriteFromStart.',
-      ),
+  asDate: withOptionValueSchema({
+    schema: Schema.transform(DateProperty, Schema.OptionFromSelf(Schema.DateFromSelf), {
+      strict: false,
+      decode: (prop) =>
+        prop.date === null ? Option.none() : Option.some(new Date(prop.date.start)),
+      encode: () =>
+        shouldNeverHappen(
+          'DateProp.asDate encode is not supported. Use DateWrite / DateWriteFromStart.',
+        ),
+    }),
+    valueSchema: Schema.DateFromSelf,
   }),
 
   Write: {

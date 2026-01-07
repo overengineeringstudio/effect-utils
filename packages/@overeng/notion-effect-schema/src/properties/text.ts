@@ -1,6 +1,6 @@
 import { Option, Schema } from 'effect'
 
-import { docsPath, shouldNeverHappen } from '../common.ts'
+import { docsPath, shouldNeverHappen, withOptionValueSchema } from '../common.ts'
 import { RichText, RichTextArray } from '../rich-text.ts'
 import { TextRichTextWrite } from './common.ts'
 
@@ -174,17 +174,43 @@ export const RichTextProp = {
       ),
   }),
 
-  /** Transform to Option<string> (empty becomes None). */
-  asOption: Schema.transform(RichTextProperty, Schema.OptionFromSelf(Schema.String), {
-    strict: false,
-    decode: (prop) => {
-      const text = prop.rich_text.map((rt) => rt.plain_text).join('')
-      return text.trim() === '' ? Option.none() : Option.some(text)
-    },
-    encode: () =>
-      shouldNeverHappen(
-        'RichTextProp.asOption encode is not supported. Use RichTextWrite / RichTextWriteFromString.',
+  /** Transform to required string (fails if empty after trim). */
+  asNonEmptyString: Schema.transform(
+    RichTextProperty.pipe(
+      Schema.filter(
+        (p) =>
+          p.rich_text
+            .map((rt) => rt.plain_text)
+            .join('')
+            .trim() !== '',
+        { message: () => 'Rich text must not be empty' },
       ),
+    ),
+    Schema.String,
+    {
+      strict: false,
+      decode: (prop) => prop.rich_text.map((rt) => rt.plain_text).join(''),
+      encode: () =>
+        shouldNeverHappen(
+          'RichTextProp.asNonEmptyString encode is not supported. Use RichTextWrite / RichTextWriteFromString.',
+        ),
+    },
+  ),
+
+  /** Transform to Option<string> (empty becomes None). */
+  asOption: withOptionValueSchema({
+    schema: Schema.transform(RichTextProperty, Schema.OptionFromSelf(Schema.String), {
+      strict: false,
+      decode: (prop) => {
+        const text = prop.rich_text.map((rt) => rt.plain_text).join('')
+        return text.trim() === '' ? Option.none() : Option.some(text)
+      },
+      encode: () =>
+        shouldNeverHappen(
+          'RichTextProp.asOption encode is not supported. Use RichTextWrite / RichTextWriteFromString.',
+        ),
+    }),
+    valueSchema: Schema.String,
   }),
 
   Write: {

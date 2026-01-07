@@ -100,7 +100,7 @@ const nameOption = Options.text('name').pipe(
 
 const transformOption = Options.keyValueMap('transform').pipe(
   Options.withDescription(
-    'Property transform config: property=transform (e.g., Status=asOption, Title=asString)',
+    'Property transform config: property=transform (e.g., Status=asName, Title=asString)',
   ),
   Options.optional,
 )
@@ -118,7 +118,19 @@ const includeWriteOption = Options.boolean('include-write').pipe(
 )
 
 const typedOptionsOption = Options.boolean('typed-options').pipe(
-  Options.withDescription('Generate typed literal unions for select/status options'),
+  Options.withDescription(
+    'Generate typed literal unions for select/status/multi_select options and use typed property transforms by default',
+  ),
+  Options.withDefault(false),
+)
+
+const schemaMetaOption = Options.boolean('schema-meta').pipe(
+  Options.withDescription('Include Notion property metadata annotations in the generated schema'),
+  Options.withDefault(true),
+)
+
+const noSchemaMetaOption = Options.boolean('no-schema-meta').pipe(
+  Options.withDescription('Disable Notion property metadata annotations'),
   Options.withDefault(false),
 )
 
@@ -146,6 +158,8 @@ const generateCommand = Command.make(
     dryRun: dryRunOption,
     includeWrite: includeWriteOption,
     typedOptions: typedOptionsOption,
+    schemaMeta: schemaMetaOption,
+    noSchemaMeta: noSchemaMetaOption,
     includeApi: includeApiOption,
     writable: writableOption,
   },
@@ -158,6 +172,8 @@ const generateCommand = Command.make(
     dryRun,
     includeWrite,
     typedOptions,
+    schemaMeta,
+    noSchemaMeta,
     includeApi,
     writable,
   }) =>
@@ -178,6 +194,7 @@ const generateCommand = Command.make(
         transforms: transformConfig,
         includeWrite,
         typedOptions,
+        schemaMeta: noSchemaMeta ? false : schemaMeta,
         includeApi,
         generatorVersion,
         ...(Option.isSome(name) ? { schemaNameOverride: name.value } : {}),
@@ -349,6 +366,7 @@ const generateFromConfigCommand = Command.make(
             transforms: dbConfig.transforms ?? {},
             includeWrite: dbConfig.includeWrite ?? false,
             typedOptions: dbConfig.typedOptions ?? false,
+            schemaMeta: dbConfig.schemaMeta ?? true,
             includeApi: dbConfig.includeApi ?? false,
             generatorVersion,
             ...(dbConfig.name !== undefined ? { schemaNameOverride: dbConfig.name } : {}),

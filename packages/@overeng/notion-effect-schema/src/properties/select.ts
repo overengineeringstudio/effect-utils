@@ -1,6 +1,13 @@
 import { Option, Schema } from 'effect'
 
-import { docsPath, shouldNeverHappen } from '../common.ts'
+import {
+  docsPath,
+  NotionUUID,
+  SelectColor,
+  shouldNeverHappen,
+  withOptionNameSchema,
+  withOptionValueSchema,
+} from '../common.ts'
 import { SelectOption, SelectOptionWrite } from './common.ts'
 
 // -----------------------------------------------------------------------------
@@ -70,6 +77,19 @@ export const SelectWriteFromName = Schema.transform(Schema.NullOr(Schema.String)
   [docsPath]: 'page#page-property-value',
 })
 
+const isAllowedName = <TName extends string>(options: {
+  nameSchema: Schema.Schema<TName>
+  name: string
+}): options is { nameSchema: Schema.Schema<TName>; name: TName } =>
+  Option.isSome(Schema.decodeUnknownOption(options.nameSchema)(options.name))
+
+const makeSelectOptionWithName = <TName extends string>(nameSchema: Schema.Schema<TName>) =>
+  Schema.Struct({
+    id: NotionUUID,
+    name: nameSchema,
+    color: SelectColor,
+  })
+
 /** Transforms for Select property. */
 export const Select = {
   /** The raw SelectProperty schema. */
@@ -86,42 +106,100 @@ export const Select = {
   }),
 
   /** Transform to Option<SelectOption>. */
-  asOption: Schema.transform(SelectProperty, Schema.OptionFromSelf(SelectOption), {
-    strict: false,
-    decode: (prop) => (prop.select === null ? Option.none() : Option.some(prop.select)),
-    encode: () =>
-      shouldNeverHappen(
-        'Select.asOption encode is not supported. Use SelectWrite / SelectWriteFromName.',
-      ),
+  asOption: withOptionNameSchema({
+    schema: withOptionValueSchema({
+      schema: Schema.transform(SelectProperty, Schema.OptionFromSelf(SelectOption), {
+        strict: false,
+        decode: (prop) => (prop.select === null ? Option.none() : Option.some(prop.select)),
+        encode: () =>
+          shouldNeverHappen(
+            'Select.asOption encode is not supported. Use SelectWrite / SelectWriteFromName.',
+          ),
+      }),
+      valueSchema: SelectOption,
+    }),
+    nameSchema: Schema.String,
   }),
+
+  /** Transform to SelectProperty with a typed name (fails for unknown options). */
+  asPropertyNamed: <TName extends string>(nameSchema: Schema.Schema<TName>) => {
+    const optionSchema = makeSelectOptionWithName(nameSchema)
+
+    return SelectProperty.pipe(
+      Schema.filter(
+        (p): p is typeof p & { select: typeof optionSchema.Type | null } =>
+          p.select === null || isAllowedName({ nameSchema, name: p.select.name }),
+        { message: () => 'Select option must be one of the allowed options' },
+      ),
+    )
+  },
+
+  /** Transform to Option<SelectOption> with a typed name (fails for unknown options). */
+  asOptionNamed: <TName extends string>(nameSchema: Schema.Schema<TName>) => {
+    const optionSchema = makeSelectOptionWithName(nameSchema)
+
+    return withOptionNameSchema({
+      schema: withOptionValueSchema({
+        schema: Schema.transform(
+          SelectProperty.pipe(
+            Schema.filter(
+              (p): p is typeof p & { select: typeof optionSchema.Type | null } =>
+                p.select === null || isAllowedName({ nameSchema, name: p.select.name }),
+              { message: () => 'Select option must be one of the allowed options' },
+            ),
+          ),
+          Schema.OptionFromSelf(optionSchema),
+          {
+            strict: false,
+            decode: (prop) => (prop.select === null ? Option.none() : Option.some(prop.select)),
+            encode: () =>
+              shouldNeverHappen(
+                'Select.asOptionNamed encode is not supported. Use SelectWrite / SelectWriteFromName.',
+              ),
+          },
+        ),
+        valueSchema: optionSchema,
+      }),
+      nameSchema,
+    })
+  },
+
+  /** Transform to Option<name> with allowed options (fails for unknown options). */
+  asName: <TName extends string>(nameSchema: Schema.Schema<TName>) =>
+    withOptionValueSchema({
+      schema: Schema.transform(
+        SelectProperty.pipe(
+          Schema.filter(
+            (p): p is typeof p & { select: { name: TName } | null } =>
+              p.select === null || isAllowedName({ nameSchema, name: p.select.name }),
+            { message: () => 'Select option must be one of the allowed options' },
+          ),
+        ),
+        Schema.OptionFromSelf(nameSchema),
+        {
+          strict: false,
+          decode: (prop) => (prop.select === null ? Option.none() : Option.some(prop.select.name)),
+          encode: () =>
+            shouldNeverHappen(
+              'Select.asName encode is not supported. Use SelectWrite / SelectWriteFromName.',
+            ),
+        },
+      ),
+      valueSchema: nameSchema,
+    }),
 
   /** Transform to Option<string> (option name). */
-  asString: Schema.transform(SelectProperty, Schema.OptionFromSelf(Schema.String), {
-    strict: false,
-    decode: (prop) => (prop.select === null ? Option.none() : Option.some(prop.select.name)),
-    encode: () =>
-      shouldNeverHappen(
-        'Select.asString encode is not supported. Use SelectWrite / SelectWriteFromName.',
-      ),
-  }),
-
-  /** Transform to required string (fails if null). */
-  asStringRequired: Schema.transform(
-    SelectProperty.pipe(
-      Schema.filter((p): p is typeof p & { select: SelectOption } => p.select !== null, {
-        message: () => 'Select is required',
-      }),
-    ),
-    Schema.String,
-    {
+  asString: withOptionValueSchema({
+    schema: Schema.transform(SelectProperty, Schema.OptionFromSelf(Schema.String), {
       strict: false,
-      decode: (prop) => prop.select.name,
+      decode: (prop) => (prop.select === null ? Option.none() : Option.some(prop.select.name)),
       encode: () =>
         shouldNeverHappen(
-          'Select.asStringRequired encode is not supported. Use SelectWrite / SelectWriteFromName.',
+          'Select.asString encode is not supported. Use SelectWrite / SelectWriteFromName.',
         ),
-    },
-  ),
+    }),
+    valueSchema: Schema.String,
+  }),
 
   Write: {
     Schema: SelectWrite,
@@ -203,13 +281,16 @@ export const MultiSelect = {
   Property: MultiSelectProperty,
 
   /** Transform to raw array of SelectOptions. */
-  raw: Schema.transform(MultiSelectProperty, Schema.Array(SelectOption), {
-    strict: false,
-    decode: (prop) => prop.multi_select,
-    encode: () =>
-      shouldNeverHappen(
-        'MultiSelect.raw encode is not supported. Use MultiSelectWrite / MultiSelectWriteFromNames.',
-      ),
+  raw: withOptionNameSchema({
+    schema: Schema.transform(MultiSelectProperty, Schema.Array(SelectOption), {
+      strict: false,
+      decode: (prop) => prop.multi_select,
+      encode: () =>
+        shouldNeverHappen(
+          'MultiSelect.raw encode is not supported. Use MultiSelectWrite / MultiSelectWriteFromNames.',
+        ),
+    }),
+    nameSchema: Schema.String,
   }),
 
   /** Transform to array of option names. */
@@ -221,6 +302,67 @@ export const MultiSelect = {
         'MultiSelect.asStrings encode is not supported. Use MultiSelectWrite / MultiSelectWriteFromNames.',
       ),
   }),
+
+  /** Transform to array of option names with allowed options (fails for unknown options). */
+  asNames: <TName extends string>(nameSchema: Schema.Schema<TName>) =>
+    Schema.transform(
+      MultiSelectProperty.pipe(
+        Schema.filter(
+          (p): p is typeof p & { multi_select: Array<{ name: TName }> } =>
+            p.multi_select.every((opt) => isAllowedName({ nameSchema, name: opt.name })),
+          { message: () => 'MultiSelect options must be one of the allowed options' },
+        ),
+      ),
+      Schema.Array(nameSchema),
+      {
+        strict: false,
+        decode: (prop) => prop.multi_select.map((opt) => opt.name),
+        encode: () =>
+          shouldNeverHappen(
+            'MultiSelect.asNames encode is not supported. Use MultiSelectWrite / MultiSelectWriteFromNames.',
+          ),
+      },
+    ),
+
+  /** Transform to MultiSelectProperty with typed option names (fails for unknown options). */
+  asPropertyNamed: <TName extends string>(nameSchema: Schema.Schema<TName>) => {
+    const optionSchema = makeSelectOptionWithName(nameSchema)
+
+    return MultiSelectProperty.pipe(
+      Schema.filter(
+        (p): p is typeof p & { multi_select: Array<typeof optionSchema.Type> } =>
+          p.multi_select.every((opt) => isAllowedName({ nameSchema, name: opt.name })),
+        { message: () => 'MultiSelect options must be one of the allowed options' },
+      ),
+    )
+  },
+
+  /** Transform to array of options with typed option names (fails for unknown options). */
+  asOptionsNamed: <TName extends string>(nameSchema: Schema.Schema<TName>) => {
+    const optionSchema = makeSelectOptionWithName(nameSchema)
+
+    return withOptionNameSchema({
+      schema: Schema.transform(
+        MultiSelectProperty.pipe(
+          Schema.filter(
+            (p): p is typeof p & { multi_select: Array<typeof optionSchema.Type> } =>
+              p.multi_select.every((opt) => isAllowedName({ nameSchema, name: opt.name })),
+            { message: () => 'MultiSelect options must be one of the allowed options' },
+          ),
+        ),
+        Schema.Array(optionSchema),
+        {
+          strict: false,
+          decode: (prop) => prop.multi_select,
+          encode: () =>
+            shouldNeverHappen(
+              'MultiSelect.asOptionsNamed encode is not supported. Use MultiSelectWrite / MultiSelectWriteFromNames.',
+            ),
+        },
+      ),
+      nameSchema,
+    })
+  },
 
   Write: {
     Schema: MultiSelectWrite,
@@ -310,15 +452,101 @@ export const Status = {
       ),
   }),
 
-  /** Transform to Option<string> (status name). */
-  asString: Schema.transform(StatusProperty, Schema.OptionFromSelf(Schema.String), {
-    strict: false,
-    decode: (prop) => (prop.status === null ? Option.none() : Option.some(prop.status.name)),
-    encode: () =>
-      shouldNeverHappen(
-        'Status.asString encode is not supported. Use StatusWrite / StatusWriteFromName.',
-      ),
+  /** Transform to Option<SelectOption>. */
+  asOption: withOptionNameSchema({
+    schema: withOptionValueSchema({
+      schema: Schema.transform(StatusProperty, Schema.OptionFromSelf(SelectOption), {
+        strict: false,
+        decode: (prop) => (prop.status === null ? Option.none() : Option.some(prop.status)),
+        encode: () =>
+          shouldNeverHappen(
+            'Status.asOption encode is not supported. Use StatusWrite / StatusWriteFromName.',
+          ),
+      }),
+      valueSchema: SelectOption,
+    }),
+    nameSchema: Schema.String,
   }),
+
+  /** Transform to StatusProperty with a typed name (fails for unknown options). */
+  asPropertyNamed: <TName extends string>(nameSchema: Schema.Schema<TName>) => {
+    const optionSchema = makeSelectOptionWithName(nameSchema)
+
+    return StatusProperty.pipe(
+      Schema.filter(
+        (p): p is typeof p & { status: typeof optionSchema.Type | null } =>
+          p.status === null || isAllowedName({ nameSchema, name: p.status.name }),
+        { message: () => 'Status must be one of the allowed options' },
+      ),
+    )
+  },
+
+  /** Transform to Option<string> (status name). */
+  asString: withOptionValueSchema({
+    schema: Schema.transform(StatusProperty, Schema.OptionFromSelf(Schema.String), {
+      strict: false,
+      decode: (prop) => (prop.status === null ? Option.none() : Option.some(prop.status.name)),
+      encode: () =>
+        shouldNeverHappen(
+          'Status.asString encode is not supported. Use StatusWrite / StatusWriteFromName.',
+        ),
+    }),
+    valueSchema: Schema.String,
+  }),
+
+  /** Transform to Option<SelectOption> with a typed name (fails for unknown options). */
+  asOptionNamed: <TName extends string>(nameSchema: Schema.Schema<TName>) => {
+    const optionSchema = makeSelectOptionWithName(nameSchema)
+
+    return withOptionNameSchema({
+      schema: withOptionValueSchema({
+        schema: Schema.transform(
+          StatusProperty.pipe(
+            Schema.filter(
+              (p): p is typeof p & { status: typeof optionSchema.Type | null } =>
+                p.status === null || isAllowedName({ nameSchema, name: p.status.name }),
+              { message: () => 'Status must be one of the allowed options' },
+            ),
+          ),
+          Schema.OptionFromSelf(optionSchema),
+          {
+            strict: false,
+            decode: (prop) => (prop.status === null ? Option.none() : Option.some(prop.status)),
+            encode: () =>
+              shouldNeverHappen(
+                'Status.asOptionNamed encode is not supported. Use StatusWrite / StatusWriteFromName.',
+              ),
+          },
+        ),
+        valueSchema: optionSchema,
+      }),
+      nameSchema,
+    })
+  },
+
+  /** Transform to Option<name> with allowed options (fails for unknown options). */
+  asName: <TName extends string>(nameSchema: Schema.Schema<TName>) =>
+    withOptionValueSchema({
+      schema: Schema.transform(
+        StatusProperty.pipe(
+          Schema.filter(
+            (p): p is typeof p & { status: { name: TName } | null } =>
+              p.status === null || isAllowedName({ nameSchema, name: p.status.name }),
+            { message: () => 'Status must be one of the allowed options' },
+          ),
+        ),
+        Schema.OptionFromSelf(nameSchema),
+        {
+          strict: false,
+          decode: (prop) => (prop.status === null ? Option.none() : Option.some(prop.status.name)),
+          encode: () =>
+            shouldNeverHappen(
+              'Status.asName encode is not supported. Use StatusWrite / StatusWriteFromName.',
+            ),
+        },
+      ),
+      valueSchema: nameSchema,
+    }),
 
   Write: {
     Schema: StatusWrite,

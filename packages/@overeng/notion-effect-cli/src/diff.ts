@@ -1,4 +1,4 @@
-import { DEFAULT_TRANSFORMS, PROPERTY_TRANSFORM_NAMESPACES } from './codegen.ts'
+import { DEFAULT_TRANSFORMS, NOTION_SCHEMA_TRANSFORM_KEYS } from './codegen.ts'
 import type { DatabaseInfo, NotionPropertyType } from './introspect.ts'
 
 // -----------------------------------------------------------------------------
@@ -8,8 +8,7 @@ import type { DatabaseInfo, NotionPropertyType } from './introspect.ts'
 /** Parsed property from a generated schema file */
 export interface ParsedProperty {
   readonly name: string
-  readonly namespace: string
-  readonly transform: string
+  readonly transformKey: string
 }
 
 /** Parsed schema information from a generated file */
@@ -25,7 +24,7 @@ export interface PropertyDiff {
   readonly name: string
   readonly type: 'added' | 'removed' | 'type_changed'
   readonly live?: { readonly type: NotionPropertyType; readonly transform: string }
-  readonly generated?: { readonly namespace: string; readonly transform: string }
+  readonly generated?: { readonly transformKey: string }
 }
 
 /** Options difference for select/multi_select/status properties */
@@ -46,10 +45,10 @@ export interface DiffResult {
 // Namespace Mappings
 // -----------------------------------------------------------------------------
 
-/** Map namespace names back to property types (derived from codegen mappings) */
-const NAMESPACE_TO_TYPE: Record<string, NotionPropertyType> = Object.fromEntries(
-  Object.entries(PROPERTY_TRANSFORM_NAMESPACES).flatMap(([propertyType, namespace]) =>
-    namespace === undefined ? [] : [[namespace, propertyType]],
+/** Map NotionSchema transform keys back to property types (derived from codegen mappings) */
+const TRANSFORM_KEY_TO_TYPE: Record<string, NotionPropertyType> = Object.fromEntries(
+  Object.entries(NOTION_SCHEMA_TRANSFORM_KEYS).flatMap(([propertyType, transforms]) =>
+    transforms ? Object.values(transforms).map((key) => [key, propertyType]) : [],
   ),
 ) as Record<string, NotionPropertyType>
 
@@ -112,21 +111,29 @@ export const parseGeneratedFile = (content: string): ParsedSchema => {
       }
 
       // Parse property line
-      // Matches: PropertyName: Namespace.transform,
-      // Or: 'Property Name': Namespace.transform,
+      // Matches: PropertyName: NotionSchema.transformKey,
+      // Or: 'Property Name': NotionSchema.transformKey,
       if (!hasOpened) {
         continue
       }
 
       const propMatch = line.match(
-        /^\s*(?:'([^']+)'|"([^"]+)"|([a-zA-Z_$][a-zA-Z0-9_$]*))\s*:\s*([A-Za-z]+)\.([a-zA-Z]+)\s*,/,
+        /^\s*(?:'([^']+)'|"([^"]+)"|([a-zA-Z_$][a-zA-Z0-9_$]*))\s*:\s*NotionSchema\.([a-zA-Z0-9_]+)(?:\([^)]*\))?(?:\.pipe\(([^)]*)\))?\s*,/,
       )
       if (propMatch) {
         const name = propMatch[1] ?? propMatch[2] ?? propMatch[3]
-        const namespace = propMatch[4]
-        const transform = propMatch[5]
-        if (name && namespace && transform) {
-          properties.push({ name, namespace, transform })
+        const baseKey = propMatch[4]
+        const pipeContent = propMatch[5]
+        if (name && baseKey) {
+          let transformKey = baseKey
+          if (pipeContent?.includes('NotionSchema.asName')) {
+            transformKey = `${baseKey}.asName`
+          } else if (pipeContent?.includes('NotionSchema.asNames')) {
+            transformKey = `${baseKey}.asNames`
+          } else if (pipeContent?.includes('NotionSchema.asNullable')) {
+            transformKey = `${baseKey}.asNullable`
+          }
+          properties.push({ name, transformKey })
         }
       }
     }
@@ -174,7 +181,7 @@ export const computeDiff = ({ live, generated }: ComputeDiffOptions): DiffResult
       propertyDiffs.push({
         name: genProp.name,
         type: 'removed',
-        generated: { namespace: genProp.namespace, transform: genProp.transform },
+        generated: { transformKey: genProp.transformKey },
       })
     }
   }
@@ -184,7 +191,7 @@ export const computeDiff = ({ live, generated }: ComputeDiffOptions): DiffResult
     const genProp = generatedByName.get(liveProp.name)
     if (!genProp) continue
 
-    const liveType = NAMESPACE_TO_TYPE[genProp.namespace]
+    const liveType = TRANSFORM_KEY_TO_TYPE[genProp.transformKey]
 
     // Type changed
     if (liveType && liveType !== liveProp.type) {
@@ -193,7 +200,7 @@ export const computeDiff = ({ live, generated }: ComputeDiffOptions): DiffResult
         name: liveProp.name,
         type: 'type_changed',
         live: { type: liveProp.type, transform: expectedTransform },
-        generated: { namespace: genProp.namespace, transform: genProp.transform },
+        generated: { transformKey: genProp.transformKey },
       })
     }
 
@@ -255,12 +262,12 @@ export const formatDiff = ({ diff, databaseId, filePath }: FormatDiffOptions): s
   }
 
   for (const prop of removed) {
-    const type = NAMESPACE_TO_TYPE[prop.generated?.namespace ?? ''] ?? 'unknown'
+    const type = TRANSFORM_KEY_TO_TYPE[prop.generated?.transformKey ?? ''] ?? 'unknown'
     lines.push(`  - ${prop.name} (${type}) - removed from Notion`)
   }
 
   for (const prop of typeChanged) {
-    const oldType = NAMESPACE_TO_TYPE[prop.generated?.namespace ?? ''] ?? 'unknown'
+    const oldType = TRANSFORM_KEY_TO_TYPE[prop.generated?.transformKey ?? ''] ?? 'unknown'
     lines.push(`  ~ ${prop.name}: type changed (${oldType} -> ${prop.live?.type})`)
   }
 

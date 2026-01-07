@@ -2,33 +2,7 @@ import { describe, it } from '@effect/vitest'
 import { Effect, Option, Schema } from 'effect'
 import { expect } from 'vitest'
 
-import {
-  Checkbox,
-  CheckboxWriteFromBoolean,
-  DateProp,
-  DateWriteFromStart,
-  Email,
-  EmailWriteFromString,
-  MultiSelect,
-  MultiSelectWriteFromNames,
-  Num,
-  NumberWriteFromNumber,
-  PhoneNumber,
-  PhoneNumberWriteFromString,
-  Relation,
-  RelationWriteFromIds,
-  RichTextProp,
-  RichTextWriteFromString,
-  Select,
-  SelectWriteFromName,
-  Status,
-  StatusWriteFromName,
-  Title,
-  TitleWrite,
-  TitleWriteFromString,
-  Url,
-  UrlWriteFromString,
-} from './mod.ts'
+import { NotionSchema } from './mod.ts'
 
 // -----------------------------------------------------------------------------
 // Title Property Tests
@@ -56,10 +30,10 @@ describe('Title', () => {
     ],
   }
 
-  describe('Title.asString', () => {
+  describe('NotionSchema.title', () => {
     it.effect('decodes title property to string', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(Title.asString)(sampleTitleProperty)
+        const result = yield* Schema.decodeUnknown(NotionSchema.title)(sampleTitleProperty)
         expect(result).toBe('Hello World')
       }),
     )
@@ -67,7 +41,7 @@ describe('Title', () => {
     it.effect('handles empty title array', () =>
       Effect.gen(function* () {
         const emptyTitle = { ...sampleTitleProperty, title: [] }
-        const result = yield* Schema.decodeUnknown(Title.asString)(emptyTitle)
+        const result = yield* Schema.decodeUnknown(NotionSchema.title)(emptyTitle)
         expect(result).toBe('')
       }),
     )
@@ -107,16 +81,16 @@ describe('Title', () => {
             },
           ],
         }
-        const result = yield* Schema.decodeUnknown(Title.asString)(multiSegment)
+        const result = yield* Schema.decodeUnknown(NotionSchema.title)(multiSegment)
         expect(result).toBe('Hello World')
       }),
     )
   })
 
-  describe('TitleWriteFromString', () => {
+  describe('NotionSchema.titleWriteFromString', () => {
     it.effect('encodes string to title write payload', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(TitleWriteFromString)('Test Title')
+        const result = yield* Schema.decodeUnknown(NotionSchema.titleWriteFromString)('Test Title')
         expect(result).toEqual({
           title: [{ type: 'text', text: { content: 'Test Title' } }],
         })
@@ -126,15 +100,15 @@ describe('Title', () => {
     it.effect('roundtrip: encode and decode', () =>
       Effect.gen(function* () {
         const original = 'My Page Title'
-        const encoded = yield* Schema.decodeUnknown(TitleWriteFromString)(original)
-        const decoded = yield* Schema.encode(TitleWriteFromString)(encoded)
+        const encoded = yield* Schema.decodeUnknown(NotionSchema.titleWriteFromString)(original)
+        const decoded = yield* Schema.encode(NotionSchema.titleWriteFromString)(encoded)
         expect(decoded).toBe(original)
       }),
     )
 
     it.effect('handles empty string', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(TitleWriteFromString)('')
+        const result = yield* Schema.decodeUnknown(NotionSchema.titleWriteFromString)('')
         expect(result).toEqual({
           title: [{ type: 'text', text: { content: '' } }],
         })
@@ -142,13 +116,13 @@ describe('Title', () => {
     )
   })
 
-  describe('TitleWrite schema', () => {
+  describe('NotionSchema.titleWrite schema', () => {
     it.effect('validates valid title write payload', () =>
       Effect.gen(function* () {
         const payload = {
           title: [{ type: 'text' as const, text: { content: 'Test' } }],
         }
-        const result = yield* Schema.decodeUnknown(TitleWrite)(payload)
+        const result = yield* Schema.decodeUnknown(NotionSchema.titleWrite)(payload)
         expect(result).toEqual(payload)
       }),
     )
@@ -163,7 +137,7 @@ describe('Title', () => {
             },
           ],
         }
-        const result = yield* Schema.decodeUnknown(TitleWrite)(payload)
+        const result = yield* Schema.decodeUnknown(NotionSchema.titleWrite)(payload)
         expect(result).toEqual(payload)
       }),
     )
@@ -196,19 +170,23 @@ describe('RichText Property', () => {
     ],
   }
 
-  describe('RichTextProp.asString', () => {
+  describe('NotionSchema.richTextString', () => {
     it.effect('decodes rich text property to string', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(RichTextProp.asString)(sampleRichTextProperty)
+        const result = yield* Schema.decodeUnknown(NotionSchema.richTextString)(
+          sampleRichTextProperty,
+        )
         expect(result).toBe('Sample text')
       }),
     )
   })
 
-  describe('RichTextProp.asOption', () => {
+  describe('NotionSchema.richTextOption', () => {
     it.effect('returns Some for non-empty text', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(RichTextProp.asOption)(sampleRichTextProperty)
+        const result = yield* Schema.decodeUnknown(NotionSchema.richTextOption)(
+          sampleRichTextProperty,
+        )
         expect(Option.isSome(result)).toBe(true)
         expect(Option.getOrNull(result)).toBe('Sample text')
       }),
@@ -217,7 +195,7 @@ describe('RichText Property', () => {
     it.effect('returns None for empty text', () =>
       Effect.gen(function* () {
         const emptyProp = { ...sampleRichTextProperty, rich_text: [] }
-        const result = yield* Schema.decodeUnknown(RichTextProp.asOption)(emptyProp)
+        const result = yield* Schema.decodeUnknown(NotionSchema.richTextOption)(emptyProp)
         expect(Option.isNone(result)).toBe(true)
       }),
     )
@@ -243,16 +221,18 @@ describe('RichText Property', () => {
             },
           ],
         }
-        const result = yield* Schema.decodeUnknown(RichTextProp.asOption)(whitespaceProp)
+        const result = yield* Schema.decodeUnknown(NotionSchema.richTextOption)(whitespaceProp)
         expect(Option.isNone(result)).toBe(true)
       }),
     )
   })
 
-  describe('RichTextWriteFromString', () => {
+  describe('NotionSchema.richTextWriteFromString', () => {
     it.effect('encodes string to rich text write payload', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(RichTextWriteFromString)('Test content')
+        const result = yield* Schema.decodeUnknown(NotionSchema.richTextWriteFromString)(
+          'Test content',
+        )
         expect(result).toEqual({
           rich_text: [{ type: 'text', text: { content: 'Test content' } }],
         })
@@ -262,9 +242,30 @@ describe('RichText Property', () => {
     it.effect('roundtrip: encode and decode', () =>
       Effect.gen(function* () {
         const original = 'Some text content'
-        const encoded = yield* Schema.decodeUnknown(RichTextWriteFromString)(original)
-        const decoded = yield* Schema.encode(RichTextWriteFromString)(encoded)
+        const encoded = yield* Schema.decodeUnknown(NotionSchema.richTextWriteFromString)(original)
+        const decoded = yield* Schema.encode(NotionSchema.richTextWriteFromString)(encoded)
         expect(decoded).toBe(original)
+      }),
+    )
+  })
+
+  describe('NotionSchema.richTextNonEmpty', () => {
+    it.effect('returns string for non-empty text', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(NotionSchema.richTextNonEmpty)(
+          sampleRichTextProperty,
+        )
+        expect(result).toBe('Sample text')
+      }),
+    )
+
+    it.effect('fails for empty text', () =>
+      Effect.gen(function* () {
+        const emptyProp = { ...sampleRichTextProperty, rich_text: [] }
+        const result = yield* Schema.decodeUnknown(NotionSchema.richTextNonEmpty)(emptyProp).pipe(
+          Effect.either,
+        )
+        expect(result._tag).toBe('Left')
       }),
     )
   })
@@ -287,17 +288,17 @@ describe('Number Property', () => {
     number: null,
   }
 
-  describe('Num.asNumber', () => {
+  describe('NotionSchema.number', () => {
     it.effect('decodes non-null number', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(Num.asNumber)(sampleNumberProperty)
+        const result = yield* Schema.decodeUnknown(NotionSchema.number)(sampleNumberProperty)
         expect(result).toBe(42)
       }),
     )
 
     it.effect('fails on null number', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(Num.asNumber)(nullNumberProperty).pipe(
+        const result = yield* Schema.decodeUnknown(NotionSchema.number)(nullNumberProperty).pipe(
           Effect.flip,
         )
         expect(result).toBeDefined()
@@ -307,16 +308,16 @@ describe('Number Property', () => {
     it.effect('decodes decimal numbers', () =>
       Effect.gen(function* () {
         const decimalProp = { ...sampleNumberProperty, number: 3.14 }
-        const result = yield* Schema.decodeUnknown(Num.asNumber)(decimalProp)
+        const result = yield* Schema.decodeUnknown(NotionSchema.number)(decimalProp)
         expect(result).toBe(3.14)
       }),
     )
   })
 
-  describe('Num.asOption', () => {
+  describe('NotionSchema.numberOption', () => {
     it.effect('returns Some for non-null number', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(Num.asOption)(sampleNumberProperty)
+        const result = yield* Schema.decodeUnknown(NotionSchema.numberOption)(sampleNumberProperty)
         expect(Option.isSome(result)).toBe(true)
         expect(Option.getOrNull(result)).toBe(42)
       }),
@@ -324,23 +325,23 @@ describe('Number Property', () => {
 
     it.effect('returns None for null number', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(Num.asOption)(nullNumberProperty)
+        const result = yield* Schema.decodeUnknown(NotionSchema.numberOption)(nullNumberProperty)
         expect(Option.isNone(result)).toBe(true)
       }),
     )
   })
 
-  describe('NumberWriteFromNumber', () => {
+  describe('NotionSchema.numberWriteFromNumber', () => {
     it.effect('encodes number to write payload', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(NumberWriteFromNumber)(100)
+        const result = yield* Schema.decodeUnknown(NotionSchema.numberWriteFromNumber)(100)
         expect(result).toEqual({ number: 100 })
       }),
     )
 
     it.effect('encodes null to write payload', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(NumberWriteFromNumber)(null)
+        const result = yield* Schema.decodeUnknown(NotionSchema.numberWriteFromNumber)(null)
         expect(result).toEqual({ number: null })
       }),
     )
@@ -348,8 +349,8 @@ describe('Number Property', () => {
     it.effect('roundtrip: encode and decode', () =>
       Effect.gen(function* () {
         const original = 99
-        const encoded = yield* Schema.decodeUnknown(NumberWriteFromNumber)(original)
-        const decoded = yield* Schema.encode(NumberWriteFromNumber)(encoded)
+        const encoded = yield* Schema.decodeUnknown(NotionSchema.numberWriteFromNumber)(original)
+        const decoded = yield* Schema.encode(NotionSchema.numberWriteFromNumber)(encoded)
         expect(decoded).toBe(original)
       }),
     )
@@ -373,33 +374,33 @@ describe('Checkbox Property', () => {
     checkbox: false,
   }
 
-  describe('Checkbox.asBoolean', () => {
+  describe('NotionSchema.checkbox', () => {
     it.effect('decodes checked checkbox', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(Checkbox.asBoolean)(checkedProperty)
+        const result = yield* Schema.decodeUnknown(NotionSchema.checkbox)(checkedProperty)
         expect(result).toBe(true)
       }),
     )
 
     it.effect('decodes unchecked checkbox', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(Checkbox.asBoolean)(uncheckedProperty)
+        const result = yield* Schema.decodeUnknown(NotionSchema.checkbox)(uncheckedProperty)
         expect(result).toBe(false)
       }),
     )
   })
 
-  describe('CheckboxWriteFromBoolean', () => {
+  describe('NotionSchema.checkboxWriteFromBoolean', () => {
     it.effect('encodes true to write payload', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(CheckboxWriteFromBoolean)(true)
+        const result = yield* Schema.decodeUnknown(NotionSchema.checkboxWriteFromBoolean)(true)
         expect(result).toEqual({ checkbox: true })
       }),
     )
 
     it.effect('encodes false to write payload', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(CheckboxWriteFromBoolean)(false)
+        const result = yield* Schema.decodeUnknown(NotionSchema.checkboxWriteFromBoolean)(false)
         expect(result).toEqual({ checkbox: false })
       }),
     )
@@ -407,8 +408,8 @@ describe('Checkbox Property', () => {
     it.effect('roundtrip: encode and decode', () =>
       Effect.gen(function* () {
         const original = true
-        const encoded = yield* Schema.decodeUnknown(CheckboxWriteFromBoolean)(original)
-        const decoded = yield* Schema.encode(CheckboxWriteFromBoolean)(encoded)
+        const encoded = yield* Schema.decodeUnknown(NotionSchema.checkboxWriteFromBoolean)(original)
+        const decoded = yield* Schema.encode(NotionSchema.checkboxWriteFromBoolean)(encoded)
         expect(decoded).toBe(original)
       }),
     )
@@ -436,52 +437,81 @@ describe('Select Property', () => {
     select: null,
   }
 
-  describe('Select.asString', () => {
-    it.effect('returns Some with option name', () =>
+  describe('NotionSchema.select', () => {
+    it.effect('returns Some with option', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(Select.asString)(selectedProperty)
+        const result = yield* Schema.decodeUnknown(NotionSchema.select())(selectedProperty)
         expect(Option.isSome(result)).toBe(true)
-        expect(Option.getOrNull(result)).toBe('High')
+        expect(Option.getOrNull(result)?.name).toBe('High')
       }),
     )
 
     it.effect('returns None for null select', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(Select.asString)(nullSelectProperty)
+        const result = yield* Schema.decodeUnknown(NotionSchema.select())(nullSelectProperty)
         expect(Option.isNone(result)).toBe(true)
       }),
     )
   })
 
-  describe('Select.asStringRequired', () => {
-    it.effect('returns option name', () =>
+  describe('NotionSchema.select(...).pipe(NotionSchema.asName)', () => {
+    const Allowed = Schema.Literal('High', 'Low')
+
+    it.effect('returns Some with allowed name', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(Select.asStringRequired)(selectedProperty)
-        expect(result).toBe('High')
+        const result = yield* Schema.decodeUnknown(
+          NotionSchema.select(Allowed).pipe(NotionSchema.asName),
+        )(selectedProperty)
+        expect(Option.isSome(result)).toBe(true)
+        expect(Option.getOrNull(result)).toBe('High')
       }),
     )
 
-    it.effect('fails for null select', () =>
+    it.effect('fails when option name is not allowed', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(Select.asStringRequired)(
-          nullSelectProperty,
-        ).pipe(Effect.flip)
-        expect(result).toBeDefined()
+        const invalidProperty = {
+          ...selectedProperty,
+          select: { ...selectedProperty.select, name: 'Medium' },
+        }
+        const result = yield* Schema.decodeUnknown(
+          NotionSchema.select(Allowed).pipe(NotionSchema.asName),
+        )(invalidProperty).pipe(Effect.either)
+        expect(result._tag).toBe('Left')
       }),
     )
   })
 
-  describe('SelectWriteFromName', () => {
+  describe('NotionSchema.select(...).pipe(NotionSchema.asNullable)', () => {
+    it.effect('returns option for selected property', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(
+          NotionSchema.select().pipe(NotionSchema.asNullable),
+        )(selectedProperty)
+        expect(result?.name).toBe('High')
+      }),
+    )
+
+    it.effect('returns null for null select', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(
+          NotionSchema.select().pipe(NotionSchema.asNullable),
+        )(nullSelectProperty)
+        expect(result).toBeNull()
+      }),
+    )
+  })
+
+  describe('NotionSchema.selectWriteFromName', () => {
     it.effect('encodes option name to write payload', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(SelectWriteFromName)('Medium')
+        const result = yield* Schema.decodeUnknown(NotionSchema.selectWriteFromName)('Medium')
         expect(result).toEqual({ select: { name: 'Medium' } })
       }),
     )
 
     it.effect('encodes null to write payload', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(SelectWriteFromName)(null)
+        const result = yield* Schema.decodeUnknown(NotionSchema.selectWriteFromName)(null)
         expect(result).toEqual({ select: null })
       }),
     )
@@ -489,8 +519,8 @@ describe('Select Property', () => {
     it.effect('roundtrip: encode and decode', () =>
       Effect.gen(function* () {
         const original = 'Low'
-        const encoded = yield* Schema.decodeUnknown(SelectWriteFromName)(original)
-        const decoded = yield* Schema.encode(SelectWriteFromName)(encoded)
+        const encoded = yield* Schema.decodeUnknown(NotionSchema.selectWriteFromName)(original)
+        const decoded = yield* Schema.encode(NotionSchema.selectWriteFromName)(encoded)
         expect(decoded).toBe(original)
       }),
     )
@@ -517,26 +547,59 @@ describe('MultiSelect Property', () => {
     multi_select: [],
   }
 
-  describe('MultiSelect.asStrings', () => {
-    it.effect('decodes to array of names', () =>
+  describe('NotionSchema.multiSelect', () => {
+    it.effect('decodes to array of options', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(MultiSelect.asStrings)(multiSelectProperty)
-        expect(result).toEqual(['Tag1', 'Tag2'])
+        const result = yield* Schema.decodeUnknown(NotionSchema.multiSelect())(multiSelectProperty)
+        expect(result).toHaveLength(2)
+        expect(result[0]?.name).toBe('Tag1')
       }),
     )
 
     it.effect('handles empty array', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(MultiSelect.asStrings)(emptyMultiSelectProperty)
+        const result = yield* Schema.decodeUnknown(NotionSchema.multiSelect())(
+          emptyMultiSelectProperty,
+        )
         expect(result).toEqual([])
       }),
     )
   })
 
-  describe('MultiSelectWriteFromNames', () => {
+  describe('NotionSchema.multiSelect(...).pipe(NotionSchema.asNames)', () => {
+    const Allowed = Schema.Literal('Tag1', 'Tag2')
+
+    it.effect('decodes to array of allowed names', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(
+          NotionSchema.multiSelect(Allowed).pipe(NotionSchema.asNames),
+        )(multiSelectProperty)
+        expect(result).toEqual(['Tag1', 'Tag2'])
+      }),
+    )
+
+    it.effect('fails when option name is not allowed', () =>
+      Effect.gen(function* () {
+        const invalidProperty = {
+          ...multiSelectProperty,
+          multi_select: [{ ...multiSelectProperty.multi_select[0], name: 'Tag3' }],
+        }
+        const result = yield* Schema.decodeUnknown(
+          NotionSchema.multiSelect(Allowed).pipe(NotionSchema.asNames),
+        )(invalidProperty).pipe(Effect.either)
+        expect(result._tag).toBe('Left')
+      }),
+    )
+  })
+
+  describe('NotionSchema.multiSelectWriteFromNames', () => {
     it.effect('encodes names to write payload', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(MultiSelectWriteFromNames)(['A', 'B', 'C'])
+        const result = yield* Schema.decodeUnknown(NotionSchema.multiSelectWriteFromNames)([
+          'A',
+          'B',
+          'C',
+        ])
         expect(result).toEqual({
           multi_select: [{ name: 'A' }, { name: 'B' }, { name: 'C' }],
         })
@@ -545,7 +608,7 @@ describe('MultiSelect Property', () => {
 
     it.effect('handles empty array', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(MultiSelectWriteFromNames)([])
+        const result = yield* Schema.decodeUnknown(NotionSchema.multiSelectWriteFromNames)([])
         expect(result).toEqual({ multi_select: [] })
       }),
     )
@@ -553,8 +616,10 @@ describe('MultiSelect Property', () => {
     it.effect('roundtrip: encode and decode', () =>
       Effect.gen(function* () {
         const original = ['X', 'Y', 'Z']
-        const encoded = yield* Schema.decodeUnknown(MultiSelectWriteFromNames)(original)
-        const decoded = yield* Schema.encode(MultiSelectWriteFromNames)(encoded)
+        const encoded = yield* Schema.decodeUnknown(NotionSchema.multiSelectWriteFromNames)(
+          original,
+        )
+        const decoded = yield* Schema.encode(NotionSchema.multiSelectWriteFromNames)(encoded)
         expect(decoded).toEqual(original)
       }),
     )
@@ -582,27 +647,74 @@ describe('Status Property', () => {
     status: null,
   }
 
-  describe('Status.asString', () => {
-    it.effect('returns Some with status name', () =>
+  describe('NotionSchema.status', () => {
+    it.effect('returns Some with status option', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(Status.asString)(statusProperty)
+        const result = yield* Schema.decodeUnknown(NotionSchema.status())(statusProperty)
         expect(Option.isSome(result)).toBe(true)
-        expect(Option.getOrNull(result)).toBe('In Progress')
+        expect(Option.getOrNull(result)?.name).toBe('In Progress')
       }),
     )
 
     it.effect('returns None for null status', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(Status.asString)(nullStatusProperty)
+        const result = yield* Schema.decodeUnknown(NotionSchema.status())(nullStatusProperty)
         expect(Option.isNone(result)).toBe(true)
       }),
     )
   })
 
-  describe('StatusWriteFromName', () => {
+  describe('NotionSchema.status(...).pipe(NotionSchema.asName)', () => {
+    const Allowed = Schema.Literal('In Progress', 'Blocked')
+
+    it.effect('returns Some with allowed status name', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(
+          NotionSchema.status(Allowed).pipe(NotionSchema.asName),
+        )(statusProperty)
+        expect(Option.isSome(result)).toBe(true)
+        expect(Option.getOrNull(result)).toBe('In Progress')
+      }),
+    )
+
+    it.effect('fails when status name is not allowed', () =>
+      Effect.gen(function* () {
+        const invalidProperty = {
+          ...statusProperty,
+          status: { ...statusProperty.status, name: 'Done' },
+        }
+        const result = yield* Schema.decodeUnknown(
+          NotionSchema.status(Allowed).pipe(NotionSchema.asName),
+        )(invalidProperty).pipe(Effect.either)
+        expect(result._tag).toBe('Left')
+      }),
+    )
+  })
+
+  describe('NotionSchema.status(...).pipe(NotionSchema.asNullable)', () => {
+    it.effect('returns status option for selected status', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(
+          NotionSchema.status().pipe(NotionSchema.asNullable),
+        )(statusProperty)
+        expect(result?.name).toBe('In Progress')
+      }),
+    )
+
+    it.effect('returns null for null status', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(
+          NotionSchema.status().pipe(NotionSchema.asNullable),
+        )(nullStatusProperty)
+        expect(result).toBeNull()
+      }),
+    )
+  })
+
+  describe('NotionSchema.statusWriteFromName', () => {
     it.effect('encodes status name to write payload', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(StatusWriteFromName)('Done')
+        const result = yield* Schema.decodeUnknown(NotionSchema.statusWriteFromName)('Done')
         expect(result).toEqual({ status: { name: 'Done' } })
       }),
     )
@@ -610,9 +722,226 @@ describe('Status Property', () => {
     it.effect('roundtrip: encode and decode', () =>
       Effect.gen(function* () {
         const original = 'Blocked'
-        const encoded = yield* Schema.decodeUnknown(StatusWriteFromName)(original)
-        const decoded = yield* Schema.encode(StatusWriteFromName)(encoded)
+        const encoded = yield* Schema.decodeUnknown(NotionSchema.statusWriteFromName)(original)
+        const decoded = yield* Schema.encode(NotionSchema.statusWriteFromName)(encoded)
         expect(decoded).toBe(original)
+      }),
+    )
+  })
+})
+
+// -----------------------------------------------------------------------------
+// Formula Property Tests
+// -----------------------------------------------------------------------------
+
+describe('Formula Property', () => {
+  const numberFormulaProperty = {
+    id: 'formula',
+    type: 'formula' as const,
+    formula: {
+      type: 'number' as const,
+      number: 42,
+    },
+  }
+
+  const stringFormulaProperty = {
+    id: 'formula',
+    type: 'formula' as const,
+    formula: {
+      type: 'string' as const,
+      string: 'hello',
+    },
+  }
+
+  const booleanFormulaProperty = {
+    id: 'formula',
+    type: 'formula' as const,
+    formula: {
+      type: 'boolean' as const,
+      boolean: true,
+    },
+  }
+
+  const dateFormulaProperty = {
+    id: 'formula',
+    type: 'formula' as const,
+    formula: {
+      type: 'date' as const,
+      date: {
+        start: '2024-01-15',
+        end: null,
+        time_zone: null,
+      },
+    },
+  }
+
+  describe('NotionSchema.formulaNumber', () => {
+    it.effect('decodes number formula', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(NotionSchema.formulaNumber)(
+          numberFormulaProperty,
+        )
+        expect(result).toBe(42)
+      }),
+    )
+
+    it.effect('fails for non-number formula', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(NotionSchema.formulaNumber)(
+          stringFormulaProperty,
+        ).pipe(Effect.either)
+        expect(result._tag).toBe('Left')
+      }),
+    )
+  })
+
+  describe('NotionSchema.formulaString', () => {
+    it.effect('decodes string formula', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(NotionSchema.formulaString)(
+          stringFormulaProperty,
+        )
+        expect(result).toBe('hello')
+      }),
+    )
+
+    it.effect('fails for non-string formula', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(NotionSchema.formulaString)(
+          numberFormulaProperty,
+        ).pipe(Effect.either)
+        expect(result._tag).toBe('Left')
+      }),
+    )
+  })
+
+  describe('NotionSchema.formulaBoolean', () => {
+    it.effect('decodes boolean formula', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(NotionSchema.formulaBoolean)(
+          booleanFormulaProperty,
+        )
+        expect(result).toBe(true)
+      }),
+    )
+  })
+
+  describe('NotionSchema.formulaDate', () => {
+    it.effect('decodes date formula', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(NotionSchema.formulaDate)(dateFormulaProperty)
+        expect(result.start).toBe('2024-01-15')
+      }),
+    )
+  })
+})
+
+// -----------------------------------------------------------------------------
+// Rollup Property Tests
+// -----------------------------------------------------------------------------
+
+describe('Rollup Property', () => {
+  const numberRollupProperty = {
+    id: 'rollup',
+    type: 'rollup' as const,
+    rollup: {
+      type: 'number' as const,
+      number: 7,
+    },
+  }
+
+  const stringRollupProperty = {
+    id: 'rollup',
+    type: 'rollup' as const,
+    rollup: {
+      type: 'string' as const,
+      string: 'hello',
+    },
+  }
+
+  const booleanRollupProperty = {
+    id: 'rollup',
+    type: 'rollup' as const,
+    rollup: {
+      type: 'boolean' as const,
+      boolean: true,
+    },
+  }
+
+  const dateRollupProperty = {
+    id: 'rollup',
+    type: 'rollup' as const,
+    rollup: {
+      type: 'date' as const,
+      date: {
+        start: '2024-01-15',
+        end: null,
+        time_zone: null,
+      },
+    },
+  }
+
+  const arrayRollupProperty = {
+    id: 'rollup',
+    type: 'rollup' as const,
+    rollup: {
+      type: 'array' as const,
+      array: ['a', 'b'],
+    },
+  }
+
+  describe('NotionSchema.rollupNumber', () => {
+    it.effect('decodes number rollup', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(NotionSchema.rollupNumber)(numberRollupProperty)
+        expect(result).toBe(7)
+      }),
+    )
+
+    it.effect('fails for non-number rollup', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(NotionSchema.rollupNumber)(
+          stringRollupProperty,
+        ).pipe(Effect.either)
+        expect(result._tag).toBe('Left')
+      }),
+    )
+  })
+
+  describe('NotionSchema.rollupString', () => {
+    it.effect('decodes string rollup', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(NotionSchema.rollupString)(stringRollupProperty)
+        expect(result).toBe('hello')
+      }),
+    )
+  })
+
+  describe('NotionSchema.rollupBoolean', () => {
+    it.effect('decodes boolean rollup', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(NotionSchema.rollupBoolean)(
+          booleanRollupProperty,
+        )
+        expect(result).toBe(true)
+      }),
+    )
+  })
+
+  describe('NotionSchema.rollupDate', () => {
+    it.effect('decodes date rollup', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(NotionSchema.rollupDate)(dateRollupProperty)
+        expect(result.start).toBe('2024-01-15')
+      }),
+    )
+  })
+
+  describe('NotionSchema.rollupArray', () => {
+    it.effect('decodes array rollup', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(NotionSchema.rollupArray)(arrayRollupProperty)
+        expect(result).toEqual(['a', 'b'])
       }),
     )
   })
@@ -639,10 +968,10 @@ describe('Date Property', () => {
     date: null,
   }
 
-  describe('DateProp.asOption', () => {
+  describe('NotionSchema.dateOption', () => {
     it.effect('returns Some with date value', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(DateProp.asOption)(dateProperty)
+        const result = yield* Schema.decodeUnknown(NotionSchema.dateOption)(dateProperty)
         expect(Option.isSome(result)).toBe(true)
         const value = Option.getOrNull(result)
         expect(value?.start).toBe('2024-01-15')
@@ -651,16 +980,34 @@ describe('Date Property', () => {
 
     it.effect('returns None for null date', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(DateProp.asOption)(nullDateProperty)
+        const result = yield* Schema.decodeUnknown(NotionSchema.dateOption)(nullDateProperty)
         expect(Option.isNone(result)).toBe(true)
       }),
     )
   })
 
-  describe('DateProp.asDate', () => {
+  describe('NotionSchema.requiredMessage', () => {
+    const schema = NotionSchema.dateOption.pipe(NotionSchema.requiredMessage('Date is required'))
+
+    it.effect('returns date value', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(schema)(dateProperty)
+        expect(result.start).toBe('2024-01-15')
+      }),
+    )
+
+    it.effect('fails for null date', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(schema)(nullDateProperty).pipe(Effect.either)
+        expect(result._tag).toBe('Left')
+      }),
+    )
+  })
+
+  describe('NotionSchema.dateDate', () => {
     it.effect('parses start date to Date object', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(DateProp.asDate)(dateProperty)
+        const result = yield* Schema.decodeUnknown(NotionSchema.dateDate)(dateProperty)
         expect(Option.isSome(result)).toBe(true)
         const date = Option.getOrNull(result)
         expect(date).toBeInstanceOf(Date)
@@ -670,16 +1017,16 @@ describe('Date Property', () => {
 
     it.effect('returns None for null date', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(DateProp.asDate)(nullDateProperty)
+        const result = yield* Schema.decodeUnknown(NotionSchema.dateDate)(nullDateProperty)
         expect(Option.isNone(result)).toBe(true)
       }),
     )
   })
 
-  describe('DateWriteFromStart', () => {
+  describe('NotionSchema.dateWriteFromStart', () => {
     it.effect('encodes date string to write payload', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(DateWriteFromStart)('2024-06-01')
+        const result = yield* Schema.decodeUnknown(NotionSchema.dateWriteFromStart)('2024-06-01')
         expect(result).toEqual({ date: { start: '2024-06-01' } })
       }),
     )
@@ -687,12 +1034,36 @@ describe('Date Property', () => {
     it.effect('roundtrip: encode and decode', () =>
       Effect.gen(function* () {
         const original = '2024-12-25'
-        const encoded = yield* Schema.decodeUnknown(DateWriteFromStart)(original)
-        const decoded = yield* Schema.encode(DateWriteFromStart)(encoded)
+        const encoded = yield* Schema.decodeUnknown(NotionSchema.dateWriteFromStart)(original)
+        const decoded = yield* Schema.encode(NotionSchema.dateWriteFromStart)(encoded)
         expect(decoded).toBe(original)
       }),
     )
   })
+})
+
+// ---------------------------------------------------------------------------
+// Required Helpers
+// ---------------------------------------------------------------------------
+
+describe('NotionSchema.nullable', () => {
+  const schema = Schema.NullOr(Schema.String).pipe(
+    NotionSchema.nullable({ valueSchema: Schema.String, message: 'String is required' }),
+  )
+
+  it.effect('returns value when present', () =>
+    Effect.gen(function* () {
+      const result = yield* Schema.decodeUnknown(schema)('hello')
+      expect(result).toBe('hello')
+    }),
+  )
+
+  it.effect('fails for null', () =>
+    Effect.gen(function* () {
+      const result = yield* Schema.decodeUnknown(schema)(null).pipe(Effect.either)
+      expect(result._tag).toBe('Left')
+    }),
+  )
 })
 
 // -----------------------------------------------------------------------------
@@ -712,10 +1083,10 @@ describe('URL Property', () => {
     url: null,
   }
 
-  describe('Url.asOption', () => {
+  describe('NotionSchema.urlOption', () => {
     it.effect('returns Some with URL', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(Url.asOption)(urlProperty)
+        const result = yield* Schema.decodeUnknown(NotionSchema.urlOption)(urlProperty)
         expect(Option.isSome(result)).toBe(true)
         expect(Option.getOrNull(result)).toBe('https://example.com')
       }),
@@ -723,16 +1094,18 @@ describe('URL Property', () => {
 
     it.effect('returns None for null URL', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(Url.asOption)(nullUrlProperty)
+        const result = yield* Schema.decodeUnknown(NotionSchema.urlOption)(nullUrlProperty)
         expect(Option.isNone(result)).toBe(true)
       }),
     )
   })
 
-  describe('UrlWriteFromString', () => {
+  describe('NotionSchema.urlWriteFromString', () => {
     it.effect('encodes URL string to write payload', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(UrlWriteFromString)('https://notion.so')
+        const result = yield* Schema.decodeUnknown(NotionSchema.urlWriteFromString)(
+          'https://notion.so',
+        )
         expect(result).toEqual({ url: 'https://notion.so' })
       }),
     )
@@ -740,8 +1113,8 @@ describe('URL Property', () => {
     it.effect('roundtrip: encode and decode', () =>
       Effect.gen(function* () {
         const original = 'https://github.com'
-        const encoded = yield* Schema.decodeUnknown(UrlWriteFromString)(original)
-        const decoded = yield* Schema.encode(UrlWriteFromString)(encoded)
+        const encoded = yield* Schema.decodeUnknown(NotionSchema.urlWriteFromString)(original)
+        const decoded = yield* Schema.encode(NotionSchema.urlWriteFromString)(encoded)
         expect(decoded).toBe(original)
       }),
     )
@@ -765,10 +1138,10 @@ describe('Email Property', () => {
     email: null,
   }
 
-  describe('Email.asOption', () => {
+  describe('NotionSchema.emailOption', () => {
     it.effect('returns Some with email', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(Email.asOption)(emailProperty)
+        const result = yield* Schema.decodeUnknown(NotionSchema.emailOption)(emailProperty)
         expect(Option.isSome(result)).toBe(true)
         expect(Option.getOrNull(result)).toBe('user@example.com')
       }),
@@ -776,16 +1149,18 @@ describe('Email Property', () => {
 
     it.effect('returns None for null email', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(Email.asOption)(nullEmailProperty)
+        const result = yield* Schema.decodeUnknown(NotionSchema.emailOption)(nullEmailProperty)
         expect(Option.isNone(result)).toBe(true)
       }),
     )
   })
 
-  describe('EmailWriteFromString', () => {
+  describe('NotionSchema.emailWriteFromString', () => {
     it.effect('encodes email string to write payload', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(EmailWriteFromString)('test@test.com')
+        const result = yield* Schema.decodeUnknown(NotionSchema.emailWriteFromString)(
+          'test@test.com',
+        )
         expect(result).toEqual({ email: 'test@test.com' })
       }),
     )
@@ -793,8 +1168,8 @@ describe('Email Property', () => {
     it.effect('roundtrip: encode and decode', () =>
       Effect.gen(function* () {
         const original = 'alice@wonderland.com'
-        const encoded = yield* Schema.decodeUnknown(EmailWriteFromString)(original)
-        const decoded = yield* Schema.encode(EmailWriteFromString)(encoded)
+        const encoded = yield* Schema.decodeUnknown(NotionSchema.emailWriteFromString)(original)
+        const decoded = yield* Schema.encode(NotionSchema.emailWriteFromString)(encoded)
         expect(decoded).toBe(original)
       }),
     )
@@ -818,10 +1193,10 @@ describe('PhoneNumber Property', () => {
     phone_number: null,
   }
 
-  describe('PhoneNumber.asOption', () => {
+  describe('NotionSchema.phoneNumberOption', () => {
     it.effect('returns Some with phone number', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(PhoneNumber.asOption)(phoneProperty)
+        const result = yield* Schema.decodeUnknown(NotionSchema.phoneNumberOption)(phoneProperty)
         expect(Option.isSome(result)).toBe(true)
         expect(Option.getOrNull(result)).toBe('+1-555-123-4567')
       }),
@@ -829,16 +1204,20 @@ describe('PhoneNumber Property', () => {
 
     it.effect('returns None for null phone number', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(PhoneNumber.asOption)(nullPhoneProperty)
+        const result = yield* Schema.decodeUnknown(NotionSchema.phoneNumberOption)(
+          nullPhoneProperty,
+        )
         expect(Option.isNone(result)).toBe(true)
       }),
     )
   })
 
-  describe('PhoneNumberWriteFromString', () => {
+  describe('NotionSchema.phoneNumberWriteFromString', () => {
     it.effect('encodes phone string to write payload', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(PhoneNumberWriteFromString)('+44-20-1234-5678')
+        const result = yield* Schema.decodeUnknown(NotionSchema.phoneNumberWriteFromString)(
+          '+44-20-1234-5678',
+        )
         expect(result).toEqual({ phone_number: '+44-20-1234-5678' })
       }),
     )
@@ -846,8 +1225,10 @@ describe('PhoneNumber Property', () => {
     it.effect('roundtrip: encode and decode', () =>
       Effect.gen(function* () {
         const original = '+1-800-CALL-NOW'
-        const encoded = yield* Schema.decodeUnknown(PhoneNumberWriteFromString)(original)
-        const decoded = yield* Schema.encode(PhoneNumberWriteFromString)(encoded)
+        const encoded = yield* Schema.decodeUnknown(NotionSchema.phoneNumberWriteFromString)(
+          original,
+        )
+        const decoded = yield* Schema.encode(NotionSchema.phoneNumberWriteFromString)(encoded)
         expect(decoded).toBe(original)
       }),
     )
@@ -865,19 +1246,68 @@ describe('Relation Property', () => {
     relation: [{ id: 'page-1' }, { id: 'page-2' }],
   }
 
-  describe('Relation.asIds', () => {
+  const singleRelationProperty = {
+    id: 'relation',
+    type: 'relation' as const,
+    relation: [{ id: 'page-1' }],
+  }
+
+  describe('NotionSchema.relationIds', () => {
     it.effect('extracts page IDs', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(Relation.asIds)(relationProperty)
+        const result = yield* Schema.decodeUnknown(NotionSchema.relationIds)(relationProperty)
         expect(result).toEqual(['page-1', 'page-2'])
       }),
     )
   })
 
-  describe('RelationWriteFromIds', () => {
+  describe('NotionSchema.relationSingle', () => {
+    it.effect('extracts single relation object', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(NotionSchema.relationSingle)(
+          singleRelationProperty,
+        )
+        expect(result).toEqual({ id: 'page-1' })
+      }),
+    )
+
+    it.effect('fails for multiple relations', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(NotionSchema.relationSingle)(
+          relationProperty,
+        ).pipe(Effect.either)
+        expect(result._tag).toBe('Left')
+      }),
+    )
+  })
+
+  describe('NotionSchema.relationSingleId', () => {
+    it.effect('extracts single relation ID', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(NotionSchema.relationSingleId)(
+          singleRelationProperty,
+        )
+        expect(result).toBe('page-1')
+      }),
+    )
+
+    it.effect('fails for multiple relations', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(NotionSchema.relationSingleId)(
+          relationProperty,
+        ).pipe(Effect.either)
+        expect(result._tag).toBe('Left')
+      }),
+    )
+  })
+
+  describe('NotionSchema.relationWriteFromIds', () => {
     it.effect('encodes page IDs to write payload', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(RelationWriteFromIds)(['rel-1', 'rel-2'])
+        const result = yield* Schema.decodeUnknown(NotionSchema.relationWriteFromIds)([
+          'rel-1',
+          'rel-2',
+        ])
         expect(result).toEqual({
           relation: [{ id: 'rel-1' }, { id: 'rel-2' }],
         })
@@ -887,8 +1317,8 @@ describe('Relation Property', () => {
     it.effect('roundtrip: encode and decode', () =>
       Effect.gen(function* () {
         const original = ['xyz-789', 'uvw-101']
-        const encoded = yield* Schema.decodeUnknown(RelationWriteFromIds)(original)
-        const decoded = yield* Schema.encode(RelationWriteFromIds)(encoded)
+        const encoded = yield* Schema.decodeUnknown(NotionSchema.relationWriteFromIds)(original)
+        const decoded = yield* Schema.encode(NotionSchema.relationWriteFromIds)(encoded)
         expect(decoded).toEqual(original)
       }),
     )

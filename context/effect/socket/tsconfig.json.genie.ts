@@ -13,5 +13,4 @@ export default tsconfigJSON({
   },
   include: ['examples/**/*.ts'],
   exclude: ['*.genie.ts'],
-  references: [{ path: '../../../packages/@overeng/genie' }],
 })

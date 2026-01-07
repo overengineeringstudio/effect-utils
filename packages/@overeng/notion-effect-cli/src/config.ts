@@ -29,8 +29,10 @@ export interface ResolvedDatabaseConfig {
   readonly name?: string
   /** Include Write schemas */
   readonly includeWrite?: boolean
-  /** Generate typed options for select/status */
+  /** Generate typed options for select/status/multi_select */
   readonly typedOptions?: boolean
+  /** Include Notion property metadata annotations */
+  readonly schemaMeta?: boolean
   /** Generate a typed database API wrapper */
   readonly includeApi?: boolean
   /** Property-specific transforms (normalized to string values) */
@@ -199,6 +201,7 @@ const buildResolvedDatabaseConfig = (opts: {
   ...(opts.merged.name !== undefined && { name: opts.merged.name }),
   ...(opts.merged.includeWrite !== undefined && { includeWrite: opts.merged.includeWrite }),
   ...(opts.merged.typedOptions !== undefined && { typedOptions: opts.merged.typedOptions }),
+  ...(opts.merged.schemaMeta !== undefined && { schemaMeta: opts.merged.schemaMeta }),
   ...(opts.merged.includeApi !== undefined && { includeApi: opts.merged.includeApi }),
   ...(opts.normalizedTransforms !== undefined && { transforms: opts.normalizedTransforms }),
 })
@@ -276,6 +279,7 @@ export const mergeWithDefaults = (
 
   const includeWrite = database.includeWrite ?? defaults.includeWrite
   const typedOptions = database.typedOptions ?? defaults.typedOptions
+  const schemaMeta = database.schemaMeta ?? defaults.schemaMeta
   const includeApi = database.includeApi ?? defaults.includeApi
   const transforms: PropertyTransforms = {
     ...defaults.transforms,
@@ -287,6 +291,7 @@ export const mergeWithDefaults = (
     ...(database.name !== undefined ? { name: database.name } : {}),
     ...(includeWrite !== undefined ? { includeWrite } : {}),
     ...(typedOptions !== undefined ? { typedOptions } : {}),
+    ...(schemaMeta !== undefined ? { schemaMeta } : {}),
     ...(includeApi !== undefined ? { includeApi } : {}),
     ...(Object.keys(transforms).length > 0 ? { transforms } : {}),
   }

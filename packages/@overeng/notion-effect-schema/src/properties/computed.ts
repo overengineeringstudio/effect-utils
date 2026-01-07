@@ -59,6 +59,78 @@ export const Formula = {
     decode: (prop) => prop.formula,
     encode: () => shouldNeverHappen('Formula.raw encode is not supported (formula is read-only).'),
   }),
+
+  /** Transform to required number (fails if not a number formula). */
+  asNumber: Schema.transform(
+    FormulaProperty.pipe(
+      Schema.filter(
+        (p): p is typeof p & { formula: { type: 'number'; number: number } } =>
+          p.formula.type === 'number' && p.formula.number !== null,
+        { message: () => 'Formula must be a non-null number' },
+      ),
+    ),
+    Schema.Number,
+    {
+      strict: false,
+      decode: (prop) => prop.formula.number,
+      encode: () =>
+        shouldNeverHappen('Formula.asNumber encode is not supported (formula is read-only).'),
+    },
+  ),
+
+  /** Transform to required string (fails if not a string formula). */
+  asString: Schema.transform(
+    FormulaProperty.pipe(
+      Schema.filter(
+        (p): p is typeof p & { formula: { type: 'string'; string: string } } =>
+          p.formula.type === 'string' && p.formula.string !== null,
+        { message: () => 'Formula must be a non-null string' },
+      ),
+    ),
+    Schema.String,
+    {
+      strict: false,
+      decode: (prop) => prop.formula.string,
+      encode: () =>
+        shouldNeverHappen('Formula.asString encode is not supported (formula is read-only).'),
+    },
+  ),
+
+  /** Transform to required boolean (fails if not a boolean formula). */
+  asBoolean: Schema.transform(
+    FormulaProperty.pipe(
+      Schema.filter(
+        (p): p is typeof p & { formula: { type: 'boolean'; boolean: boolean } } =>
+          p.formula.type === 'boolean' && p.formula.boolean !== null,
+        { message: () => 'Formula must be a non-null boolean' },
+      ),
+    ),
+    Schema.Boolean,
+    {
+      strict: false,
+      decode: (prop) => prop.formula.boolean,
+      encode: () =>
+        shouldNeverHappen('Formula.asBoolean encode is not supported (formula is read-only).'),
+    },
+  ),
+
+  /** Transform to required date (fails if not a date formula). */
+  asDate: Schema.transform(
+    FormulaProperty.pipe(
+      Schema.filter(
+        (p): p is typeof p & { formula: { type: 'date'; date: DateValue } } =>
+          p.formula.type === 'date' && p.formula.date !== null,
+        { message: () => 'Formula must be a non-null date' },
+      ),
+    ),
+    DateValue,
+    {
+      strict: false,
+      decode: (prop) => prop.formula.date,
+      encode: () =>
+        shouldNeverHappen('Formula.asDate encode is not supported (formula is read-only).'),
+    },
+  ),
 } as const
 
 // -----------------------------------------------------------------------------
