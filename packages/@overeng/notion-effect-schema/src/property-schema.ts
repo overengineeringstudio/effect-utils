@@ -458,3 +458,9 @@ export type PropertySchema = typeof PropertySchema.Type
 
 /** All property type tags */
 export type PropertySchemaTag = PropertySchema['_tag']
+
+/** Annotation key for Notion property metadata. */
+export const notionPropertyMeta = Symbol.for('notion.property.meta')
+
+/** Full Notion property metadata (tagged union of property schema configs). */
+export type NotionPropertyMeta = PropertySchema

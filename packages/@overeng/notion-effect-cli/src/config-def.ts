@@ -20,7 +20,7 @@
  *       name: 'Tasks',
  *       transforms: {
  *         'Due Date': transforms.date.asDate,
- *         'Priority': transforms.select.asString,
+ *         'Priority': transforms.select.asName,
  *       },
  *     },
  *   },
@@ -76,23 +76,17 @@ export const transforms = {
   select: {
     raw: makeTransform('select', 'raw'),
     asOption: makeTransform('select', 'asOption'),
-    asOptionNamed: makeTransform('select', 'asOptionNamed'),
     asName: makeTransform('select', 'asName'),
-    asString: makeTransform('select', 'asString'),
-    asPropertyNamed: makeTransform('select', 'asPropertyNamed'),
   },
   multi_select: {
     raw: makeTransform('multi_select', 'raw'),
+    asOptions: makeTransform('multi_select', 'asOptions'),
     asNames: makeTransform('multi_select', 'asNames'),
-    asStrings: makeTransform('multi_select', 'asStrings'),
-    asPropertyNamed: makeTransform('multi_select', 'asPropertyNamed'),
   },
   status: {
     raw: makeTransform('status', 'raw'),
     asName: makeTransform('status', 'asName'),
     asOption: makeTransform('status', 'asOption'),
-    asString: makeTransform('status', 'asString'),
-    asPropertyNamed: makeTransform('status', 'asPropertyNamed'),
   },
   date: {
     raw: makeTransform('date', 'raw'),
@@ -194,6 +188,8 @@ export interface DatabaseConfig {
   readonly includeWrite?: boolean
   /** Generate typed options for select/status/multi_select */
   readonly typedOptions?: boolean
+  /** Include Notion property metadata annotations */
+  readonly schemaMeta?: boolean
   /** Generate a typed database API wrapper */
   readonly includeApi?: boolean
   /** Property-specific transforms */
@@ -204,6 +200,7 @@ export interface DatabaseConfig {
 export interface DefaultsConfig {
   readonly includeWrite?: boolean
   readonly typedOptions?: boolean
+  readonly schemaMeta?: boolean
   readonly includeApi?: boolean
   readonly transforms?: PropertyTransforms
 }

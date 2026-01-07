@@ -132,7 +132,7 @@ const queryRaw = (
  * // With schema - returns typed pages with decoded properties
  * const TaskSchema = Schema.Struct({
  *   Name: NotionSchema.title,
- *   Status: NotionSchema.selectOption,
+ *   Status: NotionSchema.select(),
  * })
  * const typed = yield* NotionDatabases.query({
  *   databaseId: 'abc123',
@@ -190,7 +190,7 @@ export function query<TProperties, I, R>(
  * // With schema - streams typed pages with decoded properties
  * const TaskSchema = Schema.Struct({
  *   Name: NotionSchema.title,
- *   Status: NotionSchema.selectOption,
+ *   Status: NotionSchema.select(),
  * })
  * const tasks = yield* NotionDatabases.queryStream({
  *   databaseId: 'abc123',

@@ -74,8 +74,8 @@ export const Num = {
   }),
 
   /** Transform to Option<number>. */
-  asOption: withOptionValueSchema(
-    Schema.transform(NumberProperty, Schema.OptionFromSelf(Schema.Number), {
+  asOption: withOptionValueSchema({
+    schema: Schema.transform(NumberProperty, Schema.OptionFromSelf(Schema.Number), {
       strict: false,
       decode: (prop) => (prop.number === null ? Option.none() : Option.some(prop.number)),
       encode: () =>
@@ -83,8 +83,8 @@ export const Num = {
           'Num.asOption encode is not supported. Use NumberWrite / NumberWriteFromNumber.',
         ),
     }),
-    Schema.Number,
-  ),
+    valueSchema: Schema.Number,
+  }),
 
   /** Transform to required number (fails if null). */
   asNumber: Schema.transform(

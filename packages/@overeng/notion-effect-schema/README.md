@@ -7,7 +7,7 @@ Effect schemas for the Notion API.
 | Aspect          | Decision                                                                                                   |
 | --------------- | ---------------------------------------------------------------------------------------------------------- |
 | **Naming**      | Notion terminology (`TitleProperty`, not `TitleElement`)                                                   |
-| **Transforms**  | One-level facade: `NotionSchema.title`, `NotionSchema.dateOption`, `NotionSchema.selectOption`             |
+| **Transforms**  | One-level facade: `NotionSchema.title`, `NotionSchema.dateOption`, `NotionSchema.select()`                 |
 | **Nullability** | `Schema.Option` for nullable fields, `NotionSchema.required` / `NotionSchema.nullable` to enforce presence |
 | **Dates**       | Parsed to `Date` via `Schema.Date`                                                                         |
 | **Examples**    | Field-level annotations only                                                                               |

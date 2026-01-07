@@ -90,8 +90,8 @@ export const Url = {
   ),
 
   /** Transform to Option<string>. */
-  asOption: withOptionValueSchema(
-    Schema.transform(UrlProperty, Schema.OptionFromSelf(Schema.String), {
+  asOption: withOptionValueSchema({
+    schema: Schema.transform(UrlProperty, Schema.OptionFromSelf(Schema.String), {
       strict: false,
       decode: (prop) => (prop.url === null ? Option.none() : Option.some(prop.url)),
       encode: () =>
@@ -99,8 +99,8 @@ export const Url = {
           'Url.asOption encode is not supported. Use UrlWrite / UrlWriteFromString.',
         ),
     }),
-    Schema.String,
-  ),
+    valueSchema: Schema.String,
+  }),
 
   Write: {
     Schema: UrlWrite,
@@ -198,8 +198,8 @@ export const Email = {
   ),
 
   /** Transform to Option<string>. */
-  asOption: withOptionValueSchema(
-    Schema.transform(EmailProperty, Schema.OptionFromSelf(Schema.String), {
+  asOption: withOptionValueSchema({
+    schema: Schema.transform(EmailProperty, Schema.OptionFromSelf(Schema.String), {
       strict: false,
       decode: (prop) => (prop.email === null ? Option.none() : Option.some(prop.email)),
       encode: () =>
@@ -207,8 +207,8 @@ export const Email = {
           'Email.asOption encode is not supported. Use EmailWrite / EmailWriteFromString.',
         ),
     }),
-    Schema.String,
-  ),
+    valueSchema: Schema.String,
+  }),
 
   Write: {
     Schema: EmailWrite,
@@ -313,8 +313,8 @@ export const PhoneNumber = {
   ),
 
   /** Transform to Option<string>. */
-  asOption: withOptionValueSchema(
-    Schema.transform(PhoneNumberProperty, Schema.OptionFromSelf(Schema.String), {
+  asOption: withOptionValueSchema({
+    schema: Schema.transform(PhoneNumberProperty, Schema.OptionFromSelf(Schema.String), {
       strict: false,
       decode: (prop) =>
         prop.phone_number === null ? Option.none() : Option.some(prop.phone_number),
@@ -323,8 +323,8 @@ export const PhoneNumber = {
           'PhoneNumber.asOption encode is not supported. Use PhoneNumberWrite / PhoneNumberWriteFromString.',
         ),
     }),
-    Schema.String,
-  ),
+    valueSchema: Schema.String,
+  }),
 
   Write: {
     Schema: PhoneNumberWrite,

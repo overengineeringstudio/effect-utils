@@ -437,99 +437,66 @@ describe('Select Property', () => {
     select: null,
   }
 
-  describe('NotionSchema.selectString', () => {
-    it.effect('returns Some with option name', () =>
+  describe('NotionSchema.select', () => {
+    it.effect('returns Some with option', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(NotionSchema.selectString)(selectedProperty)
-        expect(Option.isSome(result)).toBe(true)
-        expect(Option.getOrNull(result)).toBe('High')
-      }),
-    )
-
-    it.effect('returns None for null select', () =>
-      Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(NotionSchema.selectString)(nullSelectProperty)
-        expect(Option.isNone(result)).toBe(true)
-      }),
-    )
-  })
-
-  describe('NotionSchema.selectName', () => {
-    const Allowed = Schema.Literal('High', 'Low')
-
-    it.effect('returns Some with allowed name', () =>
-      Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(NotionSchema.selectName(Allowed))(
-          selectedProperty,
-        )
-        expect(Option.isSome(result)).toBe(true)
-        expect(Option.getOrNull(result)).toBe('High')
-      }),
-    )
-
-    it.effect('fails when option name is not allowed', () =>
-      Effect.gen(function* () {
-        const invalidProperty = {
-          ...selectedProperty,
-          select: { ...selectedProperty.select, name: 'Medium' },
-        }
-        const result = yield* Schema.decodeUnknown(NotionSchema.selectName(Allowed))(
-          invalidProperty,
-        ).pipe(Effect.either)
-        expect(result._tag).toBe('Left')
-      }),
-    )
-  })
-
-  describe('NotionSchema.selectOptionNamed', () => {
-    const Allowed = Schema.Literal('High', 'Low')
-
-    it.effect('returns Some with typed option', () =>
-      Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(NotionSchema.selectOptionNamed(Allowed))(
-          selectedProperty,
-        )
+        const result = yield* Schema.decodeUnknown(NotionSchema.select())(selectedProperty)
         expect(Option.isSome(result)).toBe(true)
         expect(Option.getOrNull(result)?.name).toBe('High')
       }),
     )
 
+    it.effect('returns None for null select', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(NotionSchema.select())(nullSelectProperty)
+        expect(Option.isNone(result)).toBe(true)
+      }),
+    )
+  })
+
+  describe('NotionSchema.select(...).pipe(NotionSchema.asName)', () => {
+    const Allowed = Schema.Literal('High', 'Low')
+
+    it.effect('returns Some with allowed name', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(
+          NotionSchema.select(Allowed).pipe(NotionSchema.asName),
+        )(selectedProperty)
+        expect(Option.isSome(result)).toBe(true)
+        expect(Option.getOrNull(result)).toBe('High')
+      }),
+    )
+
     it.effect('fails when option name is not allowed', () =>
       Effect.gen(function* () {
         const invalidProperty = {
           ...selectedProperty,
           select: { ...selectedProperty.select, name: 'Medium' },
         }
-        const result = yield* Schema.decodeUnknown(NotionSchema.selectOptionNamed(Allowed))(
-          invalidProperty,
-        ).pipe(Effect.either)
+        const result = yield* Schema.decodeUnknown(
+          NotionSchema.select(Allowed).pipe(NotionSchema.asName),
+        )(invalidProperty).pipe(Effect.either)
         expect(result._tag).toBe('Left')
       }),
     )
   })
 
-  describe('NotionSchema.selectPropertyNamed', () => {
-    const Allowed = Schema.Literal('High', 'Low')
-
-    it.effect('returns property with typed option', () =>
+  describe('NotionSchema.select(...).pipe(NotionSchema.asNullable)', () => {
+    it.effect('returns option for selected property', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(NotionSchema.selectPropertyNamed(Allowed))(
-          selectedProperty,
-        )
-        expect(result.select?.name).toBe('High')
+        const result = yield* Schema.decodeUnknown(
+          NotionSchema.select().pipe(NotionSchema.asNullable),
+        )(selectedProperty)
+        expect(result?.name).toBe('High')
       }),
     )
 
-    it.effect('fails when option name is not allowed', () =>
+    it.effect('returns null for null select', () =>
       Effect.gen(function* () {
-        const invalidProperty = {
-          ...selectedProperty,
-          select: { ...selectedProperty.select, name: 'Medium' },
-        }
-        const result = yield* Schema.decodeUnknown(NotionSchema.selectPropertyNamed(Allowed))(
-          invalidProperty,
-        ).pipe(Effect.either)
-        expect(result._tag).toBe('Left')
+        const result = yield* Schema.decodeUnknown(
+          NotionSchema.select().pipe(NotionSchema.asNullable),
+        )(nullSelectProperty)
+        expect(result).toBeNull()
       }),
     )
   })
@@ -580,19 +547,18 @@ describe('MultiSelect Property', () => {
     multi_select: [],
   }
 
-  describe('NotionSchema.multiSelectStrings', () => {
-    it.effect('decodes to array of names', () =>
+  describe('NotionSchema.multiSelect', () => {
+    it.effect('decodes to array of options', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(NotionSchema.multiSelectStrings)(
-          multiSelectProperty,
-        )
-        expect(result).toEqual(['Tag1', 'Tag2'])
+        const result = yield* Schema.decodeUnknown(NotionSchema.multiSelect())(multiSelectProperty)
+        expect(result).toHaveLength(2)
+        expect(result[0]?.name).toBe('Tag1')
       }),
     )
 
     it.effect('handles empty array', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(NotionSchema.multiSelectStrings)(
+        const result = yield* Schema.decodeUnknown(NotionSchema.multiSelect())(
           emptyMultiSelectProperty,
         )
         expect(result).toEqual([])
@@ -600,14 +566,14 @@ describe('MultiSelect Property', () => {
     )
   })
 
-  describe('NotionSchema.multiSelectNames', () => {
+  describe('NotionSchema.multiSelect(...).pipe(NotionSchema.asNames)', () => {
     const Allowed = Schema.Literal('Tag1', 'Tag2')
 
     it.effect('decodes to array of allowed names', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(NotionSchema.multiSelectNames(Allowed))(
-          multiSelectProperty,
-        )
+        const result = yield* Schema.decodeUnknown(
+          NotionSchema.multiSelect(Allowed).pipe(NotionSchema.asNames),
+        )(multiSelectProperty)
         expect(result).toEqual(['Tag1', 'Tag2'])
       }),
     )
@@ -618,36 +584,9 @@ describe('MultiSelect Property', () => {
           ...multiSelectProperty,
           multi_select: [{ ...multiSelectProperty.multi_select[0], name: 'Tag3' }],
         }
-        const result = yield* Schema.decodeUnknown(NotionSchema.multiSelectNames(Allowed))(
-          invalidProperty,
-        ).pipe(Effect.either)
-        expect(result._tag).toBe('Left')
-      }),
-    )
-  })
-
-  describe('NotionSchema.multiSelectPropertyNamed', () => {
-    const Allowed = Schema.Literal('Tag1', 'Tag2')
-
-    it.effect('returns property with typed options', () =>
-      Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(NotionSchema.multiSelectPropertyNamed(Allowed))(
-          multiSelectProperty,
-        )
-        expect(result.multi_select).toHaveLength(2)
-        expect(result.multi_select[0]?.name).toBe('Tag1')
-      }),
-    )
-
-    it.effect('fails when option name is not allowed', () =>
-      Effect.gen(function* () {
-        const invalidProperty = {
-          ...multiSelectProperty,
-          multi_select: [{ ...multiSelectProperty.multi_select[0], name: 'Tag3' }],
-        }
-        const result = yield* Schema.decodeUnknown(NotionSchema.multiSelectPropertyNamed(Allowed))(
-          invalidProperty,
-        ).pipe(Effect.either)
+        const result = yield* Schema.decodeUnknown(
+          NotionSchema.multiSelect(Allowed).pipe(NotionSchema.asNames),
+        )(invalidProperty).pipe(Effect.either)
         expect(result._tag).toBe('Left')
       }),
     )
@@ -708,52 +647,10 @@ describe('Status Property', () => {
     status: null,
   }
 
-  describe('NotionSchema.statusString', () => {
-    it.effect('returns Some with status name', () =>
-      Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(NotionSchema.statusString)(statusProperty)
-        expect(Option.isSome(result)).toBe(true)
-        expect(Option.getOrNull(result)).toBe('In Progress')
-      }),
-    )
-
-    it.effect('returns None for null status', () =>
-      Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(NotionSchema.statusString)(nullStatusProperty)
-        expect(Option.isNone(result)).toBe(true)
-      }),
-    )
-  })
-
-  describe('NotionSchema.statusName', () => {
-    const Allowed = Schema.Literal('In Progress', 'Blocked')
-
-    it.effect('returns Some with allowed status name', () =>
-      Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(NotionSchema.statusName(Allowed))(statusProperty)
-        expect(Option.isSome(result)).toBe(true)
-        expect(Option.getOrNull(result)).toBe('In Progress')
-      }),
-    )
-
-    it.effect('fails when status name is not allowed', () =>
-      Effect.gen(function* () {
-        const invalidProperty = {
-          ...statusProperty,
-          status: { ...statusProperty.status, name: 'Done' },
-        }
-        const result = yield* Schema.decodeUnknown(NotionSchema.statusName(Allowed))(
-          invalidProperty,
-        ).pipe(Effect.either)
-        expect(result._tag).toBe('Left')
-      }),
-    )
-  })
-
-  describe('NotionSchema.statusOption', () => {
+  describe('NotionSchema.status', () => {
     it.effect('returns Some with status option', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(NotionSchema.statusOption)(statusProperty)
+        const result = yield* Schema.decodeUnknown(NotionSchema.status())(statusProperty)
         expect(Option.isSome(result)).toBe(true)
         expect(Option.getOrNull(result)?.name).toBe('In Progress')
       }),
@@ -761,21 +658,22 @@ describe('Status Property', () => {
 
     it.effect('returns None for null status', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(NotionSchema.statusOption)(nullStatusProperty)
+        const result = yield* Schema.decodeUnknown(NotionSchema.status())(nullStatusProperty)
         expect(Option.isNone(result)).toBe(true)
       }),
     )
   })
 
-  describe('NotionSchema.statusPropertyNamed', () => {
+  describe('NotionSchema.status(...).pipe(NotionSchema.asName)', () => {
     const Allowed = Schema.Literal('In Progress', 'Blocked')
 
-    it.effect('returns property with typed status', () =>
+    it.effect('returns Some with allowed status name', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(NotionSchema.statusPropertyNamed(Allowed))(
-          statusProperty,
-        )
-        expect(result.status?.name).toBe('In Progress')
+        const result = yield* Schema.decodeUnknown(
+          NotionSchema.status(Allowed).pipe(NotionSchema.asName),
+        )(statusProperty)
+        expect(Option.isSome(result)).toBe(true)
+        expect(Option.getOrNull(result)).toBe('In Progress')
       }),
     )
 
@@ -785,10 +683,30 @@ describe('Status Property', () => {
           ...statusProperty,
           status: { ...statusProperty.status, name: 'Done' },
         }
-        const result = yield* Schema.decodeUnknown(NotionSchema.statusPropertyNamed(Allowed))(
-          invalidProperty,
-        ).pipe(Effect.either)
+        const result = yield* Schema.decodeUnknown(
+          NotionSchema.status(Allowed).pipe(NotionSchema.asName),
+        )(invalidProperty).pipe(Effect.either)
         expect(result._tag).toBe('Left')
+      }),
+    )
+  })
+
+  describe('NotionSchema.status(...).pipe(NotionSchema.asNullable)', () => {
+    it.effect('returns status option for selected status', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(
+          NotionSchema.status().pipe(NotionSchema.asNullable),
+        )(statusProperty)
+        expect(result?.name).toBe('In Progress')
+      }),
+    )
+
+    it.effect('returns null for null status', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(
+          NotionSchema.status().pipe(NotionSchema.asNullable),
+        )(nullStatusProperty)
+        expect(result).toBeNull()
       }),
     )
   })
@@ -1130,7 +1048,7 @@ describe('Date Property', () => {
 
 describe('NotionSchema.nullable', () => {
   const schema = Schema.NullOr(Schema.String).pipe(
-    NotionSchema.nullable(Schema.String, 'String is required'),
+    NotionSchema.nullable({ valueSchema: Schema.String, message: 'String is required' }),
   )
 
   it.effect('returns value when present', () =>

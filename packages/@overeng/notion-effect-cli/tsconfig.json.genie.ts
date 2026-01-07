@@ -5,5 +5,9 @@ export default tsconfigJSON({
   extends: '../../../tsconfig.base.json',
   compilerOptions: packageTsconfigCompilerOptions,
   include: ['src/**/*', 'bin/**/*.ts'],
-  references: [{ path: '../notion-effect-schema' }],
+  references: [
+    { path: '../notion-effect-client' },
+    { path: '../notion-effect-schema' },
+    { path: '../utils' },
+  ],
 })

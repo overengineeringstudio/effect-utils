@@ -94,7 +94,7 @@ export interface ArchivePageOptions {
  * // With schema - returns typed page with decoded properties
  * const TaskSchema = Schema.Struct({
  *   Name: NotionSchema.title,
- *   Status: NotionSchema.selectOption,
+ *   Status: NotionSchema.select(),
  * })
  * const typed = yield* NotionPages.retrieve({
  *   pageId: 'abc123',

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
+import type { PropertySchema } from '@overeng/notion-effect-schema'
+
 import {
   generateSchemaCode,
   getAvailableTransforms,
@@ -9,6 +11,86 @@ import {
 } from './codegen.ts'
 import type { DatabaseInfo, NotionPropertyType, PropertyInfo } from './introspect.ts'
 
+const makeProperty = (info: Omit<PropertyInfo, 'schema'>): PropertyInfo => {
+  const description = info.description ?? null
+
+  const schemaBase = {
+    id: info.id,
+    name: info.name,
+    description,
+  }
+
+  const schema: PropertySchema = (() => {
+    switch (info.type) {
+      case 'number':
+        return {
+          ...schemaBase,
+          _tag: 'number',
+          number: { format: info.number?.format ?? 'number' },
+        }
+      case 'select':
+        return {
+          ...schemaBase,
+          _tag: 'select',
+          select: { options: info.select?.options ?? [] },
+        }
+      case 'multi_select':
+        return {
+          ...schemaBase,
+          _tag: 'multi_select',
+          multi_select: { options: info.multi_select?.options ?? [] },
+        }
+      case 'status':
+        return {
+          ...schemaBase,
+          _tag: 'status',
+          status: { options: info.status?.options ?? [], groups: info.status?.groups ?? [] },
+        }
+      case 'relation':
+        return {
+          ...schemaBase,
+          _tag: 'relation',
+          relation: {
+            database_id: info.relation?.database_id ?? 'db',
+            type: info.relation?.type ?? 'single_property',
+            single_property: info.relation?.single_property ?? {},
+            ...(info.relation?.dual_property !== undefined
+              ? { dual_property: info.relation.dual_property }
+              : {}),
+          },
+        }
+      case 'rollup':
+        return {
+          ...schemaBase,
+          _tag: 'rollup',
+          rollup: {
+            relation_property_name: info.rollup?.relation_property_name ?? 'Relation',
+            relation_property_id: info.rollup?.relation_property_id ?? 'relation',
+            rollup_property_name: info.rollup?.rollup_property_name ?? 'Rollup',
+            rollup_property_id: info.rollup?.rollup_property_id ?? 'rollup',
+            function: info.rollup?.function ?? 'count',
+          },
+        }
+      case 'formula':
+        return {
+          ...schemaBase,
+          _tag: 'formula',
+          formula: { expression: info.formula?.expression ?? '' },
+        }
+      case 'unique_id':
+        return {
+          ...schemaBase,
+          _tag: 'unique_id',
+          unique_id: { prefix: null },
+        }
+      default:
+        return { ...schemaBase, _tag: info.type }
+    }
+  })()
+
+  return { ...info, schema }
+}
+
 describe('codegen', () => {
   describe('generateSchemaCode', () => {
     it('should generate basic schema for a simple database', () => {
@@ -16,12 +98,14 @@ describe('codegen', () => {
         id: 'test-db-id',
         name: 'Test Database',
         url: 'https://notion.so/test-db',
-        properties: [
-          { id: 'title-prop', name: 'Name', type: 'title' },
-          { id: 'text-prop', name: 'Description', type: 'rich_text' },
-          { id: 'num-prop', name: 'Count', type: 'number' },
-          { id: 'check-prop', name: 'Done', type: 'checkbox' },
-        ],
+        properties: (
+          [
+            { id: 'title-prop', name: 'Name', type: 'title' },
+            { id: 'text-prop', name: 'Description', type: 'rich_text' },
+            { id: 'num-prop', name: 'Count', type: 'number' },
+            { id: 'check-prop', name: 'Done', type: 'checkbox' },
+          ] satisfies Array<Omit<PropertyInfo, 'schema'>>
+        ).map(makeProperty),
       }
 
       const code = generateSchemaCode({ dbInfo, schemaName: 'TestDatabase' })
@@ -33,7 +117,7 @@ describe('codegen', () => {
         // ID: test-db-id
         // URL: https://notion.so/test-db
 
-        import { NotionSchema } from '@overeng/notion-effect-schema'
+        import { NotionSchema, notionPropertyMeta } from '@overeng/notion-effect-schema'
         import { Schema } from 'effect'
 
         // -----------------------------------------------------------------------------
@@ -44,10 +128,10 @@ describe('codegen', () => {
          * Schema for reading pages from the "Test Database" database.
          */
         export const TestDatabasePageProperties = Schema.Struct({
-          Name: NotionSchema.title,
-          Description: NotionSchema.richTextString,
-          Count: NotionSchema.number,
-          Done: NotionSchema.checkbox,
+          Name: NotionSchema.title.annotations({ [notionPropertyMeta]: { _tag: 'title', id: 'title-prop', name: 'Name', description: null } }),
+          Description: NotionSchema.richTextOption.annotations({ [notionPropertyMeta]: { _tag: 'rich_text', id: 'text-prop', name: 'Description', description: null } }),
+          Count: NotionSchema.numberOption.annotations({ [notionPropertyMeta]: { _tag: 'number', id: 'num-prop', name: 'Count', description: null, number: { format: 'number' } } }),
+          Done: NotionSchema.checkbox.annotations({ [notionPropertyMeta]: { _tag: 'checkbox', id: 'check-prop', name: 'Done', description: null } }),
         }).annotations({
           identifier: 'TestDatabasePageProperties',
           description: 'Read schema for Test Database database pages',
@@ -73,7 +157,11 @@ describe('codegen', () => {
         id: 'test-db-id',
         name: 'Test Database',
         url: 'https://notion.so/test-db',
-        properties: [{ id: 'title-prop', name: 'Name', type: 'title' }],
+        properties: (
+          [{ id: 'title-prop', name: 'Name', type: 'title' }] satisfies Array<
+            Omit<PropertyInfo, 'schema'>
+          >
+        ).map(makeProperty),
       }
 
       const code = generateSchemaCode({
@@ -89,7 +177,7 @@ describe('codegen', () => {
         // ID: test-db-id
         // URL: https://notion.so/test-db
 
-        import { NotionSchema } from '@overeng/notion-effect-schema'
+        import { NotionSchema, notionPropertyMeta } from '@overeng/notion-effect-schema'
         import { Schema } from 'effect'
 
         // -----------------------------------------------------------------------------
@@ -100,7 +188,7 @@ describe('codegen', () => {
          * Schema for reading pages from the "Test Database" database.
          */
         export const TestDatabasePageProperties = Schema.Struct({
-          Name: NotionSchema.title,
+          Name: NotionSchema.title.annotations({ [notionPropertyMeta]: { _tag: 'title', id: 'title-prop', name: 'Name', description: null } }),
         }).annotations({
           identifier: 'TestDatabasePageProperties',
           description: 'Read schema for Test Database database pages',
@@ -126,11 +214,13 @@ describe('codegen', () => {
         id: 'test-db-id',
         name: 'Test',
         url: 'https://notion.so/test',
-        properties: [
-          { id: 'prop1', name: 'Due Date', type: 'date' },
-          { id: 'prop2', name: 'Project Name', type: 'title' },
-          { id: 'prop3', name: "User's Choice", type: 'select' },
-        ],
+        properties: (
+          [
+            { id: 'prop1', name: 'Due Date', type: 'date' },
+            { id: 'prop2', name: 'Project Name', type: 'title' },
+            { id: 'prop3', name: "User's Choice", type: 'select' },
+          ] satisfies Array<Omit<PropertyInfo, 'schema'>>
+        ).map(makeProperty),
       }
 
       const code = generateSchemaCode({ dbInfo, schemaName: 'Test' })
@@ -142,7 +232,7 @@ describe('codegen', () => {
         // ID: test-db-id
         // URL: https://notion.so/test
 
-        import { NotionSchema } from '@overeng/notion-effect-schema'
+        import { NotionSchema, notionPropertyMeta } from '@overeng/notion-effect-schema'
         import { Schema } from 'effect'
 
         // -----------------------------------------------------------------------------
@@ -153,9 +243,9 @@ describe('codegen', () => {
          * Schema for reading pages from the "Test" database.
          */
         export const TestPageProperties = Schema.Struct({
-          'Due Date': NotionSchema.dateOption,
-          'Project Name': NotionSchema.title,
-          'User\\'s Choice': NotionSchema.selectOption,
+          'Due Date': NotionSchema.dateOption.annotations({ [notionPropertyMeta]: { _tag: 'date', id: 'prop1', name: 'Due Date', description: null } }),
+          'Project Name': NotionSchema.title.annotations({ [notionPropertyMeta]: { _tag: 'title', id: 'prop2', name: 'Project Name', description: null } }),
+          'User\\'s Choice': NotionSchema.select().annotations({ [notionPropertyMeta]: { _tag: 'select', id: 'prop3', name: 'User\\'s Choice', description: null, select: { options: [] } } }),
         }).annotations({
           identifier: 'TestPageProperties',
           description: 'Read schema for Test database pages',
@@ -181,11 +271,13 @@ describe('codegen', () => {
         id: 'test-db-id',
         name: 'Test',
         url: 'https://notion.so/test',
-        properties: [
-          { id: 'prop1', name: 'Status', type: 'select' },
-          { id: 'prop2', name: 'Tags', type: 'multi_select' },
-          { id: 'prop3', name: 'Website', type: 'url' },
-        ],
+        properties: (
+          [
+            { id: 'prop1', name: 'Status', type: 'select' },
+            { id: 'prop2', name: 'Tags', type: 'multi_select' },
+            { id: 'prop3', name: 'Website', type: 'url' },
+          ] satisfies Array<Omit<PropertyInfo, 'schema'>>
+        ).map(makeProperty),
       }
 
       const code = generateSchemaCode({
@@ -204,7 +296,7 @@ describe('codegen', () => {
         // URL: https://notion.so/test
         // @config { transforms: { Status: raw, Tags: raw, Website: asString } }
 
-        import { NotionSchema } from '@overeng/notion-effect-schema'
+        import { NotionSchema, notionPropertyMeta } from '@overeng/notion-effect-schema'
         import { Schema } from 'effect'
 
         // -----------------------------------------------------------------------------
@@ -215,9 +307,9 @@ describe('codegen', () => {
          * Schema for reading pages from the "Test" database.
          */
         export const TestPageProperties = Schema.Struct({
-          Status: NotionSchema.selectRaw,
-          Tags: NotionSchema.multiSelectRaw,
-          Website: NotionSchema.urlString,
+          Status: NotionSchema.select().pipe(NotionSchema.asNullable).annotations({ [notionPropertyMeta]: { _tag: 'select', id: 'prop1', name: 'Status', description: null, select: { options: [] } } }),
+          Tags: NotionSchema.multiSelect().annotations({ [notionPropertyMeta]: { _tag: 'multi_select', id: 'prop2', name: 'Tags', description: null, multi_select: { options: [] } } }),
+          Website: NotionSchema.urlString.annotations({ [notionPropertyMeta]: { _tag: 'url', id: 'prop3', name: 'Website', description: null } }),
         }).annotations({
           identifier: 'TestPageProperties',
           description: 'Read schema for Test database pages',
@@ -243,7 +335,11 @@ describe('codegen', () => {
         id: 'test-db-id',
         name: 'Test',
         url: 'https://notion.so/test',
-        properties: [{ id: 'prop1', name: 'Status', type: 'select' }],
+        properties: (
+          [{ id: 'prop1', name: 'Status', type: 'select' }] satisfies Array<
+            Omit<PropertyInfo, 'schema'>
+          >
+        ).map(makeProperty),
       }
 
       const code = generateSchemaCode({
@@ -254,7 +350,7 @@ describe('codegen', () => {
         },
       })
 
-      expect(code).toContain('Status: NotionSchema.selectOption')
+      expect(code).toContain('Status: NotionSchema.select()')
     })
 
     it('should convert name to PascalCase', () => {
@@ -262,7 +358,11 @@ describe('codegen', () => {
         id: 'test-db-id',
         name: 'Test',
         url: 'https://notion.so/test',
-        properties: [{ id: 'prop1', name: 'Title', type: 'title' }],
+        properties: (
+          [{ id: 'prop1', name: 'Title', type: 'title' }] satisfies Array<
+            Omit<PropertyInfo, 'schema'>
+          >
+        ).map(makeProperty),
       }
 
       const code = generateSchemaCode({ dbInfo, schemaName: 'my-test-database' })
@@ -276,14 +376,16 @@ describe('codegen', () => {
         id: 'test-db-id',
         name: 'Test',
         url: 'https://notion.so/test',
-        properties: [
-          {
-            id: 'prop1',
-            name: 'Status',
-            type: 'select',
-            description: 'Current task status',
-          },
-        ],
+        properties: (
+          [
+            {
+              id: 'prop1',
+              name: 'Status',
+              type: 'select',
+              description: 'Current task status',
+            },
+          ] satisfies Array<Omit<PropertyInfo, 'schema'>>
+        ).map(makeProperty),
       }
 
       const code = generateSchemaCode({ dbInfo, schemaName: 'Test' })
@@ -295,7 +397,7 @@ describe('codegen', () => {
         // ID: test-db-id
         // URL: https://notion.so/test
 
-        import { NotionSchema } from '@overeng/notion-effect-schema'
+        import { NotionSchema, notionPropertyMeta } from '@overeng/notion-effect-schema'
         import { Schema } from 'effect'
 
         // -----------------------------------------------------------------------------
@@ -307,7 +409,7 @@ describe('codegen', () => {
          */
         export const TestPageProperties = Schema.Struct({
           /** Current task status */
-          Status: NotionSchema.selectOption,
+          Status: NotionSchema.select().annotations({ [notionPropertyMeta]: { _tag: 'select', id: 'prop1', name: 'Status', description: 'Current task status', select: { options: [] } } }),
         }).annotations({
           identifier: 'TestPageProperties',
           description: 'Read schema for Test database pages',
@@ -331,11 +433,11 @@ describe('codegen', () => {
     it('should handle all property types with default transforms', () => {
       const propertyTypes: Array<{ type: PropertyInfo['type']; expected: string }> = [
         { type: 'title', expected: 'NotionSchema.title' },
-        { type: 'rich_text', expected: 'NotionSchema.richTextString' },
-        { type: 'number', expected: 'NotionSchema.number' },
-        { type: 'select', expected: 'NotionSchema.selectOption' },
-        { type: 'multi_select', expected: 'NotionSchema.multiSelectStrings' },
-        { type: 'status', expected: 'NotionSchema.statusOption' },
+        { type: 'rich_text', expected: 'NotionSchema.richTextOption' },
+        { type: 'number', expected: 'NotionSchema.numberOption' },
+        { type: 'select', expected: 'NotionSchema.select()' },
+        { type: 'multi_select', expected: 'NotionSchema.multiSelect()' },
+        { type: 'status', expected: 'NotionSchema.status()' },
         { type: 'date', expected: 'NotionSchema.dateOption' },
         { type: 'people', expected: 'NotionSchema.peopleIds' },
         { type: 'files', expected: 'NotionSchema.filesUrls' },
@@ -358,7 +460,9 @@ describe('codegen', () => {
           id: 'test',
           name: 'Test',
           url: 'https://notion.so/test',
-          properties: [{ id: 'prop', name: 'Prop', type }],
+          properties: (
+            [{ id: 'prop', name: 'Prop', type }] satisfies Array<Omit<PropertyInfo, 'schema'>>
+          ).map(makeProperty),
         }
 
         const code = generateSchemaCode({ dbInfo, schemaName: 'Test' })
@@ -371,30 +475,32 @@ describe('codegen', () => {
         id: 'test',
         name: 'Test',
         url: 'https://notion.so/test',
-        properties: [
-          {
-            id: 'rel',
-            name: 'Owner',
-            type: 'relation',
-            relation: {
-              database_id: 'db-id',
-              type: 'single_property',
-              single_property: {},
+        properties: (
+          [
+            {
+              id: 'rel',
+              name: 'Owner',
+              type: 'relation',
+              relation: {
+                database_id: 'db-id',
+                type: 'single_property',
+                single_property: {},
+              },
             },
-          },
-          {
-            id: 'rollup',
-            name: 'Total',
-            type: 'rollup',
-            rollup: {
-              relation_property_name: 'Rel',
-              relation_property_id: 'rel',
-              rollup_property_name: 'Amount',
-              rollup_property_id: 'amount',
-              function: 'sum',
+            {
+              id: 'rollup',
+              name: 'Total',
+              type: 'rollup',
+              rollup: {
+                relation_property_name: 'Rel',
+                relation_property_id: 'rel',
+                rollup_property_name: 'Amount',
+                rollup_property_id: 'amount',
+                function: 'sum',
+              },
             },
-          },
-        ],
+          ] satisfies Array<Omit<PropertyInfo, 'schema'>>
+        ).map(makeProperty),
       }
 
       const code = generateSchemaCode({ dbInfo, schemaName: 'Test' })
@@ -407,7 +513,11 @@ describe('codegen', () => {
         id: 'test-db-id',
         name: 'Test',
         url: 'https://notion.so/test',
-        properties: [{ id: 'prop1', name: 'Unknown', type: 'button' as PropertyInfo['type'] }],
+        properties: (
+          [
+            { id: 'prop1', name: 'Unknown', type: 'button' as PropertyInfo['type'] },
+          ] satisfies Array<Omit<PropertyInfo, 'schema'>>
+        ).map(makeProperty),
       }
 
       const code = generateSchemaCode({ dbInfo, schemaName: 'Test' })
@@ -423,10 +533,7 @@ describe('codegen', () => {
 
       expect(getAvailableTransforms('select')).toContain('raw')
       expect(getAvailableTransforms('select')).toContain('asOption')
-      expect(getAvailableTransforms('select')).toContain('asOptionNamed')
       expect(getAvailableTransforms('select')).toContain('asName')
-      expect(getAvailableTransforms('select')).toContain('asString')
-      expect(getAvailableTransforms('select')).toContain('asPropertyNamed')
 
       expect(getAvailableTransforms('checkbox')).toContain('raw')
       expect(getAvailableTransforms('checkbox')).toContain('asBoolean')
@@ -440,7 +547,7 @@ describe('codegen', () => {
   describe('getDefaultTransform', () => {
     it('should return correct defaults', () => {
       expect(getDefaultTransform('title')).toBe('asString')
-      expect(getDefaultTransform('number')).toBe('asNumber')
+      expect(getDefaultTransform('number')).toBe('asOption')
       expect(getDefaultTransform('checkbox')).toBe('asBoolean')
       expect(getDefaultTransform('select')).toBe('asOption')
       expect(getDefaultTransform('formula')).toBe('raw')
@@ -512,11 +619,13 @@ describe('codegen', () => {
         id: 'test-db-id',
         name: 'Test',
         url: 'https://notion.so/test',
-        properties: [
-          { id: 'prop1', name: 'Name', type: 'title' },
-          { id: 'prop2', name: 'Status', type: 'select' },
-          { id: 'prop3', name: 'CreatedAt', type: 'created_time' },
-        ],
+        properties: (
+          [
+            { id: 'prop1', name: 'Name', type: 'title' },
+            { id: 'prop2', name: 'Status', type: 'select' },
+            { id: 'prop3', name: 'CreatedAt', type: 'created_time' },
+          ] satisfies Array<Omit<PropertyInfo, 'schema'>>
+        ).map(makeProperty),
       }
 
       const code = generateSchemaCode({
@@ -533,7 +642,7 @@ describe('codegen', () => {
         // URL: https://notion.so/test
         // @config { includeWrite: true }
 
-        import { NotionSchema } from '@overeng/notion-effect-schema'
+        import { NotionSchema, notionPropertyMeta } from '@overeng/notion-effect-schema'
         import { Schema } from 'effect'
 
         // -----------------------------------------------------------------------------
@@ -544,9 +653,9 @@ describe('codegen', () => {
          * Schema for reading pages from the "Test" database.
          */
         export const TestPageProperties = Schema.Struct({
-          Name: NotionSchema.title,
-          Status: NotionSchema.selectOption,
-          CreatedAt: NotionSchema.createdTimeDate,
+          Name: NotionSchema.title.annotations({ [notionPropertyMeta]: { _tag: 'title', id: 'prop1', name: 'Name', description: null } }),
+          Status: NotionSchema.select().annotations({ [notionPropertyMeta]: { _tag: 'select', id: 'prop2', name: 'Status', description: null, select: { options: [] } } }),
+          CreatedAt: NotionSchema.createdTimeDate.annotations({ [notionPropertyMeta]: { _tag: 'created_time', id: 'prop3', name: 'CreatedAt', description: null } }),
         }).annotations({
           identifier: 'TestPageProperties',
           description: 'Read schema for Test database pages',
@@ -610,31 +719,33 @@ describe('codegen', () => {
         id: 'test-db-id',
         name: 'Test',
         url: 'https://notion.so/test',
-        properties: [
-          {
-            id: 'prop1',
-            name: 'Status',
-            type: 'select',
-            select: {
-              options: [
-                { id: '1', name: 'Not Started', color: 'gray' },
-                { id: '2', name: 'In Progress', color: 'blue' },
-                { id: '3', name: 'Done', color: 'green' },
-              ],
+        properties: (
+          [
+            {
+              id: 'prop1',
+              name: 'Status',
+              type: 'select',
+              select: {
+                options: [
+                  { id: '1', name: 'Not Started', color: 'gray' },
+                  { id: '2', name: 'In Progress', color: 'blue' },
+                  { id: '3', name: 'Done', color: 'green' },
+                ],
+              },
             },
-          },
-          {
-            id: 'prop2',
-            name: 'Priority',
-            type: 'multi_select',
-            multi_select: {
-              options: [
-                { id: '1', name: 'High', color: 'red' },
-                { id: '2', name: 'Low', color: 'gray' },
-              ],
+            {
+              id: 'prop2',
+              name: 'Priority',
+              type: 'multi_select',
+              multi_select: {
+                options: [
+                  { id: '1', name: 'High', color: 'red' },
+                  { id: '2', name: 'Low', color: 'gray' },
+                ],
+              },
             },
-          },
-        ],
+          ] satisfies Array<Omit<PropertyInfo, 'schema'>>
+        ).map(makeProperty),
       }
 
       const code = generateSchemaCode({
@@ -651,7 +762,7 @@ describe('codegen', () => {
         // URL: https://notion.so/test
         // @config { typedOptions: true }
 
-        import { NotionSchema } from '@overeng/notion-effect-schema'
+        import { NotionSchema, notionPropertyMeta } from '@overeng/notion-effect-schema'
         import { Schema } from 'effect'
 
         // -----------------------------------------------------------------------------
@@ -679,8 +790,8 @@ describe('codegen', () => {
          * Schema for reading pages from the "Test" database.
          */
         export const TestPageProperties = Schema.Struct({
-          Status: NotionSchema.selectPropertyNamed(TestStatusOption),
-          Priority: NotionSchema.multiSelectPropertyNamed(TestPriorityOption),
+          Status: NotionSchema.select(TestStatusOption).annotations({ [notionPropertyMeta]: { _tag: 'select', id: 'prop1', name: 'Status', description: null, select: { options: [{ id: '1', name: 'Not Started', color: 'gray', description: null }, { id: '2', name: 'In Progress', color: 'blue', description: null }, { id: '3', name: 'Done', color: 'green', description: null }] } } }),
+          Priority: NotionSchema.multiSelect(TestPriorityOption).annotations({ [notionPropertyMeta]: { _tag: 'multi_select', id: 'prop2', name: 'Priority', description: null, multi_select: { options: [{ id: '1', name: 'High', color: 'red', description: null }, { id: '2', name: 'Low', color: 'gray', description: null }] } } }),
         }).annotations({
           identifier: 'TestPageProperties',
           description: 'Read schema for Test database pages',
@@ -706,7 +817,11 @@ describe('codegen', () => {
         id: 'test',
         name: 'Test',
         url: 'https://notion.so/test',
-        properties: [{ id: 'prop', name: 'Title', type: 'title' }],
+        properties: (
+          [{ id: 'prop', name: 'Title', type: 'title' }] satisfies Array<
+            Omit<PropertyInfo, 'schema'>
+          >
+        ).map(makeProperty),
       }
 
       expect(generateSchemaCode({ dbInfo, schemaName: 'MyDatabase' })).toContain(
@@ -723,7 +838,11 @@ describe('codegen', () => {
         id: 'test-db-id',
         name: 'Test',
         url: 'https://notion.so/test',
-        properties: [{ id: 'prop1', name: 'Name', type: 'title' }],
+        properties: (
+          [{ id: 'prop1', name: 'Name', type: 'title' }] satisfies Array<
+            Omit<PropertyInfo, 'schema'>
+          >
+        ).map(makeProperty),
       }
 
       const code = generateSchemaCode({ dbInfo, schemaName: 'Test' })
@@ -736,7 +855,11 @@ describe('codegen', () => {
         id: 'test-db-id',
         name: 'Test',
         url: 'https://notion.so/test',
-        properties: [{ id: 'prop1', name: 'Name', type: 'title' }],
+        properties: (
+          [{ id: 'prop1', name: 'Name', type: 'title' }] satisfies Array<
+            Omit<PropertyInfo, 'schema'>
+          >
+        ).map(makeProperty),
       }
 
       const code = generateSchemaCode({
@@ -746,7 +869,7 @@ describe('codegen', () => {
           includeWrite: true,
           typedOptions: true,
           includeApi: true,
-          transforms: { Status: 'asOption', Priority: 'asString' },
+          transforms: { Status: 'asOption', Priority: 'asName' },
           schemaNameOverride: 'MyCustomName',
         },
       })
@@ -757,9 +880,9 @@ describe('codegen', () => {
         // Database: Test
         // ID: test-db-id
         // URL: https://notion.so/test
-        // @config { name: MyCustomName, includeWrite: true, typedOptions: true, includeApi: true, transforms: { Status: asOption, Priority: asString } }
+        // @config { name: MyCustomName, includeWrite: true, typedOptions: true, includeApi: true, transforms: { Status: asOption, Priority: asName } }
 
-        import { NotionSchema } from '@overeng/notion-effect-schema'
+        import { NotionSchema, notionPropertyMeta } from '@overeng/notion-effect-schema'
         import { Schema } from 'effect'
 
         // -----------------------------------------------------------------------------
@@ -770,7 +893,7 @@ describe('codegen', () => {
          * Schema for reading pages from the "Test" database.
          */
         export const TestPageProperties = Schema.Struct({
-          Name: NotionSchema.title,
+          Name: NotionSchema.title.annotations({ [notionPropertyMeta]: { _tag: 'title', id: 'prop1', name: 'Name', description: null } }),
         }).annotations({
           identifier: 'TestPageProperties',
           description: 'Read schema for Test database pages',
@@ -833,7 +956,11 @@ describe('codegen', () => {
         id: 'test-db-id',
         name: 'Test',
         url: 'https://notion.so/test',
-        properties: [{ id: 'prop1', name: 'Name', type: 'title' }],
+        properties: (
+          [{ id: 'prop1', name: 'Name', type: 'title' }] satisfies Array<
+            Omit<PropertyInfo, 'schema'>
+          >
+        ).map(makeProperty),
       }
 
       const code = generateSchemaCode({

@@ -15,6 +15,8 @@ export interface GenerateOptions {
   readonly includeWrite?: boolean
   /** Generate typed literal unions for select/status options */
   readonly typedOptions?: boolean
+  /** Include Notion property metadata annotations */
+  readonly schemaMeta?: boolean
   /** Property-specific transform configuration */
   readonly transforms?: PropertyTransformConfig
   /** Version of the generator CLI/package (included in generated header comment) */
@@ -52,11 +54,11 @@ export interface GenerateApiCodeOptions {
 /** Available transforms for each property type */
 export const PROPERTY_TRANSFORMS: Record<NotionPropertyType, readonly string[]> = {
   title: ['raw', 'asString'],
-  rich_text: ['raw', 'asString'],
+  rich_text: ['raw', 'asString', 'asOption'],
   number: ['raw', 'asNumber', 'asOption'],
-  select: ['raw', 'asOption', 'asOptionNamed', 'asName', 'asString', 'asPropertyNamed'],
-  multi_select: ['raw', 'asNames', 'asStrings', 'asPropertyNamed'],
-  status: ['raw', 'asName', 'asOption', 'asString', 'asPropertyNamed'],
+  select: ['raw', 'asOption', 'asName'],
+  multi_select: ['raw', 'asOptions', 'asNames'],
+  status: ['raw', 'asName', 'asOption'],
   date: ['raw', 'asDate', 'asOption'],
   people: ['raw', 'asIds'],
   files: ['raw', 'asUrls'],
@@ -79,10 +81,10 @@ export const PROPERTY_TRANSFORMS: Record<NotionPropertyType, readonly string[]> 
 /** Default transform for each property type */
 export const DEFAULT_TRANSFORMS: Record<NotionPropertyType, string> = {
   title: 'asString',
-  rich_text: 'asString',
-  number: 'asNumber',
+  rich_text: 'asOption',
+  number: 'asOption',
   select: 'asOption',
-  multi_select: 'asStrings',
+  multi_select: 'asOptions',
   status: 'asOption',
   date: 'asOption',
   people: 'asIds',
@@ -108,32 +110,15 @@ export const NOTION_SCHEMA_TRANSFORM_KEYS: Partial<
   Record<NotionPropertyType, Record<string, string>>
 > = {
   title: { raw: 'titleRaw', asString: 'title' },
-  rich_text: { raw: 'richTextRaw', asString: 'richTextString' },
+  rich_text: { raw: 'richTextRaw', asString: 'richTextString', asOption: 'richTextOption' },
   number: { raw: 'numberRaw', asNumber: 'number', asOption: 'numberOption' },
-  select: {
-    raw: 'selectRaw',
-    asOption: 'selectOption',
-    asOptionNamed: 'selectOptionNamed',
-    asName: 'selectName',
-    asString: 'selectString',
-    asPropertyNamed: 'selectPropertyNamed',
-    Property: 'selectProperty',
-  },
+  select: { raw: 'select.asNullable', asOption: 'select', asName: 'select.asName' },
   multi_select: {
-    raw: 'multiSelectRaw',
-    asNames: 'multiSelectNames',
-    asStrings: 'multiSelectStrings',
-    asPropertyNamed: 'multiSelectPropertyNamed',
-    Property: 'multiSelectProperty',
+    raw: 'multiSelect',
+    asOptions: 'multiSelect',
+    asNames: 'multiSelect.asNames',
   },
-  status: {
-    raw: 'statusRaw',
-    asName: 'statusName',
-    asOption: 'statusOption',
-    asString: 'statusString',
-    asPropertyNamed: 'statusPropertyNamed',
-    Property: 'statusProperty',
-  },
+  status: { raw: 'status.asNullable', asName: 'status.asName', asOption: 'status' },
   date: { raw: 'dateRaw', asDate: 'dateDate', asOption: 'dateOption' },
   people: { raw: 'peopleRaw', asIds: 'peopleIds' },
   files: { raw: 'filesRaw', asUrls: 'filesUrls' },
@@ -173,14 +158,6 @@ export const NOTION_SCHEMA_TRANSFORM_KEYS: Partial<
   unique_id: { raw: 'uniqueIdProperty', asString: 'uniqueIdString', asNumber: 'uniqueIdNumber' },
 }
 
-const TYPED_OPTION_PROPERTY_TYPES = new Set<NotionPropertyType>([
-  'select',
-  'multi_select',
-  'status',
-])
-
-const TYPED_OPTION_TRANSFORMS = new Set(['asOptionNamed', 'asName', 'asNames', 'asPropertyNamed'])
-
 const ROLLUP_NUMBER_FUNCTIONS = new Set([
   'count',
   'count_values',
@@ -214,14 +191,7 @@ const inferRollupTransform = (property: PropertyInfo): string | undefined => {
   return undefined
 }
 
-const inferDefaultTransform = (
-  property: PropertyInfo,
-  typedOptions: { enabled: boolean; typeName?: string },
-): string => {
-  if (typedOptions.enabled && TYPED_OPTION_PROPERTY_TYPES.has(property.type)) {
-    return typedOptions.typeName ? 'asPropertyNamed' : 'Property'
-  }
-
+const inferDefaultTransform = (property: PropertyInfo): string => {
   if (property.type === 'relation' && property.relation?.type === 'single_property') {
     return 'asSingle'
   }
@@ -339,13 +309,121 @@ const toTopLevelIdentifier = (name: string): string => {
   return `_${identifier}`
 }
 
+const formatNotionSchemaCall = (options: { name: string; typeName?: string }): string =>
+  `NotionSchema.${options.name}${options.typeName ? `(${options.typeName})` : '()'}`
+
+const formatMetaValue = (value: unknown): string => {
+  if (value === null) return 'null'
+  if (typeof value === 'string') return toSingleQuotedStringLiteral(value)
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (Array.isArray(value)) {
+    return `[${value.map(formatMetaValue).join(', ')}]`
+  }
+  if (typeof value === 'object' && value !== null) {
+    const entries = Object.entries(value)
+      .filter(([, v]) => v !== undefined)
+      .map(([key, val]) => `${key}: ${formatMetaValue(val)}`)
+    return `{ ${entries.join(', ')} }`
+  }
+  return 'Schema.Unknown'
+}
+
+const normalizeOptionDescription = (description: string | null | undefined): string | null =>
+  description ?? null
+
+const normalizeSelectOptions = (
+  options: readonly {
+    id: string
+    name: string
+    color: string
+    description?: string | null | undefined
+  }[],
+) =>
+  options.map((option) => ({
+    id: option.id,
+    name: option.name,
+    color: option.color,
+    description: normalizeOptionDescription(option.description),
+  }))
+
+const normalizeStatusGroups = (
+  groups: readonly { id: string; name: string; color: string; option_ids: readonly string[] }[],
+) =>
+  groups.map((group) => ({
+    id: group.id,
+    name: group.name,
+    color: group.color,
+    option_ids: group.option_ids,
+  }))
+
+const buildPropertyMeta = (property: PropertyInfo): Record<string, unknown> => {
+  const schema = property.schema
+  const base = {
+    _tag: schema._tag,
+    id: schema.id,
+    name: schema.name,
+    description: normalizeOptionDescription(schema.description),
+  }
+
+  switch (schema._tag) {
+    case 'number':
+      return { ...base, number: { format: schema.number.format } }
+    case 'select':
+      return { ...base, select: { options: normalizeSelectOptions(schema.select.options) } }
+    case 'multi_select':
+      return {
+        ...base,
+        multi_select: { options: normalizeSelectOptions(schema.multi_select.options) },
+      }
+    case 'status':
+      return {
+        ...base,
+        status: {
+          options: normalizeSelectOptions(schema.status.options),
+          groups: normalizeStatusGroups(schema.status.groups),
+        },
+      }
+    case 'relation': {
+      const relation: Record<string, unknown> = {
+        database_id: schema.relation.database_id,
+        type: schema.relation.type,
+      }
+      if (schema.relation.single_property !== undefined) {
+        relation.single_property = schema.relation.single_property
+      }
+      if (schema.relation.dual_property !== undefined) {
+        relation.dual_property = schema.relation.dual_property
+      }
+      return { ...base, relation }
+    }
+    case 'rollup':
+      return {
+        ...base,
+        rollup: {
+          relation_property_name: schema.rollup.relation_property_name,
+          relation_property_id: schema.rollup.relation_property_id,
+          rollup_property_name: schema.rollup.rollup_property_name,
+          rollup_property_id: schema.rollup.rollup_property_id,
+          function: schema.rollup.function,
+        },
+      }
+    case 'formula':
+      return { ...base, formula: { expression: schema.formula.expression } }
+    case 'unique_id':
+      return { ...base, unique_id: { prefix: schema.unique_id.prefix } }
+    default:
+      return base
+  }
+}
+
 /** Generate the schema field expression for a property (read) */
 const generatePropertyField = (options: {
   property: PropertyInfo
   transformConfig: PropertyTransformConfig
   typedOptions: { enabled: boolean; typeName?: string }
+  schemaMeta: boolean
 }): string => {
-  const { property, transformConfig, typedOptions } = options
+  const { property, transformConfig, typedOptions, schemaMeta } = options
   const transformKeys = NOTION_SCHEMA_TRANSFORM_KEYS[property.type]
   if (!transformKeys) {
     return 'Schema.Unknown'
@@ -354,26 +432,70 @@ const generatePropertyField = (options: {
   const configuredTransform = transformConfig[property.name]
   const availableTransforms = PROPERTY_TRANSFORMS[property.type] ?? ['raw']
 
-  const defaultTransform = inferDefaultTransform(property, typedOptions)
+  const defaultTransform = inferDefaultTransform(property)
 
   const transform =
     configuredTransform && availableTransforms.includes(configuredTransform)
       ? configuredTransform
       : defaultTransform
 
-  if (TYPED_OPTION_TRANSFORMS.has(transform)) {
-    if (!typedOptions.typeName) {
-      const fallbackKey = transformKeys.Property
-      return fallbackKey ? `NotionSchema.${fallbackKey}` : 'Schema.Unknown'
+  const typedOptionName = typedOptions.typeName
+  if (property.type === 'select') {
+    const base = formatNotionSchemaCall(
+      typedOptionName ? { name: 'select', typeName: typedOptionName } : { name: 'select' },
+    )
+    const metaSuffix = schemaMeta
+      ? `.annotations({ [notionPropertyMeta]: ${formatMetaValue(buildPropertyMeta(property))} })`
+      : ''
+    if (transform === 'asName') {
+      return `${base}.pipe(NotionSchema.asName)${metaSuffix}`
     }
-    const transformKey = transformKeys[transform]
-    return transformKey
-      ? `NotionSchema.${transformKey}(${typedOptions.typeName})`
-      : 'Schema.Unknown'
+    if (transform === 'raw') {
+      return `${base}.pipe(NotionSchema.asNullable)${metaSuffix}`
+    }
+    return `${base}${metaSuffix}`
+  }
+
+  if (property.type === 'status') {
+    const base = formatNotionSchemaCall(
+      typedOptionName ? { name: 'status', typeName: typedOptionName } : { name: 'status' },
+    )
+    const metaSuffix = schemaMeta
+      ? `.annotations({ [notionPropertyMeta]: ${formatMetaValue(buildPropertyMeta(property))} })`
+      : ''
+    if (transform === 'asName') {
+      return `${base}.pipe(NotionSchema.asName)${metaSuffix}`
+    }
+    if (transform === 'raw') {
+      return `${base}.pipe(NotionSchema.asNullable)${metaSuffix}`
+    }
+    return `${base}${metaSuffix}`
+  }
+
+  if (property.type === 'multi_select') {
+    const base = formatNotionSchemaCall(
+      typedOptionName
+        ? { name: 'multiSelect', typeName: typedOptionName }
+        : { name: 'multiSelect' },
+    )
+    const metaSuffix = schemaMeta
+      ? `.annotations({ [notionPropertyMeta]: ${formatMetaValue(buildPropertyMeta(property))} })`
+      : ''
+    if (transform === 'asNames') {
+      return `${base}.pipe(NotionSchema.asNames)${metaSuffix}`
+    }
+    return `${base}${metaSuffix}`
   }
 
   const transformKey = transformKeys[transform]
-  return transformKey ? `NotionSchema.${transformKey}` : 'Schema.Unknown'
+  if (!transformKey) {
+    return 'Schema.Unknown'
+  }
+
+  const value = `NotionSchema.${transformKey}`
+  return schemaMeta
+    ? `${value}.annotations({ [notionPropertyMeta]: ${formatMetaValue(buildPropertyMeta(property))} })`
+    : value
 }
 
 /**
@@ -437,7 +559,9 @@ export type ${typeName} = typeof ${typeName}.Type`
 
 const parseGenerateOptions = (
   options: GenerateOptions | undefined,
-): Required<Pick<GenerateOptions, 'includeWrite' | 'typedOptions' | 'includeApi'>> & {
+): Required<
+  Pick<GenerateOptions, 'includeWrite' | 'typedOptions' | 'includeApi' | 'schemaMeta'>
+> & {
   transforms: PropertyTransformConfig
   generatorVersion?: string
   schemaNameOverride?: string
@@ -446,6 +570,7 @@ const parseGenerateOptions = (
     return {
       includeWrite: false,
       typedOptions: false,
+      schemaMeta: true,
       includeApi: false,
       transforms: {},
     }
@@ -454,6 +579,7 @@ const parseGenerateOptions = (
   return {
     includeWrite: options.includeWrite ?? false,
     typedOptions: options.typedOptions ?? false,
+    schemaMeta: options.schemaMeta ?? true,
     includeApi: options.includeApi ?? false,
     transforms: options.transforms ?? {},
     ...(options.generatorVersion !== undefined
@@ -501,6 +627,7 @@ const formatConfigValue = (value: unknown): string => {
 const generateConfigComment = (options: {
   includeWrite: boolean
   typedOptions: boolean
+  schemaMeta: boolean
   includeApi: boolean
   transforms: PropertyTransformConfig
   schemaNameOverride: string | undefined
@@ -518,6 +645,9 @@ const generateConfigComment = (options: {
   }
   if (options.includeApi) {
     config.includeApi = true
+  }
+  if (!options.schemaMeta) {
+    config.schemaMeta = false
   }
   if (Object.keys(options.transforms).length > 0) {
     config.transforms = options.transforms
@@ -538,8 +668,14 @@ const generateConfigComment = (options: {
 // oxlint-disable-next-line eslint(func-style) -- public API
 export function generateSchemaCode(opts: GenerateSchemaCodeOptions): string {
   const { dbInfo, schemaName, options } = opts
-  const { includeWrite, typedOptions, transforms, generatorVersion, schemaNameOverride } =
-    parseGenerateOptions(options)
+  const {
+    includeWrite,
+    typedOptions,
+    schemaMeta,
+    transforms,
+    generatorVersion,
+    schemaNameOverride,
+  } = parseGenerateOptions(options)
 
   const pascalName = toTopLevelIdentifier(schemaName)
 
@@ -566,6 +702,7 @@ export function generateSchemaCode(opts: GenerateSchemaCodeOptions): string {
         property: prop,
         transformConfig: transforms,
         typedOptions: { enabled: typedOptions, ...(typeName ? { typeName } : {}) },
+        schemaMeta,
       })
       // Add JSDoc comment if description is available
       const jsdoc = prop.description ? `  /** ${sanitizeLineComment(prop.description)} */\n` : ''
@@ -594,6 +731,7 @@ export function generateSchemaCode(opts: GenerateSchemaCodeOptions): string {
   const configComment = generateConfigComment({
     includeWrite,
     typedOptions,
+    schemaMeta,
     includeApi: options?.includeApi ?? false,
     transforms,
     schemaNameOverride,
@@ -608,7 +746,7 @@ export function generateSchemaCode(opts: GenerateSchemaCodeOptions): string {
     `// URL: ${dbInfo.url}`,
     ...(configComment ? [configComment] : []),
     ``,
-    `import { NotionSchema } from '@overeng/notion-effect-schema'`,
+    `import { NotionSchema${schemaMeta ? ', notionPropertyMeta' : ''} } from '@overeng/notion-effect-schema'`,
     `import { Schema } from 'effect'`,
   ]
 
@@ -753,8 +891,14 @@ export const isReadOnlyProperty = (propertyType: string): boolean =>
 // oxlint-disable-next-line eslint(func-style) -- public API
 export function generateApiCode(opts: GenerateApiCodeOptions): string {
   const { dbInfo, schemaName, options } = opts
-  const { includeWrite, typedOptions, transforms, generatorVersion, schemaNameOverride } =
-    parseGenerateOptions(options)
+  const {
+    includeWrite,
+    typedOptions,
+    schemaMeta,
+    transforms,
+    generatorVersion,
+    schemaNameOverride,
+  } = parseGenerateOptions(options)
 
   const pascalName = toTopLevelIdentifier(schemaName)
   const schemaFileName = `./${pascalName.charAt(0).toLowerCase()}${pascalName.slice(1)}.ts`
@@ -763,6 +907,7 @@ export function generateApiCode(opts: GenerateApiCodeOptions): string {
   const configComment = generateConfigComment({
     includeWrite,
     typedOptions,
+    schemaMeta,
     includeApi: true,
     transforms,
     schemaNameOverride,

@@ -11,10 +11,5 @@
     "types": ["node"]
   },
   "include": ["**/*.ts"],
-  "exclude": ["*.genie.ts"],
-  "references": [
-    {
-      "path": "../packages/@overeng/genie"
-    }
-  ]
+  "exclude": ["*.genie.ts"]
 }

@@ -124,8 +124,8 @@ export const DateProp = {
   }),
 
   /** Transform to Option<DateValue>. */
-  asOption: withOptionValueSchema(
-    Schema.transform(DateProperty, Schema.OptionFromSelf(DateValue), {
+  asOption: withOptionValueSchema({
+    schema: Schema.transform(DateProperty, Schema.OptionFromSelf(DateValue), {
       strict: false,
       decode: (prop) => (prop.date === null ? Option.none() : Option.some(prop.date)),
       encode: () =>
@@ -133,12 +133,12 @@ export const DateProp = {
           'DateProp.asOption encode is not supported. Use DateWrite / DateWriteFromStart.',
         ),
     }),
-    DateValue,
-  ),
+    valueSchema: DateValue,
+  }),
 
   /** Transform to Option<Date> (start date only, parsed). */
-  asDate: withOptionValueSchema(
-    Schema.transform(DateProperty, Schema.OptionFromSelf(Schema.DateFromSelf), {
+  asDate: withOptionValueSchema({
+    schema: Schema.transform(DateProperty, Schema.OptionFromSelf(Schema.DateFromSelf), {
       strict: false,
       decode: (prop) =>
         prop.date === null ? Option.none() : Option.some(new Date(prop.date.start)),
@@ -147,8 +147,8 @@ export const DateProp = {
           'DateProp.asDate encode is not supported. Use DateWrite / DateWriteFromStart.',
         ),
     }),
-    Schema.DateFromSelf,
-  ),
+    valueSchema: Schema.DateFromSelf,
+  }),
 
   Write: {
     Schema: DateWrite,

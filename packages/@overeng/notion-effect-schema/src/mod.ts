@@ -5,7 +5,9 @@
  * @module
  */
 
-import { Required } from './common.ts'
+import type { Schema } from 'effect'
+
+import { Required, asName, asNames, asNullable } from './common.ts'
 import {
   Checkbox,
   CreatedBy,
@@ -77,6 +79,45 @@ export * from './property-schema.ts'
 
 export type { DateValue } from './properties/date.ts'
 
+/**
+ * Select property values as Option<SelectOption>.
+ *
+ * Pass a typed option schema to enforce allowed names.
+ */
+function select(): typeof Select.asOption
+function select<TName extends string>(
+  nameSchema: Schema.Schema<TName>,
+): ReturnType<typeof Select.asOptionNamed<TName>>
+function select<TName extends string>(nameSchema?: Schema.Schema<TName>) {
+  return nameSchema ? Select.asOptionNamed(nameSchema) : Select.asOption
+}
+
+/**
+ * Status property values as Option<SelectOption>.
+ *
+ * Pass a typed option schema to enforce allowed names.
+ */
+function status(): typeof Status.asOption
+function status<TName extends string>(
+  nameSchema: Schema.Schema<TName>,
+): ReturnType<typeof Status.asOptionNamed<TName>>
+function status<TName extends string>(nameSchema?: Schema.Schema<TName>) {
+  return nameSchema ? Status.asOptionNamed(nameSchema) : Status.asOption
+}
+
+/**
+ * Multi-select property values as arrays of SelectOptions.
+ *
+ * Pass a typed option schema to enforce allowed names.
+ */
+function multiSelect(): typeof MultiSelect.raw
+function multiSelect<TName extends string>(
+  nameSchema: Schema.Schema<TName>,
+): ReturnType<typeof MultiSelect.asOptionsNamed<TName>>
+function multiSelect<TName extends string>(nameSchema?: Schema.Schema<TName>) {
+  return nameSchema ? MultiSelect.asOptionsNamed(nameSchema) : MultiSelect.raw
+}
+
 export const NotionSchema = {
   number: Num.asNumber,
   numberOption: Num.asOption,
@@ -92,24 +133,12 @@ export const NotionSchema = {
   dateOption: DateProp.asOption,
   dateDate: DateProp.asDate,
   dateRaw: DateProp.raw,
-  selectOption: Select.asOption,
-  selectOptionNamed: Select.asOptionNamed,
-  selectName: Select.asName,
-  selectString: Select.asString,
-  selectRaw: Select.raw,
-  selectProperty: Select.Property,
-  selectPropertyNamed: Select.asPropertyNamed,
-  multiSelectStrings: MultiSelect.asStrings,
-  multiSelectNames: MultiSelect.asNames,
-  multiSelectRaw: MultiSelect.raw,
-  multiSelectProperty: MultiSelect.Property,
-  multiSelectPropertyNamed: MultiSelect.asPropertyNamed,
-  statusOption: Status.asOption,
-  statusName: Status.asName,
-  statusString: Status.asString,
-  statusRaw: Status.raw,
-  statusProperty: Status.Property,
-  statusPropertyNamed: Status.asPropertyNamed,
+  select,
+  status,
+  multiSelect,
+  asName,
+  asNames,
+  asNullable,
   relationIds: Relation.asIds,
   relationSingle: Relation.asSingle,
   relationSingleId: Relation.asSingleId,

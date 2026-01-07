@@ -1,13 +1,18 @@
 import { Array as Arr, Effect, Option, Order, Schema } from 'effect'
+import * as SchemaAST from 'effect/SchemaAST'
 
 import type {
   DatabaseSchema,
   NumberFormat,
+  NotionPropertyMeta,
   PropertySchema,
   RollupFunction,
   SelectOptionConfig,
 } from '@overeng/notion-effect-schema'
-import { PropertySchema as PropertySchemaCodec } from '@overeng/notion-effect-schema'
+import {
+  notionPropertyMeta,
+  PropertySchema as PropertySchemaCodec,
+} from '@overeng/notion-effect-schema'
 
 export class SchemaMismatchError extends Schema.TaggedError<SchemaMismatchError>()(
   'SchemaMismatchError',
@@ -21,6 +26,14 @@ export class SchemaMismatchError extends Schema.TaggedError<SchemaMismatchError>
         expectedTag: Schema.String,
       }),
     ),
+  },
+) {}
+
+export class SchemaMetaMissingError extends Schema.TaggedError<SchemaMetaMissingError>()(
+  'SchemaMetaMissingError',
+  {
+    message: Schema.String,
+    missing: Schema.Array(Schema.String),
   },
 ) {}
 
@@ -140,6 +153,58 @@ export const validateProperties = (args: {
       })),
     })
   })
+
+export const getRequiredPropertiesFromSchema = Effect.fn(
+  'SchemaHelpers.getRequiredPropertiesFromSchema',
+)(function* (schema: Schema.Schema.AnyNoContext) {
+  const ast = schema.ast
+  if (ast._tag !== 'TypeLiteral') {
+    return yield* new SchemaMetaMissingError({
+      message: 'Schema must be a Struct to extract Notion property metadata',
+      missing: [],
+    })
+  }
+
+  const required: Array<{ name: string; tag: PropertySchema['_tag'] }> = []
+  const missing: string[] = []
+
+  for (const prop of ast.propertySignatures) {
+    if (typeof prop.name !== 'string') {
+      continue
+    }
+
+    const annotation = SchemaAST.getAnnotation<NotionPropertyMeta>(prop.type, notionPropertyMeta)
+    if (Option.isSome(annotation)) {
+      required.push({ name: prop.name, tag: annotation.value._tag })
+    } else {
+      missing.push(prop.name)
+    }
+  }
+
+  if (missing.length > 0) {
+    return yield* new SchemaMetaMissingError({
+      message: `Schema is missing Notion property metadata for: ${missing.join(', ')}`,
+      missing,
+    })
+  }
+
+  return required
+})
+
+export const validatePropertiesFromSchema = Effect.fn('SchemaHelpers.validatePropertiesFromSchema')(
+  function* (args: {
+    schema: Schema.Schema.AnyNoContext
+    databaseId: string
+    databaseSchema: DatabaseSchema
+  }) {
+    const required = yield* getRequiredPropertiesFromSchema(args.schema)
+    return yield* validateProperties({
+      schema: args.databaseSchema,
+      databaseId: args.databaseId,
+      required,
+    })
+  },
+)
 
 // -----------------------------------------------------------------------------
 // Select/Multi-Select/Status Helpers
@@ -339,6 +404,8 @@ export const SchemaHelpers = {
   getProperty,
   getPropertyByTag,
   validateProperties,
+  getRequiredPropertiesFromSchema,
+  validatePropertiesFromSchema,
   getSelectOptions,
   getMultiSelectOptions,
   getStatusOptions,

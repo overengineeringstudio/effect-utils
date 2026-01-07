@@ -198,8 +198,8 @@ export const RichTextProp = {
   ),
 
   /** Transform to Option<string> (empty becomes None). */
-  asOption: withOptionValueSchema(
-    Schema.transform(RichTextProperty, Schema.OptionFromSelf(Schema.String), {
+  asOption: withOptionValueSchema({
+    schema: Schema.transform(RichTextProperty, Schema.OptionFromSelf(Schema.String), {
       strict: false,
       decode: (prop) => {
         const text = prop.rich_text.map((rt) => rt.plain_text).join('')
@@ -210,8 +210,8 @@ export const RichTextProp = {
           'RichTextProp.asOption encode is not supported. Use RichTextWrite / RichTextWriteFromString.',
         ),
     }),
-    Schema.String,
-  ),
+    valueSchema: Schema.String,
+  }),
 
   Write: {
     Schema: RichTextWrite,

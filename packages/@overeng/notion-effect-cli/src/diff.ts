@@ -118,12 +118,21 @@ export const parseGeneratedFile = (content: string): ParsedSchema => {
       }
 
       const propMatch = line.match(
-        /^\s*(?:'([^']+)'|"([^"]+)"|([a-zA-Z_$][a-zA-Z0-9_$]*))\s*:\s*NotionSchema\.([a-zA-Z0-9_]+)(?:\([^)]*\))?\s*,/,
+        /^\s*(?:'([^']+)'|"([^"]+)"|([a-zA-Z_$][a-zA-Z0-9_$]*))\s*:\s*NotionSchema\.([a-zA-Z0-9_]+)(?:\([^)]*\))?(?:\.pipe\(([^)]*)\))?\s*,/,
       )
       if (propMatch) {
         const name = propMatch[1] ?? propMatch[2] ?? propMatch[3]
-        const transformKey = propMatch[4]
-        if (name && transformKey) {
+        const baseKey = propMatch[4]
+        const pipeContent = propMatch[5]
+        if (name && baseKey) {
+          let transformKey = baseKey
+          if (pipeContent?.includes('NotionSchema.asName')) {
+            transformKey = `${baseKey}.asName`
+          } else if (pipeContent?.includes('NotionSchema.asNames')) {
+            transformKey = `${baseKey}.asNames`
+          } else if (pipeContent?.includes('NotionSchema.asNullable')) {
+            transformKey = `${baseKey}.asNullable`
+          }
           properties.push({ name, transformKey })
         }
       }
