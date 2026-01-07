@@ -59,7 +59,7 @@ import {
 } from 'effect'
 
 import { cmdStart } from './cmd.ts'
-import type { CurrentWorkingDirectory } from './workspace.ts'
+import { CurrentWorkingDirectory } from './workspace.ts'
 
 // -----------------------------------------------------------------------------
 // Task State Schema
@@ -231,11 +231,16 @@ export class TaskRunner extends Context.Tag('TaskRunner')<TaskRunner, TaskRunner
           /** Run command with piped output, capturing into state */
           const result = yield* Effect.scoped(
             Effect.gen(function* () {
-              const proc = yield* cmdStart([options.command, ...options.args], {
+              const cmdEffect = cmdStart([options.command, ...options.args], {
                 stdout: 'pipe',
                 stderr: 'pipe',
                 ...(options.env ? { env: options.env } : {}),
               })
+
+              /** Override CurrentWorkingDirectory if cwd is specified */
+              const proc = yield* options.cwd
+                ? cmdEffect.pipe(Effect.provideService(CurrentWorkingDirectory, options.cwd))
+                : cmdEffect
 
               /** Consume stdout stream */
               const stdoutFiber = yield* proc.stdout.pipe(

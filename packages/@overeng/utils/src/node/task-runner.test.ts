@@ -188,4 +188,22 @@ describe('TaskRunner', () => {
       expect(result._tag).toBe('Left')
     }).pipe(Effect.provide(TestLayer)),
   )
+
+  it.effect('runTask honors cwd option', () =>
+    Effect.gen(function* () {
+      const runner = yield* TaskRunner
+
+      yield* runner.register({ id: 'cwd', name: 'CWD test' })
+      yield* runner.runTask({
+        id: 'cwd',
+        command: 'pwd',
+        args: [],
+        cwd: '/tmp',
+      })
+
+      const state = yield* runner.get
+      expect(state.tasks[0]?.status).toBe('success')
+      expect(state.tasks[0]?.stdout.join('')).toContain('/tmp')
+    }).pipe(Effect.provide(TestLayer)),
+  )
 })
