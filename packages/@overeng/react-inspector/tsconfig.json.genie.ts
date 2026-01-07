@@ -11,6 +11,7 @@ export default tsconfigJSON({
     ...reactJsx,
     allowJs: true,
     checkJs: false,
+    composite: true,
     strict: false,
     noImplicitAny: false,
     strictNullChecks: false,
