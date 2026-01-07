@@ -137,6 +137,12 @@ Debug utilities:
 - `EffectUtilsWorkspace` - Workspace root service backed by `WORKSPACE_ROOT`
 - `cmd` - Command runner returning exit codes with optional logging/retention
 - `cmdText` - Command runner returning stdout as text
+- `TaskRunner` - Concurrent task execution with structured state management
+- `printFinalSummary` - Print task summary and fail if any task failed
+- `renderLoop` - Background render loop for TUI output
+- `TaskState` - Schema for individual task state
+- `TaskRunnerState` - Schema for overall runner state
+- `TasksFailedError` - Error type when tasks fail
 
 ### File Logger
 
@@ -207,6 +213,59 @@ const WorkspaceLayer = Layer.mergeAll(
   EffectUtilsWorkspace.toCwd('packages'),
 )
 ```
+
+### TaskRunner
+
+`TaskRunner` provides concurrent task execution with structured state management. It decouples task execution from output rendering, enabling clean TUI output without interleaved logs.
+
+```ts
+import { NodeContext } from '@effect/platform-node'
+import { Effect, Layer, Stream } from 'effect'
+import { CurrentWorkingDirectory, printFinalSummary, TaskRunner } from '@overeng/utils/node'
+
+const program = Effect.gen(function* () {
+  const runner = yield* TaskRunner
+
+  // Register tasks upfront
+  yield* runner.register({ id: 'build', name: 'Build project' })
+  yield* runner.register({ id: 'lint', name: 'Lint code' })
+  yield* runner.register({ id: 'test', name: 'Run tests' })
+
+  // Optional: Start render loop for real-time TUI output
+  yield* runner.changes.pipe(
+    Stream.debounce('50 millis'),
+    Stream.runForEach(() =>
+      Effect.gen(function* () {
+        const output = yield* runner.render()
+        process.stdout.write('\x1B[2J\x1B[H' + output + '\n')
+      }),
+    ),
+    Effect.fork,
+  )
+
+  // Run tasks concurrently - tasks update state but never fail
+  yield* runner.runAll([
+    runner.runTask({ id: 'build', command: 'npm', args: ['run', 'build'] }),
+    runner.runTask({ id: 'lint', command: 'npm', args: ['run', 'lint'] }),
+  ])
+
+  // Run dependent tasks after
+  yield* runner.runTask({ id: 'test', command: 'npm', args: ['test'] })
+
+  // Print summary and fail if any task failed
+  yield* printFinalSummary
+}).pipe(
+  Effect.provide(TaskRunner.live),
+  Effect.provide(Layer.mergeAll(NodeContext.layer, CurrentWorkingDirectory.live)),
+)
+```
+
+Key features:
+
+- Tasks update state but never fail the Effect - use `checkForFailures()` at the end
+- Output (stdout/stderr) is captured and buffered per-task
+- State changes available via `SubscriptionRef` for real-time rendering
+- Built-in render function produces terminal-friendly output with status icons
 
 ### Browser (`@overeng/utils/browser`)
 

@@ -5,10 +5,16 @@ import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import type * as CommandExecutor from '@effect/platform/CommandExecutor'
 import type { PlatformError } from '@effect/platform/Error'
 import type { Scope } from 'effect'
-import { Cause, Console, Duration, Effect, Layer, Logger, LogLevel, Schema } from 'effect'
+import { Cause, Console, Duration, Effect, Layer, Logger, LogLevel, Schema, Stream } from 'effect'
 
 import { genieCommand } from '@overeng/genie/cli'
-import { CurrentWorkingDirectory, cmd, cmdStart } from '@overeng/utils/node'
+import {
+  CurrentWorkingDirectory,
+  cmd,
+  cmdStart,
+  printFinalSummary,
+  TaskRunner,
+} from '@overeng/utils/node'
 
 const IS_CI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true'
 
@@ -179,19 +185,25 @@ const lintFixOption = Options.boolean('fix').pipe(
 
 const lintCommand = Command.make('lint', { fix: lintFixOption }, ({ fix }) =>
   Effect.gen(function* () {
-    yield* ciGroup(fix ? 'Formatting with oxfmt' : 'Formatting check with oxfmt')
-    const oxfmtArgs = ['-c', `${OXC_CONFIG_PATH}/fmt.jsonc`, ...(fix ? ['.'] : ['--check', '.'])]
-    yield* runCommand({ command: 'oxfmt', args: oxfmtArgs })
-    yield* ciGroupEnd
+    yield* ciGroup(fix ? 'Formatting + Linting (with fixes)' : 'Formatting + Linting')
 
-    yield* ciGroup('Linting with oxlint')
+    const oxfmtArgs = ['-c', `${OXC_CONFIG_PATH}/fmt.jsonc`, ...(fix ? ['.'] : ['--check', '.'])]
     const oxlintArgs = [
       '-c',
       `${OXC_CONFIG_PATH}/lint.jsonc`,
       '--import-plugin',
+      '--deny-warnings',
       ...(fix ? ['--fix'] : []),
     ]
-    yield* runCommand({ command: 'oxlint', args: oxlintArgs })
+
+    yield* Effect.all(
+      [
+        runCommand({ command: 'oxfmt', args: oxfmtArgs }),
+        runCommand({ command: 'oxlint', args: oxlintArgs }),
+      ],
+      { concurrency: 'unbounded' },
+    )
+
     yield* ciGroupEnd
     yield* Console.log('✓ Lint complete')
   }),
@@ -300,36 +312,100 @@ const cleanCommand = Command.make('clean', {}, () =>
 // Check Command
 // -----------------------------------------------------------------------------
 
+/**
+ * Check command with structured task execution.
+ * In CI mode, uses sequential execution with groups. In interactive mode, uses TaskRunner for clean output.
+ */
 const checkCommand = Command.make('check', {}, () =>
   Effect.gen(function* () {
-    yield* Console.log('Running all checks...\n')
-
-    yield* ciGroup('Genie check')
-    yield* runCommand({ command: 'mono', args: ['genie', '--check'] })
-    yield* ciGroupEnd
-
-    yield* ciGroup('Type checking')
-    yield* runCommand({ command: 'tsc', args: ['--build', 'tsconfig.all.json'] })
-    yield* ciGroupEnd
-
-    yield* ciGroup('Format + Lint')
-    yield* runCommand({
-      command: 'oxfmt',
-      args: ['-c', `${OXC_CONFIG_PATH}/fmt.jsonc`, '--check', '.'],
-    })
-    yield* runCommand({
-      command: 'oxlint',
-      args: ['-c', `${OXC_CONFIG_PATH}/lint.jsonc`, '--import-plugin'],
-    })
-    yield* ciGroupEnd
-
-    yield* ciGroup('Running tests')
-    yield* runCommand({ command: 'vitest', args: ['run'] })
-    yield* ciGroupEnd
-
-    yield* Console.log('\n✓ All checks passed')
+    if (IS_CI) {
+      yield* checkCommandCI
+    } else {
+      yield* checkCommandInteractive
+    }
   }),
 ).pipe(Command.withDescription('Run all checks (genie + typecheck + format + lint + test)'))
+
+/** CI mode: sequential with groups (GitHub Actions compatible) */
+const checkCommandCI = Effect.gen(function* () {
+  yield* Console.log('Running all checks...\n')
+
+  yield* ciGroup('Genie check')
+  yield* runCommand({ command: 'mono', args: ['genie', '--check'] })
+  yield* ciGroupEnd
+
+  yield* ciGroup('Type checking')
+  yield* runCommand({ command: 'tsc', args: ['--build', 'tsconfig.all.json'] })
+  yield* ciGroupEnd
+
+  yield* ciGroup('Format + Lint')
+  yield* Effect.all(
+    [
+      runCommand({
+        command: 'oxfmt',
+        args: ['-c', `${OXC_CONFIG_PATH}/fmt.jsonc`, '--check', '.'],
+      }),
+      runCommand({
+        command: 'oxlint',
+        args: ['-c', `${OXC_CONFIG_PATH}/lint.jsonc`, '--import-plugin', '--deny-warnings'],
+      }),
+    ],
+    { concurrency: 'unbounded' },
+  )
+  yield* ciGroupEnd
+
+  yield* ciGroup('Running tests')
+  yield* runCommand({ command: 'vitest', args: ['run'] })
+  yield* ciGroupEnd
+
+  yield* Console.log('\n✓ All checks passed')
+})
+
+/** Interactive mode: concurrent with structured output via TaskRunner */
+const checkCommandInteractive = Effect.gen(function* () {
+  const runner = yield* TaskRunner
+
+  /** Register all tasks upfront */
+  yield* runner.register({ id: 'genie', name: 'Genie check' })
+  yield* runner.register({ id: 'tsc', name: 'Type checking' })
+  yield* runner.register({ id: 'oxfmt', name: 'Formatting (oxfmt)' })
+  yield* runner.register({ id: 'oxlint', name: 'Linting (oxlint)' })
+  yield* runner.register({ id: 'test', name: 'Tests' })
+
+  /** Start render loop in background */
+  yield* runner.changes.pipe(
+    Stream.debounce('50 millis'),
+    Stream.runForEach(() =>
+      Effect.gen(function* () {
+        const output = yield* runner.render()
+        process.stdout.write('\x1B[2J\x1B[H')
+        process.stdout.write(output + '\n')
+      }),
+    ),
+    Effect.fork,
+  )
+
+  /** Run genie, tsc, and lint in parallel */
+  yield* runner.runAll([
+    runner.runTask({ id: 'genie', command: 'mono', args: ['genie', '--check'] }),
+    runner.runTask({ id: 'tsc', command: 'tsc', args: ['--build', 'tsconfig.all.json'] }),
+    runner.runTask({
+      id: 'oxfmt',
+      command: 'oxfmt',
+      args: ['-c', `${OXC_CONFIG_PATH}/fmt.jsonc`, '--check', '.'],
+    }),
+    runner.runTask({
+      id: 'oxlint',
+      command: 'oxlint',
+      args: ['-c', `${OXC_CONFIG_PATH}/lint.jsonc`, '--import-plugin', '--deny-warnings'],
+    }),
+  ])
+
+  /** Run tests after other checks pass */
+  yield* runner.runTask({ id: 'test', command: 'vitest', args: ['run'] })
+
+  yield* printFinalSummary
+}).pipe(Effect.provide(TaskRunner.live))
 
 // -----------------------------------------------------------------------------
 // Context Command

@@ -13,3 +13,6 @@ export * from './FileLogger.ts'
 
 /** Debug utilities for inspecting active handles preventing process exit */
 export * from './ActiveHandlesDebugger.ts'
+
+/** Concurrent task execution with structured state management */
+export * from './task-runner.ts'
