@@ -48,6 +48,7 @@ export const TitleWrite = Schema.Struct({
 
 export type TitleWrite = typeof TitleWrite.Type
 
+/** Transforms plain string into a title write payload */
 export const TitleWriteFromString = Schema.transform(Schema.String, TitleWrite, {
   strict: false,
   decode: (str) => ({
@@ -136,6 +137,7 @@ export const RichTextWrite = Schema.Struct({
 
 export type RichTextWrite = typeof RichTextWrite.Type
 
+/** Transforms plain string into a rich text write payload */
 export const RichTextWriteFromString = Schema.transform(Schema.String, RichTextWrite, {
   strict: false,
   decode: (str) => ({

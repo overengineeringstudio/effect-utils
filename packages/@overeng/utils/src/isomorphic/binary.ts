@@ -1,3 +1,4 @@
+/** Encodes a 32-bit number to 4 bytes (big-endian) */
 export const encodeNumberTo4Bytes = (num: number): Uint8Array<ArrayBuffer> => {
   const bytes = new Uint8Array(4)
   bytes[0] = num >> 24
@@ -7,10 +8,12 @@ export const encodeNumberTo4Bytes = (num: number): Uint8Array<ArrayBuffer> => {
   return bytes
 }
 
+/** Decodes 4 bytes to a 32-bit number (big-endian) */
 export const decode4BytesToNumber = (bytes: Uint8Array<ArrayBuffer>): number => {
   return (bytes[0]! << 24) | (bytes[1]! << 16) | (bytes[2]! << 8) | bytes[3]!
 }
 
+/** Concatenates multiple byte arrays into a single Uint8Array */
 export const concatBytes = (
   ...arrays: (Uint8Array<ArrayBuffer> | Uint8ClampedArray)[]
 ): Uint8Array<ArrayBuffer> => {

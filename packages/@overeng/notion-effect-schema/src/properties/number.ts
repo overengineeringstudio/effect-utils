@@ -47,6 +47,7 @@ export const NumberWrite = Schema.Struct({
 
 export type NumberWrite = typeof NumberWrite.Type
 
+/** Transform schema for converting number to NumberWrite payload */
 export const NumberWriteFromNumber = Schema.transform(Schema.NullOr(Schema.Number), NumberWrite, {
   strict: false,
   decode: (number) => ({ number }),

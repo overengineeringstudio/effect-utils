@@ -5,6 +5,7 @@
  * Based on user agent parsing for identifying browser environments.
  */
 
+/** Detected browser type from user agent parsing */
 export type DetectedBrowser = 'Opera' | 'Chrome' | 'Safari' | 'Firefox' | 'Edge' | 'Unknown'
 
 /**

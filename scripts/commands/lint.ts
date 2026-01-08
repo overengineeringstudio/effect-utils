@@ -10,6 +10,7 @@ const fixOption = Options.boolean('fix').pipe(
   Options.withDefault(false),
 )
 
+/** CLI command for checking formatting, running oxlint, and verifying genie coverage */
 export const lintCommand = Command.make('lint', { fix: fixOption }, ({ fix }) =>
   Effect.gen(function* () {
     yield* ciGroup(fix ? 'Formatting + Linting (with fixes)' : 'Formatting + Linting')

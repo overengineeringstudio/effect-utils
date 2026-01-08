@@ -123,6 +123,7 @@ const getExportDeclaration = (node: any): any => {
   return null
 }
 
+/** ESLint rule enforcing exported declarations come before non-exported ones */
 export const exportsFirstRule = {
   meta: {
     type: 'suggestion' as const,

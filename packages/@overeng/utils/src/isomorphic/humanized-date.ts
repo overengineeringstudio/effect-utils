@@ -25,6 +25,7 @@ const intlDateTimeFormatRelative = {
   }),
 }
 
+/** Formats a timestamp as a relative or absolute date string */
 export const humanizedDate = ({
   timestamp,
   nowMs,
@@ -51,6 +52,7 @@ export const humanizedDate = ({
   }
 }
 
+/** Formats a duration in milliseconds as a human-readable string */
 export const humanizedDuration = ({
   durationMs,
   style = 'abbreviated',

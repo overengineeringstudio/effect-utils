@@ -46,6 +46,7 @@ export const CheckboxWrite = Schema.Struct({
 
 export type CheckboxWrite = typeof CheckboxWrite.Type
 
+/** Transform schema for converting boolean to CheckboxWrite payload */
 export const CheckboxWriteFromBoolean = Schema.transform(Schema.Boolean, CheckboxWrite, {
   strict: false,
   decode: (checkbox) => ({ checkbox }),

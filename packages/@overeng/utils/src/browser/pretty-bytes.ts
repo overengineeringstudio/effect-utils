@@ -29,7 +29,6 @@ export const prettyBytes = (bytes: number): string => {
 
   const exponent = Math.min(Math.floor(Math.log10(absoluteBytes) / 3), UNITS.length - 1)
   const value = absoluteBytes / 1000 ** exponent
-  // biome-ignore lint/style/noNonNullAssertion: exponent is guaranteed to be within bounds
   const unit = UNITS[exponent]!
 
   const formatted = value.toLocaleString('en-US', {

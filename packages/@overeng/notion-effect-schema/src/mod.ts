@@ -118,6 +118,7 @@ function multiSelect<TName extends string>(nameSchema?: Schema.Schema<TName>) {
   return nameSchema ? MultiSelect.asOptionsNamed(nameSchema) : MultiSelect.raw
 }
 
+/** Collection of Effect schemas for Notion property types */
 export const NotionSchema = {
   number: Num.asNumber,
   numberOption: Num.asOption,

@@ -14,6 +14,7 @@
  * MIT License
  */
 
+/** Collision-resistant unique identifier string */
 export type Cuid = string
 
 const lim = 2 ** 32 - 1
@@ -50,6 +51,7 @@ const safeCounter = () => {
   return c - 1
 }
 
+/** Generates a collision-resistant unique identifier suitable for element IDs */
 export const cuid = (): Cuid => {
   // Starting with a lowercase letter makes
   // it HTML element ID friendly.
@@ -70,6 +72,7 @@ export const cuid = (): Cuid => {
   return letter + timestamp + counter + print + random
 }
 
+/** Generates a short collision-resistant slug (7-10 characters) */
 export const slug = () => {
   const date = Date.now().toString(36)
   const counter = safeCounter().toString(36).slice(-4)
@@ -79,12 +82,14 @@ export const slug = () => {
   return date.slice(-2) + counter + print + random
 }
 
+/** Checks if a string is a valid CUID (starts with 'c') */
 export const isCuid = (stringToCheck: string) => {
   if (typeof stringToCheck !== 'string') return false
   if (stringToCheck.startsWith('c')) return true
   return false
 }
 
+/** Checks if a string is a valid CUID slug (7-10 characters) */
 export const isSlug = (stringToCheck: string) => {
   if (typeof stringToCheck !== 'string') return false
   const stringLength = stringToCheck.length

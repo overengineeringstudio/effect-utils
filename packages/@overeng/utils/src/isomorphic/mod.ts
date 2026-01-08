@@ -38,8 +38,7 @@ export const isUndefined = <T>(value: T | undefined): value is undefined => valu
 /** Type guard for filtering out null values. */
 export const isNotNull = <T>(value: T | null): value is T => value !== null
 
-/** Type guard for checking if a value is null or undefined (nil). */
-// biome-ignore lint/suspicious/noExplicitAny: type guard needs to accept any value
+/** Type guard for checking if a value is null or undefined (nil) */
 export const isNil = (value: any): value is null | undefined =>
   value === null || value === undefined
 

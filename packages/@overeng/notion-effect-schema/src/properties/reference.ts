@@ -52,6 +52,7 @@ export const PeopleWrite = Schema.Struct({
 
 export type PeopleWrite = typeof PeopleWrite.Type
 
+/** Transforms user IDs array into a people write payload */
 export const PeopleWriteFromIds = Schema.transform(Schema.Array(NotionUUID), PeopleWrite, {
   strict: false,
   decode: (ids) => ({
@@ -154,6 +155,7 @@ export const RelationWrite = Schema.Struct({
 
 export type RelationWrite = typeof RelationWrite.Type
 
+/** Transforms page IDs array into a relation write payload */
 export const RelationWriteFromIds = Schema.transform(Schema.Array(NotionUUID), RelationWrite, {
   strict: false,
   decode: (ids) => ({
@@ -343,6 +345,7 @@ export const FilesWrite = Schema.Struct({
 
 export type FilesWrite = typeof FilesWrite.Type
 
+/** Transforms external URLs array into a files write payload */
 export const FilesWriteFromUrls = Schema.transform(Schema.Array(Schema.String), FilesWrite, {
   strict: false,
   decode: (urls) => ({

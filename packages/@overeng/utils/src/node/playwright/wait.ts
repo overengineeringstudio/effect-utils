@@ -11,6 +11,7 @@
 
 import { type Duration, Effect, Schedule, Schema } from 'effect'
 
+/** Error thrown when a polling wait operation times out */
 export class PwWaitTimeoutError extends Schema.TaggedError<PwWaitTimeoutError>(
   'PwWaitTimeoutError',
 )('PwWaitTimeoutError', {

@@ -110,6 +110,7 @@ const contextExamplesCommand = Command.make('examples', {}, () =>
   }),
 ).pipe(Command.withDescription('Run all context socket example scripts'))
 
+/** CLI command for running context reference material subcommands */
 export const contextCommand = Command.make('context').pipe(
   Command.withSubcommands([contextExamplesCommand]),
   Command.withDescription('Run commands for context reference material'),

@@ -91,6 +91,7 @@ export const DateWrite = Schema.Struct({
 
 export type DateWrite = typeof DateWrite.Type
 
+/** Transform schema for converting start date string to DateWrite payload */
 export const DateWriteFromStart = Schema.transform(Schema.String, DateWrite, {
   strict: false,
   decode: (start) => ({ date: { start } }),

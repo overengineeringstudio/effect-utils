@@ -27,5 +27,6 @@
  * ```
  */
 
+/** Claude CLI LanguageModel provider for Effect AI */
 export * as ClaudeCli from './claude-cli.ts'
 export * from './errors.ts'

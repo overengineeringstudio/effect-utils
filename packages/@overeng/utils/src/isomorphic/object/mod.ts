@@ -7,6 +7,7 @@ export * from './pick.ts'
 
 type ValueOfRecord<R extends Record<any, any>> = R extends Record<any, infer V> ? V : never
 
+/** Maps over object values while preserving keys */
 export const mapObjectValues = <O_In extends Record<string, any>, V_Out>({
   obj,
   mapValue,
@@ -23,9 +24,11 @@ export const mapObjectValues = <O_In extends Record<string, any>, V_Out>({
 /** Type-safe Object.entries return type */
 export type Entries<T> = { [K in keyof T]: [K, T[K]] }[keyof T][]
 
+/** Type-safe wrapper around Object.entries */
 export const objectEntries = <T extends Record<string, any>>(obj: T): Entries<T> =>
   Object.entries(obj) as Entries<T>
 
+/** Creates an object where each key maps to itself */
 export const keyObjectFromObject = <TObj extends Record<string, any>>(
   obj: TObj,
 ): { [K in keyof TObj]: K } =>
@@ -39,9 +42,11 @@ export type UndefinedFieldsToNull<T> = PrettifyFlat<{
   [K in keyof T]-?: undefined extends T[K] ? (T[K] & {}) | null : T[K]
 }>
 
+/** Converts undefined values in an object to null */
 export const undefinedFieldsToNull = <T extends {}>(obj: T): UndefinedFieldsToNull<T> =>
   Object.fromEntries(Object.entries(obj).map(([key, val]) => [key, val ?? null])) as any
 
+/** Creates a new object with all keys prefixed by the given string */
 export const objectWithKeyPrefix = <TObj extends Record<string, any>, TPrefix extends string>({
   obj,
   prefix,

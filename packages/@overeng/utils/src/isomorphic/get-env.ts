@@ -11,6 +11,7 @@ const getImportMetaEnv = (): ImportMetaEnvRecord | undefined => {
   return undefined
 }
 
+/** Retrieves an environment variable from import.meta.env or process.env */
 export const getEnv = (varName: string): string | undefined => {
   const importMetaEnv = getImportMetaEnv()
   const fromImportMeta = importMetaEnv?.[varName]

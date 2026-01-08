@@ -153,6 +153,7 @@ export function query<TProperties, I, R>(
   NotionApiError | PageDecodeError,
   NotionConfig | HttpClient.HttpClient | R
 >
+// oxlint-disable-next-line overeng/jsdoc-require-exports -- JSDoc is on first overload signature
 export function query<TProperties, I, R>(
   opts: QueryDatabaseOptions | QueryDatabaseWithSchemaOptions<TProperties, I, R>,
 ): Effect.Effect<
@@ -210,6 +211,7 @@ export function queryStream<TProperties, I, R>(
   NotionApiError | PageDecodeError,
   NotionConfig | HttpClient.HttpClient | R
 >
+// oxlint-disable-next-line overeng/jsdoc-require-exports -- JSDoc is on first overload signature
 export function queryStream<TProperties, I, R>(
   opts:
     | Omit<QueryDatabaseOptions, 'startCursor'>

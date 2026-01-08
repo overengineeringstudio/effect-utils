@@ -21,6 +21,7 @@ const watchOption = Options.boolean('watch').pipe(
   Options.withDefault(false),
 )
 
+/** CLI command for running unit, integration, or all tests with optional watch mode */
 export const testCommand = Command.make(
   'test',
   { unit: unitOption, integration: integrationOption, watch: watchOption },

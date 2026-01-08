@@ -1,3 +1,4 @@
+/** Wrapper for a single item with map and filter operations */
 export class SingleItem<T> {
   public item: T
 
@@ -11,4 +12,5 @@ export class SingleItem<T> {
     fn(this.item) ? this : new SingleItem(undefined)
 }
 
+/** Creates a SingleItem wrapper for pipeline-style transformations */
 export const singleItem = <T>(item: T) => new SingleItem(item)

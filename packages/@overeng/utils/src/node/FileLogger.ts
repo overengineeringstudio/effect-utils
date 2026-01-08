@@ -52,6 +52,7 @@ export interface MakeFileLoggerOptions {
   readonly colors?: boolean
 }
 
+/** Creates a Layer that replaces the default logger with a pretty-printed file logger */
 export const makeFileLogger = ({ logFilePath, threadName, colors }: MakeFileLoggerOptions) =>
   Layer.unwrapScoped(
     Effect.gen(function* () {
@@ -128,7 +129,6 @@ export const structuredMessage = (input: unknown): unknown => {
   }
 }
 
-// biome-ignore lint/suspicious/noExplicitAny: variadic args needed for console.error compatibility
 const consoleLogToString = (...inputs: any[]) => {
   if (inputs.length === 0) return ''
   const [first, ...rest] = inputs
@@ -170,13 +170,11 @@ export const prettyLoggerTty = (options: {
     ({ annotations, cause, date, fiberId, logLevel, message: message_, spans }) => {
       let str = ''
 
-      // biome-ignore lint/suspicious/noExplicitAny: variadic args needed for logger compatibility
       const log = (...inputs: any[]) => {
         str += `${consoleLogToString(...inputs)}\n`
         options.onLog?.(str)
       }
 
-      // biome-ignore lint/suspicious/noExplicitAny: variadic args needed for logger compatibility
       const logIndented = (...inputs: any[]) => {
         str += `${consoleLogToString(...inputs).replace(/^/gm, '  ')}\n`
         options.onLog?.(str)

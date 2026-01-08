@@ -115,6 +115,7 @@ export function retrieve<TProperties, I, R>(
   NotionApiError | PageDecodeError,
   NotionConfig | HttpClient.HttpClient | R
 >
+// oxlint-disable-next-line overeng/jsdoc-require-exports -- JSDoc is on first overload signature
 export function retrieve<TProperties, I, R>(
   opts: RetrievePageOptions | RetrievePageWithSchemaOptions<TProperties, I, R>,
 ): Effect.Effect<

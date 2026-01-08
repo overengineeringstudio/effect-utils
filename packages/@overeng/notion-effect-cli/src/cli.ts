@@ -20,6 +20,7 @@ import { formatCode, writeSchemaToFile } from './output.ts'
 // Exported Errors
 // -----------------------------------------------------------------------------
 
+/** Error thrown when a generated schema file cannot be parsed for drift detection */
 export class GeneratedSchemaFileParseError extends Schema.TaggedError<GeneratedSchemaFileParseError>()(
   'GeneratedSchemaFileParseError',
   {
@@ -28,6 +29,7 @@ export class GeneratedSchemaFileParseError extends Schema.TaggedError<GeneratedS
   },
 ) {}
 
+/** Error thrown when generated schema differs from existing file during check mode */
 export class SchemaDriftDetectedError extends Schema.TaggedError<SchemaDriftDetectedError>()(
   'SchemaDriftDetectedError',
   {

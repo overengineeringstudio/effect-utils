@@ -15,6 +15,7 @@ const cleanOption = Options.boolean('clean').pipe(
   Options.withDefault(false),
 )
 
+/** CLI command for TypeScript type checking with optional watch mode and clean build */
 export const tsCommand = Command.make(
   'ts',
   { watch: watchOption, clean: cleanOption },

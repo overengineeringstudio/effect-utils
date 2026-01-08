@@ -87,11 +87,8 @@ export type OxlintConfigArgs = {
 /** Options for customizing oxlint config generation (reserved for future use) */
 export type OxlintConfigOptions = Record<string, never>
 
-/**
- * Generate an oxlint configuration file (.jsonc).
- * @see https://oxc.rs/docs/guide/usage/linter/configuration
- */
-// oxlint-disable-next-line overeng/named-args -- DSL-style API: fn(config, options?)
+/** Generates an oxlint configuration file (.jsonc) from typed arguments */
+// oxlint-disable-next-line overeng/jsdoc-require-exports, overeng/named-args -- JSDoc above; DSL-style API
 export const oxlintConfig = (args: OxlintConfigArgs, _options?: OxlintConfigOptions): string => {
   const config: Record<string, unknown> = {
     $schema:
