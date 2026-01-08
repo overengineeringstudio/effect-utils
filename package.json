@@ -15,12 +15,17 @@
     "@effect/language-service": "catalog:",
     "@effect/platform": "catalog:",
     "@effect/platform-node": "catalog:",
+    "@effect/rpc": "catalog:",
     "@overeng/utils": "workspace:*",
     "effect": "catalog:",
     "oxfmt": "0.21.0",
     "oxlint": "1.36.0",
     "typescript": "catalog:",
     "vitest": "catalog:"
+  },
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten"
   },
   "catalog": {
     "@opentelemetry/api": "1.9.0",

@@ -24,5 +24,9 @@
     "@effect/ai": ">=0.32.0",
     "@effect/platform": ">=0.93.0",
     "effect": ">=3.19.0"
+  },
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten"
   }
 }

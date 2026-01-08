@@ -73,6 +73,7 @@ export const rootPackageJson = {
     '@effect/language-service': catalogRef,
     '@effect/platform': catalogRef,
     '@effect/platform-node': catalogRef,
+    '@effect/rpc': catalogRef,
     '@overeng/utils': 'workspace:*',
     effect: catalogRef,
     oxfmt: '0.21.0',

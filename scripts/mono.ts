@@ -13,6 +13,7 @@ import {
   cleanCommand,
   contextCommand,
   lintCommand,
+  nixCommand,
   testCommand,
   tsCommand,
 } from './commands/index.js'
@@ -26,6 +27,7 @@ const command = Command.make('mono').pipe(
     cleanCommand,
     checkCommand,
     genieCommand,
+    nixCommand,
     contextCommand,
   ]),
   Command.withDescription('Monorepo management CLI'),

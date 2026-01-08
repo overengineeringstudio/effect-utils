@@ -9,3 +9,5 @@ inputs:
   pnpm-compose:
     url: path:./packages/@overeng/pnpm-compose
     flake: false
+  genie:
+    url: path:./packages/@overeng/genie

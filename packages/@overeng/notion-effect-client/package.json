@@ -27,5 +27,9 @@
   "peerDependencies": {
     "@effect/platform": "catalog:",
     "effect": "catalog:"
+  },
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten"
   }
 }

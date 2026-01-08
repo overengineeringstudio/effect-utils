@@ -13,5 +13,9 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "typescript": "^5.9.3"
+  },
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten"
   }
 }

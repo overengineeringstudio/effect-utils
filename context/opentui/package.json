@@ -13,5 +13,9 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "@types/react": "catalog:"
+  },
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten"
   }
 }

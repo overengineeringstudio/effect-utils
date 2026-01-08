@@ -33,7 +33,7 @@ export const loadConfig = (cwd: string) =>
 
     // Dynamic import the config file
     const configModule = yield* Effect.tryPromise({
-      // oxlint-ignore-next-line no-dynamic-require -- runtime config loading requires dynamic import
+      // oxlint-disable-next-line import/no-dynamic-require -- runtime config loading requires dynamic import
       try: () => import(configPath),
       catch: (error) => new ConfigLoadError({ path: configPath, cause: error }),
     })

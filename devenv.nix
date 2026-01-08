@@ -1,6 +1,7 @@
 { pkgs, inputs, ... }:
 let
   playwrightDriver = inputs.playwright-web-flake.packages.${pkgs.system}.playwright-driver;
+  genie = inputs.genie.packages.${pkgs.system}.default;
 in
 {
   # Apply pnpm guard overlay from local pnpm-compose package (fetched via devenv.yaml with flake: false)
@@ -13,6 +14,7 @@ in
     pkgs.pnpm
     pkgs.nodejs_24
     pkgs.bun
+    genie
   ];
 
   env = {

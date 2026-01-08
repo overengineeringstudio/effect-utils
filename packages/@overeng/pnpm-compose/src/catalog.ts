@@ -38,7 +38,7 @@ export const readGenieRepoCatalog = ({
 
     // Dynamic import the genie/repo.ts
     const genieModule = yield* Effect.tryPromise({
-      // oxlint-ignore-next-line no-dynamic-require -- intentional cache-busting for runtime config
+      // oxlint-disable-next-line import/no-dynamic-require -- intentional cache-busting for runtime config
       try: () => import(`${geniePath}?t=${Date.now()}`),
       catch: (error) => new CatalogReadError({ repoName, path: geniePath, cause: error }),
     })
@@ -139,7 +139,7 @@ export const findCatalogConflicts = (catalogs: RepoCatalog[]): CatalogConflict[]
     if (uniqueVersions.size > 1) {
       // Find highest version (simple semver comparison)
       const highestVersion = A.reduce(Array.from(uniqueVersions), '0.0.0', (highest, version) =>
-        compareVersions(version, highest) > 0 ? version : highest,
+        compareVersions({ a: version, b: highest }) > 0 ? version : highest,
       )
 
       conflicts.push({
@@ -160,7 +160,7 @@ const parseVersion = (v: string) => {
 }
 
 /** Simple semver comparison (returns positive if a > b) */
-const compareVersions = (a: string, b: string): number => {
+const compareVersions = ({ a, b }: { a: string; b: string }): number => {
   const aParts = parseVersion(a)
   const bParts = parseVersion(b)
 

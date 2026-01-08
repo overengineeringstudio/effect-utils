@@ -178,7 +178,10 @@ export type PackageJSONOptions = {
 }
 
 /**
- * Creates a package.json configuration string
+ * Creates a package.json configuration string.
+ *
+ * Generated files include a `$genie` field which is enriched by cli.ts with source file
+ * information. The field appears at the end after oxfmt sorting (known fields first).
  *
  * @example
  * ```ts
@@ -201,5 +204,11 @@ export const packageJSON = (args: PackageJSONArgs, options?: PackageJSONOptions)
     }
   }
 
-  return options?.stringify?.(args) ?? JSON.stringify(args, null, 2)
+  // Add marker field - cli.ts enriches this with source file info
+  const withMarker = {
+    $genie: true,
+    ...args,
+  }
+
+  return options?.stringify?.(withMarker) ?? JSON.stringify(withMarker, null, 2)
 }

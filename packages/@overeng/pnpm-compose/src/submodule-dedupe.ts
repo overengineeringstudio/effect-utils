@@ -236,7 +236,13 @@ export const addToGitExclude = ({
   }).pipe(Effect.withSpan('addToGitExclude'))
 
 /** Remove submodule entry from .gitmodules file */
-export const removeFromGitmodules = (repoRoot: string, submodulePath: string) =>
+export const removeFromGitmodules = ({
+  repoRoot,
+  submodulePath,
+}: {
+  repoRoot: string
+  submodulePath: string
+}) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const gitmodulesPath = `${repoRoot}/.gitmodules`
@@ -285,7 +291,13 @@ export const removeFromGitmodules = (repoRoot: string, submodulePath: string) =>
   }).pipe(Effect.withSpan('removeFromGitmodules'))
 
 /** Unregister submodule from git index */
-export const unregisterSubmodule = (repoRoot: string, submodulePath: string) =>
+export const unregisterSubmodule = ({
+  repoRoot,
+  submodulePath,
+}: {
+  repoRoot: string
+  submodulePath: string
+}) =>
   Effect.gen(function* () {
     // Use git rm --cached to unregister the submodule from git's index
     const command = Command.make('git', 'rm', '--cached', submodulePath).pipe(

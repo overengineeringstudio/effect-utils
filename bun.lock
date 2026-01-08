@@ -9,6 +9,7 @@
         "@effect/language-service": "catalog:",
         "@effect/platform": "catalog:",
         "@effect/platform-node": "catalog:",
+        "@effect/rpc": "catalog:",
         "@overeng/utils": "workspace:*",
         "effect": "catalog:",
         "oxfmt": "0.21.0",

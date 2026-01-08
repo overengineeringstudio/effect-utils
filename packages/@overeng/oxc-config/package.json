@@ -14,5 +14,9 @@
     "typescript": "catalog:",
     "typescript-eslint": "^8.34.0",
     "vitest": "catalog:"
+  },
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten"
   }
 }

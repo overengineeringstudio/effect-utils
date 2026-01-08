@@ -1,4 +1,4 @@
-# Nix derivation that builds pnpm-compose CLI binary.
+# Nix derivation that builds genie CLI binary.
 # Uses bun build --compile for native platform.
 { pkgs, pkgsUnstable, src }:
 
@@ -19,7 +19,7 @@ let
   # Fixed-output derivation to fetch bun dependencies
   # Uses network access but produces deterministic output verified by hash
   bunDeps = pkgs.stdenvNoCC.mkDerivation {
-    name = "pnpm-compose-bun-deps";
+    name = "genie-bun-deps";
 
     src = depFiles;
 
@@ -30,6 +30,7 @@ let
     outputHashAlgo = "sha256";
     # Update when bun.lock changes. Run: nix build .#default -L
     # then copy the "got: sha256-..." value
+    # NOTE: This hash should match pnpm-compose since they share the same bun.lock
     outputHash = "sha256-QoYHZF4cUW57wGPes0QXDNP8t8yge0jDB5inphfj0SA=";
 
     buildPhase = ''
@@ -51,7 +52,7 @@ let
   };
 in
 pkgs.stdenv.mkDerivation {
-  name = "pnpm-compose";
+  name = "genie";
 
   inherit src;
 
@@ -77,15 +78,15 @@ pkgs.stdenv.mkDerivation {
     export BUN_TMPDIR="$PWD/.bun-tmp"
     mkdir -p "$HOME" "$BUN_INSTALL" "$BUN_TMPDIR"
 
-    build_output="$TMPDIR/pnpm-compose"
+    build_output="$TMPDIR/genie"
 
     # Build native binary
-    bun build packages/@overeng/pnpm-compose/src/cli.ts \
+    bun build packages/@overeng/genie/src/cli.ts \
       --compile \
       --outfile="$build_output"
 
     if [ ! -s "$build_output" ]; then
-      echo "bun build produced an empty pnpm-compose binary" >&2
+      echo "bun build produced an empty genie binary" >&2
       exit 1
     fi
 
@@ -96,7 +97,7 @@ pkgs.stdenv.mkDerivation {
     runHook preInstall
 
     mkdir -p $out/bin
-    install -m 755 "$TMPDIR/pnpm-compose" $out/bin/pnpm-compose
+    install -m 755 "$TMPDIR/genie" $out/bin/genie
 
     runHook postInstall
   '';

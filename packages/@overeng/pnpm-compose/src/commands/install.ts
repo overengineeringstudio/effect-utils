@@ -238,18 +238,23 @@ export const installCommand = Cli.Command.make(
         }
 
         yield* Console.log('Running pnpm install...')
-        yield* runCommand('pnpm', ['install'], cwd)
+        yield* runCommand({ cmd: 'pnpm', args: ['install'], cwd })
         yield* Console.log('  ✓ Done\n')
 
         yield* Console.log('Symlinking composed repo packages...')
         for (const link of expectedSymlinks) {
-          yield* createSymlink(fs, link.targetPath, link.sourcePath, link.pkgName)
+          yield* createSymlink({
+            fs,
+            targetPath: link.targetPath,
+            sourcePath: link.sourcePath,
+            pkgName: link.pkgName,
+          })
           yield* Console.log(`  ✓ ${link.pkgName} → ${link.repoPath}/${link.relativePath}`)
         }
         yield* Console.log('')
 
         yield* Console.log('Updating lockfile...')
-        yield* runCommand('pnpm', ['install', '--lockfile-only'], cwd)
+        yield* runCommand({ cmd: 'pnpm', args: ['install', '--lockfile-only'], cwd })
         yield* Console.log('  ✓ Done\n')
 
         yield* Console.log('✓ Install complete')
@@ -259,13 +264,18 @@ export const installCommand = Cli.Command.make(
       // Case 2: Incremental fix (node_modules exists, some symlinks wrong)
       yield* Console.log(`Fixing ${wrongSymlinks.length} symlink(s)...`)
       for (const link of wrongSymlinks) {
-        yield* createSymlink(fs, link.targetPath, link.sourcePath, link.pkgName)
+        yield* createSymlink({
+          fs,
+          targetPath: link.targetPath,
+          sourcePath: link.sourcePath,
+          pkgName: link.pkgName,
+        })
         yield* Console.log(`  ✓ ${link.pkgName} → ${link.repoPath}/${link.relativePath}`)
       }
       yield* Console.log('')
 
       yield* Console.log('Updating lockfile...')
-      yield* runCommand('pnpm', ['install', '--lockfile-only'], cwd)
+      yield* runCommand({ cmd: 'pnpm', args: ['install', '--lockfile-only'], cwd })
       yield* Console.log('  ✓ Done\n')
 
       yield* Console.log('✓ Install complete')
@@ -273,12 +283,17 @@ export const installCommand = Cli.Command.make(
 ).pipe(Cli.Command.withDescription('Run the linking dance for composed repos'))
 
 /** Create symlink, removing existing if needed */
-const createSymlink = (
-  fs: FileSystem.FileSystem,
-  targetPath: string,
-  sourcePath: string,
-  pkgName: string,
-) =>
+const createSymlink = ({
+  fs,
+  targetPath,
+  sourcePath,
+  pkgName,
+}: {
+  fs: FileSystem.FileSystem
+  targetPath: string
+  sourcePath: string
+  pkgName: string
+}) =>
   Effect.gen(function* () {
     const exists = yield* fs.exists(targetPath)
     if (exists) {
@@ -295,7 +310,7 @@ const createSymlink = (
   })
 
 /** Run a command and stream output */
-const runCommand = (cmd: string, args: string[], cwd: string) =>
+const runCommand = ({ cmd, args, cwd }: { cmd: string; args: string[]; cwd: string }) =>
   Effect.gen(function* () {
     const command = Command.make(cmd, ...args).pipe(Command.workingDirectory(cwd))
 
@@ -327,7 +342,7 @@ const findPackagesInRepo = (repoPath: string) =>
 
     for (const glob of globs) {
       // Simple glob expansion (handles patterns like "packages/*" and "packages/@*/*")
-      const expanded = yield* expandGlob(repoPath, glob)
+      const expanded = yield* expandGlob({ basePath: repoPath, glob })
 
       for (const pkgDir of expanded) {
         const pkgJsonPath = `${pkgDir}/package.json`
@@ -387,7 +402,7 @@ const detectWorkspaceGlobs = (repoPath: string) =>
   })
 
 /** Expand a simple glob pattern */
-const expandGlob = (basePath: string, glob: string) =>
+const expandGlob = ({ basePath, glob }: { basePath: string; glob: string }) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
 
