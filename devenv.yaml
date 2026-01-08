@@ -6,3 +6,6 @@ inputs:
     inputs:
       nixpkgs:
         follows: nixpkgs
+  pnpm-compose:
+    url: path:./packages/@overeng/pnpm-compose
+    flake: false

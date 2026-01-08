@@ -61,6 +61,27 @@ export const catalog = {
 /** Use catalog reference for dependencies */
 export const catalogRef = 'catalog:' as const
 
+/** Root package.json configuration for composition */
+export const rootPackageJson = {
+  devDependencies: {
+    '@effect/cli': catalogRef,
+    '@effect/language-service': catalogRef,
+    '@effect/platform': catalogRef,
+    '@effect/platform-node': catalogRef,
+    '@overeng/utils': 'workspace:*',
+    effect: catalogRef,
+    oxfmt: '0.21.0',
+    oxlint: '1.36.0',
+    typescript: catalogRef,
+    vitest: catalogRef,
+  },
+  pnpm: {
+    patchedDependencies: {
+      'effect-distributed-lock@0.0.11': 'patches/effect-distributed-lock@0.0.11.patch',
+    },
+  },
+} as const
+
 /** Workspace reference paths for tsconfig.all.json */
 export const workspaceReferences = [
   './scripts',
@@ -76,6 +97,7 @@ export const workspaceReferences = [
   './packages/@overeng/react-inspector',
   './packages/@overeng/utils',
   './packages/@overeng/oxc-config',
+  './packages/@overeng/pnpm-compose',
 ] as const
 
 /**

@@ -3,7 +3,14 @@ let
   playwrightDriver = inputs.playwright-web-flake.packages.${pkgs.system}.playwright-driver;
 in
 {
+  # Apply pnpm guard overlay from local pnpm-compose package (fetched via devenv.yaml with flake: false)
+  # See pnpm-compose README for design rationale on this approach
+  overlays = [
+    (import "${inputs.pnpm-compose}/nix/overlay.nix")
+  ];
+
   packages = [
+    pkgs.pnpm
     pkgs.nodejs_24
     pkgs.bun
   ];

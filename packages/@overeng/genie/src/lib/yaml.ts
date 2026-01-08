@@ -16,6 +16,9 @@ const needsQuoting = (str: string): boolean => {
   return false
 }
 
+/** Quote a key if it needs quoting (e.g., starts with @) */
+const quoteKey = (key: string): string => (needsQuoting(key) ? `"${key}"` : key)
+
 const quoteString = (str: string): string => {
   if (str.includes('\n')) {
     return `|\n${str
@@ -73,6 +76,7 @@ const stringifyValue = (value: unknown, indent: number): string => {
 
     const prefix = INDENT.repeat(indent)
     const lines = entries.map(([key, val]) => {
+      const quotedKey = quoteKey(key)
       const stringifiedVal = stringifyValue(val, indent + 1)
       if (
         typeof val === 'object' &&
@@ -80,12 +84,12 @@ const stringifyValue = (value: unknown, indent: number): string => {
         !Array.isArray(val) &&
         Object.keys(val).length > 0
       ) {
-        return `${prefix}${key}:\n${stringifiedVal}`
+        return `${prefix}${quotedKey}:\n${stringifiedVal}`
       }
       if (Array.isArray(val) && val.length > 0 && !isSimpleInlineArray(val)) {
-        return `${prefix}${key}:${stringifiedVal}`
+        return `${prefix}${quotedKey}:${stringifiedVal}`
       }
-      return `${prefix}${key}: ${stringifiedVal}`
+      return `${prefix}${quotedKey}: ${stringifiedVal}`
     })
 
     return lines.join('\n')
@@ -112,6 +116,7 @@ export const stringify = (value: unknown): string => {
 
   const entries = Object.entries(value).filter(([, v]) => v !== undefined)
   const lines = entries.map(([key, val]) => {
+    const quotedKey = quoteKey(key)
     const stringifiedVal = stringifyValue(val, 1)
     if (
       typeof val === 'object' &&
@@ -119,12 +124,12 @@ export const stringify = (value: unknown): string => {
       !Array.isArray(val) &&
       Object.keys(val).length > 0
     ) {
-      return `${key}:\n${stringifiedVal}`
+      return `${quotedKey}:\n${stringifiedVal}`
     }
     if (Array.isArray(val) && val.length > 0 && !isSimpleInlineArray(val)) {
-      return `${key}:${stringifiedVal}`
+      return `${quotedKey}:${stringifiedVal}`
     }
-    return `${key}: ${stringifiedVal}`
+    return `${quotedKey}: ${stringifiedVal}`
   })
 
   return lines.join('\n\n') + '\n'

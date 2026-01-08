@@ -135,6 +135,10 @@ export type PackageJSONArgs = {
   /** pnpm-specific configuration */
   pnpm?: {
     overrides?: Record<string, string>
+    /** Patched dependencies with paths to patch files */
+    patchedDependencies?: Record<string, string>
+    /** Packages that should only be built (not hoisted) */
+    onlyBuiltDependencies?: string[]
     packageExtensions?: Record<
       string,
       {

@@ -1,4 +1,4 @@
-import { catalog, catalogRef } from './genie/repo.ts'
+import { catalog, rootPackageJson } from './genie/repo.ts'
 import { packageJSON } from './packages/@overeng/genie/src/lib/mod.ts'
 
 export default packageJSON({
@@ -9,20 +9,8 @@ export default packageJSON({
   scripts: {
     prepare: 'effect-language-service patch || true',
   },
-  devDependencies: {
-    '@effect/cli': catalogRef,
-    '@effect/language-service': catalogRef,
-    '@effect/platform': catalogRef,
-    '@effect/platform-node': catalogRef,
-    '@overeng/utils': 'workspace:*',
-    effect: catalogRef,
-    oxfmt: '0.21.0',
-    oxlint: '1.36.0',
-    typescript: catalogRef,
-    vitest: catalogRef,
-  },
+  devDependencies: rootPackageJson.devDependencies,
+  // Note: catalog defined inline for bun monorepo compatibility (long-term migration)
   catalog,
-  patchedDependencies: {
-    'effect-distributed-lock@0.0.11': 'patches/effect-distributed-lock@0.0.11.patch',
-  },
+  patchedDependencies: rootPackageJson.pnpm.patchedDependencies,
 })

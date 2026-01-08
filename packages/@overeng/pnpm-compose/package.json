@@ -1,0 +1,37 @@
+{
+  "name": "@overeng/pnpm-compose",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CLI for composing pnpm workspaces with git submodules",
+  "bin": {
+    "pnpm-compose": "./bin/pnpm-compose"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./src/mod.ts",
+    "./cli": "./src/cli.ts"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": "./dist/mod.js",
+      "./cli": "./dist/cli.js"
+    }
+  },
+  "devDependencies": {
+    "@effect/cli": "catalog:",
+    "@effect/platform": "catalog:",
+    "@effect/platform-node": "catalog:",
+    "@effect/vitest": "catalog:",
+    "@types/node": "catalog:",
+    "effect": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "@effect/cli": "catalog:",
+    "@effect/platform": "catalog:",
+    "@effect/platform-node": "catalog:",
+    "effect": "catalog:"
+  }
+}
