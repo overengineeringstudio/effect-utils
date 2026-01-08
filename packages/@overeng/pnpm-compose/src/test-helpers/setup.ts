@@ -203,3 +203,110 @@ storeDir: /tmp/pnpm/store/v10
 virtualStoreDir: .pnpm
 `,
   )
+
+/** Create nested repos with duplicate submodules for testing deduplication */
+export const setupNestedSubmodules = (env: TestEnv) =>
+  Effect.gen(function* () {
+    // Create parent repo with utils submodule
+    yield* env.writeFile(
+      'package.json',
+      JSON.stringify({ name: 'test-monorepo', private: true }, null, 2),
+    )
+    yield* env.run('git', ['init'])
+    yield* env.run('git', ['config', 'user.email', 'test@test.com'])
+    yield* env.run('git', ['config', 'user.name', 'Test'])
+
+    yield* env.writeFile(
+      '.gitmodules',
+      `[submodule "submodules/utils"]
+\tpath = submodules/utils
+\turl = https://github.com/test/utils.git
+
+[submodule "submodules/lib-a"]
+\tpath = submodules/lib-a
+\turl = https://github.com/test/lib-a.git
+
+[submodule "submodules/lib-b"]
+\tpath = submodules/lib-b
+\turl = https://github.com/test/lib-b.git
+`,
+    )
+
+    // Create utils submodule
+    yield* env.writeFile('submodules/utils/package.json', '{}')
+    yield* env.run('git', ['init'], `${env.root}/submodules/utils`)
+    yield* env.run(
+      'git',
+      ['config', 'user.email', 'test@test.com'],
+      `${env.root}/submodules/utils`,
+    )
+    yield* env.run(
+      'git',
+      ['config', 'user.name', 'Test'],
+      `${env.root}/submodules/utils`,
+    )
+
+    // Create lib-a submodule with nested utils (duplicate!)
+    yield* env.writeFile('submodules/lib-a/package.json', '{}')
+    yield* env.run('git', ['init'], `${env.root}/submodules/lib-a`)
+    yield* env.run(
+      'git',
+      ['config', 'user.email', 'test@test.com'],
+      `${env.root}/submodules/lib-a`,
+    )
+    yield* env.run('git', ['config', 'user.name', 'Test'], `${env.root}/submodules/lib-a`)
+
+    yield* env.writeFile(
+      'submodules/lib-a/.gitmodules',
+      `[submodule "submodules/utils"]
+\tpath = submodules/utils
+\turl = https://github.com/test/utils.git
+`,
+    )
+
+    // Create the duplicate utils inside lib-a
+    yield* env.writeFile('submodules/lib-a/submodules/utils/package.json', '{}')
+    yield* env.run('git', ['init'], `${env.root}/submodules/lib-a/submodules/utils`)
+    yield* env.run(
+      'git',
+      ['config', 'user.email', 'test@test.com'],
+      `${env.root}/submodules/lib-a/submodules/utils`,
+    )
+    yield* env.run(
+      'git',
+      ['config', 'user.name', 'Test'],
+      `${env.root}/submodules/lib-a/submodules/utils`,
+    )
+
+    // Create lib-b submodule with nested utils (another duplicate!)
+    yield* env.writeFile('submodules/lib-b/package.json', '{}')
+    yield* env.run('git', ['init'], `${env.root}/submodules/lib-b`)
+    yield* env.run(
+      'git',
+      ['config', 'user.email', 'test@test.com'],
+      `${env.root}/submodules/lib-b`,
+    )
+    yield* env.run('git', ['config', 'user.name', 'Test'], `${env.root}/submodules/lib-b`)
+
+    yield* env.writeFile(
+      'submodules/lib-b/.gitmodules',
+      `[submodule "submodules/utils"]
+\tpath = submodules/utils
+\turl = https://github.com/test/utils.git
+`,
+    )
+
+    // Create the duplicate utils inside lib-b
+    yield* env.writeFile('submodules/lib-b/submodules/utils/package.json', '{}')
+    yield* env.run('git', ['init'], `${env.root}/submodules/lib-b/submodules/utils`)
+    yield* env.run(
+      'git',
+      ['config', 'user.email', 'test@test.com'],
+      `${env.root}/submodules/lib-b/submodules/utils`,
+    )
+    yield* env.run(
+      'git',
+      ['config', 'user.name', 'Test'],
+      `${env.root}/submodules/lib-b/submodules/utils`,
+    )
+  })

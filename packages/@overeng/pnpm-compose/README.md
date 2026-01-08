@@ -41,6 +41,8 @@ The `check` command validates catalog alignment without modifying anything.
 
 The `list` command shows configured repos and their catalog status.
 
+The `dedupe-submodules` command finds duplicate git submodules (same URL at different nesting levels) and replaces nested copies with symlinks to the top-level canonical location.
+
 ## How it works
 
 Example repo structure:
@@ -191,6 +193,47 @@ Auto-cleaning to restore workspace integrity...
 
 See [PNPM_INTERNALS.md](./PNPM_INTERNALS.md) for details on pnpm behavior.
 
+## Submodule deduplication
+
+When working with nested git submodules, you may encounter the same submodule referenced at multiple levels:
+
+```
+my-app/
+├── submodules/
+│   ├── utils/                    ← Canonical location (top-level)
+│   ├── lib-a/
+│   │   └── submodules/
+│   │       └── utils/            ← Duplicate! (same URL as above)
+│   └── lib-b/
+│       └── submodules/
+│           └── utils/            ← Another duplicate!
+```
+
+This creates redundant disk usage and potential confusion about which copy is being used.
+
+The `dedupe-submodules` command solves this by:
+
+1. Scanning for duplicate submodules (same git URL across nested repos)
+2. Choosing the top-level location as canonical
+3. Replacing nested duplicates with symlinks pointing to the canonical location
+4. Adding symlink paths to `.git/info/exclude` to prevent git tracking them
+
+After deduplication:
+
+```
+my-app/
+├── submodules/
+│   ├── utils/                    ← Real directory (canonical)
+│   ├── lib-a/
+│   │   └── submodules/
+│   │       └── utils/            → ../../utils (symlink)
+│   └── lib-b/
+│       └── submodules/
+│           └── utils/            → ../../utils (symlink)
+```
+
+The command is idempotent and safe to run multiple times.
+
 ## Trade-offs
 
 - **Version alignment required** - All repos must use identical versions for shared dependencies. pnpm-compose enforces this via catalog checks
@@ -239,6 +282,9 @@ pnpm-compose check
 
 # Show composed repos and catalog status
 pnpm-compose list
+
+# Deduplicate git submodules by creating symlinks
+pnpm-compose dedupe-submodules
 ```
 
 ### Installation via Nix
