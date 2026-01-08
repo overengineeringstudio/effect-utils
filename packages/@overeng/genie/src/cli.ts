@@ -61,7 +61,17 @@ type TsconfigReferencesWarning = {
 /** File extensions that oxfmt can format */
 const oxfmtSupportedExtensions = new Set(['.json', '.jsonc', '.yml', '.yaml'])
 
-/** Get the appropriate header comment for a generated file based on its extension */
+/**
+ * Get the appropriate header comment for a generated file based on its extension.
+ *
+ * The source file reference uses just the basename (e.g., `package.json.genie.ts`) rather than
+ * a path relative to the working directory. This design choice avoids ambiguity when genie runs
+ * in a monorepo with git submodules: if the source path were relative to cwd, running genie from
+ * the parent repo would produce paths like `submodules/child-repo/packages/.../file.genie.ts`,
+ * while running from the child repo would produce `packages/.../file.genie.ts`. Using basename
+ * ensures consistent output regardless of where genie is invoked, since the `.genie.ts` source
+ * file is always a sibling of the generated file.
+ */
 // oxlint-disable-next-line overeng/named-args -- simple internal helper
 const getHeaderComment = (targetFilePath: string, sourceFile: string): string => {
   const ext = path.extname(targetFilePath)
@@ -90,10 +100,39 @@ const getHeaderComment = (targetFilePath: string, sourceFile: string): string =>
   return `// Generated file - DO NOT EDIT\n// Source: ${sourceFile}\n`
 }
 
-/** oxfmt config file path (relative to cwd) */
-const OXFMT_CONFIG = 'packages/@overeng/oxc-config/fmt.jsonc'
+/** Possible oxfmt config file paths to search for (in order of preference) */
+const OXFMT_CONFIG_PATHS = [
+  'packages/@overeng/oxc-config/fmt.jsonc',
+  'submodules/effect-utils/packages/@overeng/oxc-config/fmt.jsonc',
+] as const
 
-/** Format content using oxfmt if the file type is supported */
+/** Cached oxfmt config path (undefined = not yet searched, null = not found) */
+let oxfmtConfigCache: string | null | undefined = undefined
+
+/** Find oxfmt config file, caching the result */
+const findOxfmtConfig = Effect.gen(function* () {
+  if (oxfmtConfigCache !== undefined) {
+    return oxfmtConfigCache
+  }
+
+  const fs = yield* FileSystem.FileSystem
+
+  for (const configPath of OXFMT_CONFIG_PATHS) {
+    const exists = yield* fs.exists(configPath)
+    if (exists) {
+      oxfmtConfigCache = configPath
+      return configPath
+    }
+  }
+
+  yield* Effect.logWarning(
+    `oxfmt config not found at any of: ${OXFMT_CONFIG_PATHS.join(', ')}. Skipping formatting.`,
+  )
+  oxfmtConfigCache = null
+  return null
+})
+
+/** Format content using oxfmt if the file type is supported and config is available */
 // oxlint-disable-next-line overeng/named-args -- simple internal helper
 const formatWithOxfmt = (targetFilePath: string, content: string) =>
   Effect.gen(function* () {
@@ -103,10 +142,15 @@ const formatWithOxfmt = (targetFilePath: string, content: string) =>
       return content
     }
 
+    const configPath = yield* findOxfmtConfig
+    if (configPath === null) {
+      return content
+    }
+
     const result = yield* Command.make(
       'oxfmt',
       '-c',
-      OXFMT_CONFIG,
+      configPath,
       '--stdin-filepath',
       targetFilePath,
     ).pipe(
@@ -209,10 +253,10 @@ const importGenieFile = (genieFilePath: string) =>
   })
 
 /** Generate expected content for a genie file (shared between generate and dry-run) */
-const getExpectedContent = ({ genieFilePath, cwd }: { genieFilePath: string; cwd: string }) =>
+const getExpectedContent = (genieFilePath: string) =>
   Effect.gen(function* () {
     const targetFilePath = genieFilePath.replace('.genie.ts', '')
-    const sourceFile = path.relative(cwd, genieFilePath)
+    const sourceFile = path.basename(genieFilePath)
     const rawContent = yield* importGenieFile(genieFilePath)
     const header = getHeaderComment(targetFilePath, sourceFile)
     const formattedContent = yield* formatWithOxfmt(targetFilePath, rawContent)
@@ -244,19 +288,17 @@ const generateDiffSummary = ({
 const generateFile = ({
   genieFilePath,
   readOnly,
-  cwd,
   dryRun = false,
 }: {
   genieFilePath: string
   readOnly: boolean
-  cwd: string
   dryRun?: boolean
 }) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const targetFilePath = genieFilePath.replace('.genie.ts', '')
 
-    const { content: fileContentString } = yield* getExpectedContent({ genieFilePath, cwd })
+    const { content: fileContentString } = yield* getExpectedContent(genieFilePath)
 
     // Check if file exists and get current content
     const fileExists = yield* fs.exists(targetFilePath)
@@ -319,16 +361,10 @@ const generateFile = ({
     Effect.withSpan('generateFile'),
   )
 
-const checkFile = ({ genieFilePath, cwd }: { genieFilePath: string; cwd: string }) =>
+const checkFile = (genieFilePath: string) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const targetFilePath = genieFilePath.replace('.genie.ts', '')
-    const sourceFile = path.relative(cwd, genieFilePath)
-
-    const rawContent = yield* importGenieFile(genieFilePath)
-    const header = getHeaderComment(targetFilePath, sourceFile)
-    const formattedContent = yield* formatWithOxfmt(targetFilePath, rawContent)
-    const expectedContent = header + formattedContent
+    const { targetFilePath, content: expectedContent } = yield* getExpectedContent(genieFilePath)
 
     const fileExists = yield* fs.exists(targetFilePath)
     if (!fileExists) {
@@ -570,7 +606,7 @@ export const genieCommand = Cli.Command.make(
 
       if (check) {
         yield* Effect.all(
-          genieFiles.map((genieFilePath) => checkFile({ genieFilePath, cwd })),
+          genieFiles.map((genieFilePath) => checkFile(genieFilePath)),
           { concurrency: 'unbounded' },
         )
         yield* Effect.log('✓ All generated files are up to date')
@@ -589,7 +625,7 @@ export const genieCommand = Cli.Command.make(
       // Generate all files, capturing both successes and failures
       const results = yield* Effect.all(
         genieFiles.map((genieFilePath) =>
-          generateFile({ genieFilePath, readOnly, cwd, dryRun }).pipe(Effect.either),
+          generateFile({ genieFilePath, readOnly, dryRun }).pipe(Effect.either),
         ),
         { concurrency: 'unbounded' },
       )
@@ -613,7 +649,7 @@ export const genieCommand = Cli.Command.make(
           Stream.filter(({ path: p }) => p.endsWith('.genie.ts')),
           Stream.tap(({ path: p }) => {
             const genieFilePath = path.join(cwd, p)
-            return generateFile({ genieFilePath, readOnly, cwd }).pipe(
+            return generateFile({ genieFilePath, readOnly }).pipe(
               Effect.catchAll((error) => Effect.logError(error.message)),
             )
           }),

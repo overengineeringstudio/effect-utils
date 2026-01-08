@@ -1,5 +1,5 @@
 // Generated file - DO NOT EDIT
-// Source: packages/@overeng/effect-ai-claude-cli/tsconfig.json.genie.ts
+// Source: tsconfig.json.genie.ts
 {
   "extends": "../../../tsconfig.base.json",
   "compilerOptions": {

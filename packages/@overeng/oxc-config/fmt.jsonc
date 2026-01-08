@@ -1,5 +1,5 @@
 // Generated file - DO NOT EDIT
-// Source: packages/@overeng/oxc-config/fmt.jsonc.genie.ts
+// Source: fmt.jsonc.genie.ts
 {
   "$schema": "https://raw.githubusercontent.com/nicksrandall/oxfmt/refs/heads/main/configuration_schema.json",
   "semi": false,
