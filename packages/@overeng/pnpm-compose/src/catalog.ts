@@ -20,7 +20,7 @@ export interface CatalogConflict {
 }
 
 /** Read catalog from a repo's genie/repo.ts */
-export const readGenieRepoCatalog = (repoName: string, repoPath: string) =>
+export const readGenieRepoCatalog = ({ repoName, repoPath }: { repoName: string; repoPath: string }) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const geniePath = `${repoPath}/genie/repo.ts`
@@ -32,6 +32,7 @@ export const readGenieRepoCatalog = (repoName: string, repoPath: string) =>
 
     // Dynamic import the genie/repo.ts
     const genieModule = yield* Effect.tryPromise({
+      // oxlint-ignore-next-line no-dynamic-require -- intentional cache-busting for runtime config
       try: () => import(`${geniePath}?t=${Date.now()}`),
       catch: (error) => new CatalogReadError({ repoName, path: geniePath, cause: error }),
     })
@@ -50,7 +51,7 @@ export const readGenieRepoCatalog = (repoName: string, repoPath: string) =>
   }).pipe(Effect.withSpan('readGenieRepoCatalog'))
 
 /** Read catalog from a repo's pnpm-workspace.yaml */
-export const readPnpmWorkspaceCatalog = (repoName: string, repoPath: string) =>
+export const readPnpmWorkspaceCatalog = ({ repoName, repoPath }: { repoName: string; repoPath: string }) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const workspacePath = `${repoPath}/pnpm-workspace.yaml`
@@ -92,16 +93,16 @@ export const readPnpmWorkspaceCatalog = (repoName: string, repoPath: string) =>
   }).pipe(Effect.withSpan('readPnpmWorkspaceCatalog'))
 
 /** Read catalog from a repo (tries genie first, then pnpm-workspace.yaml) */
-export const readRepoCatalog = (repoName: string, repoPath: string) =>
+export const readRepoCatalog = ({ repoName, repoPath }: { repoName: string; repoPath: string }) =>
   Effect.gen(function* () {
     // Try genie/repo.ts first
-    const genieCatalog = yield* readGenieRepoCatalog(repoName, repoPath)
+    const genieCatalog = yield* readGenieRepoCatalog({ repoName, repoPath })
     if (Option.isSome(genieCatalog)) {
       return genieCatalog
     }
 
     // Fall back to pnpm-workspace.yaml
-    return yield* readPnpmWorkspaceCatalog(repoName, repoPath)
+    return yield* readPnpmWorkspaceCatalog({ repoName, repoPath })
   }).pipe(Effect.withSpan('readRepoCatalog'))
 
 /** Find conflicts between multiple catalogs */
@@ -140,13 +141,14 @@ export const findCatalogConflicts = (catalogs: RepoCatalog[]): CatalogConflict[]
   return conflicts
 }
 
+/** Parse version string into numeric parts */
+const parseVersion = (v: string) => {
+  const parts = v.replace(/^[^0-9]*/, '').split(/[.-]/)
+  return parts.map((p) => parseInt(p, 10) || 0)
+}
+
 /** Simple semver comparison (returns positive if a > b) */
 const compareVersions = (a: string, b: string): number => {
-  const parseVersion = (v: string) => {
-    const parts = v.replace(/^[^0-9]*/, '').split(/[.-]/)
-    return parts.map((p) => parseInt(p, 10) || 0)
-  }
-
   const aParts = parseVersion(a)
   const bParts = parseVersion(b)
 

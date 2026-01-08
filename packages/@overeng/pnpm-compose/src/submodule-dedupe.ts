@@ -5,9 +5,7 @@
  * to deduplicate them, preferring the top-level copy.
  */
 import { FileSystem, Path } from '@effect/platform'
-import { Effect, Schema } from 'effect'
-
-import { parseGitmodules, type ComposedRepo } from './config.ts'
+import { Effect } from 'effect'
 
 /** A submodule entry with its URL and path */
 export interface SubmoduleEntry {
@@ -145,11 +143,13 @@ export const findDuplicates = (submodules: SubmoduleEntry[]): DuplicateSubmodule
 }
 
 /** Create symlink for a nested submodule pointing to canonical location */
-export const createSubmoduleSymlink = (
-  workspaceRoot: string,
-  duplicate: DuplicateSubmodule,
-  target: SubmoduleEntry,
-) =>
+export const createSubmoduleSymlink = ({
+  duplicate,
+  target,
+}: {
+  duplicate: DuplicateSubmodule
+  target: SubmoduleEntry
+}) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
@@ -172,7 +172,13 @@ export const createSubmoduleSymlink = (
   }).pipe(Effect.withSpan('createSubmoduleSymlink'))
 
 /** Add symlink path to .git/info/exclude (local gitignore) */
-export const addToGitExclude = (repoRoot: string, submodulePath: string) =>
+export const addToGitExclude = ({
+  repoRoot,
+  submodulePath,
+}: {
+  repoRoot: string
+  submodulePath: string
+}) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const excludePath = `${repoRoot}/.git/info/exclude`
@@ -191,8 +197,7 @@ export const addToGitExclude = (repoRoot: string, submodulePath: string) =>
     }
 
     // Add path to exclude
-    const newContent =
-      content.trim() + '\n\n# Submodule symlink managed by pnpm-compose\n' + `${submodulePath}\n`
+    const newContent = `${content.trim()}\n\n# Submodule symlink managed by pnpm-compose\n${submodulePath}\n`
 
     yield* fs.writeFileString(excludePath, newContent)
   }).pipe(Effect.withSpan('addToGitExclude'))

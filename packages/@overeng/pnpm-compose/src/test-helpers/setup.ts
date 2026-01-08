@@ -14,13 +14,16 @@ export interface TestEnv {
   /** Root directory of the test environment */
   root: string
   /** Run a command in the test environment */
-  run: (
-    cmd: string,
-    args: string[],
-    cwd?: string,
-  ) => Effect.Effect<string, PlatformError.PlatformError, CommandExecutor.CommandExecutor>
+  run: (args: {
+    cmd: string
+    args: string[]
+    cwd?: string
+  }) => Effect.Effect<string, PlatformError.PlatformError, CommandExecutor.CommandExecutor>
   /** Write a file relative to root */
-  writeFile: (path: string, content: string) => Effect.Effect<void, PlatformError.PlatformError>
+  writeFile: (args: {
+    path: string
+    content: string
+  }) => Effect.Effect<void, PlatformError.PlatformError>
   /** Read a file relative to root */
   readFile: (path: string) => Effect.Effect<string, PlatformError.PlatformError>
   /** Check if a path exists */
@@ -52,7 +55,7 @@ export const createTestEnv = (options: TestEnvOptions = {}) =>
 
     yield* fs.makeDirectory(root, { recursive: true })
 
-    const run = (cmd: string, args: string[], cwd?: string) =>
+    const run = ({ cmd, args, cwd }: { cmd: string; args: string[]; cwd?: string }) =>
       Effect.gen(function* () {
         const command = Command.make(cmd, ...args).pipe(Command.workingDirectory(cwd ?? root))
         // Use Command.string to get stdout as string directly
@@ -60,7 +63,7 @@ export const createTestEnv = (options: TestEnvOptions = {}) =>
         return output.trim()
       })
 
-    const writeFile = (relativePath: string, content: string) =>
+    const writeFile = ({ path: relativePath, content }: { path: string; content: string }) =>
       Effect.gen(function* () {
         const fullPath = path.join(root, relativePath)
         const dir = path.dirname(fullPath)
@@ -92,14 +95,14 @@ export const createTestEnv = (options: TestEnvOptions = {}) =>
 export const setupBasicMonorepo = (env: TestEnv) =>
   Effect.gen(function* () {
     // Initialize parent git repo
-    yield* env.run('git', ['init'])
-    yield* env.run('git', ['config', 'user.email', 'test@test.com'])
-    yield* env.run('git', ['config', 'user.name', 'Test'])
+    yield* env.run({ cmd: 'git', args: ['init'] })
+    yield* env.run({ cmd: 'git', args: ['config', 'user.email', 'test@test.com'] })
+    yield* env.run({ cmd: 'git', args: ['config', 'user.name', 'Test'] })
 
     // Create parent package.json
-    yield* env.writeFile(
-      'package.json',
-      JSON.stringify(
+    yield* env.writeFile({
+      path: 'package.json',
+      content: JSON.stringify(
         {
           name: 'test-monorepo',
           private: true,
@@ -107,21 +110,21 @@ export const setupBasicMonorepo = (env: TestEnv) =>
         null,
         2,
       ),
-    )
+    })
 
     // Create pnpm-workspace.yaml with submodule packages
-    yield* env.writeFile(
-      'pnpm-workspace.yaml',
-      `packages:
+    yield* env.writeFile({
+      path: 'pnpm-workspace.yaml',
+      content: `packages:
   - packages/*
   - submodules/lib/packages/*
 `,
-    )
+    })
 
     // Create a package in parent repo
-    yield* env.writeFile(
-      'packages/app/package.json',
-      JSON.stringify(
+    yield* env.writeFile({
+      path: 'packages/app/package.json',
+      content: JSON.stringify(
         {
           name: 'app',
           version: '1.0.0',
@@ -132,12 +135,12 @@ export const setupBasicMonorepo = (env: TestEnv) =>
         null,
         2,
       ),
-    )
+    })
 
     // Create submodule directory structure (simulated - not actual git submodule for simplicity)
-    yield* env.writeFile(
-      'submodules/lib/package.json',
-      JSON.stringify(
+    yield* env.writeFile({
+      path: 'submodules/lib/package.json',
+      content: JSON.stringify(
         {
           name: 'lib-root',
           private: true,
@@ -145,18 +148,18 @@ export const setupBasicMonorepo = (env: TestEnv) =>
         null,
         2,
       ),
-    )
+    })
 
-    yield* env.writeFile(
-      'submodules/lib/pnpm-workspace.yaml',
-      `packages:
+    yield* env.writeFile({
+      path: 'submodules/lib/pnpm-workspace.yaml',
+      content: `packages:
   - packages/*
 `,
-    )
+    })
 
-    yield* env.writeFile(
-      'submodules/lib/packages/utils/package.json',
-      JSON.stringify(
+    yield* env.writeFile({
+      path: 'submodules/lib/packages/utils/package.json',
+      content: JSON.stringify(
         {
           name: '@test/utils',
           version: '1.0.0',
@@ -164,37 +167,37 @@ export const setupBasicMonorepo = (env: TestEnv) =>
         null,
         2,
       ),
-    )
+    })
 
-    yield* env.writeFile('submodules/lib/packages/utils/index.js', 'export const foo = 42\n')
+    yield* env.writeFile({ path: 'submodules/lib/packages/utils/index.js', content: 'export const foo = 42\n' })
 
     // Create .gitmodules to simulate git submodules
-    yield* env.writeFile(
-      '.gitmodules',
-      `[submodule "submodules/lib"]
+    yield* env.writeFile({
+      path: '.gitmodules',
+      content: `[submodule "submodules/lib"]
 \tpath = submodules/lib
 \turl = https://github.com/test/lib.git
 `,
-    )
+    })
 
     // Initialize the submodule as a git repo (needed for some pnpm behaviors)
-    yield* env.run('git', ['init'], `${env.root}/submodules/lib`)
-    yield* env.run('git', ['config', 'user.email', 'test@test.com'], `${env.root}/submodules/lib`)
-    yield* env.run('git', ['config', 'user.name', 'Test'], `${env.root}/submodules/lib`)
+    yield* env.run({ cmd: 'git', args: ['init'], cwd: `${env.root}/submodules/lib` })
+    yield* env.run({ cmd: 'git', args: ['config', 'user.email', 'test@test.com'], cwd: `${env.root}/submodules/lib` })
+    yield* env.run({ cmd: 'git', args: ['config', 'user.name', 'Test'], cwd: `${env.root}/submodules/lib` })
   })
 
 /** Simulate corruption by running pnpm install in a submodule */
-export const simulatePnpmCorruption = (env: TestEnv, submodulePath: string) =>
+export const simulatePnpmCorruption = ({ env, submodulePath }: { env: TestEnv; submodulePath: string }) =>
   Effect.gen(function* () {
     const fullPath = `${env.root}/${submodulePath}`
-    yield* env.run('pnpm', ['install'], fullPath)
+    yield* env.run({ cmd: 'pnpm', args: ['install'], cwd: fullPath })
   })
 
 /** Create a .modules.yaml file to simulate pnpm state */
-export const createPnpmStateFile = (env: TestEnv, nodeModulesPath: string) =>
-  env.writeFile(
-    `${nodeModulesPath}/.modules.yaml`,
-    `hoistPattern:
+export const createPnpmStateFile = ({ env, nodeModulesPath }: { env: TestEnv; nodeModulesPath: string }) =>
+  env.writeFile({
+    path: `${nodeModulesPath}/.modules.yaml`,
+    content: `hoistPattern:
   - '*'
 layoutVersion: 5
 nodeLinker: isolated
@@ -202,23 +205,23 @@ packageManager: pnpm@10.17.1
 storeDir: /tmp/pnpm/store/v10
 virtualStoreDir: .pnpm
 `,
-  )
+  })
 
 /** Create nested repos with duplicate submodules for testing deduplication */
 export const setupNestedSubmodules = (env: TestEnv) =>
   Effect.gen(function* () {
     // Create parent repo with utils submodule
-    yield* env.writeFile(
-      'package.json',
-      JSON.stringify({ name: 'test-monorepo', private: true }, null, 2),
-    )
-    yield* env.run('git', ['init'])
-    yield* env.run('git', ['config', 'user.email', 'test@test.com'])
-    yield* env.run('git', ['config', 'user.name', 'Test'])
+    yield* env.writeFile({
+      path: 'package.json',
+      content: JSON.stringify({ name: 'test-monorepo', private: true }, null, 2),
+    })
+    yield* env.run({ cmd: 'git', args: ['init'] })
+    yield* env.run({ cmd: 'git', args: ['config', 'user.email', 'test@test.com'] })
+    yield* env.run({ cmd: 'git', args: ['config', 'user.name', 'Test'] })
 
-    yield* env.writeFile(
-      '.gitmodules',
-      `[submodule "submodules/utils"]
+    yield* env.writeFile({
+      path: '.gitmodules',
+      content: `[submodule "submodules/utils"]
 \tpath = submodules/utils
 \turl = https://github.com/test/utils.git
 
@@ -230,83 +233,67 @@ export const setupNestedSubmodules = (env: TestEnv) =>
 \tpath = submodules/lib-b
 \turl = https://github.com/test/lib-b.git
 `,
-    )
+    })
 
     // Create utils submodule
-    yield* env.writeFile('submodules/utils/package.json', '{}')
-    yield* env.run('git', ['init'], `${env.root}/submodules/utils`)
-    yield* env.run(
-      'git',
-      ['config', 'user.email', 'test@test.com'],
-      `${env.root}/submodules/utils`,
-    )
-    yield* env.run(
-      'git',
-      ['config', 'user.name', 'Test'],
-      `${env.root}/submodules/utils`,
-    )
+    yield* env.writeFile({ path: 'submodules/utils/package.json', content: '{}' })
+    yield* env.run({ cmd: 'git', args: ['init'], cwd: `${env.root}/submodules/utils` })
+    yield* env.run({ cmd: 'git', args: ['config', 'user.email', 'test@test.com'], cwd: `${env.root}/submodules/utils` })
+    yield* env.run({ cmd: 'git', args: ['config', 'user.name', 'Test'], cwd: `${env.root}/submodules/utils` })
 
     // Create lib-a submodule with nested utils (duplicate!)
-    yield* env.writeFile('submodules/lib-a/package.json', '{}')
-    yield* env.run('git', ['init'], `${env.root}/submodules/lib-a`)
-    yield* env.run(
-      'git',
-      ['config', 'user.email', 'test@test.com'],
-      `${env.root}/submodules/lib-a`,
-    )
-    yield* env.run('git', ['config', 'user.name', 'Test'], `${env.root}/submodules/lib-a`)
+    yield* env.writeFile({ path: 'submodules/lib-a/package.json', content: '{}' })
+    yield* env.run({ cmd: 'git', args: ['init'], cwd: `${env.root}/submodules/lib-a` })
+    yield* env.run({ cmd: 'git', args: ['config', 'user.email', 'test@test.com'], cwd: `${env.root}/submodules/lib-a` })
+    yield* env.run({ cmd: 'git', args: ['config', 'user.name', 'Test'], cwd: `${env.root}/submodules/lib-a` })
 
-    yield* env.writeFile(
-      'submodules/lib-a/.gitmodules',
-      `[submodule "submodules/utils"]
+    yield* env.writeFile({
+      path: 'submodules/lib-a/.gitmodules',
+      content: `[submodule "submodules/utils"]
 \tpath = submodules/utils
 \turl = https://github.com/test/utils.git
 `,
-    )
+    })
 
     // Create the duplicate utils inside lib-a
-    yield* env.writeFile('submodules/lib-a/submodules/utils/package.json', '{}')
-    yield* env.run('git', ['init'], `${env.root}/submodules/lib-a/submodules/utils`)
-    yield* env.run(
-      'git',
-      ['config', 'user.email', 'test@test.com'],
-      `${env.root}/submodules/lib-a/submodules/utils`,
-    )
-    yield* env.run(
-      'git',
-      ['config', 'user.name', 'Test'],
-      `${env.root}/submodules/lib-a/submodules/utils`,
-    )
+    yield* env.writeFile({ path: 'submodules/lib-a/submodules/utils/package.json', content: '{}' })
+    yield* env.run({ cmd: 'git', args: ['init'], cwd: `${env.root}/submodules/lib-a/submodules/utils` })
+    yield* env.run({
+      cmd: 'git',
+      args: ['config', 'user.email', 'test@test.com'],
+      cwd: `${env.root}/submodules/lib-a/submodules/utils`,
+    })
+    yield* env.run({
+      cmd: 'git',
+      args: ['config', 'user.name', 'Test'],
+      cwd: `${env.root}/submodules/lib-a/submodules/utils`,
+    })
 
     // Create lib-b submodule with nested utils (another duplicate!)
-    yield* env.writeFile('submodules/lib-b/package.json', '{}')
-    yield* env.run('git', ['init'], `${env.root}/submodules/lib-b`)
-    yield* env.run(
-      'git',
-      ['config', 'user.email', 'test@test.com'],
-      `${env.root}/submodules/lib-b`,
-    )
-    yield* env.run('git', ['config', 'user.name', 'Test'], `${env.root}/submodules/lib-b`)
+    yield* env.writeFile({ path: 'submodules/lib-b/package.json', content: '{}' })
+    yield* env.run({ cmd: 'git', args: ['init'], cwd: `${env.root}/submodules/lib-b` })
+    yield* env.run({ cmd: 'git', args: ['config', 'user.email', 'test@test.com'], cwd: `${env.root}/submodules/lib-b` })
+    yield* env.run({ cmd: 'git', args: ['config', 'user.name', 'Test'], cwd: `${env.root}/submodules/lib-b` })
 
-    yield* env.writeFile(
-      'submodules/lib-b/.gitmodules',
-      `[submodule "submodules/utils"]
+    yield* env.writeFile({
+      path: 'submodules/lib-b/.gitmodules',
+      content: `[submodule "submodules/utils"]
 \tpath = submodules/utils
 \turl = https://github.com/test/utils.git
 `,
-    )
+    })
 
     // Create the duplicate utils inside lib-b
-    yield* env.writeFile('submodules/lib-b/submodules/utils/package.json', '{}')
-    yield* env.run('git', ['init'], `${env.root}/submodules/lib-b/submodules/utils`)
-    yield* env.run(
-      'git',
-      ['config', 'user.email', 'test@test.com'],
-      `${env.root}/submodules/lib-b/submodules/utils`,
-    )
-    yield* env.run(
-      'git',
-      ['config', 'user.name', 'Test'],
-      `${env.root}/submodules/lib-b/submodules/utils`,
-    )
+    yield* env.writeFile({ path: 'submodules/lib-b/submodules/utils/package.json', content: '{}' })
+    yield* env.run({ cmd: 'git', args: ['init'], cwd: `${env.root}/submodules/lib-b/submodules/utils` })
+    yield* env.run({
+      cmd: 'git',
+      args: ['config', 'user.email', 'test@test.com'],
+      cwd: `${env.root}/submodules/lib-b/submodules/utils`,
+    })
+    yield* env.run({
+      cmd: 'git',
+      args: ['config', 'user.name', 'Test'],
+      cwd: `${env.root}/submodules/lib-b/submodules/utils`,
+    })
   })

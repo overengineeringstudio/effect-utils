@@ -114,9 +114,7 @@ describe('dedupe-submodules command', () => {
           expect(target).toBe('../../utils')
 
           // Verify symlink resolves correctly
-          const resolvedExists = yield* env.exists(
-            'submodules/lib-a/submodules/utils/package.json',
-          )
+          const resolvedExists = yield* env.exists('submodules/lib-a/submodules/utils/package.json')
           expect(resolvedExists).toBe(true)
         }),
       ).pipe(Effect.provide(TestLayer), Effect.scoped),
@@ -128,9 +126,7 @@ describe('dedupe-submodules command', () => {
           yield* setupNestedSubmodules(env)
 
           // Verify the duplicate directory exists before deduplication
-          const beforeExists = yield* env.exists(
-            'submodules/lib-a/submodules/utils/package.json',
-          )
+          const beforeExists = yield* env.exists('submodules/lib-a/submodules/utils/package.json')
           expect(beforeExists).toBe(true)
 
           yield* runDedupe(env)
@@ -140,9 +136,7 @@ describe('dedupe-submodules command', () => {
           expect(target).toBe('../../utils')
 
           // And still resolve
-          const afterExists = yield* env.exists(
-            'submodules/lib-a/submodules/utils/package.json',
-          )
+          const afterExists = yield* env.exists('submodules/lib-a/submodules/utils/package.json')
           expect(afterExists).toBe(true)
         }),
       ).pipe(Effect.provide(TestLayer), Effect.scoped),
