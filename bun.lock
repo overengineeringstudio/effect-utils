@@ -46,6 +46,21 @@
         "effect": ">=3.19.0",
       },
     },
+    "packages/@overeng/effect-path": {
+      "name": "@overeng/effect-path",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@effect/platform": "catalog:",
+        "@effect/vitest": "catalog:",
+        "@types/node": "catalog:",
+        "effect": "catalog:",
+        "vitest": "catalog:",
+      },
+      "peerDependencies": {
+        "@effect/platform": "catalog:",
+        "effect": "catalog:",
+      },
+    },
     "packages/@overeng/effect-react": {
       "name": "@overeng/effect-react",
       "version": "0.1.0",
@@ -550,6 +565,8 @@
     "@opentelemetry/semantic-conventions": ["@opentelemetry/semantic-conventions@1.38.0", "", {}, "sha512-kocjix+/sSggfJhwXqClZ3i9Y/MI0fp7b+g7kCRm6psy2dsf8uApTRclwG18h8Avm7C9+fnt+O36PspJ/OzoWg=="],
 
     "@overeng/effect-ai-claude-cli": ["@overeng/effect-ai-claude-cli@workspace:packages/@overeng/effect-ai-claude-cli"],
+
+    "@overeng/effect-path": ["@overeng/effect-path@workspace:packages/@overeng/effect-path"],
 
     "@overeng/effect-react": ["@overeng/effect-react@workspace:packages/@overeng/effect-react"],
 

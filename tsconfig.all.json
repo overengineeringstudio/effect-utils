@@ -44,6 +44,9 @@
     },
     {
       "path": "./packages/@overeng/pnpm-compose"
+    },
+    {
+      "path": "./packages/@overeng/effect-path"
     }
   ],
   "files": []
