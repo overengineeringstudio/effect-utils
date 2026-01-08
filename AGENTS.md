@@ -12,6 +12,8 @@ The `mono` CLI provides shortcuts for common development workflows:
 
 If tools aren't directly in `$PATH`, prefix commands with `direnv exec .` (e.g., `direnv exec . mono ts`).
 
+We're using `bun` (not `pnpm`) as the package manager and `devenv` to manage the development environment.
+
 # Genie (Config File Generation)
 
 Config files like `package.json`, `tsconfig.base.json`, and `.github/workflows/ci.yml` are generated from TypeScript source files using genie. The source files have a `.genie.ts` suffix (e.g., `package.json.genie.ts`).

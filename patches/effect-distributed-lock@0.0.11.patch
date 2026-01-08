@@ -1,0 +1,27 @@
+diff --git a/dist/index.d.ts b/dist/index.d.ts
+index 7d3fb43..06b62d8 100644
+--- a/dist/index.d.ts
++++ b/dist/index.d.ts
+@@ -47,5 +47,4 @@ export * as Backing from "./Backing.js";
+ export { DistributedSemaphoreBacking, SemaphoreBackingError, } from "./Backing.js";
+ export * as DistributedSemaphore from "./DistributedSemaphore.js";
+ export { LockLostError } from "./Errors.js";
+-export * as RedisBacking from "./RedisBacking.js";
+-//# sourceMappingURL=index.d.ts.map
+\ No newline at end of file
++//# sourceMappingURL=index.d.ts.map
+\ No newline at end of file
+diff --git a/dist/index.js b/dist/index.js
+index 3ce62a6..e75babe 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -50,6 +50,4 @@ export { DistributedSemaphoreBacking, SemaphoreBackingError, } from "./Backing.j
+ export * as DistributedSemaphore from "./DistributedSemaphore.js";
+ // Errors
+ export { LockLostError } from "./Errors.js";
+-// Redis backing
+-export * as RedisBacking from "./RedisBacking.js";
+-//# sourceMappingURL=index.js.map
+\ No newline at end of file
++//# sourceMappingURL=index.js.map
+\ No newline at end of file
