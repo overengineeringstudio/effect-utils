@@ -539,7 +539,7 @@ const makeStreamHandler = ({
       appendLog,
     })
 
-  const consumeBuffer = (): Effect.Effect<void, never> => {
+  const consumeBuffer: Effect.Effect<void, never> = Effect.suspend(() => {
     if (buffer.length === 0) return Effect.void
 
     const lastChar = buffer[buffer.length - 1]
@@ -552,7 +552,7 @@ const makeStreamHandler = ({
     const line = buffer
     buffer = ''
     return line.length === 0 ? Effect.void : emit({ content: line, terminator: 'none' })
-  }
+  })
 
   return {
     onChunk: (chunk) =>
@@ -590,7 +590,7 @@ const makeStreamHandler = ({
           yield* emit({ content: line, terminator })
         }
       }),
-    flush: () => consumeBuffer(),
+    flush: () => consumeBuffer,
   }
 }
 
