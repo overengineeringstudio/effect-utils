@@ -30,7 +30,9 @@ describe.skipIf(SKIP_INTEGRATION)('db dump - content fetching', () => {
           concurrency: 3,
         })
 
-        const blocks = yield* Stream.runCollect(blocksStream).pipe(Effect.map((chunk) => [...chunk]))
+        const blocks = yield* Stream.runCollect(blocksStream).pipe(
+          Effect.map((chunk) => [...chunk]),
+        )
 
         expect(blocks.length).toBeGreaterThan(0)
 
@@ -93,7 +95,9 @@ describe.skipIf(SKIP_INTEGRATION)('db dump - content fetching', () => {
           maxDepth: 2,
         })
 
-        const blocks = yield* Stream.runCollect(blocksStream).pipe(Effect.map((chunk) => [...chunk]))
+        const blocks = yield* Stream.runCollect(blocksStream).pipe(
+          Effect.map((chunk) => [...chunk]),
+        )
 
         // Convert to dump format
         const dumpBlocks: DumpBlockWithDepth[] = blocks.map((b) => ({
@@ -194,7 +198,9 @@ describe.skipIf(SKIP_INTEGRATION)('db dump - DumpPage schema', () => {
           maxDepth: 1,
         })
 
-        const blocks = yield* Stream.runCollect(blocksStream).pipe(Effect.map((chunk) => [...chunk]))
+        const blocks = yield* Stream.runCollect(blocksStream).pipe(
+          Effect.map((chunk) => [...chunk]),
+        )
 
         const dumpPage: typeof DumpPage.Type = {
           id: TEST_IDS.pageWithBlocks,

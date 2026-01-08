@@ -8,7 +8,7 @@
  * ```typescript
  * import { Rpc, RpcGroup } from '@effect/rpc'
  * import { Schema, Effect } from 'effect'
- * import { createAPIFileRoute } from '@tanstack/start-api-routes'
+ * import { createFileRoute } from '@tanstack/react-router'
  * import { makeHandler } from '@overeng/effect-rpc-tanstack/server'
  *
  * // Define RPC endpoints
@@ -29,8 +29,12 @@
  *
  * const { handler } = makeHandler({ group: UserApi, handlerLayer: UserHandlers })
  *
- * export const APIRoute = createAPIFileRoute('/api/rpc')({
- *   POST: ({ request }) => handler(request),
+ * export const Route = createFileRoute('/api/rpc')({
+ *   server: {
+ *     handlers: {
+ *       POST: ({ request }) => handler(request),
+ *     },
+ *   },
  * })
  * ```
  *

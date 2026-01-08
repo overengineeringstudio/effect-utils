@@ -5,5 +5,7 @@ export default defineConfig({
     include: ['src/**/*.test.ts'],
     exclude: ['src/**/*.integration.test.ts'],
     testTimeout: 60000, // Integration tests with pnpm can be slow
+    // Required for @effect/vitest test wrappers (it.effect) to register properly with vitest
+    server: { deps: { inline: ['@effect/vitest'] } },
   },
 })

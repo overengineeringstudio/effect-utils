@@ -96,16 +96,20 @@ export const UserHandlers = UserApi.toLayer(
 ### 3. Create API route
 
 ```typescript
-// src/routes/api/rpc.api.ts
-import { createAPIFileRoute } from '@tanstack/start-api-routes'
+// src/routes/api/rpc.ts
+import { createFileRoute } from '@tanstack/react-router'
 import { makeHandler } from '@overeng/effect-rpc-tanstack/server'
 import { UserApi } from '../../rpc/api.ts'
 import { UserHandlers } from '../../rpc/server.ts'
 
 const { handler } = makeHandler({ group: UserApi, handlerLayer: UserHandlers })
 
-export const APIRoute = createAPIFileRoute('/api/rpc')({
-  POST: ({ request }) => handler(request),
+export const Route = createFileRoute('/api/rpc')({
+  server: {
+    handlers: {
+      POST: ({ request }) => handler(request),
+    },
+  },
 })
 ```
 

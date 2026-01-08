@@ -1,6 +1,5 @@
-import { packageJSON } from '@overeng/genie'
-
 import { catalogRef } from '../../../genie/repo.ts'
+import { packageJSON } from '../genie/src/lib/mod.ts'
 
 export default packageJSON({
   name: '@overeng/pnpm-compose',

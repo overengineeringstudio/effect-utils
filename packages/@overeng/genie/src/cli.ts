@@ -275,7 +275,10 @@ const generateFile = ({
         return { _tag: 'unchanged', targetFilePath } as const
       }
       // Show diff summary
-      const diffSummary = generateDiffSummary({ oldContent: currentContent, newContent: fileContentString })
+      const diffSummary = generateDiffSummary({
+        oldContent: currentContent,
+        newContent: fileContentString,
+      })
       yield* Effect.log(`Would update: ${targetFilePath}${diffSummary}`)
       return { _tag: 'updated', targetFilePath } as const
     }
@@ -298,7 +301,10 @@ const generateFile = ({
     }
 
     // Show diff summary for changed files
-    const diffSummary = generateDiffSummary({ oldContent: currentContent, newContent: fileContentString })
+    const diffSummary = generateDiffSummary({
+      oldContent: currentContent,
+      newContent: fileContentString,
+    })
     yield* Effect.log(`✓ Updated ${targetFilePath}${diffSummary}`)
     return { _tag: 'updated', targetFilePath } as const
   }).pipe(
