@@ -1,5 +1,5 @@
 {
-  "name": "@overeng/notion-effect-cli",
+  "name": "@overeng/notion-cli",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,7 +10,7 @@
   "publishConfig": {
     "access": "public",
     "bin": {
-      "notion-effect-cli": "./dist/cli.js"
+      "notion": "./dist/cli.js"
     },
     "exports": {
       ".": "./dist/mod.js",

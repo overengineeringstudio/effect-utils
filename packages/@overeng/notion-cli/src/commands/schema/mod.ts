@@ -1,20 +1,20 @@
-#!/usr/bin/env bun
+/**
+ * Schema subcommand - generate Effect schemas from Notion databases
+ */
 
 import { fileURLToPath } from 'node:url'
 
 import { Args, Command, Options } from '@effect/cli'
 import { FetchHttpClient, FileSystem } from '@effect/platform'
-import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Cause, Console, Effect, Layer, Option, Schema } from 'effect'
 
 import { NotionConfig, NotionDatabases } from '@overeng/notion-effect-client'
-import { CurrentWorkingDirectory } from '@overeng/utils/node'
 
-import { type GenerateOptions, generateApiCode, generateSchemaCode } from './codegen.ts'
-import { loadConfig } from './config.ts'
-import { computeDiff, formatDiff, hasDifferences, parseGeneratedFile } from './diff.ts'
-import { introspectDatabase, type PropertyTransformConfig } from './introspect.ts'
-import { formatCode, writeSchemaToFile } from './output.ts'
+import { type GenerateOptions, generateApiCode, generateSchemaCode } from '../../codegen.ts'
+import { loadConfig } from '../../config.ts'
+import { computeDiff, formatDiff, hasDifferences, parseGeneratedFile } from '../../diff.ts'
+import { introspectDatabase, type PropertyTransformConfig } from '../../introspect.ts'
+import { formatCode, writeSchemaToFile } from '../../output.ts'
 
 // -----------------------------------------------------------------------------
 // Exported Errors
@@ -54,13 +54,13 @@ class NotionTokenMissingError extends Schema.TaggedError<NotionTokenMissingError
 
 const getGeneratorVersion = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
-  const pkgJsonPath = fileURLToPath(new URL('../package.json', import.meta.url))
+  const pkgJsonPath = fileURLToPath(new URL('../../../package.json', import.meta.url))
   const content = yield* fs.readFileString(pkgJsonPath)
   const pkg = yield* Schema.decodeUnknown(Schema.parseJson(GeneratorPackageJsonSchema))(content)
   return pkg.version
 }).pipe(Effect.orElseSucceed(() => 'unknown'))
 
-const resolveNotionToken = (token: Option.Option<string>) =>
+export const resolveNotionToken = (token: Option.Option<string>) =>
   Effect.sync(() => (Option.isSome(token) ? token.value : process.env.NOTION_TOKEN)).pipe(
     Effect.flatMap((t) =>
       t
@@ -73,7 +73,7 @@ const resolveNotionToken = (token: Option.Option<string>) =>
     ),
   )
 
-const tokenOption = Options.text('token').pipe(
+export const tokenOption = Options.text('token').pipe(
   Options.withAlias('t'),
   Options.withDescription('Notion API token (defaults to NOTION_TOKEN env var)'),
   Options.optional,
@@ -183,7 +183,6 @@ const generateCommand = Command.make(
       const resolvedToken = yield* resolveNotionToken(token)
       const generatorVersion = yield* getGeneratorVersion
 
-      // Build transform config from CLI options
       const transformConfig: PropertyTransformConfig = {}
       if (Option.isSome(transform)) {
         for (const [key, value] of transform.value) {
@@ -191,7 +190,6 @@ const generateCommand = Command.make(
         }
       }
 
-      // Build generate options
       const generateOptions: GenerateOptions = {
         transforms: transformConfig,
         includeWrite,
@@ -241,7 +239,7 @@ const generateCommand = Command.make(
         } else {
           yield* Console.log(`Writing to ${output}...`)
           yield* writeSchemaToFile({ code, outputPath: output, writable })
-          yield* Console.log(`✓ Schema generated successfully!${writable ? '' : ' (read-only)'}`)
+          yield* Console.log(`Done${writable ? '' : ' (read-only)'}`)
 
           if (includeApi) {
             const rawApiCode = generateApiCode({ dbInfo, schemaName, options: generateOptions })
@@ -250,7 +248,7 @@ const generateCommand = Command.make(
 
             yield* Console.log(`Writing API to ${apiOutput}...`)
             yield* writeSchemaToFile({ code: apiCode, outputPath: apiOutput, writable })
-            yield* Console.log(`✓ API generated successfully!${writable ? '' : ' (read-only)'}`)
+            yield* Console.log(`Done${writable ? '' : ' (read-only)'}`)
           }
         }
       })
@@ -290,7 +288,6 @@ const introspectCommand = Command.make(
           const prop = propValue as { type: string; [key: string]: unknown }
           yield* Console.log(`  - ${propName}: ${prop.type}`)
 
-          // Show additional info for select/multi-select/status
           if (prop.type === 'select' || prop.type === 'multi_select') {
             const options = (prop[prop.type] as { options?: Array<{ name: string }> })?.options
             if (options && options.length > 0) {
@@ -404,7 +401,7 @@ const generateFromConfigCommand = Command.make(
           } else {
             yield* Console.log(`Writing to ${dbConfig.output}...`)
             yield* writeSchemaToFile({ code, outputPath: dbConfig.output, writable })
-            yield* Console.log(`✓ Schema generated successfully!${writable ? '' : ' (read-only)'}`)
+            yield* Console.log(`Done${writable ? '' : ' (read-only)'}`)
 
             if (generateOptions.includeApi) {
               const rawApiCode = generateApiCode({ dbInfo, schemaName, options: generateOptions })
@@ -413,7 +410,7 @@ const generateFromConfigCommand = Command.make(
 
               yield* Console.log(`Writing API to ${apiOutput}...`)
               yield* writeSchemaToFile({ code: apiCode, outputPath: apiOutput, writable })
-              yield* Console.log(`✓ API generated successfully!${writable ? '' : ' (read-only)'}`)
+              yield* Console.log(`Done${writable ? '' : ' (read-only)'}`)
             }
           }
         }
@@ -457,7 +454,6 @@ const diffCommand = Command.make(
       const configLayer = Layer.succeed(NotionConfig, { authToken: resolvedToken })
 
       const program = Effect.gen(function* () {
-        // Read and parse the existing generated file
         const fileContent = yield* fs.readFileString(file)
         const parsedSchema = parseGeneratedFile(fileContent)
         if (!parsedSchema.readSchemaFound) {
@@ -468,20 +464,16 @@ const diffCommand = Command.make(
           })
         }
 
-        // Introspect the live database
         yield* Console.log(`Introspecting database ${databaseId}...`)
         const dbInfo = yield* introspectDatabase(databaseId)
 
-        // Compute diff
         const diff = computeDiff({ live: dbInfo, generated: parsedSchema })
 
-        // Format and display results
         const lines = formatDiff({ diff, databaseId, filePath: file })
         for (const line of lines) {
           yield* Console.log(line)
         }
 
-        // Exit with code 1 if differences found and --exit-code is set
         if (exitCode && hasDifferences(diff)) {
           return yield* new SchemaDriftDetectedError({
             databaseId,
@@ -498,46 +490,15 @@ const diffCommand = Command.make(
 )
 
 // -----------------------------------------------------------------------------
-// Main CLI
+// Schema Subcommand
 // -----------------------------------------------------------------------------
 
-const command = Command.make('notion-effect-schema-gen').pipe(
+export const schemaCommand = Command.make('schema').pipe(
   Command.withSubcommands([
     generateCommand,
     introspectCommand,
     generateFromConfigCommand,
     diffCommand,
   ]),
-  Command.withDescription('Generate Effect schemas from Notion databases'),
-)
-
-const cli = Command.run(command, {
-  name: 'notion-effect-schema-gen',
-  version: '0.1.0',
-})
-
-const hasTag = (u: unknown): u is { readonly _tag: string } =>
-  typeof u === 'object' &&
-  u !== null &&
-  '_tag' in u &&
-  typeof (u as { readonly _tag?: unknown })._tag === 'string'
-
-cli(process.argv).pipe(
-  Effect.tapErrorCause((cause) => {
-    if (Cause.isInterruptedOnly(cause)) {
-      return Effect.void
-    }
-
-    return Option.match(Cause.failureOption(cause), {
-      onNone: () => Effect.logError(cause),
-      onSome: (error) => {
-        const unknownError: unknown = error
-        return hasTag(unknownError) && unknownError._tag === 'SchemaDriftDetectedError'
-          ? Effect.void
-          : Effect.logError(cause)
-      },
-    })
-  }),
-  Effect.provide(Layer.mergeAll(NodeContext.layer, CurrentWorkingDirectory.live)),
-  NodeRuntime.runMain({ disableErrorReporting: true }),
+  Command.withDescription('Schema generation commands'),
 )

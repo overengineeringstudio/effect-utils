@@ -31,6 +31,17 @@ export const TEST_IDS = {
     beta: '2dbf141b18dc8161b35cf708809be7e0',
     gamma: '2dbf141b18dc81b39286dd8d74c29775',
   },
+
+  /** Dump Test Database - all property types (10 rows) */
+  dumpDatabase: 'c6b692f0cf31480e947d10515bc8c76b',
+  /** Dump Test Database data source */
+  dumpDataSource: '0c1a5e93-8e49-40bd-a6ab-d4b0ce633110',
+  /** Large Database - pagination testing (60 rows) */
+  largeDatabase: 'cbf559db334c4095ab5c5839a7612560',
+  /** Large Database data source */
+  largeDataSource: '6b35c0bf-a4ad-4346-b1b0-565005fcdc66',
+  /** Page with deep nesting for content dump testing */
+  deepNestingPage: '2e2f141b18dc8102969ff7b34cad3629',
 } as const
 
 /** Live NotionConfig layer using environment token */

@@ -132,8 +132,8 @@
         "effect": "catalog:",
       },
     },
-    "packages/@overeng/notion-effect-cli": {
-      "name": "@overeng/notion-effect-cli",
+    "packages/@overeng/notion-cli": {
+      "name": "@overeng/notion-cli",
       "version": "0.1.0",
       "dependencies": {
         "@effect/cli": "catalog:",
@@ -536,7 +536,7 @@
 
     "@overeng/genie": ["@overeng/genie@workspace:packages/@overeng/genie"],
 
-    "@overeng/notion-effect-cli": ["@overeng/notion-effect-cli@workspace:packages/@overeng/notion-effect-cli"],
+    "@overeng/notion-cli": ["@overeng/notion-cli@workspace:packages/@overeng/notion-cli"],
 
     "@overeng/notion-effect-client": ["@overeng/notion-effect-client@workspace:packages/@overeng/notion-effect-client"],
 

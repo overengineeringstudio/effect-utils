@@ -2,7 +2,7 @@ import { catalogRef } from '../../../genie/repo.ts'
 import { packageJSON } from '../genie/src/lib/mod.ts'
 
 export default packageJSON({
-  name: '@overeng/notion-effect-cli',
+  name: '@overeng/notion-cli',
   version: '0.1.0',
   private: true,
   type: 'module',
@@ -13,7 +13,7 @@ export default packageJSON({
   publishConfig: {
     access: 'public',
     bin: {
-      'notion-effect-cli': './dist/cli.js',
+      notion: './dist/cli.js',
     },
     exports: {
       '.': './dist/mod.js',

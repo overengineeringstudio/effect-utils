@@ -67,7 +67,7 @@ export const workspaceReferences = [
   './context/effect/socket',
   './packages/@overeng/genie',
   './packages/@overeng/notion-effect-schema',
-  './packages/@overeng/notion-effect-cli',
+  './packages/@overeng/notion-cli',
   './packages/@overeng/notion-effect-client',
   './packages/@overeng/effect-ai-claude-cli',
   './packages/@overeng/effect-schema-form',

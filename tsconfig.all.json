@@ -16,7 +16,7 @@
       "path": "./packages/@overeng/notion-effect-schema"
     },
     {
-      "path": "./packages/@overeng/notion-effect-cli"
+      "path": "./packages/@overeng/notion-cli"
     },
     {
       "path": "./packages/@overeng/notion-effect-client"
