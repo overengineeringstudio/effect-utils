@@ -375,11 +375,12 @@ export const assumeFile = <P extends AmbiguousPath>(
 /**
  * Build PathInfo for a directory path.
  */
-const buildDirInfo = <B extends Abs | Rel>(
-  original: string,
-  normalized: string & B & Dir,
-  platformPath: PlatformPath.Path,
-): PathInfo<B, Dir> => {
+const buildDirInfo = <B extends Abs | Rel>(args: {
+  readonly original: string
+  readonly normalized: string & B & Dir
+  readonly platformPath: PlatformPath.Path
+}): PathInfo<B, Dir> => {
+  const { original, normalized, platformPath } = args
   const segments = toSegments(normalized)
   const dirName = segments.at(-1) ?? ''
 
@@ -396,22 +397,23 @@ const buildDirInfo = <B extends Abs | Rel>(
     baseName: dirName,
     parent: isRoot
       ? (undefined as PathInfo<B, Dir>['parent'])
-      : (buildDirInfo(
-          parentPath,
-          ensureTrailingSlash(parentPath) as string & B & Dir,
+      : (buildDirInfo({
+          original: parentPath,
+          normalized: ensureTrailingSlash(parentPath) as string & B & Dir,
           platformPath,
-        ) as PathInfo<B, Dir>['parent']),
+        }) as PathInfo<B, Dir>['parent']),
   }
 }
 
 /**
  * Build PathInfo for a file path.
  */
-const buildFileInfo = <B extends Abs | Rel>(
-  original: string,
-  normalized: string & B & File,
-  platformPath: PlatformPath.Path,
-): PathInfo<B, File> => {
+const buildFileInfo = <B extends Abs | Rel>(args: {
+  readonly original: string
+  readonly normalized: string & B & File
+  readonly platformPath: PlatformPath.Path
+}): PathInfo<B, File> => {
+  const { original, normalized, platformPath } = args
   const segments = toSegments(normalized)
   const filename = getFilename(normalized)
 
@@ -429,7 +431,11 @@ const buildFileInfo = <B extends Abs | Rel>(
       File
     >['fullExtension'],
     baseName: extractBaseName(filename),
-    parent: buildDirInfo(parentPath, parentNormalized, platformPath) as PathInfo<B, File>['parent'],
+    parent: buildDirInfo({
+      original: parentPath,
+      normalized: parentNormalized,
+      platformPath,
+    }) as PathInfo<B, File>['parent'],
   }
 }
 
@@ -442,7 +448,7 @@ export const absoluteFileInfo = (
   Effect.gen(function* () {
     const normalized = yield* absoluteFile(path)
     const platformPath = yield* PlatformPath.Path
-    return buildFileInfo<Abs>(path, normalized, platformPath)
+    return buildFileInfo<Abs>({ original: path, normalized, platformPath })
   })
 
 /**
@@ -454,7 +460,7 @@ export const absoluteDirInfo = (
   Effect.gen(function* () {
     const normalized = yield* absoluteDir(path)
     const platformPath = yield* PlatformPath.Path
-    return buildDirInfo<Abs>(path, normalized, platformPath)
+    return buildDirInfo<Abs>({ original: path, normalized, platformPath })
   })
 
 /**
@@ -466,7 +472,7 @@ export const relativeFileInfo = (
   Effect.gen(function* () {
     const normalized = yield* relativeFile(path)
     const platformPath = yield* PlatformPath.Path
-    return buildFileInfo<Rel>(path, normalized, platformPath)
+    return buildFileInfo<Rel>({ original: path, normalized, platformPath })
   })
 
 /**
@@ -478,5 +484,5 @@ export const relativeDirInfo = (
   Effect.gen(function* () {
     const normalized = yield* relativeDir(path)
     const platformPath = yield* PlatformPath.Path
-    return buildDirInfo<Rel>(path, normalized, platformPath)
+    return buildDirInfo<Rel>({ original: path, normalized, platformPath })
   })

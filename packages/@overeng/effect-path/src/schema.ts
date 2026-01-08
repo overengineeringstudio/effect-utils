@@ -135,13 +135,92 @@ export interface PathInfoSchemaOptions {
 }
 
 /**
+ * Schema for AbsoluteFileInfo with configurable encoding.
+ */
+export const AbsoluteFileInfo = (
+  options?: PathInfoSchemaOptions,
+): Schema.Schema<AbsoluteFileInfoType, string> =>
+  createPathInfoSchema<Abs, File>(
+    options === undefined
+      ? {
+          baseSchema: AbsoluteFilePath as Schema.Schema<AbsoluteFilePathType, string>,
+          isFile: true,
+        }
+      : {
+          baseSchema: AbsoluteFilePath as Schema.Schema<AbsoluteFilePathType, string>,
+          isFile: true,
+          options,
+        },
+  )
+
+/**
+ * Schema for AbsoluteDirInfo with configurable encoding.
+ */
+export const AbsoluteDirInfo = (
+  options?: PathInfoSchemaOptions,
+): Schema.Schema<AbsoluteDirInfoType, string> =>
+  createPathInfoSchema<Abs, Dir>(
+    options === undefined
+      ? {
+          baseSchema: AbsoluteDirPath as Schema.Schema<AbsoluteDirPathType, string>,
+          isFile: false,
+        }
+      : {
+          baseSchema: AbsoluteDirPath as Schema.Schema<AbsoluteDirPathType, string>,
+          isFile: false,
+          options,
+        },
+  )
+
+/**
+ * Schema for RelativeFileInfo with configurable encoding.
+ */
+export const RelativeFileInfo = (
+  options?: PathInfoSchemaOptions,
+): Schema.Schema<RelativeFileInfoType, string> =>
+  createPathInfoSchema<Rel, File>(
+    options === undefined
+      ? {
+          baseSchema: RelativeFilePath as Schema.Schema<RelativeFilePathType, string>,
+          isFile: true,
+        }
+      : {
+          baseSchema: RelativeFilePath as Schema.Schema<RelativeFilePathType, string>,
+          isFile: true,
+          options,
+        },
+  )
+
+/**
+ * Schema for RelativeDirInfo with configurable encoding.
+ */
+export const RelativeDirInfo = (
+  options?: PathInfoSchemaOptions,
+): Schema.Schema<RelativeDirInfoType, string> =>
+  createPathInfoSchema<Rel, Dir>(
+    options === undefined
+      ? {
+          baseSchema: RelativeDirPath as Schema.Schema<RelativeDirPathType, string>,
+          isFile: false,
+        }
+      : {
+          baseSchema: RelativeDirPath as Schema.Schema<RelativeDirPathType, string>,
+          isFile: false,
+          options,
+        },
+  )
+
+/**
  * Build a PathInfo from a validated path string.
  * This is a pure function that doesn't require platform Path.
  */
-const buildPathInfoPure = <B extends Abs | Rel, T extends File | Dir>(
-  original: string,
-  isFile: boolean,
-): PathInfo<B, T> => {
+const buildPathInfoPure = <B extends Abs | Rel, T extends File | Dir>(args: {
+  readonly original: string
+  readonly isFile: boolean
+}): PathInfo<B, T> => {
+  const { original, isFile } = args
+  const isAbsolute = isAbsoluteHeuristic(original)
+
   // Simple normalization (just forward slashes, no platform-specific logic)
   const normalized = original.replace(/\\/g, '/').replace(/\/+/g, '/')
 
@@ -149,7 +228,9 @@ const buildPathInfoPure = <B extends Abs | Rel, T extends File | Dir>(
 
   if (isFile) {
     const filename = getFilename(normalized)
-    const parentPath = normalized.slice(0, -(filename.length + 1)) || '/'
+    const rawParentPath = normalized.slice(0, -(filename.length + 1))
+    const parentPath = rawParentPath !== '' ? rawParentPath : isAbsolute ? '/' : '.'
+    const parentDirPath = ensureTrailingSlash(parentPath)
 
     const fileInfo: PathInfo<B, File> = {
       original,
@@ -158,18 +239,22 @@ const buildPathInfoPure = <B extends Abs | Rel, T extends File | Dir>(
       extension: extractExtension(filename) as PathInfo<B, File>['extension'],
       fullExtension: extractFullExtension(filename) as PathInfo<B, File>['fullExtension'],
       baseName: extractBaseName(filename),
-      parent: buildPathInfoPure<B, Dir>(parentPath, false) as unknown as PathInfo<
-        B,
-        File
-      >['parent'],
+      parent: buildPathInfoPure<B, Dir>({
+        original: parentDirPath,
+        isFile: false,
+      }) as unknown as PathInfo<B, File>['parent'],
     }
     return fileInfo as PathInfo<B, T>
   }
 
   const dirName = segments.at(-1) ?? ''
   const normalizedDir = ensureTrailingSlash(normalized)
-  const parentPath = removeTrailingSlash(normalized).split('/').slice(0, -1).join('/') || '/'
-  const isRoot = parentPath === '/' || parentPath === normalized || segments.length === 0
+  const withoutTrailing = removeTrailingSlash(normalizedDir)
+  const rawParentPath = withoutTrailing.split('/').slice(0, -1).join('/')
+  const parentPath = rawParentPath !== '' ? rawParentPath : isAbsolute ? '/' : '.'
+  const parentDirPath = ensureTrailingSlash(parentPath)
+
+  const isRoot = withoutTrailing === (isAbsolute ? '/' : '.')
 
   const dirInfo: PathInfo<B, Dir> = {
     original,
@@ -180,7 +265,7 @@ const buildPathInfoPure = <B extends Abs | Rel, T extends File | Dir>(
     baseName: dirName,
     parent: isRoot
       ? (undefined as PathInfo<B, Dir>['parent'])
-      : (buildPathInfoPure<B, Dir>(ensureTrailingSlash(parentPath), false) as PathInfo<
+      : (buildPathInfoPure<B, Dir>({ original: parentDirPath, isFile: false }) as PathInfo<
           B,
           Dir
         >['parent']),
@@ -188,100 +273,19 @@ const buildPathInfoPure = <B extends Abs | Rel, T extends File | Dir>(
   return dirInfo as PathInfo<B, T>
 }
 
-/** Schema for PathInfo<B, T> fields (without parent for recursive definition) */
-const _PathInfoFieldsSchema = <B extends Abs | Rel, T extends File | Dir>(_isFile: boolean) =>
-  Schema.Struct({
-    original: Schema.String,
-    normalized: Schema.String as unknown as Schema.Schema<string & B & T, string & B & T>,
-    segments: Schema.Array(Schema.String),
-    extension: _isFile
-      ? Schema.UndefinedOr(Schema.String)
-      : (Schema.Undefined as Schema.Schema<undefined>),
-    fullExtension: _isFile
-      ? Schema.UndefinedOr(Schema.String)
-      : (Schema.Undefined as Schema.Schema<undefined>),
-    baseName: Schema.String,
-  })
-
 /**
  * Create a schema that transforms a string into PathInfo.
  */
-const createPathInfoSchema = <B extends Abs | Rel, T extends File | Dir>(
-  baseSchema: Schema.Schema<string & B & T, string>,
-  isFile: boolean,
-  options: PathInfoSchemaOptions = {},
-): Schema.Schema<PathInfo<B, T>, string> => {
-  const encodeAs = options.encodeAs ?? 'normalized'
+const createPathInfoSchema = <B extends Abs | Rel, T extends File | Dir>(args: {
+  readonly baseSchema: Schema.Schema<string & B & T, string>
+  readonly isFile: boolean
+  readonly options?: PathInfoSchemaOptions
+}): Schema.Schema<PathInfo<B, T>, string> => {
+  const encodeAs = args.options?.encodeAs ?? 'normalized'
 
-  return Schema.transform(baseSchema, Schema.Unknown as Schema.Schema<PathInfo<B, T>>, {
+  return Schema.transform(args.baseSchema, Schema.Unknown as Schema.Schema<PathInfo<B, T>>, {
     strict: true,
-    decode: (s) => buildPathInfoPure<B, T>(s, isFile),
+    decode: (s) => buildPathInfoPure<B, T>({ original: s, isFile: args.isFile }),
     encode: (info) => (encodeAs === 'original' ? info.original : info.normalized) as string & B & T,
   })
 }
-
-/**
- * Schema for AbsoluteFileInfo with configurable encoding.
- */
-export const AbsoluteFileInfo = (
-  options?: PathInfoSchemaOptions,
-): Schema.Schema<AbsoluteFileInfoType, string> =>
-  createPathInfoSchema<Abs, File>(
-    AbsoluteFilePath as Schema.Schema<AbsoluteFilePathType, string>,
-    true,
-    options,
-  )
-
-/**
- * Schema for AbsoluteDirInfo with configurable encoding.
- */
-export const AbsoluteDirInfo = (
-  options?: PathInfoSchemaOptions,
-): Schema.Schema<AbsoluteDirInfoType, string> =>
-  createPathInfoSchema<Abs, Dir>(
-    AbsoluteDirPath as Schema.Schema<AbsoluteDirPathType, string>,
-    false,
-    options,
-  )
-
-/**
- * Schema for RelativeFileInfo with configurable encoding.
- */
-export const RelativeFileInfo = (
-  options?: PathInfoSchemaOptions,
-): Schema.Schema<RelativeFileInfoType, string> =>
-  createPathInfoSchema<Rel, File>(
-    RelativeFilePath as Schema.Schema<RelativeFilePathType, string>,
-    true,
-    options,
-  )
-
-/**
- * Schema for RelativeDirInfo with configurable encoding.
- */
-export const RelativeDirInfo = (
-  options?: PathInfoSchemaOptions,
-): Schema.Schema<RelativeDirInfoType, string> =>
-  createPathInfoSchema<Rel, Dir>(
-    RelativeDirPath as Schema.Schema<RelativeDirPathType, string>,
-    false,
-    options,
-  )
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Default PathInfo Schemas (normalized encoding)
-// ═══════════════════════════════════════════════════════════════════════════
-
-/** Default AbsoluteFileInfo schema (encodes as normalized) */
-export const AbsoluteFileInfoDefault: Schema.Schema<AbsoluteFileInfoType, string> =
-  AbsoluteFileInfo()
-
-/** Default AbsoluteDirInfo schema (encodes as normalized) */
-export const AbsoluteDirInfoDefault: Schema.Schema<AbsoluteDirInfoType, string> = AbsoluteDirInfo()
-
-/** Default RelativeFileInfo schema (encodes as normalized) */
-export const RelativeFileInfoDefault: Schema.Schema<RelativeFileInfoType, string> =
-  RelativeFileInfo()
-
-/** Default RelativeDirInfo schema (encodes as normalized) */
-export const RelativeDirInfoDefault: Schema.Schema<RelativeDirInfoType, string> = RelativeDirInfo()

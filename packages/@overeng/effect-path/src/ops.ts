@@ -82,6 +82,7 @@ export function join(
   // biome-ignore lint/style/useRestParameters: Variadic design decision
   ...segments: RelativePath[]
 ): RelativePath
+/** Join a directory path with one or more relative segments. */
 export function join(
   base: DirPath,
   // biome-ignore lint/style/useRestParameters: Variadic design decision
@@ -91,16 +92,25 @@ export function join(
     return base
   }
 
-  // Simple join using forward slashes (cross-platform safe for most cases)
-  const joined = [removeTrailingSlash(base), ...segments.map(removeTrailingSlash)].join('/')
+  // POSIX join using forward slashes
+  let current = removeTrailingSlash(base)
+
+  for (const segment of segments) {
+    const normalizedSegment = removeTrailingSlash(segment).replace(/^\/+/, '')
+    if (normalizedSegment === '' || normalizedSegment === '.') {
+      continue
+    }
+
+    current = current === '/' ? `/${normalizedSegment}` : `${current}/${normalizedSegment}`
+  }
 
   // Preserve trailing slash from last segment
   const lastSegment = segments.at(-1)!
   if (hasTrailingSlash(lastSegment)) {
-    return ensureTrailingSlash(joined) as Path
+    return ensureTrailingSlash(current) as Path
   }
 
-  return joined as Path
+  return current as Path
 }
 
 /**
@@ -151,13 +161,13 @@ export const resolve = (
 /**
  * Get the relative path from one absolute path to another.
  */
-export const relative = (
-  from: AbsoluteDirPath,
-  to: AbsolutePath,
-): Effect.Effect<RelativePath, never, PlatformPath.Path> =>
+export const relative = (args: {
+  readonly from: AbsoluteDirPath
+  readonly to: AbsolutePath
+}): Effect.Effect<RelativePath, never, PlatformPath.Path> =>
   Effect.gen(function* () {
     const platformPath = yield* PlatformPath.Path
-    const rel = platformPath.relative(removeTrailingSlash(from), to)
+    const rel = platformPath.relative(removeTrailingSlash(args.from), args.to)
     return rel as RelativePath
   })
 
@@ -175,21 +185,25 @@ export function parent(path: AbsoluteFilePath): AbsoluteDirPath
 export function parent(path: RelativeFilePath): RelativeDirPath
 export function parent(path: AbsoluteDirPath): AbsoluteDirPath | undefined
 export function parent(path: RelativeDirPath): RelativeDirPath | undefined
+/** Get the parent directory of a file or directory path. */
 export function parent(path: Path): DirPath | undefined {
-  const isFile = !hasTrailingSlash(path)
   const normalized = removeTrailingSlash(path)
+
+  if (normalized === '.' || normalized === '/') {
+    return undefined
+  }
 
   // Find last separator
   const lastSep = Math.max(normalized.lastIndexOf('/'), normalized.lastIndexOf('\\'))
 
   if (lastSep === -1) {
     // No separator - this is a root-level item
-    return isFile ? ('./' as DirPath) : undefined
+    return './' as DirPath
   }
 
   if (lastSep === 0) {
     // Root directory
-    return isFile ? ('/' as AbsoluteDirPath) : undefined
+    return '/' as AbsoluteDirPath
   }
 
   const parentPath = normalized.slice(0, lastSep)
@@ -261,7 +275,12 @@ export const segments = (path: Path): ReadonlyArray<string> => toSegments(path)
  * Change the extension of a file path.
  * Pass empty string to remove extension.
  */
-export const withExtension = <P extends FilePath>(path: P, ext: string): P => {
+export const withExtension = <P extends FilePath>(args: {
+  readonly path: P
+  readonly extension: string
+}): P => {
+  const { path } = args
+  const ext = args.extension
   const name = getFilename(path)
   const base = extractBaseName(name)
   const dir = path.slice(0, -name.length)
@@ -273,7 +292,11 @@ export const withExtension = <P extends FilePath>(path: P, ext: string): P => {
 /**
  * Change the base name of a path (preserving extension for files).
  */
-export const withBaseName = <P extends Path>(path: P, name: string): P => {
+export const withBaseName = <P extends Path>(args: {
+  readonly path: P
+  readonly name: string
+}): P => {
+  const { path, name } = args
   const isDir = hasTrailingSlash(path)
   const oldName = getFilename(removeTrailingSlash(path))
   const ext = isDir ? undefined : extractFullExtension(oldName)
@@ -290,7 +313,11 @@ export const withBaseName = <P extends Path>(path: P, name: string): P => {
 /**
  * Add a suffix to the base name of a file (before extension).
  */
-export const addSuffix = <P extends FilePath>(path: P, suffix: string): P => {
+export const addSuffix = <P extends FilePath>(args: {
+  readonly path: P
+  readonly suffix: string
+}): P => {
+  const { path, suffix } = args
   const name = getFilename(path)
   const base = extractBaseName(name)
   const fullExt = extractFullExtension(name)
@@ -307,7 +334,8 @@ export const addSuffix = <P extends FilePath>(path: P, suffix: string): P => {
 /**
  * Check if a path starts with another path.
  */
-export const startsWith = (path: Path, prefix: DirPath): boolean => {
+export const startsWith = (args: { readonly path: Path; readonly prefix: DirPath }): boolean => {
+  const { path, prefix } = args
   const normalizedPath = path.replace(/\\/g, '/')
   const normalizedPrefix = removeTrailingSlash(prefix).replace(/\\/g, '/')
   return (
@@ -320,7 +348,8 @@ export const startsWith = (path: Path, prefix: DirPath): boolean => {
 /**
  * Check if a path ends with a given suffix.
  */
-export const endsWith = (path: Path, suffix: string): boolean => {
+export const endsWith = (args: { readonly path: Path; readonly suffix: string }): boolean => {
+  const { path, suffix } = args
   const normalizedPath = removeTrailingSlash(path).replace(/\\/g, '/')
   const normalizedSuffix = suffix.replace(/\\/g, '/')
   return normalizedPath.endsWith(normalizedSuffix)
@@ -330,8 +359,13 @@ export const endsWith = (path: Path, suffix: string): boolean => {
  * Strip a prefix directory from a path.
  * Returns undefined if path doesn't start with prefix.
  */
-export const stripPrefix = (path: Path, prefix: DirPath): RelativePath | undefined => {
-  if (!startsWith(path, prefix)) {
+export const stripPrefix = (args: {
+  readonly path: Path
+  readonly prefix: DirPath
+}): RelativePath | undefined => {
+  const { path, prefix } = args
+
+  if (!startsWith({ path, prefix })) {
     return undefined
   }
 

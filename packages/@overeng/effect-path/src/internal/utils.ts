@@ -81,11 +81,24 @@ export const extnamePath = (p: string) =>
 /** Check if path has a trailing slash (works for both / and \) */
 export const hasTrailingSlash = (p: string): boolean => p.endsWith('/') || p.endsWith('\\')
 
+const isPosixRoot = (p: string): boolean => /^\/+$/.test(p)
+
 /** Ensure path has a trailing slash */
-export const ensureTrailingSlash = (p: string): string => (hasTrailingSlash(p) ? p : `${p}/`)
+export const ensureTrailingSlash = (p: string): string =>
+  hasTrailingSlash(p) || isPosixRoot(p) ? (isPosixRoot(p) ? '/' : p) : `${p}/`
 
 /** Remove trailing slash if present */
-export const removeTrailingSlash = (p: string): string => (hasTrailingSlash(p) ? p.slice(0, -1) : p)
+export const removeTrailingSlash = (p: string): string => {
+  if (!hasTrailingSlash(p)) {
+    return p
+  }
+
+  if (isPosixRoot(p)) {
+    return '/'
+  }
+
+  return p.slice(0, -1)
+}
 
 /** Check if path contains null bytes (invalid on all platforms) */
 export const hasNullByte = (p: string): boolean => p.includes('\0')

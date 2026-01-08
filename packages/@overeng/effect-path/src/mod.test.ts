@@ -1,3 +1,4 @@
+import { FileSystem } from '@effect/platform'
 import { NodeContext } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect, Either, Schema } from 'effect'
@@ -160,6 +161,13 @@ describe('path operations', () => {
       const result = EffectPath.ops.join(dir, seg1, seg2)
       expect(result).toBe('/home/user/file.txt')
     })
+
+    it('joins from root directory without double slashes', () => {
+      const dir = EffectPath.unsafe.absoluteDir('/')
+      const file = EffectPath.unsafe.relativeFile('file.txt')
+      const result = EffectPath.ops.join(dir, file)
+      expect(result).toBe('/file.txt')
+    })
   })
 
   describe('parent', () => {
@@ -173,6 +181,18 @@ describe('path operations', () => {
       const dir = EffectPath.unsafe.absoluteDir('/home/user/')
       const parentDir = EffectPath.ops.parent(dir)
       expect(parentDir).toBe('/home/')
+    })
+
+    it('gets parent of directory directly under root', () => {
+      const dir = EffectPath.unsafe.absoluteDir('/home/')
+      const parentDir = EffectPath.ops.parent(dir)
+      expect(parentDir).toBe('/')
+    })
+
+    it('gets parent of relative directory at root', () => {
+      const dir = EffectPath.unsafe.relativeDir('foo/')
+      const parentDir = EffectPath.ops.parent(dir)
+      expect(parentDir).toBe('./')
     })
   })
 
@@ -210,13 +230,13 @@ describe('path operations', () => {
   describe('withExtension', () => {
     it('changes file extension', () => {
       const file = EffectPath.unsafe.absoluteFile('/path/to/file.txt')
-      const result = EffectPath.ops.withExtension(file, 'md')
+      const result = EffectPath.ops.withExtension({ path: file, extension: 'md' })
       expect(result).toBe('/path/to/file.md')
     })
 
     it('adds extension to file without one', () => {
       const file = EffectPath.unsafe.absoluteFile('/path/to/Makefile')
-      const result = EffectPath.ops.withExtension(file, 'bak')
+      const result = EffectPath.ops.withExtension({ path: file, extension: 'bak' })
       expect(result).toBe('/path/to/Makefile.bak')
     })
   })
@@ -224,7 +244,7 @@ describe('path operations', () => {
   describe('withBaseName', () => {
     it('changes file name preserving extension', () => {
       const file = EffectPath.unsafe.absoluteFile('/path/to/old.txt')
-      const result = EffectPath.ops.withBaseName(file, 'new')
+      const result = EffectPath.ops.withBaseName({ path: file, name: 'new' })
       expect(result).toBe('/path/to/new.txt')
     })
   })
@@ -366,6 +386,17 @@ describe('schema', () => {
       }),
     )
   })
+
+  describe('RelativeFileInfo', () => {
+    it.effect('uses ./ as parent for root-level relative files', () =>
+      Effect.gen(function* () {
+        const decoded = yield* Schema.decodeUnknown(EffectPath.schema.RelativeFileInfo())(
+          'file.txt',
+        )
+        expect(decoded.parent.normalized).toBe('./')
+      }),
+    )
+  })
 })
 
 // =============================================================================
@@ -392,6 +423,16 @@ describe('sandbox', () => {
       if (Either.isLeft(result)) {
         expect(result.left._tag).toBe('TraversalError')
       }
+    })
+
+    it('rejects paths that escape and then re-enter', () => {
+      const result = sandbox.validate(EffectPath.unsafe.relativeFile('../safe/file.txt'))
+      expect(Either.isLeft(result)).toBe(true)
+    })
+
+    it('rejects absolute paths passed as relative', () => {
+      const result = sandbox.validate(EffectPath.unsafe.relativeFile('/etc/passwd'))
+      expect(Either.isLeft(result)).toBe(true)
     })
 
     it('allows .. that stays within sandbox', () => {
@@ -461,7 +502,7 @@ describe('utility functions', () => {
     it('validates path stays in sandbox', () => {
       const root = EffectPath.unsafe.absoluteDir('/home/user/')
       const path = EffectPath.unsafe.relativeFile('file.txt')
-      const result = EffectPath.validatePath(root, path)
+      const result = EffectPath.validatePath({ root, path })
       expect(Either.isRight(result)).toBe(true)
     })
   })
@@ -470,13 +511,13 @@ describe('utility functions', () => {
     it('checks if absolute path is in directory', () => {
       const root = EffectPath.unsafe.absoluteDir('/home/user/')
       const inside = EffectPath.unsafe.absoluteFile('/home/user/file.txt')
-      expect(EffectPath.isContained(root, inside)).toBe(true)
+      expect(EffectPath.isContained({ root, path: inside })).toBe(true)
     })
 
     it('returns false for paths outside', () => {
       const root = EffectPath.unsafe.absoluteDir('/home/user/')
       const outside = EffectPath.unsafe.absoluteFile('/etc/passwd')
-      expect(EffectPath.isContained(root, outside)).toBe(false)
+      expect(EffectPath.isContained({ root, path: outside })).toBe(false)
     })
   })
 })
@@ -531,4 +572,32 @@ describe('edge cases', () => {
       expect(EffectPath.ops.extension(file)).toBe('json')
     })
   })
+})
+
+// =============================================================================
+// Symlink Tests
+// =============================================================================
+
+describe('symlink', () => {
+  it.effect('detects and reads symlinks', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const tmp = yield* fs.makeTempDirectoryScoped()
+
+      const target = EffectPath.unsafe.absoluteFile(`${tmp}/target.txt`)
+      const link = EffectPath.unsafe.absoluteFile(`${tmp}/link.txt`)
+
+      yield* fs.writeFileString(target, 'hello')
+      yield* fs.symlink(target, link)
+
+      expect(yield* EffectPath.symlink.is(link)).toBe(true)
+      expect(yield* EffectPath.symlink.is(target)).toBe(false)
+
+      const resolvedTarget = yield* EffectPath.symlink.readLink(link)
+      expect(resolvedTarget).toBe(target)
+
+      const chain = yield* EffectPath.symlink.chain(link)
+      expect(chain).toEqual([link, target])
+    }).pipe(Effect.scoped, Effect.provide(NodeContext.layer)),
+  )
 })

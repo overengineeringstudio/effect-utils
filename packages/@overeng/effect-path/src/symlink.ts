@@ -5,7 +5,7 @@
  */
 
 import { FileSystem, Path as PlatformPath, Error as PlatformError } from '@effect/platform'
-import { Effect } from 'effect'
+import { Effect, Either } from 'effect'
 
 import type { AbsolutePath, Path } from './brands.ts'
 import {
@@ -29,10 +29,11 @@ const MAX_SYMLINK_DEPTH = 40
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** Map filesystem errors to our error types */
-const mapFsError = (
-  path: string,
-  error: PlatformError.PlatformError,
-): PathNotFoundError | PermissionError => {
+const mapFsError = (args: {
+  readonly path: string
+  readonly error: PlatformError.PlatformError
+}): PathNotFoundError | PermissionError => {
+  const { path, error } = args
   if (error._tag === 'SystemError') {
     if (error.reason === 'NotFound') {
       return new PathNotFoundError({
@@ -73,10 +74,36 @@ export const isSymlink = (
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
 
-    // Use lstat to not follow symlinks
-    const stat = yield* fs.stat(path).pipe(Effect.mapError((e) => mapFsError(path, e)))
+    const handleReadLinkError = (
+      error: PlatformError.PlatformError,
+    ): Effect.Effect<boolean, PathNotFoundError | PermissionError, never> => {
+      if (error._tag === 'SystemError') {
+        if (error.reason === 'NotFound') {
+          return Effect.fail(
+            new PathNotFoundError({
+              path,
+              message: `Path not found: ${path}`,
+              nearestExisting: undefined,
+              expectedType: 'any',
+            }),
+          )
+        }
+        if (error.reason === 'PermissionDenied') {
+          return Effect.fail(
+            new PermissionError({
+              path,
+              message: `Permission denied: ${path}`,
+              operation: 'stat',
+            }),
+          )
+        }
+      }
 
-    return stat.type === 'SymbolicLink'
+      // Likely not a symlink (EINVAL), treat as false.
+      return Effect.succeed(false)
+    }
+
+    return yield* fs.readLink(path).pipe(Effect.as(true), Effect.catchAll(handleReadLinkError))
   })
 
 /**
@@ -106,21 +133,43 @@ export const readLink = (
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
 
-    // First check if it's a symlink
-    const stat = yield* fs.stat(path).pipe(Effect.mapError((e) => mapFsError(path, e)))
-
-    if (stat.type !== 'SymbolicLink') {
-      return yield* new NotASymlinkError({
-        path,
-        message: `Path is not a symbolic link: ${path}`,
-        actualType: stat.type === 'Directory' ? 'directory' : 'file',
-      })
+    const targetResult = yield* fs.readLink(path).pipe(Effect.either)
+    if (Either.isRight(targetResult)) {
+      return targetResult.right as Path
     }
 
-    // Read the symlink target
-    const target = yield* fs.readLink(path).pipe(Effect.mapError((e) => mapFsError(path, e)))
+    const error = targetResult.left
+    if (error._tag === 'SystemError') {
+      if (error.reason === 'NotFound') {
+        return yield* new PathNotFoundError({
+          path,
+          message: `Path not found: ${path}`,
+          nearestExisting: undefined,
+          expectedType: 'any',
+        })
+      }
+      if (error.reason === 'PermissionDenied') {
+        return yield* new PermissionError({
+          path,
+          message: `Permission denied: ${path}`,
+          operation: 'stat',
+        })
+      }
+    }
 
-    return target as Path
+    const statResult = yield* fs.stat(path).pipe(
+      Effect.mapError((error) => mapFsError({ path, error })),
+      Effect.either,
+    )
+    if (Either.isLeft(statResult)) {
+      return yield* statResult.left
+    }
+
+    return yield* new NotASymlinkError({
+      path,
+      message: `Path is not a symbolic link: ${path}`,
+      actualType: statResult.right.type === 'Directory' ? 'directory' : 'file',
+    })
   })
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -200,18 +249,21 @@ export const chain = (
     let current = path
 
     for (let depth = 0; depth < MAX_SYMLINK_DEPTH; depth++) {
-      // Check if current is a symlink
-      const stat = yield* fs.stat(current).pipe(Effect.mapError((e) => mapFsError(current, e)))
+      const targetResult = yield* fs.readLink(current).pipe(Effect.either)
+      if (Either.isLeft(targetResult)) {
+        const error = targetResult.left
+        if (
+          error._tag === 'SystemError' &&
+          (error.reason === 'NotFound' || error.reason === 'PermissionDenied')
+        ) {
+          return yield* mapFsError({ path: current, error })
+        }
 
-      if (stat.type !== 'SymbolicLink') {
-        // Reached a non-symlink, we're done
+        // Likely not a symlink (EINVAL), we're done.
         return visited
       }
 
-      // Read symlink target
-      const target = yield* fs
-        .readLink(current)
-        .pipe(Effect.mapError((e) => mapFsError(current, e)))
+      const target = targetResult.right
 
       // Resolve to absolute if relative
       const absoluteTarget = platformPath.isAbsolute(target)

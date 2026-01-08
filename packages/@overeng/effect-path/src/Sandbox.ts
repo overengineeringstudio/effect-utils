@@ -67,10 +67,10 @@ export interface Sandbox {
   /**
    * Read a file as text within the sandbox.
    */
-  readFileString(
-    path: RelativePath,
-    encoding?: string,
-  ): Effect.Effect<string, SandboxError, FileSystem.FileSystem | PlatformPath.Path>
+  readFileString(args: {
+    readonly path: RelativePath
+    readonly encoding?: string
+  }): Effect.Effect<string, SandboxError, FileSystem.FileSystem | PlatformPath.Path>
 
   /**
    * Check if a path exists within the sandbox.
@@ -114,6 +114,20 @@ export const sandbox = (root: AbsoluteDirPath): Sandbox => {
   const validate = (path: RelativePath): Either.Either<RelativePath, TraversalError> => {
     // Normalize the path first
     const normalized = lexicalPure(path)
+
+    // Reject absolute paths (POSIX semantics)
+    if (normalized.startsWith('/')) {
+      return Either.left(
+        new TraversalError({
+          path,
+          message: `Expected relative path (must not start with '/'): ${path}`,
+          sandboxRoot: root,
+          escapedTo: normalized,
+          escapingSegments: [],
+        }),
+      )
+    }
+
     const segments = toSegments(normalized)
 
     // Track depth - if we go negative, we've escaped
@@ -122,16 +136,17 @@ export const sandbox = (root: AbsoluteDirPath): Sandbox => {
 
     for (const segment of segments) {
       if (segment === '..') {
-        depth--
-        if (depth < 0) {
+        if (depth === 0) {
           escapingSegments.push(segment)
+        } else {
+          depth--
         }
       } else if (segment !== '.') {
         depth++
       }
     }
 
-    if (depth < 0) {
+    if (escapingSegments.length > 0) {
       return Either.left(
         new TraversalError({
           path,
@@ -160,7 +175,14 @@ export const sandbox = (root: AbsoluteDirPath): Sandbox => {
     }
 
     const validated = validatedResult.right
-    const absolutePath = `${normalizedRoot}/${removeTrailingSlash(validated)}`
+    const relativePart = removeTrailingSlash(validated)
+    if (relativePart === '.') {
+      return Either.right(ensureTrailingSlash(normalizedRoot) as AbsolutePath)
+    }
+
+    const normalizedRelative = relativePart.replace(/^\/+/, '')
+    const absolutePath =
+      normalizedRoot === '/' ? `/${normalizedRelative}` : `${normalizedRoot}/${normalizedRelative}`
 
     if (hasTrailingSlash(validated)) {
       return Either.right(ensureTrailingSlash(absolutePath) as AbsolutePath)
@@ -174,6 +196,10 @@ export const sandbox = (root: AbsoluteDirPath): Sandbox => {
   const contains = (path: AbsolutePath): boolean => {
     const normalizedPath = removeTrailingSlash(lexicalPure(path))
 
+    if (normalizedRoot === '/') {
+      return normalizedPath.startsWith('/')
+    }
+
     // Must start with root and be followed by separator or be exactly root
     if (normalizedPath === normalizedRoot) {
       return true
@@ -183,21 +209,17 @@ export const sandbox = (root: AbsoluteDirPath): Sandbox => {
       return true
     }
 
-    // Handle Windows paths
-    if (normalizedPath.startsWith(normalizedRoot + '\\')) {
-      return true
-    }
-
     return false
   }
 
   /**
    * Validate symlink target stays within sandbox.
    */
-  const validateRealPath = (
-    originalPath: RelativePath,
-    realPath: string,
-  ): Effect.Effect<AbsolutePath, TraversalError, never> => {
+  const validateRealPath = (args: {
+    readonly originalPath: RelativePath
+    readonly realPath: string
+  }): Effect.Effect<AbsolutePath, TraversalError, never> => {
+    const { originalPath, realPath } = args
     const normalizedReal = removeTrailingSlash(lexicalPure(realPath as AbsolutePath))
 
     if (!contains(normalizedReal as AbsolutePath)) {
@@ -264,7 +286,7 @@ export const sandbox = (root: AbsoluteDirPath): Sandbox => {
       )
 
       // Validate the real path is still within sandbox
-      return yield* validateRealPath(path, realPath)
+      return yield* validateRealPath({ originalPath: path, realPath })
     })
 
   return {
@@ -289,11 +311,11 @@ export const sandbox = (root: AbsoluteDirPath): Sandbox => {
         )
       }),
 
-    readFileString: (path, encoding) =>
+    readFileString: (args) =>
       Effect.gen(function* () {
-        const safePath = yield* getSafeRealPath(path)
+        const safePath = yield* getSafeRealPath(args.path)
         const fs = yield* FileSystem.FileSystem
-        return yield* fs.readFileString(safePath, encoding).pipe(
+        return yield* fs.readFileString(safePath, args.encoding).pipe(
           Effect.mapError(
             () =>
               new PermissionError({
@@ -313,7 +335,17 @@ export const sandbox = (root: AbsoluteDirPath): Sandbox => {
         }
         const resolved = resolveResult.right
         const fs = yield* FileSystem.FileSystem
-        return yield* fs.exists(resolved).pipe(Effect.orElse(() => Effect.succeed(false)))
+        const exists = yield* fs.exists(resolved).pipe(Effect.orElse(() => Effect.succeed(false)))
+        if (!exists) {
+          return false
+        }
+
+        return yield* fs.realPath(resolved).pipe(
+          Effect.flatMap((realPath) =>
+            validateRealPath({ originalPath: path, realPath }).pipe(Effect.as(true)),
+          ),
+          Effect.orElse(() => Effect.succeed(false)),
+        )
       }),
 
     readDirectory: (path) =>
@@ -364,23 +396,25 @@ export const sandbox = (root: AbsoluteDirPath): Sandbox => {
 /**
  * Create a sandbox and immediately perform an operation.
  */
-export const withSandbox = <A, E, R>(
-  root: AbsoluteDirPath,
-  f: (sandbox: Sandbox) => Effect.Effect<A, E, R>,
-): Effect.Effect<A, E, R> => f(sandbox(root))
+export const withSandbox = <A, E, R>(args: {
+  readonly root: AbsoluteDirPath
+  readonly f: (sandbox: Sandbox) => Effect.Effect<A, E, R>
+}): Effect.Effect<A, E, R> => args.f(sandbox(args.root))
 
 /**
  * Validate that a path doesn't escape a directory.
  * Convenience function for one-off validation.
  */
-export const validatePath = (
-  root: AbsoluteDirPath,
-  path: RelativePath,
-): Either.Either<RelativePath, TraversalError> => sandbox(root).validate(path)
+export const validatePath = (args: {
+  readonly root: AbsoluteDirPath
+  readonly path: RelativePath
+}): Either.Either<RelativePath, TraversalError> => sandbox(args.root).validate(args.path)
 
 /**
  * Check if a path would stay within a directory.
  * Convenience function for one-off checks.
  */
-export const isContained = (root: AbsoluteDirPath, path: AbsolutePath): boolean =>
-  sandbox(root).contains(path)
+export const isContained = (args: {
+  readonly root: AbsoluteDirPath
+  readonly path: AbsolutePath
+}): boolean => sandbox(args.root).contains(args.path)

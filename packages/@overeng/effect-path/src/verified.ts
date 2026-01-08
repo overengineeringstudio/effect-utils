@@ -106,10 +106,11 @@ const validatePathString = (path: string): Effect.Effect<string, InvalidPathErro
 }
 
 /** Map filesystem errors to our error types */
-const mapFsError = (
-  path: string,
-  error: PlatformError.PlatformError,
-): PathNotFoundError | PermissionError => {
+const mapFsError = (args: {
+  readonly path: string
+  readonly error: PlatformError.PlatformError
+}): PathNotFoundError | PermissionError => {
+  const { path, error } = args
   if (error._tag === 'SystemError') {
     if (error.reason === 'NotFound') {
       return new PathNotFoundError({
@@ -137,12 +138,13 @@ const mapFsError = (
 }
 
 /** Build PathInfo structure */
-const buildPathInfo = <B extends Abs | Rel, T extends File | Dir>(
-  original: string,
-  normalized: string & B & T,
-  isFile: boolean,
-  platformPath: PlatformPath.Path,
-): PathInfo<B, T> => {
+const buildPathInfo = <B extends Abs | Rel, T extends File | Dir>(args: {
+  readonly original: string
+  readonly normalized: string & B & T
+  readonly isFile: boolean
+  readonly platformPath: PlatformPath.Path
+}): PathInfo<B, T> => {
+  const { original, normalized, isFile, platformPath } = args
   const segments = toSegments(normalized)
 
   if (isFile) {
@@ -156,12 +158,12 @@ const buildPathInfo = <B extends Abs | Rel, T extends File | Dir>(
       extension: extractExtension(filename) as PathInfo<B, File>['extension'],
       fullExtension: extractFullExtension(filename) as PathInfo<B, File>['fullExtension'],
       baseName: extractBaseName(filename),
-      parent: buildPathInfo<B, Dir>(
-        parentPath,
-        ensureTrailingSlash(parentPath) as string & B & Dir,
-        false,
+      parent: buildPathInfo<B, Dir>({
+        original: parentPath,
+        normalized: ensureTrailingSlash(parentPath) as string & B & Dir,
+        isFile: false,
         platformPath,
-      ) as PathInfo<B, File>['parent'],
+      }) as PathInfo<B, File>['parent'],
     }
     return fileInfo as PathInfo<B, T>
   }
@@ -179,12 +181,12 @@ const buildPathInfo = <B extends Abs | Rel, T extends File | Dir>(
     baseName: dirName,
     parent: isRoot
       ? (undefined as PathInfo<B, Dir>['parent'])
-      : (buildPathInfo<B, Dir>(
-          parentPath,
-          ensureTrailingSlash(parentPath) as string & B & Dir,
-          false,
+      : (buildPathInfo<B, Dir>({
+          original: parentPath,
+          normalized: ensureTrailingSlash(parentPath) as string & B & Dir,
+          isFile: false,
           platformPath,
-        ) as PathInfo<B, Dir>['parent']),
+        }) as PathInfo<B, Dir>['parent']),
   }
   return dirInfo as PathInfo<B, T>
 }
@@ -215,7 +217,9 @@ export const absoluteFile = (
     const normalized = platformPath.normalize(validated)
 
     // Verify it exists and is a file
-    const stat = yield* fs.stat(normalized).pipe(Effect.mapError((e) => mapFsError(path, e)))
+    const stat = yield* fs
+      .stat(normalized)
+      .pipe(Effect.mapError((error) => mapFsError({ path, error })))
 
     if (stat.type === 'Directory') {
       return yield* new NotAFileError({
@@ -225,7 +229,12 @@ export const absoluteFile = (
       })
     }
 
-    return buildPathInfo<Abs, File>(path, normalized as AbsoluteFilePath, true, platformPath)
+    return buildPathInfo<Abs, File>({
+      original: path,
+      normalized: normalized as AbsoluteFilePath,
+      isFile: true,
+      platformPath,
+    })
   })
 
 /**
@@ -250,7 +259,9 @@ export const absoluteDir = (
     const normalized = platformPath.normalize(removeTrailingSlash(validated))
 
     // Verify it exists and is a directory
-    const stat = yield* fs.stat(normalized).pipe(Effect.mapError((e) => mapFsError(path, e)))
+    const stat = yield* fs
+      .stat(normalized)
+      .pipe(Effect.mapError((error) => mapFsError({ path, error })))
 
     if (stat.type !== 'Directory') {
       return yield* new NotADirectoryError({
@@ -261,7 +272,12 @@ export const absoluteDir = (
     }
 
     const normalizedDir = ensureTrailingSlash(normalized) as AbsoluteDirPath
-    return buildPathInfo<Abs, Dir>(path, normalizedDir, false, platformPath)
+    return buildPathInfo<Abs, Dir>({
+      original: path,
+      normalized: normalizedDir,
+      isFile: false,
+      platformPath,
+    })
   })
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -271,11 +287,12 @@ export const absoluteDir = (
 /**
  * Parse and verify a relative file path exists relative to a base directory.
  */
-export const relativeFile = (
-  path: string,
-  base: AbsoluteDirPath,
-): Effect.Effect<RelativeFileInfo, VerifyError, FileSystem.FileSystem | PlatformPath.Path> =>
+export const relativeFile = (args: {
+  readonly path: string
+  readonly base: AbsoluteDirPath
+}): Effect.Effect<RelativeFileInfo, VerifyError, FileSystem.FileSystem | PlatformPath.Path> =>
   Effect.gen(function* () {
+    const { path, base } = args
     const validated = yield* validatePathString(path)
     const platformPath = yield* PlatformPath.Path
     const fs = yield* FileSystem.FileSystem
@@ -293,7 +310,9 @@ export const relativeFile = (
     const normalized = platformPath.normalize(validated)
 
     // Verify it exists and is a file
-    const stat = yield* fs.stat(absolutePath).pipe(Effect.mapError((e) => mapFsError(path, e)))
+    const stat = yield* fs
+      .stat(absolutePath)
+      .pipe(Effect.mapError((error) => mapFsError({ path, error })))
 
     if (stat.type === 'Directory') {
       return yield* new NotAFileError({
@@ -303,17 +322,23 @@ export const relativeFile = (
       })
     }
 
-    return buildPathInfo<Rel, File>(path, normalized as RelativeFilePath, true, platformPath)
+    return buildPathInfo<Rel, File>({
+      original: path,
+      normalized: normalized as RelativeFilePath,
+      isFile: true,
+      platformPath,
+    })
   })
 
 /**
  * Parse and verify a relative directory path exists relative to a base directory.
  */
-export const relativeDir = (
-  path: string,
-  base: AbsoluteDirPath,
-): Effect.Effect<RelativeDirInfo, VerifyError, FileSystem.FileSystem | PlatformPath.Path> =>
+export const relativeDir = (args: {
+  readonly path: string
+  readonly base: AbsoluteDirPath
+}): Effect.Effect<RelativeDirInfo, VerifyError, FileSystem.FileSystem | PlatformPath.Path> =>
   Effect.gen(function* () {
+    const { path, base } = args
     const validated = yield* validatePathString(path)
     const platformPath = yield* PlatformPath.Path
     const fs = yield* FileSystem.FileSystem
@@ -334,7 +359,9 @@ export const relativeDir = (
     const normalized = platformPath.normalize(removeTrailingSlash(validated))
 
     // Verify it exists and is a directory
-    const stat = yield* fs.stat(absolutePath).pipe(Effect.mapError((e) => mapFsError(path, e)))
+    const stat = yield* fs
+      .stat(absolutePath)
+      .pipe(Effect.mapError((error) => mapFsError({ path, error })))
 
     if (stat.type !== 'Directory') {
       return yield* new NotADirectoryError({
@@ -345,7 +372,12 @@ export const relativeDir = (
     }
 
     const normalizedDir = ensureTrailingSlash(normalized) as RelativeDirPath
-    return buildPathInfo<Rel, Dir>(path, normalizedDir, false, platformPath)
+    return buildPathInfo<Rel, Dir>({
+      original: path,
+      normalized: normalizedDir,
+      isFile: false,
+      platformPath,
+    })
   })
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -378,28 +410,41 @@ export const resolveAbsolute = (
     const normalized = platformPath.normalize(removeTrailingSlash(validated))
 
     // Check what type it is
-    const stat = yield* fs.stat(normalized).pipe(Effect.mapError((e) => mapFsError(path, e)))
+    const stat = yield* fs
+      .stat(normalized)
+      .pipe(Effect.mapError((error) => mapFsError({ path, error })))
 
     if (stat.type === 'Directory') {
       const normalizedDir = ensureTrailingSlash(normalized) as AbsoluteDirPath
-      return buildPathInfo<Abs, Dir>(path, normalizedDir, false, platformPath)
+      return buildPathInfo<Abs, Dir>({
+        original: path,
+        normalized: normalizedDir,
+        isFile: false,
+        platformPath,
+      })
     }
 
-    return buildPathInfo<Abs, File>(path, normalized as AbsoluteFilePath, true, platformPath)
+    return buildPathInfo<Abs, File>({
+      original: path,
+      normalized: normalized as AbsoluteFilePath,
+      isFile: true,
+      platformPath,
+    })
   })
 
 /**
  * Resolve an ambiguous relative path by checking the filesystem.
  */
-export const resolveRelative = (
-  path: string,
-  base: AbsoluteDirPath,
-): Effect.Effect<
+export const resolveRelative = (args: {
+  readonly path: string
+  readonly base: AbsoluteDirPath
+}): Effect.Effect<
   RelativeFileInfo | RelativeDirInfo,
   VerifyError,
   FileSystem.FileSystem | PlatformPath.Path
 > =>
   Effect.gen(function* () {
+    const { path, base } = args
     const validated = yield* validatePathString(path)
     const platformPath = yield* PlatformPath.Path
     const fs = yield* FileSystem.FileSystem
@@ -420,12 +465,24 @@ export const resolveRelative = (
     const normalized = platformPath.normalize(removeTrailingSlash(validated))
 
     // Check what type it is
-    const stat = yield* fs.stat(absolutePath).pipe(Effect.mapError((e) => mapFsError(path, e)))
+    const stat = yield* fs
+      .stat(absolutePath)
+      .pipe(Effect.mapError((error) => mapFsError({ path, error })))
 
     if (stat.type === 'Directory') {
       const normalizedDir = ensureTrailingSlash(normalized) as RelativeDirPath
-      return buildPathInfo<Rel, Dir>(path, normalizedDir, false, platformPath)
+      return buildPathInfo<Rel, Dir>({
+        original: path,
+        normalized: normalizedDir,
+        isFile: false,
+        platformPath,
+      })
     }
 
-    return buildPathInfo<Rel, File>(path, normalized as RelativeFilePath, true, platformPath)
+    return buildPathInfo<Rel, File>({
+      original: path,
+      normalized: normalized as RelativeFilePath,
+      isFile: true,
+      platformPath,
+    })
   })
