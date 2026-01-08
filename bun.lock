@@ -124,6 +124,7 @@
         "react-dom": "catalog:",
       },
       "devDependencies": {
+        "@overeng/utils": "workspace:*",
         "@playwright/test": "catalog:",
         "@tanstack/router-plugin": "catalog:",
         "@types/node": "catalog:",

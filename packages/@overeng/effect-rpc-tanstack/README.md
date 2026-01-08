@@ -2,15 +2,15 @@
 
 Effect RPC integration for TanStack Start using idiomatic `@effect/rpc` patterns.
 
-This package provides a transport layer that bridges `@effect/rpc` with TanStack Start's server function mechanism, enabling type-safe RPC communication in TanStack Start applications.
+This package provides a transport layer that bridges `@effect/rpc` with TanStack Start's API routes, enabling type-safe RPC communication in TanStack Start applications.
 
 ## Features
 
 - **Idiomatic Effect RPC** - Uses `Rpc.make()`, `RpcGroup.make()`, and `RpcGroup.toLayer()`
 - **Type-safe end-to-end** - Full type inference from schema definitions
-- **TanStack Start integration** - Seamless integration with `createServerFn`
+- **TanStack Start integration** - Seamless integration with API routes
 - **Effect-native** - Handlers return `Effect` values for composition
-- **Streaming support** - Stream RPCs are delivered via NDJSON responses
+- **SSR support** - Effect-native route loaders with Exit serialization
 
 ## Installation
 
@@ -68,8 +68,8 @@ const usersRef = Ref.unsafeMake<User[]>([
 ])
 
 export const UserHandlers = UserApi.toLayer(
-  Effect.gen(function* () {
-    return UserApi.of({
+  Effect.succeed(
+    UserApi.of({
       GetUser: ({ id }) =>
         Effect.gen(function* () {
           const users = yield* Ref.get(usersRef)
@@ -88,42 +88,37 @@ export const UserHandlers = UserApi.toLayer(
           yield* Ref.update(usersRef, (users) => [...users, newUser])
           return newUser
         }),
-    })
-  }),
+    }),
+  ),
 )
 ```
 
-### 3. Create server function
+### 3. Create API route
 
 ```typescript
-// src/rpc/serverFn.ts
-import { createServerFn } from '@tanstack/react-start'
-import { makeHandler, type RpcMessage } from '@overeng/effect-rpc-tanstack/server'
-import { UserApi } from './api.ts'
-import { UserHandlers } from './server.ts'
+// src/routes/api/rpc.api.ts
+import { createAPIFileRoute } from '@tanstack/start-api-routes'
+import { makeHandler } from '@overeng/effect-rpc-tanstack/server'
+import { UserApi } from '../../rpc/api.ts'
+import { UserHandlers } from '../../rpc/server.ts'
 
-const handler = makeHandler({ group: UserApi, handlerLayer: UserHandlers })
+const { handler } = makeHandler({ group: UserApi, handlerLayer: UserHandlers })
 
-export const userRpc = createServerFn({ method: 'POST' })
-  .inputValidator((data: unknown) => data as RpcMessage.FromClientEncoded)
-  .handler(
-    handler as (ctx: {
-      data: RpcMessage.FromClientEncoded
-    }) => Promise<ReadonlyArray<object> | Response>,
-  )
+export const APIRoute = createAPIFileRoute('/api/rpc')({
+  POST: ({ request }) => handler(request),
+})
 ```
 
 ### 4. Create client
 
 ```typescript
 // src/rpc/client.ts
-import { RpcClient, RpcClientError } from '@effect/rpc'
+import { RpcClient, type RpcClientError } from '@effect/rpc'
 import { Effect } from 'effect'
-import { layerProtocol } from '@overeng/effect-rpc-tanstack/client'
+import { layerClient } from '@overeng/effect-rpc-tanstack/client'
 import { UserApi, type User, type UserNotFoundError } from './api.ts'
-import { userRpc } from './serverFn.ts'
 
-const ProtocolLive = layerProtocol(userRpc)
+const ProtocolLive = layerClient({ url: '/api/rpc' })
 
 export const userClient = {
   getUser: (payload: { id: string }): Effect.Effect<User, UserNotFoundError | RpcClientError.RpcClientError> =>
@@ -135,7 +130,7 @@ export const userClient = {
   listUsers: (): Effect.Effect<readonly User[], RpcClientError.RpcClientError> =>
     Effect.gen(function* () {
       const client = yield* RpcClient.make(UserApi)
-      return yield* client.ListUsers({})
+      return yield* client.ListUsers()
     }).pipe(Effect.provide(ProtocolLive), Effect.scoped),
 
   createUser: (payload: { name: string; email: string }): Effect.Effect<User, RpcClientError.RpcClientError> =>
@@ -174,27 +169,72 @@ function Home() {
 }
 ```
 
+### Effect-native Route Loaders
+
+For Effect-native loaders with proper error handling and SSR serialization:
+
+```typescript
+// src/routes/users.$id.tsx
+import { createEffectRoute, makeEffectLoaderResult, type ExitEncoded } from '@overeng/effect-rpc-tanstack/router'
+import { userClient } from '../rpc/client.ts'
+import { type User, UserNotFoundError } from '../rpc/api.ts'
+
+export const Route = createEffectRoute('/users/$id')<{ id: string }, User, UserNotFoundError>({
+  loader: ({ params }) => userClient.getUser({ id: params.id }),
+  component: () => {
+    const encoded = Route.useLoaderData() as ExitEncoded
+    const result = makeEffectLoaderResult<User, UserNotFoundError>(encoded)
+
+    return result.match({
+      onSuccess: (user) => <div>{user.name}</div>,
+      onFailure: (error) => <div>Error: {error.userId}</div>,
+    })
+  },
+})
+```
+
 ## API Reference
 
 ### Server
 
 #### `makeHandler(options)`
 
-Creates a TanStack Start server function handler from an RpcGroup and its handler layer.
+Creates a web handler for TanStack Start API routes from an RpcGroup and its handler layer.
 
 - `options.group` - The `RpcGroup` defining the API
 - `options.handlerLayer` - A `Layer` providing the handler implementations
-- `options.runtimeLayer` - Optional runtime layer for dependencies
+- `options.serializationLayer` - Optional serialization layer (defaults to NDJSON)
 
-Stream RPCs return a `Response` with `application/x-ndjson`; the client protocol consumes the stream incrementally.
+Returns `{ handler, dispose }` where `handler` accepts a `Request` and returns a `Response`.
+
+#### `makeHandlerWithRuntime(options)`
+
+Same as `makeHandler` but with an additional `runtimeLayer` for dependency injection.
 
 ### Client
 
-#### `layerProtocol(serverFn)`
+#### `layerClient(options)`
 
-Creates an `RpcClient.Protocol` layer that uses a TanStack Start server function as transport.
+Creates an `RpcClient.Protocol` layer that uses HTTP transport.
 
-- `serverFn` - The TanStack Start server function created with `createServerFn`
+- `options.url` - The URL of the RPC endpoint
+- `options.transformClient` - Optional HTTP client transformer
+- `options.httpClientLayer` - Optional custom HTTP client layer
+- `options.serializationLayer` - Optional serialization layer (defaults to NDJSON)
+
+### Router
+
+#### `createEffectRoute(path)(options)`
+
+Creates an Effect-native file route with typed loaders.
+
+- `options.loader` - Effect-returning loader function
+- `options.loaderLayer` - Optional layer for loader dependencies
+- `options.component` - React component for the route
+
+#### `makeEffectLoaderResult(encoded)`
+
+Creates a result object from encoded Exit data with pattern matching helpers.
 
 ## Example
 
