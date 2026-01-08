@@ -3,6 +3,7 @@ import { Console, Effect } from 'effect'
 
 import { ciGroup, ciGroupEnd, runCommand } from './utils.js'
 
+/** CLI command for removing build artifacts (dist, .tsbuildinfo, storybook-static) */
 export const cleanCommand = Command.make('clean', {}, () =>
   Effect.gen(function* () {
     yield* ciGroup('Cleaning build artifacts')

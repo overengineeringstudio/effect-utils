@@ -5,6 +5,7 @@ import { Effect } from 'effect'
 import { GenieCoverageError } from './errors.js'
 import { runCommand } from './utils.js'
 
+/** Path to oxc configuration files used for linting and formatting */
 export const OXC_CONFIG_PATH = 'packages/@overeng/oxc-config'
 
 /** Directories to scan for config files that should have genie sources */

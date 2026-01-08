@@ -3,6 +3,7 @@ import { Console, Effect } from 'effect'
 
 import { ciGroup, ciGroupEnd, runCommand } from './utils.js'
 
+/** CLI command for building all packages in the monorepo */
 export const buildCommand = Command.make('build', {}, () =>
   Effect.gen(function* () {
     yield* ciGroup('Building all packages')

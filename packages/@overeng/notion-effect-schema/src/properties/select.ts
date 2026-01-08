@@ -54,6 +54,7 @@ export const SelectWrite = Schema.Struct({
 
 export type SelectWrite = typeof SelectWrite.Type
 
+/** Transforms option name (or null) into a select write payload */
 export const SelectWriteFromName = Schema.transform(Schema.NullOr(Schema.String), SelectWrite, {
   strict: false,
   decode: (name) => ({
@@ -251,6 +252,7 @@ export const MultiSelectWrite = Schema.Struct({
 
 export type MultiSelectWrite = typeof MultiSelectWrite.Type
 
+/** Transforms option names array into a multi-select write payload */
 export const MultiSelectWriteFromNames = Schema.transform(
   Schema.Array(Schema.String),
   MultiSelectWrite,
@@ -414,6 +416,7 @@ export const StatusWrite = Schema.Struct({
 
 export type StatusWrite = typeof StatusWrite.Type
 
+/** Transforms status name (or null) into a status write payload */
 export const StatusWriteFromName = Schema.transform(Schema.NullOr(Schema.String), StatusWrite, {
   strict: false,
   decode: (name) => ({

@@ -131,6 +131,7 @@ export type SelectColor = typeof SelectColor.Type
 // Errors
 // -----------------------------------------------------------------------------
 
+/** Checks if running in a development environment (NODE_ENV !== 'production') */
 export const isDevEnv = (): boolean => {
   if (typeof process === 'undefined') {
     return false
@@ -143,6 +144,7 @@ export const isDevEnv = (): boolean => {
   return process.env.NODE_ENV !== 'production'
 }
 
+/** Throws an error for impossible states, triggering debugger in development */
 export const shouldNeverHappen = (msg?: string, ...args: unknown[]): never => {
   console.error(msg, ...args)
   if (isDevEnv()) {
@@ -191,12 +193,14 @@ const getOptionNameSchema = <TName extends string, TValue, TInput, TContext>(
   )
 }
 
+/** Annotates an Option schema with its inner value schema for extraction */
 export const withOptionValueSchema = <TValue, TInput, TContext>(options: {
   schema: Schema.Schema<Option.Option<TValue>, TInput, TContext>
   valueSchema: Schema.Schema<TValue, TValue, never>
 }): Schema.Schema<Option.Option<TValue>, TInput, TContext> =>
   options.schema.annotations({ [optionValueSchema]: options.valueSchema })
 
+/** Annotates a schema with the name schema for select/status option extraction */
 export const withOptionNameSchema = <TValue, TInput, TContext, TName extends string>(options: {
   schema: Schema.Schema<TValue, TInput, TContext>
   nameSchema: Schema.Schema<TName, TName, never>
@@ -275,6 +279,7 @@ export const asNullable = <TValue, TInput, TContext>(
   })
 }
 
+/** Helpers for making Option/nullable values required */
 export const Required = {
   some:
     (message = 'Value is required') =>

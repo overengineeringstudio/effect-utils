@@ -48,6 +48,7 @@ export interface ResolvedConfig {
 // Errors
 // -----------------------------------------------------------------------------
 
+/** Error thrown when no config file is found in the search path */
 export class ConfigNotFoundError extends Schema.TaggedError<ConfigNotFoundError>()(
   'ConfigNotFoundError',
   {
@@ -57,6 +58,7 @@ export class ConfigNotFoundError extends Schema.TaggedError<ConfigNotFoundError>
   },
 ) {}
 
+/** Error thrown when specified config file path doesn't exist */
 export class ConfigFileNotFoundError extends Schema.TaggedError<ConfigFileNotFoundError>()(
   'ConfigFileNotFoundError',
   {
@@ -65,12 +67,14 @@ export class ConfigFileNotFoundError extends Schema.TaggedError<ConfigFileNotFou
   },
 ) {}
 
+/** Error thrown when config file cannot be imported */
 export class ConfigReadError extends Schema.TaggedError<ConfigReadError>()('ConfigReadError', {
   message: Schema.String,
   path: Schema.String,
   cause: Schema.Defect,
 }) {}
 
+/** Error thrown when config file has invalid structure */
 export class ConfigParseError extends Schema.TaggedError<ConfigParseError>()('ConfigParseError', {
   message: Schema.String,
   path: Schema.String,
@@ -267,10 +271,8 @@ export const loadConfig = (
     return { config, path: absolutePath }
   })
 
-/**
- * Merge database config with defaults
- */
-// oxlint-disable-next-line overeng/named-args -- matches main branch convention
+/** Merges database config with defaults */
+// oxlint-disable-next-line overeng/jsdoc-require-exports, overeng/named-args -- JSDoc above; matches main branch
 export const mergeWithDefaults = (
   database: DatabaseConfig,
   defaults?: DefaultsConfig,

@@ -14,6 +14,7 @@ import {
   PropertySchema as PropertySchemaCodec,
 } from '@overeng/notion-effect-schema'
 
+/** Error thrown when database schema doesn't match expected property types */
 export class SchemaMismatchError extends Schema.TaggedError<SchemaMismatchError>()(
   'SchemaMismatchError',
   {
@@ -29,6 +30,7 @@ export class SchemaMismatchError extends Schema.TaggedError<SchemaMismatchError>
   },
 ) {}
 
+/** Error thrown when schema fields lack required Notion property metadata annotations */
 export class SchemaMetaMissingError extends Schema.TaggedError<SchemaMetaMissingError>()(
   'SchemaMetaMissingError',
   {
@@ -125,6 +127,7 @@ const getDatabaseName = (schema: DatabaseSchema): string | undefined => {
   return name === '' ? undefined : name
 }
 
+/** Validates that database schema contains all required properties with correct types */
 export const validateProperties = (args: {
   schema: DatabaseSchema
   databaseId: string
@@ -154,6 +157,7 @@ export const validateProperties = (args: {
     })
   })
 
+/** Extracts required property metadata from a Schema.Struct by reading Notion property annotations */
 export const getRequiredPropertiesFromSchema = Effect.fn(
   'SchemaHelpers.getRequiredPropertiesFromSchema',
 )(function* (schema: Schema.Schema.AnyNoContext) {
@@ -191,6 +195,7 @@ export const getRequiredPropertiesFromSchema = Effect.fn(
   return required
 })
 
+/** Validates database properties using metadata extracted from a Schema.Struct */
 export const validatePropertiesFromSchema = Effect.fn('SchemaHelpers.validatePropertiesFromSchema')(
   function* (args: {
     schema: Schema.Schema.AnyNoContext
@@ -300,6 +305,7 @@ export const getRelationTarget = (args: {
   }))
 }
 
+/** Gets relation target or fails with SchemaMismatchError if property is missing */
 export const getRelationTargetOrFail = (args: {
   schema: DatabaseSchema
   databaseId: string

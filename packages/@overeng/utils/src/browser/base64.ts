@@ -101,32 +101,23 @@ export const encode = (data: Uint8Array | string): string => {
   const l = uint8.length
 
   for (i = 2; i < l; i += 3) {
-    // biome-ignore lint/style/noNonNullAssertion: index guaranteed in bounds
     result += base64abc[uint8[i - 2]! >> 2]
-    // biome-ignore lint/style/noNonNullAssertion: index guaranteed in bounds
     result += base64abc[((uint8[i - 2]! & 0x03) << 4) | (uint8[i - 1]! >> 4)]
-    // biome-ignore lint/style/noNonNullAssertion: index guaranteed in bounds
     result += base64abc[((uint8[i - 1]! & 0x0f) << 2) | (uint8[i]! >> 6)]
-    // biome-ignore lint/style/noNonNullAssertion: index guaranteed in bounds
     result += base64abc[uint8[i]! & 0x3f]
   }
 
   if (i === l + 1) {
     // 1 byte remaining
-    // biome-ignore lint/style/noNonNullAssertion: index guaranteed in bounds
     result += base64abc[uint8[i - 2]! >> 2]
-    // biome-ignore lint/style/noNonNullAssertion: index guaranteed in bounds
     result += base64abc[(uint8[i - 2]! & 0x03) << 4]
     result += '=='
   }
 
   if (i === l) {
     // 2 bytes remaining
-    // biome-ignore lint/style/noNonNullAssertion: index guaranteed in bounds
     result += base64abc[uint8[i - 2]! >> 2]
-    // biome-ignore lint/style/noNonNullAssertion: index guaranteed in bounds
     result += base64abc[((uint8[i - 2]! & 0x03) << 4) | (uint8[i - 1]! >> 4)]
-    // biome-ignore lint/style/noNonNullAssertion: index guaranteed in bounds
     result += base64abc[(uint8[i - 1]! & 0x0f) << 2]
     result += '='
   }

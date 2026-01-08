@@ -63,7 +63,6 @@ const categorizeHandle = (handle: unknown): HandleInfo => {
  * ```
  */
 export const dumpActiveHandles = Effect.sync((): ActiveHandlesInfo => {
-  // biome-ignore lint/suspicious/noExplicitAny: Node.js internals
   const proc = process as any
   const rawHandles: unknown[] = proc._getActiveHandles?.() ?? []
   const rawRequests: unknown[] = proc._getActiveRequests?.() ?? []

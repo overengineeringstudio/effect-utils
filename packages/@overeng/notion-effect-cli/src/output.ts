@@ -64,8 +64,8 @@ export const writeSchemaToFile = (
   )
 
 /**
- * Format code using Biome if available.
- * Falls back to returning unformatted code if Biome is not available or formatting fails.
+ * Format code using oxfmt if available.
+ * Falls back to returning unformatted code if oxfmt is not available or formatting fails.
  */
 export const formatCode = (
   code: string,
@@ -83,7 +83,7 @@ export const formatCode = (
     const formatted = yield* Effect.gen(function* () {
       yield* fs.writeFileString(tempFile, code)
 
-      const didFormat = yield* cmd(['biome', 'format', '--write', tempFile]).pipe(
+      const didFormat = yield* cmd(['oxfmt', '--write', tempFile]).pipe(
         Effect.as(true),
         Effect.catchAll(() => Effect.succeed(false)),
       )

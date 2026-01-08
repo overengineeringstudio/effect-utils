@@ -275,7 +275,7 @@ export type GitHubWorkflowOptions = Record<string, never>
  * })
  * ```
  */
-// oxlint-disable-next-line overeng/named-args -- DSL-style API: fn(config, options?)
+// oxlint-disable-next-line overeng/jsdoc-require-exports, overeng/named-args -- JSDoc above; DSL-style API
 export const githubWorkflow = (
   args: GitHubWorkflowArgs,
   _options?: GitHubWorkflowOptions,

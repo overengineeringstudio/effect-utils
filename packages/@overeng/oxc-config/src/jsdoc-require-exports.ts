@@ -123,6 +123,7 @@ const getExportDescription = (node: ASTNode) => {
   return 'export'
 }
 
+/** ESLint rule requiring JSDoc comments on exported declarations */
 export const jsdocRequireExportsRule: Rule.RuleModule = {
   meta: {
     type: 'suggestion',

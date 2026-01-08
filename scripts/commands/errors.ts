@@ -1,10 +1,12 @@
 import { Schema } from 'effect'
 
+/** Error thrown when a shell command fails during execution */
 export class CommandError extends Schema.TaggedError<CommandError>()('CommandError', {
   command: Schema.String,
   message: Schema.String,
 }) {}
 
+/** Error thrown when config files are missing corresponding .genie.ts source files */
 export class GenieCoverageError extends Schema.TaggedError<GenieCoverageError>()(
   'GenieCoverageError',
   {

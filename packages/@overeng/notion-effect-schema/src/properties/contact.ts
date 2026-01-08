@@ -47,6 +47,7 @@ export const UrlWrite = Schema.Struct({
 
 export type UrlWrite = typeof UrlWrite.Type
 
+/** Transforms URL string (or null) into a URL write payload */
 export const UrlWriteFromString = Schema.transform(Schema.NullOr(Schema.String), UrlWrite, {
   strict: false,
   decode: (url) => ({ url }),
@@ -153,6 +154,7 @@ export const EmailWrite = Schema.Struct({
 
 export type EmailWrite = typeof EmailWrite.Type
 
+/** Transforms email string (or null) into an email write payload */
 export const EmailWriteFromString = Schema.transform(Schema.NullOr(Schema.String), EmailWrite, {
   strict: false,
   decode: (email) => ({ email }),
@@ -261,6 +263,7 @@ export const PhoneNumberWrite = Schema.Struct({
 
 export type PhoneNumberWrite = typeof PhoneNumberWrite.Type
 
+/** Transforms phone number string (or null) into a phone number write payload */
 export const PhoneNumberWriteFromString = Schema.transform(
   Schema.NullOr(Schema.String),
   PhoneNumberWrite,

@@ -5,6 +5,7 @@ type OrUndefined<T> = { [K in keyof T]: T[K] | undefined }
 type PickRequired<T> = { [K in keyof T as undefined extends T[K] ? never : K]: T[K] }
 type ConvertPick<T> = ConvertUndefined<T> & PickRequired<T>
 
+/** Picks specified keys from an object */
 export const pick = <Obj, Keys extends keyof Obj>({
   from,
   keys,
@@ -18,6 +19,7 @@ export const pick = <Obj, Keys extends keyof Obj>({
   }, {} as any)
 }
 
+/** Picks keys from object, returning fallback if any key is undefined */
 export const pickAllOrElse = <Obj, Keys extends keyof Obj, TElse>({
   from,
   keys,

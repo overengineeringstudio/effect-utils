@@ -271,6 +271,7 @@ export const cmdText: (
   )
 })
 
+/** Error thrown when a shell command exits with non-zero status */
 export class CmdError extends Schema.TaggedError<CmdError>()('CmdError', {
   command: Schema.String,
   args: Schema.Array(Schema.String),

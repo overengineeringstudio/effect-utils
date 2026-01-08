@@ -1,5 +1,7 @@
+/** One minute in milliseconds */
 export const minuteInMs = 1000 * 60
 
+/** Common time intervals in milliseconds */
 export const time = {
   ms: 1,
   sec: 1000,

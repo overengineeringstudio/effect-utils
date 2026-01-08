@@ -159,6 +159,7 @@ const getFunctionContext = (node: any): string => {
   return 'function'
 }
 
+/** ESLint rule enforcing functions use named arguments instead of positional parameters */
 export const namedArgsRule = {
   meta: {
     type: 'suggestion' as const,

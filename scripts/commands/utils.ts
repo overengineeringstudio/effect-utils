@@ -7,11 +7,13 @@ import { CurrentWorkingDirectory, cmd, cmdStart } from '@overeng/utils/node'
 
 import { CommandError } from './errors.js'
 
+/** True when running in CI environments (GitHub Actions, CI=true) */
 export const IS_CI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true'
 
 const formatCommandErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
+/** Runs a shell command and waits for completion, capturing errors as CommandError */
 export const runCommand = (options: {
   command: string
   args: string[]
@@ -42,6 +44,7 @@ export const runCommand = (options: {
     )
   })
 
+/** Starts a long-running process without waiting for completion */
 export const startProcess = (options: {
   command: string
   args: string[]
@@ -67,7 +70,9 @@ export const startProcess = (options: {
     )
   })
 
+/** Starts a GitHub Actions group in CI, or prints a section header locally */
 export const ciGroup = (name: string) =>
   IS_CI ? Console.log(`::group::${name}`) : Console.log(`\n▶ ${name}`)
 
+/** Ends a GitHub Actions group in CI, or does nothing locally */
 export const ciGroupEnd = IS_CI ? Console.log('::endgroup::') : Effect.void
