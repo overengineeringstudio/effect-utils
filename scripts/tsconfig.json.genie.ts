@@ -7,7 +7,7 @@ export default tsconfigJSON({
     rootDir: '.',
     noEmit: true,
     tsBuildInfoFile: './tsconfig.tsbuildinfo',
-    lib: ['ES2022'],
+    lib: ['ES2023'],
     types: ['node'],
   },
   include: ['**/*.ts'],

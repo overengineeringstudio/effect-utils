@@ -19,36 +19,61 @@ const tsRuleTester = new RuleTester({
   },
 })
 
-test('overeng/jsdoc-require-exports (value exports)', () => {
-  ruleTester.run('overeng/jsdoc-require-exports (value exports)', jsdocRequireExportsRule, {
+test('value exports - requires JSDoc', () => {
+  ruleTester.run('value exports', jsdocRequireExportsRule, {
     valid: [
       {
-        name: 'allows exported const without JSDoc',
-        code: `export const publicApi = () => {}`,
+        name: 'allows exported const with JSDoc',
+        code: `
+/** Does something useful */
+export const publicApi = () => {}
+`,
       },
       {
-        name: 'allows exported function without JSDoc',
-        code: `export function doSomething() {}`,
+        name: 'allows exported function with JSDoc',
+        code: `
+/** Does something */
+export function doSomething() {}
+`,
       },
       {
-        name: 'allows export default without JSDoc',
+        name: 'allows exported class with JSDoc',
+        code: `
+/** A useful class */
+export class MyClass {}
+`,
+      },
+      {
+        name: 'allows export default without JSDoc (not checked)',
         code: `export default function main() {}`,
       },
       {
-        name: 'allows exported class without JSDoc',
-        code: `export class MyClass {}`,
-      },
-      {
-        name: 'allows named re-exports without JSDoc',
+        name: 'allows named re-exports without JSDoc (source has docs)',
         code: `export { something } from 'module'`,
       },
     ],
-    invalid: [],
+    invalid: [
+      {
+        name: 'reports exported const without JSDoc',
+        code: `export const publicApi = () => {}`,
+        errors: [{ messageId: 'missingJsdoc', data: { name: 'const publicApi' } }],
+      },
+      {
+        name: 'reports exported function without JSDoc',
+        code: `export function doSomething() {}`,
+        errors: [{ messageId: 'missingJsdoc', data: { name: 'function doSomething' } }],
+      },
+      {
+        name: 'reports exported class without JSDoc',
+        code: `export class MyClass {}`,
+        errors: [{ messageId: 'missingJsdoc', data: { name: 'class MyClass' } }],
+      },
+    ],
   })
 })
 
-test('overeng/jsdoc-require-exports (wildcard exports)', () => {
-  ruleTester.run('overeng/jsdoc-require-exports (wildcard exports)', jsdocRequireExportsRule, {
+test('wildcard exports', () => {
+  ruleTester.run('wildcard exports', jsdocRequireExportsRule, {
     valid: [
       {
         name: 'allows plain wildcard re-export without JSDoc',
@@ -72,8 +97,8 @@ export * as utils from 'utils'
   })
 })
 
-test('overeng/jsdoc-require-exports (type definitions)', () => {
-  tsRuleTester.run('overeng/jsdoc-require-exports (type definitions)', jsdocRequireExportsRule, {
+test('type definitions', () => {
+  tsRuleTester.run('type definitions', jsdocRequireExportsRule, {
     valid: [
       {
         name: 'allows export interface with JSDoc',
@@ -108,8 +133,8 @@ export type UserId = string
   })
 })
 
-test('overeng/jsdoc-require-exports (type re-exports)', () => {
-  tsRuleTester.run('overeng/jsdoc-require-exports (type re-exports)', jsdocRequireExportsRule, {
+test('type re-exports - no JSDoc required', () => {
+  tsRuleTester.run('type re-exports', jsdocRequireExportsRule, {
     valid: [
       {
         name: 'allows type re-export without JSDoc',
@@ -124,10 +149,48 @@ test('overeng/jsdoc-require-exports (type re-exports)', () => {
   })
 })
 
-test('overeng/jsdoc-require-exports (edge cases)', () => {
-  ruleTester.run('overeng/jsdoc-require-exports (edge cases)', jsdocRequireExportsRule, {
-    valid: [],
+test('JSDoc adjacency - module-level comments do not count', () => {
+  tsRuleTester.run('JSDoc adjacency', jsdocRequireExportsRule, {
+    valid: [
+      {
+        name: 'allows adjacent JSDoc (immediately before)',
+        code: `
+/** Foo type */
+export type Foo = string
+`,
+      },
+    ],
     invalid: [
+      {
+        name: 'reports when module-level comment is not adjacent (blank line between)',
+        code: `
+/**
+ * This is a module-level doc comment.
+ */
+
+export type Foo = string
+`,
+        errors: [{ messageId: 'missingJsdoc', data: { name: 'type Foo' } }],
+      },
+      {
+        name: 'reports when module-level comment is followed by first export without own doc',
+        code: `
+/**
+ * Module description.
+ */
+
+export type Foo = string
+
+/** Bar has docs */
+export type Bar = number
+
+export type Baz = boolean
+`,
+        errors: [
+          { messageId: 'missingJsdoc', data: { name: 'type Foo' } },
+          { messageId: 'missingJsdoc', data: { name: 'type Baz' } },
+        ],
+      },
       {
         name: 'does not accept regular comments as JSDoc',
         code: `
@@ -140,52 +203,55 @@ export * as utils from 'utils'
   })
 })
 
-test('overeng/jsdoc-require-exports (multiple type exports)', () => {
-  tsRuleTester.run(
-    'overeng/jsdoc-require-exports (multiple type exports)',
-    jsdocRequireExportsRule,
-    {
-      valid: [],
-      invalid: [
-        {
-          name: 'handles multiple type exports',
-          code: `
+test('multiple exports in one file', () => {
+  tsRuleTester.run('multiple exports', jsdocRequireExportsRule, {
+    valid: [],
+    invalid: [
+      {
+        name: 'reports each missing JSDoc for types',
+        code: `
 export interface Foo {}
 export type Bar = string
 `,
-          errors: [
-            { messageId: 'missingJsdoc', data: { name: 'interface Foo' } },
-            { messageId: 'missingJsdoc', data: { name: 'type Bar' } },
-          ],
-        },
-      ],
-    },
-  )
+        errors: [
+          { messageId: 'missingJsdoc', data: { name: 'interface Foo' } },
+          { messageId: 'missingJsdoc', data: { name: 'type Bar' } },
+        ],
+      },
+      {
+        name: 'reports each missing JSDoc for values',
+        code: `
+export const foo = 1
+export function bar() {}
+`,
+        errors: [
+          { messageId: 'missingJsdoc', data: { name: 'const foo' } },
+          { messageId: 'missingJsdoc', data: { name: 'function bar' } },
+        ],
+      },
+    ],
+  })
 })
 
-test('overeng/jsdoc-require-exports (typeof-derived types)', () => {
-  tsRuleTester.run(
-    'overeng/jsdoc-require-exports (typeof-derived types)',
-    jsdocRequireExportsRule,
-    {
-      valid: [
-        {
-          name: 'allows typeof-derived type without JSDoc (Effect Schema pattern)',
-          code: `export type User = typeof User.Type`,
-        },
-        {
-          name: 'allows typeof-derived type with member access chain',
-          code: `export type Config = typeof import('./config').default`,
-        },
-        {
-          name: 'allows typeof-derived type from simple identifier',
-          code: `
+test('typeof-derived types - no JSDoc required', () => {
+  tsRuleTester.run('typeof-derived types', jsdocRequireExportsRule, {
+    valid: [
+      {
+        name: 'allows typeof-derived type without JSDoc (Effect Schema pattern)',
+        code: `export type User = typeof User.Type`,
+      },
+      {
+        name: 'allows typeof-derived type with member access chain',
+        code: `export type Config = typeof import('./config').default`,
+      },
+      {
+        name: 'allows typeof-derived type from simple identifier',
+        code: `
 const schema = {}
 export type Schema = typeof schema
 `,
-        },
-      ],
-      invalid: [],
-    },
-  )
+      },
+    ],
+    invalid: [],
+  })
 })
