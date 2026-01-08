@@ -1,5 +1,5 @@
 import { FetchHttpClient, type HttpClient } from '@effect/platform'
-import { Layer } from 'effect'
+import { Layer, Redacted } from 'effect'
 
 import { NotionConfig } from '../../config.ts'
 
@@ -46,7 +46,7 @@ export const TEST_IDS = {
 
 /** Live NotionConfig layer using environment token */
 export const NotionConfigLive = Layer.succeed(NotionConfig, {
-  authToken: process.env.NOTION_TOKEN ?? '',
+  authToken: Redacted.make(process.env.NOTION_TOKEN ?? ''),
   retryEnabled: true,
   maxRetries: 3,
   retryBaseDelay: 1000,

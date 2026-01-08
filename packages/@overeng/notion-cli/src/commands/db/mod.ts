@@ -7,7 +7,7 @@ import * as path from 'node:path'
 import { Args, Command, Options } from '@effect/cli'
 import { FetchHttpClient, FileSystem, HttpClient } from '@effect/platform'
 import type { Cause, Channel, Sink } from 'effect'
-import { Console, Effect, Layer, Option, Stream } from 'effect'
+import { Console, Effect, Layer, Option, Redacted, Stream } from 'effect'
 import type { NodeInspectSymbol } from 'effect/Inspectable'
 
 /** Re-export internal types for TypeScript declaration emit */
@@ -248,7 +248,7 @@ const dumpCommand = Command.make(
       const resolvedToken = yield* resolveNotionToken(token)
       const fs = yield* FileSystem.FileSystem
 
-      const configLayer = Layer.succeed(NotionConfig, { authToken: resolvedToken })
+      const configLayer = Layer.succeed(NotionConfig, { authToken: Redacted.make(resolvedToken) })
 
       const log = (msg: string) => (quiet ? Effect.void : Console.log(msg))
       const logVerbose = (msg: string) => (verbose && !quiet ? Console.log(msg) : Effect.void)
@@ -525,7 +525,7 @@ const infoCommand = Command.make(
     Effect.gen(function* () {
       const resolvedToken = yield* resolveNotionToken(token)
 
-      const configLayer = Layer.succeed(NotionConfig, { authToken: resolvedToken })
+      const configLayer = Layer.succeed(NotionConfig, { authToken: Redacted.make(resolvedToken) })
 
       const program = Effect.gen(function* () {
         const db = yield* NotionDatabases.retrieve({ databaseId })

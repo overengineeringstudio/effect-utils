@@ -4,7 +4,7 @@ import {
   HttpClientRequest,
   type HttpClientResponse,
 } from '@effect/platform'
-import { Duration, Effect, Option, Schema } from 'effect'
+import { Duration, Effect, Option, Redacted, Schema } from 'effect'
 
 import { NOTION_API_BASE_URL, NOTION_API_VERSION, NotionConfig } from '../config.ts'
 import { NotionApiError, NotionErrorResponse } from '../error.ts'
@@ -96,7 +96,7 @@ export const buildRequest = ({
     const requestUrl = `${NOTION_API_BASE_URL}${path}`
 
     const baseRequest = HttpClientRequest.make(method)(requestUrl).pipe(
-      HttpClientRequest.setHeader('Authorization', `Bearer ${config.authToken}`),
+      HttpClientRequest.setHeader('Authorization', `Bearer ${Redacted.value(config.authToken)}`),
       HttpClientRequest.setHeader('Notion-Version', NOTION_API_VERSION),
       HttpClientRequest.setHeader('Content-Type', 'application/json'),
     )

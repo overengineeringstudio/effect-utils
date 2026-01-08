@@ -1,6 +1,6 @@
 import type { HttpClientRequest } from '@effect/platform'
 import { describe, it } from '@effect/vitest'
-import { Effect, Option, Schema } from 'effect'
+import { Effect, Option, Redacted, Schema } from 'effect'
 import { expect } from 'vitest'
 
 import { NOTION_API_BASE_URL, NOTION_API_VERSION, NotionConfig } from '../config.ts'
@@ -57,7 +57,7 @@ describe('buildRequest', () => {
       expect(request.headers.authorization).toBe('Bearer secret-token')
       expect(request.headers['notion-version']).toBe(NOTION_API_VERSION)
       expect(request.headers['content-type']).toBe('application/json')
-    }).pipe(Effect.provideService(NotionConfig, { authToken: 'secret-token' })),
+    }).pipe(Effect.provideService(NotionConfig, { authToken: Redacted.make('secret-token') })),
   )
 
   it.effect('returns NotionApiError for JSON-encoding failures', () =>
@@ -76,7 +76,7 @@ describe('buildRequest', () => {
       expect(error.status).toBe(0)
       expect(Option.getOrNull(error.url)).toBe(`${NOTION_API_BASE_URL}/databases/123/query`)
       expect(Option.getOrNull(error.method)).toBe('POST')
-    }).pipe(Effect.provideService(NotionConfig, { authToken: 'test-token' })),
+    }).pipe(Effect.provideService(NotionConfig, { authToken: Redacted.make('test-token') })),
   )
 
   it.effect('includes body for POST requests', () =>
@@ -86,7 +86,7 @@ describe('buildRequest', () => {
 
       expect(request.method).toBe('POST')
       // Body is set but we can't easily inspect it without reading the stream
-    }).pipe(Effect.provideService(NotionConfig, { authToken: 'test-token' })),
+    }).pipe(Effect.provideService(NotionConfig, { authToken: Redacted.make('test-token') })),
   )
 })
 

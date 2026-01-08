@@ -1,5 +1,5 @@
 import { HttpClient, type HttpClientRequest, HttpClientResponse } from '@effect/platform'
-import { Chunk, Effect, Layer, Stream } from 'effect'
+import { Chunk, Effect, Layer, Redacted, Stream } from 'effect'
 
 import { type NotionClientConfig, NotionConfig } from '../config.ts'
 
@@ -38,13 +38,13 @@ export const mockHttpClientLayer = (
 
 /** Create a Layer with NotionConfig for testing */
 export const testConfigLayer = (
-  config: NotionClientConfig = { authToken: 'test-token', retryEnabled: false },
+  config: NotionClientConfig = { authToken: Redacted.make('test-token'), retryEnabled: false },
 ): Layer.Layer<NotionConfig> => Layer.succeed(NotionConfig, config)
 
 /** Create a combined test Layer with mock HttpClient and NotionConfig */
 export const createTestLayer = (
   handler: (request: HttpClientRequest.HttpClientRequest) => MockResponse,
-  config: NotionClientConfig = { authToken: 'test-token', retryEnabled: false },
+  config: NotionClientConfig = { authToken: Redacted.make('test-token'), retryEnabled: false },
 ): Layer.Layer<HttpClient.HttpClient | NotionConfig> =>
   Layer.mergeAll(mockHttpClientLayer(handler), testConfigLayer(config))
 

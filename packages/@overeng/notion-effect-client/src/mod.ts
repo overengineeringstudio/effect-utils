@@ -102,7 +102,7 @@ export { NotionUsers } from './users.ts'
  *
  * @example
  * ```ts
- * import { Effect, Layer } from 'effect'
+ * import { Effect, Layer, Redacted } from 'effect'
  * import { HttpClient } from '@effect/platform'
  * import { NotionConfigLive, NotionDatabases } from '@overeng/notion-effect-client'
  *
@@ -114,7 +114,7 @@ export { NotionUsers } from './users.ts'
  * })
  *
  * const MainLayer = Layer.mergeAll(
- *   NotionConfigLive({ authToken: process.env.NOTION_TOKEN! }),
+ *   NotionConfigLive({ authToken: Redacted.make(process.env.NOTION_TOKEN ?? '') }),
  *   HttpClient.layer,
  * )
  *

@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 
 import { Args, Command, Options } from '@effect/cli'
 import { FetchHttpClient, FileSystem } from '@effect/platform'
-import { Console, Effect, Layer, Option, Schema } from 'effect'
+import { Console, Effect, Layer, Option, Redacted, Schema } from 'effect'
 
 import { NotionConfig, NotionDatabases } from '@overeng/notion-effect-client'
 
@@ -202,7 +202,7 @@ const generateCommand = Command.make(
         ...(Option.isSome(name) ? { schemaNameOverride: name.value } : {}),
       }
 
-      const configLayer = Layer.succeed(NotionConfig, { authToken: resolvedToken })
+      const configLayer = Layer.succeed(NotionConfig, { authToken: Redacted.make(resolvedToken) })
 
       const program = Effect.gen(function* () {
         yield* Console.log(`Introspecting database ${databaseId}...`)
@@ -274,7 +274,7 @@ const introspectCommand = Command.make(
     Effect.gen(function* () {
       const resolvedToken = yield* resolveNotionToken(token)
 
-      const configLayer = Layer.succeed(NotionConfig, { authToken: resolvedToken })
+      const configLayer = Layer.succeed(NotionConfig, { authToken: Redacted.make(resolvedToken) })
 
       const program = Effect.gen(function* () {
         const db = yield* NotionDatabases.retrieve({ databaseId })
@@ -349,7 +349,7 @@ const generateFromConfigCommand = Command.make(
       const resolvedToken = yield* resolveNotionToken(token)
       const generatorVersion = yield* getGeneratorVersion
 
-      const configLayer = Layer.succeed(NotionConfig, { authToken: resolvedToken })
+      const configLayer = Layer.succeed(NotionConfig, { authToken: Redacted.make(resolvedToken) })
 
       const program = Effect.gen(function* () {
         yield* Console.log(`Using config: ${resolvedConfigPath}`)
@@ -453,7 +453,7 @@ const diffCommand = Command.make(
       const resolvedToken = yield* resolveNotionToken(token)
       const fs = yield* FileSystem.FileSystem
 
-      const configLayer = Layer.succeed(NotionConfig, { authToken: resolvedToken })
+      const configLayer = Layer.succeed(NotionConfig, { authToken: Redacted.make(resolvedToken) })
 
       const program = Effect.gen(function* () {
         const fileContent = yield* fs.readFileString(file)
