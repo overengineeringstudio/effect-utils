@@ -8,6 +8,7 @@ export default packageJSON({
   type: 'module',
   exports: {
     '.': './src/mod.ts',
+    './test': './src/test/integration/setup.ts',
   },
   publishConfig: {
     access: 'public',

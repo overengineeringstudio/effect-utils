@@ -5,18 +5,25 @@
 import * as path from 'node:path'
 
 import { Args, Command, Options } from '@effect/cli'
-import { FetchHttpClient, FileSystem } from '@effect/platform'
-import type { Cause, Channel, Sink, Stream } from 'effect'
-import { Console, Effect, Layer, Option } from 'effect'
+import { FetchHttpClient, FileSystem, HttpClient } from '@effect/platform'
+import type { Cause, Channel, Sink } from 'effect'
+import { Console, Effect, Layer, Option, Stream } from 'effect'
 import type { NodeInspectSymbol } from 'effect/Inspectable'
 
 /** Re-export internal types for TypeScript declaration emit */
 export type { Cause, Channel, Sink, Stream } from 'effect'
 export type { NodeInspectSymbol } from 'effect/Inspectable'
 
-import { type DatabaseFilter, NotionConfig, NotionDatabases } from '@overeng/notion-effect-client'
+import {
+  type BlockWithDepth,
+  type DatabaseFilter,
+  NotionBlocks,
+  NotionConfig,
+  NotionDatabases,
+} from '@overeng/notion-effect-client'
 
-import { DumpPage, DumpSchemaFile, encodeDumpPage } from '../../dump/schema.ts'
+import { generateSchemaCode } from '../../codegen.ts'
+import { DumpPage, encodeDumpPage } from '../../dump/schema.ts'
 import { introspectDatabase } from '../../introspect.ts'
 import { resolveNotionToken, tokenOption } from '../schema/mod.ts'
 
@@ -34,7 +41,7 @@ const databaseIdArg = Args.text({ name: 'database-id' }).pipe(
 
 const outputOption = Options.file('output').pipe(
   Options.withAlias('o'),
-  Options.withDescription('Output file path for NDJSON data (schema file will be .schema.json)'),
+  Options.withDescription('Output file path for NDJSON data (schema file will be .schema.ts)'),
 )
 
 const contentOption = Options.boolean('content').pipe(
@@ -44,6 +51,16 @@ const contentOption = Options.boolean('content').pipe(
 
 const depthOption = Options.integer('depth').pipe(
   Options.withDescription('Maximum depth for nested content blocks (default: unlimited)'),
+  Options.optional,
+)
+
+const assetsOption = Options.boolean('assets').pipe(
+  Options.withDescription('Download file assets (PDFs, images, etc.) from content blocks'),
+  Options.withDefault(false),
+)
+
+const assetsDirOption = Options.directory('assets-dir').pipe(
+  Options.withDescription('Directory for downloaded assets (default: <output-dir>/assets)'),
   Options.optional,
 )
 
@@ -99,6 +116,102 @@ const parseSimpleFilter = (
   }
 }
 
+// -----------------------------------------------------------------------------
+// Content & Asset Helpers
+// -----------------------------------------------------------------------------
+
+/** Block types that can contain file assets */
+const ASSET_BLOCK_TYPES = new Set(['image', 'video', 'audio', 'file', 'pdf'])
+
+/** Info about an asset to download */
+interface AssetInfo {
+  readonly blockId: string
+  readonly blockType: string
+  readonly url: string
+  readonly name: string
+  readonly isNotionHosted: boolean
+  readonly expiryTime: string | undefined
+}
+
+/** Extract asset info from a block if it contains downloadable files */
+const extractAssetFromBlock = (block: BlockWithDepth['block']): AssetInfo | undefined => {
+  if (!ASSET_BLOCK_TYPES.has(block.type)) return undefined
+
+  const blockData = block[block.type] as
+    | {
+        type?: string
+        file?: { url: string; expiry_time?: string }
+        external?: { url: string }
+        name?: string
+        caption?: unknown[]
+      }
+    | undefined
+
+  if (!blockData) return undefined
+
+  if (blockData.type === 'file' && blockData.file) {
+    const fileName = blockData.name ?? `${block.type}-${block.id}`
+    return {
+      blockId: block.id,
+      blockType: block.type,
+      url: blockData.file.url,
+      name: fileName,
+      isNotionHosted: true,
+      expiryTime: blockData.file.expiry_time,
+    }
+  }
+
+  if (blockData.type === 'external' && blockData.external) {
+    const urlPath = blockData.external.url.split('/').pop() ?? ''
+    const fileName = blockData.name ?? (urlPath || `${block.type}-${block.id}`)
+    return {
+      blockId: block.id,
+      blockType: block.type,
+      url: blockData.external.url,
+      name: fileName,
+      isNotionHosted: false,
+      expiryTime: undefined,
+    }
+  }
+
+  return undefined
+}
+
+/** Extract all assets from a list of blocks */
+const extractAssetsFromBlocks = (blocks: readonly BlockWithDepth[]): readonly AssetInfo[] =>
+  blocks.flatMap((b) => {
+    const asset = extractAssetFromBlock(b.block)
+    return asset ? [asset] : []
+  })
+
+/** Download a single asset to the filesystem */
+const downloadAsset = (args: { asset: AssetInfo; pageId: string; assetsDir: string }) =>
+  Effect.gen(function* () {
+    const { asset, pageId, assetsDir } = args
+    const fs = yield* FileSystem.FileSystem
+    const http = yield* HttpClient.HttpClient
+
+    const pageDir = path.join(assetsDir, pageId)
+    const dirExists = yield* fs.exists(pageDir)
+    if (!dirExists) {
+      yield* fs.makeDirectory(pageDir, { recursive: true })
+    }
+
+    const sanitizedName = asset.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+    const fileName = `${asset.blockId}-${sanitizedName}`
+    const filePath = path.join(pageDir, fileName)
+
+    const response = yield* http.get(asset.url)
+    const body = yield* response.arrayBuffer
+    yield* fs.writeFile(filePath, new Uint8Array(body))
+
+    return { filePath, size: body.byteLength }
+  }).pipe(
+    Effect.withSpan('downloadAsset', {
+      attributes: { 'asset.blockId': args.asset.blockId, 'asset.type': args.asset.blockType },
+    }),
+  )
+
 const dumpCommand = Command.make(
   'dump',
   {
@@ -107,6 +220,8 @@ const dumpCommand = Command.make(
     token: tokenOption,
     content: contentOption,
     depth: depthOption,
+    assets: assetsOption,
+    assetsDir: assetsDirOption,
     since: sinceOption,
     sinceLast: sinceLastOption,
     checkpoint: checkpointOption,
@@ -120,6 +235,8 @@ const dumpCommand = Command.make(
     token,
     content,
     depth,
+    assets,
+    assetsDir,
     since,
     sinceLast,
     checkpoint,
@@ -146,7 +263,7 @@ const dumpCommand = Command.make(
 
         // Determine output paths
         const outputPath = output
-        const schemaPath = output.replace(/\.ndjson$/, '') + '.schema.json'
+        const schemaPath = output.replace(/\.ndjson$/, '') + '.schema.ts'
         const checkpointPath = Option.isSome(checkpoint)
           ? checkpoint.value
           : output.replace(/\.ndjson$/, '') + '.checkpoint.json'
@@ -189,30 +306,47 @@ const dumpCommand = Command.make(
           combinedFilter = queryFilter
         }
 
-        // Write schema file
-        const schemaFile: typeof DumpSchemaFile.Type = {
-          version: '1',
-          databaseId,
-          databaseName: dbInfo.name,
-          dumpedAt: new Date().toISOString(),
-          properties: dbInfo.properties.map((p) => ({
-            name: p.name,
-            type: p.type,
-            config: p.select ?? p.status ?? p.relation ?? undefined,
-          })),
+        // Generate TypeScript schema using existing codegen
+        const dumpedAt = new Date().toISOString()
+        const schemaCode = generateSchemaCode({
+          dbInfo,
+          schemaName: dbInfo.name,
           options: {
-            includeContent: content,
-            contentDepth: Option.isSome(depth) ? depth.value : undefined,
+            typedOptions: true,
+            schemaMeta: true,
           },
-        }
+        })
+
+        // Add dump metadata as export
+        const schemaWithMeta = `${schemaCode}
+
+// -----------------------------------------------------------------------------
+// Dump Metadata
+// -----------------------------------------------------------------------------
+
+/** Metadata about when this dump was created */
+export const DUMP_META = {
+  databaseId: '${databaseId}',
+  databaseName: '${dbInfo.name.replace(/'/g, "\\'")}',
+  dumpedAt: '${dumpedAt}',
+  options: {
+    includeContent: ${content},
+    contentDepth: ${Option.isSome(depth) ? depth.value : 'undefined'},
+    includeAssets: ${assets},
+  },
+} as const
+`
 
         yield* logVerbose(`Writing schema to ${schemaPath}...`)
-        yield* fs.writeFileString(schemaPath, JSON.stringify(schemaFile, null, 2))
+        yield* fs.writeFileString(schemaPath, schemaWithMeta)
 
         // Query pages with pagination
         yield* log(`Fetching pages to ${outputPath}...`)
 
         const outputDir = path.dirname(outputPath)
+        const resolvedAssetsDir = Option.isSome(assetsDir)
+          ? assetsDir.value
+          : path.join(outputDir, 'assets')
 
         // Ensure output directory exists
         const dirExists = yield* fs.exists(outputDir)
@@ -220,9 +354,13 @@ const dumpCommand = Command.make(
           yield* fs.makeDirectory(outputDir, { recursive: true })
         }
 
-        // Fetch all pages using pagination
+        // Track statistics
         const lines: string[] = []
         let pageCount = 0
+        let totalAssetsDownloaded = 0
+        let totalAssetBytes = 0
+        let totalAssetsSkipped = 0
+        const failures: { pageId: string; blockId?: string; error: string }[] = []
         let startCursor: string | undefined
 
         while (true) {
@@ -240,8 +378,68 @@ const dumpCommand = Command.make(
               properties[key] = value
             }
 
-            // TODO: Fetch content blocks if --content flag is set
-            // This requires the ContentFetcher service which will be added in a follow-up
+            // Fetch content blocks if --content flag is set
+            let contentBlocks: (typeof DumpPage.Type)['content'] = undefined
+            if (content) {
+              const blocksStream = NotionBlocks.retrieveAllNested({
+                blockId: page.id,
+                ...(Option.isSome(depth) ? { maxDepth: depth.value } : {}),
+                concurrency: 3,
+              })
+
+              const blocks = yield* Stream.runCollect(blocksStream).pipe(
+                Effect.map((chunk) => [...chunk]),
+                Effect.catchAll((error) => {
+                  failures.push({ pageId: page.id, error: String(error) })
+                  return Effect.succeed([] as BlockWithDepth[])
+                }),
+              )
+
+              // Convert to dump format
+              contentBlocks = blocks.map((b) => ({
+                block: b.block as Record<string, unknown>,
+                depth: b.depth,
+                parentId: b.parentId,
+              }))
+
+              // Handle assets
+              const pageAssets = extractAssetsFromBlocks(blocks)
+              if (pageAssets.length > 0) {
+                if (assets) {
+                  // Download assets
+                  for (const asset of pageAssets) {
+                    const downloadResult = yield* downloadAsset({
+                      asset,
+                      pageId: page.id,
+                      assetsDir: resolvedAssetsDir,
+                    }).pipe(
+                      Effect.map((r) => ({ success: true as const, ...r })),
+                      Effect.catchAll((error) =>
+                        Effect.succeed({
+                          success: false as const,
+                          error: String(error),
+                          blockId: asset.blockId,
+                        }),
+                      ),
+                    )
+
+                    if (downloadResult.success) {
+                      totalAssetsDownloaded++
+                      totalAssetBytes += downloadResult.size
+                    } else {
+                      failures.push({
+                        pageId: page.id,
+                        blockId: downloadResult.blockId,
+                        error: downloadResult.error,
+                      })
+                    }
+                  }
+                } else {
+                  // Log info about skipped assets
+                  totalAssetsSkipped += pageAssets.length
+                }
+              }
+            }
 
             const dumpPage: typeof DumpPage.Type = {
               id: page.id,
@@ -249,7 +447,7 @@ const dumpCommand = Command.make(
               createdTime: page.created_time,
               lastEditedTime: page.last_edited_time,
               properties,
-              content: content ? [] : undefined, // Placeholder for now
+              content: contentBlocks,
             }
 
             lines.push(encodeDumpPage(dumpPage))
@@ -271,19 +469,50 @@ const dumpCommand = Command.make(
 
         yield* log(`Dumped ${pageCount} pages`)
 
-        // Write checkpoint
+        // Log asset summary
+        if (content && totalAssetsSkipped > 0) {
+          yield* log(
+            `Info: ${totalAssetsSkipped} assets found but not downloaded (use --assets to download)`,
+          )
+        }
+        if (assets && totalAssetsDownloaded > 0) {
+          const sizeStr =
+            totalAssetBytes > 1024 * 1024
+              ? `${(totalAssetBytes / (1024 * 1024)).toFixed(1)} MB`
+              : `${(totalAssetBytes / 1024).toFixed(1)} KB`
+          yield* log(
+            `Downloaded ${totalAssetsDownloaded} assets (${sizeStr}) to ${resolvedAssetsDir}`,
+          )
+        }
+        if (failures.length > 0) {
+          yield* log(`Warning: ${failures.length} failures occurred during dump`)
+        }
+
+        // Write checkpoint with extended info
         yield* logVerbose(`Writing checkpoint to ${checkpointPath}...`)
-        yield* fs.writeFileString(
-          checkpointPath,
-          JSON.stringify({ lastDumpedAt: schemaFile.dumpedAt, pageCount }, null, 2),
-        )
+        const checkpointData = {
+          lastDumpedAt: dumpedAt,
+          pageCount,
+          contentIncluded: content,
+          ...(assets
+            ? {
+                assets: {
+                  count: totalAssetsDownloaded,
+                  totalBytes: totalAssetBytes,
+                  directory: resolvedAssetsDir,
+                },
+              }
+            : {}),
+          ...(failures.length > 0 ? { failures } : {}),
+        }
+        yield* fs.writeFileString(checkpointPath, JSON.stringify(checkpointData, null, 2))
 
         yield* log('Done')
       })
 
       yield* program.pipe(Effect.provide(Layer.merge(configLayer, FetchHttpClient.layer)))
     }),
-).pipe(Command.withDescription('Dump a Notion database to NDJSON format for backup or migration'))
+).pipe(Command.withDescription('Dump a Notion database to NDJSON format with TypeScript schema'))
 
 // -----------------------------------------------------------------------------
 // Info Command

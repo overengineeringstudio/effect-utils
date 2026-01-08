@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/mod.ts"
+    ".": "./src/mod.ts",
+    "./test": "./src/test/integration/setup.ts"
   },
   "publishConfig": {
     "access": "public",
