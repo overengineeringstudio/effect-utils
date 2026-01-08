@@ -91,6 +91,7 @@ export const rootPackageJson = {
 export const workspaceReferences = [
   './scripts',
   './context/effect/socket',
+  './context/opentui',
   './packages/@overeng/genie',
   './packages/@overeng/notion-effect-schema',
   './packages/@overeng/notion-cli',

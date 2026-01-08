@@ -10,6 +10,9 @@
       "path": "./context/effect/socket"
     },
     {
+      "path": "./context/opentui"
+    },
+    {
       "path": "./packages/@overeng/genie"
     },
     {

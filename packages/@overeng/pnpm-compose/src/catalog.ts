@@ -20,7 +20,13 @@ export interface CatalogConflict {
 }
 
 /** Read catalog from a repo's genie/repo.ts */
-export const readGenieRepoCatalog = ({ repoName, repoPath }: { repoName: string; repoPath: string }) =>
+export const readGenieRepoCatalog = ({
+  repoName,
+  repoPath,
+}: {
+  repoName: string
+  repoPath: string
+}) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const geniePath = `${repoPath}/genie/repo.ts`
@@ -51,7 +57,13 @@ export const readGenieRepoCatalog = ({ repoName, repoPath }: { repoName: string;
   }).pipe(Effect.withSpan('readGenieRepoCatalog'))
 
 /** Read catalog from a repo's pnpm-workspace.yaml */
-export const readPnpmWorkspaceCatalog = ({ repoName, repoPath }: { repoName: string; repoPath: string }) =>
+export const readPnpmWorkspaceCatalog = ({
+  repoName,
+  repoPath,
+}: {
+  repoName: string
+  repoPath: string
+}) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const workspacePath = `${repoPath}/pnpm-workspace.yaml`
