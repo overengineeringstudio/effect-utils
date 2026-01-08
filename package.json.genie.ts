@@ -23,6 +23,6 @@ export default packageJSON({
   },
   catalog,
   patchedDependencies: {
-    'effect-distributed-lock@0.0.10': 'patches/effect-distributed-lock@0.0.10.patch',
+    'effect-distributed-lock@0.0.11': 'patches/effect-distributed-lock@0.0.11.patch',
   },
 })

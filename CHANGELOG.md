@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **@overeng/utils**: Updated `effect-distributed-lock` to 0.0.11 and patched root exports to avoid loading optional `ioredis` (see https://github.com/ethanniser/effect-distributed-lock/issues/10)
+
 - **@overeng/notion-effect-cli**: Migrated config from JSON to TypeScript (breaking change)
   - Config file is now `notion-schema-gen.config.ts` instead of `.notion-schema-gen.json`
   - Databases are now keyed by their Notion ID instead of an array

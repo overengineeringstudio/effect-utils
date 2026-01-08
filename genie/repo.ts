@@ -13,7 +13,7 @@ export const catalog = {
   '@opentelemetry/api': '1.9.0',
 
   // Effect ecosystem
-  'effect-distributed-lock': '0.0.10',
+  'effect-distributed-lock': '0.0.11',
   effect: '3.19.14',
   '@effect/platform': '0.94.1',
   '@effect/platform-node': '0.104.0',
