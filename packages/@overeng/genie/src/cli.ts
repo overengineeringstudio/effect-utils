@@ -3,7 +3,7 @@ import path from 'node:path'
 import * as Cli from '@effect/cli'
 import { Command, Error as PlatformError, FileSystem, Path } from '@effect/platform'
 import * as PlatformNode from '@effect/platform-node'
-import { Array as A, Effect, pipe, Schema, Stream } from 'effect'
+import { Array as A, Effect, Either, pipe, Schema, Stream } from 'effect'
 
 /** Error when importing a .genie.ts file fails */
 export class GenieImportError extends Schema.TaggedError<GenieImportError>()('GenieImportError', {
@@ -21,6 +21,35 @@ export class GenieCheckError extends Schema.TaggedError<GenieCheckError>()('Geni
   targetFilePath: Schema.String,
   message: Schema.String,
 }) {}
+
+/** Error when one or more files failed to generate */
+export class GenieGenerationFailedError extends Schema.TaggedError<GenieGenerationFailedError>()(
+  'GenieGenerationFailedError',
+  {
+    failedCount: Schema.Number,
+  },
+) {
+  override get message(): string {
+    return `${this.failedCount} file(s) failed to generate`
+  }
+}
+
+/** Error when a single file fails to generate */
+export class GenieFileError extends Schema.TaggedError<GenieFileError>()('GenieFileError', {
+  targetFilePath: Schema.String,
+  cause: Schema.Defect,
+}) {
+  override get message(): string {
+    const causeMsg = this.cause instanceof Error ? this.cause.message : String(this.cause)
+    return `Failed to generate ${this.targetFilePath}: ${causeMsg}`
+  }
+}
+
+/** Successful generation of a single file */
+type GenerateSuccess =
+  | { _tag: 'created'; targetFilePath: string }
+  | { _tag: 'updated'; targetFilePath: string }
+  | { _tag: 'unchanged'; targetFilePath: string }
 
 /** Warning info for tsconfig references that don't match workspace dependencies */
 type TsconfigReferencesWarning = {
@@ -98,10 +127,34 @@ const shouldSkipDirectory = (name: string): boolean => {
   return false
 }
 
+/** Result of attempting to stat a file - handles broken symlinks gracefully */
+type StatResult = { type: 'directory' } | { type: 'file' } | { type: 'skip'; reason: string }
+
 const findGenieFiles = (dir: string) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const pathService = yield* Path.Path
+    const warnings: string[] = []
+
+    const safeStat = (fullPath: string): Effect.Effect<StatResult, never, never> =>
+      fs.stat(fullPath).pipe(
+        Effect.map(
+          (stat): StatResult => ({ type: stat.type === 'Directory' ? 'directory' : 'file' }),
+        ),
+        Effect.catchTag('SystemError', (e) => {
+          // Handle broken symlinks and other stat failures gracefully
+          if (e.reason === 'NotFound') {
+            warnings.push(`Skipping broken symlink: ${fullPath}`)
+            return Effect.succeed({ type: 'skip', reason: 'broken symlink' } as StatResult)
+          }
+          warnings.push(`Skipping ${fullPath}: ${e.message}`)
+          return Effect.succeed({ type: 'skip', reason: e.message } as StatResult)
+        }),
+        Effect.catchTag('BadArgument', (e) => {
+          warnings.push(`Skipping ${fullPath}: ${e.message}`)
+          return Effect.succeed({ type: 'skip', reason: e.message } as StatResult)
+        }),
+      )
 
     const walk = (
       currentDir: string,
@@ -116,20 +169,28 @@ const findGenieFiles = (dir: string) =>
           }
 
           const fullPath = pathService.join(currentDir, entry)
-          const stat = yield* fs.stat(fullPath)
+          const stat = yield* safeStat(fullPath)
 
-          if (stat.type === 'Directory') {
+          if (stat.type === 'directory') {
             const nested = yield* walk(fullPath)
             results.push(...nested)
-          } else if (isGenieFile(entry)) {
+          } else if (stat.type === 'file' && isGenieFile(entry)) {
             results.push(fullPath)
           }
+          // skip broken symlinks silently (already logged warning)
         }
 
         return results
       })
 
-    return yield* walk(dir)
+    const files = yield* walk(dir)
+
+    // Log warnings about skipped files
+    for (const warning of warnings) {
+      yield* Effect.logWarning(warning)
+    }
+
+    return files
   }).pipe(Effect.withSpan('findGenieFiles'))
 
 /** Import a genie file and return its default export (the raw content string) */
@@ -147,33 +208,110 @@ const importGenieFile = (genieFilePath: string) =>
     return module.default as string
   })
 
+/** Generate expected content for a genie file (shared between generate and dry-run) */
+const getExpectedContent = ({ genieFilePath, cwd }: { genieFilePath: string; cwd: string }) =>
+  Effect.gen(function* () {
+    const targetFilePath = genieFilePath.replace('.genie.ts', '')
+    const sourceFile = path.relative(cwd, genieFilePath)
+    const rawContent = yield* importGenieFile(genieFilePath)
+    const header = getHeaderComment(targetFilePath, sourceFile)
+    const formattedContent = yield* formatWithOxfmt(targetFilePath, rawContent)
+    return { targetFilePath, content: header + formattedContent }
+  })
+
+/** Generate a brief diff summary showing line count changes */
+const generateDiffSummary = ({
+  oldContent,
+  newContent,
+}: {
+  oldContent: string
+  newContent: string
+}): string => {
+  if (oldContent === newContent) return ''
+
+  const oldLines = oldContent.split('\n').length
+  const newLines = newContent.split('\n').length
+  const diff = newLines - oldLines
+
+  if (diff > 0) {
+    return `  (+${diff} lines)`
+  } else if (diff < 0) {
+    return `  (${diff} lines)`
+  }
+  return '  (content changed)'
+}
+
 const generateFile = ({
   genieFilePath,
   readOnly,
   cwd,
+  dryRun = false,
 }: {
   genieFilePath: string
   readOnly: boolean
   cwd: string
+  dryRun?: boolean
 }) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const targetFilePath = genieFilePath.replace('.genie.ts', '')
-    const sourceFile = path.relative(cwd, genieFilePath)
 
-    const rawContent = yield* importGenieFile(genieFilePath)
-    const header = getHeaderComment(targetFilePath, sourceFile)
-    const formattedContent = yield* formatWithOxfmt(targetFilePath, rawContent)
-    const fileContentString = header + formattedContent
+    const { content: fileContentString } = yield* getExpectedContent({ genieFilePath, cwd })
 
+    // Check if file exists and get current content
+    const fileExists = yield* fs.exists(targetFilePath)
+    const currentContent = fileExists
+      ? yield* fs.readFileString(targetFilePath).pipe(Effect.catchAll(() => Effect.succeed('')))
+      : ''
+
+    const isUnchanged = fileExists && currentContent === fileContentString
+
+    if (dryRun) {
+      if (!fileExists) {
+        yield* Effect.log(`Would create: ${targetFilePath}`)
+        return { _tag: 'created', targetFilePath } as const
+      }
+      if (isUnchanged) {
+        return { _tag: 'unchanged', targetFilePath } as const
+      }
+      // Show diff summary
+      const diffSummary = generateDiffSummary({ oldContent: currentContent, newContent: fileContentString })
+      yield* Effect.log(`Would update: ${targetFilePath}${diffSummary}`)
+      return { _tag: 'updated', targetFilePath } as const
+    }
+
+    // Actually write the file
     yield* fs.remove(targetFilePath, { force: true })
     yield* fs.writeFileString(targetFilePath, fileContentString)
-    yield* Effect.log(`Generated ${targetFilePath} ${readOnly ? '(read-only)' : '(writable)'}`)
 
     if (readOnly) {
       yield* fs.chmod(targetFilePath, 0o444)
     }
-  }).pipe(Effect.withSpan('generateFile'))
+
+    // Determine result status
+    if (!fileExists) {
+      yield* Effect.log(`✓ Created ${targetFilePath}`)
+      return { _tag: 'created', targetFilePath } as const
+    }
+    if (isUnchanged) {
+      return { _tag: 'unchanged', targetFilePath } as const
+    }
+
+    // Show diff summary for changed files
+    const diffSummary = generateDiffSummary({ oldContent: currentContent, newContent: fileContentString })
+    yield* Effect.log(`✓ Updated ${targetFilePath}${diffSummary}`)
+    return { _tag: 'updated', targetFilePath } as const
+  }).pipe(
+    Effect.mapError((cause) => {
+      const targetFilePath = genieFilePath.replace('.genie.ts', '')
+      return new GenieFileError({ targetFilePath, cause })
+    }),
+    Effect.catchAllDefect((defect) => {
+      const targetFilePath = genieFilePath.replace('.genie.ts', '')
+      return Effect.fail(new GenieFileError({ targetFilePath, cause: defect }))
+    }),
+    Effect.withSpan('generateFile'),
+  )
 
 const checkFile = ({ genieFilePath, cwd }: { genieFilePath: string; cwd: string }) =>
   Effect.gen(function* () {
@@ -332,6 +470,59 @@ const logTsconfigWarnings = (warnings: TsconfigReferencesWarning[]) =>
     yield* Effect.log('')
   })
 
+/**
+ * Logs a summary of file generation results and returns counts by category.
+ *
+ * Sample output:
+ * ```
+ * Summary: 34 files processed
+ *   ✓ 2 created
+ *   ✓ 1 updated
+ *   · 30 unchanged
+ *   ✗ 1 failed:
+ *     - packages/foo/package.json: Failed to generate packages/foo/package.json: Import failed
+ * ```
+ */
+const summarizeResults = ({
+  successes,
+  failures,
+}: {
+  successes: GenerateSuccess[]
+  failures: GenieFileError[]
+}) =>
+  Effect.gen(function* () {
+    const created = successes.filter((s) => s._tag === 'created')
+    const updated = successes.filter((s) => s._tag === 'updated')
+    const unchanged = successes.filter((s) => s._tag === 'unchanged')
+    const total = successes.length + failures.length
+
+    yield* Effect.log('')
+    yield* Effect.log(`Summary: ${total} files processed`)
+
+    if (created.length > 0) {
+      yield* Effect.log(`  ✓ ${created.length} created`)
+    }
+    if (updated.length > 0) {
+      yield* Effect.log(`  ✓ ${updated.length} updated`)
+    }
+    if (unchanged.length > 0) {
+      yield* Effect.log(`  · ${unchanged.length} unchanged`)
+    }
+    if (failures.length > 0) {
+      yield* Effect.logError(`  ✗ ${failures.length} failed:`)
+      for (const f of failures) {
+        yield* Effect.logError(`    - ${f.targetFilePath}: ${f.message}`)
+      }
+    }
+
+    return {
+      created: created.length,
+      updated: updated.length,
+      unchanged: unchanged.length,
+      failed: failures.length,
+    }
+  })
+
 /** Genie CLI command - generates files from .genie.ts source files */
 export const genieCommand = Cli.Command.make(
   'genie',
@@ -352,8 +543,12 @@ export const genieCommand = Cli.Command.make(
       Cli.Options.withDescription('Check if generated files are up to date (for CI)'),
       Cli.Options.withDefault(false),
     ),
+    dryRun: Cli.Options.boolean('dry-run').pipe(
+      Cli.Options.withDescription('Preview changes without writing files'),
+      Cli.Options.withDefault(false),
+    ),
   },
-  ({ cwd, writeable, watch, check }) =>
+  ({ cwd, writeable, watch, check, dryRun }) =>
     Effect.gen(function* () {
       const readOnly = !writeable
       const fs = yield* FileSystem.FileSystem
@@ -381,19 +576,40 @@ export const genieCommand = Cli.Command.make(
         return
       }
 
-      yield* Effect.all(
-        genieFiles.map((genieFilePath) => generateFile({ genieFilePath, readOnly, cwd })),
+      if (dryRun) {
+        yield* Effect.log('Dry run mode - no files will be modified\n')
+      }
+
+      // Generate all files, capturing both successes and failures
+      const results = yield* Effect.all(
+        genieFiles.map((genieFilePath) =>
+          generateFile({ genieFilePath, readOnly, cwd, dryRun }).pipe(Effect.either),
+        ),
         { concurrency: 'unbounded' },
       )
 
-      if (watch) {
-        yield* Effect.log('Watching for changes...')
+      // Partition results into successes and failures
+      const successes = results.filter(Either.isRight).map((r) => r.right)
+      const failures = results.filter(Either.isLeft).map((r) => r.left)
+
+      // Show summary
+      const summary = yield* summarizeResults({ successes, failures })
+
+      // Exit with error code if any files failed
+      if (summary.failed > 0) {
+        return yield* new GenieGenerationFailedError({ failedCount: summary.failed })
+      }
+
+      if (watch && !dryRun) {
+        yield* Effect.log('\nWatching for changes...')
         yield* pipe(
           fs.watch(cwd),
           Stream.filter(({ path: p }) => p.endsWith('.genie.ts')),
           Stream.tap(({ path: p }) => {
             const genieFilePath = path.join(cwd, p)
-            return generateFile({ genieFilePath, readOnly, cwd })
+            return generateFile({ genieFilePath, readOnly, cwd }).pipe(
+              Effect.catchAll((error) => Effect.logError(error.message)),
+            )
           }),
           Stream.runDrain,
         )

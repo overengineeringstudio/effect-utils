@@ -1,3 +1,5 @@
+// Generated file - DO NOT EDIT
+// Source: packages/@overeng/pnpm-compose/tsconfig.json.genie.ts
 {
   "extends": "../../../tsconfig.base.json",
   "compilerOptions": {

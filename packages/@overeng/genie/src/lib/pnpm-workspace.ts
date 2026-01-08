@@ -1,5 +1,6 @@
 import { stringify } from './yaml.ts'
 
+/** Configuration for pnpm-workspace.yaml generation */
 export interface PnpmWorkspaceConfig {
   /** Workspace package patterns */
   packages: readonly string[]
