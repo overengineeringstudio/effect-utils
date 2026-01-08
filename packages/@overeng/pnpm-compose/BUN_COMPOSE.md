@@ -24,6 +24,7 @@ consumer-repo/
 ```
 
 **consumer-repo/package.json:**
+
 ```json
 {
   "name": "consumer-repo",
@@ -40,6 +41,7 @@ consumer-repo/
 ```
 
 **submodules/lib/packages/utils/package.json:**
+
 ```json
 {
   "name": "@lib/utils",
@@ -134,15 +136,15 @@ bun -e "import { Effect } from 'effect'; console.log('works!')"
 
 ## Comparison: pnpm-compose vs bun-compose
 
-| Feature | pnpm | bun | Notes |
-|---------|------|-----|-------|
-| Submodule in workspace | ✅ | ✅ | Both work with real directories |
-| Symlink in glob | ✅ | ❌ | Bun doesn't follow symlinks |
-| Linking dance needed | **Yes** | No | Major simplification |
-| Submodule install corruption | Risk | **Safe** | Bun isolates better |
-| Catalog location | pnpm-workspace.yaml | package.json | Different file |
-| Catalog alignment | Manual check | Manual check | Same need |
-| Version mismatch | Runtime error | Runtime error | Both need alignment |
+| Feature                      | pnpm                | bun           | Notes                           |
+| ---------------------------- | ------------------- | ------------- | ------------------------------- |
+| Submodule in workspace       | ✅                  | ✅            | Both work with real directories |
+| Symlink in glob              | ✅                  | ❌            | Bun doesn't follow symlinks     |
+| Linking dance needed         | **Yes**             | No            | Major simplification            |
+| Submodule install corruption | Risk                | **Safe**      | Bun isolates better             |
+| Catalog location             | pnpm-workspace.yaml | package.json  | Different file                  |
+| Catalog alignment            | Manual check        | Manual check  | Same need                       |
+| Version mismatch             | Runtime error       | Runtime error | Both need alignment             |
 
 ## Key Architecture Difference
 
@@ -202,15 +204,15 @@ export default {
 
 ## Bun Workspace Features Reference
 
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Workspaces | ✅ | `"workspaces": ["packages/*"]` in package.json |
-| Catalog | ✅ | `workspaces.catalog` or top-level `catalog` |
-| `workspace:*` protocol | ✅ | Standard workspace dependency syntax |
-| `catalog:` protocol | ✅ | References catalog versions |
-| Isolated linker | ✅ | `linker = "isolated"` in bunfig.toml |
-| `linkWorkspacePackages` | ✅ | Can disable auto-linking (v1.2.16+) |
-| Text lockfile | ✅ | `bun.lock` (default since v1.2) |
+| Feature                 | Status | Notes                                          |
+| ----------------------- | ------ | ---------------------------------------------- |
+| Workspaces              | ✅     | `"workspaces": ["packages/*"]` in package.json |
+| Catalog                 | ✅     | `workspaces.catalog` or top-level `catalog`    |
+| `workspace:*` protocol  | ✅     | Standard workspace dependency syntax           |
+| `catalog:` protocol     | ✅     | References catalog versions                    |
+| Isolated linker         | ✅     | `linker = "isolated"` in bunfig.toml           |
+| `linkWorkspacePackages` | ✅     | Can disable auto-linking (v1.2.16+)            |
+| Text lockfile           | ✅     | `bun.lock` (default since v1.2)                |
 
 ## Implementation Plan
 
