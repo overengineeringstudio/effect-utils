@@ -47,6 +47,9 @@
     },
     {
       "path": "./packages/@overeng/effect-path"
+    },
+    {
+      "path": "./packages/@overeng/effect-rpc-tanstack"
     }
   ],
   "files": []
