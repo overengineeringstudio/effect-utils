@@ -4,6 +4,12 @@ import { Console, Effect, Option, Schema } from 'effect'
 
 import { findCatalogConflicts, readRepoCatalog } from '../catalog.ts'
 import { detectComposedRepos } from '../config.ts'
+import {
+  addToGitExclude,
+  createSubmoduleSymlink,
+  findAllSubmodules,
+  findDuplicates,
+} from '../submodule-dedupe.ts'
 
 /** Install command: runs the linking dance for composed repos */
 export const installCommand = Cli.Command.make(
@@ -31,7 +37,34 @@ export const installCommand = Cli.Command.make(
         return
       }
 
-      // Step 0: Check for rogue pnpm state in submodules (corruption detection)
+      // Step 0: Deduplicate git submodules via symlinks
+      yield* Effect.gen(function* () {
+        const allSubmodules = yield* findAllSubmodules(cwd)
+        if (allSubmodules.length === 0) return
+
+        const duplicates = findDuplicates(allSubmodules)
+        if (duplicates.length === 0) return
+
+        yield* Console.log(`Deduplicating ${duplicates.length} duplicate submodule(s)...`)
+
+        for (const dup of duplicates) {
+          for (const loc of dup.locations) {
+            if (loc === dup.canonical) continue
+
+            yield* createSubmoduleSymlink({ duplicate: dup, target: loc })
+            yield* addToGitExclude({ repoRoot: loc.repoRoot, submodulePath: loc.path })
+          }
+        }
+
+        const symlinkCount = duplicates.flatMap((d) =>
+          d.locations.filter((l) => l !== d.canonical),
+        ).length
+        yield* Console.log(`  ✓ Created ${symlinkCount} symlink(s)\n`)
+      }).pipe(
+        Effect.catchAll((error) => Console.log(`  ⚠ Submodule deduplication skipped (${error})\n`)),
+      )
+
+      // Step 1: Check for rogue pnpm state in submodules (corruption detection)
       // This happens when someone accidentally runs `pnpm install` in a submodule
       // We look for pnpm-specific files (.modules.yaml or .pnpm directory) to distinguish
       // from legitimate node_modules created by other tools (bun, etc.)
@@ -63,19 +96,19 @@ export const installCommand = Cli.Command.make(
         yield* Console.log('')
       }
 
-      // Step 1: Check catalog alignment (unless skipped)
+      // Step 2: Check catalog alignment (unless skipped)
       if (!skipCatalogCheck) {
         yield* Console.log('Checking catalog alignment...')
         const catalogs = []
 
-        const mainCatalog = yield* readRepoCatalog('main', cwd)
+        const mainCatalog = yield* readRepoCatalog({ repoName: 'main', repoPath: cwd })
         if (Option.isSome(mainCatalog)) {
           catalogs.push(mainCatalog.value)
         }
 
         for (const repo of composedRepos) {
           const repoPath = `${cwd}/${repo.path}`
-          const repoCatalog = yield* readRepoCatalog(repo.name, repoPath)
+          const repoCatalog = yield* readRepoCatalog({ repoName: repo.name, repoPath })
           if (Option.isSome(repoCatalog)) {
             catalogs.push(repoCatalog.value)
           }

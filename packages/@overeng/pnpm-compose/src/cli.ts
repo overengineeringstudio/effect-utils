@@ -5,13 +5,12 @@ import * as PlatformNode from '@effect/platform-node'
 import { Effect, pipe } from 'effect'
 
 import { checkCommand } from './commands/check.ts'
-import { dedupeSubmodulesCommand } from './commands/dedupe-submodules.ts'
 import { installCommand } from './commands/install.ts'
 import { listCommand } from './commands/list.ts'
 
 const command = Cli.Command.make('pnpm-compose').pipe(
   Cli.Command.withDescription('CLI for composing pnpm workspaces with git submodules'),
-  Cli.Command.withSubcommands([checkCommand, dedupeSubmodulesCommand, installCommand, listCommand]),
+  Cli.Command.withSubcommands([checkCommand, installCommand, listCommand]),
 )
 
 const cli = Cli.Command.run(command, {

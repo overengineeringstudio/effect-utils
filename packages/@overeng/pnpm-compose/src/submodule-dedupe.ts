@@ -4,7 +4,7 @@
  * Detects duplicate git submodules across nested repos and creates symlinks
  * to deduplicate them, preferring the top-level copy.
  */
-import { FileSystem, Path } from '@effect/platform'
+import { Command, FileSystem, Path } from '@effect/platform'
 import { Effect } from 'effect'
 
 /** A submodule entry with its URL and path */
@@ -171,6 +171,36 @@ export const createSubmoduleSymlink = ({
     yield* fs.symlink(relativePath, symlinkPath)
   }).pipe(Effect.withSpan('createSubmoduleSymlink'))
 
+/** Resolve actual git directory path (handles both regular repos and submodules) */
+const resolveGitDir = (repoRoot: string) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    const gitPath = path.join(repoRoot, '.git')
+
+    const stat = yield* fs.stat(gitPath)
+
+    // If .git is a directory, use it directly
+    if (stat.type === 'Directory') {
+      return gitPath
+    }
+
+    // If .git is a file (gitlink in submodule), parse it to find actual git dir
+    const gitlinkContent = yield* fs.readFileString(gitPath)
+    const gitdirMatch = gitlinkContent.match(/^gitdir:\s*(.+)$/m)
+
+    if (!gitdirMatch) {
+      return yield* Effect.die(`Invalid gitlink file at ${gitPath}`)
+    }
+
+    const relativePath = gitdirMatch[1]
+    if (!relativePath) {
+      return yield* Effect.die(`Invalid gitlink file at ${gitPath}`)
+    }
+
+    return path.resolve(repoRoot, relativePath.trim())
+  }).pipe(Effect.withSpan('resolveGitDir'))
+
 /** Add symlink path to .git/info/exclude (local gitignore) */
 export const addToGitExclude = ({
   repoRoot,
@@ -181,10 +211,13 @@ export const addToGitExclude = ({
 }) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const excludePath = `${repoRoot}/.git/info/exclude`
+    const path = yield* Path.Path
+
+    const gitDir = yield* resolveGitDir(repoRoot)
+    const excludePath = path.join(gitDir, 'info', 'exclude')
 
     // Ensure .git/info directory exists
-    yield* fs.makeDirectory(`${repoRoot}/.git/info`, { recursive: true })
+    yield* fs.makeDirectory(path.join(gitDir, 'info'), { recursive: true })
 
     // Read existing exclude file if it exists
     const exists = yield* fs.exists(excludePath)
@@ -201,3 +234,64 @@ export const addToGitExclude = ({
 
     yield* fs.writeFileString(excludePath, newContent)
   }).pipe(Effect.withSpan('addToGitExclude'))
+
+/** Remove submodule entry from .gitmodules file */
+export const removeFromGitmodules = (repoRoot: string, submodulePath: string) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const gitmodulesPath = `${repoRoot}/.gitmodules`
+
+    const exists = yield* fs.exists(gitmodulesPath)
+    if (!exists) {
+      return // No .gitmodules file
+    }
+
+    const content = yield* fs.readFileString(gitmodulesPath)
+    const lines = content.split('\n')
+    const newLines: string[] = []
+
+    let inTargetSection = false
+    let currentPath: string | undefined
+
+    for (const line of lines) {
+      // Check for submodule section start
+      const sectionMatch = line.match(/\[submodule\s+"([^"]+)"\]/)
+      if (sectionMatch) {
+        // If we were in target section, don't add it
+        inTargetSection = false
+        currentPath = undefined
+      }
+
+      // Check for path in section
+      const pathMatch = line.match(/^\s*path\s*=\s*(.+)$/)
+      if (pathMatch) {
+        currentPath = pathMatch[1]!.trim()
+        if (currentPath === submodulePath) {
+          inTargetSection = true
+          // Remove the section header line too (go back and remove it)
+          if (newLines.length > 0 && newLines[newLines.length - 1]?.includes('[submodule')) {
+            newLines.pop()
+          }
+        }
+      }
+
+      // Add line if not in target section
+      if (!inTargetSection) {
+        newLines.push(line)
+      }
+    }
+
+    yield* fs.writeFileString(gitmodulesPath, newLines.join('\n'))
+  }).pipe(Effect.withSpan('removeFromGitmodules'))
+
+/** Unregister submodule from git index */
+export const unregisterSubmodule = (repoRoot: string, submodulePath: string) =>
+  Effect.gen(function* () {
+    // Use git rm --cached to unregister the submodule from git's index
+    const command = Command.make('git', 'rm', '--cached', submodulePath).pipe(
+      Command.workingDirectory(repoRoot),
+    )
+
+    // Run command and ignore errors (submodule might not be registered)
+    yield* Command.exitCode(command).pipe(Effect.catchAll(() => Effect.void))
+  }).pipe(Effect.withSpan('unregisterSubmodule'))

@@ -32,16 +32,15 @@ This gives you:
 
 The `install` command performs the "symlink dance":
 
-1. **Check catalog alignment** - Validates pnpm catalog versions match across all repos (can be skipped)
-2. **Check if symlinks are correct** - If all symlinks point to the right submodule sources, skip install entirely
-3. **Incremental fix** - If some symlinks are wrong but node_modules exists, fix only those symlinks + lockfile-only
-4. **Full install** - If no node_modules or `--clean` flag, do the full dance: pnpm install → create all symlinks → lockfile-only
+1. **Deduplicate submodules** - Automatically replaces duplicate nested git submodules with symlinks to top-level canonical locations
+2. **Check catalog alignment** - Validates pnpm catalog versions match across all repos (can be skipped)
+3. **Check if symlinks are correct** - If all symlinks point to the right submodule sources, skip install entirely
+4. **Incremental fix** - If some symlinks are wrong but node_modules exists, fix only those symlinks + lockfile-only
+5. **Full install** - If no node_modules or `--clean` flag, do the full dance: pnpm install → create all symlinks → lockfile-only
 
 The `check` command validates catalog alignment without modifying anything.
 
 The `list` command shows configured repos and their catalog status.
-
-The `dedupe-submodules` command finds duplicate git submodules (same URL at different nesting levels) and replaces nested copies with symlinks to the top-level canonical location.
 
 ## How it works
 
@@ -211,12 +210,16 @@ my-app/
 
 This creates redundant disk usage and potential confusion about which copy is being used.
 
-The `dedupe-submodules` command solves this by:
+**Deduplication runs automatically during `pnpm-compose install`**.
 
-1. Scanning for duplicate submodules (same git URL across nested repos)
-2. Choosing the top-level location as canonical
-3. Replacing nested duplicates with symlinks pointing to the canonical location
-4. Adding symlink paths to `.git/info/exclude` to prevent git tracking them
+The deduplication process:
+
+1. Scans for duplicate submodules (same git URL across nested repos)
+2. Chooses the top-level location as canonical
+3. Replaces nested duplicates with symlinks pointing to the canonical location
+4. Adds symlink paths to `.git/info/exclude` to prevent git tracking them
+
+**Important**: Deduplication only creates symlinks without modifying git state (`.gitmodules` or git index). This ensures no uncommittable changes are created. Git operations like `git submodule update` respect the symlinks and work correctly.
 
 After deduplication:
 

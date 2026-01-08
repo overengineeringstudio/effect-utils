@@ -34,7 +34,7 @@ describe('install command', () => {
   const runCli = (env: TestEnv, args: string[]) =>
     Effect.gen(function* () {
       const cliPath = new URL('../cli.ts', import.meta.url).pathname
-      return yield* env.run('bun', [cliPath, 'install', ...args], env.root)
+      return yield* env.run({ cmd: 'bun', args: [cliPath, 'install', ...args], cwd: env.root })
     })
 
   describe('corruption detection', () => {
@@ -44,7 +44,7 @@ describe('install command', () => {
           yield* setupBasicMonorepo(env)
 
           // Simulate corruption: create pnpm state file in submodule
-          yield* createPnpmStateFile(env, 'submodules/lib/node_modules')
+          yield* createPnpmStateFile({ env, nodeModulesPath: 'submodules/lib/node_modules' })
 
           // Verify the corruption marker exists
           const hasModulesYaml = yield* env.exists('submodules/lib/node_modules/.modules.yaml')
@@ -71,7 +71,7 @@ describe('install command', () => {
           yield* setupBasicMonorepo(env)
 
           // Simulate corruption: create .pnpm directory (without .modules.yaml)
-          yield* env.writeFile('submodules/lib/node_modules/.pnpm/.keep', '')
+          yield* env.writeFile({ path: 'submodules/lib/node_modules/.pnpm/.keep', content: '' })
 
           // Verify the corruption marker exists
           const hasPnpmDir = yield* env.exists('submodules/lib/node_modules/.pnpm')
@@ -96,11 +96,14 @@ describe('install command', () => {
           yield* setupBasicMonorepo(env)
 
           // Create bun-style node_modules (no .modules.yaml or .pnpm)
-          yield* env.writeFile('submodules/lib/node_modules/.bin/some-tool', '#!/bin/bash\necho hi')
-          yield* env.writeFile(
-            'submodules/lib/node_modules/some-pkg/package.json',
-            '{"name":"some-pkg"}',
-          )
+          yield* env.writeFile({
+            path: 'submodules/lib/node_modules/.bin/some-tool',
+            content: '#!/bin/bash\necho hi',
+          })
+          yield* env.writeFile({
+            path: 'submodules/lib/node_modules/some-pkg/package.json',
+            content: '{"name":"some-pkg"}',
+          })
 
           const output = yield* runCli(env, ['--skip-catalog-check'])
 
@@ -160,7 +163,7 @@ describe('install command', () => {
           yield* runCli(env, ['--skip-catalog-check'])
 
           // Corrupt a symlink by removing it
-          yield* env.run('rm', ['-rf', 'node_modules/@test/utils'], env.root)
+          yield* env.run({ cmd: 'rm', args: ['-rf', 'node_modules/@test/utils'], cwd: env.root })
 
           // Run install again - should do incremental fix
           const output = yield* runCli(env, ['--skip-catalog-check'])

@@ -17,7 +17,7 @@ export const listCommand = Cli.Command.make('list', {}, () =>
     yield* Console.log('Composed repos:\n')
 
     // Show main repo
-    const mainCatalog = yield* readRepoCatalog('main', cwd)
+    const mainCatalog = yield* readRepoCatalog({ repoName: 'main', repoPath: cwd })
     if (Option.isSome(mainCatalog)) {
       const count = Object.keys(mainCatalog.value.catalog).length
       yield* Console.log(`  main (root)`)
@@ -48,7 +48,7 @@ export const listCommand = Cli.Command.make('list', {}, () =>
         continue
       }
 
-      const repoCatalog = yield* readRepoCatalog(repo.name, repoPath)
+      const repoCatalog = yield* readRepoCatalog({ repoName: repo.name, repoPath })
       if (Option.isSome(repoCatalog)) {
         const count = Object.keys(repoCatalog.value.catalog).length
         yield* Console.log(`    catalog: ${repoCatalog.value.source} (${count} packages)`)

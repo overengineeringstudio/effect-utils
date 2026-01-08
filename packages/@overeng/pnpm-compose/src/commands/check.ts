@@ -21,7 +21,7 @@ export const checkCommand = Cli.Command.make('check', {}, () =>
     const missingPaths: string[] = []
 
     // Read main repo catalog
-    const mainCatalog = yield* readRepoCatalog('main', cwd)
+    const mainCatalog = yield* readRepoCatalog({ repoName: 'main', repoPath: cwd })
     if (Option.isSome(mainCatalog)) {
       catalogs.push(mainCatalog.value)
       yield* Console.log(`✓ main (${mainCatalog.value.source})`)
@@ -40,7 +40,7 @@ export const checkCommand = Cli.Command.make('check', {}, () =>
         continue
       }
 
-      const repoCatalog = yield* readRepoCatalog(repo.name, repoPath)
+      const repoCatalog = yield* readRepoCatalog({ repoName: repo.name, repoPath })
       if (Option.isSome(repoCatalog)) {
         catalogs.push(repoCatalog.value)
         yield* Console.log(`✓ ${repo.name} (${repoCatalog.value.source})`)
