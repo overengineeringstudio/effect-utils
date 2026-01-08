@@ -98,6 +98,7 @@ export const workspaceReferences = [
   './packages/@overeng/utils',
   './packages/@overeng/oxc-config',
   './packages/@overeng/pnpm-compose',
+  './packages/@overeng/effect-path',
 ] as const
 
 /**

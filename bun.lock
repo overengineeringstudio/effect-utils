@@ -46,6 +46,21 @@
         "effect": ">=3.19.0",
       },
     },
+    "packages/@overeng/effect-path": {
+      "name": "@overeng/effect-path",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@effect/platform": "catalog:",
+        "@effect/vitest": "catalog:",
+        "@types/node": "catalog:",
+        "effect": "catalog:",
+        "vitest": "catalog:",
+      },
+      "peerDependencies": {
+        "@effect/platform": "catalog:",
+        "effect": "catalog:",
+      },
+    },
     "packages/@overeng/effect-react": {
       "name": "@overeng/effect-react",
       "version": "0.1.0",
@@ -203,6 +218,29 @@
         "vitest": "catalog:",
       },
     },
+    "packages/@overeng/pnpm-compose": {
+      "name": "@overeng/pnpm-compose",
+      "version": "0.1.0",
+      "bin": {
+        "pnpm-compose": "./bin/pnpm-compose",
+      },
+      "devDependencies": {
+        "@effect/cli": "catalog:",
+        "@effect/platform": "catalog:",
+        "@effect/platform-node": "catalog:",
+        "@effect/vitest": "catalog:",
+        "@types/node": "catalog:",
+        "effect": "catalog:",
+        "typescript": "catalog:",
+        "vitest": "catalog:",
+      },
+      "peerDependencies": {
+        "@effect/cli": "catalog:",
+        "@effect/platform": "catalog:",
+        "@effect/platform-node": "catalog:",
+        "effect": "catalog:",
+      },
+    },
     "packages/@overeng/react-inspector": {
       "name": "@overeng/react-inspector",
       "version": "8.0.0",
@@ -232,29 +270,6 @@
       "optionalPeers": [
         "effect",
       ],
-    },
-    "packages/@overeng/repo-compose": {
-      "name": "@overeng/repo-compose",
-      "version": "0.1.0",
-      "bin": {
-        "repo-compose": "./bin/repo-compose",
-      },
-      "devDependencies": {
-        "@effect/cli": "catalog:",
-        "@effect/platform": "catalog:",
-        "@effect/platform-node": "catalog:",
-        "@effect/vitest": "catalog:",
-        "@types/node": "catalog:",
-        "effect": "catalog:",
-        "typescript": "catalog:",
-        "vitest": "catalog:",
-      },
-      "peerDependencies": {
-        "@effect/cli": "catalog:",
-        "@effect/platform": "catalog:",
-        "@effect/platform-node": "catalog:",
-        "effect": "catalog:",
-      },
     },
     "packages/@overeng/utils": {
       "name": "@overeng/utils",
@@ -551,6 +566,8 @@
 
     "@overeng/effect-ai-claude-cli": ["@overeng/effect-ai-claude-cli@workspace:packages/@overeng/effect-ai-claude-cli"],
 
+    "@overeng/effect-path": ["@overeng/effect-path@workspace:packages/@overeng/effect-path"],
+
     "@overeng/effect-react": ["@overeng/effect-react@workspace:packages/@overeng/effect-react"],
 
     "@overeng/effect-schema-form": ["@overeng/effect-schema-form@workspace:packages/@overeng/effect-schema-form"],
@@ -567,9 +584,9 @@
 
     "@overeng/oxc-config": ["@overeng/oxc-config@workspace:packages/@overeng/oxc-config"],
 
-    "@overeng/react-inspector": ["@overeng/react-inspector@workspace:packages/@overeng/react-inspector"],
+    "@overeng/pnpm-compose": ["@overeng/pnpm-compose@workspace:packages/@overeng/pnpm-compose"],
 
-    "@overeng/repo-compose": ["@overeng/repo-compose@workspace:packages/@overeng/repo-compose"],
+    "@overeng/react-inspector": ["@overeng/react-inspector@workspace:packages/@overeng/react-inspector"],
 
     "@overeng/utils": ["@overeng/utils@workspace:packages/@overeng/utils"],
 

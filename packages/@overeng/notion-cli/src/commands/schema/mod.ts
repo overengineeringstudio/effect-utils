@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 
 import { Args, Command, Options } from '@effect/cli'
 import { FetchHttpClient, FileSystem } from '@effect/platform'
-import { Cause, Console, Effect, Layer, Option, Schema } from 'effect'
+import { Console, Effect, Layer, Option, Schema } from 'effect'
 
 import { NotionConfig, NotionDatabases } from '@overeng/notion-effect-client'
 
@@ -60,6 +60,7 @@ const getGeneratorVersion = Effect.gen(function* () {
   return pkg.version
 }).pipe(Effect.orElseSucceed(() => 'unknown'))
 
+/** Resolve the Notion API token from CLI option or `NOTION_TOKEN`. */
 export const resolveNotionToken = (token: Option.Option<string>) =>
   Effect.sync(() => (Option.isSome(token) ? token.value : process.env.NOTION_TOKEN)).pipe(
     Effect.flatMap((t) =>
@@ -73,6 +74,7 @@ export const resolveNotionToken = (token: Option.Option<string>) =>
     ),
   )
 
+/** CLI option for providing a Notion API token (defaults to `NOTION_TOKEN`). */
 export const tokenOption = Options.text('token').pipe(
   Options.withAlias('t'),
   Options.withDescription('Notion API token (defaults to NOTION_TOKEN env var)'),
@@ -493,6 +495,7 @@ const diffCommand = Command.make(
 // Schema Subcommand
 // -----------------------------------------------------------------------------
 
+/** Schema command with subcommands for generation and drift detection. */
 export const schemaCommand = Command.make('schema').pipe(
   Command.withSubcommands([
     generateCommand,
