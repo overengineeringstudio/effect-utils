@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 
 import { Args, Command, Options } from '@effect/cli'
 import { FetchHttpClient, FileSystem } from '@effect/platform'
-import { Cause, Console, Effect, Layer, Option, Schema } from 'effect'
+import { Console, Effect, Layer, Option, Schema } from 'effect'
 
 import { NotionConfig, NotionDatabases } from '@overeng/notion-effect-client'
 
