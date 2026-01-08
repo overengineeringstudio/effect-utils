@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **@overeng/effect-rpc-tanstack**: New package for Effect RPC integration with TanStack Start
+  - `createRpcHandler` - Create server function handlers from Effect handlers
+  - `createRpcHandlerWithLayer` - Handler with Effect Layer dependency injection
+  - `wrapHandler` - Wrap handlers for proper error handling
+  - `rpcValidator` - Schema validator for TanStack Start server functions
+  - `RpcRequest/RpcResponse/RpcSuccess/RpcFailure/RpcDefect` - Protocol types
+  - `RpcDefectError` - Client-side error type for unexpected server errors
+  - Basic example with TanStack Start app and Playwright tests
+
 ### Changed
 
 - **@overeng/utils**: Updated `effect-distributed-lock` to 0.0.11 and patched root exports to avoid loading optional `ioredis` (see https://github.com/ethanniser/effect-distributed-lock/issues/10)

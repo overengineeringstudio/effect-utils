@@ -48,6 +48,11 @@ export const catalog = {
   vitest: '4.0.16',
   '@vitejs/plugin-react': '5.1.2',
 
+  // TanStack
+  '@tanstack/react-router': '1.145.7',
+  '@tanstack/react-start': '1.145.10',
+  '@tanstack/router-plugin': '1.145.10',
+
   // Styling
   tailwindcss: '4.1.18',
   '@tailwindcss/vite': '4.1.18',
@@ -99,6 +104,7 @@ export const workspaceReferences = [
   './packages/@overeng/oxc-config',
   './packages/@overeng/pnpm-compose',
   './packages/@overeng/effect-path',
+  './packages/@overeng/effect-rpc-tanstack',
 ] as const
 
 /**
