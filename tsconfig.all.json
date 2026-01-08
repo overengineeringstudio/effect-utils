@@ -22,6 +22,9 @@
       "path": "./packages/@overeng/notion-effect-client"
     },
     {
+      "path": "./packages/@overeng/effect-ai-claude-cli"
+    },
+    {
       "path": "./packages/@overeng/effect-schema-form"
     },
     {

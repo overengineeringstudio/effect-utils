@@ -24,6 +24,7 @@
   },
   "catalog": {
     "@opentelemetry/api": "1.9.0",
+    "@effect/ai": "0.33.2",
     "effect-distributed-lock": "0.0.10",
     "effect": "3.19.14",
     "@effect/platform": "0.94.1",

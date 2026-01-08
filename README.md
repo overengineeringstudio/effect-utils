@@ -32,6 +32,18 @@ CLI tool to generate type-safe schemas from your Notion databases
 - **Drift detection** - Track schema changes with `diff` command for CI/CD
 - **API wrapper generation** - Generate typed CRUD operations with `--include-api`
 
+### AI Integration
+
+| Package                                                                   | Description                       |
+| ------------------------------------------------------------------------- | --------------------------------- |
+| [@overeng/effect-ai-claude-cli](./packages/@overeng/effect-ai-claude-cli) | Claude CLI provider for Effect AI |
+
+Use your **Claude Code subscription** instead of paying for API calls. Implements Effect AI's LanguageModel interface by delegating to the `claude` CLI.
+
+- **Subscription-based** - Use your existing Claude Code subscription (much cheaper than API)
+- **No API keys** - CLI handles authentication via your subscription
+- **Full LanguageModel support** - Works with `@effect/ai` Chat, generateText, etc.
+
 ### Schema Forms
 
 Headless form library for Effect Schemas with accessible React Aria implementation.

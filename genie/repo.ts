@@ -13,6 +13,7 @@ export const catalog = {
   '@opentelemetry/api': '1.9.0',
 
   // Effect ecosystem
+  '@effect/ai': '0.33.2',
   'effect-distributed-lock': '0.0.10',
   effect: '3.19.14',
   '@effect/platform': '0.94.1',
@@ -68,6 +69,7 @@ export const workspaceReferences = [
   './packages/@overeng/notion-effect-schema',
   './packages/@overeng/notion-effect-cli',
   './packages/@overeng/notion-effect-client',
+  './packages/@overeng/effect-ai-claude-cli',
   './packages/@overeng/effect-schema-form',
   './packages/@overeng/effect-schema-form-aria',
   './packages/@overeng/effect-react',

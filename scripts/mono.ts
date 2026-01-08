@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import { Command, Options } from '@effect/cli'
+import { FileSystem, Path } from '@effect/platform'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import type * as CommandExecutor from '@effect/platform/CommandExecutor'
 import type { PlatformError } from '@effect/platform/Error'
@@ -94,6 +95,79 @@ class CommandError extends Schema.TaggedError<CommandError>()('CommandError', {
   message: Schema.String,
 }) {}
 
+class GenieCoverageError extends Schema.TaggedError<GenieCoverageError>()('GenieCoverageError', {
+  missingGenieSources: Schema.Array(Schema.String),
+}) {
+  override get message(): string {
+    return `Config files missing genie sources:\n${this.missingGenieSources.map((f) => `  - ${f}`).join('\n')}\n\nCreate corresponding .genie.ts files for these config files.`
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Genie Coverage Check
+// -----------------------------------------------------------------------------
+
+/** Directories to scan for config files that should have genie sources */
+const GENIE_SCAN_DIRS = ['packages', 'scripts', 'context']
+
+/** Config file patterns that should have genie sources */
+const GENIE_CONFIG_PATTERNS = new Set(['package.json', 'tsconfig.json'])
+
+/** Directories to skip when scanning for config files */
+const SKIP_DIRS = new Set(['node_modules', 'dist', '.git', '.direnv', '.devenv', 'tmp'])
+
+/** Find config files that are missing corresponding .genie.ts sources */
+const findMissingGenieSources = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem
+  const pathService = yield* Path.Path
+  const cwd = process.env.WORKSPACE_ROOT ?? process.cwd()
+
+  const walk = (dir: string): Effect.Effect<string[], PlatformError, never> =>
+    Effect.gen(function* () {
+      const exists = yield* fs.exists(dir)
+      if (!exists) return []
+
+      const entries = yield* fs.readDirectory(dir)
+      const results: string[] = []
+
+      for (const entry of entries) {
+        if (SKIP_DIRS.has(entry)) continue
+
+        const fullPath = pathService.join(dir, entry)
+        const stat = yield* fs.stat(fullPath)
+
+        if (stat.type === 'Directory') {
+          const nested = yield* walk(fullPath)
+          results.push(...nested)
+        } else if (GENIE_CONFIG_PATTERNS.has(entry)) {
+          const genieSourcePath = `${fullPath}.genie.ts`
+          const hasGenieSource = yield* fs.exists(genieSourcePath)
+          if (!hasGenieSource) {
+            results.push(pathService.relative(cwd, fullPath))
+          }
+        }
+      }
+
+      return results
+    })
+
+  const allMissing: string[] = []
+  for (const scanDir of GENIE_SCAN_DIRS) {
+    const missing = yield* walk(pathService.join(cwd, scanDir))
+    allMissing.push(...missing)
+  }
+
+  return allMissing.toSorted()
+}).pipe(Effect.withSpan('findMissingGenieSources'))
+
+/** Check that all config files have genie sources, fail if any are missing */
+const checkGenieCoverage = Effect.gen(function* () {
+  const missing = yield* findMissingGenieSources
+  if (missing.length > 0) {
+    return yield* new GenieCoverageError({ missingGenieSources: missing })
+  }
+}).pipe(Effect.withSpan('checkGenieCoverage'))
+
 // -----------------------------------------------------------------------------
 // Build Command
 // -----------------------------------------------------------------------------
@@ -172,10 +246,66 @@ const testCommand = Command.make(
 ).pipe(Command.withDescription('Run tests across all packages'))
 
 // -----------------------------------------------------------------------------
-// Lint Command
+// Atomic Task Effects
 // -----------------------------------------------------------------------------
 
 const OXC_CONFIG_PATH = 'packages/@overeng/oxc-config'
+
+/** Format check effect (oxfmt --check) */
+const formatCheck = runCommand({
+  command: 'oxfmt',
+  args: ['-c', `${OXC_CONFIG_PATH}/fmt.jsonc`, '--check', '.'],
+}).pipe(Effect.withSpan('formatCheck'))
+
+/** Format fix effect (oxfmt) */
+const formatFix = runCommand({
+  command: 'oxfmt',
+  args: ['-c', `${OXC_CONFIG_PATH}/fmt.jsonc`, '.'],
+}).pipe(Effect.withSpan('formatFix'))
+
+/** Lint check effect (oxlint) */
+const lintCheck = runCommand({
+  command: 'oxlint',
+  args: ['-c', `${OXC_CONFIG_PATH}/lint.jsonc`, '--import-plugin', '--deny-warnings'],
+}).pipe(Effect.withSpan('lintCheck'))
+
+/** Lint fix effect (oxlint --fix) */
+const lintFix = runCommand({
+  command: 'oxlint',
+  args: ['-c', `${OXC_CONFIG_PATH}/lint.jsonc`, '--import-plugin', '--deny-warnings', '--fix'],
+}).pipe(Effect.withSpan('lintFix'))
+
+/** Type check effect */
+const typeCheck = runCommand({
+  command: 'tsc',
+  args: ['--build', 'tsconfig.all.json'],
+}).pipe(Effect.withSpan('typeCheck'))
+
+/** Genie check effect (verifies generated files are up to date) */
+const genieCheck = runCommand({
+  command: 'mono',
+  args: ['genie', '--check'],
+}).pipe(Effect.withSpan('genieCheck'))
+
+/** Test effect */
+const testRun = runCommand({
+  command: 'vitest',
+  args: ['run'],
+}).pipe(Effect.withSpan('testRun'))
+
+/** Combined lint check: format + lint + genie coverage */
+const allLintChecks = Effect.all([formatCheck, lintCheck, checkGenieCoverage], {
+  concurrency: 'unbounded',
+}).pipe(Effect.withSpan('allLintChecks'))
+
+/** Combined lint fix: format + lint */
+const allLintFixes = Effect.all([formatFix, lintFix], {
+  concurrency: 'unbounded',
+}).pipe(Effect.withSpan('allLintFixes'))
+
+// -----------------------------------------------------------------------------
+// Lint Command
+// -----------------------------------------------------------------------------
 
 const lintFixOption = Options.boolean('fix').pipe(
   Options.withAlias('f'),
@@ -186,28 +316,11 @@ const lintFixOption = Options.boolean('fix').pipe(
 const lintCommand = Command.make('lint', { fix: lintFixOption }, ({ fix }) =>
   Effect.gen(function* () {
     yield* ciGroup(fix ? 'Formatting + Linting (with fixes)' : 'Formatting + Linting')
-
-    const oxfmtArgs = ['-c', `${OXC_CONFIG_PATH}/fmt.jsonc`, ...(fix ? ['.'] : ['--check', '.'])]
-    const oxlintArgs = [
-      '-c',
-      `${OXC_CONFIG_PATH}/lint.jsonc`,
-      '--import-plugin',
-      '--deny-warnings',
-      ...(fix ? ['--fix'] : []),
-    ]
-
-    yield* Effect.all(
-      [
-        runCommand({ command: 'oxfmt', args: oxfmtArgs }),
-        runCommand({ command: 'oxlint', args: oxlintArgs }),
-      ],
-      { concurrency: 'unbounded' },
-    )
-
+    yield* fix ? allLintFixes : allLintChecks
     yield* ciGroupEnd
     yield* Console.log('✓ Lint complete')
   }),
-).pipe(Command.withDescription('Check formatting and run oxlint across the codebase'))
+).pipe(Command.withDescription('Check formatting, run oxlint, and verify genie coverage'))
 
 // -----------------------------------------------------------------------------
 // TypeScript Command
@@ -331,31 +444,19 @@ const checkCommandCI = Effect.gen(function* () {
   yield* Console.log('Running all checks...\n')
 
   yield* ciGroup('Genie check')
-  yield* runCommand({ command: 'mono', args: ['genie', '--check'] })
+  yield* genieCheck
   yield* ciGroupEnd
 
   yield* ciGroup('Type checking')
-  yield* runCommand({ command: 'tsc', args: ['--build', 'tsconfig.all.json'] })
+  yield* typeCheck
   yield* ciGroupEnd
 
-  yield* ciGroup('Format + Lint')
-  yield* Effect.all(
-    [
-      runCommand({
-        command: 'oxfmt',
-        args: ['-c', `${OXC_CONFIG_PATH}/fmt.jsonc`, '--check', '.'],
-      }),
-      runCommand({
-        command: 'oxlint',
-        args: ['-c', `${OXC_CONFIG_PATH}/lint.jsonc`, '--import-plugin', '--deny-warnings'],
-      }),
-    ],
-    { concurrency: 'unbounded' },
-  )
+  yield* ciGroup('Format + Lint + Genie coverage')
+  yield* allLintChecks
   yield* ciGroupEnd
 
   yield* ciGroup('Running tests')
-  yield* runCommand({ command: 'vitest', args: ['run'] })
+  yield* testRun
   yield* ciGroupEnd
 
   yield* Console.log('\n✓ All checks passed')
@@ -368,8 +469,7 @@ const checkCommandInteractive = Effect.gen(function* () {
   /** Register all tasks upfront */
   yield* runner.register({ id: 'genie', name: 'Genie check' })
   yield* runner.register({ id: 'tsc', name: 'Type checking' })
-  yield* runner.register({ id: 'oxfmt', name: 'Formatting (oxfmt)' })
-  yield* runner.register({ id: 'oxlint', name: 'Linting (oxlint)' })
+  yield* runner.register({ id: 'lint', name: 'Lint (format + oxlint + genie coverage)' })
   yield* runner.register({ id: 'test', name: 'Tests' })
 
   /** Start render loop in background */
@@ -389,16 +489,7 @@ const checkCommandInteractive = Effect.gen(function* () {
   yield* runner.runAll([
     runner.runTask({ id: 'genie', command: 'mono', args: ['genie', '--check'] }),
     runner.runTask({ id: 'tsc', command: 'tsc', args: ['--build', 'tsconfig.all.json'] }),
-    runner.runTask({
-      id: 'oxfmt',
-      command: 'oxfmt',
-      args: ['-c', `${OXC_CONFIG_PATH}/fmt.jsonc`, '--check', '.'],
-    }),
-    runner.runTask({
-      id: 'oxlint',
-      command: 'oxlint',
-      args: ['-c', `${OXC_CONFIG_PATH}/lint.jsonc`, '--import-plugin', '--deny-warnings'],
-    }),
+    runner.runTask({ id: 'lint', command: 'mono', args: ['lint'] }),
   ])
 
   /** Run tests after other checks pass */
