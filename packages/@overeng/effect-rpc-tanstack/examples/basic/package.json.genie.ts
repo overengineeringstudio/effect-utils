@@ -22,6 +22,7 @@ export default packageJSON({
     'react-dom': catalogRef,
   },
   devDependencies: {
+    '@overeng/utils': 'workspace:*',
     '@playwright/test': catalogRef,
     '@tanstack/router-plugin': catalogRef,
     '@types/node': catalogRef,

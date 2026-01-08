@@ -6,13 +6,8 @@
 
 import { FetchHttpClient } from '@effect/platform'
 import type * as HttpClient from '@effect/platform/HttpClient'
-import { RpcClient, RpcClientError, RpcSerialization } from '@effect/rpc'
+import { RpcClient, RpcSerialization } from '@effect/rpc'
 import { Layer } from 'effect'
-
-/**
- * Re-export RpcClientError for convenience
- */
-export { RpcClientError }
 
 /** Configuration options for creating an RPC client layer */
 export type ClientLayerOptions = {

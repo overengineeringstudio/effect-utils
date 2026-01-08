@@ -10,73 +10,35 @@ import {
   type FileRoutesByPath,
   type RouteComponent,
 } from '@tanstack/react-router'
-import { Cause, Effect, Exit, type Layer, Option } from 'effect'
+import { Cause, Effect, Exit, type Layer, Option, Schema } from 'effect'
 
 /**
- * Encoded Exit for SSR serialization.
- * Uses plain object to avoid seroval serialization issues with Schema classes.
+ * Schema for encoding Exit values for SSR serialization.
+ * Uses Effect's built-in Exit schema with Unknown types for flexibility.
  */
-export interface ExitEncoded {
-  readonly _tag: 'Success' | 'Failure'
-  readonly value?: unknown
-  readonly error?: unknown
-  readonly defect?: string
-}
+const ExitSchema = Schema.Exit({
+  success: Schema.Unknown,
+  failure: Schema.Unknown,
+  defect: Schema.Defect,
+})
 
 /**
- * Create an ExitEncoded object
+ * Encoded Exit type for SSR serialization.
+ * This is the JSON-safe representation that can be serialized by seroval.
  */
-const makeExitEncoded = (data: ExitEncoded): ExitEncoded => data
+export type ExitEncoded = typeof ExitSchema.Encoded
 
 /**
- * Convert a value to a plain object for serialization.
- * This handles Effect Schema class instances which have prototype chains
- * that seroval cannot serialize.
- */
-const toPlainObject = (value: unknown): unknown => {
-  if (value === null || value === undefined) return value
-  if (typeof value !== 'object') return value
-  if (Array.isArray(value)) return value.map(toPlainObject)
-  if (value instanceof Date) return value.toISOString()
-
-  const plain: Record<string, unknown> = {}
-  for (const key of Object.keys(value)) {
-    plain[key] = toPlainObject((value as Record<string, unknown>)[key])
-  }
-  return plain
-}
-
-/**
- * Encode an Exit for SSR serialization
+ * Encode an Exit for SSR serialization using Effect Schema.
  */
 export const encodeExit = <A, E>(exit: Exit.Exit<A, E>): ExitEncoded =>
-  Exit.match(exit, {
-    onSuccess: (value) => makeExitEncoded({ _tag: 'Success', value: toPlainObject(value) }),
-    onFailure: (cause) => {
-      const failure = Cause.failureOption(cause)
-      if (Option.isSome(failure)) {
-        return makeExitEncoded({ _tag: 'Failure', error: failure.value })
-      }
-      const defect = Cause.dieOption(cause)
-      if (Option.isSome(defect)) {
-        return makeExitEncoded({ _tag: 'Failure', defect: String(defect.value) })
-      }
-      return makeExitEncoded({ _tag: 'Failure', defect: Cause.pretty(cause) })
-    },
-  })
+  Schema.encodeSync(ExitSchema)(exit as Exit.Exit<unknown, unknown>)
 
 /**
- * Decode an ExitEncoded back to Exit
+ * Decode an ExitEncoded back to Exit using Effect Schema.
  */
-export const decodeExit = <A, E>(encoded: ExitEncoded): Exit.Exit<A, E> => {
-  if (encoded._tag === 'Success') {
-    return Exit.succeed(encoded.value as A)
-  }
-  if (encoded.error !== undefined) {
-    return Exit.fail(encoded.error as E)
-  }
-  return Exit.die(new Error(encoded.defect ?? 'Unknown error'))
-}
+export const decodeExit = <A, E>(encoded: ExitEncoded): Exit.Exit<A, E> =>
+  Schema.decodeSync(ExitSchema)(encoded) as Exit.Exit<A, E>
 
 /**
  * Effect-native loader context

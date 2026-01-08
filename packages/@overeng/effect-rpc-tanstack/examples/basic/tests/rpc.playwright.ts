@@ -1,46 +1,89 @@
 import { expect, test } from '@playwright/test'
+import { Effect } from 'effect'
+
+import * as Pw from '@overeng/utils/node/playwright'
 
 test.describe('Effect RPC + TanStack Start', () => {
-  test('loads initial users from server', async ({ page }) => {
-    await page.goto('/')
+  test('loads initial users from server', ({ page, context }) =>
+    Pw.withTestCtx({ page, context })(
+      Effect.gen(function* () {
+        yield* Pw.Page.goto({ url: '/' })
 
-    // Wait for the user list to load
-    const userList = page.getByTestId('user-list')
-    await expect(userList).toBeVisible()
+        const userList = yield* Pw.Locator.getByTestId('user-list')
+        yield* Pw.Locator.waitFor({ locator: userList })
 
-    // Check that initial users are displayed
-    await expect(page.getByTestId('user-1')).toContainText('Alice')
-    await expect(page.getByTestId('user-2')).toContainText('Bob')
-  })
+        const user1 = yield* Pw.Locator.getByTestId('user-1')
+        yield* Pw.expect(
+          'user-1-contains-alice',
+          expect(yield* Pw.Locator.textContent({ locator: user1 })).toContain('Alice'),
+        )
 
-  test('creates a new user via RPC', async ({ page }) => {
-    await page.goto('/')
+        const user2 = yield* Pw.Locator.getByTestId('user-2')
+        yield* Pw.expect(
+          'user-2-contains-bob',
+          expect(yield* Pw.Locator.textContent({ locator: user2 })).toContain('Bob'),
+        )
+      }),
+    ))
 
-    // Fill in the form
-    await page.getByTestId('name-input').fill('Charlie')
-    await page.getByTestId('email-input').fill('charlie@example.com')
+  test('creates a new user via RPC', ({ page, context }) =>
+    Pw.withTestCtx({ page, context })(
+      Effect.gen(function* () {
+        yield* Pw.Page.goto({ url: '/' })
 
-    // Submit the form
-    await page.getByTestId('submit-button').click()
+        const nameInput = yield* Pw.Locator.getByTestId('name-input')
+        yield* Pw.Locator.fill({ locator: nameInput, value: 'Charlie' })
 
-    // Wait for the new user to appear in the list
-    await expect(page.getByTestId('user-3')).toContainText('Charlie')
-    await expect(page.getByTestId('user-3')).toContainText('charlie@example.com')
-  })
+        const emailInput = yield* Pw.Locator.getByTestId('email-input')
+        yield* Pw.Locator.fill({ locator: emailInput, value: 'charlie@example.com' })
 
-  test('navigates to user detail page', async ({ page }) => {
-    await page.goto('/users/1')
+        const submitButton = yield* Pw.Locator.getByTestId('submit-button')
+        yield* Pw.Locator.click({ locator: submitButton })
 
-    // Check user details are displayed
-    await expect(page.getByTestId('user-id')).toHaveText('1')
-    await expect(page.getByTestId('user-name')).toHaveText('Alice')
-    await expect(page.getByTestId('user-email')).toHaveText('alice@example.com')
-  })
+        const user3 = yield* Pw.Locator.getByTestId('user-3')
+        yield* Pw.Locator.waitFor({ locator: user3 })
 
-  test('handles user not found error', async ({ page }) => {
-    await page.goto('/users/999')
+        const user3Text = yield* Pw.Locator.textContent({ locator: user3 })
+        yield* Pw.expect('user-3-contains-charlie', expect(user3Text).toContain('Charlie'))
+        yield* Pw.expect(
+          'user-3-contains-email',
+          expect(user3Text).toContain('charlie@example.com'),
+        )
+      }),
+    ))
 
-    // Check error message is displayed
-    await expect(page.getByText('User not found: 999')).toBeVisible()
-  })
+  test('navigates to user detail page', ({ page, context }) =>
+    Pw.withTestCtx({ page, context })(
+      Effect.gen(function* () {
+        yield* Pw.Page.goto({ url: '/users/1' })
+
+        const userId = yield* Pw.Locator.getByTestId('user-id')
+        yield* Pw.expect(
+          'user-id-is-1',
+          expect(yield* Pw.Locator.textContent({ locator: userId })).toBe('1'),
+        )
+
+        const userName = yield* Pw.Locator.getByTestId('user-name')
+        yield* Pw.expect(
+          'user-name-is-alice',
+          expect(yield* Pw.Locator.textContent({ locator: userName })).toBe('Alice'),
+        )
+
+        const userEmail = yield* Pw.Locator.getByTestId('user-email')
+        yield* Pw.expect(
+          'user-email-is-correct',
+          expect(yield* Pw.Locator.textContent({ locator: userEmail })).toBe('alice@example.com'),
+        )
+      }),
+    ))
+
+  test('handles user not found error', ({ page, context }) =>
+    Pw.withTestCtx({ page, context })(
+      Effect.gen(function* () {
+        yield* Pw.Page.goto({ url: '/users/999' })
+
+        const errorText = yield* Pw.Locator.getByText('User not found: 999')
+        yield* Pw.Locator.waitFor({ locator: errorText })
+      }),
+    ))
 })
