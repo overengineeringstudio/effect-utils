@@ -10,7 +10,7 @@ on:
     branches: [main]
 
 jobs:
-  check:
+  typecheck:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -29,7 +29,41 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Type check
         run: mono ts
+  lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: devenv shell bash -- -e {0}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+      - name: Enable devenv Cachix cache
+        uses: cachix/cachix-action@v16
+        with:
+          name: devenv
+      - name: Install devenv
+        run: 'nix profile install nixpkgs#devenv'
+        shell: bash
+      - run: bun install --frozen-lockfile
       - name: Format + lint
         run: mono lint
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: devenv shell bash -- -e {0}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+      - name: Enable devenv Cachix cache
+        uses: cachix/cachix-action@v16
+        with:
+          name: devenv
+      - name: Install devenv
+        run: 'nix profile install nixpkgs#devenv'
+        shell: bash
+      - run: bun install --frozen-lockfile
       - name: Unit tests
         run: mono test --unit
