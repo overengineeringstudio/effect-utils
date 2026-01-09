@@ -34,7 +34,12 @@ export const testCommand = Command.make(
         yield* ciGroup('Running unit tests')
         yield* runCommand({
           command: 'vitest',
-          args: [...watchArg, "--exclude='**/integration/**'", ...reporterArgs],
+          args: [
+            ...watchArg,
+            "--exclude='**/integration/**'",
+            "--exclude='**/*.integration.test.ts'",
+            ...reporterArgs,
+          ],
         })
         yield* ciGroupEnd
       } else if (integration) {
@@ -43,6 +48,8 @@ export const testCommand = Command.make(
           command: 'vitest',
           args: [
             ...watchArg,
+            'packages/@overeng/bun-compose/src/commands',
+            'packages/@overeng/pnpm-compose/src/commands',
             'packages/@overeng/notion-effect-client/src/test/integration',
             ...reporterArgs,
           ],
