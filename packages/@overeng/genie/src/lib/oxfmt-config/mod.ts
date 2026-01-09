@@ -72,7 +72,7 @@ export type OxfmtConfigOptions = Record<string, never>
  * })
  * ```
  */
-// oxlint-disable-next-line overeng/jsdoc-require-exports, overeng/named-args -- JSDoc above; DSL-style API
+// oxlint-disable-next-line overeng/named-args -- DSL-style API
 export const oxfmtConfig = (args: OxfmtConfigArgs, _options?: OxfmtConfigOptions): string => {
   const config: Record<string, unknown> = {
     $schema:

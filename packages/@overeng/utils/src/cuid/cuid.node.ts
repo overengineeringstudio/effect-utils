@@ -39,7 +39,6 @@ const fingerprint = () => {
     hostname
       .split('')
       .reduce((prev, char) => {
-        // eslint-disable-next-line unicorn/prefer-code-point
         return +prev + char.charCodeAt(0)
       }, +length + 36)
       .toString(36),

@@ -1,7 +1,6 @@
-import { catalogRef } from '../../../genie/repo.ts'
-import { packageJSON } from '../genie/src/lib/mod.ts'
+import { pkg } from '../../../genie/repo.ts'
 
-export default packageJSON({
+export default pkg({
   name: '@overeng/effect-ai-claude-cli',
   version: '0.1.0',
   private: true,
@@ -15,14 +14,7 @@ export default packageJSON({
       '.': './dist/mod.js',
     },
   },
-  devDependencies: {
-    '@effect/ai': catalogRef,
-    '@effect/platform': catalogRef,
-    '@effect/vitest': catalogRef,
-    effect: catalogRef,
-    vite: catalogRef,
-    vitest: catalogRef,
-  },
+  devDependencies: ['@effect/ai', '@effect/platform', '@effect/vitest', 'effect', 'vite', 'vitest'],
   peerDependencies: {
     '@effect/ai': '>=0.32.0',
     '@effect/platform': '>=0.93.0',

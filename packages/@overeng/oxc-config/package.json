@@ -4,15 +4,15 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./lint": "./lint.jsonc",
     "./fmt": "./fmt.jsonc",
+    "./lint": "./lint.jsonc",
     "./plugin": "./src/mod.ts"
   },
   "devDependencies": {
-    "@types/eslint": "^9.6.1",
-    "eslint": "^9.28.0",
+    "@types/eslint": "catalog:",
+    "eslint": "catalog:",
     "typescript": "catalog:",
-    "typescript-eslint": "^8.34.0",
+    "typescript-eslint": "catalog:",
     "vitest": "catalog:"
   },
   "$genie": {

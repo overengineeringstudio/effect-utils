@@ -1,7 +1,6 @@
-import { catalogRef } from '../../../genie/repo.ts'
-import { packageJSON } from '../genie/src/lib/mod.ts'
+import { pkg } from '../../../genie/repo.ts'
 
-export default packageJSON({
+export default pkg({
   name: '@overeng/notion-effect-schema',
   version: '0.1.0',
   private: true,
@@ -15,13 +14,8 @@ export default packageJSON({
       '.': './dist/mod.js',
     },
   },
-  devDependencies: {
-    '@effect/vitest': catalogRef,
-    '@types/node': catalogRef,
-    effect: catalogRef,
-    vitest: catalogRef,
-  },
+  devDependencies: ['@effect/vitest', '@types/node', 'effect', 'vitest'],
   peerDependencies: {
-    effect: catalogRef,
+    effect: '^',
   },
 })

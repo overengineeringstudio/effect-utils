@@ -6,8 +6,8 @@
   "exports": {
     ".": "./src/mod.ts",
     "./client": "./src/client.ts",
-    "./server": "./src/server.ts",
-    "./router": "./src/router.ts"
+    "./router": "./src/router.ts",
+    "./server": "./src/server.ts"
   },
   "publishConfig": {
     "access": "public",
@@ -32,14 +32,14 @@
     "vitest": "catalog:"
   },
   "peerDependencies": {
-    "@effect/platform": "catalog:",
-    "@effect/platform-node": "catalog:",
-    "@effect/rpc": "catalog:",
-    "@tanstack/react-router": "catalog:",
-    "@tanstack/react-start": "catalog:",
-    "effect": "catalog:",
-    "react": "catalog:",
-    "react-dom": "catalog:"
+    "@effect/platform": "^0.94.1",
+    "@effect/platform-node": "^0.104.0",
+    "@effect/rpc": "^0.73.0",
+    "@tanstack/react-router": "^1.145.7",
+    "@tanstack/react-start": "^1.145.10",
+    "effect": "^3.19.14",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
   },
   "$genie": {
     "source": "package.json.genie.ts",

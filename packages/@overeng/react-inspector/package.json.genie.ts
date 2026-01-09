@@ -1,7 +1,6 @@
-import { catalogRef } from '../../../genie/repo.ts'
-import { packageJSON } from '../genie/src/lib/mod.ts'
+import { pkg } from '../../../genie/repo.ts'
 
-export default packageJSON({
+export default pkg({
   name: '@overeng/react-inspector',
   version: '8.0.0',
   description: 'Power of Browser DevTools inspectors right inside your React app',
@@ -19,28 +18,26 @@ export default packageJSON({
       },
     },
   },
-  dependencies: {
-    'is-dom': '1.1.0',
-  },
-  devDependencies: {
-    '@storybook/react': catalogRef,
-    '@storybook/react-vite': catalogRef,
-    '@testing-library/react': '16.3.1',
-    '@testing-library/user-event': '14.6.1',
-    '@types/is-dom': '1.1.2',
-    '@types/react': catalogRef,
-    '@vitejs/plugin-react': catalogRef,
-    effect: catalogRef,
-    'happy-dom': '18.0.1',
-    react: catalogRef,
-    'react-dom': catalogRef,
-    storybook: catalogRef,
-    vite: catalogRef,
-    vitest: catalogRef,
-  },
+  dependencies: ['is-dom'],
+  devDependencies: [
+    '@storybook/react',
+    '@storybook/react-vite',
+    '@testing-library/react',
+    '@testing-library/user-event',
+    '@types/is-dom',
+    '@types/react',
+    '@vitejs/plugin-react',
+    'effect',
+    'happy-dom',
+    'react',
+    'react-dom',
+    'storybook',
+    'vite',
+    'vitest',
+  ],
   peerDependencies: {
-    effect: catalogRef,
-    react: catalogRef,
+    effect: '^',
+    react: '^',
   },
   peerDependenciesMeta: {
     effect: {

@@ -79,7 +79,7 @@ export const capitalizeFirstLetter = (str: string): string =>
   str.charAt(0).toUpperCase() + str.slice(1)
 
 /** Asserts exhaustive handling of union members at end of if-else chains */
-// oxlint-disable-next-line overeng/jsdoc-require-exports, func-style -- JSDoc above
+// oxlint-disable-next-line func-style
 export function casesHandled(unexpectedCase: never): never {
   // oxlint-disable-next-line eslint(no-debugger) -- intentional for dev debugging
   debugger
@@ -223,7 +223,7 @@ export const isNonEmptyString = (str: string | undefined | null): str is string 
 }
 
 /** Debug utility that logs a value and returns it unchanged */
-// oxlint-disable-next-line overeng/jsdoc-require-exports, overeng/named-args -- JSDoc above; debug utility
+// oxlint-disable-next-line overeng/named-args -- debug utility
 export const __debugPassthroughLog = <T>(val: T, key = ''): T => {
   console.log(key, val)
   return val

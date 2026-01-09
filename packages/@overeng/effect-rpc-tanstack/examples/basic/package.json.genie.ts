@@ -1,7 +1,6 @@
-import { catalogRef } from '../../../../../genie/repo.ts'
-import { packageJSON } from '../../../genie/src/lib/mod.ts'
+import { pkg } from '../../../../../genie/repo.ts'
 
-export default packageJSON({
+export default pkg({
   name: 'effect-rpc-tanstack-example-basic',
   version: '0.1.0',
   private: true,
@@ -12,24 +11,24 @@ export default packageJSON({
     start: 'node .output/server/index.mjs',
     'test:e2e': 'playwright test',
   },
-  dependencies: {
-    '@effect/platform': catalogRef,
-    '@effect/rpc': catalogRef,
-    '@tanstack/react-router': catalogRef,
-    '@tanstack/react-start': catalogRef,
-    effect: catalogRef,
-    react: catalogRef,
-    'react-dom': catalogRef,
-  },
-  devDependencies: {
-    '@overeng/utils': 'workspace:*',
-    '@playwright/test': catalogRef,
-    '@tanstack/router-plugin': catalogRef,
-    '@types/node': catalogRef,
-    '@types/react': catalogRef,
-    '@types/react-dom': catalogRef,
-    '@vitejs/plugin-react': catalogRef,
-    typescript: catalogRef,
-    vite: catalogRef,
-  },
+  dependencies: [
+    '@effect/platform',
+    '@effect/rpc',
+    '@tanstack/react-router',
+    '@tanstack/react-start',
+    'effect',
+    'react',
+    'react-dom',
+  ],
+  devDependencies: [
+    '@overeng/utils',
+    '@playwright/test',
+    '@tanstack/router-plugin',
+    '@types/node',
+    '@types/react',
+    '@types/react-dom',
+    '@vitejs/plugin-react',
+    'typescript',
+    'vite',
+  ],
 })

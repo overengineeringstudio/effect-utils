@@ -1,7 +1,6 @@
-import { catalogRef } from '../../../genie/repo.ts'
-import { packageJSON } from '../genie/src/lib/mod.ts'
+import { pkg } from '../../../genie/repo.ts'
 
-export default packageJSON({
+export default pkg({
   name: '@overeng/oxc-config',
   version: '0.1.0',
   private: true,
@@ -11,11 +10,5 @@ export default packageJSON({
     './fmt': './fmt.jsonc',
     './plugin': './src/mod.ts',
   },
-  devDependencies: {
-    '@types/eslint': '^9.6.1',
-    eslint: '^9.28.0',
-    typescript: catalogRef,
-    'typescript-eslint': '^8.34.0',
-    vitest: catalogRef,
-  },
+  devDependencies: ['@types/eslint', 'eslint', 'typescript', 'typescript-eslint', 'vitest'],
 })

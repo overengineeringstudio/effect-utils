@@ -1,7 +1,6 @@
-import { catalogRef } from '../../../genie/repo.ts'
-import { packageJSON } from '../genie/src/lib/mod.ts'
+import { pkg } from '../../../genie/repo.ts'
 
-export default packageJSON({
+export default pkg({
   name: '@overeng/effect-schema-form-aria',
   version: '0.1.0',
   private: true,
@@ -15,28 +14,26 @@ export default packageJSON({
       '.': './dist/mod.js',
     },
   },
-  dependencies: {
-    '@overeng/effect-schema-form': 'workspace:*',
-  },
-  devDependencies: {
-    '@storybook/react': catalogRef,
-    '@storybook/react-vite': catalogRef,
-    '@tailwindcss/vite': catalogRef,
-    '@types/react': catalogRef,
-    '@vitejs/plugin-react': catalogRef,
-    effect: catalogRef,
-    react: catalogRef,
-    'react-aria-components': catalogRef,
-    'react-dom': catalogRef,
-    storybook: catalogRef,
-    tailwindcss: catalogRef,
-    vite: catalogRef,
-    vitest: catalogRef,
-  },
+  dependencies: ['@overeng/effect-schema-form'],
+  devDependencies: [
+    '@storybook/react',
+    '@storybook/react-vite',
+    '@tailwindcss/vite',
+    '@types/react',
+    '@vitejs/plugin-react',
+    'effect',
+    'react',
+    'react-aria-components',
+    'react-dom',
+    'storybook',
+    'tailwindcss',
+    'vite',
+    'vitest',
+  ],
   peerDependencies: {
-    effect: catalogRef,
-    react: catalogRef,
-    'react-aria-components': catalogRef,
-    'react-dom': catalogRef,
+    effect: '^',
+    react: '^',
+    'react-aria-components': '^',
+    'react-dom': '^',
   },
 })

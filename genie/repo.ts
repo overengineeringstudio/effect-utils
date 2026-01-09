@@ -2,6 +2,8 @@
  * Shared constants and utilities for genie configuration files
  */
 
+import { createPackageJson } from '../packages/@overeng/genie/src/lib/mod.ts'
+
 /**
  * Catalog versions - single source of truth for dependency versions
  *
@@ -40,6 +42,8 @@ export const catalog = {
   '@types/react': '19.2.7',
   '@types/react-dom': '19.2.3',
   '@types/node': '25.0.3',
+  '@types/eslint': '9.6.1',
+  '@types/is-dom': '1.1.2',
 
   // Build tools
   typescript: '5.9.3',
@@ -61,10 +65,57 @@ export const catalog = {
   storybook: '10.1.11',
   '@storybook/react': '10.1.11',
   '@storybook/react-vite': '10.1.11',
+
+  // Testing
+  '@testing-library/react': '16.3.1',
+  '@testing-library/user-event': '14.6.1',
+  'happy-dom': '18.0.1',
+
+  // Linting
+  eslint: '9.28.0',
+  'typescript-eslint': '8.34.0',
+
+  // Crypto
+  '@noble/hashes': '1.7.1',
+
+  // DOM utilities
+  'is-dom': '1.1.0',
+
+  // OpenTUI / Effect Atom (experimental)
+  '@effect-atom/atom': '0.4.11',
+  '@effect-atom/atom-react': '0.4.4',
+  '@opentui/core': '0.1.68',
+  '@opentui/react': '0.1.68',
 } as const
 
 /** Use catalog reference for dependencies */
 export const catalogRef = 'catalog:' as const
+
+/**
+ * Package name patterns for dependency resolution.
+ * Used by packageJsonWithContext to determine workspace: protocol.
+ */
+export const workspacePackagePatterns = ['@overeng/*'] as const
+
+/**
+ * Type-safe package.json builder. Dependencies are validated against the catalog
+ * and workspace patterns at compile time.
+ *
+ * @example
+ * ```ts
+ * import { pkg } from '../../../genie/repo.ts'
+ *
+ * export default pkg({
+ *   name: '@overeng/utils',
+ *   dependencies: ['effect', '@overeng/other'], // typos caught at compile time
+ *   peerDependencies: { react: '^' },
+ * })
+ * ```
+ */
+export const pkg = createPackageJson({
+  catalog,
+  workspacePackages: workspacePackagePatterns,
+})
 
 /** Root package.json configuration for composition */
 export const rootPackageJson = {

@@ -1,17 +1,9 @@
-import { catalogRef } from '../../../genie/repo.ts'
-import { packageJSON } from '../../../packages/@overeng/genie/src/lib/mod.ts'
+import { pkg } from '../../../genie/repo.ts'
 
-export default packageJSON({
+export default pkg({
   name: 'effect-socket-examples',
   private: true,
   type: 'module',
-  dependencies: {
-    '@effect/platform': catalogRef,
-    '@effect/platform-node': catalogRef,
-    '@effect/rpc': catalogRef,
-    effect: catalogRef,
-  },
-  devDependencies: {
-    '@types/node': catalogRef,
-  },
+  dependencies: ['@effect/platform', '@effect/platform-node', '@effect/rpc', 'effect'],
+  devDependencies: ['@types/node'],
 })

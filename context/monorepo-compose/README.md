@@ -399,6 +399,7 @@ pnpm-compose install --clean
 This error occurs when a flake input (without `flake: false`) doesn't have a `.devenv.flake.nix` file. See [devenv#1137](https://github.com/cachix/devenv/issues/1137).
 
 Solutions:
+
 - Use `flake: false` and build inline (like pnpm-compose does)
 - Ensure the package has `.devenv.flake.nix` committed (genie has this)
 

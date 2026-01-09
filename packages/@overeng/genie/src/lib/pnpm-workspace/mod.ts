@@ -1,4 +1,4 @@
-import { stringify } from './yaml.ts'
+import { stringify } from '../utils/yaml.ts'
 
 /** Configuration for pnpm-workspace.yaml generation */
 export interface PnpmWorkspaceConfig {

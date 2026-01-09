@@ -272,7 +272,7 @@ export const loadConfig = (
   })
 
 /** Merges database config with defaults */
-// oxlint-disable-next-line overeng/jsdoc-require-exports, overeng/named-args -- JSDoc above; matches main branch
+// oxlint-disable-next-line overeng/named-args -- matches main branch
 export const mergeWithDefaults = (
   database: DatabaseConfig,
   defaults?: DefaultsConfig,

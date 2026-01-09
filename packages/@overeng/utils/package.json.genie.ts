@@ -1,7 +1,6 @@
-import { catalogRef } from '../../../genie/repo.ts'
-import { packageJSON } from '../genie/src/lib/mod.ts'
+import { pkg } from '../../../genie/repo.ts'
 
-export default packageJSON({
+export default pkg({
   name: '@overeng/utils',
   version: '0.1.0',
   private: true,
@@ -31,29 +30,25 @@ export default packageJSON({
       },
     },
   },
-  dependencies: {
-    '@noble/hashes': '1.7.1',
-    '@opentelemetry/api': catalogRef,
-    'effect-distributed-lock': catalogRef,
-  },
-  devDependencies: {
-    '@effect/opentelemetry': catalogRef,
-    '@effect/platform': catalogRef,
-    '@effect/platform-node': catalogRef,
-    '@effect/rpc': catalogRef,
-    '@effect/vitest': catalogRef,
-    '@playwright/test': catalogRef,
-    '@types/node': catalogRef,
-    effect: catalogRef,
-    vite: catalogRef,
-    vitest: catalogRef,
-  },
+  dependencies: ['@noble/hashes', '@opentelemetry/api', 'effect-distributed-lock'],
+  devDependencies: [
+    '@effect/opentelemetry',
+    '@effect/platform',
+    '@effect/platform-node',
+    '@effect/rpc',
+    '@effect/vitest',
+    '@playwright/test',
+    '@types/node',
+    'effect',
+    'vite',
+    'vitest',
+  ],
   peerDependencies: {
-    '@effect/opentelemetry': catalogRef,
-    '@effect/platform': catalogRef,
-    '@effect/platform-node': catalogRef,
-    '@effect/rpc': catalogRef,
-    '@playwright/test': catalogRef,
-    effect: catalogRef,
+    '@effect/opentelemetry': '^',
+    '@effect/platform': '^',
+    '@effect/platform-node': '^',
+    '@effect/rpc': '^',
+    '@playwright/test': '^',
+    effect: '^',
   },
 })

@@ -1,7 +1,6 @@
-import { catalogRef } from '../../../genie/repo.ts'
-import { packageJSON } from '../genie/src/lib/mod.ts'
+import { pkg } from '../../../genie/repo.ts'
 
-export default packageJSON({
+export default pkg({
   name: '@overeng/effect-react',
   version: '0.1.0',
   private: true,
@@ -17,23 +16,23 @@ export default packageJSON({
       './react-aria': './dist/react-aria/mod.js',
     },
   },
-  devDependencies: {
-    '@storybook/react': catalogRef,
-    '@storybook/react-vite': catalogRef,
-    '@types/react': catalogRef,
-    '@vitejs/plugin-react': catalogRef,
-    effect: catalogRef,
-    react: catalogRef,
-    'react-aria-components': catalogRef,
-    'react-dom': catalogRef,
-    storybook: catalogRef,
-    vite: catalogRef,
-    vitest: catalogRef,
-  },
+  devDependencies: [
+    '@storybook/react',
+    '@storybook/react-vite',
+    '@types/react',
+    '@vitejs/plugin-react',
+    'effect',
+    'react',
+    'react-aria-components',
+    'react-dom',
+    'storybook',
+    'vite',
+    'vitest',
+  ],
   peerDependencies: {
-    effect: catalogRef,
-    react: catalogRef,
-    'react-aria-components': catalogRef,
-    'react-dom': catalogRef,
+    effect: '^',
+    react: '^',
+    'react-aria-components': '^',
+    'react-dom': '^',
   },
 })

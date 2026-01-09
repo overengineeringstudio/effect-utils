@@ -5,14 +5,14 @@
   "type": "module",
   "exports": {
     ".": "./src/isomorphic/mod.ts",
-    "./node": "./src/node/mod.ts",
-    "./node/playwright": "./src/node/playwright/mod.ts",
     "./browser": "./src/browser/mod.ts",
     "./cuid": {
       "browser": "./src/cuid/cuid.browser.ts",
       "node": "./src/cuid/cuid.node.ts",
       "default": "./src/cuid/mod.ts"
-    }
+    },
+    "./node": "./src/node/mod.ts",
+    "./node/playwright": "./src/node/playwright/mod.ts"
   },
   "publishConfig": {
     "access": "public",
@@ -29,7 +29,7 @@
     }
   },
   "dependencies": {
-    "@noble/hashes": "1.7.1",
+    "@noble/hashes": "catalog:",
     "@opentelemetry/api": "catalog:",
     "effect-distributed-lock": "catalog:"
   },
@@ -46,12 +46,12 @@
     "vitest": "catalog:"
   },
   "peerDependencies": {
-    "@effect/opentelemetry": "catalog:",
-    "@effect/platform": "catalog:",
-    "@effect/platform-node": "catalog:",
-    "@effect/rpc": "catalog:",
-    "@playwright/test": "catalog:",
-    "effect": "catalog:"
+    "@effect/opentelemetry": "^0.60.0",
+    "@effect/platform": "^0.94.1",
+    "@effect/platform-node": "^0.104.0",
+    "@effect/rpc": "^0.73.0",
+    "@playwright/test": "^1.57.0",
+    "effect": "^3.19.14"
   },
   "$genie": {
     "source": "package.json.genie.ts",

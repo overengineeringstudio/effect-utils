@@ -20,8 +20,8 @@
     "vitest": "catalog:"
   },
   "peerDependencies": {
-    "@effect/platform": "catalog:",
-    "effect": "catalog:"
+    "@effect/platform": "^0.94.1",
+    "effect": "^3.19.14"
   },
   "$genie": {
     "source": "package.json.genie.ts",

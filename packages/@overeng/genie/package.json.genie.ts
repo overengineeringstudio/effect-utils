@@ -1,7 +1,6 @@
-import { catalogRef } from '../../../genie/repo.ts'
-import { packageJSON } from './src/lib/mod.ts'
+import { pkg } from '../../../genie/repo.ts'
 
-export default packageJSON({
+export default pkg({
   name: '@overeng/genie',
   version: '0.1.0',
   private: true,
@@ -20,18 +19,19 @@ export default packageJSON({
       './cli': './dist/cli.js',
     },
   },
-  devDependencies: {
-    '@effect/cli': catalogRef,
-    '@effect/platform': catalogRef,
-    '@effect/platform-node': catalogRef,
-    '@types/node': catalogRef,
-    effect: catalogRef,
-    typescript: catalogRef,
-  },
+  devDependencies: [
+    '@effect/cli',
+    '@effect/platform',
+    '@effect/platform-node',
+    '@types/node',
+    'effect',
+    'typescript',
+    'vitest',
+  ],
   peerDependencies: {
-    '@effect/cli': catalogRef,
-    '@effect/platform': catalogRef,
-    '@effect/platform-node': catalogRef,
-    effect: catalogRef,
+    '@effect/cli': '^',
+    '@effect/platform': '^',
+    '@effect/platform-node': '^',
+    effect: '^',
   },
 })

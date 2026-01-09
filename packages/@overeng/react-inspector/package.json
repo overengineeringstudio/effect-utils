@@ -17,18 +17,18 @@
     }
   },
   "dependencies": {
-    "is-dom": "1.1.0"
+    "is-dom": "catalog:"
   },
   "devDependencies": {
     "@storybook/react": "catalog:",
     "@storybook/react-vite": "catalog:",
-    "@testing-library/react": "16.3.1",
-    "@testing-library/user-event": "14.6.1",
-    "@types/is-dom": "1.1.2",
+    "@testing-library/react": "catalog:",
+    "@testing-library/user-event": "catalog:",
+    "@types/is-dom": "catalog:",
     "@types/react": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "effect": "catalog:",
-    "happy-dom": "18.0.1",
+    "happy-dom": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
     "storybook": "catalog:",
@@ -36,8 +36,8 @@
     "vitest": "catalog:"
   },
   "peerDependencies": {
-    "effect": "catalog:",
-    "react": "catalog:"
+    "effect": "^3.19.14",
+    "react": "^19.2.3"
   },
   "peerDependenciesMeta": {
     "effect": {

@@ -104,119 +104,14 @@ Run `mono genie` to generate `package.json` from the source file.
 
 ## Generators
 
-### `packageJSON`
+Each generator has its own documentation:
 
-Generate `package.json` files with proper field ordering and formatting.
-
-```ts
-import { packageJSON } from '@overeng/genie/lib'
-
-export default packageJSON({
-  name: '@myorg/my-package',
-  version: '1.0.0',
-  private: true,
-  type: 'module',
-  exports: { '.': './src/mod.ts' },
-  dependencies: { effect: '^3.12.0' },
-  devDependencies: { typescript: '^5.9.0' },
-})
-```
-
-### `tsconfigJSON`
-
-Generate `tsconfig.json` files with TypeScript compiler options.
-
-```ts
-import { tsconfigJSON } from '@overeng/genie/lib'
-
-export default tsconfigJSON({
-  extends: '../tsconfig.base.json',
-  compilerOptions: {
-    composite: true,
-    rootDir: '.',
-    outDir: './dist',
-  },
-  include: ['src/**/*.ts'],
-  references: [{ path: '../other-package' }],
-})
-```
-
-### `githubWorkflow`
-
-Generate GitHub Actions workflow YAML files.
-
-```ts
-import { githubWorkflow } from '@overeng/genie/lib'
-
-export default githubWorkflow({
-  name: 'CI',
-  on: {
-    push: { branches: ['main'] },
-    pull_request: { branches: ['main'] },
-  },
-  jobs: {
-    test: {
-      'runs-on': 'ubuntu-latest',
-      steps: [
-        { uses: 'actions/checkout@v4' },
-        { run: 'npm test' },
-      ],
-    },
-  },
-})
-```
-
-### `oxlintConfig`
-
-Generate `oxlint.jsonc` configuration files. See [oxlint configuration docs](https://oxc.rs/docs/guide/usage/linter/config) for reference.
-
-```ts
-import { oxlintConfig } from '@overeng/genie/lib'
-
-export default oxlintConfig({
-  plugins: ['import', 'typescript', 'unicorn', 'oxc'],
-  jsPlugins: ['./custom-rules.ts'],
-  categories: {
-    correctness: 'error',
-    suspicious: 'warn',
-    pedantic: 'off',
-    perf: 'warn',
-    style: 'off',
-    restriction: 'off',
-  },
-  rules: {
-    'import/no-cycle': 'warn',
-    'oxc/no-barrel-file': ['warn', { threshold: 0 }],
-  },
-  overrides: [
-    { files: ['**/mod.ts'], rules: { 'oxc/no-barrel-file': 'off' } },
-    { files: ['**/*.test.ts'], rules: { 'import/no-cycle': 'off' } },
-  ],
-})
-```
-
-### `oxfmtConfig`
-
-Generate `oxfmt.jsonc` configuration files. See [oxfmt repository](https://github.com/nicksrandall/oxfmt) for reference.
-
-```ts
-import { oxfmtConfig } from '@overeng/genie/lib'
-
-export default oxfmtConfig({
-  semi: false,
-  singleQuote: true,
-  printWidth: 100,
-  tabWidth: 2,
-  useTabs: false,
-  trailingComma: 'all',
-  experimentalSortImports: {
-    groups: ['builtin', 'external', 'internal', ['parent', 'sibling', 'index']],
-    internalPattern: ['@myorg/'],
-    newlinesBetween: true,
-  },
-  experimentalSortPackageJson: true,
-})
-```
+- **[package-json](./src/lib/package-json/README.md)** - Generate `package.json` files with field ordering, dependency inference, and validation
+- **[tsconfig-json](./src/lib/tsconfig-json/README.md)** - Generate `tsconfig.json` files with TypeScript compiler options
+- **[github-workflow](./src/lib/github-workflow/README.md)** - Generate GitHub Actions workflow YAML files
+- **[oxlint-config](./src/lib/oxlint-config/README.md)** - Generate `oxlint.jsonc` configuration files
+- **[oxfmt-config](./src/lib/oxfmt-config/README.md)** - Generate `oxfmt.jsonc` configuration files
+- **[pnpm-workspace](./src/lib/pnpm-workspace/README.md)** - Generate `pnpm-workspace.yaml` files
 
 ## Features
 
@@ -232,19 +127,26 @@ For monorepos, define shared constants in a central file:
 
 ```ts
 // genie/repo.ts
-export const catalogRef = 'catalog:'
-export const domLib = ['ES2022', 'DOM', 'DOM.Iterable'] as const
+export const catalog = {
+  effect: '3.12.0',
+  '@effect/platform': '0.90.0',
+  // ...
+}
+
+export const workspacePackagePatterns = ['@myorg/*'] as const
 ```
 
 Then import in your `.genie.ts` files:
 
 ```ts
-import { catalogRef } from '../genie/repo.ts'
-import { packageJSON } from '@overeng/genie/lib'
+import { packageJsonWithContext } from '@overeng/genie/lib'
+import { catalog, workspacePackagePatterns } from '../genie/repo.ts'
 
-export default packageJSON({
-  dependencies: {
-    effect: catalogRef,
+export default packageJsonWithContext(
+  {
+    name: '@myorg/my-package',
+    dependencies: ['effect'],
   },
-})
+  { catalog, workspacePackages: workspacePackagePatterns },
+)
 ```

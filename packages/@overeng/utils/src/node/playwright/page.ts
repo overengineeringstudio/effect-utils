@@ -260,7 +260,6 @@ export const evaluateWith = <R, TArg>(opts: {
     const page = yield* PwPage
     return yield* tryPw({
       op: 'pw.page.evaluate',
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       effect: () => page.evaluate(opts.fn as any, opts.arg) as Promise<R>,
     })
   }).pipe(Effect.withSpan('pw.page.evaluate'))

@@ -23,7 +23,8 @@ type ASTNode = Rule.Node
 /**
  * Check if a node has an adjacent JSDoc comment (block comment starting with *).
  * Only considers comments that end on the line immediately before the node starts,
- * to avoid attributing module-level doc comments to the first export.
+ * or with only line comments in between (e.g. `// oxlint-disable-next-line`).
+ * This avoids attributing module-level doc comments to the first export.
  */
 // oxlint-disable-next-line overeng/named-args -- simple internal helper
 const hasJsDocComment = (node: ASTNode, sourceCode: SourceCode) => {
@@ -31,13 +32,34 @@ const hasJsDocComment = (node: ASTNode, sourceCode: SourceCode) => {
   const nodeStartLine = node.loc?.start.line
   if (nodeStartLine === undefined) return false
 
-  for (const comment of comments) {
+  // Find all JSDoc comments and line comments, sorted by end line (descending)
+  const sortedComments = [...comments]
+    .filter((c) => c.loc?.end.line !== undefined)
+    .toSorted((a, b) => b.loc!.end.line - a.loc!.end.line)
+
+  // Track which lines are covered by line comments
+  const lineCommentLines = new Set<number>()
+  for (const comment of sortedComments) {
+    if (comment.type === 'Line' && comment.loc?.start.line !== undefined) {
+      lineCommentLines.add(comment.loc.start.line)
+    }
+  }
+
+  for (const comment of sortedComments) {
     if (comment.type === 'Block' && comment.value.startsWith('*')) {
       const commentEndLine = comment.loc?.end.line
       if (commentEndLine === undefined) continue
 
-      /** Only count as JSDoc if it ends on the line immediately before the node */
-      if (nodeStartLine - commentEndLine === 1) {
+      // Check if JSDoc is adjacent or only has line comments in between
+      let isAdjacent = true
+      for (let line = commentEndLine + 1; line < nodeStartLine; line++) {
+        if (!lineCommentLines.has(line)) {
+          isAdjacent = false
+          break
+        }
+      }
+
+      if (isAdjacent) {
         return true
       }
     }

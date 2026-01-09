@@ -88,7 +88,7 @@ export type OxlintConfigArgs = {
 export type OxlintConfigOptions = Record<string, never>
 
 /** Generates an oxlint configuration file (.jsonc) from typed arguments */
-// oxlint-disable-next-line overeng/jsdoc-require-exports, overeng/named-args -- JSDoc above; DSL-style API
+// oxlint-disable-next-line overeng/named-args -- DSL-style API
 export const oxlintConfig = (args: OxlintConfigArgs, _options?: OxlintConfigOptions): string => {
   const config: Record<string, unknown> = {
     $schema:

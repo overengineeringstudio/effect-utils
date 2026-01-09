@@ -84,13 +84,26 @@ export const formatFix = runCommand({
 /** Lint check effect (oxlint) */
 export const lintCheck = runCommand({
   command: 'oxlint',
-  args: ['-c', `${OXC_CONFIG_PATH}/lint.jsonc`, '--import-plugin', '--deny-warnings'],
+  args: [
+    '-c',
+    `${OXC_CONFIG_PATH}/lint.jsonc`,
+    '--import-plugin',
+    '--deny-warnings',
+    '--report-unused-disable-directives',
+  ],
 }).pipe(Effect.withSpan('lintCheck'))
 
 /** Lint fix effect (oxlint --fix) */
 export const lintFix = runCommand({
   command: 'oxlint',
-  args: ['-c', `${OXC_CONFIG_PATH}/lint.jsonc`, '--import-plugin', '--deny-warnings', '--fix'],
+  args: [
+    '-c',
+    `${OXC_CONFIG_PATH}/lint.jsonc`,
+    '--import-plugin',
+    '--deny-warnings',
+    '--report-unused-disable-directives',
+    '--fix',
+  ],
 }).pipe(Effect.withSpan('lintFix'))
 
 /** Type check effect */

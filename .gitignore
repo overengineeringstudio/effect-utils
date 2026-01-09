@@ -16,9 +16,11 @@ dist
 .envrc.local
 
 # Devenv
-.devenv
-.devenv*
-!.devenv.flake.nix  # devenv looks for this instead of flake.nix (see devenv#1137)
+.devenv/
+.devenv.lock
+devenv.local.nix
+/.devenv.flake.nix
+# note: packages/**/.devenv.flake.nix is tracked - devenv looks for it instead of flake.nix (see devenv#1137)
 
 # Storybook
 storybook-static

@@ -1,20 +1,16 @@
-import { catalogRef } from '../genie/repo.ts'
-import { packageJSON } from '../packages/@overeng/genie/src/lib/mod.ts'
+import { pkg } from '../genie/repo.ts'
 
-export default packageJSON({
+export default pkg({
   name: 'effect-utils-scripts',
   private: true,
   type: 'module',
-  dependencies: {
-    '@effect/cli': catalogRef,
-    '@effect/platform': catalogRef,
-    '@effect/platform-node': catalogRef,
-    '@overeng/genie': 'workspace:*',
-    '@overeng/utils': 'workspace:*',
-    effect: catalogRef,
-  },
-  devDependencies: {
-    '@types/node': catalogRef,
-    typescript: '^5.9.3',
-  },
+  dependencies: [
+    '@effect/cli',
+    '@effect/platform',
+    '@effect/platform-node',
+    '@overeng/genie',
+    '@overeng/utils',
+    'effect',
+  ],
+  devDependencies: ['@types/node', 'typescript'],
 })

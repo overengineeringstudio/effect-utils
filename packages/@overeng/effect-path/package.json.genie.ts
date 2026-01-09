@@ -1,7 +1,6 @@
-import { catalogRef } from '../../../genie/repo.ts'
-import { packageJSON } from '../genie/src/lib/mod.ts'
+import { pkg } from '../../../genie/repo.ts'
 
-export default packageJSON({
+export default pkg({
   name: '@overeng/effect-path',
   version: '0.1.0',
   private: true,
@@ -15,15 +14,9 @@ export default packageJSON({
       '.': './dist/mod.js',
     },
   },
-  devDependencies: {
-    '@effect/platform': catalogRef,
-    '@effect/vitest': catalogRef,
-    '@types/node': catalogRef,
-    effect: catalogRef,
-    vitest: catalogRef,
-  },
+  devDependencies: ['@effect/platform', '@effect/vitest', '@types/node', 'effect', 'vitest'],
   peerDependencies: {
-    '@effect/platform': catalogRef,
-    effect: catalogRef,
+    '@effect/platform': '^',
+    effect: '^',
   },
 })

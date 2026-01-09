@@ -3,10 +3,10 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@effect-atom/atom": "0.4.11",
-    "@effect-atom/atom-react": "0.4.4",
-    "@opentui/core": "0.1.68",
-    "@opentui/react": "0.1.68",
+    "@effect-atom/atom": "catalog:",
+    "@effect-atom/atom-react": "catalog:",
+    "@opentui/core": "catalog:",
+    "@opentui/react": "catalog:",
     "effect": "catalog:",
     "react": "catalog:"
   },

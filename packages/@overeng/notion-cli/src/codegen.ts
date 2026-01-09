@@ -665,7 +665,7 @@ const generateConfigComment = (options: {
 // -----------------------------------------------------------------------------
 
 /** Generates TypeScript code for an Effect schema from database info */
-// oxlint-disable-next-line overeng/jsdoc-require-exports, eslint(func-style) -- JSDoc above; public API
+// oxlint-disable-next-line eslint(func-style) -- public API
 export function generateSchemaCode(opts: GenerateSchemaCodeOptions): string {
   const { dbInfo, schemaName, options } = opts
   const {
@@ -883,7 +883,7 @@ export const isReadOnlyProperty = (propertyType: string): boolean =>
 // -----------------------------------------------------------------------------
 
 /** Generates TypeScript code for a typed database API wrapper */
-// oxlint-disable-next-line overeng/jsdoc-require-exports, eslint(func-style) -- JSDoc above; public API
+// oxlint-disable-next-line eslint(func-style) -- public API
 export function generateApiCode(opts: GenerateApiCodeOptions): string {
   const { dbInfo, schemaName, options } = opts
   const {

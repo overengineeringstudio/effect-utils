@@ -19,7 +19,7 @@
     "vitest": "catalog:"
   },
   "peerDependencies": {
-    "effect": "catalog:"
+    "effect": "^3.19.14"
   },
   "$genie": {
     "source": "package.json.genie.ts",

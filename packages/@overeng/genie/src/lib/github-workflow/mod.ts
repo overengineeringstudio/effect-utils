@@ -1,4 +1,4 @@
-import * as yaml from './yaml.ts'
+import * as yaml from '../utils/yaml.ts'
 
 /**
  * Type-safe GitHub Actions workflow generator
@@ -275,7 +275,7 @@ export type GitHubWorkflowOptions = Record<string, never>
  * })
  * ```
  */
-// oxlint-disable-next-line overeng/jsdoc-require-exports, overeng/named-args -- JSDoc above; DSL-style API
+// oxlint-disable-next-line overeng/named-args -- DSL-style API
 export const githubWorkflow = (
   args: GitHubWorkflowArgs,
   _options?: GitHubWorkflowOptions,

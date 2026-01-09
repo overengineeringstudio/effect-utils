@@ -255,3 +255,63 @@ export type Schema = typeof schema
     invalid: [],
   })
 })
+
+test('JSDoc with intervening line comments', () => {
+  tsRuleTester.run('JSDoc with intervening line comments', jsdocRequireExportsRule, {
+    valid: [
+      {
+        name: 'allows JSDoc with single line comment in between',
+        code: `
+/** Does something useful */
+// oxlint-disable-next-line some-rule
+export const foo = () => {}
+`,
+      },
+      {
+        name: 'allows JSDoc with multiple line comments in between',
+        code: `
+/** Does something useful */
+// eslint-disable-next-line
+// oxlint-disable-next-line
+export const foo = () => {}
+`,
+      },
+      {
+        name: 'allows JSDoc with line comment for types',
+        code: `
+/** User type */
+// oxlint-disable-next-line some-rule
+export type User = { id: string }
+`,
+      },
+      {
+        name: 'allows JSDoc with line comment for interfaces',
+        code: `
+/** Config interface */
+// some-other-comment
+export interface Config { value: string }
+`,
+      },
+    ],
+    invalid: [
+      {
+        name: 'reports when blank line separates JSDoc from export (even with line comment after blank)',
+        code: `
+/** This is too far away */
+
+// This line comment comes after the blank
+export const foo = () => {}
+`,
+        errors: [{ messageId: 'missingJsdoc', data: { name: 'const foo' } }],
+      },
+      {
+        name: 'reports when only line comment exists (no JSDoc)',
+        code: `
+// This is not JSDoc
+export const foo = () => {}
+`,
+        errors: [{ messageId: 'missingJsdoc', data: { name: 'const foo' } }],
+      },
+    ],
+  })
+})

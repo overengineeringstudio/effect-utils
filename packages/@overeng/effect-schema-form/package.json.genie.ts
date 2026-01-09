@@ -1,7 +1,6 @@
-import { catalogRef } from '../../../genie/repo.ts'
-import { packageJSON } from '../genie/src/lib/mod.ts'
+import { pkg } from '../../../genie/repo.ts'
 
-export default packageJSON({
+export default pkg({
   name: '@overeng/effect-schema-form',
   version: '0.1.0',
   private: true,
@@ -15,14 +14,9 @@ export default packageJSON({
       '.': './dist/mod.js',
     },
   },
-  devDependencies: {
-    '@types/react': catalogRef,
-    effect: catalogRef,
-    react: catalogRef,
-    vitest: catalogRef,
-  },
+  devDependencies: ['@types/react', 'effect', 'react', 'vitest'],
   peerDependencies: {
-    effect: catalogRef,
-    react: catalogRef,
+    effect: '^',
+    react: '^',
   },
 })
