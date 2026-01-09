@@ -90,6 +90,9 @@ export const catalog = {
   // DOM utilities
   'is-dom': '1.1.0',
 
+  // Redis
+  ioredis: '5.6.1',
+
   // OpenTUI / Effect Atom (experimental)
   '@effect-atom/atom': '0.4.11',
   '@effect-atom/atom-react': '0.4.4',
@@ -104,14 +107,28 @@ export const catalog = {
 export const workspacePackagePatterns = ['@overeng/*'] as const
 
 /**
- * Type-safe package.json builder. Dependencies are validated against the catalog
- * and workspace patterns at compile time.
+ * Type-safe package.json builder with Bun awareness.
+ *
+ * Provides two helpers:
+ * - `pkg.root()` - For root package.json with Bun-specific fields (workspaces, trustedDependencies)
+ * - `pkg.package()` - For workspace packages (strict, no root-only fields allowed)
  *
  * @example
  * ```ts
+ * // Root package.json.genie.ts
+ * import { catalog, pkg } from './genie/repo.ts'
+ *
+ * export default pkg.root({
+ *   name: 'my-monorepo',
+ *   private: true,
+ *   workspaces: { packages: ['packages/*'], catalog },
+ *   trustedDependencies: ['esbuild'],
+ * })
+ *
+ * // Workspace package.json.genie.ts
  * import { pkg } from '../../../genie/repo.ts'
  *
- * export default pkg({
+ * export default pkg.package({
  *   name: '@overeng/utils',
  *   dependencies: ['effect', '@overeng/other'], // typos caught at compile time
  *   peerDependencies: { react: '^' },
@@ -119,9 +136,18 @@ export const workspacePackagePatterns = ['@overeng/*'] as const
  * ```
  */
 export const pkg = createPackageJson({
+  packageManager: 'bun',
+  packageManagerVersion: '1.3.5',
   catalog,
   workspacePackages: workspacePackagePatterns,
 })
+
+/** Common fields for private workspace packages */
+export const privatePackageDefaults = {
+  version: '0.1.0',
+  private: true,
+  type: 'module',
+} as const
 
 /** Standard package tsconfig compiler options (composite mode with src/dist structure) */
 export const packageTsconfigCompilerOptions = {

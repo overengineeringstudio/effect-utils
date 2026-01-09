@@ -1,11 +1,9 @@
-import { pkg } from '../../../genie/repo.ts'
+import { pkg, privatePackageDefaults } from '../../../genie/repo.ts'
 
-export default pkg({
+export default pkg.package({
   name: '@overeng/bun-compose',
-  version: '0.1.0',
-  private: true,
+  ...privatePackageDefaults,
   description: 'CLI for composing bun workspaces with git submodules',
-  type: 'module',
   exports: {
     '.': './src/mod.ts',
     './cli': './src/cli.ts',

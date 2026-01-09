@@ -1,6 +1,6 @@
 import { pkg } from '../../genie/repo.ts'
 
-export default pkg({
+export default pkg.package({
   name: 'opentui-examples',
   private: true,
   type: 'module',

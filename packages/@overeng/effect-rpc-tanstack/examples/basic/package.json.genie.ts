@@ -1,10 +1,8 @@
-import { pkg } from '../../../../../genie/repo.ts'
+import { pkg, privatePackageDefaults } from '../../../../../genie/repo.ts'
 
-export default pkg({
+export default pkg.package({
   name: 'effect-rpc-tanstack-example-basic',
-  version: '0.1.0',
-  private: true,
-  type: 'module',
+  ...privatePackageDefaults,
   scripts: {
     dev: 'vite',
     build: 'vite build',

@@ -1,7 +1,8 @@
 import { pkg } from '../../../genie/repo.ts'
 
-export default pkg({
+export default pkg.package({
   name: '@overeng/react-inspector',
+  /** Forked from react-inspector v8.0.0 (https://github.com/nicksenger/react-inspector) */
   version: '8.0.0',
   description: 'Power of Browser DevTools inspectors right inside your React app',
   type: 'module',

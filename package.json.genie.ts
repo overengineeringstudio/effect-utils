@@ -1,6 +1,6 @@
 import { catalog, pkg } from './genie/repo.ts'
 
-export default pkg({
+export default pkg.root({
   name: 'effect-utils',
   private: true,
   workspaces: {
@@ -24,9 +24,4 @@ export default pkg({
     'typescript',
     'vitest',
   ],
-  pnpm: {
-    patchedDependencies: {
-      'effect-distributed-lock@0.0.11': 'patches/effect-distributed-lock@0.0.11.patch',
-    },
-  },
 })

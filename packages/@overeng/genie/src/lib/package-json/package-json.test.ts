@@ -214,76 +214,165 @@ describe('createPackageJson', () => {
 
   const workspacePackages = ['@myorg/*', '@local/*'] as const
 
-  const pkg = createPackageJson({ catalog, workspacePackages })
-
-  it('generates package.json with typed dependencies', () => {
-    const result = pkg({
-      name: '@myorg/utils',
-      version: '1.0.0',
-      dependencies: ['effect', '@effect/platform'],
-    })
-
-    const parsed = JSON.parse(result)
-    expect(parsed.dependencies).toEqual({
-      '@effect/platform': 'catalog:',
-      effect: 'catalog:',
-    })
+  const pkg = createPackageJson({
+    packageManager: 'bun',
+    packageManagerVersion: '1.3.5',
+    catalog,
+    workspacePackages,
   })
 
-  it('accepts workspace dependencies matching patterns', () => {
-    const result = pkg({
-      name: '@myorg/utils',
-      version: '1.0.0',
-      dependencies: ['effect', '@myorg/common', '@local/helpers'],
+  describe('pkg.package()', () => {
+    it('generates package.json with typed dependencies', () => {
+      const result = pkg.package({
+        name: '@myorg/utils',
+        version: '1.0.0',
+        dependencies: ['effect', '@effect/platform'],
+      })
+
+      const parsed = JSON.parse(result)
+      expect(parsed.dependencies).toEqual({
+        '@effect/platform': 'catalog:',
+        effect: 'catalog:',
+      })
     })
 
-    const parsed = JSON.parse(result)
-    expect(parsed.dependencies).toEqual({
-      '@local/helpers': 'workspace:*',
-      '@myorg/common': 'workspace:*',
-      effect: 'catalog:',
-    })
-  })
+    it('accepts workspace dependencies matching patterns', () => {
+      const result = pkg.package({
+        name: '@myorg/utils',
+        version: '1.0.0',
+        dependencies: ['effect', '@myorg/common', '@local/helpers'],
+      })
 
-  it('expands peer dependencies from catalog', () => {
-    const result = pkg({
-      name: '@myorg/utils',
-      version: '1.0.0',
-      peerDependencies: { react: '^' },
-    })
-
-    const parsed = JSON.parse(result)
-    expect(parsed.peerDependencies).toEqual({
-      react: '^19.2.3',
-    })
-  })
-
-  it('works without dependencies', () => {
-    const result = pkg({
-      name: '@myorg/utils',
-      version: '1.0.0',
-      type: 'module',
+      const parsed = JSON.parse(result)
+      expect(parsed.dependencies).toEqual({
+        '@local/helpers': 'workspace:*',
+        '@myorg/common': 'workspace:*',
+        effect: 'catalog:',
+      })
     })
 
-    const parsed = JSON.parse(result)
-    expect(parsed.name).toBe('@myorg/utils')
-    expect(parsed.dependencies).toBeUndefined()
-  })
+    it('expands peer dependencies from catalog', () => {
+      const result = pkg.package({
+        name: '@myorg/utils',
+        version: '1.0.0',
+        peerDependencies: { react: '^' },
+      })
 
-  it('accepts explicit peer dependency versions', () => {
-    const result = pkg({
-      name: '@myorg/utils',
-      version: '1.0.0',
-      peerDependencies: {
+      const parsed = JSON.parse(result)
+      expect(parsed.peerDependencies).toEqual({
+        react: '^19.2.3',
+      })
+    })
+
+    it('works without dependencies', () => {
+      const result = pkg.package({
+        name: '@myorg/utils',
+        version: '1.0.0',
+        type: 'module',
+      })
+
+      const parsed = JSON.parse(result)
+      expect(parsed.name).toBe('@myorg/utils')
+      expect(parsed.dependencies).toBeUndefined()
+    })
+
+    it('accepts explicit peer dependency versions', () => {
+      const result = pkg.package({
+        name: '@myorg/utils',
+        version: '1.0.0',
+        peerDependencies: {
+          effect: '>=3.19.0',
+          react: '^',
+        },
+      })
+
+      const parsed = JSON.parse(result)
+      expect(parsed.peerDependencies).toEqual({
         effect: '>=3.19.0',
-        react: '^',
-      },
+        react: '^19.2.3',
+      })
     })
 
-    const parsed = JSON.parse(result)
-    expect(parsed.peerDependencies).toEqual({
-      effect: '>=3.19.0',
-      react: '^19.2.3',
+    it('does not include packageManager field', () => {
+      const result = pkg.package({
+        name: '@myorg/utils',
+        version: '1.0.0',
+      })
+
+      const parsed = JSON.parse(result)
+      expect(parsed.packageManager).toBeUndefined()
+    })
+  })
+
+  describe('pkg.root()', () => {
+    it('includes packageManager field', () => {
+      const result = pkg.root({
+        name: 'my-monorepo',
+        private: true,
+        workspaces: ['packages/*'],
+      })
+
+      const parsed = JSON.parse(result)
+      expect(parsed.packageManager).toBe('bun@1.3.5')
+    })
+
+    it('supports workspaces configuration', () => {
+      const result = pkg.root({
+        name: 'my-monorepo',
+        private: true,
+        workspaces: { packages: ['packages/*'], catalog },
+      })
+
+      const parsed = JSON.parse(result)
+      expect(parsed.workspaces.packages).toEqual(['packages/*'])
+      expect(parsed.workspaces.catalog).toBeDefined()
+    })
+
+    it('supports Bun-specific trustedDependencies', () => {
+      const result = pkg.root({
+        name: 'my-monorepo',
+        private: true,
+        trustedDependencies: ['esbuild', 'sharp'],
+      })
+
+      const parsed = JSON.parse(result)
+      expect(parsed.trustedDependencies).toEqual(['esbuild', 'sharp'])
+    })
+  })
+
+  describe('PNPM package manager', () => {
+    const pnpmPkg = createPackageJson({
+      packageManager: 'pnpm',
+      packageManagerVersion: '9.15.0',
+      catalog,
+      workspacePackages,
+    })
+
+    it('includes packageManager field for root', () => {
+      const result = pnpmPkg.root({
+        name: 'my-monorepo',
+        private: true,
+      })
+
+      const parsed = JSON.parse(result)
+      expect(parsed.packageManager).toBe('pnpm@9.15.0')
+    })
+
+    it('supports PNPM-specific pnpm namespace', () => {
+      const result = pnpmPkg.root({
+        name: 'my-monorepo',
+        private: true,
+        pnpm: {
+          patchedDependencies: {
+            'some-pkg@1.0.0': 'patches/some-pkg.patch',
+          },
+        },
+      })
+
+      const parsed = JSON.parse(result)
+      expect(parsed.pnpm.patchedDependencies).toEqual({
+        'some-pkg@1.0.0': 'patches/some-pkg.patch',
+      })
     })
   })
 })
