@@ -1,5 +1,12 @@
 /**
- * Shared constants and utilities for genie configuration files
+ * effect-utils monorepo configuration
+ *
+ * Source of truth for:
+ * - Catalog versions for dependencies
+ * - TypeScript configuration patterns
+ *
+ * Repos that include effect-utils as a submodule can import the catalog and
+ * tsconfig utilities from here, then import genie utilities directly from genie.
  */
 
 import { createPackageJson } from '../packages/@overeng/genie/src/lib/mod.ts'

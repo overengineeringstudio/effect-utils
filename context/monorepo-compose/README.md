@@ -31,30 +31,28 @@ git submodule update --init --recursive
 inputs:
   nixpkgs:
     url: github:NixOS/nixpkgs/nixos-unstable
-  pnpm-compose:
-    url: path:./submodules/effect-utils/packages/@overeng/pnpm-compose
-    flake: false
   genie:
-    url: path:./submodules/effect-utils/packages/@overeng/genie
+    url: github:overengineeringstudio/effect-utils?dir=packages/@overeng/genie
+  pnpm-compose:
+    url: github:overengineeringstudio/effect-utils?dir=packages/@overeng/pnpm-compose
 ```
-
-> **Note:** genie uses devenv's flake input mode (no `flake: false`) which requires `.devenv.flake.nix` in the package. pnpm-compose uses `flake: false` since it's consumed via overlay.
 
 ### 3. Create devenv.nix
 
 ```nix
 { pkgs, inputs, ... }:
 {
-  # pnpm-compose overlay (used with flake: false)
-  overlays = [
-    (import "${inputs.pnpm-compose}/nix/overlay.nix")
-  ];
-
   packages = [
     pkgs.pnpm
     pkgs.nodejs_24
     pkgs.bun
     inputs.genie.packages.${pkgs.system}.default
+    inputs.pnpm-compose.packages.${pkgs.system}.default
+  ];
+
+  # pnpm guard overlay - prevents accidental pnpm install in submodules
+  overlays = [
+    inputs.pnpm-compose.overlays.pnpmGuard
   ];
 
   enterShell = ''
@@ -79,19 +77,24 @@ use devenv
 devenv.lock
 ```
 
-### 6. Create catalog source
+### 6. Create repo config
 
 ```ts
 // genie/repo.ts
+import { createPackageJson } from '@overeng/genie/lib'
 import { catalog as effectUtilsCatalog } from './submodules/effect-utils/genie/repo.ts'
 
+// Compose catalog - effect-utils base + project-specific
 export const catalog = {
   ...effectUtilsCatalog,
-  // Project-specific packages
-  'my-package': '1.0.0',
+  'my-special-package': '1.0.0',
 } as const
 
-export const catalogRef = 'catalog:' as const
+// Type-safe package.json builder
+export const pkg = createPackageJson({
+  catalog,
+  workspacePackages: ['@myorg/*', '@overeng/*'],
+})
 ```
 
 ### 7. Create workspace config generator
@@ -111,7 +114,24 @@ export default pnpmWorkspace({
 })
 ```
 
-### 8. Initialize
+### 8. Create a package.json.genie.ts
+
+```ts
+// packages/@myorg/utils/package.json.genie.ts
+import { pkg } from '../../../genie/repo.ts'
+
+export default pkg({
+  name: '@myorg/utils',
+  version: '1.0.0',
+  type: 'module',
+  exports: { '.': './src/mod.ts' },
+  dependencies: ['effect', '@effect/platform'],
+  devDependencies: ['typescript', 'vitest'],
+})
+// Typos like 'effct' cause compile-time errors!
+```
+
+### 9. Initialize
 
 ```bash
 direnv allow
@@ -119,7 +139,7 @@ genie                  # Generate config files
 pnpm-compose install   # Install deps + symlink dance
 ```
 
-### 9. Verify setup
+### 10. Verify setup
 
 ```bash
 # Check tools are available
@@ -137,10 +157,26 @@ echo "// test" >> submodules/effect-utils/packages/@overeng/utils/src/mod.ts
 
 ## Architecture
 
+### Submodule dependency tree (example)
+
+```
+my-app                              <- root repo
+├── effect-utils                    <- direct dependency
+├── lib-a                           <- submodule (has effect-utils)
+│   └── effect-utils                <- lib-a's dependency (same repo)
+└── lib-b                           <- submodule (has effect-utils)
+    └── effect-utils                <- lib-b's dependency (same repo)
+```
+
+Note: pnpm-compose symlinks all effect-utils packages to the effect-utils submodule.
+
+### Directory structure
+
 ```
 my-app/                           <- Parent repo
 ├── genie/repo.ts                 <- Catalog source (composes from children)
 ├── pnpm-workspace.yaml.genie.ts  <- Generates workspace config
+├── tsconfig.base.json.genie.ts   <- Uses baseTsconfigCompilerOptions
 ├── pnpm-compose.config.ts        <- Optional: exclude submodules
 ├── devenv.yaml                   <- devenv inputs
 ├── devenv.nix                    <- devenv config
@@ -148,69 +184,81 @@ my-app/                           <- Parent repo
 │   ├── @overeng/utils            -> submodules/effect-utils/packages/@overeng/utils (symlink!)
 │   └── react/                    <- Regular npm dependency
 └── submodules/
-    └── effect-utils/             <- Git submodule (real, not symlink)
-        ├── genie/repo.ts         <- Child catalog
+    └── effect-utils/             <- Git submodule (foundation)
+        ├── genie/repo.ts         <- Base catalog + TS config utilities
         └── packages/@overeng/*/
 ```
 
-**Catalog composition flow:**
+### Multi-level composition
+
+For complex setups with nested submodules:
 
 ```
-effect-utils/genie/repo.ts    ->  my-app/genie/repo.ts    ->  pnpm-workspace.yaml
-     (child catalog)                (composed catalog)          (generated)
+my-app/                           <- Top-level app
+├── genie/repo.ts                 <- Composes ALL catalogs
+└── submodules/
+    ├── effect-utils/             <- Foundation (catalog, TS config, genie tools)
+    │   └── genie/repo.ts
+    ├── lib-a/                    <- Extends effect-utils
+    │   └── genie/repo.ts         <- imports from ../../effect-utils/genie/repo.ts
+    └── lib-b/                    <- Extends effect-utils
+        └── genie/repo.ts         <- imports from ../../effect-utils/genie/repo.ts
 ```
 
-**Symlink dance:**
+### Reuse hierarchy
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      effect-utils (foundation)                   │
+│  • Core catalog (Effect, React, TypeScript, Vite, testing)      │
+│  • baseTsconfigCompilerOptions (strict settings + Effect LSP)   │
+│  • packageTsconfigCompilerOptions, domLib, reactJsx             │
+│  • genie package (createPackageJson, tsconfigJSON utilities)    │
+└─────────────────────────────────────────────────────────────────┘
+                              ▲
+          ┌───────────────────┼───────────────────┐
+          │                   │                   │
+┌─────────┴─────────┐ ┌───────┴───────┐ ┌────────┴────────┐
+│      lib-a        │ │     lib-b     │ │     my-app      │
+│  + OTel exporters │ │  + Astro/docs │ │  + Storybook    │
+│  + dev tools      │ │  + Cloudflare │ │  + Electron     │
+└───────────────────┘ └───────────────┘ └─────────────────┘
+```
+
+### Catalog composition flow
+
+```
+effect-utils/genie/repo.ts    ->  child/genie/repo.ts    ->  pnpm-workspace.yaml
+     (base catalog)                (composed catalog)          (generated)
+         │                              │
+         │                              └── pkg() builder
+         └─────────────────────────────────── tsconfig utilities
+```
+
+### Symlink dance
 
 1. `pnpm install` creates symlinks to `.pnpm/` store
 2. pnpm-compose replaces them with symlinks to submodule source
 3. `pnpm install --lockfile-only` updates lockfile, preserves our symlinks
 
-## Nix/devenv Setup
+## Nix Setup
 
-### Key requirements
+### devenv (recommended)
 
-1. **Real git submodules** - Symlinks to other directories won't work
-2. **pnpm guard overlay** - Prevents accidental `pnpm install` in submodules
-
-### pnpm Guard Overlay
-
-The overlay wraps `pnpm` to block install commands inside submodules:
-
-```nix
-overlays = [
-  (import "${inputs.pnpm-compose}/nix/overlay.nix")
-];
-```
-
-When triggered:
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  ERROR: Cannot run 'pnpm install' inside a submodule        │
-├─────────────────────────────────────────────────────────────┤
-│  You're in a pnpm-compose managed repo.                     │
-│  Running pnpm install here would corrupt the workspace.     │
-│                                                             │
-│  Instead, run from the parent repo:                         │
-│    cd /path/to/parent                                       │
-│    pnpm-compose install                                     │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### GitHub URLs (alternative to submodule paths)
-
-Once effect-utils is published, you can reference packages directly:
+Use GitHub URLs for simplicity - devenv fetches packages directly:
 
 ```yaml
 # devenv.yaml
-genie:
-  url: github:overengineeringstudio/effect-utils?dir=packages/@overeng/genie
+inputs:
+  genie:
+    url: github:overengineeringstudio/effect-utils?dir=packages/@overeng/genie
+  pnpm-compose:
+    url: github:overengineeringstudio/effect-utils?dir=packages/@overeng/pnpm-compose
 ```
 
-### Alternative: Pure Nix Flakes
+### Pure Nix flakes (local development)
 
-If you prefer pure flakes over devenv:
+For local submodule development, pure flakes with `inputs.self.submodules = true` lets Nix see submodule files:
 
 ```nix
 # flake.nix
@@ -218,22 +266,22 @@ If you prefer pure flakes over devenv:
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
-    pnpm-compose = {
-      url = "path:./submodules/effect-utils/packages/@overeng/pnpm-compose";
-      inputs.nixpkgs.follows = "nixpkgs";
-      inputs.flake-utils.follows = "flake-utils";
-    };
     genie = {
       url = "path:./submodules/effect-utils/packages/@overeng/genie";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-utils.follows = "flake-utils";
     };
+    pnpm-compose = {
+      url = "path:./submodules/effect-utils/packages/@overeng/pnpm-compose";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.flake-utils.follows = "flake-utils";
+    };
   };
 
-  # Critical: enables Nix to see files inside git submodules
+  # Required for Nix to see files inside git submodules
   inputs.self.submodules = true;
 
-  outputs = { self, nixpkgs, flake-utils, pnpm-compose, genie, ... }:
+  outputs = { self, nixpkgs, flake-utils, genie, pnpm-compose, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
@@ -246,8 +294,8 @@ If you prefer pure flakes over devenv:
             pkgs.pnpm
             pkgs.nodejs_24
             pkgs.bun
-            pnpm-compose.packages.${system}.default
             genie.packages.${system}.default
+            pnpm-compose.packages.${system}.default
           ];
 
           shellHook = ''
@@ -266,50 +314,114 @@ export WORKSPACE_ROOT=$(pwd)
 use flake
 ```
 
-**Key difference:** Pure flakes require `inputs.self.submodules = true` to see submodule files. devenv handles this automatically.
+### pnpm guard overlay
 
-## Catalog Management
+The overlay wraps `pnpm` to block install commands inside submodules:
 
-### Defining catalogs
-
-Each repo defines its catalog in `genie/repo.ts`:
-
-```ts
-// Child repo (effect-utils)
-export const catalog = {
-  effect: '3.19.14',
-  '@effect/platform': '0.94.1',
-  typescript: '5.9.3',
-} as const
+```
+┌─────────────────────────────────────────────────────────────┐
+│  ERROR: Cannot run 'pnpm install' inside a submodule        │
+├─────────────────────────────────────────────────────────────┤
+│  You're in a pnpm-compose managed repo.                     │
+│  Running pnpm install here would corrupt the workspace.     │
+│                                                             │
+│  Instead, run from the parent repo:                         │
+│    cd /path/to/parent                                       │
+│    pnpm-compose install                                     │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### Composing catalogs
+## Reuse Patterns
 
-Parent repo imports and extends:
+The key principle: **import from parent repos, don't duplicate**. effect-utils serves as the foundation that child repos extend.
+
+### What effect-utils provides
+
+| From `genie/repo.ts` | Purpose |
+|---------------------|---------|
+| `catalog` | Dependency versions (Effect, React, TypeScript, etc.) |
+| `baseTsconfigCompilerOptions` | Strict TS settings + Effect LSP plugin |
+| `packageTsconfigCompilerOptions` | Composite mode for package builds |
+| `domLib` | DOM lib types for browser code |
+| `reactJsx` | React JSX transform settings |
+
+| From `@overeng/genie/lib` | Purpose |
+|--------------------------|---------|
+| `createPackageJson` | Type-safe package.json builder |
+| `tsconfigJSON` | tsconfig.json generator |
+| `pnpmWorkspace` | pnpm-workspace.yaml generator |
+
+### Child repo setup
 
 ```ts
-// Parent repo
-import { catalog as effectUtilsCatalog } from './submodules/effect-utils/genie/repo.ts'
+// child-repo/genie/repo.ts
 
+// Genie utilities from the genie package
+import { createPackageJson } from '@overeng/genie/lib'
+
+// Repo config from effect-utils
+import {
+  catalog as effectUtilsCatalog,
+  baseTsconfigCompilerOptions,
+} from '../../effect-utils/genie/repo.ts'
+
+// Re-export for this repo's packages
+export { baseTsconfigCompilerOptions }
+
+// Only define packages NOT in effect-utils
+const childOnlyCatalog = {
+  '@special/package': '1.0.0',
+} as const
+
+// Compose catalogs
 export const catalog = {
   ...effectUtilsCatalog,
-  // Project-specific additions
-  electron: '36.0.0',
-  'react-aria-components': '1.14.0',
+  ...childOnlyCatalog,
 } as const
+
+// Type-safe builder for this repo
+export const pkg = createPackageJson({
+  catalog,
+  workspacePackages: ['@child/*', '@overeng/*'],
+})
 ```
 
-### Using catalog refs
+### Deciding where packages belong
 
-In package.json.genie.ts files:
+| Put in effect-utils | Put in child-only |
+|--------------------|-------------------|
+| Used across multiple repos | Repo-specific tooling |
+| Core Effect ecosystem | Domain-specific packages |
+| Common dev tools (TS, Vite) | Experimental/unstable |
+
+### TypeScript config reuse
 
 ```ts
-import { catalogRef } from '../genie/repo.ts'
+// tsconfig.base.json.genie.ts
+import { tsconfigJSON } from '@overeng/genie/lib'
+import { baseTsconfigCompilerOptions } from './submodules/effect-utils/genie/repo.ts'
 
-export default packageJSON({
-  dependencies: {
-    effect: catalogRef,  // -> "catalog:" in generated file
+export default tsconfigJSON({
+  compilerOptions: {
+    ...baseTsconfigCompilerOptions,
+    // Project-specific overrides
   },
+})
+```
+
+```ts
+// packages/@org/my-pkg/tsconfig.json.genie.ts
+import { tsconfigJSON } from '@overeng/genie/lib'
+import { packageTsconfigCompilerOptions, domLib, reactJsx } from '../../../genie/repo.ts'
+
+export default tsconfigJSON({
+  extends: '../../../tsconfig.base.json',
+  compilerOptions: {
+    ...packageTsconfigCompilerOptions,
+    ...domLib,      // If browser code
+    ...reactJsx,    // If React code
+  },
+  include: ['src'],
 })
 ```
 
@@ -394,22 +506,12 @@ rm -rf submodules/*/node_modules
 pnpm-compose install --clean
 ```
 
-### devenv can't find `.devenv.flake.nix`
+### Nix can't find submodule files
 
-This error occurs when a flake input (without `flake: false`) doesn't have a `.devenv.flake.nix` file. See [devenv#1137](https://github.com/cachix/devenv/issues/1137).
-
-Solutions:
-
-- Use `flake: false` and build inline (like pnpm-compose does)
-- Ensure the package has `.devenv.flake.nix` committed (genie has this)
-
-### Nix can't find submodule files (pure flakes only)
-
-Ensure `inputs.self.submodules = true` is in your flake.nix. This is required for Nix to see files inside git submodules.
+When using pure flakes with local `path:` URLs, ensure `inputs.self.submodules = true` is in your flake.nix.
 
 ## References
 
 - [pnpm-compose README](../../packages/@overeng/pnpm-compose/README.md) - Full CLI docs
 - [genie README](../../packages/@overeng/genie/README.md) - Config generator docs
 - [devenv inputs docs](https://devenv.sh/inputs/) - devenv input configuration
-- Example repos: overtone, livestore

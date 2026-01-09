@@ -10,7 +10,7 @@ const mockContext = {
     vitest: '4.0.16',
     react: '19.2.3',
   },
-  workspacePackages: ['@livestore/*', '@overeng/*', '@local/*'],
+  workspacePackages: ['@myorg/*', '@overeng/*', '@local/*'],
 }
 
 describe('packageJsonWithContext', () => {
@@ -36,14 +36,14 @@ describe('packageJsonWithContext', () => {
       {
         name: '@test/package',
         version: '1.0.0',
-        dependencies: ['@livestore/common', '@overeng/utils'],
+        dependencies: ['@myorg/common', '@overeng/utils'],
       },
       mockContext,
     )
 
     const parsed = JSON.parse(result)
     expect(parsed.dependencies).toEqual({
-      '@livestore/common': 'workspace:*',
+      '@myorg/common': 'workspace:*',
       '@overeng/utils': 'workspace:*',
     })
   })
@@ -53,14 +53,14 @@ describe('packageJsonWithContext', () => {
       {
         name: '@test/package',
         version: '1.0.0',
-        dependencies: ['effect', '@livestore/common'],
+        dependencies: ['effect', '@myorg/common'],
       },
       mockContext,
     )
 
     const parsed = JSON.parse(result)
     expect(parsed.dependencies).toEqual({
-      '@livestore/common': 'workspace:*',
+      '@myorg/common': 'workspace:*',
       effect: 'catalog:',
     })
   })

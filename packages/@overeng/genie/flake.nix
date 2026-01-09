@@ -1,5 +1,3 @@
-# Standard Nix flake entry point for `nix build/develop` commands.
-# See nix/flake-outputs.nix for why we also need .devenv.flake.nix.
 {
   description = "Genie CLI for generating config files from .genie.ts templates";
 
@@ -9,5 +7,12 @@
     flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = inputs: import ./nix/flake-outputs.nix inputs;
+  outputs = { nixpkgs, nixpkgsUnstable, flake-utils, ... }:
+    flake-utils.lib.eachDefaultSystem (system: {
+      packages.default = import ./nix/build.nix {
+        pkgs = import nixpkgs { inherit system; };
+        pkgsUnstable = import nixpkgsUnstable { inherit system; };
+        src = ../../..;  # effect-utils root (for bun.lock, package.json)
+      };
+    });
 }

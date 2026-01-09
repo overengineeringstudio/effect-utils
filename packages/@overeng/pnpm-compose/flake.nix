@@ -9,11 +9,9 @@
 
   outputs = { nixpkgs, nixpkgsUnstable, flake-utils, ... }:
     let
-      # Import overlay from standalone file (single source of truth)
       pnpmGuardOverlay = import ./nix/overlay.nix;
     in
     {
-      # Export overlay for use in other flakes/devenv
       overlays.default = pnpmGuardOverlay;
       overlays.pnpmGuard = pnpmGuardOverlay;
     } //

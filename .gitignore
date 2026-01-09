@@ -20,7 +20,7 @@ dist
 .devenv.lock
 devenv.local.nix
 /.devenv.flake.nix
-# note: packages/**/.devenv.flake.nix is tracked - devenv looks for it instead of flake.nix (see devenv#1137)
+# note: packages/**/.devenv.flake.nix is tracked - devenv looks for it instead of flake.nix (devenv#1137)
 
 # Storybook
 storybook-static

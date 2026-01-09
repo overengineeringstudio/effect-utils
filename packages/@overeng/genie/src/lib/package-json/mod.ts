@@ -493,7 +493,7 @@ const sortExports = (
  * import { catalog, workspacePackages } from '../../../genie/repo.ts'
  *
  * export default packageJsonWithContext({
- *   name: '@livestore/common',
+ *   name: '@myorg/common',
  *   dependencies: ['effect', '@effect/platform'],
  *   peerDependencies: { react: '^' },
  *   exports: { '.': './src/mod.ts' },

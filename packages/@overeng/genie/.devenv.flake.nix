@@ -1,9 +1,4 @@
-# devenv CLI entry point - devenv looks for this file instead of flake.nix.
-# See nix/flake-outputs.nix for why this file is needed.
-#
-# Consumers reference this via devenv.yaml (without `flake: false`):
-#   genie:
-#     url: path:./submodules/effect-utils/packages/@overeng/genie
+# devenv looks for this file instead of flake.nix (devenv#1137)
 {
   description = "Genie CLI for generating config files from .genie.ts templates";
 
@@ -13,5 +8,12 @@
     flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = inputs: import ./nix/flake-outputs.nix inputs;
+  outputs = { nixpkgs, nixpkgsUnstable, flake-utils, ... }:
+    flake-utils.lib.eachDefaultSystem (system: {
+      packages.default = import ./nix/build.nix {
+        pkgs = import nixpkgs { inherit system; };
+        pkgsUnstable = import nixpkgsUnstable { inherit system; };
+        src = ../../..;
+      };
+    });
 }
