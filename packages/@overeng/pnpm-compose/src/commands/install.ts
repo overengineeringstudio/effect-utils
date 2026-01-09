@@ -5,10 +5,9 @@ import { Console, Effect, Option, Schema } from 'effect'
 import { findCatalogConflicts, readRepoCatalog } from '../catalog.ts'
 import { detectComposedRepos } from '../config.ts'
 import {
-  addToGitExclude,
-  createSubmoduleSymlink,
   findAllSubmodules,
   findDuplicates,
+  updateSubmoduleWithReference,
 } from '../submodule-dedupe.ts'
 
 /** Install command: runs the linking dance for composed repos */
@@ -37,7 +36,7 @@ export const installCommand = Cli.Command.make(
         return
       }
 
-      // Step 0: Deduplicate git submodules via symlinks
+      // Step 0: Deduplicate git submodules via alternates (no symlinks)
       yield* Effect.gen(function* () {
         const allSubmodules = yield* findAllSubmodules(cwd)
         if (allSubmodules.length === 0) return
@@ -51,15 +50,14 @@ export const installCommand = Cli.Command.make(
           for (const loc of dup.locations) {
             if (loc === dup.canonical) continue
 
-            yield* createSubmoduleSymlink({ duplicate: dup, target: loc })
-            yield* addToGitExclude({ repoRoot: loc.repoRoot, submodulePath: loc.path })
+            yield* updateSubmoduleWithReference({ duplicate: dup, target: loc })
           }
         }
 
-        const symlinkCount = duplicates.flatMap((d) =>
+        const referenceCount = duplicates.flatMap((d) =>
           d.locations.filter((l) => l !== d.canonical),
         ).length
-        yield* Console.log(`  ✓ Created ${symlinkCount} symlink(s)\n`)
+        yield* Console.log(`  ✓ Updated ${referenceCount} submodule(s) with alternates\n`)
       }).pipe(
         Effect.catchAll((error) => Console.log(`  ⚠ Submodule deduplication skipped (${error})\n`)),
       )

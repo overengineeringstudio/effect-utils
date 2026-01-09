@@ -230,125 +230,115 @@ virtualStoreDir: .pnpm
 `,
   })
 
-/** Create nested repos with duplicate submodules for testing deduplication */
+/**
+ * Create nested repos with duplicate submodules for testing deduplication.
+ *
+ * Uses local git submodules with real commits to exercise gitlink behavior.
+ */
 export const setupNestedSubmodules = (env: TestEnv) =>
   Effect.gen(function* () {
-    // Create parent repo with utils submodule
-    yield* env.writeFile({
-      path: 'package.json',
-      content: JSON.stringify({ name: 'test-monorepo', private: true }, null, 2),
-    })
+    const gitUser = [
+      ['config', 'user.email', 'test@test.com'],
+      ['config', 'user.name', 'Test'],
+    ]
+
+    const initRepo = ({ repoPath, label }: { repoPath: string; label: string }) =>
+      Effect.gen(function* () {
+        yield* env.writeFile({ path: `${repoPath}/README.md`, content: label })
+        yield* env.run({ cmd: 'git', args: ['init'], cwd: `${env.root}/${repoPath}` })
+        for (const args of gitUser) {
+          yield* env.run({ cmd: 'git', args, cwd: `${env.root}/${repoPath}` })
+        }
+        yield* env.run({ cmd: 'git', args: ['add', 'README.md'], cwd: `${env.root}/${repoPath}` })
+        yield* env.run({
+          cmd: 'git',
+          args: ['commit', '-m', 'init'],
+          cwd: `${env.root}/${repoPath}`,
+        })
+      })
+
+    const utilsOrigin = `${env.root}/repos/utils-origin`
+    const libAOrigin = `${env.root}/repos/lib-a-origin`
+    const libBOrigin = `${env.root}/repos/lib-b-origin`
+
+    yield* initRepo({ repoPath: 'repos/utils-origin', label: 'utils-origin' })
+    yield* initRepo({ repoPath: 'repos/lib-a-origin', label: 'lib-a-origin' })
+    yield* initRepo({ repoPath: 'repos/lib-b-origin', label: 'lib-b-origin' })
+
     yield* env.run({ cmd: 'git', args: ['init'] })
-    yield* env.run({ cmd: 'git', args: ['config', 'user.email', 'test@test.com'] })
-    yield* env.run({ cmd: 'git', args: ['config', 'user.name', 'Test'] })
+    for (const args of gitUser) {
+      yield* env.run({ cmd: 'git', args })
+    }
 
-    yield* env.writeFile({
-      path: '.gitmodules',
-      content: `[submodule "submodules/utils"]
-\tpath = submodules/utils
-\turl = https://github.com/test/utils.git
-
-[submodule "submodules/lib-a"]
-\tpath = submodules/lib-a
-\turl = https://github.com/test/lib-a.git
-
-[submodule "submodules/lib-b"]
-\tpath = submodules/lib-b
-\turl = https://github.com/test/lib-b.git
-`,
-    })
-
-    // Create utils submodule
-    yield* env.writeFile({ path: 'submodules/utils/package.json', content: '{}' })
-    yield* env.run({ cmd: 'git', args: ['init'], cwd: `${env.root}/submodules/utils` })
     yield* env.run({
       cmd: 'git',
-      args: ['config', 'user.email', 'test@test.com'],
-      cwd: `${env.root}/submodules/utils`,
+      args: [
+        '-c',
+        'protocol.file.allow=always',
+        'submodule',
+        'add',
+        utilsOrigin,
+        'submodules/utils',
+      ],
     })
     yield* env.run({
       cmd: 'git',
-      args: ['config', 'user.name', 'Test'],
-      cwd: `${env.root}/submodules/utils`,
-    })
-
-    // Create lib-a submodule with nested utils (duplicate!)
-    yield* env.writeFile({ path: 'submodules/lib-a/package.json', content: '{}' })
-    yield* env.run({ cmd: 'git', args: ['init'], cwd: `${env.root}/submodules/lib-a` })
-    yield* env.run({
-      cmd: 'git',
-      args: ['config', 'user.email', 'test@test.com'],
-      cwd: `${env.root}/submodules/lib-a`,
+      args: [
+        '-c',
+        'protocol.file.allow=always',
+        'submodule',
+        'add',
+        libAOrigin,
+        'submodules/lib-a',
+      ],
     })
     yield* env.run({
       cmd: 'git',
-      args: ['config', 'user.name', 'Test'],
-      cwd: `${env.root}/submodules/lib-a`,
+      args: [
+        '-c',
+        'protocol.file.allow=always',
+        'submodule',
+        'add',
+        libBOrigin,
+        'submodules/lib-b',
+      ],
     })
 
-    yield* env.writeFile({
-      path: 'submodules/lib-a/.gitmodules',
-      content: `[submodule "submodules/utils"]
-\tpath = submodules/utils
-\turl = https://github.com/test/utils.git
-`,
+    yield* env.run({
+      cmd: 'git',
+      args: ['add', '.gitmodules', 'submodules/utils', 'submodules/lib-a', 'submodules/lib-b'],
     })
+    yield* env.run({ cmd: 'git', args: ['commit', '-m', 'add submodules'] })
 
-    // Create the duplicate utils inside lib-a
-    yield* env.writeFile({ path: 'submodules/lib-a/submodules/utils/package.json', content: '{}' })
-    yield* env.run({
-      cmd: 'git',
-      args: ['init'],
-      cwd: `${env.root}/submodules/lib-a/submodules/utils`,
-    })
-    yield* env.run({
-      cmd: 'git',
-      args: ['config', 'user.email', 'test@test.com'],
-      cwd: `${env.root}/submodules/lib-a/submodules/utils`,
-    })
-    yield* env.run({
-      cmd: 'git',
-      args: ['config', 'user.name', 'Test'],
-      cwd: `${env.root}/submodules/lib-a/submodules/utils`,
-    })
+    for (const lib of ['lib-a', 'lib-b']) {
+      const libPath = `${env.root}/submodules/${lib}`
+      for (const args of gitUser) {
+        yield* env.run({ cmd: 'git', args, cwd: libPath })
+      }
+      yield* env.run({
+        cmd: 'git',
+        args: [
+          '-c',
+          'protocol.file.allow=always',
+          'submodule',
+          'add',
+          utilsOrigin,
+          'submodules/utils',
+        ],
+        cwd: libPath,
+      })
+      yield* env.run({
+        cmd: 'git',
+        args: ['add', '.gitmodules', 'submodules/utils'],
+        cwd: libPath,
+      })
+      yield* env.run({
+        cmd: 'git',
+        args: ['commit', '-m', 'add nested utils submodule'],
+        cwd: libPath,
+      })
+    }
 
-    // Create lib-b submodule with nested utils (another duplicate!)
-    yield* env.writeFile({ path: 'submodules/lib-b/package.json', content: '{}' })
-    yield* env.run({ cmd: 'git', args: ['init'], cwd: `${env.root}/submodules/lib-b` })
-    yield* env.run({
-      cmd: 'git',
-      args: ['config', 'user.email', 'test@test.com'],
-      cwd: `${env.root}/submodules/lib-b`,
-    })
-    yield* env.run({
-      cmd: 'git',
-      args: ['config', 'user.name', 'Test'],
-      cwd: `${env.root}/submodules/lib-b`,
-    })
-
-    yield* env.writeFile({
-      path: 'submodules/lib-b/.gitmodules',
-      content: `[submodule "submodules/utils"]
-\tpath = submodules/utils
-\turl = https://github.com/test/utils.git
-`,
-    })
-
-    // Create the duplicate utils inside lib-b
-    yield* env.writeFile({ path: 'submodules/lib-b/submodules/utils/package.json', content: '{}' })
-    yield* env.run({
-      cmd: 'git',
-      args: ['init'],
-      cwd: `${env.root}/submodules/lib-b/submodules/utils`,
-    })
-    yield* env.run({
-      cmd: 'git',
-      args: ['config', 'user.email', 'test@test.com'],
-      cwd: `${env.root}/submodules/lib-b/submodules/utils`,
-    })
-    yield* env.run({
-      cmd: 'git',
-      args: ['config', 'user.name', 'Test'],
-      cwd: `${env.root}/submodules/lib-b/submodules/utils`,
-    })
+    yield* env.run({ cmd: 'git', args: ['add', 'submodules/lib-a', 'submodules/lib-b'] })
+    yield* env.run({ cmd: 'git', args: ['commit', '-m', 'update nested submodules'] })
   })

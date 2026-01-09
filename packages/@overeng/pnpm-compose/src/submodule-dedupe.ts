@@ -1,11 +1,11 @@
 /**
  * Submodule deduplication logic for pnpm-compose.
  *
- * Detects duplicate git submodules across nested repos and creates symlinks
- * to deduplicate them, preferring the top-level copy.
+ * Detects duplicate git submodules across nested repos and uses git alternates
+ * to deduplicate objects while keeping real submodule directories.
  */
 import { Command, FileSystem, Path } from '@effect/platform'
-import { Effect } from 'effect'
+import { Effect, Option } from 'effect'
 
 /** A submodule entry with its URL and path */
 export interface SubmoduleEntry {
@@ -142,8 +142,14 @@ export const findDuplicates = (submodules: SubmoduleEntry[]): DuplicateSubmodule
   return duplicates
 }
 
-/** Create symlink for a nested submodule pointing to canonical location */
-export const createSubmoduleSymlink = ({
+/**
+ * Ensure duplicate submodule uses git alternates from the canonical copy.
+ *
+ * Handles two cases:
+ * - gitlink entry exists: use `git submodule update --reference` to share objects
+ * - gitlink missing: clone a local copy and exclude it from git tracking
+ */
+export const updateSubmoduleWithReference = ({
   duplicate,
   target,
 }: {
@@ -154,22 +160,96 @@ export const createSubmoduleSymlink = ({
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
 
-    const symlinkPath = `${target.repoRoot}/${target.path}`
-    const canonicalPath = `${duplicate.canonical.repoRoot}/${duplicate.canonical.path}`
+    const targetPath = path.join(target.repoRoot, target.path)
+    const canonicalPath = path.join(duplicate.canonical.repoRoot, duplicate.canonical.path)
 
-    // Calculate relative path from symlink to target
-    const relativePath = path.relative(path.dirname(symlinkPath), canonicalPath)
+    const linkTarget = yield* fs.readLink(targetPath).pipe(Effect.option)
+    if (Option.isSome(linkTarget)) {
+      yield* fs.remove(targetPath, { recursive: true })
+    }
 
-    // Remove existing directory if it exists (may be real submodule clone)
-    // Use catchAll to handle ENOENT gracefully
-    yield* fs.remove(symlinkPath, { recursive: true }).pipe(Effect.catchAll(() => Effect.void))
+    /** Use git index to detect whether the path is a tracked submodule (gitlink). */
+    const gitlinkCheck = Command.make('git', 'ls-files', '--stage', '--', target.path).pipe(
+      Command.workingDirectory(target.repoRoot),
+    )
+    const gitlinkOutput = yield* Command.string(gitlinkCheck).pipe(
+      Effect.catchAll(() => Effect.succeed('')),
+    )
+    const isGitlink = gitlinkOutput.split('\n').some((line) => line.startsWith('160000 '))
 
-    // Create parent directory if needed
-    yield* fs.makeDirectory(path.dirname(symlinkPath), { recursive: true })
+    if (!isGitlink) {
+      /** Repo declares the submodule in .gitmodules but doesn't track a gitlink. */
+      const targetGitExists = yield* fs.exists(path.join(targetPath, '.git'))
+      if (!targetGitExists) {
+        const targetExists = yield* fs.exists(targetPath)
+        if (!targetExists) {
+          yield* fs.makeDirectory(path.dirname(targetPath), { recursive: true })
+          const cloneCommand = Command.make(
+            'git',
+            '-c',
+            'protocol.file.allow=always',
+            'clone',
+            '--reference',
+            canonicalPath,
+            '--no-checkout',
+            canonicalPath,
+            targetPath,
+          ).pipe(Command.workingDirectory(target.repoRoot))
+          yield* Command.string(cloneCommand)
 
-    // Create symlink
-    yield* fs.symlink(relativePath, symlinkPath)
-  }).pipe(Effect.withSpan('createSubmoduleSymlink'))
+          const canonicalHead = yield* Command.string(
+            Command.make('git', 'rev-parse', 'HEAD').pipe(Command.workingDirectory(canonicalPath)),
+          )
+          yield* Command.string(
+            Command.make('git', 'checkout', canonicalHead.trim()).pipe(
+              Command.workingDirectory(targetPath),
+            ),
+          )
+        } else {
+          yield* addToGitExclude({ repoRoot: target.repoRoot, submodulePath: target.path })
+          return
+        }
+      }
+
+      yield* addToGitExclude({ repoRoot: target.repoRoot, submodulePath: target.path })
+    } else {
+      /**
+       * Use `--reference` to ensure the alternates link is created.
+       * `--reference-if-able` is not accepted by `git submodule update`.
+       */
+      const command = Command.make(
+        'git',
+        '-c',
+        'protocol.file.allow=always',
+        'submodule',
+        'update',
+        '--init',
+        '--force',
+        '--reference',
+        canonicalPath,
+        target.path,
+      ).pipe(Command.workingDirectory(target.repoRoot))
+
+      yield* Command.string(command)
+    }
+
+    const targetGitDir = yield* resolveGitDir(targetPath)
+    const canonicalGitDir = yield* resolveGitDir(canonicalPath)
+    const targetAlternatesPath = path.join(targetGitDir, 'objects', 'info', 'alternates')
+    const canonicalObjectsPath = path.join(canonicalGitDir, 'objects')
+
+    yield* fs.makeDirectory(path.dirname(targetAlternatesPath), { recursive: true })
+    const existingAlternates = yield* fs.readFileString(targetAlternatesPath).pipe(Effect.option)
+    const existingLines = Option.getOrElse(existingAlternates, () => '')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+
+    if (!existingLines.includes(canonicalObjectsPath)) {
+      const newContent = [...existingLines, canonicalObjectsPath].join('\n') + '\n'
+      yield* fs.writeFileString(targetAlternatesPath, newContent)
+    }
+  }).pipe(Effect.withSpan('updateSubmoduleWithReference'))
 
 /** Resolve actual git directory path (handles both regular repos and submodules) */
 const resolveGitDir = (repoRoot: string) =>

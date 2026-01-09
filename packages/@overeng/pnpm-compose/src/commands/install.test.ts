@@ -4,15 +4,22 @@
  * These tests create real directory structures with pnpm to verify
  * the install command behavior. They're slower but catch real regressions.
  */
+import { FileSystem } from '@effect/platform'
 import { NodeContext } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Effect } from 'effect'
+import { Effect, Option } from 'effect'
 import { expect } from 'vitest'
 
+import {
+  findAllSubmodules,
+  findDuplicates,
+  updateSubmoduleWithReference,
+} from '../submodule-dedupe.ts'
 import {
   createPnpmStateFile,
   createTestEnv,
   setupBasicMonorepo,
+  setupNestedSubmodules,
   type TestEnv,
 } from '../test-helpers/setup.ts'
 
@@ -115,6 +122,47 @@ describe('install command', () => {
           expect(stillExists).toBe(true)
         }),
       ).pipe(Effect.provide(TestLayer), Effect.scoped),
+    )
+  })
+
+  describe('submodule dedupe', () => {
+    it.effect(
+      'uses git alternates for duplicate submodules',
+      () =>
+        withTestEnv((env) =>
+          Effect.gen(function* () {
+            yield* setupNestedSubmodules(env)
+
+            const allSubmodules = yield* findAllSubmodules(env.root)
+            const duplicates = findDuplicates(allSubmodules)
+            expect(duplicates.length).toBe(1)
+
+            const fs = yield* FileSystem.FileSystem
+            const duplicate = duplicates[0]!
+
+            for (const loc of duplicate.locations) {
+              if (loc === duplicate.canonical) continue
+              yield* updateSubmoduleWithReference({ duplicate, target: loc })
+            }
+
+            const linkTarget = yield* env
+              .readLink('submodules/lib-a/submodules/utils')
+              .pipe(Effect.option)
+            expect(Option.isNone(linkTarget)).toBe(true)
+
+            const alternatesPath = `${env.root}/.git/modules/submodules/lib-a/modules/submodules/utils/objects/info/alternates`
+            const alternates = yield* fs.readFileString(alternatesPath)
+            expect(alternates).toContain(`${env.root}/.git/modules/submodules/utils/objects`)
+
+            yield* env.run({ cmd: 'git', args: ['status', '-s'], cwd: env.root })
+            yield* env.run({
+              cmd: 'git',
+              args: ['status', '-s'],
+              cwd: `${env.root}/submodules/lib-a`,
+            })
+          }),
+        ).pipe(Effect.provide(TestLayer), Effect.scoped),
+      120_000,
     )
   })
 
