@@ -163,6 +163,29 @@ export const domLib = ['ES2022', 'DOM', 'DOM.Iterable'] as const
 /** React JSX configuration for React packages */
 export const reactJsx = { jsx: 'react-jsx' as const }
 
+// =============================================================================
+// TypeScript Reference Helpers
+// =============================================================================
+
+/**
+ * effect-utils package paths for tsconfig references.
+ * Paths are relative to the packages directory (e.g. '@overeng/react-inspector').
+ * Parent repos can use createRefs() to build refs with the appropriate base path.
+ */
+export const effectUtilsPackages = {
+  reactInspector: '@overeng/react-inspector',
+  schemaForm: '@overeng/effect-schema-form',
+} as const
+
+/**
+ * Creates tsconfig reference objects for effect-utils packages.
+ * @param basePath Path from consuming package to effect-utils' packages dir (e.g. '../../../submodules/effect-utils/packages')
+ */
+export const createEffectUtilsRefs = (basePath: string) =>
+  Object.fromEntries(
+    Object.entries(effectUtilsPackages).map(([key, pkgPath]) => [key, { path: `${basePath}/${pkgPath}` }]),
+  ) as { [K in keyof typeof effectUtilsPackages]: { path: string } }
+
 /** Base tsconfig compiler options shared across all packages */
 export const baseTsconfigCompilerOptions = {
   target: 'ES2023' as const,

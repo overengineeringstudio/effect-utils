@@ -668,6 +668,7 @@ type BasePackageJsonFields = {
     exports?: Record<string, ExportsEntry>
     [key: string]: unknown
   }
+  peerDependenciesMeta?: Record<string, { optional?: boolean }>
   sideEffects?: boolean | string[]
   browser?: string | Record<string, string | false>
   funding?: Funding | Funding[]
