@@ -205,6 +205,8 @@ export type TSConfigCompilerOptions = {
   useCaseSensitiveFileNames?: boolean
   /** Custom conditions for exports/imports resolution */
   customConditions?: string[]
+  /** Only allow syntax that can be erased (for Node.js type stripping) */
+  erasableSyntaxOnly?: boolean
 }
 
 /** TypeScript watch mode options */
