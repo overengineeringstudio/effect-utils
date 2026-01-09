@@ -65,6 +65,60 @@ in
 }
 ```
 
+## Cross-submodule dependencies (important)
+
+If your CLI or UI build depends on packages that live in a git submodule
+outside the current flake source (e.g., `link:` deps), the Nix sandbox cannot
+resolve those paths. This is the main source of extra complexity outside
+effect-utils.
+
+Recommended pattern:
+
+- Vendor the external package into the fixed-output deps input.
+- Rewrite `bun.lock` to use `file:vendor/<name>` instead of `link:...`.
+- Strip `catalog:` devDependencies from the vendored package so `bun install`
+  does not fail.
+
+Minimal example with comments:
+
+```nix
+let
+  # Rewrite dependency to a vendored path for sandboxed builds.
+  packageJsonForBun = packageJson // {
+    dependencies = (packageJson.dependencies or {}) // {
+      "@overeng/effect-react" = "file:vendor/effect-react";
+    };
+  };
+  # Replace link: in the lockfile with file:vendor to keep bun.lock usable.
+  bunLockForBun = builtins.replaceStrings
+    [ "link:../../../../../submodules/effect-utils/packages/@overeng/effect-react" ]
+    [ "file:vendor/effect-react" ]
+    (builtins.readFile ./bun.lock);
+  # Strip catalog-based devDependencies so bun install doesn't fail.
+  effectReactPackage = builtins.fromJSON (builtins.readFile "${effectReactSrc}/package.json");
+  effectReactPackageForBun = effectReactPackage // { devDependencies = {}; };
+  # Provide a minimal vendored package in the fixed-output dependency input.
+  depFiles = pkgs.runCommand "dep-files" {} ''
+    mkdir -p $out/vendor/effect-react
+    cat > $out/package.json <<'EOF'
+    ${builtins.toJSON packageJsonForBun}
+    EOF
+    cat > $out/bun.lock <<'EOF'
+    ${bunLockForBun}
+    EOF
+    cat > $out/vendor/effect-react/package.json <<'EOF'
+    ${builtins.toJSON effectReactPackageForBun}
+    EOF
+    # Only source files needed at build time.
+    cp -r ${effectReactSrc}/src $out/vendor/effect-react/src
+  '';
+in
+mkBunCli {
+  # ...
+  depFiles = depFiles;
+}
+```
+
 ## Notes
 
 - Package-local flakes in effect-utils are not the git root, so `sourceInfo.*`
