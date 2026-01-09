@@ -1,10 +1,8 @@
-import { pkg } from '../../../genie/repo.ts'
+import { pkg, privatePackageDefaults } from '../../../genie/repo.ts'
 
-export default pkg({
+export default pkg.package({
   name: '@overeng/oxc-config',
-  version: '0.1.0',
-  private: true,
-  type: 'module',
+  ...privatePackageDefaults,
   exports: {
     './lint': './lint.jsonc',
     './fmt': './fmt.jsonc',

@@ -555,7 +555,7 @@ export const packageJsonWithContext = (
 }
 
 // -----------------------------------------------------------------------------
-// createPackageJson - type-safe curried builder
+// createPackageJson - type-safe curried builder with package manager support
 // -----------------------------------------------------------------------------
 
 /**
@@ -588,31 +588,278 @@ type ValidDep<TCatalog extends Record<string, string>, TWorkspace extends readon
  */
 type PeerDepRangeStrict = '^' | '~'
 
-/**
- * Configuration for the type-safe package.json builder.
- * Dependencies are typed against the catalog and workspace patterns.
- *
- * All dependencies must be either:
- * - A key in the catalog (resolved to `catalog:`)
- * - A workspace package matching the patterns (resolved to `workspace:*`)
- */
-type TypedPackageJsonConfig<
+// -----------------------------------------------------------------------------
+// Package manager types
+// -----------------------------------------------------------------------------
+
+/** PNPM-specific namespace configuration (root-only) */
+type PnpmNamespaceConfig = {
+  overrides?: Record<string, string>
+  patchedDependencies?: Record<string, string>
+  onlyBuiltDependencies?: string[]
+  neverBuiltDependencies?: string[]
+  packageExtensions?: Record<
+    string,
+    {
+      dependencies?: Record<string, string>
+      peerDependencies?: Record<string, string>
+    }
+  >
+  peerDependencyRules?: {
+    allowedVersions?: Record<string, string>
+    ignoreMissing?: string[]
+    allowAny?: string[]
+  }
+  allowedDeprecatedVersions?: Record<string, string>
+  requiredScripts?: string[]
+  updateConfig?: {
+    ignoreDependencies?: string[]
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Shared base types (fields available in both root and package configs)
+// -----------------------------------------------------------------------------
+
+/** Base fields shared between root and package configs */
+type BasePackageJsonFields = {
+  name?: string
+  version?: string
+  description?: string
+  keywords?: string[]
+  homepage?: string
+  bugs?: Bugs
+  license?: string
+  author?: Person
+  contributors?: Person[]
+  repository?: Repository
+  main?: string
+  module?: string
+  types?: string
+  typings?: string
+  files?: string[]
+  exports?: Record<string, ExportsEntry>
+  type?: 'module' | 'commonjs'
+  bin?: string | Record<string, string>
+  man?: string | string[]
+  directories?: {
+    lib?: string
+    bin?: string
+    man?: string
+    doc?: string
+    example?: string
+    test?: string
+  }
+  scripts?: Record<string, string>
+  config?: Record<string, unknown>
+  engines?: {
+    node?: string
+    npm?: string
+    pnpm?: string
+    yarn?: string
+  }
+  os?: string[]
+  cpu?: string[]
+  private?: boolean
+  publishConfig?: {
+    access?: 'public' | 'restricted'
+    registry?: string
+    tag?: string
+    exports?: Record<string, ExportsEntry>
+    [key: string]: unknown
+  }
+  sideEffects?: boolean | string[]
+  browser?: string | Record<string, string | false>
+  funding?: Funding | Funding[]
+}
+
+/** Base config with typed dependencies (shared logic) */
+type TypedDepsConfig<
   TCatalog extends Record<string, string>,
   TWorkspace extends readonly string[],
-> = Omit<PackageJSONArgs, 'dependencies' | 'devDependencies' | 'peerDependencies'> & {
-  /** Dependencies - must be valid catalog keys or workspace package names */
+> = {
   dependencies?: ValidDep<TCatalog, TWorkspace>[]
-  /** Dev dependencies - must be valid catalog keys or workspace package names */
   devDependencies?: ValidDep<TCatalog, TWorkspace>[]
-  /** Peer dependencies - keys must be catalog entries, values are `^`, `~`, or explicit versions */
   peerDependencies?: { [K in keyof TCatalog]?: PeerDepRangeStrict | string }
 }
 
+// -----------------------------------------------------------------------------
+// PNPM-specific types
+// -----------------------------------------------------------------------------
+
+/** PNPM root package.json config */
+type PnpmRootConfig<
+  TCatalog extends Record<string, string>,
+  TWorkspace extends readonly string[],
+> = BasePackageJsonFields &
+  TypedDepsConfig<TCatalog, TWorkspace> & {
+    /** Workspace configuration - for PNPM, catalog is typically in pnpm-workspace.yaml */
+    workspaces?: string[] | { packages?: string[]; catalog?: TCatalog }
+    /** PNPM-specific namespace (root-only) */
+    pnpm?: PnpmNamespaceConfig
+    /** Yarn/npm resolutions (also works in PNPM) */
+    resolutions?: Record<string, string>
+  }
+
+/** PNPM workspace package config - excludes root-only fields */
+type PnpmPackageConfig<
+  TCatalog extends Record<string, string>,
+  TWorkspace extends readonly string[],
+> = BasePackageJsonFields & TypedDepsConfig<TCatalog, TWorkspace>
+
+// -----------------------------------------------------------------------------
+// Bun-specific types
+// -----------------------------------------------------------------------------
+
+/** Bun root package.json config */
+type BunRootConfig<
+  TCatalog extends Record<string, string>,
+  TWorkspace extends readonly string[],
+> = BasePackageJsonFields &
+  TypedDepsConfig<TCatalog, TWorkspace> & {
+    /** Workspace configuration with catalog */
+    workspaces?: string[] | { packages?: string[]; catalog?: TCatalog }
+    /** Packages allowed to run lifecycle scripts (Bun-specific, root-only) */
+    trustedDependencies?: string[]
+    /** Override dependency versions (npm-style) */
+    overrides?: Record<string, string>
+    /** Override dependency versions (Yarn-style) */
+    resolutions?: Record<string, string>
+  }
+
+/** Bun workspace package config - excludes root-only fields */
+type BunPackageConfig<
+  TCatalog extends Record<string, string>,
+  TWorkspace extends readonly string[],
+> = BasePackageJsonFields & TypedDepsConfig<TCatalog, TWorkspace>
+
+// -----------------------------------------------------------------------------
+// Context types
+// -----------------------------------------------------------------------------
+
+/** Base context for package.json generation */
+type PackageJsonContextBase<
+  TCatalog extends Record<string, string>,
+  TWorkspace extends readonly string[],
+> = {
+  catalog: TCatalog
+  workspacePackages: TWorkspace
+}
+
+/** PNPM context */
+type PnpmContext<
+  TCatalog extends Record<string, string>,
+  TWorkspace extends readonly string[],
+> = PackageJsonContextBase<TCatalog, TWorkspace> & {
+  packageManager: 'pnpm'
+  packageManagerVersion: string
+}
+
+/** Bun context */
+type BunContext<
+  TCatalog extends Record<string, string>,
+  TWorkspace extends readonly string[],
+> = PackageJsonContextBase<TCatalog, TWorkspace> & {
+  packageManager: 'bun'
+  packageManagerVersion: string
+}
+
+// -----------------------------------------------------------------------------
+// Builder return types
+// -----------------------------------------------------------------------------
+
+/** PNPM package.json builder */
+type PnpmPackageJsonBuilder<
+  TCatalog extends Record<string, string>,
+  TWorkspace extends readonly string[],
+> = {
+  /** Generate root package.json with PNPM-specific fields */
+  root: (config: PnpmRootConfig<TCatalog, TWorkspace>) => string
+  /** Generate workspace package.json (no root-only fields allowed) */
+  package: (config: PnpmPackageConfig<TCatalog, TWorkspace>) => string
+}
+
+/** Bun package.json builder */
+type BunPackageJsonBuilder<
+  TCatalog extends Record<string, string>,
+  TWorkspace extends readonly string[],
+> = {
+  /** Generate root package.json with Bun-specific fields */
+  root: (config: BunRootConfig<TCatalog, TWorkspace>) => string
+  /** Generate workspace package.json (no root-only fields allowed) */
+  package: (config: BunPackageConfig<TCatalog, TWorkspace>) => string
+}
+
+// -----------------------------------------------------------------------------
+// Implementation helpers
+// -----------------------------------------------------------------------------
+
+/** Build a package.json string from config (internal implementation) */
+// oxlint-disable-next-line overeng/named-args -- internal helper with clear parameter semantics
+const buildPackageJson = (
+  config: Record<string, unknown>,
+  context: PackageJsonContext,
+  options: { packageManager?: string; isRoot?: boolean },
+): string => {
+  const { dependencies, devDependencies, peerDependencies, exports, ...restConfig } =
+    config as PackageJsonWithContextConfig & { exports?: Record<string, ExportsEntry> }
+
+  const packageName = (config.name as string | undefined) ?? '<unknown>'
+
+  // Resolve dependencies
+  const resolvedDeps = resolveDependencies(dependencies, packageName, context)
+  const resolvedDevDeps = resolveDependencies(devDependencies, packageName, context)
+  const resolvedPeerDeps = resolvePeerDependencies(peerDependencies, packageName, context)
+
+  // Sort exports
+  const sortedExports = sortExports(exports)
+
+  // Build the package.json object
+  const packageJson: Record<string, unknown> = {
+    ...restConfig,
+    ...(resolvedDeps !== undefined && { dependencies: resolvedDeps }),
+    ...(resolvedDevDeps !== undefined && { devDependencies: resolvedDevDeps }),
+    ...(resolvedPeerDeps !== undefined && { peerDependencies: resolvedPeerDeps }),
+    ...(sortedExports !== undefined && { exports: sortedExports }),
+  }
+
+  // Add packageManager field for root
+  if (options.isRoot && options.packageManager) {
+    packageJson.packageManager = options.packageManager
+  }
+
+  // Validate required fields for non-private packages
+  if (packageJson.private !== true) {
+    if (packageJson.name === undefined) {
+      console.warn('Warning: Package is not private but missing a name')
+    }
+    if (packageJson.version === undefined) {
+      console.warn('Warning: Package is not private but missing a version')
+    }
+  }
+
+  // Add marker and sort fields
+  const withMarker = sortObjectKeys(
+    {
+      $genie: true,
+      ...packageJson,
+    },
+    FIELD_ORDER,
+  )
+
+  return JSON.stringify(withMarker, null, 2)
+}
+
+// -----------------------------------------------------------------------------
+// Public API
+// -----------------------------------------------------------------------------
+
 /**
- * Creates a type-safe package.json builder with compile-time dependency validation.
+ * Creates a type-safe package.json builder with package manager awareness.
  *
- * The builder infers valid dependency names from the catalog keys and workspace
- * patterns, catching typos at compile time rather than runtime.
+ * Returns an object with two helpers:
+ * - `root()` - For root package.json with package-manager-specific fields
+ * - `package()` - For workspace packages (strict, no root-only fields)
  *
  * @example
  * ```ts
@@ -623,47 +870,70 @@ type TypedPackageJsonConfig<
  *   react: '19.0.0',
  * } as const
  *
- * export const workspacePackagePatterns = ['@myorg/*', '@local/*'] as const
+ * export const workspacePackagePatterns = ['@myorg/*'] as const
  *
  * export const pkg = createPackageJson({
+ *   packageManager: 'pnpm',
+ *   packageManagerVersion: '9.15.0',
  *   catalog,
  *   workspacePackages: workspacePackagePatterns,
  * })
  *
- * // package.json.genie.ts
- * import { pkg } from '../genie/repo.ts'
+ * // Root package.json.genie.ts
+ * import { catalog, pkg } from './genie/repo.ts'
  *
- * export default pkg({
+ * export default pkg.root({
+ *   name: 'my-monorepo',
+ *   private: true,
+ *   workspaces: { packages: ['packages/*'], catalog },
+ *   pnpm: { patchedDependencies: { ... } }, // ✓ PNPM-specific, root-only
+ *   devDependencies: ['typescript'],
+ * })
+ *
+ * // Workspace package.json.genie.ts
+ * import { pkg } from '../../../genie/repo.ts'
+ *
+ * export default pkg.package({
  *   name: '@myorg/utils',
  *   version: '1.0.0',
- *   dependencies: ['effect', '@myorg/common'], // ✓ typed, typos caught
- *   peerDependencies: { react: '^' },          // ✓ only catalog keys allowed
+ *   dependencies: ['effect'],
+ *   // pnpm: { ... }, // ❌ Type error! Not allowed in package
  * })
  * ```
  */
-export const createPackageJson = <
+export function createPackageJson<
   const TCatalog extends Record<string, string>,
   const TWorkspace extends readonly string[],
->(context: {
-  catalog: TCatalog
-  workspacePackages: TWorkspace
-}) => {
-  /**
-   * Generate a package.json with type-safe dependencies.
-   * Invalid dependency names are caught at compile time.
-   */
-  return (config: TypedPackageJsonConfig<TCatalog, TWorkspace>): string => {
-    // Convert to the runtime format and delegate to packageJsonWithContext
-    // Handle exactOptionalPropertyTypes by conditionally spreading
-    const { dependencies, devDependencies, peerDependencies, ...rest } = config
-    const runtimeConfig: PackageJsonWithContextConfig = {
-      ...rest,
-      ...(dependencies !== undefined && { dependencies: dependencies as string[] }),
-      ...(devDependencies !== undefined && { devDependencies: devDependencies as string[] }),
-      ...(peerDependencies !== undefined && {
-        peerDependencies: peerDependencies as Record<string, PeerDepRange>,
-      }),
-    }
-    return packageJsonWithContext(runtimeConfig, context)
+>(context: PnpmContext<TCatalog, TWorkspace>): PnpmPackageJsonBuilder<TCatalog, TWorkspace>
+
+export function createPackageJson<
+  const TCatalog extends Record<string, string>,
+  const TWorkspace extends readonly string[],
+>(context: BunContext<TCatalog, TWorkspace>): BunPackageJsonBuilder<TCatalog, TWorkspace>
+
+// oxlint-disable-next-line overeng/jsdoc-require-exports -- JSDoc is on the first overload declaration above
+export function createPackageJson<
+  const TCatalog extends Record<string, string>,
+  const TWorkspace extends readonly string[],
+>(
+  context: PnpmContext<TCatalog, TWorkspace> | BunContext<TCatalog, TWorkspace>,
+): PnpmPackageJsonBuilder<TCatalog, TWorkspace> | BunPackageJsonBuilder<TCatalog, TWorkspace> {
+  const runtimeContext: PackageJsonContext = {
+    catalog: context.catalog,
+    workspacePackages: context.workspacePackages,
+  }
+
+  const packageManagerString = `${context.packageManager}@${context.packageManagerVersion}`
+
+  return {
+    root: (config: Record<string, unknown>): string => {
+      return buildPackageJson(config, runtimeContext, {
+        packageManager: packageManagerString,
+        isRoot: true,
+      })
+    },
+    package: (config: Record<string, unknown>): string => {
+      return buildPackageJson(config, runtimeContext, { isRoot: false })
+    },
   }
 }

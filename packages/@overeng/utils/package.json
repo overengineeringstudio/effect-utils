@@ -31,7 +31,8 @@
   "dependencies": {
     "@noble/hashes": "catalog:",
     "@opentelemetry/api": "catalog:",
-    "effect-distributed-lock": "catalog:"
+    "effect-distributed-lock": "catalog:",
+    "ioredis": "catalog:"
   },
   "devDependencies": {
     "@effect/opentelemetry": "catalog:",
