@@ -1,0 +1,41 @@
+{
+  "name": "@overeng/bun-compose",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CLI for composing bun workspaces with git submodules",
+  "bin": {
+    "bun-compose": "./bin/bun-compose"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./src/mod.ts",
+    "./cli": "./src/cli.ts"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": "./dist/mod.js",
+      "./cli": "./dist/cli.js"
+    }
+  },
+  "devDependencies": {
+    "@effect/cli": "catalog:",
+    "@effect/platform": "catalog:",
+    "@effect/platform-node": "catalog:",
+    "@effect/vitest": "catalog:",
+    "@types/node": "catalog:",
+    "effect": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "@effect/cli": "^0.73.0",
+    "@effect/platform": "^0.94.1",
+    "@effect/platform-node": "^0.104.0",
+    "effect": "^3.19.14"
+  },
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten"
+  }
+}
