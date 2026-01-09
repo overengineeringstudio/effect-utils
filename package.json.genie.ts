@@ -1,9 +1,12 @@
-import { pkg } from './genie/repo.ts'
+import { catalog, pkg } from './genie/repo.ts'
 
 export default pkg({
   name: 'effect-utils',
   private: true,
-  workspaces: ['packages/**', 'scripts/**', 'context/**'],
+  workspaces: {
+    packages: ['packages/**', 'scripts/**', 'context/**'],
+    catalog,
+  },
   type: 'module',
   scripts: {
     prepare: 'effect-language-service patch || true',

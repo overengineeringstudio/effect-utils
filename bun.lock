@@ -12,8 +12,8 @@
         "@effect/rpc": "catalog:",
         "@overeng/utils": "workspace:*",
         "effect": "catalog:",
-        "oxfmt": "0.21.0",
-        "oxlint": "1.36.0",
+        "oxfmt": "catalog:",
+        "oxlint": "catalog:",
         "typescript": "catalog:",
         "vitest": "catalog:",
       },
@@ -48,9 +48,6 @@
     "packages/@overeng/bun-compose": {
       "name": "@overeng/bun-compose",
       "version": "0.1.0",
-      "bin": {
-        "bun-compose": "./bin/bun-compose",
-      },
       "devDependencies": {
         "@effect/cli": "catalog:",
         "@effect/platform": "catalog:",
@@ -219,9 +216,6 @@
     "packages/@overeng/genie": {
       "name": "@overeng/genie",
       "version": "0.1.0",
-      "bin": {
-        "genie": "./bin/genie",
-      },
       "devDependencies": {
         "@effect/cli": "catalog:",
         "@effect/platform": "catalog:",
@@ -312,9 +306,6 @@
     "packages/@overeng/pnpm-compose": {
       "name": "@overeng/pnpm-compose",
       "version": "0.1.0",
-      "bin": {
-        "pnpm-compose": "./bin/pnpm-compose",
-      },
       "devDependencies": {
         "@effect/cli": "catalog:",
         "@effect/platform": "catalog:",
@@ -407,9 +398,6 @@
       },
     },
   },
-  "patchedDependencies": {
-    "effect-distributed-lock@0.0.11": "patches/effect-distributed-lock@0.0.11.patch",
-  },
   "catalog": {
     "@effect-atom/atom": "0.4.11",
     "@effect-atom/atom-react": "0.4.4",
@@ -452,6 +440,8 @@
     "eslint": "9.28.0",
     "happy-dom": "18.0.1",
     "is-dom": "1.1.0",
+    "oxfmt": "0.21.0",
+    "oxlint": "1.36.0",
     "react": "19.2.3",
     "react-aria-components": "1.14.0",
     "react-dom": "19.2.3",
