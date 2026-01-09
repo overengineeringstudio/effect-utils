@@ -7,7 +7,7 @@
     flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { nixpkgs, nixpkgsUnstable, flake-utils, ... }:
+  outputs = { self, nixpkgs, nixpkgsUnstable, flake-utils, ... }:
     let
       pnpmGuardOverlay = import ./nix/overlay.nix;
     in
@@ -15,11 +15,16 @@
       overlays.default = pnpmGuardOverlay;
       overlays.pnpmGuard = pnpmGuardOverlay;
     } //
-    flake-utils.lib.eachDefaultSystem (system: {
-      packages.default = import ./nix/build.nix {
-        pkgs = import nixpkgs { inherit system; };
-        pkgsUnstable = import nixpkgsUnstable { inherit system; };
-        src = ../../..;  # effect-utils root (for bun.lock, package.json)
-      };
-    });
+    flake-utils.lib.eachDefaultSystem (system:
+      let
+        gitRev = self.sourceInfo.dirtyShortRev or self.sourceInfo.shortRev or self.sourceInfo.rev or "unknown";
+      in
+      {
+        packages.default = import ./nix/build.nix {
+          pkgs = import nixpkgs { inherit system; };
+          pkgsUnstable = import nixpkgsUnstable { inherit system; };
+          src = ../../..;  # effect-utils root (for bun.lock, package.json)
+          inherit gitRev;
+        };
+      });
 }

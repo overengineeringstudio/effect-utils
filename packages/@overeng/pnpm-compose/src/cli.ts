@@ -8,6 +8,12 @@ import { checkCommand } from './commands/check.ts'
 import { installCommand } from './commands/install.ts'
 import { listCommand } from './commands/list.ts'
 
+declare const __CLI_VERSION__: string | undefined
+
+const baseVersion = '0.1.0'
+const version =
+  typeof __CLI_VERSION__ === 'string' && __CLI_VERSION__.length > 0 ? __CLI_VERSION__ : baseVersion
+
 const command = Cli.Command.make('pnpm-compose').pipe(
   Cli.Command.withDescription('CLI for composing pnpm workspaces with git submodules'),
   Cli.Command.withSubcommands([checkCommand, installCommand, listCommand]),
@@ -15,7 +21,7 @@ const command = Cli.Command.make('pnpm-compose').pipe(
 
 const cli = Cli.Command.run(command, {
   name: 'pnpm-compose',
-  version: '0.1.0',
+  version,
 })
 
 pipe(

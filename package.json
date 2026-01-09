@@ -1,5 +1,5 @@
 {
-  "name": "effect-notion",
+  "name": "effect-utils",
   "private": true,
   "workspaces": [
     "packages/**",

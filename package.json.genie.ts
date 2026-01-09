@@ -1,7 +1,7 @@
 import { pkg } from './genie/repo.ts'
 
 export default pkg({
-  name: 'effect-notion',
+  name: 'effect-utils',
   private: true,
   workspaces: ['packages/**', 'scripts/**', 'context/**'],
   type: 'module',
