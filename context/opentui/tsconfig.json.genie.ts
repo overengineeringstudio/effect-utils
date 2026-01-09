@@ -12,6 +12,9 @@ export default tsconfigJSON({
     types: ['node'],
     jsx: 'react-jsx',
     jsxImportSource: '@opentui/react',
+    /** OpenTUI re-exports use extensionless paths that NodeNext can't resolve. https://github.com/anomalyco/opentui/issues/504 */
+    moduleResolution: 'Bundler',
+    module: 'ESNext',
   },
   include: ['examples/**/*.tsx'],
   exclude: ['*.genie.ts'],

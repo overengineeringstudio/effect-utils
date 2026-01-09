@@ -6,6 +6,10 @@ Runnable examples demonstrating OpenTUI patterns for building terminal user inte
 
 OpenTUI is a React-based terminal UI library. It uses a custom React reconciler to render components to the terminal using flexbox-like layout. The core abstraction is a `CliRenderer` that manages terminal I/O and provides dimensions, keyboard input, and mouse events.
 
+## TypeScript Module Resolution
+
+OpenTUI's type exports use extensionless re-exports (e.g. `export * from "./renderer"`), which NodeNext module resolution does not resolve. The example tsconfig uses `moduleResolution: "Bundler"` so TypeScript can resolve those exports until upstream adds explicit extensions.
+
 **Core concepts**
 
 - `createCliRenderer()` creates the renderer that controls the terminal

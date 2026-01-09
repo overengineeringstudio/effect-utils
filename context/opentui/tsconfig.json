@@ -10,7 +10,9 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["node"],
     "jsx": "react-jsx",
-    "jsxImportSource": "@opentui/react"
+    "jsxImportSource": "@opentui/react",
+    "moduleResolution": "Bundler",
+    "module": "ESNext"
   },
   "include": ["examples/**/*.tsx"],
   "exclude": ["*.genie.ts"]
