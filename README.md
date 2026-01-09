@@ -112,6 +112,21 @@ Key features:
 - **Read-only protection** - Generated files are read-only by default
 - **CI integration** - `--check` mode verifies files are up to date
 
+### Rebuild and reload binaries
+
+```bash
+mono nix build --package genie
+mono nix build --package pnpm-compose
+mono nix reload
+```
+
+After `bun.lock` changes:
+
+```bash
+mono nix hash --package genie
+mono nix hash --package pnpm-compose
+```
+
 ## Quick Start
 
 ### Enter the dev shell

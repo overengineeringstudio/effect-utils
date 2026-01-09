@@ -2,6 +2,15 @@
 
 CLI tool for managing multi-repo pnpm workspaces with git submodules. (Relies on Nix.)
 
+## Installation (Nix-only)
+
+pnpm-compose is distributed as a Nix-built binary and is not shipped via `bin` scripts.
+
+```bash
+mono nix build --package pnpm-compose
+mono nix reload
+```
+
 ## Problem
 
 When developing across multiple repositories (e.g., an app repo with library submodules), you want:

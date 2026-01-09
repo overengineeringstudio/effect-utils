@@ -5,9 +5,6 @@ export default pkg({
   version: '0.1.0',
   private: true,
   description: 'CLI for composing pnpm workspaces with git submodules',
-  bin: {
-    'pnpm-compose': './bin/pnpm-compose',
-  },
   type: 'module',
   exports: {
     '.': './src/mod.ts',

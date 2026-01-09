@@ -4,9 +4,6 @@ export default pkg({
   name: '@overeng/genie',
   version: '0.1.0',
   private: true,
-  bin: {
-    genie: './bin/genie',
-  },
   type: 'module',
   exports: {
     '.': './src/lib/mod.ts',

@@ -4,7 +4,7 @@ TypeScript-based code generator for config files. Define your `package.json`, `t
 
 ## Installation (Nix)
 
-Genie is distributed as a native binary via Nix. **This is the recommended installation method** to avoid chicken-egg problems: since genie generates `package.json` files, it must be available before `pnpm install`.
+Genie is distributed as a native binary via Nix. **This is the only supported installation method** to avoid chicken-egg problems: since genie generates `package.json` files, it must be available before `pnpm install`.
 
 ### In your flake.nix
 
@@ -59,6 +59,9 @@ mono nix build --package genie
 
 # After bun.lock changes (updates dependency hash)
 mono nix hash --package genie
+
+# Reload direnv to pick up rebuilt binaries
+mono nix reload
 ```
 
 ## Usage
