@@ -1,7 +1,6 @@
-import { catalog, rootPackageJson } from './genie/repo.ts'
-import { packageJSON } from './packages/@overeng/genie/src/lib/mod.ts'
+import { pkg } from './genie/repo.ts'
 
-export default packageJSON({
+export default pkg({
   name: 'effect-notion',
   private: true,
   workspaces: ['packages/**', 'scripts/**', 'context/**'],
@@ -9,8 +8,22 @@ export default packageJSON({
   scripts: {
     prepare: 'effect-language-service patch || true',
   },
-  devDependencies: rootPackageJson.devDependencies,
-  // Note: catalog defined inline for bun monorepo compatibility (long-term migration)
-  catalog,
-  patchedDependencies: rootPackageJson.pnpm.patchedDependencies,
+  devDependencies: [
+    '@effect/cli',
+    '@effect/language-service',
+    '@effect/platform',
+    '@effect/platform-node',
+    '@effect/rpc',
+    '@overeng/utils',
+    'effect',
+    'oxfmt',
+    'oxlint',
+    'typescript',
+    'vitest',
+  ],
+  pnpm: {
+    patchedDependencies: {
+      'effect-distributed-lock@0.0.11': 'patches/effect-distributed-lock@0.0.11.patch',
+    },
+  },
 })

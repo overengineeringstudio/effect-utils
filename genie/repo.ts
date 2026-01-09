@@ -81,6 +81,8 @@ export const catalog = {
   // Linting
   eslint: '9.28.0',
   'typescript-eslint': '8.34.0',
+  oxfmt: '0.21.0',
+  oxlint: '1.36.0',
 
   // Crypto
   '@noble/hashes': '1.7.1',
@@ -94,9 +96,6 @@ export const catalog = {
   '@opentui/core': '0.1.68',
   '@opentui/react': '0.1.68',
 } as const
-
-/** Use catalog reference for dependencies */
-export const catalogRef = 'catalog:' as const
 
 /**
  * Package name patterns for dependency resolution.
@@ -124,58 +123,6 @@ export const pkg = createPackageJson({
   workspacePackages: workspacePackagePatterns,
 })
 
-/** Root package.json configuration for composition */
-export const rootPackageJson = {
-  devDependencies: {
-    '@effect/cli': catalogRef,
-    '@effect/language-service': catalogRef,
-    '@effect/platform': catalogRef,
-    '@effect/platform-node': catalogRef,
-    '@effect/rpc': catalogRef,
-    '@overeng/utils': 'workspace:*',
-    effect: catalogRef,
-    oxfmt: '0.21.0',
-    oxlint: '1.36.0',
-    typescript: catalogRef,
-    vitest: catalogRef,
-  },
-  pnpm: {
-    patchedDependencies: {
-      'effect-distributed-lock@0.0.11': 'patches/effect-distributed-lock@0.0.11.patch',
-    },
-  },
-} as const
-
-/** Workspace reference paths for tsconfig.all.json */
-export const workspaceReferences = [
-  './scripts',
-  './context/effect/socket',
-  './context/opentui',
-  './packages/@overeng/genie',
-  './packages/@overeng/notion-effect-schema',
-  './packages/@overeng/notion-cli',
-  './packages/@overeng/notion-effect-client',
-  './packages/@overeng/effect-ai-claude-cli',
-  './packages/@overeng/effect-schema-form',
-  './packages/@overeng/effect-schema-form-aria',
-  './packages/@overeng/effect-react',
-  './packages/@overeng/react-inspector',
-  './packages/@overeng/utils',
-  './packages/@overeng/oxc-config',
-  './packages/@overeng/pnpm-compose',
-  './packages/@overeng/effect-path',
-  './packages/@overeng/effect-rpc-tanstack',
-] as const
-
-/**
- * Computes the relative path to tsconfig.base.json from a package directory
- * @example getRelativeBasePath('./packages/@overeng/utils') // '../../../tsconfig.base.json'
- */
-export const getRelativeBasePath = (packagePath: string): string => {
-  const depth = packagePath.split('/').filter(Boolean).length
-  return '../'.repeat(depth) + 'tsconfig.base.json'
-}
-
 /** Standard package tsconfig compiler options (composite mode with src/dist structure) */
 export const packageTsconfigCompilerOptions = {
   composite: true,
@@ -194,11 +141,11 @@ export const reactJsx = { jsx: 'react-jsx' as const }
 export const baseTsconfigCompilerOptions = {
   target: 'ES2023' as const,
   lib: ['ES2023'],
-  module: 'ESNext' as const,
-  moduleResolution: 'Bundler' as const,
+  module: 'NodeNext' as const,
+  moduleResolution: 'NodeNext' as const,
   allowImportingTsExtensions: true,
   rewriteRelativeImportExtensions: true,
-  allowSyntheticDefaultImports: true,
+  resolveJsonModule: true,
   esModuleInterop: true,
   allowJs: false,
   declaration: true,
