@@ -18,6 +18,7 @@ dist
 # Devenv
 .devenv
 .devenv*
+!.devenv.flake.nix  # devenv looks for this instead of flake.nix (see devenv#1137)
 
 # Storybook
 storybook-static
