@@ -5,9 +5,6 @@ export default pkg({
   version: '0.1.0',
   private: true,
   description: 'CLI for composing bun workspaces with git submodules',
-  bin: {
-    'bun-compose': './bin/bun-compose',
-  },
   type: 'module',
   exports: {
     '.': './src/mod.ts',

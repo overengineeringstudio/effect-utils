@@ -149,9 +149,7 @@ describe('install command', () => {
 
           // Key bun advantage: submodule packages should NOT have pnpm corruption markers
           // (no .modules.yaml or .pnpm directory)
-          const hasPnpmModulesYaml = yield* env.exists(
-            'submodules/lib/node_modules/.modules.yaml',
-          )
+          const hasPnpmModulesYaml = yield* env.exists('submodules/lib/node_modules/.modules.yaml')
           const hasPnpmDir = yield* env.exists('submodules/lib/node_modules/.pnpm')
 
           expect(hasPnpmModulesYaml).toBe(false)

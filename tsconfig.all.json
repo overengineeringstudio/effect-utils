@@ -49,9 +49,6 @@
       "path": "./packages/@overeng/pnpm-compose"
     },
     {
-      "path": "./packages/@overeng/bun-compose"
-    },
-    {
       "path": "./packages/@overeng/effect-path"
     },
     {
