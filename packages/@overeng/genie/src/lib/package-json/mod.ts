@@ -3,6 +3,24 @@
  * Reference: https://github.com/sindresorhus/type-fest/blob/main/source/package-json.d.ts
  */
 
+import {
+  type ValidationConfig,
+  type ValidationIssue,
+  type DepsToValidate,
+  assertNoValidationErrors,
+  formatValidationIssues,
+  matchesAnyPattern,
+} from './validation.ts'
+
+export type { ValidationConfig, ValidationIssue, ValidationFn, VersionConstraint, DepsToValidate } from './validation.ts'
+export {
+  assertNoValidationErrors,
+  formatValidationIssues,
+  matchesPattern,
+  matchesAnyPattern,
+  validateVersionConstraints,
+} from './validation.ts'
+
 /**
  * Field ordering for package.json (matches syncpack sortFirst convention).
  * Fields are sorted in this order, with unlisted fields appearing after.
@@ -745,6 +763,8 @@ type PackageJsonContextBase<
 > = {
   catalog: TCatalog
   workspacePackages: TWorkspace
+  /** Validation configuration for enforcing dependency semantics */
+  validation?: ValidationConfig
 }
 
 /** PNPM context */
@@ -800,7 +820,7 @@ type BunPackageJsonBuilder<
 const buildPackageJson = (
   config: Record<string, unknown>,
   context: PackageJsonContext,
-  options: { packageManager?: string; isRoot?: boolean },
+  options: { packageManager?: string; isRoot?: boolean; validation?: ValidationConfig },
 ): string => {
   const { dependencies, devDependencies, peerDependencies, exports, ...restConfig } =
     config as PackageJsonWithContextConfig & { exports?: Record<string, ExportsEntry> }
@@ -836,6 +856,33 @@ const buildPackageJson = (
     }
     if (packageJson.version === undefined) {
       console.warn('Warning: Package is not private but missing a version')
+    }
+  }
+
+  // Run semantic validation if configured
+  if (options.validation) {
+    const { validate, excludePackages = [], throwOnError = true } = options.validation
+
+    // Skip excluded packages
+    if (!matchesAnyPattern(packageName, excludePackages) && validate) {
+      const deps: DepsToValidate = {
+        dependencies: resolvedDeps,
+        devDependencies: resolvedDevDeps,
+        peerDependencies: resolvedPeerDeps,
+      }
+
+      const issues = validate(packageName, deps)
+
+      // Log warnings
+      const warnings = issues.filter((i) => i.severity === 'warning')
+      if (warnings.length > 0) {
+        console.warn(formatValidationIssues(warnings))
+      }
+
+      // Throw on errors (unless disabled)
+      if (throwOnError) {
+        assertNoValidationErrors(issues)
+      }
     }
   }
 
@@ -925,16 +972,18 @@ export function createPackageJson<
   }
 
   const packageManagerString = `${context.packageManager}@${context.packageManagerVersion}`
+  const validation = context.validation
 
   return {
     root: (config: Record<string, unknown>): string => {
       return buildPackageJson(config, runtimeContext, {
         packageManager: packageManagerString,
         isRoot: true,
+        validation,
       })
     },
     package: (config: Record<string, unknown>): string => {
-      return buildPackageJson(config, runtimeContext, { isRoot: false })
+      return buildPackageJson(config, runtimeContext, { isRoot: false, validation })
     },
   }
 }
