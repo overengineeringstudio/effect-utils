@@ -15,13 +15,9 @@ submodule or flake input.
 ## CLI Version Pattern
 
 ```ts
-declare const __CLI_VERSION__: string | undefined
-
 const baseVersion = '0.1.0'
-const version =
-  typeof __CLI_VERSION__ === 'string' && __CLI_VERSION__.length > 0
-    ? __CLI_VERSION__
-    : baseVersion
+const cliVersion = process.env.CLI_VERSION
+const version = cliVersion === undefined || cliVersion.length === 0 ? baseVersion : cliVersion
 ```
 
 ## Inside effect-utils

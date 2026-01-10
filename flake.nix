@@ -13,9 +13,15 @@
 
   outputs = { self, nixpkgs, nixpkgsUnstable, flake-utils, ... }:
     {
-      lib.mkCliPackages = { pkgs, pkgsUnstable, gitRev ? "unknown", src ? self.outPath }:
+      lib.mkCliPackages = {
+        pkgs,
+        pkgsUnstable,
+        gitRev ? self.sourceInfo.dirtyShortRev or self.sourceInfo.shortRev or self.sourceInfo.rev or "unknown",
+        src ? ./.,
+      }:
         let
-          mkBunCli = import ./nix/mk-bun-cli.nix { inherit pkgs pkgsUnstable src; };
+          srcPath = src;
+          mkBunCli = import ./nix/mk-bun-cli.nix { inherit pkgs pkgsUnstable; src = srcPath; };
           specs = {
             genie = {
               name = "genie";

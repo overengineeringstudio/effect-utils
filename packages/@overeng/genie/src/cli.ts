@@ -5,11 +5,9 @@ import { Command, Error as PlatformError, FileSystem, Path } from '@effect/platf
 import * as PlatformNode from '@effect/platform-node'
 import { Array as A, Effect, Either, pipe, Schema, Stream } from 'effect'
 
-declare const __CLI_VERSION__: string | undefined
-
 const baseVersion = '0.1.0'
-const version =
-  typeof __CLI_VERSION__ === 'string' && __CLI_VERSION__.length > 0 ? __CLI_VERSION__ : baseVersion
+const buildVersion = '__CLI_VERSION__'
+const version = buildVersion === '__CLI_VERSION__' ? baseVersion : buildVersion
 
 /** Error when importing a .genie.ts file fails */
 export class GenieImportError extends Schema.TaggedError<GenieImportError>()('GenieImportError', {

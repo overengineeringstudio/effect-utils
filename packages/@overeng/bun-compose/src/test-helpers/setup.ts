@@ -101,6 +101,7 @@ export const setupBasicMonorepo = (env: TestEnv) =>
     yield* env.run({ cmd: 'git', args: ['init'] })
     yield* env.run({ cmd: 'git', args: ['config', 'user.email', 'test@test.com'] })
     yield* env.run({ cmd: 'git', args: ['config', 'user.name', 'Test'] })
+    yield* env.run({ cmd: 'git', args: ['config', 'commit.gpgsign', 'false'] })
 
     // Create parent package.json with bun workspace catalog
     yield* env.writeFile({
@@ -198,6 +199,11 @@ export const setupBasicMonorepo = (env: TestEnv) =>
       args: ['config', 'user.name', 'Test'],
       cwd: `${env.root}/submodules/lib`,
     })
+    yield* env.run({
+      cmd: 'git',
+      args: ['config', 'commit.gpgsign', 'false'],
+      cwd: `${env.root}/submodules/lib`,
+    })
   })
 
 /**
@@ -209,6 +215,7 @@ export const setupMonorepoWithConflicts = (env: TestEnv) =>
     yield* env.run({ cmd: 'git', args: ['init'] })
     yield* env.run({ cmd: 'git', args: ['config', 'user.email', 'test@test.com'] })
     yield* env.run({ cmd: 'git', args: ['config', 'user.name', 'Test'] })
+    yield* env.run({ cmd: 'git', args: ['config', 'commit.gpgsign', 'false'] })
 
     // Create parent package.json with bun workspace catalog (effect 3.19.0)
     yield* env.writeFile({
@@ -283,6 +290,11 @@ export const setupMonorepoWithConflicts = (env: TestEnv) =>
       args: ['config', 'user.name', 'Test'],
       cwd: `${env.root}/submodules/lib`,
     })
+    yield* env.run({
+      cmd: 'git',
+      args: ['config', 'commit.gpgsign', 'false'],
+      cwd: `${env.root}/submodules/lib`,
+    })
   })
 
 /**
@@ -294,6 +306,7 @@ export const setupMonorepoWithGenieCatalog = (env: TestEnv) =>
     yield* env.run({ cmd: 'git', args: ['init'] })
     yield* env.run({ cmd: 'git', args: ['config', 'user.email', 'test@test.com'] })
     yield* env.run({ cmd: 'git', args: ['config', 'user.name', 'Test'] })
+    yield* env.run({ cmd: 'git', args: ['config', 'commit.gpgsign', 'false'] })
 
     // Create parent package.json (minimal, no catalog here)
     yield* env.writeFile({
@@ -373,6 +386,11 @@ export const setupMonorepoWithGenieCatalog = (env: TestEnv) =>
     yield* env.run({
       cmd: 'git',
       args: ['config', 'user.name', 'Test'],
+      cwd: `${env.root}/submodules/lib`,
+    })
+    yield* env.run({
+      cmd: 'git',
+      args: ['config', 'commit.gpgsign', 'false'],
       cwd: `${env.root}/submodules/lib`,
     })
   })

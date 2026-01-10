@@ -6,11 +6,9 @@ import { checkCommand } from './commands/check.ts'
 import { installCommand } from './commands/install.ts'
 import { listCommand } from './commands/list.ts'
 
-declare const __CLI_VERSION__: string | undefined
-
 const baseVersion = '0.1.0'
-const version =
-  typeof __CLI_VERSION__ === 'string' && __CLI_VERSION__.length > 0 ? __CLI_VERSION__ : baseVersion
+const buildVersion = '__CLI_VERSION__'
+const version = buildVersion === '__CLI_VERSION__' ? baseVersion : buildVersion
 
 const command = Cli.Command.make('bun-compose').pipe(
   Cli.Command.withDescription('CLI for composing bun workspaces with git submodules'),

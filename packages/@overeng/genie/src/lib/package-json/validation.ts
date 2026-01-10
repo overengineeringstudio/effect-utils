@@ -66,20 +66,25 @@ export type ValidationConfig = {
  * Check if a package name matches a glob pattern.
  * Supports `*` (single segment) and `**` (any segments).
  */
-export const matchesPattern = (name: string, pattern: string): boolean => {
-  if (pattern === name) return true
-  if (pattern === '**') return true
+export const matchesPattern = (args: {
+  /** The package name to check */
+  name: string
+  /** The glob pattern to match against */
+  pattern: string
+}): boolean => {
+  if (args.pattern === args.name) return true
+  if (args.pattern === '**') return true
 
-  if (pattern.includes('*')) {
+  if (args.pattern.includes('*')) {
     const regex = new RegExp(
       '^' +
-        pattern
+        args.pattern
           .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
           .replace(/\*\*/g, '.*')
           .replace(/\*/g, '[^/]*') +
         '$',
     )
-    return regex.test(name)
+    return regex.test(args.name)
   }
   return false
 }
@@ -87,8 +92,12 @@ export const matchesPattern = (name: string, pattern: string): boolean => {
 /**
  * Check if a package matches any of the given patterns.
  */
-export const matchesAnyPattern = (name: string, patterns: string[]): boolean =>
-  patterns.some((pattern) => matchesPattern(name, pattern))
+export const matchesAnyPattern = (args: {
+  /** The package name to check */
+  name: string
+  /** The glob patterns to match against */
+  patterns: string[]
+}): boolean => args.patterns.some((pattern) => matchesPattern({ name: args.name, pattern }))
 
 // =============================================================================
 // Version Constraint Validation
@@ -98,23 +107,26 @@ export const matchesAnyPattern = (name: string, patterns: string[]): boolean =>
  * Validate special version constraints (e.g., Tailwind v3 for expo-linearlite).
  * This is a generic mechanism - the specific constraints are defined by the caller.
  */
-export const validateVersionConstraints = (
-  packageName: string,
-  deps: DepsToValidate,
-  constraints: VersionConstraint[],
-): ValidationIssue[] => {
+export const validateVersionConstraints = (args: {
+  /** The package being validated */
+  packageName: string
+  /** The resolved dependencies */
+  deps: DepsToValidate
+  /** Version constraints to check */
+  constraints: VersionConstraint[]
+}): ValidationIssue[] => {
   const issues: ValidationIssue[] = []
 
-  for (const constraint of constraints) {
+  for (const constraint of args.constraints) {
     // Check if this package matches the constraint's package patterns
-    if (!matchesAnyPattern(packageName, constraint.packages)) continue
+    if (!matchesAnyPattern({ name: args.packageName, patterns: constraint.packages })) continue
 
     // Check each dependency type
     const depTypes = constraint.dependencyTypes ?? ['prod', 'dev', 'peer']
     const depSources: Array<{ type: string; deps: Record<string, string> | undefined }> = [
-      { type: 'prod', deps: deps.dependencies },
-      { type: 'dev', deps: deps.devDependencies },
-      { type: 'peer', deps: deps.peerDependencies },
+      { type: 'prod', deps: args.deps.dependencies },
+      { type: 'dev', deps: args.deps.devDependencies },
+      { type: 'peer', deps: args.deps.peerDependencies },
     ]
 
     for (const { type, deps: depsObj } of depSources) {
@@ -128,7 +140,7 @@ export const validateVersionConstraints = (
       if (currentVersion === 'catalog:' || currentVersion.startsWith('catalog:')) {
         issues.push({
           severity: 'error',
-          packageName,
+          packageName: args.packageName,
           dependency: constraint.dependency,
           message: `"${constraint.dependency}" should be pinned to "${constraint.version}" for this package (${constraint.reason}), but uses catalog: protocol. Override in package.json.genie.ts.`,
           rule: 'version-constraint',
@@ -140,7 +152,7 @@ export const validateVersionConstraints = (
       if (currentVersion !== constraint.version && !currentVersion.endsWith(constraint.version)) {
         issues.push({
           severity: 'error',
-          packageName,
+          packageName: args.packageName,
           dependency: constraint.dependency,
           message: `"${constraint.dependency}" should be "${constraint.version}" (${constraint.reason}), but is "${currentVersion}".`,
           rule: 'version-constraint',

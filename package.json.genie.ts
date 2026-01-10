@@ -13,6 +13,7 @@ export default pkg.root({
     prepare: 'effect-language-service patch || true',
   },
   devDependencies: [
+    // TODO get rid of lib deps from effect-utils root START
     '@effect/cli',
     '@effect/language-service',
     '@effect/platform',
@@ -20,9 +21,12 @@ export default pkg.root({
     '@effect/rpc',
     '@overeng/utils',
     'effect',
+    // TODO get rid of lib deps from effect-utils root END
     'oxfmt',
     'oxlint',
     'typescript',
     'vitest',
+    // For `playwright` CLI to be available in the dev shell
+    '@playwright/test',
   ],
 })

@@ -74,11 +74,11 @@ pkgs.stdenv.mkDerivation {
     mkdir -p "$HOME" "$BUN_INSTALL" "$BUN_TMPDIR"
 
     build_output="$TMPDIR/${binaryName}"
-    version_define=${pkgs.lib.escapeShellArg fullVersion}
+    substituteInPlace "${entry}" \
+      --replace "const buildVersion = '__CLI_VERSION__'" "const buildVersion = '${fullVersion}'"
 
     bun build ${entry} \
       --compile \
-      --define __CLI_VERSION__="$version_define" \
       --outfile="$build_output"
 
     if [ ! -s "$build_output" ]; then

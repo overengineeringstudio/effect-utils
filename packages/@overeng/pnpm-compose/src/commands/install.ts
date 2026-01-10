@@ -1,5 +1,5 @@
 import * as Cli from '@effect/cli'
-import { Command, FileSystem } from '@effect/platform'
+import { Command, FileSystem, Path } from '@effect/platform'
 import { Console, Effect, Option, Schema } from 'effect'
 
 import { findCatalogConflicts, readRepoCatalog } from '../catalog.ts'
@@ -7,7 +7,8 @@ import { detectComposedRepos } from '../config.ts'
 import {
   findAllSubmodules,
   findDuplicates,
-  updateSubmoduleWithReference,
+  pickCanonicalSubmodule,
+  updateSubmoduleWithSymlink,
 } from '../submodule-dedupe.ts'
 
 /** Install command: runs the linking dance for composed repos */
@@ -36,7 +37,7 @@ export const installCommand = Cli.Command.make(
         return
       }
 
-      // Step 0: Deduplicate git submodules via alternates (no symlinks)
+      // Step 0: Deduplicate git submodules via symlinks (canonical working tree)
       yield* Effect.gen(function* () {
         const allSubmodules = yield* findAllSubmodules(cwd)
         if (allSubmodules.length === 0) return
@@ -44,22 +45,46 @@ export const installCommand = Cli.Command.make(
         const duplicates = findDuplicates(allSubmodules)
         if (duplicates.length === 0) return
 
-        yield* Console.log(`Deduplicating ${duplicates.length} duplicate submodule(s)...`)
+        yield* Console.log(
+          `Deduplicating ${duplicates.length} duplicate submodule(s) via symlinks...`,
+        )
 
+        let symlinkCount = 0
         for (const dup of duplicates) {
+          const canonical = yield* pickCanonicalSubmodule(dup)
           for (const loc of dup.locations) {
-            if (loc === dup.canonical) continue
+            if (loc === canonical) continue
 
-            yield* updateSubmoduleWithReference({ duplicate: dup, target: loc })
+            yield* updateSubmoduleWithSymlink({ canonical, target: loc })
+            symlinkCount += 1
           }
         }
 
-        const referenceCount = duplicates.flatMap((d) =>
-          d.locations.filter((l) => l !== d.canonical),
-        ).length
-        yield* Console.log(`  ✓ Updated ${referenceCount} submodule(s) with alternates\n`)
+        yield* Console.log(`  ✓ Symlinked ${symlinkCount} submodule(s) to canonical`)
+        yield* Console.log('')
+
+        // Provide a compact tree of canonical submodules and their symlinked duplicates.
+        const path = yield* Path.Path
+        yield* Console.log('Submodules:')
+        for (const dup of duplicates) {
+          const canonical = yield* pickCanonicalSubmodule(dup)
+          const canonicalPath = path.join(canonical.repoRoot, canonical.path)
+          const canonicalRel = path.relative(cwd, canonicalPath)
+          yield* Console.log(`- ${canonicalRel} (canonical)`)
+
+          for (const loc of dup.locations) {
+            if (loc === canonical) continue
+            const targetPath = path.join(loc.repoRoot, loc.path)
+            const targetRel = path.relative(cwd, targetPath)
+            const linkRel = path.relative(path.dirname(targetPath), canonicalPath)
+            yield* Console.log(`  - ${targetRel} -> ${linkRel}`)
+          }
+        }
+        yield* Console.log('')
       }).pipe(
-        Effect.catchAll((error) => Console.log(`  ⚠ Submodule deduplication skipped (${error})\n`)),
+        Effect.catchAll((error) =>
+          Console.log(`  ⚠ Submodule deduplication via symlink skipped (${error})\n`),
+        ),
       )
 
       // Step 1: Check for rogue pnpm state in submodules (corruption detection)

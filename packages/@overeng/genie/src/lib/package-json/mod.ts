@@ -12,7 +12,13 @@ import {
   matchesAnyPattern,
 } from './validation.ts'
 
-export type { ValidationConfig, ValidationIssue, ValidationFn, VersionConstraint, DepsToValidate } from './validation.ts'
+export type {
+  ValidationConfig,
+  ValidationIssue,
+  ValidationFn,
+  VersionConstraint,
+  DepsToValidate,
+} from './validation.ts'
 export {
   assertNoValidationErrors,
   formatValidationIssues,
@@ -883,11 +889,11 @@ const buildPackageJson = (
     const { validate, excludePackages = [], throwOnError = true } = options.validation
 
     // Skip excluded packages
-    if (!matchesAnyPattern(packageName, excludePackages) && validate) {
+    if (!matchesAnyPattern({ name: packageName, patterns: excludePackages }) && validate) {
       const deps: DepsToValidate = {
-        dependencies: resolvedDeps,
-        devDependencies: resolvedDevDeps,
-        peerDependencies: resolvedPeerDeps,
+        ...(resolvedDeps !== undefined && { dependencies: resolvedDeps }),
+        ...(resolvedDevDeps !== undefined && { devDependencies: resolvedDevDeps }),
+        ...(resolvedPeerDeps !== undefined && { peerDependencies: resolvedPeerDeps }),
       }
 
       const issues = validate(packageName, deps)
@@ -998,11 +1004,14 @@ export function createPackageJson<
       return buildPackageJson(config, runtimeContext, {
         packageManager: packageManagerString,
         isRoot: true,
-        validation,
+        ...(validation !== undefined && { validation }),
       })
     },
     package: (config: Record<string, unknown>): string => {
-      return buildPackageJson(config, runtimeContext, { isRoot: false, validation })
+      return buildPackageJson(config, runtimeContext, {
+        isRoot: false,
+        ...(validation !== undefined && { validation }),
+      })
     },
   }
 }

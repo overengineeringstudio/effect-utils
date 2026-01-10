@@ -48,9 +48,27 @@ export const testCommand = Command.make(
           command: 'vitest',
           args: [
             ...watchArg,
-            'packages/@overeng/bun-compose/src/commands',
-            'packages/@overeng/pnpm-compose/src/commands',
             'packages/@overeng/notion-effect-client/src/test/integration',
+            ...reporterArgs,
+          ],
+        })
+        /** bun-compose excludes integration tests in its default vitest config. */
+        yield* runCommand({
+          command: 'vitest',
+          args: [
+            ...watchArg,
+            '--config',
+            'packages/@overeng/bun-compose/vitest.integration.config.ts',
+            ...reporterArgs,
+          ],
+        })
+        /** pnpm-compose excludes integration tests in its default vitest config. */
+        yield* runCommand({
+          command: 'vitest',
+          args: [
+            ...watchArg,
+            '--config',
+            'packages/@overeng/pnpm-compose/vitest.integration.config.ts',
             ...reporterArgs,
           ],
         })

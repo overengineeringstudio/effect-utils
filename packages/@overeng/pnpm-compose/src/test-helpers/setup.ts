@@ -98,6 +98,7 @@ export const setupBasicMonorepo = (env: TestEnv) =>
     yield* env.run({ cmd: 'git', args: ['init'] })
     yield* env.run({ cmd: 'git', args: ['config', 'user.email', 'test@test.com'] })
     yield* env.run({ cmd: 'git', args: ['config', 'user.name', 'Test'] })
+    yield* env.run({ cmd: 'git', args: ['config', 'commit.gpgsign', 'false'] })
 
     // Create parent package.json
     yield* env.writeFile({
@@ -195,6 +196,11 @@ export const setupBasicMonorepo = (env: TestEnv) =>
       args: ['config', 'user.name', 'Test'],
       cwd: `${env.root}/submodules/lib`,
     })
+    yield* env.run({
+      cmd: 'git',
+      args: ['config', 'commit.gpgsign', 'false'],
+      cwd: `${env.root}/submodules/lib`,
+    })
   })
 
 /** Simulate corruption by running pnpm install in a submodule */
@@ -240,6 +246,7 @@ export const setupNestedSubmodules = (env: TestEnv) =>
     const gitUser = [
       ['config', 'user.email', 'test@test.com'],
       ['config', 'user.name', 'Test'],
+      ['config', 'commit.gpgsign', 'false'],
     ]
 
     const initRepo = ({ repoPath, label }: { repoPath: string; label: string }) =>

@@ -12,6 +12,7 @@ export default pkg.package({
     '@types/eslint',
     '@typescript-eslint/parser',
     '@typescript-eslint/rule-tester',
+    '@typescript-eslint/utils',
     'eslint',
     'typescript',
     'vitest',
