@@ -9,7 +9,7 @@
  * tsconfig utilities from here, then import genie utilities directly from genie.
  */
 
-import { createPackageJson } from '../packages/@overeng/genie/src/lib/mod.ts'
+import { createPackageJson, defineCatalog } from '../packages/@overeng/genie/src/lib/mod.ts'
 
 /**
  * Catalog versions - single source of truth for dependency versions
@@ -17,7 +17,7 @@ import { createPackageJson } from '../packages/@overeng/genie/src/lib/mod.ts'
  * Note: packages/@overeng/react-inspector is a git submodule with its own tooling (tsup, ESLint)
  * We include it in the workspace but keep its build system separate
  */
-export const catalog = {
+export const catalog = defineCatalog({
   // Observability
   '@opentelemetry/api': '1.9.0',
 
@@ -102,7 +102,7 @@ export const catalog = {
   '@effect-atom/atom-react': '0.4.4',
   '@opentui/core': '0.1.68',
   '@opentui/react': '0.1.68',
-} as const
+})
 
 /** PNPM patched dependencies (paths relative to effect-utils repo root) */
 export const patchedDependencies = {

@@ -3,6 +3,14 @@
  * Reference: https://github.com/sindresorhus/type-fest/blob/main/source/package-json.d.ts
  */
 
+export {
+  defineCatalog,
+  CatalogConflictError,
+  type Catalog,
+  type CatalogInput,
+  type ExtendedCatalogInput,
+} from './catalog.ts'
+
 import {
   type ValidationConfig,
   type ValidationIssue,
