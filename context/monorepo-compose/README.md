@@ -12,7 +12,9 @@ When developing across repos (e.g., app + library submodules), you want local su
 | ---------------- | -------------------------------------------------------------------------------- |
 | **pnpm-compose** | Symlink dance to use local submodule packages instead of npm versions            |
 | **genie**        | TypeScript-based config generation (package.json, pnpm-workspace.yaml, tsconfig) |
-| **devenv/Nix**   | Distributes tools (pnpm-compose, genie binaries) before `pnpm install` runs      |
+| **devenv/Nix**   | Distributes CLI tools (pnpm-compose, genie) before `pnpm install` runs           |
+
+> **Important:** genie CLI is installed via Nix/devenv, not as an npm dependency. The genie lib types are accessed via Node.js subpath imports (`#genie/*`).
 
 ## Core Principles
 
@@ -41,26 +43,34 @@ Create `devenv.yaml`:
 inputs:
   nixpkgs:
     url: github:NixOS/nixpkgs/nixos-unstable
-  genie:
-    url: github:overengineeringstudio/effect-utils?dir=packages/@overeng/genie
-  pnpm-compose:
-    url: github:overengineeringstudio/effect-utils?dir=packages/@overeng/pnpm-compose
+  nixpkgsUnstable:
+    url: github:NixOS/nixpkgs/nixos-unstable
+  effect-utils:
+    url: github:overengineeringstudio/effect-utils
 ```
 
 Create `devenv.nix`:
 
 ```nix
 { pkgs, inputs, ... }:
+let
+  pkgsUnstable = import inputs.nixpkgsUnstable { inherit (pkgs) system; };
+  cliPackages = inputs.effect-utils.lib.mkCliPackages {
+    inherit pkgs pkgsUnstable;
+    src = inputs.effect-utils.outPath;
+  };
+in
 {
+  # Apply pnpm guard overlay (prevents `pnpm install` in submodules)
+  overlays = [ inputs.effect-utils.overlays.pnpmGuard ];
+
   packages = [
     pkgs.pnpm
     pkgs.nodejs_24
     pkgs.bun
-    inputs.genie.packages.${pkgs.system}.default
-    inputs.pnpm-compose.packages.${pkgs.system}.default
+    cliPackages.genie
+    cliPackages.pnpm-compose
   ];
-
-  overlays = [ inputs.pnpm-compose.overlays.pnpmGuard ];
 
   enterShell = ''
     export WORKSPACE_ROOT="$PWD"
@@ -88,8 +98,10 @@ devenv.lock
 Create `genie/repo.ts`:
 
 ```ts
-import { createPackageJson } from '@overeng/genie/lib'
-import { catalog as effectUtilsCatalog } from './submodules/effect-utils/genie/repo.ts'
+import { createPackageJson } from '#genie/mod.ts'
+import { catalog as effectUtilsCatalog, baseTsconfigCompilerOptions } from '../submodules/effect-utils/genie/repo.ts'
+
+export { baseTsconfigCompilerOptions }
 
 export const catalog = {
   ...effectUtilsCatalog,
@@ -97,6 +109,8 @@ export const catalog = {
 } as const
 
 export const pkg = createPackageJson({
+  packageManager: 'pnpm',
+  packageManagerVersion: '10.17.1',
   catalog,
   workspacePackages: ['@myorg/*', '@overeng/*'],
 })
@@ -105,12 +119,45 @@ export const pkg = createPackageJson({
 Create `pnpm-workspace.yaml.genie.ts`:
 
 ```ts
-import { pnpmWorkspace } from '@overeng/genie/lib'
+import { pnpmWorkspace } from '#genie/mod.ts'
 import { catalog } from './genie/repo.ts'
 
 export default pnpmWorkspace({
   packages: ['apps/*', 'packages/*', 'submodules/effect-utils/packages/*'],
   catalog,
+})
+```
+
+The root `package.json.genie.ts` should set up the import map for `#genie/*`:
+
+```ts
+import { pkg } from './genie/repo.ts'
+
+export default pkg.root({
+  name: '@myorg/monorepo',
+  version: '0.0.0',
+  type: 'module',
+  private: true,
+  imports: {
+    '#genie/*': './submodules/effect-utils/packages/@overeng/genie/src/lib/*',
+  },
+  devDependencies: ['typescript', 'vitest'],
+})
+```
+
+And `tsconfig.base.json.genie.ts` needs matching `paths` for TypeScript IDE support:
+
+```ts
+import { tsconfigJSON } from '#genie/mod.ts'
+import { baseTsconfigCompilerOptions } from './genie/repo.ts'
+
+export default tsconfigJSON({
+  compilerOptions: {
+    ...baseTsconfigCompilerOptions,
+    paths: {
+      '#genie/*': ['./submodules/effect-utils/packages/@overeng/genie/src/lib/*'],
+    },
+  },
 })
 ```
 

@@ -11,6 +11,9 @@ mkBunCli {
   binaryName = "genie";
   packageJsonPath = "packages/@overeng/genie/package.json";
   typecheckTsconfig = "packages/@overeng/genie/tsconfig.json";
-  bunDepsHash = "sha256-QoYHZF4cUW57wGPes0QXDNP8t8yge0jDB5inphfj0SA=";
+  bunDepsHash = "sha256-VmdyMlCwsJrXtHEAlGoAdSn5kAB86wCH01SRhhTQ33w=";
+  workspaceDeps = [
+    { name = "@overeng/utils"; path = "packages/@overeng/utils"; }
+  ];
   inherit gitRev;
 }

@@ -15,6 +15,7 @@ export default pkg.package({
       './cli': './dist/cli.js',
     },
   },
+  dependencies: ['@overeng/utils'],
   devDependencies: [
     '@effect/cli',
     '@effect/platform',

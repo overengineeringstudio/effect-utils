@@ -43,9 +43,10 @@ The `install` command performs the "symlink dance":
 
 1. **Deduplicate submodules** - Automatically replaces duplicate nested git submodules with symlinks to top-level canonical locations
 2. **Check catalog alignment** - Validates pnpm catalog versions match across all repos (can be skipped)
-3. **Check if symlinks are correct** - If all symlinks point to the right submodule sources, skip install entirely
-4. **Incremental fix** - If some symlinks are wrong but node_modules exists, fix only those symlinks + lockfile-only
-5. **Full install** - If no node_modules or `--clean` flag, do the full dance: pnpm install → create all symlinks → lockfile-only
+3. **Sync submodule root deps** - Ensures each submodule root node_modules contains only direct deps/devDeps, symlinked to the root node_modules, plus required `.bin` entries
+4. **Check if symlinks are correct** - If all symlinks point to the right submodule sources, skip install entirely
+5. **Incremental fix** - If some symlinks are wrong but node_modules exists, fix only those symlinks + lockfile-only
+6. **Full install** - If no node_modules or `--clean` flag, do the full dance: pnpm install → create all symlinks → lockfile-only
 
 The `check` command validates catalog alignment without modifying anything.
 
@@ -111,6 +112,15 @@ The dance:
 For workspace packages using `workspace:*`, pnpm natively creates correct symlinks - no dance needed.
 
 See [PNPM_INTERNALS.md](./PNPM_INTERNALS.md) for detailed pnpm behavior analysis.
+
+## Submodule root dependencies
+
+Submodule roots often need direct dependencies (tools, CLIs, configs), but running `pnpm install` inside a submodule corrupts the workspace. pnpm-compose solves this by:
+
+- Reading each submodule root `package.json`
+- Linking every direct dependency and devDependency from the root `node_modules/`
+- Linking only the required `.bin` entries for those deps (no full `.bin` symlink)
+- Cleaning stale entries so the submodule view matches current manifests
 
 ## Corruption prevention & detection
 

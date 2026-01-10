@@ -12,7 +12,14 @@
   };
 
   outputs = { self, nixpkgs, nixpkgsUnstable, flake-utils, ... }:
+    let
+      # Nix path literals cannot include `@` segments, so build the path via concat.
+      pnpmGuardOverlay = import (./packages + "/@overeng/pnpm-compose/nix/overlay.nix");
+    in
     {
+      # Re-export pnpm guard overlay so consumers only need effect-utils input.
+      overlays.default = pnpmGuardOverlay;
+      overlays.pnpmGuard = pnpmGuardOverlay;
       lib.mkCliPackages = {
         pkgs,
         pkgsUnstable,
@@ -28,14 +35,20 @@
               entry = "packages/@overeng/genie/src/cli.ts";
               packageJsonPath = "packages/@overeng/genie/package.json";
               typecheckTsconfig = "packages/@overeng/genie/tsconfig.json";
-              bunDepsHash = "sha256-QoYHZF4cUW57wGPes0QXDNP8t8yge0jDB5inphfj0SA=";
+              bunDepsHash = "sha256-VmdyMlCwsJrXtHEAlGoAdSn5kAB86wCH01SRhhTQ33w=";
+              workspaceDeps = [
+                { name = "@overeng/utils"; path = "packages/@overeng/utils"; }
+              ];
             };
             pnpm-compose = {
               name = "pnpm-compose";
               entry = "packages/@overeng/pnpm-compose/src/cli.ts";
               packageJsonPath = "packages/@overeng/pnpm-compose/package.json";
               typecheckTsconfig = "packages/@overeng/pnpm-compose/tsconfig.json";
-              bunDepsHash = "sha256-QoYHZF4cUW57wGPes0QXDNP8t8yge0jDB5inphfj0SA=";
+              bunDepsHash = "sha256-nMZuNrcnOx0pOKwf3PXco270kANpmhAG1od+BLgGjxk=";
+              workspaceDeps = [
+                { name = "@overeng/utils"; path = "packages/@overeng/utils"; }
+              ];
             };
           };
         in

@@ -247,13 +247,16 @@ export const installCommand = Cli.Command.make(
        * - User explicitly requests --clean
        * - pnpm's internal state is corrupted (rare, usually from running pnpm install in child repo)
        */
-      if (wrongSymlinks.length === 0 && !clean) {
-        yield* Console.log('✓ Symlinks already correct, skipping install')
-        return
+      const shouldFullInstall = !nodeModulesExists || clean
+      const shouldFixSymlinks = !shouldFullInstall && wrongSymlinks.length > 0
+      const shouldSkipInstall = !shouldFullInstall && !shouldFixSymlinks
+
+      if (shouldSkipInstall) {
+        yield* Console.log('✓ Symlinks already correct, skipping install\n')
       }
 
       // Case 3: Full install dance (no node_modules or --clean)
-      if (!nodeModulesExists || clean) {
+      if (shouldFullInstall) {
         if (nodeModulesExists) {
           yield* Console.log('Removing node_modules...')
           yield* fs.remove(nodeModulesPath, { recursive: true })
@@ -279,27 +282,31 @@ export const installCommand = Cli.Command.make(
         yield* Console.log('Updating lockfile...')
         yield* runCommand({ cmd: 'pnpm', args: ['install', '--lockfile-only'], cwd })
         yield* Console.log('  ✓ Done\n')
-
-        yield* Console.log('✓ Install complete')
-        return
       }
 
       // Case 2: Incremental fix (node_modules exists, some symlinks wrong)
-      yield* Console.log(`Fixing ${wrongSymlinks.length} symlink(s)...`)
-      for (const link of wrongSymlinks) {
-        yield* createSymlink({
-          fs,
-          targetPath: link.targetPath,
-          sourcePath: link.sourcePath,
-          pkgName: link.pkgName,
-        })
-        yield* Console.log(`  ✓ ${link.pkgName} → ${link.repoPath}/${link.relativePath}`)
-      }
-      yield* Console.log('')
+      if (shouldFixSymlinks) {
+        yield* Console.log(`Fixing ${wrongSymlinks.length} symlink(s)...`)
+        for (const link of wrongSymlinks) {
+          yield* createSymlink({
+            fs,
+            targetPath: link.targetPath,
+            sourcePath: link.sourcePath,
+            pkgName: link.pkgName,
+          })
+          yield* Console.log(`  ✓ ${link.pkgName} → ${link.repoPath}/${link.relativePath}`)
+        }
+        yield* Console.log('')
 
-      yield* Console.log('Updating lockfile...')
-      yield* runCommand({ cmd: 'pnpm', args: ['install', '--lockfile-only'], cwd })
-      yield* Console.log('  ✓ Done\n')
+        yield* Console.log('Updating lockfile...')
+        yield* runCommand({ cmd: 'pnpm', args: ['install', '--lockfile-only'], cwd })
+        yield* Console.log('  ✓ Done\n')
+      }
+
+      yield* syncSubmoduleRootNodeModules({
+        cwd,
+        composedRepos,
+      })
 
       yield* Console.log('✓ Install complete')
     }).pipe(Effect.withSpan('install')),
@@ -352,6 +359,14 @@ interface PackageInfo {
   name: string
   path: string
   relativePath: string
+}
+
+/** Root package.json info used for submodule dependency linking. */
+interface RootPackageJson {
+  name?: string
+  dependencies?: Record<string, string>
+  devDependencies?: Record<string, string>
+  bin?: string | Record<string, string>
 }
 
 /** Find all packages in a repo */
@@ -467,6 +482,257 @@ const expandGlob = ({ basePath, glob }: { basePath: string; glob: string }) =>
     }
 
     return currentPaths
+  })
+
+/**
+ * Ensure submodule root node_modules only contains direct deps/devDeps symlinked
+ * to the workspace root node_modules, and .bin entries are linked per required dep.
+ */
+const syncSubmoduleRootNodeModules = ({
+  cwd,
+  composedRepos,
+}: {
+  cwd: string
+  composedRepos: Array<{ name: string; path: string }>
+}) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    const rootNodeModules = path.join(cwd, 'node_modules')
+    const rootBinDir = path.join(rootNodeModules, '.bin')
+
+    const rootNodeModulesExists = yield* fs.exists(rootNodeModules)
+    if (!rootNodeModulesExists) {
+      return yield* new InstallFailedError({ reason: 'root node_modules missing' })
+    }
+
+    const missingByRepo: Array<{
+      repoPath: string
+      deps: string[]
+      bins: string[]
+    }> = []
+    let linkCount = 0
+    let binCount = 0
+
+    for (const repo of composedRepos) {
+      const repoRoot = path.join(cwd, repo.path)
+      const pkgJsonPath = path.join(repoRoot, 'package.json')
+      const pkgExists = yield* fs.exists(pkgJsonPath)
+      if (!pkgExists) continue
+
+      const repoPkg = yield* readPackageJson(pkgJsonPath)
+      const deps = Object.keys(repoPkg.dependencies ?? {})
+      const devDeps = Object.keys(repoPkg.devDependencies ?? {})
+      const directDeps = Array.from(new Set([...deps, ...devDeps]))
+
+      const expectedBins = new Set<string>()
+      const missingDeps: string[] = []
+      const missingBins: string[] = []
+
+      for (const dep of directDeps) {
+        const depPath = path.join(rootNodeModules, dep)
+        const depExists = yield* fs.exists(depPath)
+        if (!depExists) {
+          missingDeps.push(dep)
+          continue
+        }
+
+        const depPkgPath = path.join(depPath, 'package.json')
+        const depPkgExists = yield* fs.exists(depPkgPath)
+        if (!depPkgExists) {
+          continue
+        }
+
+        const depPkg = yield* readPackageJson(depPkgPath)
+        for (const binName of resolveBinNames(depPkg, dep)) {
+          expectedBins.add(binName)
+          const binPath = path.join(rootBinDir, binName)
+          const binExists = yield* fs.exists(binPath)
+          if (!binExists) {
+            missingBins.push(binName)
+          }
+        }
+      }
+
+      if (missingDeps.length > 0 || missingBins.length > 0) {
+        missingByRepo.push({ repoPath: repo.path, deps: missingDeps, bins: missingBins })
+        continue
+      }
+
+      const submoduleNodeModules = path.join(repoRoot, 'node_modules')
+      const existingLink = yield* fs.readLink(submoduleNodeModules).pipe(Effect.option)
+      if (Option.isSome(existingLink)) {
+        yield* fs.remove(submoduleNodeModules, { recursive: true })
+      }
+      yield* fs.makeDirectory(submoduleNodeModules, { recursive: true })
+
+      const expectedPackages = new Set(directDeps)
+      const expectedScopes = new Map<string, Set<string>>()
+      for (const dep of expectedPackages) {
+        if (!dep.startsWith('@')) continue
+        const [scope, name] = dep.split('/')
+        if (!scope || !name) continue
+        const scopeSet = expectedScopes.get(scope) ?? new Set<string>()
+        scopeSet.add(name)
+        expectedScopes.set(scope, scopeSet)
+      }
+
+      yield* cleanupSubmoduleNodeModules({
+        fs,
+        path,
+        nodeModulesPath: submoduleNodeModules,
+        expectedPackages,
+        expectedScopes,
+      })
+
+      for (const dep of expectedPackages) {
+        yield* createSymlink({
+          fs,
+          targetPath: path.join(submoduleNodeModules, dep),
+          sourcePath: path.join(rootNodeModules, dep),
+          pkgName: dep,
+        })
+        linkCount += 1
+      }
+
+      const submoduleBinDir = path.join(submoduleNodeModules, '.bin')
+      yield* fs.makeDirectory(submoduleBinDir, { recursive: true })
+
+      yield* cleanupBinEntries({
+        fs,
+        path,
+        binDir: submoduleBinDir,
+        expectedBins,
+      })
+
+      for (const binName of expectedBins) {
+        yield* createSymlink({
+          fs,
+          targetPath: path.join(submoduleBinDir, binName),
+          sourcePath: path.join(rootBinDir, binName),
+          pkgName: binName,
+        })
+        binCount += 1
+      }
+    }
+
+    if (missingByRepo.length > 0) {
+      yield* Console.log('✗ Missing root dependencies for submodule roots:\n')
+      for (const missing of missingByRepo) {
+        if (missing.deps.length > 0) {
+          yield* Console.log(`  - ${missing.repoPath}: ${missing.deps.join(', ')}`)
+        }
+        if (missing.bins.length > 0) {
+          yield* Console.log(`    missing .bin: ${missing.bins.join(', ')}`)
+        }
+      }
+      yield* Console.log(
+        '\nEnsure these dependencies are installed at the workspace root and re-run pnpm-compose.',
+      )
+      return yield* new InstallFailedError({ reason: 'missing root dependencies for submodules' })
+    }
+
+    if (linkCount > 0 || binCount > 0) {
+      yield* Console.log(`Linked ${linkCount} submodule root deps and ${binCount} .bin entries\n`)
+    }
+  })
+
+/** Read a package.json file and parse it safely. */
+const readPackageJson = (packageJsonPath: string) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const content = yield* fs.readFileString(packageJsonPath)
+    return yield* Effect.try({
+      try: () => JSON.parse(content) as RootPackageJson,
+      catch: () => new Error(`Failed to parse ${packageJsonPath}`),
+    })
+  })
+
+/** Resolve bin names for a dependency package. */
+const resolveBinNames = (pkg: RootPackageJson, fallbackName: string): string[] => {
+  const bin = pkg.bin
+  if (!bin) return []
+  if (typeof bin === 'string') {
+    const name = pkg.name ?? fallbackName
+    return [normalizeBinName(name)]
+  }
+  return Object.keys(bin)
+}
+
+/** Scoped package bin names default to the unscoped segment. */
+const normalizeBinName = (pkgName: string) =>
+  pkgName.startsWith('@') ? (pkgName.split('/')[1] ?? pkgName) : pkgName
+
+/** Remove stale submodule node_modules entries before relinking. */
+const cleanupSubmoduleNodeModules = ({
+  fs,
+  path,
+  nodeModulesPath,
+  expectedPackages,
+  expectedScopes,
+}: {
+  fs: FileSystem.FileSystem
+  path: Path.Path
+  nodeModulesPath: string
+  expectedPackages: Set<string>
+  expectedScopes: Map<string, Set<string>>
+}) =>
+  Effect.gen(function* () {
+    const entries = yield* fs.readDirectory(nodeModulesPath)
+    for (const entry of entries) {
+      if (entry === '.bin') continue
+      if (entry.startsWith('.')) {
+        yield* fs.remove(path.join(nodeModulesPath, entry), { recursive: true })
+        continue
+      }
+
+      if (entry.startsWith('@')) {
+        const expectedScoped = expectedScopes.get(entry)
+        const scopePath = path.join(nodeModulesPath, entry)
+        if (!expectedScoped || expectedScoped.size === 0) {
+          yield* fs.remove(scopePath, { recursive: true })
+          continue
+        }
+
+        const scopedEntries = yield* fs.readDirectory(scopePath)
+        for (const scopedEntry of scopedEntries) {
+          if (!expectedScoped.has(scopedEntry)) {
+            yield* fs.remove(path.join(scopePath, scopedEntry), { recursive: true })
+          }
+        }
+
+        const remaining = yield* fs.readDirectory(scopePath)
+        if (remaining.length === 0) {
+          yield* fs.remove(scopePath, { recursive: true })
+        }
+        continue
+      }
+
+      if (!expectedPackages.has(entry)) {
+        yield* fs.remove(path.join(nodeModulesPath, entry), { recursive: true })
+      }
+    }
+  })
+
+/** Remove stale .bin entries before relinking. */
+const cleanupBinEntries = ({
+  fs,
+  path,
+  binDir,
+  expectedBins,
+}: {
+  fs: FileSystem.FileSystem
+  path: Path.Path
+  binDir: string
+  expectedBins: Set<string>
+}) =>
+  Effect.gen(function* () {
+    const entries = yield* fs.readDirectory(binDir)
+    for (const entry of entries) {
+      if (!expectedBins.has(entry)) {
+        yield* fs.remove(path.join(binDir, entry), { recursive: true })
+      }
+    }
   })
 
 /** Error when install fails */

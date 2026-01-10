@@ -15,6 +15,9 @@
       "./cli": "./dist/cli.js"
     }
   },
+  "dependencies": {
+    "@overeng/utils": "workspace:*"
+  },
   "devDependencies": {
     "@effect/cli": "catalog:",
     "@effect/platform": "catalog:",

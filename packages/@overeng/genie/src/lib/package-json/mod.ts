@@ -55,6 +55,7 @@ const FIELD_ORDER = [
   'contributors',
   'repository',
   'exports',
+  'imports',
   'main',
   'module',
   'types',
@@ -173,6 +174,8 @@ export type PackageJSONArgs = {
   files?: string[]
   /** Package entry points (modern ESM exports) */
   exports?: Record<string, ExportsEntry>
+  /** Node.js subpath imports (private path aliases, e.g. `#utils/*`) */
+  imports?: Record<string, string>
   /** Package type: "module" for ESM, "commonjs" for CJS */
   type?: 'module' | 'commonjs'
   /** Binary executables */
@@ -671,6 +674,8 @@ type BasePackageJsonFields = {
   typings?: string
   files?: string[]
   exports?: Record<string, ExportsEntry>
+  /** Node.js subpath imports (private path aliases, e.g. `#utils/*`) */
+  imports?: Record<string, string>
   type?: 'module' | 'commonjs'
   bin?: string | Record<string, string>
   man?: string | string[]

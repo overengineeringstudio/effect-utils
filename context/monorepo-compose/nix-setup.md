@@ -13,15 +13,12 @@ For local submodule development without devenv, use pure flakes with `inputs.sel
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgsUnstable.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
-    genie = {
-      url = "path:./submodules/effect-utils/packages/@overeng/genie";
+    effect-utils = {
+      url = "path:./submodules/effect-utils";
       inputs.nixpkgs.follows = "nixpkgs";
-      inputs.flake-utils.follows = "flake-utils";
-    };
-    pnpm-compose = {
-      url = "path:./submodules/effect-utils/packages/@overeng/pnpm-compose";
-      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.nixpkgsUnstable.follows = "nixpkgsUnstable";
       inputs.flake-utils.follows = "flake-utils";
     };
   };
@@ -29,12 +26,17 @@ For local submodule development without devenv, use pure flakes with `inputs.sel
   # Required for Nix to see files inside git submodules
   inputs.self.submodules = true;
 
-  outputs = { self, nixpkgs, flake-utils, genie, pnpm-compose, ... }:
+  outputs = { self, nixpkgs, nixpkgsUnstable, flake-utils, effect-utils, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
           inherit system;
-          overlays = [ pnpm-compose.overlays.pnpmGuard ];
+          overlays = [ effect-utils.overlays.pnpmGuard ];
+        };
+        pkgsUnstable = import nixpkgsUnstable { inherit system; };
+        cliPackages = effect-utils.lib.mkCliPackages {
+          inherit pkgs pkgsUnstable;
+          src = effect-utils.outPath;
         };
       in {
         devShells.default = pkgs.mkShell {
@@ -42,8 +44,8 @@ For local submodule development without devenv, use pure flakes with `inputs.sel
             pkgs.pnpm
             pkgs.nodejs_24
             pkgs.bun
-            genie.packages.${system}.default
-            pnpm-compose.packages.${system}.default
+            cliPackages.genie
+            cliPackages.pnpm-compose
           ];
 
           shellHook = ''
@@ -64,7 +66,7 @@ use flake
 
 ## pnpm Guard Overlay
 
-The `pnpm-compose.overlays.pnpmGuard` overlay wraps `pnpm` to block install commands inside submodules. This prevents accidentally corrupting the workspace by running `pnpm install` in a submodule directory.
+The `effect-utils.overlays.pnpmGuard` overlay wraps `pnpm` to block install commands inside submodules. This prevents accidentally corrupting the workspace by running `pnpm install` in a submodule directory.
 
 ## References
 

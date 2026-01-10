@@ -16,3 +16,6 @@ export * from './ActiveHandlesDebugger.ts'
 
 /** Concurrent task execution with structured state management */
 export * from './task-runner.ts'
+
+/** CLI version resolution with optional runtime stamp */
+export * from './cli-version.ts'

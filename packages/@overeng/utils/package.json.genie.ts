@@ -6,6 +6,7 @@ export default pkg.package({
   exports: {
     '.': './src/isomorphic/mod.ts',
     './node': './src/node/mod.ts',
+    './node/cli-version': './src/node/cli-version.ts',
     './node/playwright': './src/node/playwright/mod.ts',
     './browser': './src/browser/mod.ts',
     './cuid': {
@@ -19,6 +20,7 @@ export default pkg.package({
     exports: {
       '.': './dist/isomorphic/mod.js',
       './node': './dist/node/mod.js',
+      './node/cli-version': './dist/node/cli-version.js',
       './node/playwright': './dist/node/playwright/mod.js',
       './browser': './dist/browser/mod.js',
       './cuid': {

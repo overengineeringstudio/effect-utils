@@ -1,13 +1,25 @@
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import * as Cli from '@effect/cli'
 import { Command, Error as PlatformError, FileSystem, Path } from '@effect/platform'
 import * as PlatformNode from '@effect/platform-node'
-import { Array as A, Effect, Either, pipe, Schema, Stream } from 'effect'
+import { Array as A, Effect, Either, Layer, pipe, Schema, Stream } from 'effect'
+
+import { CurrentWorkingDirectory } from '@overeng/utils/node'
+import { resolveCliVersion } from '@overeng/utils/node/cli-version'
+
+import { resolveImportMapSpecifierForImporterSync } from './lib/import-map/mod.ts'
 
 const baseVersion = '0.1.0'
 const buildVersion = '__CLI_VERSION__'
-const version = buildVersion === '__CLI_VERSION__' ? baseVersion : buildVersion
+const version = resolveCliVersion({
+  baseVersion,
+  buildVersion,
+  runtimeStampEnvVar: 'NIX_CLI_BUILD_STAMP',
+})
+
+let importMapResolverRegistered = false
 
 /** Error when importing a .genie.ts file fails */
 export class GenieImportError extends Schema.TaggedError<GenieImportError>()('GenieImportError', {
@@ -168,6 +180,54 @@ const formatWithOxfmt = (targetFilePath: string, content: string) =>
 
 const isGenieFile = (file: string) => file.endsWith('.genie.ts')
 
+/** Normalize Bun importer paths to absolute filesystem paths when possible. */
+const normalizeImporterPath = (importer: string): string | undefined => {
+  if (importer.startsWith('file://')) {
+    return fileURLToPath(importer)
+  }
+
+  if (importer.startsWith('data:')) {
+    return undefined
+  }
+
+  if (!path.isAbsolute(importer)) {
+    return undefined
+  }
+
+  return importer
+}
+
+/**
+ * Register a Bun import resolver so `#...` specifiers use the import map closest
+ * to the importing file. This avoids temp file generation and fixes transitive imports.
+ */
+const ensureImportMapResolver = Effect.gen(function* () {
+  if (importMapResolverRegistered) return
+  importMapResolverRegistered = true
+
+  Bun.plugin({
+    name: 'genie-import-map',
+    setup: (builder) => {
+      builder.onResolve({ filter: /^#/ }, (args) => {
+        // Bun resolver hooks can't await promises, so import map resolution is sync.
+        const importerPath = normalizeImporterPath(args.importer)
+        if (importerPath === undefined) {
+          return undefined
+        }
+
+        const resolved = resolveImportMapSpecifierForImporterSync({
+          specifier: args.path,
+          importerPath,
+        })
+
+        if (resolved === undefined) return undefined
+
+        return { path: resolved }
+      })
+    },
+  })
+}).pipe(Effect.withSpan('genie.registerImportMapResolver'))
+
 /** Directories to skip when searching for .genie.ts files */
 const shouldSkipDirectory = (name: string): boolean => {
   if (name === 'node_modules' || name === 'dist' || name === 'tmp') return true
@@ -241,10 +301,16 @@ const findGenieFiles = (dir: string) =>
     return files
   }).pipe(Effect.withSpan('findGenieFiles'))
 
-/** Import a genie file and return its default export (the raw content string) */
+/**
+ * Import a genie file and return its default export (the raw content string).
+ *
+ * A Bun import resolver is registered once so `#...` specifiers are resolved
+ * using the import map closest to the importing file (including transitive imports).
+ */
 const importGenieFile = (genieFilePath: string) =>
   Effect.gen(function* () {
-    /** Cache-bust the import to ensure we get fresh code on each regeneration */
+    yield* ensureImportMapResolver
+
     const importPath = `${genieFilePath}?import=${Date.now()}`
 
     const module = yield* Effect.tryPromise({
@@ -607,7 +673,7 @@ export const genieCommand = Cli.Command.make(
   {
     cwd: Cli.Options.text('cwd').pipe(
       Cli.Options.withDescription('Working directory to search for .genie.ts files'),
-      Cli.Options.withDefault(process.cwd()),
+      Cli.Options.withDefault('.'),
     ),
     watch: Cli.Options.boolean('watch').pipe(
       Cli.Options.withDescription('Watch for changes and regenerate automatically'),
@@ -630,8 +696,10 @@ export const genieCommand = Cli.Command.make(
     Effect.gen(function* () {
       const readOnly = !writeable
       const fs = yield* FileSystem.FileSystem
+      const currentWorkingDirectory = yield* CurrentWorkingDirectory
+      const resolvedCwd = path.isAbsolute(cwd) ? cwd : path.resolve(currentWorkingDirectory, cwd)
 
-      const genieFiles = yield* findGenieFiles(cwd)
+      const genieFiles = yield* findGenieFiles(resolvedCwd)
 
       if (genieFiles.length === 0) {
         yield* Effect.log('No .genie.ts files found')
@@ -648,7 +716,7 @@ export const genieCommand = Cli.Command.make(
         yield* Effect.log('✓ All generated files are up to date')
 
         // Validate tsconfig references
-        const warnings = yield* validateTsconfigReferences({ genieFiles, cwd })
+        const warnings = yield* validateTsconfigReferences({ genieFiles, cwd: resolvedCwd })
         yield* logTsconfigWarnings(warnings)
 
         return
@@ -681,10 +749,10 @@ export const genieCommand = Cli.Command.make(
       if (watch && !dryRun) {
         yield* Effect.log('\nWatching for changes...')
         yield* pipe(
-          fs.watch(cwd),
+          fs.watch(resolvedCwd),
           Stream.filter(({ path: p }) => p.endsWith('.genie.ts')),
           Stream.tap(({ path: p }) => {
-            const genieFilePath = path.join(cwd, p)
+            const genieFilePath = path.join(resolvedCwd, p)
             return generateFile({ genieFilePath, readOnly }).pipe(
               Effect.catchAll((error) => Effect.logError(error.message)),
             )
@@ -701,7 +769,7 @@ if (import.meta.main) {
       name: 'genie',
       version,
     })(process.argv),
-    Effect.provide(PlatformNode.NodeContext.layer),
+    Effect.provide(Layer.mergeAll(PlatformNode.NodeContext.layer, CurrentWorkingDirectory.live)),
     PlatformNode.NodeRuntime.runMain,
   )
 }

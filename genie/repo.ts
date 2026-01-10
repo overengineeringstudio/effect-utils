@@ -9,7 +9,11 @@
  * tsconfig utilities from here, then import genie utilities directly from genie.
  */
 
-import { createPackageJson, defineCatalog } from '../packages/@overeng/genie/src/lib/mod.ts'
+import {
+  createPackageJson,
+  defineCatalog,
+  type TSConfigCompilerOptions,
+} from '../packages/@overeng/genie/src/lib/mod.ts'
 
 /**
  * Catalog versions - single source of truth for dependency versions
@@ -49,6 +53,7 @@ export const catalog = defineCatalog({
   '@types/react': '19.2.7',
   '@types/react-dom': '19.2.3',
   '@types/node': '25.0.3',
+  '@types/bun': '1.3.5',
   '@types/eslint': '9.6.1',
   '@types/is-dom': '1.1.2',
 
@@ -167,7 +172,7 @@ export const packageTsconfigCompilerOptions = {
 } as const
 
 /** DOM library set for browser-compatible packages */
-export const domLib = ['ES2022', 'DOM', 'DOM.Iterable'] as const
+export const domLib = ['ES2024', 'DOM', 'DOM.Iterable'] as const
 
 /** React JSX configuration for React packages */
 export const reactJsx = { jsx: 'react-jsx' as const }
@@ -200,10 +205,10 @@ export const createEffectUtilsRefs = (basePath: string) =>
 
 /** Base tsconfig compiler options shared across all packages */
 export const baseTsconfigCompilerOptions = {
-  target: 'ES2023' as const,
-  lib: ['ES2023'],
-  module: 'NodeNext' as const,
-  moduleResolution: 'NodeNext' as const,
+  target: 'ES2024',
+  lib: ['ES2024'],
+  module: 'NodeNext',
+  moduleResolution: 'NodeNext',
   allowImportingTsExtensions: true,
   rewriteRelativeImportExtensions: true,
   resolveJsonModule: true,
@@ -235,4 +240,4 @@ export const baseTsconfigCompilerOptions = {
       },
     },
   ],
-}
+} as const satisfies TSConfigCompilerOptions

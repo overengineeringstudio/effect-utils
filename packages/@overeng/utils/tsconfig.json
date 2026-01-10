@@ -7,7 +7,7 @@
     "rootDir": ".",
     "outDir": "./dist",
     "tsBuildInfoFile": "./tsconfig.tsbuildinfo",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+    "lib": ["ES2024", "DOM", "DOM.Iterable"]
   },
   "include": ["src/**/*"]
 }

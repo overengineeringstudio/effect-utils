@@ -4,7 +4,7 @@
  * These tests create real directory structures with pnpm to verify
  * the install command behavior. They're slower but catch real regressions.
  */
-import { Path } from '@effect/platform'
+import { Command, Path } from '@effect/platform'
 import { NodeContext } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect, Option } from 'effect'
@@ -44,6 +44,16 @@ describe('install command', () => {
     Effect.gen(function* () {
       const cliPath = new URL('../cli.ts', import.meta.url).pathname
       return yield* env.run({ cmd: 'bun', args: [cliPath, 'install', ...args], cwd: env.root })
+    })
+
+  /** Run pnpm-compose CLI and return only the exit code. */
+  const runCliExitCode = (env: TestEnv, args: string[]) =>
+    Effect.gen(function* () {
+      const cliPath = new URL('../cli.ts', import.meta.url).pathname
+      const command = Command.make('bun', cliPath, 'install', ...args).pipe(
+        Command.workingDirectory(env.root),
+      )
+      return yield* Command.exitCode(command)
     })
 
   describe('corruption detection', () => {
@@ -119,9 +129,9 @@ describe('install command', () => {
           // Should NOT detect corruption for non-pnpm node_modules
           expect(output).not.toContain('Detected node_modules in submodules')
 
-          // node_modules should still exist
+          // Non-pnpm node_modules are cleaned when syncing submodule root deps
           const stillExists = yield* env.exists('submodules/lib/node_modules/some-pkg')
-          expect(stillExists).toBe(true)
+          expect(stillExists).toBe(false)
         }),
       ).pipe(Effect.provide(TestLayer), Effect.scoped),
     )
@@ -267,6 +277,154 @@ describe('install command', () => {
           // Verify it points to the submodule source
           const target = yield* env.readLink('node_modules/@test/utils')
           expect(target).toContain('submodules/lib/packages/utils')
+        }),
+      ).pipe(Effect.provide(TestLayer), Effect.scoped),
+    )
+
+    it.effect('links submodule root deps and bins', () =>
+      withTestEnv((env) =>
+        Effect.gen(function* () {
+          yield* setupBasicMonorepo(env)
+
+          const submodulePkgPath = 'submodules/lib/package.json'
+          const submodulePkgRaw = yield* env.readFile(submodulePkgPath)
+          const submodulePkg = JSON.parse(submodulePkgRaw) as {
+            dependencies?: Record<string, string>
+            devDependencies?: Record<string, string>
+          }
+          submodulePkg.dependencies = { foo: '1.0.0' }
+          submodulePkg.devDependencies = { bar: '1.0.0' }
+          yield* env.writeFile({
+            path: submodulePkgPath,
+            content: JSON.stringify(submodulePkg, null, 2),
+          })
+
+          yield* env.writeFile({
+            path: 'node_modules/foo/package.json',
+            content: JSON.stringify(
+              { name: 'foo', version: '1.0.0', bin: { foo: 'bin/foo' } },
+              null,
+              2,
+            ),
+          })
+          yield* env.writeFile({
+            path: 'node_modules/foo/bin/foo',
+            content: '#!/usr/bin/env node\n',
+          })
+          yield* env.writeFile({
+            path: 'node_modules/bar/package.json',
+            content: JSON.stringify({ name: 'bar', version: '1.0.0', bin: 'bin/bar' }, null, 2),
+          })
+          yield* env.writeFile({
+            path: 'node_modules/bar/bin/bar',
+            content: '#!/usr/bin/env node\n',
+          })
+          yield* env.writeFile({ path: 'node_modules/.bin/.keep', content: '' })
+          yield* env.run({
+            cmd: 'ln',
+            args: ['-s', '../foo/bin/foo', 'node_modules/.bin/foo'],
+          })
+          yield* env.run({
+            cmd: 'ln',
+            args: ['-s', '../bar/bin/bar', 'node_modules/.bin/bar'],
+          })
+
+          const path = yield* Path.Path
+          yield* env.run({ cmd: 'mkdir', args: ['-p', 'node_modules/@test'] })
+          yield* env.run({
+            cmd: 'ln',
+            args: [
+              '-s',
+              path.join(env.root, 'submodules/lib/packages/utils'),
+              'node_modules/@test/utils',
+            ],
+          })
+
+          yield* env.writeFile({
+            path: 'submodules/lib/node_modules/stale/package.json',
+            content: '{}',
+          })
+          yield* env.writeFile({
+            path: 'submodules/lib/node_modules/.bin/old',
+            content: '',
+          })
+
+          const output = yield* runCli(env, ['--skip-catalog-check'])
+          expect(output).toContain('Linked')
+
+          const fooLink = yield* env.readLink('submodules/lib/node_modules/foo')
+          const fooResolved = path.resolve(`${env.root}/submodules/lib/node_modules`, fooLink)
+          expect(fooResolved.endsWith('/node_modules/foo')).toBe(true)
+
+          const barLink = yield* env.readLink('submodules/lib/node_modules/bar')
+          const barResolved = path.resolve(`${env.root}/submodules/lib/node_modules`, barLink)
+          expect(barResolved.endsWith('/node_modules/bar')).toBe(true)
+
+          const binFoo = yield* env.readLink('submodules/lib/node_modules/.bin/foo')
+          const binFooResolved = path.resolve(
+            `${env.root}/submodules/lib/node_modules/.bin`,
+            binFoo,
+          )
+          expect(binFooResolved.endsWith('/node_modules/.bin/foo')).toBe(true)
+
+          const staleExists = yield* env.exists('submodules/lib/node_modules/stale')
+          expect(staleExists).toBe(false)
+
+          const oldBinExists = yield* env.exists('submodules/lib/node_modules/.bin/old')
+          expect(oldBinExists).toBe(false)
+        }),
+      ).pipe(Effect.provide(TestLayer), Effect.scoped),
+    )
+
+    it.effect('fails when root deps or bins are missing', () =>
+      withTestEnv((env) =>
+        Effect.gen(function* () {
+          yield* setupBasicMonorepo(env)
+
+          const submodulePkgPath = 'submodules/lib/package.json'
+          const submodulePkgRaw = yield* env.readFile(submodulePkgPath)
+          const submodulePkg = JSON.parse(submodulePkgRaw) as {
+            dependencies?: Record<string, string>
+            devDependencies?: Record<string, string>
+          }
+          submodulePkg.dependencies = { foo: '1.0.0', bar: '1.0.0' }
+          yield* env.writeFile({
+            path: submodulePkgPath,
+            content: JSON.stringify(submodulePkg, null, 2),
+          })
+
+          yield* env.writeFile({
+            path: 'node_modules/bar/package.json',
+            content: JSON.stringify({ name: 'bar', version: '1.0.0', bin: 'bin/bar' }, null, 2),
+          })
+          yield* env.writeFile({
+            path: 'node_modules/bar/bin/bar',
+            content: '#!/usr/bin/env node\n',
+          })
+
+          /** Keep the workspace package symlink valid so the install path stays incremental. */
+          const path = yield* Path.Path
+          yield* env.run({ cmd: 'mkdir', args: ['-p', 'node_modules/@test'] })
+          yield* env.run({
+            cmd: 'ln',
+            args: [
+              '-s',
+              path.join(env.root, 'submodules/lib/packages/utils'),
+              'node_modules/@test/utils',
+            ],
+          })
+
+          const exitCode = yield* runCliExitCode(env, ['--skip-catalog-check'])
+          expect(exitCode).not.toBe(0)
+
+          const fooExists = yield* env.exists('submodules/lib/node_modules/foo')
+          expect(fooExists).toBe(false)
+
+          const barExists = yield* env.exists('submodules/lib/node_modules/bar')
+          expect(barExists).toBe(false)
+
+          const binBarExists = yield* env.exists('submodules/lib/node_modules/.bin/bar')
+          expect(binBarExists).toBe(false)
         }),
       ).pipe(Effect.provide(TestLayer), Effect.scoped),
     )

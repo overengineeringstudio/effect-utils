@@ -49,11 +49,13 @@ export const catalog = {
 | `packageTsconfigCompilerOptions` | Composite mode for package builds                     |
 | `domLib`, `reactJsx`             | Browser/React compiler options                        |
 
-| From `@overeng/genie/lib` | Purpose                        |
-| ------------------------- | ------------------------------ |
-| `createPackageJson`       | Type-safe package.json builder |
-| `tsconfigJSON`            | tsconfig.json generator        |
-| `pnpmWorkspace`           | pnpm-workspace.yaml generator  |
+| From genie lib (`#genie/*`) | Purpose                        |
+| --------------------------- | ------------------------------ |
+| `createPackageJson`         | Type-safe package.json builder |
+| `tsconfigJSON`              | tsconfig.json generator        |
+| `pnpmWorkspace`             | pnpm-workspace.yaml generator  |
+
+> **Note:** genie CLI is installed via Nix/devenv. The genie lib types are accessed via Node.js subpath imports (`#genie/*`), configured in the root `package.json#imports` and `tsconfig.json#paths`.
 
 ## TypeScript Config
 
@@ -61,11 +63,16 @@ Base config (repo root):
 
 ```ts
 // tsconfig.base.json.genie.ts
-import { tsconfigJSON } from '@overeng/genie/lib'
-import { baseTsconfigCompilerOptions } from './submodules/effect-utils/genie/repo.ts'
+import { tsconfigJSON } from '#genie/mod.ts'
+import { baseTsconfigCompilerOptions } from './genie/repo.ts'
 
 export default tsconfigJSON({
-  compilerOptions: { ...baseTsconfigCompilerOptions },
+  compilerOptions: {
+    ...baseTsconfigCompilerOptions,
+    paths: {
+      '#genie/*': ['./submodules/effect-utils/packages/@overeng/genie/src/lib/*'],
+    },
+  },
 })
 ```
 
@@ -73,15 +80,15 @@ Package config:
 
 ```ts
 // packages/@org/my-pkg/tsconfig.json.genie.ts
-import { tsconfigJSON } from '@overeng/genie/lib'
+import { tsconfigJSON } from '#genie/mod.ts'
 import { packageTsconfigCompilerOptions, domLib, reactJsx } from '../../../genie/repo.ts'
 
 export default tsconfigJSON({
   extends: '../../../tsconfig.base.json',
   compilerOptions: {
     ...packageTsconfigCompilerOptions,
-    ...domLib, // If browser code
-    ...reactJsx, // If React code
+    lib: domLib,    // If browser code
+    ...reactJsx,    // If React code
   },
   include: ['src'],
 })
