@@ -1,4 +1,4 @@
-import { catalog, pkg } from './genie/repo.ts'
+import { catalog, patchedDependencies, pkg } from './genie/repo.ts'
 
 export default pkg.root({
   name: 'effect-utils',
@@ -8,6 +8,7 @@ export default pkg.root({
     catalog,
   },
   type: 'module',
+  patchedDependencies,
   scripts: {
     prepare: 'effect-language-service patch || true',
   },

@@ -103,6 +103,11 @@ export const catalog = {
   '@opentui/react': '0.1.68',
 } as const
 
+/** PNPM patched dependencies (paths relative to effect-utils repo root) */
+export const patchedDependencies = {
+  'effect-distributed-lock@0.0.11': 'patches/effect-distributed-lock@0.0.11.patch',
+} as const
+
 /**
  * Package name patterns for dependency resolution.
  * Used by packageJsonWithContext to determine workspace: protocol.

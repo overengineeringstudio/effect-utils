@@ -86,5 +86,8 @@
   "$genie": {
     "source": "package.json.genie.ts",
     "warning": "DO NOT EDIT - changes will be overwritten"
+  },
+  "patchedDependencies": {
+    "effect-distributed-lock@0.0.11": "patches/effect-distributed-lock@0.0.11.patch"
   }
 }

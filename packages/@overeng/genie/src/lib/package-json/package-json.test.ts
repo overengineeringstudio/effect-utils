@@ -328,6 +328,41 @@ describe('createPackageJson', () => {
       expect(parsed.workspaces.catalog).toBeDefined()
     })
 
+    it('supports Bun catalogs at top-level and in workspaces', () => {
+      const result = pkg.root({
+        name: 'my-monorepo',
+        private: true,
+        catalog,
+        catalogs: {
+          testing: {
+            vitest: '4.0.0',
+          },
+        },
+        workspaces: {
+          packages: ['packages/*'],
+          catalog,
+          catalogs: {
+            tooling: {
+              eslint: '9.0.0',
+            },
+          },
+        },
+      })
+
+      const parsed = JSON.parse(result)
+      expect(parsed.catalog).toEqual(catalog)
+      expect(parsed.catalogs).toEqual({
+        testing: {
+          vitest: '4.0.0',
+        },
+      })
+      expect(parsed.workspaces.catalogs).toEqual({
+        tooling: {
+          eslint: '9.0.0',
+        },
+      })
+    })
+
     it('supports Bun-specific trustedDependencies', () => {
       const result = pkg.root({
         name: 'my-monorepo',
@@ -337,6 +372,21 @@ describe('createPackageJson', () => {
 
       const parsed = JSON.parse(result)
       expect(parsed.trustedDependencies).toEqual(['esbuild', 'sharp'])
+    })
+
+    it('supports Bun patchedDependencies', () => {
+      const result = pkg.root({
+        name: 'my-monorepo',
+        private: true,
+        patchedDependencies: {
+          'some-pkg@1.0.0': 'patches/some-pkg.patch',
+        },
+      })
+
+      const parsed = JSON.parse(result)
+      expect(parsed.patchedDependencies).toEqual({
+        'some-pkg@1.0.0': 'patches/some-pkg.patch',
+      })
     })
   })
 

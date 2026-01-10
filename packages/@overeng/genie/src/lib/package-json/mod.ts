@@ -736,14 +736,33 @@ type BunRootConfig<
   TWorkspace extends readonly string[],
 > = BasePackageJsonFields &
   TypedDepsConfig<TCatalog, TWorkspace> & {
-    /** Workspace configuration with catalog */
-    workspaces?: string[] | { packages?: string[]; catalog?: TCatalog }
+    /**
+     * Workspace configuration with catalogs.
+     * https://bun.com/docs/pm/workspaces
+     * https://bun.com/docs/pm/catalogs
+     */
+    workspaces?: string[] | { packages?: string[]; catalog?: TCatalog; catalogs?: Record<string, Record<string, string>> }
     /** Packages allowed to run lifecycle scripts (Bun-specific, root-only) */
     trustedDependencies?: string[]
     /** Override dependency versions (npm-style) */
     overrides?: Record<string, string>
     /** Override dependency versions (Yarn-style) */
     resolutions?: Record<string, string>
+    /**
+     * Patched dependency map for Bun.
+     * https://bun.com/docs/pm/cli/patch
+     */
+    patchedDependencies?: Record<string, string>
+    /**
+     * Bun version catalog (top-level).
+     * https://bun.com/docs/pm/catalogs
+     */
+    catalog?: Record<string, string>
+    /**
+     * Bun named version catalogs (top-level).
+     * https://bun.com/docs/pm/catalogs
+     */
+    catalogs?: Record<string, Record<string, string>>
   }
 
 /** Bun workspace package config - excludes root-only fields */
