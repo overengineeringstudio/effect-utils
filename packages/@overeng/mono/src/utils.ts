@@ -3,9 +3,9 @@ import type { PlatformError } from '@effect/platform/Error'
 import type { Scope } from 'effect'
 import { Console, Effect } from 'effect'
 
-import { CurrentWorkingDirectory, cmd, cmdStart } from '@overeng/utils/node'
+import { cmd, cmdStart, CurrentWorkingDirectory } from '@overeng/utils/node'
 
-import { CommandError } from './errors.js'
+import { CommandError } from './errors.ts'
 
 /** True when running in CI environments (GitHub Actions, CI=true) */
 export const IS_CI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true'

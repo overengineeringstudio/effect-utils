@@ -16,8 +16,8 @@ pnpm v10 uses two state files in `node_modules/`:
 Stores pnpm configuration, NOT symlink targets:
 
 ```yaml
-layoutVersion: 5          # node_modules structure version
-nodeLinker: isolated      # isolated, hoisted, or pnp
+layoutVersion: 5 # node_modules structure version
+nodeLinker: isolated # isolated, hoisted, or pnp
 packageManager: pnpm@10.17.1
 prunedAt: Wed, 07 Jan 2026 18:23:02 GMT
 storeDir: /Users/.../pnpm/store/v10

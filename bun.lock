@@ -234,6 +234,27 @@
         "effect": "^3.19.14",
       },
     },
+    "packages/@overeng/mono": {
+      "name": "@overeng/mono",
+      "version": "0.1.0",
+      "dependencies": {
+        "@effect/cli": "catalog:",
+        "@effect/platform": "catalog:",
+        "@effect/platform-node": "catalog:",
+        "@overeng/utils": "workspace:*",
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "@types/node": "catalog:",
+        "typescript": "catalog:",
+      },
+      "peerDependencies": {
+        "@effect/cli": "^0.73.0",
+        "@effect/platform": "^0.94.1",
+        "@effect/platform-node": "^0.104.0",
+        "effect": "^3.19.14",
+      },
+    },
     "packages/@overeng/notion-cli": {
       "name": "@overeng/notion-cli",
       "version": "0.1.0",
@@ -394,6 +415,7 @@
         "@effect/platform": "catalog:",
         "@effect/platform-node": "catalog:",
         "@overeng/genie": "workspace:*",
+        "@overeng/mono": "workspace:*",
         "@overeng/utils": "workspace:*",
         "effect": "catalog:",
       },
@@ -778,6 +800,8 @@
     "@overeng/effect-schema-form-aria": ["@overeng/effect-schema-form-aria@workspace:packages/@overeng/effect-schema-form-aria"],
 
     "@overeng/genie": ["@overeng/genie@workspace:packages/@overeng/genie"],
+
+    "@overeng/mono": ["@overeng/mono@workspace:packages/@overeng/mono"],
 
     "@overeng/notion-cli": ["@overeng/notion-cli@workspace:packages/@overeng/notion-cli"],
 

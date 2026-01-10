@@ -1,8 +1,3 @@
-export { buildCommand } from './build.js'
-export { checkCommand } from './check.js'
-export { cleanCommand } from './clean.js'
+/** Custom commands specific to effect-utils (not part of @overeng/mono) */
 export { contextCommand } from './context.js'
-export { lintCommand } from './lint.js'
 export { nixCommand } from './nix.js'
-export { testCommand } from './test.js'
-export { tsCommand } from './ts.js'

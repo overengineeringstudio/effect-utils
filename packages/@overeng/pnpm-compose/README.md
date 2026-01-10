@@ -345,7 +345,7 @@ git submodule add git@github.com:overengineeringstudio/effect-utils.git submodul
 
 ```ts
 export default {
-  exclude: ['submodules/docs'],  // Paths to skip
+  exclude: ['submodules/docs'], // Paths to skip
 }
 ```
 

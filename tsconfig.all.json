@@ -16,6 +16,9 @@
       "path": "./packages/@overeng/genie"
     },
     {
+      "path": "./packages/@overeng/mono"
+    },
+    {
       "path": "./packages/@overeng/notion-effect-schema"
     },
     {

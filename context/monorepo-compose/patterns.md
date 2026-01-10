@@ -20,8 +20,8 @@ Parent repos extend children by importing and spreading their exports:
 import { catalog as childCatalog } from './submodules/effect-utils/genie/repo.ts'
 
 export const catalog = {
-  ...childCatalog,        // Inherit all child packages
-  'my-package': '1.0.0',  // Add parent-specific packages
+  ...childCatalog, // Inherit all child packages
+  'my-package': '1.0.0', // Add parent-specific packages
 } as const
 ```
 
@@ -80,8 +80,8 @@ export default tsconfigJSON({
   extends: '../../../tsconfig.base.json',
   compilerOptions: {
     ...packageTsconfigCompilerOptions,
-    ...domLib,      // If browser code
-    ...reactJsx,    // If React code
+    ...domLib, // If browser code
+    ...reactJsx, // If React code
   },
   include: ['src'],
 })

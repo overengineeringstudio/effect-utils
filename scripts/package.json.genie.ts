@@ -9,6 +9,7 @@ export default pkg.package({
     '@effect/platform',
     '@effect/platform-node',
     '@overeng/genie',
+    '@overeng/mono',
     '@overeng/utils',
     'effect',
   ],

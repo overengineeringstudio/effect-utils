@@ -12,4 +12,9 @@ export default tsconfigJSON({
   },
   include: ['**/*.ts'],
   exclude: ['*.genie.ts'],
+  references: [
+    { path: '../packages/@overeng/genie' },
+    { path: '../packages/@overeng/mono' },
+    { path: '../packages/@overeng/utils' },
+  ],
 })

@@ -27,10 +27,7 @@ Typically used with a `genie/repo.ts` file:
 
 ```ts
 // genie/repo.ts
-export const workspacePackages = [
-  'packages/*',
-  'apps/*',
-] as const
+export const workspacePackages = ['packages/*', 'apps/*'] as const
 
 export const catalog = {
   effect: '3.12.0',
@@ -40,8 +37,5 @@ export const catalog = {
   // ...
 }
 
-export const onlyBuiltDependencies = [
-  'esbuild',
-  '@esbuild/*',
-] as const
+export const onlyBuiltDependencies = ['esbuild', '@esbuild/*'] as const
 ```

@@ -2,7 +2,7 @@ import { Command, Options } from '@effect/cli'
 import { Command as PlatformCommand, FileSystem } from '@effect/platform'
 import { Chunk, Console, Effect, Schema, Stream } from 'effect'
 
-import { runCommand } from './utils.js'
+import { runCommand } from '@overeng/mono'
 
 /** Error when hash extraction fails during nix build */
 class HashExtractionError extends Schema.TaggedError<HashExtractionError>()('HashExtractionError', {

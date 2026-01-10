@@ -196,7 +196,7 @@ Same as pnpm-compose, reuse existing config:
 // bun-compose.config.ts (or reuse pnpm-compose.config.ts)
 export default {
   exclude: [
-    'submodules/effect',    // Reference-only
+    'submodules/effect', // Reference-only
     'submodules/mautrix-x', // Reference-only
   ],
 }

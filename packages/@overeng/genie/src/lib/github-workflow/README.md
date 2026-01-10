@@ -16,10 +16,7 @@ export default githubWorkflow({
   jobs: {
     test: {
       'runs-on': 'ubuntu-latest',
-      steps: [
-        { uses: 'actions/checkout@v4' },
-        { run: 'npm test' },
-      ],
+      steps: [{ uses: 'actions/checkout@v4' }, { run: 'npm test' }],
     },
   },
 })

@@ -93,7 +93,7 @@ import { catalog as effectUtilsCatalog } from './submodules/effect-utils/genie/r
 
 export const catalog = {
   ...effectUtilsCatalog,
-  'my-special-package': '1.0.0',  // Only add packages NOT in effect-utils
+  'my-special-package': '1.0.0', // Only add packages NOT in effect-utils
 } as const
 
 export const pkg = createPackageJson({
@@ -126,7 +126,7 @@ export default pkg({
   version: '1.0.0',
   type: 'module',
   exports: { '.': './src/mod.ts' },
-  dependencies: ['effect', '@effect/platform'],  // Typos cause compile errors!
+  dependencies: ['effect', '@effect/platform'], // Typos cause compile errors!
   devDependencies: ['typescript', 'vitest'],
 })
 ```

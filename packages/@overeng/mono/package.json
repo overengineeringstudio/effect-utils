@@ -1,19 +1,33 @@
 {
-  "name": "effect-utils-scripts",
+  "name": "@overeng/mono",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": "./src/mod.ts"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": "./dist/mod.js"
+    }
+  },
   "dependencies": {
     "@effect/cli": "catalog:",
     "@effect/platform": "catalog:",
     "@effect/platform-node": "catalog:",
-    "@overeng/genie": "workspace:*",
-    "@overeng/mono": "workspace:*",
     "@overeng/utils": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",
     "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "@effect/cli": "^0.73.0",
+    "@effect/platform": "^0.94.1",
+    "@effect/platform-node": "^0.104.0",
+    "effect": "^3.19.14"
   },
   "$genie": {
     "source": "package.json.genie.ts",
