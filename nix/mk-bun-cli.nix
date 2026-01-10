@@ -69,6 +69,8 @@ let
 
     buildPhase = ''
       export HOME=$TMPDIR
+      # Ensure devDependencies are available for TypeScript typechecking.
+      export NODE_ENV=development
       bun install
 
       # Capture workspace package deps so the CLI build can resolve them in Nix.
