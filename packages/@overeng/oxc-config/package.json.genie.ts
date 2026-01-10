@@ -8,5 +8,12 @@ export default pkg.package({
     './fmt': './fmt.jsonc',
     './plugin': './src/mod.ts',
   },
-  devDependencies: ['@types/eslint', 'eslint', 'typescript', 'typescript-eslint', 'vitest'],
+  devDependencies: [
+    '@types/eslint',
+    '@typescript-eslint/parser',
+    '@typescript-eslint/rule-tester',
+    'eslint',
+    'typescript',
+    'vitest',
+  ],
 })

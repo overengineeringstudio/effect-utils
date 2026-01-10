@@ -17,7 +17,19 @@ import { exportsFirstRule } from './exports-first.ts'
 import { jsdocRequireExportsRule } from './jsdoc-require-exports.ts'
 import { namedArgsRule } from './named-args.ts'
 
-const plugin = {
+type Plugin = {
+  readonly meta: {
+    readonly name: string
+    readonly version: string
+  }
+  readonly rules: {
+    readonly 'exports-first': typeof exportsFirstRule
+    readonly 'jsdoc-require-exports': typeof jsdocRequireExportsRule
+    readonly 'named-args': typeof namedArgsRule
+  }
+}
+
+const plugin: Plugin = {
   meta: {
     name: 'overeng',
     version: '0.1.0',

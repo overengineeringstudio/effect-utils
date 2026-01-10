@@ -79,8 +79,11 @@ export const catalog = {
   'happy-dom': '18.0.1',
 
   // Linting
-  eslint: '9.28.0',
-  'typescript-eslint': '8.34.0',
+  /** Kept for rule-tester/types used by our custom lint rules even though runtime linting is oxlint. */
+  eslint: '9.39.2',
+  '@typescript-eslint/parser': '8.52.0',
+  '@typescript-eslint/rule-tester': '8.52.0',
+  'typescript-eslint': '8.52.0',
   oxfmt: '0.21.0',
   oxlint: '1.36.0',
 
@@ -183,7 +186,10 @@ export const effectUtilsPackages = {
  */
 export const createEffectUtilsRefs = (basePath: string) =>
   Object.fromEntries(
-    Object.entries(effectUtilsPackages).map(([key, pkgPath]) => [key, { path: `${basePath}/${pkgPath}` }]),
+    Object.entries(effectUtilsPackages).map(([key, pkgPath]) => [
+      key,
+      { path: `${basePath}/${pkgPath}` },
+    ]),
   ) as { [K in keyof typeof effectUtilsPackages]: { path: string } }
 
 /** Base tsconfig compiler options shared across all packages */

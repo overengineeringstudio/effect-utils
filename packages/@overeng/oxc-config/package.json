@@ -10,9 +10,10 @@
   },
   "devDependencies": {
     "@types/eslint": "catalog:",
+    "@typescript-eslint/parser": "catalog:",
+    "@typescript-eslint/rule-tester": "catalog:",
     "eslint": "catalog:",
     "typescript": "catalog:",
-    "typescript-eslint": "catalog:",
     "vitest": "catalog:"
   },
   "$genie": {

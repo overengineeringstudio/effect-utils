@@ -16,9 +16,10 @@
  * See: https://github.com/oxc-project/oxc/discussions/10342
  */
 
-import type { Rule, SourceCode } from 'eslint'
+import type { TSESLint, TSESTree } from '@typescript-eslint/utils'
 
-type ASTNode = Rule.Node
+type ASTNode = TSESTree.Node
+type RuleContext = Readonly<TSESLint.RuleContext<'missingJsdoc', []>>
 
 /**
  * Check if a node has an adjacent JSDoc comment (block comment starting with *).
@@ -27,7 +28,7 @@ type ASTNode = Rule.Node
  * This avoids attributing module-level doc comments to the first export.
  */
 // oxlint-disable-next-line overeng/named-args -- simple internal helper
-const hasJsDocComment = (node: ASTNode, sourceCode: SourceCode) => {
+const hasJsDocComment = (node: ASTNode, sourceCode: Readonly<TSESLint.SourceCode>) => {
   const comments = sourceCode.getCommentsBefore(node)
   const nodeStartLine = node.loc?.start.line
   if (nodeStartLine === undefined) return false
@@ -146,7 +147,7 @@ const getExportDescription = (node: ASTNode) => {
 }
 
 /** ESLint rule requiring JSDoc comments on exported declarations */
-export const jsdocRequireExportsRule: Rule.RuleModule = {
+export const jsdocRequireExportsRule = {
   meta: {
     type: 'suggestion',
     docs: {
@@ -156,12 +157,14 @@ export const jsdocRequireExportsRule: Rule.RuleModule = {
     messages: {
       missingJsdoc: "Missing JSDoc comment for exported '{{name}}'.",
     },
-  },
-  create(context) {
-    const sourceCode = context.sourceCode ?? context.getSourceCode()
+    schema: [],
+  } as const,
+  defaultOptions: [],
+  create(context: RuleContext) {
+    const { sourceCode } = context
 
     return {
-      ExportAllDeclaration(node) {
+      ExportAllDeclaration(node: ASTNode) {
         // Only require JSDoc for named namespace exports: export * as name from '...'
         // Plain re-exports (export * from '...') don't need JSDoc
         const n = node as any
@@ -176,7 +179,7 @@ export const jsdocRequireExportsRule: Rule.RuleModule = {
         }
       },
 
-      ExportNamedDeclaration(node) {
+      ExportNamedDeclaration(node: ASTNode) {
         if (!isExportRequiringJsDoc(node)) return
 
         if (!hasJsDocComment(node, sourceCode)) {

@@ -135,7 +135,9 @@ export const exportsFirstRule = {
       exportAfterNonExport:
         'Exported declaration should come before non-exported declarations. Move this export above non-exported code.',
     },
+    schema: [],
   },
+  defaultOptions: [],
   create(context: any) {
     return {
       Program(programNode: any) {

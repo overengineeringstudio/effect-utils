@@ -172,7 +172,9 @@ export const namedArgsRule = {
       tooManyParams:
         '{{context}} has {{count}} parameters. Consider using named arguments: ({ param1, param2 }) => ...',
     },
+    schema: [],
   },
+  defaultOptions: [],
   create(context: any) {
     const checkFunction = (node: any) => {
       if (isCallback(node)) return
