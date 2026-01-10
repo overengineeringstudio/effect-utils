@@ -68,7 +68,7 @@
   },
   "type": "module",
   "scripts": {
-    "prepare": "effect-language-service patch || true"
+    "prepare": "bun ./node_modules/@effect/language-service/cli.js patch || true"
   },
   "devDependencies": {
     "@effect/cli": "catalog:",

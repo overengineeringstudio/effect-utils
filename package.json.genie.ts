@@ -10,7 +10,8 @@ export default pkg.root({
   type: 'module',
   patchedDependencies,
   scripts: {
-    prepare: 'effect-language-service patch || true',
+    /** Use bun directly so Nix builds don't rely on /usr/bin/env shebangs. */
+    prepare: 'bun ./node_modules/@effect/language-service/cli.js patch || true',
   },
   devDependencies: [
     // TODO get rid of lib deps from effect-utils root START
