@@ -66,6 +66,7 @@ type GenerateSuccess =
   | { _tag: 'created'; targetFilePath: string }
   | { _tag: 'updated'; targetFilePath: string }
   | { _tag: 'unchanged'; targetFilePath: string }
+  | { _tag: 'skipped'; targetFilePath: string; reason: string }
 
 /** Warning info for tsconfig references that don't match workspace dependencies */
 type TsconfigReferencesWarning = {
@@ -221,6 +222,7 @@ const ensureImportMapResolver = Effect.sync(() => {
 
   Bun.plugin({
     name: 'genie-import-map',
+    // Bun type definitions are not guaranteed inside Nix builds, so we keep a local shape.
     setup: (builder: BunPluginBuilder) => {
       builder.onResolve({ filter: /^#/ }, (args: BunResolveArgs) => {
         // Bun resolver hooks can't await promises, so import map resolution is sync.
@@ -306,13 +308,33 @@ const findGenieFiles = (dir: string) =>
       })
 
     const files = yield* walk(dir)
+    const seen = new Set<string>()
+    const uniqueFiles: string[] = []
+
+    for (const file of files) {
+      const resolvedPath = yield* fs.realPath(file).pipe(
+        Effect.catchTag('SystemError', (e) => {
+          warnings.push(`Skipping ${file}: ${e.message}`)
+          return Effect.succeed(null)
+        }),
+        Effect.catchTag('BadArgument', (e) => {
+          warnings.push(`Skipping ${file}: ${e.message}`)
+          return Effect.succeed(null)
+        }),
+      )
+
+      if (resolvedPath === null) continue
+      if (seen.has(resolvedPath)) continue
+      seen.add(resolvedPath)
+      uniqueFiles.push(resolvedPath)
+    }
 
     // Log warnings about skipped files
     for (const warning of warnings) {
       yield* Effect.logWarning(warning)
     }
 
-    return files
+    return uniqueFiles
   }).pipe(Effect.withSpan('findGenieFiles'))
 
 /**
@@ -413,8 +435,16 @@ const generateFile = ({
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const targetFilePath = genieFilePath.replace('.genie.ts', '')
+    const targetDir = path.dirname(targetFilePath)
 
     const { content: fileContentString } = yield* getExpectedContent(genieFilePath)
+
+    const targetDirExists = yield* fs.exists(targetDir)
+    if (!targetDirExists) {
+      const reason = `Parent directory missing: ${targetDir}`
+      yield* Effect.logWarning(`Skipping ${targetFilePath}: ${reason}`)
+      return { _tag: 'skipped', targetFilePath, reason } as const
+    }
 
     // Check if file exists and get current content
     const fileExists = yield* fs.exists(targetFilePath)
@@ -442,6 +472,10 @@ const generateFile = ({
     }
 
     // Actually write the file
+    if (fileExists) {
+      yield* fs.chmod(targetFilePath, 0o644).pipe(Effect.catchAll(() => Effect.void))
+    }
+
     yield* fs.remove(targetFilePath, { force: true })
     yield* fs.writeFileString(targetFilePath, fileContentString)
 
@@ -637,6 +671,7 @@ const logTsconfigWarnings = (warnings: TsconfigReferencesWarning[]) =>
  *   ✓ 2 created
  *   ✓ 1 updated
  *   · 30 unchanged
+ *   · 1 skipped
  *   ✗ 1 failed:
  *     - packages/foo/package.json: Failed to generate packages/foo/package.json: Import failed
  * ```
@@ -652,6 +687,7 @@ const summarizeResults = ({
     const created = successes.filter((s) => s._tag === 'created')
     const updated = successes.filter((s) => s._tag === 'updated')
     const unchanged = successes.filter((s) => s._tag === 'unchanged')
+    const skipped = successes.filter((s) => s._tag === 'skipped')
     const total = successes.length + failures.length
 
     yield* Effect.log('')
@@ -666,6 +702,9 @@ const summarizeResults = ({
     if (unchanged.length > 0) {
       yield* Effect.log(`  · ${unchanged.length} unchanged`)
     }
+    if (skipped.length > 0) {
+      yield* Effect.log(`  · ${skipped.length} skipped`)
+    }
     if (failures.length > 0) {
       yield* Effect.logError(`  ✗ ${failures.length} failed:`)
       for (const f of failures) {
@@ -677,6 +716,7 @@ const summarizeResults = ({
       created: created.length,
       updated: updated.length,
       unchanged: unchanged.length,
+      skipped: skipped.length,
       failed: failures.length,
     }
   })
