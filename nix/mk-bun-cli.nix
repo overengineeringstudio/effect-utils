@@ -8,6 +8,8 @@
   packageJsonPath,
   bunDepsHash,
   gitRev ? "unknown",
+  typecheck ? true,
+  typecheckTsconfig ? "${builtins.dirOf packageJsonPath}/tsconfig.json",
   depFiles ? pkgs.lib.fileset.toSource {
     root = src;
     fileset = pkgs.lib.fileset.unions [
@@ -57,6 +59,8 @@ pkgs.stdenv.mkDerivation {
   nativeBuildInputs = [
     pkgsUnstable.bun
     pkgs.cacert
+  ] ++ pkgs.lib.optionals typecheck [
+    pkgsUnstable.typescript-go
   ];
 
   dontStrip = true;
@@ -72,6 +76,16 @@ pkgs.stdenv.mkDerivation {
     export BUN_INSTALL="$PWD/.bun"
     export BUN_TMPDIR="$PWD/.bun-tmp"
     mkdir -p "$HOME" "$BUN_INSTALL" "$BUN_TMPDIR"
+
+    ${pkgs.lib.optionalString typecheck ''
+      if [ ! -f "${typecheckTsconfig}" ]; then
+        echo "TypeScript config not found: ${typecheckTsconfig}" >&2
+        exit 1
+      fi
+
+      echo "Running TypeScript typecheck (tsgo)..."
+      tsgo --project "${typecheckTsconfig}" --noEmit
+    ''}
 
     build_output="$TMPDIR/${binaryName}"
     substituteInPlace "${entry}" \

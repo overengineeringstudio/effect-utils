@@ -10,6 +10,7 @@ mkBunCli {
   entry = "packages/@overeng/bun-compose/src/cli.ts";
   binaryName = "bun-compose";
   packageJsonPath = "packages/@overeng/bun-compose/package.json";
-  bunDepsHash = "sha256-QoYHZF4cUW57wGPes0QXDNP8t8yge0jDB5inphfj0SA=";
+  typecheckTsconfig = "packages/@overeng/bun-compose/tsconfig.json";
+  bunDepsHash = "sha256-w/fwaMErKoSGw43ZNA6FvgzNKHm/zli4qqSRj0L+wCc=";
   inherit gitRev;
 }

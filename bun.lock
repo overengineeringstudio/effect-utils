@@ -10,6 +10,7 @@
         "@effect/platform": "catalog:",
         "@effect/platform-node": "catalog:",
         "@effect/rpc": "catalog:",
+        "@effect/vitest": "catalog:",
         "@overeng/utils": "workspace:*",
         "@playwright/test": "catalog:",
         "effect": "catalog:",
@@ -401,6 +402,9 @@
         "typescript": "catalog:",
       },
     },
+  },
+  "patchedDependencies": {
+    "effect-distributed-lock@0.0.11": "patches/effect-distributed-lock@0.0.11.patch",
   },
   "catalog": {
     "@effect-atom/atom": "0.4.11",

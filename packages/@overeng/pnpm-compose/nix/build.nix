@@ -10,6 +10,7 @@ mkBunCli {
   entry = "packages/@overeng/pnpm-compose/src/cli.ts";
   binaryName = "pnpm-compose";
   packageJsonPath = "packages/@overeng/pnpm-compose/package.json";
+  typecheckTsconfig = "packages/@overeng/pnpm-compose/tsconfig.json";
   bunDepsHash = "sha256-QoYHZF4cUW57wGPes0QXDNP8t8yge0jDB5inphfj0SA=";
   inherit gitRev;
 }

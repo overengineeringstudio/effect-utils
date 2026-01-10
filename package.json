@@ -76,6 +76,7 @@
     "@effect/platform": "catalog:",
     "@effect/platform-node": "catalog:",
     "@effect/rpc": "catalog:",
+    "@effect/vitest": "catalog:",
     "@overeng/utils": "workspace:*",
     "@playwright/test": "catalog:",
     "effect": "catalog:",

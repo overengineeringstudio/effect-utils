@@ -19,6 +19,7 @@ export default pkg.root({
     '@effect/platform',
     '@effect/platform-node',
     '@effect/rpc',
+    '@effect/vitest',
     '@overeng/utils',
     'effect',
     // TODO get rid of lib deps from effect-utils root END

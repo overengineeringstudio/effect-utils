@@ -27,12 +27,14 @@
               name = "genie";
               entry = "packages/@overeng/genie/src/cli.ts";
               packageJsonPath = "packages/@overeng/genie/package.json";
+              typecheckTsconfig = "packages/@overeng/genie/tsconfig.json";
               bunDepsHash = "sha256-QoYHZF4cUW57wGPes0QXDNP8t8yge0jDB5inphfj0SA=";
             };
             pnpm-compose = {
               name = "pnpm-compose";
               entry = "packages/@overeng/pnpm-compose/src/cli.ts";
               packageJsonPath = "packages/@overeng/pnpm-compose/package.json";
+              typecheckTsconfig = "packages/@overeng/pnpm-compose/tsconfig.json";
               bunDepsHash = "sha256-QoYHZF4cUW57wGPes0QXDNP8t8yge0jDB5inphfj0SA=";
             };
           };

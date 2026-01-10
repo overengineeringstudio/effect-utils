@@ -747,7 +747,13 @@ type BunRootConfig<
      * https://bun.com/docs/pm/workspaces
      * https://bun.com/docs/pm/catalogs
      */
-    workspaces?: string[] | { packages?: string[]; catalog?: TCatalog; catalogs?: Record<string, Record<string, string>> }
+    workspaces?:
+      | string[]
+      | {
+          packages?: string[]
+          catalog?: TCatalog
+          catalogs?: Record<string, Record<string, string>>
+        }
     /** Packages allowed to run lifecycle scripts (Bun-specific, root-only) */
     trustedDependencies?: string[]
     /** Override dependency versions (npm-style) */

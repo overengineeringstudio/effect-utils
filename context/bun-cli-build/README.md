@@ -11,6 +11,8 @@ submodule or flake input.
 - Versioning: reads `packageJsonPath` for base version, appends `+<gitRev>`
 - Injection: defines `__CLI_VERSION__` at build time
 - Deps: fixed-output bun deps (`bunDepsHash`)
+- Typecheck: runs `tsgo --project <tsconfig> --noEmit` when `typecheck = true`
+- Default `typecheckTsconfig`: same directory as `packageJsonPath`
 
 ## CLI Version Pattern
 
@@ -33,6 +35,9 @@ mkBunCli {
   entry = "packages/@overeng/genie/src/cli.ts";
   packageJsonPath = "packages/@overeng/genie/package.json";
   bunDepsHash = "sha256-...";
+  # Optional (defaults shown)
+  typecheck = true;
+  typecheckTsconfig = "packages/@overeng/genie/tsconfig.json";
   gitRev = self.sourceInfo.dirtyShortRev or self.sourceInfo.shortRev or self.sourceInfo.rev or "unknown";
 }
 ```
