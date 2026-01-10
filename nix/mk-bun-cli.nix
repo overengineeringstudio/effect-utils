@@ -31,7 +31,15 @@ let
 
     src = depFiles;
 
-    nativeBuildInputs = [ pkgsUnstable.bun pkgs.cacert ];
+    # Optional native deps (e.g. msgpackr-extract) need a basic toolchain in the Nix sandbox.
+    nativeBuildInputs = [
+      pkgsUnstable.bun
+      pkgs.cacert
+      pkgs.gnumake
+      pkgs.pkg-config
+      pkgs.python3
+      pkgs.stdenv.cc.cc
+    ];
 
     outputHashMode = "recursive";
     outputHashAlgo = "sha256";
@@ -39,28 +47,7 @@ let
 
     buildPhase = ''
       export HOME=$TMPDIR
-      set +e
-      bun install 2>&1 | tee bun-install.log
-      status=''${PIPESTATUS[0]}
-      set -e
-
-      if [ "$status" -ne 0 ]; then
-        echo "bun install failed with exit code $status" >&2
-        echo "=== bun install log (tail) ===" >&2
-        tail -n 200 bun-install.log || true
-        echo "=== bun install log (grep error) ===" >&2
-        grep -nE "error|ERR|failed|Failure" bun-install.log || true
-        echo "=== bun install verbose (retry) ===" >&2
-        set +e
-        bun install --verbose --no-progress --no-summary 2>&1 | tee bun-install-verbose.log
-        vstatus=''${PIPESTATUS[0]}
-        set -e
-        echo "=== bun install verbose log (tail) ===" >&2
-        tail -n 200 bun-install-verbose.log || true
-        echo "=== bun install verbose log (grep error) ===" >&2
-        grep -nE "error|ERR|failed|Failure" bun-install-verbose.log || true
-        exit "$status"
-      fi
+      bun install
     '';
 
     installPhase = ''

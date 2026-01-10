@@ -17,6 +17,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **Nix**: Add native build tooling to Bun CLI deps so optional native installs (e.g. `msgpackr-extract`) succeed in sandboxed builds
+
 - **@overeng/utils**: Updated `effect-distributed-lock` to 0.0.11 and patched root exports to avoid loading optional `ioredis` (see https://github.com/ethanniser/effect-distributed-lock/issues/10)
 
 - **@overeng/notion-effect-cli**: Migrated config from JSON to TypeScript (breaking change)
