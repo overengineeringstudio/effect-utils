@@ -11,7 +11,7 @@ mkBunCli {
   binaryName = "pnpm-compose";
   packageJsonPath = "packages/@overeng/pnpm-compose/package.json";
   typecheckTsconfig = "packages/@overeng/pnpm-compose/tsconfig.json";
-  bunDepsHash = "sha256-nMZuNrcnOx0pOKwf3PXco270kANpmhAG1od+BLgGjxk=";
+  bunDepsHash = "sha256-JtxYAEufsrrbYZA5OdZzaWRpgvawnOMwmht+98DDHSQ=";
   workspaceDeps = [
     { name = "@overeng/utils"; path = "packages/@overeng/utils"; }
   ];

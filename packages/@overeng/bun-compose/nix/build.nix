@@ -11,7 +11,7 @@ mkBunCli {
   binaryName = "bun-compose";
   packageJsonPath = "packages/@overeng/bun-compose/package.json";
   typecheckTsconfig = "packages/@overeng/bun-compose/tsconfig.json";
-  bunDepsHash = "sha256-QoYHZF4cUW57wGPes0QXDNP8t8yge0jDB5inphfj0SA=";
+  bunDepsHash = "sha256-QN7v+jta6MyYNmpv+RV9hEsCldnKKpoEzcz3PP14ebg=";
   workspaceDeps = [
     { name = "@overeng/utils"; path = "packages/@overeng/utils"; }
   ];

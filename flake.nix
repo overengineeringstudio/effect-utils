@@ -35,7 +35,7 @@
               entry = "packages/@overeng/genie/src/cli.ts";
               packageJsonPath = "packages/@overeng/genie/package.json";
               typecheckTsconfig = "packages/@overeng/genie/tsconfig.json";
-              bunDepsHash = "sha256-VmdyMlCwsJrXtHEAlGoAdSn5kAB86wCH01SRhhTQ33w=";
+              bunDepsHash = "sha256-JtxYAEufsrrbYZA5OdZzaWRpgvawnOMwmht+98DDHSQ=";
               workspaceDeps = [
                 { name = "@overeng/utils"; path = "packages/@overeng/utils"; }
               ];
@@ -45,7 +45,7 @@
               entry = "packages/@overeng/pnpm-compose/src/cli.ts";
               packageJsonPath = "packages/@overeng/pnpm-compose/package.json";
               typecheckTsconfig = "packages/@overeng/pnpm-compose/tsconfig.json";
-              bunDepsHash = "sha256-nMZuNrcnOx0pOKwf3PXco270kANpmhAG1od+BLgGjxk=";
+              bunDepsHash = "sha256-JtxYAEufsrrbYZA5OdZzaWRpgvawnOMwmht+98DDHSQ=";
               workspaceDeps = [
                 { name = "@overeng/utils"; path = "packages/@overeng/utils"; }
               ];

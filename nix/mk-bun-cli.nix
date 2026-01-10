@@ -69,8 +69,12 @@ let
 
     buildPhase = ''
       export HOME=$TMPDIR
-      # Ensure devDependencies are available for TypeScript typechecking.
+      # Force dev dependencies in Nix builds; Bun honors npm env flags.
       export NODE_ENV=development
+      export NPM_CONFIG_PRODUCTION=false
+      export npm_config_production=false
+      export NPM_CONFIG_OMIT=
+      export npm_config_omit=
       bun install
 
       # Capture workspace package deps so the CLI build can resolve them in Nix.

@@ -25,6 +25,7 @@ export default pkg.root({
     // TODO get rid of lib deps from effect-utils root END
     'oxfmt',
     'oxlint',
+    '@types/bun',
     'typescript',
     'vitest',
     // For `playwright` CLI to be available in the dev shell

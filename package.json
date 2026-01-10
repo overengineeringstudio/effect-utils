@@ -83,6 +83,7 @@
     "effect": "catalog:",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",
+    "@types/bun": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   },

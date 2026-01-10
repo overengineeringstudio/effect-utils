@@ -197,6 +197,20 @@ const normalizeImporterPath = (importer: string): string | undefined => {
   return importer
 }
 
+type BunResolveArgs = {
+  importer: string
+  path: string
+}
+
+type BunResolveResult = { path: string } | undefined
+
+type BunPluginBuilder = {
+  onResolve: (
+    options: { filter: RegExp },
+    handler: (args: BunResolveArgs) => BunResolveResult,
+  ) => void
+}
+
 /**
  * Register a Bun import resolver so `#...` specifiers use the import map closest
  * to the importing file. This avoids temp file generation and fixes transitive imports.
@@ -207,8 +221,8 @@ const ensureImportMapResolver = Effect.gen(function* () {
 
   Bun.plugin({
     name: 'genie-import-map',
-    setup: (builder) => {
-      builder.onResolve({ filter: /^#/ }, (args) => {
+    setup: (builder: BunPluginBuilder) => {
+      builder.onResolve({ filter: /^#/ }, (args: BunResolveArgs) => {
         // Bun resolver hooks can't await promises, so import map resolution is sync.
         const importerPath = normalizeImporterPath(args.importer)
         if (importerPath === undefined) {

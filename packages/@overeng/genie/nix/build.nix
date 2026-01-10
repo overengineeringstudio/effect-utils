@@ -11,7 +11,7 @@ mkBunCli {
   binaryName = "genie";
   packageJsonPath = "packages/@overeng/genie/package.json";
   typecheckTsconfig = "packages/@overeng/genie/tsconfig.json";
-  bunDepsHash = "sha256-VmdyMlCwsJrXtHEAlGoAdSn5kAB86wCH01SRhhTQ33w=";
+  bunDepsHash = "sha256-JtxYAEufsrrbYZA5OdZzaWRpgvawnOMwmht+98DDHSQ=";
   workspaceDeps = [
     { name = "@overeng/utils"; path = "packages/@overeng/utils"; }
   ];
