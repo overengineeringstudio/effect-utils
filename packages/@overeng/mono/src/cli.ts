@@ -2,9 +2,11 @@ import { Command } from '@effect/cli'
 import type { FileSystem, Path, Terminal } from '@effect/platform'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import type * as CommandExecutor from '@effect/platform/CommandExecutor'
-import { Cause, Effect, Layer, Logger, LogLevel } from 'effect'
+import { Cause, Chunk, Console, Effect, Exit, Layer, Logger, LogLevel } from 'effect'
 
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
+
+import { CommandError, GenieCoverageError } from './errors.ts'
 
 // =============================================================================
 // Types
@@ -27,6 +29,11 @@ export type StandardMonoContext =
   | FileSystem.FileSystem
   | Path.Path
   | Terminal.Terminal
+
+const shouldSuggestLintFix = (args: readonly string[]): boolean => {
+  const argSet = new Set(args)
+  return argSet.has('lint') && !argSet.has('--fix')
+}
 
 /**
  * Command type for mono CLI subcommands.
@@ -71,6 +78,53 @@ export const runMonoCli = (
     commands: readonly [MonoCommand, ...MonoCommand[]]
   },
 ): void => {
+  const shouldShowLintFixHint = shouldSuggestLintFix(process.argv.slice(2))
+
+  const renderFailure = (failure: unknown): string => {
+    if (failure instanceof CommandError) {
+      const details = failure.message.trim()
+      const showDetails = details.length > 0 && !(details.startsWith('{') && details.endsWith('}'))
+
+      if (showDetails) {
+        return `Command failed: ${failure.command}\n  ${details}`
+      }
+      return `Command failed: ${failure.command}`
+    }
+
+    if (failure instanceof GenieCoverageError) {
+      return failure.message
+    }
+
+    if (failure instanceof Error) {
+      return failure.message.length > 0 ? failure.message : String(failure)
+    }
+
+    return String(failure)
+  }
+
+  const reportFailure = (cause: Cause.Cause<unknown>) =>
+    Effect.gen(function* () {
+      if (Cause.isInterruptedOnly(cause)) {
+        return
+      }
+
+      const failures = Chunk.toReadonlyArray(Cause.failures(cause))
+      if (failures.length > 0) {
+        const message = failures.map(renderFailure).join('\n\n')
+        yield* Console.error(message)
+      } else {
+        yield* Console.error(Cause.pretty(cause, { renderErrorCause: true }))
+      }
+
+      if (shouldShowLintFixHint) {
+        yield* Console.error("Hint: run 'mono lint --fix' to auto-fix formatting and lint issues.")
+      }
+
+      yield* Effect.sync(() => {
+        process.exitCode = 1
+      })
+    })
+
   const command = Command.make(config.name).pipe(
     Command.withSubcommands(config.commands),
     Command.withDescription(config.description),
@@ -82,13 +136,13 @@ export const runMonoCli = (
   })
 
   const program = cli(process.argv).pipe(
-    Effect.catchAllCause((cause) => {
-      if (Cause.isInterruptedOnly(cause)) {
-        return Effect.void
-      }
-      // Log the error, then re-fail so runMain exits with non-zero code
-      return Effect.logError(cause).pipe(Effect.andThen(Effect.failCause(cause)))
-    }),
+    Effect.exit,
+    Effect.flatMap(
+      Exit.matchEffect({
+        onFailure: reportFailure,
+        onSuccess: () => Effect.void,
+      }),
+    ),
     Effect.provide(
       Layer.mergeAll(
         NodeContext.layer,

@@ -9,8 +9,8 @@
 /** Base catalog type - a record of package names to version strings */
 export type CatalogInput = Record<string, string>
 
-/** Type-level brand for catalogs (phantom type - does not exist at runtime) */
-declare const CatalogBrand: unique symbol
+/** Type-level brand for catalogs (symbol is exported so it can be named in d.ts) */
+export const CatalogBrand = Symbol('CatalogBrand')
 
 /** Branded catalog type to distinguish validated catalogs */
 export type Catalog<T extends CatalogInput = CatalogInput> = Readonly<T> & {
@@ -27,35 +27,20 @@ export type ExtendedCatalogInput<TBase extends CatalogInput = CatalogInput> = {
 
 /** Error thrown when a catalog has conflicting version definitions */
 export class CatalogConflictError extends Error {
-  constructor(
-    public readonly packageName: string,
-    public readonly baseVersion: string,
-    public readonly newVersion: string,
-  ) {
+  public readonly packageName: string
+  public readonly baseVersion: string
+  public readonly newVersion: string
+
+  constructor(args: { packageName: string; baseVersion: string; newVersion: string }) {
+    const { packageName, baseVersion, newVersion } = args
     super(
       `Catalog conflict for "${packageName}": base has "${baseVersion}" but extending with "${newVersion}"`,
     )
+    this.packageName = packageName
+    this.baseVersion = baseVersion
+    this.newVersion = newVersion
     this.name = 'CatalogConflictError'
   }
-}
-
-/**
- * Check if input is an extended catalog configuration (has `extends` key).
- */
-const isExtendedInput = (
-  input: CatalogInput | ExtendedCatalogInput,
-): input is ExtendedCatalogInput => {
-  return 'extends' in input && 'packages' in input
-}
-
-/**
- * Normalize extends input to an array of catalogs.
- */
-const normalizeExtends = (extends_: Catalog | readonly Catalog[]): readonly Catalog[] => {
-  if (Array.isArray(extends_)) {
-    return extends_ as readonly Catalog[]
-  }
-  return [extends_] as readonly Catalog[]
 }
 
 /**
@@ -98,24 +83,30 @@ export function defineCatalog<const T extends CatalogInput>(input: T): Catalog<T
 export function defineCatalog<const TBase extends CatalogInput, const TNew extends CatalogInput>(
   input: ExtendedCatalogInput<TBase> & { packages: TNew },
 ): Catalog<TBase & TNew>
+/** Implementation for defineCatalog overloads (standalone or extended catalogs). */
 export function defineCatalog<const T extends CatalogInput>(
   input: T | ExtendedCatalogInput,
 ): Catalog<T> {
-  if (!isExtendedInput(input)) {
+  if (!('extends' in input && 'packages' in input)) {
     // Standalone catalog - just brand and freeze
     return Object.freeze(input) as Catalog<T>
   }
 
   // Extended catalog - merge and validate
-  const bases = normalizeExtends(input.extends)
+  const bases = Array.isArray(input.extends) ? input.extends : [input.extends]
   const merged: Record<string, string> = {}
 
   // Merge all base catalogs
   for (const base of bases) {
-    for (const [pkg, version] of Object.entries(base)) {
+    for (const pkg of Object.keys(base)) {
+      const version = base[pkg]
       if (pkg in merged && merged[pkg] !== version) {
         // Conflict between bases
-        throw new CatalogConflictError(pkg, merged[pkg]!, version)
+        throw new CatalogConflictError({
+          packageName: pkg,
+          baseVersion: merged[pkg]!,
+          newVersion: version,
+        })
       }
       merged[pkg] = version
     }
@@ -126,10 +117,16 @@ export function defineCatalog<const T extends CatalogInput>(
     if (pkg in merged) {
       if (merged[pkg] === version) {
         // Duplicate - warn but continue
-        console.warn(`[defineCatalog] Duplicate: "${pkg}@${version}" already defined in base catalog`)
+        console.warn(
+          `[defineCatalog] Duplicate: "${pkg}@${version}" already defined in base catalog`,
+        )
       } else {
         // Conflict - throw
-        throw new CatalogConflictError(pkg, merged[pkg]!, version)
+        throw new CatalogConflictError({
+          packageName: pkg,
+          baseVersion: merged[pkg]!,
+          newVersion: version,
+        })
       }
     }
     merged[pkg] = version

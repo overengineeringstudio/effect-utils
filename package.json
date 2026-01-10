@@ -80,10 +80,10 @@
     "@effect/vitest": "catalog:",
     "@overeng/utils": "workspace:*",
     "@playwright/test": "catalog:",
+    "@types/bun": "catalog:",
     "effect": "catalog:",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",
-    "@types/bun": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   },

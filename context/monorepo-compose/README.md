@@ -99,7 +99,10 @@ Create `genie/repo.ts`:
 
 ```ts
 import { createPackageJson } from '#genie/mod.ts'
-import { catalog as effectUtilsCatalog, baseTsconfigCompilerOptions } from '../submodules/effect-utils/genie/repo.ts'
+import {
+  catalog as effectUtilsCatalog,
+  baseTsconfigCompilerOptions,
+} from '../submodules/effect-utils/genie/repo.ts'
 
 export { baseTsconfigCompilerOptions }
 

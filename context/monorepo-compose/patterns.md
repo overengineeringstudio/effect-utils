@@ -87,8 +87,8 @@ export default tsconfigJSON({
   extends: '../../../tsconfig.base.json',
   compilerOptions: {
     ...packageTsconfigCompilerOptions,
-    lib: domLib,    // If browser code
-    ...reactJsx,    // If React code
+    lib: domLib, // If browser code
+    ...reactJsx, // If React code
   },
   include: ['src'],
 })

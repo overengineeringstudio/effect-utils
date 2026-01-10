@@ -544,7 +544,7 @@ const syncSubmoduleRootNodeModules = ({
         }
 
         const depPkg = yield* readPackageJson(depPkgPath)
-        for (const binName of resolveBinNames(depPkg, dep)) {
+        for (const binName of resolveBinNames({ pkg: depPkg, fallbackName: dep })) {
           expectedBins.add(binName)
           const binPath = path.join(rootBinDir, binName)
           const binExists = yield* fs.exists(binPath)
@@ -649,7 +649,13 @@ const readPackageJson = (packageJsonPath: string) =>
   })
 
 /** Resolve bin names for a dependency package. */
-const resolveBinNames = (pkg: RootPackageJson, fallbackName: string): string[] => {
+const resolveBinNames = ({
+  pkg,
+  fallbackName,
+}: {
+  pkg: RootPackageJson
+  fallbackName: string
+}): string[] => {
   const bin = pkg.bin
   if (!bin) return []
   if (typeof bin === 'string') {

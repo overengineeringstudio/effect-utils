@@ -3,6 +3,9 @@ import { tsconfigJSON } from './src/lib/mod.ts'
 
 export default tsconfigJSON({
   extends: '../../../tsconfig.base.json',
-  compilerOptions: packageTsconfigCompilerOptions,
+  compilerOptions: {
+    ...packageTsconfigCompilerOptions,
+    types: ['node', 'bun'],
+  },
   include: ['src/**/*.ts', 'bin/**/*.ts'],
 })

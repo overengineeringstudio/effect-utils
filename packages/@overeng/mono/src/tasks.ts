@@ -1,8 +1,8 @@
 import { FileSystem, Path } from '@effect/platform'
 import type { PlatformError } from '@effect/platform/Error'
-import { Effect } from 'effect'
+import { Cause, Effect } from 'effect'
 
-import { GenieCoverageError } from './errors.ts'
+import { CommandError, GenieCoverageError } from './errors.ts'
 import { runCommand } from './utils.ts'
 
 // =============================================================================
@@ -223,9 +223,33 @@ export const allLintChecks = ({
   oxcConfig: OxcConfig
   genieConfig: GenieCoverageConfig
 }) =>
-  Effect.all([formatCheck(oxcConfig), lintCheck(oxcConfig), checkGenieCoverage(genieConfig)], {
-    concurrency: 'unbounded',
-  }).pipe(Effect.withSpan('allLintChecks'))
+  Effect.all(
+    [
+      formatCheck(oxcConfig).pipe(Effect.exit),
+      lintCheck(oxcConfig).pipe(Effect.exit),
+      checkGenieCoverage(genieConfig).pipe(Effect.exit),
+    ],
+    {
+      concurrency: 'unbounded',
+    },
+  ).pipe(
+    Effect.flatMap((exits) => {
+      let combined: Cause.Cause<CommandError | GenieCoverageError | PlatformError> | undefined
+
+      for (const exit of exits) {
+        if (exit._tag === 'Failure') {
+          combined = combined === undefined ? exit.cause : Cause.parallel(combined, exit.cause)
+        }
+      }
+
+      if (combined === undefined) {
+        return Effect.void
+      }
+
+      return Effect.failCause(combined)
+    }),
+    Effect.withSpan('allLintChecks'),
+  )
 
 /** Create combined lint fixes: format + lint */
 export const allLintFixes = (oxcConfig: OxcConfig) =>

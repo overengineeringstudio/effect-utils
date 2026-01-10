@@ -2,7 +2,7 @@ import { Command } from '@effect/cli'
 import { FileSystem, Path } from '@effect/platform'
 import type * as CommandExecutor from '@effect/platform/CommandExecutor'
 import type { PlatformError } from '@effect/platform/Error'
-import { Console, Effect, Stream } from 'effect'
+import { Cause, Console, Effect, Exit, Stream } from 'effect'
 
 import { CurrentWorkingDirectory, printFinalSummary, TaskRunner } from '@overeng/utils/node'
 
@@ -46,19 +46,40 @@ export const checkCommandCI = (config: CheckCommandConfig) =>
   Effect.gen(function* () {
     yield* Console.log('Running all checks...\n')
 
+    const exits: Exit.Exit<void, CheckTaskError>[] = []
+
     for (const task of config.parallelTasks) {
       yield* ciGroup(task.name)
-      yield* task.task
+      const exit = yield* task.task.pipe(Effect.exit)
+      exits.push(exit)
       yield* ciGroupEnd
     }
 
     for (const task of config.sequentialTasks ?? []) {
       yield* ciGroup(task.name)
-      yield* task.task
+      const exit = yield* task.task.pipe(Effect.exit)
+      exits.push(exit)
       yield* ciGroupEnd
     }
 
-    yield* Console.log('\n✓ All checks passed')
+    const failures = exits.filter(Exit.isFailure)
+    if (failures.length === 0) {
+      yield* Console.log('\n✓ All checks passed')
+      return
+    }
+
+    const [firstFailure, ...restFailures] = failures
+    if (firstFailure === undefined) {
+      yield* Console.log('\n✓ All checks passed')
+      return
+    }
+
+    let combined = firstFailure.cause
+    for (const failure of restFailures) {
+      combined = Cause.parallel(combined, failure.cause)
+    }
+
+    return yield* Effect.failCause(combined)
   })
 
 /** Interactive mode: concurrent execution with TaskRunner for live output */

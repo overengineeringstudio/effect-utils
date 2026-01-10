@@ -76,6 +76,13 @@ export default oxlintConfig({
         'overeng/jsdoc-require-exports': 'off',
       },
     },
+    // App/router root files often rely on CSS side-effect imports
+    {
+      files: ['**/app/layout.tsx', '**/routes/__root.tsx'],
+      rules: {
+        'import/no-unassigned-import': 'off',
+      },
+    },
     // Allow CSS side-effect imports in storybook previews
     {
       files: ['**/.storybook/**'],
@@ -96,6 +103,22 @@ export default oxlintConfig({
       rules: {
         'overeng/named-args': 'off',
         'unicorn/no-array-sort': 'off',
+        'unicorn/consistent-function-scoping': 'off',
+      },
+    },
+    // Generated files should not be linted for style/structure rules
+    {
+      files: ['**/*.gen.*', '**/.contentlayer/**', '**/next-env.d.ts'],
+      rules: {
+        'func-style': 'off',
+        'import/no-commonjs': 'off',
+        'import/no-named-as-default': 'off',
+        'import/no-unassigned-import': 'off',
+        'oxc/no-barrel-file': 'off',
+        'oxc/no-map-spread': 'off',
+        'overeng/exports-first': 'off',
+        'overeng/jsdoc-require-exports': 'off',
+        'overeng/named-args': 'off',
         'unicorn/consistent-function-scoping': 'off',
       },
     },

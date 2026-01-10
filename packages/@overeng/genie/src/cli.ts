@@ -215,7 +215,7 @@ type BunPluginBuilder = {
  * Register a Bun import resolver so `#...` specifiers use the import map closest
  * to the importing file. This avoids temp file generation and fixes transitive imports.
  */
-const ensureImportMapResolver = Effect.gen(function* () {
+const ensureImportMapResolver = Effect.sync(() => {
   if (importMapResolverRegistered) return
   importMapResolverRegistered = true
 

@@ -92,5 +92,20 @@
         "unicorn/consistent-function-scoping": "off",
       },
     },
+    {
+      "files": ["**/*.gen.*", "**/.contentlayer/**", "**/next-env.d.ts"],
+      "rules": {
+        "func-style": "off",
+        "import/no-commonjs": "off",
+        "import/no-named-as-default": "off",
+        "import/no-unassigned-import": "off",
+        "oxc/no-barrel-file": "off",
+        "oxc/no-map-spread": "off",
+        "overeng/exports-first": "off",
+        "overeng/jsdoc-require-exports": "off",
+        "overeng/named-args": "off",
+        "unicorn/consistent-function-scoping": "off",
+      },
+    },
   ],
 }
