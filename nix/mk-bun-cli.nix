@@ -39,7 +39,28 @@ let
 
     buildPhase = ''
       export HOME=$TMPDIR
-      bun install
+      set +e
+      bun install 2>&1 | tee bun-install.log
+      status=''${PIPESTATUS[0]}
+      set -e
+
+      if [ "$status" -ne 0 ]; then
+        echo "bun install failed with exit code $status" >&2
+        echo "=== bun install log (tail) ===" >&2
+        tail -n 200 bun-install.log || true
+        echo "=== bun install log (grep error) ===" >&2
+        grep -nE "error|ERR|failed|Failure" bun-install.log || true
+        echo "=== bun install verbose (retry) ===" >&2
+        set +e
+        bun install --verbose --no-progress --no-summary 2>&1 | tee bun-install-verbose.log
+        vstatus=''${PIPESTATUS[0]}
+        set -e
+        echo "=== bun install verbose log (tail) ===" >&2
+        tail -n 200 bun-install-verbose.log || true
+        echo "=== bun install verbose log (grep error) ===" >&2
+        grep -nE "error|ERR|failed|Failure" bun-install-verbose.log || true
+        exit "$status"
+      fi
     '';
 
     installPhase = ''
