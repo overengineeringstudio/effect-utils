@@ -1,4 +1,4 @@
-import { FileSystem } from '@effect/platform'
+import { Error as PlatformError, FileSystem } from '@effect/platform'
 import { Effect, Schema } from 'effect'
 
 /** pnpm-compose configuration schema (optional) */
@@ -21,7 +21,13 @@ export interface ComposedRepo {
 }
 
 /** Load optional config from pnpm-compose.config.ts */
-export const loadConfig = (cwd: string) =>
+export const loadConfig = (
+  cwd: string,
+): Effect.Effect<
+  PnpmComposeConfig,
+  ConfigLoadError | ConfigValidationError | PlatformError.PlatformError,
+  FileSystem.FileSystem
+> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const configPath = `${cwd}/${CONFIG_FILE_NAME}`
@@ -47,7 +53,9 @@ export const loadConfig = (cwd: string) =>
   }).pipe(Effect.withSpan('loadConfig'))
 
 /** Parse .gitmodules file to extract submodule paths */
-export const parseGitmodules = (cwd: string) =>
+export const parseGitmodules = (
+  cwd: string,
+): Effect.Effect<ComposedRepo[], PlatformError.PlatformError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const gitmodulesPath = `${cwd}/.gitmodules`
@@ -84,7 +92,13 @@ export const parseGitmodules = (cwd: string) =>
   }).pipe(Effect.withSpan('parseGitmodules'))
 
 /** Detect composed repos from .gitmodules, filtered by exclude list */
-export const detectComposedRepos = (cwd: string) =>
+export const detectComposedRepos = (
+  cwd: string,
+): Effect.Effect<
+  ComposedRepo[],
+  ConfigLoadError | ConfigValidationError | PlatformError.PlatformError,
+  FileSystem.FileSystem
+> =>
   Effect.gen(function* () {
     const config = yield* loadConfig(cwd)
     const submodules = yield* parseGitmodules(cwd)

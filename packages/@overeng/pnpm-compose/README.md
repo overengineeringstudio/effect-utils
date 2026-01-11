@@ -195,6 +195,17 @@ inputs:
 - **flake.nix wrapper** - Full Nix flake compat but requires `nix develop --no-pure-eval` and loses some devenv features
 - **Inline overlay** - Works but duplicates code across repos
 
+### Direnv integration
+
+`pnpm-compose install` writes `node_modules/.pnpm-compose.env` in the root and
+each composed submodule. Source it from `.envrc` to get canonical paths without
+manual symlink handling:
+
+```bash
+source_env node_modules/.pnpm-compose.env
+use devenv --override-input effect-utils "path:$EFFECT_UTILS_OVERRIDE"
+```
+
 ### Detection: auto-cleanup on install
 
 If corruption does occur, `pnpm-compose install` automatically detects and cleans it:

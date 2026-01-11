@@ -79,11 +79,16 @@ in
 }
 ```
 
-Create `.envrc`:
+`pnpm-compose install` writes `node_modules/.pnpm-compose.env` in the root and
+each composed submodule. `.envrc` should source it and use the canonical override:
 
 ```bash
-export WORKSPACE_ROOT=$(pwd)
-use devenv
+pnpm_compose_env="$PWD/node_modules/.pnpm-compose.env"
+source_env "$pnpm_compose_env"
+
+source "$EFFECT_UTILS_OVERRIDE/context/monorepo-compose/nix-cli-build-stamp.sh"
+export NIX_CLI_BUILD_STAMP="$(nix_cli_build_stamp "$EFFECT_UTILS_OVERRIDE")"
+use devenv --override-input effect-utils "path:$EFFECT_UTILS_OVERRIDE"
 ```
 
 Add to `.gitignore`:

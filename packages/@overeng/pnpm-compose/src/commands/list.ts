@@ -1,62 +1,71 @@
 import * as Cli from '@effect/cli'
-import { FileSystem } from '@effect/platform'
+import { Error as PlatformError, FileSystem } from '@effect/platform'
 import { Console, Effect, Option } from 'effect'
 
-import { readRepoCatalog } from '../catalog.ts'
-import { detectComposedRepos } from '../config.ts'
+import { CatalogReadError, readRepoCatalog } from '../catalog.ts'
+import { ConfigLoadError, ConfigValidationError, detectComposedRepos } from '../config.ts'
 
 /** List command: shows composed repos and their catalog status */
-export const listCommand = Cli.Command.make('list', {}, () =>
-  Effect.gen(function* () {
-    const cwd = process.cwd()
-    const fs = yield* FileSystem.FileSystem
+type ListCommandEnv = FileSystem.FileSystem
 
-    // Auto-detect composed repos from .gitmodules
-    const composedRepos = yield* detectComposedRepos(cwd)
+type ListCommandError =
+  | CatalogReadError
+  | ConfigLoadError
+  | ConfigValidationError
+  | PlatformError.PlatformError
 
-    yield* Console.log('Composed repos:\n')
+export const listCommand: Cli.Command.Command<'list', ListCommandEnv, ListCommandError, {}> =
+  Cli.Command.make('list', {}, () =>
+    Effect.gen(function* () {
+      const cwd = process.cwd()
+      const fs = yield* FileSystem.FileSystem
 
-    // Show main repo
-    const mainCatalog = yield* readRepoCatalog({ repoName: 'main', repoPath: cwd })
-    if (Option.isSome(mainCatalog)) {
-      const count = Object.keys(mainCatalog.value.catalog).length
-      yield* Console.log(`  main (root)`)
-      yield* Console.log(`    catalog: ${mainCatalog.value.source} (${count} packages)`)
-    } else {
-      yield* Console.log(`  main (root)`)
-      yield* Console.log(`    catalog: none`)
-    }
+      // Auto-detect composed repos from .gitmodules
+      const composedRepos = yield* detectComposedRepos(cwd)
 
-    yield* Console.log('')
+      yield* Console.log('Composed repos:\n')
 
-    if (composedRepos.length === 0) {
-      yield* Console.log('  No composed repos detected (no git submodules found)')
-      return
-    }
-
-    // Show each composed repo
-    for (const repo of composedRepos) {
-      const repoPath = `${cwd}/${repo.path}`
-
-      yield* Console.log(`  ${repo.name}`)
-      yield* Console.log(`    path: ${repo.path}`)
-
-      const exists = yield* fs.exists(repoPath)
-      if (!exists) {
-        yield* Console.log(`    status: ✗ not found`)
-        yield* Console.log('')
-        continue
-      }
-
-      const repoCatalog = yield* readRepoCatalog({ repoName: repo.name, repoPath })
-      if (Option.isSome(repoCatalog)) {
-        const count = Object.keys(repoCatalog.value.catalog).length
-        yield* Console.log(`    catalog: ${repoCatalog.value.source} (${count} packages)`)
+      // Show main repo
+      const mainCatalog = yield* readRepoCatalog({ repoName: 'main', repoPath: cwd })
+      if (Option.isSome(mainCatalog)) {
+        const count = Object.keys(mainCatalog.value.catalog).length
+        yield* Console.log(`  main (root)`)
+        yield* Console.log(`    catalog: ${mainCatalog.value.source} (${count} packages)`)
       } else {
+        yield* Console.log(`  main (root)`)
         yield* Console.log(`    catalog: none`)
       }
 
       yield* Console.log('')
-    }
-  }).pipe(Effect.withSpan('list')),
-).pipe(Cli.Command.withDescription('List composed repos and their catalog status'))
+
+      if (composedRepos.length === 0) {
+        yield* Console.log('  No composed repos detected (no git submodules found)')
+        return
+      }
+
+      // Show each composed repo
+      for (const repo of composedRepos) {
+        const repoPath = `${cwd}/${repo.path}`
+
+        yield* Console.log(`  ${repo.name}`)
+        yield* Console.log(`    path: ${repo.path}`)
+
+        const exists = yield* fs.exists(repoPath)
+        if (!exists) {
+          yield* Console.log(`    status: ✗ not found`)
+          yield* Console.log('')
+          continue
+        }
+
+        const repoCatalog = yield* readRepoCatalog({ repoName: repo.name, repoPath })
+        if (Option.isSome(repoCatalog)) {
+          const count = Object.keys(repoCatalog.value.catalog).length
+          yield* Console.log(`    catalog: ${repoCatalog.value.source} (${count} packages)`)
+        } else {
+          yield* Console.log(`    catalog: none`)
+        }
+
+        yield* Console.log('')
+      }
+    }).pipe(Effect.withSpan('list')),
+  ).pipe(Cli.Command.withDescription('List composed repos and their catalog status'))

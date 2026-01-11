@@ -137,6 +137,29 @@ describe('install command', () => {
     )
   })
 
+  describe('env file', () => {
+    it.effect('writes pnpm-compose env file in root and submodules', () =>
+      withTestEnv((env) =>
+        Effect.gen(function* () {
+          yield* setupBasicMonorepo(env)
+
+          yield* runCli(env, ['--skip-catalog-check'])
+
+          const rootEnvExists = yield* env.exists('node_modules/.pnpm-compose.env')
+          const submoduleEnvExists = yield* env.exists(
+            'submodules/lib/node_modules/.pnpm-compose.env',
+          )
+          expect(rootEnvExists).toBe(true)
+          expect(submoduleEnvExists).toBe(true)
+
+          const rootEnv = yield* env.readFile('node_modules/.pnpm-compose.env')
+          expect(rootEnv).toContain('PNPM_COMPOSE_ENV_FORMAT=1')
+          expect(rootEnv).toContain('PNPM_COMPOSE_ROOT=')
+        }),
+      ).pipe(Effect.provide(TestLayer), Effect.scoped),
+    )
+  })
+
   describe('submodule dedupe', () => {
     it.effect(
       'symlinks duplicate submodules and configures ignore rules',

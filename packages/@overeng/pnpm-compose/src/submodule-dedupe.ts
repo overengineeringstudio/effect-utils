@@ -5,7 +5,8 @@
  * single canonical checkout while configuring git to ignore these paths for
  * status/diff operations.
  */
-import { Command, FileSystem, Path } from '@effect/platform'
+import { Command, Error as PlatformError, FileSystem, Path } from '@effect/platform'
+import type * as CommandExecutor from '@effect/platform/CommandExecutor'
 import { Effect, Option } from 'effect'
 
 /** A submodule entry with its URL and path */
@@ -31,7 +32,13 @@ export interface DuplicateSubmodule {
 }
 
 /** Parse .gitmodules file including URL information */
-export const parseGitmodulesWithUrl = (repoRoot: string) =>
+export const parseGitmodulesWithUrl = (
+  repoRoot: string,
+): Effect.Effect<
+  SubmoduleEntry[],
+  PlatformError.PlatformError,
+  FileSystem.FileSystem | Path.Path
+> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
@@ -128,7 +135,13 @@ const normalizeSubmoduleUrl = ({
 }
 
 /** Scan workspace for all .gitmodules files in nested repos */
-export const findAllSubmodules = (workspaceRoot: string) =>
+export const findAllSubmodules = (
+  workspaceRoot: string,
+): Effect.Effect<
+  SubmoduleEntry[],
+  PlatformError.PlatformError,
+  FileSystem.FileSystem | Path.Path
+> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
 
@@ -181,7 +194,9 @@ export const findDuplicates = (submodules: SubmoduleEntry[]): DuplicateSubmodule
  *
  * Prefers the shallowest repo root and avoids symlinked working trees when possible.
  */
-export const pickCanonicalSubmodule = (duplicate: DuplicateSubmodule) =>
+export const pickCanonicalSubmodule = (
+  duplicate: DuplicateSubmodule,
+): Effect.Effect<SubmoduleEntry, PlatformError.PlatformError, FileSystem.FileSystem | Path.Path> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
@@ -216,7 +231,11 @@ export const updateSubmoduleWithSymlink = ({
 }: {
   canonical: SubmoduleEntry
   target: SubmoduleEntry
-}) =>
+}): Effect.Effect<
+  void,
+  PlatformError.PlatformError,
+  CommandExecutor.CommandExecutor | FileSystem.FileSystem | Path.Path
+> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
@@ -259,7 +278,7 @@ export const syncSubmoduleGitlink = ({
 }: {
   canonical: SubmoduleEntry
   target: SubmoduleEntry
-}) =>
+}): Effect.Effect<void, PlatformError.PlatformError, CommandExecutor.CommandExecutor | Path.Path> =>
   Effect.gen(function* () {
     const path = yield* Path.Path
     const canonicalPath = path.join(canonical.repoRoot, canonical.path)
@@ -300,7 +319,7 @@ export const removeFromGitmodules = ({
 }: {
   repoRoot: string
   submodulePath: string
-}) =>
+}): Effect.Effect<void, PlatformError.PlatformError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const gitmodulesPath = `${repoRoot}/.gitmodules`
@@ -355,7 +374,7 @@ export const unregisterSubmodule = ({
 }: {
   repoRoot: string
   submodulePath: string
-}) =>
+}): Effect.Effect<void, PlatformError.PlatformError, CommandExecutor.CommandExecutor> =>
   Effect.gen(function* () {
     // Use git rm --cached to unregister the submodule from git's index
     const command = Command.make('git', 'rm', '--cached', submodulePath).pipe(

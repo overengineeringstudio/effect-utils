@@ -1,4 +1,4 @@
-import { FileSystem } from '@effect/platform'
+import { Error as PlatformError, FileSystem } from '@effect/platform'
 import { Array as A, Effect, Option, Record, Schema } from 'effect'
 
 /** A catalog is a record of package name to version */
@@ -26,7 +26,11 @@ export const readGenieRepoCatalog = ({
 }: {
   repoName: string
   repoPath: string
-}) =>
+}): Effect.Effect<
+  Option.Option<RepoCatalog>,
+  CatalogReadError | PlatformError.PlatformError,
+  FileSystem.FileSystem
+> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const geniePath = `${repoPath}/genie/repo.ts`
@@ -63,7 +67,7 @@ export const readPnpmWorkspaceCatalog = ({
 }: {
   repoName: string
   repoPath: string
-}) =>
+}): Effect.Effect<Option.Option<RepoCatalog>, PlatformError.PlatformError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const workspacePath = `${repoPath}/pnpm-workspace.yaml`
@@ -105,7 +109,17 @@ export const readPnpmWorkspaceCatalog = ({
   }).pipe(Effect.withSpan('readPnpmWorkspaceCatalog'))
 
 /** Read catalog from a repo (tries genie first, then pnpm-workspace.yaml) */
-export const readRepoCatalog = ({ repoName, repoPath }: { repoName: string; repoPath: string }) =>
+export const readRepoCatalog = ({
+  repoName,
+  repoPath,
+}: {
+  repoName: string
+  repoPath: string
+}): Effect.Effect<
+  Option.Option<RepoCatalog>,
+  CatalogReadError | PlatformError.PlatformError,
+  FileSystem.FileSystem
+> =>
   Effect.gen(function* () {
     // Try genie/repo.ts first
     const genieCatalog = yield* readGenieRepoCatalog({ repoName, repoPath })

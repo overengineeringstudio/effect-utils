@@ -1,90 +1,105 @@
 import * as Cli from '@effect/cli'
-import { FileSystem } from '@effect/platform'
+import { Error as PlatformError, FileSystem } from '@effect/platform'
 import { Console, Effect, Option, Schema } from 'effect'
 
-import { findCatalogConflicts, readRepoCatalog, type RepoCatalog } from '../catalog.ts'
-import { detectComposedRepos } from '../config.ts'
+import {
+  CatalogReadError,
+  findCatalogConflicts,
+  readRepoCatalog,
+  type RepoCatalog,
+} from '../catalog.ts'
+import { ConfigLoadError, ConfigValidationError, detectComposedRepos } from '../config.ts'
 
 /** Check command: validates catalog alignment across composed repos */
-export const checkCommand = Cli.Command.make('check', {}, () =>
-  Effect.gen(function* () {
-    const cwd = process.cwd()
-    const fs = yield* FileSystem.FileSystem
+type CheckCommandEnv = FileSystem.FileSystem
 
-    // Auto-detect composed repos from .gitmodules
-    const composedRepos = yield* detectComposedRepos(cwd)
+type CheckCommandError =
+  | CheckFailedError
+  | CatalogReadError
+  | ConfigLoadError
+  | ConfigValidationError
+  | PlatformError.PlatformError
 
-    yield* Console.log('Checking catalog alignment...\n')
+export const checkCommand: Cli.Command.Command<'check', CheckCommandEnv, CheckCommandError, {}> =
+  Cli.Command.make('check', {}, () =>
+    Effect.gen(function* () {
+      const cwd = process.cwd()
+      const fs = yield* FileSystem.FileSystem
 
-    // Read catalogs from all composed repos
-    const catalogs: RepoCatalog[] = []
-    const missingPaths: string[] = []
+      // Auto-detect composed repos from .gitmodules
+      const composedRepos = yield* detectComposedRepos(cwd)
 
-    // Read main repo catalog
-    const mainCatalog = yield* readRepoCatalog({ repoName: 'main', repoPath: cwd })
-    if (Option.isSome(mainCatalog)) {
-      catalogs.push(mainCatalog.value)
-      yield* Console.log(`✓ main (${mainCatalog.value.source})`)
-    } else {
-      yield* Console.log('⚠ main: no catalog found')
-    }
+      yield* Console.log('Checking catalog alignment...\n')
 
-    // Read each composed repo's catalog
-    for (const repo of composedRepos) {
-      const repoPath = `${cwd}/${repo.path}`
+      // Read catalogs from all composed repos
+      const catalogs: RepoCatalog[] = []
+      const missingPaths: string[] = []
 
-      const exists = yield* fs.exists(repoPath)
-      if (!exists) {
-        yield* Console.log(`✗ ${repo.name}: path not found (${repo.path})`)
-        missingPaths.push(repo.path)
-        continue
-      }
-
-      const repoCatalog = yield* readRepoCatalog({ repoName: repo.name, repoPath })
-      if (Option.isSome(repoCatalog)) {
-        catalogs.push(repoCatalog.value)
-        yield* Console.log(`✓ ${repo.name} (${repoCatalog.value.source})`)
+      // Read main repo catalog
+      const mainCatalog = yield* readRepoCatalog({ repoName: 'main', repoPath: cwd })
+      if (Option.isSome(mainCatalog)) {
+        catalogs.push(mainCatalog.value)
+        yield* Console.log(`✓ main (${mainCatalog.value.source})`)
       } else {
-        yield* Console.log(`⚠ ${repo.name}: no catalog found`)
+        yield* Console.log('⚠ main: no catalog found')
       }
-    }
 
-    yield* Console.log('')
+      // Read each composed repo's catalog
+      for (const repo of composedRepos) {
+        const repoPath = `${cwd}/${repo.path}`
 
-    // Fail if any composed repo paths are missing
-    if (missingPaths.length > 0) {
-      return yield* new CheckFailedError({
-        conflictCount: 0,
-        missingPaths,
-      })
-    }
+        const exists = yield* fs.exists(repoPath)
+        if (!exists) {
+          yield* Console.log(`✗ ${repo.name}: path not found (${repo.path})`)
+          missingPaths.push(repo.path)
+          continue
+        }
 
-    // Find conflicts
-    const conflicts = findCatalogConflicts(catalogs)
-
-    if (conflicts.length === 0) {
-      yield* Console.log('✓ All catalogs are aligned')
-      return
-    }
-
-    // Report conflicts
-    yield* Console.log(`✗ Found ${conflicts.length} catalog conflict(s):\n`)
-
-    for (const conflict of conflicts) {
-      yield* Console.log(`  ${conflict.packageName}:`)
-      for (const { repoName, version } of conflict.versions) {
-        const marker = version === conflict.highestVersion ? '→' : ' '
-        yield* Console.log(`    ${marker} ${repoName}: ${version}`)
+        const repoCatalog = yield* readRepoCatalog({ repoName: repo.name, repoPath })
+        if (Option.isSome(repoCatalog)) {
+          catalogs.push(repoCatalog.value)
+          yield* Console.log(`✓ ${repo.name} (${repoCatalog.value.source})`)
+        } else {
+          yield* Console.log(`⚠ ${repo.name}: no catalog found`)
+        }
       }
-      yield* Console.log(`    Suggestion: update all to ${conflict.highestVersion}\n`)
-    }
 
-    return yield* new CheckFailedError({ conflictCount: conflicts.length, missingPaths: [] })
-  }).pipe(Effect.withSpan('check')),
-).pipe(Cli.Command.withDescription('Check catalog alignment across composed repos'))
+      yield* Console.log('')
+
+      // Fail if any composed repo paths are missing
+      if (missingPaths.length > 0) {
+        return yield* new CheckFailedError({
+          conflictCount: 0,
+          missingPaths,
+        })
+      }
+
+      // Find conflicts
+      const conflicts = findCatalogConflicts(catalogs)
+
+      if (conflicts.length === 0) {
+        yield* Console.log('✓ All catalogs are aligned')
+        return
+      }
+
+      // Report conflicts
+      yield* Console.log(`✗ Found ${conflicts.length} catalog conflict(s):\n`)
+
+      for (const conflict of conflicts) {
+        yield* Console.log(`  ${conflict.packageName}:`)
+        for (const { repoName, version } of conflict.versions) {
+          const marker = version === conflict.highestVersion ? '→' : ' '
+          yield* Console.log(`    ${marker} ${repoName}: ${version}`)
+        }
+        yield* Console.log(`    Suggestion: update all to ${conflict.highestVersion}\n`)
+      }
+
+      return yield* new CheckFailedError({ conflictCount: conflicts.length, missingPaths: [] })
+    }).pipe(Effect.withSpan('check')),
+  ).pipe(Cli.Command.withDescription('Check catalog alignment across composed repos'))
 
 /** Error when check fails due to conflicts or missing paths */
-class CheckFailedError extends Schema.TaggedError<CheckFailedError>()('CheckFailedError', {
+export class CheckFailedError extends Schema.TaggedError<CheckFailedError>()('CheckFailedError', {
   conflictCount: Schema.Number,
   missingPaths: Schema.Array(Schema.String),
 }) {
