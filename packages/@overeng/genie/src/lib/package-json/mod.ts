@@ -4,6 +4,7 @@
  */
 
 export {
+  CatalogBrand,
   defineCatalog,
   CatalogConflictError,
   type Catalog,

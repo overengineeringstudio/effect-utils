@@ -14,4 +14,5 @@
     "newlinesBetween": true,
   },
   "experimentalSortPackageJson": true,
+  "ignorePatterns": ["**/*.gen.ts", "**/*.gen.tsx", "**/*.generated.ts", "**/*.generated.tsx"],
 }

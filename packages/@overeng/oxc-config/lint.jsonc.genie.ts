@@ -76,13 +76,6 @@ export default oxlintConfig({
         'overeng/jsdoc-require-exports': 'off',
       },
     },
-    // App/router root files often rely on CSS side-effect imports
-    {
-      files: ['**/app/layout.tsx', '**/routes/__root.tsx'],
-      rules: {
-        'import/no-unassigned-import': 'off',
-      },
-    },
     // Allow CSS side-effect imports in storybook previews
     {
       files: ['**/.storybook/**'],

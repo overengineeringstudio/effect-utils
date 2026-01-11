@@ -18,4 +18,6 @@ export default oxfmtConfig({
     newlinesBetween: true,
   },
   experimentalSortPackageJson: true,
+  // Ignore generated files
+  ignorePatterns: ['**/*.gen.ts', '**/*.gen.tsx', '**/*.generated.ts', '**/*.generated.tsx'],
 })
