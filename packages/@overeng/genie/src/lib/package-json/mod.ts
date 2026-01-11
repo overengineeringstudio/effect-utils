@@ -13,6 +13,14 @@ export {
   type ExtendedCatalogInput,
 } from './catalog.ts'
 
+export {
+  defineOverrides,
+  prefixPatchPaths,
+  OverrideConflictError,
+  type OverridesInput,
+  type ExtendedOverridesInput,
+} from './overrides.ts'
+
 import {
   type ValidationConfig,
   type ValidationIssue,
@@ -151,7 +159,7 @@ export type PackageJSONArgs = {
   /** Short package description */
   description?: string
   /** Keywords for npm search */
-  keywords?: string[]
+  keywords?: readonly string[]
   /** Homepage URL */
   homepage?: string
   /** Bug tracker URL or configuration */
@@ -633,8 +641,8 @@ type PeerDepRangeStrict = '^' | '~'
 type PnpmNamespaceConfig = {
   overrides?: Record<string, string>
   patchedDependencies?: Record<string, string>
-  onlyBuiltDependencies?: string[]
-  neverBuiltDependencies?: string[]
+  onlyBuiltDependencies?: readonly string[]
+  neverBuiltDependencies?: readonly string[]
   packageExtensions?: Record<
     string,
     {
@@ -644,13 +652,13 @@ type PnpmNamespaceConfig = {
   >
   peerDependencyRules?: {
     allowedVersions?: Record<string, string>
-    ignoreMissing?: string[]
-    allowAny?: string[]
+    ignoreMissing?: readonly string[]
+    allowAny?: readonly string[]
   }
   allowedDeprecatedVersions?: Record<string, string>
-  requiredScripts?: string[]
+  requiredScripts?: readonly string[]
   updateConfig?: {
-    ignoreDependencies?: string[]
+    ignoreDependencies?: readonly string[]
   }
 }
 
@@ -663,7 +671,7 @@ type BasePackageJsonFields = {
   name?: string
   version?: string
   description?: string
-  keywords?: string[]
+  keywords?: readonly string[]
   homepage?: string
   bugs?: Bugs
   license?: string

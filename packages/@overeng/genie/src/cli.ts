@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 
 import * as Cli from '@effect/cli'
 import { Command, Error as PlatformError, FileSystem, Path } from '@effect/platform'
+import type * as CommandExecutor from '@effect/platform/CommandExecutor'
 import * as PlatformNode from '@effect/platform-node'
 import { Array as A, Effect, Either, Layer, pipe, Schema, Stream } from 'effect'
 
@@ -60,6 +61,26 @@ export class GenieFileError extends Schema.TaggedError<GenieFileError>()('GenieF
     return `Failed to generate ${this.targetFilePath}: ${causeMsg}`
   }
 }
+
+type GenieCommandConfig = {
+  cwd: string
+  watch: boolean
+  writeable: boolean
+  check: boolean
+  dryRun: boolean
+}
+
+type GenieCommandEnv =
+  | FileSystem.FileSystem
+  | Path.Path
+  | CommandExecutor.CommandExecutor
+  | CurrentWorkingDirectory
+
+type GenieCommandError =
+  | GenieCheckError
+  | GenieGenerationFailedError
+  | GenieImportError
+  | PlatformError.PlatformError
 
 /** Successful generation of a single file */
 type GenerateSuccess =
@@ -212,6 +233,73 @@ type BunPluginBuilder = {
   ) => void
 }
 
+type GenieRepoImportFailure = {
+  repoPath: string
+  error: unknown
+}
+
+/** We probe genie/repo.ts when imports fail to avoid masking the root cause with TDZ errors. */
+const shouldProbeImportFailure = (error: unknown): boolean => {
+  if (!(error instanceof Error)) return false
+  return error instanceof ReferenceError || error.message.includes('before initialization')
+}
+
+const normalizeResolvedImportPath = (resolved: string): string =>
+  resolved.startsWith('file://') ? fileURLToPath(resolved) : resolved
+
+const extractGenieRepoImportSpecifier = (source: string): string | undefined => {
+  const match = source.match(/from\s+['"]([^'"]*genie\/repo\.ts)['"]/)
+  return match?.[1]
+}
+
+const resolveGenieRepoImportPath = (
+  specifier: string,
+  importerPath: string,
+): string | undefined => {
+  if (specifier.startsWith('#')) {
+    const resolved = resolveImportMapSpecifierForImporterSync({
+      specifier,
+      importerPath,
+    })
+    return resolved ? normalizeResolvedImportPath(resolved) : undefined
+  }
+
+  if (specifier.startsWith('.')) {
+    return path.resolve(path.dirname(importerPath), specifier)
+  }
+
+  if (path.isAbsolute(specifier)) {
+    return specifier
+  }
+
+  return undefined
+}
+
+const findGenieRepoImportFailure = (genieFilePath: string) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const sourceResult = yield* fs.readFileString(genieFilePath).pipe(Effect.either)
+    if (sourceResult._tag === 'Left') return undefined
+
+    const specifier = extractGenieRepoImportSpecifier(sourceResult.right)
+    if (specifier === undefined) return undefined
+
+    const repoPath = resolveGenieRepoImportPath(specifier, genieFilePath)
+    if (repoPath === undefined) return undefined
+
+    const importPath = `${repoPath}?import=${Date.now()}`
+    const importResult = yield* Effect.tryPromise({
+      try: () => import(importPath),
+      catch: (error) => error,
+    }).pipe(Effect.either)
+
+    if (importResult._tag === 'Left') {
+      return { repoPath, error: importResult.left } satisfies GenieRepoImportFailure
+    }
+
+    return undefined
+  }).pipe(Effect.withSpan('genie.findRepoImportFailure'))
+
 /**
  * Register a Bun import resolver so `#...` specifiers use the import map closest
  * to the importing file. This avoids temp file generation and fixes transitive imports.
@@ -254,11 +342,40 @@ const shouldSkipDirectory = (name: string): boolean => {
 /** Result of attempting to stat a file - handles broken symlinks gracefully */
 type StatResult = { type: 'directory' } | { type: 'file' } | { type: 'skip'; reason: string }
 
+/**
+ * Find all .genie.ts files under a root directory.
+ *
+ * Implementation notes:
+ * - We resolve the root path once and use it as a boundary so that
+ *   symlinked submodule duplicates pointing back into the root are skipped.
+ * - This keeps output stable when pnpm-compose dedupes submodules via symlinks,
+ *   avoiding double generation and racey writes/chmod.
+ */
 const findGenieFiles = (dir: string) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const pathService = yield* Path.Path
     const warnings: string[] = []
+    // Prefer the canonical root when available; fall back to input on failure.
+    const rootDir = yield* fs.realPath(dir).pipe(Effect.catchAll(() => Effect.succeed(dir)))
+    const rootPrefix = rootDir.endsWith(path.sep) ? rootDir : `${rootDir}${path.sep}`
+    const seenDirectories = new Set<string>()
+
+    const resolveSymlinkTarget = (
+      fullPath: string,
+    ): Effect.Effect<string | undefined, never, never> =>
+      fs.readLink(fullPath).pipe(
+        Effect.map((target) =>
+          pathService.isAbsolute(target)
+            ? target
+            : pathService.resolve(pathService.dirname(fullPath), target),
+        ),
+        // readLink fails for non-symlinks; treat those as "no target".
+        Effect.catchAll(() => Effect.succeed(undefined)),
+      )
+
+    const isWithinRoot = (target: string): boolean =>
+      target === rootDir || target.startsWith(rootPrefix)
 
     const safeStat = (fullPath: string): Effect.Effect<StatResult, never, never> =>
       fs.stat(fullPath).pipe(
@@ -296,6 +413,29 @@ const findGenieFiles = (dir: string) =>
           const stat = yield* safeStat(fullPath)
 
           if (stat.type === 'directory') {
+            const symlinkTarget = yield* resolveSymlinkTarget(fullPath)
+
+            if (symlinkTarget !== undefined) {
+              /**
+               * Skip symlinked directories that point back inside the root.
+               * This avoids duplicate traversal when submodules are symlinked
+               * to a canonical working tree (e.g. pnpm-compose dedupe).
+               */
+              if (isWithinRoot(symlinkTarget)) {
+                continue
+              }
+
+              if (seenDirectories.has(symlinkTarget)) {
+                continue
+              }
+              seenDirectories.add(symlinkTarget)
+            } else {
+              if (seenDirectories.has(fullPath)) {
+                continue
+              }
+              seenDirectories.add(fullPath)
+            }
+
             const nested = yield* walk(fullPath)
             results.push(...nested)
           } else if (stat.type === 'file' && isGenieFile(entry)) {
@@ -352,8 +492,25 @@ const importGenieFile = (genieFilePath: string) =>
     const module = yield* Effect.tryPromise({
       // oxlint-disable-next-line eslint-plugin-import/no-dynamic-require -- dynamic import path required for genie
       try: () => import(importPath),
-      catch: (error) => new GenieImportError({ genieFilePath, cause: error }),
-    })
+      catch: (error) => error,
+    }).pipe(
+      Effect.catchAll((error) =>
+        Effect.gen(function* () {
+          const repoFailure = shouldProbeImportFailure(error)
+            ? yield* findGenieRepoImportFailure(genieFilePath)
+            : undefined
+
+          const cause = repoFailure
+            ? new AggregateError(
+                [repoFailure.error, error],
+                `Dependency ${repoFailure.repoPath} failed while loading ${genieFilePath}`,
+              )
+            : error
+
+          return yield* new GenieImportError({ genieFilePath, cause })
+        }),
+      ),
+    )
 
     return module.default as string
   })
@@ -722,7 +879,12 @@ const summarizeResults = ({
   })
 
 /** Genie CLI command - generates files from .genie.ts source files */
-export const genieCommand = Cli.Command.make(
+export const genieCommand: Cli.Command.Command<
+  'genie',
+  GenieCommandEnv,
+  GenieCommandError,
+  GenieCommandConfig
+> = Cli.Command.make(
   'genie',
   {
     cwd: Cli.Options.text('cwd').pipe(
