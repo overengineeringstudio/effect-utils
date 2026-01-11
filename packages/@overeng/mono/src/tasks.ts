@@ -1,6 +1,6 @@
 import { FileSystem, Path } from '@effect/platform'
 import type { PlatformError } from '@effect/platform/Error'
-import { Cause, Effect } from 'effect'
+import { Effect, Exit, Option } from 'effect'
 
 import { CommandError, GenieCoverageError } from './errors.ts'
 import { runCommand } from './utils.ts'
@@ -139,7 +139,7 @@ const findMissingGenieSources = (config: GenieCoverageConfig) =>
       allMissing.push(...missing)
     }
 
-    return allMissing.toSorted()
+    return allMissing.slice().sort()
   }).pipe(Effect.withSpan('findMissingGenieSources'))
 
 /** Check that all config files have genie sources, fail if any are missing */
@@ -234,19 +234,15 @@ export const allLintChecks = ({
     },
   ).pipe(
     Effect.flatMap((exits) => {
-      let combined: Cause.Cause<CommandError | GenieCoverageError | PlatformError> | undefined
+      const unifiedExits =
+        exits as ReadonlyArray<
+          Exit.Exit<void | undefined, CommandError | GenieCoverageError | PlatformError>
+        >
 
-      for (const exit of exits) {
-        if (exit._tag === 'Failure') {
-          combined = combined === undefined ? exit.cause : Cause.parallel(combined, exit.cause)
-        }
-      }
-
-      if (combined === undefined) {
-        return Effect.void
-      }
-
-      return Effect.failCause(combined)
+      return Option.match(Exit.all(unifiedExits, { parallel: true }), {
+        onNone: () => Effect.void,
+        onSome: (exit) => (Exit.isSuccess(exit) ? Effect.void : Effect.failCause(exit.cause)),
+      })
     }),
     Effect.withSpan('allLintChecks'),
   )
