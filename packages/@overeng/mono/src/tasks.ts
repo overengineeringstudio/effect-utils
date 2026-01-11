@@ -139,7 +139,7 @@ const findMissingGenieSources = (config: GenieCoverageConfig) =>
       allMissing.push(...missing)
     }
 
-    return allMissing.slice().sort()
+    return allMissing.toSorted()
   }).pipe(Effect.withSpan('findMissingGenieSources'))
 
 /** Check that all config files have genie sources, fail if any are missing */
@@ -234,10 +234,9 @@ export const allLintChecks = ({
     },
   ).pipe(
     Effect.flatMap((exits) => {
-      const unifiedExits =
-        exits as ReadonlyArray<
-          Exit.Exit<void | undefined, CommandError | GenieCoverageError | PlatformError>
-        >
+      const unifiedExits = exits as ReadonlyArray<
+        Exit.Exit<void | undefined, CommandError | GenieCoverageError | PlatformError>
+      >
 
       return Option.match(Exit.all(unifiedExits, { parallel: true }), {
         onNone: () => Effect.void,

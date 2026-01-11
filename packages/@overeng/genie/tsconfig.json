@@ -6,7 +6,7 @@
     "composite": true,
     "rootDir": ".",
     "outDir": "./dist",
-    "tsBuildInfoFile": "./tsconfig.tsbuildinfo",
+    "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
     "types": ["node", "bun"]
   },
   "include": ["src/**/*.ts", "bin/**/*.ts"]

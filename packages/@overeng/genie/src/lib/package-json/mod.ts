@@ -8,6 +8,7 @@ export {
   defineCatalog,
   CatalogConflictError,
   type Catalog,
+  type CatalogBrandType,
   type CatalogInput,
   type ExtendedCatalogInput,
 } from './catalog.ts'

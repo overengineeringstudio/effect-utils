@@ -10,10 +10,14 @@
  */
 
 import {
+  CatalogBrand,
   createPackageJson,
   defineCatalog,
   type TSConfigCompilerOptions,
 } from '../packages/@overeng/genie/src/lib/mod.ts'
+
+/** Re-export so TypeScript can reference it in generated declaration files */
+export { CatalogBrand }
 
 /**
  * Catalog versions - single source of truth for dependency versions
@@ -168,7 +172,7 @@ export const packageTsconfigCompilerOptions = {
   composite: true,
   rootDir: '.',
   outDir: './dist',
-  tsBuildInfoFile: './tsconfig.tsbuildinfo',
+  tsBuildInfoFile: './dist/tsconfig.tsbuildinfo',
 } as const
 
 /** DOM library set for browser-compatible packages */

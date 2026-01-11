@@ -9,10 +9,21 @@
 /** Base catalog type - a record of package names to version strings */
 export type CatalogInput = Record<string, string>
 
-/** Type-level brand for catalogs (symbol is exported so it can be named in d.ts) */
-export const CatalogBrand = Symbol('CatalogBrand')
+/**
+ * Type-level brand key for catalogs.
+ *
+ * Exported as a value so TypeScript can reference it in declaration files across project
+ * boundaries. Without this export, TS4023 "cannot be named" errors occur.
+ */
+export const CatalogBrand: unique symbol = Symbol('CatalogBrand')
 
-/** Branded catalog type to distinguish validated catalogs */
+/** Type alias for the brand symbol type */
+export type CatalogBrandType = typeof CatalogBrand
+
+/**
+ * Branded catalog type to distinguish validated catalogs.
+ * Uses a symbol key which doesn't interfere with Record<string, string> compatibility.
+ */
 export type Catalog<T extends CatalogInput = CatalogInput> = Readonly<T> & {
   readonly [CatalogBrand]: T
 }
