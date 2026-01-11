@@ -40,6 +40,8 @@
     "@effect/opentelemetry": "catalog:",
     "@effect/platform": "catalog:",
     "@effect/platform-node": "catalog:",
+    "@effect/printer": "catalog:",
+    "@effect/printer-ansi": "catalog:",
     "@effect/rpc": "catalog:",
     "@effect/vitest": "catalog:",
     "@playwright/test": "catalog:",
@@ -52,6 +54,8 @@
     "@effect/opentelemetry": "^0.60.0",
     "@effect/platform": "^0.94.1",
     "@effect/platform-node": "^0.104.0",
+    "@effect/printer": "^0.47.0",
+    "@effect/printer-ansi": "^0.47.0",
     "@effect/rpc": "^0.73.0",
     "@playwright/test": "^1.57.0",
     "effect": "^3.19.14"

@@ -46,6 +46,9 @@
 
 import type * as CommandExecutor from '@effect/platform/CommandExecutor'
 import type { PlatformError } from '@effect/platform/Error'
+import * as Ansi from '@effect/printer-ansi/Ansi'
+import * as AnsiDoc from '@effect/printer-ansi/AnsiDoc'
+import * as Doc from '@effect/printer/Doc'
 import {
   Chunk,
   Context,
@@ -60,6 +63,9 @@ import {
 
 import { cmdStart } from './cmd.ts'
 import { CurrentWorkingDirectory } from './workspace.ts'
+
+/** Render an ANSI-annotated document to a string */
+const renderAnsiDoc = (doc: Doc.Doc<Ansi.Ansi>): string => AnsiDoc.render(doc, { style: 'pretty' })
 
 // -----------------------------------------------------------------------------
 // Task State Schema
@@ -328,9 +334,16 @@ export class TaskRunner extends Context.Tag('TaskRunner')<TaskRunner, TaskRunner
       const render: TaskRunnerService['render'] = () =>
         SubscriptionRef.get(ref).pipe(
           Effect.map((state) => {
-            const lines: string[] = []
+            const docs: Doc.Doc<Ansi.Ansi>[] = []
 
             for (const task of state.tasks) {
+              const statusStyle = {
+                pending: Ansi.white,
+                running: Ansi.cyan,
+                success: Ansi.green,
+                failed: Ansi.red,
+              }[task.status]
+
               const statusIcon = {
                 pending: '○',
                 running: '◐',
@@ -343,22 +356,26 @@ export class TaskRunner extends Context.Tag('TaskRunner')<TaskRunner, TaskRunner
                 onSome: (d) => ` (${(d / 1000).toFixed(1)}s)`,
               })
 
-              lines.push(`${statusIcon} ${task.name}${durationStr}`)
+              const taskLine = Doc.cat(
+                Doc.annotate(Doc.text(statusIcon), statusStyle),
+                Doc.cat(Doc.text(` ${task.name}`), Doc.annotate(Doc.text(durationStr), Ansi.white)),
+              )
+              docs.push(taskLine)
 
               /** Show last few lines of output for running/failed tasks */
               if (task.status === 'running' || task.status === 'failed') {
                 const recentOutput = [...task.stdout, ...task.stderr].slice(-3)
                 for (const line of recentOutput) {
-                  lines.push(`  │ ${line}`)
+                  docs.push(Doc.annotate(Doc.text(`  │ ${line}`), Ansi.white))
                 }
               }
 
               if (task.status === 'failed' && Option.isSome(task.error)) {
-                lines.push(`  └ ${task.error.value}`)
+                docs.push(Doc.annotate(Doc.text(`  └ ${task.error.value}`), Ansi.red))
               }
             }
 
-            return lines.join('\n')
+            return renderAnsiDoc(Doc.vsep(docs))
           }),
         )
 
@@ -451,15 +468,28 @@ export const printFinalSummary = Effect.gen(function* () {
   const success = state.tasks.filter((t) => t.status === 'success')
 
   if (failed.length > 0) {
-    console.log(`\n✗ ${failed.length} task(s) failed`)
+    const failedSummary = Doc.annotate(
+      Doc.text(`\n✗ ${failed.length} task(s) failed`),
+      Ansi.combine(Ansi.red, Ansi.bold),
+    )
+    console.log(renderAnsiDoc(failedSummary))
+
     for (const task of failed) {
-      console.log(`\n--- ${task.name} ---`)
+      const header = Doc.annotate(
+        Doc.text(`\n--- ${task.name} ---`),
+        Ansi.combine(Ansi.red, Ansi.bold),
+      )
+      console.log(renderAnsiDoc(header))
       for (const line of task.stderr) {
         console.log(line)
       }
     }
   } else {
-    console.log(`\n✓ All ${success.length} task(s) passed`)
+    const successSummary = Doc.annotate(
+      Doc.text(`\n✓ All ${success.length} task(s) passed`),
+      Ansi.combine(Ansi.green, Ansi.bold),
+    )
+    console.log(renderAnsiDoc(successSummary))
   }
 
   yield* runner.checkForFailures()
