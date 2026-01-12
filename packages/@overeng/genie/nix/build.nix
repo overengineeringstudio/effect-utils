@@ -7,11 +7,11 @@ let
 in
 mkBunCli {
   name = "genie";
-  entry = "packages/@overeng/genie/src/cli.ts";
+  entry = "packages/@overeng/genie/src/build/cli.ts";
   binaryName = "genie";
   packageJsonPath = "packages/@overeng/genie/package.json";
   typecheckTsconfig = "packages/@overeng/genie/tsconfig.json";
-  bunDepsHash = "sha256-JtxYAEufsrrbYZA5OdZzaWRpgvawnOMwmht+98DDHSQ=";
+  bunDepsHash = "sha256-vDgqQQxEi2VfykKwPfDI1Lv5hPQz+7rvW3CPm+PhX+I=";
   workspaceDeps = [
     { name = "@overeng/utils"; path = "packages/@overeng/utils"; }
   ];

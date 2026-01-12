@@ -1,4 +1,4 @@
-import { githubWorkflow } from '../../packages/@overeng/genie/src/lib/mod.ts'
+import { githubWorkflow } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 
 const jobDefaults = {
   run: {

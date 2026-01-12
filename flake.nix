@@ -15,15 +15,65 @@
     let
       # Nix path literals cannot include `@` segments, so build the path via concat.
       pnpmGuardOverlay = import (./packages + "/@overeng/pnpm-compose/nix/overlay.nix");
+      gitRev = self.sourceInfo.dirtyShortRev or self.sourceInfo.shortRev or self.sourceInfo.rev or "unknown";
     in
-    {
+    flake-utils.lib.eachDefaultSystem (system:
+      let
+        pkgs = import nixpkgs { inherit system; };
+        pkgsUnstable = import nixpkgsUnstable { inherit system; };
+        mkBunCli = import ./nix/mk-bun-cli.nix { inherit pkgs pkgsUnstable; src = ./.; };
+      in
+      {
+        packages = {
+          genie = mkBunCli {
+            name = "genie";
+            entry = "packages/@overeng/genie/src/build/cli.ts";
+            packageJsonPath = "packages/@overeng/genie/package.json";
+            typecheckTsconfig = "packages/@overeng/genie/tsconfig.json";
+            bunDepsHash = "sha256-vDgqQQxEi2VfykKwPfDI1Lv5hPQz+7rvW3CPm+PhX+I=";
+            workspaceDeps = [
+              { name = "@overeng/utils"; path = "packages/@overeng/utils"; }
+            ];
+            inherit gitRev;
+          };
+          pnpm-compose = mkBunCli {
+            name = "pnpm-compose";
+            entry = "packages/@overeng/pnpm-compose/src/cli.ts";
+            packageJsonPath = "packages/@overeng/pnpm-compose/package.json";
+            typecheckTsconfig = "packages/@overeng/pnpm-compose/tsconfig.json";
+            bunDepsHash = "sha256-vDgqQQxEi2VfykKwPfDI1Lv5hPQz+7rvW3CPm+PhX+I=";
+            workspaceDeps = [
+              { name = "@overeng/utils"; path = "packages/@overeng/utils"; }
+            ];
+            inherit gitRev;
+          };
+          default = mkBunCli {
+            name = "genie";
+            entry = "packages/@overeng/genie/src/build/cli.ts";
+            packageJsonPath = "packages/@overeng/genie/package.json";
+            typecheckTsconfig = "packages/@overeng/genie/tsconfig.json";
+            bunDepsHash = "sha256-vDgqQQxEi2VfykKwPfDI1Lv5hPQz+7rvW3CPm+PhX+I=";
+            workspaceDeps = [
+              { name = "@overeng/utils"; path = "packages/@overeng/utils"; }
+            ];
+            inherit gitRev;
+          };
+        };
+      }
+    ) // {
       # Re-export pnpm guard overlay so consumers only need effect-utils input.
       overlays.default = pnpmGuardOverlay;
       overlays.pnpmGuard = pnpmGuardOverlay;
+
+      # Builder function for external repos to create their own Bun CLIs
+      lib.mkBunCli = { pkgs, pkgsUnstable, src }:
+        import ./nix/mk-bun-cli.nix { inherit pkgs pkgsUnstable src; };
+
+      # Legacy API for backwards compatibility
       lib.mkCliPackages = {
         pkgs,
         pkgsUnstable,
-        gitRev ? self.sourceInfo.dirtyShortRev or self.sourceInfo.shortRev or self.sourceInfo.rev or "unknown",
+        gitRev ? "unknown",
         src ? ./.,
       }:
         let

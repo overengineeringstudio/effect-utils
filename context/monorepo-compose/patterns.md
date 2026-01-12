@@ -70,7 +70,7 @@ export default tsconfigJSON({
   compilerOptions: {
     ...baseTsconfigCompilerOptions,
     paths: {
-      '#genie/*': ['./submodules/effect-utils/packages/@overeng/genie/src/lib/*'],
+      '#genie/*': ['./submodules/effect-utils/packages/@overeng/genie/src/runtime/*'],
     },
   },
 })

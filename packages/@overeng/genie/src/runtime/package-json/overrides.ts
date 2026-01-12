@@ -4,8 +4,6 @@
  * Similar to catalog.ts but for pnpm overrides and patched dependencies.
  */
 
-import { Schema } from 'effect'
-
 // =============================================================================
 // Types
 // =============================================================================
@@ -26,16 +24,18 @@ export type ExtendedOverridesInput<TBase extends OverridesInput = OverridesInput
 // =============================================================================
 
 /** Error thrown when overrides have conflicting values for the same key */
-export class OverrideConflictError extends Schema.TaggedError<OverrideConflictError>()(
-  'OverrideConflictError',
-  {
-    key: Schema.String,
-    baseValue: Schema.String,
-    newValue: Schema.String,
-  },
-) {
-  get message() {
-    return `Override conflict for "${this.key}": "${this.baseValue}" vs "${this.newValue}"`
+export class OverrideConflictError extends Error {
+  public readonly key: string
+  public readonly baseValue: string
+  public readonly newValue: string
+
+  constructor(args: { key: string; baseValue: string; newValue: string }) {
+    const { key, baseValue, newValue } = args
+    super(`Override conflict for "${key}": "${baseValue}" vs "${newValue}"`)
+    this.key = key
+    this.baseValue = baseValue
+    this.newValue = newValue
+    this.name = 'OverrideConflictError'
   }
 }
 

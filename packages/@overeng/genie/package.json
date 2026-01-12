@@ -14,14 +14,15 @@
       "./cli": "./dist/cli.js"
     }
   },
-  "dependencies": {
-    "@overeng/utils": "workspace:*"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@effect/cli": "catalog:",
     "@effect/platform": "catalog:",
     "@effect/platform-node": "catalog:",
+    "@effect/printer": "catalog:",
+    "@effect/printer-ansi": "catalog:",
     "@effect/vitest": "catalog:",
+    "@overeng/utils": "workspace:*",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
     "effect": "catalog:",

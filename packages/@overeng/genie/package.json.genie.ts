@@ -14,11 +14,15 @@ export default pkg.package({
       './cli': './dist/cli.js',
     },
   },
-  dependencies: ['@overeng/utils'],
+  // Genie must not use any runtime dependencies (only bundled/dev dependencies)
+  dependencies: [],
   devDependencies: [
+    '@overeng/utils',
     '@effect/cli',
     '@effect/platform',
     '@effect/platform-node',
+    '@effect/printer',
+    '@effect/printer-ansi',
     '@effect/vitest',
     '@types/node',
     '@types/bun',

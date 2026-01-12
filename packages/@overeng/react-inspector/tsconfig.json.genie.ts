@@ -1,5 +1,5 @@
 import { reactJsx } from '../../../genie/repo.ts'
-import { tsconfigJSON } from '../genie/src/lib/mod.ts'
+import { tsconfigJSON } from '../genie/src/runtime/mod.ts'
 
 /** react-inspector is a git submodule with relaxed type checking for legacy code */
 export default tsconfigJSON({

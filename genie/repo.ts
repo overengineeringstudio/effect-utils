@@ -14,7 +14,7 @@ import {
   createPackageJson,
   defineCatalog,
   type TSConfigCompilerOptions,
-} from '../packages/@overeng/genie/src/lib/mod.ts'
+} from '../packages/@overeng/genie/src/runtime/mod.ts'
 
 /** Re-export so TypeScript can reference it in generated declaration files */
 export { CatalogBrand }

@@ -142,7 +142,7 @@ export default pkg.root({
   type: 'module',
   private: true,
   imports: {
-    '#genie/*': './submodules/effect-utils/packages/@overeng/genie/src/lib/*',
+    '#genie/*': './submodules/effect-utils/packages/@overeng/genie/src/runtime/*',
   },
   devDependencies: ['typescript', 'vitest'],
 })
@@ -158,7 +158,7 @@ export default tsconfigJSON({
   compilerOptions: {
     ...baseTsconfigCompilerOptions,
     paths: {
-      '#genie/*': ['./submodules/effect-utils/packages/@overeng/genie/src/lib/*'],
+      '#genie/*': ['./submodules/effect-utils/packages/@overeng/genie/src/runtime/*'],
     },
   },
 })

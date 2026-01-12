@@ -10,7 +10,7 @@ import { Array as A, Effect, Either, Layer, pipe, Schema, Stream } from 'effect'
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
 import { resolveCliVersion } from '@overeng/utils/node/cli-version'
 
-import { resolveImportMapSpecifierForImporterSync } from './lib/import-map/mod.ts'
+import { resolveImportMapSpecifierForImporterSync } from './import-map/mod.ts'
 
 const baseVersion = '0.1.0'
 const buildVersion = '__CLI_VERSION__'
@@ -22,16 +22,37 @@ const version = resolveCliVersion({
 
 let importMapResolverRegistered = false
 
+/** Detect if we're running as a compiled Bun binary (bunfs paths indicate compiled binary) */
+const isCompiledBinary = (): boolean => {
+  try {
+    return process.argv[1]?.includes('/$bunfs/') ?? false
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Safely convert error to string.
+ * In compiled Bun binaries, String(error) can throw for Bun's internal error types
+ * due to class identity mismatches. We catch and return a fallback.
+ */
+const safeErrorString = (error: unknown): string => {
+  try {
+    return String(error)
+  } catch {
+    // Bun compiled binary issue - just return the constructor name
+    if (error && typeof error === 'object') {
+      return `[${error.constructor?.name ?? 'Error'}]`
+    }
+    return '[Error]'
+  }
+}
+
 /** Error when importing a .genie.ts file fails */
 export class GenieImportError extends Schema.TaggedError<GenieImportError>()('GenieImportError', {
   genieFilePath: Schema.String,
-  cause: Schema.Defect,
-}) {
-  override get message(): string {
-    const causeMsg = this.cause instanceof Error ? this.cause.message : String(this.cause)
-    return `Failed to import ${this.genieFilePath}: ${causeMsg}`
-  }
-}
+  message: Schema.String,
+}) {}
 
 /** Error when generated file content doesn't match (in check mode) */
 export class GenieCheckError extends Schema.TaggedError<GenieCheckError>()('GenieCheckError', {
@@ -44,23 +65,15 @@ export class GenieGenerationFailedError extends Schema.TaggedError<GenieGenerati
   'GenieGenerationFailedError',
   {
     failedCount: Schema.Number,
+    message: Schema.String,
   },
-) {
-  override get message(): string {
-    return `${this.failedCount} file(s) failed to generate`
-  }
-}
+) {}
 
 /** Error when a single file fails to generate */
 export class GenieFileError extends Schema.TaggedError<GenieFileError>()('GenieFileError', {
   targetFilePath: Schema.String,
-  cause: Schema.Defect,
-}) {
-  override get message(): string {
-    const causeMsg = this.cause instanceof Error ? this.cause.message : String(this.cause)
-    return `Failed to generate ${this.targetFilePath}: ${causeMsg}`
-  }
-}
+  message: Schema.String,
+}) {}
 
 type GenieCommandConfig = {
   cwd: string
@@ -233,80 +246,23 @@ type BunPluginBuilder = {
   ) => void
 }
 
-type GenieRepoImportFailure = {
-  repoPath: string
-  error: unknown
-}
-
-/** We probe genie/repo.ts when imports fail to avoid masking the root cause with TDZ errors. */
-const shouldProbeImportFailure = (error: unknown): boolean => {
-  if (!(error instanceof Error)) return false
-  return error instanceof ReferenceError || error.message.includes('before initialization')
-}
-
 const normalizeResolvedImportPath = (resolved: string): string =>
   resolved.startsWith('file://') ? fileURLToPath(resolved) : resolved
-
-const extractGenieRepoImportSpecifier = (source: string): string | undefined => {
-  const match = source.match(/from\s+['"]([^'"]*genie\/repo\.ts)['"]/)
-  return match?.[1]
-}
-
-const resolveGenieRepoImportPath = (
-  specifier: string,
-  importerPath: string,
-): string | undefined => {
-  if (specifier.startsWith('#')) {
-    const resolved = resolveImportMapSpecifierForImporterSync({
-      specifier,
-      importerPath,
-    })
-    return resolved ? normalizeResolvedImportPath(resolved) : undefined
-  }
-
-  if (specifier.startsWith('.')) {
-    return path.resolve(path.dirname(importerPath), specifier)
-  }
-
-  if (path.isAbsolute(specifier)) {
-    return specifier
-  }
-
-  return undefined
-}
-
-const findGenieRepoImportFailure = (genieFilePath: string) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const sourceResult = yield* fs.readFileString(genieFilePath).pipe(Effect.either)
-    if (sourceResult._tag === 'Left') return undefined
-
-    const specifier = extractGenieRepoImportSpecifier(sourceResult.right)
-    if (specifier === undefined) return undefined
-
-    const repoPath = resolveGenieRepoImportPath(specifier, genieFilePath)
-    if (repoPath === undefined) return undefined
-
-    const importPath = `${repoPath}?import=${Date.now()}`
-    const importResult = yield* Effect.tryPromise({
-      try: () => import(importPath),
-      catch: (error) => error,
-    }).pipe(Effect.either)
-
-    if (importResult._tag === 'Left') {
-      return { repoPath, error: importResult.left } satisfies GenieRepoImportFailure
-    }
-
-    return undefined
-  }).pipe(Effect.withSpan('genie.findRepoImportFailure'))
 
 /**
  * Register a Bun import resolver so `#...` specifiers use the import map closest
  * to the importing file. This avoids temp file generation and fixes transitive imports.
+ *
+ * Note: In compiled Bun binaries, the Bun.plugin API causes class identity mismatches
+ * with Bun internals (ResolveMessage instanceof checks fail). We skip plugin registration
+ * entirely in compiled binaries - files using `#...` imports need to be run with `bun run`.
  */
 const ensureImportMapResolver = Effect.sync(() => {
   if (importMapResolverRegistered) return
   importMapResolverRegistered = true
+
+  // Skip Bun.plugin in compiled binaries to avoid ResolveMessage class identity issues
+  if (isCompiledBinary()) return
 
   Bun.plugin({
     name: 'genie-import-map',
@@ -492,25 +448,12 @@ const importGenieFile = (genieFilePath: string) =>
     const module = yield* Effect.tryPromise({
       // oxlint-disable-next-line eslint-plugin-import/no-dynamic-require -- dynamic import path required for genie
       try: () => import(importPath),
-      catch: (error) => error,
-    }).pipe(
-      Effect.catchAll((error) =>
-        Effect.gen(function* () {
-          const repoFailure = shouldProbeImportFailure(error)
-            ? yield* findGenieRepoImportFailure(genieFilePath)
-            : undefined
-
-          const cause = repoFailure
-            ? new AggregateError(
-                [repoFailure.error, error],
-                `Dependency ${repoFailure.repoPath} failed while loading ${genieFilePath}`,
-              )
-            : error
-
-          return yield* new GenieImportError({ genieFilePath, cause })
+      catch: (error) =>
+        new GenieImportError({
+          genieFilePath,
+          message: `Failed to import ${genieFilePath}: ${safeErrorString(error)}`,
         }),
-      ),
-    )
+    })
 
     return module.default as string
   })
@@ -659,11 +602,19 @@ const generateFile = ({
   }).pipe(
     Effect.mapError((cause) => {
       const targetFilePath = genieFilePath.replace('.genie.ts', '')
-      return new GenieFileError({ targetFilePath, cause })
+      return new GenieFileError({
+        targetFilePath,
+        message: `Failed to generate ${targetFilePath}: ${safeErrorString(cause)}`,
+      })
     }),
     Effect.catchAllDefect((defect) => {
       const targetFilePath = genieFilePath.replace('.genie.ts', '')
-      return Effect.fail(new GenieFileError({ targetFilePath, cause: defect }))
+      return Effect.fail(
+        new GenieFileError({
+          targetFilePath,
+          message: `Failed to generate ${targetFilePath}: ${safeErrorString(defect)}`,
+        }),
+      )
     }),
     Effect.withSpan('generateFile'),
   )
@@ -959,7 +910,10 @@ export const genieCommand: Cli.Command.Command<
 
       // Exit with error code if any files failed
       if (summary.failed > 0) {
-        return yield* new GenieGenerationFailedError({ failedCount: summary.failed })
+        return yield* new GenieGenerationFailedError({
+          failedCount: summary.failed,
+          message: `${summary.failed} file(s) failed to generate`,
+        })
       }
 
       if (watch && !dryRun) {

@@ -1,4 +1,4 @@
-import { oxlintConfig } from '../genie/src/lib/mod.ts'
+import { oxlintConfig } from '../genie/src/runtime/mod.ts'
 
 export default oxlintConfig({
   plugins: ['import', 'typescript', 'unicorn', 'oxc'],

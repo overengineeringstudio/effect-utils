@@ -236,14 +236,14 @@ describe('import-map', () => {
 export default pkg.root({
   name: 'test',
   imports: {
-    '#genie/*': './submodules/effect-utils/packages/@overeng/genie/src/lib/*',
+    '#genie/*': './submodules/effect-utils/packages/@overeng/genie/src/runtime/*',
   },
 })`,
           )
 
           const result = yield* extractImportMap(packageJsonPath)
           expect(result).toEqual({
-            '#genie/*': './submodules/effect-utils/packages/@overeng/genie/src/lib/*',
+            '#genie/*': './submodules/effect-utils/packages/@overeng/genie/src/runtime/*',
           })
         }).pipe(Effect.provide(TestLayer)),
     )
@@ -301,10 +301,10 @@ export default pkg.root({
     it('resolves wildcard pattern', () => {
       const result = resolveImportMapSpecifier({
         specifier: '#genie/mod.ts',
-        importMap: { '#genie/*': './submodules/effect-utils/packages/@overeng/genie/src/lib/*' },
+        importMap: { '#genie/*': './submodules/effect-utils/packages/@overeng/genie/src/runtime/*' },
         packageJsonDir,
       })
-      expect(result).toBe('/project/submodules/effect-utils/packages/@overeng/genie/src/lib/mod.ts')
+      expect(result).toBe('/project/submodules/effect-utils/packages/@overeng/genie/src/runtime/mod.ts')
     })
 
     it('resolves nested wildcard path', () => {

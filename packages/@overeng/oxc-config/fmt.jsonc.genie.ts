@@ -1,4 +1,4 @@
-import { oxfmtConfig } from '../genie/src/lib/mod.ts'
+import { oxfmtConfig } from '../genie/src/runtime/mod.ts'
 
 export default oxfmtConfig({
   semi: false,

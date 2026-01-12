@@ -13,6 +13,9 @@
   # workspaceDeps entries are inlined into node_modules for bun build.
   # If you override depFiles, include full workspace dirs (not just package.json).
   workspaceDeps ? [],
+  # projectRoot allows building from a subdirectory (e.g., "dotdot" in a combined workspace).
+  # Paths like entry, packageJsonPath, typecheckTsconfig are relative to src, not projectRoot.
+  projectRoot ? "",
   depFiles ? (
     if builtins.typeOf src == "path"
     then pkgs.lib.fileset.toSource {
@@ -47,7 +50,7 @@ let
   # Fail fast if a workspace dependency is missing its package.json.
   workspaceDepsChecked = map (dep:
     assert pkgs.lib.assertMsg
-      (builtins.pathExists (builtins.toPath "${src}/${dep.path}/package.json"))
+      (builtins.pathExists (src + "/${dep.path}/package.json"))
       "mk-bun-cli: workspaceDeps entry ${dep.name} missing ${dep.path}/package.json";
     dep
   ) workspaceDeps;
@@ -75,6 +78,7 @@ let
       export npm_config_production=false
       export NPM_CONFIG_OMIT=
       export npm_config_omit=
+      # Always run bun install from workspace root so it can resolve workspace config
       bun install
 
       # Capture workspace package deps so the CLI build can resolve them in Nix.
@@ -85,6 +89,7 @@ let
 
     installPhase = ''
       mkdir -p $out
+      # Always copy the root node_modules (bun workspaces install there)
       # Remove workspace symlinks (they point to local packages not in node_modules)
       find node_modules -type l ! -exec test -e {} \; -delete 2>/dev/null || true
       cp -r node_modules $out/
@@ -119,12 +124,17 @@ pkgs.stdenv.mkDerivation {
   buildPhase = ''
     runHook preBuild
 
+    # When projectRoot is set, node_modules goes in that subdirectory
+    nodeModulesDir="${if projectRoot != "" then "${projectRoot}/node_modules" else "node_modules"}"
+
     if [ ${toString (builtins.length workspaceDeps)} -gt 0 ]; then
       # Copy so we can inline workspace deps into node_modules.
-      cp -R ${bunDeps}/node_modules ./node_modules
-      chmod -R u+w ./node_modules
+      mkdir -p "$(dirname "$nodeModulesDir")"
+      cp -R ${bunDeps}/node_modules "$nodeModulesDir"
+      chmod -R u+w "$nodeModulesDir"
     else
-      ln -s ${bunDeps}/node_modules node_modules
+      mkdir -p "$(dirname "$nodeModulesDir")"
+      ln -s ${bunDeps}/node_modules "$nodeModulesDir"
     fi
 
     export HOME="$TMPDIR/home"
@@ -134,19 +144,19 @@ pkgs.stdenv.mkDerivation {
 
     # Materialize workspace deps because bunDeps removes workspace symlinks.
     ${pkgs.lib.concatMapStringsSep "\n" (dep: ''
-      parent_dir="$(dirname "node_modules/${dep.name}")"
+      parent_dir="$(dirname "$nodeModulesDir/${dep.name}")"
       if [ -L "$parent_dir" ]; then
         rm -f "$parent_dir"
       fi
       mkdir -p "$parent_dir"
-      rm -rf "node_modules/${dep.name}"
-      cp -R "${src}/${dep.path}/." "node_modules/${dep.name}/"
-      chmod -R u+w "node_modules/${dep.name}"
+      rm -rf "$nodeModulesDir/${dep.name}"
+      cp -R "${src}/${dep.path}/." "$nodeModulesDir/${dep.name}/"
+      chmod -R u+w "$nodeModulesDir/${dep.name}"
       # Inject workspace dependency node_modules captured in bunDeps.
       if [ -d "${bunDeps}/workspace-node-modules/${dep.name}/node_modules" ]; then
-        mkdir -p "node_modules/${dep.name}/node_modules"
-        cp -R "${bunDeps}/workspace-node-modules/${dep.name}/node_modules/." "node_modules/${dep.name}/node_modules/"
-        chmod -R u+w "node_modules/${dep.name}/node_modules"
+        mkdir -p "$nodeModulesDir/${dep.name}/node_modules"
+        cp -R "${bunDeps}/workspace-node-modules/${dep.name}/node_modules/." "$nodeModulesDir/${dep.name}/node_modules/"
+        chmod -R u+w "$nodeModulesDir/${dep.name}/node_modules"
       fi
     '') workspaceDepsChecked}
 
