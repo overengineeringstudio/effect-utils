@@ -64,7 +64,15 @@ let
 
     src = depFiles;
 
-    nativeBuildInputs = [ pkgsUnstable.bun pkgs.cacert ];
+    # Optional native deps (e.g. msgpackr-extract) need a basic toolchain in the Nix sandbox.
+    nativeBuildInputs = [
+      pkgsUnstable.bun
+      pkgs.cacert
+      pkgs.gnumake
+      pkgs.pkg-config
+      pkgs.python3
+      pkgs.stdenv.cc.cc
+    ];
 
     outputHashMode = "recursive";
     outputHashAlgo = "sha256";
