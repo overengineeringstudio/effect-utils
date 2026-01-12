@@ -43,8 +43,8 @@ export type DotdotConfig = typeof DotdotConfigSchema.Type
 /** Config file name (user-authored) */
 export const CONFIG_FILE_NAME = 'dotdot.json'
 
-/** Generated config file name (auto-generated, read-only) */
-export const GENERATED_CONFIG_FILE_NAME = 'dotdot.generated.json'
+/** Root config file name (auto-generated, read-only) */
+export const GENERATED_CONFIG_FILE_NAME = 'dotdot-root.json'
 
 /** Warning message for generated config */
 export const GENERATED_CONFIG_WARNING =

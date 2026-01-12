@@ -39,6 +39,7 @@ describe('sync command', () => {
 
     await Effect.gen(function* () {
       yield* syncCommand.handler({
+        workspacePath: Option.none(),
         dryRun: false,
         mode: 'sequential',
         maxParallel: Option.none(),
@@ -73,6 +74,7 @@ describe('sync command', () => {
 
     await Effect.gen(function* () {
       yield* syncCommand.handler({
+        workspacePath: Option.none(),
         dryRun: false,
         mode: 'sequential',
         maxParallel: Option.none(),
@@ -104,6 +106,7 @@ describe('sync command', () => {
 
     await Effect.gen(function* () {
       yield* syncCommand.handler({
+        workspacePath: Option.none(),
         dryRun: true,
         mode: 'sequential',
         maxParallel: Option.none(),
@@ -134,6 +137,7 @@ describe('sync command', () => {
     // Should complete without error
     await Effect.gen(function* () {
       yield* syncCommand.handler({
+        workspacePath: Option.none(),
         dryRun: false,
         mode: 'sequential',
         maxParallel: Option.none(),
@@ -158,6 +162,7 @@ describe('sync command', () => {
 
     await Effect.gen(function* () {
       yield* syncCommand.handler({
+        workspacePath: Option.none(),
         dryRun: false,
         mode: 'sequential',
         maxParallel: Option.none(),

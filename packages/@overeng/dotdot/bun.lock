@@ -31,7 +31,7 @@
     },
   },
   "patchedDependencies": {
-    "effect-distributed-lock@0.0.11": "patches/effect-distributed-lock@0.0.11.patch",
+    "effect-distributed-lock@0.0.11": "../utils/patches/effect-distributed-lock@0.0.11.patch",
   },
   "packages": {
     "@effect/cli": ["@effect/cli@0.73.0", "", { "dependencies": { "ini": "^4.1.3", "toml": "^3.0.0", "yaml": "^2.5.0" }, "peerDependencies": { "@effect/platform": "^0.94.0", "@effect/printer": "^0.47.0", "@effect/printer-ansi": "^0.47.0", "effect": "^3.19.13" } }, "sha512-KkRtFjfyG52kQ6Z3ZEjwytfKZQACsLzn/RI2jKKxMJDebY9BQganOiE3VGCT4slU3Zisur6SP//ghM0vCLQs4g=="],

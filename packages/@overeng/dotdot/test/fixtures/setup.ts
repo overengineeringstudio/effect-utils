@@ -33,18 +33,14 @@ export type WorkspaceFixture = {
 export const createWorkspace = (fixture: WorkspaceFixture): string => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dotdot-test-'))
 
-  // Create root config if specified
+  // Create root config at workspace root (ONLY root config here, no dotdot.json)
+  // This follows the design: workspace root has dotdot-root.json, member repos have dotdot.json
   if (fixture.rootRepos && Object.keys(fixture.rootRepos).length > 0) {
     const configContent = generateConfig(fixture.rootRepos)
-    fs.writeFileSync(path.join(tmpDir, 'dotdot.json'), configContent)
-    // Also create generated config (required for workspace detection)
-    fs.writeFileSync(path.join(tmpDir, 'dotdot.generated.json'), configContent)
+    fs.writeFileSync(path.join(tmpDir, 'dotdot-root.json'), configContent)
   } else {
-    // Create empty config
     const emptyConfig = JSON.stringify({ repos: {} }, null, 2) + '\n'
-    fs.writeFileSync(path.join(tmpDir, 'dotdot.json'), emptyConfig)
-    // Also create generated config (required for workspace detection)
-    fs.writeFileSync(path.join(tmpDir, 'dotdot.generated.json'), emptyConfig)
+    fs.writeFileSync(path.join(tmpDir, 'dotdot-root.json'), emptyConfig)
   }
 
   // Create repos
@@ -159,9 +155,9 @@ export const addCommit = (repoPath: string, message: string, filename?: string):
   return getGitRev(repoPath)
 }
 
-/** Read the config file content */
+/** Read the root config file content */
 export const readConfig = (workspacePath: string): string => {
-  return fs.readFileSync(path.join(workspacePath, 'dotdot.json'), 'utf-8')
+  return fs.readFileSync(path.join(workspacePath, 'dotdot-root.json'), 'utf-8')
 }
 
 /** Create package target directory with files */

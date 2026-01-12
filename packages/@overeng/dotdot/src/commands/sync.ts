@@ -16,7 +16,7 @@ import {
   type ExecutionMode,
   executeForAll,
   executeTopoForAll,
-  findWorkspaceRootForInit,
+  findWorkspaceRoot,
   Git,
   Graph,
   type RepoConfig,
@@ -146,6 +146,10 @@ const collectDeclaredRepos = (
 export const syncCommand = Cli.Command.make(
   'sync',
   {
+    workspacePath: Cli.Args.directory({ name: 'path' }).pipe(
+      Cli.Args.withDescription('Workspace path (required for first-time init, optional after)'),
+      Cli.Args.optional,
+    ),
     dryRun: Cli.Options.boolean('dry-run').pipe(
       Cli.Options.withDescription('Show what would be done without making changes'),
       Cli.Options.withDefault(false),
@@ -168,13 +172,17 @@ export const syncCommand = Cli.Command.make(
       Cli.Options.optional,
     ),
   },
-  ({ dryRun, mode, maxParallel }) =>
+  ({ workspacePath, dryRun, mode, maxParallel }) =>
     Effect.gen(function* () {
       const cwd = yield* CurrentWorkingDirectory
       const fs = yield* FileSystem.FileSystem
 
-      // Find workspace root (uses init variant since sync creates the generated config)
-      const workspaceRoot = yield* findWorkspaceRootForInit(cwd)
+      // Determine workspace root:
+      // - If path argument provided, use it (for initialization)
+      // - Otherwise, find existing workspace by looking for generated config
+      const workspaceRoot = Option.isSome(workspacePath)
+        ? path.resolve(Option.getOrThrow(workspacePath))
+        : yield* findWorkspaceRoot(cwd)
 
       yield* Effect.log(`dotdot workspace: ${workspaceRoot}`)
 

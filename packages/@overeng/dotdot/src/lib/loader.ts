@@ -79,15 +79,15 @@ export const loadConfigFile = (configPath: string) =>
     return config
   }).pipe(Effect.withSpan('loader/loadConfigFile'))
 
-/** Find the workspace root (directory containing dotdot.generated.json) */
+/** Find the workspace root (directory containing dotdot-root.json) */
 export const findWorkspaceRoot = (startDir: string) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     let currentDir = path.resolve(startDir)
 
-    // Walk up the tree to find dotdot.generated.json (the workspace root marker)
-    // Regular dotdot.json files can exist in repos, but only the workspace root
-    // has the generated config file
+    // Walk up the tree to find dotdot-root.json (the workspace root marker)
+    // Only the workspace root has the generated config file
+    // Member repos have dotdot.json (not generated)
     while (currentDir !== '/') {
       const generatedConfigPath = path.join(currentDir, GENERATED_CONFIG_FILE_NAME)
       const exists = yield* fs.exists(generatedConfigPath)
@@ -100,53 +100,21 @@ export const findWorkspaceRoot = (startDir: string) =>
     return yield* Effect.fail(
       new ConfigError({
         path: startDir,
-        message: `Not a dotdot workspace (no ${GENERATED_CONFIG_FILE_NAME} found). Run 'dotdot sync' to initialize.`,
+        message: `Not a dotdot workspace (no ${GENERATED_CONFIG_FILE_NAME} found). Run 'dotdot sync <path>' to initialize.`,
       }),
     )
   }).pipe(Effect.withSpan('loader/findWorkspaceRoot'))
 
-/**
- * Find potential workspace root for initialization (looks for dotdot.json)
- * Used by sync command when no generated config exists yet
- */
-export const findWorkspaceRootForInit = (startDir: string) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    let currentDir = path.resolve(startDir)
-    let workspaceRoot: string | null = null
-
-    // Walk up the tree to find the OUTERMOST dotdot.json
-    // This is the potential workspace root before initialization
-    while (currentDir !== '/') {
-      const configPath = path.join(currentDir, CONFIG_FILE_NAME)
-      const exists = yield* fs.exists(configPath)
-      if (exists) {
-        workspaceRoot = currentDir // Keep searching for outermost
-      }
-      currentDir = path.dirname(currentDir)
-    }
-
-    if (workspaceRoot) {
-      return workspaceRoot
-    }
-
-    return yield* Effect.fail(
-      new ConfigError({
-        path: startDir,
-        message: `No ${CONFIG_FILE_NAME} found. Create one to define your workspace.`,
-      }),
-    )
-  }).pipe(Effect.withSpan('loader/findWorkspaceRootForInit'))
-
-/** Load root config from workspace */
+/** Load root config from workspace (loads the generated config) */
 export const loadRootConfig = (workspaceRoot: string) =>
   Effect.gen(function* () {
-    const configPath = path.join(workspaceRoot, CONFIG_FILE_NAME)
+    // Root config is always the generated config (not dotdot.json)
+    const configPath = path.join(workspaceRoot, GENERATED_CONFIG_FILE_NAME)
     const fs = yield* FileSystem.FileSystem
 
     const exists = yield* fs.exists(configPath)
     if (!exists) {
-      // Return empty config if no root config file
+      // Return empty config if no generated config file
       return {
         path: configPath,
         dir: workspaceRoot,

@@ -72,7 +72,7 @@ const collectPackageMappings = (
   return mappings
 }
 
-/** Check for conflicts in package mappings */
+/** Check for conflicts in package mappings (different sources for same target) */
 const findConflicts = (mappings: PackageMapping[]): Map<string, PackageMapping[]> => {
   const byTarget = new Map<string, PackageMapping[]>()
 
@@ -82,11 +82,16 @@ const findConflicts = (mappings: PackageMapping[]): Map<string, PackageMapping[]
     byTarget.set(mapping.targetName, existing)
   }
 
-  // Return only those with conflicts
+  // Return only those with actual conflicts (different source paths)
+  // Duplicates (same source path) are not conflicts
   const conflicts = new Map<string, PackageMapping[]>()
   for (const [targetName, sources] of byTarget) {
     if (sources.length > 1) {
-      conflicts.set(targetName, sources)
+      // Check if all sources point to the same path
+      const uniqueSources = new Set(sources.map((s) => s.source))
+      if (uniqueSources.size > 1) {
+        conflicts.set(targetName, sources)
+      }
     }
   }
 

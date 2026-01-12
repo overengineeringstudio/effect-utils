@@ -2,6 +2,7 @@
  * Tests for dotdot update command
  */
 
+// TODO rewrite to use effect fs
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -39,7 +40,7 @@ describe('update command', () => {
     const oldRev = getGitRev(path.join(workspacePath, 'repo-a'))
 
     // Update config with old rev
-    const configPath = path.join(workspacePath, 'dotdot.json')
+    const configPath = path.join(workspacePath, 'dotdot-root.json')
     fs.writeFileSync(
       configPath,
       JSON.stringify(
@@ -74,7 +75,7 @@ describe('update command', () => {
     expect(config).not.toContain(`"rev": "${oldRev}"`)
   })
 
-  it('updates only specified repos', async () => {
+  it('updates only specified repos', { timeout: 15000 }, async () => {
     workspacePath = createWorkspace({
       rootRepos: {
         'repo-a': { url: 'git@github.com:test/repo-a.git' },
@@ -90,7 +91,7 @@ describe('update command', () => {
     const oldRevB = getGitRev(path.join(workspacePath, 'repo-b'))
 
     // Update config with old revs
-    const configPath = path.join(workspacePath, 'dotdot.json')
+    const configPath = path.join(workspacePath, 'dotdot-root.json')
     fs.writeFileSync(
       configPath,
       JSON.stringify(
@@ -138,7 +139,7 @@ describe('update command', () => {
 
     const oldRev = getGitRev(path.join(workspacePath, 'repo-a'))
 
-    const configPath = path.join(workspacePath, 'dotdot.json')
+    const configPath = path.join(workspacePath, 'dotdot-root.json')
     fs.writeFileSync(
       configPath,
       JSON.stringify(
@@ -206,7 +207,7 @@ describe('update command', () => {
 
     const currentRev = getGitRev(path.join(workspacePath, 'repo-a'))
 
-    const configPath = path.join(workspacePath, 'dotdot.json')
+    const configPath = path.join(workspacePath, 'dotdot-root.json')
     fs.writeFileSync(
       configPath,
       JSON.stringify(

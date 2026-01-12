@@ -41,7 +41,7 @@ workspace/
 
 ### 2. Distributed Configs
 
-**Decision:** Each repo can have its own `dotdot.json` declaring its dependencies. The workspace root config serves as both the workspace marker and a place to declare shared dependencies.
+**Decision:** Each member repo can have its own `dotdot.json` declaring its dependencies. The workspace root has only `dotdot-root.json` which merges all member configs.
 
 **Rationale:**
 - Each repo can own its own dependency declarations
@@ -49,6 +49,7 @@ workspace/
 - Repos remain portable - they work independently
 - Diamond dependencies are detected and reported
 - Deduplication happens automatically at runtime
+- Generated config at root is the merged, authoritative view
 
 ### 3. Revision Pinning
 
@@ -71,16 +72,30 @@ workspace/
 - Easy to see what changed when pins update
 - Git-native (no custom locking)
 
-### 4. Workspace Marker
+### 4. Workspace Marker & Config File Separation
 
-**Decision:** Workspace root is marked by a `dotdot.json` file, discovered by walking up from the current directory.
+**Decision:** Workspace root is marked by `dotdot-root.json`. Member repos use `dotdot.json`. These are mutually exclusive:
+
+```
+workspace-root/
+├── dotdot-root.json    # ONLY generated config here (no dotdot.json)
+├── repo-a/
+│   └── dotdot.json          # ONLY regular config here (no generated)
+├── repo-b/
+│   └── dotdot.json
+└── repo-c/                  # repos without config are fine
+```
+
+**Rules:**
+- Workspace root: ONLY `dotdot-root.json` (never `dotdot.json`)
+- Member repos: ONLY `dotdot.json` (never `dotdot-root.json`)
 
 **Rationale:**
-- Works from any subdirectory
-- No environment variables required
-- Matches git's `.git` discovery pattern
-- No hidden state - config file is the marker
-- Single file serves dual purpose: workspace marker + shared config
+- Clear separation prevents ambiguity about which file is authoritative
+- Generated config is the single source of truth at workspace level
+- Member repos declare dependencies without polluting workspace root
+- `dotdot sync <path>` initializes a workspace by creating the generated config
+- No confusion about "which config wins" - they exist at different levels
 
 ### 5. Git-Native Operations
 

@@ -5,9 +5,8 @@
 - [ ] bun patch only works if the patch is in the same directory as the package.json
 - [ ] how to run `effect-language-service patch` only once per workspace
 - [ ] custom bun store per workspace?
+- [ ] rethink separating repos vs packages in config.
 
-
-- [ ] merge into effect-utils repo (allows effect-utils repo to be self-hosted via dotdot)
 - [ ] refactor to embrace effect more (e.g. better schemas, effect fs, cmd etc)
 
 ### document

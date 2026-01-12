@@ -36,7 +36,7 @@ describe('link command', () => {
     createPackageTarget(path.join(workspacePath, 'repo-a'), 'shared-lib')
 
     // Update config with packages
-    const configPath = path.join(workspacePath, 'dotdot.json')
+    const configPath = path.join(workspacePath, 'dotdot-root.json')
     fs.writeFileSync(
       configPath,
       generateConfigWithPackages({
@@ -76,7 +76,7 @@ describe('link command', () => {
 
     createPackageTarget(path.join(workspacePath, 'repo-a'), 'shared-lib')
 
-    const configPath = path.join(workspacePath, 'dotdot.json')
+    const configPath = path.join(workspacePath, 'dotdot-root.json')
     fs.writeFileSync(
       configPath,
       generateConfigWithPackages({
@@ -115,7 +115,7 @@ describe('link command', () => {
     createPackageTarget(path.join(workspacePath, 'repo-a'), 'shared-lib')
     createPackageTarget(path.join(workspacePath, 'repo-b'), 'shared-lib')
 
-    const configPath = path.join(workspacePath, 'dotdot.json')
+    const configPath = path.join(workspacePath, 'dotdot-root.json')
     fs.writeFileSync(
       configPath,
       generateConfigWithPackages({
@@ -158,7 +158,7 @@ describe('link command', () => {
     createPackageTarget(path.join(workspacePath, 'repo-a'), 'shared-lib')
     createPackageTarget(path.join(workspacePath, 'repo-b'), 'shared-lib')
 
-    const configPath = path.join(workspacePath, 'dotdot.json')
+    const configPath = path.join(workspacePath, 'dotdot-root.json')
     fs.writeFileSync(
       configPath,
       generateConfigWithPackages({
@@ -198,7 +198,7 @@ describe('link command', () => {
 
     createPackageTarget(path.join(workspacePath, 'repo-a'), 'shared-lib')
 
-    const configPath = path.join(workspacePath, 'dotdot.json')
+    const configPath = path.join(workspacePath, 'dotdot-root.json')
     fs.writeFileSync(
       configPath,
       generateConfigWithPackages({
@@ -249,7 +249,7 @@ describe('link command', () => {
 
     createPackageTarget(path.join(workspacePath, 'repo-a'), 'shared-lib')
 
-    const configPath = path.join(workspacePath, 'dotdot.json')
+    const configPath = path.join(workspacePath, 'dotdot-root.json')
     fs.writeFileSync(
       configPath,
       generateConfigWithPackages({
@@ -302,7 +302,7 @@ describe('link command', () => {
 
     // Don't create the package target
 
-    const configPath = path.join(workspacePath, 'dotdot.json')
+    const configPath = path.join(workspacePath, 'dotdot-root.json')
     fs.writeFileSync(
       configPath,
       generateConfigWithPackages({
@@ -358,7 +358,7 @@ describe('link command', () => {
     // Create package at nested path
     createPackageTarget(path.join(workspacePath, 'repo-a'), 'packages/utils')
 
-    const configPath = path.join(workspacePath, 'dotdot.json')
+    const configPath = path.join(workspacePath, 'dotdot-root.json')
     fs.writeFileSync(
       configPath,
       generateConfigWithPackages({

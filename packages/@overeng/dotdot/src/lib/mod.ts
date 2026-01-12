@@ -47,7 +47,6 @@ export {
   type ConfigSource,
   collectAllConfigs,
   findWorkspaceRoot,
-  findWorkspaceRootForInit,
   loadConfigFile,
   loadRepoConfig,
   loadRootConfig,
