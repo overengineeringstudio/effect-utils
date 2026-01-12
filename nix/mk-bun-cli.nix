@@ -2,6 +2,7 @@
 # - Provide reliable, simple, fast way to build native binaries via Bun from TypeScript source files.
 # - Needs to support locally checked out peer repos with local/uncommitted changes (embracing dotdot workspace model)
 # - Supports typechecking via tsc (later tsgo once it supports Effect) 
+# - Effcient & deterministic: avoid copying large amount of files (e.g. don't copy node_modules into the build output)
 # 
 # Dotdot-first Bun CLI builder.
 # - Mirrors dotdot's flat workspace model by staging peer repos at workspace root.
