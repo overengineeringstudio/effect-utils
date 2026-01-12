@@ -1,0 +1,431 @@
+/**
+ * Tests for dependency graph and topological execution
+ */
+
+import { Effect, Option } from 'effect'
+import { describe, expect, it } from 'vitest'
+
+import { type ExecutionMode, executeTopoForAll } from '../src/lib/execution.ts'
+import * as Graph from '../src/lib/graph.ts'
+
+describe('Graph', () => {
+  describe('topologicalSort', () => {
+    it('sorts nodes with no dependencies', async () => {
+      let graph = Graph.empty<string>()
+      graph = Graph.addNode(graph, 'a', 'data-a')
+      graph = Graph.addNode(graph, 'b', 'data-b')
+      graph = Graph.addNode(graph, 'c', 'data-c')
+
+      const result = await Effect.runPromise(Graph.topologicalSort(graph))
+
+      expect(result).toHaveLength(3)
+      expect(result).toContain('a')
+      expect(result).toContain('b')
+      expect(result).toContain('c')
+    })
+
+    it('sorts linear dependencies', async () => {
+      // c -> b -> a (a has no deps, b depends on a, c depends on b)
+      let graph = Graph.empty<string>()
+      graph = Graph.addNode(graph, 'a', 'data-a', [])
+      graph = Graph.addNode(graph, 'b', 'data-b', ['a'])
+      graph = Graph.addNode(graph, 'c', 'data-c', ['b'])
+
+      const result = await Effect.runPromise(Graph.topologicalSort(graph))
+
+      expect(result).toEqual(['a', 'b', 'c'])
+    })
+
+    it('sorts diamond dependencies', async () => {
+      // d depends on b and c, both b and c depend on a
+      //     a
+      //    / \
+      //   b   c
+      //    \ /
+      //     d
+      let graph = Graph.empty<string>()
+      graph = Graph.addNode(graph, 'a', 'data-a', [])
+      graph = Graph.addNode(graph, 'b', 'data-b', ['a'])
+      graph = Graph.addNode(graph, 'c', 'data-c', ['a'])
+      graph = Graph.addNode(graph, 'd', 'data-d', ['b', 'c'])
+
+      const result = await Effect.runPromise(Graph.topologicalSort(graph))
+
+      // a must come first, d must come last
+      expect(result[0]).toBe('a')
+      expect(result[3]).toBe('d')
+      // b and c can be in either order, but both before d
+      expect(result.indexOf('b')).toBeLessThan(result.indexOf('d'))
+      expect(result.indexOf('c')).toBeLessThan(result.indexOf('d'))
+    })
+
+    it('detects cycles', async () => {
+      // a -> b -> c -> a (cycle)
+      let graph = Graph.empty<string>()
+      graph = Graph.addNode(graph, 'a', 'data-a', ['c'])
+      graph = Graph.addNode(graph, 'b', 'data-b', ['a'])
+      graph = Graph.addNode(graph, 'c', 'data-c', ['b'])
+
+      const result = await Effect.runPromise(
+        Graph.topologicalSort(graph).pipe(
+          Effect.map(() => null),
+          Effect.catchTag('CycleError', (e) => Effect.succeed(e)),
+        ),
+      )
+
+      expect(result).not.toBeNull()
+      expect(result?._tag).toBe('CycleError')
+    })
+
+    it('ignores dependencies not in graph', async () => {
+      // b depends on 'missing' which doesn't exist
+      let graph = Graph.empty<string>()
+      graph = Graph.addNode(graph, 'a', 'data-a', [])
+      graph = Graph.addNode(graph, 'b', 'data-b', ['missing'])
+
+      const result = await Effect.runPromise(Graph.topologicalSort(graph))
+
+      expect(result).toHaveLength(2)
+      expect(result).toContain('a')
+      expect(result).toContain('b')
+    })
+  })
+
+  describe('toLayers', () => {
+    it('groups independent nodes in same layer', async () => {
+      let graph = Graph.empty<string>()
+      graph = Graph.addNode(graph, 'a', 'data-a')
+      graph = Graph.addNode(graph, 'b', 'data-b')
+      graph = Graph.addNode(graph, 'c', 'data-c')
+
+      const layers = await Effect.runPromise(Graph.toLayers(graph))
+
+      expect(layers).toHaveLength(1)
+      expect(layers[0]).toHaveLength(3)
+    })
+
+    it('separates dependent nodes into layers', async () => {
+      // c -> b -> a
+      let graph = Graph.empty<string>()
+      graph = Graph.addNode(graph, 'a', 'data-a', [])
+      graph = Graph.addNode(graph, 'b', 'data-b', ['a'])
+      graph = Graph.addNode(graph, 'c', 'data-c', ['b'])
+
+      const layers = await Effect.runPromise(Graph.toLayers(graph))
+
+      expect(layers).toHaveLength(3)
+      expect(layers[0]).toEqual(['a'])
+      expect(layers[1]).toEqual(['b'])
+      expect(layers[2]).toEqual(['c'])
+    })
+
+    it('groups diamond correctly', async () => {
+      //     a
+      //    / \
+      //   b   c
+      //    \ /
+      //     d
+      let graph = Graph.empty<string>()
+      graph = Graph.addNode(graph, 'a', 'data-a', [])
+      graph = Graph.addNode(graph, 'b', 'data-b', ['a'])
+      graph = Graph.addNode(graph, 'c', 'data-c', ['a'])
+      graph = Graph.addNode(graph, 'd', 'data-d', ['b', 'c'])
+
+      const layers = await Effect.runPromise(Graph.toLayers(graph))
+
+      expect(layers).toHaveLength(3)
+      expect(layers[0]).toEqual(['a'])
+      expect(layers[1]!.sort()).toEqual(['b', 'c'])
+      expect(layers[2]).toEqual(['d'])
+    })
+
+    it('detects cycles', async () => {
+      let graph = Graph.empty<string>()
+      graph = Graph.addNode(graph, 'a', 'data-a', ['c'])
+      graph = Graph.addNode(graph, 'b', 'data-b', ['a'])
+      graph = Graph.addNode(graph, 'c', 'data-c', ['b'])
+
+      const result = await Effect.runPromise(
+        Graph.toLayers(graph).pipe(
+          Effect.map(() => null),
+          Effect.catchTag('CycleError', (e) => Effect.succeed(e)),
+        ),
+      )
+
+      expect(result).not.toBeNull()
+      expect(result?._tag).toBe('CycleError')
+    })
+  })
+
+  describe('buildFromConfigs', () => {
+    it('builds graph from root config', () => {
+      const configs = [
+        {
+          dir: '/workspace',
+          isRoot: true,
+          config: {
+            repos: {
+              'repo-a': { url: 'git@github.com:org/repo-a.git' },
+              'repo-b': { url: 'git@github.com:org/repo-b.git' },
+            },
+          },
+        },
+      ]
+
+      const graph = Graph.buildFromConfigs(configs, (dir) => dir.split('/').pop()!)
+
+      expect(Graph.nodeIds(graph).sort()).toEqual(['repo-a', 'repo-b'])
+      expect(Graph.getNode(graph, 'repo-a')?.dependencies).toEqual([])
+      expect(Graph.getNode(graph, 'repo-b')?.dependencies).toEqual([])
+    })
+
+    it('builds dependencies from nested configs', () => {
+      const configs = [
+        {
+          dir: '/workspace',
+          isRoot: true,
+          config: {
+            repos: {
+              'repo-a': { url: 'git@github.com:org/repo-a.git' },
+            },
+          },
+        },
+        {
+          dir: '/workspace/repo-a',
+          isRoot: false,
+          config: {
+            repos: {
+              'shared-lib': { url: 'git@github.com:org/shared-lib.git' },
+            },
+          },
+        },
+      ]
+
+      const graph = Graph.buildFromConfigs(configs, (dir) => dir.split('/').pop()!)
+
+      expect(Graph.nodeIds(graph).sort()).toEqual(['repo-a', 'shared-lib'])
+      // repo-a depends on shared-lib because repo-a's config declares it
+      expect(Graph.getNode(graph, 'repo-a')?.dependencies).toContain('shared-lib')
+      expect(Graph.getNode(graph, 'shared-lib')?.dependencies).toEqual([])
+    })
+
+    it('handles complex dependency chains', () => {
+      const configs = [
+        {
+          dir: '/workspace',
+          isRoot: true,
+          config: {
+            repos: {
+              app: { url: 'git@github.com:org/app.git' },
+            },
+          },
+        },
+        {
+          dir: '/workspace/app',
+          isRoot: false,
+          config: {
+            repos: {
+              core: { url: 'git@github.com:org/core.git' },
+              utils: { url: 'git@github.com:org/utils.git' },
+            },
+          },
+        },
+        {
+          dir: '/workspace/core',
+          isRoot: false,
+          config: {
+            repos: {
+              utils: { url: 'git@github.com:org/utils.git' },
+            },
+          },
+        },
+      ]
+
+      const graph = Graph.buildFromConfigs(configs, (dir) => dir.split('/').pop()!)
+
+      expect(Graph.nodeIds(graph).sort()).toEqual(['app', 'core', 'utils'])
+      // app depends on core and utils
+      expect(Graph.getNode(graph, 'app')?.dependencies.sort()).toEqual(['core', 'utils'])
+      // core depends on utils
+      expect(Graph.getNode(graph, 'core')?.dependencies).toEqual(['utils'])
+      // utils has no dependencies
+      expect(Graph.getNode(graph, 'utils')?.dependencies).toEqual([])
+    })
+  })
+})
+
+describe('executeTopoForAll', () => {
+  it('executes in topological order (topo mode)', async () => {
+    const order: string[] = []
+
+    // c -> b -> a
+    let graph = Graph.empty<string>()
+    graph = Graph.addNode(graph, 'a', 'data-a', [])
+    graph = Graph.addNode(graph, 'b', 'data-b', ['a'])
+    graph = Graph.addNode(graph, 'c', 'data-c', ['b'])
+
+    const items: Array<[string, string]> = [
+      ['c', 'data-c'],
+      ['a', 'data-a'],
+      ['b', 'data-b'],
+    ]
+
+    await Effect.runPromise(
+      executeTopoForAll(
+        items,
+        ([id]) =>
+          Effect.sync(() => {
+            order.push(id)
+            return id
+          }),
+        graph,
+        { mode: 'topo' as ExecutionMode },
+      ),
+    )
+
+    expect(order).toEqual(['a', 'b', 'c'])
+  })
+
+  it('executes layers in parallel (topo-parallel mode)', async () => {
+    const startTimes: Record<string, number> = {}
+    const endTimes: Record<string, number> = {}
+
+    //     a
+    //    / \
+    //   b   c
+    //    \ /
+    //     d
+    let graph = Graph.empty<string>()
+    graph = Graph.addNode(graph, 'a', 'data-a', [])
+    graph = Graph.addNode(graph, 'b', 'data-b', ['a'])
+    graph = Graph.addNode(graph, 'c', 'data-c', ['a'])
+    graph = Graph.addNode(graph, 'd', 'data-d', ['b', 'c'])
+
+    const items: Array<[string, string]> = [
+      ['d', 'data-d'],
+      ['b', 'data-b'],
+      ['a', 'data-a'],
+      ['c', 'data-c'],
+    ]
+
+    await Effect.runPromise(
+      executeTopoForAll(
+        items,
+        ([id]) =>
+          Effect.gen(function* () {
+            startTimes[id] = Date.now()
+            yield* Effect.sleep(50) // Simulate work
+            endTimes[id] = Date.now()
+            return id
+          }),
+        graph,
+        { mode: 'topo-parallel' as ExecutionMode },
+      ),
+    )
+
+    // a should finish before b and c start
+    expect(endTimes['a']).toBeLessThanOrEqual(startTimes['b']!)
+    expect(endTimes['a']).toBeLessThanOrEqual(startTimes['c']!)
+
+    // b and c should run in parallel (their start times should be close)
+    expect(Math.abs(startTimes['b']! - startTimes['c']!)).toBeLessThan(30)
+
+    // d should start after both b and c finish
+    expect(startTimes['d']).toBeGreaterThanOrEqual(endTimes['b']!)
+    expect(startTimes['d']).toBeGreaterThanOrEqual(endTimes['c']!)
+  })
+
+  it('handles items not in graph', async () => {
+    const order: string[] = []
+
+    let graph = Graph.empty<string>()
+    graph = Graph.addNode(graph, 'a', 'data-a', [])
+    graph = Graph.addNode(graph, 'b', 'data-b', ['a'])
+
+    // 'c' is in items but not in graph - should still work
+    const items: Array<[string, string]> = [
+      ['a', 'data-a'],
+      ['b', 'data-b'],
+      ['c', 'data-c'], // Not in graph
+    ]
+
+    await Effect.runPromise(
+      executeTopoForAll(
+        items,
+        ([id]) =>
+          Effect.sync(() => {
+            order.push(id)
+            return id
+          }),
+        graph,
+        { mode: 'topo' as ExecutionMode },
+      ),
+    )
+
+    // a and b should be in order, c is not in graph so won't be processed
+    expect(order).toEqual(['a', 'b'])
+  })
+
+  it('returns CycleError for circular dependencies', async () => {
+    let graph = Graph.empty<string>()
+    graph = Graph.addNode(graph, 'a', 'data-a', ['c'])
+    graph = Graph.addNode(graph, 'b', 'data-b', ['a'])
+    graph = Graph.addNode(graph, 'c', 'data-c', ['b'])
+
+    const items: Array<[string, string]> = [
+      ['a', 'data-a'],
+      ['b', 'data-b'],
+      ['c', 'data-c'],
+    ]
+
+    const result = await Effect.runPromise(
+      executeTopoForAll(items, ([id]) => Effect.succeed(id), graph, {
+        mode: 'topo' as ExecutionMode,
+      }).pipe(
+        Effect.map(() => null),
+        Effect.catchTag('CycleError', (e) => Effect.succeed(e)),
+      ),
+    )
+
+    expect(result).not.toBeNull()
+    expect(result?._tag).toBe('CycleError')
+  })
+
+  it('respects maxParallel in topo-parallel mode', async () => {
+    const concurrent: number[] = []
+    let currentConcurrent = 0
+
+    // All independent nodes
+    let graph = Graph.empty<string>()
+    graph = Graph.addNode(graph, 'a', 'data-a', [])
+    graph = Graph.addNode(graph, 'b', 'data-b', [])
+    graph = Graph.addNode(graph, 'c', 'data-c', [])
+    graph = Graph.addNode(graph, 'd', 'data-d', [])
+
+    const items: Array<[string, string]> = [
+      ['a', 'data-a'],
+      ['b', 'data-b'],
+      ['c', 'data-c'],
+      ['d', 'data-d'],
+    ]
+
+    await Effect.runPromise(
+      executeTopoForAll(
+        items,
+        ([id]) =>
+          Effect.gen(function* () {
+            currentConcurrent++
+            concurrent.push(currentConcurrent)
+            yield* Effect.sleep(50)
+            currentConcurrent--
+            return id
+          }),
+        graph,
+        { mode: 'topo-parallel' as ExecutionMode, maxParallel: 2 },
+      ),
+    )
+
+    // Max concurrent should never exceed 2
+    expect(Math.max(...concurrent)).toBeLessThanOrEqual(2)
+  })
+})

@@ -90,6 +90,20 @@ let
       }
     ) installDirsChecked;
 
+  installDirDependencies =
+    map (dir:
+      let
+        packageJson = builtins.fromJSON (builtins.readFile (resolveSourcePath "${dir}/package.json"));
+        deps = (packageJson.dependencies or {})
+          // (packageJson.devDependencies or {})
+          // (packageJson.peerDependencies or {});
+      in
+      {
+        path = dir;
+        deps = builtins.attrNames deps;
+      }
+    ) installDirsChecked;
+
   # Dotdot packages are exposed at workspace root via symlinks that match
   # dotdot's `packages` key (same behavior as `dotdot link`).
   workspaceLinksChecked =
@@ -164,7 +178,7 @@ let
           echo "mk-bun-cli: missing bun.lock in ${dir} (dotdot expects self-contained packages)" >&2
           exit 1
         fi
-        bun install --cwd "${dir}" --frozen-lockfile
+        bun install --cwd "${dir}" --frozen-lockfile --linker=hoisted --backend=copyfile
       '') installDirsChecked}
     '';
 
@@ -272,6 +286,21 @@ pkgs.stdenv.mkDerivation {
       fi
     '') installDirsChecked}
 
+    ${pkgs.lib.concatMapStringsSep "\n" (dirSpec: ''
+      if [ -d "${dirSpec.path}/node_modules/.bun" ]; then
+        ${pkgs.lib.concatMapStringsSep "\n" (dep: ''
+          dep_target="${dirSpec.path}/node_modules/${dep}"
+          if [ ! -e "$dep_target" ]; then
+            dep_source="$(find "$PWD/${dirSpec.path}/node_modules/.bun" -type d -path "*/node_modules/${dep}" | head -n 1)"
+            if [ -n "$dep_source" ]; then
+              mkdir -p "$(dirname "$dep_target")"
+              ln -s "$dep_source" "$dep_target"
+            fi
+          fi
+        '') dirSpec.deps}
+      fi
+    '') installDirDependencies}
+
     # Dotdot packages are exposed at workspace root via symlinks.
     ${pkgs.lib.concatMapStringsSep "\n" (link: ''
       mkdir -p "$(dirname "${link.to}")"
@@ -314,11 +343,14 @@ pkgs.stdenv.mkDerivation {
       --compile \
       --outfile="$build_output"
 
-    if [ ! -s "$build_output" ]; then
+    bun_build_tmp="$(find . -maxdepth 1 -type f -name '.*.bun-build' -print | sort -r | head -n 1)"
+    if [ -n "$bun_build_tmp" ] && [ -s "$bun_build_tmp" ]; then
       # Bun sometimes leaves the compiled binary in a temp `.*.bun-build` file
-      # without moving it to --outfile when running inside Nix builds.
-      bun_build_tmp="$(find . -maxdepth 1 -type f -name '.*.bun-build' -print | sort -r | head -n 1)"
-      if [ -n "$bun_build_tmp" ] && [ -s "$bun_build_tmp" ]; then
+      # without moving it to --outfile when running inside Nix builds. We also
+      # see cases where --outfile is populated with a raw Bun binary instead of
+      # the compiled CLI, so prefer the temp output when that happens.
+      bun_binary="${pkgsUnstable.bun}/bin/bun"
+      if [ ! -s "$build_output" ] || cmp -s "$build_output" "$bun_binary"; then
         cp "$bun_build_tmp" "$build_output"
         chmod 755 "$build_output"
       fi

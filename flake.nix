@@ -55,21 +55,26 @@
             bunDepsHash = "sha256-xtg5VBvc6BGMDoFI8LtrAv35fGay/f7UQfOp7X/X3cw=";
             inherit gitRev;
           };
-          default = mkBunCli {
-            name = "genie";
-            entry = "effect-utils/packages/@overeng/genie/src/build/cli.ts";
-            packageJsonPath = "effect-utils/packages/@overeng/genie/package.json";
-            typecheckTsconfig = "effect-utils/packages/@overeng/genie/tsconfig.json";
+          dotdot = mkBunCli {
+            name = "dotdot";
+            entry = "effect-utils/packages/@overeng/dotdot/src/cli.ts";
+            binaryName = "dotdot";
+            packageJsonPath = "effect-utils/packages/@overeng/dotdot/package.json";
+            typecheckTsconfig = "effect-utils/packages/@overeng/dotdot/tsconfig.json";
             sources = [
               { name = "effect-utils"; src = self; }
             ];
             installDirs = [
-              "effect-utils/packages/@overeng/genie"
+              "effect-utils/packages/@overeng/dotdot"
               "effect-utils/packages/@overeng/utils"
             ];
-            bunDepsHash = pkgs.lib.fakeHash;
+            bunDepsHash = "sha256-VGMmRFaJPhXOEI4nAwGHHU+McNwkz7zXc2FUyIit58k=";
             inherit gitRev;
           };
+        };
+
+        apps.update-bun-hashes = flake-utils.lib.mkApp {
+          drv = import ./nix/update-bun-hashes.nix { inherit pkgs; };
         };
       }
     ) // {

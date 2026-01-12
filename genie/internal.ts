@@ -39,6 +39,7 @@ export const catalog = defineCatalog({
     '@overeng/utils': 'file:packages/@overeng/utils',
     '@overeng/genie': 'file:packages/@overeng/genie',
     '@overeng/mono': 'file:packages/@overeng/mono',
+    '@overeng/dotdot': 'file:packages/@overeng/dotdot',
     '@overeng/bun-compose': 'file:packages/@overeng/bun-compose',
     '@overeng/pnpm-compose': 'file:packages/@overeng/pnpm-compose',
     '@overeng/notion-effect-schema': 'file:packages/@overeng/notion-effect-schema',

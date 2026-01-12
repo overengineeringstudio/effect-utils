@@ -12,7 +12,7 @@ The `mono` CLI provides shortcuts for common development workflows:
 
 If tools aren't directly in `$PATH`, prefix commands with `direnv exec .` (e.g., `direnv exec . mono ts`).
 
-We're using `bun` (not `pnpm`) as the package manager and `devenv` to manage the development environment.
+We're using dotdot for repo management. We're using `bun` (not `pnpm`) as the package manager and `devenv` to manage the development environment.
 
 # Genie (Config File Generation)
 

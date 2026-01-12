@@ -18,6 +18,9 @@
       "path": "./packages/@overeng/mono"
     },
     {
+      "path": "./packages/@overeng/dotdot"
+    },
+    {
       "path": "./packages/@overeng/notion-effect-schema"
     },
     {

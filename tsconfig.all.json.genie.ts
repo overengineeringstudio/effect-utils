@@ -6,6 +6,7 @@ const references = [
   './context/opentui',
   './packages/@overeng/genie',
   './packages/@overeng/mono',
+  './packages/@overeng/dotdot',
   './packages/@overeng/notion-effect-schema',
   './packages/@overeng/notion-cli',
   './packages/@overeng/notion-effect-client',
