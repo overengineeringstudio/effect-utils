@@ -116,7 +116,7 @@ Key features:
 
 ```bash
 mono nix build --package genie
-mono nix build --package pnpm-compose
+mono nix build --package dotdot
 mono nix reload
 ```
 
@@ -124,7 +124,7 @@ After `bun.lock` changes:
 
 ```bash
 mono nix hash --package genie
-mono nix hash --package pnpm-compose
+mono nix hash --package dotdot
 ```
 
 ## Quick Start

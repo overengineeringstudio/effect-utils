@@ -16,6 +16,22 @@
         "type": "github"
       }
     },
+    "dotdot": {
+      "inputs": {
+        "flake-utils": "flake-utils",
+        "nixpkgs": "nixpkgs",
+        "nixpkgsUnstable": "nixpkgsUnstable"
+      },
+      "locked": {
+        "path": "packages/@overeng/dotdot",
+        "type": "path"
+      },
+      "original": {
+        "path": "packages/@overeng/dotdot",
+        "type": "path"
+      },
+      "parent": []
+    },
     "flake-compat": {
       "flake": false,
       "locked": {
@@ -84,9 +100,9 @@
     },
     "genie": {
       "inputs": {
-        "flake-utils": "flake-utils",
-        "nixpkgs": "nixpkgs",
-        "nixpkgsUnstable": "nixpkgsUnstable"
+        "flake-utils": "flake-utils_2",
+        "nixpkgs": "nixpkgs_2",
+        "nixpkgsUnstable": "nixpkgsUnstable_2"
       },
       "locked": {
         "path": "packages/@overeng/genie",
@@ -141,10 +157,10 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1767941974,
+        "lastModified": 1768231360,
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "c84982f743e6f72148273a0698431d4232413279",
+        "rev": "c94b6362858b1806c0b6fca7f58f366d2d7aca9b",
         "type": "github"
       },
       "original": {
@@ -156,10 +172,10 @@
     },
     "nixpkgsUnstable": {
       "locked": {
-        "lastModified": 1767767207,
+        "lastModified": 1768127708,
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "5912c1772a44e31bf1c63c0390b90501e5026886",
+        "rev": "ffbc9f8cbaacfb331b6017d5a5abb21a492c9a38",
         "type": "github"
       },
       "original": {
@@ -186,21 +202,6 @@
     },
     "nixpkgs_2": {
       "locked": {
-        "lastModified": 1767767207,
-        "owner": "NixOS",
-        "repo": "nixpkgs",
-        "rev": "5912c1772a44e31bf1c63c0390b90501e5026886",
-        "type": "github"
-      },
-      "original": {
-        "owner": "NixOS",
-        "ref": "nixos-unstable",
-        "repo": "nixpkgs",
-        "type": "github"
-      }
-    },
-    "nixpkgs_3": {
-      "locked": {
         "lastModified": 1767941974,
         "owner": "NixOS",
         "repo": "nixpkgs",
@@ -214,9 +215,24 @@
         "type": "github"
       }
     },
+    "nixpkgs_3": {
+      "locked": {
+        "lastModified": 1767767207,
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "5912c1772a44e31bf1c63c0390b90501e5026886",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
     "playwright-web-flake": {
       "inputs": {
-        "flake-utils": "flake-utils_2",
+        "flake-utils": "flake-utils_3",
         "nixpkgs": [
           "nixpkgs"
         ]
@@ -234,30 +250,14 @@
         "type": "github"
       }
     },
-    "pnpm-compose": {
-      "inputs": {
-        "flake-utils": "flake-utils_3",
-        "nixpkgs": "nixpkgs_3",
-        "nixpkgsUnstable": "nixpkgsUnstable_2"
-      },
-      "locked": {
-        "path": "packages/@overeng/pnpm-compose",
-        "type": "path"
-      },
-      "original": {
-        "path": "packages/@overeng/pnpm-compose",
-        "type": "path"
-      },
-      "parent": []
-    },
     "root": {
       "inputs": {
         "devenv": "devenv",
+        "dotdot": "dotdot",
         "genie": "genie",
         "git-hooks": "git-hooks",
-        "nixpkgs": "nixpkgs_2",
+        "nixpkgs": "nixpkgs_3",
         "playwright-web-flake": "playwright-web-flake",
-        "pnpm-compose": "pnpm-compose",
         "pre-commit-hooks": [
           "git-hooks"
         ]

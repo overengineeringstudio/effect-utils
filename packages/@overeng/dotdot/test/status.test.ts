@@ -50,9 +50,9 @@ describe('status command', () => {
 
     const rev = getGitRev(`${workspacePath}/repo-a`)
 
-    // Pin the actual rev in the config
+    // Pin the actual rev in the root config
     const fs = await import('node:fs')
-    const configPath = `${workspacePath}/dotdot.json`
+    const configPath = `${workspacePath}/dotdot-root.json`
     const configContent =
       JSON.stringify(
         {

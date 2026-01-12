@@ -7,7 +7,7 @@
  * @see https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxlint/configuration_schema.json
  */
 
-import type { GenieOutput } from '../mod.ts'
+import type { GenieOutput, Strict } from '../mod.ts'
 
 /** Rule severity levels */
 type RuleSeverity = 'off' | 'warn' | 'error' | 'allow' | 'deny' | 0 | 1 | 2
@@ -92,7 +92,9 @@ export type OxlintConfigArgs = {
  * Returns a `GenieOutput` with the structured data accessible via `.data`
  * for composition with other genie files.
  */
-export const oxlintConfig = <const T extends OxlintConfigArgs>(args: T): GenieOutput<T> => {
+export const oxlintConfig = <const T extends OxlintConfigArgs>(
+  args: Strict<T, OxlintConfigArgs>,
+): GenieOutput<T> => {
   const buildConfig = (): Record<string, unknown> => {
     const config: Record<string, unknown> = {
       $schema:

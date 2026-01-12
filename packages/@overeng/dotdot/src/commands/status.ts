@@ -11,11 +11,11 @@ import { FileSystem } from '@effect/platform'
 import { Array as A, Effect } from 'effect'
 
 import {
-  type ConfigSource,
+  ConfigOutOfSyncError,
   CurrentWorkingDirectory,
-  collectAllConfigs,
   findWorkspaceRoot,
   Git,
+  loadRootConfigWithSyncCheck,
   type RepoConfig,
 } from '../lib/mod.ts'
 
@@ -38,41 +38,25 @@ type RepoStatus = {
   isDirty?: boolean | undefined
   /** Pinned revision from config (from schema: string | undefined) */
   pinnedRev?: string | undefined
-  /** Which config files declare this repo */
-  declaredIn: string[]
   /** Whether current rev matches pinned rev */
   revisionMatch?: 'ok' | 'diverged' | 'no-pin' | undefined
   /** Config for this repo */
   config?: RepoConfig | undefined
 }
 
-/** Collect all declared repos from configs */
-const collectDeclaredRepos = (configs: ConfigSource[]) => {
-  const repos = new Map<string, { config: RepoConfig; declaredIn: string[] }>()
+/** Collect all declared repos from root config */
+const collectDeclaredRepos = (repos: Record<string, RepoConfig>) => {
+  const result = new Map<string, { config: RepoConfig }>()
 
-  for (const source of configs) {
-    for (const [name, config] of Object.entries(source.config.repos)) {
-      const existing = repos.get(name)
-      if (existing) {
-        existing.declaredIn.push(source.isRoot ? '(root)' : path.basename(source.dir))
-      } else {
-        repos.set(name, {
-          config,
-          declaredIn: [source.isRoot ? '(root)' : path.basename(source.dir)],
-        })
-      }
-    }
+  for (const [name, config] of Object.entries(repos)) {
+    result.set(name, { config })
   }
 
-  return repos
+  return result
 }
 
 /** Get status for a single repo */
-const getRepoStatus = (
-  workspaceRoot: string,
-  name: string,
-  info: { config: RepoConfig; declaredIn: string[] },
-) =>
+const getRepoStatus = (workspaceRoot: string, name: string, info: { config: RepoConfig }) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const repoPath = path.join(workspaceRoot, name)
@@ -82,7 +66,6 @@ const getRepoStatus = (
       path: name,
       exists: false,
       isGitRepo: false,
-      declaredIn: info.declaredIn,
       config: info.config,
       pinnedRev: info.config.rev,
     }
@@ -156,11 +139,6 @@ const formatStatus = (workspaceRoot: string, statuses: RepoStatus[]) =>
         }
       }
 
-      // Declared in multiple configs?
-      if (status.declaredIn.length > 1) {
-        parts.push(`(in: ${status.declaredIn.join(', ')})`)
-      }
-
       yield* Effect.log(`  ${status.name}: ${parts.join(' ')}`)
     }
   })
@@ -173,11 +151,18 @@ export const statusCommand = Cli.Command.make('status', {}, () =>
     // Find workspace root
     const workspaceRoot = yield* findWorkspaceRoot(cwd)
 
-    // Collect all configs
-    const configs = yield* collectAllConfigs(workspaceRoot)
+    // Load root config and verify sync
+    const rootConfig = yield* loadRootConfigWithSyncCheck(workspaceRoot).pipe(
+      Effect.catchTag('ConfigOutOfSyncError', (e) =>
+        Effect.gen(function* () {
+          yield* Effect.logError(e.message)
+          return yield* Effect.fail(e)
+        }),
+      ),
+    )
 
-    // Get declared repos
-    const declaredRepos = collectDeclaredRepos(configs)
+    // Get declared repos from root config
+    const declaredRepos = collectDeclaredRepos(rootConfig.config.repos)
 
     // Get status for each declared repo
     const statuses = yield* Effect.all(

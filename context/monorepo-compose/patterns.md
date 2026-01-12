@@ -2,27 +2,26 @@
 
 ## Composition Rules
 
-### Children are self-contained
+### Repos are independent
 
-A child repo (like effect-utils) must work standalone. It cannot import from or know about its parents.
+Each repo must work standalone. It cannot import from or know about other repos in the workspace at the git level.
 
 ```
-✗ BAD: effect-utils importing from my-app or leaking information to its parent
+✗ BAD: effect-utils importing from my-app
 ✓ GOOD: effect-utils is completely independent
 ```
 
-### Parents compose from children
+### Dependencies via relative paths
 
-Parent repos extend children by importing and spreading their exports:
+Repos depend on each other via `../` paths:
 
-```ts
-// my-app/genie/repo.ts
-import { catalog as childCatalog } from './submodules/effect-utils/genie/repo.ts'
-
-export const catalog = {
-  ...childCatalog, // Inherit all child packages
-  'my-package': '1.0.0', // Add parent-specific packages
-} as const
+```json
+{
+  "dependencies": {
+    "@overeng/utils": "../@overeng/utils",
+    "shared-lib": "../shared-lib"
+  }
+}
 ```
 
 ### Where packages belong
@@ -34,7 +33,7 @@ export const catalog = {
 - Common UI (`react`, `tailwindcss`)
 - Packages used across multiple repos
 
-**In child repos only:**
+**In your repos only:**
 
 - Domain-specific packages (your business logic)
 - Experimental/unstable packages
@@ -53,7 +52,6 @@ export const catalog = {
 | --------------------------- | ------------------------------ |
 | `createPackageJson`         | Type-safe package.json builder |
 | `tsconfigJSON`              | tsconfig.json generator        |
-| `pnpmWorkspace`             | pnpm-workspace.yaml generator  |
 
 > **Note:** genie CLI is installed via Nix/devenv. The genie lib types are accessed via Node.js subpath imports (`#genie/*`), configured in the root `package.json#imports` and `tsconfig.json#paths`.
 
@@ -70,7 +68,7 @@ export default tsconfigJSON({
   compilerOptions: {
     ...baseTsconfigCompilerOptions,
     paths: {
-      '#genie/*': ['./submodules/effect-utils/packages/@overeng/genie/src/runtime/*'],
+      '#genie/*': ['../@overeng/genie/src/runtime/*'],
     },
   },
 })
@@ -100,22 +98,35 @@ export default tsconfigJSON({
 
 1. Add to `genie/repo.ts` catalog (or effect-utils if shared)
 2. Add to package's `package.json.genie.ts`
-3. Run `genie && pnpm-compose install`
+3. Run `genie && bun install`
 
-### Updating a submodule
+### Adding a new repo dependency
+
+1. Add entry to your repo's `dotdot.json`
+2. Run `dotdot sync` from workspace root
+3. Run `dotdot link` to create symlinks
+4. Use `../repo-name` in your package.json
+
+### Pinning current state
 
 ```bash
-cd submodules/effect-utils && git pull origin main && cd ../..
-pnpm-compose check      # Verify catalog alignment
-pnpm-compose install    # Re-sync symlinks
+dotdot update-revs  # Saves all current HEADs to config files
+```
+
+### Restoring to pinned state
+
+```bash
+dotdot sync  # Clones missing repos, checks out pinned revisions
 ```
 
 ## Troubleshooting
 
-| Problem                        | Solution                                                                                 |
-| ------------------------------ | ---------------------------------------------------------------------------------------- |
-| "Cannot find package X"        | `pnpm-compose install --clean`                                                           |
-| Catalog mismatch               | Update parent's `genie/repo.ts` to match child versions                                  |
-| node_modules in submodule      | `rm -rf submodules/*/node_modules && pnpm-compose install --clean`                       |
-| Nix can't find submodule files | Add `inputs.self.submodules = true` to flake.nix                                         |
-| Nix flake input is a symlink   | Avoid `path:` inputs that resolve through symlinks; use a real path override in `.envrc` |
+| Problem                        | Solution                                                     |
+| ------------------------------ | ------------------------------------------------------------ |
+| "Cannot find package X"        | Run `dotdot link` then `bun install`                         |
+| Repo not cloned                | Run `dotdot sync`                                            |
+| Wrong revision                 | Run `dotdot sync` to checkout pinned revisions               |
+| Revision conflict              | Run `dotdot tree --conflicts` to see conflicts               |
+| Symlink missing                | Run `dotdot link`                                            |
+| Nix can't find files           | Ensure repo is cloned, not just symlinked                    |
+| Nix flake input is a symlink   | Use `git+file:../repo` for nix, not `path:../repo`           |

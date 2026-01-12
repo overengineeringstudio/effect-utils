@@ -7,7 +7,7 @@
  * Reference: https://github.com/sindresorhus/type-fest/blob/main/source/package-json.d.ts
  */
 
-import type { GenieOutput } from '../mod.ts'
+import type { GenieOutput, Strict } from '../mod.ts'
 
 // Re-export catalog utilities (useful for defining version catalogs)
 export {
@@ -496,7 +496,9 @@ const buildPackageJson = <T extends PackageJsonData>(
  * })
  * ```
  */
-export const packageJson = <const T extends PackageJsonData>(data: T): GenieOutput<T> => ({
+export const packageJson = <const T extends PackageJsonData>(
+  data: Strict<T, PackageJsonData>,
+): GenieOutput<T> => ({
   data,
   stringify: (ctx) => JSON.stringify(buildPackageJson(data, ctx.location), null, 2) + '\n',
 })
@@ -529,7 +531,9 @@ export const packageJson = <const T extends PackageJsonData>(data: T): GenieOutp
  * })
  * ```
  */
-export const workspaceRoot = <const T extends WorkspaceRootData>(data: T): GenieOutput<T> => ({
+export const workspaceRoot = <const T extends WorkspaceRootData>(
+  data: Strict<T, WorkspaceRootData>,
+): GenieOutput<T> => ({
   data,
   stringify: (ctx) => JSON.stringify(buildPackageJson(data, ctx.location), null, 2) + '\n',
 })

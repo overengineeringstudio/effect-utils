@@ -7,6 +7,21 @@ export type GenieContext = {
 }
 
 /**
+ * Enforces that T has no extra keys beyond what's defined in Base.
+ * Used to catch typos and disallowed properties at compile time.
+ *
+ * @example
+ * ```ts
+ * type Args = { name: string }
+ * const fn = <const T extends Args>(args: Strict<T, Args>) => args
+ *
+ * fn({ name: 'ok' })           // ✅ Works
+ * fn({ name: 'ok', typo: 1 })  // ❌ Error: Type 'number' is not assignable to type 'never'
+ * ```
+ */
+export type Strict<T, TBase> = T & { [K in Exclude<keyof T, keyof TBase>]: never }
+
+/**
  * Standard output shape for all genie factories.
  *
  * Genie files export a `GenieOutput<T>` object which contains:

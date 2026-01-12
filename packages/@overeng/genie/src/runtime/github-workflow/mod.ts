@@ -1,4 +1,4 @@
-import type { GenieOutput } from '../mod.ts'
+import type { GenieOutput, Strict } from '../mod.ts'
 import * as yaml from '../utils/yaml.ts'
 
 /**
@@ -276,7 +276,9 @@ export type GitHubWorkflowArgs = {
  * })
  * ```
  */
-export const githubWorkflow = <const T extends GitHubWorkflowArgs>(args: T): GenieOutput<T> => ({
+export const githubWorkflow = <const T extends GitHubWorkflowArgs>(
+  args: Strict<T, GitHubWorkflowArgs>,
+): GenieOutput<T> => ({
   data: args,
   stringify: (_ctx) => yaml.stringify(args),
 })

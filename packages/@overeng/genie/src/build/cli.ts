@@ -309,7 +309,7 @@ type StatResult = { type: 'directory' } | { type: 'file' } | { type: 'skip'; rea
  * Implementation notes:
  * - We resolve the root path once and use it as a boundary so that
  *   symlinked submodule duplicates pointing back into the root are skipped.
- * - This keeps output stable when pnpm-compose dedupes submodules via symlinks,
+ * - This keeps output stable when symlinks are used to dedupe submodules,
  *   avoiding double generation and racey writes/chmod.
  */
 const findGenieFiles = (dir: string) =>
@@ -380,7 +380,7 @@ const findGenieFiles = (dir: string) =>
               /**
                * Skip symlinked directories that point back inside the root.
                * This avoids duplicate traversal when submodules are symlinked
-               * to a canonical working tree (e.g. pnpm-compose dedupe).
+               * to a canonical working tree.
                */
               if (isWithinRoot(symlinkTarget)) {
                 continue

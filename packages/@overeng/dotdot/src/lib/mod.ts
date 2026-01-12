@@ -43,12 +43,17 @@ export * as Graph from './graph.ts'
 export { CycleError } from './graph.ts'
 // Loader
 export {
-  ConfigError,
-  type ConfigSource,
+  checkConfigSync,
   collectAllConfigs,
+  collectMemberConfigs,
+  ConfigError,
+  ConfigOutOfSyncError,
+  type ConfigSource,
   findWorkspaceRoot,
   loadConfigFile,
   loadRepoConfig,
   loadRootConfig,
+  loadRootConfigWithSyncCheck,
+  mergeMemberConfigs,
 } from './loader.ts'
 export { CurrentWorkingDirectory } from './workspace.ts'

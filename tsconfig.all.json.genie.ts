@@ -17,7 +17,6 @@ const references = [
   './packages/@overeng/react-inspector',
   './packages/@overeng/utils',
   './packages/@overeng/oxc-config',
-  './packages/@overeng/pnpm-compose',
   './packages/@overeng/effect-path',
   './packages/@overeng/effect-rpc-tanstack',
 ]

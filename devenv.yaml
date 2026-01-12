@@ -6,7 +6,7 @@ inputs:
     inputs:
       nixpkgs:
         follows: nixpkgs
-  pnpm-compose:
-    url: path:./packages/@overeng/pnpm-compose
   genie:
     url: path:./packages/@overeng/genie
+  dotdot:
+    url: path:./packages/@overeng/dotdot

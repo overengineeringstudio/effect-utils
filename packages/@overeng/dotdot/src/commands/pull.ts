@@ -12,11 +12,11 @@ import { Effect, Option, Schema } from 'effect'
 
 import {
   CurrentWorkingDirectory,
-  collectAllConfigs,
   type ExecutionMode,
   executeForAll,
   findWorkspaceRoot,
   Git,
+  loadRootConfigWithSyncCheck,
   type RepoConfig,
 } from '../lib/mod.ts'
 
@@ -35,25 +35,9 @@ type PullResult = {
   diverged?: boolean
 }
 
-/** Collect all declared repos from configs */
-const collectDeclaredRepos = (
-  configs: Array<{
-    config: { repos: Record<string, RepoConfig> }
-    isRoot: boolean
-    dir: string
-  }>,
-) => {
-  const repos = new Map<string, RepoConfig>()
-
-  for (const source of configs) {
-    for (const [name, config] of Object.entries(source.config.repos)) {
-      if (!repos.has(name)) {
-        repos.set(name, config)
-      }
-    }
-  }
-
-  return repos
+/** Convert repos record to Map */
+const reposToMap = (repos: Record<string, RepoConfig>) => {
+  return new Map(Object.entries(repos))
 }
 
 /** Pull a single repo */
@@ -150,11 +134,11 @@ export const pullCommand = Cli.Command.make(
 
       yield* Effect.log(`dotdot workspace: ${workspaceRoot}`)
 
-      // Collect all configs
-      const configs = yield* collectAllConfigs(workspaceRoot)
+      // Load root config and verify sync
+      const rootConfig = yield* loadRootConfigWithSyncCheck(workspaceRoot)
 
       // Get declared repos
-      const declaredRepos = collectDeclaredRepos(configs)
+      const declaredRepos = reposToMap(rootConfig.config.repos)
 
       if (declaredRepos.size === 0) {
         yield* Effect.log('No repos to pull')

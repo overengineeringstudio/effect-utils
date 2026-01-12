@@ -7,7 +7,7 @@
  * @see https://oxc.rs/docs/guide/usage/formatter/migrate-from-prettier
  */
 
-import type { GenieOutput } from '../mod.ts'
+import type { GenieOutput, Strict } from '../mod.ts'
 
 /** Import sorting group types */
 type ImportGroup = 'builtin' | 'external' | 'internal' | 'parent' | 'sibling' | 'index'
@@ -74,7 +74,9 @@ export type OxfmtConfigArgs = {
  * })
  * ```
  */
-export const oxfmtConfig = <const T extends OxfmtConfigArgs>(args: T): GenieOutput<T> => {
+export const oxfmtConfig = <const T extends OxfmtConfigArgs>(
+  args: Strict<T, OxfmtConfigArgs>,
+): GenieOutput<T> => {
   const buildConfig = (): Record<string, unknown> => {
     const config: Record<string, unknown> = {
       $schema:

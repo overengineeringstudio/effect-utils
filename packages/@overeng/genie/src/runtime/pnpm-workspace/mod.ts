@@ -1,4 +1,4 @@
-import type { GenieOutput } from '../mod.ts'
+import type { GenieOutput, Strict } from '../mod.ts'
 import { stringify } from '../utils/yaml.ts'
 
 /** Configuration for pnpm-workspace.yaml generation */
@@ -29,7 +29,9 @@ export interface PnpmWorkspaceConfig {
  * })
  * ```
  */
-export const pnpmWorkspace = <const T extends PnpmWorkspaceConfig>(config: T): GenieOutput<T> => ({
+export const pnpmWorkspace = <const T extends PnpmWorkspaceConfig>(
+  config: Strict<T, PnpmWorkspaceConfig>,
+): GenieOutput<T> => ({
   data: config,
   stringify: (_ctx) => {
     const { packages, catalog, onlyBuiltDependencies } = config

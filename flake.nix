@@ -13,8 +13,6 @@
 
   outputs = { self, nixpkgs, nixpkgsUnstable, flake-utils, ... }:
     let
-      # Nix path literals cannot include `@` segments, so build the path via concat.
-      pnpmGuardOverlay = import (./packages + "/@overeng/pnpm-compose/nix/overlay.nix");
       gitRev = self.sourceInfo.dirtyShortRev or self.sourceInfo.shortRev or self.sourceInfo.rev or "unknown";
     in
     flake-utils.lib.eachDefaultSystem (system:
@@ -35,21 +33,6 @@
             ];
             installDirs = [
               "effect-utils/packages/@overeng/genie"
-              "effect-utils/packages/@overeng/utils"
-            ];
-            bunDepsHash = "sha256-xtg5VBvc6BGMDoFI8LtrAv35fGay/f7UQfOp7X/X3cw=";
-            inherit gitRev;
-          };
-          pnpm-compose = mkBunCli {
-            name = "pnpm-compose";
-            entry = "effect-utils/packages/@overeng/pnpm-compose/src/cli.ts";
-            packageJsonPath = "effect-utils/packages/@overeng/pnpm-compose/package.json";
-            typecheckTsconfig = "effect-utils/packages/@overeng/pnpm-compose/tsconfig.json";
-            sources = [
-              { name = "effect-utils"; src = self; }
-            ];
-            installDirs = [
-              "effect-utils/packages/@overeng/pnpm-compose"
               "effect-utils/packages/@overeng/utils"
             ];
             bunDepsHash = "sha256-xtg5VBvc6BGMDoFI8LtrAv35fGay/f7UQfOp7X/X3cw=";
@@ -78,10 +61,6 @@
         };
       }
     ) // {
-      # Re-export pnpm guard overlay so consumers only need effect-utils input.
-      overlays.default = pnpmGuardOverlay;
-      overlays.pnpmGuard = pnpmGuardOverlay;
-
       # Builder function for external repos to create their own Bun CLIs
       lib.mkBunCli = { pkgs, pkgsUnstable, src ? null }:
         import ./nix/mk-bun-cli.nix { inherit pkgs pkgsUnstable src; };
@@ -111,17 +90,18 @@
                 "effect-utils/packages/@overeng/utils"
               ];
             };
-            pnpm-compose = {
-              name = "pnpm-compose";
-              entry = "effect-utils/packages/@overeng/pnpm-compose/src/cli.ts";
-              packageJsonPath = "effect-utils/packages/@overeng/pnpm-compose/package.json";
-              typecheckTsconfig = "effect-utils/packages/@overeng/pnpm-compose/tsconfig.json";
-              bunDepsHash = "sha256-JtxYAEufsrrbYZA5OdZzaWRpgvawnOMwmht+98DDHSQ=";
+            dotdot = {
+              name = "dotdot";
+              entry = "effect-utils/packages/@overeng/dotdot/src/cli.ts";
+              binaryName = "dotdot";
+              packageJsonPath = "effect-utils/packages/@overeng/dotdot/package.json";
+              typecheckTsconfig = "effect-utils/packages/@overeng/dotdot/tsconfig.json";
+              bunDepsHash = "sha256-VGMmRFaJPhXOEI4nAwGHHU+McNwkz7zXc2FUyIit58k=";
               sources = [
                 { name = "effect-utils"; src = srcPath; }
               ];
               installDirs = [
-                "effect-utils/packages/@overeng/pnpm-compose"
+                "effect-utils/packages/@overeng/dotdot"
                 "effect-utils/packages/@overeng/utils"
               ];
             };

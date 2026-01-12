@@ -11,10 +11,10 @@ import { FileSystem } from '@effect/platform'
 import { Effect, Schema } from 'effect'
 
 import {
-  type ConfigSource,
   CurrentWorkingDirectory,
-  collectAllConfigs,
   findWorkspaceRoot,
+  loadRootConfigWithSyncCheck,
+  type RepoConfig,
 } from '../lib/mod.ts'
 
 /** Error during link operation */
@@ -32,40 +32,33 @@ type PackageMapping = {
   target: string
   /** Target name (symlink name at workspace root) */
   targetName: string
-  /** Repo that declares this package */
-  declaredBy: string
   /** Repo that contains the source */
   sourceRepo: string
 }
 
-/** Collect all package mappings from configs */
+/** Collect all package mappings from root config */
 const collectPackageMappings = (
   workspaceRoot: string,
-  configs: ConfigSource[],
+  repos: Record<string, RepoConfig>,
 ): PackageMapping[] => {
   const mappings: PackageMapping[] = []
 
-  for (const source of configs) {
-    const sourceRepoName = source.isRoot ? null : path.basename(source.dir)
+  for (const [repoName, config] of Object.entries(repos)) {
+    if (!config.packages) continue
 
-    for (const [repoName, config] of Object.entries(source.config.repos)) {
-      if (!config.packages) continue
+    for (const [packageName, packageConfig] of Object.entries(config.packages)) {
+      // Source is the path within the repo
+      const sourceFull = path.join(workspaceRoot, repoName, packageConfig.path)
 
-      for (const [packageName, packageConfig] of Object.entries(config.packages)) {
-        // Source is the path within the repo
-        const sourceFull = path.join(workspaceRoot, repoName, packageConfig.path)
+      // Target uses the package name (key) as the symlink name
+      const targetFull = path.join(workspaceRoot, packageName)
 
-        // Target uses the package name (key) as the symlink name
-        const targetFull = path.join(workspaceRoot, packageName)
-
-        mappings.push({
-          source: sourceFull,
-          target: targetFull,
-          targetName: packageName,
-          declaredBy: source.isRoot ? '(root)' : sourceRepoName!,
-          sourceRepo: repoName,
-        })
-      }
+      mappings.push({
+        source: sourceFull,
+        target: targetFull,
+        targetName: packageName,
+        sourceRepo: repoName,
+      })
     }
   }
 
@@ -120,8 +113,8 @@ const linkStatusCommand = Cli.Command.make('status', {}, () =>
     yield* Effect.log(`dotdot workspace: ${workspaceRoot}`)
     yield* Effect.log('')
 
-    const configs = yield* collectAllConfigs(workspaceRoot)
-    const mappings = collectPackageMappings(workspaceRoot, configs)
+    const rootConfig = yield* loadRootConfigWithSyncCheck(workspaceRoot)
+    const mappings = collectPackageMappings(workspaceRoot, rootConfig.config.repos)
 
     if (mappings.length === 0) {
       yield* Effect.log('No packages configurations found')
@@ -136,7 +129,7 @@ const linkStatusCommand = Cli.Command.make('status', {}, () =>
         yield* Effect.log(`  ${targetName}:`)
         for (const source of sources) {
           yield* Effect.log(
-            `    - ${source.sourceRepo}/${path.relative(path.join(workspaceRoot, source.sourceRepo), source.source)} (from ${source.declaredBy})`,
+            `    - ${source.sourceRepo}/${path.relative(path.join(workspaceRoot, source.sourceRepo), source.source)}`,
           )
         }
       }
@@ -186,8 +179,8 @@ const createSymlinksHandler = ({ dryRun, force }: { dryRun: boolean; force: bool
     yield* Effect.log(`dotdot workspace: ${workspaceRoot}`)
     yield* Effect.log('')
 
-    const configs = yield* collectAllConfigs(workspaceRoot)
-    const mappings = collectPackageMappings(workspaceRoot, configs)
+    const rootConfig = yield* loadRootConfigWithSyncCheck(workspaceRoot)
+    const mappings = collectPackageMappings(workspaceRoot, rootConfig.config.repos)
 
     if (mappings.length === 0) {
       yield* Effect.log('No packages configurations found')
@@ -204,7 +197,7 @@ const createSymlinksHandler = ({ dryRun, force }: { dryRun: boolean; force: bool
         yield* Effect.log(`  ${targetName}:`)
         for (const source of sources) {
           yield* Effect.log(
-            `    - ${source.sourceRepo}/${path.relative(path.join(workspaceRoot, source.sourceRepo), source.source)} (from ${source.declaredBy})`,
+            `    - ${source.sourceRepo}/${path.relative(path.join(workspaceRoot, source.sourceRepo), source.source)}`,
           )
         }
       }
@@ -313,8 +306,8 @@ const removeSymlinksHandler = ({ dryRun }: { dryRun: boolean }) =>
     yield* Effect.log(`dotdot workspace: ${workspaceRoot}`)
     yield* Effect.log('')
 
-    const configs = yield* collectAllConfigs(workspaceRoot)
-    const mappings = collectPackageMappings(workspaceRoot, configs)
+    const rootConfig = yield* loadRootConfigWithSyncCheck(workspaceRoot)
+    const mappings = collectPackageMappings(workspaceRoot, rootConfig.config.repos)
 
     if (mappings.length === 0) {
       yield* Effect.log('No packages configurations found')

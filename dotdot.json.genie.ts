@@ -11,8 +11,6 @@ export default dotdotConfig({
         '@overeng/genie': { path: 'packages/@overeng/genie' },
         '@overeng/mono': { path: 'packages/@overeng/mono' },
         '@overeng/utils': { path: 'packages/@overeng/utils' },
-        '@overeng/bun-compose': { path: 'packages/@overeng/bun-compose' },
-        '@overeng/pnpm-compose': { path: 'packages/@overeng/pnpm-compose' },
         '@overeng/notion-effect-schema': { path: 'packages/@overeng/notion-effect-schema' },
         '@overeng/notion-effect-client': { path: 'packages/@overeng/notion-effect-client' },
         '@overeng/notion-cli': { path: 'packages/@overeng/notion-cli' },

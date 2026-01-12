@@ -5,7 +5,7 @@
  * Reference: https://github.com/overengineeringstudio/dotdot
  */
 
-import type { GenieOutput } from '../mod.ts'
+import type { GenieOutput, Strict } from '../mod.ts'
 
 /** Default JSON Schema URL for dotdot.json files */
 export const DOTDOT_SCHEMA_URL =
@@ -60,7 +60,9 @@ export type DotdotConfigArgs = {
  * })
  * ```
  */
-export const dotdotConfig = <const T extends DotdotConfigArgs>(args: T): GenieOutput<T> => {
+export const dotdotConfig = <const T extends DotdotConfigArgs>(
+  args: Strict<T, DotdotConfigArgs>,
+): GenieOutput<T> => {
   const schemaUrl = args.$schema === null ? undefined : (args.$schema ?? DOTDOT_SCHEMA_URL)
 
   const output = {

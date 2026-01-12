@@ -11,14 +11,13 @@ import { FileSystem } from '@effect/platform'
 import { Effect, Schema } from 'effect'
 
 import {
-  CONFIG_FILE_NAME,
-  type ConfigSource,
   CurrentWorkingDirectory,
-  collectAllConfigs,
   type DotdotConfig,
   findWorkspaceRoot,
+  GENERATED_CONFIG_FILE_NAME,
   Git,
   loadConfigFile,
+  loadRootConfigWithSyncCheck,
   updateRepoRev,
 } from '../lib/mod.ts'
 
@@ -38,18 +37,6 @@ type UpdateResult = {
   message?: string | undefined
 }
 
-/** Find which config file declares a repo */
-const findDeclaringConfig = (
-  configs: ConfigSource[],
-  repoName: string,
-): ConfigSource | undefined => {
-  // Prefer root config
-  const rootConfig = configs.find((c) => c.isRoot && c.config.repos[repoName])
-  if (rootConfig) return rootConfig
-
-  // Otherwise find first config that declares it
-  return configs.find((c) => c.config.repos[repoName])
-}
 
 /** Update-revs command implementation */
 export const updateRevsCommand = Cli.Command.make(
@@ -74,33 +61,18 @@ export const updateRevsCommand = Cli.Command.make(
 
       yield* Effect.log(`dotdot workspace: ${workspaceRoot}`)
 
-      // Collect all configs
-      const configs = yield* collectAllConfigs(workspaceRoot)
+      // Load root config and verify sync
+      const rootConfig = yield* loadRootConfigWithSyncCheck(workspaceRoot)
+      const rootConfigPath = path.join(workspaceRoot, GENERATED_CONFIG_FILE_NAME)
 
-      // Collect all declared repos
-      const declaredRepos = new Map<
-        string,
-        {
-          config: ConfigSource
-          repoConfig: (typeof configs)[0]['config']['repos'][string]
-        }
-      >()
-      for (const source of configs) {
-        for (const [name, repoConfig] of Object.entries(source.config.repos)) {
-          if (!declaredRepos.has(name)) {
-            const declaringConfig = findDeclaringConfig(configs, name)
-            if (declaringConfig) {
-              declaredRepos.set(name, { config: declaringConfig, repoConfig })
-            }
-          }
-        }
-      }
+      // Get declared repos from root config
+      const declaredRepos = Object.entries(rootConfig.config.repos)
 
       // Filter to specified repos if any
       const reposToUpdate =
         repos.length > 0
-          ? Array.from(declaredRepos.entries()).filter(([name]) => repos.includes(name))
-          : Array.from(declaredRepos.entries())
+          ? declaredRepos.filter(([name]) => repos.includes(name))
+          : declaredRepos
 
       if (reposToUpdate.length === 0) {
         if (repos.length > 0) {
@@ -121,10 +93,10 @@ export const updateRevsCommand = Cli.Command.make(
 
       const results: UpdateResult[] = []
 
-      // Track which config files need to be reloaded after modification
-      const modifiedConfigs = new Map<string, DotdotConfig>()
+      // Track the current config state for sequential updates
+      let currentConfig: DotdotConfig | undefined
 
-      for (const [name, { config: declaringConfig, repoConfig }] of reposToUpdate) {
+      for (const [name, repoConfig] of reposToUpdate) {
         const repoPath = path.join(workspaceRoot, name)
 
         // Check if repo exists
@@ -170,21 +142,13 @@ export const updateRevsCommand = Cli.Command.make(
           continue
         }
 
-        // Get or reload the config for this file
-        let configToModify = modifiedConfigs.get(declaringConfig.path)
-        if (!configToModify) {
-          configToModify = yield* loadConfigFile(declaringConfig.path)
-          modifiedConfigs.set(declaringConfig.path, configToModify)
+        // Load config if not already loaded
+        if (!currentConfig) {
+          currentConfig = yield* loadConfigFile(rootConfigPath)
         }
 
         // Update the rev
-        const newConfig = yield* updateRepoRev(
-          declaringConfig.path,
-          name,
-          currentRev,
-          configToModify,
-        )
-        modifiedConfigs.set(declaringConfig.path, newConfig)
+        currentConfig = yield* updateRepoRev(rootConfigPath, name, currentRev, currentConfig)
 
         results.push({ name, status: 'updated', oldRev, newRev: currentRev })
         yield* Effect.log(

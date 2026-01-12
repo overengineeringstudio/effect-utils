@@ -343,17 +343,22 @@ pkgs.stdenv.mkDerivation {
       --compile \
       --outfile="$build_output"
 
-    bun_build_tmp="$(find . -maxdepth 1 -type f -name '.*.bun-build' -print | sort -r | head -n 1)"
+    bun_binary="${pkgsUnstable.bun}/bin/bun"
+    bun_build_tmp="$(find . -maxdepth 2 -type f -name '.*.bun-build' -print | sort -r | head -n 1)"
     if [ -n "$bun_build_tmp" ] && [ -s "$bun_build_tmp" ]; then
       # Bun sometimes leaves the compiled binary in a temp `.*.bun-build` file
       # without moving it to --outfile when running inside Nix builds. We also
       # see cases where --outfile is populated with a raw Bun binary instead of
       # the compiled CLI, so prefer the temp output when that happens.
-      bun_binary="${pkgsUnstable.bun}/bin/bun"
       if [ ! -s "$build_output" ] || cmp -s "$build_output" "$bun_binary"; then
         cp "$bun_build_tmp" "$build_output"
         chmod 755 "$build_output"
       fi
+    fi
+
+    if [ -s "$build_output" ] && cmp -s "$build_output" "$bun_binary"; then
+      echo "mk-bun-cli: bun build output matches bun; falling back to bun runtime wrapper" >&2
+      touch "$PWD/.bun-build/.use-bun-runtime"
     fi
 
     if [ ! -s "$build_output" ]; then
@@ -368,7 +373,60 @@ pkgs.stdenv.mkDerivation {
     runHook preInstall
 
     mkdir -p $out/bin
-    install -m 755 ".bun-build/${binaryName}" $out/bin/${binaryName}
+    if [ -f ".bun-build/.use-bun-runtime" ]; then
+      runtime_root="$out/lib/${binaryName}-runtime"
+      mkdir -p "$runtime_root"
+      ${pkgs.lib.concatMapStringsSep "\n" (dir: ''
+        mkdir -p "$runtime_root/$(dirname "${dir}")"
+        cp -R "${dir}" "$runtime_root/${dir}"
+      '') installDirsChecked}
+      ${pkgs.lib.concatMapStringsSep "\n" (dir: ''
+        if [ -d "$runtime_root/${dir}/node_modules" ]; then
+          ${pkgs.lib.concatMapStringsSep "\n" (pkg: ''
+            pkg_scope="$(dirname "${pkg.name}")"
+            if [ "$pkg_scope" != "." ]; then
+              mkdir -p "$runtime_root/${dir}/node_modules/$pkg_scope"
+            fi
+            rm -rf "$runtime_root/${dir}/node_modules/${pkg.name}"
+            ln -s "$runtime_root/${pkg.path}" "$runtime_root/${dir}/node_modules/${pkg.name}"
+          '') installDirPackages}
+        fi
+      '') installDirsChecked}
+      ${pkgs.lib.concatMapStringsSep "\n" (dir: ''
+        if [ -d "$runtime_root/${dir}/node_modules/.bun" ]; then
+          types_dir="$runtime_root/${dir}/node_modules/@types"
+          node_types_link="$types_dir/node"
+          if [ ! -e "$node_types_link" ]; then
+            node_types_pkg="$(find "$runtime_root/${dir}/node_modules/.bun" -maxdepth 1 -type d -name '@types+node@*' | sort -V | tail -n 1)"
+            if [ -n "$node_types_pkg" ] && [ -d "$node_types_pkg/node_modules/@types/node" ]; then
+              mkdir -p "$types_dir"
+              ln -s "$node_types_pkg/node_modules/@types/node" "$node_types_link"
+            fi
+          fi
+        fi
+      '') installDirsChecked}
+      ${pkgs.lib.concatMapStringsSep "\n" (dirSpec: ''
+        if [ -d "$runtime_root/${dirSpec.path}/node_modules/.bun" ]; then
+          ${pkgs.lib.concatMapStringsSep "\n" (dep: ''
+            dep_target="$runtime_root/${dirSpec.path}/node_modules/${dep}"
+            if [ ! -e "$dep_target" ]; then
+              dep_source="$(find "$runtime_root/${dirSpec.path}/node_modules/.bun" -type d -path "*/node_modules/${dep}" | head -n 1)"
+              if [ -n "$dep_source" ]; then
+                mkdir -p "$(dirname "$dep_target")"
+                ln -s "$dep_source" "$dep_target"
+              fi
+            fi
+          '') dirSpec.deps}
+        fi
+      '') installDirDependencies}
+      cat > "$out/bin/${binaryName}" <<EOF
+#!${pkgs.bash}/bin/bash
+exec ${pkgsUnstable.bun}/bin/bun "$runtime_root/${entry}" "\$@"
+EOF
+      chmod 755 "$out/bin/${binaryName}"
+    else
+      install -m 755 ".bun-build/${binaryName}" $out/bin/${binaryName}
+    fi
 
     runHook postInstall
   '';

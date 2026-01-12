@@ -19,7 +19,7 @@ dotdot is opinionated about multi-repo workspace management. These are the stanc
 ```
 # YES - flat structure
 workspace/
-├── dotdot.json
+├── dotdot-root.json
 ├── repo-a/
 ├── repo-b/
 └── repo-c/
@@ -39,17 +39,45 @@ workspace/
 - Avoids nested `.git` issues
 - Better IDE and tooling support
 
-### 2. Distributed Configs
+### 2. Distributed Configs with Two-Phase Resolution
 
-**Decision:** Each member repo can have its own `dotdot.json` declaring its dependencies. The workspace root has only `dotdot-root.json` which merges all member configs.
+**Decision:** Each member repo can have its own `dotdot.json` declaring its dependencies. The workspace root has `dotdot-root.json` which is the **single source of truth** for all commands.
+
+**Two-Phase Model:**
+
+1. **Sync Phase (`dotdot sync`):**
+   - Collects all member repo configs (`dotdot.json` files)
+   - Merges them into `dotdot-root.json`
+   - This is the ONLY command that reads member configs
+
+2. **Execution Phase (all other commands):**
+   - Read ONLY from `dotdot-root.json`
+   - If root config is out of sync with member configs, error and require `dotdot sync`
+   - Simple, predictable behavior
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│  repo-a/        │     │  repo-b/        │     │  repo-c/        │
+│  dotdot.json    │     │  dotdot.json    │     │  (no config)    │
+└────────┬────────┘     └────────┬────────┘     └─────────────────┘
+         │                       │
+         └───────────┬───────────┘
+                     │
+              dotdot sync
+                     │
+                     ▼
+         ┌───────────────────────┐
+         │   dotdot-root.json    │  ◄── Source of truth for all commands
+         └───────────────────────┘
+```
 
 **Rationale:**
 - Each repo can own its own dependency declarations
-- No single point of failure or merge conflicts
 - Repos remain portable - they work independently
-- Diamond dependencies are detected and reported
-- Deduplication happens automatically at runtime
-- Generated config at root is the merged, authoritative view
+- Root config is the single source of truth (no merging at runtime)
+- Clear error when configs are out of sync
+- Simpler implementation - commands just read one file
+- Predictable behavior - what you see in root config is what you get
 
 ### 3. Revision Pinning
 

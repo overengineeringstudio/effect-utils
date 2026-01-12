@@ -3,7 +3,7 @@
  * Reference: https://www.typescriptlang.org/tsconfig
  */
 
-import type { GenieOutput } from '../mod.ts'
+import type { GenieOutput, Strict } from '../mod.ts'
 
 type Target =
   | 'ES3'
@@ -297,7 +297,9 @@ export type TSConfigArgs = {
  * })
  * ```
  */
-export const tsconfigJson = <const T extends TSConfigArgs>(args: T): GenieOutput<T> => {
+export const tsconfigJson = <const T extends TSConfigArgs>(
+  args: Strict<T, TSConfigArgs>,
+): GenieOutput<T> => {
   if (args.extends !== undefined) {
     console.warn(
       `[genie] tsconfig.json uses "extends" which is not recommended with Genie.\n` +

@@ -3,6 +3,7 @@
 ## user todos
 
 - [ ] bun patch only works if the patch is in the same directory as the package.json
+- [ ] workspace wide ts watching
 - [ ] how to run `effect-language-service patch` only once per workspace
 - [ ] custom bun store per workspace?
 - [ ] rethink separating repos vs packages in config.

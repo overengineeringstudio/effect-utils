@@ -12,11 +12,10 @@ import { Effect, Option, Schema } from 'effect'
 
 import {
   CurrentWorkingDirectory,
-  collectAllConfigs,
   type ExecutionMode,
   executeForAll,
   findWorkspaceRoot,
-  type RepoConfig,
+  loadRootConfigWithSyncCheck,
   runShellCommand,
 } from '../lib/mod.ts'
 
@@ -35,27 +34,6 @@ type ExecResult = {
   message?: string
 }
 
-/** Collect all declared repos from configs */
-const collectDeclaredRepos = (
-  configs: Array<{
-    config: { repos: Record<string, RepoConfig> }
-    isRoot: boolean
-    dir: string
-  }>,
-) => {
-  const repos = new Map<string, RepoConfig>()
-
-  for (const source of configs) {
-    for (const [name, config] of Object.entries(source.config.repos)) {
-      // First declaration wins (root config takes precedence)
-      if (!repos.has(name)) {
-        repos.set(name, config)
-      }
-    }
-  }
-
-  return repos
-}
 
 /** Exec command implementation */
 export const execCommand = Cli.Command.make(
@@ -85,15 +63,16 @@ export const execCommand = Cli.Command.make(
       yield* Effect.log(`Execution mode: ${mode}`)
       yield* Effect.log('')
 
-      const configs = yield* collectAllConfigs(workspaceRoot)
-      const declaredRepos = collectDeclaredRepos(configs)
+      // Load root config and verify sync
+      const rootConfig = yield* loadRootConfigWithSyncCheck(workspaceRoot)
 
-      if (declaredRepos.size === 0) {
+      // Get declared repos from root config
+      const repoNames = Object.keys(rootConfig.config.repos)
+
+      if (repoNames.length === 0) {
         yield* Effect.log('No repos declared in config')
         return
       }
-
-      const repoNames = Array.from(declaredRepos.keys())
 
       const results = yield* executeForAll(
         repoNames,

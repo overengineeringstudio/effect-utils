@@ -6,7 +6,7 @@ The main README uses devenv with GitHub URLs. This is the simplest approach - de
 
 ## Pure Nix Flakes
 
-For local submodule development without devenv, use pure flakes with `inputs.self.submodules = true`:
+For local development without devenv, use pure flakes:
 
 ```nix
 # flake.nix
@@ -16,36 +16,28 @@ For local submodule development without devenv, use pure flakes with `inputs.sel
     nixpkgsUnstable.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
     effect-utils = {
-      url = "path:./submodules/effect-utils";
+      url = "git+file:../effect-utils";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.nixpkgsUnstable.follows = "nixpkgsUnstable";
       inputs.flake-utils.follows = "flake-utils";
     };
   };
 
-  # Required for Nix to see files inside git submodules
-  inputs.self.submodules = true;
-
   outputs = { self, nixpkgs, nixpkgsUnstable, flake-utils, effect-utils, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
-        pkgs = import nixpkgs {
-          inherit system;
-          overlays = [ effect-utils.overlays.pnpmGuard ];
-        };
+        pkgs = import nixpkgs { inherit system; };
         pkgsUnstable = import nixpkgsUnstable { inherit system; };
         cliPackages = effect-utils.lib.mkCliPackages {
           inherit pkgs pkgsUnstable;
-          src = effect-utils.outPath;
         };
       in {
         devShells.default = pkgs.mkShell {
           buildInputs = [
-            pkgs.pnpm
-            pkgs.nodejs_24
             pkgs.bun
+            pkgs.nodejs_24
             cliPackages.genie
-            cliPackages.pnpm-compose
+            cliPackages.dotdot
           ];
 
           shellHook = ''
@@ -64,10 +56,21 @@ export WORKSPACE_ROOT=$(pwd)
 use flake
 ```
 
-## pnpm Guard Overlay
+## Nix Path Dependencies
 
-The `effect-utils.overlays.pnpmGuard` overlay wraps `pnpm` to block install commands inside submodules. This prevents accidentally corrupting the workspace by running `pnpm install` in a submodule directory.
+When using nix flakes with sibling repos, use `git+file:` (not `path:`):
+
+```nix
+inputs = {
+  sibling-repo.url = "git+file:../sibling-repo";
+  # Deduplicate shared inputs
+  other-repo.inputs.sibling-repo.follows = "sibling-repo";
+};
+```
+
+**Important:** `path:` inputs cannot escape git repo boundaries. Always use `git+file:` for cross-repo references.
 
 ## References
 
 - [devenv inputs docs](https://devenv.sh/inputs/)
+- [nix flake inputs docs](https://nixos.org/manual/nix/stable/command-ref/new-cli/nix3-flake.html#flake-inputs)

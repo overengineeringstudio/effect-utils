@@ -22,14 +22,14 @@ class HashPatternNotFoundError extends Schema.TaggedError<HashPatternNotFoundErr
 /** Known Nix packages in this monorepo */
 const NIX_PACKAGES = {
   genie: 'packages/@overeng/genie',
-  'pnpm-compose': 'packages/@overeng/pnpm-compose',
+  dotdot: 'packages/@overeng/dotdot',
 } as const
 
 type NixPackageName = keyof typeof NIX_PACKAGES
 
 const allPackageNames = Object.keys(NIX_PACKAGES) as NixPackageName[]
 
-const packageOption = Options.choice('package', ['genie', 'pnpm-compose', 'all'] as const).pipe(
+const packageOption = Options.choice('package', ['genie', 'dotdot', 'all'] as const).pipe(
   Options.withAlias('p'),
   Options.withDescription('Package to operate on'),
   Options.withDefault('all' as const),
@@ -54,7 +54,7 @@ const buildPackage = (name: NixPackageName) =>
   })
 
 /** Get packages to operate on based on --package option */
-const getPackages = (pkg: 'genie' | 'pnpm-compose' | 'all'): NixPackageName[] =>
+const getPackages = (pkg: 'genie' | 'dotdot' | 'all'): NixPackageName[] =>
   pkg === 'all' ? allPackageNames : [pkg]
 
 /** Build subcommand - rebuilds Nix packages */
@@ -77,7 +77,7 @@ const buildSubcommand = Command.make(
 
       yield* Console.log(`\n✓ All done`)
     }),
-).pipe(Command.withDescription('Build Nix packages (genie, pnpm-compose)'))
+).pipe(Command.withDescription('Build Nix packages (genie, dotdot)'))
 
 /** Update outputHash in build.nix after bun.lock change */
 const updateHash = (name: NixPackageName) =>
@@ -180,5 +180,5 @@ const reloadSubcommand = Command.make('reload', {}, () =>
 /** Main nix command with subcommands */
 export const nixCommand = Command.make('nix').pipe(
   Command.withSubcommands([buildSubcommand, hashSubcommand, reloadSubcommand]),
-  Command.withDescription('Manage Nix-bundled binaries (genie, pnpm-compose)'),
+  Command.withDescription('Manage Nix-bundled binaries (genie, dotdot)'),
 )
