@@ -1,76 +1,36 @@
 # Nix Setup
 
-## devenv (recommended)
+Two approaches for setting up Nix-based development environments with effect-utils:
 
-The main README uses devenv with GitHub URLs. This is the simplest approach - devenv fetches packages directly from GitHub.
+## [Pure Nix Flakes](./nix-flake-setup.md)
 
-## Pure Nix Flakes
+Use `flake.nix` with GitHub URLs and `--override-input` in `.envrc` for local overrides.
 
-For local development without devenv, use pure flakes:
+- Works with unpushed local changes via input overrides
+- No deprecation warnings
+- Direct control over Nix configuration
 
-```nix
-# flake.nix
-{
-  inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    nixpkgsUnstable.url = "github:NixOS/nixpkgs/nixos-unstable";
-    flake-utils.url = "github:numtide/flake-utils";
-    effect-utils = {
-      url = "git+file:../effect-utils";
-      inputs.nixpkgs.follows = "nixpkgs";
-      inputs.nixpkgsUnstable.follows = "nixpkgsUnstable";
-      inputs.flake-utils.follows = "flake-utils";
-    };
-  };
+## [devenv](./devenv-setup.md)
 
-  outputs = { self, nixpkgs, nixpkgsUnstable, flake-utils, effect-utils, ... }:
-    flake-utils.lib.eachDefaultSystem (system:
-      let
-        pkgs = import nixpkgs { inherit system; };
-        pkgsUnstable = import nixpkgsUnstable { inherit system; };
-        cliPackages = effect-utils.lib.mkCliPackages {
-          inherit pkgs pkgsUnstable;
-        };
-      in {
-        devShells.default = pkgs.mkShell {
-          buildInputs = [
-            pkgs.bun
-            pkgs.nodejs_24
-            cliPackages.genie
-            cliPackages.dotdot
-          ];
+Use `devenv.yaml` and `devenv.nix` for a higher-level declarative setup.
 
-          shellHook = ''
-            export WORKSPACE_ROOT="$PWD"
-            export PATH="$WORKSPACE_ROOT/node_modules/.bin:$PATH"
-          '';
-        };
-      });
-}
-```
+- Simpler configuration
+- Built-in support for languages, services, processes
+- Uses GitHub URLs (requires pushed changes)
 
-With `.envrc`:
+## Choosing an Approach
 
-```bash
-export WORKSPACE_ROOT=$(pwd)
-use flake
-```
+Both approaches work well. Choose based on your needs:
 
-## Nix Path Dependencies
+| Need | Recommended |
+|------|-------------|
+| Local changes before pushing | Pure Flake |
+| Simple setup | devenv |
+| Fine-grained Nix control | Pure Flake |
+| Language/service integrations | devenv |
+| CI without changes | Both work |
 
-When using nix flakes with sibling repos, use `git+file:` (not `path:`):
+## Test Repos
 
-```nix
-inputs = {
-  sibling-repo.url = "git+file:../sibling-repo";
-  # Deduplicate shared inputs
-  other-repo.inputs.sibling-repo.follows = "sibling-repo";
-};
-```
-
-**Important:** `path:` inputs cannot escape git repo boundaries. Always use `git+file:` for cross-repo references.
-
-## References
-
-- [devenv inputs docs](https://devenv.sh/inputs/)
-- [nix flake inputs docs](https://nixos.org/manual/nix/stable/command-ref/new-cli/nix3-flake.html#flake-inputs)
+- `test-nix-flake/` - Pure flake example
+- `test-devenv/` - devenv example

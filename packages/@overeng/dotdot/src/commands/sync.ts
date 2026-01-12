@@ -1,7 +1,7 @@
 /**
  * dotdot sync command
  *
- * Clone all declared repos that are missing
+ * Collect member configs, merge into root config, clone missing repos
  */
 
 import path from 'node:path'
@@ -11,14 +11,17 @@ import { FileSystem } from '@effect/platform'
 import { Effect, Option, Schema } from 'effect'
 
 import {
+  collectMemberConfigs,
   CurrentWorkingDirectory,
-  collectAllConfigs,
   type ExecutionMode,
   executeForAll,
   executeTopoForAll,
   findWorkspaceRoot,
   Git,
   Graph,
+  loadRootConfig,
+  mergeMemberConfigs,
+  type PackageIndexEntry,
   type RepoConfig,
   runShellCommand,
   writeGeneratedConfig,
@@ -38,7 +41,7 @@ type SyncResult = {
   message?: string
 }
 
-/** Restore a single repo */
+/** Sync a single repo (clone if missing, checkout if pinned) */
 const syncRepo = (workspaceRoot: string, name: string, config: RepoConfig) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -91,24 +94,11 @@ const syncRepo = (workspaceRoot: string, name: string, config: RepoConfig) =>
       yield* runShellCommand(config.install, repoPath)
     }
 
-    // Run package-level install commands
-    const packageInstalls: string[] = []
-    if (config.packages) {
-      for (const [pkgName, pkgConfig] of Object.entries(config.packages)) {
-        if (pkgConfig.install) {
-          const pkgPath = path.join(repoPath, pkgConfig.path)
-          yield* runShellCommand(pkgConfig.install, pkgPath)
-          packageInstalls.push(pkgName)
-        }
-      }
-    }
-
     const rev = yield* Git.getCurrentRev(repoPath)
-    const installInfo = config.install || packageInstalls.length > 0
     return {
       name,
       status: 'cloned',
-      message: `Cloned at ${rev.slice(0, 7)}${installInfo ? ' (installed)' : ''}`,
+      message: `Cloned at ${rev.slice(0, 7)}${config.install ? ' (installed)' : ''}`,
     } as SyncResult
   }).pipe(
     Effect.catchAll((error) =>
@@ -120,27 +110,29 @@ const syncRepo = (workspaceRoot: string, name: string, config: RepoConfig) =>
     ),
   )
 
-/** Collect all declared repos from configs */
-const collectDeclaredRepos = (
-  configs: Array<{
-    config: { repos: Record<string, RepoConfig> }
-    isRoot: boolean
-    dir: string
-  }>,
-) => {
-  const repos = new Map<string, RepoConfig>()
+/** Run package-level install commands */
+const runPackageInstalls = (
+  workspaceRoot: string,
+  packages: Record<string, PackageIndexEntry>,
+) =>
+  Effect.gen(function* () {
+    const installedPackages: string[] = []
 
-  for (const source of configs) {
-    for (const [name, config] of Object.entries(source.config.repos)) {
-      // First declaration wins (root config takes precedence)
-      if (!repos.has(name)) {
-        repos.set(name, config)
+    for (const [pkgName, pkgConfig] of Object.entries(packages)) {
+      if (pkgConfig.install) {
+        const pkgPath = path.join(workspaceRoot, pkgConfig.repo, pkgConfig.path)
+        yield* Effect.log(`  Installing package ${pkgName}...`)
+        yield* runShellCommand(pkgConfig.install, pkgPath).pipe(
+          Effect.catchAll((error) => {
+            return Effect.logWarning(`  Failed to install ${pkgName}: ${error}`)
+          }),
+        )
+        installedPackages.push(pkgName)
       }
     }
-  }
 
-  return repos
-}
+    return installedPackages
+  })
 
 /** Sync command implementation */
 export const syncCommand = Cli.Command.make(
@@ -186,18 +178,59 @@ export const syncCommand = Cli.Command.make(
 
       yield* Effect.log(`dotdot workspace: ${workspaceRoot}`)
 
-      // Collect all configs
-      const configs = yield* collectAllConfigs(workspaceRoot)
+      // Collect member configs and merge
+      const memberConfigs = yield* collectMemberConfigs(workspaceRoot)
+      const merged = mergeMemberConfigs(memberConfigs)
 
-      // Get declared repos
-      const declaredRepos = collectDeclaredRepos(configs)
+      // Also load existing root config to preserve manually added repos
+      const existingRoot = yield* loadRootConfig(workspaceRoot)
 
-      if (declaredRepos.size === 0) {
-        yield* Effect.log('No repos declared in config')
+      // Merge repos: existing root repos + new deps from members
+      const allRepos: Record<string, RepoConfig> = {
+        ...existingRoot.config.repos,
+        ...merged.repos,
+      }
+
+      // Detect dangling repos (exist in workspace but no config and not a dependency)
+      const entries = yield* fs.readDirectory(workspaceRoot)
+      const danglingRepos: string[] = []
+      for (const entry of entries) {
+        if (entry.startsWith('.')) continue
+        const entryPath = path.join(workspaceRoot, entry)
+        const stat = yield* fs.stat(entryPath)
+        if (stat.type !== 'Directory') continue
+
+        // Check if it's a git repo
+        const isGitRepo = yield* Git.isGitRepo(entryPath)
+        if (!isGitRepo) continue
+
+        // Check if it has a config (workspace member) or is a dependency
+        const hasConfig = merged.membersWithConfig.has(entry)
+        const isDependency = merged.declaredDeps.has(entry) || entry in allRepos
+        if (!hasConfig && !isDependency) {
+          danglingRepos.push(entry)
+        }
+      }
+
+      // Show warnings for dangling repos
+      if (danglingRepos.length > 0) {
+        yield* Effect.log('')
+        yield* Effect.logWarning(`Found ${danglingRepos.length} dangling repo(s):`)
+        for (const name of danglingRepos) {
+          yield* Effect.logWarning(`  - ${name} (no config and not a dependency of anything)`)
+        }
+        yield* Effect.log('')
+      }
+
+      const repoCount = Object.keys(allRepos).length
+      const packageCount = Object.keys(merged.packages).length
+
+      if (repoCount === 0) {
+        yield* Effect.log('No repos declared in member configs')
         return
       }
 
-      yield* Effect.log(`Found ${declaredRepos.size} declared repo(s)`)
+      yield* Effect.log(`Found ${repoCount} repo(s), ${packageCount} package(s)`)
       yield* Effect.log(`Execution mode: ${mode}`)
       yield* Effect.log('')
 
@@ -205,30 +238,30 @@ export const syncCommand = Cli.Command.make(
         yield* Effect.log('Dry run - no changes will be made')
         yield* Effect.log('')
 
-        for (const [name, config] of declaredRepos.entries()) {
+        for (const [name, config] of Object.entries(allRepos)) {
           const repoPath = path.join(workspaceRoot, name)
           const exists = yield* fs.exists(repoPath)
           if (exists) {
             yield* Effect.log(`  ${name}: would skip (already exists)`)
           } else {
-            const installSteps: string[] = []
-            if (config.install) installSteps.push(`repo install: ${config.install}`)
-            if (config.packages) {
-              for (const [pkgName, pkgConfig] of Object.entries(config.packages)) {
-                if (pkgConfig.install) {
-                  installSteps.push(`package ${pkgName}: ${pkgConfig.install}`)
-                }
-              }
-            }
-            const installInfo = installSteps.length > 0 ? ` (${installSteps.join(', ')})` : ''
+            const installInfo = config.install ? ` (install: ${config.install})` : ''
             yield* Effect.log(`  ${name}: would clone from ${config.url}${installInfo}`)
+          }
+        }
+
+        if (packageCount > 0) {
+          yield* Effect.log('')
+          yield* Effect.log('Packages to index:')
+          for (const [name, pkg] of Object.entries(merged.packages)) {
+            const installInfo = pkg.install ? ` (install: ${pkg.install})` : ''
+            yield* Effect.log(`  ${name}: ${pkg.repo}/${pkg.path}${installInfo}`)
           }
         }
         return
       }
 
       // Sync repos with the specified execution mode
-      const repoEntries = Array.from(declaredRepos.entries())
+      const repoEntries = Object.entries(allRepos)
       const options = { mode, maxParallel: Option.getOrUndefined(maxParallel) }
 
       const executeFn = ([name, config]: [string, RepoConfig]) =>
@@ -243,7 +276,8 @@ export const syncCommand = Cli.Command.make(
 
       if (mode === 'topo' || mode === 'topo-parallel') {
         // Build dependency graph for topological execution
-        const graph = Graph.buildFromConfigs(configs, (dir) => path.basename(dir))
+        // Using member configs for dependency ordering
+        const graph = Graph.buildFromMemberConfigs(memberConfigs)
 
         results = yield* executeTopoForAll(repoEntries, executeFn, graph, options).pipe(
           Effect.catchTag('CycleError', (e) =>
@@ -258,9 +292,15 @@ export const syncCommand = Cli.Command.make(
         results = yield* executeForAll(repoEntries, executeFn, options)
       }
 
-      // Write the generated config with merged repos
-      const mergedConfig = { repos: Object.fromEntries(declaredRepos) }
-      yield* writeGeneratedConfig(workspaceRoot, mergedConfig)
+      // Run package install commands
+      if (packageCount > 0) {
+        yield* Effect.log('')
+        yield* Effect.log('Running package installs...')
+        yield* runPackageInstalls(workspaceRoot, merged.packages)
+      }
+
+      // Write the generated config with merged repos and packages
+      yield* writeGeneratedConfig(workspaceRoot, allRepos, merged.packages)
 
       yield* Effect.log('')
 

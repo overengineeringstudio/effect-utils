@@ -12,11 +12,11 @@ import { Effect, Schema } from 'effect'
 
 import {
   CurrentWorkingDirectory,
-  type DotdotConfig,
+  type RootConfig,
   findWorkspaceRoot,
   GENERATED_CONFIG_FILE_NAME,
   Git,
-  loadConfigFile,
+  loadRootConfigFile,
   loadRootConfigWithSyncCheck,
   updateRepoRev,
 } from '../lib/mod.ts'
@@ -94,7 +94,7 @@ export const updateRevsCommand = Cli.Command.make(
       const results: UpdateResult[] = []
 
       // Track the current config state for sequential updates
-      let currentConfig: DotdotConfig | undefined
+      let currentConfig: RootConfig | undefined
 
       for (const [name, repoConfig] of reposToUpdate) {
         const repoPath = path.join(workspaceRoot, name)
@@ -144,7 +144,7 @@ export const updateRevsCommand = Cli.Command.make(
 
         // Load config if not already loaded
         if (!currentConfig) {
-          currentConfig = yield* loadConfigFile(rootConfigPath)
+          currentConfig = yield* loadRootConfigFile(rootConfigPath)
         }
 
         // Update the rev

@@ -16,10 +16,12 @@ export type RepoFixture = {
   isGitRepo?: boolean
   /** Create with dirty working tree */
   isDirty?: boolean
-  /** Has its own dotdot.json */
+  /** Has its own dotdot.json member config */
   hasConfig?: boolean
-  /** Config content if hasConfig */
-  configRepos?: Record<string, { url: string; rev?: string }>
+  /** Member config deps (repos this one depends on) */
+  configDeps?: Record<string, { url: string; rev?: string; install?: string }>
+  /** Member config exposes (packages this repo provides) */
+  configExposes?: Record<string, { path: string; install?: string }>
 }
 
 export type WorkspaceFixture = {
@@ -74,8 +76,8 @@ export const createWorkspace = (fixture: WorkspaceFixture): string => {
       }
     }
 
-    if (repo.hasConfig && repo.configRepos) {
-      const configContent = generateConfig(repo.configRepos)
+    if (repo.hasConfig) {
+      const configContent = generateMemberConfig(repo.configExposes, repo.configDeps)
       fs.writeFileSync(path.join(repoPath, 'dotdot.json'), configContent)
     }
   }
@@ -168,24 +170,41 @@ export const createPackageTarget = (repoPath: string, packagePath: string): void
   fs.writeFileSync(path.join(targetPath, 'package.json'), '{"name": "test-package"}\n')
 }
 
-type PackageConfig = { path: string; install?: string }
+type PackageIndexEntry = { repo: string; path: string; install?: string }
 
-/** Generate JSON config with packages field */
-export const generateConfigWithPackages = (
-  repos: Record<string, { url: string; rev?: string; packages?: Record<string, PackageConfig> }>,
+/** Generate root config JSON with repos and packages index (new format) */
+export const generateRootConfig = (
+  repos: Record<string, { url: string; rev?: string; install?: string }>,
+  packages?: Record<string, PackageIndexEntry>,
 ): string => {
-  const reposObj: Record<
-    string,
-    { url: string; rev?: string; packages?: Record<string, PackageConfig> }
-  > = {}
-  for (const [name, config] of Object.entries(repos)) {
-    reposObj[name] = { url: config.url }
-    if (config.rev) {
-      reposObj[name].rev = config.rev
-    }
-    if (config.packages && Object.keys(config.packages).length > 0) {
-      reposObj[name].packages = config.packages
-    }
+  const output: {
+    repos: Record<string, { url: string; rev?: string; install?: string }>
+    packages?: Record<string, PackageIndexEntry>
+  } = { repos }
+
+  if (packages && Object.keys(packages).length > 0) {
+    output.packages = packages
   }
-  return JSON.stringify({ repos: reposObj }, null, 2) + '\n'
+
+  return JSON.stringify(output, null, 2) + '\n'
+}
+
+/** Generate member config JSON with exposes and deps (new format) */
+export const generateMemberConfig = (
+  exposes?: Record<string, { path: string; install?: string }>,
+  deps?: Record<string, { url: string; rev?: string; install?: string }>,
+): string => {
+  const output: {
+    exposes?: Record<string, { path: string; install?: string }>
+    deps?: Record<string, { url: string; rev?: string; install?: string }>
+  } = {}
+
+  if (exposes && Object.keys(exposes).length > 0) {
+    output.exposes = exposes
+  }
+  if (deps && Object.keys(deps).length > 0) {
+    output.deps = deps
+  }
+
+  return JSON.stringify(output, null, 2) + '\n'
 }

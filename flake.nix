@@ -78,10 +78,10 @@
           specs = {
             genie = {
               name = "genie";
-              entry = "effect-utils/packages/@overeng/genie/src/cli.ts";
+              entry = "effect-utils/packages/@overeng/genie/src/build/cli.ts";
               packageJsonPath = "effect-utils/packages/@overeng/genie/package.json";
               typecheckTsconfig = "effect-utils/packages/@overeng/genie/tsconfig.json";
-              bunDepsHash = "sha256-JtxYAEufsrrbYZA5OdZzaWRpgvawnOMwmht+98DDHSQ=";
+              bunDepsHash = "sha256-xtg5VBvc6BGMDoFI8LtrAv35fGay/f7UQfOp7X/X3cw=";
               sources = [
                 { name = "effect-utils"; src = srcPath; }
               ];

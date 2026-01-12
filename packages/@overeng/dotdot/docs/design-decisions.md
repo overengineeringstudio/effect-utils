@@ -146,6 +146,70 @@ workspace-root/
 - TypeScript is an implementation detail, not a usage requirement
 - Enables use with Rust, Go, Python, or any other toolchain
 
+### 7. Config Semantics: Self-Description vs Dependencies
+
+**Decision:** Member configs have two distinct sections:
+- `exposes` - packages THIS repo provides to the workspace
+- `deps` - other repos THIS repo depends on
+
+```json
+// Member config (dotdot.json)
+{
+  "exposes": {
+    "shared-lib": { "path": "packages/shared", "install": "pnpm build" }
+  },
+  "deps": {
+    "repo-b": { "url": "git@...", "rev": "abc123", "install": "bun install" }
+  }
+}
+```
+
+Root config aggregates all into flat `repos` + `packages` index:
+
+```json
+// Root config (dotdot-root.json)
+{
+  "repos": {
+    "repo-a": { "url": "git@...", "rev": "..." },
+    "repo-b": { "url": "git@...", "rev": "..." }
+  },
+  "packages": {
+    "shared-lib": { "repo": "repo-a", "path": "packages/shared", "install": "pnpm build" }
+  }
+}
+```
+
+**Rationale:**
+- Clear semantic separation - no ambiguity about "who provides what"
+- A repo describes itself (exposes) and its needs (deps)
+- Root config is a flat aggregation for fast command execution
+- Packages index enables efficient symlink creation without scanning
+
+### 8. Repo Validity & Dangling Detection
+
+**Decision:** A repo in the workspace is valid if ANY of these conditions are true:
+1. **Has a member config** (`dotdot.json`) - it's a workspace member
+2. **Is declared as a dependency** (in some other repo's `deps`) - it's an external dep
+
+Repos that exist in the workspace but have NO config AND are NOT a dependency of anything are considered "dangling" - a warning is shown during sync.
+
+```
+workspace/
+├── dotdot-root.json
+├── repo-a/           # Valid: has dotdot.json (workspace member)
+│   └── dotdot.json
+├── repo-b/           # Valid: declared as dep in repo-a (external dep)
+│   └── (no config)
+└── orphan-repo/      # Warning: dangling (no config, nothing depends on it)
+    └── (no config)
+```
+
+**Rationale:**
+- External dependencies (libraries) don't need dotdot configs
+- Dangling repos are likely orphaned/forgotten - warn to help cleanup
+- Clear rules about what "belongs" in a workspace
+- Explicit about workspace membership vs external dependencies
+
 ## Anti-Patterns Avoided
 
 - **Reinventing git** - We use git, not replace it

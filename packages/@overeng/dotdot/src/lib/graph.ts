@@ -153,53 +153,47 @@ export const toLayers = <T>(graph: Graph<T>): Effect.Effect<string[][], CycleErr
     return layers
   })
 
-/**
- * Build a dependency graph from configs
- * A repo depends on all repos it declares in its config
- */
-export const buildFromConfigs = <T>(
-  configs: Array<{
-    dir: string
-    isRoot: boolean
-    config: { repos: Record<string, T> }
-  }>,
-  getRepoName: (dir: string) => string,
-): Graph<T> => {
-  let graph = empty<T>()
+import type { MemberConfigSource } from './loader.ts'
+import type { RepoConfig } from './config.ts'
 
-  // First pass: collect all repos
-  const allRepos = new Map<string, T>()
+/**
+ * Build a dependency graph from member configs
+ * Each member repo depends on the repos it declares in its deps
+ */
+export const buildFromMemberConfigs = (configs: MemberConfigSource[]): Graph<RepoConfig> => {
+  let graph = empty<RepoConfig>()
+
+  // First pass: collect all repos from deps
+  const allRepos = new Map<string, RepoConfig>()
   for (const source of configs) {
-    for (const [name, config] of Object.entries(source.config.repos)) {
-      if (!allRepos.has(name)) {
-        allRepos.set(name, config)
+    if (source.config.deps) {
+      for (const [name, depConfig] of Object.entries(source.config.deps)) {
+        if (!allRepos.has(name)) {
+          allRepos.set(name, {
+            url: depConfig.url,
+            rev: depConfig.rev,
+            install: depConfig.install,
+          })
+        }
       }
     }
   }
 
-  // Second pass: build graph with dependencies
+  // Add all repos as nodes
+  for (const [name, config] of allRepos) {
+    graph = addNode(graph, name, config, [])
+  }
+
+  // Add member repos with their dependencies
   for (const source of configs) {
-    const declaringRepo = source.isRoot ? null : getRepoName(source.dir)
+    const repoName = source.repoName
+    const deps = source.config.deps ? Object.keys(source.config.deps) : []
 
-    for (const [name, config] of Object.entries(source.config.repos)) {
-      const existingNode = getNode(graph, name)
+    // Get existing node data or create empty config for member repo
+    const existingNode = getNode(graph, repoName)
+    const nodeData = existingNode?.data ?? { url: '' }
 
-      if (!existingNode) {
-        // New node - it depends on the repo that declares it (if not root)
-        const dependencies: string[] = []
-        graph = addNode(graph, name, config, dependencies)
-      }
-
-      // If a non-root config declares this repo, the declaring repo depends on it
-      if (declaringRepo && declaringRepo !== name) {
-        const declaringNode = getNode(graph, declaringRepo)
-        if (declaringNode) {
-          // Add this repo as a dependency of the declaring repo
-          const newDeps = [...new Set([...declaringNode.dependencies, name])]
-          graph = addNode(graph, declaringRepo, declaringNode.data, newDeps)
-        }
-      }
-    }
+    graph = addNode(graph, repoName, nodeData, deps)
   }
 
   return graph

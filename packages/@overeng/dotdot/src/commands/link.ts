@@ -14,7 +14,7 @@ import {
   CurrentWorkingDirectory,
   findWorkspaceRoot,
   loadRootConfigWithSyncCheck,
-  type RepoConfig,
+  type PackageIndexEntry,
 } from '../lib/mod.ts'
 
 /** Error during link operation */
@@ -36,30 +36,26 @@ type PackageMapping = {
   sourceRepo: string
 }
 
-/** Collect all package mappings from root config */
+/** Collect all package mappings from root config packages index */
 const collectPackageMappings = (
   workspaceRoot: string,
-  repos: Record<string, RepoConfig>,
+  packages: Record<string, PackageIndexEntry>,
 ): PackageMapping[] => {
   const mappings: PackageMapping[] = []
 
-  for (const [repoName, config] of Object.entries(repos)) {
-    if (!config.packages) continue
+  for (const [packageName, pkgConfig] of Object.entries(packages)) {
+    // Source is the path within the repo
+    const sourceFull = path.join(workspaceRoot, pkgConfig.repo, pkgConfig.path)
 
-    for (const [packageName, packageConfig] of Object.entries(config.packages)) {
-      // Source is the path within the repo
-      const sourceFull = path.join(workspaceRoot, repoName, packageConfig.path)
+    // Target uses the package name (key) as the symlink name
+    const targetFull = path.join(workspaceRoot, packageName)
 
-      // Target uses the package name (key) as the symlink name
-      const targetFull = path.join(workspaceRoot, packageName)
-
-      mappings.push({
-        source: sourceFull,
-        target: targetFull,
-        targetName: packageName,
-        sourceRepo: repoName,
-      })
-    }
+    mappings.push({
+      source: sourceFull,
+      target: targetFull,
+      targetName: packageName,
+      sourceRepo: pkgConfig.repo,
+    })
   }
 
   return mappings
@@ -114,7 +110,7 @@ const linkStatusCommand = Cli.Command.make('status', {}, () =>
     yield* Effect.log('')
 
     const rootConfig = yield* loadRootConfigWithSyncCheck(workspaceRoot)
-    const mappings = collectPackageMappings(workspaceRoot, rootConfig.config.repos)
+    const mappings = collectPackageMappings(workspaceRoot, rootConfig.config.packages ?? {})
 
     if (mappings.length === 0) {
       yield* Effect.log('No packages configurations found')
@@ -180,7 +176,7 @@ const createSymlinksHandler = ({ dryRun, force }: { dryRun: boolean; force: bool
     yield* Effect.log('')
 
     const rootConfig = yield* loadRootConfigWithSyncCheck(workspaceRoot)
-    const mappings = collectPackageMappings(workspaceRoot, rootConfig.config.repos)
+    const mappings = collectPackageMappings(workspaceRoot, rootConfig.config.packages ?? {})
 
     if (mappings.length === 0) {
       yield* Effect.log('No packages configurations found')
@@ -307,7 +303,7 @@ const removeSymlinksHandler = ({ dryRun }: { dryRun: boolean }) =>
     yield* Effect.log('')
 
     const rootConfig = yield* loadRootConfigWithSyncCheck(workspaceRoot)
-    const mappings = collectPackageMappings(workspaceRoot, rootConfig.config.repos)
+    const mappings = collectPackageMappings(workspaceRoot, rootConfig.config.packages ?? {})
 
     if (mappings.length === 0) {
       yield* Effect.log('No packages configurations found')

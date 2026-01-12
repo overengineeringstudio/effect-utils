@@ -157,91 +157,93 @@ describe('Graph', () => {
     })
   })
 
-  describe('buildFromConfigs', () => {
-    it('builds graph from root config', () => {
+  describe('buildFromMemberConfigs', () => {
+    it('builds graph from member configs with deps', () => {
       const configs = [
         {
-          dir: '/workspace',
-          isRoot: true,
-          config: {
-            repos: {
-              'repo-a': { url: 'git@github.com:org/repo-a.git' },
-              'repo-b': { url: 'git@github.com:org/repo-b.git' },
-            },
-          },
-        },
-      ]
-
-      const graph = Graph.buildFromConfigs(configs, (dir) => dir.split('/').pop()!)
-
-      expect(Graph.nodeIds(graph).sort()).toEqual(['repo-a', 'repo-b'])
-      expect(Graph.getNode(graph, 'repo-a')?.dependencies).toEqual([])
-      expect(Graph.getNode(graph, 'repo-b')?.dependencies).toEqual([])
-    })
-
-    it('builds dependencies from nested configs', () => {
-      const configs = [
-        {
-          dir: '/workspace',
-          isRoot: true,
-          config: {
-            repos: {
-              'repo-a': { url: 'git@github.com:org/repo-a.git' },
-            },
-          },
-        },
-        {
+          path: '/workspace/repo-a/dotdot.json',
           dir: '/workspace/repo-a',
-          isRoot: false,
+          repoName: 'repo-a',
+          isRoot: false as const,
           config: {
-            repos: {
+            deps: {
               'shared-lib': { url: 'git@github.com:org/shared-lib.git' },
             },
           },
         },
       ]
 
-      const graph = Graph.buildFromConfigs(configs, (dir) => dir.split('/').pop()!)
+      const graph = Graph.buildFromMemberConfigs(configs)
 
       expect(Graph.nodeIds(graph).sort()).toEqual(['repo-a', 'shared-lib'])
-      // repo-a depends on shared-lib because repo-a's config declares it
+      // repo-a depends on shared-lib
       expect(Graph.getNode(graph, 'repo-a')?.dependencies).toContain('shared-lib')
+      expect(Graph.getNode(graph, 'shared-lib')?.dependencies).toEqual([])
+    })
+
+    it('builds graph with multiple member configs', () => {
+      const configs = [
+        {
+          path: '/workspace/repo-a/dotdot.json',
+          dir: '/workspace/repo-a',
+          repoName: 'repo-a',
+          isRoot: false as const,
+          config: {
+            deps: {
+              'shared-lib': { url: 'git@github.com:org/shared-lib.git' },
+            },
+          },
+        },
+        {
+          path: '/workspace/repo-b/dotdot.json',
+          dir: '/workspace/repo-b',
+          repoName: 'repo-b',
+          isRoot: false as const,
+          config: {
+            deps: {
+              'shared-lib': { url: 'git@github.com:org/shared-lib.git' },
+            },
+          },
+        },
+      ]
+
+      const graph = Graph.buildFromMemberConfigs(configs)
+
+      expect(Graph.nodeIds(graph).sort()).toEqual(['repo-a', 'repo-b', 'shared-lib'])
+      // Both repos depend on shared-lib
+      expect(Graph.getNode(graph, 'repo-a')?.dependencies).toContain('shared-lib')
+      expect(Graph.getNode(graph, 'repo-b')?.dependencies).toContain('shared-lib')
       expect(Graph.getNode(graph, 'shared-lib')?.dependencies).toEqual([])
     })
 
     it('handles complex dependency chains', () => {
       const configs = [
         {
-          dir: '/workspace',
-          isRoot: true,
-          config: {
-            repos: {
-              app: { url: 'git@github.com:org/app.git' },
-            },
-          },
-        },
-        {
+          path: '/workspace/app/dotdot.json',
           dir: '/workspace/app',
-          isRoot: false,
+          repoName: 'app',
+          isRoot: false as const,
           config: {
-            repos: {
+            deps: {
               core: { url: 'git@github.com:org/core.git' },
               utils: { url: 'git@github.com:org/utils.git' },
             },
           },
         },
         {
+          path: '/workspace/core/dotdot.json',
           dir: '/workspace/core',
-          isRoot: false,
+          repoName: 'core',
+          isRoot: false as const,
           config: {
-            repos: {
+            deps: {
               utils: { url: 'git@github.com:org/utils.git' },
             },
           },
         },
       ]
 
-      const graph = Graph.buildFromConfigs(configs, (dir) => dir.split('/').pop()!)
+      const graph = Graph.buildFromMemberConfigs(configs)
 
       expect(Graph.nodeIds(graph).sort()).toEqual(['app', 'core', 'utils'])
       // app depends on core and utils

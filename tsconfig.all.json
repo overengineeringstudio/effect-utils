@@ -51,9 +51,6 @@
       "path": "./packages/@overeng/oxc-config"
     },
     {
-      "path": "./packages/@overeng/pnpm-compose"
-    },
-    {
       "path": "./packages/@overeng/effect-path"
     },
     {

@@ -1,28 +1,38 @@
 export { resolveCliVersion } from './cli-version.ts'
-// Config
+
+// Config types and schemas
 export {
   CONFIG_FILE_NAME,
-  type DotdotConfig,
-  DotdotConfigSchema,
+  type DepConfig,
+  DepConfigSchema,
   GENERATED_CONFIG_FILE_NAME,
   GENERATED_CONFIG_WARNING,
   generateJsonSchema,
   JSON_SCHEMA_URL,
-  type PackageConfig,
-  PackageConfigSchema,
+  type MemberConfig,
+  MemberConfigSchema,
+  type PackageExpose,
+  PackageExposeSchema,
+  type PackageIndexEntry,
+  PackageIndexEntrySchema,
   type RepoConfig,
   RepoConfigSchema,
+  type RootConfig,
+  RootConfigSchema,
 } from './config.ts'
+
 // Config Writer
 export {
   ConfigWriteError,
-  createEmptyConfig,
+  createEmptyMemberConfig,
   removeRepo,
   updateRepoRev,
   upsertRepo,
-  writeConfig,
   writeGeneratedConfig,
+  writeMemberConfig,
+  writeRootConfig,
 } from './config-writer.ts'
+
 // Execution
 export {
   type ExecutionMode,
@@ -38,22 +48,27 @@ export {
 // Git and shell
 export * as Git from './git.ts'
 export { GitError, runShellCommand, ShellError } from './git.ts'
+
 // Graph
 export * as Graph from './graph.ts'
 export { CycleError } from './graph.ts'
+
 // Loader
 export {
   checkConfigSync,
-  collectAllConfigs,
   collectMemberConfigs,
   ConfigError,
   ConfigOutOfSyncError,
-  type ConfigSource,
   findWorkspaceRoot,
-  loadConfigFile,
-  loadRepoConfig,
-  loadRootConfig,
-  loadRootConfigWithSyncCheck,
+  loadMemberConfig,
+  loadMemberConfigFile,
+  type MemberConfigSource,
+  type MergedConfig,
   mergeMemberConfigs,
+  loadRootConfig,
+  loadRootConfigFile,
+  loadRootConfigWithSyncCheck,
+  type RootConfigSource,
 } from './loader.ts'
+
 export { CurrentWorkingDirectory } from './workspace.ts'
