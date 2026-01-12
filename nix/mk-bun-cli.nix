@@ -1,68 +1,134 @@
-# Shared Nix builder for Bun-compiled TypeScript CLIs.
-{ pkgs, pkgsUnstable, src }:
+# Goals:
+# - Provide reliable, simple, fast way to build native binaries via Bun from TypeScript source files.
+# - Needs to support locally checked out peer repos with local/uncommitted changes (embracing dotdot workspace model)
+# - Supports typechecking via tsc (later tsgo once it supports Effect) 
+# 
+# Dotdot-first Bun CLI builder.
+# - Mirrors dotdot's flat workspace model by staging peer repos at workspace root.
+# - Supports dotdot "packages" by creating workspace symlinks (like `dotdot link`).
+# - Enforces self-contained packages: each install dir must have its own bun.lock.
+#
+# Mapping to dotdot concepts (see dotdot/docs/concepts.md):
+# - sources: peer repos at workspace root (dotdot "repos")
+# - installDirs: per-package installs (dotdot "packages")
+# - workspaceLinks: root symlinks for packages (dotdot "link")
+{ pkgs, pkgsUnstable, src ? null }:
 
 {
   name,
   entry,
   binaryName ? name,
-  packageJsonPath,
+  sources,
+  installDirs ? [],
+  workspaceLinks ? [],
+  packageJsonPath ? null,
   bunDepsHash,
   gitRev ? "unknown",
   typecheck ? true,
-  typecheckTsconfig ? "${builtins.dirOf packageJsonPath}/tsconfig.json",
-  # workspaceDeps entries are inlined into node_modules for bun build.
-  # If you override depFiles, include full workspace dirs (not just package.json).
-  workspaceDeps ? [],
-  # projectRoot allows building from a subdirectory (e.g., "dotdot" in a combined workspace).
-  # Paths like entry, packageJsonPath, typecheckTsconfig are relative to src, not projectRoot.
+  typecheckTool ? "tsc",
+  typecheckTsconfig ? null,
   projectRoot ? "",
-  depFiles ? (
-    if builtins.typeOf src == "path"
-    then pkgs.lib.fileset.toSource {
-      root = src;
-      fileset = pkgs.lib.fileset.unions (
-        [
-          (src + "/package.json")
-          (src + "/bun.lock")
-          (src + "/patches")
-          # If workspaceDeps are used, include full workspace dirs so bun can
-          # install their deps and we can copy node_modules into the build.
-          (pkgs.lib.fileset.fileFilter (file: file.name == "package.json") (src + "/packages"))
-        ]
-        ++ (
-          if builtins.length workspaceDeps == 0
-          then []
-          else [
-            (pkgs.lib.fileset.unions (
-              map (dep: (src + "/${dep.path}")) workspaceDeps
-            ))
-          ]
-        )
-      );
-    }
-    # Store paths from flake inputs are string-like; fileset rejects them.
-    # Fall back to the full source to keep remote inputs usable.
-    else src
-  )
 }:
 
 let
-  # Fail fast if a workspace dependency is missing its package.json.
-  workspaceDepsChecked = map (dep:
-    assert pkgs.lib.assertMsg
-      (builtins.pathExists (src + "/${dep.path}/package.json"))
-      "mk-bun-cli: workspaceDeps entry ${dep.name} missing ${dep.path}/package.json";
-    dep
-  ) workspaceDeps;
+  # Dotdot layout:
+  # - sources: peer repos staged at workspace root (name == repo dir)
+  # - installDirs: package roots with bun.lock (self-contained installs)
+  # - workspaceLinks: dotdot package symlinks (like `dotdot link`)
+  toPath = source:
+    if builtins.isAttrs source && builtins.hasAttr "outPath" source
+    then source.outPath
+    else if builtins.isPath source
+    then source
+    else builtins.toPath source;
 
-  packageJson = builtins.fromJSON (builtins.readFile (src + "/${packageJsonPath}"));
-  baseVersion = packageJson.version or "0.0.0";
-  fullVersion = if gitRev == "unknown" then baseVersion else "${baseVersion}+${gitRev}";
+  sourcesChecked =
+    map (source: source // { path = toPath source.src; }) sources;
+
+  sourceNames = map (source: source.name) sourcesChecked;
+
+  sourcesByName =
+    builtins.listToAttrs (map (source: { name = source.name; value = source.path; }) sourcesChecked);
+
+  parseRoot = path:
+    let
+      parts = pkgs.lib.splitString "/" path;
+    in
+    {
+      sourceName = builtins.head parts;
+      subPath = pkgs.lib.concatStringsSep "/" (builtins.tail parts);
+    };
+
+  resolveSourcePath = path:
+    let
+      parsed = parseRoot path;
+    in
+    assert pkgs.lib.assertMsg
+      (builtins.elem parsed.sourceName sourceNames)
+      "mk-bun-cli: path '${path}' must start with one of: ${pkgs.lib.concatStringsSep ", " sourceNames}";
+    sourcesByName.${parsed.sourceName} + "/${parsed.subPath}";
+
+  installDirsChecked =
+    map (dir:
+      let
+        parsed = parseRoot dir;
+      in
+      assert pkgs.lib.assertMsg
+        (builtins.elem parsed.sourceName sourceNames)
+        "mk-bun-cli: installDir '${dir}' must start with one of: ${pkgs.lib.concatStringsSep ", " sourceNames}";
+      dir
+    ) installDirs;
+
+  installDirPackages =
+    map (dir:
+      let
+        packageJson = builtins.fromJSON (builtins.readFile (resolveSourcePath "${dir}/package.json"));
+      in
+      {
+        name = packageJson.name;
+        path = dir;
+      }
+    ) installDirsChecked;
+
+  # Dotdot packages are exposed at workspace root via symlinks that match
+  # dotdot's `packages` key (same behavior as `dotdot link`).
+  workspaceLinksChecked =
+    map (link:
+      let
+        parsed = parseRoot link.from;
+      in
+      assert pkgs.lib.assertMsg
+        (builtins.elem parsed.sourceName sourceNames)
+        "mk-bun-cli: workspaceLinks.from '${link.from}' must start with one of: ${pkgs.lib.concatStringsSep ", " sourceNames}";
+      link
+    ) workspaceLinks;
+
+  typecheckTsconfigChecked =
+    if typecheck
+    then
+      if typecheckTsconfig != null
+      then typecheckTsconfig
+      else if projectRoot != ""
+      then "${projectRoot}/tsconfig.json"
+      else "tsconfig.json"
+    else typecheckTsconfig;
+
+  typecheckToolChecked =
+    if builtins.elem typecheckTool [ "tsc" "tsgo" ]
+    then typecheckTool
+    else throw "mk-bun-cli: typecheckTool must be \"tsc\" or \"tsgo\", got: ${typecheckTool}";
+
+  workspaceRoot = pkgs.runCommand "${name}-workspace" {} ''
+    mkdir -p "$out"
+    ${pkgs.lib.concatMapStringsSep "\n" (source: ''
+      mkdir -p "$out/${source.name}"
+      cp -R "${source.path}/." "$out/${source.name}/"
+    '') sourcesChecked}
+  '';
 
   bunDeps = pkgs.stdenvNoCC.mkDerivation {
     name = "${name}-bun-deps";
-
-    src = depFiles;
+    src = workspaceRoot;
 
     nativeBuildInputs = [ pkgsUnstable.bun pkgs.cacert ];
 
@@ -72,50 +138,80 @@ let
 
     buildPhase = ''
       export HOME=$TMPDIR
-      # Force dev dependencies in Nix builds; Bun honors npm env flags.
       export NODE_ENV=development
       export NPM_CONFIG_PRODUCTION=false
       export npm_config_production=false
       export NPM_CONFIG_OMIT=
       export npm_config_omit=
-      # Always run bun install from workspace root so it can resolve workspace config
-      bun install
 
-      # Capture workspace package deps so the CLI build can resolve them in Nix.
-      ${pkgs.lib.concatMapStringsSep "\n" (dep: ''
-        bun install --cwd "${dep.path}"
-      '') workspaceDepsChecked}
+      # Dotdot packages are exposed at workspace root via symlinks.
+      ${pkgs.lib.concatMapStringsSep "\n" (link: ''
+        mkdir -p "$(dirname "${link.to}")"
+        rm -rf "${link.to}"
+        if [ ! -e "${link.from}" ]; then
+          echo "mk-bun-cli: workspaceLinks.from target not found: ${link.from}" >&2
+          exit 1
+        fi
+        ln -s "${link.from}" "${link.to}"
+      '') workspaceLinksChecked}
+
+      ${pkgs.lib.concatMapStringsSep "\n" (dir: ''
+        if [ ! -f "${dir}/package.json" ]; then
+          echo "mk-bun-cli: missing package.json in ${dir}" >&2
+          exit 1
+        fi
+        if [ ! -f "${dir}/bun.lock" ]; then
+          echo "mk-bun-cli: missing bun.lock in ${dir} (dotdot expects self-contained packages)" >&2
+          exit 1
+        fi
+        bun install --cwd "${dir}" --frozen-lockfile
+      '') installDirsChecked}
     '';
 
     installPhase = ''
-      mkdir -p $out
-      # Always copy the root node_modules (bun workspaces install there)
-      # Remove workspace symlinks (they point to local packages not in node_modules)
-      find node_modules -type l ! -exec test -e {} \; -delete 2>/dev/null || true
-      cp -r node_modules $out/
-      # Persist workspace node_modules separately for later injection.
-      ${pkgs.lib.concatMapStringsSep "\n" (dep: ''
-        if [ -d "${dep.path}/node_modules" ]; then
-          mkdir -p "$out/workspace-node-modules/${dep.name}/node_modules"
-          cp -R "${dep.path}/node_modules/." "$out/workspace-node-modules/${dep.name}/node_modules/"
-          find "$out/workspace-node-modules/${dep.name}/node_modules" -type l ! -exec test -e {} \; -delete 2>/dev/null || true
+      mkdir -p "$out"
+      ${pkgs.lib.concatMapStringsSep "\n" (source: ''
+        if [ -d "${source.name}/node_modules" ]; then
+          mkdir -p "$out/${source.name}"
+          cp -R "${source.name}/node_modules" "$out/${source.name}/"
         fi
-      '') workspaceDepsChecked}
+      '') sourcesChecked}
+      ${pkgs.lib.concatMapStringsSep "\n" (dir: ''
+        if [ -d "${dir}/node_modules" ]; then
+          mkdir -p "$out/${dir}"
+          cp -R "${dir}/node_modules" "$out/${dir}/"
+        fi
+      '') installDirsChecked}
+      ${pkgs.lib.concatMapStringsSep "\n" (dir: ''
+        if [ -d "$out/${dir}/node_modules" ]; then
+          find "$out/${dir}/node_modules" -type l ! -exec test -e {} \; -delete 2>/dev/null || true
+        fi
+      '') installDirsChecked}
     '';
 
     dontFixup = true;
     dontCheckForBrokenSymlinks = true;
   };
+
+  packageJson =
+    if packageJsonPath == null
+    then { version = "0.0.0"; }
+    else builtins.fromJSON (builtins.readFile (resolveSourcePath packageJsonPath));
+  baseVersion = packageJson.version or "0.0.0";
+  fullVersion = if gitRev == "unknown" then baseVersion else "${baseVersion}+${gitRev}";
 in
 pkgs.stdenv.mkDerivation {
-  inherit name src;
+  inherit name;
+  src = workspaceRoot;
 
-  nativeBuildInputs = [
-    pkgsUnstable.bun
-    pkgs.cacert
-  ] ++ pkgs.lib.optionals typecheck [
-    pkgsUnstable.typescript-go
-  ];
+  nativeBuildInputs =
+    [
+      pkgsUnstable.bun
+      pkgs.cacert
+    ]
+    ++ pkgs.lib.optionals (typecheck && typecheckToolChecked == "tsgo") [
+      pkgsUnstable.typescript-go
+    ];
 
   dontStrip = true;
   dontPatchELF = true;
@@ -124,59 +220,109 @@ pkgs.stdenv.mkDerivation {
   buildPhase = ''
     runHook preBuild
 
-    # When projectRoot is set, node_modules goes in that subdirectory
-    nodeModulesDir="${if projectRoot != "" then "${projectRoot}/node_modules" else "node_modules"}"
-
-    if [ ${toString (builtins.length workspaceDeps)} -gt 0 ]; then
-      # Copy so we can inline workspace deps into node_modules.
-      mkdir -p "$(dirname "$nodeModulesDir")"
-      cp -R ${bunDeps}/node_modules "$nodeModulesDir"
-      chmod -R u+w "$nodeModulesDir"
-    else
-      mkdir -p "$(dirname "$nodeModulesDir")"
-      ln -s ${bunDeps}/node_modules "$nodeModulesDir"
-    fi
-
-    export HOME="$TMPDIR/home"
-    export BUN_INSTALL="$PWD/.bun"
-    export BUN_TMPDIR="$PWD/.bun-tmp"
-    mkdir -p "$HOME" "$BUN_INSTALL" "$BUN_TMPDIR"
-
-    # Materialize workspace deps because bunDeps removes workspace symlinks.
-    ${pkgs.lib.concatMapStringsSep "\n" (dep: ''
-      parent_dir="$(dirname "$nodeModulesDir/${dep.name}")"
-      if [ -L "$parent_dir" ]; then
-        rm -f "$parent_dir"
+    ${pkgs.lib.concatMapStringsSep "\n" (source: ''
+      source_root_node_modules="${bunDeps}/${source.name}/node_modules"
+      if [ ! -d "$source_root_node_modules" ] && [ -d "${bunDeps}/node_modules" ]; then
+        source_root_node_modules="${bunDeps}/node_modules"
       fi
-      mkdir -p "$parent_dir"
-      rm -rf "$nodeModulesDir/${dep.name}"
-      cp -R "${src}/${dep.path}/." "$nodeModulesDir/${dep.name}/"
-      chmod -R u+w "$nodeModulesDir/${dep.name}"
-      # Inject workspace dependency node_modules captured in bunDeps.
-      if [ -d "${bunDeps}/workspace-node-modules/${dep.name}/node_modules" ]; then
-        mkdir -p "$nodeModulesDir/${dep.name}/node_modules"
-        cp -R "${bunDeps}/workspace-node-modules/${dep.name}/node_modules/." "$nodeModulesDir/${dep.name}/node_modules/"
-        chmod -R u+w "$nodeModulesDir/${dep.name}/node_modules"
+      if [ -d "$source_root_node_modules" ]; then
+        rm -rf "${source.name}/node_modules"
+        mkdir -p "${source.name}"
+        cp -R "$source_root_node_modules" "${source.name}/"
+        chmod -R u+w "${source.name}/node_modules"
       fi
-    '') workspaceDepsChecked}
+    '') sourcesChecked}
+
+    ${pkgs.lib.concatMapStringsSep "\n" (dir: ''
+      source_node_modules="${bunDeps}/${dir}/node_modules"
+      if [ ! -d "$source_node_modules" ] && [ -d "${bunDeps}/node_modules" ]; then
+        source_node_modules="${bunDeps}/node_modules"
+      fi
+      if [ -d "$source_node_modules" ]; then
+        rm -rf "${dir}/node_modules"
+        cp -R "$source_node_modules" "${dir}/node_modules"
+        chmod -R u+w "${dir}/node_modules"
+      fi
+    '') installDirsChecked}
+
+    ${pkgs.lib.concatMapStringsSep "\n" (dir: ''
+      if [ -d "${dir}/node_modules" ]; then
+        ${pkgs.lib.concatMapStringsSep "\n" (pkg: ''
+          pkg_scope="$(dirname "${pkg.name}")"
+          if [ "$pkg_scope" != "." ]; then
+            mkdir -p "${dir}/node_modules/$pkg_scope"
+          fi
+          rm -rf "${dir}/node_modules/${pkg.name}"
+          ln -s "$PWD/${pkg.path}" "${dir}/node_modules/${pkg.name}"
+        '') installDirPackages}
+      fi
+    '') installDirsChecked}
+
+    ${pkgs.lib.concatMapStringsSep "\n" (dir: ''
+      if [ -d "${dir}/node_modules/.bun" ]; then
+        types_dir="${dir}/node_modules/@types"
+        node_types_link="$types_dir/node"
+        if [ ! -e "$node_types_link" ]; then
+          node_types_pkg="$(find "$PWD/${dir}/node_modules/.bun" -maxdepth 1 -type d -name '@types+node@*' | sort -V | tail -n 1)"
+          if [ -n "$node_types_pkg" ] && [ -d "$node_types_pkg/node_modules/@types/node" ]; then
+            mkdir -p "$types_dir"
+            ln -s "$node_types_pkg/node_modules/@types/node" "$node_types_link"
+          fi
+        fi
+      fi
+    '') installDirsChecked}
+
+    # Dotdot packages are exposed at workspace root via symlinks.
+    ${pkgs.lib.concatMapStringsSep "\n" (link: ''
+      mkdir -p "$(dirname "${link.to}")"
+      rm -rf "${link.to}"
+      if [ ! -e "${link.from}" ]; then
+        echo "mk-bun-cli: workspaceLinks.from target not found: ${link.from}" >&2
+        exit 1
+      fi
+      ln -s "${link.from}" "${link.to}"
+    '') workspaceLinksChecked}
 
     ${pkgs.lib.optionalString typecheck ''
-      if [ ! -f "${typecheckTsconfig}" ]; then
-        echo "TypeScript config not found: ${typecheckTsconfig}" >&2
+      if [ ! -f "${typecheckTsconfigChecked}" ]; then
+        echo "TypeScript config not found: ${typecheckTsconfigChecked}" >&2
         exit 1
       fi
 
-      echo "Running TypeScript typecheck (tsgo)..."
-      tsgo --project "${typecheckTsconfig}" --noEmit
+      if [ "${typecheckToolChecked}" = "tsgo" ]; then
+        # TODO: switch back to tsgo by default once tsgo handles Effect.gen/Tag inference correctly.
+        echo "Running TypeScript typecheck (tsgo)..."
+        tsgo --project "${typecheckTsconfigChecked}" --noEmit
+      else
+        echo "Running TypeScript typecheck (tsc)..."
+        tsconfig_dir="$(dirname "${typecheckTsconfigChecked}")"
+        tsc_entry="$tsconfig_dir/node_modules/typescript/bin/tsc"
+        if [ ! -f "$tsc_entry" ]; then
+          echo "TypeScript entry not found at $tsc_entry" >&2
+          exit 1
+        fi
+        bun "$tsc_entry" --project "${typecheckTsconfigChecked}" --noEmit
+      fi
     ''}
 
-    build_output="$TMPDIR/${binaryName}"
+    build_output="$PWD/.bun-build/${binaryName}"
+    mkdir -p "$(dirname "$build_output")"
     substituteInPlace "${entry}" \
       --replace "const buildVersion = '__CLI_VERSION__'" "const buildVersion = '${fullVersion}'"
 
-    bun build ${entry} \
+    bun build "${entry}" \
       --compile \
       --outfile="$build_output"
+
+    if [ ! -s "$build_output" ]; then
+      # Bun sometimes leaves the compiled binary in a temp `.*.bun-build` file
+      # without moving it to --outfile when running inside Nix builds.
+      bun_build_tmp="$(find . -maxdepth 1 -type f -name '.*.bun-build' -print | sort -r | head -n 1)"
+      if [ -n "$bun_build_tmp" ] && [ -s "$bun_build_tmp" ]; then
+        cp "$bun_build_tmp" "$build_output"
+        chmod 755 "$build_output"
+      fi
+    fi
 
     if [ ! -s "$build_output" ]; then
       echo "bun build produced an empty ${binaryName} binary" >&2
@@ -190,7 +336,7 @@ pkgs.stdenv.mkDerivation {
     runHook preInstall
 
     mkdir -p $out/bin
-    install -m 755 "$TMPDIR/${binaryName}" $out/bin/${binaryName}
+    install -m 755 ".bun-build/${binaryName}" $out/bin/${binaryName}
 
     runHook postInstall
   '';

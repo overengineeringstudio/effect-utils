@@ -21,10 +21,7 @@ const createTestEnv = () =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
-    const root = path.join(
-      os.tmpdir(),
-      `genie-cli-test-${crypto.randomBytes(4).toString('hex')}`,
-    )
+    const root = path.join(os.tmpdir(), `genie-cli-test-${crypto.randomBytes(4).toString('hex')}`)
 
     yield* fs.makeDirectory(root, { recursive: true })
 
@@ -98,7 +95,7 @@ describe('genie cli', () => {
       }
     })
 
-  it.effect('surfaces repo import failures for TDZ-style errors', () =>
+  it.effect('reports import errors with clear error message', () =>
     withTestEnv((env) =>
       Effect.gen(function* () {
         yield* env.writeFile({
@@ -106,32 +103,18 @@ describe('genie cli', () => {
           content: JSON.stringify({ name: 'genie-cli-test', private: true }, null, 2),
         })
 
-        /**
-         * The repo import only fails after the .genie.ts sets a global flag.
-         * This lets the initial import succeed, then the probe exposes the real failure.
-         */
         yield* env.writeFile({
           path: 'genie/repo.ts',
-          content: `const probeKey = '__genieProbeFail__'
-if (globalThis[probeKey] === true) {
-  throw new Error('Repo failure for probe')
-}
-
-export const pkg = {
+          content: `export const pkg = {
   root: (config: unknown) => JSON.stringify(config),
 }
 `,
         })
 
-        /**
-         * Throw a ReferenceError after setting the probe flag so genie triggers
-         * the repo import probe and emits the more actionable error.
-         */
+        /** Simulate a TDZ-style error (ReferenceError) in the genie file */
         yield* env.writeFile({
           path: 'package.json.genie.ts',
           content: `import { pkg } from './genie/repo.ts'
-
-globalThis.__genieProbeFail__ = true
 
 throw new ReferenceError('Cannot access \\'pkg\\' before initialization')
 
@@ -143,10 +126,9 @@ export default pkg.root({ name: 'genie-cli-test' })
         const output = `${stdout}\n${stderr}`
 
         expect(exitCode).not.toBe(0)
-        expect(output).toContain('Dependency')
-        expect(output).toContain('genie/repo.ts')
-        expect(output).toContain('failed while loading')
-        expect(output).not.toContain('Cannot access')
+        expect(output).toContain('GenieImportError')
+        expect(output).toContain('package.json.genie.ts')
+        expect(output).toContain('Cannot access')
       }),
     ).pipe(Effect.provide(TestLayer), Effect.scoped),
   )
@@ -160,7 +142,10 @@ export default pkg.root({ name: 'genie-cli-test' })
          */
         yield* env.writeFile({
           path: 'canonical/package.json.genie.ts',
-          content: `export default JSON.stringify({ name: 'genie-cli-test', private: true })`,
+          content: `export default {
+  data: { name: 'genie-cli-test', private: true },
+  stringify: () => JSON.stringify({ name: 'genie-cli-test', private: true }),
+}`,
         })
 
         yield* env.symlink({ target: 'canonical', path: 'link' })

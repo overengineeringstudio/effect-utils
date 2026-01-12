@@ -1,17 +1,25 @@
-import { pkg } from '../genie/repo.ts'
+import { catalog, packageJson } from '../genie/internal.ts'
+import utilsPkg from '../packages/@overeng/utils/package.json.genie.ts'
 
-export default pkg.package({
+export default packageJson({
   name: 'effect-utils-scripts',
   private: true,
   type: 'module',
-  dependencies: [
-    '@effect/cli',
-    '@effect/platform',
-    '@effect/platform-node',
-    '@overeng/genie',
-    '@overeng/mono',
-    '@overeng/utils',
-    'effect',
-  ],
-  devDependencies: ['@types/node', 'typescript'],
+  dependencies: {
+    ...catalog.pick(
+      '@overeng/genie',
+      '@overeng/mono',
+      '@overeng/utils',
+      '@effect/cli',
+      '@effect/platform',
+      '@effect/platform-node',
+      'effect',
+    ),
+  },
+  devDependencies: {
+    ...catalog.pick('@types/node', 'typescript'),
+  },
+  patchedDependencies: {
+    ...utilsPkg.data.patchedDependencies,
+  },
 })

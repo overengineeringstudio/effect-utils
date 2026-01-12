@@ -1,16 +1,20 @@
-import { pkg } from '../../genie/repo.ts'
+import { catalog, packageJson } from '../../genie/internal.ts'
 
-export default pkg.package({
+export default packageJson({
   name: 'opentui-examples',
   private: true,
   type: 'module',
-  dependencies: [
-    '@effect-atom/atom',
-    '@effect-atom/atom-react',
-    '@opentui/core',
-    '@opentui/react',
-    'effect',
-    'react',
-  ],
-  devDependencies: ['@types/node', '@types/react'],
+  dependencies: {
+    ...catalog.pick(
+      '@effect-atom/atom',
+      '@effect-atom/atom-react',
+      '@opentui/core',
+      '@opentui/react',
+      'effect',
+      'react',
+    ),
+  },
+  devDependencies: {
+    ...catalog.pick('@types/node', '@types/react'),
+  },
 })

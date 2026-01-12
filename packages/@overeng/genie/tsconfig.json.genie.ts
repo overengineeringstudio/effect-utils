@@ -1,9 +1,12 @@
-import { packageTsconfigCompilerOptions } from '../../../genie/repo.ts'
-import { tsconfigJSON } from './src/runtime/mod.ts'
+import {
+  baseTsconfigCompilerOptions,
+  packageTsconfigCompilerOptions,
+} from '../../../genie/internal.ts'
+import { tsconfigJson } from './src/runtime/mod.ts'
 
-export default tsconfigJSON({
-  extends: '../../../tsconfig.base.json',
+export default tsconfigJson({
   compilerOptions: {
+    ...baseTsconfigCompilerOptions,
     ...packageTsconfigCompilerOptions,
     types: ['node', 'bun'],
   },

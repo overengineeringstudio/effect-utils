@@ -17,23 +17,23 @@
     }
   },
   "dependencies": {
-    "is-dom": "catalog:"
+    "is-dom": "1.1.0"
   },
   "devDependencies": {
-    "@storybook/react": "catalog:",
-    "@storybook/react-vite": "catalog:",
-    "@testing-library/react": "catalog:",
-    "@testing-library/user-event": "catalog:",
-    "@types/is-dom": "catalog:",
-    "@types/react": "catalog:",
-    "@vitejs/plugin-react": "catalog:",
-    "effect": "catalog:",
-    "happy-dom": "catalog:",
-    "react": "catalog:",
-    "react-dom": "catalog:",
-    "storybook": "catalog:",
-    "vite": "catalog:",
-    "vitest": "catalog:"
+    "@storybook/react": "10.1.11",
+    "@storybook/react-vite": "10.1.11",
+    "@testing-library/react": "16.3.1",
+    "@testing-library/user-event": "14.6.1",
+    "@types/is-dom": "1.1.2",
+    "@types/react": "19.2.7",
+    "@vitejs/plugin-react": "5.1.2",
+    "effect": "3.19.14",
+    "happy-dom": "18.0.1",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "storybook": "10.1.11",
+    "vite": "7.3.0",
+    "vitest": "4.0.16"
   },
   "peerDependencies": {
     "effect": "^3.19.14",

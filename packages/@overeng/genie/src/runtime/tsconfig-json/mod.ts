@@ -3,6 +3,8 @@
  * Reference: https://www.typescriptlang.org/tsconfig
  */
 
+import type { GenieOutput } from '../mod.ts'
+
 type Target =
   | 'ES3'
   | 'ES5'
@@ -277,17 +279,17 @@ export type TSConfigArgs = {
   ts_node?: TSNodeOptions
 }
 
-/** Options for customizing tsconfig.json generation (reserved for future use) */
-export type TSConfigOptions = Record<string, never>
-
 /**
- * Creates a tsconfig.json configuration string
+ * Creates a tsconfig.json configuration.
+ *
+ * Returns a `GenieOutput` with the structured data accessible via `.data`
+ * for composition with other genie files.
  *
  * @example
  * ```ts
- * export default tsconfigJSON({
- *   extends: "../tsconfig.base.json",
+ * export default tsconfigJson({
  *   compilerOptions: {
+ *     ...baseTsconfigCompilerOptions,
  *     rootDir: ".",
  *     outDir: "dist"
  *   },
@@ -295,7 +297,17 @@ export type TSConfigOptions = Record<string, never>
  * })
  * ```
  */
-// oxlint-disable-next-line overeng/named-args -- DSL-style API
-export const tsconfigJSON = (args: TSConfigArgs, _options?: TSConfigOptions): string => {
-  return JSON.stringify(args, null, 2)
+export const tsconfigJson = <const T extends TSConfigArgs>(args: T): GenieOutput<T> => {
+  if (args.extends !== undefined) {
+    console.warn(
+      `[genie] tsconfig.json uses "extends" which is not recommended with Genie.\n` +
+        `        Instead, import and spread the base config directly for better composability:\n` +
+        `        compilerOptions: { ...baseTsconfigCompilerOptions, ...yourOptions }`,
+    )
+  }
+
+  return {
+    data: args,
+    stringify: (_ctx) => JSON.stringify(args, null, 2) + '\n',
+  }
 }

@@ -3,13 +3,13 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@effect/platform": "catalog:",
-    "@effect/platform-node": "catalog:",
-    "@effect/rpc": "catalog:",
-    "effect": "catalog:"
+    "@effect/platform": "0.94.1",
+    "@effect/platform-node": "0.104.0",
+    "@effect/rpc": "0.73.0",
+    "effect": "3.19.14"
   },
   "devDependencies": {
-    "@types/node": "catalog:"
+    "@types/node": "25.0.3"
   },
   "$genie": {
     "source": "package.json.genie.ts",

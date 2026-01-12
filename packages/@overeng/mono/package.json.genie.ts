@@ -1,6 +1,7 @@
-import { pkg, privatePackageDefaults } from '../../../genie/repo.ts'
+import { catalog, packageJson, privatePackageDefaults } from '../../../genie/internal.ts'
+import utilsPkg from '../utils/package.json.genie.ts'
 
-export default pkg.package({
+export default packageJson({
   ...privatePackageDefaults,
   name: '@overeng/mono',
   exports: {
@@ -12,18 +13,24 @@ export default pkg.package({
       '.': './dist/mod.js',
     },
   },
-  dependencies: [
-    '@effect/cli',
-    '@effect/platform',
-    '@effect/platform-node',
-    '@overeng/utils',
-    'effect',
-  ],
-  devDependencies: ['@types/node', 'typescript'],
+  dependencies: {
+    ...catalog.pick(
+      '@overeng/utils',
+      '@effect/cli',
+      '@effect/experimental',
+      '@effect/platform',
+      '@effect/platform-node',
+      'effect',
+    ),
+  },
+  devDependencies: {
+    ...catalog.pick('@types/node', 'typescript'),
+  },
   peerDependencies: {
-    '@effect/cli': '^',
-    '@effect/platform': '^',
-    '@effect/platform-node': '^',
-    effect: '^',
+    ...utilsPkg.data.peerDependencies,
+    '@effect/cli': `^${catalog['@effect/cli']}`,
+  },
+  patchedDependencies: {
+    ...utilsPkg.data.patchedDependencies,
   },
 })

@@ -6,6 +6,10 @@ import { expect } from 'vitest'
 import { printFinalSummary, TaskRunner, TasksFailedError } from './task-runner.ts'
 import { CurrentWorkingDirectory } from './workspace.ts'
 
+/** Strip ANSI escape codes from a string for testing */
+const stripAnsi = (str: string): string =>
+  str.replace(new RegExp(`${String.fromCharCode(0x1b)}\\[[0-9;]*m`, 'g'), '')
+
 const TestLayer = Layer.mergeAll(NodeContext.layer, CurrentWorkingDirectory.live, TaskRunner.live)
 
 describe('TaskRunner', () => {
@@ -116,8 +120,9 @@ describe('TaskRunner', () => {
       yield* runner.runTask({ id: 't2', command: 'printf', args: ['done'] })
 
       const output = yield* runner.render()
-      expect(output).toContain('○ Pending task')
-      expect(output).toContain('✓ Success task')
+      const plainOutput = stripAnsi(output)
+      expect(plainOutput).toContain('○ Pending task')
+      expect(plainOutput).toContain('✓ Success task')
     }).pipe(Effect.provide(TestLayer)),
   )
 

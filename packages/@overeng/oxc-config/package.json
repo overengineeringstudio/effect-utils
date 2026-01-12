@@ -9,13 +9,13 @@
     "./plugin": "./src/mod.ts"
   },
   "devDependencies": {
-    "@types/eslint": "catalog:",
-    "@typescript-eslint/parser": "catalog:",
-    "@typescript-eslint/rule-tester": "catalog:",
-    "@typescript-eslint/utils": "catalog:",
-    "eslint": "catalog:",
-    "typescript": "catalog:",
-    "vitest": "catalog:"
+    "@types/eslint": "9.6.1",
+    "@typescript-eslint/parser": "8.52.0",
+    "@typescript-eslint/rule-tester": "8.52.0",
+    "@typescript-eslint/utils": "8.52.0",
+    "eslint": "9.39.2",
+    "typescript": "5.9.3",
+    "vitest": "4.0.16"
   },
   "$genie": {
     "source": "package.json.genie.ts",

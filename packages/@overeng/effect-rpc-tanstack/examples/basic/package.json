@@ -10,27 +10,30 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@effect/platform": "catalog:",
-    "@effect/rpc": "catalog:",
-    "@tanstack/react-router": "catalog:",
-    "@tanstack/react-start": "catalog:",
-    "effect": "catalog:",
-    "react": "catalog:",
-    "react-dom": "catalog:"
+    "@effect/platform": "0.94.1",
+    "@effect/rpc": "0.73.0",
+    "@tanstack/react-router": "1.145.7",
+    "@tanstack/react-start": "1.145.10",
+    "effect": "3.19.14",
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
   },
   "devDependencies": {
-    "@overeng/utils": "workspace:*",
-    "@playwright/test": "catalog:",
-    "@tanstack/router-plugin": "catalog:",
-    "@types/node": "catalog:",
-    "@types/react": "catalog:",
-    "@types/react-dom": "catalog:",
-    "@vitejs/plugin-react": "catalog:",
-    "typescript": "catalog:",
-    "vite": "catalog:"
+    "@overeng/utils": "file:../../../utils",
+    "@playwright/test": "1.57.0",
+    "@tanstack/router-plugin": "1.145.10",
+    "@types/node": "25.0.3",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "5.1.2",
+    "typescript": "5.9.3",
+    "vite": "7.3.0"
   },
   "$genie": {
     "source": "package.json.genie.ts",
     "warning": "DO NOT EDIT - changes will be overwritten"
+  },
+  "patchedDependencies": {
+    "effect-distributed-lock@0.0.11": "../../../utils/patches/effect-distributed-lock@0.0.11.patch"
   }
 }

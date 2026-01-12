@@ -3,14 +3,22 @@ import { fileURLToPath } from 'node:url'
 
 import * as Cli from '@effect/cli'
 import { Command, Error as PlatformError, FileSystem, Path } from '@effect/platform'
-import type * as CommandExecutor from '@effect/platform/CommandExecutor'
 import * as PlatformNode from '@effect/platform-node'
+import type * as CommandExecutor from '@effect/platform/CommandExecutor'
 import { Array as A, Effect, Either, Layer, pipe, Schema, Stream } from 'effect'
 
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
 import { resolveCliVersion } from '@overeng/utils/node/cli-version'
 
 import { resolveImportMapSpecifierForImporterSync } from './import-map/mod.ts'
+
+/** Context passed to genie generator functions */
+type GenieContext = {
+  /** Repo-relative path to the directory containing this genie file (e.g., 'packages/@overeng/utils') */
+  location: string
+  /** Absolute path to the working directory (repo root) */
+  cwd: string
+}
 
 const baseVersion = '0.1.0'
 const buildVersion = '__CLI_VERSION__'
@@ -246,9 +254,6 @@ type BunPluginBuilder = {
   ) => void
 }
 
-const normalizeResolvedImportPath = (resolved: string): string =>
-  resolved.startsWith('file://') ? fileURLToPath(resolved) : resolved
-
 /**
  * Register a Bun import resolver so `#...` specifiers use the import map closest
  * to the importing file. This avoids temp file generation and fixes transitive imports.
@@ -434,12 +439,33 @@ const findGenieFiles = (dir: string) =>
   }).pipe(Effect.withSpan('findGenieFiles'))
 
 /**
+ * Compute the package location from a genie file path.
+ * Example: '/repo/packages/@overeng/utils/package.json.genie.ts' with cwd '/repo'
+ *          → 'packages/@overeng/utils'
+ */
+const computeLocationFromPath = ({
+  genieFilePath,
+  cwd,
+}: {
+  genieFilePath: string
+  cwd: string
+}): string => {
+  const targetFilePath = genieFilePath.replace('.genie.ts', '')
+  const targetDir = path.dirname(targetFilePath)
+  const relativePath = path.relative(cwd, targetDir)
+  // Normalize to forward slashes and handle root case
+  return relativePath === '' ? '.' : relativePath.split(path.sep).join('/')
+}
+
+/**
  * Import a genie file and return its default export (the raw content string).
  *
  * A Bun import resolver is registered once so `#...` specifiers are resolved
  * using the import map closest to the importing file (including transitive imports).
+ *
+ * All genie files must export a function that takes GenieContext and returns a string.
  */
-const importGenieFile = (genieFilePath: string) =>
+const importGenieFile = ({ genieFilePath, cwd }: { genieFilePath: string; cwd: string }) =>
   Effect.gen(function* () {
     yield* ensureImportMapResolver
 
@@ -455,7 +481,26 @@ const importGenieFile = (genieFilePath: string) =>
         }),
     })
 
-    return module.default as string
+    const exported = module.default
+
+    // Genie files must export a GenieOutput object with { data, stringify }
+    if (
+      typeof exported !== 'object' ||
+      exported === null ||
+      !('stringify' in exported) ||
+      typeof exported.stringify !== 'function'
+    ) {
+      return yield* new GenieImportError({
+        genieFilePath,
+        message: `Genie file must export a GenieOutput object with { data, stringify }, got ${typeof exported}`,
+      })
+    }
+
+    // Create context and call the stringify function
+    const location = computeLocationFromPath({ genieFilePath, cwd })
+    const ctx: GenieContext = { location, cwd }
+
+    return exported.stringify(ctx) as string
   })
 
 /**
@@ -485,11 +530,11 @@ const enrichPackageJsonMarker = ({
 }
 
 /** Generate expected content for a genie file (shared between generate and dry-run) */
-const getExpectedContent = (genieFilePath: string) =>
+const getExpectedContent = ({ genieFilePath, cwd }: { genieFilePath: string; cwd: string }) =>
   Effect.gen(function* () {
     const targetFilePath = genieFilePath.replace('.genie.ts', '')
     const sourceFile = path.basename(genieFilePath)
-    let rawContent = yield* importGenieFile(genieFilePath)
+    let rawContent = yield* importGenieFile({ genieFilePath, cwd })
 
     // For package.json files, enrich the $genie marker with source info
     if (path.basename(targetFilePath) === 'package.json') {
@@ -523,12 +568,60 @@ const generateDiffSummary = ({
   return '  (content changed)'
 }
 
+/**
+ * Atomically write a file by writing to a temp file first, then renaming.
+ * This prevents file corruption if an error occurs during write.
+ */
+const atomicWriteFile = ({
+  targetFilePath,
+  content,
+  mode,
+}: {
+  targetFilePath: string
+  content: string
+  mode?: number
+}) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const tempPath = `${targetFilePath}.genie.tmp`
+
+    // Make target writable if it exists (for read-only files)
+    const targetExists = yield* fs.exists(targetFilePath)
+    if (targetExists) {
+      yield* fs.chmod(targetFilePath, 0o644).pipe(Effect.catchAll(() => Effect.void))
+    }
+
+    // Write to temp file first
+    yield* fs.writeFileString(tempPath, content)
+
+    // Set permissions on temp file before rename
+    if (mode !== undefined) {
+      yield* fs.chmod(tempPath, mode)
+    }
+
+    // Atomic rename - either fully succeeds or original file remains untouched
+    yield* fs.rename(tempPath, targetFilePath)
+  }).pipe(
+    Effect.catchAll((error) =>
+      Effect.gen(function* () {
+        // Clean up temp file on failure
+        const fs = yield* FileSystem.FileSystem
+        const tempPath = `${targetFilePath}.genie.tmp`
+        yield* fs.remove(tempPath, { force: true }).pipe(Effect.catchAll(() => Effect.void))
+        return yield* error
+      }),
+    ),
+    Effect.withSpan('atomicWriteFile'),
+  )
+
 const generateFile = ({
   genieFilePath,
+  cwd,
   readOnly,
   dryRun = false,
 }: {
   genieFilePath: string
+  cwd: string
   readOnly: boolean
   dryRun?: boolean
 }) =>
@@ -537,7 +630,7 @@ const generateFile = ({
     const targetFilePath = genieFilePath.replace('.genie.ts', '')
     const targetDir = path.dirname(targetFilePath)
 
-    const { content: fileContentString } = yield* getExpectedContent(genieFilePath)
+    const { content: fileContentString } = yield* getExpectedContent({ genieFilePath, cwd })
 
     const targetDirExists = yield* fs.exists(targetDir)
     if (!targetDirExists) {
@@ -571,17 +664,12 @@ const generateFile = ({
       return { _tag: 'updated', targetFilePath } as const
     }
 
-    // Actually write the file
-    if (fileExists) {
-      yield* fs.chmod(targetFilePath, 0o644).pipe(Effect.catchAll(() => Effect.void))
-    }
-
-    yield* fs.remove(targetFilePath, { force: true })
-    yield* fs.writeFileString(targetFilePath, fileContentString)
-
-    if (readOnly) {
-      yield* fs.chmod(targetFilePath, 0o444)
-    }
+    // Atomically write the file (write to temp, then rename)
+    yield* atomicWriteFile({
+      targetFilePath,
+      content: fileContentString,
+      ...(readOnly && { mode: 0o444 }),
+    })
 
     // Determine result status
     if (!fileExists) {
@@ -619,10 +707,13 @@ const generateFile = ({
     Effect.withSpan('generateFile'),
   )
 
-const checkFile = (genieFilePath: string) =>
+const checkFile = ({ genieFilePath, cwd }: { genieFilePath: string; cwd: string }) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const { targetFilePath, content: expectedContent } = yield* getExpectedContent(genieFilePath)
+    const { targetFilePath, content: expectedContent } = yield* getExpectedContent({
+      genieFilePath,
+      cwd,
+    })
 
     const fileExists = yield* fs.exists(targetFilePath)
     if (!fileExists) {
@@ -877,7 +968,7 @@ export const genieCommand: Cli.Command.Command<
 
       if (check) {
         yield* Effect.all(
-          genieFiles.map((genieFilePath) => checkFile(genieFilePath)),
+          genieFiles.map((genieFilePath) => checkFile({ genieFilePath, cwd: resolvedCwd })),
           { concurrency: 'unbounded' },
         )
         yield* Effect.log('✓ All generated files are up to date')
@@ -896,7 +987,7 @@ export const genieCommand: Cli.Command.Command<
       // Generate all files, capturing both successes and failures
       const results = yield* Effect.all(
         genieFiles.map((genieFilePath) =>
-          generateFile({ genieFilePath, readOnly, dryRun }).pipe(Effect.either),
+          generateFile({ genieFilePath, cwd: resolvedCwd, readOnly, dryRun }).pipe(Effect.either),
         ),
         { concurrency: 'unbounded' },
       )
@@ -923,7 +1014,7 @@ export const genieCommand: Cli.Command.Command<
           Stream.filter(({ path: p }) => p.endsWith('.genie.ts')),
           Stream.tap(({ path: p }) => {
             const genieFilePath = path.join(resolvedCwd, p)
-            return generateFile({ genieFilePath, readOnly }).pipe(
+            return generateFile({ genieFilePath, cwd: resolvedCwd, readOnly }).pipe(
               Effect.catchAll((error) => Effect.logError(error.message)),
             )
           }),

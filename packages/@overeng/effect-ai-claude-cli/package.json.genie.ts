@@ -1,6 +1,6 @@
-import { pkg, privatePackageDefaults } from '../../../genie/repo.ts'
+import { catalog, packageJson, privatePackageDefaults } from '../../../genie/internal.ts'
 
-export default pkg.package({
+export default packageJson({
   name: '@overeng/effect-ai-claude-cli',
   ...privatePackageDefaults,
   exports: {
@@ -12,7 +12,16 @@ export default pkg.package({
       '.': './dist/mod.js',
     },
   },
-  devDependencies: ['@effect/ai', '@effect/platform', '@effect/vitest', 'effect', 'vite', 'vitest'],
+  devDependencies: {
+    ...catalog.pick(
+      '@effect/ai',
+      '@effect/platform',
+      '@effect/vitest',
+      'effect',
+      'vite',
+      'vitest',
+    ),
+  },
   peerDependencies: {
     '@effect/ai': '>=0.32.0',
     '@effect/platform': '>=0.93.0',

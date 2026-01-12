@@ -64,9 +64,10 @@ export class OverrideConflictError extends Error {
 export const defineOverrides = <
   const TBase extends OverridesInput,
   const TNew extends OverridesInput,
->(
-  input: { extends: readonly TBase[]; overrides: TNew },
-): TBase & TNew => {
+>(input: {
+  extends: readonly TBase[]
+  overrides: TNew
+}): TBase & TNew => {
   const merged: Record<string, string> = {}
 
   // Merge all base overrides
@@ -102,14 +103,62 @@ export const defineOverrides = <
  * @example
  * ```ts
  * const patches = { 'pkg@1.0.0': 'patches/pkg.patch' }
- * prefixPatchPaths(patches, 'submodules/foo/')
+ * prefixPatchPaths({ patches, prefix: 'submodules/foo/' })
  * // => { 'pkg@1.0.0': 'submodules/foo/patches/pkg.patch' }
  * ```
  */
-export const prefixPatchPaths = <T extends Record<string, string>>(
-  patches: T,
-  prefix: string,
-): { [K in keyof T]: string } =>
+export const prefixPatchPaths = <T extends Record<string, string>>(args: {
+  patches: T
+  prefix: string
+}): { [K in keyof T]: string } =>
   Object.fromEntries(
-    Object.entries(patches).map(([pkg, path]) => [pkg, `${prefix}${path}`]),
+    Object.entries(args.patches).map(([pkg, path]) => [pkg, `${args.prefix}${path}`]),
+  ) as {
+    [K in keyof T]: string
+  }
+
+/**
+ * Defines patched dependencies with repo-relative paths.
+ *
+ * Use this to define patches that can be inherited by downstream packages.
+ * The paths are repo-relative and will be resolved to package-relative paths
+ * at stringify time by genie.
+ *
+ * @param location - Repo-relative location of the package defining the patches (e.g., 'packages/@overeng/utils')
+ * @param patches - Patches with paths relative to the package (e.g., './patches/pkg.patch')
+ * @returns Patches with repo-relative paths for composition
+ *
+ * @example
+ * ```ts
+ * // In packages/@overeng/utils/package.json.genie.ts
+ * export const utilsPatches = definePatchedDependencies({
+ *   location: 'packages/@overeng/utils',
+ *   patches: {
+ *     'effect-distributed-lock@0.0.11': './patches/effect-distributed-lock@0.0.11.patch',
+ *   },
+ * })
+ * // => { 'effect-distributed-lock@0.0.11': 'packages/@overeng/utils/patches/effect-distributed-lock@0.0.11.patch' }
+ *
+ * // In scripts/package.json.genie.ts (downstream)
+ * export default packageJson({
+ *   patchedDependencies: {
+ *     ...utilsPatches, // Genie resolves to '../packages/@overeng/utils/patches/...'
+ *   },
+ * })
+ * ```
+ */
+export const definePatchedDependencies = <T extends Record<string, string>>(args: {
+  location: string
+  patches: T
+}): { [K in keyof T]: string } =>
+  Object.fromEntries(
+    Object.entries(args.patches).map(([pkg, path]) => {
+      // Convert local path (./patches/...) to repo-relative path
+      const repoRelativePath = path.startsWith('./')
+        ? `${args.location}/${path.slice(2)}`
+        : path.startsWith('../')
+          ? `${args.location}/${path}`
+          : path
+      return [pkg, repoRelativePath]
+    }),
   ) as { [K in keyof T]: string }

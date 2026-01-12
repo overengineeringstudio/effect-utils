@@ -1,428 +1,246 @@
 import { describe, expect, it } from 'vitest'
 
-import { createPackageJson, packageJsonWithContext } from './mod.ts'
+import { packageJson, workspaceRoot, type GenieContext } from '../mod.ts'
 
-const mockContext = {
-  catalog: {
-    effect: '3.19.14',
-    '@effect/platform': '0.94.1',
-    typescript: '5.9.3',
-    vitest: '4.0.16',
-    react: '19.2.3',
-  },
-  workspacePackages: ['@myorg/*', '@overeng/*', '@local/*'],
+/** Mock GenieContext for tests */
+const mockGenieContext: GenieContext = {
+  location: 'packages/@test/package',
+  cwd: '/workspace',
 }
 
-describe('packageJsonWithContext', () => {
-  it('resolves catalog dependencies from string array', () => {
-    const result = packageJsonWithContext(
-      {
-        name: '@test/package',
-        version: '1.0.0',
-        dependencies: ['effect', '@effect/platform'],
-      },
-      mockContext,
-    )
-
-    const parsed = JSON.parse(result)
-    expect(parsed.dependencies).toEqual({
-      '@effect/platform': 'catalog:',
-      effect: 'catalog:',
+describe('packageJson', () => {
+  it('returns GenieOutput with data and stringify', () => {
+    const result = packageJson({
+      name: '@test/package',
+      version: '1.0.0',
     })
+
+    expect(result.data).toEqual({
+      name: '@test/package',
+      version: '1.0.0',
+    })
+    expect(typeof result.stringify).toBe('function')
   })
 
-  it('resolves workspace dependencies from string array', () => {
-    const result = packageJsonWithContext(
-      {
-        name: '@test/package',
-        version: '1.0.0',
-        dependencies: ['@myorg/common', '@overeng/utils'],
-      },
-      mockContext,
-    )
-
-    const parsed = JSON.parse(result)
-    expect(parsed.dependencies).toEqual({
-      '@myorg/common': 'workspace:*',
-      '@overeng/utils': 'workspace:*',
+  it('stringify produces valid JSON with $genie marker', () => {
+    const result = packageJson({
+      name: '@test/package',
+      version: '1.0.0',
     })
-  })
 
-  it('resolves mixed catalog and workspace dependencies', () => {
-    const result = packageJsonWithContext(
-      {
-        name: '@test/package',
-        version: '1.0.0',
-        dependencies: ['effect', '@myorg/common'],
-      },
-      mockContext,
-    )
+    const json = result.stringify(mockGenieContext)
+    const parsed = JSON.parse(json)
 
-    const parsed = JSON.parse(result)
-    expect(parsed.dependencies).toEqual({
-      '@myorg/common': 'workspace:*',
-      effect: 'catalog:',
-    })
-  })
-
-  it('expands peer dependencies with ^ range', () => {
-    const result = packageJsonWithContext(
-      {
-        name: '@test/package',
-        version: '1.0.0',
-        peerDependencies: { react: '^' },
-      },
-      mockContext,
-    )
-
-    const parsed = JSON.parse(result)
-    expect(parsed.peerDependencies).toEqual({
-      react: '^19.2.3',
-    })
-  })
-
-  it('expands peer dependencies with ~ range', () => {
-    const result = packageJsonWithContext(
-      {
-        name: '@test/package',
-        version: '1.0.0',
-        peerDependencies: { react: '~' },
-      },
-      mockContext,
-    )
-
-    const parsed = JSON.parse(result)
-    expect(parsed.peerDependencies).toEqual({
-      react: '~19.2.3',
-    })
-  })
-
-  it('passes through explicit peer dependency versions', () => {
-    const result = packageJsonWithContext(
-      {
-        name: '@test/package',
-        version: '1.0.0',
-        peerDependencies: { react: '>=18.0.0' },
-      },
-      mockContext,
-    )
-
-    const parsed = JSON.parse(result)
-    expect(parsed.peerDependencies).toEqual({
-      react: '>=18.0.0',
-    })
-  })
-
-  it('throws on unknown dependency', () => {
-    expect(() =>
-      packageJsonWithContext(
-        {
-          name: '@test/package',
-          version: '1.0.0',
-          dependencies: ['unknown-package'],
-        },
-        mockContext,
-      ),
-    ).toThrow('Cannot resolve dependency "unknown-package"')
+    expect(parsed.$genie).toBe(true)
+    expect(parsed.name).toBe('@test/package')
+    expect(parsed.version).toBe('1.0.0')
   })
 
   it('sorts dependencies alphabetically', () => {
-    const result = packageJsonWithContext(
-      {
-        name: '@test/package',
-        version: '1.0.0',
-        dependencies: ['vitest', 'effect', '@effect/platform'],
+    const result = packageJson({
+      name: '@test/package',
+      version: '1.0.0',
+      dependencies: {
+        zlib: '1.0.0',
+        axios: '2.0.0',
+        effect: '3.0.0',
       },
-      mockContext,
-    )
+    })
 
-    const parsed = JSON.parse(result)
-    const keys = Object.keys(parsed.dependencies)
-    expect(keys).toEqual(['@effect/platform', 'effect', 'vitest'])
+    const json = result.stringify(mockGenieContext)
+    const keys = Object.keys(JSON.parse(json).dependencies)
+    expect(keys).toEqual(['axios', 'effect', 'zlib'])
   })
 
   it('sorts fields in conventional order', () => {
-    const result = packageJsonWithContext(
-      {
-        name: '@test/package',
-        exports: { '.': './src/mod.ts' },
-        version: '1.0.0',
-        type: 'module',
-        dependencies: ['effect'],
-        devDependencies: ['typescript'],
-      },
-      mockContext,
-    )
+    const result = packageJson({
+      dependencies: { effect: '3.0.0' },
+      name: '@test/package',
+      exports: { '.': './src/mod.ts' },
+      version: '1.0.0',
+      type: 'module',
+    })
 
-    const keys = Object.keys(JSON.parse(result))
+    const json = result.stringify(mockGenieContext)
+    const keys = Object.keys(JSON.parse(json))
+
+    const genieIdx = keys.indexOf('$genie')
     const nameIdx = keys.indexOf('name')
     const versionIdx = keys.indexOf('version')
     const typeIdx = keys.indexOf('type')
     const exportsIdx = keys.indexOf('exports')
     const depsIdx = keys.indexOf('dependencies')
-    const devDepsIdx = keys.indexOf('devDependencies')
 
-    // Verify order: name < version < type < exports < dependencies < devDependencies
+    // Verify order: $genie < name < version < type < exports < dependencies
+    expect(genieIdx).toBeLessThan(nameIdx)
     expect(nameIdx).toBeLessThan(versionIdx)
     expect(versionIdx).toBeLessThan(typeIdx)
     expect(typeIdx).toBeLessThan(exportsIdx)
     expect(exportsIdx).toBeLessThan(depsIdx)
-    expect(depsIdx).toBeLessThan(devDepsIdx)
   })
 
   it('sorts export conditions (types first, default last)', () => {
-    const result = packageJsonWithContext(
-      {
-        name: '@test/package',
-        version: '1.0.0',
-        exports: {
-          '.': {
-            default: './dist/mod.js',
-            types: './dist/mod.d.ts',
-            import: './dist/mod.mjs',
-          },
+    const result = packageJson({
+      name: '@test/package',
+      version: '1.0.0',
+      exports: {
+        '.': {
+          default: './dist/mod.js',
+          types: './dist/mod.d.ts',
+          import: './dist/mod.mjs',
         },
       },
-      mockContext,
-    )
+    })
 
-    const parsed = JSON.parse(result)
+    const json = result.stringify(mockGenieContext)
+    const parsed = JSON.parse(json)
     const conditions = Object.keys(parsed.exports['.'])
     expect(conditions).toEqual(['types', 'import', 'default'])
   })
 
-  it('adds $genie marker field', () => {
-    const result = packageJsonWithContext(
-      {
-        name: '@test/package',
-        version: '1.0.0',
+  it('sorts export paths with "." first', () => {
+    const result = packageJson({
+      name: '@test/package',
+      version: '1.0.0',
+      exports: {
+        './utils': './src/utils.ts',
+        '.': './src/mod.ts',
+        './types': './src/types.ts',
       },
-      mockContext,
-    )
+    })
 
-    const parsed = JSON.parse(result)
-    expect(parsed.$genie).toBe(true)
+    const json = result.stringify(mockGenieContext)
+    const parsed = JSON.parse(json)
+    const paths = Object.keys(parsed.exports)
+    expect(paths[0]).toBe('.')
+  })
+
+  it('preserves data for composition', () => {
+    const utilsPkg = packageJson({
+      name: '@myorg/utils',
+      version: '1.0.0',
+      peerDependencies: {
+        effect: '^3.0.0',
+        react: '^19.0.0',
+      },
+    })
+
+    // Another package can compose with this
+    const appPkg = packageJson({
+      name: '@myorg/app',
+      version: '1.0.0',
+      dependencies: {
+        '@myorg/utils': 'workspace:*',
+      },
+      peerDependencies: {
+        ...utilsPkg.data.peerDependencies,
+      },
+    })
+
+    expect(appPkg.data.peerDependencies).toEqual({
+      effect: '^3.0.0',
+      react: '^19.0.0',
+    })
   })
 })
 
-describe('createPackageJson', () => {
-  const catalog = {
-    effect: '3.19.14',
-    '@effect/platform': '0.94.1',
-    react: '19.2.3',
-  } as const
+describe('workspaceRoot', () => {
+  it('returns GenieOutput with data and stringify', () => {
+    const result = workspaceRoot({
+      name: 'my-monorepo',
+      private: true,
+      workspaces: ['packages/*'],
+    })
 
-  const workspacePackages = ['@myorg/*', '@local/*'] as const
-
-  const pkg = createPackageJson({
-    packageManager: 'bun',
-    packageManagerVersion: '1.3.5',
-    catalog,
-    workspacePackages,
+    expect(result.data).toEqual({
+      name: 'my-monorepo',
+      private: true,
+      workspaces: ['packages/*'],
+    })
+    expect(typeof result.stringify).toBe('function')
   })
 
-  describe('pkg.package()', () => {
-    it('generates package.json with typed dependencies', () => {
-      const result = pkg.package({
-        name: '@myorg/utils',
-        version: '1.0.0',
-        dependencies: ['effect', '@effect/platform'],
-      })
-
-      const parsed = JSON.parse(result)
-      expect(parsed.dependencies).toEqual({
-        '@effect/platform': 'catalog:',
-        effect: 'catalog:',
-      })
+  it('stringify produces valid JSON with $genie marker', () => {
+    const result = workspaceRoot({
+      name: 'my-monorepo',
+      private: true,
     })
 
-    it('accepts workspace dependencies matching patterns', () => {
-      const result = pkg.package({
-        name: '@myorg/utils',
-        version: '1.0.0',
-        dependencies: ['effect', '@myorg/common', '@local/helpers'],
-      })
+    const json = result.stringify(mockGenieContext)
+    const parsed = JSON.parse(json)
 
-      const parsed = JSON.parse(result)
-      expect(parsed.dependencies).toEqual({
-        '@local/helpers': 'workspace:*',
-        '@myorg/common': 'workspace:*',
-        effect: 'catalog:',
-      })
-    })
-
-    it('expands peer dependencies from catalog', () => {
-      const result = pkg.package({
-        name: '@myorg/utils',
-        version: '1.0.0',
-        peerDependencies: { react: '^' },
-      })
-
-      const parsed = JSON.parse(result)
-      expect(parsed.peerDependencies).toEqual({
-        react: '^19.2.3',
-      })
-    })
-
-    it('works without dependencies', () => {
-      const result = pkg.package({
-        name: '@myorg/utils',
-        version: '1.0.0',
-        type: 'module',
-      })
-
-      const parsed = JSON.parse(result)
-      expect(parsed.name).toBe('@myorg/utils')
-      expect(parsed.dependencies).toBeUndefined()
-    })
-
-    it('accepts explicit peer dependency versions', () => {
-      const result = pkg.package({
-        name: '@myorg/utils',
-        version: '1.0.0',
-        peerDependencies: {
-          effect: '>=3.19.0',
-          react: '^',
-        },
-      })
-
-      const parsed = JSON.parse(result)
-      expect(parsed.peerDependencies).toEqual({
-        effect: '>=3.19.0',
-        react: '^19.2.3',
-      })
-    })
-
-    it('does not include packageManager field', () => {
-      const result = pkg.package({
-        name: '@myorg/utils',
-        version: '1.0.0',
-      })
-
-      const parsed = JSON.parse(result)
-      expect(parsed.packageManager).toBeUndefined()
-    })
+    expect(parsed.$genie).toBe(true)
+    expect(parsed.name).toBe('my-monorepo')
+    expect(parsed.private).toBe(true)
   })
 
-  describe('pkg.root()', () => {
-    it('includes packageManager field', () => {
-      const result = pkg.root({
-        name: 'my-monorepo',
-        private: true,
-        workspaces: ['packages/*'],
-      })
-
-      const parsed = JSON.parse(result)
-      expect(parsed.packageManager).toBe('bun@1.3.5')
+  it('supports workspaces configuration', () => {
+    const result = workspaceRoot({
+      name: 'my-monorepo',
+      private: true,
+      workspaces: ['packages/*', 'apps/*'],
     })
 
-    it('supports workspaces configuration', () => {
-      const result = pkg.root({
-        name: 'my-monorepo',
-        private: true,
-        workspaces: { packages: ['packages/*'], catalog },
-      })
+    const json = result.stringify(mockGenieContext)
+    const parsed = JSON.parse(json)
+    expect(parsed.workspaces).toEqual(['packages/*', 'apps/*'])
+  })
 
-      const parsed = JSON.parse(result)
-      expect(parsed.workspaces.packages).toEqual(['packages/*'])
-      expect(parsed.workspaces.catalog).toBeDefined()
-    })
-
-    it('supports Bun catalogs at top-level and in workspaces', () => {
-      const result = pkg.root({
-        name: 'my-monorepo',
-        private: true,
-        catalog,
-        catalogs: {
-          testing: {
-            vitest: '4.0.0',
-          },
-        },
-        workspaces: {
-          packages: ['packages/*'],
-          catalog,
-          catalogs: {
-            tooling: {
-              eslint: '9.0.0',
-            },
-          },
-        },
-      })
-
-      const parsed = JSON.parse(result)
-      expect(parsed.catalog).toEqual(catalog)
-      expect(parsed.catalogs).toEqual({
-        testing: {
-          vitest: '4.0.0',
-        },
-      })
-      expect(parsed.workspaces.catalogs).toEqual({
-        tooling: {
-          eslint: '9.0.0',
-        },
-      })
-    })
-
-    it('supports Bun-specific trustedDependencies', () => {
-      const result = pkg.root({
-        name: 'my-monorepo',
-        private: true,
-        trustedDependencies: ['esbuild', 'sharp'],
-      })
-
-      const parsed = JSON.parse(result)
-      expect(parsed.trustedDependencies).toEqual(['esbuild', 'sharp'])
-    })
-
-    it('supports Bun patchedDependencies', () => {
-      const result = pkg.root({
-        name: 'my-monorepo',
-        private: true,
+  it('supports pnpm namespace', () => {
+    const result = workspaceRoot({
+      name: 'my-monorepo',
+      private: true,
+      pnpm: {
         patchedDependencies: {
           'some-pkg@1.0.0': 'patches/some-pkg.patch',
         },
-      })
+      },
+    })
 
-      const parsed = JSON.parse(result)
-      expect(parsed.patchedDependencies).toEqual({
-        'some-pkg@1.0.0': 'patches/some-pkg.patch',
-      })
+    const json = result.stringify(mockGenieContext)
+    const parsed = JSON.parse(json)
+    expect(parsed.pnpm.patchedDependencies).toEqual({
+      'some-pkg@1.0.0': 'patches/some-pkg.patch',
     })
   })
 
-  describe('PNPM package manager', () => {
-    const pnpmPkg = createPackageJson({
-      packageManager: 'pnpm',
-      packageManagerVersion: '9.15.0',
-      catalog,
-      workspacePackages,
-    })
-
-    it('includes packageManager field for root', () => {
-      const result = pnpmPkg.root({
-        name: 'my-monorepo',
-        private: true,
-      })
-
-      const parsed = JSON.parse(result)
-      expect(parsed.packageManager).toBe('pnpm@9.15.0')
-    })
-
-    it('supports PNPM-specific pnpm namespace', () => {
-      const result = pnpmPkg.root({
-        name: 'my-monorepo',
-        private: true,
-        pnpm: {
-          patchedDependencies: {
-            'some-pkg@1.0.0': 'patches/some-pkg.patch',
-          },
+  it('supports Bun catalogs', () => {
+    const result = workspaceRoot({
+      name: 'my-monorepo',
+      private: true,
+      catalog: {
+        effect: '3.0.0',
+        react: '19.0.0',
+      },
+      catalogs: {
+        testing: {
+          vitest: '4.0.0',
         },
-      })
-
-      const parsed = JSON.parse(result)
-      expect(parsed.pnpm.patchedDependencies).toEqual({
-        'some-pkg@1.0.0': 'patches/some-pkg.patch',
-      })
+      },
     })
+
+    const json = result.stringify(mockGenieContext)
+    const parsed = JSON.parse(json)
+    expect(parsed.catalog).toEqual({
+      effect: '3.0.0',
+      react: '19.0.0',
+    })
+    expect(parsed.catalogs).toEqual({
+      testing: {
+        vitest: '4.0.0',
+      },
+    })
+  })
+
+  it('supports trustedDependencies', () => {
+    const result = workspaceRoot({
+      name: 'my-monorepo',
+      private: true,
+      trustedDependencies: ['esbuild', 'sharp'],
+    })
+
+    const json = result.stringify(mockGenieContext)
+    const parsed = JSON.parse(json)
+    expect(parsed.trustedDependencies).toEqual(['esbuild', 'sharp'])
   })
 })

@@ -26,6 +26,7 @@ const projects = projectRoots.map((root) =>
     : { root, test: { exclude, server: { deps: { inline: inlineDeps } } } },
 )
 
+// We mostly have this file for VSC test explorer support
 export default defineConfig({
   test: {
     exclude,

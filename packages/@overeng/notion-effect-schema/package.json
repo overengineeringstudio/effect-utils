@@ -13,10 +13,10 @@
     }
   },
   "devDependencies": {
-    "@effect/vitest": "catalog:",
-    "@types/node": "catalog:",
-    "effect": "catalog:",
-    "vitest": "catalog:"
+    "@effect/vitest": "0.27.0",
+    "@types/node": "25.0.3",
+    "effect": "3.19.14",
+    "vitest": "4.0.16"
   },
   "peerDependencies": {
     "effect": "^3.19.14"

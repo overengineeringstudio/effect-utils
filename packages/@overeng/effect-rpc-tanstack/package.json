@@ -19,17 +19,17 @@
     }
   },
   "devDependencies": {
-    "@effect/platform": "catalog:",
-    "@effect/platform-node": "catalog:",
-    "@effect/rpc": "catalog:",
-    "@tanstack/react-router": "catalog:",
-    "@tanstack/react-start": "catalog:",
-    "@types/react": "catalog:",
-    "effect": "catalog:",
-    "react": "catalog:",
-    "react-dom": "catalog:",
-    "vite": "catalog:",
-    "vitest": "catalog:"
+    "@effect/platform": "0.94.1",
+    "@effect/platform-node": "0.104.0",
+    "@effect/rpc": "0.73.0",
+    "@tanstack/react-router": "1.145.7",
+    "@tanstack/react-start": "1.145.10",
+    "@types/react": "19.2.7",
+    "effect": "3.19.14",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "vite": "7.3.0",
+    "vitest": "4.0.16"
   },
   "peerDependencies": {
     "@effect/platform": "^0.94.1",

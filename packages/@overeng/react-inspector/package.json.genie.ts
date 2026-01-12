@@ -1,6 +1,6 @@
-import { pkg } from '../../../genie/repo.ts'
+import { catalog, packageJson } from '../../../genie/internal.ts'
 
-export default pkg.package({
+export default packageJson({
   name: '@overeng/react-inspector',
   /** Forked from react-inspector v8.0.0 (https://github.com/nicksenger/react-inspector) */
   version: '8.0.0',
@@ -19,26 +19,28 @@ export default pkg.package({
       },
     },
   },
-  dependencies: ['is-dom'],
-  devDependencies: [
-    '@storybook/react',
-    '@storybook/react-vite',
-    '@testing-library/react',
-    '@testing-library/user-event',
-    '@types/is-dom',
-    '@types/react',
-    '@vitejs/plugin-react',
-    'effect',
-    'happy-dom',
-    'react',
-    'react-dom',
-    'storybook',
-    'vite',
-    'vitest',
-  ],
+  dependencies: {
+    'is-dom': catalog['is-dom'],
+  },
+  devDependencies: {
+    '@storybook/react': catalog['@storybook/react'],
+    '@storybook/react-vite': catalog['@storybook/react-vite'],
+    '@testing-library/react': catalog['@testing-library/react'],
+    '@testing-library/user-event': catalog['@testing-library/user-event'],
+    '@types/is-dom': catalog['@types/is-dom'],
+    '@types/react': catalog['@types/react'],
+    '@vitejs/plugin-react': catalog['@vitejs/plugin-react'],
+    effect: catalog.effect,
+    'happy-dom': catalog['happy-dom'],
+    react: catalog.react,
+    'react-dom': catalog['react-dom'],
+    storybook: catalog.storybook,
+    vite: catalog.vite,
+    vitest: catalog.vitest,
+  },
   peerDependencies: {
-    effect: '^',
-    react: '^',
+    effect: `^${catalog.effect}`,
+    react: `^${catalog.react}`,
   },
   peerDependenciesMeta: {
     effect: {

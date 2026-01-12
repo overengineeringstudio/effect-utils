@@ -1,6 +1,6 @@
-import { pkg, privatePackageDefaults } from '../../../genie/repo.ts'
+import { catalog, packageJson, privatePackageDefaults } from '../../../genie/internal.ts'
 
-export default pkg.package({
+export default packageJson({
   name: '@overeng/effect-schema-form',
   ...privatePackageDefaults,
   exports: {
@@ -12,9 +12,11 @@ export default pkg.package({
       '.': './dist/mod.js',
     },
   },
-  devDependencies: ['@types/react', 'effect', 'react', 'vitest'],
+  devDependencies: {
+    ...catalog.pick('@types/react', 'effect', 'react', 'vitest'),
+  },
   peerDependencies: {
-    effect: '^',
-    react: '^',
+    effect: `^${catalog.effect}`,
+    react: `^${catalog.react}`,
   },
 })

@@ -1,7 +1,7 @@
-import { domLib, reactJsx } from '../../../../../genie/repo.ts'
-import { tsconfigJSON } from '../../../genie/src/runtime/mod.ts'
+import { domLib, reactJsx } from '../../../../../genie/internal.ts'
+import { tsconfigJson } from '../../../genie/src/runtime/mod.ts'
 
-export default tsconfigJSON({
+export default tsconfigJson({
   compilerOptions: {
     target: 'ES2022',
     lib: [...domLib],

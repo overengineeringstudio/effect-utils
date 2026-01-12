@@ -13,22 +13,22 @@
     }
   },
   "dependencies": {
-    "@overeng/effect-schema-form": "workspace:*"
+    "@overeng/effect-schema-form": "file:../effect-schema-form"
   },
   "devDependencies": {
-    "@storybook/react": "catalog:",
-    "@storybook/react-vite": "catalog:",
-    "@tailwindcss/vite": "catalog:",
-    "@types/react": "catalog:",
-    "@vitejs/plugin-react": "catalog:",
-    "effect": "catalog:",
-    "react": "catalog:",
-    "react-aria-components": "catalog:",
-    "react-dom": "catalog:",
-    "storybook": "catalog:",
-    "tailwindcss": "catalog:",
-    "vite": "catalog:",
-    "vitest": "catalog:"
+    "@storybook/react": "10.1.11",
+    "@storybook/react-vite": "10.1.11",
+    "@tailwindcss/vite": "4.1.18",
+    "@types/react": "19.2.7",
+    "@vitejs/plugin-react": "5.1.2",
+    "effect": "3.19.14",
+    "react": "19.2.3",
+    "react-aria-components": "1.14.0",
+    "react-dom": "19.2.3",
+    "storybook": "10.1.11",
+    "tailwindcss": "4.1.18",
+    "vite": "7.3.0",
+    "vitest": "4.0.16"
   },
   "peerDependencies": {
     "effect": "^3.19.14",

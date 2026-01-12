@@ -7,13 +7,17 @@ let
 in
 mkBunCli {
   name = "pnpm-compose";
-  entry = "packages/@overeng/pnpm-compose/src/cli.ts";
+  entry = "effect-utils/packages/@overeng/pnpm-compose/src/cli.ts";
   binaryName = "pnpm-compose";
-  packageJsonPath = "packages/@overeng/pnpm-compose/package.json";
-  typecheckTsconfig = "packages/@overeng/pnpm-compose/tsconfig.json";
-  bunDepsHash = "sha256-JtxYAEufsrrbYZA5OdZzaWRpgvawnOMwmht+98DDHSQ=";
-  workspaceDeps = [
-    { name = "@overeng/utils"; path = "packages/@overeng/utils"; }
+  packageJsonPath = "effect-utils/packages/@overeng/pnpm-compose/package.json";
+  typecheckTsconfig = "effect-utils/packages/@overeng/pnpm-compose/tsconfig.json";
+  sources = [
+    { name = "effect-utils"; src = src; }
   ];
+  installDirs = [
+    "effect-utils/packages/@overeng/pnpm-compose"
+    "effect-utils/packages/@overeng/utils"
+  ];
+  bunDepsHash = "sha256-JtxYAEufsrrbYZA5OdZzaWRpgvawnOMwmht+98DDHSQ=";
   inherit gitRev;
 }

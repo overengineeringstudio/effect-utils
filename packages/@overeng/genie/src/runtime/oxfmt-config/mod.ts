@@ -7,6 +7,8 @@
  * @see https://oxc.rs/docs/guide/usage/formatter/migrate-from-prettier
  */
 
+import type { GenieOutput } from '../mod.ts'
+
 /** Import sorting group types */
 type ImportGroup = 'builtin' | 'external' | 'internal' | 'parent' | 'sibling' | 'index'
 
@@ -48,11 +50,11 @@ export type OxfmtConfigArgs = {
   ignorePatterns?: string[]
 }
 
-/** Options for customizing oxfmt config generation (reserved for future use) */
-export type OxfmtConfigOptions = Record<string, never>
-
 /**
- * Generate an oxfmt configuration file (.jsonc).
+ * Creates an oxfmt configuration file (.jsonc).
+ *
+ * Returns a `GenieOutput` with the structured data accessible via `.data`
+ * for composition with other genie files.
  *
  * @see https://oxc.rs/docs/guide/usage/formatter
  *
@@ -72,60 +74,33 @@ export type OxfmtConfigOptions = Record<string, never>
  * })
  * ```
  */
-// oxlint-disable-next-line overeng/named-args -- DSL-style API
-export const oxfmtConfig = (args: OxfmtConfigArgs, _options?: OxfmtConfigOptions): string => {
-  const config: Record<string, unknown> = {
-    $schema:
-      'https://raw.githubusercontent.com/nicksrandall/oxfmt/refs/heads/main/configuration_schema.json',
+export const oxfmtConfig = <const T extends OxfmtConfigArgs>(args: T): GenieOutput<T> => {
+  const buildConfig = (): Record<string, unknown> => {
+    const config: Record<string, unknown> = {
+      $schema:
+        'https://raw.githubusercontent.com/nicksrandall/oxfmt/refs/heads/main/configuration_schema.json',
+    }
+
+    if (args.semi !== undefined) config.semi = args.semi
+    if (args.singleQuote !== undefined) config.singleQuote = args.singleQuote
+    if (args.printWidth !== undefined) config.printWidth = args.printWidth
+    if (args.tabWidth !== undefined) config.tabWidth = args.tabWidth
+    if (args.useTabs !== undefined) config.useTabs = args.useTabs
+    if (args.trailingComma !== undefined) config.trailingComma = args.trailingComma
+    if (args.bracketSpacing !== undefined) config.bracketSpacing = args.bracketSpacing
+    if (args.arrowParens !== undefined) config.arrowParens = args.arrowParens
+    if (args.endOfLine !== undefined) config.endOfLine = args.endOfLine
+    if (args.experimentalSortImports !== undefined)
+      config.experimentalSortImports = args.experimentalSortImports
+    if (args.experimentalSortPackageJson !== undefined)
+      config.experimentalSortPackageJson = args.experimentalSortPackageJson
+    if (args.ignorePatterns !== undefined) config.ignorePatterns = args.ignorePatterns
+
+    return config
   }
 
-  if (args.semi !== undefined) {
-    config.semi = args.semi
+  return {
+    data: args,
+    stringify: (_ctx) => JSON.stringify(buildConfig(), null, 2) + '\n',
   }
-
-  if (args.singleQuote !== undefined) {
-    config.singleQuote = args.singleQuote
-  }
-
-  if (args.printWidth !== undefined) {
-    config.printWidth = args.printWidth
-  }
-
-  if (args.tabWidth !== undefined) {
-    config.tabWidth = args.tabWidth
-  }
-
-  if (args.useTabs !== undefined) {
-    config.useTabs = args.useTabs
-  }
-
-  if (args.trailingComma !== undefined) {
-    config.trailingComma = args.trailingComma
-  }
-
-  if (args.bracketSpacing !== undefined) {
-    config.bracketSpacing = args.bracketSpacing
-  }
-
-  if (args.arrowParens !== undefined) {
-    config.arrowParens = args.arrowParens
-  }
-
-  if (args.endOfLine !== undefined) {
-    config.endOfLine = args.endOfLine
-  }
-
-  if (args.experimentalSortImports !== undefined) {
-    config.experimentalSortImports = args.experimentalSortImports
-  }
-
-  if (args.experimentalSortPackageJson !== undefined) {
-    config.experimentalSortPackageJson = args.experimentalSortPackageJson
-  }
-
-  if (args.ignorePatterns !== undefined) {
-    config.ignorePatterns = args.ignorePatterns
-  }
-
-  return JSON.stringify(config, null, 2) + '\n'
 }

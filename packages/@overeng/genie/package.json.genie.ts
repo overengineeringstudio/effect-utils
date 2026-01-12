@@ -1,39 +1,43 @@
-import { pkg, privatePackageDefaults } from '../../../genie/repo.ts'
+import { catalog, packageJson, privatePackageDefaults } from '../../../genie/internal.ts'
+import utilsPkg from '../utils/package.json.genie.ts'
 
-export default pkg.package({
+export default packageJson({
   name: '@overeng/genie',
   ...privatePackageDefaults,
   exports: {
-    '.': './src/lib/mod.ts',
-    './cli': './src/cli.ts',
+    '.': './src/runtime/mod.ts',
+    './cli': './src/build/cli.ts',
   },
   publishConfig: {
     access: 'public',
     exports: {
-      '.': './dist/lib/mod.js',
-      './cli': './dist/cli.js',
+      '.': './dist/src/runtime/mod.js',
+      './cli': './dist/src/build/cli.js',
     },
   },
   // Genie must not use any runtime dependencies (only bundled/dev dependencies)
-  dependencies: [],
-  devDependencies: [
-    '@overeng/utils',
-    '@effect/cli',
-    '@effect/platform',
-    '@effect/platform-node',
-    '@effect/printer',
-    '@effect/printer-ansi',
-    '@effect/vitest',
-    '@types/node',
-    '@types/bun',
-    'effect',
-    'typescript',
-    'vitest',
-  ],
+  dependencies: {},
+  devDependencies: {
+    ...catalog.pick(
+      '@overeng/utils',
+      '@effect/cli',
+      '@effect/platform',
+      '@effect/platform-node',
+      '@effect/printer',
+      '@effect/printer-ansi',
+      '@effect/vitest',
+      '@types/node',
+      '@types/bun',
+      'effect',
+      'typescript',
+      'vitest',
+    ),
+  },
   peerDependencies: {
-    '@effect/cli': '^',
-    '@effect/platform': '^',
-    '@effect/platform-node': '^',
-    effect: '^',
+    ...utilsPkg.data.peerDependencies,
+    '@effect/cli': `^${catalog['@effect/cli']}`,
+  },
+  patchedDependencies: {
+    ...utilsPkg.data.patchedDependencies,
   },
 })

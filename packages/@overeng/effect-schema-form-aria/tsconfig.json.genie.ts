@@ -1,9 +1,14 @@
-import { domLib, packageTsconfigCompilerOptions, reactJsx } from '../../../genie/repo.ts'
-import { tsconfigJSON } from '../genie/src/runtime/mod.ts'
+import {
+  baseTsconfigCompilerOptions,
+  domLib,
+  packageTsconfigCompilerOptions,
+  reactJsx,
+} from '../../../genie/internal.ts'
+import { tsconfigJson } from '../genie/src/runtime/mod.ts'
 
-export default tsconfigJSON({
-  extends: '../../../tsconfig.base.json',
+export default tsconfigJson({
   compilerOptions: {
+    ...baseTsconfigCompilerOptions,
     ...packageTsconfigCompilerOptions,
     ...reactJsx,
     lib: [...domLib],

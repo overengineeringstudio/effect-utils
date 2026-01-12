@@ -26,6 +26,18 @@ export type CatalogBrandType = typeof CatalogBrand
  */
 export type Catalog<T extends CatalogInput = CatalogInput> = Readonly<T> & {
   readonly [CatalogBrand]: T
+  /**
+   * Pick multiple packages from the catalog and return as a dependency object.
+   * Useful for spreading into dependencies/devDependencies.
+   *
+   * @example
+   * ```ts
+   * devDependencies: {
+   *   ...catalog.pick('@overeng/utils', 'effect'),
+   * }
+   * ```
+   */
+  pick<K extends keyof T>(...keys: K[]): { [P in K]: T[P] }
 }
 
 /** Configuration for extending an existing catalog */
@@ -52,6 +64,28 @@ export class CatalogConflictError extends Error {
     this.newVersion = newVersion
     this.name = 'CatalogConflictError'
   }
+}
+
+/** Creates a pick function for a catalog object */
+const createPickFn =
+  <T extends CatalogInput>(catalog: T) =>
+  <K extends keyof T>(...keys: K[]): { [P in K]: T[P] } => {
+    const result = {} as { [P in K]: T[P] }
+    for (const key of keys) {
+      result[key] = catalog[key]
+    }
+    return result
+  }
+
+/** Adds pick method as non-enumerable property and freezes the catalog */
+const finalizeCatalog = <T extends CatalogInput>(catalog: T): Catalog<T> => {
+  Object.defineProperty(catalog, 'pick', {
+    value: createPickFn(catalog),
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  })
+  return Object.freeze(catalog) as Catalog<T>
 }
 
 /**
@@ -92,25 +126,28 @@ export class CatalogConflictError extends Error {
  */
 export function defineCatalog<const T extends CatalogInput>(input: T): Catalog<T>
 export function defineCatalog<const TBase extends CatalogInput, const TNew extends CatalogInput>(
-  input: ExtendedCatalogInput<TBase> & { packages: TNew },
+  input: { extends: Catalog<TBase>; packages: TNew },
 ): Catalog<TBase & TNew>
-/** Implementation for defineCatalog overloads (standalone or extended catalogs). */
+export function defineCatalog<const TNew extends CatalogInput>(
+  input: { extends: readonly Catalog<any>[]; packages: TNew },
+): Catalog<CatalogInput & TNew>
 export function defineCatalog<const T extends CatalogInput>(
   input: T | ExtendedCatalogInput,
 ): Catalog<T> {
   if (!('extends' in input && 'packages' in input)) {
-    // Standalone catalog - just brand and freeze
-    return Object.freeze(input) as Catalog<T>
+    // Standalone catalog - add pick method and freeze
+    return finalizeCatalog({ ...input })
   }
 
   // Extended catalog - merge and validate
   const bases = Array.isArray(input.extends) ? input.extends : [input.extends]
   const merged: Record<string, string> = {}
 
-  // Merge all base catalogs
+  // Merge all base catalogs (skip non-string values like the pick method)
   for (const base of bases) {
     for (const pkg of Object.keys(base)) {
       const version = base[pkg]
+      if (typeof version !== 'string') continue
       if (pkg in merged && merged[pkg] !== version) {
         // Conflict between bases
         throw new CatalogConflictError({
@@ -143,5 +180,6 @@ export function defineCatalog<const T extends CatalogInput>(
     merged[pkg] = version
   }
 
-  return Object.freeze(merged) as Catalog<T>
+  // Add pick method and freeze
+  return finalizeCatalog(merged) as Catalog<T>
 }

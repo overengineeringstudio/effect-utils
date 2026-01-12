@@ -7,13 +7,17 @@ let
 in
 mkBunCli {
   name = "bun-compose";
-  entry = "packages/@overeng/bun-compose/src/cli.ts";
+  entry = "effect-utils/packages/@overeng/bun-compose/src/cli.ts";
   binaryName = "bun-compose";
-  packageJsonPath = "packages/@overeng/bun-compose/package.json";
-  typecheckTsconfig = "packages/@overeng/bun-compose/tsconfig.json";
-  bunDepsHash = "sha256-QN7v+jta6MyYNmpv+RV9hEsCldnKKpoEzcz3PP14ebg=";
-  workspaceDeps = [
-    { name = "@overeng/utils"; path = "packages/@overeng/utils"; }
+  packageJsonPath = "effect-utils/packages/@overeng/bun-compose/package.json";
+  typecheckTsconfig = "effect-utils/packages/@overeng/bun-compose/tsconfig.json";
+  sources = [
+    { name = "effect-utils"; src = src; }
   ];
+  installDirs = [
+    "effect-utils/packages/@overeng/bun-compose"
+    "effect-utils/packages/@overeng/utils"
+  ];
+  bunDepsHash = "sha256-QN7v+jta6MyYNmpv+RV9hEsCldnKKpoEzcz3PP14ebg=";
   inherit gitRev;
 }

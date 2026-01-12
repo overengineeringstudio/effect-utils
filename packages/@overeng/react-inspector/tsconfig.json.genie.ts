@@ -1,10 +1,10 @@
-import { reactJsx } from '../../../genie/repo.ts'
-import { tsconfigJSON } from '../genie/src/runtime/mod.ts'
+import { baseTsconfigCompilerOptions, reactJsx } from '../../../genie/internal.ts'
+import { tsconfigJson } from '../genie/src/runtime/mod.ts'
 
 /** react-inspector is a git submodule with relaxed type checking for legacy code */
-export default tsconfigJSON({
-  extends: '../../../tsconfig.base.json',
+export default tsconfigJson({
   compilerOptions: {
+    ...baseTsconfigCompilerOptions,
     lib: ['ES2023', 'DOM'],
     rootDir: 'src',
     outDir: './dist',

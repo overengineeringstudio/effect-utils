@@ -1,6 +1,7 @@
-import { pkg, privatePackageDefaults } from '../../../genie/repo.ts'
+import { catalog, packageJson, privatePackageDefaults } from '../../../genie/internal.ts'
+import utilsPkg from '../utils/package.json.genie.ts'
 
-export default pkg.package({
+export default packageJson({
   name: '@overeng/bun-compose',
   ...privatePackageDefaults,
   description: 'CLI for composing bun workspaces with git submodules',
@@ -15,21 +16,26 @@ export default pkg.package({
       './cli': './dist/cli.js',
     },
   },
-  dependencies: ['@overeng/utils'],
-  devDependencies: [
-    '@effect/cli',
-    '@effect/platform',
-    '@effect/platform-node',
-    '@effect/vitest',
-    '@types/node',
-    'effect',
-    'typescript',
-    'vitest',
-  ],
+  dependencies: {
+    ...catalog.pick('@overeng/utils'),
+  },
+  devDependencies: {
+    ...catalog.pick(
+      '@effect/cli',
+      '@effect/platform',
+      '@effect/platform-node',
+      '@effect/vitest',
+      '@types/node',
+      'effect',
+      'typescript',
+      'vitest',
+    ),
+  },
   peerDependencies: {
-    '@effect/cli': '^',
-    '@effect/platform': '^',
-    '@effect/platform-node': '^',
-    effect: '^',
+    ...utilsPkg.data.peerDependencies,
+    '@effect/cli': `^${catalog['@effect/cli']}`,
+  },
+  patchedDependencies: {
+    ...utilsPkg.data.patchedDependencies,
   },
 })

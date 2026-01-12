@@ -1,6 +1,11 @@
-import { pkg, privatePackageDefaults } from '../../../genie/repo.ts'
+import {
+  catalog,
+  definePatchedDependencies,
+  packageJson,
+  privatePackageDefaults,
+} from '../../../genie/internal.ts'
 
-export default pkg.package({
+export default packageJson({
   name: '@overeng/utils',
   ...privatePackageDefaults,
   exports: {
@@ -30,29 +35,44 @@ export default pkg.package({
       },
     },
   },
-  dependencies: ['@noble/hashes', '@opentelemetry/api', 'effect-distributed-lock', 'ioredis'],
-  devDependencies: [
-    '@effect/opentelemetry',
-    '@effect/platform',
-    '@effect/platform-node',
-    '@effect/printer',
-    '@effect/printer-ansi',
-    '@effect/rpc',
-    '@effect/vitest',
-    '@playwright/test',
-    '@types/node',
-    'effect',
-    'vite',
-    'vitest',
-  ],
-  peerDependencies: {
-    '@effect/opentelemetry': '^',
-    '@effect/platform': '^',
-    '@effect/platform-node': '^',
-    '@effect/printer': '^',
-    '@effect/printer-ansi': '^',
-    '@effect/rpc': '^',
-    '@playwright/test': '^',
-    effect: '^',
+  dependencies: {
+    ...catalog.pick(
+      '@noble/hashes',
+      '@opentelemetry/api',
+      'effect-distributed-lock',
+      'ioredis',
+    ),
   },
+  devDependencies: {
+    ...catalog.pick(
+      '@effect/opentelemetry',
+      '@effect/platform',
+      '@effect/platform-node',
+      '@effect/printer',
+      '@effect/printer-ansi',
+      '@effect/rpc',
+      '@effect/vitest',
+      '@playwright/test',
+      '@types/node',
+      'effect',
+      'vite',
+      'vitest',
+    ),
+  },
+  peerDependencies: {
+    '@effect/opentelemetry': `^${catalog['@effect/opentelemetry']}`,
+    '@effect/platform': `^${catalog['@effect/platform']}`,
+    '@effect/platform-node': `^${catalog['@effect/platform-node']}`,
+    '@effect/printer': `^${catalog['@effect/printer']}`,
+    '@effect/printer-ansi': `^${catalog['@effect/printer-ansi']}`,
+    '@effect/rpc': `^${catalog['@effect/rpc']}`,
+    '@playwright/test': `^${catalog['@playwright/test']}`,
+    effect: `^${catalog.effect}`,
+  },
+  patchedDependencies: definePatchedDependencies({
+    location: 'packages/@overeng/utils',
+    patches: {
+      'effect-distributed-lock@0.0.11': './patches/effect-distributed-lock@0.0.11.patch',
+    },
+  }),
 })

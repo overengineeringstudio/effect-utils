@@ -1,4 +1,0 @@
-dist
-**/*.d.ts
-*.tsbuildinfo
-node_modules

@@ -30,8 +30,8 @@ Advanced generator with dependency inference from catalog and workspace packages
 import { packageJsonWithContext } from '@overeng/genie/lib'
 import { catalog, workspacePackagePatterns } from '../../../genie/repo.ts'
 
-export default packageJsonWithContext(
-  {
+export default packageJsonWithContext({
+  config: {
     name: '@myorg/my-package',
     version: '1.0.0',
     type: 'module',
@@ -42,8 +42,8 @@ export default packageJsonWithContext(
     // Peer deps with range expansion
     peerDependencies: { effect: '^', react: '~' },
   },
-  { catalog, workspacePackages: workspacePackagePatterns },
-)
+  context: { catalog, workspacePackages: workspacePackagePatterns },
+})
 ```
 
 ## Features

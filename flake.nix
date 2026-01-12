@@ -21,41 +21,53 @@
       let
         pkgs = import nixpkgs { inherit system; };
         pkgsUnstable = import nixpkgsUnstable { inherit system; };
-        mkBunCli = import ./nix/mk-bun-cli.nix { inherit pkgs pkgsUnstable; src = ./.; };
+        mkBunCli = import ./nix/mk-bun-cli.nix { inherit pkgs pkgsUnstable; };
       in
       {
         packages = {
           genie = mkBunCli {
             name = "genie";
-            entry = "packages/@overeng/genie/src/build/cli.ts";
-            packageJsonPath = "packages/@overeng/genie/package.json";
-            typecheckTsconfig = "packages/@overeng/genie/tsconfig.json";
-            bunDepsHash = "sha256-vDgqQQxEi2VfykKwPfDI1Lv5hPQz+7rvW3CPm+PhX+I=";
-            workspaceDeps = [
-              { name = "@overeng/utils"; path = "packages/@overeng/utils"; }
+            entry = "effect-utils/packages/@overeng/genie/src/build/cli.ts";
+            packageJsonPath = "effect-utils/packages/@overeng/genie/package.json";
+            typecheckTsconfig = "effect-utils/packages/@overeng/genie/tsconfig.json";
+            sources = [
+              { name = "effect-utils"; src = self; }
             ];
+            installDirs = [
+              "effect-utils/packages/@overeng/genie"
+              "effect-utils/packages/@overeng/utils"
+            ];
+            bunDepsHash = "sha256-xtg5VBvc6BGMDoFI8LtrAv35fGay/f7UQfOp7X/X3cw=";
             inherit gitRev;
           };
           pnpm-compose = mkBunCli {
             name = "pnpm-compose";
-            entry = "packages/@overeng/pnpm-compose/src/cli.ts";
-            packageJsonPath = "packages/@overeng/pnpm-compose/package.json";
-            typecheckTsconfig = "packages/@overeng/pnpm-compose/tsconfig.json";
-            bunDepsHash = "sha256-vDgqQQxEi2VfykKwPfDI1Lv5hPQz+7rvW3CPm+PhX+I=";
-            workspaceDeps = [
-              { name = "@overeng/utils"; path = "packages/@overeng/utils"; }
+            entry = "effect-utils/packages/@overeng/pnpm-compose/src/cli.ts";
+            packageJsonPath = "effect-utils/packages/@overeng/pnpm-compose/package.json";
+            typecheckTsconfig = "effect-utils/packages/@overeng/pnpm-compose/tsconfig.json";
+            sources = [
+              { name = "effect-utils"; src = self; }
             ];
+            installDirs = [
+              "effect-utils/packages/@overeng/pnpm-compose"
+              "effect-utils/packages/@overeng/utils"
+            ];
+            bunDepsHash = "sha256-xtg5VBvc6BGMDoFI8LtrAv35fGay/f7UQfOp7X/X3cw=";
             inherit gitRev;
           };
           default = mkBunCli {
             name = "genie";
-            entry = "packages/@overeng/genie/src/build/cli.ts";
-            packageJsonPath = "packages/@overeng/genie/package.json";
-            typecheckTsconfig = "packages/@overeng/genie/tsconfig.json";
-            bunDepsHash = "sha256-vDgqQQxEi2VfykKwPfDI1Lv5hPQz+7rvW3CPm+PhX+I=";
-            workspaceDeps = [
-              { name = "@overeng/utils"; path = "packages/@overeng/utils"; }
+            entry = "effect-utils/packages/@overeng/genie/src/build/cli.ts";
+            packageJsonPath = "effect-utils/packages/@overeng/genie/package.json";
+            typecheckTsconfig = "effect-utils/packages/@overeng/genie/tsconfig.json";
+            sources = [
+              { name = "effect-utils"; src = self; }
             ];
+            installDirs = [
+              "effect-utils/packages/@overeng/genie"
+              "effect-utils/packages/@overeng/utils"
+            ];
+            bunDepsHash = pkgs.lib.fakeHash;
             inherit gitRev;
           };
         };
@@ -66,7 +78,7 @@
       overlays.pnpmGuard = pnpmGuardOverlay;
 
       # Builder function for external repos to create their own Bun CLIs
-      lib.mkBunCli = { pkgs, pkgsUnstable, src }:
+      lib.mkBunCli = { pkgs, pkgsUnstable, src ? null }:
         import ./nix/mk-bun-cli.nix { inherit pkgs pkgsUnstable src; };
 
       # Legacy API for backwards compatibility
@@ -82,22 +94,30 @@
           specs = {
             genie = {
               name = "genie";
-              entry = "packages/@overeng/genie/src/cli.ts";
-              packageJsonPath = "packages/@overeng/genie/package.json";
-              typecheckTsconfig = "packages/@overeng/genie/tsconfig.json";
+              entry = "effect-utils/packages/@overeng/genie/src/cli.ts";
+              packageJsonPath = "effect-utils/packages/@overeng/genie/package.json";
+              typecheckTsconfig = "effect-utils/packages/@overeng/genie/tsconfig.json";
               bunDepsHash = "sha256-JtxYAEufsrrbYZA5OdZzaWRpgvawnOMwmht+98DDHSQ=";
-              workspaceDeps = [
-                { name = "@overeng/utils"; path = "packages/@overeng/utils"; }
+              sources = [
+                { name = "effect-utils"; src = srcPath; }
+              ];
+              installDirs = [
+                "effect-utils/packages/@overeng/genie"
+                "effect-utils/packages/@overeng/utils"
               ];
             };
             pnpm-compose = {
               name = "pnpm-compose";
-              entry = "packages/@overeng/pnpm-compose/src/cli.ts";
-              packageJsonPath = "packages/@overeng/pnpm-compose/package.json";
-              typecheckTsconfig = "packages/@overeng/pnpm-compose/tsconfig.json";
+              entry = "effect-utils/packages/@overeng/pnpm-compose/src/cli.ts";
+              packageJsonPath = "effect-utils/packages/@overeng/pnpm-compose/package.json";
+              typecheckTsconfig = "effect-utils/packages/@overeng/pnpm-compose/tsconfig.json";
               bunDepsHash = "sha256-JtxYAEufsrrbYZA5OdZzaWRpgvawnOMwmht+98DDHSQ=";
-              workspaceDeps = [
-                { name = "@overeng/utils"; path = "packages/@overeng/utils"; }
+              sources = [
+                { name = "effect-utils"; src = srcPath; }
+              ];
+              installDirs = [
+                "effect-utils/packages/@overeng/pnpm-compose"
+                "effect-utils/packages/@overeng/utils"
               ];
             };
           };

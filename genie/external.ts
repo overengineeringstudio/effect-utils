@@ -1,26 +1,30 @@
 /**
- * effect-utils monorepo configuration
+ * External configuration - reusable by peer repos
  *
- * Source of truth for:
- * - Catalog versions for dependencies
- * - TypeScript configuration patterns
+ * This file contains configuration that peer repos (like dotdot) can import
+ * when they include effect-utils as a submodule.
  *
- * Repos that include effect-utils as a submodule can import the catalog and
- * tsconfig utilities from here, then import genie utilities directly from genie.
+ * For effect-utils internal use, import from `./internal.ts` instead.
  */
 
 import {
   CatalogBrand,
-  createPackageJson,
   defineCatalog,
+  definePatchedDependencies,
+  packageJson,
+  workspaceRoot,
   type TSConfigCompilerOptions,
 } from '../packages/@overeng/genie/src/runtime/mod.ts'
 
 /** Re-export so TypeScript can reference it in generated declaration files */
-export { CatalogBrand }
+export { CatalogBrand, defineCatalog, definePatchedDependencies, packageJson, workspaceRoot }
+export type { TSConfigCompilerOptions }
 
 /**
  * Catalog versions - single source of truth for dependency versions
+ *
+ * This catalog contains only external npm package versions.
+ * Internal @overeng/* packages are added in internal.ts for effect-utils use.
  *
  * Note: packages/@overeng/react-inspector is a git submodule with its own tooling (tsup, ESLint)
  * We include it in the workspace but keep its build system separate
@@ -113,54 +117,7 @@ export const catalog = defineCatalog({
   '@opentui/react': '0.1.68',
 })
 
-/** PNPM patched dependencies (paths relative to effect-utils repo root) */
-export const patchedDependencies = {
-  'effect-distributed-lock@0.0.11': 'patches/effect-distributed-lock@0.0.11.patch',
-} as const
-
-/**
- * Package name patterns for dependency resolution.
- * Used by packageJsonWithContext to determine workspace: protocol.
- */
-export const workspacePackagePatterns = ['@overeng/*'] as const
-
-/**
- * Type-safe package.json builder with Bun awareness.
- *
- * Provides two helpers:
- * - `pkg.root()` - For root package.json with Bun-specific fields (workspaces, trustedDependencies)
- * - `pkg.package()` - For workspace packages (strict, no root-only fields allowed)
- *
- * @example
- * ```ts
- * // Root package.json.genie.ts
- * import { catalog, pkg } from './genie/repo.ts'
- *
- * export default pkg.root({
- *   name: 'my-monorepo',
- *   private: true,
- *   workspaces: { packages: ['packages/*'], catalog },
- *   trustedDependencies: ['esbuild'],
- * })
- *
- * // Workspace package.json.genie.ts
- * import { pkg } from '../../../genie/repo.ts'
- *
- * export default pkg.package({
- *   name: '@overeng/utils',
- *   dependencies: ['effect', '@overeng/other'], // typos caught at compile time
- *   peerDependencies: { react: '^' },
- * })
- * ```
- */
-export const pkg = createPackageJson({
-  packageManager: 'bun',
-  packageManagerVersion: '1.3.5',
-  catalog,
-  workspacePackages: workspacePackagePatterns,
-})
-
-/** Common fields for private workspace packages */
+/** Common fields for private packages */
 export const privatePackageDefaults = {
   version: '0.1.0',
   private: true,

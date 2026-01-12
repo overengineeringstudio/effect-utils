@@ -1,4 +1,4 @@
-import { tsconfigJSON } from './packages/@overeng/genie/src/runtime/mod.ts'
+import { tsconfigJson } from './packages/@overeng/genie/src/runtime/mod.ts'
 
 const references = [
   './scripts',
@@ -21,8 +21,8 @@ const references = [
   './packages/@overeng/effect-rpc-tanstack',
 ]
 
-export default tsconfigJSON({
-  extends: './tsconfig.base.json',
+// This file is meant for convenience to built all TS projects in the workspace at once
+export default tsconfigJson({
   references: references.map((path) => ({ path })),
   files: [],
 })

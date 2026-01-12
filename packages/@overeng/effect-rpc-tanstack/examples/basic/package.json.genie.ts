@@ -1,6 +1,7 @@
-import { pkg, privatePackageDefaults } from '../../../../../genie/repo.ts'
+import { catalog, packageJson, privatePackageDefaults } from '../../../../../genie/internal.ts'
+import utilsPkg from '../../../../@overeng/utils/package.json.genie.ts'
 
-export default pkg.package({
+export default packageJson({
   name: 'effect-rpc-tanstack-example-basic',
   ...privatePackageDefaults,
   scripts: {
@@ -9,24 +10,31 @@ export default pkg.package({
     start: 'node .output/server/index.mjs',
     'test:e2e': 'playwright test',
   },
-  dependencies: [
-    '@effect/platform',
-    '@effect/rpc',
-    '@tanstack/react-router',
-    '@tanstack/react-start',
-    'effect',
-    'react',
-    'react-dom',
-  ],
-  devDependencies: [
-    '@overeng/utils',
-    '@playwright/test',
-    '@tanstack/router-plugin',
-    '@types/node',
-    '@types/react',
-    '@types/react-dom',
-    '@vitejs/plugin-react',
-    'typescript',
-    'vite',
-  ],
+  dependencies: {
+    ...catalog.pick(
+      '@effect/platform',
+      '@effect/rpc',
+      '@tanstack/react-router',
+      '@tanstack/react-start',
+      'effect',
+      'react',
+      'react-dom',
+    ),
+  },
+  devDependencies: {
+    ...catalog.pick(
+      '@overeng/utils',
+      '@playwright/test',
+      '@tanstack/router-plugin',
+      '@types/node',
+      '@types/react',
+      '@types/react-dom',
+      '@vitejs/plugin-react',
+      'typescript',
+      'vite',
+    ),
+  },
+  patchedDependencies: {
+    ...utilsPkg.data.patchedDependencies,
+  },
 })

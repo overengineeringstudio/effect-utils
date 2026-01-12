@@ -13,12 +13,12 @@
     }
   },
   "devDependencies": {
-    "@effect/ai": "catalog:",
-    "@effect/platform": "catalog:",
-    "@effect/vitest": "catalog:",
-    "effect": "catalog:",
-    "vite": "catalog:",
-    "vitest": "catalog:"
+    "@effect/ai": "0.33.2",
+    "@effect/platform": "0.94.1",
+    "@effect/vitest": "0.27.0",
+    "effect": "3.19.14",
+    "vite": "7.3.0",
+    "vitest": "4.0.16"
   },
   "peerDependencies": {
     "@effect/ai": ">=0.32.0",

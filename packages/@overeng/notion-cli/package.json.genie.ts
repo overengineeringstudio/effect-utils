@@ -1,6 +1,7 @@
-import { pkg, privatePackageDefaults } from '../../../genie/repo.ts'
+import { catalog, packageJson, privatePackageDefaults } from '../../../genie/internal.ts'
+import utilsPkg from '../utils/package.json.genie.ts'
 
-export default pkg.package({
+export default packageJson({
   name: '@overeng/notion-cli',
   ...privatePackageDefaults,
   exports: {
@@ -17,24 +18,31 @@ export default pkg.package({
       './config': './dist/config-def.js',
     },
   },
-  dependencies: [
-    '@effect/cli',
-    '@effect/cluster',
-    '@effect/experimental',
-    '@effect/platform',
-    '@effect/platform-node',
-    '@effect/printer',
-    '@effect/printer-ansi',
-    '@effect/rpc',
-    '@effect/sql',
-    '@effect/typeclass',
-    '@effect/workflow',
-    '@overeng/notion-effect-client',
-    '@overeng/notion-effect-schema',
-    '@overeng/utils',
-  ],
-  devDependencies: ['@effect/vitest', 'effect', 'vitest'],
+  dependencies: {
+    ...catalog.pick(
+      '@effect/cli',
+      '@effect/cluster',
+      '@effect/experimental',
+      '@effect/platform',
+      '@effect/platform-node',
+      '@effect/printer',
+      '@effect/printer-ansi',
+      '@effect/rpc',
+      '@effect/sql',
+      '@effect/typeclass',
+      '@effect/workflow',
+      '@overeng/notion-effect-client',
+      '@overeng/notion-effect-schema',
+      '@overeng/utils',
+    ),
+  },
+  devDependencies: {
+    ...catalog.pick('@effect/vitest', 'effect', 'vitest'),
+  },
   peerDependencies: {
-    effect: '^',
+    ...utilsPkg.data.peerDependencies,
+  },
+  patchedDependencies: {
+    ...utilsPkg.data.patchedDependencies,
   },
 })

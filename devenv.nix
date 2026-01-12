@@ -22,6 +22,8 @@ in
     pkgs.pnpm
     pkgs.nodejs_24
     pkgs.bun
+    pkgs.oxlint
+    pkgs.oxfmt
     genie
     # Lightweight wrappers keep dev shell fast while exposing local CLIs.
     pnpmCompose

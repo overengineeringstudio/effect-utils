@@ -1,6 +1,6 @@
-import { pkg, privatePackageDefaults } from '../../../genie/repo.ts'
+import { catalog, packageJson, privatePackageDefaults } from '../../../genie/internal.ts'
 
-export default pkg.package({
+export default packageJson({
   name: '@overeng/effect-rpc-tanstack',
   ...privatePackageDefaults,
   exports: {
@@ -18,27 +18,27 @@ export default pkg.package({
       './router': './dist/router.js',
     },
   },
-  devDependencies: [
-    '@effect/platform',
-    '@effect/platform-node',
-    '@effect/rpc',
-    '@tanstack/react-router',
-    '@tanstack/react-start',
-    '@types/react',
-    'effect',
-    'react',
-    'react-dom',
-    'vite',
-    'vitest',
-  ],
+  devDependencies: {
+    '@effect/platform': catalog['@effect/platform'],
+    '@effect/platform-node': catalog['@effect/platform-node'],
+    '@effect/rpc': catalog['@effect/rpc'],
+    '@tanstack/react-router': catalog['@tanstack/react-router'],
+    '@tanstack/react-start': catalog['@tanstack/react-start'],
+    '@types/react': catalog['@types/react'],
+    effect: catalog.effect,
+    react: catalog.react,
+    'react-dom': catalog['react-dom'],
+    vite: catalog.vite,
+    vitest: catalog.vitest,
+  },
   peerDependencies: {
-    '@effect/platform': '^',
-    '@effect/platform-node': '^',
-    '@effect/rpc': '^',
-    '@tanstack/react-router': '^',
-    '@tanstack/react-start': '^',
-    effect: '^',
-    react: '^',
-    'react-dom': '^',
+    '@effect/platform': `^${catalog['@effect/platform']}`,
+    '@effect/platform-node': `^${catalog['@effect/platform-node']}`,
+    '@effect/rpc': `^${catalog['@effect/rpc']}`,
+    '@tanstack/react-router': `^${catalog['@tanstack/react-router']}`,
+    '@tanstack/react-start': `^${catalog['@tanstack/react-start']}`,
+    effect: `^${catalog.effect}`,
+    react: `^${catalog.react}`,
+    'react-dom': `^${catalog['react-dom']}`,
   },
 })

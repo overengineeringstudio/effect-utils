@@ -1,8 +1,13 @@
-import { packageTsconfigCompilerOptions } from '../../../genie/repo.ts'
-import { tsconfigJSON } from '../../@overeng/genie/src/runtime/mod.ts'
+import {
+  baseTsconfigCompilerOptions,
+  packageTsconfigCompilerOptions,
+} from '../../../genie/internal.ts'
+import { tsconfigJson } from '../../@overeng/genie/src/runtime/mod.ts'
 
-export default tsconfigJSON({
-  extends: '../../../tsconfig.base.json',
-  compilerOptions: packageTsconfigCompilerOptions,
+export default tsconfigJson({
+  compilerOptions: {
+    ...baseTsconfigCompilerOptions,
+    ...packageTsconfigCompilerOptions,
+  },
   include: ['src/**/*'],
 })

@@ -1,7 +1,6 @@
 // Generated file - DO NOT EDIT
 // Source: tsconfig.all.json.genie.ts
 {
-  "extends": "./tsconfig.base.json",
   "references": [
     {
       "path": "./scripts"

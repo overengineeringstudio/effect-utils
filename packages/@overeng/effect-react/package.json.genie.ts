@@ -1,6 +1,6 @@
-import { pkg, privatePackageDefaults } from '../../../genie/repo.ts'
+import { catalog, packageJson, privatePackageDefaults } from '../../../genie/internal.ts'
 
-export default pkg.package({
+export default packageJson({
   name: '@overeng/effect-react',
   ...privatePackageDefaults,
   exports: {
@@ -14,23 +14,25 @@ export default pkg.package({
       './react-aria': './dist/react-aria/mod.js',
     },
   },
-  devDependencies: [
-    '@storybook/react',
-    '@storybook/react-vite',
-    '@types/react',
-    '@vitejs/plugin-react',
-    'effect',
-    'react',
-    'react-aria-components',
-    'react-dom',
-    'storybook',
-    'vite',
-    'vitest',
-  ],
+  devDependencies: {
+    ...catalog.pick(
+      '@storybook/react',
+      '@storybook/react-vite',
+      '@types/react',
+      '@vitejs/plugin-react',
+      'effect',
+      'react',
+      'react-aria-components',
+      'react-dom',
+      'storybook',
+      'vite',
+      'vitest',
+    ),
+  },
   peerDependencies: {
-    effect: '^',
-    react: '^',
-    'react-aria-components': '^',
-    'react-dom': '^',
+    effect: `^${catalog.effect}`,
+    react: `^${catalog.react}`,
+    'react-aria-components': `^${catalog['react-aria-components']}`,
+    'react-dom': `^${catalog['react-dom']}`,
   },
 })

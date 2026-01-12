@@ -112,10 +112,10 @@ pnpm-compose install    # Re-sync symlinks
 
 ## Troubleshooting
 
-| Problem                        | Solution                                                           |
-| ------------------------------ | ------------------------------------------------------------------ |
-| "Cannot find package X"        | `pnpm-compose install --clean`                                     |
-| Catalog mismatch               | Update parent's `genie/repo.ts` to match child versions            |
-| node_modules in submodule      | `rm -rf submodules/*/node_modules && pnpm-compose install --clean` |
-| Nix can't find submodule files | Add `inputs.self.submodules = true` to flake.nix                   |
+| Problem                        | Solution                                                                                 |
+| ------------------------------ | ---------------------------------------------------------------------------------------- |
+| "Cannot find package X"        | `pnpm-compose install --clean`                                                           |
+| Catalog mismatch               | Update parent's `genie/repo.ts` to match child versions                                  |
+| node_modules in submodule      | `rm -rf submodules/*/node_modules && pnpm-compose install --clean`                       |
+| Nix can't find submodule files | Add `inputs.self.submodules = true` to flake.nix                                         |
 | Nix flake input is a symlink   | Avoid `path:` inputs that resolve through symlinks; use a real path override in `.envrc` |

@@ -1,22 +1,48 @@
 // Generated file - DO NOT EDIT
 // Source: tsconfig.json.genie.ts
 {
-  "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
+    "target": "ES2024",
     "lib": ["ES2023", "DOM"],
-    "rootDir": "src",
-    "outDir": "./dist",
-    "jsx": "react-jsx",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
     "allowJs": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "./dist",
+    "strict": false,
+    "noUncheckedIndexedAccess": false,
+    "exactOptionalPropertyTypes": false,
+    "noImplicitReturns": false,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": false,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "plugins": [
+      {
+        "name": "@effect/language-service",
+        "reportSuggestionsAsWarningsInTsc": true,
+        "pipeableMinArgCount": 2,
+        "diagnosticSeverity": {
+          "missedPipeableOpportunity": "suggestion",
+          "schemaUnionOfLiterals": "warning",
+          "anyUnknownInErrorContext": "warning"
+        }
+      }
+    ],
+    "rootDir": "src",
+    "jsx": "react-jsx",
     "checkJs": false,
     "composite": true,
-    "strict": false,
     "noImplicitAny": false,
-    "strictNullChecks": false,
-    "exactOptionalPropertyTypes": false,
-    "noUncheckedIndexedAccess": false,
-    "verbatimModuleSyntax": false,
-    "noImplicitReturns": false
+    "strictNullChecks": false
   },
   "include": ["src/**/*"]
 }

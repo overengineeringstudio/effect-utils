@@ -1,9 +1,18 @@
-import { pkg } from '../../../genie/repo.ts'
+import { catalog, packageJson } from '../../../genie/internal.ts'
 
-export default pkg.package({
+export default packageJson({
   name: 'effect-socket-examples',
   private: true,
   type: 'module',
-  dependencies: ['@effect/platform', '@effect/platform-node', '@effect/rpc', 'effect'],
-  devDependencies: ['@types/node'],
+  dependencies: {
+    ...catalog.pick(
+      '@effect/platform',
+      '@effect/platform-node',
+      '@effect/rpc',
+      'effect',
+    ),
+  },
+  devDependencies: {
+    ...catalog.pick('@types/node'),
+  },
 })

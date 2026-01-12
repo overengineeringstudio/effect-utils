@@ -231,10 +231,11 @@ describe('import-map', () => {
           // genie source has imports
           yield* writeFile(
             genieSourcePath,
-            `import { pkg } from './genie/repo.ts'
+            `import { workspaceRoot } from './genie/internal.ts'
 
-export default pkg.root({
+export default workspaceRoot({
   name: 'test',
+  private: true,
   imports: {
     '#genie/*': './submodules/effect-utils/packages/@overeng/genie/src/runtime/*',
   },
@@ -301,10 +302,14 @@ export default pkg.root({
     it('resolves wildcard pattern', () => {
       const result = resolveImportMapSpecifier({
         specifier: '#genie/mod.ts',
-        importMap: { '#genie/*': './submodules/effect-utils/packages/@overeng/genie/src/runtime/*' },
+        importMap: {
+          '#genie/*': './submodules/effect-utils/packages/@overeng/genie/src/runtime/*',
+        },
         packageJsonDir,
       })
-      expect(result).toBe('/project/submodules/effect-utils/packages/@overeng/genie/src/runtime/mod.ts')
+      expect(result).toBe(
+        '/project/submodules/effect-utils/packages/@overeng/genie/src/runtime/mod.ts',
+      )
     })
 
     it('resolves nested wildcard path', () => {

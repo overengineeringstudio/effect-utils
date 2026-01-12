@@ -145,11 +145,11 @@ Then import in your `.genie.ts` files:
 import { packageJsonWithContext } from '@overeng/genie/lib'
 import { catalog, workspacePackagePatterns } from '../genie/repo.ts'
 
-export default packageJsonWithContext(
-  {
+export default packageJsonWithContext({
+  config: {
     name: '@myorg/my-package',
     dependencies: ['effect'],
   },
-  { catalog, workspacePackages: workspacePackagePatterns },
-)
+  context: { catalog, workspacePackages: workspacePackagePatterns },
+})
 ```

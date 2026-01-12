@@ -1,6 +1,6 @@
-import { pkg, privatePackageDefaults } from '../../../genie/repo.ts'
+import { catalog, packageJson, privatePackageDefaults } from '../../../genie/internal.ts'
 
-export default pkg.package({
+export default packageJson({
   name: '@overeng/notion-effect-schema',
   ...privatePackageDefaults,
   exports: {
@@ -12,8 +12,13 @@ export default pkg.package({
       '.': './dist/mod.js',
     },
   },
-  devDependencies: ['@effect/vitest', '@types/node', 'effect', 'vitest'],
+  devDependencies: {
+    '@effect/vitest': catalog['@effect/vitest'],
+    '@types/node': catalog['@types/node'],
+    effect: catalog.effect,
+    vitest: catalog.vitest,
+  },
   peerDependencies: {
-    effect: '^',
+    effect: `^${catalog.effect}`,
   },
 })

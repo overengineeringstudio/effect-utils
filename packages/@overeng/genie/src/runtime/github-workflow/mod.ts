@@ -1,3 +1,4 @@
+import type { GenieOutput } from '../mod.ts'
 import * as yaml from '../utils/yaml.ts'
 
 /**
@@ -249,11 +250,11 @@ export type GitHubWorkflowArgs = {
   'run-name'?: string
 }
 
-/** Options for customizing GitHub workflow generation (reserved for future use) */
-export type GitHubWorkflowOptions = Record<string, never>
-
 /**
- * Creates a GitHub Actions workflow YAML string
+ * Creates a GitHub Actions workflow YAML configuration.
+ *
+ * Returns a `GenieOutput` with the structured data accessible via `.data`
+ * for composition with other genie files.
  *
  * @example
  * ```ts
@@ -275,10 +276,7 @@ export type GitHubWorkflowOptions = Record<string, never>
  * })
  * ```
  */
-// oxlint-disable-next-line overeng/named-args -- DSL-style API
-export const githubWorkflow = (
-  args: GitHubWorkflowArgs,
-  _options?: GitHubWorkflowOptions,
-): string => {
-  return yaml.stringify(args)
-}
+export const githubWorkflow = <const T extends GitHubWorkflowArgs>(args: T): GenieOutput<T> => ({
+  data: args,
+  stringify: (_ctx) => yaml.stringify(args),
+})

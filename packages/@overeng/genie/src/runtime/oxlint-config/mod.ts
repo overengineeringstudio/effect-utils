@@ -7,6 +7,8 @@
  * @see https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxlint/configuration_schema.json
  */
 
+import type { GenieOutput } from '../mod.ts'
+
 /** Rule severity levels */
 type RuleSeverity = 'off' | 'warn' | 'error' | 'allow' | 'deny' | 0 | 1 | 2
 
@@ -84,56 +86,35 @@ export type OxlintConfigArgs = {
   }
 }
 
-/** Options for customizing oxlint config generation (reserved for future use) */
-export type OxlintConfigOptions = Record<string, never>
+/**
+ * Creates an oxlint configuration file (.jsonc).
+ *
+ * Returns a `GenieOutput` with the structured data accessible via `.data`
+ * for composition with other genie files.
+ */
+export const oxlintConfig = <const T extends OxlintConfigArgs>(args: T): GenieOutput<T> => {
+  const buildConfig = (): Record<string, unknown> => {
+    const config: Record<string, unknown> = {
+      $schema:
+        'https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxlint/configuration_schema.json',
+    }
 
-/** Generates an oxlint configuration file (.jsonc) from typed arguments */
-// oxlint-disable-next-line overeng/named-args -- DSL-style API
-export const oxlintConfig = (args: OxlintConfigArgs, _options?: OxlintConfigOptions): string => {
-  const config: Record<string, unknown> = {
-    $schema:
-      'https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxlint/configuration_schema.json',
+    if (args.plugins !== undefined) config.plugins = args.plugins
+    if (args.jsPlugins !== undefined) config.jsPlugins = args.jsPlugins
+    if (args.env !== undefined) config.env = args.env
+    if (args.globals !== undefined) config.globals = args.globals
+    if (args.extends !== undefined) config.extends = args.extends
+    if (args.ignorePatterns !== undefined) config.ignorePatterns = args.ignorePatterns
+    if (args.settings !== undefined) config.settings = args.settings
+    if (args.categories !== undefined) config.categories = args.categories
+    if (args.rules !== undefined) config.rules = args.rules
+    if (args.overrides !== undefined) config.overrides = args.overrides
+
+    return config
   }
 
-  if (args.plugins !== undefined) {
-    config.plugins = args.plugins
+  return {
+    data: args,
+    stringify: (_ctx) => JSON.stringify(buildConfig(), null, 2) + '\n',
   }
-
-  if (args.jsPlugins !== undefined) {
-    config.jsPlugins = args.jsPlugins
-  }
-
-  if (args.env !== undefined) {
-    config.env = args.env
-  }
-
-  if (args.globals !== undefined) {
-    config.globals = args.globals
-  }
-
-  if (args.extends !== undefined) {
-    config.extends = args.extends
-  }
-
-  if (args.ignorePatterns !== undefined) {
-    config.ignorePatterns = args.ignorePatterns
-  }
-
-  if (args.settings !== undefined) {
-    config.settings = args.settings
-  }
-
-  if (args.categories !== undefined) {
-    config.categories = args.categories
-  }
-
-  if (args.rules !== undefined) {
-    config.rules = args.rules
-  }
-
-  if (args.overrides !== undefined) {
-    config.overrides = args.overrides
-  }
-
-  return JSON.stringify(config, null, 2) + '\n'
 }

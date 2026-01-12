@@ -13,10 +13,10 @@
     }
   },
   "devDependencies": {
-    "@types/react": "catalog:",
-    "effect": "catalog:",
-    "react": "catalog:",
-    "vitest": "catalog:"
+    "@types/react": "19.2.7",
+    "effect": "3.19.14",
+    "react": "19.2.3",
+    "vitest": "4.0.16"
   },
   "peerDependencies": {
     "effect": "^3.19.14",
