@@ -15,7 +15,7 @@ import {
   cleanupWorkspace,
   createPackageTarget,
   createWorkspace,
-  generateConfigWithPackages,
+  generateRootConfig,
 } from './fixtures/setup.ts'
 
 describe('link command', () => {
@@ -39,12 +39,10 @@ describe('link command', () => {
     const configPath = path.join(workspacePath, 'dotdot-root.json')
     fs.writeFileSync(
       configPath,
-      generateConfigWithPackages({
-        'repo-a': {
-          url: 'git@github.com:test/repo-a.git',
-          packages: { 'shared-lib': { path: 'shared-lib' } },
-        },
-      }),
+      generateRootConfig(
+        { 'repo-a': { url: 'git@github.com:test/repo-a.git' } },
+        { 'shared-lib': { repo: 'repo-a', path: 'shared-lib' } },
+      ),
     )
 
     await Effect.gen(function* () {
@@ -79,12 +77,10 @@ describe('link command', () => {
     const configPath = path.join(workspacePath, 'dotdot-root.json')
     fs.writeFileSync(
       configPath,
-      generateConfigWithPackages({
-        'repo-a': {
-          url: 'git@github.com:test/repo-a.git',
-          packages: { 'shared-lib': { path: 'shared-lib' } },
-        },
-      }),
+      generateRootConfig(
+        { 'repo-a': { url: 'git@github.com:test/repo-a.git' } },
+        { 'shared-lib': { repo: 'repo-a', path: 'shared-lib' } },
+      ),
     )
 
     await Effect.gen(function* () {
@@ -118,16 +114,16 @@ describe('link command', () => {
     const configPath = path.join(workspacePath, 'dotdot-root.json')
     fs.writeFileSync(
       configPath,
-      generateConfigWithPackages({
-        'repo-a': {
-          url: 'git@github.com:test/repo-a.git',
-          packages: { 'shared-lib': { path: 'shared-lib' } },
+      generateRootConfig(
+        {
+          'repo-a': { url: 'git@github.com:test/repo-a.git' },
+          'repo-b': { url: 'git@github.com:test/repo-b.git' },
         },
-        'repo-b': {
-          url: 'git@github.com:test/repo-b.git',
-          packages: { 'shared-lib': { path: 'shared-lib' } },
+        {
+          'shared-lib': { repo: 'repo-a', path: 'shared-lib' },
+          'shared-lib-b': { repo: 'repo-b', path: 'shared-lib' },
         },
-      }),
+      ),
     )
 
     await Effect.gen(function* () {
@@ -161,16 +157,16 @@ describe('link command', () => {
     const configPath = path.join(workspacePath, 'dotdot-root.json')
     fs.writeFileSync(
       configPath,
-      generateConfigWithPackages({
-        'repo-a': {
-          url: 'git@github.com:test/repo-a.git',
-          packages: { 'shared-lib': { path: 'shared-lib' } },
+      generateRootConfig(
+        {
+          'repo-a': { url: 'git@github.com:test/repo-a.git' },
+          'repo-b': { url: 'git@github.com:test/repo-b.git' },
         },
-        'repo-b': {
-          url: 'git@github.com:test/repo-b.git',
-          packages: { 'shared-lib': { path: 'shared-lib' } },
+        {
+          'shared-lib-a': { repo: 'repo-a', path: 'shared-lib' },
+          'shared-lib-b': { repo: 'repo-b', path: 'shared-lib' },
         },
-      }),
+      ),
     )
 
     await Effect.gen(function* () {
@@ -201,12 +197,10 @@ describe('link command', () => {
     const configPath = path.join(workspacePath, 'dotdot-root.json')
     fs.writeFileSync(
       configPath,
-      generateConfigWithPackages({
-        'repo-a': {
-          url: 'git@github.com:test/repo-a.git',
-          packages: { 'shared-lib': { path: 'shared-lib' } },
-        },
-      }),
+      generateRootConfig(
+        { 'repo-a': { url: 'git@github.com:test/repo-a.git' } },
+        { 'shared-lib': { repo: 'repo-a', path: 'shared-lib' } },
+      ),
     )
 
     // First create symlinks using the create command
@@ -252,12 +246,10 @@ describe('link command', () => {
     const configPath = path.join(workspacePath, 'dotdot-root.json')
     fs.writeFileSync(
       configPath,
-      generateConfigWithPackages({
-        'repo-a': {
-          url: 'git@github.com:test/repo-a.git',
-          packages: { 'shared-lib': { path: 'shared-lib' } },
-        },
-      }),
+      generateRootConfig(
+        { 'repo-a': { url: 'git@github.com:test/repo-a.git' } },
+        { 'shared-lib': { repo: 'repo-a', path: 'shared-lib' } },
+      ),
     )
 
     // Create symlink first
@@ -305,12 +297,10 @@ describe('link command', () => {
     const configPath = path.join(workspacePath, 'dotdot-root.json')
     fs.writeFileSync(
       configPath,
-      generateConfigWithPackages({
-        'repo-a': {
-          url: 'git@github.com:test/repo-a.git',
-          packages: { nonexistent: { path: 'nonexistent' } },
-        },
-      }),
+      generateRootConfig(
+        { 'repo-a': { url: 'git@github.com:test/repo-a.git' } },
+        { nonexistent: { repo: 'repo-a', path: 'nonexistent' } },
+      ),
     )
 
     await Effect.gen(function* () {
@@ -361,12 +351,10 @@ describe('link command', () => {
     const configPath = path.join(workspacePath, 'dotdot-root.json')
     fs.writeFileSync(
       configPath,
-      generateConfigWithPackages({
-        'repo-a': {
-          url: 'git@github.com:test/repo-a.git',
-          packages: { '@org/utils': { path: 'packages/utils' } },
-        },
-      }),
+      generateRootConfig(
+        { 'repo-a': { url: 'git@github.com:test/repo-a.git' } },
+        { '@org/utils': { repo: 'repo-a', path: 'packages/utils' } },
+      ),
     )
 
     await Effect.gen(function* () {

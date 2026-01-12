@@ -137,7 +137,7 @@ describe('status command', () => {
           name: 'repo-with-config',
           isGitRepo: true,
           hasConfig: true,
-          configRepos: {
+          configDeps: {
             'shared-repo': { url: 'git@github.com:test/shared-repo.git' },
           },
         },

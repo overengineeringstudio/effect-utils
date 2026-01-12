@@ -108,7 +108,7 @@ describe('tree command', () => {
           name: 'repo-a',
           isGitRepo: true,
           hasConfig: true,
-          configRepos: {
+          configDeps: {
             'repo-b': { url: 'git@github.com:test/repo-b.git' },
           },
         },
