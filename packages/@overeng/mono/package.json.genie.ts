@@ -1,5 +1,7 @@
 import {
   catalog,
+  effectLspDevDeps,
+  effectLspScripts,
   packageJson,
   patchPostinstall,
   privatePackageDefaults,
@@ -10,6 +12,7 @@ export default packageJson({
   ...privatePackageDefaults,
   name: '@overeng/mono',
   scripts: {
+    ...effectLspScripts,
     postinstall: patchPostinstall(),
   },
   exports: {
@@ -32,7 +35,8 @@ export default packageJson({
     ),
   },
   devDependencies: {
-    ...catalog.pick('@types/node', 'typescript', 'vitest', '@effect/vitest'),
+    ...catalog.pick('@types/node', 'vitest', '@effect/vitest'),
+    ...effectLspDevDeps(),
   },
   peerDependencies: {
     // Expose @overeng/utils peer deps transitively (consumers need them)

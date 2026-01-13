@@ -1,4 +1,11 @@
-import { catalog, packageJson, patchPostinstall, privatePackageDefaults } from '../../../genie/internal.ts'
+import {
+  catalog,
+  effectLspDevDeps,
+  effectLspScripts,
+  packageJson,
+  patchPostinstall,
+  privatePackageDefaults,
+} from '../../../genie/internal.ts'
 import { otelSdkDeps } from '../../../genie/external.ts'
 
 /** Packages exposed as peer deps (consumers provide) + included in devDeps (for local dev/test) */
@@ -17,6 +24,7 @@ export default packageJson({
   name: '@overeng/utils',
   ...privatePackageDefaults,
   scripts: {
+    ...effectLspScripts,
     postinstall: patchPostinstall(),
   },
   exports: {
@@ -60,6 +68,7 @@ export default packageJson({
       'vite',
       'vitest',
     ),
+    ...effectLspDevDeps(),
   },
   peerDependencies: catalog.peers(...peerDepNames),
 })

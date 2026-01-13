@@ -12,10 +12,15 @@
       ".": "./dist/mod.js"
     }
   },
+  "scripts": {
+    "prepare": "effect-language-service patch"
+  },
   "devDependencies": {
+    "@effect/language-service": "0.65.0",
     "@types/react": "19.2.7",
     "effect": "3.19.14",
     "react": "19.2.3",
+    "typescript": "5.9.3",
     "vitest": "3.2.4"
   },
   "peerDependencies": {

@@ -71,7 +71,7 @@ export const catalog = defineCatalog({
   '@effect/sql': '0.49.0',
   '@effect/experimental': '0.58.0',
   '@effect/workflow': '0.16.0',
-  '@effect/language-service': '0.63.2',
+  '@effect/language-service': '0.65.0',
   '@effect/rpc': '0.73.0',
   '@effect/opentelemetry': '0.60.0',
 
@@ -161,6 +161,25 @@ export const domLib = ['ES2024', 'DOM', 'DOM.Iterable'] as const
 
 /** React JSX configuration for React packages */
 export const reactJsx = { jsx: 'react-jsx' as const }
+
+// =============================================================================
+// Effect Language Service Helpers
+// =============================================================================
+
+/**
+ * DevDependencies required for Effect Language Service.
+ * Includes both the language service and typescript (required for patching).
+ */
+export const effectLspDevDeps = () =>
+  catalog.pick('@effect/language-service', 'typescript')
+
+/**
+ * Scripts for Effect Language Service setup.
+ * The prepare script patches TypeScript to enable compile-time Effect diagnostics.
+ */
+export const effectLspScripts = {
+  prepare: 'effect-language-service patch',
+} as const
 
 // =============================================================================
 // TypeScript Reference Helpers

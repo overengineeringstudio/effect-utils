@@ -1,8 +1,15 @@
+import os from 'node:os'
+import path from 'node:path'
+
 import { Command, Options } from '@effect/cli'
 import { Command as PlatformCommand, FileSystem } from '@effect/platform'
-import { Chunk, Console, Effect, Schema, Stream } from 'effect'
+import type { CommandExecutor } from '@effect/platform'
+import type { PlatformError } from '@effect/platform/Error'
+import { Chunk, Console, Effect, Logger, LogLevel, Option, Schema, Stream } from 'effect'
 
+import type { CommandError } from '@overeng/mono'
 import { runCommand } from '@overeng/mono'
+import { CmdError, cmdText, CurrentWorkingDirectory } from '@overeng/utils/node'
 
 /** Error when hash extraction fails during nix build */
 class HashExtractionError extends Schema.TaggedError<HashExtractionError>()('HashExtractionError', {
@@ -22,18 +29,33 @@ class HashPatternNotFoundError extends Schema.TaggedError<HashPatternNotFoundErr
 type NixPackageSpec = {
   path: string
   flakeRef: string
+  flakeDir?: string
   noWriteLock?: boolean
   workspaceInput?: string
+  binaryName?: string
 }
+
+class UnsupportedSystemError extends Schema.TaggedError<UnsupportedSystemError>()('UnsupportedSystemError', {
+  platform: Schema.String,
+  arch: Schema.String,
+  message: Schema.String,
+}) {}
+
+class NixStatusParseError extends Schema.TaggedError<NixStatusParseError>()('NixStatusParseError', {
+  message: Schema.String,
+  cause: Schema.Defect,
+}) {}
 
 /** Known Nix packages in this monorepo */
 const NIX_PACKAGES = {
-  genie: { path: 'packages/@overeng/genie', flakeRef: '.#default' },
-  dotdot: { path: 'packages/@overeng/dotdot', flakeRef: '.#default' },
+  genie: { path: 'packages/@overeng/genie', flakeRef: '.#genie', flakeDir: '.' },
+  dotdot: { path: 'packages/@overeng/dotdot', flakeRef: '.#dotdot', flakeDir: '.' },
   mono: {
     path: 'scripts',
-    flakeRef: 'path:..#mono',
+    flakeRef: '.#mono',
+    flakeDir: '.',
     noWriteLock: true,
+    binaryName: 'mono',
   },
 } as const satisfies Record<string, NixPackageSpec>
 
@@ -42,6 +64,48 @@ type NixPackageName = keyof typeof NIX_PACKAGES
 const allPackageNames = Object.keys(NIX_PACKAGES) as NixPackageName[]
 
 const getPackageSpec = (name: NixPackageName): NixPackageSpec => NIX_PACKAGES[name]
+
+const getBinaryName = (name: NixPackageName): string => getPackageSpec(name).binaryName ?? name
+
+const resolveWorkspacePath = (relativePath: string): string => {
+  const workspaceRoot = process.env.WORKSPACE_ROOT ?? process.cwd()
+  return path.resolve(workspaceRoot, relativePath)
+}
+
+const resolveFlakeDir = (packageSpec: NixPackageSpec): string =>
+  resolveWorkspacePath(packageSpec.flakeDir ?? packageSpec.path)
+
+/**
+ * Determinate Nix supports eval-cores for parallel evaluation:
+ * https://manual.determinate.systems/command-ref/conf-file.html#conf-eval-cores
+ */
+const resolveEvalCores = (): number => {
+  const parallelism =
+    typeof os.availableParallelism === 'function' ? os.availableParallelism() : os.cpus().length
+  return Math.max(1, parallelism)
+}
+
+const evalCoresArgs = (): string[] => ['--option', 'eval-cores', String(resolveEvalCores())]
+/** Use max-jobs to parallelize builds; keep it aligned with eval-cores for simplicity. */
+const buildParallelismArgs = (): string[] => ['--option', 'max-jobs', String(resolveEvalCores())]
+
+const resolveNixSystem = (): Effect.Effect<string, UnsupportedSystemError> => {
+  const platform = process.platform
+  const arch = process.arch
+
+  if (platform === 'darwin' && arch === 'arm64') return Effect.succeed('aarch64-darwin')
+  if (platform === 'darwin' && arch === 'x64') return Effect.succeed('x86_64-darwin')
+  if (platform === 'linux' && arch === 'arm64') return Effect.succeed('aarch64-linux')
+  if (platform === 'linux' && arch === 'x64') return Effect.succeed('x86_64-linux')
+
+  return Effect.fail(
+    new UnsupportedSystemError({
+      platform,
+      arch,
+      message: `Unsupported system for nix status: ${platform}/${arch}`,
+    }),
+  )
+}
 
 const getWorkspaceOverrideArgs = (packageSpec: NixPackageSpec): string[] => {
   if (packageSpec.workspaceInput === undefined) {
@@ -69,12 +133,70 @@ const reloadOption = Options.boolean('reload').pipe(
   Options.withDefault(false),
 )
 
+const PackagesOutPathsSchema = Schema.Record({ key: Schema.String, value: Schema.String })
+type PackagesOutPaths = typeof PackagesOutPathsSchema.Type
+
+const resolveExpectedOutPaths = Effect.fn('nix-status-expected-out-paths')(function* () {
+  const system = yield* resolveNixSystem()
+  const args = ['eval', '--json', ...evalCoresArgs(), `.#packages.${system}`]
+  const output = yield* cmdText(['nix', ...args], { stderr: 'pipe' }).pipe(
+    Effect.provideService(CurrentWorkingDirectory, resolveWorkspacePath('.')),
+  )
+  return yield* Schema.decodeUnknown(Schema.parseJson(PackagesOutPathsSchema))(output).pipe(
+    Effect.mapError(
+      (cause) =>
+        new NixStatusParseError({
+          message: 'Failed to decode nix status output',
+          cause,
+        }),
+    ),
+  )
+})
+
+const resolveActualBinaryPath = Effect.fn('nix-status-actual-binary-path')(function* (binaryName: string) {
+  const cwd = process.env.WORKSPACE_ROOT ?? process.cwd()
+  const output = yield* cmdText(['which', binaryName], { stderr: 'pipe' }).pipe(
+    Effect.provideService(CurrentWorkingDirectory, cwd),
+  )
+  return output.trim()
+})
+
+const printStatus = (name: NixPackageName, expected: string | undefined) =>
+  Effect.gen(function* () {
+    const actualResult = yield* Effect.either(
+      resolveActualBinaryPath(getBinaryName(name)).pipe(Effect.provide(Logger.minimumLogLevel(LogLevel.Info))),
+    )
+    const actual = actualResult._tag === 'Right' ? actualResult.right : undefined
+    const refreshHint = `mono nix build --package ${name} --reload`
+
+    if (expected === undefined) {
+      yield* Console.log(`- ${name}: expected output missing from flake packages`)
+      return
+    }
+
+    const isUpToDate =
+      actual !== undefined && actual.length > 0 && actual.startsWith(`${expected}/`)
+
+    if (actual === undefined || actual.length === 0) {
+      yield* Console.log(`- ${name}: missing (expected ${expected}, refresh: ${refreshHint})`)
+      return
+    }
+
+    if (isUpToDate) {
+      yield* Console.log(`- ${name}: up-to-date (${actual})`)
+      return
+    }
+
+    // Compare the active PATH binary to the expected Nix output path.
+    yield* Console.log(`- ${name}: stale (expected ${expected}, actual ${actual}, refresh: ${refreshHint})`)
+  })
+
 /** Build a single Nix package */
 const buildPackage = (name: NixPackageName) =>
   Effect.gen(function* () {
     const packageSpec = getPackageSpec(name)
     yield* Console.log(`Building ${name}...`)
-    const args = ['build', packageSpec.flakeRef, '-L']
+    const args = ['build', ...evalCoresArgs(), ...buildParallelismArgs(), packageSpec.flakeRef, '-L']
     if (packageSpec.noWriteLock) {
       args.push('--no-write-lock-file')
     }
@@ -82,9 +204,35 @@ const buildPackage = (name: NixPackageName) =>
     yield* runCommand({
       command: 'nix',
       args,
-      cwd: packageSpec.path,
+      cwd: resolveFlakeDir(packageSpec),
     })
     yield* Console.log(`✓ ${name} built successfully`)
+  })
+
+const buildPackages = (names: NixPackageName[]) =>
+  Effect.gen(function* () {
+    if (names.length === 0) {
+      return
+    }
+    const packageSpecs = names.map(getPackageSpec)
+    const firstSpec = packageSpecs[0]
+    if (firstSpec === undefined) {
+      return
+    }
+    const flakeRefs = packageSpecs.map((spec) => spec.flakeRef)
+    const needsNoWriteLock = packageSpecs.some((spec) => spec.noWriteLock === true)
+
+    yield* Console.log(`Building ${names.join(', ')}...`)
+    const args = ['build', ...evalCoresArgs(), ...buildParallelismArgs(), ...flakeRefs, '-L']
+    if (needsNoWriteLock) {
+      args.push('--no-write-lock-file')
+    }
+    yield* runCommand({
+      command: 'nix',
+      args,
+      cwd: resolveFlakeDir(firstSpec),
+    })
+    yield* Console.log('✓ build completed')
   })
 
 /** Get packages to operate on based on --package option */
@@ -99,8 +247,12 @@ const buildSubcommand = Command.make(
     Effect.gen(function* () {
       const packages = getPackages(pkg)
 
-      for (const name of packages) {
-        yield* buildPackage(name)
+      if (packages.length > 1) {
+        yield* buildPackages(packages)
+      } else {
+        for (const name of packages) {
+          yield* buildPackage(name)
+        }
       }
 
       if (reload) {
@@ -118,18 +270,18 @@ const updateHash = (name: NixPackageName) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const packageSpec = getPackageSpec(name)
-    const buildNixPath = `${packageSpec.path}/nix/build.nix`
+    const buildNixPath = path.join(resolveWorkspacePath(packageSpec.path), 'nix', 'build.nix')
 
     yield* Console.log(`Updating hash for ${name}...`)
 
-    const args = ['build', packageSpec.flakeRef, '-L']
+    const args = ['build', ...evalCoresArgs(), ...buildParallelismArgs(), packageSpec.flakeRef, '-L']
     if (packageSpec.noWriteLock) {
       args.push('--no-write-lock-file')
     }
     args.push(...getWorkspaceOverrideArgs(packageSpec))
     // Run nix build and capture the hash mismatch error
     const command = PlatformCommand.make('nix', ...args).pipe(
-      PlatformCommand.workingDirectory(packageSpec.path),
+      PlatformCommand.workingDirectory(resolveFlakeDir(packageSpec)),
       PlatformCommand.stderr('pipe'),
     )
 
@@ -216,8 +368,42 @@ const reloadSubcommand = Command.make('reload', {}, () =>
   }),
 ).pipe(Command.withDescription('Reload direnv to update Nix binaries in PATH'))
 
+/** Status subcommand - compare PATH binaries to expected Nix outputs */
+const statusSubcommand = Command.make('status', { package: packageOption }, ({ package: pkg }) =>
+  Effect.gen(function* () {
+    const packages = getPackages(pkg)
+    yield* Console.log('Nix CLI status:')
+
+    const expectedOutPaths = yield* resolveExpectedOutPaths().pipe(
+      Effect.provide(Logger.minimumLogLevel(LogLevel.Info)),
+    )
+
+    for (const name of packages) {
+      yield* printStatus(name, expectedOutPaths[name])
+    }
+  }),
+).pipe(Command.withDescription('Show whether Nix binaries match the current flake output'))
+
 /** Main nix command with subcommands */
-export const nixCommand = Command.make('nix').pipe(
-  Command.withSubcommands([buildSubcommand, hashSubcommand, reloadSubcommand]),
+export const nixCommand: Command.Command<
+  'nix',
+  CommandExecutor.CommandExecutor | FileSystem.FileSystem | CurrentWorkingDirectory,
+  | CommandError
+  | PlatformError
+  | CmdError
+  | HashExtractionError
+  | HashPatternNotFoundError
+  | UnsupportedSystemError
+  | NixStatusParseError,
+  {
+    readonly subcommand: Option.Option<
+      | { readonly package: 'genie' | 'dotdot' | 'mono' | 'all'; readonly reload: boolean }
+      | { readonly package: 'genie' | 'dotdot' | 'mono' | 'all' }
+      | Record<string, never>
+      | { readonly package: 'genie' | 'dotdot' | 'mono' | 'all' }
+    >
+  }
+> = Command.make('nix').pipe(
+  Command.withSubcommands([buildSubcommand, hashSubcommand, reloadSubcommand, statusSubcommand]),
   Command.withDescription('Manage Nix-bundled binaries (genie, dotdot, mono)'),
 )

@@ -1,5 +1,7 @@
 import {
   catalog,
+  effectLspDevDeps,
+  effectLspScripts,
   packageJson,
   patchPostinstall,
   privatePackageDefaults,
@@ -10,6 +12,7 @@ export default packageJson({
   name: '@overeng/notion-effect-client',
   ...privatePackageDefaults,
   scripts: {
+    ...effectLspScripts,
     postinstall: patchPostinstall(),
   },
   exports: {
@@ -34,6 +37,7 @@ export default packageJson({
       'effect',
       'vitest',
     ),
+    ...effectLspDevDeps(),
   },
   // Expose @overeng/utils peer deps transitively (consumers need them)
   peerDependencies: utilsPkg.data.peerDependencies,

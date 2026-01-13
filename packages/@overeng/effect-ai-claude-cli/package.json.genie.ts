@@ -1,4 +1,10 @@
-import { catalog, packageJson, privatePackageDefaults } from '../../../genie/internal.ts'
+import {
+  catalog,
+  effectLspDevDeps,
+  effectLspScripts,
+  packageJson,
+  privatePackageDefaults,
+} from '../../../genie/internal.ts'
 
 const peerDepNames = ['@effect/ai', '@effect/platform', 'effect'] as const
 
@@ -14,6 +20,9 @@ export default packageJson({
       '.': './dist/mod.js',
     },
   },
+  scripts: {
+    ...effectLspScripts,
+  },
   devDependencies: {
     ...catalog.pick(
       '@effect/ai',
@@ -23,6 +32,7 @@ export default packageJson({
       'vite',
       'vitest',
     ),
+    ...effectLspDevDeps(),
   },
   peerDependencies: catalog.peers(...peerDepNames),
 })

@@ -1,4 +1,10 @@
-import { catalog, packageJson, privatePackageDefaults } from '../../../genie/internal.ts'
+import {
+  catalog,
+  effectLspDevDeps,
+  effectLspScripts,
+  packageJson,
+  privatePackageDefaults,
+} from '../../../genie/internal.ts'
 
 const peerDepNames = ['effect', 'react', 'react-aria-components', 'react-dom'] as const
 
@@ -16,6 +22,9 @@ export default packageJson({
       './react-aria': './dist/react-aria/mod.js',
     },
   },
+  scripts: {
+    ...effectLspScripts,
+  },
   devDependencies: {
     ...catalog.pick(
       ...peerDepNames,
@@ -27,6 +36,7 @@ export default packageJson({
       'vite',
       'vitest',
     ),
+    ...effectLspDevDeps(),
   },
   peerDependencies: catalog.peers(...peerDepNames),
 })

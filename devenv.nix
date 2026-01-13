@@ -35,6 +35,7 @@ in
     pkgs.pnpm
     pkgsUnstable.nodejs_24
     pkgsUnstable.bun
+    pkgsUnstable.typescript
     pkgsUnstable.oxlint
     pkgsUnstable.oxfmt
     genie

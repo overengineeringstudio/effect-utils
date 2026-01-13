@@ -118,6 +118,7 @@ Key features:
 mono nix build --package genie
 mono nix build --package dotdot
 mono nix reload
+mono nix status
 ```
 
 After `bun.lock` changes:

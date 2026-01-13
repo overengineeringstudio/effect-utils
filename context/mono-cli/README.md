@@ -189,7 +189,7 @@ Add TypeScript reference:
 export default tsconfigJSON({
   extends: '../tsconfig.base.json',
   compilerOptions: { noEmit: true, rootDir: '.' },
-  references: [{ path: '../submodules/effect-utils/packages/@overeng/mono' }],
+  references: [{ path: '../effect-utils/packages/@overeng/mono' }],
 })
 ```
 

@@ -16,36 +16,33 @@ const captureConsoleOutput = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   Effect.gen(function* () {
     const outputRef = yield* Ref.make<string[]>([])
 
-    // Replace Console layer with one that captures output
-    const captureLayer = Layer.succeed(
-      Console.Console,
-      Console.make({
-        log: (...args: ReadonlyArray<any>) =>
-          Ref.update(outputRef, (lines) => [...lines, args.map(String).join(' ')]),
-        error: (...args: ReadonlyArray<any>) =>
-          Ref.update(outputRef, (lines) => [...lines, `[ERROR] ${args.map(String).join(' ')}`]),
-        warn: (...args: ReadonlyArray<any>) =>
-          Ref.update(outputRef, (lines) => [...lines, `[WARN] ${args.map(String).join(' ')}`]),
-        clear: Effect.void,
-        assert: () => Effect.void,
-        count: () => Effect.void,
-        countReset: () => Effect.void,
-        debug: () => Effect.void,
-        dir: () => Effect.void,
-        dirxml: () => Effect.void,
-        group: () => Effect.void,
-        groupEnd: Effect.void,
-        info: () => Effect.void,
-        table: () => Effect.void,
-        time: () => Effect.void,
-        timeEnd: () => Effect.void,
-        timeLog: () => Effect.void,
-        trace: () => Effect.void,
-        unsafe: Console.defaultConsole.unsafe,
-        withGroup: (effect) => effect,
-        withTime: (effect) => () => effect,
-      }),
-    )
+    const testConsole: Console.Console = {
+      [Console.TypeId]: Console.TypeId,
+      log: (...args: ReadonlyArray<unknown>) =>
+        Ref.update(outputRef, (lines) => [...lines, args.map(String).join(' ')]),
+      error: (...args: ReadonlyArray<unknown>) =>
+        Ref.update(outputRef, (lines) => [...lines, `[ERROR] ${args.map(String).join(' ')}`]),
+      warn: (...args: ReadonlyArray<unknown>) =>
+        Ref.update(outputRef, (lines) => [...lines, `[WARN] ${args.map(String).join(' ')}`]),
+      clear: Effect.void,
+      assert: () => Effect.void,
+      count: () => Effect.void,
+      countReset: () => Effect.void,
+      debug: () => Effect.void,
+      dir: () => Effect.void,
+      dirxml: () => Effect.void,
+      group: () => Effect.void,
+      groupEnd: Effect.void,
+      info: () => Effect.void,
+      table: () => Effect.void,
+      time: () => Effect.void,
+      timeEnd: () => Effect.void,
+      timeLog: () => Effect.void,
+      trace: () => Effect.void,
+      unsafe: globalThis.console,
+    }
+
+    const captureLayer = Console.setConsole(testConsole)
 
     const result = yield* effect.pipe(Effect.provide(captureLayer))
     const output = yield* Ref.get(outputRef)

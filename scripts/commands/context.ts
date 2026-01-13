@@ -1,6 +1,9 @@
 import { Command } from '@effect/cli'
-import { Console, Duration, Effect } from 'effect'
+import type { CommandExecutor } from '@effect/platform'
+import type { PlatformError } from '@effect/platform/Error'
+import { Console, Duration, Effect, Option } from 'effect'
 
+import type { CommandError } from '@overeng/mono'
 import { ciGroup, ciGroupEnd, runCommand, startProcess } from '@overeng/mono'
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
 
@@ -110,7 +113,12 @@ const contextExamplesCommand = Command.make('examples', {}, () =>
 ).pipe(Command.withDescription('Run all context socket example scripts'))
 
 /** CLI command for running context reference material subcommands */
-export const contextCommand = Command.make('context').pipe(
+export const contextCommand: Command.Command<
+  'context',
+  CommandExecutor.CommandExecutor | CurrentWorkingDirectory,
+  CommandError | PlatformError,
+  { readonly subcommand: Option.Option<Record<string, never>> }
+> = Command.make('context').pipe(
   Command.withSubcommands([contextExamplesCommand]),
   Command.withDescription('Run commands for context reference material'),
 )

@@ -12,11 +12,16 @@
       ".": "./dist/mod.js"
     }
   },
+  "scripts": {
+    "prepare": "effect-language-service patch"
+  },
   "devDependencies": {
     "@effect/ai": "0.33.2",
+    "@effect/language-service": "0.65.0",
     "@effect/platform": "0.94.1",
     "@effect/vitest": "0.27.0",
     "effect": "3.19.14",
+    "typescript": "5.9.3",
     "vite": "7.3.0",
     "vitest": "3.2.4"
   },

@@ -15,6 +15,7 @@
     }
   },
   "scripts": {
+    "prepare": "effect-language-service patch",
     "postinstall": "patch --forward -p1 -d node_modules/effect-distributed-lock < ../../../patches/effect-distributed-lock@0.0.11.patch || true"
   },
   "dependencies": {
@@ -22,6 +23,7 @@
   },
   "devDependencies": {
     "@effect/cli": "0.73.0",
+    "@effect/language-service": "0.65.0",
     "@effect/platform": "0.94.1",
     "@effect/platform-node": "0.104.0",
     "@effect/printer": "0.47.0",

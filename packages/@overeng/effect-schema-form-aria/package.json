@@ -12,10 +12,14 @@
       ".": "./dist/mod.js"
     }
   },
+  "scripts": {
+    "prepare": "effect-language-service patch"
+  },
   "dependencies": {
     "@overeng/effect-schema-form": "file:../effect-schema-form"
   },
   "devDependencies": {
+    "@effect/language-service": "0.65.0",
     "@storybook/react": "10.1.11",
     "@storybook/react-vite": "10.1.11",
     "@tailwindcss/vite": "4.1.18",
@@ -27,6 +31,7 @@
     "react-dom": "19.2.3",
     "storybook": "10.1.11",
     "tailwindcss": "4.1.18",
+    "typescript": "5.9.3",
     "vite": "7.3.0",
     "vitest": "3.2.4"
   },

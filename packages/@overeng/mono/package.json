@@ -13,6 +13,7 @@
     }
   },
   "scripts": {
+    "prepare": "effect-language-service patch",
     "postinstall": "patch --forward -p1 -d node_modules/effect-distributed-lock < ../../../patches/effect-distributed-lock@0.0.11.patch || true"
   },
   "dependencies": {
@@ -24,6 +25,7 @@
     "effect": "3.19.14"
   },
   "devDependencies": {
+    "@effect/language-service": "0.65.0",
     "@effect/vitest": "0.27.0",
     "@types/node": "25.0.3",
     "typescript": "5.9.3",

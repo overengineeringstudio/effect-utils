@@ -16,6 +16,8 @@ export {
   defineCatalog,
   definePatchedDependencies,
   domLib,
+  effectLspDevDeps,
+  effectLspScripts,
   effectUtilsPackages,
   packageJson,
   packageTsconfigCompilerOptions,
