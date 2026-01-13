@@ -1,5 +1,16 @@
 import { catalog, packageJson, privatePackageDefaults } from '../../../genie/internal.ts'
 
+const peerDepNames = [
+  '@effect/platform',
+  '@effect/platform-node',
+  '@effect/rpc',
+  '@tanstack/react-router',
+  '@tanstack/react-start',
+  'effect',
+  'react',
+  'react-dom',
+] as const
+
 export default packageJson({
   name: '@overeng/effect-rpc-tanstack',
   ...privatePackageDefaults,
@@ -19,26 +30,14 @@ export default packageJson({
     },
   },
   devDependencies: {
-    '@effect/platform': catalog['@effect/platform'],
-    '@effect/platform-node': catalog['@effect/platform-node'],
-    '@effect/rpc': catalog['@effect/rpc'],
-    '@tanstack/react-router': catalog['@tanstack/react-router'],
-    '@tanstack/react-start': catalog['@tanstack/react-start'],
-    '@types/react': catalog['@types/react'],
-    effect: catalog.effect,
-    react: catalog.react,
-    'react-dom': catalog['react-dom'],
-    vite: catalog.vite,
-    vitest: catalog.vitest,
+    ...catalog.pick(
+      ...peerDepNames,
+      '@effect/experimental',
+      '@effect/sql',
+      '@types/react',
+      'vite',
+      'vitest',
+    ),
   },
-  peerDependencies: {
-    '@effect/platform': `^${catalog['@effect/platform']}`,
-    '@effect/platform-node': `^${catalog['@effect/platform-node']}`,
-    '@effect/rpc': `^${catalog['@effect/rpc']}`,
-    '@tanstack/react-router': `^${catalog['@tanstack/react-router']}`,
-    '@tanstack/react-start': `^${catalog['@tanstack/react-start']}`,
-    effect: `^${catalog.effect}`,
-    react: `^${catalog.react}`,
-    'react-dom': `^${catalog['react-dom']}`,
-  },
+  peerDependencies: catalog.peers(...peerDepNames),
 })

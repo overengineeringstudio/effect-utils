@@ -38,6 +38,6 @@ export default packageJson({
   },
   peerDependencies: {
     ...utilsPkg.data.peerDependencies,
-    '@effect/cli': `^${catalog['@effect/cli']}`,
+    ...catalog.peers('@effect/cli'),
   },
 })

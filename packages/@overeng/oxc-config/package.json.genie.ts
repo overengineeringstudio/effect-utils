@@ -9,12 +9,14 @@ export default packageJson({
     './plugin': './src/mod.ts',
   },
   devDependencies: {
-    '@types/eslint': catalog['@types/eslint'],
-    '@typescript-eslint/parser': catalog['@typescript-eslint/parser'],
-    '@typescript-eslint/rule-tester': catalog['@typescript-eslint/rule-tester'],
-    '@typescript-eslint/utils': catalog['@typescript-eslint/utils'],
-    eslint: catalog.eslint,
-    typescript: catalog.typescript,
-    vitest: catalog.vitest,
+    ...catalog.pick(
+      '@types/eslint',
+      '@typescript-eslint/parser',
+      '@typescript-eslint/rule-tester',
+      '@typescript-eslint/utils',
+      'eslint',
+      'typescript',
+      'vitest',
+    ),
   },
 })

@@ -27,10 +27,10 @@ export default packageJson({
     ),
   },
   devDependencies: {
-    ...catalog.pick('@types/node', 'typescript'),
+    ...catalog.pick('@types/node', 'typescript', 'vitest', '@effect/vitest'),
   },
   peerDependencies: {
     ...utilsPkg.data.peerDependencies,
-    '@effect/cli': `^${catalog['@effect/cli']}`,
+    ...catalog.peers('@effect/cli'),
   },
 })

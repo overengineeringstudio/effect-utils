@@ -38,6 +38,17 @@ export type Catalog<T extends CatalogInput = CatalogInput> = Readonly<T> & {
    * ```
    */
   pick<K extends keyof T>(...keys: K[]): { [P in K]: T[P] }
+  /**
+   * Generate peerDependencies object with `^` version prefix.
+   * Useful for library packages that expose dependencies as peer deps.
+   *
+   * @example
+   * ```ts
+   * peerDependencies: catalog.peers('effect', '@effect/platform'),
+   * // → { effect: '^3.19.14', '@effect/platform': '^0.94.1' }
+   * ```
+   */
+  peers<K extends keyof T>(...keys: K[]): { [P in K]: string }
 }
 
 /** Configuration for extending an existing catalog */
@@ -77,10 +88,27 @@ const createPickFn =
     return result
   }
 
-/** Adds pick method as non-enumerable property and freezes the catalog */
+/** Creates a peers function for a catalog object (versions with ^ prefix) */
+const createPeersFn =
+  <T extends CatalogInput>(catalog: T) =>
+  <K extends keyof T>(...keys: K[]): { [P in K]: string } => {
+    const result = {} as { [P in K]: string }
+    for (const key of keys) {
+      result[key] = `^${catalog[key]}`
+    }
+    return result
+  }
+
+/** Adds pick/peers methods as non-enumerable properties and freezes the catalog */
 const finalizeCatalog = <T extends CatalogInput>(catalog: T): Catalog<T> => {
   Object.defineProperty(catalog, 'pick', {
     value: createPickFn(catalog),
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  })
+  Object.defineProperty(catalog, 'peers', {
+    value: createPeersFn(catalog),
     enumerable: false,
     writable: false,
     configurable: false,

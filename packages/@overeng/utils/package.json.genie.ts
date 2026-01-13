@@ -1,5 +1,17 @@
 import { catalog, packageJson, patchPostinstall, privatePackageDefaults } from '../../../genie/internal.ts'
 
+/** Packages exposed as peer deps (consumers provide) + included in devDeps (for local dev/test) */
+const peerDepNames = [
+  '@effect/opentelemetry',
+  '@effect/platform',
+  '@effect/platform-node',
+  '@effect/printer',
+  '@effect/printer-ansi',
+  '@effect/rpc',
+  '@playwright/test',
+  'effect',
+] as const
+
 export default packageJson({
   name: '@overeng/utils',
   ...privatePackageDefaults,
@@ -43,28 +55,21 @@ export default packageJson({
   },
   devDependencies: {
     ...catalog.pick(
-      '@effect/opentelemetry',
-      '@effect/platform',
-      '@effect/platform-node',
-      '@effect/printer',
-      '@effect/printer-ansi',
-      '@effect/rpc',
+      ...peerDepNames,
+      // Peer deps of our peer deps (needed for local dev/test)
+      '@opentelemetry/resources',
+      '@opentelemetry/sdk-logs',
+      '@opentelemetry/sdk-metrics',
+      '@opentelemetry/sdk-trace-base',
+      '@opentelemetry/sdk-trace-node',
+      '@opentelemetry/sdk-trace-web',
+      '@opentelemetry/semantic-conventions',
+      // Dev-only deps
       '@effect/vitest',
-      '@playwright/test',
       '@types/node',
-      'effect',
       'vite',
       'vitest',
     ),
   },
-  peerDependencies: {
-    '@effect/opentelemetry': `^${catalog['@effect/opentelemetry']}`,
-    '@effect/platform': `^${catalog['@effect/platform']}`,
-    '@effect/platform-node': `^${catalog['@effect/platform-node']}`,
-    '@effect/printer': `^${catalog['@effect/printer']}`,
-    '@effect/printer-ansi': `^${catalog['@effect/printer-ansi']}`,
-    '@effect/rpc': `^${catalog['@effect/rpc']}`,
-    '@playwright/test': `^${catalog['@playwright/test']}`,
-    effect: `^${catalog.effect}`,
-  },
+  peerDependencies: catalog.peers(...peerDepNames),
 })

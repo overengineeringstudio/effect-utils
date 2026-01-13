@@ -1,5 +1,7 @@
 import { catalog, packageJson, privatePackageDefaults } from '../../../genie/internal.ts'
 
+const peerDepNames = ['effect'] as const
+
 export default packageJson({
   name: '@overeng/notion-effect-schema',
   ...privatePackageDefaults,
@@ -13,12 +15,7 @@ export default packageJson({
     },
   },
   devDependencies: {
-    '@effect/vitest': catalog['@effect/vitest'],
-    '@types/node': catalog['@types/node'],
-    effect: catalog.effect,
-    vitest: catalog.vitest,
+    ...catalog.pick(...peerDepNames, '@effect/vitest', '@types/node', 'vitest'),
   },
-  peerDependencies: {
-    effect: `^${catalog.effect}`,
-  },
+  peerDependencies: catalog.peers(...peerDepNames),
 })

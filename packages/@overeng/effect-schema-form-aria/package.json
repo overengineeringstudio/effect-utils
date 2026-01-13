@@ -28,7 +28,7 @@
     "storybook": "10.1.11",
     "tailwindcss": "4.1.18",
     "vite": "7.3.0",
-    "vitest": "4.0.16"
+    "vitest": "3.2.4"
   },
   "peerDependencies": {
     "effect": "^3.19.14",

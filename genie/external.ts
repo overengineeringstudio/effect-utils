@@ -31,9 +31,30 @@ export type { PatchesRegistry, ScriptValue, TSConfigCompilerOptions }
  * Note: packages/@overeng/react-inspector is a git submodule with its own tooling (tsup, ESLint)
  * We include it in the workspace but keep its build system separate
  */
+/**
+ * OpenTelemetry SDK packages - peer deps of @effect/opentelemetry.
+ * Consumers of packages that depend on @effect/opentelemetry need these.
+ */
+export const otelSdkDeps = [
+  '@opentelemetry/resources',
+  '@opentelemetry/sdk-logs',
+  '@opentelemetry/sdk-metrics',
+  '@opentelemetry/sdk-trace-base',
+  '@opentelemetry/sdk-trace-node',
+  '@opentelemetry/sdk-trace-web',
+  '@opentelemetry/semantic-conventions',
+] as const
+
 export const catalog = defineCatalog({
   // Observability
   '@opentelemetry/api': '1.9.0',
+  '@opentelemetry/resources': '2.2.0',
+  '@opentelemetry/sdk-logs': '0.208.0',
+  '@opentelemetry/sdk-metrics': '2.2.0',
+  '@opentelemetry/sdk-trace-base': '2.2.0',
+  '@opentelemetry/sdk-trace-node': '2.2.0',
+  '@opentelemetry/sdk-trace-web': '2.2.0',
+  '@opentelemetry/semantic-conventions': '1.38.0',
 
   // Effect ecosystem
   '@effect/ai': '0.33.2',
@@ -71,7 +92,8 @@ export const catalog = defineCatalog({
   typescript: '5.9.3',
   '@playwright/test': '1.57.0',
   vite: '7.3.0',
-  vitest: '4.0.16',
+  // TODO upgrade to 4.x once fixed https://github.com/Effect-TS/effect/issues/5976
+  vitest: '3.2.4',
   '@vitejs/plugin-react': '5.1.2',
 
   // TanStack

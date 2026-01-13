@@ -1,5 +1,7 @@
 import { catalog, packageJson, privatePackageDefaults } from '../../../genie/internal.ts'
 
+const peerDepNames = ['@effect/platform', 'effect'] as const
+
 export default packageJson({
   name: '@overeng/effect-path',
   ...privatePackageDefaults,
@@ -13,16 +15,7 @@ export default packageJson({
     },
   },
   devDependencies: {
-    ...catalog.pick(
-      '@effect/platform',
-      '@effect/vitest',
-      '@types/node',
-      'effect',
-      'vitest',
-    ),
+    ...catalog.pick(...peerDepNames, '@effect/vitest', '@types/node', 'vitest'),
   },
-  peerDependencies: {
-    '@effect/platform': `^${catalog['@effect/platform']}`,
-    effect: `^${catalog.effect}`,
-  },
+  peerDependencies: catalog.peers(...peerDepNames),
 })

@@ -15,7 +15,7 @@
     "@typescript-eslint/utils": "8.52.0",
     "eslint": "9.39.2",
     "typescript": "5.9.3",
-    "vitest": "4.0.16"
+    "vitest": "3.2.4"
   },
   "$genie": {
     "source": "package.json.genie.ts",

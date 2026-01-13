@@ -5,6 +5,15 @@ import {
   privatePackageDefaults,
 } from '../../../genie/internal.ts'
 
+const peerDepNames = [
+  '@effect/cli',
+  '@effect/platform',
+  '@effect/platform-node',
+  '@effect/printer',
+  '@effect/printer-ansi',
+  'effect',
+] as const
+
 export default packageJson({
   name: '@overeng/dotdot',
   ...privatePackageDefaults,
@@ -27,25 +36,13 @@ export default packageJson({
   },
   devDependencies: {
     ...catalog.pick(
-      '@effect/cli',
-      '@effect/platform',
-      '@effect/platform-node',
-      '@effect/printer',
-      '@effect/printer-ansi',
+      ...peerDepNames,
       '@effect/vitest',
       '@types/bun',
       '@types/node',
-      'effect',
       'typescript',
       'vitest',
     ),
   },
-  peerDependencies: {
-    '@effect/cli': `^${catalog['@effect/cli']}`,
-    '@effect/platform': `^${catalog['@effect/platform']}`,
-    '@effect/platform-node': `^${catalog['@effect/platform-node']}`,
-    '@effect/printer': `^${catalog['@effect/printer']}`,
-    '@effect/printer-ansi': `^${catalog['@effect/printer-ansi']}`,
-    effect: `^${catalog.effect}`,
-  },
+  peerDependencies: catalog.peers(...peerDepNames),
 })
