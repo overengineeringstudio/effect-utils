@@ -141,6 +141,7 @@ dotdot exec -- cmd    # Run command in all repos
 - [SKILL.md](./SKILL.md) - Agent instructions for working with dotdot workspaces
 - [Architecture](./architecture.md) - How composition works, directory structure
 - [Patterns](./patterns.md) - Composition best practices, troubleshooting
-- [Nix Setup](./nix-setup.md) - Alternative Nix configurations (pure flakes)
+- [Nix Flake Setup](./nix-flake-setup.md) - Pure Nix flake configuration
+- [devenv Setup](./devenv-setup.md) - devenv-based configuration
 - [dotdot README](../../packages/@overeng/dotdot/README.md) - Full CLI docs
 - [genie README](../../packages/@overeng/genie/README.md) - Config generator docs

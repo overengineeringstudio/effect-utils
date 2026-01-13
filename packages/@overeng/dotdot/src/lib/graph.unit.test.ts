@@ -2,11 +2,11 @@
  * Tests for dependency graph and topological execution
  */
 
-import { Effect, Option } from 'effect'
+import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { type ExecutionMode, executeTopoForAll } from '../src/lib/execution.ts'
-import * as Graph from '../src/lib/graph.ts'
+import { type ExecutionMode, executeTopoForAll } from './execution.ts'
+import * as Graph from './graph.ts'
 
 describe('Graph', () => {
   describe('topologicalSort', () => {

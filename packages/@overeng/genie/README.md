@@ -44,7 +44,7 @@ Then in `devenv.nix`:
 ```nix
 { pkgs, inputs, ... }:
 let
-  genie = inputs.genie.packages.${pkgs.system}.default;
+  genie = inputs.genie.packages.${pkgs.stdenv.hostPlatform.system}.default;
 in
 {
   packages = [ genie ];
