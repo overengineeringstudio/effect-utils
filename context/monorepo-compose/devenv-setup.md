@@ -29,19 +29,17 @@ in
     cliPackages.genie
     cliPackages.dotdot
   ];
-
-  enterShell = ''
-    export WORKSPACE_ROOT="$PWD"
-    export PATH="$WORKSPACE_ROOT/node_modules/.bin:$PATH"
-  '';
 }
 ```
 
 ## .envrc
 
 ```bash
-export WORKSPACE_ROOT=$(pwd)
-use devenv
+if command -v nix-shell &> /dev/null
+then
+  eval "$(devenv direnvrc)"
+  use devenv
+fi
 ```
 
 ## .gitignore
@@ -74,6 +72,28 @@ devenv update
 devenv update effect-utils
 ```
 
+## Local Overrides (Unpushed Changes)
+
+To use local, unpushed changes from a sibling checkout, override the input:
+
+```bash
+# From your repo root (sibling of ../effect-utils)
+devenv shell --override-input effect-utils path:../effect-utils
+```
+
+This keeps the config pinned to GitHub in `devenv.yaml` but lets you iterate
+locally without pushing.
+
+### direnv option
+
+You can also wire the override into `.envrc`:
+
+```bash
+use devenv --override-input effect-utils path:../effect-utils
+```
+
+Run `direnv allow` after updating `.envrc`.
+
 ## Notes
 
 - devenv uses GitHub URLs by default
@@ -83,7 +103,7 @@ devenv update effect-utils
 ## Test Setup
 
 See `tests/mk-bun-cli` for the fixture repos and runner that exercise
-flakes, devenv, and peer-repo composition.
+flakes, devenv, and peer-repo composition (including dirty local changes).
 
 ## References
 

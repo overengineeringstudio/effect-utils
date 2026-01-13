@@ -34,10 +34,33 @@ inside it.
 ## CLI Version Pattern
 
 ```ts
-const baseVersion = '0.1.0'
+const buildVersion = '__CLI_VERSION__'
 const cliVersion = process.env.CLI_VERSION
-const version = cliVersion === undefined || cliVersion.length === 0 ? baseVersion : cliVersion
+const version = cliVersion === undefined || cliVersion.length === 0 ? buildVersion : cliVersion
 ```
+
+`mk-bun-cli` performs a literal search/replace for
+`const buildVersion = '__CLI_VERSION__'` in the entry file and replaces it
+with the resolved version string. The resolved version is:
+
+- `<package.json version>` when `gitRev = "unknown"`
+- `<package.json version>+<gitRev>` otherwise
+
+The substitution is enforced with `--replace-fail`, so builds will fail if the
+exact placeholder line is missing.
+
+If the placeholder remains (for example in local/dev runs or when `gitRev` is
+`"unknown"`), the CLI code can attach a runtime stamp via
+`resolveCliVersion`. In effect-utils, `.envrc` sets
+`NIX_CLI_BUILD_STAMP` to `<git-short-sha>+<UTC timestamp>[-dirty]`. CLIs call
+`resolveCliVersion({ baseVersion, buildVersion, runtimeStampEnvVar })`, so the
+final version becomes:
+
+- `<package.json version>+<NIX_CLI_BUILD_STAMP>` when the placeholder is still present
+- the injected build version otherwise
+
+This creates a single end-to-end pattern: build-time injection when available,
+runtime stamp when not, and a stable base version as fallback.
 
 ## Inside effect-utils
 

@@ -36,11 +36,6 @@ Use stable GitHub URLs in `flake.nix` and override inputs locally via `.envrc`.
             cliPackages.genie
             cliPackages.dotdot
           ];
-
-          shellHook = ''
-            export WORKSPACE_ROOT="$PWD"
-            export PATH="$WORKSPACE_ROOT/node_modules/.bin:$PATH"
-          '';
         };
       });
 }
@@ -51,8 +46,10 @@ Use stable GitHub URLs in `flake.nix` and override inputs locally via `.envrc`.
 Override effect-utils to use local sibling repo:
 
 ```bash
-export WORKSPACE_ROOT=$(pwd)
-use flake . --override-input effect-utils path:../effect-utils
+if command -v nix-shell &> /dev/null
+then
+  use flake . --override-input effect-utils path:../effect-utils
+fi
 ```
 
 ## .gitignore
@@ -87,7 +84,8 @@ inputs = {
 
 ## Test Repo
 
-See `test-nix-flake/` in the dotdot workspace for a working example.
+See `tests/mk-bun-cli` in effect-utils for fixture repos and the runner that
+exercise flakes, devenv, and peer-repo composition.
 
 ## References
 
