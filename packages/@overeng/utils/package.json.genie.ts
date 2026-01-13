@@ -1,9 +1,4 @@
-import {
-  catalog,
-  definePatchedDependencies,
-  packageJson,
-  privatePackageDefaults,
-} from '../../../genie/internal.ts'
+import { catalog, definePatchedDependencies, packageJson, privatePackageDefaults } from '../../../genie/internal.ts'
 
 export default packageJson({
   name: '@overeng/utils',

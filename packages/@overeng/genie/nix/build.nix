@@ -7,7 +7,7 @@ let
 in
 mkBunCli {
   name = "genie";
-  entry = "packages/@overeng/genie/src/build/cli.ts";
+  entry = "packages/@overeng/genie/src/build/mod.ts";
   binaryName = "genie";
   packageDir = "packages/@overeng/genie";
   workspaceRoot = src;

@@ -1,8 +1,8 @@
 { pkgs, inputs, ... }:
 let
-  playwrightDriver = inputs.playwright-web-flake.packages.${pkgs.system}.playwright-driver;
-  genie = inputs.genie.packages.${pkgs.system}.default;
-  dotdot = inputs.dotdot.packages.${pkgs.system}.default;
+  playwrightDriver = inputs.playwright-web-flake.packages.${pkgs.stdenv.hostPlatform.system}.playwright-driver;
+  genie = inputs.genie.packages.${pkgs.stdenv.hostPlatform.system}.default;
+  dotdot = inputs.dotdot.packages.${pkgs.stdenv.hostPlatform.system}.default;
 in
 {
   packages = [
