@@ -1,0 +1,18 @@
+{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "app-cli",
+      "dependencies": {
+        "@acme/utils": "../@acme/utils",
+        "shared-lib": "../shared-lib",
+      },
+    },
+  },
+  "packages": {
+    "@acme/utils": ["@acme/utils@file:../@acme/utils", {}],
+
+    "shared-lib": ["shared-lib@file:../shared-lib", {}],
+  }
+}

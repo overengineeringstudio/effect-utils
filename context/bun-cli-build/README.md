@@ -1,18 +1,35 @@
 # Bun CLI Build Pattern
 
-Reusable Nix builder for Bun-compiled TypeScript CLIs. Designed to work
-inside effect-utils and in external repos that import effect-utils as a
-submodule or flake input.
+Reusable Nix builder for Bun-compiled TypeScript CLIs. Designed for dotdot
+workspaces: mk-bun-cli expects a dotdot workspace root and builds a package
+inside it.
 
 ## Builder
 
 - Path: `nix/mk-bun-cli.nix`
-- Inputs: `pkgs`, `pkgsUnstable`, `src`
+- Inputs: `pkgs`, `pkgsUnstable`
 - Versioning: reads `packageJsonPath` for base version, appends `+<gitRev>`
-- Injection: defines `__CLI_VERSION__` at build time
-- Deps: fixed-output bun deps (`bunDepsHash`)
-- Typecheck: runs `tsgo --project <tsconfig> --noEmit` when `typecheck = true`
-- Default `typecheckTsconfig`: same directory as `packageJsonPath`
+- Typecheck: runs `tsc --project <tsconfig> --noEmit` when `typecheck = true`
+- Default `typecheckTsconfig`: `<packageDir>/tsconfig.json`
+- Deps: fixed-output bun deps for the package dir (single install)
+- Smoke test: runs the built binary with `smokeTestArgs` (default `--help`)
+
+### mkBunCli arguments
+
+| Argument | Required | Default | Notes |
+| --- | --- | --- | --- |
+| `name` | yes | - | Derivation name and default binary name. |
+| `entry` | yes | - | CLI entry file relative to `workspaceRoot`. |
+| `packageDir` | yes | - | Package directory relative to `workspaceRoot`. |
+| `workspaceRoot` | yes | - | Dotdot workspace root (flake input or path). |
+| `bunDepsHash` | yes | - | Fixed-output hash for bun deps snapshot. |
+| `binaryName` | no | `name` | Output binary name. |
+| `packageJsonPath` | no | `<packageDir>/package.json` | Used for version extraction. |
+| `gitRev` | no | `"unknown"` | Version suffix appended as `+<gitRev>`. |
+| `typecheck` | no | `true` | Run `tsc --noEmit` with `typecheckTsconfig`. |
+| `typecheckTsconfig` | no | `<packageDir>/tsconfig.json` | Tsconfig path relative to `workspaceRoot`. |
+| `smokeTestArgs` | no | `["--help"]` | Arguments for post-build smoke test. |
+| `dirty` | no | `false` | Copy bun deps locally and overlay local deps. |
 
 ## CLI Version Pattern
 
@@ -27,22 +44,21 @@ const version = cliVersion === undefined || cliVersion.length === 0 ? baseVersio
 ```nix
 let
   mkBunCli = import ../../../../nix/mk-bun-cli.nix {
-    inherit pkgs pkgsUnstable src;
+    inherit pkgs pkgsUnstable;
   };
 in
 mkBunCli {
   name = "genie";
-  entry = "packages/@overeng/genie/src/cli.ts";
-  packageJsonPath = "packages/@overeng/genie/package.json";
+  entry = "packages/@overeng/genie/src/build/cli.ts";
+  packageDir = "packages/@overeng/genie";
+  workspaceRoot = self;
   bunDepsHash = "sha256-...";
-  # Optional (defaults shown)
-  typecheck = true;
   typecheckTsconfig = "packages/@overeng/genie/tsconfig.json";
   gitRev = self.sourceInfo.dirtyShortRev or self.sourceInfo.shortRev or self.sourceInfo.rev or "unknown";
 }
 ```
 
-## Outside effect-utils (submodule or flake input)
+## Outside effect-utils (flake input)
 
 Prefer passing `gitRev` from the parent repo so the built binary reflects the
 parent’s commit:
@@ -51,77 +67,36 @@ parent’s commit:
 let
   mkBunCli = import "${effect-utils}/nix/mk-bun-cli.nix" {
     inherit pkgs pkgsUnstable;
-    src = ./.;
   };
   gitRev = self.sourceInfo.dirtyShortRev or self.sourceInfo.shortRev or self.sourceInfo.rev or "unknown";
 in
 {
   packages.${system}.my-cli = mkBunCli {
     name = "my-cli";
-    entry = "packages/my-cli/src/cli.ts";
-    packageJsonPath = "packages/my-cli/package.json";
+    entry = "app/src/cli.ts";
+    packageDir = "app";
+    workspaceRoot = inputs.workspace;
     bunDepsHash = "sha256-...";
     inherit gitRev;
   };
 }
 ```
 
-## Cross-submodule dependencies (important)
+## Local changes
 
-If your CLI or UI build depends on packages that live in a git submodule
-outside the current flake source (e.g., `link:` deps), the Nix sandbox cannot
-resolve those paths. This is the main source of extra complexity outside
-effect-utils.
+Use a dotdot workspace root as a `path:` input and pass it to `workspaceRoot`.
+For local edits, set `dirty = true` so mk-bun-cli overlays local deps on top of
+the bun deps snapshot. When using a `path:` input, refresh the input to pick up
+dirty changes:
 
-Recommended pattern:
-
-- Vendor the external package into the fixed-output deps input.
-- Rewrite `bun.lock` to use `file:vendor/<name>` instead of `link:...`.
-- Strip `catalog:` devDependencies from the vendored package so `bun install`
-  does not fail.
-
-Minimal example with comments:
-
-```nix
-let
-  # Rewrite dependency to a vendored path for sandboxed builds.
-  packageJsonForBun = packageJson // {
-    dependencies = (packageJson.dependencies or {}) // {
-      "@overeng/effect-react" = "file:vendor/effect-react";
-    };
-  };
-  # Replace link: in the lockfile with file:vendor to keep bun.lock usable.
-  bunLockForBun = builtins.replaceStrings
-    [ "link:../../../../../submodules/effect-utils/packages/@overeng/effect-react" ]
-    [ "file:vendor/effect-react" ]
-    (builtins.readFile ./bun.lock);
-  # Strip catalog-based devDependencies so bun install doesn't fail.
-  effectReactPackage = builtins.fromJSON (builtins.readFile "${effectReactSrc}/package.json");
-  effectReactPackageForBun = effectReactPackage // { devDependencies = {}; };
-  # Provide a minimal vendored package in the fixed-output dependency input.
-  depFiles = pkgs.runCommand "dep-files" {} ''
-    mkdir -p $out/vendor/effect-react
-    cat > $out/package.json <<'EOF'
-    ${builtins.toJSON packageJsonForBun}
-    EOF
-    cat > $out/bun.lock <<'EOF'
-    ${bunLockForBun}
-    EOF
-    cat > $out/vendor/effect-react/package.json <<'EOF'
-    ${builtins.toJSON effectReactPackageForBun}
-    EOF
-    # Only source files needed at build time.
-    cp -r ${effectReactSrc}/src $out/vendor/effect-react/src
-  '';
-in
-mkBunCli {
-  # ...
-  depFiles = depFiles;
-}
+```bash
+nix flake update workspace
+nix build .#my-cli --override-input workspace path:/path/to/workspace
 ```
 
 ## Notes
 
+- `bun.lock` must exist in `packageDir` (dotdot expects self-contained packages).
 - Package-local flakes in effect-utils are not the git root, so `sourceInfo.*`
   may be `none`.
 - When in doubt, pass `gitRev` from the calling repo’s flake (`self.sourceInfo`).

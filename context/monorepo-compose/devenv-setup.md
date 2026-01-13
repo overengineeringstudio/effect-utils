@@ -80,9 +80,10 @@ devenv update effect-utils
 - Changes to effect-utils need to be pushed to GitHub before they're available
 - For local development with unpushed changes, consider the [pure flake setup](./nix-flake-setup.md) with `--override-input`
 
-## Test Repo
+## Test Setup
 
-See `test-devenv/` in the dotdot workspace for a working example.
+See `tests/mk-bun-cli` for the fixture repos and runner that exercise
+flakes, devenv, and peer-repo composition.
 
 ## References
 

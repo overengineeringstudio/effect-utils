@@ -2,7 +2,7 @@
   # Nix flake for sharing helper libraries across repos.
   #
   # We already have a devenv-based setup for local development, but repos that
-  # consume effect-utils as a submodule still need a flake entry point so they
+  # consume effect-utils as a flake input still need a flake entry point so they
   # can import Nix helpers (for example lib.mkCliPackages) with a stable API.
   # This keeps the build logic reusable without requiring devenv in the parent.
   inputs = {
@@ -25,33 +25,21 @@
         packages = {
           genie = mkBunCli {
             name = "genie";
-            entry = "effect-utils/packages/@overeng/genie/src/build/cli.ts";
-            packageJsonPath = "effect-utils/packages/@overeng/genie/package.json";
-            typecheckTsconfig = "effect-utils/packages/@overeng/genie/tsconfig.json";
-            sources = [
-              { name = "effect-utils"; src = self; }
-            ];
-            installDirs = [
-              "effect-utils/packages/@overeng/genie"
-              "effect-utils/packages/@overeng/utils"
-            ];
-            bunDepsHash = "sha256-xtg5VBvc6BGMDoFI8LtrAv35fGay/f7UQfOp7X/X3cw=";
+            entry = "packages/@overeng/genie/src/build/cli.ts";
+            packageDir = "packages/@overeng/genie";
+            workspaceRoot = self;
+            typecheckTsconfig = "packages/@overeng/genie/tsconfig.json";
+            bunDepsHash = "sha256-WLkR7X5stKcFbroEflzIvcWDhVWsHxsNtsZZEAnAjBo=";
             inherit gitRev;
           };
           dotdot = mkBunCli {
             name = "dotdot";
-            entry = "effect-utils/packages/@overeng/dotdot/src/cli.ts";
+            entry = "packages/@overeng/dotdot/src/cli.ts";
             binaryName = "dotdot";
-            packageJsonPath = "effect-utils/packages/@overeng/dotdot/package.json";
-            typecheckTsconfig = "effect-utils/packages/@overeng/dotdot/tsconfig.json";
-            sources = [
-              { name = "effect-utils"; src = self; }
-            ];
-            installDirs = [
-              "effect-utils/packages/@overeng/dotdot"
-              "effect-utils/packages/@overeng/utils"
-            ];
-            bunDepsHash = "sha256-VGMmRFaJPhXOEI4nAwGHHU+McNwkz7zXc2FUyIit58k=";
+            packageDir = "packages/@overeng/dotdot";
+            workspaceRoot = self;
+            typecheckTsconfig = "packages/@overeng/dotdot/tsconfig.json";
+            bunDepsHash = "sha256-0HfezPxkSbXI4+0sLjhZ4u44j7nIp/25zRXRXRxPaSM=";
             inherit gitRev;
           };
         };
@@ -62,51 +50,36 @@
       }
     ) // {
       # Builder function for external repos to create their own Bun CLIs
-      lib.mkBunCli = { pkgs, pkgsUnstable, src ? null }:
-        import ./nix/mk-bun-cli.nix { inherit pkgs pkgsUnstable src; };
+      lib.mkBunCli = { pkgs, pkgsUnstable }:
+        import ./nix/mk-bun-cli.nix { inherit pkgs pkgsUnstable; };
 
       # Legacy API for backwards compatibility
       lib.mkCliPackages = {
         pkgs,
         pkgsUnstable,
         gitRev ? "unknown",
-        src ? ./.,
+        workspaceRoot ? ./.,
       }:
         let
-          srcPath = src;
-          mkBunCli = import ./nix/mk-bun-cli.nix { inherit pkgs pkgsUnstable; src = srcPath; };
+          mkBunCli = import ./nix/mk-bun-cli.nix { inherit pkgs pkgsUnstable; };
           specs = {
             genie = {
               name = "genie";
-              entry = "effect-utils/packages/@overeng/genie/src/build/cli.ts";
-              packageJsonPath = "effect-utils/packages/@overeng/genie/package.json";
-              typecheckTsconfig = "effect-utils/packages/@overeng/genie/tsconfig.json";
-              bunDepsHash = "sha256-xtg5VBvc6BGMDoFI8LtrAv35fGay/f7UQfOp7X/X3cw=";
-              sources = [
-                { name = "effect-utils"; src = srcPath; }
-              ];
-              installDirs = [
-                "effect-utils/packages/@overeng/genie"
-                "effect-utils/packages/@overeng/utils"
-              ];
+              entry = "packages/@overeng/genie/src/build/cli.ts";
+              packageDir = "packages/@overeng/genie";
+              typecheckTsconfig = "packages/@overeng/genie/tsconfig.json";
+              bunDepsHash = "sha256-WLkR7X5stKcFbroEflzIvcWDhVWsHxsNtsZZEAnAjBo=";
             };
             dotdot = {
               name = "dotdot";
-              entry = "effect-utils/packages/@overeng/dotdot/src/cli.ts";
+              entry = "packages/@overeng/dotdot/src/cli.ts";
               binaryName = "dotdot";
-              packageJsonPath = "effect-utils/packages/@overeng/dotdot/package.json";
-              typecheckTsconfig = "effect-utils/packages/@overeng/dotdot/tsconfig.json";
-              bunDepsHash = "sha256-VGMmRFaJPhXOEI4nAwGHHU+McNwkz7zXc2FUyIit58k=";
-              sources = [
-                { name = "effect-utils"; src = srcPath; }
-              ];
-              installDirs = [
-                "effect-utils/packages/@overeng/dotdot"
-                "effect-utils/packages/@overeng/utils"
-              ];
+              packageDir = "packages/@overeng/dotdot";
+              typecheckTsconfig = "packages/@overeng/dotdot/tsconfig.json";
+              bunDepsHash = "sha256-0HfezPxkSbXI4+0sLjhZ4u44j7nIp/25zRXRXRxPaSM=";
             };
           };
         in
-        builtins.mapAttrs (_: spec: mkBunCli (spec // { inherit gitRev; })) specs;
+        builtins.mapAttrs (_: spec: mkBunCli (spec // { inherit gitRev workspaceRoot; })) specs;
     };
 }

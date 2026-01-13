@@ -1,0 +1,9 @@
+{
+  "name": "app-cli",
+  "version": "0.1.0",
+  "type": "module",
+  "dependencies": {
+    "shared-lib": "../shared-lib",
+    "@acme/utils": "../@acme/utils"
+  }
+}
