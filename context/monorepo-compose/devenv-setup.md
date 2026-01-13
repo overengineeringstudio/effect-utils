@@ -101,6 +101,15 @@ use devenv --override-input effect-utils path:../effect-utils
 
 Run `direnv allow` after updating `.envrc`.
 
+### direnv refresh
+
+To force a full direnv rebuild:
+
+```bash
+rm -rf .direnv
+direnv reload
+```
+
 ## Notes
 
 - devenv uses GitHub URLs by default, so unpushed changes are not picked up
