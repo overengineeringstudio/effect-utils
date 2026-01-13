@@ -130,3 +130,4 @@ dotdot sync  # Clones missing repos, checks out pinned revisions
 | Symlink missing                | Run `dotdot link`                                            |
 | Nix can't find files           | Ensure repo is cloned, not just symlinked                    |
 | Nix flake input is a symlink   | Use `git+file:../repo` for nix, not `path:../repo`           |
+| Sub-flake purity boundaries    | See `../bun-cli-build/troubleshooting.md`                   |

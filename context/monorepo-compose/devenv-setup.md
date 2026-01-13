@@ -103,11 +103,20 @@ Run `direnv allow` after updating `.envrc`.
 
 ### direnv refresh
 
-To force a full direnv rebuild:
+To force a full direnv rebuild without editing `.envrc`:
 
 ```bash
-rm -rf .direnv
+rm -rf .devenv
 direnv reload
+```
+
+If the direnv cache itself is stale, remove `.direnv` too.
+
+If you want a flag-driven refresh (requires touching `.envrc`), pass
+`--refresh-eval-cache` to `use devenv`:
+
+```bash
+use devenv --refresh-eval-cache
 ```
 
 ## Notes

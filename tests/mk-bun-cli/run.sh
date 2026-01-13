@@ -32,7 +32,7 @@ Usage: run.sh [options]
 Options:
   --workspace <path>   Use a fixed temp workspace directory
   --keep               Keep the temp workspace after the run
-    --dirty              Rebuild after modifying a peer source file
+  --dirty              Rebuild after modifying a peer source file
   --refresh-locks      Run bun install in fixtures to refresh bun.lock
   --skip-effect-utils  Skip building effect-utils CLIs
   --skip-peer          Skip building the peer fixture
@@ -256,8 +256,8 @@ if [ "$SKIP_EFFECT_UTILS" -eq 0 ]; then
   print_timing "effect-utils build" "$effect_utils_start"
 fi
 
-if [ "$SKIP_PEER" -eq 0 ]; then
-  echo "Building peer fixture..."
+if [ "$SKIP_PEER" -eq 0 ] || [ "$SKIP_DEVENV" -eq 0 ]; then
+  echo "Resolving peer bunDepsHash..."
   peer_hash_start="$(now)"
   ensure_bun_hash ".#app-cli" "$WORKSPACE/app/flake.nix" "$WORKSPACE/app"
   print_timing "peer bunDepsHash" "$peer_hash_start"
@@ -265,6 +265,10 @@ if [ "$SKIP_PEER" -eq 0 ]; then
   if [ -n "$app_hash" ]; then
     perl -0777 -i -pe "s|bunDepsHash = [^;]+|bunDepsHash = \"$app_hash\"|g" "$WORKSPACE/app/devenv.nix"
   fi
+fi
+
+if [ "$SKIP_PEER" -eq 0 ]; then
+  echo "Building peer fixture..."
   peer_build_start="$(now)"
   (cd "$WORKSPACE/app" && nix build ".#app-cli")
   print_timing "peer nix build" "$peer_build_start"
@@ -304,7 +308,7 @@ if [ "$SKIP_DEVENV" -eq 0 ]; then
     )
     devenv_log="$WORKSPACE/devenv-shell.log"
     set +e
-    (cd "$WORKSPACE/app" && devenv shell app-cli "${devenv_args[@]}") 2>&1 | tee "$devenv_log"
+    (cd "$WORKSPACE/app" && devenv shell "${devenv_args[@]}" bash -lc "app-cli") 2>&1 | tee "$devenv_log"
     devenv_status="${PIPESTATUS[0]}"
     set -e
     if [ "$devenv_status" -ne 0 ]; then

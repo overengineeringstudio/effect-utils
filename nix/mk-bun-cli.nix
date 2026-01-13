@@ -1,24 +1,24 @@
-# Goals:
-# - Provide reliable, simple, fast way to build native binaries via Bun from TypeScript source files.
-# - Needs to support locally checked out peer repos with local/uncommitted changes (embracing dotdot workspace model)
-# - Supports typechecking via tsc (later tsgo once it supports Effect)
-# - Effcient & deterministic: no --impure mode, avoid copying large amount of files (e.g. don't copy node_modules into the build output)
-# - Support injecting version string into the built binary (CLI_VERSION)
+# Dotdot-first Bun CLI builder.
+#
+# Design goals:
+# - Build native Bun binaries from TypeScript quickly and deterministically.
+# - Work inside dotdot workspaces (local peer repos + uncommitted changes).
+# - Keep builds pure (no --impure) and avoid shipping node_modules.
+# - Fail early with clear errors and a smoke test.
 #
 # Arguments:
 # - name: Derivation name and default binary name.
-# - entry: Relative path from workspaceRoot to the CLI entry file.
+# - entry: CLI entry file relative to workspaceRoot.
 # - packageDir: Package directory relative to workspaceRoot.
 # - workspaceRoot: Dotdot workspace root (flake input or path).
-# - packageJsonPath: Path to package.json relative to workspaceRoot (defaults to <packageDir>/package.json).
-# - bunDepsHash: Fixed-output hash for Bun deps snapshot (required for reproducible builds).
+# - bunDepsHash: Fixed-output hash for Bun deps snapshot.
 # - binaryName: Output binary name (defaults to name).
+# - packageJsonPath: package.json path relative to workspaceRoot (defaults to <packageDir>/package.json).
 # - gitRev: Version suffix (defaults to "unknown").
 # - typecheck: Run tsc --noEmit (defaults to true).
 # - typecheckTsconfig: Tsconfig path relative to workspaceRoot (defaults to <packageDir>/tsconfig.json).
 # - smokeTestArgs: Args for smoke test (defaults to ["--help"]).
-# - dirty: Copy bun deps locally and overlay local deps (defaults to false).
-#
+# - dirty: When true, copy node_modules and overlay local file deps (defaults to false).
 { pkgs, pkgsUnstable }:
 
 {
@@ -26,9 +26,9 @@
   entry,
   packageDir,
   workspaceRoot,
+  bunDepsHash,
   binaryName ? name,
   packageJsonPath ? "${packageDir}/package.json",
-  bunDepsHash,
   gitRev ? "unknown",
   typecheck ? true,
   typecheckTsconfig ? null,
@@ -39,7 +39,7 @@
 let
   lib = pkgs.lib;
 
-  # Normalize incoming flake inputs or paths to a concrete path.
+  # Resolve flake inputs or paths into a concrete filesystem path.
   toPath = source:
     if builtins.isAttrs source && builtins.hasAttr "outPath" source
     then source.outPath
@@ -52,7 +52,7 @@ let
     then throw "mk-bun-cli: workspaceRoot is required"
     else toPath workspaceRoot;
 
-  # Keep the staged workspace lean and deterministic (avoid caches and outputs).
+  # Keep the staged workspace lean (skip caches, outputs, and node_modules).
   excludedSourceNames = [
     ".git"
     ".direnv"
@@ -69,7 +69,6 @@ let
     "out"
   ];
 
-  # Filter out any path segment that matches excluded names.
   sourceFilter = root: path: _type:
     let
       rootStr = toString root;
@@ -83,38 +82,37 @@ let
     in
     !hasExcluded;
 
-  # Produce a clean, deterministic workspace snapshot for Nix builds.
   workspaceSrc = lib.cleanSourceWith {
     src = workspaceRootPath;
     filter = sourceFilter workspaceRootPath;
   };
 
-  # Read version info from the package.json in the staged workspace.
   packageJsonFullPath = workspaceSrc + "/${packageJsonPath}";
   packageJson = builtins.fromJSON (builtins.readFile packageJsonFullPath);
   baseVersion = packageJson.version or "0.0.0";
   fullVersion = if gitRev == "unknown" then baseVersion else "${baseVersion}+${gitRev}";
 
-  # Track local file dependencies so dirty mode can overlay the latest sources.
+  # Collect local file dependencies so dirty builds can overlay them.
   localDependencyMap =
     (packageJson.dependencies or {})
     // (packageJson.devDependencies or {})
     // (packageJson.optionalDependencies or {});
 
-  # Only capture local path deps (./, ../, or file:).
   localDependencies =
     let
       isLocal = value:
         lib.hasPrefix "./" value
         || lib.hasPrefix "../" value
         || lib.hasPrefix "file:" value;
-      normalize = value: if lib.hasPrefix "file:" value then lib.removePrefix "file:" value else value;
+      normalize = value:
+        if lib.hasPrefix "file:" value
+        then lib.removePrefix "file:" value
+        else value;
     in
     lib.mapAttrsToList
-      (name: value: { inherit name; path = normalize value; })
+      (depName: depValue: { name = depName; path = normalize depValue; })
       (lib.filterAttrs (_: value: isLocal value) localDependencyMap);
 
-  # Overwrite local deps inside node_modules so dirty builds reflect workspace edits.
   localDependenciesCopyScript = lib.concatStringsSep "\n" (map
     (dep: ''
       dep_name=${lib.escapeShellArg dep.name}
@@ -151,7 +149,7 @@ let
 
   smokeTestArgsChecked = lib.escapeShellArgs smokeTestArgs;
 
-  # Stage a writable workspace copy for Bun and tsc to operate in.
+  # Stage a writable copy so Bun and tsc can write caches in the sandbox.
   stageWorkspace = ''
     workspace="$PWD/workspace"
     mkdir -p "$workspace"
@@ -159,10 +157,9 @@ let
     chmod -R u+w "$workspace"
   '';
 
-  # Fixed-output derivation for Bun deps (deterministic, cached across builds).
   bunDeps =
     if bunDepsHash == null
-    then null
+    then throw "mk-bun-cli: bunDepsHash is required"
     else pkgs.stdenvNoCC.mkDerivation {
       name = "${name}-bun-deps";
       nativeBuildInputs = [ pkgsUnstable.bun pkgs.cacert ];
@@ -184,10 +181,7 @@ let
         export BUN_INSTALL_CACHE_DIR="$cache_dir"
         export BUN_INSTALL_TMP_DIR="$PWD/bun-tmp"
         export BUN_TMPDIR="$BUN_INSTALL_TMP_DIR"
-        export BUN_INSTALL_GLOBAL_DIR="$PWD/bun-global"
-        export BUN_INSTALL_BIN="$PWD/bun-bin"
         export XDG_CACHE_HOME="$cache_dir"
-        # Force non-production install to ensure TypeScript is available when needed.
         export NODE_ENV=development
         export NPM_CONFIG_PRODUCTION=false
         export npm_config_production=false
@@ -206,8 +200,12 @@ let
           exit 1
         fi
 
-        # Use frozen lockfile to enforce deterministic installs.
-        bun install --cwd "$package_path" --cache-dir "$cache_dir" --frozen-lockfile --linker=hoisted --backend=copyfile --no-cache
+        bun install \
+          --cwd "$package_path" \
+          --frozen-lockfile \
+          --linker=hoisted \
+          --backend=copyfile \
+          --no-cache
       '';
 
       installPhase = ''
@@ -215,13 +213,10 @@ let
         package_path="$PWD/workspace/${packageDir}"
         if [ -d "$package_path/node_modules" ]; then
           mkdir -p "$out"
-          # Resolve symlinks so bunDeps doesn't reference the build workspace.
           cp -R -L "$package_path/node_modules" "$out/node_modules"
         fi
       '';
     };
-
-  bunDepsRoot = if bunDeps == null then null else bunDeps;
 
 in
 pkgs.stdenv.mkDerivation {
@@ -238,7 +233,6 @@ pkgs.stdenv.mkDerivation {
     set -euo pipefail
     runHook preBuild
 
-    # Bun compile writes temp files; ensure they land in a writable sandbox path.
     export HOME=$PWD
     tmp_dir="$PWD/tmp"
     mkdir -p "$tmp_dir"
@@ -273,32 +267,18 @@ pkgs.stdenv.mkDerivation {
       rm -rf "$package_path/node_modules"
     fi
 
-    # Dirty mode relies on bunDeps so it can overlay local deps deterministically.
-    if [ -n "${lib.optionalString dirty "1"}" ] && [ -z "${lib.optionalString (bunDepsRoot != null) "1"}" ]; then
-      echo "mk-bun-cli: dirty mode requires bunDepsHash to be set" >&2
-      exit 1
+    if ${lib.boolToString dirty}; then
+      cp -R "${bunDeps}/node_modules" "$package_path/node_modules"
+      chmod -R u+w "$package_path/node_modules"
+      ${lib.optionalString (localDependencies != []) localDependenciesCopyScript}
+    else
+      ln -s "${bunDeps}/node_modules" "$package_path/node_modules"
     fi
 
-    if [ -n "${lib.optionalString (bunDepsRoot != null) "1"}" ]; then
-      if [ -d "${bunDepsRoot}/node_modules" ]; then
-        if [ -n "${lib.optionalString dirty "1"}" ]; then
-          # Copy deps locally so local overlays can be applied.
-          cp -R "${bunDepsRoot}/node_modules" "$package_path/node_modules"
-          chmod -R u+w "$package_path/node_modules"
-          ${lib.optionalString (localDependencies != []) localDependenciesCopyScript}
-        else
-          # Clean mode uses the bunDeps snapshot directly for speed.
-          ln -s "${bunDepsRoot}/node_modules" "$package_path/node_modules"
-        fi
-      fi
-    fi
-
-    # Inject build version into the entry file.
     substituteInPlace "$workspace/${entry}" \
       --replace-fail "const buildVersion = '__CLI_VERSION__'" "const buildVersion = '${fullVersion}'"
 
     ${lib.optionalString typecheck ''
-      # Typecheck against the workspace tsconfig to catch type errors early.
       tsconfig_path="$workspace/${typecheckTsconfigChecked}"
       if [ ! -f "$tsconfig_path" ]; then
         echo "TypeScript config not found: ${typecheckTsconfigChecked}" >&2
@@ -319,14 +299,12 @@ pkgs.stdenv.mkDerivation {
     mkdir -p "$(dirname "$build_output")"
 
     cd "$workspace"
-    # Build a native binary via Bun (no runtime fallback).
     bun build "${entry}" \
       --compile \
       --outfile="$build_output"
     cd "$build_root"
 
     bun_binary="${pkgsUnstable.bun}/bin/bun"
-    # Fail hard if Bun produced the Bun runtime instead of a binary.
     if [ -s "$build_output" ] && cmp -s "$build_output" "$bun_binary"; then
       echo "mk-bun-cli: bun build output matches bun; refusing runtime fallback" >&2
       exit 1
@@ -337,7 +315,6 @@ pkgs.stdenv.mkDerivation {
       exit 1
     fi
 
-    # Run a lightweight smoke test to ensure the binary executes.
     if [ -n "${smokeTestArgsChecked}" ]; then
       "$build_output" ${smokeTestArgsChecked}
     else

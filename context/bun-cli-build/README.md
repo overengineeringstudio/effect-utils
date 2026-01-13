@@ -34,9 +34,15 @@ inside it.
 ## CLI Version Pattern
 
 ```ts
+import { resolveCliVersion } from '@overeng/utils/node/cli-version'
+
+const baseVersion = '0.1.0'
 const buildVersion = '__CLI_VERSION__'
-const cliVersion = process.env.CLI_VERSION
-const version = cliVersion === undefined || cliVersion.length === 0 ? buildVersion : cliVersion
+const version = resolveCliVersion({
+  baseVersion,
+  buildVersion,
+  runtimeStampEnvVar: 'NIX_CLI_BUILD_STAMP',
+})
 ```
 
 `mk-bun-cli` performs a literal search/replace for
@@ -72,6 +78,11 @@ effect-utils:
   shell entry hook (`enterShell` in devenv or `shellHook` in `mkShell`)
 - the helper sets `NIX_CLI_BUILD_STAMP` using `WORKSPACE_ROOT` or
   `CLI_BUILD_STAMP_ROOT`
+
+When using direnv + devenv, `.envrc` runs `use devenv`, which executes
+`enterShell` from `devenv.nix`. That is where `cliBuildStamp.shellHook` runs and
+exports `NIX_CLI_BUILD_STAMP`, so every `direnv reload` refreshes the runtime
+stamp in the current shell.
 
 ## Inside effect-utils
 
@@ -131,6 +142,13 @@ nix build .#my-cli --override-input workspace path:/path/to/workspace
 ## Notes
 
 - `bun.lock` must exist in `packageDir` (dotdot expects self-contained packages).
+- mk-bun-cli assumes the dotdot workspace layout already exists; it does not run
+  `dotdot link` or create workspace symlinks for you.
 - Package-local flakes in effect-utils are not the git root, so `sourceInfo.*`
   may be `none`.
 - When in doubt, pass `gitRev` from the calling repo’s flake (`self.sourceInfo`).
+
+## Troubleshooting
+
+See [troubleshooting.md](./troubleshooting.md) for sub-flake purity boundaries,
+stale bunDeps snapshots, and local iteration tips.
