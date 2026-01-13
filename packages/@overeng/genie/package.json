@@ -5,13 +5,13 @@
   "type": "module",
   "exports": {
     ".": "./src/runtime/mod.ts",
-    "./cli": "./src/build/cli.ts"
+    "./cli": "./src/build/mod.ts"
   },
   "publishConfig": {
     "access": "public",
     "exports": {
       ".": "./dist/src/runtime/mod.js",
-      "./cli": "./dist/src/build/cli.js"
+      "./cli": "./dist/src/build/mod.js"
     }
   },
   "dependencies": {},

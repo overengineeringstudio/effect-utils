@@ -6,13 +6,13 @@ export default packageJson({
   ...privatePackageDefaults,
   exports: {
     '.': './src/runtime/mod.ts',
-    './cli': './src/build/cli.ts',
+    './cli': './src/build/mod.ts',
   },
   publishConfig: {
     access: 'public',
     exports: {
       '.': './dist/src/runtime/mod.js',
-      './cli': './dist/src/build/cli.js',
+      './cli': './dist/src/build/mod.js',
     },
   },
   // Genie must not use any runtime dependencies (only bundled/dev dependencies)

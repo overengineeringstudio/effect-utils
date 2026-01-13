@@ -7,7 +7,7 @@ let
 in
 mkBunCli {
   name = "genie";
-  entry = "effect-utils/packages/@overeng/genie/src/build/cli.ts";
+  entry = "effect-utils/packages/@overeng/genie/src/build/mod.ts";
   binaryName = "genie";
   packageJsonPath = "effect-utils/packages/@overeng/genie/package.json";
   typecheckTsconfig = "effect-utils/packages/@overeng/genie/tsconfig.json";

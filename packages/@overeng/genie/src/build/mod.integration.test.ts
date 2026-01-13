@@ -62,7 +62,7 @@ const decodeChunks = (chunks: Chunk.Chunk<Uint8Array>): string => {
 const runGenie = (env: TestEnv, args: ReadonlyArray<string>) =>
   Effect.scoped(
     Effect.gen(function* () {
-      const cliPath = new URL('./cli.ts', import.meta.url).pathname
+      const cliPath = new URL('./mod.ts', import.meta.url).pathname
       const command = Command.make('bun', cliPath, '--cwd', env.root, ...args).pipe(
         Command.workingDirectory(env.root),
         Command.stdout('pipe'),
