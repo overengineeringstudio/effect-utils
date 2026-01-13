@@ -30,7 +30,7 @@ Both approaches work well. Choose based on your needs:
 | Language/service integrations | devenv |
 | CI without changes | Both work |
 
-## Test Repos
+## Test Setup
 
-- `test-nix-flake/` - Pure flake example
-- `test-devenv/` - devenv example
+See `tests/mk-bun-cli` for the fixture repos and runner that exercise
+flakes, devenv, and peer-repo composition.

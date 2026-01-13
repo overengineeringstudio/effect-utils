@@ -3,21 +3,15 @@
 { pkgs, pkgsUnstable, src, gitRev ? "unknown" }:
 
 let
-  mkBunCli = import ../../../../nix/mk-bun-cli.nix { inherit pkgs pkgsUnstable src; };
+  mkBunCli = import ../../../../nix/mk-bun-cli.nix { inherit pkgs pkgsUnstable; };
 in
 mkBunCli {
   name = "dotdot";
-  entry = "effect-utils/packages/@overeng/dotdot/src/cli.ts";
+  entry = "packages/@overeng/dotdot/src/cli.ts";
   binaryName = "dotdot";
-  packageJsonPath = "effect-utils/packages/@overeng/dotdot/package.json";
-  typecheckTsconfig = "effect-utils/packages/@overeng/dotdot/tsconfig.json";
-  sources = [
-    { name = "effect-utils"; src = src; }
-  ];
-  installDirs = [
-    "effect-utils/packages/@overeng/dotdot"
-    "effect-utils/packages/@overeng/utils"
-  ];
-  bunDepsHash = "sha256-VGMmRFaJPhXOEI4nAwGHHU+McNwkz7zXc2FUyIit58k=";
+  packageDir = "packages/@overeng/dotdot";
+  workspaceRoot = src;
+  typecheckTsconfig = "packages/@overeng/dotdot/tsconfig.json";
+  bunDepsHash = "sha256-0HfezPxkSbXI4+0sLjhZ4u44j7nIp/25zRXRXRxPaSM=";
   inherit gitRev;
 }

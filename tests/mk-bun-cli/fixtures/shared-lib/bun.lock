@@ -1,0 +1,11 @@
+{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "shared-lib",
+      "dependencies": {}
+    }
+  },
+  "packages": {}
+}
