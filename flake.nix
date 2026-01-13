@@ -20,16 +20,18 @@
         pkgs = import nixpkgs { inherit system; };
         pkgsUnstable = import nixpkgsUnstable { inherit system; };
         mkBunCli = import ./nix/mk-bun-cli.nix { inherit pkgs pkgsUnstable; };
+        cliBuildStamp = import ./nix/cli-build-stamp.nix { inherit pkgs; };
       in
       {
         packages = {
+          cli-build-stamp = cliBuildStamp.package;
           genie = mkBunCli {
             name = "genie";
-            entry = "packages/@overeng/genie/src/build/cli.ts";
+            entry = "packages/@overeng/genie/src/build/mod.ts";
             packageDir = "packages/@overeng/genie";
             workspaceRoot = self;
             typecheckTsconfig = "packages/@overeng/genie/tsconfig.json";
-            bunDepsHash = "sha256-WLkR7X5stKcFbroEflzIvcWDhVWsHxsNtsZZEAnAjBo=";
+            bunDepsHash = "sha256-xzYr5vBSxy85kn0pitidwiqY6BCZtUzseJlWtmr2NqY=";
             inherit gitRev;
           };
           dotdot = mkBunCli {
@@ -53,6 +55,10 @@
       lib.mkBunCli = { pkgs, pkgsUnstable }:
         import ./nix/mk-bun-cli.nix { inherit pkgs pkgsUnstable; };
 
+      # Shell helper for runtime CLI build stamps.
+      lib.cliBuildStamp = { pkgs, workspaceRoot ? null }:
+        import ./nix/cli-build-stamp.nix { inherit pkgs workspaceRoot; };
+
       # Legacy API for backwards compatibility
       lib.mkCliPackages = {
         pkgs,
@@ -65,10 +71,10 @@
           specs = {
             genie = {
               name = "genie";
-              entry = "packages/@overeng/genie/src/build/cli.ts";
+              entry = "packages/@overeng/genie/src/build/mod.ts";
               packageDir = "packages/@overeng/genie";
               typecheckTsconfig = "packages/@overeng/genie/tsconfig.json";
-              bunDepsHash = "sha256-WLkR7X5stKcFbroEflzIvcWDhVWsHxsNtsZZEAnAjBo=";
+              bunDepsHash = "sha256-xzYr5vBSxy85kn0pitidwiqY6BCZtUzseJlWtmr2NqY=";
             };
             dotdot = {
               name = "dotdot";

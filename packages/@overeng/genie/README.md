@@ -82,6 +82,27 @@ mono genie --watch
 mono genie --writeable
 ```
 
+## Versioning
+
+- Build-time injection: `mk-bun-cli` replaces `const buildVersion = '__CLI_VERSION__'`
+  with `<package.json version>` or `<package.json version>+<gitRev>`.
+- Runtime stamp: when `NIX_CLI_BUILD_STAMP` is set, the CLI appends
+  ` (stamp <value>)` even if the build version was injected.
+
+Example:
+
+```bash
+NIX_CLI_BUILD_STAMP=abc123+2026-01-13T10:15:30-07:00-dirty genie --version
+# 0.1.0+<gitRev> (stamp abc123+2026-01-13T10:15:30-07:00-dirty)
+```
+
+If you have `cli-build-stamp` available (from effect-utils), you can generate
+the stamp automatically:
+
+```bash
+NIX_CLI_BUILD_STAMP="$(cli-build-stamp)" genie --version
+```
+
 ### Creating a Generator
 
 Create a `.genie.ts` file next to the config file you want to generate:

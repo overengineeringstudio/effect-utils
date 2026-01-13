@@ -12,6 +12,6 @@ mkBunCli {
   packageDir = "packages/@overeng/genie";
   workspaceRoot = src;
   typecheckTsconfig = "packages/@overeng/genie/tsconfig.json";
-  bunDepsHash = "sha256-WLkR7X5stKcFbroEflzIvcWDhVWsHxsNtsZZEAnAjBo=";
+  bunDepsHash = "sha256-xzYr5vBSxy85kn0pitidwiqY6BCZtUzseJlWtmr2NqY=";
   inherit gitRev;
 }

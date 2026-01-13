@@ -51,16 +51,27 @@ exact placeholder line is missing.
 
 If the placeholder remains (for example in local/dev runs or when `gitRev` is
 `"unknown"`), the CLI code can attach a runtime stamp via
-`resolveCliVersion`. In effect-utils, `.envrc` sets
-`NIX_CLI_BUILD_STAMP` to `<git-short-sha>+<UTC timestamp>[-dirty]`. CLIs call
+`resolveCliVersion`. In effect-utils, the devenv shell hook (via
+`cliBuildStamp.shellHook`) sets `NIX_CLI_BUILD_STAMP` to
+`<git-short-sha>+<YYYY-MM-DDTHH:MM:SS+/-HH:MM>[-dirty]`. CLIs call
 `resolveCliVersion({ baseVersion, buildVersion, runtimeStampEnvVar })`, so the
 final version becomes:
 
 - `<package.json version>+<NIX_CLI_BUILD_STAMP>` when the placeholder is still present
+- `<buildVersion> (stamp <NIX_CLI_BUILD_STAMP>)` when a build version was injected and the stamp is set
 - the injected build version otherwise
 
 This creates a single end-to-end pattern: build-time injection when available,
 runtime stamp when not, and a stable base version as fallback.
+
+To avoid re-implementing the stamp logic in each repo, use the helper from
+effect-utils:
+
+- `effect-utils.lib.cliBuildStamp { pkgs; }` returns `{ package, shellHook }`
+- add `package` to your shell `buildInputs` and append `${shellHook}` to your
+  shell entry hook (`enterShell` in devenv or `shellHook` in `mkShell`)
+- the helper sets `NIX_CLI_BUILD_STAMP` using `WORKSPACE_ROOT` or
+  `CLI_BUILD_STAMP_ROOT`
 
 ## Inside effect-utils
 
@@ -72,7 +83,7 @@ let
 in
 mkBunCli {
   name = "genie";
-  entry = "packages/@overeng/genie/src/build/cli.ts";
+  entry = "packages/@overeng/genie/src/build/mod.ts";
   packageDir = "packages/@overeng/genie";
   workspaceRoot = self;
   bunDepsHash = "sha256-...";

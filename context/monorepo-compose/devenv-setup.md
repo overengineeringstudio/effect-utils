@@ -21,6 +21,7 @@ let
     inherit pkgs;
     pkgsUnstable = pkgs;
   };
+  cliBuildStamp = inputs.effect-utils.lib.cliBuildStamp { inherit pkgs; };
 in
 {
   packages = [
@@ -28,7 +29,13 @@ in
     pkgs.nodejs_24
     cliPackages.genie
     cliPackages.dotdot
+    cliBuildStamp.package
   ];
+
+  enterShell = ''
+    export WORKSPACE_ROOT="$PWD"
+    ${cliBuildStamp.shellHook}
+  '';
 }
 ```
 
@@ -96,9 +103,16 @@ Run `direnv allow` after updating `.envrc`.
 
 ## Notes
 
-- devenv uses GitHub URLs by default
-- Changes to effect-utils need to be pushed to GitHub before they're available
-- For local development with unpushed changes, consider the [pure flake setup](./nix-flake-setup.md) with `--override-input`
+- devenv uses GitHub URLs by default, so unpushed changes are not picked up
+- override the input (above) to use unpushed sibling changes locally
+- for local development with unpushed changes, the [pure flake setup](./nix-flake-setup.md) and `--override-input` behave the same
+
+## CLI build stamp
+
+`cliBuildStamp.shellHook` exports `NIX_CLI_BUILD_STAMP` using `WORKSPACE_ROOT`
+or `CLI_BUILD_STAMP_ROOT`. The CLI version helper uses the stamp when the build
+placeholder stays in the binary, or appends the stamp to the injected build
+version for a combined output.
 
 ## Test Setup
 

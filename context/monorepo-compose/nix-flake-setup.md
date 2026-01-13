@@ -28,6 +28,7 @@ Use stable GitHub URLs in `flake.nix` and override inputs locally via `.envrc`.
         cliPackages = effect-utils.lib.mkCliPackages {
           inherit pkgs pkgsUnstable;
         };
+        cliBuildStamp = effect-utils.lib.cliBuildStamp { inherit pkgs; };
       in {
         devShells.default = pkgs.mkShell {
           buildInputs = [
@@ -35,7 +36,13 @@ Use stable GitHub URLs in `flake.nix` and override inputs locally via `.envrc`.
             pkgs.nodejs_24
             cliPackages.genie
             cliPackages.dotdot
+            cliBuildStamp.package
           ];
+
+          shellHook = ''
+            export WORKSPACE_ROOT="$PWD"
+            ${cliBuildStamp.shellHook}
+          '';
         };
       });
 }
@@ -65,6 +72,12 @@ result
 - `.envrc` overrides effect-utils to the local sibling repo via `--override-input`
 - `path:../effect-utils` resolves relative to the flake location
 - No deprecation warnings
+
+## CLI build stamp
+
+The `cliBuildStamp` helper exports `NIX_CLI_BUILD_STAMP` so local CLI runs can
+include a `<git-sha>+<YYYY-MM-DDTHH:MM:SS+/-HH:MM>[-dirty]` suffix (or append it to
+injected versions). It reads `WORKSPACE_ROOT` or `CLI_BUILD_STAMP_ROOT`.
 
 ## Input Follows
 

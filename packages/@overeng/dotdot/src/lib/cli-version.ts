@@ -12,12 +12,14 @@ export const resolveCliVersion = (options: {
 }): string => {
   const { baseVersion, buildVersion, runtimeStampEnvVar } = options
   const isPlaceholder = buildVersion === '__CLI_VERSION__' || buildVersion === baseVersion
+  const stamp = process.env[runtimeStampEnvVar]?.trim()
+  const hasStamp = stamp !== undefined && stamp !== ''
+
   if (!isPlaceholder) {
-    return buildVersion
+    return hasStamp ? `${buildVersion} (stamp ${stamp})` : buildVersion
   }
 
-  const stamp = process.env[runtimeStampEnvVar]
-  if (stamp && stamp.trim() !== '') {
+  if (hasStamp) {
     return `${baseVersion}+${stamp}`
   }
 
