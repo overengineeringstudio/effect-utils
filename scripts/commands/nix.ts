@@ -32,9 +32,8 @@ const NIX_PACKAGES = {
   dotdot: { path: 'packages/@overeng/dotdot', flakeRef: '.#default' },
   mono: {
     path: 'scripts',
-    flakeRef: 'path:.#default',
+    flakeRef: 'path:..#mono',
     noWriteLock: true,
-    workspaceInput: 'workspace',
   },
 } as const satisfies Record<string, NixPackageSpec>
 
