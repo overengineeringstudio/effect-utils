@@ -519,9 +519,9 @@ Compiling src/main.ts...
 - 🔲 Add workflow monitoring/telemetry
 
 ### Phase 4: Migrate Existing Commands
-- 🔲 Migrate `mono install`
-- 🔲 Migrate `mono check`
-- 🔲 Remove old TaskRunner
+- ✅ Migrate `mono install`
+- ✅ Migrate `mono check`
+- ✅ Remove old TaskRunner
 
 ### Phase 5: Advanced Features
 - 🔲 CI renderer with GitHub Actions groups

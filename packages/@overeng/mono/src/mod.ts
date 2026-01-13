@@ -4,7 +4,7 @@
  * Provides reusable task primitives and command factories for common monorepo operations:
  * - Build, test, lint, type-check, clean
  * - CI-aware output (GitHub Actions groups)
- * - Interactive mode with TaskRunner for live progress
+ * - Interactive mode with live progress rendering
  *
  * @example
  * ```ts
@@ -17,8 +17,7 @@
  *   tsCommand,
  *   cleanCommand,
  *   installCommand,
- *   checkCommand,
- *   createStandardCheckConfig,
+ *   checkCommandWithTaskSystem,
  * } from '@overeng/mono'
  *
  * const oxcConfig = { configPath: 'packages/@overeng/oxc-config' }
@@ -41,7 +40,7 @@
  *     tsCommand(),
  *     cleanCommand(),
  *     installCommand(installConfig),
- *     checkCommand(createStandardCheckConfig({ oxcConfig, genieConfig })),
+ *     checkCommandWithTaskSystem({ oxcConfig, genieConfig }),
  *   ],
  * })
  * ```
@@ -119,18 +118,10 @@ export type {
 export {
   // Standard commands
   buildCommand,
-  checkCommand,
+  checkCommandWithTaskSystem,
   cleanCommand,
   installCommand,
   lintCommand,
   testCommand,
   tsCommand,
-  // Check command variants
-  checkCommandCI,
-  checkCommandInteractive,
-  checkCommandWithTaskSystem,
-  // Check config factory
-  createStandardCheckConfig,
 } from './commands.ts'
-
-export type { CheckCommandConfig, CheckTask } from './commands.ts'

@@ -6,7 +6,7 @@ Framework for building Effect-based monorepo CLIs with reusable task primitives 
 
 - Pre-built commands for common monorepo tasks (build, test, lint, typecheck, clean)
 - CI-aware output with GitHub Actions groups
-- Interactive mode with live progress via TaskRunner
+- Interactive mode with live progress rendering
 - Composable task primitives for custom workflows
 
 ## Usage
@@ -20,8 +20,7 @@ import {
   lintCommand,
   tsCommand,
   cleanCommand,
-  checkCommand,
-  createStandardCheckConfig,
+  checkCommandWithTaskSystem,
 } from '@overeng/mono'
 
 const oxcConfig = { configPath: 'packages/@overeng/oxc-config' }
@@ -40,7 +39,7 @@ runMonoCli({
     lintCommand({ oxcConfig, genieConfig }),
     tsCommand(),
     cleanCommand(),
-    checkCommand(createStandardCheckConfig({ oxcConfig, genieConfig })),
+    checkCommandWithTaskSystem({ oxcConfig, genieConfig }),
   ],
 })
 ```
@@ -91,4 +90,4 @@ import {
 The `check` command automatically detects CI environments:
 
 - **CI mode**: Sequential execution with GitHub Actions groups for collapsible output
-- **Interactive mode**: Concurrent execution with live TaskRunner progress display
+- **Interactive mode**: Concurrent execution with live inline progress display

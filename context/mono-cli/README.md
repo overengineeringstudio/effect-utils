@@ -15,9 +15,8 @@ reusable task primitives and command factories for common monorepo operations.
 
 import {
   buildCommand,
-  checkCommand,
+  checkCommandWithTaskSystem,
   cleanCommand,
-  createStandardCheckConfig,
   lintCommand,
   runMonoCli,
   testCommand,
@@ -38,10 +37,10 @@ runMonoCli({
   commands: [
     buildCommand(),
     testCommand(),
-    lintCommand(oxcConfig, genieConfig),
+    lintCommand({ oxcConfig, genieConfig }),
     tsCommand(),
     cleanCommand(),
-    checkCommand(createStandardCheckConfig(oxcConfig, genieConfig)),
+    checkCommandWithTaskSystem({ oxcConfig, genieConfig }),
   ],
 })
 ```
@@ -144,47 +143,12 @@ runMonoCli({
 })
 ```
 
-## Check Command Configuration
-
-The check command supports custom task configurations:
-
-```ts
-import { checkCommand, type CheckTask, type CheckCommandConfig } from '@overeng/mono'
-
-const customCheckConfig: CheckCommandConfig = {
-  parallelTasks: [
-    {
-      id: 'tsc',
-      name: 'Type checking',
-      task: typeCheck(),
-      command: { cmd: 'tsc', args: ['--build', 'tsconfig.all.json'] },
-    },
-    {
-      id: 'lint',
-      name: 'Linting',
-      task: allLintChecks(oxcConfig, genieConfig),
-      command: { cmd: 'mono', args: ['lint'] },
-    },
-  ],
-  sequentialTasks: [
-    {
-      id: 'test',
-      name: 'Tests',
-      task: testRun(),
-      command: { cmd: 'vitest', args: ['run'] },
-    },
-  ],
-}
-
-checkCommand(customCheckConfig)
-```
-
 ## CI vs Interactive Mode
 
 The check command automatically detects CI environments and adjusts output:
 
 - **CI mode**: Sequential execution with GitHub Actions groups (`::group::`)
-- **Interactive mode**: Concurrent execution with TaskRunner for live progress
+- **Interactive mode**: Concurrent execution with live inline progress display
 
 ## Utilities
 

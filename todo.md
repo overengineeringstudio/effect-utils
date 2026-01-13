@@ -5,6 +5,11 @@
     - `mono lint`
     - `mono test`
 
+## mono
+
+- [ ] make it easy to see whether binary version is up to date with source version (to avoid running an outdated version)
+- [ ] make it easier to rebuild the binary (both for nix flakes and devenv)
+
 ## genie
 
 - [ ] add effect-lsp to each package
