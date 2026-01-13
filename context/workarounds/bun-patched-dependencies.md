@@ -9,6 +9,7 @@ When using bun with `file:` protocol dependencies across multiple repos (via dot
 Bun reads `patchedDependencies` from source packages (packages referenced via `file:`) and uses those paths, but resolves them relative to the **consumer's** location instead of the **source package's** location.
 
 **Example:**
+
 - Source package `@overeng/utils` at `effect-utils/packages/@overeng/utils` has:
   ```json
   "patchedDependencies": {
@@ -40,6 +41,7 @@ Instead of using bun's native `patchedDependencies` feature, we apply patches ou
 1. **Patches are centralized** at `effect-utils/patches/` (repo-relative paths)
 
 2. **Genie's `packageJson` accepts a `patches` registry:**
+
    ```ts
    import { packageJson, type PatchesRegistry } from '@overeng/genie'
    import { patches } from '../../genie/repo.ts'
@@ -51,6 +53,7 @@ Instead of using bun's native `patchedDependencies` feature, we apply patches ou
    ```
 
 3. **Genie generates a `postinstall` script** that applies matching patches:
+
    ```json
    "scripts": {
      "postinstall": "patch --forward -p1 -d node_modules/effect-distributed-lock < ../../patches/effect-distributed-lock@0.0.11.patch || true"

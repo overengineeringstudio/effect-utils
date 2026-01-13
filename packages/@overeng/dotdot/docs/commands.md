@@ -9,9 +9,11 @@ dotdot init
 ```
 
 **Creates:**
+
 - `dotdot.json` - Workspace configuration file with empty repos
 
 **Behavior:**
+
 - Fails if `dotdot.json` already exists
 - Creates config file with `$schema` reference and empty `repos` object
 
@@ -24,6 +26,7 @@ dotdot status
 ```
 
 **Output:**
+
 ```
 dotdot workspace: /path/to/workspace
 
@@ -37,6 +40,7 @@ Undeclared repos (1):
 ```
 
 **Information shown:**
+
 - Workspace root path
 - For each declared repo:
   - Name
@@ -60,11 +64,13 @@ dotdot sync --max-parallel=4
 ```
 
 **Flags:**
+
 - `--dry-run` - Preview what would be done
 - `--mode` - Execution mode (default: `topo-parallel`, see `exec` for all modes)
 - `--max-parallel` - Limit parallel operations
 
 **Behavior:**
+
 - Find all declared repos across all configs
 - Clone repos with `MISSING` status from configured URL
 - Checkout pinned revision if specified
@@ -73,6 +79,7 @@ dotdot sync --max-parallel=4
 - Default mode (`topo-parallel`) respects dependency order
 
 **Output:**
+
 ```
 dotdot workspace: /path/to/workspace
 Found 3 declared repo(s)
@@ -106,11 +113,13 @@ dotdot update-revs --dry-run
 ```
 
 **Behavior:**
+
 - Get current HEAD for each repo
 - Update `rev` in the declaring config file
 - Report changes made
 
 **Output:**
+
 ```
 dotdot workspace: /path/to/workspace
 Updating 3 repo(s)...
@@ -132,10 +141,12 @@ dotdot pull --max-parallel=4
 ```
 
 **Flags:**
+
 - `--mode` - Execution mode (default: `parallel`, see `exec` for all modes)
 - `--max-parallel` - Limit parallel operations
 
 **Behavior:**
+
 - Run `git pull` in each repo
 - Default mode is `parallel` (git operations are independent)
 - Skip repos with dirty working trees
@@ -144,6 +155,7 @@ dotdot pull --max-parallel=4
 - Warn if repo becomes diverged from pinned rev
 
 **Output:**
+
 ```
 dotdot workspace: /path/to/workspace
 Pulling 3 repo(s)...
@@ -171,6 +183,7 @@ dotdot tree --conflicts
 ```
 
 **Output:**
+
 ```
 dotdot workspace: /path/to/workspace
 
@@ -191,6 +204,7 @@ Run `dotdot tree --conflicts` to see details
 ```
 
 **With `--conflicts`:**
+
 ```
 Found 1 repo(s) with revision conflicts:
 
@@ -211,11 +225,13 @@ dotdot link --dry-run
 ```
 
 **Behavior:**
+
 - Read all `packages` configs
 - Create symlinks at workspace root (key becomes symlink name, `path` is target)
 - Report conflicts if multiple repos declare same package name
 
 **Output:**
+
 ```
 dotdot workspace: /path/to/workspace
 
@@ -237,12 +253,12 @@ dotdot exec -- git status
 
 **Execution modes (`--mode`):**
 
-| Mode | Respects deps | Parallelism | Description |
-|------|---------------|-------------|-------------|
-| `topo-parallel` | ✓ | ✓ | Parallel within dependency levels (default) |
-| `topo` | ✓ | ✗ | One at a time, dependency order |
-| `parallel` | ✗ | ✓ | All at once, ignore deps |
-| `sequential` | ✗ | ✗ | One at a time, alphabetical |
+| Mode            | Respects deps | Parallelism | Description                                 |
+| --------------- | ------------- | ----------- | ------------------------------------------- |
+| `topo-parallel` | ✓             | ✓           | Parallel within dependency levels (default) |
+| `topo`          | ✓             | ✗           | One at a time, dependency order             |
+| `parallel`      | ✗             | ✓           | All at once, ignore deps                    |
+| `sequential`    | ✗             | ✗           | One at a time, alphabetical                 |
 
 **Concurrency limit (`--max-parallel`):**
 
@@ -268,12 +284,14 @@ dotdot exec --mode=sequential --max-parallel=4 -- cmd
 ```
 
 **Behavior:**
+
 - Run command in each repo directory
 - Default mode (`topo-parallel`) runs repos in parallel while respecting dependency order
 - Stream output with repo prefix
 - Report exit codes
 
 **Output:**
+
 ```
 dotdot workspace: /path/to/workspace
 
@@ -304,9 +322,11 @@ dotdot schema -o schema/dotdot.schema.json
 ```
 
 **Flags:**
+
 - `-o, --output <file>` - Output file path (prints to stdout if omitted)
 
 **Use cases:**
+
 - Generate schema for editor autocompletion
 - Validate config files
 - Update published schema
@@ -315,20 +335,20 @@ dotdot schema -o schema/dotdot.schema.json
 
 Commands that operate on multiple repos support execution modes via `--mode`:
 
-| Mode | Respects deps | Parallelism | Description |
-|------|---------------|-------------|-------------|
-| `topo-parallel` | ✓ | ✓ | Parallel within dependency levels |
-| `topo` | ✓ | ✗ | One at a time, dependency order |
-| `parallel` | ✗ | ✓ | All at once, ignore deps |
-| `sequential` | ✗ | ✗ | One at a time, alphabetical |
+| Mode            | Respects deps | Parallelism | Description                       |
+| --------------- | ------------- | ----------- | --------------------------------- |
+| `topo-parallel` | ✓             | ✓           | Parallel within dependency levels |
+| `topo`          | ✓             | ✗           | One at a time, dependency order   |
+| `parallel`      | ✗             | ✓           | All at once, ignore deps          |
+| `sequential`    | ✗             | ✗           | One at a time, alphabetical       |
 
 **Defaults by command:**
 
-| Command | Default mode | Rationale |
-|---------|--------------|-----------|
-| `exec` | `topo-parallel` | Build commands need dependency order |
-| `sync` | `topo-parallel` | Install commands may have cross-repo deps |
-| `pull` | `parallel` | Git operations are independent |
+| Command | Default mode    | Rationale                                 |
+| ------- | --------------- | ----------------------------------------- |
+| `exec`  | `topo-parallel` | Build commands need dependency order      |
+| `sync`  | `topo-parallel` | Install commands may have cross-repo deps |
+| `pull`  | `parallel`      | Git operations are independent            |
 
 **Concurrency limiting:**
 

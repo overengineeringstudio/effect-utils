@@ -6,7 +6,7 @@ import { FileSystem } from '@effect/platform'
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { CurrentWorkingDirectory } from '../lib/mod.ts'
+import { ConfigOutOfSyncError, CurrentWorkingDirectory } from '../lib/mod.ts'
 import { createWorkspace, getGitRev, withTestCtx } from '../test-utils/mod.ts'
 import { statusCommand } from './mod.ts'
 
@@ -144,6 +144,36 @@ describe('status command', () => {
           .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
 
         expect(result).toBeUndefined()
+      }),
+    ))
+
+  it('fails when workspace member with dotdot.json is not in root config', (test) =>
+    withTestCtx(test)(
+      Effect.gen(function* () {
+        // Create workspace with a member that has dotdot.json but is NOT in root config
+        const workspacePath = yield* createWorkspace({
+          rootRepos: {}, // Empty - member not tracked
+          repos: [
+            {
+              name: 'untracked-member',
+              isGitRepo: true,
+              hasConfig: true,
+              remoteUrl: 'git@github.com:test/untracked-member.git',
+              configDeps: {},
+            },
+          ],
+        })
+
+        // Status should fail with ConfigOutOfSyncError
+        const result = yield* statusCommand
+          .handler({})
+          .pipe(
+            Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)),
+            Effect.flip,
+          )
+
+        expect(result).toBeInstanceOf(ConfigOutOfSyncError)
+        expect(result.message).toContain('untracked-member')
       }),
     ))
 })

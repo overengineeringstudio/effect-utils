@@ -4,7 +4,7 @@
     - `mono check`
     - `mono lint`
     - `mono test`
-  
+
 ## genie
 
 - [ ] add effect-lsp to each package

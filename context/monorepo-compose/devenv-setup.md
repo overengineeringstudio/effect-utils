@@ -7,6 +7,8 @@ Use devenv with GitHub URLs for a declarative development environment.
 ```yaml
 inputs:
   nixpkgs:
+    url: github:NixOS/nixpkgs/release-25.11
+  nixpkgsUnstable:
     url: github:NixOS/nixpkgs/nixos-unstable
   effect-utils:
     url: github:overengineeringstudio/effect-utils
@@ -17,16 +19,17 @@ inputs:
 ```nix
 { pkgs, inputs, ... }:
 let
+  system = pkgs.stdenv.hostPlatform.system;
+  pkgsUnstable = import inputs.nixpkgsUnstable { inherit system; };
   cliPackages = inputs.effect-utils.lib.mkCliPackages {
-    inherit pkgs;
-    pkgsUnstable = pkgs;
+    inherit pkgs pkgsUnstable;
   };
   cliBuildStamp = inputs.effect-utils.lib.cliBuildStamp { inherit pkgs; };
 in
 {
   packages = [
-    pkgs.bun
-    pkgs.nodejs_24
+    pkgsUnstable.bun
+    pkgsUnstable.nodejs_24
     cliPackages.genie
     cliPackages.dotdot
     cliBuildStamp.package
@@ -34,6 +37,7 @@ in
 
   enterShell = ''
     export WORKSPACE_ROOT="$PWD"
+    export PATH="$WORKSPACE_ROOT/node_modules/.bin:$PATH"
     ${cliBuildStamp.shellHook}
   '';
 }
@@ -42,6 +46,7 @@ in
 ## .envrc
 
 ```bash
+export WORKSPACE_ROOT=$(pwd)
 if command -v nix-shell &> /dev/null
 then
   eval "$(devenv direnvrc)"
@@ -54,7 +59,6 @@ fi
 ```
 .direnv/
 .devenv/
-.devenv.flake.nix
 devenv.lock
 result
 ```

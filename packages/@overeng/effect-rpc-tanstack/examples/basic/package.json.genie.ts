@@ -1,4 +1,9 @@
-import { catalog, packageJson, patchPostinstall, privatePackageDefaults } from '../../../../../genie/internal.ts'
+import {
+  catalog,
+  packageJson,
+  patchPostinstall,
+  privatePackageDefaults,
+} from '../../../../../genie/internal.ts'
 
 export default packageJson({
   name: 'effect-rpc-tanstack-example-basic',

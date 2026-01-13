@@ -21,7 +21,6 @@ dist
 devenv.local.nix
 /.devenv.flake.nix
 result
-# note: packages/**/.devenv.flake.nix is tracked - devenv looks for it instead of flake.nix (devenv#1137)
 
 # Storybook
 storybook-static

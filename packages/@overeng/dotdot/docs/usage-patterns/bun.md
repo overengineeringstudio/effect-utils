@@ -57,15 +57,18 @@ app/node_modules/@org/shared-lib/src/mod.ts
 ```
 
 **Benefits:**
+
 - Live updates - source changes visible immediately without reinstalling
 - No duplication - multiple consumers share actual source files
 - Fast installs - no copying required
 
 **When to reinstall:**
+
 - `file:` dep adds/removes dependencies in its package.json
 - You add/remove a `file:` dependency
 
 **No reinstall needed:**
+
 - Source file changes in any repo
 
 ## Gotchas

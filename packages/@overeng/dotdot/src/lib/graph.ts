@@ -153,8 +153,8 @@ export const toLayers = <T>(graph: Graph<T>): Effect.Effect<string[][], CycleErr
     return layers
   })
 
-import type { MemberConfigSource } from './loader.ts'
 import type { RepoConfig } from './config.ts'
+import type { MemberConfigSource } from './loader.ts'
 
 /**
  * Build a dependency graph from member configs

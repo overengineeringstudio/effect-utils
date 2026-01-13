@@ -21,27 +21,22 @@
         pkgsUnstable = import nixpkgsUnstable { inherit system; };
         mkBunCli = import ./nix/mk-bun-cli.nix { inherit pkgs pkgsUnstable; };
         cliBuildStamp = import ./nix/cli-build-stamp.nix { inherit pkgs; };
+        rootPath = self.outPath;
       in
       {
         packages = {
           cli-build-stamp = cliBuildStamp.package;
-          genie = mkBunCli {
-            name = "genie";
-            entry = "packages/@overeng/genie/src/build/mod.ts";
-            packageDir = "packages/@overeng/genie";
-            workspaceRoot = self;
-            typecheckTsconfig = "packages/@overeng/genie/tsconfig.json";
-            bunDepsHash = "sha256-xzYr5vBSxy85kn0pitidwiqY6BCZtUzseJlWtmr2NqY=";
-            inherit gitRev;
+          genie = import (rootPath + "/packages/@overeng/genie/nix/build.nix") {
+            inherit pkgs pkgsUnstable gitRev;
+            src = self;
           };
-          dotdot = mkBunCli {
-            name = "dotdot";
-            entry = "packages/@overeng/dotdot/src/cli.ts";
-            binaryName = "dotdot";
-            packageDir = "packages/@overeng/dotdot";
-            workspaceRoot = self;
-            typecheckTsconfig = "packages/@overeng/dotdot/tsconfig.json";
-            bunDepsHash = "sha256-0HfezPxkSbXI4+0sLjhZ4u44j7nIp/25zRXRXRxPaSM=";
+          dotdot = import (rootPath + "/packages/@overeng/dotdot/nix/build.nix") {
+            inherit pkgs pkgsUnstable gitRev;
+            src = self;
+          };
+          mono = import ./scripts/nix/build.nix {
+            inherit pkgs pkgsUnstable mkBunCli;
+            src = self;
             inherit gitRev;
           };
         };
@@ -59,7 +54,7 @@
       lib.cliBuildStamp = { pkgs, workspaceRoot ? null }:
         import ./nix/cli-build-stamp.nix { inherit pkgs workspaceRoot; };
 
-      # Legacy API for backwards compatibility
+      # Convenience helper for bundling the common genie/dotdot CLIs.
       lib.mkCliPackages = {
         pkgs,
         pkgsUnstable,
@@ -67,25 +62,20 @@
         workspaceRoot ? ./.,
       }:
         let
-          mkBunCli = import ./nix/mk-bun-cli.nix { inherit pkgs pkgsUnstable; };
-          specs = {
-            genie = {
-              name = "genie";
-              entry = "packages/@overeng/genie/src/build/mod.ts";
-              packageDir = "packages/@overeng/genie";
-              typecheckTsconfig = "packages/@overeng/genie/tsconfig.json";
-              bunDepsHash = "sha256-xzYr5vBSxy85kn0pitidwiqY6BCZtUzseJlWtmr2NqY=";
-            };
-            dotdot = {
-              name = "dotdot";
-              entry = "packages/@overeng/dotdot/src/cli.ts";
-              binaryName = "dotdot";
-              packageDir = "packages/@overeng/dotdot";
-              typecheckTsconfig = "packages/@overeng/dotdot/tsconfig.json";
-              bunDepsHash = "sha256-0HfezPxkSbXI4+0sLjhZ4u44j7nIp/25zRXRXRxPaSM=";
-            };
-          };
+          workspaceRootPath =
+            if builtins.isAttrs workspaceRoot && builtins.hasAttr "outPath" workspaceRoot
+            then workspaceRoot.outPath
+            else workspaceRoot;
         in
-        builtins.mapAttrs (_: spec: mkBunCli (spec // { inherit gitRev workspaceRoot; })) specs;
+        {
+          genie = import (workspaceRootPath + "/packages/@overeng/genie/nix/build.nix") {
+            inherit pkgs pkgsUnstable gitRev;
+            src = workspaceRoot;
+          };
+          dotdot = import (workspaceRootPath + "/packages/@overeng/dotdot/nix/build.nix") {
+            inherit pkgs pkgsUnstable gitRev;
+            src = workspaceRoot;
+          };
+        };
     };
 }

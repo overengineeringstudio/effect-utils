@@ -37,7 +37,6 @@ type UpdateResult = {
   message?: string | undefined
 }
 
-
 /** Update-revs command implementation */
 export const updateRevsCommand = Cli.Command.make(
   'update-revs',
@@ -70,9 +69,7 @@ export const updateRevsCommand = Cli.Command.make(
 
       // Filter to specified repos if any
       const reposToUpdate =
-        repos.length > 0
-          ? declaredRepos.filter(([name]) => repos.includes(name))
-          : declaredRepos
+        repos.length > 0 ? declaredRepos.filter(([name]) => repos.includes(name)) : declaredRepos
 
       if (reposToUpdate.length === 0) {
         if (repos.length > 0) {

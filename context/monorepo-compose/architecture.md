@@ -76,6 +76,7 @@ my-workspace/
 ```
 
 dotdot ensures:
+
 - Only one copy of each repo exists in the workspace
 - Revision conflicts are detected and reported
 - All repos can share the same dependency via relative paths

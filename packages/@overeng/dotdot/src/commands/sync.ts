@@ -111,10 +111,7 @@ const syncRepo = (workspaceRoot: string, name: string, config: RepoConfig) =>
   )
 
 /** Run package-level install commands */
-const runPackageInstalls = (
-  workspaceRoot: string,
-  packages: Record<string, PackageIndexEntry>,
-) =>
+const runPackageInstalls = (workspaceRoot: string, packages: Record<string, PackageIndexEntry>) =>
   Effect.gen(function* () {
     const installedPackages: string[] = []
 

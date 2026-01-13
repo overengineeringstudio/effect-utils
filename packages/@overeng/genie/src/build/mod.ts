@@ -14,7 +14,12 @@ import { checkFile, generateFile, summarizeResults } from './generation.ts'
 import { logTsconfigWarnings, validateTsconfigReferences } from './tsconfig-validation.ts'
 import type { GenieCommandConfig, GenieCommandEnv, GenieCommandError } from './types.ts'
 
-export { GenieCheckError, GenieFileError, GenieGenerationFailedError, GenieImportError } from './errors.ts'
+export {
+  GenieCheckError,
+  GenieFileError,
+  GenieGenerationFailedError,
+  GenieImportError,
+} from './errors.ts'
 
 const baseVersion = '0.1.0'
 const buildVersion = '__CLI_VERSION__'

@@ -153,12 +153,14 @@ const finalizeCatalog = <T extends CatalogInput>(catalog: T): Catalog<T> => {
  * ```
  */
 export function defineCatalog<const T extends CatalogInput>(input: T): Catalog<T>
-export function defineCatalog<const TBase extends CatalogInput, const TNew extends CatalogInput>(
-  input: { extends: Catalog<TBase>; packages: TNew },
-): Catalog<TBase & TNew>
-export function defineCatalog<const TNew extends CatalogInput>(
-  input: { extends: readonly Catalog<any>[]; packages: TNew },
-): Catalog<CatalogInput & TNew>
+export function defineCatalog<
+  const TBase extends CatalogInput,
+  const TNew extends CatalogInput,
+>(input: { extends: Catalog<TBase>; packages: TNew }): Catalog<TBase & TNew>
+export function defineCatalog<const TNew extends CatalogInput>(input: {
+  extends: readonly Catalog<any>[]
+  packages: TNew
+}): Catalog<CatalogInput & TNew>
 export function defineCatalog<const T extends CatalogInput>(
   input: T | ExtendedCatalogInput,
 ): Catalog<T> {

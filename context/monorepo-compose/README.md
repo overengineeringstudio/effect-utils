@@ -8,11 +8,11 @@ When developing across repos (e.g., app + shared libraries), you want local chan
 
 ## Solution
 
-| Component   | Purpose                                                                          |
-| ----------- | -------------------------------------------------------------------------------- |
-| **dotdot**  | Multi-repo workspace management with flat peer repos using `../` paths           |
-| **genie**   | TypeScript-based config generation (package.json, tsconfig)                      |
-| **devenv/Nix** | Distributes CLI tools (dotdot, genie) before `bun install` runs               |
+| Component      | Purpose                                                                |
+| -------------- | ---------------------------------------------------------------------- |
+| **dotdot**     | Multi-repo workspace management with flat peer repos using `../` paths |
+| **genie**      | TypeScript-based config generation (package.json, tsconfig)            |
+| **devenv/Nix** | Distributes CLI tools (dotdot, genie) before `bun install` runs        |
 
 > **Important:** genie CLI is installed via Nix/devenv, not as an npm dependency. The genie lib types are accessed via Node.js subpath imports (`#genie/*`).
 
@@ -54,6 +54,8 @@ Create `devenv.yaml`:
 ```yaml
 inputs:
   nixpkgs:
+    url: github:NixOS/nixpkgs/release-25.11
+  nixpkgsUnstable:
     url: github:NixOS/nixpkgs/nixos-unstable
   effect-utils:
     url: github:overengineeringstudio/effect-utils
@@ -64,22 +66,26 @@ Create `devenv.nix`:
 ```nix
 { pkgs, inputs, ... }:
 let
+  system = pkgs.stdenv.hostPlatform.system;
+  pkgsUnstable = import inputs.nixpkgsUnstable { inherit system; };
   cliPackages = inputs.effect-utils.lib.mkCliPackages {
-    inherit pkgs;
-    pkgsUnstable = pkgs;
+    inherit pkgs pkgsUnstable;
   };
+  cliBuildStamp = inputs.effect-utils.lib.cliBuildStamp { inherit pkgs; };
 in
 {
   packages = [
-    pkgs.bun
-    pkgs.nodejs_24
+    pkgsUnstable.bun
+    pkgsUnstable.nodejs_24
     cliPackages.genie
     cliPackages.dotdot
+    cliBuildStamp.package
   ];
 
   enterShell = ''
     export WORKSPACE_ROOT="$PWD"
     export PATH="$WORKSPACE_ROOT/node_modules/.bin:$PATH"
+    ${cliBuildStamp.shellHook}
   '';
 }
 ```
@@ -88,6 +94,7 @@ Create `.envrc`:
 
 ```bash
 export WORKSPACE_ROOT=$(pwd)
+eval "$(devenv direnvrc)"
 use devenv
 ```
 

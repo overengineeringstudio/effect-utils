@@ -3,10 +3,10 @@
     "devenv": {
       "locked": {
         "dir": "src/modules",
-        "lastModified": 1767897709,
+        "lastModified": 1768320233,
         "owner": "cachix",
         "repo": "devenv",
-        "rev": "3d10e576f12d762e617d20a51aa1e56ade1cbfcd",
+        "rev": "2d3be84318ea7a88683a4489ae35b4ebb56b4273",
         "type": "github"
       },
       "original": {
@@ -15,22 +15,6 @@
         "repo": "devenv",
         "type": "github"
       }
-    },
-    "dotdot": {
-      "inputs": {
-        "flake-utils": "flake-utils",
-        "nixpkgs": "nixpkgs",
-        "nixpkgsUnstable": "nixpkgsUnstable"
-      },
-      "locked": {
-        "path": "packages/@overeng/dotdot",
-        "type": "path"
-      },
-      "original": {
-        "path": "packages/@overeng/dotdot",
-        "type": "path"
-      },
-      "parent": []
     },
     "flake-compat": {
       "flake": false,
@@ -63,73 +47,6 @@
         "repo": "flake-utils",
         "type": "github"
       }
-    },
-    "flake-utils_2": {
-      "inputs": {
-        "systems": "systems_2"
-      },
-      "locked": {
-        "lastModified": 1731533236,
-        "owner": "numtide",
-        "repo": "flake-utils",
-        "rev": "11707dc2f618dd54ca8739b309ec4fc024de578b",
-        "type": "github"
-      },
-      "original": {
-        "owner": "numtide",
-        "repo": "flake-utils",
-        "type": "github"
-      }
-    },
-    "flake-utils_3": {
-      "inputs": {
-        "systems": "systems_3"
-      },
-      "locked": {
-        "lastModified": 1731533236,
-        "owner": "numtide",
-        "repo": "flake-utils",
-        "rev": "11707dc2f618dd54ca8739b309ec4fc024de578b",
-        "type": "github"
-      },
-      "original": {
-        "owner": "numtide",
-        "repo": "flake-utils",
-        "type": "github"
-      }
-    },
-    "flake-utils_4": {
-      "inputs": {
-        "systems": "systems_4"
-      },
-      "locked": {
-        "lastModified": 1731533236,
-        "owner": "numtide",
-        "repo": "flake-utils",
-        "rev": "11707dc2f618dd54ca8739b309ec4fc024de578b",
-        "type": "github"
-      },
-      "original": {
-        "owner": "numtide",
-        "repo": "flake-utils",
-        "type": "github"
-      }
-    },
-    "genie": {
-      "inputs": {
-        "flake-utils": "flake-utils_2",
-        "nixpkgs": "nixpkgs_2",
-        "nixpkgsUnstable": "nixpkgsUnstable_2"
-      },
-      "locked": {
-        "path": "packages/@overeng/genie",
-        "type": "path"
-      },
-      "original": {
-        "path": "packages/@overeng/genie",
-        "type": "path"
-      },
-      "parent": []
     },
     "git-hooks": {
       "inputs": {
@@ -172,31 +89,12 @@
         "type": "github"
       }
     },
-    "mono": {
-      "inputs": {
-        "flake-utils": "flake-utils_3",
-        "nixpkgs": "nixpkgs_3",
-        "nixpkgsUnstable": "nixpkgsUnstable_3",
-        "workspace": [
-          "workspace"
-        ]
-      },
-      "locked": {
-        "path": "scripts",
-        "type": "path"
-      },
-      "original": {
-        "path": "scripts",
-        "type": "path"
-      },
-      "parent": []
-    },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1768231360,
+        "lastModified": 1768323494,
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "c94b6362858b1806c0b6fca7f58f366d2d7aca9b",
+        "rev": "2c3e5ec5df46d3aeee2a1da0bfedd74e21f4bf3a",
         "type": "github"
       },
       "original": {
@@ -221,86 +119,11 @@
         "type": "github"
       }
     },
-    "nixpkgsUnstable_2": {
-      "locked": {
-        "lastModified": 1767767207,
-        "owner": "NixOS",
-        "repo": "nixpkgs",
-        "rev": "5912c1772a44e31bf1c63c0390b90501e5026886",
-        "type": "github"
-      },
-      "original": {
-        "owner": "NixOS",
-        "ref": "nixos-unstable",
-        "repo": "nixpkgs",
-        "type": "github"
-      }
-    },
-    "nixpkgsUnstable_3": {
-      "locked": {
-        "lastModified": 1768127708,
-        "owner": "NixOS",
-        "repo": "nixpkgs",
-        "rev": "ffbc9f8cbaacfb331b6017d5a5abb21a492c9a38",
-        "type": "github"
-      },
-      "original": {
-        "owner": "NixOS",
-        "ref": "nixos-unstable",
-        "repo": "nixpkgs",
-        "type": "github"
-      }
-    },
-    "nixpkgs_2": {
-      "locked": {
-        "lastModified": 1767941974,
-        "owner": "NixOS",
-        "repo": "nixpkgs",
-        "rev": "c84982f743e6f72148273a0698431d4232413279",
-        "type": "github"
-      },
-      "original": {
-        "owner": "NixOS",
-        "ref": "release-25.11",
-        "repo": "nixpkgs",
-        "type": "github"
-      }
-    },
-    "nixpkgs_3": {
-      "locked": {
-        "lastModified": 1768296891,
-        "owner": "NixOS",
-        "repo": "nixpkgs",
-        "rev": "ecfe02ba1e4e6d0a1396121bdd6a25f54b262159",
-        "type": "github"
-      },
-      "original": {
-        "owner": "NixOS",
-        "ref": "release-25.11",
-        "repo": "nixpkgs",
-        "type": "github"
-      }
-    },
-    "nixpkgs_4": {
-      "locked": {
-        "lastModified": 1767767207,
-        "owner": "NixOS",
-        "repo": "nixpkgs",
-        "rev": "5912c1772a44e31bf1c63c0390b90501e5026886",
-        "type": "github"
-      },
-      "original": {
-        "owner": "NixOS",
-        "ref": "nixos-unstable",
-        "repo": "nixpkgs",
-        "type": "github"
-      }
-    },
     "playwright-web-flake": {
       "inputs": {
-        "flake-utils": "flake-utils_4",
+        "flake-utils": "flake-utils",
         "nixpkgs": [
-          "nixpkgs"
+          "nixpkgsUnstable"
         ]
       },
       "locked": {
@@ -319,16 +142,13 @@
     "root": {
       "inputs": {
         "devenv": "devenv",
-        "dotdot": "dotdot",
-        "genie": "genie",
         "git-hooks": "git-hooks",
-        "mono": "mono",
-        "nixpkgs": "nixpkgs_4",
+        "nixpkgs": "nixpkgs",
+        "nixpkgsUnstable": "nixpkgsUnstable",
         "playwright-web-flake": "playwright-web-flake",
         "pre-commit-hooks": [
           "git-hooks"
-        ],
-        "workspace": "workspace"
+        ]
       }
     },
     "systems": {
@@ -342,63 +162,6 @@
       "original": {
         "owner": "nix-systems",
         "repo": "default",
-        "type": "github"
-      }
-    },
-    "systems_2": {
-      "locked": {
-        "lastModified": 1681028828,
-        "owner": "nix-systems",
-        "repo": "default",
-        "rev": "da67096a3b9bf56a91d16901293e51ba5b49a27e",
-        "type": "github"
-      },
-      "original": {
-        "owner": "nix-systems",
-        "repo": "default",
-        "type": "github"
-      }
-    },
-    "systems_3": {
-      "locked": {
-        "lastModified": 1681028828,
-        "owner": "nix-systems",
-        "repo": "default",
-        "rev": "da67096a3b9bf56a91d16901293e51ba5b49a27e",
-        "type": "github"
-      },
-      "original": {
-        "owner": "nix-systems",
-        "repo": "default",
-        "type": "github"
-      }
-    },
-    "systems_4": {
-      "locked": {
-        "lastModified": 1681028828,
-        "owner": "nix-systems",
-        "repo": "default",
-        "rev": "da67096a3b9bf56a91d16901293e51ba5b49a27e",
-        "type": "github"
-      },
-      "original": {
-        "owner": "nix-systems",
-        "repo": "default",
-        "type": "github"
-      }
-    },
-    "workspace": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1768327003,
-        "owner": "overengineeringstudio",
-        "repo": "effect-utils",
-        "rev": "beecfa0d04b681fb8210011e413959065e1a17af",
-        "type": "github"
-      },
-      "original": {
-        "owner": "overengineeringstudio",
-        "repo": "effect-utils",
         "type": "github"
       }
     }

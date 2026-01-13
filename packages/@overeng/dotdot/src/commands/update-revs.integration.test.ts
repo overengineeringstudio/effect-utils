@@ -7,7 +7,13 @@ import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { CurrentWorkingDirectory } from '../lib/mod.ts'
-import { addCommit, createWorkspace, getGitRev, readConfig, withTestCtx } from '../test-utils/mod.ts'
+import {
+  addCommit,
+  createWorkspace,
+  getGitRev,
+  readConfig,
+  withTestCtx,
+} from '../test-utils/mod.ts'
 import { updateRevsCommand } from './mod.ts'
 
 describe('update-revs command', () => {
@@ -101,7 +107,8 @@ describe('update-revs command', () => {
         expect(config).toContain(`"rev": "${newRevA}"`)
         expect(config).toContain(`"rev": "${oldRevB}"`) // B should still have old rev
       }),
-    ))
+    ),
+  )
 
   it('dry run does not modify config', (test) =>
     withTestCtx(test)(

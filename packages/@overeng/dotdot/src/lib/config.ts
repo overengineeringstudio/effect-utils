@@ -92,7 +92,6 @@ export const RootConfigSchema = Schema.Struct({
 
 export type RootConfig = typeof RootConfigSchema.Type
 
-
 /** Config file name (user-authored) */
 export const CONFIG_FILE_NAME = 'dotdot.json'
 

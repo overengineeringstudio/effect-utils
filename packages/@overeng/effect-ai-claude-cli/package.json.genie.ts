@@ -15,7 +15,14 @@ export default packageJson({
     },
   },
   devDependencies: {
-    ...catalog.pick(...peerDepNames, '@effect/vitest', 'vite', 'vitest'),
+    ...catalog.pick(
+      '@effect/ai',
+      '@effect/platform',
+      '@effect/vitest',
+      'effect',
+      'vite',
+      'vitest',
+    ),
   },
   peerDependencies: catalog.peers(...peerDepNames),
 })

@@ -66,12 +66,22 @@ export const installCommand = (config: InstallConfig) =>
 
           // Show stderr if available
           if (result.stderr && result.stderr.trim().length > 0) {
-            yield* Console.log(`\n    stderr:\n${result.stderr.split('\n').map((line) => `      ${line}`).join('\n')}`)
+            yield* Console.log(
+              `\n    stderr:\n${result.stderr
+                .split('\n')
+                .map((line) => `      ${line}`)
+                .join('\n')}`,
+            )
           }
 
           // Show stdout if available and different from stderr
           if (result.stdout && result.stdout.trim().length > 0 && result.stdout !== result.stderr) {
-            yield* Console.log(`\n    stdout:\n${result.stdout.split('\n').map((line) => `      ${line}`).join('\n')}`)
+            yield* Console.log(
+              `\n    stdout:\n${result.stdout
+                .split('\n')
+                .map((line) => `      ${line}`)
+                .join('\n')}`,
+            )
           }
 
           yield* Console.log('')

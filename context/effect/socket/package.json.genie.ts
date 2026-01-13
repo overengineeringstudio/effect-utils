@@ -5,12 +5,7 @@ export default packageJson({
   private: true,
   type: 'module',
   dependencies: {
-    ...catalog.pick(
-      '@effect/platform',
-      '@effect/platform-node',
-      '@effect/rpc',
-      'effect',
-    ),
+    ...catalog.pick('@effect/platform', '@effect/platform-node', '@effect/rpc', 'effect'),
   },
   devDependencies: {
     ...catalog.pick('@types/node'),

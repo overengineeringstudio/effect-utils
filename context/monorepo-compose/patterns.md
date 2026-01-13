@@ -121,13 +121,13 @@ dotdot sync  # Clones missing repos, checks out pinned revisions
 
 ## Troubleshooting
 
-| Problem                        | Solution                                                     |
-| ------------------------------ | ------------------------------------------------------------ |
-| "Cannot find package X"        | Run `dotdot link` then `bun install`                         |
-| Repo not cloned                | Run `dotdot sync`                                            |
-| Wrong revision                 | Run `dotdot sync` to checkout pinned revisions               |
-| Revision conflict              | Run `dotdot tree --conflicts` to see conflicts               |
-| Symlink missing                | Run `dotdot link`                                            |
-| Nix can't find files           | Ensure repo is cloned, not just symlinked                    |
-| Nix flake input is a symlink   | Use `git+file:../repo` for nix, not `path:../repo`           |
-| Sub-flake purity boundaries    | See `../bun-cli-build/troubleshooting.md`                   |
+| Problem                      | Solution                                           |
+| ---------------------------- | -------------------------------------------------- |
+| "Cannot find package X"      | Run `dotdot link` then `bun install`               |
+| Repo not cloned              | Run `dotdot sync`                                  |
+| Wrong revision               | Run `dotdot sync` to checkout pinned revisions     |
+| Revision conflict            | Run `dotdot tree --conflicts` to see conflicts     |
+| Symlink missing              | Run `dotdot link`                                  |
+| Nix can't find files         | Ensure repo is cloned, not just symlinked          |
+| Nix flake input is a symlink | Use `git+file:../repo` for nix, not `path:../repo` |
+| Sub-flake purity boundaries  | See `../bun-cli-build/troubleshooting.md`          |

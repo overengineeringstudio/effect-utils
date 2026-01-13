@@ -6,7 +6,7 @@ import { FileSystem } from '@effect/platform'
 import { Effect, Option } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { CurrentWorkingDirectory, loadRootConfig } from '../lib/mod.ts'
+import { CurrentWorkingDirectory } from '../lib/mod.ts'
 import { createBareRepo, createWorkspace, getGitRev, withTestCtx } from '../test-utils/mod.ts'
 import { syncCommand } from './mod.ts'
 
@@ -144,6 +144,8 @@ describe('sync command', () => {
   it('adds workspace members with dotdot.json to root config', (test) =>
     withTestCtx(test)(
       Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+
         // Create a workspace with a "consumer" member that has dotdot.json but no exposes
         // This simulates a project like schickling.dev that only has deps
         const workspacePath = yield* createWorkspace({
@@ -169,11 +171,14 @@ describe('sync command', () => {
           .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
 
         // Verify consumer-project was added to root config
-        const rootConfig = yield* loadRootConfig(workspacePath)
-        expect(rootConfig.config.repos).toHaveProperty('consumer-project')
-        expect(rootConfig.config.repos['consumer-project']?.url).toBe(
-          'git@github.com:test/consumer-project.git',
-        )
+        const configContent = yield* fs.readFileString(`${workspacePath}/dotdot-root.json`)
+        const config = JSON.parse(configContent) as { repos: Record<string, { url: string }> }
+        expect(config.repos).toHaveProperty('consumer-project')
+        const consumerRepo = config.repos['consumer-project']
+        if (consumerRepo === undefined) {
+          return yield* Effect.die('Expected consumer-project to be added to root config')
+        }
+        expect(consumerRepo.url).toBe('git@github.com:test/consumer-project.git')
       }),
     ))
 })

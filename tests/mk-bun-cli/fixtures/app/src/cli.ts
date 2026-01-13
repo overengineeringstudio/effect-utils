@@ -1,5 +1,5 @@
-import { sharedMessage } from 'shared-lib'
 import { utilMessage } from '@acme/utils'
+import { sharedMessage } from 'shared-lib'
 
 const buildVersion = '__CLI_VERSION__'
 

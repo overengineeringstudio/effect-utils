@@ -351,10 +351,7 @@ export const installPackageCaptured = (
   )
 
 /** Install dependencies for a single package directory */
-export const installPackage = (
-  dir: string,
-  options?: { frozenLockfile?: boolean },
-) =>
+export const installPackage = (dir: string, options?: { frozenLockfile?: boolean }) =>
   runCommand({
     command: 'bun',
     args: ['install', ...(options?.frozenLockfile ? ['--frozen-lockfile'] : [])],

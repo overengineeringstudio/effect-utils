@@ -33,7 +33,9 @@ export class ConfigWriteError extends Schema.TaggedError<ConfigWriteError>()('Co
 const generateMemberConfigContent = (config: MemberConfig): string => {
   const output: MemberConfig = {
     $schema: JSON_SCHEMA_URL,
-    ...(config.exposes && Object.keys(config.exposes).length > 0 ? { exposes: config.exposes } : {}),
+    ...(config.exposes && Object.keys(config.exposes).length > 0
+      ? { exposes: config.exposes }
+      : {}),
     ...(config.deps && Object.keys(config.deps).length > 0 ? { deps: config.deps } : {}),
   }
   return JSON.stringify(output, null, 2) + '\n'
@@ -61,7 +63,9 @@ const generateRootConfigContent = (config: RootConfig): string => {
   const output: RootConfig = {
     $schema: JSON_SCHEMA_URL,
     repos: config.repos,
-    ...(config.packages && Object.keys(config.packages).length > 0 ? { packages: config.packages } : {}),
+    ...(config.packages && Object.keys(config.packages).length > 0
+      ? { packages: config.packages }
+      : {}),
   }
   return JSON.stringify(output, null, 2) + '\n'
 }
@@ -82,7 +86,6 @@ export const writeRootConfig = (configPath: string, config: RootConfig) =>
       ),
     )
   }).pipe(Effect.withSpan('config-writer/writeRootConfig'))
-
 
 /** Add or update a repo in a root config file */
 export const upsertRepo = (
@@ -155,7 +158,6 @@ export const createEmptyMemberConfig = (dir: string) =>
     yield* writeMemberConfig(configPath, config)
     return configPath
   }).pipe(Effect.withSpan('config-writer/createEmptyMemberConfig'))
-
 
 /** Generate content for the generated config file (dotdot-root.json) */
 const generateGeneratedConfigContent = (

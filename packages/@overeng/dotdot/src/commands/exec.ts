@@ -34,7 +34,6 @@ type ExecResult = {
   message?: string
 }
 
-
 /** Exec command implementation */
 export const execCommand = Cli.Command.make(
   'exec',

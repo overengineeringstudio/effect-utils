@@ -1,4 +1,9 @@
-import { catalog, packageJson, patchPostinstall, privatePackageDefaults } from '../../../genie/internal.ts'
+import {
+  catalog,
+  packageJson,
+  patchPostinstall,
+  privatePackageDefaults,
+} from '../../../genie/internal.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
 export default packageJson({

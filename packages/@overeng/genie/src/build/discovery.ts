@@ -4,9 +4,8 @@ import { fileURLToPath } from 'node:url'
 import { Error as PlatformError, FileSystem, Path } from '@effect/platform'
 import { Effect } from 'effect'
 
-import type { StatResult } from './types.ts'
-
 import { resolveImportMapSpecifierForImporterSync } from './import-map/mod.ts'
+import type { StatResult } from './types.ts'
 
 let importMapResolverRegistered = false
 

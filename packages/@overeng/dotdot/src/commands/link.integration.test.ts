@@ -173,7 +173,9 @@ describe('link command', () => {
         const cwdLayer = CurrentWorkingDirectory.fromPath(workspacePath)
 
         // First create symlinks
-        yield* linkSubcommands.create.handler({ dryRun: false, force: false }).pipe(Effect.provide(cwdLayer))
+        yield* linkSubcommands.create
+          .handler({ dryRun: false, force: false })
+          .pipe(Effect.provide(cwdLayer))
 
         const symlinkPath = `${workspacePath}/shared-lib`
         expect(yield* fs.exists(symlinkPath)).toBe(true)
@@ -208,12 +210,16 @@ describe('link command', () => {
         const symlinkPath = `${workspacePath}/shared-lib`
 
         // Create symlink first
-        yield* linkSubcommands.create.handler({ dryRun: false, force: false }).pipe(Effect.provide(cwdLayer))
+        yield* linkSubcommands.create
+          .handler({ dryRun: false, force: false })
+          .pipe(Effect.provide(cwdLayer))
         expect(yield* fs.exists(symlinkPath)).toBe(true)
 
         // Remove and then recreate
         yield* linkSubcommands.remove.handler({ dryRun: false }).pipe(Effect.provide(cwdLayer))
-        yield* linkSubcommands.create.handler({ dryRun: false, force: false }).pipe(Effect.provide(cwdLayer))
+        yield* linkSubcommands.create
+          .handler({ dryRun: false, force: false })
+          .pipe(Effect.provide(cwdLayer))
 
         // Symlink should still exist
         const stat = yield* fs.stat(symlinkPath)

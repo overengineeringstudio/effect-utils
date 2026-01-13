@@ -245,18 +245,16 @@ const parsePatchSpecifier = (specifier: string): [string, string] | undefined =>
 /**
  * Generate postinstall script commands for applying patches.
  */
-const generatePatchCommands = (
-  patchEntries: Array<[string, string]>,
-  location: string,
-): string => {
+const generatePatchCommands = (patchEntries: Array<[string, string]>, location: string): string => {
   return patchEntries
     .map(([specifier, patchPath]) => {
       const parsed = parsePatchSpecifier(specifier)
       if (!parsed) return undefined
       const [pkgName] = parsed
-      const relativePath = patchPath.startsWith('./') || patchPath.startsWith('../')
-        ? patchPath
-        : computeRelativePath(location, patchPath)
+      const relativePath =
+        patchPath.startsWith('./') || patchPath.startsWith('../')
+          ? patchPath
+          : computeRelativePath(location, patchPath)
       return `patch --forward -p1 -d node_modules/${pkgName} < ${relativePath} || true`
     })
     .filter((x): x is string => x !== undefined)
@@ -280,9 +278,7 @@ const generatePatchCommands = (
  * })
  * ```
  */
-export const patchPostinstall = (
-  customPatches: PatchesRegistry = patches,
-): ScriptValue => {
+export const patchPostinstall = (customPatches: PatchesRegistry = patches): ScriptValue => {
   const entries = Object.entries(customPatches).toSorted(([a], [b]) => a.localeCompare(b))
   return (location: string) => generatePatchCommands(entries, location)
 }

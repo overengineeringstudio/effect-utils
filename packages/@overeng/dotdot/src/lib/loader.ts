@@ -64,7 +64,6 @@ export type MemberConfigSource = {
   config: MemberConfig
 }
 
-
 /** Load and parse a JSON config file (shared helper) */
 const loadAndParseJson = (configPath: string) =>
   Effect.gen(function* () {
@@ -136,7 +135,6 @@ export const loadMemberConfigFile = (configPath: string) =>
 
     return config
   }).pipe(Effect.withSpan('loader/loadMemberConfigFile'))
-
 
 /** Find the workspace root (directory containing dotdot-root.json) */
 export const findWorkspaceRoot = (startDir: string) =>
@@ -212,7 +210,6 @@ export const loadMemberConfig = (repoDir: string) =>
       config,
     } satisfies MemberConfigSource
   }).pipe(Effect.withSpan('loader/loadMemberConfig'))
-
 
 /** Collect only member repo configs (not root) - used for sync */
 export const collectMemberConfigs = (workspaceRoot: string) =>
@@ -291,11 +288,11 @@ export const mergeMemberConfigs = (configs: MemberConfigSource[]): MergedConfig 
   return { repos, packages, membersWithConfig, declaredDeps }
 }
 
-
 /** Check if root config is in sync with member configs
- * Only checks that repos declared in member configs' deps are present in root config.
- * Repos can exist in root config without being declared in member configs
- * (e.g. manually added or no member configs exist).
+ * Checks that:
+ * - All workspace members (directories with dotdot.json) are in root config
+ * - All deps declared in member configs are in root config
+ * - All packages exposed in member configs are in root config
  */
 export const checkConfigSync = (workspaceRoot: string) =>
   Effect.gen(function* () {
@@ -303,8 +300,21 @@ export const checkConfigSync = (workspaceRoot: string) =>
     const memberConfigs = yield* collectMemberConfigs(workspaceRoot)
     const merged = mergeMemberConfigs(memberConfigs)
 
-    // Compare repos - check if root has all repos from member deps
     const rootRepoNames = new Set(Object.keys(rootConfig.config.repos))
+
+    // Check for workspace members not in root config
+    const missingMembers: string[] = []
+    for (const name of merged.membersWithConfig) {
+      if (!rootRepoNames.has(name)) {
+        missingMembers.push(name)
+      }
+    }
+
+    if (missingMembers.length > 0) {
+      return yield* new ConfigOutOfSyncError({
+        message: `Config out of sync. Workspace members not in root config: ${missingMembers.join(', ')}. Run 'dotdot sync' to update.`,
+      })
+    }
 
     // Check for deps in members but not in root (these need to be synced)
     const missingInRoot: string[] = []

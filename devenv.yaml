@@ -1,20 +1,10 @@
 inputs:
   nixpkgs:
+    url: github:NixOS/nixpkgs/release-25.11
+  nixpkgsUnstable:
     url: github:NixOS/nixpkgs/nixos-unstable
   playwright-web-flake:
     url: github:pietdevries94/playwright-web-flake
     inputs:
       nixpkgs:
-        follows: nixpkgs
-  genie:
-    url: path:./packages/@overeng/genie
-  dotdot:
-    url: path:./packages/@overeng/dotdot
-  workspace:
-    url: github:overengineeringstudio/effect-utils
-    flake: false
-  mono:
-    url: path:./scripts
-    inputs:
-      workspace:
-        follows: workspace
+        follows: nixpkgsUnstable

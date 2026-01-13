@@ -84,12 +84,7 @@ export const createWorkspace = (fixture: WorkspaceFixture) =>
 
 /** Run a git command in a directory */
 const runGitCommand = (args: readonly string[], cwd: string) =>
-  pipe(
-    Command.make('git', ...args),
-    Command.workingDirectory(cwd),
-    Command.exitCode,
-    Effect.asVoid,
-  )
+  pipe(Command.make('git', ...args), Command.workingDirectory(cwd), Command.exitCode, Effect.asVoid)
 
 /** Generate JSON config file content */
 const generateConfig = (repos: Record<string, { url: string; rev?: string }>): string => {

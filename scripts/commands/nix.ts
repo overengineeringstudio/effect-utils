@@ -54,9 +54,7 @@ const getWorkspaceOverrideArgs = (packageSpec: NixPackageSpec): string[] => {
     return []
   }
 
-  const workspaceRef = workspaceRoot.startsWith('path:')
-    ? workspaceRoot
-    : `path:${workspaceRoot}`
+  const workspaceRef = workspaceRoot.startsWith('path:') ? workspaceRoot : `path:${workspaceRoot}`
 
   return ['--override-input', packageSpec.workspaceInput, workspaceRef]
 }

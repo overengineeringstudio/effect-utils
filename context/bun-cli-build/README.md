@@ -16,20 +16,20 @@ inside it.
 
 ### mkBunCli arguments
 
-| Argument | Required | Default | Notes |
-| --- | --- | --- | --- |
-| `name` | yes | - | Derivation name and default binary name. |
-| `entry` | yes | - | CLI entry file relative to `workspaceRoot`. |
-| `packageDir` | yes | - | Package directory relative to `workspaceRoot`. |
-| `workspaceRoot` | yes | - | Dotdot workspace root (flake input or path). |
-| `bunDepsHash` | yes | - | Fixed-output hash for bun deps snapshot. |
-| `binaryName` | no | `name` | Output binary name. |
-| `packageJsonPath` | no | `<packageDir>/package.json` | Used for version extraction. |
-| `gitRev` | no | `"unknown"` | Version suffix appended as `+<gitRev>`. |
-| `typecheck` | no | `true` | Run `tsc --noEmit` with `typecheckTsconfig`. |
-| `typecheckTsconfig` | no | `<packageDir>/tsconfig.json` | Tsconfig path relative to `workspaceRoot`. |
-| `smokeTestArgs` | no | `["--help"]` | Arguments for post-build smoke test. |
-| `dirty` | no | `false` | Copy bun deps locally and overlay local deps. |
+| Argument            | Required | Default                      | Notes                                          |
+| ------------------- | -------- | ---------------------------- | ---------------------------------------------- |
+| `name`              | yes      | -                            | Derivation name and default binary name.       |
+| `entry`             | yes      | -                            | CLI entry file relative to `workspaceRoot`.    |
+| `packageDir`        | yes      | -                            | Package directory relative to `workspaceRoot`. |
+| `workspaceRoot`     | yes      | -                            | Dotdot workspace root (flake input or path).   |
+| `bunDepsHash`       | yes      | -                            | Fixed-output hash for bun deps snapshot.       |
+| `binaryName`        | no       | `name`                       | Output binary name.                            |
+| `packageJsonPath`   | no       | `<packageDir>/package.json`  | Used for version extraction.                   |
+| `gitRev`            | no       | `"unknown"`                  | Version suffix appended as `+<gitRev>`.        |
+| `typecheck`         | no       | `true`                       | Run `tsc --noEmit` with `typecheckTsconfig`.   |
+| `typecheckTsconfig` | no       | `<packageDir>/tsconfig.json` | Tsconfig path relative to `workspaceRoot`.     |
+| `smokeTestArgs`     | no       | `["--help"]`                 | Arguments for post-build smoke test.           |
+| `dirty`             | no       | `false`                      | Copy bun deps locally and overlay local deps.  |
 
 ## CLI Version Pattern
 

@@ -10,12 +10,12 @@ Opinionated multi-repo workspace management CLI - an alternative to Git submodul
 
 Existing tools for managing multiple repos have significant trade-offs:
 
-| Approach | Pain points |
-|----------|-------------|
-| **Git submodules** | Nested repos, complex commands, detached HEAD, merge conflicts in pointers |
-| **Monorepo** (pnpm/yarn workspaces) | Single git repo for everything, can't mix ecosystems, large clones |
-| **Monorepo orchestrators** (nx, turborepo) | Complex setup, monorepo-centric, heavy tooling |
-| **Manual scripts** | No dependency tracking, no reproducibility, reinventing the wheel |
+| Approach                                   | Pain points                                                                |
+| ------------------------------------------ | -------------------------------------------------------------------------- |
+| **Git submodules**                         | Nested repos, complex commands, detached HEAD, merge conflicts in pointers |
+| **Monorepo** (pnpm/yarn workspaces)        | Single git repo for everything, can't mix ecosystems, large clones         |
+| **Monorepo orchestrators** (nx, turborepo) | Complex setup, monorepo-centric, heavy tooling                             |
+| **Manual scripts**                         | No dependency tracking, no reproducibility, reinventing the wheel          |
 
 dotdot takes a different approach: **flat peer repos with simple `../` paths**.
 
@@ -103,17 +103,17 @@ See [Core Concepts](./docs/concepts.md) for all configuration options.
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `dotdot init` | Initialize workspace (creates `dotdot.json`) |
-| `dotdot status` | Show repo states and revision status |
-| `dotdot sync` | Clone missing repos, checkout pinned revisions |
-| `dotdot update-revs` | Pin current HEAD revisions to configs |
-| `dotdot pull` | Pull all repos from remotes |
-| `dotdot tree` | Show dependency tree, detect conflicts |
-| `dotdot link` | Create symlinks from `packages` configs |
-| `dotdot exec` | Run command in all repos (topological order) |
-| `dotdot schema` | Generate JSON schema file |
+| Command              | Description                                    |
+| -------------------- | ---------------------------------------------- |
+| `dotdot init`        | Initialize workspace (creates `dotdot.json`)   |
+| `dotdot status`      | Show repo states and revision status           |
+| `dotdot sync`        | Clone missing repos, checkout pinned revisions |
+| `dotdot update-revs` | Pin current HEAD revisions to configs          |
+| `dotdot pull`        | Pull all repos from remotes                    |
+| `dotdot tree`        | Show dependency tree, detect conflicts         |
+| `dotdot link`        | Create symlinks from `packages` configs        |
+| `dotdot exec`        | Run command in all repos (topological order)   |
+| `dotdot schema`      | Generate JSON schema file                      |
 
 See [Commands](./docs/commands.md) for full reference including execution modes.
 

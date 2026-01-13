@@ -60,12 +60,8 @@ describe('tsconfigJson', () => {
       })
 
       expect(warnSpy).toHaveBeenCalledOnce()
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('extends'),
-      )
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('not recommended'),
-      )
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('extends'))
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('not recommended'))
     })
 
     it('logs warning when extends is an array', () => {

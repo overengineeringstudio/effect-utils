@@ -9,7 +9,7 @@ Use stable GitHub URLs in `flake.nix` and override inputs locally via `.envrc`.
   description = "My project";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/release-25.11";
     nixpkgsUnstable.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
     effect-utils = {
@@ -32,8 +32,8 @@ Use stable GitHub URLs in `flake.nix` and override inputs locally via `.envrc`.
       in {
         devShells.default = pkgs.mkShell {
           buildInputs = [
-            pkgs.bun
-            pkgs.nodejs_24
+            pkgsUnstable.bun
+            pkgsUnstable.nodejs_24
             cliPackages.genie
             cliPackages.dotdot
             cliBuildStamp.package
@@ -55,6 +55,7 @@ Override effect-utils to use local sibling repo:
 ```bash
 if command -v nix-shell &> /dev/null
 then
+  export WORKSPACE_ROOT=$(pwd)
   use flake . --override-input effect-utils path:../effect-utils
 fi
 ```
@@ -85,7 +86,7 @@ Deduplicate shared inputs using `follows`:
 
 ```nix
 inputs = {
-  nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  nixpkgs.url = "github:NixOS/nixpkgs/release-25.11";
   effect-utils = {
     url = "github:overengineeringstudio/effect-utils";
     inputs.nixpkgs.follows = "nixpkgs";

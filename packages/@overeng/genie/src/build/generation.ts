@@ -177,7 +177,13 @@ const enrichPackageJsonMarker = ({
 }
 
 /** Generate expected content for a genie file (shared between generate and dry-run) */
-export const getExpectedContent = ({ genieFilePath, cwd }: { genieFilePath: string; cwd: string }) =>
+export const getExpectedContent = ({
+  genieFilePath,
+  cwd,
+}: {
+  genieFilePath: string
+  cwd: string
+}) =>
   Effect.gen(function* () {
     const targetFilePath = genieFilePath.replace('.genie.ts', '')
     const sourceFile = path.basename(genieFilePath)

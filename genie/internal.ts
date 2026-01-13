@@ -5,10 +5,7 @@
  * For external/peer repo use, import from `./external.ts` instead.
  */
 
-import {
-  catalog as externalCatalog,
-  defineCatalog,
-} from './external.ts'
+import { catalog as externalCatalog, defineCatalog } from './external.ts'
 
 // Re-export from external for convenience (explicit exports to avoid barrel file)
 export {

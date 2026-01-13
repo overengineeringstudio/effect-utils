@@ -51,32 +51,32 @@ export default defineConfig({
 
 ### Fields
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `url` | Yes | Git clone URL |
-| `rev` | No | Pinned commit SHA |
-| `install` | No | Repo-level command after clone |
-| `packages` | No | Nested packages to symlink at workspace root |
+| Field      | Required | Description                                  |
+| ---------- | -------- | -------------------------------------------- |
+| `url`      | Yes      | Git clone URL                                |
+| `rev`      | No       | Pinned commit SHA                            |
+| `install`  | No       | Repo-level command after clone               |
+| `packages` | No       | Nested packages to symlink at workspace root |
 
 ### Package Fields
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `path` | Yes | Path within the repo |
-| `install` | No | Package-level command (runs after repo install) |
+| Field     | Required | Description                                     |
+| --------- | -------- | ----------------------------------------------- |
+| `path`    | Yes      | Path within the repo                            |
+| `install` | No       | Package-level command (runs after repo install) |
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `dotdot init` | Create `.DOTDOT_ROOT` marker |
-| `dotdot status` | Show repo states and revision status |
-| `dotdot sync` | Clone missing repos, checkout pinned revisions |
-| `dotdot update-revs` | Save current HEADs to config |
-| `dotdot pull` | Pull all repos |
-| `dotdot tree` | Show dependency tree |
-| `dotdot link` | Create symlinks from packages configs |
-| `dotdot exec -- cmd` | Run command in all repos |
+| Command              | Description                                    |
+| -------------------- | ---------------------------------------------- |
+| `dotdot init`        | Create `.DOTDOT_ROOT` marker                   |
+| `dotdot status`      | Show repo states and revision status           |
+| `dotdot sync`        | Clone missing repos, checkout pinned revisions |
+| `dotdot update-revs` | Save current HEADs to config                   |
+| `dotdot pull`        | Pull all repos                                 |
+| `dotdot tree`        | Show dependency tree                           |
+| `dotdot link`        | Create symlinks from packages configs          |
+| `dotdot exec -- cmd` | Run command in all repos                       |
 
 ## Path Dependencies by Ecosystem
 
@@ -142,6 +142,7 @@ export default defineConfig({
 ```
 
 Creates:
+
 ```
 workspace/
 ├── @scope/
@@ -168,6 +169,7 @@ workspace/
 ```
 
 When the same repo is declared in multiple configs:
+
 - Only one copy exists in the workspace
 - Revision conflicts are detected and reported
 - Use `dotdot tree --conflicts` to see conflicts
@@ -175,22 +177,26 @@ When the same repo is declared in multiple configs:
 ## Common Tasks
 
 ### Set up a new workspace
+
 1. `mkdir workspace && cd workspace`
 2. `dotdot init` (creates `.DOTDOT_ROOT`)
 3. `git clone` your main repo
 4. Run `dotdot sync` to get all dependencies
 
 ### Add a dependency to another repo
+
 1. Add entry to your repo's `dotdot.config.ts`
 2. Run `dotdot sync` from workspace root
 3. Use `../repo-name` in your package.json/Cargo.toml/flake.nix
 
 ### Pin current state
+
 ```bash
 dotdot update-revs  # saves all current HEADs to config files
 ```
 
 ### Restore to pinned state
+
 ```bash
 dotdot sync  # clones missing repos, checks out pinned revisions
 ```
@@ -201,18 +207,19 @@ dotdot sync  # clones missing repos, checks out pinned revisions
 
 A bun workspace monorepo uses features that don't work across repos:
 
-| Bun Workspace | dotdot Equivalent |
-|---------------|-------------------|
-| `"dep": "catalog:"` | `"dep": "^1.2.3"` (actual version) |
-| `"pkg": "workspace:*"` | `"pkg": "../pkg"` (relative path) |
-| Single `bun install` at root | `bun install` per repo |
-| Single `bun.lock` | Lockfile per repo |
+| Bun Workspace                | dotdot Equivalent                  |
+| ---------------------------- | ---------------------------------- |
+| `"dep": "catalog:"`          | `"dep": "^1.2.3"` (actual version) |
+| `"pkg": "workspace:*"`       | `"pkg": "../pkg"` (relative path)  |
+| Single `bun install` at root | `bun install` per repo             |
+| Single `bun.lock`            | Lockfile per repo                  |
 
 **Migration steps:**
 
 1. **Decide what stays together** - Tightly coupled packages can remain in a monorepo and use `packages`
 
 2. **Replace catalog: dependencies** - Change to actual version strings
+
    ```json
    // Before
    { "effect": "catalog:" }
@@ -221,6 +228,7 @@ A bun workspace monorepo uses features that don't work across repos:
    ```
 
 3. **Replace workspace: with paths** - For packages becoming separate repos
+
    ```json
    // Before
    { "@myorg/utils": "workspace:*" }
@@ -229,6 +237,7 @@ A bun workspace monorepo uses features that don't work across repos:
    ```
 
 4. **Create dotdot.config.ts** - In each repo that has dependencies
+
    ```typescript
    import { defineConfig } from 'dotdot'
 

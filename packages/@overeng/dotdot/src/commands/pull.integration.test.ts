@@ -7,12 +7,7 @@ import { Effect, Option, pipe } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { CurrentWorkingDirectory } from '../lib/mod.ts'
-import {
-  createBareRepo,
-  createWorkspace,
-  getGitRev,
-  withTestCtx,
-} from '../test-utils/mod.ts'
+import { createBareRepo, createWorkspace, getGitRev, withTestCtx } from '../test-utils/mod.ts'
 import { pullCommand } from './mod.ts'
 
 describe('pull command', () => {
