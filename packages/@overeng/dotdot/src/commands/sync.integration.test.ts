@@ -6,7 +6,7 @@ import { FileSystem } from '@effect/platform'
 import { Effect, Option } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { CurrentWorkingDirectory } from '../lib/mod.ts'
+import { CurrentWorkingDirectory, loadRootConfig } from '../lib/mod.ts'
 import { createBareRepo, createWorkspace, getGitRev, withTestCtx } from '../test-utils/mod.ts'
 import { syncCommand } from './mod.ts'
 
@@ -138,6 +138,42 @@ describe('sync command', () => {
           .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
 
         expect(true).toBe(true)
+      }),
+    ))
+
+  it('adds workspace members with dotdot.json to root config', (test) =>
+    withTestCtx(test)(
+      Effect.gen(function* () {
+        // Create a workspace with a "consumer" member that has dotdot.json but no exposes
+        // This simulates a project like schickling.dev that only has deps
+        const workspacePath = yield* createWorkspace({
+          rootRepos: {}, // Start with empty root config
+          repos: [
+            {
+              name: 'consumer-project',
+              isGitRepo: true,
+              hasConfig: true,
+              remoteUrl: 'git@github.com:test/consumer-project.git',
+              configDeps: {}, // Pure consumer, no deps for simplicity
+            },
+          ],
+        })
+
+        yield* syncCommand
+          .handler({
+            workspacePath: Option.none(),
+            dryRun: false,
+            mode: 'sequential',
+            maxParallel: Option.none(),
+          })
+          .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
+
+        // Verify consumer-project was added to root config
+        const rootConfig = yield* loadRootConfig(workspacePath)
+        expect(rootConfig.config.repos).toHaveProperty('consumer-project')
+        expect(rootConfig.config.repos['consumer-project']?.url).toBe(
+          'git@github.com:test/consumer-project.git',
+        )
       }),
     ))
 })

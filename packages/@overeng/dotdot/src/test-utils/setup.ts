@@ -20,6 +20,8 @@ export type RepoFixture = {
   configDeps?: Record<string, { url: string; rev?: string; install?: string }>
   /** Member config exposes (packages this repo provides) */
   configExposes?: Record<string, { path: string; install?: string }>
+  /** Git remote URL to set (for testing workspace member detection) */
+  remoteUrl?: string
 }
 
 export type WorkspaceFixture = {
@@ -64,6 +66,10 @@ export const createWorkspace = (fixture: WorkspaceFixture) =>
 
         if (repo.isDirty) {
           yield* fs.writeFileString(`${repoPath}/dirty.txt`, 'dirty\n')
+        }
+
+        if (repo.remoteUrl) {
+          yield* runGitCommand(['remote', 'add', 'origin', repo.remoteUrl], repoPath)
         }
       }
 

@@ -191,6 +191,19 @@ export const syncCommand = Cli.Command.make(
         ...merged.repos,
       }
 
+      // Add workspace members (directories with dotdot.json) to repos
+      for (const memberName of merged.membersWithConfig) {
+        if (memberName in allRepos) continue // Already tracked as a dependency
+
+        const memberPath = path.join(workspaceRoot, memberName)
+        const isGitRepo = yield* Git.isGitRepo(memberPath)
+        if (!isGitRepo) continue
+
+        const url = yield* Git.getRemoteUrl(memberPath)
+        const rev = yield* Git.getCurrentRev(memberPath)
+        allRepos[memberName] = { url, rev }
+      }
+
       // Detect dangling repos (exist in workspace but no config and not a dependency)
       const entries = yield* fs.readDirectory(workspaceRoot)
       const danglingRepos: string[] = []
