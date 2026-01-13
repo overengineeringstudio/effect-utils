@@ -1,4 +1,5 @@
 import { catalog, packageJson, patchPostinstall, privatePackageDefaults } from '../../../genie/internal.ts'
+import { otelSdkDeps } from '../../../genie/external.ts'
 
 /** Packages exposed as peer deps (consumers provide) + included in devDeps (for local dev/test) */
 const peerDepNames = [
@@ -56,14 +57,8 @@ export default packageJson({
   devDependencies: {
     ...catalog.pick(
       ...peerDepNames,
-      // Peer deps of our peer deps (needed for local dev/test)
-      '@opentelemetry/resources',
-      '@opentelemetry/sdk-logs',
-      '@opentelemetry/sdk-metrics',
-      '@opentelemetry/sdk-trace-base',
-      '@opentelemetry/sdk-trace-node',
-      '@opentelemetry/sdk-trace-web',
-      '@opentelemetry/semantic-conventions',
+      // Peer deps of @effect/opentelemetry (needed for local dev/test)
+      ...otelSdkDeps,
       // Dev-only deps
       '@effect/vitest',
       '@types/node',

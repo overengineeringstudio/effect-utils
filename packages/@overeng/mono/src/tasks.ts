@@ -1,9 +1,13 @@
+import * as Command from '@effect/platform/Command'
+import type * as CommandExecutor from '@effect/platform/CommandExecutor'
 import { FileSystem, Path } from '@effect/platform'
 import type { PlatformError } from '@effect/platform/Error'
-import { Effect, Exit, Option } from 'effect'
+import { Array, Effect, Exit, Layer, Logger, LogLevel, Option, Scope, Stream } from 'effect'
+
+import { cmd, CurrentWorkingDirectory } from '@overeng/utils/node'
 
 import { CommandError, GenieCoverageError } from './errors.ts'
-import { runCommand } from './utils.ts'
+import { IS_CI, runCommand } from './utils.ts'
 
 // =============================================================================
 // Task Configuration Types
@@ -268,6 +272,84 @@ export const findPackageDirs = (config: InstallConfig) =>
     return allDirs.toSorted()
   }).pipe(Effect.withSpan('findPackageDirs'))
 
+/** Remove node_modules directories for all packages that will be installed */
+export const cleanNodeModules = (config: InstallConfig) =>
+  Effect.gen(function* () {
+    const pathService = yield* Path.Path
+    const cwd = process.env.WORKSPACE_ROOT ?? process.cwd()
+    const dirs = yield* findPackageDirs(config)
+
+    yield* Effect.forEach(
+      dirs,
+      (dir) => {
+        const nodeModulesPath = pathService.join(dir, 'node_modules')
+        return runCommand({ command: 'rm', args: ['-rf', nodeModulesPath] })
+      },
+      { concurrency: 'unbounded' },
+    )
+
+    return dirs.length
+  }).pipe(Effect.withSpan('cleanNodeModules'))
+
+/** Result of installing a package */
+export type InstallResult =
+  | { _tag: 'success'; dir: string }
+  | { _tag: 'failure'; dir: string; error: unknown; stderr?: string; stdout?: string }
+
+/** Install dependencies for a single package directory (captures output, never fails) */
+export const installPackageCaptured = (
+  dir: string,
+  options?: { frozenLockfile?: boolean },
+): Effect.Effect<InstallResult, never, CommandExecutor.CommandExecutor> =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const args = ['install', ...(options?.frozenLockfile ? ['--frozen-lockfile'] : [])]
+
+      const command = Command.make('bun', ...args).pipe(
+        Command.workingDirectory(dir),
+        Command.stdout('pipe'),
+        Command.stderr('pipe'),
+      )
+
+      const result = yield* Command.start(command).pipe(
+        Effect.flatMap((process) =>
+          Effect.all({
+            exitCode: process.exitCode,
+            stdout: process.stdout.pipe(Stream.decodeText(), Stream.runCollect),
+            stderr: process.stderr.pipe(Stream.decodeText(), Stream.runCollect),
+          }),
+        ),
+        Effect.map(({ exitCode, stdout, stderr }) => {
+          const stdoutText = Array.fromIterable(stdout).join('')
+          const stderrText = Array.fromIterable(stderr).join('')
+
+          if (exitCode === 0) {
+            return { _tag: 'success' as const, dir }
+          }
+          return {
+            _tag: 'failure' as const,
+            dir,
+            error: new Error(`Command failed with exit code ${exitCode}`),
+            stdout: stdoutText,
+            stderr: stderrText,
+          }
+        }),
+        Effect.catchAll((error) =>
+          Effect.succeed({
+            _tag: 'failure' as const,
+            dir,
+            error,
+            stderr: String(error),
+          }),
+        ),
+        Effect.withSpan('installPackage', { attributes: { dir } }),
+        Effect.provide(Logger.minimumLogLevel(LogLevel.Info)),
+      )
+
+      return result
+    }),
+  )
+
 /** Install dependencies for a single package directory */
 export const installPackage = (
   dir: string,
@@ -279,21 +361,174 @@ export const installPackage = (
     cwd: dir,
   }).pipe(Effect.withSpan('installPackage', { attributes: { dir } }))
 
-/** Install dependencies for all packages in parallel */
+/** Install result with progress tracking */
+export type InstallProgress = {
+  total: number
+  completed: number
+  running: number
+  results: InstallResult[]
+}
+
+/** Install dependencies for all packages in parallel with progress tracking */
 export const installAll = (
+  config: InstallConfig,
+  options?: { frozenLockfile?: boolean; onProgress?: (progress: InstallProgress) => Effect.Effect<void> },
+) =>
+  Effect.gen(function* () {
+    const dirs = yield* findPackageDirs(config)
+    const total = dirs.length
+
+    const results = yield* Effect.all(
+      dirs.map((dir) => installPackageCaptured(dir, options)),
+      { concurrency: 'unbounded' },
+    )
+
+    return { results, total }
+  }).pipe(Effect.withSpan('installAll'))
+
+/** Install dependencies using task system with live progress (task-based implementation) */
+export const installAllWithTaskSystem = (
   config: InstallConfig,
   options?: { frozenLockfile?: boolean },
 ) =>
   Effect.gen(function* () {
+    const { task } = yield* Effect.promise(() => import('./task-system/api.ts'))
+    const { runTaskGraph } = yield* Effect.promise(() => import('./task-system/graph.ts'))
+    const { inlineRenderer } = yield* Effect.promise(() => import('./task-system/renderers/inline.ts'))
+    const pathService = yield* Path.Path
+    const cwd = process.env.WORKSPACE_ROOT ?? process.cwd()
+
     const dirs = yield* findPackageDirs(config)
+    const total = dirs.length
 
-    yield* Effect.all(
-      dirs.map((dir) => installPackage(dir, options)),
-      { concurrency: 'unbounded' },
-    )
+    if (total === 0) {
+      return { results: [], total: 0 }
+    }
 
-    return dirs
-  }).pipe(Effect.withSpan('installAll'))
+    // Create task for each package directory
+    const tasks = dirs.map((dir) => {
+      const relativePath = pathService.relative(cwd, dir)
+      const taskId = relativePath.replace(/\//g, ':') // Convert path to valid task ID
+
+      return task(taskId, `Install ${relativePath}`, {
+        cmd: 'bun',
+        args: ['install', ...(options?.frozenLockfile ? ['--frozen-lockfile'] : [])],
+        cwd: dir,
+      })
+    })
+
+    // Run with inline renderer
+    const renderer = inlineRenderer()
+    const result = yield* runTaskGraph(tasks, {
+      onStateChange: (state) => renderer.render(state),
+    })
+
+    yield* renderer.renderFinal(result.state)
+
+    // Convert task results to InstallResult format
+    const results: InstallResult[] = dirs.map((dir, idx) => {
+      const task = tasks[idx]
+      if (!task) {
+        return {
+          _tag: 'failure',
+          dir,
+          error: new Error('Task not found'),
+          stderr: '',
+          stdout: '',
+        }
+      }
+
+      const taskState = result.state.tasks[task.id]
+
+      if (!taskState || taskState.status !== 'success') {
+        const error = taskState?.error ? Option.getOrElse(taskState.error, () => 'Unknown error') : 'Task not found'
+        const stderr = taskState?.stderr.join('\n') ?? ''
+        const stdout = taskState?.stdout.join('\n') ?? ''
+
+        return {
+          _tag: 'failure',
+          dir,
+          error: new Error(error),
+          stderr,
+          stdout,
+        }
+      }
+
+      return { _tag: 'success', dir }
+    })
+
+    return { results, total }
+  }).pipe(Effect.withSpan('installAllWithTaskSystem'))
+
+// =============================================================================
+// Check Tasks
+// =============================================================================
+
+/** Configuration for check task system */
+export interface CheckTasksConfig {
+  oxcConfig: OxcConfig
+  genieConfig: GenieCoverageConfig
+  /** Skip genie check */
+  skipGenie?: boolean
+  /** Skip tests */
+  skipTests?: boolean
+}
+
+/** Run all checks using task system with live progress */
+export const checkAllWithTaskSystem = (config: CheckTasksConfig) =>
+  Effect.gen(function* () {
+    const { task } = yield* Effect.promise(() => import('./task-system/api.ts'))
+    const { runTaskGraph, runTaskGraphOrFail } = yield* Effect.promise(() => import('./task-system/graph.ts'))
+    const { inlineRenderer } = yield* Effect.promise(() => import('./task-system/renderers/inline.ts'))
+    const { ciRenderer } = yield* Effect.promise(() => import('./task-system/renderers/ci.ts'))
+
+    // Define parallel tasks (no dependencies)
+    const parallelTasks = [
+      ...(config.skipGenie
+        ? []
+        : [
+            task('genie', 'Genie check', {
+              cmd: 'genie',
+              args: ['--check'],
+            }),
+          ]),
+      task('typecheck', 'Type checking', {
+        cmd: 'tsc',
+        args: ['--build', 'tsconfig.all.json'],
+      }),
+      task('lint', 'Lint (format + oxlint + genie coverage)', allLintChecks(config)),
+    ]
+
+    // Extract parallel task IDs for dependencies
+    const parallelTaskIds = parallelTasks.map((t) => t.id)
+
+    // Define sequential tasks (depend on all parallel tasks)
+    const sequentialTasks = config.skipTests
+      ? []
+      : [
+          task(
+            'test',
+            'Tests',
+            {
+              cmd: 'vitest',
+              args: ['run'],
+            },
+            { dependencies: parallelTaskIds },
+          ),
+        ]
+
+    const allTasks = [...parallelTasks, ...sequentialTasks]
+
+    // Select renderer based on environment
+    const renderer = IS_CI ? ciRenderer() : inlineRenderer()
+    const result = yield* runTaskGraphOrFail(allTasks, {
+      onStateChange: (state) => renderer.render(state),
+    })
+
+    yield* renderer.renderFinal(result.state)
+
+    return result
+  }).pipe(Effect.withSpan('checkAllWithTaskSystem'))
 
 // =============================================================================
 // Composite Tasks

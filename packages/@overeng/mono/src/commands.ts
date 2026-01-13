@@ -4,6 +4,7 @@ export {
   checkCommand,
   checkCommandCI,
   checkCommandInteractive,
+  checkCommandWithTaskSystem,
   cleanCommand,
   createStandardCheckConfig,
   installCommand,

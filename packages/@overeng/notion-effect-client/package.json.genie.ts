@@ -30,7 +30,6 @@ export default packageJson({
       'vitest',
     ),
   },
-  peerDependencies: {
-    ...utilsPkg.data.peerDependencies,
-  },
+  // Expose @overeng/utils peer deps transitively (consumers need them)
+  peerDependencies: utilsPkg.data.peerDependencies,
 })

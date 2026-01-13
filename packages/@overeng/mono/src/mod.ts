@@ -92,6 +92,7 @@ export {
   // Build
   build,
   // Install
+  cleanNodeModules,
   findPackageDirs,
   installAll,
   installPackage,
@@ -127,6 +128,7 @@ export {
   // Check command variants
   checkCommandCI,
   checkCommandInteractive,
+  checkCommandWithTaskSystem,
   // Check config factory
   createStandardCheckConfig,
 } from './commands.ts'

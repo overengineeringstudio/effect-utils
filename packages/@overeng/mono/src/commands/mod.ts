@@ -4,6 +4,7 @@ export {
   checkCommand,
   checkCommandCI,
   checkCommandInteractive,
+  checkCommandWithTaskSystem,
   createStandardCheckConfig,
 } from './check.ts'
 export type {

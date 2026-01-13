@@ -3,9 +3,8 @@
 import { genieCommand } from '@overeng/genie/cli'
 import {
   buildCommand,
-  checkCommand,
+  checkCommandWithTaskSystem,
   cleanCommand,
-  createStandardCheckConfig,
   installCommand,
   lintCommand,
   runMonoCli,
@@ -49,7 +48,7 @@ runMonoCli({
     tsCommand(),
     cleanCommand(),
     installCommand(installConfig),
-    checkCommand(createStandardCheckConfig({ oxcConfig, genieConfig })),
+    checkCommandWithTaskSystem({ oxcConfig, genieConfig }),
     genieCommand,
     nixCommand,
     contextCommand,

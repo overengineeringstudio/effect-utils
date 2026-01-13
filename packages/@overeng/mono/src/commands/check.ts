@@ -7,8 +7,8 @@ import { Cause, Console, Effect, Exit, Stream } from 'effect'
 import { CurrentWorkingDirectory, printFinalSummary, TaskRunner } from '@overeng/utils/node'
 
 import type { CommandError, GenieCoverageError } from '../errors.ts'
-import type { GenieCoverageConfig, OxcConfig } from '../tasks.ts'
-import { allLintChecks, genieCheck, testRun, typeCheck } from '../tasks.ts'
+import type { CheckTasksConfig, GenieCoverageConfig, OxcConfig } from '../tasks.ts'
+import { allLintChecks, checkAllWithTaskSystem, genieCheck, testRun, typeCheck } from '../tasks.ts'
 import { ciGroup, ciGroupEnd, IS_CI } from '../utils.ts'
 
 /** Error types that check tasks can produce */
@@ -138,6 +138,26 @@ export const checkCommand = (config: CheckCommandConfig) =>
       }
     }),
   ).pipe(Command.withDescription('Run all checks (genie + typecheck + format + lint + test)'))
+
+/**
+ * Create a check command using the new task system.
+ * This replaces checkCommand with a simpler implementation using the task runner.
+ */
+export const checkCommandWithTaskSystem = (config: {
+  oxcConfig: OxcConfig
+  genieConfig: GenieCoverageConfig
+  skipGenie?: boolean
+  skipTests?: boolean
+}) =>
+  Command.make('check', {}, () => {
+    const taskConfig: CheckTasksConfig = {
+      oxcConfig: config.oxcConfig,
+      genieConfig: config.genieConfig,
+      ...(config.skipGenie !== undefined ? { skipGenie: config.skipGenie } : {}),
+      ...(config.skipTests !== undefined ? { skipTests: config.skipTests } : {}),
+    }
+    return checkAllWithTaskSystem(taskConfig).pipe(Effect.asVoid)
+  }).pipe(Command.withDescription('Run all checks (genie + typecheck + format + lint + test)'))
 
 /** Create a standard check configuration for Effect monorepos */
 export const createStandardCheckConfig = ({

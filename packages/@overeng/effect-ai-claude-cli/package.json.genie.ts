@@ -1,5 +1,7 @@
 import { catalog, packageJson, privatePackageDefaults } from '../../../genie/internal.ts'
 
+const peerDepNames = ['@effect/ai', '@effect/platform', 'effect'] as const
+
 export default packageJson({
   name: '@overeng/effect-ai-claude-cli',
   ...privatePackageDefaults,
@@ -13,18 +15,7 @@ export default packageJson({
     },
   },
   devDependencies: {
-    ...catalog.pick(
-      '@effect/ai',
-      '@effect/platform',
-      '@effect/vitest',
-      'effect',
-      'vite',
-      'vitest',
-    ),
+    ...catalog.pick(...peerDepNames, '@effect/vitest', 'vite', 'vitest'),
   },
-  peerDependencies: {
-    '@effect/ai': '>=0.32.0',
-    '@effect/platform': '>=0.93.0',
-    effect: '>=3.19.0',
-  },
+  peerDependencies: catalog.peers(...peerDepNames),
 })

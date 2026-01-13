@@ -21,9 +21,9 @@
     "vitest": "3.2.4"
   },
   "peerDependencies": {
-    "@effect/ai": ">=0.32.0",
-    "@effect/platform": ">=0.93.0",
-    "effect": ">=3.19.0"
+    "@effect/ai": "^0.33.2",
+    "@effect/platform": "^0.94.1",
+    "effect": "^3.19.14"
   },
   "$genie": {
     "source": "package.json.genie.ts",

@@ -42,7 +42,6 @@ export default packageJson({
   devDependencies: {
     ...catalog.pick('@effect/vitest', 'effect', 'vitest'),
   },
-  peerDependencies: {
-    ...utilsPkg.data.peerDependencies,
-  },
+  // Expose @overeng/utils peer deps transitively (consumers need them)
+  peerDependencies: utilsPkg.data.peerDependencies,
 })

@@ -4,6 +4,7 @@ import {
   patchPostinstall,
   privatePackageDefaults,
 } from '../../../genie/internal.ts'
+import utilsPkg from '../utils/package.json.genie.ts'
 
 const peerDepNames = [
   '@effect/cli',
@@ -44,5 +45,9 @@ export default packageJson({
       'vitest',
     ),
   },
-  peerDependencies: catalog.peers(...peerDepNames),
+  peerDependencies: {
+    // Expose @overeng/utils peer deps transitively (consumers need them)
+    ...utilsPkg.data.peerDependencies,
+    ...catalog.peers(...peerDepNames),
+  },
 })

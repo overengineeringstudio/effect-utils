@@ -69,6 +69,39 @@ Instead of using bun's native `patchedDependencies` feature, we apply patches ou
 - Patches only applied when dependency versions match
 - Existing postinstall scripts are preserved (chained)
 
+### Known Issues with This Approach
+
+The `postinstall` approach can cause Bun cache corruption with `file:` protocol dependencies during parallel installs.
+
+**Error observed:**
+
+```
+✗ Install packages/@overeng/notion-cli (12.2s)
+  │ ENOENT: failed copying files from cache to destination for package @overeng/notion-effect-client
+  │ $ patch --forward -p1 -d node_modules/effect-distributed-lock < ../../../patches/effect-distributed-lock@0.0.11.patch || true
+
+✗ Install scripts (12.6s)
+  │ ENOENT: failed copying files from cache to destination for package @overeng/genie
+  │ $ patch --forward -p1 -d node_modules/effect-distributed-lock < ../patches/effect-distributed-lock@0.0.11.patch || true
+```
+
+**Root cause:** Bun's cache-to-destination copy fails mid-operation for `file:` dependencies, leaving incomplete packages:
+
+```bash
+$ ls packages/@overeng/notion-cli/node_modules/@overeng/notion-effect-client/
+dist/                    # partial
+node_modules/
+package.json.genie.ts    # symlink only
+
+# Missing: package.json, src/, bun.lock, tsconfig.json
+```
+
+**Workaround:** Clean node_modules before installing:
+
+```bash
+mono install --clean
+```
+
 ## Removing the Workaround
 
 Once the bun bug is fixed, we can:

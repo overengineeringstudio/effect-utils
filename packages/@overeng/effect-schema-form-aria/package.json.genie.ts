@@ -1,6 +1,7 @@
 import { catalog, packageJson, privatePackageDefaults } from '../../../genie/internal.ts'
+import schemaFormPkg from '../effect-schema-form/package.json.genie.ts'
 
-const peerDepNames = ['effect', 'react', 'react-aria-components', 'react-dom'] as const
+const peerDepNames = ['react-aria-components', 'react-dom'] as const
 
 export default packageJson({
   name: '@overeng/effect-schema-form-aria',
@@ -20,6 +21,9 @@ export default packageJson({
   devDependencies: {
     ...catalog.pick(
       ...peerDepNames,
+      // From @overeng/effect-schema-form peer deps
+      'effect',
+      'react',
       '@storybook/react',
       '@storybook/react-vite',
       '@tailwindcss/vite',
@@ -31,5 +35,9 @@ export default packageJson({
       'vitest',
     ),
   },
-  peerDependencies: catalog.peers(...peerDepNames),
+  peerDependencies: {
+    // Expose @overeng/effect-schema-form peer deps transitively (consumers need them)
+    ...schemaFormPkg.data.peerDependencies,
+    ...catalog.peers(...peerDepNames),
+  },
 })

@@ -177,14 +177,16 @@
         "flake-utils": "flake-utils_3",
         "nixpkgs": "nixpkgs_3",
         "nixpkgsUnstable": "nixpkgsUnstable_3",
-        "workspace": "workspace"
+        "workspace": [
+          "workspace"
+        ]
       },
       "locked": {
-        "path": "./scripts",
+        "path": "scripts",
         "type": "path"
       },
       "original": {
-        "path": "./scripts",
+        "path": "scripts",
         "type": "path"
       },
       "parent": []
@@ -325,7 +327,8 @@
         "playwright-web-flake": "playwright-web-flake",
         "pre-commit-hooks": [
           "git-hooks"
-        ]
+        ],
+        "workspace": "workspace"
       }
     },
     "systems": {
@@ -385,25 +388,12 @@
       }
     },
     "workspace": {
-      "inputs": {
-        "flake-utils": [
-          "mono",
-          "flake-utils"
-        ],
-        "nixpkgs": [
-          "mono",
-          "nixpkgs"
-        ],
-        "nixpkgsUnstable": [
-          "mono",
-          "nixpkgsUnstable"
-        ]
-      },
+      "flake": false,
       "locked": {
-        "lastModified": 1768311749,
+        "lastModified": 1768327003,
         "owner": "overengineeringstudio",
         "repo": "effect-utils",
-        "rev": "a096abe89b406cf102d245f23208e834317d5e49",
+        "rev": "beecfa0d04b681fb8210011e413959065e1a17af",
         "type": "github"
       },
       "original": {

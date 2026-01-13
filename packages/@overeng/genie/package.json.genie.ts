@@ -37,6 +37,7 @@ export default packageJson({
     ),
   },
   peerDependencies: {
+    // Expose @overeng/utils peer deps transitively (consumers need them)
     ...utilsPkg.data.peerDependencies,
     ...catalog.peers('@effect/cli'),
   },
