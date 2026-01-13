@@ -9,7 +9,7 @@ export default tsconfigJson({
     noEmit: true,
     tsBuildInfoFile: './tsconfig.tsbuildinfo',
     lib: ['ES2023'],
-    types: ['node'],
+    types: ['node', 'bun'],
   },
   include: ['**/*.ts'],
   exclude: ['*.genie.ts'],

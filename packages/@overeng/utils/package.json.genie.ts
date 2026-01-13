@@ -1,8 +1,11 @@
-import { catalog, definePatchedDependencies, packageJson, privatePackageDefaults } from '../../../genie/internal.ts'
+import { catalog, packageJson, patchPostinstall, privatePackageDefaults } from '../../../genie/internal.ts'
 
 export default packageJson({
   name: '@overeng/utils',
   ...privatePackageDefaults,
+  scripts: {
+    postinstall: patchPostinstall(),
+  },
   exports: {
     '.': './src/isomorphic/mod.ts',
     './node': './src/node/mod.ts',
@@ -64,10 +67,4 @@ export default packageJson({
     '@playwright/test': `^${catalog['@playwright/test']}`,
     effect: `^${catalog.effect}`,
   },
-  patchedDependencies: definePatchedDependencies({
-    location: 'packages/@overeng/utils',
-    patches: {
-      'effect-distributed-lock@0.0.11': './patches/effect-distributed-lock@0.0.11.patch',
-    },
-  }),
 })

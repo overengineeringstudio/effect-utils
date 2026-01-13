@@ -14,6 +14,9 @@
       "./cli": "./dist/src/build/mod.js"
     }
   },
+  "scripts": {
+    "postinstall": "patch --forward -p1 -d node_modules/effect-distributed-lock < ../../../patches/effect-distributed-lock@0.0.11.patch || true"
+  },
   "dependencies": {},
   "devDependencies": {
     "@effect/cli": "0.73.0",
@@ -43,8 +46,5 @@
   "$genie": {
     "source": "package.json.genie.ts",
     "warning": "DO NOT EDIT - changes will be overwritten"
-  },
-  "patchedDependencies": {
-    "effect-distributed-lock@0.0.11": "../utils/patches/effect-distributed-lock@0.0.11.patch"
   }
 }

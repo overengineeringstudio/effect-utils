@@ -94,17 +94,21 @@ export const execCommand = Cli.Command.make(
             yield* Effect.log(`[${name}] Running...`)
 
             const result = yield* runShellCommand(command, repoPath).pipe(
-              Effect.map(() => ({ name, status: 'success' as const })),
+              Effect.map((output) => ({ name, status: 'success' as const, output })),
               Effect.catchAll((error) =>
                 Effect.succeed({
                   name,
                   status: 'failed' as const,
+                  output: undefined as string | undefined,
                   message: error instanceof Error ? error.message : String(error),
                 }),
               ),
             )
 
             if (result.status === 'success') {
+              if (result.output) {
+                yield* Effect.log(result.output)
+              }
               yield* Effect.log(`[${name}] Done`)
             } else {
               yield* Effect.log(`[${name}] Failed: ${result.message}`)

@@ -12,6 +12,7 @@ export type {
   CheckTaskError,
   CheckTaskRequirements,
 } from './check.ts'
+export { installCommand } from './install.ts'
 export { lintCommand } from './lint.ts'
 export { testCommand } from './test.ts'
 export { tsCommand } from './ts.ts'

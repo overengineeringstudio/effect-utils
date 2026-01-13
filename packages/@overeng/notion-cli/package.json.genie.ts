@@ -1,9 +1,12 @@
-import { catalog, packageJson, privatePackageDefaults } from '../../../genie/internal.ts'
+import { catalog, packageJson, patchPostinstall, privatePackageDefaults } from '../../../genie/internal.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
 export default packageJson({
   name: '@overeng/notion-cli',
   ...privatePackageDefaults,
+  scripts: {
+    postinstall: patchPostinstall(),
+  },
   exports: {
     '.': './src/mod.ts',
     './config': './src/config-def.ts',
@@ -41,8 +44,5 @@ export default packageJson({
   },
   peerDependencies: {
     ...utilsPkg.data.peerDependencies,
-  },
-  patchedDependencies: {
-    ...utilsPkg.data.patchedDependencies,
   },
 })

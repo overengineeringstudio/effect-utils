@@ -41,7 +41,7 @@
     "rootDir": ".",
     "noEmit": true,
     "tsBuildInfoFile": "./tsconfig.tsbuildinfo",
-    "types": ["node"]
+    "types": ["node", "bun"]
   },
   "include": ["**/*.ts"],
   "exclude": ["*.genie.ts"],

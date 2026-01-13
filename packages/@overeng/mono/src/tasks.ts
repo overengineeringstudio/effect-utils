@@ -41,6 +41,14 @@ export interface TestConfig {
   args?: string[]
 }
 
+/** Configuration for install task */
+export interface InstallConfig {
+  /** Directories to scan for package.json files (e.g. ['packages', 'scripts', 'apps']) */
+  scanDirs: string[]
+  /** Directories to skip when scanning (e.g. ['node_modules', '.git']) */
+  skipDirs?: string[]
+}
+
 // =============================================================================
 // Format Tasks
 // =============================================================================
@@ -210,6 +218,82 @@ export const build = (config?: TypeCheckConfig) =>
     command: 'tsc',
     args: ['--build', config?.tsconfigPath ?? 'tsconfig.all.json'],
   }).pipe(Effect.withSpan('build'))
+
+// =============================================================================
+// Install Tasks
+// =============================================================================
+
+/** Default directories to skip when scanning for packages */
+const DEFAULT_SKIP_DIRS = new Set(['node_modules', '.git', 'dist', '.devenv', '.direnv'])
+
+/** Find all directories containing package.json files */
+export const findPackageDirs = (config: InstallConfig) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const pathService = yield* Path.Path
+    const cwd = process.env.WORKSPACE_ROOT ?? process.cwd()
+    const skipDirs = new Set([...DEFAULT_SKIP_DIRS, ...(config.skipDirs ?? [])])
+
+    const walk = (dir: string): Effect.Effect<string[], PlatformError, never> =>
+      Effect.gen(function* () {
+        const exists = yield* fs.exists(dir)
+        if (!exists) return []
+
+        const entries = yield* fs.readDirectory(dir)
+        const results: string[] = []
+
+        for (const entry of entries) {
+          if (skipDirs.has(entry)) continue
+
+          const fullPath = pathService.join(dir, entry)
+          const stat = yield* fs.stat(fullPath)
+
+          if (stat.type === 'Directory') {
+            const nested = yield* walk(fullPath)
+            results.push(...nested)
+          } else if (entry === 'package.json') {
+            results.push(dir)
+          }
+        }
+
+        return results
+      })
+
+    const allDirs: string[] = []
+    for (const scanDir of config.scanDirs) {
+      const dirs = yield* walk(pathService.join(cwd, scanDir))
+      allDirs.push(...dirs)
+    }
+
+    return allDirs.toSorted()
+  }).pipe(Effect.withSpan('findPackageDirs'))
+
+/** Install dependencies for a single package directory */
+export const installPackage = (
+  dir: string,
+  options?: { frozenLockfile?: boolean },
+) =>
+  runCommand({
+    command: 'bun',
+    args: ['install', ...(options?.frozenLockfile ? ['--frozen-lockfile'] : [])],
+    cwd: dir,
+  }).pipe(Effect.withSpan('installPackage', { attributes: { dir } }))
+
+/** Install dependencies for all packages in parallel */
+export const installAll = (
+  config: InstallConfig,
+  options?: { frozenLockfile?: boolean },
+) =>
+  Effect.gen(function* () {
+    const dirs = yield* findPackageDirs(config)
+
+    yield* Effect.all(
+      dirs.map((dir) => installPackage(dir, options)),
+      { concurrency: 'unbounded' },
+    )
+
+    return dirs
+  }).pipe(Effect.withSpan('installAll'))
 
 // =============================================================================
 // Composite Tasks

@@ -1,0 +1,86 @@
+# Bun patchedDependencies Bug Workaround
+
+## Problem
+
+When using bun with `file:` protocol dependencies across multiple repos (via dotdot), bun's `patchedDependencies` feature doesn't work correctly.
+
+### Bug Description
+
+Bun reads `patchedDependencies` from source packages (packages referenced via `file:`) and uses those paths, but resolves them relative to the **consumer's** location instead of the **source package's** location.
+
+**Example:**
+- Source package `@overeng/utils` at `effect-utils/packages/@overeng/utils` has:
+  ```json
+  "patchedDependencies": {
+    "effect-distributed-lock@0.0.11": "../../../patches/effect-distributed-lock@0.0.11.patch"
+  }
+  ```
+- Consumer package `misc.schickling.dev` at `schickling.dev/apps/misc.schickling.dev` depends on `@overeng/utils` via `file:`
+- Bun tries to resolve `../../../patches/...` from the consumer's location, which points to the wrong place
+
+The consumer's own `patchedDependencies` (which has the correct path) is **ignored** in favor of the source package's config.
+
+### Why This Is Problematic
+
+- Packages can be both consumers and sources (e.g., `@overeng/cli` depends on `@overeng/utils`)
+- Different packages are at different directory depths
+- No single relative path works for all consumers
+- Symlinks work but aren't reproducible/portable
+
+## Related Issues
+
+- [Patching falls over when using local path dependencies](https://github.com/oven-sh/bun/issues/13531)
+
+## Current Workaround
+
+Instead of using bun's native `patchedDependencies` feature, we apply patches ourselves via `postinstall` scripts.
+
+### Implementation
+
+1. **Patches are centralized** at `effect-utils/patches/` (repo-relative paths)
+
+2. **Genie's `packageJson` accepts a `patches` registry:**
+   ```ts
+   import { packageJson, type PatchesRegistry } from '@overeng/genie'
+   import { patches } from '../../genie/repo.ts'
+
+   export default packageJson({
+     dependencies: { 'effect-distributed-lock': '0.0.11' },
+     patches, // Registry of all available patches
+   })
+   ```
+
+3. **Genie generates a `postinstall` script** that applies matching patches:
+   ```json
+   "scripts": {
+     "postinstall": "patch --forward -p1 -d node_modules/effect-distributed-lock < ../../patches/effect-distributed-lock@0.0.11.patch || true"
+   }
+   ```
+
+4. **`patch --forward`** makes it idempotent (skips already-applied patches)
+
+5. **`|| true`** prevents install failures if patch was already applied
+
+### Advantages of This Approach
+
+- Works across any directory depth
+- Explicit and composable via genie
+- No manual setup or symlinks required
+- Patches only applied when dependency versions match
+- Existing postinstall scripts are preserved (chained)
+
+## Removing the Workaround
+
+Once the bun bug is fixed, we can:
+
+1. Remove the `patches` parameter from `packageJson` calls
+2. Add back `patchedDependencies` to `package.json.genie.ts` files
+3. Genie already supports `patchedDependencies` with repo-relative path resolution
+4. Remove the postinstall script generation logic from genie
+
+### Files to Update
+
+- `packages/@overeng/genie/src/runtime/package-json/mod.ts` - Remove patches logic
+- `genie/repo.ts` - Remove patches registry export
+- All `package.json.genie.ts` files - Remove `patches` prop, add `patchedDependencies`
+- This workaround file - Delete or archive

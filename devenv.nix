@@ -3,6 +3,7 @@ let
   playwrightDriver = inputs.playwright-web-flake.packages.${pkgs.stdenv.hostPlatform.system}.playwright-driver;
   genie = inputs.genie.packages.${pkgs.stdenv.hostPlatform.system}.default;
   dotdot = inputs.dotdot.packages.${pkgs.stdenv.hostPlatform.system}.default;
+  mono = inputs.mono.packages.${pkgs.stdenv.hostPlatform.system}.default;
   cliBuildStamp = import ./nix/cli-build-stamp.nix { inherit pkgs; };
 in
 {
@@ -14,6 +15,7 @@ in
     pkgs.oxfmt
     genie
     dotdot
+    mono
     cliBuildStamp.package
   ];
 
@@ -23,7 +25,7 @@ in
 
   enterShell = ''
     export WORKSPACE_ROOT="$PWD"
-    export PATH="$WORKSPACE_ROOT/scripts/bin:$WORKSPACE_ROOT/node_modules/.bin:$PATH"
+    export PATH="$WORKSPACE_ROOT/node_modules/.bin:$PATH"
     ${cliBuildStamp.shellHook}
   '';
 }

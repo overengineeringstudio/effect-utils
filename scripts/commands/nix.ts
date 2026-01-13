@@ -19,17 +19,49 @@ class HashPatternNotFoundError extends Schema.TaggedError<HashPatternNotFoundErr
   },
 ) {}
 
+type NixPackageSpec = {
+  path: string
+  flakeRef: string
+  noWriteLock?: boolean
+  workspaceInput?: string
+}
+
 /** Known Nix packages in this monorepo */
 const NIX_PACKAGES = {
-  genie: 'packages/@overeng/genie',
-  dotdot: 'packages/@overeng/dotdot',
-} as const
+  genie: { path: 'packages/@overeng/genie', flakeRef: '.#default' },
+  dotdot: { path: 'packages/@overeng/dotdot', flakeRef: '.#default' },
+  mono: {
+    path: 'scripts',
+    flakeRef: 'path:.#default',
+    noWriteLock: true,
+    workspaceInput: 'workspace',
+  },
+} as const satisfies Record<string, NixPackageSpec>
 
 type NixPackageName = keyof typeof NIX_PACKAGES
 
 const allPackageNames = Object.keys(NIX_PACKAGES) as NixPackageName[]
 
-const packageOption = Options.choice('package', ['genie', 'dotdot', 'all'] as const).pipe(
+const getPackageSpec = (name: NixPackageName): NixPackageSpec => NIX_PACKAGES[name]
+
+const getWorkspaceOverrideArgs = (packageSpec: NixPackageSpec): string[] => {
+  if (packageSpec.workspaceInput === undefined) {
+    return []
+  }
+
+  const workspaceRoot = process.env.WORKSPACE_ROOT
+  if (workspaceRoot === undefined || workspaceRoot.length === 0) {
+    return []
+  }
+
+  const workspaceRef = workspaceRoot.startsWith('path:')
+    ? workspaceRoot
+    : `path:${workspaceRoot}`
+
+  return ['--override-input', packageSpec.workspaceInput, workspaceRef]
+}
+
+const packageOption = Options.choice('package', ['genie', 'dotdot', 'mono', 'all'] as const).pipe(
   Options.withAlias('p'),
   Options.withDescription('Package to operate on'),
   Options.withDefault('all' as const),
@@ -43,18 +75,23 @@ const reloadOption = Options.boolean('reload').pipe(
 /** Build a single Nix package */
 const buildPackage = (name: NixPackageName) =>
   Effect.gen(function* () {
-    const packagePath = NIX_PACKAGES[name]
+    const packageSpec = getPackageSpec(name)
     yield* Console.log(`Building ${name}...`)
+    const args = ['build', packageSpec.flakeRef, '-L']
+    if (packageSpec.noWriteLock) {
+      args.push('--no-write-lock-file')
+    }
+    args.push(...getWorkspaceOverrideArgs(packageSpec))
     yield* runCommand({
       command: 'nix',
-      args: ['build', '.#default', '-L'],
-      cwd: packagePath,
+      args,
+      cwd: packageSpec.path,
     })
     yield* Console.log(`✓ ${name} built successfully`)
   })
 
 /** Get packages to operate on based on --package option */
-const getPackages = (pkg: 'genie' | 'dotdot' | 'all'): NixPackageName[] =>
+const getPackages = (pkg: 'genie' | 'dotdot' | 'mono' | 'all'): NixPackageName[] =>
   pkg === 'all' ? allPackageNames : [pkg]
 
 /** Build subcommand - rebuilds Nix packages */
@@ -77,20 +114,25 @@ const buildSubcommand = Command.make(
 
       yield* Console.log(`\n✓ All done`)
     }),
-).pipe(Command.withDescription('Build Nix packages (genie, dotdot)'))
+).pipe(Command.withDescription('Build Nix packages (genie, dotdot, mono)'))
 
-/** Update outputHash in build.nix after bun.lock change */
+/** Update bunDepsHash in build.nix after bun.lock change */
 const updateHash = (name: NixPackageName) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const packagePath = NIX_PACKAGES[name]
-    const buildNixPath = `${packagePath}/nix/build.nix`
+    const packageSpec = getPackageSpec(name)
+    const buildNixPath = `${packageSpec.path}/nix/build.nix`
 
     yield* Console.log(`Updating hash for ${name}...`)
 
+    const args = ['build', packageSpec.flakeRef, '-L']
+    if (packageSpec.noWriteLock) {
+      args.push('--no-write-lock-file')
+    }
+    args.push(...getWorkspaceOverrideArgs(packageSpec))
     // Run nix build and capture the hash mismatch error
-    const command = PlatformCommand.make('nix', 'build', '.#default', '-L').pipe(
-      PlatformCommand.workingDirectory(packagePath),
+    const command = PlatformCommand.make('nix', ...args).pipe(
+      PlatformCommand.workingDirectory(packageSpec.path),
       PlatformCommand.stderr('pipe'),
     )
 
@@ -135,15 +177,15 @@ const updateHash = (name: NixPackageName) =>
     // Read and update build.nix
     const buildNix = yield* fs.readFileString(buildNixPath)
     const updatedBuildNix = buildNix.replace(
-      /outputHash = "sha256-[A-Za-z0-9+/=]+";/,
-      `outputHash = "${newHash}";`,
+      /bunDepsHash\s*=\s*(?:"sha256-[A-Za-z0-9+/=]+"|pkgs\.lib\.fakeHash|lib\.fakeHash);/,
+      `bunDepsHash = "${newHash}";`,
     )
 
     if (buildNix === updatedBuildNix) {
-      yield* Console.error(`Could not find outputHash pattern in ${buildNixPath}`)
+      yield* Console.error(`Could not find bunDepsHash pattern in ${buildNixPath}`)
       return yield* new HashPatternNotFoundError({
         buildNixPath,
-        message: `Hash pattern not found in ${buildNixPath}`,
+        message: `bunDepsHash pattern not found in ${buildNixPath}`,
       })
     }
 
@@ -155,7 +197,7 @@ const updateHash = (name: NixPackageName) =>
     yield* buildPackage(name)
   })
 
-/** Hash subcommand - updates outputHash after bun.lock changes */
+/** Hash subcommand - updates bunDepsHash after bun.lock changes */
 const hashSubcommand = Command.make('hash', { package: packageOption }, ({ package: pkg }) =>
   Effect.gen(function* () {
     const packages = getPackages(pkg)
@@ -166,7 +208,7 @@ const hashSubcommand = Command.make('hash', { package: packageOption }, ({ packa
 
     yield* Console.log(`\n✓ Hash update complete`)
   }),
-).pipe(Command.withDescription('Update outputHash in build.nix after bun.lock changes'))
+).pipe(Command.withDescription('Update bunDepsHash in build.nix after bun.lock changes'))
 
 /** Reload subcommand - reloads direnv to pick up rebuilt binaries */
 const reloadSubcommand = Command.make('reload', {}, () =>
@@ -180,5 +222,5 @@ const reloadSubcommand = Command.make('reload', {}, () =>
 /** Main nix command with subcommands */
 export const nixCommand = Command.make('nix').pipe(
   Command.withSubcommands([buildSubcommand, hashSubcommand, reloadSubcommand]),
-  Command.withDescription('Manage Nix-bundled binaries (genie, dotdot)'),
+  Command.withDescription('Manage Nix-bundled binaries (genie, dotdot, mono)'),
 )

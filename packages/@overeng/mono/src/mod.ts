@@ -16,6 +16,7 @@
  *   lintCommand,
  *   tsCommand,
  *   cleanCommand,
+ *   installCommand,
  *   checkCommand,
  *   createStandardCheckConfig,
  * } from '@overeng/mono'
@@ -24,6 +25,9 @@
  * const genieConfig = {
  *   scanDirs: ['packages', 'scripts'],
  *   skipDirs: ['node_modules', 'dist', '.git'],
+ * }
+ * const installConfig = {
+ *   scanDirs: ['packages', 'scripts'],
  * }
  *
  * runMonoCli({
@@ -36,6 +40,7 @@
  *     lintCommand({ oxcConfig, genieConfig }),
  *     tsCommand(),
  *     cleanCommand(),
+ *     installCommand(installConfig),
  *     checkCommand(createStandardCheckConfig({ oxcConfig, genieConfig })),
  *   ],
  * })
@@ -86,12 +91,25 @@ export {
   testWatch,
   // Build
   build,
+  // Install
+  findPackageDirs,
+  installAll,
+  installPackage,
+  installPackageCaptured,
   // Composite
   allLintChecks,
   allLintFixes,
 } from './tasks.ts'
 
-export type { GenieCoverageConfig, OxcConfig, TestConfig, TypeCheckConfig } from './tasks.ts'
+export type {
+  GenieCoverageConfig,
+  InstallConfig,
+  InstallProgress,
+  InstallResult,
+  OxcConfig,
+  TestConfig,
+  TypeCheckConfig,
+} from './tasks.ts'
 
 // =============================================================================
 // Commands
@@ -102,6 +120,7 @@ export {
   buildCommand,
   checkCommand,
   cleanCommand,
+  installCommand,
   lintCommand,
   testCommand,
   tsCommand,

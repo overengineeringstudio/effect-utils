@@ -1,5 +1,4 @@
-import { catalog, packageJson, privatePackageDefaults } from '../../../../../genie/internal.ts'
-import utilsPkg from '../../../../@overeng/utils/package.json.genie.ts'
+import { catalog, packageJson, patchPostinstall, privatePackageDefaults } from '../../../../../genie/internal.ts'
 
 export default packageJson({
   name: 'effect-rpc-tanstack-example-basic',
@@ -9,6 +8,7 @@ export default packageJson({
     build: 'vite build',
     start: 'node .output/server/index.mjs',
     'test:e2e': 'playwright test',
+    postinstall: patchPostinstall(),
   },
   dependencies: {
     ...catalog.pick(
@@ -33,8 +33,5 @@ export default packageJson({
       'typescript',
       'vite',
     ),
-  },
-  patchedDependencies: {
-    ...utilsPkg.data.patchedDependencies,
   },
 })

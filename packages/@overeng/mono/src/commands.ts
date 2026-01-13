@@ -6,6 +6,7 @@ export {
   checkCommandInteractive,
   cleanCommand,
   createStandardCheckConfig,
+  installCommand,
   lintCommand,
   testCommand,
   tsCommand,

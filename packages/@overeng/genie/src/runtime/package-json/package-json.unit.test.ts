@@ -144,6 +144,61 @@ describe('packageJson', () => {
   })
 })
 
+describe('packageJson with function scripts', () => {
+  it('resolves function script values at stringify time', () => {
+    const result = packageJson({
+      name: '@test/package',
+      version: '1.0.0',
+      scripts: {
+        postinstall: (location) => `echo "location: ${location}"`,
+      },
+    })
+
+    const json = result.stringify(mockGenieContext)
+    const parsed = JSON.parse(json)
+
+    expect(parsed.scripts).toBeDefined()
+    expect(parsed.scripts.postinstall).toBe('echo "location: packages/@test/package"')
+  })
+
+  it('handles mixed string and function scripts', () => {
+    const result = packageJson({
+      name: '@test/package',
+      version: '1.0.0',
+      scripts: {
+        build: 'tsc',
+        postinstall: (location) => `patch -p1 < ../${location}/patches/foo.patch`,
+      },
+    })
+
+    const json = result.stringify(mockGenieContext)
+    const parsed = JSON.parse(json)
+
+    expect(parsed.scripts.build).toBe('tsc')
+    expect(parsed.scripts.postinstall).toContain('patch -p1')
+  })
+
+  it('passes correct location to function scripts in nested packages', () => {
+    const contextInNested: GenieContext = {
+      location: 'packages/nested/deep',
+      cwd: '/workspace',
+    }
+
+    const result = packageJson({
+      name: '@test/package',
+      version: '1.0.0',
+      scripts: {
+        setup: (location) => `echo "${location}"`,
+      },
+    })
+
+    const json = result.stringify(contextInNested)
+    const parsed = JSON.parse(json)
+
+    expect(parsed.scripts.setup).toBe('echo "packages/nested/deep"')
+  })
+})
+
 describe('workspaceRoot', () => {
   it('returns GenieOutput with data and stringify', () => {
     const result = workspaceRoot({

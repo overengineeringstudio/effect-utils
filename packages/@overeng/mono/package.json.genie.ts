@@ -1,9 +1,12 @@
-import { catalog, packageJson, privatePackageDefaults } from '../../../genie/internal.ts'
+import { catalog, packageJson, patchPostinstall, privatePackageDefaults } from '../../../genie/internal.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
 export default packageJson({
   ...privatePackageDefaults,
   name: '@overeng/mono',
+  scripts: {
+    postinstall: patchPostinstall(),
+  },
   exports: {
     '.': './src/mod.ts',
   },
@@ -29,8 +32,5 @@ export default packageJson({
   peerDependencies: {
     ...utilsPkg.data.peerDependencies,
     '@effect/cli': `^${catalog['@effect/cli']}`,
-  },
-  patchedDependencies: {
-    ...utilsPkg.data.patchedDependencies,
   },
 })

@@ -134,6 +134,33 @@ type Funding =
       url?: string
     }
 
+/**
+ * Patches registry type.
+ * Keys are patch specifiers like `pkg@version`, values are repo-relative paths to patch files.
+ *
+ * @example
+ * ```ts
+ * const patches: PatchesRegistry = {
+ *   'effect-distributed-lock@0.0.11': 'patches/effect-distributed-lock@0.0.11.patch',
+ * }
+ * ```
+ */
+export type PatchesRegistry = Record<string, string>
+
+/**
+ * Script value can be a string or a function that resolves at stringify time.
+ * Functions receive the package location and return the script string.
+ *
+ * @example
+ * ```ts
+ * scripts: {
+ *   build: 'tsc',  // static string
+ *   postinstall: (location) => `patch -p1 < ${computePath(location)}/patches/foo.patch`,  // dynamic
+ * }
+ * ```
+ */
+export type ScriptValue = string | ((location: string) => string)
+
 /** Package.json data structure */
 export type PackageJsonData = {
   /** Package name */
@@ -185,8 +212,8 @@ export type PackageJsonData = {
     example?: string
     test?: string
   }
-  /** npm scripts */
-  scripts?: Record<string, string>
+  /** npm scripts (values can be strings or functions resolved at stringify time) */
+  scripts?: Record<string, ScriptValue>
   /** Package configuration values */
   config?: Record<string, unknown>
   /** Production dependencies */
@@ -237,6 +264,10 @@ export type PackageJsonData = {
    * Paths can be:
    * - Local: `./patches/pkg.patch` (relative to this package)
    * - Repo-relative: `packages/@overeng/utils/patches/pkg.patch` (resolved at stringify time)
+   *
+   * TODO: Re-embrace patchedDependencies once the bun bug is fixed.
+   * See context/workarounds/bun-patched-dependencies.md for details.
+   * Currently using postinstall scripts as a workaround via patchPostinstall().
    */
   patchedDependencies?: Record<string, string>
 }
@@ -421,6 +452,24 @@ const resolvePatchPaths = (
 }
 
 /**
+ * Resolve script values, calling functions with the current location.
+ * @param scripts - Scripts object with string or function values
+ * @param location - Current package's repo-relative location
+ */
+const resolveScripts = (
+  scripts: Record<string, ScriptValue> | undefined,
+  location: string,
+): Record<string, string> | undefined => {
+  if (scripts === undefined) return undefined
+
+  const resolved: Record<string, string> = {}
+  for (const [name, value] of Object.entries(scripts)) {
+    resolved[name] = typeof value === 'function' ? value(location) : value
+  }
+  return resolved
+}
+
+/**
  * Build the final package.json object with sorting, resolution, and $genie marker.
  * @param data - Package data
  * @param location - Current package's repo-relative location (for resolving internal deps)
@@ -447,6 +496,7 @@ const buildPackageJson = <T extends PackageJsonData>(
     ...(data.patchedDependencies !== undefined && {
       patchedDependencies: resolvePatchPaths(data.patchedDependencies, location),
     }),
+    ...(data.scripts !== undefined && { scripts: resolveScripts(data.scripts, location) }),
   }
 
   return sortObjectKeys({

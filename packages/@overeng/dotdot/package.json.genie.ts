@@ -1,13 +1,16 @@
 import {
   catalog,
   packageJson,
+  patchPostinstall,
   privatePackageDefaults,
 } from '../../../genie/internal.ts'
-import utilsPkg from '../utils/package.json.genie.ts'
 
 export default packageJson({
   name: '@overeng/dotdot',
   ...privatePackageDefaults,
+  scripts: {
+    postinstall: patchPostinstall(),
+  },
   exports: {
     '.': './src/mod.ts',
     './cli': './src/cli.ts',
@@ -44,8 +47,5 @@ export default packageJson({
     '@effect/printer': `^${catalog['@effect/printer']}`,
     '@effect/printer-ansi': `^${catalog['@effect/printer-ansi']}`,
     effect: `^${catalog.effect}`,
-  },
-  patchedDependencies: {
-    ...utilsPkg.data.patchedDependencies,
   },
 })

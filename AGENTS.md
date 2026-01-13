@@ -7,6 +7,7 @@ The `mono` CLI provides shortcuts for common development workflows:
 - **Testing**: `mono test [--unit|--integration] [--watch]` to run tests
 - **Build**: `mono build` to build all packages
 - **Clean**: `mono clean` to remove all build artifacts
+- **Install**: `mono install` to install dependencies for all packages (uses `--frozen-lockfile` in CI)
 - **Genie**: `mono genie [--check] [--watch]` to generate config files from `.genie.ts` sources
 - **Check**: `mono check` to run all checks (genie + ts + lint + test)
 

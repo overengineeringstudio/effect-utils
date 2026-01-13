@@ -13,12 +13,14 @@ import {
   definePatchedDependencies,
   packageJson,
   workspaceRoot,
+  type PatchesRegistry,
+  type ScriptValue,
   type TSConfigCompilerOptions,
 } from '../packages/@overeng/genie/src/runtime/mod.ts'
 
 /** Re-export so TypeScript can reference it in generated declaration files */
 export { CatalogBrand, defineCatalog, definePatchedDependencies, packageJson, workspaceRoot }
-export type { TSConfigCompilerOptions }
+export type { PatchesRegistry, ScriptValue, TSConfigCompilerOptions }
 
 /**
  * Catalog versions - single source of truth for dependency versions
@@ -163,6 +165,129 @@ export const createEffectUtilsRefs = (basePath: string) =>
       { path: `${basePath}/${pkgPath}` },
     ]),
   ) as { [K in keyof typeof effectUtilsPackages]: { path: string } }
+
+// =============================================================================
+// Patch Postinstall Helpers
+// =============================================================================
+
+/**
+ * Patches registry for effect-utils dependencies.
+ * Paths are relative to the effect-utils repo root.
+ *
+ * See context/workarounds/bun-patched-dependencies.md for details on why
+ * we use postinstall scripts instead of bun's patchedDependencies.
+ */
+const patches = {
+  'effect-distributed-lock@0.0.11': 'patches/effect-distributed-lock@0.0.11.patch',
+} as const satisfies PatchesRegistry
+
+/**
+ * Compute relative path from one repo-relative location to another.
+ */
+const computeRelativePath = (from: string, to: string): string => {
+  const fromParts = from.split('/').filter(Boolean)
+  const toParts = to.split('/').filter(Boolean)
+
+  let common = 0
+  while (
+    common < fromParts.length &&
+    common < toParts.length &&
+    fromParts[common] === toParts[common]
+  ) {
+    common++
+  }
+
+  const upCount = fromParts.length - common
+  const downPath = toParts.slice(common).join('/')
+  return '../'.repeat(upCount) + downPath || '.'
+}
+
+/**
+ * Parse a patch specifier into package name and version.
+ */
+const parsePatchSpecifier = (specifier: string): [string, string] | undefined => {
+  const lastAtIndex = specifier.lastIndexOf('@')
+  if (lastAtIndex <= 0) return undefined
+
+  if (specifier.startsWith('@')) {
+    const afterScope = specifier.indexOf('/', 1)
+    if (afterScope === -1) return undefined
+    const versionAtIndex = specifier.indexOf('@', afterScope)
+    if (versionAtIndex === -1) return undefined
+    return [specifier.slice(0, versionAtIndex), specifier.slice(versionAtIndex + 1)]
+  }
+
+  return [specifier.slice(0, lastAtIndex), specifier.slice(lastAtIndex + 1)]
+}
+
+/**
+ * Generate postinstall script commands for applying patches.
+ */
+const generatePatchCommands = (
+  patchEntries: Array<[string, string]>,
+  location: string,
+): string => {
+  return patchEntries
+    .map(([specifier, patchPath]) => {
+      const parsed = parsePatchSpecifier(specifier)
+      if (!parsed) return undefined
+      const [pkgName] = parsed
+      const relativePath = patchPath.startsWith('./') || patchPath.startsWith('../')
+        ? patchPath
+        : computeRelativePath(location, patchPath)
+      return `patch --forward -p1 -d node_modules/${pkgName} < ${relativePath} || true`
+    })
+    .filter((x): x is string => x !== undefined)
+    .join(' && ')
+}
+
+/**
+ * Creates a postinstall script function for applying patches.
+ * Returns a function that resolves at stringify time using ctx.location.
+ *
+ * Uses the effect-utils patches registry by default.
+ *
+ * @example
+ * ```ts
+ * import { patchPostinstall } from '../genie/repo.ts'
+ *
+ * export default packageJson({
+ *   scripts: {
+ *     postinstall: patchPostinstall(),
+ *   },
+ * })
+ * ```
+ */
+export const patchPostinstall = (
+  customPatches: PatchesRegistry = patches,
+): ScriptValue => {
+  const entries = Object.entries(customPatches).toSorted(([a], [b]) => a.localeCompare(b))
+  return (location: string) => generatePatchCommands(entries, location)
+}
+
+/**
+ * Creates a patchPostinstall function with prefixed paths for use from a peer repo.
+ *
+ * @param basePath Path from consuming repo to effect-utils root (e.g. 'effect-utils')
+ * @returns A patchPostinstall function that uses prefixed patch paths
+ *
+ * @example
+ * ```ts
+ * // In schickling.dev/genie/repo.ts
+ * import { createPatchPostinstall } from './effect-utils/genie/external.ts'
+ *
+ * export const patchPostinstall = createPatchPostinstall({ basePath: 'effect-utils' })
+ * ```
+ */
+export const createPatchPostinstall = (args: { basePath: string }) => {
+  const prefixedPatches = Object.fromEntries(
+    Object.entries(patches).map(([pkg, path]) => [pkg, `${args.basePath}/${path}`]),
+  ) as PatchesRegistry
+  return (customPatches: PatchesRegistry = prefixedPatches): ScriptValue => {
+    const entries = Object.entries(customPatches).toSorted(([a], [b]) => a.localeCompare(b))
+    return (location: string) => generatePatchCommands(entries, location)
+  }
+}
 
 /** Base tsconfig compiler options shared across all packages */
 export const baseTsconfigCompilerOptions = {

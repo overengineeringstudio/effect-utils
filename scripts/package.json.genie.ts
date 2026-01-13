@@ -1,10 +1,12 @@
-import { catalog, packageJson } from '../genie/internal.ts'
-import utilsPkg from '../packages/@overeng/utils/package.json.genie.ts'
+import { catalog, packageJson, patchPostinstall } from '../genie/internal.ts'
 
 export default packageJson({
   name: 'effect-utils-scripts',
   private: true,
   type: 'module',
+  scripts: {
+    postinstall: patchPostinstall(),
+  },
   dependencies: {
     ...catalog.pick(
       '@overeng/genie',
@@ -13,13 +15,11 @@ export default packageJson({
       '@effect/cli',
       '@effect/platform',
       '@effect/platform-node',
+      '@effect/workflow',
       'effect',
     ),
   },
   devDependencies: {
     ...catalog.pick('@types/node', 'typescript'),
-  },
-  patchedDependencies: {
-    ...utilsPkg.data.patchedDependencies,
   },
 })

@@ -29,14 +29,18 @@ const runGit = (args: string[], cwd: string) =>
     return result.trim()
   })
 
-/** Check if directory is a git repo */
+/**
+ * Check if directory is a git repo by verifying exit code.
+ * Note: We use `Command.exitCode` instead of `Command.string` because
+ * `Command.string` does not fail on non-zero exit codes.
+ */
 export const isGitRepo = (path: string) =>
   Effect.gen(function* () {
-    const result = yield* runGit(['rev-parse', '--git-dir'], path).pipe(
-      Effect.map(() => true),
-      Effect.catchAll(() => Effect.succeed(false)),
+    const command = Command.make('git', 'rev-parse', '--git-dir').pipe(
+      Command.workingDirectory(path),
     )
-    return result
+    const exitCode = yield* Command.exitCode(command)
+    return exitCode === 0
   }).pipe(Effect.withSpan('git/isGitRepo'))
 
 /** Get current HEAD revision */
@@ -100,11 +104,11 @@ export class ShellError extends Schema.TaggedError<ShellError>()('ShellError', {
   cause: Schema.optional(Schema.Defect),
 }) {}
 
-/** Run a shell command in a directory */
+/** Run a shell command in a directory, returns stdout */
 export const runShellCommand = (command: string, cwd: string) =>
   Effect.gen(function* () {
     const cmd = Command.make('sh', '-c', command).pipe(Command.workingDirectory(cwd))
-    yield* Command.string(cmd).pipe(
+    const output = yield* Command.string(cmd).pipe(
       Effect.mapError(
         (cause) =>
           new ShellError({
@@ -115,4 +119,5 @@ export const runShellCommand = (command: string, cwd: string) =>
           }),
       ),
     )
+    return output.trim()
   }).pipe(Effect.withSpan('shell/run'))

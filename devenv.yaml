@@ -10,3 +10,11 @@ inputs:
     url: path:./packages/@overeng/genie
   dotdot:
     url: path:./packages/@overeng/dotdot
+  workspace:
+    url: github:overengineeringstudio/effect-utils
+    flake: false
+  mono:
+    url: path:./scripts
+    inputs:
+      workspace:
+        follows: workspace

@@ -6,11 +6,13 @@ import {
   checkCommand,
   cleanCommand,
   createStandardCheckConfig,
+  installCommand,
   lintCommand,
   runMonoCli,
   testCommand,
   tsCommand,
 } from '@overeng/mono'
+import { resolveCliVersion } from '@overeng/utils/node/cli-version'
 
 import { contextCommand, nixCommand } from './commands/index.js'
 
@@ -23,9 +25,22 @@ const genieConfig = {
   skipDirs: ['node_modules', 'dist', '.git', '.direnv', '.devenv', 'tmp'],
 }
 
+/** Install configuration */
+const installConfig = {
+  scanDirs: ['packages', 'scripts', 'context'],
+}
+
+const baseVersion = '0.1.0'
+const buildVersion = '__CLI_VERSION__'
+const version = resolveCliVersion({
+  baseVersion,
+  buildVersion,
+  runtimeStampEnvVar: 'NIX_CLI_BUILD_STAMP',
+})
+
 runMonoCli({
   name: 'mono',
-  version: '0.1.0',
+  version,
   description: 'Monorepo management CLI',
   commands: [
     buildCommand(),
@@ -33,6 +48,7 @@ runMonoCli({
     lintCommand({ oxcConfig, genieConfig }),
     tsCommand(),
     cleanCommand(),
+    installCommand(installConfig),
     checkCommand(createStandardCheckConfig({ oxcConfig, genieConfig })),
     genieCommand,
     nixCommand,
