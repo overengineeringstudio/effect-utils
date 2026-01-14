@@ -31,12 +31,17 @@ export const empty = (): RepoGraph => ({
 })
 
 /** Add a repo to the graph (returns new graph) */
-export const addRepo = (
-  repoGraph: RepoGraph,
-  id: string,
-  config: RepoConfig,
-  dependencies: string[] = [],
-): RepoGraph => {
+export const addRepo = ({
+  repoGraph,
+  id,
+  config,
+  dependencies = [],
+}: {
+  repoGraph: RepoGraph
+  id: string
+  config: RepoConfig
+  dependencies?: string[]
+}): RepoGraph => {
   const idToIndex = new Map(repoGraph.idToIndex)
   const indexToId = new Map(repoGraph.indexToId)
 
@@ -73,14 +78,26 @@ export const addRepo = (
 export const repoIds = (repoGraph: RepoGraph): string[] => Array.from(repoGraph.idToIndex.keys())
 
 /** Get a repo's config by ID */
-export const getRepo = (repoGraph: RepoGraph, id: string): RepoConfig | undefined => {
+export const getRepo = ({
+  repoGraph,
+  id,
+}: {
+  repoGraph: RepoGraph
+  id: string
+}): RepoConfig | undefined => {
   const index = repoGraph.idToIndex.get(id)
   if (index === undefined) return undefined
   return Option.getOrUndefined(Graph.getNode(repoGraph.graph, index))
 }
 
 /** Get a repo's dependencies by ID */
-export const getDependencies = (repoGraph: RepoGraph, id: string): string[] => {
+export const getDependencies = ({
+  repoGraph,
+  id,
+}: {
+  repoGraph: RepoGraph
+  id: string
+}): string[] => {
   const index = repoGraph.idToIndex.get(id)
   if (index === undefined) return []
 
@@ -225,7 +242,7 @@ export const fromMemberConfigs = (configs: MemberConfigSource[]): RepoGraph => {
 
   // Add all dep repos as nodes (no dependencies)
   for (const [name, config] of allRepos) {
-    repoGraph = addRepo(repoGraph, name, config, [])
+    repoGraph = addRepo({ repoGraph, id: name, config, dependencies: [] })
   }
 
   // Add member repos with their dependencies
@@ -234,10 +251,10 @@ export const fromMemberConfigs = (configs: MemberConfigSource[]): RepoGraph => {
     const deps = source.config.deps ? Object.keys(source.config.deps) : []
 
     // Get existing config or create empty one for member repo
-    const existingConfig = getRepo(repoGraph, repoName)
+    const existingConfig = getRepo({ repoGraph, id: repoName })
     const nodeConfig = existingConfig ?? { url: '' }
 
-    repoGraph = addRepo(repoGraph, repoName, nodeConfig, deps)
+    repoGraph = addRepo({ repoGraph, id: repoName, config: nodeConfig, dependencies: deps })
   }
 
   return repoGraph

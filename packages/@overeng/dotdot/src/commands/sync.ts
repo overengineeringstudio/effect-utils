@@ -47,7 +47,15 @@ const SyncStatusLabels = {
 } as const
 
 /** Sync a single repo (clone if missing, checkout if pinned) */
-const syncRepo = (workspaceRoot: string, name: string, config: RepoConfig) =>
+const syncRepo = ({
+  workspaceRoot,
+  name,
+  config,
+}: {
+  workspaceRoot: string
+  name: string
+  config: RepoConfig
+}) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const repoPath = path.join(workspaceRoot, name)
@@ -63,7 +71,7 @@ const syncRepo = (workspaceRoot: string, name: string, config: RepoConfig) =>
         if (config.rev) {
           const currentRev = yield* Git.getCurrentRev(repoPath)
           if (!currentRev.startsWith(config.rev) && currentRev !== config.rev) {
-            yield* Git.checkout(repoPath, config.rev)
+            yield* Git.checkout({ repoPath, rev: config.rev })
             return {
               name,
               status: 'checked-out',
@@ -87,16 +95,16 @@ const syncRepo = (workspaceRoot: string, name: string, config: RepoConfig) =>
     }
 
     // Clone the repo
-    yield* Git.clone(config.url, repoPath)
+    yield* Git.clone({ url: config.url, targetPath: repoPath })
 
     // Checkout pinned rev if specified
     if (config.rev) {
-      yield* Git.checkout(repoPath, config.rev)
+      yield* Git.checkout({ repoPath, rev: config.rev })
     }
 
     // Run repo-level install command if specified
     if (config.install) {
-      yield* runShellCommand(config.install, repoPath)
+      yield* runShellCommand({ command: config.install, cwd: repoPath })
     }
 
     const rev = yield* Git.getCurrentRev(repoPath)
@@ -116,7 +124,13 @@ const syncRepo = (workspaceRoot: string, name: string, config: RepoConfig) =>
   )
 
 /** Run package-level install commands */
-const runPackageInstalls = (workspaceRoot: string, packages: Record<string, PackageIndexEntry>) =>
+const runPackageInstalls = ({
+  workspaceRoot,
+  packages,
+}: {
+  workspaceRoot: string
+  packages: Record<string, PackageIndexEntry>
+}) =>
   Effect.gen(function* () {
     const installedPackages: string[] = []
 
@@ -124,7 +138,7 @@ const runPackageInstalls = (workspaceRoot: string, packages: Record<string, Pack
       if (pkgConfig.install) {
         const pkgPath = path.join(workspaceRoot, pkgConfig.repo, pkgConfig.path)
         yield* Effect.log(`  Installing package ${pkgName}...`)
-        yield* runShellCommand(pkgConfig.install, pkgPath).pipe(
+        yield* runShellCommand({ command: pkgConfig.install, cwd: pkgPath }).pipe(
           Effect.catchAll((error) => {
             return Effect.logWarning(`  Failed to install ${pkgName}: ${error}`)
           }),
@@ -282,7 +296,7 @@ export const syncCommand = Cli.Command.make(
       const executeFn = ([name, config]: [string, RepoConfig]) =>
         Effect.gen(function* () {
           yield* Effect.log(`Syncing ${name}...`)
-          const result = yield* syncRepo(workspaceRoot, name, config)
+          const result = yield* syncRepo({ workspaceRoot, name, config })
           yield* Effect.log(`  ${result.status}: ${result.message ?? ''}`)
           return result
         })
@@ -294,7 +308,12 @@ export const syncCommand = Cli.Command.make(
         // Using member configs for dependency ordering
         const graph = RepoGraph.fromMemberConfigs(memberConfigs)
 
-        results = yield* executeTopoForAll(repoEntries, executeFn, graph, options).pipe(
+        results = yield* executeTopoForAll({
+          items: repoEntries,
+          fn: executeFn,
+          graph,
+          options,
+        }).pipe(
           Effect.catchTag('CycleError', (e) =>
             Effect.gen(function* () {
               yield* Effect.log(`Error: ${e.message}`)
@@ -304,22 +323,22 @@ export const syncCommand = Cli.Command.make(
           ),
         )
       } else {
-        results = yield* executeForAll(repoEntries, executeFn, options)
+        results = yield* executeForAll({ items: repoEntries, fn: executeFn, options })
       }
 
       // Run package install commands
       if (packageCount > 0) {
         yield* Effect.log('')
         yield* Effect.log('Running package installs...')
-        yield* runPackageInstalls(workspaceRoot, merged.packages)
+        yield* runPackageInstalls({ workspaceRoot, packages: merged.packages })
       }
 
       // Write the generated config with merged repos and packages
-      yield* writeGeneratedConfig(workspaceRoot, allRepos, merged.packages)
+      yield* writeGeneratedConfig({ workspaceRoot, repos: allRepos, packages: merged.packages })
 
       yield* Effect.log('')
 
-      const summary = buildSummary(results, SyncStatusLabels)
+      const summary = buildSummary({ results, statusLabels: SyncStatusLabels })
       yield* Effect.log(`Done: ${summary}`)
     }).pipe(Effect.withSpan('dotdot/sync')),
 )

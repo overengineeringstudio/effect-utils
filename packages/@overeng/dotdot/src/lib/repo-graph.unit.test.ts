@@ -12,9 +12,9 @@ describe('RepoGraph', () => {
   describe('topologicalSort', () => {
     it('sorts nodes with no dependencies', async () => {
       let graph = RepoGraph.empty()
-      graph = RepoGraph.addRepo(graph, 'a', { url: 'url-a' })
-      graph = RepoGraph.addRepo(graph, 'b', { url: 'url-b' })
-      graph = RepoGraph.addRepo(graph, 'c', { url: 'url-c' })
+      graph = RepoGraph.addRepo({ repoGraph: graph, id: 'a', config: { url: 'url-a' } })
+      graph = RepoGraph.addRepo({ repoGraph: graph, id: 'b', config: { url: 'url-b' } })
+      graph = RepoGraph.addRepo({ repoGraph: graph, id: 'c', config: { url: 'url-c' } })
 
       const result = await Effect.runPromise(RepoGraph.topologicalSort(graph))
 
@@ -27,9 +27,24 @@ describe('RepoGraph', () => {
     it('sorts linear dependencies', async () => {
       // c -> b -> a (a has no deps, b depends on a, c depends on b)
       let graph = RepoGraph.empty()
-      graph = RepoGraph.addRepo(graph, 'a', { url: 'url-a' }, [])
-      graph = RepoGraph.addRepo(graph, 'b', { url: 'url-b' }, ['a'])
-      graph = RepoGraph.addRepo(graph, 'c', { url: 'url-c' }, ['b'])
+      graph = RepoGraph.addRepo({
+        repoGraph: graph,
+        id: 'a',
+        config: { url: 'url-a' },
+        dependencies: [],
+      })
+      graph = RepoGraph.addRepo({
+        repoGraph: graph,
+        id: 'b',
+        config: { url: 'url-b' },
+        dependencies: ['a'],
+      })
+      graph = RepoGraph.addRepo({
+        repoGraph: graph,
+        id: 'c',
+        config: { url: 'url-c' },
+        dependencies: ['b'],
+      })
 
       const result = await Effect.runPromise(RepoGraph.topologicalSort(graph))
 
@@ -44,10 +59,30 @@ describe('RepoGraph', () => {
       //    \ /
       //     d
       let graph = RepoGraph.empty()
-      graph = RepoGraph.addRepo(graph, 'a', { url: 'url-a' }, [])
-      graph = RepoGraph.addRepo(graph, 'b', { url: 'url-b' }, ['a'])
-      graph = RepoGraph.addRepo(graph, 'c', { url: 'url-c' }, ['a'])
-      graph = RepoGraph.addRepo(graph, 'd', { url: 'url-d' }, ['b', 'c'])
+      graph = RepoGraph.addRepo({
+        repoGraph: graph,
+        id: 'a',
+        config: { url: 'url-a' },
+        dependencies: [],
+      })
+      graph = RepoGraph.addRepo({
+        repoGraph: graph,
+        id: 'b',
+        config: { url: 'url-b' },
+        dependencies: ['a'],
+      })
+      graph = RepoGraph.addRepo({
+        repoGraph: graph,
+        id: 'c',
+        config: { url: 'url-c' },
+        dependencies: ['a'],
+      })
+      graph = RepoGraph.addRepo({
+        repoGraph: graph,
+        id: 'd',
+        config: { url: 'url-d' },
+        dependencies: ['b', 'c'],
+      })
 
       const result = await Effect.runPromise(RepoGraph.topologicalSort(graph))
 
@@ -62,9 +97,24 @@ describe('RepoGraph', () => {
     it('detects cycles', async () => {
       // a -> b -> c -> a (cycle)
       let graph = RepoGraph.empty()
-      graph = RepoGraph.addRepo(graph, 'a', { url: 'url-a' }, ['c'])
-      graph = RepoGraph.addRepo(graph, 'b', { url: 'url-b' }, ['a'])
-      graph = RepoGraph.addRepo(graph, 'c', { url: 'url-c' }, ['b'])
+      graph = RepoGraph.addRepo({
+        repoGraph: graph,
+        id: 'a',
+        config: { url: 'url-a' },
+        dependencies: ['c'],
+      })
+      graph = RepoGraph.addRepo({
+        repoGraph: graph,
+        id: 'b',
+        config: { url: 'url-b' },
+        dependencies: ['a'],
+      })
+      graph = RepoGraph.addRepo({
+        repoGraph: graph,
+        id: 'c',
+        config: { url: 'url-c' },
+        dependencies: ['b'],
+      })
 
       const result = await Effect.runPromise(
         RepoGraph.topologicalSort(graph).pipe(
@@ -80,8 +130,18 @@ describe('RepoGraph', () => {
     it('ignores dependencies not in graph', async () => {
       // b depends on 'missing' which doesn't exist
       let graph = RepoGraph.empty()
-      graph = RepoGraph.addRepo(graph, 'a', { url: 'url-a' }, [])
-      graph = RepoGraph.addRepo(graph, 'b', { url: 'url-b' }, ['missing'])
+      graph = RepoGraph.addRepo({
+        repoGraph: graph,
+        id: 'a',
+        config: { url: 'url-a' },
+        dependencies: [],
+      })
+      graph = RepoGraph.addRepo({
+        repoGraph: graph,
+        id: 'b',
+        config: { url: 'url-b' },
+        dependencies: ['missing'],
+      })
 
       const result = await Effect.runPromise(RepoGraph.topologicalSort(graph))
 
@@ -96,9 +156,9 @@ describe('RepoGraph', () => {
   describe('toLayers', () => {
     it('groups independent nodes in same layer', async () => {
       let graph = RepoGraph.empty()
-      graph = RepoGraph.addRepo(graph, 'a', { url: 'url-a' })
-      graph = RepoGraph.addRepo(graph, 'b', { url: 'url-b' })
-      graph = RepoGraph.addRepo(graph, 'c', { url: 'url-c' })
+      graph = RepoGraph.addRepo({ repoGraph: graph, id: 'a', config: { url: 'url-a' } })
+      graph = RepoGraph.addRepo({ repoGraph: graph, id: 'b', config: { url: 'url-b' } })
+      graph = RepoGraph.addRepo({ repoGraph: graph, id: 'c', config: { url: 'url-c' } })
 
       const layers = await Effect.runPromise(RepoGraph.toLayers(graph))
 
@@ -109,9 +169,24 @@ describe('RepoGraph', () => {
     it('separates dependent nodes into layers', async () => {
       // c -> b -> a
       let graph = RepoGraph.empty()
-      graph = RepoGraph.addRepo(graph, 'a', { url: 'url-a' }, [])
-      graph = RepoGraph.addRepo(graph, 'b', { url: 'url-b' }, ['a'])
-      graph = RepoGraph.addRepo(graph, 'c', { url: 'url-c' }, ['b'])
+      graph = RepoGraph.addRepo({
+        repoGraph: graph,
+        id: 'a',
+        config: { url: 'url-a' },
+        dependencies: [],
+      })
+      graph = RepoGraph.addRepo({
+        repoGraph: graph,
+        id: 'b',
+        config: { url: 'url-b' },
+        dependencies: ['a'],
+      })
+      graph = RepoGraph.addRepo({
+        repoGraph: graph,
+        id: 'c',
+        config: { url: 'url-c' },
+        dependencies: ['b'],
+      })
 
       const layers = await Effect.runPromise(RepoGraph.toLayers(graph))
 
@@ -128,10 +203,30 @@ describe('RepoGraph', () => {
       //    \ /
       //     d
       let graph = RepoGraph.empty()
-      graph = RepoGraph.addRepo(graph, 'a', { url: 'url-a' }, [])
-      graph = RepoGraph.addRepo(graph, 'b', { url: 'url-b' }, ['a'])
-      graph = RepoGraph.addRepo(graph, 'c', { url: 'url-c' }, ['a'])
-      graph = RepoGraph.addRepo(graph, 'd', { url: 'url-d' }, ['b', 'c'])
+      graph = RepoGraph.addRepo({
+        repoGraph: graph,
+        id: 'a',
+        config: { url: 'url-a' },
+        dependencies: [],
+      })
+      graph = RepoGraph.addRepo({
+        repoGraph: graph,
+        id: 'b',
+        config: { url: 'url-b' },
+        dependencies: ['a'],
+      })
+      graph = RepoGraph.addRepo({
+        repoGraph: graph,
+        id: 'c',
+        config: { url: 'url-c' },
+        dependencies: ['a'],
+      })
+      graph = RepoGraph.addRepo({
+        repoGraph: graph,
+        id: 'd',
+        config: { url: 'url-d' },
+        dependencies: ['b', 'c'],
+      })
 
       const layers = await Effect.runPromise(RepoGraph.toLayers(graph))
 
@@ -143,9 +238,24 @@ describe('RepoGraph', () => {
 
     it('detects cycles', async () => {
       let graph = RepoGraph.empty()
-      graph = RepoGraph.addRepo(graph, 'a', { url: 'url-a' }, ['c'])
-      graph = RepoGraph.addRepo(graph, 'b', { url: 'url-b' }, ['a'])
-      graph = RepoGraph.addRepo(graph, 'c', { url: 'url-c' }, ['b'])
+      graph = RepoGraph.addRepo({
+        repoGraph: graph,
+        id: 'a',
+        config: { url: 'url-a' },
+        dependencies: ['c'],
+      })
+      graph = RepoGraph.addRepo({
+        repoGraph: graph,
+        id: 'b',
+        config: { url: 'url-b' },
+        dependencies: ['a'],
+      })
+      graph = RepoGraph.addRepo({
+        repoGraph: graph,
+        id: 'c',
+        config: { url: 'url-c' },
+        dependencies: ['b'],
+      })
 
       const result = await Effect.runPromise(
         RepoGraph.toLayers(graph).pipe(
@@ -179,8 +289,8 @@ describe('RepoGraph', () => {
 
       expect(RepoGraph.repoIds(graph).sort()).toEqual(['repo-a', 'shared-lib'])
       // repo-a depends on shared-lib
-      expect(RepoGraph.getDependencies(graph, 'repo-a')).toContain('shared-lib')
-      expect(RepoGraph.getDependencies(graph, 'shared-lib')).toEqual([])
+      expect(RepoGraph.getDependencies({ repoGraph: graph, id: 'repo-a' })).toContain('shared-lib')
+      expect(RepoGraph.getDependencies({ repoGraph: graph, id: 'shared-lib' })).toEqual([])
     })
 
     it('builds graph with multiple member configs', () => {
@@ -213,9 +323,9 @@ describe('RepoGraph', () => {
 
       expect(RepoGraph.repoIds(graph).sort()).toEqual(['repo-a', 'repo-b', 'shared-lib'])
       // Both repos depend on shared-lib
-      expect(RepoGraph.getDependencies(graph, 'repo-a')).toContain('shared-lib')
-      expect(RepoGraph.getDependencies(graph, 'repo-b')).toContain('shared-lib')
-      expect(RepoGraph.getDependencies(graph, 'shared-lib')).toEqual([])
+      expect(RepoGraph.getDependencies({ repoGraph: graph, id: 'repo-a' })).toContain('shared-lib')
+      expect(RepoGraph.getDependencies({ repoGraph: graph, id: 'repo-b' })).toContain('shared-lib')
+      expect(RepoGraph.getDependencies({ repoGraph: graph, id: 'shared-lib' })).toEqual([])
     })
 
     it('handles complex dependency chains', () => {
@@ -249,11 +359,14 @@ describe('RepoGraph', () => {
 
       expect(RepoGraph.repoIds(graph).sort()).toEqual(['app', 'core', 'utils'])
       // app depends on core and utils
-      expect(RepoGraph.getDependencies(graph, 'app').sort()).toEqual(['core', 'utils'])
+      expect(RepoGraph.getDependencies({ repoGraph: graph, id: 'app' }).sort()).toEqual([
+        'core',
+        'utils',
+      ])
       // core depends on utils
-      expect(RepoGraph.getDependencies(graph, 'core')).toEqual(['utils'])
+      expect(RepoGraph.getDependencies({ repoGraph: graph, id: 'core' })).toEqual(['utils'])
       // utils has no dependencies
-      expect(RepoGraph.getDependencies(graph, 'utils')).toEqual([])
+      expect(RepoGraph.getDependencies({ repoGraph: graph, id: 'utils' })).toEqual([])
     })
   })
 })
@@ -264,9 +377,24 @@ describe('executeTopoForAll', () => {
 
     // c -> b -> a
     let graph = RepoGraph.empty()
-    graph = RepoGraph.addRepo(graph, 'a', { url: 'url-a' }, [])
-    graph = RepoGraph.addRepo(graph, 'b', { url: 'url-b' }, ['a'])
-    graph = RepoGraph.addRepo(graph, 'c', { url: 'url-c' }, ['b'])
+    graph = RepoGraph.addRepo({
+      repoGraph: graph,
+      id: 'a',
+      config: { url: 'url-a' },
+      dependencies: [],
+    })
+    graph = RepoGraph.addRepo({
+      repoGraph: graph,
+      id: 'b',
+      config: { url: 'url-b' },
+      dependencies: ['a'],
+    })
+    graph = RepoGraph.addRepo({
+      repoGraph: graph,
+      id: 'c',
+      config: { url: 'url-c' },
+      dependencies: ['b'],
+    })
 
     const items: Array<[string, string]> = [
       ['c', 'data-c'],
@@ -275,16 +403,16 @@ describe('executeTopoForAll', () => {
     ]
 
     await Effect.runPromise(
-      executeTopoForAll(
+      executeTopoForAll({
         items,
-        ([id]) =>
+        fn: ([id]) =>
           Effect.sync(() => {
             order.push(id)
             return id
           }),
         graph,
-        { mode: 'topo' as ExecutionMode },
-      ),
+        options: { mode: 'topo' as ExecutionMode },
+      }),
     )
 
     expect(order).toEqual(['a', 'b', 'c'])
@@ -300,10 +428,30 @@ describe('executeTopoForAll', () => {
     //    \ /
     //     d
     let graph = RepoGraph.empty()
-    graph = RepoGraph.addRepo(graph, 'a', { url: 'url-a' }, [])
-    graph = RepoGraph.addRepo(graph, 'b', { url: 'url-b' }, ['a'])
-    graph = RepoGraph.addRepo(graph, 'c', { url: 'url-c' }, ['a'])
-    graph = RepoGraph.addRepo(graph, 'd', { url: 'url-d' }, ['b', 'c'])
+    graph = RepoGraph.addRepo({
+      repoGraph: graph,
+      id: 'a',
+      config: { url: 'url-a' },
+      dependencies: [],
+    })
+    graph = RepoGraph.addRepo({
+      repoGraph: graph,
+      id: 'b',
+      config: { url: 'url-b' },
+      dependencies: ['a'],
+    })
+    graph = RepoGraph.addRepo({
+      repoGraph: graph,
+      id: 'c',
+      config: { url: 'url-c' },
+      dependencies: ['a'],
+    })
+    graph = RepoGraph.addRepo({
+      repoGraph: graph,
+      id: 'd',
+      config: { url: 'url-d' },
+      dependencies: ['b', 'c'],
+    })
 
     const items: Array<[string, string]> = [
       ['d', 'data-d'],
@@ -313,9 +461,9 @@ describe('executeTopoForAll', () => {
     ]
 
     await Effect.runPromise(
-      executeTopoForAll(
+      executeTopoForAll({
         items,
-        ([id]) =>
+        fn: ([id]) =>
           Effect.gen(function* () {
             startTimes[id] = Date.now()
             yield* Effect.sleep(50) // Simulate work
@@ -323,8 +471,8 @@ describe('executeTopoForAll', () => {
             return id
           }),
         graph,
-        { mode: 'topo-parallel' as ExecutionMode },
-      ),
+        options: { mode: 'topo-parallel' as ExecutionMode },
+      }),
     )
 
     // a should finish before b and c start
@@ -343,8 +491,18 @@ describe('executeTopoForAll', () => {
     const order: string[] = []
 
     let graph = RepoGraph.empty()
-    graph = RepoGraph.addRepo(graph, 'a', { url: 'url-a' }, [])
-    graph = RepoGraph.addRepo(graph, 'b', { url: 'url-b' }, ['a'])
+    graph = RepoGraph.addRepo({
+      repoGraph: graph,
+      id: 'a',
+      config: { url: 'url-a' },
+      dependencies: [],
+    })
+    graph = RepoGraph.addRepo({
+      repoGraph: graph,
+      id: 'b',
+      config: { url: 'url-b' },
+      dependencies: ['a'],
+    })
 
     // 'c' is in items but not in graph - should still work
     const items: Array<[string, string]> = [
@@ -354,16 +512,16 @@ describe('executeTopoForAll', () => {
     ]
 
     await Effect.runPromise(
-      executeTopoForAll(
+      executeTopoForAll({
         items,
-        ([id]) =>
+        fn: ([id]) =>
           Effect.sync(() => {
             order.push(id)
             return id
           }),
         graph,
-        { mode: 'topo' as ExecutionMode },
-      ),
+        options: { mode: 'topo' as ExecutionMode },
+      }),
     )
 
     // a and b should be in order, c is not in graph so won't be processed
@@ -372,9 +530,24 @@ describe('executeTopoForAll', () => {
 
   it('returns CycleError for circular dependencies', async () => {
     let graph = RepoGraph.empty()
-    graph = RepoGraph.addRepo(graph, 'a', { url: 'url-a' }, ['c'])
-    graph = RepoGraph.addRepo(graph, 'b', { url: 'url-b' }, ['a'])
-    graph = RepoGraph.addRepo(graph, 'c', { url: 'url-c' }, ['b'])
+    graph = RepoGraph.addRepo({
+      repoGraph: graph,
+      id: 'a',
+      config: { url: 'url-a' },
+      dependencies: ['c'],
+    })
+    graph = RepoGraph.addRepo({
+      repoGraph: graph,
+      id: 'b',
+      config: { url: 'url-b' },
+      dependencies: ['a'],
+    })
+    graph = RepoGraph.addRepo({
+      repoGraph: graph,
+      id: 'c',
+      config: { url: 'url-c' },
+      dependencies: ['b'],
+    })
 
     const items: Array<[string, string]> = [
       ['a', 'data-a'],
@@ -383,8 +556,11 @@ describe('executeTopoForAll', () => {
     ]
 
     const result = await Effect.runPromise(
-      executeTopoForAll(items, ([id]) => Effect.succeed(id), graph, {
-        mode: 'topo' as ExecutionMode,
+      executeTopoForAll({
+        items,
+        fn: ([id]) => Effect.succeed(id),
+        graph,
+        options: { mode: 'topo' as ExecutionMode },
       }).pipe(
         Effect.map(() => null),
         Effect.catchTag('CycleError', (e) => Effect.succeed(e)),
@@ -401,10 +577,30 @@ describe('executeTopoForAll', () => {
 
     // All independent nodes
     let graph = RepoGraph.empty()
-    graph = RepoGraph.addRepo(graph, 'a', { url: 'url-a' }, [])
-    graph = RepoGraph.addRepo(graph, 'b', { url: 'url-b' }, [])
-    graph = RepoGraph.addRepo(graph, 'c', { url: 'url-c' }, [])
-    graph = RepoGraph.addRepo(graph, 'd', { url: 'url-d' }, [])
+    graph = RepoGraph.addRepo({
+      repoGraph: graph,
+      id: 'a',
+      config: { url: 'url-a' },
+      dependencies: [],
+    })
+    graph = RepoGraph.addRepo({
+      repoGraph: graph,
+      id: 'b',
+      config: { url: 'url-b' },
+      dependencies: [],
+    })
+    graph = RepoGraph.addRepo({
+      repoGraph: graph,
+      id: 'c',
+      config: { url: 'url-c' },
+      dependencies: [],
+    })
+    graph = RepoGraph.addRepo({
+      repoGraph: graph,
+      id: 'd',
+      config: { url: 'url-d' },
+      dependencies: [],
+    })
 
     const items: Array<[string, string]> = [
       ['a', 'data-a'],
@@ -414,9 +610,9 @@ describe('executeTopoForAll', () => {
     ]
 
     await Effect.runPromise(
-      executeTopoForAll(
+      executeTopoForAll({
         items,
-        ([id]) =>
+        fn: ([id]) =>
           Effect.gen(function* () {
             currentConcurrent++
             concurrent.push(currentConcurrent)
@@ -425,8 +621,8 @@ describe('executeTopoForAll', () => {
             return id
           }),
         graph,
-        { mode: 'topo-parallel' as ExecutionMode, maxParallel: 2 },
-      ),
+        options: { mode: 'topo-parallel' as ExecutionMode, maxParallel: 2 },
+      }),
     )
 
     // Max concurrent should never exceed 2

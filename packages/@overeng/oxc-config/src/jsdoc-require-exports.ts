@@ -162,6 +162,9 @@ export const jsdocRequireExportsRule = {
   defaultOptions: [],
   create(context: RuleContext) {
     const { sourceCode } = context
+    // Track function names that have overload signatures (TSDeclareFunction)
+    // Used to skip JSDoc check on implementation signatures (FunctionDeclaration)
+    const functionOverloads = new Set<string>()
 
     return {
       ExportAllDeclaration(node: ASTNode) {
@@ -180,7 +183,40 @@ export const jsdocRequireExportsRule = {
       },
 
       ExportNamedDeclaration(node: ASTNode) {
+        const n = node as any
+        const decl = n.declaration
+
+        // Handle function overloads: TSDeclareFunction is an overload signature,
+        // FunctionDeclaration is the implementation
+        if (decl?.type === 'TSDeclareFunction') {
+          const funcName = decl.id?.name
+          if (funcName) {
+            // Only check JSDoc on the FIRST overload signature
+            if (!functionOverloads.has(funcName)) {
+              functionOverloads.add(funcName)
+              if (!hasJsDocComment(node, sourceCode)) {
+                context.report({
+                  node,
+                  messageId: 'missingJsdoc',
+                  data: { name: `function ${funcName}` },
+                })
+              }
+            }
+          }
+          return
+        }
+
         if (!isExportRequiringJsDoc(node)) return
+
+        // For function implementations, skip if there's a prior overload signature
+        if (decl?.type === 'FunctionDeclaration') {
+          const funcName = decl.id?.name
+          if (funcName && functionOverloads.has(funcName)) {
+            // This is the implementation of an overloaded function - skip JSDoc check
+            // The first overload signature should have the JSDoc
+            return
+          }
+        }
 
         if (!hasJsDocComment(node, sourceCode)) {
           context.report({

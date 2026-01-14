@@ -26,47 +26,55 @@ import { inlineRenderer } from './renderers/inline.ts'
  */
 const exampleTasks = [
   // Create test directories in parallel
-  task('setup-a', 'Setup directory A', {
-    cmd: 'sh',
-    args: [
-      '-c',
-      'mkdir -p tmp/task-example/a && echo "Setting up A..." && sleep 1 && echo "A ready"',
-    ],
+  task({
+    id: 'setup-a',
+    name: 'Setup directory A',
+    command: {
+      cmd: 'sh',
+      args: [
+        '-c',
+        'mkdir -p tmp/task-example/a && echo "Setting up A..." && sleep 1 && echo "A ready"',
+      ],
+    },
   }),
 
-  task('setup-b', 'Setup directory B', {
-    cmd: 'sh',
-    args: [
-      '-c',
-      'mkdir -p tmp/task-example/b && echo "Setting up B..." && sleep 0.5 && echo "B ready"',
-    ],
+  task({
+    id: 'setup-b',
+    name: 'Setup directory B',
+    command: {
+      cmd: 'sh',
+      args: [
+        '-c',
+        'mkdir -p tmp/task-example/b && echo "Setting up B..." && sleep 0.5 && echo "B ready"',
+      ],
+    },
   }),
 
   // Check both directories exist (depends on both setups)
-  task(
-    'check',
-    'Verify setup',
-    {
+  task({
+    id: 'check',
+    name: 'Verify setup',
+    command: {
       cmd: 'sh',
       args: [
         '-c',
         'test -d tmp/task-example/a && test -d tmp/task-example/b && echo "All directories exist" && ls -la tmp/task-example',
       ],
     },
-    { dependencies: ['setup-a', 'setup-b'] },
-  ),
+    options: { dependencies: ['setup-a', 'setup-b'] },
+  }),
 
   // Generate report (depends on check)
-  task(
-    'report',
-    'Generate report',
-    Effect.gen(function* () {
+  task({
+    id: 'report',
+    name: 'Generate report',
+    effect: Effect.gen(function* () {
       yield* Effect.log('Generating final report...')
       yield* Effect.sleep(500)
       yield* Effect.log('Report complete!')
     }),
-    { dependencies: ['check'] },
-  ),
+    options: { dependencies: ['check'] },
+  }),
 ] as const
 
 // =============================================================================
@@ -77,19 +85,34 @@ const exampleTasks = [
  * Example with a failing task to demonstrate error handling.
  */
 const exampleWithFailure = [
-  task('format', 'Format code', {
-    cmd: 'sh',
-    args: ['-c', 'echo "Formatting..." && sleep 0.5 && echo "Format complete"'],
+  task({
+    id: 'format',
+    name: 'Format code',
+    command: {
+      cmd: 'sh',
+      args: ['-c', 'echo "Formatting..." && sleep 0.5 && echo "Format complete"'],
+    },
   }),
 
-  task('lint', 'Lint code', {
-    cmd: 'sh',
-    args: ['-c', 'echo "Linting..." && sleep 0.5 && >&2 echo "Error: Found lint issues" && exit 1'],
+  task({
+    id: 'lint',
+    name: 'Lint code',
+    command: {
+      cmd: 'sh',
+      args: [
+        '-c',
+        'echo "Linting..." && sleep 0.5 && >&2 echo "Error: Found lint issues" && exit 1',
+      ],
+    },
   }),
 
-  task('typecheck', 'Type check', {
-    cmd: 'sh',
-    args: ['-c', 'echo "Type checking..." && sleep 1 && echo "Type check passed"'],
+  task({
+    id: 'typecheck',
+    name: 'Type check',
+    command: {
+      cmd: 'sh',
+      args: ['-c', 'echo "Type checking..." && sleep 1 && echo "Type check passed"'],
+    },
   }),
 ] as const
 
@@ -103,8 +126,11 @@ const program = Effect.gen(function* () {
   const renderer = inlineRenderer()
 
   // Run task graph with inline rendering
-  const result1 = yield* runTaskGraphOrFail(exampleTasks, {
-    onStateChange: (state) => renderer.render(state),
+  const result1 = yield* runTaskGraphOrFail({
+    tasks: exampleTasks,
+    options: {
+      onStateChange: (state) => renderer.render(state),
+    },
   })
 
   yield* renderer.renderFinal(result1.state)
@@ -114,8 +140,11 @@ const program = Effect.gen(function* () {
   const renderer2 = inlineRenderer()
 
   // Run task graph with failure (will return result with failures)
-  const result2 = yield* runTaskGraph(exampleWithFailure, {
-    onStateChange: (state) => renderer.render(state),
+  const result2 = yield* runTaskGraph({
+    tasks: exampleWithFailure,
+    options: {
+      onStateChange: (state) => renderer.render(state),
+    },
   })
 
   yield* renderer2.renderFinal(result2.state)

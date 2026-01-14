@@ -14,10 +14,13 @@ export type BaseResult<TStatus extends string> = {
 }
 
 /** Count results by status */
-export const countByStatus = <TStatus extends string>(
-  results: BaseResult<TStatus>[],
-  statuses: readonly TStatus[],
-): Record<TStatus, number> => {
+export const countByStatus = <TStatus extends string>({
+  results,
+  statuses,
+}: {
+  results: BaseResult<TStatus>[]
+  statuses: readonly TStatus[]
+}): Record<TStatus, number> => {
   const counts = {} as Record<TStatus, number>
   for (const status of statuses) {
     counts[status] = results.filter((r) => r.status === status).length
@@ -26,12 +29,15 @@ export const countByStatus = <TStatus extends string>(
 }
 
 /** Build a summary string from results */
-export const buildSummary = <TStatus extends string>(
-  results: BaseResult<TStatus>[],
-  statusLabels: Record<TStatus, string>,
-): string => {
+export const buildSummary = <TStatus extends string>({
+  results,
+  statusLabels,
+}: {
+  results: BaseResult<TStatus>[]
+  statusLabels: Record<TStatus, string>
+}): string => {
   const statuses = Object.keys(statusLabels) as TStatus[]
-  const counts = countByStatus(results, statuses)
+  const counts = countByStatus({ results, statuses })
 
   const parts: string[] = []
   for (const status of statuses) {
@@ -45,12 +51,16 @@ export const buildSummary = <TStatus extends string>(
 }
 
 /** Log results summary with Effect.log */
-export const logSummary = <TStatus extends string>(
-  results: BaseResult<TStatus>[],
-  statusLabels: Record<TStatus, string>,
+export const logSummary = <TStatus extends string>({
+  results,
+  statusLabels,
   prefix = 'Done:',
-) =>
+}: {
+  results: BaseResult<TStatus>[]
+  statusLabels: Record<TStatus, string>
+  prefix?: string
+}) =>
   Effect.gen(function* () {
-    const summary = buildSummary(results, statusLabels)
+    const summary = buildSummary({ results, statusLabels })
     yield* Effect.log(`${prefix} ${summary}`)
   })

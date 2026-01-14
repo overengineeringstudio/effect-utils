@@ -13,7 +13,7 @@ export class GitError extends Schema.TaggedError<GitError>()('GitError', {
 }) {}
 
 /** Run a git command in a directory */
-const runGit = (args: string[], cwd: string) =>
+const runGit = ({ args, cwd }: { args: string[]; cwd: string }) =>
   Effect.gen(function* () {
     const command = Command.make('git', ...args).pipe(Command.workingDirectory(cwd))
     const result = yield* Command.string(command).pipe(
@@ -45,27 +45,29 @@ export const isGitRepo = (path: string) =>
 
 /** Get current HEAD revision */
 export const getCurrentRev = (repoPath: string) =>
-  runGit(['rev-parse', 'HEAD'], repoPath).pipe(Effect.withSpan('git/getCurrentRev'))
+  runGit({ args: ['rev-parse', 'HEAD'], cwd: repoPath }).pipe(Effect.withSpan('git/getCurrentRev'))
 
 /** Get short revision (7 chars) */
 export const getShortRev = (repoPath: string) =>
-  runGit(['rev-parse', '--short', 'HEAD'], repoPath).pipe(Effect.withSpan('git/getShortRev'))
+  runGit({ args: ['rev-parse', '--short', 'HEAD'], cwd: repoPath }).pipe(
+    Effect.withSpan('git/getShortRev'),
+  )
 
 /** Get current branch name (or HEAD if detached) */
 export const getCurrentBranch = (repoPath: string) =>
-  runGit(['rev-parse', '--abbrev-ref', 'HEAD'], repoPath).pipe(
+  runGit({ args: ['rev-parse', '--abbrev-ref', 'HEAD'], cwd: repoPath }).pipe(
     Effect.withSpan('git/getCurrentBranch'),
   )
 
 /** Check if working tree is dirty */
 export const isDirty = (repoPath: string) =>
   Effect.gen(function* () {
-    const status = yield* runGit(['status', '--porcelain'], repoPath)
+    const status = yield* runGit({ args: ['status', '--porcelain'], cwd: repoPath })
     return status.length > 0
   }).pipe(Effect.withSpan('git/isDirty'))
 
 /** Clone a repo */
-export const clone = (url: string, targetPath: string) =>
+export const clone = ({ url, targetPath }: { url: string; targetPath: string }) =>
   Effect.gen(function* () {
     const command = Command.make('git', 'clone', url, targetPath)
     yield* Command.string(command).pipe(
@@ -81,20 +83,22 @@ export const clone = (url: string, targetPath: string) =>
   }).pipe(Effect.withSpan('git/clone'))
 
 /** Checkout a specific revision */
-export const checkout = (repoPath: string, rev: string) =>
-  runGit(['checkout', rev], repoPath).pipe(Effect.withSpan('git/checkout'))
+export const checkout = ({ repoPath, rev }: { repoPath: string; rev: string }) =>
+  runGit({ args: ['checkout', rev], cwd: repoPath }).pipe(Effect.withSpan('git/checkout'))
 
 /** Fetch from remote */
 export const fetch = (repoPath: string) =>
-  runGit(['fetch'], repoPath).pipe(Effect.withSpan('git/fetch'))
+  runGit({ args: ['fetch'], cwd: repoPath }).pipe(Effect.withSpan('git/fetch'))
 
 /** Pull from remote */
 export const pull = (repoPath: string) =>
-  runGit(['pull'], repoPath).pipe(Effect.withSpan('git/pull'))
+  runGit({ args: ['pull'], cwd: repoPath }).pipe(Effect.withSpan('git/pull'))
 
 /** Get remote URL */
 export const getRemoteUrl = (repoPath: string) =>
-  runGit(['remote', 'get-url', 'origin'], repoPath).pipe(Effect.withSpan('git/getRemoteUrl'))
+  runGit({ args: ['remote', 'get-url', 'origin'], cwd: repoPath }).pipe(
+    Effect.withSpan('git/getRemoteUrl'),
+  )
 
 /** Error when shell command fails */
 export class ShellError extends Schema.TaggedError<ShellError>()('ShellError', {
@@ -105,7 +109,7 @@ export class ShellError extends Schema.TaggedError<ShellError>()('ShellError', {
 }) {}
 
 /** Run a shell command in a directory, returns stdout */
-export const runShellCommand = (command: string, cwd: string) =>
+export const runShellCommand = ({ command, cwd }: { command: string; cwd: string }) =>
   Effect.gen(function* () {
     const cmd = Command.make('sh', '-c', command).pipe(Command.workingDirectory(cwd))
     const output = yield* Command.string(cmd).pipe(

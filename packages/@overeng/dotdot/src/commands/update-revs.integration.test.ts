@@ -46,7 +46,10 @@ describe('update-revs command', () => {
         )
 
         // Add new commit
-        const newRev = yield* addCommit(`${workspacePath}/repo-a`, 'New commit')
+        const newRev = yield* addCommit({
+          repoPath: `${workspacePath}/repo-a`,
+          message: 'New commit',
+        })
 
         yield* updateRevsCommand
           .handler({ repos: [], dryRun: false })
@@ -94,8 +97,11 @@ describe('update-revs command', () => {
         )
 
         // Add new commits to both
-        const newRevA = yield* addCommit(`${workspacePath}/repo-a`, 'New commit A')
-        yield* addCommit(`${workspacePath}/repo-b`, 'New commit B')
+        const newRevA = yield* addCommit({
+          repoPath: `${workspacePath}/repo-a`,
+          message: 'New commit A',
+        })
+        yield* addCommit({ repoPath: `${workspacePath}/repo-b`, message: 'New commit B' })
 
         // Only update repo-a
         yield* updateRevsCommand
@@ -138,7 +144,7 @@ describe('update-revs command', () => {
         )
 
         // Add new commit
-        yield* addCommit(`${workspacePath}/repo-a`, 'New commit')
+        yield* addCommit({ repoPath: `${workspacePath}/repo-a`, message: 'New commit' })
 
         yield* updateRevsCommand
           .handler({ repos: [], dryRun: true })

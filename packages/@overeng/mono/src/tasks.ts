@@ -316,10 +316,13 @@ export type InstallResult =
   | { _tag: 'failure'; dir: string; error: unknown; stderr?: string; stdout?: string }
 
 /** Install dependencies for a single package directory (captures output, never fails) */
-export const installPackageCaptured = (
-  dir: string,
-  options?: { frozenLockfile?: boolean },
-): Effect.Effect<InstallResult, never, CommandExecutor.CommandExecutor> =>
+export const installPackageCaptured = ({
+  dir,
+  options,
+}: {
+  dir: string
+  options?: { frozenLockfile?: boolean }
+}): Effect.Effect<InstallResult, never, CommandExecutor.CommandExecutor> =>
   Effect.scoped(
     Effect.gen(function* () {
       const args = ['install', ...(options?.frozenLockfile ? ['--frozen-lockfile'] : [])]
@@ -370,7 +373,13 @@ export const installPackageCaptured = (
   )
 
 /** Install dependencies for a single package directory */
-export const installPackage = (dir: string, options?: { frozenLockfile?: boolean }) =>
+export const installPackage = ({
+  dir,
+  options,
+}: {
+  dir: string
+  options?: { frozenLockfile?: boolean }
+}) =>
   runCommand({
     command: 'bun',
     args: ['install', ...(options?.frozenLockfile ? ['--frozen-lockfile'] : [])],
@@ -386,19 +395,27 @@ export type InstallProgress = {
 }
 
 /** Install dependencies for all packages in parallel with progress tracking */
-export const installAll = (
-  config: InstallConfig,
+export const installAll = ({
+  config,
+  options,
+}: {
+  config: InstallConfig
   options?: {
     frozenLockfile?: boolean
     onProgress?: (progress: InstallProgress) => Effect.Effect<void>
-  },
-) =>
+  }
+}) =>
   Effect.gen(function* () {
     const dirs = yield* findPackageDirs(config)
     const total = dirs.length
 
+    const frozenLockfile = options?.frozenLockfile
     const results = yield* Effect.all(
-      dirs.map((dir) => installPackageCaptured(dir, options)),
+      dirs.map((dir) =>
+        frozenLockfile !== undefined
+          ? installPackageCaptured({ dir, options: { frozenLockfile } })
+          : installPackageCaptured({ dir }),
+      ),
       { concurrency: 'unbounded' },
     )
 
@@ -406,10 +423,13 @@ export const installAll = (
   }).pipe(Effect.withSpan('installAll'))
 
 /** Install dependencies using task system with live progress (task-based implementation) */
-export const installAllWithTaskSystem = (
-  config: InstallConfig,
-  options?: { frozenLockfile?: boolean },
-) =>
+export const installAllWithTaskSystem = ({
+  config,
+  options,
+}: {
+  config: InstallConfig
+  options?: { frozenLockfile?: boolean }
+}) =>
   Effect.gen(function* () {
     const pathService = yield* Path.Path
     const cwd = process.env.WORKSPACE_ROOT ?? process.cwd()
@@ -426,17 +446,24 @@ export const installAllWithTaskSystem = (
       const relativePath = pathService.relative(cwd, dir)
       const taskId = relativePath.replace(/\//g, ':') // Convert path to valid task ID
 
-      return task(taskId, `Install ${relativePath}`, {
-        cmd: 'bun',
-        args: ['install', ...(options?.frozenLockfile ? ['--frozen-lockfile'] : [])],
-        cwd: dir,
+      return task({
+        id: taskId,
+        name: `Install ${relativePath}`,
+        command: {
+          cmd: 'bun',
+          args: ['install', ...(options?.frozenLockfile ? ['--frozen-lockfile'] : [])],
+          cwd: dir,
+        },
       })
     })
 
     // Run with inline renderer
     const renderer = inlineRenderer()
-    const result = yield* runTaskGraph(tasks, {
-      onStateChange: (state) => renderer.render(state),
+    const result = yield* runTaskGraph({
+      tasks,
+      options: {
+        onStateChange: (state) => renderer.render(state),
+      },
     })
 
     yield* renderer.renderFinal(result.state)
@@ -500,16 +527,28 @@ export const checkAllWithTaskSystem = (config: CheckTasksConfig) =>
       ...(config.skipGenie
         ? []
         : [
-            task('genie', 'Genie check', {
-              cmd: 'genie',
-              args: ['--check'],
+            task({
+              id: 'genie',
+              name: 'Genie check',
+              command: {
+                cmd: 'genie',
+                args: ['--check'],
+              },
             }),
           ]),
-      task('typecheck', 'Type checking', {
-        cmd: resolveLocalTsc(),
-        args: ['--build', 'tsconfig.all.json'],
+      task({
+        id: 'typecheck',
+        name: 'Type checking',
+        command: {
+          cmd: resolveLocalTsc(),
+          args: ['--build', 'tsconfig.all.json'],
+        },
       }),
-      task('lint', 'Lint (format + oxlint + genie coverage)', allLintChecks(config)),
+      task({
+        id: 'lint',
+        name: 'Lint (format + oxlint + genie coverage)',
+        effect: allLintChecks(config),
+      }),
     ]
 
     // Extract parallel task IDs for dependencies
@@ -519,23 +558,26 @@ export const checkAllWithTaskSystem = (config: CheckTasksConfig) =>
     const sequentialTasks = config.skipTests
       ? []
       : [
-          task(
-            'test',
-            'Tests',
-            {
+          task({
+            id: 'test',
+            name: 'Tests',
+            command: {
               cmd: 'vitest',
               args: ['run'],
             },
-            { dependencies: parallelTaskIds },
-          ),
+            options: { dependencies: parallelTaskIds },
+          }),
         ]
 
     const allTasks = [...parallelTasks, ...sequentialTasks]
 
     // Select renderer based on environment
     const renderer = IS_CI ? ciRenderer() : inlineRenderer()
-    const result = yield* runTaskGraphOrFail(allTasks, {
-      onStateChange: (state) => renderer.render(state),
+    const result = yield* runTaskGraphOrFail({
+      tasks: allTasks,
+      options: {
+        onStateChange: (state) => renderer.render(state),
+      },
     })
 
     yield* renderer.renderFinal(result.state)

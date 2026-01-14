@@ -42,7 +42,13 @@ const generateMemberConfigContent = (config: MemberConfig): string => {
 }
 
 /** Write a member config file */
-export const writeMemberConfig = (configPath: string, config: MemberConfig) =>
+export const writeMemberConfig = ({
+  configPath,
+  config,
+}: {
+  configPath: string
+  config: MemberConfig
+}) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const content = generateMemberConfigContent(config)
@@ -71,7 +77,13 @@ const generateRootConfigContent = (config: RootConfig): string => {
 }
 
 /** Write a root config file (for non-generated configs) */
-export const writeRootConfig = (configPath: string, config: RootConfig) =>
+export const writeRootConfig = ({
+  configPath,
+  config,
+}: {
+  configPath: string
+  config: RootConfig
+}) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const content = generateRootConfigContent(config)
@@ -88,12 +100,17 @@ export const writeRootConfig = (configPath: string, config: RootConfig) =>
   }).pipe(Effect.withSpan('config-writer/writeRootConfig'))
 
 /** Add or update a repo in a root config file */
-export const upsertRepo = (
-  configPath: string,
-  name: string,
-  repoConfig: RepoConfig,
-  existingConfig: RootConfig,
-) =>
+export const upsertRepo = ({
+  configPath,
+  name,
+  repoConfig,
+  existingConfig,
+}: {
+  configPath: string
+  name: string
+  repoConfig: RepoConfig
+  existingConfig: RootConfig
+}) =>
   Effect.gen(function* () {
     const newConfig: RootConfig = {
       ...existingConfig,
@@ -102,29 +119,42 @@ export const upsertRepo = (
         [name]: repoConfig,
       },
     }
-    yield* writeRootConfig(configPath, newConfig)
+    yield* writeRootConfig({ configPath, config: newConfig })
     return newConfig
   }).pipe(Effect.withSpan('config-writer/upsertRepo'))
 
 /** Remove a repo from a root config file */
-export const removeRepo = (configPath: string, name: string, existingConfig: RootConfig) =>
+export const removeRepo = ({
+  configPath,
+  name,
+  existingConfig,
+}: {
+  configPath: string
+  name: string
+  existingConfig: RootConfig
+}) =>
   Effect.gen(function* () {
     const { [name]: _, ...remainingRepos } = existingConfig.repos
     const newConfig: RootConfig = {
       ...existingConfig,
       repos: remainingRepos,
     }
-    yield* writeRootConfig(configPath, newConfig)
+    yield* writeRootConfig({ configPath, config: newConfig })
     return newConfig
   }).pipe(Effect.withSpan('config-writer/removeRepo'))
 
 /** Update a repo's rev in a root config file */
-export const updateRepoRev = (
-  configPath: string,
-  name: string,
-  rev: string,
-  existingConfig: RootConfig,
-) =>
+export const updateRepoRev = ({
+  configPath,
+  name,
+  rev,
+  existingConfig,
+}: {
+  configPath: string
+  name: string
+  rev: string
+  existingConfig: RootConfig
+}) =>
   Effect.gen(function* () {
     const existingRepo = existingConfig.repos[name]
     if (!existingRepo) {
@@ -146,7 +176,7 @@ export const updateRepoRev = (
         },
       },
     }
-    yield* writeRootConfig(configPath, newConfig)
+    yield* writeRootConfig({ configPath, config: newConfig })
     return newConfig
   }).pipe(Effect.withSpan('config-writer/updateRepoRev'))
 
@@ -155,15 +185,18 @@ export const createEmptyMemberConfig = (dir: string) =>
   Effect.gen(function* () {
     const configPath = path.join(dir, CONFIG_FILE_NAME)
     const config: MemberConfig = {}
-    yield* writeMemberConfig(configPath, config)
+    yield* writeMemberConfig({ configPath, config })
     return configPath
   }).pipe(Effect.withSpan('config-writer/createEmptyMemberConfig'))
 
 /** Generate content for the generated config file (dotdot-root.json) */
-const generateGeneratedConfigContent = (
-  repos: Record<string, RepoConfig>,
-  packages: Record<string, PackageIndexEntry>,
-): string => {
+const generateGeneratedConfigContent = ({
+  repos,
+  packages,
+}: {
+  repos: Record<string, RepoConfig>
+  packages: Record<string, PackageIndexEntry>
+}): string => {
   const output: RootConfig = {
     $schema: JSON_SCHEMA_URL,
     _: GENERATED_CONFIG_WARNING,
@@ -174,15 +207,19 @@ const generateGeneratedConfigContent = (
 }
 
 /** Write the generated (aggregated) config file */
-export const writeGeneratedConfig = (
-  workspaceRoot: string,
-  repos: Record<string, RepoConfig>,
-  packages: Record<string, PackageIndexEntry> = {},
-) =>
+export const writeGeneratedConfig = ({
+  workspaceRoot,
+  repos,
+  packages = {},
+}: {
+  workspaceRoot: string
+  repos: Record<string, RepoConfig>
+  packages?: Record<string, PackageIndexEntry>
+}) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const configPath = path.join(workspaceRoot, GENERATED_CONFIG_FILE_NAME)
-    const content = generateGeneratedConfigContent(repos, packages)
+    const content = generateGeneratedConfigContent({ repos, packages })
     yield* fs.writeFileString(configPath, content).pipe(
       Effect.mapError(
         (cause) =>

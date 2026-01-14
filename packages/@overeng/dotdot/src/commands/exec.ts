@@ -38,13 +38,13 @@ const ExecStatusLabels = {
 } as const
 
 /** Execute command in a single repo */
-const execInRepo = (repo: RepoInfo, command: string) =>
+const execInRepo = ({ repo, command }: { repo: RepoInfo; command: string }) =>
   Effect.gen(function* () {
     const { name, path: repoPath } = repo
 
     yield* Effect.log(`[${name}] Running...`)
 
-    const result = yield* runShellCommand(command, repoPath).pipe(
+    const result = yield* runShellCommand({ command, cwd: repoPath }).pipe(
       Effect.map((output) => ({ name, status: 'success' as const, output })),
       Effect.catchAll((error) =>
         Effect.succeed({
@@ -101,14 +101,15 @@ export const execCommand = Cli.Command.make(
         return
       }
 
-      const results = yield* executeForAll(repos, (repo) => execInRepo(repo, command), {
-        mode,
-        maxParallel: Option.getOrUndefined(maxParallel),
+      const results = yield* executeForAll({
+        items: repos,
+        fn: (repo) => execInRepo({ repo, command }),
+        options: { mode, maxParallel: Option.getOrUndefined(maxParallel) },
       })
 
       yield* Effect.log('')
 
-      const summary = buildSummary(results, ExecStatusLabels)
+      const summary = buildSummary({ results, statusLabels: ExecStatusLabels })
       yield* Effect.log(`Done: ${summary}`)
     }).pipe(Effect.withSpan('dotdot/exec')),
 )

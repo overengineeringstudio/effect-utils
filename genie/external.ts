@@ -45,6 +45,7 @@ export const otelSdkDeps = [
   '@opentelemetry/semantic-conventions',
 ] as const
 
+/** Catalog versions - single source of truth for dependency versions */
 export const catalog = defineCatalog({
   // Observability
   '@opentelemetry/api': '1.9.0',
@@ -224,7 +225,7 @@ const patches = {
 /**
  * Compute relative path from one repo-relative location to another.
  */
-const computeRelativePath = (from: string, to: string): string => {
+const computeRelativePath = ({ from, to }: { from: string; to: string }): string => {
   const fromParts = from.split('/').filter(Boolean)
   const toParts = to.split('/').filter(Boolean)
 
@@ -263,7 +264,13 @@ const parsePatchSpecifier = (specifier: string): [string, string] | undefined =>
 /**
  * Generate postinstall script commands for applying patches.
  */
-const generatePatchCommands = (patchEntries: Array<[string, string]>, location: string): string => {
+const generatePatchCommands = ({
+  patchEntries,
+  location,
+}: {
+  patchEntries: Array<[string, string]>
+  location: string
+}): string => {
   return patchEntries
     .map(([specifier, patchPath]) => {
       const parsed = parsePatchSpecifier(specifier)
@@ -272,7 +279,7 @@ const generatePatchCommands = (patchEntries: Array<[string, string]>, location: 
       const relativePath =
         patchPath.startsWith('./') || patchPath.startsWith('../')
           ? patchPath
-          : computeRelativePath(location, patchPath)
+          : computeRelativePath({ from: location, to: patchPath })
       return `patch --forward -p1 -d node_modules/${pkgName} < ${relativePath} || true`
     })
     .filter((x): x is string => x !== undefined)
@@ -298,7 +305,7 @@ const generatePatchCommands = (patchEntries: Array<[string, string]>, location: 
  */
 export const patchPostinstall = (customPatches: PatchesRegistry = patches): ScriptValue => {
   const entries = Object.entries(customPatches).toSorted(([a], [b]) => a.localeCompare(b))
-  return (location: string) => generatePatchCommands(entries, location)
+  return (location: string) => generatePatchCommands({ patchEntries: entries, location })
 }
 
 /**
@@ -321,7 +328,7 @@ export const createPatchPostinstall = (args: { basePath: string }) => {
   ) as PatchesRegistry
   return (customPatches: PatchesRegistry = prefixedPatches): ScriptValue => {
     const entries = Object.entries(customPatches).toSorted(([a], [b]) => a.localeCompare(b))
-    return (location: string) => generatePatchCommands(entries, location)
+    return (location: string) => generatePatchCommands({ patchEntries: entries, location })
   }
 }
 

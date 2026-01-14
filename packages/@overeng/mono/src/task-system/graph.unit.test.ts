@@ -80,7 +80,13 @@ const topologicalSort = <TId extends string>(
 /**
  * Reduce a TaskEvent into the current state.
  */
-const reduceEvent = (state: TaskSystemState, event: TaskEvent<string>): TaskSystemState => {
+const reduceEvent = ({
+  state,
+  event,
+}: {
+  state: TaskSystemState
+  event: TaskEvent<string>
+}): TaskSystemState => {
   const tasks = { ...state.tasks }
 
   switch (event.type) {
@@ -383,7 +389,7 @@ describe('reduceEvent', () => {
         name: 'Test Task',
       }
 
-      const newState = reduceEvent(initialState, event)
+      const newState = reduceEvent({ state: initialState, event })
 
       expect(newState.tasks.test!).toBeDefined()
       expect(newState.tasks.test!.id).toBe('test')
@@ -418,7 +424,7 @@ describe('reduceEvent', () => {
         timestamp,
       }
 
-      const newState = reduceEvent(initialState, event)
+      const newState = reduceEvent({ state: initialState, event })
 
       expect(newState.tasks.test!.status).toBe('running')
       expect(Option.isSome(newState.tasks.test!.startedAt)).toBe(true)
@@ -449,7 +455,7 @@ describe('reduceEvent', () => {
         chunk: 'line2',
       }
 
-      const newState = reduceEvent(initialState, event)
+      const newState = reduceEvent({ state: initialState, event })
 
       expect(newState.tasks.test!.stdout).toEqual(['line1', 'line2'])
     }),
@@ -478,7 +484,7 @@ describe('reduceEvent', () => {
         chunk: 'error message',
       }
 
-      const newState = reduceEvent(initialState, event)
+      const newState = reduceEvent({ state: initialState, event })
 
       expect(newState.tasks.test!.stderr).toEqual(['error message'])
     }),
@@ -509,7 +515,7 @@ describe('reduceEvent', () => {
         exit: Exit.succeed('result'),
       }
 
-      const newState = reduceEvent(initialState, event)
+      const newState = reduceEvent({ state: initialState, event })
 
       expect(newState.tasks.test!.status).toBe('success')
       expect(Option.isSome(newState.tasks.test!.completedAt)).toBe(true)
@@ -543,7 +549,7 @@ describe('reduceEvent', () => {
         exit: Exit.fail(new Error('Task failed')),
       }
 
-      const newState = reduceEvent(initialState, event)
+      const newState = reduceEvent({ state: initialState, event })
 
       expect(newState.tasks.test!.status).toBe('failed')
       expect(Option.isSome(newState.tasks.test!.completedAt)).toBe(true)
@@ -556,35 +562,47 @@ describe('reduceEvent', () => {
       let state = new TaskSystemState({ tasks: {} })
 
       // Register
-      state = reduceEvent(state, {
-        type: 'registered',
-        taskId: 'test',
-        name: 'Test Task',
+      state = reduceEvent({
+        state,
+        event: {
+          type: 'registered',
+          taskId: 'test',
+          name: 'Test Task',
+        },
       })
       expect(state.tasks.test!.status).toBe('pending')
 
       // Start
-      state = reduceEvent(state, {
-        type: 'started',
-        taskId: 'test',
-        timestamp: 1000,
+      state = reduceEvent({
+        state,
+        event: {
+          type: 'started',
+          taskId: 'test',
+          timestamp: 1000,
+        },
       })
       expect(state.tasks.test!.status).toBe('running')
 
       // Output
-      state = reduceEvent(state, {
-        type: 'stdout',
-        taskId: 'test',
-        chunk: 'output line',
+      state = reduceEvent({
+        state,
+        event: {
+          type: 'stdout',
+          taskId: 'test',
+          chunk: 'output line',
+        },
       })
       expect(state.tasks.test!.stdout).toEqual(['output line'])
 
       // Complete
-      state = reduceEvent(state, {
-        type: 'completed',
-        taskId: 'test',
-        timestamp: 2000,
-        exit: Exit.succeed(undefined),
+      state = reduceEvent({
+        state,
+        event: {
+          type: 'completed',
+          taskId: 'test',
+          timestamp: 2000,
+          exit: Exit.succeed(undefined),
+        },
       })
       expect(state.tasks.test!.status).toBe('success')
     }),

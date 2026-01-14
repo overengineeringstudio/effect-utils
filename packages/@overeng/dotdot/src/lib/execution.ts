@@ -30,11 +30,15 @@ export type TopoExecutionOptions = ExecutionOptions & {
  * @param fn - Function to run for each item
  * @param options - Execution options (including optional graph for topo modes)
  */
-export const executeForAll = <T, A, E, R>(
-  items: T[],
-  fn: (item: T) => Effect.Effect<A, E, R>,
-  options: ExecutionOptions,
-): Effect.Effect<A[], E, R> => {
+export const executeForAll = <T, A, E, R>({
+  items,
+  fn,
+  options,
+}: {
+  items: T[]
+  fn: (item: T) => Effect.Effect<A, E, R>
+  options: ExecutionOptions
+}): Effect.Effect<A[], E, R> => {
   const concurrency = options.mode === 'parallel' ? (options.maxParallel ?? 'unbounded') : 1
 
   return Effect.all(items.map(fn), { concurrency })
@@ -48,12 +52,17 @@ export const executeForAll = <T, A, E, R>(
  * @param graph - Dependency graph
  * @param options - Execution options
  */
-export const executeTopoForAll = <K extends string, V, A, E, R>(
-  items: Array<[K, V]>,
-  fn: (item: [K, V]) => Effect.Effect<A, E, R>,
-  graph: RepoGraph,
-  options: ExecutionOptions,
-): Effect.Effect<A[], E | CycleError, R> =>
+export const executeTopoForAll = <K extends string, V, A, E, R>({
+  items,
+  fn,
+  graph,
+  options,
+}: {
+  items: Array<[K, V]>
+  fn: (item: [K, V]) => Effect.Effect<A, E, R>
+  graph: RepoGraph
+  options: ExecutionOptions
+}): Effect.Effect<A[], E | CycleError, R> =>
   Effect.gen(function* () {
     const itemMap = new Map(items)
 
@@ -94,22 +103,30 @@ export const executeTopoForAll = <K extends string, V, A, E, R>(
     }
 
     // Fallback to regular execution
-    return yield* executeForAll(items, fn, options)
+    return yield* executeForAll({ items, fn, options })
   })
 
 /**
  * Execute effects for multiple items in parallel
  */
-export const executeParallel = <T, A, E, R>(
-  items: T[],
-  fn: (item: T) => Effect.Effect<A, E, R>,
-  maxParallel?: number | undefined,
-): Effect.Effect<A[], E, R> => executeForAll(items, fn, { mode: 'parallel', maxParallel })
+export const executeParallel = <T, A, E, R>({
+  items,
+  fn,
+  maxParallel,
+}: {
+  items: T[]
+  fn: (item: T) => Effect.Effect<A, E, R>
+  maxParallel?: number | undefined
+}): Effect.Effect<A[], E, R> =>
+  executeForAll({ items, fn, options: { mode: 'parallel', maxParallel } })
 
 /**
  * Execute effects for multiple items sequentially
  */
-export const executeSequential = <T, A, E, R>(
-  items: T[],
-  fn: (item: T) => Effect.Effect<A, E, R>,
-): Effect.Effect<A[], E, R> => executeForAll(items, fn, { mode: 'sequential' })
+export const executeSequential = <T, A, E, R>({
+  items,
+  fn,
+}: {
+  items: T[]
+  fn: (item: T) => Effect.Effect<A, E, R>
+}): Effect.Effect<A[], E, R> => executeForAll({ items, fn, options: { mode: 'sequential' } })

@@ -63,18 +63,29 @@ describe('Inline renderer', () => {
             const renderer = inlineRenderer()
 
             const tasks = [
-              task('fast1', 'Fast task 1', {
-                cmd: 'echo',
-                args: ['task1'],
+              task({
+                id: 'fast1',
+                name: 'Fast task 1',
+                command: {
+                  cmd: 'echo',
+                  args: ['task1'],
+                },
               }),
-              task('fast2', 'Fast task 2', {
-                cmd: 'echo',
-                args: ['task2'],
+              task({
+                id: 'fast2',
+                name: 'Fast task 2',
+                command: {
+                  cmd: 'echo',
+                  args: ['task2'],
+                },
               }),
             ]
 
-            const result = yield* runTaskGraphOrFail(tasks, {
-              onStateChange: (state) => renderer.render(state),
+            const result = yield* runTaskGraphOrFail({
+              tasks,
+              options: {
+                onStateChange: (state) => renderer.render(state),
+              },
             })
 
             yield* renderer.renderFinal(result.state)
@@ -114,17 +125,24 @@ describe('Inline renderer', () => {
             const renderer = inlineRenderer()
 
             const tasks = [
-              task('failing', 'Failing task', {
-                cmd: 'sh',
-                args: [
-                  '-c',
-                  'echo "Line 1" && echo "Line 2" && echo "Line 3" && >&2 echo "ERROR" && exit 1',
-                ],
+              task({
+                id: 'failing',
+                name: 'Failing task',
+                command: {
+                  cmd: 'sh',
+                  args: [
+                    '-c',
+                    'echo "Line 1" && echo "Line 2" && echo "Line 3" && >&2 echo "ERROR" && exit 1',
+                  ],
+                },
               }),
             ]
 
-            const result = yield* runTaskGraph(tasks, {
-              onStateChange: (state) => renderer.render(state),
+            const result = yield* runTaskGraph({
+              tasks,
+              options: {
+                onStateChange: (state) => renderer.render(state),
+              },
             })
 
             yield* renderer.renderFinal(result.state)
@@ -167,14 +185,21 @@ describe('Inline renderer', () => {
 
             const longLine = 'x'.repeat(100)
             const tasks = [
-              task('long-output', 'Long output task', {
-                cmd: 'sh',
-                args: ['-c', `echo "${longLine}" && exit 1`],
+              task({
+                id: 'long-output',
+                name: 'Long output task',
+                command: {
+                  cmd: 'sh',
+                  args: ['-c', `echo "${longLine}" && exit 1`],
+                },
               }),
             ]
 
-            const result = yield* runTaskGraph(tasks, {
-              onStateChange: (state) => renderer.render(state),
+            const result = yield* runTaskGraph({
+              tasks,
+              options: {
+                onStateChange: (state) => renderer.render(state),
+              },
             })
 
             yield* renderer.renderFinal(result.state)
@@ -208,14 +233,21 @@ describe('Inline renderer', () => {
             const renderer = inlineRenderer()
 
             const tasks = [
-              task('success', 'Success task', {
-                cmd: 'echo',
-                args: ['completed'],
+              task({
+                id: 'success',
+                name: 'Success task',
+                command: {
+                  cmd: 'echo',
+                  args: ['completed'],
+                },
               }),
             ]
 
-            const result = yield* runTaskGraphOrFail(tasks, {
-              onStateChange: (state) => renderer.render(state),
+            const result = yield* runTaskGraphOrFail({
+              tasks,
+              options: {
+                onStateChange: (state) => renderer.render(state),
+              },
             })
 
             yield* renderer.renderFinal(result.state)
@@ -249,18 +281,29 @@ describe('Inline renderer', () => {
             const renderer = inlineRenderer()
 
             const tasks = [
-              task('task1', 'Task 1', {
-                cmd: 'echo',
-                args: ['done'],
+              task({
+                id: 'task1',
+                name: 'Task 1',
+                command: {
+                  cmd: 'echo',
+                  args: ['done'],
+                },
               }),
-              task('task2', 'Task 2', {
-                cmd: 'sh',
-                args: ['-c', 'exit 1'],
+              task({
+                id: 'task2',
+                name: 'Task 2',
+                command: {
+                  cmd: 'sh',
+                  args: ['-c', 'exit 1'],
+                },
               }),
             ]
 
-            const result = yield* runTaskGraph(tasks, {
-              onStateChange: (state) => renderer.render(state),
+            const result = yield* runTaskGraph({
+              tasks,
+              options: {
+                onStateChange: (state) => renderer.render(state),
+              },
             })
 
             yield* renderer.renderFinal(result.state)

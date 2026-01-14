@@ -31,13 +31,29 @@ export interface CommandSpec {
 /** Error returned when a command fails */
 export class CommandError extends Error {
   readonly _tag = 'CommandError'
-  constructor(
-    readonly command: string,
-    readonly args: readonly string[],
-    readonly exitCode: number,
-    readonly stderr?: string,
-  ) {
+  readonly command: string
+  readonly args: readonly string[]
+  readonly exitCode: number
+  readonly stderr?: string
+
+  constructor({
+    command,
+    args,
+    exitCode,
+    stderr,
+  }: {
+    command: string
+    args: readonly string[]
+    exitCode: number
+    stderr?: string
+  }) {
     super(`Command '${command} ${args.join(' ')}' failed with exit code ${exitCode}`)
+    this.command = command
+    this.args = args
+    this.exitCode = exitCode
+    if (stderr !== undefined) {
+      this.stderr = stderr
+    }
   }
 }
 
@@ -78,11 +94,15 @@ const originalConsole = {
  * Install console interceptors that emit events to a stream.
  * Returns cleanup function to restore original console.
  */
-export const installConsoleCapture = <TId extends string>(
-  taskId: TId,
-  config: ConsoleCapture,
-  emit: (event: TaskEvent<TId>) => void,
-): (() => void) => {
+export const installConsoleCapture = <TId extends string>({
+  taskId,
+  config,
+  emit,
+}: {
+  taskId: TId
+  config: ConsoleCapture
+  emit: (event: TaskEvent<TId>) => void
+}): (() => void) => {
   if (config.captureLog) {
     console.log = (...args: unknown[]) => {
       const message = args.map((a) => String(a)).join(' ')
@@ -123,10 +143,13 @@ export const installConsoleCapture = <TId extends string>(
  * Create a custom logger that captures Effect.log messages and emits them as events.
  * This logger replaces the default Effect logger during task execution.
  */
-export const makeTaskLogger = <TId extends string>(
-  taskId: TId,
-  emit: (event: TaskEvent<TId>) => void,
-): Logger.Logger<string, void> =>
+export const makeTaskLogger = <TId extends string>({
+  taskId,
+  emit,
+}: {
+  taskId: TId
+  emit: (event: TaskEvent<TId>) => void
+}): Logger.Logger<string, void> =>
   Logger.make(({ logLevel, message }) => {
     // Emit based on log level
     if (logLevel._tag === 'Error' || logLevel._tag === 'Fatal') {
@@ -146,10 +169,13 @@ export const makeTaskLogger = <TId extends string>(
  * Returns a stream of TaskEvents (stdout, stderr chunks).
  * Fails with CommandError if command exits with non-zero code.
  */
-export const executeCommand = <TId extends string>(
-  taskId: TId,
-  spec: CommandSpec,
-): Stream.Stream<TaskEvent<TId>, CommandError | PlatformError, CommandExecutor.CommandExecutor> =>
+export const executeCommand = <TId extends string>({
+  taskId,
+  spec,
+}: {
+  taskId: TId
+  spec: CommandSpec
+}): Stream.Stream<TaskEvent<TId>, CommandError | PlatformError, CommandExecutor.CommandExecutor> =>
   Stream.unwrapScoped(
     Effect.gen(function* () {
       // Build command
@@ -228,7 +254,9 @@ export const executeCommand = <TId extends string>(
 
                 // Fail if command exited with non-zero code
                 if (exitCode !== 0) {
-                  return yield* Effect.fail(new CommandError(spec.cmd, spec.args, exitCode))
+                  return yield* Effect.fail(
+                    new CommandError({ command: spec.cmd, args: spec.args, exitCode }),
+                  )
                 }
               }),
             ),
@@ -265,7 +293,9 @@ export const checkCommandExit = (
       const exitCode = yield* proc.exitCode
 
       if (exitCode !== 0) {
-        return yield* Effect.fail(new CommandError(spec.cmd, spec.args, exitCode))
+        return yield* Effect.fail(
+          new CommandError({ command: spec.cmd, args: spec.args, exitCode }),
+        )
       }
     }),
   )
@@ -307,7 +337,9 @@ export const runCommand = (
       const stderrText = Array.from(stderr).join('')
 
       if (exitCode !== 0) {
-        return yield* Effect.fail(new CommandError(spec.cmd, spec.args, exitCode, stderrText))
+        return yield* Effect.fail(
+          new CommandError({ command: spec.cmd, args: spec.args, exitCode, stderr: stderrText }),
+        )
       }
 
       return { stdout: stdoutText, stderr: stderrText }

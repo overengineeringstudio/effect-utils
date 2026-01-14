@@ -45,11 +45,11 @@ export {
   type TopoExecutionOptions,
 } from './execution.ts'
 
-// Git and shell
+/** Git operations and shell command execution utilities */
 export * as Git from './git.ts'
 export { GitError, runShellCommand, ShellError } from './git.ts'
 
-// RepoGraph (dependency graph using Effect.Graph)
+/** Dependency graph utilities using Effect.Graph */
 export * as RepoGraph from './repo-graph.ts'
 export { CycleError } from './repo-graph.ts'
 

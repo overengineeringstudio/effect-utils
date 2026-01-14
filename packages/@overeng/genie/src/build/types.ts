@@ -14,6 +14,7 @@ export type GenieContext = {
   cwd: string
 }
 
+/** Configuration options for genie commands */
 export type GenieCommandConfig = {
   cwd: string
   watch: boolean
@@ -23,12 +24,14 @@ export type GenieCommandConfig = {
   oxfmtConfig: Option.Option<string>
 }
 
+/** Effect dependencies required by genie commands */
 export type GenieCommandEnv =
   | FileSystem.FileSystem
   | Path.Path
   | CommandExecutor.CommandExecutor
   | CurrentWorkingDirectory
 
+/** Possible errors from genie command execution */
 export type GenieCommandError =
   | GenieCheckError
   | GenieGenerationFailedError

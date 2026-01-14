@@ -135,7 +135,12 @@ export const updateRevsCommand = Cli.Command.make(
         }
 
         // Update the rev
-        currentConfig = yield* updateRepoRev(rootConfigPath, name, currentRev, currentConfig)
+        currentConfig = yield* updateRepoRev({
+          configPath: rootConfigPath,
+          name,
+          rev: currentRev,
+          existingConfig: currentConfig,
+        })
 
         results.push({
           name,
@@ -150,7 +155,7 @@ export const updateRevsCommand = Cli.Command.make(
 
       yield* Effect.log('')
 
-      const summary = buildSummary(results, UpdateStatusLabels)
+      const summary = buildSummary({ results, statusLabels: UpdateStatusLabels })
       yield* Effect.log(`Done: ${summary}`)
     }).pipe(Effect.withSpan('dotdot/update-revs')),
 )

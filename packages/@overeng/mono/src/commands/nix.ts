@@ -11,6 +11,7 @@ import { cmdText, CurrentWorkingDirectory } from '@overeng/utils/node'
 import type { MonoCommand } from '../cli.ts'
 import { runCommand } from '../utils.ts'
 
+/** Specification for a Nix package managed by the mono nix command */
 export type NixPackageSpec = {
   name: string
   flakeRef: string
@@ -21,6 +22,7 @@ export type NixPackageSpec = {
   buildNixPath?: string
 }
 
+/** Configuration for the mono nix command */
 export type NixCommandConfig = {
   packages: readonly NixPackageSpec[]
   description?: string
@@ -204,7 +206,13 @@ const toFlakeExpected = (outputRoot: string): ExpectedPath => ({ _tag: 'flake', 
 
 const toDevenvExpected = (binaryPath: string): ExpectedPath => ({ _tag: 'devenv', binaryPath })
 
-const resolveStatusEntry = (packageSpec: NixPackageSpec, expected: ExpectedPath | undefined) =>
+const resolveStatusEntry = ({
+  packageSpec,
+  expected,
+}: {
+  packageSpec: NixPackageSpec
+  expected: ExpectedPath | undefined
+}) =>
   Effect.gen(function* () {
     const actualResult = yield* Effect.either(
       resolveActualBinaryPath(getBinaryName(packageSpec)).pipe(
@@ -428,14 +436,18 @@ const updateHash = (packageSpec: NixPackageSpec) =>
 const resolvePackageNames = (packages: readonly NixPackageSpec[]): readonly string[] =>
   packages.map((pkg) => pkg.name)
 
-const resolvePackageSpec = (
-  packageMap: Map<string, NixPackageSpec>,
-  name: string,
-): NixPackageSpec => {
+const resolvePackageSpec = ({
+  packageMap,
+  name,
+}: {
+  packageMap: Map<string, NixPackageSpec>
+  name: string
+}): NixPackageSpec => {
   const spec = packageMap.get(name)
   return spec ?? shouldNeverHappen(`Unknown package: ${name}`)
 }
 
+/** Create a nix command for managing Nix packages in the workspace */
 export const nixCommand = (config: NixCommandConfig): MonoCommand => {
   const packageMap = toPackageMap(config.packages)
   const packageNames = resolvePackageNames(config.packages)
@@ -472,13 +484,13 @@ export const nixCommand = (config: NixCommandConfig): MonoCommand => {
   )
 
   const getPackages = (pkg: string): NixPackageSpec[] =>
-    pkg === 'all' ? [...config.packages] : [resolvePackageSpec(packageMap, pkg)]
+    pkg === 'all' ? [...config.packages] : [resolvePackageSpec({ packageMap, name: pkg })]
 
   const getHashablePackages = (pkg: string): NixPackageSpec[] => {
     if (pkg === 'all') {
       return hashablePackages
     }
-    const spec = resolvePackageSpec(packageMap, pkg)
+    const spec = resolvePackageSpec({ packageMap, name: pkg })
     if (!spec.buildNixPath) {
       return []
     }
@@ -558,11 +570,11 @@ export const nixCommand = (config: NixCommandConfig): MonoCommand => {
           if (resolvedScope === 'devenv') {
             const devenvPath = yield* resolveDevenvBinaryPath(getBinaryName(packageSpec))
             const expected = devenvPath ? toDevenvExpected(devenvPath) : undefined
-            entries.push(yield* resolveStatusEntry(packageSpec, expected))
+            entries.push(yield* resolveStatusEntry({ packageSpec, expected }))
           } else {
             const expectedPath = expectedOutPaths?.[packageSpec.name]
             const expected = expectedPath ? toFlakeExpected(expectedPath) : undefined
-            entries.push(yield* resolveStatusEntry(packageSpec, expected))
+            entries.push(yield* resolveStatusEntry({ packageSpec, expected }))
           }
         }
 

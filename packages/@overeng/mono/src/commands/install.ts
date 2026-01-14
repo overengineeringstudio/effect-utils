@@ -51,7 +51,10 @@ export const installCommand = (config: InstallConfig) =>
       }
 
       // Use task system with inline renderer for live progress
-      const { results, total } = yield* installAllWithTaskSystem(config, { frozenLockfile })
+      const { results, total } = yield* installAllWithTaskSystem({
+        config,
+        options: { frozenLockfile },
+      })
 
       const successes = results.filter((r) => r._tag === 'success')
       const failures = results.filter((r) => r._tag === 'failure')

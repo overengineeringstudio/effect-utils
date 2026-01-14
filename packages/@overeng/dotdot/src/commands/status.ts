@@ -42,12 +42,17 @@ const formatRepoLine = (repo: RepoInfo): string => {
 }
 
 /** Format status output */
-const formatStatus = (
-  workspaceRoot: string,
-  members: RepoInfo[],
-  dependencies: RepoInfo[],
-  dangling: RepoInfo[],
-) =>
+const formatStatus = ({
+  workspaceRoot,
+  members,
+  dependencies,
+  dangling,
+}: {
+  workspaceRoot: string
+  members: RepoInfo[]
+  dependencies: RepoInfo[]
+  dangling: RepoInfo[]
+}) =>
   Effect.gen(function* () {
     yield* Effect.log(`dotdot workspace: ${workspaceRoot}`)
     yield* Effect.log('')
@@ -98,7 +103,7 @@ export const statusHandler = Effect.gen(function* () {
   const dangling = allRepos.filter(isDangling)
 
   // Format and output
-  yield* formatStatus(workspace.root, members, dependencies, dangling)
+  yield* formatStatus({ workspaceRoot: workspace.root, members, dependencies, dangling })
 }).pipe(Effect.withSpan('dotdot/status'))
 
 /** Status command implementation */

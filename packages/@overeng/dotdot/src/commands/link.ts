@@ -32,10 +32,13 @@ type PackageMapping = {
 }
 
 /** Collect all package mappings from root config packages index */
-const collectPackageMappings = (
-  workspaceRoot: string,
-  packages: Record<string, PackageIndexEntry>,
-): PackageMapping[] => {
+const collectPackageMappings = ({
+  workspaceRoot,
+  packages,
+}: {
+  workspaceRoot: string
+  packages: Record<string, PackageIndexEntry>
+}): PackageMapping[] => {
   const mappings: PackageMapping[] = []
 
   for (const [packageName, pkgConfig] of Object.entries(packages)) {
@@ -97,7 +100,7 @@ const getUniqueMappings = (mappings: PackageMapping[]): Map<string, PackageMappi
 const getPackageMappings = Effect.gen(function* () {
   const workspace = yield* WorkspaceService
   const packages = workspace.rootConfig.config.packages ?? {}
-  const mappings = collectPackageMappings(workspace.root, packages)
+  const mappings = collectPackageMappings({ workspaceRoot: workspace.root, packages })
   return { workspace, mappings }
 })
 

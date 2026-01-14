@@ -118,9 +118,9 @@ export const pullCommand = Cli.Command.make(
       yield* Effect.log(`Execution mode: ${mode}`)
       yield* Effect.log('')
 
-      const results = yield* executeForAll(
-        repos,
-        (repo) =>
+      const results = yield* executeForAll({
+        items: repos,
+        fn: (repo) =>
           Effect.gen(function* () {
             yield* Effect.log(`Pulling ${repo.name}...`)
             const result = yield* pullRepo(repo)
@@ -136,12 +136,12 @@ export const pullCommand = Cli.Command.make(
             yield* Effect.log(`  ${statusIcon} ${result.message ?? result.status}`)
             return result
           }),
-        { mode, maxParallel: Option.getOrUndefined(maxParallel) },
-      )
+        options: { mode, maxParallel: Option.getOrUndefined(maxParallel) },
+      })
 
       yield* Effect.log('')
 
-      const summary = buildSummary(results, PullStatusLabels)
+      const summary = buildSummary({ results, statusLabels: PullStatusLabels })
       const divergedCount = results.filter((r) => 'diverged' in r && r.diverged === true).length
       const divergedSuffix = divergedCount > 0 ? `, ${divergedCount} diverged` : ''
       yield* Effect.log(`Done: ${summary}${divergedSuffix}`)

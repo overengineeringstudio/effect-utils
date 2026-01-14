@@ -23,14 +23,6 @@ import {
   WorkspaceService,
 } from './lib/mod.ts'
 
-const baseVersion = '0.1.0'
-const buildVersion = '__CLI_VERSION__'
-const version = resolveCliVersion({
-  baseVersion,
-  buildVersion,
-  runtimeStampEnvVar: 'NIX_CLI_BUILD_STAMP',
-})
-
 /** Initialize a new dotdot workspace */
 const initCommand = Cli.Command.make('init', {}, () =>
   Effect.gen(function* () {
@@ -99,6 +91,14 @@ const rootCommand = Cli.Command.make('dotdot', {}).pipe(
 
 /** Main CLI entry point */
 export const dotdotCommand = rootCommand
+
+const baseVersion = '0.1.0'
+const buildVersion = '__CLI_VERSION__'
+const version = resolveCliVersion({
+  baseVersion,
+  buildVersion,
+  runtimeStampEnvVar: 'NIX_CLI_BUILD_STAMP',
+})
 
 if (import.meta.main) {
   // Build the layer: NodeContext provides FileSystem and CommandExecutor

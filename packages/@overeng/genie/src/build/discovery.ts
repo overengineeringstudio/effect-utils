@@ -97,6 +97,7 @@ const shouldSkipDirectory = (name: string): boolean => {
   return false
 }
 
+/** Check if a filename is a genie template file (*.genie.ts) */
 export const isGenieFile = (file: string): boolean => file.endsWith('.genie.ts')
 
 /**

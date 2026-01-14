@@ -28,54 +28,65 @@ const isCommand = (x: unknown): x is CommandSpec =>
  *
  * @example
  * ```ts
- * task('install', 'Install dependencies', {
- *   cmd: 'bun',
- *   args: ['install'],
+ * task({
+ *   id: 'install',
+ *   name: 'Install dependencies',
+ *   command: { cmd: 'bun', args: ['install'] },
  * })
  * ```
  */
-export function task<TId extends string>(
-  id: TId,
-  name: string,
-  command: CommandSpec,
-  options?: { dependencies?: ReadonlyArray<TId> },
-): TaskDef<TId, void, CommandError | import('@effect/platform/Error').PlatformError, never>
+export function task<TId extends string>(args: {
+  id: TId
+  name: string
+  command: CommandSpec
+  options?: { dependencies?: ReadonlyArray<TId> }
+}): TaskDef<TId, void, CommandError | import('@effect/platform/Error').PlatformError, never>
 
 /**
  * Create an effect task that runs arbitrary Effect code.
  *
  * @example
  * ```ts
- * task('notify', 'Send notification',
- *   Effect.gen(function* () {
+ * task({
+ *   id: 'notify',
+ *   name: 'Send notification',
+ *   effect: Effect.gen(function* () {
  *     yield* sendSlackMessage('Build complete!')
- *   })
- * )
+ *   }),
+ * })
  * ```
  */
-export function task<TId extends string, A, E, R>(
-  id: TId,
-  name: string,
-  effect: Effect.Effect<A, E, R>,
-  options?: { dependencies?: ReadonlyArray<TId> },
-): TaskDef<TId, A, E, R>
+export function task<TId extends string, A, E, R>(args: {
+  id: TId
+  name: string
+  effect: Effect.Effect<A, E, R>
+  options?: { dependencies?: ReadonlyArray<TId> }
+}): TaskDef<TId, A, E, R>
 
 /**
  * Implementation of task factory.
  * Determines if input is a command or effect and creates appropriate TaskDef.
  */
-export function task<TId extends string>(
-  id: TId,
-  name: string,
-  commandOrEffect: CommandSpec | Effect.Effect<any, any, any>,
-  options?: { dependencies?: ReadonlyArray<TId> },
-): TaskDef<TId, any, any, any> {
+export function task<TId extends string>({
+  id,
+  name,
+  command,
+  effect,
+  options,
+}: {
+  id: TId
+  name: string
+  command?: CommandSpec
+  effect?: Effect.Effect<any, any, any>
+  options?: { dependencies?: ReadonlyArray<TId> }
+}): TaskDef<TId, any, any, any> {
+  const commandOrEffect = command ?? effect!
   if (isCommand(commandOrEffect)) {
     // Command task - stream events with exit code checking
     const taskDef: TaskDef<TId, any, any, any> = {
       id,
       name,
-      eventStream: (taskId) => executeCommand(taskId as TId, commandOrEffect),
+      eventStream: (taskId) => executeCommand({ taskId: taskId as TId, spec: commandOrEffect }),
       // No effect needed - exit code is checked in the stream
       ...(options?.dependencies !== undefined ? { dependencies: options.dependencies } : {}),
     }
@@ -105,17 +116,23 @@ export function task<TId extends string>(
  * Create a command task (explicit helper).
  * Useful when you want to be explicit about the task type.
  */
-export const commandTask = <TId extends string>(
-  id: TId,
-  name: string,
-  cmd: string,
-  args: readonly string[],
+export const commandTask = <TId extends string>({
+  id,
+  name,
+  cmd,
+  args,
+  options,
+}: {
+  id: TId
+  name: string
+  cmd: string
+  args: readonly string[]
   options?: {
     cwd?: string
     env?: Record<string, string>
     dependencies?: ReadonlyArray<TId>
-  },
-): TaskDef<TId, void, CommandError | import('@effect/platform/Error').PlatformError, any> => {
+  }
+}): TaskDef<TId, void, CommandError | import('@effect/platform/Error').PlatformError, any> => {
   const spec: CommandSpec = { cmd, args }
   if (options?.cwd) {
     ;(spec as any).cwd = options.cwd
@@ -123,21 +140,38 @@ export const commandTask = <TId extends string>(
   if (options?.env) {
     ;(spec as any).env = options.env
   }
-  return task(
+  if (options?.dependencies !== undefined) {
+    return task({
+      id,
+      name,
+      command: spec,
+      options: { dependencies: options.dependencies },
+    })
+  }
+  return task({
     id,
     name,
-    spec,
-    options?.dependencies !== undefined ? { dependencies: options.dependencies } : undefined,
-  )
+    command: spec,
+  })
 }
 
 /**
  * Create an effect task (explicit helper).
  * Useful when you want to be explicit about the task type.
  */
-export const effectTask = <TId extends string, A, E, R>(
-  id: TId,
-  name: string,
-  effect: Effect.Effect<A, E, R>,
-  options?: { dependencies?: ReadonlyArray<TId> },
-): TaskDef<TId, A, E, R> => task(id, name, effect, options)
+export const effectTask = <TId extends string, A, E, R>({
+  id,
+  name,
+  effect,
+  options,
+}: {
+  id: TId
+  name: string
+  effect: Effect.Effect<A, E, R>
+  options?: { dependencies?: ReadonlyArray<TId> }
+}): TaskDef<TId, A, E, R> => {
+  if (options?.dependencies !== undefined) {
+    return task({ id, name, effect, options: { dependencies: options.dependencies } })
+  }
+  return task({ id, name, effect })
+}

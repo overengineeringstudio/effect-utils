@@ -8,6 +8,7 @@
 import { Command, FileSystem } from '@effect/platform'
 import { Effect, pipe } from 'effect'
 
+/** Test fixture specification for a repository */
 export type RepoFixture = {
   name: string
   /** Create as git repo */
@@ -24,6 +25,7 @@ export type RepoFixture = {
   remoteUrl?: string
 }
 
+/** Test fixture specification for a workspace */
 export type WorkspaceFixture = {
   /** Root config repos */
   rootRepos?: Record<string, { url: string; rev?: string }>
@@ -55,26 +57,32 @@ export const createWorkspace = (fixture: WorkspaceFixture) =>
 
       if (repo.isGitRepo !== false) {
         // Initialize git repo
-        yield* runGitCommand(['init'], repoPath)
-        yield* runGitCommand(['config', 'user.email', 'test@test.com'], repoPath)
-        yield* runGitCommand(['config', 'user.name', 'Test'], repoPath)
+        yield* runGitCommand({ args: ['init'], cwd: repoPath })
+        yield* runGitCommand({ args: ['config', 'user.email', 'test@test.com'], cwd: repoPath })
+        yield* runGitCommand({ args: ['config', 'user.name', 'Test'], cwd: repoPath })
 
         // Create initial commit
         yield* fs.writeFileString(`${repoPath}/README.md`, `# ${repo.name}\n`)
-        yield* runGitCommand(['add', '.'], repoPath)
-        yield* runGitCommand(['commit', '--no-verify', '-m', 'Initial commit'], repoPath)
+        yield* runGitCommand({ args: ['add', '.'], cwd: repoPath })
+        yield* runGitCommand({
+          args: ['commit', '--no-verify', '-m', 'Initial commit'],
+          cwd: repoPath,
+        })
 
         if (repo.isDirty) {
           yield* fs.writeFileString(`${repoPath}/dirty.txt`, 'dirty\n')
         }
 
         if (repo.remoteUrl) {
-          yield* runGitCommand(['remote', 'add', 'origin', repo.remoteUrl], repoPath)
+          yield* runGitCommand({ args: ['remote', 'add', 'origin', repo.remoteUrl], cwd: repoPath })
         }
       }
 
       if (repo.hasConfig) {
-        const configContent = generateMemberConfig(repo.configExposes, repo.configDeps)
+        const configContent = generateMemberConfig({
+          ...(repo.configExposes !== undefined && { exposes: repo.configExposes }),
+          ...(repo.configDeps !== undefined && { deps: repo.configDeps }),
+        })
         yield* fs.writeFileString(`${repoPath}/dotdot.json`, configContent)
       }
     }
@@ -83,7 +91,7 @@ export const createWorkspace = (fixture: WorkspaceFixture) =>
   })
 
 /** Run a git command in a directory */
-const runGitCommand = (args: readonly string[], cwd: string) =>
+const runGitCommand = ({ args, cwd }: { args: readonly string[]; cwd: string }) =>
   pipe(Command.make('git', ...args), Command.workingDirectory(cwd), Command.exitCode, Effect.asVoid)
 
 /** Generate JSON config file content */
@@ -117,18 +125,21 @@ export const createBareRepo = (name: string) =>
 
     // Create bare repo
     yield* fs.makeDirectory(repoPath)
-    yield* runGitCommand(['init', '--bare'], repoPath)
+    yield* runGitCommand({ args: ['init', '--bare'], cwd: repoPath })
 
     // Create a temp repo, add commit, push to bare
     const tempRepoPath = `${tmpDir}/temp-repo`
     yield* fs.makeDirectory(tempRepoPath)
-    yield* runGitCommand(['init'], tempRepoPath)
-    yield* runGitCommand(['config', 'user.email', 'test@test.com'], tempRepoPath)
-    yield* runGitCommand(['config', 'user.name', 'Test'], tempRepoPath)
+    yield* runGitCommand({ args: ['init'], cwd: tempRepoPath })
+    yield* runGitCommand({ args: ['config', 'user.email', 'test@test.com'], cwd: tempRepoPath })
+    yield* runGitCommand({ args: ['config', 'user.name', 'Test'], cwd: tempRepoPath })
     yield* fs.writeFileString(`${tempRepoPath}/README.md`, `# ${name}\n`)
-    yield* runGitCommand(['add', '.'], tempRepoPath)
-    yield* runGitCommand(['commit', '--no-verify', '-m', 'Initial commit'], tempRepoPath)
-    yield* runGitCommand(['push', repoPath, 'HEAD:main'], tempRepoPath)
+    yield* runGitCommand({ args: ['add', '.'], cwd: tempRepoPath })
+    yield* runGitCommand({
+      args: ['commit', '--no-verify', '-m', 'Initial commit'],
+      cwd: tempRepoPath,
+    })
+    yield* runGitCommand({ args: ['push', repoPath, 'HEAD:main'], cwd: tempRepoPath })
 
     // Clean up temp repo
     yield* fs.remove(tempRepoPath, { recursive: true })
@@ -137,13 +148,21 @@ export const createBareRepo = (name: string) =>
   })
 
 /** Add a commit to a repo */
-export const addCommit = (repoPath: string, message: string, filename?: string) =>
+export const addCommit = ({
+  repoPath,
+  message,
+  filename,
+}: {
+  repoPath: string
+  message: string
+  filename?: string
+}) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const file = filename ?? `file-${Date.now()}.txt`
     yield* fs.writeFileString(`${repoPath}/${file}`, `${message}\n`)
-    yield* runGitCommand(['add', '.'], repoPath)
-    yield* runGitCommand(['commit', '--no-verify', '-m', message], repoPath)
+    yield* runGitCommand({ args: ['add', '.'], cwd: repoPath })
+    yield* runGitCommand({ args: ['commit', '--no-verify', '-m', message], cwd: repoPath })
     return yield* getGitRev(repoPath)
   })
 
@@ -155,7 +174,13 @@ export const readConfig = (workspacePath: string) =>
   })
 
 /** Create package target directory with files */
-export const createPackageTarget = (repoPath: string, packagePath: string) =>
+export const createPackageTarget = ({
+  repoPath,
+  packagePath,
+}: {
+  repoPath: string
+  packagePath: string
+}) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const targetPath = `${repoPath}/${packagePath}`
@@ -166,10 +191,13 @@ export const createPackageTarget = (repoPath: string, packagePath: string) =>
 type PackageIndexEntry = { repo: string; path: string; install?: string }
 
 /** Generate root config JSON with repos and packages index */
-export const generateRootConfig = (
-  repos: Record<string, { url: string; rev?: string; install?: string }>,
-  packages?: Record<string, PackageIndexEntry>,
-): string => {
+export const generateRootConfig = ({
+  repos,
+  packages,
+}: {
+  repos: Record<string, { url: string; rev?: string; install?: string }>
+  packages?: Record<string, PackageIndexEntry>
+}): string => {
   const output: {
     repos: Record<string, { url: string; rev?: string; install?: string }>
     packages?: Record<string, PackageIndexEntry>
@@ -183,10 +211,13 @@ export const generateRootConfig = (
 }
 
 /** Generate member config JSON with exposes and deps */
-export const generateMemberConfig = (
-  exposes?: Record<string, { path: string; install?: string }>,
-  deps?: Record<string, { url: string; rev?: string }>,
-): string => {
+export const generateMemberConfig = ({
+  exposes,
+  deps,
+}: {
+  exposes?: Record<string, { path: string; install?: string }>
+  deps?: Record<string, { url: string; rev?: string }>
+}): string => {
   const output: {
     exposes?: Record<string, { path: string; install?: string }>
     deps?: Record<string, { url: string; rev?: string }>

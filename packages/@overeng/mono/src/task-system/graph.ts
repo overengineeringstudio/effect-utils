@@ -28,7 +28,13 @@ import { TaskExecutionError, TaskState, TaskSystemState as TaskSystemStateClass 
  * Reduce a TaskEvent into the current state.
  * This is a pure function that updates the task state based on events.
  */
-const reduceEvent = (state: TaskSystemState, event: TaskEvent<string>): TaskSystemState => {
+const reduceEvent = ({
+  state,
+  event,
+}: {
+  state: TaskSystemState
+  event: TaskEvent<string>
+}): TaskSystemState => {
   const tasks = { ...state.tasks }
 
   switch (event.type) {
@@ -191,10 +197,13 @@ const buildTaskGraph = <TId extends string>(
  * 3. Run effect if present
  * 4. Emit 'completed' event with exit result
  */
-const executeTask = <TId extends string, A, E, R>(
-  task: TaskDef<TId, A, E, R>,
-  emit: (event: TaskEvent<TId>) => Effect.Effect<void>,
-): Effect.Effect<void, unknown, R> =>
+const executeTask = <TId extends string, A, E, R>({
+  task,
+  emit,
+}: {
+  task: TaskDef<TId, A, E, R>
+  emit: (event: TaskEvent<TId>) => Effect.Effect<void>
+}): Effect.Effect<void, unknown, R> =>
   Effect.gen(function* () {
     // Emit started event
     yield* emit({ type: 'started', taskId: task.id, timestamp: Date.now() })
@@ -249,19 +258,17 @@ const widenTaskArray = <TId extends string>(
  *
  * Uses FiberMap with scoped lifecycle for automatic cleanup.
  * Tasks execute with maximum parallelism while respecting dependencies.
- *
- * @param tasks - Array of task definitions
- * @param options - Configuration options
- * @param options.onStateChange - Callback for state updates (for rendering)
- * @param options.debounceMs - Debounce interval for state changes (default: 50ms)
  */
-export const runTaskGraph = <TId extends string>(
-  tasks: ReadonlyArray<TaskDef<any, unknown, unknown, unknown>>,
+export const runTaskGraph = <TId extends string>({
+  tasks,
+  options,
+}: {
+  tasks: ReadonlyArray<TaskDef<any, unknown, unknown, unknown>>
   options?: {
     onStateChange?: (state: TaskSystemState) => Effect.Effect<void>
     debounceMs?: number
-  },
-): Effect.Effect<TaskGraphResult, Error, any> =>
+  }
+}): Effect.Effect<TaskGraphResult, Error, any> =>
   Effect.scoped(
     Effect.gen(function* () {
       // Widen task types for internal processing
@@ -276,13 +283,13 @@ export const runTaskGraph = <TId extends string>(
       // Register all tasks
       for (const task of wideTasks) {
         yield* SubscriptionRef.update(stateRef, (state) =>
-          reduceEvent(state, { type: 'registered', taskId: task.id, name: task.name }),
+          reduceEvent({ state, event: { type: 'registered', taskId: task.id, name: task.name } }),
         )
       }
 
       // Event emitter
       const emit = (event: TaskEvent<TId>) =>
-        SubscriptionRef.update(stateRef, (state) => reduceEvent(state, event))
+        SubscriptionRef.update(stateRef, (state) => reduceEvent({ state, event }))
 
       // Subscribe to state changes for rendering (if provided)
       // Debounce to avoid excessive rendering
@@ -322,7 +329,7 @@ export const runTaskGraph = <TId extends string>(
             }
 
             // Execute the task
-            yield* executeTask(task, emit)
+            yield* executeTask({ task, emit })
 
             // Signal completion to dependent tasks
             yield* Deferred.succeed(completionMap.get(nodeIndex)!, void 0)
@@ -364,14 +371,19 @@ export const runTaskGraph = <TId extends string>(
  * Execute a task graph and fail if any task fails.
  * Throws TaskExecutionError with details of failed tasks.
  */
-export const runTaskGraphOrFail = (
-  tasks: ReadonlyArray<TaskDef<any, unknown, unknown, unknown>>,
+export const runTaskGraphOrFail = ({
+  tasks,
+  options,
+}: {
+  tasks: ReadonlyArray<TaskDef<any, unknown, unknown, unknown>>
   options?: {
     onStateChange?: (state: TaskSystemState) => Effect.Effect<void>
-  },
-): Effect.Effect<TaskGraphResult, TaskExecutionError | Error, any> =>
+  }
+}): Effect.Effect<TaskGraphResult, TaskExecutionError | Error, any> =>
   Effect.gen(function* () {
-    const result = yield* runTaskGraph(tasks, options)
+    const result = yield* options?.onStateChange !== undefined
+      ? runTaskGraph({ tasks, options: { onStateChange: options.onStateChange } })
+      : runTaskGraph({ tasks })
 
     if (result.failureCount > 0) {
       return yield* new TaskExecutionError({

@@ -366,7 +366,7 @@ const sortExports = (
  * @param to - Target location (e.g., 'packages/@overeng/utils')
  * @returns Relative path (e.g., '../utils')
  */
-const computeRelativePath = (from: string, to: string): string => {
+const computeRelativePath = ({ from, to }: { from: string; to: string }): string => {
   const fromParts = from.split('/').filter(Boolean)
   const toParts = to.split('/').filter(Boolean)
 
@@ -396,10 +396,13 @@ const INTERNAL_FILE_PREFIX = 'file:packages/'
  * @param deps - Dependencies object
  * @param currentLocation - Current package's repo-relative location
  */
-const resolveDeps = (
-  deps: Record<string, string> | undefined,
-  currentLocation: string,
-): Record<string, string> | undefined => {
+const resolveDeps = ({
+  deps,
+  currentLocation,
+}: {
+  deps: Record<string, string> | undefined
+  currentLocation: string
+}): Record<string, string> | undefined => {
   if (deps === undefined) return undefined
 
   const resolved: Record<string, string> = {}
@@ -407,7 +410,7 @@ const resolveDeps = (
     if (version.startsWith(INTERNAL_FILE_PREFIX)) {
       // Convert absolute repo path to relative path
       const targetLocation = version.slice('file:'.length)
-      const relativePath = computeRelativePath(currentLocation, targetLocation)
+      const relativePath = computeRelativePath({ from: currentLocation, to: targetLocation })
       resolved[name] = `file:${relativePath}`
     } else {
       resolved[name] = version
@@ -431,10 +434,13 @@ const sortDeps = (deps: Record<string, string> | undefined): Record<string, stri
  * @param patches - Patched dependencies object
  * @param currentLocation - Current package's repo-relative location
  */
-const resolvePatchPaths = (
-  patches: Record<string, string> | undefined,
-  currentLocation: string,
-): Record<string, string> | undefined => {
+const resolvePatchPaths = ({
+  patches,
+  currentLocation,
+}: {
+  patches: Record<string, string> | undefined
+  currentLocation: string
+}): Record<string, string> | undefined => {
   if (patches === undefined) return undefined
 
   const resolved: Record<string, string> = {}
@@ -444,7 +450,7 @@ const resolvePatchPaths = (
       resolved[pkg] = path
     } else {
       // Repo-relative path - compute relative path from current location
-      const relativePath = computeRelativePath(currentLocation, path)
+      const relativePath = computeRelativePath({ from: currentLocation, to: path })
       resolved[pkg] = relativePath
     }
   }
@@ -456,10 +462,13 @@ const resolvePatchPaths = (
  * @param scripts - Scripts object with string or function values
  * @param location - Current package's repo-relative location
  */
-const resolveScripts = (
-  scripts: Record<string, ScriptValue> | undefined,
-  location: string,
-): Record<string, string> | undefined => {
+const resolveScripts = ({
+  scripts,
+  location,
+}: {
+  scripts: Record<string, ScriptValue> | undefined
+  location: string
+}): Record<string, string> | undefined => {
   if (scripts === undefined) return undefined
 
   const resolved: Record<string, string> = {}
@@ -474,18 +483,21 @@ const resolveScripts = (
  * @param data - Package data
  * @param location - Current package's repo-relative location (for resolving internal deps)
  */
-const buildPackageJson = <T extends PackageJsonData>(
-  data: T,
-  location: string,
-): Record<string, unknown> => {
+const buildPackageJson = <T extends PackageJsonData>({
+  data,
+  location,
+}: {
+  data: T
+  location: string
+}): Record<string, unknown> => {
   const sorted = {
     ...data,
     ...(data.exports !== undefined && { exports: sortExports(data.exports) }),
     ...(data.dependencies !== undefined && {
-      dependencies: resolveDeps(data.dependencies, location),
+      dependencies: resolveDeps({ deps: data.dependencies, currentLocation: location }),
     }),
     ...(data.devDependencies !== undefined && {
-      devDependencies: resolveDeps(data.devDependencies, location),
+      devDependencies: resolveDeps({ deps: data.devDependencies, currentLocation: location }),
     }),
     ...(data.peerDependencies !== undefined && {
       peerDependencies: sortDeps(data.peerDependencies),
@@ -494,9 +506,14 @@ const buildPackageJson = <T extends PackageJsonData>(
       optionalDependencies: sortDeps(data.optionalDependencies),
     }),
     ...(data.patchedDependencies !== undefined && {
-      patchedDependencies: resolvePatchPaths(data.patchedDependencies, location),
+      patchedDependencies: resolvePatchPaths({
+        patches: data.patchedDependencies,
+        currentLocation: location,
+      }),
     }),
-    ...(data.scripts !== undefined && { scripts: resolveScripts(data.scripts, location) }),
+    ...(data.scripts !== undefined && {
+      scripts: resolveScripts({ scripts: data.scripts, location }),
+    }),
   }
 
   return sortObjectKeys({
@@ -550,7 +567,8 @@ export const packageJson = <const T extends PackageJsonData>(
   data: Strict<T, PackageJsonData>,
 ): GenieOutput<T> => ({
   data,
-  stringify: (ctx) => JSON.stringify(buildPackageJson(data, ctx.location), null, 2) + '\n',
+  stringify: (ctx) =>
+    JSON.stringify(buildPackageJson({ data, location: ctx.location }), null, 2) + '\n',
 })
 
 /**
@@ -585,5 +603,6 @@ export const workspaceRoot = <const T extends WorkspaceRootData>(
   data: Strict<T, WorkspaceRootData>,
 ): GenieOutput<T> => ({
   data,
-  stringify: (ctx) => JSON.stringify(buildPackageJson(data, ctx.location), null, 2) + '\n',
+  stringify: (ctx) =>
+    JSON.stringify(buildPackageJson({ data, location: ctx.location }), null, 2) + '\n',
 })

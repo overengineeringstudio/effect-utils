@@ -23,13 +23,17 @@ describe('Task system integration', () => {
       withTestCtx(
         Effect.gen(function* () {
           const tasks = [
-            task('echo', 'Echo test', {
-              cmd: 'echo',
-              args: ['hello world'],
+            task({
+              id: 'echo',
+              name: 'Echo test',
+              command: {
+                cmd: 'echo',
+                args: ['hello world'],
+              },
             }),
           ]
 
-          const result = yield* runTaskGraph(tasks)
+          const result = yield* runTaskGraph({ tasks })
 
           expect(result.successCount).toBe(1)
           expect(result.failureCount).toBe(0)
@@ -46,18 +50,26 @@ describe('Task system integration', () => {
       withTestCtx(
         Effect.gen(function* () {
           const tasks = [
-            task('task1', 'Task 1', {
-              cmd: 'sh',
-              args: ['-c', 'echo "task1 start" && sleep 0.1 && echo "task1 done"'],
+            task({
+              id: 'task1',
+              name: 'Task 1',
+              command: {
+                cmd: 'sh',
+                args: ['-c', 'echo "task1 start" && sleep 0.1 && echo "task1 done"'],
+              },
             }),
-            task('task2', 'Task 2', {
-              cmd: 'sh',
-              args: ['-c', 'echo "task2 start" && sleep 0.1 && echo "task2 done"'],
+            task({
+              id: 'task2',
+              name: 'Task 2',
+              command: {
+                cmd: 'sh',
+                args: ['-c', 'echo "task2 start" && sleep 0.1 && echo "task2 done"'],
+              },
             }),
           ]
 
           const start = Date.now()
-          const result = yield* runTaskGraph(tasks)
+          const result = yield* runTaskGraph({ tasks })
           const duration = Date.now() - start
 
           expect(result.successCount).toBe(2)
@@ -76,31 +88,35 @@ describe('Task system integration', () => {
       withTestCtx(
         Effect.gen(function* () {
           const tasks = [
-            task('setup', 'Setup', {
-              cmd: 'sh',
-              args: ['-c', 'echo "setup"'],
+            task({
+              id: 'setup',
+              name: 'Setup',
+              command: {
+                cmd: 'sh',
+                args: ['-c', 'echo "setup"'],
+              },
             }),
-            task(
-              'build',
-              'Build',
-              {
+            task({
+              id: 'build',
+              name: 'Build',
+              command: {
                 cmd: 'sh',
                 args: ['-c', 'echo "build"'],
               },
-              { dependencies: ['setup'] },
-            ),
-            task(
-              'test',
-              'Test',
-              {
+              options: { dependencies: ['setup'] },
+            }),
+            task({
+              id: 'test',
+              name: 'Test',
+              command: {
                 cmd: 'sh',
                 args: ['-c', 'echo "test"'],
               },
-              { dependencies: ['build'] },
-            ),
+              options: { dependencies: ['build'] },
+            }),
           ]
 
-          const result = yield* runTaskGraph(tasks)
+          const result = yield* runTaskGraph({ tasks })
 
           expect(result.successCount).toBe(3)
           expect(result.failureCount).toBe(0)
@@ -120,13 +136,17 @@ describe('Task system integration', () => {
       withTestCtx(
         Effect.gen(function* () {
           const tasks = [
-            task('failing', 'Failing task', {
-              cmd: 'sh',
-              args: ['-c', 'echo "about to fail" && exit 1'],
+            task({
+              id: 'failing',
+              name: 'Failing task',
+              command: {
+                cmd: 'sh',
+                args: ['-c', 'echo "about to fail" && exit 1'],
+              },
             }),
           ]
 
-          const result = yield* runTaskGraph(tasks)
+          const result = yield* runTaskGraph({ tasks })
 
           expect(result.successCount).toBe(0)
           expect(result.failureCount).toBe(1)
@@ -143,13 +163,17 @@ describe('Task system integration', () => {
       withTestCtx(
         Effect.gen(function* () {
           const tasks = [
-            task('output', 'Output test', {
-              cmd: 'sh',
-              args: ['-c', 'echo "stdout message" && >&2 echo "stderr message"'],
+            task({
+              id: 'output',
+              name: 'Output test',
+              command: {
+                cmd: 'sh',
+                args: ['-c', 'echo "stdout message" && >&2 echo "stderr message"'],
+              },
             }),
           ]
 
-          const result = yield* runTaskGraph(tasks)
+          const result = yield* runTaskGraph({ tasks })
 
           expect(result.state.tasks.output!.stdout).toContain('stdout message')
           expect(result.state.tasks.output!.stderr).toContain('stderr message')
@@ -169,40 +193,44 @@ describe('Task system integration', () => {
           //    \ /
           //   merge
           const tasks = [
-            task('root', 'Root', {
-              cmd: 'echo',
-              args: ['root'],
+            task({
+              id: 'root',
+              name: 'Root',
+              command: {
+                cmd: 'echo',
+                args: ['root'],
+              },
             }),
-            task(
-              'a',
-              'Branch A',
-              {
+            task({
+              id: 'a',
+              name: 'Branch A',
+              command: {
                 cmd: 'echo',
                 args: ['a'],
               },
-              { dependencies: ['root'] },
-            ),
-            task(
-              'b',
-              'Branch B',
-              {
+              options: { dependencies: ['root'] },
+            }),
+            task({
+              id: 'b',
+              name: 'Branch B',
+              command: {
                 cmd: 'echo',
                 args: ['b'],
               },
-              { dependencies: ['root'] },
-            ),
-            task(
-              'merge',
-              'Merge',
-              {
+              options: { dependencies: ['root'] },
+            }),
+            task({
+              id: 'merge',
+              name: 'Merge',
+              command: {
                 cmd: 'echo',
                 args: ['merge'],
               },
-              { dependencies: ['a', 'b'] },
-            ),
+              options: { dependencies: ['a', 'b'] },
+            }),
           ]
 
-          const result = yield* runTaskGraph(tasks)
+          const result = yield* runTaskGraph({ tasks })
 
           expect(result.successCount).toBe(4)
           expect(result.failureCount).toBe(0)
@@ -223,22 +251,26 @@ describe('Task system integration', () => {
           let effectRan = false
 
           const tasks = [
-            task('command', 'Command task', {
-              cmd: 'echo',
-              args: ['from command'],
+            task({
+              id: 'command',
+              name: 'Command task',
+              command: {
+                cmd: 'echo',
+                args: ['from command'],
+              },
             }),
-            task(
-              'effect',
-              'Effect task',
-              Effect.gen(function* () {
+            task({
+              id: 'effect',
+              name: 'Effect task',
+              effect: Effect.gen(function* () {
                 effectRan = true
                 yield* Effect.log('Effect task running')
               }),
-              { dependencies: ['command'] },
-            ),
+              options: { dependencies: ['command'] },
+            }),
           ]
 
-          const result = yield* runTaskGraph(tasks)
+          const result = yield* runTaskGraph({ tasks })
 
           expect(result.successCount).toBe(2)
           expect(result.failureCount).toBe(0)
@@ -254,13 +286,17 @@ describe('Task system integration', () => {
       withTestCtx(
         Effect.gen(function* () {
           const tasks = [
-            task('success', 'Success', {
-              cmd: 'echo',
-              args: ['all good'],
+            task({
+              id: 'success',
+              name: 'Success',
+              command: {
+                cmd: 'echo',
+                args: ['all good'],
+              },
             }),
           ]
 
-          const result = yield* runTaskGraphOrFail(tasks)
+          const result = yield* runTaskGraphOrFail({ tasks })
 
           expect(result.successCount).toBe(1)
           expect(result.failureCount).toBe(0)
@@ -275,13 +311,17 @@ describe('Task system integration', () => {
       withTestCtx(
         Effect.gen(function* () {
           const tasks = [
-            task('fail', 'Fail', {
-              cmd: 'sh',
-              args: ['-c', 'exit 1'],
+            task({
+              id: 'fail',
+              name: 'Fail',
+              command: {
+                cmd: 'sh',
+                args: ['-c', 'exit 1'],
+              },
             }),
           ]
 
-          const result = yield* Effect.either(runTaskGraphOrFail(tasks))
+          const result = yield* Effect.either(runTaskGraphOrFail({ tasks }))
 
           expect(result._tag).toBe('Left')
         }),
@@ -294,7 +334,7 @@ describe('Task system integration', () => {
     () =>
       withTestCtx(
         Effect.gen(function* () {
-          const result = yield* runTaskGraph([])
+          const result = yield* runTaskGraph({ tasks: [] })
 
           expect(result.successCount).toBe(0)
           expect(result.failureCount).toBe(0)
@@ -309,21 +349,33 @@ describe('Task system integration', () => {
       withTestCtx(
         Effect.gen(function* () {
           const tasks = [
-            task('success1', 'Success 1', {
-              cmd: 'echo',
-              args: ['ok1'],
+            task({
+              id: 'success1',
+              name: 'Success 1',
+              command: {
+                cmd: 'echo',
+                args: ['ok1'],
+              },
             }),
-            task('fail', 'Fail', {
-              cmd: 'sh',
-              args: ['-c', 'exit 1'],
+            task({
+              id: 'fail',
+              name: 'Fail',
+              command: {
+                cmd: 'sh',
+                args: ['-c', 'exit 1'],
+              },
             }),
-            task('success2', 'Success 2', {
-              cmd: 'echo',
-              args: ['ok2'],
+            task({
+              id: 'success2',
+              name: 'Success 2',
+              command: {
+                cmd: 'echo',
+                args: ['ok2'],
+              },
             }),
           ]
 
-          const result = yield* runTaskGraph(tasks)
+          const result = yield* runTaskGraph({ tasks })
 
           expect(result.successCount).toBe(2)
           expect(result.failureCount).toBe(1)
@@ -341,22 +393,26 @@ describe('Task system integration', () => {
       withTestCtx(
         Effect.gen(function* () {
           const tasks = [
-            task('failing-dep', 'Failing dependency', {
-              cmd: 'sh',
-              args: ['-c', 'exit 1'],
+            task({
+              id: 'failing-dep',
+              name: 'Failing dependency',
+              command: {
+                cmd: 'sh',
+                args: ['-c', 'exit 1'],
+              },
             }),
-            task(
-              'dependent',
-              'Dependent',
-              {
+            task({
+              id: 'dependent',
+              name: 'Dependent',
+              command: {
                 cmd: 'echo',
                 args: ['should not run'],
               },
-              { dependencies: ['failing-dep'] },
-            ),
+              options: { dependencies: ['failing-dep'] },
+            }),
           ]
 
-          const result = yield* runTaskGraph(tasks)
+          const result = yield* runTaskGraph({ tasks })
 
           expect(result.failureCount).toBeGreaterThan(0)
           expect(result.state.tasks['failing-dep']!.status).toBe('failed')

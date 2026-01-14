@@ -9,6 +9,7 @@ import { Duration, Effect, Layer, type Scope } from 'effect'
 
 import { CurrentWorkingDirectory, WorkspaceService } from '../lib/mod.ts'
 
+/** Parameters for the withTestCtx test helper */
 export type WithTestCtxParams = {
   timeout?: number
 }

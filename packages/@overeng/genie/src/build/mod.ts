@@ -21,14 +21,6 @@ export {
   GenieImportError,
 } from './errors.ts'
 
-const baseVersion = '0.1.0'
-const buildVersion = '__CLI_VERSION__'
-const version = resolveCliVersion({
-  baseVersion,
-  buildVersion,
-  runtimeStampEnvVar: 'NIX_CLI_BUILD_STAMP',
-})
-
 /** Convention path for oxfmt config relative to workspace root */
 const OXFMT_CONFIG_CONVENTION_PATH = 'packages/@overeng/oxc-config/fmt.jsonc'
 
@@ -174,6 +166,14 @@ export const genieCommand: Cli.Command.Command<
       }
     }).pipe(Effect.withSpan('genie')),
 )
+
+const baseVersion = '0.1.0'
+const buildVersion = '__CLI_VERSION__'
+const version = resolveCliVersion({
+  baseVersion,
+  buildVersion,
+  runtimeStampEnvVar: 'NIX_CLI_BUILD_STAMP',
+})
 
 if (import.meta.main) {
   pipe(

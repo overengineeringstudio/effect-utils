@@ -160,7 +160,13 @@ export class WorkspaceService extends Context.Tag('dotdot/WorkspaceService')<
     }
 
     // Get pinned rev for a repo
-    const getPinnedRev = (name: string, tracking: RepoTracking): string | undefined => {
+    const getPinnedRev = ({
+      name,
+      tracking,
+    }: {
+      name: string
+      tracking: RepoTracking
+    }): string | undefined => {
       if (tracking._tag === 'dependency') {
         return tracking.config.rev
       }
@@ -202,7 +208,7 @@ export class WorkspaceService extends Context.Tag('dotdot/WorkspaceService')<
         const repoPath = path.join(ctx.root, name)
         const tracking = buildTracking(name)
         const fsState = yield* getFsState(repoPath)
-        const pinnedRev = getPinnedRev(name, tracking)
+        const pinnedRev = getPinnedRev({ name, tracking })
 
         const gitState = fsState._tag === 'exists' ? yield* getGitState(repoPath) : undefined
 

@@ -285,6 +285,7 @@ const atomicWriteFile = ({
     Effect.withSpan('atomicWriteFile'),
   )
 
+/** Generate output file from a genie template */
 export const generateFile = ({
   genieFilePath,
   cwd,
@@ -384,6 +385,7 @@ export const generateFile = ({
     Effect.withSpan('generateFile'),
   )
 
+/** Check if a generated file matches its expected content */
 export const checkFile = ({
   genieFilePath,
   cwd,

@@ -23,4 +23,5 @@ const nixPackages = [
   },
 ] as const
 
+/** Nix command for managing workspace Nix packages */
 export const nixCommand = createNixCommand({ packages: nixPackages })

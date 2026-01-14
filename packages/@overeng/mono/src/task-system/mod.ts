@@ -11,8 +11,11 @@
  * ]
  *
  * const renderer = inlineRenderer()
- * const result = yield* runTaskGraphOrFail(tasks, {
- *   onStateChange: (state) => renderer.render(state)
+ * const result = yield* runTaskGraphOrFail({
+ *   tasks,
+ *   options: {
+ *     onStateChange: (state) => renderer.render(state),
+ *   },
  * })
  * yield* renderer.renderFinal(result.state)
  * ```

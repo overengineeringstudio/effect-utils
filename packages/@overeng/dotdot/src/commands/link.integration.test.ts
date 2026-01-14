@@ -25,15 +25,18 @@ describe('link command', () => {
         })
 
         // Create package target
-        yield* createPackageTarget(`${workspacePath}/repo-a`, 'shared-lib')
+        yield* createPackageTarget({
+          repoPath: `${workspacePath}/repo-a`,
+          packagePath: 'shared-lib',
+        })
 
         // Update config with packages
         yield* fs.writeFileString(
           `${workspacePath}/dotdot-root.json`,
-          generateRootConfig(
-            { 'repo-a': { url: 'git@github.com:test/repo-a.git' } },
-            { 'shared-lib': { repo: 'repo-a', path: 'shared-lib' } },
-          ),
+          generateRootConfig({
+            repos: { 'repo-a': { url: 'git@github.com:test/repo-a.git' } },
+            packages: { 'shared-lib': { repo: 'repo-a', path: 'shared-lib' } },
+          }),
         )
 
         yield* linkSubcommands.create
@@ -59,14 +62,17 @@ describe('link command', () => {
           repos: [{ name: 'repo-a', isGitRepo: true }],
         })
 
-        yield* createPackageTarget(`${workspacePath}/repo-a`, 'shared-lib')
+        yield* createPackageTarget({
+          repoPath: `${workspacePath}/repo-a`,
+          packagePath: 'shared-lib',
+        })
 
         yield* fs.writeFileString(
           `${workspacePath}/dotdot-root.json`,
-          generateRootConfig(
-            { 'repo-a': { url: 'git@github.com:test/repo-a.git' } },
-            { 'shared-lib': { repo: 'repo-a', path: 'shared-lib' } },
-          ),
+          generateRootConfig({
+            repos: { 'repo-a': { url: 'git@github.com:test/repo-a.git' } },
+            packages: { 'shared-lib': { repo: 'repo-a', path: 'shared-lib' } },
+          }),
         )
 
         yield* linkSubcommands.create
@@ -90,21 +96,27 @@ describe('link command', () => {
           ],
         })
 
-        yield* createPackageTarget(`${workspacePath}/repo-a`, 'shared-lib')
-        yield* createPackageTarget(`${workspacePath}/repo-b`, 'shared-lib')
+        yield* createPackageTarget({
+          repoPath: `${workspacePath}/repo-a`,
+          packagePath: 'shared-lib',
+        })
+        yield* createPackageTarget({
+          repoPath: `${workspacePath}/repo-b`,
+          packagePath: 'shared-lib',
+        })
 
         yield* fs.writeFileString(
           `${workspacePath}/dotdot-root.json`,
-          generateRootConfig(
-            {
+          generateRootConfig({
+            repos: {
               'repo-a': { url: 'git@github.com:test/repo-a.git' },
               'repo-b': { url: 'git@github.com:test/repo-b.git' },
             },
-            {
+            packages: {
               'shared-lib-a': { repo: 'repo-a', path: 'shared-lib' },
               'shared-lib-b': { repo: 'repo-b', path: 'shared-lib' },
             },
-          ),
+          }),
         )
 
         yield* linkSubcommands.create
@@ -125,14 +137,17 @@ describe('link command', () => {
           repos: [{ name: 'repo-a', isGitRepo: true }],
         })
 
-        yield* createPackageTarget(`${workspacePath}/repo-a`, 'shared-lib')
+        yield* createPackageTarget({
+          repoPath: `${workspacePath}/repo-a`,
+          packagePath: 'shared-lib',
+        })
 
         yield* fs.writeFileString(
           `${workspacePath}/dotdot-root.json`,
-          generateRootConfig(
-            { 'repo-a': { url: 'git@github.com:test/repo-a.git' } },
-            { 'shared-lib': { repo: 'repo-a', path: 'shared-lib' } },
-          ),
+          generateRootConfig({
+            repos: { 'repo-a': { url: 'git@github.com:test/repo-a.git' } },
+            packages: { 'shared-lib': { repo: 'repo-a', path: 'shared-lib' } },
+          }),
         )
 
         // Create an existing file where the symlink should go
@@ -158,14 +173,17 @@ describe('link command', () => {
           repos: [{ name: 'repo-a', isGitRepo: true }],
         })
 
-        yield* createPackageTarget(`${workspacePath}/repo-a`, 'shared-lib')
+        yield* createPackageTarget({
+          repoPath: `${workspacePath}/repo-a`,
+          packagePath: 'shared-lib',
+        })
 
         yield* fs.writeFileString(
           `${workspacePath}/dotdot-root.json`,
-          generateRootConfig(
-            { 'repo-a': { url: 'git@github.com:test/repo-a.git' } },
-            { 'shared-lib': { repo: 'repo-a', path: 'shared-lib' } },
-          ),
+          generateRootConfig({
+            repos: { 'repo-a': { url: 'git@github.com:test/repo-a.git' } },
+            packages: { 'shared-lib': { repo: 'repo-a', path: 'shared-lib' } },
+          }),
         )
 
         const wsLayer = workspaceLayerFromPath(workspacePath)
@@ -194,14 +212,17 @@ describe('link command', () => {
           repos: [{ name: 'repo-a', isGitRepo: true }],
         })
 
-        yield* createPackageTarget(`${workspacePath}/repo-a`, 'shared-lib')
+        yield* createPackageTarget({
+          repoPath: `${workspacePath}/repo-a`,
+          packagePath: 'shared-lib',
+        })
 
         yield* fs.writeFileString(
           `${workspacePath}/dotdot-root.json`,
-          generateRootConfig(
-            { 'repo-a': { url: 'git@github.com:test/repo-a.git' } },
-            { 'shared-lib': { repo: 'repo-a', path: 'shared-lib' } },
-          ),
+          generateRootConfig({
+            repos: { 'repo-a': { url: 'git@github.com:test/repo-a.git' } },
+            packages: { 'shared-lib': { repo: 'repo-a', path: 'shared-lib' } },
+          }),
         )
 
         const wsLayer = workspaceLayerFromPath(workspacePath)
@@ -237,10 +258,10 @@ describe('link command', () => {
 
         yield* fs.writeFileString(
           `${workspacePath}/dotdot-root.json`,
-          generateRootConfig(
-            { 'repo-a': { url: 'git@github.com:test/repo-a.git' } },
-            { nonexistent: { repo: 'repo-a', path: 'nonexistent' } },
-          ),
+          generateRootConfig({
+            repos: { 'repo-a': { url: 'git@github.com:test/repo-a.git' } },
+            packages: { nonexistent: { repo: 'repo-a', path: 'nonexistent' } },
+          }),
         )
 
         yield* linkSubcommands.create
@@ -276,14 +297,17 @@ describe('link command', () => {
         })
 
         // Create package at nested path
-        yield* createPackageTarget(`${workspacePath}/repo-a`, 'packages/utils')
+        yield* createPackageTarget({
+          repoPath: `${workspacePath}/repo-a`,
+          packagePath: 'packages/utils',
+        })
 
         yield* fs.writeFileString(
           `${workspacePath}/dotdot-root.json`,
-          generateRootConfig(
-            { 'repo-a': { url: 'git@github.com:test/repo-a.git' } },
-            { '@org/utils': { repo: 'repo-a', path: 'packages/utils' } },
-          ),
+          generateRootConfig({
+            repos: { 'repo-a': { url: 'git@github.com:test/repo-a.git' } },
+            packages: { '@org/utils': { repo: 'repo-a', path: 'packages/utils' } },
+          }),
         )
 
         yield* linkSubcommands.create
