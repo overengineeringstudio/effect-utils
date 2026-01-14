@@ -13,7 +13,7 @@
 
 ### document
 
-- [ ] docs page for usage with nix 
+- [ ] docs page for usage with nix
   - [ ] git vs local path stuff (use overrides in .envrc)
   - [ ] how to use with devenv
 - [ ] docs page for usage with mono cli pattern
@@ -22,7 +22,6 @@
 
 - hierarchy map
 - worktree feature on project level
-
 
 ## Completed
 

@@ -1,15 +1,19 @@
 { pkgs, inputs, ... }:
 let
   system = pkgs.stdenv.hostPlatform.system;
+  pkgsStable = import inputs.nixpkgs { inherit system; };
   pkgsUnstable = import inputs.nixpkgsUnstable { inherit system; };
-  mkBunCli = import ./nix/mk-bun-cli.nix { inherit pkgs pkgsUnstable; };
+  # Build CLIs against the same nixpkgs set as the flake outputs.
+  mkBunCli = import ./nix/mk-bun-cli.nix { pkgs = pkgsStable; inherit pkgsUnstable; };
+  # Keep devenv outputs aligned with flake outputs so mono nix status is accurate.
   gitRev = "unknown";
+  workspaceSrc = ./.;
   playwrightDriver = inputs.playwright-web-flake.packages.${system}.playwright-driver;
   genie = mkBunCli {
     name = "genie";
     entry = "packages/@overeng/genie/src/build/mod.ts";
     packageDir = "packages/@overeng/genie";
-    workspaceRoot = ./.;
+    workspaceRoot = workspaceSrc;
     typecheckTsconfig = "packages/@overeng/genie/tsconfig.json";
     bunDepsHash = "sha256-xzYr5vBSxy85kn0pitidwiqY6BCZtUzseJlWtmr2NqY=";
     inherit gitRev;
@@ -19,14 +23,15 @@ let
     entry = "packages/@overeng/dotdot/src/cli.ts";
     binaryName = "dotdot";
     packageDir = "packages/@overeng/dotdot";
-    workspaceRoot = ./.;
+    workspaceRoot = workspaceSrc;
     typecheckTsconfig = "packages/@overeng/dotdot/tsconfig.json";
     bunDepsHash = "sha256-0HfezPxkSbXI4+0sLjhZ4u44j7nIp/25zRXRXRxPaSM=";
     inherit gitRev;
   };
   mono = import ./scripts/nix/build.nix {
-    inherit pkgs pkgsUnstable mkBunCli gitRev;
-    src = ./.;
+    pkgs = pkgsStable;
+    inherit pkgsUnstable mkBunCli gitRev;
+    src = workspaceSrc;
   };
   cliBuildStamp = import ./nix/cli-build-stamp.nix { inherit pkgs; };
 in

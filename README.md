@@ -119,6 +119,7 @@ mono nix build --package genie
 mono nix build --package dotdot
 mono nix reload
 mono nix status
+mono nix status --scope flake
 ```
 
 After `bun.lock` changes:

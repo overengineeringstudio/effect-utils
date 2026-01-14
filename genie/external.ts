@@ -170,8 +170,7 @@ export const reactJsx = { jsx: 'react-jsx' as const }
  * DevDependencies required for Effect Language Service.
  * Includes both the language service and typescript (required for patching).
  */
-export const effectLspDevDeps = () =>
-  catalog.pick('@effect/language-service', 'typescript')
+export const effectLspDevDeps = () => catalog.pick('@effect/language-service', 'typescript')
 
 /**
  * Scripts for Effect Language Service setup.

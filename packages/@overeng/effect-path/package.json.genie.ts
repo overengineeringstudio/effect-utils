@@ -24,7 +24,13 @@ export default packageJson({
     ...effectLspScripts,
   },
   devDependencies: {
-    ...catalog.pick(...peerDepNames, '@effect/platform-node', '@effect/vitest', '@types/node', 'vitest'),
+    ...catalog.pick(
+      ...peerDepNames,
+      '@effect/platform-node',
+      '@effect/vitest',
+      '@types/node',
+      'vitest',
+    ),
     ...effectLspDevDeps(),
   },
   peerDependencies: catalog.peers(...peerDepNames),

@@ -90,6 +90,7 @@
         "overeng/named-args": "off",
         "unicorn/no-array-sort": "off",
         "unicorn/consistent-function-scoping": "off",
+        "require-yield": "off",
       },
     },
     {

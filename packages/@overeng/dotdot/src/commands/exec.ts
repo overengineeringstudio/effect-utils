@@ -27,13 +27,6 @@ export class ExecError extends Schema.TaggedError<ExecError>()('ExecError', {
   cause: Schema.optional(Schema.Defect),
 }) {}
 
-/** Result of executing command in a repo */
-type ExecResult = {
-  name: string
-  status: 'success' | 'failed' | 'skipped'
-  message?: string
-}
-
 /** Exec command implementation */
 export const execCommand = Cli.Command.make(
   'exec',

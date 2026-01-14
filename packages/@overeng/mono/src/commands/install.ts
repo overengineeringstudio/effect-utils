@@ -4,6 +4,7 @@ import { Console, Effect } from 'effect'
 
 import type { CmdError } from '@overeng/utils/node'
 
+import { InstallError } from '../errors.ts'
 import type { InstallConfig } from '../tasks.ts'
 import { cleanNodeModules, installAllWithTaskSystem } from '../tasks.ts'
 import { ciGroup, ciGroupEnd, IS_CI } from '../utils.ts'
@@ -87,7 +88,7 @@ export const installCommand = (config: InstallConfig) =>
           yield* Console.log('')
         }
 
-        yield* Effect.fail(new Error(`Failed to install ${failures.length} packages`))
+        return yield* new InstallError({ failedCount: failures.length, totalCount: total })
       }
 
       yield* Console.log(`\n✓ Installed dependencies for ${successes.length} packages`)

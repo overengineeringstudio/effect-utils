@@ -17,3 +17,13 @@ export class GenieCoverageError extends Schema.TaggedError<GenieCoverageError>()
     return `Config files missing genie sources:\n${this.missingGenieSources.map((f) => `  - ${f}`).join('\n')}\n\nCreate corresponding .genie.ts files for these config files.`
   }
 }
+
+/** Error thrown when package installation fails */
+export class InstallError extends Schema.TaggedError<InstallError>()('InstallError', {
+  failedCount: Schema.Number,
+  totalCount: Schema.Number,
+}) {
+  override get message(): string {
+    return `Failed to install ${this.failedCount}/${this.totalCount} packages`
+  }
+}

@@ -1,14 +1,10 @@
 import type { Error as PlatformError, FileSystem, Path } from '@effect/platform'
 import type * as CommandExecutor from '@effect/platform/CommandExecutor'
+import type { Option } from 'effect'
 
 import type { CurrentWorkingDirectory } from '@overeng/utils/node'
 
-import type {
-  GenieCheckError,
-  GenieFileError,
-  GenieGenerationFailedError,
-  GenieImportError,
-} from './errors.ts'
+import type { GenieCheckError, GenieGenerationFailedError, GenieImportError } from './errors.ts'
 
 /** Context passed to genie generator functions */
 export type GenieContext = {
@@ -24,6 +20,7 @@ export type GenieCommandConfig = {
   writeable: boolean
   check: boolean
   dryRun: boolean
+  oxfmtConfig: Option.Option<string>
 }
 
 export type GenieCommandEnv =

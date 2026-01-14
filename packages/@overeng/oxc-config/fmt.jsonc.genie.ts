@@ -18,6 +18,7 @@ export default oxfmtConfig({
     newlinesBetween: true,
   },
   experimentalSortPackageJson: true,
-  // Ignore generated files
+  // Ignore generated files (pattern-based excludes)
+  // Note: Genie-generated read-only files are excluded via inline args in mono CLI
   ignorePatterns: ['**/*.gen.ts', '**/*.gen.tsx', '**/*.generated.ts', '**/*.generated.tsx'],
 })

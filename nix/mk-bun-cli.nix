@@ -69,7 +69,7 @@ let
     "out"
   ];
 
-  sourceFilter = root: path: _type:
+  sourceFilter = root: path: type:
     let
       rootStr = toString root;
       pathStr = toString path;
@@ -78,9 +78,11 @@ let
         then ""
         else lib.removePrefix (rootStr + "/") pathStr;
       parts = if relPath == "" then [] else lib.splitString "/" relPath;
-      hasExcluded = lib.any (segment: lib.elem segment excludedSourceNames) parts;
+      hasExcluded = lib.any
+        (segment: lib.elem segment excludedSourceNames || lib.hasPrefix "result-" segment)
+        parts;
     in
-    !hasExcluded;
+    lib.cleanSourceFilter path type && !hasExcluded;
 
   workspaceSrc = lib.cleanSourceWith {
     src = workspaceRootPath;

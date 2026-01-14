@@ -22,6 +22,7 @@ dotdot status
 ```
 
 **Result:**
+
 ```
 my-project/
 ├── dotdot.json           # Root config (can also be in frontend/)
@@ -49,6 +50,7 @@ dotdot status
 ```
 
 The primary repo's `dotdot.json` declares dependencies:
+
 ```json
 {
   "$schema": "https://raw.githubusercontent.com/overengineeringstudio/dotdot/main/schema/dotdot.schema.json",
@@ -60,6 +62,7 @@ The primary repo's `dotdot.json` declares dependencies:
 ```
 
 After `dotdot sync`:
+
 ```
 workspace/
 ├── dotdot.json
@@ -143,6 +146,7 @@ my-workspace/
 ```
 
 dotdot aggregates all configs:
+
 ```bash
 dotdot status
 
@@ -251,6 +255,7 @@ dotdot link
 ```
 
 Now other repos can reference with simple paths:
+
 ```json
 // package.json
 {
@@ -277,6 +282,7 @@ dotdot tree --conflicts
 ```
 
 **Resolution options:**
+
 1. Align configs to use the same revision
 2. Update one repo to work with the other's pinned revision
 3. Use the latest revision and update all configs: `dotdot update-revs shared-lib`

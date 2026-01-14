@@ -33,6 +33,7 @@ workspace/
 ```
 
 **Rationale:**
+
 - Simpler mental model
 - Universal `../` paths work everywhere
 - Each repo is a first-class citizen
@@ -72,6 +73,7 @@ workspace/
 ```
 
 **Rationale:**
+
 - Each repo can own its own dependency declarations
 - Repos remain portable - they work independently
 - Root config is the single source of truth (no merging at runtime)
@@ -95,6 +97,7 @@ workspace/
 ```
 
 **Rationale:**
+
 - Exact reproducibility
 - CI can restore exact workspace state
 - Easy to see what changed when pins update
@@ -115,10 +118,12 @@ workspace-root/
 ```
 
 **Rules:**
+
 - Workspace root: ONLY `dotdot-root.json` (never `dotdot.json`)
 - Member repos: ONLY `dotdot.json` (never `dotdot-root.json`)
 
 **Rationale:**
+
 - Clear separation prevents ambiguity about which file is authoritative
 - Generated config is the single source of truth at workspace level
 - Member repos declare dependencies without polluting workspace root
@@ -130,6 +135,7 @@ workspace-root/
 **Decision:** dotdot calls git directly, doesn't reimplement version control.
 
 **Rationale:**
+
 - Leverage git's reliability and features
 - All git commands still work
 - No learning curve for git operations
@@ -140,6 +146,7 @@ workspace-root/
 **Decision:** Configuration uses JSON format (`dotdot.json`) with optional JSON Schema for editor support.
 
 **Rationale:**
+
 - Works with any language/ecosystem (not just TypeScript)
 - Universal JSON format - no runtime dependencies for config
 - JSON Schema provides autocomplete and validation in editors
@@ -149,6 +156,7 @@ workspace-root/
 ### 7. Config Semantics: Self-Description vs Dependencies
 
 **Decision:** Member configs have two distinct sections:
+
 - `exposes` - packages THIS repo provides to the workspace
 - `deps` - other repos THIS repo depends on
 
@@ -180,6 +188,7 @@ Root config aggregates all into flat `repos` + `packages` index:
 ```
 
 **Rationale:**
+
 - Clear semantic separation - no ambiguity about "who provides what"
 - A repo describes itself (exposes) and its needs (deps)
 - Root config is a flat aggregation for fast command execution
@@ -188,6 +197,7 @@ Root config aggregates all into flat `repos` + `packages` index:
 ### 8. Repo Validity & Dangling Detection
 
 **Decision:** A repo in the workspace is valid if ANY of these conditions are true:
+
 1. **Has a member config** (`dotdot.json`) - it's a workspace member
 2. **Is declared as a dependency** (in some other repo's `deps`) - it's an external dep
 
@@ -205,6 +215,7 @@ workspace/
 ```
 
 **Rationale:**
+
 - External dependencies (libraries) don't need dotdot configs
 - Dangling repos are likely orphaned/forgotten - warn to help cleanup
 - Clear rules about what "belongs" in a workspace
@@ -221,10 +232,10 @@ workspace/
 
 ## Trade-offs Accepted
 
-| Trade-off | Reasoning |
-|-----------|-----------|
-| JSON config (not code) | Universal format over programmable config - most users don't need dynamic config |
-| No branch tracking | Revisions are more precise, branches can change |
-| Manual `packages` setup | Explicit is better than magic symlink detection |
-| No workspace-level git | Each repo manages its own git independently |
-| Distributed configs | Avoids merge conflicts, enables repo portability |
+| Trade-off               | Reasoning                                                                        |
+| ----------------------- | -------------------------------------------------------------------------------- |
+| JSON config (not code)  | Universal format over programmable config - most users don't need dynamic config |
+| No branch tracking      | Revisions are more precise, branches can change                                  |
+| Manual `packages` setup | Explicit is better than magic symlink detection                                  |
+| No workspace-level git  | Each repo manages its own git independently                                      |
+| Distributed configs     | Avoids merge conflicts, enables repo portability                                 |

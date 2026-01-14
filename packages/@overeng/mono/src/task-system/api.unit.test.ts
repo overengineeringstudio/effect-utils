@@ -44,16 +44,10 @@ describe('task factory', () => {
 
     it.effect('creates command task with cwd and env', () =>
       Effect.gen(function* () {
-        const t = commandTask(
-          'custom-cmd',
-          'Custom Command',
-          'npm',
-          ['install'],
-          {
-            cwd: '/tmp/test',
-            env: { NODE_ENV: 'test' },
-          },
-        )
+        const t = commandTask('custom-cmd', 'Custom Command', 'npm', ['install'], {
+          cwd: '/tmp/test',
+          env: { NODE_ENV: 'test' },
+        })
 
         expect(t.id).toBe('custom-cmd')
         expect(t.name).toBe('Custom Command')
@@ -168,12 +162,7 @@ describe('task factory', () => {
 
     it.effect('handles empty dependencies array', () =>
       Effect.gen(function* () {
-        const t = task(
-          'empty-deps',
-          'Empty Deps',
-          Effect.succeed('ok'),
-          { dependencies: [] },
-        )
+        const t = task('empty-deps', 'Empty Deps', Effect.succeed('ok'), { dependencies: [] })
 
         expect(t.dependencies).toEqual([])
       }),

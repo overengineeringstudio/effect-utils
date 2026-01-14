@@ -1,7 +1,7 @@
 import path from 'node:path'
 
 import { Command, FileSystem } from '@effect/platform'
-import { Effect } from 'effect'
+import { Effect, Option } from 'effect'
 
 import { ensureImportMapResolver } from './discovery.ts'
 import { GenieCheckError, GenieFileError, GenieImportError } from './errors.ts'
@@ -66,9 +66,16 @@ const getHeaderComment = (targetFilePath: string, sourceFile: string): string =>
   return `// Generated file - DO NOT EDIT\n// Source: ${sourceFile}\n`
 }
 
-/** Format content using oxfmt if the file type is supported. Lets oxfmt find its own config. */
-// oxlint-disable-next-line overeng/named-args -- simple internal helper
-const formatWithOxfmt = (targetFilePath: string, content: string) =>
+/** Format content using oxfmt if the file type is supported */
+const formatWithOxfmt = ({
+  targetFilePath,
+  content,
+  configPath,
+}: {
+  targetFilePath: string
+  content: string
+  configPath: Option.Option<string>
+}) =>
   Effect.gen(function* () {
     const ext = path.extname(targetFilePath)
 
@@ -76,7 +83,12 @@ const formatWithOxfmt = (targetFilePath: string, content: string) =>
       return content
     }
 
-    const result = yield* Command.make('oxfmt', '--stdin-filepath', targetFilePath).pipe(
+    const args = Option.match(configPath, {
+      onNone: () => ['--stdin-filepath', targetFilePath],
+      onSome: (cfg) => ['-c', cfg, '--stdin-filepath', targetFilePath],
+    })
+
+    const result = yield* Command.make('oxfmt', ...args).pipe(
       Command.feed(content),
       Command.string,
       Effect.catchAll(() => Effect.succeed(content)),
@@ -180,9 +192,11 @@ const enrichPackageJsonMarker = ({
 export const getExpectedContent = ({
   genieFilePath,
   cwd,
+  oxfmtConfigPath,
 }: {
   genieFilePath: string
   cwd: string
+  oxfmtConfigPath: Option.Option<string>
 }) =>
   Effect.gen(function* () {
     const targetFilePath = genieFilePath.replace('.genie.ts', '')
@@ -195,7 +209,11 @@ export const getExpectedContent = ({
     }
 
     const header = getHeaderComment(targetFilePath, sourceFile)
-    const formattedContent = yield* formatWithOxfmt(targetFilePath, rawContent)
+    const formattedContent = yield* formatWithOxfmt({
+      targetFilePath,
+      content: rawContent,
+      configPath: oxfmtConfigPath,
+    })
     return { targetFilePath, content: header + formattedContent }
   })
 
@@ -272,18 +290,24 @@ export const generateFile = ({
   cwd,
   readOnly,
   dryRun = false,
+  oxfmtConfigPath,
 }: {
   genieFilePath: string
   cwd: string
   readOnly: boolean
   dryRun?: boolean
+  oxfmtConfigPath: Option.Option<string>
 }) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const targetFilePath = genieFilePath.replace('.genie.ts', '')
     const targetDir = path.dirname(targetFilePath)
 
-    const { content: fileContentString } = yield* getExpectedContent({ genieFilePath, cwd })
+    const { content: fileContentString } = yield* getExpectedContent({
+      genieFilePath,
+      cwd,
+      oxfmtConfigPath,
+    })
 
     const targetDirExists = yield* fs.exists(targetDir)
     if (!targetDirExists) {
@@ -360,12 +384,21 @@ export const generateFile = ({
     Effect.withSpan('generateFile'),
   )
 
-export const checkFile = ({ genieFilePath, cwd }: { genieFilePath: string; cwd: string }) =>
+export const checkFile = ({
+  genieFilePath,
+  cwd,
+  oxfmtConfigPath,
+}: {
+  genieFilePath: string
+  cwd: string
+  oxfmtConfigPath: Option.Option<string>
+}) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const { targetFilePath, content: expectedContent } = yield* getExpectedContent({
       genieFilePath,
       cwd,
+      oxfmtConfigPath,
     })
 
     const fileExists = yield* fs.exists(targetFilePath)

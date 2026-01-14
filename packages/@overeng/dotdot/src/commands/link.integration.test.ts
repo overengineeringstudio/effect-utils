@@ -3,7 +3,7 @@
  */
 
 import { FileSystem } from '@effect/platform'
-import { Effect, Layer } from 'effect'
+import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { CurrentWorkingDirectory } from '../lib/mod.ts'

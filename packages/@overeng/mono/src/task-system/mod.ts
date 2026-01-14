@@ -21,13 +21,7 @@
  */
 
 // Types
-export type {
-  TaskDef,
-  TaskEvent,
-  TaskGraphResult,
-  TaskRenderer,
-  TaskStatus,
-} from './types.ts'
+export type { TaskDef, TaskEvent, TaskGraphResult, TaskRenderer, TaskStatus } from './types.ts'
 export { TaskExecutionError, TaskState, TaskSystemState } from './types.ts'
 
 // Graph execution

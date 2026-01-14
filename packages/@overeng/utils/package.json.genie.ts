@@ -1,3 +1,4 @@
+import { otelSdkDeps } from '../../../genie/external.ts'
 import {
   catalog,
   effectLspDevDeps,
@@ -6,7 +7,6 @@ import {
   patchPostinstall,
   privatePackageDefaults,
 } from '../../../genie/internal.ts'
-import { otelSdkDeps } from '../../../genie/external.ts'
 
 /** Packages exposed as peer deps (consumers provide) + included in devDeps (for local dev/test) */
 const peerDepNames = [

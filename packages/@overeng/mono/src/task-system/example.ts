@@ -28,12 +28,18 @@ const exampleTasks = [
   // Create test directories in parallel
   task('setup-a', 'Setup directory A', {
     cmd: 'sh',
-    args: ['-c', 'mkdir -p tmp/task-example/a && echo "Setting up A..." && sleep 1 && echo "A ready"'],
+    args: [
+      '-c',
+      'mkdir -p tmp/task-example/a && echo "Setting up A..." && sleep 1 && echo "A ready"',
+    ],
   }),
 
   task('setup-b', 'Setup directory B', {
     cmd: 'sh',
-    args: ['-c', 'mkdir -p tmp/task-example/b && echo "Setting up B..." && sleep 0.5 && echo "B ready"'],
+    args: [
+      '-c',
+      'mkdir -p tmp/task-example/b && echo "Setting up B..." && sleep 0.5 && echo "B ready"',
+    ],
   }),
 
   // Check both directories exist (depends on both setups)
@@ -121,9 +127,13 @@ const program = Effect.gen(function* () {
   // Cleanup
   console.log('\nCleaning up...')
   yield* Effect.promise(() =>
-    import('node:fs/promises').then((fs) => fs.rm('tmp/task-example', { recursive: true, force: true })),
+    import('node:fs/promises').then((fs) =>
+      fs.rm('tmp/task-example', { recursive: true, force: true }),
+    ),
   )
 })
 
 // Run the program with NodeContext (provides CommandExecutor)
-Effect.runPromise(program.pipe(Effect.provide(NodeContext.layer)) as Effect.Effect<void, never, never>).catch(console.error)
+Effect.runPromise(
+  program.pipe(Effect.provide(NodeContext.layer)) as Effect.Effect<void, never, never>,
+).catch(console.error)

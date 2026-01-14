@@ -11,7 +11,6 @@ import { FileSystem } from '@effect/platform'
 import { Array as A, Effect } from 'effect'
 
 import {
-  ConfigOutOfSyncError,
   CurrentWorkingDirectory,
   findWorkspaceRoot,
   Git,

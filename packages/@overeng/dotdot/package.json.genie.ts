@@ -39,13 +39,7 @@ export default packageJson({
     ...catalog.pick('@overeng/utils'),
   },
   devDependencies: {
-    ...catalog.pick(
-      ...peerDepNames,
-      '@effect/vitest',
-      '@types/bun',
-      '@types/node',
-      'vitest',
-    ),
+    ...catalog.pick(...peerDepNames, '@effect/vitest', '@types/bun', '@types/node', 'vitest'),
     ...effectLspDevDeps(),
   },
   peerDependencies: {

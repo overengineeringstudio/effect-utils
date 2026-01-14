@@ -13,7 +13,6 @@ import { Effect, Schema } from 'effect'
 
 import {
   CONFIG_FILE_NAME,
-  type DepConfig,
   GENERATED_CONFIG_FILE_NAME,
   type MemberConfig,
   MemberConfigSchema,

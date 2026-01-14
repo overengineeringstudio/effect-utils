@@ -9,7 +9,15 @@ import { Effect, Stream } from 'effect'
 
 import type { CommandSpec } from './execution.ts'
 import { CommandError, executeCommand } from './execution.ts'
-import type { TaskDef, TaskEvent } from './types.ts'
+import type { TaskDef } from './types.ts'
+
+// =============================================================================
+// Type Guards
+// =============================================================================
+
+/** Check if the input is a CommandSpec (has cmd and args properties) */
+const isCommand = (x: unknown): x is CommandSpec =>
+  typeof x === 'object' && x !== null && 'cmd' in x && 'args' in x
 
 // =============================================================================
 // Task Factory Overloads
@@ -31,7 +39,7 @@ export function task<TId extends string>(
   name: string,
   command: CommandSpec,
   options?: { dependencies?: ReadonlyArray<TId> },
-): TaskDef<TId, void, CommandError | import('@effect/platform/Error').PlatformError, any>
+): TaskDef<TId, void, CommandError | import('@effect/platform/Error').PlatformError, never>
 
 /**
  * Create an effect task that runs arbitrary Effect code.
@@ -62,10 +70,6 @@ export function task<TId extends string>(
   commandOrEffect: CommandSpec | Effect.Effect<any, any, any>,
   options?: { dependencies?: ReadonlyArray<TId> },
 ): TaskDef<TId, any, any, any> {
-  // Check if it's a CommandSpec (has cmd property)
-  const isCommand = (x: any): x is CommandSpec =>
-    typeof x === 'object' && x !== null && 'cmd' in x && 'args' in x
-
   if (isCommand(commandOrEffect)) {
     // Command task - stream events with exit code checking
     const taskDef: TaskDef<TId, any, any, any> = {

@@ -31,6 +31,7 @@ Graph-based task execution with streaming output, dependency resolution, and plu
 **Decision**: Use event streams with pure reducers instead of direct state mutations.
 
 **Rationale**:
+
 - Events are serializable → can log, replay, debug
 - Pure reducers → easy to test
 - Clean separation: execution → events → state → rendering
@@ -43,12 +44,14 @@ Graph-based task execution with streaming output, dependency resolution, and plu
 **Decision**: Use Effect Workflow for task orchestration with custom topological grouping.
 
 **Rationale**:
+
 - Workflow provides robust DAG execution with persistence (we use in-memory)
 - Automatic dependency tracking and parallel execution
 - Built-in error handling and retries
 - Can add durability later if needed
 
 **Implementation**: Tasks grouped into "levels" where each level executes in parallel:
+
 ```
 Level 0: [build-a, build-b, lint]     // No dependencies
 Level 1: [test]                        // Depends on builds
@@ -60,11 +63,13 @@ Level 2: [deploy]                      // Depends on test
 **Decision**: Define `TaskRenderer` interface, provide multiple implementations.
 
 **Rationale**:
+
 - Different environments need different output (CI vs interactive)
 - Easy to add custom renderers for special cases
 - Keeps rendering logic separate from execution
 
 **Available Renderers**:
+
 - `inlineRenderer()` - Default, works everywhere
 - `ciRenderer()` - GitHub Actions groups (coming soon)
 - `alternateScreenRenderer()` - OpenTui integration (future)
@@ -74,6 +79,7 @@ Level 2: [deploy]                      // Depends on test
 **Decision**: Support both shell commands and arbitrary Effects through a unified API.
 
 **Rationale**:
+
 - Most tasks are shell commands (bun install, tsc, vitest)
 - Some tasks need Effect composition (file operations, HTTP calls)
 - Should feel natural for both use cases
@@ -85,11 +91,13 @@ Level 2: [deploy]                      // Depends on test
 **Decision**: Renderer shows status + last 1-2 log lines for running/failed tasks.
 
 **Rationale**:
+
 - Provides context without overwhelming output
 - Shows what's happening "right now"
 - Failed tasks show error details in final summary
 
 **Example**:
+
 ```
 ◐ Build Package A (1.2s)
   │ Compiling 147 files...
@@ -194,7 +202,7 @@ const commandTask = <TId extends string>(
   name: string,
   command: string,
   args: string[],
-  options?: { cwd?: string; env?: Record<string, string>; dependencies?: TId[] }
+  options?: { cwd?: string; env?: Record<string, string>; dependencies?: TId[] },
 ): TaskDef<TId, void, CommandError, CommandExecutor> => ({
   id,
   name,
@@ -206,7 +214,7 @@ const effectTask = <TId extends string, A, E, R>(
   id: TId,
   name: string,
   effect: Effect.Effect<A, E, R>,
-  options?: { dependencies?: TId[] }
+  options?: { dependencies?: TId[] },
 ): TaskDef<TId, A, E, R> => ({
   id,
   name,
@@ -268,14 +276,14 @@ function task<TId extends string>(
   id: TId,
   name: string,
   effect: Effect.Effect<unknown, unknown, unknown>,
-  options?: { dependencies?: TId[] }
+  options?: { dependencies?: TId[] },
 ): TaskDef<TId, unknown, unknown, unknown>
 
 function task<TId extends string>(
   id: TId,
   name: string,
   command: { cmd: string; args: string[]; cwd?: string; env?: Record<string, string> },
-  options?: { dependencies?: TId[] }
+  options?: { dependencies?: TId[] },
 ): TaskDef<TId, void, CommandError, CommandExecutor>
 
 // Usage
@@ -285,17 +293,24 @@ const tasks = [
     args: ['install'],
   }),
 
-  task('typecheck', 'Type check', {
-    cmd: 'tsc',
-    args: ['--build'],
-  }, {
-    dependencies: ['install'],
-  }),
+  task(
+    'typecheck',
+    'Type check',
+    {
+      cmd: 'tsc',
+      args: ['--build'],
+    },
+    {
+      dependencies: ['install'],
+    },
+  ),
 
-  task('notify', 'Send notification',
+  task(
+    'notify',
+    'Send notification',
     Effect.gen(function* () {
       yield* sendSlackMessage('Build complete!')
-    })
+    }),
   ),
 ]
 ```
@@ -314,16 +329,13 @@ import { Workflow } from '@effect/workflow'
 
 const graph = Workflow.make('build-pipeline', {
   activities: {
-    'install': runCommand('bun', ['install']),
-    'typecheck': runCommand('tsc', ['--build']),
-    'test': runCommand('vitest', ['run']),
+    install: runCommand('bun', ['install']),
+    typecheck: runCommand('tsc', ['--build']),
+    test: runCommand('vitest', ['run']),
   },
   workflow: function* () {
     yield* Activity.execute('install')
-    yield* Activity.all([
-      Activity.execute('typecheck'),
-      Activity.execute('test'),
-    ])
+    yield* Activity.all([Activity.execute('typecheck'), Activity.execute('test')])
   },
 })
 ```
@@ -337,13 +349,9 @@ Use Workflow engine for DAG execution, wrap in our task API:
 
 ```typescript
 // Under the hood
-const executeTaskGraph = <TId extends string>(
-  tasks: TaskDef<TId>[]
-) => {
+const executeTaskGraph = <TId extends string>(tasks: TaskDef<TId>[]) => {
   // Convert task graph to Workflow activities
-  const activities = Object.fromEntries(
-    tasks.map(t => [t.id, () => executeTask(t)])
-  )
+  const activities = Object.fromEntries(tasks.map((t) => [t.id, () => executeTask(t)]))
 
   // Create workflow with dependency resolution
   const workflow = Workflow.make('task-graph', {
@@ -351,7 +359,7 @@ const executeTaskGraph = <TId extends string>(
     workflow: function* () {
       const levels = topologicalSort(tasks)
       for (const level of levels) {
-        yield* Activity.all(level.map(id => Activity.execute(id)))
+        yield* Activity.all(level.map((id) => Activity.execute(id)))
       }
     },
   })
@@ -370,10 +378,11 @@ Don't use Workflow, just topological sort + Effect.all:
 ```typescript
 const levels = topologicalSort(tasks)
 for (const level of levels) {
-  yield* Effect.all(
-    level.map(task => executeTask(task)),
-    { concurrency: 'unbounded' }
-  )
+  yield *
+    Effect.all(
+      level.map((task) => executeTask(task)),
+      { concurrency: 'unbounded' },
+    )
 }
 ```
 
@@ -400,11 +409,13 @@ const tasks = [
 ]
 
 const renderer = inlineRenderer()
-const result = yield* runTaskGraph(tasks, {
-  onStateChange: (state) => renderer.render(state),
-})
+const result =
+  yield *
+  runTaskGraph(tasks, {
+    onStateChange: (state) => renderer.render(state),
+  })
 
-yield* renderer.renderFinal(result.state)
+yield * renderer.renderFinal(result.state)
 ```
 
 ### With Dependencies
@@ -416,26 +427,41 @@ const tasks = [
     args: ['install'],
   }),
 
-  task('typecheck', 'Type check', {
-    cmd: 'tsc',
-    args: ['--build'],
-  }, {
-    dependencies: ['install'],
-  }),
+  task(
+    'typecheck',
+    'Type check',
+    {
+      cmd: 'tsc',
+      args: ['--build'],
+    },
+    {
+      dependencies: ['install'],
+    },
+  ),
 
-  task('test', 'Run tests', {
-    cmd: 'vitest',
-    args: ['run'],
-  }, {
-    dependencies: ['install'],
-  }),
+  task(
+    'test',
+    'Run tests',
+    {
+      cmd: 'vitest',
+      args: ['run'],
+    },
+    {
+      dependencies: ['install'],
+    },
+  ),
 
-  task('deploy', 'Deploy', {
-    cmd: 'fly',
-    args: ['deploy'],
-  }, {
-    dependencies: ['typecheck', 'test'],
-  }),
+  task(
+    'deploy',
+    'Deploy',
+    {
+      cmd: 'fly',
+      args: ['deploy'],
+    },
+    {
+      dependencies: ['typecheck', 'test'],
+    },
+  ),
 ]
 ```
 
@@ -448,7 +474,9 @@ const tasks = [
     args: ['build'],
   }),
 
-  task('upload', 'Upload artifacts',
+  task(
+    'upload',
+    'Upload artifacts',
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
       const files = yield* fs.readDirectory('dist')
@@ -457,7 +485,7 @@ const tasks = [
         yield* uploadToS3(file)
       }
     }),
-    { dependencies: ['build'] }
+    { dependencies: ['build'] },
   ),
 ]
 ```
@@ -476,6 +504,7 @@ const tasks = [
 ```
 
 **Features**:
+
 - Status icons: `○` pending, `◐` running, `✓` success, `✗` failed
 - Live duration updates
 - Last 1-2 log lines for running tasks
@@ -495,6 +524,7 @@ Compiling src/main.ts...
 ```
 
 **Features**:
+
 - Collapsible sections in GitHub Actions
 - Full output for each task
 - No live updates (sequential)
@@ -502,28 +532,33 @@ Compiling src/main.ts...
 ## Migration Plan
 
 ### Phase 1: Core System ✅
+
 - ✅ Event-driven architecture
 - ✅ Topological sort
 - ✅ Inline renderer
 - ✅ Basic prototype
 
 ### Phase 2: Command Execution (Next)
+
 - 🔲 Add command execution with output capture
 - 🔲 Emit stdout/stderr events
 - 🔲 Update renderer to show recent logs
 - 🔲 Design final API (Option D recommended)
 
 ### Phase 3: Workflow Integration
+
 - 🔲 Integrate @effect/workflow for orchestration
 - 🔲 Test with complex graphs (100+ tasks)
 - 🔲 Add workflow monitoring/telemetry
 
 ### Phase 4: Migrate Existing Commands
+
 - ✅ Migrate `mono install`
 - ✅ Migrate `mono check`
 - ✅ Remove old TaskRunner
 
 ### Phase 5: Advanced Features
+
 - 🔲 CI renderer with GitHub Actions groups
 - 🔲 Task filtering/selection
 - 🔲 Incremental execution (skip unchanged)

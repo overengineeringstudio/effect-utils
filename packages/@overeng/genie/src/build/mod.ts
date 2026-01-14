@@ -3,7 +3,7 @@ import path from 'node:path'
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
 import * as PlatformNode from '@effect/platform-node'
-import { Effect, Either, Layer, pipe, Stream } from 'effect'
+import { Effect, Either, Layer, Option, pipe, Stream } from 'effect'
 
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
 import { resolveCliVersion } from '@overeng/utils/node/cli-version'
@@ -28,6 +28,29 @@ const version = resolveCliVersion({
   buildVersion,
   runtimeStampEnvVar: 'NIX_CLI_BUILD_STAMP',
 })
+
+/** Convention path for oxfmt config relative to workspace root */
+const OXFMT_CONFIG_CONVENTION_PATH = 'packages/@overeng/oxc-config/fmt.jsonc'
+
+/** Resolve the oxfmt config path: explicit option → convention path → none */
+const resolveOxfmtConfigPath = ({
+  explicitPath,
+  cwd,
+}: {
+  explicitPath: Option.Option<string>
+  cwd: string
+}) =>
+  Effect.gen(function* () {
+    // Use explicit path if provided
+    if (Option.isSome(explicitPath)) {
+      return explicitPath
+    }
+    // Check convention path
+    const fs = yield* FileSystem.FileSystem
+    const conventionPath = path.join(cwd, OXFMT_CONFIG_CONVENTION_PATH)
+    const exists = yield* fs.exists(conventionPath)
+    return exists ? Option.some(conventionPath) : Option.none()
+  })
 
 /** Genie CLI command - generates files from .genie.ts source files */
 export const genieCommand: Cli.Command.Command<
@@ -58,13 +81,24 @@ export const genieCommand: Cli.Command.Command<
       Cli.Options.withDescription('Preview changes without writing files'),
       Cli.Options.withDefault(false),
     ),
+    oxfmtConfig: Cli.Options.file('oxfmt-config').pipe(
+      Cli.Options.withDescription(
+        `Path to oxfmt config file (default: ${OXFMT_CONFIG_CONVENTION_PATH})`,
+      ),
+      Cli.Options.optional,
+    ),
   },
-  ({ cwd, writeable, watch, check, dryRun }) =>
+  ({ cwd, writeable, watch, check, dryRun, oxfmtConfig }) =>
     Effect.gen(function* () {
       const readOnly = !writeable
-      const fs = yield* FileSystem.FileSystem
       const currentWorkingDirectory = yield* CurrentWorkingDirectory
       const resolvedCwd = path.isAbsolute(cwd) ? cwd : path.resolve(currentWorkingDirectory, cwd)
+
+      // Resolve oxfmt config path
+      const oxfmtConfigPath = yield* resolveOxfmtConfigPath({
+        explicitPath: oxfmtConfig,
+        cwd: resolvedCwd,
+      })
 
       const genieFiles = yield* findGenieFiles(resolvedCwd)
 
@@ -77,7 +111,9 @@ export const genieCommand: Cli.Command.Command<
 
       if (check) {
         yield* Effect.all(
-          genieFiles.map((genieFilePath) => checkFile({ genieFilePath, cwd: resolvedCwd })),
+          genieFiles.map((genieFilePath) =>
+            checkFile({ genieFilePath, cwd: resolvedCwd, oxfmtConfigPath }),
+          ),
           { concurrency: 'unbounded' },
         )
         yield* Effect.log('✓ All generated files are up to date')
@@ -96,7 +132,9 @@ export const genieCommand: Cli.Command.Command<
       // Generate all files, capturing both successes and failures
       const results = yield* Effect.all(
         genieFiles.map((genieFilePath) =>
-          generateFile({ genieFilePath, cwd: resolvedCwd, readOnly, dryRun }).pipe(Effect.either),
+          generateFile({ genieFilePath, cwd: resolvedCwd, readOnly, dryRun, oxfmtConfigPath }).pipe(
+            Effect.either,
+          ),
         ),
         { concurrency: 'unbounded' },
       )
@@ -118,14 +156,18 @@ export const genieCommand: Cli.Command.Command<
 
       if (watch && !dryRun) {
         yield* Effect.log('\nWatching for changes...')
+        const fs = yield* FileSystem.FileSystem
         yield* pipe(
           fs.watch(resolvedCwd),
           Stream.filter(({ path: p }) => p.endsWith('.genie.ts')),
           Stream.tap(({ path: p }) => {
             const genieFilePath = path.join(resolvedCwd, p)
-            return generateFile({ genieFilePath, cwd: resolvedCwd, readOnly }).pipe(
-              Effect.catchAll((error) => Effect.logError(error.message)),
-            )
+            return generateFile({
+              genieFilePath,
+              cwd: resolvedCwd,
+              readOnly,
+              oxfmtConfigPath,
+            }).pipe(Effect.catchAll((error) => Effect.logError(error.message)))
           }),
           Stream.runDrain,
         )

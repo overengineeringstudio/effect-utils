@@ -116,6 +116,14 @@ direnv reload
 
 If the direnv cache itself is stale, remove `.direnv` too.
 
+By default, `direnv reload` auto-rebuilds Nix CLIs when they are stale. To
+disable this, set `MONO_AUTO_REBUILD=0` (for example in `.envrc.local`):
+
+```bash
+export MONO_AUTO_REBUILD=0
+direnv reload
+```
+
 If you want a flag-driven refresh (requires touching `.envrc`), pass
 `--refresh-eval-cache` to `use devenv`:
 

@@ -18,6 +18,7 @@ my-workspace/
 ```
 
 **Key characteristics:**
+
 - Workspace root is found by walking up from current directory looking for `dotdot.json`
 - All repos are flat peers at the same level (no nesting)
 - Each repo can have its own `dotdot.json` declaring its dependencies
@@ -27,11 +28,11 @@ my-workspace/
 
 A git repository within a workspace. Can be in one of these states:
 
-| State | Description |
-|-------|-------------|
-| **Declared + Exists** | In config and cloned |
-| **Declared + Missing** | In config but not cloned |
-| **Undeclared** | Cloned but not in any config |
+| State                  | Description                  |
+| ---------------------- | ---------------------------- |
+| **Declared + Exists**  | In config and cloned         |
+| **Declared + Missing** | In config but not cloned     |
+| **Undeclared**         | Cloned but not in any config |
 
 Repos are identified by their directory name (which matches the key in the config).
 
@@ -73,6 +74,7 @@ workspace/
 ```
 
 **Schema fields:**
+
 - `$schema` - Optional: JSON Schema URL for editor support
 - `repos` - Required: map of repo name to config
   - `url` - Required: git remote URL
@@ -83,6 +85,7 @@ workspace/
 ### Config Aggregation
 
 When collecting configs, dotdot:
+
 1. Scans each repo directory for `dotdot.json` files
 2. Merges all declared repos into a flat, deduplicated list
 3. Tracks which config(s) each dependency is declared in
@@ -95,6 +98,7 @@ If the same repo is declared in multiple configs with different revisions, dotdo
 Each repo can have a pinned revision (commit SHA) in its config.
 
 **Status determination:**
+
 - **ok**: Current HEAD matches pinned revision
 - **diverged**: Current HEAD differs from pinned revision
 - **no-pin**: No revision specified in config
@@ -104,11 +108,13 @@ This enables reproducible workspace states - restore all repos, checkout pinned 
 ## Deduplication
 
 When multiple repos declare the same dependency:
+
 - Only one copy exists in the workspace
 - All repos share the same cloned directory
 - Revision conflicts are detected and reported
 
 Example:
+
 ```
 repo-a/dotdot.config.ts declares: shared-lib @ abc123
 repo-b/dotdot.config.ts declares: shared-lib @ abc123
@@ -124,6 +130,7 @@ repo-b/dotdot.config.ts declares: shared-lib @ def456
 Packages are conceptually mini-repositories within a repo. This is a convenience feature for cases where splitting into separate repos would bring too much maintenance overhead (separate git histories, CI configs, etc.), but you still want the benefits of dotdot's flat workspace model.
 
 By declaring packages, you get:
+
 - Each package symlinked to the workspace root (just like a real repo)
 - Simple `../` paths from other repos
 - Per-package install commands
@@ -172,6 +179,7 @@ The key (e.g., `@acme/components`) becomes the symlink name at workspace root. T
 ```
 
 **Before `dotdot link`:**
+
 ```
 my-workspace/
 ├── dotdot.json
@@ -190,6 +198,7 @@ my-workspace/
 ```
 
 **After `dotdot link`:**
+
 ```
 my-workspace/
 ├── dotdot.json
@@ -204,6 +213,7 @@ my-workspace/
 ```
 
 **Command output:**
+
 ```
 $ dotdot link
 
@@ -219,6 +229,7 @@ Done: 2 symlinks created
 ### Install Order
 
 When `dotdot sync` runs, install commands execute in this order:
+
 1. Repo-level `install` (e.g., `pnpm install`)
 2. Package-level `install` for each package (e.g., `pnpm build`)
 
@@ -239,6 +250,7 @@ Now `my-app` can reference the packages with simple relative paths:
 ```
 
 Instead of the verbose path:
+
 ```json
 {
   "dependencies": {
@@ -259,6 +271,7 @@ Instead of the verbose path:
 ## Dependency Graph
 
 When repos declare other repos as dependencies, dotdot:
+
 - Builds a dependency graph across all configs
 - Detects diamond dependencies (A→B, A→C, B→C, C→C)
 - Reports revision conflicts when different configs pin different revisions

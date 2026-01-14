@@ -167,10 +167,7 @@ describe('status command', () => {
         // Status should fail with ConfigOutOfSyncError
         const result = yield* statusCommand
           .handler({})
-          .pipe(
-            Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)),
-            Effect.flip,
-          )
+          .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)), Effect.flip)
 
         expect(result).toBeInstanceOf(ConfigOutOfSyncError)
         expect(result.message).toContain('untracked-member')

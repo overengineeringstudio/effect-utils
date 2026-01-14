@@ -1,12 +1,14 @@
+import { FileSystem, Path } from '@effect/platform'
 import * as Command from '@effect/platform/Command'
 import type * as CommandExecutor from '@effect/platform/CommandExecutor'
-import { FileSystem, Path } from '@effect/platform'
 import type { PlatformError } from '@effect/platform/Error'
-import { Array, Effect, Exit, Layer, Logger, LogLevel, Option, Scope, Stream } from 'effect'
-
-import { cmd, CurrentWorkingDirectory } from '@overeng/utils/node'
+import { Array, Effect, Exit, Logger, LogLevel, Option, Stream } from 'effect'
 
 import { CommandError, GenieCoverageError } from './errors.ts'
+import { task } from './task-system/api.ts'
+import { runTaskGraph, runTaskGraphOrFail } from './task-system/graph.ts'
+import { ciRenderer } from './task-system/renderers/ci.ts'
+import { inlineRenderer } from './task-system/renderers/inline.ts'
 import { IS_CI, runCommand } from './utils.ts'
 
 // =============================================================================
@@ -57,18 +59,27 @@ export interface InstallConfig {
 // Format Tasks
 // =============================================================================
 
+/** Exclude patterns for oxfmt (genie-generated read-only files) */
+const oxfmtExcludePatterns = [
+  '!**/package.json',
+  '!**/tsconfig.json',
+  '!**/tsconfig.*.json',
+  '!.github/workflows/*.yml',
+  '!packages/@overeng/oxc-config/*.jsonc',
+]
+
 /** Create format check task (oxfmt --check) */
 export const formatCheck = (config: OxcConfig) =>
   runCommand({
     command: 'oxfmt',
-    args: ['-c', `${config.configPath}/fmt.jsonc`, '--check', '.'],
+    args: ['-c', `${config.configPath}/fmt.jsonc`, '--check', '.', ...oxfmtExcludePatterns],
   }).pipe(Effect.withSpan('formatCheck'))
 
 /** Create format fix task (oxfmt) */
 export const formatFix = (config: OxcConfig) =>
   runCommand({
     command: 'oxfmt',
-    args: ['-c', `${config.configPath}/fmt.jsonc`, '.'],
+    args: ['-c', `${config.configPath}/fmt.jsonc`, '.', ...oxfmtExcludePatterns],
   }).pipe(Effect.withSpan('formatFix'))
 
 // =============================================================================
@@ -173,24 +184,33 @@ export const genieCheck = runCommand({
 // TypeScript Tasks
 // =============================================================================
 
+/**
+ * Resolve the local tsc path from mono's node_modules.
+ * This ensures we use the patched TypeScript with Effect Language Service support.
+ */
+const resolveLocalTsc = (): string => {
+  const tscUrl = import.meta.resolve('typescript/bin/tsc')
+  return tscUrl.replace('file://', '')
+}
+
 /** Type check task */
 export const typeCheck = (config?: TypeCheckConfig) =>
   runCommand({
-    command: 'tsc',
+    command: resolveLocalTsc(),
     args: ['--build', config?.tsconfigPath ?? 'tsconfig.all.json'],
   }).pipe(Effect.withSpan('typeCheck'))
 
 /** Type check in watch mode */
 export const typeCheckWatch = (config?: TypeCheckConfig) =>
   runCommand({
-    command: 'tsc',
+    command: resolveLocalTsc(),
     args: ['--build', '--watch', config?.tsconfigPath ?? 'tsconfig.all.json'],
   }).pipe(Effect.withSpan('typeCheckWatch'))
 
 /** Clean TypeScript build artifacts */
 export const typeCheckClean = (config?: TypeCheckConfig) =>
   runCommand({
-    command: 'tsc',
+    command: resolveLocalTsc(),
     args: ['--build', '--clean', config?.tsconfigPath ?? 'tsconfig.all.json'],
   }).pipe(Effect.withSpan('typeCheckClean'))
 
@@ -276,7 +296,6 @@ export const findPackageDirs = (config: InstallConfig) =>
 export const cleanNodeModules = (config: InstallConfig) =>
   Effect.gen(function* () {
     const pathService = yield* Path.Path
-    const cwd = process.env.WORKSPACE_ROOT ?? process.cwd()
     const dirs = yield* findPackageDirs(config)
 
     yield* Effect.forEach(
@@ -369,7 +388,10 @@ export type InstallProgress = {
 /** Install dependencies for all packages in parallel with progress tracking */
 export const installAll = (
   config: InstallConfig,
-  options?: { frozenLockfile?: boolean; onProgress?: (progress: InstallProgress) => Effect.Effect<void> },
+  options?: {
+    frozenLockfile?: boolean
+    onProgress?: (progress: InstallProgress) => Effect.Effect<void>
+  },
 ) =>
   Effect.gen(function* () {
     const dirs = yield* findPackageDirs(config)
@@ -389,9 +411,6 @@ export const installAllWithTaskSystem = (
   options?: { frozenLockfile?: boolean },
 ) =>
   Effect.gen(function* () {
-    const { task } = yield* Effect.promise(() => import('./task-system/api.ts'))
-    const { runTaskGraph } = yield* Effect.promise(() => import('./task-system/graph.ts'))
-    const { inlineRenderer } = yield* Effect.promise(() => import('./task-system/renderers/inline.ts'))
     const pathService = yield* Path.Path
     const cwd = process.env.WORKSPACE_ROOT ?? process.cwd()
 
@@ -438,7 +457,9 @@ export const installAllWithTaskSystem = (
       const taskState = result.state.tasks[task.id]
 
       if (!taskState || taskState.status !== 'success') {
-        const error = taskState?.error ? Option.getOrElse(taskState.error, () => 'Unknown error') : 'Task not found'
+        const error = taskState?.error
+          ? Option.getOrElse(taskState.error, () => 'Unknown error')
+          : 'Task not found'
         const stderr = taskState?.stderr.join('\n') ?? ''
         const stdout = taskState?.stdout.join('\n') ?? ''
 
@@ -474,11 +495,6 @@ export interface CheckTasksConfig {
 /** Run all checks using task system with live progress */
 export const checkAllWithTaskSystem = (config: CheckTasksConfig) =>
   Effect.gen(function* () {
-    const { task } = yield* Effect.promise(() => import('./task-system/api.ts'))
-    const { runTaskGraph, runTaskGraphOrFail } = yield* Effect.promise(() => import('./task-system/graph.ts'))
-    const { inlineRenderer } = yield* Effect.promise(() => import('./task-system/renderers/inline.ts'))
-    const { ciRenderer } = yield* Effect.promise(() => import('./task-system/renderers/ci.ts'))
-
     // Define parallel tasks (no dependencies)
     const parallelTasks = [
       ...(config.skipGenie
@@ -490,7 +506,7 @@ export const checkAllWithTaskSystem = (config: CheckTasksConfig) =>
             }),
           ]),
       task('typecheck', 'Type checking', {
-        cmd: 'tsc',
+        cmd: resolveLocalTsc(),
         args: ['--build', 'tsconfig.all.json'],
       }),
       task('lint', 'Lint (format + oxlint + genie coverage)', allLintChecks(config)),

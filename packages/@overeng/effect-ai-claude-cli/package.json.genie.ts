@@ -24,14 +24,7 @@ export default packageJson({
     ...effectLspScripts,
   },
   devDependencies: {
-    ...catalog.pick(
-      '@effect/ai',
-      '@effect/platform',
-      '@effect/vitest',
-      'effect',
-      'vite',
-      'vitest',
-    ),
+    ...catalog.pick('@effect/ai', '@effect/platform', '@effect/vitest', 'effect', 'vite', 'vitest'),
     ...effectLspDevDeps(),
   },
   peerDependencies: catalog.peers(...peerDepNames),

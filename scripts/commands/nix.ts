@@ -35,16 +35,42 @@ type NixPackageSpec = {
   binaryName?: string
 }
 
-class UnsupportedSystemError extends Schema.TaggedError<UnsupportedSystemError>()('UnsupportedSystemError', {
-  platform: Schema.String,
-  arch: Schema.String,
-  message: Schema.String,
-}) {}
+type StatusScope = 'auto' | 'flake' | 'devenv'
+
+type ExpectedPath = { _tag: 'flake'; outputRoot: string } | { _tag: 'devenv'; binaryPath: string }
+
+type StatusState = 'up-to-date' | 'stale' | 'missing' | 'expected-missing'
+
+type StatusEntry = {
+  name: NixPackageName
+  state: StatusState
+  expected?: string
+  actual?: string
+  refreshHint: string
+}
+
+class UnsupportedSystemError extends Schema.TaggedError<UnsupportedSystemError>()(
+  'UnsupportedSystemError',
+  {
+    platform: Schema.String,
+    arch: Schema.String,
+    message: Schema.String,
+  },
+) {}
 
 class NixStatusParseError extends Schema.TaggedError<NixStatusParseError>()('NixStatusParseError', {
   message: Schema.String,
   cause: Schema.Defect,
 }) {}
+
+class NixStatusCheckFailedError extends Schema.TaggedError<NixStatusCheckFailedError>()(
+  'NixStatusCheckFailedError',
+  {
+    message: Schema.String,
+    staleCount: Schema.Number,
+    missingCount: Schema.Number,
+  },
+) {}
 
 /** Known Nix packages in this monorepo */
 const NIX_PACKAGES = {
@@ -128,13 +154,22 @@ const packageOption = Options.choice('package', ['genie', 'dotdot', 'mono', 'all
   Options.withDefault('all' as const),
 )
 
+const scopeOption = Options.choice('scope', ['auto', 'flake', 'devenv'] as const).pipe(
+  Options.withDescription('Which outputs to compare against (defaults to auto)'),
+  Options.withDefault('auto' as const),
+)
+
+const statusCheckOption = Options.boolean('check').pipe(
+  Options.withDescription('Exit non-zero if any binaries are stale or missing'),
+  Options.withDefault(false),
+)
+
 const reloadOption = Options.boolean('reload').pipe(
   Options.withDescription('Reload direnv after build to update PATH'),
   Options.withDefault(false),
 )
 
 const PackagesOutPathsSchema = Schema.Record({ key: Schema.String, value: Schema.String })
-type PackagesOutPaths = typeof PackagesOutPathsSchema.Type
 
 const resolveExpectedOutPaths = Effect.fn('nix-status-expected-out-paths')(function* () {
   const system = yield* resolveNixSystem()
@@ -153,7 +188,9 @@ const resolveExpectedOutPaths = Effect.fn('nix-status-expected-out-paths')(funct
   )
 })
 
-const resolveActualBinaryPath = Effect.fn('nix-status-actual-binary-path')(function* (binaryName: string) {
+const resolveActualBinaryPath = Effect.fn('nix-status-actual-binary-path')(function* (
+  binaryName: string,
+) {
   const cwd = process.env.WORKSPACE_ROOT ?? process.cwd()
   const output = yield* cmdText(['which', binaryName], { stderr: 'pipe' }).pipe(
     Effect.provideService(CurrentWorkingDirectory, cwd),
@@ -161,34 +198,110 @@ const resolveActualBinaryPath = Effect.fn('nix-status-actual-binary-path')(funct
   return output.trim()
 })
 
-const printStatus = (name: NixPackageName, expected: string | undefined) =>
+/** Resolve the store path behind the devenv profile symlink for consistent comparisons. */
+const resolveDevenvBinaryPath = Effect.fn('nix-status-devenv-binary-path')(function* (
+  binaryName: string,
+) {
+  const profile = process.env.DEVENV_PROFILE
+  if (profile === undefined || profile.length === 0) {
+    return undefined
+  }
+
+  const candidate = path.join(profile, 'bin', binaryName)
+  const result = yield* Effect.either(
+    cmdText(['realpath', candidate], { stderr: 'pipe' }).pipe(
+      Effect.provideService(CurrentWorkingDirectory, profile),
+      Effect.provide(Logger.minimumLogLevel(LogLevel.Info)),
+    ),
+  )
+  if (result._tag === 'Left') {
+    return undefined
+  }
+  return result.right.trim()
+})
+
+const resolveStatusScope = (scope: StatusScope): StatusScope => {
+  if (scope !== 'auto') {
+    return scope
+  }
+  return process.env.DEVENV_PROFILE ? 'devenv' : 'flake'
+}
+
+const toFlakeExpected = (outputRoot: string): ExpectedPath => ({ _tag: 'flake', outputRoot })
+
+const toDevenvExpected = (binaryPath: string): ExpectedPath => ({ _tag: 'devenv', binaryPath })
+
+const resolveStatusEntry = (name: NixPackageName, expected: ExpectedPath | undefined) =>
   Effect.gen(function* () {
     const actualResult = yield* Effect.either(
-      resolveActualBinaryPath(getBinaryName(name)).pipe(Effect.provide(Logger.minimumLogLevel(LogLevel.Info))),
+      resolveActualBinaryPath(getBinaryName(name)).pipe(
+        Effect.provide(Logger.minimumLogLevel(LogLevel.Info)),
+      ),
     )
     const actual = actualResult._tag === 'Right' ? actualResult.right : undefined
     const refreshHint = `mono nix build --package ${name} --reload`
 
     if (expected === undefined) {
-      yield* Console.log(`- ${name}: expected output missing from flake packages`)
-      return
+      return { name, state: 'expected-missing', refreshHint } satisfies StatusEntry
     }
 
+    const expectedLabel = expected._tag === 'flake' ? expected.outputRoot : expected.binaryPath
     const isUpToDate =
-      actual !== undefined && actual.length > 0 && actual.startsWith(`${expected}/`)
+      actual !== undefined &&
+      actual.length > 0 &&
+      (expected._tag === 'flake'
+        ? actual.startsWith(`${expected.outputRoot}/`)
+        : actual === expected.binaryPath)
 
     if (actual === undefined || actual.length === 0) {
-      yield* Console.log(`- ${name}: missing (expected ${expected}, refresh: ${refreshHint})`)
-      return
+      return {
+        name,
+        state: 'missing',
+        expected: expectedLabel,
+        refreshHint,
+      } satisfies StatusEntry
     }
 
     if (isUpToDate) {
-      yield* Console.log(`- ${name}: up-to-date (${actual})`)
+      return {
+        name,
+        state: 'up-to-date',
+        actual,
+        refreshHint,
+      } satisfies StatusEntry
+    }
+
+    return {
+      name,
+      state: 'stale',
+      expected: expectedLabel,
+      actual,
+      refreshHint,
+    } satisfies StatusEntry
+  })
+
+const printStatusEntry = (entry: StatusEntry) =>
+  Effect.gen(function* () {
+    if (entry.state === 'expected-missing') {
+      yield* Console.log(`- ${entry.name}: expected output missing`)
       return
     }
 
-    // Compare the active PATH binary to the expected Nix output path.
-    yield* Console.log(`- ${name}: stale (expected ${expected}, actual ${actual}, refresh: ${refreshHint})`)
+    if (entry.state === 'missing') {
+      yield* Console.log(
+        `- ${entry.name}: missing (expected ${entry.expected}, refresh: ${entry.refreshHint})`,
+      )
+      return
+    }
+
+    if (entry.state === 'up-to-date') {
+      yield* Console.log(`- ${entry.name}: up-to-date (${entry.actual})`)
+      return
+    }
+
+    yield* Console.log(
+      `- ${entry.name}: stale (expected ${entry.expected}, actual ${entry.actual}, refresh: ${entry.refreshHint})`,
+    )
   })
 
 /** Build a single Nix package */
@@ -196,7 +309,13 @@ const buildPackage = (name: NixPackageName) =>
   Effect.gen(function* () {
     const packageSpec = getPackageSpec(name)
     yield* Console.log(`Building ${name}...`)
-    const args = ['build', ...evalCoresArgs(), ...buildParallelismArgs(), packageSpec.flakeRef, '-L']
+    const args = [
+      'build',
+      ...evalCoresArgs(),
+      ...buildParallelismArgs(),
+      packageSpec.flakeRef,
+      '-L',
+    ]
     if (packageSpec.noWriteLock) {
       args.push('--no-write-lock-file')
     }
@@ -274,7 +393,13 @@ const updateHash = (name: NixPackageName) =>
 
     yield* Console.log(`Updating hash for ${name}...`)
 
-    const args = ['build', ...evalCoresArgs(), ...buildParallelismArgs(), packageSpec.flakeRef, '-L']
+    const args = [
+      'build',
+      ...evalCoresArgs(),
+      ...buildParallelismArgs(),
+      packageSpec.flakeRef,
+      '-L',
+    ]
     if (packageSpec.noWriteLock) {
       args.push('--no-write-lock-file')
     }
@@ -369,20 +494,54 @@ const reloadSubcommand = Command.make('reload', {}, () =>
 ).pipe(Command.withDescription('Reload direnv to update Nix binaries in PATH'))
 
 /** Status subcommand - compare PATH binaries to expected Nix outputs */
-const statusSubcommand = Command.make('status', { package: packageOption }, ({ package: pkg }) =>
-  Effect.gen(function* () {
-    const packages = getPackages(pkg)
-    yield* Console.log('Nix CLI status:')
+const statusSubcommand = Command.make(
+  'status',
+  { package: packageOption, scope: scopeOption, check: statusCheckOption },
+  ({ package: pkg, scope, check }) =>
+    Effect.gen(function* () {
+      const packages = getPackages(pkg)
+      const resolvedScope = resolveStatusScope(scope)
+      yield* Console.log(`Nix CLI status (${resolvedScope}):`)
 
-    const expectedOutPaths = yield* resolveExpectedOutPaths().pipe(
-      Effect.provide(Logger.minimumLogLevel(LogLevel.Info)),
-    )
+      const expectedOutPaths =
+        resolvedScope === 'flake'
+          ? yield* resolveExpectedOutPaths().pipe(
+              Effect.provide(Logger.minimumLogLevel(LogLevel.Info)),
+            )
+          : undefined
 
-    for (const name of packages) {
-      yield* printStatus(name, expectedOutPaths[name])
-    }
-  }),
-).pipe(Command.withDescription('Show whether Nix binaries match the current flake output'))
+      const entries = []
+      for (const name of packages) {
+        if (resolvedScope === 'devenv') {
+          const devenvPath = yield* resolveDevenvBinaryPath(getBinaryName(name))
+          const expected = devenvPath ? toDevenvExpected(devenvPath) : undefined
+          entries.push(yield* resolveStatusEntry(name, expected))
+        } else {
+          const expectedPath = expectedOutPaths?.[name]
+          const expected = expectedPath ? toFlakeExpected(expectedPath) : undefined
+          entries.push(yield* resolveStatusEntry(name, expected))
+        }
+      }
+
+      for (const entry of entries) {
+        yield* printStatusEntry(entry)
+      }
+
+      if (check) {
+        const staleCount = entries.filter((entry) => entry.state === 'stale').length
+        const missingCount = entries.filter(
+          (entry) => entry.state === 'missing' || entry.state === 'expected-missing',
+        ).length
+        if (staleCount > 0 || missingCount > 0) {
+          return yield* new NixStatusCheckFailedError({
+            message: 'Nix CLI status check failed',
+            staleCount,
+            missingCount,
+          })
+        }
+      }
+    }),
+).pipe(Command.withDescription('Show whether Nix binaries match the current outputs'))
 
 /** Main nix command with subcommands */
 export const nixCommand: Command.Command<
@@ -394,13 +553,18 @@ export const nixCommand: Command.Command<
   | HashExtractionError
   | HashPatternNotFoundError
   | UnsupportedSystemError
-  | NixStatusParseError,
+  | NixStatusParseError
+  | NixStatusCheckFailedError,
   {
     readonly subcommand: Option.Option<
       | { readonly package: 'genie' | 'dotdot' | 'mono' | 'all'; readonly reload: boolean }
       | { readonly package: 'genie' | 'dotdot' | 'mono' | 'all' }
       | Record<string, never>
-      | { readonly package: 'genie' | 'dotdot' | 'mono' | 'all' }
+      | {
+          readonly package: 'genie' | 'dotdot' | 'mono' | 'all'
+          readonly scope: StatusScope
+          readonly check: boolean
+        }
     >
   }
 > = Command.make('nix').pipe(

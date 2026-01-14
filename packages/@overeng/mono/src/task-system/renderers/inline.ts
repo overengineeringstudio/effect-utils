@@ -15,8 +15,7 @@ import { Console, Effect, Option } from 'effect'
 import type { TaskRenderer, TaskSystemState } from '../types.ts'
 
 /** Render an ANSI-annotated document to a string */
-const renderAnsiDoc = (doc: Doc.Doc<Ansi.Ansi>): string =>
-  AnsiDoc.render(doc, { style: 'pretty' })
+const renderAnsiDoc = (doc: Doc.Doc<Ansi.Ansi>): string => AnsiDoc.render(doc, { style: 'pretty' })
 
 /** ANSI escape code to move cursor up N lines */
 const moveCursorUp = (lines: number) => `\x1B[${lines}A`
@@ -31,69 +30,71 @@ export class InlineRenderer implements TaskRenderer {
   private lastLineCount = 0
 
   render(state: TaskSystemState): Effect.Effect<void> {
-    return Effect.gen(function* (this: InlineRenderer) {
-      const tasks = Object.values(state.tasks)
+    return Effect.gen(
+      function* (this: InlineRenderer) {
+        const tasks = Object.values(state.tasks)
 
-      // Clear previous output (move cursor up and clear lines)
-      if (this.lastLineCount > 0) {
-        process.stdout.write(moveCursorUp(this.lastLineCount))
-        for (let i = 0; i < this.lastLineCount; i++) {
-          process.stdout.write(clearLine + '\n')
+        // Clear previous output (move cursor up and clear lines)
+        if (this.lastLineCount > 0) {
+          process.stdout.write(moveCursorUp(this.lastLineCount))
+          for (let i = 0; i < this.lastLineCount; i++) {
+            process.stdout.write(clearLine + '\n')
+          }
+          process.stdout.write(moveCursorUp(this.lastLineCount))
         }
-        process.stdout.write(moveCursorUp(this.lastLineCount))
-      }
 
-      const docs: Doc.Doc<Ansi.Ansi>[] = []
+        const docs: Doc.Doc<Ansi.Ansi>[] = []
 
-      for (const task of tasks) {
-        const statusStyle = {
-          pending: Ansi.white,
-          running: Ansi.cyan,
-          success: Ansi.green,
-          failed: Ansi.red,
-        }[task.status]
+        for (const task of tasks) {
+          const statusStyle = {
+            pending: Ansi.white,
+            running: Ansi.cyan,
+            success: Ansi.green,
+            failed: Ansi.red,
+          }[task.status]
 
-        const statusIcon = {
-          pending: '○',
-          running: '◐',
-          success: '✓',
-          failed: '✗',
-        }[task.status]
+          const statusIcon = {
+            pending: '○',
+            running: '◐',
+            success: '✓',
+            failed: '✗',
+          }[task.status]
 
-        const duration = Option.match(task.startedAt, {
-          onNone: () => '',
-          onSome: (start) =>
-            Option.match(task.completedAt, {
-              onNone: () => ` (${((Date.now() - start) / 1000).toFixed(1)}s)`,
-              onSome: (end) => ` (${((end - start) / 1000).toFixed(1)}s)`,
-            }),
-        })
+          const duration = Option.match(task.startedAt, {
+            onNone: () => '',
+            onSome: (start) =>
+              Option.match(task.completedAt, {
+                onNone: () => ` (${((Date.now() - start) / 1000).toFixed(1)}s)`,
+                onSome: (end) => ` (${((end - start) / 1000).toFixed(1)}s)`,
+              }),
+          })
 
-        const taskLine = Doc.cat(
-          Doc.annotate(Doc.text(statusIcon), statusStyle),
-          Doc.cat(Doc.text(` ${task.name}`), Doc.annotate(Doc.text(duration), Ansi.white)),
-        )
+          const taskLine = Doc.cat(
+            Doc.annotate(Doc.text(statusIcon), statusStyle),
+            Doc.cat(Doc.text(` ${task.name}`), Doc.annotate(Doc.text(duration), Ansi.white)),
+          )
 
-        docs.push(taskLine)
+          docs.push(taskLine)
 
-        // Show last 1-2 lines of output for running or failed tasks
-        if (task.status === 'running' || task.status === 'failed') {
-          const allOutput = [...task.stdout, ...task.stderr]
-          const recentLines = allOutput.slice(-2) // Last 2 lines
+          // Show last 1-2 lines of output for running or failed tasks
+          if (task.status === 'running' || task.status === 'failed') {
+            const allOutput = [...task.stdout, ...task.stderr]
+            const recentLines = allOutput.slice(-2) // Last 2 lines
 
-          for (const line of recentLines) {
-            const truncated = line.length > 80 ? line.slice(0, 77) + '...' : line
-            docs.push(Doc.annotate(Doc.text(`  │ ${truncated}`), Ansi.white))
+            for (const line of recentLines) {
+              const truncated = line.length > 80 ? line.slice(0, 77) + '...' : line
+              docs.push(Doc.annotate(Doc.text(`  │ ${truncated}`), Ansi.white))
+            }
           }
         }
-      }
 
-      const output = renderAnsiDoc(Doc.vsep(docs))
-      const lines = output.split('\n')
+        const output = renderAnsiDoc(Doc.vsep(docs))
+        const lines = output.split('\n')
 
-      yield* Console.log(output)
-      this.lastLineCount = lines.length
-    }.bind(this))
+        yield* Console.log(output)
+        this.lastLineCount = lines.length
+      }.bind(this),
+    )
   }
 
   renderFinal(state: TaskSystemState): Effect.Effect<void> {

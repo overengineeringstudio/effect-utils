@@ -13,11 +13,11 @@ This guide establishes testing conventions for effect-utils packages.
 
 Tests are **colocated** with source files in `src/`:
 
-| Pattern | Purpose | Speed |
-|---------|---------|-------|
-| `*.unit.test.ts` | Unit tests (pure logic) | Fast (<100ms) |
-| `*.integration.test.ts` | Integration tests (I/O, git, network) | Slower |
-| `*.pw.test.ts` | Playwright browser tests | Slowest |
+| Pattern                 | Purpose                               | Speed         |
+| ----------------------- | ------------------------------------- | ------------- |
+| `*.unit.test.ts`        | Unit tests (pure logic)               | Fast (<100ms) |
+| `*.integration.test.ts` | Integration tests (I/O, git, network) | Slower        |
+| `*.pw.test.ts`          | Playwright browser tests              | Slowest       |
 
 ```
 src/
@@ -44,6 +44,7 @@ mono test --watch      # Watch mode for development
 ```
 
 **Pre-commit checklist:**
+
 ```bash
 mono ts                # Type check
 mono lint              # Lint check
@@ -83,18 +84,17 @@ const withTestCtx = ({ suffix }: { suffix?: string } = {}) =>
   })
 
 Vitest.describe('MyFeature', { timeout: testTimeout }, () => {
-  Vitest.scopedLive(
-    'does something',
-    (test) =>
-      Effect.gen(function* () {
-        const result = yield* someEffect()
-        expect(result).toBe(expected)
-      }).pipe(withTestCtx()(test)),
+  Vitest.scopedLive('does something', (test) =>
+    Effect.gen(function* () {
+      const result = yield* someEffect()
+      expect(result).toBe(expected)
+    }).pipe(withTestCtx()(test)),
   )
 })
 ```
 
 **Benefits of `withTestCtx`:**
+
 - Automatic layer composition and provision
 - Test timeout management
 - Scoped resource cleanup
@@ -116,7 +116,7 @@ describe('pure logic', () => {
     Effect.gen(function* () {
       const result = yield* parseInput('test')
       expect(result).toBe('TEST')
-    })
+    }),
   )
 })
 ```
@@ -131,10 +131,7 @@ it.effect('creates temp resources', () =>
     const fs = yield* FileSystem.FileSystem
     const tempDir = yield* fs.makeTempDirectory()
     // tempDir is automatically cleaned up after test
-  }).pipe(
-    Effect.provide(NodeContext.layer),
-    Effect.scoped,
-  )
+  }).pipe(Effect.provide(NodeContext.layer), Effect.scoped),
 )
 ```
 
@@ -192,10 +189,10 @@ Vitest.asProp(
     Effect.gen(function* () {
       yield* Effect.log('Starting run', { storageType, countA, countB, batchSize })
 
-      const [clientA, clientB] = yield* Effect.all([
-        makeClient({ id: 'a', storageType }),
-        makeClient({ id: 'b', storageType }),
-      ], { concurrency: 'unbounded' })
+      const [clientA, clientB] = yield* Effect.all(
+        [makeClient({ id: 'a', storageType }), makeClient({ id: 'b', storageType })],
+        { concurrency: 'unbounded' },
+      )
 
       yield* clientA.createItems(countA, batchSize).pipe(Effect.fork)
       yield* clientB.createItems(countB, batchSize).pipe(Effect.fork)
@@ -223,14 +220,11 @@ const TodoSchema = Schema.Struct({
   completed: Schema.Boolean,
 })
 
-Vitest.scopedLive.prop(
-  'processes any todo',
-  [TodoSchema],
-  ([todo], test) =>
-    Effect.gen(function* () {
-      const result = yield* processTodo(todo)
-      expect(result.id).toBe(todo.id)
-    }).pipe(withTestCtx()(test)),
+Vitest.scopedLive.prop('processes any todo', [TodoSchema], ([todo], test) =>
+  Effect.gen(function* () {
+    const result = yield* processTodo(todo)
+    expect(result.id).toBe(todo.id)
+  }).pipe(withTestCtx()(test)),
 )
 ```
 
@@ -253,9 +247,10 @@ Vitest.asProp(
         storageType: StorageType,
         count: CreateCount,
       },
-  (params, test) => Effect.gen(function* () {
-    // test body
-  }).pipe(withTestCtx()(test)),
+  (params, test) =>
+    Effect.gen(function* () {
+      // test body
+    }).pipe(withTestCtx()(test)),
   Vitest.DEBUGGER_ACTIVE
     ? { fastCheck: { numRuns: 1 }, timeout: testTimeout * 100 }
     : { fastCheck: { numRuns: IS_CI ? 6 : 20 } },
@@ -267,6 +262,7 @@ Vitest.asProp(
 ### Unit Tests (`.unit.test.ts`)
 
 ✅ **Include:**
+
 - Pure functions
 - Schema validation
 - Graph algorithms
@@ -276,6 +272,7 @@ Vitest.asProp(
 - Business logic
 
 ❌ **Exclude:**
+
 - File system operations
 - Git commands
 - Network requests
@@ -285,6 +282,7 @@ Vitest.asProp(
 ### Integration Tests (`.integration.test.ts`)
 
 ✅ **Include:**
+
 - CLI commands
 - File system operations
 - Git operations
@@ -328,10 +326,7 @@ it.effect('works with temp files', () =>
     const content = yield* fs.readFileString(`${tempDir}/test.txt`)
 
     expect(content).toBe('content')
-  }).pipe(
-    Effect.provide(NodeFileSystem.layer),
-    Effect.scoped,
-  )
+  }).pipe(Effect.provide(NodeFileSystem.layer), Effect.scoped),
 )
 ```
 
@@ -387,15 +382,14 @@ export default createPlaywrightConfig({
 
 ## Anti-Patterns
 
-| ❌ Avoid | ✅ Instead |
-|----------|-----------|
-| `node:fs` | `@effect/platform` FileSystem |
-| `setTimeout` / `sleep` for timing | `TestClock` or proper async coordination |
-| Mocking when real impl works | Effect layers for dependency injection |
-| `package.json` scripts | `mono` CLI |
-| Tests in separate `test/` directory | Colocate with source in `src/` |
-| `*.test.ts` (ambiguous) | `*.unit.test.ts` or `*.integration.test.ts` |
-| `it.prop()` (non-Effect) | `Vitest.scopedLive.prop()` with Effect |
-| Manual layer provision in each test | `withTestCtx` / `makeWithTestCtx` |
-| `Effect.runPromise` in tests | `Vitest.scopedLive` or `it.effect` |
-
+| ❌ Avoid                            | ✅ Instead                                  |
+| ----------------------------------- | ------------------------------------------- |
+| `node:fs`                           | `@effect/platform` FileSystem               |
+| `setTimeout` / `sleep` for timing   | `TestClock` or proper async coordination    |
+| Mocking when real impl works        | Effect layers for dependency injection      |
+| `package.json` scripts              | `mono` CLI                                  |
+| Tests in separate `test/` directory | Colocate with source in `src/`              |
+| `*.test.ts` (ambiguous)             | `*.unit.test.ts` or `*.integration.test.ts` |
+| `it.prop()` (non-Effect)            | `Vitest.scopedLive.prop()` with Effect      |
+| Manual layer provision in each test | `withTestCtx` / `makeWithTestCtx`           |
+| `Effect.runPromise` in tests        | `Vitest.scopedLive` or `it.effect`          |

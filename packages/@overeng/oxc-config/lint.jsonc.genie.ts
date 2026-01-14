@@ -97,6 +97,8 @@ export default oxlintConfig({
         'overeng/named-args': 'off',
         'unicorn/no-array-sort': 'off',
         'unicorn/consistent-function-scoping': 'off',
+        // Effect tests often use Effect.gen without yields for consistency
+        'require-yield': 'off',
       },
     },
     // Generated files should not be linted for style/structure rules

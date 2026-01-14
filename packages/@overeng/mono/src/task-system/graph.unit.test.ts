@@ -21,7 +21,6 @@ import { TaskState, TaskSystemState } from './types.ts'
 const topologicalSort = <TId extends string>(
   tasks: ReadonlyArray<TaskDef<TId, unknown, unknown, unknown>>,
 ): TId[][] => {
-  const taskMap = new Map(tasks.map((t) => [t.id, t]))
   const inDegree = new Map<TId, number>()
   const children = new Map<TId, Set<TId>>()
 
@@ -161,7 +160,9 @@ const reduceEvent = (state: TaskSystemState, event: TaskEvent<string>): TaskSyst
           stderr: task.stderr,
           startedAt: task.startedAt,
           completedAt: Option.some(event.timestamp),
-          error: isSuccess ? Option.none() : Option.some(String(Exit.isFailure(event.exit) ? event.exit.cause : 'Unknown error')),
+          error: isSuccess
+            ? Option.none()
+            : Option.some(String(Exit.isFailure(event.exit) ? event.exit.cause : 'Unknown error')),
         })
       }
       break
@@ -212,8 +213,18 @@ describe('topologicalSort', () => {
     Effect.gen(function* () {
       const tasks: TaskDef<'a' | 'b' | 'c', unknown, unknown, unknown>[] = [
         { id: 'a', name: 'Task A', eventStream: () => Effect.succeed([]) as any },
-        { id: 'b', name: 'Task B', dependencies: ['a'], eventStream: () => Effect.succeed([]) as any },
-        { id: 'c', name: 'Task C', dependencies: ['b'], eventStream: () => Effect.succeed([]) as any },
+        {
+          id: 'b',
+          name: 'Task B',
+          dependencies: ['a'],
+          eventStream: () => Effect.succeed([]) as any,
+        },
+        {
+          id: 'c',
+          name: 'Task C',
+          dependencies: ['b'],
+          eventStream: () => Effect.succeed([]) as any,
+        },
       ]
       const result = topologicalSort(tasks)
       expect(result).toEqual([['a'], ['b'], ['c']])
@@ -229,9 +240,24 @@ describe('topologicalSort', () => {
       //    d
       const tasks: TaskDef<'a' | 'b' | 'c' | 'd', unknown, unknown, unknown>[] = [
         { id: 'a', name: 'Task A', eventStream: () => Effect.succeed([]) as any },
-        { id: 'b', name: 'Task B', dependencies: ['a'], eventStream: () => Effect.succeed([]) as any },
-        { id: 'c', name: 'Task C', dependencies: ['a'], eventStream: () => Effect.succeed([]) as any },
-        { id: 'd', name: 'Task D', dependencies: ['b', 'c'], eventStream: () => Effect.succeed([]) as any },
+        {
+          id: 'b',
+          name: 'Task B',
+          dependencies: ['a'],
+          eventStream: () => Effect.succeed([]) as any,
+        },
+        {
+          id: 'c',
+          name: 'Task C',
+          dependencies: ['a'],
+          eventStream: () => Effect.succeed([]) as any,
+        },
+        {
+          id: 'd',
+          name: 'Task D',
+          dependencies: ['b', 'c'],
+          eventStream: () => Effect.succeed([]) as any,
+        },
       ]
       const result = topologicalSort(tasks)
       expect(result).toEqual([['a'], ['b', 'c'], ['d']])
@@ -241,8 +267,18 @@ describe('topologicalSort', () => {
   it.effect('detects circular dependency', () =>
     Effect.gen(function* () {
       const tasks: TaskDef<'a' | 'b', unknown, unknown, unknown>[] = [
-        { id: 'a', name: 'Task A', dependencies: ['b'], eventStream: () => Effect.succeed([]) as any },
-        { id: 'b', name: 'Task B', dependencies: ['a'], eventStream: () => Effect.succeed([]) as any },
+        {
+          id: 'a',
+          name: 'Task A',
+          dependencies: ['b'],
+          eventStream: () => Effect.succeed([]) as any,
+        },
+        {
+          id: 'b',
+          name: 'Task B',
+          dependencies: ['a'],
+          eventStream: () => Effect.succeed([]) as any,
+        },
       ]
 
       expect(() => topologicalSort(tasks)).toThrow('Circular dependency detected')
@@ -258,16 +294,56 @@ describe('topologicalSort', () => {
       //      g     h
       //       \   /
       //         i
-      const tasks: TaskDef<'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i', unknown, unknown, unknown>[] = [
+      const tasks: TaskDef<
+        'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i',
+        unknown,
+        unknown,
+        unknown
+      >[] = [
         { id: 'a', name: 'Task A', eventStream: () => Effect.succeed([]) as any },
         { id: 'b', name: 'Task B', eventStream: () => Effect.succeed([]) as any },
-        { id: 'c', name: 'Task C', dependencies: ['a'], eventStream: () => Effect.succeed([]) as any },
-        { id: 'd', name: 'Task D', dependencies: ['a'], eventStream: () => Effect.succeed([]) as any },
-        { id: 'e', name: 'Task E', dependencies: ['b'], eventStream: () => Effect.succeed([]) as any },
-        { id: 'f', name: 'Task F', dependencies: ['b'], eventStream: () => Effect.succeed([]) as any },
-        { id: 'g', name: 'Task G', dependencies: ['c', 'd'], eventStream: () => Effect.succeed([]) as any },
-        { id: 'h', name: 'Task H', dependencies: ['e', 'f'], eventStream: () => Effect.succeed([]) as any },
-        { id: 'i', name: 'Task I', dependencies: ['g', 'h'], eventStream: () => Effect.succeed([]) as any },
+        {
+          id: 'c',
+          name: 'Task C',
+          dependencies: ['a'],
+          eventStream: () => Effect.succeed([]) as any,
+        },
+        {
+          id: 'd',
+          name: 'Task D',
+          dependencies: ['a'],
+          eventStream: () => Effect.succeed([]) as any,
+        },
+        {
+          id: 'e',
+          name: 'Task E',
+          dependencies: ['b'],
+          eventStream: () => Effect.succeed([]) as any,
+        },
+        {
+          id: 'f',
+          name: 'Task F',
+          dependencies: ['b'],
+          eventStream: () => Effect.succeed([]) as any,
+        },
+        {
+          id: 'g',
+          name: 'Task G',
+          dependencies: ['c', 'd'],
+          eventStream: () => Effect.succeed([]) as any,
+        },
+        {
+          id: 'h',
+          name: 'Task H',
+          dependencies: ['e', 'f'],
+          eventStream: () => Effect.succeed([]) as any,
+        },
+        {
+          id: 'i',
+          name: 'Task I',
+          dependencies: ['g', 'h'],
+          eventStream: () => Effect.succeed([]) as any,
+        },
       ]
 
       const result = topologicalSort(tasks)

@@ -5,7 +5,7 @@
  * coordination, maximizing parallelism while respecting dependencies.
  */
 
-import { Deferred, Effect, Exit, FiberMap, Graph, Option, Stream, SubscriptionRef } from 'effect'
+import { Deferred, Effect, Exit, Fiber, FiberMap, Graph, Option, Stream, SubscriptionRef } from 'effect'
 
 import type { TaskDef, TaskEvent, TaskGraphResult, TaskSystemState } from './types.ts'
 import { TaskExecutionError, TaskState, TaskSystemState as TaskSystemStateClass } from './types.ts'
@@ -98,7 +98,9 @@ const reduceEvent = (state: TaskSystemState, event: TaskEvent<string>): TaskSyst
           stderr: task.stderr,
           startedAt: task.startedAt,
           completedAt: Option.some(event.timestamp),
-          error: isSuccess ? Option.none() : Option.some(String(Exit.isFailure(event.exit) ? event.exit.cause : 'Unknown error')),
+          error: isSuccess
+            ? Option.none()
+            : Option.some(String(Exit.isFailure(event.exit) ? event.exit.cause : 'Unknown error')),
         })
       }
       break
@@ -148,7 +150,7 @@ const buildTaskGraph = <TId extends string>(
               if (sourceIndex === undefined) {
                 throw new Error(`Unknown dependency: ${depId}`)
               }
-              Graph.addEdge(mutable, sourceIndex, targetIndex)
+              Graph.addEdge(mutable, sourceIndex, targetIndex, undefined)
             }
           }
         }),
@@ -179,7 +181,7 @@ const buildTaskGraph = <TId extends string>(
 const executeTask = <TId extends string, A, E, R>(
   task: TaskDef<TId, A, E, R>,
   emit: (event: TaskEvent<TId>) => Effect.Effect<void>,
-): Effect.Effect<void, never, R> =>
+): Effect.Effect<void, unknown, R> =>
   Effect.gen(function* () {
     // Emit started event
     yield* emit({ type: 'started', taskId: task.id, timestamp: Date.now() })
@@ -246,7 +248,7 @@ export const runTaskGraph = <TId extends string>(
     onStateChange?: (state: TaskSystemState) => Effect.Effect<void>
     debounceMs?: number
   },
-): Effect.Effect<TaskGraphResult, never, any> =>
+): Effect.Effect<TaskGraphResult, Error, any> =>
   Effect.scoped(
     Effect.gen(function* () {
       // Widen task types for internal processing
@@ -349,12 +351,12 @@ export const runTaskGraph = <TId extends string>(
  * Execute a task graph and fail if any task fails.
  * Throws TaskExecutionError with details of failed tasks.
  */
-export const runTaskGraphOrFail = <TId extends string>(
+export const runTaskGraphOrFail = (
   tasks: ReadonlyArray<TaskDef<any, unknown, unknown, unknown>>,
   options?: {
     onStateChange?: (state: TaskSystemState) => Effect.Effect<void>
   },
-): Effect.Effect<TaskGraphResult, TaskExecutionError, any> =>
+): Effect.Effect<TaskGraphResult, TaskExecutionError | Error, any> =>
   Effect.gen(function* () {
     const result = yield* runTaskGraph(tasks, options)
 
