@@ -7,15 +7,20 @@
 
 ## dotdot
 
+- [ ] command to generate vscode workspace file for the workspace
+
+### worktrees
+
 - [ ] use worktrees for each repo (add warning to status if not using worktrees)
   - we'll need a cannonical path for git worktrees (e.g. ~/worktrees/repo-name)
-- [ ] command to generate vscode workspace file for the workspace
+- [ ] poses a form of conflict because exposed packages are now overlapping
 
 ## mono
 
 - [ ] make it easy to see whether binary version is up to date with source version (to avoid running an outdated version)
 - [ ] make it easier to rebuild the binary (both for nix flakes and devenv)
 - [ ] fish auto complete for `mk bun nix build`
+- [ ] devenv/direnv local fish autocomplete loading
 
 ## genie
 
