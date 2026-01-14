@@ -1,5 +1,6 @@
-import { FileSystem, Path } from '@effect/platform'
+import { FileSystem } from '@effect/platform'
 import type * as CommandExecutor from '@effect/platform/CommandExecutor'
+import { EffectPath, type AbsoluteFilePath } from '@overeng/effect-path'
 import { Effect } from 'effect'
 
 import { type CurrentWorkingDirectory, cmd } from '@overeng/utils/node'
@@ -8,8 +9,8 @@ import { type CurrentWorkingDirectory, cmd } from '@overeng/utils/node'
 export interface WriteSchemaToFileOptions {
   /** The generated code to write */
   readonly code: string
-  /** Output file path */
-  readonly outputPath: string
+  /** Output file path (absolute) */
+  readonly outputPath: AbsoluteFilePath
   /** If true, the file will remain writable; if false (default), file will be made read-only */
   readonly writable?: boolean
 }
@@ -28,13 +29,12 @@ const READ_WRITE_MODE = 0o644
  */
 export const writeSchemaToFile = (
   options: WriteSchemaToFileOptions,
-): Effect.Effect<void, Error, FileSystem.FileSystem | Path.Path> =>
+): Effect.Effect<void, Error, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const path = yield* Path.Path
     const { code, outputPath, writable = false } = options
 
-    const dir = path.dirname(outputPath)
+    const dir = EffectPath.ops.parent(outputPath)
 
     // Create directory if it doesn't exist
     const dirExists = yield* fs.exists(dir)
@@ -72,7 +72,7 @@ export const formatCode = (
 ): Effect.Effect<
   string,
   never,
-  FileSystem.FileSystem | Path.Path | CommandExecutor.CommandExecutor | CurrentWorkingDirectory
+  FileSystem.FileSystem | CommandExecutor.CommandExecutor | CurrentWorkingDirectory
 > =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem

@@ -42,6 +42,7 @@ export default packageJson({
       '@effect/sql',
       '@effect/typeclass',
       '@effect/workflow',
+      '@overeng/effect-path',
       '@overeng/notion-effect-client',
       '@overeng/notion-effect-schema',
       '@overeng/utils',

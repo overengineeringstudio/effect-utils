@@ -6,17 +6,17 @@
  * @example
  * ```ts
  * // notion-schema-gen.config.ts
- * import { defineConfig, transforms } from '@overeng/notion-effect-cli/config'
+ * import { defineConfig, dir, file, transforms } from '@overeng/notion-effect-cli/config'
  *
  * export default defineConfig({
- *   outputDir: './src/notion-schemas',
+ *   outputDir: dir('./src/notion-schemas/'),
  *   defaults: {
  *     includeWrite: true,
  *     includeApi: true,
  *   },
  *   databases: {
  *     'abc123-def456-...': {
- *       output: 'tasks.ts',
+ *       output: file('tasks.ts'),
  *       name: 'Tasks',
  *       transforms: {
  *         'Due Date': transforms.date.asDate,
@@ -30,7 +30,36 @@
  * @module
  */
 
+import { EffectPath, type RelativeDirPath, type RelativeFilePath } from '@overeng/effect-path'
+
 import type { NotionPropertyType } from './introspect.ts'
+
+// Re-export path types for config authors
+export type { RelativeDirPath, RelativeFilePath }
+
+/**
+ * Create a relative file path for use in config.
+ * File paths must NOT end with a trailing slash.
+ *
+ * @example
+ * ```ts
+ * output: file('tasks.ts')
+ * output: file('schemas/tasks.ts')
+ * ```
+ */
+export const file = (path: string): RelativeFilePath => EffectPath.unsafe.relativeFile(path)
+
+/**
+ * Create a relative directory path for use in config.
+ * Directory paths will have a trailing slash added if not present.
+ *
+ * @example
+ * ```ts
+ * outputDir: dir('./src/schemas/')
+ * outputDir: dir('generated')  // becomes 'generated/'
+ * ```
+ */
+export const dir = (path: string): RelativeDirPath => EffectPath.unsafe.relativeDir(path)
 
 // -----------------------------------------------------------------------------
 // Transform Types
@@ -181,7 +210,7 @@ export type PropertyTransforms = Record<string, TransformValue>
 /** Configuration for a single database */
 export interface DatabaseConfig {
   /** Output file path (relative to outputDir if set, otherwise relative to config file) */
-  readonly output: string
+  readonly output: RelativeFilePath
   /** Custom schema name (defaults to database title) */
   readonly name?: string
   /** Include Write schemas */
@@ -207,8 +236,8 @@ export interface DefaultsConfig {
 
 /** Root configuration schema */
 export interface SchemaGenConfig {
-  /** Base output directory (paths in databases are relative to this) */
-  readonly outputDir?: string
+  /** Base output directory (paths in databases are relative to this, must end with /) */
+  readonly outputDir?: RelativeDirPath
   /** Default options applied to all databases */
   readonly defaults?: DefaultsConfig
   /** Databases keyed by their Notion database ID */
@@ -224,16 +253,16 @@ export interface SchemaGenConfig {
  *
  * @example
  * ```ts
- * import { defineConfig, transforms } from '@overeng/notion-effect-cli/config'
+ * import { defineConfig, dir, file, transforms } from '@overeng/notion-effect-cli/config'
  *
  * export default defineConfig({
- *   outputDir: './src/schemas',
+ *   outputDir: dir('./src/schemas/'),
  *   defaults: {
  *     includeWrite: true,
  *   },
  *   databases: {
  *     'abc123...': {
- *       output: 'tasks.ts',
+ *       output: file('tasks.ts'),
  *       name: 'Tasks',
  *       transforms: {
  *         'Due Date': transforms.date.asDate,

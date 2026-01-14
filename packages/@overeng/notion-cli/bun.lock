@@ -16,6 +16,7 @@
         "@effect/sql": "0.49.0",
         "@effect/typeclass": "0.38.0",
         "@effect/workflow": "0.16.0",
+        "@overeng/effect-path": "file:../effect-path",
         "@overeng/notion-effect-client": "file:../notion-effect-client",
         "@overeng/notion-effect-schema": "file:../notion-effect-schema",
         "@overeng/utils": "file:../utils",
@@ -143,6 +144,8 @@
     "@opentelemetry/api": ["@opentelemetry/api@1.9.0", "", {}, "sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg=="],
 
     "@opentelemetry/semantic-conventions": ["@opentelemetry/semantic-conventions@1.38.0", "", {}, "sha512-kocjix+/sSggfJhwXqClZ3i9Y/MI0fp7b+g7kCRm6psy2dsf8uApTRclwG18h8Avm7C9+fnt+O36PspJ/OzoWg=="],
+
+    "@overeng/effect-path": ["@overeng/effect-path@file:../effect-path", { "devDependencies": { "@effect/language-service": "0.65.0", "@effect/platform": "0.94.1", "@effect/platform-node": "0.104.0", "@effect/vitest": "0.27.0", "@types/node": "25.0.3", "effect": "3.19.14", "typescript": "5.9.3", "vitest": "3.2.4" }, "peerDependencies": { "@effect/platform": "^0.94.1", "effect": "^3.19.14" } }],
 
     "@overeng/notion-effect-client": ["@overeng/notion-effect-client@file:../notion-effect-client", { "dependencies": { "@overeng/notion-effect-schema": "file:../notion-effect-schema" }, "devDependencies": { "@effect/platform": "0.94.1", "@effect/vitest": "0.27.0", "@overeng/utils": "file:../utils", "@types/node": "25.0.3", "effect": "3.19.14", "vitest": "4.0.16" }, "peerDependencies": { "@effect/platform": "^0.94.1", "effect": "^3.19.14" } }],
 

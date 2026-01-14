@@ -1,4 +1,10 @@
-import { FileSystem, Path } from '@effect/platform'
+import { FileSystem } from '@effect/platform'
+import {
+  EffectPath,
+  type AbsoluteDirPath,
+  type AbsoluteFilePath,
+  type RelativeDirPath,
+} from '@overeng/effect-path'
 import { Effect, Schema } from 'effect'
 
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
@@ -15,6 +21,9 @@ import type { PropertyTransformConfig } from './introspect.ts'
 // Re-export config definition types
 export type { DatabaseConfig, DefaultsConfig, PropertyTransforms, SchemaGenConfig, Transform }
 
+// Re-export path types used in resolved config
+export type { AbsoluteFilePath }
+
 // -----------------------------------------------------------------------------
 // Internal Types (for backwards compat with codegen)
 // -----------------------------------------------------------------------------
@@ -24,7 +33,7 @@ export interface ResolvedDatabaseConfig {
   /** Notion database ID */
   readonly id: string
   /** Resolved output file path (absolute) */
-  readonly output: string
+  readonly output: AbsoluteFilePath
   /** Custom schema name (defaults to database title) */
   readonly name?: string
   /** Include Write schemas */
@@ -100,27 +109,22 @@ const formatUnknownErrorMessage = (error: unknown): string =>
 
 /** Find config file in directory or parent directories */
 const findConfigFile = (
-  startDir: string,
-): Effect.Effect<string | undefined, never, FileSystem.FileSystem | Path.Path> =>
+  startDir: AbsoluteDirPath,
+): Effect.Effect<AbsoluteFilePath | undefined, never, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const path = yield* Path.Path
 
-    let currentDir = startDir
+    let currentDir: AbsoluteDirPath | undefined = startDir
 
-    while (true) {
+    while (currentDir !== undefined) {
       for (const fileName of CONFIG_FILE_NAMES) {
-        const filePath = path.join(currentDir, fileName)
+        const filePath = EffectPath.ops.join(currentDir, EffectPath.unsafe.relativeFile(fileName))
         const exists = yield* fs.exists(filePath).pipe(Effect.orElseSucceed(() => false))
         if (exists) {
           return filePath
         }
       }
-      const parentDir = path.dirname(currentDir)
-      if (parentDir === currentDir) {
-        break
-      }
-      currentDir = parentDir
+      currentDir = EffectPath.ops.parent(currentDir)
     }
 
     return undefined
@@ -189,14 +193,13 @@ const loadTsConfig = (
 
 interface ResolveConfigOptions {
   config: SchemaGenConfig
-  configDir: string
-  path: Path.Path
+  configDir: AbsoluteDirPath
 }
 
 /** Build resolved database config with optional fields */
 const buildResolvedDatabaseConfig = (opts: {
   id: string
-  output: string
+  output: AbsoluteFilePath
   merged: DatabaseConfig
   normalizedTransforms: PropertyTransformConfig | undefined
 }): ResolvedDatabaseConfig => ({
@@ -211,8 +214,10 @@ const buildResolvedDatabaseConfig = (opts: {
 })
 
 /** Resolve database configs with outputDir and defaults applied */
-const resolveConfig = ({ config, configDir, path }: ResolveConfigOptions): ResolvedConfig => {
-  const baseDir = config.outputDir ? path.resolve(configDir, config.outputDir) : configDir
+const resolveConfig = ({ config, configDir }: ResolveConfigOptions): ResolvedConfig => {
+  const baseDir: AbsoluteDirPath = config.outputDir
+    ? EffectPath.ops.join(configDir, config.outputDir)
+    : configDir
 
   const databases = Object.entries(config.databases).map(([id, db]): ResolvedDatabaseConfig => {
     const merged = mergeWithDefaults(db, config.defaults)
@@ -220,7 +225,7 @@ const resolveConfig = ({ config, configDir, path }: ResolveConfigOptions): Resol
 
     return buildResolvedDatabaseConfig({
       id,
-      output: path.resolve(baseDir, db.output),
+      output: EffectPath.ops.join(baseDir, db.output),
       merged,
       normalizedTransforms,
     })
@@ -236,16 +241,17 @@ const resolveConfig = ({ config, configDir, path }: ResolveConfigOptions): Resol
 export const loadConfig = (
   configPath?: string,
 ): Effect.Effect<
-  { config: ResolvedConfig; path: string },
+  { config: ResolvedConfig; path: AbsoluteFilePath },
   ConfigError,
-  FileSystem.FileSystem | Path.Path | CurrentWorkingDirectory
+  FileSystem.FileSystem | CurrentWorkingDirectory
 > =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const pathService = yield* Path.Path
 
-    const searchStartDir = yield* CurrentWorkingDirectory
-    const resolvedPath = configPath ?? (yield* findConfigFile(searchStartDir))
+    const searchStartDir = EffectPath.unsafe.absoluteDir(yield* CurrentWorkingDirectory)
+    const resolvedPath = configPath
+      ? EffectPath.ops.join(searchStartDir, EffectPath.unsafe.relativeFile(configPath))
+      : yield* findConfigFile(searchStartDir)
 
     if (!resolvedPath) {
       return yield* new ConfigNotFoundError({
@@ -255,20 +261,19 @@ export const loadConfig = (
       })
     }
 
-    const absolutePath = pathService.resolve(searchStartDir, resolvedPath)
-    const exists = yield* fs.exists(absolutePath).pipe(Effect.orElseSucceed(() => false))
+    const exists = yield* fs.exists(resolvedPath).pipe(Effect.orElseSucceed(() => false))
     if (!exists) {
       return yield* new ConfigFileNotFoundError({
-        message: `Config file not found: ${absolutePath}`,
-        path: absolutePath,
+        message: `Config file not found: ${resolvedPath}`,
+        path: resolvedPath,
       })
     }
 
-    const rawConfig = yield* loadTsConfig(absolutePath)
-    const configDir = pathService.dirname(absolutePath)
-    const config = resolveConfig({ config: rawConfig, configDir, path: pathService })
+    const rawConfig = yield* loadTsConfig(resolvedPath)
+    const configDir = EffectPath.ops.parent(resolvedPath)
+    const config = resolveConfig({ config: rawConfig, configDir })
 
-    return { config, path: absolutePath }
+    return { config, path: resolvedPath }
   })
 
 /** Merges database config with defaults */

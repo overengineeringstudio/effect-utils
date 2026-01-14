@@ -2,10 +2,13 @@
  * Database subcommand - database operations including dump
  */
 
-import * as path from 'node:path'
-
 import { Args, Command, Options } from '@effect/cli'
 import { FetchHttpClient, FileSystem, HttpClient } from '@effect/platform'
+import {
+  EffectPath,
+  type AbsoluteDirPath,
+  type AbsoluteFilePath,
+} from '@overeng/effect-path'
 import type { Cause, Channel, Sink } from 'effect'
 import { Console, Effect, Layer, Option, Redacted, Stream } from 'effect'
 import type { NodeInspectSymbol } from 'effect/Inspectable'
@@ -185,13 +188,13 @@ const extractAssetsFromBlocks = (blocks: readonly BlockWithDepth[]): readonly As
   })
 
 /** Download a single asset to the filesystem */
-const downloadAsset = (args: { asset: AssetInfo; pageId: string; assetsDir: string }) =>
+const downloadAsset = (args: { asset: AssetInfo; pageId: string; assetsDir: AbsoluteDirPath }) =>
   Effect.gen(function* () {
     const { asset, pageId, assetsDir } = args
     const fs = yield* FileSystem.FileSystem
     const http = yield* HttpClient.HttpClient
 
-    const pageDir = path.join(assetsDir, pageId)
+    const pageDir = EffectPath.ops.join(assetsDir, EffectPath.unsafe.relativeDir(`${pageId}/`))
     const dirExists = yield* fs.exists(pageDir)
     if (!dirExists) {
       yield* fs.makeDirectory(pageDir, { recursive: true })
@@ -199,7 +202,7 @@ const downloadAsset = (args: { asset: AssetInfo; pageId: string; assetsDir: stri
 
     const sanitizedName = asset.name.replace(/[^a-zA-Z0-9._-]/g, '_')
     const fileName = `${asset.blockId}-${sanitizedName}`
-    const filePath = path.join(pageDir, fileName)
+    const filePath = EffectPath.ops.join(pageDir, EffectPath.unsafe.relativeFile(fileName))
 
     const response = yield* http.get(asset.url)
     const body = yield* response.arrayBuffer
@@ -343,10 +346,11 @@ export const DUMP_META = {
         // Query pages with pagination
         yield* log(`Fetching pages to ${outputPath}...`)
 
-        const outputDir = path.dirname(outputPath)
-        const resolvedAssetsDir = Option.isSome(assetsDir)
-          ? assetsDir.value
-          : path.join(outputDir, 'assets')
+        const outputFile = EffectPath.unsafe.absoluteFile(outputPath)
+        const outputDir = EffectPath.ops.parent(outputFile)
+        const resolvedAssetsDir: AbsoluteDirPath = Option.isSome(assetsDir)
+          ? EffectPath.unsafe.absoluteDir(assetsDir.value)
+          : EffectPath.ops.join(outputDir, EffectPath.unsafe.relativeDir('assets/'))
 
         // Ensure output directory exists
         const dirExists = yield* fs.exists(outputDir)

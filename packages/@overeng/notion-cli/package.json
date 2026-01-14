@@ -33,6 +33,7 @@
     "@effect/sql": "0.49.0",
     "@effect/typeclass": "0.38.0",
     "@effect/workflow": "0.16.0",
+    "@overeng/effect-path": "file:../effect-path",
     "@overeng/notion-effect-client": "file:../notion-effect-client",
     "@overeng/notion-effect-schema": "file:../notion-effect-schema",
     "@overeng/utils": "file:../utils"
