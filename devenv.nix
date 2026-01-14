@@ -34,6 +34,11 @@ let
     src = workspaceSrc;
   };
   cliBuildStamp = import ./nix/cli-build-stamp.nix { inherit pkgs; };
+  # Use npm oxlint with NAPI bindings to enable JavaScript plugin support
+  oxlintNpm = import ./nix/oxlint-npm.nix {
+    inherit pkgs;
+    bun = pkgsUnstable.bun;
+  };
 in
 {
   packages = [
@@ -41,7 +46,7 @@ in
     pkgsUnstable.nodejs_24
     pkgsUnstable.bun
     pkgsUnstable.typescript
-    pkgsUnstable.oxlint
+    oxlintNpm
     pkgsUnstable.oxfmt
     genie
     dotdot
