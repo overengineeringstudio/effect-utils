@@ -140,9 +140,9 @@ fi
 **Pros:** Simple, works now
 **Cons:** Requires adding devDependency to each package
 
-#### Option 2: Nix package (Not Yet Available)
+#### Option 2: Nix package (Recommended)
 
-No `tsgo` package exists in nixpkgs yet. Once available:
+`tsgo` is available in nixpkgs unstable:
 
 ```nix
 nativeBuildInputs = [ pkgsUnstable.bun pkgsUnstable.tsgo pkgs.cacert ];
@@ -151,33 +151,12 @@ nativeBuildInputs = [ pkgsUnstable.bun pkgsUnstable.tsgo pkgs.cacert ];
 tsgo --project "$tsconfig_path" --noEmit
 ```
 
-**Pros:** Cleaner, no npm dependency needed
-**Cons:** Package doesn't exist yet
-
-#### Option 3: Build from source
-
-Build tsgo from the Go source in Nix:
-
-```nix
-tsgo = pkgs.buildGoModule {
-  pname = "tsgo";
-  version = "7.0.0-dev";
-  src = pkgs.fetchFromGitHub {
-    owner = "microsoft";
-    repo = "typescript-go";
-    # ...
-  };
-};
-```
-
-**Pros:** Pure Nix solution
-**Cons:** More maintenance, need to track upstream
+**Pros:** Cleaner, no npm dependency needed, native binary
+**Cons:** Requires nixpkgs unstable
 
 ### Recommendation for mk-bun-cli
 
-**Short-term:** Use Option 1 (npm package) for packages where build speed matters.
-
-**Long-term:** Wait for nixpkgs to add tsgo, then use Option 2.
+**Use Option 2** (nixpkgs unstable tsgo package) - cleanest integration with the Nix build system.
 
 ### Parameter Addition
 
