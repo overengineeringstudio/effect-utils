@@ -13,12 +13,18 @@ import {
   FiberMap,
   Graph,
   Option,
+  Scope,
   Stream,
   SubscriptionRef,
 } from 'effect'
 
 import type { TaskDef, TaskEvent, TaskGraphResult, TaskSystemState } from './types.ts'
-import { TaskExecutionError, TaskState, TaskSystemState as TaskSystemStateClass } from './types.ts'
+import {
+  CommandInfo,
+  TaskExecutionError,
+  TaskState,
+  TaskSystemState as TaskSystemStateClass,
+} from './types.ts'
 
 // =============================================================================
 // State Reducer
@@ -28,7 +34,7 @@ import { TaskExecutionError, TaskState, TaskSystemState as TaskSystemStateClass 
  * Reduce a TaskEvent into the current state.
  * This is a pure function that updates the task state based on events.
  */
-const reduceEvent = ({
+export const reduceEvent = ({
   state,
   event,
 }: {
@@ -48,6 +54,9 @@ const reduceEvent = ({
         startedAt: Option.none(),
         completedAt: Option.none(),
         error: Option.none(),
+        commandInfo: Option.none(),
+        retryAttempt: 0,
+        maxRetries: Option.none(),
       })
       break
 
@@ -63,6 +72,29 @@ const reduceEvent = ({
           startedAt: Option.some(event.timestamp),
           completedAt: task.completedAt,
           error: task.error,
+          commandInfo: task.commandInfo,
+          retryAttempt: task.retryAttempt,
+          maxRetries: task.maxRetries,
+        })
+      }
+      break
+    }
+
+    case 'retrying': {
+      const task = tasks[event.taskId]
+      if (task) {
+        tasks[event.taskId] = new TaskState({
+          id: task.id,
+          name: task.name,
+          status: 'running',
+          stdout: task.stdout,
+          stderr: task.stderr,
+          startedAt: task.startedAt,
+          completedAt: task.completedAt,
+          error: task.error,
+          commandInfo: task.commandInfo,
+          retryAttempt: event.attempt,
+          maxRetries: Option.some(event.maxAttempts),
         })
       }
       break
@@ -80,6 +112,9 @@ const reduceEvent = ({
           startedAt: task.startedAt,
           completedAt: task.completedAt,
           error: task.error,
+          commandInfo: task.commandInfo,
+          retryAttempt: task.retryAttempt,
+          maxRetries: task.maxRetries,
         })
       }
       break
@@ -97,6 +132,9 @@ const reduceEvent = ({
           startedAt: task.startedAt,
           completedAt: task.completedAt,
           error: task.error,
+          commandInfo: task.commandInfo,
+          retryAttempt: task.retryAttempt,
+          maxRetries: task.maxRetries,
         })
       }
       break
@@ -106,6 +144,32 @@ const reduceEvent = ({
       const task = tasks[event.taskId]
       if (task) {
         const isSuccess = Exit.isSuccess(event.exit)
+
+        // Extract command info on failure
+        let commandInfo = Option.none<CommandInfo>()
+        let exitCode = -1
+
+        if (!isSuccess && Exit.isFailure(event.exit)) {
+          // Try to extract exitCode from CommandError in the cause
+          const causeString = String(event.exit.cause)
+          const exitCodeMatch = causeString.match(/exit code (\d+)/)
+          if (exitCodeMatch?.[1]) {
+            exitCode = Number.parseInt(exitCodeMatch[1], 10)
+          }
+
+          // If we have command context from the event, populate commandInfo
+          if (event.commandContext) {
+            commandInfo = Option.some(
+              new CommandInfo({
+                command: event.commandContext.command,
+                args: event.commandContext.args,
+                cwd: event.commandContext.cwd,
+                exitCode,
+              }),
+            )
+          }
+        }
+
         tasks[event.taskId] = new TaskState({
           id: task.id,
           name: task.name,
@@ -117,6 +181,9 @@ const reduceEvent = ({
           error: isSuccess
             ? Option.none()
             : Option.some(String(Exit.isFailure(event.exit) ? event.exit.cause : 'Unknown error')),
+          commandInfo,
+          retryAttempt: task.retryAttempt,
+          maxRetries: task.maxRetries,
         })
       }
       break
@@ -196,6 +263,7 @@ const buildTaskGraph = <TId extends string>(
  * 2. Run eventStream (emits stdout/stderr events)
  * 3. Run effect if present
  * 4. Emit 'completed' event with exit result
+ * 5. If failed and retry configured, emit 'retrying' and retry
  */
 const executeTask = <TId extends string, A, E, R>({
   task,
@@ -203,8 +271,8 @@ const executeTask = <TId extends string, A, E, R>({
 }: {
   task: TaskDef<TId, A, E, R>
   emit: (event: TaskEvent<TId>) => Effect.Effect<void>
-}): Effect.Effect<void, unknown, R> =>
-  Effect.gen(function* () {
+}): Effect.Effect<void, unknown, R> => {
+  const executeOnce = Effect.gen(function* () {
     // Emit started event
     yield* emit({ type: 'started', taskId: task.id, timestamp: Date.now() })
 
@@ -235,9 +303,62 @@ const executeTask = <TId extends string, A, E, R>({
       )
     }
 
-    // Emit completed event
-    yield* emit({ type: 'completed', taskId: task.id, timestamp: Date.now(), exit })
+    // Emit completed event with commandContext if present
+    yield* emit({
+      type: 'completed',
+      taskId: task.id,
+      timestamp: Date.now(),
+      exit,
+      ...(task.commandContext !== undefined ? { commandContext: task.commandContext } : {}),
+    })
+
+    return exit
   })
+
+  /**
+   * Custom retry wrapper that emits retry events.
+   * Effect.retry doesn't give us hooks to emit events, so we implement manual retry loop.
+   */
+  const executeWithRetry = (attempt: number): Effect.Effect<void, unknown, R> =>
+    Effect.gen(function* () {
+      const exit = yield* Effect.exit(executeOnce)
+
+      if (Exit.isSuccess(exit)) {
+        return
+      }
+
+      // Task failed - check if we should retry
+      if (task.retrySchedule && task.maxRetries && attempt < task.maxRetries) {
+        // Emit retry event
+        yield* emit({
+          type: 'retrying',
+          taskId: task.id,
+          attempt: attempt + 1,
+          maxAttempts: task.maxRetries + 1, // maxAttempts = initial + retries
+          timestamp: Date.now(),
+        })
+
+        // Apply schedule delay
+        yield* Effect.sleep(`${100 * Math.pow(2, attempt)} millis`) // Exponential backoff
+
+        // Retry with incremented attempt
+        return yield* executeWithRetry(attempt + 1)
+      }
+
+      // No more retries, fail with original error
+      if (Exit.isFailure(exit)) {
+        return yield* Effect.failCause(exit.cause)
+      }
+      return yield* Effect.die('Unknown error')
+    })
+
+  // Start retry loop if retry schedule configured
+  if (task.retrySchedule && task.maxRetries) {
+    return executeWithRetry(0)
+  }
+
+  return executeOnce.pipe(Effect.asVoid)
+}
 
 // =============================================================================
 // Task Graph Runner
@@ -248,10 +369,10 @@ const executeTask = <TId extends string, A, E, R>({
  * This is needed because TypeScript's contravariance check on eventStream
  * is overly strict for our use case (we only call eventStream with exact task.id).
  */
-const widenTaskArray = <TId extends string>(
-  tasks: ReadonlyArray<TaskDef<any, unknown, unknown, unknown>>,
-): ReadonlyArray<TaskDef<TId, unknown, unknown, unknown>> =>
-  tasks as unknown as ReadonlyArray<TaskDef<TId, unknown, unknown, unknown>>
+const widenTaskArray = <TId extends string, R>(
+  tasks: ReadonlyArray<TaskDef<any, unknown, unknown, R>>,
+): ReadonlyArray<TaskDef<TId, unknown, unknown, R>> =>
+  tasks as unknown as ReadonlyArray<TaskDef<TId, unknown, unknown, R>>
 
 /**
  * Execute a graph of tasks with dependency resolution.
@@ -259,20 +380,21 @@ const widenTaskArray = <TId extends string>(
  * Uses FiberMap with scoped lifecycle for automatic cleanup.
  * Tasks execute with maximum parallelism while respecting dependencies.
  */
-export const runTaskGraph = <TId extends string>({
+export const runTaskGraph = <TId extends string, R = never>({
   tasks,
   options,
 }: {
-  tasks: ReadonlyArray<TaskDef<any, unknown, unknown, unknown>>
+  tasks: ReadonlyArray<TaskDef<any, unknown, unknown, R>>
   options?: {
     onStateChange?: (state: TaskSystemState) => Effect.Effect<void>
     debounceMs?: number
-  }
-}): Effect.Effect<TaskGraphResult, Error, any> =>
+    concurrency?: number
+  } | undefined
+}) =>
   Effect.scoped(
     Effect.gen(function* () {
       // Widen task types for internal processing
-      const wideTasks = widenTaskArray<TId>(tasks)
+      const wideTasks = widenTaskArray<TId, R>(tasks)
 
       // Build dependency graph
       const { graph, idToIndex: _idToIndex } = yield* buildTaskGraph(wideTasks)
@@ -283,7 +405,14 @@ export const runTaskGraph = <TId extends string>({
       // Register all tasks
       for (const task of wideTasks) {
         yield* SubscriptionRef.update(stateRef, (state) =>
-          reduceEvent({ state, event: { type: 'registered', taskId: task.id, name: task.name } }),
+          reduceEvent({
+            state,
+            event: {
+              type: 'registered',
+              taskId: task.id,
+              name: task.name,
+            },
+          }),
         )
       }
 
@@ -313,34 +442,40 @@ export const runTaskGraph = <TId extends string>({
         completionMap.set(nodeIndex, deferred)
       }
 
-      // Fork all tasks with dependency coordination
-      for (const [nodeIndex, task] of graph.nodes) {
-        // Get dependency node indices
-        const depIndices = Array.from(Graph.neighborsDirected(graph, nodeIndex, 'incoming'))
-
-        yield* FiberMap.run(
-          fiberMap,
-          nodeIndex,
+      // Execute tasks with controlled concurrency using Effect.forEach
+      const taskEntries = Array.from(graph.nodes)
+      yield* Effect.forEach(
+        taskEntries,
+        ([nodeIndex, task]) =>
           Effect.gen(function* () {
-            // Wait for all dependencies to complete
-            const depDeferreds = depIndices.map((idx) => completionMap.get(idx)!)
-            if (depDeferreds.length > 0) {
-              yield* Effect.all(depDeferreds.map((d) => Deferred.await(d)))
-            }
+            // Get dependency node indices
+            const depIndices = Array.from(Graph.neighborsDirected(graph, nodeIndex, 'incoming'))
 
-            // Execute the task
-            yield* executeTask({ task, emit })
+            yield* FiberMap.run(
+              fiberMap,
+              nodeIndex,
+              Effect.gen(function* () {
+                // Wait for all dependencies to complete
+                const depDeferreds = depIndices.map((idx) => completionMap.get(idx)!)
+                if (depDeferreds.length > 0) {
+                  yield* Effect.all(depDeferreds.map((d) => Deferred.await(d)))
+                }
 
-            // Signal completion to dependent tasks
-            yield* Deferred.succeed(completionMap.get(nodeIndex)!, void 0)
-          }).pipe(
-            // If task fails, complete deferred with failure
-            Effect.catchAll((error) =>
-              Deferred.fail(completionMap.get(nodeIndex)!, error as Error),
-            ),
-          ),
-        )
-      }
+                // Execute the task
+                yield* executeTask({ task, emit })
+
+                // Signal completion to dependent tasks
+                yield* Deferred.succeed(completionMap.get(nodeIndex)!, void 0)
+              }).pipe(
+                // If task fails, complete deferred with failure
+                Effect.catchAll((error) =>
+                  Deferred.fail(completionMap.get(nodeIndex)!, error as Error),
+                ),
+              ),
+            )
+          }),
+        { concurrency: options?.concurrency ?? 'unbounded' },
+      )
 
       // Wait for all tasks to complete (or fail)
       yield* FiberMap.awaitEmpty(fiberMap)
@@ -371,19 +506,19 @@ export const runTaskGraph = <TId extends string>({
  * Execute a task graph and fail if any task fails.
  * Throws TaskExecutionError with details of failed tasks.
  */
-export const runTaskGraphOrFail = ({
+export const runTaskGraphOrFail = <R = never>({
   tasks,
   options,
 }: {
-  tasks: ReadonlyArray<TaskDef<any, unknown, unknown, unknown>>
+  tasks: ReadonlyArray<TaskDef<any, unknown, unknown, R>>
   options?: {
     onStateChange?: (state: TaskSystemState) => Effect.Effect<void>
-  }
-}): Effect.Effect<TaskGraphResult, TaskExecutionError | Error, any> =>
+    debounceMs?: number
+    concurrency?: number
+  } | undefined
+}) =>
   Effect.gen(function* () {
-    const result = yield* options?.onStateChange !== undefined
-      ? runTaskGraph({ tasks, options: { onStateChange: options.onStateChange } })
-      : runTaskGraph({ tasks })
+    const result = yield* runTaskGraph({ tasks, options })
 
     if (result.failureCount > 0) {
       return yield* new TaskExecutionError({

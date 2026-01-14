@@ -136,6 +136,7 @@ export const runMonoCli = (
   })
 
   const program = cli(process.argv).pipe(
+    Effect.scoped, // Provide Scope for entire CLI execution
     Effect.exit,
     Effect.flatMap(
       Exit.matchEffect({

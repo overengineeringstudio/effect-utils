@@ -2,13 +2,15 @@ import { FileSystem, Path } from '@effect/platform'
 import * as Command from '@effect/platform/Command'
 import type * as CommandExecutor from '@effect/platform/CommandExecutor'
 import type { PlatformError } from '@effect/platform/Error'
-import { Array, Effect, Exit, Logger, LogLevel, Option, Stream } from 'effect'
+import { Array, Effect, Exit, Logger, LogLevel, Option, Schedule, Stream } from 'effect'
+import { cpus } from 'node:os'
 
-import { CommandError, GenieCoverageError } from './errors.ts'
+import { type CommandError, GenieCoverageError } from './errors.ts'
 import { task } from './task-system/api.ts'
 import { runTaskGraph, runTaskGraphOrFail } from './task-system/graph.ts'
+import type { TaskDef } from './task-system/types.ts'
 import { ciRenderer } from './task-system/renderers/ci.ts'
-import { inlineRenderer } from './task-system/renderers/inline.ts'
+import { opentuiInlineRenderer } from './task-system/renderers/opentui-inline.tsx'
 import { IS_CI, runCommand } from './utils.ts'
 
 // =============================================================================
@@ -292,7 +294,12 @@ export const findPackageDirs = (config: InstallConfig) =>
     return allDirs.toSorted()
   }).pipe(Effect.withSpan('findPackageDirs'))
 
-/** Remove node_modules directories for all packages that will be installed */
+/**
+ * Remove node_modules directories for all packages that will be installed.
+ *
+ * @deprecated Use installAllWithTaskSystem with clean: true option instead.
+ * This provides better progress visibility through the task system.
+ */
 export const cleanNodeModules = (config: InstallConfig) =>
   Effect.gen(function* () {
     const pathService = yield* Path.Path
@@ -422,13 +429,23 @@ export const installAll = ({
     return { results, total }
   }).pipe(Effect.withSpan('installAll'))
 
-/** Install dependencies using task system with live progress (task-based implementation) */
+/**
+ * Install dependencies using task system with live progress (task-based implementation).
+ *
+ * The `clean` option is currently needed as a workaround for a bun bug where parallel installs
+ * with file: protocol dependencies and postinstall scripts cause cache corruption.
+ * See: file:///Users/schickling/Code/overengineeringstudio/dotdot/effect-utils/context/workarounds/bun-patched-dependencies.md
+ */
 export const installAllWithTaskSystem = ({
   config,
   options,
 }: {
   config: InstallConfig
-  options?: { frozenLockfile?: boolean }
+  options?: {
+    frozenLockfile?: boolean
+    /** Clean node_modules before installing (workaround for bun cache corruption with file: deps) */
+    clean?: boolean
+  }
 }) =>
   Effect.gen(function* () {
     const pathService = yield* Path.Path
@@ -441,47 +458,73 @@ export const installAllWithTaskSystem = ({
       return { results: [], total: 0 }
     }
 
-    // Create task for each package directory
-    const tasks = dirs.map((dir) => {
+    // Create tasks for each package directory
+    const tasks: TaskDef<string, unknown, unknown, unknown>[] = []
+
+    for (const dir of dirs) {
       const relativePath = pathService.relative(cwd, dir)
       const taskId = relativePath.replace(/\//g, ':') // Convert path to valid task ID
+      const nodeModulesPath = pathService.join(dir, 'node_modules')
 
-      return task({
-        id: taskId,
-        name: `Install ${relativePath}`,
-        command: {
-          cmd: 'bun',
-          args: ['install', ...(options?.frozenLockfile ? ['--frozen-lockfile'] : [])],
-          cwd: dir,
-        },
-      })
-    })
+      // If clean is requested, create clean task first
+      if (options?.clean) {
+        tasks.push(
+          task({
+            id: `clean:${taskId}`,
+            name: `Clean ${relativePath}`,
+            command: {
+              cmd: 'rm',
+              args: ['-rf', nodeModulesPath],
+              cwd: dir,
+            },
+          }) as TaskDef<string, unknown, unknown, unknown>,
+        )
+      }
 
-    // Run with inline renderer
-    const renderer = inlineRenderer()
+      // Create install task (depends on clean task if present)
+      tasks.push(
+        task({
+          id: `install:${taskId}`,
+          name: `Install ${relativePath}`,
+          command: {
+            cmd: 'bun',
+            args: ['install', ...(options?.frozenLockfile ? ['--frozen-lockfile'] : [])],
+            cwd: dir,
+          },
+          options: {
+            // Retry with exponential backoff to handle bun cache race conditions
+            // Attempts: 200ms, 400ms, 800ms (total ~3 retries)
+            retrySchedule: Schedule.exponential('200 millis').pipe(Schedule.compose(Schedule.recurs(3))),
+            maxRetries: 3,
+            // Install depends on clean if clean task exists
+            ...(options?.clean ? { dependencies: [`clean:${taskId}`] } : {}),
+          },
+        }) as TaskDef<string, unknown, unknown, unknown>,
+      )
+    }
+
+    // Select renderer based on environment
+    // Limit concurrency to number of CPU cores to avoid bun cache race conditions
+    const concurrency = cpus().length
+    const renderer = IS_CI ? ciRenderer() : opentuiInlineRenderer()
     const result = yield* runTaskGraph({
       tasks,
       options: {
         onStateChange: (state) => renderer.render(state),
+        concurrency,
       },
     })
 
     yield* renderer.renderFinal(result.state)
 
     // Convert task results to InstallResult format
-    const results: InstallResult[] = dirs.map((dir, idx) => {
-      const task = tasks[idx]
-      if (!task) {
-        return {
-          _tag: 'failure',
-          dir,
-          error: new Error('Task not found'),
-          stderr: '',
-          stdout: '',
-        }
-      }
+    // Look up install task state for each directory (clean tasks are not reported)
+    const results: InstallResult[] = dirs.map((dir) => {
+      const relativePath = pathService.relative(cwd, dir)
+      const taskId = relativePath.replace(/\//g, ':')
+      const installTaskId = `install:${taskId}`
 
-      const taskState = result.state.tasks[task.id]
+      const taskState = result.state.tasks[installTaskId]
 
       if (!taskState || taskState.status !== 'success') {
         const error = taskState?.error
@@ -572,11 +615,14 @@ export const checkAllWithTaskSystem = (config: CheckTasksConfig) =>
     const allTasks = [...parallelTasks, ...sequentialTasks]
 
     // Select renderer based on environment
-    const renderer = IS_CI ? ciRenderer() : inlineRenderer()
+    // Limit concurrency to number of CPU cores to avoid bun cache race conditions
+    const concurrency = cpus().length
+    const renderer = IS_CI ? ciRenderer() : opentuiInlineRenderer()
     const result = yield* runTaskGraphOrFail({
       tasks: allTasks,
       options: {
         onStateChange: (state) => renderer.render(state),
+        concurrency,
       },
     })
 

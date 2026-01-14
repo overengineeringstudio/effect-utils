@@ -32,10 +32,15 @@ export default packageJson({
       '@effect/platform',
       '@effect/platform-node',
       'effect',
+      '@effect-atom/atom',
+      '@effect-atom/atom-react',
+      '@opentui/core',
+      '@opentui/react',
+      'react',
     ),
   },
   devDependencies: {
-    ...catalog.pick('@types/node', 'vitest', '@effect/vitest'),
+    ...catalog.pick('@types/node', '@types/react', 'vitest', '@effect/vitest'),
     ...effectLspDevDeps(),
   },
   peerDependencies: {

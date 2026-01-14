@@ -7,7 +7,7 @@
 
 import path from 'node:path'
 
-import { CommandExecutor, FileSystem } from '@effect/platform'
+import { type CommandExecutor, FileSystem } from '@effect/platform'
 import type { PlatformError } from '@effect/platform/Error'
 import { Context, Effect, Layer } from 'effect'
 

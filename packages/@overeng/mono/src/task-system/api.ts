@@ -5,10 +5,13 @@
  * shell commands and arbitrary Effects.
  */
 
-import { Effect, Stream } from 'effect'
+import type { Effect, Schedule } from 'effect'
+import { Stream } from 'effect'
 
-import type { CommandSpec } from './execution.ts'
-import { CommandError, executeCommand } from './execution.ts'
+import type { PlatformError } from '@effect/platform/Error'
+
+import type { CommandError, CommandSpec } from './execution.ts'
+import { executeCommand } from './execution.ts'
 import type { TaskDef } from './types.ts'
 
 // =============================================================================
@@ -39,8 +42,12 @@ export function task<TId extends string>(args: {
   id: TId
   name: string
   command: CommandSpec
-  options?: { dependencies?: ReadonlyArray<TId> }
-}): TaskDef<TId, void, CommandError | import('@effect/platform/Error').PlatformError, never>
+  options?: {
+    dependencies?: ReadonlyArray<TId>
+    retrySchedule?: Schedule.Schedule<unknown, unknown, never>
+    maxRetries?: number
+  }
+}): TaskDef<TId, void, CommandError | PlatformError, never>
 
 /**
  * Create an effect task that runs arbitrary Effect code.
@@ -60,7 +67,11 @@ export function task<TId extends string, A, E, R>(args: {
   id: TId
   name: string
   effect: Effect.Effect<A, E, R>
-  options?: { dependencies?: ReadonlyArray<TId> }
+  options?: {
+    dependencies?: ReadonlyArray<TId>
+    retrySchedule?: Schedule.Schedule<unknown, unknown, never>
+    maxRetries?: number
+  }
 }): TaskDef<TId, A, E, R>
 
 /**
@@ -78,7 +89,11 @@ export function task<TId extends string>({
   name: string
   command?: CommandSpec
   effect?: Effect.Effect<any, any, any>
-  options?: { dependencies?: ReadonlyArray<TId> }
+  options?: {
+    dependencies?: ReadonlyArray<TId>
+    retrySchedule?: Schedule.Schedule<unknown, unknown, never>
+    maxRetries?: number
+  }
 }): TaskDef<TId, any, any, any> {
   const commandOrEffect = command ?? effect!
   if (isCommand(commandOrEffect)) {
@@ -88,7 +103,15 @@ export function task<TId extends string>({
       name,
       eventStream: (taskId) => executeCommand({ taskId: taskId as TId, spec: commandOrEffect }),
       // No effect needed - exit code is checked in the stream
+      // Capture command context for failure reporting
+      commandContext: {
+        command: commandOrEffect.cmd,
+        args: [...commandOrEffect.args],
+        cwd: commandOrEffect.cwd ?? process.cwd(),
+      },
       ...(options?.dependencies !== undefined ? { dependencies: options.dependencies } : {}),
+      ...(options?.retrySchedule !== undefined ? { retrySchedule: options.retrySchedule } : {}),
+      ...(options?.maxRetries !== undefined ? { maxRetries: options.maxRetries } : {}),
     }
     return taskDef
   }
@@ -104,6 +127,8 @@ export function task<TId extends string>({
     },
     effect: commandOrEffect,
     ...(options?.dependencies !== undefined ? { dependencies: options.dependencies } : {}),
+    ...(options?.retrySchedule !== undefined ? { retrySchedule: options.retrySchedule } : {}),
+    ...(options?.maxRetries !== undefined ? { maxRetries: options.maxRetries } : {}),
   }
   return taskDef
 }
@@ -132,7 +157,7 @@ export const commandTask = <TId extends string>({
     env?: Record<string, string>
     dependencies?: ReadonlyArray<TId>
   }
-}): TaskDef<TId, void, CommandError | import('@effect/platform/Error').PlatformError, any> => {
+}): TaskDef<TId, void, CommandError | PlatformError, any> => {
   const spec: CommandSpec = { cmd, args }
   if (options?.cwd) {
     ;(spec as any).cwd = options.cwd

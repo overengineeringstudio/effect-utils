@@ -100,6 +100,9 @@ const reduceEvent = ({
         startedAt: Option.none(),
         completedAt: Option.none(),
         error: Option.none(),
+        commandInfo: Option.none(),
+        retryAttempt: 0,
+        maxRetries: Option.none(),
       })
       break
 
@@ -115,6 +118,7 @@ const reduceEvent = ({
           startedAt: Option.some(event.timestamp),
           completedAt: task.completedAt,
           error: task.error,
+          commandInfo: task.commandInfo,
         })
       }
       break
@@ -132,6 +136,7 @@ const reduceEvent = ({
           startedAt: task.startedAt,
           completedAt: task.completedAt,
           error: task.error,
+          commandInfo: task.commandInfo,
         })
       }
       break
@@ -149,6 +154,7 @@ const reduceEvent = ({
           startedAt: task.startedAt,
           completedAt: task.completedAt,
           error: task.error,
+          commandInfo: task.commandInfo,
         })
       }
       break
@@ -169,6 +175,7 @@ const reduceEvent = ({
           error: isSuccess
             ? Option.none()
             : Option.some(String(Exit.isFailure(event.exit) ? event.exit.cause : 'Unknown error')),
+          commandInfo: Option.none(),
         })
       }
       break
@@ -413,6 +420,7 @@ describe('reduceEvent', () => {
             startedAt: Option.none(),
             completedAt: Option.none(),
             error: Option.none(),
+            commandInfo: Option.none(),
           }),
         },
       })
@@ -445,6 +453,7 @@ describe('reduceEvent', () => {
             startedAt: Option.some(Date.now()),
             completedAt: Option.none(),
             error: Option.none(),
+            commandInfo: Option.none(),
           }),
         },
       })
@@ -474,6 +483,7 @@ describe('reduceEvent', () => {
             startedAt: Option.some(Date.now()),
             completedAt: Option.none(),
             error: Option.none(),
+            commandInfo: Option.none(),
           }),
         },
       })
@@ -503,6 +513,7 @@ describe('reduceEvent', () => {
             startedAt: Option.some(Date.now()),
             completedAt: Option.none(),
             error: Option.none(),
+            commandInfo: Option.none(),
           }),
         },
       })
@@ -537,6 +548,7 @@ describe('reduceEvent', () => {
             startedAt: Option.some(Date.now()),
             completedAt: Option.none(),
             error: Option.none(),
+            commandInfo: Option.none(),
           }),
         },
       })

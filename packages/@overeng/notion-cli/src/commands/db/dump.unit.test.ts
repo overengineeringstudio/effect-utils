@@ -16,7 +16,7 @@ import {
 import {
   decodeDumpPage,
   type DumpBlockWithDepth,
-  DumpPage,
+  type DumpPage,
   encodeDumpPage,
 } from '../../dump/schema.ts'
 

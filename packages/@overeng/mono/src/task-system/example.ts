@@ -9,7 +9,7 @@ import { Effect } from 'effect'
 
 import { task } from './api.ts'
 import { runTaskGraph, runTaskGraphOrFail } from './graph.ts'
-import { inlineRenderer } from './renderers/inline.ts'
+import { opentuiInlineRenderer } from './renderers/opentui-inline.tsx'
 
 // =============================================================================
 // Example 1: Task Graph with Dependencies
@@ -123,7 +123,7 @@ const exampleWithFailure = [
 const program = Effect.gen(function* () {
   console.log('=== Example 1: Task Graph with Dependencies ===\n')
 
-  const renderer = inlineRenderer()
+  const renderer = opentuiInlineRenderer()
 
   // Run task graph with inline rendering
   const result1 = yield* runTaskGraphOrFail({
@@ -137,7 +137,7 @@ const program = Effect.gen(function* () {
 
   console.log('\n\n=== Example 2: Task Graph with Failure ===\n')
 
-  const renderer2 = inlineRenderer()
+  const renderer2 = opentuiInlineRenderer()
 
   // Run task graph with failure (will return result with failures)
   const result2 = yield* runTaskGraph({

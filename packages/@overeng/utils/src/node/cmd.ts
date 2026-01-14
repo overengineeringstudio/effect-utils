@@ -7,7 +7,7 @@ import type { PlatformError } from '@effect/platform/Error'
 import type { Scope } from 'effect'
 import {
   Cause,
-  Duration,
+  type Duration,
   Effect,
   Fiber,
   FiberId,

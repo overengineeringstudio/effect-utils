@@ -26,7 +26,7 @@ import {
 } from '@overeng/notion-effect-client'
 
 import { generateSchemaCode } from '../../codegen.ts'
-import { DumpPage, encodeDumpPage } from '../../dump/schema.ts'
+import { type DumpPage, encodeDumpPage } from '../../dump/schema.ts'
 import { introspectDatabase } from '../../introspect.ts'
 import { resolveNotionToken, tokenOption } from '../schema/mod.ts'
 

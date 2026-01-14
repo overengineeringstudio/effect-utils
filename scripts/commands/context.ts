@@ -1,7 +1,7 @@
 import { Command } from '@effect/cli'
 import type { CommandExecutor } from '@effect/platform'
 import type { PlatformError } from '@effect/platform/Error'
-import { Console, Duration, Effect, Option } from 'effect'
+import { Console, Duration, Effect, type Option } from 'effect'
 
 import type { CommandError } from '@overeng/mono'
 import { ciGroup, ciGroupEnd, runCommand, startProcess } from '@overeng/mono'

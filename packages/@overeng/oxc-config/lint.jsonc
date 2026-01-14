@@ -37,6 +37,8 @@
     ],
     "overeng/exports-first": "warn",
     "overeng/jsdoc-require-exports": "warn",
+    "typescript/consistent-type-imports": "warn",
+    "typescript/consistent-type-definitions": "off",
   },
   "overrides": [
     {
@@ -91,6 +93,12 @@
         "unicorn/no-array-sort": "off",
         "unicorn/consistent-function-scoping": "off",
         "require-yield": "off",
+      },
+    },
+    {
+      "files": ["**/*.d.ts"],
+      "rules": {
+        "typescript/consistent-type-imports": "off",
       },
     },
     {

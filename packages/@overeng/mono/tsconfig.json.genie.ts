@@ -8,6 +8,8 @@ export default tsconfigJson({
   compilerOptions: {
     ...baseTsconfigCompilerOptions,
     ...packageTsconfigCompilerOptions,
+    jsx: 'react-jsx',
+    jsxImportSource: '@opentui/react',
   },
   include: ['src/**/*'],
   references: [{ path: '../utils' }],

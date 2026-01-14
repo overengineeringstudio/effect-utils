@@ -1,4 +1,4 @@
-import { Effect, Exit, Runtime, type Scope, Stream } from 'effect'
+import { Effect, Exit, type Runtime, type Scope, Stream } from 'effect'
 import React from 'react'
 
 import { initialProgress, type Progress, ProgressReporter } from './progress-reporter.ts'

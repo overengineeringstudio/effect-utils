@@ -7,7 +7,7 @@ export default tsconfigJson({
     composite: true,
     rootDir: '.',
     noEmit: true,
-    tsBuildInfoFile: './tsconfig.tsbuildinfo',
+    tsBuildInfoFile: './dist/tsconfig.tsbuildinfo',
     lib: [...domLib],
     types: ['node'],
     jsx: 'react-jsx',

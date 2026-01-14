@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { Error as PlatformError, FileSystem, Path } from '@effect/platform'
+import { type Error as PlatformError, FileSystem, Path } from '@effect/platform'
 import { Effect } from 'effect'
 
 import { resolveImportMapSpecifierForImporterSync } from './import-map/mod.ts'

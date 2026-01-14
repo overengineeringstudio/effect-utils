@@ -8,7 +8,7 @@
  * Inspired by Haskell's `path` library phantom types approach.
  */
 
-import { Brand } from 'effect'
+import type { Brand } from 'effect'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Brand Markers (Phantom Types)

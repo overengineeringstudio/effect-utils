@@ -38,6 +38,13 @@ export default oxlintConfig({
 
     // Require JSDoc comments on type/wildcard exports (custom plugin)
     'overeng/jsdoc-require-exports': 'warn',
+
+    // Enforce proper type imports and disallow inline import() in type annotations
+    // https://oxc.rs/docs/guide/usage/linter/rules/typescript/consistent-type-imports
+    'typescript/consistent-type-imports': 'warn',
+
+    // Don't enforce type vs interface - both are fine
+    'typescript/consistent-type-definitions': 'off',
   },
   overrides: [
     // Allow re-exports in mod.ts entry point files
@@ -99,6 +106,13 @@ export default oxlintConfig({
         'unicorn/consistent-function-scoping': 'off',
         // Effect tests often use Effect.gen without yields for consistency
         'require-yield': 'off',
+      },
+    },
+    // Declaration files can use inline import() type annotations
+    {
+      files: ['**/*.d.ts'],
+      rules: {
+        'typescript/consistent-type-imports': 'off',
       },
     },
     // Generated files should not be linted for style/structure rules

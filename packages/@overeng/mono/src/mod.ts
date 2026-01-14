@@ -91,7 +91,6 @@ export {
   // Build
   build,
   // Install
-  cleanNodeModules,
   findPackageDirs,
   installAll,
   installPackage,

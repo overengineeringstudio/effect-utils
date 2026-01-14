@@ -1,23 +1,19 @@
 /**
- * Task System: Graph-based task execution with streaming output and pluggable rendering.
+ * Task System: Graph-based task execution with streaming output and OpenTUI rendering.
  *
  * @example
  * ```ts
- * import { runTaskGraphOrFail, inlineRenderer } from '@overeng/mono/task-system'
+ * import { runTaskGraph, opentuiRenderer } from '@overeng/mono/task-system'
  *
  * const tasks = [
  *   { id: 'build', name: 'Build', effect: buildEffect },
  *   { id: 'test', name: 'Test', dependencies: ['build'], effect: testEffect },
  * ]
  *
- * const renderer = inlineRenderer()
- * const result = yield* runTaskGraphOrFail({
- *   tasks,
- *   options: {
- *     onStateChange: (state) => renderer.render(state),
- *   },
- * })
- * yield* renderer.renderFinal(result.state)
+ * const renderer = opentuiRenderer()
+ * const eventStream = yield* runTaskGraph(tasks)
+ * const finalState = yield* renderer.render(eventStream)
+ * yield* renderer.cleanup()
  * ```
  *
  * @module
@@ -28,7 +24,8 @@ export type { TaskDef, TaskEvent, TaskGraphResult, TaskRenderer, TaskStatus } fr
 export { TaskExecutionError, TaskState, TaskSystemState } from './types.ts'
 
 // Graph execution
-export { runTaskGraph, runTaskGraphOrFail } from './graph.ts'
+export { reduceEvent, runTaskGraph, runTaskGraphOrFail } from './graph.ts'
 
 // Renderers
-export { inlineRenderer, InlineRenderer } from './renderers/inline.ts'
+export { opentuiRenderer } from './renderers/opentui.tsx'
+export { opentuiInlineRenderer } from './renderers/opentui-inline.tsx'

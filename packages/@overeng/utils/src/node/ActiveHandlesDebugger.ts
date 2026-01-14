@@ -4,7 +4,7 @@
  * Node.js processes stay alive while there are active handles (timers, sockets, etc.)
  * or pending requests. This module provides Effect-native APIs to inspect these.
  */
-import { Duration, Effect, Runtime, Schedule, Stream } from 'effect'
+import { type Duration, Effect, Runtime, Schedule, Stream } from 'effect'
 
 /** Information about a single active handle */
 export interface HandleInfo {

@@ -4,7 +4,7 @@
  * Provides utilities for detecting, reading, and resolving symbolic links.
  */
 
-import { FileSystem, Path as PlatformPath, Error as PlatformError } from '@effect/platform'
+import { FileSystem, Path as PlatformPath, type Error as PlatformError } from '@effect/platform'
 import { Effect, Either } from 'effect'
 
 import type { AbsolutePath, Path } from './brands.ts'

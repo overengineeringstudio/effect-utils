@@ -6,12 +6,14 @@ import type { CmdError } from '@overeng/utils/node'
 
 import { InstallError } from '../errors.ts'
 import type { InstallConfig } from '../tasks.ts'
-import { cleanNodeModules, installAllWithTaskSystem } from '../tasks.ts'
-import { ciGroup, ciGroupEnd, IS_CI } from '../utils.ts'
+import { installAllWithTaskSystem } from '../tasks.ts'
+import { IS_CI } from '../utils.ts'
 
 const cleanOption = Options.boolean('clean').pipe(
   Options.withAlias('c'),
-  Options.withDescription('Remove node_modules before installing'),
+  Options.withDescription(
+    'Remove node_modules before installing (workaround for bun cache corruption with file: deps)',
+  ),
   Options.withDefault(false),
 )
 
@@ -38,22 +40,16 @@ export const installCommand = (config: InstallConfig) =>
       const pathService = yield* Path.Path
       const cwd = process.env.WORKSPACE_ROOT ?? process.cwd()
 
-      if (clean) {
-        yield* ciGroup('Cleaning node_modules')
-        const count = yield* cleanNodeModules(config)
-        yield* Console.log(`  Removed node_modules from ${count} packages`)
-        yield* ciGroupEnd
-      }
-
       const frozenLockfile = IS_CI
       if (frozenLockfile) {
         yield* Console.log('Using --frozen-lockfile (CI detected)\n')
       }
 
       // Use task system with inline renderer for live progress
+      // Clean option is integrated into the task graph (clean tasks run before install tasks)
       const { results, total } = yield* installAllWithTaskSystem({
         config,
-        options: { frozenLockfile },
+        options: { frozenLockfile, clean },
       })
 
       const successes = results.filter((r) => r._tag === 'success')
