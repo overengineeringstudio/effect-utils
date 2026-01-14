@@ -107,6 +107,10 @@ const CONFIG_FILE_NAMES = ['notion-schema-gen.config.ts', '.notion-schema-gen.co
 const formatUnknownErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
+/** Check if a path string is absolute (Unix or Windows) */
+const isAbsolutePath = (path: string): boolean =>
+  path.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(path)
+
 /** Find config file in directory or parent directories */
 const findConfigFile = (
   startDir: AbsoluteDirPath,
@@ -250,7 +254,9 @@ export const loadConfig = (
 
     const searchStartDir = EffectPath.unsafe.absoluteDir(yield* CurrentWorkingDirectory)
     const resolvedPath = configPath
-      ? EffectPath.ops.join(searchStartDir, EffectPath.unsafe.relativeFile(configPath))
+      ? isAbsolutePath(configPath)
+        ? EffectPath.unsafe.absoluteFile(configPath)
+        : EffectPath.ops.join(searchStartDir, EffectPath.unsafe.relativeFile(configPath))
       : yield* findConfigFile(searchStartDir)
 
     if (!resolvedPath) {
