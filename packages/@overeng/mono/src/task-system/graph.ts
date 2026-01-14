@@ -1,14 +1,14 @@
 /**
  * Task graph execution with dependency resolution.
  *
- * Uses topological sorting to execute tasks in dependency order,
- * maximizing parallelism where possible.
+ * Uses Effect.Graph for dependency management and FiberMap for
+ * coordination, maximizing parallelism while respecting dependencies.
  */
 
-import { Effect, Exit, Fiber, Option, Stream, SubscriptionRef } from 'effect'
+import { Deferred, Effect, Exit, FiberMap, Graph, Option, Stream, SubscriptionRef } from 'effect'
 
 import type { TaskDef, TaskEvent, TaskGraphResult, TaskSystemState } from './types.ts'
-import { TaskExecutionError, TaskState, TaskStatus, TaskSystemState as TaskSystemStateClass } from './types.ts'
+import { TaskExecutionError, TaskState, TaskSystemState as TaskSystemStateClass } from './types.ts'
 
 // =============================================================================
 // State Reducer
@@ -109,76 +109,59 @@ const reduceEvent = (state: TaskSystemState, event: TaskEvent<string>): TaskSyst
 }
 
 // =============================================================================
-// Topological Sort (Dependency Resolution)
+// Graph Building (Effect.Graph)
 // =============================================================================
 
 /**
- * Topologically sort tasks by dependencies.
- * Returns tasks grouped by "levels" where each level can execute in parallel.
+ * Build Effect.Graph from task definitions.
+ * Returns graph and mapping from task ID to node index.
  *
- * Example:
- *   A (no deps), B (no deps), C (deps: A, B), D (deps: C)
- *   => [[A, B], [C], [D]]
+ * Validates:
+ * - No circular dependencies
+ * - All dependencies exist
  */
-const topologicalSort = <TId extends string>(
+const buildTaskGraph = <TId extends string>(
   tasks: ReadonlyArray<TaskDef<TId, unknown, unknown, unknown>>,
-): TId[][] => {
-  const taskMap = new Map(tasks.map((t) => [t.id, t]))
-  const inDegree = new Map<TId, number>()
-  const children = new Map<TId, Set<TId>>()
+): Effect.Effect<
+  { graph: Graph.Graph<TaskDef<TId, unknown, unknown, unknown>, void>; idToIndex: Map<TId, number> },
+  Error
+> =>
+  Effect.gen(function* () {
+    const idToIndex = new Map<TId, number>()
 
-  // Initialize in-degree and children
-  for (const task of tasks) {
-    inDegree.set(task.id, 0)
-    children.set(task.id, new Set())
-  }
-
-  // Build dependency graph
-  for (const task of tasks) {
-    const deps = task.dependencies ?? []
-    inDegree.set(task.id, deps.length)
-    for (const dep of deps) {
-      if (!children.has(dep as TId)) {
-        children.set(dep as TId, new Set())
-      }
-      children.get(dep as TId)!.add(task.id)
-    }
-  }
-
-  // Find all tasks with no dependencies (in-degree 0)
-  const levels: TId[][] = []
-  let currentLevel = Array.from(inDegree.entries())
-    .filter(([_, degree]) => degree === 0)
-    .map(([id]) => id)
-
-  while (currentLevel.length > 0) {
-    levels.push(currentLevel)
-
-    const nextLevel: TId[] = []
-    for (const taskId of currentLevel) {
-      const childSet = children.get(taskId)
-      if (childSet) {
-        for (const child of childSet) {
-          const newDegree = inDegree.get(child)! - 1
-          inDegree.set(child, newDegree)
-          if (newDegree === 0) {
-            nextLevel.push(child)
+    // Build graph with Effect.Graph
+    const graph = yield* Effect.try({
+      try: () =>
+        Graph.directed<TaskDef<TId, unknown, unknown, unknown>, void>((mutable) => {
+          // Add all tasks as nodes
+          for (const task of tasks) {
+            const nodeIndex = Graph.addNode(mutable, task)
+            idToIndex.set(task.id, nodeIndex)
           }
-        }
-      }
+
+          // Add dependency edges
+          for (const task of tasks) {
+            const targetIndex = idToIndex.get(task.id)!
+            const deps = task.dependencies ?? []
+            for (const depId of deps) {
+              const sourceIndex = idToIndex.get(depId as TId)
+              if (sourceIndex === undefined) {
+                throw new Error(`Unknown dependency: ${depId}`)
+              }
+              Graph.addEdge(mutable, sourceIndex, targetIndex)
+            }
+          }
+        }),
+      catch: (error) => error as Error,
+    })
+
+    // Validate no cycles
+    if (!Graph.isAcyclic(graph)) {
+      return yield* Effect.fail(new Error('Circular dependency detected in task graph'))
     }
 
-    currentLevel = nextLevel
-  }
-
-  // Check for cycles
-  const processedCount = levels.flat().length
-  if (processedCount !== tasks.length) {
-    throw new Error('Circular dependency detected in task graph')
-  }
-
-  return levels
-}
+    return { graph, idToIndex }
+  })
 
 // =============================================================================
 // Task Executor
@@ -249,8 +232,8 @@ const widenTaskArray = <TId extends string>(
 /**
  * Execute a graph of tasks with dependency resolution.
  *
- * Tasks are executed in topological order (respecting dependencies),
- * with maximum parallelism at each level.
+ * Uses FiberMap with scoped lifecycle for automatic cleanup.
+ * Tasks execute with maximum parallelism while respecting dependencies.
  *
  * @param tasks - Array of task definitions
  * @param options - Configuration options
@@ -264,70 +247,103 @@ export const runTaskGraph = <TId extends string>(
     debounceMs?: number
   },
 ): Effect.Effect<TaskGraphResult, never, any> =>
-  Effect.gen(function* () {
-    // Widen task types for internal processing
-    const wideTasks = widenTaskArray<TId>(tasks)
+  Effect.scoped(
+    Effect.gen(function* () {
+      // Widen task types for internal processing
+      const wideTasks = widenTaskArray<TId>(tasks)
 
-    // Create state ref
-    const stateRef = yield* SubscriptionRef.make(new TaskSystemStateClass({ tasks: {} }))
+      // Build dependency graph
+      const { graph, idToIndex } = yield* buildTaskGraph(wideTasks)
 
-    // Register all tasks
-    for (const task of wideTasks) {
-      yield* SubscriptionRef.update(stateRef, (state) =>
-        reduceEvent(state, { type: 'registered', taskId: task.id, name: task.name }),
-      )
-    }
+      // Create state ref
+      const stateRef = yield* SubscriptionRef.make(new TaskSystemStateClass({ tasks: {} }))
 
-    // Event emitter
-    const emit = (event: TaskEvent<TId>) =>
-      SubscriptionRef.update(stateRef, (state) => reduceEvent(state, event))
+      // Register all tasks
+      for (const task of wideTasks) {
+        yield* SubscriptionRef.update(stateRef, (state) =>
+          reduceEvent(state, { type: 'registered', taskId: task.id, name: task.name }),
+        )
+      }
 
-    // Subscribe to state changes for rendering (if provided)
-    // Debounce to avoid excessive rendering
-    if (options?.onStateChange) {
-      const debounceMs = options.debounceMs ?? 50
+      // Event emitter
+      const emit = (event: TaskEvent<TId>) =>
+        SubscriptionRef.update(stateRef, (state) => reduceEvent(state, event))
 
-      yield* stateRef.changes.pipe(
-        Stream.debounce(`${debounceMs} millis`),
-        Stream.runForEach((state) => options.onStateChange!(state)),
-        Effect.fork,
-      )
-    }
+      // Subscribe to state changes for rendering (if provided)
+      // Debounce to avoid excessive rendering
+      if (options?.onStateChange) {
+        const debounceMs = options.debounceMs ?? 50
 
-    // Topologically sort tasks
-    const levels = topologicalSort(wideTasks)
+        yield* stateRef.changes.pipe(
+          Stream.debounce(`${debounceMs} millis`),
+          Stream.runForEach((state) => options.onStateChange!(state)),
+          Effect.fork,
+        )
+      }
 
-    // Execute each level in sequence (levels are parallel-safe)
-    for (const level of levels) {
-      const levelTasks = level.map((taskId) => wideTasks.find((t) => t.id === taskId)!)
+      // Create FiberMap for task coordination
+      const fiberMap = yield* FiberMap.make<number, void, never>()
+      const completionMap = new Map<number, Deferred.Deferred<void, Error>>()
 
-      // Execute all tasks in this level concurrently
-      yield* Effect.all(
-        levelTasks.map((task) => executeTask(task, emit)),
-        { concurrency: 'unbounded' },
-      )
-    }
+      // Create completion deferreds for all tasks
+      for (const [nodeIndex] of graph.nodes) {
+        const deferred = yield* Deferred.make<void, Error>()
+        completionMap.set(nodeIndex, deferred)
+      }
 
-    // Get final state
-    const finalState = yield* SubscriptionRef.get(stateRef)
+      // Fork all tasks with dependency coordination
+      for (const [nodeIndex, task] of graph.nodes) {
+        // Get dependency node indices
+        const depIndices = Array.from(Graph.neighborsDirected(graph, nodeIndex, 'incoming'))
 
-    // Render final state (ensures last task list is displayed)
-    if (options?.onStateChange) {
-      yield* options.onStateChange(finalState)
-    }
+        yield* FiberMap.run(
+          fiberMap,
+          nodeIndex,
+          Effect.gen(function* () {
+            // Wait for all dependencies to complete
+            const depDeferreds = depIndices.map((idx) => completionMap.get(idx)!)
+            if (depDeferreds.length > 0) {
+              yield* Effect.all(depDeferreds.map((d) => Deferred.await(d)))
+            }
 
-    // Compute result
-    const taskStates = Object.values(finalState.tasks)
-    const failedTasks = taskStates.filter((t) => t.status === 'failed')
-    const successTasks = taskStates.filter((t) => t.status === 'success')
+            // Execute the task
+            yield* executeTask(task, emit)
 
-    return {
-      state: finalState,
-      successCount: successTasks.length,
-      failureCount: failedTasks.length,
-      failedTaskIds: failedTasks.map((t) => t.id),
-    }
-  })
+            // Signal completion to dependent tasks
+            yield* Deferred.succeed(completionMap.get(nodeIndex)!, void 0)
+          }).pipe(
+            // If task fails, complete deferred with failure
+            Effect.catchAll((error) =>
+              Deferred.fail(completionMap.get(nodeIndex)!, error as Error),
+            ),
+          ),
+        )
+      }
+
+      // Wait for all tasks to complete (or fail)
+      yield* FiberMap.awaitEmpty(fiberMap)
+
+      // Get final state
+      const finalState = yield* SubscriptionRef.get(stateRef)
+
+      // Render final state (ensures last task list is displayed)
+      if (options?.onStateChange) {
+        yield* options.onStateChange(finalState)
+      }
+
+      // Compute result
+      const taskStates = Object.values(finalState.tasks)
+      const failedTasks = taskStates.filter((t) => t.status === 'failed')
+      const successTasks = taskStates.filter((t) => t.status === 'success')
+
+      return {
+        state: finalState,
+        successCount: successTasks.length,
+        failureCount: failedTasks.length,
+        failedTaskIds: failedTasks.map((t) => t.id),
+      }
+    }),
+  )
 
 /**
  * Execute a task graph and fail if any task fails.
