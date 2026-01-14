@@ -7,6 +7,8 @@
 import { NodeContext } from '@effect/platform-node'
 import { Duration, Effect, Layer, type Scope } from 'effect'
 
+import { CurrentWorkingDirectory, WorkspaceService } from '../lib/mod.ts'
+
 export type WithTestCtxParams = {
   timeout?: number
 }
@@ -54,3 +56,13 @@ export const makeWithTestCtx =
 
 /** Default test context for most integration tests */
 export const withTestCtx = makeWithTestCtx()
+
+/**
+ * Creates a layer providing CurrentWorkingDirectory and WorkspaceService for a workspace path.
+ * Use this with Effect.provide() in tests that need WorkspaceService.
+ */
+export const workspaceLayerFromPath = (workspacePath: string) =>
+  Layer.provideMerge(
+    WorkspaceService.fromRootNoSyncCheck(workspacePath),
+    CurrentWorkingDirectory.fromPath(workspacePath),
+  )

@@ -5,8 +5,7 @@
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { CurrentWorkingDirectory } from '../lib/mod.ts'
-import { createWorkspace, withTestCtx } from '../test-utils/mod.ts'
+import { createWorkspace, withTestCtx, workspaceLayerFromPath } from '../test-utils/mod.ts'
 import { treeCommand } from './mod.ts'
 
 describe('tree command', () => {
@@ -17,9 +16,7 @@ describe('tree command', () => {
           repos: [],
         })
 
-        yield* treeCommand
-          .handler({})
-          .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
+        yield* treeCommand.handler({}).pipe(Effect.provide(workspaceLayerFromPath(workspacePath)))
 
         expect(true).toBe(true)
       }),
@@ -39,9 +36,7 @@ describe('tree command', () => {
           ],
         })
 
-        yield* treeCommand
-          .handler({})
-          .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
+        yield* treeCommand.handler({}).pipe(Effect.provide(workspaceLayerFromPath(workspacePath)))
 
         expect(true).toBe(true)
       }),
@@ -64,9 +59,7 @@ describe('tree command', () => {
           ],
         })
 
-        yield* treeCommand
-          .handler({})
-          .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
+        yield* treeCommand.handler({}).pipe(Effect.provide(workspaceLayerFromPath(workspacePath)))
 
         expect(true).toBe(true)
       }),
@@ -94,9 +87,7 @@ describe('tree command', () => {
           ],
         })
 
-        yield* treeCommand
-          .handler({})
-          .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
+        yield* treeCommand.handler({}).pipe(Effect.provide(workspaceLayerFromPath(workspacePath)))
 
         expect(true).toBe(true)
       }),

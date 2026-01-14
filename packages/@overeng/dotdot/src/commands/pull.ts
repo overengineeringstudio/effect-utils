@@ -4,20 +4,18 @@
  * Pull all repos from their remotes
  */
 
-import path from 'node:path'
-
 import * as Cli from '@effect/cli'
-import { FileSystem } from '@effect/platform'
 import { Effect, Option, Schema } from 'effect'
 
 import {
-  CurrentWorkingDirectory,
+  type BaseResult,
+  buildSummary,
   type ExecutionMode,
   executeForAll,
-  findWorkspaceRoot,
+  existsAsGitRepo,
   Git,
-  loadRootConfigWithSyncCheck,
-  type RepoConfig,
+  type RepoInfo,
+  WorkspaceService,
 } from '../lib/mod.ts'
 
 /** Error during pull operation */
@@ -28,62 +26,38 @@ export class PullError extends Schema.TaggedError<PullError>()('PullError', {
 }) {}
 
 /** Result of pulling a single repo */
-type PullResult = {
-  name: string
-  status: 'pulled' | 'skipped' | 'failed'
-  message?: string
+type PullResult = BaseResult<'pulled' | 'skipped' | 'failed'> & {
   diverged?: boolean
 }
 
-/** Convert repos record to Map */
-const reposToMap = (repos: Record<string, RepoConfig>) => {
-  return new Map(Object.entries(repos))
-}
+const PullStatusLabels = {
+  pulled: 'pulled',
+  skipped: 'skipped',
+  failed: 'failed',
+} as const
 
 /** Pull a single repo */
-const pullRepo = (workspaceRoot: string, name: string, config: RepoConfig) =>
+const pullRepo = (repo: RepoInfo) =>
   Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const repoPath = path.join(workspaceRoot, name)
+    const { name, path: repoPath, gitState, pinnedRev } = repo
 
-    // Check if directory exists
-    const exists = yield* fs.exists(repoPath)
-    if (!exists) {
-      return {
-        name,
-        status: 'skipped',
-        message: 'Directory does not exist',
-      } as PullResult
-    }
-
-    // Check if it's a git repo
-    const isGitRepo = yield* Git.isGitRepo(repoPath)
-    if (!isGitRepo) {
-      return {
-        name,
-        status: 'skipped',
-        message: 'Not a git repo',
-      } as PullResult
+    // Should already be filtered, but guard anyway
+    if (!gitState) {
+      return { name, status: 'skipped', message: 'Not a git repo' } satisfies PullResult
     }
 
     // Check if on a branch (not detached HEAD)
-    const branch = yield* Git.getCurrentBranch(repoPath)
-    if (branch === 'HEAD') {
-      return {
-        name,
-        status: 'skipped',
-        message: 'Detached HEAD',
-      } as PullResult
+    if (gitState.branch === 'HEAD') {
+      return { name, status: 'skipped', message: 'Detached HEAD' } satisfies PullResult
     }
 
     // Check if dirty
-    const isDirty = yield* Git.isDirty(repoPath)
-    if (isDirty) {
+    if (gitState.isDirty) {
       return {
         name,
         status: 'skipped',
         message: 'Working tree has uncommitted changes',
-      } as PullResult
+      } satisfies PullResult
     }
 
     // Pull
@@ -91,9 +65,9 @@ const pullRepo = (workspaceRoot: string, name: string, config: RepoConfig) =>
 
     // Check if now diverged from pinned rev
     let diverged = false
-    if (config.rev) {
+    if (pinnedRev) {
       const currentRev = yield* Git.getCurrentRev(repoPath)
-      diverged = !currentRev.startsWith(config.rev) && currentRev !== config.rev
+      diverged = !currentRev.startsWith(pinnedRev) && currentRev !== pinnedRev
     }
 
     return {
@@ -101,14 +75,14 @@ const pullRepo = (workspaceRoot: string, name: string, config: RepoConfig) =>
       status: 'pulled',
       message: diverged ? 'Pulled (now diverged from pinned revision)' : 'Pulled',
       diverged,
-    } as PullResult
+    } satisfies PullResult
   }).pipe(
     Effect.catchAll((error) =>
       Effect.succeed({
-        name,
+        name: repo.name,
         status: 'failed',
         message: error instanceof Error ? error.message : String(error),
-      } as PullResult),
+      } satisfies PullResult),
     ),
   )
 
@@ -127,36 +101,29 @@ export const pullCommand = Cli.Command.make(
   },
   ({ mode, maxParallel }) =>
     Effect.gen(function* () {
-      const cwd = yield* CurrentWorkingDirectory
+      const workspace = yield* WorkspaceService
 
-      // Find workspace root
-      const workspaceRoot = yield* findWorkspaceRoot(cwd)
+      yield* Effect.log(`dotdot workspace: ${workspace.root}`)
 
-      yield* Effect.log(`dotdot workspace: ${workspaceRoot}`)
+      // Get all repos and filter to those that exist as git repos
+      const allRepos = yield* workspace.scanRepos()
+      const repos = allRepos.filter(existsAsGitRepo)
 
-      // Load root config and verify sync
-      const rootConfig = yield* loadRootConfigWithSyncCheck(workspaceRoot)
-
-      // Get declared repos
-      const declaredRepos = reposToMap(rootConfig.config.repos)
-
-      if (declaredRepos.size === 0) {
+      if (repos.length === 0) {
         yield* Effect.log('No repos to pull')
         return
       }
 
-      yield* Effect.log(`Pulling ${declaredRepos.size} repo(s)...`)
+      yield* Effect.log(`Pulling ${repos.length} repo(s)...`)
       yield* Effect.log(`Execution mode: ${mode}`)
       yield* Effect.log('')
 
-      const repoEntries = Array.from(declaredRepos.entries())
-
       const results = yield* executeForAll(
-        repoEntries,
-        ([name, config]) =>
+        repos,
+        (repo) =>
           Effect.gen(function* () {
-            yield* Effect.log(`Pulling ${name}...`)
-            const result = yield* pullRepo(workspaceRoot, name, config)
+            yield* Effect.log(`Pulling ${repo.name}...`)
+            const result = yield* pullRepo(repo)
 
             const statusIcon =
               result.status === 'pulled'
@@ -174,20 +141,12 @@ export const pullCommand = Cli.Command.make(
 
       yield* Effect.log('')
 
-      const pulled = results.filter((r) => r.status === 'pulled').length
-      const diverged = results.filter((r) => r.diverged).length
-      const skipped = results.filter((r) => r.status === 'skipped').length
-      const failed = results.filter((r) => r.status === 'failed').length
+      const summary = buildSummary(results, PullStatusLabels)
+      const divergedCount = results.filter((r) => 'diverged' in r && r.diverged === true).length
+      const divergedSuffix = divergedCount > 0 ? `, ${divergedCount} diverged` : ''
+      yield* Effect.log(`Done: ${summary}${divergedSuffix}`)
 
-      const summary: string[] = []
-      if (pulled > 0) summary.push(`${pulled} pulled`)
-      if (diverged > 0) summary.push(`${diverged} diverged`)
-      if (skipped > 0) summary.push(`${skipped} skipped`)
-      if (failed > 0) summary.push(`${failed} failed`)
-
-      yield* Effect.log(`Done: ${summary.join(', ')}`)
-
-      if (diverged > 0) {
+      if (divergedCount > 0) {
         yield* Effect.log('')
         yield* Effect.log('Warning: Some repos are now diverged from their pinned revisions.')
         yield* Effect.log(

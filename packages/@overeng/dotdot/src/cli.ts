@@ -20,6 +20,7 @@ import {
   generateJsonSchema,
   JSON_SCHEMA_URL,
   resolveCliVersion,
+  WorkspaceService,
 } from './lib/mod.ts'
 
 const baseVersion = '0.1.0'
@@ -100,12 +101,17 @@ const rootCommand = Cli.Command.make('dotdot', {}).pipe(
 export const dotdotCommand = rootCommand
 
 if (import.meta.main) {
+  // Build the layer: NodeContext provides FileSystem and CommandExecutor
+  // WorkspaceService.live depends on CurrentWorkingDirectory, FileSystem, and CommandExecutor
+  const baseLayer = Layer.mergeAll(PlatformNode.NodeContext.layer, CurrentWorkingDirectory.live)
+  const workspaceLayer = Layer.provideMerge(WorkspaceService.live, baseLayer)
+
   pipe(
     Cli.Command.run(dotdotCommand, {
       name: 'dotdot',
       version,
     })(process.argv),
-    Effect.provide(Layer.mergeAll(PlatformNode.NodeContext.layer, CurrentWorkingDirectory.live)),
+    Effect.provide(workspaceLayer),
     PlatformNode.NodeRuntime.runMain,
   )
 }

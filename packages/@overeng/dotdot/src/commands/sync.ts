@@ -11,6 +11,8 @@ import { FileSystem } from '@effect/platform'
 import { Effect, Option, Schema } from 'effect'
 
 import {
+  type BaseResult,
+  buildSummary,
   collectMemberConfigs,
   CurrentWorkingDirectory,
   type ExecutionMode,
@@ -35,11 +37,14 @@ export class SyncError extends Schema.TaggedError<SyncError>()('SyncError', {
 }) {}
 
 /** Result of restoring a single repo */
-type SyncResult = {
-  name: string
-  status: 'cloned' | 'checked-out' | 'skipped' | 'failed'
-  message?: string
-}
+type SyncResult = BaseResult<'cloned' | 'checked-out' | 'skipped' | 'failed'>
+
+const SyncStatusLabels = {
+  cloned: 'cloned',
+  'checked-out': 'checked out',
+  skipped: 'skipped',
+  failed: 'failed',
+} as const
 
 /** Sync a single repo (clone if missing, checkout if pinned) */
 const syncRepo = (workspaceRoot: string, name: string, config: RepoConfig) =>
@@ -63,21 +68,21 @@ const syncRepo = (workspaceRoot: string, name: string, config: RepoConfig) =>
               name,
               status: 'checked-out',
               message: `Checked out ${config.rev.slice(0, 7)}`,
-            } as SyncResult
+            } satisfies SyncResult
           }
         }
         return {
           name,
           status: 'skipped',
           message: 'Already exists',
-        } as SyncResult
+        } satisfies SyncResult
       } else {
         // Directory exists but not a git repo
         return {
           name,
           status: 'failed',
           message: 'Directory exists but is not a git repo',
-        } as SyncResult
+        } satisfies SyncResult
       }
     }
 
@@ -99,14 +104,14 @@ const syncRepo = (workspaceRoot: string, name: string, config: RepoConfig) =>
       name,
       status: 'cloned',
       message: `Cloned at ${rev.slice(0, 7)}${config.install ? ' (installed)' : ''}`,
-    } as SyncResult
+    } satisfies SyncResult
   }).pipe(
     Effect.catchAll((error) =>
       Effect.succeed({
         name,
         status: 'failed',
         message: error instanceof Error ? error.message : String(error),
-      } as SyncResult),
+      } satisfies SyncResult),
     ),
   )
 
@@ -314,17 +319,7 @@ export const syncCommand = Cli.Command.make(
 
       yield* Effect.log('')
 
-      const cloned = results.filter((r) => r.status === 'cloned').length
-      const checkedOut = results.filter((r) => r.status === 'checked-out').length
-      const skipped = results.filter((r) => r.status === 'skipped').length
-      const failed = results.filter((r) => r.status === 'failed').length
-
-      const summary: string[] = []
-      if (cloned > 0) summary.push(`${cloned} cloned`)
-      if (checkedOut > 0) summary.push(`${checkedOut} checked out`)
-      if (skipped > 0) summary.push(`${skipped} skipped`)
-      if (failed > 0) summary.push(`${failed} failed`)
-
-      yield* Effect.log(`Done: ${summary.join(', ')}`)
+      const summary = buildSummary(results, SyncStatusLabels)
+      yield* Effect.log(`Done: ${summary}`)
     }).pipe(Effect.withSpan('dotdot/sync')),
 )

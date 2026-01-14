@@ -6,13 +6,13 @@ import { FileSystem } from '@effect/platform'
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { CurrentWorkingDirectory } from '../lib/mod.ts'
 import {
   addCommit,
   createWorkspace,
   getGitRev,
   readConfig,
   withTestCtx,
+  workspaceLayerFromPath,
 } from '../test-utils/mod.ts'
 import { updateRevsCommand } from './mod.ts'
 
@@ -50,7 +50,7 @@ describe('update-revs command', () => {
 
         yield* updateRevsCommand
           .handler({ repos: [], dryRun: false })
-          .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
+          .pipe(Effect.provide(workspaceLayerFromPath(workspacePath)))
 
         // Check config was updated
         const config = yield* readConfig(workspacePath)
@@ -100,7 +100,7 @@ describe('update-revs command', () => {
         // Only update repo-a
         yield* updateRevsCommand
           .handler({ repos: ['repo-a'], dryRun: false })
-          .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
+          .pipe(Effect.provide(workspaceLayerFromPath(workspacePath)))
 
         // Check only repo-a was updated
         const config = yield* readConfig(workspacePath)
@@ -142,7 +142,7 @@ describe('update-revs command', () => {
 
         yield* updateRevsCommand
           .handler({ repos: [], dryRun: true })
-          .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
+          .pipe(Effect.provide(workspaceLayerFromPath(workspacePath)))
 
         // Check config was NOT updated
         const config = yield* readConfig(workspacePath)
@@ -163,7 +163,7 @@ describe('update-revs command', () => {
         // Should complete without error
         yield* updateRevsCommand
           .handler({ repos: [], dryRun: false })
-          .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
+          .pipe(Effect.provide(workspaceLayerFromPath(workspacePath)))
 
         expect(true).toBe(true)
       }),
@@ -202,7 +202,7 @@ describe('update-revs command', () => {
         // Should complete without error, reporting unchanged
         yield* updateRevsCommand
           .handler({ repos: [], dryRun: false })
-          .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
+          .pipe(Effect.provide(workspaceLayerFromPath(workspacePath)))
 
         expect(true).toBe(true)
       }),

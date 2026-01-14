@@ -7,18 +7,18 @@
 import path from 'node:path'
 
 import * as Cli from '@effect/cli'
-import { FileSystem } from '@effect/platform'
 import { Effect, Schema } from 'effect'
 
 import {
-  CurrentWorkingDirectory,
-  type RootConfig,
-  findWorkspaceRoot,
+  type BaseResult,
+  buildSummary,
+  existsAsGitRepo,
   GENERATED_CONFIG_FILE_NAME,
-  Git,
+  type RepoInfo,
+  type RootConfig,
   loadRootConfigFile,
-  loadRootConfigWithSyncCheck,
   updateRepoRev,
+  WorkspaceService,
 } from '../lib/mod.ts'
 
 /** Error during update operation */
@@ -29,13 +29,17 @@ export class UpdateRevsError extends Schema.TaggedError<UpdateRevsError>()('Upda
 }) {}
 
 /** Result of updating a single repo */
-type UpdateResult = {
-  name: string
-  status: 'updated' | 'unchanged' | 'skipped' | 'failed'
-  oldRev?: string | undefined
-  newRev?: string | undefined
-  message?: string | undefined
+type UpdateResult = BaseResult<'updated' | 'unchanged' | 'skipped' | 'failed'> & {
+  oldRev?: string
+  newRev?: string
 }
+
+const UpdateStatusLabels = {
+  updated: 'updated',
+  unchanged: 'unchanged',
+  skipped: 'skipped',
+  failed: 'failed',
+} as const
 
 /** Update-revs command implementation */
 export const updateRevsCommand = Cli.Command.make(
@@ -52,24 +56,19 @@ export const updateRevsCommand = Cli.Command.make(
   },
   ({ repos, dryRun }) =>
     Effect.gen(function* () {
-      const cwd = yield* CurrentWorkingDirectory
-      const fs = yield* FileSystem.FileSystem
+      const workspace = yield* WorkspaceService
+      const rootConfigPath = path.join(workspace.root, GENERATED_CONFIG_FILE_NAME)
 
-      // Find workspace root
-      const workspaceRoot = yield* findWorkspaceRoot(cwd)
+      yield* Effect.log(`dotdot workspace: ${workspace.root}`)
 
-      yield* Effect.log(`dotdot workspace: ${workspaceRoot}`)
+      // Get all repos from workspace
+      const allRepos = yield* workspace.scanRepos()
 
-      // Load root config and verify sync
-      const rootConfig = yield* loadRootConfigWithSyncCheck(workspaceRoot)
-      const rootConfigPath = path.join(workspaceRoot, GENERATED_CONFIG_FILE_NAME)
-
-      // Get declared repos from root config
-      const declaredRepos = Object.entries(rootConfig.config.repos)
-
-      // Filter to specified repos if any
-      const reposToUpdate =
-        repos.length > 0 ? declaredRepos.filter(([name]) => repos.includes(name)) : declaredRepos
+      // Filter to specified repos if any, and only existing git repos
+      const reposToUpdate: RepoInfo[] =
+        repos.length > 0
+          ? allRepos.filter((r) => repos.includes(r.name) && existsAsGitRepo(r))
+          : allRepos.filter(existsAsGitRepo)
 
       if (reposToUpdate.length === 0) {
         if (repos.length > 0) {
@@ -93,38 +92,24 @@ export const updateRevsCommand = Cli.Command.make(
       // Track the current config state for sequential updates
       let currentConfig: RootConfig | undefined
 
-      for (const [name, repoConfig] of reposToUpdate) {
-        const repoPath = path.join(workspaceRoot, name)
+      for (const repo of reposToUpdate) {
+        const { name, pinnedRev, gitState } = repo
 
-        // Check if repo exists
-        const exists = yield* fs.exists(repoPath)
-        if (!exists) {
-          results.push({
-            name,
-            status: 'skipped',
-            message: 'Directory does not exist',
-          })
-          yield* Effect.log(`  ${name}: skipped (directory does not exist)`)
-          continue
-        }
-
-        // Check if it's a git repo
-        const isGitRepo = yield* Git.isGitRepo(repoPath)
-        if (!isGitRepo) {
+        // Should be filtered already, but guard anyway
+        if (!gitState) {
           results.push({ name, status: 'skipped', message: 'Not a git repo' })
           yield* Effect.log(`  ${name}: skipped (not a git repo)`)
           continue
         }
 
-        // Get current revision
-        const currentRev = yield* Git.getCurrentRev(repoPath)
-        const oldRev = repoConfig.rev
+        const currentRev = gitState.rev
+        const oldRev = pinnedRev
 
         if (currentRev === oldRev) {
           results.push({
             name,
             status: 'unchanged',
-            oldRev,
+            ...(oldRev !== undefined && { oldRev }),
             newRev: currentRev,
           })
           yield* Effect.log(`  ${name}: unchanged (${currentRev.slice(0, 7)})`)
@@ -135,7 +120,12 @@ export const updateRevsCommand = Cli.Command.make(
           yield* Effect.log(
             `  ${name}: would update ${oldRev?.slice(0, 7) ?? '(none)'} → ${currentRev.slice(0, 7)}`,
           )
-          results.push({ name, status: 'updated', oldRev, newRev: currentRev })
+          results.push({
+            name,
+            status: 'updated',
+            ...(oldRev !== undefined && { oldRev }),
+            newRev: currentRev,
+          })
           continue
         }
 
@@ -147,7 +137,12 @@ export const updateRevsCommand = Cli.Command.make(
         // Update the rev
         currentConfig = yield* updateRepoRev(rootConfigPath, name, currentRev, currentConfig)
 
-        results.push({ name, status: 'updated', oldRev, newRev: currentRev })
+        results.push({
+          name,
+          status: 'updated',
+          ...(oldRev !== undefined && { oldRev }),
+          newRev: currentRev,
+        })
         yield* Effect.log(
           `  ${name}: updated ${oldRev?.slice(0, 7) ?? '(none)'} → ${currentRev.slice(0, 7)}`,
         )
@@ -155,15 +150,7 @@ export const updateRevsCommand = Cli.Command.make(
 
       yield* Effect.log('')
 
-      const updated = results.filter((r) => r.status === 'updated').length
-      const unchanged = results.filter((r) => r.status === 'unchanged').length
-      const skipped = results.filter((r) => r.status === 'skipped').length
-
-      const summary: string[] = []
-      if (updated > 0) summary.push(`${updated} updated`)
-      if (unchanged > 0) summary.push(`${unchanged} unchanged`)
-      if (skipped > 0) summary.push(`${skipped} skipped`)
-
-      yield* Effect.log(`Done: ${summary.join(', ')}`)
+      const summary = buildSummary(results, UpdateStatusLabels)
+      yield* Effect.log(`Done: ${summary}`)
     }).pipe(Effect.withSpan('dotdot/update-revs')),
 )

@@ -10,12 +10,7 @@ import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
 import { Effect, Schema } from 'effect'
 
-import {
-  CurrentWorkingDirectory,
-  findWorkspaceRoot,
-  loadRootConfigWithSyncCheck,
-  type PackageIndexEntry,
-} from '../lib/mod.ts'
+import { type PackageIndexEntry, WorkspaceService } from '../lib/mod.ts'
 
 /** Error during link operation */
 export class LinkError extends Schema.TaggedError<LinkError>()('LinkError', {
@@ -98,19 +93,22 @@ const getUniqueMappings = (mappings: PackageMapping[]): Map<string, PackageMappi
   return uniqueMappings
 }
 
+/** Get workspace and package mappings - shared helper */
+const getPackageMappings = Effect.gen(function* () {
+  const workspace = yield* WorkspaceService
+  const packages = workspace.rootConfig.config.packages ?? {}
+  const mappings = collectPackageMappings(workspace.root, packages)
+  return { workspace, mappings }
+})
+
 /** Show status of all package mappings */
 const linkStatusCommand = Cli.Command.make('status', {}, () =>
   Effect.gen(function* () {
-    const cwd = yield* CurrentWorkingDirectory
     const fs = yield* FileSystem.FileSystem
+    const { workspace, mappings } = yield* getPackageMappings
 
-    const workspaceRoot = yield* findWorkspaceRoot(cwd)
-
-    yield* Effect.log(`dotdot workspace: ${workspaceRoot}`)
+    yield* Effect.log(`dotdot workspace: ${workspace.root}`)
     yield* Effect.log('')
-
-    const rootConfig = yield* loadRootConfigWithSyncCheck(workspaceRoot)
-    const mappings = collectPackageMappings(workspaceRoot, rootConfig.config.packages ?? {})
 
     if (mappings.length === 0) {
       yield* Effect.log('No packages configurations found')
@@ -125,7 +123,7 @@ const linkStatusCommand = Cli.Command.make('status', {}, () =>
         yield* Effect.log(`  ${targetName}:`)
         for (const source of sources) {
           yield* Effect.log(
-            `    - ${source.sourceRepo}/${path.relative(path.join(workspaceRoot, source.sourceRepo), source.source)}`,
+            `    - ${source.sourceRepo}/${path.relative(path.join(workspace.root, source.sourceRepo), source.source)}`,
           )
         }
       }
@@ -139,7 +137,7 @@ const linkStatusCommand = Cli.Command.make('status', {}, () =>
     for (const [targetName, mapping] of uniqueMappings) {
       const targetExists = yield* fs.exists(mapping.target)
       const sourceExists = yield* fs.exists(mapping.source)
-      const relativePath = path.relative(workspaceRoot, mapping.source)
+      const relativePath = path.relative(workspace.root, mapping.source)
 
       let status: string
       if (!sourceExists) {
@@ -167,16 +165,11 @@ const linkStatusCommand = Cli.Command.make('status', {}, () =>
 /** Create symlinks handler - extracted for reuse */
 const createSymlinksHandler = ({ dryRun, force }: { dryRun: boolean; force: boolean }) =>
   Effect.gen(function* () {
-    const cwd = yield* CurrentWorkingDirectory
     const fs = yield* FileSystem.FileSystem
+    const { workspace, mappings } = yield* getPackageMappings
 
-    const workspaceRoot = yield* findWorkspaceRoot(cwd)
-
-    yield* Effect.log(`dotdot workspace: ${workspaceRoot}`)
+    yield* Effect.log(`dotdot workspace: ${workspace.root}`)
     yield* Effect.log('')
-
-    const rootConfig = yield* loadRootConfigWithSyncCheck(workspaceRoot)
-    const mappings = collectPackageMappings(workspaceRoot, rootConfig.config.packages ?? {})
 
     if (mappings.length === 0) {
       yield* Effect.log('No packages configurations found')
@@ -193,7 +186,7 @@ const createSymlinksHandler = ({ dryRun, force }: { dryRun: boolean; force: bool
         yield* Effect.log(`  ${targetName}:`)
         for (const source of sources) {
           yield* Effect.log(
-            `    - ${source.sourceRepo}/${path.relative(path.join(workspaceRoot, source.sourceRepo), source.source)}`,
+            `    - ${source.sourceRepo}/${path.relative(path.join(workspace.root, source.sourceRepo), source.source)}`,
           )
         }
       }
@@ -238,7 +231,7 @@ const createSymlinksHandler = ({ dryRun, force }: { dryRun: boolean; force: bool
 
       // Create parent directory if needed (for package names like @org/utils)
       const parentDir = path.dirname(mapping.target)
-      if (parentDir !== workspaceRoot) {
+      if (parentDir !== workspace.root) {
         if (!dryRun) {
           yield* fs.makeDirectory(parentDir, { recursive: true })
         }
@@ -294,16 +287,11 @@ const linkCreateCommand = Cli.Command.make(
 /** Remove symlinks handler - extracted for reuse */
 const removeSymlinksHandler = ({ dryRun }: { dryRun: boolean }) =>
   Effect.gen(function* () {
-    const cwd = yield* CurrentWorkingDirectory
     const fs = yield* FileSystem.FileSystem
+    const { workspace, mappings } = yield* getPackageMappings
 
-    const workspaceRoot = yield* findWorkspaceRoot(cwd)
-
-    yield* Effect.log(`dotdot workspace: ${workspaceRoot}`)
+    yield* Effect.log(`dotdot workspace: ${workspace.root}`)
     yield* Effect.log('')
-
-    const rootConfig = yield* loadRootConfigWithSyncCheck(workspaceRoot)
-    const mappings = collectPackageMappings(workspaceRoot, rootConfig.config.packages ?? {})
 
     if (mappings.length === 0) {
       yield* Effect.log('No packages configurations found')
@@ -323,7 +311,7 @@ const removeSymlinksHandler = ({ dryRun }: { dryRun: boolean }) =>
     const seenTargets = new Set(mappings.map((m) => m.targetName))
 
     for (const targetName of seenTargets) {
-      const targetPath = path.join(workspaceRoot, targetName)
+      const targetPath = path.join(workspace.root, targetName)
 
       // Use readLink to check if it's a symlink (will fail if not a symlink)
       const isSymlink = yield* fs.readLink(targetPath).pipe(

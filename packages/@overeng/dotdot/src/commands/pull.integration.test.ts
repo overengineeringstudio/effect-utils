@@ -6,8 +6,13 @@ import { Command, FileSystem } from '@effect/platform'
 import { Effect, Option, pipe } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { CurrentWorkingDirectory } from '../lib/mod.ts'
-import { createBareRepo, createWorkspace, getGitRev, withTestCtx } from '../test-utils/mod.ts'
+import {
+  createBareRepo,
+  createWorkspace,
+  getGitRev,
+  withTestCtx,
+  workspaceLayerFromPath,
+} from '../test-utils/mod.ts'
 import { pullCommand } from './mod.ts'
 
 describe('pull command', () => {
@@ -68,7 +73,7 @@ describe('pull command', () => {
             mode: 'parallel',
             maxParallel: Option.none(),
           })
-          .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
+          .pipe(Effect.provide(workspaceLayerFromPath(workspacePath)))
 
         const newRev = yield* getGitRev(repoPath)
         expect(newRev).not.toBe(initialRev)
@@ -92,7 +97,7 @@ describe('pull command', () => {
             mode: 'parallel',
             maxParallel: Option.none(),
           })
-          .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
+          .pipe(Effect.provide(workspaceLayerFromPath(workspacePath)))
 
         expect(true).toBe(true)
       }),
@@ -114,7 +119,7 @@ describe('pull command', () => {
             mode: 'parallel',
             maxParallel: Option.none(),
           })
-          .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
+          .pipe(Effect.provide(workspaceLayerFromPath(workspacePath)))
 
         expect(true).toBe(true)
       }),
@@ -132,7 +137,7 @@ describe('pull command', () => {
             mode: 'parallel',
             maxParallel: Option.none(),
           })
-          .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
+          .pipe(Effect.provide(workspaceLayerFromPath(workspacePath)))
 
         expect(true).toBe(true)
       }),
@@ -153,7 +158,7 @@ describe('pull command', () => {
             mode: 'parallel',
             maxParallel: Option.none(),
           })
-          .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
+          .pipe(Effect.provide(workspaceLayerFromPath(workspacePath)))
 
         expect(true).toBe(true)
       }),

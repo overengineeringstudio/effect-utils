@@ -6,12 +6,12 @@ import { FileSystem } from '@effect/platform'
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { CurrentWorkingDirectory } from '../lib/mod.ts'
 import {
   createPackageTarget,
   createWorkspace,
   generateRootConfig,
   withTestCtx,
+  workspaceLayerFromPath,
 } from '../test-utils/mod.ts'
 import { linkSubcommands } from './link.ts'
 
@@ -38,17 +38,14 @@ describe('link command', () => {
 
         yield* linkSubcommands.create
           .handler({ dryRun: false, force: false })
-          .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
+          .pipe(Effect.provide(workspaceLayerFromPath(workspacePath)))
 
         // Check symlink was created
         const symlinkPath = `${workspacePath}/shared-lib`
         const exists = yield* fs.exists(symlinkPath)
         expect(exists).toBe(true)
 
-        const stat = yield* fs.stat(symlinkPath)
-        expect(stat.type).toBe('SymbolicLink')
-
-        // Check symlink target is correct
+        // Check symlink target is correct (readLink fails if not a symlink)
         const linkTarget = yield* fs.readLink(symlinkPath)
         expect(linkTarget).toBe('repo-a/shared-lib')
       }),
@@ -74,7 +71,7 @@ describe('link command', () => {
 
         yield* linkSubcommands.create
           .handler({ dryRun: true, force: false })
-          .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
+          .pipe(Effect.provide(workspaceLayerFromPath(workspacePath)))
 
         // Check symlink was NOT created
         const exists = yield* fs.exists(`${workspacePath}/shared-lib`)
@@ -112,7 +109,7 @@ describe('link command', () => {
 
         yield* linkSubcommands.create
           .handler({ dryRun: false, force: false })
-          .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
+          .pipe(Effect.provide(workspaceLayerFromPath(workspacePath)))
 
         // Both symlinks should be created
         expect(yield* fs.exists(`${workspacePath}/shared-lib-a`)).toBe(true)
@@ -144,11 +141,12 @@ describe('link command', () => {
 
         yield* linkSubcommands.create
           .handler({ dryRun: false, force: true })
-          .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
+          .pipe(Effect.provide(workspaceLayerFromPath(workspacePath)))
 
         // Check symlink was created (force overwrote the file)
-        const stat = yield* fs.stat(symlinkPath)
-        expect(stat.type).toBe('SymbolicLink')
+        // readLink fails if not a symlink, so this verifies it was created correctly
+        const linkTarget = yield* fs.readLink(symlinkPath)
+        expect(linkTarget).toBe('repo-a/shared-lib')
       }),
     ))
 
@@ -170,18 +168,18 @@ describe('link command', () => {
           ),
         )
 
-        const cwdLayer = CurrentWorkingDirectory.fromPath(workspacePath)
+        const wsLayer = workspaceLayerFromPath(workspacePath)
 
         // First create symlinks
         yield* linkSubcommands.create
           .handler({ dryRun: false, force: false })
-          .pipe(Effect.provide(cwdLayer))
+          .pipe(Effect.provide(wsLayer))
 
         const symlinkPath = `${workspacePath}/shared-lib`
         expect(yield* fs.exists(symlinkPath)).toBe(true)
 
         // Remove symlinks
-        yield* linkSubcommands.remove.handler({ dryRun: false }).pipe(Effect.provide(cwdLayer))
+        yield* linkSubcommands.remove.handler({ dryRun: false }).pipe(Effect.provide(wsLayer))
 
         // Symlink should be removed
         expect(yield* fs.exists(symlinkPath)).toBe(false)
@@ -206,24 +204,24 @@ describe('link command', () => {
           ),
         )
 
-        const cwdLayer = CurrentWorkingDirectory.fromPath(workspacePath)
+        const wsLayer = workspaceLayerFromPath(workspacePath)
         const symlinkPath = `${workspacePath}/shared-lib`
 
         // Create symlink first
         yield* linkSubcommands.create
           .handler({ dryRun: false, force: false })
-          .pipe(Effect.provide(cwdLayer))
+          .pipe(Effect.provide(wsLayer))
         expect(yield* fs.exists(symlinkPath)).toBe(true)
 
         // Remove and then recreate
-        yield* linkSubcommands.remove.handler({ dryRun: false }).pipe(Effect.provide(cwdLayer))
+        yield* linkSubcommands.remove.handler({ dryRun: false }).pipe(Effect.provide(wsLayer))
         yield* linkSubcommands.create
           .handler({ dryRun: false, force: false })
-          .pipe(Effect.provide(cwdLayer))
+          .pipe(Effect.provide(wsLayer))
 
-        // Symlink should still exist
-        const stat = yield* fs.stat(symlinkPath)
-        expect(stat.type).toBe('SymbolicLink')
+        // Symlink should still exist (readLink verifies it's a symlink)
+        const linkTarget = yield* fs.readLink(symlinkPath)
+        expect(linkTarget).toBe('repo-a/shared-lib')
       }),
     ))
 
@@ -247,7 +245,7 @@ describe('link command', () => {
 
         yield* linkSubcommands.create
           .handler({ dryRun: false, force: false })
-          .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
+          .pipe(Effect.provide(workspaceLayerFromPath(workspacePath)))
 
         // Check symlink was NOT created
         expect(yield* fs.exists(`${workspacePath}/nonexistent`)).toBe(false)
@@ -263,7 +261,7 @@ describe('link command', () => {
 
         yield* linkSubcommands.create
           .handler({ dryRun: false, force: false })
-          .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
+          .pipe(Effect.provide(workspaceLayerFromPath(workspacePath)))
 
         expect(true).toBe(true)
       }),
@@ -290,14 +288,10 @@ describe('link command', () => {
 
         yield* linkSubcommands.create
           .handler({ dryRun: false, force: false })
-          .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
+          .pipe(Effect.provide(workspaceLayerFromPath(workspacePath)))
 
-        // Check symlink was created with package name
+        // Check symlink was created with package name (readLink verifies it's a symlink)
         const symlinkPath = `${workspacePath}/@org/utils`
-        const stat = yield* fs.stat(symlinkPath)
-        expect(stat.type).toBe('SymbolicLink')
-
-        // Check symlink target is the nested path
         const linkTarget = yield* fs.readLink(symlinkPath)
         expect(linkTarget).toBe('../repo-a/packages/utils')
       }),

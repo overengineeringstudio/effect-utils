@@ -73,6 +73,9 @@ export {
 
 export { CurrentWorkingDirectory } from './workspace.ts'
 
+// Result utilities
+export { type BaseResult, buildSummary, countByStatus, logSummary } from './result-utils.ts'
+
 // WorkspaceService
 export {
   existsAsGitRepo,

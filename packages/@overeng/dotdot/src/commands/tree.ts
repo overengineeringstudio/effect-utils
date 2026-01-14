@@ -7,49 +7,53 @@
 import * as Cli from '@effect/cli'
 import { Effect } from 'effect'
 
-import {
-  CurrentWorkingDirectory,
-  findWorkspaceRoot,
-  loadRootConfigWithSyncCheck,
-  type RepoConfig,
-} from '../lib/mod.ts'
+import { type RepoInfo, WorkspaceService } from '../lib/mod.ts'
 
 /** Format the tree output */
-const formatTree = (repos: [string, RepoConfig][]) =>
+const formatTree = (repos: RepoInfo[]) =>
   Effect.gen(function* () {
     yield* Effect.log('Repos:')
     yield* Effect.log('')
 
     for (let i = 0; i < repos.length; i++) {
-      const [name, config] = repos[i]!
+      const repo = repos[i]!
       const isLast = i === repos.length - 1
       const prefix = isLast ? '└── ' : '├── '
-      const revInfo = config.rev ? ` @ ${config.rev.slice(0, 7)}` : ' (no pin)'
-      yield* Effect.log(`${prefix}${name}${revInfo}`)
+
+      // Build status indicator
+      const fsStatus =
+        repo.fsState._tag === 'missing'
+          ? ' [missing]'
+          : repo.fsState._tag === 'not-git'
+            ? ' [not-git]'
+            : ''
+
+      const revInfo = repo.pinnedRev ? ` @ ${repo.pinnedRev.slice(0, 7)}` : ' (no pin)'
+      const currentRev = repo.gitState ? ` (${repo.gitState.shortRev})` : ''
+      const dirtyFlag = repo.gitState?.isDirty ? ' *' : ''
+
+      yield* Effect.log(`${prefix}${repo.name}${revInfo}${currentRev}${dirtyFlag}${fsStatus}`)
     }
   })
 
 /** Tree command implementation */
 export const treeCommand = Cli.Command.make('tree', {}, () =>
   Effect.gen(function* () {
-    const cwd = yield* CurrentWorkingDirectory
+    const workspace = yield* WorkspaceService
 
-    // Find workspace root
-    const workspaceRoot = yield* findWorkspaceRoot(cwd)
-
-    yield* Effect.log(`dotdot workspace: ${workspaceRoot}`)
+    yield* Effect.log(`dotdot workspace: ${workspace.root}`)
     yield* Effect.log('')
 
-    // Load root config and verify sync
-    const rootConfig = yield* loadRootConfigWithSyncCheck(workspaceRoot)
-
-    // Get repos from root config
-    const repos = Object.entries(rootConfig.config.repos)
+    // Get all repos from workspace
+    const repos = yield* workspace.scanRepos()
 
     if (repos.length === 0) {
       yield* Effect.log('No repos declared in config')
       return
     }
+
+    // Sort by name for consistent output
+    repos.sort((a, b) => a.name.localeCompare(b.name))
 
     // Show tree
     yield* formatTree(repos)
