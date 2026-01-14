@@ -5,7 +5,17 @@
  * coordination, maximizing parallelism while respecting dependencies.
  */
 
-import { Deferred, Effect, Exit, Fiber, FiberMap, Graph, Option, Stream, SubscriptionRef } from 'effect'
+import {
+  Deferred,
+  Effect,
+  Exit,
+  Fiber,
+  FiberMap,
+  Graph,
+  Option,
+  Stream,
+  SubscriptionRef,
+} from 'effect'
 
 import type { TaskDef, TaskEvent, TaskGraphResult, TaskSystemState } from './types.ts'
 import { TaskExecutionError, TaskState, TaskSystemState as TaskSystemStateClass } from './types.ts'
@@ -125,7 +135,10 @@ const reduceEvent = (state: TaskSystemState, event: TaskEvent<string>): TaskSyst
 const buildTaskGraph = <TId extends string>(
   tasks: ReadonlyArray<TaskDef<TId, unknown, unknown, unknown>>,
 ): Effect.Effect<
-  { graph: Graph.Graph<TaskDef<TId, unknown, unknown, unknown>, void>; idToIndex: Map<TId, number> },
+  {
+    graph: Graph.Graph<TaskDef<TId, unknown, unknown, unknown>, void>
+    idToIndex: Map<TId, number>
+  },
   Error
 > =>
   Effect.gen(function* () {
@@ -255,7 +268,7 @@ export const runTaskGraph = <TId extends string>(
       const wideTasks = widenTaskArray<TId>(tasks)
 
       // Build dependency graph
-      const { graph, idToIndex } = yield* buildTaskGraph(wideTasks)
+      const { graph, idToIndex: _idToIndex } = yield* buildTaskGraph(wideTasks)
 
       // Create state ref
       const stateRef = yield* SubscriptionRef.make(new TaskSystemStateClass({ tasks: {} }))
