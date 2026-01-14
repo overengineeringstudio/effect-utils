@@ -69,6 +69,51 @@ Declaration emit is "mostly complete" but some edge cases may not work. If you'r
 
 Watch mode is functional but described as a "prototype" - it watches files and rebuilds but lacks incremental rechecking optimization.
 
+### Potential Effect.ts Compatibility Concerns
+
+Based on research of typescript-go issues, these patterns used heavily by Effect could be affected:
+
+#### Type Instantiation Depth (FIXED)
+
+**Issue:** [#1278](https://github.com/microsoft/typescript-go/issues/1278) - Recursive types that work in tsc failed in tsgo with TS2589 "Type instantiation is excessively deep"
+
+**Status:** ✅ FIXED (June 2025) - Fixed type ordering for indexed access and conditional types
+
+**Effect relevance:** Effect uses deep recursive types for pipe, Schema, and error handling. This fix is critical.
+
+#### Schema/Branded Types (FIXED)
+
+**Issue:** [#522](https://github.com/microsoft/typescript-go/issues/522) - Mongoose Schema generic instantiation failed
+**Issue:** [#1840](https://github.com/microsoft/typescript-go/issues/1840) - `[Kind]` symbol property missing in branded types
+
+**Status:** ✅ FIXED - Both issues resolved (porting bugs from TS 5.7 base)
+
+**Effect relevance:** Effect Schema uses branded types with symbols. These fixes ensure compatibility.
+
+#### Assertion Functions (OPEN)
+
+**Issue:** [#1774](https://github.com/microsoft/typescript-go/issues/1774) - tsgo produces TS2775 for assertion functions assigned to properties, tsc does not
+
+**Status:** ⚠️ May still be open
+
+**Effect relevance:** Low - Effect doesn't heavily rely on assertion functions in this pattern.
+
+#### No Known Effect-Specific Issues
+
+Searched GitHub for "Effect" in typescript-go issues - **no Effect.ts specific bugs reported**.
+
+Our local testing confirms tsgo works correctly with `@overeng/genie` which uses Effect.ts extensively.
+
+### Test Status Summary
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Complex recursive types | ✅ Fixed | #1278 fixed June 2025 |
+| Branded/symbol types | ✅ Fixed | #522, #1840 resolved |
+| Effect pipe/Schema | ✅ Works | Tested locally |
+| Effect generators | ⚠️ Untested | No known issues |
+| @effect/language-service | ❌ N/A | Plugins not supported |
+
 ## Performance
 
 tsgo typically provides **7-10x speedup** over tsc for type-checking. This would significantly improve CI and development iteration times.
