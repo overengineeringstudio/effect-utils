@@ -140,9 +140,9 @@ fi
 **Pros:** Simple, works now
 **Cons:** Requires adding devDependency to each package
 
-#### Option 2: Nix package (Recommended)
+#### Option 2: Nix package (Needs Verification)
 
-`tsgo` is available in nixpkgs unstable:
+`tsgo` may be available in nixpkgs unstable (TODO: verify package attribute name):
 
 ```nix
 nativeBuildInputs = [ pkgsUnstable.bun pkgsUnstable.tsgo pkgs.cacert ];
@@ -152,11 +152,13 @@ tsgo --project "$tsconfig_path" --noEmit
 ```
 
 **Pros:** Cleaner, no npm dependency needed, native binary
-**Cons:** Requires nixpkgs unstable
+**Cons:** Requires nixpkgs unstable, needs verification
+
+**TODO:** Verify the exact package attribute name and test in a nix environment.
 
 ### Recommendation for mk-bun-cli
 
-**Use Option 2** (nixpkgs unstable tsgo package) - cleanest integration with the Nix build system.
+**Pending verification** - If `pkgsUnstable.tsgo` exists, use Option 2. Otherwise use Option 1 (npm package).
 
 ### Parameter Addition
 
