@@ -102,6 +102,96 @@ npx tsgo --noEmit  # or npx tsgo -b tsconfig.all.json
 | [#506](https://github.com/microsoft/typescript-go/issues/506) | ✅ Closed | Composite projects |
 | [#1431](https://github.com/microsoft/typescript-go/issues/1431) | Open | baseUrl removal affecting monorepos |
 
+## mk-bun-cli Nix Integration
+
+### Current Setup
+
+`nix/mk-bun-cli.nix` uses tsc for type-checking (line 296):
+```nix
+bun "$tsc_entry" --project "$tsconfig_path" --noEmit
+```
+
+Where `$tsc_entry` is `node_modules/typescript/bin/tsc`.
+
+### Test Results
+
+| Fixture | tsgo | tsc |
+|---------|------|-----|
+| shared-lib | ✅ Pass | ✅ Pass |
+| @acme/utils | ✅ Pass | ✅ Pass |
+
+### Integration Options
+
+#### Option 1: npm package (Recommended)
+
+Add `@typescript/native-preview` to devDependencies and modify mk-bun-cli.nix:
+
+```nix
+# Replace tsc_entry with tsgo_entry
+tsgo_entry="$package_path/node_modules/@typescript/native-preview/bin/tsgo"
+if [ -f "$tsgo_entry" ]; then
+  bun "$tsgo_entry" --project "$tsconfig_path" --noEmit
+else
+  # Fallback to tsc
+  bun "$tsc_entry" --project "$tsconfig_path" --noEmit
+fi
+```
+
+**Pros:** Simple, works now
+**Cons:** Requires adding devDependency to each package
+
+#### Option 2: Nix package (Not Yet Available)
+
+No `tsgo` package exists in nixpkgs yet. Once available:
+
+```nix
+nativeBuildInputs = [ pkgsUnstable.bun pkgsUnstable.tsgo pkgs.cacert ];
+
+# Then use directly:
+tsgo --project "$tsconfig_path" --noEmit
+```
+
+**Pros:** Cleaner, no npm dependency needed
+**Cons:** Package doesn't exist yet
+
+#### Option 3: Build from source
+
+Build tsgo from the Go source in Nix:
+
+```nix
+tsgo = pkgs.buildGoModule {
+  pname = "tsgo";
+  version = "7.0.0-dev";
+  src = pkgs.fetchFromGitHub {
+    owner = "microsoft";
+    repo = "typescript-go";
+    # ...
+  };
+};
+```
+
+**Pros:** Pure Nix solution
+**Cons:** More maintenance, need to track upstream
+
+### Recommendation for mk-bun-cli
+
+**Short-term:** Use Option 1 (npm package) for packages where build speed matters.
+
+**Long-term:** Wait for nixpkgs to add tsgo, then use Option 2.
+
+### Parameter Addition
+
+Consider adding a `typechecker` parameter to mk-bun-cli.nix:
+
+```nix
+{
+  # ...existing params...
+  typechecker ? "tsc",  # "tsc" or "tsgo"
+}
+```
+
+This allows per-package choice without breaking existing builds.
+
 ## Resources
 
 - [Official npm package](https://www.npmjs.com/package/@typescript/native-preview)
