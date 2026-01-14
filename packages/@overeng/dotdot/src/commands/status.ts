@@ -1,177 +1,115 @@
 /**
  * dotdot status command
  *
- * Shows status of all repos in the workspace
+ * Shows status of all repos in the workspace using WorkspaceService
  */
 
-import path from 'node:path'
-
 import * as Cli from '@effect/cli'
-import { FileSystem } from '@effect/platform'
-import { Array as A, Effect } from 'effect'
+import { NodeFileSystem } from '@effect/platform-node'
+import { Effect, Layer } from 'effect'
 
 import {
   CurrentWorkingDirectory,
-  findWorkspaceRoot,
-  Git,
-  loadRootConfigWithSyncCheck,
-  type RepoConfig,
+  isDangling,
+  isDiverged,
+  type RepoInfo,
+  WorkspaceService,
 } from '../lib/mod.ts'
 
-/** Status of a single repo */
-type RepoStatus = {
-  name: string
-  /** Path relative to workspace root */
-  path: string
-  /** Whether the repo directory exists */
-  exists: boolean
-  /** Whether it's a git repo */
-  isGitRepo: boolean
-  /** Current HEAD revision */
-  currentRev?: string | undefined
-  /** Short revision (7 chars) */
-  shortRev?: string | undefined
-  /** Current branch */
-  branch?: string | undefined
-  /** Whether working tree is dirty */
-  isDirty?: boolean | undefined
-  /** Pinned revision from config (from schema: string | undefined) */
-  pinnedRev?: string | undefined
-  /** Whether current rev matches pinned rev */
-  revisionMatch?: 'ok' | 'diverged' | 'no-pin' | undefined
-  /** Config for this repo */
-  config?: RepoConfig | undefined
-}
+/** Format a single repo status line */
+const formatRepoLine = (repo: RepoInfo): string => {
+  const parts: string[] = []
 
-/** Collect all declared repos from root config */
-const collectDeclaredRepos = (repos: Record<string, RepoConfig>) => {
-  const result = new Map<string, { config: RepoConfig }>()
+  if (repo.fsState._tag === 'missing') {
+    parts.push('MISSING')
+  } else if (repo.fsState._tag === 'not-git') {
+    parts.push('NOT GIT')
+  } else if (repo.gitState) {
+    parts.push(`${repo.gitState.branch}@${repo.gitState.shortRev}`)
 
-  for (const [name, config] of Object.entries(repos)) {
-    result.set(name, { config })
+    if (repo.gitState.isDirty) {
+      parts.push('*dirty*')
+    }
+
+    if (isDiverged(repo)) {
+      parts.push(`[diverged from ${repo.pinnedRev?.slice(0, 7)}]`)
+    } else if (!repo.pinnedRev) {
+      parts.push('[no pin]')
+    }
   }
 
-  return result
+  return `  ${repo.name}: ${parts.join(' ')}`
 }
 
-/** Get status for a single repo */
-const getRepoStatus = (workspaceRoot: string, name: string, info: { config: RepoConfig }) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const repoPath = path.join(workspaceRoot, name)
-
-    const status: RepoStatus = {
-      name,
-      path: name,
-      exists: false,
-      isGitRepo: false,
-      config: info.config,
-      pinnedRev: info.config.rev,
-    }
-
-    // Check if directory exists
-    status.exists = yield* fs.exists(repoPath)
-    if (!status.exists) {
-      return status
-    }
-
-    // Check if it's a git repo
-    status.isGitRepo = yield* Git.isGitRepo(repoPath)
-    if (!status.isGitRepo) {
-      return status
-    }
-
-    // Get git info
-    status.currentRev = yield* Git.getCurrentRev(repoPath)
-    status.shortRev = yield* Git.getShortRev(repoPath)
-    status.branch = yield* Git.getCurrentBranch(repoPath)
-    status.isDirty = yield* Git.isDirty(repoPath)
-
-    // Check revision match
-    if (!status.pinnedRev) {
-      status.revisionMatch = 'no-pin'
-    } else if (
-      status.currentRev === status.pinnedRev ||
-      status.currentRev?.startsWith(status.pinnedRev)
-    ) {
-      status.revisionMatch = 'ok'
-    } else {
-      status.revisionMatch = 'diverged'
-    }
-
-    return status
-  })
-
 /** Format status output */
-const formatStatus = (workspaceRoot: string, statuses: RepoStatus[]) =>
+const formatStatus = (
+  workspaceRoot: string,
+  members: RepoInfo[],
+  dependencies: RepoInfo[],
+  dangling: RepoInfo[],
+) =>
   Effect.gen(function* () {
     yield* Effect.log(`dotdot workspace: ${workspaceRoot}`)
     yield* Effect.log('')
 
-    if (statuses.length === 0) {
+    const total = members.length + dependencies.length + dangling.length
+    if (total === 0) {
       yield* Effect.log('No repos found.')
       return
     }
 
-    yield* Effect.log(`Declared repos (${statuses.length}):`)
-    for (const status of statuses) {
-      const parts: string[] = []
-
-      if (!status.exists) {
-        parts.push('MISSING')
-      } else if (!status.isGitRepo) {
-        parts.push('NOT GIT')
-      } else {
-        // Branch and rev
-        parts.push(`${status.branch}@${status.shortRev}`)
-
-        // Dirty indicator
-        if (status.isDirty) {
-          parts.push('*dirty*')
-        }
-
-        // Revision match
-        if (status.revisionMatch === 'diverged') {
-          parts.push(`[diverged from ${status.pinnedRev?.slice(0, 7)}]`)
-        } else if (status.revisionMatch === 'no-pin') {
-          parts.push('[no pin]')
-        }
+    // Show members
+    if (members.length > 0) {
+      yield* Effect.log(`Members (${members.length}):`)
+      for (const repo of members) {
+        yield* Effect.log(formatRepoLine(repo))
       }
+    }
 
-      yield* Effect.log(`  ${status.name}: ${parts.join(' ')}`)
+    // Show dependencies
+    if (dependencies.length > 0) {
+      if (members.length > 0) yield* Effect.log('')
+      yield* Effect.log(`Dependencies (${dependencies.length}):`)
+      for (const repo of dependencies) {
+        yield* Effect.log(formatRepoLine(repo))
+      }
+    }
+
+    // Show dangling repos
+    if (dangling.length > 0) {
+      if (members.length > 0 || dependencies.length > 0) yield* Effect.log('')
+      yield* Effect.log(`Dangling (${dangling.length}):`)
+      for (const repo of dangling) {
+        yield* Effect.log(formatRepoLine(repo))
+      }
     }
   })
 
+/** Status command handler - separated for testability */
+export const statusHandler = Effect.gen(function* () {
+  const workspace = yield* WorkspaceService
+
+  // Scan all repos
+  const allRepos = yield* workspace.scanRepos()
+
+  // Partition by tracking type
+  const members = allRepos.filter((r: RepoInfo) => r.tracking._tag === 'member')
+  const dependencies = allRepos.filter((r: RepoInfo) => r.tracking._tag === 'dependency')
+  const dangling = allRepos.filter(isDangling)
+
+  // Format and output
+  yield* formatStatus(workspace.root, members, dependencies, dangling)
+}).pipe(Effect.withSpan('dotdot/status'))
+
 /** Status command implementation */
 export const statusCommand = Cli.Command.make('status', {}, () =>
-  Effect.gen(function* () {
-    const cwd = yield* CurrentWorkingDirectory
-
-    // Find workspace root
-    const workspaceRoot = yield* findWorkspaceRoot(cwd)
-
-    // Load root config and verify sync
-    const rootConfig = yield* loadRootConfigWithSyncCheck(workspaceRoot).pipe(
-      Effect.catchTag('ConfigOutOfSyncError', (e) =>
-        Effect.gen(function* () {
-          yield* Effect.logError(e.message)
-          return yield* Effect.fail(e)
-        }),
+  statusHandler.pipe(
+    Effect.provide(
+      WorkspaceService.live.pipe(
+        Layer.provide(CurrentWorkingDirectory.live),
+        Layer.provide(NodeFileSystem.layer),
       ),
-    )
-
-    // Get declared repos from root config
-    const declaredRepos = collectDeclaredRepos(rootConfig.config.repos)
-
-    // Get status for each declared repo
-    const statuses = yield* Effect.all(
-      A.fromIterable(declaredRepos.entries()).map(([name, info]) =>
-        getRepoStatus(workspaceRoot, name, info),
-      ),
-      { concurrency: 'unbounded' },
-    )
-
-    // Format and output
-    yield* formatStatus(workspaceRoot, statuses)
-  }).pipe(Effect.withSpan('dotdot/status')),
+    ),
+    Effect.catchTag('ConfigOutOfSyncError', (e) => Effect.logError(e.message)),
+  ),
 )

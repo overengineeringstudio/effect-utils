@@ -17,8 +17,8 @@ import {
 import { updateRevsCommand } from './mod.ts'
 
 describe('update-revs command', () => {
-  it('updates pinned revision to current HEAD', (test) =>
-    withTestCtx(test)(
+  it('updates pinned revision to current HEAD', () =>
+    withTestCtx(
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
         const workspacePath = yield* createWorkspace({
@@ -59,8 +59,8 @@ describe('update-revs command', () => {
       }),
     ))
 
-  it('updates only specified repos', { timeout: 15000 }, (test) =>
-    withTestCtx(test)(
+  it('updates only specified repos', { timeout: 15000 }, () =>
+    withTestCtx(
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
         const workspacePath = yield* createWorkspace({
@@ -110,8 +110,8 @@ describe('update-revs command', () => {
     ),
   )
 
-  it('dry run does not modify config', (test) =>
-    withTestCtx(test)(
+  it('dry run does not modify config', () =>
+    withTestCtx(
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
         const workspacePath = yield* createWorkspace({
@@ -150,8 +150,8 @@ describe('update-revs command', () => {
       }),
     ))
 
-  it('skips repos that do not exist', (test) =>
-    withTestCtx(test)(
+  it('skips repos that do not exist', () =>
+    withTestCtx(
       Effect.gen(function* () {
         const workspacePath = yield* createWorkspace({
           rootRepos: {
@@ -169,8 +169,8 @@ describe('update-revs command', () => {
       }),
     ))
 
-  it('reports unchanged when rev matches', (test) =>
-    withTestCtx(test)(
+  it('reports unchanged when rev matches', () =>
+    withTestCtx(
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
         const workspacePath = yield* createWorkspace({

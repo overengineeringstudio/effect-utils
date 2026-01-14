@@ -1,22 +1,22 @@
 /**
- * Tests for dependency graph and topological execution
+ * Tests for repo dependency graph using Effect.Graph
  */
 
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { type ExecutionMode, executeTopoForAll } from './execution.ts'
-import * as Graph from './graph.ts'
+import * as RepoGraph from './repo-graph.ts'
 
-describe('Graph', () => {
+describe('RepoGraph', () => {
   describe('topologicalSort', () => {
     it('sorts nodes with no dependencies', async () => {
-      let graph = Graph.empty<string>()
-      graph = Graph.addNode(graph, 'a', 'data-a')
-      graph = Graph.addNode(graph, 'b', 'data-b')
-      graph = Graph.addNode(graph, 'c', 'data-c')
+      let graph = RepoGraph.empty()
+      graph = RepoGraph.addRepo(graph, 'a', { url: 'url-a' })
+      graph = RepoGraph.addRepo(graph, 'b', { url: 'url-b' })
+      graph = RepoGraph.addRepo(graph, 'c', { url: 'url-c' })
 
-      const result = await Effect.runPromise(Graph.topologicalSort(graph))
+      const result = await Effect.runPromise(RepoGraph.topologicalSort(graph))
 
       expect(result).toHaveLength(3)
       expect(result).toContain('a')
@@ -26,12 +26,12 @@ describe('Graph', () => {
 
     it('sorts linear dependencies', async () => {
       // c -> b -> a (a has no deps, b depends on a, c depends on b)
-      let graph = Graph.empty<string>()
-      graph = Graph.addNode(graph, 'a', 'data-a', [])
-      graph = Graph.addNode(graph, 'b', 'data-b', ['a'])
-      graph = Graph.addNode(graph, 'c', 'data-c', ['b'])
+      let graph = RepoGraph.empty()
+      graph = RepoGraph.addRepo(graph, 'a', { url: 'url-a' }, [])
+      graph = RepoGraph.addRepo(graph, 'b', { url: 'url-b' }, ['a'])
+      graph = RepoGraph.addRepo(graph, 'c', { url: 'url-c' }, ['b'])
 
-      const result = await Effect.runPromise(Graph.topologicalSort(graph))
+      const result = await Effect.runPromise(RepoGraph.topologicalSort(graph))
 
       expect(result).toEqual(['a', 'b', 'c'])
     })
@@ -43,13 +43,13 @@ describe('Graph', () => {
       //   b   c
       //    \ /
       //     d
-      let graph = Graph.empty<string>()
-      graph = Graph.addNode(graph, 'a', 'data-a', [])
-      graph = Graph.addNode(graph, 'b', 'data-b', ['a'])
-      graph = Graph.addNode(graph, 'c', 'data-c', ['a'])
-      graph = Graph.addNode(graph, 'd', 'data-d', ['b', 'c'])
+      let graph = RepoGraph.empty()
+      graph = RepoGraph.addRepo(graph, 'a', { url: 'url-a' }, [])
+      graph = RepoGraph.addRepo(graph, 'b', { url: 'url-b' }, ['a'])
+      graph = RepoGraph.addRepo(graph, 'c', { url: 'url-c' }, ['a'])
+      graph = RepoGraph.addRepo(graph, 'd', { url: 'url-d' }, ['b', 'c'])
 
-      const result = await Effect.runPromise(Graph.topologicalSort(graph))
+      const result = await Effect.runPromise(RepoGraph.topologicalSort(graph))
 
       // a must come first, d must come last
       expect(result[0]).toBe('a')
@@ -61,13 +61,13 @@ describe('Graph', () => {
 
     it('detects cycles', async () => {
       // a -> b -> c -> a (cycle)
-      let graph = Graph.empty<string>()
-      graph = Graph.addNode(graph, 'a', 'data-a', ['c'])
-      graph = Graph.addNode(graph, 'b', 'data-b', ['a'])
-      graph = Graph.addNode(graph, 'c', 'data-c', ['b'])
+      let graph = RepoGraph.empty()
+      graph = RepoGraph.addRepo(graph, 'a', { url: 'url-a' }, ['c'])
+      graph = RepoGraph.addRepo(graph, 'b', { url: 'url-b' }, ['a'])
+      graph = RepoGraph.addRepo(graph, 'c', { url: 'url-c' }, ['b'])
 
       const result = await Effect.runPromise(
-        Graph.topologicalSort(graph).pipe(
+        RepoGraph.topologicalSort(graph).pipe(
           Effect.map(() => null),
           Effect.catchTag('CycleError', (e) => Effect.succeed(e)),
         ),
@@ -79,26 +79,28 @@ describe('Graph', () => {
 
     it('ignores dependencies not in graph', async () => {
       // b depends on 'missing' which doesn't exist
-      let graph = Graph.empty<string>()
-      graph = Graph.addNode(graph, 'a', 'data-a', [])
-      graph = Graph.addNode(graph, 'b', 'data-b', ['missing'])
+      let graph = RepoGraph.empty()
+      graph = RepoGraph.addRepo(graph, 'a', { url: 'url-a' }, [])
+      graph = RepoGraph.addRepo(graph, 'b', { url: 'url-b' }, ['missing'])
 
-      const result = await Effect.runPromise(Graph.topologicalSort(graph))
+      const result = await Effect.runPromise(RepoGraph.topologicalSort(graph))
 
-      expect(result).toHaveLength(2)
+      // 'missing' gets auto-created as a node
+      expect(result).toHaveLength(3)
       expect(result).toContain('a')
       expect(result).toContain('b')
+      expect(result).toContain('missing')
     })
   })
 
   describe('toLayers', () => {
     it('groups independent nodes in same layer', async () => {
-      let graph = Graph.empty<string>()
-      graph = Graph.addNode(graph, 'a', 'data-a')
-      graph = Graph.addNode(graph, 'b', 'data-b')
-      graph = Graph.addNode(graph, 'c', 'data-c')
+      let graph = RepoGraph.empty()
+      graph = RepoGraph.addRepo(graph, 'a', { url: 'url-a' })
+      graph = RepoGraph.addRepo(graph, 'b', { url: 'url-b' })
+      graph = RepoGraph.addRepo(graph, 'c', { url: 'url-c' })
 
-      const layers = await Effect.runPromise(Graph.toLayers(graph))
+      const layers = await Effect.runPromise(RepoGraph.toLayers(graph))
 
       expect(layers).toHaveLength(1)
       expect(layers[0]).toHaveLength(3)
@@ -106,12 +108,12 @@ describe('Graph', () => {
 
     it('separates dependent nodes into layers', async () => {
       // c -> b -> a
-      let graph = Graph.empty<string>()
-      graph = Graph.addNode(graph, 'a', 'data-a', [])
-      graph = Graph.addNode(graph, 'b', 'data-b', ['a'])
-      graph = Graph.addNode(graph, 'c', 'data-c', ['b'])
+      let graph = RepoGraph.empty()
+      graph = RepoGraph.addRepo(graph, 'a', { url: 'url-a' }, [])
+      graph = RepoGraph.addRepo(graph, 'b', { url: 'url-b' }, ['a'])
+      graph = RepoGraph.addRepo(graph, 'c', { url: 'url-c' }, ['b'])
 
-      const layers = await Effect.runPromise(Graph.toLayers(graph))
+      const layers = await Effect.runPromise(RepoGraph.toLayers(graph))
 
       expect(layers).toHaveLength(3)
       expect(layers[0]).toEqual(['a'])
@@ -125,13 +127,13 @@ describe('Graph', () => {
       //   b   c
       //    \ /
       //     d
-      let graph = Graph.empty<string>()
-      graph = Graph.addNode(graph, 'a', 'data-a', [])
-      graph = Graph.addNode(graph, 'b', 'data-b', ['a'])
-      graph = Graph.addNode(graph, 'c', 'data-c', ['a'])
-      graph = Graph.addNode(graph, 'd', 'data-d', ['b', 'c'])
+      let graph = RepoGraph.empty()
+      graph = RepoGraph.addRepo(graph, 'a', { url: 'url-a' }, [])
+      graph = RepoGraph.addRepo(graph, 'b', { url: 'url-b' }, ['a'])
+      graph = RepoGraph.addRepo(graph, 'c', { url: 'url-c' }, ['a'])
+      graph = RepoGraph.addRepo(graph, 'd', { url: 'url-d' }, ['b', 'c'])
 
-      const layers = await Effect.runPromise(Graph.toLayers(graph))
+      const layers = await Effect.runPromise(RepoGraph.toLayers(graph))
 
       expect(layers).toHaveLength(3)
       expect(layers[0]).toEqual(['a'])
@@ -140,13 +142,13 @@ describe('Graph', () => {
     })
 
     it('detects cycles', async () => {
-      let graph = Graph.empty<string>()
-      graph = Graph.addNode(graph, 'a', 'data-a', ['c'])
-      graph = Graph.addNode(graph, 'b', 'data-b', ['a'])
-      graph = Graph.addNode(graph, 'c', 'data-c', ['b'])
+      let graph = RepoGraph.empty()
+      graph = RepoGraph.addRepo(graph, 'a', { url: 'url-a' }, ['c'])
+      graph = RepoGraph.addRepo(graph, 'b', { url: 'url-b' }, ['a'])
+      graph = RepoGraph.addRepo(graph, 'c', { url: 'url-c' }, ['b'])
 
       const result = await Effect.runPromise(
-        Graph.toLayers(graph).pipe(
+        RepoGraph.toLayers(graph).pipe(
           Effect.map(() => null),
           Effect.catchTag('CycleError', (e) => Effect.succeed(e)),
         ),
@@ -157,7 +159,7 @@ describe('Graph', () => {
     })
   })
 
-  describe('buildFromMemberConfigs', () => {
+  describe('fromMemberConfigs', () => {
     it('builds graph from member configs with deps', () => {
       const configs = [
         {
@@ -173,12 +175,12 @@ describe('Graph', () => {
         },
       ]
 
-      const graph = Graph.buildFromMemberConfigs(configs)
+      const graph = RepoGraph.fromMemberConfigs(configs)
 
-      expect(Graph.nodeIds(graph).sort()).toEqual(['repo-a', 'shared-lib'])
+      expect(RepoGraph.repoIds(graph).sort()).toEqual(['repo-a', 'shared-lib'])
       // repo-a depends on shared-lib
-      expect(Graph.getNode(graph, 'repo-a')?.dependencies).toContain('shared-lib')
-      expect(Graph.getNode(graph, 'shared-lib')?.dependencies).toEqual([])
+      expect(RepoGraph.getDependencies(graph, 'repo-a')).toContain('shared-lib')
+      expect(RepoGraph.getDependencies(graph, 'shared-lib')).toEqual([])
     })
 
     it('builds graph with multiple member configs', () => {
@@ -207,13 +209,13 @@ describe('Graph', () => {
         },
       ]
 
-      const graph = Graph.buildFromMemberConfigs(configs)
+      const graph = RepoGraph.fromMemberConfigs(configs)
 
-      expect(Graph.nodeIds(graph).sort()).toEqual(['repo-a', 'repo-b', 'shared-lib'])
+      expect(RepoGraph.repoIds(graph).sort()).toEqual(['repo-a', 'repo-b', 'shared-lib'])
       // Both repos depend on shared-lib
-      expect(Graph.getNode(graph, 'repo-a')?.dependencies).toContain('shared-lib')
-      expect(Graph.getNode(graph, 'repo-b')?.dependencies).toContain('shared-lib')
-      expect(Graph.getNode(graph, 'shared-lib')?.dependencies).toEqual([])
+      expect(RepoGraph.getDependencies(graph, 'repo-a')).toContain('shared-lib')
+      expect(RepoGraph.getDependencies(graph, 'repo-b')).toContain('shared-lib')
+      expect(RepoGraph.getDependencies(graph, 'shared-lib')).toEqual([])
     })
 
     it('handles complex dependency chains', () => {
@@ -243,15 +245,15 @@ describe('Graph', () => {
         },
       ]
 
-      const graph = Graph.buildFromMemberConfigs(configs)
+      const graph = RepoGraph.fromMemberConfigs(configs)
 
-      expect(Graph.nodeIds(graph).sort()).toEqual(['app', 'core', 'utils'])
+      expect(RepoGraph.repoIds(graph).sort()).toEqual(['app', 'core', 'utils'])
       // app depends on core and utils
-      expect(Graph.getNode(graph, 'app')?.dependencies.sort()).toEqual(['core', 'utils'])
+      expect(RepoGraph.getDependencies(graph, 'app').sort()).toEqual(['core', 'utils'])
       // core depends on utils
-      expect(Graph.getNode(graph, 'core')?.dependencies).toEqual(['utils'])
+      expect(RepoGraph.getDependencies(graph, 'core')).toEqual(['utils'])
       // utils has no dependencies
-      expect(Graph.getNode(graph, 'utils')?.dependencies).toEqual([])
+      expect(RepoGraph.getDependencies(graph, 'utils')).toEqual([])
     })
   })
 })
@@ -261,10 +263,10 @@ describe('executeTopoForAll', () => {
     const order: string[] = []
 
     // c -> b -> a
-    let graph = Graph.empty<string>()
-    graph = Graph.addNode(graph, 'a', 'data-a', [])
-    graph = Graph.addNode(graph, 'b', 'data-b', ['a'])
-    graph = Graph.addNode(graph, 'c', 'data-c', ['b'])
+    let graph = RepoGraph.empty()
+    graph = RepoGraph.addRepo(graph, 'a', { url: 'url-a' }, [])
+    graph = RepoGraph.addRepo(graph, 'b', { url: 'url-b' }, ['a'])
+    graph = RepoGraph.addRepo(graph, 'c', { url: 'url-c' }, ['b'])
 
     const items: Array<[string, string]> = [
       ['c', 'data-c'],
@@ -297,11 +299,11 @@ describe('executeTopoForAll', () => {
     //   b   c
     //    \ /
     //     d
-    let graph = Graph.empty<string>()
-    graph = Graph.addNode(graph, 'a', 'data-a', [])
-    graph = Graph.addNode(graph, 'b', 'data-b', ['a'])
-    graph = Graph.addNode(graph, 'c', 'data-c', ['a'])
-    graph = Graph.addNode(graph, 'd', 'data-d', ['b', 'c'])
+    let graph = RepoGraph.empty()
+    graph = RepoGraph.addRepo(graph, 'a', { url: 'url-a' }, [])
+    graph = RepoGraph.addRepo(graph, 'b', { url: 'url-b' }, ['a'])
+    graph = RepoGraph.addRepo(graph, 'c', { url: 'url-c' }, ['a'])
+    graph = RepoGraph.addRepo(graph, 'd', { url: 'url-d' }, ['b', 'c'])
 
     const items: Array<[string, string]> = [
       ['d', 'data-d'],
@@ -340,9 +342,9 @@ describe('executeTopoForAll', () => {
   it('handles items not in graph', async () => {
     const order: string[] = []
 
-    let graph = Graph.empty<string>()
-    graph = Graph.addNode(graph, 'a', 'data-a', [])
-    graph = Graph.addNode(graph, 'b', 'data-b', ['a'])
+    let graph = RepoGraph.empty()
+    graph = RepoGraph.addRepo(graph, 'a', { url: 'url-a' }, [])
+    graph = RepoGraph.addRepo(graph, 'b', { url: 'url-b' }, ['a'])
 
     // 'c' is in items but not in graph - should still work
     const items: Array<[string, string]> = [
@@ -369,10 +371,10 @@ describe('executeTopoForAll', () => {
   })
 
   it('returns CycleError for circular dependencies', async () => {
-    let graph = Graph.empty<string>()
-    graph = Graph.addNode(graph, 'a', 'data-a', ['c'])
-    graph = Graph.addNode(graph, 'b', 'data-b', ['a'])
-    graph = Graph.addNode(graph, 'c', 'data-c', ['b'])
+    let graph = RepoGraph.empty()
+    graph = RepoGraph.addRepo(graph, 'a', { url: 'url-a' }, ['c'])
+    graph = RepoGraph.addRepo(graph, 'b', { url: 'url-b' }, ['a'])
+    graph = RepoGraph.addRepo(graph, 'c', { url: 'url-c' }, ['b'])
 
     const items: Array<[string, string]> = [
       ['a', 'data-a'],
@@ -398,11 +400,11 @@ describe('executeTopoForAll', () => {
     let currentConcurrent = 0
 
     // All independent nodes
-    let graph = Graph.empty<string>()
-    graph = Graph.addNode(graph, 'a', 'data-a', [])
-    graph = Graph.addNode(graph, 'b', 'data-b', [])
-    graph = Graph.addNode(graph, 'c', 'data-c', [])
-    graph = Graph.addNode(graph, 'd', 'data-d', [])
+    let graph = RepoGraph.empty()
+    graph = RepoGraph.addRepo(graph, 'a', { url: 'url-a' }, [])
+    graph = RepoGraph.addRepo(graph, 'b', { url: 'url-b' }, [])
+    graph = RepoGraph.addRepo(graph, 'c', { url: 'url-c' }, [])
+    graph = RepoGraph.addRepo(graph, 'd', { url: 'url-d' }, [])
 
     const items: Array<[string, string]> = [
       ['a', 'data-a'],

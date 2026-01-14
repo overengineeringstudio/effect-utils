@@ -11,8 +11,8 @@ import { createBareRepo, createWorkspace, getGitRev, withTestCtx } from '../test
 import { syncCommand } from './mod.ts'
 
 describe('sync command', () => {
-  it('syncs missing repo', (test) =>
-    withTestCtx(test)(
+  it('syncs missing repo', () =>
+    withTestCtx(
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
         const bareRepoPath = yield* createBareRepo('missing-repo')
@@ -40,8 +40,8 @@ describe('sync command', () => {
       }),
     ))
 
-  it('skips existing repos', (test) =>
-    withTestCtx(test)(
+  it('skips existing repos', () =>
+    withTestCtx(
       Effect.gen(function* () {
         const bareRepoPath = yield* createBareRepo('existing-repo')
 
@@ -69,8 +69,8 @@ describe('sync command', () => {
       }),
     ))
 
-  it('dry run does not clone', (test) =>
-    withTestCtx(test)(
+  it('dry run does not clone', () =>
+    withTestCtx(
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
         const bareRepoPath = yield* createBareRepo('dry-run-repo')
@@ -97,8 +97,8 @@ describe('sync command', () => {
       }),
     ))
 
-  it('reports nothing to sync when all repos exist', (test) =>
-    withTestCtx(test)(
+  it('reports nothing to sync when all repos exist', () =>
+    withTestCtx(
       Effect.gen(function* () {
         const workspacePath = yield* createWorkspace({
           rootRepos: {
@@ -121,8 +121,8 @@ describe('sync command', () => {
       }),
     ))
 
-  it('handles empty workspace', (test) =>
-    withTestCtx(test)(
+  it('handles empty workspace', () =>
+    withTestCtx(
       Effect.gen(function* () {
         const workspacePath = yield* createWorkspace({
           repos: [],
@@ -141,8 +141,8 @@ describe('sync command', () => {
       }),
     ))
 
-  it('adds workspace members with dotdot.json to root config', (test) =>
-    withTestCtx(test)(
+  it('adds workspace members with dotdot.json to root config', () =>
+    withTestCtx(
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
 

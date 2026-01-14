@@ -18,11 +18,11 @@ import {
   executeTopoForAll,
   findWorkspaceRoot,
   Git,
-  Graph,
   loadRootConfig,
   mergeMemberConfigs,
   type PackageIndexEntry,
   type RepoConfig,
+  RepoGraph,
   runShellCommand,
   writeGeneratedConfig,
 } from '../lib/mod.ts'
@@ -287,7 +287,7 @@ export const syncCommand = Cli.Command.make(
       if (mode === 'topo' || mode === 'topo-parallel') {
         // Build dependency graph for topological execution
         // Using member configs for dependency ordering
-        const graph = Graph.buildFromMemberConfigs(memberConfigs)
+        const graph = RepoGraph.fromMemberConfigs(memberConfigs)
 
         results = yield* executeTopoForAll(repoEntries, executeFn, graph, options).pipe(
           Effect.catchTag('CycleError', (e) =>

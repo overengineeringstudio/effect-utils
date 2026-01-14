@@ -264,7 +264,6 @@ export const mergeMemberConfigs = (configs: MemberConfigSource[]): MergedConfig 
           repos[name] = {
             url: depConfig.url,
             rev: depConfig.rev,
-            install: depConfig.install,
           }
         }
       }

@@ -28,8 +28,6 @@ export const DepConfigSchema = Schema.Struct({
   url: Schema.String,
   /** Pinned commit SHA */
   rev: Schema.optional(Schema.String),
-  /** Command to run after cloning (e.g., "bun install") */
-  install: Schema.optional(Schema.String),
 })
 
 export type DepConfig = typeof DepConfigSchema.Type

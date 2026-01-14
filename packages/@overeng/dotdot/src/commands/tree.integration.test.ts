@@ -10,8 +10,8 @@ import { createWorkspace, withTestCtx } from '../test-utils/mod.ts'
 import { treeCommand } from './mod.ts'
 
 describe('tree command', () => {
-  it('shows empty tree', (test) =>
-    withTestCtx(test)(
+  it('shows empty tree', () =>
+    withTestCtx(
       Effect.gen(function* () {
         const workspacePath = yield* createWorkspace({
           repos: [],
@@ -25,8 +25,8 @@ describe('tree command', () => {
       }),
     ))
 
-  it('shows repos from root config', (test) =>
-    withTestCtx(test)(
+  it('shows repos from root config', () =>
+    withTestCtx(
       Effect.gen(function* () {
         const workspacePath = yield* createWorkspace({
           rootRepos: {
@@ -47,8 +47,8 @@ describe('tree command', () => {
       }),
     ))
 
-  it('shows repos with revisions', (test) =>
-    withTestCtx(test)(
+  it('shows repos with revisions', () =>
+    withTestCtx(
       Effect.gen(function* () {
         const workspacePath = yield* createWorkspace({
           rootRepos: {
@@ -72,8 +72,8 @@ describe('tree command', () => {
       }),
     ))
 
-  it('handles workspace with member configs in sync', (test) =>
-    withTestCtx(test)(
+  it('handles workspace with member configs in sync', () =>
+    withTestCtx(
       Effect.gen(function* () {
         // Member config declares repo-b, which is also in root config (in sync)
         const workspacePath = yield* createWorkspace({

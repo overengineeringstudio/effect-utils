@@ -3,32 +3,36 @@
  */
 
 import { FileSystem } from '@effect/platform'
-import { Effect } from 'effect'
+import { Effect, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { ConfigOutOfSyncError, CurrentWorkingDirectory } from '../lib/mod.ts'
+import { ConfigOutOfSyncError, CurrentWorkingDirectory, WorkspaceService } from '../lib/mod.ts'
 import { createWorkspace, getGitRev, withTestCtx } from '../test-utils/mod.ts'
-import { statusCommand } from './mod.ts'
+import { statusHandler } from './mod.ts'
+
+/** Helper to provide WorkspaceService layer for testing */
+const withWorkspaceService = (workspacePath: string) =>
+  WorkspaceService.live.pipe(Layer.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
 
 describe('status command', () => {
-  it('shows empty workspace', (test) =>
-    withTestCtx(test)(
+  it('shows empty workspace', () =>
+    withTestCtx(
       Effect.gen(function* () {
         const workspacePath = yield* createWorkspace({
           repos: [],
         })
 
-        const result = yield* statusCommand
-          .handler({})
-          .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
+        const result = yield* statusHandler.pipe(
+          Effect.provide(withWorkspaceService(workspacePath)),
+        )
 
         // Command should succeed (no error)
         expect(result).toBeUndefined()
       }),
     ))
 
-  it('shows declared repos that exist', (test) =>
-    withTestCtx(test)(
+  it('shows declared repos that exist', () =>
+    withTestCtx(
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
         const workspacePath = yield* createWorkspace({
@@ -54,16 +58,16 @@ describe('status command', () => {
           ) + '\n'
         yield* fs.writeFileString(configPath, configContent)
 
-        const result = yield* statusCommand
-          .handler({})
-          .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
+        const result = yield* statusHandler.pipe(
+          Effect.provide(withWorkspaceService(workspacePath)),
+        )
 
         expect(result).toBeUndefined()
       }),
     ))
 
-  it('shows declared repos that are missing', (test) =>
-    withTestCtx(test)(
+  it('shows declared repos that are missing', () =>
+    withTestCtx(
       Effect.gen(function* () {
         const workspacePath = yield* createWorkspace({
           rootRepos: {
@@ -72,16 +76,16 @@ describe('status command', () => {
           repos: [], // Don't create the repo
         })
 
-        const result = yield* statusCommand
-          .handler({})
-          .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
+        const result = yield* statusHandler.pipe(
+          Effect.provide(withWorkspaceService(workspacePath)),
+        )
 
         expect(result).toBeUndefined()
       }),
     ))
 
-  it('shows dirty repos', (test) =>
-    withTestCtx(test)(
+  it('shows dirty repos', () =>
+    withTestCtx(
       Effect.gen(function* () {
         const workspacePath = yield* createWorkspace({
           rootRepos: {
@@ -90,20 +94,21 @@ describe('status command', () => {
           repos: [{ name: 'dirty-repo', isGitRepo: true, isDirty: true }],
         })
 
-        const result = yield* statusCommand
-          .handler({})
-          .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
+        const result = yield* statusHandler.pipe(
+          Effect.provide(withWorkspaceService(workspacePath)),
+        )
 
         expect(result).toBeUndefined()
       }),
     ))
 
-  it('shows repos declared in multiple configs', (test) =>
-    withTestCtx(test)(
+  it('shows repos declared in multiple configs', () =>
+    withTestCtx(
       Effect.gen(function* () {
         const workspacePath = yield* createWorkspace({
           rootRepos: {
             'shared-repo': { url: 'git@github.com:test/shared-repo.git' },
+            'repo-with-config': { url: 'git@github.com:test/repo-with-config.git' },
           },
           repos: [
             { name: 'shared-repo', isGitRepo: true },
@@ -118,16 +123,16 @@ describe('status command', () => {
           ],
         })
 
-        const result = yield* statusCommand
-          .handler({})
-          .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
+        const result = yield* statusHandler.pipe(
+          Effect.provide(withWorkspaceService(workspacePath)),
+        )
 
         expect(result).toBeUndefined()
       }),
     ))
 
-  it('shows diverged revision', (test) =>
-    withTestCtx(test)(
+  it('shows diverged revision', () =>
+    withTestCtx(
       Effect.gen(function* () {
         const workspacePath = yield* createWorkspace({
           rootRepos: {
@@ -139,16 +144,16 @@ describe('status command', () => {
           repos: [{ name: 'diverged-repo', isGitRepo: true }],
         })
 
-        const result = yield* statusCommand
-          .handler({})
-          .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
+        const result = yield* statusHandler.pipe(
+          Effect.provide(withWorkspaceService(workspacePath)),
+        )
 
         expect(result).toBeUndefined()
       }),
     ))
 
-  it('fails when workspace member with dotdot.json is not in root config', (test) =>
-    withTestCtx(test)(
+  it('fails when workspace member with dotdot.json is not in root config', () =>
+    withTestCtx(
       Effect.gen(function* () {
         // Create workspace with a member that has dotdot.json but is NOT in root config
         const workspacePath = yield* createWorkspace({
@@ -165,9 +170,10 @@ describe('status command', () => {
         })
 
         // Status should fail with ConfigOutOfSyncError
-        const result = yield* statusCommand
-          .handler({})
-          .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)), Effect.flip)
+        const result = yield* statusHandler.pipe(
+          Effect.provide(withWorkspaceService(workspacePath)),
+          Effect.flip,
+        )
 
         expect(result).toBeInstanceOf(ConfigOutOfSyncError)
         expect(result.message).toContain('untracked-member')

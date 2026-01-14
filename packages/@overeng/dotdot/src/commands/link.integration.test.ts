@@ -16,8 +16,8 @@ import {
 import { linkSubcommands } from './link.ts'
 
 describe('link command', () => {
-  it('creates symlinks from packages config', (test) =>
-    withTestCtx(test)(
+  it('creates symlinks from packages config', () =>
+    withTestCtx(
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
         const workspacePath = yield* createWorkspace({
@@ -54,8 +54,8 @@ describe('link command', () => {
       }),
     ))
 
-  it('dry run does not create symlinks', (test) =>
-    withTestCtx(test)(
+  it('dry run does not create symlinks', () =>
+    withTestCtx(
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
         const workspacePath = yield* createWorkspace({
@@ -82,8 +82,8 @@ describe('link command', () => {
       }),
     ))
 
-  it('creates symlinks for packages with different names', (test) =>
-    withTestCtx(test)(
+  it('creates symlinks for packages with different names', () =>
+    withTestCtx(
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
         const workspacePath = yield* createWorkspace({
@@ -120,8 +120,8 @@ describe('link command', () => {
       }),
     ))
 
-  it('force overwrites existing symlinks', (test) =>
-    withTestCtx(test)(
+  it('force overwrites existing symlinks', () =>
+    withTestCtx(
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
         const workspacePath = yield* createWorkspace({
@@ -152,8 +152,8 @@ describe('link command', () => {
       }),
     ))
 
-  it('remove subcommand removes existing symlinks', (test) =>
-    withTestCtx(test)(
+  it('remove subcommand removes existing symlinks', () =>
+    withTestCtx(
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
         const workspacePath = yield* createWorkspace({
@@ -188,8 +188,8 @@ describe('link command', () => {
       }),
     ))
 
-  it('remove and create subcommands work together', (test) =>
-    withTestCtx(test)(
+  it('remove and create subcommands work together', () =>
+    withTestCtx(
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
         const workspacePath = yield* createWorkspace({
@@ -227,8 +227,8 @@ describe('link command', () => {
       }),
     ))
 
-  it('skips when source does not exist', (test) =>
-    withTestCtx(test)(
+  it('skips when source does not exist', () =>
+    withTestCtx(
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
         const workspacePath = yield* createWorkspace({
@@ -254,8 +254,8 @@ describe('link command', () => {
       }),
     ))
 
-  it('handles empty packages config', (test) =>
-    withTestCtx(test)(
+  it('handles empty packages config', () =>
+    withTestCtx(
       Effect.gen(function* () {
         const workspacePath = yield* createWorkspace({
           repos: [],
@@ -269,8 +269,8 @@ describe('link command', () => {
       }),
     ))
 
-  it('supports different package name than path', (test) =>
-    withTestCtx(test)(
+  it('supports different package name than path', () =>
+    withTestCtx(
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
         const workspacePath = yield* createWorkspace({

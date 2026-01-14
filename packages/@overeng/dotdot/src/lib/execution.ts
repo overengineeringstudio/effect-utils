@@ -4,7 +4,7 @@
 
 import { Effect, Schema } from 'effect'
 
-import { type CycleError, type Graph, toLayers, topologicalSort } from './graph.ts'
+import { type CycleError, type RepoGraph, toLayers, topologicalSort } from './repo-graph.ts'
 
 /** Execution mode for repo operations */
 export type ExecutionMode = 'parallel' | 'sequential' | 'topo' | 'topo-parallel'
@@ -19,9 +19,9 @@ export type ExecutionOptions = {
 }
 
 /** Options for topological execution */
-export type TopoExecutionOptions<T> = ExecutionOptions & {
+export type TopoExecutionOptions = ExecutionOptions & {
   /** Dependency graph for topo modes */
-  graph?: Graph<T> | undefined
+  graph?: RepoGraph | undefined
 }
 
 /**
@@ -51,7 +51,7 @@ export const executeForAll = <T, A, E, R>(
 export const executeTopoForAll = <K extends string, V, A, E, R>(
   items: Array<[K, V]>,
   fn: (item: [K, V]) => Effect.Effect<A, E, R>,
-  graph: Graph<unknown>,
+  graph: RepoGraph,
   options: ExecutionOptions,
 ): Effect.Effect<A[], E | CycleError, R> =>
   Effect.gen(function* () {

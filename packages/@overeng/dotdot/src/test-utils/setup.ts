@@ -17,7 +17,7 @@ export type RepoFixture = {
   /** Has its own dotdot.json member config */
   hasConfig?: boolean
   /** Member config deps (repos this one depends on) */
-  configDeps?: Record<string, { url: string; rev?: string; install?: string }>
+  configDeps?: Record<string, { url: string; rev?: string }>
   /** Member config exposes (packages this repo provides) */
   configExposes?: Record<string, { path: string; install?: string }>
   /** Git remote URL to set (for testing workspace member detection) */
@@ -185,11 +185,11 @@ export const generateRootConfig = (
 /** Generate member config JSON with exposes and deps */
 export const generateMemberConfig = (
   exposes?: Record<string, { path: string; install?: string }>,
-  deps?: Record<string, { url: string; rev?: string; install?: string }>,
+  deps?: Record<string, { url: string; rev?: string }>,
 ): string => {
   const output: {
     exposes?: Record<string, { path: string; install?: string }>
-    deps?: Record<string, { url: string; rev?: string; install?: string }>
+    deps?: Record<string, { url: string; rev?: string }>
   } = {}
 
   if (exposes && Object.keys(exposes).length > 0) {

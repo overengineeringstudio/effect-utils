@@ -11,8 +11,8 @@ import { createBareRepo, createWorkspace, getGitRev, withTestCtx } from '../test
 import { pullCommand } from './mod.ts'
 
 describe('pull command', () => {
-  it('pulls updates from remote', (test) =>
-    withTestCtx(test)(
+  it('pulls updates from remote', () =>
+    withTestCtx(
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
         const bareRepoPath = yield* createBareRepo('pullable-repo')
@@ -76,8 +76,8 @@ describe('pull command', () => {
       }),
     ))
 
-  it('skips dirty repos', (test) =>
-    withTestCtx(test)(
+  it('skips dirty repos', () =>
+    withTestCtx(
       Effect.gen(function* () {
         const workspacePath = yield* createWorkspace({
           rootRepos: {
@@ -98,8 +98,8 @@ describe('pull command', () => {
       }),
     ))
 
-  it('skips repos without remote', (test) =>
-    withTestCtx(test)(
+  it('skips repos without remote', () =>
+    withTestCtx(
       Effect.gen(function* () {
         const workspacePath = yield* createWorkspace({
           rootRepos: {
@@ -120,8 +120,8 @@ describe('pull command', () => {
       }),
     ))
 
-  it('handles empty workspace', (test) =>
-    withTestCtx(test)(
+  it('handles empty workspace', () =>
+    withTestCtx(
       Effect.gen(function* () {
         const workspacePath = yield* createWorkspace({
           repos: [],
@@ -138,8 +138,8 @@ describe('pull command', () => {
       }),
     ))
 
-  it('skips missing repos', (test) =>
-    withTestCtx(test)(
+  it('skips missing repos', () =>
+    withTestCtx(
       Effect.gen(function* () {
         const workspacePath = yield* createWorkspace({
           rootRepos: {

@@ -6,10 +6,8 @@
 
 import { NodeContext } from '@effect/platform-node'
 import { Duration, Effect, Layer, type Scope } from 'effect'
-import type { TestContext } from 'vitest'
 
 export type WithTestCtxParams = {
-  suffix?: string
   timeout?: number
 }
 
@@ -22,18 +20,20 @@ const DEFAULT_TIMEOUT = Duration.toMillis(Duration.seconds(30))
  * ```ts
  * const withTestCtx = makeWithTestCtx()
  *
- * it('my test', async (test) => {
- *   await withTestCtx(test)(
+ * it('my test', () =>
+ *   withTestCtx(
  *     Effect.gen(function* () {
  *       // test body with access to FileSystem, etc.
  *     })
  *   )
- * })
+ * )
  * ```
+ *
+ * IMPORTANT: Do not use `(test) =>` pattern as Vitest handles test callbacks
+ * with parameters differently, causing Promise resolution issues with Effect.
  */
 export const makeWithTestCtx =
   (params: WithTestCtxParams = {}) =>
-  (_test: TestContext) =>
   <A, E>(self: Effect.Effect<A, E, NodeContext.NodeContext | Scope.Scope>): Promise<A> => {
     const timeout = params.timeout ?? DEFAULT_TIMEOUT
 

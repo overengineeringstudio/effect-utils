@@ -49,9 +49,9 @@ export {
 export * as Git from './git.ts'
 export { GitError, runShellCommand, ShellError } from './git.ts'
 
-// Graph
-export * as Graph from './graph.ts'
-export { CycleError } from './graph.ts'
+// RepoGraph (dependency graph using Effect.Graph)
+export * as RepoGraph from './repo-graph.ts'
+export { CycleError } from './repo-graph.ts'
 
 // Loader
 export {
@@ -72,3 +72,21 @@ export {
 } from './loader.ts'
 
 export { CurrentWorkingDirectory } from './workspace.ts'
+
+// WorkspaceService
+export {
+  existsAsGitRepo,
+  isDangling,
+  isDependency,
+  isDiverged,
+  isMember,
+  type RepoFsState,
+  type RepoGitState,
+  type RepoInfo,
+  type RepoTracking,
+  type WorkspaceContext,
+  type WorkspaceScanDeps,
+  type WorkspaceScanError,
+  WorkspaceService,
+  type WorkspaceServiceApi,
+} from './workspace-service.ts'
