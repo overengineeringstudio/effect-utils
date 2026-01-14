@@ -43,6 +43,7 @@ export const catalog = defineCatalog({
     '@overeng/genie': 'file:packages/@overeng/genie',
     '@overeng/mono': 'file:packages/@overeng/mono',
     '@overeng/dotdot': 'file:packages/@overeng/dotdot',
+    '@overeng/effect-path': 'file:packages/@overeng/effect-path',
     '@overeng/notion-effect-schema': 'file:packages/@overeng/notion-effect-schema',
     '@overeng/notion-effect-client': 'file:packages/@overeng/notion-effect-client',
     '@overeng/notion-cli': 'file:packages/@overeng/notion-cli',

@@ -28,6 +28,13 @@ All notable changes to this project will be documented in this file.
   - Import config helpers from `@overeng/notion-effect-cli/config`
   - CLI now requires Bun runtime for native TypeScript config loading
 
+- **@overeng/notion-effect-cli**: Adopted type-safe file paths from `@overeng/effect-path` (breaking change)
+  - `DatabaseConfig.output` now requires `RelativeFilePath` - use `file()` helper
+  - `SchemaGenConfig.outputDir` now requires `RelativeDirPath` - use `dir()` helper
+  - Import `file` and `dir` helpers from `@overeng/notion-effect-cli/config`
+  - Internal path operations now use `EffectPath.ops.*` instead of `node:path`
+  - Removed `Path.Path` service dependency from Effect requirements
+
 - **Monorepo CLI**: Replaced Biome with oxc toolchain (oxlint + oxfmt)
   - Removed `@biomejs/biome` dependency
   - `mono lint` now uses oxlint exclusively

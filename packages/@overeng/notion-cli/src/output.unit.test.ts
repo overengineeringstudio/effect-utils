@@ -1,6 +1,7 @@
-import { FileSystem, Path } from '@effect/platform'
+import { FileSystem } from '@effect/platform'
 import { NodeContext } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
+import { EffectPath } from '@overeng/effect-path'
 import { Effect } from 'effect'
 import { expect } from 'vitest'
 
@@ -14,10 +15,9 @@ describe('output', () => {
     it.effect('should create file with read-only permissions by default', () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
-        const path = yield* Path.Path
 
-        const tempDir = yield* fs.makeTempDirectoryScoped()
-        const outputPath = path.join(tempDir, 'schema.gen.ts')
+        const tempDir = EffectPath.unsafe.absoluteDir(yield* fs.makeTempDirectoryScoped())
+        const outputPath = EffectPath.ops.join(tempDir, EffectPath.unsafe.relativeFile('schema.gen.ts'))
         const code = '// Generated code\nexport const Test = {}'
 
         yield* writeSchemaToFile({ code, outputPath })
@@ -34,10 +34,9 @@ describe('output', () => {
     it.effect('should create file with read-write permissions when writable option is true', () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
-        const path = yield* Path.Path
 
-        const tempDir = yield* fs.makeTempDirectoryScoped()
-        const outputPath = path.join(tempDir, 'schema.gen.ts')
+        const tempDir = EffectPath.unsafe.absoluteDir(yield* fs.makeTempDirectoryScoped())
+        const outputPath = EffectPath.ops.join(tempDir, EffectPath.unsafe.relativeFile('schema.gen.ts'))
         const code = '// Generated code\nexport const Test = {}'
 
         yield* writeSchemaToFile({ code, outputPath, writable: true })
@@ -54,10 +53,9 @@ describe('output', () => {
     it.effect('should successfully overwrite an existing read-only file', () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
-        const path = yield* Path.Path
 
-        const tempDir = yield* fs.makeTempDirectoryScoped()
-        const outputPath = path.join(tempDir, 'schema.gen.ts')
+        const tempDir = EffectPath.unsafe.absoluteDir(yield* fs.makeTempDirectoryScoped())
+        const outputPath = EffectPath.ops.join(tempDir, EffectPath.unsafe.relativeFile('schema.gen.ts'))
         const code1 = '// Generated code v1'
         const code2 = '// Generated code v2'
 
@@ -84,10 +82,10 @@ describe('output', () => {
     it.effect('should create parent directories if they do not exist', () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
-        const path = yield* Path.Path
 
-        const tempDir = yield* fs.makeTempDirectoryScoped()
-        const outputPath = path.join(tempDir, 'nested', 'deeply', 'schema.gen.ts')
+        const tempDir = EffectPath.unsafe.absoluteDir(yield* fs.makeTempDirectoryScoped())
+        const nestedDir = EffectPath.ops.join(tempDir, EffectPath.unsafe.relativeDir('nested/deeply/'))
+        const outputPath = EffectPath.ops.join(nestedDir, EffectPath.unsafe.relativeFile('schema.gen.ts'))
         const code = '// Generated code'
 
         yield* writeSchemaToFile({ code, outputPath })
@@ -103,10 +101,9 @@ describe('output', () => {
     it.effect('should handle switching from writable to read-only on regeneration', () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
-        const path = yield* Path.Path
 
-        const tempDir = yield* fs.makeTempDirectoryScoped()
-        const outputPath = path.join(tempDir, 'schema.gen.ts')
+        const tempDir = EffectPath.unsafe.absoluteDir(yield* fs.makeTempDirectoryScoped())
+        const outputPath = EffectPath.ops.join(tempDir, EffectPath.unsafe.relativeFile('schema.gen.ts'))
         const code1 = '// Generated code v1'
         const code2 = '// Generated code v2'
 
