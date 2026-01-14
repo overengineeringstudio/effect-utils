@@ -113,56 +113,82 @@ bun "$tsc_entry" --project "$tsconfig_path" --noEmit
 
 Where `$tsc_entry` is `node_modules/typescript/bin/tsc`.
 
-### Test Results
+### Test Results (Verified)
 
-| Fixture | tsgo | tsc |
-|---------|------|-----|
+**Native binary tested directly:** `node_modules/@typescript/native-preview-linux-x64/lib/tsgo`
+- Binary type: ELF 64-bit, statically linked, 20MB
+- Works standalone without Node.js/Bun wrapper
+
+| Fixture | tsgo native | tsc |
+|---------|-------------|-----|
 | shared-lib | ✅ Pass | ✅ Pass |
 | @acme/utils | ✅ Pass | ✅ Pass |
+| @overeng/genie | ✅ Pass | ✅ Pass |
 
 ### Integration Options
 
-#### Option 1: npm package (Recommended)
+#### Option 1: npm package with native binary (Recommended)
 
-Add `@typescript/native-preview` to devDependencies and modify mk-bun-cli.nix:
+The `@typescript/native-preview` package includes platform-specific native binaries:
+- `@typescript/native-preview-linux-x64/lib/tsgo` (20MB, statically linked)
+- `@typescript/native-preview-darwin-arm64/lib/tsgo`
+- etc.
+
+These can be called directly without bun/node wrapper:
 
 ```nix
-# Replace tsc_entry with tsgo_entry
-tsgo_entry="$package_path/node_modules/@typescript/native-preview/bin/tsgo"
-if [ -f "$tsgo_entry" ]; then
-  bun "$tsgo_entry" --project "$tsconfig_path" --noEmit
+# In mk-bun-cli.nix typecheck section:
+tsgo_native="$package_path/node_modules/@typescript/native-preview-linux-x64/lib/tsgo"
+if [ -x "$tsgo_native" ]; then
+  "$tsgo_native" --project "$tsconfig_path" --noEmit
 else
   # Fallback to tsc
   bun "$tsc_entry" --project "$tsconfig_path" --noEmit
 fi
 ```
 
-**Pros:** Simple, works now
-**Cons:** Requires adding devDependency to each package
+**Pros:** Works now, statically linked binary, no runtime dependency
+**Cons:** Requires adding devDependency, platform-specific paths
 
-#### Option 2: Nix package (Needs Verification)
+#### Option 2: Nix package (Not Found in nixpkgs)
 
-`tsgo` may be available in nixpkgs unstable (TODO: verify package attribute name):
+Searched nixpkgs unstable - **no `tsgo` package found**. The package would need to be:
+- Added to nixpkgs via PR, or
+- Built locally using `buildGoModule`
 
 ```nix
-nativeBuildInputs = [ pkgsUnstable.bun pkgsUnstable.tsgo pkgs.cacert ];
-
-# Then use directly:
-tsgo --project "$tsconfig_path" --noEmit
+# Example local build (requires Go 1.25+):
+tsgo = pkgs.buildGoModule {
+  pname = "tsgo";
+  version = "7.0.0-dev";
+  src = pkgs.fetchFromGitHub {
+    owner = "microsoft";
+    repo = "typescript-go";
+    rev = "...";
+    hash = "...";
+  };
+  subPackages = [ "cmd/tsgo" ];
+  vendorHash = "...";
+};
 ```
 
-**Pros:** Cleaner, no npm dependency needed, native binary
-**Cons:** Requires nixpkgs unstable, needs verification
-
-**TODO:** Verify the exact package attribute name and test in a nix environment.
+**Cons:** Not in nixpkgs, requires Go 1.25+, maintenance burden
 
 ### Recommendation for mk-bun-cli
 
-**Pending verification** - If `pkgsUnstable.tsgo` exists, use Option 2. Otherwise use Option 1 (npm package).
+**Use Option 1** - The npm package's native binary is statically linked and works perfectly. Add platform detection:
+
+```nix
+# Determine platform-specific package name
+tsgo_platform = if pkgs.stdenv.isLinux && pkgs.stdenv.isx86_64 then "linux-x64"
+  else if pkgs.stdenv.isDarwin && pkgs.stdenv.isAarch64 then "darwin-arm64"
+  else if pkgs.stdenv.isDarwin && pkgs.stdenv.isx86_64 then "darwin-x64"
+  else null;
+```
 
 ### Parameter Addition
 
-Consider adding a `typechecker` parameter to mk-bun-cli.nix:
+Add a `typechecker` parameter to mk-bun-cli.nix:
 
 ```nix
 {
