@@ -1,3 +1,5 @@
+import type { RpcClientError } from '@effect/rpc'
+
 import {
   createEffectRoute,
   type ExitEncoded,
@@ -6,12 +8,14 @@ import {
 import { type User, UserNotFoundError } from '../rpc/api.ts'
 import { userClient } from '../rpc/client.ts'
 
+type LoaderError = UserNotFoundError | RpcClientError.RpcClientError
+
 /** User detail page route */
-export const Route = createEffectRoute('/users/$id')<{ id: string }, User, UserNotFoundError>({
+export const Route = createEffectRoute('/users/$id')<{ id: string }, User, LoaderError>({
   loader: ({ params }) => userClient.getUser({ id: params.id }),
   component: () => {
     const encoded = Route.useLoaderData() as ExitEncoded
-    const result = makeEffectLoaderResult<User, UserNotFoundError>(encoded)
+    const result = makeEffectLoaderResult<User, LoaderError>(encoded)
 
     return result.match({
       onSuccess: (user) => (

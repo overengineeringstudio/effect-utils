@@ -1,3 +1,4 @@
+import type { RpcClientError } from '@effect/rpc'
 import { Effect } from 'effect'
 import { useState } from 'react'
 
@@ -10,11 +11,11 @@ import type { User } from '../rpc/api.ts'
 import { userClient } from '../rpc/client.ts'
 
 /** Home page route showing user list */
-export const Route = createEffectRoute('/')<void, readonly User[], never>({
+export const Route = createEffectRoute('/')<void, readonly User[], RpcClientError.RpcClientError>({
   loader: () => userClient.listUsers(),
   component: () => {
     const encoded = Route.useLoaderData() as ExitEncoded
-    const result = makeEffectLoaderResult<readonly User[], never>(encoded)
+    const result = makeEffectLoaderResult<readonly User[], RpcClientError.RpcClientError>(encoded)
 
     return result.match({
       onSuccess: (initialUsers) => <UserList initialUsers={initialUsers} />,
