@@ -136,8 +136,8 @@ export const catalog = defineCatalog({
   ioredis: '5.6.1',
 
   // OpenTUI / Effect Atom (experimental)
-  '@effect-atom/atom': '0.4.11',
-  '@effect-atom/atom-react': '0.4.4',
+  '@effect-atom/atom': '0.4.13',
+  '@effect-atom/atom-react': '0.4.5',
   '@opentui/core': '0.1.68',
   '@opentui/react': '0.1.68',
 })
@@ -370,3 +370,106 @@ export const baseTsconfigCompilerOptions = {
     },
   ],
 } as const satisfies TSConfigCompilerOptions
+
+// =============================================================================
+// Oxlint Configuration Helpers
+// =============================================================================
+
+import type { OxlintConfigArgs, OxlintOverride } from '../packages/@overeng/genie/src/runtime/oxlint-config/mod.ts'
+
+/** Standard oxlint plugins for Effect/TypeScript projects (includes oxc for custom rules) */
+export const baseOxlintPlugins = ['import', 'typescript', 'unicorn', 'oxc'] as const
+
+/** Standard oxlint category severities */
+export const baseOxlintCategories = {
+  correctness: 'error',
+  suspicious: 'warn',
+  pedantic: 'off',
+  perf: 'warn',
+  style: 'off',
+  restriction: 'off',
+} as const satisfies OxlintConfigArgs['categories']
+
+/** Standard oxlint rules for Effect/TypeScript projects (includes custom overeng rules) */
+export const baseOxlintRules = {
+  // Disallow dynamic import() and require()
+  'import/no-dynamic-require': ['warn', { esmodule: true }],
+  // Disallow re-exports except in mod.ts entry points
+  'oxc/no-barrel-file': ['warn', { threshold: 0 }],
+  // Enforce named arguments (options objects) instead of positional parameters
+  'overeng/named-args': 'warn',
+  // Disallow CommonJS (require/module.exports) - enforce ESM
+  'import/no-commonjs': 'error',
+  // Detect circular dependencies
+  'import/no-cycle': 'warn',
+  // Prefer function expressions over declarations
+  'func-style': ['warn', 'expression', { allowArrowFunctions: true }],
+  // Enforce exported declarations come before non-exported declarations
+  'overeng/exports-first': 'warn',
+  // Require JSDoc comments on type/wildcard exports
+  'overeng/jsdoc-require-exports': 'warn',
+  // Basic quality rules
+  'no-unused-vars': 'warn',
+  eqeqeq: 'error',
+} as const satisfies OxlintConfigArgs['rules']
+
+/** Standard overrides for mod.ts entry point files */
+export const modEntryOxlintOverride = {
+  files: ['**/mod.ts'],
+  rules: { 'oxc/no-barrel-file': 'off' },
+} as const satisfies OxlintOverride
+
+/** Standard overrides for storybook files */
+export const storybookOxlintOverride = {
+  files: ['**/*.stories.tsx', '**/*.stories.ts', '**/.storybook/**'],
+  rules: {
+    'func-style': 'off',
+    'overeng/exports-first': 'off',
+    'overeng/jsdoc-require-exports': 'off',
+    'import/no-unassigned-import': 'off',
+  },
+} as const satisfies OxlintOverride
+
+/** Standard overrides for config files */
+export const configFilesOxlintOverride = {
+  files: ['**/vitest.config.ts', '**/vite.config.ts', '**/playwright.config.ts'],
+  rules: {
+    'func-style': 'off',
+    'overeng/jsdoc-require-exports': 'off',
+  },
+} as const satisfies OxlintOverride
+
+/** Standard overrides for test files */
+export const testFilesOxlintOverride = {
+  files: ['**/*.test.ts', '**/*.test.tsx', '**/__tests__/**'],
+  rules: {
+    'overeng/named-args': 'off',
+    'unicorn/no-array-sort': 'off',
+    'unicorn/consistent-function-scoping': 'off',
+    'require-yield': 'off',
+  },
+} as const satisfies OxlintOverride
+
+/** Standard oxlint ignore patterns */
+export const baseOxlintIgnorePatterns = ['dist', 'node_modules'] as const
+
+/**
+ * Path to the @overeng/oxc-config custom plugin relative to effect-utils root.
+ * Use with createOxcConfigJsPlugin() for external repos.
+ */
+export const oxcConfigPluginPath = 'packages/@overeng/oxc-config/src/mod.ts'
+
+/**
+ * Creates the jsPlugins path for @overeng/oxc-config custom lint rules.
+ * @param basePath Path from consuming package to effect-utils root (e.g. '../../../../../../effect-utils')
+ */
+export const createOxcConfigJsPlugin = (basePath: string) => `${basePath}/${oxcConfigPluginPath}`
+
+/** Combined base oxlint config for Effect/TypeScript projects (without jsPlugins - add separately) */
+export const baseOxlintConfig = {
+  plugins: baseOxlintPlugins,
+  categories: baseOxlintCategories,
+  rules: baseOxlintRules,
+  overrides: [modEntryOxlintOverride, storybookOxlintOverride, configFilesOxlintOverride, testFilesOxlintOverride],
+  ignorePatterns: baseOxlintIgnorePatterns,
+} as const satisfies OxlintConfigArgs
