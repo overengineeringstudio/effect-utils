@@ -385,11 +385,13 @@ export const runTaskGraph = <TId extends string, R = never>({
   options,
 }: {
   tasks: ReadonlyArray<TaskDef<any, unknown, unknown, R>>
-  options?: {
-    onStateChange?: (state: TaskSystemState) => Effect.Effect<void>
-    debounceMs?: number
-    concurrency?: number
-  } | undefined
+  options?:
+    | {
+        onStateChange?: (state: TaskSystemState) => Effect.Effect<void>
+        debounceMs?: number
+        concurrency?: number
+      }
+    | undefined
 }) =>
   Effect.scoped(
     Effect.gen(function* () {
@@ -511,11 +513,13 @@ export const runTaskGraphOrFail = <R = never>({
   options,
 }: {
   tasks: ReadonlyArray<TaskDef<any, unknown, unknown, R>>
-  options?: {
-    onStateChange?: (state: TaskSystemState) => Effect.Effect<void>
-    debounceMs?: number
-    concurrency?: number
-  } | undefined
+  options?:
+    | {
+        onStateChange?: (state: TaskSystemState) => Effect.Effect<void>
+        debounceMs?: number
+        concurrency?: number
+      }
+    | undefined
 }) =>
   Effect.gen(function* () {
     const result = yield* runTaskGraph({ tasks, options })

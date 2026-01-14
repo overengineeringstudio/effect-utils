@@ -5,9 +5,9 @@
  */
 
 import * as Cli from '@effect/cli'
-import { Effect } from 'effect'
+import { Effect, Layer } from 'effect'
 
-import { type RepoInfo, WorkspaceService } from '../lib/mod.ts'
+import { CurrentWorkingDirectory, type RepoInfo, WorkspaceService } from '../lib/mod.ts'
 
 /** Format the tree output */
 const formatTree = (repos: RepoInfo[]) =>
@@ -36,29 +36,36 @@ const formatTree = (repos: RepoInfo[]) =>
     }
   })
 
-/** Tree command implementation */
+/** Tree command handler - separated for testability */
+export const treeHandler = Effect.gen(function* () {
+  const workspace = yield* WorkspaceService
+
+  yield* Effect.log(`dotdot workspace: ${workspace.root}`)
+  yield* Effect.log('')
+
+  // Get all repos from workspace
+  const repos = yield* workspace.scanRepos()
+
+  if (repos.length === 0) {
+    yield* Effect.log('No repos declared in config')
+    return
+  }
+
+  // Sort by name for consistent output
+  repos.sort((a, b) => a.name.localeCompare(b.name))
+
+  // Show tree
+  yield* formatTree(repos)
+
+  yield* Effect.log('')
+  yield* Effect.log(`Total: ${repos.length} repo(s)`)
+}).pipe(Effect.withSpan('dotdot/tree'))
+
+/** Tree command implementation.
+ * Provides its own WorkspaceService.live layer - validates config is in sync before running. */
 export const treeCommand = Cli.Command.make('tree', {}, () =>
-  Effect.gen(function* () {
-    const workspace = yield* WorkspaceService
-
-    yield* Effect.log(`dotdot workspace: ${workspace.root}`)
-    yield* Effect.log('')
-
-    // Get all repos from workspace
-    const repos = yield* workspace.scanRepos()
-
-    if (repos.length === 0) {
-      yield* Effect.log('No repos declared in config')
-      return
-    }
-
-    // Sort by name for consistent output
-    repos.sort((a, b) => a.name.localeCompare(b.name))
-
-    // Show tree
-    yield* formatTree(repos)
-
-    yield* Effect.log('')
-    yield* Effect.log(`Total: ${repos.length} repo(s)`)
-  }).pipe(Effect.withSpan('dotdot/tree')),
+  treeHandler.pipe(
+    Effect.provide(WorkspaceService.live.pipe(Layer.provide(CurrentWorkingDirectory.live))),
+    Effect.catchTag('ConfigOutOfSyncError', (e) => Effect.logError(e.message)),
+  ),
 )

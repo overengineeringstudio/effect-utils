@@ -5,11 +5,12 @@
  */
 
 import * as Cli from '@effect/cli'
-import { Effect, Option, Schema } from 'effect'
+import { Effect, Layer, Option, Schema } from 'effect'
 
 import {
   type BaseResult,
   buildSummary,
+  CurrentWorkingDirectory,
   type ExecutionMode,
   executeForAll,
   existsAsGitRepo,
@@ -67,7 +68,47 @@ const execInRepo = ({ repo, command }: { repo: RepoInfo; command: string }) =>
     return result
   })
 
-/** Exec command implementation */
+/** Exec command handler - separated for testability */
+export const execHandler = ({
+  command,
+  mode,
+  maxParallel,
+}: {
+  command: string
+  mode: ExecutionMode
+  maxParallel: Option.Option<number>
+}) =>
+  Effect.gen(function* () {
+    const workspace = yield* WorkspaceService
+
+    yield* Effect.log(`dotdot workspace: ${workspace.root}`)
+    yield* Effect.log(`Running: ${command}`)
+    yield* Effect.log(`Execution mode: ${mode}`)
+    yield* Effect.log('')
+
+    // Get all repos and filter to existing git repos
+    const allRepos = yield* workspace.scanRepos()
+    const repos = allRepos.filter(existsAsGitRepo)
+
+    if (repos.length === 0) {
+      yield* Effect.log('No repos declared in config')
+      return
+    }
+
+    const results = yield* executeForAll({
+      items: repos,
+      fn: (repo) => execInRepo({ repo, command }),
+      options: { mode, maxParallel: Option.getOrUndefined(maxParallel) },
+    })
+
+    yield* Effect.log('')
+
+    const summary = buildSummary({ results, statusLabels: ExecStatusLabels })
+    yield* Effect.log(`Done: ${summary}`)
+  }).pipe(Effect.withSpan('dotdot/exec'))
+
+/** Exec command implementation.
+ * Provides its own WorkspaceService.live layer - validates config is in sync before running. */
 export const execCommand = Cli.Command.make(
   'exec',
   {
@@ -83,33 +124,9 @@ export const execCommand = Cli.Command.make(
       Cli.Options.optional,
     ),
   },
-  ({ command, mode, maxParallel }) =>
-    Effect.gen(function* () {
-      const workspace = yield* WorkspaceService
-
-      yield* Effect.log(`dotdot workspace: ${workspace.root}`)
-      yield* Effect.log(`Running: ${command}`)
-      yield* Effect.log(`Execution mode: ${mode}`)
-      yield* Effect.log('')
-
-      // Get all repos and filter to existing git repos
-      const allRepos = yield* workspace.scanRepos()
-      const repos = allRepos.filter(existsAsGitRepo)
-
-      if (repos.length === 0) {
-        yield* Effect.log('No repos declared in config')
-        return
-      }
-
-      const results = yield* executeForAll({
-        items: repos,
-        fn: (repo) => execInRepo({ repo, command }),
-        options: { mode, maxParallel: Option.getOrUndefined(maxParallel) },
-      })
-
-      yield* Effect.log('')
-
-      const summary = buildSummary({ results, statusLabels: ExecStatusLabels })
-      yield* Effect.log(`Done: ${summary}`)
-    }).pipe(Effect.withSpan('dotdot/exec')),
+  (args) =>
+    execHandler(args).pipe(
+      Effect.provide(WorkspaceService.live.pipe(Layer.provide(CurrentWorkingDirectory.live))),
+      Effect.catchTag('ConfigOutOfSyncError', (e) => Effect.logError(e.message)),
+    ),
 )

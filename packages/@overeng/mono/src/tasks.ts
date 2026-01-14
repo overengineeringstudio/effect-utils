@@ -1,16 +1,17 @@
+import { cpus } from 'node:os'
+
 import { FileSystem, Path } from '@effect/platform'
 import * as Command from '@effect/platform/Command'
 import type * as CommandExecutor from '@effect/platform/CommandExecutor'
 import type { PlatformError } from '@effect/platform/Error'
 import { Array, Effect, Exit, Logger, LogLevel, Option, Schedule, Stream } from 'effect'
-import { cpus } from 'node:os'
 
 import { type CommandError, GenieCoverageError } from './errors.ts'
 import { task } from './task-system/api.ts'
 import { runTaskGraph, runTaskGraphOrFail } from './task-system/graph.ts'
-import type { TaskDef } from './task-system/types.ts'
 import { ciRenderer } from './task-system/renderers/ci.ts'
 import { opentuiInlineRenderer } from './task-system/renderers/opentui-inline.tsx'
+import type { TaskDef } from './task-system/types.ts'
 import { IS_CI, runCommand } from './utils.ts'
 
 // =============================================================================
@@ -494,7 +495,9 @@ export const installAllWithTaskSystem = ({
           options: {
             // Retry with exponential backoff to handle bun cache race conditions
             // Attempts: 200ms, 400ms, 800ms (total ~3 retries)
-            retrySchedule: Schedule.exponential('200 millis').pipe(Schedule.compose(Schedule.recurs(3))),
+            retrySchedule: Schedule.exponential('200 millis').pipe(
+              Schedule.compose(Schedule.recurs(3)),
+            ),
             maxRetries: 3,
             // Install depends on clean if clean task exists
             ...(options?.clean ? { dependencies: [`clean:${taskId}`] } : {}),

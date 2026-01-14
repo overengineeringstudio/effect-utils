@@ -8,9 +8,13 @@ import path from 'node:path'
 
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
-import { Effect, Schema } from 'effect'
+import { Effect, Layer, Schema } from 'effect'
 
-import { type PackageIndexEntry, WorkspaceService } from '../lib/mod.ts'
+import { CurrentWorkingDirectory, type PackageIndexEntry, WorkspaceService } from '../lib/mod.ts'
+
+/** Layer that provides WorkspaceService.live for link commands.
+ * Validates config is in sync before running any link operation. */
+const linkWorkspaceLayer = WorkspaceService.live.pipe(Layer.provide(CurrentWorkingDirectory.live))
 
 /** Error during link operation */
 export class LinkError extends Schema.TaggedError<LinkError>()('LinkError', {
@@ -104,65 +108,71 @@ const getPackageMappings = Effect.gen(function* () {
   return { workspace, mappings }
 })
 
+/** Link status handler - separated for testability */
+const linkStatusHandler = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem
+  const { workspace, mappings } = yield* getPackageMappings
+
+  yield* Effect.log(`dotdot workspace: ${workspace.root}`)
+  yield* Effect.log('')
+
+  if (mappings.length === 0) {
+    yield* Effect.log('No packages configurations found')
+    return
+  }
+
+  // Check for conflicts
+  const conflicts = findConflicts(mappings)
+  if (conflicts.size > 0) {
+    yield* Effect.log('Conflicts:')
+    for (const [targetName, sources] of conflicts) {
+      yield* Effect.log(`  ${targetName}:`)
+      for (const source of sources) {
+        yield* Effect.log(
+          `    - ${source.sourceRepo}/${path.relative(path.join(workspace.root, source.sourceRepo), source.source)}`,
+        )
+      }
+    }
+    yield* Effect.log('')
+  }
+
+  yield* Effect.log('Package mappings:')
+
+  const uniqueMappings = getUniqueMappings(mappings)
+
+  for (const [targetName, mapping] of uniqueMappings) {
+    const targetExists = yield* fs.exists(mapping.target)
+    const sourceExists = yield* fs.exists(mapping.source)
+    const relativePath = path.relative(workspace.root, mapping.source)
+
+    let status: string
+    if (!sourceExists) {
+      status = 'source missing'
+    } else if (!targetExists) {
+      status = 'not linked'
+    } else {
+      // Use readLink to check if it's a symlink
+      const isSymlink = yield* fs.readLink(mapping.target).pipe(
+        Effect.map(() => true),
+        Effect.catchAll(() => Effect.succeed(false)),
+      )
+      if (isSymlink) {
+        status = 'linked'
+      } else {
+        status = 'blocked (not a symlink)'
+      }
+    }
+
+    yield* Effect.log(`  ${targetName} -> ${relativePath} [${status}]`)
+  }
+}).pipe(Effect.withSpan('dotdot/link/status'))
+
 /** Show status of all package mappings */
 const linkStatusCommand = Cli.Command.make('status', {}, () =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const { workspace, mappings } = yield* getPackageMappings
-
-    yield* Effect.log(`dotdot workspace: ${workspace.root}`)
-    yield* Effect.log('')
-
-    if (mappings.length === 0) {
-      yield* Effect.log('No packages configurations found')
-      return
-    }
-
-    // Check for conflicts
-    const conflicts = findConflicts(mappings)
-    if (conflicts.size > 0) {
-      yield* Effect.log('Conflicts:')
-      for (const [targetName, sources] of conflicts) {
-        yield* Effect.log(`  ${targetName}:`)
-        for (const source of sources) {
-          yield* Effect.log(
-            `    - ${source.sourceRepo}/${path.relative(path.join(workspace.root, source.sourceRepo), source.source)}`,
-          )
-        }
-      }
-      yield* Effect.log('')
-    }
-
-    yield* Effect.log('Package mappings:')
-
-    const uniqueMappings = getUniqueMappings(mappings)
-
-    for (const [targetName, mapping] of uniqueMappings) {
-      const targetExists = yield* fs.exists(mapping.target)
-      const sourceExists = yield* fs.exists(mapping.source)
-      const relativePath = path.relative(workspace.root, mapping.source)
-
-      let status: string
-      if (!sourceExists) {
-        status = 'source missing'
-      } else if (!targetExists) {
-        status = 'not linked'
-      } else {
-        // Use readLink to check if it's a symlink
-        const isSymlink = yield* fs.readLink(mapping.target).pipe(
-          Effect.map(() => true),
-          Effect.catchAll(() => Effect.succeed(false)),
-        )
-        if (isSymlink) {
-          status = 'linked'
-        } else {
-          status = 'blocked (not a symlink)'
-        }
-      }
-
-      yield* Effect.log(`  ${targetName} -> ${relativePath} [${status}]`)
-    }
-  }).pipe(Effect.withSpan('dotdot/link/status')),
+  linkStatusHandler.pipe(
+    Effect.provide(linkWorkspaceLayer),
+    Effect.catchTag('ConfigOutOfSyncError', (e) => Effect.logError(e.message)),
+  ),
 )
 
 /** Create symlinks handler - extracted for reuse */
@@ -284,7 +294,11 @@ const linkCreateCommand = Cli.Command.make(
       Cli.Options.withDefault(false),
     ),
   },
-  createSymlinksHandler,
+  (args) =>
+    createSymlinksHandler(args).pipe(
+      Effect.provide(linkWorkspaceLayer),
+      Effect.catchTag('ConfigOutOfSyncError', (e) => Effect.logError(e.message)),
+    ),
 )
 
 /** Remove symlinks handler - extracted for reuse */
@@ -359,7 +373,11 @@ const linkRemoveCommand = Cli.Command.make(
       Cli.Options.withDefault(false),
     ),
   },
-  removeSymlinksHandler,
+  (args) =>
+    removeSymlinksHandler(args).pipe(
+      Effect.provide(linkWorkspaceLayer),
+      Effect.catchTag('ConfigOutOfSyncError', (e) => Effect.logError(e.message)),
+    ),
 )
 
 /** Root link command - defaults to create behavior */
@@ -375,7 +393,11 @@ const linkRoot = Cli.Command.make(
       Cli.Options.withDefault(false),
     ),
   },
-  createSymlinksHandler,
+  (args) =>
+    createSymlinksHandler(args).pipe(
+      Effect.provide(linkWorkspaceLayer),
+      Effect.catchTag('ConfigOutOfSyncError', (e) => Effect.logError(e.message)),
+    ),
 )
 
 /** Link command with subcommands: status, create, remove */

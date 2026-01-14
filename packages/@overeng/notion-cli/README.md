@@ -149,11 +149,11 @@ export default defineConfig({
 
 ### Configuration Options
 
-| Option      | Description                                                          |
-| ----------- | -------------------------------------------------------------------- |
-| `outputDir` | Base directory for output paths, use `dir()` helper (ends with `/`)  |
-| `defaults`  | Default options applied to all databases                             |
-| `databases` | Record of database configs, keyed by database ID                     |
+| Option      | Description                                                         |
+| ----------- | ------------------------------------------------------------------- |
+| `outputDir` | Base directory for output paths, use `dir()` helper (ends with `/`) |
+| `defaults`  | Default options applied to all databases                            |
+| `databases` | Record of database configs, keyed by database ID                    |
 
 #### Database Options
 

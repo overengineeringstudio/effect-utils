@@ -49,13 +49,9 @@ export const opentuiRenderer = () => {
 
           // Setup OpenTUI renderer (dynamic imports to avoid TS module resolution issues)
           // @ts-expect-error - OpenTUI packages have incomplete ESM type definitions
-          const { createCliRenderer } = yield* Effect.promise(() =>
-            import('@opentui/core')
-          )
+          const { createCliRenderer } = yield* Effect.promise(() => import('@opentui/core'))
           // @ts-expect-error - OpenTUI packages have incomplete ESM type definitions
-          const { createRoot } = yield* Effect.promise(() =>
-            import('@opentui/react')
-          )
+          const { createRoot } = yield* Effect.promise(() => import('@opentui/react'))
 
           renderer = yield* Effect.promise(() =>
             createCliRenderer({

@@ -1,12 +1,12 @@
 import { FileSystem } from '@effect/platform'
+import { Effect, Schema } from 'effect'
+
 import {
   EffectPath,
   type AbsoluteDirPath,
   type AbsoluteFilePath,
   type RelativeDirPath,
 } from '@overeng/effect-path'
-import { Effect, Schema } from 'effect'
-
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
 
 import type {

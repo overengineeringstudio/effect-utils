@@ -292,7 +292,18 @@ export class WorkspaceService extends Context.Tag('dotdot/WorkspaceService')<
     }
   }
 
-  /** Layer that loads workspace from CWD with sync check */
+  /**
+   * Layer that loads workspace from CWD with sync check.
+   *
+   * IMPORTANT: This layer validates that all member configs are in sync with
+   * the root config during construction. Commands that require config to be
+   * in sync should use this layer. Commands like `sync` that need to run when
+   * config is OUT of sync should use `liveNoSyncCheck` instead.
+   *
+   * Each command provides its own WorkspaceService layer rather than having
+   * a global layer in the CLI. This allows commands like `sync` to work when
+   * config is out of sync, while other commands can validate sync status.
+   */
   static live = Layer.effect(
     WorkspaceService,
     Effect.gen(function* () {
@@ -304,7 +315,8 @@ export class WorkspaceService extends Context.Tag('dotdot/WorkspaceService')<
     }),
   )
 
-  /** Layer that loads workspace from CWD without sync check (for sync command) */
+  /** Layer that loads workspace from CWD without sync check.
+   * Use this for commands that need to run even when config is out of sync (e.g. sync). */
   static liveNoSyncCheck = Layer.effect(
     WorkspaceService,
     Effect.gen(function* () {

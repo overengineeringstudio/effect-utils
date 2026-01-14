@@ -1,8 +1,8 @@
 import { FileSystem } from '@effect/platform'
 import type * as CommandExecutor from '@effect/platform/CommandExecutor'
-import { EffectPath, type AbsoluteFilePath } from '@overeng/effect-path'
 import { Effect } from 'effect'
 
+import { EffectPath, type AbsoluteFilePath } from '@overeng/effect-path'
 import { type CurrentWorkingDirectory, cmd } from '@overeng/utils/node'
 
 /** Options for writing generated schema files */

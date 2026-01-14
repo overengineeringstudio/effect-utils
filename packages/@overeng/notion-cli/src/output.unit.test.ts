@@ -1,9 +1,10 @@
 import { FileSystem } from '@effect/platform'
 import { NodeContext } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { EffectPath } from '@overeng/effect-path'
 import { Effect } from 'effect'
 import { expect } from 'vitest'
+
+import { EffectPath } from '@overeng/effect-path'
 
 import { writeSchemaToFile } from './output.ts'
 
@@ -17,7 +18,10 @@ describe('output', () => {
         const fs = yield* FileSystem.FileSystem
 
         const tempDir = EffectPath.unsafe.absoluteDir(yield* fs.makeTempDirectoryScoped())
-        const outputPath = EffectPath.ops.join(tempDir, EffectPath.unsafe.relativeFile('schema.gen.ts'))
+        const outputPath = EffectPath.ops.join(
+          tempDir,
+          EffectPath.unsafe.relativeFile('schema.gen.ts'),
+        )
         const code = '// Generated code\nexport const Test = {}'
 
         yield* writeSchemaToFile({ code, outputPath })
@@ -36,7 +40,10 @@ describe('output', () => {
         const fs = yield* FileSystem.FileSystem
 
         const tempDir = EffectPath.unsafe.absoluteDir(yield* fs.makeTempDirectoryScoped())
-        const outputPath = EffectPath.ops.join(tempDir, EffectPath.unsafe.relativeFile('schema.gen.ts'))
+        const outputPath = EffectPath.ops.join(
+          tempDir,
+          EffectPath.unsafe.relativeFile('schema.gen.ts'),
+        )
         const code = '// Generated code\nexport const Test = {}'
 
         yield* writeSchemaToFile({ code, outputPath, writable: true })
@@ -55,7 +62,10 @@ describe('output', () => {
         const fs = yield* FileSystem.FileSystem
 
         const tempDir = EffectPath.unsafe.absoluteDir(yield* fs.makeTempDirectoryScoped())
-        const outputPath = EffectPath.ops.join(tempDir, EffectPath.unsafe.relativeFile('schema.gen.ts'))
+        const outputPath = EffectPath.ops.join(
+          tempDir,
+          EffectPath.unsafe.relativeFile('schema.gen.ts'),
+        )
         const code1 = '// Generated code v1'
         const code2 = '// Generated code v2'
 
@@ -84,8 +94,14 @@ describe('output', () => {
         const fs = yield* FileSystem.FileSystem
 
         const tempDir = EffectPath.unsafe.absoluteDir(yield* fs.makeTempDirectoryScoped())
-        const nestedDir = EffectPath.ops.join(tempDir, EffectPath.unsafe.relativeDir('nested/deeply/'))
-        const outputPath = EffectPath.ops.join(nestedDir, EffectPath.unsafe.relativeFile('schema.gen.ts'))
+        const nestedDir = EffectPath.ops.join(
+          tempDir,
+          EffectPath.unsafe.relativeDir('nested/deeply/'),
+        )
+        const outputPath = EffectPath.ops.join(
+          nestedDir,
+          EffectPath.unsafe.relativeFile('schema.gen.ts'),
+        )
         const code = '// Generated code'
 
         yield* writeSchemaToFile({ code, outputPath })
@@ -103,7 +119,10 @@ describe('output', () => {
         const fs = yield* FileSystem.FileSystem
 
         const tempDir = EffectPath.unsafe.absoluteDir(yield* fs.makeTempDirectoryScoped())
-        const outputPath = EffectPath.ops.join(tempDir, EffectPath.unsafe.relativeFile('schema.gen.ts'))
+        const outputPath = EffectPath.ops.join(
+          tempDir,
+          EffectPath.unsafe.relativeFile('schema.gen.ts'),
+        )
         const code1 = '// Generated code v1'
         const code2 = '// Generated code v2'
 

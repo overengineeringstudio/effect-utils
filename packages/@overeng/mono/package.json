@@ -14,11 +14,11 @@
   },
   "scripts": {
     "prepare": "effect-language-service patch",
-    "postinstall": "patch --forward -p1 -d node_modules/effect-distributed-lock < ../patches/effect-distributed-lock@0.0.11.patch || true"
+    "postinstall": "patch --forward -p1 -d node_modules/effect-distributed-lock < ../../../patches/effect-distributed-lock@0.0.11.patch || true"
   },
   "dependencies": {
-    "@effect-atom/atom": "0.4.11",
-    "@effect-atom/atom-react": "0.4.4",
+    "@effect-atom/atom": "0.4.13",
+    "@effect-atom/atom-react": "0.4.5",
     "@effect/cli": "0.73.0",
     "@effect/experimental": "0.58.0",
     "@effect/platform": "0.94.1",

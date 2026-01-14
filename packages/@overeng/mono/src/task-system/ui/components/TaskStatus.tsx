@@ -1,6 +1,7 @@
-import type { TaskState } from '../../types.ts'
 import { Option } from 'effect'
 import { useEffect, useState } from 'react'
+
+import type { TaskState } from '../../types.ts'
 
 export interface TaskStatusProps {
   task: TaskState

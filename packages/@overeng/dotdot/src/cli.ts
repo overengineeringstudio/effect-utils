@@ -20,7 +20,6 @@ import {
   generateJsonSchema,
   JSON_SCHEMA_URL,
   resolveCliVersion,
-  WorkspaceService,
 } from './lib/mod.ts'
 
 /** Initialize a new dotdot workspace */
@@ -101,17 +100,17 @@ const version = resolveCliVersion({
 })
 
 if (import.meta.main) {
-  // Build the layer: NodeContext provides FileSystem and CommandExecutor
-  // WorkspaceService.live depends on CurrentWorkingDirectory, FileSystem, and CommandExecutor
+  // Base layer provides platform services (FileSystem, CommandExecutor) and CWD.
+  // WorkspaceService is NOT included here - each command provides its own layer variant.
+  // This allows commands like `sync` to run without requiring configs to already be in sync.
   const baseLayer = Layer.mergeAll(PlatformNode.NodeContext.layer, CurrentWorkingDirectory.live)
-  const workspaceLayer = Layer.provideMerge(WorkspaceService.live, baseLayer)
 
   pipe(
     Cli.Command.run(dotdotCommand, {
       name: 'dotdot',
       version,
     })(process.argv),
-    Effect.provide(workspaceLayer),
+    Effect.provide(baseLayer),
     PlatformNode.NodeRuntime.runMain,
   )
 }

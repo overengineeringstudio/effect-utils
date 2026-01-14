@@ -5,11 +5,12 @@
  */
 
 import * as Cli from '@effect/cli'
-import { Effect, Option, Schema } from 'effect'
+import { Effect, Layer, Option, Schema } from 'effect'
 
 import {
   type BaseResult,
   buildSummary,
+  CurrentWorkingDirectory,
   type ExecutionMode,
   executeForAll,
   existsAsGitRepo,
@@ -86,7 +87,71 @@ const pullRepo = (repo: RepoInfo) =>
     ),
   )
 
-/** Pull command implementation */
+/** Pull command handler - separated for testability */
+export const pullHandler = ({
+  mode,
+  maxParallel,
+}: {
+  mode: ExecutionMode
+  maxParallel: Option.Option<number>
+}) =>
+  Effect.gen(function* () {
+    const workspace = yield* WorkspaceService
+
+    yield* Effect.log(`dotdot workspace: ${workspace.root}`)
+
+    // Get all repos and filter to those that exist as git repos
+    const allRepos = yield* workspace.scanRepos()
+    const repos = allRepos.filter(existsAsGitRepo)
+
+    if (repos.length === 0) {
+      yield* Effect.log('No repos to pull')
+      return
+    }
+
+    yield* Effect.log(`Pulling ${repos.length} repo(s)...`)
+    yield* Effect.log(`Execution mode: ${mode}`)
+    yield* Effect.log('')
+
+    const results = yield* executeForAll({
+      items: repos,
+      fn: (repo) =>
+        Effect.gen(function* () {
+          yield* Effect.log(`Pulling ${repo.name}...`)
+          const result = yield* pullRepo(repo)
+
+          const statusIcon =
+            result.status === 'pulled'
+              ? result.diverged
+                ? '!'
+                : '+'
+              : result.status === 'failed'
+                ? 'x'
+                : '-'
+          yield* Effect.log(`  ${statusIcon} ${result.message ?? result.status}`)
+          return result
+        }),
+      options: { mode, maxParallel: Option.getOrUndefined(maxParallel) },
+    })
+
+    yield* Effect.log('')
+
+    const summary = buildSummary({ results, statusLabels: PullStatusLabels })
+    const divergedCount = results.filter((r) => 'diverged' in r && r.diverged === true).length
+    const divergedSuffix = divergedCount > 0 ? `, ${divergedCount} diverged` : ''
+    yield* Effect.log(`Done: ${summary}${divergedSuffix}`)
+
+    if (divergedCount > 0) {
+      yield* Effect.log('')
+      yield* Effect.log('Warning: Some repos are now diverged from their pinned revisions.')
+      yield* Effect.log(
+        'Run `dotdot update-revs` to update pins, or `dotdot sync` to reset to pinned revisions.',
+      )
+    }
+  }).pipe(Effect.withSpan('dotdot/pull'))
+
+/** Pull command implementation.
+ * Provides its own WorkspaceService.live layer - validates config is in sync before running. */
 export const pullCommand = Cli.Command.make(
   'pull',
   {
@@ -99,59 +164,9 @@ export const pullCommand = Cli.Command.make(
       Cli.Options.optional,
     ),
   },
-  ({ mode, maxParallel }) =>
-    Effect.gen(function* () {
-      const workspace = yield* WorkspaceService
-
-      yield* Effect.log(`dotdot workspace: ${workspace.root}`)
-
-      // Get all repos and filter to those that exist as git repos
-      const allRepos = yield* workspace.scanRepos()
-      const repos = allRepos.filter(existsAsGitRepo)
-
-      if (repos.length === 0) {
-        yield* Effect.log('No repos to pull')
-        return
-      }
-
-      yield* Effect.log(`Pulling ${repos.length} repo(s)...`)
-      yield* Effect.log(`Execution mode: ${mode}`)
-      yield* Effect.log('')
-
-      const results = yield* executeForAll({
-        items: repos,
-        fn: (repo) =>
-          Effect.gen(function* () {
-            yield* Effect.log(`Pulling ${repo.name}...`)
-            const result = yield* pullRepo(repo)
-
-            const statusIcon =
-              result.status === 'pulled'
-                ? result.diverged
-                  ? '!'
-                  : '+'
-                : result.status === 'failed'
-                  ? 'x'
-                  : '-'
-            yield* Effect.log(`  ${statusIcon} ${result.message ?? result.status}`)
-            return result
-          }),
-        options: { mode, maxParallel: Option.getOrUndefined(maxParallel) },
-      })
-
-      yield* Effect.log('')
-
-      const summary = buildSummary({ results, statusLabels: PullStatusLabels })
-      const divergedCount = results.filter((r) => 'diverged' in r && r.diverged === true).length
-      const divergedSuffix = divergedCount > 0 ? `, ${divergedCount} diverged` : ''
-      yield* Effect.log(`Done: ${summary}${divergedSuffix}`)
-
-      if (divergedCount > 0) {
-        yield* Effect.log('')
-        yield* Effect.log('Warning: Some repos are now diverged from their pinned revisions.')
-        yield* Effect.log(
-          'Run `dotdot update-revs` to update pins, or `dotdot sync` to reset to pinned revisions.',
-        )
-      }
-    }).pipe(Effect.withSpan('dotdot/pull')),
+  (args) =>
+    pullHandler(args).pipe(
+      Effect.provide(WorkspaceService.live.pipe(Layer.provide(CurrentWorkingDirectory.live))),
+      Effect.catchTag('ConfigOutOfSyncError', (e) => Effect.logError(e.message)),
+    ),
 )

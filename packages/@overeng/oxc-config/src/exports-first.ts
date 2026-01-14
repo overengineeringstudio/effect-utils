@@ -7,6 +7,13 @@
  * The rule is "control-flow aware": private declarations that are referenced by
  * subsequent exports are allowed to appear before those exports.
  *
+ * NOTE: This rule sometimes conflicts with func-style (arrow functions). When both are
+ * enabled, func-style requires arrow functions, but exports-first requires function
+ * declarations for hoisting (to export before non-exported code). In these rare edge
+ * cases, use a disable comment for func-style:
+ *   // oxlint-disable-next-line func-style -- exports-first requires function declaration
+ *   export function MyComponent() { ... }
+ *
  * @example
  * // ✅ Good - exports first
  * export const publicApi = () => {}
@@ -20,6 +27,11 @@
  * // ❌ Bad - non-export before export (not referenced)
  * const unrelatedHelper = () => {}
  * export const publicApi = () => {}
+ *
+ * // ❌ Bad - late export (export { x } after non-exported code)
+ * const publicApi = () => {}
+ * const helper = () => {}
+ * export { publicApi }
  */
 
 // NOTE: Using `any` types because oxlint JS plugin API doesn't have TypeScript definitions yet

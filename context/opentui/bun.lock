@@ -5,8 +5,8 @@
     "": {
       "name": "opentui-examples",
       "dependencies": {
-        "@effect-atom/atom": "0.4.11",
-        "@effect-atom/atom-react": "0.4.4",
+        "@effect-atom/atom": "0.4.13",
+        "@effect-atom/atom-react": "0.4.5",
         "@opentui/core": "0.1.68",
         "@opentui/react": "0.1.68",
         "effect": "3.19.14",
@@ -21,9 +21,9 @@
   "packages": {
     "@dimforge/rapier2d-simd-compat": ["@dimforge/rapier2d-simd-compat@0.17.3", "", {}, "sha512-bijvwWz6NHsNj5e5i1vtd3dU2pDhthSaTUZSh14DUGGKJfw8eMnlWZsxwHBxB/a3AXVNDjL9abuHw1k9FGR+jg=="],
 
-    "@effect-atom/atom": ["@effect-atom/atom@0.4.11", "", { "peerDependencies": { "@effect/experimental": "^0.57.0", "@effect/platform": "^0.93.0", "@effect/rpc": "^0.72.1", "effect": "^3.19.0" } }, "sha512-bahWNw2xQ349HXkqshpls/t4wUu5fbMfjT6/7FhDj1uPjP9BArUAwL1Js5b7EG0ZPonS+G1O9LftpxVWAxr86g=="],
+    "@effect-atom/atom": ["@effect-atom/atom@0.4.13", "", { "peerDependencies": { "@effect/experimental": "^0.57.0", "@effect/platform": "^0.93.0", "@effect/rpc": "^0.72.1", "effect": "^3.19.0" } }, "sha512-wYCPDg/vN2IWTqxho7kTTSivh//V2TSAcdkQvLXMJWww8YzhcCGmCiDpT6cefyNXvHj+qZrqYB54mrUqG6EYCA=="],
 
-    "@effect-atom/atom-react": ["@effect-atom/atom-react@0.4.4", "", { "dependencies": { "@effect-atom/atom": "^0.4.10" }, "peerDependencies": { "effect": "^3.19", "react": ">=18 <20", "scheduler": "*" } }, "sha512-EWT9WpB67GNCecxQXJdAZNVMhuk3VxpdDfojxg1wOgWmR5TPaGiXA74Jqa2Y9AEjSB0hMMAk7RNve2CoIikg2w=="],
+    "@effect-atom/atom-react": ["@effect-atom/atom-react@0.4.5", "", { "dependencies": { "@effect-atom/atom": "^0.4.12" }, "peerDependencies": { "effect": "^3.19", "react": ">=18 <20", "scheduler": "*" } }, "sha512-N29Lj3jZ4cnSGrubFwWuYmJHkxr7VyExDVnz6ZQJ+jhpBd+p3u0OJGXKI1pAZk7shs+FjO2SbklIx7Y9NZ4wPQ=="],
 
     "@effect/experimental": ["@effect/experimental@0.57.11", "", { "dependencies": { "uuid": "^11.0.3" }, "peerDependencies": { "@effect/platform": "^0.93.6", "effect": "^3.19.9", "ioredis": "^5", "lmdb": "^3" }, "optionalPeers": ["ioredis", "lmdb"] }, "sha512-M5uug3Drs/gyTHLfA+XzcIZQGUEV/Jn5yi1POki4oZswhpzNmsVTHl4THpxAordRKwa5lFvTSlsRP684YH7pSw=="],
 

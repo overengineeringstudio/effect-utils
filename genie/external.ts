@@ -375,7 +375,10 @@ export const baseTsconfigCompilerOptions = {
 // Oxlint Configuration Helpers
 // =============================================================================
 
-import type { OxlintConfigArgs, OxlintOverride } from '../packages/@overeng/genie/src/runtime/oxlint-config/mod.ts'
+import type {
+  OxlintConfigArgs,
+  OxlintOverride,
+} from '../packages/@overeng/genie/src/runtime/oxlint-config/mod.ts'
 
 /** Standard oxlint plugins for Effect/TypeScript projects (includes oxc for custom rules) */
 export const baseOxlintPlugins = ['import', 'typescript', 'unicorn', 'oxc'] as const
@@ -470,6 +473,11 @@ export const baseOxlintConfig = {
   plugins: baseOxlintPlugins,
   categories: baseOxlintCategories,
   rules: baseOxlintRules,
-  overrides: [modEntryOxlintOverride, storybookOxlintOverride, configFilesOxlintOverride, testFilesOxlintOverride],
+  overrides: [
+    modEntryOxlintOverride,
+    storybookOxlintOverride,
+    configFilesOxlintOverride,
+    testFilesOxlintOverride,
+  ],
   ignorePatterns: baseOxlintIgnorePatterns,
 } as const satisfies OxlintConfigArgs

@@ -8,6 +8,7 @@
 ## dotdot
 
 - [ ] command to generate vscode workspace file for the workspace
+- [ ] get rid of `link` command in favour of `sync`
 
 ### worktrees
 

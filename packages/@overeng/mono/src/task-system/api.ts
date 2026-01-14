@@ -5,10 +5,9 @@
  * shell commands and arbitrary Effects.
  */
 
+import type { PlatformError } from '@effect/platform/Error'
 import type { Effect, Schedule } from 'effect'
 import { Stream } from 'effect'
-
-import type { PlatformError } from '@effect/platform/Error'
 
 import type { CommandError, CommandSpec } from './execution.ts'
 import { executeCommand } from './execution.ts'
