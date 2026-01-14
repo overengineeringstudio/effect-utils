@@ -55,6 +55,9 @@
     },
     {
       "path": "./packages/@overeng/effect-rpc-tanstack"
+    },
+    {
+      "path": "./packages/@overeng/effect-rpc-tanstack/examples/basic"
     }
   ],
   "files": []

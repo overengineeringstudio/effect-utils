@@ -19,6 +19,7 @@ const references = [
   './packages/@overeng/oxc-config',
   './packages/@overeng/effect-path',
   './packages/@overeng/effect-rpc-tanstack',
+  './packages/@overeng/effect-rpc-tanstack/examples/basic',
 ]
 
 // This file is meant for convenience to built all TS projects in the workspace at once

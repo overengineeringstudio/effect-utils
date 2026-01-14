@@ -1,3 +1,3 @@
-/** Custom commands specific to effect-utils (not part of @overeng/mono) */
+/** Repo-specific command wiring for effect-utils */
 export { contextCommand } from './context.js'
 export { nixCommand } from './nix.js'

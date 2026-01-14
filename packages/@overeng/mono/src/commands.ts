@@ -5,6 +5,7 @@ export {
   cleanCommand,
   installCommand,
   lintCommand,
+  nixCommand,
   testCommand,
   tsCommand,
 } from './commands/mod.ts'
