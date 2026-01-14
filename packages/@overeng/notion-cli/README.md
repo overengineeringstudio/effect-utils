@@ -115,11 +115,11 @@ Summary: 1 added, 1 removed, 1 type changed
 For multi-database projects, create `notion-schema-gen.config.ts`:
 
 ```ts
-import { defineConfig, transforms } from '@overeng/notion-effect-cli/config'
+import { defineConfig, dir, file, transforms } from '@overeng/notion-effect-cli/config'
 
 export default defineConfig({
-  // Base output directory (optional)
-  outputDir: './src/schemas',
+  // Base output directory (optional, must end with /)
+  outputDir: dir('./src/schemas/'),
 
   // Default options applied to all databases
   defaults: {
@@ -130,11 +130,11 @@ export default defineConfig({
   // Databases keyed by their Notion database ID
   databases: {
     'abc123-def456-...': {
-      output: 'tasks.ts', // relative to outputDir
+      output: file('tasks.ts'), // relative to outputDir
       name: 'Tasks',
     },
     'def456-ghi789-...': {
-      output: 'projects.ts',
+      output: file('projects.ts'),
       name: 'Projects',
       typedOptions: true,
       transforms: {
@@ -149,17 +149,17 @@ export default defineConfig({
 
 ### Configuration Options
 
-| Option      | Description                                               |
-| ----------- | --------------------------------------------------------- |
-| `outputDir` | Base directory for output paths (relative to config file) |
-| `defaults`  | Default options applied to all databases                  |
-| `databases` | Record of database configs, keyed by database ID          |
+| Option      | Description                                                          |
+| ----------- | -------------------------------------------------------------------- |
+| `outputDir` | Base directory for output paths, use `dir()` helper (ends with `/`)  |
+| `defaults`  | Default options applied to all databases                             |
+| `databases` | Record of database configs, keyed by database ID                     |
 
 #### Database Options
 
 | Option         | Description                                                                                         |
 | -------------- | --------------------------------------------------------------------------------------------------- |
-| `output`       | Output file path (relative to `outputDir`)                                                          |
+| `output`       | Output file path (relative to `outputDir`), use `file()` helper                                     |
 | `name`         | Custom schema name (defaults to database title)                                                     |
 | `includeWrite` | Generate write schemas for creating/updating pages                                                  |
 | `includeApi`   | Generate a typed API wrapper                                                                        |
@@ -297,12 +297,12 @@ notion-effect-schema-gen generate <db-id> -o ./out.ts \
 Or in config with type-safe helpers:
 
 ```ts
-import { defineConfig, transforms } from '@overeng/notion-effect-cli/config'
+import { defineConfig, file, transforms } from '@overeng/notion-effect-cli/config'
 
 export default defineConfig({
   databases: {
     '...': {
-      output: './schema.ts',
+      output: file('schema.ts'),
       transforms: {
         Status: transforms.status.asName,
         Priority: transforms.select.raw,
