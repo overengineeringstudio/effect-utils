@@ -3,12 +3,14 @@ import { useEffect, useState } from 'react'
 
 import type { TaskState } from '../../types.ts'
 
+/** Props for TaskStatus component */
 export interface TaskStatusProps {
   task: TaskState
 }
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 
+/** Displays task status with animated spinner and duration */
 export const TaskStatus = ({ task }: TaskStatusProps) => {
   const [spinnerFrame, setSpinnerFrame] = useState(0)
 

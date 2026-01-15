@@ -8,7 +8,7 @@ import type { Cause, Channel, Sink } from 'effect'
 import { Console, Effect, Layer, Option, Redacted, Stream } from 'effect'
 import type { NodeInspectSymbol } from 'effect/Inspectable'
 
-import { EffectPath, type AbsoluteDirPath, type AbsoluteFilePath } from '@overeng/effect-path'
+import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 /** Re-export internal types for TypeScript declaration emit */
 export type { Cause, Channel, Sink, Stream } from 'effect'

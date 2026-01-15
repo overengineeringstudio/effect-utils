@@ -1,10 +1,12 @@
 import type { TaskState } from '../../types.ts'
 import { TaskStatus } from './TaskStatus.tsx'
 
+/** Props for Task component */
 export interface TaskProps {
   task: TaskState
 }
 
+/** Renders a single task with status and latest log output */
 export const Task = ({ task }: TaskProps) => {
   // Get latest log line for inline display
   const allOutput = [...task.stdout, ...task.stderr]

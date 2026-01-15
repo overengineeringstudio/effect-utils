@@ -13,12 +13,11 @@ import {
   FiberMap,
   Graph,
   Option,
-  Scope,
   Stream,
   SubscriptionRef,
 } from 'effect'
 
-import type { TaskDef, TaskEvent, TaskGraphResult, TaskSystemState } from './types.ts'
+import type { TaskDef, TaskEvent, TaskSystemState } from './types.ts'
 import {
   CommandInfo,
   TaskExecutionError,
