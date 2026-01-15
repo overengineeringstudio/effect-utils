@@ -30,6 +30,7 @@ describe('sync command', () => {
             dryRun: false,
             mode: 'sequential',
             maxParallel: Option.none(),
+            force: false,
           })
           .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
 
@@ -60,6 +61,7 @@ describe('sync command', () => {
             dryRun: false,
             mode: 'sequential',
             maxParallel: Option.none(),
+            force: false,
           })
           .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
 
@@ -88,6 +90,7 @@ describe('sync command', () => {
             dryRun: true,
             mode: 'sequential',
             maxParallel: Option.none(),
+            force: false,
           })
           .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
 
@@ -114,6 +117,7 @@ describe('sync command', () => {
             dryRun: false,
             mode: 'sequential',
             maxParallel: Option.none(),
+            force: false,
           })
           .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
 
@@ -134,6 +138,7 @@ describe('sync command', () => {
             dryRun: false,
             mode: 'sequential',
             maxParallel: Option.none(),
+            force: false,
           })
           .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
 
@@ -167,6 +172,7 @@ describe('sync command', () => {
             dryRun: false,
             mode: 'sequential',
             maxParallel: Option.none(),
+            force: false,
           })
           .pipe(Effect.provide(CurrentWorkingDirectory.fromPath(workspacePath)))
 

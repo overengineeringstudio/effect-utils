@@ -83,8 +83,19 @@ export const clone = ({ url, targetPath }: { url: string; targetPath: string }) 
   }).pipe(Effect.withSpan('git/clone'))
 
 /** Checkout a specific revision */
-export const checkout = ({ repoPath, rev }: { repoPath: string; rev: string }) =>
-  runGit({ args: ['checkout', rev], cwd: repoPath }).pipe(Effect.withSpan('git/checkout'))
+export const checkout = ({
+  repoPath,
+  rev,
+  force = false,
+}: {
+  repoPath: string
+  rev: string
+  force?: boolean
+}) =>
+  runGit({
+    args: force ? ['checkout', '--force', rev] : ['checkout', rev],
+    cwd: repoPath,
+  }).pipe(Effect.withSpan('git/checkout'))
 
 /** Fetch from remote */
 export const fetch = (repoPath: string) =>

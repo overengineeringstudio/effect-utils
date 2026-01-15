@@ -1,5 +1,17 @@
 export { execCommand } from './exec.ts'
-export { linkCommand } from './link.ts'
+export {
+  collectPackageMappings,
+  findConflicts,
+  getSymlinkStatus,
+  getUniqueMappings,
+  LinkError,
+  type PackageMapping,
+  pruneStaleSymlinks,
+  type PruneSymlinksResult,
+  syncSymlinks,
+  type SyncSymlinksResult,
+  type SymlinkStatus,
+} from './link.ts'
 export { pullCommand } from './pull.ts'
 export { statusCommand, statusHandler } from './status.ts'
 export { syncCommand } from './sync.ts'

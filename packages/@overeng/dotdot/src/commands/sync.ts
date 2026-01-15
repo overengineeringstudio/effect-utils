@@ -7,6 +7,7 @@
 import path from 'node:path'
 
 import * as Cli from '@effect/cli'
+import * as Prompt from '@effect/cli/Prompt'
 import { FileSystem } from '@effect/platform'
 import { Effect, Option, Schema } from 'effect'
 
@@ -28,6 +29,7 @@ import {
   runShellCommand,
   writeGeneratedConfig,
 } from '../lib/mod.ts'
+import { pruneStaleSymlinks, syncSymlinks } from './link.ts'
 
 /** Error during restore operation */
 export class SyncError extends Schema.TaggedError<SyncError>()('SyncError', {
@@ -51,10 +53,12 @@ const syncRepo = ({
   workspaceRoot,
   name,
   config,
+  force,
 }: {
   workspaceRoot: string
   name: string
   config: RepoConfig
+  force: boolean
 }) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -71,11 +75,20 @@ const syncRepo = ({
         if (config.rev) {
           const currentRev = yield* Git.getCurrentRev(repoPath)
           if (!currentRev.startsWith(config.rev) && currentRev !== config.rev) {
-            yield* Git.checkout({ repoPath, rev: config.rev })
+            // Check for dirty working tree
+            const isDirty = yield* Git.isDirty(repoPath)
+            if (isDirty && !force) {
+              return {
+                name,
+                status: 'skipped',
+                message: 'Working tree has uncommitted changes (use --force to override)',
+              } satisfies SyncResult
+            }
+            yield* Git.checkout({ repoPath, rev: config.rev, force })
             return {
               name,
               status: 'checked-out',
-              message: `Checked out ${config.rev.slice(0, 7)}`,
+              message: `Checked out ${config.rev.slice(0, 7)}${force && isDirty ? ' (forced)' : ''}`,
             } satisfies SyncResult
           }
         }
@@ -179,8 +192,14 @@ export const syncCommand = Cli.Command.make(
       ),
       Cli.Options.optional,
     ),
+    force: Cli.Options.boolean('force').pipe(
+      Cli.Options.withDescription(
+        'Force checkout pinned revisions even if working tree is dirty, overwrite existing symlinks',
+      ),
+      Cli.Options.withDefault(false),
+    ),
   },
-  ({ workspacePath, dryRun, mode, maxParallel }) =>
+  ({ workspacePath, dryRun, mode, maxParallel, force }) =>
     Effect.gen(function* () {
       const cwd = yield* CurrentWorkingDirectory
       const fs = yield* FileSystem.FileSystem
@@ -263,6 +282,46 @@ export const syncCommand = Cli.Command.make(
       yield* Effect.log(`Execution mode: ${mode}`)
       yield* Effect.log('')
 
+      // Check for dirty repos when --force is used
+      if (force && !dryRun) {
+        const dirtyRepos: string[] = []
+        for (const [name] of Object.entries(allRepos)) {
+          const repoPath = path.join(workspaceRoot, name)
+          const exists = yield* fs.exists(repoPath)
+          if (!exists) continue
+
+          const isGitRepo = yield* Git.isGitRepo(repoPath)
+          if (!isGitRepo) continue
+
+          const isDirty = yield* Git.isDirty(repoPath)
+          if (isDirty) {
+            dirtyRepos.push(name)
+          }
+        }
+
+        if (dirtyRepos.length > 0) {
+          yield* Effect.logWarning(
+            `${dirtyRepos.length} repo(s) have uncommitted changes that may be discarded:`,
+          )
+          for (const name of dirtyRepos) {
+            yield* Effect.logWarning(`  - ${name}`)
+          }
+          yield* Effect.log('')
+
+          const confirmed = yield* Prompt.confirm({
+            message: 'Proceed and potentially discard local changes?',
+            initial: false,
+          })
+
+          if (!confirmed) {
+            yield* Effect.log('Aborted.')
+            return
+          }
+
+          yield* Effect.log('')
+        }
+      }
+
       if (dryRun) {
         yield* Effect.log('Dry run - no changes will be made')
         yield* Effect.log('')
@@ -296,7 +355,7 @@ export const syncCommand = Cli.Command.make(
       const executeFn = ([name, config]: [string, RepoConfig]) =>
         Effect.gen(function* () {
           yield* Effect.log(`Syncing ${name}...`)
-          const result = yield* syncRepo({ workspaceRoot, name, config })
+          const result = yield* syncRepo({ workspaceRoot, name, config, force })
           yield* Effect.log(`  ${result.status}: ${result.message ?? ''}`)
           return result
         })
@@ -335,6 +394,55 @@ export const syncCommand = Cli.Command.make(
 
       // Write the generated config with merged repos and packages
       yield* writeGeneratedConfig({ workspaceRoot, repos: allRepos, packages: merged.packages })
+
+      // Sync symlinks for packages
+      if (packageCount > 0) {
+        yield* Effect.log('')
+        yield* Effect.log('Syncing package symlinks...')
+
+        const symlinkResult = yield* syncSymlinks({
+          workspaceRoot,
+          packages: merged.packages,
+          dryRun,
+          force,
+        })
+
+        // Report conflicts if any
+        if (symlinkResult.conflicts.size > 0 && !force) {
+          yield* Effect.logWarning('Package symlink conflicts detected:')
+          for (const [targetName, sources] of symlinkResult.conflicts) {
+            yield* Effect.logWarning(`  ${targetName}:`)
+            for (const source of sources) {
+              yield* Effect.logWarning(
+                `    - ${source.sourceRepo}/${path.relative(path.join(workspaceRoot, source.sourceRepo), source.source)}`,
+              )
+            }
+          }
+          yield* Effect.log('Use --force to overwrite with the first match')
+        }
+
+        // Report created/overwritten symlinks
+        if (symlinkResult.created.length > 0) {
+          yield* Effect.log(`  Created ${symlinkResult.created.length} symlink(s)`)
+        }
+        if (symlinkResult.overwritten.length > 0) {
+          yield* Effect.log(`  Overwritten ${symlinkResult.overwritten.length} symlink(s)`)
+        }
+        if (symlinkResult.skipped.length > 0) {
+          yield* Effect.log(`  Skipped ${symlinkResult.skipped.length} symlink(s)`)
+        }
+
+        // Prune stale symlinks
+        const pruneResult = yield* pruneStaleSymlinks({
+          workspaceRoot,
+          packages: merged.packages,
+          dryRun,
+        })
+
+        if (pruneResult.removed.length > 0) {
+          yield* Effect.log(`  Pruned ${pruneResult.removed.length} stale symlink(s)`)
+        }
+      }
 
       yield* Effect.log('')
 

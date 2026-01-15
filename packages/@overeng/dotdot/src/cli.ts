@@ -7,7 +7,6 @@ import { Effect, Layer, Option, pipe } from 'effect'
 
 import {
   execCommand,
-  linkCommand,
   pullCommand,
   statusCommand,
   syncCommand,
@@ -82,7 +81,6 @@ const rootCommand = Cli.Command.make('dotdot', {}).pipe(
     updateRevsCommand,
     pullCommand,
     treeCommand,
-    linkCommand,
     execCommand,
     schemaCommand,
   ]),
