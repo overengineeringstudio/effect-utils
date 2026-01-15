@@ -232,3 +232,29 @@ export const generateMemberConfig = ({
 
   return JSON.stringify(output, null, 2) + '\n'
 }
+
+/** Normalize status output for snapshot comparison by stripping ANSI codes and replacing dynamic values */
+export const normalizeStatusOutput = (output: string, workspaceName?: string): string => {
+  let normalized = output
+    // Strip ANSI escape codes
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: needed for ANSI stripping
+    .replace(/\x1b\[[0-9;]*m/g, '')
+    // Replace full 40-char hashes
+    .replace(/[a-f0-9]{40}/g, '<FULL_HASH>')
+    // Replace 7-8 char short hashes in @hash format
+    .replace(/@[a-f0-9]{7,8}\b/g, '@<SHORT_HASH>')
+    // Replace hashes in "(local: xxx, remote: xxx)" format
+    .replace(
+      /\(local: [a-f0-9]{7}, remote: [a-f0-9]{7}\)/g,
+      '(local: <SHORT_HASH>, remote: <SHORT_HASH>)',
+    )
+    // Replace diverged hash indicator
+    .replace(/↕[a-f0-9]{7}/g, '↕<SHORT_HASH>')
+
+  // Replace workspace basename if provided
+  if (workspaceName) {
+    normalized = normalized.replace(new RegExp(workspaceName, 'g'), '<WORKSPACE>')
+  }
+
+  return normalized
+}
