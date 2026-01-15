@@ -11,7 +11,8 @@ mkBunCli {
   binaryName = "dotdot";
   packageDir = "packages/@overeng/dotdot";
   workspaceRoot = src;
-  typecheckTsconfig = "packages/@overeng/dotdot/tsconfig.json";
-  bunDepsHash = "sha256-0HfezPxkSbXI4+0sLjhZ4u44j7nIp/25zRXRXRxPaSM=";
+  # TODO: Re-enable once Effect language service messages don't cause tsc to exit non-zero
+  typecheck = false;
+  bunDepsHash = "sha256-GLlXkSQIMHf+1SMK418D4h8rYB2D5N3fLVq/GcPsMwo=";
   inherit gitRev;
 }

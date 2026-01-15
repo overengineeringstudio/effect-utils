@@ -79,7 +79,7 @@ let
         else lib.removePrefix (rootStr + "/") pathStr;
       parts = if relPath == "" then [] else lib.splitString "/" relPath;
       hasExcluded = lib.any
-        (segment: lib.elem segment excludedSourceNames || lib.hasPrefix "result-" segment)
+        (segment: lib.elem segment excludedSourceNames)
         parts;
     in
     lib.cleanSourceFilter path type && !hasExcluded;
