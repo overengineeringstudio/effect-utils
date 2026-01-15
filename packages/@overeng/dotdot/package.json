@@ -19,6 +19,7 @@
     "postinstall": "patch --forward -p1 -d node_modules/effect-distributed-lock < ../../../patches/effect-distributed-lock@0.0.11.patch || true"
   },
   "dependencies": {
+    "@overeng/cli-ui": "file:../cli-ui",
     "@overeng/utils": "file:../utils"
   },
   "devDependencies": {

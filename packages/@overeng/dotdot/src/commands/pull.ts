@@ -4,7 +4,10 @@
  * Pull all repos from their remotes
  */
 
+import path from 'node:path'
+
 import * as Cli from '@effect/cli'
+import { kv, styled, symbols } from '@overeng/cli-ui'
 import { Effect, Layer, Option, Schema } from 'effect'
 
 import {
@@ -98,37 +101,36 @@ export const pullHandler = ({
   Effect.gen(function* () {
     const workspace = yield* WorkspaceService
 
-    yield* Effect.log(`dotdot workspace: ${workspace.root}`)
+    yield* Effect.log(kv('workspace', path.basename(workspace.root)))
 
     // Get all repos and filter to those that exist as git repos
     const allRepos = yield* workspace.scanRepos()
     const repos = allRepos.filter(existsAsGitRepo)
 
     if (repos.length === 0) {
-      yield* Effect.log('No repos to pull')
+      yield* Effect.log(styled.dim('no repos to pull'))
       return
     }
 
-    yield* Effect.log(`Pulling ${repos.length} repo(s)...`)
-    yield* Effect.log(`Execution mode: ${mode}`)
+    yield* Effect.log(styled.dim(`${repos.length} repos ${symbols.dot} ${mode} mode`))
     yield* Effect.log('')
 
     const results = yield* executeForAll({
       items: repos,
       fn: (repo) =>
         Effect.gen(function* () {
-          yield* Effect.log(`Pulling ${repo.name}...`)
+          yield* Effect.log(`${styled.dim('pulling')} ${styled.bold(repo.name)}`)
           const result = yield* pullRepo(repo)
 
           const statusIcon =
             result.status === 'pulled'
               ? result.diverged
-                ? '!'
-                : '+'
+                ? styled.yellow(symbols.warning)
+                : styled.green(symbols.check)
               : result.status === 'failed'
-                ? 'x'
-                : '-'
-          yield* Effect.log(`  ${statusIcon} ${result.message ?? result.status}`)
+                ? styled.red(symbols.cross)
+                : styled.dim(symbols.dot)
+          yield* Effect.log(`  ${statusIcon} ${styled.dim(result.message ?? result.status)}`)
           return result
         }),
       options: { mode, maxParallel: Option.getOrUndefined(maxParallel) },
@@ -138,14 +140,14 @@ export const pullHandler = ({
 
     const summary = buildSummary({ results, statusLabels: PullStatusLabels })
     const divergedCount = results.filter((r) => 'diverged' in r && r.diverged === true).length
-    const divergedSuffix = divergedCount > 0 ? `, ${divergedCount} diverged` : ''
-    yield* Effect.log(`Done: ${summary}${divergedSuffix}`)
+    const divergedSuffix = divergedCount > 0 ? `, ${styled.yellow(String(divergedCount))} diverged` : ''
+    yield* Effect.log(styled.dim(`done: ${summary}${divergedSuffix}`))
 
     if (divergedCount > 0) {
       yield* Effect.log('')
-      yield* Effect.log('Warning: Some repos are now diverged from their pinned revisions.')
+      yield* Effect.logWarning('some repos are now diverged from their pinned revisions')
       yield* Effect.log(
-        'Run `dotdot update-revs` to update pins, or `dotdot sync` to reset to pinned revisions.',
+        styled.dim('run `dotdot update-revs` to update pins, or `dotdot sync` to reset'),
       )
     }
   }).pipe(Effect.withSpan('dotdot/pull'))
@@ -167,6 +169,8 @@ export const pullCommand = Cli.Command.make(
   (args) =>
     pullHandler(args).pipe(
       Effect.provide(WorkspaceService.live.pipe(Layer.provide(CurrentWorkingDirectory.live))),
-      Effect.catchTag('ConfigOutOfSyncError', (e) => Effect.logError(e.message)),
+      Effect.catchTag('ConfigOutOfSyncError', (e) =>
+        Effect.logError(`${styled.red(symbols.cross)} ${styled.dim(e.message)}`),
+      ),
     ),
 )

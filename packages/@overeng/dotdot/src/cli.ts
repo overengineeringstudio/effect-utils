@@ -3,6 +3,7 @@ import path from 'node:path'
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
 import * as PlatformNode from '@effect/platform-node'
+import { styled, symbols } from '@overeng/cli-ui'
 import { Effect, Layer, Option, pipe } from 'effect'
 
 import {
@@ -31,7 +32,7 @@ const initCommand = Cli.Command.make('init', {}, () =>
 
     const exists = yield* fs.exists(configPath)
     if (exists) {
-      yield* Effect.log('Workspace already initialized')
+      yield* Effect.log(styled.dim('workspace already initialized'))
       return
     }
 
@@ -42,7 +43,7 @@ const initCommand = Cli.Command.make('init', {}, () =>
 
     yield* fs.writeFileString(configPath, JSON.stringify(initialConfig, null, 2) + '\n')
 
-    yield* Effect.log(`Initialized dotdot workspace at ${cwd}`)
+    yield* Effect.log(`${styled.green(symbols.check)} ${styled.dim('initialized workspace at')} ${styled.bold(path.basename(cwd))}`)
   }).pipe(Effect.withSpan('dotdot/init')),
 )
 
@@ -64,7 +65,7 @@ const schemaCommand = Cli.Command.make(
 
       if (Option.isSome(output)) {
         yield* fs.writeFileString(output.value, content)
-        yield* Effect.log(`Schema written to ${output.value}`)
+        yield* Effect.log(`${styled.green(symbols.check)} ${styled.dim('schema written to')} ${styled.bold(output.value)}`)
       } else {
         // Print to stdout
         console.log(content)

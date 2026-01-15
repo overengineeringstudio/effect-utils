@@ -9,7 +9,18 @@ import path from 'node:path'
 import * as Cli from '@effect/cli'
 import * as Prompt from '@effect/cli/Prompt'
 import { FileSystem } from '@effect/platform'
-import { Effect, Option, Schema } from 'effect'
+import { kv, styled, symbols } from '@overeng/cli-ui'
+import { Console, Effect, Option, Schema } from 'effect'
+
+import {
+  renderSyncDryRun,
+  type SyncDiff,
+  type RepoToClone,
+  type RepoToCheckout,
+  type PackageToAdd,
+  type PackageToRemove,
+  type PackageWithInstall,
+} from './sync-renderer.ts'
 
 import {
   type BaseResult,
@@ -150,10 +161,10 @@ const runPackageInstalls = ({
     for (const [pkgName, pkgConfig] of Object.entries(packages)) {
       if (pkgConfig.install) {
         const pkgPath = path.join(workspaceRoot, pkgConfig.repo, pkgConfig.path)
-        yield* Effect.log(`  Installing package ${pkgName}...`)
+        yield* Effect.log(`  ${styled.dim('installing')} ${styled.bold(pkgName)}`)
         yield* runShellCommand({ command: pkgConfig.install, cwd: pkgPath }).pipe(
           Effect.catchAll((error) => {
-            return Effect.logWarning(`  Failed to install ${pkgName}: ${error}`)
+            return Effect.logWarning(`  ${styled.red(symbols.cross)} ${styled.bold(pkgName)} ${styled.dim(String(error))}`)
           }),
         )
         installedPackages.push(pkgName)
@@ -211,8 +222,6 @@ export const syncCommand = Cli.Command.make(
         ? path.resolve(Option.getOrThrow(workspacePath))
         : yield* findWorkspaceRoot(cwd)
 
-      yield* Effect.log(`dotdot workspace: ${workspaceRoot}`)
-
       // Collect member configs and merge
       const memberConfigs = yield* collectMemberConfigs(workspaceRoot)
       const merged = mergeMemberConfigs(memberConfigs)
@@ -260,30 +269,127 @@ export const syncCommand = Cli.Command.make(
         }
       }
 
+      const repoCount = Object.keys(allRepos).length
+      const packageCount = Object.keys(merged.packages).length
+
+      // Handle dry-run mode with clean renderer output
+      if (dryRun) {
+        // Compute repos diff
+        const reposToClone: RepoToClone[] = []
+        const reposToCheckout: RepoToCheckout[] = []
+        let reposUnchanged = 0
+
+        for (const [name, config] of Object.entries(allRepos)) {
+          const repoPath = path.join(workspaceRoot, name)
+          const exists = yield* fs.exists(repoPath)
+
+          if (!exists) {
+            reposToClone.push({
+              name,
+              url: config.url,
+              ...(config.install && { install: config.install }),
+            })
+          } else if (config.rev) {
+            const isGitRepo = yield* Git.isGitRepo(repoPath)
+            if (isGitRepo) {
+              const currentRev = yield* Git.getCurrentRev(repoPath)
+              if (!currentRev.startsWith(config.rev) && currentRev !== config.rev) {
+                reposToCheckout.push({
+                  name,
+                  fromRev: currentRev,
+                  toRev: config.rev,
+                })
+              } else {
+                reposUnchanged++
+              }
+            } else {
+              reposUnchanged++
+            }
+          } else {
+            reposUnchanged++
+          }
+        }
+
+        // Compute packages diff by comparing with existing root config
+        const existingPackages = existingRoot.config.packages ?? {}
+        const newPackages = merged.packages
+
+        const packagesToAdd: PackageToAdd[] = []
+        const packagesToRemove: PackageToRemove[] = []
+        const packagesWithInstall: PackageWithInstall[] = []
+        let packagesUnchanged = 0
+
+        // Find packages to add (in new but not in existing)
+        for (const [name, pkg] of Object.entries(newPackages)) {
+          if (!(name in existingPackages)) {
+            packagesToAdd.push({ name, repo: pkg.repo })
+          } else {
+            packagesUnchanged++
+          }
+          // Track packages with install commands
+          if (pkg.install) {
+            packagesWithInstall.push({ name, install: pkg.install })
+          }
+        }
+
+        // Find packages to remove (in existing but not in new)
+        for (const name of Object.keys(existingPackages)) {
+          if (!(name in newPackages)) {
+            packagesToRemove.push({ name })
+          }
+        }
+
+        const diff: SyncDiff = {
+          repos: {
+            toClone: reposToClone,
+            toCheckout: reposToCheckout,
+            unchanged: reposUnchanged,
+          },
+          packages: {
+            toAdd: packagesToAdd,
+            toRemove: packagesToRemove,
+            withInstall: packagesWithInstall,
+            unchanged: packagesUnchanged,
+          },
+        }
+
+        // Render and output
+        const lines = renderSyncDryRun({
+          workspaceName: path.basename(workspaceRoot),
+          mode,
+          diff,
+          ...(danglingRepos.length > 0 && { danglingRepos }),
+        })
+
+        for (const line of lines) {
+          yield* Console.log(line)
+        }
+        return
+      }
+
+      // Non-dry-run path uses Effect.log
+      yield* Effect.log(kv('workspace', path.basename(workspaceRoot)))
+
       // Show warnings for dangling repos
       if (danglingRepos.length > 0) {
         yield* Effect.log('')
-        yield* Effect.logWarning(`Found ${danglingRepos.length} dangling repo(s):`)
+        yield* Effect.logWarning(`Found ${styled.bold(String(danglingRepos.length))} dangling repo(s):`)
         for (const name of danglingRepos) {
-          yield* Effect.logWarning(`  - ${name} (no config and not a dependency of anything)`)
+          yield* Effect.logWarning(`  ${symbols.bullet} ${styled.bold(name)} ${styled.dim('(no config and not a dependency)')}`)
         }
         yield* Effect.log('')
       }
 
-      const repoCount = Object.keys(allRepos).length
-      const packageCount = Object.keys(merged.packages).length
-
       if (repoCount === 0) {
-        yield* Effect.log('No repos declared in member configs')
+        yield* Effect.log(styled.dim('no repos declared in member configs'))
         return
       }
 
-      yield* Effect.log(`Found ${repoCount} repo(s), ${packageCount} package(s)`)
-      yield* Effect.log(`Execution mode: ${mode}`)
+      yield* Effect.log(styled.dim(`${repoCount} repos ${symbols.dot} ${packageCount} packages ${symbols.dot} ${mode} mode`))
       yield* Effect.log('')
 
       // Check for dirty repos when --force is used
-      if (force && !dryRun) {
+      if (force) {
         const dirtyRepos: string[] = []
         for (const [name] of Object.entries(allRepos)) {
           const repoPath = path.join(workspaceRoot, name)
@@ -301,10 +407,10 @@ export const syncCommand = Cli.Command.make(
 
         if (dirtyRepos.length > 0) {
           yield* Effect.logWarning(
-            `${dirtyRepos.length} repo(s) have uncommitted changes that may be discarded:`,
+            `${styled.bold(String(dirtyRepos.length))} repo(s) have uncommitted changes that may be discarded:`,
           )
           for (const name of dirtyRepos) {
-            yield* Effect.logWarning(`  - ${name}`)
+            yield* Effect.logWarning(`  ${symbols.bullet} ${styled.bold(name)}`)
           }
           yield* Effect.log('')
 
@@ -314,38 +420,12 @@ export const syncCommand = Cli.Command.make(
           })
 
           if (!confirmed) {
-            yield* Effect.log('Aborted.')
+            yield* Effect.log(styled.dim('aborted'))
             return
           }
 
           yield* Effect.log('')
         }
-      }
-
-      if (dryRun) {
-        yield* Effect.log('Dry run - no changes will be made')
-        yield* Effect.log('')
-
-        for (const [name, config] of Object.entries(allRepos)) {
-          const repoPath = path.join(workspaceRoot, name)
-          const exists = yield* fs.exists(repoPath)
-          if (exists) {
-            yield* Effect.log(`  ${name}: would skip (already exists)`)
-          } else {
-            const installInfo = config.install ? ` (install: ${config.install})` : ''
-            yield* Effect.log(`  ${name}: would clone from ${config.url}${installInfo}`)
-          }
-        }
-
-        if (packageCount > 0) {
-          yield* Effect.log('')
-          yield* Effect.log('Packages to index:')
-          for (const [name, pkg] of Object.entries(merged.packages)) {
-            const installInfo = pkg.install ? ` (install: ${pkg.install})` : ''
-            yield* Effect.log(`  ${name}: ${pkg.repo}/${pkg.path}${installInfo}`)
-          }
-        }
-        return
       }
 
       // Sync repos with the specified execution mode
@@ -354,9 +434,17 @@ export const syncCommand = Cli.Command.make(
 
       const executeFn = ([name, config]: [string, RepoConfig]) =>
         Effect.gen(function* () {
-          yield* Effect.log(`Syncing ${name}...`)
+          yield* Effect.log(`${styled.dim('syncing')} ${styled.bold(name)}`)
           const result = yield* syncRepo({ workspaceRoot, name, config, force })
-          yield* Effect.log(`  ${result.status}: ${result.message ?? ''}`)
+          const statusIcon =
+            result.status === 'cloned'
+              ? styled.green(symbols.check)
+              : result.status === 'checked-out'
+                ? styled.blue(symbols.check)
+                : result.status === 'failed'
+                  ? styled.red(symbols.cross)
+                  : styled.dim(symbols.dot)
+          yield* Effect.log(`  ${statusIcon} ${styled.dim(result.message ?? result.status)}`)
           return result
         })
 
@@ -375,8 +463,8 @@ export const syncCommand = Cli.Command.make(
         }).pipe(
           Effect.catchTag('CycleError', (e) =>
             Effect.gen(function* () {
-              yield* Effect.log(`Error: ${e.message}`)
-              yield* Effect.log('Please resolve circular dependencies before syncing.')
+              yield* Effect.logError(`${styled.red(symbols.cross)} ${styled.bold('cycle detected')} ${styled.dim(e.message)}`)
+              yield* Effect.log(styled.dim('please resolve circular dependencies before syncing'))
               return [] as SyncResult[]
             }),
           ),
@@ -388,7 +476,7 @@ export const syncCommand = Cli.Command.make(
       // Run package install commands
       if (packageCount > 0) {
         yield* Effect.log('')
-        yield* Effect.log('Running package installs...')
+        yield* Effect.log(styled.dim('running package installs...'))
         yield* runPackageInstalls({ workspaceRoot, packages: merged.packages })
       }
 
@@ -398,7 +486,7 @@ export const syncCommand = Cli.Command.make(
       // Sync symlinks for packages
       if (packageCount > 0) {
         yield* Effect.log('')
-        yield* Effect.log('Syncing package symlinks...')
+        yield* Effect.log(styled.dim('syncing package symlinks...'))
 
         const symlinkResult = yield* syncSymlinks({
           workspaceRoot,
@@ -409,27 +497,27 @@ export const syncCommand = Cli.Command.make(
 
         // Report conflicts if any
         if (symlinkResult.conflicts.size > 0 && !force) {
-          yield* Effect.logWarning('Package symlink conflicts detected:')
+          yield* Effect.logWarning(`${styled.bold('symlink conflicts')} detected:`)
           for (const [targetName, sources] of symlinkResult.conflicts) {
-            yield* Effect.logWarning(`  ${targetName}:`)
+            yield* Effect.logWarning(`  ${styled.bold(targetName)}`)
             for (const source of sources) {
               yield* Effect.logWarning(
-                `    - ${source.sourceRepo}/${path.relative(path.join(workspaceRoot, source.sourceRepo), source.source)}`,
+                `    ${symbols.bullet} ${styled.dim(`${source.sourceRepo}/${path.relative(path.join(workspaceRoot, source.sourceRepo), source.source)}`)}`,
               )
             }
           }
-          yield* Effect.log('Use --force to overwrite with the first match')
+          yield* Effect.log(styled.dim('use --force to overwrite with the first match'))
         }
 
         // Report created/overwritten symlinks
         if (symlinkResult.created.length > 0) {
-          yield* Effect.log(`  Created ${symlinkResult.created.length} symlink(s)`)
+          yield* Effect.log(`  ${styled.green(symbols.check)} ${styled.dim(`created ${symlinkResult.created.length} symlink(s)`)}`)
         }
         if (symlinkResult.overwritten.length > 0) {
-          yield* Effect.log(`  Overwritten ${symlinkResult.overwritten.length} symlink(s)`)
+          yield* Effect.log(`  ${styled.yellow(symbols.check)} ${styled.dim(`overwritten ${symlinkResult.overwritten.length} symlink(s)`)}`)
         }
         if (symlinkResult.skipped.length > 0) {
-          yield* Effect.log(`  Skipped ${symlinkResult.skipped.length} symlink(s)`)
+          yield* Effect.log(`  ${styled.dim(`${symbols.dot} skipped ${symlinkResult.skipped.length} symlink(s)`)}`)
         }
 
         // Prune stale symlinks
@@ -440,13 +528,13 @@ export const syncCommand = Cli.Command.make(
         })
 
         if (pruneResult.removed.length > 0) {
-          yield* Effect.log(`  Pruned ${pruneResult.removed.length} stale symlink(s)`)
+          yield* Effect.log(`  ${styled.dim(`${symbols.cross} pruned ${pruneResult.removed.length} stale symlink(s)`)}`)
         }
       }
 
       yield* Effect.log('')
 
       const summary = buildSummary({ results, statusLabels: SyncStatusLabels })
-      yield* Effect.log(`Done: ${summary}`)
+      yield* Effect.log(styled.dim(`done: ${summary}`))
     }).pipe(Effect.withSpan('dotdot/sync')),
 )

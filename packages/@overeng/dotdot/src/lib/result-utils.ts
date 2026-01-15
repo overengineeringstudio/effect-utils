@@ -4,8 +4,6 @@
  * Provides generic result types and summary building for repo operations.
  */
 
-import { Effect } from 'effect'
-
 /** Base result shape for repo operations */
 export type BaseResult<TStatus extends string> = {
   name: string
@@ -49,18 +47,3 @@ export const buildSummary = <TStatus extends string>({
 
   return parts.join(', ')
 }
-
-/** Log results summary with Effect.log */
-export const logSummary = <TStatus extends string>({
-  results,
-  statusLabels,
-  prefix = 'Done:',
-}: {
-  results: BaseResult<TStatus>[]
-  statusLabels: Record<TStatus, string>
-  prefix?: string
-}) =>
-  Effect.gen(function* () {
-    const summary = buildSummary({ results, statusLabels })
-    yield* Effect.log(`${prefix} ${summary}`)
-  })

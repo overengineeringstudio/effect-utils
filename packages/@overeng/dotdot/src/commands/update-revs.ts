@@ -7,6 +7,7 @@
 import path from 'node:path'
 
 import * as Cli from '@effect/cli'
+import { kv, styled, symbols } from '@overeng/cli-ui'
 import { Effect, Layer, Schema } from 'effect'
 
 import {
@@ -48,7 +49,7 @@ export const updateRevsHandler = ({ repos, dryRun }: { repos: string[]; dryRun: 
     const workspace = yield* WorkspaceService
     const rootConfigPath = path.join(workspace.root, GENERATED_CONFIG_FILE_NAME)
 
-    yield* Effect.log(`dotdot workspace: ${workspace.root}`)
+    yield* Effect.log(kv('workspace', path.basename(workspace.root)))
 
     // Get all repos from workspace
     const allRepos = yield* workspace.scanRepos()
@@ -61,18 +62,18 @@ export const updateRevsHandler = ({ repos, dryRun }: { repos: string[]; dryRun: 
 
     if (reposToUpdate.length === 0) {
       if (repos.length > 0) {
-        yield* Effect.log(`No matching repos found for: ${repos.join(', ')}`)
+        yield* Effect.log(styled.dim(`no matching repos found for: ${repos.join(', ')}`))
       } else {
-        yield* Effect.log('No repos declared in config')
+        yield* Effect.log(styled.dim('no repos declared in config'))
       }
       return
     }
 
-    yield* Effect.log(`Updating ${reposToUpdate.length} repo(s)...`)
+    yield* Effect.log(styled.dim(`${reposToUpdate.length} repos`))
     yield* Effect.log('')
 
     if (dryRun) {
-      yield* Effect.log('Dry run - no changes will be made')
+      yield* Effect.log(styled.dim('dry run - no changes will be made'))
       yield* Effect.log('')
     }
 
@@ -87,7 +88,7 @@ export const updateRevsHandler = ({ repos, dryRun }: { repos: string[]; dryRun: 
       // Should be filtered already, but guard anyway
       if (!gitState) {
         results.push({ name, status: 'skipped', message: 'Not a git repo' })
-        yield* Effect.log(`  ${name}: skipped (not a git repo)`)
+        yield* Effect.log(`  ${styled.bold(name)} ${styled.dim('skipped (not a git repo)')}`)
         continue
       }
 
@@ -101,13 +102,13 @@ export const updateRevsHandler = ({ repos, dryRun }: { repos: string[]; dryRun: 
           ...(oldRev !== undefined && { oldRev }),
           newRev: currentRev,
         })
-        yield* Effect.log(`  ${name}: unchanged (${currentRev.slice(0, 7)})`)
+        yield* Effect.log(`  ${styled.bold(name)} ${styled.dim(`unchanged (${currentRev.slice(0, 7)})`)}`)
         continue
       }
 
       if (dryRun) {
         yield* Effect.log(
-          `  ${name}: would update ${oldRev?.slice(0, 7) ?? '(none)'} → ${currentRev.slice(0, 7)}`,
+          `  ${styled.bold(name)} ${styled.cyan('would update')} ${styled.dim(`${oldRev?.slice(0, 7) ?? '(none)'} ${symbols.arrowRight} ${currentRev.slice(0, 7)}`)}`,
         )
         results.push({
           name,
@@ -138,14 +139,14 @@ export const updateRevsHandler = ({ repos, dryRun }: { repos: string[]; dryRun: 
         newRev: currentRev,
       })
       yield* Effect.log(
-        `  ${name}: updated ${oldRev?.slice(0, 7) ?? '(none)'} → ${currentRev.slice(0, 7)}`,
+        `  ${styled.bold(name)} ${styled.green(symbols.check)} ${styled.dim(`${oldRev?.slice(0, 7) ?? '(none)'} ${symbols.arrowRight} ${currentRev.slice(0, 7)}`)}`,
       )
     }
 
     yield* Effect.log('')
 
     const summary = buildSummary({ results, statusLabels: UpdateStatusLabels })
-    yield* Effect.log(`Done: ${summary}`)
+    yield* Effect.log(styled.dim(`done: ${summary}`))
   }).pipe(Effect.withSpan('dotdot/update-revs'))
 
 /** Update-revs command implementation.
@@ -165,6 +166,8 @@ export const updateRevsCommand = Cli.Command.make(
   (args) =>
     updateRevsHandler(args).pipe(
       Effect.provide(WorkspaceService.live.pipe(Layer.provide(CurrentWorkingDirectory.live))),
-      Effect.catchTag('ConfigOutOfSyncError', (e) => Effect.logError(e.message)),
+      Effect.catchTag('ConfigOutOfSyncError', (e) =>
+        Effect.logError(`${styled.red(symbols.cross)} ${styled.dim(e.message)}`),
+      ),
     ),
 )

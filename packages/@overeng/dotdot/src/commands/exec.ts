@@ -4,7 +4,10 @@
  * Run a command in all repos
  */
 
+import path from 'node:path'
+
 import * as Cli from '@effect/cli'
+import { kv, styled, symbols } from '@overeng/cli-ui'
 import { Effect, Layer, Option, Schema } from 'effect'
 
 import {
@@ -43,7 +46,7 @@ const execInRepo = ({ repo, command }: { repo: RepoInfo; command: string }) =>
   Effect.gen(function* () {
     const { name, path: repoPath } = repo
 
-    yield* Effect.log(`[${name}] Running...`)
+    yield* Effect.log(`${styled.dim('running')} ${styled.bold(name)}`)
 
     const result = yield* runShellCommand({ command, cwd: repoPath }).pipe(
       Effect.map((output) => ({ name, status: 'success' as const, output })),
@@ -60,9 +63,9 @@ const execInRepo = ({ repo, command }: { repo: RepoInfo; command: string }) =>
       if (result.output) {
         yield* Effect.log(result.output)
       }
-      yield* Effect.log(`[${name}] Done`)
+      yield* Effect.log(`  ${styled.green(symbols.check)} ${styled.dim('done')}`)
     } else {
-      yield* Effect.log(`[${name}] Failed: ${result.message}`)
+      yield* Effect.log(`  ${styled.red(symbols.cross)} ${styled.dim(result.message ?? 'failed')}`)
     }
 
     return result
@@ -81,9 +84,9 @@ export const execHandler = ({
   Effect.gen(function* () {
     const workspace = yield* WorkspaceService
 
-    yield* Effect.log(`dotdot workspace: ${workspace.root}`)
-    yield* Effect.log(`Running: ${command}`)
-    yield* Effect.log(`Execution mode: ${mode}`)
+    yield* Effect.log(kv('workspace', path.basename(workspace.root)))
+    yield* Effect.log(kv('command', styled.cyan(command)))
+    yield* Effect.log(styled.dim(`${mode} mode`))
     yield* Effect.log('')
 
     // Get all repos and filter to existing git repos
@@ -91,7 +94,7 @@ export const execHandler = ({
     const repos = allRepos.filter(existsAsGitRepo)
 
     if (repos.length === 0) {
-      yield* Effect.log('No repos declared in config')
+      yield* Effect.log(styled.dim('no repos declared in config'))
       return
     }
 
@@ -104,7 +107,7 @@ export const execHandler = ({
     yield* Effect.log('')
 
     const summary = buildSummary({ results, statusLabels: ExecStatusLabels })
-    yield* Effect.log(`Done: ${summary}`)
+    yield* Effect.log(styled.dim(`done: ${summary}`))
   }).pipe(Effect.withSpan('dotdot/exec'))
 
 /** Exec command implementation.
@@ -127,6 +130,8 @@ export const execCommand = Cli.Command.make(
   (args) =>
     execHandler(args).pipe(
       Effect.provide(WorkspaceService.live.pipe(Layer.provide(CurrentWorkingDirectory.live))),
-      Effect.catchTag('ConfigOutOfSyncError', (e) => Effect.logError(e.message)),
+      Effect.catchTag('ConfigOutOfSyncError', (e) =>
+        Effect.logError(`${styled.red(symbols.cross)} ${styled.dim(e.message)}`),
+      ),
     ),
 )

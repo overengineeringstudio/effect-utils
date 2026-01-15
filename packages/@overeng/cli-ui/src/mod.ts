@@ -1,0 +1,67 @@
+/**
+ * @overeng/cli-ui
+ *
+ * A CLI design system with tokens, styled text functions, and components.
+ *
+ * @example
+ * ```ts
+ * import { styled, badge, list, kv, separator, symbols } from '@overeng/cli-ui'
+ *
+ * // Styled text
+ * console.log(styled.bold('Hello'))
+ * console.log(styled.red('Error!'))
+ *
+ * // Badge
+ * console.log(badge('CRITICAL', 'critical'))
+ *
+ * // Key-value
+ * console.log(kv('workspace', 'my-project'))
+ *
+ * // List with truncation
+ * const items = ['a', 'b', 'c', 'd', 'e', 'f', 'g']
+ * list(items, { max: 5 }).forEach(line => console.log(line))
+ *
+ * // Separator
+ * console.log(separator())
+ * ```
+ */
+
+// Tokens
+export { colors, color256, bgColor256, symbols, spacing, semantic } from './tokens.ts'
+
+// Styled text functions
+export { styled, raw, resetColorCache } from './styled.ts'
+
+// Components
+export {
+  badge,
+  list,
+  kv,
+  separator,
+  status,
+  indent,
+  indentLines,
+  section,
+  type BadgeLevel,
+  type ListOptions,
+  type KvOptions,
+  type SeparatorOptions,
+  type StatusLevel,
+  type IndentOptions,
+  type SectionOptions,
+} from './components.ts'
+
+// Utilities
+export {
+  stripAnsi,
+  visibleLength,
+  padEnd,
+  padStart,
+  center,
+  truncate,
+  wrap,
+  joinLines,
+  splitLines,
+  type PadOptions,
+  type TruncateOptions,
+} from './utils.ts'

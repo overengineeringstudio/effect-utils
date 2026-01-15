@@ -4,7 +4,10 @@
  * Show dependency tree of repos
  */
 
+import path from 'node:path'
+
 import * as Cli from '@effect/cli'
+import { kv, styled, symbols } from '@overeng/cli-ui'
 import { Effect, Layer } from 'effect'
 
 import { CurrentWorkingDirectory, type RepoInfo, WorkspaceService } from '../lib/mod.ts'
@@ -12,27 +15,42 @@ import { CurrentWorkingDirectory, type RepoInfo, WorkspaceService } from '../lib
 /** Format the tree output */
 const formatTree = (repos: RepoInfo[]) =>
   Effect.gen(function* () {
-    yield* Effect.log('Repos:')
+    yield* Effect.log(styled.dim('repos:'))
     yield* Effect.log('')
 
     for (let i = 0; i < repos.length; i++) {
       const repo = repos[i]!
       const isLast = i === repos.length - 1
-      const prefix = isLast ? '└── ' : '├── '
+      const prefix = isLast ? symbols.treeLast : symbols.treeMiddle
 
-      // Build status indicator
-      const fsStatus =
-        repo.fsState._tag === 'missing'
-          ? ' [missing]'
-          : repo.fsState._tag === 'not-git'
-            ? ' [not-git]'
-            : ''
+      // Build status parts
+      const parts: string[] = [styled.bold(repo.name)]
 
-      const revInfo = repo.pinnedRev ? ` @ ${repo.pinnedRev.slice(0, 7)}` : ' (no pin)'
-      const currentRev = repo.gitState ? ` (${repo.gitState.shortRev})` : ''
-      const dirtyFlag = repo.gitState?.isDirty ? ' *' : ''
+      // Revision info
+      if (repo.pinnedRev) {
+        parts.push(styled.dim(`@${repo.pinnedRev.slice(0, 7)}`))
+      } else {
+        parts.push(styled.dim('(no pin)'))
+      }
 
-      yield* Effect.log(`${prefix}${repo.name}${revInfo}${currentRev}${dirtyFlag}${fsStatus}`)
+      // Current rev if available
+      if (repo.gitState) {
+        parts.push(styled.dim(`(${repo.gitState.shortRev})`))
+      }
+
+      // Status indicators
+      if (repo.gitState?.isDirty) {
+        parts.push(styled.yellow(symbols.dirty))
+      }
+
+      // FS state issues
+      if (repo.fsState._tag === 'missing') {
+        parts.push(styled.red('[missing]'))
+      } else if (repo.fsState._tag === 'not-git') {
+        parts.push(styled.yellow('[not-git]'))
+      }
+
+      yield* Effect.log(`${prefix}${parts.join(' ')}`)
     }
   })
 
@@ -40,14 +58,14 @@ const formatTree = (repos: RepoInfo[]) =>
 export const treeHandler = Effect.gen(function* () {
   const workspace = yield* WorkspaceService
 
-  yield* Effect.log(`dotdot workspace: ${workspace.root}`)
+  yield* Effect.log(kv('workspace', path.basename(workspace.root)))
   yield* Effect.log('')
 
   // Get all repos from workspace
   const repos = yield* workspace.scanRepos()
 
   if (repos.length === 0) {
-    yield* Effect.log('No repos declared in config')
+    yield* Effect.log(styled.dim('no repos declared in config'))
     return
   }
 
@@ -58,7 +76,7 @@ export const treeHandler = Effect.gen(function* () {
   yield* formatTree(repos)
 
   yield* Effect.log('')
-  yield* Effect.log(`Total: ${repos.length} repo(s)`)
+  yield* Effect.log(styled.dim(`${repos.length} repos`))
 }).pipe(Effect.withSpan('dotdot/tree'))
 
 /** Tree command implementation.
@@ -66,6 +84,8 @@ export const treeHandler = Effect.gen(function* () {
 export const treeCommand = Cli.Command.make('tree', {}, () =>
   treeHandler.pipe(
     Effect.provide(WorkspaceService.live.pipe(Layer.provide(CurrentWorkingDirectory.live))),
-    Effect.catchTag('ConfigOutOfSyncError', (e) => Effect.logError(e.message)),
+    Effect.catchTag('ConfigOutOfSyncError', (e) =>
+      Effect.logError(`${styled.red(symbols.cross)} ${styled.dim(e.message)}`),
+    ),
   ),
 )

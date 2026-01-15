@@ -5,6 +5,7 @@
     "": {
       "name": "@overeng/dotdot",
       "dependencies": {
+        "@overeng/cli-ui": "file:../cli-ui",
         "@overeng/utils": "file:../utils",
       },
       "devDependencies": {
@@ -138,6 +139,8 @@
     "@opentelemetry/api": ["@opentelemetry/api@1.9.0", "", {}, "sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg=="],
 
     "@opentelemetry/semantic-conventions": ["@opentelemetry/semantic-conventions@1.38.0", "", {}, "sha512-kocjix+/sSggfJhwXqClZ3i9Y/MI0fp7b+g7kCRm6psy2dsf8uApTRclwG18h8Avm7C9+fnt+O36PspJ/OzoWg=="],
+
+    "@overeng/cli-ui": ["@overeng/cli-ui@file:../cli-ui", { "devDependencies": { "@types/node": "25.0.3", "typescript": "5.9.3" } }],
 
     "@overeng/utils": ["@overeng/utils@file:../utils", { "dependencies": { "@noble/hashes": "1.7.1", "@opentelemetry/api": "1.9.0", "effect-distributed-lock": "0.0.11", "ioredis": "5.6.1" }, "devDependencies": { "@effect/opentelemetry": "0.60.0", "@effect/platform": "0.94.1", "@effect/platform-node": "0.104.0", "@effect/printer": "0.47.0", "@effect/printer-ansi": "0.47.0", "@effect/rpc": "0.73.0", "@effect/vitest": "0.27.0", "@playwright/test": "1.57.0", "@types/node": "25.0.3", "effect": "3.19.14", "vite": "7.3.0", "vitest": "4.0.16" }, "peerDependencies": { "@effect/opentelemetry": "^0.60.0", "@effect/platform": "^0.94.1", "@effect/platform-node": "^0.104.0", "@effect/printer": "^0.47.0", "@effect/printer-ansi": "^0.47.0", "@effect/rpc": "^0.73.0", "@playwright/test": "^1.57.0", "effect": "^3.19.14" } }],
 

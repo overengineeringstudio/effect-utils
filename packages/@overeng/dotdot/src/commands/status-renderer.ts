@@ -6,6 +6,8 @@
 
 import path from 'node:path'
 
+import { badge, kv, list, separator, styled, symbols } from '@overeng/cli-ui'
+
 import {
   isDiverged,
   isMember,
@@ -17,37 +19,6 @@ import {
   getUniqueMappings,
   type PackageMapping,
 } from './link.ts'
-
-// =============================================================================
-// ANSI Color Codes
-// =============================================================================
-
-const c = {
-  reset: '\x1b[0m',
-  bold: '\x1b[1m',
-  dim: '\x1b[2m',
-  red: '\x1b[31m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  blue: '\x1b[34m',
-  magenta: '\x1b[35m',
-  cyan: '\x1b[36m',
-  white: '\x1b[37m',
-  bgRed: '\x1b[41m',
-  bgYellow: '\x1b[43m',
-  black: '\x1b[30m',
-}
-
-const styled = {
-  bold: (s: string) => `${c.bold}${s}${c.reset}`,
-  dim: (s: string) => `${c.dim}${s}${c.reset}`,
-  red: (s: string) => `${c.red}${s}${c.reset}`,
-  green: (s: string) => `${c.green}${s}${c.reset}`,
-  yellow: (s: string) => `${c.yellow}${s}${c.reset}`,
-  blue: (s: string) => `${c.blue}${s}${c.reset}`,
-  cyan: (s: string) => `${c.cyan}${s}${c.reset}`,
-  magenta: (s: string) => `${c.magenta}${s}${c.reset}`,
-}
 
 // =============================================================================
 // Problem Analysis
@@ -96,9 +67,6 @@ const analyzeProblems = (repos: RepoInfo[]): Problems => {
 // Rendering Helpers
 // =============================================================================
 
-const SEPARATOR = '─'.repeat(40)
-const MAX_LIST_ITEMS = 5
-
 /** Format branch name with appropriate color */
 const formatBranch = (branch: string): string => {
   if (branch === 'main' || branch === 'master') {
@@ -110,23 +78,6 @@ const formatBranch = (branch: string): string => {
   }
 }
 
-/** Render a truncated list with "+ N more" indicator */
-const renderList = (items: string[], indent: string): string[] => {
-  const lines: string[] = []
-  const shown = items.slice(0, MAX_LIST_ITEMS)
-  const remaining = items.length - MAX_LIST_ITEMS
-
-  for (const item of shown) {
-    lines.push(`${indent}${styled.cyan(item)}`)
-  }
-
-  if (remaining > 0) {
-    lines.push(`${indent}${styled.dim(`+ ${remaining} more`)}`)
-  }
-
-  return lines
-}
-
 // =============================================================================
 // Problem Section Rendering
 // =============================================================================
@@ -135,7 +86,7 @@ const renderCriticalSection = (problems: CriticalProblem[]): string[] => {
   if (problems.length === 0) return []
 
   const lines: string[] = []
-  lines.push(`${c.bgRed}${c.white}${c.bold} CRITICAL ${c.reset}`)
+  lines.push(badge('CRITICAL', 'critical'))
   lines.push('')
 
   for (const problem of problems) {
@@ -155,7 +106,7 @@ const renderWarningSection = (problems: WarningProblem[]): string[] => {
   if (problems.length === 0) return []
 
   const lines: string[] = []
-  lines.push(`${c.bgYellow}${c.black}${c.bold} WARNING ${c.reset}`)
+  lines.push(badge('WARNING', 'warning'))
   lines.push('')
 
   for (const problem of problems) {
@@ -212,17 +163,17 @@ const renderRepo = (repo: RepoInfo, ctx: RepoRenderContext): string[] => {
 
     // Status symbols
     if (repo.gitState.isDirty) {
-      parts.push(styled.yellow('*'))
+      parts.push(styled.yellow(symbols.dirty))
     }
     if (isDiverged(repo)) {
-      parts.push(styled.red(`↕${repo.pinnedRev?.slice(0, 7)}`))
+      parts.push(styled.red(`${symbols.diverged}${repo.pinnedRev?.slice(0, 7)}`))
     }
   }
 
   // Relationship (deps this repo depends on)
   const memberDeps = ctx.depsByMember.get(repo.name) ?? []
   if (memberDeps.length > 0) {
-    parts.push(styled.dim(`← ${memberDeps.join(', ')}`))
+    parts.push(styled.dim(`${symbols.arrowLeft} ${memberDeps.join(', ')}`))
   }
 
   lines.push(parts.join(' '))
@@ -232,7 +183,7 @@ const renderRepo = (repo: RepoInfo, ctx: RepoRenderContext): string[] => {
   if (repoPackages.length > 0) {
     lines.push(`  ${styled.dim(`packages(${repoPackages.length}):`)}`)
     const packageNames = repoPackages.map((p) => p.targetName)
-    lines.push(...renderList(packageNames, '    '))
+    lines.push(...list(packageNames, { indent: '    ' }))
   }
 
   return lines
@@ -283,7 +234,7 @@ export const renderStyledStatus = ({
   }
 
   // Context header
-  output.push(`${styled.dim('workspace:')} ${path.basename(workspaceRoot)}`)
+  output.push(kv('workspace', path.basename(workspaceRoot)))
   output.push('')
 
   // Problem sections
@@ -292,7 +243,7 @@ export const renderStyledStatus = ({
     output.push(...renderWarningSection(problems.warnings))
 
     // Separator
-    output.push(styled.dim(SEPARATOR))
+    output.push(separator())
     output.push('')
   }
 
@@ -335,7 +286,7 @@ export const renderStyledStatus = ({
   // Summary line
   const memberCount = members.length
   const depCount = dependencies.filter((d) => d.fsState._tag !== 'missing').length
-  output.push(styled.dim(`${memberCount} members · ${depCount} deps`))
+  output.push(styled.dim(`${memberCount} members ${symbols.dot} ${depCount} deps`))
 
   return output
 }

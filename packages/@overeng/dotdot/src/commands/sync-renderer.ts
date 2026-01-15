@@ -1,0 +1,173 @@
+/**
+ * Styled sync output renderer following the CLI style guide
+ *
+ * Diff-focused: shows what WOULD change, not everything that exists
+ */
+
+import { kv, separator, styled, symbols } from '@overeng/cli-ui'
+
+import type { ExecutionMode } from '../lib/mod.ts'
+
+// =============================================================================
+// Types
+// =============================================================================
+
+export type RepoToClone = {
+  name: string
+  url: string
+  install?: string
+}
+
+export type RepoToCheckout = {
+  name: string
+  fromRev: string
+  toRev: string
+}
+
+export type PackageToAdd = {
+  name: string
+  repo: string
+}
+
+export type PackageToRemove = {
+  name: string
+}
+
+export type PackageWithInstall = {
+  name: string
+  install: string
+}
+
+export type SyncDiff = {
+  repos: {
+    toClone: RepoToClone[]
+    toCheckout: RepoToCheckout[]
+    unchanged: number
+  }
+  packages: {
+    toAdd: PackageToAdd[]
+    toRemove: PackageToRemove[]
+    withInstall: PackageWithInstall[]
+    unchanged: number
+  }
+}
+
+export type SyncDryRunInput = {
+  workspaceName: string
+  mode: ExecutionMode
+  diff: SyncDiff
+  danglingRepos?: string[]
+}
+
+// =============================================================================
+// Rendering Helpers
+// =============================================================================
+
+const actionLine = (action: string, actionStyle: (s: string) => string, text: string, detail?: string) => {
+  const a = actionStyle(action)
+  const d = detail ? `  ${styled.dim(detail)}` : ''
+  return `  ${a} ${text}${d}`
+}
+
+// =============================================================================
+// Main Renderer
+// =============================================================================
+
+/** Renders styled dry-run output and returns all lines */
+export const renderSyncDryRun = ({
+  workspaceName,
+  mode,
+  diff,
+  danglingRepos,
+}: SyncDryRunInput): string[] => {
+  const output: string[] = []
+
+  // Header
+  output.push(kv('workspace', workspaceName))
+  output.push(styled.dim(`dry run ${symbols.dot} ${mode} mode`))
+  output.push('')
+
+  // Dangling repos warning
+  if (danglingRepos && danglingRepos.length > 0) {
+    output.push(styled.yellow(`${symbols.warning} ${danglingRepos.length} dangling repo(s):`))
+    for (const name of danglingRepos) {
+      output.push(`  ${styled.dim(symbols.bullet)} ${styled.bold(name)} ${styled.dim('(not tracked)')}`)
+    }
+    output.push('')
+  }
+
+  // Check if there are any changes
+  const hasRepoChanges = diff.repos.toClone.length > 0 || diff.repos.toCheckout.length > 0
+  const hasPackageChanges = diff.packages.toAdd.length > 0 || diff.packages.toRemove.length > 0
+  const hasInstalls = diff.packages.withInstall.length > 0
+
+  if (!hasRepoChanges && !hasPackageChanges && !hasInstalls) {
+    output.push(`${styled.green(symbols.check)} ${styled.dim('workspace is up to date')}`)
+    output.push('')
+    const totalRepos = diff.repos.unchanged
+    const totalPackages = diff.packages.unchanged
+    output.push(styled.dim(`${totalRepos} repos ${symbols.dot} ${totalPackages} packages`))
+    return output
+  }
+
+  // Repos section
+  if (hasRepoChanges || diff.repos.unchanged > 0) {
+    output.push(styled.dim('repos:'))
+    for (const r of diff.repos.toClone) {
+      output.push(actionLine('will clone', styled.green, r.name, 'because not on disk'))
+    }
+    for (const r of diff.repos.toCheckout) {
+      output.push(actionLine('will checkout', styled.yellow, r.name, `because pinned rev changed (${r.fromRev.slice(0, 7)} → ${r.toRev.slice(0, 7)})`))
+    }
+    if (diff.repos.unchanged > 0) {
+      output.push(`  ${styled.dim(`${diff.repos.unchanged} unchanged`)}`)
+    }
+    output.push('')
+  }
+
+  // Packages section
+  if (hasPackageChanges || diff.packages.unchanged > 0) {
+    output.push(styled.dim('packages:'))
+    for (const p of diff.packages.toAdd) {
+      output.push(actionLine('will add', styled.green, p.name, `because exposed by ${p.repo}`))
+    }
+    for (const p of diff.packages.toRemove) {
+      output.push(actionLine('will remove', styled.red, p.name, 'because no longer exposed'))
+    }
+    if (diff.packages.unchanged > 0) {
+      output.push(`  ${styled.dim(`${diff.packages.unchanged} unchanged`)}`)
+    }
+    output.push('')
+  }
+
+  // Install commands section
+  if (hasInstalls) {
+    output.push(styled.dim('will run install:'))
+    for (const p of diff.packages.withInstall) {
+      output.push(`  ${styled.cyan(p.name)} ${styled.dim(`(${p.install})`)}`)
+    }
+    output.push('')
+  }
+
+  // Footer summary
+  output.push(separator())
+  const parts: string[] = []
+  if (diff.repos.toClone.length > 0) {
+    parts.push(`${diff.repos.toClone.length} to clone`)
+  }
+  if (diff.repos.toCheckout.length > 0) {
+    parts.push(`${diff.repos.toCheckout.length} to checkout`)
+  }
+  if (diff.packages.toAdd.length > 0) {
+    parts.push(`${diff.packages.toAdd.length} packages to add`)
+  }
+  if (diff.packages.toRemove.length > 0) {
+    parts.push(`${diff.packages.toRemove.length} to remove`)
+  }
+  if (hasInstalls) {
+    parts.push(`${diff.packages.withInstall.length} installs`)
+  }
+  output.push(styled.dim(parts.join(' · ')))
+
+  return output
+}
