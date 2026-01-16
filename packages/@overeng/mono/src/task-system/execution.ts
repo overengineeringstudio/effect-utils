@@ -194,50 +194,54 @@ export const executeCommand = <TId extends string>({
       // Create streams for stdout and stderr
       const stdoutStream = proc.stdout.pipe(
         Stream.decodeText('utf8'),
-        Stream.mapChunks((chunks) => {
-          // Split by lines and filter empty
-          const lines = Chunk.toReadonlyArray(chunks)
-            .join('')
-            .split('\n')
-            .filter((line) => line.length > 0)
+        Stream.mapChunksEffect((chunks) =>
+          Effect.gen(function* () {
+            // Split by lines and filter empty
+            const lines = Chunk.toReadonlyArray(chunks)
+              .join('')
+              .split('\n')
+              .filter((line) => line.length > 0)
 
-          // Track buffer size metric
-          const totalBytes = lines.reduce((sum, line) => sum + line.length, 0)
-          Effect.runSync(Metric.incrementBy(bufferSizeMetric, totalBytes))
+            // Track buffer size metric
+            const totalBytes = lines.reduce((sum, line) => sum + line.length, 0)
+            yield* Metric.incrementBy(bufferSizeMetric, totalBytes)
 
-          return Chunk.fromIterable(
-            lines.map(
-              (chunk): TaskEvent<TId> => ({
-                type: 'stdout',
-                taskId,
-                chunk,
-              }),
-            ),
-          )
-        }),
+            return Chunk.fromIterable(
+              lines.map(
+                (chunk): TaskEvent<TId> => ({
+                  type: 'stdout',
+                  taskId,
+                  chunk,
+                }),
+              ),
+            )
+          }),
+        ),
       )
 
       const stderrStream = proc.stderr.pipe(
         Stream.decodeText('utf8'),
-        Stream.mapChunks((chunks) => {
-          const lines = Chunk.toReadonlyArray(chunks)
-            .join('')
-            .split('\n')
-            .filter((line) => line.length > 0)
+        Stream.mapChunksEffect((chunks) =>
+          Effect.gen(function* () {
+            const lines = Chunk.toReadonlyArray(chunks)
+              .join('')
+              .split('\n')
+              .filter((line) => line.length > 0)
 
-          const totalBytes = lines.reduce((sum, line) => sum + line.length, 0)
-          Effect.runSync(Metric.incrementBy(bufferSizeMetric, totalBytes))
+            const totalBytes = lines.reduce((sum, line) => sum + line.length, 0)
+            yield* Metric.incrementBy(bufferSizeMetric, totalBytes)
 
-          return Chunk.fromIterable(
-            lines.map(
-              (chunk): TaskEvent<TId> => ({
-                type: 'stderr',
-                taskId,
-                chunk,
-              }),
-            ),
-          )
-        }),
+            return Chunk.fromIterable(
+              lines.map(
+                (chunk): TaskEvent<TId> => ({
+                  type: 'stderr',
+                  taskId,
+                  chunk,
+                }),
+              ),
+            )
+          }),
+        ),
       )
 
       // Merge stdout and stderr streams

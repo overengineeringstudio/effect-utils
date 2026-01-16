@@ -24,6 +24,12 @@ export type RepoToCheckout = {
   toRev: string
 }
 
+/** Repo issue types that need user attention */
+export type RepoIssue =
+  | { _tag: 'missing-url'; name: string; declaredBy: string }
+  | { _tag: 'not-a-git-repo'; name: string }
+  | { _tag: 'dirty-working-tree'; name: string }
+
 export type PackageToAdd = {
   name: string
   repo: string
@@ -42,6 +48,7 @@ export type SyncDiff = {
   repos: {
     toClone: RepoToClone[]
     toCheckout: RepoToCheckout[]
+    issues: RepoIssue[]
     unchanged: number
   }
   packages: {
@@ -98,10 +105,11 @@ export const renderSyncDryRun = ({
 
   // Check if there are any changes
   const hasRepoChanges = diff.repos.toClone.length > 0 || diff.repos.toCheckout.length > 0
+  const hasRepoIssues = diff.repos.issues.length > 0
   const hasPackageChanges = diff.packages.toAdd.length > 0 || diff.packages.toRemove.length > 0
   const hasInstalls = diff.packages.withInstall.length > 0
 
-  if (!hasRepoChanges && !hasPackageChanges && !hasInstalls) {
+  if (!hasRepoChanges && !hasPackageChanges && !hasInstalls && !hasRepoIssues) {
     output.push(`${styled.green(symbols.check)} ${styled.dim('workspace is up to date')}`)
     output.push('')
     const totalRepos = diff.repos.unchanged
@@ -121,6 +129,25 @@ export const renderSyncDryRun = ({
     }
     if (diff.repos.unchanged > 0) {
       output.push(`  ${styled.dim(`${diff.repos.unchanged} unchanged`)}`)
+    }
+    output.push('')
+  }
+
+  // Issues section (needs attention)
+  if (hasRepoIssues) {
+    output.push(styled.yellow(`${symbols.warning} needs attention:`))
+    for (const issue of diff.repos.issues) {
+      switch (issue._tag) {
+        case 'missing-url':
+          output.push(`  ${styled.bold(issue.name)}  ${styled.dim(`declared by ${issue.declaredBy} but has no clone URL`)}`)
+          break
+        case 'not-a-git-repo':
+          output.push(`  ${styled.bold(issue.name)}  ${styled.dim('directory exists but is not a git repo')}`)
+          break
+        case 'dirty-working-tree':
+          output.push(`  ${styled.bold(issue.name)}  ${styled.dim('has uncommitted changes (use --force to override)')}`)
+          break
+      }
     }
     output.push('')
   }
@@ -166,6 +193,9 @@ export const renderSyncDryRun = ({
   }
   if (hasInstalls) {
     parts.push(`${diff.packages.withInstall.length} installs`)
+  }
+  if (hasRepoIssues) {
+    parts.push(styled.yellow(`${diff.repos.issues.length} issues`))
   }
   output.push(styled.dim(parts.join(' · ')))
 

@@ -62,12 +62,12 @@ const readHolderLock = (opts: {
 
     const content = yield* fs.readFileString(filePath).pipe(
       Effect.catchAllCause((cause) => {
-        const failure = Option.getOrUndefined(Cause.failureOption(cause))
+        const failure = Cause.failureOption(cause).pipe(Option.getOrUndefined)
         if (failure !== undefined && isNotFoundError(failure)) {
           return Effect.succeed(undefined)
         }
 
-        const defect = Option.getOrUndefined(Cause.dieOption(cause))
+        const defect = Cause.dieOption(cause).pipe(Option.getOrUndefined)
         if (defect !== undefined && isNotFoundError(defect)) {
           return Effect.succeed(undefined)
         }
@@ -88,9 +88,7 @@ const readHolderLock = (opts: {
     }
 
     const parsed = yield* Schema.decodeUnknown(Schema.parseJson(HolderLockSchema))(content).pipe(
-      Effect.catchAll((cause) =>
-        Effect.fail(new SemaphoreBackingError({ operation: 'parseJson', cause })),
-      ),
+      Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'parseJson', cause })),
     )
 
     // Check if expired
@@ -119,16 +117,10 @@ const writeHolderLock = (opts: {
 
     yield* fs
       .makeDirectory(dirPath, { recursive: true })
-      .pipe(
-        Effect.catchAll((cause) =>
-          Effect.fail(new SemaphoreBackingError({ operation: 'makeDirectory', cause })),
-        ),
-      )
+      .pipe(Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'makeDirectory', cause })))
 
     const json = yield* Schema.encode(Schema.parseJson(HolderLockSchema))(content).pipe(
-      Effect.catchAll((cause) =>
-        Effect.fail(new SemaphoreBackingError({ operation: 'encodeJson', cause })),
-      ),
+      Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'encodeJson', cause })),
     )
 
     // Write to temp file first, then rename for atomicity
@@ -136,19 +128,11 @@ const writeHolderLock = (opts: {
 
     yield* fs
       .writeFileString(tempPath, json)
-      .pipe(
-        Effect.catchAll((cause) =>
-          Effect.fail(new SemaphoreBackingError({ operation: 'writeFile', cause })),
-        ),
-      )
+      .pipe(Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'writeFile', cause })))
 
     yield* fs
       .rename(tempPath, filePath)
-      .pipe(
-        Effect.catchAll((cause) =>
-          Effect.fail(new SemaphoreBackingError({ operation: 'rename', cause })),
-        ),
-      )
+      .pipe(Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'rename', cause })))
   })
 
 /**
@@ -160,13 +144,9 @@ const removeHolderLock = (
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
 
-    yield* fs
-      .remove(filePath)
-      .pipe(
-        Effect.catchAll((cause) =>
-          Effect.fail(new SemaphoreBackingError({ operation: 'remove', cause })),
-        ),
-      )
+    yield* fs.remove(filePath).pipe(
+      Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'remove', cause })),
+    )
   })
 
 /** Error thrown when attempting to revoke permits from a non-existent holder */
@@ -192,11 +172,7 @@ const countActivePermits = (opts: {
 
     const exists = yield* fs
       .exists(keyDir)
-      .pipe(
-        Effect.catchAll((cause) =>
-          Effect.fail(new SemaphoreBackingError({ operation: 'exists', cause })),
-        ),
-      )
+      .pipe(Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'exists', cause })))
 
     if (!exists) {
       return 0
@@ -204,11 +180,7 @@ const countActivePermits = (opts: {
 
     const entries = yield* fs
       .readDirectory(keyDir)
-      .pipe(
-        Effect.catchAll((cause) =>
-          Effect.fail(new SemaphoreBackingError({ operation: 'readDirectory', cause })),
-        ),
-      )
+      .pipe(Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'readDirectory', cause })))
 
     let totalPermits = 0
 
@@ -460,11 +432,7 @@ export const listHolders = (opts: {
 
     const exists = yield* fs
       .exists(keyDir)
-      .pipe(
-        Effect.catchAll((cause) =>
-          Effect.fail(new SemaphoreBackingError({ operation: 'exists', cause })),
-        ),
-      )
+      .pipe(Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'exists', cause })))
 
     if (!exists) {
       return []
@@ -472,11 +440,7 @@ export const listHolders = (opts: {
 
     const entries = yield* fs
       .readDirectory(keyDir)
-      .pipe(
-        Effect.catchAll((cause) =>
-          Effect.fail(new SemaphoreBackingError({ operation: 'readDirectory', cause })),
-        ),
-      )
+      .pipe(Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'readDirectory', cause })))
 
     const holders: HolderInfo[] = []
 

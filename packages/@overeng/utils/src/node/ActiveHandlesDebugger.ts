@@ -156,7 +156,7 @@ export const withActiveHandlesDumpOnSigint = <A, E, R>(effect: Effect.Effect<A, 
 
     const handler = () => {
       try {
-        Runtime.runSync(runtime)(Effect.ignore(logActiveHandles))
+        Runtime.runSync(runtime)(logActiveHandles.pipe(Effect.ignore))
       } finally {
         process.off('SIGINT', handler)
         process.kill(process.pid, 'SIGINT')

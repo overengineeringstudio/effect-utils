@@ -271,6 +271,12 @@ export const cmdText: (
   )
 })
 
+/** Internal error for process signal operations */
+class ProcessSignalError extends Schema.TaggedError<ProcessSignalError>()('ProcessSignalError', {
+  cause: Schema.Defect,
+  code: Schema.optionalWith(Schema.String, { as: 'Option' }),
+}) {}
+
 /** Error thrown when a shell command exits with non-zero status */
 export class CmdError extends Schema.TaggedError<CmdError>()('CmdError', {
   command: Schema.String,
@@ -416,8 +422,8 @@ const runWithLogging = ({
             ...(killTimeout !== undefined ? { timeout: killTimeout } : {}),
           })
         }
-        yield* Effect.ignore(Fiber.join(stdoutFiber))
-        yield* Effect.ignore(Fiber.join(stderrFiber))
+        yield* Fiber.join(stdoutFiber).pipe(Effect.ignore)
+        yield* Fiber.join(stderrFiber).pipe(Effect.ignore)
         yield* stdoutHandler.flush()
         yield* stderrHandler.flush()
       })
@@ -446,11 +452,14 @@ const sendSignalToProcessGroup = (opts: {
     // Negative PID sends signal to entire process group
     return Effect.try({
       try: () => process.kill(-proc.pid, signal),
-      catch: (e) => e as NodeJS.ErrnoException,
+      catch: (e) => {
+        const errno = e as NodeJS.ErrnoException
+        return new ProcessSignalError({ cause: e, code: Option.fromNullable(errno.code) })
+      },
     }).pipe(
       Effect.catchAll((e) => {
         // ESRCH = no such process (already dead) - that's fine
-        if (e.code === 'ESRCH') return Effect.void
+        if (Option.getOrUndefined(e.code) === 'ESRCH') return Effect.void
         // Other errors: fall back to individual kill (ignore errors)
         return proc.kill(signal).pipe(Effect.ignore)
       }),

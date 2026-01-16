@@ -12,7 +12,7 @@ import { Effect, Schema } from 'effect'
  * Any direct call into Playwright that can fail due to a closed page/context or timing issues should
  * be wrapped so tests receive structured errors and spans.
  */
-export class PwOpError extends Schema.TaggedError<PwOpError>('PwOpError')('PwOpError', {
+export class PwOpError extends Schema.TaggedError<PwOpError>()('PwOpError', {
   /** Stable operation identifier (e.g. `pw.page.goto`, `pw.context.cookies`). */
   op: Schema.String,
   /** Underlying Playwright/Node defect. */

@@ -109,7 +109,7 @@ export const waitForDeferredLock = (opts: {
           cb(Effect.void)
 
           // Hold lock until deferred is resolved
-          return Effect.runPromise(Deferred.await(deferred))
+          return Deferred.await(deferred).pipe(Effect.runPromise)
         })
         .catch((error: DOMException) => {
           if (error.code === 20 && error.message === 'signal is aborted without reason') {
@@ -142,7 +142,7 @@ export const tryGetDeferredLock = (opts: {
         })
 
         // Hold lock until deferred is resolved or aborted
-        return Promise.race([Effect.runPromise(Deferred.await(deferred)), abortPromise])
+        return Promise.race([Deferred.await(deferred).pipe(Effect.runPromise), abortPromise])
       })
     })
   })
@@ -168,7 +168,7 @@ export const stealDeferredLock = (opts: {
         })
 
         // Hold lock until deferred is resolved or aborted
-        return Promise.race([Effect.runPromise(Deferred.await(deferred)), abortPromise])
+        return Promise.race([Deferred.await(deferred).pipe(Effect.runPromise), abortPromise])
       })
     })
   })

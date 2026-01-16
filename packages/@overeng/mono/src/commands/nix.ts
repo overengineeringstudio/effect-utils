@@ -9,6 +9,7 @@ import { shouldNeverHappen } from '@overeng/utils'
 import { cmdText, CurrentWorkingDirectory } from '@overeng/utils/node'
 
 import type { MonoCommand } from '../cli.ts'
+import { CommandError } from '../errors.ts'
 import { runCommand } from '../utils.ts'
 
 /** Specification for a Nix package managed by the mono nix command */
@@ -107,6 +108,58 @@ const resolveBuildNixPath = (packageSpec: NixPackageSpec): string => {
   }
   return resolveWorkspacePath(packageSpec.buildNixPath)
 }
+
+const decodeChunks = (chunks: Chunk.Chunk<Uint8Array>): string =>
+  new TextDecoder().decode(
+    Chunk.toReadonlyArray(chunks).reduce((acc, chunk) => {
+      const result = new Uint8Array(acc.length + chunk.length)
+      result.set(acc)
+      result.set(chunk, acc.length)
+      return result
+    }, new Uint8Array()),
+  )
+
+const warnIfStaleBunDeps = (stderrText: string, packageNames: readonly string[]) =>
+  Effect.gen(function* () {
+    if (!stderrText.includes('hash mismatch in fixed-output derivation')) {
+      return
+    }
+    yield* Console.error('nix reported a fixed-output hash mismatch; bunDepsHash is likely stale.')
+    for (const name of packageNames) {
+      yield* Console.error(`- ${name}: run mono nix hash --package ${name}`)
+    }
+  })
+
+const runNixBuild = ({
+  args,
+  cwd,
+  packageNames,
+}: {
+  args: readonly string[]
+  cwd: string
+  packageNames: readonly string[]
+}) =>
+  Effect.gen(function* () {
+    const command = PlatformCommand.make('nix', ...args).pipe(
+      PlatformCommand.workingDirectory(cwd),
+      PlatformCommand.stdout('inherit'),
+      PlatformCommand.stderr('pipe'),
+    )
+    const process = yield* PlatformCommand.start(command)
+    const stderrChunks = yield* process.stderr.pipe(
+      Stream.tap((chunk) => Effect.sync(() => globalThis.process.stderr.write(chunk))),
+      Stream.runCollect,
+    )
+    const exitCode = yield* process.exitCode
+    if (exitCode !== 0) {
+      const stderrText = decodeChunks(stderrChunks)
+      yield* warnIfStaleBunDeps(stderrText, packageNames)
+      return yield* new CommandError({
+        command: `nix ${args.join(' ')}`,
+        message: 'nix build failed',
+      })
+    }
+  })
 
 const getBinaryName = (packageSpec: NixPackageSpec): string =>
   packageSpec.binaryName ?? packageSpec.name
@@ -320,10 +373,10 @@ const buildPackage = (packageSpec: NixPackageSpec) =>
     // Avoid creating ./result symlinks when running from direnv or scripts.
     args.push('--no-link')
     args.push(...resolveWorkspaceOverrideArgs(packageSpec))
-    yield* runCommand({
-      command: 'nix',
+    yield* runNixBuild({
       args,
       cwd: resolveFlakeDir(packageSpec),
+      packageNames: [packageSpec.name],
     })
     yield* Console.log(`✓ ${packageSpec.name} built successfully`)
   })
@@ -347,10 +400,10 @@ const buildPackages = (packageSpecs: readonly NixPackageSpec[]) =>
     }
     // Avoid creating ./result symlinks when building multiple packages.
     args.push('--no-link')
-    yield* runCommand({
-      command: 'nix',
+    yield* runNixBuild({
       args,
       cwd: resolveFlakeDir(firstSpec),
+      packageNames: packageSpecs.map((spec) => spec.name),
     })
     yield* Console.log('✓ build completed')
   })
@@ -390,14 +443,7 @@ const updateHash = (packageSpec: NixPackageSpec) =>
       return
     }
 
-    const stderrText = new TextDecoder().decode(
-      Chunk.toReadonlyArray(stderrChunks).reduce((acc, chunk) => {
-        const result = new Uint8Array(acc.length + chunk.length)
-        result.set(acc)
-        result.set(chunk, acc.length)
-        return result
-      }, new Uint8Array()),
-    )
+    const stderrText = decodeChunks(stderrChunks)
 
     const hashMatch = stderrText.match(/got:\s+(sha256-[A-Za-z0-9+/=]+)/)
     if (!hashMatch) {

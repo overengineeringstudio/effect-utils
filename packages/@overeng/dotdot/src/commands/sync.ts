@@ -17,6 +17,7 @@ import {
   type SyncDiff,
   type RepoToClone,
   type RepoToCheckout,
+  type RepoIssue,
   type PackageToAdd,
   type PackageToRemove,
   type PackageWithInstall,
@@ -274,14 +275,34 @@ export const syncCommand = Cli.Command.make(
 
       // Handle dry-run mode with clean renderer output
       if (dryRun) {
+        // Build map of which member declared each dep (for error messages)
+        const depDeclaredBy = new Map<string, string>()
+        for (const memberConfig of memberConfigs) {
+          if (memberConfig.config.deps) {
+            for (const depName of Object.keys(memberConfig.config.deps)) {
+              if (!depDeclaredBy.has(depName)) {
+                depDeclaredBy.set(depName, memberConfig.repoName)
+              }
+            }
+          }
+        }
+
         // Compute repos diff
         const reposToClone: RepoToClone[] = []
         const reposToCheckout: RepoToCheckout[] = []
+        const repoIssues: RepoIssue[] = []
         let reposUnchanged = 0
 
         for (const [name, config] of Object.entries(allRepos)) {
           const repoPath = path.join(workspaceRoot, name)
           const exists = yield* fs.exists(repoPath)
+
+          // Check for missing/empty URL
+          if (!config.url || config.url.trim() === '') {
+            const declaredBy = depDeclaredBy.get(name) ?? 'unknown'
+            repoIssues.push({ _tag: 'missing-url', name, declaredBy })
+            continue
+          }
 
           if (!exists) {
             reposToClone.push({
@@ -289,24 +310,34 @@ export const syncCommand = Cli.Command.make(
               url: config.url,
               ...(config.install && { install: config.install }),
             })
-          } else if (config.rev) {
+          } else {
+            // Check if directory is a git repo
             const isGitRepo = yield* Git.isGitRepo(repoPath)
-            if (isGitRepo) {
+            if (!isGitRepo) {
+              repoIssues.push({ _tag: 'not-a-git-repo', name })
+              continue
+            }
+
+            if (config.rev) {
               const currentRev = yield* Git.getCurrentRev(repoPath)
               if (!currentRev.startsWith(config.rev) && currentRev !== config.rev) {
-                reposToCheckout.push({
-                  name,
-                  fromRev: currentRev,
-                  toRev: config.rev,
-                })
+                // Check for dirty working tree
+                const isDirty = yield* Git.isDirty(repoPath)
+                if (isDirty) {
+                  repoIssues.push({ _tag: 'dirty-working-tree', name })
+                } else {
+                  reposToCheckout.push({
+                    name,
+                    fromRev: currentRev,
+                    toRev: config.rev,
+                  })
+                }
               } else {
                 reposUnchanged++
               }
             } else {
               reposUnchanged++
             }
-          } else {
-            reposUnchanged++
           }
         }
 
@@ -343,6 +374,7 @@ export const syncCommand = Cli.Command.make(
           repos: {
             toClone: reposToClone,
             toCheckout: reposToCheckout,
+            issues: repoIssues,
             unchanged: reposUnchanged,
           },
           packages: {
