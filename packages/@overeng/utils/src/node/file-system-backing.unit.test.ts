@@ -84,7 +84,7 @@ const TestLayer = makeNodeFsLayer()
 describe('FileSystemBacking', () => {
   describe('tryAcquire', () => {
     it.effect('acquires permits when available', () =>
-      Effect.gen(function* () {
+      Effect.fn('test:acquires permits when available')(function* () {
         const fs = yield* FileSystem.FileSystem
         const tempDir = yield* fs.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
@@ -108,7 +108,7 @@ describe('FileSystemBacking', () => {
     )
 
     it.effect('respects permit limit', () =>
-      Effect.gen(function* () {
+      Effect.fn('test:respects permit limit')(function* () {
         const fs = yield* FileSystem.FileSystem
         const tempDir = yield* fs.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
@@ -140,7 +140,7 @@ describe('FileSystemBacking', () => {
     )
 
     it.effect('multiple holders can acquire permits up to limit', () =>
-      Effect.gen(function* () {
+      Effect.fn('test:multiple holders can acquire permits up to limit')(function* () {
         const fs = yield* FileSystem.FileSystem
         const tempDir = yield* fs.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
@@ -190,7 +190,7 @@ describe('FileSystemBacking', () => {
     )
 
     it.effect('same holder can re-acquire (update permits)', () =>
-      Effect.gen(function* () {
+      Effect.fn('test:same holder can re-acquire (update permits)')(function* () {
         const fs = yield* FileSystem.FileSystem
         const tempDir = yield* fs.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
@@ -221,7 +221,7 @@ describe('FileSystemBacking', () => {
     )
 
     it.effect('different keys are independent', () =>
-      Effect.gen(function* () {
+      Effect.fn('test:different keys are independent')(function* () {
         const fs = yield* FileSystem.FileSystem
         const tempDir = yield* fs.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
@@ -250,7 +250,7 @@ describe('FileSystemBacking', () => {
 
   describe('release', () => {
     it.effect('releases held permits', () =>
-      Effect.gen(function* () {
+      Effect.fn('test:releases held permits')(function* () {
         const fs = yield* FileSystem.FileSystem
         const tempDir = yield* fs.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
@@ -278,7 +278,7 @@ describe('FileSystemBacking', () => {
     )
 
     it.effect('partial release keeps remaining permits', () =>
-      Effect.gen(function* () {
+      Effect.fn('test:partial release keeps remaining permits')(function* () {
         const fs = yield* FileSystem.FileSystem
         const tempDir = yield* fs.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
@@ -322,7 +322,7 @@ describe('FileSystemBacking', () => {
     )
 
     it.effect('releasing more than held returns actual released count', () =>
-      Effect.gen(function* () {
+      Effect.fn('test:releasing more than held returns actual released count')(function* () {
         const fs = yield* FileSystem.FileSystem
         const tempDir = yield* fs.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
@@ -342,7 +342,7 @@ describe('FileSystemBacking', () => {
     )
 
     it.effect('releasing from nonexistent holder returns 0', () =>
-      Effect.gen(function* () {
+      Effect.fn('test:releasing from nonexistent holder returns 0')(function* () {
         const fs = yield* FileSystem.FileSystem
         const tempDir = yield* fs.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
@@ -361,7 +361,7 @@ describe('FileSystemBacking', () => {
 
   describe('refresh', () => {
     it.effect('refreshes TTL for held permits', () =>
-      Effect.gen(function* () {
+      Effect.fn('test:refreshes TTL for held permits')(function* () {
         const fs = yield* FileSystem.FileSystem
         const tempDir = yield* fs.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
@@ -386,7 +386,7 @@ describe('FileSystemBacking', () => {
     )
 
     it.effect('returns false when permits expired', () =>
-      Effect.gen(function* () {
+      Effect.fn('test:returns false when permits expired')(function* () {
         const fs = yield* FileSystem.FileSystem
         const tempDir = yield* fs.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
@@ -411,7 +411,7 @@ describe('FileSystemBacking', () => {
 
   describe('getCount', () => {
     it.effect('returns count of held permits', () =>
-      Effect.gen(function* () {
+      Effect.fn('test:returns count of held permits')(function* () {
         const fs = yield* FileSystem.FileSystem
         const tempDir = yield* fs.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
@@ -430,7 +430,7 @@ describe('FileSystemBacking', () => {
     )
 
     it.effect('excludes expired permits from count', () =>
-      Effect.gen(function* () {
+      Effect.fn('test:excludes expired permits from count')(function* () {
         const fs = yield* FileSystem.FileSystem
         const tempDir = yield* fs.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
@@ -451,7 +451,7 @@ describe('FileSystemBacking', () => {
     )
 
     it.effect('counts permits from multiple holders', () =>
-      Effect.gen(function* () {
+      Effect.fn('test:counts permits from multiple holders')(function* () {
         const fsService = yield* FileSystem.FileSystem
         const tempDir = yield* fsService.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
@@ -474,7 +474,7 @@ describe('FileSystemBacking', () => {
 
   describe('file structure', () => {
     it.effect('creates separate lock files per holder', () =>
-      Effect.gen(function* () {
+      Effect.fn('test:creates separate lock files per holder')(function* () {
         const fsService = yield* FileSystem.FileSystem
         const tempDir = yield* fsService.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
@@ -505,7 +505,7 @@ describe('FileSystemBacking', () => {
     )
 
     it.effect('removes lock file on full release', () =>
-      Effect.gen(function* () {
+      Effect.fn('test:removes lock file on full release')(function* () {
         const fsService = yield* FileSystem.FileSystem
         const tempDir = yield* fsService.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
@@ -533,7 +533,7 @@ describe('FileSystemBacking', () => {
 
   describe('forceRevoke', () => {
     it.effect('revokes permits from a holder and returns permit count', () =>
-      Effect.gen(function* () {
+      Effect.fn('test:revokes permits from a holder and returns permit count')(function* () {
         const fsService = yield* FileSystem.FileSystem
         const tempDir = yield* fsService.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
@@ -565,7 +565,7 @@ describe('FileSystemBacking', () => {
     )
 
     it.effect('fails with HolderNotFoundError for non-existent holder', () =>
-      Effect.gen(function* () {
+      Effect.fn('test:fails with HolderNotFoundError for non-existent holder')(function* () {
         const fsService = yield* FileSystem.FileSystem
         const tempDir = yield* fsService.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
@@ -585,7 +585,7 @@ describe('FileSystemBacking', () => {
     )
 
     it.effect('allows another holder to acquire after force revoke', () =>
-      Effect.gen(function* () {
+      Effect.fn('test:allows another holder to acquire after force revoke')(function* () {
         const fsService = yield* FileSystem.FileSystem
         const tempDir = yield* fsService.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
@@ -630,7 +630,7 @@ describe('FileSystemBacking', () => {
     )
 
     it.effect('causes victim holder refresh to fail', () =>
-      Effect.gen(function* () {
+      Effect.fn('test:causes victim holder refresh to fail')(function* () {
         const fsService = yield* FileSystem.FileSystem
         const tempDir = yield* fsService.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
@@ -666,7 +666,7 @@ describe('FileSystemBacking', () => {
 
   describe('listHolders', () => {
     it.effect('returns empty array when no holders', () =>
-      Effect.gen(function* () {
+      Effect.fn('test:returns empty array when no holders')(function* () {
         const fsService = yield* FileSystem.FileSystem
         const tempDir = yield* fsService.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
@@ -678,7 +678,7 @@ describe('FileSystemBacking', () => {
     )
 
     it.effect('returns all active holders with their info', () =>
-      Effect.gen(function* () {
+      Effect.fn('test:returns all active holders with their info')(function* () {
         const fsService = yield* FileSystem.FileSystem
         const tempDir = yield* fsService.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
@@ -710,7 +710,7 @@ describe('FileSystemBacking', () => {
     )
 
     it.effect('excludes expired holders', () =>
-      Effect.gen(function* () {
+      Effect.fn('test:excludes expired holders')(function* () {
         const fsService = yield* FileSystem.FileSystem
         const tempDir = yield* fsService.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
@@ -738,7 +738,7 @@ describe('FileSystemBacking', () => {
 
   describe('forceRevokeAll', () => {
     it.effect('revokes all holders and returns their info', () =>
-      Effect.gen(function* () {
+      Effect.fn('test:revokes all holders and returns their info')(function* () {
         const fsService = yield* FileSystem.FileSystem
         const tempDir = yield* fsService.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
@@ -771,7 +771,7 @@ describe('FileSystemBacking', () => {
     )
 
     it.effect('returns empty array when no holders', () =>
-      Effect.gen(function* () {
+      Effect.fn('test:returns empty array when no holders')(function* () {
         const fsService = yield* FileSystem.FileSystem
         const tempDir = yield* fsService.makeTempDirectory()
         const lockDir = `${tempDir}/locks`

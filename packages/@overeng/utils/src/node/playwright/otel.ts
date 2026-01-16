@@ -57,9 +57,11 @@ export const currentParentSpanContextJson: Effect.Effect<string | undefined, nev
  *
  * @param envVar - Environment variable name to read the JSON from. Defaults to `PW_SPAN_CONTEXT_JSON`.
  */
-export const parentSpanFromEnv = (
-  envVar: string = PW_SPAN_CONTEXT_ENV_VAR,
-): Effect.Effect<ReturnType<typeof Tracer.makeExternalSpan> | undefined> =>
+export const parentSpanFromEnv: (
+  envVar?: string,
+) => Effect.Effect<ReturnType<typeof Tracer.makeExternalSpan> | undefined> = Effect.fn(
+  'pw.otel.parentSpanFromEnv',
+)((envVar = PW_SPAN_CONTEXT_ENV_VAR) =>
   Effect.gen(function* () {
     const raw = process.env[envVar]
     if (raw === undefined) return undefined
@@ -68,7 +70,8 @@ export const parentSpanFromEnv = (
       Effect.orDie,
     )
     return Tracer.makeExternalSpan({ traceId: ctx.traceId, spanId: ctx.spanId })
-  }).pipe(Effect.withSpan('pw.otel.parentSpanFromEnv'))
+  }),
+)
 
 /** Configuration options for the Playwright OTEL tracing layer. */
 export interface OtelPlaywrightLayerConfig {

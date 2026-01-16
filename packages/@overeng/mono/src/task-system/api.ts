@@ -5,6 +5,7 @@
  * shell commands and arbitrary Effects.
  */
 
+import type { CommandExecutor } from '@effect/platform/CommandExecutor'
 import type { PlatformError } from '@effect/platform/Error'
 import type { Effect, Schedule } from 'effect'
 import { Stream } from 'effect'
@@ -46,7 +47,7 @@ export function task<TId extends string>(args: {
     retrySchedule?: Schedule.Schedule<unknown, unknown, never>
     maxRetries?: number
   }
-}): TaskDef<TId, void, CommandError | PlatformError, never>
+}): TaskDef<TId, void, CommandError | PlatformError, CommandExecutor>
 
 /**
  * Create an effect task that runs arbitrary Effect code.
@@ -76,8 +77,11 @@ export function task<TId extends string, A, E, R>(args: {
 /**
  * Implementation of task factory.
  * Determines if input is a command or effect and creates appropriate TaskDef.
+ *
+ * Note: The implementation uses unknown for the Effect type parameters to support
+ * both command and effect overloads. Type safety is maintained by the overload signatures.
  */
-export function task<TId extends string>({
+export function task<TId extends string, A, E, R>({
   id,
   name,
   command,
@@ -87,20 +91,20 @@ export function task<TId extends string>({
   id: TId
   name: string
   command?: CommandSpec
-  effect?: Effect.Effect<any, any, any>
+  effect?: Effect.Effect<A, E, R>
   options?: {
     dependencies?: ReadonlyArray<TId>
     retrySchedule?: Schedule.Schedule<unknown, unknown, never>
     maxRetries?: number
   }
-}): TaskDef<TId, any, any, any> {
+}): TaskDef<TId, A, E, R> | TaskDef<TId, void, CommandError | PlatformError, CommandExecutor> {
   const commandOrEffect = command ?? effect!
   if (isCommand(commandOrEffect)) {
     // Command task - stream events with exit code checking
-    const taskDef: TaskDef<TId, any, any, any> = {
+    const taskDef: TaskDef<TId, void, CommandError | PlatformError, CommandExecutor> = {
       id,
       name,
-      eventStream: (taskId) => executeCommand({ taskId: taskId as TId, spec: commandOrEffect }),
+      eventStream: (taskId) => executeCommand({ taskId, spec: commandOrEffect }),
       // No effect needed - exit code is checked in the stream
       // Capture command context for failure reporting
       commandContext: {
@@ -116,7 +120,7 @@ export function task<TId extends string>({
   }
 
   // Effect task - wrap in event stream (no stdout/stderr)
-  const taskDef: TaskDef<TId, any, any, any> = {
+  const taskDef: TaskDef<TId, A, E, R> = {
     id,
     name,
     eventStream: (_taskId) => {
@@ -156,13 +160,13 @@ export const commandTask = <TId extends string>({
     env?: Record<string, string>
     dependencies?: ReadonlyArray<TId>
   }
-}): TaskDef<TId, void, CommandError | PlatformError, any> => {
+}): TaskDef<TId, void, CommandError | PlatformError, CommandExecutor> => {
   const spec: CommandSpec = { cmd, args }
   if (options?.cwd) {
-    ;(spec as any).cwd = options.cwd
+    ;(spec as { cwd?: string }).cwd = options.cwd
   }
   if (options?.env) {
-    ;(spec as any).env = options.env
+    ;(spec as { env?: Record<string, string> }).env = options.env
   }
   if (options?.dependencies !== undefined) {
     return task({

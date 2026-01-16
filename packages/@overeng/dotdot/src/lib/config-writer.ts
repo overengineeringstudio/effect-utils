@@ -158,12 +158,10 @@ export const updateRepoRev = ({
   Effect.gen(function* () {
     const existingRepo = existingConfig.repos[name]
     if (!existingRepo) {
-      return yield* Effect.fail(
-        new ConfigWriteError({
-          path: configPath,
-          message: `Repo '${name}' not found in config`,
-        }),
-      )
+      return yield* new ConfigWriteError({
+        path: configPath,
+        message: `Repo '${name}' not found in config`,
+      })
     }
 
     const newConfig: RootConfig = {

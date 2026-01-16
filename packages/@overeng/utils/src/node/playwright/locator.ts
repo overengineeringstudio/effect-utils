@@ -186,84 +186,87 @@ export const textContent: (args: {
 export const locator: (
   /** CSS or Playwright selector. */
   selector: string,
-) => Effect.Effect<Locator, never, PwPage> = (selector) =>
+) => Effect.Effect<Locator, never, PwPage> = Effect.fn('pw.locator')((selector) =>
   Effect.gen(function* () {
     const page = yield* PwPage
+    yield* Effect.annotateCurrentSpan({ 'pw.selector': selector })
     return page.locator(selector)
-  }).pipe(Effect.withSpan('pw.locator', { attributes: { 'pw.selector': selector } }))
+  }),
+)
 
 /** Returns a locator by role. Synchronous, no network call. */
-export const getByRole = (opts: {
+export const getByRole: (opts: {
   /** ARIA role (e.g. 'button', 'link', 'heading'). */
   role: Parameters<Page['getByRole']>[0]
   /** Optional role options (e.g. name, exact). */
   options?: Parameters<Page['getByRole']>[1]
-}): Effect.Effect<Locator, never, PwPage> =>
+}) => Effect.Effect<Locator, never, PwPage> = Effect.fn('pw.getByRole')((opts) =>
   Effect.gen(function* () {
     const page = yield* PwPage
+    yield* Effect.annotateCurrentSpan({
+      'pw.role': String(opts.role),
+      'pw.name': opts.options?.name ?? '',
+    })
     return page.getByRole(opts.role, opts.options)
-  }).pipe(
-    Effect.withSpan('pw.getByRole', {
-      attributes: { 'pw.role': String(opts.role), 'pw.name': opts.options?.name ?? '' },
-    }),
-  )
+  }),
+)
 
 /** Returns a locator by test id. Synchronous, no network call. */
 export const getByTestId: (
   /** Test ID value. */
   testId: string,
-) => Effect.Effect<Locator, never, PwPage> = (testId) =>
+) => Effect.Effect<Locator, never, PwPage> = Effect.fn('pw.getByTestId')((testId) =>
   Effect.gen(function* () {
     const page = yield* PwPage
+    yield* Effect.annotateCurrentSpan({ 'pw.testId': testId })
     return page.getByTestId(testId)
-  }).pipe(Effect.withSpan('pw.getByTestId', { attributes: { 'pw.testId': testId } }))
+  }),
+)
 
 /** Returns a locator by text. Synchronous, no network call. */
-export const getByText = (opts: {
+export const getByText: (opts: {
   /** Text to match. */
   text: string | RegExp
   /** Optional text options (e.g. exact). */
   options?: Parameters<Page['getByText']>[1]
-}): Effect.Effect<Locator, never, PwPage> =>
+}) => Effect.Effect<Locator, never, PwPage> = Effect.fn('pw.getByText')((opts) =>
   Effect.gen(function* () {
     const page = yield* PwPage
+    yield* Effect.annotateCurrentSpan({
+      'pw.text': typeof opts.text === 'string' ? opts.text : opts.text.source,
+    })
     return page.getByText(opts.text, opts.options)
-  }).pipe(
-    Effect.withSpan('pw.getByText', {
-      attributes: { 'pw.text': typeof opts.text === 'string' ? opts.text : opts.text.source },
-    }),
-  )
+  }),
+)
 
 /** Returns a locator by label text. Synchronous, no network call. */
-export const getByLabel = (opts: {
+export const getByLabel: (opts: {
   /** Label text to match. */
   text: string | RegExp
   /** Optional text options (e.g. exact). */
   options?: Parameters<Page['getByLabel']>[1]
-}): Effect.Effect<Locator, never, PwPage> =>
+}) => Effect.Effect<Locator, never, PwPage> = Effect.fn('pw.getByLabel')((opts) =>
   Effect.gen(function* () {
     const page = yield* PwPage
+    yield* Effect.annotateCurrentSpan({
+      'pw.label': typeof opts.text === 'string' ? opts.text : opts.text.source,
+    })
     return page.getByLabel(opts.text, opts.options)
-  }).pipe(
-    Effect.withSpan('pw.getByLabel', {
-      attributes: { 'pw.label': typeof opts.text === 'string' ? opts.text : opts.text.source },
-    }),
-  )
+  }),
+)
 
 /** Returns a locator by placeholder text. Synchronous, no network call. */
-export const getByPlaceholder = (opts: {
+export const getByPlaceholder: (opts: {
   /** Placeholder text to match. */
   text: string | RegExp
   /** Optional text options (e.g. exact). */
   options?: Parameters<Page['getByPlaceholder']>[1]
-}): Effect.Effect<Locator, never, PwPage> =>
+}) => Effect.Effect<Locator, never, PwPage> = Effect.fn('pw.getByPlaceholder')((opts) =>
   Effect.gen(function* () {
     const page = yield* PwPage
+    yield* Effect.annotateCurrentSpan({
+      'pw.placeholder': typeof opts.text === 'string' ? opts.text : opts.text.source,
+    })
     return page.getByPlaceholder(opts.text, opts.options)
-  }).pipe(
-    Effect.withSpan('pw.getByPlaceholder', {
-      attributes: {
-        'pw.placeholder': typeof opts.text === 'string' ? opts.text : opts.text.source,
-      },
-    }),
-  )
+  }),
+)

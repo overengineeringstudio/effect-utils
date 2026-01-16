@@ -56,83 +56,83 @@ const packageNameToReferencePath = (
 }
 
 /** Validate tsconfig references against package.json workspace dependencies */
-export const validateTsconfigReferences = ({
+export const validateTsconfigReferences = Effect.fn("validateTsconfigReferences")(function* ({
   genieFiles,
   cwd,
 }: {
   genieFiles: string[]
   cwd: string
-}) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const warnings: TsconfigReferencesWarning[] = []
+}) {
+  const fs = yield* FileSystem.FileSystem
+  const warnings: TsconfigReferencesWarning[] = []
 
-    // Find pairs of tsconfig.json.genie.ts and package.json.genie.ts in the same directory
-    const tsconfigGenieFiles = genieFiles.filter((f) => f.endsWith('tsconfig.json.genie.ts'))
+  // Find pairs of tsconfig.json.genie.ts and package.json.genie.ts in the same directory
+  const tsconfigGenieFiles = genieFiles.filter((f) => f.endsWith('tsconfig.json.genie.ts'))
 
-    for (const tsconfigGenieFile of tsconfigGenieFiles) {
-      const dir = path.dirname(tsconfigGenieFile)
-      const packageJsonPath = path.join(dir, 'package.json')
-      const tsconfigPath = tsconfigGenieFile.replace('.genie.ts', '')
+  for (const tsconfigGenieFile of tsconfigGenieFiles) {
+    const dir = path.dirname(tsconfigGenieFile)
+    const packageJsonPath = path.join(dir, 'package.json')
+    const tsconfigPath = tsconfigGenieFile.replace('.genie.ts', '')
 
-      // Check if package.json exists
-      const packageJsonExists = yield* fs.exists(packageJsonPath)
-      if (!packageJsonExists) continue
+    // Check if package.json exists
+    const packageJsonExists = yield* fs.exists(packageJsonPath)
+    if (!packageJsonExists) continue
 
-      // Check if tsconfig.json exists (generated)
-      const tsconfigExists = yield* fs.exists(tsconfigPath)
-      if (!tsconfigExists) continue
+    // Check if tsconfig.json exists (generated)
+    const tsconfigExists = yield* fs.exists(tsconfigPath)
+    if (!tsconfigExists) continue
 
-      const packageJsonContent = yield* fs.readFileString(packageJsonPath)
-      const tsconfigContent = yield* fs.readFileString(tsconfigPath)
+    const packageJsonContent = yield* fs.readFileString(packageJsonPath)
+    const tsconfigContent = yield* fs.readFileString(tsconfigPath)
 
-      const workspaceDeps = getWorkspaceDependencies(packageJsonContent)
-      const currentReferences = getTsconfigReferences(tsconfigContent)
+    const workspaceDeps = getWorkspaceDependencies(packageJsonContent)
+    const currentReferences = getTsconfigReferences(tsconfigContent)
 
-      // Convert workspace deps to expected reference paths
-      const expectedReferences = workspaceDeps
-        .map((dep) => packageNameToReferencePath(dep, dir, cwd))
-        .filter((ref): ref is string => ref !== undefined)
+    // Convert workspace deps to expected reference paths
+    const expectedReferences = workspaceDeps
+      .map((dep) => packageNameToReferencePath(dep, dir, cwd))
+      .filter((ref): ref is string => ref !== undefined)
 
-      // Find missing and extra references
-      const missingReferences = A.differenceWith<string>((a, b) => a === b)(
-        expectedReferences,
-        currentReferences,
-      )
-      const extraReferences = A.differenceWith<string>((a, b) => a === b)(
-        currentReferences,
-        expectedReferences,
-      )
+    // Find missing and extra references
+    const missingReferences = A.differenceWith<string>((a, b) => a === b)(
+      expectedReferences,
+      currentReferences,
+    )
+    const extraReferences = A.differenceWith<string>((a, b) => a === b)(
+      currentReferences,
+      expectedReferences,
+    )
 
-      if (missingReferences.length > 0 || extraReferences.length > 0) {
-        warnings.push({
-          tsconfigPath: path.relative(cwd, tsconfigPath),
-          missingReferences,
-          extraReferences,
-        })
-      }
+    if (missingReferences.length > 0 || extraReferences.length > 0) {
+      warnings.push({
+        tsconfigPath: path.relative(cwd, tsconfigPath),
+        missingReferences,
+        extraReferences,
+      })
     }
+  }
 
-    return warnings
-  }).pipe(Effect.withSpan('validateTsconfigReferences'))
+  return warnings
+})
 
 /** Log tsconfig reference warnings */
-export const logTsconfigWarnings = (warnings: TsconfigReferencesWarning[]) =>
-  Effect.gen(function* () {
-    if (warnings.length === 0) return
+export const logTsconfigWarnings = Effect.fn("logTsconfigWarnings")(function* (
+  warnings: TsconfigReferencesWarning[],
+) {
+  if (warnings.length === 0) return
 
-    yield* Effect.log('')
-    yield* Effect.log('⚠ Tsconfig reference warnings:')
+  yield* Effect.log('')
+  yield* Effect.log('⚠ Tsconfig reference warnings:')
 
-    for (const warning of warnings) {
-      yield* Effect.log(`  ${warning.tsconfigPath}:`)
-      for (const missing of warning.missingReferences) {
-        yield* Effect.log(`    - Missing reference: ${missing}`)
-      }
-      for (const extra of warning.extraReferences) {
-        yield* Effect.log(`    - Extra reference (not in package.json deps): ${extra}`)
-      }
+  for (const warning of warnings) {
+    yield* Effect.log(`  ${warning.tsconfigPath}:`)
+    for (const missing of warning.missingReferences) {
+      yield* Effect.log(`    - Missing reference: ${missing}`)
     }
+    for (const extra of warning.extraReferences) {
+      yield* Effect.log(`    - Extra reference (not in package.json deps): ${extra}`)
+    }
+  }
 
-    yield* Effect.log('')
-  })
+  yield* Effect.log('')
+})

@@ -10,7 +10,7 @@ import {
 } from './ActiveHandlesDebugger.ts'
 
 /** Test logger that captures log messages at all levels */
-const makeTestLogger = Effect.gen(function* () {
+const makeTestLogger = Effect.fn('makeTestLogger')(function* () {
   const logs = yield* Ref.make<Chunk.Chunk<string>>(Chunk.empty())
   const runtime = yield* Effect.runtime<never>()
 
@@ -32,7 +32,7 @@ const makeTestLogger = Effect.gen(function* () {
 describe('ActiveHandlesDebugger', () => {
   describe('dumpActiveHandles', () => {
     it.effect('returns active handles info', () =>
-      Effect.gen(function* () {
+      Effect.fn('test:returns active handles info')(function* () {
         const info = yield* dumpActiveHandles
 
         expect(info).toHaveProperty('handles')
@@ -47,7 +47,7 @@ describe('ActiveHandlesDebugger', () => {
     )
 
     it.effect('includes handle type and details', () =>
-      Effect.gen(function* () {
+      Effect.fn('test:includes handle type and details')(function* () {
         const info = yield* dumpActiveHandles
 
         // Node always has some handles (TTY, etc.)
@@ -62,7 +62,7 @@ describe('ActiveHandlesDebugger', () => {
     )
 
     it.effect('detects new handles when created', () =>
-      Effect.gen(function* () {
+      Effect.fn('test:detects new handles when created')(function* () {
         // Get baseline handle count
         const before = yield* dumpActiveHandles
         const beforeCount = before.totalHandles
@@ -84,7 +84,7 @@ describe('ActiveHandlesDebugger', () => {
 
   describe('logActiveHandles', () => {
     it.effect('logs handles info', () =>
-      Effect.gen(function* () {
+      Effect.fn('test:logs handles info')(function* () {
         const { getLogs, loggerLayer } = yield* makeTestLogger
 
         yield* logActiveHandles.pipe(Effect.provide(loggerLayer))
@@ -96,7 +96,7 @@ describe('ActiveHandlesDebugger', () => {
     )
 
     it.effect('returns the handles info', () =>
-      Effect.gen(function* () {
+      Effect.fn('test:returns the handles info')(function* () {
         const info = yield* logActiveHandles
 
         expect(info).toHaveProperty('totalHandles')
@@ -107,7 +107,7 @@ describe('ActiveHandlesDebugger', () => {
 
   describe('monitorActiveHandles', () => {
     it.effect('returns void immediately after forking the monitor', () =>
-      Effect.gen(function* () {
+      Effect.fn('test:returns void immediately after forking the monitor')(function* () {
         // monitorActiveHandles forks internally and returns void
         // This test just verifies it doesn't throw and the signature is correct
         const result: void = yield* monitorActiveHandles(Duration.millis(100)).pipe(
@@ -120,7 +120,7 @@ describe('ActiveHandlesDebugger', () => {
     )
 
     it.effect('forks a background fiber that is cleaned up when scope closes', () =>
-      Effect.gen(function* () {
+      Effect.fn('test:forks a background fiber that is cleaned up when scope closes')(function* () {
         // monitorActiveHandles forks scoped, so it returns immediately
         // The forked fiber runs in background and is cleaned up when scope closes
         // We just verify the scoped effect completes without hanging
@@ -133,7 +133,7 @@ describe('ActiveHandlesDebugger', () => {
 
   describe('withActiveHandlesDumpOnSigint', () => {
     it.effect('runs the wrapped effect normally', () =>
-      Effect.gen(function* () {
+      Effect.fn('test:runs the wrapped effect normally')(function* () {
         const result = yield* withActiveHandlesDumpOnSigint(Effect.succeed(42))
         expect(result).toBe(42)
       }),
@@ -145,7 +145,7 @@ describe('ActiveHandlesDebugger', () => {
     )
 
     it.effect('propagates errors from wrapped effect', () =>
-      Effect.gen(function* () {
+      Effect.fn('test:propagates errors from wrapped effect')(function* () {
         const exit = yield* withActiveHandlesDumpOnSigint(Effect.fail('test-error')).pipe(
           Effect.exit,
         )

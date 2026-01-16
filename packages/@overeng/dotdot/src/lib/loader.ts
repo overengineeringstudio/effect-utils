@@ -153,12 +153,10 @@ export const findWorkspaceRoot = (startDir: string) =>
       currentDir = path.dirname(currentDir)
     }
 
-    return yield* Effect.fail(
-      new ConfigError({
-        path: startDir,
-        message: `Not a dotdot workspace (no ${GENERATED_CONFIG_FILE_NAME} found). Run 'dotdot sync <path>' to initialize.`,
-      }),
-    )
+    return yield* new ConfigError({
+      path: startDir,
+      message: `Not a dotdot workspace (no ${GENERATED_CONFIG_FILE_NAME} found). Run 'dotdot sync <path>' to initialize.`,
+    })
   }).pipe(Effect.withSpan('loader/findWorkspaceRoot'))
 
 /** Load root config from workspace (loads the generated config) */

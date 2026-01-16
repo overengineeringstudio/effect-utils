@@ -233,14 +233,15 @@ export const setViewportSize: (args: {
 export const evaluate: <R>(
   /** Function to evaluate in page context. */
   fn: () => R | Promise<R>,
-) => Effect.Effect<R, PwOpError, PwPage> = (fn) =>
+) => Effect.Effect<R, PwOpError, PwPage> = Effect.fn('pw.page.evaluate')((fn) =>
   Effect.gen(function* () {
     const page = yield* PwPage
     return yield* tryPw({
       op: 'pw.page.evaluate',
       effect: () => page.evaluate(fn),
     })
-  }).pipe(Effect.withSpan('pw.page.evaluate'))
+  }),
+)
 
 /**
  * Evaluates a function in the page context with an argument.
@@ -250,19 +251,20 @@ export const evaluate: <R>(
  * const text = yield* Pw.Page.evaluateWith({ arg: '#my-id', fn: (sel) => document.querySelector(sel)?.textContent })
  * ```
  */
-export const evaluateWith = <R, TArg>(opts: {
+export const evaluateWith: <R, TArg>(opts: {
   /** Argument to pass to the function. */
   arg: TArg
   /** Function to evaluate in page context. */
   fn: (arg: TArg) => R | Promise<R>
-}): Effect.Effect<R, PwOpError, PwPage> =>
+}) => Effect.Effect<R, PwOpError, PwPage> = Effect.fn('pw.page.evaluate')((opts) =>
   Effect.gen(function* () {
     const page = yield* PwPage
     return yield* tryPw({
       op: 'pw.page.evaluate',
       effect: () => page.evaluate(opts.fn as any, opts.arg) as Promise<R>,
     })
-  }).pipe(Effect.withSpan('pw.page.evaluate'))
+  }),
+)
 
 /** Returns the raw Playwright Page for direct access. Use sparingly. */
 export const raw: Effect.Effect<Page, never, PwPage> = PwPage

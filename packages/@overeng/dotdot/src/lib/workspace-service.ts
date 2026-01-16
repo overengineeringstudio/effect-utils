@@ -7,7 +7,7 @@
 
 import path from 'node:path'
 
-import { type CommandExecutor, FileSystem } from '@effect/platform'
+import { CommandExecutor, FileSystem } from '@effect/platform'
 import type { PlatformError } from '@effect/platform/Error'
 import { Context, Effect, Layer } from 'effect'
 
@@ -96,25 +96,20 @@ export type WorkspaceContext = {
 /** Error type for workspace scanning operations */
 export type WorkspaceScanError = PlatformError | Git.GitError
 
-/** Dependencies required for workspace scanning */
-export type WorkspaceScanDeps = FileSystem.FileSystem | CommandExecutor.CommandExecutor
-
-/** WorkspaceService interface */
+/** WorkspaceService interface - all methods are self-contained (deps injected at construction) */
 export type WorkspaceServiceApi = {
   /** Workspace root path */
   readonly root: string
   /** Get all repos with unified info */
-  readonly scanRepos: () => Effect.Effect<RepoInfo[], WorkspaceScanError, WorkspaceScanDeps>
+  readonly scanRepos: () => Effect.Effect<RepoInfo[], WorkspaceScanError>
   /** Get only member repos (have dotdot.json) */
-  readonly getMembers: () => Effect.Effect<RepoInfo[], WorkspaceScanError, WorkspaceScanDeps>
+  readonly getMembers: () => Effect.Effect<RepoInfo[], WorkspaceScanError>
   /** Get only dependency repos */
-  readonly getDependencies: () => Effect.Effect<RepoInfo[], WorkspaceScanError, WorkspaceScanDeps>
+  readonly getDependencies: () => Effect.Effect<RepoInfo[], WorkspaceScanError>
   /** Get only dangling repos (exist but not tracked) */
-  readonly getDangling: () => Effect.Effect<RepoInfo[], WorkspaceScanError, WorkspaceScanDeps>
+  readonly getDangling: () => Effect.Effect<RepoInfo[], WorkspaceScanError>
   /** Get repo info by name */
-  readonly getRepo: (
-    name: string,
-  ) => Effect.Effect<RepoInfo | undefined, WorkspaceScanError, WorkspaceScanDeps>
+  readonly getRepo: (name: string) => Effect.Effect<RepoInfo | undefined, WorkspaceScanError>
   /** Root config */
   readonly rootConfig: RootConfigSource
   /** Member configs */
@@ -126,8 +121,16 @@ export class WorkspaceService extends Context.Tag('dotdot/WorkspaceService')<
   WorkspaceService,
   WorkspaceServiceApi
 >() {
-  /** Create from workspace context */
-  static fromContext = (ctx: WorkspaceContext): WorkspaceServiceApi => {
+  /** Create from workspace context with injected platform deps */
+  static fromContext = ({
+    ctx,
+    fs,
+    executor,
+  }: {
+    ctx: WorkspaceContext
+    fs: FileSystem.FileSystem
+    executor: CommandExecutor.CommandExecutor
+  }): WorkspaceServiceApi => {
     const merged = mergeMemberConfigs(ctx.memberConfigs)
 
     // Build tracking info for each repo
@@ -175,7 +178,7 @@ export class WorkspaceService extends Context.Tag('dotdot/WorkspaceService')<
       return rootConfig?.rev
     }
 
-    // Get git state for a repo
+    // Get git state for a repo (provide deps inline)
     const getGitState = (repoPath: string) =>
       Effect.gen(function* () {
         const rev = yield* Git.getCurrentRev(repoPath)
@@ -187,12 +190,11 @@ export class WorkspaceService extends Context.Tag('dotdot/WorkspaceService')<
           Effect.catchAll(() => Effect.succeed(undefined)),
         )
         return { rev, shortRev, branch, isDirty, remoteUrl } satisfies RepoGitState
-      })
+      }).pipe(Effect.provideService(CommandExecutor.CommandExecutor, executor))
 
-    // Get fs state for a repo
+    // Get fs state for a repo (use captured fs)
     const getFsState = (repoPath: string) =>
       Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
         const exists = yield* fs.exists(repoPath)
         if (!exists) return { _tag: 'missing' } as const
 
@@ -200,7 +202,7 @@ export class WorkspaceService extends Context.Tag('dotdot/WorkspaceService')<
         if (!isGitRepo) return { _tag: 'not-git' } as const
 
         return { _tag: 'exists' } as const
-      })
+      }).pipe(Effect.provideService(CommandExecutor.CommandExecutor, executor))
 
     // Get repo info for a single repo
     const getRepoInfo = (name: string) =>
@@ -225,8 +227,6 @@ export class WorkspaceService extends Context.Tag('dotdot/WorkspaceService')<
     // Scan all repos in workspace
     const scanRepos = () =>
       Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
-
         // Collect all known repo names
         const knownNames = new Set<string>([
           ...merged.membersWithConfig,
@@ -242,7 +242,9 @@ export class WorkspaceService extends Context.Tag('dotdot/WorkspaceService')<
           const stat = yield* fs.stat(entryPath)
           if (stat.type !== 'Directory') continue
 
-          const isGitRepo = yield* Git.isGitRepo(entryPath)
+          const isGitRepo = yield* Git.isGitRepo(entryPath).pipe(
+            Effect.provideService(CommandExecutor.CommandExecutor, executor),
+          )
           if (isGitRepo) {
             knownNames.add(entry)
           }
@@ -311,7 +313,13 @@ export class WorkspaceService extends Context.Tag('dotdot/WorkspaceService')<
       const root = yield* findWorkspaceRoot(cwd)
       const rootConfig = yield* loadRootConfigWithSyncCheck(root)
       const memberConfigs = yield* collectMemberConfigs(root)
-      return WorkspaceService.fromContext({ root, rootConfig, memberConfigs })
+      const fs = yield* FileSystem.FileSystem
+      const executor = yield* CommandExecutor.CommandExecutor
+      return WorkspaceService.fromContext({
+        ctx: { root, rootConfig, memberConfigs },
+        fs,
+        executor,
+      })
     }),
   )
 
@@ -324,7 +332,13 @@ export class WorkspaceService extends Context.Tag('dotdot/WorkspaceService')<
       const root = yield* findWorkspaceRoot(cwd)
       const rootConfig = yield* loadRootConfig(root)
       const memberConfigs = yield* collectMemberConfigs(root)
-      return WorkspaceService.fromContext({ root, rootConfig, memberConfigs })
+      const fs = yield* FileSystem.FileSystem
+      const executor = yield* CommandExecutor.CommandExecutor
+      return WorkspaceService.fromContext({
+        ctx: { root, rootConfig, memberConfigs },
+        fs,
+        executor,
+      })
     }),
   )
 
@@ -335,7 +349,13 @@ export class WorkspaceService extends Context.Tag('dotdot/WorkspaceService')<
       Effect.gen(function* () {
         const rootConfig = yield* loadRootConfigWithSyncCheck(root)
         const memberConfigs = yield* collectMemberConfigs(root)
-        return WorkspaceService.fromContext({ root, rootConfig, memberConfigs })
+        const fs = yield* FileSystem.FileSystem
+        const executor = yield* CommandExecutor.CommandExecutor
+        return WorkspaceService.fromContext({
+          ctx: { root, rootConfig, memberConfigs },
+          fs,
+          executor,
+        })
       }),
     )
 
@@ -346,7 +366,13 @@ export class WorkspaceService extends Context.Tag('dotdot/WorkspaceService')<
       Effect.gen(function* () {
         const rootConfig = yield* loadRootConfig(root)
         const memberConfigs = yield* collectMemberConfigs(root)
-        return WorkspaceService.fromContext({ root, rootConfig, memberConfigs })
+        const fs = yield* FileSystem.FileSystem
+        const executor = yield* CommandExecutor.CommandExecutor
+        return WorkspaceService.fromContext({
+          ctx: { root, rootConfig, memberConfigs },
+          fs,
+          executor,
+        })
       }),
     )
 }

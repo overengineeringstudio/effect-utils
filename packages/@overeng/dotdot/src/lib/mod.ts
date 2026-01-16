@@ -88,7 +88,6 @@ export {
   type RepoInfo,
   type RepoTracking,
   type WorkspaceContext,
-  type WorkspaceScanDeps,
   type WorkspaceScanError,
   WorkspaceService,
   type WorkspaceServiceApi,

@@ -25,24 +25,23 @@ export {
 const OXFMT_CONFIG_CONVENTION_PATH = 'packages/@overeng/oxc-config/fmt.jsonc'
 
 /** Resolve the oxfmt config path: explicit option → convention path → none */
-const resolveOxfmtConfigPath = ({
+const resolveOxfmtConfigPath = Effect.fn("resolveOxfmtConfigPath")(function* ({
   explicitPath,
   cwd,
 }: {
   explicitPath: Option.Option<string>
   cwd: string
-}) =>
-  Effect.gen(function* () {
-    // Use explicit path if provided
-    if (Option.isSome(explicitPath)) {
-      return explicitPath
-    }
-    // Check convention path
-    const fs = yield* FileSystem.FileSystem
-    const conventionPath = path.join(cwd, OXFMT_CONFIG_CONVENTION_PATH)
-    const exists = yield* fs.exists(conventionPath)
-    return exists ? Option.some(conventionPath) : Option.none()
-  })
+}) {
+  // Use explicit path if provided
+  if (Option.isSome(explicitPath)) {
+    return explicitPath
+  }
+  // Check convention path
+  const fs = yield* FileSystem.FileSystem
+  const conventionPath = path.join(cwd, OXFMT_CONFIG_CONVENTION_PATH)
+  const exists = yield* fs.exists(conventionPath)
+  return exists ? Option.some(conventionPath) : Option.none()
+})
 
 /** Genie CLI command - generates files from .genie.ts source files */
 export const genieCommand: Cli.Command.Command<

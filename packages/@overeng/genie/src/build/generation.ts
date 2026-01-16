@@ -67,7 +67,7 @@ const getHeaderComment = (targetFilePath: string, sourceFile: string): string =>
 }
 
 /** Format content using oxfmt if the file type is supported */
-const formatWithOxfmt = ({
+const formatWithOxfmt = Effect.fn("formatWithOxfmt")(function* ({
   targetFilePath,
   content,
   configPath,
@@ -75,27 +75,26 @@ const formatWithOxfmt = ({
   targetFilePath: string
   content: string
   configPath: Option.Option<string>
-}) =>
-  Effect.gen(function* () {
-    const ext = path.extname(targetFilePath)
+}) {
+  const ext = path.extname(targetFilePath)
 
-    if (!oxfmtSupportedExtensions.has(ext)) {
-      return content
-    }
+  if (!oxfmtSupportedExtensions.has(ext)) {
+    return content
+  }
 
-    const args = Option.match(configPath, {
-      onNone: () => ['--stdin-filepath', targetFilePath],
-      onSome: (cfg) => ['-c', cfg, '--stdin-filepath', targetFilePath],
-    })
+  const args = Option.match(configPath, {
+    onNone: () => ['--stdin-filepath', targetFilePath],
+    onSome: (cfg) => ['-c', cfg, '--stdin-filepath', targetFilePath],
+  })
 
-    const result = yield* Command.make('oxfmt', ...args).pipe(
-      Command.feed(content),
-      Command.string,
-      Effect.catchAll(() => Effect.succeed(content)),
-    )
+  const result = yield* Command.make('oxfmt', ...args).pipe(
+    Command.feed(content),
+    Command.string,
+    Effect.catchAll(() => Effect.succeed(content)),
+  )
 
-    return result
-  }).pipe(Effect.withSpan('formatWithOxfmt'))
+  return result
+})
 
 /**
  * Compute the package location from a genie file path.
@@ -124,43 +123,48 @@ const computeLocationFromPath = ({
  *
  * All genie files must export a function that takes GenieContext and returns a string.
  */
-const importGenieFile = ({ genieFilePath, cwd }: { genieFilePath: string; cwd: string }) =>
-  Effect.gen(function* () {
-    yield* ensureImportMapResolver
+const importGenieFile = Effect.fn("importGenieFile")(function* ({
+  genieFilePath,
+  cwd,
+}: {
+  genieFilePath: string
+  cwd: string
+}) {
+  yield* ensureImportMapResolver
 
-    const importPath = `${genieFilePath}?import=${Date.now()}`
+  const importPath = `${genieFilePath}?import=${Date.now()}`
 
-    const module = yield* Effect.tryPromise({
-      // oxlint-disable-next-line eslint-plugin-import/no-dynamic-require -- dynamic import path required for genie
-      try: () => import(importPath),
-      catch: (error) =>
-        new GenieImportError({
-          genieFilePath,
-          message: `Failed to import ${genieFilePath}: ${safeErrorString(error)}`,
-        }),
-    })
-
-    const exported = module.default
-
-    // Genie files must export a GenieOutput object with { data, stringify }
-    if (
-      typeof exported !== 'object' ||
-      exported === null ||
-      !('stringify' in exported) ||
-      typeof exported.stringify !== 'function'
-    ) {
-      return yield* new GenieImportError({
+  const module = yield* Effect.tryPromise({
+    // oxlint-disable-next-line eslint-plugin-import/no-dynamic-require -- dynamic import path required for genie
+    try: () => import(importPath),
+    catch: (error) =>
+      new GenieImportError({
         genieFilePath,
-        message: `Genie file must export a GenieOutput object with { data, stringify }, got ${typeof exported}`,
-      })
-    }
-
-    // Create context and call the stringify function
-    const location = computeLocationFromPath({ genieFilePath, cwd })
-    const ctx: GenieContext = { location, cwd }
-
-    return exported.stringify(ctx) as string
+        message: `Failed to import ${genieFilePath}: ${safeErrorString(error)}`,
+      }),
   })
+
+  const exported = module.default
+
+  // Genie files must export a GenieOutput object with { data, stringify }
+  if (
+    typeof exported !== 'object' ||
+    exported === null ||
+    !('stringify' in exported) ||
+    typeof exported.stringify !== 'function'
+  ) {
+    return yield* new GenieImportError({
+      genieFilePath,
+      message: `Genie file must export a GenieOutput object with { data, stringify }, got ${typeof exported}`,
+    })
+  }
+
+  // Create context and call the stringify function
+  const location = computeLocationFromPath({ genieFilePath, cwd })
+  const ctx: GenieContext = { location, cwd }
+
+  return exported.stringify(ctx) as string
+})
 
 /**
  * For package.json files, enrich the $genie marker with source file information.
@@ -189,7 +193,7 @@ const enrichPackageJsonMarker = ({
 }
 
 /** Generate expected content for a genie file (shared between generate and dry-run) */
-export const getExpectedContent = ({
+export const getExpectedContent = Effect.fn("getExpectedContent")(function* ({
   genieFilePath,
   cwd,
   oxfmtConfigPath,
@@ -197,25 +201,24 @@ export const getExpectedContent = ({
   genieFilePath: string
   cwd: string
   oxfmtConfigPath: Option.Option<string>
-}) =>
-  Effect.gen(function* () {
-    const targetFilePath = genieFilePath.replace('.genie.ts', '')
-    const sourceFile = path.basename(genieFilePath)
-    let rawContent = yield* importGenieFile({ genieFilePath, cwd })
+}) {
+  const targetFilePath = genieFilePath.replace('.genie.ts', '')
+  const sourceFile = path.basename(genieFilePath)
+  let rawContent = yield* importGenieFile({ genieFilePath, cwd })
 
-    // For package.json files, enrich the $genie marker with source info
-    if (path.basename(targetFilePath) === 'package.json') {
-      rawContent = enrichPackageJsonMarker({ content: rawContent, sourceFile })
-    }
+  // For package.json files, enrich the $genie marker with source info
+  if (path.basename(targetFilePath) === 'package.json') {
+    rawContent = enrichPackageJsonMarker({ content: rawContent, sourceFile })
+  }
 
-    const header = getHeaderComment(targetFilePath, sourceFile)
-    const formattedContent = yield* formatWithOxfmt({
-      targetFilePath,
-      content: rawContent,
-      configPath: oxfmtConfigPath,
-    })
-    return { targetFilePath, content: header + formattedContent }
+  const header = getHeaderComment(targetFilePath, sourceFile)
+  const formattedContent = yield* formatWithOxfmt({
+    targetFilePath,
+    content: rawContent,
+    configPath: oxfmtConfigPath,
   })
+  return { targetFilePath, content: header + formattedContent }
+})
 
 /** Generate a brief diff summary showing line count changes */
 const generateDiffSummary = ({
@@ -386,7 +389,7 @@ export const generateFile = ({
   )
 
 /** Check if a generated file matches its expected content */
-export const checkFile = ({
+export const checkFile = Effect.fn("checkFile")(function* ({
   genieFilePath,
   cwd,
   oxfmtConfigPath,
@@ -394,79 +397,77 @@ export const checkFile = ({
   genieFilePath: string
   cwd: string
   oxfmtConfigPath: Option.Option<string>
-}) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const { targetFilePath, content: expectedContent } = yield* getExpectedContent({
-      genieFilePath,
-      cwd,
-      oxfmtConfigPath,
+}) {
+  const fs = yield* FileSystem.FileSystem
+  const { targetFilePath, content: expectedContent } = yield* getExpectedContent({
+    genieFilePath,
+    cwd,
+    oxfmtConfigPath,
+  })
+
+  const fileExists = yield* fs.exists(targetFilePath)
+  if (!fileExists) {
+    return yield* new GenieCheckError({
+      targetFilePath,
+      message: `File does not exist. Run 'mono genie' to generate it.`,
     })
+  }
 
-    const fileExists = yield* fs.exists(targetFilePath)
-    if (!fileExists) {
-      return yield* new GenieCheckError({
-        targetFilePath,
-        message: `File does not exist. Run 'mono genie' to generate it.`,
-      })
-    }
+  const actualContent = yield* fs.readFileString(targetFilePath)
 
-    const actualContent = yield* fs.readFileString(targetFilePath)
+  if (actualContent !== expectedContent) {
+    return yield* new GenieCheckError({
+      targetFilePath,
+      message: `File content is out of date. Run 'mono genie' to regenerate it.`,
+    })
+  }
 
-    if (actualContent !== expectedContent) {
-      return yield* new GenieCheckError({
-        targetFilePath,
-        message: `File content is out of date. Run 'mono genie' to regenerate it.`,
-      })
-    }
-
-    yield* Effect.log(`✓ ${targetFilePath} is up to date`)
-  }).pipe(Effect.withSpan('checkFile'))
+  yield* Effect.log(`✓ ${targetFilePath} is up to date`)
+})
 
 /**
  * Logs a summary of file generation results and returns counts by category.
  */
-export const summarizeResults = ({
+export const summarizeResults = Effect.fn("summarizeResults")(function* ({
   successes,
   failures,
 }: {
   successes: GenerateSuccess[]
   failures: GenieFileError[]
-}) =>
-  Effect.gen(function* () {
-    const created = successes.filter((s) => s._tag === 'created')
-    const updated = successes.filter((s) => s._tag === 'updated')
-    const unchanged = successes.filter((s) => s._tag === 'unchanged')
-    const skipped = successes.filter((s) => s._tag === 'skipped')
-    const total = successes.length + failures.length
+}) {
+  const created = successes.filter((s) => s._tag === 'created')
+  const updated = successes.filter((s) => s._tag === 'updated')
+  const unchanged = successes.filter((s) => s._tag === 'unchanged')
+  const skipped = successes.filter((s) => s._tag === 'skipped')
+  const total = successes.length + failures.length
 
-    yield* Effect.log('')
-    yield* Effect.log(`Summary: ${total} files processed`)
+  yield* Effect.log('')
+  yield* Effect.log(`Summary: ${total} files processed`)
 
-    if (created.length > 0) {
-      yield* Effect.log(`  ✓ ${created.length} created`)
+  if (created.length > 0) {
+    yield* Effect.log(`  ✓ ${created.length} created`)
+  }
+  if (updated.length > 0) {
+    yield* Effect.log(`  ✓ ${updated.length} updated`)
+  }
+  if (unchanged.length > 0) {
+    yield* Effect.log(`  · ${unchanged.length} unchanged`)
+  }
+  if (skipped.length > 0) {
+    yield* Effect.log(`  · ${skipped.length} skipped`)
+  }
+  if (failures.length > 0) {
+    yield* Effect.logError(`  ✗ ${failures.length} failed:`)
+    for (const f of failures) {
+      yield* Effect.logError(`    - ${f.targetFilePath}: ${f.message}`)
     }
-    if (updated.length > 0) {
-      yield* Effect.log(`  ✓ ${updated.length} updated`)
-    }
-    if (unchanged.length > 0) {
-      yield* Effect.log(`  · ${unchanged.length} unchanged`)
-    }
-    if (skipped.length > 0) {
-      yield* Effect.log(`  · ${skipped.length} skipped`)
-    }
-    if (failures.length > 0) {
-      yield* Effect.logError(`  ✗ ${failures.length} failed:`)
-      for (const f of failures) {
-        yield* Effect.logError(`    - ${f.targetFilePath}: ${f.message}`)
-      }
-    }
+  }
 
-    return {
-      created: created.length,
-      updated: updated.length,
-      unchanged: unchanged.length,
-      skipped: skipped.length,
-      failed: failures.length,
-    }
-  })
+  return {
+    created: created.length,
+    updated: updated.length,
+    unchanged: unchanged.length,
+    skipped: skipped.length,
+    failed: failures.length,
+  }
+})

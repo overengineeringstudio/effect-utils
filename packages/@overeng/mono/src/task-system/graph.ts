@@ -17,6 +17,7 @@ import {
   SubscriptionRef,
 } from 'effect'
 
+import { CircularDependencyError, UnknownDependencyError } from '../errors.ts'
 import type { TaskDef, TaskEvent, TaskSystemState } from './types.ts'
 import {
   CommandInfo,
@@ -204,51 +205,52 @@ export const reduceEvent = ({
  * - No circular dependencies
  * - All dependencies exist
  */
-const buildTaskGraph = <TId extends string>(
+const buildTaskGraph = Effect.fn('TaskGraph.buildTaskGraph')(function* <TId extends string>(
   tasks: ReadonlyArray<TaskDef<TId, unknown, unknown, unknown>>,
-): Effect.Effect<
-  {
-    graph: Graph.Graph<TaskDef<TId, unknown, unknown, unknown>, void>
-    idToIndex: Map<TId, number>
-  },
-  Error
-> =>
-  Effect.gen(function* () {
-    const idToIndex = new Map<TId, number>()
+) {
+  const idToIndex = new Map<TId, number>()
 
-    // Build graph with Effect.Graph
-    const graph = yield* Effect.try({
-      try: () =>
-        Graph.directed<TaskDef<TId, unknown, unknown, unknown>, void>((mutable) => {
-          // Add all tasks as nodes
-          for (const task of tasks) {
-            const nodeIndex = Graph.addNode(mutable, task)
-            idToIndex.set(task.id, nodeIndex)
-          }
+  // Collect validation errors during graph building
+  let validationError: UnknownDependencyError | undefined
 
-          // Add dependency edges
-          for (const task of tasks) {
-            const targetIndex = idToIndex.get(task.id)!
-            const deps = task.dependencies ?? []
-            for (const depId of deps) {
-              const sourceIndex = idToIndex.get(depId as TId)
-              if (sourceIndex === undefined) {
-                throw new Error(`Unknown dependency: ${depId}`)
-              }
-              Graph.addEdge(mutable, sourceIndex, targetIndex, undefined)
-            }
-          }
-        }),
-      catch: (error) => error as Error,
-    })
-
-    // Validate no cycles
-    if (!Graph.isAcyclic(graph)) {
-      return yield* Effect.fail(new Error('Circular dependency detected in task graph'))
+  // Build graph with Effect.Graph
+  const graph = Graph.directed<TaskDef<TId, unknown, unknown, unknown>, void>((mutable) => {
+    // Add all tasks as nodes
+    for (const task of tasks) {
+      const nodeIndex = Graph.addNode(mutable, task)
+      idToIndex.set(task.id, nodeIndex)
     }
 
-    return { graph, idToIndex }
-  }).pipe(Effect.withSpan('TaskGraph.buildTaskGraph'))
+    // Add dependency edges
+    for (const task of tasks) {
+      const targetIndex = idToIndex.get(task.id)!
+      const deps = task.dependencies ?? []
+      for (const depId of deps) {
+        const sourceIndex = idToIndex.get(depId as TId)
+        if (sourceIndex === undefined) {
+          validationError = new UnknownDependencyError({
+            dependencyId: depId as string,
+            taskId: task.id,
+          })
+          return
+        }
+        Graph.addEdge(mutable, sourceIndex, targetIndex, undefined)
+      }
+    }
+  })
+
+  // Check for validation error from graph building
+  if (validationError) {
+    return yield* validationError
+  }
+
+  // Validate no cycles
+  if (!Graph.isAcyclic(graph)) {
+    return yield* new CircularDependencyError({})
+  }
+
+  return { graph, idToIndex }
+})
 
 // =============================================================================
 // Task Executor

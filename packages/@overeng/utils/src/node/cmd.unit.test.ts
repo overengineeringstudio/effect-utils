@@ -17,21 +17,21 @@ describe('cmd helper', () => {
   const ansiRegex = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g')
 
   it.effect('runs tokenized string without shell', () =>
-    Effect.gen(function* () {
+      Effect.fn('test:runs tokenized string without shell')(function* () {
       const exit = yield* cmd('printf ok')
       expect(exit).toBe(CommandExecutor.ExitCode(0))
     }).pipe(Effect.provide(TestLayer), Effect.scoped),
   )
 
   it.effect('runs array input', () =>
-    Effect.gen(function* () {
+      Effect.fn('test:runs array input')(function* () {
       const exit = yield* cmd(['printf', 'ok'])
       expect(exit).toBe(CommandExecutor.ExitCode(0))
     }).pipe(Effect.provide(TestLayer), Effect.scoped),
   )
 
   it.effect('supports logging with archive + retention', () =>
-    Effect.gen(function* () {
+      Effect.fn('test:supports logging with archive + retention')(function* () {
       const workspaceRoot =
         process.env.WORKSPACE_ROOT ?? shouldNeverHappen('WORKSPACE_ROOT is not set')
       const logsDir = path.join(workspaceRoot, 'tmp', 'cmd-tests', String(Date.now()))
@@ -87,7 +87,7 @@ describe('cmd helper', () => {
   )
 
   it.effect('streams stdout and stderr with logger formatting', () =>
-    Effect.gen(function* () {
+      Effect.fn('test:streams stdout and stderr with logger formatting')(function* () {
       const workspaceRoot =
         process.env.WORKSPACE_ROOT ?? shouldNeverHappen('WORKSPACE_ROOT is not set')
       const logsDir = path.join(workspaceRoot, 'tmp', 'cmd-tests', `format-${Date.now()}`)

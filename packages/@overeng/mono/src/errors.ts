@@ -27,3 +27,30 @@ export class InstallError extends Schema.TaggedError<InstallError>()('InstallErr
     return `Failed to install ${this.failedCount}/${this.totalCount} packages`
   }
 }
+
+// =============================================================================
+// Task Graph Errors
+// =============================================================================
+
+/** Error thrown when a task dependency is not found */
+export class UnknownDependencyError extends Schema.TaggedError<UnknownDependencyError>()(
+  'UnknownDependencyError',
+  {
+    dependencyId: Schema.String,
+    taskId: Schema.String,
+  },
+) {
+  override get message(): string {
+    return `Unknown dependency '${this.dependencyId}' in task '${this.taskId}'`
+  }
+}
+
+/** Error thrown when task graph has circular dependencies */
+export class CircularDependencyError extends Schema.TaggedError<CircularDependencyError>()(
+  'CircularDependencyError',
+  {},
+) {
+  override get message(): string {
+    return 'Circular dependency detected in task graph'
+  }
+}

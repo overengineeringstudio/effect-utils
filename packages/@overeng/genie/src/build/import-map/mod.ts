@@ -43,9 +43,10 @@ const parseImportMapFromGenieSource = (sourceContent: string): ImportMap => {
   const importsBlock = importsMatch[1]!
   const importMap: ImportMap = {}
   const pairRegex = /'([^']+)':\s*'([^']+)'/g
-  let match: RegExpExecArray | null
-  while ((match = pairRegex.exec(importsBlock)) !== null) {
+  let match: RegExpExecArray | null = pairRegex.exec(importsBlock)
+  while (match !== null) {
     importMap[match[1]!] = match[2]!
+    match = pairRegex.exec(importsBlock)
   }
 
   return importMap
@@ -55,25 +56,24 @@ const parseImportMapFromGenieSource = (sourceContent: string): ImportMap => {
  * Find the nearest package.json by walking up from the given file path.
  * Returns None if no package.json is found before reaching the filesystem root.
  */
-export const findNearestPackageJson = (
+export const findNearestPackageJson = Effect.fn('findNearestPackageJson')(function* (
   fromPath: string,
-): Effect.Effect<Option.Option<string>, never, FileSystem.FileSystem> =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    let dir = path.dirname(fromPath)
-    const root = path.parse(dir).root
+) {
+  const fs = yield* FileSystem.FileSystem
+  let dir = path.dirname(fromPath)
+  const root = path.parse(dir).root
 
-    while (dir !== root) {
-      const packageJsonPath = path.join(dir, 'package.json')
-      const exists = yield* fs.exists(packageJsonPath).pipe(Effect.orElseSucceed(() => false))
-      if (exists) {
-        return Option.some(packageJsonPath)
-      }
-      dir = path.dirname(dir)
+  while (dir !== root) {
+    const packageJsonPath = path.join(dir, 'package.json')
+    const exists = yield* fs.exists(packageJsonPath).pipe(Effect.orElseSucceed(() => false))
+    if (exists) {
+      return Option.some(packageJsonPath)
     }
+    dir = path.dirname(dir)
+  }
 
-    return Option.none()
-  })
+  return Option.none()
+})
 
 /**
  * Find a package.json with an imports field by walking up from the given file path.
@@ -82,53 +82,52 @@ export const findNearestPackageJson = (
  *
  * Returns None if no package.json with imports is found.
  */
-export const findPackageJsonWithImports = (
+export const findPackageJsonWithImports = Effect.fn('findPackageJsonWithImports')(function* (
   fromPath: string,
-): Effect.Effect<Option.Option<string>, never, FileSystem.FileSystem> =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    let dir = path.dirname(fromPath)
-    const root = path.parse(dir).root
+) {
+  const fs = yield* FileSystem.FileSystem
+  let dir = path.dirname(fromPath)
+  const root = path.parse(dir).root
 
-    while (dir !== root) {
-      const packageJsonPath = path.join(dir, 'package.json')
+  while (dir !== root) {
+    const packageJsonPath = path.join(dir, 'package.json')
 
-      // Check if package.json exists and has imports
-      const pkgExists = yield* fs.exists(packageJsonPath).pipe(Effect.orElseSucceed(() => false))
-      if (pkgExists) {
-        const contentResult = yield* fs.readFileString(packageJsonPath).pipe(
-          Effect.either,
-          Effect.orElseSucceed(() => ({ _tag: 'Left' as const, left: null })),
-        )
-        if (contentResult._tag === 'Right') {
-          const importMap = parseImportMapFromPackageJsonContent(contentResult.right)
-          if (Object.keys(importMap).length > 0) {
-            return Option.some(packageJsonPath)
-          }
+    // Check if package.json exists and has imports
+    const pkgExists = yield* fs.exists(packageJsonPath).pipe(Effect.orElseSucceed(() => false))
+    if (pkgExists) {
+      const contentResult = yield* fs.readFileString(packageJsonPath).pipe(
+        Effect.either,
+        Effect.orElseSucceed(() => ({ _tag: 'Left' as const, left: null })),
+      )
+      if (contentResult._tag === 'Right') {
+        const importMap = parseImportMapFromPackageJsonContent(contentResult.right)
+        if (Object.keys(importMap).length > 0) {
+          return Option.some(packageJsonPath)
         }
       }
-
-      // Also check for package.json.genie.ts with imports (bootstrap case)
-      const genieSourcePath = path.join(dir, 'package.json.genie.ts')
-      const genieExists = yield* fs.exists(genieSourcePath).pipe(Effect.orElseSucceed(() => false))
-      if (genieExists) {
-        const sourceResult = yield* fs.readFileString(genieSourcePath).pipe(
-          Effect.either,
-          Effect.orElseSucceed(() => ({ _tag: 'Left' as const, left: null })),
-        )
-        if (sourceResult._tag === 'Right') {
-          const importMap = parseImportMapFromGenieSource(sourceResult.right)
-          if (Object.keys(importMap).length > 0) {
-            return Option.some(packageJsonPath)
-          }
-        }
-      }
-
-      dir = path.dirname(dir)
     }
 
-    return Option.none()
-  })
+    // Also check for package.json.genie.ts with imports (bootstrap case)
+    const genieSourcePath = path.join(dir, 'package.json.genie.ts')
+    const genieExists = yield* fs.exists(genieSourcePath).pipe(Effect.orElseSucceed(() => false))
+    if (genieExists) {
+      const sourceResult = yield* fs.readFileString(genieSourcePath).pipe(
+        Effect.either,
+        Effect.orElseSucceed(() => ({ _tag: 'Left' as const, left: null })),
+      )
+      if (sourceResult._tag === 'Right') {
+        const importMap = parseImportMapFromGenieSource(sourceResult.right)
+        if (Object.keys(importMap).length > 0) {
+          return Option.some(packageJsonPath)
+        }
+      }
+    }
+
+    dir = path.dirname(dir)
+  }
+
+  return Option.none()
+})
 
 /**
  * Synchronous version of findPackageJsonWithImports for Bun resolver hooks.
@@ -179,46 +178,45 @@ export const findPackageJsonWithImportsSync = (fromPath: string): string | undef
  * package.json doesn't have imports. This enables bootstrapping when the
  * genie source has imports but the generated file hasn't been updated yet.
  */
-export const extractImportMap = (
+export const extractImportMap = Effect.fn('extractImportMap')(function* (
   packageJsonPath: string,
-): Effect.Effect<ImportMap, never, FileSystem.FileSystem> =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
+) {
+  const fs = yield* FileSystem.FileSystem
 
-    // First try the generated package.json
-    const pkgExists = yield* fs.exists(packageJsonPath).pipe(Effect.orElseSucceed(() => false))
-    if (pkgExists) {
-      const contentResult = yield* fs.readFileString(packageJsonPath).pipe(
-        Effect.either,
-        Effect.orElseSucceed(() => ({ _tag: 'Left' as const, left: null })),
-      )
-      if (contentResult._tag === 'Right') {
-        const importMap = parseImportMapFromPackageJsonContent(contentResult.right)
-        if (Object.keys(importMap).length > 0) {
-          return importMap
-        }
+  // First try the generated package.json
+  const pkgExists = yield* fs.exists(packageJsonPath).pipe(Effect.orElseSucceed(() => false))
+  if (pkgExists) {
+    const contentResult = yield* fs.readFileString(packageJsonPath).pipe(
+      Effect.either,
+      Effect.orElseSucceed(() => ({ _tag: 'Left' as const, left: null })),
+    )
+    if (contentResult._tag === 'Right') {
+      const importMap = parseImportMapFromPackageJsonContent(contentResult.right)
+      if (Object.keys(importMap).length > 0) {
+        return importMap
       }
     }
+  }
 
-    // Fallback: try to extract from package.json.genie.ts source
-    // This enables bootstrapping when genie source has imports but generated file doesn't
-    const genieSourcePath = `${packageJsonPath}.genie.ts`
-    const genieExists = yield* fs.exists(genieSourcePath).pipe(Effect.orElseSucceed(() => false))
-    if (genieExists) {
-      const sourceResult = yield* fs.readFileString(genieSourcePath).pipe(
-        Effect.either,
-        Effect.orElseSucceed(() => ({ _tag: 'Left' as const, left: null })),
-      )
-      if (sourceResult._tag === 'Right') {
-        const importMap = parseImportMapFromGenieSource(sourceResult.right)
-        if (Object.keys(importMap).length > 0) {
-          return importMap
-        }
+  // Fallback: try to extract from package.json.genie.ts source
+  // This enables bootstrapping when genie source has imports but generated file doesn't
+  const genieSourcePath = `${packageJsonPath}.genie.ts`
+  const genieExists = yield* fs.exists(genieSourcePath).pipe(Effect.orElseSucceed(() => false))
+  if (genieExists) {
+    const sourceResult = yield* fs.readFileString(genieSourcePath).pipe(
+      Effect.either,
+      Effect.orElseSucceed(() => ({ _tag: 'Left' as const, left: null })),
+    )
+    if (sourceResult._tag === 'Right') {
+      const importMap = parseImportMapFromGenieSource(sourceResult.right)
+      if (Object.keys(importMap).length > 0) {
+        return importMap
       }
     }
+  }
 
-    return {}
-  })
+  return {}
+})
 
 /**
  * Synchronous import map extraction for resolver hooks.
@@ -303,41 +301,42 @@ export const resolveImportMapSpecifier = ({
  * Resolve a `#...` import specifier based on the nearest package.json import map
  * to the importing file. Returns None when no matching import map applies.
  */
-export const resolveImportMapSpecifierForImporter = ({
+export const resolveImportMapSpecifierForImporter = Effect.fn(
+  'genie.resolveImportMapSpecifierForImporter',
+)(function* ({
   specifier,
   importerPath,
 }: {
   specifier: string
   importerPath: string
-}): Effect.Effect<Option.Option<string>, never, FileSystem.FileSystem> =>
-  Effect.gen(function* () {
-    if (!isImportMapSpecifier(specifier)) {
-      return Option.none()
-    }
+}) {
+  if (!isImportMapSpecifier(specifier)) {
+    return Option.none()
+  }
 
-    const packageJsonPathOption = yield* findPackageJsonWithImports(importerPath)
-    if (Option.isNone(packageJsonPathOption)) {
-      return Option.none()
-    }
+  const packageJsonPathOption = yield* findPackageJsonWithImports(importerPath)
+  if (Option.isNone(packageJsonPathOption)) {
+    return Option.none()
+  }
 
-    const packageJsonPath = packageJsonPathOption.value
-    const importMap = yield* extractImportMap(packageJsonPath)
-    if (Object.keys(importMap).length === 0) {
-      return Option.none()
-    }
+  const packageJsonPath = packageJsonPathOption.value
+  const importMap = yield* extractImportMap(packageJsonPath)
+  if (Object.keys(importMap).length === 0) {
+    return Option.none()
+  }
 
-    const resolved = resolveImportMapSpecifier({
-      specifier,
-      importMap,
-      packageJsonDir: path.dirname(packageJsonPath),
-    })
+  const resolved = resolveImportMapSpecifier({
+    specifier,
+    importMap,
+    packageJsonDir: path.dirname(packageJsonPath),
+  })
 
-    if (resolved === null) {
-      return Option.none()
-    }
+  if (resolved === null) {
+    return Option.none()
+  }
 
-    return Option.some(resolved)
-  }).pipe(Effect.withSpan('genie.resolveImportMapSpecifierForImporter'))
+  return Option.some(resolved)
+})
 
 /**
  * Synchronous import map resolution for Bun resolver hooks.
@@ -386,7 +385,7 @@ const IMPORT_REGEX = /(?:import|export)\s+(?:.*?\s+from\s+)?(['"])([^'"]+)\1/g
  * @param resolveRelativeImports - When true, converts relative imports to absolute file URLs.
  * @returns The transformed source code with resolved import paths
  */
-export const resolveImportMapsInSource = ({
+export const resolveImportMapsInSource = Effect.fn('resolveImportMapsInSource')(function* ({
   sourceCode,
   sourcePath,
   resolveRelativeImports = false,
@@ -394,47 +393,46 @@ export const resolveImportMapsInSource = ({
   sourceCode: string
   sourcePath: string
   resolveRelativeImports?: boolean
-}): Effect.Effect<string, never, FileSystem.FileSystem> =>
-  Effect.gen(function* () {
-    const packageJsonPathOption = yield* findPackageJsonWithImports(sourcePath)
-    if (Option.isNone(packageJsonPathOption)) {
-      return sourceCode
-    }
-    const packageJsonPath = packageJsonPathOption.value
+}) {
+  const packageJsonPathOption = yield* findPackageJsonWithImports(sourcePath)
+  if (Option.isNone(packageJsonPathOption)) {
+    return sourceCode
+  }
+  const packageJsonPath = packageJsonPathOption.value
 
-    const importMap = yield* extractImportMap(packageJsonPath)
-    if (Object.keys(importMap).length === 0) {
-      return sourceCode
-    }
+  const importMap = yield* extractImportMap(packageJsonPath)
+  if (Object.keys(importMap).length === 0) {
+    return sourceCode
+  }
 
-    const packageJsonDir = path.dirname(packageJsonPath)
-    const sourceDir = path.dirname(sourcePath)
-    const normalizeSpecifier = (filePath: string) =>
-      resolveRelativeImports ? pathToFileURL(filePath).href : filePath
+  const packageJsonDir = path.dirname(packageJsonPath)
+  const sourceDir = path.dirname(sourcePath)
+  const normalizeSpecifier = (filePath: string) =>
+    resolveRelativeImports ? pathToFileURL(filePath).href : filePath
 
-    return sourceCode.replace(IMPORT_REGEX, (match, quote, specifier) => {
-      if (!isImportMapSpecifier(specifier)) {
-        if (resolveRelativeImports && (specifier.startsWith('./') || specifier.startsWith('../'))) {
-          const resolvedRelative = path.resolve(sourceDir, specifier)
-          return match.replace(specifier, normalizeSpecifier(resolvedRelative))
-        }
-        return match
+  return sourceCode.replace(IMPORT_REGEX, (match, quote, specifier) => {
+    if (!isImportMapSpecifier(specifier)) {
+      if (resolveRelativeImports && (specifier.startsWith('./') || specifier.startsWith('../'))) {
+        const resolvedRelative = path.resolve(sourceDir, specifier)
+        return match.replace(specifier, normalizeSpecifier(resolvedRelative))
       }
+      return match
+    }
 
-      const resolved = resolveImportMapSpecifier({
-        specifier,
-        importMap,
-        packageJsonDir,
-      })
-
-      if (!resolved) {
-        return match
-      }
-
-      // Replace the specifier in the match
-      return match.replace(specifier, normalizeSpecifier(resolved))
+    const resolved = resolveImportMapSpecifier({
+      specifier,
+      importMap,
+      packageJsonDir,
     })
+
+    if (!resolved) {
+      return match
+    }
+
+    // Replace the specifier in the match
+    return match.replace(specifier, normalizeSpecifier(resolved))
   })
+})
 
 /**
  * Get the import map context for a source file.
