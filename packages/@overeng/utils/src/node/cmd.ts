@@ -319,6 +319,12 @@ type TRunWithLoggingArgs = TRunBaseArgs & {
   readonly threadName: string
 }
 
+/**
+ * When logging is enabled we have to replace the `2>&1 | tee` pipeline the
+ * shell used to give us. We now pipe both streams through Effect so we can
+ * mirror to the terminal (only when requested) and append formatted entries
+ * into the canonical log ourselves.
+ */
 const runWithLogging = ({
   commandInput,
   cwd,
@@ -330,10 +336,6 @@ const runWithLogging = ({
   logPath,
   threadName,
 }: TRunWithLoggingArgs) =>
-  // When logging is enabled we have to replace the `2>&1 | tee` pipeline the
-  // shell used to give us. We now pipe both streams through Effect so we can
-  // mirror to the terminal (only when requested) and append formatted entries
-  // into the canonical log ourselves.
   Effect.scoped(
     Effect.gen(function* () {
       const envWithColor = env.FORCE_COLOR === undefined ? { ...env, FORCE_COLOR: '1' } : env
@@ -432,7 +434,7 @@ const runWithLogging = ({
 
       return exitCode
     }),
-  )
+  ).pipe(Effect.withSpan('cmd.runWithLogging'))
 
 /** Default grace period before escalating from SIGTERM to SIGKILL */
 const DEFAULT_KILL_TIMEOUT: Duration.DurationInput = '5 seconds'
@@ -474,10 +476,7 @@ const sendSignalToProcessGroup = (opts: {
  * Kill a process group with SIGTERM → wait → SIGKILL escalation.
  * Sends SIGTERM first, waits for graceful exit, then SIGKILL if needed.
  */
-const killProcessGroup = (opts: {
-  proc: Process
-  timeout?: Duration.DurationInput
-}): Effect.Effect<void> =>
+const killProcessGroup = (opts: { proc: Process; timeout?: Duration.DurationInput }): Effect.Effect<void> =>
   Effect.gen(function* () {
     const { proc } = opts
     const timeout = opts.timeout ?? DEFAULT_KILL_TIMEOUT
@@ -493,7 +492,7 @@ const killProcessGroup = (opts: {
       yield* Effect.logDebug(`Process ${proc.pid} didn't exit gracefully, sending SIGKILL`)
       yield* sendSignalToProcessGroup({ proc, signal: 'SIGKILL' })
     }
-  }).pipe(Effect.ignore)
+  }).pipe(Effect.withSpan('cmd.killProcessGroup'), Effect.ignore)
 
 const buildCommand = (opts: { input: string | string[]; useShell: boolean }) => {
   const { input, useShell } = opts
@@ -603,7 +602,7 @@ const makeStreamHandler = ({
   }
 }
 
-const emitSegment = ({
+const emitSegment = Effect.fn('cmd.emitSegment')(function* ({
   channel,
   content,
   terminator,
@@ -618,16 +617,15 @@ const emitSegment = ({
     channel: 'stdout' | 'stderr'
     content: string
   }) => Effect.Effect<void, never>
-}) =>
-  Effect.gen(function* () {
-    if (mirrorTarget) {
-      yield* Effect.sync(() => mirrorSegment({ target: mirrorTarget, content, terminator }))
-    }
+}) {
+  if (mirrorTarget) {
+    yield* Effect.sync(() => mirrorSegment({ target: mirrorTarget, content, terminator }))
+  }
 
-    const contentForLog = terminator === 'carriage-return' ? `${content}\r` : content
+  const contentForLog = terminator === 'carriage-return' ? `${content}\r` : content
 
-    yield* appendLog({ channel, content: contentForLog })
-  })
+  yield* appendLog({ channel, content: contentForLog })
+})
 
 const mirrorSegment = (opts: {
   target: NodeJS.WriteStream

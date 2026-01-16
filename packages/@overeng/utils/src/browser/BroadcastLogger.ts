@@ -228,7 +228,7 @@ export const logStream: Stream.Stream<BroadcastLogEntry, never, Scope.Scope> =
           channel.close()
         }),
       )
-    }),
+    }).pipe(Effect.withSpan('BroadcastLogger.logStream.setup')),
   )
 
 /** Options for creating a log bridge layer. */

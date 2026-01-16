@@ -59,54 +59,56 @@ export const withScopeDebug = <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.
  * yield* addTracedFinalizer({ name: 'cleanup-database', finalizer: Effect.log('Closing DB connection') })
  * ```
  */
-export const addTracedFinalizer = (opts: { name: string; finalizer: Effect.Effect<void> }) =>
-  Effect.gen(function* () {
-    const { name, finalizer } = opts
-    const debugEnabled = yield* FiberRef.get(ScopeDebugEnabled)
-    const scope = yield* Effect.scope
+export const addTracedFinalizer = Effect.fn('ScopeDebugger.addTracedFinalizer')(function* (opts: {
+  name: string
+  finalizer: Effect.Effect<void>
+}) {
+  const { name, finalizer } = opts
+  const debugEnabled = yield* FiberRef.get(ScopeDebugEnabled)
+  const scope = yield* Effect.scope
 
-    if (!debugEnabled) {
-      yield* Scope.addFinalizer(scope, finalizer)
-      return
-    }
+  if (!debugEnabled) {
+    yield* Scope.addFinalizer(scope, finalizer)
+    return
+  }
 
-    const registeredAt = Date.now()
+  const registeredAt = Date.now()
 
-    yield* Effect.logDebug(`Finalizer registered: ${name}`, {
-      finalizer: name,
-      registeredAt: new Date(registeredAt).toISOString(),
-    })
-
-    const tracedFinalizer = (exit: Exit.Exit<unknown, unknown>) =>
-      Effect.gen(function* () {
-        const startedAt = Date.now()
-
-        yield* Effect.logDebug(`Finalizer starting: ${name}`, {
-          finalizer: name,
-          timeSinceRegistration: `${startedAt - registeredAt}ms`,
-          exitSuccess: Exit.isSuccess(exit),
-        })
-
-        yield* finalizer
-
-        const completedAt = Date.now()
-        const durationMs = completedAt - startedAt
-
-        yield* Effect.logDebug(`Finalizer completed: ${name}`, {
-          finalizer: name,
-          durationMs,
-        })
-      }).pipe(
-        Effect.catchAllCause((cause) =>
-          Effect.logError(`Finalizer failed: ${name}`, {
-            finalizer: name,
-            cause,
-          }).pipe(Effect.andThen(Effect.failCause(cause))),
-        ),
-      )
-
-    yield* Scope.addFinalizerExit(scope, tracedFinalizer)
+  yield* Effect.logDebug(`Finalizer registered: ${name}`, {
+    finalizer: name,
+    registeredAt: new Date(registeredAt).toISOString(),
   })
+
+  const tracedFinalizer = (exit: Exit.Exit<unknown, unknown>) =>
+    Effect.gen(function* () {
+      const startedAt = Date.now()
+
+      yield* Effect.logDebug(`Finalizer starting: ${name}`, {
+        finalizer: name,
+        timeSinceRegistration: `${startedAt - registeredAt}ms`,
+        exitSuccess: Exit.isSuccess(exit),
+      })
+
+      yield* finalizer
+
+      const completedAt = Date.now()
+      const durationMs = completedAt - startedAt
+
+      yield* Effect.logDebug(`Finalizer completed: ${name}`, {
+        finalizer: name,
+        durationMs,
+      })
+    }).pipe(
+      Effect.catchAllCause((cause) =>
+        Effect.logError(`Finalizer failed: ${name}`, {
+          finalizer: name,
+          cause,
+        }).pipe(Effect.andThen(Effect.failCause(cause))),
+      ),
+    )
+
+  yield* Scope.addFinalizerExit(scope, tracedFinalizer)
+})
 
 /**
  * Runs an effect within a new scope that traces all finalizer activity.
@@ -166,31 +168,30 @@ export const withTracedScope =
  * yield* Effect.addFinalizer(() => tracedCleanup)
  * ```
  */
-export const traceFinalizer = (opts: {
+export const traceFinalizer = Effect.fn('ScopeDebugger.traceFinalizer')(function* (opts: {
   name: string
   finalizer: Effect.Effect<void>
-}): Effect.Effect<void> =>
-  Effect.gen(function* () {
-    const { name, finalizer } = opts
-    const debugEnabled = yield* FiberRef.get(ScopeDebugEnabled)
+}) {
+  const { name, finalizer } = opts
+  const debugEnabled = yield* FiberRef.get(ScopeDebugEnabled)
 
-    if (!debugEnabled) {
-      yield* finalizer
-      return
-    }
-
-    const startedAt = Date.now()
-
-    yield* Effect.logDebug(`Finalizer starting: ${name}`, {
-      finalizer: name,
-    })
-
+  if (!debugEnabled) {
     yield* finalizer
+    return
+  }
 
-    const durationMs = Date.now() - startedAt
+  const startedAt = Date.now()
 
-    yield* Effect.logDebug(`Finalizer completed: ${name}`, {
-      finalizer: name,
-      durationMs,
-    })
+  yield* Effect.logDebug(`Finalizer starting: ${name}`, {
+    finalizer: name,
   })
+
+  yield* finalizer
+
+  const durationMs = Date.now() - startedAt
+
+  yield* Effect.logDebug(`Finalizer completed: ${name}`, {
+    finalizer: name,
+    durationMs,
+  })
+})

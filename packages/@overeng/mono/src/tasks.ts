@@ -121,61 +121,63 @@ export const lintFix = (config: OxcConfig) =>
 // =============================================================================
 
 /** Find config files that are missing corresponding .genie.ts sources */
-const findMissingGenieSources = (config: GenieCoverageConfig) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const pathService = yield* Path.Path
-    const cwd = process.env.WORKSPACE_ROOT ?? process.cwd()
+const findMissingGenieSources = Effect.fn('findMissingGenieSources')(function* (
+  config: GenieCoverageConfig,
+) {
+  const fs = yield* FileSystem.FileSystem
+  const pathService = yield* Path.Path
+  const cwd = process.env.WORKSPACE_ROOT ?? process.cwd()
 
-    const patterns = new Set(config.patterns ?? ['package.json', 'tsconfig.json'])
-    const skipDirs = new Set(config.skipDirs)
+  const patterns = new Set(config.patterns ?? ['package.json', 'tsconfig.json'])
+  const skipDirs = new Set(config.skipDirs)
 
-    const walk = (dir: string): Effect.Effect<string[], PlatformError, never> =>
-      Effect.gen(function* () {
-        const exists = yield* fs.exists(dir)
-        if (!exists) return []
+  const walk = (dir: string): Effect.Effect<string[], PlatformError, never> =>
+    Effect.gen(function* () {
+      const exists = yield* fs.exists(dir)
+      if (!exists) return []
 
-        const entries = yield* fs.readDirectory(dir)
-        const results: string[] = []
+      const entries = yield* fs.readDirectory(dir)
+      const results: string[] = []
 
-        for (const entry of entries) {
-          if (skipDirs.has(entry)) continue
+      for (const entry of entries) {
+        if (skipDirs.has(entry)) continue
 
-          const fullPath = pathService.join(dir, entry)
-          const stat = yield* fs.stat(fullPath)
+        const fullPath = pathService.join(dir, entry)
+        const stat = yield* fs.stat(fullPath)
 
-          if (stat.type === 'Directory') {
-            const nested = yield* walk(fullPath)
-            results.push(...nested)
-          } else if (patterns.has(entry)) {
-            const genieSourcePath = `${fullPath}.genie.ts`
-            const hasGenieSource = yield* fs.exists(genieSourcePath)
-            if (!hasGenieSource) {
-              results.push(pathService.relative(cwd, fullPath))
-            }
+        if (stat.type === 'Directory') {
+          const nested = yield* walk(fullPath)
+          results.push(...nested)
+        } else if (patterns.has(entry)) {
+          const genieSourcePath = `${fullPath}.genie.ts`
+          const hasGenieSource = yield* fs.exists(genieSourcePath)
+          if (!hasGenieSource) {
+            results.push(pathService.relative(cwd, fullPath))
           }
         }
+      }
 
-        return results
-      })
+      return results
+    })
 
-    const allMissing: string[] = []
-    for (const scanDir of config.scanDirs) {
-      const missing = yield* walk(pathService.join(cwd, scanDir))
-      allMissing.push(...missing)
-    }
+  const allMissing: string[] = []
+  for (const scanDir of config.scanDirs) {
+    const missing = yield* walk(pathService.join(cwd, scanDir))
+    allMissing.push(...missing)
+  }
 
-    return allMissing.toSorted()
-  }).pipe(Effect.withSpan('findMissingGenieSources'))
+  return allMissing.toSorted()
+})
 
 /** Check that all config files have genie sources, fail if any are missing */
-export const checkGenieCoverage = (config: GenieCoverageConfig) =>
-  Effect.gen(function* () {
-    const missing = yield* findMissingGenieSources(config)
-    if (missing.length > 0) {
-      return yield* new GenieCoverageError({ missingGenieSources: missing })
-    }
-  }).pipe(Effect.withSpan('checkGenieCoverage'))
+export const checkGenieCoverage = Effect.fn('checkGenieCoverage')(function* (
+  config: GenieCoverageConfig,
+) {
+  const missing = yield* findMissingGenieSources(config)
+  if (missing.length > 0) {
+    return yield* new GenieCoverageError({ missingGenieSources: missing })
+  }
+})
 
 /** Genie check task (verifies generated files are up to date) */
 export const genieCheck = runCommand({
@@ -254,46 +256,45 @@ export const build = (config?: TypeCheckConfig) =>
 const DEFAULT_SKIP_DIRS = new Set(['node_modules', '.git', 'dist', '.devenv', '.direnv'])
 
 /** Find all directories containing package.json files */
-export const findPackageDirs = (config: InstallConfig) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const pathService = yield* Path.Path
-    const cwd = process.env.WORKSPACE_ROOT ?? process.cwd()
-    const skipDirs = new Set([...DEFAULT_SKIP_DIRS, ...(config.skipDirs ?? [])])
+export const findPackageDirs = Effect.fn('findPackageDirs')(function* (config: InstallConfig) {
+  const fs = yield* FileSystem.FileSystem
+  const pathService = yield* Path.Path
+  const cwd = process.env.WORKSPACE_ROOT ?? process.cwd()
+  const skipDirs = new Set([...DEFAULT_SKIP_DIRS, ...(config.skipDirs ?? [])])
 
-    const walk = (dir: string): Effect.Effect<string[], PlatformError, never> =>
-      Effect.gen(function* () {
-        const exists = yield* fs.exists(dir)
-        if (!exists) return []
+  const walk = (dir: string): Effect.Effect<string[], PlatformError, never> =>
+    Effect.gen(function* () {
+      const exists = yield* fs.exists(dir)
+      if (!exists) return []
 
-        const entries = yield* fs.readDirectory(dir)
-        const results: string[] = []
+      const entries = yield* fs.readDirectory(dir)
+      const results: string[] = []
 
-        for (const entry of entries) {
-          if (skipDirs.has(entry)) continue
+      for (const entry of entries) {
+        if (skipDirs.has(entry)) continue
 
-          const fullPath = pathService.join(dir, entry)
-          const stat = yield* fs.stat(fullPath)
+        const fullPath = pathService.join(dir, entry)
+        const stat = yield* fs.stat(fullPath)
 
-          if (stat.type === 'Directory') {
-            const nested = yield* walk(fullPath)
-            results.push(...nested)
-          } else if (entry === 'package.json') {
-            results.push(dir)
-          }
+        if (stat.type === 'Directory') {
+          const nested = yield* walk(fullPath)
+          results.push(...nested)
+        } else if (entry === 'package.json') {
+          results.push(dir)
         }
+      }
 
-        return results
-      })
+      return results
+    })
 
-    const allDirs: string[] = []
-    for (const scanDir of config.scanDirs) {
-      const dirs = yield* walk(pathService.join(cwd, scanDir))
-      allDirs.push(...dirs)
-    }
+  const allDirs: string[] = []
+  for (const scanDir of config.scanDirs) {
+    const dirs = yield* walk(pathService.join(cwd, scanDir))
+    allDirs.push(...dirs)
+  }
 
-    return allDirs.toSorted()
-  }).pipe(Effect.withSpan('findPackageDirs'))
+  return allDirs.toSorted()
+})
 
 /**
  * Remove node_modules directories for all packages that will be installed.
@@ -301,22 +302,21 @@ export const findPackageDirs = (config: InstallConfig) =>
  * @deprecated Use installAllWithTaskSystem with clean: true option instead.
  * This provides better progress visibility through the task system.
  */
-export const cleanNodeModules = (config: InstallConfig) =>
-  Effect.gen(function* () {
-    const pathService = yield* Path.Path
-    const dirs = yield* findPackageDirs(config)
+export const cleanNodeModules = Effect.fn('cleanNodeModules')(function* (config: InstallConfig) {
+  const pathService = yield* Path.Path
+  const dirs = yield* findPackageDirs(config)
 
-    yield* Effect.forEach(
-      dirs,
-      (dir) => {
-        const nodeModulesPath = pathService.join(dir, 'node_modules')
-        return runCommand({ command: 'rm', args: ['-rf', nodeModulesPath] })
-      },
-      { concurrency: 'unbounded' },
-    )
+  yield* Effect.forEach(
+    dirs,
+    (dir) => {
+      const nodeModulesPath = pathService.join(dir, 'node_modules')
+      return runCommand({ command: 'rm', args: ['-rf', nodeModulesPath] })
+    },
+    { concurrency: 'unbounded' },
+  )
 
-    return dirs.length
-  }).pipe(Effect.withSpan('cleanNodeModules'))
+  return dirs.length
+})
 
 /** Result of installing a package */
 export type InstallResult =
@@ -403,32 +403,29 @@ export type InstallProgress = {
 }
 
 /** Install dependencies for all packages in parallel with progress tracking */
-export const installAll = ({
-  config,
-  options,
-}: {
+export const installAll = Effect.fn('installAll')(function* (opts: {
   config: InstallConfig
   options?: {
     frozenLockfile?: boolean
     onProgress?: (progress: InstallProgress) => Effect.Effect<void>
   }
-}) =>
-  Effect.gen(function* () {
-    const dirs = yield* findPackageDirs(config)
-    const total = dirs.length
+}) {
+  const { config, options } = opts
+  const dirs = yield* findPackageDirs(config)
+  const total = dirs.length
 
-    const frozenLockfile = options?.frozenLockfile
-    const results = yield* Effect.all(
-      dirs.map((dir) =>
-        frozenLockfile !== undefined
-          ? installPackageCaptured({ dir, options: { frozenLockfile } })
-          : installPackageCaptured({ dir }),
-      ),
-      { concurrency: 'unbounded' },
-    )
+  const frozenLockfile = options?.frozenLockfile
+  const results = yield* Effect.all(
+    dirs.map((dir) =>
+      frozenLockfile !== undefined
+        ? installPackageCaptured({ dir, options: { frozenLockfile } })
+        : installPackageCaptured({ dir }),
+    ),
+    { concurrency: 'unbounded' },
+  )
 
-    return { results, total }
-  }).pipe(Effect.withSpan('installAll'))
+  return { results, total }
+})
 
 /**
  * Install dependencies using task system with live progress (task-based implementation).
@@ -437,119 +434,116 @@ export const installAll = ({
  * with file: protocol dependencies and postinstall scripts cause cache corruption.
  * See: file:///Users/schickling/Code/overengineeringstudio/dotdot/effect-utils/context/workarounds/bun-patched-dependencies.md
  */
-export const installAllWithTaskSystem = ({
-  config,
-  options,
-}: {
+export const installAllWithTaskSystem = Effect.fn('installAllWithTaskSystem')(function* (opts: {
   config: InstallConfig
   options?: {
     frozenLockfile?: boolean
     /** Clean node_modules before installing (workaround for bun cache corruption with file: deps) */
     clean?: boolean
   }
-}) =>
-  Effect.gen(function* () {
-    const pathService = yield* Path.Path
-    const cwd = process.env.WORKSPACE_ROOT ?? process.cwd()
+}) {
+  const { config, options } = opts
+  const pathService = yield* Path.Path
+  const cwd = process.env.WORKSPACE_ROOT ?? process.cwd()
 
-    const dirs = yield* findPackageDirs(config)
-    const total = dirs.length
+  const dirs = yield* findPackageDirs(config)
+  const total = dirs.length
 
-    if (total === 0) {
-      return { results: [], total: 0 }
-    }
+  if (total === 0) {
+    return { results: [], total: 0 }
+  }
 
-    // Create tasks for each package directory
-    const tasks: TaskDef<string, unknown, unknown, unknown>[] = []
+  // Create tasks for each package directory
+  const tasks: TaskDef<string, unknown, unknown, unknown>[] = []
 
-    for (const dir of dirs) {
-      const relativePath = pathService.relative(cwd, dir)
-      const taskId = relativePath.replace(/\//g, ':') // Convert path to valid task ID
-      const nodeModulesPath = pathService.join(dir, 'node_modules')
+  for (const dir of dirs) {
+    const relativePath = pathService.relative(cwd, dir)
+    const taskId = relativePath.replace(/\//g, ':') // Convert path to valid task ID
+    const nodeModulesPath = pathService.join(dir, 'node_modules')
 
-      // If clean is requested, create clean task first
-      if (options?.clean) {
-        tasks.push(
-          task({
-            id: `clean:${taskId}`,
-            name: `Clean ${relativePath}`,
-            command: {
-              cmd: 'rm',
-              args: ['-rf', nodeModulesPath],
-              cwd: dir,
-            },
-          }) as TaskDef<string, unknown, unknown, unknown>,
-        )
-      }
-
-      // Create install task (depends on clean task if present)
+    // If clean is requested, create clean task first
+    if (options?.clean) {
       tasks.push(
         task({
-          id: `install:${taskId}`,
-          name: `Install ${relativePath}`,
+          id: `clean:${taskId}`,
+          name: `Clean ${relativePath}`,
           command: {
-            cmd: 'bun',
-            args: ['install', ...(options?.frozenLockfile ? ['--frozen-lockfile'] : [])],
+            cmd: 'rm',
+            args: ['-rf', nodeModulesPath],
             cwd: dir,
-          },
-          options: {
-            // Retry with exponential backoff to handle bun cache race conditions
-            // Attempts: 200ms, 400ms, 800ms (total ~3 retries)
-            retrySchedule: Schedule.exponential('200 millis').pipe(
-              Schedule.compose(Schedule.recurs(3)),
-            ),
-            maxRetries: 3,
-            // Install depends on clean if clean task exists
-            ...(options?.clean ? { dependencies: [`clean:${taskId}`] } : {}),
           },
         }) as TaskDef<string, unknown, unknown, unknown>,
       )
     }
 
-    // Select renderer based on environment
-    // Limit concurrency to number of CPU cores to avoid bun cache race conditions
-    const concurrency = cpus().length
-    const renderer = IS_CI ? ciRenderer() : opentuiInlineRenderer()
-    const result = yield* runTaskGraph({
-      tasks,
-      options: {
-        onStateChange: (state) => renderer.render(state),
-        concurrency,
-      },
-    })
+    // Create install task (depends on clean task if present)
+    tasks.push(
+      task({
+        id: `install:${taskId}`,
+        name: `Install ${relativePath}`,
+        command: {
+          cmd: 'bun',
+          args: ['install', ...(options?.frozenLockfile ? ['--frozen-lockfile'] : [])],
+          cwd: dir,
+        },
+        options: {
+          // Retry with exponential backoff to handle bun cache race conditions
+          // Attempts: 200ms, 400ms, 800ms (total ~3 retries)
+          retrySchedule: Schedule.exponential('200 millis').pipe(
+            Schedule.compose(Schedule.recurs(3)),
+          ),
+          maxRetries: 3,
+          // Install depends on clean if clean task exists
+          ...(options?.clean ? { dependencies: [`clean:${taskId}`] } : {}),
+        },
+      }) as TaskDef<string, unknown, unknown, unknown>,
+    )
+  }
 
-    yield* renderer.renderFinal(result.state)
+  // Select renderer based on environment
+  // Limit concurrency to number of CPU cores to avoid bun cache race conditions
+  const concurrency = cpus().length
+  const renderer = IS_CI ? ciRenderer() : opentuiInlineRenderer()
+  const result = yield* runTaskGraph({
+    tasks,
+    options: {
+      onStateChange: (state) => renderer.render(state),
+      concurrency,
+    },
+  })
 
-    // Convert task results to InstallResult format
-    // Look up install task state for each directory (clean tasks are not reported)
-    const results: InstallResult[] = dirs.map((dir) => {
-      const relativePath = pathService.relative(cwd, dir)
-      const taskId = relativePath.replace(/\//g, ':')
-      const installTaskId = `install:${taskId}`
+  yield* renderer.renderFinal(result.state)
 
-      const taskState = result.state.tasks[installTaskId]
+  // Convert task results to InstallResult format
+  // Look up install task state for each directory (clean tasks are not reported)
+  const results: InstallResult[] = dirs.map((dir) => {
+    const relativePath = pathService.relative(cwd, dir)
+    const taskId = relativePath.replace(/\//g, ':')
+    const installTaskId = `install:${taskId}`
 
-      if (!taskState || taskState.status !== 'success') {
-        const error = taskState?.error
-          ? Option.getOrElse(taskState.error, () => 'Unknown error')
-          : 'Task not found'
-        const stderr = taskState?.stderr.join('\n') ?? ''
-        const stdout = taskState?.stdout.join('\n') ?? ''
+    const taskState = result.state.tasks[installTaskId]
 
-        return {
-          _tag: 'failure',
-          dir,
-          error: new Error(error),
-          stderr,
-          stdout,
-        }
+    if (!taskState || taskState.status !== 'success') {
+      const error = taskState?.error
+        ? Option.getOrElse(taskState.error, () => 'Unknown error')
+        : 'Task not found'
+      const stderr = taskState?.stderr.join('\n') ?? ''
+      const stdout = taskState?.stdout.join('\n') ?? ''
+
+      return {
+        _tag: 'failure',
+        dir,
+        error: new Error(error),
+        stderr,
+        stdout,
       }
+    }
 
-      return { _tag: 'success', dir }
-    })
+    return { _tag: 'success', dir }
+  })
 
-    return { results, total }
-  }).pipe(Effect.withSpan('installAllWithTaskSystem'))
+  return { results, total }
+})
 
 // =============================================================================
 // Check Tasks
@@ -566,73 +560,74 @@ export interface CheckTasksConfig {
 }
 
 /** Run all checks using task system with live progress */
-export const checkAllWithTaskSystem = (config: CheckTasksConfig) =>
-  Effect.gen(function* () {
-    // Define parallel tasks (no dependencies)
-    const parallelTasks = [
-      ...(config.skipGenie
-        ? []
-        : [
-            task({
-              id: 'genie',
-              name: 'Genie check',
-              command: {
-                cmd: 'genie',
-                args: ['--check'],
-              },
-            }),
-          ]),
-      task({
-        id: 'typecheck',
-        name: 'Type checking',
-        command: {
-          cmd: resolveLocalTsc(),
-          args: ['--build', 'tsconfig.all.json'],
-        },
-      }),
-      task({
-        id: 'lint',
-        name: 'Lint (format + oxlint + genie coverage)',
-        effect: allLintChecks(config),
-      }),
-    ]
-
-    // Extract parallel task IDs for dependencies
-    const parallelTaskIds = parallelTasks.map((t) => t.id)
-
-    // Define sequential tasks (depend on all parallel tasks)
-    const sequentialTasks = config.skipTests
+export const checkAllWithTaskSystem = Effect.fn('checkAllWithTaskSystem')(function* (
+  config: CheckTasksConfig,
+) {
+  // Define parallel tasks (no dependencies)
+  const parallelTasks = [
+    ...(config.skipGenie
       ? []
       : [
           task({
-            id: 'test',
-            name: 'Tests',
+            id: 'genie',
+            name: 'Genie check',
             command: {
-              cmd: 'vitest',
-              args: ['run'],
+              cmd: 'genie',
+              args: ['--check'],
             },
-            options: { dependencies: parallelTaskIds },
           }),
-        ]
-
-    const allTasks = [...parallelTasks, ...sequentialTasks]
-
-    // Select renderer based on environment
-    // Limit concurrency to number of CPU cores to avoid bun cache race conditions
-    const concurrency = cpus().length
-    const renderer = IS_CI ? ciRenderer() : opentuiInlineRenderer()
-    const result = yield* runTaskGraphOrFail({
-      tasks: allTasks,
-      options: {
-        onStateChange: (state) => renderer.render(state),
-        concurrency,
+        ]),
+    task({
+      id: 'typecheck',
+      name: 'Type checking',
+      command: {
+        cmd: resolveLocalTsc(),
+        args: ['--build', 'tsconfig.all.json'],
       },
-    })
+    }),
+    task({
+      id: 'lint',
+      name: 'Lint (format + oxlint + genie coverage)',
+      effect: allLintChecks(config),
+    }),
+  ]
 
-    yield* renderer.renderFinal(result.state)
+  // Extract parallel task IDs for dependencies
+  const parallelTaskIds = parallelTasks.map((t) => t.id)
 
-    return result
-  }).pipe(Effect.withSpan('checkAllWithTaskSystem'))
+  // Define sequential tasks (depend on all parallel tasks)
+  const sequentialTasks = config.skipTests
+    ? []
+    : [
+        task({
+          id: 'test',
+          name: 'Tests',
+          command: {
+            cmd: 'vitest',
+            args: ['run'],
+          },
+          options: { dependencies: parallelTaskIds },
+        }),
+      ]
+
+  const allTasks = [...parallelTasks, ...sequentialTasks]
+
+  // Select renderer based on environment
+  // Limit concurrency to number of CPU cores to avoid bun cache race conditions
+  const concurrency = cpus().length
+  const renderer = IS_CI ? ciRenderer() : opentuiInlineRenderer()
+  const result = yield* runTaskGraphOrFail({
+    tasks: allTasks,
+    options: {
+      onStateChange: (state) => renderer.render(state),
+      concurrency,
+    },
+  })
+
+  yield* renderer.renderFinal(result.state)
+
+  return result
+})
 
 // =============================================================================
 // Composite Tasks

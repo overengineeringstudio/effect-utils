@@ -26,28 +26,27 @@ export const testCommand = () =>
   Command.make(
     'test',
     { unit: unitOption, integration: integrationOption, watch: watchOption },
-    ({ unit, integration, watch }) =>
-      Effect.gen(function* () {
-        const watchArg = watch && !IS_CI ? [] : ['run']
-        const reporterArgs = IS_CI ? ['--reporter=verbose'] : []
+    Effect.fn('mono.test')(function* ({ unit, integration, watch }) {
+      const watchArg = watch && !IS_CI ? [] : ['run']
+      const reporterArgs = IS_CI ? ['--reporter=verbose'] : []
 
-        if (unit) {
-          yield* ciGroup('Running unit tests')
-          yield* runCommand({ command: 'vitest', args: [...watchArg, ...reporterArgs] })
-          yield* ciGroupEnd
-        } else if (integration) {
-          yield* ciGroup('Running integration tests')
-          yield* runCommand({ command: 'vitest', args: [...watchArg, ...reporterArgs] })
-          yield* ciGroupEnd
-          yield* ciGroup('Running Playwright tests')
-          yield* runCommand({ command: 'playwright', args: ['test'] })
-          yield* ciGroupEnd
-        } else {
-          yield* ciGroup('Running all tests')
-          yield* runCommand({ command: 'vitest', args: [...watchArg, ...reporterArgs] })
-          yield* ciGroupEnd
-        }
+      if (unit) {
+        yield* ciGroup('Running unit tests')
+        yield* runCommand({ command: 'vitest', args: [...watchArg, ...reporterArgs] })
+        yield* ciGroupEnd
+      } else if (integration) {
+        yield* ciGroup('Running integration tests')
+        yield* runCommand({ command: 'vitest', args: [...watchArg, ...reporterArgs] })
+        yield* ciGroupEnd
+        yield* ciGroup('Running Playwright tests')
+        yield* runCommand({ command: 'playwright', args: ['test'] })
+        yield* ciGroupEnd
+      } else {
+        yield* ciGroup('Running all tests')
+        yield* runCommand({ command: 'vitest', args: [...watchArg, ...reporterArgs] })
+        yield* ciGroupEnd
+      }
 
-        yield* Console.log('✓ Tests complete')
-      }),
+      yield* Console.log('✓ Tests complete')
+    }),
   ).pipe(Command.withDescription('Run tests'))

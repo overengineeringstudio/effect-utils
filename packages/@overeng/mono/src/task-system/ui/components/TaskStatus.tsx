@@ -15,13 +15,14 @@ export const TaskStatus = ({ task }: TaskStatusProps) => {
   const [spinnerFrame, setSpinnerFrame] = useState(0)
 
   // Animated spinner for running/pending tasks
-  useEffect(() => {
+  useEffect((): (() => void) | undefined => {
     if (task.status === 'running' || task.status === 'pending') {
       const interval = setInterval(() => {
         setSpinnerFrame((prev) => (prev + 1) % SPINNER_FRAMES.length)
       }, 80)
       return () => clearInterval(interval)
     }
+    return undefined
   }, [task.status])
 
   const getIcon = (): string => {

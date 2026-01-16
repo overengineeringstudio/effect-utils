@@ -119,47 +119,49 @@ const decodeChunks = (chunks: Chunk.Chunk<Uint8Array>): string =>
     }, new Uint8Array()),
   )
 
-const warnIfStaleBunDeps = (stderrText: string, packageNames: readonly string[]) =>
-  Effect.gen(function* () {
-    if (!stderrText.includes('hash mismatch in fixed-output derivation')) {
-      return
-    }
-    yield* Console.error('nix reported a fixed-output hash mismatch; bunDepsHash is likely stale.')
-    for (const name of packageNames) {
-      yield* Console.error(`- ${name}: run mono nix hash --package ${name}`)
-    }
-  })
+const warnIfStaleBunDeps = Effect.fn('nix.warnIfStaleBunDeps')(function* (
+  stderrText: string,
+  packageNames: readonly string[],
+) {
+  if (!stderrText.includes('hash mismatch in fixed-output derivation')) {
+    return
+  }
+  yield* Console.error('nix reported a fixed-output hash mismatch; bunDepsHash is likely stale.')
+  for (const name of packageNames) {
+    yield* Console.error(`- ${name}: run mono nix hash --package ${name}`)
+  }
+})
 
-const runNixBuild = ({
-  args,
-  cwd,
-  packageNames,
-}: {
+const runNixBuild = Effect.fn('nix.runNixBuild')(function* (opts: {
   args: readonly string[]
   cwd: string
   packageNames: readonly string[]
-}) =>
-  Effect.gen(function* () {
-    const command = PlatformCommand.make('nix', ...args).pipe(
-      PlatformCommand.workingDirectory(cwd),
-      PlatformCommand.stdout('inherit'),
-      PlatformCommand.stderr('pipe'),
-    )
-    const process = yield* PlatformCommand.start(command)
-    const stderrChunks = yield* process.stderr.pipe(
-      Stream.tap((chunk) => Effect.sync(() => globalThis.process.stderr.write(chunk))),
-      Stream.runCollect,
-    )
-    const exitCode = yield* process.exitCode
-    if (exitCode !== 0) {
-      const stderrText = decodeChunks(stderrChunks)
-      yield* warnIfStaleBunDeps(stderrText, packageNames)
-      return yield* new CommandError({
-        command: `nix ${args.join(' ')}`,
-        message: 'nix build failed',
-      })
-    }
-  })
+}) {
+  const { args, cwd, packageNames } = opts
+  const command = PlatformCommand.make('nix', ...args).pipe(
+    PlatformCommand.workingDirectory(cwd),
+    PlatformCommand.stdout('inherit'),
+    PlatformCommand.stderr('pipe'),
+  )
+  const [stderrChunks, exitCode] = yield* Effect.scoped(
+    Effect.gen(function* () {
+      const process = yield* PlatformCommand.start(command)
+      const chunks = yield* process.stderr.pipe(
+        Stream.tap((chunk) => Effect.sync(() => globalThis.process.stderr.write(chunk))),
+        Stream.runCollect,
+      )
+      return [chunks, yield* process.exitCode] as const
+    }),
+  )
+  if (exitCode !== 0) {
+    const stderrText = decodeChunks(stderrChunks)
+    yield* warnIfStaleBunDeps(stderrText, packageNames)
+    return yield* new CommandError({
+      command: `nix ${args.join(' ')}`,
+      message: 'nix build failed',
+    })
+  }
+})
 
 const getBinaryName = (packageSpec: NixPackageSpec): string =>
   packageSpec.binaryName ?? packageSpec.name
@@ -259,88 +261,84 @@ const toFlakeExpected = (outputRoot: string): ExpectedPath => ({ _tag: 'flake', 
 
 const toDevenvExpected = (binaryPath: string): ExpectedPath => ({ _tag: 'devenv', binaryPath })
 
-const resolveStatusEntry = ({
-  packageSpec,
-  expected,
-}: {
+const resolveStatusEntry = Effect.fn('nix.resolveStatusEntry')(function* (opts: {
   packageSpec: NixPackageSpec
   expected: ExpectedPath | undefined
-}) =>
-  Effect.gen(function* () {
-    const actualResult = yield* Effect.either(
-      resolveActualBinaryPath(getBinaryName(packageSpec)).pipe(
-        Effect.provide(Logger.minimumLogLevel(LogLevel.Info)),
-      ),
-    )
-    const actual = actualResult._tag === 'Right' ? actualResult.right : undefined
-    const refreshHint = `mono nix build --package ${packageSpec.name} --reload`
+}) {
+  const { packageSpec, expected } = opts
+  const actualResult = yield* Effect.either(
+    resolveActualBinaryPath(getBinaryName(packageSpec)).pipe(
+      Effect.provide(Logger.minimumLogLevel(LogLevel.Info)),
+    ),
+  )
+  const actual = actualResult._tag === 'Right' ? actualResult.right : undefined
+  const refreshHint = `mono nix build --package ${packageSpec.name} --reload`
 
-    if (expected === undefined) {
-      return {
-        name: packageSpec.name,
-        state: 'expected-missing',
-        refreshHint,
-      } satisfies StatusEntry
-    }
-
-    const expectedLabel = expected._tag === 'flake' ? expected.outputRoot : expected.binaryPath
-    const isUpToDate =
-      actual !== undefined &&
-      actual.length > 0 &&
-      (expected._tag === 'flake'
-        ? actual.startsWith(`${expected.outputRoot}/`)
-        : actual === expected.binaryPath)
-
-    if (actual === undefined || actual.length === 0) {
-      return {
-        name: packageSpec.name,
-        state: 'missing',
-        expected: expectedLabel,
-        refreshHint,
-      } satisfies StatusEntry
-    }
-
-    if (isUpToDate) {
-      return {
-        name: packageSpec.name,
-        state: 'up-to-date',
-        actual,
-        refreshHint,
-      } satisfies StatusEntry
-    }
-
+  if (expected === undefined) {
     return {
       name: packageSpec.name,
-      state: 'stale',
+      state: 'expected-missing',
+      refreshHint,
+    } satisfies StatusEntry
+  }
+
+  const expectedLabel = expected._tag === 'flake' ? expected.outputRoot : expected.binaryPath
+  const isUpToDate =
+    actual !== undefined &&
+    actual.length > 0 &&
+    (expected._tag === 'flake'
+      ? actual.startsWith(`${expected.outputRoot}/`)
+      : actual === expected.binaryPath)
+
+  if (actual === undefined || actual.length === 0) {
+    return {
+      name: packageSpec.name,
+      state: 'missing',
       expected: expectedLabel,
+      refreshHint,
+    } satisfies StatusEntry
+  }
+
+  if (isUpToDate) {
+    return {
+      name: packageSpec.name,
+      state: 'up-to-date',
       actual,
       refreshHint,
     } satisfies StatusEntry
-  })
+  }
 
-const printStatusEntry = (entry: StatusEntry) =>
-  Effect.gen(function* () {
-    if (entry.state === 'expected-missing') {
-      yield* Console.log(`- ${entry.name}: expected output missing`)
-      return
-    }
+  return {
+    name: packageSpec.name,
+    state: 'stale',
+    expected: expectedLabel,
+    actual,
+    refreshHint,
+  } satisfies StatusEntry
+})
 
-    if (entry.state === 'missing') {
-      yield* Console.log(
-        `- ${entry.name}: missing (expected ${entry.expected}, refresh: ${entry.refreshHint})`,
-      )
-      return
-    }
+const printStatusEntry = Effect.fn('nix.printStatusEntry')(function* (entry: StatusEntry) {
+  if (entry.state === 'expected-missing') {
+    yield* Console.log(`- ${entry.name}: expected output missing`)
+    return
+  }
 
-    if (entry.state === 'up-to-date') {
-      yield* Console.log(`- ${entry.name}: up-to-date (${entry.actual})`)
-      return
-    }
-
+  if (entry.state === 'missing') {
     yield* Console.log(
-      `- ${entry.name}: stale (expected ${entry.expected}, actual ${entry.actual}, refresh: ${entry.refreshHint})`,
+      `- ${entry.name}: missing (expected ${entry.expected}, refresh: ${entry.refreshHint})`,
     )
-  })
+    return
+  }
+
+  if (entry.state === 'up-to-date') {
+    yield* Console.log(`- ${entry.name}: up-to-date (${entry.actual})`)
+    return
+  }
+
+  yield* Console.log(
+    `- ${entry.name}: stale (expected ${entry.expected}, actual ${entry.actual}, refresh: ${entry.refreshHint})`,
+  )
+})
 
 const resolveWorkspaceOverrideArgs = (packageSpec: NixPackageSpec): string[] => {
   if (packageSpec.workspaceInput === undefined) {
@@ -357,127 +355,126 @@ const resolveWorkspaceOverrideArgs = (packageSpec: NixPackageSpec): string[] => 
   return ['--override-input', packageSpec.workspaceInput, workspaceRef]
 }
 
-const buildPackage = (packageSpec: NixPackageSpec) =>
-  Effect.gen(function* () {
-    yield* Console.log(`Building ${packageSpec.name}...`)
-    const args = [
-      'build',
-      ...evalCoresArgs(),
-      ...buildParallelismArgs(),
-      packageSpec.flakeRef,
-      '-L',
-    ]
-    if (packageSpec.noWriteLock) {
-      args.push('--no-write-lock-file')
-    }
-    // Avoid creating ./result symlinks when running from direnv or scripts.
-    args.push('--no-link')
-    args.push(...resolveWorkspaceOverrideArgs(packageSpec))
-    yield* runNixBuild({
-      args,
-      cwd: resolveFlakeDir(packageSpec),
-      packageNames: [packageSpec.name],
+const buildPackage = Effect.fn('nix.buildPackage')(function* (packageSpec: NixPackageSpec) {
+  yield* Console.log(`Building ${packageSpec.name}...`)
+  const args = [
+    'build',
+    ...evalCoresArgs(),
+    ...buildParallelismArgs(),
+    packageSpec.flakeRef,
+    '-L',
+  ]
+  if (packageSpec.noWriteLock) {
+    args.push('--no-write-lock-file')
+  }
+  // Avoid creating ./result symlinks when running from direnv or scripts.
+  args.push('--no-link')
+  args.push(...resolveWorkspaceOverrideArgs(packageSpec))
+  yield* runNixBuild({
+    args,
+    cwd: resolveFlakeDir(packageSpec),
+    packageNames: [packageSpec.name],
+  })
+  yield* Console.log(`✓ ${packageSpec.name} built successfully`)
+})
+
+const buildPackages = Effect.fn('nix.buildPackages')(function* (
+  packageSpecs: readonly NixPackageSpec[],
+) {
+  if (packageSpecs.length === 0) {
+    return
+  }
+  const firstSpec = packageSpecs[0]
+  if (firstSpec === undefined) {
+    return
+  }
+  const flakeRefs = packageSpecs.map((spec) => spec.flakeRef)
+  const needsNoWriteLock = packageSpecs.some((spec) => spec.noWriteLock === true)
+
+  yield* Console.log(`Building ${packageSpecs.map((spec) => spec.name).join(', ')}...`)
+  const args = ['build', ...evalCoresArgs(), ...buildParallelismArgs(), ...flakeRefs, '-L']
+  if (needsNoWriteLock) {
+    args.push('--no-write-lock-file')
+  }
+  // Avoid creating ./result symlinks when building multiple packages.
+  args.push('--no-link')
+  yield* runNixBuild({
+    args,
+    cwd: resolveFlakeDir(firstSpec),
+    packageNames: packageSpecs.map((spec) => spec.name),
+  })
+  yield* Console.log('✓ build completed')
+})
+
+const updateHash = Effect.fn('nix.updateHash')(function* (packageSpec: NixPackageSpec) {
+  const fs = yield* FileSystem.FileSystem
+  const buildNixPath = resolveBuildNixPath(packageSpec)
+
+  yield* Console.log(`Updating hash for ${packageSpec.name}...`)
+
+  const args = [
+    'build',
+    ...evalCoresArgs(),
+    ...buildParallelismArgs(),
+    packageSpec.flakeRef,
+    '-L',
+  ]
+  if (packageSpec.noWriteLock) {
+    args.push('--no-write-lock-file')
+  }
+  args.push(...resolveWorkspaceOverrideArgs(packageSpec))
+  const command = PlatformCommand.make('nix', ...args).pipe(
+    PlatformCommand.workingDirectory(resolveFlakeDir(packageSpec)),
+    PlatformCommand.stderr('pipe'),
+  )
+
+  const [stderrChunks, exitCode] = yield* Effect.scoped(
+    Effect.gen(function* () {
+      const process = yield* PlatformCommand.start(command)
+      return yield* Effect.all([Stream.runCollect(process.stderr), process.exitCode])
+    }),
+  )
+
+  if (exitCode === 0) {
+    yield* Console.log(`✓ ${packageSpec.name} hash is already up to date`)
+    return
+  }
+
+  const stderrText = decodeChunks(stderrChunks)
+
+  const hashMatch = stderrText.match(/got:\s+(sha256-[A-Za-z0-9+/=]+)/)
+  if (!hashMatch) {
+    yield* Console.error(`Could not extract hash from nix build output for ${packageSpec.name}`)
+    yield* Console.error('Build may have failed for a different reason.')
+    return yield* new HashExtractionError({
+      packageName: packageSpec.name,
+      message: `Hash extraction failed for ${packageSpec.name}`,
     })
-    yield* Console.log(`✓ ${packageSpec.name} built successfully`)
-  })
+  }
 
-const buildPackages = (packageSpecs: readonly NixPackageSpec[]) =>
-  Effect.gen(function* () {
-    if (packageSpecs.length === 0) {
-      return
-    }
-    const firstSpec = packageSpecs[0]
-    if (firstSpec === undefined) {
-      return
-    }
-    const flakeRefs = packageSpecs.map((spec) => spec.flakeRef)
-    const needsNoWriteLock = packageSpecs.some((spec) => spec.noWriteLock === true)
+  const newHash = hashMatch[1]
+  yield* Console.log(`Found new hash: ${newHash}`)
 
-    yield* Console.log(`Building ${packageSpecs.map((spec) => spec.name).join(', ')}...`)
-    const args = ['build', ...evalCoresArgs(), ...buildParallelismArgs(), ...flakeRefs, '-L']
-    if (needsNoWriteLock) {
-      args.push('--no-write-lock-file')
-    }
-    // Avoid creating ./result symlinks when building multiple packages.
-    args.push('--no-link')
-    yield* runNixBuild({
-      args,
-      cwd: resolveFlakeDir(firstSpec),
-      packageNames: packageSpecs.map((spec) => spec.name),
+  const buildNix = yield* fs.readFileString(buildNixPath)
+  const updatedBuildNix = buildNix.replace(
+    /bunDepsHash\s*=\s*(?:"sha256-[A-Za-z0-9+/=]+"|lib\.fakeHash|pkgs\.lib\.fakeHash);/,
+    `bunDepsHash = "${newHash}";`,
+  )
+
+  if (buildNix === updatedBuildNix) {
+    yield* Console.error(`Could not find bunDepsHash pattern in ${buildNixPath}`)
+    return yield* new HashPatternNotFoundError({
+      buildNixPath,
+      message: `bunDepsHash pattern not found in ${buildNixPath}`,
     })
-    yield* Console.log('✓ build completed')
-  })
+  }
 
-const updateHash = (packageSpec: NixPackageSpec) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const buildNixPath = resolveBuildNixPath(packageSpec)
+  yield* fs.writeFileString(buildNixPath, updatedBuildNix)
+  yield* Console.log(`✓ Updated ${buildNixPath}`)
 
-    yield* Console.log(`Updating hash for ${packageSpec.name}...`)
-
-    const args = [
-      'build',
-      ...evalCoresArgs(),
-      ...buildParallelismArgs(),
-      packageSpec.flakeRef,
-      '-L',
-    ]
-    if (packageSpec.noWriteLock) {
-      args.push('--no-write-lock-file')
-    }
-    args.push(...resolveWorkspaceOverrideArgs(packageSpec))
-    const command = PlatformCommand.make('nix', ...args).pipe(
-      PlatformCommand.workingDirectory(resolveFlakeDir(packageSpec)),
-      PlatformCommand.stderr('pipe'),
-    )
-
-    const [stderrChunks, exitCode] = yield* Effect.scoped(
-      Effect.gen(function* () {
-        const process = yield* PlatformCommand.start(command)
-        return yield* Effect.all([Stream.runCollect(process.stderr), process.exitCode])
-      }),
-    )
-
-    if (exitCode === 0) {
-      yield* Console.log(`✓ ${packageSpec.name} hash is already up to date`)
-      return
-    }
-
-    const stderrText = decodeChunks(stderrChunks)
-
-    const hashMatch = stderrText.match(/got:\s+(sha256-[A-Za-z0-9+/=]+)/)
-    if (!hashMatch) {
-      yield* Console.error(`Could not extract hash from nix build output for ${packageSpec.name}`)
-      yield* Console.error('Build may have failed for a different reason.')
-      return yield* new HashExtractionError({
-        packageName: packageSpec.name,
-        message: `Hash extraction failed for ${packageSpec.name}`,
-      })
-    }
-
-    const newHash = hashMatch[1]
-    yield* Console.log(`Found new hash: ${newHash}`)
-
-    const buildNix = yield* fs.readFileString(buildNixPath)
-    const updatedBuildNix = buildNix.replace(
-      /bunDepsHash\s*=\s*(?:"sha256-[A-Za-z0-9+/=]+"|lib\.fakeHash|pkgs\.lib\.fakeHash);/,
-      `bunDepsHash = "${newHash}";`,
-    )
-
-    if (buildNix === updatedBuildNix) {
-      yield* Console.error(`Could not find bunDepsHash pattern in ${buildNixPath}`)
-      return yield* new HashPatternNotFoundError({
-        buildNixPath,
-        message: `bunDepsHash pattern not found in ${buildNixPath}`,
-      })
-    }
-
-    yield* fs.writeFileString(buildNixPath, updatedBuildNix)
-    yield* Console.log(`✓ Updated ${buildNixPath}`)
-
-    yield* Console.log('Verifying build...')
-    yield* buildPackage(packageSpec)
-  })
+  yield* Console.log('Verifying build...')
+  yield* buildPackage(packageSpec)
+})
 
 const resolvePackageNames = (packages: readonly NixPackageSpec[]): readonly string[] =>
   packages.map((pkg) => pkg.name)

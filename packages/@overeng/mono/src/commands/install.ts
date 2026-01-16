@@ -35,8 +35,10 @@ const formatInstallError = (error: unknown): string => {
 
 /** Create an install command */
 export const installCommand = (config: InstallConfig) =>
-  Command.make('install', { clean: cleanOption }, ({ clean }) =>
-    Effect.gen(function* () {
+  Command.make(
+    'install',
+    { clean: cleanOption },
+    Effect.fn('mono.install')(function* ({ clean }) {
       const pathService = yield* Path.Path
       const cwd = process.env.WORKSPACE_ROOT ?? process.cwd()
 

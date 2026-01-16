@@ -19,8 +19,10 @@ export const lintCommand = ({
   oxcConfig: OxcConfig
   genieConfig: GenieCoverageConfig
 }) =>
-  Command.make('lint', { fix: fixOption }, ({ fix }) =>
-    Effect.gen(function* () {
+  Command.make(
+    'lint',
+    { fix: fixOption },
+    Effect.fn('mono.lint')(function* ({ fix }) {
       yield* ciGroup(fix ? 'Formatting + Linting (with fixes)' : 'Formatting + Linting')
       yield* fix ? allLintFixes(oxcConfig) : allLintChecks({ oxcConfig, genieConfig })
       yield* ciGroupEnd

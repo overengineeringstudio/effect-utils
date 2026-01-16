@@ -52,102 +52,97 @@ const isNotFoundError = (cause: unknown): boolean => {
 /**
  * Read a holder's lock file, returning undefined if it doesn't exist or is expired.
  */
-const readHolderLock = (opts: {
+const readHolderLock = Effect.fn('FileSystemBacking.readHolderLock')(function* (opts: {
   filePath: string
   now: number
-}): Effect.Effect<HolderLockContent | undefined, SemaphoreBackingError, FileSystem.FileSystem> =>
-  Effect.gen(function* () {
-    const { filePath, now } = opts
-    const fs = yield* FileSystem.FileSystem
+}) {
+  const { filePath, now } = opts
+  const fs = yield* FileSystem.FileSystem
 
-    const content = yield* fs.readFileString(filePath).pipe(
-      Effect.catchAllCause((cause) => {
-        const failure = Cause.failureOption(cause).pipe(Option.getOrUndefined)
-        if (failure !== undefined && isNotFoundError(failure)) {
-          return Effect.succeed(undefined)
-        }
+  const content = yield* fs.readFileString(filePath).pipe(
+    Effect.catchAllCause((cause) => {
+      const failure = Cause.failureOption(cause).pipe(Option.getOrUndefined)
+      if (failure !== undefined && isNotFoundError(failure)) {
+        return Effect.succeed(undefined)
+      }
 
-        const defect = Cause.dieOption(cause).pipe(Option.getOrUndefined)
-        if (defect !== undefined && isNotFoundError(defect)) {
-          return Effect.succeed(undefined)
-        }
+      const defect = Cause.dieOption(cause).pipe(Option.getOrUndefined)
+      if (defect !== undefined && isNotFoundError(defect)) {
+        return Effect.succeed(undefined)
+      }
 
-        if (failure !== undefined) {
-          return Effect.fail(new SemaphoreBackingError({ operation: 'readFile', cause: failure }))
-        }
-        if (defect !== undefined) {
-          return Effect.fail(new SemaphoreBackingError({ operation: 'readFile', cause: defect }))
-        }
+      if (failure !== undefined) {
+        return Effect.fail(new SemaphoreBackingError({ operation: 'readFile', cause: failure }))
+      }
+      if (defect !== undefined) {
+        return Effect.fail(new SemaphoreBackingError({ operation: 'readFile', cause: defect }))
+      }
 
-        return Effect.fail(new SemaphoreBackingError({ operation: 'readFile', cause }))
-      }),
-    )
+      return Effect.fail(new SemaphoreBackingError({ operation: 'readFile', cause }))
+    }),
+  )
 
-    if (content === undefined) {
-      return undefined
-    }
+  if (content === undefined) {
+    return undefined
+  }
 
-    const parsed = yield* Schema.decodeUnknown(Schema.parseJson(HolderLockSchema))(content).pipe(
-      Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'parseJson', cause })),
-    )
+  const parsed = yield* Schema.decodeUnknown(Schema.parseJson(HolderLockSchema))(content).pipe(
+    Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'parseJson', cause })),
+  )
 
-    // Check if expired
-    if (parsed.expiresAt <= now) {
-      // Clean up expired file
-      yield* fs.remove(filePath).pipe(Effect.ignore)
-      return undefined
-    }
+  // Check if expired
+  if (parsed.expiresAt <= now) {
+    // Clean up expired file
+    yield* fs.remove(filePath).pipe(Effect.ignore)
+    return undefined
+  }
 
-    return parsed
-  })
+  return parsed
+})
 
 /**
  * Write a holder's lock file atomically using write-to-temp-then-rename pattern.
  */
-const writeHolderLock = (opts: {
+const writeHolderLock = Effect.fn('FileSystemBacking.writeHolderLock')(function* (opts: {
   filePath: string
   content: HolderLockContent
-}): Effect.Effect<void, SemaphoreBackingError, FileSystem.FileSystem | Path.Path> =>
-  Effect.gen(function* () {
-    const { filePath, content } = opts
-    const fs = yield* FileSystem.FileSystem
-    const path = yield* Path.Path
+}) {
+  const { filePath, content } = opts
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
 
-    const dirPath = path.dirname(filePath)
+  const dirPath = path.dirname(filePath)
 
-    yield* fs
-      .makeDirectory(dirPath, { recursive: true })
-      .pipe(Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'makeDirectory', cause })))
+  yield* fs
+    .makeDirectory(dirPath, { recursive: true })
+    .pipe(Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'makeDirectory', cause })))
 
-    const json = yield* Schema.encode(Schema.parseJson(HolderLockSchema))(content).pipe(
-      Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'encodeJson', cause })),
-    )
+  const json = yield* Schema.encode(Schema.parseJson(HolderLockSchema))(content).pipe(
+    Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'encodeJson', cause })),
+  )
 
-    // Write to temp file first, then rename for atomicity
-    const tempPath = `${filePath}.${Date.now()}.tmp`
+  // Write to temp file first, then rename for atomicity
+  const tempPath = `${filePath}.${Date.now()}.tmp`
 
-    yield* fs
-      .writeFileString(tempPath, json)
-      .pipe(Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'writeFile', cause })))
+  yield* fs
+    .writeFileString(tempPath, json)
+    .pipe(Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'writeFile', cause })))
 
-    yield* fs
-      .rename(tempPath, filePath)
-      .pipe(Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'rename', cause })))
-  })
+  yield* fs
+    .rename(tempPath, filePath)
+    .pipe(Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'rename', cause })))
+})
 
 /**
  * Remove a holder's lock file.
  */
-const removeHolderLock = (
-  filePath: string,
-): Effect.Effect<void, SemaphoreBackingError, FileSystem.FileSystem> =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
+const removeHolderLock = Effect.fn('FileSystemBacking.removeHolderLock')(function* (filePath: string) {
+  const fs = yield* FileSystem.FileSystem
 
-    yield* fs.remove(filePath).pipe(
-      Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'remove', cause })),
-    )
-  })
+  yield* fs.remove(filePath).pipe(
+    Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'remove', cause })),
+  )
+})
 
 /** Error thrown when attempting to revoke permits from a non-existent holder */
 export class HolderNotFoundError extends Data.TaggedError('HolderNotFoundError')<{
@@ -162,41 +157,40 @@ export class HolderNotFoundError extends Data.TaggedError('HolderNotFoundError')
 /**
  * Count active (non-expired) permits in a key's directory.
  */
-const countActivePermits = (opts: {
+const countActivePermits = Effect.fn('FileSystemBacking.countActivePermits')(function* (opts: {
   keyDir: string
   now: number
-}): Effect.Effect<number, SemaphoreBackingError, FileSystem.FileSystem> =>
-  Effect.gen(function* () {
-    const { keyDir, now } = opts
-    const fs = yield* FileSystem.FileSystem
+}) {
+  const { keyDir, now } = opts
+  const fs = yield* FileSystem.FileSystem
 
-    const exists = yield* fs
-      .exists(keyDir)
-      .pipe(Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'exists', cause })))
+  const exists = yield* fs
+    .exists(keyDir)
+    .pipe(Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'exists', cause })))
 
-    if (!exists) {
-      return 0
+  if (!exists) {
+    return 0
+  }
+
+  const entries = yield* fs
+    .readDirectory(keyDir)
+    .pipe(Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'readDirectory', cause })))
+
+  let totalPermits = 0
+
+  for (const entry of entries) {
+    if (!entry.endsWith('.lock')) continue
+
+    const filePath = `${keyDir}/${entry}`
+    const lock = yield* readHolderLock({ filePath, now })
+
+    if (lock !== undefined) {
+      totalPermits += lock.permits
     }
+  }
 
-    const entries = yield* fs
-      .readDirectory(keyDir)
-      .pipe(Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'readDirectory', cause })))
-
-    let totalPermits = 0
-
-    for (const entry of entries) {
-      if (!entry.endsWith('.lock')) continue
-
-      const filePath = `${keyDir}/${entry}`
-      const lock = yield* readHolderLock({ filePath, now })
-
-      if (lock !== undefined) {
-        totalPermits += lock.permits
-      }
-    }
-
-    return totalPermits
-  })
+  return totalPermits
+})
 
 /**
  * Create a file-system based distributed semaphore backing layer.
@@ -231,125 +225,121 @@ export const layer = (
   const { lockDir } = options
 
   // oxlint-disable-next-line overeng/named-args -- implements DistributedSemaphoreBacking interface
-  const tryAcquire = (
+  const tryAcquire = Effect.fn('FileSystemBacking.tryAcquire')(function* (
     key: string,
     holderId: string,
     ttl: Duration.Duration,
     limit: number,
     permits: number,
-  ): Effect.Effect<boolean, SemaphoreBackingError, FileSystem.FileSystem | Path.Path> =>
-    Effect.gen(function* () {
-      const keyDir = getKeyDir({ lockDir, key })
-      const holderPath = getHolderPath({ lockDir, key, holderId })
-      const now = Date.now()
-      const ttlMs = Duration.toMillis(ttl)
+  ) {
+    const keyDir = getKeyDir({ lockDir, key })
+    const holderPath = getHolderPath({ lockDir, key, holderId })
+    const now = Date.now()
+    const ttlMs = Duration.toMillis(ttl)
 
-      // First check our own existing lock
-      const existingLock = yield* readHolderLock({ filePath: holderPath, now })
-      const existingPermits = existingLock?.permits ?? 0
+    // First check our own existing lock
+    const existingLock = yield* readHolderLock({ filePath: holderPath, now })
+    const existingPermits = existingLock?.permits ?? 0
 
-      // Count total active permits (excluding our own)
-      const totalActive = yield* countActivePermits({ keyDir, now })
-      const othersPermits = totalActive - existingPermits
+    // Count total active permits (excluding our own)
+    const totalActive = yield* countActivePermits({ keyDir, now })
+    const othersPermits = totalActive - existingPermits
 
-      // Check if we can acquire the requested permits
-      if (othersPermits + permits > limit) {
-        return false
-      }
+    // Check if we can acquire the requested permits
+    if (othersPermits + permits > limit) {
+      return false
+    }
 
-      // Write our lock file
-      yield* writeHolderLock({
-        filePath: holderPath,
-        content: {
-          permits,
-          expiresAt: now + ttlMs,
-        },
-      })
-
-      return true
+    // Write our lock file
+    yield* writeHolderLock({
+      filePath: holderPath,
+      content: {
+        permits,
+        expiresAt: now + ttlMs,
+      },
     })
 
+    return true
+  })
+
   // oxlint-disable-next-line overeng/named-args -- implements DistributedSemaphoreBacking interface
-  const release = (
+  const release = Effect.fn('FileSystemBacking.release')(function* (
     key: string,
     holderId: string,
     permits: number,
-  ): Effect.Effect<number, SemaphoreBackingError, FileSystem.FileSystem | Path.Path> =>
-    Effect.gen(function* () {
-      const holderPath = getHolderPath({ lockDir, key, holderId })
-      const now = Date.now()
+  ) {
+    const holderPath = getHolderPath({ lockDir, key, holderId })
+    const now = Date.now()
 
-      const existingLock = yield* readHolderLock({ filePath: holderPath, now })
+    const existingLock = yield* readHolderLock({ filePath: holderPath, now })
 
-      if (existingLock === undefined) {
-        return 0
-      }
+    if (existingLock === undefined) {
+      return 0
+    }
 
-      const toRelease = Math.min(permits, existingLock.permits)
-      const remaining = existingLock.permits - toRelease
+    const toRelease = Math.min(permits, existingLock.permits)
+    const remaining = existingLock.permits - toRelease
 
-      if (remaining <= 0) {
-        // Remove the file entirely
-        yield* removeHolderLock(holderPath)
-      } else {
-        // Update with reduced permits
-        yield* writeHolderLock({
-          filePath: holderPath,
-          content: {
-            permits: remaining,
-            expiresAt: existingLock.expiresAt,
-          },
-        })
-      }
+    if (remaining <= 0) {
+      // Remove the file entirely
+      yield* removeHolderLock(holderPath)
+    } else {
+      // Update with reduced permits
+      yield* writeHolderLock({
+        filePath: holderPath,
+        content: {
+          permits: remaining,
+          expiresAt: existingLock.expiresAt,
+        },
+      })
+    }
 
-      return toRelease
-    })
+    return toRelease
+  })
 
   // oxlint-disable-next-line overeng/named-args -- implements DistributedSemaphoreBacking interface
-  const refresh = (
+  const refresh = Effect.fn('FileSystemBacking.refresh')(function* (
     key: string,
     holderId: string,
     ttl: Duration.Duration,
     _limit: number,
     permits: number,
-  ): Effect.Effect<boolean, SemaphoreBackingError, FileSystem.FileSystem | Path.Path> =>
-    Effect.gen(function* () {
-      const holderPath = getHolderPath({ lockDir, key, holderId })
-      const now = Date.now()
-      const ttlMs = Duration.toMillis(ttl)
+  ) {
+    const holderPath = getHolderPath({ lockDir, key, holderId })
+    const now = Date.now()
+    const ttlMs = Duration.toMillis(ttl)
 
-      const existingLock = yield* readHolderLock({ filePath: holderPath, now })
+    const existingLock = yield* readHolderLock({ filePath: holderPath, now })
 
-      if (existingLock === undefined) {
-        return false
-      }
+    if (existingLock === undefined) {
+      return false
+    }
 
-      // Refresh with new expiry
-      yield* writeHolderLock({
-        filePath: holderPath,
-        content: {
-          permits: Math.min(permits, existingLock.permits),
-          expiresAt: now + ttlMs,
-        },
-      })
-
-      return true
+    // Refresh with new expiry
+    yield* writeHolderLock({
+      filePath: holderPath,
+      content: {
+        permits: Math.min(permits, existingLock.permits),
+        expiresAt: now + ttlMs,
+      },
     })
+
+    return true
+  })
 
   // oxlint-disable-next-line overeng/named-args -- implements DistributedSemaphoreBacking interface
-  const getCount = (
+  const getCount = Effect.fn('FileSystemBacking.getCount')(function* (
     key: string,
     ttl: Duration.Duration,
-  ): Effect.Effect<number, SemaphoreBackingError, FileSystem.FileSystem | Path.Path> =>
-    Effect.gen(function* () {
-      const keyDir = getKeyDir({ lockDir, key })
-      const now = Date.now()
+  ) {
+    const keyDir = getKeyDir({ lockDir, key })
+    const now = Date.now()
 
-      // ttl is passed but we use the actual expiry from each lock file
-      void ttl
+    // ttl is passed but we use the actual expiry from each lock file
+    void ttl
 
-      return yield* countActivePermits({ keyDir, now })
-    })
+    return yield* countActivePermits({ keyDir, now })
+  })
 
   const onPermitsReleased = (key: string): Stream.Stream<void, never, FileSystem.FileSystem> => {
     const keyDir = getKeyDir({ lockDir, key })
@@ -387,31 +377,28 @@ export const layer = (
  *
  * @returns The number of permits that were revoked
  */
-export const forceRevoke = (opts: {
+export const forceRevoke = Effect.fn('FileSystemBacking.forceRevoke')(function* (opts: {
   options: FileSystemBackingOptions
   key: string
   targetHolderId: string
-}): Effect.Effect<number, SemaphoreBackingError | HolderNotFoundError, FileSystem.FileSystem> =>
-  Effect.gen(function* () {
-    const { options, key, targetHolderId } = opts
-    const { lockDir } = options
-    const holderPath = getHolderPath({ lockDir, key, holderId: targetHolderId })
-    const now = Date.now()
+}) {
+  yield* Effect.annotateCurrentSpan({ key: opts.key, targetHolderId: opts.targetHolderId })
 
-    const existingLock = yield* readHolderLock({ filePath: holderPath, now })
+  const { options, key, targetHolderId } = opts
+  const { lockDir } = options
+  const holderPath = getHolderPath({ lockDir, key, holderId: targetHolderId })
+  const now = Date.now()
 
-    if (existingLock === undefined) {
-      return yield* new HolderNotFoundError({ key, holderId: targetHolderId })
-    }
+  const existingLock = yield* readHolderLock({ filePath: holderPath, now })
 
-    yield* removeHolderLock(holderPath)
+  if (existingLock === undefined) {
+    return yield* new HolderNotFoundError({ key, holderId: targetHolderId })
+  }
 
-    return existingLock.permits
-  }).pipe(
-    Effect.withSpan('FileSystemBacking.forceRevoke', {
-      attributes: { key: opts.key, targetHolderId: opts.targetHolderId },
-    }),
-  )
+  yield* removeHolderLock(holderPath)
+
+  return existingLock.permits
+})
 
 /**
  * List all active (non-expired) holders for a semaphore key.
@@ -419,52 +406,53 @@ export const forceRevoke = (opts: {
  * Useful for inspecting lock state before force-revoking, or for
  * administrative visibility into who holds permits.
  */
-export const listHolders = (opts: {
+export const listHolders = Effect.fn('FileSystemBacking.listHolders')(function* (opts: {
   options: FileSystemBackingOptions
   key: string
-}): Effect.Effect<ReadonlyArray<HolderInfo>, SemaphoreBackingError, FileSystem.FileSystem> =>
-  Effect.gen(function* () {
-    const { options, key } = opts
-    const { lockDir } = options
-    const keyDir = getKeyDir({ lockDir, key })
-    const now = Date.now()
-    const fs = yield* FileSystem.FileSystem
+}) {
+  yield* Effect.annotateCurrentSpan({ key: opts.key })
 
-    const exists = yield* fs
-      .exists(keyDir)
-      .pipe(Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'exists', cause })))
+  const { options, key } = opts
+  const { lockDir } = options
+  const keyDir = getKeyDir({ lockDir, key })
+  const now = Date.now()
+  const fs = yield* FileSystem.FileSystem
 
-    if (!exists) {
-      return []
+  const exists = yield* fs
+    .exists(keyDir)
+    .pipe(Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'exists', cause })))
+
+  if (!exists) {
+    return []
+  }
+
+  const entries = yield* fs
+    .readDirectory(keyDir)
+    .pipe(Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'readDirectory', cause })))
+
+  const holders: HolderInfo[] = []
+
+  for (const entry of entries) {
+    if (!entry.endsWith('.lock')) continue
+
+    const filePath = `${keyDir}/${entry}`
+    const lock = yield* readHolderLock({ filePath, now })
+
+    if (lock !== undefined) {
+      const holderId = yield* Effect.try({
+        try: () => decodeURIComponent(entry.slice(0, -5)), // Remove .lock suffix
+        catch: (cause) => new SemaphoreBackingError({ operation: 'decodeURIComponent', cause }),
+      })
+      holders.push({
+        holderId,
+        permits: lock.permits,
+        expiresAt: lock.expiresAt,
+      })
     }
+  }
 
-    const entries = yield* fs
-      .readDirectory(keyDir)
-      .pipe(Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'readDirectory', cause })))
-
-    const holders: HolderInfo[] = []
-
-    for (const entry of entries) {
-      if (!entry.endsWith('.lock')) continue
-
-      const filePath = `${keyDir}/${entry}`
-      const lock = yield* readHolderLock({ filePath, now })
-
-      if (lock !== undefined) {
-        const holderId = yield* Effect.try({
-          try: () => decodeURIComponent(entry.slice(0, -5)), // Remove .lock suffix
-          catch: (cause) => new SemaphoreBackingError({ operation: 'decodeURIComponent', cause }),
-        })
-        holders.push({
-          holderId,
-          permits: lock.permits,
-          expiresAt: lock.expiresAt,
-        })
-      }
-    }
-
-    return holders
-  }).pipe(Effect.withSpan('FileSystemBacking.listHolders', { attributes: { key: opts.key } }))
+  return holders
+})
 
 /**
  * Forcibly revoke permits from all holders for a semaphore key.
@@ -474,25 +462,22 @@ export const listHolders = (opts: {
  *
  * @returns Array of revoked holders with their permit counts
  */
-export const forceRevokeAll = (opts: {
+export const forceRevokeAll = Effect.fn('FileSystemBacking.forceRevokeAll')(function* (opts: {
   options: FileSystemBackingOptions
   key: string
-}): Effect.Effect<
-  ReadonlyArray<{ holderId: string; permits: number }>,
-  SemaphoreBackingError | HolderNotFoundError,
-  FileSystem.FileSystem
-> =>
-  Effect.gen(function* () {
-    const { options, key } = opts
-    const holders = yield* listHolders({ options, key })
-    const revoked: Array<{ holderId: string; permits: number }> = []
+}) {
+  yield* Effect.annotateCurrentSpan({ key: opts.key })
 
-    for (const holder of holders) {
-      const permits = yield* forceRevoke({ options, key, targetHolderId: holder.holderId })
-      if (permits > 0) {
-        revoked.push({ holderId: holder.holderId, permits })
-      }
+  const { options, key } = opts
+  const holders = yield* listHolders({ options, key })
+  const revoked: Array<{ holderId: string; permits: number }> = []
+
+  for (const holder of holders) {
+    const permits = yield* forceRevoke({ options, key, targetHolderId: holder.holderId })
+    if (permits > 0) {
+      revoked.push({ holderId: holder.holderId, permits })
     }
+  }
 
-    return revoked
-  }).pipe(Effect.withSpan('FileSystemBacking.forceRevokeAll', { attributes: { key: opts.key } }))
+  return revoked
+})

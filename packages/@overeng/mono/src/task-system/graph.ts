@@ -248,7 +248,7 @@ const buildTaskGraph = <TId extends string>(
     }
 
     return { graph, idToIndex }
-  })
+  }).pipe(Effect.withSpan('TaskGraph.buildTaskGraph'))
 
 // =============================================================================
 // Task Executor
@@ -500,7 +500,7 @@ export const runTaskGraph = <TId extends string, R = never>({
         failureCount: failedTasks.length,
         failedTaskIds: failedTasks.map((t) => t.id),
       }
-    }),
+    }).pipe(Effect.withSpan('TaskGraph.runTaskGraph')),
   )
 
 /**
@@ -531,4 +531,4 @@ export const runTaskGraphOrFail = <R = never>({
     }
 
     return result
-  })
+  }).pipe(Effect.withSpan('TaskGraph.runTaskGraphOrFail'))

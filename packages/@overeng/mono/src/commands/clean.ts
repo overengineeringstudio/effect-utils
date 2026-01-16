@@ -11,8 +11,10 @@ const CLEAN_SKIP = ['node_modules', '.git', 'submodules']
 
 /** Create a clean command */
 export const cleanCommand = () =>
-  Command.make('clean', {}, () =>
-    Effect.gen(function* () {
+  Command.make(
+    'clean',
+    {},
+    Effect.fn('mono.clean')(function* () {
       yield* ciGroup('Cleaning build artifacts')
 
       const skipArgs = CLEAN_SKIP.flatMap((dir) => ['--exclude', dir])

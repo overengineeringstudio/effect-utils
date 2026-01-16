@@ -19,8 +19,10 @@ const cleanOption = Options.boolean('clean').pipe(
 
 /** Create a TypeScript check command */
 export const tsCommand = (config?: TypeCheckConfig) =>
-  Command.make('ts', { watch: watchOption, clean: cleanOption }, ({ watch, clean }) =>
-    Effect.gen(function* () {
+  Command.make(
+    'ts',
+    { watch: watchOption, clean: cleanOption },
+    Effect.fn('mono.ts')(function* ({ watch, clean }) {
       if (clean) {
         yield* ciGroup('Cleaning build artifacts')
         yield* typeCheckClean(config)

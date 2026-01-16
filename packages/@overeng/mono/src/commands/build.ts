@@ -7,8 +7,10 @@ import { ciGroup, ciGroupEnd } from '../utils.ts'
 
 /** Create a build command */
 export const buildCommand = (config?: TypeCheckConfig) =>
-  Command.make('build', {}, () =>
-    Effect.gen(function* () {
+  Command.make(
+    'build',
+    {},
+    Effect.fn('mono.build')(function* () {
       yield* ciGroup('Building all packages')
       yield* build(config)
       yield* ciGroupEnd

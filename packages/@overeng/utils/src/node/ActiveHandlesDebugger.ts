@@ -99,7 +99,7 @@ export const logActiveHandles = Effect.gen(function* () {
     requests: info.requests,
   })
   return info
-}).pipe(Effect.withSpan('logActiveHandles'))
+}).pipe(Effect.withSpan('ActiveHandlesDebugger.logActiveHandles'))
 
 /**
  * Monitors active handles periodically and logs when the count changes.
@@ -116,8 +116,8 @@ export const logActiveHandles = Effect.gen(function* () {
  * yield* Effect.scoped(monitorActiveHandles(Duration.seconds(1)))
  * ```
  */
-export const monitorActiveHandles = (interval: Duration.DurationInput) =>
-  Effect.gen(function* () {
+export const monitorActiveHandles = Effect.fn('ActiveHandlesDebugger.monitorActiveHandles')(
+  function* (interval: Duration.DurationInput) {
     let lastTotal = -1
 
     yield* Stream.fromSchedule(Schedule.spaced(interval)).pipe(
@@ -138,7 +138,8 @@ export const monitorActiveHandles = (interval: Duration.DurationInput) =>
       ),
       Effect.forkScoped,
     )
-  }).pipe(Effect.withSpan('monitorActiveHandles'))
+  },
+)
 
 /**
  * Registers a SIGINT handler that dumps active handles before exit.
@@ -150,8 +151,8 @@ export const monitorActiveHandles = (interval: Duration.DurationInput) =>
  * yield* withActiveHandlesDumpOnSigint(myProgram)
  * ```
  */
-export const withActiveHandlesDumpOnSigint = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-  Effect.gen(function* () {
+export const withActiveHandlesDumpOnSigint = Effect.fn('ActiveHandlesDebugger.withActiveHandlesDumpOnSigint')(
+  function* <A, E, R>(effect: Effect.Effect<A, E, R>) {
     const runtime = yield* Effect.runtime<R>()
 
     const handler = () => {
@@ -166,4 +167,5 @@ export const withActiveHandlesDumpOnSigint = <A, E, R>(effect: Effect.Effect<A, 
     yield* Effect.sync(() => process.on('SIGINT', handler))
 
     return yield* effect.pipe(Effect.ensuring(Effect.sync(() => process.off('SIGINT', handler))))
-  }).pipe(Effect.withSpan('withActiveHandlesDumpOnSigint'))
+  },
+)

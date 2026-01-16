@@ -270,7 +270,7 @@ export const executeCommand = <TId extends string>({
       )
 
       return streamWithExitCheck
-    }),
+    }).pipe(Effect.withSpan('TaskExecution.executeCommand')),
   )
 
 /**
@@ -301,7 +301,7 @@ export const checkCommandExit = (
           new CommandError({ command: spec.cmd, args: spec.args, exitCode }),
         )
       }
-    }),
+    }).pipe(Effect.withSpan('TaskExecution.checkCommandExit')),
   )
 
 /**
@@ -347,5 +347,5 @@ export const runCommand = (
       }
 
       return { stdout: stdoutText, stderr: stderrText }
-    }),
+    }).pipe(Effect.withSpan('TaskExecution.runCommand')),
   )

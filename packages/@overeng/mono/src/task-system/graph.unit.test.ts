@@ -119,6 +119,8 @@ const reduceEvent = ({
           completedAt: task.completedAt,
           error: task.error,
           commandInfo: task.commandInfo,
+          retryAttempt: task.retryAttempt,
+          maxRetries: task.maxRetries,
         })
       }
       break
@@ -137,6 +139,8 @@ const reduceEvent = ({
           completedAt: task.completedAt,
           error: task.error,
           commandInfo: task.commandInfo,
+          retryAttempt: task.retryAttempt,
+          maxRetries: task.maxRetries,
         })
       }
       break
@@ -155,6 +159,8 @@ const reduceEvent = ({
           completedAt: task.completedAt,
           error: task.error,
           commandInfo: task.commandInfo,
+          retryAttempt: task.retryAttempt,
+          maxRetries: task.maxRetries,
         })
       }
       break
@@ -176,6 +182,8 @@ const reduceEvent = ({
             ? Option.none()
             : Option.some(String(Exit.isFailure(event.exit) ? event.exit.cause : 'Unknown error')),
           commandInfo: Option.none(),
+          retryAttempt: task.retryAttempt,
+          maxRetries: task.maxRetries,
         })
       }
       break
@@ -421,6 +429,8 @@ describe('reduceEvent', () => {
             completedAt: Option.none(),
             error: Option.none(),
             commandInfo: Option.none(),
+            retryAttempt: 0,
+            maxRetries: Option.none(),
           }),
         },
       })
@@ -454,6 +464,8 @@ describe('reduceEvent', () => {
             completedAt: Option.none(),
             error: Option.none(),
             commandInfo: Option.none(),
+            retryAttempt: 0,
+            maxRetries: Option.none(),
           }),
         },
       })
@@ -484,6 +496,8 @@ describe('reduceEvent', () => {
             completedAt: Option.none(),
             error: Option.none(),
             commandInfo: Option.none(),
+            retryAttempt: 0,
+            maxRetries: Option.none(),
           }),
         },
       })
@@ -514,6 +528,8 @@ describe('reduceEvent', () => {
             completedAt: Option.none(),
             error: Option.none(),
             commandInfo: Option.none(),
+            retryAttempt: 0,
+            maxRetries: Option.none(),
           }),
         },
       })
@@ -549,6 +565,8 @@ describe('reduceEvent', () => {
             completedAt: Option.none(),
             error: Option.none(),
             commandInfo: Option.none(),
+            retryAttempt: 0,
+            maxRetries: Option.none(),
           }),
         },
       })

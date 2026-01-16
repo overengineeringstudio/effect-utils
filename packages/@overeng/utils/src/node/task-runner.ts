@@ -404,19 +404,18 @@ export class TaskRunner extends Context.Tag('TaskRunner')<TaskRunner, TaskRunner
    * })
    * ```
    */
-  static task = (options: {
+  static task = Effect.fn('TaskRunner.task')(function* (options: {
     id: string
     name: string
     command: string
     args: string[]
     cwd?: string
     env?: Record<string, string>
-  }) =>
-    Effect.gen(function* () {
-      const runner = yield* TaskRunner
-      yield* runner.register({ id: options.id, name: options.name })
-      yield* runner.runTask(options)
-    })
+  }) {
+    const runner = yield* TaskRunner
+    yield* runner.register({ id: options.id, name: options.name })
+    yield* runner.runTask(options)
+  })
 }
 
 // -----------------------------------------------------------------------------
@@ -429,24 +428,23 @@ export class TaskRunner extends Context.Tag('TaskRunner')<TaskRunner, TaskRunner
  *
  * @param options.refreshMs - Debounce interval in milliseconds (default: 100)
  */
-export const renderLoop = (options?: { refreshMs?: number }) =>
-  Effect.gen(function* () {
-    const runner = yield* TaskRunner
-    const refreshMs = options?.refreshMs ?? 100
+export const renderLoop = Effect.fn('TaskRunner.renderLoop')(function* (options?: { refreshMs?: number }) {
+  const runner = yield* TaskRunner
+  const refreshMs = options?.refreshMs ?? 100
 
-    yield* runner.changes.pipe(
-      Stream.debounce(refreshMs),
-      Stream.runForEach(() =>
-        Effect.gen(function* () {
-          const output = yield* runner.render()
-          /** Clear screen and move cursor to top */
-          process.stdout.write('\x1B[2J\x1B[H')
-          process.stdout.write(output + '\n')
-        }),
-      ),
-      Effect.fork,
-    )
-  })
+  yield* runner.changes.pipe(
+    Stream.debounce(refreshMs),
+    Stream.runForEach(() =>
+      Effect.gen(function* () {
+        const output = yield* runner.render()
+        /** Clear screen and move cursor to top */
+        process.stdout.write('\x1B[2J\x1B[H')
+        process.stdout.write(output + '\n')
+      }),
+    ),
+    Effect.fork,
+  )
+})
 
 /**
  * Print final summary of all tasks and fail if any task failed.
@@ -493,4 +491,4 @@ export const printFinalSummary = Effect.gen(function* () {
   }
 
   yield* runner.checkForFailures()
-})
+}).pipe(Effect.withSpan('TaskRunner.printFinalSummary'))

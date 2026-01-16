@@ -14,61 +14,54 @@ const formatCommandErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
 /** Runs a shell command and waits for completion, capturing errors as CommandError */
-export const runCommand = (options: {
+export const runCommand = Effect.fn('mono.runCommand')(function* (options: {
   command: string
   args: string[]
   cwd?: string
   env?: Record<string, string | undefined>
   shell?: boolean
-}): Effect.Effect<void, CommandError, CommandExecutor.CommandExecutor | CurrentWorkingDirectory> =>
-  Effect.gen(function* () {
-    const defaultCwd = process.env.WORKSPACE_ROOT ?? (yield* CurrentWorkingDirectory)
-    const cwd = options.cwd ?? defaultCwd
-    const useShell = options.shell ?? true
-    const cmdOptions = {
-      shell: useShell,
-      ...(options.env ? { env: options.env } : {}),
-    }
+}) {
+  const defaultCwd = process.env.WORKSPACE_ROOT ?? (yield* CurrentWorkingDirectory)
+  const cwd = options.cwd ?? defaultCwd
+  const useShell = options.shell ?? true
+  const cmdOptions = {
+    shell: useShell,
+    ...(options.env ? { env: options.env } : {}),
+  }
 
-    return yield* cmd([options.command, ...options.args], cmdOptions).pipe(
-      Effect.provideService(CurrentWorkingDirectory, cwd),
-      Effect.asVoid,
-      Effect.catchAll((error) =>
-        Effect.fail(
-          new CommandError({
-            command: `${options.command} ${options.args.join(' ')}`,
-            message: formatCommandErrorMessage(error),
-          }),
-        ),
-      ),
-    )
-  })
+  return yield* cmd([options.command, ...options.args], cmdOptions).pipe(
+    Effect.provideService(CurrentWorkingDirectory, cwd),
+    Effect.asVoid,
+    Effect.mapError(
+      (error) =>
+        new CommandError({
+          command: `${options.command} ${options.args.join(' ')}`,
+          message: formatCommandErrorMessage(error),
+        }),
+    ),
+  )
+})
 
 /** Starts a long-running process without waiting for completion */
-export const startProcess = (options: {
+export const startProcess = Effect.fn('mono.startProcess')(function* (options: {
   command: string
   args: string[]
   cwd?: string
   env?: Record<string, string | undefined>
   shell?: boolean
-}): Effect.Effect<
-  CommandExecutor.Process,
-  PlatformError,
-  CommandExecutor.CommandExecutor | CurrentWorkingDirectory | Scope.Scope
-> =>
-  Effect.gen(function* () {
-    const defaultCwd = process.env.WORKSPACE_ROOT ?? (yield* CurrentWorkingDirectory)
-    const cwd = options.cwd ?? defaultCwd
-    const useShell = options.shell ?? false
-    const cmdOptions = {
-      shell: useShell,
-      ...(options.env ? { env: options.env } : {}),
-    }
+}) {
+  const defaultCwd = process.env.WORKSPACE_ROOT ?? (yield* CurrentWorkingDirectory)
+  const cwd = options.cwd ?? defaultCwd
+  const useShell = options.shell ?? false
+  const cmdOptions = {
+    shell: useShell,
+    ...(options.env ? { env: options.env } : {}),
+  }
 
-    return yield* cmdStart([options.command, ...options.args], cmdOptions).pipe(
-      Effect.provideService(CurrentWorkingDirectory, cwd),
-    )
-  })
+  return yield* cmdStart([options.command, ...options.args], cmdOptions).pipe(
+    Effect.provideService(CurrentWorkingDirectory, cwd),
+  )
+})
 
 /** Starts a GitHub Actions group in CI, or prints a section header locally */
 export const ciGroup = (name: string) =>

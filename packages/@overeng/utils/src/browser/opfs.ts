@@ -70,37 +70,36 @@ export const getRootHandle: Effect.Effect<FileSystemDirectoryHandle, OPFSNotSupp
  * Gets a directory handle for the given absolute path.
  * Creates intermediate directories if they don't exist when `create` is true.
  */
-export const getDirHandle = (opts?: {
+export const getDirHandle = Effect.fn('OPFS.getDirHandle')(function* (opts?: {
   /** Absolute path to the directory (e.g., "/foo/bar/baz") */
   absDirPath?: string
   /** Whether to create intermediate directories if they don't exist */
   create?: boolean
-}): Effect.Effect<FileSystemDirectoryHandle, OPFSNotSupportedError | OPFSError> =>
-  Effect.gen(function* () {
-    const rootHandle = yield* getRootHandle
-    const absDirPath = opts?.absDirPath
+}) {
+  const rootHandle = yield* getRootHandle
+  const absDirPath = opts?.absDirPath
 
-    if (absDirPath === undefined || absDirPath === '' || absDirPath === '/') {
-      return rootHandle
-    }
+  if (absDirPath === undefined || absDirPath === '' || absDirPath === '/') {
+    return rootHandle
+  }
 
-    const segments = absDirPath.split('/').filter(Boolean)
-    let currentHandle = rootHandle
+  const segments = absDirPath.split('/').filter(Boolean)
+  let currentHandle = rootHandle
 
-    for (const segment of segments) {
-      currentHandle = yield* Effect.tryPromise({
-        try: () => currentHandle.getDirectoryHandle(segment, { create: opts?.create ?? false }),
-        catch: (error) =>
-          new OPFSError({
-            operation: 'getDirectoryHandle',
-            path: absDirPath,
-            cause: error,
-          }),
-      })
-    }
+  for (const segment of segments) {
+    currentHandle = yield* Effect.tryPromise({
+      try: () => currentHandle.getDirectoryHandle(segment, { create: opts?.create ?? false }),
+      catch: (error) =>
+        new OPFSError({
+          operation: 'getDirectoryHandle',
+          path: absDirPath,
+          cause: error,
+        }),
+    })
+  }
 
-    return currentHandle
-  })
+  return currentHandle
+})
 
 /**
  * Gets a file handle for the given path within a directory.
@@ -137,33 +136,30 @@ export type EntryInfo = {
  *
  * @param dirHandle - The directory handle to list
  */
-export const listEntries = (
-  dirHandle: FileSystemDirectoryHandle,
-): Effect.Effect<readonly EntryInfo[], OPFSError> =>
-  Effect.gen(function* () {
-    const entries: EntryInfo[] = []
+export const listEntries = Effect.fn('OPFS.listEntries')(function* (dirHandle: FileSystemDirectoryHandle) {
+  const entries: EntryInfo[] = []
 
-    yield* Effect.tryPromise({
-      try: async () => {
-        for await (const entry of dirHandle.values()) {
-          if (entry.kind === 'file') {
-            const fileHandle = entry as FileSystemFileHandle
-            const file = await fileHandle.getFile()
-            entries.push({ name: entry.name, kind: 'file', size: file.size })
-          } else {
-            entries.push({ name: entry.name, kind: 'directory' })
-          }
+  yield* Effect.tryPromise({
+    try: async () => {
+      for await (const entry of dirHandle.values()) {
+        if (entry.kind === 'file') {
+          const fileHandle = entry as FileSystemFileHandle
+          const file = await fileHandle.getFile()
+          entries.push({ name: entry.name, kind: 'file', size: file.size })
+        } else {
+          entries.push({ name: entry.name, kind: 'directory' })
         }
-      },
-      catch: (error) =>
-        new OPFSError({
-          operation: 'listEntries',
-          cause: error,
-        }),
-    })
-
-    return entries
+      }
+    },
+    catch: (error) =>
+      new OPFSError({
+        operation: 'listEntries',
+        cause: error,
+      }),
   })
+
+  return entries
+})
 
 /**
  * Result of printing a directory tree.
@@ -179,99 +175,99 @@ export type TreeLine = {
  * Generates a tree representation of the directory structure.
  * Returns an array of lines that can be printed or processed.
  */
-export const getTree = (opts?: {
+export const getTree: (opts?: {
   /** The directory handle to traverse (defaults to root) */
   dirHandle?: FileSystemDirectoryHandle
   /** Maximum depth to traverse */
   depth?: number
   /** Prefix for indentation (internal use) */
   prefix?: string
-}): Effect.Effect<readonly TreeLine[], OPFSNotSupportedError | OPFSError> =>
-  Effect.gen(function* () {
-    const depth = opts?.depth ?? Number.POSITIVE_INFINITY
-    const prefix = opts?.prefix ?? ''
+}) => Effect.Effect<readonly TreeLine[], OPFSNotSupportedError | OPFSError> = Effect.fn('OPFS.getTree')(
+  function* (opts) {
+  const depth = opts?.depth ?? Number.POSITIVE_INFINITY
+  const prefix = opts?.prefix ?? ''
 
-    if (depth < 0) {
-      return []
-    }
+  if (depth < 0) {
+    return []
+  }
 
-    const handle = opts?.dirHandle === undefined ? yield* getRootHandle : opts.dirHandle
+  const handle = opts?.dirHandle === undefined ? yield* getRootHandle : opts.dirHandle
 
-    const lines: TreeLine[] = []
+  const lines: TreeLine[] = []
 
-    // Collect entries first
-    const entries: Array<{ name: string; kind: 'file' | 'directory'; size?: number }> = []
-    yield* Effect.tryPromise({
-      try: async () => {
-        for await (const entry of handle.values()) {
-          if (entry.kind === 'file') {
-            const fileHandle = entry as FileSystemFileHandle
-            const file = await fileHandle.getFile()
-            entries.push({ name: entry.name, kind: 'file', size: file.size })
-          } else {
-            entries.push({ name: entry.name, kind: 'directory' })
-          }
+  // Collect entries first
+  const entries: Array<{ name: string; kind: 'file' | 'directory'; size?: number }> = []
+  yield* Effect.tryPromise({
+    try: async () => {
+      for await (const entry of handle.values()) {
+        if (entry.kind === 'file') {
+          const fileHandle = entry as FileSystemFileHandle
+          const file = await fileHandle.getFile()
+          entries.push({ name: entry.name, kind: 'file', size: file.size })
+        } else {
+          entries.push({ name: entry.name, kind: 'directory' })
         }
-      },
-      catch: (error) =>
-        new OPFSError({
-          operation: 'getTree',
-          cause: error,
-        }),
+      }
+    },
+    catch: (error) =>
+      new OPFSError({
+        operation: 'getTree',
+        cause: error,
+      }),
+  })
+
+  // Process entries and recurse for directories
+  for (const entry of entries) {
+    const isDirectory = entry.kind === 'directory'
+
+    lines.push({
+      prefix,
+      icon: isDirectory ? '📁' : '📄',
+      name: entry.name,
+      ...(entry.size !== undefined ? { size: prettyBytes(entry.size) } : {}),
     })
 
-    // Process entries and recurse for directories
-    for (const entry of entries) {
-      const isDirectory = entry.kind === 'directory'
-
-      lines.push({
-        prefix,
-        icon: isDirectory ? '📁' : '📄',
-        name: entry.name,
-        ...(entry.size !== undefined ? { size: prettyBytes(entry.size) } : {}),
+    if (isDirectory && depth > 0) {
+      const nestedHandle = yield* Effect.tryPromise({
+        try: () => handle.getDirectoryHandle(entry.name),
+        catch: (error) =>
+          new OPFSError({
+            operation: 'getTree',
+            path: entry.name,
+            cause: error,
+          }),
       })
-
-      if (isDirectory && depth > 0) {
-        const nestedHandle = yield* Effect.tryPromise({
-          try: () => handle.getDirectoryHandle(entry.name),
-          catch: (error) =>
-            new OPFSError({
-              operation: 'getTree',
-              path: entry.name,
-              cause: error,
-            }),
-        })
-        const nestedLines = yield* getTree({
-          dirHandle: nestedHandle,
-          depth: depth - 1,
-          prefix: `${prefix}  `,
-        })
-        lines.push(...nestedLines)
-      }
+      const nestedLines = yield* getTree({
+        dirHandle: nestedHandle,
+        depth: depth - 1,
+        prefix: `${prefix}  `,
+      })
+      lines.push(...nestedLines)
     }
+  }
 
-    return lines
-  })
+  return lines
+},
+)
 
 /**
  * Prints a tree representation of the directory structure to the console.
  */
-export const printTree = (opts?: {
+export const printTree = Effect.fn('OPFS.printTree')(function* (opts?: {
   /** The directory handle to traverse (defaults to root) */
   dirHandle?: FileSystemDirectoryHandle
   /** Maximum depth to traverse */
   depth?: number
-}): Effect.Effect<void, OPFSNotSupportedError | OPFSError> =>
-  Effect.gen(function* () {
-    const lines = yield* getTree({
-      ...(opts?.dirHandle !== undefined && { dirHandle: opts.dirHandle }),
-      ...(opts?.depth !== undefined && { depth: opts.depth }),
-    })
-    for (const line of lines) {
-      const sizeStr = line.size ? ` (${line.size})` : ''
-      console.log(`${line.prefix}${line.icon} ${line.name}${sizeStr}`)
-    }
+}) {
+  const lines = yield* getTree({
+    ...(opts?.dirHandle !== undefined && { dirHandle: opts.dirHandle }),
+    ...(opts?.depth !== undefined && { depth: opts.depth }),
   })
+  for (const line of lines) {
+    const sizeStr = line.size ? ` (${line.size})` : ''
+    console.log(`${line.prefix}${line.icon} ${line.name}${sizeStr}`)
+  }
+})
 
 /**
  * Deletes all entries in a directory recursively.
