@@ -2,28 +2,35 @@
 // Source: lint.jsonc.genie.ts
 {
   "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxlint/configuration_schema.json",
-  "plugins": ["import", "typescript", "unicorn", "oxc"],
-  "jsPlugins": ["./src/mod.ts"],
+  "plugins": [
+    "import",
+    "typescript",
+    "unicorn",
+    "oxc"
+  ],
+  "jsPlugins": [
+    "./src/mod.ts"
+  ],
   "categories": {
     "correctness": "error",
     "suspicious": "warn",
     "pedantic": "off",
     "perf": "warn",
     "style": "off",
-    "restriction": "off",
+    "restriction": "off"
   },
   "rules": {
     "import/no-dynamic-require": [
       "warn",
       {
-        "esmodule": true,
-      },
+        "esmodule": true
+      }
     ],
     "oxc/no-barrel-file": [
       "warn",
       {
-        "threshold": 0,
-      },
+        "threshold": 0
+      }
     ],
     "overeng/named-args": "warn",
     "import/no-commonjs": "error",
@@ -32,23 +39,27 @@
       "warn",
       "expression",
       {
-        "allowArrowFunctions": true,
-      },
+        "allowArrowFunctions": true
+      }
     ],
     "overeng/exports-first": "warn",
     "overeng/jsdoc-require-exports": "warn",
     "typescript/consistent-type-imports": "warn",
-    "typescript/consistent-type-definitions": "off",
+    "typescript/consistent-type-definitions": "off"
   },
   "overrides": [
     {
-      "files": ["**/mod.ts"],
+      "files": [
+        "**/mod.ts"
+      ],
       "rules": {
-        "oxc/no-barrel-file": "off",
-      },
+        "oxc/no-barrel-file": "off"
+      }
     },
     {
-      "files": ["**/react-inspector/**"],
+      "files": [
+        "**/react-inspector/**"
+      ],
       "rules": {
         "func-style": "off",
         "overeng/named-args": "off",
@@ -57,27 +68,38 @@
         "unicorn/consistent-function-scoping": "off",
         "import/no-named-as-default": "off",
         "overeng/exports-first": "off",
-        "overeng/jsdoc-require-exports": "off",
-      },
+        "overeng/jsdoc-require-exports": "off"
+      }
     },
     {
-      "files": ["**/*.stories.tsx", "**/*.stories.ts", "**/*.stories.jsx", "**/.storybook/**"],
+      "files": [
+        "**/*.stories.tsx",
+        "**/*.stories.ts",
+        "**/*.stories.jsx",
+        "**/.storybook/**"
+      ],
       "rules": {
         "overeng/exports-first": "off",
-        "overeng/jsdoc-require-exports": "off",
-      },
+        "overeng/jsdoc-require-exports": "off"
+      }
     },
     {
-      "files": ["**/vitest.config.ts", "**/vite.config.ts", "**/playwright.config.ts"],
+      "files": [
+        "**/vitest.config.ts",
+        "**/vite.config.ts",
+        "**/playwright.config.ts"
+      ],
       "rules": {
-        "overeng/jsdoc-require-exports": "off",
-      },
+        "overeng/jsdoc-require-exports": "off"
+      }
     },
     {
-      "files": ["**/.storybook/**"],
+      "files": [
+        "**/.storybook/**"
+      ],
       "rules": {
-        "import/no-unassigned-import": "off",
-      },
+        "import/no-unassigned-import": "off"
+      }
     },
     {
       "files": [
@@ -86,23 +108,29 @@
         "**/*.spec.ts",
         "**/*.spec.tsx",
         "**/*.spec.jsx",
-        "**/test/**",
+        "**/test/**"
       ],
       "rules": {
         "overeng/named-args": "off",
         "unicorn/no-array-sort": "off",
         "unicorn/consistent-function-scoping": "off",
-        "require-yield": "off",
-      },
+        "require-yield": "off"
+      }
     },
     {
-      "files": ["**/*.d.ts"],
+      "files": [
+        "**/*.d.ts"
+      ],
       "rules": {
-        "typescript/consistent-type-imports": "off",
-      },
+        "typescript/consistent-type-imports": "off"
+      }
     },
     {
-      "files": ["**/*.gen.*", "**/.contentlayer/**", "**/next-env.d.ts"],
+      "files": [
+        "**/*.gen.*",
+        "**/.contentlayer/**",
+        "**/next-env.d.ts"
+      ],
       "rules": {
         "func-style": "off",
         "import/no-commonjs": "off",
@@ -113,8 +141,8 @@
         "overeng/exports-first": "off",
         "overeng/jsdoc-require-exports": "off",
         "overeng/named-args": "off",
-        "unicorn/consistent-function-scoping": "off",
-      },
-    },
-  ],
+        "unicorn/consistent-function-scoping": "off"
+      }
+    }
+  ]
 }

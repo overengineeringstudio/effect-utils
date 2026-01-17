@@ -13,6 +13,7 @@ inside it.
 - Default `typecheckTsconfig`: `<packageDir>/tsconfig.json`
 - Deps: fixed-output bun deps for the package dir (single install)
 - Smoke test: runs the built binary with `smokeTestArgs` (default `--help`)
+  and can optionally run from a custom working directory.
 
 ### mkBunCli arguments
 
@@ -29,7 +30,9 @@ inside it.
 | `typecheck`         | no       | `true`                       | Run `tsc --noEmit` with `typecheckTsconfig`.   |
 | `typecheckTsconfig` | no       | `<packageDir>/tsconfig.json` | Tsconfig path relative to `workspaceRoot`.     |
 | `smokeTestArgs`     | no       | `["--help"]`                 | Arguments for post-build smoke test.           |
-| `dirty`             | no       | `false`                      | Copy bun deps locally and overlay local deps.  |
+| `smokeTestCwd`      | no       | `null`                       | Relative working directory for the smoke test. |
+| `smokeTestSetup`    | no       | `null`                       | Shell snippet to prepare the smoke test dir.   |
+| `dirty`             | no       | `false`                      | Link local deps from the bun deps snapshot.    |
 
 ## CLI Version Pattern
 
@@ -142,6 +145,8 @@ nix build .#my-cli --override-input workspace path:/path/to/workspace
 ## Notes
 
 - `bun.lock` must exist in `packageDir` (dotdot expects self-contained packages).
+- Local file dependencies must also include `bun.lock`; dirty builds install their
+  snapshots into the bun deps output and link them during the build.
 - mk-bun-cli assumes the dotdot workspace layout already exists; it does not run
   `dotdot link` or create workspace symlinks for you.
 - Package-local flakes in effect-utils are not the git root, so `sourceInfo.*`

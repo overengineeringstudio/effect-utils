@@ -18,7 +18,10 @@
 # - typecheck: Run tsc --noEmit (defaults to true).
 # - typecheckTsconfig: Tsconfig path relative to workspaceRoot (defaults to <packageDir>/tsconfig.json).
 # - smokeTestArgs: Args for smoke test (defaults to ["--help"]).
-# - dirty: When true, copy node_modules and overlay local file deps (defaults to false).
+# - smokeTestCwd: Relative working directory for the smoke test (defaults to build root).
+# - smokeTestSetup: Shell snippet to prepare the smoke test working dir (optional).
+# - extraExcludedSourceNames: Extra top-level paths to omit from the staged workspace.
+# - dirty: When true, link bunDeps and overlay local file deps (defaults to false).
 { pkgs, pkgsUnstable }:
 
 {
@@ -33,6 +36,9 @@
   typecheck ? true,
   typecheckTsconfig ? null,
   smokeTestArgs ? [ "--help" ],
+  smokeTestCwd ? null,
+  smokeTestSetup ? null,
+  extraExcludedSourceNames ? [],
   dirty ? false,
 }:
 
@@ -53,7 +59,7 @@ let
     else toPath workspaceRoot;
 
   # Keep the staged workspace lean (skip caches, outputs, and node_modules).
-  excludedSourceNames = [
+  defaultExcludedSourceNames = [
     ".git"
     ".direnv"
     ".devenv"
@@ -68,6 +74,7 @@ let
     "tmp"
     "out"
   ];
+  excludedSourceNames = lib.unique (defaultExcludedSourceNames ++ extraExcludedSourceNames);
 
   sourceFilter = root: path: type:
     let
@@ -78,9 +85,12 @@ let
         then ""
         else lib.removePrefix (rootStr + "/") pathStr;
       parts = if relPath == "" then [] else lib.splitString "/" relPath;
+      # Only exclude result* at the workspace root to avoid filtering real files.
+      topLevel = if parts == [] then "" else builtins.head parts;
       hasExcluded = lib.any
         (segment: lib.elem segment excludedSourceNames)
-        parts;
+        parts
+        || topLevel == "result";
     in
     lib.cleanSourceFilter path type && !hasExcluded;
 
@@ -110,39 +120,105 @@ let
         if lib.hasPrefix "file:" value
         then lib.removePrefix "file:" value
         else value;
+      normalizeRelativePath = path:
+        let
+          parts = lib.splitString "/" path;
+          step = acc: part:
+            if part == "" || part == "."
+            then acc
+            else if part == ".."
+            then lib.init acc
+            else acc ++ [part];
+        in
+        lib.concatStringsSep "/" (lib.foldl' step [] parts);
+      toWorkspaceRelPath = value:
+        let
+          rawPath = normalize value;
+          rootStr = toString workspaceRootPath;
+        in
+        if lib.hasPrefix "/" rawPath
+        then
+          if lib.hasPrefix (rootStr + "/") rawPath
+          then lib.removePrefix (rootStr + "/") rawPath
+          else throw "mk-bun-cli: local dependency path is outside the workspace root"
+        else normalizeRelativePath "${packageDir}/${rawPath}";
     in
     lib.mapAttrsToList
-      (depName: depValue: { name = depName; path = normalize depValue; })
+      (depName: depValue: {
+        name = depName;
+        workspacePath = toWorkspaceRelPath depValue;
+      })
       (lib.filterAttrs (_: value: isLocal value) localDependencyMap);
+
+  # Install local dependency node_modules inside the bunDeps snapshot so dirty builds
+  # can link them without reaching outside the Nix store.
+  localDependenciesInstallScript = lib.concatStringsSep "\n" (map
+    (dep: ''
+      dep_name=${lib.escapeShellArg dep.name}
+      dep_rel=${lib.escapeShellArg dep.workspacePath}
+      dep_path="$workspace/$dep_rel"
+      if [ ! -f "$dep_path/package.json" ]; then
+        echo "mk-bun-cli: missing package.json for local dependency $dep_name at $dep_path" >&2
+        exit 1
+      fi
+      if [ ! -f "$dep_path/bun.lock" ]; then
+        echo "mk-bun-cli: missing bun.lock for local dependency $dep_name at $dep_path" >&2
+        exit 1
+      fi
+
+      bun_install_checked "$dep_path" "$dep_name"
+    '')
+    localDependencies);
 
   localDependenciesCopyScript = lib.concatStringsSep "\n" (map
     (dep: ''
       dep_name=${lib.escapeShellArg dep.name}
-      dep_rel=${lib.escapeShellArg dep.path}
-      if [ -z "$dep_rel" ]; then
-        echo "mk-bun-cli: empty path for local dependency $dep_name" >&2
+      dep_rel=${lib.escapeShellArg dep.workspacePath}
+      dep_path="$PWD/workspace/$dep_rel"
+      dep_node_modules="$dep_path/node_modules"
+      if [ ! -d "$dep_node_modules" ]; then
+        echo "mk-bun-cli: local dependency $dep_name did not produce node_modules" >&2
         exit 1
       fi
+      mkdir -p "$out/local-node-modules/$dep_rel"
+      cp -R -L "$dep_node_modules" "$out/local-node-modules/$dep_rel/node_modules"
+    '')
+    localDependencies);
 
-      case "$dep_rel" in
-        /*) dep_source="$dep_rel" ;;
-        *) dep_source="$package_path/$dep_rel" ;;
-      esac
-
+  localDependenciesLinkScript = lib.concatStringsSep "\n" (map
+    (dep: ''
+      dep_name=${lib.escapeShellArg dep.name}
+      dep_rel=${lib.escapeShellArg dep.workspacePath}
+      dep_source="$workspace/$dep_rel"
+      dep_node_modules_source="${bunDeps}/local-node-modules/$dep_rel/node_modules"
       if [ ! -d "$dep_source" ]; then
         echo "mk-bun-cli: local dependency $dep_name not found at $dep_source" >&2
+        exit 1
+      fi
+      if [ ! -d "$dep_node_modules_source" ]; then
+        echo "mk-bun-cli: missing node_modules for local dependency $dep_name at $dep_node_modules_source" >&2
         exit 1
       fi
 
       dep_target="$package_path/node_modules/$dep_name"
       mkdir -p "$(dirname "$dep_target")"
       rm -rf "$dep_target"
-      cp -R -L "$dep_source" "$dep_target"
+      ln -s "$dep_source" "$dep_target"
+      case "$dep_source" in
+        "$workspace"/*)
+          if [ ! -e "$dep_source/node_modules" ]; then
+            ln -s "$dep_node_modules_source" "$dep_source/node_modules"
+          fi
+          ;;
+      esac
     '')
     localDependencies);
 
+  # Skip typechecking in dirty mode to avoid TS6305 when referenced builds are absent.
+  typecheckEnabled = typecheck && !dirty;
+
   typecheckTsconfigChecked =
-    if typecheck
+    if typecheckEnabled
     then
       if typecheckTsconfig != null
       then typecheckTsconfig
@@ -150,6 +226,7 @@ let
     else typecheckTsconfig;
 
   smokeTestArgsChecked = lib.escapeShellArgs smokeTestArgs;
+  smokeTestSetupChecked = lib.optionalString (smokeTestSetup != null) smokeTestSetup;
 
   # Stage a writable copy so Bun and tsc can write caches in the sandbox.
   stageWorkspace = ''
@@ -192,6 +269,32 @@ let
 
         ${stageWorkspace}
 
+        # Wrap bun install to emit actionable hints when lockfiles drift.
+        bun_install_checked() {
+          local dep_path="$1"
+          local dep_name="$2"
+          local lock_path="$dep_path/bun.lock"
+          local log_name
+          log_name="$(printf '%s' "$dep_name" | tr '/@' '__')"
+          local bun_log="$PWD/bun-install-$log_name.log"
+          if ! bun install \
+            --cwd "$dep_path" \
+            --frozen-lockfile \
+            --linker=hoisted \
+            --backend=copyfile \
+            --no-cache 2>&1 | tee "$bun_log"; then
+            local lock_mtime
+            lock_mtime="$(stat -c '%y' "$lock_path" 2>/dev/null || stat -f '%Sm' -t '%Y-%m-%d %H:%M:%S' "$lock_path" 2>/dev/null || echo "unknown")"
+            echo "mk-bun-cli: bun install failed for $dep_name" >&2
+            echo "mk-bun-cli: bun.lock mtime: $lock_mtime" >&2
+            if grep -q "lockfile had changes" "$bun_log"; then
+              echo "mk-bun-cli: bun.lock changed while bunDepsHash is frozen" >&2
+            fi
+            echo "mk-bun-cli: bunDepsHash may be stale; update it (mono nix hash --package ${name})" >&2
+            exit 1
+          fi
+        }
+
         package_path="$workspace/${packageDir}"
         if [ ! -f "$package_path/package.json" ]; then
           echo "mk-bun-cli: missing package.json in ${packageDir}" >&2
@@ -202,12 +305,9 @@ let
           exit 1
         fi
 
-        bun install \
-          --cwd "$package_path" \
-          --frozen-lockfile \
-          --linker=hoisted \
-          --backend=copyfile \
-          --no-cache
+        bun_install_checked "$package_path" "${name}"
+
+        ${lib.optionalString (localDependencies != []) localDependenciesInstallScript}
       '';
 
       installPhase = ''
@@ -217,6 +317,8 @@ let
           mkdir -p "$out"
           cp -R -L "$package_path/node_modules" "$out/node_modules"
         fi
+
+        ${lib.optionalString (localDependencies != []) localDependenciesCopyScript}
       '';
     };
 
@@ -270,9 +372,37 @@ pkgs.stdenv.mkDerivation {
     fi
 
     if ${lib.boolToString dirty}; then
-      cp -R "${bunDeps}/node_modules" "$package_path/node_modules"
-      chmod -R u+w "$package_path/node_modules"
-      ${lib.optionalString (localDependencies != []) localDependenciesCopyScript}
+      # Symlink deps from the Bun snapshot to avoid copying node_modules.
+      mkdir -p "$package_path/node_modules"
+      if [ -d "${bunDeps}/node_modules/.bin" ]; then
+        ln -s "${bunDeps}/node_modules/.bin" "$package_path/node_modules/.bin"
+      fi
+      for entry in "${bunDeps}/node_modules/"*; do
+        if [ ! -e "$entry" ]; then
+          continue
+        fi
+        entry_name="$(basename "$entry")"
+        if [ "$entry_name" = ".bin" ]; then
+          continue
+        fi
+        if [ "$(printf '%s' "$entry_name" | cut -c1)" = "@" ]; then
+          mkdir -p "$package_path/node_modules/$entry_name"
+          for scoped_entry in "$entry"/*; do
+            if [ ! -e "$scoped_entry" ]; then
+              continue
+            fi
+            scoped_name="$(basename "$scoped_entry")"
+            if [ ! -e "$package_path/node_modules/$entry_name/$scoped_name" ]; then
+              ln -s "$scoped_entry" "$package_path/node_modules/$entry_name/$scoped_name"
+            fi
+          done
+        else
+          if [ ! -e "$package_path/node_modules/$entry_name" ]; then
+            ln -s "$entry" "$package_path/node_modules/$entry_name"
+          fi
+        fi
+      done
+      ${lib.optionalString (localDependencies != []) localDependenciesLinkScript}
     else
       ln -s "${bunDeps}/node_modules" "$package_path/node_modules"
     fi
@@ -280,7 +410,7 @@ pkgs.stdenv.mkDerivation {
     substituteInPlace "$workspace/${entry}" \
       --replace-fail "const buildVersion = '__CLI_VERSION__'" "const buildVersion = '${fullVersion}'"
 
-    ${lib.optionalString typecheck ''
+    ${lib.optionalString typecheckEnabled ''
       tsconfig_path="$workspace/${typecheckTsconfigChecked}"
       if [ ! -f "$tsconfig_path" ]; then
         echo "TypeScript config not found: ${typecheckTsconfigChecked}" >&2
@@ -317,10 +447,17 @@ pkgs.stdenv.mkDerivation {
       exit 1
     fi
 
+    # Allow CLIs to prepare a minimal workspace before smoke testing.
+    smoke_test_cwd="$build_root"
+    ${lib.optionalString (smokeTestCwd != null) ''
+      smoke_test_cwd="$build_root/${smokeTestCwd}"
+    ''}
+    ${smokeTestSetupChecked}
+
     if [ -n "${smokeTestArgsChecked}" ]; then
-      "$build_output" ${smokeTestArgsChecked}
+      (cd "$smoke_test_cwd" && "$build_output" ${smokeTestArgsChecked})
     else
-      "$build_output"
+      (cd "$smoke_test_cwd" && "$build_output")
     fi
 
     runHook postBuild

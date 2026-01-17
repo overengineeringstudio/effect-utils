@@ -1,22 +1,20 @@
 {
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten"
+  },
   "name": "@overeng/notion-effect-schema",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
+  "private": true,
   "exports": {
     ".": "./src/mod.ts"
-  },
-  "publishConfig": {
-    "access": "public",
-    "exports": {
-      ".": "./dist/mod.js"
-    }
   },
   "scripts": {
     "prepare": "effect-language-service patch"
   },
   "devDependencies": {
-    "@effect/language-service": "0.65.0",
+    "@effect/language-service": "0.67.0",
     "@effect/vitest": "0.27.0",
     "@types/node": "25.0.3",
     "effect": "3.19.14",
@@ -26,8 +24,10 @@
   "peerDependencies": {
     "effect": "^3.19.14"
   },
-  "$genie": {
-    "source": "package.json.genie.ts",
-    "warning": "DO NOT EDIT - changes will be overwritten"
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": "./dist/mod.js"
+    }
   }
 }

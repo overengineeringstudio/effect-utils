@@ -22,10 +22,7 @@
         mkBunCli = import ./nix/mk-bun-cli.nix { inherit pkgs pkgsUnstable; };
         cliBuildStamp = import ./nix/cli-build-stamp.nix { inherit pkgs; };
         rootPath = self.outPath;
-      in
-      {
-        packages = {
-          cli-build-stamp = cliBuildStamp.package;
+        cliPackages = {
           genie = import (rootPath + "/packages/@overeng/genie/nix/build.nix") {
             inherit pkgs pkgsUnstable gitRev;
             src = self;
@@ -40,12 +37,51 @@
             inherit gitRev;
           };
         };
+        cliPackagesDirty = {
+          genie = import (rootPath + "/packages/@overeng/genie/nix/build.nix") {
+            inherit pkgs pkgsUnstable gitRev;
+            src = self;
+            dirty = true;
+          };
+          dotdot = import (rootPath + "/packages/@overeng/dotdot/nix/build.nix") {
+            inherit pkgs pkgsUnstable gitRev;
+            src = self;
+            dirty = true;
+          };
+          mono = cliPackages.mono;
+        };
+      in
+      {
+        packages = cliPackages // {
+          cli-build-stamp = cliBuildStamp.package;
+          genie-dirty = cliPackagesDirty.genie;
+          dotdot-dirty = cliPackagesDirty.dotdot;
+          mono-dirty = cliPackagesDirty.mono;
+        };
+
+        # Direnv helper for comparing expected CLI outputs to PATH entries.
+        cliOutPaths = {
+          genie = cliPackages.genie.outPath;
+          dotdot = cliPackages.dotdot.outPath;
+          mono = cliPackages.mono.outPath;
+        };
+        cliOutPathsDirty = {
+          genie = cliPackagesDirty.genie.outPath;
+          dotdot = cliPackagesDirty.dotdot.outPath;
+          mono = cliPackagesDirty.mono.outPath;
+        };
 
         apps.update-bun-hashes = flake-utils.lib.mkApp {
           drv = import ./nix/update-bun-hashes.nix { inherit pkgs; };
         };
       }
     ) // {
+      # Direnv helper script (eval-time store path; no build required).
+      direnv.autoRebuildClis = import ./nix/direnv/auto-rebuild-clis.nix;
+      direnv.peerEnvrc = import ./nix/direnv/peer-envrc.nix;
+      direnv.peerEnvrcEffectUtils = import ./nix/direnv/peer-envrc-effect-utils.nix;
+      direnv.effectUtilsEnvrc = import ./nix/direnv/effect-utils-envrc.nix;
+
       # Builder function for external repos to create their own Bun CLIs
       lib.mkBunCli = { pkgs, pkgsUnstable }:
         import ./nix/mk-bun-cli.nix { inherit pkgs pkgsUnstable; };
@@ -60,6 +96,7 @@
         pkgsUnstable,
         gitRev ? "unknown",
         workspaceRoot ? ./.,
+        dirty ? false,
       }:
         let
           workspaceRootPath =
@@ -69,11 +106,11 @@
         in
         {
           genie = import (workspaceRootPath + "/packages/@overeng/genie/nix/build.nix") {
-            inherit pkgs pkgsUnstable gitRev;
+            inherit pkgs pkgsUnstable gitRev dirty;
             src = workspaceRoot;
           };
           dotdot = import (workspaceRootPath + "/packages/@overeng/dotdot/nix/build.nix") {
-            inherit pkgs pkgsUnstable gitRev;
+            inherit pkgs pkgsUnstable gitRev dirty;
             src = workspaceRoot;
           };
         };

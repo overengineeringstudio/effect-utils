@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url'
 import { FileSystem } from '@effect/platform'
 import { NodeFileSystem } from '@effect/platform-node'
 import { it } from '@effect/vitest'
-import { Effect, Option } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 import { afterEach, beforeEach, describe, expect } from 'vitest'
 
 import {
@@ -20,6 +20,9 @@ import {
 } from './mod.ts'
 
 const TestLayer = NodeFileSystem.layer
+
+/** Type-safe JSON stringify using Schema */
+const toJson = Schema.encodeSync(Schema.parseJson(Schema.Unknown))
 
 /** Create a temp directory for each test */
 const makeTempDir = Effect.gen(function* () {
@@ -119,7 +122,7 @@ describe('import-map', () => {
         const packageJsonPath = path.join(tempDir, 'package.json')
         yield* writeFile(
           packageJsonPath,
-          JSON.stringify({
+          toJson({
             name: 'test',
             imports: { '#lib/*': './src/lib/*' },
           }),
@@ -138,7 +141,7 @@ describe('import-map', () => {
         const rootPackageJson = path.join(tempDir, 'package.json')
         yield* writeFile(
           rootPackageJson,
-          JSON.stringify({
+          toJson({
             name: 'root',
             imports: { '#genie/*': './lib/*' },
           }),
@@ -174,7 +177,7 @@ describe('import-map', () => {
         const packageJsonPath = path.join(tempDir, 'package.json')
         yield* writeFile(
           packageJsonPath,
-          JSON.stringify({
+          toJson({
             name: 'test',
             imports: {
               '#lib/*': './src/lib/*',
@@ -194,7 +197,7 @@ describe('import-map', () => {
     it.effect('returns empty object when imports field is missing', () =>
       Effect.gen(function* () {
         const packageJsonPath = path.join(tempDir, 'package.json')
-        yield* writeFile(packageJsonPath, JSON.stringify({ name: 'test' }))
+        yield* writeFile(packageJsonPath, toJson({ name: 'test' }))
 
         const result = yield* extractImportMap(packageJsonPath)
         expect(result).toEqual({})
@@ -226,7 +229,7 @@ describe('import-map', () => {
           const genieSourcePath = path.join(tempDir, 'package.json.genie.ts')
 
           // package.json exists but has no imports
-          yield* writeFile(packageJsonPath, JSON.stringify({ name: 'test' }))
+          yield* writeFile(packageJsonPath, toJson({ name: 'test' }))
 
           // genie source has imports
           yield* writeFile(
@@ -257,7 +260,7 @@ export default workspaceRoot({
         // package.json has imports
         yield* writeFile(
           packageJsonPath,
-          JSON.stringify({
+          toJson({
             name: 'test',
             imports: { '#lib/*': './dist/lib/*' },
           }),
@@ -349,7 +352,7 @@ export default workspaceRoot({
         const packageJsonPath = path.join(tempDir, 'package.json')
         yield* writeFile(
           packageJsonPath,
-          JSON.stringify({
+          toJson({
             name: 'test',
             imports: { '#genie/*': './genie/*' },
           }),
@@ -374,7 +377,7 @@ export default workspaceRoot({
         const packageJsonPath = path.join(tempDir, 'package.json')
         yield* writeFile(
           packageJsonPath,
-          JSON.stringify({
+          toJson({
             name: 'test',
             imports: { '#genie/*': './genie/*' },
           }),
@@ -399,7 +402,7 @@ export default workspaceRoot({
         const packageJsonPath = path.join(tempDir, 'package.json')
         yield* writeFile(
           packageJsonPath,
-          JSON.stringify({
+          toJson({
             imports: { '#lib/*': './src/lib/*' },
           }),
         )
@@ -418,7 +421,7 @@ export default workspaceRoot({
         const packageJsonPath = path.join(tempDir, 'package.json')
         yield* writeFile(
           packageJsonPath,
-          JSON.stringify({
+          toJson({
             imports: { '#lib/*': './src/lib/*' },
           }),
         )
@@ -437,7 +440,7 @@ export default workspaceRoot({
         const packageJsonPath = path.join(tempDir, 'package.json')
         yield* writeFile(
           packageJsonPath,
-          JSON.stringify({
+          toJson({
             imports: { '#lib/*': './src/lib/*' },
           }),
         )
@@ -460,7 +463,7 @@ import { baz } from './local.ts'`
         const packageJsonPath = path.join(tempDir, 'package.json')
         yield* writeFile(
           packageJsonPath,
-          JSON.stringify({
+          toJson({
             imports: { '#lib/*': './src/lib/*' },
           }),
         )
@@ -491,7 +494,7 @@ import { bar } from '../parent.ts'`
     it.effect('returns source unchanged when no imports field in package.json', () =>
       Effect.gen(function* () {
         const packageJsonPath = path.join(tempDir, 'package.json')
-        yield* writeFile(packageJsonPath, JSON.stringify({ name: 'test' }))
+        yield* writeFile(packageJsonPath, toJson({ name: 'test' }))
         const filePath = path.join(tempDir, 'src', 'file.ts')
         yield* writeFile(filePath, '')
 
@@ -507,7 +510,7 @@ import { bar } from '../parent.ts'`
         const packageJsonPath = path.join(tempDir, 'package.json')
         yield* writeFile(
           packageJsonPath,
-          JSON.stringify({
+          toJson({
             imports: { '#lib/*': './src/lib/*' },
           }),
         )
@@ -526,7 +529,7 @@ import { bar } from '../parent.ts'`
         const packageJsonPath = path.join(tempDir, 'package.json')
         yield* writeFile(
           packageJsonPath,
-          JSON.stringify({
+          toJson({
             imports: { '#lib/*': './src/lib/*' },
           }),
         )
@@ -545,7 +548,7 @@ import { bar } from '../parent.ts'`
         const packageJsonPath = path.join(tempDir, 'package.json')
         yield* writeFile(
           packageJsonPath,
-          JSON.stringify({
+          toJson({
             imports: { '#lib/*': './src/lib/*' },
           }),
         )
@@ -564,7 +567,7 @@ import { bar } from '../parent.ts'`
         const packageJsonPath = path.join(tempDir, 'package.json')
         yield* writeFile(
           packageJsonPath,
-          JSON.stringify({
+          toJson({
             imports: { '#lib/*': './src/lib/*' },
           }),
         )

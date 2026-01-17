@@ -14,8 +14,9 @@ mkBunCliResolved {
   binaryName = "mono";
   packageDir = "scripts";
   workspaceRoot = src;
+  extraExcludedSourceNames = [ "context" ];
   typecheckTsconfig = "scripts/tsconfig.json";
-  bunDepsHash = "sha256-MlrDCvEX/VzllJYDqFos2p3vltfFuOF/+H+7P2PD0Jg=";
+  bunDepsHash = "sha256-bkqYmXDaRbCCQwqkncttAF+TSwNSVdvcc/+GwFqZ7Xk=";
   dirty = true;
   inherit gitRev;
 }

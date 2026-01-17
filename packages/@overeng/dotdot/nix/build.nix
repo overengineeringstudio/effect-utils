@@ -1,6 +1,6 @@
 # Nix derivation that builds dotdot CLI binary.
 # Uses bun build --compile for native platform.
-{ pkgs, pkgsUnstable, src, gitRev ? "unknown" }:
+{ pkgs, pkgsUnstable, src, gitRev ? "unknown", dirty ? false }:
 
 let
   mkBunCli = import ../../../../nix/mk-bun-cli.nix { inherit pkgs pkgsUnstable; };
@@ -11,8 +11,13 @@ mkBunCli {
   binaryName = "dotdot";
   packageDir = "packages/@overeng/dotdot";
   workspaceRoot = src;
-  # TODO: Re-enable once Effect language service messages don't cause tsc to exit non-zero
-  typecheck = false;
-  bunDepsHash = "sha256-GLlXkSQIMHf+1SMK418D4h8rYB2D5N3fLVq/GcPsMwo=";
+  extraExcludedSourceNames = [ "context" "scripts" ];
+  typecheckTsconfig = "packages/@overeng/dotdot/tsconfig.json";
+  smokeTestCwd = "workspace";
+  smokeTestSetup = ''
+    printf '%s\n' '{"repos":{}}' > "$smoke_test_cwd/dotdot-root.json"
+  '';
+  bunDepsHash = "sha256-lAvLdjaEG2NRLyP7Y12w7Arlua5rkMnrVJEeQXgM3Ms=";
+  dirty = dirty;
   inherit gitRev;
 }

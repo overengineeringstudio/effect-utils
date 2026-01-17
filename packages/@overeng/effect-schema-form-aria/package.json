@@ -1,16 +1,14 @@
 {
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten"
+  },
   "name": "@overeng/effect-schema-form-aria",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
+  "private": true,
   "exports": {
     ".": "./src/mod.ts"
-  },
-  "publishConfig": {
-    "access": "public",
-    "exports": {
-      ".": "./dist/mod.js"
-    }
   },
   "scripts": {
     "prepare": "effect-language-service patch"
@@ -19,7 +17,7 @@
     "@overeng/effect-schema-form": "file:../effect-schema-form"
   },
   "devDependencies": {
-    "@effect/language-service": "0.65.0",
+    "@effect/language-service": "0.67.0",
     "@storybook/react": "10.1.11",
     "@storybook/react-vite": "10.1.11",
     "@tailwindcss/vite": "4.1.18",
@@ -41,8 +39,10 @@
     "react-aria-components": "^1.14.0",
     "react-dom": "^19.2.3"
   },
-  "$genie": {
-    "source": "package.json.genie.ts",
-    "warning": "DO NOT EDIT - changes will be overwritten"
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": "./dist/mod.js"
+    }
   }
 }

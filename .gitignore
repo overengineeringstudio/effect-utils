@@ -31,3 +31,5 @@ test-results
 playwright-report
 .last-run.json
 blob-report
+
+tasks

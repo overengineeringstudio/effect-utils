@@ -72,7 +72,7 @@ export const catalog = defineCatalog({
   '@effect/sql': '0.49.0',
   '@effect/experimental': '0.58.0',
   '@effect/workflow': '0.16.0',
-  '@effect/language-service': '0.65.0',
+  '@effect/language-service': '0.67.0',
   '@effect/rpc': '0.73.0',
   '@effect/opentelemetry': '0.60.0',
 

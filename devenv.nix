@@ -6,6 +6,7 @@ let
   # Build CLIs against the same nixpkgs set as the flake outputs.
   mkBunCli = import ./nix/mk-bun-cli.nix { pkgs = pkgsStable; inherit pkgsUnstable; };
   # Keep devenv outputs aligned with flake outputs so mono nix status is accurate.
+  # TODO use proper git rev
   gitRev = "unknown";
   workspaceSrc = ./.;
   playwrightDriver = inputs.playwright-web-flake.packages.${system}.playwright-driver;
@@ -15,7 +16,7 @@ let
     packageDir = "packages/@overeng/genie";
     workspaceRoot = workspaceSrc;
     typecheckTsconfig = "packages/@overeng/genie/tsconfig.json";
-    bunDepsHash = "sha256-xzYr5vBSxy85kn0pitidwiqY6BCZtUzseJlWtmr2NqY=";
+    bunDepsHash = "sha256-o3JZv9lq3IXroGSmvQK7yBePEHVWxU/ZwC3lrEcr3lo=";
     inherit gitRev;
   };
   dotdot = mkBunCli {
@@ -25,7 +26,11 @@ let
     packageDir = "packages/@overeng/dotdot";
     workspaceRoot = workspaceSrc;
     typecheckTsconfig = "packages/@overeng/dotdot/tsconfig.json";
-    bunDepsHash = "sha256-0HfezPxkSbXI4+0sLjhZ4u44j7nIp/25zRXRXRxPaSM=";
+    smokeTestCwd = "workspace";
+    smokeTestSetup = ''
+      printf '%s\n' '{"repos":{}}' > "$smoke_test_cwd/dotdot-root.json"
+    '';
+    bunDepsHash = "sha256-lAvLdjaEG2NRLyP7Y12w7Arlua5rkMnrVJEeQXgM3Ms=";
     inherit gitRev;
   };
   mono = import ./scripts/nix/build.nix {

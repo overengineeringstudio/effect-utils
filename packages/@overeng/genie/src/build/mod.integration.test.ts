@@ -5,7 +5,7 @@ import nodePath from 'node:path'
 import { Command, FileSystem, Path } from '@effect/platform'
 import { NodeContext } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Chunk, Effect, Stream } from 'effect'
+import { Chunk, Effect, Schema, Stream } from 'effect'
 import { expect } from 'vitest'
 
 type TestEnv = {
@@ -100,7 +100,9 @@ describe('genie cli', () => {
       Effect.gen(function* () {
         yield* env.writeFile({
           path: 'package.json',
-          content: JSON.stringify({ name: 'genie-cli-test', private: true }, null, 2),
+          content: Schema.encodeSync(Schema.parseJson(Schema.Unknown, { space: 2 }))(
+            { name: 'genie-cli-test', private: true },
+          ),
         })
 
         yield* env.writeFile({

@@ -1,18 +1,15 @@
 {
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten"
+  },
   "name": "@overeng/genie",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
+  "private": true,
   "exports": {
     ".": "./src/runtime/mod.ts",
     "./cli": "./src/build/mod.ts"
-  },
-  "publishConfig": {
-    "access": "public",
-    "exports": {
-      ".": "./dist/src/runtime/mod.js",
-      "./cli": "./dist/src/build/mod.js"
-    }
   },
   "scripts": {
     "prepare": "effect-language-service patch",
@@ -21,7 +18,7 @@
   "dependencies": {},
   "devDependencies": {
     "@effect/cli": "0.73.0",
-    "@effect/language-service": "0.65.0",
+    "@effect/language-service": "0.67.0",
     "@effect/platform": "0.94.1",
     "@effect/platform-node": "0.104.0",
     "@effect/printer": "0.47.0",
@@ -45,8 +42,11 @@
     "@playwright/test": "^1.57.0",
     "effect": "^3.19.14"
   },
-  "$genie": {
-    "source": "package.json.genie.ts",
-    "warning": "DO NOT EDIT - changes will be overwritten"
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": "./dist/src/runtime/mod.js",
+      "./cli": "./dist/src/build/mod.js"
+    }
   }
 }

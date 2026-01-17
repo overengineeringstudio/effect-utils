@@ -1,20 +1,14 @@
 {
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten"
+  },
   "name": "@overeng/react-inspector",
   "version": "8.0.0",
-  "description": "Power of Browser DevTools inspectors right inside your React app",
   "type": "module",
+  "description": "Power of Browser DevTools inspectors right inside your React app",
   "exports": {
     ".": "./src/index.tsx"
-  },
-  "publishConfig": {
-    "access": "public",
-    "exports": {
-      ".": {
-        "types": "./dist/index.d.ts",
-        "require": "./dist/index.cjs",
-        "import": "./dist/index.js"
-      }
-    }
   },
   "dependencies": {
     "is-dom": "1.1.0"
@@ -44,8 +38,14 @@
       "optional": true
     }
   },
-  "$genie": {
-    "source": "package.json.genie.ts",
-    "warning": "DO NOT EDIT - changes will be overwritten"
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "require": "./dist/index.cjs",
+        "import": "./dist/index.js"
+      }
+    }
   }
 }

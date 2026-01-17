@@ -5,7 +5,7 @@
     "": {
       "name": "@overeng/effect-react",
       "devDependencies": {
-        "@effect/language-service": "0.65.0",
+        "@effect/language-service": "0.67.0",
         "@storybook/react": "10.1.11",
         "@storybook/react-vite": "10.1.11",
         "@types/react": "19.2.7",
@@ -70,7 +70,7 @@
 
     "@babel/types": ["@babel/types@7.28.5", "", { "dependencies": { "@babel/helper-string-parser": "^7.27.1", "@babel/helper-validator-identifier": "^7.28.5" } }, "sha512-qQ5m48eI/MFLQ5PxQj4PFaprjyCTLI37ElWMmNs0K8Lk3dVeOdNpB3ks8jc7yM5CDmVC73eMVk/trk3fgmrUpA=="],
 
-    "@effect/language-service": ["@effect/language-service@0.65.0", "", { "bin": { "effect-language-service": "cli.js" } }, "sha512-eHcpLNCZa1XEDRrXLZqTdky6jAQojL6zQEW53Ba6vJL35j77tJTnV9BFkk34G3rxKoplNo39U0Mum3RfuH9rsg=="],
+    "@effect/language-service": ["@effect/language-service@0.67.0", "", { "bin": { "effect-language-service": "cli.js" } }, "sha512-8yTlGnKbayq37sM523A98tZzxXmLaizAa/sNN2BpqnXz9aa0DgVN9gon5xmvWSb6jNbK8J6xNtOYrFFKSJRpIg=="],
 
     "@esbuild/aix-ppc64": ["@esbuild/aix-ppc64@0.27.2", "", { "os": "aix", "cpu": "ppc64" }, "sha512-GZMB+a0mOMZs4MpDbj8RJp4cw+w1WV5NYD6xzgvzUJ5Ek2jerwfO2eADyI6ExDSUED+1X8aMbegahsJi+8mgpw=="],
 

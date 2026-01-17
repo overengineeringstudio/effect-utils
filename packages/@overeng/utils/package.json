@@ -1,8 +1,12 @@
 {
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten"
+  },
   "name": "@overeng/utils",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
+  "private": true,
   "exports": {
     ".": "./src/isomorphic/mod.ts",
     "./browser": "./src/browser/mod.ts",
@@ -15,21 +19,6 @@
     "./node/cli-version": "./src/node/cli-version.ts",
     "./node/playwright": "./src/node/playwright/mod.ts"
   },
-  "publishConfig": {
-    "access": "public",
-    "exports": {
-      ".": "./dist/isomorphic/mod.js",
-      "./node": "./dist/node/mod.js",
-      "./node/cli-version": "./dist/node/cli-version.js",
-      "./node/playwright": "./dist/node/playwright/mod.js",
-      "./browser": "./dist/browser/mod.js",
-      "./cuid": {
-        "browser": "./dist/cuid/cuid.browser.js",
-        "node": "./dist/cuid/cuid.node.js",
-        "default": "./dist/cuid/mod.js"
-      }
-    }
-  },
   "scripts": {
     "prepare": "effect-language-service patch",
     "postinstall": "patch --forward -p1 -d node_modules/effect-distributed-lock < ../../../patches/effect-distributed-lock@0.0.11.patch || true"
@@ -41,7 +30,7 @@
     "ioredis": "5.6.1"
   },
   "devDependencies": {
-    "@effect/language-service": "0.65.0",
+    "@effect/language-service": "0.67.0",
     "@effect/opentelemetry": "0.60.0",
     "@effect/platform": "0.94.1",
     "@effect/platform-node": "0.104.0",
@@ -73,8 +62,19 @@
     "@playwright/test": "^1.57.0",
     "effect": "^3.19.14"
   },
-  "$genie": {
-    "source": "package.json.genie.ts",
-    "warning": "DO NOT EDIT - changes will be overwritten"
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": "./dist/isomorphic/mod.js",
+      "./node": "./dist/node/mod.js",
+      "./node/cli-version": "./dist/node/cli-version.js",
+      "./node/playwright": "./dist/node/playwright/mod.js",
+      "./browser": "./dist/browser/mod.js",
+      "./cuid": {
+        "browser": "./dist/cuid/cuid.browser.js",
+        "node": "./dist/cuid/cuid.node.js",
+        "default": "./dist/cuid/mod.js"
+      }
+    }
   }
 }

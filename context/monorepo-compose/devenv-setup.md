@@ -126,6 +126,102 @@ export MONO_AUTO_REBUILD=0
 direnv reload
 ```
 
+The auto-rebuild helper is loaded from the flake output
+`direnv.autoRebuildClis`, and the checks use `cliOutPaths` to compare expected
+store paths with the current `PATH`. By default, auto-rebuilds use the flake
+ref (`.`) for faster evals. Set `NIX_CLI_DIRTY=1` to switch to a staged
+workspace under `.direnv/cli-workspace` and pick up uncommitted changes. In
+dirty mode, the helper builds `genie-dirty`, `dotdot-dirty`, and `mono-dirty`
+and compares `cliOutPathsDirty` against the `genie`, `dotdot`, and `mono`
+binaries in `PATH`. The helper syncs a minimal workspace into
+`.direnv/cli-workspace` using a single `rsync` include list plus `.gitignore`
+filtering, keeping the path flake small and pure while avoiding heavy
+artifacts. The workspace directory lives under `.direnv` (already git-ignored).
+
+Peer repo template (drop into that repo’s `.envrc`):
+
+```bash
+# Auto-rebuild Nix CLIs on reload; set MONO_AUTO_REBUILD=0 to disable.
+# Set NIX_CLI_DIRTY=1 to stage a dirty workspace under .direnv/cli-workspace.
+# Load effect-utils peer CLI helper (details in this doc).
+source "$(nix eval --raw --no-write-lock-file "$WORKSPACE_ROOT/../effect-utils#direnv.peerEnvrcEffectUtils")"
+```
+
+Advanced overrides (only needed when customizing the CLI set):
+
+```bash
+# Space-separated lists:
+export NIX_CLI_PACKAGES="my-cli other-cli"
+# Dirty package list can use -dirty suffixes; staging strips them automatically.
+export NIX_CLI_DIRTY_PACKAGES="my-cli-dirty other-cli-dirty"
+# Override the attr names if your flake uses different ones.
+export NIX_CLI_OUT_PATHS_ATTR="cliOutPaths"
+export NIX_CLI_DIRTY_OUT_PATHS_ATTR="cliOutPathsDirty"
+```
+
+## CLI helper behavior
+
+The `direnv.peerEnvrcEffectUtils` helper targets the shared effect-utils CLIs
+(`genie`, `dotdot`, `mono`) and keeps them current during `direnv reload`.
+
+Behavior matrix:
+
+- **Effect-utils repo**
+  - Auto-rebuild checks `cliOutPaths` vs `PATH` and rebuilds via `nix build` if stale.
+  - Dirty builds use `NIX_CLI_DIRTY=1` to stage `.direnv/cli-workspace` and build `*-dirty`.
+  - `MONO_AUTO_REBUILD=0` disables the auto-rebuild check.
+- **Peer repos (sibling layout)**
+  - Auto-rebuild still targets effect-utils CLIs and reloads the peer shell on updates.
+  - Dirty builds stage into the effect-utils repo (`../effect-utils/.direnv/cli-workspace`).
+  - `MONO_AUTO_REBUILD=0` disables the auto-rebuild check.
+
+Auto-rebuild vs dirty mode:
+
+- Auto-rebuild decides **when** to rebuild (stale binaries).
+- Dirty mode decides **what** to build (staged dirty workspace vs pure flake).
+
+## Customizing the CLI set
+
+Use env overrides when the default CLI list is not enough:
+
+- **Only rebuild a subset**: set `NIX_CLI_PACKAGES="genie"` and
+  `NIX_CLI_DIRTY_PACKAGES="genie-dirty"`.
+- **Extra CLIs**: if effect-utils exposes more packages, append them to the lists.
+- **Alternative outPaths**: set `NIX_CLI_OUT_PATHS_ATTR` /
+  `NIX_CLI_DIRTY_OUT_PATHS_ATTR` when a repo defines different attr names.
+
+## Reusing the helper for peer repo CLIs
+
+To manage CLIs defined in the peer repo itself, point the helper at the peer
+repo flake and expose compatible outputs:
+
+1. Add outputs to the peer repo flake:
+
+```nix
+{
+  outputs = { self, ... }: {
+    packages.<system>.my-cli = ...;
+    packages.<system>.my-cli-dirty = ...;
+    cliOutPaths = { my-cli = self.packages.<system>.my-cli.outPath; };
+    cliOutPathsDirty = { my-cli = self.packages.<system>.my-cli-dirty.outPath; };
+  };
+}
+```
+
+2. Update the peer `.envrc`:
+
+```bash
+export NIX_CLI_PACKAGES="my-cli"
+export NIX_CLI_DIRTY_PACKAGES="my-cli-dirty"
+source "$(nix eval --raw --no-write-lock-file "$WORKSPACE_ROOT#direnv.peerEnvrc")"
+```
+
+3. Dirty mode still works: set `NIX_CLI_DIRTY=1` and the staged workspace is
+created under the peer repo’s `.direnv/cli-workspace`.
+
+If the peer repo uses different attr names, set `NIX_CLI_OUT_PATHS_ATTR` /
+`NIX_CLI_DIRTY_OUT_PATHS_ATTR` to match.
+
 If you want a flag-driven refresh (requires touching `.envrc`), pass
 `--refresh-eval-cache` to `use devenv`:
 

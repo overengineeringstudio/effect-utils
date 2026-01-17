@@ -1,8 +1,12 @@
 {
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten"
+  },
   "name": "@overeng/oxc-config",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
+  "private": true,
   "exports": {
     "./fmt": "./fmt.jsonc",
     "./lint": "./lint.jsonc",
@@ -16,9 +20,5 @@
     "eslint": "9.39.2",
     "typescript": "5.9.3",
     "vitest": "3.2.4"
-  },
-  "$genie": {
-    "source": "package.json.genie.ts",
-    "warning": "DO NOT EDIT - changes will be overwritten"
   }
 }
