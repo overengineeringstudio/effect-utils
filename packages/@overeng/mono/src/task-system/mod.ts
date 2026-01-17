@@ -29,3 +29,4 @@ export { reduceEvent, runTaskGraph, runTaskGraphOrFail } from './graph.ts'
 // Renderers
 export { opentuiRenderer } from './renderers/opentui.tsx'
 export { opentuiInlineRenderer } from './renderers/opentui-inline.tsx'
+export { piTuiInlineRenderer } from './renderers/pi-tui-inline.ts'

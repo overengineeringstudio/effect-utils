@@ -8,28 +8,16 @@ import path from 'node:path'
 
 import { badge, kv, list, separator, styled, symbols } from '@overeng/cli-ui'
 
-import {
-  isDiverged,
-  isMember,
-  type PackageIndexEntry,
-  type RepoInfo,
-} from '../lib/mod.ts'
-import {
-  collectPackageMappings,
-  getUniqueMappings,
-  type PackageMapping,
-} from './link.ts'
+import { isDiverged, isMember, type PackageIndexEntry, type RepoInfo } from '../lib/mod.ts'
+import { collectPackageMappings, getUniqueMappings, type PackageMapping } from './link.ts'
 
 // =============================================================================
 // Problem Analysis
 // =============================================================================
 
-type CriticalProblem =
-  | { _tag: 'missing'; repo: RepoInfo }
+type CriticalProblem = { _tag: 'missing'; repo: RepoInfo }
 
-type WarningProblem =
-  | { _tag: 'diverged'; repo: RepoInfo }
-  | { _tag: 'dirty'; repos: RepoInfo[] }
+type WarningProblem = { _tag: 'diverged'; repo: RepoInfo } | { _tag: 'dirty'; repos: RepoInfo[] }
 
 type Problems = {
   critical: CriticalProblem[]
@@ -123,9 +111,7 @@ const renderWarningSection = (problems: WarningProblem[]): string[] => {
     } else if (problem._tag === 'dirty') {
       const count = problem.repos.length
       const repoNames = problem.repos.map((r) => r.name)
-      lines.push(
-        `  ${styled.bold(`${count} repos`)} ${styled.dim('have uncommitted changes')}`,
-      )
+      lines.push(`  ${styled.bold(`${count} repos`)} ${styled.dim('have uncommitted changes')}`)
       lines.push(`    ${styled.dim(repoNames.join(', '))}`)
       lines.push(`    ${styled.cyan('fix:')} dotdot commit -a`)
       lines.push(`    ${styled.cyan('fix:')} git status <repo> ${styled.dim('to review')}`)

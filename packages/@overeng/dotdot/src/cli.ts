@@ -3,8 +3,9 @@ import path from 'node:path'
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
 import * as PlatformNode from '@effect/platform-node'
-import { styled, symbols } from '@overeng/cli-ui'
 import { Effect, Layer, Option, pipe } from 'effect'
+
+import { styled, symbols } from '@overeng/cli-ui'
 
 import {
   execCommand,
@@ -43,7 +44,9 @@ const initCommand = Cli.Command.make('init', {}, () =>
 
     yield* fs.writeFileString(configPath, JSON.stringify(initialConfig, null, 2) + '\n')
 
-    yield* Effect.log(`${styled.green(symbols.check)} ${styled.dim('initialized workspace at')} ${styled.bold(path.basename(cwd))}`)
+    yield* Effect.log(
+      `${styled.green(symbols.check)} ${styled.dim('initialized workspace at')} ${styled.bold(path.basename(cwd))}`,
+    )
   }).pipe(Effect.withSpan('dotdot/init')),
 )
 
@@ -65,7 +68,9 @@ const schemaCommand = Cli.Command.make(
 
       if (Option.isSome(output)) {
         yield* fs.writeFileString(output.value, content)
-        yield* Effect.log(`${styled.green(symbols.check)} ${styled.dim('schema written to')} ${styled.bold(output.value)}`)
+        yield* Effect.log(
+          `${styled.green(symbols.check)} ${styled.dim('schema written to')} ${styled.bold(output.value)}`,
+        )
       } else {
         // Print to stdout
         console.log(content)

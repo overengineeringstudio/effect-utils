@@ -9,7 +9,7 @@ export interface TaskSystemUIProps {
   atom: Atom.Atom<TaskSystemState>
 }
 
-/** Renders the task system state from an atom */
+/** Root component for task system UI (OpenTUI alternate screen mode) */
 export const TaskSystemUI = ({ atom }: TaskSystemUIProps) => {
   const state = useAtomValue(atom)
   const tasks = Object.values(state.tasks)

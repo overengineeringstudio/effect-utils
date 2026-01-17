@@ -34,12 +34,13 @@ General principles for designing CLI output that is readable, actionable, and in
 
 Use background-colored badges for problem sections:
 
-| Severity | Style | Use Case |
-|----------|-------|----------|
-| `CRITICAL` | White bold on red bg | Blocking issues that prevent work |
-| `WARNING` | Black bold on yellow bg | Issues needing attention but not blocking |
+| Severity   | Style                   | Use Case                                  |
+| ---------- | ----------------------- | ----------------------------------------- |
+| `CRITICAL` | White bold on red bg    | Blocking issues that prevent work         |
+| `WARNING`  | Black bold on yellow bg | Issues needing attention but not blocking |
 
 **Format:**
+
 ```
  CRITICAL              # Note: leading space for padding
 
@@ -62,6 +63,7 @@ Each problem item follows this structure:
 ```
 
 **Styling:**
+
 - Item name: **bold**
 - Status/description: dimmed
 - Details (hashes, counts): dimmed, in parentheses
@@ -70,6 +72,7 @@ Each problem item follows this structure:
 - Commands: regular weight
 
 **Grouping similar issues:**
+
 ```
   4 repos have uncommitted changes
     repo1, repo2, repo3, repo4
@@ -91,6 +94,7 @@ For listing items (repos, packages, resources):
 ```
 
 **Styling:**
+
 - Name: **bold**
 - Branch/ref: colored by type
   - Default/main: green
@@ -102,14 +106,15 @@ For listing items (repos, packages, resources):
 
 ## Status Symbols
 
-| Symbol | Meaning | Color |
-|--------|---------|-------|
-| `*` | Modified/dirty | Yellow |
-| `↕<ref>` | Diverged/out-of-sync | Red |
-| `✓` | OK/synced | Green |
-| `✗` | Error/missing | Red |
+| Symbol   | Meaning              | Color  |
+| -------- | -------------------- | ------ |
+| `*`      | Modified/dirty       | Yellow |
+| `↕<ref>` | Diverged/out-of-sync | Red    |
+| `✓`      | OK/synced            | Green  |
+| `✗`      | Error/missing        | Red    |
 
 Place symbols inline after the identifier:
+
 ```
 myproject main@abc1234 * ↕def5678
 ```
@@ -129,6 +134,7 @@ When lists exceed a reasonable length:
 ```
 
 **Rules:**
+
 - Show count in header: `items(24):`
 - Display max 5 items
 - Show `+ N more` in dimmed text
@@ -160,19 +166,19 @@ End with a concise summary:
 
 ## Color Reference
 
-| Element | ANSI Code | Usage |
-|---------|-----------|-------|
-| Bold | `\x1b[1m` | Names, emphasis |
-| Dim | `\x1b[2m` | Secondary info, hints |
-| Red | `\x1b[31m` | Errors, diverged |
-| Green | `\x1b[32m` | Success, main branch |
-| Yellow | `\x1b[33m` | Warnings, dirty |
-| Blue | `\x1b[34m` | Info, detached HEAD |
-| Magenta | `\x1b[35m` | Feature branches |
-| Cyan | `\x1b[36m` | Commands, links |
-| Bg Red | `\x1b[41m` | CRITICAL badge |
-| Bg Yellow | `\x1b[43m` | WARNING badge |
-| Reset | `\x1b[0m` | Reset formatting |
+| Element   | ANSI Code  | Usage                 |
+| --------- | ---------- | --------------------- |
+| Bold      | `\x1b[1m`  | Names, emphasis       |
+| Dim       | `\x1b[2m`  | Secondary info, hints |
+| Red       | `\x1b[31m` | Errors, diverged      |
+| Green     | `\x1b[32m` | Success, main branch  |
+| Yellow    | `\x1b[33m` | Warnings, dirty       |
+| Blue      | `\x1b[34m` | Info, detached HEAD   |
+| Magenta   | `\x1b[35m` | Feature branches      |
+| Cyan      | `\x1b[36m` | Commands, links       |
+| Bg Red    | `\x1b[41m` | CRITICAL badge        |
+| Bg Yellow | `\x1b[43m` | WARNING badge         |
+| Reset     | `\x1b[0m`  | Reset formatting      |
 
 ## Spacing
 
@@ -184,12 +190,12 @@ End with a concise summary:
 
 ## Conditional Display
 
-| Condition | Behavior |
-|-----------|----------|
-| No problems | Omit CRITICAL, WARNING, and separator |
-| No items in section | Omit entire section |
-| Empty subsection | Omit subsection |
-| All items OK | Omit status symbols |
+| Condition           | Behavior                              |
+| ------------------- | ------------------------------------- |
+| No problems         | Omit CRITICAL, WARNING, and separator |
+| No items in section | Omit entire section                   |
+| Empty subsection    | Omit subsection                       |
+| All items OK        | Omit status symbols                   |
 
 ## Example: Full Output with Problems
 

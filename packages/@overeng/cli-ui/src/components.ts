@@ -5,8 +5,8 @@
  * Single-line components return string, multi-line return string[].
  */
 
-import { colors, symbols } from './tokens.ts'
 import { styled } from './styled.ts'
+import { colors, symbols } from './tokens.ts'
 
 // =============================================================================
 // Badge Component

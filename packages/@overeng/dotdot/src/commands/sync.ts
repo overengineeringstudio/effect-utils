@@ -9,19 +9,9 @@ import path from 'node:path'
 import * as Cli from '@effect/cli'
 import * as Prompt from '@effect/cli/Prompt'
 import { FileSystem } from '@effect/platform'
-import { kv, styled, symbols } from '@overeng/cli-ui'
 import { Console, Effect, Option, Schema } from 'effect'
 
-import {
-  renderSyncDryRun,
-  type SyncDiff,
-  type RepoToClone,
-  type RepoToCheckout,
-  type RepoIssue,
-  type PackageToAdd,
-  type PackageToRemove,
-  type PackageWithInstall,
-} from './sync-renderer.ts'
+import { kv, styled, symbols } from '@overeng/cli-ui'
 
 import {
   type BaseResult,
@@ -42,6 +32,15 @@ import {
   writeGeneratedConfig,
 } from '../lib/mod.ts'
 import { pruneStaleSymlinks, syncSymlinks } from './link.ts'
+import {
+  renderSyncDryRun,
+  type SyncDiff,
+  type RepoToClone,
+  type RepoToCheckout,
+  type PackageToAdd,
+  type PackageToRemove,
+  type PackageWithInstall,
+} from './sync-renderer.ts'
 
 /** Error during restore operation */
 export class SyncError extends Schema.TaggedError<SyncError>()('SyncError', {
@@ -165,7 +164,9 @@ const runPackageInstalls = ({
         yield* Effect.log(`  ${styled.dim('installing')} ${styled.bold(pkgName)}`)
         yield* runShellCommand({ command: pkgConfig.install, cwd: pkgPath }).pipe(
           Effect.catchAll((error) => {
-            return Effect.logWarning(`  ${styled.red(symbols.cross)} ${styled.bold(pkgName)} ${styled.dim(String(error))}`)
+            return Effect.logWarning(
+              `  ${styled.red(symbols.cross)} ${styled.bold(pkgName)} ${styled.dim(String(error))}`,
+            )
           }),
         )
         installedPackages.push(pkgName)
@@ -405,9 +406,13 @@ export const syncCommand = Cli.Command.make(
       // Show warnings for dangling repos
       if (danglingRepos.length > 0) {
         yield* Effect.log('')
-        yield* Effect.logWarning(`Found ${styled.bold(String(danglingRepos.length))} dangling repo(s):`)
+        yield* Effect.logWarning(
+          `Found ${styled.bold(String(danglingRepos.length))} dangling repo(s):`,
+        )
         for (const name of danglingRepos) {
-          yield* Effect.logWarning(`  ${symbols.bullet} ${styled.bold(name)} ${styled.dim('(no config and not a dependency)')}`)
+          yield* Effect.logWarning(
+            `  ${symbols.bullet} ${styled.bold(name)} ${styled.dim('(no config and not a dependency)')}`,
+          )
         }
         yield* Effect.log('')
       }
@@ -417,7 +422,11 @@ export const syncCommand = Cli.Command.make(
         return
       }
 
-      yield* Effect.log(styled.dim(`${repoCount} repos ${symbols.dot} ${packageCount} packages ${symbols.dot} ${mode} mode`))
+      yield* Effect.log(
+        styled.dim(
+          `${repoCount} repos ${symbols.dot} ${packageCount} packages ${symbols.dot} ${mode} mode`,
+        ),
+      )
       yield* Effect.log('')
 
       // Check for dirty repos when --force is used
@@ -495,7 +504,9 @@ export const syncCommand = Cli.Command.make(
         }).pipe(
           Effect.catchTag('CycleError', (e) =>
             Effect.gen(function* () {
-              yield* Effect.logError(`${styled.red(symbols.cross)} ${styled.bold('cycle detected')} ${styled.dim(e.message)}`)
+              yield* Effect.logError(
+                `${styled.red(symbols.cross)} ${styled.bold('cycle detected')} ${styled.dim(e.message)}`,
+              )
               yield* Effect.log(styled.dim('please resolve circular dependencies before syncing'))
               return [] as SyncResult[]
             }),
@@ -543,13 +554,19 @@ export const syncCommand = Cli.Command.make(
 
         // Report created/overwritten symlinks
         if (symlinkResult.created.length > 0) {
-          yield* Effect.log(`  ${styled.green(symbols.check)} ${styled.dim(`created ${symlinkResult.created.length} symlink(s)`)}`)
+          yield* Effect.log(
+            `  ${styled.green(symbols.check)} ${styled.dim(`created ${symlinkResult.created.length} symlink(s)`)}`,
+          )
         }
         if (symlinkResult.overwritten.length > 0) {
-          yield* Effect.log(`  ${styled.yellow(symbols.check)} ${styled.dim(`overwritten ${symlinkResult.overwritten.length} symlink(s)`)}`)
+          yield* Effect.log(
+            `  ${styled.yellow(symbols.check)} ${styled.dim(`overwritten ${symlinkResult.overwritten.length} symlink(s)`)}`,
+          )
         }
         if (symlinkResult.skipped.length > 0) {
-          yield* Effect.log(`  ${styled.dim(`${symbols.dot} skipped ${symlinkResult.skipped.length} symlink(s)`)}`)
+          yield* Effect.log(
+            `  ${styled.dim(`${symbols.dot} skipped ${symlinkResult.skipped.length} symlink(s)`)}`,
+          )
         }
 
         // Prune stale symlinks
@@ -560,7 +577,9 @@ export const syncCommand = Cli.Command.make(
         })
 
         if (pruneResult.removed.length > 0) {
-          yield* Effect.log(`  ${styled.dim(`${symbols.cross} pruned ${pruneResult.removed.length} stale symlink(s)`)}`)
+          yield* Effect.log(
+            `  ${styled.dim(`${symbols.cross} pruned ${pruneResult.removed.length} stale symlink(s)`)}`,
+          )
         }
       }
 

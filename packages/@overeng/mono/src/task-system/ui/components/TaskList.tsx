@@ -6,7 +6,7 @@ export interface TaskListProps {
   tasks: TaskState[]
 }
 
-/** Renders a vertical list of tasks */
+/** Renders a list of tasks vertically */
 export const TaskList = ({ tasks }: TaskListProps) => {
   return (
     <box flexDirection="column">

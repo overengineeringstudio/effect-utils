@@ -6,7 +6,7 @@ export interface TaskProps {
   task: TaskState
 }
 
-/** Renders a single task with status and latest log output */
+/** Renders a single task with status and latest log output in two-column layout */
 export const Task = ({ task }: TaskProps) => {
   // Get latest log line for inline display
   const allOutput = [...task.stdout, ...task.stderr]

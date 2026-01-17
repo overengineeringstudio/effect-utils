@@ -7,8 +7,9 @@
 import path from 'node:path'
 
 import * as Cli from '@effect/cli'
-import { kv, styled, symbols } from '@overeng/cli-ui'
 import { Effect, Layer, Option, Schema } from 'effect'
+
+import { kv, styled, symbols } from '@overeng/cli-ui'
 
 import {
   type BaseResult,
@@ -140,7 +141,8 @@ export const pullHandler = ({
 
     const summary = buildSummary({ results, statusLabels: PullStatusLabels })
     const divergedCount = results.filter((r) => 'diverged' in r && r.diverged === true).length
-    const divergedSuffix = divergedCount > 0 ? `, ${styled.yellow(String(divergedCount))} diverged` : ''
+    const divergedSuffix =
+      divergedCount > 0 ? `, ${styled.yellow(String(divergedCount))} diverged` : ''
     yield* Effect.log(styled.dim(`done: ${summary}${divergedSuffix}`))
 
     if (divergedCount > 0) {

@@ -165,7 +165,8 @@ describe('status command output', () => {
 
         expect(normalizedOutput).toMatchSnapshot()
       }),
-    ))
+    ),
+  )
 
   it('renders clean workspace (no problems)', { timeout: 30_000 }, () =>
     withTestCtx(
@@ -225,5 +226,6 @@ describe('status command output', () => {
 
         expect(normalizedOutput).toMatchSnapshot()
       }),
-    ))
+    ),
+  )
 })

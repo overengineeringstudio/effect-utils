@@ -7,8 +7,9 @@
 import path from 'node:path'
 
 import * as Cli from '@effect/cli'
-import { kv, styled, symbols } from '@overeng/cli-ui'
 import { Effect, Layer, Schema } from 'effect'
+
+import { kv, styled, symbols } from '@overeng/cli-ui'
 
 import {
   type BaseResult,
@@ -102,7 +103,9 @@ export const updateRevsHandler = ({ repos, dryRun }: { repos: string[]; dryRun: 
           ...(oldRev !== undefined && { oldRev }),
           newRev: currentRev,
         })
-        yield* Effect.log(`  ${styled.bold(name)} ${styled.dim(`unchanged (${currentRev.slice(0, 7)})`)}`)
+        yield* Effect.log(
+          `  ${styled.bold(name)} ${styled.dim(`unchanged (${currentRev.slice(0, 7)})`)}`,
+        )
         continue
       }
 

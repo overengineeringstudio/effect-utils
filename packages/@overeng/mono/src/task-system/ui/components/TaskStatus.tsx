@@ -10,7 +10,7 @@ export interface TaskStatusProps {
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 
-/** Displays task status with animated spinner and duration */
+/** Renders task status with icon, name, duration, and retry info */
 export const TaskStatus = ({ task }: TaskStatusProps) => {
   const [spinnerFrame, setSpinnerFrame] = useState(0)
 

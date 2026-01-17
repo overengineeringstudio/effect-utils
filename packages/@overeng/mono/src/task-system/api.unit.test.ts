@@ -102,7 +102,7 @@ describe('task factory', () => {
         const testEffect = Effect.succeed('result')
         const t = task({ id: 'empty-stream', name: 'Empty Stream', effect: testEffect })
 
-        const stream = t.eventStream('empty-stream')
+        const stream = t.eventStream()
         const events = yield* Stream.runCollect(stream)
 
         expect(Array.from(events)).toEqual([])

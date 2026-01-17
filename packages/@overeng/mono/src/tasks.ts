@@ -6,11 +6,13 @@ import type * as CommandExecutor from '@effect/platform/CommandExecutor'
 import type { PlatformError } from '@effect/platform/Error'
 import { Array, Effect, Exit, Logger, LogLevel, Option, Schedule, Stream } from 'effect'
 
+import type { CurrentWorkingDirectory } from '@overeng/utils/node'
+
 import { type CommandError, GenieCoverageError } from './errors.ts'
 import { task } from './task-system/api.ts'
 import { runTaskGraph, runTaskGraphOrFail } from './task-system/graph.ts'
 import { ciRenderer } from './task-system/renderers/ci.ts'
-import { opentuiInlineRenderer } from './task-system/renderers/opentui-inline.tsx'
+import { piTuiInlineRenderer } from './task-system/renderers/pi-tui-inline.ts'
 import type { TaskDef } from './task-system/types.ts'
 import { IS_CI, runCommand } from './utils.ts'
 
@@ -194,8 +196,13 @@ export const genieCheck = runCommand({
  * This ensures we use the patched TypeScript with Effect Language Service support.
  */
 const resolveLocalTsc = (): string => {
-  const tscUrl = import.meta.resolve('typescript/bin/tsc')
-  return tscUrl.replace('file://', '')
+  const tscUrl = import.meta.resolve?.('typescript/bin/tsc')
+  if (!tscUrl) {
+    throw new Error('Failed to resolve typescript/bin/tsc path')
+  }
+  // import.meta.resolve returns a string in bun, but could be Promise in other environments
+  const tscPath = typeof tscUrl === 'string' ? tscUrl : String(tscUrl)
+  return tscPath.replace('file://', '')
 }
 
 /** Type check task */
@@ -503,7 +510,7 @@ export const installAllWithTaskSystem = Effect.fn('installAllWithTaskSystem')(fu
   // Select renderer based on environment
   // Limit concurrency to number of CPU cores to avoid bun cache race conditions
   const concurrency = cpus().length
-  const renderer = IS_CI ? ciRenderer() : opentuiInlineRenderer()
+  const renderer = IS_CI ? ciRenderer() : piTuiInlineRenderer()
   const result = yield* runTaskGraph({
     tasks,
     options: {
@@ -524,7 +531,7 @@ export const installAllWithTaskSystem = Effect.fn('installAllWithTaskSystem')(fu
     const taskState = result.state.tasks[installTaskId]
 
     if (!taskState || taskState.status !== 'success') {
-      const error = taskState?.error
+      const errorMessage: string = taskState?.error
         ? Option.getOrElse(taskState.error, () => 'Unknown error')
         : 'Task not found'
       const stderr = taskState?.stderr.join('\n') ?? ''
@@ -533,7 +540,7 @@ export const installAllWithTaskSystem = Effect.fn('installAllWithTaskSystem')(fu
       return {
         _tag: 'failure',
         dir,
-        error: new Error(error),
+        error: new Error(errorMessage),
         stderr,
         stdout,
       }
@@ -615,7 +622,7 @@ export const checkAllWithTaskSystem = Effect.fn('checkAllWithTaskSystem')(functi
   // Select renderer based on environment
   // Limit concurrency to number of CPU cores to avoid bun cache race conditions
   const concurrency = cpus().length
-  const renderer = IS_CI ? ciRenderer() : opentuiInlineRenderer()
+  const renderer = IS_CI ? ciRenderer() : piTuiInlineRenderer()
   const result = yield* runTaskGraphOrFail({
     tasks: allTasks,
     options: {

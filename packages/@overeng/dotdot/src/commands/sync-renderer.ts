@@ -70,7 +70,12 @@ export type SyncDryRunInput = {
 // Rendering Helpers
 // =============================================================================
 
-const actionLine = (action: string, actionStyle: (s: string) => string, text: string, detail?: string) => {
+const actionLine = (
+  action: string,
+  actionStyle: (s: string) => string,
+  text: string,
+  detail?: string,
+) => {
   const a = actionStyle(action)
   const d = detail ? `  ${styled.dim(detail)}` : ''
   return `  ${a} ${text}${d}`
@@ -98,7 +103,9 @@ export const renderSyncDryRun = ({
   if (danglingRepos && danglingRepos.length > 0) {
     output.push(styled.yellow(`${symbols.warning} ${danglingRepos.length} dangling repo(s):`))
     for (const name of danglingRepos) {
-      output.push(`  ${styled.dim(symbols.bullet)} ${styled.bold(name)} ${styled.dim('(not tracked)')}`)
+      output.push(
+        `  ${styled.dim(symbols.bullet)} ${styled.bold(name)} ${styled.dim('(not tracked)')}`,
+      )
     }
     output.push('')
   }
@@ -125,7 +132,14 @@ export const renderSyncDryRun = ({
       output.push(actionLine('will clone', styled.green, r.name, 'because not on disk'))
     }
     for (const r of diff.repos.toCheckout) {
-      output.push(actionLine('will checkout', styled.yellow, r.name, `because pinned rev changed (${r.fromRev.slice(0, 7)} → ${r.toRev.slice(0, 7)})`))
+      output.push(
+        actionLine(
+          'will checkout',
+          styled.yellow,
+          r.name,
+          `because pinned rev changed (${r.fromRev.slice(0, 7)} → ${r.toRev.slice(0, 7)})`,
+        ),
+      )
     }
     if (diff.repos.unchanged > 0) {
       output.push(`  ${styled.dim(`${diff.repos.unchanged} unchanged`)}`)

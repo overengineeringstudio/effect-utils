@@ -178,9 +178,9 @@ export const syncSymlinks = ({
           result.overwritten.push(targetName)
         } else {
           // Check if it's already correctly linked
-          const linkTarget = yield* fs.readLink(mapping.target).pipe(
-            Effect.catchAll(() => Effect.succeed(undefined)),
-          )
+          const linkTarget = yield* fs
+            .readLink(mapping.target)
+            .pipe(Effect.catchAll(() => Effect.succeed(undefined)))
           const parentDir = path.dirname(mapping.target)
           const expectedRelPath = path.relative(parentDir, mapping.source)
 
@@ -262,25 +262,25 @@ export const pruneStaleSymlinks = ({
       const entryPath = path.join(workspaceRoot, entry)
 
       // Check if it's a symlink
-      const linkTarget = yield* fs.readLink(entryPath).pipe(
-        Effect.catchAll(() => Effect.succeed(undefined)),
-      )
+      const linkTarget = yield* fs
+        .readLink(entryPath)
+        .pipe(Effect.catchAll(() => Effect.succeed(undefined)))
 
       if (!linkTarget) {
         // Not a symlink, check if it's a directory that might contain scoped packages
         if (entry.startsWith('@')) {
           // Scoped package directory - check contents
-          const scopedEntries = yield* fs.readDirectory(entryPath).pipe(
-            Effect.catchAll(() => Effect.succeed([] as string[])),
-          )
+          const scopedEntries = yield* fs
+            .readDirectory(entryPath)
+            .pipe(Effect.catchAll(() => Effect.succeed([] as string[])))
 
           for (const scopedEntry of scopedEntries) {
             const scopedPath = path.join(entryPath, scopedEntry)
             const scopedName = `${entry}/${scopedEntry}`
 
-            const scopedLinkTarget = yield* fs.readLink(scopedPath).pipe(
-              Effect.catchAll(() => Effect.succeed(undefined)),
-            )
+            const scopedLinkTarget = yield* fs
+              .readLink(scopedPath)
+              .pipe(Effect.catchAll(() => Effect.succeed(undefined)))
 
             if (scopedLinkTarget && !currentTargets.has(scopedName)) {
               // Stale scoped symlink
@@ -292,9 +292,9 @@ export const pruneStaleSymlinks = ({
           }
 
           // Clean up empty scoped directories
-          const remainingEntries = yield* fs.readDirectory(entryPath).pipe(
-            Effect.catchAll(() => Effect.succeed([] as string[])),
-          )
+          const remainingEntries = yield* fs
+            .readDirectory(entryPath)
+            .pipe(Effect.catchAll(() => Effect.succeed([] as string[])))
           if (remainingEntries.length === 0 && !dryRun) {
             yield* fs.remove(entryPath)
           }

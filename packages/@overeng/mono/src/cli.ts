@@ -151,7 +151,7 @@ export const runMonoCli = (
         Logger.minimumLogLevel(LogLevel.Debug),
       ),
     ),
-  )
+  ) as Effect.Effect<void, unknown, never>
 
   NodeRuntime.runMain(program, { disableErrorReporting: true })
 }

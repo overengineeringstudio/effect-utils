@@ -140,6 +140,9 @@ export const catalog = defineCatalog({
   '@effect-atom/atom-react': '0.4.5',
   '@opentui/core': '0.1.68',
   '@opentui/react': '0.1.68',
+
+  // Pi-tui (terminal UI framework)
+  '@mariozechner/pi-tui': '0.45.7',
 })
 
 /** Common fields for private packages */

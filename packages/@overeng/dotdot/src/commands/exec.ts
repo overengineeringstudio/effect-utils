@@ -7,8 +7,9 @@
 import path from 'node:path'
 
 import * as Cli from '@effect/cli'
-import { kv, styled, symbols } from '@overeng/cli-ui'
 import { Effect, Layer, Option, Schema } from 'effect'
+
+import { kv, styled, symbols } from '@overeng/cli-ui'
 
 import {
   type BaseResult,

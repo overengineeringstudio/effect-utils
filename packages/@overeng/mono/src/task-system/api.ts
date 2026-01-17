@@ -104,7 +104,8 @@ export function task<TId extends string, A, E, R>({
     const taskDef: TaskDef<TId, void, CommandError | PlatformError, CommandExecutor> = {
       id,
       name,
-      eventStream: (taskId) => executeCommand({ taskId, spec: commandOrEffect }),
+      // Capture id in closure - executeCommand uses it to create TaskEvent<TId>
+      eventStream: () => executeCommand({ taskId: id, spec: commandOrEffect }),
       // No effect needed - exit code is checked in the stream
       // Capture command context for failure reporting
       commandContext: {
@@ -119,15 +120,11 @@ export function task<TId extends string, A, E, R>({
     return taskDef
   }
 
-  // Effect task - wrap in event stream (no stdout/stderr)
+  // Effect task - no event stream (no stdout/stderr)
   const taskDef: TaskDef<TId, A, E, R> = {
     id,
     name,
-    eventStream: (_taskId) => {
-      // For effect tasks, we don't emit stdout/stderr events
-      // The effect just runs and completes
-      return Stream.empty
-    },
+    eventStream: () => Stream.empty,
     effect: commandOrEffect,
     ...(options?.dependencies !== undefined ? { dependencies: options.dependencies } : {}),
     ...(options?.retrySchedule !== undefined ? { retrySchedule: options.retrySchedule } : {}),

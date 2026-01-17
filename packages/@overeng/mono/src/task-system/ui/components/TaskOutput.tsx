@@ -3,7 +3,7 @@ export interface TaskOutputProps {
   lines: string[]
 }
 
-/** Renders the last few lines of task output */
+/** Renders last 2 lines of task output */
 export const TaskOutput = ({ lines }: TaskOutputProps) => {
   // Show last 2 lines of output
   const lastLines = lines.slice(-2)

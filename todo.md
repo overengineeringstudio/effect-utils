@@ -18,6 +18,7 @@
 
 ## mono
 
+- [ ] add to `mono check` that bun lock files are up to date and devnenv builds
 - [ ] make it easy to see whether binary version is up to date with source version (to avoid running an outdated version)
 - [ ] make it easier to rebuild the binary (both for nix flakes and devenv)
 - [ ] fish auto complete for `mk bun nix build`
@@ -25,6 +26,9 @@
 
 ## genie
 
+- [ ] flow generate AGENTS.md file
+  - dotdot
+  - tasks flow
 - [ ] add effect-lsp to each package
 - [ ] patches feature: we currently don't have a good way to enforce dependents of a package with patches to also have patches in their package.json.genie.ts
 - [ ] refactor handling of relative paths in genie (embrace dotdot workspace root)

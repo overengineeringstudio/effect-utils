@@ -63,11 +63,7 @@ const manyPackages = [
   '@scope/package-twelve',
 ]
 
-const fewPackages = [
-  '@scope/util-a',
-  '@scope/util-b',
-  '@scope/util-c',
-]
+const fewPackages = ['@scope/util-a', '@scope/util-b', '@scope/util-c']
 
 const main = () => {
   // Context header
@@ -89,7 +85,9 @@ const main = () => {
   console.log(`${c.bgYellow}${c.black}${c.bold} WARNING ${c.reset}`)
   console.log()
 
-  console.log(`  ${styled.bold('project-a')} ${styled.dim('diverged')} ${styled.dim('(local: abc1234, remote: def5678)')}`)
+  console.log(
+    `  ${styled.bold('project-a')} ${styled.dim('diverged')} ${styled.dim('(local: abc1234, remote: def5678)')}`,
+  )
   console.log(`    ${styled.cyan('fix:')} cd project-a && git pull --rebase`)
   console.log(`    ${styled.cyan('fix:')} tool sync project-a`)
   console.log(`    ${styled.dim('skip:')} tool ignore project-a --diverged`)
@@ -107,17 +105,23 @@ const main = () => {
 
   // Main content - repos with various states
   // Clean repo with default branch
-  console.log(`${styled.bold('project-a')} ${styled.green('main')}${styled.dim('@abc1234')} ${styled.yellow('*')} ${styled.red('↕def5678')} ${styled.dim('← shared-lib')}`)
+  console.log(
+    `${styled.bold('project-a')} ${styled.green('main')}${styled.dim('@abc1234')} ${styled.yellow('*')} ${styled.red('↕def5678')} ${styled.dim('← shared-lib')}`,
+  )
   console.log()
 
   // Repo with feature branch and many packages
-  console.log(`${styled.bold('project-b')} ${styled.magenta('feature/new')}${styled.dim('@789abcd')} ${styled.yellow('*')} ${styled.dim('← shared-lib')}`)
+  console.log(
+    `${styled.bold('project-b')} ${styled.magenta('feature/new')}${styled.dim('@789abcd')} ${styled.yellow('*')} ${styled.dim('← shared-lib')}`,
+  )
   console.log(`  ${styled.dim(`packages(${manyPackages.length}):`)}`)
   renderList(manyPackages, 5, '    ')
   console.log()
 
   // Repo with detached HEAD and few packages
-  console.log(`${styled.bold('project-c')} ${styled.blue('HEAD')}${styled.dim('@fedcba9')} ${styled.yellow('*')} ${styled.dim('← shared-lib')}`)
+  console.log(
+    `${styled.bold('project-c')} ${styled.blue('HEAD')}${styled.dim('@fedcba9')} ${styled.yellow('*')} ${styled.dim('← shared-lib')}`,
+  )
   console.log(`  ${styled.dim(`packages(${fewPackages.length}):`)}`)
   renderList(fewPackages, 5, '    ')
   console.log()

@@ -24,7 +24,7 @@ export interface TaskDef<TId extends string, A, E, R> {
   /** Task dependencies (must complete before this task starts) */
   readonly dependencies?: ReadonlyArray<TId>
   /** Event stream for the task (emits stdout/stderr during execution, can fail) */
-  readonly eventStream: (taskId: TId) => Stream.Stream<TaskEvent<TId>, E, R>
+  readonly eventStream: () => Stream.Stream<TaskEvent<TId>, E, R>
   /** The Effect to execute (optional - some tasks only emit events) */
   readonly effect?: Effect.Effect<A, E, R>
   /** Retry schedule for transient failures (e.g., cache race conditions) */

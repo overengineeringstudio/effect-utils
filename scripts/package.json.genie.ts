@@ -16,6 +16,7 @@ export default packageJson({
       '@effect/platform',
       '@effect/platform-node',
       '@effect/workflow',
+      '@mariozechner/pi-tui',
       'effect',
     ),
   },

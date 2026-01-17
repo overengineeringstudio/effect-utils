@@ -37,6 +37,7 @@ export default packageJson({
       '@opentui/core',
       '@opentui/react',
       'react',
+      '@mariozechner/pi-tui',
     ),
   },
   devDependencies: {
