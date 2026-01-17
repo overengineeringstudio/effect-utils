@@ -11,6 +11,7 @@ import type { PlatformError } from '@effect/platform/Error'
 import { Array, Effect, Logger, LogLevel, Option, Schedule, Stream } from 'effect'
 
 import { task } from '../task-system/api.ts'
+import type { CommandError } from '../task-system/execution.ts'
 import { runTaskGraph } from '../task-system/graph.ts'
 import { ciRenderer } from '../task-system/renderers/ci.ts'
 import { piTuiInlineRenderer } from '../task-system/renderers/pi-tui-inline.ts'
@@ -214,7 +215,8 @@ export const installAllWithTaskSystem = Effect.fn('installAllWithTaskSystem')(fu
   )
 
   // Create tasks for each package directory
-  const tasks: TaskDef<string, unknown, unknown, unknown>[] = []
+  // All tasks are command tasks with the same error/requirements types
+  const tasks: TaskDef<string, void, CommandError | PlatformError, CommandExecutor.CommandExecutor>[] = []
 
   for (const dir of dirs) {
     const relativePath = pathService.relative(cwd, dir)
@@ -232,7 +234,7 @@ export const installAllWithTaskSystem = Effect.fn('installAllWithTaskSystem')(fu
             args: ['-rf', nodeModulesPath],
             cwd: dir,
           },
-        }) as TaskDef<string, unknown, unknown, unknown>,
+        }),
       )
     }
 
@@ -263,7 +265,7 @@ export const installAllWithTaskSystem = Effect.fn('installAllWithTaskSystem')(fu
           // Persist output to log file for debugging
           logFile,
         },
-      }) as TaskDef<string, unknown, unknown, unknown>,
+      }),
     )
   }
 

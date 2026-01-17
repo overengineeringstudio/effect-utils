@@ -579,11 +579,11 @@ const executeTask = <TId extends string, A, E, R>({
  * This eliminates the SubscriptionRef contention that caused 96% overhead
  * when 20+ task fibers competed to update shared state.
  */
-export const runTaskGraph = <TId extends string, R = never>({
+export const runTaskGraph = <TId extends string, E, R>({
   tasks,
   options,
 }: {
-  tasks: ReadonlyArray<TaskDef<any, unknown, unknown, R>>
+  tasks: ReadonlyArray<TaskDef<TId, unknown, E, R>>
   options?:
     | {
         onStateChange?: (state: TaskSystemState) => Effect.Effect<void>
@@ -783,11 +783,11 @@ export const runTaskGraph = <TId extends string, R = never>({
  * Execute a task graph and fail if any task fails.
  * Throws TaskExecutionError with details of failed tasks.
  */
-export const runTaskGraphOrFail = <R = never>({
+export const runTaskGraphOrFail = <TId extends string, E, R>({
   tasks,
   options,
 }: {
-  tasks: ReadonlyArray<TaskDef<any, unknown, unknown, R>>
+  tasks: ReadonlyArray<TaskDef<TId, unknown, E, R>>
   options?:
     | {
         onStateChange?: (state: TaskSystemState) => Effect.Effect<void>
@@ -800,7 +800,7 @@ export const runTaskGraphOrFail = <R = never>({
     state: TaskSystemState
     successCount: number
     failureCount: number
-    failedTaskIds: string[]
+    failedTaskIds: TId[]
   },
   Error | TaskExecutionError,
   R | FileSystem.FileSystem

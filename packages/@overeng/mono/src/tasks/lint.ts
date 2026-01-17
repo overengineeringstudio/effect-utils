@@ -2,12 +2,11 @@
  * Lint tasks using oxlint.
  */
 
-import type { PlatformError } from '@effect/platform/Error'
-import { Effect, Exit, Option } from 'effect'
+import { Effect, Exit } from 'effect'
 
-import { type CommandError, GenieCoverageError } from '../errors.ts'
+import type { CommandError, GenieCoverageError } from '../errors.ts'
 import { runCommand } from '../utils.ts'
-import { formatCheck } from './format.ts'
+import { formatCheck, formatFix } from './format.ts'
 import { checkGenieCoverage } from './genie.ts'
 import type { GenieCoverageConfig, OxcConfig } from './types.ts'
 
@@ -39,35 +38,27 @@ export const lintFix = (config: OxcConfig) =>
   }).pipe(Effect.withSpan('lintFix'))
 
 /** Create combined lint checks: format + lint + genie coverage */
-export const allLintChecks = ({
+export const allLintChecks = Effect.fn('allLintChecks')(function* ({
   oxcConfig,
   genieConfig,
 }: {
   oxcConfig: OxcConfig
   genieConfig: GenieCoverageConfig
-}) =>
-  Effect.all(
+}) {
+  const [formatExit, lintExit, genieExit] = yield* Effect.all(
     [
-      formatCheck(oxcConfig).pipe(Effect.exit),
-      lintCheck(oxcConfig).pipe(Effect.exit),
-      checkGenieCoverage(genieConfig).pipe(Effect.exit),
+      formatCheck(oxcConfig).pipe(Effect.asVoid, Effect.exit),
+      lintCheck(oxcConfig).pipe(Effect.asVoid, Effect.exit),
+      checkGenieCoverage(genieConfig).pipe(Effect.asVoid, Effect.exit),
     ],
-    {
-      concurrency: 'unbounded',
-    },
-  ).pipe(
-    Effect.flatMap((exits) => {
-      const unifiedExits = exits as ReadonlyArray<
-        Exit.Exit<void | undefined, CommandError | GenieCoverageError | PlatformError>
-      >
-
-      return Option.match(Exit.all(unifiedExits, { parallel: true }), {
-        onNone: () => Effect.void,
-        onSome: (exit) => (Exit.isSuccess(exit) ? Effect.void : Effect.failCause(exit.cause)),
-      })
-    }),
-    Effect.withSpan('allLintChecks'),
+    { concurrency: 'unbounded' },
   )
+
+  // Re-raise any failures
+  if (!Exit.isSuccess(formatExit)) return yield* formatExit
+  if (!Exit.isSuccess(lintExit)) return yield* lintExit
+  if (!Exit.isSuccess(genieExit)) return yield* genieExit
+})
 
 /** Create combined lint fixes: format + lint */
 export const allLintFixes = (oxcConfig: OxcConfig) =>

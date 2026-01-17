@@ -102,28 +102,27 @@ export const runMonoCli = (
     return String(failure)
   }
 
-  const reportFailure = (cause: Cause.Cause<unknown>) =>
-    Effect.gen(function* () {
-      if (Cause.isInterruptedOnly(cause)) {
-        return
-      }
+  const reportFailure = Effect.fn('reportFailure')(function* (cause: Cause.Cause<unknown>) {
+    if (Cause.isInterruptedOnly(cause)) {
+      return
+    }
 
-      const failures = Chunk.toReadonlyArray(Cause.failures(cause))
-      if (failures.length > 0) {
-        const message = failures.map(renderFailure).join('\n\n')
-        yield* Console.error(message)
-      } else {
-        yield* Console.error(Cause.pretty(cause, { renderErrorCause: true }))
-      }
+    const failures = Chunk.toReadonlyArray(Cause.failures(cause))
+    if (failures.length > 0) {
+      const message = failures.map(renderFailure).join('\n\n')
+      yield* Console.error(message)
+    } else {
+      yield* Console.error(Cause.pretty(cause, { renderErrorCause: true }))
+    }
 
-      if (shouldShowLintFixHint) {
-        yield* Console.error("Hint: run 'mono lint --fix' to auto-fix formatting and lint issues.")
-      }
+    if (shouldShowLintFixHint) {
+      yield* Console.error("Hint: run 'mono lint --fix' to auto-fix formatting and lint issues.")
+    }
 
-      yield* Effect.sync(() => {
-        process.exitCode = 1
-      })
+    yield* Effect.sync(() => {
+      process.exitCode = 1
     })
+  })
 
   const command = Command.make(config.name).pipe(
     Command.withSubcommands(config.commands),
@@ -151,7 +150,9 @@ export const runMonoCli = (
         Logger.minimumLogLevel(LogLevel.Debug),
       ),
     ),
-  ) as Effect.Effect<void, unknown, never>
+    // After Exit.matchEffect, all errors are handled - cast to reflect this
+    Effect.asVoid,
+  )
 
   NodeRuntime.runMain(program, { disableErrorReporting: true })
 }

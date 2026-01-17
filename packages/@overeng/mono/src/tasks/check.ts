@@ -10,6 +10,7 @@ import { task } from '../task-system/api.ts'
 import { runTaskGraphOrFail } from '../task-system/graph.ts'
 import { ciRenderer } from '../task-system/renderers/ci.ts'
 import { piTuiInlineRenderer } from '../task-system/renderers/pi-tui-inline.ts'
+import type { TaskDef } from '../task-system/types.ts'
 import { IS_CI } from '../utils.ts'
 import { allLintChecks } from './lint.ts'
 import type { CheckTasksConfig } from './types.ts'
@@ -19,52 +20,50 @@ import { resolveLocalTsc } from './typescript.ts'
 export const checkAllWithTaskSystem = Effect.fn('checkAllWithTaskSystem')(function* (
   config: CheckTasksConfig,
 ) {
-  // Define parallel tasks (no dependencies)
-  const parallelTasks = [
-    ...(config.skipGenie
-      ? []
-      : [
-          task({
-            id: 'genie',
-            name: 'Genie check',
-            command: {
-              cmd: 'genie',
-              args: ['--check'],
-            },
-          }),
-        ]),
-    task({
-      id: 'typecheck',
-      name: 'Type checking',
-      command: {
-        cmd: resolveLocalTsc(),
-        args: ['--build', 'tsconfig.all.json'],
-      },
-    }),
-    task({
-      id: 'lint',
-      name: 'Lint (format + oxlint + genie coverage)',
-      effect: allLintChecks(config),
-    }),
+  // Task IDs for type safety
+  type CheckTaskId = 'genie' | 'typecheck' | 'lint' | 'test'
+
+  // Define individual tasks
+  const genieTask = task({
+    id: 'genie' as const,
+    name: 'Genie check',
+    command: { cmd: 'genie', args: ['--check'] },
+  })
+
+  const typecheckTask = task({
+    id: 'typecheck' as const,
+    name: 'Type checking',
+    command: { cmd: resolveLocalTsc(), args: ['--build', 'tsconfig.all.json'] },
+  })
+
+  const lintTask = task({
+    id: 'lint' as const,
+    name: 'Lint (format + oxlint + genie coverage)',
+    effect: allLintChecks(config),
+  })
+
+  // Parallel tasks (no dependencies)
+  // Note: E and R channels are widened to unknown since tasks have heterogeneous types
+  const parallelTasks: TaskDef<CheckTaskId, unknown, unknown, unknown>[] = [
+    ...(config.skipGenie ? [] : [genieTask]),
+    typecheckTask,
+    lintTask,
   ]
 
   // Extract parallel task IDs for dependencies
   const parallelTaskIds = parallelTasks.map((t) => t.id)
 
-  // Define sequential tasks (depend on all parallel tasks)
-  const sequentialTasks = config.skipTests
+  const testTask = task({
+    id: 'test' as const,
+    name: 'Tests',
+    command: { cmd: 'vitest', args: ['run'] },
+    options: { dependencies: parallelTaskIds },
+  })
+
+  // Sequential tasks (depend on all parallel tasks)
+  const sequentialTasks: TaskDef<CheckTaskId, unknown, unknown, unknown>[] = config.skipTests
     ? []
-    : [
-        task({
-          id: 'test',
-          name: 'Tests',
-          command: {
-            cmd: 'vitest',
-            args: ['run'],
-          },
-          options: { dependencies: parallelTaskIds },
-        }),
-      ]
+    : [testTask]
 
   const allTasks = [...parallelTasks, ...sequentialTasks]
 

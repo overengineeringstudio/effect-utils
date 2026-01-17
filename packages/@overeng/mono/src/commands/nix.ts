@@ -180,23 +180,21 @@ const evalCoresArgs = (): string[] => ['--option', 'eval-cores', String(resolveE
 /** Use max-jobs to parallelize builds; keep it aligned with eval-cores for simplicity. */
 const buildParallelismArgs = (): string[] => ['--option', 'max-jobs', String(resolveEvalCores())]
 
-const resolveNixSystem = (): Effect.Effect<string, UnsupportedSystemError> => {
+const resolveNixSystem = Effect.fn('resolveNixSystem')(function* () {
   const platform = process.platform
   const arch = process.arch
 
-  if (platform === 'darwin' && arch === 'arm64') return Effect.succeed('aarch64-darwin')
-  if (platform === 'darwin' && arch === 'x64') return Effect.succeed('x86_64-darwin')
-  if (platform === 'linux' && arch === 'arm64') return Effect.succeed('aarch64-linux')
-  if (platform === 'linux' && arch === 'x64') return Effect.succeed('x86_64-linux')
+  if (platform === 'darwin' && arch === 'arm64') return 'aarch64-darwin'
+  if (platform === 'darwin' && arch === 'x64') return 'x86_64-darwin'
+  if (platform === 'linux' && arch === 'arm64') return 'aarch64-linux'
+  if (platform === 'linux' && arch === 'x64') return 'x86_64-linux'
 
-  return Effect.fail(
-    new UnsupportedSystemError({
-      platform,
-      arch,
-      message: `Unsupported system for nix status: ${platform}/${arch}`,
-    }),
-  )
-}
+  return yield* new UnsupportedSystemError({
+    platform,
+    arch,
+    message: `Unsupported system for nix status: ${platform}/${arch}`,
+  })
+})
 
 const resolveExpectedOutPaths = Effect.fn('nix-status-expected-out-paths')(function* () {
   const system = yield* resolveNixSystem()

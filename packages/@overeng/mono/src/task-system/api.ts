@@ -209,3 +209,28 @@ export const effectTask = <TId extends string, A, E, R>({
   }
   return task({ id, name, effect })
 }
+
+// =============================================================================
+// Task Collection Utilities
+// =============================================================================
+
+/**
+ * Create a tuple of tasks with preserved literal ID types.
+ * This avoids the need for explicit type casts when combining heterogeneous tasks.
+ *
+ * @example
+ * ```ts
+ * const allTasks = tasks(
+ *   task({ id: 'build', name: 'Build', command: { cmd: 'tsc', args: [] } }),
+ *   task({ id: 'test', name: 'Test', effect: runTests() }),
+ * )
+ * // Type infers IDs as 'build' | 'test' union
+ * ```
+ */
+export const tasks = <const T extends readonly TaskDef<string, unknown, unknown, unknown>[]>(
+  ...defs: T
+): T => defs
+
+/** Extract the union of task IDs from a task tuple */
+export type TaskIds<T extends readonly TaskDef<string, unknown, unknown, unknown>[]> =
+  T[number]['id']
