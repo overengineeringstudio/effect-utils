@@ -6,8 +6,9 @@
 
 import { createServer } from 'node:net'
 
-import { defineConfig, devices, type PlaywrightTestConfig } from '@playwright/test'
+import type * as PlaywrightTest from '@playwright/test'
 
+import { shouldNeverHappen } from '../../isomorphic/mod.ts'
 /** Web server configuration for Vite. */
 export interface WebServerConfig {
   /** Command to start the dev server (use `{{port}}` placeholder) */
@@ -28,6 +29,23 @@ export interface WebServerConfig {
 
 /** Options for creating a Playwright test configuration. */
 export interface PlaywrightConfigOptions {
+  /**
+   * Playwright module import from the consumer.
+   *
+   * This must be passed as a wildcard import (for example:
+   * `import * as playwrightTest from '@playwright/test'`) so the config uses the
+   * consumer's single Playwright instance. When `@playwright/test` is imported
+   * from both a shared package and the consumer, Playwright throws
+   * `Error: Requiring @playwright/test second time` because it detects multiple
+   * physical installs. Passing the consumer import prevents the duplicate load.
+   *
+   * References:
+   * - https://github.com/microsoft/playwright/issues/15819
+   * - https://github.com/microsoft/playwright/issues/31478
+   * - https://github.com/oven-sh/bun/issues/3835
+   */
+  playwrightTest: typeof PlaywrightTest
+
   /** Test directory (e.g. './src/browser/__tests__') */
   testDir: string
 
@@ -46,6 +64,7 @@ export interface PlaywrightConfigOptions {
   /** Number of workers (default: 1) */
   workers?: number
 }
+
 
 /** Find an available port for the dev server. */
 const findAvailablePort = (): Promise<number> =>
@@ -71,17 +90,23 @@ const findAvailablePort = (): Promise<number> =>
  * // playwright.config.ts
  * import { createPlaywrightConfig } from '@overeng/utils/node/playwright'
  *
+ * import * as playwrightTest from '@playwright/test'
+ *
  * export default createPlaywrightConfig({
+ *   playwrightTest,
  *   testDir: './src/browser/__tests__',
  *   webServer: {
- *     command: './node_modules/.bin/vite --config src/browser/__tests__/vite.config.ts --port {{port}}',
+ *     command:
+ *       './node_modules/.bin/vite --config src/browser/__tests__/vite.config.ts --port {{port}}',
  *   },
  * })
  * ```
  */
 export const createPlaywrightConfig = async (
   options: PlaywrightConfigOptions,
-): Promise<PlaywrightTestConfig> => {
+): Promise<PlaywrightTest.PlaywrightTestConfig> => {
+  const { playwrightTest } = options
+  const { defineConfig, devices } = playwrightTest
   const {
     testDir,
     testMatch = '**/*.pw.test.ts',
@@ -108,7 +133,9 @@ export const createPlaywrightConfig = async (
   const port = envPort ? Number.parseInt(envPort, 10) : await findAvailablePort()
 
   if (!Number.isFinite(port)) {
-    throw new Error(`Failed to resolve port for Playwright webServer (portEnvVar: ${portEnvVar})`)
+    return shouldNeverHappen(
+      `Failed to resolve port for Playwright webServer (portEnvVar: ${portEnvVar})`,
+    )
   }
 
   // Store port in env var for subsequent config evaluations
@@ -116,7 +143,7 @@ export const createPlaywrightConfig = async (
     process.env[portEnvVar] = String(port)
   }
 
-  const url = `http://localhost:${port}`
+  const url = `http://127.0.0.1:${port}`
   const resolvedCommand = command.replace(/\{\{port\}\}/g, String(port))
 
   const config: PlaywrightTestConfig = {

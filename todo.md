@@ -29,3 +29,29 @@
 - [ ] patches feature: we currently don't have a good way to enforce dependents of a package with patches to also have patches in their package.json.genie.ts
 - [ ] refactor handling of relative paths in genie (embrace dotdot workspace root)
   - [ ] genie generators get ctx (including package location), should embrace that (e.g. use placeholder symbols for replacement or allow callbacks for less magic)
+
+
+## task management
+
+- options
+  - beads
+  - notion
+  - linear
+
+### challenges
+
+- agent needs to follow the process (e.g. keep plan up to date)
+
+### plan files
+
+- structure
+  - agent info:
+    - tool (claude, opencode, etc.)
+    - model (e.g. opus-4.5)
+    - session ids (as multiple agents can be used for the same task over time)
+- separate files/aspects
+  - plan/spec
+  - research artifacts
+  - worklog
+    - include decisions made by user + agent
+- each task should have a clear id

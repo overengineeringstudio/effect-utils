@@ -1,5 +1,7 @@
 # Plan Files
 
+Plan files are temporary, **unversioned** artifacts used during active work. The `tasks/` directory is gitignored - these files exist only on local machines during development. Once a task is completed, the entire task directory should be deleted. The work is captured in the codebase and git history, not in these files.
+
 ## Directory Structure
 
 Each task lives in its own directory under `<repo>/tasks/`:
@@ -55,3 +57,10 @@ Track work done chronologically:
 ### Next steps
 - What to do next
 ```
+
+## Lifecycle
+
+1. **Create**: When starting a new task, create the task directory with `plan.md`
+2. **Work**: Track progress in `worklog.md` as you work
+3. **Complete**: Once the task is done and merged, delete the entire task directory
+4. **Never reference**: Do not reference plan files from code, docs, or commit messages - they are ephemeral
