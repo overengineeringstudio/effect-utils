@@ -1,8 +1,8 @@
 import { Command } from '@effect/cli'
 import { Effect } from 'effect'
 
-import type { CheckTasksConfig, GenieCoverageConfig, OxcConfig } from '../tasks.ts'
-import { checkAllWithTaskSystem } from '../tasks.ts'
+import type { CheckTasksConfig, GenieCoverageConfig, OxcConfig } from '../tasks/mod.ts'
+import { checkAllWithTaskSystem } from '../tasks/mod.ts'
 
 /**
  * Create a check command using the task system.

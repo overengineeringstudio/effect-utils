@@ -98,7 +98,7 @@ export {
   // Composite
   allLintChecks,
   allLintFixes,
-} from './tasks.ts'
+} from './tasks/mod.ts'
 
 export type {
   GenieCoverageConfig,
@@ -108,7 +108,7 @@ export type {
   OxcConfig,
   TestConfig,
   TypeCheckConfig,
-} from './tasks.ts'
+} from './tasks/mod.ts'
 
 // =============================================================================
 // Commands

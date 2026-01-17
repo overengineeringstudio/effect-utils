@@ -5,8 +5,8 @@ import { Console, Effect } from 'effect'
 import type { CmdError } from '@overeng/utils/node'
 
 import { InstallError } from '../errors.ts'
-import type { InstallConfig } from '../tasks.ts'
-import { installAllWithTaskSystem } from '../tasks.ts'
+import type { InstallConfig } from '../tasks/mod.ts'
+import { installAllWithTaskSystem } from '../tasks/mod.ts'
 import { IS_CI } from '../utils.ts'
 
 const cleanOption = Options.boolean('clean').pipe(

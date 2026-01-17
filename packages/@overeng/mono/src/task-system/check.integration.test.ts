@@ -8,8 +8,8 @@ import { describe, it } from '@effect/vitest'
 import { Effect } from 'effect'
 import { expect } from 'vitest'
 
-import type { CheckTasksConfig } from '../tasks.ts'
-import { checkAllWithTaskSystem } from '../tasks.ts'
+import type { CheckTasksConfig } from '../tasks/mod.ts'
+import { checkAllWithTaskSystem } from '../tasks/mod.ts'
 
 // Test context helper to provide NodeContext layer
 const withTestCtx = <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, never> =>

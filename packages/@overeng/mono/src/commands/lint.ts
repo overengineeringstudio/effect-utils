@@ -1,8 +1,8 @@
 import { Command, Options } from '@effect/cli'
 import { Console, Effect } from 'effect'
 
-import type { GenieCoverageConfig, OxcConfig } from '../tasks.ts'
-import { allLintChecks, allLintFixes } from '../tasks.ts'
+import type { GenieCoverageConfig, OxcConfig } from '../tasks/mod.ts'
+import { allLintChecks, allLintFixes } from '../tasks/mod.ts'
 import { ciGroup, ciGroupEnd } from '../utils.ts'
 
 const fixOption = Options.boolean('fix').pipe(

@@ -1,8 +1,8 @@
 import { Command } from '@effect/cli'
 import { Console, Effect } from 'effect'
 
-import type { TypeCheckConfig } from '../tasks.ts'
-import { build } from '../tasks.ts'
+import type { TypeCheckConfig } from '../tasks/mod.ts'
+import { build } from '../tasks/mod.ts'
 import { ciGroup, ciGroupEnd } from '../utils.ts'
 
 /** Create a build command */

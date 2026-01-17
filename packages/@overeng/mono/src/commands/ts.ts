@@ -1,8 +1,8 @@
 import { Command, Options } from '@effect/cli'
 import { Console, Effect } from 'effect'
 
-import type { TypeCheckConfig } from '../tasks.ts'
-import { typeCheck, typeCheckClean, typeCheckWatch } from '../tasks.ts'
+import type { TypeCheckConfig } from '../tasks/mod.ts'
+import { typeCheck, typeCheckClean, typeCheckWatch } from '../tasks/mod.ts'
 import { ciGroup, ciGroupEnd } from '../utils.ts'
 
 const watchOption = Options.boolean('watch').pipe(
