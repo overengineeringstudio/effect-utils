@@ -23,8 +23,8 @@ OpenTUI's type exports use extensionless re-exports (e.g. `export * from "./rend
 <box flexDirection="column" padding={1} gap={1}>
   <text>Header</text>
   <box flexDirection="row">
-    <text>Left</text>
-    <text>Right</text>
+    <box width="50%"><text>Left</text></box>
+    <box flexGrow={1}><text>Right</text></box>
   </box>
 </box>
 ```
@@ -35,6 +35,8 @@ OpenTUI's type exports use extensionless re-exports (e.g. `export * from "./rend
 - `borderStyle`: "single" for box borders
 - `height`: explicit height in rows (crucial for filling space)
 
+**Important:** `<box flexDirection="row">` with multiple `<text>` children does NOT render them inline on the same line. Each `<text>` still renders on its own line. For side-by-side content, wrap each `<text>` in a `<box>` with width constraints. For multi-color text on a single line, use `StyledText` (see below).
+
 **Text styling:** Use inline elements for text formatting:
 
 ```tsx
@@ -44,6 +46,50 @@ OpenTUI's type exports use extensionless re-exports (e.g. `export * from "./rend
 ```
 
 Available: `<b>`, `<strong>`, `<i>`, `<em>`, `<u>`
+
+**Multi-color text on a single line:** Use `StyledText` with the `content` prop:
+
+```tsx
+// @ts-expect-error - StyledText exports exist at runtime but types aren't exposed
+import { t, green, yellow, bold, dim } from "@opentui/core"
+
+// Build styled text with multiple colors
+const styledText = t`${green("●")} ${bold("Hello")} ${dim("world")}`
+
+// Pass via content prop (NOT as children)
+<text content={styledText} />
+```
+
+Available style functions: `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white`, `bold`, `dim`, `italic`, `underline`, `strikethrough`, `bgRed`, `bgGreen`, etc.
+
+**Important:** Do NOT pass `StyledText` as children - it will error with "Objects are not valid as a React child". Always use the `content` prop.
+
+## Scrollable Content
+
+Use `<scrollbox>` for content that exceeds the viewport:
+
+```tsx
+<box flexDirection="column" height={terminalHeight}>
+  <text>Header (fixed)</text>
+
+  <scrollbox flexGrow={1} scrollY={true} scrollX={false}>
+    {/* Content taller than viewport will be scrollable */}
+    <box flexDirection="column">
+      {items.map(item => <text key={item.id}>{item.name}</text>)}
+    </box>
+  </scrollbox>
+
+  <text>Footer (fixed)</text>
+</box>
+```
+
+**Key props:**
+- `scrollY={true}` - Enable vertical scrolling
+- `scrollX={true}` - Enable horizontal scrolling  
+- `flexGrow={1}` - Fill available space
+- `stickyScroll={true}` - Auto-scroll to bottom when new content added
+
+Mouse wheel scrolling works automatically. No manual scroll handling needed.
 
 ## Terminal Dimensions
 

@@ -190,3 +190,16 @@ export const section = (label: string, content: string[], options?: SectionOptio
 
   return lines
 }
+
+// =============================================================================
+// Git Diff Component
+// =============================================================================
+
+export type GitDiffData = {
+  added: number
+  removed: number
+}
+
+/** Render a git diff summary (+N/-M format) */
+export const gitDiff = (diff: GitDiffData): string =>
+  `${styled.green(`+${diff.added}`)}${styled.dim('/')}${styled.red(`-${diff.removed}`)}`

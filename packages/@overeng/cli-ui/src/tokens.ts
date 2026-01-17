@@ -72,7 +72,10 @@ export const symbols = {
   cross: '✗',
   bullet: '●',
   circle: '○',
+  circleEmpty: '◌',
   dot: '·',
+  questionMark: '?',
+  exclamation: '!',
 
   // Arrows
   arrowRight: '→',

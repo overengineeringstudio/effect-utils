@@ -108,6 +108,14 @@ export const styled = {
   boldBlue: (text: string) => applyStyles([colors.bold, colors.blue], text),
   boldCyan: (text: string) => applyStyles([colors.bold, colors.cyan], text),
   boldMagenta: (text: string) => applyStyles([colors.bold, colors.magenta], text),
+
+  // Dim + color combinations (for subtle colored text)
+  dimRed: (text: string) => applyStyles([colors.dim, colors.red], text),
+  dimGreen: (text: string) => applyStyles([colors.dim, colors.green], text),
+  dimYellow: (text: string) => applyStyles([colors.dim, colors.yellow], text),
+  dimBlue: (text: string) => applyStyles([colors.dim, colors.blue], text),
+  dimCyan: (text: string) => applyStyles([colors.dim, colors.cyan], text),
+  dimMagenta: (text: string) => applyStyles([colors.dim, colors.magenta], text),
 } as const
 
 // =============================================================================
