@@ -450,6 +450,7 @@ export const installAllWithTaskSystem = Effect.fn('installAllWithTaskSystem')(fu
   }
 }) {
   const { config, options } = opts
+  const fs = yield* FileSystem.FileSystem
   const pathService = yield* Path.Path
   const cwd = process.env.WORKSPACE_ROOT ?? process.cwd()
 
@@ -459,6 +460,12 @@ export const installAllWithTaskSystem = Effect.fn('installAllWithTaskSystem')(fu
   if (total === 0) {
     return { results: [], total: 0 }
   }
+
+  // Create log directory for task output persistence
+  const logDir = pathService.join(cwd, 'tmp', 'install-logs')
+  yield* fs.makeDirectory(logDir, { recursive: true }).pipe(
+    Effect.catchAll(() => Effect.void), // Ignore if already exists
+  )
 
   // Create tasks for each package directory
   const tasks: TaskDef<string, unknown, unknown, unknown>[] = []
@@ -483,6 +490,10 @@ export const installAllWithTaskSystem = Effect.fn('installAllWithTaskSystem')(fu
       )
     }
 
+    // Log file path for task output persistence
+    const logFileName = relativePath.replace(/\//g, '-')
+    const logFile = pathService.join(logDir, `${logFileName}.log`)
+
     // Create install task (depends on clean task if present)
     tasks.push(
       task({
@@ -490,7 +501,8 @@ export const installAllWithTaskSystem = Effect.fn('installAllWithTaskSystem')(fu
         name: `Install ${relativePath}`,
         command: {
           cmd: 'bun',
-          args: ['install', ...(options?.frozenLockfile ? ['--frozen-lockfile'] : [])],
+          // TODO remove `--verbose` once we figured out the bun install hang bug (send logs to Jarred as we have a repro)
+          args: ['install', '--verbose', ...(options?.frozenLockfile ? ['--frozen-lockfile'] : [])],
           cwd: dir,
         },
         options: {
@@ -502,6 +514,8 @@ export const installAllWithTaskSystem = Effect.fn('installAllWithTaskSystem')(fu
           maxRetries: 3,
           // Install depends on clean if clean task exists
           ...(options?.clean ? { dependencies: [`clean:${taskId}`] } : {}),
+          // Persist output to log file for debugging
+          logFile,
         },
       }) as TaskDef<string, unknown, unknown, unknown>,
     )

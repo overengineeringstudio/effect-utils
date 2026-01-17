@@ -14,6 +14,7 @@
  * when 20+ task fibers competed to update shared state.
  */
 
+import { FileSystem } from '@effect/platform'
 import {
   Chunk,
   Deferred,
@@ -430,10 +431,26 @@ const executeTask = <TId extends string, A, E, R>({
 }: {
   task: TaskDef<TId, A, E, R>
   emit: (event: TaskEvent<TId>) => Effect.Effect<void>
-}): Effect.Effect<void, unknown, R> => {
+}): Effect.Effect<void, unknown, R | FileSystem.FileSystem> => {
   const executeOnce = Effect.gen(function* () {
+    const startTime = Date.now()
+
+    // Collect stdout/stderr for log file persistence
+    const stdoutChunks: string[] = []
+    const stderrChunks: string[] = []
+
+    // Wrapper emit that captures stdout/stderr for log file
+    const emitWithCapture = (event: TaskEvent<TId>) => {
+      if (event.type === 'stdout') {
+        stdoutChunks.push(event.chunk)
+      } else if (event.type === 'stderr') {
+        stderrChunks.push(event.chunk)
+      }
+      return emit(event)
+    }
+
     // Emit started event
-    yield* emit({ type: 'started', taskId: task.id, timestamp: Date.now() })
+    yield* emit({ type: 'started', taskId: task.id, timestamp: startTime })
 
     // For command tasks (no effect), just run the stream directly
     // For effect tasks, fork the stream and run effect separately
@@ -442,7 +459,7 @@ const executeTask = <TId extends string, A, E, R>({
     if (task.effect) {
       // Effect task: fork stream and run effect
       const eventStreamFiber = yield* task.eventStream().pipe(
-        Stream.runForEach((event) => emit(event)),
+        Stream.runForEach((event) => emitWithCapture(event)),
         Effect.fork,
       )
 
@@ -454,7 +471,7 @@ const executeTask = <TId extends string, A, E, R>({
       exit = yield* task.eventStream().pipe(
         Stream.runForEach((event) => {
           if (event !== undefined) {
-            return emit(event)
+            return emitWithCapture(event)
           }
           return Effect.void
         }),
@@ -462,14 +479,41 @@ const executeTask = <TId extends string, A, E, R>({
       )
     }
 
+    const endTime = Date.now()
+
     // Emit completed event with commandContext if present
     yield* emit({
       type: 'completed',
       taskId: task.id,
-      timestamp: Date.now(),
+      timestamp: endTime,
       exit,
       ...(task.commandContext !== undefined ? { commandContext: task.commandContext } : {}),
     })
+
+    // Write log file if configured
+    if (task.logFile) {
+      const fs = yield* FileSystem.FileSystem
+      const status = Exit.isSuccess(exit) ? 'success' : 'failed'
+      const durationMs = endTime - startTime
+      const durationSec = (durationMs / 1000).toFixed(1)
+
+      const logContent = [
+        `# Task: ${task.name}`,
+        `# Status: ${status}`,
+        `# Duration: ${durationSec}s`,
+        `# Started: ${new Date(startTime).toISOString()}`,
+        '',
+        '--- stdout ---',
+        stdoutChunks.join(''),
+        '',
+        '--- stderr ---',
+        stderrChunks.join(''),
+      ].join('\n')
+
+      yield* fs.writeFileString(task.logFile, logContent).pipe(
+        Effect.catchAll((error) => Effect.logWarning(`Failed to write log file ${task.logFile}: ${error}`)),
+      )
+    }
 
     return exit
   })
@@ -478,7 +522,7 @@ const executeTask = <TId extends string, A, E, R>({
    * Custom retry wrapper that emits retry events.
    * Effect.retry doesn't give us hooks to emit events, so we implement manual retry loop.
    */
-  const executeWithRetry = (attempt: number): Effect.Effect<void, unknown, R> =>
+  const executeWithRetry = (attempt: number): Effect.Effect<void, unknown, R | FileSystem.FileSystem> =>
     Effect.gen(function* () {
       const exit = yield* Effect.exit(executeOnce)
 
@@ -555,7 +599,7 @@ export const runTaskGraph = <TId extends string, R = never>({
     failedTaskIds: TId[]
   },
   Error,
-  R
+  R | FileSystem.FileSystem
 > => {
   const impl = Effect.gen(function* () {
     // Build dependency graph
@@ -731,7 +775,7 @@ export const runTaskGraph = <TId extends string, R = never>({
       failedTaskIds: TId[]
     },
     Error,
-    R
+    R | FileSystem.FileSystem
   >
 }
 
@@ -759,7 +803,7 @@ export const runTaskGraphOrFail = <R = never>({
     failedTaskIds: string[]
   },
   Error | TaskExecutionError,
-  R
+  R | FileSystem.FileSystem
 > =>
   Effect.gen(function* () {
     const result = yield* runTaskGraph({ tasks, options })

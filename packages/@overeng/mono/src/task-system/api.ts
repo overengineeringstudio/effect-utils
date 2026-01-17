@@ -45,7 +45,10 @@ export function task<TId extends string>(args: {
   options?: {
     dependencies?: ReadonlyArray<TId>
     retrySchedule?: Schedule.Schedule<unknown, unknown, never>
+    // TODO get rid of this as it's already covered by retrySchedule
     maxRetries?: number
+    /** Path to log file for persisting task output after completion */
+    logFile?: string
   }
 }): TaskDef<TId, void, CommandError | PlatformError, CommandExecutor>
 
@@ -70,7 +73,10 @@ export function task<TId extends string, A, E, R>(args: {
   options?: {
     dependencies?: ReadonlyArray<TId>
     retrySchedule?: Schedule.Schedule<unknown, unknown, never>
+    // TODO get rid of this as it's already covered by retrySchedule
     maxRetries?: number
+    /** Path to log file for persisting task output after completion */
+    logFile?: string
   }
 }): TaskDef<TId, A, E, R>
 
@@ -96,6 +102,7 @@ export function task<TId extends string, A, E, R>({
     dependencies?: ReadonlyArray<TId>
     retrySchedule?: Schedule.Schedule<unknown, unknown, never>
     maxRetries?: number
+    logFile?: string
   }
 }): TaskDef<TId, A, E, R> | TaskDef<TId, void, CommandError | PlatformError, CommandExecutor> {
   const commandOrEffect = command ?? effect!
@@ -116,6 +123,7 @@ export function task<TId extends string, A, E, R>({
       ...(options?.dependencies !== undefined ? { dependencies: options.dependencies } : {}),
       ...(options?.retrySchedule !== undefined ? { retrySchedule: options.retrySchedule } : {}),
       ...(options?.maxRetries !== undefined ? { maxRetries: options.maxRetries } : {}),
+      ...(options?.logFile !== undefined ? { logFile: options.logFile } : {}),
     }
     return taskDef
   }
@@ -129,6 +137,7 @@ export function task<TId extends string, A, E, R>({
     ...(options?.dependencies !== undefined ? { dependencies: options.dependencies } : {}),
     ...(options?.retrySchedule !== undefined ? { retrySchedule: options.retrySchedule } : {}),
     ...(options?.maxRetries !== undefined ? { maxRetries: options.maxRetries } : {}),
+    ...(options?.logFile !== undefined ? { logFile: options.logFile } : {}),
   }
   return taskDef
 }

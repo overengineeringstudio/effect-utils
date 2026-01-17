@@ -37,6 +37,8 @@ export interface TaskDef<TId extends string, A, E, R> {
     readonly args: readonly string[]
     readonly cwd: string
   }
+  /** Path to log file for persisting task output (stdout/stderr) after completion */
+  readonly logFile?: string
 }
 
 // =============================================================================
