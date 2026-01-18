@@ -37,6 +37,7 @@ import {
   type SyncDiff,
   type RepoToClone,
   type RepoToCheckout,
+  type RepoIssue,
   type PackageToAdd,
   type PackageToRemove,
   type PackageWithInstall,

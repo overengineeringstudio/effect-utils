@@ -9,6 +9,7 @@ import { FetchHttpClient, FileSystem } from '@effect/platform'
 import { Console, Effect, Layer, Option, Redacted, Schema } from 'effect'
 
 import { NotionConfig, NotionDatabases } from '@overeng/notion-effect-client'
+import { EffectPath } from '@overeng/effect-path'
 
 import { type GenerateOptions, generateApiCode, generateSchemaCode } from '../../codegen.ts'
 import { loadConfig } from '../../config.ts'
@@ -240,7 +241,11 @@ const generateCommand = Command.make(
           }
         } else {
           yield* Console.log(`Writing to ${output}...`)
-          yield* writeSchemaToFile({ code, outputPath: output, writable })
+          yield* writeSchemaToFile({
+            code,
+            outputPath: EffectPath.unsafe.absoluteFile(output),
+            writable,
+          })
           yield* Console.log(`Done${writable ? '' : ' (read-only)'}`)
 
           if (includeApi) {
@@ -249,7 +254,11 @@ const generateCommand = Command.make(
             const apiOutput = output.replace(/\.ts$/, '.api.ts')
 
             yield* Console.log(`Writing API to ${apiOutput}...`)
-            yield* writeSchemaToFile({ code: apiCode, outputPath: apiOutput, writable })
+            yield* writeSchemaToFile({
+              code: apiCode,
+              outputPath: EffectPath.unsafe.absoluteFile(apiOutput),
+              writable,
+            })
             yield* Console.log(`Done${writable ? '' : ' (read-only)'}`)
           }
         }
@@ -402,7 +411,11 @@ const generateFromConfigCommand = Command.make(
             }
           } else {
             yield* Console.log(`Writing to ${dbConfig.output}...`)
-            yield* writeSchemaToFile({ code, outputPath: dbConfig.output, writable })
+            yield* writeSchemaToFile({
+              code,
+              outputPath: EffectPath.unsafe.absoluteFile(dbConfig.output),
+              writable,
+            })
             yield* Console.log(`Done${writable ? '' : ' (read-only)'}`)
 
             if (generateOptions.includeApi) {
@@ -411,7 +424,11 @@ const generateFromConfigCommand = Command.make(
               const apiOutput = dbConfig.output.replace(/\.ts$/, '.api.ts')
 
               yield* Console.log(`Writing API to ${apiOutput}...`)
-              yield* writeSchemaToFile({ code: apiCode, outputPath: apiOutput, writable })
+              yield* writeSchemaToFile({
+                code: apiCode,
+                outputPath: EffectPath.unsafe.absoluteFile(apiOutput),
+                writable,
+              })
               yield* Console.log(`Done${writable ? '' : ' (read-only)'}`)
             }
           }

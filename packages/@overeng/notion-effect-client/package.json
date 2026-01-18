@@ -19,7 +19,7 @@
     "@overeng/notion-effect-schema": "file:../notion-effect-schema"
   },
   "devDependencies": {
-    "@effect/language-service": "0.67.0",
+    "@effect/language-service": "0.69.1",
     "@effect/platform": "0.94.1",
     "@effect/vitest": "0.27.0",
     "@overeng/utils": "file:../utils",
