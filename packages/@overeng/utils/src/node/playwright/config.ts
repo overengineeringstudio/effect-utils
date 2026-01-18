@@ -146,7 +146,7 @@ export const createPlaywrightConfig = async (
   const url = `http://127.0.0.1:${port}`
   const resolvedCommand = command.replace(/\{\{port\}\}/g, String(port))
 
-  const config: PlaywrightTestConfig = {
+  const config: PlaywrightTest.PlaywrightTestConfig = {
     testDir,
     testMatch,
     testIgnore,

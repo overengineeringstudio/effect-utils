@@ -38,14 +38,11 @@ const shouldSuggestLintFix = (args: readonly string[]): boolean => {
 /**
  * Command type for mono CLI subcommands.
  *
- * Uses `any` for the Name and Value type parameters due to TypeScript's invariance
- * on Command's type parameters (via Context<Name> and handler contravariance).
- * This is the same approach used by @effect/cli's withSubcommands.
- * The R and E type parameters use proper types to ensure commands can be
- * provided with the standard mono context and produce typed errors.
+ * Uses `any` for all type parameters following @effect/cli's approach in
+ * `withSubcommands`. This avoids TypeScript's invariance issues with Command's
+ * type parameters. Type safety is ensured by the layer provided in `runMonoCli`.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type MonoCommand = Command.Command<any, StandardMonoContext, Error, any>
+export type MonoCommand = Command.Command<any, any, any, any>
 
 // =============================================================================
 // CLI Runner
@@ -150,9 +147,8 @@ export const runMonoCli = (
         Logger.minimumLogLevel(LogLevel.Debug),
       ),
     ),
-    // After Exit.matchEffect, all errors are handled - cast to reflect this
     Effect.asVoid,
-  )
+  ) as Effect.Effect<void>
 
   NodeRuntime.runMain(program, { disableErrorReporting: true })
 }

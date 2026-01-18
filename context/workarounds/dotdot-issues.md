@@ -1,5 +1,9 @@
 # Dotdot Issues
 
+## Rethink `WORKSPACE_ROOT` env var concept
+
+## Can we make dotdot optional e.g. for livestore to improve contributor experience?
+
 ## Playwright duplicate loads in dotdot setups
 
 See `context/workarounds/playwright-duplicate-loading.md` for the detailed investigation, constraints, and solution options.
