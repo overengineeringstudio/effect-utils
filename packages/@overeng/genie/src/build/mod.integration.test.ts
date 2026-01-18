@@ -61,108 +61,120 @@ const decodeChunks = (chunks: Chunk.Chunk<Uint8Array>): string => {
 }
 
 const runGenie = (env: TestEnv, args: ReadonlyArray<string>) =>
-  Effect.scoped(
-    Effect.fnUntraced(function* () {
-      const cliPath = new URL('./mod.ts', import.meta.url).pathname
-      const command = Command.make('bun', cliPath, '--cwd', env.root, ...args).pipe(
-        Command.workingDirectory(env.root),
-        Command.stdout('pipe'),
-        Command.stderr('pipe'),
-      )
+  Effect.gen(function* () {
+    const cliPath = new URL('./mod.ts', import.meta.url).pathname
+    const command = Command.make('bun', cliPath, '--cwd', env.root, ...args).pipe(
+      Command.workingDirectory(env.root),
+      Command.stdout('pipe'),
+      Command.stderr('pipe'),
+    )
 
-      const process = yield* Command.start(command)
-      const [stdoutChunks, stderrChunks, exitCode] = yield* Effect.all([
-        Stream.runCollect(process.stdout),
-        Stream.runCollect(process.stderr),
-        process.exitCode,
-      ])
+    const process = yield* Command.start(command)
+    const [stdoutChunks, stderrChunks, exitCode] = yield* Effect.all([
+      Stream.runCollect(process.stdout),
+      Stream.runCollect(process.stderr),
+      process.exitCode,
+    ])
 
-      return {
-        stdout: decodeChunks(stdoutChunks),
-        stderr: decodeChunks(stderrChunks),
-        exitCode,
-      }
-    })(),
-  )
+    return {
+      stdout: decodeChunks(stdoutChunks),
+      stderr: decodeChunks(stderrChunks),
+      exitCode,
+    }
+  }).pipe(Effect.scoped)
 
 describe('genie cli', () => {
   const withTestEnv = <A, E, R>(fn: (env: TestEnv) => Effect.Effect<A, E, R>) =>
-    Effect.fnUntraced(function* () {
+    Effect.gen(function* () {
       const env = yield* createTestEnv()
       try {
         return yield* fn(env)
       } finally {
         yield* env.cleanup()
       }
-    })()
+    })
 
-  it.effect('reports import errors with clear error message', () =>
-    withTestEnv((env) =>
-      Effect.fnUntraced(function* () {
-        yield* env.writeFile({
-          path: 'package.json',
-          content: Schema.encodeSync(Schema.parseJson(Schema.Unknown, { space: 2 }))(
-            { name: 'genie-cli-test', private: true },
-          ),
-        })
+  it.effect(
+    'reports import errors with clear error message',
+    Effect.fnUntraced(
+      function* () {
+        yield* withTestEnv((env) =>
+          Effect.gen(function* () {
+            yield* env.writeFile({
+              path: 'package.json',
+              content: Schema.encodeSync(Schema.parseJson(Schema.Unknown, { space: 2 }))(
+                { name: 'genie-cli-test', private: true },
+              ),
+            })
 
-        yield* env.writeFile({
-          path: 'genie/repo.ts',
-          content: `export const pkg = {
+            yield* env.writeFile({
+              path: 'genie/repo.ts',
+              content: `export const pkg = {
   root: (config: unknown) => JSON.stringify(config),
 }
 `,
-        })
+            })
 
-        /** Simulate a TDZ-style error (ReferenceError) in the genie file */
-        yield* env.writeFile({
-          path: 'package.json.genie.ts',
-          content: `import { pkg } from './genie/repo.ts'
+            /** Simulate a TDZ-style error (ReferenceError) in the genie file */
+            yield* env.writeFile({
+              path: 'package.json.genie.ts',
+              content: `import { pkg } from './genie/repo.ts'
 
 throw new ReferenceError('Cannot access \\'pkg\\' before initialization')
 
 export default pkg.root({ name: 'genie-cli-test' })
 `,
-        })
+            })
 
-        const { stdout, stderr, exitCode } = yield* runGenie(env, ['--check'])
-        const output = `${stdout}\n${stderr}`
+            const { stdout, stderr, exitCode } = yield* runGenie(env, ['--check'])
+            const output = `${stdout}\n${stderr}`
 
-        expect(exitCode).not.toBe(0)
-        expect(output).toContain('GenieImportError')
-        expect(output).toContain('package.json.genie.ts')
-        expect(output).toContain('Cannot access')
-      })(),
-    ).pipe(Effect.provide(TestLayer), Effect.scoped),
+            expect(exitCode).not.toBe(0)
+            expect(output).toContain('GenieImportError')
+            expect(output).toContain('package.json.genie.ts')
+            expect(output).toContain('Cannot access')
+          }),
+        )
+      },
+      Effect.provide(TestLayer),
+      Effect.scoped,
+    ),
   )
 
-  it.effect('skips symlinked directories that resolve inside the root', () =>
-    withTestEnv((env) =>
-      Effect.fnUntraced(function* () {
-        /**
-         * The symlink points back into the same root; we should only process the
-         * canonical target once to avoid duplicate generation via the symlinked path.
-         */
-        yield* env.writeFile({
-          path: 'canonical/package.json.genie.ts',
-          content: `export default {
+  it.effect(
+    'skips symlinked directories that resolve inside the root',
+    Effect.fnUntraced(
+      function* () {
+        yield* withTestEnv((env) =>
+          Effect.gen(function* () {
+            /**
+             * The symlink points back into the same root; we should only process the
+             * canonical target once to avoid duplicate generation via the symlinked path.
+             */
+            yield* env.writeFile({
+              path: 'canonical/package.json.genie.ts',
+              content: `export default {
   data: { name: 'genie-cli-test', private: true },
   stringify: () => JSON.stringify({ name: 'genie-cli-test', private: true }),
 }`,
-        })
+            })
 
-        yield* env.symlink({ target: 'canonical', path: 'link' })
+            yield* env.symlink({ target: 'canonical', path: 'link' })
 
-        const { stdout, stderr, exitCode } = yield* runGenie(env, ['--dry-run'])
-        const output = `${stdout}\n${stderr}`
-        const canonicalOutput = nodePath.join(env.root, 'canonical', 'package.json')
-        const linkOutput = nodePath.join(env.root, 'link', 'package.json')
+            const { stdout, stderr, exitCode } = yield* runGenie(env, ['--dry-run'])
+            const output = `${stdout}\n${stderr}`
+            const canonicalOutput = nodePath.join(env.root, 'canonical', 'package.json')
+            const linkOutput = nodePath.join(env.root, 'link', 'package.json')
 
-        expect(exitCode).toBe(0)
-        expect(output).toContain('Summary: 1 files processed')
-        expect(output).toContain(canonicalOutput)
-        expect(output).not.toContain(linkOutput)
-      })(),
-    ).pipe(Effect.provide(TestLayer), Effect.scoped),
+            expect(exitCode).toBe(0)
+            expect(output).toContain('Summary: 1 files processed')
+            expect(output).toContain(canonicalOutput)
+            expect(output).not.toContain(linkOutput)
+          }),
+        )
+      },
+      Effect.provide(TestLayer),
+      Effect.scoped,
+    ),
   )
 })

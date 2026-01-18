@@ -15,7 +15,7 @@ In dotdot, this is complicated by symlinked peer repos: Node resolves modules fr
 - Dotdot links peer repos via `file:` into the consumer’s `node_modules`, but Node resolution follows the real path of the symlink target.
 - If the peer repo does not have `node_modules`, runtime deps like `effect` fail to resolve when the Playwright config imports shared code.
 - Adding `node_modules` to the peer repo fixes runtime deps but also installs `@playwright/test`, creating a second physical Playwright copy and triggering the duplicate-load error.
-- The `playwrightTest` pass-through approach is correct, but it only works if the linked package does not install its own `@playwright/test`.
+- The earlier `playwrightTest` pass-through approach proved insufficient in dotdot because the linked repo still needs its own runtime deps, which forces a second physical Playwright install.
 
 ## Constraints
 

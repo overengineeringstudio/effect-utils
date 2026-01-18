@@ -367,12 +367,9 @@ export default defineConfig({
 For browser tests (`.pw.test.ts`), use `createPlaywrightConfig`:
 
 ```typescript
-import * as playwrightTest from '@playwright/test'
-
 import { createPlaywrightConfig } from '@overeng/utils/node/playwright'
 
 export default createPlaywrightConfig({
-  playwrightTest,
   testDir: './src',
   testMatch: '**/*.pw.test.ts',
   webServer: {

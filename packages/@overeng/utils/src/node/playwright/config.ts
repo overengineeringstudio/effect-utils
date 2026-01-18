@@ -6,7 +6,7 @@
 
 import { createServer } from 'node:net'
 
-import type * as PlaywrightTest from '@playwright/test'
+import { defineConfig, devices, type PlaywrightTestConfig } from '@playwright/test'
 
 import { shouldNeverHappen } from '../../isomorphic/mod.ts'
 /** Web server configuration for Vite. */
@@ -29,23 +29,6 @@ export interface WebServerConfig {
 
 /** Options for creating a Playwright test configuration. */
 export interface PlaywrightConfigOptions {
-  /**
-   * Playwright module import from the consumer.
-   *
-   * This must be passed as a wildcard import (for example:
-   * `import * as playwrightTest from '@playwright/test'`) so the config uses the
-   * consumer's single Playwright instance. When `@playwright/test` is imported
-   * from both a shared package and the consumer, Playwright throws
-   * `Error: Requiring @playwright/test second time` because it detects multiple
-   * physical installs. Passing the consumer import prevents the duplicate load.
-   *
-   * References:
-   * - https://github.com/microsoft/playwright/issues/15819
-   * - https://github.com/microsoft/playwright/issues/31478
-   * - https://github.com/oven-sh/bun/issues/3835
-   */
-  playwrightTest: typeof PlaywrightTest
-
   /** Test directory (e.g. './src/browser/__tests__') */
   testDir: string
 
@@ -90,10 +73,7 @@ const findAvailablePort = (): Promise<number> =>
  * // playwright.config.ts
  * import { createPlaywrightConfig } from '@overeng/utils/node/playwright'
  *
- * import * as playwrightTest from '@playwright/test'
- *
  * export default createPlaywrightConfig({
- *   playwrightTest,
  *   testDir: './src/browser/__tests__',
  *   webServer: {
  *     command:
@@ -104,9 +84,7 @@ const findAvailablePort = (): Promise<number> =>
  */
 export const createPlaywrightConfig = async (
   options: PlaywrightConfigOptions,
-): Promise<PlaywrightTest.PlaywrightTestConfig> => {
-  const { playwrightTest } = options
-  const { defineConfig, devices } = playwrightTest
+): Promise<PlaywrightTestConfig> => {
   const {
     testDir,
     testMatch = '**/*.pw.test.ts',

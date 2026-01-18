@@ -65,167 +65,211 @@ describe('import-map', () => {
   })
 
   describe('findNearestPackageJson', () => {
-    it.effect('finds package.json in the same directory', () =>
-      Effect.gen(function* () {
-        const packageJsonPath = path.join(tempDir, 'package.json')
-        yield* writeFile(packageJsonPath, '{}')
-        const filePath = path.join(tempDir, 'src', 'file.ts')
-        yield* writeFile(filePath, '')
+    it.effect(
+      'finds package.json in the same directory',
+      Effect.fnUntraced(
+        function* () {
+          const packageJsonPath = path.join(tempDir, 'package.json')
+          yield* writeFile(packageJsonPath, '{}')
+          const filePath = path.join(tempDir, 'src', 'file.ts')
+          yield* writeFile(filePath, '')
 
-        const result = yield* findNearestPackageJson(filePath)
-        expect(Option.getOrNull(result)).toBe(packageJsonPath)
-      }).pipe(Effect.provide(TestLayer)),
+          const result = yield* findNearestPackageJson(filePath)
+          expect(Option.getOrNull(result)).toBe(packageJsonPath)
+        },
+        Effect.provide(TestLayer),
+      ),
     )
 
-    it.effect('finds package.json in parent directory', () =>
-      Effect.gen(function* () {
-        const packageJsonPath = path.join(tempDir, 'package.json')
-        yield* writeFile(packageJsonPath, '{}')
-        const filePath = path.join(tempDir, 'src', 'deep', 'nested', 'file.ts')
-        yield* writeFile(filePath, '')
+    it.effect(
+      'finds package.json in parent directory',
+      Effect.fnUntraced(
+        function* () {
+          const packageJsonPath = path.join(tempDir, 'package.json')
+          yield* writeFile(packageJsonPath, '{}')
+          const filePath = path.join(tempDir, 'src', 'deep', 'nested', 'file.ts')
+          yield* writeFile(filePath, '')
 
-        const result = yield* findNearestPackageJson(filePath)
-        expect(Option.getOrNull(result)).toBe(packageJsonPath)
-      }).pipe(Effect.provide(TestLayer)),
+          const result = yield* findNearestPackageJson(filePath)
+          expect(Option.getOrNull(result)).toBe(packageJsonPath)
+        },
+        Effect.provide(TestLayer),
+      ),
     )
 
-    it.effect('finds nearest package.json when multiple exist', () =>
-      Effect.gen(function* () {
-        // Root package.json
-        yield* writeFile(path.join(tempDir, 'package.json'), '{"name": "root"}')
-        // Nested package.json
-        const nestedDir = path.join(tempDir, 'packages', 'sub')
-        const nestedPackageJson = path.join(nestedDir, 'package.json')
-        yield* writeFile(nestedPackageJson, '{"name": "sub"}')
-        // File in nested package
-        const filePath = path.join(nestedDir, 'src', 'file.ts')
-        yield* writeFile(filePath, '')
+    it.effect(
+      'finds nearest package.json when multiple exist',
+      Effect.fnUntraced(
+        function* () {
+          // Root package.json
+          yield* writeFile(path.join(tempDir, 'package.json'), '{"name": "root"}')
+          // Nested package.json
+          const nestedDir = path.join(tempDir, 'packages', 'sub')
+          const nestedPackageJson = path.join(nestedDir, 'package.json')
+          yield* writeFile(nestedPackageJson, '{"name": "sub"}')
+          // File in nested package
+          const filePath = path.join(nestedDir, 'src', 'file.ts')
+          yield* writeFile(filePath, '')
 
-        const result = yield* findNearestPackageJson(filePath)
-        expect(Option.getOrNull(result)).toBe(nestedPackageJson)
-      }).pipe(Effect.provide(TestLayer)),
+          const result = yield* findNearestPackageJson(filePath)
+          expect(Option.getOrNull(result)).toBe(nestedPackageJson)
+        },
+        Effect.provide(TestLayer),
+      ),
     )
 
-    it.effect('returns None when no package.json exists', () =>
-      Effect.gen(function* () {
-        const filePath = path.join(tempDir, 'src', 'file.ts')
-        yield* writeFile(filePath, '')
+    it.effect(
+      'returns None when no package.json exists',
+      Effect.fnUntraced(
+        function* () {
+          const filePath = path.join(tempDir, 'src', 'file.ts')
+          yield* writeFile(filePath, '')
 
-        const result = yield* findNearestPackageJson(filePath)
-        expect(Option.isNone(result)).toBe(true)
-      }).pipe(Effect.provide(TestLayer)),
+          const result = yield* findNearestPackageJson(filePath)
+          expect(Option.isNone(result)).toBe(true)
+        },
+        Effect.provide(TestLayer),
+      ),
     )
   })
 
   describe('findPackageJsonWithImports', () => {
-    it.effect('finds package.json with imports field', () =>
-      Effect.gen(function* () {
-        const packageJsonPath = path.join(tempDir, 'package.json')
-        yield* writeFile(
-          packageJsonPath,
-          toJson({
-            name: 'test',
-            imports: { '#lib/*': './src/lib/*' },
-          }),
-        )
-        const filePath = path.join(tempDir, 'src', 'file.ts')
-        yield* writeFile(filePath, '')
+    it.effect(
+      'finds package.json with imports field',
+      Effect.fnUntraced(
+        function* () {
+          const packageJsonPath = path.join(tempDir, 'package.json')
+          yield* writeFile(
+            packageJsonPath,
+            toJson({
+              name: 'test',
+              imports: { '#lib/*': './src/lib/*' },
+            }),
+          )
+          const filePath = path.join(tempDir, 'src', 'file.ts')
+          yield* writeFile(filePath, '')
 
-        const result = yield* findPackageJsonWithImports(filePath)
-        expect(Option.getOrNull(result)).toBe(packageJsonPath)
-      }).pipe(Effect.provide(TestLayer)),
+          const result = yield* findPackageJsonWithImports(filePath)
+          expect(Option.getOrNull(result)).toBe(packageJsonPath)
+        },
+        Effect.provide(TestLayer),
+      ),
     )
 
-    it.effect('skips package.json without imports and finds one with imports', () =>
-      Effect.gen(function* () {
-        // Root package.json with imports
-        const rootPackageJson = path.join(tempDir, 'package.json')
-        yield* writeFile(
-          rootPackageJson,
-          toJson({
-            name: 'root',
-            imports: { '#genie/*': './lib/*' },
-          }),
-        )
-        // Nested package.json without imports
-        const nestedDir = path.join(tempDir, 'packages', 'sub')
-        yield* writeFile(path.join(nestedDir, 'package.json'), '{"name": "sub"}')
-        // File in nested package
-        const filePath = path.join(nestedDir, 'src', 'file.ts')
-        yield* writeFile(filePath, '')
+    it.effect(
+      'skips package.json without imports and finds one with imports',
+      Effect.fnUntraced(
+        function* () {
+          // Root package.json with imports
+          const rootPackageJson = path.join(tempDir, 'package.json')
+          yield* writeFile(
+            rootPackageJson,
+            toJson({
+              name: 'root',
+              imports: { '#genie/*': './lib/*' },
+            }),
+          )
+          // Nested package.json without imports
+          const nestedDir = path.join(tempDir, 'packages', 'sub')
+          yield* writeFile(path.join(nestedDir, 'package.json'), '{"name": "sub"}')
+          // File in nested package
+          const filePath = path.join(nestedDir, 'src', 'file.ts')
+          yield* writeFile(filePath, '')
 
-        const result = yield* findPackageJsonWithImports(filePath)
-        expect(Option.getOrNull(result)).toBe(rootPackageJson)
-      }).pipe(Effect.provide(TestLayer)),
+          const result = yield* findPackageJsonWithImports(filePath)
+          expect(Option.getOrNull(result)).toBe(rootPackageJson)
+        },
+        Effect.provide(TestLayer),
+      ),
     )
 
-    it.effect('returns None when no package.json with imports exists', () =>
-      Effect.gen(function* () {
-        // Package.json without imports
-        yield* writeFile(path.join(tempDir, 'package.json'), '{"name": "test"}')
-        const filePath = path.join(tempDir, 'src', 'file.ts')
-        yield* writeFile(filePath, '')
+    it.effect(
+      'returns None when no package.json with imports exists',
+      Effect.fnUntraced(
+        function* () {
+          // Package.json without imports
+          yield* writeFile(path.join(tempDir, 'package.json'), '{"name": "test"}')
+          const filePath = path.join(tempDir, 'src', 'file.ts')
+          yield* writeFile(filePath, '')
 
-        const result = yield* findPackageJsonWithImports(filePath)
-        expect(Option.isNone(result)).toBe(true)
-      }).pipe(Effect.provide(TestLayer)),
+          const result = yield* findPackageJsonWithImports(filePath)
+          expect(Option.isNone(result)).toBe(true)
+        },
+        Effect.provide(TestLayer),
+      ),
     )
   })
 
   describe('extractImportMap', () => {
-    it.effect('extracts imports field from package.json', () =>
-      Effect.gen(function* () {
-        const packageJsonPath = path.join(tempDir, 'package.json')
-        yield* writeFile(
-          packageJsonPath,
-          toJson({
-            name: 'test',
-            imports: {
-              '#lib/*': './src/lib/*',
-              '#utils': './src/utils/mod.ts',
-            },
-          }),
-        )
+    it.effect(
+      'extracts imports field from package.json',
+      Effect.fnUntraced(
+        function* () {
+          const packageJsonPath = path.join(tempDir, 'package.json')
+          yield* writeFile(
+            packageJsonPath,
+            toJson({
+              name: 'test',
+              imports: {
+                '#lib/*': './src/lib/*',
+                '#utils': './src/utils/mod.ts',
+              },
+            }),
+          )
 
-        const result = yield* extractImportMap(packageJsonPath)
-        expect(result).toEqual({
-          '#lib/*': './src/lib/*',
-          '#utils': './src/utils/mod.ts',
-        })
-      }).pipe(Effect.provide(TestLayer)),
+          const result = yield* extractImportMap(packageJsonPath)
+          expect(result).toEqual({
+            '#lib/*': './src/lib/*',
+            '#utils': './src/utils/mod.ts',
+          })
+        },
+        Effect.provide(TestLayer),
+      ),
     )
 
-    it.effect('returns empty object when imports field is missing', () =>
-      Effect.gen(function* () {
-        const packageJsonPath = path.join(tempDir, 'package.json')
-        yield* writeFile(packageJsonPath, toJson({ name: 'test' }))
+    it.effect(
+      'returns empty object when imports field is missing',
+      Effect.fnUntraced(
+        function* () {
+          const packageJsonPath = path.join(tempDir, 'package.json')
+          yield* writeFile(packageJsonPath, toJson({ name: 'test' }))
 
-        const result = yield* extractImportMap(packageJsonPath)
-        expect(result).toEqual({})
-      }).pipe(Effect.provide(TestLayer)),
+          const result = yield* extractImportMap(packageJsonPath)
+          expect(result).toEqual({})
+        },
+        Effect.provide(TestLayer),
+      ),
     )
 
-    it.effect('returns empty object when file does not exist', () =>
-      Effect.gen(function* () {
-        const result = yield* extractImportMap(path.join(tempDir, 'nonexistent.json'))
-        expect(result).toEqual({})
-      }).pipe(Effect.provide(TestLayer)),
+    it.effect(
+      'returns empty object when file does not exist',
+      Effect.fnUntraced(
+        function* () {
+          const result = yield* extractImportMap(path.join(tempDir, 'nonexistent.json'))
+          expect(result).toEqual({})
+        },
+        Effect.provide(TestLayer),
+      ),
     )
 
-    it.effect('returns empty object when file is invalid JSON', () =>
-      Effect.gen(function* () {
-        const packageJsonPath = path.join(tempDir, 'package.json')
-        yield* writeFile(packageJsonPath, 'not valid json')
+    it.effect(
+      'returns empty object when file is invalid JSON',
+      Effect.fnUntraced(
+        function* () {
+          const packageJsonPath = path.join(tempDir, 'package.json')
+          yield* writeFile(packageJsonPath, 'not valid json')
 
-        const result = yield* extractImportMap(packageJsonPath)
-        expect(result).toEqual({})
-      }).pipe(Effect.provide(TestLayer)),
+          const result = yield* extractImportMap(packageJsonPath)
+          expect(result).toEqual({})
+        },
+        Effect.provide(TestLayer),
+      ),
     )
 
     it.effect(
       'extracts imports from package.json.genie.ts when package.json has no imports (bootstrap)',
-      () =>
-        Effect.gen(function* () {
+      Effect.fnUntraced(
+        function* () {
           const packageJsonPath = path.join(tempDir, 'package.json')
           const genieSourcePath = path.join(tempDir, 'package.json.genie.ts')
 
@@ -250,29 +294,35 @@ export default workspaceRoot({
           expect(result).toEqual({
             '#genie/*': './submodules/effect-utils/packages/@overeng/genie/src/runtime/*',
           })
-        }).pipe(Effect.provide(TestLayer)),
+        },
+        Effect.provide(TestLayer),
+      ),
     )
 
-    it.effect('prefers package.json imports over genie source', () =>
-      Effect.gen(function* () {
-        const packageJsonPath = path.join(tempDir, 'package.json')
-        const genieSourcePath = path.join(tempDir, 'package.json.genie.ts')
+    it.effect(
+      'prefers package.json imports over genie source',
+      Effect.fnUntraced(
+        function* () {
+          const packageJsonPath = path.join(tempDir, 'package.json')
+          const genieSourcePath = path.join(tempDir, 'package.json.genie.ts')
 
-        // package.json has imports
-        yield* writeFile(
-          packageJsonPath,
-          toJson({
-            name: 'test',
-            imports: { '#lib/*': './dist/lib/*' },
-          }),
-        )
+          // package.json has imports
+          yield* writeFile(
+            packageJsonPath,
+            toJson({
+              name: 'test',
+              imports: { '#lib/*': './dist/lib/*' },
+            }),
+          )
 
-        // genie source has different imports
-        yield* writeFile(genieSourcePath, `export default { imports: { '#lib/*': './src/lib/*' } }`)
+          // genie source has different imports
+          yield* writeFile(genieSourcePath, `export default { imports: { '#lib/*': './src/lib/*' } }`)
 
-        const result = yield* extractImportMap(packageJsonPath)
-        expect(result).toEqual({ '#lib/*': './dist/lib/*' })
-      }).pipe(Effect.provide(TestLayer)),
+          const result = yield* extractImportMap(packageJsonPath)
+          expect(result).toEqual({ '#lib/*': './dist/lib/*' })
+        },
+        Effect.provide(TestLayer),
+      ),
     )
   })
 
@@ -348,247 +398,295 @@ export default workspaceRoot({
   })
 
   describe('resolveImportMapSpecifierForImporter', () => {
-    it.effect('resolves a specifier using the nearest import map', () =>
-      Effect.gen(function* () {
-        const packageJsonPath = path.join(tempDir, 'package.json')
-        yield* writeFile(
-          packageJsonPath,
-          toJson({
-            name: 'test',
-            imports: { '#genie/*': './genie/*' },
-          }),
-        )
+    it.effect(
+      'resolves a specifier using the nearest import map',
+      Effect.fnUntraced(
+        function* () {
+          const packageJsonPath = path.join(tempDir, 'package.json')
+          yield* writeFile(
+            packageJsonPath,
+            toJson({
+              name: 'test',
+              imports: { '#genie/*': './genie/*' },
+            }),
+          )
 
-        const importerPath = path.join(tempDir, 'src', 'genie-file.ts')
-        yield* writeFile(importerPath, '')
+          const importerPath = path.join(tempDir, 'src', 'genie-file.ts')
+          yield* writeFile(importerPath, '')
 
-        const resolved = yield* resolveImportMapSpecifierForImporter({
-          specifier: '#genie/mod.ts',
-          importerPath,
-        })
+          const resolved = yield* resolveImportMapSpecifierForImporter({
+            specifier: '#genie/mod.ts',
+            importerPath,
+          })
 
-        expect(Option.getOrNull(resolved)).toBe(path.join(tempDir, 'genie', 'mod.ts'))
-      }).pipe(Effect.provide(TestLayer)),
+          expect(Option.getOrNull(resolved)).toBe(path.join(tempDir, 'genie', 'mod.ts'))
+        },
+        Effect.provide(TestLayer),
+      ),
     )
   })
 
   describe('resolveImportMapSpecifierForImporterSync', () => {
-    it.effect('resolves a specifier using the nearest import map', () =>
-      Effect.gen(function* () {
-        const packageJsonPath = path.join(tempDir, 'package.json')
-        yield* writeFile(
-          packageJsonPath,
-          toJson({
-            name: 'test',
-            imports: { '#genie/*': './genie/*' },
-          }),
-        )
+    it.effect(
+      'resolves a specifier using the nearest import map',
+      Effect.fnUntraced(
+        function* () {
+          const packageJsonPath = path.join(tempDir, 'package.json')
+          yield* writeFile(
+            packageJsonPath,
+            toJson({
+              name: 'test',
+              imports: { '#genie/*': './genie/*' },
+            }),
+          )
 
-        const importerPath = path.join(tempDir, 'src', 'genie-file.ts')
-        yield* writeFile(importerPath, '')
+          const importerPath = path.join(tempDir, 'src', 'genie-file.ts')
+          yield* writeFile(importerPath, '')
 
-        const resolved = resolveImportMapSpecifierForImporterSync({
-          specifier: '#genie/mod.ts',
-          importerPath,
-        })
+          const resolved = resolveImportMapSpecifierForImporterSync({
+            specifier: '#genie/mod.ts',
+            importerPath,
+          })
 
-        expect(resolved).toBe(path.join(tempDir, 'genie', 'mod.ts'))
-      }).pipe(Effect.provide(TestLayer)),
+          expect(resolved).toBe(path.join(tempDir, 'genie', 'mod.ts'))
+        },
+        Effect.provide(TestLayer),
+      ),
     )
   })
 
   describe('resolveImportMapsInSource', () => {
-    it.effect('transforms import statements with # specifiers', () =>
-      Effect.gen(function* () {
-        const packageJsonPath = path.join(tempDir, 'package.json')
-        yield* writeFile(
-          packageJsonPath,
-          toJson({
-            imports: { '#lib/*': './src/lib/*' },
-          }),
-        )
-        const filePath = path.join(tempDir, 'src', 'file.ts')
-        yield* writeFile(filePath, '')
+    it.effect(
+      'transforms import statements with # specifiers',
+      Effect.fnUntraced(
+        function* () {
+          const packageJsonPath = path.join(tempDir, 'package.json')
+          yield* writeFile(
+            packageJsonPath,
+            toJson({
+              imports: { '#lib/*': './src/lib/*' },
+            }),
+          )
+          const filePath = path.join(tempDir, 'src', 'file.ts')
+          yield* writeFile(filePath, '')
 
-        const sourceCode = `import { foo } from '#lib/mod.ts'`
-        const result = yield* resolveImportMapsInSource({ sourceCode, sourcePath: filePath })
+          const sourceCode = `import { foo } from '#lib/mod.ts'`
+          const result = yield* resolveImportMapsInSource({ sourceCode, sourcePath: filePath })
 
-        expect(result).toBe(`import { foo } from '${tempDir}/src/lib/mod.ts'`)
-      }).pipe(Effect.provide(TestLayer)),
+          expect(result).toBe(`import { foo } from '${tempDir}/src/lib/mod.ts'`)
+        },
+        Effect.provide(TestLayer),
+      ),
     )
 
-    it.effect('transforms export statements with # specifiers', () =>
-      Effect.gen(function* () {
-        const packageJsonPath = path.join(tempDir, 'package.json')
-        yield* writeFile(
-          packageJsonPath,
-          toJson({
-            imports: { '#lib/*': './src/lib/*' },
-          }),
-        )
-        const filePath = path.join(tempDir, 'src', 'file.ts')
-        yield* writeFile(filePath, '')
+    it.effect(
+      'transforms export statements with # specifiers',
+      Effect.fnUntraced(
+        function* () {
+          const packageJsonPath = path.join(tempDir, 'package.json')
+          yield* writeFile(
+            packageJsonPath,
+            toJson({
+              imports: { '#lib/*': './src/lib/*' },
+            }),
+          )
+          const filePath = path.join(tempDir, 'src', 'file.ts')
+          yield* writeFile(filePath, '')
 
-        const sourceCode = `export { foo } from '#lib/mod.ts'`
-        const result = yield* resolveImportMapsInSource({ sourceCode, sourcePath: filePath })
+          const sourceCode = `export { foo } from '#lib/mod.ts'`
+          const result = yield* resolveImportMapsInSource({ sourceCode, sourcePath: filePath })
 
-        expect(result).toBe(`export { foo } from '${tempDir}/src/lib/mod.ts'`)
-      }).pipe(Effect.provide(TestLayer)),
+          expect(result).toBe(`export { foo } from '${tempDir}/src/lib/mod.ts'`)
+        },
+        Effect.provide(TestLayer),
+      ),
     )
 
-    it.effect('handles multiple imports', () =>
-      Effect.gen(function* () {
-        const packageJsonPath = path.join(tempDir, 'package.json')
-        yield* writeFile(
-          packageJsonPath,
-          toJson({
-            imports: { '#lib/*': './src/lib/*' },
-          }),
-        )
-        const filePath = path.join(tempDir, 'src', 'file.ts')
-        yield* writeFile(filePath, '')
+    it.effect(
+      'handles multiple imports',
+      Effect.fnUntraced(
+        function* () {
+          const packageJsonPath = path.join(tempDir, 'package.json')
+          yield* writeFile(
+            packageJsonPath,
+            toJson({
+              imports: { '#lib/*': './src/lib/*' },
+            }),
+          )
+          const filePath = path.join(tempDir, 'src', 'file.ts')
+          yield* writeFile(filePath, '')
 
-        const sourceCode = `import { foo } from '#lib/foo.ts'
+          const sourceCode = `import { foo } from '#lib/foo.ts'
 import { bar } from '#lib/bar.ts'
 import { baz } from './local.ts'`
-        const result = yield* resolveImportMapsInSource({ sourceCode, sourcePath: filePath })
+          const result = yield* resolveImportMapsInSource({ sourceCode, sourcePath: filePath })
 
-        expect(result).toContain(`from '${tempDir}/src/lib/foo.ts'`)
-        expect(result).toContain(`from '${tempDir}/src/lib/bar.ts'`)
-        expect(result).toContain(`from './local.ts'`)
-      }).pipe(Effect.provide(TestLayer)),
+          expect(result).toContain(`from '${tempDir}/src/lib/foo.ts'`)
+          expect(result).toContain(`from '${tempDir}/src/lib/bar.ts'`)
+          expect(result).toContain(`from './local.ts'`)
+        },
+        Effect.provide(TestLayer),
+      ),
     )
 
-    it.effect('preserves non-# imports unchanged', () =>
-      Effect.gen(function* () {
-        const packageJsonPath = path.join(tempDir, 'package.json')
-        yield* writeFile(
-          packageJsonPath,
-          toJson({
-            imports: { '#lib/*': './src/lib/*' },
-          }),
-        )
-        const filePath = path.join(tempDir, 'src', 'file.ts')
-        yield* writeFile(filePath, '')
+    it.effect(
+      'preserves non-# imports unchanged',
+      Effect.fnUntraced(
+        function* () {
+          const packageJsonPath = path.join(tempDir, 'package.json')
+          yield* writeFile(
+            packageJsonPath,
+            toJson({
+              imports: { '#lib/*': './src/lib/*' },
+            }),
+          )
+          const filePath = path.join(tempDir, 'src', 'file.ts')
+          yield* writeFile(filePath, '')
 
-        const sourceCode = `import { Effect } from 'effect'
+          const sourceCode = `import { Effect } from 'effect'
 import { foo } from './local.ts'
 import { bar } from '../parent.ts'`
-        const result = yield* resolveImportMapsInSource({ sourceCode, sourcePath: filePath })
+          const result = yield* resolveImportMapsInSource({ sourceCode, sourcePath: filePath })
 
-        expect(result).toBe(sourceCode)
-      }).pipe(Effect.provide(TestLayer)),
+          expect(result).toBe(sourceCode)
+        },
+        Effect.provide(TestLayer),
+      ),
     )
 
-    it.effect('returns source unchanged when no package.json found', () =>
-      Effect.gen(function* () {
-        const filePath = path.join(tempDir, 'src', 'file.ts')
-        yield* writeFile(filePath, '')
+    it.effect(
+      'returns source unchanged when no package.json found',
+      Effect.fnUntraced(
+        function* () {
+          const filePath = path.join(tempDir, 'src', 'file.ts')
+          yield* writeFile(filePath, '')
 
-        const sourceCode = `import { foo } from '#lib/mod.ts'`
-        const result = yield* resolveImportMapsInSource({ sourceCode, sourcePath: filePath })
+          const sourceCode = `import { foo } from '#lib/mod.ts'`
+          const result = yield* resolveImportMapsInSource({ sourceCode, sourcePath: filePath })
 
-        expect(result).toBe(sourceCode)
-      }).pipe(Effect.provide(TestLayer)),
+          expect(result).toBe(sourceCode)
+        },
+        Effect.provide(TestLayer),
+      ),
     )
 
-    it.effect('returns source unchanged when no imports field in package.json', () =>
-      Effect.gen(function* () {
-        const packageJsonPath = path.join(tempDir, 'package.json')
-        yield* writeFile(packageJsonPath, toJson({ name: 'test' }))
-        const filePath = path.join(tempDir, 'src', 'file.ts')
-        yield* writeFile(filePath, '')
+    it.effect(
+      'returns source unchanged when no imports field in package.json',
+      Effect.fnUntraced(
+        function* () {
+          const packageJsonPath = path.join(tempDir, 'package.json')
+          yield* writeFile(packageJsonPath, toJson({ name: 'test' }))
+          const filePath = path.join(tempDir, 'src', 'file.ts')
+          yield* writeFile(filePath, '')
 
-        const sourceCode = `import { foo } from '#lib/mod.ts'`
-        const result = yield* resolveImportMapsInSource({ sourceCode, sourcePath: filePath })
+          const sourceCode = `import { foo } from '#lib/mod.ts'`
+          const result = yield* resolveImportMapsInSource({ sourceCode, sourcePath: filePath })
 
-        expect(result).toBe(sourceCode)
-      }).pipe(Effect.provide(TestLayer)),
+          expect(result).toBe(sourceCode)
+        },
+        Effect.provide(TestLayer),
+      ),
     )
 
-    it.effect('handles double-quoted imports', () =>
-      Effect.gen(function* () {
-        const packageJsonPath = path.join(tempDir, 'package.json')
-        yield* writeFile(
-          packageJsonPath,
-          toJson({
-            imports: { '#lib/*': './src/lib/*' },
-          }),
-        )
-        const filePath = path.join(tempDir, 'src', 'file.ts')
-        yield* writeFile(filePath, '')
+    it.effect(
+      'handles double-quoted imports',
+      Effect.fnUntraced(
+        function* () {
+          const packageJsonPath = path.join(tempDir, 'package.json')
+          yield* writeFile(
+            packageJsonPath,
+            toJson({
+              imports: { '#lib/*': './src/lib/*' },
+            }),
+          )
+          const filePath = path.join(tempDir, 'src', 'file.ts')
+          yield* writeFile(filePath, '')
 
-        const sourceCode = `import { foo } from "#lib/mod.ts"`
-        const result = yield* resolveImportMapsInSource({ sourceCode, sourcePath: filePath })
+          const sourceCode = `import { foo } from "#lib/mod.ts"`
+          const result = yield* resolveImportMapsInSource({ sourceCode, sourcePath: filePath })
 
-        expect(result).toBe(`import { foo } from "${tempDir}/src/lib/mod.ts"`)
-      }).pipe(Effect.provide(TestLayer)),
+          expect(result).toBe(`import { foo } from "${tempDir}/src/lib/mod.ts"`)
+        },
+        Effect.provide(TestLayer),
+      ),
     )
 
-    it.effect('handles type imports', () =>
-      Effect.gen(function* () {
-        const packageJsonPath = path.join(tempDir, 'package.json')
-        yield* writeFile(
-          packageJsonPath,
-          toJson({
-            imports: { '#lib/*': './src/lib/*' },
-          }),
-        )
-        const filePath = path.join(tempDir, 'src', 'file.ts')
-        yield* writeFile(filePath, '')
+    it.effect(
+      'handles type imports',
+      Effect.fnUntraced(
+        function* () {
+          const packageJsonPath = path.join(tempDir, 'package.json')
+          yield* writeFile(
+            packageJsonPath,
+            toJson({
+              imports: { '#lib/*': './src/lib/*' },
+            }),
+          )
+          const filePath = path.join(tempDir, 'src', 'file.ts')
+          yield* writeFile(filePath, '')
 
-        const sourceCode = `import type { Foo } from '#lib/types.ts'`
-        const result = yield* resolveImportMapsInSource({ sourceCode, sourcePath: filePath })
+          const sourceCode = `import type { Foo } from '#lib/types.ts'`
+          const result = yield* resolveImportMapsInSource({ sourceCode, sourcePath: filePath })
 
-        expect(result).toBe(`import type { Foo } from '${tempDir}/src/lib/types.ts'`)
-      }).pipe(Effect.provide(TestLayer)),
+          expect(result).toBe(`import type { Foo } from '${tempDir}/src/lib/types.ts'`)
+        },
+        Effect.provide(TestLayer),
+      ),
     )
 
-    it.effect('handles re-exports', () =>
-      Effect.gen(function* () {
-        const packageJsonPath = path.join(tempDir, 'package.json')
-        yield* writeFile(
-          packageJsonPath,
-          toJson({
-            imports: { '#lib/*': './src/lib/*' },
-          }),
-        )
-        const filePath = path.join(tempDir, 'src', 'file.ts')
-        yield* writeFile(filePath, '')
+    it.effect(
+      'handles re-exports',
+      Effect.fnUntraced(
+        function* () {
+          const packageJsonPath = path.join(tempDir, 'package.json')
+          yield* writeFile(
+            packageJsonPath,
+            toJson({
+              imports: { '#lib/*': './src/lib/*' },
+            }),
+          )
+          const filePath = path.join(tempDir, 'src', 'file.ts')
+          yield* writeFile(filePath, '')
 
-        const sourceCode = `export * from '#lib/mod.ts'`
-        const result = yield* resolveImportMapsInSource({ sourceCode, sourcePath: filePath })
+          const sourceCode = `export * from '#lib/mod.ts'`
+          const result = yield* resolveImportMapsInSource({ sourceCode, sourcePath: filePath })
 
-        expect(result).toBe(`export * from '${tempDir}/src/lib/mod.ts'`)
-      }).pipe(Effect.provide(TestLayer)),
+          expect(result).toBe(`export * from '${tempDir}/src/lib/mod.ts'`)
+        },
+        Effect.provide(TestLayer),
+      ),
     )
 
-    it.effect('resolves relative imports to file URLs when requested', () =>
-      Effect.gen(function* () {
-        const packageJsonPath = path.join(tempDir, 'package.json')
-        yield* writeFile(
-          packageJsonPath,
-          toJson({
-            imports: { '#lib/*': './src/lib/*' },
-          }),
-        )
-        const filePath = path.join(tempDir, 'src', 'file.ts')
-        yield* writeFile(filePath, '')
+    it.effect(
+      'resolves relative imports to file URLs when requested',
+      Effect.fnUntraced(
+        function* () {
+          const packageJsonPath = path.join(tempDir, 'package.json')
+          yield* writeFile(
+            packageJsonPath,
+            toJson({
+              imports: { '#lib/*': './src/lib/*' },
+            }),
+          )
+          const filePath = path.join(tempDir, 'src', 'file.ts')
+          yield* writeFile(filePath, '')
 
-        const sourceCode = `import { foo } from '#lib/mod.ts'\nimport { bar } from './local.ts'`
-        const result = yield* resolveImportMapsInSource({
-          sourceCode,
-          sourcePath: filePath,
-          resolveRelativeImports: true,
-        })
+          const sourceCode = `import { foo } from '#lib/mod.ts'\nimport { bar } from './local.ts'`
+          const result = yield* resolveImportMapsInSource({
+            sourceCode,
+            sourcePath: filePath,
+            resolveRelativeImports: true,
+          })
 
-        expect(result).toContain(
-          `from '${pathToFileURL(path.join(tempDir, 'src', 'lib', 'mod.ts')).href}'`,
-        )
-        expect(result).toContain(
-          `from '${pathToFileURL(path.join(tempDir, 'src', 'local.ts')).href}'`,
-        )
-      }).pipe(Effect.provide(TestLayer)),
+          expect(result).toContain(
+            `from '${pathToFileURL(path.join(tempDir, 'src', 'lib', 'mod.ts')).href}'`,
+          )
+          expect(result).toContain(
+            `from '${pathToFileURL(path.join(tempDir, 'src', 'local.ts')).href}'`,
+          )
+        },
+        Effect.provide(TestLayer),
+      ),
     )
   })
 })

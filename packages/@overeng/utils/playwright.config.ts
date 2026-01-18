@@ -1,11 +1,8 @@
 import { fileURLToPath } from 'node:url'
 
-import * as playwrightTest from '@playwright/test'
-
 import { createPlaywrightConfig } from './src/node/playwright/config.ts'
 
 export default createPlaywrightConfig({
-  playwrightTest,
   testDir: './src/browser/__tests__',
   testIgnore: ['**/fixtures/**'],
   webServer: {
