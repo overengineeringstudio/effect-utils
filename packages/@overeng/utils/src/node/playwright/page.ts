@@ -251,19 +251,18 @@ export const evaluate: <R>(
  * const text = yield* Pw.Page.evaluateWith({ arg: '#my-id', fn: (sel) => document.querySelector(sel)?.textContent })
  * ```
  */
-export const evaluateWith = <R, TArg>(opts: {
+export const evaluateWith = Effect.fn('pw.page.evaluate')(function* <R, TArg>(opts: {
   /** Argument to pass to the function. */
   arg: TArg
   /** Function to evaluate in page context. */
   fn: (arg: TArg) => R | Promise<R>
-}): Effect.Effect<R, PwOpError, PwPage> =>
-  Effect.gen(function* () {
-    const page = yield* PwPage
-    return yield* tryPw<R>({
-      op: 'pw.page.evaluate',
-      effect: () => page.evaluate(opts.fn as Parameters<Page['evaluate']>[0], opts.arg) as Promise<R>,
-    })
-  }).pipe(Effect.withSpan('pw.page.evaluate'))
+}) {
+  const page = yield* PwPage
+  return yield* tryPw<R>({
+    op: 'pw.page.evaluate',
+    effect: () => page.evaluate(opts.fn as Parameters<Page['evaluate']>[0], opts.arg) as Promise<R>,
+  })
+})
 
 /** Returns the raw Playwright Page for direct access. Use sparingly. */
 export const raw: Effect.Effect<Page, never, PwPage> = PwPage

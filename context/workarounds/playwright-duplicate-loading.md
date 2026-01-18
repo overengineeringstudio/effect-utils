@@ -61,11 +61,42 @@ Error: Requiring @playwright/test second time
 - https://github.com/microsoft/playwright/issues/11817 (closed) — Early discussion of using shared fixtures/modules; leads to guidance on avoiding double load.
 - https://github.com/oven-sh/bun/issues/3835 (closed) — Bun `file:` dependency behavior can create nested installs.
 
-## Candidate solutions
+## Proposed dotdot extension: shared Playwright install
 
-- Keep `@playwright/test` peer-only in shared packages and pass a wildcard `playwrightTest` import from the consumer.
-- Install peer repo deps to satisfy runtime imports (e.g. `effect`) but ensure Playwright is not installed there (production-only install or selective pruning).
-- Use dotdot expose/hoisting so there is a single physical `@playwright/test` install.
+This idea would allow dotdot to avoid duplicate Playwright installs while keeping `@playwright/test` as a dev dependency in shared packages.
+
+### Spec sketch
+
+- Add a new optional field to `dotdot.json` (root + repo-level):
+  - `sharedDeps`: map of package name to version range
+- `dotdot sync` writes a `dotdot.shared-deps.json` manifest in the workspace root.
+- `dotdot install` installs shared deps into a workspace-level store:
+  - e.g. `.dotdot/shared-node-modules/node_modules/<package>`
+- `dotdot exec` injects `NODE_PATH` pointing to the shared store so Node/Bun resolve the shared deps first.
+- `dotdot exec` optionally enforces that shared deps are NOT installed in peer repos (detect and warn).
+
+### Requirements
+
+- Must work with ESM resolution for Node and Bun.
+- Must ensure a single physical install path for singleton-sensitive packages (Playwright).
+- Must keep peer repo installs isolated for all other deps.
+
+### Constraints
+
+- `NODE_OPTIONS=--preserve-symlinks` fails for TS sources under `node_modules`.
+- Playwright guard cannot be disabled; single physical path is required.
+- Bun recommends isolated installs in dotdot setups (no auto-hoisting).
+
+### Open questions
+
+- Does Playwright’s loader honor `NODE_PATH` for ESM imports when run via `bunx playwright`?
+- Can dotdot inject `NODE_PATH` consistently for all test/dev commands (including IDE integrations)?
+- Should shared deps be installed per workspace or per repo group?
+- How should dotdot handle version conflicts across repos for shared deps?
+- How do we ensure shared deps are never duplicated in peer repos (warn vs auto-prune)?
+
+## Other candidate solutions
+
 - Install shared packages as tarballs/registry packages (avoid `file:` symlink resolution).
 - Inline Playwright config in consumers (avoid shared helper import).
 

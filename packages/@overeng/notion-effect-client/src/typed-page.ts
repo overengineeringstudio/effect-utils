@@ -46,36 +46,35 @@ export class PageDecodeError extends Schema.TaggedError<PageDecodeError>()('Page
  *
  * @returns Typed page with decoded properties
  */
-export const decodePage = <TProperties, I, R>(opts: {
+export const decodePage = Effect.fnUntraced(function* <TProperties, I, R>(opts: {
   page: Page
   schema: Schema.Schema<TProperties, I, R>
-}): Effect.Effect<TypedPage<TProperties>, PageDecodeError, R> =>
-  Effect.gen(function* () {
-    const { page, schema } = opts
-    const decode = Schema.decodeUnknown(schema)
-    const properties = yield* decode(page.properties).pipe(
-      Effect.mapError(
-        (cause) =>
-          new PageDecodeError({
-            pageId: page.id,
-            cause,
-            message: `Failed to decode properties for page ${page.id}`,
-          }),
-      ),
-    )
+}) {
+  const { page, schema } = opts
+  const decode = Schema.decodeUnknown(schema)
+  const properties = yield* decode(page.properties).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PageDecodeError({
+          pageId: page.id,
+          cause,
+          message: `Failed to decode properties for page ${page.id}`,
+        }),
+    ),
+  )
 
-    return {
-      id: page.id,
-      createdTime: page.created_time,
-      lastEditedTime: page.last_edited_time,
-      url: page.url,
-      publicUrl: page.public_url,
-      archived: page.archived,
-      inTrash: page.in_trash,
-      properties,
-      _raw: page,
-    }
-  })
+  return {
+    id: page.id,
+    createdTime: page.created_time,
+    lastEditedTime: page.last_edited_time,
+    url: page.url,
+    publicUrl: page.public_url,
+    archived: page.archived,
+    inTrash: page.in_trash,
+    properties,
+    _raw: page,
+  }
+})
 
 /**
  * Decode multiple pages using a property schema.

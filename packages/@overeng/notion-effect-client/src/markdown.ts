@@ -422,11 +422,11 @@ const applyTransformer = (opts: {
   return Effect.succeed(result)
 }
 
-/** Convert a single block tree node to Markdown */
+/** Convert a single block tree node to Markdown (recursive, needs explicit type) */
 const nodeToMarkdown = (opts: {
   node: BlockTreeNode
   transformers: BlockTransformers
-}): Effect.Effect<string, never, never> =>
+}): Effect.Effect<string> =>
   Effect.gen(function* () {
     const { node, transformers } = opts
     // First, recursively convert all children

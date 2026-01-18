@@ -28,17 +28,16 @@ import { ensureTrailingSlash, hasTrailingSlash } from './internal/utils.ts'
  * produce different results than filesystem-aware canonicalization.
  * For example, `a/b/../c` and `a/c` are different if `b` is a symlink.
  */
-export const lexical = <P extends Path>(path: P): Effect.Effect<P, never, PlatformPath.Path> =>
-  Effect.fnUntraced(function* () {
-    const platformPath = yield* PlatformPath.Path
-    const normalized = platformPath.normalize(path)
+export const lexical = Effect.fnUntraced(function* <P extends Path>(path: P) {
+  const platformPath = yield* PlatformPath.Path
+  const normalized = platformPath.normalize(path)
 
-    // Preserve trailing slash for directories
-    if (hasTrailingSlash(path)) {
-      return ensureTrailingSlash(normalized) as P
-    }
-    return normalized as P
-  })()
+  // Preserve trailing slash for directories
+  if (hasTrailingSlash(path)) {
+    return ensureTrailingSlash(normalized) as P
+  }
+  return normalized as P
+})
 
 /**
  * Lexical normalization without platform dependency.

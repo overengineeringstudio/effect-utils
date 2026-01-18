@@ -60,8 +60,8 @@ const decodeChunks = (chunks: Chunk.Chunk<Uint8Array>): string => {
   return new TextDecoder().decode(merged)
 }
 
-const runGenie = (env: TestEnv, args: ReadonlyArray<string>) =>
-  Effect.gen(function* () {
+const runGenie = Effect.fnUntraced(
+  function* (env: TestEnv, args: ReadonlyArray<string>) {
     const cliPath = new URL('./mod.ts', import.meta.url).pathname
     const command = Command.make('bun', cliPath, '--cwd', env.root, ...args).pipe(
       Command.workingDirectory(env.root),
@@ -81,18 +81,21 @@ const runGenie = (env: TestEnv, args: ReadonlyArray<string>) =>
       stderr: decodeChunks(stderrChunks),
       exitCode,
     }
-  }).pipe(Effect.scoped)
+  },
+  Effect.scoped,
+)
 
 describe('genie cli', () => {
-  const withTestEnv = <A, E, R>(fn: (env: TestEnv) => Effect.Effect<A, E, R>) =>
-    Effect.gen(function* () {
-      const env = yield* createTestEnv()
-      try {
-        return yield* fn(env)
-      } finally {
-        yield* env.cleanup()
-      }
-    })
+  const withTestEnv = Effect.fnUntraced(function* <A, E, R>(
+    fn: (env: TestEnv) => Effect.Effect<A, E, R>,
+  ) {
+    const env = yield* createTestEnv()
+    try {
+      return yield* fn(env)
+    } finally {
+      yield* env.cleanup()
+    }
+  })
 
   it.effect(
     'reports import errors with clear error message',

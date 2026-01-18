@@ -128,34 +128,33 @@ const getDatabaseName = (schema: DatabaseSchema): string | undefined => {
 }
 
 /** Validates that database schema contains all required properties with correct types */
-export const validateProperties = (args: {
+export const validateProperties = Effect.fnUntraced(function* (args: {
   schema: DatabaseSchema
   databaseId: string
   required: readonly { name: string; tag: PropertySchema['_tag'] }[]
-}): Effect.Effect<void, SchemaMismatchError> =>
-  Effect.gen(function* () {
-    const missing = args.required.filter((prop) =>
-      Option.isNone(getPropertyByTag({ schema: args.schema, name: prop.name, tag: prop.tag })),
-    )
+}) {
+  const missing = args.required.filter((prop) =>
+    Option.isNone(getPropertyByTag({ schema: args.schema, name: prop.name, tag: prop.tag })),
+  )
 
-    if (missing.length === 0) {
-      return
-    }
+  if (missing.length === 0) {
+    return
+  }
 
-    const message = `Missing or mismatched properties in Notion schema: ${missing
-      .map((prop) => `${prop.name} (${prop.tag})`)
-      .join(', ')}`
+  const message = `Missing or mismatched properties in Notion schema: ${missing
+    .map((prop) => `${prop.name} (${prop.tag})`)
+    .join(', ')}`
 
-    return yield* new SchemaMismatchError({
-      databaseId: args.databaseId,
-      databaseName: getDatabaseName(args.schema),
-      message,
-      missing: missing.map((prop) => ({
-        name: prop.name,
-        expectedTag: prop.tag,
-      })),
-    })
+  return yield* new SchemaMismatchError({
+    databaseId: args.databaseId,
+    databaseName: getDatabaseName(args.schema),
+    message,
+    missing: missing.map((prop) => ({
+      name: prop.name,
+      expectedTag: prop.tag,
+    })),
   })
+})
 
 /** Extracts required property metadata from a Schema.Struct by reading Notion property annotations */
 export const getRequiredPropertiesFromSchema = Effect.fn(
@@ -306,24 +305,23 @@ export const getRelationTarget = (args: {
 }
 
 /** Gets relation target or fails with SchemaMismatchError if property is missing */
-export const getRelationTargetOrFail = (args: {
+export const getRelationTargetOrFail = Effect.fnUntraced(function* (args: {
   schema: DatabaseSchema
   databaseId: string
   property: string
-}): Effect.Effect<RelationTarget, SchemaMismatchError> =>
-  Effect.gen(function* () {
-    const target = getRelationTarget({ schema: args.schema, property: args.property })
-    if (Option.isSome(target)) {
-      return target.value
-    }
+}) {
+  const target = getRelationTarget({ schema: args.schema, property: args.property })
+  if (Option.isSome(target)) {
+    return target.value
+  }
 
-    return yield* new SchemaMismatchError({
-      databaseId: args.databaseId,
-      databaseName: getDatabaseName(args.schema),
-      message: `Missing ${args.property} relation target in Notion schema`,
-      missing: [{ name: args.property, expectedTag: 'relation' }],
-    })
+  return yield* new SchemaMismatchError({
+    databaseId: args.databaseId,
+    databaseName: getDatabaseName(args.schema),
+    message: `Missing ${args.property} relation target in Notion schema`,
+    missing: [{ name: args.property, expectedTag: 'relation' }],
   })
+})
 
 // -----------------------------------------------------------------------------
 // Formula Helpers

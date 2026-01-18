@@ -26,24 +26,21 @@ class CounterService extends Effect.Service<CounterService>()('CounterService', 
 
     return {
       get: () => value,
-      increment: () =>
-        Effect.gen(function* () {
-          yield* Effect.sleep('100 millis') // Simulate async work
-          value += 1
-          return value
-        }),
-      decrement: () =>
-        Effect.gen(function* () {
-          yield* Effect.sleep('100 millis')
-          value -= 1
-          return value
-        }),
-      reset: () =>
-        Effect.gen(function* () {
-          yield* Effect.sleep('50 millis')
-          value = 0
-          return value
-        }),
+      increment: Effect.fnUntraced(function* () {
+        yield* Effect.sleep('100 millis') // Simulate async work
+        value += 1
+        return value
+      }),
+      decrement: Effect.fnUntraced(function* () {
+        yield* Effect.sleep('100 millis')
+        value -= 1
+        return value
+      }),
+      reset: Effect.fnUntraced(function* () {
+        yield* Effect.sleep('50 millis')
+        value = 0
+        return value
+      }),
     }
   }),
 }) {}

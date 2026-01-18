@@ -117,28 +117,27 @@ export function join(
  * Join paths using platform-specific separator.
  * Returns an Effect that requires the Path service.
  */
-export const joinPlatform = (
+export const joinPlatform = Effect.fnUntraced(function* (
   base: DirPath,
   // biome-ignore lint/style/useRestParameters: Variadic design decision
   ...segments: RelativePath[]
-): Effect.Effect<Path, never, PlatformPath.Path> =>
-  Effect.fnUntraced(function* () {
-    if (segments.length === 0) {
-      return base
-    }
+) {
+  if (segments.length === 0) {
+    return base
+  }
 
-    const platformPath = yield* PlatformPath.Path
-    const allParts = [removeTrailingSlash(base), ...segments.map(removeTrailingSlash)]
-    const joined = platformPath.join(...allParts)
+  const platformPath = yield* PlatformPath.Path
+  const allParts = [removeTrailingSlash(base), ...segments.map(removeTrailingSlash)]
+  const joined = platformPath.join(...allParts)
 
-    // Preserve trailing slash from last segment
-    const lastSegment = segments.at(-1)!
-    if (hasTrailingSlash(lastSegment)) {
-      return ensureTrailingSlash(joined) as Path
-    }
+  // Preserve trailing slash from last segment
+  const lastSegment = segments.at(-1)!
+  if (hasTrailingSlash(lastSegment)) {
+    return ensureTrailingSlash(joined) as Path
+  }
 
-    return joined as Path
-  })()
+  return joined as Path
+})
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Resolution Operations
@@ -148,28 +147,26 @@ export const joinPlatform = (
  * Resolve paths to an absolute path.
  * Uses platform-specific path resolution.
  */
-export const resolve = (
+export const resolve = Effect.fnUntraced(function* (
   // biome-ignore lint/style/useRestParameters: Variadic design decision
   ...paths: Path[]
-): Effect.Effect<AbsolutePath, never, PlatformPath.Path> =>
-  Effect.fnUntraced(function* () {
-    const platformPath = yield* PlatformPath.Path
-    const resolved = platformPath.resolve(...paths)
-    return resolved as AbsolutePath
-  })()
+) {
+  const platformPath = yield* PlatformPath.Path
+  const resolved = platformPath.resolve(...paths)
+  return resolved as AbsolutePath
+})
 
 /**
  * Get the relative path from one absolute path to another.
  */
-export const relative = (args: {
+export const relative = Effect.fnUntraced(function* (args: {
   readonly from: AbsoluteDirPath
   readonly to: AbsolutePath
-}): Effect.Effect<RelativePath, never, PlatformPath.Path> =>
-  Effect.fnUntraced(function* () {
-    const platformPath = yield* PlatformPath.Path
-    const rel = platformPath.relative(removeTrailingSlash(args.from), args.to)
-    return rel as RelativePath
-  })()
+}) {
+  const platformPath = yield* PlatformPath.Path
+  const rel = platformPath.relative(removeTrailingSlash(args.from), args.to)
+  return rel as RelativePath
+})
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Parent/Child Navigation
