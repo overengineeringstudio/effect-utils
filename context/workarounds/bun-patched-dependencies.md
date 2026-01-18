@@ -1,5 +1,8 @@
 # Bun patchedDependencies Bug Workaround
 
+Update (2026-01-18-10:19): There's a fix coming: 
+https://github.com/oven-sh/bun/issues/13531
+
 ## Problem
 
 When using bun with `file:` protocol dependencies across multiple repos (via dotdot), bun's `patchedDependencies` feature doesn't work correctly.
