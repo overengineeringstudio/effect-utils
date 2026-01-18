@@ -15,64 +15,58 @@ import { Effect } from 'effect'
  * Get the platform-specific path separator.
  * On Windows: "\", on Unix: "/"
  */
-export const getSeparator = Effect.gen(function* () {
+export const getSeparator = Effect.fnUntraced(function* () {
   const path = yield* PlatformPath.Path
   return path.sep
-})
+})()
 
 /**
  * Check if a path is absolute using platform-specific rules.
  */
-export const isAbsolutePath = (p: string) =>
-  Effect.gen(function* () {
-    const path = yield* PlatformPath.Path
-    return path.isAbsolute(p)
-  })
+export const isAbsolutePath = Effect.fnUntraced(function* (p: string) {
+  const path = yield* PlatformPath.Path
+  return path.isAbsolute(p)
+})
 
 /**
  * Normalize a path lexically (resolve . and .., normalize separators).
  */
-export const normalizePath = (p: string) =>
-  Effect.gen(function* () {
-    const path = yield* PlatformPath.Path
-    return path.normalize(p)
-  })
+export const normalizePath = Effect.fnUntraced(function* (p: string) {
+  const path = yield* PlatformPath.Path
+  return path.normalize(p)
+})
 
 /**
  * Join path segments.
  */
-export const joinPath = (...segments: ReadonlyArray<string>) =>
-  Effect.gen(function* () {
-    const path = yield* PlatformPath.Path
-    return path.join(...segments)
-  })
+export const joinPath = Effect.fnUntraced(function* (...segments: ReadonlyArray<string>) {
+  const path = yield* PlatformPath.Path
+  return path.join(...segments)
+})
 
 /**
  * Get the directory name of a path.
  */
-export const dirnamePath = (p: string) =>
-  Effect.gen(function* () {
-    const path = yield* PlatformPath.Path
-    return path.dirname(p)
-  })
+export const dirnamePath = Effect.fnUntraced(function* (p: string) {
+  const path = yield* PlatformPath.Path
+  return path.dirname(p)
+})
 
 /**
  * Get the base name of a path.
  */
-export const basenamePath = (p: string) =>
-  Effect.gen(function* () {
-    const path = yield* PlatformPath.Path
-    return path.basename(p)
-  })
+export const basenamePath = Effect.fnUntraced(function* (p: string) {
+  const path = yield* PlatformPath.Path
+  return path.basename(p)
+})
 
 /**
  * Get the extension of a path (with leading dot).
  */
-export const extnamePath = (p: string) =>
-  Effect.gen(function* () {
-    const path = yield* PlatformPath.Path
-    return path.extname(p)
-  })
+export const extnamePath = Effect.fnUntraced(function* (p: string) {
+  const path = yield* PlatformPath.Path
+  return path.extname(p)
+})
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Pure Utilities (No Effect Dependencies)

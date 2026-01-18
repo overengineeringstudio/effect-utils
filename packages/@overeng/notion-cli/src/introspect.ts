@@ -156,21 +156,18 @@ const toPropertyInfo = (prop: PropertySchema): PropertyInfo => {
 /**
  * Introspect a Notion database and return its schema information.
  */
-export const introspectDatabase = (
-  databaseId: string,
-): Effect.Effect<DatabaseInfo, NotionApiError, NotionConfig | HttpClient.HttpClient> =>
-  Effect.gen(function* () {
-    const db = yield* NotionDatabases.retrieve({ databaseId })
+export const introspectDatabase = Effect.fnUntraced(function* (databaseId: string) {
+  const db = yield* NotionDatabases.retrieve({ databaseId })
 
-    const name = db.title.map((t) => t.plain_text).join('') || 'UnnamedDatabase'
+  const name = db.title.map((t) => t.plain_text).join('') || 'UnnamedDatabase'
 
-    const typedProperties = SchemaHelpers.getProperties({ schema: db })
-    const properties = typedProperties.map(toPropertyInfo)
+  const typedProperties = SchemaHelpers.getProperties({ schema: db })
+  const properties = typedProperties.map(toPropertyInfo)
 
-    return {
-      id: db.id,
-      name,
-      url: db.url,
-      properties,
-    }
-  })
+  return {
+    id: db.id,
+    name,
+    url: db.url,
+    properties,
+  }
+})

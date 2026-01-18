@@ -64,172 +64,175 @@ export type MemberConfigSource = {
 }
 
 /** Load and parse a JSON config file (shared helper) */
-const loadAndParseJson = (configPath: string) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const absolutePath = path.resolve(configPath)
+const loadAndParseJson = Effect.fnUntraced(function* (configPath: string) {
+  const fs = yield* FileSystem.FileSystem
+  const absolutePath = path.resolve(configPath)
 
-    // Read the JSON file
-    const content = yield* fs.readFileString(absolutePath).pipe(
-      Effect.mapError(
-        (cause) =>
-          new ConfigError({
-            path: absolutePath,
-            message: `Failed to read config file`,
-            cause,
-          }),
-      ),
-    )
-
-    // Parse JSON
-    const rawConfig = yield* Effect.try({
-      try: () => JSON.parse(content),
-      catch: (cause) =>
+  // Read the JSON file
+  const content = yield* fs.readFileString(absolutePath).pipe(
+    Effect.mapError(
+      (cause) =>
         new ConfigError({
           path: absolutePath,
-          message: `Failed to parse JSON`,
-          cause: cause as Error,
+          message: `Failed to read config file`,
+          cause,
         }),
-    })
+    ),
+  )
 
-    return { absolutePath, rawConfig }
+  // Parse JSON
+  const rawConfig = yield* Effect.try({
+    try: () => JSON.parse(content),
+    catch: (cause) =>
+      new ConfigError({
+        path: absolutePath,
+        message: `Failed to parse JSON`,
+        cause: cause as Error,
+      }),
   })
 
+  return { absolutePath, rawConfig }
+})
+
 /** Load and parse a root config file (dotdot-root.json) */
-export const loadRootConfigFile = (configPath: string) =>
-  Effect.gen(function* () {
-    const { absolutePath, rawConfig } = yield* loadAndParseJson(configPath)
+export const loadRootConfigFile = Effect.fn('loader/loadRootConfigFile')(function* (
+  configPath: string,
+) {
+  const { absolutePath, rawConfig } = yield* loadAndParseJson(configPath)
 
-    // Validate against root schema
-    const config = yield* Schema.decodeUnknown(RootConfigSchema)(rawConfig).pipe(
-      Effect.mapError(
-        (cause) =>
-          new ConfigError({
-            path: absolutePath,
-            message: `Invalid root config schema`,
-            cause,
-          }),
-      ),
-    )
+  // Validate against root schema
+  const config = yield* Schema.decodeUnknown(RootConfigSchema)(rawConfig).pipe(
+    Effect.mapError(
+      (cause) =>
+        new ConfigError({
+          path: absolutePath,
+          message: `Invalid root config schema`,
+          cause,
+        }),
+    ),
+  )
 
-    return config
-  }).pipe(Effect.withSpan('loader/loadRootConfigFile'))
+  return config
+})
 
 /** Load and parse a member config file (dotdot.json) */
-export const loadMemberConfigFile = (configPath: string) =>
-  Effect.gen(function* () {
-    const { absolutePath, rawConfig } = yield* loadAndParseJson(configPath)
+export const loadMemberConfigFile = Effect.fn('loader/loadMemberConfigFile')(function* (
+  configPath: string,
+) {
+  const { absolutePath, rawConfig } = yield* loadAndParseJson(configPath)
 
-    // Validate against member schema
-    const config = yield* Schema.decodeUnknown(MemberConfigSchema)(rawConfig).pipe(
-      Effect.mapError(
-        (cause) =>
-          new ConfigError({
-            path: absolutePath,
-            message: `Invalid member config schema`,
-            cause,
-          }),
-      ),
-    )
+  // Validate against member schema
+  const config = yield* Schema.decodeUnknown(MemberConfigSchema)(rawConfig).pipe(
+    Effect.mapError(
+      (cause) =>
+        new ConfigError({
+          path: absolutePath,
+          message: `Invalid member config schema`,
+          cause,
+        }),
+    ),
+  )
 
-    return config
-  }).pipe(Effect.withSpan('loader/loadMemberConfigFile'))
+  return config
+})
 
 /** Find the workspace root (directory containing dotdot-root.json) */
-export const findWorkspaceRoot = (startDir: string) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    let currentDir = path.resolve(startDir)
+export const findWorkspaceRoot = Effect.fn('loader/findWorkspaceRoot')(function* (
+  startDir: string,
+) {
+  const fs = yield* FileSystem.FileSystem
+  let currentDir = path.resolve(startDir)
 
-    // Walk up the tree to find dotdot-root.json (the workspace root marker)
-    // Only the workspace root has the generated config file
-    // Member repos have dotdot.json (not generated)
-    while (currentDir !== '/') {
-      const generatedConfigPath = path.join(currentDir, GENERATED_CONFIG_FILE_NAME)
-      const exists = yield* fs.exists(generatedConfigPath)
-      if (exists) {
-        return currentDir
-      }
-      currentDir = path.dirname(currentDir)
+  // Walk up the tree to find dotdot-root.json (the workspace root marker)
+  // Only the workspace root has the generated config file
+  // Member repos have dotdot.json (not generated)
+  while (currentDir !== '/') {
+    const generatedConfigPath = path.join(currentDir, GENERATED_CONFIG_FILE_NAME)
+    const exists = yield* fs.exists(generatedConfigPath)
+    if (exists) {
+      return currentDir
     }
+    currentDir = path.dirname(currentDir)
+  }
 
-    return yield* new ConfigError({
-      path: startDir,
-      message: `Not a dotdot workspace (no ${GENERATED_CONFIG_FILE_NAME} found). Run 'dotdot sync <path>' to initialize.`,
-    })
-  }).pipe(Effect.withSpan('loader/findWorkspaceRoot'))
+  return yield* new ConfigError({
+    path: startDir,
+    message: `Not a dotdot workspace (no ${GENERATED_CONFIG_FILE_NAME} found). Run 'dotdot sync <path>' to initialize.`,
+  })
+})
 
 /** Load root config from workspace (loads the generated config) */
-export const loadRootConfig = (workspaceRoot: string) =>
-  Effect.gen(function* () {
-    // Root config is always the generated config (not dotdot.json)
-    const configPath = path.join(workspaceRoot, GENERATED_CONFIG_FILE_NAME)
-    const fs = yield* FileSystem.FileSystem
+export const loadRootConfig = Effect.fn('loader/loadRootConfig')(function* (
+  workspaceRoot: string,
+) {
+  // Root config is always the generated config (not dotdot.json)
+  const configPath = path.join(workspaceRoot, GENERATED_CONFIG_FILE_NAME)
+  const fs = yield* FileSystem.FileSystem
 
-    const exists = yield* fs.exists(configPath)
-    if (!exists) {
-      // Return empty config if no generated config file
-      return {
-        path: configPath,
-        dir: workspaceRoot,
-        isRoot: true,
-        config: { repos: {} },
-      } satisfies RootConfigSource
-    }
-
-    const config = yield* loadRootConfigFile(configPath)
+  const exists = yield* fs.exists(configPath)
+  if (!exists) {
+    // Return empty config if no generated config file
     return {
       path: configPath,
       dir: workspaceRoot,
       isRoot: true,
-      config,
+      config: { repos: {} },
     } satisfies RootConfigSource
-  }).pipe(Effect.withSpan('loader/loadRootConfig'))
+  }
+
+  const config = yield* loadRootConfigFile(configPath)
+  return {
+    path: configPath,
+    dir: workspaceRoot,
+    isRoot: true,
+    config,
+  } satisfies RootConfigSource
+})
 
 /** Load member config from a repo directory (if it has one) */
-export const loadMemberConfig = (repoDir: string) =>
-  Effect.gen(function* () {
-    const configPath = path.join(repoDir, CONFIG_FILE_NAME)
-    const fs = yield* FileSystem.FileSystem
-    const repoName = path.basename(repoDir)
+export const loadMemberConfig = Effect.fn('loader/loadMemberConfig')(function* (repoDir: string) {
+  const configPath = path.join(repoDir, CONFIG_FILE_NAME)
+  const fs = yield* FileSystem.FileSystem
+  const repoName = path.basename(repoDir)
 
-    const exists = yield* fs.exists(configPath)
-    if (!exists) {
-      return null
-    }
+  const exists = yield* fs.exists(configPath)
+  if (!exists) {
+    return null
+  }
 
-    const config = yield* loadMemberConfigFile(configPath)
-    return {
-      path: configPath,
-      dir: repoDir,
-      repoName,
-      isRoot: false,
-      config,
-    } satisfies MemberConfigSource
-  }).pipe(Effect.withSpan('loader/loadMemberConfig'))
+  const config = yield* loadMemberConfigFile(configPath)
+  return {
+    path: configPath,
+    dir: repoDir,
+    repoName,
+    isRoot: false,
+    config,
+  } satisfies MemberConfigSource
+})
 
 /** Collect only member repo configs (not root) - used for sync */
-export const collectMemberConfigs = (workspaceRoot: string) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const configs: MemberConfigSource[] = []
+export const collectMemberConfigs = Effect.fn('loader/collectMemberConfigs')(function* (
+  workspaceRoot: string,
+) {
+  const fs = yield* FileSystem.FileSystem
+  const configs: MemberConfigSource[] = []
 
-    const entries = yield* fs.readDirectory(workspaceRoot)
-    for (const entry of entries) {
-      if (entry.startsWith('.')) continue
+  const entries = yield* fs.readDirectory(workspaceRoot)
+  for (const entry of entries) {
+    if (entry.startsWith('.')) continue
 
-      const entryPath = path.join(workspaceRoot, entry)
-      const stat = yield* fs.stat(entryPath)
-      if (stat.type !== 'Directory') continue
+    const entryPath = path.join(workspaceRoot, entry)
+    const stat = yield* fs.stat(entryPath)
+    if (stat.type !== 'Directory') continue
 
-      const memberConfig = yield* loadMemberConfig(entryPath)
-      if (memberConfig) {
-        configs.push(memberConfig)
-      }
+    const memberConfig = yield* loadMemberConfig(entryPath)
+    if (memberConfig) {
+      configs.push(memberConfig)
     }
+  }
 
-    return configs
-  }).pipe(Effect.withSpan('loader/collectMemberConfigs'))
+  return configs
+})
 
 /** Result of merging member configs */
 export type MergedConfig = {
@@ -284,65 +287,67 @@ export const mergeMemberConfigs = (configs: MemberConfigSource[]): MergedConfig 
   return { repos, packages, membersWithConfig, declaredDeps }
 }
 
-/** Check if root config is in sync with member configs
+/**
+ * Check if root config is in sync with member configs
  * Checks that:
  * - All workspace members (directories with dotdot.json) are in root config
  * - All deps declared in member configs are in root config
  * - All packages exposed in member configs are in root config
  */
-export const checkConfigSync = (workspaceRoot: string) =>
-  Effect.gen(function* () {
-    const rootConfig = yield* loadRootConfig(workspaceRoot)
-    const memberConfigs = yield* collectMemberConfigs(workspaceRoot)
-    const merged = mergeMemberConfigs(memberConfigs)
+export const checkConfigSync = Effect.fn('loader/checkConfigSync')(function* (
+  workspaceRoot: string,
+) {
+  const rootConfig = yield* loadRootConfig(workspaceRoot)
+  const memberConfigs = yield* collectMemberConfigs(workspaceRoot)
+  const merged = mergeMemberConfigs(memberConfigs)
 
-    const rootRepoNames = new Set(Object.keys(rootConfig.config.repos))
+  const rootRepoNames = new Set(Object.keys(rootConfig.config.repos))
 
-    // Check for workspace members not in root config
-    const missingMembers: string[] = []
-    for (const name of merged.membersWithConfig) {
-      if (!rootRepoNames.has(name)) {
-        missingMembers.push(name)
-      }
+  // Check for workspace members not in root config
+  const missingMembers: string[] = []
+  for (const name of merged.membersWithConfig) {
+    if (!rootRepoNames.has(name)) {
+      missingMembers.push(name)
     }
+  }
 
-    if (missingMembers.length > 0) {
-      return yield* new ConfigOutOfSyncError({
-        message: `Config out of sync. Workspace members not in root config: ${missingMembers.join(', ')}. Run 'dotdot sync' to update.`,
-      })
+  if (missingMembers.length > 0) {
+    return yield* new ConfigOutOfSyncError({
+      message: `Config out of sync. Workspace members not in root config: ${missingMembers.join(', ')}. Run 'dotdot sync' to update.`,
+    })
+  }
+
+  // Check for deps in members but not in root (these need to be synced)
+  const missingInRoot: string[] = []
+  for (const name of merged.declaredDeps) {
+    if (!rootRepoNames.has(name)) {
+      missingInRoot.push(name)
     }
+  }
 
-    // Check for deps in members but not in root (these need to be synced)
-    const missingInRoot: string[] = []
-    for (const name of merged.declaredDeps) {
-      if (!rootRepoNames.has(name)) {
-        missingInRoot.push(name)
-      }
+  if (missingInRoot.length > 0) {
+    return yield* new ConfigOutOfSyncError({
+      message: `Config out of sync. Deps declared in member configs but not in root: ${missingInRoot.join(', ')}. Run 'dotdot sync' to update.`,
+    })
+  }
+
+  // Check for packages in members but not in root
+  const rootPackageNames = new Set(Object.keys(rootConfig.config.packages ?? {}))
+  const missingPackages: string[] = []
+  for (const name of Object.keys(merged.packages)) {
+    if (!rootPackageNames.has(name)) {
+      missingPackages.push(name)
     }
+  }
 
-    if (missingInRoot.length > 0) {
-      return yield* new ConfigOutOfSyncError({
-        message: `Config out of sync. Deps declared in member configs but not in root: ${missingInRoot.join(', ')}. Run 'dotdot sync' to update.`,
-      })
-    }
+  if (missingPackages.length > 0) {
+    return yield* new ConfigOutOfSyncError({
+      message: `Config out of sync. Packages exposed in member configs but not in root: ${missingPackages.join(', ')}. Run 'dotdot sync' to update.`,
+    })
+  }
 
-    // Check for packages in members but not in root
-    const rootPackageNames = new Set(Object.keys(rootConfig.config.packages ?? {}))
-    const missingPackages: string[] = []
-    for (const name of Object.keys(merged.packages)) {
-      if (!rootPackageNames.has(name)) {
-        missingPackages.push(name)
-      }
-    }
-
-    if (missingPackages.length > 0) {
-      return yield* new ConfigOutOfSyncError({
-        message: `Config out of sync. Packages exposed in member configs but not in root: ${missingPackages.join(', ')}. Run 'dotdot sync' to update.`,
-      })
-    }
-
-    return rootConfig
-  }).pipe(Effect.withSpan('loader/checkConfigSync'))
+  return rootConfig
+})
 
 /** Load root config and verify it's in sync with member configs */
 export const loadRootConfigWithSyncCheck = (workspaceRoot: string) =>

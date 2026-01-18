@@ -17,36 +17,37 @@ type TestEnv = {
 
 const TestLayer = NodeContext.layer
 
-const createTestEnv = () =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const path = yield* Path.Path
-    const root = path.join(os.tmpdir(), `genie-cli-test-${crypto.randomBytes(4).toString('hex')}`)
+const createTestEnv = Effect.fnUntraced(function* () {
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
+  const root = path.join(os.tmpdir(), `genie-cli-test-${crypto.randomBytes(4).toString('hex')}`)
 
-    yield* fs.makeDirectory(root, { recursive: true })
+  yield* fs.makeDirectory(root, { recursive: true })
 
-    const writeFile = ({ path: relativePath, content }: { path: string; content: string }) =>
-      Effect.gen(function* () {
-        const fullPath = path.join(root, relativePath)
-        const dir = path.dirname(fullPath)
-        yield* fs.makeDirectory(dir, { recursive: true })
-        yield* fs.writeFileString(fullPath, content)
-      }).pipe(Effect.orDie)
+  const writeFile = Effect.fnUntraced(
+    function* ({ path: relativePath, content }: { path: string; content: string }) {
+      const fullPath = path.join(root, relativePath)
+      const dir = path.dirname(fullPath)
+      yield* fs.makeDirectory(dir, { recursive: true })
+      yield* fs.writeFileString(fullPath, content)
+    },
+    Effect.orDie,
+  )
 
-    const symlink = ({ target, path: relativePath }: { target: string; path: string }) =>
-      Effect.gen(function* () {
-        const targetPath = path.isAbsolute(target) ? target : path.join(root, target)
-        const linkPath = path.isAbsolute(relativePath)
-          ? relativePath
-          : path.join(root, relativePath)
-        yield* fs.makeDirectory(path.dirname(linkPath), { recursive: true })
-        yield* fs.symlink(targetPath, linkPath)
-      }).pipe(Effect.orDie)
+  const symlink = Effect.fnUntraced(
+    function* ({ target, path: relativePath }: { target: string; path: string }) {
+      const targetPath = path.isAbsolute(target) ? target : path.join(root, target)
+      const linkPath = path.isAbsolute(relativePath) ? relativePath : path.join(root, relativePath)
+      yield* fs.makeDirectory(path.dirname(linkPath), { recursive: true })
+      yield* fs.symlink(targetPath, linkPath)
+    },
+    Effect.orDie,
+  )
 
-    const cleanup = () => fs.remove(root, { recursive: true }).pipe(Effect.ignore)
+  const cleanup = () => fs.remove(root, { recursive: true }).pipe(Effect.ignore)
 
-    return { root, writeFile, symlink, cleanup } satisfies TestEnv
-  })
+  return { root, writeFile, symlink, cleanup } satisfies TestEnv
+})
 
 const decodeChunks = (chunks: Chunk.Chunk<Uint8Array>): string => {
   const merged = Chunk.toReadonlyArray(chunks).reduce((acc, chunk) => {
@@ -61,7 +62,7 @@ const decodeChunks = (chunks: Chunk.Chunk<Uint8Array>): string => {
 
 const runGenie = (env: TestEnv, args: ReadonlyArray<string>) =>
   Effect.scoped(
-    Effect.gen(function* () {
+    Effect.fnUntraced(function* () {
       const cliPath = new URL('./mod.ts', import.meta.url).pathname
       const command = Command.make('bun', cliPath, '--cwd', env.root, ...args).pipe(
         Command.workingDirectory(env.root),
@@ -81,23 +82,23 @@ const runGenie = (env: TestEnv, args: ReadonlyArray<string>) =>
         stderr: decodeChunks(stderrChunks),
         exitCode,
       }
-    }),
+    })(),
   )
 
 describe('genie cli', () => {
   const withTestEnv = <A, E, R>(fn: (env: TestEnv) => Effect.Effect<A, E, R>) =>
-    Effect.gen(function* () {
+    Effect.fnUntraced(function* () {
       const env = yield* createTestEnv()
       try {
         return yield* fn(env)
       } finally {
         yield* env.cleanup()
       }
-    })
+    })()
 
   it.effect('reports import errors with clear error message', () =>
     withTestEnv((env) =>
-      Effect.gen(function* () {
+      Effect.fnUntraced(function* () {
         yield* env.writeFile({
           path: 'package.json',
           content: Schema.encodeSync(Schema.parseJson(Schema.Unknown, { space: 2 }))(
@@ -131,13 +132,13 @@ export default pkg.root({ name: 'genie-cli-test' })
         expect(output).toContain('GenieImportError')
         expect(output).toContain('package.json.genie.ts')
         expect(output).toContain('Cannot access')
-      }),
+      })(),
     ).pipe(Effect.provide(TestLayer), Effect.scoped),
   )
 
   it.effect('skips symlinked directories that resolve inside the root', () =>
     withTestEnv((env) =>
-      Effect.gen(function* () {
+      Effect.fnUntraced(function* () {
         /**
          * The symlink points back into the same root; we should only process the
          * canonical target once to avoid duplicate generation via the symlinked path.
@@ -161,7 +162,7 @@ export default pkg.root({ name: 'genie-cli-test' })
         expect(output).toContain('Summary: 1 files processed')
         expect(output).toContain(canonicalOutput)
         expect(output).not.toContain(linkOutput)
-      }),
+      })(),
     ).pipe(Effect.provide(TestLayer), Effect.scoped),
   )
 })

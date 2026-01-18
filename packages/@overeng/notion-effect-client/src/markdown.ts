@@ -455,20 +455,18 @@ const nodeToMarkdown = (opts: {
  * const markdown = yield* NotionMarkdown.treeToMarkdown({ tree })
  * ```
  */
-export const treeToMarkdown = (opts: {
+export const treeToMarkdown = Effect.fn('NotionMarkdown.treeToMarkdown')(function* (opts: {
   readonly tree: BlockTree
   readonly transformers?: BlockTransformers
-}): Effect.Effect<string, never, never> => {
+}) {
   const transformers = opts.transformers ?? {}
 
-  return Effect.gen(function* () {
-    const nodeMarkdowns = yield* Effect.forEach(opts.tree, (node) =>
-      nodeToMarkdown({ node, transformers }),
-    )
+  const nodeMarkdowns = yield* Effect.forEach(opts.tree, (node) =>
+    nodeToMarkdown({ node, transformers }),
+  )
 
-    return nodeMarkdowns.filter((s) => s.length > 0).join('\n\n')
-  }).pipe(Effect.withSpan('NotionMarkdown.treeToMarkdown'))
-}
+  return nodeMarkdowns.filter((s) => s.length > 0).join('\n\n')
+})
 
 /**
  * Convert pre-fetched blocks (with depth info) to Markdown.
@@ -482,20 +480,18 @@ export const treeToMarkdown = (opts: {
  * const markdown = yield* NotionMarkdown.blocksToMarkdown({ blocks: [...blocks] })
  * ```
  */
-export const blocksToMarkdown = (opts: {
+export const blocksToMarkdown = Effect.fn('NotionMarkdown.blocksToMarkdown')(function* (opts: {
   readonly blocks: readonly BlockWithDepth[]
   readonly transformers?: BlockTransformers
-}): Effect.Effect<string, never, never> => {
+}) {
   const transformers = opts.transformers ?? {}
 
   // Convert flat blocks to a tree structure first
   const tree = blocksWithDepthToTree(opts.blocks)
 
   // Then convert the tree to markdown
-  return treeToMarkdown({ tree, transformers }).pipe(
-    Effect.withSpan('NotionMarkdown.blocksToMarkdown'),
-  )
-}
+  return yield* treeToMarkdown({ tree, transformers })
+})
 
 /** Convert flat blocks with depth to tree structure */
 const blocksWithDepthToTree = (blocks: readonly BlockWithDepth[]): BlockTree => {
@@ -552,24 +548,20 @@ const blocksWithDepthToTree = (blocks: readonly BlockWithDepth[]): BlockTree => 
  * })
  * ```
  */
-export const pageToMarkdown = (
+export const pageToMarkdown = Effect.fn('NotionMarkdown.pageToMarkdown')(function* (
   opts: Omit<PageToMarkdownOptions, 'blockId'> & { readonly pageId: string },
-): Effect.Effect<string, NotionApiError, NotionConfig | HttpClient.HttpClient> => {
+) {
   const { pageId, transformers, ...nestedOpts } = opts
 
-  return Effect.gen(function* () {
-    // Fetch all blocks as a tree
-    const tree = yield* NotionBlocks.retrieveAsTree({
-      blockId: pageId,
-      ...nestedOpts,
-    })
+  // Fetch all blocks as a tree
+  const tree = yield* NotionBlocks.retrieveAsTree({
+    blockId: pageId,
+    ...nestedOpts,
+  })
 
-    // Convert to markdown
-    return yield* treeToMarkdown(transformers ? { tree, transformers } : { tree })
-  }).pipe(
-    Effect.withSpan('NotionMarkdown.pageToMarkdown', { attributes: { 'notion.page_id': pageId } }),
-  )
-}
+  // Convert to markdown
+  return yield* treeToMarkdown(transformers ? { tree, transformers } : { tree })
+})
 
 // -----------------------------------------------------------------------------
 // Namespace Exports

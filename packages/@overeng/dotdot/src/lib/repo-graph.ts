@@ -110,113 +110,111 @@ export const getDependencies = ({
  * Topologically sort repos using Kahn's algorithm
  * Returns repo IDs in order such that dependencies come before dependents
  */
-export const topologicalSort = (repoGraph: RepoGraph): Effect.Effect<string[], CycleError> =>
-  Effect.gen(function* () {
-    const { graph, indexToId } = repoGraph
+export const topologicalSort = Effect.fnUntraced(function* (repoGraph: RepoGraph) {
+  const { graph, indexToId } = repoGraph
 
-    // Check for cycles first
-    if (!Graph.isAcyclic(graph)) {
-      // Find cycle using strongly connected components
-      const sccs = Graph.stronglyConnectedComponents(graph)
-      const cycleComponent = sccs.find((c) => c.length > 1)
-      const cycleIds = cycleComponent?.map((idx) => indexToId.get(idx) ?? `unknown-${idx}`) ?? []
+  // Check for cycles first
+  if (!Graph.isAcyclic(graph)) {
+    // Find cycle using strongly connected components
+    const sccs = Graph.stronglyConnectedComponents(graph)
+    const cycleComponent = sccs.find((c) => c.length > 1)
+    const cycleIds = cycleComponent?.map((idx) => indexToId.get(idx) ?? `unknown-${idx}`) ?? []
 
-      return yield* new CycleError({
-        cycle: cycleIds,
-        message: `Circular dependency detected: ${cycleIds.join(' -> ')}`,
-      })
+    return yield* new CycleError({
+      cycle: cycleIds,
+      message: `Circular dependency detected: ${cycleIds.join(' -> ')}`,
+    })
+  }
+
+  // Use Effect.Graph's topo iterator
+  const sorted: string[] = []
+  for (const [index] of Graph.topo(graph)) {
+    const id = indexToId.get(index)
+    if (id !== undefined) {
+      sorted.push(id)
     }
+  }
 
-    // Use Effect.Graph's topo iterator
-    const sorted: string[] = []
-    for (const [index] of Graph.topo(graph)) {
-      const id = indexToId.get(index)
-      if (id !== undefined) {
-        sorted.push(id)
-      }
-    }
-
-    return sorted
-  })
+  return sorted
+})
 
 /**
  * Group repos into layers for parallel execution
  * Each layer contains repos whose dependencies are all in previous layers
  */
-export const toLayers = (repoGraph: RepoGraph): Effect.Effect<string[][], CycleError> =>
-  Effect.gen(function* () {
-    const { graph, idToIndex, indexToId } = repoGraph
+export const toLayers = Effect.fnUntraced(function* (repoGraph: RepoGraph) {
+  const { graph, idToIndex, indexToId } = repoGraph
 
-    // Check for cycles first
-    if (!Graph.isAcyclic(graph)) {
-      const sccs = Graph.stronglyConnectedComponents(graph)
-      const cycleComponent = sccs.find((c) => c.length > 1)
-      const cycleIds = cycleComponent?.map((idx) => indexToId.get(idx) ?? `unknown-${idx}`) ?? []
+  // Check for cycles first
+  if (!Graph.isAcyclic(graph)) {
+    const sccs = Graph.stronglyConnectedComponents(graph)
+    const cycleComponent = sccs.find((c) => c.length > 1)
+    const cycleIds = cycleComponent?.map((idx) => indexToId.get(idx) ?? `unknown-${idx}`) ?? []
+
+    return yield* new CycleError({
+      cycle: cycleIds,
+      message: `Circular dependency detected: ${cycleIds.join(' -> ')}`,
+    })
+  }
+
+  const nodeCount = Graph.nodeCount(graph)
+  if (nodeCount === 0) return []
+
+  const layers: string[][] = []
+  const placed = new Set<Graph.NodeIndex>()
+
+  // Calculate in-degrees for all nodes
+  const inDegree = new Map<Graph.NodeIndex, number>()
+  for (const [index] of graph.nodes) {
+    const incoming = Graph.neighborsDirected(graph, index, 'incoming')
+    inDegree.set(index, incoming.length)
+  }
+
+  while (placed.size < nodeCount) {
+    const layer: string[] = []
+
+    for (const [index] of graph.nodes) {
+      if (placed.has(index)) continue
+
+      // Check if all dependencies (incoming neighbors) are placed
+      const deps = Graph.neighborsDirected(graph, index, 'incoming')
+      const allDepsPlaced = deps.every((dep) => placed.has(dep))
+
+      if (allDepsPlaced) {
+        const id = indexToId.get(index)
+        if (id !== undefined) {
+          layer.push(id)
+        }
+      }
+    }
+
+    if (layer.length === 0 && placed.size < nodeCount) {
+      // This shouldn't happen if isAcyclic passed, but guard anyway
+      const remaining = Array.from(graph.nodes.keys())
+        .filter((idx) => !placed.has(idx))
+        .map((idx) => indexToId.get(idx) ?? `unknown-${idx}`)
 
       return yield* new CycleError({
-        cycle: cycleIds,
-        message: `Circular dependency detected: ${cycleIds.join(' -> ')}`,
+        cycle: remaining,
+        message: `Circular dependency detected: ${remaining.join(' -> ')}`,
       })
     }
 
-    const nodeCount = Graph.nodeCount(graph)
-    if (nodeCount === 0) return []
-
-    const layers: string[][] = []
-    const placed = new Set<Graph.NodeIndex>()
-
-    // Calculate in-degrees for all nodes
-    const inDegree = new Map<Graph.NodeIndex, number>()
-    for (const [index] of graph.nodes) {
-      const incoming = Graph.neighborsDirected(graph, index, 'incoming')
-      inDegree.set(index, incoming.length)
-    }
-
-    while (placed.size < nodeCount) {
-      const layer: string[] = []
-
-      for (const [index] of graph.nodes) {
-        if (placed.has(index)) continue
-
-        // Check if all dependencies (incoming neighbors) are placed
-        const deps = Graph.neighborsDirected(graph, index, 'incoming')
-        const allDepsPlaced = deps.every((dep) => placed.has(dep))
-
-        if (allDepsPlaced) {
-          const id = indexToId.get(index)
-          if (id !== undefined) {
-            layer.push(id)
-          }
-        }
-      }
-
-      if (layer.length === 0 && placed.size < nodeCount) {
-        // This shouldn't happen if isAcyclic passed, but guard anyway
-        const remaining = Array.from(graph.nodes.keys())
-          .filter((idx) => !placed.has(idx))
-          .map((idx) => indexToId.get(idx) ?? `unknown-${idx}`)
-
-        return yield* new CycleError({
-          cycle: remaining,
-          message: `Circular dependency detected: ${remaining.join(' -> ')}`,
-        })
-      }
-
-      // Mark layer nodes as placed
-      for (const id of layer) {
-        const index = idToIndex.get(id)
-        if (index !== undefined) {
-          placed.add(index)
-        }
-      }
-
-      if (layer.length > 0) {
-        layers.push(layer)
+    // Mark layer nodes as placed
+    for (const id of layer) {
+      const index = idToIndex.get(id)
+      if (index !== undefined) {
+        placed.add(index)
       }
     }
 
-    return layers
-  })
+    if (layer.length > 0) {
+      layers.push(layer)
+    }
+  }
+
+  return layers
+})
 
 /**
  * Build a dependency graph from member configs

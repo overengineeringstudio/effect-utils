@@ -64,15 +64,12 @@ const buildListParams = (opts: ListUsersOptions): string => {
 }
 
 /** Internal raw list - used by both list and listStream */
-const listRaw = (
-  opts: ListUsersOptions,
-): Effect.Effect<PaginatedResult<User>, NotionApiError, NotionConfig | HttpClient.HttpClient> =>
-  Effect.gen(function* () {
-    const queryString = buildListParams(opts)
-    const path = `/users${queryString ? `?${queryString}` : ''}`
-    const response = yield* get({ path, responseSchema: ListUsersResponseSchema })
-    return toPaginatedResult(response)
-  }).pipe(Effect.withSpan('NotionUsers.list'))
+const listRaw = Effect.fn('NotionUsers.list')(function* (opts: ListUsersOptions) {
+  const queryString = buildListParams(opts)
+  const path = `/users${queryString ? `?${queryString}` : ''}`
+  const response = yield* get({ path, responseSchema: ListUsersResponseSchema })
+  return toPaginatedResult(response)
+})
 
 /**
  * List all users with pagination.

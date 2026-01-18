@@ -14,46 +14,45 @@ import { kv, styled, symbols } from '@overeng/cli-ui'
 import { CurrentWorkingDirectory, type RepoInfo, WorkspaceService } from '../lib/mod.ts'
 
 /** Format the tree output */
-const formatTree = (repos: RepoInfo[]) =>
-  Effect.gen(function* () {
-    yield* Effect.log(styled.dim('repos:'))
-    yield* Effect.log('')
+const formatTree = Effect.fnUntraced(function* (repos: RepoInfo[]) {
+  yield* Effect.log(styled.dim('repos:'))
+  yield* Effect.log('')
 
-    for (let i = 0; i < repos.length; i++) {
-      const repo = repos[i]!
-      const isLast = i === repos.length - 1
-      const prefix = isLast ? symbols.treeLast : symbols.treeMiddle
+  for (let i = 0; i < repos.length; i++) {
+    const repo = repos[i]!
+    const isLast = i === repos.length - 1
+    const prefix = isLast ? symbols.treeLast : symbols.treeMiddle
 
-      // Build status parts
-      const parts: string[] = [styled.bold(repo.name)]
+    // Build status parts
+    const parts: string[] = [styled.bold(repo.name)]
 
-      // Revision info
-      if (repo.pinnedRev) {
-        parts.push(styled.dim(`@${repo.pinnedRev.slice(0, 7)}`))
-      } else {
-        parts.push(styled.dim('(no pin)'))
-      }
-
-      // Current rev if available
-      if (repo.gitState) {
-        parts.push(styled.dim(`(${repo.gitState.shortRev})`))
-      }
-
-      // Status indicators
-      if (repo.gitState?.isDirty) {
-        parts.push(styled.yellow(symbols.dirty))
-      }
-
-      // FS state issues
-      if (repo.fsState._tag === 'missing') {
-        parts.push(styled.red('[missing]'))
-      } else if (repo.fsState._tag === 'not-git') {
-        parts.push(styled.yellow('[not-git]'))
-      }
-
-      yield* Effect.log(`${prefix}${parts.join(' ')}`)
+    // Revision info
+    if (repo.pinnedRev) {
+      parts.push(styled.dim(`@${repo.pinnedRev.slice(0, 7)}`))
+    } else {
+      parts.push(styled.dim('(no pin)'))
     }
-  })
+
+    // Current rev if available
+    if (repo.gitState) {
+      parts.push(styled.dim(`(${repo.gitState.shortRev})`))
+    }
+
+    // Status indicators
+    if (repo.gitState?.isDirty) {
+      parts.push(styled.yellow(symbols.dirty))
+    }
+
+    // FS state issues
+    if (repo.fsState._tag === 'missing') {
+      parts.push(styled.red('[missing]'))
+    } else if (repo.fsState._tag === 'not-git') {
+      parts.push(styled.yellow('[not-git]'))
+    }
+
+    yield* Effect.log(`${prefix}${parts.join(' ')}`)
+  }
+})
 
 /** Tree command handler - separated for testability */
 export const treeHandler = Effect.gen(function* () {

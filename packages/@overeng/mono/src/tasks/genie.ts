@@ -21,8 +21,8 @@ const findMissingGenieSources = Effect.fn('findMissingGenieSources')(function* (
   const patterns = new Set(config.patterns ?? ['package.json', 'tsconfig.json'])
   const skipDirs = new Set(config.skipDirs)
 
-  const walk = (dir: string): Effect.Effect<string[], PlatformError, never> =>
-    Effect.gen(function* () {
+  const walk: (dir: string) => Effect.Effect<string[], PlatformError, never> = Effect.fnUntraced(
+    function* (dir) {
       const exists = yield* fs.exists(dir)
       if (!exists) return []
 
@@ -48,7 +48,8 @@ const findMissingGenieSources = Effect.fn('findMissingGenieSources')(function* (
       }
 
       return results
-    })
+    },
+  )
 
   const allMissing: string[] = []
   for (const scanDir of config.scanDirs) {

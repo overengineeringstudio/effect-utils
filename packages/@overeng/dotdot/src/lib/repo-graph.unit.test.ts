@@ -463,13 +463,12 @@ describe('executeTopoForAll', () => {
     await Effect.runPromise(
       executeTopoForAll({
         items,
-        fn: ([id]) =>
-          Effect.gen(function* () {
-            startTimes[id] = Date.now()
-            yield* Effect.sleep(50) // Simulate work
-            endTimes[id] = Date.now()
-            return id
-          }),
+        fn: Effect.fnUntraced(function* ([id]) {
+          startTimes[id] = Date.now()
+          yield* Effect.sleep(50) // Simulate work
+          endTimes[id] = Date.now()
+          return id
+        }),
         graph,
         options: { mode: 'topo-parallel' as ExecutionMode },
       }),
@@ -612,14 +611,13 @@ describe('executeTopoForAll', () => {
     await Effect.runPromise(
       executeTopoForAll({
         items,
-        fn: ([id]) =>
-          Effect.gen(function* () {
-            currentConcurrent++
-            concurrent.push(currentConcurrent)
-            yield* Effect.sleep(50)
-            currentConcurrent--
-            return id
-          }),
+        fn: Effect.fnUntraced(function* ([id]) {
+          currentConcurrent++
+          concurrent.push(currentConcurrent)
+          yield* Effect.sleep(50)
+          currentConcurrent--
+          return id
+        }),
         graph,
         options: { mode: 'topo-parallel' as ExecutionMode, maxParallel: 2 },
       }),

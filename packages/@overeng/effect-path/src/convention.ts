@@ -122,207 +122,181 @@ const validatePath = (path: string): Effect.Effect<string, InvalidPathError> => 
 /**
  * Parse an absolute directory path using convention (must end with separator).
  */
-export const absoluteDir = (
-  path: string,
-): Effect.Effect<AbsoluteDirPath, ParseError, PlatformPath.Path> =>
-  Effect.gen(function* () {
-    const validated = yield* validatePath(path)
-    const platformPath = yield* PlatformPath.Path
+export const absoluteDir = Effect.fnUntraced(function* (path: string) {
+  const validated = yield* validatePath(path)
+  const platformPath = yield* PlatformPath.Path
 
-    if (!platformPath.isAbsolute(validated)) {
-      return yield* new NotAbsoluteError({
-        path: validated,
-        message: 'Expected absolute path',
-        suggestedAbsolute: undefined,
-      })
-    }
+  if (!platformPath.isAbsolute(validated)) {
+    return yield* new NotAbsoluteError({
+      path: validated,
+      message: 'Expected absolute path',
+      suggestedAbsolute: undefined,
+    })
+  }
 
-    if (!hasTrailingSlash(validated)) {
-      return yield* new ConventionError({
-        path: validated,
-        message: 'Directory path must end with a separator',
-        expected: 'directory',
-        violation: 'no_trailing_slash_on_directory',
-      })
-    }
+  if (!hasTrailingSlash(validated)) {
+    return yield* new ConventionError({
+      path: validated,
+      message: 'Directory path must end with a separator',
+      expected: 'directory',
+      violation: 'no_trailing_slash_on_directory',
+    })
+  }
 
-    const normalized = platformPath.normalize(validated)
-    return ensureTrailingSlash(normalized) as AbsoluteDirPath
-  })
+  const normalized = platformPath.normalize(validated)
+  return ensureTrailingSlash(normalized) as AbsoluteDirPath
+})
 
 /**
  * Parse an absolute file path using convention (must not end with separator).
  */
-export const absoluteFile = (
-  path: string,
-): Effect.Effect<AbsoluteFilePath, ParseError, PlatformPath.Path> =>
-  Effect.gen(function* () {
-    const validated = yield* validatePath(path)
-    const platformPath = yield* PlatformPath.Path
+export const absoluteFile = Effect.fnUntraced(function* (path: string) {
+  const validated = yield* validatePath(path)
+  const platformPath = yield* PlatformPath.Path
 
-    if (!platformPath.isAbsolute(validated)) {
-      return yield* new NotAbsoluteError({
-        path: validated,
-        message: 'Expected absolute path',
-        suggestedAbsolute: undefined,
-      })
-    }
+  if (!platformPath.isAbsolute(validated)) {
+    return yield* new NotAbsoluteError({
+      path: validated,
+      message: 'Expected absolute path',
+      suggestedAbsolute: undefined,
+    })
+  }
 
-    if (hasTrailingSlash(validated)) {
-      return yield* new ConventionError({
-        path: validated,
-        message: 'File path must not end with a separator',
-        expected: 'file',
-        violation: 'trailing_slash_on_file',
-      })
-    }
+  if (hasTrailingSlash(validated)) {
+    return yield* new ConventionError({
+      path: validated,
+      message: 'File path must not end with a separator',
+      expected: 'file',
+      violation: 'trailing_slash_on_file',
+    })
+  }
 
-    const normalized = platformPath.normalize(validated)
-    return normalized as AbsoluteFilePath
-  })
+  const normalized = platformPath.normalize(validated)
+  return normalized as AbsoluteFilePath
+})
 
 /**
  * Parse a relative directory path using convention (must end with separator).
  */
-export const relativeDir = (
-  path: string,
-): Effect.Effect<RelativeDirPath, ParseError, PlatformPath.Path> =>
-  Effect.gen(function* () {
-    const validated = yield* validatePath(path)
-    const platformPath = yield* PlatformPath.Path
+export const relativeDir = Effect.fnUntraced(function* (path: string) {
+  const validated = yield* validatePath(path)
+  const platformPath = yield* PlatformPath.Path
 
-    if (platformPath.isAbsolute(validated)) {
-      // Extract the absolute prefix for error context
-      const firstSep = Math.max(validated.indexOf('/'), validated.indexOf('\\'))
-      const prefix = firstSep === -1 ? validated : validated.slice(0, firstSep + 1)
-      return yield* new NotRelativeError({
-        path: validated,
-        message: 'Expected relative path',
-        absolutePrefix: prefix,
-      })
-    }
+  if (platformPath.isAbsolute(validated)) {
+    // Extract the absolute prefix for error context
+    const firstSep = Math.max(validated.indexOf('/'), validated.indexOf('\\'))
+    const prefix = firstSep === -1 ? validated : validated.slice(0, firstSep + 1)
+    return yield* new NotRelativeError({
+      path: validated,
+      message: 'Expected relative path',
+      absolutePrefix: prefix,
+    })
+  }
 
-    if (!hasTrailingSlash(validated)) {
-      return yield* new ConventionError({
-        path: validated,
-        message: 'Directory path must end with a separator',
-        expected: 'directory',
-        violation: 'no_trailing_slash_on_directory',
-      })
-    }
+  if (!hasTrailingSlash(validated)) {
+    return yield* new ConventionError({
+      path: validated,
+      message: 'Directory path must end with a separator',
+      expected: 'directory',
+      violation: 'no_trailing_slash_on_directory',
+    })
+  }
 
-    const normalized = platformPath.normalize(validated)
-    return ensureTrailingSlash(normalized) as RelativeDirPath
-  })
+  const normalized = platformPath.normalize(validated)
+  return ensureTrailingSlash(normalized) as RelativeDirPath
+})
 
 /**
  * Parse a relative file path using convention (must not end with separator).
  */
-export const relativeFile = (
-  path: string,
-): Effect.Effect<RelativeFilePath, ParseError, PlatformPath.Path> =>
-  Effect.gen(function* () {
-    const validated = yield* validatePath(path)
-    const platformPath = yield* PlatformPath.Path
+export const relativeFile = Effect.fnUntraced(function* (path: string) {
+  const validated = yield* validatePath(path)
+  const platformPath = yield* PlatformPath.Path
 
-    if (platformPath.isAbsolute(validated)) {
-      const firstSep = Math.max(validated.indexOf('/'), validated.indexOf('\\'))
-      const prefix = firstSep === -1 ? validated : validated.slice(0, firstSep + 1)
-      return yield* new NotRelativeError({
-        path: validated,
-        message: 'Expected relative path',
-        absolutePrefix: prefix,
-      })
-    }
+  if (platformPath.isAbsolute(validated)) {
+    const firstSep = Math.max(validated.indexOf('/'), validated.indexOf('\\'))
+    const prefix = firstSep === -1 ? validated : validated.slice(0, firstSep + 1)
+    return yield* new NotRelativeError({
+      path: validated,
+      message: 'Expected relative path',
+      absolutePrefix: prefix,
+    })
+  }
 
-    if (hasTrailingSlash(validated)) {
-      return yield* new ConventionError({
-        path: validated,
-        message: 'File path must not end with a separator',
-        expected: 'file',
-        violation: 'trailing_slash_on_file',
-      })
-    }
+  if (hasTrailingSlash(validated)) {
+    return yield* new ConventionError({
+      path: validated,
+      message: 'File path must not end with a separator',
+      expected: 'file',
+      violation: 'trailing_slash_on_file',
+    })
+  }
 
-    const normalized = platformPath.normalize(validated)
-    return normalized as RelativeFilePath
-  })
+  const normalized = platformPath.normalize(validated)
+  return normalized as RelativeFilePath
+})
 
 /**
  * Parse any absolute path, inferring file vs directory from convention.
  * Returns AmbiguousAbsolutePath if the path has no trailing slash and no extension.
  */
-export const absolute = (
-  path: string,
-): Effect.Effect<
-  AbsoluteFilePath | AbsoluteDirPath | AmbiguousAbsolutePath,
-  InvalidPathError | NotAbsoluteError,
-  PlatformPath.Path
-> =>
-  Effect.gen(function* () {
-    const validated = yield* validatePath(path)
-    const platformPath = yield* PlatformPath.Path
+export const absolute = Effect.fnUntraced(function* (path: string) {
+  const validated = yield* validatePath(path)
+  const platformPath = yield* PlatformPath.Path
 
-    if (!platformPath.isAbsolute(validated)) {
-      return yield* new NotAbsoluteError({
-        path: validated,
-        message: 'Expected absolute path',
-        suggestedAbsolute: undefined,
-      })
-    }
+  if (!platformPath.isAbsolute(validated)) {
+    return yield* new NotAbsoluteError({
+      path: validated,
+      message: 'Expected absolute path',
+      suggestedAbsolute: undefined,
+    })
+  }
 
-    const normalized = platformPath.normalize(validated)
+  const normalized = platformPath.normalize(validated)
 
-    if (hasTrailingSlash(validated)) {
-      return ensureTrailingSlash(normalized) as AbsoluteDirPath
-    }
+  if (hasTrailingSlash(validated)) {
+    return ensureTrailingSlash(normalized) as AbsoluteDirPath
+  }
 
-    if (hasExtension(normalized)) {
-      return normalized as AbsoluteFilePath
-    }
+  if (hasExtension(normalized)) {
+    return normalized as AbsoluteFilePath
+  }
 
-    // Ambiguous: no trailing slash, no extension
-    return normalized as AmbiguousAbsolutePath
-  })
+  // Ambiguous: no trailing slash, no extension
+  return normalized as AmbiguousAbsolutePath
+})
 
 /**
  * Parse any relative path, inferring file vs directory from convention.
  * Returns AmbiguousRelativePath if the path has no trailing slash and no extension.
  */
-export const relative = (
-  path: string,
-): Effect.Effect<
-  RelativeFilePath | RelativeDirPath | AmbiguousRelativePath,
-  InvalidPathError | NotRelativeError,
-  PlatformPath.Path
-> =>
-  Effect.gen(function* () {
-    const validated = yield* validatePath(path)
-    const platformPath = yield* PlatformPath.Path
+export const relative = Effect.fnUntraced(function* (path: string) {
+  const validated = yield* validatePath(path)
+  const platformPath = yield* PlatformPath.Path
 
-    if (platformPath.isAbsolute(validated)) {
-      const firstSep = Math.max(validated.indexOf('/'), validated.indexOf('\\'))
-      const prefix = firstSep === -1 ? validated : validated.slice(0, firstSep + 1)
-      return yield* new NotRelativeError({
-        path: validated,
-        message: 'Expected relative path',
-        absolutePrefix: prefix,
-      })
-    }
+  if (platformPath.isAbsolute(validated)) {
+    const firstSep = Math.max(validated.indexOf('/'), validated.indexOf('\\'))
+    const prefix = firstSep === -1 ? validated : validated.slice(0, firstSep + 1)
+    return yield* new NotRelativeError({
+      path: validated,
+      message: 'Expected relative path',
+      absolutePrefix: prefix,
+    })
+  }
 
-    const normalized = platformPath.normalize(validated)
+  const normalized = platformPath.normalize(validated)
 
-    if (hasTrailingSlash(validated)) {
-      return ensureTrailingSlash(normalized) as RelativeDirPath
-    }
+  if (hasTrailingSlash(validated)) {
+    return ensureTrailingSlash(normalized) as RelativeDirPath
+  }
 
-    if (hasExtension(normalized)) {
-      return normalized as RelativeFilePath
-    }
+  if (hasExtension(normalized)) {
+    return normalized as RelativeFilePath
+  }
 
-    // Ambiguous: no trailing slash, no extension
-    return normalized as AmbiguousRelativePath
-  })
+  // Ambiguous: no trailing slash, no extension
+  return normalized as AmbiguousRelativePath
+})
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Ambiguous Path Resolution
@@ -442,47 +416,35 @@ const buildFileInfo = <B extends Abs | Rel>(args: {
 /**
  * Parse and build AbsoluteFileInfo.
  */
-export const absoluteFileInfo = (
-  path: string,
-): Effect.Effect<AbsoluteFileInfo, ParseError, PlatformPath.Path> =>
-  Effect.gen(function* () {
-    const normalized = yield* absoluteFile(path)
-    const platformPath = yield* PlatformPath.Path
-    return buildFileInfo<Abs>({ original: path, normalized, platformPath })
-  })
+export const absoluteFileInfo = Effect.fnUntraced(function* (path: string) {
+  const normalized = yield* absoluteFile(path)
+  const platformPath = yield* PlatformPath.Path
+  return buildFileInfo<Abs>({ original: path, normalized, platformPath })
+})
 
 /**
  * Parse and build AbsoluteDirInfo.
  */
-export const absoluteDirInfo = (
-  path: string,
-): Effect.Effect<AbsoluteDirInfo, ParseError, PlatformPath.Path> =>
-  Effect.gen(function* () {
-    const normalized = yield* absoluteDir(path)
-    const platformPath = yield* PlatformPath.Path
-    return buildDirInfo<Abs>({ original: path, normalized, platformPath })
-  })
+export const absoluteDirInfo = Effect.fnUntraced(function* (path: string) {
+  const normalized = yield* absoluteDir(path)
+  const platformPath = yield* PlatformPath.Path
+  return buildDirInfo<Abs>({ original: path, normalized, platformPath })
+})
 
 /**
  * Parse and build RelativeFileInfo.
  */
-export const relativeFileInfo = (
-  path: string,
-): Effect.Effect<RelativeFileInfo, ParseError, PlatformPath.Path> =>
-  Effect.gen(function* () {
-    const normalized = yield* relativeFile(path)
-    const platformPath = yield* PlatformPath.Path
-    return buildFileInfo<Rel>({ original: path, normalized, platformPath })
-  })
+export const relativeFileInfo = Effect.fnUntraced(function* (path: string) {
+  const normalized = yield* relativeFile(path)
+  const platformPath = yield* PlatformPath.Path
+  return buildFileInfo<Rel>({ original: path, normalized, platformPath })
+})
 
 /**
  * Parse and build RelativeDirInfo.
  */
-export const relativeDirInfo = (
-  path: string,
-): Effect.Effect<RelativeDirInfo, ParseError, PlatformPath.Path> =>
-  Effect.gen(function* () {
-    const normalized = yield* relativeDir(path)
-    const platformPath = yield* PlatformPath.Path
-    return buildDirInfo<Rel>({ original: path, normalized, platformPath })
-  })
+export const relativeDirInfo = Effect.fnUntraced(function* (path: string) {
+  const normalized = yield* relativeDir(path)
+  const platformPath = yield* PlatformPath.Path
+  return buildDirInfo<Rel>({ original: path, normalized, platformPath })
+})

@@ -25,7 +25,7 @@ const TestLayer = NodeFileSystem.layer
 const toJson = Schema.encodeSync(Schema.parseJson(Schema.Unknown))
 
 /** Create a temp directory for each test */
-const makeTempDir = Effect.gen(function* () {
+const makeTempDir = Effect.fnUntraced(function* () {
   const fs = yield* FileSystem.FileSystem
   const tempBase = os.tmpdir()
   const tempDir = path.join(
@@ -34,23 +34,24 @@ const makeTempDir = Effect.gen(function* () {
   )
   yield* fs.makeDirectory(tempDir, { recursive: true })
   return tempDir
-})
+})()
 
 /** Remove temp directory */
-const removeTempDir = (tempDir: string) =>
-  Effect.gen(function* () {
+const removeTempDir = Effect.fnUntraced(
+  function* (tempDir: string) {
     const fs = yield* FileSystem.FileSystem
     yield* fs.remove(tempDir, { recursive: true })
-  }).pipe(Effect.catchAll(() => Effect.void))
+  },
+  Effect.catchAll(() => Effect.void),
+)
 
 /** Write a file with content */
-const writeFile = (filePath: string, content: string) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const dir = path.dirname(filePath)
-    yield* fs.makeDirectory(dir, { recursive: true })
-    yield* fs.writeFileString(filePath, content)
-  })
+const writeFile = Effect.fnUntraced(function* (filePath: string, content: string) {
+  const fs = yield* FileSystem.FileSystem
+  const dir = path.dirname(filePath)
+  yield* fs.makeDirectory(dir, { recursive: true })
+  yield* fs.writeFileString(filePath, content)
+})
 
 describe('import-map', () => {
   let tempDir: string

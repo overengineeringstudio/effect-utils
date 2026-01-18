@@ -99,28 +99,27 @@ export const getUniqueMappings = (mappings: PackageMapping[]): Map<string, Packa
 }
 
 /** Get symlink status for a package mapping */
-export const getSymlinkStatus = (mapping: PackageMapping) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
+export const getSymlinkStatus = Effect.fnUntraced(function* (mapping: PackageMapping) {
+  const fs = yield* FileSystem.FileSystem
 
-    const sourceExists = yield* fs.exists(mapping.source)
-    if (!sourceExists) {
-      return 'source-missing' as const
-    }
+  const sourceExists = yield* fs.exists(mapping.source)
+  if (!sourceExists) {
+    return 'source-missing' as const
+  }
 
-    const targetExists = yield* fs.exists(mapping.target)
-    if (!targetExists) {
-      return 'not-linked' as const
-    }
+  const targetExists = yield* fs.exists(mapping.target)
+  if (!targetExists) {
+    return 'not-linked' as const
+  }
 
-    // Check if it's a symlink
-    const isSymlink = yield* fs.readLink(mapping.target).pipe(
-      Effect.map(() => true),
-      Effect.catchAll(() => Effect.succeed(false)),
-    )
+  // Check if it's a symlink
+  const isSymlink = yield* fs.readLink(mapping.target).pipe(
+    Effect.map(() => true),
+    Effect.catchAll(() => Effect.succeed(false)),
+  )
 
-    return isSymlink ? ('linked' as const) : ('blocked' as const)
-  })
+  return isSymlink ? ('linked' as const) : ('blocked' as const)
+})
 
 /** Result of syncing symlinks */
 export type SyncSymlinksResult = {
@@ -131,7 +130,7 @@ export type SyncSymlinksResult = {
 }
 
 /** Sync symlinks for packages - create/update symlinks based on packages config */
-export const syncSymlinks = ({
+export const syncSymlinks = Effect.fn('dotdot/syncSymlinks')(function* ({
   workspaceRoot,
   packages,
   dryRun,
@@ -141,89 +140,88 @@ export const syncSymlinks = ({
   packages: Record<string, PackageIndexEntry>
   dryRun: boolean
   force: boolean
-}) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
+}) {
+  const fs = yield* FileSystem.FileSystem
 
-    const mappings = collectPackageMappings({ workspaceRoot, packages })
-    const conflicts = findConflicts(mappings)
+  const mappings = collectPackageMappings({ workspaceRoot, packages })
+  const conflicts = findConflicts(mappings)
 
-    const result: SyncSymlinksResult = {
-      created: [],
-      skipped: [],
-      overwritten: [],
-      conflicts,
+  const result: SyncSymlinksResult = {
+    created: [],
+    skipped: [],
+    overwritten: [],
+    conflicts,
+  }
+
+  // If there are conflicts and not forcing, just report them
+  if (conflicts.size > 0 && !force) {
+    return result
+  }
+
+  const uniqueMappings = getUniqueMappings(mappings)
+
+  for (const [targetName, mapping] of uniqueMappings) {
+    const sourceExists = yield* fs.exists(mapping.source)
+    if (!sourceExists) {
+      result.skipped.push(targetName)
+      continue
     }
 
-    // If there are conflicts and not forcing, just report them
-    if (conflicts.size > 0 && !force) {
-      return result
-    }
+    const targetExists = yield* fs.exists(mapping.target)
+    if (targetExists) {
+      if (force) {
+        if (!dryRun) {
+          yield* fs.remove(mapping.target)
+        }
+        result.overwritten.push(targetName)
+      } else {
+        // Check if it's already correctly linked
+        const linkTarget = yield* fs
+          .readLink(mapping.target)
+          .pipe(Effect.catchAll(() => Effect.succeed(undefined)))
+        const parentDir = path.dirname(mapping.target)
+        const expectedRelPath = path.relative(parentDir, mapping.source)
 
-    const uniqueMappings = getUniqueMappings(mappings)
-
-    for (const [targetName, mapping] of uniqueMappings) {
-      const sourceExists = yield* fs.exists(mapping.source)
-      if (!sourceExists) {
+        if (linkTarget === expectedRelPath) {
+          // Already correctly linked, skip
+          continue
+        }
         result.skipped.push(targetName)
         continue
       }
+    }
 
-      const targetExists = yield* fs.exists(mapping.target)
-      if (targetExists) {
-        if (force) {
-          if (!dryRun) {
-            yield* fs.remove(mapping.target)
-          }
-          result.overwritten.push(targetName)
-        } else {
-          // Check if it's already correctly linked
-          const linkTarget = yield* fs
-            .readLink(mapping.target)
-            .pipe(Effect.catchAll(() => Effect.succeed(undefined)))
-          const parentDir = path.dirname(mapping.target)
-          const expectedRelPath = path.relative(parentDir, mapping.source)
-
-          if (linkTarget === expectedRelPath) {
-            // Already correctly linked, skip
-            continue
-          }
-          result.skipped.push(targetName)
-          continue
-        }
-      }
-
-      // Create parent directory if needed (for package names like @org/utils)
-      const parentDir = path.dirname(mapping.target)
-      if (parentDir !== workspaceRoot) {
-        if (!dryRun) {
-          yield* fs.makeDirectory(parentDir, { recursive: true })
-        }
-      }
-
-      // Calculate relative path from symlink location to source
-      const relativePath = path.relative(parentDir, mapping.source)
-
+    // Create parent directory if needed (for package names like @org/utils)
+    const parentDir = path.dirname(mapping.target)
+    if (parentDir !== workspaceRoot) {
       if (!dryRun) {
-        yield* fs.symlink(relativePath, mapping.target).pipe(
-          Effect.mapError(
-            (cause) =>
-              new LinkError({
-                path: mapping.target,
-                message: `Failed to create symlink`,
-                cause,
-              }),
-          ),
-        )
-      }
-
-      if (!result.overwritten.includes(targetName)) {
-        result.created.push(targetName)
+        yield* fs.makeDirectory(parentDir, { recursive: true })
       }
     }
 
-    return result
-  }).pipe(Effect.withSpan('dotdot/syncSymlinks'))
+    // Calculate relative path from symlink location to source
+    const relativePath = path.relative(parentDir, mapping.source)
+
+    if (!dryRun) {
+      yield* fs.symlink(relativePath, mapping.target).pipe(
+        Effect.mapError(
+          (cause) =>
+            new LinkError({
+              path: mapping.target,
+              message: `Failed to create symlink`,
+              cause,
+            }),
+        ),
+      )
+    }
+
+    if (!result.overwritten.includes(targetName)) {
+      result.created.push(targetName)
+    }
+  }
+
+  return result
+})
 
 /** Result of pruning stale symlinks */
 export type PruneSymlinksResult = {
@@ -232,7 +230,7 @@ export type PruneSymlinksResult = {
 }
 
 /** Prune stale symlinks - remove symlinks that are not in current packages config */
-export const pruneStaleSymlinks = ({
+export const pruneStaleSymlinks = Effect.fn('dotdot/pruneStaleSymlinks')(function* ({
   workspaceRoot,
   packages,
   dryRun,
@@ -240,76 +238,75 @@ export const pruneStaleSymlinks = ({
   workspaceRoot: string
   packages: Record<string, PackageIndexEntry>
   dryRun: boolean
-}) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
+}) {
+  const fs = yield* FileSystem.FileSystem
 
-    const result: PruneSymlinksResult = {
-      removed: [],
-      skipped: [],
-    }
+  const result: PruneSymlinksResult = {
+    removed: [],
+    skipped: [],
+  }
 
-    // Get current package target names
-    const currentTargets = new Set(Object.keys(packages))
+  // Get current package target names
+  const currentTargets = new Set(Object.keys(packages))
 
-    // Scan workspace root for symlinks
-    const entries = yield* fs.readDirectory(workspaceRoot)
+  // Scan workspace root for symlinks
+  const entries = yield* fs.readDirectory(workspaceRoot)
 
-    for (const entry of entries) {
-      // Skip hidden files and directories
-      if (entry.startsWith('.')) continue
+  for (const entry of entries) {
+    // Skip hidden files and directories
+    if (entry.startsWith('.')) continue
 
-      const entryPath = path.join(workspaceRoot, entry)
+    const entryPath = path.join(workspaceRoot, entry)
 
-      // Check if it's a symlink
-      const linkTarget = yield* fs
-        .readLink(entryPath)
-        .pipe(Effect.catchAll(() => Effect.succeed(undefined)))
+    // Check if it's a symlink
+    const linkTarget = yield* fs
+      .readLink(entryPath)
+      .pipe(Effect.catchAll(() => Effect.succeed(undefined)))
 
-      if (!linkTarget) {
-        // Not a symlink, check if it's a directory that might contain scoped packages
-        if (entry.startsWith('@')) {
-          // Scoped package directory - check contents
-          const scopedEntries = yield* fs
-            .readDirectory(entryPath)
-            .pipe(Effect.catchAll(() => Effect.succeed([] as string[])))
+    if (!linkTarget) {
+      // Not a symlink, check if it's a directory that might contain scoped packages
+      if (entry.startsWith('@')) {
+        // Scoped package directory - check contents
+        const scopedEntries = yield* fs
+          .readDirectory(entryPath)
+          .pipe(Effect.catchAll(() => Effect.succeed([] as string[])))
 
-          for (const scopedEntry of scopedEntries) {
-            const scopedPath = path.join(entryPath, scopedEntry)
-            const scopedName = `${entry}/${scopedEntry}`
+        for (const scopedEntry of scopedEntries) {
+          const scopedPath = path.join(entryPath, scopedEntry)
+          const scopedName = `${entry}/${scopedEntry}`
 
-            const scopedLinkTarget = yield* fs
-              .readLink(scopedPath)
-              .pipe(Effect.catchAll(() => Effect.succeed(undefined)))
+          const scopedLinkTarget = yield* fs
+            .readLink(scopedPath)
+            .pipe(Effect.catchAll(() => Effect.succeed(undefined)))
 
-            if (scopedLinkTarget && !currentTargets.has(scopedName)) {
-              // Stale scoped symlink
-              if (!dryRun) {
-                yield* fs.remove(scopedPath)
-              }
-              result.removed.push(scopedName)
+          if (scopedLinkTarget && !currentTargets.has(scopedName)) {
+            // Stale scoped symlink
+            if (!dryRun) {
+              yield* fs.remove(scopedPath)
             }
-          }
-
-          // Clean up empty scoped directories
-          const remainingEntries = yield* fs
-            .readDirectory(entryPath)
-            .pipe(Effect.catchAll(() => Effect.succeed([] as string[])))
-          if (remainingEntries.length === 0 && !dryRun) {
-            yield* fs.remove(entryPath)
+            result.removed.push(scopedName)
           }
         }
-        continue
-      }
 
-      // It's a symlink at workspace root - check if it's stale
-      if (!currentTargets.has(entry)) {
-        if (!dryRun) {
+        // Clean up empty scoped directories
+        const remainingEntries = yield* fs
+          .readDirectory(entryPath)
+          .pipe(Effect.catchAll(() => Effect.succeed([] as string[])))
+        if (remainingEntries.length === 0 && !dryRun) {
           yield* fs.remove(entryPath)
         }
-        result.removed.push(entry)
       }
+      continue
     }
 
-    return result
-  }).pipe(Effect.withSpan('dotdot/pruneStaleSymlinks'))
+    // It's a symlink at workspace root - check if it's stale
+    if (!currentTargets.has(entry)) {
+      if (!dryRun) {
+        yield* fs.remove(entryPath)
+      }
+      result.removed.push(entry)
+    }
+  }
+
+  return result
+})

@@ -107,27 +107,24 @@ const isAbsolutePath = (path: string): boolean =>
   path.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(path)
 
 /** Find config file in directory or parent directories */
-const findConfigFile = (
-  startDir: AbsoluteDirPath,
-): Effect.Effect<AbsoluteFilePath | undefined, never, FileSystem.FileSystem> =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
+const findConfigFile = Effect.fnUntraced(function* (startDir: AbsoluteDirPath) {
+  const fs = yield* FileSystem.FileSystem
 
-    let currentDir: AbsoluteDirPath | undefined = startDir
+  let currentDir: AbsoluteDirPath | undefined = startDir
 
-    while (currentDir !== undefined) {
-      for (const fileName of CONFIG_FILE_NAMES) {
-        const filePath = EffectPath.ops.join(currentDir, EffectPath.unsafe.relativeFile(fileName))
-        const exists = yield* fs.exists(filePath).pipe(Effect.orElseSucceed(() => false))
-        if (exists) {
-          return filePath
-        }
+  while (currentDir !== undefined) {
+    for (const fileName of CONFIG_FILE_NAMES) {
+      const filePath = EffectPath.ops.join(currentDir, EffectPath.unsafe.relativeFile(fileName))
+      const exists = yield* fs.exists(filePath).pipe(Effect.orElseSucceed(() => false))
+      if (exists) {
+        return filePath
       }
-      currentDir = EffectPath.ops.parent(currentDir)
     }
+    currentDir = EffectPath.ops.parent(currentDir)
+  }
 
-    return undefined
-  })
+  return undefined as AbsoluteFilePath | undefined
+})
 
 /** Check if a value is a Transform object */
 const isTransform = (value: unknown): value is Transform =>
@@ -154,41 +151,38 @@ const normalizeTransforms = (
 }
 
 /** Load TypeScript config file using dynamic import */
-const loadTsConfig = (
-  configPath: string,
-): Effect.Effect<SchemaGenConfig, ConfigReadError | ConfigParseError> =>
-  Effect.gen(function* () {
-    const module = yield* Effect.tryPromise({
-      // oxlint-disable-next-line eslint-plugin-import(no-dynamic-require) -- runtime config file loading requires dynamic import
-      try: () => import(configPath),
-      catch: (cause) =>
-        new ConfigReadError({
-          message: `Failed to import config: ${formatUnknownErrorMessage(cause)}`,
-          path: configPath,
-          cause,
-        }),
-    })
-
-    const config = module.default as unknown
-    if (!config || typeof config !== 'object') {
-      return yield* new ConfigParseError({
-        message: 'Config file must export a default config object',
+const loadTsConfig = Effect.fnUntraced(function* (configPath: string) {
+  const module = yield* Effect.tryPromise({
+    // oxlint-disable-next-line eslint-plugin-import(no-dynamic-require) -- runtime config file loading requires dynamic import
+    try: () => import(configPath),
+    catch: (cause) =>
+      new ConfigReadError({
+        message: `Failed to import config: ${formatUnknownErrorMessage(cause)}`,
         path: configPath,
-        cause: new Error('Invalid export'),
-      })
-    }
-
-    // Validate required fields
-    if (!('databases' in config) || typeof config.databases !== 'object') {
-      return yield* new ConfigParseError({
-        message: 'Config must have a "databases" object',
-        path: configPath,
-        cause: new Error('Missing databases'),
-      })
-    }
-
-    return config as SchemaGenConfig
+        cause,
+      }),
   })
+
+  const config = module.default as unknown
+  if (!config || typeof config !== 'object') {
+    return yield* new ConfigParseError({
+      message: 'Config file must export a default config object',
+      path: configPath,
+      cause: new Error('Invalid export'),
+    })
+  }
+
+  // Validate required fields
+  if (!('databases' in config) || typeof config.databases !== 'object') {
+    return yield* new ConfigParseError({
+      message: 'Config must have a "databases" object',
+      path: configPath,
+      cause: new Error('Missing databases'),
+    })
+  }
+
+  return config as SchemaGenConfig
+})
 
 interface ResolveConfigOptions {
   config: SchemaGenConfig
@@ -237,45 +231,40 @@ const resolveConfig = ({ config, configDir }: ResolveConfigOptions): ResolvedCon
  * Load configuration from file.
  * Searches for config files in the current directory and parent directories.
  */
-export const loadConfig = (
-  configPath?: string,
-): Effect.Effect<
-  { config: ResolvedConfig; path: AbsoluteFilePath },
-  ConfigError,
-  FileSystem.FileSystem | CurrentWorkingDirectory
-> =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
+export const loadConfig = Effect.fnUntraced(function* (configPath?: string) {
+  const fs = yield* FileSystem.FileSystem
 
-    const searchStartDir = EffectPath.unsafe.absoluteDir(yield* CurrentWorkingDirectory)
-    const resolvedPath = configPath
-      ? isAbsolutePath(configPath)
-        ? EffectPath.unsafe.absoluteFile(configPath)
-        : EffectPath.ops.join(searchStartDir, EffectPath.unsafe.relativeFile(configPath))
-      : yield* findConfigFile(searchStartDir)
+  const searchStartDir: AbsoluteDirPath = EffectPath.unsafe.absoluteDir(
+    yield* CurrentWorkingDirectory,
+  )
+  const resolvedPath: AbsoluteFilePath | undefined = configPath
+    ? isAbsolutePath(configPath)
+      ? EffectPath.unsafe.absoluteFile(configPath)
+      : EffectPath.ops.join(searchStartDir, EffectPath.unsafe.relativeFile(configPath))
+    : yield* findConfigFile(searchStartDir)
 
-    if (!resolvedPath) {
-      return yield* new ConfigNotFoundError({
-        message: `No config file found. Create one of: ${CONFIG_FILE_NAMES.join(', ')}`,
-        searchStartDir,
-        fileNames: CONFIG_FILE_NAMES,
-      })
-    }
+  if (!resolvedPath) {
+    return yield* new ConfigNotFoundError({
+      message: `No config file found. Create one of: ${CONFIG_FILE_NAMES.join(', ')}`,
+      searchStartDir,
+      fileNames: CONFIG_FILE_NAMES,
+    })
+  }
 
-    const exists = yield* fs.exists(resolvedPath).pipe(Effect.orElseSucceed(() => false))
-    if (!exists) {
-      return yield* new ConfigFileNotFoundError({
-        message: `Config file not found: ${resolvedPath}`,
-        path: resolvedPath,
-      })
-    }
+  const exists = yield* fs.exists(resolvedPath).pipe(Effect.orElseSucceed(() => false))
+  if (!exists) {
+    return yield* new ConfigFileNotFoundError({
+      message: `Config file not found: ${resolvedPath}`,
+      path: resolvedPath,
+    })
+  }
 
-    const rawConfig = yield* loadTsConfig(resolvedPath)
-    const configDir = EffectPath.ops.parent(resolvedPath)
-    const config = resolveConfig({ config: rawConfig, configDir })
+  const rawConfig = yield* loadTsConfig(resolvedPath)
+  const configDir = EffectPath.ops.parent(resolvedPath)
+  const config = resolveConfig({ config: rawConfig, configDir })
 
-    return { config, path: resolvedPath }
-  })
+  return { config, path: resolvedPath }
+})
 
 /** Merges database config with defaults */
 // oxlint-disable-next-line overeng/named-args -- matches main branch

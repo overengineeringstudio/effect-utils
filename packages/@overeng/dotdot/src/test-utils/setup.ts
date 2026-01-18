@@ -34,61 +34,60 @@ export type WorkspaceFixture = {
 }
 
 /** Create a temporary workspace for testing - returns Effect that yields workspace path */
-export const createWorkspace = (fixture: WorkspaceFixture) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
+export const createWorkspace = Effect.fnUntraced(function* (fixture: WorkspaceFixture) {
+  const fs = yield* FileSystem.FileSystem
 
-    // Create temp directory
-    const tmpDir = yield* fs.makeTempDirectoryScoped()
+  // Create temp directory
+  const tmpDir = yield* fs.makeTempDirectoryScoped()
 
-    // Create root config at workspace root
-    if (fixture.rootRepos && Object.keys(fixture.rootRepos).length > 0) {
-      const configContent = generateConfig(fixture.rootRepos)
-      yield* fs.writeFileString(`${tmpDir}/dotdot-root.json`, configContent)
-    } else {
-      const emptyConfig = JSON.stringify({ repos: {} }, null, 2) + '\n'
-      yield* fs.writeFileString(`${tmpDir}/dotdot-root.json`, emptyConfig)
-    }
+  // Create root config at workspace root
+  if (fixture.rootRepos && Object.keys(fixture.rootRepos).length > 0) {
+    const configContent = generateConfig(fixture.rootRepos)
+    yield* fs.writeFileString(`${tmpDir}/dotdot-root.json`, configContent)
+  } else {
+    const emptyConfig = JSON.stringify({ repos: {} }, null, 2) + '\n'
+    yield* fs.writeFileString(`${tmpDir}/dotdot-root.json`, emptyConfig)
+  }
 
-    // Create repos
-    for (const repo of fixture.repos) {
-      const repoPath = `${tmpDir}/${repo.name}`
-      yield* fs.makeDirectory(repoPath, { recursive: true })
+  // Create repos
+  for (const repo of fixture.repos) {
+    const repoPath = `${tmpDir}/${repo.name}`
+    yield* fs.makeDirectory(repoPath, { recursive: true })
 
-      if (repo.isGitRepo !== false) {
-        // Initialize git repo
-        yield* runGitCommand({ args: ['init'], cwd: repoPath })
-        yield* runGitCommand({ args: ['config', 'user.email', 'test@test.com'], cwd: repoPath })
-        yield* runGitCommand({ args: ['config', 'user.name', 'Test'], cwd: repoPath })
+    if (repo.isGitRepo !== false) {
+      // Initialize git repo
+      yield* runGitCommand({ args: ['init'], cwd: repoPath })
+      yield* runGitCommand({ args: ['config', 'user.email', 'test@test.com'], cwd: repoPath })
+      yield* runGitCommand({ args: ['config', 'user.name', 'Test'], cwd: repoPath })
 
-        // Create initial commit
-        yield* fs.writeFileString(`${repoPath}/README.md`, `# ${repo.name}\n`)
-        yield* runGitCommand({ args: ['add', '.'], cwd: repoPath })
-        yield* runGitCommand({
-          args: ['commit', '--no-verify', '-m', 'Initial commit'],
-          cwd: repoPath,
-        })
+      // Create initial commit
+      yield* fs.writeFileString(`${repoPath}/README.md`, `# ${repo.name}\n`)
+      yield* runGitCommand({ args: ['add', '.'], cwd: repoPath })
+      yield* runGitCommand({
+        args: ['commit', '--no-verify', '-m', 'Initial commit'],
+        cwd: repoPath,
+      })
 
-        if (repo.isDirty) {
-          yield* fs.writeFileString(`${repoPath}/dirty.txt`, 'dirty\n')
-        }
-
-        if (repo.remoteUrl) {
-          yield* runGitCommand({ args: ['remote', 'add', 'origin', repo.remoteUrl], cwd: repoPath })
-        }
+      if (repo.isDirty) {
+        yield* fs.writeFileString(`${repoPath}/dirty.txt`, 'dirty\n')
       }
 
-      if (repo.hasConfig) {
-        const configContent = generateMemberConfig({
-          ...(repo.configExposes !== undefined && { exposes: repo.configExposes }),
-          ...(repo.configDeps !== undefined && { deps: repo.configDeps }),
-        })
-        yield* fs.writeFileString(`${repoPath}/dotdot.json`, configContent)
+      if (repo.remoteUrl) {
+        yield* runGitCommand({ args: ['remote', 'add', 'origin', repo.remoteUrl], cwd: repoPath })
       }
     }
 
-    return tmpDir
-  })
+    if (repo.hasConfig) {
+      const configContent = generateMemberConfig({
+        ...(repo.configExposes !== undefined && { exposes: repo.configExposes }),
+        ...(repo.configDeps !== undefined && { deps: repo.configDeps }),
+      })
+      yield* fs.writeFileString(`${repoPath}/dotdot.json`, configContent)
+    }
+  }
+
+  return tmpDir
+})
 
 /** Run a git command in a directory */
 const runGitCommand = ({ args, cwd }: { args: readonly string[]; cwd: string }) =>
@@ -116,39 +115,38 @@ export const getGitRev = (repoPath: string) =>
   )
 
 /** Create a bare git repository (for clone tests) */
-export const createBareRepo = (name: string) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
+export const createBareRepo = Effect.fnUntraced(function* (name: string) {
+  const fs = yield* FileSystem.FileSystem
 
-    const tmpDir = yield* fs.makeTempDirectoryScoped()
-    const repoPath = `${tmpDir}/${name}.git`
+  const tmpDir = yield* fs.makeTempDirectoryScoped()
+  const repoPath = `${tmpDir}/${name}.git`
 
-    // Create bare repo
-    yield* fs.makeDirectory(repoPath)
-    yield* runGitCommand({ args: ['init', '--bare'], cwd: repoPath })
+  // Create bare repo
+  yield* fs.makeDirectory(repoPath)
+  yield* runGitCommand({ args: ['init', '--bare'], cwd: repoPath })
 
-    // Create a temp repo, add commit, push to bare
-    const tempRepoPath = `${tmpDir}/temp-repo`
-    yield* fs.makeDirectory(tempRepoPath)
-    yield* runGitCommand({ args: ['init'], cwd: tempRepoPath })
-    yield* runGitCommand({ args: ['config', 'user.email', 'test@test.com'], cwd: tempRepoPath })
-    yield* runGitCommand({ args: ['config', 'user.name', 'Test'], cwd: tempRepoPath })
-    yield* fs.writeFileString(`${tempRepoPath}/README.md`, `# ${name}\n`)
-    yield* runGitCommand({ args: ['add', '.'], cwd: tempRepoPath })
-    yield* runGitCommand({
-      args: ['commit', '--no-verify', '-m', 'Initial commit'],
-      cwd: tempRepoPath,
-    })
-    yield* runGitCommand({ args: ['push', repoPath, 'HEAD:main'], cwd: tempRepoPath })
-
-    // Clean up temp repo
-    yield* fs.remove(tempRepoPath, { recursive: true })
-
-    return repoPath
+  // Create a temp repo, add commit, push to bare
+  const tempRepoPath = `${tmpDir}/temp-repo`
+  yield* fs.makeDirectory(tempRepoPath)
+  yield* runGitCommand({ args: ['init'], cwd: tempRepoPath })
+  yield* runGitCommand({ args: ['config', 'user.email', 'test@test.com'], cwd: tempRepoPath })
+  yield* runGitCommand({ args: ['config', 'user.name', 'Test'], cwd: tempRepoPath })
+  yield* fs.writeFileString(`${tempRepoPath}/README.md`, `# ${name}\n`)
+  yield* runGitCommand({ args: ['add', '.'], cwd: tempRepoPath })
+  yield* runGitCommand({
+    args: ['commit', '--no-verify', '-m', 'Initial commit'],
+    cwd: tempRepoPath,
   })
+  yield* runGitCommand({ args: ['push', repoPath, 'HEAD:main'], cwd: tempRepoPath })
+
+  // Clean up temp repo
+  yield* fs.remove(tempRepoPath, { recursive: true })
+
+  return repoPath
+})
 
 /** Add a commit to a repo */
-export const addCommit = ({
+export const addCommit = Effect.fnUntraced(function* ({
   repoPath,
   message,
   filename,
@@ -156,37 +154,34 @@ export const addCommit = ({
   repoPath: string
   message: string
   filename?: string
-}) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const file = filename ?? `file-${Date.now()}.txt`
-    yield* fs.writeFileString(`${repoPath}/${file}`, `${message}\n`)
-    yield* runGitCommand({ args: ['add', '.'], cwd: repoPath })
-    yield* runGitCommand({ args: ['commit', '--no-verify', '-m', message], cwd: repoPath })
-    return yield* getGitRev(repoPath)
-  })
+}) {
+  const fs = yield* FileSystem.FileSystem
+  const file = filename ?? `file-${Date.now()}.txt`
+  yield* fs.writeFileString(`${repoPath}/${file}`, `${message}\n`)
+  yield* runGitCommand({ args: ['add', '.'], cwd: repoPath })
+  yield* runGitCommand({ args: ['commit', '--no-verify', '-m', message], cwd: repoPath })
+  return yield* getGitRev(repoPath)
+})
 
 /** Read the root config file content */
-export const readConfig = (workspacePath: string) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    return yield* fs.readFileString(`${workspacePath}/dotdot-root.json`)
-  })
+export const readConfig = Effect.fnUntraced(function* (workspacePath: string) {
+  const fs = yield* FileSystem.FileSystem
+  return yield* fs.readFileString(`${workspacePath}/dotdot-root.json`)
+})
 
 /** Create package target directory with files */
-export const createPackageTarget = ({
+export const createPackageTarget = Effect.fnUntraced(function* ({
   repoPath,
   packagePath,
 }: {
   repoPath: string
   packagePath: string
-}) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const targetPath = `${repoPath}/${packagePath}`
-    yield* fs.makeDirectory(targetPath, { recursive: true })
-    yield* fs.writeFileString(`${targetPath}/package.json`, '{"name": "test-package"}\n')
-  })
+}) {
+  const fs = yield* FileSystem.FileSystem
+  const targetPath = `${repoPath}/${packagePath}`
+  yield* fs.makeDirectory(targetPath, { recursive: true })
+  yield* fs.writeFileString(`${targetPath}/package.json`, '{"name": "test-package"}\n')
+})
 
 type PackageIndexEntry = { repo: string; path: string; install?: string }
 

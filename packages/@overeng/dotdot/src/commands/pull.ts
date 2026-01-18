@@ -92,67 +92,66 @@ const pullRepo = (repo: RepoInfo) =>
   )
 
 /** Pull command handler - separated for testability */
-export const pullHandler = ({
+export const pullHandler = Effect.fn('dotdot/pull')(function* ({
   mode,
   maxParallel,
 }: {
   mode: ExecutionMode
   maxParallel: Option.Option<number>
-}) =>
-  Effect.gen(function* () {
-    const workspace = yield* WorkspaceService
+}) {
+  const workspace = yield* WorkspaceService
 
-    yield* Effect.log(kv('workspace', path.basename(workspace.root)))
+  yield* Effect.log(kv('workspace', path.basename(workspace.root)))
 
-    // Get all repos and filter to those that exist as git repos
-    const allRepos = yield* workspace.scanRepos()
-    const repos = allRepos.filter(existsAsGitRepo)
+  // Get all repos and filter to those that exist as git repos
+  const allRepos = yield* workspace.scanRepos()
+  const repos = allRepos.filter(existsAsGitRepo)
 
-    if (repos.length === 0) {
-      yield* Effect.log(styled.dim('no repos to pull'))
-      return
-    }
+  if (repos.length === 0) {
+    yield* Effect.log(styled.dim('no repos to pull'))
+    return
+  }
 
-    yield* Effect.log(styled.dim(`${repos.length} repos ${symbols.dot} ${mode} mode`))
+  yield* Effect.log(styled.dim(`${repos.length} repos ${symbols.dot} ${mode} mode`))
+  yield* Effect.log('')
+
+  const results = yield* executeForAll({
+    items: repos,
+    fn: (repo) =>
+      Effect.gen(function* () {
+        yield* Effect.log(`${styled.dim('pulling')} ${styled.bold(repo.name)}`)
+        const result = yield* pullRepo(repo)
+
+        const statusIcon =
+          result.status === 'pulled'
+            ? result.diverged
+              ? styled.yellow(symbols.warning)
+              : styled.green(symbols.check)
+            : result.status === 'failed'
+              ? styled.red(symbols.cross)
+              : styled.dim(symbols.dot)
+        yield* Effect.log(`  ${statusIcon} ${styled.dim(result.message ?? result.status)}`)
+        return result
+      }),
+    options: { mode, maxParallel: Option.getOrUndefined(maxParallel) },
+  })
+
+  yield* Effect.log('')
+
+  const summary = buildSummary({ results, statusLabels: PullStatusLabels })
+  const divergedCount = results.filter((r) => 'diverged' in r && r.diverged === true).length
+  const divergedSuffix =
+    divergedCount > 0 ? `, ${styled.yellow(String(divergedCount))} diverged` : ''
+  yield* Effect.log(styled.dim(`done: ${summary}${divergedSuffix}`))
+
+  if (divergedCount > 0) {
     yield* Effect.log('')
-
-    const results = yield* executeForAll({
-      items: repos,
-      fn: (repo) =>
-        Effect.gen(function* () {
-          yield* Effect.log(`${styled.dim('pulling')} ${styled.bold(repo.name)}`)
-          const result = yield* pullRepo(repo)
-
-          const statusIcon =
-            result.status === 'pulled'
-              ? result.diverged
-                ? styled.yellow(symbols.warning)
-                : styled.green(symbols.check)
-              : result.status === 'failed'
-                ? styled.red(symbols.cross)
-                : styled.dim(symbols.dot)
-          yield* Effect.log(`  ${statusIcon} ${styled.dim(result.message ?? result.status)}`)
-          return result
-        }),
-      options: { mode, maxParallel: Option.getOrUndefined(maxParallel) },
-    })
-
-    yield* Effect.log('')
-
-    const summary = buildSummary({ results, statusLabels: PullStatusLabels })
-    const divergedCount = results.filter((r) => 'diverged' in r && r.diverged === true).length
-    const divergedSuffix =
-      divergedCount > 0 ? `, ${styled.yellow(String(divergedCount))} diverged` : ''
-    yield* Effect.log(styled.dim(`done: ${summary}${divergedSuffix}`))
-
-    if (divergedCount > 0) {
-      yield* Effect.log('')
-      yield* Effect.logWarning('some repos are now diverged from their pinned revisions')
-      yield* Effect.log(
-        styled.dim('run `dotdot update-revs` to update pins, or `dotdot sync` to reset'),
-      )
-    }
-  }).pipe(Effect.withSpan('dotdot/pull'))
+    yield* Effect.logWarning('some repos are now diverged from their pinned revisions')
+    yield* Effect.log(
+      styled.dim('run `dotdot update-revs` to update pins, or `dotdot sync` to reset'),
+    )
+  }
+})
 
 /** Pull command implementation.
  * Provides its own WorkspaceService.live layer - validates config is in sync before running. */

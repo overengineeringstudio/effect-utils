@@ -84,19 +84,14 @@ const buildBlockChildrenParams = (opts: RetrieveBlockChildrenOptions): string =>
 }
 
 /** Internal raw retrieveChildren - used by both retrieveChildren and retrieveChildrenStream */
-const retrieveChildrenRaw = (
+const retrieveChildrenRaw = Effect.fn('NotionBlocks.retrieveChildren')(function* (
   opts: RetrieveBlockChildrenOptions,
-): Effect.Effect<PaginatedResult<Block>, NotionApiError, NotionConfig | HttpClient.HttpClient> =>
-  Effect.gen(function* () {
-    const queryString = buildBlockChildrenParams(opts)
-    const path = `/blocks/${opts.blockId}/children${queryString ? `?${queryString}` : ''}`
-    const response = yield* get({ path, responseSchema: BlockChildrenResponseSchema })
-    return toPaginatedResult(response)
-  }).pipe(
-    Effect.withSpan('NotionBlocks.retrieveChildren', {
-      attributes: { 'notion.block_id': opts.blockId },
-    }),
-  )
+) {
+  const queryString = buildBlockChildrenParams(opts)
+  const path = `/blocks/${opts.blockId}/children${queryString ? `?${queryString}` : ''}`
+  const response = yield* get({ path, responseSchema: BlockChildrenResponseSchema })
+  return toPaginatedResult(response)
+})
 
 /**
  * Retrieve block children with pagination.

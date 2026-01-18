@@ -122,7 +122,7 @@ export const joinPlatform = (
   // biome-ignore lint/style/useRestParameters: Variadic design decision
   ...segments: RelativePath[]
 ): Effect.Effect<Path, never, PlatformPath.Path> =>
-  Effect.gen(function* () {
+  Effect.fnUntraced(function* () {
     if (segments.length === 0) {
       return base
     }
@@ -138,7 +138,7 @@ export const joinPlatform = (
     }
 
     return joined as Path
-  })
+  })()
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Resolution Operations
@@ -152,11 +152,11 @@ export const resolve = (
   // biome-ignore lint/style/useRestParameters: Variadic design decision
   ...paths: Path[]
 ): Effect.Effect<AbsolutePath, never, PlatformPath.Path> =>
-  Effect.gen(function* () {
+  Effect.fnUntraced(function* () {
     const platformPath = yield* PlatformPath.Path
     const resolved = platformPath.resolve(...paths)
     return resolved as AbsolutePath
-  })
+  })()
 
 /**
  * Get the relative path from one absolute path to another.
@@ -165,11 +165,11 @@ export const relative = (args: {
   readonly from: AbsoluteDirPath
   readonly to: AbsolutePath
 }): Effect.Effect<RelativePath, never, PlatformPath.Path> =>
-  Effect.gen(function* () {
+  Effect.fnUntraced(function* () {
     const platformPath = yield* PlatformPath.Path
     const rel = platformPath.relative(removeTrailingSlash(args.from), args.to)
     return rel as RelativePath
-  })
+  })()
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Parent/Child Navigation
@@ -213,21 +213,18 @@ export function parent(path: Path): DirPath | undefined {
 /**
  * Get parent directory using platform-specific logic.
  */
-export const parentPlatform = (
-  path: Path,
-): Effect.Effect<DirPath | undefined, never, PlatformPath.Path> =>
-  Effect.gen(function* () {
-    const platformPath = yield* PlatformPath.Path
-    const isFile = !hasTrailingSlash(path)
-    const dirname = platformPath.dirname(removeTrailingSlash(path))
+export const parentPlatform = Effect.fnUntraced(function* (path: Path) {
+  const platformPath = yield* PlatformPath.Path
+  const isFile = !hasTrailingSlash(path)
+  const dirname = platformPath.dirname(removeTrailingSlash(path))
 
-    // Check if we're at root
-    if (dirname === path || dirname === removeTrailingSlash(path)) {
-      return isFile ? (ensureTrailingSlash(dirname) as DirPath) : undefined
-    }
+  // Check if we're at root
+  if (dirname === path || dirname === removeTrailingSlash(path)) {
+    return isFile ? (ensureTrailingSlash(dirname) as DirPath) : undefined
+  }
 
-    return ensureTrailingSlash(dirname) as DirPath
-  })
+  return ensureTrailingSlash(dirname) as DirPath
+})
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Path Component Extraction

@@ -68,18 +68,11 @@ const buildSearchBody = (opts: SearchOptions): Record<string, unknown> => {
 }
 
 /** Internal raw search - used by both search and searchStream */
-const searchRaw = (
-  opts: SearchOptions,
-): Effect.Effect<
-  PaginatedResult<SearchResult>,
-  NotionApiError,
-  NotionConfig | HttpClient.HttpClient
-> =>
-  Effect.gen(function* () {
-    const body = buildSearchBody(opts)
-    const response = yield* post({ path: '/search', body, responseSchema: SearchResponseSchema })
-    return toPaginatedResult(response)
-  }).pipe(Effect.withSpan('NotionSearch.search'))
+const searchRaw = Effect.fn('NotionSearch.search')(function* (opts: SearchOptions) {
+  const body = buildSearchBody(opts)
+  const response = yield* post({ path: '/search', body, responseSchema: SearchResponseSchema })
+  return toPaginatedResult(response)
+})
 
 /**
  * Search pages and databases.

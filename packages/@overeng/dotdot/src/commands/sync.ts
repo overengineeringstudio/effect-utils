@@ -149,33 +149,32 @@ const syncRepo = ({
   )
 
 /** Run package-level install commands */
-const runPackageInstalls = ({
+const runPackageInstalls = Effect.fnUntraced(function* ({
   workspaceRoot,
   packages,
 }: {
   workspaceRoot: string
   packages: Record<string, PackageIndexEntry>
-}) =>
-  Effect.gen(function* () {
-    const installedPackages: string[] = []
+}) {
+  const installedPackages: string[] = []
 
-    for (const [pkgName, pkgConfig] of Object.entries(packages)) {
-      if (pkgConfig.install) {
-        const pkgPath = path.join(workspaceRoot, pkgConfig.repo, pkgConfig.path)
-        yield* Effect.log(`  ${styled.dim('installing')} ${styled.bold(pkgName)}`)
-        yield* runShellCommand({ command: pkgConfig.install, cwd: pkgPath }).pipe(
-          Effect.catchAll((error) => {
-            return Effect.logWarning(
-              `  ${styled.red(symbols.cross)} ${styled.bold(pkgName)} ${styled.dim(String(error))}`,
-            )
-          }),
-        )
-        installedPackages.push(pkgName)
-      }
+  for (const [pkgName, pkgConfig] of Object.entries(packages)) {
+    if (pkgConfig.install) {
+      const pkgPath = path.join(workspaceRoot, pkgConfig.repo, pkgConfig.path)
+      yield* Effect.log(`  ${styled.dim('installing')} ${styled.bold(pkgName)}`)
+      yield* runShellCommand({ command: pkgConfig.install, cwd: pkgPath }).pipe(
+        Effect.catchAll((error) => {
+          return Effect.logWarning(
+            `  ${styled.red(symbols.cross)} ${styled.bold(pkgName)} ${styled.dim(String(error))}`,
+          )
+        }),
+      )
+      installedPackages.push(pkgName)
     }
+  }
 
-    return installedPackages
-  })
+  return installedPackages
+})
 
 /** Sync command implementation */
 export const syncCommand = Cli.Command.make(
@@ -584,9 +583,9 @@ export const syncCommand = Cli.Command.make(
         }
       }
 
-      yield* Effect.log('')
+    yield* Effect.log('')
 
-      const summary = buildSummary({ results, statusLabels: SyncStatusLabels })
-      yield* Effect.log(styled.dim(`done: ${summary}`))
-    }).pipe(Effect.withSpan('dotdot/sync')),
+    const summary = buildSummary({ results, statusLabels: SyncStatusLabels })
+    yield* Effect.log(styled.dim(`done: ${summary}`))
+  }).pipe(Effect.withSpan('dotdot/sync')),
 )

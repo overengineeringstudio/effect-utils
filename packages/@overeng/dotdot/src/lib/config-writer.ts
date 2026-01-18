@@ -42,27 +42,26 @@ const generateMemberConfigContent = (config: MemberConfig): string => {
 }
 
 /** Write a member config file */
-export const writeMemberConfig = ({
+export const writeMemberConfig = Effect.fn('config-writer/writeMemberConfig')(function* ({
   configPath,
   config,
 }: {
   configPath: string
   config: MemberConfig
-}) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const content = generateMemberConfigContent(config)
-    yield* fs.writeFileString(configPath, content).pipe(
-      Effect.mapError(
-        (cause) =>
-          new ConfigWriteError({
-            path: configPath,
-            message: 'Failed to write member config file',
-            cause,
-          }),
-      ),
-    )
-  }).pipe(Effect.withSpan('config-writer/writeMemberConfig'))
+}) {
+  const fs = yield* FileSystem.FileSystem
+  const content = generateMemberConfigContent(config)
+  yield* fs.writeFileString(configPath, content).pipe(
+    Effect.mapError(
+      (cause) =>
+        new ConfigWriteError({
+          path: configPath,
+          message: 'Failed to write member config file',
+          cause,
+        }),
+    ),
+  )
+})
 
 /** Generate JSON content for root config file */
 const generateRootConfigContent = (config: RootConfig): string => {
@@ -77,30 +76,29 @@ const generateRootConfigContent = (config: RootConfig): string => {
 }
 
 /** Write a root config file (for non-generated configs) */
-export const writeRootConfig = ({
+export const writeRootConfig = Effect.fn('config-writer/writeRootConfig')(function* ({
   configPath,
   config,
 }: {
   configPath: string
   config: RootConfig
-}) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const content = generateRootConfigContent(config)
-    yield* fs.writeFileString(configPath, content).pipe(
-      Effect.mapError(
-        (cause) =>
-          new ConfigWriteError({
-            path: configPath,
-            message: 'Failed to write root config file',
-            cause,
-          }),
-      ),
-    )
-  }).pipe(Effect.withSpan('config-writer/writeRootConfig'))
+}) {
+  const fs = yield* FileSystem.FileSystem
+  const content = generateRootConfigContent(config)
+  yield* fs.writeFileString(configPath, content).pipe(
+    Effect.mapError(
+      (cause) =>
+        new ConfigWriteError({
+          path: configPath,
+          message: 'Failed to write root config file',
+          cause,
+        }),
+    ),
+  )
+})
 
 /** Add or update a repo in a root config file */
-export const upsertRepo = ({
+export const upsertRepo = Effect.fn('config-writer/upsertRepo')(function* ({
   configPath,
   name,
   repoConfig,
@@ -110,21 +108,20 @@ export const upsertRepo = ({
   name: string
   repoConfig: RepoConfig
   existingConfig: RootConfig
-}) =>
-  Effect.gen(function* () {
-    const newConfig: RootConfig = {
-      ...existingConfig,
-      repos: {
-        ...existingConfig.repos,
-        [name]: repoConfig,
-      },
-    }
-    yield* writeRootConfig({ configPath, config: newConfig })
-    return newConfig
-  }).pipe(Effect.withSpan('config-writer/upsertRepo'))
+}) {
+  const newConfig: RootConfig = {
+    ...existingConfig,
+    repos: {
+      ...existingConfig.repos,
+      [name]: repoConfig,
+    },
+  }
+  yield* writeRootConfig({ configPath, config: newConfig })
+  return newConfig
+})
 
 /** Remove a repo from a root config file */
-export const removeRepo = ({
+export const removeRepo = Effect.fn('config-writer/removeRepo')(function* ({
   configPath,
   name,
   existingConfig,
@@ -132,19 +129,18 @@ export const removeRepo = ({
   configPath: string
   name: string
   existingConfig: RootConfig
-}) =>
-  Effect.gen(function* () {
-    const { [name]: _, ...remainingRepos } = existingConfig.repos
-    const newConfig: RootConfig = {
-      ...existingConfig,
-      repos: remainingRepos,
-    }
-    yield* writeRootConfig({ configPath, config: newConfig })
-    return newConfig
-  }).pipe(Effect.withSpan('config-writer/removeRepo'))
+}) {
+  const { [name]: _, ...remainingRepos } = existingConfig.repos
+  const newConfig: RootConfig = {
+    ...existingConfig,
+    repos: remainingRepos,
+  }
+  yield* writeRootConfig({ configPath, config: newConfig })
+  return newConfig
+})
 
 /** Update a repo's rev in a root config file */
-export const updateRepoRev = ({
+export const updateRepoRev = Effect.fn('config-writer/updateRepoRev')(function* ({
   configPath,
   name,
   rev,
@@ -154,38 +150,38 @@ export const updateRepoRev = ({
   name: string
   rev: string
   existingConfig: RootConfig
-}) =>
-  Effect.gen(function* () {
-    const existingRepo = existingConfig.repos[name]
-    if (!existingRepo) {
-      return yield* new ConfigWriteError({
-        path: configPath,
-        message: `Repo '${name}' not found in config`,
-      })
-    }
+}) {
+  const existingRepo = existingConfig.repos[name]
+  if (!existingRepo) {
+    return yield* new ConfigWriteError({
+      path: configPath,
+      message: `Repo '${name}' not found in config`,
+    })
+  }
 
-    const newConfig: RootConfig = {
-      ...existingConfig,
-      repos: {
-        ...existingConfig.repos,
-        [name]: {
-          ...existingRepo,
-          rev,
-        },
+  const newConfig: RootConfig = {
+    ...existingConfig,
+    repos: {
+      ...existingConfig.repos,
+      [name]: {
+        ...existingRepo,
+        rev,
       },
-    }
-    yield* writeRootConfig({ configPath, config: newConfig })
-    return newConfig
-  }).pipe(Effect.withSpan('config-writer/updateRepoRev'))
+    },
+  }
+  yield* writeRootConfig({ configPath, config: newConfig })
+  return newConfig
+})
 
 /** Create an empty member config file */
-export const createEmptyMemberConfig = (dir: string) =>
-  Effect.gen(function* () {
+export const createEmptyMemberConfig = Effect.fn('config-writer/createEmptyMemberConfig')(
+  function* (dir: string) {
     const configPath = path.join(dir, CONFIG_FILE_NAME)
     const config: MemberConfig = {}
     yield* writeMemberConfig({ configPath, config })
     return configPath
-  }).pipe(Effect.withSpan('config-writer/createEmptyMemberConfig'))
+  },
+)
 
 /** Generate content for the generated config file (dotdot-root.json) */
 const generateGeneratedConfigContent = ({
@@ -205,7 +201,7 @@ const generateGeneratedConfigContent = ({
 }
 
 /** Write the generated (aggregated) config file */
-export const writeGeneratedConfig = ({
+export const writeGeneratedConfig = Effect.fn('config-writer/writeGeneratedConfig')(function* ({
   workspaceRoot,
   repos,
   packages = {},
@@ -213,20 +209,19 @@ export const writeGeneratedConfig = ({
   workspaceRoot: string
   repos: Record<string, RepoConfig>
   packages?: Record<string, PackageIndexEntry>
-}) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const configPath = path.join(workspaceRoot, GENERATED_CONFIG_FILE_NAME)
-    const content = generateGeneratedConfigContent({ repos, packages })
-    yield* fs.writeFileString(configPath, content).pipe(
-      Effect.mapError(
-        (cause) =>
-          new ConfigWriteError({
-            path: configPath,
-            message: 'Failed to write generated config file',
-            cause,
-          }),
-      ),
-    )
-    return configPath
-  }).pipe(Effect.withSpan('config-writer/writeGeneratedConfig'))
+}) {
+  const fs = yield* FileSystem.FileSystem
+  const configPath = path.join(workspaceRoot, GENERATED_CONFIG_FILE_NAME)
+  const content = generateGeneratedConfigContent({ repos, packages })
+  yield* fs.writeFileString(configPath, content).pipe(
+    Effect.mapError(
+      (cause) =>
+        new ConfigWriteError({
+          path: configPath,
+          message: 'Failed to write generated config file',
+          cause,
+        }),
+    ),
+  )
+  return configPath
+})

@@ -43,37 +43,42 @@ const ExecStatusLabels = {
 } as const
 
 /** Execute command in a single repo */
-const execInRepo = ({ repo, command }: { repo: RepoInfo; command: string }) =>
-  Effect.gen(function* () {
-    const { name, path: repoPath } = repo
+const execInRepo = Effect.fnUntraced(function* ({
+  repo,
+  command,
+}: {
+  repo: RepoInfo
+  command: string
+}) {
+  const { name, path: repoPath } = repo
 
-    yield* Effect.log(`${styled.dim('running')} ${styled.bold(name)}`)
+  yield* Effect.log(`${styled.dim('running')} ${styled.bold(name)}`)
 
-    const result = yield* runShellCommand({ command, cwd: repoPath }).pipe(
-      Effect.map((output) => ({ name, status: 'success' as const, output })),
-      Effect.catchAll((error) =>
-        Effect.succeed({
-          name,
-          status: 'failed' as const,
-          message: error instanceof Error ? error.message : String(error),
-        } satisfies ExecResult),
-      ),
-    )
+  const result = yield* runShellCommand({ command, cwd: repoPath }).pipe(
+    Effect.map((output) => ({ name, status: 'success' as const, output })),
+    Effect.catchAll((error) =>
+      Effect.succeed({
+        name,
+        status: 'failed' as const,
+        message: error instanceof Error ? error.message : String(error),
+      } satisfies ExecResult),
+    ),
+  )
 
-    if (result.status === 'success') {
-      if (result.output) {
-        yield* Effect.log(result.output)
-      }
-      yield* Effect.log(`  ${styled.green(symbols.check)} ${styled.dim('done')}`)
-    } else {
-      yield* Effect.log(`  ${styled.red(symbols.cross)} ${styled.dim(result.message ?? 'failed')}`)
+  if (result.status === 'success') {
+    if (result.output) {
+      yield* Effect.log(result.output)
     }
+    yield* Effect.log(`  ${styled.green(symbols.check)} ${styled.dim('done')}`)
+  } else {
+    yield* Effect.log(`  ${styled.red(symbols.cross)} ${styled.dim(result.message ?? 'failed')}`)
+  }
 
-    return result
-  })
+  return result
+})
 
 /** Exec command handler - separated for testability */
-export const execHandler = ({
+export const execHandler = Effect.fn('dotdot/exec')(function* ({
   command,
   mode,
   maxParallel,
@@ -81,35 +86,34 @@ export const execHandler = ({
   command: string
   mode: ExecutionMode
   maxParallel: Option.Option<number>
-}) =>
-  Effect.gen(function* () {
-    const workspace = yield* WorkspaceService
+}) {
+  const workspace = yield* WorkspaceService
 
-    yield* Effect.log(kv('workspace', path.basename(workspace.root)))
-    yield* Effect.log(kv('command', styled.cyan(command)))
-    yield* Effect.log(styled.dim(`${mode} mode`))
-    yield* Effect.log('')
+  yield* Effect.log(kv('workspace', path.basename(workspace.root)))
+  yield* Effect.log(kv('command', styled.cyan(command)))
+  yield* Effect.log(styled.dim(`${mode} mode`))
+  yield* Effect.log('')
 
-    // Get all repos and filter to existing git repos
-    const allRepos = yield* workspace.scanRepos()
-    const repos = allRepos.filter(existsAsGitRepo)
+  // Get all repos and filter to existing git repos
+  const allRepos = yield* workspace.scanRepos()
+  const repos = allRepos.filter(existsAsGitRepo)
 
-    if (repos.length === 0) {
-      yield* Effect.log(styled.dim('no repos declared in config'))
-      return
-    }
+  if (repos.length === 0) {
+    yield* Effect.log(styled.dim('no repos declared in config'))
+    return
+  }
 
-    const results = yield* executeForAll({
-      items: repos,
-      fn: (repo) => execInRepo({ repo, command }),
-      options: { mode, maxParallel: Option.getOrUndefined(maxParallel) },
-    })
+  const results = yield* executeForAll({
+    items: repos,
+    fn: (repo) => execInRepo({ repo, command }),
+    options: { mode, maxParallel: Option.getOrUndefined(maxParallel) },
+  })
 
-    yield* Effect.log('')
+  yield* Effect.log('')
 
-    const summary = buildSummary({ results, statusLabels: ExecStatusLabels })
-    yield* Effect.log(styled.dim(`done: ${summary}`))
-  }).pipe(Effect.withSpan('dotdot/exec'))
+  const summary = buildSummary({ results, statusLabels: ExecStatusLabels })
+  yield* Effect.log(styled.dim(`done: ${summary}`))
+})
 
 /** Exec command implementation.
  * Provides its own WorkspaceService.live layer - validates config is in sync before running. */

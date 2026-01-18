@@ -208,16 +208,13 @@ export const classifyError = (opts: {
 }
 
 /** Creates a LanguageModel that delegates to claude CLI */
-export const make = (
-  options: ClaudeCliOptions = {},
-): Effect.Effect<LanguageModel.Service, never, CommandExecutor.CommandExecutor> =>
-  Effect.gen(function* () {
-    const executor = yield* CommandExecutor.CommandExecutor
+export const make = Effect.fnUntraced(function* (options: ClaudeCliOptions = {}) {
+  const executor = yield* CommandExecutor.CommandExecutor
 
-    const generateText = (
-      providerOptions: LanguageModel.ProviderOptions,
-    ): Effect.Effect<Array<Response.PartEncoded>, AiError.AiError> =>
-      Effect.gen(function* () {
+  const generateText = (
+    providerOptions: LanguageModel.ProviderOptions,
+  ): Effect.Effect<Array<Response.PartEncoded>, AiError.AiError> =>
+    Effect.gen(function* () {
         const promptText = promptToString({
           prompt: providerOptions.prompt,
           responseFormat: providerOptions.responseFormat,

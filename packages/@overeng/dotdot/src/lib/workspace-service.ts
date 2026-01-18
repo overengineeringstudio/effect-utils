@@ -179,8 +179,8 @@ export class WorkspaceService extends Context.Tag('dotdot/WorkspaceService')<
     }
 
     // Get git state for a repo (provide deps inline)
-    const getGitState = (repoPath: string) =>
-      Effect.gen(function* () {
+    const getGitState = Effect.fnUntraced(
+      function* (repoPath: string) {
         const rev = yield* Git.getCurrentRev(repoPath)
         const shortRev = yield* Git.getShortRev(repoPath)
         const branch = yield* Git.getCurrentBranch(repoPath)
@@ -190,11 +190,13 @@ export class WorkspaceService extends Context.Tag('dotdot/WorkspaceService')<
           Effect.catchAll(() => Effect.succeed(undefined)),
         )
         return { rev, shortRev, branch, isDirty, remoteUrl } satisfies RepoGitState
-      }).pipe(Effect.provideService(CommandExecutor.CommandExecutor, executor))
+      },
+      Effect.provideService(CommandExecutor.CommandExecutor, executor),
+    )
 
     // Get fs state for a repo (use captured fs)
-    const getFsState = (repoPath: string) =>
-      Effect.gen(function* () {
+    const getFsState = Effect.fnUntraced(
+      function* (repoPath: string) {
         const exists = yield* fs.exists(repoPath)
         if (!exists) return { _tag: 'missing' } as const
 
@@ -202,85 +204,81 @@ export class WorkspaceService extends Context.Tag('dotdot/WorkspaceService')<
         if (!isGitRepo) return { _tag: 'not-git' } as const
 
         return { _tag: 'exists' } as const
-      }).pipe(Effect.provideService(CommandExecutor.CommandExecutor, executor))
+      },
+      Effect.provideService(CommandExecutor.CommandExecutor, executor),
+    )
 
     // Get repo info for a single repo
-    const getRepoInfo = (name: string) =>
-      Effect.gen(function* () {
-        const repoPath = path.join(ctx.root, name)
-        const tracking = buildTracking(name)
-        const fsState = yield* getFsState(repoPath)
-        const pinnedRev = getPinnedRev({ name, tracking })
+    const getRepoInfo = Effect.fnUntraced(function* (name: string) {
+      const repoPath = path.join(ctx.root, name)
+      const tracking = buildTracking(name)
+      const fsState = yield* getFsState(repoPath)
+      const pinnedRev = getPinnedRev({ name, tracking })
 
-        const gitState = fsState._tag === 'exists' ? yield* getGitState(repoPath) : undefined
+      const gitState = fsState._tag === 'exists' ? yield* getGitState(repoPath) : undefined
 
-        return {
-          name,
-          path: repoPath,
-          tracking,
-          fsState,
-          gitState,
-          pinnedRev,
-        } satisfies RepoInfo
-      })
+      return {
+        name,
+        path: repoPath,
+        tracking,
+        fsState,
+        gitState,
+        pinnedRev,
+      } satisfies RepoInfo
+    })
 
     // Scan all repos in workspace
-    const scanRepos = () =>
-      Effect.gen(function* () {
-        // Collect all known repo names
-        const knownNames = new Set<string>([
-          ...merged.membersWithConfig,
-          ...merged.declaredDeps,
-          ...Object.keys(ctx.rootConfig.config.repos),
-        ])
+    const scanRepos = Effect.fnUntraced(function* () {
+      // Collect all known repo names
+      const knownNames = new Set<string>([
+        ...merged.membersWithConfig,
+        ...merged.declaredDeps,
+        ...Object.keys(ctx.rootConfig.config.repos),
+      ])
 
-        // Scan filesystem for additional git repos (dangling)
-        const entries = yield* fs.readDirectory(ctx.root)
-        for (const entry of entries) {
-          if (entry.startsWith('.')) continue
-          const entryPath = path.join(ctx.root, entry)
-          const stat = yield* fs.stat(entryPath)
-          if (stat.type !== 'Directory') continue
+      // Scan filesystem for additional git repos (dangling)
+      const entries = yield* fs.readDirectory(ctx.root)
+      for (const entry of entries) {
+        if (entry.startsWith('.')) continue
+        const entryPath = path.join(ctx.root, entry)
+        const stat = yield* fs.stat(entryPath)
+        if (stat.type !== 'Directory') continue
 
-          const isGitRepo = yield* Git.isGitRepo(entryPath).pipe(
-            Effect.provideService(CommandExecutor.CommandExecutor, executor),
-          )
-          if (isGitRepo) {
-            knownNames.add(entry)
-          }
+        const isGitRepo = yield* Git.isGitRepo(entryPath).pipe(
+          Effect.provideService(CommandExecutor.CommandExecutor, executor),
+        )
+        if (isGitRepo) {
+          knownNames.add(entry)
         }
+      }
 
-        // Get info for all repos
-        const repos = yield* Effect.all(Array.from(knownNames).map(getRepoInfo), {
-          concurrency: 'unbounded',
-        })
-
-        return repos
+      // Get info for all repos
+      const repos = yield* Effect.all(Array.from(knownNames).map(getRepoInfo), {
+        concurrency: 'unbounded',
       })
 
-    const getRepo = (name: string) =>
-      Effect.gen(function* () {
-        const repos = yield* scanRepos()
-        return repos.find((r) => r.name === name)
-      })
+      return repos
+    })
 
-    const getMembers = () =>
-      Effect.gen(function* () {
-        const repos = yield* scanRepos()
-        return repos.filter(isMember)
-      })
+    const getRepo = Effect.fnUntraced(function* (name: string) {
+      const repos = yield* scanRepos()
+      return repos.find((r) => r.name === name)
+    })
 
-    const getDependencies = () =>
-      Effect.gen(function* () {
-        const repos = yield* scanRepos()
-        return repos.filter(isDependency)
-      })
+    const getMembers = Effect.fnUntraced(function* () {
+      const repos = yield* scanRepos()
+      return repos.filter(isMember)
+    })
 
-    const getDangling = () =>
-      Effect.gen(function* () {
-        const repos = yield* scanRepos()
-        return repos.filter(isDangling)
-      })
+    const getDependencies = Effect.fnUntraced(function* () {
+      const repos = yield* scanRepos()
+      return repos.filter(isDependency)
+    })
+
+    const getDangling = Effect.fnUntraced(function* () {
+      const repos = yield* scanRepos()
+      return repos.filter(isDangling)
+    })
 
     return {
       root: ctx.root,

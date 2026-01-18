@@ -243,51 +243,48 @@ export const sandbox = (root: AbsoluteDirPath): Sandbox => {
   /**
    * Get the real path (resolving symlinks) and validate it stays in sandbox.
    */
-  const getSafeRealPath = (
-    path: RelativePath,
-  ): Effect.Effect<AbsolutePath, SandboxError, FileSystem.FileSystem | PlatformPath.Path> =>
-    Effect.gen(function* () {
-      // First do lexical validation
-      const resolveResult = resolve(path)
-      if (Either.isLeft(resolveResult)) {
-        return yield* resolveResult.left
-      }
-      const resolved = resolveResult.right
+  const getSafeRealPath = Effect.fnUntraced(function* (path: RelativePath) {
+    // First do lexical validation
+    const resolveResult = resolve(path)
+    if (Either.isLeft(resolveResult)) {
+      return yield* resolveResult.left
+    }
+    const resolved = resolveResult.right
 
-      const fs = yield* FileSystem.FileSystem
+    const fs = yield* FileSystem.FileSystem
 
-      // Get real path (follows symlinks)
-      const realPath = yield* fs.realPath(resolved).pipe(
-        Effect.mapError((error) => {
-          if (error._tag === 'SystemError') {
-            if (error.reason === 'NotFound') {
-              return new PathNotFoundError({
-                path: resolved,
-                message: `Path not found: ${resolved}`,
-                nearestExisting: undefined,
-                expectedType: 'any',
-              })
-            }
-            if (error.reason === 'PermissionDenied') {
-              return new PermissionError({
-                path: resolved,
-                message: `Permission denied: ${resolved}`,
-                operation: 'stat',
-              })
-            }
+    // Get real path (follows symlinks)
+    const realPath = yield* fs.realPath(resolved).pipe(
+      Effect.mapError((error) => {
+        if (error._tag === 'SystemError') {
+          if (error.reason === 'NotFound') {
+            return new PathNotFoundError({
+              path: resolved,
+              message: `Path not found: ${resolved}`,
+              nearestExisting: undefined,
+              expectedType: 'any',
+            })
           }
-          return new PathNotFoundError({
-            path: resolved,
-            message: `Cannot access path: ${resolved}`,
-            nearestExisting: undefined,
-            expectedType: 'any',
-          })
-        }),
-      )
+          if (error.reason === 'PermissionDenied') {
+            return new PermissionError({
+              path: resolved,
+              message: `Permission denied: ${resolved}`,
+              operation: 'stat',
+            })
+          }
+        }
+        return new PathNotFoundError({
+          path: resolved,
+          message: `Cannot access path: ${resolved}`,
+          nearestExisting: undefined,
+          expectedType: 'any',
+        })
+      }),
+    )
 
-      // Validate the real path is still within sandbox
-      return yield* validateRealPath({ originalPath: path, realPath })
-    })
+    // Validate the real path is still within sandbox
+    return yield* validateRealPath({ originalPath: path, realPath })
+  })
 
   return {
     root,
@@ -295,97 +292,92 @@ export const sandbox = (root: AbsoluteDirPath): Sandbox => {
     resolve,
     contains,
 
-    readFile: (path) =>
-      Effect.gen(function* () {
-        const safePath = yield* getSafeRealPath(path)
-        const fs = yield* FileSystem.FileSystem
-        return yield* fs.readFile(safePath).pipe(
-          Effect.mapError(
-            () =>
-              new PermissionError({
-                path: safePath,
-                message: `Cannot read file: ${safePath}`,
-                operation: 'read',
-              }),
-          ),
-        )
-      }),
-
-    readFileString: (args) =>
-      Effect.gen(function* () {
-        const safePath = yield* getSafeRealPath(args.path)
-        const fs = yield* FileSystem.FileSystem
-        return yield* fs.readFileString(safePath, args.encoding).pipe(
-          Effect.mapError(
-            () =>
-              new PermissionError({
-                path: safePath,
-                message: `Cannot read file: ${safePath}`,
-                operation: 'read',
-              }),
-          ),
-        )
-      }),
-
-    exists: (path) =>
-      Effect.gen(function* () {
-        const resolveResult = resolve(path)
-        if (Either.isLeft(resolveResult)) {
-          return yield* resolveResult.left
-        }
-        const resolved = resolveResult.right
-        const fs = yield* FileSystem.FileSystem
-        const exists = yield* fs.exists(resolved).pipe(Effect.orElse(() => Effect.succeed(false)))
-        if (!exists) {
-          return false
-        }
-
-        return yield* fs.realPath(resolved).pipe(
-          Effect.flatMap((realPath) =>
-            validateRealPath({ originalPath: path, realPath }).pipe(Effect.as(true)),
-          ),
-          Effect.orElse(() => Effect.succeed(false)),
-        )
-      }),
-
-    readDirectory: (path) =>
-      Effect.gen(function* () {
-        const safePath = yield* getSafeRealPath(path)
-        const fs = yield* FileSystem.FileSystem
-        return yield* fs.readDirectory(safePath).pipe(
-          Effect.mapError(
-            () =>
-              new PermissionError({
-                path: safePath,
-                message: `Cannot read directory: ${safePath}`,
-                operation: 'read',
-              }),
-          ),
-        )
-      }),
-
-    stat: (path) =>
-      Effect.gen(function* () {
-        const safePath = yield* getSafeRealPath(path)
-        const fs = yield* FileSystem.FileSystem
-        return yield* fs.stat(safePath).pipe(
-          Effect.mapError((error) => {
-            if (error._tag === 'SystemError' && error.reason === 'NotFound') {
-              return new PathNotFoundError({
-                path: safePath,
-                message: `Path not found: ${safePath}`,
-                nearestExisting: undefined,
-                expectedType: 'any',
-              })
-            }
-            return new PermissionError({
+    readFile: Effect.fnUntraced(function* (path) {
+      const safePath = yield* getSafeRealPath(path)
+      const fs = yield* FileSystem.FileSystem
+      return yield* fs.readFile(safePath).pipe(
+        Effect.mapError(
+          () =>
+            new PermissionError({
               path: safePath,
-              message: `Cannot stat: ${safePath}`,
-              operation: 'stat',
+              message: `Cannot read file: ${safePath}`,
+              operation: 'read',
+            }),
+        ),
+      )
+    }),
+
+    readFileString: Effect.fnUntraced(function* (args) {
+      const safePath = yield* getSafeRealPath(args.path)
+      const fs = yield* FileSystem.FileSystem
+      return yield* fs.readFileString(safePath, args.encoding).pipe(
+        Effect.mapError(
+          () =>
+            new PermissionError({
+              path: safePath,
+              message: `Cannot read file: ${safePath}`,
+              operation: 'read',
+            }),
+        ),
+      )
+    }),
+
+    exists: Effect.fnUntraced(function* (path) {
+      const resolveResult = resolve(path)
+      if (Either.isLeft(resolveResult)) {
+        return yield* resolveResult.left
+      }
+      const resolved = resolveResult.right
+      const fs = yield* FileSystem.FileSystem
+      const exists = yield* fs.exists(resolved).pipe(Effect.orElse(() => Effect.succeed(false)))
+      if (!exists) {
+        return false
+      }
+
+      return yield* fs.realPath(resolved).pipe(
+        Effect.flatMap((realPath) =>
+          validateRealPath({ originalPath: path, realPath }).pipe(Effect.as(true)),
+        ),
+        Effect.orElse(() => Effect.succeed(false)),
+      )
+    }),
+
+    readDirectory: Effect.fnUntraced(function* (path) {
+      const safePath = yield* getSafeRealPath(path)
+      const fs = yield* FileSystem.FileSystem
+      return yield* fs.readDirectory(safePath).pipe(
+        Effect.mapError(
+          () =>
+            new PermissionError({
+              path: safePath,
+              message: `Cannot read directory: ${safePath}`,
+              operation: 'read',
+            }),
+        ),
+      )
+    }),
+
+    stat: Effect.fnUntraced(function* (path) {
+      const safePath = yield* getSafeRealPath(path)
+      const fs = yield* FileSystem.FileSystem
+      return yield* fs.stat(safePath).pipe(
+        Effect.mapError((error) => {
+          if (error._tag === 'SystemError' && error.reason === 'NotFound') {
+            return new PathNotFoundError({
+              path: safePath,
+              message: `Path not found: ${safePath}`,
+              nearestExisting: undefined,
+              expectedType: 'any',
             })
-          }),
-        )
-      }),
+          }
+          return new PermissionError({
+            path: safePath,
+            message: `Cannot stat: ${safePath}`,
+            operation: 'stat',
+          })
+        }),
+      )
+    }),
   }
 }
 

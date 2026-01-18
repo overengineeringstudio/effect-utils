@@ -29,7 +29,7 @@ import { ensureTrailingSlash, hasTrailingSlash } from './internal/utils.ts'
  * For example, `a/b/../c` and `a/c` are different if `b` is a symlink.
  */
 export const lexical = <P extends Path>(path: P): Effect.Effect<P, never, PlatformPath.Path> =>
-  Effect.gen(function* () {
+  Effect.fnUntraced(function* () {
     const platformPath = yield* PlatformPath.Path
     const normalized = platformPath.normalize(path)
 
@@ -38,7 +38,7 @@ export const lexical = <P extends Path>(path: P): Effect.Effect<P, never, Platfo
       return ensureTrailingSlash(normalized) as P
     }
     return normalized as P
-  })
+  })()
 
 /**
  * Lexical normalization without platform dependency.
@@ -102,39 +102,35 @@ export const lexicalPure = <P extends Path>(path: P): P => {
  * This prepends the current working directory but does NOT access
  * the filesystem or follow symlinks. Safe for paths that don't exist.
  */
-export const absolute = (
-  path: RelativePath,
-): Effect.Effect<AbsolutePath, never, PlatformPath.Path> =>
-  Effect.gen(function* () {
-    const platformPath = yield* PlatformPath.Path
-    const resolved = platformPath.resolve(path)
+export const absolute = Effect.fnUntraced(function* (path: RelativePath) {
+  const platformPath = yield* PlatformPath.Path
+  const resolved = platformPath.resolve(path)
 
-    // Preserve trailing slash
-    if (hasTrailingSlash(path)) {
-      return ensureTrailingSlash(resolved) as AbsolutePath
-    }
-    return resolved as AbsolutePath
-  })
+  // Preserve trailing slash
+  if (hasTrailingSlash(path)) {
+    return ensureTrailingSlash(resolved) as AbsolutePath
+  }
+  return resolved as AbsolutePath
+})
 
 /**
  * Convert any path to absolute.
  * If already absolute, just normalizes it.
  */
-export const toAbsolute = (path: Path): Effect.Effect<AbsolutePath, never, PlatformPath.Path> =>
-  Effect.gen(function* () {
-    const platformPath = yield* PlatformPath.Path
+export const toAbsolute = Effect.fnUntraced(function* (path: Path) {
+  const platformPath = yield* PlatformPath.Path
 
-    if (platformPath.isAbsolute(path)) {
-      // Already absolute, just normalize
-      const normalized = platformPath.normalize(path)
-      if (hasTrailingSlash(path)) {
-        return ensureTrailingSlash(normalized) as AbsolutePath
-      }
-      return normalized as AbsolutePath
+  if (platformPath.isAbsolute(path)) {
+    // Already absolute, just normalize
+    const normalized = platformPath.normalize(path)
+    if (hasTrailingSlash(path)) {
+      return ensureTrailingSlash(normalized) as AbsolutePath
     }
+    return normalized as AbsolutePath
+  }
 
-    return yield* absolute(path as RelativePath)
-  })
+  return yield* absolute(path as RelativePath)
+})
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Canonical Resolution (With Symlink Resolution)
@@ -151,72 +147,62 @@ export const toAbsolute = (path: Path): Effect.Effect<AbsolutePath, never, Platf
  * - Resolves all symlinks
  * - Normalizes . and .. segments
  */
-export const canonical = (
-  path: Path,
-): Effect.Effect<
-  AbsolutePath,
-  PathNotFoundError | SymlinkLoopError,
-  FileSystem.FileSystem | PlatformPath.Path
-> =>
-  Effect.gen(function* () {
-    const platformPath = yield* PlatformPath.Path
-    const fs = yield* FileSystem.FileSystem
+export const canonical = Effect.fnUntraced(function* (path: Path) {
+  const platformPath = yield* PlatformPath.Path
+  const fs = yield* FileSystem.FileSystem
 
-    // First make it absolute
-    const absolutePath = platformPath.isAbsolute(path) ? path : platformPath.resolve(path)
+  // First make it absolute
+  const absolutePath = platformPath.isAbsolute(path) ? path : platformPath.resolve(path)
 
-    // Use realpath to resolve symlinks
-    const realPath = yield* fs.realPath(absolutePath).pipe(
-      Effect.mapError((error) => {
-        // Map platform errors to our error types
-        if (error._tag === 'SystemError' && error.reason === 'NotFound') {
-          return new PathNotFoundError({
-            path: absolutePath,
-            message: `Path not found: ${absolutePath}`,
-            nearestExisting: undefined,
-            expectedType: 'any',
-          })
-        }
-        // For other errors (like ELOOP), treat as symlink loop
-        return new SymlinkLoopError({
+  // Use realpath to resolve symlinks
+  const realPath = yield* fs.realPath(absolutePath).pipe(
+    Effect.mapError((error) => {
+      // Map platform errors to our error types
+      if (error._tag === 'SystemError' && error.reason === 'NotFound') {
+        return new PathNotFoundError({
           path: absolutePath,
-          message: `Symlink loop or error resolving path: ${absolutePath}`,
-          chain: [absolutePath],
-          loopingLink: absolutePath,
+          message: `Path not found: ${absolutePath}`,
+          nearestExisting: undefined,
+          expectedType: 'any',
         })
-      }),
-    )
+      }
+      // For other errors (like ELOOP), treat as symlink loop
+      return new SymlinkLoopError({
+        path: absolutePath,
+        message: `Symlink loop or error resolving path: ${absolutePath}`,
+        chain: [absolutePath],
+        loopingLink: absolutePath,
+      })
+    }),
+  )
 
-    // Preserve trailing slash for directories
-    if (hasTrailingSlash(path)) {
-      return ensureTrailingSlash(realPath) as AbsolutePath
-    }
-    return realPath as AbsolutePath
-  })
+  // Preserve trailing slash for directories
+  if (hasTrailingSlash(path)) {
+    return ensureTrailingSlash(realPath) as AbsolutePath
+  }
+  return realPath as AbsolutePath
+})
 
 /**
  * Attempt canonical resolution, falling back to lexical normalization if path doesn't exist.
  *
  * This is useful when you want to normalize a path but it might not exist yet.
  */
-export const canonicalOrLexical = (
-  path: Path,
-): Effect.Effect<AbsolutePath, never, FileSystem.FileSystem | PlatformPath.Path> =>
-  Effect.gen(function* () {
-    const platformPath = yield* PlatformPath.Path
+export const canonicalOrLexical = Effect.fnUntraced(function* (path: Path) {
+  const platformPath = yield* PlatformPath.Path
 
-    // First make it absolute
-    const absolutePath = platformPath.isAbsolute(path)
-      ? (path as AbsolutePath)
-      : (platformPath.resolve(path) as AbsolutePath)
+  // First make it absolute
+  const absolutePath = platformPath.isAbsolute(path)
+    ? (path as AbsolutePath)
+    : (platformPath.resolve(path) as AbsolutePath)
 
-    // Try canonical first
-    const result = yield* canonical(path).pipe(
-      Effect.orElse(() =>
-        // Fall back to lexical normalization
-        lexical(absolutePath),
-      ),
-    )
+  // Try canonical first
+  const result = yield* canonical(path).pipe(
+    Effect.orElse(() =>
+      // Fall back to lexical normalization
+      lexical(absolutePath),
+    ),
+  )
 
-    return result as AbsolutePath
-  })
+  return result as AbsolutePath
+})

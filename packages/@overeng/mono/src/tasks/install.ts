@@ -29,8 +29,8 @@ export const findPackageDirs = Effect.fn('findPackageDirs')(function* (config: I
   const cwd = process.env.WORKSPACE_ROOT ?? process.cwd()
   const skipDirs = new Set([...DEFAULT_SKIP_DIRS, ...(config.skipDirs ?? [])])
 
-  const walk = (dir: string): Effect.Effect<string[], PlatformError, never> =>
-    Effect.gen(function* () {
+  const walk: (dir: string) => Effect.Effect<string[], PlatformError, never> = Effect.fnUntraced(
+    function* (dir) {
       const exists = yield* fs.exists(dir)
       if (!exists) return []
 
@@ -52,7 +52,8 @@ export const findPackageDirs = Effect.fn('findPackageDirs')(function* (config: I
       }
 
       return results
-    })
+    },
+  )
 
   const allDirs: string[] = []
   for (const scanDir of config.scanDirs) {
@@ -86,75 +87,70 @@ export const cleanNodeModules = Effect.fn('cleanNodeModules')(function* (config:
 })
 
 /** Install dependencies for a single package directory (captures output, never fails) */
-export const installPackageCaptured = ({
-  dir,
-  options,
-}: {
+export const installPackageCaptured = Effect.fn('installPackageCaptured')(function* (opts: {
   dir: string
   options?: { frozenLockfile?: boolean }
-}): Effect.Effect<InstallResult, never, CommandExecutor.CommandExecutor> =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const args = ['install', ...(options?.frozenLockfile ? ['--frozen-lockfile'] : [])]
+}) {
+  const { dir, options } = opts
+  const args = ['install', ...(options?.frozenLockfile ? ['--frozen-lockfile'] : [])]
 
-      const command = Command.make('bun', ...args).pipe(
-        Command.workingDirectory(dir),
-        Command.stdout('pipe'),
-        Command.stderr('pipe'),
-      )
-
-      const result = yield* Command.start(command).pipe(
-        Effect.flatMap((process) =>
-          Effect.all({
-            exitCode: process.exitCode,
-            stdout: process.stdout.pipe(Stream.decodeText(), Stream.runCollect),
-            stderr: process.stderr.pipe(Stream.decodeText(), Stream.runCollect),
-          }),
-        ),
-        Effect.map(({ exitCode, stdout, stderr }) => {
-          const stdoutText = Array.fromIterable(stdout).join('')
-          const stderrText = Array.fromIterable(stderr).join('')
-
-          if (exitCode === 0) {
-            return { _tag: 'success' as const, dir }
-          }
-          return {
-            _tag: 'failure' as const,
-            dir,
-            error: new Error(`Command failed with exit code ${exitCode}`),
-            stdout: stdoutText,
-            stderr: stderrText,
-          }
-        }),
-        Effect.catchAll((error) =>
-          Effect.succeed({
-            _tag: 'failure' as const,
-            dir,
-            error,
-            stderr: String(error),
-          }),
-        ),
-        Effect.withSpan('installPackage', { attributes: { dir } }),
-        Effect.provide(Logger.minimumLogLevel(LogLevel.Info)),
-      )
-
-      return result
-    }),
+  const command = Command.make('bun', ...args).pipe(
+    Command.workingDirectory(dir),
+    Command.stdout('pipe'),
+    Command.stderr('pipe'),
   )
 
+  const result: InstallResult = yield* Effect.scoped(
+    Command.start(command).pipe(
+      Effect.flatMap((process) =>
+        Effect.all({
+          exitCode: process.exitCode,
+          stdout: process.stdout.pipe(Stream.decodeText(), Stream.runCollect),
+          stderr: process.stderr.pipe(Stream.decodeText(), Stream.runCollect),
+        }),
+      ),
+      Effect.map(({ exitCode, stdout, stderr }) => {
+        const stdoutText = Array.fromIterable(stdout).join('')
+        const stderrText = Array.fromIterable(stderr).join('')
+
+        if (exitCode === 0) {
+          return { _tag: 'success' as const, dir }
+        }
+        return {
+          _tag: 'failure' as const,
+          dir,
+          error: new Error(`Command failed with exit code ${exitCode}`),
+          stdout: stdoutText,
+          stderr: stderrText,
+        }
+      }),
+      Effect.catchAll((error) =>
+        Effect.succeed({
+          _tag: 'failure' as const,
+          dir,
+          error,
+          stderr: String(error),
+        }),
+      ),
+      Effect.provide(Logger.minimumLogLevel(LogLevel.Info)),
+    ),
+  )
+
+  return result
+})
+
 /** Install dependencies for a single package directory */
-export const installPackage = ({
-  dir,
-  options,
-}: {
+export const installPackage = Effect.fn('installPackage')(function* (opts: {
   dir: string
   options?: { frozenLockfile?: boolean }
-}) =>
-  runCommand({
+}) {
+  const { dir, options } = opts
+  return yield* runCommand({
     command: 'bun',
     args: ['install', ...(options?.frozenLockfile ? ['--frozen-lockfile'] : [])],
     cwd: dir,
-  }).pipe(Effect.withSpan('installPackage', { attributes: { dir } }))
+  })
+})
 
 /** Install dependencies for all packages in parallel with progress tracking */
 export const installAll = Effect.fn('installAll')(function* (opts: {
