@@ -220,7 +220,7 @@ export class TaskRunner extends Context.Tag('TaskRunner')<TaskRunner, TaskRunner
             }),
         )
 
-      const runTask: TaskRunnerService['runTask'] = (options) =>
+      const runTask: TaskRunnerService['runTask'] = Effect.fn('taskRunner/runTask')((options) =>
         Effect.gen(function* () {
           const startTime = Date.now()
 
@@ -314,13 +314,14 @@ export class TaskRunner extends Context.Tag('TaskRunner')<TaskRunner, TaskRunner
                 }),
             })
           }
-        })
+        }),
+      )
 
       const runAll: TaskRunnerService['runAll'] = (tasks) =>
         Effect.all(tasks, { concurrency: 'unbounded' }).pipe(Effect.asVoid)
 
-      const checkForFailures: TaskRunnerService['checkForFailures'] = () =>
-        Effect.gen(function* () {
+      const checkForFailures: TaskRunnerService['checkForFailures'] = Effect.fnUntraced(
+        function* () {
           const state = yield* SubscriptionRef.get(ref)
           const failed = state.tasks.filter((t) => t.status === 'failed')
           if (failed.length > 0) {
@@ -329,7 +330,8 @@ export class TaskRunner extends Context.Tag('TaskRunner')<TaskRunner, TaskRunner
               message: `${failed.length} task(s) failed`,
             })
           }
-        })
+        },
+      )
 
       const render: TaskRunnerService['render'] = () =>
         SubscriptionRef.get(ref).pipe(

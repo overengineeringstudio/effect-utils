@@ -29,6 +29,7 @@
 - [ ] flow generate AGENTS.md file
   - dotdot
   - tasks flow
+  - where to find common things (e.g. skills, shared libs, references (e.g. effect), ...)
 - [ ] add effect-lsp to each package
 - [ ] patches feature: we currently don't have a good way to enforce dependents of a package with patches to also have patches in their package.json.genie.ts
 - [ ] refactor handling of relative paths in genie (embrace dotdot workspace root)

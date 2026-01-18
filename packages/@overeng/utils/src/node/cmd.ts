@@ -476,8 +476,8 @@ const sendSignalToProcessGroup = (opts: {
  * Kill a process group with SIGTERM → wait → SIGKILL escalation.
  * Sends SIGTERM first, waits for graceful exit, then SIGKILL if needed.
  */
-const killProcessGroup = (opts: { proc: Process; timeout?: Duration.DurationInput }): Effect.Effect<void> =>
-  Effect.gen(function* () {
+const killProcessGroup = Effect.fn('cmd/killProcessGroup')(
+  function* (opts: { proc: Process; timeout?: Duration.DurationInput }) {
     const { proc } = opts
     const timeout = opts.timeout ?? DEFAULT_KILL_TIMEOUT
 
@@ -492,7 +492,9 @@ const killProcessGroup = (opts: { proc: Process; timeout?: Duration.DurationInpu
       yield* Effect.logDebug(`Process ${proc.pid} didn't exit gracefully, sending SIGKILL`)
       yield* sendSignalToProcessGroup({ proc, signal: 'SIGKILL' })
     }
-  }).pipe(Effect.withSpan('cmd.killProcessGroup'), Effect.ignore)
+  },
+  Effect.ignore,
+)
 
 const buildCommand = (opts: { input: string | string[]; useShell: boolean }) => {
   const { input, useShell } = opts
@@ -563,10 +565,9 @@ const makeStreamHandler = ({
   })
 
   return {
-    onChunk: (chunk) =>
-      Effect.gen(function* () {
-        buffer += chunk
-        while (buffer.length > 0) {
+    onChunk: Effect.fnUntraced(function* (chunk: string) {
+      buffer += chunk
+      while (buffer.length > 0) {
           const newlineIndex = buffer.indexOf('\n')
           const carriageIndex = buffer.indexOf('\r')
 
@@ -597,7 +598,7 @@ const makeStreamHandler = ({
           buffer = buffer.slice(index + skip)
           yield* emit({ content: line, terminator })
         }
-      }),
+    }),
     flush: () => consumeBuffer,
   }
 }

@@ -5,7 +5,7 @@ import { expect } from 'vitest'
 import { addTracedFinalizer, withScopeDebug, withTracedScope } from './ScopeDebugger.ts'
 
 /** Test logger that captures log messages at all levels */
-const makeTestLogger = Effect.fn('makeTestLogger')(function* () {
+const makeTestLogger = Effect.fnUntraced(function* () {
   const logs = yield* Ref.make<Chunk.Chunk<string>>(Chunk.empty())
   const runtime = yield* Effect.runtime<never>()
 
@@ -26,9 +26,9 @@ const makeTestLogger = Effect.fn('makeTestLogger')(function* () {
 
 describe('ScopeDebugger', () => {
   describe('addTracedFinalizer', () => {
-    it.effect('logs finalizer registration and execution when debugging enabled', () =>
-      Effect.fn('test:logs finalizer registration and execution when debugging enabled')(function* () {
-        const { getLogs, loggerLayer } = yield* makeTestLogger
+    it.effect('logs finalizer registration and execution when debugging enabled',
+      Effect.fnUntraced(function* () {
+        const { getLogs, loggerLayer } = yield* makeTestLogger()
 
         yield* withScopeDebug(
           Effect.gen(function* () {
@@ -48,9 +48,9 @@ describe('ScopeDebugger', () => {
       }),
     )
 
-    it.effect('does not log when debugging disabled', () =>
-      Effect.fn('test:does not log when debugging disabled')(function* () {
-        const { getLogs, loggerLayer } = yield* makeTestLogger
+    it.effect('does not log when debugging disabled',
+      Effect.fnUntraced(function* () {
+        const { getLogs, loggerLayer } = yield* makeTestLogger()
 
         yield* Effect.gen(function* () {
           yield* addTracedFinalizer({ name: 'test-cleanup', finalizer: Effect.log('Cleaning up') })
@@ -66,8 +66,8 @@ describe('ScopeDebugger', () => {
       }),
     )
 
-    it.effect('executes finalizers in reverse registration order', () =>
-      Effect.fn('test:executes finalizers in reverse registration order')(function* () {
+    it.effect('executes finalizers in reverse registration order',
+      Effect.fnUntraced(function* () {
         const order = yield* Ref.make<string[]>([])
 
         yield* withScopeDebug(
@@ -92,8 +92,8 @@ describe('ScopeDebugger', () => {
       }),
     )
 
-    it.effect('does not swallow finalizer failures when debugging enabled', () =>
-      Effect.fn('test:does not swallow finalizer failures when debugging enabled')(function* () {
+    it.effect('does not swallow finalizer failures when debugging enabled',
+      Effect.fnUntraced(function* () {
         const exit = yield* withScopeDebug(
           addTracedFinalizer({ name: 'fails', finalizer: Effect.die('boom') }).pipe(Effect.scoped),
         ).pipe(Effect.exit)
@@ -104,9 +104,9 @@ describe('ScopeDebugger', () => {
   })
 
   describe('withTracedScope', () => {
-    it.effect('logs scope lifecycle', () =>
-      Effect.fn('test:logs scope lifecycle')(function* () {
-        const { getLogs, loggerLayer } = yield* makeTestLogger
+    it.effect('logs scope lifecycle',
+      Effect.fnUntraced(function* () {
+        const { getLogs, loggerLayer } = yield* makeTestLogger()
 
         yield* withTracedScope('my-scope')(Effect.log('Inside scope')).pipe(
           Effect.provide(loggerLayer),

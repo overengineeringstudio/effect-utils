@@ -522,8 +522,10 @@ const executeTask = <TId extends string, A, E, R>({
    * Custom retry wrapper that emits retry events.
    * Effect.retry doesn't give us hooks to emit events, so we implement manual retry loop.
    */
-  const executeWithRetry = (attempt: number): Effect.Effect<void, unknown, R | FileSystem.FileSystem> =>
-    Effect.gen(function* () {
+  const executeWithRetry: (
+    attempt: number,
+  ) => Effect.Effect<void, unknown, R | FileSystem.FileSystem> = Effect.fnUntraced(
+    function* (attempt: number) {
       const exit = yield* Effect.exit(executeOnce)
 
       if (Exit.isSuccess(exit)) {
@@ -553,7 +555,8 @@ const executeTask = <TId extends string, A, E, R>({
         return yield* Effect.failCause(exit.cause)
       }
       return yield* Effect.die('Unknown error')
-    })
+    },
+  )
 
   // Start retry loop if retry schedule configured
   if (task.retrySchedule && task.maxRetries) {
@@ -783,37 +786,39 @@ export const runTaskGraph = <TId extends string, E, R>({
  * Execute a task graph and fail if any task fails.
  * Throws TaskExecutionError with details of failed tasks.
  */
-export const runTaskGraphOrFail = <TId extends string, E, R>({
-  tasks,
-  options,
-}: {
-  tasks: ReadonlyArray<TaskDef<TId, unknown, E, R>>
-  options?:
-    | {
-        onStateChange?: (state: TaskSystemState) => Effect.Effect<void>
-        debounceMs?: number
-        concurrency?: number
+export const runTaskGraphOrFail = Effect.fn('TaskGraph/runTaskGraphOrFail')(
+  <TId extends string, E, R>({
+    tasks,
+    options,
+  }: {
+    tasks: ReadonlyArray<TaskDef<TId, unknown, E, R>>
+    options?:
+      | {
+          onStateChange?: (state: TaskSystemState) => Effect.Effect<void>
+          debounceMs?: number
+          concurrency?: number
+        }
+      | undefined
+  }): Effect.Effect<
+    {
+      state: TaskSystemState
+      successCount: number
+      failureCount: number
+      failedTaskIds: TId[]
+    },
+    Error | TaskExecutionError,
+    R | FileSystem.FileSystem
+  > =>
+    Effect.gen(function* () {
+      const result = yield* runTaskGraph({ tasks, options })
+
+      if (result.failureCount > 0) {
+        return yield* new TaskExecutionError({
+          failedTaskIds: result.failedTaskIds,
+          message: `${result.failureCount} task(s) failed`,
+        })
       }
-    | undefined
-}): Effect.Effect<
-  {
-    state: TaskSystemState
-    successCount: number
-    failureCount: number
-    failedTaskIds: TId[]
-  },
-  Error | TaskExecutionError,
-  R | FileSystem.FileSystem
-> =>
-  Effect.gen(function* () {
-    const result = yield* runTaskGraph({ tasks, options })
 
-    if (result.failureCount > 0) {
-      return yield* new TaskExecutionError({
-        failedTaskIds: result.failedTaskIds,
-        message: `${result.failureCount} task(s) failed`,
-      })
-    }
-
-    return result
-  }).pipe(Effect.withSpan('TaskGraph.runTaskGraphOrFail'))
+      return result
+    }),
+)

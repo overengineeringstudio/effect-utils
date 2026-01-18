@@ -39,59 +39,58 @@ export const opentuiRenderer = () => {
      * - Atom changes trigger React re-renders
      * - Returns final state when stream completes
      */
-    render: (eventStream: Stream.Stream<TaskEvent<string>>) =>
-      Effect.gen(function* () {
-        // Initialize on first render
-        if (!stateAtom) {
-          // Setup atom registry
-          registry = Registry.make()
-          stateAtom = Atom.make(initialState)
+    render: Effect.fnUntraced(function* (eventStream: Stream.Stream<TaskEvent<string>>) {
+      // Initialize on first render
+      if (!stateAtom) {
+        // Setup atom registry
+        registry = Registry.make()
+        stateAtom = Atom.make(initialState)
 
-          // Setup OpenTUI renderer (dynamic imports to avoid TS module resolution issues)
-          // @ts-expect-error - OpenTUI packages have incomplete ESM type definitions
-          const { createCliRenderer } = yield* Effect.promise(() => import('@opentui/core'))
-          // @ts-expect-error - OpenTUI packages have incomplete ESM type definitions
-          const { createRoot } = yield* Effect.promise(() => import('@opentui/react'))
+        // Setup OpenTUI renderer (dynamic imports to avoid TS module resolution issues)
+        // @ts-expect-error - OpenTUI packages have incomplete ESM type definitions
+        const { createCliRenderer } = yield* Effect.promise(() => import('@opentui/core'))
+        // @ts-expect-error - OpenTUI packages have incomplete ESM type definitions
+        const { createRoot } = yield* Effect.promise(() => import('@opentui/react'))
 
-          renderer = yield* Effect.promise(() =>
-            createCliRenderer({
-              useAlternateScreen: false,
-              exitOnCtrlC: true,
-            }),
-          )
-          root = createRoot(renderer)
+        renderer = yield* Effect.promise(() =>
+          createCliRenderer({
+            useAlternateScreen: false,
+            exitOnCtrlC: true,
+          }),
+        )
+        root = createRoot(renderer)
 
-          // Subscribe to atom changes → trigger re-render
-          registry.subscribe(stateAtom, () => {
-            root!.render(
-              <RegistryContext.Provider value={registry!}>
-                <TaskSystemUI atom={stateAtom!} />
-              </RegistryContext.Provider>,
-            )
-          })
-
-          // Initial render
-          root.render(
-            <RegistryContext.Provider value={registry}>
-              <TaskSystemUI atom={stateAtom} />
+        // Subscribe to atom changes → trigger re-render
+        registry.subscribe(stateAtom, () => {
+          root!.render(
+            <RegistryContext.Provider value={registry!}>
+              <TaskSystemUI atom={stateAtom!} />
             </RegistryContext.Provider>,
           )
-        }
+        })
 
-        // Consume event stream → update atom → return final state
-        const finalState = yield* eventStream.pipe(
-          Stream.tap((event) =>
-            Effect.sync(() => {
-              const currentState = registry!.get(stateAtom!)
-              const newState = reduceEvent({ state: currentState, event })
-              registry!.set(stateAtom!, newState)
-            }),
-          ),
-          Stream.runFold(initialState, (state, event) => reduceEvent({ state, event })),
+        // Initial render
+        root.render(
+          <RegistryContext.Provider value={registry}>
+            <TaskSystemUI atom={stateAtom} />
+          </RegistryContext.Provider>,
         )
+      }
 
-        return finalState
-      }),
+      // Consume event stream → update atom → return final state
+      const finalState = yield* eventStream.pipe(
+        Stream.tap((event) =>
+          Effect.sync(() => {
+            const currentState = registry!.get(stateAtom!)
+            const newState = reduceEvent({ state: currentState, event })
+            registry!.set(stateAtom!, newState)
+          }),
+        ),
+        Stream.runFold(initialState, (state, event) => reduceEvent({ state, event })),
+      )
+
+      return finalState
+    }),
 
     /**
      * Cleanup resources.

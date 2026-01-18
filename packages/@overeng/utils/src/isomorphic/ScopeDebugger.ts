@@ -79,8 +79,8 @@ export const addTracedFinalizer = Effect.fn('ScopeDebugger.addTracedFinalizer')(
     registeredAt: new Date(registeredAt).toISOString(),
   })
 
-  const tracedFinalizer = (exit: Exit.Exit<unknown, unknown>) =>
-    Effect.gen(function* () {
+  const tracedFinalizer = Effect.fnUntraced(
+    function* (exit: Exit.Exit<unknown, unknown>) {
       const startedAt = Date.now()
 
       yield* Effect.logDebug(`Finalizer starting: ${name}`, {
@@ -98,14 +98,14 @@ export const addTracedFinalizer = Effect.fn('ScopeDebugger.addTracedFinalizer')(
         finalizer: name,
         durationMs,
       })
-    }).pipe(
-      Effect.catchAllCause((cause) =>
-        Effect.logError(`Finalizer failed: ${name}`, {
-          finalizer: name,
-          cause,
-        }).pipe(Effect.andThen(Effect.failCause(cause))),
-      ),
-    )
+    },
+    Effect.catchAllCause((cause) =>
+      Effect.logError(`Finalizer failed: ${name}`, {
+        finalizer: name,
+        cause,
+      }).pipe(Effect.andThen(Effect.failCause(cause))),
+    ),
+  )
 
   yield* Scope.addFinalizerExit(scope, tracedFinalizer)
 })

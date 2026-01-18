@@ -208,7 +208,7 @@ export const BroadcastLoggerLive = (source?: string) =>
  */
 export const logStream: Stream.Stream<BroadcastLogEntry, never, Scope.Scope> =
   Stream.asyncScoped<BroadcastLogEntry>((emit) =>
-    Effect.fn('BroadcastLogger.logStream.setup')(function* () {
+    Effect.gen(function* () {
       const channel = new BroadcastChannel(BROADCAST_CHANNEL_NAME)
       const scope = yield* Effect.scope
 
@@ -228,7 +228,7 @@ export const logStream: Stream.Stream<BroadcastLogEntry, never, Scope.Scope> =
           channel.close()
         }),
       )
-    }),
+    }).pipe(Effect.withSpan('BroadcastLogger.logStream.setup')),
   )
 
 /** Options for creating a log bridge layer. */

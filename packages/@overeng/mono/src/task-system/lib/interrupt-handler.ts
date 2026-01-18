@@ -39,30 +39,32 @@ export interface InterruptHandlerConfig {
  * yield* InterruptHandler.install(fiber);
  * ```
  */
-export const install = <A, E>(
-  fiber: Fiber.RuntimeFiber<A, E>,
-  config: InterruptHandlerConfig = {},
-): Effect.Effect<void, never, Scope.Scope> =>
-  Effect.gen(function* () {
-    // Create handler that interrupts fiber on Ctrl+C
-    const handler = (data: string) => {
-      if (data === CTRL_C) {
-        config.onInterrupt?.()
-        // Use runFork to fire-and-forget the interrupt
-        Effect.runFork(Fiber.interrupt(fiber))
+export const install = Effect.fn('InterruptHandler/install')(
+  <A, E>(
+    fiber: Fiber.RuntimeFiber<A, E>,
+    config: InterruptHandlerConfig = {},
+  ): Effect.Effect<void, never, Scope.Scope> =>
+    Effect.gen(function* () {
+      // Create handler that interrupts fiber on Ctrl+C
+      const handler = (data: string) => {
+        if (data === CTRL_C) {
+          config.onInterrupt?.()
+          // Use runFork to fire-and-forget the interrupt
+          Effect.runFork(Fiber.interrupt(fiber))
+        }
       }
-    }
 
-    // Install handler
-    process.stdin.on('data', handler)
+      // Install handler
+      process.stdin.on('data', handler)
 
-    // Remove handler when scope closes
-    yield* Effect.addFinalizer(() =>
-      Effect.sync(() => {
-        process.stdin.off('data', handler)
-      }),
-    )
-  })
+      // Remove handler when scope closes
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          process.stdin.off('data', handler)
+        }),
+      )
+    }),
+)
 
 /**
  * Create a self-interrupting scope that handles Ctrl+C.
@@ -81,20 +83,22 @@ export const install = <A, E>(
  * )
  * ```
  */
-export const withInterruptHandler = <A, E, R>(
-  effect: Effect.Effect<A, E, R>,
-  config: InterruptHandlerConfig = {},
-): Effect.Effect<A, E, R | Scope.Scope> =>
-  Effect.gen(function* () {
-    // Fork the effect
-    const fiber = yield* Effect.fork(effect)
+export const withInterruptHandler = Effect.fn('InterruptHandler/withInterruptHandler')(
+  <A, E, R>(
+    effect: Effect.Effect<A, E, R>,
+    config: InterruptHandlerConfig = {},
+  ): Effect.Effect<A, E, R | Scope.Scope> =>
+    Effect.gen(function* () {
+      // Fork the effect
+      const fiber = yield* Effect.fork(effect)
 
-    // Install interrupt handler
-    yield* install(fiber, config)
+      // Install interrupt handler
+      yield* install(fiber, config)
 
-    // Await the fiber
-    return yield* Fiber.join(fiber)
-  })
+      // Await the fiber
+      return yield* Fiber.join(fiber)
+    }),
+)
 
 /**
  * InterruptHandler module.

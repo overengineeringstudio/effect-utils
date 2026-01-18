@@ -109,128 +109,128 @@ export const isGenieFile = (file: string): boolean => file.endsWith('.genie.ts')
  * - This keeps output stable when symlinks are used to dedupe submodules,
  *   avoiding double generation and racey writes/chmod.
  */
-export const findGenieFiles = (dir: string) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const pathService = yield* Path.Path
-    const warnings: string[] = []
-    // Prefer the canonical root when available; fall back to input on failure.
-    const rootDir = yield* fs.realPath(dir).pipe(Effect.catchAll(() => Effect.succeed(dir)))
-    const rootPrefix = rootDir.endsWith(path.sep) ? rootDir : `${rootDir}${path.sep}`
-    const seenDirectories = new Set<string>()
+export const findGenieFiles = Effect.fn('discovery/findGenieFiles')(function* (dir: string) {
+  const fs = yield* FileSystem.FileSystem
+  const pathService = yield* Path.Path
+  const warnings: string[] = []
+  // Prefer the canonical root when available; fall back to input on failure.
+  const rootDir = yield* fs.realPath(dir).pipe(Effect.catchAll(() => Effect.succeed(dir)))
+  const rootPrefix = rootDir.endsWith(path.sep) ? rootDir : `${rootDir}${path.sep}`
+  const seenDirectories = new Set<string>()
 
-    const resolveSymlinkTarget = (
-      fullPath: string,
-    ): Effect.Effect<string | undefined, never, never> =>
-      fs.readLink(fullPath).pipe(
-        Effect.map((target) =>
-          pathService.isAbsolute(target)
-            ? target
-            : pathService.resolve(pathService.dirname(fullPath), target),
-        ),
-        // readLink fails for non-symlinks; treat those as "no target".
-        Effect.catchAll(() => Effect.succeed(undefined)),
-      )
+  const resolveSymlinkTarget = (
+    fullPath: string,
+  ): Effect.Effect<string | undefined, never, never> =>
+    fs.readLink(fullPath).pipe(
+      Effect.map((target) =>
+        pathService.isAbsolute(target)
+          ? target
+          : pathService.resolve(pathService.dirname(fullPath), target),
+      ),
+      // readLink fails for non-symlinks; treat those as "no target".
+      Effect.catchAll(() => Effect.succeed(undefined)),
+    )
 
-    const isWithinRoot = (target: string): boolean =>
-      target === rootDir || target.startsWith(rootPrefix)
+  const isWithinRoot = (target: string): boolean =>
+    target === rootDir || target.startsWith(rootPrefix)
 
-    const safeStat = (fullPath: string): Effect.Effect<StatResult, never, never> =>
-      fs.stat(fullPath).pipe(
-        Effect.map(
-          (stat): StatResult => ({ type: stat.type === 'Directory' ? 'directory' : 'file' }),
-        ),
-        Effect.catchTag('SystemError', (e) => {
-          // Handle broken symlinks and other stat failures gracefully
-          if (e.reason === 'NotFound') {
-            warnings.push(`Skipping broken symlink: ${fullPath}`)
-            return Effect.succeed({ type: 'skip', reason: 'broken symlink' } as StatResult)
-          }
-          warnings.push(`Skipping ${fullPath}: ${e.message}`)
-          return Effect.succeed({ type: 'skip', reason: e.message } as StatResult)
-        }),
-        Effect.catchTag('BadArgument', (e) => {
-          warnings.push(`Skipping ${fullPath}: ${e.message}`)
-          return Effect.succeed({ type: 'skip', reason: e.message } as StatResult)
-        }),
-      )
+  const safeStat = (fullPath: string): Effect.Effect<StatResult, never, never> =>
+    fs.stat(fullPath).pipe(
+      Effect.map(
+        (stat): StatResult => ({ type: stat.type === 'Directory' ? 'directory' : 'file' }),
+      ),
+      Effect.catchTag('SystemError', (e) => {
+        // Handle broken symlinks and other stat failures gracefully
+        if (e.reason === 'NotFound') {
+          warnings.push(`Skipping broken symlink: ${fullPath}`)
+          return Effect.succeed({ type: 'skip', reason: 'broken symlink' } as StatResult)
+        }
+        warnings.push(`Skipping ${fullPath}: ${e.message}`)
+        return Effect.succeed({ type: 'skip', reason: e.message } as StatResult)
+      }),
+      Effect.catchTag('BadArgument', (e) => {
+        warnings.push(`Skipping ${fullPath}: ${e.message}`)
+        return Effect.succeed({ type: 'skip', reason: e.message } as StatResult)
+      }),
+    )
 
-    const walk = (
-      currentDir: string,
-    ): Effect.Effect<string[], PlatformError.PlatformError, never> =>
-      Effect.gen(function* () {
-        const entries = yield* fs.readDirectory(currentDir)
-        const results: string[] = []
+  const walk: (
+    currentDir: string,
+  ) => Effect.Effect<string[], PlatformError.PlatformError> = Effect.fnUntraced(
+    function* (currentDir: string) {
+    const entries = yield* fs.readDirectory(currentDir)
+    const results: string[] = []
 
-        for (const entry of entries) {
-          if (shouldSkipDirectory(entry)) {
+    for (const entry of entries) {
+      if (shouldSkipDirectory(entry)) {
+        continue
+      }
+
+      const fullPath = pathService.join(currentDir, entry)
+      const stat = yield* safeStat(fullPath)
+
+      if (stat.type === 'directory') {
+        const symlinkTarget = yield* resolveSymlinkTarget(fullPath)
+
+        if (symlinkTarget !== undefined) {
+          /**
+           * Skip symlinked directories that point back inside the root.
+           * This avoids duplicate traversal when submodules are symlinked
+           * to a canonical working tree.
+           */
+          if (isWithinRoot(symlinkTarget)) {
             continue
           }
 
-          const fullPath = pathService.join(currentDir, entry)
-          const stat = yield* safeStat(fullPath)
-
-          if (stat.type === 'directory') {
-            const symlinkTarget = yield* resolveSymlinkTarget(fullPath)
-
-            if (symlinkTarget !== undefined) {
-              /**
-               * Skip symlinked directories that point back inside the root.
-               * This avoids duplicate traversal when submodules are symlinked
-               * to a canonical working tree.
-               */
-              if (isWithinRoot(symlinkTarget)) {
-                continue
-              }
-
-              if (seenDirectories.has(symlinkTarget)) {
-                continue
-              }
-              seenDirectories.add(symlinkTarget)
-            } else {
-              if (seenDirectories.has(fullPath)) {
-                continue
-              }
-              seenDirectories.add(fullPath)
-            }
-
-            const nested = yield* walk(fullPath)
-            results.push(...nested)
-          } else if (stat.type === 'file' && isGenieFile(entry)) {
-            results.push(fullPath)
+          if (seenDirectories.has(symlinkTarget)) {
+            continue
           }
-          // skip broken symlinks silently (already logged warning)
+          seenDirectories.add(symlinkTarget)
+        } else {
+          if (seenDirectories.has(fullPath)) {
+            continue
+          }
+          seenDirectories.add(fullPath)
         }
 
-        return results
-      })
-
-    const files = yield* walk(dir)
-    const seen = new Set<string>()
-    const uniqueFiles: string[] = []
-
-    for (const file of files) {
-      const resolvedPath = yield* fs.realPath(file).pipe(
-        Effect.catchTag('SystemError', (e) => {
-          warnings.push(`Skipping ${file}: ${e.message}`)
-          return Effect.succeed(null)
-        }),
-        Effect.catchTag('BadArgument', (e) => {
-          warnings.push(`Skipping ${file}: ${e.message}`)
-          return Effect.succeed(null)
-        }),
-      )
-
-      if (resolvedPath === null) continue
-      if (seen.has(resolvedPath)) continue
-      seen.add(resolvedPath)
-      uniqueFiles.push(resolvedPath)
+        const nested = yield* walk(fullPath)
+        results.push(...nested)
+      } else if (stat.type === 'file' && isGenieFile(entry)) {
+        results.push(fullPath)
+      }
+      // skip broken symlinks silently (already logged warning)
     }
 
-    // Log warnings about skipped files
-    for (const warning of warnings) {
-      yield* Effect.logWarning(warning)
-    }
+    return results
+  },
+  )
 
-    return uniqueFiles
-  }).pipe(Effect.withSpan('findGenieFiles'))
+  const files = yield* walk(dir)
+  const seen = new Set<string>()
+  const uniqueFiles: string[] = []
+
+  for (const file of files) {
+    const resolvedPath = yield* fs.realPath(file).pipe(
+      Effect.catchTag('SystemError', (e) => {
+        warnings.push(`Skipping ${file}: ${e.message}`)
+        return Effect.succeed(null)
+      }),
+      Effect.catchTag('BadArgument', (e) => {
+        warnings.push(`Skipping ${file}: ${e.message}`)
+        return Effect.succeed(null)
+      }),
+    )
+
+    if (resolvedPath === null) continue
+    if (seen.has(resolvedPath)) continue
+    seen.add(resolvedPath)
+    uniqueFiles.push(resolvedPath)
+  }
+
+  // Log warnings about skipped files
+  for (const warning of warnings) {
+    yield* Effect.logWarning(warning)
+  }
+
+  return uniqueFiles
+})

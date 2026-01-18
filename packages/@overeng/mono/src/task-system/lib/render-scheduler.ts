@@ -63,41 +63,39 @@ const triggerRender = (tui: TUI): Effect.Effect<void> =>
  * yield* scheduler.stop();
  * ```
  */
-export const make = (
+export const make = Effect.fn('RenderScheduler/make')(function* (
   tui: TUI,
   config: RenderSchedulerConfig = {},
-): Effect.Effect<RenderScheduler, never, Scope.Scope> =>
-  Effect.gen(function* () {
-    const intervalMs = config.intervalMs ?? 80
+) {
+      const intervalMs = config.intervalMs ?? 80
 
-    // Track if render is needed
-    const renderNeeded = yield* Ref.make(true) // Start with true for initial render
+      // Track if render is needed
+      const renderNeeded = yield* Ref.make(true) // Start with true for initial render
 
-    // Render loop: check if render needed, render, wait interval
-    const renderLoop = Effect.gen(function* () {
-      const needed = yield* Ref.getAndSet(renderNeeded, false)
-      if (needed) {
-        yield* triggerRender(tui)
-      }
-      yield* Effect.sleep(`${intervalMs} millis`)
-    }).pipe(Effect.forever)
+      // Render loop: check if render needed, render, wait interval
+      const renderLoop = Effect.gen(function* () {
+        const needed = yield* Ref.getAndSet(renderNeeded, false)
+        if (needed) {
+          yield* triggerRender(tui)
+        }
+        yield* Effect.sleep(`${intervalMs} millis`)
+      }).pipe(Effect.forever)
 
-    // Start render loop in background fiber
-    const fiber = yield* Effect.fork(renderLoop)
+      // Start render loop in background fiber
+      const fiber = yield* Effect.fork(renderLoop)
 
-    // Ensure fiber is interrupted when scope closes
-    yield* Effect.addFinalizer(() => Fiber.interrupt(fiber))
+      // Ensure fiber is interrupted when scope closes
+      yield* Effect.addFinalizer(() => Fiber.interrupt(fiber))
 
-    return {
-      requestRender: () => Ref.set(renderNeeded, true),
-      forceRender: () =>
-        Effect.gen(function* () {
+      return {
+        requestRender: () => Ref.set(renderNeeded, true),
+        forceRender: Effect.fnUntraced(function* () {
           yield* Ref.set(renderNeeded, false)
           yield* triggerRender(tui)
         }),
-      stop: () => Fiber.interrupt(fiber),
-    } satisfies RenderScheduler
-  })
+        stop: () => Fiber.interrupt(fiber),
+      } satisfies RenderScheduler
+})
 
 /**
  * RenderScheduler module.
