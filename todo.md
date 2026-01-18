@@ -30,6 +30,7 @@
   - dotdot
   - tasks flow
   - where to find common things (e.g. skills, shared libs, references (e.g. effect), ...)
+    - tension: i want to run agent in sub dir to scope it but i also want to give it access to the whole workspace for context/references
 - [ ] add effect-lsp to each package
 - [ ] patches feature: we currently don't have a good way to enforce dependents of a package with patches to also have patches in their package.json.genie.ts
 - [ ] refactor handling of relative paths in genie (embrace dotdot workspace root)

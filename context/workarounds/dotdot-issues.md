@@ -26,6 +26,14 @@ See `context/workarounds/playwright-duplicate-loading.md` for the detailed inves
   ```
   - and using `overengPath` to resolve paths to effect-utils packages
 
+### CSS
+
+- `dotfiles/nixpkgs/home-manager/modules/ts/oi/src/am/ui/styles.css`
+  ```css
+  @source "../../../node_modules/@overeng/geist-design-system/src";
+  ```
+  - This is a workaround to allow Tailwind to scan the Geist component sources. The `node_modules` part is weird.
+
 ### VSCode
 
 - Installed TS version can't be selected as VSC expects it in the root `node_modules` folder.
