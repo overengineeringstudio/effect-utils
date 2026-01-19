@@ -1,5 +1,3 @@
-// Generated file - DO NOT EDIT
-// Source: fmt.jsonc.genie.ts
 {
   "$schema": "https://raw.githubusercontent.com/nicksrandall/oxfmt/refs/heads/main/configuration_schema.json",
   "semi": false,
@@ -20,7 +18,8 @@
       ]
     ],
     "internalPattern": [
-      "@overeng/"
+      "@overeng/",
+      "@local/"
     ],
     "newlinesBetween": true
   },

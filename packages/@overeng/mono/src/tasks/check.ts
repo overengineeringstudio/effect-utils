@@ -38,7 +38,7 @@ export const checkAllWithTaskSystem = Effect.fn('checkAllWithTaskSystem')(functi
   const lintTask = task({
     id: 'lint' as const,
     name: 'Lint (format + oxlint + genie coverage)',
-    effect: allLintChecks(config),
+    effect: allLintChecks(config.genieConfig),
   })
 
   // Test task depends on all parallel tasks

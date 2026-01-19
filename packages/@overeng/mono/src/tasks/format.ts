@@ -1,31 +1,30 @@
 /**
  * Format tasks using oxfmt.
+ *
+ * Expects `oxfmt.json` config at repo root (auto-discovered).
+ * Genie-generated files are excluded via inline patterns.
  */
 
 import { Effect } from 'effect'
 
 import { runCommand } from '../utils.ts'
-import type { OxcConfig } from './types.ts'
 
-/** Exclude patterns for oxfmt (genie-generated read-only files) */
-const oxfmtExcludePatterns = [
+/** Exclude patterns for genie-generated read-only files */
+const genieExcludePatterns = [
   '!**/package.json',
   '!**/tsconfig.json',
   '!**/tsconfig.*.json',
   '!.github/workflows/*.yml',
-  '!packages/@overeng/oxc-config/*.jsonc',
 ]
 
 /** Create format check task (oxfmt --check) */
-export const formatCheck = (config: OxcConfig) =>
-  runCommand({
-    command: 'oxfmt',
-    args: ['-c', `${config.configPath}/fmt.jsonc`, '--check', '.', ...oxfmtExcludePatterns],
-  }).pipe(Effect.withSpan('formatCheck'))
+export const formatCheck = runCommand({
+  command: 'oxfmt',
+  args: ['-c', 'oxfmt.json', '--check', '.', ...genieExcludePatterns],
+}).pipe(Effect.withSpan('formatCheck'))
 
 /** Create format fix task (oxfmt) */
-export const formatFix = (config: OxcConfig) =>
-  runCommand({
-    command: 'oxfmt',
-    args: ['-c', `${config.configPath}/fmt.jsonc`, '.', ...oxfmtExcludePatterns],
-  }).pipe(Effect.withSpan('formatFix'))
+export const formatFix = runCommand({
+  command: 'oxfmt',
+  args: ['-c', 'oxfmt.json', '.', ...genieExcludePatterns],
+}).pipe(Effect.withSpan('formatFix'))

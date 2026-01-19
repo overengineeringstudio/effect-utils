@@ -1,7 +1,7 @@
 import { Command, Options } from '@effect/cli'
 import { Console, Effect } from 'effect'
 
-import type { GenieCoverageConfig, OxcConfig } from '../tasks/mod.ts'
+import type { GenieCoverageConfig } from '../tasks/mod.ts'
 import { allLintChecks, allLintFixes } from '../tasks/mod.ts'
 import { ciGroup, ciGroupEnd } from '../utils.ts'
 
@@ -12,19 +12,13 @@ const fixOption = Options.boolean('fix').pipe(
 )
 
 /** Create a lint command */
-export const lintCommand = ({
-  oxcConfig,
-  genieConfig,
-}: {
-  oxcConfig: OxcConfig
-  genieConfig: GenieCoverageConfig
-}) =>
+export const lintCommand = (genieConfig: GenieCoverageConfig) =>
   Command.make(
     'lint',
     { fix: fixOption },
     Effect.fn('mono.lint')(function* ({ fix }) {
       yield* ciGroup(fix ? 'Formatting + Linting (with fixes)' : 'Formatting + Linting')
-      yield* fix ? allLintFixes(oxcConfig) : allLintChecks({ oxcConfig, genieConfig })
+      yield* fix ? allLintFixes : allLintChecks(genieConfig)
       yield* ciGroupEnd
       yield* Console.log('✓ Lint complete')
     }),

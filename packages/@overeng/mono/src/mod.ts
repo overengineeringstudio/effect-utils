@@ -6,6 +6,8 @@
  * - CI-aware output (GitHub Actions groups)
  * - Interactive mode with live progress rendering
  *
+ * Expects `oxlint.json` and `oxfmt.json` config files at repo root (auto-discovered by oxlint/oxfmt).
+ *
  * @example
  * ```ts
  * #!/usr/bin/env bun
@@ -20,7 +22,6 @@
  *   checkCommandWithTaskSystem,
  * } from '@overeng/mono'
  *
- * const oxcConfig = { configPath: 'packages/@overeng/oxc-config' }
  * const genieConfig = {
  *   scanDirs: ['packages', 'scripts'],
  *   skipDirs: ['node_modules', 'dist', '.git'],
@@ -36,11 +37,11 @@
  *   commands: [
  *     buildCommand(),
  *     testCommand(),
- *     lintCommand({ oxcConfig, genieConfig }),
+ *     lintCommand(genieConfig),
  *     tsCommand(),
  *     cleanCommand(),
  *     installCommand(installConfig),
- *     checkCommandWithTaskSystem({ oxcConfig, genieConfig }),
+ *     checkCommandWithTaskSystem({ genieConfig }),
  *   ],
  * })
  * ```
@@ -105,7 +106,6 @@ export type {
   InstallConfig,
   InstallProgress,
   InstallResult,
-  OxcConfig,
   TestConfig,
   TypeCheckConfig,
 } from './tasks/mod.ts'

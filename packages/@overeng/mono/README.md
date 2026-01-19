@@ -9,6 +9,10 @@ Framework for building Effect-based monorepo CLIs with reusable task primitives 
 - Interactive mode with live progress rendering
 - Composable task primitives for custom workflows
 
+## Prerequisites
+
+Expects `oxlint.json` and `oxfmt.json` config files at repo root (auto-discovered by oxlint/oxfmt).
+
 ## Usage
 
 ```ts
@@ -23,7 +27,6 @@ import {
   checkCommandWithTaskSystem,
 } from '@overeng/mono'
 
-const oxcConfig = { configPath: 'packages/@overeng/oxc-config' }
 const genieConfig = {
   scanDirs: ['packages', 'scripts'],
   skipDirs: ['node_modules', 'dist', '.git'],
@@ -36,10 +39,10 @@ runMonoCli({
   commands: [
     buildCommand(),
     testCommand(),
-    lintCommand({ oxcConfig, genieConfig }),
+    lintCommand(genieConfig),
     tsCommand(),
     cleanCommand(),
-    checkCommandWithTaskSystem({ oxcConfig, genieConfig }),
+    checkCommandWithTaskSystem({ genieConfig }),
   ],
 })
 ```

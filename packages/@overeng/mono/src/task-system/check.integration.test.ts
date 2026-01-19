@@ -23,7 +23,6 @@ describe('Check command integration', () => {
         Effect.gen(function* () {
           // Create a simple test config that uses echo commands instead of real tools
           const config: CheckTasksConfig = {
-            oxcConfig: { configPath: 'test' },
             genieConfig: { scanDirs: [], skipDirs: [] },
             skipGenie: true, // Skip genie since we don't have it in test env
             skipTests: true, // Skip tests to avoid vitest recursion
@@ -45,7 +44,6 @@ describe('Check command integration', () => {
       withTestCtx(
         Effect.gen(function* () {
           const config: CheckTasksConfig = {
-            oxcConfig: { configPath: 'test' },
             genieConfig: { scanDirs: [], skipDirs: [] },
             skipGenie: true,
             skipTests: true,

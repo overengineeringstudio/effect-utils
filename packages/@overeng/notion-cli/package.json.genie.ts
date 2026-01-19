@@ -8,6 +8,9 @@ import {
 } from '../../../genie/internal.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
+/** Effect packages not already in @overeng/utils */
+const ownPeerDepNames = ['@effect/cli', '@effect/sql', '@effect/typeclass'] as const
+
 export default packageJson({
   name: '@overeng/notion-cli',
   ...privatePackageDefaults,
@@ -31,17 +34,6 @@ export default packageJson({
   },
   dependencies: {
     ...catalog.pick(
-      '@effect/cli',
-      '@effect/cluster',
-      '@effect/experimental',
-      '@effect/platform',
-      '@effect/platform-node',
-      '@effect/printer',
-      '@effect/printer-ansi',
-      '@effect/rpc',
-      '@effect/sql',
-      '@effect/typeclass',
-      '@effect/workflow',
       '@overeng/effect-path',
       '@overeng/notion-effect-client',
       '@overeng/notion-effect-schema',
@@ -49,9 +41,17 @@ export default packageJson({
     ),
   },
   devDependencies: {
-    ...catalog.pick('@effect/vitest', 'effect', 'vitest'),
+    ...catalog.pick(
+      ...Object.keys(utilsPkg.data.peerDependencies ?? {}),
+      ...ownPeerDepNames,
+      '@effect/vitest',
+      'vitest',
+    ),
     ...effectLspDevDeps(),
   },
-  // Expose @overeng/utils peer deps transitively (consumers need them)
-  peerDependencies: utilsPkg.data.peerDependencies,
+  peerDependencies: {
+    // Re-expose @overeng/utils peer deps + own additional peer deps
+    ...utilsPkg.data.peerDependencies,
+    ...catalog.peers(...ownPeerDepNames),
+  },
 })

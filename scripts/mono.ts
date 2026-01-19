@@ -16,9 +16,6 @@ import { resolveCliVersion } from '@overeng/utils/node/cli-version'
 
 import { contextCommand, nixPackages } from './commands/index.js'
 
-/** Path to oxc configuration files used for linting and formatting */
-const oxcConfig = { configPath: 'packages/@overeng/oxc-config' }
-
 /** Genie coverage configuration */
 const genieConfig = {
   scanDirs: ['packages', 'scripts', 'context'],
@@ -45,11 +42,11 @@ runMonoCli({
   commands: [
     buildCommand(),
     testCommand(),
-    lintCommand({ oxcConfig, genieConfig }),
+    lintCommand(genieConfig),
     tsCommand(),
     cleanCommand(),
     installCommand(installConfig),
-    checkCommandWithTaskSystem({ oxcConfig, genieConfig }),
+    checkCommandWithTaskSystem({ genieConfig }),
     genieCommand,
     nixCommand({ packages: nixPackages }),
     contextCommand,

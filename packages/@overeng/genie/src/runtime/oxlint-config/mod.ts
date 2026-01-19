@@ -12,8 +12,8 @@ import type { GenieOutput, Strict } from '../mod.ts'
 /** Rule severity levels */
 type RuleSeverity = 'off' | 'warn' | 'error' | 'allow' | 'deny' | 0 | 1 | 2
 
-/** Rule configuration - either severity alone or [severity, options] */
-type RuleConfig = RuleSeverity | [RuleSeverity, Record<string, unknown>]
+/** Rule configuration - severity alone or tuple with options (supports variable-length for rules like func-style) */
+type RuleConfig = RuleSeverity | readonly [RuleSeverity, ...unknown[]]
 
 /** Built-in oxlint plugins */
 type OxlintPlugin =
@@ -49,32 +49,32 @@ type RuleCategories = {
 
 /** File-specific rule overrides */
 export type OxlintOverride = {
-  files: string[]
+  files: readonly string[]
   rules?: Record<string, RuleConfig>
-  plugins?: OxlintPlugin[]
+  plugins?: readonly OxlintPlugin[]
   settings?: Record<string, unknown>
 }
 
 /** Arguments for generating an oxlint configuration file */
 export type OxlintConfigArgs = {
   /** Built-in plugins to enable */
-  plugins?: OxlintPlugin[]
+  plugins?: readonly OxlintPlugin[]
   /** Custom JS plugin paths (experimental) */
-  jsPlugins?: string[]
+  jsPlugins?: readonly string[]
   /** Rule category severity levels */
   categories?: RuleCategories
   /** Individual rule configurations */
   rules?: Record<string, RuleConfig>
   /** File-specific overrides */
-  overrides?: OxlintOverride[]
+  overrides?: readonly OxlintOverride[]
   /** Environment globals */
   env?: Record<string, boolean>
   /** Custom global variables */
   globals?: Record<string, 'readonly' | 'writable' | 'off'>
   /** Paths to extend from */
-  extends?: string[]
+  extends?: readonly string[]
   /** Glob patterns to ignore */
-  ignorePatterns?: string[]
+  ignorePatterns?: readonly string[]
   /** Plugin-specific settings */
   settings?: {
     react?: Record<string, unknown>

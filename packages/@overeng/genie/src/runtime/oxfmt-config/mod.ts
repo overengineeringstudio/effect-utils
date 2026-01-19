@@ -15,9 +15,9 @@ type ImportGroup = 'builtin' | 'external' | 'internal' | 'parent' | 'sibling' | 
 /** Import sorting configuration */
 export type ImportSortConfig = {
   /** Import group ordering. Arrays create merged groups. */
-  groups?: (ImportGroup | ImportGroup[])[]
+  groups?: readonly (ImportGroup | readonly ImportGroup[])[]
   /** Patterns to treat as internal imports (e.g., ['@myorg/']) */
-  internalPattern?: string[]
+  internalPattern?: readonly string[]
   /** Insert newlines between import groups */
   newlinesBetween?: boolean
 }
@@ -47,7 +47,7 @@ export type OxfmtConfigArgs = {
   /** Experimental package.json sorting (default: false) */
   experimentalSortPackageJson?: boolean
   /** Glob patterns to ignore */
-  ignorePatterns?: string[]
+  ignorePatterns?: readonly string[]
 }
 
 /**

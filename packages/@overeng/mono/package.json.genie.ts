@@ -8,6 +8,9 @@ import {
 } from '../../../genie/internal.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
+/** Effect packages not already in @overeng/utils */
+const ownPeerDepNames = ['@effect/cli'] as const
+
 export default packageJson({
   ...privatePackageDefaults,
   name: '@overeng/mono',
@@ -27,11 +30,6 @@ export default packageJson({
   dependencies: {
     ...catalog.pick(
       '@overeng/utils',
-      '@effect/cli',
-      '@effect/experimental',
-      '@effect/platform',
-      '@effect/platform-node',
-      'effect',
       '@effect-atom/atom',
       '@effect-atom/atom-react',
       '@opentui/core',
@@ -41,12 +39,19 @@ export default packageJson({
     ),
   },
   devDependencies: {
-    ...catalog.pick('@types/node', '@types/react', 'vitest', '@effect/vitest'),
+    ...catalog.pick(
+      ...Object.keys(utilsPkg.data.peerDependencies ?? {}),
+      ...ownPeerDepNames,
+      '@types/node',
+      '@types/react',
+      'vitest',
+      '@effect/vitest',
+    ),
     ...effectLspDevDeps(),
   },
   peerDependencies: {
-    // Expose @overeng/utils peer deps transitively (consumers need them)
+    // Re-expose @overeng/utils peer deps + own additional peer deps
     ...utilsPkg.data.peerDependencies,
-    ...catalog.peers('@effect/cli'),
+    ...catalog.peers(...ownPeerDepNames),
   },
 })
