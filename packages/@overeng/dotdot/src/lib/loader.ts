@@ -81,15 +81,16 @@ const loadAndParseJson = Effect.fnUntraced(function* (configPath: string) {
   )
 
   // Parse JSON
-  const rawConfig = yield* Effect.try({
-    try: () => JSON.parse(content),
-    catch: (cause) =>
-      new ConfigError({
-        path: absolutePath,
-        message: `Failed to parse JSON`,
-        cause: cause as Error,
-      }),
-  })
+  const rawConfig = yield* Schema.decodeUnknown(Schema.parseJson(Schema.Unknown))(content).pipe(
+    Effect.mapError(
+      (cause) =>
+        new ConfigError({
+          path: absolutePath,
+          message: `Failed to parse JSON`,
+          cause,
+        }),
+    ),
+  )
 
   return { absolutePath, rawConfig }
 })

@@ -5,7 +5,7 @@
 import { Args, Command, Options } from '@effect/cli'
 import { FetchHttpClient, FileSystem, HttpClient } from '@effect/platform'
 import type { Cause, Channel, Sink } from 'effect'
-import { Console, Effect, Layer, Option, Redacted, Stream } from 'effect'
+import { Console, Effect, Layer, Option, Redacted, Schema, Stream } from 'effect'
 import type { NodeInspectSymbol } from 'effect/Inspectable'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -26,6 +26,25 @@ import { generateSchemaCode } from '../../codegen.ts'
 import { type DumpPage, encodeDumpPage } from '../../dump/schema.ts'
 import { introspectDatabase } from '../../introspect.ts'
 import { resolveNotionToken, tokenOption } from '../schema/mod.ts'
+
+// -----------------------------------------------------------------------------
+// Checkpoint Schema
+// -----------------------------------------------------------------------------
+
+/** Schema for dump checkpoint files */
+const CheckpointData = Schema.Struct({
+  lastDumpedAt: Schema.optional(Schema.String),
+  pageCount: Schema.optional(Schema.Number),
+  contentIncluded: Schema.optional(Schema.Boolean),
+  assets: Schema.optional(
+    Schema.Struct({
+      count: Schema.Number,
+      totalBytes: Schema.Number,
+      directory: Schema.String,
+    }),
+  ),
+  failures: Schema.optional(Schema.Array(Schema.Unknown)),
+})
 
 // -----------------------------------------------------------------------------
 // Common Options
@@ -274,7 +293,9 @@ const dumpCommand = Command.make(
           const checkpointExists = yield* fs.exists(checkpointPath)
           if (checkpointExists) {
             const checkpointContent = yield* fs.readFileString(checkpointPath)
-            const checkpointData = JSON.parse(checkpointContent) as { lastDumpedAt?: string }
+            const checkpointData = yield* Schema.decodeUnknown(Schema.parseJson(CheckpointData))(
+              checkpointContent,
+            )
             lastEditedFilter = checkpointData.lastDumpedAt
             yield* log(`Incremental dump since ${lastEditedFilter}`)
           } else {
@@ -506,7 +527,10 @@ export const DUMP_META = {
             : {}),
           ...(failures.length > 0 ? { failures } : {}),
         }
-        yield* fs.writeFileString(checkpointPath, JSON.stringify(checkpointData, null, 2))
+        const checkpointJson = yield* Schema.encode(
+          Schema.parseJson(CheckpointData, { space: 2 }),
+        )(checkpointData)
+        yield* fs.writeFileString(checkpointPath, checkpointJson)
 
         yield* log('Done')
       })

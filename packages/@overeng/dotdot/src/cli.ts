@@ -3,7 +3,7 @@ import path from 'node:path'
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
 import * as PlatformNode from '@effect/platform-node'
-import { Effect, Layer, Option, pipe } from 'effect'
+import { Effect, Layer, Option, pipe, Schema } from 'effect'
 
 import { styled, symbols } from '@overeng/cli-ui'
 
@@ -21,6 +21,7 @@ import {
   generateJsonSchema,
   JSON_SCHEMA_URL,
   resolveCliVersion,
+  RootConfigSchema,
 } from './lib/mod.ts'
 
 /** Initialize a new dotdot workspace */
@@ -42,7 +43,10 @@ const initCommand = Cli.Command.make('init', {}, () =>
       repos: {},
     }
 
-    yield* fs.writeFileString(configPath, JSON.stringify(initialConfig, null, 2) + '\n')
+    const configContent = yield* Schema.encode(Schema.parseJson(RootConfigSchema, { space: 2 }))(
+      initialConfig,
+    )
+    yield* fs.writeFileString(configPath, configContent + '\n')
 
     yield* Effect.log(
       `${styled.green(symbols.check)} ${styled.dim('initialized workspace at')} ${styled.bold(path.basename(cwd))}`,
@@ -63,8 +67,9 @@ const schemaCommand = Cli.Command.make(
   ({ output }) =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
-      const schema = generateJsonSchema()
-      const content = JSON.stringify(schema, null, 2) + '\n'
+      const jsonSchema = generateJsonSchema()
+      const content =
+        (yield* Schema.encode(Schema.parseJson(Schema.Unknown, { space: 2 }))(jsonSchema)) + '\n'
 
       if (Option.isSome(output)) {
         yield* fs.writeFileString(output.value, content)

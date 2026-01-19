@@ -3,10 +3,10 @@
  */
 
 import { FileSystem } from '@effect/platform'
-import { Effect, Option } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { CurrentWorkingDirectory } from '../lib/mod.ts'
+import { CurrentWorkingDirectory, RootConfigSchema } from '../lib/mod.ts'
 import { createBareRepo, createWorkspace, getGitRev, withTestCtx } from '../test-utils/mod.ts'
 import { syncCommand } from './mod.ts'
 
@@ -178,7 +178,7 @@ describe('sync command', () => {
 
         // Verify consumer-project was added to root config
         const configContent = yield* fs.readFileString(`${workspacePath}/dotdot-root.json`)
-        const config = JSON.parse(configContent) as { repos: Record<string, { url: string }> }
+        const config = yield* Schema.decodeUnknown(Schema.parseJson(RootConfigSchema))(configContent)
         expect(config.repos).toHaveProperty('consumer-project')
         const consumerRepo = config.repos['consumer-project']
         if (consumerRepo === undefined) {

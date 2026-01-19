@@ -3,10 +3,10 @@
  */
 
 import { FileSystem } from '@effect/platform'
-import { Effect, Layer } from 'effect'
+import { Effect, Layer, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { ConfigOutOfSyncError, CurrentWorkingDirectory, WorkspaceService } from '../lib/mod.ts'
+import { ConfigOutOfSyncError, CurrentWorkingDirectory, RootConfigSchema, WorkspaceService } from '../lib/mod.ts'
 import { createWorkspace, getGitRev, withTestCtx } from '../test-utils/mod.ts'
 import { statusHandler } from './mod.ts'
 
@@ -47,15 +47,11 @@ describe('status command', () => {
         // Pin the actual rev in the root config
         const configPath = `${workspacePath}/dotdot-root.json`
         const configContent =
-          JSON.stringify(
-            {
-              repos: {
-                'repo-a': { url: 'git@github.com:test/repo-a.git', rev: rev },
-              },
+          (yield* Schema.encode(Schema.parseJson(RootConfigSchema, { space: 2 }))({
+            repos: {
+              'repo-a': { url: 'git@github.com:test/repo-a.git', rev: rev },
             },
-            null,
-            2,
-          ) + '\n'
+          })) + '\n'
         yield* fs.writeFileString(configPath, configContent)
 
         const result = yield* statusHandler.pipe(

@@ -3,8 +3,10 @@
  */
 
 import { FileSystem } from '@effect/platform'
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
+
+import { RootConfigSchema } from '../lib/config.ts'
 
 import {
   addCommit,
@@ -32,18 +34,13 @@ describe('update-revs command', () => {
 
         // Update config with old rev
         const configPath = `${workspacePath}/dotdot-root.json`
-        yield* fs.writeFileString(
-          configPath,
-          JSON.stringify(
-            {
-              repos: {
-                'repo-a': { url: 'git@github.com:test/repo-a.git', rev: oldRev },
-              },
+        const configContent =
+          (yield* Schema.encode(Schema.parseJson(RootConfigSchema, { space: 2 }))({
+            repos: {
+              'repo-a': { url: 'git@github.com:test/repo-a.git', rev: oldRev },
             },
-            null,
-            2,
-          ) + '\n',
-        )
+          })) + '\n'
+        yield* fs.writeFileString(configPath, configContent)
 
         // Add new commit
         const newRev = yield* addCommit({
@@ -82,19 +79,14 @@ describe('update-revs command', () => {
 
         // Update config with old revs
         const configPath = `${workspacePath}/dotdot-root.json`
-        yield* fs.writeFileString(
-          configPath,
-          JSON.stringify(
-            {
-              repos: {
-                'repo-a': { url: 'git@github.com:test/repo-a.git', rev: oldRevA },
-                'repo-b': { url: 'git@github.com:test/repo-b.git', rev: oldRevB },
-              },
+        const configContent =
+          (yield* Schema.encode(Schema.parseJson(RootConfigSchema, { space: 2 }))({
+            repos: {
+              'repo-a': { url: 'git@github.com:test/repo-a.git', rev: oldRevA },
+              'repo-b': { url: 'git@github.com:test/repo-b.git', rev: oldRevB },
             },
-            null,
-            2,
-          ) + '\n',
-        )
+          })) + '\n'
+        yield* fs.writeFileString(configPath, configContent)
 
         // Add new commits to both
         const newRevA = yield* addCommit({
@@ -130,18 +122,13 @@ describe('update-revs command', () => {
         const oldRev = yield* getGitRev(`${workspacePath}/repo-a`)
 
         const configPath = `${workspacePath}/dotdot-root.json`
-        yield* fs.writeFileString(
-          configPath,
-          JSON.stringify(
-            {
-              repos: {
-                'repo-a': { url: 'git@github.com:test/repo-a.git', rev: oldRev },
-              },
+        const configContent =
+          (yield* Schema.encode(Schema.parseJson(RootConfigSchema, { space: 2 }))({
+            repos: {
+              'repo-a': { url: 'git@github.com:test/repo-a.git', rev: oldRev },
             },
-            null,
-            2,
-          ) + '\n',
-        )
+          })) + '\n'
+        yield* fs.writeFileString(configPath, configContent)
 
         // Add new commit
         yield* addCommit({ repoPath: `${workspacePath}/repo-a`, message: 'New commit' })
@@ -189,21 +176,16 @@ describe('update-revs command', () => {
         const currentRev = yield* getGitRev(`${workspacePath}/repo-a`)
 
         const configPath = `${workspacePath}/dotdot-root.json`
-        yield* fs.writeFileString(
-          configPath,
-          JSON.stringify(
-            {
-              repos: {
-                'repo-a': {
-                  url: 'git@github.com:test/repo-a.git',
-                  rev: currentRev,
-                },
+        const configContent =
+          (yield* Schema.encode(Schema.parseJson(RootConfigSchema, { space: 2 }))({
+            repos: {
+              'repo-a': {
+                url: 'git@github.com:test/repo-a.git',
+                rev: currentRev,
               },
             },
-            null,
-            2,
-          ) + '\n',
-        )
+          })) + '\n'
+        yield* fs.writeFileString(configPath, configContent)
 
         // Should complete without error, reporting unchanged
         yield* updateRevsCommand

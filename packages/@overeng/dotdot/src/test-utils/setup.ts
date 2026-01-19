@@ -6,7 +6,9 @@
  */
 
 import { Command, FileSystem } from '@effect/platform'
-import { Effect, pipe } from 'effect'
+import { Effect, pipe, Schema } from 'effect'
+
+import { RootConfigSchema } from '../lib/config.ts'
 
 /** Test fixture specification for a repository */
 export type RepoFixture = {
@@ -45,7 +47,8 @@ export const createWorkspace = Effect.fnUntraced(function* (fixture: WorkspaceFi
     const configContent = generateConfig(fixture.rootRepos)
     yield* fs.writeFileString(`${tmpDir}/dotdot-root.json`, configContent)
   } else {
-    const emptyConfig = JSON.stringify({ repos: {} }, null, 2) + '\n'
+    const emptyConfig =
+      (yield* Schema.encode(Schema.parseJson(RootConfigSchema, { space: 2 }))({ repos: {} })) + '\n'
     yield* fs.writeFileString(`${tmpDir}/dotdot-root.json`, emptyConfig)
   }
 

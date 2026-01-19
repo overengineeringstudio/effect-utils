@@ -4,11 +4,17 @@ import * as path from 'node:path'
 
 import { FileSystem, Path } from '@effect/platform'
 import { describe, it } from '@effect/vitest'
-import { Duration, Effect, Layer } from 'effect'
+import { Duration, Effect, Layer, Schema } from 'effect'
 import { DistributedSemaphoreBacking } from 'effect-distributed-lock'
 import { expect } from 'vitest'
 
 import * as FileSystemBacking from './file-system-backing.ts'
+
+/** Schema for lock file content structure */
+const LockFileContent = Schema.Struct({
+  permits: Schema.Number,
+  expiresAt: Schema.Number,
+})
 
 /**
  * Minimal FileSystem layer using Node.js native fs module directly.
@@ -494,11 +500,15 @@ describe('FileSystemBacking', () => {
           expect(entries).toEqual(['holder-a.lock', 'holder-b.lock'])
 
           // Verify lock file content
-          const holderAContent = JSON.parse(fs.readFileSync(`${keyDir}/holder-a.lock`, 'utf-8'))
+          const holderAContent = yield* Schema.decodeUnknown(Schema.parseJson(LockFileContent))(
+            fs.readFileSync(`${keyDir}/holder-a.lock`, 'utf-8'),
+          )
           expect(holderAContent.permits).toBe(2)
           expect(typeof holderAContent.expiresAt).toBe('number')
 
-          const holderBContent = JSON.parse(fs.readFileSync(`${keyDir}/holder-b.lock`, 'utf-8'))
+          const holderBContent = yield* Schema.decodeUnknown(Schema.parseJson(LockFileContent))(
+            fs.readFileSync(`${keyDir}/holder-b.lock`, 'utf-8'),
+          )
           expect(holderBContent.permits).toBe(1)
         }).pipe(Effect.provide(backingLayer))
       }).pipe(Effect.provide(TestLayer), Effect.scoped),
@@ -719,13 +729,21 @@ describe('FileSystemBacking', () => {
         const now = Date.now()
 
         yield* fsService.makeDirectory(keyDir, { recursive: true })
+        const expiredLockContent = yield* Schema.encode(Schema.parseJson(LockFileContent))({
+          permits: 2,
+          expiresAt: now - 60_000,
+        })
         yield* fsService.writeFileString(
           `${keyDir}/${encodeURIComponent('holder-expired')}.lock`,
-          JSON.stringify({ permits: 2, expiresAt: now - 60_000 }),
+          expiredLockContent,
         )
+        const activeLockContent = yield* Schema.encode(Schema.parseJson(LockFileContent))({
+          permits: 3,
+          expiresAt: now + 60_000,
+        })
         yield* fsService.writeFileString(
           `${keyDir}/${encodeURIComponent('holder-active')}.lock`,
-          JSON.stringify({ permits: 3, expiresAt: now + 60_000 }),
+          activeLockContent,
         )
 
         const holders = yield* FileSystemBacking.listHolders({ options, key: 'test-key' })
