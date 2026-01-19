@@ -17,7 +17,8 @@
     },
     "./node": "./src/node/mod.ts",
     "./node/cli-version": "./src/node/cli-version.ts",
-    "./node/playwright": "./src/node/playwright/mod.ts"
+    "./node/playwright": "./src/node/playwright/mod.ts",
+    "./node/playwright/config": "./src/node/playwright/config/mod.ts"
   },
   "scripts": {
     "prepare": "effect-language-service patch",
@@ -30,7 +31,9 @@
     "ioredis": "5.6.1"
   },
   "devDependencies": {
-    "@effect/language-service": "0.69.1",
+    "@effect/cluster": "0.56.0",
+    "@effect/experimental": "0.58.0",
+    "@effect/language-service": "0.69.2",
     "@effect/opentelemetry": "0.60.0",
     "@effect/platform": "0.94.1",
     "@effect/platform-node": "0.104.0",
@@ -38,6 +41,7 @@
     "@effect/printer-ansi": "0.47.0",
     "@effect/rpc": "0.73.0",
     "@effect/vitest": "0.27.0",
+    "@effect/workflow": "0.16.0",
     "@opentelemetry/resources": "2.2.0",
     "@opentelemetry/sdk-logs": "0.208.0",
     "@opentelemetry/sdk-metrics": "2.2.0",
@@ -53,12 +57,15 @@
     "vitest": "3.2.4"
   },
   "peerDependencies": {
+    "@effect/cluster": "^0.56.0",
+    "@effect/experimental": "^0.58.0",
     "@effect/opentelemetry": "^0.60.0",
     "@effect/platform": "^0.94.1",
     "@effect/platform-node": "^0.104.0",
     "@effect/printer": "^0.47.0",
     "@effect/printer-ansi": "^0.47.0",
     "@effect/rpc": "^0.73.0",
+    "@effect/workflow": "^0.16.0",
     "@playwright/test": "^1.57.0",
     "effect": "^3.19.14"
   },
@@ -69,6 +76,7 @@
       "./node": "./dist/node/mod.js",
       "./node/cli-version": "./dist/node/cli-version.js",
       "./node/playwright": "./dist/node/playwright/mod.js",
+      "./node/playwright/config": "./dist/node/playwright/config/mod.js",
       "./browser": "./dist/browser/mod.js",
       "./cuid": {
         "browser": "./dist/cuid/cuid.browser.js",

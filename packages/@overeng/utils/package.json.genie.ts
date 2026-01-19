@@ -11,6 +11,9 @@ import {
 /** Packages exposed as peer deps (consumers provide) + included in devDeps (for local dev/test) */
 const peerDepNames = [
   '@effect/opentelemetry',
+  '@effect/experimental',
+  '@effect/cluster',
+  '@effect/workflow',
   '@effect/platform',
   '@effect/platform-node',
   '@effect/printer',
@@ -32,6 +35,8 @@ export default packageJson({
     './node': './src/node/mod.ts',
     './node/cli-version': './src/node/cli-version.ts',
     './node/playwright': './src/node/playwright/mod.ts',
+    // Separate config export avoids runtime @playwright/test import.
+    './node/playwright/config': './src/node/playwright/config/mod.ts',
     './browser': './src/browser/mod.ts',
     './cuid': {
       browser: './src/cuid/cuid.browser.ts',
@@ -46,6 +51,7 @@ export default packageJson({
       './node': './dist/node/mod.js',
       './node/cli-version': './dist/node/cli-version.js',
       './node/playwright': './dist/node/playwright/mod.js',
+      './node/playwright/config': './dist/node/playwright/config/mod.js',
       './browser': './dist/browser/mod.js',
       './cuid': {
         browser: './dist/cuid/cuid.browser.js',

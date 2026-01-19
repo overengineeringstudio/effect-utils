@@ -218,6 +218,7 @@ export const installAllWithTaskSystem = Effect.fn('installAllWithTaskSystem')(fu
     const relativePath = pathService.relative(cwd, dir)
     const taskId = relativePath.replace(/\//g, ':') // Convert path to valid task ID
     const nodeModulesPath = pathService.join(dir, 'node_modules')
+    const bunLockfile = pathService.join(dir, 'bun.lock')
 
     // If clean is requested, create clean task first
     if (options?.clean) {
@@ -227,7 +228,7 @@ export const installAllWithTaskSystem = Effect.fn('installAllWithTaskSystem')(fu
           name: `Clean ${relativePath}`,
           command: {
             cmd: 'rm',
-            args: ['-rf', nodeModulesPath],
+            args: ['-rf', nodeModulesPath, bunLockfile],
             cwd: dir,
           },
         }),
@@ -245,8 +246,8 @@ export const installAllWithTaskSystem = Effect.fn('installAllWithTaskSystem')(fu
         name: `Install ${relativePath}`,
         command: {
           cmd: 'bun',
-          // TODO remove `--verbose` once we figured out the bun install hang bug (send logs to Jarred as we have a repro)
-          args: ['install', '--verbose', ...(options?.frozenLockfile ? ['--frozen-lockfile'] : [])],
+          // TODO remove `--no-cache` and `--verbose` once we figured out the bun install hang bug (send logs to Jarred as we have a repro)
+          args: ['install', '--no-cache', '--verbose', ...(options?.frozenLockfile ? ['--frozen-lockfile'] : [])],
           cwd: dir,
         },
         options: {

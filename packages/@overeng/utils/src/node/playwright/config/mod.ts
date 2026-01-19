@@ -1,14 +1,20 @@
 /**
  * Playwright config factory for browser integration tests.
  *
+ * Important: This module intentionally avoids importing `@playwright/test`
+ * at runtime to prevent Playwright's duplicate-load guard from triggering in
+ * dotdot setups. Keep this file free of runtime Playwright imports.
+ *
+ * Context: https://gist.github.com/schickling/c6484f40be38b250fab23e677461a3e2
+ *
  * @module
  */
 
 import { createServer } from 'node:net'
 
-import { defineConfig, devices, type PlaywrightTestConfig } from '@playwright/test'
+export type { PlaywrightTestConfig } from '@playwright/test'
 
-import { shouldNeverHappen } from '../../isomorphic/mod.ts'
+import { shouldNeverHappen } from '../../../isomorphic/mod.ts'
 /** Web server configuration for Vite. */
 export interface WebServerConfig {
   /** Command to start the dev server (use `{{port}}` placeholder) */
@@ -124,7 +130,7 @@ export const createPlaywrightConfig = async (
   const url = `http://127.0.0.1:${port}`
   const resolvedCommand = command.replace(/\{\{port\}\}/g, String(port))
 
-  const config: PlaywrightTestConfig = {
+  return {
     testDir,
     testMatch,
     testIgnore,
@@ -144,13 +150,6 @@ export const createPlaywrightConfig = async (
       video: 'off',
     },
 
-    projects: [
-      {
-        name: 'chromium',
-        use: { ...devices['Desktop Chrome'] },
-      },
-    ],
-
     webServer: {
       command: resolvedCommand,
       ...(cwd ? { cwd } : {}),
@@ -161,6 +160,4 @@ export const createPlaywrightConfig = async (
       reuseExistingServer: !process.env.CI,
     },
   }
-
-  return defineConfig(config)
 }

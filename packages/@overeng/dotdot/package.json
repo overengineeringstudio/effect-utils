@@ -21,7 +21,7 @@
   },
   "devDependencies": {
     "@effect/cli": "0.73.0",
-    "@effect/language-service": "0.69.1",
+    "@effect/language-service": "0.69.2",
     "@effect/platform": "0.94.1",
     "@effect/platform-node": "0.104.0",
     "@effect/printer": "0.47.0",
@@ -35,12 +35,15 @@
   },
   "peerDependencies": {
     "@effect/cli": "^0.73.0",
+    "@effect/cluster": "^0.56.0",
+    "@effect/experimental": "^0.58.0",
     "@effect/opentelemetry": "^0.60.0",
     "@effect/platform": "^0.94.1",
     "@effect/platform-node": "^0.104.0",
     "@effect/printer": "^0.47.0",
     "@effect/printer-ansi": "^0.47.0",
     "@effect/rpc": "^0.73.0",
+    "@effect/workflow": "^0.16.0",
     "@playwright/test": "^1.57.0",
     "effect": "^3.19.14"
   },

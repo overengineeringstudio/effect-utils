@@ -25,7 +25,7 @@ const TestLayer = NodeFileSystem.layer
 const toJson = Schema.encodeSync(Schema.parseJson(Schema.Unknown))
 
 /** Create a temp directory for each test */
-const makeTempDir = Effect.fnUntraced(function* () {
+const makeTempDir = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
   const tempBase = os.tmpdir()
   const tempDir = path.join(
@@ -34,7 +34,7 @@ const makeTempDir = Effect.fnUntraced(function* () {
   )
   yield* fs.makeDirectory(tempDir, { recursive: true })
   return tempDir
-})()
+})
 
 /** Remove temp directory */
 const removeTempDir = Effect.fnUntraced(

@@ -15,10 +15,10 @@ import { Effect } from 'effect'
  * Get the platform-specific path separator.
  * On Windows: "\", on Unix: "/"
  */
-export const getSeparator = Effect.fnUntraced(function* () {
+export const getSeparator = Effect.gen(function* () {
   const path = yield* PlatformPath.Path
   return path.sep
-})()
+})
 
 /**
  * Check if a path is absolute using platform-specific rules.

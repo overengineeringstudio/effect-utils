@@ -4,9 +4,7 @@
 
 ## Can we make dotdot optional e.g. for livestore to improve contributor experience?
 
-## Playwright duplicate loads in dotdot setups
 
-See `context/workarounds/playwright-duplicate-loading.md` for the detailed investigation, constraints, and solution options.
 
 ## Weird relative path patterns
 

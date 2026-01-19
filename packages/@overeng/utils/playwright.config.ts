@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url'
 
-import { createPlaywrightConfig } from './src/node/playwright/config.ts'
+import { createPlaywrightConfig } from './src/node/playwright/config/mod.ts'
 
 export default createPlaywrightConfig({
   testDir: './src/browser/__tests__',

@@ -29,6 +29,7 @@ export default packageJson({
   // Genie must not use any runtime dependencies (only bundled/dev dependencies)
   dependencies: {},
   devDependencies: {
+    ...utilsPkg.data.peerDependencies,
     ...catalog.pick(
       '@overeng/utils',
       '@effect/cli',
