@@ -6,3 +6,6 @@ tsconfig.json linguist-generated=true
 **/tsconfig.json linguist-generated=true
 tsconfig.*.json linguist-generated=true
 .github/workflows/*.yml linguist-generated=true
+
+# Use bd merge for beads JSONL files
+.beads/issues.jsonl merge=beads

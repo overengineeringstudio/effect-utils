@@ -460,29 +460,3 @@ export const testFilesOxlintOverride = {
 
 /** Standard oxlint ignore patterns */
 export const baseOxlintIgnorePatterns = ['dist', 'node_modules'] as const
-
-/**
- * Path to the @overeng/oxc-config custom plugin relative to effect-utils root.
- * Use with createOxcConfigJsPlugin() for external repos.
- */
-export const oxcConfigPluginPath = 'packages/@overeng/oxc-config/src/mod.ts'
-
-/**
- * Creates the jsPlugins path for @overeng/oxc-config custom lint rules.
- * @param basePath Path from consuming package to effect-utils root (e.g. '../../../../../../effect-utils')
- */
-export const createOxcConfigJsPlugin = (basePath: string) => `${basePath}/${oxcConfigPluginPath}`
-
-/** Combined base oxlint config for Effect/TypeScript projects (without jsPlugins - add separately) */
-export const baseOxlintConfig = {
-  plugins: baseOxlintPlugins,
-  categories: baseOxlintCategories,
-  rules: baseOxlintRules,
-  overrides: [
-    modEntryOxlintOverride,
-    storybookOxlintOverride,
-    configFilesOxlintOverride,
-    testFilesOxlintOverride,
-  ],
-  ignorePatterns: baseOxlintIgnorePatterns,
-} as const satisfies OxlintConfigArgs

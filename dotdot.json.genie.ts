@@ -13,11 +13,15 @@ export default dotdotConfig({
     '@overeng/effect-schema-form': { path: 'packages/@overeng/effect-schema-form' },
     '@overeng/effect-schema-form-aria': { path: 'packages/@overeng/effect-schema-form-aria' },
   },
-  /** Effect repo for reference - helps agents write better Effect code */
   deps: {
+    /** Effect repo for reference - helps agents write better Effect code */
     effect: {
       url: 'git@github.com:effect-ts/effect.git',
       rev: 'c9dc711464561227b8470edaa6052056ede41289',
+    },
+    /** Centralized beads issue tracking with devenv module */
+    'overeng-beads-public': {
+      url: 'git@github.com:overengineeringstudio/overeng-beads-public.git',
     },
   },
 })

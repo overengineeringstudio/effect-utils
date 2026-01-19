@@ -8,6 +8,10 @@ reusable task primitives and command factories for common monorepo operations.
 - Path: `packages/@overeng/mono`
 - Exports: `@overeng/mono`
 
+## Prerequisites
+
+Expects `oxlint.json` and `oxfmt.json` config files at repo root. These are auto-discovered by oxlint/oxfmt. See [oxc-config guide](../oxc-config/README.md) for setup.
+
 ## Quick Start
 
 ```ts
@@ -23,8 +27,6 @@ import {
   tsCommand,
 } from '@overeng/mono'
 
-const oxcConfig = { configPath: 'packages/@overeng/oxc-config' }
-
 const genieConfig = {
   scanDirs: ['packages', 'scripts'],
   skipDirs: ['node_modules', 'dist', '.git'],
@@ -37,10 +39,10 @@ runMonoCli({
   commands: [
     buildCommand(),
     testCommand(),
-    lintCommand({ oxcConfig, genieConfig }),
+    lintCommand(genieConfig),
     tsCommand(),
     cleanCommand(),
-    checkCommandWithTaskSystem({ oxcConfig, genieConfig }),
+    checkCommandWithTaskSystem({ genieConfig }),
   ],
 })
 ```
@@ -57,15 +59,6 @@ runMonoCli({
 | `check` | Run all checks (genie + ts + lint + test) | -                                    |
 
 ## Configuration Types
-
-### OxcConfig
-
-```ts
-interface OxcConfig {
-  /** Path to oxc configuration directory (contains fmt.jsonc, lint.jsonc) */
-  configPath: string
-}
-```
 
 ### GenieCoverageConfig
 

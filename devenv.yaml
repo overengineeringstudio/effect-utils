@@ -8,3 +8,6 @@ inputs:
     inputs:
       nixpkgs:
         follows: nixpkgsUnstable
+  overeng-beads-public:
+    url: github:overengineeringstudio/overeng-beads-public
+    flake: true

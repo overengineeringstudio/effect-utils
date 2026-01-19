@@ -119,6 +119,20 @@
         "type": "github"
       }
     },
+    "overeng-beads-public": {
+      "locked": {
+        "lastModified": 1768836991,
+        "owner": "overengineeringstudio",
+        "repo": "overeng-beads-public",
+        "rev": "9f7b5dce2b709f4d6a07e67eb28f438118107e78",
+        "type": "github"
+      },
+      "original": {
+        "owner": "overengineeringstudio",
+        "repo": "overeng-beads-public",
+        "type": "github"
+      }
+    },
     "playwright-web-flake": {
       "inputs": {
         "flake-utils": "flake-utils",
@@ -145,6 +159,7 @@
         "git-hooks": "git-hooks",
         "nixpkgs": "nixpkgs",
         "nixpkgsUnstable": "nixpkgsUnstable",
+        "overeng-beads-public": "overeng-beads-public",
         "playwright-web-flake": "playwright-web-flake",
         "pre-commit-hooks": [
           "git-hooks"
