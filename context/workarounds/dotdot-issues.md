@@ -9,6 +9,7 @@
 ### Nix
 
 - `dotfiles/nixpkgs/home-manager/modules/ts/oi/flake.nix`
+
   ```nix
   effect-utils = {
     url = "git+file:../../../../../../effect-utils";
@@ -22,6 +23,7 @@
 ### Genie
 
 - `schickling.dev/genie/external.ts`
+
   ```typescript
   const overengPath = (pkg: string) => `file:../../../effect-utils/packages/${pkg}`
   ```
@@ -31,6 +33,7 @@
 ### CSS
 
 - `dotfiles/nixpkgs/home-manager/modules/ts/oi/src/am/ui/styles.css`
+
   ```css
   @source "../../../node_modules/@overeng/geist-design-system/src";
   ```
