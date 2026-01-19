@@ -56,7 +56,7 @@ const packageNameToReferencePath = (
 }
 
 /** Validate tsconfig references against package.json workspace dependencies */
-export const validateTsconfigReferences = Effect.fn("validateTsconfigReferences")(function* ({
+export const validateTsconfigReferences = Effect.fn('validateTsconfigReferences')(function* ({
   genieFiles,
   cwd,
 }: {
@@ -116,7 +116,7 @@ export const validateTsconfigReferences = Effect.fn("validateTsconfigReferences"
 })
 
 /** Log tsconfig reference warnings */
-export const logTsconfigWarnings = Effect.fn("logTsconfigWarnings")(function* (
+export const logTsconfigWarnings = Effect.fn('logTsconfigWarnings')(function* (
   warnings: TsconfigReferencesWarning[],
 ) {
   if (warnings.length === 0) return

@@ -48,13 +48,16 @@ Track work done chronologically:
 ## YYYY-MM-DD
 
 ### What was done
+
 - Item 1
 - Item 2
 
 ### Blockers / Issues
+
 - Issue encountered
 
 ### Next steps
+
 - What to do next
 ```
 

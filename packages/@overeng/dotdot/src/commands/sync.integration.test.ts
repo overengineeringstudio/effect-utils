@@ -178,7 +178,9 @@ describe('sync command', () => {
 
         // Verify consumer-project was added to root config
         const configContent = yield* fs.readFileString(`${workspacePath}/dotdot-root.json`)
-        const config = yield* Schema.decodeUnknown(Schema.parseJson(RootConfigSchema))(configContent)
+        const config = yield* Schema.decodeUnknown(Schema.parseJson(RootConfigSchema))(
+          configContent,
+        )
         expect(config.repos).toHaveProperty('consumer-project')
         const consumerRepo = config.repos['consumer-project']
         if (consumerRepo === undefined) {

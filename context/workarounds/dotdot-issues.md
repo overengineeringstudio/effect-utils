@@ -4,8 +4,6 @@
 
 ## Can we make dotdot optional e.g. for livestore to improve contributor experience?
 
-
-
 ## Weird relative path patterns
 
 ### Nix
@@ -17,6 +15,7 @@
     flake = false;
   };
   ```
+
   - and vendoring of packages from effect-utils into the oi flake (e.g. `vendor/effect-react`)
   - Related: https://gist.github.com/schickling/38e55f176e504d170430098d91982ef3
 
@@ -26,6 +25,7 @@
   ```typescript
   const overengPath = (pkg: string) => `file:../../../effect-utils/packages/${pkg}`
   ```
+
   - and using `overengPath` to resolve paths to effect-utils packages
 
 ### CSS
@@ -34,6 +34,7 @@
   ```css
   @source "../../../node_modules/@overeng/geist-design-system/src";
   ```
+
   - This is a workaround to allow Tailwind to scan the Geist component sources. The `node_modules` part is weird.
 
 ### VSCode

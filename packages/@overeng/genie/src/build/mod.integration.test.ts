@@ -24,25 +24,31 @@ const createTestEnv = Effect.fnUntraced(function* () {
 
   yield* fs.makeDirectory(root, { recursive: true })
 
-  const writeFile = Effect.fnUntraced(
-    function* ({ path: relativePath, content }: { path: string; content: string }) {
-      const fullPath = path.join(root, relativePath)
-      const dir = path.dirname(fullPath)
-      yield* fs.makeDirectory(dir, { recursive: true })
-      yield* fs.writeFileString(fullPath, content)
-    },
-    Effect.orDie,
-  )
+  const writeFile = Effect.fnUntraced(function* ({
+    path: relativePath,
+    content,
+  }: {
+    path: string
+    content: string
+  }) {
+    const fullPath = path.join(root, relativePath)
+    const dir = path.dirname(fullPath)
+    yield* fs.makeDirectory(dir, { recursive: true })
+    yield* fs.writeFileString(fullPath, content)
+  }, Effect.orDie)
 
-  const symlink = Effect.fnUntraced(
-    function* ({ target, path: relativePath }: { target: string; path: string }) {
-      const targetPath = path.isAbsolute(target) ? target : path.join(root, target)
-      const linkPath = path.isAbsolute(relativePath) ? relativePath : path.join(root, relativePath)
-      yield* fs.makeDirectory(path.dirname(linkPath), { recursive: true })
-      yield* fs.symlink(targetPath, linkPath)
-    },
-    Effect.orDie,
-  )
+  const symlink = Effect.fnUntraced(function* ({
+    target,
+    path: relativePath,
+  }: {
+    target: string
+    path: string
+  }) {
+    const targetPath = path.isAbsolute(target) ? target : path.join(root, target)
+    const linkPath = path.isAbsolute(relativePath) ? relativePath : path.join(root, relativePath)
+    yield* fs.makeDirectory(path.dirname(linkPath), { recursive: true })
+    yield* fs.symlink(targetPath, linkPath)
+  }, Effect.orDie)
 
   const cleanup = () => fs.remove(root, { recursive: true }).pipe(Effect.ignore)
 
@@ -60,30 +66,27 @@ const decodeChunks = (chunks: Chunk.Chunk<Uint8Array>): string => {
   return new TextDecoder().decode(merged)
 }
 
-const runGenie = Effect.fnUntraced(
-  function* (env: TestEnv, args: ReadonlyArray<string>) {
-    const cliPath = new URL('./mod.ts', import.meta.url).pathname
-    const command = Command.make('bun', cliPath, '--cwd', env.root, ...args).pipe(
-      Command.workingDirectory(env.root),
-      Command.stdout('pipe'),
-      Command.stderr('pipe'),
-    )
+const runGenie = Effect.fnUntraced(function* (env: TestEnv, args: ReadonlyArray<string>) {
+  const cliPath = new URL('./mod.ts', import.meta.url).pathname
+  const command = Command.make('bun', cliPath, '--cwd', env.root, ...args).pipe(
+    Command.workingDirectory(env.root),
+    Command.stdout('pipe'),
+    Command.stderr('pipe'),
+  )
 
-    const process = yield* Command.start(command)
-    const [stdoutChunks, stderrChunks, exitCode] = yield* Effect.all([
-      Stream.runCollect(process.stdout),
-      Stream.runCollect(process.stderr),
-      process.exitCode,
-    ])
+  const process = yield* Command.start(command)
+  const [stdoutChunks, stderrChunks, exitCode] = yield* Effect.all([
+    Stream.runCollect(process.stdout),
+    Stream.runCollect(process.stderr),
+    process.exitCode,
+  ])
 
-    return {
-      stdout: decodeChunks(stdoutChunks),
-      stderr: decodeChunks(stderrChunks),
-      exitCode,
-    }
-  },
-  Effect.scoped,
-)
+  return {
+    stdout: decodeChunks(stdoutChunks),
+    stderr: decodeChunks(stderrChunks),
+    exitCode,
+  }
+}, Effect.scoped)
 
 describe('genie cli', () => {
   const withTestEnv = Effect.fnUntraced(function* <A, E, R>(

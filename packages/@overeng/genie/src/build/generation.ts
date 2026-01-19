@@ -67,7 +67,7 @@ const getHeaderComment = (targetFilePath: string, sourceFile: string): string =>
 }
 
 /** Format content using oxfmt if the file type is supported */
-const formatWithOxfmt = Effect.fn("formatWithOxfmt")(function* ({
+const formatWithOxfmt = Effect.fn('formatWithOxfmt')(function* ({
   targetFilePath,
   content,
   configPath,
@@ -123,7 +123,7 @@ const computeLocationFromPath = ({
  *
  * All genie files must export a function that takes GenieContext and returns a string.
  */
-const importGenieFile = Effect.fn("importGenieFile")(function* ({
+const importGenieFile = Effect.fn('importGenieFile')(function* ({
   genieFilePath,
   cwd,
 }: {
@@ -193,7 +193,7 @@ const enrichPackageJsonMarker = ({
 }
 
 /** Generate expected content for a genie file (shared between generate and dry-run) */
-export const getExpectedContent = Effect.fn("getExpectedContent")(function* ({
+export const getExpectedContent = Effect.fn('getExpectedContent')(function* ({
   genieFilePath,
   cwd,
   oxfmtConfigPath,
@@ -389,7 +389,7 @@ export const generateFile = ({
   )
 
 /** Check if a generated file matches its expected content */
-export const checkFile = Effect.fn("checkFile")(function* ({
+export const checkFile = Effect.fn('checkFile')(function* ({
   genieFilePath,
   cwd,
   oxfmtConfigPath,
@@ -428,7 +428,7 @@ export const checkFile = Effect.fn("checkFile")(function* ({
 /**
  * Logs a summary of file generation results and returns counts by category.
  */
-export const summarizeResults = Effect.fn("summarizeResults")(function* ({
+export const summarizeResults = Effect.fn('summarizeResults')(function* ({
   successes,
   failures,
 }: {

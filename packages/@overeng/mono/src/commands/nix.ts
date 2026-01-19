@@ -8,7 +8,6 @@ import { Chunk, Console, Effect, Logger, LogLevel, Schema, Stream } from 'effect
 import { shouldNeverHappen } from '@overeng/utils'
 import { cmdText, CurrentWorkingDirectory } from '@overeng/utils/node'
 
-
 import { CommandError } from '../errors.ts'
 import { runCommand } from '../utils.ts'
 
@@ -355,13 +354,7 @@ const resolveWorkspaceOverrideArgs = (packageSpec: NixPackageSpec): string[] => 
 
 const buildPackage = Effect.fn('nix.buildPackage')(function* (packageSpec: NixPackageSpec) {
   yield* Console.log(`Building ${packageSpec.name}...`)
-  const args = [
-    'build',
-    ...evalCoresArgs(),
-    ...buildParallelismArgs(),
-    packageSpec.flakeRef,
-    '-L',
-  ]
+  const args = ['build', ...evalCoresArgs(), ...buildParallelismArgs(), packageSpec.flakeRef, '-L']
   if (packageSpec.noWriteLock) {
     args.push('--no-write-lock-file')
   }
@@ -410,13 +403,7 @@ const updateHash = Effect.fn('nix.updateHash')(function* (packageSpec: NixPackag
 
   yield* Console.log(`Updating hash for ${packageSpec.name}...`)
 
-  const args = [
-    'build',
-    ...evalCoresArgs(),
-    ...buildParallelismArgs(),
-    packageSpec.flakeRef,
-    '-L',
-  ]
+  const args = ['build', ...evalCoresArgs(), ...buildParallelismArgs(), packageSpec.flakeRef, '-L']
   if (packageSpec.noWriteLock) {
     args.push('--no-write-lock-file')
   }

@@ -55,14 +55,14 @@ const createProgressTasks = (config: ProgressBarsConfig) => {
           progress = Math.min(100, progress + speed / (1000 / interval))
 
           const downloadedMB = (totalSize * progress) / 100
-          const eta = progress > 0 ? ((100 - progress) / (speed / (1000 / interval))) / 1000 : 0
+          const eta = progress > 0 ? (100 - progress) / (speed / (1000 / interval)) / 1000 : 0
 
           // Emit progress line
           yield* Effect.log(
             `[${progress.toFixed(0).padStart(3)}%] ` +
-            `${downloadedMB.toFixed(1).padStart(6)}MB / ${totalSize.toFixed(1)}MB ` +
-            `@ ${speed.toFixed(1)}MB/s ` +
-            `ETA: ${eta.toFixed(0)}s`
+              `${downloadedMB.toFixed(1).padStart(6)}MB / ${totalSize.toFixed(1)}MB ` +
+              `@ ${speed.toFixed(1)}MB/s ` +
+              `ETA: ${eta.toFixed(0)}s`,
           )
 
           yield* Effect.sleep(`${interval} millis`)
@@ -83,8 +83,14 @@ export const runProgressBars = (userConfig: Partial<ProgressBarsConfig> = {}) =>
     const metrics = new MetricsTracker()
 
     console.log('\n┌─────────────────────────────────────────────────────────┐')
-    console.log(`│ PROGRESS BARS: ${config.barCount} bars × ${config.updateIntervalMs}ms interval × ${config.durationSeconds}s │`)
-    console.log(`│ Concurrency: ${config.concurrency} │ Renderer: ${config.withRenderer ? 'ON' : 'OFF'}`.padEnd(60) + '│')
+    console.log(
+      `│ PROGRESS BARS: ${config.barCount} bars × ${config.updateIntervalMs}ms interval × ${config.durationSeconds}s │`,
+    )
+    console.log(
+      `│ Concurrency: ${config.concurrency} │ Renderer: ${config.withRenderer ? 'ON' : 'OFF'}`.padEnd(
+        60,
+      ) + '│',
+    )
     console.log('├─────────────────────────────────────────────────────────┤')
 
     const tasks = createProgressTasks(config)
@@ -141,8 +147,12 @@ export const runProgressBars = (userConfig: Partial<ProgressBarsConfig> = {}) =>
     console.log(`│   Elapsed: ${(elapsedMs / 1000).toFixed(2)}s`.padEnd(60) + '│')
     console.log(`│   State changes: ${stateChangeCount.toLocaleString()}`.padEnd(60) + '│')
     console.log(`│   Render calls: ${renderCount.toLocaleString()}`.padEnd(60) + '│')
-    console.log(`│   Success: ${result.successCount}, Failed: ${result.failureCount}`.padEnd(60) + '│')
-    console.log(`│   Avg state update: ${finalMetrics.stateUpdateTimeMs.toFixed(2)}ms`.padEnd(60) + '│')
+    console.log(
+      `│   Success: ${result.successCount}, Failed: ${result.failureCount}`.padEnd(60) + '│',
+    )
+    console.log(
+      `│   Avg state update: ${finalMetrics.stateUpdateTimeMs.toFixed(2)}ms`.padEnd(60) + '│',
+    )
     console.log(`│   Avg render time: ${finalMetrics.renderTimeMs.toFixed(2)}ms`.padEnd(60) + '│')
     console.log(`│   Peak memory: ${finalMetrics.memoryMB.toFixed(1)}MB`.padEnd(60) + '│')
     console.log('└─────────────────────────────────────────────────────────┘')

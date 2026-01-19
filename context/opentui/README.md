@@ -75,7 +75,9 @@ Use `<scrollbox>` for content that exceeds the viewport:
   <scrollbox flexGrow={1} scrollY={true} scrollX={false}>
     {/* Content taller than viewport will be scrollable */}
     <box flexDirection="column">
-      {items.map(item => <text key={item.id}>{item.name}</text>)}
+      {items.map((item) => (
+        <text key={item.id}>{item.name}</text>
+      ))}
     </box>
   </scrollbox>
 
@@ -84,8 +86,9 @@ Use `<scrollbox>` for content that exceeds the viewport:
 ```
 
 **Key props:**
+
 - `scrollY={true}` - Enable vertical scrolling
-- `scrollX={true}` - Enable horizontal scrolling  
+- `scrollX={true}` - Enable horizontal scrolling
 - `flexGrow={1}` - Fill available space
 - `stickyScroll={true}` - Auto-scroll to bottom when new content added
 

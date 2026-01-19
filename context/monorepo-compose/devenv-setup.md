@@ -217,7 +217,7 @@ source "$(nix eval --raw --no-write-lock-file "$WORKSPACE_ROOT#direnv.peerEnvrc"
 ```
 
 3. Dirty mode still works: set `NIX_CLI_DIRTY=1` and the staged workspace is
-created under the peer repo’s `.direnv/cli-workspace`.
+   created under the peer repo’s `.direnv/cli-workspace`.
 
 If the peer repo uses different attr names, set `NIX_CLI_OUT_PATHS_ATTR` /
 `NIX_CLI_DIRTY_OUT_PATHS_ATTR` to match.

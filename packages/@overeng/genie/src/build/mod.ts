@@ -25,7 +25,7 @@ export {
 const OXFMT_CONFIG_CONVENTION_PATH = 'packages/@overeng/oxc-config/fmt.jsonc'
 
 /** Resolve the oxfmt config path: explicit option → convention path → none */
-const resolveOxfmtConfigPath = Effect.fn("resolveOxfmtConfigPath")(function* ({
+const resolveOxfmtConfigPath = Effect.fn('resolveOxfmtConfigPath')(function* ({
   explicitPath,
   cwd,
 }: {

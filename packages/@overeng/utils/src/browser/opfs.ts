@@ -136,7 +136,9 @@ export type EntryInfo = {
  *
  * @param dirHandle - The directory handle to list
  */
-export const listEntries = Effect.fn('OPFS.listEntries')(function* (dirHandle: FileSystemDirectoryHandle) {
+export const listEntries = Effect.fn('OPFS.listEntries')(function* (
+  dirHandle: FileSystemDirectoryHandle,
+) {
   const entries: EntryInfo[] = []
 
   yield* Effect.tryPromise({
@@ -182,8 +184,9 @@ export const getTree: (opts?: {
   depth?: number
   /** Prefix for indentation (internal use) */
   prefix?: string
-}) => Effect.Effect<readonly TreeLine[], OPFSNotSupportedError | OPFSError> = Effect.fn('OPFS.getTree')(
-  function* (opts) {
+}) => Effect.Effect<readonly TreeLine[], OPFSNotSupportedError | OPFSError> = Effect.fn(
+  'OPFS.getTree',
+)(function* (opts) {
   const depth = opts?.depth ?? Number.POSITIVE_INFINITY
   const prefix = opts?.prefix ?? ''
 
@@ -247,8 +250,7 @@ export const getTree: (opts?: {
   }
 
   return lines
-},
-)
+})
 
 /**
  * Prints a tree representation of the directory structure to the console.

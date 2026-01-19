@@ -154,56 +154,53 @@ export const findGenieFiles = Effect.fn('discovery/findGenieFiles')(function* (d
       }),
     )
 
-  const walk: (
-    currentDir: string,
-  ) => Effect.Effect<string[], PlatformError.PlatformError> = Effect.fnUntraced(
-    function* (currentDir: string) {
-    const entries = yield* fs.readDirectory(currentDir)
-    const results: string[] = []
+  const walk: (currentDir: string) => Effect.Effect<string[], PlatformError.PlatformError> =
+    Effect.fnUntraced(function* (currentDir: string) {
+      const entries = yield* fs.readDirectory(currentDir)
+      const results: string[] = []
 
-    for (const entry of entries) {
-      if (shouldSkipDirectory(entry)) {
-        continue
-      }
-
-      const fullPath = pathService.join(currentDir, entry)
-      const stat = yield* safeStat(fullPath)
-
-      if (stat.type === 'directory') {
-        const symlinkTarget = yield* resolveSymlinkTarget(fullPath)
-
-        if (symlinkTarget !== undefined) {
-          /**
-           * Skip symlinked directories that point back inside the root.
-           * This avoids duplicate traversal when submodules are symlinked
-           * to a canonical working tree.
-           */
-          if (isWithinRoot(symlinkTarget)) {
-            continue
-          }
-
-          if (seenDirectories.has(symlinkTarget)) {
-            continue
-          }
-          seenDirectories.add(symlinkTarget)
-        } else {
-          if (seenDirectories.has(fullPath)) {
-            continue
-          }
-          seenDirectories.add(fullPath)
+      for (const entry of entries) {
+        if (shouldSkipDirectory(entry)) {
+          continue
         }
 
-        const nested = yield* walk(fullPath)
-        results.push(...nested)
-      } else if (stat.type === 'file' && isGenieFile(entry)) {
-        results.push(fullPath)
-      }
-      // skip broken symlinks silently (already logged warning)
-    }
+        const fullPath = pathService.join(currentDir, entry)
+        const stat = yield* safeStat(fullPath)
 
-    return results
-  },
-  )
+        if (stat.type === 'directory') {
+          const symlinkTarget = yield* resolveSymlinkTarget(fullPath)
+
+          if (symlinkTarget !== undefined) {
+            /**
+             * Skip symlinked directories that point back inside the root.
+             * This avoids duplicate traversal when submodules are symlinked
+             * to a canonical working tree.
+             */
+            if (isWithinRoot(symlinkTarget)) {
+              continue
+            }
+
+            if (seenDirectories.has(symlinkTarget)) {
+              continue
+            }
+            seenDirectories.add(symlinkTarget)
+          } else {
+            if (seenDirectories.has(fullPath)) {
+              continue
+            }
+            seenDirectories.add(fullPath)
+          }
+
+          const nested = yield* walk(fullPath)
+          results.push(...nested)
+        } else if (stat.type === 'file' && isGenieFile(entry)) {
+          results.push(fullPath)
+        }
+        // skip broken symlinks silently (already logged warning)
+      }
+
+      return results
+    })
 
   const files = yield* walk(dir)
   const seen = new Set<string>()

@@ -71,8 +71,14 @@ export const runRapidEvents = (userConfig: Partial<RapidEventsConfig> = {}) =>
     const metrics = new MetricsTracker()
 
     console.log('\n┌─────────────────────────────────────────────────────────┐')
-    console.log(`│ RAPID EVENTS: ${config.taskCount} tasks × ${config.eventsPerSecond} events/s × ${config.durationSeconds}s │`)
-    console.log(`│ Concurrency: ${config.concurrency} │ Renderer: ${config.withRenderer ? 'ON' : 'OFF'}`.padEnd(60) + '│')
+    console.log(
+      `│ RAPID EVENTS: ${config.taskCount} tasks × ${config.eventsPerSecond} events/s × ${config.durationSeconds}s │`,
+    )
+    console.log(
+      `│ Concurrency: ${config.concurrency} │ Renderer: ${config.withRenderer ? 'ON' : 'OFF'}`.padEnd(
+        60,
+      ) + '│',
+    )
     console.log('├─────────────────────────────────────────────────────────┤')
 
     const tasks = createSimulatedTasks(config)
@@ -129,8 +135,12 @@ export const runRapidEvents = (userConfig: Partial<RapidEventsConfig> = {}) =>
     console.log(`│   Elapsed: ${(elapsedMs / 1000).toFixed(2)}s`.padEnd(60) + '│')
     console.log(`│   State changes: ${stateChangeCount.toLocaleString()}`.padEnd(60) + '│')
     console.log(`│   Render calls: ${renderCount.toLocaleString()}`.padEnd(60) + '│')
-    console.log(`│   Success: ${result.successCount}, Failed: ${result.failureCount}`.padEnd(60) + '│')
-    console.log(`│   Avg state update: ${finalMetrics.stateUpdateTimeMs.toFixed(2)}ms`.padEnd(60) + '│')
+    console.log(
+      `│   Success: ${result.successCount}, Failed: ${result.failureCount}`.padEnd(60) + '│',
+    )
+    console.log(
+      `│   Avg state update: ${finalMetrics.stateUpdateTimeMs.toFixed(2)}ms`.padEnd(60) + '│',
+    )
     console.log(`│   Avg render time: ${finalMetrics.renderTimeMs.toFixed(2)}ms`.padEnd(60) + '│')
     console.log(`│   Peak memory: ${finalMetrics.memoryMB.toFixed(1)}MB`.padEnd(60) + '│')
     console.log('└─────────────────────────────────────────────────────────┘')

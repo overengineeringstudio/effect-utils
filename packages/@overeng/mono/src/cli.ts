@@ -35,8 +35,6 @@ const shouldSuggestLintFix = (args: readonly string[]): boolean => {
   return argSet.has('lint') && !argSet.has('--fix')
 }
 
-
-
 // =============================================================================
 // CLI Runner
 // =============================================================================
@@ -63,12 +61,17 @@ const shouldSuggestLintFix = (args: readonly string[]): boolean => {
  * })
  * ```
  */
-export const runMonoCli = <const TCmds extends readonly [Command.Command<any, any, any, any>, ...Command.Command<any, any, any, any>[]]>(
+export const runMonoCli = <
+  const TCmds extends readonly [
+    Command.Command<any, any, any, any>,
+    ...Command.Command<any, any, any, any>[],
+  ],
+>(
   config: MonoCliConfig & {
     commands: TCmds
   },
 ): void => {
-   const shouldShowLintFixHint = shouldSuggestLintFix(process.argv.slice(2))
+  const shouldShowLintFixHint = shouldSuggestLintFix(process.argv.slice(2))
 
   const renderFailure = (failure: unknown): string => {
     if (failure instanceof CommandError) {

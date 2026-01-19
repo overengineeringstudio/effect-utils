@@ -6,6 +6,7 @@
  */
 
 import { Effect, Queue, Stream, SubscriptionRef } from 'effect'
+
 import { timer } from './metrics.ts'
 
 export interface SimulatedEvent {

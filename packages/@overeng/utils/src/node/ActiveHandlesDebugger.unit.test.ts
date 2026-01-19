@@ -31,7 +31,8 @@ const makeTestLogger = Effect.fnUntraced(function* () {
 
 describe('ActiveHandlesDebugger', () => {
   describe('dumpActiveHandles', () => {
-    it.effect('returns active handles info',
+    it.effect(
+      'returns active handles info',
       Effect.fnUntraced(function* () {
         const info = yield* dumpActiveHandles
 
@@ -46,7 +47,8 @@ describe('ActiveHandlesDebugger', () => {
       }),
     )
 
-    it.effect('includes handle type and details',
+    it.effect(
+      'includes handle type and details',
       Effect.fnUntraced(function* () {
         const info = yield* dumpActiveHandles
 
@@ -61,7 +63,8 @@ describe('ActiveHandlesDebugger', () => {
       }),
     )
 
-    it.effect('detects new handles when created',
+    it.effect(
+      'detects new handles when created',
       Effect.fnUntraced(function* () {
         // Get baseline handle count
         const before = yield* dumpActiveHandles
@@ -83,7 +86,8 @@ describe('ActiveHandlesDebugger', () => {
   })
 
   describe('logActiveHandles', () => {
-    it.effect('logs handles info',
+    it.effect(
+      'logs handles info',
       Effect.fnUntraced(function* () {
         const { getLogs, loggerLayer } = yield* makeTestLogger()
 
@@ -95,7 +99,8 @@ describe('ActiveHandlesDebugger', () => {
       }),
     )
 
-    it.effect('returns the handles info',
+    it.effect(
+      'returns the handles info',
       Effect.fnUntraced(function* () {
         const info = yield* logActiveHandles
 
@@ -106,7 +111,8 @@ describe('ActiveHandlesDebugger', () => {
   })
 
   describe('monitorActiveHandles', () => {
-    it.effect('returns void immediately after forking the monitor',
+    it.effect(
+      'returns void immediately after forking the monitor',
       Effect.fnUntraced(function* () {
         // monitorActiveHandles forks internally and returns void
         // This test just verifies it doesn't throw and the signature is correct
@@ -119,7 +125,8 @@ describe('ActiveHandlesDebugger', () => {
       }),
     )
 
-    it.effect('forks a background fiber that is cleaned up when scope closes',
+    it.effect(
+      'forks a background fiber that is cleaned up when scope closes',
       Effect.fnUntraced(function* () {
         // monitorActiveHandles forks scoped, so it returns immediately
         // The forked fiber runs in background and is cleaned up when scope closes
@@ -132,7 +139,8 @@ describe('ActiveHandlesDebugger', () => {
   })
 
   describe('withActiveHandlesDumpOnSigint', () => {
-    it.effect('runs the wrapped effect normally',
+    it.effect(
+      'runs the wrapped effect normally',
       Effect.fnUntraced(function* () {
         const result = yield* withActiveHandlesDumpOnSigint(Effect.succeed(42))
         expect(result).toBe(42)
@@ -144,7 +152,8 @@ describe('ActiveHandlesDebugger', () => {
       withActiveHandlesDumpOnSigint(Effect.void),
     )
 
-    it.effect('propagates errors from wrapped effect',
+    it.effect(
+      'propagates errors from wrapped effect',
       Effect.fnUntraced(function* () {
         const exit = yield* withActiveHandlesDumpOnSigint(Effect.fail('test-error')).pipe(
           Effect.exit,

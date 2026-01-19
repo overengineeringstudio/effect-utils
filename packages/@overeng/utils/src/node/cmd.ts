@@ -476,25 +476,25 @@ const sendSignalToProcessGroup = (opts: {
  * Kill a process group with SIGTERM → wait → SIGKILL escalation.
  * Sends SIGTERM first, waits for graceful exit, then SIGKILL if needed.
  */
-const killProcessGroup = Effect.fn('cmd/killProcessGroup')(
-  function* (opts: { proc: Process; timeout?: Duration.DurationInput }) {
-    const { proc } = opts
-    const timeout = opts.timeout ?? DEFAULT_KILL_TIMEOUT
+const killProcessGroup = Effect.fn('cmd/killProcessGroup')(function* (opts: {
+  proc: Process
+  timeout?: Duration.DurationInput
+}) {
+  const { proc } = opts
+  const timeout = opts.timeout ?? DEFAULT_KILL_TIMEOUT
 
-    // Send SIGTERM first
-    yield* sendSignalToProcessGroup({ proc, signal: 'SIGTERM' })
+  // Send SIGTERM first
+  yield* sendSignalToProcessGroup({ proc, signal: 'SIGTERM' })
 
-    // Wait for process to exit gracefully (with timeout)
-    const exited = yield* proc.exitCode.pipe(Effect.timeout(timeout), Effect.option)
+  // Wait for process to exit gracefully (with timeout)
+  const exited = yield* proc.exitCode.pipe(Effect.timeout(timeout), Effect.option)
 
-    // If still running after timeout, escalate to SIGKILL
-    if (Option.isNone(exited)) {
-      yield* Effect.logDebug(`Process ${proc.pid} didn't exit gracefully, sending SIGKILL`)
-      yield* sendSignalToProcessGroup({ proc, signal: 'SIGKILL' })
-    }
-  },
-  Effect.ignore,
-)
+  // If still running after timeout, escalate to SIGKILL
+  if (Option.isNone(exited)) {
+    yield* Effect.logDebug(`Process ${proc.pid} didn't exit gracefully, sending SIGKILL`)
+    yield* sendSignalToProcessGroup({ proc, signal: 'SIGKILL' })
+  }
+}, Effect.ignore)
 
 const buildCommand = (opts: { input: string | string[]; useShell: boolean }) => {
   const { input, useShell } = opts
@@ -568,36 +568,36 @@ const makeStreamHandler = ({
     onChunk: Effect.fnUntraced(function* (chunk: string) {
       buffer += chunk
       while (buffer.length > 0) {
-          const newlineIndex = buffer.indexOf('\n')
-          const carriageIndex = buffer.indexOf('\r')
+        const newlineIndex = buffer.indexOf('\n')
+        const carriageIndex = buffer.indexOf('\r')
 
-          if (newlineIndex === -1 && carriageIndex === -1) {
-            break
-          }
+        if (newlineIndex === -1 && carriageIndex === -1) {
+          break
+        }
 
-          let index: number
-          let terminator: TLineTerminator
-          let skip = 1
+        let index: number
+        let terminator: TLineTerminator
+        let skip = 1
 
-          if (carriageIndex !== -1 && (newlineIndex === -1 || carriageIndex < newlineIndex)) {
-            index = carriageIndex
-            if (carriageIndex + 1 < buffer.length && buffer[carriageIndex + 1] === '\n') {
-              skip = 2
-              terminator = 'newline'
-            } else {
-              terminator = 'carriage-return'
-            }
-          } else if (newlineIndex !== -1) {
-            index = newlineIndex
+        if (carriageIndex !== -1 && (newlineIndex === -1 || carriageIndex < newlineIndex)) {
+          index = carriageIndex
+          if (carriageIndex + 1 < buffer.length && buffer[carriageIndex + 1] === '\n') {
+            skip = 2
             terminator = 'newline'
           } else {
-            throw new Error('Expected newline or carriage return')
+            terminator = 'carriage-return'
           }
-
-          const line = buffer.slice(0, index)
-          buffer = buffer.slice(index + skip)
-          yield* emit({ content: line, terminator })
+        } else if (newlineIndex !== -1) {
+          index = newlineIndex
+          terminator = 'newline'
+        } else {
+          throw new Error('Expected newline or carriage return')
         }
+
+        const line = buffer.slice(0, index)
+        buffer = buffer.slice(index + skip)
+        yield* emit({ content: line, terminator })
+      }
     }),
     flush: () => consumeBuffer,
   }

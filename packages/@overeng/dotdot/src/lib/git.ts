@@ -34,9 +34,7 @@ const runGit = Effect.fnUntraced(function* ({ args, cwd }: { args: string[]; cwd
  * `Command.string` does not fail on non-zero exit codes.
  */
 export const isGitRepo = Effect.fn('git/isGitRepo')(function* (path: string) {
-  const command = Command.make('git', 'rev-parse', '--git-dir').pipe(
-    Command.workingDirectory(path),
-  )
+  const command = Command.make('git', 'rev-parse', '--git-dir').pipe(Command.workingDirectory(path))
   const exitCode = yield* Command.exitCode(command)
   return exitCode === 0
 })

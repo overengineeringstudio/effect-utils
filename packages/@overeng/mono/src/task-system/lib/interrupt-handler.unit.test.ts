@@ -73,10 +73,7 @@ describe('InterruptHandler', () => {
         process.stdin.emit('data', CTRL_C)
 
         // Wait for interrupt to be processed (with timeout to avoid hanging)
-        const exit = yield* Fiber.await(fiber).pipe(
-          Effect.timeout('100 millis'),
-          Effect.option,
-        )
+        const exit = yield* Fiber.await(fiber).pipe(Effect.timeout('100 millis'), Effect.option)
 
         // Verify the callback was called
         assert.strictEqual(interruptCalled.value, true, 'onInterrupt callback should be called')
@@ -108,7 +105,11 @@ describe('InterruptHandler', () => {
         process.stdin.emit('data', 'a')
 
         // Verify the callback was NOT called
-        assert.strictEqual(interruptCalled.value, false, 'onInterrupt should not be called for non-Ctrl+C')
+        assert.strictEqual(
+          interruptCalled.value,
+          false,
+          'onInterrupt should not be called for non-Ctrl+C',
+        )
 
         // Clean up
         process.stdin.off('data', handler)

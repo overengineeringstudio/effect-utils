@@ -72,9 +72,7 @@ const runPureBaseline = (config: ComparisonConfig): Effect.Effect<RunResult> =>
       }
     })
 
-    const tasks = Array.from({ length: config.taskCount }, (_, i) =>
-      simulateTask(`task-${i}`)
-    )
+    const tasks = Array.from({ length: config.taskCount }, (_, i) => simulateTask(`task-${i}`))
 
     yield* Effect.all([...tasks, consumer], { concurrency: config.concurrency + 1 })
 
@@ -110,7 +108,7 @@ const runTaskSystemNoRenderer = (config: ComparisonConfig): Effect.Effect<RunRes
           }
           return { eventCount }
         }),
-      })
+      }),
     )
 
     let stateChanges = 0
@@ -120,7 +118,10 @@ const runTaskSystemNoRenderer = (config: ComparisonConfig): Effect.Effect<RunRes
       tasks,
       options: {
         concurrency: config.concurrency,
-        onStateChange: () => Effect.sync(() => { stateChanges++ }),
+        onStateChange: () =>
+          Effect.sync(() => {
+            stateChanges++
+          }),
       },
     }).pipe(Logger.withMinimumLogLevel(LogLevel.None))
 
@@ -156,7 +157,7 @@ const runTaskSystemWithRenderer = (config: ComparisonConfig): Effect.Effect<RunR
           }
           return { eventCount }
         }),
-      })
+      }),
     )
 
     let stateChanges = 0
@@ -195,37 +196,67 @@ export const runComparison = (userConfig: Partial<ComparisonConfig> = {}) =>
     const metrics = new MetricsTracker()
 
     console.log('\n╔═════════════════════════════════════════════════════════════════╗')
-    console.log(`║ COMPARISON: ${config.taskCount} tasks × ${config.eventsPerSecond} events/s × ${config.durationSeconds}s (simulated)`.padEnd(66) + '║')
+    console.log(
+      `║ COMPARISON: ${config.taskCount} tasks × ${config.eventsPerSecond} events/s × ${config.durationSeconds}s (simulated)`.padEnd(
+        66,
+      ) + '║',
+    )
     console.log(`║ Concurrency: ${config.concurrency}`.padEnd(66) + '║')
     console.log('╠═════════════════════════════════════════════════════════════════╣')
 
     // Run baseline
     console.log('║ Running baseline (pure Effect)...'.padEnd(66) + '║')
     const baseline = yield* runPureBaseline(config)
-    console.log(`║   ✓ Completed in ${(baseline.elapsedMs / 1000).toFixed(2)}s - ${baseline.totalEvents.toLocaleString()} events`.padEnd(66) + '║')
+    console.log(
+      `║   ✓ Completed in ${(baseline.elapsedMs / 1000).toFixed(2)}s - ${baseline.totalEvents.toLocaleString()} events`.padEnd(
+        66,
+      ) + '║',
+    )
 
     yield* Effect.sleep('500 millis')
 
     // Run task system without renderer
     console.log('║ Running task system (no renderer)...'.padEnd(66) + '║')
     const noRenderer = yield* runTaskSystemNoRenderer(config)
-    const noRendererOverhead = ((noRenderer.elapsedMs - baseline.elapsedMs) / baseline.elapsedMs) * 100
-    console.log(`║   ✓ Completed in ${(noRenderer.elapsedMs / 1000).toFixed(2)}s - overhead: ${noRendererOverhead.toFixed(1)}%`.padEnd(66) + '║')
+    const noRendererOverhead =
+      ((noRenderer.elapsedMs - baseline.elapsedMs) / baseline.elapsedMs) * 100
+    console.log(
+      `║   ✓ Completed in ${(noRenderer.elapsedMs / 1000).toFixed(2)}s - overhead: ${noRendererOverhead.toFixed(1)}%`.padEnd(
+        66,
+      ) + '║',
+    )
 
     yield* Effect.sleep('500 millis')
 
     // Run task system with renderer
     console.log('║ Running task system (with renderer)...'.padEnd(66) + '║')
     const withRenderer = yield* runTaskSystemWithRenderer(config)
-    const withRendererOverhead = ((withRenderer.elapsedMs - baseline.elapsedMs) / baseline.elapsedMs) * 100
-    console.log(`║   ✓ Completed in ${(withRenderer.elapsedMs / 1000).toFixed(2)}s - overhead: ${withRendererOverhead.toFixed(1)}%`.padEnd(66) + '║')
+    const withRendererOverhead =
+      ((withRenderer.elapsedMs - baseline.elapsedMs) / baseline.elapsedMs) * 100
+    console.log(
+      `║   ✓ Completed in ${(withRenderer.elapsedMs / 1000).toFixed(2)}s - overhead: ${withRendererOverhead.toFixed(1)}%`.padEnd(
+        66,
+      ) + '║',
+    )
 
     // Summary
     console.log('╠═════════════════════════════════════════════════════════════════╣')
     console.log('║ SUMMARY:'.padEnd(66) + '║')
-    console.log(`║   Baseline:             ${(baseline.elapsedMs / 1000).toFixed(2)}s (reference)`.padEnd(66) + '║')
-    console.log(`║   Task System (no UI):  ${(noRenderer.elapsedMs / 1000).toFixed(2)}s (+${noRendererOverhead.toFixed(1)}% overhead)`.padEnd(66) + '║')
-    console.log(`║   Task System (full):   ${(withRenderer.elapsedMs / 1000).toFixed(2)}s (+${withRendererOverhead.toFixed(1)}% overhead)`.padEnd(66) + '║')
+    console.log(
+      `║   Baseline:             ${(baseline.elapsedMs / 1000).toFixed(2)}s (reference)`.padEnd(
+        66,
+      ) + '║',
+    )
+    console.log(
+      `║   Task System (no UI):  ${(noRenderer.elapsedMs / 1000).toFixed(2)}s (+${noRendererOverhead.toFixed(1)}% overhead)`.padEnd(
+        66,
+      ) + '║',
+    )
+    console.log(
+      `║   Task System (full):   ${(withRenderer.elapsedMs / 1000).toFixed(2)}s (+${withRendererOverhead.toFixed(1)}% overhead)`.padEnd(
+        66,
+      ) + '║',
+    )
     console.log('║'.padEnd(66) + '║')
 
     const coordOverhead = noRendererOverhead

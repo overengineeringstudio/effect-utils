@@ -527,9 +527,9 @@ export const DUMP_META = {
             : {}),
           ...(failures.length > 0 ? { failures } : {}),
         }
-        const checkpointJson = yield* Schema.encode(
-          Schema.parseJson(CheckpointData, { space: 2 }),
-        )(checkpointData)
+        const checkpointJson = yield* Schema.encode(Schema.parseJson(CheckpointData, { space: 2 }))(
+          checkpointData,
+        )
         yield* fs.writeFileString(checkpointPath, checkpointJson)
 
         yield* log('Done')

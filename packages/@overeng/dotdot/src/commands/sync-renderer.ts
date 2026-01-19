@@ -153,13 +153,19 @@ export const renderSyncDryRun = ({
     for (const issue of diff.repos.issues) {
       switch (issue._tag) {
         case 'missing-url':
-          output.push(`  ${styled.bold(issue.name)}  ${styled.dim(`declared by ${issue.declaredBy} but has no clone URL`)}`)
+          output.push(
+            `  ${styled.bold(issue.name)}  ${styled.dim(`declared by ${issue.declaredBy} but has no clone URL`)}`,
+          )
           break
         case 'not-a-git-repo':
-          output.push(`  ${styled.bold(issue.name)}  ${styled.dim('directory exists but is not a git repo')}`)
+          output.push(
+            `  ${styled.bold(issue.name)}  ${styled.dim('directory exists but is not a git repo')}`,
+          )
           break
         case 'dirty-working-tree':
-          output.push(`  ${styled.bold(issue.name)}  ${styled.dim('has uncommitted changes (use --force to override)')}`)
+          output.push(
+            `  ${styled.bold(issue.name)}  ${styled.dim('has uncommitted changes (use --force to override)')}`,
+          )
           break
       }
     }

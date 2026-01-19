@@ -115,7 +115,9 @@ const writeHolderLock = Effect.fn('FileSystemBacking.writeHolderLock')(function*
 
   yield* fs
     .makeDirectory(dirPath, { recursive: true })
-    .pipe(Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'makeDirectory', cause })))
+    .pipe(
+      Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'makeDirectory', cause })),
+    )
 
   const json = yield* Schema.encode(Schema.parseJson(HolderLockSchema))(content).pipe(
     Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'encodeJson', cause })),
@@ -136,12 +138,14 @@ const writeHolderLock = Effect.fn('FileSystemBacking.writeHolderLock')(function*
 /**
  * Remove a holder's lock file.
  */
-const removeHolderLock = Effect.fn('FileSystemBacking.removeHolderLock')(function* (filePath: string) {
+const removeHolderLock = Effect.fn('FileSystemBacking.removeHolderLock')(function* (
+  filePath: string,
+) {
   const fs = yield* FileSystem.FileSystem
 
-  yield* fs.remove(filePath).pipe(
-    Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'remove', cause })),
-  )
+  yield* fs
+    .remove(filePath)
+    .pipe(Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'remove', cause })))
 })
 
 /** Error thrown when attempting to revoke permits from a non-existent holder */
@@ -174,7 +178,9 @@ const countActivePermits = Effect.fn('FileSystemBacking.countActivePermits')(fun
 
   const entries = yield* fs
     .readDirectory(keyDir)
-    .pipe(Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'readDirectory', cause })))
+    .pipe(
+      Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'readDirectory', cause })),
+    )
 
   let totalPermits = 0
 
@@ -428,7 +434,9 @@ export const listHolders = Effect.fn('FileSystemBacking.listHolders')(function* 
 
   const entries = yield* fs
     .readDirectory(keyDir)
-    .pipe(Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'readDirectory', cause })))
+    .pipe(
+      Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'readDirectory', cause })),
+    )
 
   const holders: HolderInfo[] = []
 

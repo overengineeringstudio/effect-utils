@@ -45,8 +45,7 @@ export interface RenderScheduler {
  * runnable Effect fibers, not to the Node.js event loop. Using Effect.sleep
  * in the main render loop properly yields to the event loop.
  */
-const triggerRender = (tui: TUI): Effect.Effect<void> =>
-  Effect.sync(() => tui.requestRender())
+const triggerRender = (tui: TUI): Effect.Effect<void> => Effect.sync(() => tui.requestRender())
 
 /**
  * Create a render scheduler for a pi-tui TUI instance.
@@ -67,34 +66,34 @@ export const make = Effect.fn('RenderScheduler/make')(function* (
   tui: TUI,
   config: RenderSchedulerConfig = {},
 ) {
-      const intervalMs = config.intervalMs ?? 80
+  const intervalMs = config.intervalMs ?? 80
 
-      // Track if render is needed
-      const renderNeeded = yield* Ref.make(true) // Start with true for initial render
+  // Track if render is needed
+  const renderNeeded = yield* Ref.make(true) // Start with true for initial render
 
-      // Render loop: check if render needed, render, wait interval
-      const renderLoop = Effect.gen(function* () {
-        const needed = yield* Ref.getAndSet(renderNeeded, false)
-        if (needed) {
-          yield* triggerRender(tui)
-        }
-        yield* Effect.sleep(`${intervalMs} millis`)
-      }).pipe(Effect.forever)
+  // Render loop: check if render needed, render, wait interval
+  const renderLoop = Effect.gen(function* () {
+    const needed = yield* Ref.getAndSet(renderNeeded, false)
+    if (needed) {
+      yield* triggerRender(tui)
+    }
+    yield* Effect.sleep(`${intervalMs} millis`)
+  }).pipe(Effect.forever)
 
-      // Start render loop in background fiber
-      const fiber = yield* Effect.fork(renderLoop)
+  // Start render loop in background fiber
+  const fiber = yield* Effect.fork(renderLoop)
 
-      // Ensure fiber is interrupted when scope closes
-      yield* Effect.addFinalizer(() => Fiber.interrupt(fiber))
+  // Ensure fiber is interrupted when scope closes
+  yield* Effect.addFinalizer(() => Fiber.interrupt(fiber))
 
-      return {
-        requestRender: () => Ref.set(renderNeeded, true),
-        forceRender: Effect.fnUntraced(function* () {
-          yield* Ref.set(renderNeeded, false)
-          yield* triggerRender(tui)
-        }),
-        stop: () => Fiber.interrupt(fiber),
-      } satisfies RenderScheduler
+  return {
+    requestRender: () => Ref.set(renderNeeded, true),
+    forceRender: Effect.fnUntraced(function* () {
+      yield* Ref.set(renderNeeded, false)
+      yield* triggerRender(tui)
+    }),
+    stop: () => Fiber.interrupt(fiber),
+  } satisfies RenderScheduler
 })
 
 /**

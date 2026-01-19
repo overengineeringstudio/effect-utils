@@ -58,7 +58,6 @@ export interface PlaywrightConfigOptions {
   workers?: number
 }
 
-
 /** Find an available port for the dev server. */
 const findAvailablePort = (): Promise<number> =>
   new Promise((resolve, reject) => {

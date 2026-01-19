@@ -92,7 +92,11 @@ const main = Effect.gen(function* () {
   console.log('║               TASK SYSTEM BENCHMARK SUITE                         ║')
   console.log('╠═══════════════════════════════════════════════════════════════════╣')
   console.log(`║  Scenario: ${config.scenario.padEnd(54)}║`)
-  console.log(`║  Tasks: ${config.taskCount} │ Events/s: ${config.eventsPerSecond} │ Duration: ${config.durationSeconds}s │ Concurrency: ${config.concurrency}`.padEnd(68) + '║')
+  console.log(
+    `║  Tasks: ${config.taskCount} │ Events/s: ${config.eventsPerSecond} │ Duration: ${config.durationSeconds}s │ Concurrency: ${config.concurrency}`.padEnd(
+      68,
+    ) + '║',
+  )
   console.log('╚═══════════════════════════════════════════════════════════════════╝')
 
   const baseConfig = {

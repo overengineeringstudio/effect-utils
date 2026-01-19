@@ -29,39 +29,42 @@ export const step: {
    * Direct form, for `Pw.Step.step(effect, 'my-step')`.
    */
   <A, E, R>(self: Effect.Effect<A, E, R>, name: string): Effect.Effect<A, E, R>
-} = F.dual(2, <A, E, R>(self: Effect.Effect<A, E, R>, name: string): Effect.Effect<A, E, R> =>
-  Effect.gen(function* () {
-    const runtime = yield* Effect.runtime<R>()
-    const parentSpan = yield* Effect.currentSpan.pipe(Effect.option)
+} = F.dual(
+  2,
+  <A, E, R>(self: Effect.Effect<A, E, R>, name: string): Effect.Effect<A, E, R> =>
+    Effect.gen(function* () {
+      const runtime = yield* Effect.runtime<R>()
+      const parentSpan = yield* Effect.currentSpan.pipe(Effect.option)
 
-    const run = parentSpan._tag === 'Some' ? self.pipe(Effect.withParentSpan(parentSpan.value)) : self
-    const traced = run.pipe(
-      Effect.withSpan(name, {
-        attributes: {
-          'pw.step': true,
-          'pw.step.name': name,
-          ...(parentSpan._tag === 'Some'
-            ? { 'pw.step.parentSpan._tag': parentSpan.value._tag }
-            : {}),
-        },
-      }),
-    )
+      const run =
+        parentSpan._tag === 'Some' ? self.pipe(Effect.withParentSpan(parentSpan.value)) : self
+      const traced = run.pipe(
+        Effect.withSpan(name, {
+          attributes: {
+            'pw.step': true,
+            'pw.step.name': name,
+            ...(parentSpan._tag === 'Some'
+              ? { 'pw.step.parentSpan._tag': parentSpan.value._tag }
+              : {}),
+          },
+        }),
+      )
 
-    return yield* Effect.async<A, E>((resume) => {
-      void test
-        .step(name, async () => {
-          const exit = await Effect.runPromiseExit(traced.pipe(Effect.provide(runtime)))
-          resume(
-            Exit.matchEffect(exit, {
-              onFailure: (cause) => Effect.failCause(cause),
-              onSuccess: (value) => Effect.succeed(value),
-            }),
-          )
-        })
-        .catch((cause) => {
-          resume(Effect.die(cause))
-        })
-      return Effect.void
-    })
-  }),
+      return yield* Effect.async<A, E>((resume) => {
+        void test
+          .step(name, async () => {
+            const exit = await Effect.runPromiseExit(traced.pipe(Effect.provide(runtime)))
+            resume(
+              Exit.matchEffect(exit, {
+                onFailure: (cause) => Effect.failCause(cause),
+                onSuccess: (value) => Effect.succeed(value),
+              }),
+            )
+          })
+          .catch((cause) => {
+            resume(Effect.die(cause))
+          })
+        return Effect.void
+      })
+    }),
 )

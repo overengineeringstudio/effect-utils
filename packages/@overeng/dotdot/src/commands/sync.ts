@@ -583,9 +583,9 @@ export const syncCommand = Cli.Command.make(
         }
       }
 
-    yield* Effect.log('')
+      yield* Effect.log('')
 
-    const summary = buildSummary({ results, statusLabels: SyncStatusLabels })
-    yield* Effect.log(styled.dim(`done: ${summary}`))
-  }).pipe(Effect.withSpan('dotdot/sync')),
+      const summary = buildSummary({ results, statusLabels: SyncStatusLabels })
+      yield* Effect.log(styled.dim(`done: ${summary}`))
+    }).pipe(Effect.withSpan('dotdot/sync')),
 )

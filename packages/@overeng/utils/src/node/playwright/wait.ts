@@ -12,10 +12,13 @@
 import { type Duration, Effect, Schedule, Schema } from 'effect'
 
 /** Error thrown when a polling wait operation times out */
-export class PwWaitTimeoutError extends Schema.TaggedError<PwWaitTimeoutError>()('PwWaitTimeoutError', {
-  label: Schema.String,
-  timeout: Schema.String,
-}) {}
+export class PwWaitTimeoutError extends Schema.TaggedError<PwWaitTimeoutError>()(
+  'PwWaitTimeoutError',
+  {
+    label: Schema.String,
+    timeout: Schema.String,
+  },
+) {}
 
 const hasTag = (error: unknown): error is { _tag: string } => {
   if (typeof error !== 'object' || error === null) return false

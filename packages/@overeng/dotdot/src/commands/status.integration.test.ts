@@ -6,7 +6,12 @@ import { FileSystem } from '@effect/platform'
 import { Effect, Layer, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { ConfigOutOfSyncError, CurrentWorkingDirectory, RootConfigSchema, WorkspaceService } from '../lib/mod.ts'
+import {
+  ConfigOutOfSyncError,
+  CurrentWorkingDirectory,
+  RootConfigSchema,
+  WorkspaceService,
+} from '../lib/mod.ts'
 import { createWorkspace, getGitRev, withTestCtx } from '../test-utils/mod.ts'
 import { statusHandler } from './mod.ts'
 

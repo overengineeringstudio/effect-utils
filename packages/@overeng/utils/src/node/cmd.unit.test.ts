@@ -16,7 +16,8 @@ const TestLayer = Layer.mergeAll(NodeContext.layer, CurrentWorkingDirectory.live
 describe('cmd helper', () => {
   const ansiRegex = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g')
 
-  it.effect('runs tokenized string without shell',
+  it.effect(
+    'runs tokenized string without shell',
     Effect.fnUntraced(
       function* () {
         const exit = yield* cmd('printf ok')
@@ -27,7 +28,8 @@ describe('cmd helper', () => {
     ),
   )
 
-  it.effect('runs array input',
+  it.effect(
+    'runs array input',
     Effect.fnUntraced(
       function* () {
         const exit = yield* cmd(['printf', 'ok'])
@@ -38,7 +40,8 @@ describe('cmd helper', () => {
     ),
   )
 
-  it.effect('supports logging with archive + retention',
+  it.effect(
+    'supports logging with archive + retention',
     Effect.fnUntraced(
       function* () {
         const workspaceRoot =
@@ -98,7 +101,8 @@ describe('cmd helper', () => {
     ),
   )
 
-  it.effect('streams stdout and stderr with logger formatting',
+  it.effect(
+    'streams stdout and stderr with logger formatting',
     Effect.fnUntraced(
       function* () {
         const workspaceRoot =

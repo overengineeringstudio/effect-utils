@@ -131,11 +131,26 @@ const runVisualStress = async (config: {
 
   // Simulated package names
   const packageNames = [
-    '@overeng/mono', '@overeng/effect-ai', '@effect/platform', 'effect',
-    '@overeng/utils', 'typescript', '@effect/schema', 'vite',
-    '@overeng/effect-path', 'zod', '@effect/cli', 'vitest',
-    '@overeng/effect-rpc', 'esbuild', '@effect/opentelemetry', 'biome',
-    'turbo', 'prettier', 'eslint', '@effect/experimental',
+    '@overeng/mono',
+    '@overeng/effect-ai',
+    '@effect/platform',
+    'effect',
+    '@overeng/utils',
+    'typescript',
+    '@effect/schema',
+    'vite',
+    '@overeng/effect-path',
+    'zod',
+    '@effect/cli',
+    'vitest',
+    '@overeng/effect-rpc',
+    'esbuild',
+    '@effect/opentelemetry',
+    'biome',
+    'turbo',
+    'prettier',
+    'eslint',
+    '@effect/experimental',
   ]
 
   // Initialize progress items
@@ -218,7 +233,9 @@ const runVisualStress = async (config: {
     const elapsed = (now - startTime) / 1000
     const remaining = Math.max(0, durationSeconds - elapsed)
     lines.push('')
-    lines.push(`${DIM}Elapsed: ${elapsed.toFixed(1)}s │ Remaining: ${remaining.toFixed(1)}s │ Frame: ${frameNumber}${RESET}`)
+    lines.push(
+      `${DIM}Elapsed: ${elapsed.toFixed(1)}s │ Remaining: ${remaining.toFixed(1)}s │ Frame: ${frameNumber}${RESET}`,
+    )
 
     // Move cursor up and render
     process.stdout.write(CURSOR_UP(totalLines))
@@ -270,7 +287,8 @@ const runVisualStress = async (config: {
   }
 
   // Write results to file
-  const resultsPath = '/Users/schickling/Code/overengineeringstudio/dotdot/effect-utils/packages/@overeng/mono/stress-test/stress-test-results.json'
+  const resultsPath =
+    '/Users/schickling/Code/overengineeringstudio/dotdot/effect-utils/packages/@overeng/mono/stress-test/stress-test-results.json'
   writeFileSync(resultsPath, JSON.stringify(results, null, 2))
 
   // Print summary
@@ -278,12 +296,24 @@ const runVisualStress = async (config: {
   console.log('╔═══════════════════════════════════════════════════════════════╗')
   console.log('║                    STRESS TEST COMPLETE                       ║')
   console.log('╠═══════════════════════════════════════════════════════════════╣')
-  console.log(`║  Total frames: ${frames.length.toString().padStart(6)}                                      ║`)
-  console.log(`║  Avg FPS:      ${avgFps.toFixed(1).padStart(6)} (target: ${targetFps})                          ║`)
-  console.log(`║  Avg frame:    ${avgFrameTime.toFixed(1).padStart(6)}ms                                    ║`)
-  console.log(`║  Min frame:    ${minFrameTime.toFixed(1).padStart(6)}ms                                    ║`)
-  console.log(`║  Max frame:    ${maxFrameTime.toFixed(1).padStart(6)}ms                                    ║`)
-  console.log(`║  Dropped:      ${droppedFrames.toString().padStart(6)} (${percentDropped.toFixed(1)}%)                            ║`)
+  console.log(
+    `║  Total frames: ${frames.length.toString().padStart(6)}                                      ║`,
+  )
+  console.log(
+    `║  Avg FPS:      ${avgFps.toFixed(1).padStart(6)} (target: ${targetFps})                          ║`,
+  )
+  console.log(
+    `║  Avg frame:    ${avgFrameTime.toFixed(1).padStart(6)}ms                                    ║`,
+  )
+  console.log(
+    `║  Min frame:    ${minFrameTime.toFixed(1).padStart(6)}ms                                    ║`,
+  )
+  console.log(
+    `║  Max frame:    ${maxFrameTime.toFixed(1).padStart(6)}ms                                    ║`,
+  )
+  console.log(
+    `║  Dropped:      ${droppedFrames.toString().padStart(6)} (${percentDropped.toFixed(1)}%)                            ║`,
+  )
   console.log('╠═══════════════════════════════════════════════════════════════╣')
   console.log(`║  Results saved to: stress-test-results.json                   ║`)
   console.log('╚═══════════════════════════════════════════════════════════════╝')
@@ -310,7 +340,11 @@ const config = {
 console.log('╔═══════════════════════════════════════════════════════════════╗')
 console.log('║                 VISUAL STRESS TEST                            ║')
 console.log('╠═══════════════════════════════════════════════════════════════╣')
-console.log(`║  Duration: ${config.durationSeconds}s │ Target FPS: ${config.targetFps} │ Bars: ${config.progressBarCount}`.padEnd(64) + '║')
+console.log(
+  `║  Duration: ${config.durationSeconds}s │ Target FPS: ${config.targetFps} │ Bars: ${config.progressBarCount}`.padEnd(
+    64,
+  ) + '║',
+)
 console.log('╚═══════════════════════════════════════════════════════════════╝')
 console.log('')
 

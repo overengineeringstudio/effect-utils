@@ -14,5 +14,4 @@ export default createPlaywrightConfig({
     command:
       './node_modules/.bin/vite --config src/browser/__tests__/vite.config.ts --port {{port}}',
   },
-
 })

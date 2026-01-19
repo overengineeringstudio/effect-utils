@@ -71,9 +71,7 @@ const VariantPicker = <T extends string>({
             key={v.id}
             onClick={() => onChange(v.id)}
             className={`px-3 py-1 text-sm rounded ${
-              value === v.id
-                ? "bg-gray-900 text-white"
-                : "bg-gray-100 hover:bg-gray-200"
+              value === v.id ? 'bg-gray-900 text-white' : 'bg-gray-100 hover:bg-gray-200'
             }`}
           >
             {v.id}
@@ -90,9 +88,9 @@ const VariantPicker = <T extends string>({
 /** Main exploration story */
 export const Exploration: Story = {
   render: function Render() {
-    const [progress, setProgress] = useState<ProgressVariant>("P2")
-    const [waiting, setWaiting] = useState<WaitingVariant>("W1")
-    const [working, setWorking] = useState<WorkingVariant>("A4")
+    const [progress, setProgress] = useState<ProgressVariant>('P2')
+    const [waiting, setWaiting] = useState<WaitingVariant>('W1')
+    const [working, setWorking] = useState<WorkingVariant>('A4')
 
     return (
       <div className="space-y-6">
@@ -101,10 +99,10 @@ export const Exploration: Story = {
           <VariantPicker
             label="Progress"
             variants={[
-              { id: "P1", description: "Minimal bar only" },
-              { id: "P2", description: "Phase name + bar" },
-              { id: "P3", description: "Pie chart + count" },
-              { id: "P4", description: "Status-aware (blocked/complete)" },
+              { id: 'P1', description: 'Minimal bar only' },
+              { id: 'P2', description: 'Phase name + bar' },
+              { id: 'P3', description: 'Pie chart + count' },
+              { id: 'P4', description: 'Status-aware (blocked/complete)' },
             ]}
             value={progress}
             onChange={setProgress}
@@ -112,9 +110,9 @@ export const Exploration: Story = {
           <VariantPicker
             label="Waiting"
             variants={[
-              { id: "W1", description: "Icon + summary line" },
-              { id: "W2", description: "With action hint" },
-              { id: "W3", description: "Badge + detail" },
+              { id: 'W1', description: 'Icon + summary line' },
+              { id: 'W2', description: 'With action hint' },
+              { id: 'W3', description: 'Badge + detail' },
             ]}
             value={waiting}
             onChange={setWaiting}
@@ -122,10 +120,10 @@ export const Exploration: Story = {
           <VariantPicker
             label="Working"
             variants={[
-              { id: "A1", description: "Summary only" },
-              { id: "A2", description: "Summary + phase progress" },
-              { id: "A3", description: "Compact with pie" },
-              { id: "A4", description: "Full status-aware" },
+              { id: 'A1', description: 'Summary only' },
+              { id: 'A2', description: 'Summary + phase progress' },
+              { id: 'A3', description: 'Compact with pie' },
+              { id: 'A4', description: 'Full status-aware' },
             ]}
             value={working}
             onChange={setWorking}
@@ -133,9 +131,7 @@ export const Exploration: Story = {
         </div>
 
         {/* Live preview with selected variants */}
-        <div className="flex gap-4">
-          {/* Render columns with current variant selection */}
-        </div>
+        <div className="flex gap-4">{/* Render columns with current variant selection */}</div>
       </div>
     )
   },
@@ -183,6 +179,7 @@ src/ui/stories/
 ```
 
 **Benefits:**
+
 - Preserve history of design decisions
 - Easy to compare versions side-by-side
 - Clear audit trail for stakeholder review
@@ -214,15 +211,15 @@ This enables precise communication about design decisions.
 
 ## Example Variant Naming
 
-| Prefix | Meaning |
-|--------|---------|
-| P | Progress indicator |
-| W | Waiting state |
-| A | Activity/Working state |
-| L | Layout/Density |
-| S | Stopped state |
-| H | Header style |
-| F | Footer style |
+| Prefix | Meaning                |
+| ------ | ---------------------- |
+| P      | Progress indicator     |
+| W      | Waiting state          |
+| A      | Activity/Working state |
+| L      | Layout/Density         |
+| S      | Stopped state          |
+| H      | Header style           |
+| F      | Footer style           |
 
 ## When to Use
 

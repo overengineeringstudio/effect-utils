@@ -1,6 +1,6 @@
 # Bun patchedDependencies Bug Workaround
 
-Update (2026-01-18-10:19): There's a fix coming: 
+Update (2026-01-18-10:19): There's a fix coming:
 https://github.com/oven-sh/bun/issues/13531
 
 ## Problem

@@ -218,244 +218,243 @@ export const make = Effect.fnUntraced(function* (options: ClaudeCliOptions = {})
     providerOptions: LanguageModel.ProviderOptions,
   ): Effect.Effect<Array<Response.PartEncoded>, AiError.AiError> =>
     Effect.gen(function* () {
+      const promptText = promptToString({
+        prompt: providerOptions.prompt,
+        responseFormat: providerOptions.responseFormat,
+      })
+
+      const args = [
+        '-p', // print mode
+        '--output-format',
+        'json',
+        '--tools',
+        '', // disable tools for simple text generation
+      ]
+
+      if (options.model) {
+        args.push('--model', options.model)
+      }
+
+      const command = Command.make('claude', ...args).pipe(Command.stdin('pipe'))
+      const commandDisplay = formatCommandForDisplay({ command: 'claude', args })
+
+      const result = yield* Effect.scoped(
+        Effect.gen(function* () {
+          const process = yield* executor.start(command)
+
+          // Write prompt to stdin
+          yield* Stream.make(new TextEncoder().encode(promptText)).pipe(Stream.run(process.stdin))
+
+          const collectStdout = Stream.runCollect(Stream.decodeText(process.stdout)).pipe(
+            Effect.map((chunks) => Array.from(chunks).join('')),
+          )
+
+          const collectStderr = Stream.runCollect(Stream.decodeText(process.stderr)).pipe(
+            Effect.map((chunks) => Array.from(chunks).join('')),
+          )
+
+          const [stdout, stderr, exitCode] = yield* Effect.all(
+            [collectStdout, collectStderr, process.exitCode],
+            { concurrency: 'unbounded' },
+          )
+
+          return { stdout, stderr, exitCode }
+        }),
+      ).pipe(Effect.mapError(wrapPlatformError))
+
+      if (result.exitCode !== 0) {
+        return yield* classifyError({
+          exitCode: result.exitCode,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          command: commandDisplay,
+        })
+      }
+
+      const lines = result.stdout.trim().split('\n')
+      let resultText = ''
+
+      for (const line of lines) {
+        if (!line.trim()) continue
+        const parsed = safeParseJson<ClaudeCliJsonOutput>(line)
+        if (!parsed) continue
+        if (parsed.type === 'result' && parsed.subtype === 'success' && parsed.result) {
+          resultText = parsed.result
+        } else if (parsed.type === 'result' && parsed.subtype === 'error') {
+          // Classify the error based on the result message
+          const errorMessage = parsed.result ?? 'Unknown error'
+          return yield* classifyError({
+            exitCode: 1,
+            stdout: errorMessage,
+            stderr: '',
+            command: commandDisplay,
+          })
+        }
+      }
+
+      if (!resultText) {
+        return yield* new ClaudeCliParseError({
+          message: 'Claude CLI returned no result',
+          rawOutput: truncateForDisplay({ text: result.stdout, maxChars: 5_000 }),
+        })
+      }
+
+      // Strip markdown code blocks if JSON response format is expected
+      const finalText =
+        providerOptions.responseFormat.type === 'json'
+          ? stripMarkdownCodeBlocks(resultText)
+          : resultText
+
+      const parts: Array<Response.PartEncoded> = [
+        { type: 'text', text: finalText },
+        {
+          type: 'finish',
+          reason: 'stop',
+          usage: {
+            inputTokens: undefined,
+            outputTokens: undefined,
+            totalTokens: undefined,
+          },
+        },
+      ]
+
+      return parts
+    }).pipe(
+      Effect.catchAllDefect(
+        (defect) =>
+          new ClaudeCliParseError({
+            message: `Unexpected error: ${String(defect)}`,
+            rawOutput: '',
+            cause: defect,
+          }),
+      ),
+      Effect.mapError(toAiError),
+    )
+
+  const streamText = (
+    providerOptions: LanguageModel.ProviderOptions,
+  ): Stream.Stream<Response.StreamPartEncoded, AiError.AiError> =>
+    Stream.unwrap(
+      Effect.gen(function* () {
         const promptText = promptToString({
           prompt: providerOptions.prompt,
           responseFormat: providerOptions.responseFormat,
         })
 
-        const args = [
-          '-p', // print mode
-          '--output-format',
-          'json',
-          '--tools',
-          '', // disable tools for simple text generation
-        ]
+        const args = ['-p', '--output-format', 'stream-json', '--tools', '']
 
         if (options.model) {
           args.push('--model', options.model)
         }
 
         const command = Command.make('claude', ...args).pipe(Command.stdin('pipe'))
-        const commandDisplay = formatCommandForDisplay({ command: 'claude', args })
 
-        const result = yield* Effect.scoped(
-          Effect.gen(function* () {
-            const process = yield* executor.start(command)
+        const scope = yield* Scope.make()
+        const startEmittedRef = yield* Ref.make(false)
 
-            // Write prompt to stdin
-            yield* Stream.make(new TextEncoder().encode(promptText)).pipe(Stream.run(process.stdin))
+        const process = yield* executor
+          .start(command)
+          .pipe(Effect.provideService(Scope.Scope, scope), Effect.mapError(platformToAiError))
 
-            const collectStdout = Stream.runCollect(Stream.decodeText(process.stdout)).pipe(
-              Effect.map((chunks) => Array.from(chunks).join('')),
-            )
+        // Write prompt to stdin
+        yield* Stream.make(new TextEncoder().encode(promptText)).pipe(
+          Stream.run(process.stdin),
+          Effect.mapError(platformToAiError),
+        )
 
-            const collectStderr = Stream.runCollect(Stream.decodeText(process.stderr)).pipe(
-              Effect.map((chunks) => Array.from(chunks).join('')),
-            )
+        const textId = 'text-0'
 
-            const [stdout, stderr, exitCode] = yield* Effect.all(
-              [collectStdout, collectStderr, process.exitCode],
-              { concurrency: 'unbounded' },
-            )
+        const outputStream: Stream.Stream<Response.StreamPartEncoded, AiError.AiError> =
+          process.stdout.pipe(
+            Stream.decodeText(),
+            Stream.splitLines,
+            Stream.filter((line) => line.trim().length > 0),
+            Stream.mapError(platformToAiError),
+            Stream.mapEffect((line) =>
+              Effect.gen(function* () {
+                const parsed = safeParseJson<{
+                  type?: string
+                  subtype?: string
+                  result?: string
+                  message?: { content?: string }
+                  delta?: { text?: string }
+                }>(line)
 
-            return { stdout, stderr, exitCode }
-          }),
-        ).pipe(Effect.mapError(wrapPlatformError))
+                if (!parsed) return [] as Response.StreamPartEncoded[]
 
-        if (result.exitCode !== 0) {
-          return yield* classifyError({
-            exitCode: result.exitCode,
-            stdout: result.stdout,
-            stderr: result.stderr,
-            command: commandDisplay,
-          })
-        }
-
-        const lines = result.stdout.trim().split('\n')
-        let resultText = ''
-
-        for (const line of lines) {
-          if (!line.trim()) continue
-          const parsed = safeParseJson<ClaudeCliJsonOutput>(line)
-          if (!parsed) continue
-          if (parsed.type === 'result' && parsed.subtype === 'success' && parsed.result) {
-            resultText = parsed.result
-          } else if (parsed.type === 'result' && parsed.subtype === 'error') {
-            // Classify the error based on the result message
-            const errorMessage = parsed.result ?? 'Unknown error'
-            return yield* classifyError({
-              exitCode: 1,
-              stdout: errorMessage,
-              stderr: '',
-              command: commandDisplay,
-            })
-          }
-        }
-
-        if (!resultText) {
-          return yield* new ClaudeCliParseError({
-            message: 'Claude CLI returned no result',
-            rawOutput: truncateForDisplay({ text: result.stdout, maxChars: 5_000 }),
-          })
-        }
-
-        // Strip markdown code blocks if JSON response format is expected
-        const finalText =
-          providerOptions.responseFormat.type === 'json'
-            ? stripMarkdownCodeBlocks(resultText)
-            : resultText
-
-        const parts: Array<Response.PartEncoded> = [
-          { type: 'text', text: finalText },
-          {
-            type: 'finish',
-            reason: 'stop',
-            usage: {
-              inputTokens: undefined,
-              outputTokens: undefined,
-              totalTokens: undefined,
-            },
-          },
-        ]
-
-        return parts
-      }).pipe(
-        Effect.catchAllDefect(
-          (defect) =>
-            new ClaudeCliParseError({
-              message: `Unexpected error: ${String(defect)}`,
-              rawOutput: '',
-              cause: defect,
-            }),
-        ),
-        Effect.mapError(toAiError),
-      )
-
-    const streamText = (
-      providerOptions: LanguageModel.ProviderOptions,
-    ): Stream.Stream<Response.StreamPartEncoded, AiError.AiError> =>
-      Stream.unwrap(
-        Effect.gen(function* () {
-          const promptText = promptToString({
-            prompt: providerOptions.prompt,
-            responseFormat: providerOptions.responseFormat,
-          })
-
-          const args = ['-p', '--output-format', 'stream-json', '--tools', '']
-
-          if (options.model) {
-            args.push('--model', options.model)
-          }
-
-          const command = Command.make('claude', ...args).pipe(Command.stdin('pipe'))
-
-          const scope = yield* Scope.make()
-          const startEmittedRef = yield* Ref.make(false)
-
-          const process = yield* executor.start(command).pipe(
-            Effect.provideService(Scope.Scope, scope),
-            Effect.mapError(platformToAiError),
-          )
-
-          // Write prompt to stdin
-          yield* Stream.make(new TextEncoder().encode(promptText)).pipe(
-            Stream.run(process.stdin),
-            Effect.mapError(platformToAiError),
-          )
-
-          const textId = 'text-0'
-
-          const outputStream: Stream.Stream<Response.StreamPartEncoded, AiError.AiError> =
-            process.stdout.pipe(
-              Stream.decodeText(),
-              Stream.splitLines,
-              Stream.filter((line) => line.trim().length > 0),
-              Stream.mapError(platformToAiError),
-              Stream.mapEffect((line) =>
-                Effect.gen(function* () {
-                  const parsed = safeParseJson<{
-                    type?: string
-                    subtype?: string
-                    result?: string
-                    message?: { content?: string }
-                    delta?: { text?: string }
-                  }>(line)
-
-                  if (!parsed) return [] as Response.StreamPartEncoded[]
-
-                  if (parsed.type === 'assistant' && parsed.message?.content) {
-                    const content = parsed.message.content
-                    if (typeof content === 'string') {
-                      const startEmitted = yield* Ref.get(startEmittedRef)
-                      const parts: Response.StreamPartEncoded[] = []
-                      if (!startEmitted) {
-                        parts.push({ type: 'text-start', id: textId })
-                        yield* Ref.set(startEmittedRef, true)
-                      }
-                      parts.push({ type: 'text-delta', id: textId, delta: content })
-                      return parts
-                    }
-                  }
-
-                  if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+                if (parsed.type === 'assistant' && parsed.message?.content) {
+                  const content = parsed.message.content
+                  if (typeof content === 'string') {
                     const startEmitted = yield* Ref.get(startEmittedRef)
                     const parts: Response.StreamPartEncoded[] = []
                     if (!startEmitted) {
                       parts.push({ type: 'text-start', id: textId })
                       yield* Ref.set(startEmittedRef, true)
                     }
-                    parts.push({ type: 'text-delta', id: textId, delta: parsed.delta.text })
+                    parts.push({ type: 'text-delta', id: textId, delta: content })
                     return parts
                   }
+                }
 
-                  if (parsed.type === 'result') {
-                    if (parsed.subtype === 'success' && parsed.result) {
-                      const startEmitted = yield* Ref.get(startEmittedRef)
-                      const parts: Response.StreamPartEncoded[] = []
-                      if (!startEmitted) {
-                        parts.push({ type: 'text-start', id: textId })
-                      }
-                      parts.push({ type: 'text-delta', id: textId, delta: parsed.result })
-                      parts.push({ type: 'text-end', id: textId })
-                      return parts
-                    }
-                    if (parsed.subtype === 'error') {
-                      // Classify the error based on the result message
-                      const errorMessage = parsed.result ?? 'Unknown error'
-                      return yield* toAiError(
-                        classifyError({
-                          exitCode: 1,
-                          stdout: errorMessage,
-                          stderr: '',
-                          command: 'claude stream',
-                        }),
-                      )
-                    }
+                if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+                  const startEmitted = yield* Ref.get(startEmittedRef)
+                  const parts: Response.StreamPartEncoded[] = []
+                  if (!startEmitted) {
+                    parts.push({ type: 'text-start', id: textId })
+                    yield* Ref.set(startEmittedRef, true)
                   }
+                  parts.push({ type: 'text-delta', id: textId, delta: parsed.delta.text })
+                  return parts
+                }
 
-                  return [] as Response.StreamPartEncoded[]
-                }),
-              ),
-              Stream.flatMap((parts) => Stream.fromIterable(parts)),
-              Stream.ensuring(Scope.close(scope, Exit.void)),
-            )
+                if (parsed.type === 'result') {
+                  if (parsed.subtype === 'success' && parsed.result) {
+                    const startEmitted = yield* Ref.get(startEmittedRef)
+                    const parts: Response.StreamPartEncoded[] = []
+                    if (!startEmitted) {
+                      parts.push({ type: 'text-start', id: textId })
+                    }
+                    parts.push({ type: 'text-delta', id: textId, delta: parsed.result })
+                    parts.push({ type: 'text-end', id: textId })
+                    return parts
+                  }
+                  if (parsed.subtype === 'error') {
+                    // Classify the error based on the result message
+                    const errorMessage = parsed.result ?? 'Unknown error'
+                    return yield* toAiError(
+                      classifyError({
+                        exitCode: 1,
+                        stdout: errorMessage,
+                        stderr: '',
+                        command: 'claude stream',
+                      }),
+                    )
+                  }
+                }
 
-          const finishPart: Response.StreamPartEncoded = {
-            type: 'finish',
-            reason: 'stop',
-            usage: {
-              inputTokens: undefined,
-              outputTokens: undefined,
-              totalTokens: undefined,
-            },
-          }
+                return [] as Response.StreamPartEncoded[]
+              }),
+            ),
+            Stream.flatMap((parts) => Stream.fromIterable(parts)),
+            Stream.ensuring(Scope.close(scope, Exit.void)),
+          )
 
-          return Stream.concat(outputStream, Stream.succeed(finishPart))
-        }),
-      )
+        const finishPart: Response.StreamPartEncoded = {
+          type: 'finish',
+          reason: 'stop',
+          usage: {
+            inputTokens: undefined,
+            outputTokens: undefined,
+            totalTokens: undefined,
+          },
+        }
 
-    return yield* LanguageModel.make({ generateText, streamText })
-  })
+        return Stream.concat(outputStream, Stream.succeed(finishPart))
+      }),
+    )
+
+  return yield* LanguageModel.make({ generateText, streamText })
+})
 
 /** Layer providing Claude CLI as the LanguageModel */
 export const layer = (

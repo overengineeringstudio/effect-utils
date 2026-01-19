@@ -163,9 +163,7 @@ export const findWorkspaceRoot = Effect.fn('loader/findWorkspaceRoot')(function*
 })
 
 /** Load root config from workspace (loads the generated config) */
-export const loadRootConfig = Effect.fn('loader/loadRootConfig')(function* (
-  workspaceRoot: string,
-) {
+export const loadRootConfig = Effect.fn('loader/loadRootConfig')(function* (workspaceRoot: string) {
   // Root config is always the generated config (not dotdot.json)
   const configPath = path.join(workspaceRoot, GENERATED_CONFIG_FILE_NAME)
   const fs = yield* FileSystem.FileSystem

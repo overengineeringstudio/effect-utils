@@ -344,10 +344,7 @@ export const relativeDir = Effect.fnUntraced(function* (args: {
   }
 
   // Resolve against base to verify
-  const absolutePath = platformPath.join(
-    removeTrailingSlash(base),
-    removeTrailingSlash(validated),
-  )
+  const absolutePath = platformPath.join(removeTrailingSlash(base), removeTrailingSlash(validated))
   const normalized = platformPath.normalize(removeTrailingSlash(validated))
 
   // Verify it exists and is a directory
@@ -438,10 +435,7 @@ export const resolveRelative = Effect.fnUntraced(function* (args: {
   }
 
   // Resolve against base to verify
-  const absolutePath = platformPath.join(
-    removeTrailingSlash(base),
-    removeTrailingSlash(validated),
-  )
+  const absolutePath = platformPath.join(removeTrailingSlash(base), removeTrailingSlash(validated))
   const normalized = platformPath.normalize(removeTrailingSlash(validated))
 
   // Check what type it is

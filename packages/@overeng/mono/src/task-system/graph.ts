@@ -364,11 +364,9 @@ const snapshotMutableState = (tasks: Map<string, MutableTaskState>): TaskSystemS
  * - No circular dependencies
  * - All dependencies exist
  */
-const buildTaskGraph = Effect.fn('TaskGraph.buildTaskGraph')(function* <
-  TId extends string,
-  E,
-  R,
->(tasks: ReadonlyArray<TaskDef<TId, unknown, E, R>>) {
+const buildTaskGraph = Effect.fn('TaskGraph.buildTaskGraph')(function* <TId extends string, E, R>(
+  tasks: ReadonlyArray<TaskDef<TId, unknown, E, R>>,
+) {
   const idToIndex = new Map<TId, number>()
 
   // Collect validation errors during graph building
@@ -512,9 +510,13 @@ const executeTask = <TId extends string, A, E, R>({
         stderrChunks.join(''),
       ].join('\n')
 
-      yield* fs.writeFileString(task.logFile, logContent).pipe(
-        Effect.catchAll((error) => Effect.logWarning(`Failed to write log file ${task.logFile}: ${error}`)),
-      )
+      yield* fs
+        .writeFileString(task.logFile, logContent)
+        .pipe(
+          Effect.catchAll((error) =>
+            Effect.logWarning(`Failed to write log file ${task.logFile}: ${error}`),
+          ),
+        )
     }
 
     return exit
@@ -524,10 +526,8 @@ const executeTask = <TId extends string, A, E, R>({
    * Custom retry wrapper that emits retry events.
    * Effect.retry doesn't give us hooks to emit events, so we implement manual retry loop.
    */
-  const executeWithRetry: (
-    attempt: number,
-  ) => Effect.Effect<void, E, R | FileSystem.FileSystem> = Effect.fnUntraced(
-    function* (attempt: number) {
+  const executeWithRetry: (attempt: number) => Effect.Effect<void, E, R | FileSystem.FileSystem> =
+    Effect.fnUntraced(function* (attempt: number) {
       const exit = yield* Effect.exit(executeOnce)
 
       if (Exit.isSuccess(exit)) {
@@ -557,8 +557,7 @@ const executeTask = <TId extends string, A, E, R>({
         return yield* Effect.failCause(exit.cause)
       }
       return yield* Effect.die('Unknown error')
-    },
-  )
+    })
 
   // Start retry loop if retry schedule configured
   if (task.retrySchedule && task.maxRetries) {

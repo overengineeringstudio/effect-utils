@@ -151,21 +151,21 @@ export const monitorActiveHandles = Effect.fn('ActiveHandlesDebugger.monitorActi
  * yield* withActiveHandlesDumpOnSigint(myProgram)
  * ```
  */
-export const withActiveHandlesDumpOnSigint = Effect.fn('ActiveHandlesDebugger.withActiveHandlesDumpOnSigint')(
-  function* <A, E, R>(effect: Effect.Effect<A, E, R>) {
-    const runtime = yield* Effect.runtime<R>()
+export const withActiveHandlesDumpOnSigint = Effect.fn(
+  'ActiveHandlesDebugger.withActiveHandlesDumpOnSigint',
+)(function* <A, E, R>(effect: Effect.Effect<A, E, R>) {
+  const runtime = yield* Effect.runtime<R>()
 
-    const handler = () => {
-      try {
-        Runtime.runSync(runtime)(logActiveHandles.pipe(Effect.ignore))
-      } finally {
-        process.off('SIGINT', handler)
-        process.kill(process.pid, 'SIGINT')
-      }
+  const handler = () => {
+    try {
+      Runtime.runSync(runtime)(logActiveHandles.pipe(Effect.ignore))
+    } finally {
+      process.off('SIGINT', handler)
+      process.kill(process.pid, 'SIGINT')
     }
+  }
 
-    yield* Effect.sync(() => process.on('SIGINT', handler))
+  yield* Effect.sync(() => process.on('SIGINT', handler))
 
-    return yield* effect.pipe(Effect.ensuring(Effect.sync(() => process.off('SIGINT', handler))))
-  },
-)
+  return yield* effect.pipe(Effect.ensuring(Effect.sync(() => process.off('SIGINT', handler))))
+})

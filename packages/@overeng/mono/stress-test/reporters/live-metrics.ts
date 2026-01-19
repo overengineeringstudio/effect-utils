@@ -29,7 +29,8 @@ const formatMetric = (
 
 /** Render the live metrics line */
 export const renderMetricsLine = (metrics: BenchMetrics, targetFps = 12.5): string => {
-  const fpsColor = metrics.fps >= targetFps * 0.9 ? GREEN : metrics.fps >= targetFps * 0.7 ? YELLOW : RED
+  const fpsColor =
+    metrics.fps >= targetFps * 0.9 ? GREEN : metrics.fps >= targetFps * 0.7 ? YELLOW : RED
   const fps = `${DIM}FPS${RESET} ${fpsColor}${metrics.fps.toFixed(1)}${RESET}${DIM}/${targetFps}${RESET}`
 
   const parts = [
@@ -82,17 +83,10 @@ export const renderComparisonTable = (comparisons: {
   const width = 65
 
   lines.push('┌' + '─'.repeat(width) + '┐')
-  lines.push(
-    `│ ${CYAN}COMPARISON${RESET}${' '.repeat(width - 12)}│`,
-  )
+  lines.push(`│ ${CYAN}COMPARISON${RESET}${' '.repeat(width - 12)}│`)
   lines.push('├' + '─'.repeat(width) + '┤')
 
-  const formatRow = (
-    name: string,
-    progress: number,
-    events: number,
-    overhead?: number,
-  ): string => {
+  const formatRow = (name: string, progress: number, events: number, overhead?: number): string => {
     const bar = renderProgressBar(progress, 20)
     const pct = `${(progress * 100).toFixed(0)}%`.padStart(4)
     const evtStr = `events: ${events.toLocaleString()}`.padEnd(18)
@@ -102,8 +96,22 @@ export const renderComparisonTable = (comparisons: {
   }
 
   lines.push(formatRow('Baseline:', comparisons.baseline.progress, comparisons.baseline.events))
-  lines.push(formatRow('No renderer:', comparisons.noRenderer.progress, comparisons.noRenderer.events, comparisons.noRenderer.overhead))
-  lines.push(formatRow('Full system:', comparisons.fullSystem.progress, comparisons.fullSystem.events, comparisons.fullSystem.overhead))
+  lines.push(
+    formatRow(
+      'No renderer:',
+      comparisons.noRenderer.progress,
+      comparisons.noRenderer.events,
+      comparisons.noRenderer.overhead,
+    ),
+  )
+  lines.push(
+    formatRow(
+      'Full system:',
+      comparisons.fullSystem.progress,
+      comparisons.fullSystem.events,
+      comparisons.fullSystem.overhead,
+    ),
+  )
 
   lines.push('└' + '─'.repeat(width) + '┘')
 

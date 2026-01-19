@@ -56,12 +56,12 @@ bun packages/@overeng/mono/stress-test/run.ts --quick
 
 ### Scenarios
 
-| Scenario | Description |
-|----------|-------------|
-| `comparison` | Baseline vs task system overhead (default) |
-| `rapid-events` | High-frequency event stress test |
-| `progress-bars` | Visual complexity with animated progress |
-| `all` | Run all scenarios |
+| Scenario        | Description                                |
+| --------------- | ------------------------------------------ |
+| `comparison`    | Baseline vs task system overhead (default) |
+| `rapid-events`  | High-frequency event stress test           |
+| `progress-bars` | Visual complexity with animated progress   |
+| `all`           | Run all scenarios                          |
 
 ### Options
 
@@ -76,11 +76,13 @@ bun packages/@overeng/mono/stress-test/run.ts --quick
 ## Interpreting Results
 
 **Comparison benchmark:**
+
 - **Coordination overhead**: Task system scheduling vs raw Effect
 - **Rendering overhead**: Full system vs no-renderer mode
 - **Target**: < 10% total overhead
 
 **Visual stress test:**
+
 - **Avg frame time**: Should be close to `1000 / targetFps`
 - **Dropped frames**: Frames > 1.5x target time
 - **Memory**: Watch for leaks during long runs

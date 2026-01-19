@@ -178,9 +178,7 @@ export const findPackageJsonWithImportsSync = (fromPath: string): string | undef
  * package.json doesn't have imports. This enables bootstrapping when the
  * genie source has imports but the generated file hasn't been updated yet.
  */
-export const extractImportMap = Effect.fn('extractImportMap')(function* (
-  packageJsonPath: string,
-) {
+export const extractImportMap = Effect.fn('extractImportMap')(function* (packageJsonPath: string) {
   const fs = yield* FileSystem.FileSystem
 
   // First try the generated package.json
@@ -303,13 +301,7 @@ export const resolveImportMapSpecifier = ({
  */
 export const resolveImportMapSpecifierForImporter = Effect.fn(
   'genie.resolveImportMapSpecifierForImporter',
-)(function* ({
-  specifier,
-  importerPath,
-}: {
-  specifier: string
-  importerPath: string
-}) {
+)(function* ({ specifier, importerPath }: { specifier: string; importerPath: string }) {
   if (!isImportMapSpecifier(specifier)) {
     return Option.none()
   }

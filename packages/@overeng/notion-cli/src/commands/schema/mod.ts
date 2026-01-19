@@ -9,8 +9,8 @@ import { Args, Command, Options } from '@effect/cli'
 import { FetchHttpClient, FileSystem } from '@effect/platform'
 import { Console, Effect, Layer, Option, Redacted, Schema } from 'effect'
 
-import { NotionConfig, NotionDatabases } from '@overeng/notion-effect-client'
 import { EffectPath } from '@overeng/effect-path'
+import { NotionConfig, NotionDatabases } from '@overeng/notion-effect-client'
 
 import { type GenerateOptions, generateApiCode, generateSchemaCode } from '../../codegen.ts'
 import { loadConfig } from '../../config.ts'

@@ -26,7 +26,8 @@ const makeTestLogger = Effect.fnUntraced(function* () {
 
 describe('ScopeDebugger', () => {
   describe('addTracedFinalizer', () => {
-    it.effect('logs finalizer registration and execution when debugging enabled',
+    it.effect(
+      'logs finalizer registration and execution when debugging enabled',
       Effect.fnUntraced(function* () {
         const { getLogs, loggerLayer } = yield* makeTestLogger()
 
@@ -48,7 +49,8 @@ describe('ScopeDebugger', () => {
       }),
     )
 
-    it.effect('does not log when debugging disabled',
+    it.effect(
+      'does not log when debugging disabled',
       Effect.fnUntraced(function* () {
         const { getLogs, loggerLayer } = yield* makeTestLogger()
 
@@ -66,7 +68,8 @@ describe('ScopeDebugger', () => {
       }),
     )
 
-    it.effect('executes finalizers in reverse registration order',
+    it.effect(
+      'executes finalizers in reverse registration order',
       Effect.fnUntraced(function* () {
         const order = yield* Ref.make<string[]>([])
 
@@ -92,7 +95,8 @@ describe('ScopeDebugger', () => {
       }),
     )
 
-    it.effect('does not swallow finalizer failures when debugging enabled',
+    it.effect(
+      'does not swallow finalizer failures when debugging enabled',
       Effect.fnUntraced(function* () {
         const exit = yield* withScopeDebug(
           addTracedFinalizer({ name: 'fails', finalizer: Effect.die('boom') }).pipe(Effect.scoped),
@@ -104,7 +108,8 @@ describe('ScopeDebugger', () => {
   })
 
   describe('withTracedScope', () => {
-    it.effect('logs scope lifecycle',
+    it.effect(
+      'logs scope lifecycle',
       Effect.fnUntraced(function* () {
         const { getLogs, loggerLayer } = yield* makeTestLogger()
 

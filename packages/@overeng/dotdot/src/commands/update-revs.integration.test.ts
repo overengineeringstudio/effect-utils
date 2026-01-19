@@ -7,7 +7,6 @@ import { Effect, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { RootConfigSchema } from '../lib/config.ts'
-
 import {
   addCommit,
   createWorkspace,

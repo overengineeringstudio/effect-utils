@@ -430,7 +430,9 @@ export class TaskRunner extends Context.Tag('TaskRunner')<TaskRunner, TaskRunner
  *
  * @param options.refreshMs - Debounce interval in milliseconds (default: 100)
  */
-export const renderLoop = Effect.fn('TaskRunner.renderLoop')(function* (options?: { refreshMs?: number }) {
+export const renderLoop = Effect.fn('TaskRunner.renderLoop')(function* (options?: {
+  refreshMs?: number
+}) {
   const runner = yield* TaskRunner
   const refreshMs = options?.refreshMs ?? 100
 

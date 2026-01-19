@@ -189,15 +189,14 @@ typecheckEnabled = typecheck && !dirty;
   - `packages/@overeng/dotdot/src/lib/loader.ts`
   - `packages/@overeng/dotdot/src/lib/workspace-service.ts`
   - `packages/@overeng/dotdot/src/test-utils/setup.ts`
-  This is a known separate issue (Effect LSP/TS41) and not a staging failure.
+    This is a known separate issue (Effect LSP/TS41) and not a staging failure.
 
 ## Notable Fixes
 
 - Updated `devenv.nix` bunDeps hashes to match flake builds:
   - genie: `sha256-o3JZv9lq3IXroGSmvQK7yBePEHVWxU/ZwC3lrEcr3lo=`
   - dotdot: `sha256-lAvLdjaEG2NRLyP7Y12w7Arlua5rkMnrVJEeQXgM3Ms=`
-  This removed `@overeng/cli-ui` missing module errors in devenv builds.
-
+    This removed `@overeng/cli-ui` missing module errors in devenv builds.
 
 ## Files Touched (High-Level)
 
