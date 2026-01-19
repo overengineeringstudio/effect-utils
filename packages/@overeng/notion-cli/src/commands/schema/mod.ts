@@ -2,6 +2,7 @@
  * Schema subcommand - generate Effect schemas from Notion databases
  */
 
+import { basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { Args, Command, Options } from '@effect/cli'
@@ -226,7 +227,13 @@ const generateCommand = Command.make(
           yield* Console.log(`Would write to: ${output}`)
 
           if (includeApi) {
-            const rawApiCode = generateApiCode({ dbInfo, schemaName, options: generateOptions })
+            const schemaFileName = basename(output)
+            const rawApiCode = generateApiCode({
+              dbInfo,
+              schemaName,
+              schemaFileName,
+              options: generateOptions,
+            })
             const apiCode = yield* formatCode(rawApiCode)
             const apiOutput = output.replace(/\.ts$/, '.api.ts')
 
@@ -249,7 +256,13 @@ const generateCommand = Command.make(
           yield* Console.log(`Done${writable ? '' : ' (read-only)'}`)
 
           if (includeApi) {
-            const rawApiCode = generateApiCode({ dbInfo, schemaName, options: generateOptions })
+            const schemaFileName = basename(output)
+            const rawApiCode = generateApiCode({
+              dbInfo,
+              schemaName,
+              schemaFileName,
+              options: generateOptions,
+            })
             const apiCode = yield* formatCode(rawApiCode)
             const apiOutput = output.replace(/\.ts$/, '.api.ts')
 
@@ -396,7 +409,13 @@ const generateFromConfigCommand = Command.make(
             yield* Console.log(`Would write to: ${dbConfig.output}`)
 
             if (generateOptions.includeApi) {
-              const rawApiCode = generateApiCode({ dbInfo, schemaName, options: generateOptions })
+              const schemaFileName = basename(dbConfig.output)
+              const rawApiCode = generateApiCode({
+                dbInfo,
+                schemaName,
+                schemaFileName,
+                options: generateOptions,
+              })
               const apiCode = yield* formatCode(rawApiCode)
               const apiOutput = dbConfig.output.replace(/\.ts$/, '.api.ts')
 
@@ -419,7 +438,13 @@ const generateFromConfigCommand = Command.make(
             yield* Console.log(`Done${writable ? '' : ' (read-only)'}`)
 
             if (generateOptions.includeApi) {
-              const rawApiCode = generateApiCode({ dbInfo, schemaName, options: generateOptions })
+              const schemaFileName = basename(dbConfig.output)
+              const rawApiCode = generateApiCode({
+                dbInfo,
+                schemaName,
+                schemaFileName,
+                options: generateOptions,
+              })
               const apiCode = yield* formatCode(rawApiCode)
               const apiOutput = dbConfig.output.replace(/\.ts$/, '.api.ts')
 

@@ -43,6 +43,8 @@ export interface GenerateApiCodeOptions {
   readonly dbInfo: DatabaseInfo
   /** Name for the generated schema */
   readonly schemaName: string
+  /** The schema filename (e.g., 'artworks.gen.ts') for correct import path */
+  readonly schemaFileName: string
   /** Additional generation options */
   readonly options?: GenerateOptions
 }
@@ -885,7 +887,7 @@ export const isReadOnlyProperty = (propertyType: string): boolean =>
 /** Generates TypeScript code for a typed database API wrapper */
 // oxlint-disable-next-line eslint(func-style) -- public API
 export function generateApiCode(opts: GenerateApiCodeOptions): string {
-  const { dbInfo, schemaName, options } = opts
+  const { dbInfo, schemaName, schemaFileName, options } = opts
   const {
     includeWrite,
     typedOptions,
@@ -896,7 +898,7 @@ export function generateApiCode(opts: GenerateApiCodeOptions): string {
   } = parseGenerateOptions(options)
 
   const pascalName = toTopLevelIdentifier(schemaName)
-  const schemaFileName = `./${pascalName.charAt(0).toLowerCase()}${pascalName.slice(1)}.ts`
+  const schemaImportPath = `./${schemaFileName}`
 
   // Build the config comment (same options as schema file, always includes includeApi: true)
   const configComment = generateConfigComment({
@@ -918,7 +920,7 @@ export function generateApiCode(opts: GenerateApiCodeOptions): string {
     ``,
     `import { NotionDatabases, NotionPages, type TypedPage } from '@overeng/notion-effect-client'`,
     `import { Stream } from 'effect'`,
-    `import { ${pascalName}PageProperties${includeWrite ? `, ${pascalName}PageWrite, encode${pascalName}Write` : ''} } from '${schemaFileName}'`,
+    `import { ${pascalName}PageProperties${includeWrite ? `, ${pascalName}PageWrite, encode${pascalName}Write` : ''} } from '${schemaImportPath}'`,
     ``,
     `/** Database ID for ${dbInfo.name} */`,
     `const DATABASE_ID = '${dbInfo.id}'`,
