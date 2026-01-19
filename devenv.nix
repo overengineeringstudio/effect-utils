@@ -3,39 +3,24 @@ let
   system = pkgs.stdenv.hostPlatform.system;
   pkgsStable = import inputs.nixpkgs { inherit system; };
   pkgsUnstable = import inputs.nixpkgsUnstable { inherit system; };
-  # Build CLIs against the same nixpkgs set as the flake outputs.
-  mkBunCli = import ./nix/mk-bun-cli.nix { pkgs = pkgsStable; inherit pkgsUnstable; };
-  # Keep devenv outputs aligned with flake outputs so mono nix status is accurate.
   # TODO use proper git rev
   gitRev = "unknown";
   workspaceSrc = ./.;
   playwrightDriver = inputs.playwright-web-flake.packages.${system}.playwright-driver;
-  genie = mkBunCli {
-    name = "genie";
-    entry = "packages/@overeng/genie/src/build/mod.ts";
-    packageDir = "packages/@overeng/genie";
-    workspaceRoot = workspaceSrc;
-    typecheckTsconfig = "packages/@overeng/genie/tsconfig.json";
-    bunDepsHash = "sha256-Nqe84jfMDBea3KE3S+1BV70DiwZbnQ2StS8fSckNy5c=";
-    inherit gitRev;
+  # Import CLI builds from their canonical build.nix files to avoid duplicate hash definitions.
+  genie = import (./. + "/packages/@overeng/genie/nix/build.nix") {
+    pkgs = pkgsStable;
+    inherit pkgsUnstable gitRev;
+    src = workspaceSrc;
   };
-  dotdot = mkBunCli {
-    name = "dotdot";
-    entry = "packages/@overeng/dotdot/src/cli.ts";
-    binaryName = "dotdot";
-    packageDir = "packages/@overeng/dotdot";
-    workspaceRoot = workspaceSrc;
-    typecheckTsconfig = "packages/@overeng/dotdot/tsconfig.json";
-    smokeTestCwd = "workspace";
-    smokeTestSetup = ''
-      printf '%s\n' '{"repos":{}}' > "$smoke_test_cwd/dotdot-root.json"
-    '';
-    bunDepsHash = "sha256-TTIes/rcDph7tTsmW0L+m77TSqoq5tr5Qd01VOzQINY=";
-    inherit gitRev;
+  dotdot = import (./. + "/packages/@overeng/dotdot/nix/build.nix") {
+    pkgs = pkgsStable;
+    inherit pkgsUnstable gitRev;
+    src = workspaceSrc;
   };
   mono = import ./scripts/nix/build.nix {
     pkgs = pkgsStable;
-    inherit pkgsUnstable mkBunCli gitRev;
+    inherit pkgsUnstable gitRev;
     src = workspaceSrc;
   };
   cliBuildStamp = import ./nix/cli-build-stamp.nix { inherit pkgs; };

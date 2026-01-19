@@ -118,14 +118,19 @@ const decodeChunks = (chunks: Chunk.Chunk<Uint8Array>): string =>
     }, new Uint8Array()),
   )
 
+/** Detect stale bunDepsHash from build output */
+const detectStaleBunDeps = (stderrText: string): boolean =>
+  stderrText.includes('hash mismatch in fixed-output derivation') ||
+  stderrText.includes('ERROR: bunDepsHash is stale!')
+
 const warnIfStaleBunDeps = Effect.fn('nix.warnIfStaleBunDeps')(function* (
   stderrText: string,
   packageNames: readonly string[],
 ) {
-  if (!stderrText.includes('hash mismatch in fixed-output derivation')) {
+  if (!detectStaleBunDeps(stderrText)) {
     return
   }
-  yield* Console.error('nix reported a fixed-output hash mismatch; bunDepsHash is likely stale.')
+  yield* Console.error('bunDepsHash is stale and needs updating.')
   for (const name of packageNames) {
     yield* Console.error(`- ${name}: run mono nix hash --package ${name}`)
   }
@@ -397,12 +402,36 @@ const buildPackages = Effect.fn('nix.buildPackages')(function* (
   yield* Console.log('✓ build completed')
 })
 
+const FAKE_HASH = 'sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+
 const updateHash = Effect.fn('nix.updateHash')(function* (packageSpec: NixPackageSpec) {
   const fs = yield* FileSystem.FileSystem
   const buildNixPath = resolveBuildNixPath(packageSpec)
 
   yield* Console.log(`Updating hash for ${packageSpec.name}...`)
 
+  // Read current build.nix and save original hash
+  const buildNix = yield* fs.readFileString(buildNixPath)
+  const currentHashMatch = buildNix.match(/bunDepsHash\s*=\s*"(sha256-[A-Za-z0-9+/=]+)"/)
+  const currentHash = currentHashMatch?.[1]
+
+  // Set a fake hash to force Nix to recompute the bunDeps
+  const buildNixWithFakeHash = buildNix.replace(
+    /bunDepsHash\s*=\s*(?:"sha256-[A-Za-z0-9+/=]+"|lib\.fakeHash|pkgs\.lib\.fakeHash);/,
+    `bunDepsHash = "${FAKE_HASH}";`,
+  )
+
+  if (buildNix === buildNixWithFakeHash) {
+    yield* Console.error(`Could not find bunDepsHash pattern in ${buildNixPath}`)
+    return yield* new HashPatternNotFoundError({
+      buildNixPath,
+      message: `bunDepsHash pattern not found in ${buildNixPath}`,
+    })
+  }
+
+  yield* fs.writeFileString(buildNixPath, buildNixWithFakeHash)
+
+  // Build to get the correct hash from Nix
   const args = ['build', ...evalCoresArgs(), ...buildParallelismArgs(), packageSpec.flakeRef, '-L']
   if (packageSpec.noWriteLock) {
     args.push('--no-write-lock-file')
@@ -420,7 +449,10 @@ const updateHash = Effect.fn('nix.updateHash')(function* (packageSpec: NixPackag
     }),
   )
 
+  // If build succeeded with fake hash, something is wrong
   if (exitCode === 0) {
+    // Restore original hash since it was apparently correct
+    yield* fs.writeFileString(buildNixPath, buildNix)
     yield* Console.log(`✓ ${packageSpec.name} hash is already up to date`)
     return
   }
@@ -429,8 +461,11 @@ const updateHash = Effect.fn('nix.updateHash')(function* (packageSpec: NixPackag
 
   const hashMatch = stderrText.match(/got:\s+(sha256-[A-Za-z0-9+/=]+)/)
   if (!hashMatch) {
+    // Restore original hash since we couldn't extract new one
+    yield* fs.writeFileString(buildNixPath, buildNix)
     yield* Console.error(`Could not extract hash from nix build output for ${packageSpec.name}`)
-    yield* Console.error('Build may have failed for a different reason.')
+    yield* Console.error('Build may have failed for a different reason. Nix output:')
+    yield* Console.error(stderrText)
     return yield* new HashExtractionError({
       packageName: packageSpec.name,
       message: `Hash extraction failed for ${packageSpec.name}`,
@@ -438,21 +473,21 @@ const updateHash = Effect.fn('nix.updateHash')(function* (packageSpec: NixPackag
   }
 
   const newHash = hashMatch[1]
+
+  // Check if hash actually changed
+  if (newHash === currentHash) {
+    yield* fs.writeFileString(buildNixPath, buildNix)
+    yield* Console.log(`✓ ${packageSpec.name} hash is already up to date`)
+    return
+  }
+
   yield* Console.log(`Found new hash: ${newHash}`)
 
-  const buildNix = yield* fs.readFileString(buildNixPath)
+  // Update build.nix with the new hash
   const updatedBuildNix = buildNix.replace(
     /bunDepsHash\s*=\s*(?:"sha256-[A-Za-z0-9+/=]+"|lib\.fakeHash|pkgs\.lib\.fakeHash);/,
     `bunDepsHash = "${newHash}";`,
   )
-
-  if (buildNix === updatedBuildNix) {
-    yield* Console.error(`Could not find bunDepsHash pattern in ${buildNixPath}`)
-    return yield* new HashPatternNotFoundError({
-      buildNixPath,
-      message: `bunDepsHash pattern not found in ${buildNixPath}`,
-    })
-  }
 
   yield* fs.writeFileString(buildNixPath, updatedBuildNix)
   yield* Console.log(`✓ Updated ${buildNixPath}`)
@@ -511,6 +546,11 @@ export const nixCommand = (config: NixCommandConfig) => {
     Options.withDefault(false),
   )
 
+  const autoFixOption = Options.boolean('auto-fix').pipe(
+    Options.withDescription('Automatically update bunDepsHash if stale'),
+    Options.withDefault(false),
+  )
+
   const getPackages = (pkg: string): NixPackageSpec[] =>
     pkg === 'all' ? [...config.packages] : [resolvePackageSpec({ packageMap, name: pkg })]
 
@@ -527,15 +567,38 @@ export const nixCommand = (config: NixCommandConfig) => {
 
   const buildSubcommand = Command.make(
     'build',
-    { package: packageOption, reload: reloadOption },
-    ({ package: pkg, reload }) =>
+    { package: packageOption, reload: reloadOption, autoFix: autoFixOption },
+    ({ package: pkg, reload, autoFix }) =>
       Effect.gen(function* () {
         const packages = getPackages(pkg)
 
-        if (packages.length > 1) {
-          yield* buildPackages(packages)
-        } else if (packages[0]) {
-          yield* buildPackage(packages[0])
+        const doBuild = Effect.gen(function* () {
+          if (packages.length > 1) {
+            yield* buildPackages(packages)
+          } else if (packages[0]) {
+            yield* buildPackage(packages[0])
+          }
+        })
+
+        const buildResult = yield* Effect.either(doBuild)
+
+        if (buildResult._tag === 'Left') {
+          const error = buildResult.left
+          // Check if this is a build error and auto-fix is enabled
+          if (autoFix && error._tag === 'CommandError' && error.message === 'nix build failed') {
+            const hashableSpecs = packages.filter((p) => p.buildNixPath !== undefined)
+            if (hashableSpecs.length > 0) {
+              yield* Console.log('\n--auto-fix enabled, updating hashes and retrying...')
+              for (const spec of hashableSpecs) {
+                yield* updateHash(spec)
+              }
+              // updateHash already verifies the build, so we're done
+            } else {
+              return yield* error
+            }
+          } else {
+            return yield* error
+          }
         }
 
         if (reload) {
