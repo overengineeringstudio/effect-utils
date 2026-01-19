@@ -364,16 +364,18 @@ const snapshotMutableState = (tasks: Map<string, MutableTaskState>): TaskSystemS
  * - No circular dependencies
  * - All dependencies exist
  */
-const buildTaskGraph = Effect.fn('TaskGraph.buildTaskGraph')(function* <TId extends string>(
-  tasks: ReadonlyArray<TaskDef<TId, unknown, unknown, unknown>>,
-) {
+const buildTaskGraph = Effect.fn('TaskGraph.buildTaskGraph')(function* <
+  TId extends string,
+  E,
+  R,
+>(tasks: ReadonlyArray<TaskDef<TId, unknown, E, R>>) {
   const idToIndex = new Map<TId, number>()
 
   // Collect validation errors during graph building
   let validationError: UnknownDependencyError | undefined
 
   // Build graph with Effect.Graph
-  const graph = Graph.directed<TaskDef<TId, unknown, unknown, unknown>, void>((mutable) => {
+  const graph = Graph.directed<TaskDef<TId, unknown, E, R>, void>((mutable) => {
     // Add all tasks as nodes
     for (const task of tasks) {
       const nodeIndex = Graph.addNode(mutable, task)
@@ -431,7 +433,7 @@ const executeTask = <TId extends string, A, E, R>({
 }: {
   task: TaskDef<TId, A, E, R>
   emit: (event: TaskEvent<TId>) => Effect.Effect<void>
-}): Effect.Effect<void, unknown, R | FileSystem.FileSystem> => {
+}): Effect.Effect<void, E, R | FileSystem.FileSystem> => {
   const executeOnce = Effect.gen(function* () {
     const startTime = Date.now()
 
@@ -454,7 +456,7 @@ const executeTask = <TId extends string, A, E, R>({
 
     // For command tasks (no effect), just run the stream directly
     // For effect tasks, fork the stream and run effect separately
-    let exit: Exit.Exit<unknown, unknown>
+    let exit: Exit.Exit<A, E>
 
     if (task.effect) {
       // Effect task: fork stream and run effect
@@ -466,9 +468,9 @@ const executeTask = <TId extends string, A, E, R>({
       exit = yield* Effect.exit(task.effect)
       yield* Fiber.await(eventStreamFiber)
     } else {
-      // Command task: run stream and capture exit
+      // Command task: run stream and capture exit (A = void for command tasks)
       // Process events as they arrive (even if stream fails)
-      exit = yield* task.eventStream().pipe(
+      exit = (yield* task.eventStream().pipe(
         Stream.runForEach((event) => {
           if (event !== undefined) {
             return emitWithCapture(event)
@@ -476,7 +478,7 @@ const executeTask = <TId extends string, A, E, R>({
           return Effect.void
         }),
         Effect.exit,
-      )
+      )) as Exit.Exit<A, E>
     }
 
     const endTime = Date.now()
@@ -524,7 +526,7 @@ const executeTask = <TId extends string, A, E, R>({
    */
   const executeWithRetry: (
     attempt: number,
-  ) => Effect.Effect<void, unknown, R | FileSystem.FileSystem> = Effect.fnUntraced(
+  ) => Effect.Effect<void, E, R | FileSystem.FileSystem> = Effect.fnUntraced(
     function* (attempt: number) {
       const exit = yield* Effect.exit(executeOnce)
 
@@ -582,11 +584,11 @@ const executeTask = <TId extends string, A, E, R>({
  * This eliminates the SubscriptionRef contention that caused 96% overhead
  * when 20+ task fibers competed to update shared state.
  */
-export const runTaskGraph = <TId extends string, E, R>({
+export const runTaskGraph = <TTask extends TaskDef<string, unknown, unknown, unknown>>({
   tasks,
   options,
 }: {
-  tasks: ReadonlyArray<TaskDef<TId, unknown, E, R>>
+  tasks: ReadonlyArray<TTask>
   options?:
     | {
         onStateChange?: (state: TaskSystemState) => Effect.Effect<void>
@@ -599,14 +601,20 @@ export const runTaskGraph = <TId extends string, E, R>({
     state: TaskSystemState
     successCount: number
     failureCount: number
-    failedTaskIds: TId[]
+    failedTaskIds: TTask['id'][]
   },
   Error,
-  R | FileSystem.FileSystem
+  (TTask extends TaskDef<string, unknown, unknown, infer R> ? R : never) | FileSystem.FileSystem
 > => {
+  type TId = TTask['id']
+  type E = TTask extends TaskDef<string, unknown, infer E, unknown> ? E : never
+  type R = TTask extends TaskDef<string, unknown, unknown, infer R> ? R : never
+
   const impl = Effect.gen(function* () {
     // Build dependency graph
-    const { graph, idToIndex: _idToIndex } = yield* buildTaskGraph(tasks)
+    const { graph, idToIndex: _idToIndex } = yield* buildTaskGraph<TId, E, R>(
+      tasks as ReadonlyArray<TaskDef<TId, unknown, E, R>>,
+    )
 
     // =========================================================================
     // Queue-based event collection (eliminates SubscriptionRef contention)
@@ -787,11 +795,11 @@ export const runTaskGraph = <TId extends string, E, R>({
  * Throws TaskExecutionError with details of failed tasks.
  */
 export const runTaskGraphOrFail = Effect.fn('TaskGraph/runTaskGraphOrFail')(
-  <TId extends string, E, R>({
+  <TTask extends TaskDef<string, unknown, unknown, unknown>>({
     tasks,
     options,
   }: {
-    tasks: ReadonlyArray<TaskDef<TId, unknown, E, R>>
+    tasks: ReadonlyArray<TTask>
     options?:
       | {
           onStateChange?: (state: TaskSystemState) => Effect.Effect<void>
@@ -804,10 +812,10 @@ export const runTaskGraphOrFail = Effect.fn('TaskGraph/runTaskGraphOrFail')(
       state: TaskSystemState
       successCount: number
       failureCount: number
-      failedTaskIds: TId[]
+      failedTaskIds: TTask['id'][]
     },
     Error | TaskExecutionError,
-    R | FileSystem.FileSystem
+    (TTask extends TaskDef<string, unknown, unknown, infer R> ? R : never) | FileSystem.FileSystem
   > =>
     Effect.gen(function* () {
       const result = yield* runTaskGraph({ tasks, options })
