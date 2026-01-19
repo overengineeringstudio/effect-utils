@@ -8,7 +8,7 @@ import { Chunk, Console, Effect, Logger, LogLevel, Schema, Stream } from 'effect
 import { shouldNeverHappen } from '@overeng/utils'
 import { cmdText, CurrentWorkingDirectory } from '@overeng/utils/node'
 
-import type { MonoCommand } from '../cli.ts'
+
 import { CommandError } from '../errors.ts'
 import { runCommand } from '../utils.ts'
 
@@ -489,7 +489,7 @@ const resolvePackageSpec = ({
 }
 
 /** Create a nix command for managing Nix packages in the workspace */
-export const nixCommand = (config: NixCommandConfig): MonoCommand => {
+export const nixCommand = (config: NixCommandConfig) => {
   const packageMap = toPackageMap(config.packages)
   const packageNames = resolvePackageNames(config.packages)
   const hashablePackages = config.packages.filter((pkg) => pkg.buildNixPath !== undefined)

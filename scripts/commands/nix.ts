@@ -1,6 +1,5 @@
-import { nixCommand as createNixCommand } from '@overeng/mono'
-
-const nixPackages = [
+/** Nix packages managed in this workspace */
+export const nixPackages = [
   {
     name: 'genie',
     flakeRef: '.#genie',
@@ -22,6 +21,3 @@ const nixPackages = [
     buildNixPath: 'scripts/nix/build.nix',
   },
 ] as const
-
-/** Nix command for managing workspace Nix packages */
-export const nixCommand = createNixCommand({ packages: nixPackages })

@@ -45,7 +45,8 @@
     "overeng/exports-first": "warn",
     "overeng/jsdoc-require-exports": "warn",
     "typescript/consistent-type-imports": "warn",
-    "typescript/consistent-type-definitions": "off"
+    "typescript/consistent-type-definitions": "off",
+    "typescript/no-deprecated": "error"
   },
   "overrides": [
     {

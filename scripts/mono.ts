@@ -7,13 +7,14 @@ import {
   cleanCommand,
   installCommand,
   lintCommand,
+  nixCommand,
   runMonoCli,
   testCommand,
   tsCommand,
 } from '@overeng/mono'
 import { resolveCliVersion } from '@overeng/utils/node/cli-version'
 
-import { contextCommand, nixCommand } from './commands/index.js'
+import { contextCommand, nixPackages } from './commands/index.js'
 
 /** Path to oxc configuration files used for linting and formatting */
 const oxcConfig = { configPath: 'packages/@overeng/oxc-config' }
@@ -50,7 +51,7 @@ runMonoCli({
     installCommand(installConfig),
     checkCommandWithTaskSystem({ oxcConfig, genieConfig }),
     genieCommand,
-    nixCommand,
+    nixCommand({ packages: nixPackages }),
     contextCommand,
   ],
 })

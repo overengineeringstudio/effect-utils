@@ -65,7 +65,7 @@ export { ciGroup, ciGroupEnd, IS_CI, runCommand, startProcess } from './utils.ts
 // =============================================================================
 
 export { runMonoCli } from './cli.ts'
-export type { MonoCliConfig, MonoCommand, StandardMonoContext } from './cli.ts'
+export type { MonoCliConfig, StandardMonoContext } from './cli.ts'
 
 // =============================================================================
 // Task Primitives

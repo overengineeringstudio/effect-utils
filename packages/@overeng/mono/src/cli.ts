@@ -35,14 +35,7 @@ const shouldSuggestLintFix = (args: readonly string[]): boolean => {
   return argSet.has('lint') && !argSet.has('--fix')
 }
 
-/**
- * Command type for mono CLI subcommands.
- *
- * Uses `any` for all type parameters following @effect/cli's approach in
- * `withSubcommands`. This avoids TypeScript's invariance issues with Command's
- * type parameters. Type safety is ensured by the layer provided in `runMonoCli`.
- */
-export type MonoCommand = Command.Command<any, any, any, any>
+
 
 // =============================================================================
 // CLI Runner
@@ -70,12 +63,12 @@ export type MonoCommand = Command.Command<any, any, any, any>
  * })
  * ```
  */
-export const runMonoCli = (
+export const runMonoCli = <const TCmds extends readonly [Command.Command<any, any, any, any>, ...Command.Command<any, any, any, any>[]]>(
   config: MonoCliConfig & {
-    commands: readonly [MonoCommand, ...MonoCommand[]]
+    commands: TCmds
   },
 ): void => {
-  const shouldShowLintFixHint = shouldSuggestLintFix(process.argv.slice(2))
+   const shouldShowLintFixHint = shouldSuggestLintFix(process.argv.slice(2))
 
   const renderFailure = (failure: unknown): string => {
     if (failure instanceof CommandError) {

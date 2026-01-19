@@ -45,6 +45,11 @@ export default oxlintConfig({
 
     // Don't enforce type vs interface - both are fine
     'typescript/consistent-type-definitions': 'off',
+
+    // Disallow usage of deprecated APIs - always remove cleanly instead
+    // Exception: published libraries may use @deprecated to mark APIs for removal
+    // https://oxc.rs/docs/guide/usage/linter/rules/typescript/no-deprecated
+    'typescript/no-deprecated': 'error',
   },
   overrides: [
     // Allow re-exports in mod.ts entry point files
