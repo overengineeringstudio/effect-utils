@@ -3,6 +3,8 @@ let
   system = pkgs.stdenv.hostPlatform.system;
   pkgsStable = import inputs.nixpkgs { inherit system; };
   pkgsUnstable = import inputs.nixpkgsUnstable { inherit system; };
+  # Build CLIs against the same nixpkgs set as the flake outputs.
+  # Keep devenv outputs aligned with flake outputs so mono nix status is accurate.
   # TODO use proper git rev
   gitRev = "unknown";
   workspaceSrc = ./.;
@@ -23,7 +25,7 @@ let
     inherit pkgsUnstable gitRev;
     src = workspaceSrc;
   };
-  cliBuildStamp = import ./nix/cli-build-stamp.nix { inherit pkgs; };
+  cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
   # Use npm oxlint with NAPI bindings to enable JavaScript plugin support
   oxlintNpm = import ./nix/oxlint-npm.nix {
     inherit pkgs;

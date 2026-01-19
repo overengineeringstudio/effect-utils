@@ -25,6 +25,7 @@ bash effect-utils/tests/mk-bun-cli/run.sh
 - `--skip-effect-utils` - Skip building effect-utils CLIs
 - `--skip-peer` - Skip building the peer fixture
 - `--skip-devenv` - Skip devenv validation
+- `--skip-direnv-check` - Skip direnv staging validation
 - `--link-effect-utils` - Symlink effect-utils into the temp workspace
 
 ## Notes

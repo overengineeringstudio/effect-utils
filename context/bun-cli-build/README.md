@@ -6,7 +6,7 @@ inside it.
 
 ## Builder
 
-- Path: `nix/mk-bun-cli.nix`
+- Path: `nix/workspace-tools/lib/mk-bun-cli.nix`
 - Inputs: `pkgs`, `pkgsUnstable`
 - Versioning: reads `packageJsonPath` for base version, appends `+<gitRev>`
 - Typecheck: runs `tsc --project <tsconfig> --noEmit` when `typecheck = true`
@@ -91,7 +91,7 @@ stamp in the current shell.
 
 ```nix
 let
-  mkBunCli = import ../../../../nix/mk-bun-cli.nix {
+  mkBunCli = import ../../../../nix/workspace-tools/lib/mk-bun-cli.nix {
     inherit pkgs pkgsUnstable;
   };
 in
@@ -113,7 +113,7 @@ parent’s commit:
 
 ```nix
 let
-  mkBunCli = import "${effect-utils}/nix/mk-bun-cli.nix" {
+  mkBunCli = import "${effect-utils}/nix/workspace-tools/lib/mk-bun-cli.nix" {
     inherit pkgs pkgsUnstable;
   };
   gitRev = self.sourceInfo.dirtyShortRev or self.sourceInfo.shortRev or self.sourceInfo.rev or "unknown";

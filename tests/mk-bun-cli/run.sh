@@ -23,6 +23,7 @@ REFRESH_LOCKS=0
 SKIP_EFFECT_UTILS=0
 SKIP_PEER=0
 SKIP_DEVENV=0
+SKIP_DIRENV_CHECK=0
 LINK_EFFECT_UTILS=0
 
 usage() {
@@ -37,6 +38,7 @@ Options:
   --skip-effect-utils  Skip building effect-utils CLIs
   --skip-peer          Skip building the peer fixture
   --skip-devenv        Skip devenv validation
+  --skip-direnv-check  Skip direnv staging validation
   --link-effect-utils  Symlink effect-utils into the workspace
   --help               Show this help
 USAGE
@@ -74,6 +76,10 @@ while [ $# -gt 0 ]; do
       ;;
     --skip-devenv)
       SKIP_DEVENV=1
+      shift
+      ;;
+    --skip-direnv-check)
+      SKIP_DIRENV_CHECK=1
       shift
       ;;
     --link-effect-utils)
@@ -193,6 +199,31 @@ init_repo "$WORKSPACE/monorepo"
 init_repo "$WORKSPACE/app"
 
 print_timing "workspace setup" "$setup_start"
+
+if [ "$SKIP_DIRENV_CHECK" -eq 0 ]; then
+  if ! command -v nix >/dev/null 2>&1; then
+    echo "nix is required for the direnv staging check" >&2
+    exit 1
+  fi
+  direnv_check_start="$(now)"
+  direnv_script="$(nix eval --raw --no-write-lock-file "$WORKSPACE/effect-utils#direnv.autoRebuildClis")"
+  cli_workspace="$WORKSPACE/effect-utils/.direnv/cli-workspace-test"
+  rm -rf "$cli_workspace"
+  source "$direnv_script"
+  NIX_CLI_DIRTY_PACKAGES="genie-dirty dotdot-dirty mono-dirty" \
+    NIX_CLI_DIRTY_WORKSPACE="$cli_workspace" \
+    prepare_cli_workspace "$WORKSPACE/effect-utils" >/dev/null
+  if [ ! -f "$cli_workspace/packages/@overeng/dotdot/src/lib/result-utils.ts" ]; then
+    echo "direnv staging check failed: missing result-utils.ts in staged workspace" >&2
+    exit 1
+  fi
+  rm -rf "$cli_workspace"
+  unset -f auto_rebuild_nix_clis
+  unset -f auto_rebuild_nix_clis_for_workspace
+  unset -f prepare_cli_workspace
+  unset -f prepare_cli_flake
+  print_timing "direnv staging check" "$direnv_check_start"
+fi
 
 if [ "$REFRESH_LOCKS" -eq 1 ]; then
   if ! command -v bun >/dev/null 2>&1; then

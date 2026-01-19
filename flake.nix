@@ -19,8 +19,8 @@
       let
         pkgs = import nixpkgs { inherit system; };
         pkgsUnstable = import nixpkgsUnstable { inherit system; };
-        mkBunCli = import ./nix/mk-bun-cli.nix { inherit pkgs pkgsUnstable; };
-        cliBuildStamp = import ./nix/cli-build-stamp.nix { inherit pkgs; };
+        mkBunCli = import ./nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs pkgsUnstable; };
+        cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
         rootPath = self.outPath;
         cliPackages = {
           genie = import (rootPath + "/packages/@overeng/genie/nix/build.nix") {
@@ -72,23 +72,23 @@
         };
 
         apps.update-bun-hashes = flake-utils.lib.mkApp {
-          drv = import ./nix/update-bun-hashes.nix { inherit pkgs; };
+          drv = import ./nix/workspace-tools/lib/update-bun-hashes.nix { inherit pkgs; };
         };
       }
     ) // {
       # Direnv helper script (eval-time store path; no build required).
-      direnv.autoRebuildClis = import ./nix/direnv/auto-rebuild-clis.nix;
-      direnv.peerEnvrc = import ./nix/direnv/peer-envrc.nix;
-      direnv.peerEnvrcEffectUtils = import ./nix/direnv/peer-envrc-effect-utils.nix;
-      direnv.effectUtilsEnvrc = import ./nix/direnv/effect-utils-envrc.nix;
+      direnv.autoRebuildClis = import ./nix/workspace-tools/env/direnv/auto-rebuild-clis.nix;
+      direnv.peerEnvrc = import ./nix/workspace-tools/env/direnv/peer-envrc.nix;
+      direnv.peerEnvrcEffectUtils = import ./nix/workspace-tools/env/direnv/peer-envrc-effect-utils.nix;
+      direnv.effectUtilsEnvrc = import ./nix/workspace-tools/env/direnv/effect-utils-envrc.nix;
 
       # Builder function for external repos to create their own Bun CLIs
       lib.mkBunCli = { pkgs, pkgsUnstable }:
-        import ./nix/mk-bun-cli.nix { inherit pkgs pkgsUnstable; };
+        import ./nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs pkgsUnstable; };
 
       # Shell helper for runtime CLI build stamps.
       lib.cliBuildStamp = { pkgs, workspaceRoot ? null }:
-        import ./nix/cli-build-stamp.nix { inherit pkgs workspaceRoot; };
+        import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs workspaceRoot; };
 
       # Convenience helper for bundling the common genie/dotdot CLIs.
       lib.mkCliPackages = {

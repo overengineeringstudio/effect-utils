@@ -22,7 +22,7 @@
       let
         pkgs = import nixpkgs { inherit system; };
         pkgsUnstable = import nixpkgsUnstable { inherit system; };
-        mkBunCli = import "${effect-utils}/nix/mk-bun-cli.nix" { inherit pkgs pkgsUnstable; };
+        mkBunCli = import "${effect-utils}/nix/workspace-tools/lib/mk-bun-cli.nix" { inherit pkgs pkgsUnstable; };
 
         appCli = mkBunCli {
           name = "app-cli";

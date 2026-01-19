@@ -1,7 +1,7 @@
 { pkgs, inputs, ... }:
 let
   pkgsUnstable = pkgs;
-  mkBunCli = import "${inputs.effect-utils}/nix/mk-bun-cli.nix" { inherit pkgs pkgsUnstable; };
+  mkBunCli = import "${inputs.effect-utils}/nix/workspace-tools/lib/mk-bun-cli.nix" { inherit pkgs pkgsUnstable; };
 
   appCli = mkBunCli {
     name = "app-cli";

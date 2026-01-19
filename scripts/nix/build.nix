@@ -6,7 +6,7 @@ let
   mkBunCliResolved =
     if mkBunCli != null
     then mkBunCli
-    else import ../../nix/mk-bun-cli.nix { inherit pkgs pkgsUnstable; };
+    else import ../../nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs pkgsUnstable; };
 in
 mkBunCliResolved {
   name = "mono";

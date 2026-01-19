@@ -57,6 +57,8 @@ if command -v nix-shell &> /dev/null
 then
   export WORKSPACE_ROOT=$(pwd)
   use flake . --override-input effect-utils path:../effect-utils
+  # Load effect-utils CLI auto-rebuild helper (fresh CLIs + dirty changes; see ./devenv-setup.md).
+  source "$(nix eval --raw --no-write-lock-file "$WORKSPACE_ROOT/../effect-utils#direnv.peerEnvrcEffectUtils")"
 fi
 ```
 

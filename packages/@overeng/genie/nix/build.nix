@@ -3,7 +3,7 @@
 { pkgs, pkgsUnstable, src, gitRev ? "unknown", dirty ? false }:
 
 let
-  mkBunCli = import ../../../../nix/mk-bun-cli.nix { inherit pkgs pkgsUnstable; };
+  mkBunCli = import ../../../../nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs pkgsUnstable; };
 in
 mkBunCli {
   name = "genie";

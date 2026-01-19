@@ -90,12 +90,14 @@ in
 }
 ```
 
-Create `.envrc`:
+Create `.envrc` (peer repo, dotdot sibling layout):
 
 ```bash
 export WORKSPACE_ROOT=$(pwd)
 eval "$(devenv direnvrc)"
 use devenv
+# Load effect-utils CLI auto-rebuild helper (fresh CLIs + dirty changes; see ./devenv-setup.md).
+source "$(nix eval --raw --no-write-lock-file "$WORKSPACE_ROOT/../effect-utils#direnv.peerEnvrcEffectUtils")"
 ```
 
 ### 5. Create dotdot config

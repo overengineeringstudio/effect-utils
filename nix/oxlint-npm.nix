@@ -40,6 +40,7 @@
 # =============================================================================
 { pkgs, bun }:
 let
+  # https://github.com/oxc-project/oxc/releases for latest version
   version = "1.39.0";
 
   # Platform-specific package mapping
