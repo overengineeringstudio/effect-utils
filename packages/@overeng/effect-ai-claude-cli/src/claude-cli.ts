@@ -7,7 +7,7 @@
 import { AiError, LanguageModel, type Prompt, type Response } from '@effect/ai'
 import { Command, CommandExecutor } from '@effect/platform'
 import type { PlatformError } from '@effect/platform/Error'
-import { Effect, Exit, JSONSchema, Layer, Ref, Scope, Stream } from 'effect'
+import { Effect, Exit, flow, JSONSchema, Layer, Ref, Scope, Stream } from 'effect'
 
 import {
   ClaudeCliAuthError,
@@ -140,6 +140,9 @@ const toAiError = (error: ClaudeCliError): AiError.AiError =>
     description: error.message,
     cause: error,
   })
+
+/** Compose wrapPlatformError and toAiError for use in mapError */
+const platformToAiError = flow(wrapPlatformError, toAiError)
 
 // ============================================================================
 // Exports
@@ -351,13 +354,13 @@ export const make = Effect.fnUntraced(function* (options: ClaudeCliOptions = {})
 
           const process = yield* executor.start(command).pipe(
             Effect.provideService(Scope.Scope, scope),
-            Effect.mapError((e) => toAiError(wrapPlatformError(e))),
+            Effect.mapError(platformToAiError),
           )
 
           // Write prompt to stdin
           yield* Stream.make(new TextEncoder().encode(promptText)).pipe(
             Stream.run(process.stdin),
-            Effect.mapError((e) => toAiError(wrapPlatformError(e))),
+            Effect.mapError(platformToAiError),
           )
 
           const textId = 'text-0'
@@ -367,7 +370,7 @@ export const make = Effect.fnUntraced(function* (options: ClaudeCliOptions = {})
               Stream.decodeText(),
               Stream.splitLines,
               Stream.filter((line) => line.trim().length > 0),
-              Stream.mapError((e) => toAiError(wrapPlatformError(e))),
+              Stream.mapError(platformToAiError),
               Stream.mapEffect((line) =>
                 Effect.gen(function* () {
                   const parsed = safeParseJson<{

@@ -1,4 +1,5 @@
 import type { Schema as S } from 'effect'
+import { pipe } from 'effect'
 import React, { createContext, useContext, useMemo } from 'react'
 import type { FC, ReactNode } from 'react'
 
@@ -115,7 +116,7 @@ const createContextValue = (
     rootSchema: effectiveRootSchema,
     registry,
     getAnnotations: () => (schema ? getAnnotations(schema) : {}),
-    getDisplayName: () => (schema ? getDisplayName(getAnnotations(schema)) : undefined),
+    getDisplayName: () => (schema ? pipe(schema, getAnnotations, getDisplayName) : undefined),
     getDescription: () => (schema ? getAnnotations(schema).description : undefined),
     formatValue: (value: unknown) =>
       schema ? formatWithPretty(value, getAnnotations(schema)) : undefined,

@@ -103,11 +103,13 @@ describe('genie cli', () => {
       function* () {
         yield* withTestEnv((env) =>
           Effect.gen(function* () {
+            const packageJsonContent = yield* Schema.encode(
+              Schema.parseJson(Schema.Unknown, { space: 2 }),
+            )({ name: 'genie-cli-test', private: true })
+
             yield* env.writeFile({
               path: 'package.json',
-              content: Schema.encodeSync(Schema.parseJson(Schema.Unknown, { space: 2 }))(
-                { name: 'genie-cli-test', private: true },
-              ),
+              content: packageJsonContent,
             })
 
             yield* env.writeFile({
