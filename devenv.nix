@@ -16,7 +16,7 @@ let
     packageDir = "packages/@overeng/genie";
     workspaceRoot = workspaceSrc;
     typecheckTsconfig = "packages/@overeng/genie/tsconfig.json";
-    bunDepsHash = "sha256-o3JZv9lq3IXroGSmvQK7yBePEHVWxU/ZwC3lrEcr3lo=";
+    bunDepsHash = "sha256-WKLVXT7HgS9RUZJ1apuYgzWJJuwUou49R417iK2gQCc=";
     inherit gitRev;
   };
   dotdot = mkBunCli {
@@ -30,7 +30,7 @@ let
     smokeTestSetup = ''
       printf '%s\n' '{"repos":{}}' > "$smoke_test_cwd/dotdot-root.json"
     '';
-    bunDepsHash = "sha256-lAvLdjaEG2NRLyP7Y12w7Arlua5rkMnrVJEeQXgM3Ms=";
+    bunDepsHash = "sha256-x4/xady1TuC1oYtYh/I1YDm7MBb60ld2vPLbZiBUrNQ=";
     inherit gitRev;
   };
   mono = import ./scripts/nix/build.nix {
