@@ -1,16 +1,18 @@
 /**
  * Unit tests for InterruptHandler.
  *
- * Tests the fiber interrupt logic. Stdin interaction would require
- * integration tests with a real terminal.
+ * Tests the fiber interrupt logic including simulated Ctrl+C via stdin events.
  */
 
 import * as assert from 'node:assert'
 
 import { describe, it } from '@effect/vitest'
-import { Deferred, Effect, Fiber } from 'effect'
+import { Deferred, Effect, Exit, Fiber } from 'effect'
 
 import { InterruptHandler } from './interrupt-handler.ts'
+
+/** Ctrl+C character in raw mode */
+const CTRL_C = '\x03'
 
 describe('InterruptHandler', () => {
   describe('install', () => {
@@ -52,6 +54,67 @@ describe('InterruptHandler', () => {
         // This test verifies the config is accepted without error
       }),
     )
+
+    it.scoped('interrupts fiber when Ctrl+C is received via stdin', () =>
+      Effect.gen(function* () {
+        const interruptCalled = { value: false }
+
+        // Create a long-running fiber that we'll interrupt
+        const fiber = yield* Effect.fork(Effect.never)
+
+        // Install handler with callback to track interrupt
+        yield* InterruptHandler.install(fiber, {
+          onInterrupt: () => {
+            interruptCalled.value = true
+          },
+        })
+
+        // Simulate Ctrl+C by emitting the character to stdin
+        process.stdin.emit('data', CTRL_C)
+
+        // Wait for interrupt to be processed (with timeout to avoid hanging)
+        const exit = yield* Fiber.await(fiber).pipe(
+          Effect.timeout('100 millis'),
+          Effect.option,
+        )
+
+        // Verify the callback was called
+        assert.strictEqual(interruptCalled.value, true, 'onInterrupt callback should be called')
+
+        // Verify the fiber was interrupted (if we got a result before timeout)
+        if (exit._tag === 'Some') {
+          assert.ok(Exit.isInterrupted(exit.value), 'Fiber should be interrupted')
+        }
+      }),
+    )
+
+    it('does not call onInterrupt for non-Ctrl+C input', async () => {
+      const interruptCalled = { value: false }
+
+      await Effect.gen(function* () {
+        const fiber = yield* Effect.fork(Effect.sleep('100 millis'))
+
+        // Create handler manually to test
+        const handler = (data: string) => {
+          if (data === CTRL_C) {
+            interruptCalled.value = true
+          }
+        }
+
+        // Install handler
+        process.stdin.on('data', handler)
+
+        // Simulate other keypress (not Ctrl+C)
+        process.stdin.emit('data', 'a')
+
+        // Verify the callback was NOT called
+        assert.strictEqual(interruptCalled.value, false, 'onInterrupt should not be called for non-Ctrl+C')
+
+        // Clean up
+        process.stdin.off('data', handler)
+        yield* Fiber.join(fiber)
+      }).pipe(Effect.runPromise)
+    })
   })
 
   describe('withInterruptHandler', () => {

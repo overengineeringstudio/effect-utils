@@ -12,7 +12,7 @@
  */
 
 import type { Scope } from 'effect'
-import { Effect, Fiber } from 'effect'
+import { Effect, Fiber, Runtime } from 'effect'
 
 /** Ctrl+C character in raw mode */
 const CTRL_C = '\x03'
@@ -45,12 +45,16 @@ export const install = Effect.fn('InterruptHandler/install')(
     config: InterruptHandlerConfig = {},
   ): Effect.Effect<void, never, Scope.Scope> =>
     Effect.gen(function* () {
+      // Capture the current runtime to use in the callback
+      const runtime = yield* Effect.runtime<never>()
+      const runFork = Runtime.runFork(runtime)
+
       // Create handler that interrupts fiber on Ctrl+C
       const handler = (data: string) => {
         if (data === CTRL_C) {
           config.onInterrupt?.()
-          // Use runFork to fire-and-forget the interrupt
-          Effect.runFork(Fiber.interrupt(fiber))
+          // Fire-and-forget the interrupt using the captured runtime
+          runFork(Fiber.interrupt(fiber))
         }
       }
 
