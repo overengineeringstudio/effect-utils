@@ -305,6 +305,9 @@ let
           exit 1
         fi
 
+        # Store bun.lock hash BEFORE bun install so we can detect staleness later
+        sha256sum "$package_path/bun.lock" | cut -d' ' -f1 > "$PWD/.source-bun-lock-hash"
+
         bun_install_checked "$package_path" "${name}"
 
         ${lib.optionalString (localDependencies != []) localDependenciesInstallScript}
@@ -313,8 +316,12 @@ let
       installPhase = ''
         set -euo pipefail
         package_path="$PWD/workspace/${packageDir}"
+        mkdir -p "$out"
+
+        # Copy the source bun.lock hash for staleness detection
+        cp "$PWD/.source-bun-lock-hash" "$out/.source-bun-lock-hash"
+
         if [ -d "$package_path/node_modules" ]; then
-          mkdir -p "$out"
           cp -R -L "$package_path/node_modules" "$out/node_modules"
         fi
 
@@ -409,6 +416,25 @@ pkgs.stdenv.mkDerivation {
 
     substituteInPlace "$workspace/${entry}" \
       --replace-fail "const buildVersion = '__CLI_VERSION__'" "const buildVersion = '${fullVersion}'"
+
+    # Check for stale bunDepsHash before expensive operations
+    if [ -f "${bunDeps}/.source-bun-lock-hash" ]; then
+      current_lock_hash=$(sha256sum "$package_path/bun.lock" | cut -d' ' -f1)
+      stored_lock_hash=$(cat "${bunDeps}/.source-bun-lock-hash")
+      if [ "$current_lock_hash" != "$stored_lock_hash" ]; then
+        echo "" >&2
+        echo "┌──────────────────────────────────────────────────────────────────┐" >&2
+        echo "│  ERROR: bunDepsHash is stale!                                    │" >&2
+        echo "│                                                                  │" >&2
+        echo "│  bun.lock has changed since the dependency cache was built.     │" >&2
+        echo "│  This can cause mysterious build failures with wrong versions.  │" >&2
+        echo "│                                                                  │" >&2
+        echo "│  Run: mono nix hash --package ${name}                            │" >&2
+        echo "└──────────────────────────────────────────────────────────────────┘" >&2
+        echo "" >&2
+        exit 1
+      fi
+    fi
 
     ${lib.optionalString typecheckEnabled ''
       tsconfig_path="$workspace/${typecheckTsconfigChecked}"
