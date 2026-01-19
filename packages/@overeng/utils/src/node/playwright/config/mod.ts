@@ -45,6 +45,9 @@ export interface PlaywrightConfigOptions {
   /** Patterns to ignore (merged with default ignores: dist, node_modules) */
   testIgnore?: string | string[]
 
+  /** Override Playwright projects (e.g. to isolate suites). */
+  projects?: PlaywrightTestConfig['projects']
+
   /** Web server config for Vite dev server */
   webServer: WebServerConfig
 
@@ -98,6 +101,7 @@ export const createPlaywrightConfig = async (
     testIgnore: extraIgnore,
     timeout = 60_000,
     workers = 1,
+    projects,
     webServer: webServerConfig,
   } = options
 
@@ -141,6 +145,8 @@ export const createPlaywrightConfig = async (
     ...(process.env.CI ? { maxFailures: 1 } : {}),
     workers,
     fullyParallel: false,
+
+    ...(projects ? { projects } : {}),
 
     use: {
       baseURL: url,
