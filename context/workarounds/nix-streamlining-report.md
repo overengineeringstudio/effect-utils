@@ -106,6 +106,23 @@ fi
 echo "mk-bun-cli: bunDepsHash may be stale; update it (mono nix hash --package ${name})" >&2
 ```
 
+- **Stale bunDepsHash detection**: the bunDeps derivation stores a sha256 hash
+  of `bun.lock` at build time. The main derivation compares this against the
+  current `bun.lock` before running tsc/bun build. If they differ, the build
+  fails fast with an actionable error instead of cryptic downstream failures
+  (like TS41 messages or missing packages).
+
+```sh
+# In bunDeps: store hash before bun install
+sha256sum "$package_path/bun.lock" | cut -d' ' -f1 > "$out/.source-bun-lock-hash"
+
+# In main build: compare before expensive operations
+if [ "$current_lock_hash" != "$stored_lock_hash" ]; then
+  echo "ERROR: bunDepsHash is stale! Run: mono nix hash --package ${name}"
+  exit 1
+fi
+```
+
 - **No node_modules copying**: the build links bunDeps into the workspace
   instead of copying node_modules, keeping outputs small and avoiding duplicate
   trees.
