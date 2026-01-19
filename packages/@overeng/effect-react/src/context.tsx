@@ -13,9 +13,9 @@ export interface EffectProviderConfig<TEnv, TErr> {
   /** Layer to build the runtime from */
   layer: Layer.Layer<TEnv, TErr>
   /** Component to show while runtime is loading */
-  Loading?: React.FC
+  Loading?: () => React.ReactNode
   /** Component to show when runtime initialization fails */
-  Error?: React.FC<{ cause: Cause.Cause<TErr>; onRetry: () => void }>
+  Error?: (props: { cause: Cause.Cause<TErr>; onRetry: () => void }) => React.ReactNode
   /** Error handler for effects run via useEffectRunner */
   onError?: ErrorHandler
 }
@@ -70,7 +70,7 @@ export const EffectProvider = <TEnv, TErr>({
   Error: ErrorComponent = DefaultError,
   onError = defaultErrorHandler,
   children,
-}: EffectProviderConfig<TEnv, TErr> & { children: React.ReactNode }): React.ReactElement => {
+}: EffectProviderConfig<TEnv, TErr> & { children: React.ReactNode }): React.ReactNode => {
   const [state, setState] = React.useState<
     | { _tag: 'loading' }
     | { _tag: 'error'; cause: Cause.Cause<TErr> }
@@ -250,7 +250,7 @@ export const useEffectOnMount = <TEnv, TA, TE>(effect: ProviderEffect<TEnv, TA, 
 // Default Components
 // -----------------------------------------------------------------------------
 
-const DefaultLoading: React.FC = () => <div>Loading...</div>
+const DefaultLoading = (): React.ReactNode => <div>Loading...</div>
 
 const DefaultError = <TErr,>({
   cause,
@@ -258,7 +258,7 @@ const DefaultError = <TErr,>({
 }: {
   cause: Cause.Cause<TErr>
   onRetry: () => void
-}): React.ReactElement => (
+}): React.ReactNode => (
   <div style={{ padding: '1rem', fontFamily: 'monospace' }}>
     <h2>Failed to initialize</h2>
     <pre style={{ whiteSpace: 'pre-wrap', overflow: 'auto' }}>{Cause.pretty(cause)}</pre>

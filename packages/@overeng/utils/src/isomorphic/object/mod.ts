@@ -60,3 +60,57 @@ export const objectWithKeyPrefix = <TObj extends Record<string, any>, TPrefix ex
   }
   return newObj as any
 }
+
+/**
+ * Helper for `exactOptionalPropertyTypes` compatibility.
+ *
+ * When a type has `prop?: T` (optional), you cannot pass `{ prop: undefined }`.
+ * This helper creates a spreadable object that only includes the key if the value is defined.
+ *
+ * @example
+ * ```ts
+ * interface Props { name: string; age?: number }
+ *
+ * // Without helper (TS error with exactOptionalPropertyTypes):
+ * const props: Props = { name: 'John', age: undefined } // Error!
+ *
+ * // With helper:
+ * const props: Props = { name: 'John', ...optionalProp('age', maybeAge) } // OK
+ * ```
+ */
+export const optionalProp = <K extends string, V>(
+  key: K,
+  value: V | undefined,
+): V extends undefined ? {} : { [P in K]: V } =>
+  (value !== undefined ? { [key]: value } : {}) as V extends undefined ? {} : { [P in K]: V }
+
+/** Type that removes keys with undefined values from an object type */
+type DefinedProps<T extends Record<string, unknown>> = {
+  [K in keyof T as T[K] extends undefined ? never : K]: Exclude<T[K], undefined>
+}
+
+/**
+ * Helper for `exactOptionalPropertyTypes` compatibility with multiple props.
+ *
+ * Filters out undefined values from an object, returning only defined properties.
+ * Useful when spreading multiple optional properties at once.
+ *
+ * @example
+ * ```ts
+ * interface Props { name: string; age?: number; email?: string }
+ *
+ * const props: Props = {
+ *   name: 'John',
+ *   ...optionalProps({ age: maybeAge, email: maybeEmail })
+ * }
+ * ```
+ */
+export const optionalProps = <T extends Record<string, unknown>>(obj: T): DefinedProps<T> => {
+  const result: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      result[key] = value
+    }
+  }
+  return result as DefinedProps<T>
+}
