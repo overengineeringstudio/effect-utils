@@ -21,17 +21,15 @@ inputs:
 let
   system = pkgs.stdenv.hostPlatform.system;
   pkgsUnstable = import inputs.nixpkgsUnstable { inherit system; };
-  cliPackages = inputs.effect-utils.lib.mkCliPackages {
-    inherit pkgs pkgsUnstable;
-  };
+  effectUtilsPkgs = inputs.effect-utils.packages.${system};
   cliBuildStamp = inputs.effect-utils.lib.cliBuildStamp { inherit pkgs; };
 in
 {
   packages = [
     pkgsUnstable.bun
     pkgsUnstable.nodejs_24
-    cliPackages.genie
-    cliPackages.dotdot
+    effectUtilsPkgs.genie
+    effectUtilsPkgs.dotdot
     cliBuildStamp.package
   ];
 
@@ -59,9 +57,12 @@ fi
 ```
 .direnv/
 .devenv/
-devenv.lock
 result
 ```
+
+Keep `devenv.lock` checked in (do not ignore it). If it’s ignored, devenv will
+re-resolve inputs on every shell entry which makes `direnv reload` slow and
+causes repeated lock updates.
 
 ## Usage
 

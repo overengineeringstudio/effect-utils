@@ -26,3 +26,8 @@ Helper files:
 - `env/direnv/peer-envrc.nix`
 - `env/direnv/peer-envrc-effect-utils.nix`
 - `env/direnv/effect-utils-envrc.nix`
+
+## Troubleshooting
+
+- If `direnv reload` is slow and devenv keeps updating inputs, ensure
+  `devenv.lock` is checked in and not listed in `.gitignore`.

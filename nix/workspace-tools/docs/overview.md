@@ -6,6 +6,7 @@ Scope: effect-utils Nix/direnv/devenv workflow streamlining
 ## Goals Recap
 
 - Keep Nix builds pure (no --impure) and deterministic.
+- Fast builds and good re-use across packages/repos.
 - Support dirty local changes in dotdot workspaces.
 - Avoid copying heavy artifacts (node_modules).
 - Keep peer repo usage minimal and composable.

@@ -100,6 +100,10 @@ use devenv
 source "$(nix eval --raw --no-write-lock-file "$WORKSPACE_ROOT/../effect-utils#direnv.peerEnvrcEffectUtils")"
 ```
 
+Make sure `devenv.lock` is checked in (remove it from `.gitignore`). If it’s
+ignored, devenv will re-lock inputs on every shell entry and `direnv reload`
+becomes slow.
+
 ### 5. Create dotdot config
 
 Create `my-app/dotdot.json`:
