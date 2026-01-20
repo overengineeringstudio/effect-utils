@@ -16,15 +16,32 @@ import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 import {
   CONFIG_FILE_NAME,
   ENV_VARS,
+  getSourceRef,
+  getSourceUrl,
+  isRemoteSource,
   MegarepoConfig,
-  type MemberConfig,
   type MemberSource,
-  parseMemberSource,
+  parseSourceString,
 } from '../lib/config.ts'
 import { generateEnvrc } from '../lib/generators/envrc.ts'
 import { generateSchema } from '../lib/generators/schema.ts'
 import { generateVscode } from '../lib/generators/vscode.ts'
 import * as Git from '../lib/git.ts'
+import {
+  checkLockStaleness,
+  createEmptyLockFile,
+  createLockedMember,
+  getLockedMember,
+  type LockFile,
+  LOCK_FILE_NAME,
+  pinMember,
+  readLockFile,
+  syncLockWithConfig,
+  unpinMember,
+  updateLockedMember,
+  writeLockFile,
+} from '../lib/lock.ts'
+import { classifyRef } from '../lib/ref.ts'
 import { Store, StoreLayer } from '../lib/store.ts'
 
 // =============================================================================
@@ -128,9 +145,9 @@ const findMegarepoRoot = (startPath: AbsoluteDirPath) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
 
-    let current = startPath
+    let current: AbsoluteDirPath | undefined = startPath
     const rootDir = EffectPath.unsafe.absoluteDir('/')
-    while (current !== rootDir) {
+    while (current !== undefined && current !== rootDir) {
       const configPath = EffectPath.ops.join(
         current,
         EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
@@ -360,9 +377,8 @@ const lsCommand = Cli.Command.make('ls', { json: jsonOption }, ({ json }) =>
     if (json) {
       console.log(JSON.stringify({ members: config.members }))
     } else {
-      for (const [name, memberConfig] of Object.entries(config.members)) {
-        const source = memberConfig.github ?? memberConfig.url ?? memberConfig.path ?? 'unknown'
-        yield* Effect.log(`${styled.bold(name)} ${styled.dim(`(${source})`)}`)
+      for (const [name, sourceString] of Object.entries(config.members)) {
+        yield* Effect.log(`${styled.bold(name)} ${styled.dim(`(${sourceString})`)}`)
       }
     }
   }).pipe(Effect.withSpan('megarepo/ls')),
@@ -375,80 +391,78 @@ const lsCommand = Cli.Command.make('ls', { json: jsonOption }, ({ json }) =>
 /** Member sync result */
 interface MemberSyncResult {
   readonly name: string
-  readonly status: 'cloned' | 'symlinked' | 'already_linked' | 'isolated' | 'skipped' | 'error'
-  readonly message?: string
+  readonly status: 'cloned' | 'synced' | 'already_synced' | 'skipped' | 'error'
+  readonly message?: string | undefined
+  /** Resolved commit for lock file (remote sources only) */
+  readonly commit?: string | undefined
+  /** Resolved ref for lock file */
+  readonly ref?: string | undefined
 }
 
 /**
  * Get the git clone URL for a member source
  */
-const getCloneUrl = (source: MemberSource): string => {
+const getCloneUrl = (source: MemberSource): string | undefined => {
   switch (source.type) {
     case 'github':
       return `git@github.com:${source.owner}/${source.repo}.git`
     case 'url':
       return source.url
     case 'path':
-      // For local paths, return the path itself (we'll just symlink to it)
-      return source.path
+      return undefined
   }
 }
 
 /**
- * Sync a single member: clone to store if needed, then symlink to workspace
+ * Sync a single member: use bare repo + worktree pattern
  */
 const syncMember = ({
   name,
-  memberConfig,
+  sourceString,
   megarepoRoot,
+  lockFile,
   dryRun,
+  frozen,
 }: {
   name: string
-  memberConfig: MemberConfig
+  sourceString: string
   megarepoRoot: AbsoluteDirPath
+  lockFile: LockFile | undefined
   dryRun: boolean
+  frozen: boolean
 }) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const store = yield* Store
 
-    // Parse the member source
-    const source = parseMemberSource(memberConfig)
+    // Parse the source string
+    const source = parseSourceString(sourceString)
     if (source === undefined) {
       return {
         name,
         status: 'error',
-        message: 'No source specified (github, url, or path)',
+        message: `Invalid source string: ${sourceString}`,
       } satisfies MemberSyncResult
     }
 
-    // Handle local path sources differently - they're already "in store"
+    const memberPath = EffectPath.ops.join(megarepoRoot, EffectPath.unsafe.relativeDir(`${name}/`))
+
+    // Handle local path sources - just create symlink
     if (source.type === 'path') {
-      // Expand ~ to home directory at execution time
       const expandedPath = source.path.replace(/^~/, process.env.HOME ?? '~')
-      const memberPath = EffectPath.ops.join(
-        megarepoRoot,
-        EffectPath.unsafe.relativeDir(`${name}/`),
-      )
       const linkExists = yield* fs.exists(memberPath)
 
       if (linkExists) {
-        // Check if it's a symlink pointing to the right place
         const stat = yield* fs.stat(memberPath).pipe(Effect.catchAll(() => Effect.succeed(null)))
         if (stat?.type === 'SymbolicLink') {
-          // Validate symlink points to correct location
           const target = yield* fs.readLink(memberPath)
-          const sourcePathStr = expandedPath.replace(/\/$/, '')
-          const targetStr = target.replace(/\/$/, '')
-          if (targetStr === sourcePathStr) {
-            return { name, status: 'already_linked' } satisfies MemberSyncResult
+          if (target.replace(/\/$/, '') === expandedPath.replace(/\/$/, '')) {
+            return { name, status: 'already_synced' } satisfies MemberSyncResult
           }
-          // Wrong target - remove and recreate
           if (!dryRun) {
             yield* fs.remove(memberPath)
           }
         } else {
-          // Directory exists but isn't a symlink - could be isolated or conflict
           return {
             name,
             status: 'skipped',
@@ -458,132 +472,183 @@ const syncMember = ({
       }
 
       if (!dryRun) {
-        // Create symlink to local path
         yield* createSymlink({ target: expandedPath, link: memberPath })
       }
 
-      return { name, status: 'symlinked' } satisfies MemberSyncResult
+      return { name, status: 'synced' } satisfies MemberSyncResult
     }
 
-    // For remote sources (github, url), check store
-    const storePath = store.getRepoPath(source)
-    const storeExists = yield* store.hasRepo(source)
+    // For remote sources, use bare repo + worktree pattern
+    const cloneUrl = getCloneUrl(source)
+    if (cloneUrl === undefined) {
+      return { name, status: 'error', message: 'Cannot get clone URL' } satisfies MemberSyncResult
+    }
 
-    // Clone to store if needed
-    if (!storeExists) {
-      if (!dryRun) {
-        // Ensure parent directories exist
-        const parentDir = EffectPath.ops.parent(storePath)
-        yield* fs.makeDirectory(parentDir, { recursive: true })
+    const bareRepoPath = store.getBareRepoPath(source)
+    const bareExists = yield* store.hasBareRepo(source)
 
-        // Clone the repo
-        const cloneUrl = getCloneUrl(source)
-        yield* Git.clone({ url: cloneUrl, targetPath: storePath })
+    // Determine which ref to use
+    let targetRef: string
+    let targetCommit: string | undefined
 
-        // Checkout pinned ref if specified
-        if (memberConfig.pin !== undefined) {
-          yield* Git.checkout({ repoPath: storePath, ref: memberConfig.pin })
+    // Check lock file first (for --frozen mode or to use locked commit)
+    const lockedMember = lockFile?.members[name]
+    if (frozen) {
+      if (lockedMember === undefined) {
+        return {
+          name,
+          status: 'error',
+          message: 'Not in lock file (--frozen requires lock file)',
+        } satisfies MemberSyncResult
+      }
+      targetRef = lockedMember.ref
+      targetCommit = lockedMember.commit
+    } else if (lockedMember !== undefined && lockedMember.pinned) {
+      // Use pinned commit from lock
+      targetRef = lockedMember.ref
+      targetCommit = lockedMember.commit
+    } else {
+      // Use ref from source string, or determine default
+      const sourceRef = getSourceRef(source)
+      if (Option.isSome(sourceRef)) {
+        targetRef = sourceRef.value
+      } else {
+        // Need to determine default branch
+        if (bareExists) {
+          const defaultBranch = yield* Git.getDefaultBranch({ repoPath: bareRepoPath })
+          targetRef = Option.getOrElse(defaultBranch, () => 'main')
+        } else {
+          const defaultBranch = yield* Git.getDefaultBranch({ url: cloneUrl })
+          targetRef = Option.getOrElse(defaultBranch, () => 'main')
         }
       }
     }
 
-    // Check if member should be isolated (worktree instead of symlink)
-    if (memberConfig.isolated !== undefined) {
-      const memberPath = EffectPath.ops.join(
-        megarepoRoot,
-        EffectPath.unsafe.relativeDir(`${name}/`),
+    // Clone bare repo if needed
+    let wasCloned = false
+    if (!bareExists) {
+      if (frozen) {
+        return {
+          name,
+          status: 'error',
+          message: 'Bare repo not in store (--frozen prevents cloning)',
+        } satisfies MemberSyncResult
+      }
+      if (!dryRun) {
+        const repoBasePath = store.getRepoBasePath(source)
+        yield* fs.makeDirectory(repoBasePath, { recursive: true })
+        yield* Git.cloneBare({ url: cloneUrl, targetPath: bareRepoPath })
+        wasCloned = true
+      }
+    } else if (!frozen && !dryRun) {
+      // Fetch updates (unless frozen)
+      yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(
+        Effect.catchAll(() => Effect.void), // Ignore fetch errors
       )
-      const memberExists = yield* fs.exists(memberPath)
+    }
 
-      if (memberExists) {
-        // Check if it's already a worktree
-        const isGitWorktree = yield* fs
-          .exists(EffectPath.ops.join(memberPath, EffectPath.unsafe.relativeFile('.git')))
-          .pipe(
-            Effect.map((exists) => exists),
-            Effect.catchAll(() => Effect.succeed(false)),
-          )
-        if (isGitWorktree) {
-          return { name, status: 'already_linked' } satisfies MemberSyncResult
-        }
-        // Only remove if it's a symlink (safe by default)
-        const stat = yield* fs.stat(memberPath).pipe(Effect.catchAll(() => Effect.succeed(null)))
-        if (stat?.type !== 'SymbolicLink') {
+    // Resolve ref to commit if not already known
+    if (targetCommit === undefined && !dryRun) {
+      const refType = classifyRef(targetRef)
+      if (refType === 'commit') {
+        targetCommit = targetRef
+      } else if (refType === 'tag') {
+        targetCommit = yield* Git.resolveRef({
+          repoPath: bareRepoPath,
+          ref: `refs/tags/${targetRef}`,
+        }).pipe(Effect.catchAll(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })))
+      } else {
+        // Branch - resolve to HEAD of branch
+        targetCommit = yield* Git.resolveRef({
+          repoPath: bareRepoPath,
+          ref: `refs/remotes/origin/${targetRef}`,
+        }).pipe(Effect.catchAll(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })))
+      }
+    }
+
+    // Create or update worktree
+    const worktreePath = store.getWorktreePath(source, targetRef)
+    const worktreeExists = yield* store.hasWorktree(source, targetRef)
+
+    if (!worktreeExists && !dryRun) {
+      // Ensure worktree parent directory exists
+      const worktreeParent = EffectPath.ops.parent(worktreePath)
+      if (worktreeParent !== undefined) {
+        yield* fs.makeDirectory(worktreeParent, { recursive: true })
+      }
+
+      // Create worktree
+      const refType = classifyRef(targetRef)
+      if (refType === 'commit' || refType === 'tag') {
+        yield* Git.createWorktreeDetached({
+          repoPath: bareRepoPath,
+          worktreePath,
+          commit: targetCommit ?? targetRef,
+        })
+      } else {
+        // Branch worktree
+        yield* Git.createWorktree({
+          repoPath: bareRepoPath,
+          worktreePath,
+          branch: targetRef,
+          createBranch: false,
+        }).pipe(
+          Effect.catchAll(() =>
+            // If branch doesn't exist locally, create from remote
+            Git.createWorktree({
+              repoPath: bareRepoPath,
+              worktreePath,
+              branch: `origin/${targetRef}`,
+              createBranch: false,
+            }),
+          ),
+          Effect.catchAll(() =>
+            // Last resort: create detached at the resolved commit
+            Git.createWorktreeDetached({
+              repoPath: bareRepoPath,
+              worktreePath,
+              commit: targetCommit ?? targetRef,
+            }),
+          ),
+        )
+      }
+    }
+
+    // Create symlink from workspace to worktree
+    const linkExists = yield* fs.exists(memberPath)
+    if (linkExists) {
+      const stat = yield* fs.stat(memberPath).pipe(Effect.catchAll(() => Effect.succeed(null)))
+      if (stat?.type === 'SymbolicLink') {
+        const target = yield* fs.readLink(memberPath)
+        if (target.replace(/\/$/, '') === worktreePath.replace(/\/$/, '')) {
           return {
             name,
-            status: 'error',
-            message: 'Directory exists but is not a symlink. Use mr isolate --force to replace.',
+            status: 'already_synced',
+            commit: targetCommit,
+            ref: targetRef,
           } satisfies MemberSyncResult
         }
         if (!dryRun) {
           yield* fs.remove(memberPath)
         }
-      }
-
-      if (!dryRun) {
-        // Create worktree for isolated member
-        yield* Git.createWorktree({
-          repoPath: storePath,
-          worktreePath: memberPath,
-          branch: memberConfig.isolated,
-          createBranch: false, // Assume branch exists
-        }).pipe(
-          Effect.catchAll(() =>
-            // If branch doesn't exist, create it
-            Git.createWorktree({
-              repoPath: storePath,
-              worktreePath: memberPath,
-              branch: memberConfig.isolated!,
-              createBranch: true,
-            }),
-          ),
-        )
-      }
-
-      return {
-        name,
-        status: storeExists ? 'isolated' : 'cloned',
-        message: `isolated on branch ${memberConfig.isolated}`,
-      } satisfies MemberSyncResult
-    }
-
-    // Create symlink from workspace to store
-    const memberPath = EffectPath.ops.join(megarepoRoot, EffectPath.unsafe.relativeDir(`${name}/`))
-    const linkExists = yield* fs.exists(memberPath)
-
-    if (linkExists) {
-      // Check if it's a symlink pointing to the right place
-      const stat = yield* fs.stat(memberPath).pipe(Effect.catchAll(() => Effect.succeed(null)))
-      if (stat?.type === 'SymbolicLink') {
-        // Symlink exists - check if it points to correct location
-        const target = yield* fs.readLink(memberPath)
-        // Compare paths (remove trailing slash for comparison)
-        const storePathStr = storePath.replace(/\/$/, '')
-        const targetStr = target.replace(/\/$/, '')
-        if (targetStr === storePathStr) {
-          return { name, status: 'already_linked' } satisfies MemberSyncResult
-        }
-        // Wrong target - remove and recreate
-        if (!dryRun) {
-          yield* fs.remove(memberPath)
-        }
       } else {
-        // Directory exists but isn't a symlink - conflict
         return {
           name,
-          status: 'error',
-          message: 'Directory exists but is not a symlink. Remove it manually or use mr isolate.',
+          status: 'skipped',
+          message: 'Directory exists but is not a symlink',
         } satisfies MemberSyncResult
       }
     }
 
     if (!dryRun) {
-      yield* createSymlink({ target: storePath, link: memberPath })
+      yield* createSymlink({ target: worktreePath, link: memberPath })
     }
 
     return {
       name,
-      status: storeExists ? 'symlinked' : 'cloned',
+      status: wasCloned ? 'cloned' : 'synced',
+      commit: targetCommit,
+      ref: targetRef,
     } satisfies MemberSyncResult
   }).pipe(
     Effect.catchAll((error) =>
@@ -604,12 +669,18 @@ const syncCommand = Cli.Command.make(
       Cli.Options.withDescription('Show what would be done without making changes'),
       Cli.Options.withDefault(false),
     ),
+    frozen: Cli.Options.boolean('frozen').pipe(
+      Cli.Options.withDescription(
+        'Use exact commits from lock file (fail if lock missing or stale)',
+      ),
+      Cli.Options.withDefault(false),
+    ),
     deep: Cli.Options.boolean('deep').pipe(
       Cli.Options.withDescription('Recursively sync nested megarepos'),
       Cli.Options.withDefault(false),
     ),
   },
-  ({ json, dryRun, deep }) =>
+  ({ json, dryRun, frozen, deep }) =>
     Effect.gen(function* () {
       const cwd = yield* Cwd
       const root = yield* findMegarepoRoot(cwd)
@@ -623,14 +694,72 @@ const syncCommand = Cli.Command.make(
         return yield* Effect.fail(new Error('Not in a megarepo'))
       }
 
-      // Load config
       const fs = yield* FileSystem.FileSystem
+
+      // Load config
       const configPath = EffectPath.ops.join(
         root.value,
         EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
       )
       const configContent = yield* fs.readFileString(configPath)
       const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+
+      // Load lock file (optional unless --frozen)
+      const lockPath = EffectPath.ops.join(
+        root.value,
+        EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+      )
+      const lockFileOpt = yield* readLockFile(lockPath)
+      let lockFile = Option.getOrUndefined(lockFileOpt)
+
+      // Determine which members are remote (need lock tracking)
+      const remoteMemberNames = new Set<string>()
+      for (const [name, sourceString] of Object.entries(config.members)) {
+        const source = parseSourceString(sourceString)
+        if (source !== undefined && isRemoteSource(source)) {
+          remoteMemberNames.add(name)
+        }
+      }
+
+      // Check --frozen requirements
+      if (frozen) {
+        if (lockFile === undefined) {
+          if (json) {
+            console.log(
+              JSON.stringify({ error: 'no_lock', message: 'Lock file required for --frozen' }),
+            )
+          } else {
+            yield* Effect.logError(
+              `${styled.red(symbols.cross)} Lock file required for --frozen mode`,
+            )
+          }
+          return yield* Effect.fail(new Error('Lock file required for --frozen'))
+        }
+
+        // Check for staleness
+        const staleness = checkLockStaleness(lockFile, remoteMemberNames)
+        if (staleness.isStale) {
+          if (json) {
+            console.log(
+              JSON.stringify({
+                error: 'stale_lock',
+                message: 'Lock file is stale',
+                added: staleness.addedMembers,
+                removed: staleness.removedMembers,
+              }),
+            )
+          } else {
+            yield* Effect.logError(`${styled.red(symbols.cross)} Lock file is stale`)
+            if (staleness.addedMembers.length > 0) {
+              yield* Effect.log(styled.dim(`  Added: ${staleness.addedMembers.join(', ')}`))
+            }
+            if (staleness.removedMembers.length > 0) {
+              yield* Effect.log(styled.dim(`  Removed: ${staleness.removedMembers.join(', ')}`))
+            }
+          }
+          return yield* Effect.fail(new Error('Lock file is stale'))
+        }
+      }
 
       const members = Object.entries(config.members)
       const results: MemberSyncResult[] = []
@@ -639,32 +768,40 @@ const syncCommand = Cli.Command.make(
       if (!json && dryRun) {
         yield* Effect.log(styled.dim('Dry run - no changes will be made'))
       }
+      if (!json && frozen) {
+        yield* Effect.log(styled.dim('Frozen mode - using exact commits from lock file'))
+      }
 
       // Sync each member
-      for (const [name, memberConfig] of members) {
-        const result = yield* syncMember({ name, memberConfig, megarepoRoot: root.value, dryRun })
+      for (const [name, sourceString] of members) {
+        const result = yield* syncMember({
+          name,
+          sourceString,
+          megarepoRoot: root.value,
+          lockFile,
+          dryRun,
+          frozen,
+        })
         results.push(result)
 
         if (!json) {
           const statusSymbol =
             result.status === 'error'
               ? styled.red(symbols.cross)
-              : result.status === 'already_linked'
+              : result.status === 'already_synced'
                 ? styled.dim(symbols.check)
                 : styled.green(symbols.check)
 
           const statusText =
             result.status === 'cloned'
-              ? 'cloned & linked'
-              : result.status === 'symlinked'
-                ? 'linked'
-                : result.status === 'isolated'
-                  ? `isolated (${result.message})`
-                  : result.status === 'already_linked'
-                    ? 'already linked'
-                    : result.status === 'error'
-                      ? `error: ${result.message}`
-                      : result.status
+              ? 'cloned'
+              : result.status === 'synced'
+                ? 'synced'
+                : result.status === 'already_synced'
+                  ? 'already synced'
+                  : result.status === 'error'
+                    ? `error: ${result.message}`
+                    : result.status
 
           yield* Effect.log(`${statusSymbol} ${styled.bold(name)} ${styled.dim(`(${statusText})`)}`)
         }
@@ -686,14 +823,52 @@ const syncCommand = Cli.Command.make(
         }
       }
 
+      // Update lock file (unless dry run or frozen)
+      if (!dryRun && !frozen) {
+        // Initialize lock file if needed
+        if (lockFile === undefined) {
+          lockFile = createEmptyLockFile()
+        }
+
+        // Sync lock with config (remove stale entries)
+        lockFile = syncLockWithConfig(lockFile, remoteMemberNames)
+
+        // Update lock entries from results
+        for (const result of results) {
+          if (result.commit !== undefined && result.ref !== undefined) {
+            const sourceString = config.members[result.name]
+            if (sourceString === undefined) continue
+            const source = parseSourceString(sourceString)
+            if (source === undefined || !isRemoteSource(source)) continue
+
+            const url = getSourceUrl(source) ?? sourceString
+            const existingLocked = lockFile.members[result.name]
+
+            lockFile = updateLockedMember(
+              lockFile,
+              result.name,
+              createLockedMember({
+                url,
+                ref: result.ref,
+                commit: result.commit,
+                pinned: existingLocked?.pinned ?? false,
+              }),
+            )
+          }
+        }
+
+        // Write lock file
+        yield* writeLockFile(lockPath, lockFile)
+      }
+
       // Output results
       if (json) {
         console.log(JSON.stringify({ results, nestedMegarepos }))
       } else {
         const syncedCount = results.filter(
-          (r) => r.status === 'cloned' || r.status === 'symlinked' || r.status === 'isolated',
+          (r) => r.status === 'cloned' || r.status === 'synced',
         ).length
-        const alreadyCount = results.filter((r) => r.status === 'already_linked').length
+        const alreadyCount = results.filter((r) => r.status === 'already_synced').length
         const errorCount = results.filter((r) => r.status === 'error').length
 
         yield* Effect.log('')
@@ -744,42 +919,38 @@ const syncCommand = Cli.Command.make(
 // =============================================================================
 
 /**
- * Parse a repo reference into a member config.
+ * Parse a repo reference and extract a suggested name.
+ * Returns the source string as-is along with a suggested name.
  * Supports:
- * - GitHub shorthand: "owner/repo"
+ * - GitHub shorthand: "owner/repo" or "owner/repo#ref"
  * - SSH URL: "git@github.com:owner/repo.git"
  * - HTTPS URL: "https://github.com/owner/repo.git"
  * - Local path: "/path/to/repo" or "./relative/path"
  */
-const parseRepoRef = (ref: string): { config: MemberConfig; suggestedName: string } | undefined => {
-  // Check if it's a GitHub shorthand (owner/repo without protocol)
-  const githubMatch = ref.match(/^([a-zA-Z0-9_-]+)\/([a-zA-Z0-9_.-]+)$/)
-  if (githubMatch?.[1] !== undefined && githubMatch[2] !== undefined) {
-    return {
-      config: { github: ref },
-      suggestedName: githubMatch[2],
-    }
+const parseRepoRef = (ref: string): { sourceString: string; suggestedName: string } | undefined => {
+  // Validate by parsing the source string
+  const source = parseSourceString(ref)
+  if (source === undefined) {
+    return undefined
   }
 
-  // Check if it's a git URL (SSH or HTTPS)
-  const parsed = Git.parseGitRemoteUrl(ref)
-  if (Option.isSome(parsed)) {
-    return {
-      config: { url: ref },
-      suggestedName: parsed.value.repo,
+  // Extract suggested name based on source type
+  let suggestedName: string
+  switch (source.type) {
+    case 'github':
+      suggestedName = source.repo
+      break
+    case 'url': {
+      const parsed = Git.parseGitRemoteUrl(source.url)
+      suggestedName = Option.isSome(parsed) ? parsed.value.repo : 'unknown'
+      break
     }
+    case 'path':
+      suggestedName = source.path.split('/').findLast(Boolean) ?? 'unknown'
+      break
   }
 
-  // Check if it looks like a path (starts with /, ./, or ~)
-  if (ref.startsWith('/') || ref.startsWith('./') || ref.startsWith('../') || ref.startsWith('~')) {
-    const name = ref.split('/').findLast(Boolean) ?? 'unknown'
-    return {
-      config: { path: ref },
-      suggestedName: name,
-    }
-  }
-
-  return undefined
+  return { sourceString: ref, suggestedName }
 }
 
 /** Add a member to megarepo.json */
@@ -861,7 +1032,7 @@ const addCommand = Cli.Command.make(
         ...config,
         members: {
           ...config.members,
-          [memberName]: parsed.config,
+          [memberName]: parsed.sourceString,
         },
       }
 
@@ -872,7 +1043,9 @@ const addCommand = Cli.Command.make(
       yield* fs.writeFileString(configPath, newConfigContent + '\n')
 
       if (json) {
-        console.log(JSON.stringify({ status: 'added', member: memberName, config: parsed.config }))
+        console.log(
+          JSON.stringify({ status: 'added', member: memberName, source: parsed.sourceString }),
+        )
       } else {
         yield* Effect.log(`${styled.green(symbols.check)} Added ${styled.bold(memberName)}`)
       }
@@ -884,14 +1057,16 @@ const addCommand = Cli.Command.make(
         }
         const result = yield* syncMember({
           name: memberName,
-          memberConfig: parsed.config,
+          sourceString: parsed.sourceString,
           megarepoRoot: root.value,
+          lockFile: undefined,
           dryRun: false,
+          frozen: false,
         })
         if (!json) {
           const statusSymbol =
             result.status === 'error' ? styled.red(symbols.cross) : styled.green(symbols.check)
-          const statusText = result.status === 'cloned' ? 'cloned & linked' : result.status
+          const statusText = result.status === 'cloned' ? 'cloned' : result.status
           yield* Effect.log(
             `${statusSymbol} ${styled.bold(memberName)} ${styled.dim(`(${statusText})`)}`,
           )
@@ -904,7 +1079,162 @@ const addCommand = Cli.Command.make(
 // Update Command
 // =============================================================================
 
-/** Update (pull) all repos */
+/** Member update result */
+interface MemberUpdateResult {
+  readonly name: string
+  readonly status: 'updated' | 'skipped' | 'pinned' | 'error'
+  readonly message?: string | undefined
+  readonly oldCommit?: string | undefined
+  readonly newCommit?: string | undefined
+}
+
+/**
+ * Update a single member: fetch latest, update worktree, update lock file.
+ * Respects pinned status unless force is true.
+ */
+const updateMember = ({
+  name,
+  sourceString,
+  _megarepoRoot,
+  lockFile,
+  force,
+}: {
+  name: string
+  sourceString: string
+  _megarepoRoot: AbsoluteDirPath
+  lockFile: LockFile | undefined
+  force: boolean
+}) =>
+  Effect.gen(function* () {
+    const _fs = yield* FileSystem.FileSystem
+    const store = yield* Store
+
+    // Parse source string
+    const source = parseSourceString(sourceString)
+    if (source === undefined) {
+      return {
+        name,
+        status: 'error',
+        message: `Invalid source string: ${sourceString}`,
+      } satisfies MemberUpdateResult
+    }
+
+    // Skip local path sources - they don't need updating
+    if (source.type === 'path') {
+      return {
+        name,
+        status: 'skipped',
+        message: 'Local path (nothing to update)',
+      } satisfies MemberUpdateResult
+    }
+
+    // Check if member is pinned (skip unless force)
+    const lockedMember = lockFile?.members[name]
+    if (lockedMember?.pinned && !force) {
+      return {
+        name,
+        status: 'pinned',
+        message: `Pinned at ${lockedMember.commit.slice(0, 7)}`,
+        oldCommit: lockedMember.commit,
+        newCommit: lockedMember.commit,
+      } satisfies MemberUpdateResult
+    }
+
+    // Check if bare repo exists
+    const bareRepoPath = store.getBareRepoPath(source)
+    const bareExists = yield* store.hasBareRepo(source)
+
+    if (!bareExists) {
+      return {
+        name,
+        status: 'skipped',
+        message: 'Not synced yet (no bare repo)',
+      } satisfies MemberUpdateResult
+    }
+
+    // Determine the ref to update
+    const sourceRef = getSourceRef(source)
+    let targetRef: string
+    if (Option.isSome(sourceRef)) {
+      targetRef = sourceRef.value
+    } else if (lockedMember !== undefined) {
+      targetRef = lockedMember.ref
+    } else {
+      // Need to determine default branch
+      const defaultBranch = yield* Git.getDefaultBranch({ repoPath: bareRepoPath })
+      targetRef = Option.getOrElse(defaultBranch, () => 'main')
+    }
+
+    // For commits and tags, nothing to update
+    const refType = classifyRef(targetRef)
+    if (refType === 'commit' || refType === 'tag') {
+      return {
+        name,
+        status: 'skipped',
+        message: refType === 'commit' ? 'Pinned to specific commit' : 'Pinned to tag',
+        oldCommit: lockedMember?.commit,
+        newCommit: lockedMember?.commit,
+      } satisfies MemberUpdateResult
+    }
+
+    // Fetch latest from remote
+    yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(Effect.catchAll(() => Effect.void))
+
+    // Resolve branch to new commit
+    const newCommit = yield* Git.resolveRef({
+      repoPath: bareRepoPath,
+      ref: `refs/remotes/origin/${targetRef}`,
+    }).pipe(Effect.catchAll(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })))
+
+    const oldCommit = lockedMember?.commit
+
+    // Check if there's anything to update
+    if (oldCommit === newCommit) {
+      return {
+        name,
+        status: 'skipped',
+        message: 'Already up to date',
+        oldCommit,
+        newCommit,
+      } satisfies MemberUpdateResult
+    }
+
+    // Update the worktree
+    const worktreePath = store.getWorktreePath(source, targetRef)
+    const worktreeExists = yield* store.hasWorktree(source, targetRef)
+
+    if (worktreeExists) {
+      // Try to update the worktree
+      yield* Git.checkoutWorktree({ repoPath: worktreePath, ref: newCommit }).pipe(
+        Effect.catchAll(() =>
+          // If checkout fails, try a hard reset (detached worktrees)
+          Effect.gen(function* () {
+            const cmd = Command.make('git', 'reset', '--hard', newCommit).pipe(
+              Command.workingDirectory(worktreePath),
+            )
+            yield* Command.string(cmd)
+          }),
+        ),
+      )
+    }
+
+    return {
+      name,
+      status: 'updated',
+      oldCommit,
+      newCommit,
+    } satisfies MemberUpdateResult
+  }).pipe(
+    Effect.catchAll((error) =>
+      Effect.succeed({
+        name,
+        status: 'error',
+        message: error instanceof Error ? error.message : String(error),
+      } satisfies MemberUpdateResult),
+    ),
+  )
+
+/** Update (pull) repos - fetch latest refs and update worktrees */
 const updateCommand = Cli.Command.make(
   'update',
   {
@@ -914,8 +1244,13 @@ const updateCommand = Cli.Command.make(
       Cli.Options.withDescription('Update only this member'),
       Cli.Options.optional,
     ),
+    force: Cli.Options.boolean('force').pipe(
+      Cli.Options.withAlias('f'),
+      Cli.Options.withDescription('Update even if pinned'),
+      Cli.Options.withDefault(false),
+    ),
   },
-  ({ json, member }) =>
+  ({ json, member, force }) =>
     Effect.gen(function* () {
       const cwd = yield* Cwd
       const root = yield* findMegarepoRoot(cwd)
@@ -929,8 +1264,9 @@ const updateCommand = Cli.Command.make(
         return yield* Effect.fail(new Error('Not in a megarepo'))
       }
 
-      // Load config
       const fs = yield* FileSystem.FileSystem
+
+      // Load config
       const configPath = EffectPath.ops.join(
         root.value,
         EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
@@ -938,10 +1274,21 @@ const updateCommand = Cli.Command.make(
       const configContent = yield* fs.readFileString(configPath)
       const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
 
+      // Load lock file
+      const lockPath = EffectPath.ops.join(
+        root.value,
+        EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+      )
+      const lockFileOpt = yield* readLockFile(lockPath)
+      let lockFile = Option.getOrUndefined(lockFileOpt)
+
       // Filter members if specific one requested
       const membersToUpdate = Option.match(member, {
-        onNone: () => Object.keys(config.members),
-        onSome: (m) => (m in config.members ? [m] : []),
+        onNone: () => Object.entries(config.members),
+        onSome: (m) => {
+          const sourceString = config.members[m]
+          return sourceString !== undefined ? [[m, sourceString] as const] : []
+        },
       })
 
       if (membersToUpdate.length === 0) {
@@ -953,71 +1300,96 @@ const updateCommand = Cli.Command.make(
         return yield* Effect.fail(new Error('Member not found'))
       }
 
-      const results: Array<{
-        name: string
-        status: 'updated' | 'skipped' | 'error'
-        message?: string
-      }> = []
+      const results: MemberUpdateResult[] = []
 
-      for (const name of membersToUpdate) {
-        const memberPath = EffectPath.ops.join(
-          root.value,
-          EffectPath.unsafe.relativeDir(`${name}/`),
-        )
-        const exists = yield* fs.exists(memberPath)
-
-        if (!exists) {
-          results.push({ name, status: 'skipped', message: 'Not synced yet' })
-          continue
-        }
-
-        // Fetch and pull
-        const result = yield* Effect.gen(function* () {
-          yield* Git.fetch({ repoPath: memberPath, prune: true })
-          // Try to pull (fast-forward only)
-          const branch = yield* Git.getCurrentBranch(memberPath)
-          if (Option.isSome(branch)) {
-            yield* Effect.gen(function* () {
-              const cmd = Command.make('git', 'pull', '--ff-only').pipe(
-                Command.workingDirectory(memberPath),
-              )
-              yield* Command.string(cmd)
-            }).pipe(Effect.catchAll(() => Effect.void))
-          }
-          return { name, status: 'updated' as const }
-        }).pipe(
-          Effect.catchAll((error) =>
-            Effect.succeed({
-              name,
-              status: 'error' as const,
-              message: error instanceof Error ? error.message : String(error),
-            }),
-          ),
-        )
-
+      for (const [name, sourceString] of membersToUpdate) {
+        const result = yield* updateMember({
+          name,
+          sourceString,
+          _megarepoRoot: root.value,
+          lockFile,
+          force,
+        })
         results.push(result)
 
         if (!json) {
           const statusSymbol =
-            result.status === 'error' ? styled.red(symbols.cross) : styled.green(symbols.check)
-          yield* Effect.log(
-            `${statusSymbol} ${styled.bold(name)} ${styled.dim(`(${result.status})`)}`,
-          )
+            result.status === 'error'
+              ? styled.red(symbols.cross)
+              : result.status === 'updated'
+                ? styled.green(symbols.check)
+                : result.status === 'pinned'
+                  ? styled.yellow('⊘')
+                  : styled.dim(symbols.check)
+
+          let statusText: string
+          if (result.status === 'updated' && result.oldCommit && result.newCommit) {
+            statusText = `${result.oldCommit.slice(0, 7)} → ${result.newCommit.slice(0, 7)}`
+          } else if (result.status === 'pinned') {
+            statusText = `pinned${result.message ? ` (${result.message})` : ''}`
+          } else if (result.message) {
+            statusText = result.message
+          } else {
+            statusText = result.status
+          }
+
+          yield* Effect.log(`${statusSymbol} ${styled.bold(name)} ${styled.dim(`(${statusText})`)}`)
         }
+
+        // Update lock file entry if we got a new commit
+        if (
+          result.status === 'updated' &&
+          result.newCommit !== undefined &&
+          lockFile !== undefined
+        ) {
+          const source = parseSourceString(sourceString)
+          if (source !== undefined && isRemoteSource(source)) {
+            const sourceRef = getSourceRef(source)
+            const url = getSourceUrl(source) ?? sourceString
+            const ref = Option.isSome(sourceRef)
+              ? sourceRef.value
+              : (lockFile.members[name]?.ref ?? 'main')
+            const existingLocked = lockFile.members[name]
+
+            lockFile = updateLockedMember(
+              lockFile,
+              name,
+              createLockedMember({
+                url,
+                ref,
+                commit: result.newCommit,
+                pinned: existingLocked?.pinned ?? false,
+              }),
+            )
+          }
+        }
+      }
+
+      // Write updated lock file
+      if (lockFile !== undefined) {
+        yield* writeLockFile(lockPath, lockFile)
       }
 
       if (json) {
         console.log(JSON.stringify({ results }))
       } else {
         const updatedCount = results.filter((r) => r.status === 'updated').length
+        const skippedCount = results.filter((r) => r.status === 'skipped').length
+        const pinnedCount = results.filter((r) => r.status === 'pinned').length
         const errorCount = results.filter((r) => r.status === 'error').length
+
         yield* Effect.log('')
-        yield* Effect.log(styled.dim(`Updated ${updatedCount} member(s)`))
+        const parts: string[] = []
+        if (updatedCount > 0) parts.push(`${updatedCount} updated`)
+        if (skippedCount > 0) parts.push(`${skippedCount} skipped`)
+        if (pinnedCount > 0) parts.push(`${pinnedCount} pinned`)
+        yield* Effect.log(styled.dim(parts.join(', ')))
+
         if (errorCount > 0) {
           yield* Effect.log(styled.red(`${errorCount} error(s)`))
         }
       }
-    }).pipe(Effect.withSpan('megarepo/update')),
+    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/update')),
 )
 
 // =============================================================================
@@ -1129,25 +1501,20 @@ const execCommand = Cli.Command.make(
 )
 
 // =============================================================================
-// Isolate Command
+// Pin / Unpin Commands
 // =============================================================================
 
-/** Isolate a member (convert symlink to worktree) */
-const isolateCommand = Cli.Command.make(
-  'isolate',
+/**
+ * Pin a member to its current commit.
+ * Pinned members won't be updated by `mr update` unless explicitly named.
+ */
+const pinCommand = Cli.Command.make(
+  'pin',
   {
-    member: Cli.Args.text({ name: 'member' }).pipe(Cli.Args.withDescription('Member to isolate')),
-    branch: Cli.Args.text({ name: 'branch' }).pipe(
-      Cli.Args.withDescription('Branch name for the worktree'),
-    ),
+    member: Cli.Args.text({ name: 'member' }).pipe(Cli.Args.withDescription('Member to pin')),
     json: jsonOption,
-    force: Cli.Options.boolean('force').pipe(
-      Cli.Options.withAlias('f'),
-      Cli.Options.withDescription('Force removal of non-symlink directories'),
-      Cli.Options.withDefault(false),
-    ),
   },
-  ({ member, branch, json, force }) =>
+  ({ member, json }) =>
     Effect.gen(function* () {
       const cwd = yield* Cwd
       const root = yield* findMegarepoRoot(cwd)
@@ -1161,8 +1528,9 @@ const isolateCommand = Cli.Command.make(
         return yield* Effect.fail(new Error('Not in a megarepo'))
       }
 
-      // Load config
       const fs = yield* FileSystem.FileSystem
+
+      // Load config to verify member exists
       const configPath = EffectPath.ops.join(
         root.value,
         EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
@@ -1170,116 +1538,107 @@ const isolateCommand = Cli.Command.make(
       const configContent = yield* fs.readFileString(configPath)
       const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
 
-      // Check if member exists
-      const memberConfig = config.members[member]
-      if (memberConfig === undefined) {
-        if (json) {
-          console.log(JSON.stringify({ error: 'not_found', message: 'Member not found' }))
-        } else {
-          yield* Effect.logError(`${styled.red(symbols.cross)} Member '${member}' not found`)
-        }
-        return yield* Effect.fail(new Error('Member not found'))
-      }
-
-      const memberPath = EffectPath.ops.join(
-        root.value,
-        EffectPath.unsafe.relativeDir(`${member}/`),
-      )
-      const store = yield* Store
-      const source = parseMemberSource(memberConfig)
-
-      if (source === undefined || source.type === 'path') {
+      if (!(member in config.members)) {
         if (json) {
           console.log(
-            JSON.stringify({ error: 'invalid', message: 'Cannot isolate local path members' }),
+            JSON.stringify({ error: 'not_found', message: `Member '${member}' not found` }),
           )
         } else {
-          yield* Effect.logError(`${styled.red(symbols.cross)} Cannot isolate local path members`)
+          yield* Effect.logError(`${styled.red(symbols.cross)} Member '${member}' not found`)
         }
-        return yield* Effect.fail(new Error('Cannot isolate local path members'))
+        return yield* Effect.fail(new Error('Member not found'))
       }
 
-      const storePath = store.getRepoPath(source)
-
-      // Remove existing symlink (safely)
-      const exists = yield* fs.exists(memberPath)
-      if (exists) {
-        const stat = yield* fs.stat(memberPath).pipe(Effect.catchAll(() => Effect.succeed(null)))
-        if (stat?.type === 'SymbolicLink') {
-          yield* fs.remove(memberPath)
-        } else if (force) {
-          // Only remove non-symlinks with --force
-          yield* fs.remove(memberPath, { recursive: true })
+      // Check if it's a local path (can't pin local paths)
+      const sourceString = config.members[member]
+      if (sourceString === undefined) {
+        return yield* Effect.fail(new Error('Member not found'))
+      }
+      const source = parseSourceString(sourceString)
+      if (source === undefined) {
+        if (json) {
+          console.log(JSON.stringify({ error: 'invalid_source', message: 'Invalid source string' }))
         } else {
-          if (json) {
-            console.log(
-              JSON.stringify({
-                error: 'not_symlink',
-                message: 'Member path is not a symlink. Use --force to remove the directory.',
-              }),
-            )
-          } else {
-            yield* Effect.logError(
-              `${styled.red(symbols.cross)} Member path is not a symlink. Use --force to remove.`,
-            )
-          }
-          return yield* Effect.fail(new Error('Member path is not a symlink'))
+          yield* Effect.logError(`${styled.red(symbols.cross)} Invalid source string`)
         }
+        return yield* Effect.fail(new Error('Invalid source'))
+      }
+      if (!isRemoteSource(source)) {
+        if (json) {
+          console.log(
+            JSON.stringify({ error: 'local_path', message: 'Cannot pin local path members' }),
+          )
+        } else {
+          yield* Effect.logError(`${styled.red(symbols.cross)} Cannot pin local path members`)
+        }
+        return yield* Effect.fail(new Error('Cannot pin local path'))
       }
 
-      // Create worktree
-      yield* Git.createWorktree({
-        repoPath: storePath,
-        worktreePath: memberPath,
-        branch,
-        createBranch: false,
-      }).pipe(
-        Effect.catchAll(() =>
-          Git.createWorktree({
-            repoPath: storePath,
-            worktreePath: memberPath,
-            branch,
-            createBranch: true,
-          }),
-        ),
+      // Load or create lock file
+      const lockPath = EffectPath.ops.join(
+        root.value,
+        EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
       )
+      const lockFileOpt = yield* readLockFile(lockPath)
+      let lockFile = Option.getOrElse(lockFileOpt, () => createEmptyLockFile())
 
-      // Update config with isolated field
-      const newConfig = {
-        ...config,
-        members: {
-          ...config.members,
-          [member]: { ...memberConfig, isolated: branch },
-        },
+      // Check if member is in lock file
+      const lockedMember = Option.getOrUndefined(getLockedMember(lockFile, member))
+      if (lockedMember === undefined) {
+        if (json) {
+          console.log(
+            JSON.stringify({
+              error: 'not_synced',
+              message: 'Member not synced yet. Run mr sync first.',
+            }),
+          )
+        } else {
+          yield* Effect.logError(`${styled.red(symbols.cross)} Member '${member}' not synced yet.`)
+          yield* Effect.log(styled.dim('  Run: mr sync'))
+        }
+        return yield* Effect.fail(new Error('Member not synced'))
       }
-      const newConfigContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
-        newConfig,
-      )
-      yield* fs.writeFileString(configPath, newConfigContent + '\n')
+
+      // Check if already pinned
+      if (lockedMember.pinned) {
+        if (json) {
+          console.log(
+            JSON.stringify({ status: 'already_pinned', member, commit: lockedMember.commit }),
+          )
+        } else {
+          yield* Effect.log(
+            styled.dim(
+              `Member '${member}' is already pinned at ${lockedMember.commit.slice(0, 7)}`,
+            ),
+          )
+        }
+        return
+      }
+
+      // Pin the member
+      lockFile = pinMember(lockFile, member)
+      yield* writeLockFile(lockPath, lockFile)
 
       if (json) {
-        console.log(JSON.stringify({ status: 'isolated', member, branch }))
+        console.log(JSON.stringify({ status: 'pinned', member, commit: lockedMember.commit }))
       } else {
         yield* Effect.log(
-          `${styled.green(symbols.check)} Isolated ${styled.bold(member)} on branch ${styled.bold(branch)}`,
+          `${styled.green(symbols.check)} Pinned ${styled.bold(member)} at ${styled.dim(lockedMember.commit.slice(0, 7))}`,
         )
       }
-    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/isolate')),
+    }).pipe(Effect.withSpan('megarepo/pin')),
 )
 
-/** Unisolate a member (convert worktree back to symlink) */
-const unisolateCommand = Cli.Command.make(
-  'unisolate',
+/**
+ * Unpin a member, allowing it to be updated by `mr update`.
+ */
+const unpinCommand = Cli.Command.make(
+  'unpin',
   {
-    member: Cli.Args.text({ name: 'member' }).pipe(Cli.Args.withDescription('Member to unisolate')),
+    member: Cli.Args.text({ name: 'member' }).pipe(Cli.Args.withDescription('Member to unpin')),
     json: jsonOption,
-    force: Cli.Options.boolean('force').pipe(
-      Cli.Options.withAlias('f'),
-      Cli.Options.withDescription('Force removal even with uncommitted changes'),
-      Cli.Options.withDefault(false),
-    ),
   },
-  ({ member, json, force }) =>
+  ({ member, json }) =>
     Effect.gen(function* () {
       const cwd = yield* Cwd
       const root = yield* findMegarepoRoot(cwd)
@@ -1293,8 +1652,9 @@ const unisolateCommand = Cli.Command.make(
         return yield* Effect.fail(new Error('Not in a megarepo'))
       }
 
-      // Load config
       const fs = yield* FileSystem.FileSystem
+
+      // Load config to verify member exists
       const configPath = EffectPath.ops.join(
         root.value,
         EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
@@ -1302,65 +1662,64 @@ const unisolateCommand = Cli.Command.make(
       const configContent = yield* fs.readFileString(configPath)
       const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
 
-      // Check if member exists and is isolated
-      const memberConfig = config.members[member]
-      if (memberConfig === undefined) {
+      if (!(member in config.members)) {
         if (json) {
-          console.log(JSON.stringify({ error: 'not_found', message: 'Member not found' }))
+          console.log(
+            JSON.stringify({ error: 'not_found', message: `Member '${member}' not found` }),
+          )
         } else {
           yield* Effect.logError(`${styled.red(symbols.cross)} Member '${member}' not found`)
         }
         return yield* Effect.fail(new Error('Member not found'))
       }
 
-      if (memberConfig.isolated === undefined) {
-        if (json) {
-          console.log(JSON.stringify({ error: 'not_isolated', message: 'Member is not isolated' }))
-        } else {
-          yield* Effect.logError(`${styled.red(symbols.cross)} Member '${member}' is not isolated`)
-        }
-        return yield* Effect.fail(new Error('Member is not isolated'))
-      }
-
-      const memberPath = EffectPath.ops.join(
+      // Load lock file
+      const lockPath = EffectPath.ops.join(
         root.value,
-        EffectPath.unsafe.relativeDir(`${member}/`),
+        EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
       )
-      const store = yield* Store
-      const source = parseMemberSource(memberConfig)
+      const lockFileOpt = yield* readLockFile(lockPath)
+      if (Option.isNone(lockFileOpt)) {
+        if (json) {
+          console.log(JSON.stringify({ error: 'no_lock', message: 'No lock file found' }))
+        } else {
+          yield* Effect.logError(`${styled.red(symbols.cross)} No lock file found`)
+        }
+        return yield* Effect.fail(new Error('No lock file'))
+      }
+      let lockFile = lockFileOpt.value
 
-      if (source === undefined || source.type === 'path') {
-        return yield* Effect.fail(new Error('Invalid member source'))
+      // Check if member is in lock file
+      const lockedMember = Option.getOrUndefined(getLockedMember(lockFile, member))
+      if (lockedMember === undefined) {
+        if (json) {
+          console.log(JSON.stringify({ status: 'not_in_lock', member }))
+        } else {
+          yield* Effect.log(styled.dim(`Member '${member}' not in lock file`))
+        }
+        return
       }
 
-      const storePath = store.getRepoPath(source)
-
-      // Remove worktree
-      yield* Git.removeWorktree({ repoPath: storePath, worktreePath: memberPath, force })
-
-      // Create symlink
-      yield* createSymlink({ target: storePath, link: memberPath })
-
-      // Update config to remove isolated field
-      const { isolated: _, ...cleanMemberConfig } = memberConfig
-      const newConfig = {
-        ...config,
-        members: {
-          ...config.members,
-          [member]: cleanMemberConfig,
-        },
+      // Check if already unpinned
+      if (!lockedMember.pinned) {
+        if (json) {
+          console.log(JSON.stringify({ status: 'already_unpinned', member }))
+        } else {
+          yield* Effect.log(styled.dim(`Member '${member}' is not pinned`))
+        }
+        return
       }
-      const newConfigContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
-        newConfig,
-      )
-      yield* fs.writeFileString(configPath, newConfigContent + '\n')
+
+      // Unpin the member
+      lockFile = unpinMember(lockFile, member)
+      yield* writeLockFile(lockPath, lockFile)
 
       if (json) {
-        console.log(JSON.stringify({ status: 'unisolated', member }))
+        console.log(JSON.stringify({ status: 'unpinned', member }))
       } else {
-        yield* Effect.log(`${styled.green(symbols.check)} Unisolated ${styled.bold(member)}`)
+        yield* Effect.log(`${styled.green(symbols.check)} Unpinned ${styled.bold(member)}`)
       }
-    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/unisolate')),
+    }).pipe(Effect.withSpan('megarepo/unpin')),
 )
 
 // =============================================================================
@@ -1674,9 +2033,9 @@ const mrCommand = Cli.Command.make('mr', {}).pipe(
     syncCommand,
     addCommand,
     updateCommand,
+    pinCommand,
+    unpinCommand,
     execCommand,
-    isolateCommand,
-    unisolateCommand,
     storeCommand,
     generateCommand,
   ]),

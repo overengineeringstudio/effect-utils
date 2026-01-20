@@ -221,6 +221,174 @@ export const listWorktrees = (repoPath: string) =>
   })
 
 // =============================================================================
+// Bare Repo Operations
+// =============================================================================
+
+/**
+ * Clone a repository as a bare repo
+ */
+export const cloneBare = (args: { url: string; targetPath: string }) =>
+  clone({ url: args.url, targetPath: args.targetPath, bare: true })
+
+/**
+ * Fetch all refs from remote in a bare repo
+ * Includes tags and prunes stale refs
+ */
+export const fetchBare = (args: { repoPath: string; remote?: string }) =>
+  Effect.gen(function* () {
+    const remote = args.remote ?? 'origin'
+    // Fetch all refs including tags, prune stale refs
+    yield* runGitCommand({
+      args: ['fetch', '--tags', '--prune', remote],
+      cwd: args.repoPath,
+    })
+  })
+
+/**
+ * Get the default branch name from a remote
+ * Uses `git ls-remote --symref` to query the remote's HEAD
+ */
+export const getDefaultBranch = (args: { url: string } | { repoPath: string; remote?: string }) =>
+  Effect.gen(function* () {
+    let output: string
+
+    if ('url' in args) {
+      // Query remote directly by URL
+      output = yield* runGitCommand({
+        args: ['ls-remote', '--symref', args.url, 'HEAD'],
+      })
+    } else {
+      // Query remote by name from existing repo
+      const remote = args.remote ?? 'origin'
+      output = yield* runGitCommand({
+        args: ['ls-remote', '--symref', remote, 'HEAD'],
+        cwd: args.repoPath,
+      })
+    }
+
+    // Parse output: "ref: refs/heads/main\tHEAD"
+    const match = output.match(/ref: refs\/heads\/([^\t\n]+)/)
+    if (match?.[1]) {
+      return Option.some(match[1])
+    }
+    return Option.none()
+  })
+
+/**
+ * Resolve a ref to its commit SHA
+ * Works with branches, tags, and commits
+ */
+export const resolveRef = (args: { repoPath: string; ref: string }) =>
+  Effect.gen(function* () {
+    return yield* runGitCommand({
+      args: ['rev-parse', args.ref],
+      cwd: args.repoPath,
+    })
+  })
+
+/**
+ * Check if a ref exists in the repo
+ */
+export const refExists = (args: { repoPath: string; ref: string }) =>
+  Effect.gen(function* () {
+    return yield* runGitCommand({
+      args: ['rev-parse', '--verify', args.ref],
+      cwd: args.repoPath,
+    }).pipe(
+      Effect.map(() => true),
+      Effect.catchAll(() => Effect.succeed(false)),
+    )
+  })
+
+// =============================================================================
+// Enhanced Worktree Operations
+// =============================================================================
+
+/**
+ * Create a worktree at a specific commit (detached HEAD)
+ * Used for tags and specific commits
+ */
+export const createWorktreeDetached = (args: {
+  repoPath: string
+  worktreePath: string
+  commit: string
+}) =>
+  Effect.gen(function* () {
+    // --detach creates the worktree with a detached HEAD at the specified commit
+    yield* runGitCommand({
+      args: ['worktree', 'add', '--detach', args.worktreePath, args.commit],
+      cwd: args.repoPath,
+    })
+  })
+
+/**
+ * Worktree status information
+ */
+export interface WorktreeStatus {
+  /** Whether the worktree has uncommitted changes */
+  readonly isDirty: boolean
+  /** Whether the worktree has unpushed commits */
+  readonly hasUnpushed: boolean
+  /** Number of uncommitted changes */
+  readonly changesCount: number
+}
+
+/**
+ * Get the status of a worktree (dirty state, unpushed commits)
+ */
+export const getWorktreeStatus = (worktreePath: string) =>
+  Effect.gen(function* () {
+    // Check for uncommitted changes
+    const statusOutput = yield* runGitCommand({
+      args: ['status', '--porcelain'],
+      cwd: worktreePath,
+    })
+
+    const changes = statusOutput.split('\n').filter((line) => line.trim() !== '')
+    const isDirty = changes.length > 0
+
+    // Check for unpushed commits (only relevant for branches)
+    const unpushedOutput = yield* runGitCommand({
+      args: ['log', '@{upstream}..HEAD', '--oneline'],
+      cwd: worktreePath,
+    }).pipe(
+      Effect.map((out) => out.split('\n').filter((line) => line.trim() !== '').length > 0),
+      Effect.catchAll(() => Effect.succeed(false)), // No upstream or not a branch
+    )
+
+    return {
+      isDirty,
+      hasUnpushed: unpushedOutput,
+      changesCount: changes.length,
+    } satisfies WorktreeStatus
+  })
+
+/**
+ * Update a branch worktree to the latest from remote
+ * This is a pull operation (fetch + merge/fast-forward)
+ */
+export const updateWorktree = (args: { worktreePath: string; remote?: string }) =>
+  Effect.gen(function* () {
+    const remote = args.remote ?? 'origin'
+    // Fetch and merge/rebase
+    yield* runGitCommand({
+      args: ['pull', '--ff-only', remote],
+      cwd: args.worktreePath,
+    })
+  })
+
+/**
+ * Checkout a specific commit in a worktree
+ */
+export const checkoutWorktree = (args: { worktreePath: string; ref: string }) =>
+  Effect.gen(function* () {
+    yield* runGitCommand({
+      args: ['checkout', args.ref],
+      cwd: args.worktreePath,
+    })
+  })
+
+// =============================================================================
 // Megarepo Name Derivation
 // =============================================================================
 

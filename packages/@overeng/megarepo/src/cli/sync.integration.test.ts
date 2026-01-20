@@ -28,7 +28,7 @@ describe('mr sync', () => {
           const { workspacePath } = yield* createWorkspace({
             name: 'test-megarepo',
             members: {
-              'local-lib': { path: localRepoPath },
+              'local-lib': localRepoPath,
             },
           })
 
@@ -62,7 +62,7 @@ describe('mr sync', () => {
           const { workspacePath, repoPaths } = yield* createWorkspace({
             name: 'full-workspace',
             members: {
-              repo1: { github: 'test/repo1' },
+              repo1: 'test/repo1',
             },
             repos: [{ name: 'repo1' }],
           })

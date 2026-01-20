@@ -11,7 +11,7 @@ import { Effect, Schema } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
-import { MegarepoConfig, type MemberConfig } from '../lib/config.ts'
+import { MegarepoConfig } from '../lib/config.ts'
 
 // =============================================================================
 // Types
@@ -33,8 +33,8 @@ export interface RepoFixture {
 export interface WorkspaceFixture {
   /** Name for the workspace directory */
   readonly name?: string
-  /** Members to add to megarepo.json */
-  readonly members?: Record<string, MemberConfig>
+  /** Members to add to megarepo.json (member name -> source string) */
+  readonly members?: Record<string, string>
   /** Repos to create and symlink */
   readonly repos?: ReadonlyArray<RepoFixture>
 }
@@ -247,6 +247,9 @@ export const createStore = (repos: ReadonlyArray<RepoFixture>) =>
         EffectPath.unsafe.relativeDir(`github.com/test-owner/${repoFixture.name}/`),
       )
       const parentDir = EffectPath.ops.parent(repoDir)
+      if (parentDir === undefined) {
+        throw new Error(`Cannot get parent directory of ${repoDir}`)
+      }
       yield* fs.makeDirectory(parentDir, { recursive: true })
 
       const repoPath = yield* createRepo({ basePath: parentDir, fixture: repoFixture })
@@ -312,8 +315,6 @@ export const readConfig = (workspacePath: AbsoluteDirPath) =>
   })
 
 /** Generate a megarepo.json config object */
-export const generateConfig = (
-  members: Record<string, MemberConfig>,
-): typeof MegarepoConfig.Type => ({
+export const generateConfig = (members: Record<string, string>): typeof MegarepoConfig.Type => ({
   members,
 })

@@ -2,13 +2,21 @@
  * Megarepo configuration schema and types
  *
  * A megarepo uses a single `megarepo.json` config file that declares:
- * - Members: repos to include (via GitHub shorthand, URL, or local path)
+ * - Members: repos to include (via unified source string format)
  * - Generators: optional config file generators (envrc, vscode, flake, devenv)
+ *
+ * Source string format:
+ * - GitHub shorthand: "owner/repo" or "owner/repo#ref"
+ * - HTTPS URL: "https://github.com/owner/repo" or "https://github.com/owner/repo#ref"
+ * - SSH URL: "git@github.com:owner/repo" or "git@github.com:owner/repo#ref"
+ * - Local path: "./path", "../path", "/absolute/path"
  */
 
-import { JSONSchema, Schema } from 'effect'
+import { JSONSchema, Option, Schema } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath, type RelativeDirPath } from '@overeng/effect-path'
+
+import { parseSourceRef } from './ref.ts'
 
 // =============================================================================
 // Path Type Re-exports
@@ -22,32 +30,6 @@ export type {
   RelativeFilePath,
 } from '@overeng/effect-path'
 export { EffectPath }
-
-// =============================================================================
-// Member Configuration
-// =============================================================================
-
-/**
- * Configuration for a member repository.
- *
- * Member source priority: `github` > `url` > `path` (only one should be specified)
- */
-export class MemberConfig extends Schema.Class<MemberConfig>('MemberConfig')({
-  /** GitHub shorthand: "owner/repo" */
-  github: Schema.optional(Schema.String),
-
-  /** Full git URL (for non-GitHub remotes) */
-  url: Schema.optional(Schema.String),
-
-  /** Local file path (for repos without remote) */
-  path: Schema.optional(Schema.String),
-
-  /** Pin to specific ref (tag, branch, commit) */
-  pin: Schema.optional(Schema.String),
-
-  /** Isolate: create worktree at this branch instead of symlink */
-  isolated: Schema.optional(Schema.String),
-}) {}
 
 // =============================================================================
 // Generator Configuration
@@ -101,13 +83,22 @@ export class GeneratorsConfig extends Schema.Class<GeneratorsConfig>('Generators
 // Megarepo Configuration
 // =============================================================================
 
-/** Main megarepo configuration schema */
+/**
+ * Main megarepo configuration schema
+ *
+ * Members use unified source string format:
+ * - "owner/repo" - GitHub shorthand, default branch
+ * - "owner/repo#ref" - GitHub shorthand, specific ref
+ * - "https://..." - HTTPS URL
+ * - "git@host:path" - SSH URL
+ * - "./path", "../path", "/path" - Local path
+ */
 export class MegarepoConfig extends Schema.Class<MegarepoConfig>('MegarepoConfig')({
   /** JSON Schema reference (optional, for editor support) */
   $schema: Schema.optional(Schema.String),
 
-  /** Members: repos to include in this megarepo */
-  members: Schema.Record({ key: Schema.String, value: MemberConfig }),
+  /** Members: repos to include in this megarepo (name -> source string) */
+  members: Schema.Record({ key: Schema.String, value: Schema.String }),
 
   /** Generators: optional config file generation */
   generators: Schema.optional(GeneratorsConfig),
@@ -141,34 +132,94 @@ export const ENV_VARS = {
 export const generateJsonSchema = () => JSONSchema.make(MegarepoConfig)
 
 // =============================================================================
-// Utility Types
+// Source Parsing
 // =============================================================================
 
-/** Parsed member source (derived from config) */
+/** Parsed member source with optional ref */
 export type MemberSource =
-  | { readonly type: 'github'; readonly owner: string; readonly repo: string }
-  | { readonly type: 'url'; readonly url: string }
+  | {
+      readonly type: 'github'
+      readonly owner: string
+      readonly repo: string
+      readonly ref: Option.Option<string>
+    }
+  | { readonly type: 'url'; readonly url: string; readonly ref: Option.Option<string> }
   | { readonly type: 'path'; readonly path: string }
 
+/** Result of parsing a source string */
+export interface ParsedMemberSource {
+  readonly source: MemberSource
+  readonly ref: Option.Option<string>
+}
+
 /**
- * Parse member config to determine source type
+ * Check if a string looks like a GitHub shorthand (owner/repo)
+ * Must have exactly one slash with non-empty segments, and not start with protocol or path indicators
  */
-export const parseMemberSource = (config: MemberConfig): MemberSource | undefined => {
-  if (config.github !== undefined) {
-    const parts = config.github.split('/')
-    // Validate both owner and repo are non-empty strings
-    if (parts.length === 2 && parts[0] && parts[0].length > 0 && parts[1] && parts[1].length > 0) {
-      return { type: 'github', owner: parts[0], repo: parts[1] }
+const isGitHubShorthand = (s: string): boolean => {
+  // Not a URL (no protocol)
+  if (s.includes('://') || s.startsWith('git@')) return false
+  // Not a path
+  if (s.startsWith('./') || s.startsWith('../') || s.startsWith('/') || s.startsWith('~'))
+    return false
+  // Has exactly one slash with content on both sides
+  const parts = s.split('/')
+  return parts.length === 2 && parts[0]!.length > 0 && parts[1]!.length > 0
+}
+
+/**
+ * Check if a string is a local path
+ */
+const isLocalPath = (s: string): boolean => {
+  return s.startsWith('./') || s.startsWith('../') || s.startsWith('/') || s.startsWith('~')
+}
+
+/**
+ * Parse a source string into a MemberSource.
+ * Handles:
+ * - GitHub shorthand: "owner/repo" or "owner/repo#ref"
+ * - HTTPS URL: "https://..." or "https://...#ref"
+ * - SSH URL: "git@host:path" or "git@host:path#ref"
+ * - Local path: "./...", "../...", "/...", "~..." (no #ref support)
+ */
+export const parseSourceString = (sourceString: string): MemberSource | undefined => {
+  // Local paths don't support #ref syntax - the entire string is the path
+  if (isLocalPath(sourceString)) {
+    return { type: 'path', path: sourceString }
+  }
+
+  // For non-local sources, extract any #ref suffix
+  const { source, ref } = parseSourceRef(sourceString)
+
+  // GitHub shorthand: owner/repo
+  if (isGitHubShorthand(source)) {
+    const parts = source.split('/')
+    if (parts.length === 2 && parts[0] && parts[1]) {
+      return { type: 'github', owner: parts[0], repo: parts[1], ref }
     }
     return undefined
   }
-  if (config.url !== undefined) {
-    return { type: 'url', url: config.url }
+
+  // URL (HTTPS or SSH)
+  if (source.includes('://') || source.startsWith('git@')) {
+    return { type: 'url', url: source, ref }
   }
-  if (config.path !== undefined) {
-    return { type: 'path', path: config.path }
-  }
+
   return undefined
+}
+
+/**
+ * Get the canonical URL for a member source (expands GitHub shorthand)
+ */
+export const getSourceUrl = (source: MemberSource): string | undefined => {
+  switch (source.type) {
+    case 'github':
+      return `https://github.com/${source.owner}/${source.repo}`
+    case 'url':
+      return source.url
+    case 'path':
+      return undefined // Local paths don't have URLs
+  }
 }
 
 /**
@@ -208,4 +259,24 @@ const parseUrlToStorePath = (url: string): RelativeDirPath => {
   // Fallback: use the URL hash or basename
   const basename = url.split('/').pop()?.replace('.git', '') ?? 'unknown'
   return EffectPath.unsafe.relativeDir(`other/${basename}/`)
+}
+
+/**
+ * Get the ref from a member source (if specified)
+ */
+export const getSourceRef = (source: MemberSource): Option.Option<string> => {
+  switch (source.type) {
+    case 'github':
+    case 'url':
+      return source.ref
+    case 'path':
+      return Option.none()
+  }
+}
+
+/**
+ * Check if a source is a remote source (not a local path)
+ */
+export const isRemoteSource = (source: MemberSource): boolean => {
+  return source.type !== 'path'
 }
