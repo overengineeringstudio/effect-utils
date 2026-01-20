@@ -1788,9 +1788,256 @@ const storeFetchCommand = Cli.Command.make('fetch', { json: jsonOption }, ({ jso
   }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/fetch')),
 )
 
+/** GC result for a single worktree */
+interface GcWorktreeResult {
+  readonly repo: string
+  readonly ref: string
+  readonly path: string
+  readonly status: 'removed' | 'skipped_dirty' | 'skipped_in_use' | 'error'
+  readonly message?: string
+}
+
+/**
+ * Garbage collect unused worktrees from the store.
+ * Removes worktrees that are not referenced by any megarepo's lock file.
+ */
+const storeGcCommand = Cli.Command.make(
+  'gc',
+  {
+    json: jsonOption,
+    dryRun: Cli.Options.boolean('dry-run').pipe(
+      Cli.Options.withDescription('Show what would be removed without removing'),
+      Cli.Options.withDefault(false),
+    ),
+    force: Cli.Options.boolean('force').pipe(
+      Cli.Options.withAlias('f'),
+      Cli.Options.withDescription('Remove dirty worktrees (with uncommitted changes)'),
+      Cli.Options.withDefault(false),
+    ),
+    all: Cli.Options.boolean('all').pipe(
+      Cli.Options.withDescription('Remove all worktrees (not just unused ones)'),
+      Cli.Options.withDefault(false),
+    ),
+  },
+  ({ json, dryRun, force, all }) =>
+    Effect.gen(function* () {
+      const cwd = yield* Cwd
+      const store = yield* Store
+      const fs = yield* FileSystem.FileSystem
+
+      // Get lock file from current megarepo (if any)
+      const root = yield* findMegarepoRoot(cwd)
+      let lockFile: LockFile | undefined
+      let inUsePaths = new Set<string>()
+
+      if (Option.isSome(root) && !all) {
+        const lockPath = EffectPath.ops.join(
+          root.value,
+          EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+        )
+        const lockFileOpt = yield* readLockFile(lockPath)
+        lockFile = Option.getOrUndefined(lockFileOpt)
+
+        // Build set of worktree paths that are "in use"
+        if (lockFile !== undefined) {
+          const configPath = EffectPath.ops.join(
+            root.value,
+            EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+          )
+          const configContent = yield* fs.readFileString(configPath)
+          const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
+            configContent,
+          )
+
+          for (const [name, sourceString] of Object.entries(config.members)) {
+            const source = parseSourceString(sourceString)
+            if (source === undefined || !isRemoteSource(source)) continue
+
+            const lockedMember = lockFile.members[name]
+            if (lockedMember === undefined) continue
+
+            // Mark the worktree path as in use
+            const worktreePath = store.getWorktreePath(source, lockedMember.ref)
+            inUsePaths.add(worktreePath)
+          }
+        }
+      }
+
+      if (!json && !all && Option.isNone(root)) {
+        yield* Effect.log(styled.dim('Not in a megarepo - all worktrees will be considered unused'))
+        yield* Effect.log('')
+      }
+
+      // List all repos and their worktrees
+      const repos = yield* store.listRepos()
+      const results: GcWorktreeResult[] = []
+
+      for (const repo of repos) {
+        // List worktrees for this repo
+        // We need to construct a mock source for listing
+        const worktrees = yield* Effect.gen(function* () {
+          const refsDir = EffectPath.ops.join(repo.fullPath, EffectPath.unsafe.relativeDir('refs/'))
+          const exists = yield* fs.exists(refsDir)
+          if (!exists) return []
+
+          const result: Array<{
+            ref: string
+            refType: string
+            path: AbsoluteDirPath
+          }> = []
+
+          const refTypes = yield* fs.readDirectory(refsDir)
+          for (const refTypeDir of refTypes) {
+            if (refTypeDir !== 'heads' && refTypeDir !== 'tags' && refTypeDir !== 'commits')
+              continue
+
+            const refTypePath = EffectPath.ops.join(
+              refsDir,
+              EffectPath.unsafe.relativeDir(`${refTypeDir}/`),
+            )
+            const refTypeStat = yield* fs
+              .stat(refTypePath)
+              .pipe(Effect.catchAll(() => Effect.succeed(null)))
+            if (refTypeStat?.type !== 'Directory') continue
+
+            const encodedRefs = yield* fs.readDirectory(refTypePath)
+            for (const encodedRef of encodedRefs) {
+              const worktreePath = EffectPath.ops.join(
+                refTypePath,
+                EffectPath.unsafe.relativeDir(`${encodedRef}/`),
+              )
+              const worktreeStat = yield* fs
+                .stat(worktreePath)
+                .pipe(Effect.catchAll(() => Effect.succeed(null)))
+              if (worktreeStat?.type !== 'Directory') continue
+
+              const ref = decodeURIComponent(encodedRef)
+              result.push({ ref, refType: refTypeDir, path: worktreePath })
+            }
+          }
+
+          return result
+        })
+
+        for (const worktree of worktrees) {
+          // Check if worktree is in use
+          if (inUsePaths.has(worktree.path)) {
+            results.push({
+              repo: repo.relativePath,
+              ref: worktree.ref,
+              path: worktree.path,
+              status: 'skipped_in_use',
+            })
+            continue
+          }
+
+          // Check if worktree is dirty
+          const status = yield* Git.getWorktreeStatus(worktree.path).pipe(
+            Effect.catchAll(() =>
+              Effect.succeed({ isDirty: false, hasUnpushed: false, changesCount: 0 }),
+            ),
+          )
+
+          if ((status.isDirty || status.hasUnpushed) && !force) {
+            results.push({
+              repo: repo.relativePath,
+              ref: worktree.ref,
+              path: worktree.path,
+              status: 'skipped_dirty',
+              message: status.isDirty
+                ? `${status.changesCount} uncommitted change(s)`
+                : 'has unpushed commits',
+            })
+            continue
+          }
+
+          // Remove the worktree
+          if (!dryRun) {
+            yield* Effect.gen(function* () {
+              const bareRepoPath = EffectPath.ops.join(
+                repo.fullPath,
+                EffectPath.unsafe.relativeDir('.bare/'),
+              )
+              yield* Git.removeWorktree({
+                repoPath: bareRepoPath,
+                worktreePath: worktree.path,
+                force: force,
+              }).pipe(
+                Effect.catchAll(() =>
+                  // If git worktree remove fails, try removing the directory directly
+                  fs.remove(worktree.path, { recursive: true }),
+                ),
+              )
+            }).pipe(
+              Effect.catchAll((error) =>
+                Effect.succeed({
+                  error: error instanceof Error ? error.message : String(error),
+                }),
+              ),
+            )
+          }
+
+          results.push({
+            repo: repo.relativePath,
+            ref: worktree.ref,
+            path: worktree.path,
+            status: 'removed',
+          })
+        }
+      }
+
+      // Output results
+      if (json) {
+        console.log(
+          JSON.stringify({
+            dryRun,
+            results,
+            summary: {
+              removed: results.filter((r) => r.status === 'removed').length,
+              skippedDirty: results.filter((r) => r.status === 'skipped_dirty').length,
+              skippedInUse: results.filter((r) => r.status === 'skipped_in_use').length,
+              errors: results.filter((r) => r.status === 'error').length,
+            },
+          }),
+        )
+      } else {
+        const removed = results.filter((r) => r.status === 'removed')
+        const skippedDirty = results.filter((r) => r.status === 'skipped_dirty')
+        const skippedInUse = results.filter((r) => r.status === 'skipped_in_use')
+
+        if (removed.length > 0) {
+          const verb = dryRun ? 'Would remove' : 'Removed'
+          for (const r of removed) {
+            yield* Effect.log(`${styled.green(symbols.check)} ${verb} ${r.repo}refs/${r.ref}`)
+          }
+        }
+
+        if (skippedDirty.length > 0) {
+          yield* Effect.log('')
+          yield* Effect.log(styled.yellow('Skipped (dirty):'))
+          for (const r of skippedDirty) {
+            yield* Effect.log(
+              `  ${styled.yellow('⊘')} ${r.repo}refs/${r.ref} ${styled.dim(`(${r.message})`)}`,
+            )
+          }
+          if (!force) {
+            yield* Effect.log(styled.dim('  Use --force to remove dirty worktrees'))
+          }
+        }
+
+        yield* Effect.log('')
+        const parts: string[] = []
+        if (removed.length > 0) parts.push(`${removed.length} ${dryRun ? 'would be ' : ''}removed`)
+        if (skippedDirty.length > 0) parts.push(`${skippedDirty.length} dirty`)
+        if (skippedInUse.length > 0) parts.push(`${skippedInUse.length} in use`)
+        yield* Effect.log(styled.dim(parts.length > 0 ? parts.join(', ') : 'Nothing to clean up'))
+      }
+    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/gc')),
+)
+
 /** Store subcommand group */
 const storeCommand = Cli.Command.make('store', {}).pipe(
-  Cli.Command.withSubcommands([storeLsCommand, storeFetchCommand]),
+  Cli.Command.withSubcommands([storeLsCommand, storeFetchCommand, storeGcCommand]),
 )
 
 // =============================================================================
