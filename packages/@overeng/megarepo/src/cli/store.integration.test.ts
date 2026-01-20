@@ -98,7 +98,7 @@ describe('mr store gc', () => {
       withTestCtx(
         Effect.gen(function* () {
           // Create store with worktrees
-          const { storePath, worktreePaths } = yield* createStoreFixture([
+          const { worktreePaths } = yield* createStoreFixture([
             {
               host: 'github.com',
               owner: 'test-owner',
@@ -207,18 +207,18 @@ describe('store worktree paths', () => {
 
         // Test path generation for branch
         const branchSource = parseSourceString('owner/repo#main')!
-        const branchPath = store.getWorktreePath(branchSource, 'main')
+        const branchPath = store.getWorktreePath({ source: branchSource, ref: 'main' })
         expect(branchPath).toContain('refs/heads/main/')
 
         // Test path generation for tag
         const tagSource = parseSourceString('owner/repo#v1.0.0')!
-        const tagPath = store.getWorktreePath(tagSource, 'v1.0.0')
+        const tagPath = store.getWorktreePath({ source: tagSource, ref: 'v1.0.0' })
         expect(tagPath).toContain('refs/tags/v1.0.0/')
 
         // Test path generation for commit (must be exactly 40 hex chars)
         const commitRef = 'abcdef1234567890abcdef1234567890abcdef12'
         const commitSource = parseSourceString(`owner/repo#${commitRef}`)!
-        const commitPath = store.getWorktreePath(commitSource, commitRef)
+        const commitPath = store.getWorktreePath({ source: commitSource, ref: commitRef })
         expect(commitPath).toContain('refs/commits/')
       }),
     ))
@@ -237,7 +237,7 @@ describe('store worktree paths', () => {
 
         // Test path generation for branch with special characters
         const source = parseSourceString('owner/repo')!
-        const pathWithSlash = store.getWorktreePath(source, 'feature/my-branch')
+        const pathWithSlash = store.getWorktreePath({ source, ref: 'feature/my-branch' })
         // The slash should be URL-encoded
         expect(pathWithSlash).toContain('feature%2Fmy-branch')
       }),
@@ -274,7 +274,7 @@ describe('lock file pin/unpin operations', () => {
 
         // Import and use pinMember
         const { pinMember } = yield* Effect.promise(() => import('../lib/lock.ts'))
-        const pinnedLockFile = pinMember(lockFile, 'my-lib')
+        const pinnedLockFile = pinMember({ lockFile, memberName: 'my-lib' })
 
         // Verify the member is now pinned
         expect(pinnedLockFile.members['my-lib']!.pinned).toBe(true)
@@ -313,7 +313,7 @@ describe('lock file pin/unpin operations', () => {
 
         // Import and use unpinMember
         const { unpinMember } = yield* Effect.promise(() => import('../lib/lock.ts'))
-        const unpinnedLockFile = unpinMember(lockFile, 'my-lib')
+        const unpinnedLockFile = unpinMember({ lockFile, memberName: 'my-lib' })
 
         // Verify the member is now unpinned
         expect(unpinnedLockFile.members['my-lib']!.pinned).toBe(false)
@@ -357,7 +357,7 @@ describe('lock file pin/unpin operations', () => {
 
         // Pin lib1
         const { pinMember } = yield* Effect.promise(() => import('../lib/lock.ts'))
-        const pinnedLockFile = pinMember(lockFile, 'lib1')
+        const pinnedLockFile = pinMember({ lockFile, memberName: 'lib1' })
 
         // Verify lib1 is pinned but lib2 is unchanged
         expect(pinnedLockFile.members['lib1']!.pinned).toBe(true)
@@ -373,8 +373,6 @@ describe('lock file operations', () => {
   it('should create and read lock file with pinned member', () =>
     withTestCtx(
       Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
-
         const { workspacePath } = yield* createWorkspaceWithLock({
           members: {
             'pinned-lib': 'owner/repo',

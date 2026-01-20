@@ -49,7 +49,7 @@ export interface MegarepoStore {
   readonly getBareRepoPath: (source: MemberSource) => AbsoluteDirPath
 
   /** Get the path to a specific worktree for a ref */
-  readonly getWorktreePath: (source: MemberSource, ref: string) => AbsoluteDirPath
+  readonly getWorktreePath: (args: { source: MemberSource; ref: string }) => AbsoluteDirPath
 
   /** Check if a bare repo exists in the store */
   readonly hasBareRepo: (
@@ -57,10 +57,10 @@ export interface MegarepoStore {
   ) => Effect.Effect<boolean, PlatformError.PlatformError, FileSystem.FileSystem>
 
   /** Check if a worktree exists for a specific ref */
-  readonly hasWorktree: (
-    source: MemberSource,
-    ref: string,
-  ) => Effect.Effect<boolean, PlatformError.PlatformError, FileSystem.FileSystem>
+  readonly hasWorktree: (args: {
+    source: MemberSource
+    ref: string
+  }) => Effect.Effect<boolean, PlatformError.PlatformError, FileSystem.FileSystem>
 
   /** List all repos in the store */
   readonly listRepos: () => Effect.Effect<
@@ -111,7 +111,13 @@ const make = (config: StoreConfig): MegarepoStore => {
     return EffectPath.ops.join(repoBase, EffectPath.unsafe.relativeDir('.bare/'))
   }
 
-  const getWorktreePath = (source: MemberSource, ref: string): AbsoluteDirPath => {
+  const getWorktreePath = ({
+    source,
+    ref,
+  }: {
+    source: MemberSource
+    ref: string
+  }): AbsoluteDirPath => {
     const repoBase = getRepoBasePath(source)
     const refType = classifyRef(ref)
     const pathSegment = refTypeToPathSegment(refType)
@@ -138,10 +144,10 @@ const make = (config: StoreConfig): MegarepoStore => {
         return yield* fs.exists(barePath)
       }),
 
-    hasWorktree: (source, ref) =>
+    hasWorktree: ({ source, ref }) =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
-        const worktreePath = getWorktreePath(source, ref)
+        const worktreePath = getWorktreePath({ source, ref })
         return yield* fs.exists(worktreePath)
       }),
 

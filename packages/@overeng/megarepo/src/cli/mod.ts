@@ -567,8 +567,8 @@ const syncMember = ({
     }
 
     // Create or update worktree
-    const worktreePath = store.getWorktreePath(source, targetRef)
-    const worktreeExists = yield* store.hasWorktree(source, targetRef)
+    const worktreePath = store.getWorktreePath({ source, ref: targetRef })
+    const worktreeExists = yield* store.hasWorktree({ source, ref: targetRef })
 
     if (!worktreeExists && !dryRun) {
       // Ensure worktree parent directory exists
@@ -737,7 +737,7 @@ const syncCommand = Cli.Command.make(
         }
 
         // Check for staleness
-        const staleness = checkLockStaleness(lockFile, remoteMemberNames)
+        const staleness = checkLockStaleness({ lockFile, configMemberNames: remoteMemberNames })
         if (staleness.isStale) {
           if (json) {
             console.log(
@@ -831,7 +831,7 @@ const syncCommand = Cli.Command.make(
         }
 
         // Sync lock with config (remove stale entries)
-        lockFile = syncLockWithConfig(lockFile, remoteMemberNames)
+        lockFile = syncLockWithConfig({ lockFile, configMemberNames: remoteMemberNames })
 
         // Update lock entries from results
         for (const result of results) {
@@ -844,21 +844,21 @@ const syncCommand = Cli.Command.make(
             const url = getSourceUrl(source) ?? sourceString
             const existingLocked = lockFile.members[result.name]
 
-            lockFile = updateLockedMember(
+            lockFile = updateLockedMember({
               lockFile,
-              result.name,
-              createLockedMember({
+              memberName: result.name,
+              member: createLockedMember({
                 url,
                 ref: result.ref,
                 commit: result.commit,
                 pinned: existingLocked?.pinned ?? false,
               }),
-            )
+            })
           }
         }
 
         // Write lock file
-        yield* writeLockFile(lockPath, lockFile)
+        yield* writeLockFile({ lockPath, lockFile })
       }
 
       // Output results
@@ -1200,8 +1200,8 @@ const updateMember = ({
     }
 
     // Update the worktree
-    const worktreePath = store.getWorktreePath(source, targetRef)
-    const worktreeExists = yield* store.hasWorktree(source, targetRef)
+    const worktreePath = store.getWorktreePath({ source, ref: targetRef })
+    const worktreeExists = yield* store.hasWorktree({ source, ref: targetRef })
 
     if (worktreeExists) {
       // Try to update the worktree
@@ -1351,23 +1351,23 @@ const updateCommand = Cli.Command.make(
               : (lockFile.members[name]?.ref ?? 'main')
             const existingLocked = lockFile.members[name]
 
-            lockFile = updateLockedMember(
+            lockFile = updateLockedMember({
               lockFile,
-              name,
-              createLockedMember({
+              memberName: name,
+              member: createLockedMember({
                 url,
                 ref,
                 commit: result.newCommit,
                 pinned: existingLocked?.pinned ?? false,
               }),
-            )
+            })
           }
         }
       }
 
       // Write updated lock file
       if (lockFile !== undefined) {
-        yield* writeLockFile(lockPath, lockFile)
+        yield* writeLockFile({ lockPath, lockFile })
       }
 
       if (json) {
@@ -1583,7 +1583,7 @@ const pinCommand = Cli.Command.make(
       let lockFile = Option.getOrElse(lockFileOpt, () => createEmptyLockFile())
 
       // Check if member is in lock file
-      const lockedMember = Option.getOrUndefined(getLockedMember(lockFile, member))
+      const lockedMember = Option.getOrUndefined(getLockedMember({ lockFile, memberName: member }))
       if (lockedMember === undefined) {
         if (json) {
           console.log(
@@ -1616,8 +1616,8 @@ const pinCommand = Cli.Command.make(
       }
 
       // Pin the member
-      lockFile = pinMember(lockFile, member)
-      yield* writeLockFile(lockPath, lockFile)
+      lockFile = pinMember({ lockFile, memberName: member })
+      yield* writeLockFile({ lockPath, lockFile })
 
       if (json) {
         console.log(JSON.stringify({ status: 'pinned', member, commit: lockedMember.commit }))
@@ -1690,7 +1690,7 @@ const unpinCommand = Cli.Command.make(
       let lockFile = lockFileOpt.value
 
       // Check if member is in lock file
-      const lockedMember = Option.getOrUndefined(getLockedMember(lockFile, member))
+      const lockedMember = Option.getOrUndefined(getLockedMember({ lockFile, memberName: member }))
       if (lockedMember === undefined) {
         if (json) {
           console.log(JSON.stringify({ status: 'not_in_lock', member }))
@@ -1711,8 +1711,8 @@ const unpinCommand = Cli.Command.make(
       }
 
       // Unpin the member
-      lockFile = unpinMember(lockFile, member)
-      yield* writeLockFile(lockPath, lockFile)
+      lockFile = unpinMember({ lockFile, memberName: member })
+      yield* writeLockFile({ lockPath, lockFile })
 
       if (json) {
         console.log(JSON.stringify({ status: 'unpinned', member }))
@@ -1857,7 +1857,7 @@ const storeGcCommand = Cli.Command.make(
             if (lockedMember === undefined) continue
 
             // Mark the worktree path as in use
-            const worktreePath = store.getWorktreePath(source, lockedMember.ref)
+            const worktreePath = store.getWorktreePath({ source, ref: lockedMember.ref })
             inUsePaths.add(worktreePath)
           }
         }

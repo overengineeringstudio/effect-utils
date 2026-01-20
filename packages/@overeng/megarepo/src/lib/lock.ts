@@ -87,10 +87,13 @@ export const readLockFile = (
 /**
  * Write a lock file to disk
  */
-export const writeLockFile = (
-  lockPath: AbsoluteFilePath,
-  lockFile: LockFile,
-): Effect.Effect<void, PlatformError.PlatformError, FileSystem.FileSystem> =>
+export const writeLockFile = ({
+  lockPath,
+  lockFile,
+}: {
+  lockPath: AbsoluteFilePath
+  lockFile: LockFile
+}): Effect.Effect<void, PlatformError.PlatformError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const content = JSON.stringify(Schema.encodeSync(LockFile)(lockFile), null, 2)
@@ -124,11 +127,15 @@ export const createLockedMember = (args: {
 /**
  * Update a member in the lock file
  */
-export const updateLockedMember = (
-  lockFile: LockFile,
-  memberName: string,
-  member: LockedMember,
-): LockFile => ({
+export const updateLockedMember = ({
+  lockFile,
+  memberName,
+  member,
+}: {
+  lockFile: LockFile
+  memberName: string
+  member: LockedMember
+}): LockFile => ({
   ...lockFile,
   members: {
     ...lockFile.members,
@@ -139,7 +146,13 @@ export const updateLockedMember = (
 /**
  * Remove a member from the lock file
  */
-export const removeLockedMember = (lockFile: LockFile, memberName: string): LockFile => {
+export const removeLockedMember = ({
+  lockFile,
+  memberName,
+}: {
+  lockFile: LockFile
+  memberName: string
+}): LockFile => {
   const { [memberName]: _, ...rest } = lockFile.members
   return {
     ...lockFile,
@@ -150,52 +163,87 @@ export const removeLockedMember = (lockFile: LockFile, memberName: string): Lock
 /**
  * Pin a member in the lock file
  */
-export const pinMember = (lockFile: LockFile, memberName: string): LockFile => {
+export const pinMember = ({
+  lockFile,
+  memberName,
+}: {
+  lockFile: LockFile
+  memberName: string
+}): LockFile => {
   const member = lockFile.members[memberName]
   if (!member) return lockFile
 
-  return updateLockedMember(lockFile, memberName, {
-    ...member,
-    pinned: true,
-    lockedAt: new Date().toISOString(),
+  return updateLockedMember({
+    lockFile,
+    memberName,
+    member: {
+      ...member,
+      pinned: true,
+      lockedAt: new Date().toISOString(),
+    },
   })
 }
 
 /**
  * Unpin a member in the lock file
  */
-export const unpinMember = (lockFile: LockFile, memberName: string): LockFile => {
+export const unpinMember = ({
+  lockFile,
+  memberName,
+}: {
+  lockFile: LockFile
+  memberName: string
+}): LockFile => {
   const member = lockFile.members[memberName]
   if (!member) return lockFile
 
-  return updateLockedMember(lockFile, memberName, {
-    ...member,
-    pinned: false,
-    lockedAt: new Date().toISOString(),
+  return updateLockedMember({
+    lockFile,
+    memberName,
+    member: {
+      ...member,
+      pinned: false,
+      lockedAt: new Date().toISOString(),
+    },
   })
 }
 
 /**
  * Get a member from the lock file
  */
-export const getLockedMember = (
-  lockFile: LockFile,
-  memberName: string,
-): Option.Option<LockedMember> => {
+export const getLockedMember = ({
+  lockFile,
+  memberName,
+}: {
+  lockFile: LockFile
+  memberName: string
+}): Option.Option<LockedMember> => {
   return Option.fromNullable(lockFile.members[memberName])
 }
 
 /**
  * Check if a member is in the lock file
  */
-export const hasMember = (lockFile: LockFile, memberName: string): boolean => {
+export const hasMember = ({
+  lockFile,
+  memberName,
+}: {
+  lockFile: LockFile
+  memberName: string
+}): boolean => {
   return memberName in lockFile.members
 }
 
 /**
  * Check if a member is pinned
  */
-export const isPinned = (lockFile: LockFile, memberName: string): boolean => {
+export const isPinned = ({
+  lockFile,
+  memberName,
+}: {
+  lockFile: LockFile
+  memberName: string
+}): boolean => {
   return lockFile.members[memberName]?.pinned ?? false
 }
 
@@ -218,14 +266,16 @@ export interface LockStalenessCheck {
 /**
  * Check if lock file is stale compared to config members
  * Only checks member names, not URLs or refs
- *
- * @param lockFile - The lock file to check
- * @param configMemberNames - Set of member names from config (remote sources only)
  */
-export const checkLockStaleness = (
-  lockFile: LockFile,
-  configMemberNames: ReadonlySet<string>,
-): LockStalenessCheck => {
+export const checkLockStaleness = ({
+  lockFile,
+  configMemberNames,
+}: {
+  /** The lock file to check */
+  lockFile: LockFile
+  /** Set of member names from config (remote sources only) */
+  configMemberNames: ReadonlySet<string>
+}): LockStalenessCheck => {
   const lockMemberNames = new Set(Object.keys(lockFile.members))
 
   const addedMembers = [...configMemberNames].filter((name) => !lockMemberNames.has(name))
@@ -241,10 +291,13 @@ export const checkLockStaleness = (
 /**
  * Synchronize lock file with config - remove members that are no longer in config
  */
-export const syncLockWithConfig = (
-  lockFile: LockFile,
-  configMemberNames: ReadonlySet<string>,
-): LockFile => {
+export const syncLockWithConfig = ({
+  lockFile,
+  configMemberNames,
+}: {
+  lockFile: LockFile
+  configMemberNames: ReadonlySet<string>
+}): LockFile => {
   const members: Record<string, LockedMember> = {}
 
   for (const [name, member] of Object.entries(lockFile.members)) {

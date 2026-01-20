@@ -127,7 +127,7 @@ describe('lock', () => {
         ref: 'main',
         commit: 'abc123',
       })
-      const updated = updateLockedMember(lockFile, 'effect', member)
+      const updated = updateLockedMember({ lockFile, memberName: 'effect', member })
       expect(updated.members['effect']).toBe(member)
     })
 
@@ -138,14 +138,14 @@ describe('lock', () => {
         ref: 'main',
         commit: 'abc123',
       })
-      lockFile = updateLockedMember(lockFile, 'effect', member1)
+      lockFile = updateLockedMember({ lockFile, memberName: 'effect', member: member1 })
 
       const member2 = createLockedMember({
         url: 'https://github.com/owner/repo',
         ref: 'main',
         commit: 'def456',
       })
-      const updated = updateLockedMember(lockFile, 'effect', member2)
+      const updated = updateLockedMember({ lockFile, memberName: 'effect', member: member2 })
       expect(updated.members['effect']?.commit).toBe('def456')
     })
   })
@@ -158,15 +158,15 @@ describe('lock', () => {
         ref: 'main',
         commit: 'abc123',
       })
-      lockFile = updateLockedMember(lockFile, 'effect', member)
+      lockFile = updateLockedMember({ lockFile, memberName: 'effect', member })
 
-      const updated = removeLockedMember(lockFile, 'effect')
+      const updated = removeLockedMember({ lockFile, memberName: 'effect' })
       expect(updated.members['effect']).toBeUndefined()
     })
 
     it('should handle removing non-existent member', () => {
       const lockFile = createEmptyLockFile()
-      const updated = removeLockedMember(lockFile, 'effect')
+      const updated = removeLockedMember({ lockFile, memberName: 'effect' })
       expect(updated.members).toEqual({})
     })
   })
@@ -179,9 +179,9 @@ describe('lock', () => {
         ref: 'main',
         commit: 'abc123',
       })
-      lockFile = updateLockedMember(lockFile, 'effect', member)
+      lockFile = updateLockedMember({ lockFile, memberName: 'effect', member })
 
-      const pinned = pinMember(lockFile, 'effect')
+      const pinned = pinMember({ lockFile, memberName: 'effect' })
       expect(pinned.members['effect']?.pinned).toBe(true)
     })
 
@@ -193,15 +193,15 @@ describe('lock', () => {
         commit: 'abc123',
         pinned: true,
       })
-      lockFile = updateLockedMember(lockFile, 'effect', member)
+      lockFile = updateLockedMember({ lockFile, memberName: 'effect', member })
 
-      const unpinned = unpinMember(lockFile, 'effect')
+      const unpinned = unpinMember({ lockFile, memberName: 'effect' })
       expect(unpinned.members['effect']?.pinned).toBe(false)
     })
 
     it('should handle pinning non-existent member', () => {
       const lockFile = createEmptyLockFile()
-      const pinned = pinMember(lockFile, 'effect')
+      const pinned = pinMember({ lockFile, memberName: 'effect' })
       expect(pinned.members).toEqual({})
     })
   })
@@ -214,16 +214,16 @@ describe('lock', () => {
         ref: 'main',
         commit: 'abc123',
       })
-      lockFile = updateLockedMember(lockFile, 'effect', member)
+      lockFile = updateLockedMember({ lockFile, memberName: 'effect', member })
 
-      const result = getLockedMember(lockFile, 'effect')
+      const result = getLockedMember({ lockFile, memberName: 'effect' })
       expect(Option.isSome(result)).toBe(true)
       expect(Option.getOrNull(result)?.commit).toBe('abc123')
     })
 
     it('should return None for non-existent member', () => {
       const lockFile = createEmptyLockFile()
-      const result = getLockedMember(lockFile, 'effect')
+      const result = getLockedMember({ lockFile, memberName: 'effect' })
       expect(Option.isNone(result)).toBe(true)
     })
   })
@@ -231,39 +231,39 @@ describe('lock', () => {
   describe('hasMember / isPinned', () => {
     it('hasMember should return true for existing member', () => {
       let lockFile = createEmptyLockFile()
-      lockFile = updateLockedMember(
+      lockFile = updateLockedMember({
         lockFile,
-        'effect',
-        createLockedMember({ url: 'url', ref: 'main', commit: 'abc' }),
-      )
-      expect(hasMember(lockFile, 'effect')).toBe(true)
-      expect(hasMember(lockFile, 'other')).toBe(false)
+        memberName: 'effect',
+        member: createLockedMember({ url: 'url', ref: 'main', commit: 'abc' }),
+      })
+      expect(hasMember({ lockFile, memberName: 'effect' })).toBe(true)
+      expect(hasMember({ lockFile, memberName: 'other' })).toBe(false)
     })
 
     it('isPinned should return correct status', () => {
       let lockFile = createEmptyLockFile()
-      lockFile = updateLockedMember(
+      lockFile = updateLockedMember({
         lockFile,
-        'effect',
-        createLockedMember({ url: 'url', ref: 'main', commit: 'abc', pinned: true }),
-      )
-      lockFile = updateLockedMember(
+        memberName: 'effect',
+        member: createLockedMember({ url: 'url', ref: 'main', commit: 'abc', pinned: true }),
+      })
+      lockFile = updateLockedMember({
         lockFile,
-        'other',
-        createLockedMember({ url: 'url', ref: 'main', commit: 'abc', pinned: false }),
-      )
-      expect(isPinned(lockFile, 'effect')).toBe(true)
-      expect(isPinned(lockFile, 'other')).toBe(false)
-      expect(isPinned(lockFile, 'missing')).toBe(false)
+        memberName: 'other',
+        member: createLockedMember({ url: 'url', ref: 'main', commit: 'abc', pinned: false }),
+      })
+      expect(isPinned({ lockFile, memberName: 'effect' })).toBe(true)
+      expect(isPinned({ lockFile, memberName: 'other' })).toBe(false)
+      expect(isPinned({ lockFile, memberName: 'missing' })).toBe(false)
     })
   })
 
   describe('checkLockStaleness', () => {
     it('should detect added members', () => {
       const lockFile = createEmptyLockFile()
-      const configMembers = new Set(['effect', 'other'])
+      const configMemberNames = new Set(['effect', 'other'])
 
-      const result = checkLockStaleness(lockFile, configMembers)
+      const result = checkLockStaleness({ lockFile, configMemberNames })
       expect(result.addedMembers).toEqual(['effect', 'other'])
       expect(result.removedMembers).toEqual([])
       expect(result.isStale).toBe(true)
@@ -271,19 +271,19 @@ describe('lock', () => {
 
     it('should detect removed members', () => {
       let lockFile = createEmptyLockFile()
-      lockFile = updateLockedMember(
+      lockFile = updateLockedMember({
         lockFile,
-        'effect',
-        createLockedMember({ url: 'url', ref: 'main', commit: 'abc' }),
-      )
-      lockFile = updateLockedMember(
+        memberName: 'effect',
+        member: createLockedMember({ url: 'url', ref: 'main', commit: 'abc' }),
+      })
+      lockFile = updateLockedMember({
         lockFile,
-        'removed',
-        createLockedMember({ url: 'url', ref: 'main', commit: 'abc' }),
-      )
-      const configMembers = new Set(['effect'])
+        memberName: 'removed',
+        member: createLockedMember({ url: 'url', ref: 'main', commit: 'abc' }),
+      })
+      const configMemberNames = new Set(['effect'])
 
-      const result = checkLockStaleness(lockFile, configMembers)
+      const result = checkLockStaleness({ lockFile, configMemberNames })
       expect(result.addedMembers).toEqual([])
       expect(result.removedMembers).toEqual(['removed'])
       expect(result.isStale).toBe(true)
@@ -291,14 +291,14 @@ describe('lock', () => {
 
     it('should detect both added and removed', () => {
       let lockFile = createEmptyLockFile()
-      lockFile = updateLockedMember(
+      lockFile = updateLockedMember({
         lockFile,
-        'old',
-        createLockedMember({ url: 'url', ref: 'main', commit: 'abc' }),
-      )
-      const configMembers = new Set(['new'])
+        memberName: 'old',
+        member: createLockedMember({ url: 'url', ref: 'main', commit: 'abc' }),
+      })
+      const configMemberNames = new Set(['new'])
 
-      const result = checkLockStaleness(lockFile, configMembers)
+      const result = checkLockStaleness({ lockFile, configMemberNames })
       expect(result.addedMembers).toEqual(['new'])
       expect(result.removedMembers).toEqual(['old'])
       expect(result.isStale).toBe(true)
@@ -306,14 +306,14 @@ describe('lock', () => {
 
     it('should return not stale when in sync', () => {
       let lockFile = createEmptyLockFile()
-      lockFile = updateLockedMember(
+      lockFile = updateLockedMember({
         lockFile,
-        'effect',
-        createLockedMember({ url: 'url', ref: 'main', commit: 'abc' }),
-      )
-      const configMembers = new Set(['effect'])
+        memberName: 'effect',
+        member: createLockedMember({ url: 'url', ref: 'main', commit: 'abc' }),
+      })
+      const configMemberNames = new Set(['effect'])
 
-      const result = checkLockStaleness(lockFile, configMembers)
+      const result = checkLockStaleness({ lockFile, configMemberNames })
       expect(result.addedMembers).toEqual([])
       expect(result.removedMembers).toEqual([])
       expect(result.isStale).toBe(false)
@@ -323,33 +323,33 @@ describe('lock', () => {
   describe('syncLockWithConfig', () => {
     it('should remove members not in config', () => {
       let lockFile = createEmptyLockFile()
-      lockFile = updateLockedMember(
+      lockFile = updateLockedMember({
         lockFile,
-        'effect',
-        createLockedMember({ url: 'url1', ref: 'main', commit: 'abc' }),
-      )
-      lockFile = updateLockedMember(
+        memberName: 'effect',
+        member: createLockedMember({ url: 'url1', ref: 'main', commit: 'abc' }),
+      })
+      lockFile = updateLockedMember({
         lockFile,
-        'removed',
-        createLockedMember({ url: 'url2', ref: 'main', commit: 'def' }),
-      )
-      const configMembers = new Set(['effect'])
+        memberName: 'removed',
+        member: createLockedMember({ url: 'url2', ref: 'main', commit: 'def' }),
+      })
+      const configMemberNames = new Set(['effect'])
 
-      const synced = syncLockWithConfig(lockFile, configMembers)
+      const synced = syncLockWithConfig({ lockFile, configMemberNames })
       expect(synced.members['effect']).toBeDefined()
       expect(synced.members['removed']).toBeUndefined()
     })
 
     it('should preserve members in config', () => {
       let lockFile = createEmptyLockFile()
-      lockFile = updateLockedMember(
+      lockFile = updateLockedMember({
         lockFile,
-        'effect',
-        createLockedMember({ url: 'url', ref: 'main', commit: 'abc', pinned: true }),
-      )
-      const configMembers = new Set(['effect'])
+        memberName: 'effect',
+        member: createLockedMember({ url: 'url', ref: 'main', commit: 'abc', pinned: true }),
+      })
+      const configMemberNames = new Set(['effect'])
 
-      const synced = syncLockWithConfig(lockFile, configMembers)
+      const synced = syncLockWithConfig({ lockFile, configMemberNames })
       expect(synced.members['effect']?.pinned).toBe(true)
     })
   })

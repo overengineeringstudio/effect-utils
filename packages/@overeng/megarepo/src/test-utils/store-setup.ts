@@ -285,7 +285,7 @@ export const createWorkspaceWithLock = (args: {
         workspacePath,
         EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
       )
-      yield* writeLockFile(lockPath, lockFile)
+      yield* writeLockFile({ lockPath, lockFile })
     }
 
     // Commit config
