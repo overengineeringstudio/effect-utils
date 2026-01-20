@@ -17,7 +17,6 @@ export default dotdotConfig({
     /** Effect repo for reference - helps agents write better Effect code */
     effect: {
       url: 'git@github.com:effect-ts/effect.git',
-      rev: 'c9dc711464561227b8470edaa6052056ede41289',
     },
     /** Centralized beads issue tracking with devenv module */
     'overeng-beads-public': {

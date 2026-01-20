@@ -31,8 +31,7 @@
   },
   "deps": {
     "effect": {
-      "url": "git@github.com:effect-ts/effect.git",
-      "rev": "c9dc711464561227b8470edaa6052056ede41289"
+      "url": "git@github.com:effect-ts/effect.git"
     },
     "overeng-beads-public": {
       "url": "git@github.com:overengineeringstudio/overeng-beads-public.git"
