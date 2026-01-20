@@ -7,27 +7,10 @@
   "useTabs": false,
   "trailingComma": "all",
   "experimentalSortImports": {
-    "groups": [
-      "builtin",
-      "external",
-      "internal",
-      [
-        "parent",
-        "sibling",
-        "index"
-      ]
-    ],
-    "internalPattern": [
-      "@overeng/",
-      "@local/"
-    ],
+    "groups": ["builtin", "external", "internal", ["parent", "sibling", "index"]],
+    "internalPattern": ["@overeng/", "@local/"],
     "newlinesBetween": true
   },
   "experimentalSortPackageJson": true,
-  "ignorePatterns": [
-    "**/*.gen.ts",
-    "**/*.gen.tsx",
-    "**/*.generated.ts",
-    "**/*.generated.tsx"
-  ]
+  "ignorePatterns": ["**/*.gen.ts", "**/*.gen.tsx", "**/*.generated.ts", "**/*.generated.tsx"]
 }

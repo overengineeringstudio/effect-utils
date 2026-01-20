@@ -10,24 +10,24 @@ let
   workspaceSrc = ./.;
   playwrightDriver = inputs.playwright-web-flake.packages.${system}.playwright-driver;
   # Import CLI builds from their canonical build.nix files to avoid duplicate hash definitions.
-  genie = import (./. + "/packages/@overeng/genie/nix/build.nix") {
-    pkgs = pkgsStable;
-    inherit pkgsUnstable gitRev;
-    src = workspaceSrc;
-  };
-  dotdot = import (./. + "/packages/@overeng/dotdot/nix/build.nix") {
-    pkgs = pkgsStable;
-    inherit pkgsUnstable gitRev;
-    src = workspaceSrc;
-  };
-  # Keep devenv shells fast; dirty mono builds are opt-in via direnv helper.
-  mono = import ./scripts/nix/build.nix {
-    pkgs = pkgsStable;
-    inherit pkgsUnstable gitRev;
-    src = workspaceSrc;
-    dirty = false;
-  };
-  cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
+  # genie = import (./. + "/packages/@overeng/genie/nix/build.nix") {
+  #   pkgs = pkgsStable;
+  #   inherit pkgsUnstable gitRev;
+  #   src = workspaceSrc;
+  # };
+  # dotdot = import (./. + "/packages/@overeng/dotdot/nix/build.nix") {
+  #   pkgs = pkgsStable;
+  #   inherit pkgsUnstable gitRev;
+  #   src = workspaceSrc;
+  # };
+  # # Keep devenv shells fast; dirty mono builds are opt-in via direnv helper.
+  # mono = import ./scripts/nix/build.nix {
+  #   pkgs = pkgsStable;
+  #   inherit pkgsUnstable gitRev;
+  #   src = workspaceSrc;
+  #   dirty = false;
+  # };
+  # cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
   # Use npm oxlint with NAPI bindings to enable JavaScript plugin support
   oxlintNpm = import ./nix/oxlint-npm.nix {
     inherit pkgs;
@@ -36,12 +36,12 @@ let
 in
 {
   # Beads commit correlation for issue tracking
-  imports = [
-    (inputs.overeng-beads-public.devenvModules.beads {
-      beadsPrefix = "eu";
-      beadsRepoName = "overeng-beads-public";
-    })
-  ];
+  # imports = [
+  #   (inputs.overeng-beads-public.devenvModules.beads {
+  #     beadsPrefix = "eu";
+  #     beadsRepoName = "overeng-beads-public";
+  #   })
+  # ];
   packages = [
     pkgs.pnpm
     pkgsUnstable.nodejs_24
@@ -49,10 +49,10 @@ in
     pkgsUnstable.typescript
     oxlintNpm
     pkgsUnstable.oxfmt
-    genie
-    dotdot
-    mono
-    cliBuildStamp.package
+    # genie
+    # dotdot
+    # mono
+    # cliBuildStamp.package
   ];
 
   env = {
@@ -62,6 +62,6 @@ in
   enterShell = ''
     export WORKSPACE_ROOT="$PWD"
     export PATH="$WORKSPACE_ROOT/node_modules/.bin:$PATH"
-    ${cliBuildStamp.shellHook}
+    # $#{cliBuildStamp.shellHook}
   '';
 }

@@ -1,14 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxlint/configuration_schema.json",
-  "plugins": [
-    "import",
-    "typescript",
-    "unicorn",
-    "oxc"
-  ],
-  "jsPlugins": [
-    "./packages/@overeng/oxc-config/src/mod.ts"
-  ],
+  "plugins": ["import", "typescript", "unicorn", "oxc"],
+  "jsPlugins": ["./packages/@overeng/oxc-config/src/mod.ts"],
   "categories": {
     "correctness": "error",
     "suspicious": "warn",
@@ -48,51 +41,32 @@
   },
   "overrides": [
     {
-      "files": [
-        "**/mod.ts"
-      ],
+      "files": ["**/mod.ts"],
       "rules": {
         "oxc/no-barrel-file": "off"
       }
     },
     {
-      "files": [
-        "**/*.stories.tsx",
-        "**/*.stories.ts",
-        "**/*.stories.jsx",
-        "**/.storybook/**"
-      ],
+      "files": ["**/*.stories.tsx", "**/*.stories.ts", "**/*.stories.jsx", "**/.storybook/**"],
       "rules": {
         "overeng/exports-first": "off",
         "overeng/jsdoc-require-exports": "off"
       }
     },
     {
-      "files": [
-        "**/vitest.config.ts",
-        "**/vite.config.ts",
-        "**/playwright.config.ts"
-      ],
+      "files": ["**/vitest.config.ts", "**/vite.config.ts", "**/playwright.config.ts"],
       "rules": {
         "overeng/jsdoc-require-exports": "off"
       }
     },
     {
-      "files": [
-        "**/.storybook/**"
-      ],
+      "files": ["**/.storybook/**"],
       "rules": {
         "import/no-unassigned-import": "off"
       }
     },
     {
-      "files": [
-        "**/*.test.ts",
-        "**/*.test.tsx",
-        "**/*.spec.ts",
-        "**/*.spec.tsx",
-        "**/test/**"
-      ],
+      "files": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx", "**/test/**"],
       "rules": {
         "overeng/named-args": "off",
         "unicorn/no-array-sort": "off",
@@ -101,17 +75,13 @@
       }
     },
     {
-      "files": [
-        "**/*.d.ts"
-      ],
+      "files": ["**/*.d.ts"],
       "rules": {
         "typescript/consistent-type-imports": "off"
       }
     },
     {
-      "files": [
-        "**/*.gen.*"
-      ],
+      "files": ["**/*.gen.*"],
       "rules": {
         "func-style": "off",
         "import/no-commonjs": "off",
@@ -126,9 +96,7 @@
       }
     },
     {
-      "files": [
-        "**/react-inspector/**"
-      ],
+      "files": ["**/react-inspector/**"],
       "rules": {
         "func-style": "off",
         "overeng/named-args": "off",

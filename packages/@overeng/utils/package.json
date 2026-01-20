@@ -1,12 +1,8 @@
 {
-  "$genie": {
-    "source": "package.json.genie.ts",
-    "warning": "DO NOT EDIT - changes will be overwritten"
-  },
   "name": "@overeng/utils",
   "version": "0.1.0",
-  "type": "module",
   "private": true,
+  "type": "module",
   "exports": {
     ".": "./src/isomorphic/mod.ts",
     "./browser": "./src/browser/mod.ts",
@@ -19,6 +15,22 @@
     "./node/cli-version": "./src/node/cli-version.ts",
     "./node/playwright": "./src/node/playwright/mod.ts",
     "./node/playwright/config": "./src/node/playwright/config/mod.ts"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": "./dist/isomorphic/mod.js",
+      "./node": "./dist/node/mod.js",
+      "./node/cli-version": "./dist/node/cli-version.js",
+      "./node/playwright": "./dist/node/playwright/mod.js",
+      "./node/playwright/config": "./dist/node/playwright/config/mod.js",
+      "./browser": "./dist/browser/mod.js",
+      "./cuid": {
+        "browser": "./dist/cuid/cuid.browser.js",
+        "node": "./dist/cuid/cuid.node.js",
+        "default": "./dist/cuid/mod.js"
+      }
+    }
   },
   "scripts": {
     "prepare": "effect-language-service patch",
@@ -69,20 +81,8 @@
     "@playwright/test": "^1.57.0",
     "effect": "^3.19.14"
   },
-  "publishConfig": {
-    "access": "public",
-    "exports": {
-      ".": "./dist/isomorphic/mod.js",
-      "./node": "./dist/node/mod.js",
-      "./node/cli-version": "./dist/node/cli-version.js",
-      "./node/playwright": "./dist/node/playwright/mod.js",
-      "./node/playwright/config": "./dist/node/playwright/config/mod.js",
-      "./browser": "./dist/browser/mod.js",
-      "./cuid": {
-        "browser": "./dist/cuid/cuid.browser.js",
-        "node": "./dist/cuid/cuid.node.js",
-        "default": "./dist/cuid/mod.js"
-      }
-    }
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten"
   }
 }

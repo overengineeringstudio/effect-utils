@@ -3,9 +3,7 @@
 {
   "compilerOptions": {
     "target": "ES2024",
-    "lib": [
-      "ES2023"
-    ],
+    "lib": ["ES2023"],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "allowImportingTsExtensions": true,
@@ -43,17 +41,10 @@
     "rootDir": ".",
     "noEmit": true,
     "tsBuildInfoFile": "./tsconfig.tsbuildinfo",
-    "types": [
-      "node",
-      "bun"
-    ]
+    "types": ["node", "bun"]
   },
-  "include": [
-    "**/*.ts"
-  ],
-  "exclude": [
-    "*.genie.ts"
-  ],
+  "include": ["**/*.ts"],
+  "exclude": ["*.genie.ts"],
   "references": [
     {
       "path": "../packages/@overeng/genie"

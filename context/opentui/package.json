@@ -1,11 +1,7 @@
 {
-  "$genie": {
-    "source": "package.json.genie.ts",
-    "warning": "DO NOT EDIT - changes will be overwritten"
-  },
   "name": "opentui-examples",
-  "type": "module",
   "private": true,
+  "type": "module",
   "dependencies": {
     "@effect-atom/atom": "0.4.13",
     "@effect-atom/atom-react": "0.4.5",
@@ -17,5 +13,9 @@
   "devDependencies": {
     "@types/node": "25.0.3",
     "@types/react": "19.2.7"
+  },
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten"
   }
 }

@@ -48,9 +48,7 @@ oxlintConfig({
     'import/no-commonjs': 'error',
     'typescript/no-deprecated': 'error',
   },
-  overrides: [
-    { files: ['**/test/**'], rules: { 'some-rule': 'off' } },
-  ],
+  overrides: [{ files: ['**/test/**'], rules: { 'some-rule': 'off' } }],
 })
 ```
 
@@ -82,22 +80,22 @@ Base configs live in `effect-utils/genie/` and are imported by all repos.
 
 Exports:
 
-| Export                   | Description                                |
-| ------------------------ | ------------------------------------------ |
-| `baseOxlintPlugins`      | Standard plugins: import, typescript, etc. |
-| `baseOxlintCategories`   | Category severity levels                   |
-| `baseOxlintRules`        | Common rules shared across repos           |
-| `baseOxlintOverrides`    | Standard file-pattern overrides            |
-| `generatedFilesRules`    | Rules disabled for `*.gen.*` files         |
+| Export                 | Description                                |
+| ---------------------- | ------------------------------------------ |
+| `baseOxlintPlugins`    | Standard plugins: import, typescript, etc. |
+| `baseOxlintCategories` | Category severity levels                   |
+| `baseOxlintRules`      | Common rules shared across repos           |
+| `baseOxlintOverrides`  | Standard file-pattern overrides            |
+| `generatedFilesRules`  | Rules disabled for `*.gen.*` files         |
 
 ### oxfmt-base.ts
 
 Exports:
 
-| Export                   | Description                     |
-| ------------------------ | ------------------------------- |
-| `baseOxfmtOptions`       | Formatting options              |
-| `baseOxfmtIgnorePatterns`| Patterns for generated files    |
+| Export                    | Description                  |
+| ------------------------- | ---------------------------- |
+| `baseOxfmtOptions`        | Formatting options           |
+| `baseOxfmtIgnorePatterns` | Patterns for generated files |
 
 ## Usage Examples
 
