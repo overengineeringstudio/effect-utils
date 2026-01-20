@@ -39,7 +39,7 @@ export default packageJson({
     },
   },
   dependencies: {
-    ...catalog.pick('@overeng/utils', '@overeng/cli-ui'),
+    ...catalog.pick('@overeng/utils', '@overeng/cli-ui', '@overeng/effect-path'),
   },
   devDependencies: {
     ...catalog.pick(...peerDepNames, '@effect/vitest', '@types/bun', '@types/node', 'vitest'),

@@ -14,7 +14,12 @@
  * ```
  */
 
-import { FileSystem, Path, type Error as PlatformError } from '@effect/platform'
+import { FileSystem, type Error as PlatformError } from '@effect/platform'
+import {
+  EffectPath,
+  type AbsoluteDirPath,
+  type RelativeDirPath,
+} from '@overeng/effect-path'
 import { Context, Effect, Layer, Option } from 'effect'
 import { DEFAULT_STORE_PATH, ENV_VARS, getStorePath, type MemberSource } from './config.ts'
 
@@ -24,28 +29,28 @@ import { DEFAULT_STORE_PATH, ENV_VARS, getStorePath, type MemberSource } from '.
 
 /** Store configuration */
 export interface StoreConfig {
-  readonly basePath: string
+  readonly basePath: AbsoluteDirPath
 }
 
 /** Store service interface */
 export interface MegarepoStore {
   /** Get the full path to a repo in the store */
-  readonly getRepoPath: (source: MemberSource) => Effect.Effect<string, never, Path.Path>
+  readonly getRepoPath: (source: MemberSource) => AbsoluteDirPath
 
   /** Check if a repo exists in the store */
   readonly hasRepo: (
     source: MemberSource,
-  ) => Effect.Effect<boolean, PlatformError.PlatformError, FileSystem.FileSystem | Path.Path>
+  ) => Effect.Effect<boolean, PlatformError.PlatformError, FileSystem.FileSystem>
 
   /** List all repos in the store */
   readonly listRepos: () => Effect.Effect<
-    ReadonlyArray<{ readonly relativePath: string; readonly fullPath: string }>,
+    ReadonlyArray<{ readonly relativePath: RelativeDirPath; readonly fullPath: AbsoluteDirPath }>,
     PlatformError.PlatformError,
-    FileSystem.FileSystem | Path.Path
+    FileSystem.FileSystem
   >
 
   /** Get the store base path */
-  readonly basePath: string
+  readonly basePath: AbsoluteDirPath
 }
 
 /** Store service tag */
@@ -56,60 +61,56 @@ export class Store extends Context.Tag('megarepo/Store')<Store, MegarepoStore>()
 // =============================================================================
 
 const make = (config: StoreConfig): MegarepoStore => {
-  const basePath = config.basePath.replace(/^~/, process.env.HOME ?? '~')
+  const basePath = config.basePath
 
   return {
     basePath,
 
-    getRepoPath: (source) =>
-      Effect.gen(function* () {
-        const path = yield* Path.Path
-        const relativePath = getStorePath(source)
-        return path.join(basePath, relativePath)
-      }),
+    getRepoPath: (source) => {
+      const relativePath = getStorePath(source)
+      return EffectPath.ops.join(basePath, relativePath)
+    },
 
     hasRepo: (source) =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
-        const path = yield* Path.Path
         const relativePath = getStorePath(source)
-        const fullPath = path.join(basePath, relativePath)
+        const fullPath = EffectPath.ops.join(basePath, relativePath)
         return yield* fs.exists(fullPath)
       }),
 
     listRepos: () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
-        const path = yield* Path.Path
 
         const exists = yield* fs.exists(basePath)
         if (!exists) {
           return []
         }
 
-        const result: Array<{ relativePath: string; fullPath: string }> = []
+        const result: Array<{ relativePath: RelativeDirPath; fullPath: AbsoluteDirPath }> = []
 
         // Walk the store directory (2 levels deep for host/owner/repo structure)
         const hosts = yield* fs.readDirectory(basePath)
         for (const host of hosts) {
-          const hostPath = path.join(basePath, host)
+          const hostPath = EffectPath.ops.join(basePath, EffectPath.unsafe.relativeDir(`${host}/`))
           const hostStat = yield* fs.stat(hostPath)
           if (hostStat.type !== 'Directory') continue
 
           const owners = yield* fs.readDirectory(hostPath)
           for (const owner of owners) {
-            const ownerPath = path.join(hostPath, owner)
+            const ownerPath = EffectPath.ops.join(hostPath, EffectPath.unsafe.relativeDir(`${owner}/`))
             const ownerStat = yield* fs.stat(ownerPath)
             if (ownerStat.type !== 'Directory') continue
 
             const repos = yield* fs.readDirectory(ownerPath)
             for (const repo of repos) {
-              const repoPath = path.join(ownerPath, repo)
+              const repoPath = EffectPath.ops.join(ownerPath, EffectPath.unsafe.relativeDir(`${repo}/`))
               const repoStat = yield* fs.stat(repoPath)
               if (repoStat.type !== 'Directory') continue
 
               result.push({
-                relativePath: `${host}/${owner}/${repo}`,
+                relativePath: EffectPath.unsafe.relativeDir(`${host}/${owner}/${repo}/`),
                 fullPath: repoPath,
               })
             }
@@ -126,6 +127,15 @@ const make = (config: StoreConfig): MegarepoStore => {
 // =============================================================================
 
 /**
+ * Expand ~ to home directory and ensure trailing slash for directory path
+ */
+const expandStorePath = (path: string): AbsoluteDirPath => {
+  const expanded = path.replace(/^~/, process.env.HOME ?? '~')
+  const withTrailingSlash = expanded.endsWith('/') ? expanded : `${expanded}/`
+  return EffectPath.unsafe.absoluteDir(withTrailingSlash)
+}
+
+/**
  * Create a Store layer with explicit configuration
  */
 export const makeStoreLayer = (config: StoreConfig) => Layer.succeed(Store, make(config))
@@ -136,9 +146,10 @@ export const makeStoreLayer = (config: StoreConfig) => Layer.succeed(Store, make
 export const StoreLayer = Layer.effect(
   Store,
   Effect.gen(function* () {
-    const storePath = Option.fromNullable(process.env[ENV_VARS.STORE]).pipe(
+    const storePathRaw = Option.fromNullable(process.env[ENV_VARS.STORE]).pipe(
       Option.getOrElse(() => DEFAULT_STORE_PATH),
     )
-    return make({ basePath: storePath })
+    const basePath = expandStorePath(storePathRaw)
+    return make({ basePath })
   }),
 )

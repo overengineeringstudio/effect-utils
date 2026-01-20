@@ -1,4 +1,5 @@
-import { FileSystem, Path } from '@effect/platform'
+import { FileSystem } from '@effect/platform'
+import { EffectPath } from '@overeng/effect-path'
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { createRepo, createWorkspace } from '../test-utils/setup.ts'
@@ -10,10 +11,9 @@ describe('mr sync', () => {
       withTestCtx(
         Effect.gen(function* () {
           const fs = yield* FileSystem.FileSystem
-          const pathService = yield* Path.Path
 
           // Create a temp directory with a local repo
-          const tmpDir = yield* fs.makeTempDirectoryScoped()
+          const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
           const localRepoPath = yield* createRepo(tmpDir, {
             name: 'local-lib',
             files: { 'package.json': '{"name": "local-lib"}' },
@@ -28,11 +28,11 @@ describe('mr sync', () => {
           })
 
           // Verify the config was created
-          const configPath = pathService.join(workspacePath, 'megarepo.json')
+          const configPath = EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile('megarepo.json'))
           expect(yield* fs.exists(configPath)).toBe(true)
 
           // Verify symlink does NOT exist yet (sync hasn't run)
-          const symlinkPath = pathService.join(workspacePath, 'local-lib')
+          const symlinkPath = EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeDir('local-lib/'))
           expect(yield* fs.exists(symlinkPath)).toBe(false)
 
           // Note: Actually running the sync command would require more setup
@@ -46,7 +46,6 @@ describe('mr sync', () => {
       withTestCtx(
         Effect.gen(function* () {
           const fs = yield* FileSystem.FileSystem
-          const pathService = yield* Path.Path
 
           // Create workspace with repos that get symlinked
           const { workspacePath, repoPaths } = yield* createWorkspace({
@@ -59,16 +58,18 @@ describe('mr sync', () => {
 
           // Verify workspace structure
           expect(yield* fs.exists(workspacePath)).toBe(true)
-          expect(yield* fs.exists(pathService.join(workspacePath, 'megarepo.json'))).toBe(true)
+          expect(yield* fs.exists(EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile('megarepo.json')))).toBe(true)
 
           // Verify repo was created and symlinked
           expect(repoPaths['repo1']).toBeDefined()
-          const symlinkPath = pathService.join(workspacePath, 'repo1')
+          // Note: Symlinks are created without trailing slashes
+          const symlinkPath = EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile('repo1'))
           expect(yield* fs.exists(symlinkPath)).toBe(true)
 
           // Verify it's a symlink by reading the link target
           const linkTarget = yield* fs.readLink(symlinkPath)
-          expect(linkTarget).toBe(repoPaths['repo1'])
+          // The link target should be the repo path without trailing slash
+          expect(linkTarget).toBe(repoPaths['repo1']?.slice(0, -1))
         }),
       ))
   })

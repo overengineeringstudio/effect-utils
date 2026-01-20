@@ -5,13 +5,13 @@
  * Output: .envrc.local in the megarepo root.
  */
 
-import { FileSystem, Path } from '@effect/platform'
+import { FileSystem } from '@effect/platform'
 import { Effect } from 'effect'
-import { type MegarepoConfig } from '../config.ts'
+import { type AbsoluteDirPath, EffectPath, type MegarepoConfig } from '../config.ts'
 
 export interface EnvrcGeneratorOptions {
   /** Path to the megarepo root */
-  readonly megarepoRoot: string
+  readonly megarepoRoot: AbsoluteDirPath
   /** The megarepo config */
   readonly config: typeof MegarepoConfig.Type
 }
@@ -36,10 +36,9 @@ export MEGAREPO_MEMBERS="${memberNames}"
 export const generateEnvrc = (options: EnvrcGeneratorOptions) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const pathService = yield* Path.Path
 
     const content = generateEnvrcContent(options)
-    const outputPath = pathService.join(options.megarepoRoot, '.envrc.local')
+    const outputPath = EffectPath.ops.join(options.megarepoRoot, EffectPath.unsafe.relativeFile('.envrc.local'))
 
     yield* fs.writeFileString(outputPath, content)
 

@@ -5,13 +5,13 @@
  * Output: .vscode/megarepo.code-workspace in the megarepo root.
  */
 
-import { FileSystem, Path } from '@effect/platform'
+import { FileSystem } from '@effect/platform'
 import { Effect } from 'effect'
-import { type MegarepoConfig } from '../config.ts'
+import { type AbsoluteDirPath, EffectPath, type MegarepoConfig } from '../config.ts'
 
 export interface VscodeGeneratorOptions {
   /** Path to the megarepo root */
-  readonly megarepoRoot: string
+  readonly megarepoRoot: AbsoluteDirPath
   /** The megarepo config */
   readonly config: typeof MegarepoConfig.Type
   /** Members to exclude from workspace */
@@ -56,11 +56,10 @@ export const generateVscodeContent = (options: VscodeGeneratorOptions): string =
 export const generateVscode = (options: VscodeGeneratorOptions) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const pathService = yield* Path.Path
 
     const content = generateVscodeContent(options)
-    const vscodeDir = pathService.join(options.megarepoRoot, '.vscode')
-    const outputPath = pathService.join(vscodeDir, 'megarepo.code-workspace')
+    const vscodeDir = EffectPath.ops.join(options.megarepoRoot, EffectPath.unsafe.relativeDir('.vscode/'))
+    const outputPath = EffectPath.ops.join(vscodeDir, EffectPath.unsafe.relativeFile('megarepo.code-workspace'))
 
     // Ensure .vscode directory exists
     yield* fs.makeDirectory(vscodeDir, { recursive: true })

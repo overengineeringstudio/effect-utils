@@ -4,8 +4,9 @@
  * Provides helpers for creating test workspaces, git repos, and megarepo configs.
  */
 
-import { Command, FileSystem, Path } from '@effect/platform'
-import { Effect, Option, Schema } from 'effect'
+import { Command, FileSystem } from '@effect/platform'
+import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
+import { Effect, Schema } from 'effect'
 import os from 'node:os'
 import { MegarepoConfig, type MemberConfig } from '../lib/config.ts'
 
@@ -38,9 +39,9 @@ export interface WorkspaceFixture {
 /** Result of creating a workspace fixture */
 export interface WorkspaceResult {
   /** Path to the workspace directory */
-  readonly workspacePath: string
+  readonly workspacePath: AbsoluteDirPath
   /** Path to each repo by name */
-  readonly repoPaths: Record<string, string>
+  readonly repoPaths: Record<string, AbsoluteDirPath>
 }
 
 // =============================================================================
@@ -48,7 +49,7 @@ export interface WorkspaceResult {
 // =============================================================================
 
 /** Run a git command in a specific directory */
-export const runGitCommand = (cwd: string, ...args: ReadonlyArray<string>) =>
+export const runGitCommand = (cwd: AbsoluteDirPath, ...args: ReadonlyArray<string>) =>
   Effect.gen(function* () {
     const command = Command.make('git', ...args).pipe(Command.workingDirectory(cwd))
     const result = yield* Command.string(command)
@@ -56,7 +57,7 @@ export const runGitCommand = (cwd: string, ...args: ReadonlyArray<string>) =>
   })
 
 /** Initialize a new git repository */
-export const initGitRepo = (path: string) =>
+export const initGitRepo = (path: AbsoluteDirPath) =>
   Effect.gen(function* () {
     yield* runGitCommand(path, 'init')
     yield* runGitCommand(path, 'config', 'user.email', 'test@example.com')
@@ -64,7 +65,7 @@ export const initGitRepo = (path: string) =>
   })
 
 /** Add files and create a commit */
-export const addCommit = (repoPath: string, message: string, filename?: string) =>
+export const addCommit = (repoPath: AbsoluteDirPath, message: string, filename?: string) =>
   Effect.gen(function* () {
     if (filename) {
       yield* runGitCommand(repoPath, 'add', filename)
@@ -75,10 +76,10 @@ export const addCommit = (repoPath: string, message: string, filename?: string) 
   })
 
 /** Get the current HEAD commit hash */
-export const getGitRev = (repoPath: string) => runGitCommand(repoPath, 'rev-parse', 'HEAD')
+export const getGitRev = (repoPath: AbsoluteDirPath) => runGitCommand(repoPath, 'rev-parse', 'HEAD')
 
 /** Get the short HEAD commit hash */
-export const getGitRevShort = (repoPath: string) => runGitCommand(repoPath, 'rev-parse', '--short', 'HEAD')
+export const getGitRevShort = (repoPath: AbsoluteDirPath) => runGitCommand(repoPath, 'rev-parse', '--short', 'HEAD')
 
 // =============================================================================
 // Fixture Builders
@@ -91,10 +92,9 @@ export const getGitRevShort = (repoPath: string) => runGitCommand(repoPath, 'rev
 export const createBareRepo = (name: string) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const pathService = yield* Path.Path
 
-    const tmpDir = yield* fs.makeTempDirectoryScoped()
-    const repoPath = pathService.join(tmpDir, `${name}.git`)
+    const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+    const repoPath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir(`${name}.git/`))
 
     yield* fs.makeDirectory(repoPath, { recursive: true })
     yield* runGitCommand(repoPath, 'init', '--bare')
@@ -105,12 +105,11 @@ export const createBareRepo = (name: string) =>
 /**
  * Create a git repository with optional initial content.
  */
-export const createRepo = (basePath: string, fixture: RepoFixture) =>
+export const createRepo = (basePath: AbsoluteDirPath, fixture: RepoFixture) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const pathService = yield* Path.Path
 
-    const repoPath = pathService.join(basePath, fixture.name)
+    const repoPath = EffectPath.ops.join(basePath, EffectPath.unsafe.relativeDir(`${fixture.name}/`))
     yield* fs.makeDirectory(repoPath, { recursive: true })
 
     // Initialize git
@@ -124,8 +123,8 @@ export const createRepo = (basePath: string, fixture: RepoFixture) =>
     // Create initial files
     const files = fixture.files ?? { 'README.md': `# ${fixture.name}\n` }
     for (const [filePath, content] of Object.entries(files)) {
-      const fullPath = pathService.join(repoPath, filePath)
-      const dir = pathService.dirname(fullPath)
+      const fullPath = EffectPath.ops.join(repoPath, EffectPath.unsafe.relativeFile(filePath))
+      const dir = EffectPath.ops.parent(fullPath)
       yield* fs.makeDirectory(dir, { recursive: true })
       yield* fs.writeFileString(fullPath, content)
     }
@@ -135,7 +134,7 @@ export const createRepo = (basePath: string, fixture: RepoFixture) =>
 
     // Add dirty changes if requested
     if (fixture.dirty) {
-      yield* fs.writeFileString(pathService.join(repoPath, 'dirty.txt'), 'uncommitted changes\n')
+      yield* fs.writeFileString(EffectPath.ops.join(repoPath, EffectPath.unsafe.relativeFile('dirty.txt')), 'uncommitted changes\n')
     }
 
     return repoPath
@@ -148,12 +147,11 @@ export const createRepo = (basePath: string, fixture: RepoFixture) =>
 export const createWorkspace = (fixture?: WorkspaceFixture) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const pathService = yield* Path.Path
 
     // Create temp directory
-    const tmpDir = yield* fs.makeTempDirectoryScoped()
+    const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
     const workspaceName = fixture?.name ?? 'test-workspace'
-    const workspacePath = pathService.join(tmpDir, workspaceName)
+    const workspacePath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir(`${workspaceName}/`))
 
     yield* fs.makeDirectory(workspacePath, { recursive: true })
 
@@ -165,16 +163,16 @@ export const createWorkspace = (fixture?: WorkspaceFixture) =>
       members: fixture?.members ?? {},
     }
     const configContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(config)
-    yield* fs.writeFileString(pathService.join(workspacePath, 'megarepo.json'), configContent + '\n')
+    yield* fs.writeFileString(EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile('megarepo.json')), configContent + '\n')
 
     // Commit config
     yield* addCommit(workspacePath, 'Initialize megarepo')
 
     // Create repos and symlinks
-    const repoPaths: Record<string, string> = {}
+    const repoPaths: Record<string, AbsoluteDirPath> = {}
     if (fixture?.repos) {
       // Create a store directory for repos
-      const storePath = pathService.join(tmpDir, '.megarepo-store')
+      const storePath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('.megarepo-store/'))
       yield* fs.makeDirectory(storePath, { recursive: true })
 
       for (const repoFixture of fixture.repos) {
@@ -182,8 +180,9 @@ export const createWorkspace = (fixture?: WorkspaceFixture) =>
         repoPaths[repoFixture.name] = repoPath
 
         // Create symlink in workspace
-        const symlinkPath = pathService.join(workspacePath, repoFixture.name)
-        yield* fs.symlink(repoPath, symlinkPath)
+        // Note: fs.symlink doesn't handle trailing slashes well, so strip them
+        const symlinkPath = EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile(repoFixture.name))
+        yield* fs.symlink(repoPath.slice(0, -1), symlinkPath)
       }
     }
 
@@ -196,18 +195,17 @@ export const createWorkspace = (fixture?: WorkspaceFixture) =>
 export const createStore = (repos: ReadonlyArray<RepoFixture>) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const pathService = yield* Path.Path
 
-    const tmpDir = yield* fs.makeTempDirectoryScoped()
-    const storePath = pathService.join(tmpDir, '.megarepo')
+    const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+    const storePath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('.megarepo/'))
 
     yield* fs.makeDirectory(storePath, { recursive: true })
 
-    const repoPaths: Record<string, string> = {}
+    const repoPaths: Record<string, AbsoluteDirPath> = {}
     for (const repoFixture of repos) {
       // Create in github.com/test-owner structure
-      const repoDir = pathService.join(storePath, 'github.com', 'test-owner', repoFixture.name)
-      const parentDir = pathService.dirname(repoDir)
+      const repoDir = EffectPath.ops.join(storePath, EffectPath.unsafe.relativeDir(`github.com/test-owner/${repoFixture.name}/`))
+      const parentDir = EffectPath.ops.parent(repoDir)
       yield* fs.makeDirectory(parentDir, { recursive: true })
 
       const repoPath = yield* createRepo(parentDir, repoFixture)
@@ -253,12 +251,11 @@ export const normalizeOutput = (output: string, workspaceName?: string): string 
 // =============================================================================
 
 /** Read the megarepo.json config from a workspace */
-export const readConfig = (workspacePath: string) =>
+export const readConfig = (workspacePath: AbsoluteDirPath) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const pathService = yield* Path.Path
 
-    const configPath = pathService.join(workspacePath, 'megarepo.json')
+    const configPath = EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile('megarepo.json'))
     const content = yield* fs.readFileString(configPath)
     return yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(content)
   })

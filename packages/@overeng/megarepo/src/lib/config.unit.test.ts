@@ -108,45 +108,46 @@ describe('config', () => {
   })
 
   describe('getStorePath', () => {
+    // Note: getStorePath now returns RelativeDirPath which always has a trailing slash
     it('should generate path for github source', () => {
       const path = getStorePath({ type: 'github', owner: 'owner', repo: 'repo' })
-      expect(path).toBe('github.com/owner/repo')
+      expect(path).toBe('github.com/owner/repo/')
     })
 
     it('should generate path for ssh url', () => {
       const path = getStorePath({ type: 'url', url: 'git@github.com:owner/repo.git' })
-      expect(path).toBe('github.com/owner/repo')
+      expect(path).toBe('github.com/owner/repo/')
     })
 
     it('should generate path for https url', () => {
       const path = getStorePath({ type: 'url', url: 'https://github.com/owner/repo.git' })
-      expect(path).toBe('github.com/owner/repo')
+      expect(path).toBe('github.com/owner/repo/')
     })
 
     it('should generate path for https url without .git suffix', () => {
       const path = getStorePath({ type: 'url', url: 'https://github.com/owner/repo' })
-      expect(path).toBe('github.com/owner/repo')
+      expect(path).toBe('github.com/owner/repo/')
     })
 
     it('should generate path for gitlab ssh url', () => {
       const path = getStorePath({ type: 'url', url: 'git@gitlab.com:owner/repo.git' })
-      expect(path).toBe('gitlab.com/owner/repo')
+      expect(path).toBe('gitlab.com/owner/repo/')
     })
 
     it('should handle unknown url formats with fallback', () => {
       const path = getStorePath({ type: 'url', url: 'some-weird-url/repo.git' })
-      expect(path).toBe('other/repo')
+      expect(path).toBe('other/repo/')
     })
 
     it('should generate path for local path', () => {
       const path = getStorePath({ type: 'path', path: '/some/local/my-repo' })
-      expect(path).toBe('local/my-repo')
+      expect(path).toBe('local/my-repo/')
     })
 
     it('should handle path with trailing slash', () => {
       const path = getStorePath({ type: 'path', path: '/some/local/my-repo/' })
       // Note: split('/').pop() on 'a/b/' returns '', so this tests edge case
-      expect(path).toBe('local/')
+      expect(path).toBe('local//')
     })
   })
 

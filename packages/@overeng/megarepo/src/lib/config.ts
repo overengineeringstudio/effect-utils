@@ -6,7 +6,16 @@
  * - Generators: optional config file generators (envrc, vscode, flake, devenv)
  */
 
+import { EffectPath, type AbsoluteDirPath, type RelativeDirPath } from '@overeng/effect-path'
 import { JSONSchema, Schema } from 'effect'
+
+// =============================================================================
+// Path Type Re-exports
+// =============================================================================
+
+// Re-export commonly used path types for convenience
+export type { AbsoluteDirPath, AbsoluteFilePath, RelativeDirPath, RelativeFilePath } from '@overeng/effect-path'
+export { EffectPath }
 
 // =============================================================================
 // Member Configuration
@@ -148,36 +157,38 @@ export const parseMemberSource = (config: MemberConfig): MemberSource | undefine
 }
 
 /**
- * Get the store path for a member based on its source
+ * Get the store path for a member based on its source.
+ * Returns a relative directory path from the store root.
  */
-export const getStorePath = (source: MemberSource): string => {
+export const getStorePath = (source: MemberSource): RelativeDirPath => {
   switch (source.type) {
     case 'github':
-      return `github.com/${source.owner}/${source.repo}`
+      return EffectPath.unsafe.relativeDir(`github.com/${source.owner}/${source.repo}/`)
     case 'url':
       return parseUrlToStorePath(source.url)
     case 'path':
-      return `local/${source.path.split('/').pop() ?? 'unknown'}`
+      return EffectPath.unsafe.relativeDir(`local/${source.path.split('/').pop() ?? 'unknown'}/`)
   }
 }
 
 /**
- * Parse a git URL to a store path
+ * Parse a git URL to a store path.
+ * Returns a relative directory path from the store root.
  */
-const parseUrlToStorePath = (url: string): string => {
+const parseUrlToStorePath = (url: string): RelativeDirPath => {
   // Handle SSH URLs: git@github.com:owner/repo.git
   const sshMatch = url.match(/^git@([^:]+):(.+?)(?:\.git)?$/)
   if (sshMatch?.[1] !== undefined && sshMatch[2] !== undefined) {
-    return `${sshMatch[1]}/${sshMatch[2]}`
+    return EffectPath.unsafe.relativeDir(`${sshMatch[1]}/${sshMatch[2]}/`)
   }
 
   // Handle HTTPS URLs: https://github.com/owner/repo.git
   const httpsMatch = url.match(/^https?:\/\/([^/]+)\/(.+?)(?:\.git)?$/)
   if (httpsMatch?.[1] !== undefined && httpsMatch[2] !== undefined) {
-    return `${httpsMatch[1]}/${httpsMatch[2]}`
+    return EffectPath.unsafe.relativeDir(`${httpsMatch[1]}/${httpsMatch[2]}/`)
   }
 
   // Fallback: use the URL hash or basename
   const basename = url.split('/').pop()?.replace('.git', '') ?? 'unknown'
-  return `other/${basename}`
+  return EffectPath.unsafe.relativeDir(`other/${basename}/`)
 }

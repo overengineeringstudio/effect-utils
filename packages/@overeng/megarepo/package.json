@@ -2,10 +2,10 @@
   "name": "@overeng/megarepo",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "bin": {
     "mr": "./bin/mr.ts"
   },
+  "type": "module",
   "exports": {
     ".": "./src/mod.ts",
     "./cli": "./src/cli.ts"
@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@overeng/cli-ui": "file:../cli-ui",
+    "@overeng/effect-path": "file:../effect-path",
     "@overeng/utils": "file:../utils"
   },
   "devDependencies": {

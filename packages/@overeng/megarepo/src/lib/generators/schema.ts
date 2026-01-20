@@ -5,13 +5,13 @@
  * Output: megarepo.schema.json in the specified location.
  */
 
-import { FileSystem, Path } from '@effect/platform'
+import { FileSystem } from '@effect/platform'
 import { Effect } from 'effect'
-import { generateJsonSchema, type MegarepoConfig } from '../config.ts'
+import { type AbsoluteDirPath, EffectPath, generateJsonSchema, type MegarepoConfig } from '../config.ts'
 
 export interface SchemaGeneratorOptions {
   /** Path to the megarepo root */
-  readonly megarepoRoot: string
+  readonly megarepoRoot: AbsoluteDirPath
   /** The megarepo config (unused, but kept for consistency) */
   readonly config: typeof MegarepoConfig.Type
   /** Output path for the schema file (relative to megarepo root) */
@@ -32,12 +32,11 @@ export const generateSchemaContent = (): string => {
 export const generateSchema = (options: SchemaGeneratorOptions) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const pathService = yield* Path.Path
 
     const content = generateSchemaContent()
-    const outputPath = pathService.join(
+    const outputPath = EffectPath.ops.join(
       options.megarepoRoot,
-      options.outputPath ?? 'megarepo.schema.json',
+      EffectPath.unsafe.relativeFile(options.outputPath ?? 'megarepo.schema.json'),
     )
 
     yield* fs.writeFileString(outputPath, content)
