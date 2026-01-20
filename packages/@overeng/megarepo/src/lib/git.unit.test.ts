@@ -1,5 +1,6 @@
 import { Option } from 'effect'
 import { describe, expect, it } from 'vitest'
+
 import { parseGitRemoteUrl, type ParsedGitRemote } from './git.ts'
 
 describe('git', () => {

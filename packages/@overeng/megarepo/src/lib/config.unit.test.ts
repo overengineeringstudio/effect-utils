@@ -1,5 +1,6 @@
 import { Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
+
 import {
   CONFIG_FILE_NAME,
   DEFAULT_STORE_PATH,

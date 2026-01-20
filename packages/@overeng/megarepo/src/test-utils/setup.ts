@@ -4,10 +4,13 @@
  * Provides helpers for creating test workspaces, git repos, and megarepo configs.
  */
 
-import { Command, FileSystem } from '@effect/platform'
-import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
-import { Effect, Schema } from 'effect'
 import os from 'node:os'
+
+import { Command, FileSystem } from '@effect/platform'
+import { Effect, Schema } from 'effect'
+
+import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
+
 import { MegarepoConfig, type MemberConfig } from '../lib/config.ts'
 
 // =============================================================================
@@ -79,7 +82,8 @@ export const addCommit = (repoPath: AbsoluteDirPath, message: string, filename?:
 export const getGitRev = (repoPath: AbsoluteDirPath) => runGitCommand(repoPath, 'rev-parse', 'HEAD')
 
 /** Get the short HEAD commit hash */
-export const getGitRevShort = (repoPath: AbsoluteDirPath) => runGitCommand(repoPath, 'rev-parse', '--short', 'HEAD')
+export const getGitRevShort = (repoPath: AbsoluteDirPath) =>
+  runGitCommand(repoPath, 'rev-parse', '--short', 'HEAD')
 
 // =============================================================================
 // Fixture Builders
@@ -109,7 +113,10 @@ export const createRepo = (basePath: AbsoluteDirPath, fixture: RepoFixture) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
 
-    const repoPath = EffectPath.ops.join(basePath, EffectPath.unsafe.relativeDir(`${fixture.name}/`))
+    const repoPath = EffectPath.ops.join(
+      basePath,
+      EffectPath.unsafe.relativeDir(`${fixture.name}/`),
+    )
     yield* fs.makeDirectory(repoPath, { recursive: true })
 
     // Initialize git
@@ -134,7 +141,10 @@ export const createRepo = (basePath: AbsoluteDirPath, fixture: RepoFixture) =>
 
     // Add dirty changes if requested
     if (fixture.dirty) {
-      yield* fs.writeFileString(EffectPath.ops.join(repoPath, EffectPath.unsafe.relativeFile('dirty.txt')), 'uncommitted changes\n')
+      yield* fs.writeFileString(
+        EffectPath.ops.join(repoPath, EffectPath.unsafe.relativeFile('dirty.txt')),
+        'uncommitted changes\n',
+      )
     }
 
     return repoPath
@@ -151,7 +161,10 @@ export const createWorkspace = (fixture?: WorkspaceFixture) =>
     // Create temp directory
     const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
     const workspaceName = fixture?.name ?? 'test-workspace'
-    const workspacePath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir(`${workspaceName}/`))
+    const workspacePath = EffectPath.ops.join(
+      tmpDir,
+      EffectPath.unsafe.relativeDir(`${workspaceName}/`),
+    )
 
     yield* fs.makeDirectory(workspacePath, { recursive: true })
 
@@ -162,8 +175,13 @@ export const createWorkspace = (fixture?: WorkspaceFixture) =>
     const config: typeof MegarepoConfig.Type = {
       members: fixture?.members ?? {},
     }
-    const configContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(config)
-    yield* fs.writeFileString(EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile('megarepo.json')), configContent + '\n')
+    const configContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
+      config,
+    )
+    yield* fs.writeFileString(
+      EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile('megarepo.json')),
+      configContent + '\n',
+    )
 
     // Commit config
     yield* addCommit(workspacePath, 'Initialize megarepo')
@@ -172,7 +190,10 @@ export const createWorkspace = (fixture?: WorkspaceFixture) =>
     const repoPaths: Record<string, AbsoluteDirPath> = {}
     if (fixture?.repos) {
       // Create a store directory for repos
-      const storePath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('.megarepo-store/'))
+      const storePath = EffectPath.ops.join(
+        tmpDir,
+        EffectPath.unsafe.relativeDir('.megarepo-store/'),
+      )
       yield* fs.makeDirectory(storePath, { recursive: true })
 
       for (const repoFixture of fixture.repos) {
@@ -181,7 +202,10 @@ export const createWorkspace = (fixture?: WorkspaceFixture) =>
 
         // Create symlink in workspace
         // Note: fs.symlink doesn't handle trailing slashes well, so strip them
-        const symlinkPath = EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile(repoFixture.name))
+        const symlinkPath = EffectPath.ops.join(
+          workspacePath,
+          EffectPath.unsafe.relativeFile(repoFixture.name),
+        )
         yield* fs.symlink(repoPath.slice(0, -1), symlinkPath)
       }
     }
@@ -204,7 +228,10 @@ export const createStore = (repos: ReadonlyArray<RepoFixture>) =>
     const repoPaths: Record<string, AbsoluteDirPath> = {}
     for (const repoFixture of repos) {
       // Create in github.com/test-owner structure
-      const repoDir = EffectPath.ops.join(storePath, EffectPath.unsafe.relativeDir(`github.com/test-owner/${repoFixture.name}/`))
+      const repoDir = EffectPath.ops.join(
+        storePath,
+        EffectPath.unsafe.relativeDir(`github.com/test-owner/${repoFixture.name}/`),
+      )
       const parentDir = EffectPath.ops.parent(repoDir)
       yield* fs.makeDirectory(parentDir, { recursive: true })
 
@@ -255,12 +282,17 @@ export const readConfig = (workspacePath: AbsoluteDirPath) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
 
-    const configPath = EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile('megarepo.json'))
+    const configPath = EffectPath.ops.join(
+      workspacePath,
+      EffectPath.unsafe.relativeFile('megarepo.json'),
+    )
     const content = yield* fs.readFileString(configPath)
     return yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(content)
   })
 
 /** Generate a megarepo.json config object */
-export const generateConfig = (members: Record<string, MemberConfig>): typeof MegarepoConfig.Type => ({
+export const generateConfig = (
+  members: Record<string, MemberConfig>,
+): typeof MegarepoConfig.Type => ({
   members,
 })

@@ -51,7 +51,9 @@ export const parseGitRemoteUrl = (url: string): Option.Option<ParsedGitRemote> =
 const runGitCommand = (args: ReadonlyArray<string>, options?: { cwd?: string }) =>
   Effect.gen(function* () {
     const executor = yield* CommandExecutor.CommandExecutor
-    const cmd = Command.make('git', ...args).pipe(options?.cwd ? Command.workingDirectory(options.cwd) : (x) => x)
+    const cmd = Command.make('git', ...args).pipe(
+      options?.cwd ? Command.workingDirectory(options.cwd) : (x) => x,
+    )
 
     const result = yield* executor.string(cmd)
     return result.trim()
@@ -137,7 +139,12 @@ export const isGitRepo = (path: string) =>
 /**
  * Create a git worktree
  */
-export const createWorktree = (args: { repoPath: string; worktreePath: string; branch: string; createBranch?: boolean }) =>
+export const createWorktree = (args: {
+  repoPath: string
+  worktreePath: string
+  branch: string
+  createBranch?: boolean
+}) =>
   Effect.gen(function* () {
     const cmdArgs = ['worktree', 'add']
     if (args.createBranch) {

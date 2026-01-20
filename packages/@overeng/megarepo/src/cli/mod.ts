@@ -8,14 +8,10 @@ import path from 'node:path'
 
 import * as Cli from '@effect/cli'
 import { Command, FileSystem } from '@effect/platform'
-import {
-  EffectPath,
-  type AbsoluteDirPath,
-  type AbsoluteFilePath,
-} from '@overeng/effect-path'
 import { Context, Effect, Layer, Option, Schema } from 'effect'
 
 import { styled, symbols } from '@overeng/cli-ui'
+import { EffectPath, type AbsoluteDirPath, type AbsoluteFilePath } from '@overeng/effect-path'
 
 import {
   CONFIG_FILE_NAME,
@@ -70,7 +66,9 @@ const initCommand = Cli.Command.make('init', { json: jsonOption }, ({ json }) =>
       if (json) {
         console.log(JSON.stringify({ error: 'not_git_repo', message: 'Not a git repository' }))
       } else {
-        yield* Effect.logError(`${styled.red(symbols.cross)} Not a git repository. Run 'git init' first.`)
+        yield* Effect.logError(
+          `${styled.red(symbols.cross)} Not a git repository. Run 'git init' first.`,
+        )
       }
       return yield* Effect.fail(new Error('Not a git repository'))
     }
@@ -90,11 +88,14 @@ const initCommand = Cli.Command.make('init', { json: jsonOption }, ({ json }) =>
 
     // Create initial config
     const initialConfig = {
-      $schema: 'https://raw.githubusercontent.com/overengineeringstudio/megarepo/main/schema/megarepo.schema.json',
+      $schema:
+        'https://raw.githubusercontent.com/overengineeringstudio/megarepo/main/schema/megarepo.schema.json',
       members: {},
     }
 
-    const configContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(initialConfig)
+    const configContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
+      initialConfig,
+    )
     yield* fs.writeFileString(configPath, configContent + '\n')
 
     if (json) {
@@ -121,7 +122,10 @@ const findMegarepoRoot = (startPath: AbsoluteDirPath) =>
     let current = startPath
     const rootDir = EffectPath.unsafe.absoluteDir('/')
     while (current !== rootDir) {
-      const configPath = EffectPath.ops.join(current, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME))
+      const configPath = EffectPath.ops.join(
+        current,
+        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+      )
       const exists = yield* fs.exists(configPath)
       if (exists) {
         return Option.some(current)
@@ -130,7 +134,10 @@ const findMegarepoRoot = (startPath: AbsoluteDirPath) =>
     }
 
     // Check root as well
-    const rootConfigPath = EffectPath.ops.join(rootDir, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME))
+    const rootConfigPath = EffectPath.ops.join(
+      rootDir,
+      EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+    )
     const rootExists = yield* fs.exists(rootConfigPath)
     if (rootExists) {
       return Option.some(rootDir)
@@ -148,8 +155,13 @@ const rootCommand = Cli.Command.make('root', { json: jsonOption }, ({ json }) =>
     const envRoot = process.env[ENV_VARS.ROOT]
     if (envRoot !== undefined) {
       const fs = yield* FileSystem.FileSystem
-      const envRootDir = EffectPath.unsafe.absoluteDir(envRoot.endsWith('/') ? envRoot : `${envRoot}/`)
-      const configPath = EffectPath.ops.join(envRootDir, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME))
+      const envRootDir = EffectPath.unsafe.absoluteDir(
+        envRoot.endsWith('/') ? envRoot : `${envRoot}/`,
+      )
+      const configPath = EffectPath.ops.join(
+        envRootDir,
+        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+      )
       const exists = yield* fs.exists(configPath)
 
       if (exists) {
@@ -219,7 +231,10 @@ const envCommand = Cli.Command.make(
 
       // Load config to get member names
       const fs = yield* FileSystem.FileSystem
-      const configPath = EffectPath.ops.join(root.value, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME))
+      const configPath = EffectPath.ops.join(
+        root.value,
+        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+      )
       const configContent = yield* fs.readFileString(configPath)
       const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
 
@@ -268,7 +283,10 @@ const statusCommand = Cli.Command.make('status', { json: jsonOption }, ({ json }
 
     // Load config
     const fs = yield* FileSystem.FileSystem
-    const configPath = EffectPath.ops.join(root.value, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME))
+    const configPath = EffectPath.ops.join(
+      root.value,
+      EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+    )
     const configContent = yield* fs.readFileString(configPath)
     const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
 
@@ -290,7 +308,10 @@ const statusCommand = Cli.Command.make('status', { json: jsonOption }, ({ json }
       yield* Effect.log(styled.dim(`  members: ${memberCount}`))
 
       for (const [memberName] of Object.entries(config.members)) {
-        const memberPath = EffectPath.ops.join(root.value, EffectPath.unsafe.relativeDir(`${memberName}/`))
+        const memberPath = EffectPath.ops.join(
+          root.value,
+          EffectPath.unsafe.relativeDir(`${memberName}/`),
+        )
         const memberExists = yield* fs.exists(memberPath)
         const status = memberExists ? styled.green(symbols.check) : styled.yellow('○')
         yield* Effect.log(`  ${status} ${memberName}`)
@@ -320,7 +341,10 @@ const lsCommand = Cli.Command.make('ls', { json: jsonOption }, ({ json }) =>
 
     // Load config
     const fs = yield* FileSystem.FileSystem
-    const configPath = EffectPath.ops.join(root.value, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME))
+    const configPath = EffectPath.ops.join(
+      root.value,
+      EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+    )
     const configContent = yield* fs.readFileString(configPath)
     const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
 
@@ -386,7 +410,10 @@ const syncMember = (
 
     // Handle local path sources differently - they're already "in store"
     if (source.type === 'path') {
-      const memberPath = EffectPath.ops.join(megarepoRoot, EffectPath.unsafe.relativeDir(`${name}/`))
+      const memberPath = EffectPath.ops.join(
+        megarepoRoot,
+        EffectPath.unsafe.relativeDir(`${name}/`),
+      )
       const linkExists = yield* fs.exists(memberPath)
 
       if (linkExists) {
@@ -435,15 +462,20 @@ const syncMember = (
 
     // Check if member should be isolated (worktree instead of symlink)
     if (memberConfig.isolated !== undefined) {
-      const memberPath = EffectPath.ops.join(megarepoRoot, EffectPath.unsafe.relativeDir(`${name}/`))
+      const memberPath = EffectPath.ops.join(
+        megarepoRoot,
+        EffectPath.unsafe.relativeDir(`${name}/`),
+      )
       const memberExists = yield* fs.exists(memberPath)
 
       if (memberExists) {
         // Check if it's already a worktree
-        const isGitWorktree = yield* fs.exists(EffectPath.ops.join(memberPath, EffectPath.unsafe.relativeFile('.git'))).pipe(
-          Effect.map((exists) => exists),
-          Effect.catchAll(() => Effect.succeed(false)),
-        )
+        const isGitWorktree = yield* fs
+          .exists(EffectPath.ops.join(memberPath, EffectPath.unsafe.relativeFile('.git')))
+          .pipe(
+            Effect.map((exists) => exists),
+            Effect.catchAll(() => Effect.succeed(false)),
+          )
         if (isGitWorktree) {
           return { name, status: 'already_linked' } satisfies MemberSyncResult
         }
@@ -558,7 +590,10 @@ const syncCommand = Cli.Command.make(
 
       // Load config
       const fs = yield* FileSystem.FileSystem
-      const configPath = EffectPath.ops.join(root.value, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME))
+      const configPath = EffectPath.ops.join(
+        root.value,
+        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+      )
       const configContent = yield* fs.readFileString(configPath)
       const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
 
@@ -601,8 +636,14 @@ const syncCommand = Cli.Command.make(
 
         // Check if this member is itself a megarepo (for --deep hint)
         if (result.status !== 'error' && result.status !== 'skipped') {
-          const memberPath = EffectPath.ops.join(root.value, EffectPath.unsafe.relativeDir(`${name}/`))
-          const nestedConfigPath = EffectPath.ops.join(memberPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME))
+          const memberPath = EffectPath.ops.join(
+            root.value,
+            EffectPath.unsafe.relativeDir(`${name}/`),
+          )
+          const nestedConfigPath = EffectPath.ops.join(
+            memberPath,
+            EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+          )
           const hasNestedConfig = yield* fs.exists(nestedConfigPath)
           if (hasNestedConfig) {
             nestedMegarepos.push(name)
@@ -622,9 +663,13 @@ const syncCommand = Cli.Command.make(
 
         yield* Effect.log('')
         if (dryRun) {
-          yield* Effect.log(styled.dim(`Would sync ${syncedCount} members, ${alreadyCount} already synced`))
+          yield* Effect.log(
+            styled.dim(`Would sync ${syncedCount} members, ${alreadyCount} already synced`),
+          )
         } else {
-          yield* Effect.log(styled.dim(`Synced ${syncedCount} members, ${alreadyCount} already synced`))
+          yield* Effect.log(
+            styled.dim(`Synced ${syncedCount} members, ${alreadyCount} already synced`),
+          )
         }
 
         if (errorCount > 0) {
@@ -635,9 +680,13 @@ const syncCommand = Cli.Command.make(
         if (nestedMegarepos.length > 0 && !deep) {
           yield* Effect.log('')
           yield* Effect.log(
-            styled.dim(`Note: ${nestedMegarepos.length} member(s) contain nested megarepos (${nestedMegarepos.join(', ')})`),
+            styled.dim(
+              `Note: ${nestedMegarepos.length} member(s) contain nested megarepos (${nestedMegarepos.join(', ')})`,
+            ),
           )
-          yield* Effect.log(styled.dim(`      Run 'mr sync --deep' to sync them, or 'cd <member> && mr sync'`))
+          yield* Effect.log(
+            styled.dim(`      Run 'mr sync --deep' to sync them, or 'cd <member> && mr sync'`),
+          )
         }
       }
 
@@ -735,10 +784,16 @@ const addCommand = Cli.Command.make(
       const parsed = parseRepoRef(repo)
       if (parsed === undefined) {
         if (json) {
-          console.log(JSON.stringify({ error: 'invalid_repo', message: `Invalid repo reference: ${repo}` }))
+          console.log(
+            JSON.stringify({ error: 'invalid_repo', message: `Invalid repo reference: ${repo}` }),
+          )
         } else {
           yield* Effect.logError(`${styled.red(symbols.cross)} Invalid repo reference: ${repo}`)
-          yield* Effect.log(styled.dim('  Expected: owner/repo, git@host:owner/repo.git, https://host/owner/repo.git, or /path/to/repo'))
+          yield* Effect.log(
+            styled.dim(
+              '  Expected: owner/repo, git@host:owner/repo.git, https://host/owner/repo.git, or /path/to/repo',
+            ),
+          )
         }
         return yield* Effect.fail(new Error('Invalid repo reference'))
       }
@@ -747,7 +802,10 @@ const addCommand = Cli.Command.make(
 
       // Load current config
       const fs = yield* FileSystem.FileSystem
-      const configPath = EffectPath.ops.join(root.value, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME))
+      const configPath = EffectPath.ops.join(
+        root.value,
+        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+      )
       const configContent = yield* fs.readFileString(configPath)
       const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
 
@@ -756,7 +814,9 @@ const addCommand = Cli.Command.make(
         if (json) {
           console.log(JSON.stringify({ error: 'already_exists', member: memberName }))
         } else {
-          yield* Effect.logError(`${styled.red(symbols.cross)} Member '${memberName}' already exists`)
+          yield* Effect.logError(
+            `${styled.red(symbols.cross)} Member '${memberName}' already exists`,
+          )
         }
         return yield* Effect.fail(new Error('Member already exists'))
       }
@@ -771,7 +831,9 @@ const addCommand = Cli.Command.make(
       }
 
       // Write updated config
-      const newConfigContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(newConfig)
+      const newConfigContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
+        newConfig,
+      )
       yield* fs.writeFileString(configPath, newConfigContent + '\n')
 
       if (json) {
@@ -787,9 +849,12 @@ const addCommand = Cli.Command.make(
         }
         const result = yield* syncMember(memberName, parsed.config, root.value, false)
         if (!json) {
-          const statusSymbol = result.status === 'error' ? styled.red(symbols.cross) : styled.green(symbols.check)
+          const statusSymbol =
+            result.status === 'error' ? styled.red(symbols.cross) : styled.green(symbols.check)
           const statusText = result.status === 'cloned' ? 'cloned & linked' : result.status
-          yield* Effect.log(`${statusSymbol} ${styled.bold(memberName)} ${styled.dim(`(${statusText})`)}`)
+          yield* Effect.log(
+            `${statusSymbol} ${styled.bold(memberName)} ${styled.dim(`(${statusText})`)}`,
+          )
         }
       }
     }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/add')),
@@ -826,7 +891,10 @@ const updateCommand = Cli.Command.make(
 
       // Load config
       const fs = yield* FileSystem.FileSystem
-      const configPath = EffectPath.ops.join(root.value, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME))
+      const configPath = EffectPath.ops.join(
+        root.value,
+        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+      )
       const configContent = yield* fs.readFileString(configPath)
       const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
 
@@ -845,10 +913,17 @@ const updateCommand = Cli.Command.make(
         return yield* Effect.fail(new Error('Member not found'))
       }
 
-      const results: Array<{ name: string; status: 'updated' | 'skipped' | 'error'; message?: string }> = []
+      const results: Array<{
+        name: string
+        status: 'updated' | 'skipped' | 'error'
+        message?: string
+      }> = []
 
       for (const name of membersToUpdate) {
-        const memberPath = EffectPath.ops.join(root.value, EffectPath.unsafe.relativeDir(`${name}/`))
+        const memberPath = EffectPath.ops.join(
+          root.value,
+          EffectPath.unsafe.relativeDir(`${name}/`),
+        )
         const exists = yield* fs.exists(memberPath)
 
         if (!exists) {
@@ -863,7 +938,9 @@ const updateCommand = Cli.Command.make(
           const branch = yield* Git.getCurrentBranch(memberPath)
           if (Option.isSome(branch)) {
             yield* Effect.gen(function* () {
-              const cmd = Command.make('git', 'pull', '--ff-only').pipe(Command.workingDirectory(memberPath))
+              const cmd = Command.make('git', 'pull', '--ff-only').pipe(
+                Command.workingDirectory(memberPath),
+              )
               yield* Command.string(cmd)
             }).pipe(Effect.catchAll(() => Effect.void))
           }
@@ -881,8 +958,11 @@ const updateCommand = Cli.Command.make(
         results.push(result)
 
         if (!json) {
-          const statusSymbol = result.status === 'error' ? styled.red(symbols.cross) : styled.green(symbols.check)
-          yield* Effect.log(`${statusSymbol} ${styled.bold(name)} ${styled.dim(`(${result.status})`)}`)
+          const statusSymbol =
+            result.status === 'error' ? styled.red(symbols.cross) : styled.green(symbols.check)
+          yield* Effect.log(
+            `${statusSymbol} ${styled.bold(name)} ${styled.dim(`(${result.status})`)}`,
+          )
         }
       }
 
@@ -908,7 +988,9 @@ const updateCommand = Cli.Command.make(
 const execCommand = Cli.Command.make(
   'exec',
   {
-    command: Cli.Args.text({ name: 'command' }).pipe(Cli.Args.withDescription('Command to execute')),
+    command: Cli.Args.text({ name: 'command' }).pipe(
+      Cli.Args.withDescription('Command to execute'),
+    ),
     json: jsonOption,
     member: Cli.Options.text('member').pipe(
       Cli.Options.withAlias('m'),
@@ -932,7 +1014,10 @@ const execCommand = Cli.Command.make(
 
       // Load config
       const fs = yield* FileSystem.FileSystem
-      const configPath = EffectPath.ops.join(root.value, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME))
+      const configPath = EffectPath.ops.join(
+        root.value,
+        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+      )
       const configContent = yield* fs.readFileString(configPath)
       const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
 
@@ -954,7 +1039,10 @@ const execCommand = Cli.Command.make(
       const results: Array<{ name: string; exitCode: number; stdout: string; stderr: string }> = []
 
       for (const name of membersToRun) {
-        const memberPath = EffectPath.ops.join(root.value, EffectPath.unsafe.relativeDir(`${name}/`))
+        const memberPath = EffectPath.ops.join(
+          root.value,
+          EffectPath.unsafe.relativeDir(`${name}/`),
+        )
         const exists = yield* fs.exists(memberPath)
 
         if (!exists) {
@@ -1009,7 +1097,9 @@ const isolateCommand = Cli.Command.make(
   'isolate',
   {
     member: Cli.Args.text({ name: 'member' }).pipe(Cli.Args.withDescription('Member to isolate')),
-    branch: Cli.Args.text({ name: 'branch' }).pipe(Cli.Args.withDescription('Branch name for the worktree')),
+    branch: Cli.Args.text({ name: 'branch' }).pipe(
+      Cli.Args.withDescription('Branch name for the worktree'),
+    ),
     json: jsonOption,
   },
   ({ member, branch, json }) =>
@@ -1028,7 +1118,10 @@ const isolateCommand = Cli.Command.make(
 
       // Load config
       const fs = yield* FileSystem.FileSystem
-      const configPath = EffectPath.ops.join(root.value, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME))
+      const configPath = EffectPath.ops.join(
+        root.value,
+        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+      )
       const configContent = yield* fs.readFileString(configPath)
       const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
 
@@ -1043,13 +1136,18 @@ const isolateCommand = Cli.Command.make(
         return yield* Effect.fail(new Error('Member not found'))
       }
 
-      const memberPath = EffectPath.ops.join(root.value, EffectPath.unsafe.relativeDir(`${member}/`))
+      const memberPath = EffectPath.ops.join(
+        root.value,
+        EffectPath.unsafe.relativeDir(`${member}/`),
+      )
       const store = yield* Store
       const source = parseMemberSource(memberConfig)
 
       if (source === undefined || source.type === 'path') {
         if (json) {
-          console.log(JSON.stringify({ error: 'invalid', message: 'Cannot isolate local path members' }))
+          console.log(
+            JSON.stringify({ error: 'invalid', message: 'Cannot isolate local path members' }),
+          )
         } else {
           yield* Effect.logError(`${styled.red(symbols.cross)} Cannot isolate local path members`)
         }
@@ -1089,13 +1187,17 @@ const isolateCommand = Cli.Command.make(
           [member]: { ...memberConfig, isolated: branch },
         },
       }
-      const newConfigContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(newConfig)
+      const newConfigContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
+        newConfig,
+      )
       yield* fs.writeFileString(configPath, newConfigContent + '\n')
 
       if (json) {
         console.log(JSON.stringify({ status: 'isolated', member, branch }))
       } else {
-        yield* Effect.log(`${styled.green(symbols.check)} Isolated ${styled.bold(member)} on branch ${styled.bold(branch)}`)
+        yield* Effect.log(
+          `${styled.green(symbols.check)} Isolated ${styled.bold(member)} on branch ${styled.bold(branch)}`,
+        )
       }
     }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/isolate')),
 )
@@ -1128,7 +1230,10 @@ const unisolateCommand = Cli.Command.make(
 
       // Load config
       const fs = yield* FileSystem.FileSystem
-      const configPath = EffectPath.ops.join(root.value, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME))
+      const configPath = EffectPath.ops.join(
+        root.value,
+        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+      )
       const configContent = yield* fs.readFileString(configPath)
       const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
 
@@ -1152,7 +1257,10 @@ const unisolateCommand = Cli.Command.make(
         return yield* Effect.fail(new Error('Member is not isolated'))
       }
 
-      const memberPath = EffectPath.ops.join(root.value, EffectPath.unsafe.relativeDir(`${member}/`))
+      const memberPath = EffectPath.ops.join(
+        root.value,
+        EffectPath.unsafe.relativeDir(`${member}/`),
+      )
       const store = yield* Store
       const source = parseMemberSource(memberConfig)
 
@@ -1177,7 +1285,9 @@ const unisolateCommand = Cli.Command.make(
           [member]: cleanMemberConfig,
         },
       }
-      const newConfigContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(newConfig)
+      const newConfigContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
+        newConfig,
+      )
       yield* fs.writeFileString(configPath, newConfigContent + '\n')
 
       if (json) {
@@ -1227,16 +1337,19 @@ const storeFetchCommand = Cli.Command.make('fetch', { json: jsonOption }, ({ jso
     for (const repo of repos) {
       const result = yield* Git.fetch({ repoPath: repo.fullPath, prune: true }).pipe(
         Effect.map(() => ({ path: repo.relativePath, status: 'fetched' as const })),
-        Effect.catchAll((error) => Effect.succeed({
-          path: repo.relativePath,
-          status: 'error' as const,
-          message: error instanceof Error ? error.message : String(error),
-        })),
+        Effect.catchAll((error) =>
+          Effect.succeed({
+            path: repo.relativePath,
+            status: 'error' as const,
+            message: error instanceof Error ? error.message : String(error),
+          }),
+        ),
       )
       results.push(result)
 
       if (!json) {
-        const symbol = result.status === 'error' ? styled.red(symbols.cross) : styled.green(symbols.check)
+        const symbol =
+          result.status === 'error' ? styled.red(symbols.cross) : styled.green(symbols.check)
         yield* Effect.log(`${symbol} ${repo.relativePath}`)
       }
     }
@@ -1277,7 +1390,10 @@ const generateEnvrcCommand = Cli.Command.make('envrc', { json: jsonOption }, ({ 
 
     // Load config
     const fs = yield* FileSystem.FileSystem
-    const configPath = EffectPath.ops.join(root.value, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME))
+    const configPath = EffectPath.ops.join(
+      root.value,
+      EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+    )
     const configContent = yield* fs.readFileString(configPath)
     const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
 
@@ -1320,7 +1436,10 @@ const generateVscodeCommand = Cli.Command.make(
 
       // Load config
       const fs = yield* FileSystem.FileSystem
-      const configPath = EffectPath.ops.join(root.value, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME))
+      const configPath = EffectPath.ops.join(
+        root.value,
+        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+      )
       const configContent = yield* fs.readFileString(configPath)
       const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
 
@@ -1335,7 +1454,9 @@ const generateVscodeCommand = Cli.Command.make(
       if (json) {
         console.log(JSON.stringify({ status: 'generated', path: result.path }))
       } else {
-        yield* Effect.log(`${styled.green(symbols.check)} Generated ${styled.bold('.vscode/megarepo.code-workspace')}`)
+        yield* Effect.log(
+          `${styled.green(symbols.check)} Generated ${styled.bold('.vscode/megarepo.code-workspace')}`,
+        )
       }
     }).pipe(Effect.withSpan('megarepo/generate/vscode')),
 )
@@ -1367,7 +1488,10 @@ const generateSchemaCommand = Cli.Command.make(
 
       // Load config
       const fs = yield* FileSystem.FileSystem
-      const configPath = EffectPath.ops.join(root.value, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME))
+      const configPath = EffectPath.ops.join(
+        root.value,
+        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+      )
       const configContent = yield* fs.readFileString(configPath)
       const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
 
@@ -1402,7 +1526,10 @@ const generateAllCommand = Cli.Command.make('all', { json: jsonOption }, ({ json
 
     // Load config
     const fs = yield* FileSystem.FileSystem
-    const configPath = EffectPath.ops.join(root.value, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME))
+    const configPath = EffectPath.ops.join(
+      root.value,
+      EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+    )
     const configContent = yield* fs.readFileString(configPath)
     const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
 
@@ -1425,7 +1552,9 @@ const generateAllCommand = Cli.Command.make('all', { json: jsonOption }, ({ json
     })
     results.push({ generator: 'vscode', path: vscodeResult.path })
     if (!json) {
-      yield* Effect.log(`${styled.green(symbols.check)} Generated ${styled.bold('.vscode/megarepo.code-workspace')}`)
+      yield* Effect.log(
+        `${styled.green(symbols.check)} Generated ${styled.bold('.vscode/megarepo.code-workspace')}`,
+      )
     }
 
     if (json) {
@@ -1439,7 +1568,12 @@ const generateAllCommand = Cli.Command.make('all', { json: jsonOption }, ({ json
 
 /** Generate subcommand group */
 const generateCommand = Cli.Command.make('generate', {}).pipe(
-  Cli.Command.withSubcommands([generateAllCommand, generateEnvrcCommand, generateSchemaCommand, generateVscodeCommand]),
+  Cli.Command.withSubcommands([
+    generateAllCommand,
+    generateEnvrcCommand,
+    generateSchemaCommand,
+    generateVscodeCommand,
+  ]),
 )
 
 // =============================================================================

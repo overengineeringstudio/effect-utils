@@ -7,6 +7,7 @@
 
 import { FileSystem } from '@effect/platform'
 import { Effect } from 'effect'
+
 import { type AbsoluteDirPath, EffectPath, type MegarepoConfig } from '../config.ts'
 
 export interface VscodeGeneratorOptions {
@@ -58,8 +59,14 @@ export const generateVscode = (options: VscodeGeneratorOptions) =>
     const fs = yield* FileSystem.FileSystem
 
     const content = generateVscodeContent(options)
-    const vscodeDir = EffectPath.ops.join(options.megarepoRoot, EffectPath.unsafe.relativeDir('.vscode/'))
-    const outputPath = EffectPath.ops.join(vscodeDir, EffectPath.unsafe.relativeFile('megarepo.code-workspace'))
+    const vscodeDir = EffectPath.ops.join(
+      options.megarepoRoot,
+      EffectPath.unsafe.relativeDir('.vscode/'),
+    )
+    const outputPath = EffectPath.ops.join(
+      vscodeDir,
+      EffectPath.unsafe.relativeFile('megarepo.code-workspace'),
+    )
 
     // Ensure .vscode directory exists
     yield* fs.makeDirectory(vscodeDir, { recursive: true })

@@ -7,6 +7,7 @@
 
 import { FileSystem } from '@effect/platform'
 import { Effect } from 'effect'
+
 import { type AbsoluteDirPath, EffectPath, type MegarepoConfig } from '../config.ts'
 
 export interface EnvrcGeneratorOptions {
@@ -38,7 +39,10 @@ export const generateEnvrc = (options: EnvrcGeneratorOptions) =>
     const fs = yield* FileSystem.FileSystem
 
     const content = generateEnvrcContent(options)
-    const outputPath = EffectPath.ops.join(options.megarepoRoot, EffectPath.unsafe.relativeFile('.envrc.local'))
+    const outputPath = EffectPath.ops.join(
+      options.megarepoRoot,
+      EffectPath.unsafe.relativeFile('.envrc.local'),
+    )
 
     yield* fs.writeFileString(outputPath, content)
 

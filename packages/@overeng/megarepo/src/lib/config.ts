@@ -6,15 +6,21 @@
  * - Generators: optional config file generators (envrc, vscode, flake, devenv)
  */
 
-import { EffectPath, type AbsoluteDirPath, type RelativeDirPath } from '@overeng/effect-path'
 import { JSONSchema, Schema } from 'effect'
+
+import { EffectPath, type AbsoluteDirPath, type RelativeDirPath } from '@overeng/effect-path'
 
 // =============================================================================
 // Path Type Re-exports
 // =============================================================================
 
 // Re-export commonly used path types for convenience
-export type { AbsoluteDirPath, AbsoluteFilePath, RelativeDirPath, RelativeFilePath } from '@overeng/effect-path'
+export type {
+  AbsoluteDirPath,
+  AbsoluteFilePath,
+  RelativeDirPath,
+  RelativeFilePath,
+} from '@overeng/effect-path'
 export { EffectPath }
 
 // =============================================================================
@@ -48,13 +54,17 @@ export class MemberConfig extends Schema.Class<MemberConfig>('MemberConfig')({
 // =============================================================================
 
 /** envrc generator configuration */
-export class EnvrcGeneratorConfig extends Schema.Class<EnvrcGeneratorConfig>('EnvrcGeneratorConfig')({
+export class EnvrcGeneratorConfig extends Schema.Class<EnvrcGeneratorConfig>(
+  'EnvrcGeneratorConfig',
+)({
   /** Enable/disable the generator (default: true) */
   enabled: Schema.optional(Schema.Boolean),
 }) {}
 
 /** VSCode workspace generator configuration */
-export class VscodeGeneratorConfig extends Schema.Class<VscodeGeneratorConfig>('VscodeGeneratorConfig')({
+export class VscodeGeneratorConfig extends Schema.Class<VscodeGeneratorConfig>(
+  'VscodeGeneratorConfig',
+)({
   /** Enable/disable the generator (default: false) */
   enabled: Schema.optional(Schema.Boolean),
   /** Members to exclude from workspace */
@@ -62,7 +72,9 @@ export class VscodeGeneratorConfig extends Schema.Class<VscodeGeneratorConfig>('
 }) {}
 
 /** Nix flake generator configuration */
-export class FlakeGeneratorConfig extends Schema.Class<FlakeGeneratorConfig>('FlakeGeneratorConfig')({
+export class FlakeGeneratorConfig extends Schema.Class<FlakeGeneratorConfig>(
+  'FlakeGeneratorConfig',
+)({
   /** Enable/disable the generator (default: false) */
   enabled: Schema.optional(Schema.Boolean),
   /** Members to skip in flake */
@@ -70,7 +82,9 @@ export class FlakeGeneratorConfig extends Schema.Class<FlakeGeneratorConfig>('Fl
 }) {}
 
 /** devenv generator configuration */
-export class DevenvGeneratorConfig extends Schema.Class<DevenvGeneratorConfig>('DevenvGeneratorConfig')({
+export class DevenvGeneratorConfig extends Schema.Class<DevenvGeneratorConfig>(
+  'DevenvGeneratorConfig',
+)({
   /** Enable/disable the generator (default: false) */
   enabled: Schema.optional(Schema.Boolean),
 }) {}

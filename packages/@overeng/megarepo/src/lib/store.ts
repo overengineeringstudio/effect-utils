@@ -15,12 +15,10 @@
  */
 
 import { FileSystem, type Error as PlatformError } from '@effect/platform'
-import {
-  EffectPath,
-  type AbsoluteDirPath,
-  type RelativeDirPath,
-} from '@overeng/effect-path'
 import { Context, Effect, Layer, Option } from 'effect'
+
+import { EffectPath, type AbsoluteDirPath, type RelativeDirPath } from '@overeng/effect-path'
+
 import { DEFAULT_STORE_PATH, ENV_VARS, getStorePath, type MemberSource } from './config.ts'
 
 // =============================================================================
@@ -99,13 +97,19 @@ const make = (config: StoreConfig): MegarepoStore => {
 
           const owners = yield* fs.readDirectory(hostPath)
           for (const owner of owners) {
-            const ownerPath = EffectPath.ops.join(hostPath, EffectPath.unsafe.relativeDir(`${owner}/`))
+            const ownerPath = EffectPath.ops.join(
+              hostPath,
+              EffectPath.unsafe.relativeDir(`${owner}/`),
+            )
             const ownerStat = yield* fs.stat(ownerPath)
             if (ownerStat.type !== 'Directory') continue
 
             const repos = yield* fs.readDirectory(ownerPath)
             for (const repo of repos) {
-              const repoPath = EffectPath.ops.join(ownerPath, EffectPath.unsafe.relativeDir(`${repo}/`))
+              const repoPath = EffectPath.ops.join(
+                ownerPath,
+                EffectPath.unsafe.relativeDir(`${repo}/`),
+              )
               const repoStat = yield* fs.stat(repoPath)
               if (repoStat.type !== 'Directory') continue
 

@@ -7,7 +7,13 @@
 
 import { FileSystem } from '@effect/platform'
 import { Effect } from 'effect'
-import { type AbsoluteDirPath, EffectPath, generateJsonSchema, type MegarepoConfig } from '../config.ts'
+
+import {
+  type AbsoluteDirPath,
+  EffectPath,
+  generateJsonSchema,
+  type MegarepoConfig,
+} from '../config.ts'
 
 export interface SchemaGeneratorOptions {
   /** Path to the megarepo root */

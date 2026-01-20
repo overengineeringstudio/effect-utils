@@ -14,7 +14,6 @@ Status: Needs to be implemented to replace dotdot
   - each (workspace) member repo should be self-contained and work independently
   - workspace provides convenience for working on things together
 
-
 ## changes to v1
 
 - get rid of `exposes` / hoisting concept
@@ -43,6 +42,7 @@ Status: Needs to be implemented to replace dotdot
 ### commands
 
 #### core commands
+
 - `mr sync`
   - does the heavy lifting: checks out the repos, makes symlinks, runs generators
 
@@ -53,6 +53,7 @@ Status: Needs to be implemented to replace dotdot
 - `--filter <glob>`
 
 #### convenience commands
+
 - `mr init`: initializes a `megarepo.json` file in the current directory
 - `mr status`: shows the status of the megarepo
 - `mr env`: prints the environment variables used by the cli
@@ -62,10 +63,11 @@ Status: Needs to be implemented to replace dotdot
   - `--update-revs`: optionally updates the pinned revisions in the config where present
 - `mr exec`
   - `--mode parallel|sequential|topo|topo-parallel`
-- `mr isolate <repo> <branch>`: replaces the symlink for the repo and  creates a worktree with the given branch name (convenience: changes the config and runs sync)
+- `mr isolate <repo> <branch>`: replaces the symlink for the repo and creates a worktree with the given branch name (convenience: changes the config and runs sync)
   - opposite: `mr unisolate <repo>`: removes the worktree and restores the symlink
 
 #### store commands
+
 - `mr store ls`
 - `mr store add <repo> <branch>`: adds a repo to the store
 - `mr store fetch`: runs git fetch on all repos in the store
@@ -73,7 +75,7 @@ Status: Needs to be implemented to replace dotdot
 ## faq
 
 - couldn't we also use submodules?
-  - no, doesn't work well with symlinking strategy  
+  - no, doesn't work well with symlinking strategy
 
 ## minimum level of usage barrier
 
@@ -96,7 +98,6 @@ Status: Needs to be implemented to replace dotdot
 - bun install too slow when running in parallel
 - task running
   - `bun install` everywhere
-
 
 ## workspace config (sketch, real version will use `megarepo.json`)
 
@@ -127,6 +128,7 @@ exclude = ["design-system", "docs"]
 - containerizing the workspace (e.g. vscode dev container)
 - generated combined workspace flake (to setup all infrastructure for the workspace)
   - would be a union of all dev shells of all repos
+
     ```nix
     {
     inputs = {
@@ -157,8 +159,9 @@ exclude = ["design-system", "docs"]
           '';
         };
       };
-  }
-  ```
+    }
+    ```
+
 - separate hostname per workspace (with isolated ports)
 
 ## notes

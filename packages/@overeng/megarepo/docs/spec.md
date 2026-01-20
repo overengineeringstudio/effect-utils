@@ -7,20 +7,26 @@ Megarepo (`mr`) is a tool for composing multiple git repositories into a unified
 ## Core Concepts
 
 ### Megarepo
+
 A git repository containing a `megarepo.json` file. The megarepo:
+
 - Is the root of the composed environment
 - Declares which repos are members
 - Can be nested (megarepos can include other megarepos)
 - Has its name derived from its git remote (or directory name if no remote)
 
 ### Member
+
 A repository declared in `megarepo.json`. Members are:
+
 - Symlinked from the global store into the megarepo
 - Self-contained and work independently
 - Not aware they're part of a megarepo
 
 ### Store
+
 Global repository cache at `~/.megarepo/` (configurable via `MEGAREPO_STORE`):
+
 ```
 ~/.megarepo/
 ├── github.com/
@@ -31,7 +37,9 @@ Global repository cache at `~/.megarepo/` (configurable via `MEGAREPO_STORE`):
 ```
 
 ### Isolation
+
 When a member needs independent changes (different branch), it's "isolated":
+
 - A git worktree is created inside the megarepo directory
 - Replaces the symlink with an actual directory
 - Allows divergent work without affecting the store
@@ -40,26 +48,29 @@ When a member needs independent changes (different branch), it's "isolated":
 
 ## Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `MEGAREPO_ROOT` | Path to the megarepo root | (required, set externally) |
-| `MEGAREPO_STORE` | Global store location | `~/.megarepo` |
-| `MEGAREPO_MEMBERS` | Comma-separated list of member names | (computed from config) |
+| Variable           | Description                          | Default                    |
+| ------------------ | ------------------------------------ | -------------------------- |
+| `MEGAREPO_ROOT`    | Path to the megarepo root            | (required, set externally) |
+| `MEGAREPO_STORE`   | Global store location                | `~/.megarepo`              |
+| `MEGAREPO_MEMBERS` | Comma-separated list of member names | (computed from config)     |
 
 ### `MEGAREPO_ROOT` Behavior
 
 **Important:** `MEGAREPO_ROOT` is required for most commands. It must be set externally (via shell config or `mr env`).
 
 **Nested Megarepos:** When megarepo A contains megarepo B as a member:
+
 - If working inside the nested B, `MEGAREPO_ROOT` remains A (outer wins)
 - If B is checked out standalone (not as member of another megarepo), `MEGAREPO_ROOT` is B
 
 This "outer wins" rule ensures:
+
 - Consistent environment across the entire development context
 - No accidental scope changes when navigating into nested repos
 - Clear hierarchy: you're always working in the context of one megarepo
 
 **Edge Cases:**
+
 - If `MEGAREPO_ROOT` is set but the directory no longer contains `megarepo.json`: commands should error
 - If `MEGAREPO_ROOT` points to a path that is itself inside another megarepo: the explicit setting wins (explicit > automatic)
 - Symlinked members: When entering a symlinked member, `MEGAREPO_ROOT` should still point to the outer megarepo
@@ -71,7 +82,7 @@ This "outer wins" rule ensures:
 ```typescript
 interface MegarepoConfig {
   // Optional schema reference
-  "$schema"?: string
+  $schema?: string
 
   // Members: repos to include in this megarepo
   members: Record<string, MemberConfig>
@@ -99,18 +110,18 @@ interface MemberConfig {
 
 interface GeneratorsConfig {
   envrc?: {
-    enabled?: boolean   // default: true
+    enabled?: boolean // default: true
   }
   vscode?: {
-    enabled?: boolean   // default: false
-    exclude?: string[]  // members to exclude from workspace
+    enabled?: boolean // default: false
+    exclude?: string[] // members to exclude from workspace
   }
   flake?: {
-    enabled?: boolean   // default: false
-    skip?: string[]     // members to skip in flake
+    enabled?: boolean // default: false
+    skip?: string[] // members to skip in flake
   }
   devenv?: {
-    enabled?: boolean   // default: false
+    enabled?: boolean // default: false
     // TBD
   }
 }
@@ -168,6 +179,7 @@ The megarepo name is derived automatically (no `name` field in config):
 ## Symlinks
 
 ### Absolute Symlinks
+
 Megarepo uses **absolute symlinks** for all member links:
 
 ```
@@ -175,6 +187,7 @@ my-megarepo/effect-utils -> /Users/dev/.megarepo/github.com/overeng/effect-utils
 ```
 
 **Rationale:**
+
 - Symlinks are never committed to git (gitignored)
 - Each machine has its own store location anyway
 - Absolute paths are simpler and avoid path resolution complexity
@@ -187,7 +200,9 @@ my-megarepo/effect-utils -> /Users/dev/.megarepo/github.com/overeng/effect-utils
 ### Core Commands
 
 #### `mr sync`
+
 Main command that:
+
 1. Ensures all members are cloned to store
 2. Creates symlinks (or worktrees for isolated members)
 3. Runs generators
@@ -197,11 +212,13 @@ mr sync [--dry-run] [--deep]
 ```
 
 Options:
+
 - `--deep` - Recursively sync nested megarepos
 
 ### Convenience Commands
 
 #### `mr init`
+
 Initialize a new megarepo in current directory.
 
 ```bash
@@ -211,6 +228,7 @@ mr init
 ```
 
 #### `mr status`
+
 Show megarepo state.
 
 ```bash
@@ -221,6 +239,7 @@ mr status
 ```
 
 #### `mr env`
+
 Print environment variables for shell integration.
 
 ```bash
@@ -231,6 +250,7 @@ mr env [--shell bash|zsh|fish]
 ```
 
 #### `mr ls`
+
 List members.
 
 ```bash
@@ -238,6 +258,7 @@ mr ls [--format json|table]
 ```
 
 #### `mr update`
+
 Pull all members from remotes.
 
 ```bash
@@ -245,6 +266,7 @@ mr update [--update-pins]  # --update-pins updates pinned refs in config
 ```
 
 #### `mr exec`
+
 Execute command across members.
 
 ```bash
@@ -254,6 +276,7 @@ mr exec --mode parallel "bun install"
 ```
 
 #### `mr isolate <member> <branch>`
+
 Convert symlink to worktree for independent work.
 
 ```bash
@@ -263,6 +286,7 @@ mr isolate livestore feature-notifications
 ```
 
 #### `mr unisolate <member>`
+
 Convert worktree back to symlink.
 
 ```bash
@@ -274,9 +298,11 @@ mr unisolate livestore
 ### Store Commands
 
 #### `mr store ls`
+
 List repos in global store.
 
 #### `mr store add <repo>`
+
 Add repo to store without adding to megarepo.
 
 ```bash
@@ -284,11 +310,13 @@ mr store add github.com/owner/repo
 ```
 
 #### `mr store fetch`
+
 Fetch all repos in store.
 
 ### Common Options
 
 All commands support:
+
 - `--json` - Output JSON instead of formatted text (for scripting/tooling)
 - `--dry-run` - Show what would be done
 - `--verbose` / `-v` - Verbose output
@@ -308,11 +336,13 @@ mr root --json
 ```
 
 **Use cases:**
+
 - Scripts that need megarepo context outside direnv
 - Shell integration for users not using direnv
 - Debugging / verification
 
 **Behavior:**
+
 - Searches up from `$PWD` for `megarepo.json`
 - If `MEGAREPO_ROOT` is set and valid, returns that (respects explicit setting)
 - Exits with error if no megarepo found
@@ -346,6 +376,7 @@ Members can themselves be megarepos with their own `megarepo.json`. When a membe
 3. **Shared dependencies** (like `effect-utils` above) point to the same store location
 
 **Example:** If `livestore` has its own `megarepo.json`:
+
 ```json
 {
   "members": {
@@ -383,16 +414,19 @@ This keeps the default fast while making the recursive option discoverable.
 ## Sync Behavior
 
 ### Clone Strategy
+
 1. Check if repo exists in store
 2. If not, clone to store
 3. For pinned refs: checkout specific ref
 4. For isolated: create worktree in megarepo directory
 
 ### Symlink Strategy
+
 - Symlinks are absolute paths
 - Point from megarepo directory to store
 
 ### Conflict Resolution
+
 - If member directory exists but isn't a symlink: error (user must resolve)
 - If symlink points to wrong location: update symlink
 
@@ -421,18 +455,19 @@ chpwd_functions+=(_mr_chpwd)
 
 ### Generator Output Locations
 
-| Generator | Output Path |
-|-----------|-------------|
-| envrc | `<megarepo>/.envrc.local` |
-| VSCode | `<megarepo>/.vscode/megarepo.code-workspace` |
-| Nix Flake | `<megarepo>/flake.nix` |
-| devenv | `<megarepo>/devenv.nix` |
+| Generator | Output Path                                  |
+| --------- | -------------------------------------------- |
+| envrc     | `<megarepo>/.envrc.local`                    |
+| VSCode    | `<megarepo>/.vscode/megarepo.code-workspace` |
+| Nix Flake | `<megarepo>/flake.nix`                       |
+| devenv    | `<megarepo>/devenv.nix`                      |
 
 ### envrc Generator
 
 Generates environment variable configuration for direnv integration.
 
 **Config:**
+
 ```json
 {
   "generators": {
@@ -444,6 +479,7 @@ Generates environment variable configuration for direnv integration.
 ```
 
 **Output (`.envrc.local`):**
+
 ```bash
 # Generated by megarepo - do not edit manually
 # Regenerate with: mr sync
@@ -455,6 +491,7 @@ export MEGAREPO_MEMBERS="effect-utils,livestore,api-gateway"
 **Integration pattern:**
 
 The megarepo's `.envrc` (committed to git) should source the generated file:
+
 ```bash
 # .envrc
 source_env_if_exists .envrc.local
@@ -464,6 +501,7 @@ use devenv
 ```
 
 **Member repos** that want megarepo awareness can add to their `.envrc`:
+
 ```bash
 # At top of member's .envrc
 source_up_if_exists  # Inherits MEGAREPO_ROOT from parent if present
@@ -473,6 +511,7 @@ use devenv
 ```
 
 This pattern ensures:
+
 - `.envrc.local` is gitignored (machine-specific paths)
 - Outer megarepo context is preserved when entering members
 - Members work standalone when not inside a megarepo
