@@ -9,6 +9,7 @@ import { NodeContext } from '@effect/platform-node'
 import type { Scope } from 'effect'
 import { Duration, Effect } from 'effect'
 
+/** Options for configuring the test context wrapper */
 export interface TestCtxOptions {
   /** Timeout in milliseconds (default: 30_000) */
   readonly timeout?: number

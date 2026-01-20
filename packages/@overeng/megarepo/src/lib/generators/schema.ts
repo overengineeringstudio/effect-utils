@@ -15,6 +15,7 @@ import {
   type MegarepoConfig,
 } from '../config.ts'
 
+/** Options for the JSON Schema generator */
 export interface SchemaGeneratorOptions {
   /** Path to the megarepo root */
   readonly megarepoRoot: AbsoluteDirPath

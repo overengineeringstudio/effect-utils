@@ -16,9 +16,12 @@ describe('mr sync', () => {
 
           // Create a temp directory with a local repo
           const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
-          const localRepoPath = yield* createRepo(tmpDir, {
-            name: 'local-lib',
-            files: { 'package.json': '{"name": "local-lib"}' },
+          const localRepoPath = yield* createRepo({
+            basePath: tmpDir,
+            fixture: {
+              name: 'local-lib',
+              files: { 'package.json': '{"name": "local-lib"}' },
+            },
           })
 
           // Create workspace with path member pointing to local repo

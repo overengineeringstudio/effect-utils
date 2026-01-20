@@ -53,7 +53,7 @@ const jsonOption = Cli.Options.boolean('json').pipe(
  * Create a symlink, stripping trailing slashes from paths.
  * POSIX symlink fails with ENOENT if the link path ends with `/`.
  */
-const createSymlink = (target: string, link: string) =>
+const createSymlink = ({ target, link }: { target: string; link: string }) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     yield* fs.symlink(target.replace(/\/$/, ''), link.replace(/\/$/, ''))
@@ -397,12 +397,17 @@ const getCloneUrl = (source: MemberSource): string => {
 /**
  * Sync a single member: clone to store if needed, then symlink to workspace
  */
-const syncMember = (
-  name: string,
-  memberConfig: MemberConfig,
-  megarepoRoot: AbsoluteDirPath,
-  dryRun: boolean,
-) =>
+const syncMember = ({
+  name,
+  memberConfig,
+  megarepoRoot,
+  dryRun,
+}: {
+  name: string
+  memberConfig: MemberConfig
+  megarepoRoot: AbsoluteDirPath
+  dryRun: boolean
+}) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const store = yield* Store
@@ -454,7 +459,7 @@ const syncMember = (
 
       if (!dryRun) {
         // Create symlink to local path
-        yield* createSymlink(expandedPath, memberPath)
+        yield* createSymlink({ target: expandedPath, link: memberPath })
       }
 
       return { name, status: 'symlinked' } satisfies MemberSyncResult
@@ -573,7 +578,7 @@ const syncMember = (
     }
 
     if (!dryRun) {
-      yield* createSymlink(storePath, memberPath)
+      yield* createSymlink({ target: storePath, link: memberPath })
     }
 
     return {
@@ -637,7 +642,7 @@ const syncCommand = Cli.Command.make(
 
       // Sync each member
       for (const [name, memberConfig] of members) {
-        const result = yield* syncMember(name, memberConfig, root.value, dryRun)
+        const result = yield* syncMember({ name, memberConfig, megarepoRoot: root.value, dryRun })
         results.push(result)
 
         if (!json) {
@@ -767,7 +772,7 @@ const parseRepoRef = (ref: string): { config: MemberConfig; suggestedName: strin
 
   // Check if it looks like a path (starts with /, ./, or ~)
   if (ref.startsWith('/') || ref.startsWith('./') || ref.startsWith('../') || ref.startsWith('~')) {
-    const name = ref.split('/').filter(Boolean).pop() ?? 'unknown'
+    const name = ref.split('/').findLast(Boolean) ?? 'unknown'
     return {
       config: { path: ref },
       suggestedName: name,
@@ -877,7 +882,12 @@ const addCommand = Cli.Command.make(
         if (!json) {
           yield* Effect.log(styled.dim('Syncing...'))
         }
-        const result = yield* syncMember(memberName, parsed.config, root.value, false)
+        const result = yield* syncMember({
+          name: memberName,
+          memberConfig: parsed.config,
+          megarepoRoot: root.value,
+          dryRun: false,
+        })
         if (!json) {
           const statusSymbol =
             result.status === 'error' ? styled.red(symbols.cross) : styled.green(symbols.check)
@@ -1329,7 +1339,7 @@ const unisolateCommand = Cli.Command.make(
       yield* Git.removeWorktree({ repoPath: storePath, worktreePath: memberPath, force })
 
       // Create symlink
-      yield* createSymlink(storePath, memberPath)
+      yield* createSymlink({ target: storePath, link: memberPath })
 
       // Update config to remove isolated field
       const { isolated: _, ...cleanMemberConfig } = memberConfig

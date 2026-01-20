@@ -10,6 +10,7 @@ import { Effect } from 'effect'
 
 import { type AbsoluteDirPath, EffectPath, type MegarepoConfig } from '../config.ts'
 
+/** Options for the VSCode workspace generator */
 export interface VscodeGeneratorOptions {
   /** Path to the megarepo root */
   readonly megarepoRoot: AbsoluteDirPath

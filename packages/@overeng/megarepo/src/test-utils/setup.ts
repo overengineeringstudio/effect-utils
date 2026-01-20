@@ -68,7 +68,15 @@ export const initGitRepo = (path: AbsoluteDirPath) =>
   })
 
 /** Add files and create a commit */
-export const addCommit = (repoPath: AbsoluteDirPath, message: string, filename?: string) =>
+export const addCommit = ({
+  repoPath,
+  message,
+  filename,
+}: {
+  repoPath: AbsoluteDirPath
+  message: string
+  filename?: string
+}) =>
   Effect.gen(function* () {
     if (filename) {
       yield* runGitCommand(repoPath, 'add', filename)
@@ -109,7 +117,13 @@ export const createBareRepo = (name: string) =>
 /**
  * Create a git repository with optional initial content.
  */
-export const createRepo = (basePath: AbsoluteDirPath, fixture: RepoFixture) =>
+export const createRepo = ({
+  basePath,
+  fixture,
+}: {
+  basePath: AbsoluteDirPath
+  fixture: RepoFixture
+}) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
 
@@ -137,7 +151,7 @@ export const createRepo = (basePath: AbsoluteDirPath, fixture: RepoFixture) =>
     }
 
     // Initial commit
-    yield* addCommit(repoPath, 'Initial commit')
+    yield* addCommit({ repoPath, message: 'Initial commit' })
 
     // Add dirty changes if requested
     if (fixture.dirty) {
@@ -184,7 +198,7 @@ export const createWorkspace = (fixture?: WorkspaceFixture) =>
     )
 
     // Commit config
-    yield* addCommit(workspacePath, 'Initialize megarepo')
+    yield* addCommit({ repoPath: workspacePath, message: 'Initialize megarepo' })
 
     // Create repos and symlinks
     const repoPaths: Record<string, AbsoluteDirPath> = {}
@@ -197,7 +211,7 @@ export const createWorkspace = (fixture?: WorkspaceFixture) =>
       yield* fs.makeDirectory(storePath, { recursive: true })
 
       for (const repoFixture of fixture.repos) {
-        const repoPath = yield* createRepo(storePath, repoFixture)
+        const repoPath = yield* createRepo({ basePath: storePath, fixture: repoFixture })
         repoPaths[repoFixture.name] = repoPath
 
         // Create symlink in workspace
@@ -235,7 +249,7 @@ export const createStore = (repos: ReadonlyArray<RepoFixture>) =>
       const parentDir = EffectPath.ops.parent(repoDir)
       yield* fs.makeDirectory(parentDir, { recursive: true })
 
-      const repoPath = yield* createRepo(parentDir, repoFixture)
+      const repoPath = yield* createRepo({ basePath: parentDir, fixture: repoFixture })
       repoPaths[repoFixture.name] = repoPath
     }
 
@@ -253,7 +267,13 @@ export const stripAnsi = (str: string): string =>
   str.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '')
 
 /** Normalize output for snapshot testing */
-export const normalizeOutput = (output: string, workspaceName?: string): string => {
+export const normalizeOutput = ({
+  output,
+  workspaceName,
+}: {
+  output: string
+  workspaceName?: string
+}): string => {
   let normalized = stripAnsi(output)
 
   // Replace full git hashes (40 chars)

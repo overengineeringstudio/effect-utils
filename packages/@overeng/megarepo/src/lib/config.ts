@@ -183,7 +183,7 @@ export const getStorePath = (source: MemberSource): RelativeDirPath => {
       return parseUrlToStorePath(source.url)
     case 'path':
       return EffectPath.unsafe.relativeDir(
-        `local/${source.path.split('/').filter(Boolean).pop() ?? 'unknown'}/`,
+        `local/${source.path.split('/').findLast(Boolean) ?? 'unknown'}/`,
       )
   }
 }

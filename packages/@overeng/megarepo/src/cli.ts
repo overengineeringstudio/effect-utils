@@ -4,4 +4,4 @@
  * Megarepo CLI entry point.
  */
 
-export * from './cli/mod.ts'
+export { cli, Cwd } from './cli/mod.ts'
