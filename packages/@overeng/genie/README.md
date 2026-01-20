@@ -15,7 +15,6 @@ Genie is distributed as a native binary via Nix. **This is the only supported in
     genie = {
       url = "path:./path/to/effect-utils/packages/@overeng/genie";
       inputs.nixpkgs.follows = "nixpkgs";
-      inputs.nixpkgsUnstable.follows = "nixpkgsUnstable";
       inputs.flake-utils.follows = "flake-utils";
     };
   };

@@ -33,6 +33,9 @@ Scope: effect-utils Nix/direnv/devenv workflow streamlining
 - New helper scripts under `env/direnv/` (see `docs/README.md` for paths).
 - Peer repo usage is now:
   - `source "$(nix eval --raw --no-write-lock-file "$WORKSPACE_ROOT/../effect-utils#direnv.peerEnvrcEffectUtils")"`
+- Workspace-wide nixpkgs pin via `nix/workspace-flake`:
+  - Repos follow `workspace/nixpkgs` and stay self-contained via the GitHub URL.
+  - Direnv helpers auto-override the workspace input when the local workspace flake exists.
 - Dirty builds stage a minimal workspace under `.direnv/cli-workspace` using rsync
   with `.gitignore` filtering and explicit includes.
 - Staging now strips `-dirty` from `NIX_CLI_DIRTY_PACKAGES` so include paths resolve
