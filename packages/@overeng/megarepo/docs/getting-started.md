@@ -1,0 +1,176 @@
+# Getting Started
+
+This guide covers installing megarepo and creating your first multi-repo workspace.
+
+## Installation
+
+```bash
+# Using bun
+bun add -D @overeng/megarepo
+
+# Or run directly
+bunx @overeng/megarepo
+```
+
+Add an alias for convenience:
+
+```bash
+# In your shell config (.bashrc, .zshrc, etc.)
+alias mr='bunx @overeng/megarepo'
+```
+
+## Creating Your First Megarepo
+
+### 1. Initialize
+
+Create a new directory and initialize it as both a git repo and megarepo:
+
+```bash
+mkdir my-workspace
+cd my-workspace
+git init
+mr init
+```
+
+This creates `megarepo.json`:
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/overengineeringstudio/megarepo/main/schema/megarepo.schema.json",
+  "members": {}
+}
+```
+
+### 2. Add Members
+
+Add repositories using GitHub shorthand, full URLs, or local paths:
+
+```bash
+# GitHub shorthand (uses default branch)
+mr add effect-ts/effect
+
+# Specific branch
+mr add effect-ts/effect#next --name effect-next
+
+# Specific tag
+mr add effect-ts/effect#v3.0.0 --name effect-v3
+
+# Full URL
+mr add https://gitlab.com/org/repo --name gitlab-lib
+
+# Local path
+mr add ../shared-lib --name shared-lib
+```
+
+Your `megarepo.json` now looks like:
+
+```json
+{
+  "$schema": "...",
+  "members": {
+    "effect": "effect-ts/effect",
+    "effect-next": "effect-ts/effect#next",
+    "effect-v3": "effect-ts/effect#v3.0.0",
+    "gitlab-lib": "https://gitlab.com/org/repo",
+    "shared-lib": "../shared-lib"
+  }
+}
+```
+
+### 3. Sync
+
+Sync clones repos to the global store and creates symlinks:
+
+```bash
+mr sync
+```
+
+Output:
+
+```
+✓ effect (cloned)
+✓ effect-next (cloned)
+✓ effect-v3 (cloned)
+✓ gitlab-lib (cloned)
+✓ shared-lib (synced)
+
+Synced 5 members, 0 already synced
+```
+
+Your workspace now contains:
+
+```
+my-workspace/
+├── megarepo.json
+├── megarepo.lock          # Tracks exact commits
+├── effect -> ~/.megarepo/github.com/effect-ts/effect/refs/heads/main/
+├── effect-next -> ~/.megarepo/github.com/effect-ts/effect/refs/heads/next/
+├── effect-v3 -> ~/.megarepo/github.com/effect-ts/effect/refs/tags/v3.0.0/
+├── gitlab-lib -> ~/.megarepo/gitlab.com/org/repo/refs/heads/main/
+└── shared-lib -> ../shared-lib
+```
+
+### 4. Commit the Lock File
+
+Commit both config and lock file for reproducible builds:
+
+```bash
+git add megarepo.json megarepo.lock
+git commit -m "Initialize megarepo with members"
+```
+
+## Updating Members
+
+To fetch latest commits:
+
+```bash
+# Update all members
+mr update
+
+# Update specific member
+mr update --member effect
+```
+
+## CI Setup
+
+Use `--frozen` mode in CI to ensure reproducible builds:
+
+```bash
+mr sync --frozen
+```
+
+This:
+- Requires `megarepo.lock` to exist
+- Fails if lock doesn't match config
+- Uses exact commits from lock file
+- Never fetches or resolves new refs
+
+## Environment Integration
+
+Generate shell environment variables for direnv:
+
+```bash
+mr generate envrc
+```
+
+This creates `.envrc.local`:
+
+```bash
+export MEGAREPO_ROOT="/path/to/my-workspace"
+export MEGAREPO_MEMBERS="effect,effect-next,effect-v3,gitlab-lib,shared-lib"
+```
+
+Source it from your `.envrc`:
+
+```bash
+# .envrc
+source_env_if_exists .envrc.local
+use devenv
+```
+
+## Next Steps
+
+- [Commands Reference](commands.md) - Full CLI documentation
+- [Workflows](workflows.md) - Common usage patterns
+- [Bun Integration](integrations/bun.md) - Package manager setup
+- [TypeScript Integration](integrations/typescript.md) - Cross-repo types
