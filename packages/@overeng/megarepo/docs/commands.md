@@ -26,10 +26,10 @@ mr sync [--frozen] [--deep] [--dry-run]
 
 **Options:**
 
-| Option | Description |
-|--------|-------------|
-| `--frozen` | CI mode: fail if lock is missing or stale |
-| `--deep` | Recursively sync nested megarepos |
+| Option      | Description                                    |
+| ----------- | ---------------------------------------------- |
+| `--frozen`  | CI mode: fail if lock is missing or stale      |
+| `--deep`    | Recursively sync nested megarepos              |
 | `--dry-run` | Show what would be done without making changes |
 
 **Behavior:**
@@ -59,10 +59,10 @@ mr update [--member <name>] [--force]
 
 **Options:**
 
-| Option | Description |
-|--------|-------------|
+| Option         | Description             |
+| -------------- | ----------------------- |
 | `--member, -m` | Update only this member |
-| `--force, -f` | Update even if pinned |
+| `--force, -f`  | Update even if pinned   |
 
 **Behavior:**
 
@@ -83,16 +83,16 @@ mr add <repo> [--name <name>] [--sync]
 
 **Arguments:**
 
-| Argument | Description |
-|----------|-------------|
-| `repo` | Repository reference (GitHub shorthand, URL, or path) |
+| Argument | Description                                           |
+| -------- | ----------------------------------------------------- |
+| `repo`   | Repository reference (GitHub shorthand, URL, or path) |
 
 **Options:**
 
-| Option | Description |
-|--------|-------------|
+| Option       | Description                                      |
+| ------------ | ------------------------------------------------ |
 | `--name, -n` | Override the member name (defaults to repo name) |
-| `--sync, -s` | Sync the added repo immediately |
+| `--sync, -s` | Sync the added repo immediately                  |
 
 **Examples:**
 
@@ -143,6 +143,7 @@ mr status [--json]
 ```
 
 Displays:
+
 - Megarepo name (derived from git remote)
 - Root path
 - Member count and sync status
@@ -182,8 +183,8 @@ mr exec <command> [--member <name>]
 
 **Options:**
 
-| Option | Description |
-|--------|-------------|
+| Option         | Description             |
+| -------------- | ----------------------- |
 | `--member, -m` | Run only in this member |
 
 **Examples:**
@@ -222,11 +223,11 @@ mr store gc [--dry-run] [--force] [--all]
 
 **Options:**
 
-| Option | Description |
-|--------|-------------|
-| `--dry-run` | Show what would be removed |
+| Option        | Description                                       |
+| ------------- | ------------------------------------------------- |
+| `--dry-run`   | Show what would be removed                        |
 | `--force, -f` | Remove dirty worktrees (with uncommitted changes) |
-| `--all` | Remove all worktrees (not just unused) |
+| `--all`       | Remove all worktrees (not just unused)            |
 
 **Safety:** Skips worktrees with uncommitted changes unless `--force`.
 
@@ -241,6 +242,7 @@ mr generate all [--json]
 ```
 
 Generates based on `generators` config:
+
 - `.envrc.local` (default: enabled)
 - `.vscode/megarepo.code-workspace` (default: disabled)
 - `.vscode/megarepo.schema.json` (always)
@@ -263,8 +265,8 @@ mr generate vscode [--exclude <members>] [--json]
 
 **Options:**
 
-| Option | Description |
-|--------|-------------|
+| Option      | Description                                |
+| ----------- | ------------------------------------------ |
 | `--exclude` | Comma-separated list of members to exclude |
 
 ### `mr generate schema`
@@ -279,7 +281,7 @@ mr generate schema [--output <path>] [--json]
 
 All commands support:
 
-| Option | Description |
-|--------|-------------|
+| Option   | Description                           |
+| -------- | ------------------------------------- |
 | `--json` | Output JSON instead of formatted text |
-| `--help` | Show help |
+| `--help` | Show help                             |

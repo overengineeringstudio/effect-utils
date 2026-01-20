@@ -10,11 +10,7 @@ Create a `package.json` in your megarepo root with workspace patterns:
 {
   "name": "my-megarepo",
   "private": true,
-  "workspaces": [
-    "effect/packages/*",
-    "other-lib/packages/*",
-    "local-lib"
-  ]
+  "workspaces": ["effect/packages/*", "other-lib/packages/*", "local-lib"]
 }
 ```
 

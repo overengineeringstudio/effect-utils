@@ -29,32 +29,32 @@ mr update
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `mr init` | Initialize a new megarepo in current directory |
-| `mr add <repo>` | Add a member to megarepo.json |
-| `mr sync` | Ensure worktrees exist and symlinks are correct |
-| `mr sync --frozen` | CI mode: fail if lock is missing or stale |
-| `mr update [member]` | Fetch latest commits and update lock file |
-| `mr status` | Show megarepo state |
-| `mr ls` | List members |
-| `mr pin <member>` | Pin member to current commit (skip during update) |
-| `mr unpin <member>` | Unpin member |
-| `mr exec <cmd>` | Run command across all members |
-| `mr store ls` | List repos in global store |
-| `mr store gc` | Remove unused worktrees |
-| `mr generate all` | Generate .envrc.local and other config files |
+| Command              | Description                                       |
+| -------------------- | ------------------------------------------------- |
+| `mr init`            | Initialize a new megarepo in current directory    |
+| `mr add <repo>`      | Add a member to megarepo.json                     |
+| `mr sync`            | Ensure worktrees exist and symlinks are correct   |
+| `mr sync --frozen`   | CI mode: fail if lock is missing or stale         |
+| `mr update [member]` | Fetch latest commits and update lock file         |
+| `mr status`          | Show megarepo state                               |
+| `mr ls`              | List members                                      |
+| `mr pin <member>`    | Pin member to current commit (skip during update) |
+| `mr unpin <member>`  | Unpin member                                      |
+| `mr exec <cmd>`      | Run command across all members                    |
+| `mr store ls`        | List repos in global store                        |
+| `mr store gc`        | Remove unused worktrees                           |
+| `mr generate all`    | Generate .envrc.local and other config files      |
 
 ## Source Formats
 
 ```json
 {
   "members": {
-    "effect": "effect-ts/effect",           // GitHub shorthand, default branch
+    "effect": "effect-ts/effect", // GitHub shorthand, default branch
     "effect-v3": "effect-ts/effect#v3.0.0", // specific tag
     "effect-next": "effect-ts/effect#next", // specific branch
     "gitlab-lib": "https://gitlab.com/org/repo",
-    "local-lib": "./packages/local"         // local path (not in lock file)
+    "local-lib": "./packages/local" // local path (not in lock file)
   }
 }
 ```
@@ -87,11 +87,11 @@ my-megarepo/
 
 ## Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `MEGAREPO_ROOT` | Path to megarepo root | Auto-detected |
-| `MEGAREPO_STORE` | Global store location | `~/.megarepo` |
-| `MEGAREPO_MEMBERS` | Comma-separated member names | From config |
+| Variable           | Description                  | Default       |
+| ------------------ | ---------------------------- | ------------- |
+| `MEGAREPO_ROOT`    | Path to megarepo root        | Auto-detected |
+| `MEGAREPO_STORE`   | Global store location        | `~/.megarepo` |
+| `MEGAREPO_MEMBERS` | Comma-separated member names | From config   |
 
 ## License
 

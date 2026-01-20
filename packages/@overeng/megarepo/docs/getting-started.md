@@ -140,6 +140,7 @@ mr sync --frozen
 ```
 
 This:
+
 - Requires `megarepo.lock` to exist
 - Fails if lock doesn't match config
 - Uses exact commits from lock file

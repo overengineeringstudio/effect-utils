@@ -78,8 +78,8 @@ Modern approach using package.json exports:
 Then import normally:
 
 ```typescript
-import { Effect } from "effect"
-import { FileSystem } from "@effect/platform"
+import { Effect } from 'effect'
+import { FileSystem } from '@effect/platform'
 ```
 
 ## Build Configuration
@@ -147,6 +147,7 @@ mr generate vscode
 ```
 
 This creates `.vscode/megarepo.code-workspace` with:
+
 - All members as workspace folders
 - Shared settings
 - Proper TypeScript project discovery

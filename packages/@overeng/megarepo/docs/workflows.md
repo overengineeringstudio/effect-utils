@@ -69,6 +69,7 @@ steps:
 ```
 
 The `--frozen` flag:
+
 - Requires lock file to exist
 - Fails if config doesn't match lock
 - Uses exact commits from lock
