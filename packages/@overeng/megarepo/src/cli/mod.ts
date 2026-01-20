@@ -7,7 +7,7 @@
 import path from 'node:path'
 
 import * as Cli from '@effect/cli'
-import { FileSystem, Path } from '@effect/platform'
+import { Command, FileSystem, Path } from '@effect/platform'
 import { Context, Effect, Layer, Option, Schema } from 'effect'
 
 import { styled, symbols } from '@overeng/cli-ui'
@@ -22,6 +22,9 @@ import {
   type MemberSource,
   parseMemberSource,
 } from '../lib/config.ts'
+import { generateEnvrc } from '../lib/generators/envrc.ts'
+import { generateSchema } from '../lib/generators/schema.ts'
+import { generateVscode } from '../lib/generators/vscode.ts'
 import * as Git from '../lib/git.ts'
 import { Store, StoreLayer } from '../lib/store.ts'
 
@@ -652,12 +655,822 @@ const syncCommand = Cli.Command.make(
 )
 
 // =============================================================================
+// Add Command
+// =============================================================================
+
+/**
+ * Parse a repo reference into a member config.
+ * Supports:
+ * - GitHub shorthand: "owner/repo"
+ * - SSH URL: "git@github.com:owner/repo.git"
+ * - HTTPS URL: "https://github.com/owner/repo.git"
+ * - Local path: "/path/to/repo" or "./relative/path"
+ */
+const parseRepoRef = (ref: string): { config: MemberConfig; suggestedName: string } | undefined => {
+  // Check if it's a GitHub shorthand (owner/repo without protocol)
+  const githubMatch = ref.match(/^([a-zA-Z0-9_-]+)\/([a-zA-Z0-9_.-]+)$/)
+  if (githubMatch?.[1] !== undefined && githubMatch[2] !== undefined) {
+    return {
+      config: { github: ref },
+      suggestedName: githubMatch[2],
+    }
+  }
+
+  // Check if it's a git URL (SSH or HTTPS)
+  const parsed = Git.parseGitRemoteUrl(ref)
+  if (Option.isSome(parsed)) {
+    return {
+      config: { url: ref },
+      suggestedName: parsed.value.repo,
+    }
+  }
+
+  // Check if it looks like a path (starts with /, ./, or ~)
+  if (ref.startsWith('/') || ref.startsWith('./') || ref.startsWith('../') || ref.startsWith('~')) {
+    const name = ref.split('/').filter(Boolean).pop() ?? 'unknown'
+    return {
+      config: { path: ref },
+      suggestedName: name,
+    }
+  }
+
+  return undefined
+}
+
+/** Add a member to megarepo.json */
+const addCommand = Cli.Command.make(
+  'add',
+  {
+    repo: Cli.Args.text({ name: 'repo' }).pipe(
+      Cli.Args.withDescription('Repository reference (github shorthand, URL, or path)'),
+    ),
+    name: Cli.Options.text('name').pipe(
+      Cli.Options.withAlias('n'),
+      Cli.Options.withDescription('Override the member name (defaults to repo name)'),
+      Cli.Options.optional,
+    ),
+    sync: Cli.Options.boolean('sync').pipe(
+      Cli.Options.withAlias('s'),
+      Cli.Options.withDescription('Sync the added repo immediately'),
+      Cli.Options.withDefault(false),
+    ),
+    json: jsonOption,
+  },
+  ({ repo, name, sync, json }) =>
+    Effect.gen(function* () {
+      const cwd = yield* Cwd
+      const root = yield* findMegarepoRoot(cwd)
+
+      if (Option.isNone(root)) {
+        if (json) {
+          console.log(JSON.stringify({ error: 'not_found', message: 'No megarepo.json found' }))
+        } else {
+          yield* Effect.logError(`${styled.red(symbols.cross)} Not in a megarepo`)
+        }
+        return yield* Effect.fail(new Error('Not in a megarepo'))
+      }
+
+      // Parse the repo reference
+      const parsed = parseRepoRef(repo)
+      if (parsed === undefined) {
+        if (json) {
+          console.log(JSON.stringify({ error: 'invalid_repo', message: `Invalid repo reference: ${repo}` }))
+        } else {
+          yield* Effect.logError(`${styled.red(symbols.cross)} Invalid repo reference: ${repo}`)
+          yield* Effect.log(styled.dim('  Expected: owner/repo, git@host:owner/repo.git, https://host/owner/repo.git, or /path/to/repo'))
+        }
+        return yield* Effect.fail(new Error('Invalid repo reference'))
+      }
+
+      const memberName = Option.getOrElse(name, () => parsed.suggestedName)
+
+      // Load current config
+      const fs = yield* FileSystem.FileSystem
+      const pathService = yield* Path.Path
+      const configPath = pathService.join(root.value, CONFIG_FILE_NAME)
+      const configContent = yield* fs.readFileString(configPath)
+      const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+
+      // Check if member already exists
+      if (memberName in config.members) {
+        if (json) {
+          console.log(JSON.stringify({ error: 'already_exists', member: memberName }))
+        } else {
+          yield* Effect.logError(`${styled.red(symbols.cross)} Member '${memberName}' already exists`)
+        }
+        return yield* Effect.fail(new Error('Member already exists'))
+      }
+
+      // Add the new member
+      const newConfig = {
+        ...config,
+        members: {
+          ...config.members,
+          [memberName]: parsed.config,
+        },
+      }
+
+      // Write updated config
+      const newConfigContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(newConfig)
+      yield* fs.writeFileString(configPath, newConfigContent + '\n')
+
+      if (json) {
+        console.log(JSON.stringify({ status: 'added', member: memberName, config: parsed.config }))
+      } else {
+        yield* Effect.log(`${styled.green(symbols.check)} Added ${styled.bold(memberName)}`)
+      }
+
+      // Sync if requested
+      if (sync) {
+        if (!json) {
+          yield* Effect.log(styled.dim('Syncing...'))
+        }
+        const result = yield* syncMember(memberName, parsed.config, root.value, false)
+        if (!json) {
+          const statusSymbol = result.status === 'error' ? styled.red(symbols.cross) : styled.green(symbols.check)
+          const statusText = result.status === 'cloned' ? 'cloned & linked' : result.status
+          yield* Effect.log(`${statusSymbol} ${styled.bold(memberName)} ${styled.dim(`(${statusText})`)}`)
+        }
+      }
+    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/add')),
+)
+
+// =============================================================================
+// Update Command
+// =============================================================================
+
+/** Update (pull) all repos */
+const updateCommand = Cli.Command.make(
+  'update',
+  {
+    json: jsonOption,
+    member: Cli.Options.text('member').pipe(
+      Cli.Options.withAlias('m'),
+      Cli.Options.withDescription('Update only this member'),
+      Cli.Options.optional,
+    ),
+  },
+  ({ json, member }) =>
+    Effect.gen(function* () {
+      const cwd = yield* Cwd
+      const root = yield* findMegarepoRoot(cwd)
+
+      if (Option.isNone(root)) {
+        if (json) {
+          console.log(JSON.stringify({ error: 'not_found', message: 'No megarepo.json found' }))
+        } else {
+          yield* Effect.logError(`${styled.red(symbols.cross)} Not in a megarepo`)
+        }
+        return yield* Effect.fail(new Error('Not in a megarepo'))
+      }
+
+      // Load config
+      const fs = yield* FileSystem.FileSystem
+      const pathService = yield* Path.Path
+      const configPath = pathService.join(root.value, CONFIG_FILE_NAME)
+      const configContent = yield* fs.readFileString(configPath)
+      const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+
+      // Filter members if specific one requested
+      const membersToUpdate = Option.match(member, {
+        onNone: () => Object.keys(config.members),
+        onSome: (m) => (m in config.members ? [m] : []),
+      })
+
+      if (membersToUpdate.length === 0) {
+        if (json) {
+          console.log(JSON.stringify({ error: 'not_found', message: 'Member not found' }))
+        } else {
+          yield* Effect.logError(`${styled.red(symbols.cross)} Member not found`)
+        }
+        return yield* Effect.fail(new Error('Member not found'))
+      }
+
+      const results: Array<{ name: string; status: 'updated' | 'skipped' | 'error'; message?: string }> = []
+
+      for (const name of membersToUpdate) {
+        const memberPath = pathService.join(root.value, name)
+        const exists = yield* fs.exists(memberPath)
+
+        if (!exists) {
+          results.push({ name, status: 'skipped', message: 'Not synced yet' })
+          continue
+        }
+
+        // Fetch and pull
+        const result = yield* Effect.gen(function* () {
+          yield* Git.fetch({ repoPath: memberPath, prune: true })
+          // Try to pull (fast-forward only)
+          const branch = yield* Git.getCurrentBranch(memberPath)
+          if (Option.isSome(branch)) {
+            yield* Effect.gen(function* () {
+              const cmd = Command.make('git', 'pull', '--ff-only').pipe(Command.workingDirectory(memberPath))
+              yield* Command.string(cmd)
+            }).pipe(Effect.catchAll(() => Effect.void))
+          }
+          return { name, status: 'updated' as const }
+        }).pipe(
+          Effect.catchAll((error) =>
+            Effect.succeed({
+              name,
+              status: 'error' as const,
+              message: error instanceof Error ? error.message : String(error),
+            }),
+          ),
+        )
+
+        results.push(result)
+
+        if (!json) {
+          const statusSymbol = result.status === 'error' ? styled.red(symbols.cross) : styled.green(symbols.check)
+          yield* Effect.log(`${statusSymbol} ${styled.bold(name)} ${styled.dim(`(${result.status})`)}`)
+        }
+      }
+
+      if (json) {
+        console.log(JSON.stringify({ results }))
+      } else {
+        const updatedCount = results.filter((r) => r.status === 'updated').length
+        const errorCount = results.filter((r) => r.status === 'error').length
+        yield* Effect.log('')
+        yield* Effect.log(styled.dim(`Updated ${updatedCount} member(s)`))
+        if (errorCount > 0) {
+          yield* Effect.log(styled.red(`${errorCount} error(s)`))
+        }
+      }
+    }).pipe(Effect.withSpan('megarepo/update')),
+)
+
+// =============================================================================
+// Exec Command
+// =============================================================================
+
+/** Execute command across members */
+const execCommand = Cli.Command.make(
+  'exec',
+  {
+    command: Cli.Args.text({ name: 'command' }).pipe(Cli.Args.withDescription('Command to execute')),
+    json: jsonOption,
+    member: Cli.Options.text('member').pipe(
+      Cli.Options.withAlias('m'),
+      Cli.Options.withDescription('Run only in this member'),
+      Cli.Options.optional,
+    ),
+  },
+  ({ command: cmd, json, member }) =>
+    Effect.gen(function* () {
+      const cwd = yield* Cwd
+      const root = yield* findMegarepoRoot(cwd)
+
+      if (Option.isNone(root)) {
+        if (json) {
+          console.log(JSON.stringify({ error: 'not_found', message: 'No megarepo.json found' }))
+        } else {
+          yield* Effect.logError(`${styled.red(symbols.cross)} Not in a megarepo`)
+        }
+        return yield* Effect.fail(new Error('Not in a megarepo'))
+      }
+
+      // Load config
+      const fs = yield* FileSystem.FileSystem
+      const pathService = yield* Path.Path
+      const configPath = pathService.join(root.value, CONFIG_FILE_NAME)
+      const configContent = yield* fs.readFileString(configPath)
+      const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+
+      // Filter members
+      const membersToRun = Option.match(member, {
+        onNone: () => Object.keys(config.members),
+        onSome: (m) => (m in config.members ? [m] : []),
+      })
+
+      if (membersToRun.length === 0) {
+        if (json) {
+          console.log(JSON.stringify({ error: 'not_found', message: 'Member not found' }))
+        } else {
+          yield* Effect.logError(`${styled.red(symbols.cross)} Member not found`)
+        }
+        return yield* Effect.fail(new Error('Member not found'))
+      }
+
+      const results: Array<{ name: string; exitCode: number; stdout: string; stderr: string }> = []
+
+      for (const name of membersToRun) {
+        const memberPath = pathService.join(root.value, name)
+        const exists = yield* fs.exists(memberPath)
+
+        if (!exists) {
+          results.push({ name, exitCode: -1, stdout: '', stderr: 'Member not synced' })
+          continue
+        }
+
+        if (!json) {
+          yield* Effect.log(styled.bold(`\n${name}:`))
+        }
+
+        // Run the command
+        const result = yield* Effect.gen(function* () {
+          const shellCmd = Command.make('sh', '-c', cmd).pipe(Command.workingDirectory(memberPath))
+          const output = yield* Command.string(shellCmd)
+          return { name, exitCode: 0, stdout: output, stderr: '' }
+        }).pipe(
+          Effect.catchAll((error) =>
+            Effect.succeed({
+              name,
+              exitCode: 1,
+              stdout: '',
+              stderr: error instanceof Error ? error.message : String(error),
+            }),
+          ),
+        )
+
+        results.push(result)
+
+        if (!json) {
+          if (result.stdout) {
+            console.log(result.stdout)
+          }
+          if (result.stderr) {
+            console.error(styled.red(result.stderr))
+          }
+        }
+      }
+
+      if (json) {
+        console.log(JSON.stringify({ results }))
+      }
+    }).pipe(Effect.withSpan('megarepo/exec')),
+)
+
+// =============================================================================
+// Isolate Command
+// =============================================================================
+
+/** Isolate a member (convert symlink to worktree) */
+const isolateCommand = Cli.Command.make(
+  'isolate',
+  {
+    member: Cli.Args.text({ name: 'member' }).pipe(Cli.Args.withDescription('Member to isolate')),
+    branch: Cli.Args.text({ name: 'branch' }).pipe(Cli.Args.withDescription('Branch name for the worktree')),
+    json: jsonOption,
+  },
+  ({ member, branch, json }) =>
+    Effect.gen(function* () {
+      const cwd = yield* Cwd
+      const root = yield* findMegarepoRoot(cwd)
+
+      if (Option.isNone(root)) {
+        if (json) {
+          console.log(JSON.stringify({ error: 'not_found', message: 'No megarepo.json found' }))
+        } else {
+          yield* Effect.logError(`${styled.red(symbols.cross)} Not in a megarepo`)
+        }
+        return yield* Effect.fail(new Error('Not in a megarepo'))
+      }
+
+      // Load config
+      const fs = yield* FileSystem.FileSystem
+      const pathService = yield* Path.Path
+      const configPath = pathService.join(root.value, CONFIG_FILE_NAME)
+      const configContent = yield* fs.readFileString(configPath)
+      const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+
+      // Check if member exists
+      const memberConfig = config.members[member]
+      if (memberConfig === undefined) {
+        if (json) {
+          console.log(JSON.stringify({ error: 'not_found', message: 'Member not found' }))
+        } else {
+          yield* Effect.logError(`${styled.red(symbols.cross)} Member '${member}' not found`)
+        }
+        return yield* Effect.fail(new Error('Member not found'))
+      }
+
+      const memberPath = pathService.join(root.value, member)
+      const store = yield* Store
+      const source = parseMemberSource(memberConfig)
+
+      if (source === undefined || source.type === 'path') {
+        if (json) {
+          console.log(JSON.stringify({ error: 'invalid', message: 'Cannot isolate local path members' }))
+        } else {
+          yield* Effect.logError(`${styled.red(symbols.cross)} Cannot isolate local path members`)
+        }
+        return yield* Effect.fail(new Error('Cannot isolate local path members'))
+      }
+
+      const storePath = yield* store.getRepoPath(source)
+
+      // Remove existing symlink
+      const exists = yield* fs.exists(memberPath)
+      if (exists) {
+        yield* fs.remove(memberPath)
+      }
+
+      // Create worktree
+      yield* Git.createWorktree({
+        repoPath: storePath,
+        worktreePath: memberPath,
+        branch,
+        createBranch: false,
+      }).pipe(
+        Effect.catchAll(() =>
+          Git.createWorktree({
+            repoPath: storePath,
+            worktreePath: memberPath,
+            branch,
+            createBranch: true,
+          }),
+        ),
+      )
+
+      // Update config with isolated field
+      const newConfig = {
+        ...config,
+        members: {
+          ...config.members,
+          [member]: { ...memberConfig, isolated: branch },
+        },
+      }
+      const newConfigContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(newConfig)
+      yield* fs.writeFileString(configPath, newConfigContent + '\n')
+
+      if (json) {
+        console.log(JSON.stringify({ status: 'isolated', member, branch }))
+      } else {
+        yield* Effect.log(`${styled.green(symbols.check)} Isolated ${styled.bold(member)} on branch ${styled.bold(branch)}`)
+      }
+    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/isolate')),
+)
+
+/** Unisolate a member (convert worktree back to symlink) */
+const unisolateCommand = Cli.Command.make(
+  'unisolate',
+  {
+    member: Cli.Args.text({ name: 'member' }).pipe(Cli.Args.withDescription('Member to unisolate')),
+    json: jsonOption,
+    force: Cli.Options.boolean('force').pipe(
+      Cli.Options.withAlias('f'),
+      Cli.Options.withDescription('Force removal even with uncommitted changes'),
+      Cli.Options.withDefault(false),
+    ),
+  },
+  ({ member, json, force }) =>
+    Effect.gen(function* () {
+      const cwd = yield* Cwd
+      const root = yield* findMegarepoRoot(cwd)
+
+      if (Option.isNone(root)) {
+        if (json) {
+          console.log(JSON.stringify({ error: 'not_found', message: 'No megarepo.json found' }))
+        } else {
+          yield* Effect.logError(`${styled.red(symbols.cross)} Not in a megarepo`)
+        }
+        return yield* Effect.fail(new Error('Not in a megarepo'))
+      }
+
+      // Load config
+      const fs = yield* FileSystem.FileSystem
+      const pathService = yield* Path.Path
+      const configPath = pathService.join(root.value, CONFIG_FILE_NAME)
+      const configContent = yield* fs.readFileString(configPath)
+      const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+
+      // Check if member exists and is isolated
+      const memberConfig = config.members[member]
+      if (memberConfig === undefined) {
+        if (json) {
+          console.log(JSON.stringify({ error: 'not_found', message: 'Member not found' }))
+        } else {
+          yield* Effect.logError(`${styled.red(symbols.cross)} Member '${member}' not found`)
+        }
+        return yield* Effect.fail(new Error('Member not found'))
+      }
+
+      if (memberConfig.isolated === undefined) {
+        if (json) {
+          console.log(JSON.stringify({ error: 'not_isolated', message: 'Member is not isolated' }))
+        } else {
+          yield* Effect.logError(`${styled.red(symbols.cross)} Member '${member}' is not isolated`)
+        }
+        return yield* Effect.fail(new Error('Member is not isolated'))
+      }
+
+      const memberPath = pathService.join(root.value, member)
+      const store = yield* Store
+      const source = parseMemberSource(memberConfig)
+
+      if (source === undefined || source.type === 'path') {
+        return yield* Effect.fail(new Error('Invalid member source'))
+      }
+
+      const storePath = yield* store.getRepoPath(source)
+
+      // Remove worktree
+      yield* Git.removeWorktree({ repoPath: storePath, worktreePath: memberPath, force })
+
+      // Create symlink
+      yield* fs.symlink(storePath, memberPath)
+
+      // Update config to remove isolated field
+      const { isolated: _, ...cleanMemberConfig } = memberConfig
+      const newConfig = {
+        ...config,
+        members: {
+          ...config.members,
+          [member]: cleanMemberConfig,
+        },
+      }
+      const newConfigContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(newConfig)
+      yield* fs.writeFileString(configPath, newConfigContent + '\n')
+
+      if (json) {
+        console.log(JSON.stringify({ status: 'unisolated', member }))
+      } else {
+        yield* Effect.log(`${styled.green(symbols.check)} Unisolated ${styled.bold(member)}`)
+      }
+    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/unisolate')),
+)
+
+// =============================================================================
+// Store Commands
+// =============================================================================
+
+/** List repos in the store */
+const storeLsCommand = Cli.Command.make('ls', { json: jsonOption }, ({ json }) =>
+  Effect.gen(function* () {
+    const store = yield* Store
+    const repos = yield* store.listRepos()
+
+    if (json) {
+      console.log(JSON.stringify({ repos }))
+    } else {
+      if (repos.length === 0) {
+        yield* Effect.log(styled.dim('Store is empty'))
+      } else {
+        yield* Effect.log(styled.bold(`Store: ${store.basePath}`))
+        yield* Effect.log('')
+        for (const repo of repos) {
+          yield* Effect.log(`  ${repo.relativePath}`)
+        }
+        yield* Effect.log('')
+        yield* Effect.log(styled.dim(`${repos.length} repo(s)`))
+      }
+    }
+  }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/ls')),
+)
+
+/** Fetch all repos in the store */
+const storeFetchCommand = Cli.Command.make('fetch', { json: jsonOption }, ({ json }) =>
+  Effect.gen(function* () {
+    const store = yield* Store
+    const repos = yield* store.listRepos()
+
+    const results: Array<{ path: string; status: 'fetched' | 'error'; message?: string }> = []
+
+    for (const repo of repos) {
+      const result = yield* Git.fetch({ repoPath: repo.fullPath, prune: true }).pipe(
+        Effect.map(() => ({ path: repo.relativePath, status: 'fetched' as const })),
+        Effect.catchAll((error) => Effect.succeed({
+          path: repo.relativePath,
+          status: 'error' as const,
+          message: error instanceof Error ? error.message : String(error),
+        })),
+      )
+      results.push(result)
+
+      if (!json) {
+        const symbol = result.status === 'error' ? styled.red(symbols.cross) : styled.green(symbols.check)
+        yield* Effect.log(`${symbol} ${repo.relativePath}`)
+      }
+    }
+
+    if (json) {
+      console.log(JSON.stringify({ results }))
+    } else {
+      const fetchedCount = results.filter((r) => r.status === 'fetched').length
+      yield* Effect.log('')
+      yield* Effect.log(styled.dim(`Fetched ${fetchedCount} repo(s)`))
+    }
+  }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/fetch')),
+)
+
+/** Store subcommand group */
+const storeCommand = Cli.Command.make('store', {}).pipe(
+  Cli.Command.withSubcommands([storeLsCommand, storeFetchCommand]),
+)
+
+// =============================================================================
+// Generate Command
+// =============================================================================
+
+/** Generate envrc file */
+const generateEnvrcCommand = Cli.Command.make('envrc', { json: jsonOption }, ({ json }) =>
+  Effect.gen(function* () {
+    const cwd = yield* Cwd
+    const root = yield* findMegarepoRoot(cwd)
+
+    if (Option.isNone(root)) {
+      if (json) {
+        console.log(JSON.stringify({ error: 'not_found', message: 'No megarepo.json found' }))
+      } else {
+        yield* Effect.logError(`${styled.red(symbols.cross)} Not in a megarepo`)
+      }
+      return yield* Effect.fail(new Error('Not in a megarepo'))
+    }
+
+    // Load config
+    const fs = yield* FileSystem.FileSystem
+    const pathService = yield* Path.Path
+    const configPath = pathService.join(root.value, CONFIG_FILE_NAME)
+    const configContent = yield* fs.readFileString(configPath)
+    const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+
+    const result = yield* generateEnvrc({
+      megarepoRoot: root.value,
+      config,
+    })
+
+    if (json) {
+      console.log(JSON.stringify({ status: 'generated', path: result.path }))
+    } else {
+      yield* Effect.log(`${styled.green(symbols.check)} Generated ${styled.bold('.envrc.local')}`)
+    }
+  }).pipe(Effect.withSpan('megarepo/generate/envrc')),
+)
+
+/** Generate VSCode workspace file */
+const generateVscodeCommand = Cli.Command.make(
+  'vscode',
+  {
+    json: jsonOption,
+    exclude: Cli.Options.text('exclude').pipe(
+      Cli.Options.withDescription('Comma-separated list of members to exclude'),
+      Cli.Options.optional,
+    ),
+  },
+  ({ json, exclude }) =>
+    Effect.gen(function* () {
+      const cwd = yield* Cwd
+      const root = yield* findMegarepoRoot(cwd)
+
+      if (Option.isNone(root)) {
+        if (json) {
+          console.log(JSON.stringify({ error: 'not_found', message: 'No megarepo.json found' }))
+        } else {
+          yield* Effect.logError(`${styled.red(symbols.cross)} Not in a megarepo`)
+        }
+        return yield* Effect.fail(new Error('Not in a megarepo'))
+      }
+
+      // Load config
+      const fs = yield* FileSystem.FileSystem
+      const pathService = yield* Path.Path
+      const configPath = pathService.join(root.value, CONFIG_FILE_NAME)
+      const configContent = yield* fs.readFileString(configPath)
+      const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+
+      const excludeList = Option.map(exclude, (e) => e.split(',').map((s) => s.trim()))
+
+      const result = yield* generateVscode({
+        megarepoRoot: root.value,
+        config,
+        exclude: Option.getOrUndefined(excludeList),
+      })
+
+      if (json) {
+        console.log(JSON.stringify({ status: 'generated', path: result.path }))
+      } else {
+        yield* Effect.log(`${styled.green(symbols.check)} Generated ${styled.bold('.vscode/megarepo.code-workspace')}`)
+      }
+    }).pipe(Effect.withSpan('megarepo/generate/vscode')),
+)
+
+/** Generate JSON Schema */
+const generateSchemaCommand = Cli.Command.make(
+  'schema',
+  {
+    json: jsonOption,
+    output: Cli.Options.text('output').pipe(
+      Cli.Options.withAlias('o'),
+      Cli.Options.withDescription('Output path (relative to megarepo root)'),
+      Cli.Options.withDefault('megarepo.schema.json'),
+    ),
+  },
+  ({ json, output }) =>
+    Effect.gen(function* () {
+      const cwd = yield* Cwd
+      const root = yield* findMegarepoRoot(cwd)
+
+      if (Option.isNone(root)) {
+        if (json) {
+          console.log(JSON.stringify({ error: 'not_found', message: 'No megarepo.json found' }))
+        } else {
+          yield* Effect.logError(`${styled.red(symbols.cross)} Not in a megarepo`)
+        }
+        return yield* Effect.fail(new Error('Not in a megarepo'))
+      }
+
+      // Load config
+      const fs = yield* FileSystem.FileSystem
+      const pathService = yield* Path.Path
+      const configPath = pathService.join(root.value, CONFIG_FILE_NAME)
+      const configContent = yield* fs.readFileString(configPath)
+      const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+
+      const result = yield* generateSchema({
+        megarepoRoot: root.value,
+        config,
+        outputPath: output,
+      })
+
+      if (json) {
+        console.log(JSON.stringify({ status: 'generated', path: result.path }))
+      } else {
+        yield* Effect.log(`${styled.green(symbols.check)} Generated ${styled.bold(output)}`)
+      }
+    }).pipe(Effect.withSpan('megarepo/generate/schema')),
+)
+
+/** Generate all configured outputs */
+const generateAllCommand = Cli.Command.make('all', { json: jsonOption }, ({ json }) =>
+  Effect.gen(function* () {
+    const cwd = yield* Cwd
+    const root = yield* findMegarepoRoot(cwd)
+
+    if (Option.isNone(root)) {
+      if (json) {
+        console.log(JSON.stringify({ error: 'not_found', message: 'No megarepo.json found' }))
+      } else {
+        yield* Effect.logError(`${styled.red(symbols.cross)} Not in a megarepo`)
+      }
+      return yield* Effect.fail(new Error('Not in a megarepo'))
+    }
+
+    // Load config
+    const fs = yield* FileSystem.FileSystem
+    const pathService = yield* Path.Path
+    const configPath = pathService.join(root.value, CONFIG_FILE_NAME)
+    const configContent = yield* fs.readFileString(configPath)
+    const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+
+    const results: Array<{ generator: string; path: string }> = []
+
+    // Generate envrc
+    const envrcResult = yield* generateEnvrc({
+      megarepoRoot: root.value,
+      config,
+    })
+    results.push({ generator: 'envrc', path: envrcResult.path })
+    if (!json) {
+      yield* Effect.log(`${styled.green(symbols.check)} Generated ${styled.bold('.envrc.local')}`)
+    }
+
+    // Generate VSCode workspace
+    const vscodeResult = yield* generateVscode({
+      megarepoRoot: root.value,
+      config,
+    })
+    results.push({ generator: 'vscode', path: vscodeResult.path })
+    if (!json) {
+      yield* Effect.log(`${styled.green(symbols.check)} Generated ${styled.bold('.vscode/megarepo.code-workspace')}`)
+    }
+
+    if (json) {
+      console.log(JSON.stringify({ status: 'generated', results }))
+    } else {
+      yield* Effect.log('')
+      yield* Effect.log(styled.dim(`Generated ${results.length} file(s)`))
+    }
+  }).pipe(Effect.withSpan('megarepo/generate/all')),
+)
+
+/** Generate subcommand group */
+const generateCommand = Cli.Command.make('generate', {}).pipe(
+  Cli.Command.withSubcommands([generateAllCommand, generateEnvrcCommand, generateSchemaCommand, generateVscodeCommand]),
+)
+
+// =============================================================================
 // Main CLI
 // =============================================================================
 
 /** Root CLI command */
 const mrCommand = Cli.Command.make('mr', {}).pipe(
-  Cli.Command.withSubcommands([initCommand, rootCommand, envCommand, statusCommand, lsCommand, syncCommand]),
+  Cli.Command.withSubcommands([
+    initCommand,
+    rootCommand,
+    envCommand,
+    statusCommand,
+    lsCommand,
+    syncCommand,
+    addCommand,
+    updateCommand,
+    execCommand,
+    isolateCommand,
+    unisolateCommand,
+    storeCommand,
+    generateCommand,
+  ]),
 )
 
 /** Exported CLI for external use */

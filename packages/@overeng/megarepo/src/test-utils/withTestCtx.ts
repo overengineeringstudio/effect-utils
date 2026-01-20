@@ -6,7 +6,7 @@
  */
 
 import { NodeContext } from '@effect/platform-node'
-import { Duration, Effect, Layer } from 'effect'
+import { Duration, Effect, Scope } from 'effect'
 
 export interface TestCtxOptions {
   /** Timeout in milliseconds (default: 30_000) */
@@ -35,7 +35,7 @@ export const makeWithTestCtx = (options?: TestCtxOptions) => {
   const timeout = options?.timeout ?? 30_000
 
   return <A, E>(
-    effect: Effect.Effect<A, E, NodeContext.NodeContext>,
+    effect: Effect.Effect<A, E, NodeContext.NodeContext | Scope.Scope>,
   ): Promise<A> =>
     effect.pipe(
       Effect.scoped,
