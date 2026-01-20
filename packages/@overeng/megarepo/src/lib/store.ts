@@ -14,7 +14,7 @@
  * ```
  */
 
-import { FileSystem, Path } from '@effect/platform'
+import { FileSystem, Path, type Error as PlatformError } from '@effect/platform'
 import { Context, Effect, Layer, Option } from 'effect'
 import { DEFAULT_STORE_PATH, ENV_VARS, getStorePath, type MemberSource } from './config.ts'
 
@@ -30,16 +30,18 @@ export interface StoreConfig {
 /** Store service interface */
 export interface MegarepoStore {
   /** Get the full path to a repo in the store */
-  readonly getRepoPath: (source: MemberSource) => Effect.Effect<string, never, FileSystem.FileSystem>
+  readonly getRepoPath: (source: MemberSource) => Effect.Effect<string, never, Path.Path>
 
   /** Check if a repo exists in the store */
-  readonly hasRepo: (source: MemberSource) => Effect.Effect<boolean, never, FileSystem.FileSystem>
+  readonly hasRepo: (
+    source: MemberSource,
+  ) => Effect.Effect<boolean, PlatformError.PlatformError, FileSystem.FileSystem | Path.Path>
 
   /** List all repos in the store */
   readonly listRepos: () => Effect.Effect<
     ReadonlyArray<{ readonly relativePath: string; readonly fullPath: string }>,
-    never,
-    FileSystem.FileSystem
+    PlatformError.PlatformError,
+    FileSystem.FileSystem | Path.Path
   >
 
   /** Get the store base path */
