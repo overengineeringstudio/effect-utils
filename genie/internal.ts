@@ -44,6 +44,7 @@ export const catalog = defineCatalog({
     '@overeng/mono': 'file:packages/@overeng/mono',
     '@overeng/cli-ui': 'file:packages/@overeng/cli-ui',
     '@overeng/dotdot': 'file:packages/@overeng/dotdot',
+    '@overeng/megarepo': 'file:packages/@overeng/megarepo',
     '@overeng/effect-path': 'file:packages/@overeng/effect-path',
     '@overeng/notion-effect-schema': 'file:packages/@overeng/notion-effect-schema',
     '@overeng/notion-effect-client': 'file:packages/@overeng/notion-effect-client',
