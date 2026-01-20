@@ -17,33 +17,36 @@ let
         if lib.hasPrefix "file:" value
         then lib.removePrefix "file:" value
         else value;
-      normalizeRelativePath = path:
+      normalizeRelativePath = depName: depValue: rootStr: path:
         let
           parts = lib.splitString "/" path;
           step = acc: part:
             if part == "" || part == "."
             then acc
             else if part == ".."
-            then lib.init acc
+            # Fail fast when a local dependency escapes the workspace root.
+            then if acc == []
+            then throw "mk-bun-cli: local dependency ${depName} resolves outside the workspace root (value: ${depValue}, path: ${path}, packageDir: ${packageDir}, workspaceRoot: ${rootStr})"
+            else lib.init acc
             else acc ++ [part];
         in
         lib.concatStringsSep "/" (lib.foldl' step [] parts);
-      toWorkspaceRelPath = value:
+      toWorkspaceRelPath = depName: depValue:
         let
-          rawPath = normalize value;
+          rawPath = normalize depValue;
           rootStr = toString workspaceRootPath;
         in
         if lib.hasPrefix "/" rawPath
         then
           if lib.hasPrefix (rootStr + "/") rawPath
           then lib.removePrefix (rootStr + "/") rawPath
-          else throw "mk-bun-cli: local dependency path is outside the workspace root"
-        else normalizeRelativePath "${packageDir}/${rawPath}";
+          else throw "mk-bun-cli: local dependency ${depName} path ${rawPath} is outside the workspace root ${rootStr}"
+        else normalizeRelativePath depName depValue rootStr "${packageDir}/${rawPath}";
     in
     lib.mapAttrsToList
       (depName: depValue: {
         name = depName;
-        workspacePath = toWorkspaceRelPath depValue;
+        workspacePath = toWorkspaceRelPath depName depValue;
       })
       (lib.filterAttrs (_: value: isLocal value) localDependencyMap);
 

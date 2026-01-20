@@ -59,13 +59,14 @@ fi
 echo "mk-bun-cli: bunDepsHash may be stale; update it (mono nix hash --package ${name})" >&2
 ```
 
-- **No node_modules copying**: the build links bunDeps into the workspace
-  instead of copying node_modules, keeping outputs small and avoiding duplicate
-  trees.
+- **Fast dirty dependency resolution**: dirty builds avoid symlinking the full
+  node_modules tree (which gets slow at scale). Instead, local deps are linked
+  into the workspace and NODE_PATH points at bunDeps for everything else.
 
 ```sh
 if ${lib.boolToString dirty}; then
-  ln -s "${bunDeps}/node_modules/.bin" "$package_path/node_modules/.bin"
+  mkdir -p "$package_path/node_modules"
+  export NODE_PATH="$package_path/node_modules:${bunDeps}/node_modules"
 else
   ln -s "${bunDeps}/node_modules" "$package_path/node_modules"
 fi

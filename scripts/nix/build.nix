@@ -1,6 +1,6 @@
 # Nix derivation that builds the mono CLI binary.
 # Uses bun build --compile for native platform.
-{ pkgs, pkgsUnstable, src, mkBunCli ? null, gitRev ? "unknown" }:
+{ pkgs, pkgsUnstable, src, mkBunCli ? null, gitRev ? "unknown", dirty ? false }:
 
 let
   mkBunCliResolved =
@@ -17,6 +17,6 @@ mkBunCliResolved {
   extraExcludedSourceNames = [ "context" ];
   typecheckTsconfig = "scripts/tsconfig.json";
   bunDepsHash = "sha256-xhjAhDW8f+ScJIJl1WT2ID0jzmN7riS35WqKpHaN95g=";
-  dirty = true;
+  dirty = dirty;
   inherit gitRev;
 }

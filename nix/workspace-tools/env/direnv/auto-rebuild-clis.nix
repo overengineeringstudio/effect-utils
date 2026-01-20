@@ -14,10 +14,18 @@ builtins.toFile "auto-rebuild-clis.sh" ''
   #
   #   auto_rebuild_nix_clis_for_workspace <workspace-root> <reload-cmd> [flake-ref]
   #     Uses NIX_CLI_DIRTY + NIX_CLI_* env vars to pick outputs and rebuild.
+  #
+  # Optional env overrides:
+  # - NIX_CLI_PACKAGES / NIX_CLI_DIRTY_PACKAGES
+  # - NIX_CLI_OUT_PATHS_ATTR / NIX_CLI_DIRTY_OUT_PATHS_ATTR
+  # - NIX_CLI_FLAKE / NIX_CLI_WORKSPACE_ROOT
+  # - NIX_CLI_RELOAD_CMD (override the reload command)
+  # - NIX_CLI_DIRTY_CHANGED_FILE (override the dirty workspace change marker)
 
   prepare_cli_workspace() {
     local workspace_root="$1"
     local cli_workspace="''${NIX_CLI_DIRTY_WORKSPACE:-$workspace_root/.direnv/cli-workspace}"
+    local changed_file="''${cli_workspace}-changed"
     local -a include_args
     local -a include_paths
     local -a package_roots
@@ -115,11 +123,25 @@ builtins.toFile "auto-rebuild-clis.sh" ''
     fi
 
     # Sync only the minimal CLI workspace; respect .gitignore to avoid heavy artifacts.
-    rsync -a --delete --prune-empty-dirs \
+    CLI_WORKSPACE_CHANGED=0
+    rsync_output=$(rsync -a --delete --prune-empty-dirs --itemize-changes \
       --filter=':- .gitignore' \
       "''${include_args[@]}" \
       --exclude '*' \
-      "$workspace_root/" "$cli_workspace/"
+      "$workspace_root/" "$cli_workspace/")
+    rsync_status=$?
+    if [ "$rsync_status" -ne 0 ]; then
+      echo "direnv: rsync failed while staging CLI workspace" >&2
+      return 1
+    fi
+    if [ -n "''${rsync_output:-}" ]; then
+      CLI_WORKSPACE_CHANGED=1
+    fi
+    if [ "''${CLI_WORKSPACE_CHANGED}" = "1" ]; then
+      printf '1\n' > "$changed_file"
+    else
+      printf '0\n' > "$changed_file"
+    fi
 
     printf '%s\n' "$cli_workspace"
   }
@@ -134,6 +156,7 @@ builtins.toFile "auto-rebuild-clis.sh" ''
     local reload_cmd="$3"
     local out_paths_attr="''${4:-cliOutPaths}"
     local binary_names="''${5:-$build_packages}"
+    local dirty_changed_file="''${6:-}"
     local needs_reload=0
 
     if [ "''${MONO_AUTO_REBUILD:-1}" = "0" ]; then
@@ -147,6 +170,19 @@ builtins.toFile "auto-rebuild-clis.sh" ''
     local eval_cores
     system=$(nix config show system)
     eval_cores=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
+
+    if [ -n "$dirty_changed_file" ] && [ -f "$dirty_changed_file" ]; then
+      if [ "$(cat "$dirty_changed_file")" = "0" ]; then
+        for binary in $binary_names; do
+          if ! command -v "$binary" >/dev/null 2>&1; then
+            needs_reload=1
+          fi
+        done
+        if [ "$needs_reload" = "0" ]; then
+          return 0
+        fi
+      fi
+    fi
 
     local -a package_list
     local -a binary_list
@@ -229,6 +265,7 @@ builtins.toFile "auto-rebuild-clis.sh" ''
     local dirty_out_paths="''${NIX_CLI_DIRTY_OUT_PATHS_ATTR:-cliOutPathsDirty}"
     local flake_ref="''${NIX_CLI_FLAKE:-.}"
     local workspace_root_override="''${NIX_CLI_WORKSPACE_ROOT:-$workspace_root}"
+    local dirty_workspace_changed_file="''${NIX_CLI_DIRTY_CHANGED_FILE:-$workspace_root/.direnv/cli-workspace-changed}"
     local build_packages="$packages"
     local out_paths_attr="$clean_out_paths"
     local -a base_packages
@@ -257,12 +294,15 @@ builtins.toFile "auto-rebuild-clis.sh" ''
         done
         build_packages="''${dirty_packages[*]}"
       fi
+      if [ -f "''${cli_workspace}-changed" ]; then
+        dirty_workspace_changed_file="''${cli_workspace}-changed"
+      fi
     fi
 
     if [ -n "$flake_ref_override" ]; then
       flake_ref="$flake_ref_override"
     fi
 
-    auto_rebuild_nix_clis "$flake_ref" "$build_packages" "$reload_cmd" "$out_paths_attr" "$binaries"
+    auto_rebuild_nix_clis "$flake_ref" "$build_packages" "$reload_cmd" "$out_paths_attr" "$binaries" "$dirty_workspace_changed_file"
   }
 ''

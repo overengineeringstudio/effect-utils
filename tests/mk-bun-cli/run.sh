@@ -225,6 +225,80 @@ if [ "$SKIP_DIRENV_CHECK" -eq 0 ]; then
   print_timing "direnv staging check" "$direnv_check_start"
 fi
 
+if ! command -v nix >/dev/null 2>&1; then
+  echo "nix is required for the path escape check" >&2
+  exit 1
+fi
+path_escape_start="$(now)"
+path_escape_dir="$WORKSPACE/path-escape"
+mkdir -p "$path_escape_dir"
+cat <<'JSON' > "$path_escape_dir/package.json"
+{
+  "name": "path-escape",
+  "version": "0.0.0",
+  "dependencies": {
+    "outside": "file:../outside"
+  }
+}
+JSON
+path_escape_expr="$WORKSPACE/path-escape-eval.nix"
+cat <<EOF > "$path_escape_expr"
+let
+  lib = rec {
+    hasPrefix = prefix: str:
+      builtins.substring 0 (builtins.stringLength prefix) str == prefix;
+    removePrefix = prefix: str:
+      if hasPrefix prefix str
+      then builtins.substring (builtins.stringLength prefix) (builtins.stringLength str - builtins.stringLength prefix) str
+      else str;
+    splitString = sep: str: builtins.filter builtins.isString (builtins.split sep str);
+    concatStringsSep = builtins.concatStringsSep;
+    foldl' = builtins.foldl';
+    mapAttrsToList = f: set:
+      builtins.map (name: f name set.\${name}) (builtins.attrNames set);
+    filterAttrs = pred: set:
+      builtins.listToAttrs (builtins.map
+        (name: { inherit name; value = set.\${name}; })
+        (builtins.filter (name: pred name set.\${name}) (builtins.attrNames set)));
+    init = list:
+      if list == []
+      then []
+      else builtins.sublist 0 (builtins.length list - 1) list;
+    escapeShellArg = value: value;
+  };
+  packageJson = builtins.fromJSON (builtins.readFile "$path_escape_dir/package.json");
+  localDeps = import "$ROOT/nix/workspace-tools/lib/mk-bun-cli/local-deps.nix" {
+    inherit lib;
+    workspaceRootPath = builtins.toPath "$path_escape_dir";
+    packageJson = packageJson;
+    packageDir = ".";
+  };
+  paths = builtins.map (dep: dep.workspacePath) localDeps.localDependencies;
+in builtins.deepSeq paths paths
+EOF
+set +e
+path_escape_output="$(nix eval --show-trace --file "$path_escape_expr" 2>&1)"
+path_escape_status=$?
+set -e
+if [ "$path_escape_status" -eq 0 ]; then
+  echo "Expected path escape eval to fail" >&2
+  exit 1
+fi
+if command -v rg >/dev/null 2>&1; then
+  printf '%s\n' "$path_escape_output" | rg -q "mk-bun-cli: local dependency" || {
+    echo "Unexpected path escape error output:" >&2
+    printf '%s\n' "$path_escape_output" >&2
+    exit 1
+  }
+else
+  printf '%s\n' "$path_escape_output" | grep -q "mk-bun-cli: local dependency" || {
+    echo "Unexpected path escape error output:" >&2
+    printf '%s\n' "$path_escape_output" >&2
+    exit 1
+  }
+fi
+print_timing "path escape eval" "$path_escape_start"
+
 if [ "$REFRESH_LOCKS" -eq 1 ]; then
   if ! command -v bun >/dev/null 2>&1; then
     echo "bun not found in PATH (required for --refresh-locks)" >&2

@@ -20,10 +20,12 @@ let
     inherit pkgsUnstable gitRev;
     src = workspaceSrc;
   };
+  # Keep devenv shells fast; dirty mono builds are opt-in via direnv helper.
   mono = import ./scripts/nix/build.nix {
     pkgs = pkgsStable;
     inherit pkgsUnstable gitRev;
     src = workspaceSrc;
+    dirty = false;
   };
   cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
   # Use npm oxlint with NAPI bindings to enable JavaScript plugin support

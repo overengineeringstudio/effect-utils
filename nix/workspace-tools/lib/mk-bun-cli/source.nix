@@ -1,4 +1,4 @@
-{ lib, workspaceRoot, extraExcludedSourceNames, packageDir, packageJsonPath, gitRev }:
+{ lib, workspaceRoot, extraExcludedSourceNames, packageDir, packageJsonPath, gitRev, dirty }:
 
 let
   # Resolve flake inputs or paths into a concrete filesystem path.
@@ -50,10 +50,15 @@ let
     in
     lib.cleanSourceFilter path type && !hasExcluded;
 
-  workspaceSrc = lib.cleanSourceWith {
-    src = workspaceRootPath;
-    filter = sourceFilter workspaceRootPath;
-  };
+  workspaceRootStr = toString workspaceRootPath;
+  useCleanSource = !(dirty && lib.hasPrefix "/nix/store/" workspaceRootStr);
+  workspaceSrc =
+    if useCleanSource
+    then lib.cleanSourceWith {
+      src = workspaceRootPath;
+      filter = sourceFilter workspaceRootPath;
+    }
+    else workspaceRootPath;
 
   packageJsonFullPath = workspaceSrc + "/${packageJsonPath}";
   packageJson = builtins.fromJSON (builtins.readFile packageJsonFullPath);

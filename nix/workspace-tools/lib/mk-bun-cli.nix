@@ -45,7 +45,7 @@
 let
   lib = pkgs.lib;
   source = import ./mk-bun-cli/source.nix {
-    inherit lib workspaceRoot extraExcludedSourceNames packageDir packageJsonPath gitRev;
+    inherit lib workspaceRoot extraExcludedSourceNames packageDir packageJsonPath gitRev dirty;
   };
   inherit (source) workspaceRootPath workspaceSrc packageJson fullVersion stageWorkspace;
 
@@ -135,38 +135,12 @@ pkgs.stdenv.mkDerivation {
     fi
 
     if ${lib.boolToString dirty}; then
-      # Symlink deps from the Bun snapshot to avoid copying node_modules.
+      # Dirty builds avoid symlinking the entire node_modules tree (slow) by
+      # resolving dependencies via NODE_PATH and overlaying local file deps.
       mkdir -p "$package_path/node_modules"
-      if [ -d "${bunDeps}/node_modules/.bin" ]; then
-        ln -s "${bunDeps}/node_modules/.bin" "$package_path/node_modules/.bin"
-      fi
-      for entry in "${bunDeps}/node_modules/"*; do
-        if [ ! -e "$entry" ]; then
-          continue
-        fi
-        entry_name="$(basename "$entry")"
-        if [ "$entry_name" = ".bin" ]; then
-          continue
-        fi
-        if [ "$(printf '%s' "$entry_name" | cut -c1)" = "@" ]; then
-          mkdir -p "$package_path/node_modules/$entry_name"
-          for scoped_entry in "$entry"/*; do
-            if [ ! -e "$scoped_entry" ]; then
-              continue
-            fi
-            scoped_name="$(basename "$scoped_entry")"
-            if [ ! -e "$package_path/node_modules/$entry_name/$scoped_name" ]; then
-              ln -s "$scoped_entry" "$package_path/node_modules/$entry_name/$scoped_name"
-            fi
-          done
-        else
-          if [ ! -e "$package_path/node_modules/$entry_name" ]; then
-            ln -s "$entry" "$package_path/node_modules/$entry_name"
-          fi
-        fi
-      done
       bun_deps="${bunDeps}"
       ${lib.optionalString (localDependencies != []) localDependenciesLinkScript}
+      export NODE_PATH="$package_path/node_modules:${bunDeps}/node_modules"
     else
       ln -s "${bunDeps}/node_modules" "$package_path/node_modules"
     fi

@@ -35,6 +35,7 @@
             inherit pkgs pkgsUnstable mkBunCli;
             src = self;
             inherit gitRev;
+            dirty = false;
           };
         };
         cliPackagesDirty = {
@@ -48,7 +49,12 @@
             src = self;
             dirty = true;
           };
-          mono = cliPackages.mono;
+          mono = import ./scripts/nix/build.nix {
+            inherit pkgs pkgsUnstable mkBunCli;
+            src = self;
+            inherit gitRev;
+            dirty = true;
+          };
         };
       in
       {
