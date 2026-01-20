@@ -198,6 +198,15 @@ export const listWorktrees = (repoPath: string) =>
       }
     }
 
+    // Flush remaining entry if output doesn't end with blank line
+    if (current.path && current.head) {
+      worktrees.push({
+        path: current.path,
+        head: current.head,
+        branch: Option.fromNullable(current.branch),
+      })
+    }
+
     return worktrees
   })
 
@@ -216,8 +225,8 @@ export const deriveMegarepoName = (repoPath: string) =>
     return Option.flatMap(remoteUrl, parseGitRemoteUrl).pipe(
       Option.map((parsed) => `${parsed.owner}/${parsed.repo}`),
       Option.getOrElse(() => {
-        // Fall back to directory name
-        const parts = repoPath.split('/')
+        // Fall back to directory name (filter empty segments for trailing slash support)
+        const parts = repoPath.split('/').filter(Boolean)
         return parts[parts.length - 1] ?? 'unknown'
       }),
     )

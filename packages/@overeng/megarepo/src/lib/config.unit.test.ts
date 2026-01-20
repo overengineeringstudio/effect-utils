@@ -147,8 +147,8 @@ describe('config', () => {
 
     it('should handle path with trailing slash', () => {
       const path = getStorePath({ type: 'path', path: '/some/local/my-repo/' })
-      // Note: split('/').pop() on 'a/b/' returns '', so this tests edge case
-      expect(path).toBe('local//')
+      // filter(Boolean).pop() handles trailing slashes correctly
+      expect(path).toBe('local/my-repo/')
     })
   })
 

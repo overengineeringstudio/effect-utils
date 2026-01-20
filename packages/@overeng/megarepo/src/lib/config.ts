@@ -156,7 +156,8 @@ export type MemberSource =
 export const parseMemberSource = (config: MemberConfig): MemberSource | undefined => {
   if (config.github !== undefined) {
     const parts = config.github.split('/')
-    if (parts.length === 2 && parts[0] !== undefined && parts[1] !== undefined) {
+    // Validate both owner and repo are non-empty strings
+    if (parts.length === 2 && parts[0] && parts[0].length > 0 && parts[1] && parts[1].length > 0) {
       return { type: 'github', owner: parts[0], repo: parts[1] }
     }
     return undefined
@@ -181,7 +182,9 @@ export const getStorePath = (source: MemberSource): RelativeDirPath => {
     case 'url':
       return parseUrlToStorePath(source.url)
     case 'path':
-      return EffectPath.unsafe.relativeDir(`local/${source.path.split('/').pop() ?? 'unknown'}/`)
+      return EffectPath.unsafe.relativeDir(
+        `local/${source.path.split('/').filter(Boolean).pop() ?? 'unknown'}/`,
+      )
   }
 }
 

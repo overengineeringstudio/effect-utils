@@ -49,6 +49,16 @@ const jsonOption = Cli.Options.boolean('json').pipe(
   Cli.Options.withDefault(false),
 )
 
+/**
+ * Create a symlink, stripping trailing slashes from paths.
+ * POSIX symlink fails with ENOENT if the link path ends with `/`.
+ */
+const createSymlink = (target: string, link: string) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    yield* fs.symlink(target.replace(/\/$/, ''), link.replace(/\/$/, ''))
+  })
+
 // =============================================================================
 // Init Command
 // =============================================================================
@@ -409,6 +419,8 @@ const syncMember = (
 
     // Handle local path sources differently - they're already "in store"
     if (source.type === 'path') {
+      // Expand ~ to home directory at execution time
+      const expandedPath = source.path.replace(/^~/, process.env.HOME ?? '~')
       const memberPath = EffectPath.ops.join(
         megarepoRoot,
         EffectPath.unsafe.relativeDir(`${name}/`),
@@ -419,19 +431,30 @@ const syncMember = (
         // Check if it's a symlink pointing to the right place
         const stat = yield* fs.stat(memberPath).pipe(Effect.catchAll(() => Effect.succeed(null)))
         if (stat?.type === 'SymbolicLink') {
-          return { name, status: 'already_linked' } satisfies MemberSyncResult
+          // Validate symlink points to correct location
+          const target = yield* fs.readLink(memberPath)
+          const sourcePathStr = expandedPath.replace(/\/$/, '')
+          const targetStr = target.replace(/\/$/, '')
+          if (targetStr === sourcePathStr) {
+            return { name, status: 'already_linked' } satisfies MemberSyncResult
+          }
+          // Wrong target - remove and recreate
+          if (!dryRun) {
+            yield* fs.remove(memberPath)
+          }
+        } else {
+          // Directory exists but isn't a symlink - could be isolated or conflict
+          return {
+            name,
+            status: 'skipped',
+            message: 'Directory exists but is not a symlink',
+          } satisfies MemberSyncResult
         }
-        // Directory exists but isn't a symlink - could be isolated or conflict
-        return {
-          name,
-          status: 'skipped',
-          message: 'Directory exists but is not a symlink',
-        } satisfies MemberSyncResult
       }
 
       if (!dryRun) {
         // Create symlink to local path
-        yield* fs.symlink(source.path, memberPath)
+        yield* createSymlink(expandedPath, memberPath)
       }
 
       return { name, status: 'symlinked' } satisfies MemberSyncResult
@@ -478,7 +501,15 @@ const syncMember = (
         if (isGitWorktree) {
           return { name, status: 'already_linked' } satisfies MemberSyncResult
         }
-        // Remove symlink to replace with worktree
+        // Only remove if it's a symlink (safe by default)
+        const stat = yield* fs.stat(memberPath).pipe(Effect.catchAll(() => Effect.succeed(null)))
+        if (stat?.type !== 'SymbolicLink') {
+          return {
+            name,
+            status: 'error',
+            message: 'Directory exists but is not a symlink. Use mr isolate --force to replace.',
+          } satisfies MemberSyncResult
+        }
         if (!dryRun) {
           yield* fs.remove(memberPath)
         }
@@ -542,7 +573,7 @@ const syncMember = (
     }
 
     if (!dryRun) {
-      yield* fs.symlink(storePath, memberPath)
+      yield* createSymlink(storePath, memberPath)
     }
 
     return {
@@ -1100,8 +1131,13 @@ const isolateCommand = Cli.Command.make(
       Cli.Args.withDescription('Branch name for the worktree'),
     ),
     json: jsonOption,
+    force: Cli.Options.boolean('force').pipe(
+      Cli.Options.withAlias('f'),
+      Cli.Options.withDescription('Force removal of non-symlink directories'),
+      Cli.Options.withDefault(false),
+    ),
   },
-  ({ member, branch, json }) =>
+  ({ member, branch, json, force }) =>
     Effect.gen(function* () {
       const cwd = yield* Cwd
       const root = yield* findMegarepoRoot(cwd)
@@ -1155,10 +1191,30 @@ const isolateCommand = Cli.Command.make(
 
       const storePath = store.getRepoPath(source)
 
-      // Remove existing symlink
+      // Remove existing symlink (safely)
       const exists = yield* fs.exists(memberPath)
       if (exists) {
-        yield* fs.remove(memberPath)
+        const stat = yield* fs.stat(memberPath).pipe(Effect.catchAll(() => Effect.succeed(null)))
+        if (stat?.type === 'SymbolicLink') {
+          yield* fs.remove(memberPath)
+        } else if (force) {
+          // Only remove non-symlinks with --force
+          yield* fs.remove(memberPath, { recursive: true })
+        } else {
+          if (json) {
+            console.log(
+              JSON.stringify({
+                error: 'not_symlink',
+                message: 'Member path is not a symlink. Use --force to remove the directory.',
+              }),
+            )
+          } else {
+            yield* Effect.logError(
+              `${styled.red(symbols.cross)} Member path is not a symlink. Use --force to remove.`,
+            )
+          }
+          return yield* Effect.fail(new Error('Member path is not a symlink'))
+        }
       }
 
       // Create worktree
@@ -1273,7 +1329,7 @@ const unisolateCommand = Cli.Command.make(
       yield* Git.removeWorktree({ repoPath: storePath, worktreePath: memberPath, force })
 
       // Create symlink
-      yield* fs.symlink(storePath, memberPath)
+      yield* createSymlink(storePath, memberPath)
 
       // Update config to remove isolated field
       const { isolated: _, ...cleanMemberConfig } = memberConfig
@@ -1534,25 +1590,43 @@ const generateAllCommand = Cli.Command.make('all', { json: jsonOption }, ({ json
 
     const results: Array<{ generator: string; path: string }> = []
 
-    // Generate envrc
-    const envrcResult = yield* generateEnvrc({
-      megarepoRoot: root.value,
-      config,
-    })
-    results.push({ generator: 'envrc', path: envrcResult.path })
-    if (!json) {
-      yield* Effect.log(`${styled.green(symbols.check)} Generated ${styled.bold('.envrc.local')}`)
+    // Generate envrc (default: enabled)
+    const envrcEnabled = config.generators?.envrc?.enabled !== false
+    if (envrcEnabled) {
+      const envrcResult = yield* generateEnvrc({
+        megarepoRoot: root.value,
+        config,
+      })
+      results.push({ generator: 'envrc', path: envrcResult.path })
+      if (!json) {
+        yield* Effect.log(`${styled.green(symbols.check)} Generated ${styled.bold('.envrc.local')}`)
+      }
     }
 
-    // Generate VSCode workspace
-    const vscodeResult = yield* generateVscode({
+    // Generate VSCode workspace (default: disabled)
+    const vscodeEnabled = config.generators?.vscode?.enabled === true
+    if (vscodeEnabled) {
+      const vscodeResult = yield* generateVscode({
+        megarepoRoot: root.value,
+        config,
+      })
+      results.push({ generator: 'vscode', path: vscodeResult.path })
+      if (!json) {
+        yield* Effect.log(
+          `${styled.green(symbols.check)} Generated ${styled.bold('.vscode/megarepo.code-workspace')}`,
+        )
+      }
+    }
+
+    // Generate JSON schema (always enabled for editor support)
+    const schemaResult = yield* generateSchema({
       megarepoRoot: root.value,
       config,
     })
-    results.push({ generator: 'vscode', path: vscodeResult.path })
+    results.push({ generator: 'schema', path: schemaResult.path })
     if (!json) {
       yield* Effect.log(
-        `${styled.green(symbols.check)} Generated ${styled.bold('.vscode/megarepo.code-workspace')}`,
+        `${styled.green(symbols.check)} Generated ${styled.bold('.vscode/megarepo.schema.json')}`,
       )
     }
 
