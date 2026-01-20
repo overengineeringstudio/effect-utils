@@ -232,10 +232,12 @@ export const generateMemberConfig = ({
 }
 
 /** Normalize status output for snapshot comparison by stripping ANSI codes and replacing dynamic values */
+// oxlint-disable-next-line overeng/named-args -- output + workspaceName is clear
 export const normalizeStatusOutput = (output: string, workspaceName?: string): string => {
   let normalized = output
     // Strip ANSI escape codes
     // biome-ignore lint/suspicious/noControlCharactersInRegex: needed for ANSI stripping
+    // oxlint-disable-next-line no-control-regex -- needed for ANSI stripping
     .replace(/\x1b\[[0-9;]*m/g, '')
     // Replace full 40-char hashes
     .replace(/[a-f0-9]{40}/g, '<FULL_HASH>')

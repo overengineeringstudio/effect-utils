@@ -1,15 +1,21 @@
 {
-  "$genie": {
-    "source": "package.json.genie.ts",
-    "warning": "DO NOT EDIT - changes will be overwritten"
-  },
   "name": "@overeng/notion-cli",
   "version": "0.1.0",
-  "type": "module",
   "private": true,
+  "type": "module",
   "exports": {
     ".": "./src/mod.ts",
     "./config": "./src/config-def.ts"
+  },
+  "publishConfig": {
+    "access": "public",
+    "bin": {
+      "notion": "./dist/cli.js"
+    },
+    "exports": {
+      ".": "./dist/mod.js",
+      "./config": "./dist/config-def.js"
+    }
   },
   "scripts": {
     "prepare": "effect-language-service patch",
@@ -57,14 +63,8 @@
     "@playwright/test": "^1.57.0",
     "effect": "^3.19.14"
   },
-  "publishConfig": {
-    "access": "public",
-    "bin": {
-      "notion": "./dist/cli.js"
-    },
-    "exports": {
-      ".": "./dist/mod.js",
-      "./config": "./dist/config-def.js"
-    }
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten"
   }
 }

@@ -8,13 +8,7 @@ import { FileSystem, Path as PlatformPath, type Error as PlatformError } from '@
 import { Effect, Either } from 'effect'
 
 import type { AbsolutePath, Path } from './brands.ts'
-import {
-  NotASymlinkError,
-  PathNotFoundError,
-  PermissionError,
-  SymlinkLoopError,
-  type SymlinkError,
-} from './errors.ts'
+import { NotASymlinkError, PathNotFoundError, PermissionError, SymlinkLoopError } from './errors.ts'
 import { ensureTrailingSlash, hasTrailingSlash } from './internal/utils.ts'
 
 // ═══════════════════════════════════════════════════════════════════════════

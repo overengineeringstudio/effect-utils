@@ -16,6 +16,7 @@ import { piTuiInlineRenderer } from '../../src/task-system/renderers/pi-tui-inli
 import { MetricsTracker, timer } from '../metrics.ts'
 import { renderMetricsLine } from '../reporters/live-metrics.ts'
 
+/** Configuration for rapid events stress test scenario */
 export interface RapidEventsConfig {
   taskCount: number
   eventsPerSecond: number

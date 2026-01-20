@@ -187,6 +187,7 @@ export default packageJson({
 ```
 
 **Tips:**
+
 - Define `ownPeerDepNames` locally with only packages NOT in upstream (delta pattern)
 - Compute `allPeerDepNames` by spreading upstream keys + own for devDependencies
 - Consumers import package configs and spread `.data.peerDependencies`
@@ -196,15 +197,15 @@ export default packageJson({
 
 ## Troubleshooting
 
-| Problem                      | Solution                                           |
-| ---------------------------- | -------------------------------------------------- |
-| "Cannot find package X"      | Run `dotdot link` then `bun install`               |
-| Repo not cloned              | Run `dotdot sync`                                  |
-| Wrong revision               | Run `dotdot sync` to checkout pinned revisions     |
-| Revision conflict            | Run `dotdot tree --conflicts` to see conflicts     |
-| Symlink missing              | Run `dotdot link`                                  |
-| Nix can't find files         | Ensure repo is cloned, not just symlinked          |
-| Nix flake input is a symlink | Use `git+file:../repo` for nix, not `path:../repo` |
-| Sub-flake purity boundaries  | See `../bun-cli-build/troubleshooting.md`          |
-| Effect type incompatibility  | Use dual deps pattern (see above), ensure all packages use same catalog versions |
+| Problem                      | Solution                                                                              |
+| ---------------------------- | ------------------------------------------------------------------------------------- |
+| "Cannot find package X"      | Run `dotdot link` then `bun install`                                                  |
+| Repo not cloned              | Run `dotdot sync`                                                                     |
+| Wrong revision               | Run `dotdot sync` to checkout pinned revisions                                        |
+| Revision conflict            | Run `dotdot tree --conflicts` to see conflicts                                        |
+| Symlink missing              | Run `dotdot link`                                                                     |
+| Nix can't find files         | Ensure repo is cloned, not just symlinked                                             |
+| Nix flake input is a symlink | Use `git+file:../repo` for nix, not `path:../repo`                                    |
+| Sub-flake purity boundaries  | See `../bun-cli-build/troubleshooting.md`                                             |
+| Effect type incompatibility  | Use dual deps pattern (see above), ensure all packages use same catalog versions      |
 | "Type X is not assignable"   | Usually duplicate Effect types - check nested node_modules for multiple Effect copies |

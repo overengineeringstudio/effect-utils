@@ -1,15 +1,18 @@
 {
-  "$genie": {
-    "source": "package.json.genie.ts",
-    "warning": "DO NOT EDIT - changes will be overwritten"
-  },
   "name": "@overeng/effect-react",
   "version": "0.1.0",
-  "type": "module",
   "private": true,
+  "type": "module",
   "exports": {
     ".": "./src/mod.ts",
     "./react-aria": "./src/react-aria/mod.ts"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": "./dist/mod.js",
+      "./react-aria": "./dist/react-aria/mod.js"
+    }
   },
   "scripts": {
     "prepare": "effect-language-service patch"
@@ -35,11 +38,8 @@
     "react-aria-components": "^1.14.0",
     "react-dom": "^19.2.3"
   },
-  "publishConfig": {
-    "access": "public",
-    "exports": {
-      ".": "./dist/mod.js",
-      "./react-aria": "./dist/react-aria/mod.js"
-    }
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten"
   }
 }

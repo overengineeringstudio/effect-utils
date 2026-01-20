@@ -4,7 +4,10 @@
  * Provides common rules, categories, and overrides that can be extended by repo-specific configs.
  */
 
-import type { OxlintConfigArgs, OxlintOverride } from '../packages/@overeng/genie/src/runtime/mod.ts'
+import type {
+  OxlintConfigArgs,
+  OxlintOverride,
+} from '../packages/@overeng/genie/src/runtime/mod.ts'
 
 /** Standard plugins enabled across all repos */
 export const baseOxlintPlugins = ['import', 'typescript', 'unicorn', 'oxc'] as const

@@ -26,7 +26,6 @@ import {
   NotRelativeError,
   PathNotFoundError,
   PermissionError,
-  type VerifyError,
 } from './errors.ts'
 import {
   ensureTrailingSlash,
@@ -41,13 +40,7 @@ import {
   removeTrailingSlash,
   toSegments,
 } from './internal/utils.ts'
-import type {
-  AbsoluteDirInfo,
-  AbsoluteFileInfo,
-  PathInfo,
-  RelativeDirInfo,
-  RelativeFileInfo,
-} from './PathInfo.ts'
+import type { PathInfo } from './PathInfo.ts'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Internal Helpers

@@ -12,6 +12,7 @@ const YELLOW = '\x1b[33m'
 const RED = '\x1b[31m'
 
 /** Format a single metric with color based on threshold */
+// oxlint-disable-next-line overeng/named-args -- simple formatter with positional args
 const formatMetric = (
   label: string,
   value: number,
@@ -28,6 +29,7 @@ const formatMetric = (
 }
 
 /** Render the live metrics line */
+// oxlint-disable-next-line overeng/named-args -- metrics + optional target is clear
 export const renderMetricsLine = (metrics: BenchMetrics, targetFps = 12.5): string => {
   const fpsColor =
     metrics.fps >= targetFps * 0.9 ? GREEN : metrics.fps >= targetFps * 0.7 ? YELLOW : RED
@@ -46,6 +48,7 @@ export const renderMetricsLine = (metrics: BenchMetrics, targetFps = 12.5): stri
 }
 
 /** Render a progress bar */
+// oxlint-disable-next-line overeng/named-args -- progress + optional width is clear
 export const renderProgressBar = (progress: number, width = 20): string => {
   const filled = Math.floor(progress * width)
   const empty = width - filled
@@ -59,6 +62,7 @@ export const renderElapsed = (startTime: number): string => {
 }
 
 /** Full benchmark header with scenario info */
+// oxlint-disable-next-line overeng/named-args -- scenario + config object is clear
 export const renderBenchHeader = (
   scenario: string,
   config: { tasks?: number; eventsPerSec?: number; duration?: number },
@@ -86,6 +90,7 @@ export const renderComparisonTable = (comparisons: {
   lines.push(`│ ${CYAN}COMPARISON${RESET}${' '.repeat(width - 12)}│`)
   lines.push('├' + '─'.repeat(width) + '┤')
 
+  // oxlint-disable-next-line overeng/named-args -- internal table row formatter
   const formatRow = (name: string, progress: number, events: number, overhead?: number): string => {
     const bar = renderProgressBar(progress, 20)
     const pct = `${(progress * 100).toFixed(0)}%`.padStart(4)

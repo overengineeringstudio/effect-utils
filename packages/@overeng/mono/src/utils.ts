@@ -1,6 +1,3 @@
-import type * as CommandExecutor from '@effect/platform/CommandExecutor'
-import type { PlatformError } from '@effect/platform/Error'
-import type { Scope } from 'effect'
 import { Console, Effect } from 'effect'
 
 import { cmd, cmdStart, CurrentWorkingDirectory } from '@overeng/utils/node'

@@ -66,6 +66,7 @@ export const bgColor256 = (n: number): string => `${ESC}48;5;${n}m`
 // Symbol Tokens (Unicode)
 // =============================================================================
 
+/** Unicode symbols for CLI output */
 export const symbols = {
   // Status indicators
   check: '✓',
@@ -117,6 +118,7 @@ export const symbols = {
 // Spacing Tokens
 // =============================================================================
 
+/** Spacing tokens for consistent indentation */
 export const spacing = {
   /** Single space indent */
   indent1: '  ',

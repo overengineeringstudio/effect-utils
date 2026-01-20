@@ -15,6 +15,7 @@
         "@effect/cluster": "0.56.0",
         "@effect/experimental": "0.58.0",
         "@effect/language-service": "0.69.2",
+        "@effect/opentelemetry": "0.60.0",
         "@effect/platform": "0.94.1",
         "@effect/platform-node": "0.104.0",
         "@effect/printer": "0.47.0",
@@ -24,6 +25,7 @@
         "@effect/typeclass": "0.38.0",
         "@effect/vitest": "0.27.0",
         "@effect/workflow": "0.16.0",
+        "@playwright/test": "1.57.0",
         "effect": "3.19.14",
         "typescript": "5.9.3",
         "vitest": "3.2.4",
@@ -317,7 +319,7 @@
 
     "find-my-way-ts": ["find-my-way-ts@0.1.6", "", {}, "sha512-a85L9ZoXtNAey3Y6Z+eBWW658kO/MwR7zIafkIUPUMf3isZG0NCs2pjW2wtjxAKuJPxMAsHUIP4ZPGv0o5gyTA=="],
 
-    "fsevents": ["fsevents@2.3.3", "", { "os": "darwin" }, "sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw=="],
+    "fsevents": ["fsevents@2.3.2", "", { "os": "darwin" }, "sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA=="],
 
     "ini": ["ini@4.1.3", "", {}, "sha512-X7rqawQBvfdjS10YU1y1YVreA3SsLrW9dX2CewP2EbBJM4ypVNLDkO5y04gejPwKIY9lR+7r9gn3rFPt/kmWFg=="],
 
@@ -423,12 +425,12 @@
 
     "yaml": ["yaml@2.8.2", "", { "bin": { "yaml": "bin.mjs" } }, "sha512-mplynKqc1C2hTVYxd0PU2xQAc22TI1vShAYGksCCfxbn/dFwnHTNi1bvYsBTkhdUNtGIf5xNOg938rrSSYvS9A=="],
 
-    "@overeng/notion-effect-client/@overeng/notion-effect-schema": ["@overeng/notion-effect-schema@file:../notion-effect-schema", {}],
+    "@overeng/notion-effect-client/@overeng/notion-effect-schema": ["@overeng/notion-effect-schema@file:../notion-effect-schema", { "devDependencies": { "@effect/language-service": "0.69.2", "@effect/vitest": "0.27.0", "@types/node": "25.0.3", "effect": "3.19.14", "typescript": "5.9.3", "vitest": "3.2.4" }, "peerDependencies": { "effect": "^3.19.14" } }],
 
-    "@overeng/notion-effect-client/@overeng/utils": ["@overeng/utils@file:../utils", {}],
+    "@overeng/notion-effect-client/@overeng/utils": ["@overeng/utils@file:../utils", { "dependencies": { "@noble/hashes": "1.7.1", "@opentelemetry/api": "1.9.0", "effect-distributed-lock": "0.0.11", "ioredis": "5.6.1" }, "devDependencies": { "@effect/cluster": "0.56.0", "@effect/experimental": "0.58.0", "@effect/language-service": "0.69.2", "@effect/opentelemetry": "0.60.0", "@effect/platform": "0.94.1", "@effect/platform-node": "0.104.0", "@effect/printer": "0.47.0", "@effect/printer-ansi": "0.47.0", "@effect/rpc": "0.73.0", "@effect/vitest": "0.27.0", "@effect/workflow": "0.16.0", "@opentelemetry/resources": "2.2.0", "@opentelemetry/sdk-logs": "0.208.0", "@opentelemetry/sdk-metrics": "2.2.0", "@opentelemetry/sdk-trace-base": "2.2.0", "@opentelemetry/sdk-trace-node": "2.2.0", "@opentelemetry/sdk-trace-web": "2.2.0", "@opentelemetry/semantic-conventions": "1.38.0", "@playwright/test": "1.57.0", "@types/node": "25.0.3", "effect": "3.19.14", "typescript": "5.9.3", "vite": "7.3.0", "vitest": "3.2.4" }, "peerDependencies": { "@effect/cluster": "^0.56.0", "@effect/experimental": "^0.58.0", "@effect/opentelemetry": "^0.60.0", "@effect/platform": "^0.94.1", "@effect/platform-node": "^0.104.0", "@effect/printer": "^0.47.0", "@effect/printer-ansi": "^0.47.0", "@effect/rpc": "^0.73.0", "@effect/workflow": "^0.16.0", "@playwright/test": "^1.57.0", "effect": "^3.19.14" } }],
 
-    "@overeng/utils/vite": ["vite@7.3.0", "", { "dependencies": { "esbuild": "^0.27.0", "fdir": "^6.5.0", "picomatch": "^4.0.3", "postcss": "^8.5.6", "rollup": "^4.43.0", "tinyglobby": "^0.2.15" }, "optionalDependencies": { "fsevents": "~2.3.3" }, "peerDependencies": { "@types/node": "^20.19.0 || >=22.12.0", "jiti": ">=1.21.0", "less": "^4.0.0", "lightningcss": "^1.21.0", "sass": "^1.70.0", "sass-embedded": "^1.70.0", "stylus": ">=0.54.8", "sugarss": "^5.0.0", "terser": "^5.16.0", "tsx": "^4.8.1", "yaml": "^2.4.2" }, "optionalPeers": ["@types/node", "jiti", "less", "lightningcss", "sass", "sass-embedded", "stylus", "sugarss", "terser", "tsx", "yaml"], "bin": { "vite": "bin/vite.js" } }, "sha512-dZwN5L1VlUBewiP6H9s2+B3e3Jg96D0vzN+Ry73sOefebhYr9f94wwkMNN/9ouoU8pV1BqA1d1zGk8928cx0rg=="],
+    "rollup/fsevents": ["fsevents@2.3.3", "", { "os": "darwin" }, "sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw=="],
 
-    "playwright/fsevents": ["fsevents@2.3.2", "", { "os": "darwin" }, "sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA=="],
+    "vite/fsevents": ["fsevents@2.3.3", "", { "os": "darwin" }, "sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw=="],
   }
 }

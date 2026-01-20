@@ -11,6 +11,7 @@ export type {
   InstallConfig,
   InstallProgress,
   InstallResult,
+  OxcConfig,
   TestConfig,
   TypeCheckConfig,
 } from './types.ts'

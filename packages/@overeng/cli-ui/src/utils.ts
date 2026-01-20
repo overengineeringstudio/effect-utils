@@ -13,6 +13,7 @@
  * Matches sequences like \x1b[31m, \x1b[1;31m, \x1b[38;5;196m, etc.
  */
 // biome-ignore lint/suspicious/noControlCharactersInRegex: required for ANSI matching
+// oxlint-disable-next-line no-control-regex -- required for ANSI matching
 const ANSI_PATTERN = /\x1b\[[0-9;]*m/g
 
 /** Strip all ANSI escape codes from a string */
@@ -33,12 +34,14 @@ export const visibleLength = (text: string): string['length'] => {
 // Text Padding
 // =============================================================================
 
+/** Options for text padding functions */
 export type PadOptions = {
   /** Character to pad with */
   char?: string
 }
 
 /** Pad text to specified visible width (right padding) */
+// oxlint-disable-next-line overeng/named-args -- text + width + options is idiomatic for pad functions
 export const padEnd = (text: string, width: number, options?: PadOptions): string => {
   const char = options?.char ?? ' '
   const visible = visibleLength(text)
@@ -47,6 +50,7 @@ export const padEnd = (text: string, width: number, options?: PadOptions): strin
 }
 
 /** Pad text to specified visible width (left padding) */
+// oxlint-disable-next-line overeng/named-args -- text + width + options is idiomatic for pad functions
 export const padStart = (text: string, width: number, options?: PadOptions): string => {
   const char = options?.char ?? ' '
   const visible = visibleLength(text)
@@ -55,6 +59,7 @@ export const padStart = (text: string, width: number, options?: PadOptions): str
 }
 
 /** Center text within specified visible width */
+// oxlint-disable-next-line overeng/named-args -- text + width + options is idiomatic for pad functions
 export const center = (text: string, width: number, options?: PadOptions): string => {
   const char = options?.char ?? ' '
   const visible = visibleLength(text)
@@ -69,12 +74,14 @@ export const center = (text: string, width: number, options?: PadOptions): strin
 // Text Truncation
 // =============================================================================
 
+/** Options for text truncation */
 export type TruncateOptions = {
   /** Truncation indicator */
   ellipsis?: string
 }
 
 /** Truncate text to specified visible width */
+// oxlint-disable-next-line overeng/named-args -- text + maxWidth + options is idiomatic
 export const truncate = (text: string, maxWidth: number, options?: TruncateOptions): string => {
   const ellipsis = options?.ellipsis ?? '…'
   const stripped = stripAnsi(text)
@@ -91,6 +98,7 @@ export const truncate = (text: string, maxWidth: number, options?: TruncateOptio
 // =============================================================================
 
 /** Wrap text to specified width (simple word wrap, ignores ANSI codes) */
+// oxlint-disable-next-line overeng/named-args -- text + maxWidth is idiomatic
 export const wrap = (text: string, maxWidth: number): string[] => {
   const stripped = stripAnsi(text)
   const words = stripped.split(' ')

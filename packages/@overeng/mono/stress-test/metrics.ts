@@ -2,6 +2,7 @@
  * Performance metrics tracking for benchmark suite
  */
 
+/** Performance metrics for benchmarks */
 export interface BenchMetrics {
   fps: number
   frameTimeMs: number
@@ -11,6 +12,7 @@ export interface BenchMetrics {
   memoryMB: number
 }
 
+/** Timestamped snapshot of benchmark metrics */
 export interface MetricsSnapshot {
   timestamp: number
   metrics: BenchMetrics
@@ -21,6 +23,7 @@ const hrtime = () => {
   return sec * 1000 + nsec / 1e6
 }
 
+/** Tracks performance metrics during benchmark execution */
 export class MetricsTracker {
   private frameCount = 0
   private eventCount = 0

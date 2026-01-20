@@ -29,6 +29,7 @@ const parseArgs = () => {
   const args = process.argv.slice(2)
   const scenario = args.find((a) => !a.startsWith('--')) ?? 'comparison'
 
+  // oxlint-disable-next-line overeng/named-args -- simple CLI arg parser utility
   const getArg = (name: string, defaultValue: number): number => {
     const idx = args.findIndex((a) => a === `--${name}`)
     if (idx >= 0 && args[idx + 1]) {

@@ -36,6 +36,7 @@ const styled = {
 }
 
 /** Render a truncated list with "+ N more" indicator */
+// oxlint-disable-next-line overeng/named-args -- simple formatter with clear positional args
 const renderList = (items: string[], max: number, indent: string) => {
   const shown = items.slice(0, max)
   const remaining = items.length - max

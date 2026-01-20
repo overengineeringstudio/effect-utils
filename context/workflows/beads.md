@@ -37,24 +37,27 @@ We use [beads](https://github.com/steveyegge/beads) (`bd`) as a git-backed issue
 
 ## Beads Repos
 
-| Repo | Visibility | Prefix | Linear Sync | Purpose |
-|------|------------|--------|-------------|---------|
-| `overeng-beads-public` | Public | `eu` | Yes (EU team) | Overengineering projects + devenv module |
-| `schickling-beads` | Private | `sch` | No | Personal projects |
+| Repo                   | Visibility | Prefix | Linear Sync   | Purpose                                  |
+| ---------------------- | ---------- | ------ | ------------- | ---------------------------------------- |
+| `overeng-beads-public` | Public     | `eu`   | Yes (EU team) | Overengineering projects + devenv module |
+| `schickling-beads`     | Private    | `sch`  | No            | Personal projects                        |
 
 ## Key Principles
 
 ### 1. Centralized beads repos
+
 - Beads repos hold issues, code repos have NO `.beads/` directory
 - Avoids branch conflicts in code repos
 - Use `pkg:*` labels to categorize by project/package
 
 ### 2. Commit correlation via devenv
+
 - Code repos import the devenv module from `overeng-beads-public`
 - Hook detects issue references in format `(prefix-xxx)`
 - Adds comment to beads issue with commit SHA + message
 
 ### 3. Linear sync (optional)
+
 - `overeng-beads-public` syncs with Linear team EU
 - `schickling-beads` does not sync to Linear
 
@@ -265,7 +268,7 @@ export LINEAR_TEAM_ID="team-uuid"
 
 ```yaml
 issue_prefix: eu
-sync-branch: "main"
+sync-branch: 'main'
 ```
 
 ## Constraints
@@ -280,11 +283,11 @@ sync-branch: "main"
 
 This centralized pattern:
 
-| Benefit | Trade-off |
-|---------|-----------|
+| Benefit                           | Trade-off                                      |
+| --------------------------------- | ---------------------------------------------- |
 | No branch conflicts in code repos | Need to switch to beads repo for `bd` commands |
-| Single source of truth | Commit correlation requires hook setup |
-| Clean code repo history | Issues not versioned with code |
+| Single source of truth            | Commit correlation requires hook setup         |
+| Clean code repo history           | Issues not versioned with code                 |
 
 ## Label Taxonomy
 

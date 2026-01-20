@@ -1,11 +1,7 @@
 {
-  "$genie": {
-    "source": "package.json.genie.ts",
-    "warning": "DO NOT EDIT - changes will be overwritten"
-  },
   "name": "effect-utils-scripts",
-  "type": "module",
   "private": true,
+  "type": "module",
   "scripts": {
     "postinstall": "patch --forward -p1 -d node_modules/effect-distributed-lock < ../patches/effect-distributed-lock@0.0.11.patch || true"
   },
@@ -23,5 +19,9 @@
   "devDependencies": {
     "@types/node": "25.0.3",
     "typescript": "5.9.3"
+  },
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten"
   }
 }
