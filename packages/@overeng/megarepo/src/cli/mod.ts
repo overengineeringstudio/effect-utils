@@ -139,7 +139,9 @@ const initCommand = Cli.Command.make('init', { json: jsonOption }, ({ json }) =>
 // =============================================================================
 
 /**
- * Find megarepo root by searching up from current directory
+ * Find megarepo root by searching up from current directory.
+ * Returns the OUTERMOST megarepo found (closest to filesystem root).
+ * This ensures "outer wins" behavior for nested megarepos.
  */
 const findMegarepoRoot = (startPath: AbsoluteDirPath) =>
   Effect.gen(function* () {
@@ -147,6 +149,9 @@ const findMegarepoRoot = (startPath: AbsoluteDirPath) =>
 
     let current: AbsoluteDirPath | undefined = startPath
     const rootDir = EffectPath.unsafe.absoluteDir('/')
+    let outermost: AbsoluteDirPath | undefined = undefined
+
+    // Walk up the tree, collecting the outermost megarepo found
     while (current !== undefined && current !== rootDir) {
       const configPath = EffectPath.ops.join(
         current,
@@ -154,7 +159,7 @@ const findMegarepoRoot = (startPath: AbsoluteDirPath) =>
       )
       const exists = yield* fs.exists(configPath)
       if (exists) {
-        return Option.some(current)
+        outermost = current // Keep going up, this might not be the outermost
       }
       current = EffectPath.ops.parent(current)
     }
@@ -166,10 +171,10 @@ const findMegarepoRoot = (startPath: AbsoluteDirPath) =>
     )
     const rootExists = yield* fs.exists(rootConfigPath)
     if (rootExists) {
-      return Option.some(rootDir)
+      outermost = rootDir
     }
 
-    return Option.none()
+    return Option.fromNullable(outermost)
   })
 
 /** Find and print the megarepo root directory */

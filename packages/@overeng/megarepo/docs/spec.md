@@ -123,12 +123,12 @@ megarepo/
 
 ### `MEGAREPO_ROOT` Behavior
 
-Commands auto-detect the megarepo root by searching up from `$PWD` for `megarepo.json`. If `MEGAREPO_ROOT` is set, it takes precedence over auto-detection.
+Commands auto-detect the megarepo root by searching up from `$PWD` for `megarepo.json`. The search walks all the way to the filesystem root and returns the **outermost** megarepo found (closest to `/`). If `MEGAREPO_ROOT` is set, it takes precedence over auto-detection.
 
 **Nested Megarepos:** When megarepo A contains megarepo B as a member:
 
-- If working inside the nested B, `MEGAREPO_ROOT` remains A (outer wins)
-- If B is checked out standalone (not as member of another megarepo), `MEGAREPO_ROOT` is B
+- If working inside the nested B, auto-detection finds A (outermost wins)
+- If B is checked out standalone (not as member of another megarepo), auto-detection finds B
 
 This "outer wins" rule ensures:
 
