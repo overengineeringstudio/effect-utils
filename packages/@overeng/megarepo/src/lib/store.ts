@@ -149,7 +149,7 @@ export const makeStoreLayer = (config: StoreConfig) => Layer.succeed(Store, make
  */
 export const StoreLayer = Layer.effect(
   Store,
-  Effect.gen(function* () {
+  Effect.sync(() => {
     const storePathRaw = Option.fromNullable(process.env[ENV_VARS.STORE]).pipe(
       Option.getOrElse(() => DEFAULT_STORE_PATH),
     )

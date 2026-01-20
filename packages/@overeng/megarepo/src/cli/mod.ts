@@ -11,11 +11,10 @@ import { Command, FileSystem } from '@effect/platform'
 import { Context, Effect, Layer, Option, Schema } from 'effect'
 
 import { styled, symbols } from '@overeng/cli-ui'
-import { EffectPath, type AbsoluteDirPath, type AbsoluteFilePath } from '@overeng/effect-path'
+import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import {
   CONFIG_FILE_NAME,
-  DEFAULT_STORE_PATH,
   ENV_VARS,
   MegarepoConfig,
   type MemberConfig,

@@ -249,6 +249,7 @@ export const createStore = (repos: ReadonlyArray<RepoFixture>) =>
 /** Strip ANSI escape codes from output */
 export const stripAnsi = (str: string): string =>
   // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping ANSI codes requires matching control characters
+  // eslint-disable-next-line no-control-regex -- stripping ANSI codes requires matching control characters
   str.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '')
 
 /** Normalize output for snapshot testing */

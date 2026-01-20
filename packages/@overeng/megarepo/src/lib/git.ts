@@ -5,12 +5,13 @@
  */
 
 import { Command, CommandExecutor } from '@effect/platform'
-import { Effect, Option, Scope } from 'effect'
+import { Effect, Option } from 'effect'
 
 // =============================================================================
 // Git URL Parsing
 // =============================================================================
 
+/** Parsed components of a git remote URL */
 export interface ParsedGitRemote {
   readonly host: string
   readonly owner: string

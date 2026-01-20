@@ -10,6 +10,7 @@ import { Effect } from 'effect'
 
 import { type AbsoluteDirPath, EffectPath, type MegarepoConfig } from '../config.ts'
 
+/** Options for the .envrc.local generator */
 export interface EnvrcGeneratorOptions {
   /** Path to the megarepo root */
   readonly megarepoRoot: AbsoluteDirPath
