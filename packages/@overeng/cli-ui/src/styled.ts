@@ -48,6 +48,7 @@ export const resetColorCache = (): void => {
 // =============================================================================
 
 /** Apply ANSI codes to text, respecting NO_COLOR */
+// oxlint-disable-next-line overeng/named-args -- simple internal utility
 const applyStyle = (code: string, text: string): string => {
   if (isColorDisabled()) {
     return text
@@ -56,6 +57,7 @@ const applyStyle = (code: string, text: string): string => {
 }
 
 /** Apply multiple ANSI codes to text */
+// oxlint-disable-next-line overeng/named-args -- simple internal utility
 const applyStyles = (codes: string[], text: string): string => {
   if (isColorDisabled()) {
     return text
@@ -67,6 +69,7 @@ const applyStyles = (codes: string[], text: string): string => {
 // Text Style Functions
 // =============================================================================
 
+/** Text styling functions for terminal output */
 export const styled = {
   // Text decorations
   bold: (text: string) => applyStyle(colors.bold, text),
@@ -123,6 +126,7 @@ export const styled = {
 // =============================================================================
 
 /** Apply raw ANSI codes (for custom combinations) */
+// oxlint-disable-next-line overeng/named-args -- simple utility for custom ANSI codes
 export const raw = (codes: string | string[], text: string): string => {
   const codeArray = Array.isArray(codes) ? codes : [codes]
   return applyStyles(codeArray, text)

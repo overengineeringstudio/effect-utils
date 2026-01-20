@@ -15,9 +15,9 @@ import { Effect, Logger, LogLevel, Queue } from 'effect'
 import { task } from '../../src/task-system/api.ts'
 import { runTaskGraph } from '../../src/task-system/graph.ts'
 import { piTuiInlineRenderer } from '../../src/task-system/renderers/pi-tui-inline.ts'
-import { MetricsTracker, timer } from '../metrics.ts'
-import { renderComparisonTable, renderMetricsLine } from '../reporters/live-metrics.ts'
+import { timer } from '../metrics.ts'
 
+/** Configuration for comparison benchmark */
 export interface ComparisonConfig {
   taskCount: number
   eventsPerSecond: number
@@ -193,7 +193,6 @@ const runTaskSystemWithRenderer = (config: ComparisonConfig): Effect.Effect<RunR
 export const runComparison = (userConfig: Partial<ComparisonConfig> = {}) =>
   Effect.gen(function* () {
     const config = { ...defaultConfig, ...userConfig }
-    const metrics = new MetricsTracker()
 
     console.log('\n╔═════════════════════════════════════════════════════════════════╗')
     console.log(

@@ -24,7 +24,6 @@ const MAGENTA = '\x1b[35m'
 
 const CLEAR_LINE = '\x1b[2K'
 const CURSOR_UP = (n: number) => `\x1b[${n}A`
-const CURSOR_DOWN = (n: number) => `\x1b[${n}B`
 const HIDE_CURSOR = '\x1b[?25l'
 const SHOW_CURSOR = '\x1b[?25h'
 
@@ -60,6 +59,7 @@ const hrtime = () => {
 }
 
 /** Render a progress bar */
+// oxlint-disable-next-line overeng/named-args -- simple render function with defaults
 const renderProgressBar = (progress: number, width = 30, color = GREEN): string => {
   const filled = Math.floor(progress * width)
   const empty = width - filled
@@ -69,6 +69,7 @@ const renderProgressBar = (progress: number, width = 30, color = GREEN): string 
 }
 
 /** Render the FPS meter */
+// oxlint-disable-next-line overeng/named-args -- simple render function with clear params
 const renderFpsMeter = (fps: number, frameTimeMs: number, targetFps: number): string => {
   const fpsRatio = fps / targetFps
   const fpsColor = fpsRatio >= 0.95 ? GREEN : fpsRatio >= 0.7 ? YELLOW : RED
@@ -253,6 +254,7 @@ const runVisualStress = async (config: {
     // Sleep for remaining frame time
     const sleepMs = Math.max(0, frameIntervalMs - (frameEnd - frameStart))
     if (sleepMs > 0) {
+      // eslint-disable-next-line no-await-in-loop -- intentional for animation frame timing
       await new Promise((r) => setTimeout(r, sleepMs))
     }
   }
@@ -323,6 +325,7 @@ const runVisualStress = async (config: {
 
 // Parse args
 const args = process.argv.slice(2)
+// oxlint-disable-next-line overeng/named-args -- simple CLI arg parser utility
 const getArg = (name: string, defaultValue: number): number => {
   const idx = args.findIndex((a) => a === `--${name}`)
   if (idx >= 0 && args[idx + 1]) {

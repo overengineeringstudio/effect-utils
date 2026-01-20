@@ -132,6 +132,7 @@ type RepoRenderContext = {
   depsByMember: Map<string, string[]>
 }
 
+// oxlint-disable-next-line overeng/named-args -- internal render function with clear params
 const renderRepo = (repo: RepoInfo, ctx: RepoRenderContext): string[] => {
   const lines: string[] = []
 
@@ -179,6 +180,7 @@ const renderRepo = (repo: RepoInfo, ctx: RepoRenderContext): string[] => {
 // Main Renderer
 // =============================================================================
 
+/** Input for rendering workspace status output */
 export type StatusRenderInput = {
   workspaceRoot: string
   allRepos: RepoInfo[]

@@ -230,6 +230,7 @@ interface MutableTaskState {
  * Apply event to mutable state (O(1) mutation, no copying).
  * Used by coordinator fiber for efficient state updates.
  */
+// oxlint-disable-next-line overeng/named-args -- internal event handler with clear params (tasks map, event)
 const applyEventToMutableState = (
   tasks: Map<string, MutableTaskState>,
   event: TaskEvent<string>,

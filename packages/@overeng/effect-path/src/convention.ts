@@ -24,13 +24,7 @@ import type {
   RelativeDirPath,
   RelativeFilePath,
 } from './brands.ts'
-import {
-  ConventionError,
-  InvalidPathError,
-  NotAbsoluteError,
-  NotRelativeError,
-  type ParseError,
-} from './errors.ts'
+import { ConventionError, InvalidPathError, NotAbsoluteError, NotRelativeError } from './errors.ts'
 import {
   ensureTrailingSlash,
   extractBaseName,
@@ -46,13 +40,7 @@ import {
   removeTrailingSlash,
   toSegments,
 } from './internal/utils.ts'
-import type {
-  AbsoluteDirInfo,
-  AbsoluteFileInfo,
-  PathInfo,
-  RelativeDirInfo,
-  RelativeFileInfo,
-} from './PathInfo.ts'
+import type { PathInfo } from './PathInfo.ts'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Validation

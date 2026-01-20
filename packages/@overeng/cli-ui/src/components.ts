@@ -12,6 +12,7 @@ import { colors, symbols } from './tokens.ts'
 // Badge Component
 // =============================================================================
 
+/** Badge severity level */
 export type BadgeLevel = 'critical' | 'error' | 'warning' | 'success' | 'info'
 
 const badgeStyles: Record<BadgeLevel, { bg: string; fg: string }> = {
@@ -23,6 +24,7 @@ const badgeStyles: Record<BadgeLevel, { bg: string; fg: string }> = {
 }
 
 /** Render a colored badge/pill (single line) */
+// oxlint-disable-next-line overeng/named-args -- simple component with clear positional args
 export const badge = (text: string, level: BadgeLevel): string => {
   const style = badgeStyles[level]
   return `${style.bg}${style.fg}${colors.bold} ${text} ${colors.reset}`
@@ -32,6 +34,7 @@ export const badge = (text: string, level: BadgeLevel): string => {
 // List Component
 // =============================================================================
 
+/** Options for rendering a list */
 export type ListOptions = {
   /** Maximum items to show before truncating */
   max?: number
@@ -51,6 +54,7 @@ const defaultListOptions: Required<ListOptions> = {
 }
 
 /** Render a list with optional truncation (multi-line) */
+// oxlint-disable-next-line overeng/named-args -- items + options is idiomatic
 export const list = (items: string[], options?: ListOptions): string[] => {
   const opts = { ...defaultListOptions, ...options }
   const lines: string[] = []
@@ -73,6 +77,7 @@ export const list = (items: string[], options?: ListOptions): string[] => {
 // Key-Value Component
 // =============================================================================
 
+/** Options for key-value rendering */
 export type KvOptions = {
   /** Separator between key and value */
   separator?: string
@@ -89,6 +94,7 @@ const defaultKvOptions: Required<KvOptions> = {
 }
 
 /** Render a key-value pair (single line) */
+// oxlint-disable-next-line overeng/named-args -- key + value + options is idiomatic
 export const kv = (key: string, value: string, options?: KvOptions): string => {
   const opts = { ...defaultKvOptions, ...options }
   return `${opts.keyStyle(key)}${opts.separator}${opts.valueStyle(value)}`
@@ -98,6 +104,7 @@ export const kv = (key: string, value: string, options?: KvOptions): string => {
 // Separator Component
 // =============================================================================
 
+/** Options for separator rendering */
 export type SeparatorOptions = {
   /** Width of separator */
   width?: number
@@ -123,6 +130,7 @@ export const separator = (options?: SeparatorOptions): string => {
 // Status Indicator Component
 // =============================================================================
 
+/** Status indicator level */
 export type StatusLevel = 'success' | 'error' | 'warning' | 'info' | 'pending'
 
 const statusSymbols: Record<StatusLevel, string> = {
@@ -142,6 +150,7 @@ const statusStyles: Record<StatusLevel, (s: string) => string> = {
 }
 
 /** Render a status indicator with optional label (single line) */
+// oxlint-disable-next-line overeng/named-args -- level + optional label is clear
 export const status = (level: StatusLevel, label?: string): string => {
   const symbol = statusStyles[level](statusSymbols[level])
   return label ? `${symbol} ${label}` : symbol
@@ -151,6 +160,7 @@ export const status = (level: StatusLevel, label?: string): string => {
 // Indented Block Component
 // =============================================================================
 
+/** Options for indentation */
 export type IndentOptions = {
   /** Number of spaces per indent level */
   size?: number
@@ -159,6 +169,7 @@ export type IndentOptions = {
 }
 
 /** Indent a single line */
+// oxlint-disable-next-line overeng/named-args -- text + options is idiomatic
 export const indent = (text: string, options?: IndentOptions): string => {
   const size = options?.size ?? 2
   const level = options?.level ?? 1
@@ -166,6 +177,7 @@ export const indent = (text: string, options?: IndentOptions): string => {
 }
 
 /** Indent multiple lines */
+// oxlint-disable-next-line overeng/named-args -- lines + options is idiomatic
 export const indentLines = (lines: string[], options?: IndentOptions): string[] => {
   return lines.map((line) => indent(line, options))
 }
@@ -174,12 +186,14 @@ export const indentLines = (lines: string[], options?: IndentOptions): string[] 
 // Labeled Section Component
 // =============================================================================
 
+/** Options for labeled section rendering */
 export type SectionOptions = {
   /** Indent for content lines */
   contentIndent?: number
 }
 
 /** Render a labeled section with content (multi-line) */
+// oxlint-disable-next-line overeng/named-args -- label + content + options is idiomatic
 export const section = (label: string, content: string[], options?: SectionOptions): string[] => {
   const contentIndent = options?.contentIndent ?? 2
   const lines: string[] = [styled.bold(label)]
@@ -195,6 +209,7 @@ export const section = (label: string, content: string[], options?: SectionOptio
 // Git Diff Component
 // =============================================================================
 
+/** Git diff statistics */
 export type GitDiffData = {
   added: number
   removed: number

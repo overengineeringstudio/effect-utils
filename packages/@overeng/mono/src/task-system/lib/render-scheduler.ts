@@ -11,7 +11,6 @@
  */
 
 import type { TUI } from '@mariozechner/pi-tui'
-import type { Scope } from 'effect'
 import { Effect, Fiber, Ref } from 'effect'
 
 /**

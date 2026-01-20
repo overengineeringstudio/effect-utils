@@ -1,12 +1,6 @@
-import type { HttpClient } from '@effect/platform'
 import { Effect } from 'effect'
 
-import {
-  type NotionApiError,
-  type NotionConfig,
-  NotionDatabases,
-  SchemaHelpers,
-} from '@overeng/notion-effect-client'
+import { NotionDatabases, SchemaHelpers } from '@overeng/notion-effect-client'
 import type {
   NumberFormat,
   PropertySchema,

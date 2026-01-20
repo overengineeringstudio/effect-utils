@@ -12,12 +12,14 @@ import type { ExecutionMode } from '../lib/mod.ts'
 // Types
 // =============================================================================
 
+/** Repository to clone during sync */
 export type RepoToClone = {
   name: string
   url: string
   install?: string
 }
 
+/** Repository to checkout a specific revision */
 export type RepoToCheckout = {
   name: string
   fromRev: string
@@ -30,20 +32,24 @@ export type RepoIssue =
   | { _tag: 'not-a-git-repo'; name: string }
   | { _tag: 'dirty-working-tree'; name: string }
 
+/** Package to add during sync */
 export type PackageToAdd = {
   name: string
   repo: string
 }
 
+/** Package to remove during sync */
 export type PackageToRemove = {
   name: string
 }
 
+/** Package that requires running install command */
 export type PackageWithInstall = {
   name: string
   install: string
 }
 
+/** Diff of changes to apply during sync */
 export type SyncDiff = {
   repos: {
     toClone: RepoToClone[]
@@ -59,6 +65,7 @@ export type SyncDiff = {
   }
 }
 
+/** Input for rendering sync dry-run output */
 export type SyncDryRunInput = {
   workspaceName: string
   mode: ExecutionMode
@@ -70,6 +77,7 @@ export type SyncDryRunInput = {
 // Rendering Helpers
 // =============================================================================
 
+// oxlint-disable-next-line overeng/named-args -- internal formatter function
 const actionLine = (
   action: string,
   actionStyle: (s: string) => string,

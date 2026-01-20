@@ -9,12 +9,14 @@ import { Effect, Queue, Stream, SubscriptionRef } from 'effect'
 
 import { timer } from './metrics.ts'
 
+/** Event emitted by simulated tasks */
 export interface SimulatedEvent {
   taskId: string
   type: 'stdout' | 'stderr' | 'progress'
   data: string
 }
 
+/** Configuration for baseline benchmark */
 export interface BaselineConfig {
   taskCount: number
   eventsPerSecond: number
@@ -22,6 +24,7 @@ export interface BaselineConfig {
   concurrency: number
 }
 
+/** Results from baseline benchmark run */
 export interface BaselineResult {
   totalEvents: number
   elapsedMs: number
@@ -37,7 +40,6 @@ export const runBaseline = (config: BaselineConfig) =>
     const { taskCount, eventsPerSecond, durationSeconds, concurrency } = config
     const eventsPerTask = eventsPerSecond / taskCount
     const intervalMs = 1000 / eventsPerTask
-    const totalEvents = eventsPerSecond * durationSeconds
 
     const eventQueue = yield* Queue.unbounded<SimulatedEvent>()
     let eventCount = 0

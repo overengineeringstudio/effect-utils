@@ -4,7 +4,6 @@
  * @module
  */
 
-import type { HttpClient } from '@effect/platform'
 import { Effect } from 'effect'
 
 import { type Block, type RichTextArray, RichTextUtils } from '@overeng/notion-effect-schema'
@@ -16,8 +15,6 @@ import {
   NotionBlocks,
   type RetrieveNestedOptions,
 } from './blocks.ts'
-import type { NotionConfig } from './config.ts'
-import type { NotionApiError } from './error.ts'
 
 // -----------------------------------------------------------------------------
 // Types

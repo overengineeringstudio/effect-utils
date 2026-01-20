@@ -78,6 +78,7 @@ export const objectWithKeyPrefix = <TObj extends Record<string, any>, TPrefix ex
  * const props: Props = { name: 'John', ...optionalProp('age', maybeAge) } // OK
  * ```
  */
+// oxlint-disable-next-line overeng/named-args -- simple spread helper with clear positional args (key, value)
 export const optionalProp = <K extends string, V>(
   key: K,
   value: V | undefined,

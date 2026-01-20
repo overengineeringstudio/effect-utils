@@ -7,7 +7,7 @@
 import * as assert from 'node:assert'
 
 import { describe, it } from '@effect/vitest'
-import { Effect, Fiber, Ref, TestClock, TestContext } from 'effect'
+import { Effect, TestClock, TestContext } from 'effect'
 
 import { RenderScheduler } from './render-scheduler.ts'
 
