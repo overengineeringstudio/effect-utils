@@ -10,7 +10,13 @@ import { Effect, Schema } from 'effect'
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import { MegarepoConfig } from '../lib/config.ts'
-import { createLockedMember, type LockFile, LOCK_FILE_NAME, writeLockFile } from '../lib/lock.ts'
+import {
+  createLockedMember,
+  type LockFile,
+  type LockedMember,
+  LOCK_FILE_NAME,
+  writeLockFile,
+} from '../lib/lock.ts'
 import { encodeRef, refTypeToPathSegment, classifyRef } from '../lib/ref.ts'
 
 // =============================================================================
@@ -267,18 +273,21 @@ export const createWorkspaceWithLock = (args: {
 
     // Create lock file if entries provided
     if (args.lockEntries !== undefined && Object.keys(args.lockEntries).length > 0) {
-      const lockFile: LockFile = {
-        version: 1,
-        members: {},
-      }
+      // Build members object mutably first, then assign to lockFile
+      const members: Record<string, LockedMember> = {}
 
       for (const [name, entry] of Object.entries(args.lockEntries)) {
-        lockFile.members[name] = createLockedMember({
+        members[name] = createLockedMember({
           url: entry.url,
           ref: entry.ref,
           commit: entry.commit,
-          pinned: entry.pinned,
+          ...(entry.pinned !== undefined ? { pinned: entry.pinned } : {}),
         })
+      }
+
+      const lockFile: LockFile = {
+        version: 1,
+        members,
       }
 
       const lockPath = EffectPath.ops.join(

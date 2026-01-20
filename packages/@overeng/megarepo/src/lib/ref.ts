@@ -71,9 +71,9 @@ export const parseSourceRef = (sourceString: string): ParsedSource => {
   const source = sourceString.slice(0, hashIndex)
   const ref = sourceString.slice(hashIndex + 1)
 
-  // Empty ref after # is treated as no ref
+  // Empty ref after # is treated as no ref (strip the trailing #)
   if (ref === '') {
-    return { source: sourceString, ref: Option.none() }
+    return { source, ref: Option.none() }
   }
 
   return { source, ref: Option.some(ref) }

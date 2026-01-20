@@ -22,6 +22,7 @@ import {
   MegarepoConfig,
   type MemberSource,
   parseSourceString,
+  validateMemberName,
 } from '../lib/config.ts'
 import { generateEnvrc } from '../lib/generators/envrc.ts'
 import { generateSchema } from '../lib/generators/schema.ts'
@@ -439,6 +440,16 @@ const syncMember = ({
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const store = yield* Store
+
+    // Validate member name to prevent path traversal
+    const nameError = validateMemberName(name)
+    if (nameError !== undefined) {
+      return {
+        name,
+        status: 'error',
+        message: nameError,
+      } satisfies MemberSyncResult
+    }
 
     // Parse the source string
     const source = parseSourceString(sourceString)
@@ -1210,7 +1221,7 @@ const updateMember = ({
 
     if (worktreeExists) {
       // Try to update the worktree
-      yield* Git.checkoutWorktree({ repoPath: worktreePath, ref: newCommit }).pipe(
+      yield* Git.checkoutWorktree({ worktreePath, ref: newCommit }).pipe(
         Effect.catchAll(() =>
           // If checkout fails, try a hard reset (detached worktrees)
           Effect.gen(function* () {
@@ -2124,7 +2135,7 @@ const generateVscodeCommand = Cli.Command.make(
       const result = yield* generateVscode({
         megarepoRoot: root.value,
         config,
-        exclude: Option.getOrUndefined(excludeList),
+        ...(Option.isSome(excludeList) ? { exclude: excludeList.value } : {}),
       })
 
       if (json) {

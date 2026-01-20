@@ -67,7 +67,8 @@ describe('parseSourceRef', () => {
 
   test('handles empty ref after hash', () => {
     const result = parseSourceRef('effect-ts/effect#')
-    expect(result.source).toBe('effect-ts/effect#')
+    // Empty ref after # is treated as no ref, and trailing # is stripped from source
+    expect(result.source).toBe('effect-ts/effect')
     expect(Option.isNone(result.ref)).toBe(true)
   })
 

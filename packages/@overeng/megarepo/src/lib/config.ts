@@ -132,6 +132,55 @@ export const ENV_VARS = {
 export const generateJsonSchema = () => JSONSchema.make(MegarepoConfig)
 
 // =============================================================================
+// Member Name Validation
+// =============================================================================
+
+/** Check if a string contains control characters (0x00-0x1f) */
+const hasControlCharacters = (s: string): boolean => {
+  for (let i = 0; i < s.length; i++) {
+    const code = s.charCodeAt(i)
+    if (code <= 0x1f) return true
+  }
+  return false
+}
+
+/**
+ * Validate that a member name is safe to use as a directory name.
+ * Prevents path traversal attacks and filesystem issues.
+ */
+export const isValidMemberName = (name: string): boolean => {
+  // Must not be empty
+  if (name.length === 0) return false
+
+  // Must not contain path separators or traversal sequences
+  if (name.includes('/') || name.includes('\\')) return false
+  if (name === '.' || name === '..') return false
+  if (name.includes('..')) return false
+
+  // Must not start with a dot (hidden files) or hyphen (could be confused with flags)
+  if (name.startsWith('.') || name.startsWith('-')) return false
+
+  // Must not contain null bytes or other control characters
+  if (hasControlCharacters(name)) return false
+
+  return true
+}
+
+/**
+ * Validate a member name and return an error message if invalid.
+ */
+export const validateMemberName = (name: string): string | undefined => {
+  if (name.length === 0) return 'Member name cannot be empty'
+  if (name.includes('/') || name.includes('\\')) return 'Member name cannot contain path separators'
+  if (name === '.' || name === '..') return 'Member name cannot be . or ..'
+  if (name.includes('..')) return 'Member name cannot contain ..'
+  if (name.startsWith('.')) return 'Member name cannot start with a dot'
+  if (name.startsWith('-')) return 'Member name cannot start with a hyphen'
+  if (hasControlCharacters(name)) return 'Member name cannot contain control characters'
+  return undefined
+}
+
+// =============================================================================
 // Source Parsing
 // =============================================================================
 
