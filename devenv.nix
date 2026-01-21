@@ -43,8 +43,11 @@ in
     })
     # Tasks
     ./nix/devenv/tasks/bun.nix
+    ./nix/devenv/tasks/check.nix
     ./nix/devenv/tasks/genie.nix
     ./nix/devenv/tasks/lint.nix
+    ./nix/devenv/tasks/test.nix
+    ./nix/devenv/tasks/ts.nix
   ];
 
   packages = [
@@ -63,6 +66,11 @@ in
   env = {
     PLAYWRIGHT_BROWSERS_PATH = playwrightDriver.browsers;
   };
+
+  # TODO: Remove once devenv supports defaultMode for tasks (https://github.com/cachix/devenv/issues/2417)
+  # Wrapper that runs tasks with --mode before so dependencies run automatically
+  # Usage: run check:quick, run lint:fix, etc.
+  scripts.run.exec = ''devenv tasks run "$@" --mode before'';
 
   enterShell = ''
     export WORKSPACE_ROOT="$PWD"

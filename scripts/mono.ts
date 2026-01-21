@@ -3,10 +3,7 @@
 import { genieCommand } from '@overeng/genie/cli'
 import {
   buildCommand,
-  checkCommandWithTaskSystem,
   cleanCommand,
-  installCommand,
-  lintCommand,
   nixCommand,
   runMonoCli,
   testCommand,
@@ -16,22 +13,6 @@ import { resolveCliVersion } from '@overeng/utils/node/cli-version'
 
 import { contextCommand, nixPackages } from './commands/index.js'
 
-/** OXC linter/formatter configuration */
-const oxcConfig = {
-  configPath: '.',
-}
-
-/** Genie coverage configuration */
-const genieConfig = {
-  scanDirs: ['packages', 'scripts', 'context'],
-  skipDirs: ['node_modules', 'dist', '.git', '.direnv', '.devenv', 'tmp'],
-}
-
-/** Install configuration */
-const installConfig = {
-  scanDirs: ['packages', 'scripts', 'context'],
-}
-
 const baseVersion = '0.1.0'
 const buildVersion = '__CLI_VERSION__'
 const version = resolveCliVersion({
@@ -40,6 +21,11 @@ const version = resolveCliVersion({
   runtimeStampEnvVar: 'NIX_CLI_BUILD_STAMP',
 })
 
+// NOTE: The following commands have been migrated to devenv tasks:
+// - install -> devenv tasks run bun:install --mode before
+// - lint    -> devenv tasks run lint:check --mode before (or lint:fix)
+// - check   -> devenv tasks run check:all --mode before (or check:quick)
+
 runMonoCli({
   name: 'mono',
   version,
@@ -47,11 +33,8 @@ runMonoCli({
   commands: [
     buildCommand(),
     testCommand(),
-    lintCommand({ oxcConfig, genieConfig }),
     tsCommand(),
     cleanCommand(),
-    installCommand(installConfig),
-    checkCommandWithTaskSystem({ oxcConfig, genieConfig }),
     genieCommand,
     nixCommand({ packages: nixPackages }),
     contextCommand,

@@ -4,10 +4,12 @@
     # Lint check tasks
     "lint:check:format" = {
       exec = ''oxfmt -c ./fmt.jsonc --check . '!**/package.json' '!**/tsconfig.json' '!**/tsconfig.*.json' '!.github/workflows/*.yml' '!packages/@overeng/oxc-config/*.jsonc' '';
+      after = [ "genie:run" ];
       execIfModified = [ "**/*.ts" "**/*.tsx" "**/*.js" "**/*.jsx" "oxfmt.json" ];
     };
     "lint:check:oxlint" = {
       exec = "oxlint -c ./lint.jsonc --import-plugin --deny-warnings";
+      after = [ "genie:run" ];
       execIfModified = [ "**/*.ts" "**/*.tsx" "**/*.js" "**/*.jsx" "oxlint.json" ];
     };
     "lint:check:genie" = {
