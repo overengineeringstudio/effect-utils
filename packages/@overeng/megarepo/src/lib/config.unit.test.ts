@@ -10,8 +10,10 @@ import {
   getSourceUrl,
   getStorePath,
   isRemoteSource,
+  isValidMemberName,
   MegarepoConfig,
   parseSourceString,
+  validateMemberName,
 } from './config.ts'
 
 describe('config', () => {
@@ -28,6 +30,111 @@ describe('config', () => {
       expect(ENV_VARS.ROOT).toBe('MEGAREPO_ROOT')
       expect(ENV_VARS.STORE).toBe('MEGAREPO_STORE')
       expect(ENV_VARS.MEMBERS).toBe('MEGAREPO_MEMBERS')
+    })
+  })
+
+  describe('isValidMemberName', () => {
+    describe('valid names', () => {
+      it('should accept simple alphanumeric names', () => {
+        expect(isValidMemberName('effect')).toBe(true)
+        expect(isValidMemberName('my-repo')).toBe(true)
+        expect(isValidMemberName('my_repo')).toBe(true)
+        expect(isValidMemberName('repo123')).toBe(true)
+        expect(isValidMemberName('MyRepo')).toBe(true)
+      })
+
+      it('should accept names with special characters', () => {
+        expect(isValidMemberName('repo@v2')).toBe(true)
+        expect(isValidMemberName('repo+plus')).toBe(true)
+        expect(isValidMemberName('repo=equal')).toBe(true)
+      })
+    })
+
+    describe('invalid names - path traversal', () => {
+      it('should reject empty name', () => {
+        expect(isValidMemberName('')).toBe(false)
+      })
+
+      it('should reject path separators', () => {
+        expect(isValidMemberName('path/to/repo')).toBe(false)
+        expect(isValidMemberName('path\\to\\repo')).toBe(false)
+        expect(isValidMemberName('../parent')).toBe(false)
+        expect(isValidMemberName('./current')).toBe(false)
+      })
+
+      it('should reject directory traversal sequences', () => {
+        expect(isValidMemberName('..')).toBe(false)
+        expect(isValidMemberName('.')).toBe(false)
+        expect(isValidMemberName('foo..bar')).toBe(false)
+      })
+    })
+
+    describe('invalid names - hidden files and flags', () => {
+      it('should reject names starting with dot', () => {
+        expect(isValidMemberName('.hidden')).toBe(false)
+        expect(isValidMemberName('.git')).toBe(false)
+        expect(isValidMemberName('.env')).toBe(false)
+      })
+
+      it('should reject names starting with hyphen', () => {
+        expect(isValidMemberName('-flag')).toBe(false)
+        expect(isValidMemberName('--option')).toBe(false)
+      })
+    })
+
+    describe('invalid names - control characters', () => {
+      it('should reject null bytes', () => {
+        expect(isValidMemberName('name\x00evil')).toBe(false)
+      })
+
+      it('should reject other control characters', () => {
+        expect(isValidMemberName('name\x01evil')).toBe(false)
+        expect(isValidMemberName('name\x1fend')).toBe(false)
+        expect(isValidMemberName('\ttab')).toBe(false)
+        expect(isValidMemberName('new\nline')).toBe(false)
+        expect(isValidMemberName('carriage\rreturn')).toBe(false)
+      })
+    })
+  })
+
+  describe('validateMemberName', () => {
+    it('should return undefined for valid names', () => {
+      expect(validateMemberName('effect')).toBeUndefined()
+      expect(validateMemberName('my-repo')).toBeUndefined()
+      expect(validateMemberName('repo123')).toBeUndefined()
+    })
+
+    it('should return error message for empty name', () => {
+      expect(validateMemberName('')).toBe('Member name cannot be empty')
+    })
+
+    it('should return error message for path separators', () => {
+      expect(validateMemberName('path/repo')).toBe('Member name cannot contain path separators')
+      expect(validateMemberName('path\\repo')).toBe('Member name cannot contain path separators')
+    })
+
+    it('should return error message for . or ..', () => {
+      expect(validateMemberName('.')).toBe('Member name cannot be . or ..')
+      expect(validateMemberName('..')).toBe('Member name cannot be . or ..')
+    })
+
+    it('should return error message for names containing ..', () => {
+      expect(validateMemberName('foo..bar')).toBe('Member name cannot contain ..')
+    })
+
+    it('should return error message for names starting with dot', () => {
+      expect(validateMemberName('.hidden')).toBe('Member name cannot start with a dot')
+    })
+
+    it('should return error message for names starting with hyphen', () => {
+      expect(validateMemberName('-flag')).toBe('Member name cannot start with a hyphen')
+    })
+
+    it('should return error message for control characters', () => {
+      expect(validateMemberName('name\x00evil')).toBe(
+        'Member name cannot contain control characters',
+      )
+      expect(validateMemberName('new\nline')).toBe('Member name cannot contain control characters')
     })
   })
 

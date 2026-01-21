@@ -38,21 +38,19 @@ import { megarepoJson } from '@overeng/genie/runtime'
 const effectPackages = ['effect', 'schema', 'platform', 'cli'] as const
 
 export default megarepoJson({
-  members: Object.fromEntries(
-    effectPackages.map((name) => [name, `effect-ts/${name}`]),
-  ),
+  members: Object.fromEntries(effectPackages.map((name) => [name, `effect-ts/${name}`])),
 })
 ```
 
 ## Member Source Formats
 
-| Format | Example | Description |
-|--------|---------|-------------|
-| GitHub shorthand | `owner/repo` | Default branch |
-| GitHub with ref | `owner/repo#branch` | Specific branch/tag/commit |
-| HTTPS URL | `https://github.com/owner/repo` | Full URL |
-| SSH URL | `git@github.com:owner/repo` | SSH clone URL |
-| Local path | `./path`, `../path`, `/abs/path` | Local directory |
+| Format           | Example                          | Description                |
+| ---------------- | -------------------------------- | -------------------------- |
+| GitHub shorthand | `owner/repo`                     | Default branch             |
+| GitHub with ref  | `owner/repo#branch`              | Specific branch/tag/commit |
+| HTTPS URL        | `https://github.com/owner/repo`  | Full URL                   |
+| SSH URL          | `git@github.com:owner/repo`      | SSH clone URL              |
+| Local path       | `./path`, `../path`, `/abs/path` | Local directory            |
 
 ## Generator Options
 
