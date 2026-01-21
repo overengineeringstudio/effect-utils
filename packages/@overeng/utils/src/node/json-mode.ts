@@ -9,6 +9,17 @@
 import { Effect, Inspectable } from 'effect'
 
 /**
+ * Format an unknown value for error messages.
+ * Handles Error objects specially since Inspectable.format returns {} for them.
+ */
+const formatUnknown = (value: unknown): string => {
+  if (value instanceof Error) {
+    return String(value) // "Error: message" format
+  }
+  return Inspectable.format(value)
+}
+
+/**
  * Exit the process with the given code, ensuring stdout has flushed first.
  * This prevents output truncation when stdout is piped/redirected (non-TTY).
  *
@@ -101,7 +112,7 @@ export const withJsonMode = <A, E, R>({
           console.log(
             JSON.stringify({
               error: 'internal_error',
-              message: Inspectable.formatUnknown(error),
+              message: formatUnknown(error),
             }),
           )
           return exitWithCode(1)
@@ -111,7 +122,7 @@ export const withJsonMode = <A, E, R>({
           console.log(
             JSON.stringify({
               error: 'internal_error',
-              message: Inspectable.formatUnknown(defect),
+              message: formatUnknown(defect),
             }),
           )
           return exitWithCode(1)
