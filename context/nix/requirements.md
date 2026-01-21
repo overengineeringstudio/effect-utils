@@ -2,8 +2,8 @@
 
 ## Must be consistent
 
-- R1 - Pin `nixpkgs` once for all megarepo members via a workspace flake.
-- R2 - Keep the workspace flake under the megarepo root and reference it via local path inputs.
+- R1 - Each repo pins its own `nixpkgs` (alignment across repos is optional).
+- R2 - Keep the local workspace flake under each megarepo root at `.direnv/megarepo-nix/workspace` (nested roots can override).
 - R3 - Keep repos self-contained outside the megarepo (no hard dependency on workspace-only paths).
 
 ## Must be clean and deterministic
@@ -16,19 +16,21 @@
 ## Must be fast
 
 - R8 - Build dirty/local changes without committing.
-- R9 - Avoid copying large trees (e.g. `node_modules`) for dirty builds; stay fast (< 1s build time for most cases e.g. CLI builds).
+- R9 - Avoid copying large trees (e.g. `node_modules`) for dirty builds; avoid `path:.` eval hashing huge ignored trees by preferring a filtered local workspace; stay fast (< 1s build time for most cases e.g. CLI builds).
 
 ## Must be simple
 
 - R10 - Keep `.envrc` / `devenv` setup minimal; avoid complex overrides or multi-branch logic.
-- R11 - Use standard APIs (e.g. `use devenv`); avoid custom overrides or hacks.
+- R11 - Use standard devenv/flake APIs so usage feels like normal devenv or nix flakes without foot-guns.
+- R12 - Avoid redundant implementations; prefer shared, single-path helpers.
 
 ## Must be clear
 
-- R12 - Provide clear error messages for missing lockfiles / stale dependency hashes.
+- R13 - Provide clear error messages for missing lockfiles / stale dependency hashes. Needs to be easy to refresh the hashes.
 
 ## Must be verified
 
-- R13 - Work in effect-utils and peer repos, with both flake and devenv entrypoints.
-- R14 - Support both flakes and devenv as primary workflows.
-- R15 - Cover clean vs dirty builds and peer-repo flows in tests.
+- R14 - Work in effect-utils and peer repos, with both flake and devenv entrypoints.
+- R15 - Support both flakes and devenv as primary workflows.
+- R16 - Cover megarepo workspace builds vs standalone flake builds, plus peer-repo flows, in tests.
+- R17 - Ensure devenv/flake interop is reliable (path inputs, lockfiles, and required devenv files must work without hacks).
