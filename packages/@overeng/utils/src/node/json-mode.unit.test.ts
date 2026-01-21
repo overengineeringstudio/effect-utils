@@ -90,30 +90,35 @@ describe('JSON mode helpers', () => {
       }),
     )
 
-    it.effect('catches defects and outputs JSON error when json=true', () =>
-      Effect.gen(function* () {
-        // Mock process.exit to prevent test from exiting
-        const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
+    // Using regular `it` because the effect never completes (uses Effect.async<never> for exit)
+    it('catches defects and outputs JSON error when json=true', async () => {
+      // Mock process.exit to prevent test from exiting
+      const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
 
-        try {
-          yield* withJsonMode({
-            json: true,
-            effect: Effect.die(new Error('unexpected crash')),
-          })
-        } finally {
-          exitSpy.mockRestore()
-        }
+      try {
+        // Run the effect but don't wait for it to complete (it never will due to exitWithCode)
+        // The JSON is output synchronously before exitWithCode's async callback
+        await Promise.race([
+          Effect.runPromise(
+            withJsonMode({
+              json: true,
+              effect: Effect.die(new Error('unexpected crash')),
+            }),
+          ).catch(() => {}),
+          new Promise((resolve) => setTimeout(resolve, 100)),
+        ])
+      } finally {
+        exitSpy.mockRestore()
+      }
 
-        // Verify JSON error was output
-        expect(consoleLogSpy).toHaveBeenCalledOnce()
-        const output = consoleLogSpy.mock.calls[0]?.[0] as string
-        const parsed = JSON.parse(output)
-        expect(parsed.error).toBe('internal_error')
-        expect(parsed.message).toContain('unexpected crash')
-        // Note: process.exit is called but timing makes it hard to assert in unit tests
-        // The integration tests validate the full exit behavior
-      }),
-    )
+      // Verify JSON error was output (happens before exitWithCode)
+      expect(consoleLogSpy).toHaveBeenCalledOnce()
+      const output = consoleLogSpy.mock.calls[0]?.[0] as string
+      const parsed = JSON.parse(output)
+      expect(parsed.error).toBe('internal_error')
+      expect(parsed.message).toContain('unexpected crash')
+      // The integration tests validate the full exit behavior
+    })
 
     it.effect('lets defects propagate when json=false', () =>
       Effect.gen(function* () {
@@ -129,25 +134,29 @@ describe('JSON mode helpers', () => {
       }),
     )
 
-    it.effect('formats non-Error defects correctly', () =>
-      Effect.gen(function* () {
-        const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
+    // Using regular `it` because the effect never completes (uses Effect.async<never> for exit)
+    it('formats non-Error defects correctly', async () => {
+      const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
 
-        try {
-          yield* withJsonMode({
-            json: true,
-            effect: Effect.die('string defect'),
-          })
-        } finally {
-          exitSpy.mockRestore()
-        }
+      try {
+        await Promise.race([
+          Effect.runPromise(
+            withJsonMode({
+              json: true,
+              effect: Effect.die('string defect'),
+            }),
+          ).catch(() => {}),
+          new Promise((resolve) => setTimeout(resolve, 100)),
+        ])
+      } finally {
+        exitSpy.mockRestore()
+      }
 
-        expect(consoleLogSpy).toHaveBeenCalledOnce()
-        const output = consoleLogSpy.mock.calls[0]?.[0] as string
-        const parsed = JSON.parse(output)
-        expect(parsed.error).toBe('internal_error')
-        expect(parsed.message).toContain('string defect')
-      }),
-    )
+      expect(consoleLogSpy).toHaveBeenCalledOnce()
+      const output = consoleLogSpy.mock.calls[0]?.[0] as string
+      const parsed = JSON.parse(output)
+      expect(parsed.error).toBe('internal_error')
+      expect(parsed.message).toContain('string defect')
+    })
   })
 })

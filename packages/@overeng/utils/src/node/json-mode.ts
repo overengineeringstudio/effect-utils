@@ -9,21 +9,35 @@
 import { Effect, Inspectable } from 'effect'
 
 /**
- * Exit the process with the given code without Effect runtime logging.
- * Use this in JSON mode after outputting the JSON response.
+ * Exit the process with the given code, ensuring stdout has flushed first.
+ * This prevents output truncation when stdout is piped/redirected (non-TTY).
+ *
+ * Uses Effect.async to wait for stdout to drain before calling process.exit().
  */
 export const exitWithCode = (code: number): Effect.Effect<never> =>
-  Effect.sync(() => process.exit(code))
+  Effect.async<never>(() => {
+    // Set exit code first as a fallback
+    process.exitCode = code
+    // Write empty string with callback to ensure all prior writes have flushed
+    process.stdout.write('', () => {
+      process.exit(code)
+    })
+  })
 
 /**
  * Output a JSON error object to stdout and exit with code 1.
  * This should be used instead of Effect.fail() in JSON mode error paths
  * to prevent Effect's runtime from logging additional output.
+ *
+ * Ensures stdout is flushed before exiting to prevent truncation in pipes.
  */
 export const jsonError = (error: { error: string; message: string }): Effect.Effect<never> =>
-  Effect.sync(() => {
-    console.log(JSON.stringify(error))
-    process.exit(1)
+  Effect.async<never>(() => {
+    process.exitCode = 1
+    // Write JSON with newline (like console.log) and exit after flush
+    process.stdout.write(JSON.stringify(error) + '\n', () => {
+      process.exit(1)
+    })
   })
 
 /**
