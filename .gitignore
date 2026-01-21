@@ -21,6 +21,7 @@ dist
 devenv.local.nix
 /.devenv.flake.nix
 result
+.pre-commit-config.yaml
 
 # Storybook
 storybook-static

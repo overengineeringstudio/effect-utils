@@ -3,10 +3,10 @@
     "devenv": {
       "locked": {
         "dir": "src/modules",
-        "lastModified": 1768320233,
+        "lastModified": 1768954892,
         "owner": "cachix",
         "repo": "devenv",
-        "rev": "2d3be84318ea7a88683a4489ae35b4ebb56b4273",
+        "rev": "c6267b9343bbc96c88038765d02e2a2ad2a3b8a0",
         "type": "github"
       },
       "original": {
@@ -57,10 +57,10 @@
         ]
       },
       "locked": {
-        "lastModified": 1767281941,
+        "lastModified": 1768935149,
         "owner": "cachix",
         "repo": "git-hooks.nix",
-        "rev": "f0927703b7b1c8d97511c4116eb9b4ec6645a0fa",
+        "rev": "18cbede9ff6da05b911c5c4802a397c2686ac8fa",
         "type": "github"
       },
       "original": {
@@ -91,25 +91,40 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1768323494,
+        "lastModified": 1768886240,
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "2c3e5ec5df46d3aeee2a1da0bfedd74e21f4bf3a",
+        "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
         "type": "github"
       },
       "original": {
         "owner": "NixOS",
-        "ref": "release-25.11",
+        "ref": "nixos-unstable",
         "repo": "nixpkgs",
         "type": "github"
       }
     },
     "nixpkgsUnstable": {
       "locked": {
-        "lastModified": 1768127708,
+        "lastModified": 1768886240,
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "ffbc9f8cbaacfb331b6017d5a5abb21a492c9a38",
+        "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "nixpkgs_2": {
+      "locked": {
+        "lastModified": 1768886240,
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
         "type": "github"
       },
       "original": {
@@ -120,11 +135,14 @@
       }
     },
     "overeng-beads-public": {
+      "inputs": {
+        "nixpkgs": "nixpkgs"
+      },
       "locked": {
-        "lastModified": 1768836991,
+        "lastModified": 1768978591,
         "owner": "overengineeringstudio",
         "repo": "overeng-beads-public",
-        "rev": "9f7b5dce2b709f4d6a07e67eb28f438118107e78",
+        "rev": "3e39d2bf531e8c48c00221b3a307cc5bd75f920e",
         "type": "github"
       },
       "original": {
@@ -137,7 +155,7 @@
       "inputs": {
         "flake-utils": "flake-utils",
         "nixpkgs": [
-          "nixpkgsUnstable"
+          "nixpkgs"
         ]
       },
       "locked": {
@@ -157,13 +175,17 @@
       "inputs": {
         "devenv": "devenv",
         "git-hooks": "git-hooks",
-        "nixpkgs": "nixpkgs",
+        "nixpkgs": [
+          "workspace",
+          "nixpkgs"
+        ],
         "nixpkgsUnstable": "nixpkgsUnstable",
         "overeng-beads-public": "overeng-beads-public",
         "playwright-web-flake": "playwright-web-flake",
         "pre-commit-hooks": [
           "git-hooks"
-        ]
+        ],
+        "workspace": "workspace"
       }
     },
     "systems": {
@@ -177,6 +199,25 @@
       "original": {
         "owner": "nix-systems",
         "repo": "default",
+        "type": "github"
+      }
+    },
+    "workspace": {
+      "inputs": {
+        "nixpkgs": "nixpkgs_2"
+      },
+      "locked": {
+        "dir": "nix/workspace-flake",
+        "lastModified": 1768902455,
+        "owner": "overengineeringstudio",
+        "repo": "effect-utils",
+        "rev": "a488c22c39d5a63dda35d7c03fbf415f5b806ea9",
+        "type": "github"
+      },
+      "original": {
+        "dir": "nix/workspace-flake",
+        "owner": "overengineeringstudio",
+        "repo": "effect-utils",
         "type": "github"
       }
     }
