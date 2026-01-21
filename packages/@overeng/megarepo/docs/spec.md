@@ -324,12 +324,15 @@ mr sync [--frozen] [--deep]
 
 #### `mr sync --frozen`
 
-Strict mode for CI:
+Strict mode for CI that guarantees exact reproducibility:
 
 - Lock file MUST exist
 - Lock MUST cover all config members (no new members allowed)
 - Uses locked commits exactly
 - Fails if config has members not in lock
+- **Uses commit-based worktree paths** (e.g., `refs/commits/<sha>/`) to guarantee the exact locked commit is checked out, regardless of what branch refs currently point to
+
+This commit-based path approach ensures that even if the store's bare repo has been updated by another operation, frozen mode always materializes the exact commits from the lock file.
 
 ### Update Commands
 
@@ -365,6 +368,7 @@ mr pin effect --commit=abc # pin to specific commit
 
 - Sets `pinned: true` in lock file
 - Pinned members won't update with `mr update`
+- Pinned members use commit-based worktree paths (like `--frozen`), guaranteeing they stay at the exact pinned commit
 
 #### `mr unpin <member>`
 

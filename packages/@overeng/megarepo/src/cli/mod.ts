@@ -583,8 +583,13 @@ const syncMember = ({
     }
 
     // Create or update worktree
-    const worktreePath = store.getWorktreePath({ source, ref: targetRef })
-    const worktreeExists = yield* store.hasWorktree({ source, ref: targetRef })
+    // For frozen/pinned mode, use commit-based worktree path to guarantee exact reproducibility
+    // This ensures the worktree is at exactly the locked commit, not whatever a branch points to
+    const useCommitBasedPath = (frozen || lockedMember?.pinned) && targetCommit !== undefined
+    // TypeScript note: when useCommitBasedPath is true, targetCommit is guaranteed to be defined
+    const worktreeRef: string = useCommitBasedPath ? targetCommit! : targetRef
+    const worktreePath = store.getWorktreePath({ source, ref: worktreeRef })
+    const worktreeExists = yield* store.hasWorktree({ source, ref: worktreeRef })
 
     if (!worktreeExists && !dryRun) {
       // Ensure worktree parent directory exists
@@ -594,15 +599,17 @@ const syncMember = ({
       }
 
       // Create worktree
-      const refType = classifyRef(targetRef)
+      // Use worktreeRef for classification - if commit-based path, always create detached
+      const refType = classifyRef(worktreeRef)
       if (refType === 'commit' || refType === 'tag') {
+        // Commit or tag: create detached worktree
         yield* Git.createWorktreeDetached({
           repoPath: bareRepoPath,
           worktreePath,
-          commit: targetCommit ?? targetRef,
+          commit: targetCommit ?? worktreeRef,
         })
       } else {
-        // Branch worktree
+        // Branch worktree - can track the branch
         yield* Git.createWorktree({
           repoPath: bareRepoPath,
           worktreePath,
