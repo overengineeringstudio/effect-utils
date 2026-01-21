@@ -49,12 +49,18 @@ describe('JSON mode helpers', () => {
   })
 
   describe('withJsonMode', () => {
-    it.effect('passes through effect when json=false', () =>
+    it.effect('passes through effect when json=false (pipeable)', () =>
       Effect.gen(function* () {
-        const result = yield* withJsonMode({
-          json: false,
-          effect: Effect.succeed('success'),
-        })
+        const result = yield* Effect.succeed('success').pipe(withJsonMode(false))
+
+        expect(result).toBe('success')
+        expect(consoleLogSpy).not.toHaveBeenCalled()
+      }),
+    )
+
+    it.effect('passes through effect when json=false (data-first)', () =>
+      Effect.gen(function* () {
+        const result = yield* withJsonMode(Effect.succeed('success'), false)
 
         expect(result).toBe('success')
         expect(consoleLogSpy).not.toHaveBeenCalled()
@@ -63,10 +69,7 @@ describe('JSON mode helpers', () => {
 
     it.effect('passes through successful effect when json=true', () =>
       Effect.gen(function* () {
-        const result = yield* withJsonMode({
-          json: true,
-          effect: Effect.succeed('success'),
-        })
+        const result = yield* Effect.succeed('success').pipe(withJsonMode(true))
 
         expect(result).toBe('success')
         expect(consoleLogSpy).not.toHaveBeenCalled()
@@ -79,12 +82,7 @@ describe('JSON mode helpers', () => {
 
       try {
         await Promise.race([
-          Effect.runPromise(
-            withJsonMode({
-              json: true,
-              effect: Effect.fail('typed error'),
-            }),
-          ).catch(() => {}),
+          Effect.runPromise(Effect.fail('typed error').pipe(withJsonMode(true))).catch(() => {}),
           new Promise((resolve) => setTimeout(resolve, 100)),
         ])
       } finally {
@@ -102,10 +100,7 @@ describe('JSON mode helpers', () => {
 
     it.effect('lets typed failures propagate when json=false', () =>
       Effect.gen(function* () {
-        const effect = withJsonMode({
-          json: false,
-          effect: Effect.fail('expected error'),
-        })
+        const effect = Effect.fail('expected error').pipe(withJsonMode(false))
 
         const result = yield* Effect.either(effect)
 
@@ -125,12 +120,9 @@ describe('JSON mode helpers', () => {
         // Run the effect - JSON is output synchronously, then process.exit is called
         // after stdout flushes via the async callback
         await Promise.race([
-          Effect.runPromise(
-            withJsonMode({
-              json: true,
-              effect: Effect.die(new Error('unexpected crash')),
-            }),
-          ).catch(() => {}),
+          Effect.runPromise(Effect.die(new Error('unexpected crash')).pipe(withJsonMode(true))).catch(
+            () => {},
+          ),
           new Promise((resolve) => setTimeout(resolve, 100)),
         ])
       } finally {
@@ -148,10 +140,7 @@ describe('JSON mode helpers', () => {
 
     it.effect('lets defects propagate when json=false', () =>
       Effect.gen(function* () {
-        const effect = withJsonMode({
-          json: false,
-          effect: Effect.die(new Error('unexpected crash')),
-        })
+        const effect = Effect.die(new Error('unexpected crash')).pipe(withJsonMode(false))
 
         const result = yield* Effect.exit(effect)
 
@@ -166,12 +155,7 @@ describe('JSON mode helpers', () => {
 
       try {
         await Promise.race([
-          Effect.runPromise(
-            withJsonMode({
-              json: true,
-              effect: Effect.die('string defect'),
-            }),
-          ).catch(() => {}),
+          Effect.runPromise(Effect.die('string defect').pipe(withJsonMode(true))).catch(() => {}),
           new Promise((resolve) => setTimeout(resolve, 100)),
         ])
       } finally {

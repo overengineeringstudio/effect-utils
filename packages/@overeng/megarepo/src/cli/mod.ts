@@ -84,58 +84,55 @@ const createSymlink = ({ target, link }: { target: string; link: string }) =>
 
 /** Initialize a new megarepo in current directory */
 const initCommand = Cli.Command.make('init', { json: jsonOption }, ({ json }) =>
-  withJsonMode({
-    json,
-    effect: Effect.gen(function* () {
-      const cwd = yield* Cwd
-      const fs = yield* FileSystem.FileSystem
+  Effect.gen(function* () {
+    const cwd = yield* Cwd
+    const fs = yield* FileSystem.FileSystem
 
-      // Check if already in a git repo
-      const isGit = yield* Git.isGitRepo(cwd)
-      if (!isGit) {
-        if (json) {
-          return yield* jsonError({ error: 'not_git_repo', message: 'Not a git repository' })
-        }
-        yield* Effect.logError(
-          `${styled.red(symbols.cross)} Not a git repository. Run 'git init' first.`,
-        )
-        return yield* Effect.fail(new Error('Not a git repository'))
-      }
-
-      const configPath = EffectPath.ops.join(cwd, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME))
-
-      // Check if config already exists
-      const exists = yield* fs.exists(configPath)
-      if (exists) {
-        if (json) {
-          console.log(JSON.stringify({ status: 'already_initialized', path: configPath }))
-        } else {
-          yield* Effect.log(styled.dim('megarepo already initialized'))
-        }
-        return
-      }
-
-      // Create initial config
-      const initialConfig = {
-        $schema:
-          'https://raw.githubusercontent.com/overengineeringstudio/megarepo/main/schema/megarepo.schema.json',
-        members: {},
-      }
-
-      const configContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
-        initialConfig,
-      )
-      yield* fs.writeFileString(configPath, configContent + '\n')
-
+    // Check if already in a git repo
+    const isGit = yield* Git.isGitRepo(cwd)
+    if (!isGit) {
       if (json) {
-        console.log(JSON.stringify({ status: 'initialized', path: configPath }))
-      } else {
-        yield* Effect.log(
-          `${styled.green(symbols.check)} ${styled.dim('initialized megarepo at')} ${styled.bold(path.basename(cwd))}`,
-        )
+        return yield* jsonError({ error: 'not_git_repo', message: 'Not a git repository' })
       }
-    }).pipe(Effect.withSpan('megarepo/init')),
-  }),
+      yield* Effect.logError(
+        `${styled.red(symbols.cross)} Not a git repository. Run 'git init' first.`,
+      )
+      return yield* Effect.fail(new Error('Not a git repository'))
+    }
+
+    const configPath = EffectPath.ops.join(cwd, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME))
+
+    // Check if config already exists
+    const exists = yield* fs.exists(configPath)
+    if (exists) {
+      if (json) {
+        console.log(JSON.stringify({ status: 'already_initialized', path: configPath }))
+      } else {
+        yield* Effect.log(styled.dim('megarepo already initialized'))
+      }
+      return
+    }
+
+    // Create initial config
+    const initialConfig = {
+      $schema:
+        'https://raw.githubusercontent.com/overengineeringstudio/megarepo/main/schema/megarepo.schema.json',
+      members: {},
+    }
+
+    const configContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
+      initialConfig,
+    )
+    yield* fs.writeFileString(configPath, configContent + '\n')
+
+    if (json) {
+      console.log(JSON.stringify({ status: 'initialized', path: configPath }))
+    } else {
+      yield* Effect.log(
+        `${styled.green(symbols.check)} ${styled.dim('initialized megarepo at')} ${styled.bold(path.basename(cwd))}`,
+      )
+    }
+  }).pipe(Effect.withSpan('megarepo/init'), withJsonMode(json)),
 ).pipe(Cli.Command.withDescription('Initialize a new megarepo in the current directory'))
 
 // =============================================================================
@@ -183,57 +180,54 @@ const findMegarepoRoot = (startPath: AbsoluteDirPath) =>
 
 /** Find and print the megarepo root directory */
 const rootCommand = Cli.Command.make('root', { json: jsonOption }, ({ json }) =>
-  withJsonMode({
-    json,
-    effect: Effect.gen(function* () {
-      const cwd = yield* Cwd
+  Effect.gen(function* () {
+    const cwd = yield* Cwd
 
-      // If MEGAREPO_ROOT is set and valid, use that
-      const envRoot = process.env[ENV_VARS.ROOT]
-      if (envRoot !== undefined) {
-        const fs = yield* FileSystem.FileSystem
-        const envRootDir = EffectPath.unsafe.absoluteDir(
-          envRoot.endsWith('/') ? envRoot : `${envRoot}/`,
-        )
-        const configPath = EffectPath.ops.join(
-          envRootDir,
-          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-        )
-        const exists = yield* fs.exists(configPath)
+    // If MEGAREPO_ROOT is set and valid, use that
+    const envRoot = process.env[ENV_VARS.ROOT]
+    if (envRoot !== undefined) {
+      const fs = yield* FileSystem.FileSystem
+      const envRootDir = EffectPath.unsafe.absoluteDir(
+        envRoot.endsWith('/') ? envRoot : `${envRoot}/`,
+      )
+      const configPath = EffectPath.ops.join(
+        envRootDir,
+        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+      )
+      const exists = yield* fs.exists(configPath)
 
-        if (exists) {
-          const name = yield* Git.deriveMegarepoName(envRootDir)
-          if (json) {
-            console.log(JSON.stringify({ root: envRootDir, name, source: 'env' }))
-          } else {
-            console.log(envRootDir)
-          }
-          return
-        }
-      }
-
-      // Search up from current directory
-      const root = yield* findMegarepoRoot(cwd)
-
-      if (Option.isNone(root)) {
+      if (exists) {
+        const name = yield* Git.deriveMegarepoName(envRootDir)
         if (json) {
-          return yield* jsonError({ error: 'not_found', message: 'No megarepo.json found' })
+          console.log(JSON.stringify({ root: envRootDir, name, source: 'env' }))
+        } else {
+          console.log(envRootDir)
         }
-        yield* Effect.logError(
-          `${styled.red(symbols.cross)} No megarepo.json found in current directory or any parent.`,
-        )
-        return yield* Effect.fail(new Error('Not in a megarepo'))
+        return
       }
+    }
 
-      const name = yield* Git.deriveMegarepoName(root.value)
+    // Search up from current directory
+    const root = yield* findMegarepoRoot(cwd)
 
+    if (Option.isNone(root)) {
       if (json) {
-        console.log(JSON.stringify({ root: root.value, name, source: 'search' }))
-      } else {
-        console.log(root.value)
+        return yield* jsonError({ error: 'not_found', message: 'No megarepo.json found' })
       }
-    }).pipe(Effect.withSpan('megarepo/root')),
-  }),
+      yield* Effect.logError(
+        `${styled.red(symbols.cross)} No megarepo.json found in current directory or any parent.`,
+      )
+      return yield* Effect.fail(new Error('Not in a megarepo'))
+    }
+
+    const name = yield* Git.deriveMegarepoName(root.value)
+
+    if (json) {
+      console.log(JSON.stringify({ root: root.value, name, source: 'search' }))
+    } else {
+      console.log(root.value)
+    }
+  }).pipe(Effect.withSpan('megarepo/root'), withJsonMode(json)),
 ).pipe(Cli.Command.withDescription('Print the megarepo root directory'))
 
 // =============================================================================
@@ -251,54 +245,51 @@ const envCommand = Cli.Command.make(
     json: jsonOption,
   },
   ({ shell, json }) =>
-    withJsonMode({
-      json,
-      effect: Effect.gen(function* () {
-        const cwd = yield* Cwd
+    Effect.gen(function* () {
+      const cwd = yield* Cwd
 
-        // Find the megarepo root
-        const root = yield* findMegarepoRoot(cwd)
+      // Find the megarepo root
+      const root = yield* findMegarepoRoot(cwd)
 
-        if (Option.isNone(root)) {
-          if (json) {
-            return yield* jsonError({ error: 'not_found', message: 'No megarepo.json found' })
-          }
-          yield* Effect.logError(`${styled.red(symbols.cross)} No megarepo.json found`)
-          return yield* Effect.fail(new Error('Not in a megarepo'))
-        }
-
-        // Load config to get member names
-        const fs = yield* FileSystem.FileSystem
-        const configPath = EffectPath.ops.join(
-          root.value,
-          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-        )
-        const configContent = yield* fs.readFileString(configPath)
-        const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
-
-        const memberNames = Object.keys(config.members).join(',')
-
+      if (Option.isNone(root)) {
         if (json) {
-          console.log(
-            JSON.stringify({
-              [ENV_VARS.ROOT]: root.value,
-              [ENV_VARS.MEMBERS]: memberNames,
-            }),
-          )
-        } else {
-          // Output shell-specific format
-          switch (shell) {
-            case 'fish':
-              console.log(`set -gx ${ENV_VARS.ROOT} "${root.value}"`)
-              console.log(`set -gx ${ENV_VARS.MEMBERS} "${memberNames}"`)
-              break
-            default:
-              console.log(`export ${ENV_VARS.ROOT}="${root.value}"`)
-              console.log(`export ${ENV_VARS.MEMBERS}="${memberNames}"`)
-          }
+          return yield* jsonError({ error: 'not_found', message: 'No megarepo.json found' })
         }
-      }).pipe(Effect.withSpan('megarepo/env')),
-    }),
+        yield* Effect.logError(`${styled.red(symbols.cross)} No megarepo.json found`)
+        return yield* Effect.fail(new Error('Not in a megarepo'))
+      }
+
+      // Load config to get member names
+      const fs = yield* FileSystem.FileSystem
+      const configPath = EffectPath.ops.join(
+        root.value,
+        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+      )
+      const configContent = yield* fs.readFileString(configPath)
+      const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+
+      const memberNames = Object.keys(config.members).join(',')
+
+      if (json) {
+        console.log(
+          JSON.stringify({
+            [ENV_VARS.ROOT]: root.value,
+            [ENV_VARS.MEMBERS]: memberNames,
+          }),
+        )
+      } else {
+        // Output shell-specific format
+        switch (shell) {
+          case 'fish':
+            console.log(`set -gx ${ENV_VARS.ROOT} "${root.value}"`)
+            console.log(`set -gx ${ENV_VARS.MEMBERS} "${memberNames}"`)
+            break
+          default:
+            console.log(`export ${ENV_VARS.ROOT}="${root.value}"`)
+            console.log(`export ${ENV_VARS.MEMBERS}="${memberNames}"`)
+        }
+      }
+    }).pipe(Effect.withSpan('megarepo/env'), withJsonMode(json)),
 ).pipe(Cli.Command.withDescription('Output environment variables for shell integration'))
 
 // =============================================================================
@@ -307,58 +298,55 @@ const envCommand = Cli.Command.make(
 
 /** Show megarepo status */
 const statusCommand = Cli.Command.make('status', { json: jsonOption }, ({ json }) =>
-  withJsonMode({
-    json,
-    effect: Effect.gen(function* () {
-      const cwd = yield* Cwd
-      const root = yield* findMegarepoRoot(cwd)
+  Effect.gen(function* () {
+    const cwd = yield* Cwd
+    const root = yield* findMegarepoRoot(cwd)
 
-      if (Option.isNone(root)) {
-        if (json) {
-          return yield* jsonError({ error: 'not_found', message: 'No megarepo.json found' })
-        }
-        yield* Effect.logError(`${styled.red(symbols.cross)} Not in a megarepo`)
-        return yield* Effect.fail(new Error('Not in a megarepo'))
-      }
-
-      // Load config
-      const fs = yield* FileSystem.FileSystem
-      const configPath = EffectPath.ops.join(
-        root.value,
-        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-      )
-      const configContent = yield* fs.readFileString(configPath)
-      const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
-
-      const name = yield* Git.deriveMegarepoName(root.value)
-      const memberCount = Object.keys(config.members).length
-
+    if (Option.isNone(root)) {
       if (json) {
-        console.log(
-          JSON.stringify({
-            name,
-            root: root.value,
-            memberCount,
-            members: Object.keys(config.members),
-          }),
-        )
-      } else {
-        yield* Effect.log(`${styled.bold(name)}`)
-        yield* Effect.log(styled.dim(`  root: ${root.value}`))
-        yield* Effect.log(styled.dim(`  members: ${memberCount}`))
-
-        for (const [memberName] of Object.entries(config.members)) {
-          const memberPath = EffectPath.ops.join(
-            root.value,
-            EffectPath.unsafe.relativeDir(`${memberName}/`),
-          )
-          const memberExists = yield* fs.exists(memberPath)
-          const status = memberExists ? styled.green(symbols.check) : styled.yellow('○')
-          yield* Effect.log(`  ${status} ${memberName}`)
-        }
+        return yield* jsonError({ error: 'not_found', message: 'No megarepo.json found' })
       }
-    }).pipe(Effect.withSpan('megarepo/status')),
-  }),
+      yield* Effect.logError(`${styled.red(symbols.cross)} Not in a megarepo`)
+      return yield* Effect.fail(new Error('Not in a megarepo'))
+    }
+
+    // Load config
+    const fs = yield* FileSystem.FileSystem
+    const configPath = EffectPath.ops.join(
+      root.value,
+      EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+    )
+    const configContent = yield* fs.readFileString(configPath)
+    const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+
+    const name = yield* Git.deriveMegarepoName(root.value)
+    const memberCount = Object.keys(config.members).length
+
+    if (json) {
+      console.log(
+        JSON.stringify({
+          name,
+          root: root.value,
+          memberCount,
+          members: Object.keys(config.members),
+        }),
+      )
+    } else {
+      yield* Effect.log(`${styled.bold(name)}`)
+      yield* Effect.log(styled.dim(`  root: ${root.value}`))
+      yield* Effect.log(styled.dim(`  members: ${memberCount}`))
+
+      for (const [memberName] of Object.entries(config.members)) {
+        const memberPath = EffectPath.ops.join(
+          root.value,
+          EffectPath.unsafe.relativeDir(`${memberName}/`),
+        )
+        const memberExists = yield* fs.exists(memberPath)
+        const status = memberExists ? styled.green(symbols.check) : styled.yellow('○')
+        yield* Effect.log(`  ${status} ${memberName}`)
+      }
+    }
+  }).pipe(Effect.withSpan('megarepo/status'), withJsonMode(json)),
 ).pipe(Cli.Command.withDescription('Show workspace status and member states'))
 
 // =============================================================================
@@ -367,38 +355,35 @@ const statusCommand = Cli.Command.make('status', { json: jsonOption }, ({ json }
 
 /** List members */
 const lsCommand = Cli.Command.make('ls', { json: jsonOption }, ({ json }) =>
-  withJsonMode({
-    json,
-    effect: Effect.gen(function* () {
-      const cwd = yield* Cwd
-      const root = yield* findMegarepoRoot(cwd)
+  Effect.gen(function* () {
+    const cwd = yield* Cwd
+    const root = yield* findMegarepoRoot(cwd)
 
-      if (Option.isNone(root)) {
-        if (json) {
-          return yield* jsonError({ error: 'not_found', message: 'No megarepo.json found' })
-        }
-        yield* Effect.logError(`${styled.red(symbols.cross)} Not in a megarepo`)
-        return yield* Effect.fail(new Error('Not in a megarepo'))
-      }
-
-      // Load config
-      const fs = yield* FileSystem.FileSystem
-      const configPath = EffectPath.ops.join(
-        root.value,
-        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-      )
-      const configContent = yield* fs.readFileString(configPath)
-      const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
-
+    if (Option.isNone(root)) {
       if (json) {
-        console.log(JSON.stringify({ members: config.members }))
-      } else {
-        for (const [name, sourceString] of Object.entries(config.members)) {
-          yield* Effect.log(`${styled.bold(name)} ${styled.dim(`(${sourceString})`)}`)
-        }
+        return yield* jsonError({ error: 'not_found', message: 'No megarepo.json found' })
       }
-    }).pipe(Effect.withSpan('megarepo/ls')),
-  }),
+      yield* Effect.logError(`${styled.red(symbols.cross)} Not in a megarepo`)
+      return yield* Effect.fail(new Error('Not in a megarepo'))
+    }
+
+    // Load config
+    const fs = yield* FileSystem.FileSystem
+    const configPath = EffectPath.ops.join(
+      root.value,
+      EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+    )
+    const configContent = yield* fs.readFileString(configPath)
+    const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+
+    if (json) {
+      console.log(JSON.stringify({ members: config.members }))
+    } else {
+      for (const [name, sourceString] of Object.entries(config.members)) {
+        yield* Effect.log(`${styled.bold(name)} ${styled.dim(`(${sourceString})`)}`)
+      }
+    }
+  }).pipe(Effect.withSpan('megarepo/ls'), withJsonMode(json)),
 ).pipe(Cli.Command.withDescription('List all members in the megarepo'))
 
 // =============================================================================
@@ -1762,29 +1747,26 @@ const unpinCommand = Cli.Command.make(
 
 /** List repos in the store */
 const storeLsCommand = Cli.Command.make('ls', { json: jsonOption }, ({ json }) =>
-  withJsonMode({
-    json,
-    effect: Effect.gen(function* () {
-      const store = yield* Store
-      const repos = yield* store.listRepos()
+  Effect.gen(function* () {
+    const store = yield* Store
+    const repos = yield* store.listRepos()
 
-      if (json) {
-        console.log(JSON.stringify({ repos }))
+    if (json) {
+      console.log(JSON.stringify({ repos }))
+    } else {
+      if (repos.length === 0) {
+        yield* Effect.log(styled.dim('Store is empty'))
       } else {
-        if (repos.length === 0) {
-          yield* Effect.log(styled.dim('Store is empty'))
-        } else {
-          yield* Effect.log(styled.bold(`Store: ${store.basePath}`))
-          yield* Effect.log('')
-          for (const repo of repos) {
-            yield* Effect.log(`  ${repo.relativePath}`)
-          }
-          yield* Effect.log('')
-          yield* Effect.log(styled.dim(`${repos.length} repo(s)`))
+        yield* Effect.log(styled.bold(`Store: ${store.basePath}`))
+        yield* Effect.log('')
+        for (const repo of repos) {
+          yield* Effect.log(`  ${repo.relativePath}`)
         }
+        yield* Effect.log('')
+        yield* Effect.log(styled.dim(`${repos.length} repo(s)`))
       }
-    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/ls')),
-  }),
+    }
+  }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/ls'), withJsonMode(json)),
 ).pipe(Cli.Command.withDescription('List repositories in the store'))
 
 /** Fetch all repos in the store */

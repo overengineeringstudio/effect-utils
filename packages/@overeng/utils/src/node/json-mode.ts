@@ -6,6 +6,7 @@
  * with no contamination from Effect's runtime error logging.
  */
 
+import { dual } from 'effect/Function'
 import { Effect, Inspectable } from 'effect'
 
 /**
@@ -80,52 +81,55 @@ export const jsonOutput = <T>(data: T): Effect.Effect<void> =>
  *
  * @example
  * ```ts
+ * // Data-last (pipeable) - recommended
  * const myCommand = Cli.Command.make('cmd', { json: jsonOption }, ({ json }) =>
- *   withJsonMode({
- *     json,
- *     effect: Effect.gen(function* () {
- *       // Command implementation
- *       if (someError) {
- *         return yield* jsonError({ error: 'some_error', message: 'Details' })
- *       }
- *       if (json) {
- *         console.log(JSON.stringify({ result: 'success' }))
- *       } else {
- *         yield* Effect.log('Success!')
- *       }
- *     }),
- *   }),
+ *   Effect.gen(function* () {
+ *     // Command implementation
+ *     if (someError) {
+ *       return yield* jsonError({ error: 'some_error', message: 'Details' })
+ *     }
+ *     if (json) {
+ *       console.log(JSON.stringify({ result: 'success' }))
+ *     } else {
+ *       yield* Effect.log('Success!')
+ *     }
+ *   }).pipe(withJsonMode(json)),
  * )
+ *
+ * // Data-first
+ * withJsonMode(myEffect, json)
  * ```
  */
-export const withJsonMode = <A, E, R>({
-  json,
-  effect,
-}: {
-  json: boolean
-  effect: Effect.Effect<A, E, R>
-}): Effect.Effect<A, E, R> =>
-  json
-    ? (effect.pipe(
-        // Catch typed failures (e.g., PlatformError, IO errors)
-        Effect.catchAll((error) => {
-          console.log(
-            JSON.stringify({
-              error: 'internal_error',
-              message: formatUnknown(error),
-            }),
-          )
-          return exitWithCode(1)
-        }),
-        // Catch defects (unexpected throws, Effect.die, etc.)
-        Effect.catchAllDefect((defect) => {
-          console.log(
-            JSON.stringify({
-              error: 'internal_error',
-              message: formatUnknown(defect),
-            }),
-          )
-          return exitWithCode(1)
-        }),
-      ) as Effect.Effect<A, E, R>)
-    : effect
+export const withJsonMode: {
+  // Data-last (pipeable)
+  (json: boolean): <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>
+  // Data-first
+  <A, E, R>(effect: Effect.Effect<A, E, R>, json: boolean): Effect.Effect<A, E, R>
+} = dual(
+  2,
+  <A, E, R>(effect: Effect.Effect<A, E, R>, json: boolean): Effect.Effect<A, E, R> =>
+    json
+      ? (effect.pipe(
+          // Catch typed failures (e.g., PlatformError, IO errors)
+          Effect.catchAll((error) => {
+            console.log(
+              JSON.stringify({
+                error: 'internal_error',
+                message: formatUnknown(error),
+              }),
+            )
+            return exitWithCode(1)
+          }),
+          // Catch defects (unexpected throws, Effect.die, etc.)
+          Effect.catchAllDefect((defect) => {
+            console.log(
+              JSON.stringify({
+                error: 'internal_error',
+                message: formatUnknown(defect),
+              }),
+            )
+            return exitWithCode(1)
+          }),
+        ) as Effect.Effect<A, E, R>)
+      : effect,
+)
