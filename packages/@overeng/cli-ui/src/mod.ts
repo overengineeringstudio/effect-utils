@@ -67,3 +67,13 @@ export {
   type PadOptions,
   type TruncateOptions,
 } from './utils.ts'
+
+// Progress indicators
+export {
+  progress,
+  spinner,
+  spinnerFrames,
+  progressSymbols,
+  formatElapsed,
+  type ProgressOptions,
+} from './progress.ts'
