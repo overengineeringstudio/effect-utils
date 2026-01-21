@@ -2293,7 +2293,7 @@ const generateCommand = Cli.Command.make('generate', {}).pipe(
 // =============================================================================
 
 /** Root CLI command */
-const mrCommand = Cli.Command.make('mr', {}).pipe(
+export const mrCommand = Cli.Command.make('mr', {}).pipe(
   Cli.Command.withSubcommands([
     initCommand,
     rootCommand,

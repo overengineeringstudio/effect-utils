@@ -1,8 +1,18 @@
 #!/usr/bin/env bun
 
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
-import { Effect } from 'effect'
+import * as Cli from '@effect/cli'
+import { Effect, Layer } from 'effect'
 
-import { cli } from '../src/cli/mod.ts'
+import { Cwd } from '../src/cli/mod.ts'
+import { mrCommand } from '../src/cli/mod.ts'
 
-cli.pipe(Effect.provide(NodeContext.layer), NodeRuntime.runMain)
+// Version placeholder replaced by nix build
+const buildVersion = '__CLI_VERSION__'
+
+const baseLayer = Layer.mergeAll(NodeContext.layer, Cwd.live)
+
+Cli.Command.run(mrCommand, {
+  name: 'mr',
+  version: buildVersion,
+})(process.argv).pipe(Effect.provide(baseLayer), NodeRuntime.runMain)

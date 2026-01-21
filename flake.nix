@@ -31,6 +31,10 @@
             inherit pkgs pkgsUnstable gitRev;
             src = self;
           };
+          megarepo = import (rootPath + "/packages/@overeng/megarepo/nix/build.nix") {
+            inherit pkgs pkgsUnstable gitRev;
+            src = self;
+          };
           mono = import ./scripts/nix/build.nix {
             inherit pkgs pkgsUnstable mkBunCli;
             src = self;
@@ -49,6 +53,11 @@
             src = self;
             dirty = true;
           };
+          megarepo = import (rootPath + "/packages/@overeng/megarepo/nix/build.nix") {
+            inherit pkgs pkgsUnstable gitRev;
+            src = self;
+            dirty = true;
+          };
           mono = import ./scripts/nix/build.nix {
             inherit pkgs pkgsUnstable mkBunCli;
             src = self;
@@ -62,6 +71,7 @@
           cli-build-stamp = cliBuildStamp.package;
           genie-dirty = cliPackagesDirty.genie;
           dotdot-dirty = cliPackagesDirty.dotdot;
+          megarepo-dirty = cliPackagesDirty.megarepo;
           mono-dirty = cliPackagesDirty.mono;
         };
 
@@ -69,11 +79,13 @@
         cliOutPaths = {
           genie = cliPackages.genie.outPath;
           dotdot = cliPackages.dotdot.outPath;
+          megarepo = cliPackages.megarepo.outPath;
           mono = cliPackages.mono.outPath;
         };
         cliOutPathsDirty = {
           genie = cliPackagesDirty.genie.outPath;
           dotdot = cliPackagesDirty.dotdot.outPath;
+          megarepo = cliPackagesDirty.megarepo.outPath;
           mono = cliPackagesDirty.mono.outPath;
         };
 
