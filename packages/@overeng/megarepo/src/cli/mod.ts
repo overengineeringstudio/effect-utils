@@ -12,6 +12,7 @@ import { Context, Effect, Layer, Option, Schema } from 'effect'
 
 import { styled, symbols } from '@overeng/cli-ui'
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
+import { jsonError, withJsonMode } from '@overeng/utils/node'
 
 import {
   CONFIG_FILE_NAME,
@@ -91,12 +92,11 @@ const initCommand = Cli.Command.make('init', { json: jsonOption }, ({ json }) =>
     const isGit = yield* Git.isGitRepo(cwd)
     if (!isGit) {
       if (json) {
-        console.log(JSON.stringify({ error: 'not_git_repo', message: 'Not a git repository' }))
-      } else {
-        yield* Effect.logError(
-          `${styled.red(symbols.cross)} Not a git repository. Run 'git init' first.`,
-        )
+        return yield* jsonError({ error: 'not_git_repo', message: 'Not a git repository' })
       }
+      yield* Effect.logError(
+        `${styled.red(symbols.cross)} Not a git repository. Run 'git init' first.`,
+      )
       return yield* Effect.fail(new Error('Not a git repository'))
     }
 
@@ -132,7 +132,7 @@ const initCommand = Cli.Command.make('init', { json: jsonOption }, ({ json }) =>
         `${styled.green(symbols.check)} ${styled.dim('initialized megarepo at')} ${styled.bold(path.basename(cwd))}`,
       )
     }
-  }).pipe(Effect.withSpan('megarepo/init')),
+  }).pipe(Effect.withSpan('megarepo/init'), withJsonMode(json)),
 ).pipe(Cli.Command.withDescription('Initialize a new megarepo in the current directory'))
 
 // =============================================================================
@@ -212,12 +212,11 @@ const rootCommand = Cli.Command.make('root', { json: jsonOption }, ({ json }) =>
 
     if (Option.isNone(root)) {
       if (json) {
-        console.log(JSON.stringify({ error: 'not_found', message: 'No megarepo.json found' }))
-      } else {
-        yield* Effect.logError(
-          `${styled.red(symbols.cross)} No megarepo.json found in current directory or any parent.`,
-        )
+        return yield* jsonError({ error: 'not_found', message: 'No megarepo.json found' })
       }
+      yield* Effect.logError(
+        `${styled.red(symbols.cross)} No megarepo.json found in current directory or any parent.`,
+      )
       return yield* Effect.fail(new Error('Not in a megarepo'))
     }
 
@@ -228,7 +227,7 @@ const rootCommand = Cli.Command.make('root', { json: jsonOption }, ({ json }) =>
     } else {
       console.log(root.value)
     }
-  }).pipe(Effect.withSpan('megarepo/root')),
+  }).pipe(Effect.withSpan('megarepo/root'), withJsonMode(json)),
 ).pipe(Cli.Command.withDescription('Print the megarepo root directory'))
 
 // =============================================================================
@@ -254,10 +253,9 @@ const envCommand = Cli.Command.make(
 
       if (Option.isNone(root)) {
         if (json) {
-          console.log(JSON.stringify({ error: 'not_found', message: 'No megarepo.json found' }))
-        } else {
-          yield* Effect.logError(`${styled.red(symbols.cross)} No megarepo.json found`)
+          return yield* jsonError({ error: 'not_found', message: 'No megarepo.json found' })
         }
+        yield* Effect.logError(`${styled.red(symbols.cross)} No megarepo.json found`)
         return yield* Effect.fail(new Error('Not in a megarepo'))
       }
 
@@ -291,7 +289,7 @@ const envCommand = Cli.Command.make(
             console.log(`export ${ENV_VARS.MEMBERS}="${memberNames}"`)
         }
       }
-    }).pipe(Effect.withSpan('megarepo/env')),
+    }).pipe(Effect.withSpan('megarepo/env'), withJsonMode(json)),
 ).pipe(Cli.Command.withDescription('Output environment variables for shell integration'))
 
 // =============================================================================
@@ -306,10 +304,9 @@ const statusCommand = Cli.Command.make('status', { json: jsonOption }, ({ json }
 
     if (Option.isNone(root)) {
       if (json) {
-        console.log(JSON.stringify({ error: 'not_found', message: 'No megarepo.json found' }))
-      } else {
-        yield* Effect.logError(`${styled.red(symbols.cross)} Not in a megarepo`)
+        return yield* jsonError({ error: 'not_found', message: 'No megarepo.json found' })
       }
+      yield* Effect.logError(`${styled.red(symbols.cross)} Not in a megarepo`)
       return yield* Effect.fail(new Error('Not in a megarepo'))
     }
 
@@ -349,7 +346,7 @@ const statusCommand = Cli.Command.make('status', { json: jsonOption }, ({ json }
         yield* Effect.log(`  ${status} ${memberName}`)
       }
     }
-  }).pipe(Effect.withSpan('megarepo/status')),
+  }).pipe(Effect.withSpan('megarepo/status'), withJsonMode(json)),
 ).pipe(Cli.Command.withDescription('Show workspace status and member states'))
 
 // =============================================================================
@@ -364,10 +361,9 @@ const lsCommand = Cli.Command.make('ls', { json: jsonOption }, ({ json }) =>
 
     if (Option.isNone(root)) {
       if (json) {
-        console.log(JSON.stringify({ error: 'not_found', message: 'No megarepo.json found' }))
-      } else {
-        yield* Effect.logError(`${styled.red(symbols.cross)} Not in a megarepo`)
+        return yield* jsonError({ error: 'not_found', message: 'No megarepo.json found' })
       }
+      yield* Effect.logError(`${styled.red(symbols.cross)} Not in a megarepo`)
       return yield* Effect.fail(new Error('Not in a megarepo'))
     }
 
@@ -387,7 +383,7 @@ const lsCommand = Cli.Command.make('ls', { json: jsonOption }, ({ json }) =>
         yield* Effect.log(`${styled.bold(name)} ${styled.dim(`(${sourceString})`)}`)
       }
     }
-  }).pipe(Effect.withSpan('megarepo/ls')),
+  }).pipe(Effect.withSpan('megarepo/ls'), withJsonMode(json)),
 ).pipe(Cli.Command.withDescription('List all members in the megarepo'))
 
 // =============================================================================
@@ -1770,7 +1766,7 @@ const storeLsCommand = Cli.Command.make('ls', { json: jsonOption }, ({ json }) =
         yield* Effect.log(styled.dim(`${repos.length} repo(s)`))
       }
     }
-  }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/ls')),
+  }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/ls'), withJsonMode(json)),
 ).pipe(Cli.Command.withDescription('List repositories in the store'))
 
 /** Fetch all repos in the store */
