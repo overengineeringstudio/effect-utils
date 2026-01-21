@@ -120,14 +120,14 @@ Tests use the `setup.ts` file which exports:
 ## Running Tests
 
 ```bash
-# Run all tests (unit + integration)
-mono test
+# Run all tests
+dt test:run
 
-# Run only integration tests
-mono test --integration
+# Run only this package's tests
+dt test:notion-effect-client
 
-# Skip integration tests (no token required)
-mono test --unit
+# Run integration tests (playwright)
+dt test:integration
 ```
 
 ## Maintaining Fixtures

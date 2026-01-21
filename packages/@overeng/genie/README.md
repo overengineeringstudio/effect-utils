@@ -65,20 +65,24 @@ mono nix reload
 
 ## Usage
 
-### CLI
+### CLI (via devenv tasks)
 
 ```bash
 # Generate all config files
-mono genie
+dt genie:run
 
 # Check if files are up to date (for CI)
-mono genie --check
+dt genie:check
 
 # Watch mode - regenerate on changes
-mono genie --watch
+dt genie:watch
+```
 
-# Generate writable files (default is read-only)
-mono genie --writeable
+Or use the `genie` binary directly for additional options:
+
+```bash
+genie --writeable  # Generate writable files (default is read-only)
+genie --dry-run    # Preview changes without writing
 ```
 
 ## Versioning
@@ -123,7 +127,7 @@ export default packageJSON({
 })
 ```
 
-Run `mono genie` to generate `package.json` from the source file.
+Run `dt genie:run` to generate `package.json` from the source file.
 
 ## Generators
 

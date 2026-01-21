@@ -6,8 +6,8 @@
  * with no contamination from Effect's runtime error logging.
  */
 
-import { dual } from 'effect/Function'
 import { Effect, Inspectable } from 'effect'
+import { dual } from 'effect/Function'
 
 /**
  * Format an unknown value for error messages.

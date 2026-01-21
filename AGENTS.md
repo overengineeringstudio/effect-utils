@@ -1,17 +1,18 @@
-# Mono CLI
+# Development Commands
 
-The `mono` CLI provides shortcuts for common development workflows:
+Use `dt <task>` (devenv tasks) to execute tasks with dependencies:
 
-- **TypeScript**: `mono ts [--watch] [--clean]` to type check (use `--clean` to remove build artifacts first)
-- **Linting**: `mono lint` or `mono lint --fix` to check/fix formatting and lint issues
-- **Testing**: `mono test [--unit|--integration] [--watch]` to run tests
-- **Build**: `mono build` to build all packages
-- **Clean**: `mono clean` to remove all build artifacts
-- **Install**: `mono install` to install dependencies for all packages (uses `--frozen-lockfile` in CI)
-- **Genie**: `mono genie [--check] [--watch]` to generate config files from `.genie.ts` sources
-- **Check**: `mono check` to run all checks (genie + ts + lint + test)
+- **TypeScript**: `dt ts:check` or `dt ts:watch` (watch mode) or `dt ts:clean`
+- **Linting**: `dt lint:check` or `dt lint:fix`
+- **Testing**: `dt test:run` (all) or `dt test:<pkg>` (single package) or `dt test:watch` or `dt test:integration`
+- **Build**: `dt ts:build`
+- **Install**: `dt bun:install`
+- **Genie**: `dt genie:run` or `dt genie:watch` or `dt genie:check`
+- **Check all**: `dt check:quick` (ts + lint) or `dt check:all` (ts + lint + test)
 
-If tools aren't directly in `$PATH`, prefix commands with `direnv exec .` (e.g., `direnv exec . mono ts`).
+The `mono` CLI is only used for `mono nix *` and `mono context *` commands.
+
+If tools aren't directly in `$PATH`, prefix commands with `direnv exec .` (e.g., `direnv exec . dt ts:check`).
 
 We're using dotdot for repo management. We're using `bun` (not `pnpm`) as the package manager and `devenv` to manage the development environment.
 
@@ -20,9 +21,9 @@ We're using dotdot for repo management. We're using `bun` (not `pnpm`) as the pa
 Config files like `package.json`, `tsconfig.base.json`, and `.github/workflows/ci.yml` are generated from TypeScript source files using genie. The source files have a `.genie.ts` suffix (e.g., `package.json.genie.ts`).
 
 - **Never edit generated files directly** - they are read-only and will be overwritten
-- **Edit the `.genie.ts` source file** and run `mono genie` to regenerate
+- **Edit the `.genie.ts` source file** and run `dt genie:run` to regenerate
 - Shared constants (catalog versions, tsconfig options) live in `genie/repo.ts`
-- `mono check` verifies generated files are up to date via `mono genie --check`
+- `dt check:quick` verifies generated files are up to date via `dt genie:check`
 
 # Changelog
 

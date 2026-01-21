@@ -105,7 +105,7 @@ package.json.genie.ts    # symlink only
 **Workaround:** Clean node_modules before installing:
 
 ```bash
-mono install --clean
+rm -rf node_modules && dt bun:install
 ```
 
 ## Removing the Workaround

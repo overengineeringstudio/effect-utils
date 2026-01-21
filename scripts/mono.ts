@@ -1,14 +1,6 @@
 #!/usr/bin/env bun
 
-import { genieCommand } from '@overeng/genie/cli'
-import {
-  buildCommand,
-  cleanCommand,
-  nixCommand,
-  runMonoCli,
-  testCommand,
-  tsCommand,
-} from '@overeng/mono'
+import { nixCommand, runMonoCli } from '@overeng/mono'
 import { resolveCliVersion } from '@overeng/utils/node/cli-version'
 
 import { contextCommand, nixPackages } from './commands/index.js'
@@ -21,22 +13,17 @@ const version = resolveCliVersion({
   runtimeStampEnvVar: 'NIX_CLI_BUILD_STAMP',
 })
 
-// NOTE: The following commands have been migrated to devenv tasks:
-// - install -> devenv tasks run bun:install --mode before
-// - lint    -> devenv tasks run lint:check --mode before (or lint:fix)
-// - check   -> devenv tasks run check:all --mode before (or check:quick)
+// NOTE: Most commands have been migrated to devenv tasks (use `run <task>`):
+// - bun:install             - install dependencies
+// - genie:run/watch/check   - generate config files
+// - ts:check/watch/build/clean - TypeScript
+// - lint:check/fix          - linting
+// - test:run/watch/unit/integration - testing
+// - check:quick/all         - run all checks
 
 runMonoCli({
   name: 'mono',
   version,
   description: 'Monorepo management CLI',
-  commands: [
-    buildCommand(),
-    testCommand(),
-    tsCommand(),
-    cleanCommand(),
-    genieCommand,
-    nixCommand({ packages: nixPackages }),
-    contextCommand,
-  ],
+  commands: [nixCommand({ packages: nixPackages }), contextCommand],
 })

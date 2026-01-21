@@ -34,21 +34,23 @@ src/
 
 ## Running Tests via Mono
 
-Never use `package.json` scripts. Use the `mono` CLI:
+Never use `package.json` scripts. Use devenv tasks via `dt`:
 
 ```bash
-mono test              # Run all tests
-mono test --unit       # Unit tests only (fast feedback loop)
-mono test --integration # Integration tests only
-mono test --watch      # Watch mode for development
+dt test:run           # Run all tests
+dt test:utils         # Single package (fast feedback loop)
+dt test:integration   # Integration tests only
+dt test:watch         # Watch mode for development
 ```
 
 **Pre-commit checklist:**
 
 ```bash
-mono ts                # Type check
-mono lint              # Lint check
-CI=1 mono test         # Run tests (CI=1 disables watch mode)
+dt ts:check           # Type check
+dt lint:check         # Lint check
+dt test:run           # Run tests
+# Or run all at once:
+dt check:all          # Type check + lint + test
 ```
 
 ## Effect Testing with @effect/vitest

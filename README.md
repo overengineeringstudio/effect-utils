@@ -142,26 +142,30 @@ devenv shell
 ### Install Dependencies
 
 ```bash
-bun install
+dt bun:install
 ```
 
 ### Build All Packages
 
 ```bash
-mono build
+dt ts:build
 ```
 
 ### Run Tests
 
 ```bash
-# Unit tests
-mono test --unit
+# All tests
+dt test:run
+
+# Single package (e.g., utils, genie, mono)
+dt test:utils
+dt test:genie
 
 # Integration tests (requires NOTION_TOKEN for Notion packages)
-NOTION_TOKEN=secret_xxx mono test --integration
+NOTION_TOKEN=secret_xxx dt test:integration
 
-# All tests
-NOTION_TOKEN=secret_xxx mono test
+# Watch mode
+dt test:watch
 ```
 
 ### Type Checking
@@ -169,23 +173,23 @@ NOTION_TOKEN=secret_xxx mono test
 Continuous type checking across the entire monorepo (project references):
 
 ```bash
-mono ts --watch
+dt ts:watch
 ```
 
 Or one-off type check:
 
 ```bash
-mono ts
+dt ts:check
 ```
 
 ### Linting
 
 ```bash
 # Check formatting + lint
-mono lint
+dt lint:check
 
 # Auto-fix formatting + lint issues
-mono lint --fix
+dt lint:fix
 ```
 
 ## Package Structure

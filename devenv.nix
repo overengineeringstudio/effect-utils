@@ -41,6 +41,8 @@ in
       beadsPrefix = "oep";
       beadsRepoName = "overeng-beads-public";
     })
+    # `dt` (devenv tasks) wrapper script and shell completions
+    ./nix/devenv-modules/dt.nix
     # Tasks
     ./nix/devenv/tasks/bun.nix
     ./nix/devenv/tasks/check.nix
@@ -66,11 +68,6 @@ in
   env = {
     PLAYWRIGHT_BROWSERS_PATH = playwrightDriver.browsers;
   };
-
-  # TODO: Remove once devenv supports defaultMode for tasks (https://github.com/cachix/devenv/issues/2417)
-  # Wrapper that runs tasks with --mode before so dependencies run automatically
-  # Usage: run check:quick, run lint:fix, etc.
-  scripts.run.exec = ''devenv tasks run "$@" --mode before'';
 
   enterShell = ''
     export WORKSPACE_ROOT="$PWD"

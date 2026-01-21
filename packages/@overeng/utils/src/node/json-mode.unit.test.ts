@@ -120,9 +120,9 @@ describe('JSON mode helpers', () => {
         // Run the effect - JSON is output synchronously, then process.exit is called
         // after stdout flushes via the async callback
         await Promise.race([
-          Effect.runPromise(Effect.die(new Error('unexpected crash')).pipe(withJsonMode(true))).catch(
-            () => {},
-          ),
+          Effect.runPromise(
+            Effect.die(new Error('unexpected crash')).pipe(withJsonMode(true)),
+          ).catch(() => {}),
           new Promise((resolve) => setTimeout(resolve, 100)),
         ])
       } finally {

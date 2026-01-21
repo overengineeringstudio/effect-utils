@@ -94,6 +94,12 @@
         };
       }
     ) // {
+      # Devenv modules for importing into other repos
+      devenvModules = {
+        # `dt` command wrapper for devenv tasks with shell completions
+        dt = ./nix/devenv-modules/dt.nix;
+      };
+
       # Direnv helper script (eval-time store path; no build required).
       direnv.autoRebuildClis = import ./nix/workspace-tools/env/direnv/auto-rebuild-clis.nix;
       direnv.peerEnvrc = import ./nix/workspace-tools/env/direnv/peer-envrc.nix;
