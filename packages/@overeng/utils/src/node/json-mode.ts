@@ -30,6 +30,10 @@ export const exitWithCode = (code: number): Effect.Effect<never> =>
  * to prevent Effect's runtime from logging additional output.
  *
  * Ensures stdout is flushed before exiting to prevent truncation in pipes.
+ *
+ * **Note:** This function hard-exits the process, which skips Effect finalizers
+ * and scopes. This is an intentional tradeoff for ensuring clean JSON output
+ * without any Effect runtime logging contamination.
  */
 export const jsonError = (error: { error: string; message: string }): Effect.Effect<never> =>
   Effect.async<never>(() => {
@@ -50,8 +54,18 @@ export const jsonOutput = <T>(data: T): Effect.Effect<void> =>
 
 /**
  * Wrap an effect to handle JSON mode properly.
- * - Catches all defects (unexpected errors) and outputs them as JSON
- * - For expected errors, the command should use jsonError() directly
+ *
+ * When `json=true`:
+ * - Catches ALL typed failures and outputs them as JSON with `error: 'internal_error'`
+ * - Catches ALL defects (unexpected errors) and outputs them as JSON
+ * - Commands should still use `jsonError()` for specific error codes/messages,
+ *   but this wrapper acts as a safety net for any unhandled errors
+ *
+ * When `json=false`:
+ * - Passes the effect through unchanged
+ *
+ * **Note:** When json=true, this hard-exits the process on any failure, which skips
+ * Effect finalizers and scopes. This is intentional to ensure clean JSON output.
  *
  * @example
  * ```ts
@@ -81,7 +95,18 @@ export const withJsonMode = <A, E, R>({
   effect: Effect.Effect<A, E, R>
 }): Effect.Effect<A, E, R> =>
   json
-    ? effect.pipe(
+    ? (effect.pipe(
+        // Catch typed failures (e.g., PlatformError, IO errors)
+        Effect.catchAll((error) => {
+          console.log(
+            JSON.stringify({
+              error: 'internal_error',
+              message: Inspectable.formatUnknown(error),
+            }),
+          )
+          return exitWithCode(1)
+        }),
+        // Catch defects (unexpected throws, Effect.die, etc.)
         Effect.catchAllDefect((defect) => {
           console.log(
             JSON.stringify({
@@ -91,5 +116,5 @@ export const withJsonMode = <A, E, R>({
           )
           return exitWithCode(1)
         }),
-      )
+      ) as Effect.Effect<A, E, R>)
     : effect

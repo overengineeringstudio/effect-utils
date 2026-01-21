@@ -144,6 +144,10 @@ describe('--json output (integration)', () => {
         // Verify the JSON structure
         expect(json).toHaveProperty('members')
         expect(json.members).toHaveProperty('test-lib', 'owner/test-lib')
+
+        // Verify stderr is empty (clean JSON mode has no stderr noise)
+        expect(result.stderr.trim()).toBe('')
+        expect(result.exitCode).toBe(0)
       }),
     ))
 
@@ -166,6 +170,10 @@ describe('--json output (integration)', () => {
         // Verify error structure
         expect(json).toHaveProperty('error')
         expect(json).toHaveProperty('message')
+
+        // Verify stderr is empty (clean JSON mode has no stderr noise)
+        expect(result.stderr.trim()).toBe('')
+        expect(result.exitCode).toBe(1)
       }),
     ))
 })
