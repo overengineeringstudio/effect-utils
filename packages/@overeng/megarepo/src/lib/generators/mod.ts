@@ -5,5 +5,6 @@
  */
 
 export * from './envrc.ts'
+export * from './genie.ts'
 export * from './schema.ts'
 export * from './vscode.ts'

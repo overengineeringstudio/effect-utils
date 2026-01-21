@@ -25,6 +25,7 @@ import {
   validateMemberName,
 } from '../lib/config.ts'
 import { generateEnvrc } from '../lib/generators/envrc.ts'
+import { generateGenie } from '../lib/generators/genie.ts'
 import { generateSchema } from '../lib/generators/schema.ts'
 import { generateVscode } from '../lib/generators/vscode.ts'
 import * as Git from '../lib/git.ts'
@@ -2203,6 +2204,61 @@ const generateSchemaCommand = Cli.Command.make(
     }).pipe(Effect.withSpan('megarepo/generate/schema')),
 )
 
+/** Generate genie configuration files */
+const generateGenieCommand = Cli.Command.make(
+  'genie',
+  {
+    json: jsonOption,
+    scope: Cli.Options.text('scope').pipe(
+      Cli.Options.withDescription('Package scope (e.g., "@myorg")'),
+      Cli.Options.optional,
+    ),
+  },
+  ({ json, scope }) =>
+    Effect.gen(function* () {
+      const cwd = yield* Cwd
+      const root = yield* findMegarepoRoot(cwd)
+
+      if (Option.isNone(root)) {
+        if (json) {
+          console.log(JSON.stringify({ error: 'not_found', message: 'No megarepo.json found' }))
+        } else {
+          yield* Effect.logError(`${styled.red(symbols.cross)} Not in a megarepo`)
+        }
+        return yield* Effect.fail(new Error('Not in a megarepo'))
+      }
+
+      // Load config
+      const fs = yield* FileSystem.FileSystem
+      const configPath = EffectPath.ops.join(
+        root.value,
+        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+      )
+      const configContent = yield* fs.readFileString(configPath)
+      const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+
+      const result = yield* generateGenie({
+        megarepoRoot: root.value,
+        config,
+        ...(Option.isSome(scope) ? { scope: scope.value } : {}),
+      })
+
+      if (json) {
+        console.log(JSON.stringify({ status: 'generated', paths: result.paths }))
+      } else {
+        yield* Effect.log(
+          `${styled.green(symbols.check)} Generated ${styled.bold('genie/repo.ts')}`,
+        )
+        yield* Effect.log(
+          `${styled.green(symbols.check)} Generated ${styled.bold('genie/samples/package.json.genie.ts')}`,
+        )
+        yield* Effect.log(
+          `${styled.green(symbols.check)} Generated ${styled.bold('genie/samples/tsconfig.json.genie.ts')}`,
+        )
+      }
+    }).pipe(Effect.withSpan('megarepo/generate/genie')),
+)
+
 /** Generate all configured outputs */
 const generateAllCommand = Cli.Command.make('all', { json: jsonOption }, ({ json }) =>
   Effect.gen(function* () {
@@ -2257,6 +2313,24 @@ const generateAllCommand = Cli.Command.make('all', { json: jsonOption }, ({ json
       }
     }
 
+    // Generate genie configuration (default: disabled)
+    const genieEnabled = config.generators?.genie?.enabled === true
+    if (genieEnabled) {
+      const genieResult = yield* generateGenie({
+        megarepoRoot: root.value,
+        config,
+      })
+      results.push({ generator: 'genie', path: genieResult.paths.repoTs })
+      if (!json) {
+        yield* Effect.log(
+          `${styled.green(symbols.check)} Generated ${styled.bold('genie/repo.ts')}`,
+        )
+        yield* Effect.log(
+          `${styled.green(symbols.check)} Generated ${styled.bold('genie/samples/')}`,
+        )
+      }
+    }
+
     // Generate JSON schema (always enabled for editor support)
     const schemaResult = yield* generateSchema({
       megarepoRoot: root.value,
@@ -2283,6 +2357,7 @@ const generateCommand = Cli.Command.make('generate', {}).pipe(
   Cli.Command.withSubcommands([
     generateAllCommand,
     generateEnvrcCommand,
+    generateGenieCommand,
     generateSchemaCommand,
     generateVscodeCommand,
   ]),

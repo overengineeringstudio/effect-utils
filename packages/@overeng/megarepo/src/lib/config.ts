@@ -71,12 +71,23 @@ export class DevenvGeneratorConfig extends Schema.Class<DevenvGeneratorConfig>(
   enabled: Schema.optional(Schema.Boolean),
 }) {}
 
+/** Genie generator configuration */
+export class GenieGeneratorConfig extends Schema.Class<GenieGeneratorConfig>(
+  'GenieGeneratorConfig',
+)({
+  /** Enable/disable the generator (default: false) */
+  enabled: Schema.optional(Schema.Boolean),
+  /** Package scope (e.g., "@myorg") */
+  scope: Schema.optional(Schema.String),
+}) {}
+
 /** All generator configurations */
 export class GeneratorsConfig extends Schema.Class<GeneratorsConfig>('GeneratorsConfig')({
   envrc: Schema.optional(EnvrcGeneratorConfig),
   vscode: Schema.optional(VscodeGeneratorConfig),
   flake: Schema.optional(FlakeGeneratorConfig),
   devenv: Schema.optional(DevenvGeneratorConfig),
+  genie: Schema.optional(GenieGeneratorConfig),
 }) {}
 
 // =============================================================================
