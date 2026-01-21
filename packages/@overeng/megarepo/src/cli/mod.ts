@@ -133,7 +133,7 @@ const initCommand = Cli.Command.make('init', { json: jsonOption }, ({ json }) =>
       )
     }
   }).pipe(Effect.withSpan('megarepo/init')),
-)
+).pipe(Cli.Command.withDescription('Initialize a new megarepo in the current directory'))
 
 // =============================================================================
 // Root Command
@@ -229,7 +229,7 @@ const rootCommand = Cli.Command.make('root', { json: jsonOption }, ({ json }) =>
       console.log(root.value)
     }
   }).pipe(Effect.withSpan('megarepo/root')),
-)
+).pipe(Cli.Command.withDescription('Print the megarepo root directory'))
 
 // =============================================================================
 // Env Command
@@ -292,7 +292,7 @@ const envCommand = Cli.Command.make(
         }
       }
     }).pipe(Effect.withSpan('megarepo/env')),
-)
+).pipe(Cli.Command.withDescription('Output environment variables for shell integration'))
 
 // =============================================================================
 // Status Command (placeholder)
@@ -350,7 +350,7 @@ const statusCommand = Cli.Command.make('status', { json: jsonOption }, ({ json }
       }
     }
   }).pipe(Effect.withSpan('megarepo/status')),
-)
+).pipe(Cli.Command.withDescription('Show workspace status and member states'))
 
 // =============================================================================
 // Ls Command
@@ -388,7 +388,7 @@ const lsCommand = Cli.Command.make('ls', { json: jsonOption }, ({ json }) =>
       }
     }
   }).pipe(Effect.withSpan('megarepo/ls')),
-)
+).pipe(Cli.Command.withDescription('List all members in the megarepo'))
 
 // =============================================================================
 // Sync Command
@@ -935,7 +935,7 @@ const syncCommand = Cli.Command.make(
         }
       }
     }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/sync')),
-)
+).pipe(Cli.Command.withDescription('Sync members to their configured refs'))
 
 // =============================================================================
 // Add Command
@@ -1096,7 +1096,7 @@ const addCommand = Cli.Command.make(
         }
       }
     }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/add')),
-)
+).pipe(Cli.Command.withDescription('Add a new member repository'))
 
 // =============================================================================
 // Update Command
@@ -1413,7 +1413,7 @@ const updateCommand = Cli.Command.make(
         }
       }
     }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/update')),
-)
+).pipe(Cli.Command.withDescription('Update members to latest remote refs'))
 
 // =============================================================================
 // Exec Command
@@ -1521,7 +1521,7 @@ const execCommand = Cli.Command.make(
         console.log(JSON.stringify({ results }))
       }
     }).pipe(Effect.withSpan('megarepo/exec')),
-)
+).pipe(Cli.Command.withDescription('Execute a command in member directories'))
 
 // =============================================================================
 // Pin / Unpin Commands
@@ -1650,7 +1650,7 @@ const pinCommand = Cli.Command.make(
         )
       }
     }).pipe(Effect.withSpan('megarepo/pin')),
-)
+).pipe(Cli.Command.withDescription('Pin a member to its current commit'))
 
 /**
  * Unpin a member, allowing it to be updated by `mr update`.
@@ -1743,7 +1743,7 @@ const unpinCommand = Cli.Command.make(
         yield* Effect.log(`${styled.green(symbols.check)} Unpinned ${styled.bold(member)}`)
       }
     }).pipe(Effect.withSpan('megarepo/unpin')),
-)
+).pipe(Cli.Command.withDescription('Unpin a member to allow updates'))
 
 // =============================================================================
 // Store Commands
@@ -1771,7 +1771,7 @@ const storeLsCommand = Cli.Command.make('ls', { json: jsonOption }, ({ json }) =
       }
     }
   }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/ls')),
-)
+).pipe(Cli.Command.withDescription('List repositories in the store'))
 
 /** Fetch all repos in the store */
 const storeFetchCommand = Cli.Command.make('fetch', { json: jsonOption }, ({ json }) =>
@@ -1809,7 +1809,7 @@ const storeFetchCommand = Cli.Command.make('fetch', { json: jsonOption }, ({ jso
       yield* Effect.log(styled.dim(`Fetched ${fetchedCount} repo(s)`))
     }
   }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/fetch')),
-)
+).pipe(Cli.Command.withDescription('Fetch all repositories in the store'))
 
 /** GC result for a single worktree */
 interface GcWorktreeResult {
@@ -2056,11 +2056,12 @@ const storeGcCommand = Cli.Command.make(
         yield* Effect.log(styled.dim(parts.length > 0 ? parts.join(', ') : 'Nothing to clean up'))
       }
     }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/gc')),
-)
+).pipe(Cli.Command.withDescription('Garbage collect unused worktrees'))
 
 /** Store subcommand group */
 const storeCommand = Cli.Command.make('store', {}).pipe(
   Cli.Command.withSubcommands([storeLsCommand, storeFetchCommand, storeGcCommand]),
+  Cli.Command.withDescription('Manage the shared git store'),
 )
 
 // =============================================================================
@@ -2102,7 +2103,7 @@ const generateEnvrcCommand = Cli.Command.make('envrc', { json: jsonOption }, ({ 
       yield* Effect.log(`${styled.green(symbols.check)} Generated ${styled.bold('.envrc.local')}`)
     }
   }).pipe(Effect.withSpan('megarepo/generate/envrc')),
-)
+).pipe(Cli.Command.withDescription('Generate .envrc.local file'))
 
 /** Generate VSCode workspace file */
 const generateVscodeCommand = Cli.Command.make(
@@ -2153,7 +2154,7 @@ const generateVscodeCommand = Cli.Command.make(
         )
       }
     }).pipe(Effect.withSpan('megarepo/generate/vscode')),
-)
+).pipe(Cli.Command.withDescription('Generate VS Code workspace file'))
 
 /** Generate JSON Schema */
 const generateSchemaCommand = Cli.Command.make(
@@ -2201,7 +2202,7 @@ const generateSchemaCommand = Cli.Command.make(
         yield* Effect.log(`${styled.green(symbols.check)} Generated ${styled.bold(output)}`)
       }
     }).pipe(Effect.withSpan('megarepo/generate/schema')),
-)
+).pipe(Cli.Command.withDescription('Generate JSON schema for megarepo.json'))
 
 /** Generate all configured outputs */
 const generateAllCommand = Cli.Command.make('all', { json: jsonOption }, ({ json }) =>
@@ -2276,7 +2277,7 @@ const generateAllCommand = Cli.Command.make('all', { json: jsonOption }, ({ json
       yield* Effect.log(styled.dim(`Generated ${results.length} file(s)`))
     }
   }).pipe(Effect.withSpan('megarepo/generate/all')),
-)
+).pipe(Cli.Command.withDescription('Generate all configured outputs'))
 
 /** Generate subcommand group */
 const generateCommand = Cli.Command.make('generate', {}).pipe(
@@ -2286,6 +2287,7 @@ const generateCommand = Cli.Command.make('generate', {}).pipe(
     generateSchemaCommand,
     generateVscodeCommand,
   ]),
+  Cli.Command.withDescription('Generate configuration files'),
 )
 
 // =============================================================================
@@ -2309,6 +2311,7 @@ export const mrCommand = Cli.Command.make('mr', {}).pipe(
     storeCommand,
     generateCommand,
   ]),
+  Cli.Command.withDescription('Multi-repo workspace management tool'),
 )
 
 /** Exported CLI for external use */

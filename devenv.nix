@@ -1,4 +1,4 @@
-{ pkgs, inputs, ... }:
+{ pkgs, lib, inputs, ... }:
 let
   system = pkgs.stdenv.hostPlatform.system;
   pkgsStable = import inputs.nixpkgs { inherit system; };
@@ -64,4 +64,55 @@ in
     export PATH="$WORKSPACE_ROOT/node_modules/.bin:$PATH"
     ${cliBuildStamp.shellHook}
   '';
+
+  # Per-package bun install tasks for parallel execution with progress tracking
+  tasks = let
+    dirs = [
+      "packages/@overeng/cli-ui"
+      "packages/@overeng/dotdot"
+      "packages/@overeng/effect-ai-claude-cli"
+      "packages/@overeng/effect-path"
+      "packages/@overeng/effect-react"
+      "packages/@overeng/effect-rpc-tanstack"
+      "packages/@overeng/effect-rpc-tanstack/examples/basic"
+      "packages/@overeng/effect-schema-form"
+      "packages/@overeng/effect-schema-form-aria"
+      "packages/@overeng/genie"
+      "packages/@overeng/megarepo"
+      "packages/@overeng/mono"
+      "packages/@overeng/notion-cli"
+      "packages/@overeng/notion-effect-client"
+      "packages/@overeng/notion-effect-schema"
+      "packages/@overeng/oxc-config"
+      "packages/@overeng/react-inspector"
+      "packages/@overeng/utils"
+      "scripts"
+      "context/opentui"
+      "context/effect/socket"
+    ];
+
+    # Convert path to task name: "packages/@overeng/foo" -> "foo", "context/opentui" -> "context-opentui"
+    toName = path: builtins.replaceStrings ["/"] ["-"] (lib.last (lib.splitString "@overeng/" path));
+
+    mkTask = path: {
+      "bun:install:${toName path}" = {
+        exec = "bun install";
+        cwd = path;
+        execIfModified = [ "${path}/package.json" "${path}/bun.lock" ];
+        after = [ "genie:run" ];
+      };
+    };
+
+  in lib.mkMerge (map mkTask dirs ++ [
+    {
+      "genie:run" = {
+        exec = "genie";
+        execIfModified = [ "**/*.genie.ts" ];
+      };
+      "bun:install" = {
+        description = "Install all bun dependencies";
+        after = map (p: "bun:install:${toName p}") dirs;
+      };
+    }
+  ]);
 }
