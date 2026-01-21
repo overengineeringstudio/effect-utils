@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
-import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import * as Cli from '@effect/cli'
+import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Effect, Layer } from 'effect'
 
 import { Cwd } from '../src/cli/mod.ts'
