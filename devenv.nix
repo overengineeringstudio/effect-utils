@@ -44,9 +44,12 @@ let
     test = import ./nix/devenv-modules/tasks/test.nix;
     lint-oxc = import ./nix/devenv-modules/tasks/lint-oxc.nix;
     bun = import ./nix/devenv-modules/tasks/bun.nix;
+    pnpm = import ./nix/devenv-modules/tasks/pnpm.nix;
   };
 
-  # All packages that need bun install
+  # All packages for per-package install tasks
+  # NOTE: Using pnpm instead of bun due to bun bugs. See context/workarounds/bun-issues.md
+  # TODO: Switch back to bun:install once bun file: dependency issues are fixed
   allPackages = [
     "packages/@overeng/cli-ui"
     "packages/@overeng/dotdot"
@@ -101,7 +104,9 @@ in
     taskModules.ts
     (taskModules.check {})
     (taskModules.clean { extraDirs = []; })
-    (taskModules.bun { packages = allPackages; })
+    # Per-package pnpm install tasks (using pnpm due to bun bugs, see context/workarounds/bun-issues.md)
+    # TODO: Switch back to bun:install once bun file: dependency issues are fixed
+    (taskModules.pnpm { packages = allPackages; })
     (taskModules.test {
       packages = packagesWithTests;
       vitestBin = "packages/@overeng/utils/node_modules/.bin/vitest";
@@ -161,7 +166,7 @@ in
     })
     # Setup task (auto-runs in enterShell)
     (taskModules.setup {
-      tasks = [ "bun:install" "genie:run" "ts:build" ];
+      tasks = [ "pnpm:install" "genie:run" "ts:build" ];
     })
   ];
 

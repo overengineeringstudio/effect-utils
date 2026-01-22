@@ -11,6 +11,8 @@
 #       # Optional: custom vitest binary and config (for monorepo setups)
 #       vitestBin = "packages/@overeng/utils/node_modules/.bin/vitest";
 #       vitestConfig = "packages/@overeng/utils/vitest.config.ts";
+#       # Optional: install task prefix (default: "pnpm", use "bun" for bun:install)
+#       installTaskPrefix = "pnpm";
 #     })
 #   ];
 #
@@ -25,6 +27,7 @@
   packages ? [],
   vitestBin ? "vitest",
   vitestConfig ? null,
+  installTaskPrefix ? "pnpm",
 }:
 { lib, ... }:
 let
@@ -63,7 +66,7 @@ let
           "${pkg.path}/src/**/*.test.ts"
           "${pkg.path}/vitest.config.ts"
         ];
-        after = [ "bun:install:${pkg.name}" ];
+        after = [ "${installTaskPrefix}:install:${pkg.name}" ];
       };
     };
 

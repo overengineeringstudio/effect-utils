@@ -112,6 +112,7 @@
           test-playwright = import ./nix/devenv-modules/tasks/test-playwright.nix;
           lint-oxc = import ./nix/devenv-modules/tasks/lint-oxc.nix;
           bun = import ./nix/devenv-modules/tasks/bun.nix;
+          pnpm = import ./nix/devenv-modules/tasks/pnpm.nix;
         };
       };
 

@@ -1,14 +1,8 @@
-# Bun install tasks
-#
-# NOTE: Currently unused due to bun bugs with local file: dependencies.
-# Using pnpm.nix instead. See: context/workarounds/bun-issues.md
-# TODO: Switch back to bun:install once these issues are fixed:
-#   - https://github.com/oven-sh/bun/issues/13223 (file: deps slow - individual symlinks)
-#   - https://github.com/oven-sh/bun/issues/22846 (install hangs in monorepo)
+# pnpm install tasks
 #
 # Usage in devenv.nix:
 #   imports = [
-#     (inputs.effect-utils.devenvModules.tasks.bun {
+#     (inputs.effect-utils.devenvModules.tasks.pnpm {
 #       packages = [
 #         "packages/app"
 #         "packages/website"
@@ -17,7 +11,13 @@
 #     })
 #   ];
 #
-# Provides: bun:install, bun:install:<name> for each package
+# Provides: pnpm:install, pnpm:install:<name> for each package
+#
+# NOTE: We use pnpm instead of bun for installation due to bun bugs with
+# local file: dependencies. See: context/workarounds/bun-issues.md
+# TODO: Switch back to bun:install once these issues are fixed:
+#   - https://github.com/oven-sh/bun/issues/13223 (file: deps slow)
+#   - https://github.com/oven-sh/bun/issues/22846 (install hangs)
 { packages }:
 { lib, ... }:
 let
@@ -41,11 +41,11 @@ let
     sanitize final;
 
   mkInstallTask = path: {
-    "bun:install:${toName path}" = {
+    "pnpm:install:${toName path}" = {
       description = "Install dependencies for ${toName path}";
-      exec = "bun install";
+      exec = "pnpm install";
       cwd = path;
-      execIfModified = [ "${path}/package.json" "${path}/bun.lock" ];
+      execIfModified = [ "${path}/package.json" "${path}/pnpm-lock.yaml" ];
       after = [ "genie:run" ];
     };
   };
@@ -53,9 +53,9 @@ let
 in {
   tasks = lib.mkMerge (map mkInstallTask packages ++ [
     {
-      "bun:install" = {
-        description = "Install all bun dependencies";
-        after = map (p: "bun:install:${toName p}") packages;
+      "pnpm:install" = {
+        description = "Install all pnpm dependencies";
+        after = map (p: "pnpm:install:${toName p}") packages;
       };
     }
   ]);

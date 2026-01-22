@@ -26,13 +26,16 @@
           exit 0
         fi
       ''}
+      # Prevent recursion when dt spawns new shells for task execution
+      export ${envVar}=1
       dt ${lib.concatStringsSep " " tasks} || true
     '';
   };
 
   enterShell = lib.mkIf autoRun (lib.mkAfter ''
     if [ -z "''${${envVar}:-}" ]; then
-      dt setup:run
+      # Set DEVENV_SKIP_SETUP to prevent infinite recursion when dt spawns a new shell
+      ${envVar}=1 dt setup:run
     fi
   '');
 }

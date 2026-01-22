@@ -1,3 +1,7 @@
+# Sensitive Information
+
+- `effect-utils` is a public repository but used in the context of private repositories. It's very important to never commit sensitive information to this repository including information from/about private repositories.
+
 # Development Commands
 
 Use `dt <task>` (devenv tasks) to execute tasks with dependencies:
