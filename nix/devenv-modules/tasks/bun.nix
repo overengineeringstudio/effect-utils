@@ -34,6 +34,7 @@ let
 
   mkInstallTask = path: {
     "bun:install:${toName path}" = {
+      description = "Install dependencies for ${toName path}";
       exec = "bun install";
       cwd = path;
       execIfModified = [ "${path}/package.json" "${path}/bun.lock" ];

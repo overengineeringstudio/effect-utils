@@ -50,16 +50,19 @@ in
   tasks = {
     # Lint check tasks
     "lint:check:format" = {
+      description = "Check code formatting with oxfmt";
       exec = "oxfmt -c ${oxfmtConfig} --check . ${oxfmtExcludeArgs}";
       after = [ "genie:run" ];
       execIfModified = [ "**/*.ts" "**/*.tsx" "**/*.js" "**/*.jsx" "oxfmt.json" ];
     };
     "lint:check:oxlint" = {
+      description = "Run oxlint linter";
       exec = "oxlint -c ${oxlintConfig} --import-plugin --deny-warnings";
       after = [ "genie:run" ];
       execIfModified = [ "**/*.ts" "**/*.tsx" "**/*.js" "**/*.jsx" "oxlint.json" ];
     };
     "lint:check:genie" = {
+      description = "Check generated files are up to date";
       exec = "genie --check";
       execIfModified = [ "**/*.genie.ts" ];
     };
@@ -87,9 +90,11 @@ in
 
     # Lint fix tasks
     "lint:fix:format" = {
+      description = "Fix code formatting with oxfmt";
       exec = "oxfmt -c ${oxfmtConfig} . ${oxfmtExcludeArgs}";
     };
     "lint:fix:oxlint" = {
+      description = "Fix lint issues with oxlint";
       exec = "oxlint -c ${oxlintConfig} --import-plugin --deny-warnings --fix";
     };
     "lint:fix" = {

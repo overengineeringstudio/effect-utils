@@ -10,6 +10,7 @@
 {
   tasks = {
     "lint:check:genie" = {
+      description = "Check generated files are up to date";
       exec = "genie --check";
     };
     "lint:check" = {
@@ -17,7 +18,7 @@
       after = [ "lint:check:genie" ];
     };
     "lint:fix" = {
-      description = "Fix all lint issues (placeholder - no formatter configured)";
+      description = "Fix all lint issues (no formatter configured)";
       exec = "echo 'No lint fixer configured'";
     };
   };
