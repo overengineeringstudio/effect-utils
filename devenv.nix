@@ -107,7 +107,7 @@ in
       vitestConfig = "packages/@overeng/utils/vitest.config.ts";
     })
     (taskModules.lint-oxc {
-      genieCoverageDirs = [ "packages" "scripts" "context" ];
+      sourceDirs = [ "packages" "scripts" "context" ];
       oxfmtExcludes = [
         "**/package.json"
         "**/tsconfig.json"

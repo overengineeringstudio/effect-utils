@@ -3,8 +3,11 @@
 # Usage in devenv.nix:
 #   imports = [
 #     (inputs.effect-utils.devenvModules.tasks.lint-oxc {
-#       # Directories to scan for genie coverage check
-#       genieCoverageDirs = [ "packages" "scripts" ];  # required
+#       # Directories containing source code (for execIfModified globs)
+#       # IMPORTANT: Must be specified to avoid scanning node_modules
+#       sourceDirs = [ "packages" "scripts" "context" ];  # required
+#       # Directories to scan for genie coverage check (defaults to sourceDirs)
+#       genieCoverageDirs = [ "packages" "scripts" ];  # optional
 #       # Extra directories to exclude from genie coverage
 #       genieCoverageExcludes = [ "storybook-static" ];  # optional
 #       # Custom oxfmt exclusions (in addition to node_modules)
@@ -18,7 +21,8 @@
 # Provides: lint:check, lint:check:format, lint:check:oxlint, lint:check:genie, lint:check:genie:coverage
 #           lint:fix, lint:fix:format, lint:fix:oxlint
 {
-  genieCoverageDirs,
+  sourceDirs,
+  genieCoverageDirs ? sourceDirs,
   genieCoverageExcludes ? [],
   oxfmtExcludes ? [],
   oxfmtConfig ? "./oxfmt.json",
@@ -45,6 +49,12 @@ let
   oxfmtExcludeArgs = builtins.concatStringsSep " " (
     [ "'!**/node_modules/**'" ] ++ map (p: "'!${p}'") oxfmtExcludes
   );
+  
+  # Build execIfModified patterns scoped to source directories
+  # This avoids scanning node_modules (178k+ files vs ~800 source files)
+  sourceGlobs = ext: map (dir: "${dir}/**/*.${ext}") sourceDirs;
+  allSourceGlobs = (sourceGlobs "ts") ++ (sourceGlobs "tsx") ++ (sourceGlobs "js") ++ (sourceGlobs "jsx");
+  genieGlobs = map (dir: "${dir}/**/*.genie.ts") sourceDirs;
 in
 {
   tasks = {
@@ -53,18 +63,18 @@ in
       description = "Check code formatting with oxfmt";
       exec = "oxfmt -c ${oxfmtConfig} --check . ${oxfmtExcludeArgs}";
       after = [ "genie:run" ];
-      execIfModified = [ "**/*.ts" "**/*.tsx" "**/*.js" "**/*.jsx" "oxfmt.json" ];
+      execIfModified = allSourceGlobs ++ [ "oxfmt.json" ];
     };
     "lint:check:oxlint" = {
       description = "Run oxlint linter";
       exec = "oxlint -c ${oxlintConfig} --import-plugin --deny-warnings";
       after = [ "genie:run" ];
-      execIfModified = [ "**/*.ts" "**/*.tsx" "**/*.js" "**/*.jsx" "oxlint.json" ];
+      execIfModified = allSourceGlobs ++ [ "oxlint.json" ];
     };
     "lint:check:genie" = {
       description = "Check generated files are up to date";
       exec = "genie --check";
-      execIfModified = [ "**/*.genie.ts" ];
+      execIfModified = genieGlobs;
     };
     "lint:check:genie:coverage" = {
       description = "Check all config files have .genie.ts sources";
