@@ -4,8 +4,10 @@
 #   imports = [
 #     (inputs.effect-utils.devenvModules.tasks.test-playwright {
 #       packages = [
-#         { path = "apps/misc.schickling.dev"; name = "misc"; bunName = "apps-misc-schickling-dev"; }
+#         { path = "apps/misc.schickling.dev"; name = "misc"; installName = "misc-schickling-dev"; }
 #       ];
+#       # Optional: install task prefix (default: pnpm:install)
+#       installTaskPrefix = "pnpm:install";
 #       # Optional: custom playwright binary (default: playwright)
 #       playwrightBin = "node_modules/.bin/playwright";
 #     })
@@ -16,6 +18,7 @@
 #   - test:pw:<name> - Run playwright tests for specific package
 {
   packages,
+  installTaskPrefix ? "pnpm:install",
   playwrightBin ? "playwright",
 }:
 { lib, ... }:
@@ -25,7 +28,7 @@ let
       description = "Run playwright tests for ${pkg.name}";
       exec = "${playwrightBin} test";
       cwd = pkg.path;
-      after = [ "bun:install:${pkg.bunName or pkg.name}" ];
+      after = [ "${installTaskPrefix}:${pkg.installName or pkg.name}" ];
     };
   };
 
