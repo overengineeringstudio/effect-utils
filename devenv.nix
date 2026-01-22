@@ -38,6 +38,7 @@ let
   taskModules = {
     genie = ./nix/devenv-modules/tasks/genie.nix;
     ts = ./nix/devenv-modules/tasks/ts.nix;
+    setup = import ./nix/devenv-modules/tasks/setup.nix;
     check = import ./nix/devenv-modules/tasks/check.nix;
     clean = import ./nix/devenv-modules/tasks/clean.nix;
     test = import ./nix/devenv-modules/tasks/test.nix;
@@ -151,6 +152,10 @@ in
         ".github/workflows/*.yml"
         "packages/@overeng/oxc-config/*.jsonc"
       ];
+    })
+    # Setup task (auto-runs in enterShell)
+    (taskModules.setup {
+      tasks = [ "bun:install" "genie:run" "ts:build" ];
     })
   ];
 
