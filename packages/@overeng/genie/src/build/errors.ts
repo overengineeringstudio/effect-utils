@@ -5,7 +5,7 @@ export class GenieImportError extends Schema.TaggedError<GenieImportError>()('Ge
   genieFilePath: Schema.String,
   message: Schema.String,
   /** The original error that caused the import to fail (for TDZ detection) */
-  cause: Schema.Unknown,
+  cause: Schema.Defect,
 }) {}
 
 /** Error when generated file content doesn't match (in check mode) */
@@ -28,5 +28,5 @@ export class GenieFileError extends Schema.TaggedError<GenieFileError>()('GenieF
   targetFilePath: Schema.String,
   message: Schema.String,
   /** The original error that caused the failure (for TDZ detection) */
-  cause: Schema.Unknown,
+  cause: Schema.Defect,
 }) {}

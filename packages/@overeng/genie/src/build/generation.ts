@@ -420,7 +420,8 @@ export const generateFile = ({
       return new GenieFileError({
         targetFilePath,
         message: `Failed to generate ${targetFilePath}: ${safeErrorString(cause)}`,
-        cause: underlyingError instanceof Error ? underlyingError : new Error(safeErrorString(cause)),
+        cause:
+          underlyingError instanceof Error ? underlyingError : new Error(safeErrorString(cause)),
       })
     }),
     Effect.catchAllDefect((defect) => {

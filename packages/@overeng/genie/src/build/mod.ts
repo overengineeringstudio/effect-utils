@@ -9,7 +9,8 @@ import { CurrentWorkingDirectory } from '@overeng/utils/node'
 import { resolveCliVersion } from '@overeng/utils/node/cli-version'
 
 import { findGenieFiles } from './discovery.ts'
-import { GenieFileError, GenieGenerationFailedError } from './errors.ts'
+import type { GenieFileError } from './errors.ts'
+import { GenieGenerationFailedError } from './errors.ts'
 import {
   checkFile,
   errorOriginatesInFile,
