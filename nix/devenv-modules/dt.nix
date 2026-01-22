@@ -10,27 +10,51 @@
 # Bash/zsh completions are set up automatically via enterShell.
 #
 # TODO: Remove once devenv supports defaultMode for tasks (https://github.com/cachix/devenv/issues/2417)
-{ ... }:
+{ pkgs, ... }:
 {
   # Wrapper that runs tasks with --mode before so dependencies run automatically
   scripts.dt.exec = ''devenv tasks run "$@" --mode before'';
 
-  # Shell completions for bash/zsh
+  packages = [ pkgs.jq ];
+
+  # Shell completions for bash/zsh with descriptions
   enterShell = ''
     # Shell completions for `dt` command (cached for performance)
-    _dt_get_tasks() {
-      local cache="$DEVENV_DOTFILE/.tasks-cache"
-      # Refresh cache if older than 5 minutes or doesn't exist
-      if [[ ! -f "$cache" ]] || [[ $(find "$cache" -mmin +5 2>/dev/null) ]]; then
-        devenv tasks list 2>/dev/null | grep -oE '[a-z]+:[a-z0-9:-]+' | sort -u > "$cache" 2>/dev/null || true
+    # Uses task config JSON for names and descriptions
+    _dt_get_tasks_with_desc() {
+      local cache="$DEVENV_DOTFILE/.tasks-cache-desc"
+      local config="$DEVENV_DOTFILE/gc/task-config"
+      # Refresh cache if config is newer or cache doesn't exist
+      if [[ ! -f "$cache" ]] || [[ "$config" -nt "$cache" ]]; then
+        if [[ -f "$config" ]]; then
+          # Extract name and description from JSON, format as "name:description"
+          jq -r '.[] | "\(.name):\(.description // "")"' "$config" 2>/dev/null | sort > "$cache" || true
+        else
+          # Fallback: just get names from devenv tasks list
+          devenv tasks list 2>/dev/null | grep -oE '[a-z]+:[a-z0-9:-]+' | sort -u | sed 's/$/:/' > "$cache" || true
+        fi
       fi
       cat "$cache" 2>/dev/null
     }
 
+    _dt_get_tasks() {
+      _dt_get_tasks_with_desc | cut -d: -f1-2
+    }
+
     if [[ -n "$ZSH_VERSION" ]]; then
       _dt_completions() {
-        local tasks
-        tasks=("''${(@f)$(_dt_get_tasks)}")
+        local -a tasks
+        local line
+        while IFS= read -r line; do
+          local name="''${line%%:*}"
+          local rest="''${line#*:}"
+          local desc="''${rest#*:}"
+          if [[ -n "$desc" ]]; then
+            tasks+=("$name:$desc")
+          else
+            tasks+=("$name")
+          fi
+        done < <(_dt_get_tasks_with_desc)
         _describe 'task' tasks
       }
       compdef _dt_completions dt
@@ -38,6 +62,7 @@
       _dt_completions() {
         local cur tasks
         cur="''${COMP_WORDS[COMP_CWORD]}"
+        # Bash doesn't support descriptions well, just use names
         tasks=$(_dt_get_tasks)
         COMPREPLY=($(compgen -W "$tasks" -- "$cur"))
       }
