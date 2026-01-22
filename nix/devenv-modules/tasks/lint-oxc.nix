@@ -3,11 +3,19 @@
 # Usage in devenv.nix:
 #   imports = [
 #     (inputs.effect-utils.devenvModules.tasks.lint-oxc {
-#       # Directories containing source code (for execIfModified globs)
-#       # IMPORTANT: Must be specified to avoid scanning node_modules
-#       sourceDirs = [ "packages" "scripts" "context" ];  # required
-#       # Directories to scan for genie coverage check (defaults to sourceDirs)
-#       genieCoverageDirs = [ "packages" "scripts" ];  # optional
+#       # Explicit glob patterns for execIfModified (avoids node_modules traversal)
+#       # IMPORTANT: Use patterns that don't traverse into node_modules directories
+#       # Good: "packages/@overeng/*/src/**/*.ts" (src/ never contains node_modules)
+#       # Bad:  "packages/**/*.ts" (traverses into packages/*/node_modules/)
+#       execIfModifiedPatterns = [
+#         "packages/@overeng/*/src/**/*.ts"
+#         "packages/@overeng/*/src/**/*.tsx"
+#         "packages/@overeng/*/*.ts"  # root config files
+#         "scripts/*.ts"
+#         "scripts/commands/**/*.ts"
+#       ];
+#       # Directories to scan for genie coverage check
+#       genieCoverageDirs = [ "packages" "scripts" ];  # required
 #       # Extra directories to exclude from genie coverage
 #       genieCoverageExcludes = [ "storybook-static" ];  # optional
 #       # Custom oxfmt exclusions (in addition to node_modules)
@@ -21,8 +29,8 @@
 # Provides: lint:check, lint:check:format, lint:check:oxlint, lint:check:genie, lint:check:genie:coverage
 #           lint:fix, lint:fix:format, lint:fix:oxlint
 {
-  sourceDirs,
-  genieCoverageDirs ? sourceDirs,
+  execIfModifiedPatterns,
+  genieCoverageDirs,
   genieCoverageExcludes ? [],
   oxfmtExcludes ? [],
   oxfmtConfig ? "./oxfmt.json",
@@ -54,19 +62,18 @@ in
 {
   tasks = {
     # Lint check tasks
-    # NOTE: execIfModified disabled because devenv's glob traverses into node_modules
-    # symlinks, causing 178k+ files to be hashed instead of ~800 source files.
-    # The linters themselves are fast (<1s each), so caching provides minimal benefit.
-    # TODO: Re-enable once devenv supports glob exclusions or we find a workaround.
+    # Uses explicit glob patterns that avoid node_modules traversal
     "lint:check:format" = {
       description = "Check code formatting with oxfmt";
       exec = "oxfmt -c ${oxfmtConfig} --check . ${oxfmtExcludeArgs}";
       after = [ "genie:run" ];
+      execIfModified = execIfModifiedPatterns;
     };
     "lint:check:oxlint" = {
       description = "Run oxlint linter";
       exec = "oxlint -c ${oxlintConfig} --import-plugin --deny-warnings";
       after = [ "genie:run" ];
+      execIfModified = execIfModifiedPatterns;
     };
     "lint:check:genie" = {
       description = "Check generated files are up to date";

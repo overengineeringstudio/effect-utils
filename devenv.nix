@@ -107,7 +107,35 @@ in
       vitestConfig = "packages/@overeng/utils/vitest.config.ts";
     })
     (taskModules.lint-oxc {
-      sourceDirs = [ "packages" "scripts" "context" ];
+      # Explicit patterns that avoid node_modules traversal
+      # Key insight: patterns like "packages/*/src/**" are safe because src/ never contains node_modules
+      execIfModifiedPatterns = [
+        # packages: src directories (safe - no node_modules inside src)
+        "packages/@overeng/*/src/**/*.ts"
+        "packages/@overeng/*/src/**/*.tsx"
+        # packages: root level config files
+        "packages/@overeng/*/*.ts"
+        # packages: bin, .storybook, stress-test directories
+        "packages/@overeng/*/bin/*.ts"
+        "packages/@overeng/*/.storybook/*.ts"
+        "packages/@overeng/*/.storybook/*.tsx"
+        "packages/@overeng/*/stress-test/**/*.ts"
+        # packages/examples: specific paths (examples/basic has node_modules)
+        "packages/@overeng/*/examples/*/*.ts"
+        "packages/@overeng/*/examples/*/*.tsx"
+        "packages/@overeng/*/examples/*/src/**/*.ts"
+        "packages/@overeng/*/examples/*/src/**/*.tsx"
+        "packages/@overeng/*/examples/*/tests/*.ts"
+        # scripts
+        "scripts/*.ts"
+        "scripts/commands/**/*.ts"
+        # context: specific safe paths
+        "context/cli-design/*.ts"
+        "context/effect/socket/*.genie.ts"
+        "context/effect/socket/examples/*.ts"
+        "context/opentui/*.genie.ts"
+      ];
+      genieCoverageDirs = [ "packages" "scripts" ];
       oxfmtExcludes = [
         "**/package.json"
         "**/tsconfig.json"
