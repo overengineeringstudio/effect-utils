@@ -135,6 +135,14 @@ in
         "context/effect/socket/examples/*.ts"
         "context/opentui/*.genie.ts"
       ];
+      # Genie file patterns for caching genie:check tasks
+      geniePatterns = [
+        "packages/@overeng/*/*.genie.ts"
+        "packages/@overeng/*/examples/*/*.genie.ts"
+        "scripts/*.genie.ts"
+        "context/effect/socket/*.genie.ts"
+        "context/opentui/*.genie.ts"
+      ];
       genieCoverageDirs = [ "packages" "scripts" ];
       oxfmtExcludes = [
         "**/package.json"

@@ -10,9 +10,15 @@
 #       execIfModifiedPatterns = [
 #         "packages/@overeng/*/src/**/*.ts"
 #         "packages/@overeng/*/src/**/*.tsx"
-#         "packages/@overeng/*/*.ts"  # root config files
+#         "packages/@overeng/*/*.ts"  # root config files including *.genie.ts
 #         "scripts/*.ts"
 #         "scripts/commands/**/*.ts"
+#       ];
+#       # Glob patterns for .genie.ts files (for genie check caching)
+#       # Should match all *.genie.ts files without traversing node_modules
+#       geniePatterns = [
+#         "packages/@overeng/*/*.genie.ts"
+#         "scripts/*.genie.ts"
 #       ];
 #       # Directories to scan for genie coverage check
 #       genieCoverageDirs = [ "packages" "scripts" ];  # required
@@ -30,6 +36,7 @@
 #           lint:fix, lint:fix:format, lint:fix:oxlint
 {
   execIfModifiedPatterns,
+  geniePatterns,
   genieCoverageDirs,
   genieCoverageExcludes ? [],
   oxfmtExcludes ? [],
@@ -78,6 +85,7 @@ in
     "lint:check:genie" = {
       description = "Check generated files are up to date";
       exec = "genie --check";
+      execIfModified = geniePatterns;
     };
     "lint:check:genie:coverage" = {
       description = "Check all config files have .genie.ts sources";
@@ -95,6 +103,8 @@ in
         fi
         echo "All config files have .genie.ts sources"
       '';
+      # Cache based on genie files - if no new .genie.ts files added, coverage is unchanged
+      execIfModified = geniePatterns;
     };
     "lint:check" = {
       description = "Run all lint checks";
