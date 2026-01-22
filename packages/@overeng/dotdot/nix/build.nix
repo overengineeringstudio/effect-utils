@@ -17,7 +17,7 @@ mkBunCli {
   smokeTestSetup = ''
     printf '%s\n' '{"repos":{}}' > "$smoke_test_cwd/dotdot-root.json"
   '';
-  bunDepsHash = "sha256-+wPb5gjCklCuGb5hJkyjOOVlqIa41hmsYJ2BLY1GTkE=";
+  bunDepsHash = "sha256-+iA+T/MzyNdBV+IDuqYAvDeQxX/XcumFcC5bj0J+JYg=";
   dirty = dirty;
   inherit gitRev;
 }

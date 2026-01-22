@@ -13,7 +13,7 @@ mkBunCli {
   workspaceRoot = src;
   extraExcludedSourceNames = [ "context" "scripts" ];
   typecheckTsconfig = "packages/@overeng/genie/tsconfig.json";
-  bunDepsHash = "sha256-QuzNV18AGt8hNaFpp/aSYGLbFib0LP61AxCDyQqXKh8=";
+  bunDepsHash = "sha256-qejMQMUL17HoLSMG9Q21QHCxJ+Q0mevYf552ed/MulU=";
   dirty = dirty;
   inherit gitRev;
 }

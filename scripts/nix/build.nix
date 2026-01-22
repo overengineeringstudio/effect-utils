@@ -16,7 +16,7 @@ mkBunCliResolved {
   workspaceRoot = src;
   extraExcludedSourceNames = [ "context" ];
   typecheckTsconfig = "scripts/tsconfig.json";
-  bunDepsHash = "sha256-xhjAhDW8f+ScJIJl1WT2ID0jzmN7riS35WqKpHaN95g=";
+  bunDepsHash = "sha256-dyHppgvUgYJyHB0pv2hekutKMODKsPosUAlmDQBSEbE=";
   dirty = dirty;
   inherit gitRev;
 }
