@@ -108,6 +108,7 @@
           check = import ./nix/devenv-modules/tasks/check.nix;
           clean = import ./nix/devenv-modules/tasks/clean.nix;
           test = import ./nix/devenv-modules/tasks/test.nix;
+          test-playwright = import ./nix/devenv-modules/tasks/test-playwright.nix;
           lint-oxc = import ./nix/devenv-modules/tasks/lint-oxc.nix;
           bun = import ./nix/devenv-modules/tasks/bun.nix;
         };
