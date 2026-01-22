@@ -4,6 +4,8 @@ import { Schema } from 'effect'
 export class GenieImportError extends Schema.TaggedError<GenieImportError>()('GenieImportError', {
   genieFilePath: Schema.String,
   message: Schema.String,
+  /** The original error that caused the import to fail (for TDZ detection) */
+  cause: Schema.Unknown,
 }) {}
 
 /** Error when generated file content doesn't match (in check mode) */
@@ -25,4 +27,6 @@ export class GenieGenerationFailedError extends Schema.TaggedError<GenieGenerati
 export class GenieFileError extends Schema.TaggedError<GenieFileError>()('GenieFileError', {
   targetFilePath: Schema.String,
   message: Schema.String,
+  /** The original error that caused the failure (for TDZ detection) */
+  cause: Schema.Unknown,
 }) {}

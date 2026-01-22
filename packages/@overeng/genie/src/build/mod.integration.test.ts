@@ -185,4 +185,133 @@ export default pkg.root({ name: 'genie-cli-test' })
       Effect.scoped,
     ),
   )
+
+  it.effect(
+    're-validates on TDZ errors to identify root causes',
+    Effect.fnUntraced(
+      function* () {
+        yield* withTestEnv((env) =>
+          Effect.gen(function* () {
+            /**
+             * When a shared module throws during initialization, dependent genie files
+             * may see TDZ errors. The CLI should detect this and re-validate sequentially
+             * to identify the actual root cause.
+             */
+
+            // Root cause: shared module that throws during initialization
+            yield* env.writeFile({
+              path: 'genie/internal.ts',
+              content: `export const catalog = (() => {
+  throw new Error('Missing required env var DATABASE_URL')
+})()
+`,
+            })
+
+            // Dependent: imports from the failing module
+            yield* env.writeFile({
+              path: 'apps/app/package.json.genie.ts',
+              content: `import { catalog } from '../../genie/internal.ts'
+export default {
+  data: { dependencies: catalog },
+  stringify: () => JSON.stringify({ dependencies: catalog }),
+}
+`,
+            })
+
+            // Another dependent
+            yield* env.writeFile({
+              path: 'packages/lib/package.json.genie.ts',
+              content: `import { catalog } from '../../genie/internal.ts'
+export default {
+  data: { devDependencies: catalog },
+  stringify: () => JSON.stringify({ devDependencies: catalog }),
+}
+`,
+            })
+
+            // Independent success case
+            yield* env.writeFile({
+              path: 'standalone/package.json.genie.ts',
+              content: `export default {
+  data: { name: 'standalone' },
+  stringify: () => JSON.stringify({ name: 'standalone' }),
+}
+`,
+            })
+
+            // Create parent directories for generated files
+            yield* env.writeFile({ path: 'apps/app/.gitkeep', content: '' })
+            yield* env.writeFile({ path: 'packages/lib/.gitkeep', content: '' })
+            yield* env.writeFile({ path: 'standalone/.gitkeep', content: '' })
+
+            const { stdout, stderr, exitCode } = yield* runGenie(env, ['--dry-run'])
+            const output = `${stdout}\n${stderr}`
+
+            // Should fail
+            expect(exitCode).not.toBe(0)
+
+            // Should show re-validation message
+            expect(output).toContain('Re-validating to identify root causes')
+
+            // Should identify root cause (not TDZ errors)
+            expect(output).toContain('root cause error')
+            expect(output).toContain('Missing required env var DATABASE_URL')
+
+            // Should indicate dependent failures
+            expect(output).toContain('failed due to dependency errors')
+          }),
+        )
+      },
+      Effect.provide(TestLayer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'handles multiple independent root causes',
+    Effect.fnUntraced(
+      function* () {
+        yield* withTestEnv((env) =>
+          Effect.gen(function* () {
+            /**
+             * When there are multiple independent failures (not dependencies of each other),
+             * all should be reported as root causes.
+             */
+
+            // First root cause
+            yield* env.writeFile({
+              path: 'a/package.json.genie.ts',
+              content: `throw new Error('Error in module A')
+export default { data: {}, stringify: () => '{}' }
+`,
+            })
+
+            // Second root cause (independent)
+            yield* env.writeFile({
+              path: 'b/package.json.genie.ts',
+              content: `throw new Error('Error in module B')
+export default { data: {}, stringify: () => '{}' }
+`,
+            })
+
+            // Create parent directories
+            yield* env.writeFile({ path: 'a/.gitkeep', content: '' })
+            yield* env.writeFile({ path: 'b/.gitkeep', content: '' })
+
+            const { stdout, stderr, exitCode } = yield* runGenie(env, ['--dry-run'])
+            const output = `${stdout}\n${stderr}`
+
+            // Should fail
+            expect(exitCode).not.toBe(0)
+
+            // Should show both root causes
+            expect(output).toContain('Error in module A')
+            expect(output).toContain('Error in module B')
+          }),
+        )
+      },
+      Effect.provide(TestLayer),
+      Effect.scoped,
+    ),
+  )
 })

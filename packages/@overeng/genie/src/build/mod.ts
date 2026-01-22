@@ -9,8 +9,14 @@ import { CurrentWorkingDirectory } from '@overeng/utils/node'
 import { resolveCliVersion } from '@overeng/utils/node/cli-version'
 
 import { findGenieFiles } from './discovery.ts'
-import { GenieGenerationFailedError } from './errors.ts'
-import { checkFile, generateFile, summarizeResults } from './generation.ts'
+import { GenieFileError, GenieGenerationFailedError } from './errors.ts'
+import {
+  checkFile,
+  errorOriginatesInFile,
+  generateFile,
+  isTdzError,
+  summarizeResults,
+} from './generation.ts'
 import { logTsconfigWarnings, validateTsconfigReferences } from './tsconfig-validation.ts'
 import type { GenieCommandConfig, GenieCommandEnv, GenieCommandError } from './types.ts'
 
@@ -134,7 +140,90 @@ export const genieCommand: Cli.Command.Command<
       const successes = results.filter(Either.isRight).map((r) => r.right)
       const failures = results.filter(Either.isLeft).map((r) => r.left)
 
-      // Show summary
+      // Check if any failures are TDZ errors (indicating cascaded dependency failures)
+      const hasTdzErrors = failures.some((f) => isTdzError(f.cause))
+
+      // If TDZ errors detected, re-validate sequentially to identify root causes
+      if (failures.length > 0 && hasTdzErrors) {
+        yield* Effect.log('\nRe-validating to identify root causes...')
+
+        const revalidateErrors: Array<{
+          genieFilePath: string
+          error: GenieFileError
+          isRootCause: boolean
+        }> = []
+
+        // Sequential import with fresh timestamps to get accurate error attribution
+        for (const genieFilePath of genieFiles) {
+          const result = yield* generateFile({
+            genieFilePath,
+            cwd: resolvedCwd,
+            readOnly,
+            dryRun,
+            oxfmtConfigPath,
+          }).pipe(Effect.either)
+
+          if (Either.isLeft(result)) {
+            const error = result.left
+            revalidateErrors.push({
+              genieFilePath,
+              error,
+              isRootCause: errorOriginatesInFile({ error: error.cause, filePath: genieFilePath }),
+            })
+          }
+        }
+
+        // Report only root causes
+        const rootCauses = revalidateErrors.filter((e) => e.isRootCause)
+        const dependentCount = revalidateErrors.length - rootCauses.length
+
+        yield* Effect.log('')
+        yield* Effect.log(`Summary: ${genieFiles.length} files processed`)
+
+        if (rootCauses.length > 0) {
+          yield* Effect.logError(`  ✗ ${rootCauses.length} root cause error(s):`)
+          for (const { genieFilePath, error } of rootCauses) {
+            const targetFilePath = genieFilePath.replace('.genie.ts', '')
+            yield* Effect.logError(`    - ${targetFilePath}: ${error.message}`)
+          }
+        }
+
+        if (dependentCount > 0) {
+          yield* Effect.log(`  · ${dependentCount} file(s) failed due to dependency errors`)
+
+          // If all errors are dependent (no root causes in genie files), show the actual error
+          // This happens when a shared module throws and all genie files depend on it
+          if (rootCauses.length === 0) {
+            // Look for the first non-TDZ error in the ORIGINAL parallel failures
+            // (During re-validation, all errors may be TDZ due to module cache)
+            const firstRealError = failures.find((f) => !isTdzError(f.cause))
+            if (firstRealError) {
+              const causeMessage =
+                firstRealError.cause instanceof Error
+                  ? firstRealError.cause.message
+                  : String(firstRealError.cause)
+              yield* Effect.logError(`  ✗ Root cause (in dependency): ${causeMessage}`)
+            } else {
+              // All original errors are also TDZ - show first error message
+              const firstError = failures[0]
+              if (firstError) {
+                const causeMessage =
+                  firstError.cause instanceof Error
+                    ? firstError.cause.message
+                    : String(firstError.cause)
+                yield* Effect.logError(`  ✗ Error: ${causeMessage}`)
+              }
+            }
+          }
+        }
+
+        return yield* new GenieGenerationFailedError({
+          failedCount: revalidateErrors.length,
+          message: `${rootCauses.length} root cause error(s), ${dependentCount} dependent failure(s)`,
+        })
+      }
+
+      // No TDZ errors - use original parallel results
       const summary = yield* summarizeResults({ successes, failures })
 
       // Exit with error code if any files failed

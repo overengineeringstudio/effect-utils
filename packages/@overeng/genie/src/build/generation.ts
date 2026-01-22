@@ -24,6 +24,45 @@ const safeErrorString = (error: unknown): string => {
   }
 }
 
+/**
+ * Check if an error is a Temporal Dead Zone (TDZ) error.
+ *
+ * TDZ errors occur when a module tries to import from another module that
+ * threw during initialization. The ESM runtime leaves exports in an
+ * uninitialized state, causing dependent imports to fail with this error.
+ *
+ * Example: "ReferenceError: Cannot access 'catalog' before initialization"
+ */
+export const isTdzError = (error: unknown): error is ReferenceError =>
+  error instanceof ReferenceError &&
+  /Cannot access .* before initialization/.test((error as Error).message)
+
+/**
+ * Check if an error originated in the given file (vs being propagated from a dependency).
+ *
+ * When a module throws during initialization, dependent modules can either:
+ * 1. Get a TDZ error (never originates in the dependent file)
+ * 2. Get the original error propagated (stack trace won't include dependent file)
+ *
+ * This function identifies "root cause" errors - those that actually originated
+ * in the file being checked, not cascaded from a dependency.
+ */
+export const errorOriginatesInFile = ({
+  error,
+  filePath,
+}: {
+  error: unknown
+  filePath: string
+}): boolean => {
+  // TDZ errors never originate in the file - they're always from dependencies
+  if (isTdzError(error)) return false
+  // Check if the stack trace includes this file path
+  if (error instanceof Error) {
+    return error.stack?.includes(filePath) ?? false
+  }
+  return false
+}
+
 /** File extensions that oxfmt can format */
 const oxfmtSupportedExtensions = new Set(['.json', '.jsonc', '.yml', '.yaml'])
 
@@ -141,6 +180,7 @@ const importGenieFile = Effect.fn('importGenieFile')(function* ({
       new GenieImportError({
         genieFilePath,
         message: `Failed to import ${genieFilePath}: ${safeErrorString(error)}`,
+        cause: error,
       }),
   })
 
@@ -156,6 +196,7 @@ const importGenieFile = Effect.fn('importGenieFile')(function* ({
     return yield* new GenieImportError({
       genieFilePath,
       message: `Genie file must export a GenieOutput object with { data, stringify }, got ${typeof exported}`,
+      cause: new Error(`Invalid export type: ${typeof exported}`),
     })
   }
 
@@ -371,9 +412,15 @@ export const generateFile = ({
   }).pipe(
     Effect.mapError((cause) => {
       const targetFilePath = genieFilePath.replace('.genie.ts', '')
+      // Extract the underlying error for TDZ detection
+      const underlyingError =
+        cause && typeof cause === 'object' && 'cause' in cause
+          ? (cause as { cause: unknown }).cause
+          : cause
       return new GenieFileError({
         targetFilePath,
         message: `Failed to generate ${targetFilePath}: ${safeErrorString(cause)}`,
+        cause: underlyingError instanceof Error ? underlyingError : new Error(safeErrorString(cause)),
       })
     }),
     Effect.catchAllDefect((defect) => {
@@ -382,6 +429,7 @@ export const generateFile = ({
         new GenieFileError({
           targetFilePath,
           message: `Failed to generate ${targetFilePath}: ${safeErrorString(defect)}`,
+          cause: defect instanceof Error ? defect : new Error(safeErrorString(defect)),
         }),
       )
     }),
