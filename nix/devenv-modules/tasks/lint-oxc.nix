@@ -50,31 +50,27 @@ let
     [ "'!**/node_modules/**'" ] ++ map (p: "'!${p}'") oxfmtExcludes
   );
   
-  # Build execIfModified patterns scoped to source directories
-  # This avoids scanning node_modules (178k+ files vs ~800 source files)
-  sourceGlobs = ext: map (dir: "${dir}/**/*.${ext}") sourceDirs;
-  allSourceGlobs = (sourceGlobs "ts") ++ (sourceGlobs "tsx") ++ (sourceGlobs "js") ++ (sourceGlobs "jsx");
-  genieGlobs = map (dir: "${dir}/**/*.genie.ts") sourceDirs;
 in
 {
   tasks = {
     # Lint check tasks
+    # NOTE: execIfModified disabled because devenv's glob traverses into node_modules
+    # symlinks, causing 178k+ files to be hashed instead of ~800 source files.
+    # The linters themselves are fast (<1s each), so caching provides minimal benefit.
+    # TODO: Re-enable once devenv supports glob exclusions or we find a workaround.
     "lint:check:format" = {
       description = "Check code formatting with oxfmt";
       exec = "oxfmt -c ${oxfmtConfig} --check . ${oxfmtExcludeArgs}";
       after = [ "genie:run" ];
-      execIfModified = allSourceGlobs ++ [ "oxfmt.json" ];
     };
     "lint:check:oxlint" = {
       description = "Run oxlint linter";
       exec = "oxlint -c ${oxlintConfig} --import-plugin --deny-warnings";
       after = [ "genie:run" ];
-      execIfModified = allSourceGlobs ++ [ "oxlint.json" ];
     };
     "lint:check:genie" = {
       description = "Check generated files are up to date";
       exec = "genie --check";
-      execIfModified = genieGlobs;
     };
     "lint:check:genie:coverage" = {
       description = "Check all config files have .genie.ts sources";
