@@ -36,6 +36,7 @@ let
     "bun:install:${toName path}" = {
       exec = "bun install";
       cwd = path;
+      execIfModified = [ "${path}/package.json" "${path}/bun.lock" ];
       after = [ "genie:run" ];
     };
   };

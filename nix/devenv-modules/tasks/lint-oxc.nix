@@ -7,6 +7,11 @@
 #       genieCoverageDirs = [ "packages" "scripts" ];  # required
 #       # Extra directories to exclude from genie coverage
 #       genieCoverageExcludes = [ "storybook-static" ];  # optional
+#       # Custom oxfmt exclusions (in addition to node_modules)
+#       oxfmtExcludes = [ "**/package.json" "**/tsconfig.json" ];  # optional
+#       # Config file paths (default: ./oxfmt.json and ./oxlint.json)
+#       oxfmtConfig = "./oxfmt.json";  # optional
+#       oxlintConfig = "./oxlint.json";  # optional
 #     })
 #   ];
 #
@@ -14,7 +19,10 @@
 #           lint:fix, lint:fix:format, lint:fix:oxlint
 {
   genieCoverageDirs,
-  genieCoverageExcludes ? []
+  genieCoverageExcludes ? [],
+  oxfmtExcludes ? [],
+  oxfmtConfig ? "./oxfmt.json",
+  oxlintConfig ? "./oxlint.json",
 }:
 { lib, ... }:
 let
@@ -32,20 +40,28 @@ let
   allExcludes = defaultExcludes ++ genieCoverageExcludes;
   excludeArgs = builtins.concatStringsSep " " (map (d: "-not -path \"*/${d}/*\"") allExcludes);
   scanDirsArg = builtins.concatStringsSep " " genieCoverageDirs;
+  
+  # Build oxfmt exclusion args
+  oxfmtExcludeArgs = builtins.concatStringsSep " " (
+    [ "'!**/node_modules/**'" ] ++ map (p: "'!${p}'") oxfmtExcludes
+  );
 in
 {
   tasks = {
     # Lint check tasks
     "lint:check:format" = {
-      exec = "oxfmt -c ./oxfmt.json --check . '!**/node_modules/**'";
+      exec = "oxfmt -c ${oxfmtConfig} --check . ${oxfmtExcludeArgs}";
       after = [ "genie:run" ];
+      execIfModified = [ "**/*.ts" "**/*.tsx" "**/*.js" "**/*.jsx" "oxfmt.json" ];
     };
     "lint:check:oxlint" = {
-      exec = "oxlint -c ./oxlint.json --import-plugin --deny-warnings";
+      exec = "oxlint -c ${oxlintConfig} --import-plugin --deny-warnings";
       after = [ "genie:run" ];
+      execIfModified = [ "**/*.ts" "**/*.tsx" "**/*.js" "**/*.jsx" "oxlint.json" ];
     };
     "lint:check:genie" = {
       exec = "genie --check";
+      execIfModified = [ "**/*.genie.ts" ];
     };
     "lint:check:genie:coverage" = {
       description = "Check all config files have .genie.ts sources";
@@ -71,10 +87,10 @@ in
 
     # Lint fix tasks
     "lint:fix:format" = {
-      exec = "oxfmt -c ./oxfmt.json .";
+      exec = "oxfmt -c ${oxfmtConfig} . ${oxfmtExcludeArgs}";
     };
     "lint:fix:oxlint" = {
-      exec = "oxlint -c ./oxlint.json --import-plugin --deny-warnings --fix";
+      exec = "oxlint -c ${oxlintConfig} --import-plugin --deny-warnings --fix";
     };
     "lint:fix" = {
       description = "Fix all lint issues";
