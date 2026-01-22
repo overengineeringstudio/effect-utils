@@ -21,22 +21,21 @@
 { packages }:
 { lib, ... }:
 let
-  # Convert path to task name (drop first segment if >1, strip @scope/):
+  # Convert path to task name:
   # "packages/@scope/foo" -> "foo"
   # "packages/@scope/foo/examples/basic" -> "foo-examples-basic"
   # "packages/app" -> "app"
   # "apps/example.com" -> "example-com"
-  # "context/effect/socket" -> "effect-socket"
+  # "tests/wa-sqlite" -> "tests-wa-sqlite"
   # "scripts" -> "scripts"
   toName = path:
     let
       sanitize = s: builtins.replaceStrings ["/" "."] ["-" "-"] s;
-      parts = lib.splitString "/" path;
-      rest = if builtins.length parts > 1 
-        then lib.concatStringsSep "/" (lib.drop 1 parts) 
-        else path;
-      m = builtins.match "@[^/]+/(.*)" rest;
-      final = if m != null then builtins.head m else rest;
+      # Only strip "packages/" or "apps/" prefix, keep others like "tests/"
+      stripped = lib.removePrefix "apps/" (lib.removePrefix "packages/" path);
+      # Strip @scope/ pattern (e.g., "@overeng/foo" -> "foo")
+      m = builtins.match "@[^/]+/(.*)" stripped;
+      final = if m != null then builtins.head m else stripped;
     in
     sanitize final;
 
