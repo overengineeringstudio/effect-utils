@@ -105,6 +105,7 @@
           ts = ./nix/devenv-modules/tasks/ts.nix;
           check = ./nix/devenv-modules/tasks/check.nix;
           test = ./nix/devenv-modules/tasks/test.nix;
+          lint-genie = ./nix/devenv-modules/tasks/lint-genie.nix;
           # Parameterized tasks (pass config)
           clean = import ./nix/devenv-modules/tasks/clean.nix;
           lint-oxc = import ./nix/devenv-modules/tasks/lint-oxc.nix;
