@@ -45,7 +45,15 @@ let
     lint-oxc = import ./nix/devenv-modules/tasks/lint-oxc.nix;
     bun = import ./nix/devenv-modules/tasks/bun.nix;
     pnpm = import ./nix/devenv-modules/tasks/pnpm.nix;
+    nix-cli = import ./nix/devenv-modules/tasks/nix-cli.nix;
   };
+
+  # CLI packages built with Nix (for hash management)
+  nixCliPackages = [
+    { name = "genie"; flakeRef = ".#genie"; buildNix = "packages/@overeng/genie/nix/build.nix"; }
+    { name = "dotdot"; flakeRef = ".#dotdot"; buildNix = "packages/@overeng/dotdot/nix/build.nix"; }
+    { name = "mono"; flakeRef = ".#mono"; buildNix = "scripts/nix/build.nix"; }
+  ];
 
   # All packages for per-package install tasks
   # NOTE: Using pnpm instead of bun due to bun bugs. See context/workarounds/bun-issues.md
@@ -168,6 +176,8 @@ in
     (taskModules.setup {
       tasks = [ "pnpm:install" "genie:run" "ts:build" ];
     })
+    # Nix CLI build and hash management
+    (taskModules.nix-cli { cliPackages = nixCliPackages; })
   ];
 
   packages = [

@@ -113,6 +113,7 @@
           lint-oxc = import ./nix/devenv-modules/tasks/lint-oxc.nix;
           bun = import ./nix/devenv-modules/tasks/bun.nix;
           pnpm = import ./nix/devenv-modules/tasks/pnpm.nix;
+          nix-cli = import ./nix/devenv-modules/tasks/nix-cli.nix;
         };
       };
 
