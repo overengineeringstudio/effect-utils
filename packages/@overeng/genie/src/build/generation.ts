@@ -24,6 +24,70 @@ const safeErrorString = (error: unknown): string => {
   }
 }
 
+/**
+ * Check if an error is a Temporal Dead Zone (TDZ) error.
+ *
+ * ## Problem
+ *
+ * When genie files import from a shared module that throws during initialization,
+ * ESM leaves the module's exports in an uninitialized state. Subsequent imports
+ * from that module produce TDZ errors instead of re-throwing the original error.
+ *
+ * ## Example Scenario
+ *
+ * ```
+ * // genie/internal.ts - throws during initialization
+ * export const catalog = (() => { throw new Error('Missing DATABASE_URL') })()
+ *
+ * // apps/app/package.json.genie.ts - imports from internal.ts
+ * import { catalog } from '../../genie/internal.ts'  // TDZ error!
+ * ```
+ *
+ * During parallel generation, one file gets the original error while others get:
+ * `ReferenceError: Cannot access 'catalog' before initialization`
+ *
+ * This function detects TDZ errors so we can re-validate and find the root cause.
+ */
+export const isTdzError = (error: unknown): error is ReferenceError =>
+  error instanceof ReferenceError &&
+  /Cannot access .* before initialization/.test((error as Error).message)
+
+/**
+ * Check if an error originated in the given file (vs being propagated from a dependency).
+ *
+ * ## Purpose
+ *
+ * When re-validating after TDZ detection, we need to distinguish between:
+ * - **Root cause errors**: The actual file that threw (appears in stack trace)
+ * - **Cascaded errors**: Files that failed because they import from a failing module
+ *
+ * ## Error Attribution Rules
+ *
+ * 1. TDZ errors → Never originate in the file (always from dependencies)
+ * 2. Other errors → Check if the file path appears in the stack trace
+ *
+ * ## Example
+ *
+ * If `genie/internal.ts` throws and `apps/app/package.json.genie.ts` imports from it:
+ * - `errorOriginatesInFile(error, 'genie/internal.ts')` → true (root cause)
+ * - `errorOriginatesInFile(error, 'apps/app/package.json.genie.ts')` → false (dependent)
+ */
+export const errorOriginatesInFile = ({
+  error,
+  filePath,
+}: {
+  error: unknown
+  filePath: string
+}): boolean => {
+  // TDZ errors never originate in the file - they're always from dependencies
+  if (isTdzError(error)) return false
+  // Check if the stack trace includes this file path
+  if (error instanceof Error) {
+    return error.stack?.includes(filePath) ?? false
+  }
+  return false
+}
+
 /** File extensions that oxfmt can format */
 const oxfmtSupportedExtensions = new Set(['.json', '.jsonc', '.yml', '.yaml'])
 
@@ -141,6 +205,7 @@ const importGenieFile = Effect.fn('importGenieFile')(function* ({
       new GenieImportError({
         genieFilePath,
         message: `Failed to import ${genieFilePath}: ${safeErrorString(error)}`,
+        cause: error,
       }),
   })
 
@@ -156,6 +221,7 @@ const importGenieFile = Effect.fn('importGenieFile')(function* ({
     return yield* new GenieImportError({
       genieFilePath,
       message: `Genie file must export a GenieOutput object with { data, stringify }, got ${typeof exported}`,
+      cause: new Error(`Invalid export type: ${typeof exported}`),
     })
   }
 
@@ -371,9 +437,15 @@ export const generateFile = ({
   }).pipe(
     Effect.mapError((cause) => {
       const targetFilePath = genieFilePath.replace('.genie.ts', '')
+      // Extract the underlying error for TDZ detection
+      // Only unwrap GenieImportError (check _tag to avoid unwrapping native Error.cause)
+      const underlyingError =
+        cause instanceof GenieImportError ? cause.cause : cause
       return new GenieFileError({
         targetFilePath,
         message: `Failed to generate ${targetFilePath}: ${safeErrorString(cause)}`,
+        cause:
+          underlyingError instanceof Error ? underlyingError : new Error(safeErrorString(cause)),
       })
     }),
     Effect.catchAllDefect((defect) => {
@@ -382,6 +454,7 @@ export const generateFile = ({
         new GenieFileError({
           targetFilePath,
           message: `Failed to generate ${targetFilePath}: ${safeErrorString(defect)}`,
+          cause: defect instanceof Error ? defect : new Error(safeErrorString(defect)),
         }),
       )
     }),
