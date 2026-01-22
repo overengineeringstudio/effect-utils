@@ -98,6 +98,18 @@
       devenvModules = {
         # `dt` command wrapper for devenv tasks with shell completions
         dt = ./nix/devenv-modules/dt.nix;
+        # Shared task modules (parameterized)
+        tasks = {
+          # Simple tasks (no config needed)
+          genie = ./nix/devenv-modules/tasks/genie.nix;
+          ts = ./nix/devenv-modules/tasks/ts.nix;
+          check = ./nix/devenv-modules/tasks/check.nix;
+          test = ./nix/devenv-modules/tasks/test.nix;
+          # Parameterized tasks (pass config)
+          clean = import ./nix/devenv-modules/tasks/clean.nix;
+          lint-oxc = import ./nix/devenv-modules/tasks/lint-oxc.nix;
+          bun = import ./nix/devenv-modules/tasks/bun.nix;
+        };
       };
 
       # Direnv helper script (eval-time store path; no build required).
