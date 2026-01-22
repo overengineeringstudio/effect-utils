@@ -1,41 +1,30 @@
 # Setup task module - runs common setup tasks on shell entry
 #
+# Wires specified tasks to run as dependencies of devenv:enterShell.
+# This uses native devenv task dependency resolution, avoiding the
+# double shell entry that occurs when calling `dt` from enterShell.
+#
 # Usage in devenv.nix:
 #   imports = [
 #     (taskModules.setup {
-#       tasks = [ "bun:install" "genie:run" "ts:build" ];
+#       tasks = [ "pnpm:install" "genie:run" "ts:build" ];
 #     })
 #   ];
 #
-# Provides: setup:run (auto-wired to enterShell by default)
+# The tasks will run in parallel (respecting their own dependencies)
+# as part of the shell entry process.
 {
   tasks ? [ "genie:run" ],
-  skipDuringRebase ? true,
-  autoRun ? true,
-  envVar ? "DEVENV_SKIP_SETUP",
 }:
 { lib, ... }:
 {
+  # Wire setup tasks to run during shell entry via native task dependencies
+  # This runs tasks as part of devenv's task system without spawning a new shell
+  tasks."devenv:enterShell".after = tasks;
+
+  # Also provide setup:run for manual invocation (e.g., `dt setup:run`)
   tasks."setup:run" = {
     description = "Run setup tasks (install deps, generate configs, build)";
-    exec = ''
-      ${lib.optionalString skipDuringRebase ''
-        _git_dir=$(git rev-parse --git-dir 2>/dev/null)
-        if [ -d "$_git_dir/rebase-merge" ] || [ -d "$_git_dir/rebase-apply" ]; then
-          echo "[setup] Skipping during git rebase"
-          exit 0
-        fi
-      ''}
-      # Prevent recursion when dt spawns new shells for task execution
-      export ${envVar}=1
-      dt ${lib.concatStringsSep " " tasks} || true
-    '';
+    after = tasks;
   };
-
-  enterShell = lib.mkIf autoRun (lib.mkAfter ''
-    if [ -z "''${${envVar}:-}" ]; then
-      # Set DEVENV_SKIP_SETUP to prevent infinite recursion when dt spawns a new shell
-      ${envVar}=1 dt setup:run
-    fi
-  '');
 }
