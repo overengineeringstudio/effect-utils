@@ -8,7 +8,7 @@ import { Schema } from 'effect'
  * TDZ errors like "Cannot access 'X' before initialization" instead of the actual error.
  * By preserving the original cause, we can detect TDZ errors and trace back to the root cause.
  *
- * @see {@link ../generation.ts#isTdzError} for TDZ detection logic
+ * @see {@link ./generation.ts#isTdzError} for TDZ detection logic
  */
 export class GenieImportError extends Schema.TaggedError<GenieImportError>()('GenieImportError', {
   genieFilePath: Schema.String,
@@ -41,7 +41,7 @@ export class GenieGenerationFailedError extends Schema.TaggedError<GenieGenerati
  * Preserving the cause allows re-validation to identify which file contains the root cause
  * versus which files failed due to cascading TDZ errors.
  *
- * @see {@link ../generation.ts#errorOriginatesInFile} for root cause attribution
+ * @see {@link ./generation.ts#errorOriginatesInFile} for root cause attribution
  */
 export class GenieFileError extends Schema.TaggedError<GenieFileError>()('GenieFileError', {
   targetFilePath: Schema.String,

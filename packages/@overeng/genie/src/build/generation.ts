@@ -438,10 +438,9 @@ export const generateFile = ({
     Effect.mapError((cause) => {
       const targetFilePath = genieFilePath.replace('.genie.ts', '')
       // Extract the underlying error for TDZ detection
+      // Only unwrap GenieImportError (check _tag to avoid unwrapping native Error.cause)
       const underlyingError =
-        cause && typeof cause === 'object' && 'cause' in cause
-          ? (cause as { cause: unknown }).cause
-          : cause
+        cause instanceof GenieImportError ? cause.cause : cause
       return new GenieFileError({
         targetFilePath,
         message: `Failed to generate ${targetFilePath}: ${safeErrorString(cause)}`,

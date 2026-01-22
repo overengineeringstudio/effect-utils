@@ -185,7 +185,10 @@ export const genieCommand: Cli.Command.Command<
           yield* Effect.logError(`  ✗ ${rootCauses.length} root cause error(s):`)
           for (const { genieFilePath, error } of rootCauses) {
             const targetFilePath = genieFilePath.replace('.genie.ts', '')
-            yield* Effect.logError(`    - ${targetFilePath}: ${error.message}`)
+            // Use cause message to avoid duplication (error.message already includes targetFilePath)
+            const causeMessage =
+              error.cause instanceof Error ? error.cause.message : String(error.cause)
+            yield* Effect.logError(`    - ${targetFilePath}: ${causeMessage}`)
           }
         }
 

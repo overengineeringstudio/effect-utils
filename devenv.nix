@@ -114,8 +114,11 @@ in
         # packages: src directories (safe - no node_modules inside src)
         "packages/@overeng/*/src/**/*.ts"
         "packages/@overeng/*/src/**/*.tsx"
+        "packages/@overeng/*/src/**/*.js"
+        "packages/@overeng/*/src/**/*.jsx"
         # packages: root level config files
         "packages/@overeng/*/*.ts"
+        "packages/@overeng/*/*.js"
         # packages: bin, .storybook, stress-test directories
         "packages/@overeng/*/bin/*.ts"
         "packages/@overeng/*/.storybook/*.ts"
@@ -135,6 +138,9 @@ in
         "context/effect/socket/*.genie.ts"
         "context/effect/socket/examples/*.ts"
         "context/opentui/*.genie.ts"
+        # linter config files (changes should trigger lint)
+        "oxfmt.json"
+        "oxlint.json"
       ];
       # Genie file patterns for caching genie:check tasks
       geniePatterns = [
