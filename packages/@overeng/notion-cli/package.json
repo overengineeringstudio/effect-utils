@@ -22,10 +22,10 @@
     "postinstall": "patch --forward -p1 -d node_modules/effect-distributed-lock < ../../../patches/effect-distributed-lock@0.0.11.patch || true"
   },
   "dependencies": {
-    "@overeng/effect-path": "file:../effect-path",
-    "@overeng/notion-effect-client": "file:../notion-effect-client",
-    "@overeng/notion-effect-schema": "file:../notion-effect-schema",
-    "@overeng/utils": "file:../utils"
+    "@overeng/effect-path": "link:../effect-path",
+    "@overeng/notion-effect-client": "link:../notion-effect-client",
+    "@overeng/notion-effect-schema": "link:../notion-effect-schema",
+    "@overeng/utils": "link:../utils"
   },
   "devDependencies": {
     "@effect/cli": "0.73.0",

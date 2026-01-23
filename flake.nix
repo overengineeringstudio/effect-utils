@@ -102,9 +102,9 @@
         tasks = {
           # Simple tasks (no config needed)
           genie = ./nix/devenv-modules/tasks/genie.nix;
-          ts = ./nix/devenv-modules/tasks/ts.nix;
           lint-genie = ./nix/devenv-modules/tasks/lint-genie.nix;
           # Parameterized tasks (pass config)
+          ts = import ./nix/devenv-modules/tasks/ts.nix;
           setup = import ./nix/devenv-modules/tasks/setup.nix;
           check = import ./nix/devenv-modules/tasks/check.nix;
           clean = import ./nix/devenv-modules/tasks/clean.nix;

@@ -33,23 +33,31 @@ export {
 /**
  * Extended catalog with internal @overeng/* packages for effect-utils use.
  *
- * Internal packages use `file:packages/...` format which gets resolved
+ * Internal packages use `link:packages/...` format which gets resolved
  * to relative paths at stringify time based on the consuming package's location.
+ *
+ * Why `link:` instead of `file:`?
+ * - `link:` creates a symlink to the source directory, so the package uses its OWN node_modules
+ * - `file:` copies the package, and deps are resolved from the CONSUMER's context
+ * - `link:` matches how published packages behave (each has its own dependency tree)
+ * - This avoids TypeScript TS2742 "type portability" errors across package boundaries
+ *
+ * See: context/workarounds/pnpm-issues.md for full details
  */
 export const catalog = defineCatalog({
   extends: externalCatalog,
   packages: {
-    '@overeng/utils': 'file:packages/@overeng/utils',
-    '@overeng/genie': 'file:packages/@overeng/genie',
-    '@overeng/mono': 'file:packages/@overeng/mono',
-    '@overeng/cli-ui': 'file:packages/@overeng/cli-ui',
-    '@overeng/dotdot': 'file:packages/@overeng/dotdot',
-    '@overeng/megarepo': 'file:packages/@overeng/megarepo',
-    '@overeng/effect-path': 'file:packages/@overeng/effect-path',
-    '@overeng/notion-effect-schema': 'file:packages/@overeng/notion-effect-schema',
-    '@overeng/notion-effect-client': 'file:packages/@overeng/notion-effect-client',
-    '@overeng/notion-cli': 'file:packages/@overeng/notion-cli',
-    '@overeng/effect-schema-form': 'file:packages/@overeng/effect-schema-form',
-    '@overeng/effect-schema-form-aria': 'file:packages/@overeng/effect-schema-form-aria',
+    '@overeng/utils': 'link:packages/@overeng/utils',
+    '@overeng/genie': 'link:packages/@overeng/genie',
+    '@overeng/mono': 'link:packages/@overeng/mono',
+    '@overeng/cli-ui': 'link:packages/@overeng/cli-ui',
+    '@overeng/dotdot': 'link:packages/@overeng/dotdot',
+    '@overeng/megarepo': 'link:packages/@overeng/megarepo',
+    '@overeng/effect-path': 'link:packages/@overeng/effect-path',
+    '@overeng/notion-effect-schema': 'link:packages/@overeng/notion-effect-schema',
+    '@overeng/notion-effect-client': 'link:packages/@overeng/notion-effect-client',
+    '@overeng/notion-cli': 'link:packages/@overeng/notion-cli',
+    '@overeng/effect-schema-form': 'link:packages/@overeng/effect-schema-form',
+    '@overeng/effect-schema-form-aria': 'link:packages/@overeng/effect-schema-form-aria',
   },
 })

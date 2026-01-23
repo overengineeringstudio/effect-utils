@@ -37,7 +37,7 @@ let
   # Shared task modules
   taskModules = {
     genie = ./nix/devenv-modules/tasks/genie.nix;
-    ts = ./nix/devenv-modules/tasks/ts.nix;
+    ts = import ./nix/devenv-modules/tasks/ts.nix;
     setup = import ./nix/devenv-modules/tasks/setup.nix;
     check = import ./nix/devenv-modules/tasks/check.nix;
     clean = import ./nix/devenv-modules/tasks/clean.nix;
@@ -56,8 +56,8 @@ let
   ];
 
   # All packages for per-package install tasks
-  # NOTE: Using pnpm instead of bun due to bun bugs. See context/workarounds/bun-issues.md
-  # TODO: Switch back to bun:install once bun file: dependency issues are fixed
+  # NOTE: Using pnpm temporarily due to bun bugs. Plan to switch back once fixed.
+  # See: context/workarounds/bun-issues.md
   allPackages = [
     "packages/@overeng/cli-ui"
     "packages/@overeng/dotdot"
@@ -109,11 +109,11 @@ in
     ./nix/devenv-modules/dt.nix
     # Shared task modules
     taskModules.genie
-    taskModules.ts
+    (taskModules.ts {})
     (taskModules.check {})
     (taskModules.clean { packages = allPackages; })
-    # Per-package pnpm install tasks (using pnpm due to bun bugs, see context/workarounds/bun-issues.md)
-    # TODO: Switch back to bun:install once bun file: dependency issues are fixed
+    # Per-package pnpm install tasks
+    # NOTE: Using pnpm temporarily. See: context/workarounds/bun-issues.md
     (taskModules.pnpm { packages = allPackages; })
     (taskModules.test {
       packages = packagesWithTests;

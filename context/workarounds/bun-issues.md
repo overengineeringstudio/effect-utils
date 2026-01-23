@@ -1,12 +1,28 @@
 # Bun Issues
 
-## Bun install hang bug
+> **Status: TEMPORARILY USING PNPM**
+>
+> We're currently using pnpm due to the blocking issues below. Once these are fixed, we plan to switch back to bun.
+>
+> **Why we want bun:**
+> - Significantly faster installs (when not hitting bugs)
+> - bun's `file:` protocol already works like pnpm's `link:` (symlinks with own deps)
+> - No need for `enableGlobalVirtualStore` workaround
+>
+> See `pnpm-issues.md` for our current pnpm setup, or the detailed comparison gist:
+> https://gist.github.com/schickling/d05fe50fe4ffb1c2e9e48c8623579d7e
+
+---
+
+## Blocking Issues (must be fixed before switching back)
+
+#### Bun install hang bug
 
 - [bun install frequently hangs in monorepo (isolated linker) — no progress, no error, even with --verbose](https://github.com/oven-sh/bun/issues/22846)
 
 Current workaround: `bun install --no-cache` seems to work but is much slower.
 
-## Bun `file:` dependency slowness
+### Bun `file:` dependency slowness
 
 Using `file:../path` dependencies is extremely slow (6-35+ seconds per package) because bun creates individual symlinks for **every file** in the target package, rather than a single symlink to the package root.
 
@@ -35,6 +51,24 @@ Using `file:../path` dependencies is extremely slow (6-35+ seconds per package) 
 
 Requires setting up a root `package.json` with workspaces config.
 
-## Bun patchedDependencies bug
+---
+
+## Other Issues (non-blocking)
+
+### Bun patchedDependencies bug
 
 - [Patching falls over when using local path dependencies](https://github.com/oven-sh/bun/issues/13531)
+
+---
+
+## Key insight: bun `file:` ≈ pnpm `link:`
+
+When comparing package managers for monorepo local dependencies:
+
+| Protocol | Behavior |
+|----------|----------|
+| **bun `file:`** | Creates dir structure where nested `node_modules` symlinks back to source package's deps |
+| **pnpm `link:`** | Direct symlink to source directory (package uses its own `node_modules`) |
+| **pnpm `file:`** | Copies package, deps resolved from CONSUMER's context (different!) |
+
+Both **bun `file:`** and **pnpm `link:`** give packages their OWN dependency resolution - matching published behavior. This is why bun doesn't have TS2742 issues with `file:` dependencies.

@@ -11,9 +11,9 @@
     "@effect/platform-node": "0.104.0",
     "@effect/workflow": "0.16.0",
     "@mariozechner/pi-tui": "0.45.7",
-    "@overeng/genie": "file:../packages/@overeng/genie",
-    "@overeng/mono": "file:../packages/@overeng/mono",
-    "@overeng/utils": "file:../packages/@overeng/utils",
+    "@overeng/genie": "link:../packages/@overeng/genie",
+    "@overeng/mono": "link:../packages/@overeng/mono",
+    "@overeng/utils": "link:../packages/@overeng/utils",
     "effect": "3.19.14"
   },
   "devDependencies": {

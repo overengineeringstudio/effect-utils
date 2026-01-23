@@ -390,9 +390,11 @@ const computeRelativePath = ({ from, to }: { from: string; to: string }): string
 
 /** Prefix for internal file dependencies that use absolute repo paths */
 const INTERNAL_FILE_PREFIX = 'file:packages/'
+/** Prefix for internal link dependencies that use absolute repo paths */
+const INTERNAL_LINK_PREFIX = 'link:packages/'
 
 /**
- * Resolve dependency versions, converting internal `file:packages/...` paths to relative paths.
+ * Resolve dependency versions, converting internal `file:packages/...` and `link:packages/...` paths to relative paths.
  * @param deps - Dependencies object
  * @param currentLocation - Current package's repo-relative location
  */
@@ -412,6 +414,11 @@ const resolveDeps = ({
       const targetLocation = version.slice('file:'.length)
       const relativePath = computeRelativePath({ from: currentLocation, to: targetLocation })
       resolved[name] = `file:${relativePath}`
+    } else if (version.startsWith(INTERNAL_LINK_PREFIX)) {
+      // Convert absolute repo path to relative path for link: protocol
+      const targetLocation = version.slice('link:'.length)
+      const relativePath = computeRelativePath({ from: currentLocation, to: targetLocation })
+      resolved[name] = `link:${relativePath}`
     } else {
       resolved[name] = version
     }

@@ -1,10 +1,17 @@
 # Bun install tasks
 #
-# NOTE: Currently unused due to bun bugs with local file: dependencies.
-# Using pnpm.nix instead. See: context/workarounds/bun-issues.md
-# TODO: Switch back to bun:install once these issues are fixed:
-#   - https://github.com/oven-sh/bun/issues/13223 (file: deps slow - individual symlinks)
+# STATUS: Currently unused - using pnpm.nix instead
+#
+# We plan to switch back to bun once blocking issues are fixed:
+#   - https://github.com/oven-sh/bun/issues/13223 (file: deps extremely slow)
 #   - https://github.com/oven-sh/bun/issues/22846 (install hangs in monorepo)
+#
+# Why we want bun:
+#   - Significantly faster installs (when not hitting bugs)
+#   - bun's file: protocol works like pnpm's link: (symlinks with own deps)
+#   - No need for enableGlobalVirtualStore workaround
+#
+# See: context/workarounds/bun-issues.md
 #
 # Usage in devenv.nix:
 #   imports = [

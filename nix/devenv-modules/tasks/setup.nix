@@ -14,6 +14,20 @@
 # The tasks will run in parallel (respecting their own dependencies)
 # as part of the shell entry process.
 #
+# ## Git Hash Caching
+#
+# By default, setup tasks are skipped if the git HEAD hash hasn't changed
+# since the last successful setup. This makes warm shell entry nearly instant.
+#
+# The hash is stored in .devenv/setup-git-hash and updated after successful setup.
+#
+# To force tasks to run despite unchanged hash:
+#   FORCE_SETUP=1 dt genie:run
+#   dt setup:run  # Always forces all setup tasks
+#
+# For testing, you can override the git hash:
+#   SETUP_GIT_HASH=test-hash-123 devenv shell
+#
 # ## Rebase Guard
 #
 # During git rebase/cherry-pick, setup tasks are skipped to avoid
@@ -21,49 +35,82 @@
 # will intentionally fail during rebase, causing dependent tasks to
 # be "skipped due to dependency failure".
 #
-# This is a tradeoff: the failure message looks alarming but is
-# intentional. We chose this approach over alternatives because:
-#
-# - Option: Add rebase guard to each task module individually
-#   Rejected: Duplicates logic across pnpm.nix, genie.nix, ts.nix, etc.
-#
-# - Option: Use old `dt` approach with enterShell script
-#   Rejected: Causes double shell entry (~175s vs ~6s cached)
-#
-# - Option: Remove rebase guard entirely
-#   Rejected: Loses useful automatic skip during rebase
-#
-# If you need to run setup during rebase, use: `dt setup:run`
+# If you need to run setup during rebase, use: `FORCE_SETUP=1 dt setup:run`
 {
   tasks ? [ "genie:run" ],
   skipDuringRebase ? true,
+  skipIfGitHashUnchanged ? true,
 }:
-{ lib, ... }:
+{ lib, config, ... }:
+let
+  hashFile = "${config.devenv.root}/.devenv/setup-git-hash";
+  
+  # Status check that skips task if git hash unchanged
+  # Returns 0 (skip) if hash matches, non-zero (run) if different
+  gitHashStatus = ''
+    # Allow bypass via FORCE_SETUP=1
+    [ "$FORCE_SETUP" = "1" ] && exit 1
+    
+    # Allow override via SETUP_GIT_HASH for testing
+    current=''${SETUP_GIT_HASH:-$(git rev-parse HEAD 2>/dev/null || echo "no-git")}
+    cached=$(cat ${hashFile} 2>/dev/null || echo "")
+    [ "$current" = "$cached" ]
+  '';
+  
+  # Create status overrides for all setup tasks
+  statusOverrides = lib.optionalAttrs skipIfGitHashUnchanged (
+    lib.genAttrs tasks (_: {
+      status = lib.mkDefault gitHashStatus;
+    })
+  );
+in
 {
-  # Gate task that fails during rebase, causing dependent tasks to skip
-  # Uses `before` to inject itself as a dependency of each setup task
-  tasks."setup:gate" = lib.mkIf skipDuringRebase {
-    description = "Check if setup should run (fails during rebase to skip setup)";
-    exec = ''
-      _git_dir=$(git rev-parse --git-dir 2>/dev/null)
-      if [ -d "$_git_dir/rebase-merge" ] || [ -d "$_git_dir/rebase-apply" ]; then
-        echo "Skipping setup during git rebase/cherry-pick"
-        echo "Run 'dt setup:run' manually if needed"
-        exit 1
-      fi
-    '';
-    # This makes setup:gate run BEFORE each of the setup tasks
-    # If gate fails, the tasks will be "skipped due to dependency failure"
-    before = tasks;
-  };
+  # Merge status overrides with setup-specific tasks
+  tasks = statusOverrides // {
+    # Gate task that fails during rebase, causing dependent tasks to skip
+    # Uses `before` to inject itself as a dependency of each setup task
+    "setup:gate" = lib.mkIf skipDuringRebase {
+      description = "Check if setup should run (fails during rebase to skip setup)";
+      exec = ''
+        _git_dir=$(git rev-parse --git-dir 2>/dev/null)
+        if [ -d "$_git_dir/rebase-merge" ] || [ -d "$_git_dir/rebase-apply" ]; then
+          echo "Skipping setup during git rebase/cherry-pick"
+          echo "Run 'FORCE_SETUP=1 dt setup:run' manually if needed"
+          exit 1
+        fi
+      '';
+      # This makes setup:gate run BEFORE each of the setup tasks
+      # If gate fails, the tasks will be "skipped due to dependency failure"
+      before = tasks;
+    };
 
-  # Wire setup tasks to run during shell entry via native task dependencies
-  tasks."devenv:enterShell".after = tasks;
+    # Save git hash after successful setup
+    "setup:save-hash" = {
+      description = "Save git hash after successful setup";
+      exec = ''
+        mkdir -p "$(dirname ${hashFile})"
+        # Allow override via SETUP_GIT_HASH for testing
+        echo "''${SETUP_GIT_HASH:-$(git rev-parse HEAD 2>/dev/null || echo "no-git")}" > ${hashFile}
+      '';
+      after = tasks;
+    };
 
-  # Also provide setup:run for manual invocation (e.g., `dt setup:run`)
-  # This does NOT go through the gate, so it works during rebase
-  tasks."setup:run" = {
-    description = "Run setup tasks (install deps, generate configs, build)";
-    after = tasks;
+    # Wire setup tasks to run during shell entry via native task dependencies
+    # Also save the hash after setup completes
+    "devenv:enterShell" = {
+      after = tasks ++ [ "setup:save-hash" ];
+    };
+
+    # Force-run setup tasks (bypasses git hash check)
+    # Useful during rebase or when you want to force a rebuild
+    "setup:run" = {
+      description = "Force run setup tasks (ignores git hash cache)";
+      exec = ''
+        FORCE_SETUP=1 devenv tasks run ${lib.concatStringsSep " " tasks}
+        mkdir -p "$(dirname ${hashFile})"
+        # Allow override via SETUP_GIT_HASH for testing
+        echo "''${SETUP_GIT_HASH:-$(git rev-parse HEAD 2>/dev/null || echo "no-git")}" > ${hashFile}
+      '';
+    };
   };
 }

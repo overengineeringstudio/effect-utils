@@ -1,5 +1,10 @@
 # pnpm install tasks
 #
+# STATUS: Current package manager (temporary, plan to switch back to bun)
+#
+# We use pnpm temporarily due to bun bugs. Once fixed, we'll switch back to bun.
+# See: context/workarounds/bun-issues.md for blocking issues.
+#
 # Usage in devenv.nix:
 #   imports = [
 #     (inputs.effect-utils.devenvModules.tasks.pnpm {
@@ -13,11 +18,23 @@
 #
 # Provides: pnpm:install, pnpm:install:<name> for each package
 #
-# NOTE: We use pnpm instead of bun for installation due to bun bugs with
-# local file: dependencies. See: context/workarounds/bun-issues.md
-# TODO: Switch back to bun:install once these issues are fixed:
-#   - https://github.com/oven-sh/bun/issues/13223 (file: deps slow)
-#   - https://github.com/oven-sh/bun/issues/22846 (install hangs)
+# ---
+# How we avoid TypeScript TS2742 errors:
+#
+# Two-part approach:
+#
+# 1. PRIMARY: Use `link:` protocol for internal packages
+#    Internal deps use link: instead of file: in package.json (configured via genie).
+#    link: creates a symlink to the source directory, so the package uses its OWN node_modules.
+#    This matches how published packages behave and avoids TS2742 errors.
+#
+# 2. BACKUP: `enableGlobalVirtualStore` for remaining file: deps
+#    Some locations (docs, tests) still use file:. For these, we use pnpm's
+#    enableGlobalVirtualStore which makes all packages symlink to a central store
+#    at ~/Library/pnpm/store/v10/links/. Dependencies with identical graphs
+#    resolve to the exact same path, eliminating TS2742 errors.
+#
+# See: context/workarounds/pnpm-issues.md for full details.
 { packages }:
 { lib, ... }:
 let
@@ -42,7 +59,10 @@ let
   mkInstallTask = path: {
     "pnpm:install:${toName path}" = {
       description = "Install dependencies for ${toName path}";
-      exec = "pnpm install";
+      # Use global virtual store to ensure all packages resolve dependencies to the same path.
+      # This prevents TypeScript TS2742 errors when packages depend on each other via link: protocol.
+      # Without this, each package gets its own .pnpm directory with different paths for the same deps.
+      exec = "npm_config_enable_global_virtual_store=true pnpm install";
       cwd = path;
       execIfModified = [ "${path}/package.json" "${path}/pnpm-lock.yaml" ];
       after = [ "genie:run" ];
@@ -57,6 +77,7 @@ in {
     {
       "pnpm:install" = {
         description = "Install all pnpm dependencies";
+        exec = "echo 'All pnpm packages installed'";
         after = map (p: "pnpm:install:${toName p}") packages;
       };
       "pnpm:clean" = {
