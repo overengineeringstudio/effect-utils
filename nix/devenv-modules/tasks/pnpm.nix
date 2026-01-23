@@ -73,14 +73,15 @@ let
         # Use global virtual store to ensure all packages resolve dependencies to the same path.
         # This prevents TypeScript TS2742 errors when packages depend on each other via link: protocol.
         # Without this, each package gets its own .pnpm directory with different paths for the same deps.
-        # NOTE: Use --force to avoid TTY prompts (instead of CI=true which disables GVS).
+        # NOTE: Use --config.confirmModulesPurge=false to avoid TTY prompts.
+        # CI=true would disable GVS (see pnpm docs: "Default: false (always false in CI)").
         exec = ''
           set -euo pipefail
           hash_dir="$DEVENV_DOTFILE/pnpm-install"
           mkdir -p "$hash_dir"
           hash_file="$hash_dir/${toName path}.hash"
 
-          npm_config_enable_global_virtual_store=true pnpm install --force
+          npm_config_enable_global_virtual_store=true pnpm install --config.confirmModulesPurge=false
 
           if command -v sha256sum >/dev/null 2>&1; then
             hash_cmd="sha256sum"
