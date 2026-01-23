@@ -33,6 +33,7 @@ import { generateNix, type NixGeneratorError } from '../lib/generators/nix/mod.t
 import { generateSchema } from '../lib/generators/schema.ts'
 import { generateVscode } from '../lib/generators/vscode.ts'
 import * as Git from '../lib/git.ts'
+import { MR_VERSION } from '../lib/version.ts'
 import {
   checkLockStaleness,
   createEmptyLockFile,
@@ -567,14 +568,16 @@ const statusCommand = Cli.Command.make('status', { json: jsonOption }, ({ json }
       }
 
       // Compute current member path (for highlighting current location)
-      // If cwd is inside a member, extract the path of member names
-      let currentMemberPath: string[] | undefined = undefined
+      // We need to handle two cases:
+      // 1. User is in repos/<member> path - use path-based detection
+      // 2. User is in a convenience symlink - resolve and match against member targets
       const cwdNormalized = cwd.replace(/\/$/, '')
       const rootNormalized = root.value.replace(/\/$/, '')
+
+      // First try path-based detection (handles repos/<member>/repos/<member>/... paths)
+      let currentMemberPath: string[] | undefined = undefined
       if (cwdNormalized !== rootNormalized && cwdNormalized.startsWith(rootNormalized)) {
-        // Get the relative path from root to cwd
         const relativePath = cwdNormalized.slice(rootNormalized.length + 1)
-        // Parse the member path - format is "repos/<member>/repos/<member>/..."
         const parts = relativePath.split('/')
         const memberPath: string[] = []
         for (let i = 0; i < parts.length; i++) {
@@ -586,6 +589,64 @@ const statusCommand = Cli.Command.make('status', { json: jsonOption }, ({ json }
         if (memberPath.length > 0) {
           currentMemberPath = memberPath
         }
+      }
+
+      // If path-based detection didn't work, try symlink resolution
+      // This handles convenience symlinks outside repos/ directory
+      if (currentMemberPath === undefined) {
+        const cwdRealPath = yield* fs.realPath(cwd).pipe(
+          Effect.map((p) => p.replace(/\/$/, '')),
+          Effect.catchAll(() => Effect.succeed(cwdNormalized)),
+        )
+
+        // Find which member (if any) the cwd is inside by matching against member symlink targets
+        const findCurrentMemberPath = (
+          memberList: readonly MemberStatus[],
+          megarepoRoot: string,
+          pathSoFar: string[],
+        ): Effect.Effect<string[] | undefined, never, FileSystem.FileSystem> =>
+          Effect.gen(function* () {
+            for (const member of memberList) {
+              const memberSymlinkPath = getMemberPath({
+                megarepoRoot: EffectPath.unsafe.absoluteDir(megarepoRoot),
+                name: member.name,
+              })
+              const memberRealPath = yield* fs.realPath(memberSymlinkPath.replace(/\/$/, '')).pipe(
+                Effect.catchAll(() => Effect.succeed(undefined)),
+              )
+
+              if (memberRealPath !== undefined) {
+                const memberRealPathNorm = memberRealPath.replace(/\/$/, '')
+                // Check if cwd resolves to this member or inside it
+                if (
+                  cwdRealPath === memberRealPathNorm ||
+                  cwdRealPath.startsWith(memberRealPathNorm + '/')
+                ) {
+                  const newPath = [...pathSoFar, member.name]
+                  // If exact match, we found it
+                  if (cwdRealPath === memberRealPathNorm) {
+                    return newPath
+                  }
+                  // If inside, check nested members
+                  if (member.nestedMembers && member.nestedMembers.length > 0) {
+                    const nestedResult = yield* findCurrentMemberPath(
+                      member.nestedMembers,
+                      memberRealPathNorm + '/',
+                      newPath,
+                    )
+                    if (nestedResult !== undefined) {
+                      return nestedResult
+                    }
+                  }
+                  // Inside this member but not in a nested megarepo
+                  return newPath
+                }
+              }
+            }
+            return undefined
+          })
+
+        currentMemberPath = yield* findCurrentMemberPath(members, root.value, [])
       }
 
       // Render and output
@@ -2664,7 +2725,7 @@ const generateSchemaCommand = Cli.Command.make(
     output: Cli.Options.text('output').pipe(
       Cli.Options.withAlias('o'),
       Cli.Options.withDescription('Output path (relative to megarepo root)'),
-      Cli.Options.withDefault('megarepo.schema.json'),
+      Cli.Options.withDefault('schema/megarepo.schema.json'),
     ),
   },
   ({ json, output }) =>
@@ -2777,7 +2838,7 @@ const generateAllCommand = Cli.Command.make('all', { json: jsonOption }, ({ json
     results.push({ generator: 'schema', path: schemaResult.path })
     if (!json) {
       yield* Console.log(
-        `${styled.green(symbols.check)} Generated ${styled.bold('.vscode/megarepo.schema.json')}`,
+        `${styled.green(symbols.check)} Generated ${styled.bold('schema/megarepo.schema.json')}`,
       )
     }
 
@@ -2828,5 +2889,5 @@ export const mrCommand = Cli.Command.make('mr', {}).pipe(
 /** Exported CLI for external use */
 export const cli = Cli.Command.run(mrCommand, {
   name: 'mr',
-  version: '0.1.0',
+  version: MR_VERSION,
 })(process.argv).pipe(Effect.provide(Cwd.live))

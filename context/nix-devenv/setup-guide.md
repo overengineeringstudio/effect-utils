@@ -44,7 +44,7 @@ in
     taskModules.megarepo
     (taskModules.pnpm { packages = [ "." ]; })
     (taskModules.ts { tsconfigFile = "tsconfig.json"; })
-    (taskModules.setup { tasks = [ "megarepo:generate" "pnpm:install" "genie:run" ]; })
+    (taskModules.setup { tasks = [ "megarepo:generate" "pnpm:install" "genie:run" "ts:build" ]; })
   ];
 
   packages = [

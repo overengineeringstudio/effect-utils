@@ -88,9 +88,34 @@ export const genieCommand: Cli.Command.Command<
   },
   ({ cwd, writeable, watch, check, dryRun, oxfmtConfig }) =>
     Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
       const readOnly = !writeable
       const currentWorkingDirectory = yield* CurrentWorkingDirectory
-      const resolvedCwd = path.isAbsolute(cwd) ? cwd : path.resolve(currentWorkingDirectory, cwd)
+      const inputCwd = path.isAbsolute(cwd) ? cwd : path.resolve(currentWorkingDirectory, cwd)
+
+      /**
+       * CRITICAL: Normalize cwd to its real path (resolve symlinks).
+       *
+       * In megarepo setups, the workspace directory is a symlink:
+       *   workspace2/effect-utils → ~/.megarepo/github.com/.../refs/heads/main
+       *
+       * File discovery (findGenieFiles) uses fs.realPath() to get canonical paths.
+       * If we don't also normalize cwd, path.relative() produces incorrect results:
+       *
+       *   path.relative(symlinkCwd, realFilePath)
+       *   → "../../../../.megarepo/.../packages/@overeng/foo"  (WRONG)
+       *
+       *   path.relative(realCwd, realFilePath)
+       *   → "packages/@overeng/foo"  (CORRECT)
+       *
+       * This mismatch caused link: dependency paths in generated package.json files
+       * to have excessive "../" segments (13+ levels), making them non-portable.
+       *
+       * See: context/workarounds/pnpm-issues.md for the full investigation.
+       */
+      const resolvedCwd = yield* fs.realPath(inputCwd).pipe(
+        Effect.catchAll(() => Effect.succeed(inputCwd)),
+      )
 
       // Resolve oxfmt config path
       const oxfmtConfigPath = yield* resolveOxfmtConfigPath({

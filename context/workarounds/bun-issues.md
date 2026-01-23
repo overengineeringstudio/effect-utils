@@ -16,13 +16,13 @@
 
 ## Blocking Issues (must be fixed before switching back)
 
-#### Bun install hang bug
+#### BUN-01: Bun install hang bug
 
 - [bun install frequently hangs in monorepo (isolated linker) — no progress, no error, even with --verbose](https://github.com/oven-sh/bun/issues/22846)
 
 Current workaround: `bun install --no-cache` seems to work but is much slower.
 
-### Bun `file:` dependency slowness
+### BUN-02: Bun `file:` dependency slowness
 
 Using `file:../path` dependencies is extremely slow (6-35+ seconds per package) because bun creates individual symlinks for **every file** in the target package, rather than a single symlink to the package root.
 
@@ -56,7 +56,7 @@ Requires setting up a root `package.json` with workspaces config.
 
 ## Other Issues (non-blocking)
 
-### Bun patchedDependencies bug
+### BUN-03: Bun patchedDependencies bug
 
 - [Patching falls over when using local path dependencies](https://github.com/oven-sh/bun/issues/13531)
 
@@ -73,3 +73,17 @@ When comparing package managers for monorepo local dependencies:
 | **pnpm `file:`** | Copies package, deps resolved from CONSUMER's context (different!) |
 
 Both **bun `file:`** and **pnpm `link:`** give packages their OWN dependency resolution - matching published behavior. This is why bun doesn't have TS2742 issues with `file:` dependencies.
+
+---
+
+## Cleanup checklist when issues are fixed
+
+Use these as concrete cleanup tasks once the corresponding Bun issues are resolved.
+
+- **BUN-01**: Revert mk-bun-cli to bun-only installs (remove `depsManager`, `pnpmDepsHash`, pnpm install path).
+- **BUN-02**: Drop pnpm fallback for local deps; switch back to bun `file:` or `workspace:*` with a single linker strategy.
+- **BUN-03**: Re-enable bun patchedDependencies flow if it was disabled; remove any related pnpm-specific guidance.
+- **All BUN issues resolved**:
+  - Remove pnpm-specific code paths in `mk-bun-cli` and `mk-bun-cli/bun-deps.nix`.
+  - Remove pnpm notes from docs (`pnpm-issues.md`, bun issues header).
+  - Re-run `mr generate schema` if schema changes were made.

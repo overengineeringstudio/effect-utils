@@ -43,19 +43,25 @@ let
     echo "Hash is stale, computing new hash..."
     
     # Read current hash from build.nix
-    currentHash=$(grep -oE 'bunDepsHash = "sha256-[^"]+"' "$buildNix" | grep -oE 'sha256-[A-Za-z0-9+/=]+' | head -1 || true)
+    hashKey="bunDepsHash"
+    if rg -q "pnpmDepsHash" "$buildNix"; then
+      hashKey="pnpmDepsHash"
+    fi
+    currentHash=$(grep -oE "$hashKey = \"sha256-[^\"]+\"" "$buildNix" | grep -oE 'sha256-[A-Za-z0-9+/=]+' | head -1 || true)
     
     if [ -z "$currentHash" ]; then
-      echo "✗ $name: could not find bunDepsHash in $buildNix"
+      echo "✗ $name: could not find $hashKey in $buildNix"
       exit 1
     fi
     
     # Replace with fake hash to force Nix to compute the correct one
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-      sed -i "" -E "s/bunDepsHash = \"sha256-[^\"]+\"/bunDepsHash = \"$FAKE_HASH\"/" "$buildNix"
-    else
-      sed -i -E "s/bunDepsHash = \"sha256-[^\"]+\"/bunDepsHash = \"$FAKE_HASH\"/" "$buildNix"
-    fi
+    export HASH_KEY="$hashKey"
+    export HASH_VALUE="$FAKE_HASH"
+    perl -0777 -i -pe '
+      my $key = $ENV{"HASH_KEY"};
+      my $val = $ENV{"HASH_VALUE"};
+      s/\b\Q$key\E\s*=\s*"sha256-[^"]+"/$key = "$val"/g;
+    ' "$buildNix"
     
     # Build with fake hash to get the correct hash from Nix
     output=$(nix build "$flakeRef" --no-link 2>&1 || true)
@@ -66,11 +72,13 @@ let
     if [ -z "$newHash" ]; then
       echo "✗ $name: could not extract hash from nix build output"
       echo "Restoring original hash..."
-      if [[ "$OSTYPE" == "darwin"* ]]; then
-        sed -i "" -E "s/bunDepsHash = \"$FAKE_HASH\"/bunDepsHash = \"$currentHash\"/" "$buildNix"
-      else
-        sed -i -E "s/bunDepsHash = \"$FAKE_HASH\"/bunDepsHash = \"$currentHash\"/" "$buildNix"
-      fi
+      export HASH_KEY="$hashKey"
+      export HASH_VALUE="$currentHash"
+      perl -0777 -i -pe '
+        my $key = $ENV{"HASH_KEY"};
+        my $val = $ENV{"HASH_VALUE"};
+        s/\b\Q$key\E\s*=\s*"sha256-[^"]+"/$key = "$val"/g;
+      ' "$buildNix"
       echo "$output"
       exit 1
     fi
@@ -78,11 +86,13 @@ let
     # Check if hash actually changed
     if [ "$newHash" = "$currentHash" ]; then
       echo "Hash unchanged, restoring..."
-      if [[ "$OSTYPE" == "darwin"* ]]; then
-        sed -i "" -E "s/bunDepsHash = \"$FAKE_HASH\"/bunDepsHash = \"$currentHash\"/" "$buildNix"
-      else
-        sed -i -E "s/bunDepsHash = \"$FAKE_HASH\"/bunDepsHash = \"$currentHash\"/" "$buildNix"
-      fi
+      export HASH_KEY="$hashKey"
+      export HASH_VALUE="$currentHash"
+      perl -0777 -i -pe '
+        my $key = $ENV{"HASH_KEY"};
+        my $val = $ENV{"HASH_VALUE"};
+        s/\b\Q$key\E\s*=\s*"sha256-[^"]+"/$key = "$val"/g;
+      ' "$buildNix"
       echo "✓ $name: hash is up to date"
       exit 0
     fi
@@ -91,11 +101,13 @@ let
     echo "Updating $buildNix..."
     
     # Update with the correct hash
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-      sed -i "" -E "s/bunDepsHash = \"$FAKE_HASH\"/bunDepsHash = \"$newHash\"/" "$buildNix"
-    else
-      sed -i -E "s/bunDepsHash = \"$FAKE_HASH\"/bunDepsHash = \"$newHash\"/" "$buildNix"
-    fi
+    export HASH_KEY="$hashKey"
+    export HASH_VALUE="$newHash"
+    perl -0777 -i -pe '
+      my $key = $ENV{"HASH_KEY"};
+      my $val = $ENV{"HASH_VALUE"};
+      s/\b\Q$key\E\s*=\s*"sha256-[^"]+"/$key = "$val"/g;
+    ' "$buildNix"
     
     echo "Verifying build..."
     if ! nix build "$flakeRef" --no-link -L; then
@@ -121,13 +133,13 @@ let
     
     # Check for Nix hash mismatch
     if echo "$output" | grep -qE 'got:\s+sha256-'; then
-      echo "✗ $name: bunDepsHash is stale (run: dt nix:hash:$name)"
+      echo "✗ $name: deps hash is stale (run: dt nix:hash:$name)"
       exit 1
     fi
     
     # Check for custom bun.lock staleness
-    if echo "$output" | grep -q 'bunDepsHash is stale'; then
-      echo "✗ $name: bun.lock changed, bunDepsHash is stale (run: dt nix:hash:$name)"
+    if echo "$output" | grep -q 'deps hash is stale'; then
+      echo "✗ $name: lockfile changed, deps hash is stale (run: dt nix:hash:$name)"
       exit 1
     fi
     

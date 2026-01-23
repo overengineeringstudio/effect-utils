@@ -314,4 +314,158 @@ export default { data: {}, stringify: () => '{}' }
       Effect.scoped,
     ),
   )
+
+  it.effect(
+    'normalizes symlink cwd to realpath for correct relative path computation',
+    Effect.fnUntraced(
+      function* () {
+        yield* withTestEnv((env) =>
+          Effect.gen(function* () {
+            const fs = yield* FileSystem.FileSystem
+            const pathSvc = yield* Path.Path
+
+            /**
+             * REGRESSION TEST: Symlink cwd normalization
+             *
+             * This test reproduces a bug where genie invoked with a symlink path as --cwd
+             * would generate corrupted relative paths in package.json files.
+             *
+             * The bug occurred in megarepo setups where:
+             *   workspace/repo → ~/.megarepo/.../refs/heads/main  (symlink)
+             *
+             * When genie ran:
+             *   1. --cwd received the symlink path: /workspace/repo
+             *   2. File discovery used fs.realPath(), returning: ~/.megarepo/.../file.genie.ts
+             *   3. path.relative(symlinkCwd, realFilePath) produced a path like:
+             *      "../../../../.megarepo/.../packages/foo" instead of "packages/foo"
+             *
+             * This caused link: dependencies in generated package.json to have excessive
+             * "../" segments (13+ levels), making them non-portable across machines.
+             *
+             * The fix: genie now normalizes --cwd to its realpath before computing locations,
+             * ensuring both cwd and file paths are in the same form.
+             *
+             * See: context/workarounds/pnpm-issues.md for the full investigation.
+             */
+
+            // Create the "real" directory structure (simulating ~/.megarepo/.../repo/)
+            const realRepoPath = pathSvc.join(env.root, 'real-repo')
+            yield* fs.makeDirectory(realRepoPath, { recursive: true })
+
+            // Create a genie file that uses link: protocol (the catalog pattern)
+            // This simulates internal.ts defining link:packages/@overeng/utils
+            yield* env.writeFile({
+              path: 'real-repo/packages/pkg-a/package.json.genie.ts',
+              content: `
+/**
+ * Simulates the catalog pattern where internal packages use link:packages/... paths
+ * that get resolved to relative paths at stringify time.
+ */
+const INTERNAL_LINK_PREFIX = 'link:packages/'
+
+const computeRelativePath = ({ from, to }) => {
+  const fromParts = from.split('/').filter(Boolean)
+  const toParts = to.split('/').filter(Boolean)
+  let common = 0
+  while (common < fromParts.length && common < toParts.length && fromParts[common] === toParts[common]) {
+    common++
+  }
+  const upCount = fromParts.length - common
+  const downPath = toParts.slice(common).join('/')
+  return '../'.repeat(upCount) + downPath || '.'
+}
+
+const resolveDeps = ({ deps, currentLocation }) => {
+  const resolved = {}
+  for (const [name, version] of Object.entries(deps)) {
+    if (version.startsWith(INTERNAL_LINK_PREFIX)) {
+      const targetLocation = version.slice('link:'.length)
+      const relativePath = computeRelativePath({ from: currentLocation, to: targetLocation })
+      resolved[name] = 'link:' + relativePath
+    } else {
+      resolved[name] = version
+    }
+  }
+  return resolved
+}
+
+export default {
+  data: {
+    name: '@test/pkg-a',
+    dependencies: {
+      '@test/pkg-b': 'link:packages/pkg-b',
+    },
+  },
+  stringify: (ctx) => {
+    const data = {
+      name: '@test/pkg-a',
+      dependencies: resolveDeps({
+        deps: { '@test/pkg-b': 'link:packages/pkg-b' },
+        currentLocation: ctx.location,
+      }),
+    }
+    // Include location in output for assertion
+    data._genieLocation = ctx.location
+    return JSON.stringify(data, null, 2)
+  },
+}
+`,
+            })
+
+            // Create the target package directory (so link: is valid)
+            yield* env.writeFile({
+              path: 'real-repo/packages/pkg-b/package.json',
+              content: '{"name": "@test/pkg-b"}',
+            })
+
+            // Create a symlink to the real repo (simulating workspace/repo → ~/.megarepo/...)
+            const symlinkPath = pathSvc.join(env.root, 'symlink-repo')
+            yield* fs.symlink(realRepoPath, symlinkPath)
+
+            // Run genie with --cwd pointing to the SYMLINK path
+            // This is the scenario that previously caused the bug
+            const cliPath = new URL('./mod.ts', import.meta.url).pathname
+            const command = Command.make('bun', cliPath, '--cwd', symlinkPath).pipe(
+              Command.workingDirectory(symlinkPath),
+              Command.stdout('pipe'),
+              Command.stderr('pipe'),
+            )
+
+            const process = yield* Command.start(command)
+            const [stdoutChunks, stderrChunks, exitCode] = yield* Effect.all([
+              Stream.runCollect(process.stdout),
+              Stream.runCollect(process.stderr),
+              process.exitCode,
+            ])
+
+            const stdout = decodeChunks(stdoutChunks)
+            const stderr = decodeChunks(stderrChunks)
+
+            // Generation should succeed
+            expect(exitCode).toBe(0)
+
+            // Read the generated package.json
+            const generatedPath = pathSvc.join(realRepoPath, 'packages/pkg-a/package.json')
+            const generatedContent = yield* fs.readFileString(generatedPath)
+            const generated = JSON.parse(generatedContent)
+
+            // THE KEY ASSERTION: The location should be a simple repo-relative path
+            // NOT a path containing ".." that escapes the repo structure
+            expect(generated._genieLocation).toBe('packages/pkg-a')
+
+            // The link: dependency should be a simple relative path
+            // NOT something like "link:../../../../../.../packages/pkg-b"
+            const linkPath = generated.dependencies['@test/pkg-b']
+            expect(linkPath).toBe('link:../pkg-b')
+
+            // Verify no excessive "../" in the path (the bug symptom)
+            const dotDotCount = (linkPath.match(/\.\.\//g) || []).length
+            expect(dotDotCount).toBeLessThanOrEqual(2) // "../pkg-b" has 1, which is correct
+          }),
+        )
+      },
+      Effect.provide(TestLayer),
+      Effect.scoped,
+    ),
+  )
 })

@@ -2,7 +2,7 @@
  * JSON Schema Generator
  *
  * Generates a JSON Schema file for megarepo.json configuration.
- * Output: megarepo.schema.json in the specified location.
+ * Output: schema/megarepo.schema.json in the specified location.
  */
 
 import { FileSystem } from '@effect/platform'
@@ -43,8 +43,13 @@ export const generateSchema = (options: SchemaGeneratorOptions) =>
     const content = generateSchemaContent()
     const outputPath = EffectPath.ops.join(
       options.megarepoRoot,
-      EffectPath.unsafe.relativeFile(options.outputPath ?? 'megarepo.schema.json'),
+      EffectPath.unsafe.relativeFile(options.outputPath ?? 'schema/megarepo.schema.json'),
     )
+    const outputDir = EffectPath.ops.parent(outputPath)
+
+    if (outputDir) {
+      yield* fs.makeDirectory(outputDir, { recursive: true })
+    }
 
     yield* fs.writeFileString(outputPath, content)
 

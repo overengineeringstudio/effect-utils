@@ -74,12 +74,42 @@ let
         # This prevents TypeScript TS2742 errors when packages depend on each other via link: protocol.
         # Without this, each package gets its own .pnpm directory with different paths for the same deps.
         # NOTE: Use --force to avoid TTY prompts (instead of CI=true which disables GVS).
-        exec = "npm_config_enable_global_virtual_store=true pnpm install --force";
+        exec = ''
+          set -euo pipefail
+          hash_dir="$DEVENV_DOTFILE/pnpm-install"
+          mkdir -p "$hash_dir"
+          hash_file="$hash_dir/${toName path}.hash"
+
+          npm_config_enable_global_virtual_store=true pnpm install --force
+
+          if command -v sha256sum >/dev/null 2>&1; then
+            hash_cmd="sha256sum"
+          else
+            hash_cmd="shasum -a 256"
+          fi
+
+          current_hash="$(cat package.json pnpm-lock.yaml | $hash_cmd | awk '{print $1}')"
+          echo "$current_hash" > "$hash_file"
+        '';
         cwd = path;
-        execIfModified = [ "${path}/package.json" "${path}/pnpm-lock.yaml" ];
         after = [ prevTask ];
         status = ''
+          set -euo pipefail
+          hash_file="$DEVENV_DOTFILE/pnpm-install/${toName path}.hash"
           if [ ! -d "${path}/node_modules" ]; then
+            exit 1
+          fi
+          if [ ! -f "$hash_file" ]; then
+            exit 1
+          fi
+          if command -v sha256sum >/dev/null 2>&1; then
+            hash_cmd="sha256sum"
+          else
+            hash_cmd="shasum -a 256"
+          fi
+          current_hash="$(cat "${path}/package.json" "${path}/pnpm-lock.yaml" | $hash_cmd | awk '{print $1}')"
+          stored_hash="$(cat "$hash_file")"
+          if [ "$current_hash" != "$stored_hash" ]; then
             exit 1
           fi
           exit 0

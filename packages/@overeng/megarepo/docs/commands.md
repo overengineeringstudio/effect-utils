@@ -247,7 +247,7 @@ Generates based on `generators` config:
 
 - `.envrc.generated.megarepo` + `.direnv/megarepo-nix/workspace` (when `generators.nix.enabled = true`)
 - `.vscode/megarepo.code-workspace` (default: disabled)
-- `.vscode/megarepo.schema.json` (always)
+- `schema/megarepo.schema.json` (always)
 
 ### `mr generate nix`
 

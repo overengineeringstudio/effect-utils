@@ -77,8 +77,13 @@ pkgs.writeShellApplication {
             echo "update-bun-hashes: missing file '$file'" >&2
             exit 1
           fi
-          if ! rg -q "bunDepsHash" "$file"; then
-            echo "update-bun-hashes: no bunDepsHash found in '$file'" >&2
+          hash_key="bunDepsHash"
+          if rg -q "pnpmDepsHash" "$file"; then
+            hash_key="pnpmDepsHash"
+          fi
+
+          if ! rg -q "bunDepsHash|pnpmDepsHash" "$file"; then
+            echo "update-bun-hashes: no deps hash found in '$file'" >&2
             exit 1
           fi
 
@@ -90,23 +95,27 @@ pkgs.writeShellApplication {
             fi
           else
             if [ -z "$selector" ]; then
-              hash_count="$(rg -c "bunDepsHash" "$file")"
+              hash_count="$(rg -c "$hash_key" "$file")"
               if [ "$hash_count" -gt 1 ]; then
-                echo "update-bun-hashes: multiple bunDepsHash entries in '$file' (use #selector)" >&2
+                echo "update-bun-hashes: multiple $hash_key entries in '$file' (use #selector)" >&2
                 exit 1
               fi
+              export HASH_KEY="$hash_key"
               export BUN_HASH="$got_hash"
               perl -0777 -i -pe '
                 my $hash = $ENV{"BUN_HASH"};
-                s/\bbunDepsHash\s*=\s*(?:"sha256-[^"]+"|pkgs\.lib\.fakeHash|lib\.fakeHash)/qq(bunDepsHash = "$hash")/e;
+                my $key = $ENV{"HASH_KEY"};
+                s/\b\Q$key\E\s*=\s*(?:"sha256-[^"]+"|pkgs\.lib\.fakeHash|lib\.fakeHash)/qq($key = "$hash")/e;
               ' "$file"
               echo "Updated $file to $got_hash"
             else
               export BUN_HASH_KEY="$selector"
+              export HASH_KEY="$hash_key"
               export BUN_HASH="$got_hash"
               if ! perl -0777 -ne '
                 my $key = $ENV{"BUN_HASH_KEY"};
-                my $re = qr/(\n\s*\Q$key\E\s*=\s*mkBunCli\s*\{[\s\S]*?\bbunDepsHash\s*=\s*)(?:"sha256-[^"]+"|pkgs\.lib\.fakeHash|lib\.fakeHash)/;
+                my $hash_key = $ENV{"HASH_KEY"};
+                my $re = qr/(\n\s*\Q$key\E\s*=\s*mkBunCli\s*\{[\s\S]*?\b\Q$hash_key\E\s*=\s*)(?:"sha256-[^"]+"|pkgs\.lib\.fakeHash|lib\.fakeHash)/;
                 exit 0 if /$re/;
                 exit 1;
               ' "$file"; then
@@ -115,8 +124,9 @@ pkgs.writeShellApplication {
               fi
               perl -0777 -i -pe '
                 my $key = $ENV{"BUN_HASH_KEY"};
+                my $hash_key = $ENV{"HASH_KEY"};
                 my $hash = $ENV{"BUN_HASH"};
-                my $re = qr/(\n\s*\Q$key\E\s*=\s*mkBunCli\s*\{[\s\S]*?\bbunDepsHash\s*=\s*)(?:"sha256-[^"]+"|pkgs\.lib\.fakeHash|lib\.fakeHash)/;
+                my $re = qr/(\n\s*\Q$key\E\s*=\s*mkBunCli\s*\{[\s\S]*?\b\Q$hash_key\E\s*=\s*)(?:"sha256-[^"]+"|pkgs\.lib\.fakeHash|lib\.fakeHash)/;
                 s/$re/$1"$hash"/;
               ' "$file"
               echo "Updated $file ($selector) to $got_hash"

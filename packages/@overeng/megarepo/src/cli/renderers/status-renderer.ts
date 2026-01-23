@@ -7,7 +7,7 @@
  * @see /context/cli-design/CLI_STYLE_GUIDE.md
  */
 
-import { badge, kv, separator, styled, symbols } from '@overeng/cli-ui'
+import { badge, highlightLine, kv, separator, styled, symbols } from '@overeng/cli-ui'
 
 // =============================================================================
 // Types
@@ -235,8 +235,8 @@ const tree = {
   empty: '    ',
 } as const
 
-/** Format a single member line (without tree prefix) */
-const formatMemberLine = ({
+/** Format a single member line content (without tree prefix or highlighting) */
+const formatMemberContent = ({
   member,
   isCurrent,
 }: {
@@ -297,17 +297,33 @@ const formatMemberLine = ({
     parts.push(styled.cyan('[megarepo]'))
   }
 
-  // Current location marker
-  if (isCurrent) {
-    parts.push(styled.cyan('◀'))
-  }
-
   // Not synced indicator
   if (!member.exists) {
     parts.push(styled.dim('(not synced)'))
   }
 
   return parts.join(' ')
+}
+
+/** Format a complete member line with optional prefix and highlighting */
+const formatMemberLine = ({
+  member,
+  isCurrent,
+  prefix = '',
+}: {
+  member: MemberStatus
+  isCurrent: boolean
+  prefix?: string
+}): string => {
+  const content = formatMemberContent({ member, isCurrent })
+  const line = `${prefix}${content}`
+
+  // Apply full-width background highlight for current location
+  if (isCurrent) {
+    return highlightLine(line)
+  }
+
+  return line
 }
 
 /**
@@ -337,8 +353,8 @@ const renderMembersTree = ({
     const isOnCurrentPath = currentPath !== undefined && currentPath[0] === member.name
     const isCurrent = isOnCurrentPath && currentPath.length === 1
 
-    // Render this member
-    output.push(`${prefix}${branchChar}${formatMemberLine({ member, isCurrent })}`)
+    // Render this member with tree prefix included in the line (for proper highlighting)
+    output.push(formatMemberLine({ member, isCurrent, prefix: `${prefix}${branchChar}` }))
 
     // Render nested members if this is a megarepo with nested members
     if (member.isMegarepo && member.nestedMembers && member.nestedMembers.length > 0) {

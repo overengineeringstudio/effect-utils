@@ -12,6 +12,8 @@
 # - packageDir: Package directory relative to workspaceRoot.
 # - workspaceRoot: Workspace root (flake input or path).
 # - bunDepsHash: Fixed-output hash for Bun deps snapshot.
+# - depsManager: Dependency installer to use ("bun" or "pnpm").
+# - pnpmDepsHash: Fixed-output hash for pnpm deps snapshot.
 # - binaryName: Output binary name (defaults to name).
 # - packageJsonPath: package.json path relative to workspaceRoot (defaults to <packageDir>/package.json).
 # - gitRev: Version suffix (defaults to "unknown").
@@ -29,7 +31,9 @@
   entry,
   packageDir,
   workspaceRoot,
-  bunDepsHash,
+  bunDepsHash ? null,
+  depsManager ? "bun",
+  pnpmDepsHash ? null,
   binaryName ? name,
   packageJsonPath ? "${packageDir}/package.json",
   gitRev ? "unknown",
@@ -50,19 +54,22 @@ let
   inherit (source) workspaceRootPath workspaceSrc packageJson fullVersion stageWorkspace;
 
   localDeps = import ./mk-bun-cli/local-deps.nix {
-    inherit lib workspaceRootPath packageJson packageDir;
+    inherit lib workspaceRootPath packageJson packageDir depsManager;
   };
   inherit (localDeps)
     localDependencies
     localDependenciesInstallScript
     localDependenciesCopyScript
-    localDependenciesLinkScript;
+    localDependenciesLinkPackageScript
+    localDependenciesLinkWorkspaceScript;
 
   bunDeps = import ./mk-bun-cli/bun-deps.nix {
     inherit
       pkgs
       name
       bunDepsHash
+      depsManager
+      pnpmDepsHash
       stageWorkspace
       packageDir
       localDependencies
@@ -70,8 +77,9 @@ let
       localDependenciesCopyScript;
   };
 
-  # Skip typechecking in dirty mode to avoid TS6305 when referenced builds are absent.
-  typecheckEnabled = typecheck && !dirty;
+  # Skip typechecking in dirty mode (TS6305) and when local deps are present
+  # because TypeScript module resolution requires a full node_modules layout.
+  typecheckEnabled = typecheck && !dirty && localDependencies == [];
 
   typecheckTsconfigChecked =
     if typecheckEnabled
@@ -83,6 +91,11 @@ let
 
   smokeTestArgsChecked = lib.escapeShellArgs smokeTestArgs;
   smokeTestSetupChecked = lib.optionalString (smokeTestSetup != null) smokeTestSetup;
+  # Temporary pnpm fallback (see context/workarounds/bun-issues.md).
+  isPnpm = depsManager == "pnpm";
+  lockFileName = if isPnpm then "pnpm-lock.yaml" else "bun.lock";
+  lockHashFile = if isPnpm then ".source-pnpm-lock-hash" else ".source-bun-lock-hash";
+  useNodePath = dirty || localDependencies != [];
 
 in
 pkgs.stdenv.mkDerivation {
@@ -119,8 +132,8 @@ pkgs.stdenv.mkDerivation {
       exit 1
     fi
 
-    if [ ! -f "$package_path/bun.lock" ]; then
-      echo "mk-bun-cli: missing bun.lock in ${packageDir}" >&2
+    if [ ! -f "$package_path/${lockFileName}" ]; then
+      echo "mk-bun-cli: missing ${lockFileName} in ${packageDir}" >&2
       exit 1
     fi
 
@@ -133,12 +146,16 @@ pkgs.stdenv.mkDerivation {
       rm -rf "$package_path/node_modules"
     fi
 
-    if ${lib.boolToString dirty}; then
-      # Dirty builds avoid symlinking the entire node_modules tree (slow) by
-      # resolving dependencies via NODE_PATH and overlaying local file deps.
+    bun_deps="${bunDeps}"
+    if ${lib.boolToString useNodePath}; then
+      # Use NODE_PATH resolution when dirty or when local deps need their own node_modules.
       mkdir -p "$package_path/node_modules"
-      bun_deps="${bunDeps}"
-      ${lib.optionalString (localDependencies != []) localDependenciesLinkScript}
+      ${lib.optionalString (localDependencies != []) localDependenciesLinkPackageScript}
+      ${lib.optionalString (localDependencies != []) localDependenciesLinkWorkspaceScript}
+      if [ -d "$bun_deps/node_modules/@types" ]; then
+        rm -rf "$package_path/node_modules/@types"
+        ln -s "$bun_deps/node_modules/@types" "$package_path/node_modules/@types"
+      fi
       export NODE_PATH="$package_path/node_modules:${bunDeps}/node_modules"
     else
       ln -s "${bunDeps}/node_modules" "$package_path/node_modules"
@@ -148,15 +165,15 @@ pkgs.stdenv.mkDerivation {
       --replace-fail "const buildVersion = '__CLI_VERSION__'" "const buildVersion = '${fullVersion}'"
 
     # Check for stale bunDepsHash before expensive operations
-    if [ -f "${bunDeps}/.source-bun-lock-hash" ]; then
-      current_lock_hash=$(sha256sum "$package_path/bun.lock" | cut -d' ' -f1)
-      stored_lock_hash=$(cat "${bunDeps}/.source-bun-lock-hash")
+    if [ -f "${bunDeps}/${lockHashFile}" ]; then
+      current_lock_hash=$(sha256sum "$package_path/${lockFileName}" | cut -d' ' -f1)
+      stored_lock_hash=$(cat "${bunDeps}/${lockHashFile}")
       if [ "$current_lock_hash" != "$stored_lock_hash" ]; then
         echo "" >&2
         echo "┌──────────────────────────────────────────────────────────────────┐" >&2
-        echo "│  ERROR: bunDepsHash is stale!                                    │" >&2
+        echo "│  ERROR: deps hash is stale!                                      │" >&2
         echo "│                                                                  │" >&2
-        echo "│  bun.lock has changed since the dependency cache was built.     │" >&2
+        echo "│  ${lockFileName} has changed since the dependency cache was built.│" >&2
         echo "│  This can cause mysterious build failures with wrong versions.  │" >&2
         echo "│                                                                  │" >&2
         echo "│  Run: mono nix hash --package ${name}                            │" >&2
@@ -175,11 +192,17 @@ pkgs.stdenv.mkDerivation {
 
       tsc_entry="$package_path/node_modules/typescript/bin/tsc"
       if [ ! -f "$tsc_entry" ]; then
+        tsc_entry="$bun_deps/node_modules/typescript/bin/tsc"
+      fi
+      if [ ! -f "$tsc_entry" ]; then
         echo "TypeScript entry not found at $tsc_entry" >&2
         exit 1
       fi
-
-      bun "$tsc_entry" --project "$tsconfig_path" --noEmit
+      if grep -q '"references"' "$tsconfig_path"; then
+        bun "$tsc_entry" --build "$tsconfig_path"
+      else
+        bun "$tsc_entry" --project "$tsconfig_path" --noEmit
+      fi
     ''}
 
     build_root="$PWD"

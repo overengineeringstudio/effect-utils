@@ -170,7 +170,7 @@ Import from `inputs.effect-utils.devenvModules.tasks`:
 ## Example: Full devenv.nix
 
 ```nix
-{ pkgs, inputs, config, ... }:
+{ pkgs, inputs, ... }:
 let
   system = pkgs.stdenv.hostPlatform.system;
   taskModules = inputs.effect-utils.devenvModules.tasks;

@@ -19,6 +19,7 @@
 
   # Shell completions for bash/zsh with descriptions
   enterShell = ''
+    : "''${ZSH_VERSION:=}"
     # Shell completions for `dt` command (cached for performance)
     # Uses task config JSON for names and descriptions
     _dt_get_tasks_with_desc() {

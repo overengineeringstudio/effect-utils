@@ -16,9 +16,10 @@ let
     extraExcludedSourceNames = [ ];
     # TODO: Re-enable typecheck once Effect lint warnings are resolved
     typecheck = false;
+    depsManager = "pnpm";
+    pnpmDepsHash = "sha256-ZLSuLDJPdge7dFqf7lFUDkZijXfZ0Hg1LY63L4NQf44=";
     # Smoke test just runs --help which doesn't need git
     smokeTestArgs = [ "--help" ];
-    bunDepsHash = "sha256-UnaWL12mtRSo/I4Yn58radxhc7gz1w60t5vrmWSJjBk=";
     dirty = dirty;
     inherit gitRev;
   };

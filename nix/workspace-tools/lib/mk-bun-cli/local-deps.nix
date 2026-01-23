@@ -1,4 +1,4 @@
-{ lib, workspaceRootPath, packageJson, packageDir }:
+{ lib, workspaceRootPath, packageJson, packageDir, depsManager }:
 
 let
   # Collect local file dependencies so dirty builds can overlay them.
@@ -12,10 +12,13 @@ let
       isLocal = value:
         lib.hasPrefix "./" value
         || lib.hasPrefix "../" value
-        || lib.hasPrefix "file:" value;
+        || lib.hasPrefix "file:" value
+        || lib.hasPrefix "link:" value;
       normalize = value:
         if lib.hasPrefix "file:" value
         then lib.removePrefix "file:" value
+        else if lib.hasPrefix "link:" value
+        then lib.removePrefix "link:" value
         else value;
       normalizeRelativePath = depName: depValue: rootStr: path:
         let
@@ -50,6 +53,8 @@ let
       })
       (lib.filterAttrs (_: value: isLocal value) localDependencyMap);
 
+  lockFileName = if depsManager == "pnpm" then "pnpm-lock.yaml" else "bun.lock";
+
   # Install local dependency node_modules inside the bunDeps snapshot so dirty builds
   # can link them without reaching outside the Nix store.
   localDependenciesInstallScript = lib.concatStringsSep "\n" (map
@@ -61,12 +66,12 @@ let
         echo "mk-bun-cli: missing package.json for local dependency $dep_name at $dep_path" >&2
         exit 1
       fi
-      if [ ! -f "$dep_path/bun.lock" ]; then
-        echo "mk-bun-cli: missing bun.lock for local dependency $dep_name at $dep_path" >&2
+      if [ ! -f "$dep_path/${lockFileName}" ]; then
+        echo "mk-bun-cli: missing ${lockFileName} for local dependency $dep_name at $dep_path" >&2
         exit 1
       fi
 
-      bun_install_checked "$dep_path" "$dep_name"
+      deps_install_checked "$dep_path" "$dep_name"
     '')
     localDependencies);
 
@@ -85,7 +90,24 @@ let
     '')
     localDependencies);
 
-  localDependenciesLinkScript = lib.concatStringsSep "\n" (map
+  localDependenciesLinkPackageScript = lib.concatStringsSep "\n" (map
+    (dep: ''
+      dep_name=${lib.escapeShellArg dep.name}
+      dep_rel=${lib.escapeShellArg dep.workspacePath}
+      dep_source="$workspace/$dep_rel"
+      if [ ! -d "$dep_source" ]; then
+        echo "mk-bun-cli: local dependency $dep_name not found at $dep_source" >&2
+        exit 1
+      fi
+
+      dep_target="$package_path/node_modules/$dep_name"
+      mkdir -p "$(dirname "$dep_target")"
+      rm -rf "$dep_target"
+      ln -s "$dep_source" "$dep_target"
+    '')
+    localDependencies);
+
+  localDependenciesLinkWorkspaceScript = lib.concatStringsSep "\n" (map
     (dep: ''
       dep_name=${lib.escapeShellArg dep.name}
       dep_rel=${lib.escapeShellArg dep.workspacePath}
@@ -100,10 +122,6 @@ let
         exit 1
       fi
 
-      dep_target="$package_path/node_modules/$dep_name"
-      mkdir -p "$(dirname "$dep_target")"
-      rm -rf "$dep_target"
-      ln -s "$dep_source" "$dep_target"
       case "$dep_source" in
         "$workspace"/*)
           if [ ! -e "$dep_source/node_modules" ]; then
@@ -119,5 +137,6 @@ in
     localDependencies
     localDependenciesInstallScript
     localDependenciesCopyScript
-    localDependenciesLinkScript;
+    localDependenciesLinkPackageScript
+    localDependenciesLinkWorkspaceScript;
 }
