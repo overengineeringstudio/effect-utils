@@ -117,6 +117,48 @@ These are generally fixed by the above solutions, but documented for reference:
 
 ---
 
+## Parallel pnpm installs cause store corruption
+
+> **Status: UNSOLVED** - Need to switch to single root install or serialize tasks
+
+When running multiple `pnpm install` commands in parallel (as the devenv pnpm module does), race conditions corrupt the global pnpm store.
+
+**Root cause:** The pnpm module creates separate tasks (`pnpm:install:<name>`) for each package, all running concurrently after `genie:run`. When multiple pnpm processes try to create hardlinks/symlinks in the same global store (`~/Library/pnpm/store/v10/links/`), they race to rename temp directories.
+
+**Symptoms:**
+```
+ERR_PNPM_ENOTEMPTY  ENOTEMPTY: directory not empty, rename 
+'~/Library/pnpm/store/v10/links/@opentelemetry/api/1.9.0/.../node_modules/@opentelemetry/api_tmp_62863' 
+-> '~/Library/pnpm/store/v10/links/@opentelemetry/api/1.9.0/.../node_modules/@opentelemetry/api'
+```
+
+The temp directory PIDs (62863, 62892, etc.) show different processes racing on the same paths.
+
+**Why it happens:**
+1. Process A creates `@opentelemetry/api_tmp_62863`
+2. Process B creates `@opentelemetry/api_tmp_62892`
+3. Process A tries to rename its temp dir to `@opentelemetry/api`
+4. Process B already renamed its temp dir there
+5. Process A fails with `ENOTEMPTY`
+
+**Using `enableGlobalVirtualStore` makes this worse** because even more paths are shared in the global store.
+
+**Potential fixes:**
+1. **Single root install** (recommended) - Run `pnpm install` once at workspace root with `pnpm-workspace.yaml`. This is pnpm's intended monorepo workflow.
+2. **Serialize installs** - Chain tasks so only one runs at a time (slow but safe)
+3. **Use `--frozen-lockfile`** - Reduces store writes but doesn't fully prevent races
+
+**Recovery from corrupted store:**
+```bash
+# Clean the corrupted links directory
+rm -rf ~/Library/pnpm/store/v10/links
+
+# Then reinstall
+pnpm install
+```
+
+---
+
 ## Related
 
 - **Detailed comparison gist:** https://gist.github.com/schickling/d05fe50fe4ffb1c2e9e48c8623579d7e
