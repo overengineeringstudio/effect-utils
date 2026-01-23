@@ -1,5 +1,7 @@
 # Bun CLI Build Pattern
 
+> This extends the [nix-devenv](../nix-devenv/) foundation. See [requirements.md](../nix-devenv/requirements.md) for assumptions (A1-A3) and base requirements (R1-R19).
+
 Reusable Nix builder for Bun-compiled TypeScript CLIs. Designed for megarepo
 workspaces and standalone repos: mk-bun-cli expects a workspace root and
 builds a package inside it.

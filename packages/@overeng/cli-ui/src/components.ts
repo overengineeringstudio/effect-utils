@@ -6,7 +6,8 @@
  */
 
 import { styled } from './styled.ts'
-import { colors, symbols } from './tokens.ts'
+import { bgColor256, colors, symbols } from './tokens.ts'
+import { visibleLength } from './utils.ts'
 
 // =============================================================================
 // Badge Component
@@ -218,3 +219,53 @@ export type GitDiffData = {
 /** Render a git diff summary (+N/-M format) */
 export const gitDiff = (diff: GitDiffData): string =>
   `${styled.green(`+${diff.added}`)}${styled.dim('/')}${styled.red(`-${diff.removed}`)}`
+
+// =============================================================================
+// Highlighted Line Component
+// =============================================================================
+
+/** ANSI escape code to clear from cursor to end of line */
+const CLEAR_TO_EOL = '\x1b[K'
+
+/** Options for highlighted line rendering */
+export type HighlightLineOptions = {
+  /** Background color (256-color palette, 0-255). Default: 236 (dark gray) */
+  bgColor?: number
+  /** Minimum width to pad to. If undefined, uses terminal width or 80 */
+  minWidth?: number
+}
+
+/**
+ * Highlight a line with a background color that extends to the full terminal width.
+ * Creates a solid rectangle of background color behind the text.
+ *
+ * Handles nested ANSI styles by re-applying the background after each reset code.
+ *
+ * @example
+ * ```ts
+ * console.log(highlightLine('Current item'))
+ * console.log(highlightLine('Selected', { bgColor: 238 }))
+ * console.log(highlightLine(styled.bold('Bold') + ' text')) // Background persists through styled text
+ * ```
+ */
+export const highlightLine = (text: string, options?: HighlightLineOptions): string => {
+  const bgColorCode = options?.bgColor ?? 236
+  const bg = bgColor256(bgColorCode)
+
+  // Get terminal width, fallback to minWidth or 80
+  const termWidth =
+    (typeof process !== 'undefined' && process.stdout?.columns) || options?.minWidth || 80
+  const minWidth = options?.minWidth ?? termWidth
+
+  // Calculate padding needed
+  const textWidth = visibleLength(text)
+  const padding = Math.max(0, minWidth - textWidth)
+
+  // Replace all reset codes (\x1b[0m) with reset + re-apply background
+  // This ensures the background persists through nested styled text
+  const textWithBg = text.replace(/\x1b\[0m/g, `${colors.reset}${bg}`)
+
+  // Apply background, modified text, padding, clear to EOL, then final reset
+  // The CLEAR_TO_EOL ensures the background extends to the edge of the terminal
+  return `${bg}${textWithBg}${' '.repeat(padding)}${CLEAR_TO_EOL}${colors.reset}`
+}

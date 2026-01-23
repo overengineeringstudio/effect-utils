@@ -43,6 +43,7 @@ export {
   indentLines,
   section,
   gitDiff,
+  highlightLine,
   type BadgeLevel,
   type ListOptions,
   type KvOptions,
@@ -51,6 +52,7 @@ export {
   type IndentOptions,
   type SectionOptions,
   type GitDiffData,
+  type HighlightLineOptions,
 } from './components.ts'
 
 // Utilities

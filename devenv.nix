@@ -16,6 +16,10 @@ let
     inherit pkgs gitRev;
     src = workspaceSrc;
   };
+  megarepo = import (./. + "/packages/@overeng/megarepo/nix/build.nix") {
+    inherit pkgs gitRev;
+    src = workspaceSrc;
+  };
   # Keep devenv shells fast; dirty mono builds are opt-in via direnv helper.
   mono = import ./scripts/nix/build.nix {
     inherit pkgs gitRev;
@@ -171,7 +175,7 @@ in
     })
     # Setup task (auto-runs in enterShell)
     (taskModules.setup {
-      tasks = [ "pnpm:install" "genie:run" "ts:build" ];
+      tasks = [ "megarepo:generate" "pnpm:install" "genie:run" "ts:build" ];
     })
     # Nix CLI build and hash management
     (taskModules.nix-cli { cliPackages = nixCliPackages; })
@@ -186,6 +190,7 @@ in
     pkgs.oxfmt
     genie
     dotdot
+    megarepo
     mono
     cliBuildStamp.package
   ];

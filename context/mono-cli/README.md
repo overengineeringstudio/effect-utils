@@ -1,5 +1,7 @@
 # Mono CLI Pattern
 
+> Update: We're in the progress of migrating large parts of the `mono` CLI to the `dt` task system. Possilby all of it eventually.
+
 Framework for building Effect-based monorepo CLIs using `@overeng/mono`. Provides
 reusable task primitives and command factories for common monorepo operations.
 

@@ -4,55 +4,77 @@
 
 ### Repos are independent
 
-Each repo must work standalone. It cannot import from or know about other repos in the workspace at the git level.
+Each repo must work standalone (with `mr sync`). It cannot import from or know about other repos in the workspace at the git level.
 
 ```
-✗ BAD: effect-utils importing from my-app
-✓ GOOD: effect-utils is completely independent
+BAD:  effect-utils importing from my-app
+GOOD: effect-utils is completely independent
 ```
 
 ### Dependencies via relative paths
 
-Repos depend on each other via `../` paths. In a megarepo, repos live under
-`repos/`, so `repos/my-app` can depend on `../effect-utils`.
+Repos depend on each other via `../` paths. In a megarepo, repos live under `repos/`, so `repos/my-app` can depend on `../effect-utils`.
 
 ```json
 {
   "dependencies": {
-    "@overeng/utils": "../@overeng/utils",
+    "@overeng/utils": "../effect-utils/packages/@overeng/utils",
     "shared-lib": "../shared-lib"
   }
 }
 ```
 
+### Package Structure (Self-Contained)
+
+Each package is self-contained with its own lockfile:
+
+```
+packages/@org/my-pkg/
+├── package.json          # Own dependencies
+├── pnpm-lock.yaml        # Own lockfile (or bun.lock)
+├── node_modules/         # Own node_modules
+├── tsconfig.json
+└── src/
+```
+
+**Do not use:**
+- Root-level `pnpm-workspace.yaml`
+- `workspaces` field in root `package.json`
+- Shared/hoisted `node_modules`
+
+**Why:** Tools like pnpm and bun do not support nested monorepos. Since megarepos compose multiple monorepos together, we must use per-package lockfiles to avoid conflicts.
+
+Related issues:
+- [pnpm#10302](https://github.com/pnpm/pnpm/issues/10302) - No support for extending child workspaces
+- [bun#10640](https://github.com/oven-sh/bun/issues/10640) - Filter fails for nested workspaces
+- [bun#11295](https://github.com/oven-sh/bun/issues/11295) - ENOENT errors with nested workspaces
+
 ### Where packages belong
 
 **In effect-utils (foundation):**
-
 - Effect ecosystem (`effect`, `@effect/*`)
 - Build tools (`typescript`, `vite`, `vitest`)
 - Common UI (`react`, `tailwindcss`)
 - Packages used across multiple repos
 
 **In your repos only:**
-
 - Domain-specific packages (your business logic)
 - Experimental/unstable packages
 - Packages only used by that repo
 
-## What effect-utils provides
+## What effect-utils Provides
 
-| From `genie/repo.ts`             | Purpose                                               |
-| -------------------------------- | ----------------------------------------------------- |
-| `catalog`                        | Dependency versions (Effect, React, TypeScript, etc.) |
-| `baseTsconfigCompilerOptions`    | Strict TS settings + Effect LSP plugin                |
-| `packageTsconfigCompilerOptions` | Composite mode for package builds                     |
-| `domLib`, `reactJsx`             | Browser/React compiler options                        |
+| From `genie/repo.ts` | Purpose |
+|----------------------|---------|
+| `catalog` | Dependency versions (Effect, React, TypeScript, etc.) |
+| `baseTsconfigCompilerOptions` | Strict TS settings + Effect LSP plugin |
+| `packageTsconfigCompilerOptions` | Composite mode for package builds |
+| `domLib`, `reactJsx` | Browser/React compiler options |
 
-| From genie lib (`#genie/*`) | Purpose                        |
-| --------------------------- | ------------------------------ |
-| `createPackageJson`         | Type-safe package.json builder |
-| `tsconfigJSON`              | tsconfig.json generator        |
+| From genie lib (`#genie/*`) | Purpose |
+|-----------------------------|---------|
+| `createPackageJson` | Type-safe package.json builder |
+| `tsconfigJSON` | tsconfig.json generator |
 
 > **Note:** genie CLI is installed via Nix/devenv. The genie lib types are accessed via Node.js subpath imports (`#genie/*`), configured in the root `package.json#imports` and `tsconfig.json#paths`.
 
@@ -69,7 +91,7 @@ export default tsconfigJSON({
   compilerOptions: {
     ...baseTsconfigCompilerOptions,
     paths: {
-      '#genie/*': ['../@overeng/genie/src/runtime/*'],
+      '#genie/*': ['./effect-utils/packages/@overeng/genie/src/runtime/*'],
     },
   },
 })
@@ -86,8 +108,8 @@ export default tsconfigJSON({
   extends: '../../../tsconfig.base.json',
   compilerOptions: {
     ...packageTsconfigCompilerOptions,
-    lib: domLib, // If browser code
-    ...reactJsx, // If React code
+    lib: domLib,      // If browser code
+    ...reactJsx,      // If React code
   },
   include: ['src'],
 })
@@ -99,12 +121,12 @@ export default tsconfigJSON({
 
 1. Add to `genie/repo.ts` catalog (or effect-utils if shared).
 2. Add to the package's `package.json.genie.ts`.
-3. Run `genie && bun install`.
+3. Run `genie && bun install` (or `dt genie:run` then `dt pnpm:install`).
 
 ### Adding a new repo dependency (megarepo)
 
 1. Add the repo to `megarepo.json`.
-2. Run the megarepo sync command to update symlinks.
+2. Run `mr sync` to update symlinks.
 3. Use `../repo-name` in your package.json.
 
 ## Dual Dependencies Pattern (devDeps + peerDeps)
@@ -124,6 +146,8 @@ export default packageJson({
 ```
 
 **Why:** `devDependencies` enables standalone `tsc --noEmit`. `peerDependencies` signals version requirements to consumers.
+
+## Delta Pattern for Library Consumers
 
 **Library consumers** (also consumed by others) re-expose peer deps using the **delta pattern** - only define packages not already in the upstream:
 
@@ -157,6 +181,8 @@ export default packageJson({
 
 **Why delta pattern?** Avoids duplication of peer deps across packages. When upstream adds a new peer dep, consumers automatically inherit it without manual updates.
 
+## Apps (Leaf Nodes)
+
 **Apps** (leaf nodes, not consumed by others) import upstream configs and spread peer deps into `dependencies`:
 
 ```typescript
@@ -174,7 +200,7 @@ export default packageJson({
 })
 ```
 
-**Tips:**
+## Tips
 
 - Define `ownPeerDepNames` locally with only packages NOT in upstream (delta pattern)
 - Compute `allPeerDepNames` by spreading upstream keys + own for devDependencies
@@ -185,5 +211,5 @@ export default packageJson({
 
 ## Notes
 
-- Use the local megarepo workspace path for Nix builds inside a megarepo.
-- If Effect types mismatch, check for duplicate versions in nested `node_modules`.
+- Use the megarepo workspace path (`$MEGAREPO_NIX_WORKSPACE`) for Nix builds inside a megarepo
+- If Effect types mismatch, check for duplicate versions in nested `node_modules`

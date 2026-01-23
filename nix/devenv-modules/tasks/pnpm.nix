@@ -78,6 +78,12 @@ let
         cwd = path;
         execIfModified = [ "${path}/package.json" "${path}/pnpm-lock.yaml" ];
         after = [ prevTask ];
+        status = ''
+          if [ ! -d "${path}/node_modules" ]; then
+            exit 1
+          fi
+          exit 0
+        '';
       };
     };
 

@@ -2,13 +2,6 @@
 #
 # Runs `mr generate nix --deep` when megarepo inputs change, and skips otherwise.
 { lib, ... }:
-let
-  mrCandidates = [
-    "./repos/effect-utils/packages/@overeng/megarepo/bin/mr.ts"
-    "./packages/@overeng/megarepo/bin/mr.ts"
-  ];
-  mrCandidatesList = lib.concatStringsSep " " mrCandidates;
-in
 {
   tasks."megarepo:generate" = {
     description = "Generate megarepo envrc + workspace mirror";
@@ -17,15 +10,13 @@ in
         exit 0
       fi
 
-      for candidate in ${mrCandidatesList}; do
-        if [ -f "$candidate" ]; then
-          bun "$candidate" generate nix --deep
-          exit 0
-        fi
-      done
+      if ! command -v mr >/dev/null 2>&1; then
+        echo "[devenv] Missing mr CLI in PATH. Add effect-utils megarepo package to devenv packages." >&2
+        exit 1
+      fi
 
-      echo "[devenv] Could not find mr CLI. Run pnpm install in effect-utils." >&2
-      exit 1
+      mr generate nix --deep
+      exit 0
     '';
     status = ''
       if [ ! -f ./megarepo.json ]; then
@@ -44,11 +35,9 @@ in
         exit 1
       fi
 
-      for candidate in ${mrCandidatesList}; do
-        if [ -f "$candidate" ] && [ "$candidate" -nt ./.envrc.generated.megarepo ]; then
-          exit 1
-        fi
-      done
+      if ! command -v mr >/dev/null 2>&1; then
+        exit 1
+      fi
 
       exit 0
     '';

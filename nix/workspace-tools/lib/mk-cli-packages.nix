@@ -19,4 +19,8 @@ in
     inherit pkgs gitRev dirty;
     src = workspaceRoot;
   };
+  megarepo = import (workspaceRootPath + "/packages/@overeng/megarepo/nix/build.nix") {
+    inherit pkgs gitRev dirty;
+    src = workspaceRoot;
+  };
 }
