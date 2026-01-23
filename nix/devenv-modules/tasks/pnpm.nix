@@ -73,7 +73,8 @@ let
         # Use global virtual store to ensure all packages resolve dependencies to the same path.
         # This prevents TypeScript TS2742 errors when packages depend on each other via link: protocol.
         # Without this, each package gets its own .pnpm directory with different paths for the same deps.
-        exec = "npm_config_enable_global_virtual_store=true pnpm install";
+        # NOTE: Use --force to avoid TTY prompts (instead of CI=true which disables GVS).
+        exec = "npm_config_enable_global_virtual_store=true pnpm install --force";
         cwd = path;
         execIfModified = [ "${path}/package.json" "${path}/pnpm-lock.yaml" ];
         after = [ prevTask ];
