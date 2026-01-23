@@ -1,8 +1,8 @@
-# Dotdot-first Bun CLI builder.
+# Megarepo-first Bun CLI builder.
 #
 # Design goals:
 # - Build native Bun binaries from TypeScript quickly and deterministically.
-# - Work inside dotdot workspaces (local peer repos + uncommitted changes).
+# - Work inside megarepo workspaces (local peer repos + uncommitted changes).
 # - Keep builds pure (no --impure) and avoid shipping node_modules.
 # - Fail early with clear errors and a smoke test.
 #
@@ -10,7 +10,7 @@
 # - name: Derivation name and default binary name.
 # - entry: CLI entry file relative to workspaceRoot.
 # - packageDir: Package directory relative to workspaceRoot.
-# - workspaceRoot: Dotdot workspace root (flake input or path).
+# - workspaceRoot: Workspace root (flake input or path).
 # - bunDepsHash: Fixed-output hash for Bun deps snapshot.
 # - binaryName: Output binary name (defaults to name).
 # - packageJsonPath: package.json path relative to workspaceRoot (defaults to <packageDir>/package.json).
@@ -22,7 +22,7 @@
 # - smokeTestSetup: Shell snippet to prepare the smoke test working dir (optional).
 # - extraExcludedSourceNames: Extra top-level paths to omit from the staged workspace.
 # - dirty: When true, link bunDeps and overlay local file deps (defaults to false).
-{ pkgs, pkgsUnstable }:
+{ pkgs }:
 
 {
   name,
@@ -61,7 +61,6 @@ let
   bunDeps = import ./mk-bun-cli/bun-deps.nix {
     inherit
       pkgs
-      pkgsUnstable
       name
       bunDepsHash
       stageWorkspace
@@ -89,7 +88,7 @@ in
 pkgs.stdenv.mkDerivation {
   inherit name;
 
-  nativeBuildInputs = [ pkgsUnstable.bun pkgs.cacert ];
+  nativeBuildInputs = [ pkgs.bun pkgs.cacert ];
 
   dontStrip = true;
   dontPatchELF = true;
@@ -193,7 +192,7 @@ pkgs.stdenv.mkDerivation {
       --outfile="$build_output"
     cd "$build_root"
 
-    bun_binary="${pkgsUnstable.bun}/bin/bun"
+    bun_binary="${pkgs.bun}/bin/bun"
     if [ -s "$build_output" ] && cmp -s "$build_output" "$bun_binary"; then
       echo "mk-bun-cli: bun build output matches bun; refusing runtime fallback" >&2
       exit 1

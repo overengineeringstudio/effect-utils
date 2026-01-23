@@ -8,7 +8,7 @@ We use [beads](https://github.com/steveyegge/beads) (`bd`) as a git-backed issue
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                         dotdot/                              │
+│                      megarepo root                           │
 │                                                              │
 │  Beads Repos (issue storage):                               │
 │  ├── overeng-beads-public/   # Public, prefix: eu, Linear   │
@@ -66,7 +66,7 @@ We use [beads](https://github.com/steveyegge/beads) (`bd`) as a git-backed issue
 ### Directory Structure
 
 ```
-dotdot/
+<megarepo-root>/
 ├── overeng-beads-public/  # Public beads + devenv module
 │   ├── .beads/
 │   ├── nix/devenv-module.nix
@@ -115,7 +115,7 @@ bd config set linear.team_id "your-team-uuid"
 
 ```bash
 # Run from overeng-beads directory
-cd ~/Code/overengineeringstudio/dotdot/overeng-beads
+cd "$MEGAREPO_ROOT_OUTERMOST/overeng-beads-public"
 
 # Create issue with package label
 bd create "Implement feature X" -p 1 -t feature -l pkg:effect-utils
@@ -139,7 +139,7 @@ The git hook will automatically add a comment to the beads issue.
 
 ```bash
 # Run from overeng-beads directory
-cd ~/Code/overengineeringstudio/dotdot/overeng-beads
+cd "$MEGAREPO_ROOT_OUTERMOST/overeng-beads-public"
 
 # Pull from Linear (import team changes)
 bd linear sync --pull

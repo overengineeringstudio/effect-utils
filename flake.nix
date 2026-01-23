@@ -17,7 +17,7 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
-        mkBunCli = import ./nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs; pkgsUnstable = pkgs; };
+        mkBunCli = import ./nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs; };
         cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
         rootPath = self.outPath;
         cliPackages = {
@@ -99,6 +99,7 @@
           # Simple tasks (no config needed)
           genie = ./nix/devenv-modules/tasks/genie.nix;
           lint-genie = ./nix/devenv-modules/tasks/lint-genie.nix;
+          megarepo = ./nix/devenv-modules/tasks/megarepo.nix;
           # Parameterized tasks (pass config)
           ts = import ./nix/devenv-modules/tasks/ts.nix;
           setup = import ./nix/devenv-modules/tasks/setup.nix;
@@ -113,45 +114,15 @@
         };
       };
 
-      # Direnv helper script (eval-time store path; no build required).
-      direnv.autoRebuildClis = import ./nix/workspace-tools/env/direnv/auto-rebuild-clis.nix;
-      direnv.peerEnvrc = import ./nix/workspace-tools/env/direnv/peer-envrc.nix;
-      direnv.peerEnvrcEffectUtils = import ./nix/workspace-tools/env/direnv/peer-envrc-effect-utils.nix;
-      direnv.effectUtilsEnvrc = import ./nix/workspace-tools/env/direnv/effect-utils-envrc.nix;
-
       # Builder function for external repos to create their own Bun CLIs
-      # TODO: Remove pkgsUnstable param once mk-bun-cli.nix is updated
-      lib.mkBunCli = { pkgs, pkgsUnstable ? pkgs }:
-        import ./nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs pkgsUnstable; };
+      lib.mkBunCli = { pkgs }:
+        import ./nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs; };
 
       # Shell helper for runtime CLI build stamps.
       lib.cliBuildStamp = { pkgs, workspaceRoot ? null }:
         import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs workspaceRoot; };
 
       # Convenience helper for bundling the common genie/dotdot CLIs.
-      # TODO: Remove pkgsUnstable param once build.nix files are updated
-      lib.mkCliPackages = {
-        pkgs,
-        pkgsUnstable ? pkgs,
-        gitRev ? "unknown",
-        workspaceRoot ? ./.,
-        dirty ? false,
-      }:
-        let
-          workspaceRootPath =
-            if builtins.isAttrs workspaceRoot && builtins.hasAttr "outPath" workspaceRoot
-            then workspaceRoot.outPath
-            else workspaceRoot;
-        in
-        {
-          genie = import (workspaceRootPath + "/packages/@overeng/genie/nix/build.nix") {
-            inherit pkgs gitRev dirty;
-            src = workspaceRoot;
-          };
-          dotdot = import (workspaceRootPath + "/packages/@overeng/dotdot/nix/build.nix") {
-            inherit pkgs gitRev dirty;
-            src = workspaceRoot;
-          };
-        };
+      lib.mkCliPackages = import ./nix/workspace-tools/lib/mk-cli-packages.nix;
     };
 }

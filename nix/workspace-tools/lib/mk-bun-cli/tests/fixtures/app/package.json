@@ -3,7 +3,6 @@
   "version": "0.1.0",
   "type": "module",
   "dependencies": {
-    "@acme/utils": "../@acme/utils",
-    "shared-lib": "../shared-lib"
+    "shared-lib": "./shared-lib"
   }
 }

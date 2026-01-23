@@ -13,27 +13,26 @@ explicit inputs rather than `../` paths. Example pattern (for `scripts/`):
 
 ```nix
 inputs = {
-  nixpkgs.url = "github:NixOS/nixpkgs/release-25.11";
-  nixpkgsUnstable.url = "github:NixOS/nixpkgs/nixos-unstable";
+  nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
   flake-utils.url = "github:numtide/flake-utils";
   effect-utils = {
     url = "path:.."; # workspace root
     inputs.nixpkgs.follows = "nixpkgs";
-    inputs.nixpkgsUnstable.follows = "nixpkgsUnstable";
     inputs.flake-utils.follows = "flake-utils";
   };
 };
 
-outputs = { self, nixpkgs, nixpkgsUnstable, flake-utils, effect-utils, ... }:
+outputs = { self, nixpkgs, flake-utils, effect-utils, ... }:
   flake-utils.lib.eachDefaultSystem (system:
     let
       pkgs = import nixpkgs { inherit system; };
-      pkgsUnstable = import nixpkgsUnstable { inherit system; };
-      mkBunCli = effect-utils.lib.mkBunCli { inherit pkgs pkgsUnstable; };
+      mkBunCli = effect-utils.lib.mkBunCli {
+        inherit pkgs;
+      };
     in
     {
       packages.default = import ./nix/build.nix {
-        inherit pkgs pkgsUnstable mkBunCli;
+        inherit pkgs mkBunCli;
         src = effect-utils;
       };
     });
@@ -50,5 +49,5 @@ lag behind if `bunDepsHash` is not refreshed. Symptoms:
 Fixes:
 
 - Refresh `bunDepsHash` after adding new files in local deps.
-- For local iteration, enable the `dirty` overlay in `mkBunCli` so local deps
-  override the bunDeps snapshot.
+- For local iteration in a megarepo, build from the local workspace path so the
+  source includes uncommitted files without extra flags.

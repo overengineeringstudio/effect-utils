@@ -26,12 +26,6 @@ import type { GenieOutput, Strict } from '../mod.ts'
 // Generator Configuration Types
 // =============================================================================
 
-/** envrc generator configuration */
-export type EnvrcGeneratorConfig = {
-  /** Enable/disable the generator (default: true) */
-  enabled?: boolean
-}
-
 /** VSCode workspace generator configuration */
 export type VscodeGeneratorConfig = {
   /** Enable/disable the generator (default: false) */
@@ -40,26 +34,18 @@ export type VscodeGeneratorConfig = {
   exclude?: string[]
 }
 
-/** Nix flake generator configuration */
-export type FlakeGeneratorConfig = {
+/** Nix generator configuration */
+export type NixGeneratorConfig = {
   /** Enable/disable the generator (default: false) */
   enabled?: boolean
-  /** Members to skip in flake */
-  skip?: string[]
-}
-
-/** devenv generator configuration */
-export type DevenvGeneratorConfig = {
-  /** Enable/disable the generator (default: false) */
-  enabled?: boolean
+  /** Workspace directory (relative to megarepo root) */
+  workspaceDir?: string
 }
 
 /** All generator configurations */
 export type GeneratorsConfig = {
-  envrc?: EnvrcGeneratorConfig
+  nix?: NixGeneratorConfig
   vscode?: VscodeGeneratorConfig
-  flake?: FlakeGeneratorConfig
-  devenv?: DevenvGeneratorConfig
 }
 
 // =============================================================================
@@ -118,7 +104,7 @@ export type MegarepoConfigArgs = {
  *     'my-lib': '../my-lib',
  *   },
  *   generators: {
- *     envrc: { enabled: true },
+ *     nix: { enabled: true },
  *     vscode: { enabled: true, exclude: ['large-repo'] },
  *   },
  * })

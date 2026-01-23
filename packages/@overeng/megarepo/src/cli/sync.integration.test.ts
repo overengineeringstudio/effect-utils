@@ -1,9 +1,13 @@
-import { FileSystem } from '@effect/platform'
-import { Effect, Option } from 'effect'
+import path from 'node:path'
+import url from 'node:url'
+
+import { Command, FileSystem } from '@effect/platform'
+import { Chunk, Effect, Option, Schema, Stream } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { EffectPath } from '@overeng/effect-path'
+import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
+import { CONFIG_FILE_NAME, MegarepoConfig } from '../lib/config.ts'
 import {
   checkLockStaleness,
   createEmptyLockFile,
@@ -12,9 +16,57 @@ import {
   readLockFile,
   updateLockedMember,
 } from '../lib/lock.ts'
-import { createRepo, createWorkspace } from '../test-utils/setup.ts'
+import { addCommit, createRepo, createWorkspace, initGitRepo } from '../test-utils/setup.ts'
 import { createWorkspaceWithLock } from '../test-utils/store-setup.ts'
 import { withTestCtx } from '../test-utils/withTestCtx.ts'
+
+// Path to the CLI binary
+// TODO get rid of this approach and use effect cli command directly and yield its handler
+const __dirname = path.dirname(url.fileURLToPath(import.meta.url))
+const CLI_PATH = path.resolve(__dirname, '../../bin/mr.ts')
+
+/** Decode collected chunks to string */
+const decodeChunks = (chunks: Chunk.Chunk<Uint8Array>): string => {
+  const merged = Chunk.reduce(chunks, new Uint8Array(), (acc, chunk) => {
+    const result = new Uint8Array(acc.length + chunk.length)
+    result.set(acc)
+    result.set(chunk, acc.length)
+    return result
+  })
+  return new TextDecoder().decode(merged)
+}
+
+/**
+ * Run the sync CLI command and capture output.
+ */
+const runSyncCommand = ({
+  cwd,
+  args = [],
+}: {
+  cwd: AbsoluteDirPath
+  args?: ReadonlyArray<string>
+}) =>
+  Effect.gen(function* () {
+    const command = Command.make('bun', 'run', CLI_PATH, 'sync', ...args).pipe(
+      Command.workingDirectory(cwd),
+      Command.env({ PWD: cwd }),
+      Command.stdout('pipe'),
+      Command.stderr('pipe'),
+    )
+
+    const process = yield* Command.start(command)
+    const [stdoutChunks, stderrChunks, exitCode] = yield* Effect.all([
+      Stream.runCollect(process.stdout),
+      Stream.runCollect(process.stderr),
+      process.exitCode,
+    ])
+
+    return {
+      stdout: decodeChunks(stdoutChunks),
+      stderr: decodeChunks(stderrChunks),
+      exitCode,
+    }
+  }).pipe(Effect.scoped)
 
 describe('mr sync', () => {
   describe('with local path members', () => {
@@ -89,7 +141,7 @@ describe('mr sync', () => {
           // Note: Symlinks are created without trailing slashes
           const symlinkPath = EffectPath.ops.join(
             workspacePath,
-            EffectPath.unsafe.relativeFile('repo1'),
+            EffectPath.unsafe.relativeFile('repos/repo1'),
           )
           expect(yield* fs.exists(symlinkPath)).toBe(true)
 
@@ -380,4 +432,336 @@ describe('frozen mode', () => {
         }),
       ))
   })
+})
+
+// =============================================================================
+// Nested Megarepo Tests (--deep mode)
+// =============================================================================
+
+/**
+ * Helper to create a nested megarepo structure.
+ * Creates a parent megarepo with a child member that is itself a megarepo.
+ */
+const createNestedMegarepoFixture = () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+
+    // Create temp directory
+    const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+
+    // Create grandchild repo (a normal git repo)
+    const grandchildPath = yield* createRepo({
+      basePath: tmpDir,
+      fixture: {
+        name: 'grandchild-lib',
+        files: { 'package.json': '{"name": "grandchild-lib"}' },
+      },
+    })
+
+    // Create child megarepo that includes grandchild as a member
+    const childPath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('child-megarepo/'))
+    yield* fs.makeDirectory(childPath, { recursive: true })
+    yield* initGitRepo(childPath)
+
+    // Create child's megarepo.json pointing to grandchild
+    const childConfig: typeof MegarepoConfig.Type = {
+      members: {
+        'grandchild-lib': grandchildPath,
+      },
+    }
+    const childConfigContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
+      childConfig,
+    )
+    yield* fs.writeFileString(
+      EffectPath.ops.join(childPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME)),
+      childConfigContent + '\n',
+    )
+    yield* addCommit({ repoPath: childPath, message: 'Initialize child megarepo' })
+
+    // Create parent megarepo that includes child as a member
+    const parentPath = EffectPath.ops.join(
+      tmpDir,
+      EffectPath.unsafe.relativeDir('parent-megarepo/'),
+    )
+    yield* fs.makeDirectory(parentPath, { recursive: true })
+    yield* initGitRepo(parentPath)
+
+    // Create parent's megarepo.json pointing to child
+    const parentConfig: typeof MegarepoConfig.Type = {
+      members: {
+        'child-megarepo': childPath,
+      },
+    }
+    const parentConfigContent = yield* Schema.encode(
+      Schema.parseJson(MegarepoConfig, { space: 2 }),
+    )(parentConfig)
+    yield* fs.writeFileString(
+      EffectPath.ops.join(parentPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME)),
+      parentConfigContent + '\n',
+    )
+    yield* addCommit({ repoPath: parentPath, message: 'Initialize parent megarepo' })
+
+    return {
+      parentPath,
+      childPath,
+      grandchildPath,
+    }
+  })
+
+describe('deep sync mode', () => {
+  describe('nested megarepo detection', () => {
+    it('should detect when a member is itself a megarepo', () =>
+      withTestCtx(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
+          const { parentPath, childPath } = yield* createNestedMegarepoFixture()
+
+          // Verify parent has megarepo.json
+          const parentConfigPath = EffectPath.ops.join(
+            parentPath,
+            EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+          )
+          expect(yield* fs.exists(parentConfigPath)).toBe(true)
+
+          // Verify child has megarepo.json (making it a nested megarepo)
+          const childConfigPath = EffectPath.ops.join(
+            childPath,
+            EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+          )
+          expect(yield* fs.exists(childConfigPath)).toBe(true)
+
+          // Read parent config and verify it points to child
+          const parentConfigContent = yield* fs.readFileString(parentConfigPath)
+          const parentConfig = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
+            parentConfigContent,
+          )
+          expect(parentConfig.members['child-megarepo']).toBe(childPath)
+        }),
+      ))
+
+    it('should create valid nested megarepo structure with grandchild', () =>
+      withTestCtx(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
+          const { childPath, grandchildPath } = yield* createNestedMegarepoFixture()
+
+          // Read child config and verify it points to grandchild
+          const childConfigPath = EffectPath.ops.join(
+            childPath,
+            EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+          )
+          const childConfigContent = yield* fs.readFileString(childConfigPath)
+          const childConfig = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
+            childConfigContent,
+          )
+          expect(childConfig.members['grandchild-lib']).toBe(grandchildPath)
+
+          // Verify grandchild is a regular repo (no megarepo.json)
+          const grandchildConfigPath = EffectPath.ops.join(
+            grandchildPath,
+            EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+          )
+          expect(yield* fs.exists(grandchildConfigPath)).toBe(false)
+        }),
+      ))
+  })
+})
+
+/**
+ * Helper to create a diamond dependency structure for testing deduplication.
+ *
+ * Creates:
+ *   root/
+ *   ├── megarepo.json (members: child-a, child-b)
+ *   ├── child-a/           <- megarepo with member: shared-lib
+ *   │   └── megarepo.json
+ *   ├── child-b/           <- megarepo with member: shared-lib (same!)
+ *   │   └── megarepo.json
+ *   └── shared-lib/        <- regular repo, referenced by both children
+ *
+ * This creates a diamond: root → child-a → shared-lib
+ *                         root → child-b → shared-lib
+ *
+ * Without deduplication, shared-lib would be processed twice.
+ */
+const createDiamondDependencyFixture = () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+
+    // Create temp directory
+    const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+
+    // Create shared-lib (a regular git repo, not a megarepo)
+    const sharedLibPath = yield* createRepo({
+      basePath: tmpDir,
+      fixture: {
+        name: 'shared-lib',
+        files: { 'package.json': '{"name": "shared-lib"}' },
+      },
+    })
+
+    // Create child-a megarepo that includes shared-lib
+    const childAPath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('child-a/'))
+    yield* fs.makeDirectory(childAPath, { recursive: true })
+    yield* initGitRepo(childAPath)
+    const childAConfig: typeof MegarepoConfig.Type = {
+      members: { 'shared-lib': sharedLibPath },
+    }
+    const childAConfigContent = yield* Schema.encode(
+      Schema.parseJson(MegarepoConfig, { space: 2 }),
+    )(childAConfig)
+    yield* fs.writeFileString(
+      EffectPath.ops.join(childAPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME)),
+      childAConfigContent + '\n',
+    )
+    yield* addCommit({ repoPath: childAPath, message: 'Initialize child-a megarepo' })
+
+    // Create child-b megarepo that ALSO includes shared-lib (diamond!)
+    const childBPath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('child-b/'))
+    yield* fs.makeDirectory(childBPath, { recursive: true })
+    yield* initGitRepo(childBPath)
+    const childBConfig: typeof MegarepoConfig.Type = {
+      members: { 'shared-lib': sharedLibPath },
+    }
+    const childBConfigContent = yield* Schema.encode(
+      Schema.parseJson(MegarepoConfig, { space: 2 }),
+    )(childBConfig)
+    yield* fs.writeFileString(
+      EffectPath.ops.join(childBPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME)),
+      childBConfigContent + '\n',
+    )
+    yield* addCommit({ repoPath: childBPath, message: 'Initialize child-b megarepo' })
+
+    // Create root megarepo that includes both children
+    const rootPath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('root/'))
+    yield* fs.makeDirectory(rootPath, { recursive: true })
+    yield* initGitRepo(rootPath)
+    const rootConfig: typeof MegarepoConfig.Type = {
+      members: {
+        'child-a': childAPath,
+        'child-b': childBPath,
+      },
+    }
+    const rootConfigContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
+      rootConfig,
+    )
+    yield* fs.writeFileString(
+      EffectPath.ops.join(rootPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME)),
+      rootConfigContent + '\n',
+    )
+    yield* addCommit({ repoPath: rootPath, message: 'Initialize root megarepo' })
+
+    return {
+      rootPath,
+      childAPath,
+      childBPath,
+      sharedLibPath,
+    }
+  })
+
+describe('deep sync deduplication', () => {
+  it('should create valid diamond dependency structure', () =>
+    withTestCtx(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const { rootPath, childAPath, childBPath, sharedLibPath } =
+          yield* createDiamondDependencyFixture()
+
+        // Verify root has both children as members
+        const rootConfigPath = EffectPath.ops.join(
+          rootPath,
+          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+        )
+        const rootConfigContent = yield* fs.readFileString(rootConfigPath)
+        const rootConfig = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
+          rootConfigContent,
+        )
+        expect(rootConfig.members['child-a']).toBe(childAPath)
+        expect(rootConfig.members['child-b']).toBe(childBPath)
+
+        // Verify both children reference the same shared-lib
+        const childAConfigPath = EffectPath.ops.join(
+          childAPath,
+          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+        )
+        const childAConfigContent = yield* fs.readFileString(childAConfigPath)
+        const childAConfig = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
+          childAConfigContent,
+        )
+        expect(childAConfig.members['shared-lib']).toBe(sharedLibPath)
+
+        const childBConfigPath = EffectPath.ops.join(
+          childBPath,
+          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+        )
+        const childBConfigContent = yield* fs.readFileString(childBConfigPath)
+        const childBConfig = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
+          childBConfigContent,
+        )
+        expect(childBConfig.members['shared-lib']).toBe(sharedLibPath)
+
+        // Both children reference the SAME path
+        expect(childAConfig.members['shared-lib']).toBe(childBConfig.members['shared-lib'])
+      }),
+    ))
+})
+
+describe('sync error handling', () => {
+  it('should return clear error when remote repo does not exist', () =>
+    withTestCtx(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+
+        // Create a megarepo with a non-existent remote member
+        const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+        const workspacePath = EffectPath.ops.join(
+          tmpDir,
+          EffectPath.unsafe.relativeDir('workspace/'),
+        )
+        yield* fs.makeDirectory(workspacePath, { recursive: true })
+        yield* initGitRepo(workspacePath)
+
+        // Create megarepo.json with a non-existent GitHub repo
+        const config: typeof MegarepoConfig.Type = {
+          members: {
+            // This repo doesn't exist - should trigger a clone failure
+            'non-existent-repo': 'this-owner-does-not-exist-abc123/this-repo-does-not-exist-xyz789',
+          },
+        }
+        const configContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
+          config,
+        )
+        yield* fs.writeFileString(
+          EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME)),
+          configContent + '\n',
+        )
+        yield* addCommit({ repoPath: workspacePath, message: 'Initialize megarepo' })
+
+        // Run sync --json to get structured output
+        const result = yield* runSyncCommand({ cwd: workspacePath, args: ['--json'] })
+
+        // Parse the JSON output
+        const json = JSON.parse(result.stdout.trim()) as {
+          results: Array<{ name: string; status: string; message?: string }>
+        }
+
+        // Should have results for our member
+        expect(json.results).toHaveLength(1)
+        const memberResult = json.results[0]
+        expect(memberResult?.name).toBe('non-existent-repo')
+        expect(memberResult?.status).toBe('error')
+
+        // The error message should be clear and actionable, NOT a cryptic filesystem error
+        expect(memberResult?.message).toBeDefined()
+        // Should NOT contain cryptic internal errors like "FileSystem.access"
+        expect(memberResult?.message).not.toContain('FileSystem.access')
+        // Should indicate the actual problem - repo not found or clone failed
+        expect(
+          memberResult?.message?.toLowerCase().includes('clone') ||
+            memberResult?.message?.toLowerCase().includes('repository') ||
+            memberResult?.message?.toLowerCase().includes('not found') ||
+            memberResult?.message?.toLowerCase().includes('access'),
+        ).toBe(true)
+      }),
+    ))
 })

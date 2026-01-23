@@ -1,14 +1,13 @@
 { pkgs, inputs, ... }:
 let
-  pkgsUnstable = pkgs;
-  mkBunCli = import "${inputs.effect-utils}/nix/workspace-tools/lib/mk-bun-cli.nix" { inherit pkgs pkgsUnstable; };
+  mkBunCli = inputs.effect-utils.lib.mkBunCli { inherit pkgs; };
 
   appCli = mkBunCli {
     name = "app-cli";
-    entry = "app/src/cli.ts";
-    packageDir = "app";
-    workspaceRoot = inputs.workspace;
-    bunDepsHash = pkgs.lib.fakeHash;
+    entry = "src/cli.ts";
+    packageDir = ".";
+    workspaceRoot = ./.;
+    bunDepsHash = "sha256-bgayVjxWMiacjo3XyHT663lCj2rLcUvinkbD5nbo9r0=";
     typecheck = false;
   };
 in

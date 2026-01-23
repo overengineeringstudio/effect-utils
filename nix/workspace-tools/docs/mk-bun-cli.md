@@ -1,7 +1,9 @@
 # mk-bun-cli Patterns
 
 These patterns live in `nix/workspace-tools/lib/mk-bun-cli.nix` and are needed
-to keep builds pure, fast, and reliable while supporting local changes.
+to keep builds pure, fast, and reliable while supporting local changes. In a
+megarepo, prefer building from the local workspace path; `dirty` mode remains
+available for edge cases but is not the default.
 
 - **Clean, minimal source staging**: `cleanSourceWith` filters out heavy or
   ephemeral paths (node_modules, result, caches). This keeps the source input

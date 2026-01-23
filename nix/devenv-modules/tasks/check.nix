@@ -41,11 +41,11 @@ in
   tasks = {
     "check:quick" = {
       description = "Run quick checks (genie, typecheck${if hasLint then ", lint" else ""}) without tests";
-      after = [ "ts:check" ] ++ lintDeps;
+      after = [ "ts:check" "megarepo:check" ] ++ lintDeps;
     };
     "check:all" = {
       description = "Run all checks (genie, typecheck${extraDesc})";
-      after = [ "ts:check" ] ++ lintDeps ++ allTestDeps;
+      after = [ "ts:check" "megarepo:check" ] ++ lintDeps ++ allTestDeps;
     };
   };
 }

@@ -5,7 +5,7 @@ https://github.com/oven-sh/bun/issues/13531
 
 ## Problem
 
-When using bun with `file:` protocol dependencies across multiple repos (via dotdot), bun's `patchedDependencies` feature doesn't work correctly.
+When using bun with `file:` protocol dependencies across multiple repos (via a shared workspace), bun's `patchedDependencies` feature doesn't work correctly.
 
 ### Bug Description
 

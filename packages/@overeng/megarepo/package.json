@@ -2,9 +2,6 @@
   "name": "@overeng/megarepo",
   "version": "0.1.0",
   "private": true,
-  "bin": {
-    "mr": "./bin/mr.ts"
-  },
   "type": "module",
   "exports": {
     ".": "./src/mod.ts",

@@ -1,8 +1,8 @@
-# Dotdot Issues
+# Legacy Workspace Issues (Pre-Megarepo)
 
 ## Rethink `WORKSPACE_ROOT` env var concept
 
-## Can we make dotdot optional e.g. for livestore to improve contributor experience?
+## Can we make the workspace optional (e.g. for livestore) to improve contributor experience?
 
 ## Weird relative path patterns
 

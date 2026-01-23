@@ -17,7 +17,7 @@ mr update        # Get latest commits (optional)
 Since members are symlinks to shared worktrees, changes persist:
 
 ```bash
-cd effect        # Enter a member
+cd repos/effect  # Enter a member
 git checkout -b my-feature
 # Make changes...
 git commit -m "Add feature"
@@ -141,7 +141,7 @@ Use different member names for the same repo:
 ```bash
 mr sync
 # Now you have both versions available
-diff effect-stable/package.json effect-next/package.json
+diff repos/effect-stable/package.json repos/effect-next/package.json
 ```
 
 ## Shared Development
@@ -152,10 +152,12 @@ When two megarepos reference the same repo+ref, they share the worktree:
 
 ```
 ~/project-a/
-└── effect -> ~/.megarepo/github.com/effect-ts/effect/refs/heads/main/
+└── repos/
+    └── effect -> ~/.megarepo/github.com/effect-ts/effect/refs/heads/main/
 
 ~/project-b/
-└── effect -> ~/.megarepo/github.com/effect-ts/effect/refs/heads/main/
+└── repos/
+    └── effect -> ~/.megarepo/github.com/effect-ts/effect/refs/heads/main/
 ```
 
 Changes in one are immediately visible in the other.
@@ -182,7 +184,7 @@ mr sync
 
 # Note about nested megarepos will be shown
 # Note: 1 member(s) contain nested megarepos (member-name)
-#       Run 'mr sync --deep' to sync them, or 'cd <member> && mr sync'
+#       Run 'mr sync --deep' to sync them, or 'cd repos/<member> && mr sync'
 
 # Sync recursively
 mr sync --deep
@@ -226,16 +228,16 @@ mr store fetch
 
 ### Direnv Setup
 
-Generate and source environment variables:
+Generate the local Nix workspace and source environment variables:
 
 ```bash
-mr generate envrc
+mr generate nix
 ```
 
 In your `.envrc`:
 
 ```bash
-source_env_if_exists .envrc.local
+source_env_if_exists .envrc.generated.megarepo
 use devenv
 ```
 
@@ -287,7 +289,7 @@ git commit -m "Update lock file"
 ### Dirty Worktree Blocking Update
 
 ```bash
-cd member-name
+cd repos/member-name
 git status  # Check what's dirty
 git stash   # Or commit changes
 cd ..

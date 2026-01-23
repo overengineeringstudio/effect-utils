@@ -37,11 +37,7 @@
     "root": {
       "inputs": {
         "flake-utils": "flake-utils",
-        "nixpkgs": [
-          "workspace",
-          "nixpkgs"
-        ],
-        "workspace": "workspace"
+        "nixpkgs": "nixpkgs"
       }
     },
     "systems": {
@@ -56,26 +52,6 @@
       "original": {
         "owner": "nix-systems",
         "repo": "default",
-        "type": "github"
-      }
-    },
-    "workspace": {
-      "inputs": {
-        "nixpkgs": "nixpkgs"
-      },
-      "locked": {
-        "dir": "nix/workspace-flake",
-        "lastModified": 1768897634,
-        "narHash": "sha256-i+DDtFTbX9/XLCz4cOGiiYSVcp4iSz3LId/6nyNoXTI=",
-        "owner": "overengineeringstudio",
-        "repo": "effect-utils",
-        "rev": "901ade0484ca4cab77fb2fa25d0f05ba0de6428d",
-        "type": "github"
-      },
-      "original": {
-        "dir": "nix/workspace-flake",
-        "owner": "overengineeringstudio",
-        "repo": "effect-utils",
         "type": "github"
       }
     }

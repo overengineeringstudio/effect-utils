@@ -9,17 +9,17 @@ importers:
   .:
     dependencies:
       '@overeng/effect-path':
-        specifier: file:../effect-path
-        version: file:../effect-path(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14)
+        specifier: link:../effect-path
+        version: link:../effect-path
       '@overeng/notion-effect-client':
-        specifier: file:../notion-effect-client
-        version: file:../notion-effect-client(70cf7779208d53188c247646eaae2153)
+        specifier: link:../notion-effect-client
+        version: link:../notion-effect-client
       '@overeng/notion-effect-schema':
-        specifier: file:../notion-effect-schema
-        version: file:../notion-effect-schema(effect@3.19.14)
+        specifier: link:../notion-effect-schema
+        version: link:../notion-effect-schema
       '@overeng/utils':
-        specifier: file:../utils
-        version: file:../utils(c0a6e6117d7836850604d9752947aea8)
+        specifier: link:../utils
+        version: link:../utils
     devDependencies:
       '@effect/cli':
         specifier: 0.73.0
@@ -400,10 +400,6 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@noble/hashes@1.7.1':
-    resolution: {integrity: sha512-B8XBPsn4vT/KJAGqDzbwztd+6Yte3P4V7iafm24bxgDe/mlRuK6xmWPuCNrKt2vDafZ8MfJLlchDG/vYafQEjQ==}
-    engines: {node: ^14.21.3 || >=16}
-
   '@opentelemetry/api@1.9.0':
     resolution: {integrity: sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg==}
     engines: {node: '>=8.0.0'}
@@ -411,47 +407,6 @@ packages:
   '@opentelemetry/semantic-conventions@1.39.0':
     resolution: {integrity: sha512-R5R9tb2AXs2IRLNKLBJDynhkfmx7mX0vi8NkhZb3gUkPWHn6HXk5J8iQ/dql0U3ApfWym4kXXmBDRGO+oeOfjg==}
     engines: {node: '>=14'}
-
-  '@overeng/effect-path@file:../effect-path':
-    resolution: {directory: ../effect-path, type: directory}
-    peerDependencies:
-      '@effect/platform': ^0.94.1
-      effect: ^3.19.14
-
-  '@overeng/notion-effect-client@file:../notion-effect-client':
-    resolution: {directory: ../notion-effect-client, type: directory}
-    peerDependencies:
-      '@effect/cluster': ^0.56.0
-      '@effect/experimental': ^0.58.0
-      '@effect/opentelemetry': ^0.60.0
-      '@effect/platform': ^0.94.1
-      '@effect/platform-node': ^0.104.0
-      '@effect/printer': ^0.47.0
-      '@effect/printer-ansi': ^0.47.0
-      '@effect/rpc': ^0.73.0
-      '@effect/workflow': ^0.16.0
-      '@playwright/test': ^1.57.0
-      effect: ^3.19.14
-
-  '@overeng/notion-effect-schema@file:../notion-effect-schema':
-    resolution: {directory: ../notion-effect-schema, type: directory}
-    peerDependencies:
-      effect: ^3.19.14
-
-  '@overeng/utils@file:../utils':
-    resolution: {directory: ../utils, type: directory}
-    peerDependencies:
-      '@effect/cluster': ^0.56.0
-      '@effect/experimental': ^0.58.0
-      '@effect/opentelemetry': ^0.60.0
-      '@effect/platform': ^0.94.1
-      '@effect/platform-node': ^0.104.0
-      '@effect/printer': ^0.47.0
-      '@effect/printer-ansi': ^0.47.0
-      '@effect/rpc': ^0.73.0
-      '@effect/workflow': ^0.16.0
-      '@playwright/test': ^1.57.0
-      effect: ^3.19.14
 
   '@parcel/watcher-android-arm64@2.5.4':
     resolution: {integrity: sha512-hoh0vx4v+b3BNI7Cjoy2/B0ARqcwVNrzN/n7DLq9ZB4I3lrsvhrkCViJyfTj/Qi5xM9YFiH4AmHGK6pgH1ss7g==}
@@ -746,16 +701,6 @@ packages:
   detect-libc@2.1.2:
     resolution: {integrity: sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ==}
     engines: {node: '>=8'}
-
-  effect-distributed-lock@0.0.11:
-    resolution: {integrity: sha512-XdMRU1l+ST+9RG6Wesv3YUeuZwhgKPz/BvM3I9Xq2MbjmQ/c3zPqXfS1gQ+HfaL877a9CxHgPc4uhXKAhwakdw==}
-    peerDependencies:
-      effect: ^3.0.0
-      ioredis: ^5.0.0
-      typescript: ^5
-    peerDependenciesMeta:
-      ioredis:
-        optional: true
 
   effect@3.19.14:
     resolution: {integrity: sha512-3vwdq0zlvQOxXzXNKRIPKTqZNMyGCdaFUBfMPqpsyzZDre67kgC1EEHDV4EoQTovJ4w5fmJW756f86kkuz7WFA==}
@@ -1254,7 +1199,8 @@ snapshots:
   '@esbuild/win32-x64@0.27.2':
     optional: true
 
-  '@ioredis/commands@1.5.0': {}
+  '@ioredis/commands@1.5.0':
+    optional: true
 
   '@jridgewell/sourcemap-codec@1.5.5': {}
 
@@ -1276,56 +1222,10 @@ snapshots:
   '@msgpackr-extract/msgpackr-extract-win32-x64@3.0.3':
     optional: true
 
-  '@noble/hashes@1.7.1': {}
-
-  '@opentelemetry/api@1.9.0': {}
+  '@opentelemetry/api@1.9.0':
+    optional: true
 
   '@opentelemetry/semantic-conventions@1.39.0': {}
-
-  '@overeng/effect-path@file:../effect-path(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14)':
-    dependencies:
-      '@effect/platform': 0.94.1(effect@3.19.14)
-      effect: 3.19.14
-
-  '@overeng/notion-effect-client@file:../notion-effect-client(70cf7779208d53188c247646eaae2153)':
-    dependencies:
-      '@effect/cluster': 0.56.0(@effect/platform@0.94.1(effect@3.19.14))(@effect/rpc@0.73.0(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14))(@effect/sql@0.49.0(@effect/experimental@0.58.0(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14)(ioredis@5.6.1))(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14))(@effect/workflow@0.16.0(@effect/experimental@0.58.0(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14)(ioredis@5.6.1))(@effect/platform@0.94.1(effect@3.19.14))(@effect/rpc@0.73.0(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14))(effect@3.19.14))(effect@3.19.14)
-      '@effect/experimental': 0.58.0(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14)(ioredis@5.6.1)
-      '@effect/opentelemetry': 0.60.0(@effect/platform@0.94.1(effect@3.19.14))(@opentelemetry/api@1.9.0)(@opentelemetry/semantic-conventions@1.39.0)(effect@3.19.14)
-      '@effect/platform': 0.94.1(effect@3.19.14)
-      '@effect/platform-node': 0.104.0(@effect/cluster@0.56.0(@effect/platform@0.94.1(effect@3.19.14))(@effect/rpc@0.73.0(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14))(@effect/sql@0.49.0(@effect/experimental@0.58.0(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14)(ioredis@5.6.1))(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14))(@effect/workflow@0.16.0(@effect/experimental@0.58.0(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14)(ioredis@5.6.1))(@effect/platform@0.94.1(effect@3.19.14))(@effect/rpc@0.73.0(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14))(effect@3.19.14))(effect@3.19.14))(@effect/platform@0.94.1(effect@3.19.14))(@effect/rpc@0.73.0(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14))(@effect/sql@0.49.0(@effect/experimental@0.58.0(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14)(ioredis@5.6.1))(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14))(effect@3.19.14)
-      '@effect/printer': 0.47.0(@effect/typeclass@0.38.0(effect@3.19.14))(effect@3.19.14)
-      '@effect/printer-ansi': 0.47.0(@effect/typeclass@0.38.0(effect@3.19.14))(effect@3.19.14)
-      '@effect/rpc': 0.73.0(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14)
-      '@effect/workflow': 0.16.0(@effect/experimental@0.58.0(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14)(ioredis@5.6.1))(@effect/platform@0.94.1(effect@3.19.14))(@effect/rpc@0.73.0(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14))(effect@3.19.14)
-      '@overeng/notion-effect-schema': file:../notion-effect-schema(effect@3.19.14)
-      '@playwright/test': 1.57.0
-      effect: 3.19.14
-
-  '@overeng/notion-effect-schema@file:../notion-effect-schema(effect@3.19.14)':
-    dependencies:
-      effect: 3.19.14
-
-  '@overeng/utils@file:../utils(c0a6e6117d7836850604d9752947aea8)':
-    dependencies:
-      '@effect/cluster': 0.56.0(@effect/platform@0.94.1(effect@3.19.14))(@effect/rpc@0.73.0(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14))(@effect/sql@0.49.0(@effect/experimental@0.58.0(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14)(ioredis@5.6.1))(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14))(@effect/workflow@0.16.0(@effect/experimental@0.58.0(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14)(ioredis@5.6.1))(@effect/platform@0.94.1(effect@3.19.14))(@effect/rpc@0.73.0(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14))(effect@3.19.14))(effect@3.19.14)
-      '@effect/experimental': 0.58.0(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14)(ioredis@5.6.1)
-      '@effect/opentelemetry': 0.60.0(@effect/platform@0.94.1(effect@3.19.14))(@opentelemetry/api@1.9.0)(@opentelemetry/semantic-conventions@1.39.0)(effect@3.19.14)
-      '@effect/platform': 0.94.1(effect@3.19.14)
-      '@effect/platform-node': 0.104.0(@effect/cluster@0.56.0(@effect/platform@0.94.1(effect@3.19.14))(@effect/rpc@0.73.0(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14))(@effect/sql@0.49.0(@effect/experimental@0.58.0(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14)(ioredis@5.6.1))(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14))(@effect/workflow@0.16.0(@effect/experimental@0.58.0(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14)(ioredis@5.6.1))(@effect/platform@0.94.1(effect@3.19.14))(@effect/rpc@0.73.0(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14))(effect@3.19.14))(effect@3.19.14))(@effect/platform@0.94.1(effect@3.19.14))(@effect/rpc@0.73.0(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14))(@effect/sql@0.49.0(@effect/experimental@0.58.0(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14)(ioredis@5.6.1))(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14))(effect@3.19.14)
-      '@effect/printer': 0.47.0(@effect/typeclass@0.38.0(effect@3.19.14))(effect@3.19.14)
-      '@effect/printer-ansi': 0.47.0(@effect/typeclass@0.38.0(effect@3.19.14))(effect@3.19.14)
-      '@effect/rpc': 0.73.0(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14)
-      '@effect/workflow': 0.16.0(@effect/experimental@0.58.0(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14)(ioredis@5.6.1))(@effect/platform@0.94.1(effect@3.19.14))(@effect/rpc@0.73.0(@effect/platform@0.94.1(effect@3.19.14))(effect@3.19.14))(effect@3.19.14)
-      '@noble/hashes': 1.7.1
-      '@opentelemetry/api': 1.9.0
-      '@playwright/test': 1.57.0
-      effect: 3.19.14
-      effect-distributed-lock: 0.0.11(effect@3.19.14)(ioredis@5.6.1)(typescript@5.9.3)
-      ioredis: 5.6.1
-    transitivePeerDependencies:
-      - supports-color
-      - typescript
 
   '@parcel/watcher-android-arm64@2.5.4':
     optional: true
@@ -1533,7 +1433,8 @@ snapshots:
 
   check-error@2.1.3: {}
 
-  cluster-key-slot@1.1.2: {}
+  cluster-key-slot@1.1.2:
+    optional: true
 
   debug@4.4.3:
     dependencies:
@@ -1541,16 +1442,10 @@ snapshots:
 
   deep-eql@5.0.2: {}
 
-  denque@2.1.0: {}
+  denque@2.1.0:
+    optional: true
 
   detect-libc@2.1.2: {}
-
-  effect-distributed-lock@0.0.11(effect@3.19.14)(ioredis@5.6.1)(typescript@5.9.3):
-    dependencies:
-      effect: 3.19.14
-      typescript: 5.9.3
-    optionalDependencies:
-      ioredis: 5.6.1
 
   effect@3.19.14:
     dependencies:
@@ -1625,6 +1520,7 @@ snapshots:
       standard-as-callback: 2.1.0
     transitivePeerDependencies:
       - supports-color
+    optional: true
 
   is-extglob@2.1.1: {}
 
@@ -1636,9 +1532,11 @@ snapshots:
 
   kubernetes-types@1.30.0: {}
 
-  lodash.defaults@4.2.0: {}
+  lodash.defaults@4.2.0:
+    optional: true
 
-  lodash.isarguments@3.1.0: {}
+  lodash.isarguments@3.1.0:
+    optional: true
 
   loupe@3.2.1: {}
 
@@ -1701,11 +1599,13 @@ snapshots:
 
   pure-rand@6.1.0: {}
 
-  redis-errors@1.2.0: {}
+  redis-errors@1.2.0:
+    optional: true
 
   redis-parser@3.0.0:
     dependencies:
       redis-errors: 1.2.0
+    optional: true
 
   rollup@4.56.0:
     dependencies:
@@ -1744,7 +1644,8 @@ snapshots:
 
   stackback@0.0.2: {}
 
-  standard-as-callback@2.1.0: {}
+  standard-as-callback@2.1.0:
+    optional: true
 
   std-env@3.10.0: {}
 

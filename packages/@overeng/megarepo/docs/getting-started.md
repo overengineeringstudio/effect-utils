@@ -103,11 +103,12 @@ Your workspace now contains:
 my-workspace/
 ├── megarepo.json
 ├── megarepo.lock          # Tracks exact commits
-├── effect -> ~/.megarepo/github.com/effect-ts/effect/refs/heads/main/
-├── effect-next -> ~/.megarepo/github.com/effect-ts/effect/refs/heads/next/
-├── effect-v3 -> ~/.megarepo/github.com/effect-ts/effect/refs/tags/v3.0.0/
-├── gitlab-lib -> ~/.megarepo/gitlab.com/org/repo/refs/heads/main/
-└── shared-lib -> ../shared-lib
+└── repos/
+    ├── effect -> ~/.megarepo/github.com/effect-ts/effect/refs/heads/main/
+    ├── effect-next -> ~/.megarepo/github.com/effect-ts/effect/refs/heads/next/
+    ├── effect-v3 -> ~/.megarepo/github.com/effect-ts/effect/refs/tags/v3.0.0/
+    ├── gitlab-lib -> ~/.megarepo/gitlab.com/org/repo/refs/heads/main/
+    └── shared-lib -> ../shared-lib
 ```
 
 ### 4. Commit the Lock File
@@ -148,24 +149,26 @@ This:
 
 ## Environment Integration
 
-Generate shell environment variables for direnv:
+Generate the local Nix workspace and shell environment variables for direnv:
 
 ```bash
-mr generate envrc
+mr generate nix
 ```
 
-This creates `.envrc.local`:
+This creates `.envrc.generated.megarepo`:
 
 ```bash
-export MEGAREPO_ROOT="/path/to/my-workspace"
+export MEGAREPO_ROOT_OUTERMOST="/path/to/my-workspace"
+export MEGAREPO_ROOT_NEAREST="/path/to/my-workspace"
 export MEGAREPO_MEMBERS="effect,effect-next,effect-v3,gitlab-lib,shared-lib"
+export MEGAREPO_NIX_WORKSPACE="/path/to/my-workspace/.direnv/megarepo-nix/workspace"
 ```
 
 Source it from your `.envrc`:
 
 ```bash
 # .envrc
-source_env_if_exists .envrc.local
+source_env_if_exists .envrc.generated.megarepo
 use devenv
 ```
 

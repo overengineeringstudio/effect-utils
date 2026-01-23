@@ -15,7 +15,7 @@ export default megarepoJson({
     'local-lib': '../shared/lib',
   },
   generators: {
-    envrc: { enabled: true },
+    nix: { enabled: true },
     vscode: { enabled: true, exclude: ['large-repo'] },
   },
 })
@@ -25,7 +25,7 @@ export default megarepoJson({
 
 - **Type-safe configuration**: All megarepo options are fully typed
 - **Member source formats**: Supports GitHub shorthand, URLs, and local paths
-- **Generator config**: Configure envrc, vscode, flake, and devenv generators
+- **Generator config**: Configure nix and vscode generators
 - **Programmatic generation**: Use TypeScript to compute members dynamically
 
 ## Programmatic Member Generation
@@ -57,23 +57,17 @@ export default megarepoJson({
 ```ts
 {
   generators: {
-    // .envrc.local generation (default: enabled)
-    envrc: { enabled: true },
+    // Local Nix workspace + envrc generation (default: disabled)
+    nix: {
+      enabled: true,
+      workspaceDir: '.direnv/megarepo-nix/workspace',
+    },
 
     // VSCode workspace file (default: disabled)
     vscode: {
       enabled: true,
       exclude: ['member-to-exclude'],
     },
-
-    // Nix flake (default: disabled)
-    flake: {
-      enabled: true,
-      skip: ['non-nix-member'],
-    },
-
-    // devenv integration (default: disabled)
-    devenv: { enabled: true },
   }
 }
 ```

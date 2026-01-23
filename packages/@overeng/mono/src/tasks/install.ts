@@ -212,7 +212,12 @@ export const installAllWithTaskSystem = Effect.fn('installAllWithTaskSystem')(fu
 
   // Create tasks for each package directory
   // All tasks are command tasks with the same error/requirements types
-  const tasks: TaskDef<string, void, CommandError | PlatformError, CommandExecutor.CommandExecutor>[] = []
+  const tasks: TaskDef<
+    string,
+    void,
+    CommandError | PlatformError,
+    CommandExecutor.CommandExecutor
+  >[] = []
 
   for (const dir of dirs) {
     const relativePath = pathService.relative(cwd, dir)
@@ -247,7 +252,12 @@ export const installAllWithTaskSystem = Effect.fn('installAllWithTaskSystem')(fu
         command: {
           cmd: 'bun',
           // TODO remove `--no-cache` and `--verbose` once we figured out the bun install hang bug (send logs to Jarred as we have a repro)
-          args: ['install', '--no-cache', '--verbose', ...(options?.frozenLockfile ? ['--frozen-lockfile'] : [])],
+          args: [
+            'install',
+            '--no-cache',
+            '--verbose',
+            ...(options?.frozenLockfile ? ['--frozen-lockfile'] : []),
+          ],
           cwd: dir,
         },
         options: {

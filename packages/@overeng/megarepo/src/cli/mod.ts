@@ -7,25 +7,29 @@
 import path from 'node:path'
 
 import * as Cli from '@effect/cli'
-import { Command, FileSystem } from '@effect/platform'
-import { Context, Effect, Layer, Option, Schema } from 'effect'
+import type { CommandExecutor } from '@effect/platform'
+import { Command, FileSystem, type Error as PlatformError } from '@effect/platform'
+import { Console, Context, Effect, Layer, Option, type ParseResult, Schema } from 'effect'
 
 import { styled, symbols } from '@overeng/cli-ui'
-import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
+import { EffectPath, type AbsoluteDirPath, type AbsoluteFilePath } from '@overeng/effect-path'
 import { jsonError, withJsonMode } from '@overeng/utils/node'
 
 import {
   CONFIG_FILE_NAME,
   ENV_VARS,
+  getMemberPath,
+  getMembersRoot,
   getSourceRef,
   getSourceUrl,
   isRemoteSource,
   MegarepoConfig,
+  MEMBER_ROOT_DIR,
   type MemberSource,
   parseSourceString,
   validateMemberName,
 } from '../lib/config.ts'
-import { generateEnvrc } from '../lib/generators/envrc.ts'
+import { generateNix, type NixGeneratorError } from '../lib/generators/nix/mod.ts'
 import { generateSchema } from '../lib/generators/schema.ts'
 import { generateVscode } from '../lib/generators/vscode.ts'
 import * as Git from '../lib/git.ts'
@@ -45,16 +49,39 @@ import {
 } from '../lib/lock.ts'
 import { classifyRef } from '../lib/ref.ts'
 import { Store, StoreLayer } from '../lib/store.ts'
+import {
+  outputLines,
+  renderStatus,
+  renderSync,
+  type MemberStatus,
+  type GitStatus,
+} from './renderers/mod.ts'
 
 // =============================================================================
 // CLI Context Services
 // =============================================================================
 
-/** Current working directory service */
+/**
+ * Current working directory service.
+ *
+ * Uses $PWD environment variable when available to preserve the logical path
+ * through symlinks. This is important for megarepo because members are symlinked
+ * from the workspace into the store - when running commands from inside a member,
+ * we need to find the workspace's megarepo.json, not walk up from the store path.
+ *
+ * - $PWD: logical path (preserves symlinks) - set by the shell
+ * - process.cwd(): physical path (resolves symlinks)
+ */
 export class Cwd extends Context.Tag('megarepo/Cwd')<Cwd, AbsoluteDirPath>() {
   static live = Layer.effect(
     Cwd,
-    Effect.sync(() => EffectPath.unsafe.absoluteDir(`${process.cwd()}/`)),
+    Effect.sync(() => {
+      // Prefer $PWD (logical path) over process.cwd() (physical path)
+      // to support running commands from inside symlinked members
+      const pwd = process.env.PWD
+      const cwd = pwd !== undefined && pwd.length > 0 ? pwd : process.cwd()
+      return EffectPath.unsafe.absoluteDir(cwd.endsWith('/') ? cwd : `${cwd}/`)
+    }),
   )
 }
 
@@ -94,7 +121,7 @@ const initCommand = Cli.Command.make('init', { json: jsonOption }, ({ json }) =>
       if (json) {
         return yield* jsonError({ error: 'not_git_repo', message: 'Not a git repository' })
       }
-      yield* Effect.logError(
+      yield* Console.error(
         `${styled.red(symbols.cross)} Not a git repository. Run 'git init' first.`,
       )
       return yield* Effect.fail(new Error('Not a git repository'))
@@ -108,7 +135,7 @@ const initCommand = Cli.Command.make('init', { json: jsonOption }, ({ json }) =>
       if (json) {
         console.log(JSON.stringify({ status: 'already_initialized', path: configPath }))
       } else {
-        yield* Effect.log(styled.dim('megarepo already initialized'))
+        yield* Console.log(styled.dim('megarepo already initialized'))
       }
       return
     }
@@ -128,7 +155,7 @@ const initCommand = Cli.Command.make('init', { json: jsonOption }, ({ json }) =>
     if (json) {
       console.log(JSON.stringify({ status: 'initialized', path: configPath }))
     } else {
-      yield* Effect.log(
+      yield* Console.log(
         `${styled.green(symbols.check)} ${styled.dim('initialized megarepo at')} ${styled.bold(path.basename(cwd))}`,
       )
     }
@@ -178,34 +205,41 @@ const findMegarepoRoot = (startPath: AbsoluteDirPath) =>
     return Option.fromNullable(outermost)
   })
 
+/**
+ * Find the nearest megarepo root by searching up from current directory.
+ * Returns the closest megarepo found (nearest to start path).
+ */
+const findNearestMegarepoRoot = (startPath: AbsoluteDirPath) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+
+    let current: AbsoluteDirPath | undefined = startPath
+    const rootDir = EffectPath.unsafe.absoluteDir('/')
+
+    while (current !== undefined && current !== rootDir) {
+      const configPath = EffectPath.ops.join(
+        current,
+        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+      )
+      const exists = yield* fs.exists(configPath)
+      if (exists) {
+        return Option.some(current)
+      }
+      current = EffectPath.ops.parent(current)
+    }
+
+    const rootConfigPath = EffectPath.ops.join(
+      rootDir,
+      EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+    )
+    const rootExists = yield* fs.exists(rootConfigPath)
+    return rootExists ? Option.some(rootDir) : Option.none()
+  })
+
 /** Find and print the megarepo root directory */
 const rootCommand = Cli.Command.make('root', { json: jsonOption }, ({ json }) =>
   Effect.gen(function* () {
     const cwd = yield* Cwd
-
-    // If MEGAREPO_ROOT is set and valid, use that
-    const envRoot = process.env[ENV_VARS.ROOT]
-    if (envRoot !== undefined) {
-      const fs = yield* FileSystem.FileSystem
-      const envRootDir = EffectPath.unsafe.absoluteDir(
-        envRoot.endsWith('/') ? envRoot : `${envRoot}/`,
-      )
-      const configPath = EffectPath.ops.join(
-        envRootDir,
-        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-      )
-      const exists = yield* fs.exists(configPath)
-
-      if (exists) {
-        const name = yield* Git.deriveMegarepoName(envRootDir)
-        if (json) {
-          console.log(JSON.stringify({ root: envRootDir, name, source: 'env' }))
-        } else {
-          console.log(envRootDir)
-        }
-        return
-      }
-    }
 
     // Search up from current directory
     const root = yield* findMegarepoRoot(cwd)
@@ -214,7 +248,7 @@ const rootCommand = Cli.Command.make('root', { json: jsonOption }, ({ json }) =>
       if (json) {
         return yield* jsonError({ error: 'not_found', message: 'No megarepo.json found' })
       }
-      yield* Effect.logError(
+      yield* Console.error(
         `${styled.red(symbols.cross)} No megarepo.json found in current directory or any parent.`,
       )
       return yield* Effect.fail(new Error('Not in a megarepo'))
@@ -225,7 +259,7 @@ const rootCommand = Cli.Command.make('root', { json: jsonOption }, ({ json }) =>
     if (json) {
       console.log(JSON.stringify({ root: root.value, name, source: 'search' }))
     } else {
-      console.log(root.value)
+      yield* Console.log(root.value)
     }
   }).pipe(Effect.withSpan('megarepo/root'), withJsonMode(json)),
 ).pipe(Cli.Command.withDescription('Print the megarepo root directory'))
@@ -250,12 +284,13 @@ const envCommand = Cli.Command.make(
 
       // Find the megarepo root
       const root = yield* findMegarepoRoot(cwd)
+      const nearestRoot = yield* findNearestMegarepoRoot(cwd)
 
       if (Option.isNone(root)) {
         if (json) {
           return yield* jsonError({ error: 'not_found', message: 'No megarepo.json found' })
         }
-        yield* Effect.logError(`${styled.red(symbols.cross)} No megarepo.json found`)
+        yield* Console.error(`${styled.red(symbols.cross)} No megarepo.json found`)
         return yield* Effect.fail(new Error('Not in a megarepo'))
       }
 
@@ -273,7 +308,8 @@ const envCommand = Cli.Command.make(
       if (json) {
         console.log(
           JSON.stringify({
-            [ENV_VARS.ROOT]: root.value,
+            [ENV_VARS.ROOT_OUTERMOST]: root.value,
+            [ENV_VARS.ROOT_NEAREST]: Option.getOrElse(nearestRoot, () => root.value),
             [ENV_VARS.MEMBERS]: memberNames,
           }),
         )
@@ -281,70 +317,287 @@ const envCommand = Cli.Command.make(
         // Output shell-specific format
         switch (shell) {
           case 'fish':
-            console.log(`set -gx ${ENV_VARS.ROOT} "${root.value}"`)
-            console.log(`set -gx ${ENV_VARS.MEMBERS} "${memberNames}"`)
+            yield* Console.log(`set -gx ${ENV_VARS.ROOT_OUTERMOST} "${root.value}"`)
+            yield* Console.log(
+              `set -gx ${ENV_VARS.ROOT_NEAREST} "${Option.getOrElse(nearestRoot, () => root.value)}"`,
+            )
+            yield* Console.log(`set -gx ${ENV_VARS.MEMBERS} "${memberNames}"`)
             break
           default:
-            console.log(`export ${ENV_VARS.ROOT}="${root.value}"`)
-            console.log(`export ${ENV_VARS.MEMBERS}="${memberNames}"`)
+            yield* Console.log(`export ${ENV_VARS.ROOT_OUTERMOST}="${root.value}"`)
+            yield* Console.log(
+              `export ${ENV_VARS.ROOT_NEAREST}="${Option.getOrElse(nearestRoot, () => root.value)}"`,
+            )
+            yield* Console.log(`export ${ENV_VARS.MEMBERS}="${memberNames}"`)
         }
       }
     }).pipe(Effect.withSpan('megarepo/env'), withJsonMode(json)),
 ).pipe(Cli.Command.withDescription('Output environment variables for shell integration'))
 
 // =============================================================================
-// Status Command (placeholder)
+// Status Command
 // =============================================================================
+
+/**
+ * Recursively scan members and build status tree.
+ * @param megarepoRoot - Root path of the megarepo
+ * @param visited - Set of visited paths to prevent cycles
+ */
+const scanMembersRecursive = ({
+  megarepoRoot,
+  visited = new Set<string>(),
+}: {
+  megarepoRoot: AbsoluteDirPath
+  visited?: Set<string>
+}): Effect.Effect<
+  MemberStatus[],
+  PlatformError.PlatformError | ParseResult.ParseError,
+  FileSystem.FileSystem | CommandExecutor.CommandExecutor
+> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+
+    // Prevent cycles
+    const normalizedRoot = megarepoRoot.replace(/\/$/, '')
+    if (visited.has(normalizedRoot)) {
+      return []
+    }
+    visited.add(normalizedRoot)
+
+    // Load config
+    const configPath = EffectPath.ops.join(
+      megarepoRoot,
+      EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+    )
+    const configExists = yield* fs.exists(configPath)
+    if (!configExists) {
+      return []
+    }
+
+    const configContent = yield* fs.readFileString(configPath)
+    const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+
+    // Load lock file (optional)
+    const lockPath = EffectPath.ops.join(
+      megarepoRoot,
+      EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+    )
+    const lockFileOpt = yield* readLockFile(lockPath)
+    const lockFile = Option.getOrUndefined(lockFileOpt)
+
+    // Build member status list
+    const members: MemberStatus[] = []
+    for (const [memberName, sourceString] of Object.entries(config.members)) {
+      const memberPath = getMemberPath({ megarepoRoot, name: memberName })
+      const memberExists = yield* fs.exists(memberPath)
+      const source = parseSourceString(sourceString)
+      const isLocal = source?.type === 'path'
+      const lockedMember = lockFile?.members[memberName]
+
+      // Check if this member is itself a megarepo
+      const nestedConfigPath = EffectPath.ops.join(
+        memberPath,
+        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+      )
+      const isMegarepo = memberExists
+        ? yield* fs.exists(nestedConfigPath).pipe(Effect.catchAll(() => Effect.succeed(false)))
+        : false
+
+      // Recursively scan nested members if this is a megarepo
+      let nestedMembers: readonly MemberStatus[] | undefined = undefined
+      if (isMegarepo && memberExists) {
+        const nestedRoot = EffectPath.unsafe.absoluteDir(
+          memberPath.endsWith('/') ? memberPath : `${memberPath}/`,
+        )
+        nestedMembers = yield* scanMembersRecursive({ megarepoRoot: nestedRoot, visited })
+      }
+
+      // Get git status if member exists
+      let gitStatus: GitStatus | undefined = undefined
+      if (memberExists) {
+        // Check if it's a git repo first
+        const isGit = yield* Git.isGitRepo(memberPath).pipe(
+          Effect.catchAll(() => Effect.succeed(false)),
+        )
+        if (isGit) {
+          // Get worktree status (dirty, unpushed)
+          const worktreeStatus = yield* Git.getWorktreeStatus(memberPath).pipe(
+            Effect.catchAll(() =>
+              Effect.succeed({ isDirty: false, hasUnpushed: false, changesCount: 0 }),
+            ),
+          )
+
+          // Get current branch
+          const branchOpt = yield* Git.getCurrentBranch(memberPath).pipe(
+            Effect.catchAll(() => Effect.succeed(Option.none())),
+          )
+          const branch = Option.getOrElse(branchOpt, () => 'HEAD')
+
+          // Get short rev
+          const shortRev = yield* Git.getCurrentCommit(memberPath).pipe(
+            Effect.map((commit) => commit.slice(0, 7)),
+            Effect.catchAll(() => Effect.succeed(undefined)),
+          )
+
+          gitStatus = {
+            isDirty: worktreeStatus.isDirty,
+            changesCount: worktreeStatus.changesCount,
+            hasUnpushed: worktreeStatus.hasUnpushed,
+            branch,
+            shortRev,
+          }
+        }
+      }
+
+      members.push({
+        name: memberName,
+        exists: memberExists,
+        source: sourceString,
+        isLocal,
+        lockInfo: lockedMember
+          ? {
+              ref: lockedMember.ref,
+              commit: lockedMember.commit,
+              pinned: lockedMember.pinned,
+            }
+          : undefined,
+        isMegarepo,
+        nestedMembers,
+        gitStatus,
+      })
+    }
+
+    return members
+  })
 
 /** Show megarepo status */
 const statusCommand = Cli.Command.make('status', { json: jsonOption }, ({ json }) =>
   Effect.gen(function* () {
     const cwd = yield* Cwd
+    const fs = yield* FileSystem.FileSystem
     const root = yield* findMegarepoRoot(cwd)
 
     if (Option.isNone(root)) {
       if (json) {
         return yield* jsonError({ error: 'not_found', message: 'No megarepo.json found' })
       }
-      yield* Effect.logError(`${styled.red(symbols.cross)} Not in a megarepo`)
+      yield* Console.error(`${styled.red(symbols.cross)} Not in a megarepo`)
       return yield* Effect.fail(new Error('Not in a megarepo'))
     }
 
-    // Load config
-    const fs = yield* FileSystem.FileSystem
-    const configPath = EffectPath.ops.join(
-      root.value,
-      EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-    )
-    const configContent = yield* fs.readFileString(configPath)
-    const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
-
     const name = yield* Git.deriveMegarepoName(root.value)
-    const memberCount = Object.keys(config.members).length
 
     if (json) {
+      // Load config for JSON output
+      const configPath = EffectPath.ops.join(
+        root.value,
+        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+      )
+      const configContent = yield* fs.readFileString(configPath)
+      const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+
       console.log(
         JSON.stringify({
           name,
           root: root.value,
-          memberCount,
+          memberCount: Object.keys(config.members).length,
           members: Object.keys(config.members),
         }),
       )
     } else {
-      yield* Effect.log(`${styled.bold(name)}`)
-      yield* Effect.log(styled.dim(`  root: ${root.value}`))
-      yield* Effect.log(styled.dim(`  members: ${memberCount}`))
+      // Load config for staleness check
+      const configPath = EffectPath.ops.join(
+        root.value,
+        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+      )
+      const configContent = yield* fs.readFileString(configPath)
+      const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
 
-      for (const [memberName] of Object.entries(config.members)) {
-        const memberPath = EffectPath.ops.join(
-          root.value,
-          EffectPath.unsafe.relativeDir(`${memberName}/`),
-        )
-        const memberExists = yield* fs.exists(memberPath)
-        const status = memberExists ? styled.green(symbols.check) : styled.yellow('○')
-        yield* Effect.log(`  ${status} ${memberName}`)
+      // Recursively scan all members
+      const members = yield* scanMembersRecursive({ megarepoRoot: root.value })
+
+      // Get last sync time and lock staleness from lock file
+      const lockPath = EffectPath.ops.join(
+        root.value,
+        EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+      )
+      const lockFileOpt = yield* readLockFile(lockPath)
+      let lastSyncTime: Date | undefined = undefined
+      let lockStaleness: {
+        exists: boolean
+        missingFromLock: readonly string[]
+        extraInLock: readonly string[]
+      } | undefined = undefined
+
+      // Determine which members are remote (need lock tracking)
+      const remoteMemberNames = new Set<string>()
+      for (const [memberName, sourceString] of Object.entries(config.members)) {
+        const source = parseSourceString(sourceString)
+        if (source !== undefined && isRemoteSource(source)) {
+          remoteMemberNames.add(memberName)
+        }
       }
+
+      if (Option.isSome(lockFileOpt)) {
+        // Find the most recent lockedAt timestamp across all members
+        const timestamps = Object.values(lockFileOpt.value.members)
+          .map((m) => new Date(m.lockedAt).getTime())
+          .filter((t) => !Number.isNaN(t))
+        if (timestamps.length > 0) {
+          lastSyncTime = new Date(Math.max(...timestamps))
+        }
+
+        // Check staleness
+        const staleness = checkLockStaleness({
+          lockFile: lockFileOpt.value,
+          configMemberNames: remoteMemberNames,
+        })
+        lockStaleness = {
+          exists: true,
+          missingFromLock: staleness.addedMembers,
+          extraInLock: staleness.removedMembers,
+        }
+      } else if (remoteMemberNames.size > 0) {
+        // Lock file doesn't exist but we have remote members
+        lockStaleness = {
+          exists: false,
+          missingFromLock: [...remoteMemberNames],
+          extraInLock: [],
+        }
+      }
+
+      // Compute current member path (for highlighting current location)
+      // If cwd is inside a member, extract the path of member names
+      let currentMemberPath: string[] | undefined = undefined
+      const cwdNormalized = cwd.replace(/\/$/, '')
+      const rootNormalized = root.value.replace(/\/$/, '')
+      if (cwdNormalized !== rootNormalized && cwdNormalized.startsWith(rootNormalized)) {
+        // Get the relative path from root to cwd
+        const relativePath = cwdNormalized.slice(rootNormalized.length + 1)
+        // Parse the member path - format is "repos/<member>/repos/<member>/..."
+        const parts = relativePath.split('/')
+        const memberPath: string[] = []
+        for (let i = 0; i < parts.length; i++) {
+          if (parts[i] === MEMBER_ROOT_DIR && i + 1 < parts.length) {
+            memberPath.push(parts[i + 1]!)
+            i++ // Skip the member name we just added
+          }
+        }
+        if (memberPath.length > 0) {
+          currentMemberPath = memberPath
+        }
+      }
+
+      // Render and output
+      const lines = renderStatus({
+        name,
+        root: root.value,
+        members,
+        lastSyncTime,
+        lockStaleness,
+        currentMemberPath,
+      })
+      yield* outputLines(lines)
     }
   }).pipe(Effect.withSpan('megarepo/status'), withJsonMode(json)),
 ).pipe(Cli.Command.withDescription('Show workspace status and member states'))
@@ -363,7 +616,7 @@ const lsCommand = Cli.Command.make('ls', { json: jsonOption }, ({ json }) =>
       if (json) {
         return yield* jsonError({ error: 'not_found', message: 'No megarepo.json found' })
       }
-      yield* Effect.logError(`${styled.red(symbols.cross)} Not in a megarepo`)
+      yield* Console.error(`${styled.red(symbols.cross)} Not in a megarepo`)
       return yield* Effect.fail(new Error('Not in a megarepo'))
     }
 
@@ -380,7 +633,7 @@ const lsCommand = Cli.Command.make('ls', { json: jsonOption }, ({ json }) =>
       console.log(JSON.stringify({ members: config.members }))
     } else {
       for (const [name, sourceString] of Object.entries(config.members)) {
-        yield* Effect.log(`${styled.bold(name)} ${styled.dim(`(${sourceString})`)}`)
+        yield* Console.log(`${styled.bold(name)} ${styled.dim(`(${sourceString})`)}`)
       }
     }
   }).pipe(Effect.withSpan('megarepo/ls'), withJsonMode(json)),
@@ -457,24 +710,31 @@ const syncMember = ({
       } satisfies MemberSyncResult
     }
 
-    const memberPath = EffectPath.ops.join(megarepoRoot, EffectPath.unsafe.relativeDir(`${name}/`))
+    const memberPath = getMemberPath({ megarepoRoot, name })
+    const memberPathNormalized = memberPath.replace(/\/$/, '')
 
     // Handle local path sources - just create symlink
     if (source.type === 'path') {
       const expandedPath = source.path.replace(/^~/, process.env.HOME ?? '~')
-      const linkExists = yield* fs.exists(memberPath)
+      const resolvedPath = path.isAbsolute(expandedPath)
+        ? expandedPath
+        : path.resolve(megarepoRoot, expandedPath)
+      const existingLink = yield* fs
+        .readLink(memberPathNormalized)
+        .pipe(Effect.catchAll(() => Effect.succeed(null)))
 
-      if (linkExists) {
-        const stat = yield* fs.stat(memberPath).pipe(Effect.catchAll(() => Effect.succeed(null)))
-        if (stat?.type === 'SymbolicLink') {
-          const target = yield* fs.readLink(memberPath)
-          if (target.replace(/\/$/, '') === expandedPath.replace(/\/$/, '')) {
-            return { name, status: 'already_synced' } satisfies MemberSyncResult
-          }
-          if (!dryRun) {
-            yield* fs.remove(memberPath)
-          }
-        } else {
+      if (existingLink !== null) {
+        if (existingLink.replace(/\/$/, '') === resolvedPath.replace(/\/$/, '')) {
+          return { name, status: 'already_synced' } satisfies MemberSyncResult
+        }
+        if (!dryRun) {
+          yield* fs.remove(memberPathNormalized)
+        }
+      } else {
+        const exists = yield* fs
+          .exists(memberPathNormalized)
+          .pipe(Effect.catchAll(() => Effect.succeed(false)))
+        if (exists) {
           return {
             name,
             status: 'skipped',
@@ -484,7 +744,7 @@ const syncMember = ({
       }
 
       if (!dryRun) {
-        yield* createSymlink({ target: expandedPath, link: memberPath })
+        yield* createSymlink({ target: resolvedPath, link: memberPathNormalized })
       }
 
       return { name, status: 'synced' } satisfies MemberSyncResult
@@ -634,23 +894,26 @@ const syncMember = ({
     }
 
     // Create symlink from workspace to worktree
-    const linkExists = yield* fs.exists(memberPath)
-    if (linkExists) {
-      const stat = yield* fs.stat(memberPath).pipe(Effect.catchAll(() => Effect.succeed(null)))
-      if (stat?.type === 'SymbolicLink') {
-        const target = yield* fs.readLink(memberPath)
-        if (target.replace(/\/$/, '') === worktreePath.replace(/\/$/, '')) {
-          return {
-            name,
-            status: 'already_synced',
-            commit: targetCommit,
-            ref: targetRef,
-          } satisfies MemberSyncResult
-        }
-        if (!dryRun) {
-          yield* fs.remove(memberPath)
-        }
-      } else {
+    const existingLink = yield* fs
+      .readLink(memberPathNormalized)
+      .pipe(Effect.catchAll(() => Effect.succeed(null)))
+    if (existingLink !== null) {
+      if (existingLink.replace(/\/$/, '') === worktreePath.replace(/\/$/, '')) {
+        return {
+          name,
+          status: 'already_synced',
+          commit: targetCommit,
+          ref: targetRef,
+        } satisfies MemberSyncResult
+      }
+      if (!dryRun) {
+        yield* fs.remove(memberPathNormalized)
+      }
+    } else {
+      const exists = yield* fs
+        .exists(memberPathNormalized)
+        .pipe(Effect.catchAll(() => Effect.succeed(false)))
+      if (exists) {
         return {
           name,
           status: 'skipped',
@@ -660,7 +923,7 @@ const syncMember = ({
     }
 
     if (!dryRun) {
-      yield* createSymlink({ target: worktreePath, link: memberPath })
+      yield* createSymlink({ target: worktreePath, link: memberPathNormalized })
     }
 
     return {
@@ -678,6 +941,319 @@ const syncMember = ({
       } satisfies MemberSyncResult),
     ),
   )
+
+/** Result of syncing a megarepo (including nested) */
+interface MegarepoSyncResult {
+  readonly root: AbsoluteDirPath
+  readonly results: ReadonlyArray<MemberSyncResult>
+  readonly nestedMegarepos: ReadonlyArray<string>
+  readonly nestedResults: ReadonlyArray<MegarepoSyncResult>
+}
+
+/** Flatten nested sync results for JSON output */
+const flattenSyncResults = (result: MegarepoSyncResult): object => ({
+  root: result.root,
+  results: result.results,
+  nestedMegarepos: result.nestedMegarepos,
+  nestedResults: result.nestedResults.map(flattenSyncResults),
+})
+
+/** Count sync results including nested megarepos */
+const countSyncResults = (
+  r: MegarepoSyncResult,
+): { synced: number; already: number; errors: number } => {
+  const synced = r.results.filter((m) => m.status === 'cloned' || m.status === 'synced').length
+  const already = r.results.filter((m) => m.status === 'already_synced').length
+  const errors = r.results.filter((m) => m.status === 'error').length
+  const nested = r.nestedResults.reduce(
+    (acc, nr) => {
+      const nc = countSyncResults(nr)
+      return {
+        synced: acc.synced + nc.synced,
+        already: acc.already + nc.already,
+        errors: acc.errors + nc.errors,
+      }
+    },
+    { synced: 0, already: 0, errors: 0 },
+  )
+  return {
+    synced: synced + nested.synced,
+    already: already + nested.already,
+    errors: errors + nested.errors,
+  }
+}
+
+// =============================================================================
+// Sync Errors
+// =============================================================================
+
+/** Error when not in a megarepo */
+class NotInMegarepoError extends Schema.TaggedError<NotInMegarepoError>()('NotInMegarepoError', {
+  message: Schema.String,
+}) {}
+
+/** Error when lock file is required but missing */
+class LockFileRequiredError extends Schema.TaggedError<LockFileRequiredError>()(
+  'LockFileRequiredError',
+  {
+    message: Schema.String,
+  },
+) {}
+
+/** Error when lock file is stale */
+class StaleLockFileError extends Schema.TaggedError<StaleLockFileError>()('StaleLockFileError', {
+  message: Schema.String,
+  addedMembers: Schema.Array(Schema.String),
+  removedMembers: Schema.Array(Schema.String),
+}) {}
+
+/**
+ * Sync a megarepo at the given root path.
+ * This is extracted to enable recursive syncing for --deep mode.
+ *
+ * @param visited - Set of already-synced megarepo roots (resolved paths) to prevent duplicate syncing
+ *                  in diamond dependency scenarios (e.g., A→B, A→C, B→D, C→D where D would be synced twice)
+ */
+const syncMegarepo = ({
+  megarepoRoot,
+  options,
+  depth = 0,
+  visited = new Set<string>(),
+}: {
+  megarepoRoot: AbsoluteDirPath
+  options: { json: boolean; dryRun: boolean; frozen: boolean; deep: boolean }
+  depth?: number
+  visited?: Set<string>
+}): Effect.Effect<
+  MegarepoSyncResult,
+  | NotInMegarepoError
+  | LockFileRequiredError
+  | StaleLockFileError
+  | PlatformError.PlatformError
+  | ParseResult.ParseError,
+  FileSystem.FileSystem | CommandExecutor.CommandExecutor | Store
+> =>
+  Effect.gen(function* () {
+    const { json, dryRun, frozen, deep } = options
+    const fs = yield* FileSystem.FileSystem
+    const indent = '  '.repeat(depth)
+
+    // Resolve to physical path for deduplication (handles symlinks)
+    const resolvedRoot = yield* fs.realPath(megarepoRoot)
+
+    // Check if we've already synced this megarepo (circuit breaker for diamond dependencies)
+    if (visited.has(resolvedRoot)) {
+      // Skip silently - duplicate syncing detected
+      return {
+        root: megarepoRoot,
+        results: [],
+        nestedMegarepos: [],
+        nestedResults: [],
+      } satisfies MegarepoSyncResult
+    }
+
+    // Mark as visited
+    visited.add(resolvedRoot)
+
+    // Load config
+    const configPath = EffectPath.ops.join(
+      megarepoRoot,
+      EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+    )
+    const configContent = yield* fs.readFileString(configPath)
+    const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+
+    if (!dryRun) {
+      const membersRoot = getMembersRoot(megarepoRoot)
+      yield* fs.makeDirectory(membersRoot, { recursive: true })
+    }
+
+    // Load lock file (optional unless --frozen)
+    const lockPath = EffectPath.ops.join(
+      megarepoRoot,
+      EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+    )
+    const lockFileOpt = yield* readLockFile(lockPath)
+    let lockFile = Option.getOrUndefined(lockFileOpt)
+
+    // Determine which members are remote (need lock tracking)
+    const remoteMemberNames = new Set<string>()
+    for (const [name, sourceString] of Object.entries(config.members)) {
+      const source = parseSourceString(sourceString)
+      if (source !== undefined && isRemoteSource(source)) {
+        remoteMemberNames.add(name)
+      }
+    }
+
+    // Check --frozen requirements
+    if (frozen) {
+      if (lockFile === undefined) {
+        if (json) {
+          console.log(
+            JSON.stringify({
+              error: 'no_lock',
+              message: 'Lock file required for --frozen',
+              root: megarepoRoot,
+            }),
+          )
+        } else {
+          yield* Console.error(
+            `${indent}${styled.red(symbols.cross)} Lock file required for --frozen mode`,
+          )
+        }
+        return yield* new LockFileRequiredError({ message: 'Lock file required for --frozen' })
+      }
+
+      // Check for staleness
+      const staleness = checkLockStaleness({ lockFile, configMemberNames: remoteMemberNames })
+      if (staleness.isStale) {
+        if (json) {
+          console.log(
+            JSON.stringify({
+              error: 'stale_lock',
+              message: 'Lock file is stale',
+              root: megarepoRoot,
+              added: staleness.addedMembers,
+              removed: staleness.removedMembers,
+            }),
+          )
+        } else {
+          yield* Console.error(`${indent}${styled.red(symbols.cross)} Lock file is stale`)
+          if (staleness.addedMembers.length > 0) {
+            yield* Console.log(styled.dim(`${indent}  Added: ${staleness.addedMembers.join(', ')}`))
+          }
+          if (staleness.removedMembers.length > 0) {
+            yield* Console.log(
+              styled.dim(`${indent}  Removed: ${staleness.removedMembers.join(', ')}`),
+            )
+          }
+        }
+        return yield* new StaleLockFileError({
+          message: 'Lock file is stale',
+          addedMembers: staleness.addedMembers,
+          removedMembers: staleness.removedMembers,
+        })
+      }
+    }
+
+    const members = Object.entries(config.members)
+
+    // Sync all members in parallel for better performance
+    const results = yield* Effect.all(
+      members.map(([name, sourceString]) =>
+        syncMember({
+          name,
+          sourceString,
+          megarepoRoot,
+          lockFile,
+          dryRun,
+          frozen,
+        }),
+      ),
+      { concurrency: 'unbounded' },
+    )
+
+    // Check which members are themselves megarepos (for --deep)
+    const nestedMegarepoChecks = yield* Effect.all(
+      results.map((result) =>
+        Effect.gen(function* () {
+          if (result.status === 'error' || result.status === 'skipped') {
+            return null
+          }
+          const memberPath = getMemberPath({ megarepoRoot, name: result.name })
+          const nestedConfigPath = EffectPath.ops.join(
+            memberPath,
+            EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+          )
+          const hasNestedConfig = yield* fs
+            .exists(nestedConfigPath)
+            .pipe(Effect.catchAll(() => Effect.succeed(false)))
+          return hasNestedConfig ? result.name : null
+        }),
+      ),
+      { concurrency: 'unbounded' },
+    )
+    const nestedMegarepos = nestedMegarepoChecks.filter((name): name is string => name !== null)
+
+    // Update lock file (unless dry run or frozen)
+    if (!dryRun && !frozen) {
+      // Initialize lock file if needed
+      if (lockFile === undefined) {
+        lockFile = createEmptyLockFile()
+      }
+
+      // Sync lock with config (remove stale entries)
+      lockFile = syncLockWithConfig({ lockFile, configMemberNames: remoteMemberNames })
+
+      // Update lock entries from results
+      for (const result of results) {
+        // Only process results that have commit and ref info
+        const commit = 'commit' in result ? result.commit : undefined
+        const ref = 'ref' in result ? result.ref : undefined
+        if (commit === undefined || ref === undefined) continue
+
+        const sourceString = config.members[result.name]
+        if (sourceString === undefined) continue
+        const source = parseSourceString(sourceString)
+        if (source === undefined || !isRemoteSource(source)) continue
+
+        const url = getSourceUrl(source) ?? sourceString
+        const existingLocked = lockFile.members[result.name]
+
+        lockFile = updateLockedMember({
+          lockFile,
+          memberName: result.name,
+          member: createLockedMember({
+            url,
+            ref,
+            commit,
+            pinned: existingLocked?.pinned ?? false,
+          }),
+        })
+      }
+
+      // Write lock file
+      yield* writeLockFile({ lockPath, lockFile })
+    }
+
+    // Handle --deep flag: recursively sync nested megarepos
+    const nestedResults: MegarepoSyncResult[] = []
+    if (deep && nestedMegarepos.length > 0) {
+      for (const nestedName of nestedMegarepos) {
+        const nestedPath = getMemberPath({ megarepoRoot, name: nestedName })
+        // Convert to AbsoluteDirPath (add trailing slash if needed)
+        const nestedRoot = EffectPath.unsafe.absoluteDir(
+          nestedPath.endsWith('/') ? nestedPath : `${nestedPath}/`,
+        )
+
+        const nestedResult = yield* syncMegarepo({
+          megarepoRoot: nestedRoot,
+          options,
+          depth: depth + 1,
+          visited, // Pass visited set to prevent duplicate syncing
+        }).pipe(
+          Effect.catchAll(() =>
+            // Return an empty result on error (errors are already in results)
+            Effect.succeed({
+              root: nestedRoot,
+              results: [],
+              nestedMegarepos: [],
+              nestedResults: [],
+            } satisfies MegarepoSyncResult),
+          ),
+        )
+
+        nestedResults.push(nestedResult)
+      }
+    }
+
+    return {
+      root: megarepoRoot,
+      results,
+      nestedMegarepos,
+      nestedResults,
+    } satisfies MegarepoSyncResult
+  })
 
 /** Sync members: clone to store and create symlinks */
 const syncCommand = Cli.Command.make(
@@ -708,227 +1284,35 @@ const syncCommand = Cli.Command.make(
         if (json) {
           console.log(JSON.stringify({ error: 'not_found', message: 'No megarepo.json found' }))
         } else {
-          yield* Effect.logError(`${styled.red(symbols.cross)} Not in a megarepo`)
+          yield* Console.error(`${styled.red(symbols.cross)} Not in a megarepo`)
         }
-        return yield* Effect.fail(new Error('Not in a megarepo'))
+        return yield* new NotInMegarepoError({ message: 'No megarepo.json found' })
       }
 
-      const fs = yield* FileSystem.FileSystem
+      // Get workspace name
+      const name = yield* Git.deriveMegarepoName(root.value)
 
-      // Load config
-      const configPath = EffectPath.ops.join(
-        root.value,
-        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-      )
-      const configContent = yield* fs.readFileString(configPath)
-      const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
-
-      // Load lock file (optional unless --frozen)
-      const lockPath = EffectPath.ops.join(
-        root.value,
-        EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
-      )
-      const lockFileOpt = yield* readLockFile(lockPath)
-      let lockFile = Option.getOrUndefined(lockFileOpt)
-
-      // Determine which members are remote (need lock tracking)
-      const remoteMemberNames = new Set<string>()
-      for (const [name, sourceString] of Object.entries(config.members)) {
-        const source = parseSourceString(sourceString)
-        if (source !== undefined && isRemoteSource(source)) {
-          remoteMemberNames.add(name)
-        }
-      }
-
-      // Check --frozen requirements
-      if (frozen) {
-        if (lockFile === undefined) {
-          if (json) {
-            console.log(
-              JSON.stringify({ error: 'no_lock', message: 'Lock file required for --frozen' }),
-            )
-          } else {
-            yield* Effect.logError(
-              `${styled.red(symbols.cross)} Lock file required for --frozen mode`,
-            )
-          }
-          return yield* Effect.fail(new Error('Lock file required for --frozen'))
-        }
-
-        // Check for staleness
-        const staleness = checkLockStaleness({ lockFile, configMemberNames: remoteMemberNames })
-        if (staleness.isStale) {
-          if (json) {
-            console.log(
-              JSON.stringify({
-                error: 'stale_lock',
-                message: 'Lock file is stale',
-                added: staleness.addedMembers,
-                removed: staleness.removedMembers,
-              }),
-            )
-          } else {
-            yield* Effect.logError(`${styled.red(symbols.cross)} Lock file is stale`)
-            if (staleness.addedMembers.length > 0) {
-              yield* Effect.log(styled.dim(`  Added: ${staleness.addedMembers.join(', ')}`))
-            }
-            if (staleness.removedMembers.length > 0) {
-              yield* Effect.log(styled.dim(`  Removed: ${staleness.removedMembers.join(', ')}`))
-            }
-          }
-          return yield* Effect.fail(new Error('Lock file is stale'))
-        }
-      }
-
-      const members = Object.entries(config.members)
-      const results: MemberSyncResult[] = []
-      const nestedMegarepos: string[] = []
-
-      if (!json && dryRun) {
-        yield* Effect.log(styled.dim('Dry run - no changes will be made'))
-      }
-      if (!json && frozen) {
-        yield* Effect.log(styled.dim('Frozen mode - using exact commits from lock file'))
-      }
-
-      // Sync each member
-      for (const [name, sourceString] of members) {
-        const result = yield* syncMember({
-          name,
-          sourceString,
-          megarepoRoot: root.value,
-          lockFile,
-          dryRun,
-          frozen,
-        })
-        results.push(result)
-
-        if (!json) {
-          const statusSymbol =
-            result.status === 'error'
-              ? styled.red(symbols.cross)
-              : result.status === 'already_synced'
-                ? styled.dim(symbols.check)
-                : styled.green(symbols.check)
-
-          const statusText =
-            result.status === 'cloned'
-              ? 'cloned'
-              : result.status === 'synced'
-                ? 'synced'
-                : result.status === 'already_synced'
-                  ? 'already synced'
-                  : result.status === 'error'
-                    ? `error: ${result.message}`
-                    : result.status
-
-          yield* Effect.log(`${statusSymbol} ${styled.bold(name)} ${styled.dim(`(${statusText})`)}`)
-        }
-
-        // Check if this member is itself a megarepo (for --deep hint)
-        if (result.status !== 'error' && result.status !== 'skipped') {
-          const memberPath = EffectPath.ops.join(
-            root.value,
-            EffectPath.unsafe.relativeDir(`${name}/`),
-          )
-          const nestedConfigPath = EffectPath.ops.join(
-            memberPath,
-            EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-          )
-          const hasNestedConfig = yield* fs.exists(nestedConfigPath)
-          if (hasNestedConfig) {
-            nestedMegarepos.push(name)
-          }
-        }
-      }
-
-      // Update lock file (unless dry run or frozen)
-      if (!dryRun && !frozen) {
-        // Initialize lock file if needed
-        if (lockFile === undefined) {
-          lockFile = createEmptyLockFile()
-        }
-
-        // Sync lock with config (remove stale entries)
-        lockFile = syncLockWithConfig({ lockFile, configMemberNames: remoteMemberNames })
-
-        // Update lock entries from results
-        for (const result of results) {
-          if (result.commit !== undefined && result.ref !== undefined) {
-            const sourceString = config.members[result.name]
-            if (sourceString === undefined) continue
-            const source = parseSourceString(sourceString)
-            if (source === undefined || !isRemoteSource(source)) continue
-
-            const url = getSourceUrl(source) ?? sourceString
-            const existingLocked = lockFile.members[result.name]
-
-            lockFile = updateLockedMember({
-              lockFile,
-              memberName: result.name,
-              member: createLockedMember({
-                url,
-                ref: result.ref,
-                commit: result.commit,
-                pinned: existingLocked?.pinned ?? false,
-              }),
-            })
-          }
-        }
-
-        // Write lock file
-        yield* writeLockFile({ lockPath, lockFile })
-      }
+      // Run the sync
+      const syncResult = yield* syncMegarepo({
+        megarepoRoot: root.value,
+        options: { json, dryRun, frozen, deep },
+      })
 
       // Output results
       if (json) {
-        console.log(JSON.stringify({ results, nestedMegarepos }))
+        console.log(JSON.stringify(flattenSyncResults(syncResult)))
       } else {
-        const syncedCount = results.filter(
-          (r) => r.status === 'cloned' || r.status === 'synced',
-        ).length
-        const alreadyCount = results.filter((r) => r.status === 'already_synced').length
-        const errorCount = results.filter((r) => r.status === 'error').length
-
-        yield* Effect.log('')
-        if (dryRun) {
-          yield* Effect.log(
-            styled.dim(`Would sync ${syncedCount} members, ${alreadyCount} already synced`),
-          )
-        } else {
-          yield* Effect.log(
-            styled.dim(`Synced ${syncedCount} members, ${alreadyCount} already synced`),
-          )
-        }
-
-        if (errorCount > 0) {
-          yield* Effect.log(styled.red(`${errorCount} errors`))
-        }
-
-        // Show hint about nested megarepos
-        if (nestedMegarepos.length > 0 && !deep) {
-          yield* Effect.log('')
-          yield* Effect.log(
-            styled.dim(
-              `Note: ${nestedMegarepos.length} member(s) contain nested megarepos (${nestedMegarepos.join(', ')})`,
-            ),
-          )
-          yield* Effect.log(
-            styled.dim(`      Run 'mr sync --deep' to sync them, or 'cd <member> && mr sync'`),
-          )
-        }
-      }
-
-      // Handle --deep flag
-      if (deep && nestedMegarepos.length > 0 && !dryRun) {
-        yield* Effect.log('')
-        yield* Effect.log(styled.bold('Syncing nested megarepos...'))
-
-        for (const nestedName of nestedMegarepos) {
-          yield* Effect.log(styled.dim(`  → ${nestedName}`))
-          // For now, just log - recursive sync would require more infrastructure
-          // TODO: Implement recursive sync by calling sync command with different cwd
-        }
+        // Render using the new renderer
+        const lines = renderSync({
+          name,
+          root: root.value,
+          results: syncResult.results,
+          nestedMegarepos: syncResult.nestedMegarepos,
+          deep,
+          dryRun,
+          frozen,
+        })
+        yield* outputLines(lines)
       }
     }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/sync')),
 ).pipe(Cli.Command.withDescription('Sync members to their configured refs'))
@@ -1000,7 +1384,7 @@ const addCommand = Cli.Command.make(
         if (json) {
           console.log(JSON.stringify({ error: 'not_found', message: 'No megarepo.json found' }))
         } else {
-          yield* Effect.logError(`${styled.red(symbols.cross)} Not in a megarepo`)
+          yield* Console.error(`${styled.red(symbols.cross)} Not in a megarepo`)
         }
         return yield* Effect.fail(new Error('Not in a megarepo'))
       }
@@ -1013,8 +1397,8 @@ const addCommand = Cli.Command.make(
             JSON.stringify({ error: 'invalid_repo', message: `Invalid repo reference: ${repo}` }),
           )
         } else {
-          yield* Effect.logError(`${styled.red(symbols.cross)} Invalid repo reference: ${repo}`)
-          yield* Effect.log(
+          yield* Console.error(`${styled.red(symbols.cross)} Invalid repo reference: ${repo}`)
+          yield* Console.log(
             styled.dim(
               '  Expected: owner/repo, git@host:owner/repo.git, https://host/owner/repo.git, or /path/to/repo',
             ),
@@ -1039,9 +1423,7 @@ const addCommand = Cli.Command.make(
         if (json) {
           console.log(JSON.stringify({ error: 'already_exists', member: memberName }))
         } else {
-          yield* Effect.logError(
-            `${styled.red(symbols.cross)} Member '${memberName}' already exists`,
-          )
+          yield* Console.error(`${styled.red(symbols.cross)} Member '${memberName}' already exists`)
         }
         return yield* Effect.fail(new Error('Member already exists'))
       }
@@ -1066,13 +1448,13 @@ const addCommand = Cli.Command.make(
           JSON.stringify({ status: 'added', member: memberName, source: parsed.sourceString }),
         )
       } else {
-        yield* Effect.log(`${styled.green(symbols.check)} Added ${styled.bold(memberName)}`)
+        yield* Console.log(`${styled.green(symbols.check)} Added ${styled.bold(memberName)}`)
       }
 
       // Sync if requested
       if (sync) {
         if (!json) {
-          yield* Effect.log(styled.dim('Syncing...'))
+          yield* Console.log(styled.dim('Syncing...'))
         }
         const result = yield* syncMember({
           name: memberName,
@@ -1086,7 +1468,7 @@ const addCommand = Cli.Command.make(
           const statusSymbol =
             result.status === 'error' ? styled.red(symbols.cross) : styled.green(symbols.check)
           const statusText = result.status === 'cloned' ? 'cloned' : result.status
-          yield* Effect.log(
+          yield* Console.log(
             `${statusSymbol} ${styled.bold(memberName)} ${styled.dim(`(${statusText})`)}`,
           )
         }
@@ -1278,7 +1660,7 @@ const updateCommand = Cli.Command.make(
         if (json) {
           console.log(JSON.stringify({ error: 'not_found', message: 'No megarepo.json found' }))
         } else {
-          yield* Effect.logError(`${styled.red(symbols.cross)} Not in a megarepo`)
+          yield* Console.error(`${styled.red(symbols.cross)} Not in a megarepo`)
         }
         return yield* Effect.fail(new Error('Not in a megarepo'))
       }
@@ -1314,7 +1696,7 @@ const updateCommand = Cli.Command.make(
         if (json) {
           console.log(JSON.stringify({ error: 'not_found', message: 'Member not found' }))
         } else {
-          yield* Effect.logError(`${styled.red(symbols.cross)} Member not found`)
+          yield* Console.error(`${styled.red(symbols.cross)} Member not found`)
         }
         return yield* Effect.fail(new Error('Member not found'))
       }
@@ -1352,7 +1734,9 @@ const updateCommand = Cli.Command.make(
             statusText = result.status
           }
 
-          yield* Effect.log(`${statusSymbol} ${styled.bold(name)} ${styled.dim(`(${statusText})`)}`)
+          yield* Console.log(
+            `${statusSymbol} ${styled.bold(name)} ${styled.dim(`(${statusText})`)}`,
+          )
         }
 
         // Update lock file entry if we got a new commit
@@ -1397,15 +1781,15 @@ const updateCommand = Cli.Command.make(
         const pinnedCount = results.filter((r) => r.status === 'pinned').length
         const errorCount = results.filter((r) => r.status === 'error').length
 
-        yield* Effect.log('')
+        yield* Console.log('')
         const parts: string[] = []
         if (updatedCount > 0) parts.push(`${updatedCount} updated`)
         if (skippedCount > 0) parts.push(`${skippedCount} skipped`)
         if (pinnedCount > 0) parts.push(`${pinnedCount} pinned`)
-        yield* Effect.log(styled.dim(parts.join(', ')))
+        yield* Console.log(styled.dim(parts.join(', ')))
 
         if (errorCount > 0) {
-          yield* Effect.log(styled.red(`${errorCount} error(s)`))
+          yield* Console.log(styled.red(`${errorCount} error(s)`))
         }
       }
     }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/update')),
@@ -1438,7 +1822,7 @@ const execCommand = Cli.Command.make(
         if (json) {
           console.log(JSON.stringify({ error: 'not_found', message: 'No megarepo.json found' }))
         } else {
-          yield* Effect.logError(`${styled.red(symbols.cross)} Not in a megarepo`)
+          yield* Console.error(`${styled.red(symbols.cross)} Not in a megarepo`)
         }
         return yield* Effect.fail(new Error('Not in a megarepo'))
       }
@@ -1462,7 +1846,7 @@ const execCommand = Cli.Command.make(
         if (json) {
           console.log(JSON.stringify({ error: 'not_found', message: 'Member not found' }))
         } else {
-          yield* Effect.logError(`${styled.red(symbols.cross)} Member not found`)
+          yield* Console.error(`${styled.red(symbols.cross)} Member not found`)
         }
         return yield* Effect.fail(new Error('Member not found'))
       }
@@ -1470,10 +1854,7 @@ const execCommand = Cli.Command.make(
       const results: Array<{ name: string; exitCode: number; stdout: string; stderr: string }> = []
 
       for (const name of membersToRun) {
-        const memberPath = EffectPath.ops.join(
-          root.value,
-          EffectPath.unsafe.relativeDir(`${name}/`),
-        )
+        const memberPath = getMemberPath({ megarepoRoot: root.value, name })
         const exists = yield* fs.exists(memberPath)
 
         if (!exists) {
@@ -1482,7 +1863,7 @@ const execCommand = Cli.Command.make(
         }
 
         if (!json) {
-          yield* Effect.log(styled.bold(`\n${name}:`))
+          yield* Console.log(styled.bold(`\n${name}:`))
         }
 
         // Run the command
@@ -1542,7 +1923,7 @@ const pinCommand = Cli.Command.make(
         if (json) {
           console.log(JSON.stringify({ error: 'not_found', message: 'No megarepo.json found' }))
         } else {
-          yield* Effect.logError(`${styled.red(symbols.cross)} Not in a megarepo`)
+          yield* Console.error(`${styled.red(symbols.cross)} Not in a megarepo`)
         }
         return yield* Effect.fail(new Error('Not in a megarepo'))
       }
@@ -1563,7 +1944,7 @@ const pinCommand = Cli.Command.make(
             JSON.stringify({ error: 'not_found', message: `Member '${member}' not found` }),
           )
         } else {
-          yield* Effect.logError(`${styled.red(symbols.cross)} Member '${member}' not found`)
+          yield* Console.error(`${styled.red(symbols.cross)} Member '${member}' not found`)
         }
         return yield* Effect.fail(new Error('Member not found'))
       }
@@ -1578,7 +1959,7 @@ const pinCommand = Cli.Command.make(
         if (json) {
           console.log(JSON.stringify({ error: 'invalid_source', message: 'Invalid source string' }))
         } else {
-          yield* Effect.logError(`${styled.red(symbols.cross)} Invalid source string`)
+          yield* Console.error(`${styled.red(symbols.cross)} Invalid source string`)
         }
         return yield* Effect.fail(new Error('Invalid source'))
       }
@@ -1588,7 +1969,7 @@ const pinCommand = Cli.Command.make(
             JSON.stringify({ error: 'local_path', message: 'Cannot pin local path members' }),
           )
         } else {
-          yield* Effect.logError(`${styled.red(symbols.cross)} Cannot pin local path members`)
+          yield* Console.error(`${styled.red(symbols.cross)} Cannot pin local path members`)
         }
         return yield* Effect.fail(new Error('Cannot pin local path'))
       }
@@ -1612,8 +1993,8 @@ const pinCommand = Cli.Command.make(
             }),
           )
         } else {
-          yield* Effect.logError(`${styled.red(symbols.cross)} Member '${member}' not synced yet.`)
-          yield* Effect.log(styled.dim('  Run: mr sync'))
+          yield* Console.error(`${styled.red(symbols.cross)} Member '${member}' not synced yet.`)
+          yield* Console.log(styled.dim('  Run: mr sync'))
         }
         return yield* Effect.fail(new Error('Member not synced'))
       }
@@ -1625,7 +2006,7 @@ const pinCommand = Cli.Command.make(
             JSON.stringify({ status: 'already_pinned', member, commit: lockedMember.commit }),
           )
         } else {
-          yield* Effect.log(
+          yield* Console.log(
             styled.dim(
               `Member '${member}' is already pinned at ${lockedMember.commit.slice(0, 7)}`,
             ),
@@ -1641,7 +2022,7 @@ const pinCommand = Cli.Command.make(
       if (json) {
         console.log(JSON.stringify({ status: 'pinned', member, commit: lockedMember.commit }))
       } else {
-        yield* Effect.log(
+        yield* Console.log(
           `${styled.green(symbols.check)} Pinned ${styled.bold(member)} at ${styled.dim(lockedMember.commit.slice(0, 7))}`,
         )
       }
@@ -1666,7 +2047,7 @@ const unpinCommand = Cli.Command.make(
         if (json) {
           console.log(JSON.stringify({ error: 'not_found', message: 'No megarepo.json found' }))
         } else {
-          yield* Effect.logError(`${styled.red(symbols.cross)} Not in a megarepo`)
+          yield* Console.error(`${styled.red(symbols.cross)} Not in a megarepo`)
         }
         return yield* Effect.fail(new Error('Not in a megarepo'))
       }
@@ -1687,7 +2068,7 @@ const unpinCommand = Cli.Command.make(
             JSON.stringify({ error: 'not_found', message: `Member '${member}' not found` }),
           )
         } else {
-          yield* Effect.logError(`${styled.red(symbols.cross)} Member '${member}' not found`)
+          yield* Console.error(`${styled.red(symbols.cross)} Member '${member}' not found`)
         }
         return yield* Effect.fail(new Error('Member not found'))
       }
@@ -1702,7 +2083,7 @@ const unpinCommand = Cli.Command.make(
         if (json) {
           console.log(JSON.stringify({ error: 'no_lock', message: 'No lock file found' }))
         } else {
-          yield* Effect.logError(`${styled.red(symbols.cross)} No lock file found`)
+          yield* Console.error(`${styled.red(symbols.cross)} No lock file found`)
         }
         return yield* Effect.fail(new Error('No lock file'))
       }
@@ -1714,7 +2095,7 @@ const unpinCommand = Cli.Command.make(
         if (json) {
           console.log(JSON.stringify({ status: 'not_in_lock', member }))
         } else {
-          yield* Effect.log(styled.dim(`Member '${member}' not in lock file`))
+          yield* Console.log(styled.dim(`Member '${member}' not in lock file`))
         }
         return
       }
@@ -1724,7 +2105,7 @@ const unpinCommand = Cli.Command.make(
         if (json) {
           console.log(JSON.stringify({ status: 'already_unpinned', member }))
         } else {
-          yield* Effect.log(styled.dim(`Member '${member}' is not pinned`))
+          yield* Console.log(styled.dim(`Member '${member}' is not pinned`))
         }
         return
       }
@@ -1736,7 +2117,7 @@ const unpinCommand = Cli.Command.make(
       if (json) {
         console.log(JSON.stringify({ status: 'unpinned', member }))
       } else {
-        yield* Effect.log(`${styled.green(symbols.check)} Unpinned ${styled.bold(member)}`)
+        yield* Console.log(`${styled.green(symbols.check)} Unpinned ${styled.bold(member)}`)
       }
     }).pipe(Effect.withSpan('megarepo/unpin')),
 ).pipe(Cli.Command.withDescription('Unpin a member to allow updates'))
@@ -1755,15 +2136,15 @@ const storeLsCommand = Cli.Command.make('ls', { json: jsonOption }, ({ json }) =
       console.log(JSON.stringify({ repos }))
     } else {
       if (repos.length === 0) {
-        yield* Effect.log(styled.dim('Store is empty'))
+        yield* Console.log(styled.dim('Store is empty'))
       } else {
-        yield* Effect.log(styled.bold(`Store: ${store.basePath}`))
-        yield* Effect.log('')
+        yield* Console.log(styled.bold(`Store: ${store.basePath}`))
+        yield* Console.log('')
         for (const repo of repos) {
-          yield* Effect.log(`  ${repo.relativePath}`)
+          yield* Console.log(`  ${repo.relativePath}`)
         }
-        yield* Effect.log('')
-        yield* Effect.log(styled.dim(`${repos.length} repo(s)`))
+        yield* Console.log('')
+        yield* Console.log(styled.dim(`${repos.length} repo(s)`))
       }
     }
   }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/ls'), withJsonMode(json)),
@@ -1793,7 +2174,7 @@ const storeFetchCommand = Cli.Command.make('fetch', { json: jsonOption }, ({ jso
       if (!json) {
         const symbol =
           result.status === 'error' ? styled.red(symbols.cross) : styled.green(symbols.check)
-        yield* Effect.log(`${symbol} ${repo.relativePath}`)
+        yield* Console.log(`${symbol} ${repo.relativePath}`)
       }
     }
 
@@ -1801,8 +2182,8 @@ const storeFetchCommand = Cli.Command.make('fetch', { json: jsonOption }, ({ jso
       console.log(JSON.stringify({ results }))
     } else {
       const fetchedCount = results.filter((r) => r.status === 'fetched').length
-      yield* Effect.log('')
-      yield* Effect.log(styled.dim(`Fetched ${fetchedCount} repo(s)`))
+      yield* Console.log('')
+      yield* Console.log(styled.dim(`Fetched ${fetchedCount} repo(s)`))
     }
   }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/fetch')),
 ).pipe(Cli.Command.withDescription('Fetch all repositories in the store'))
@@ -1883,8 +2264,10 @@ const storeGcCommand = Cli.Command.make(
       }
 
       if (!json && !all && Option.isNone(root)) {
-        yield* Effect.log(styled.dim('Not in a megarepo - all worktrees will be considered unused'))
-        yield* Effect.log('')
+        yield* Console.log(
+          styled.dim('Not in a megarepo - all worktrees will be considered unused'),
+        )
+        yield* Console.log('')
       }
 
       // List all repos and their worktrees
@@ -2027,29 +2410,29 @@ const storeGcCommand = Cli.Command.make(
         if (removed.length > 0) {
           const verb = dryRun ? 'Would remove' : 'Removed'
           for (const r of removed) {
-            yield* Effect.log(`${styled.green(symbols.check)} ${verb} ${r.repo}refs/${r.ref}`)
+            yield* Console.log(`${styled.green(symbols.check)} ${verb} ${r.repo}refs/${r.ref}`)
           }
         }
 
         if (skippedDirty.length > 0) {
-          yield* Effect.log('')
-          yield* Effect.log(styled.yellow('Skipped (dirty):'))
+          yield* Console.log('')
+          yield* Console.log(styled.yellow('Skipped (dirty):'))
           for (const r of skippedDirty) {
-            yield* Effect.log(
+            yield* Console.log(
               `  ${styled.yellow('⊘')} ${r.repo}refs/${r.ref} ${styled.dim(`(${r.message})`)}`,
             )
           }
           if (!force) {
-            yield* Effect.log(styled.dim('  Use --force to remove dirty worktrees'))
+            yield* Console.log(styled.dim('  Use --force to remove dirty worktrees'))
           }
         }
 
-        yield* Effect.log('')
+        yield* Console.log('')
         const parts: string[] = []
         if (removed.length > 0) parts.push(`${removed.length} ${dryRun ? 'would be ' : ''}removed`)
         if (skippedDirty.length > 0) parts.push(`${skippedDirty.length} dirty`)
         if (skippedInUse.length > 0) parts.push(`${skippedInUse.length} in use`)
-        yield* Effect.log(styled.dim(parts.length > 0 ? parts.join(', ') : 'Nothing to clean up'))
+        yield* Console.log(styled.dim(parts.length > 0 ? parts.join(', ') : 'Nothing to clean up'))
       }
     }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/gc')),
 ).pipe(Cli.Command.withDescription('Garbage collect unused worktrees'))
@@ -2064,42 +2447,163 @@ const storeCommand = Cli.Command.make('store', {}).pipe(
 // Generate Command
 // =============================================================================
 
-/** Generate envrc file */
-const generateEnvrcCommand = Cli.Command.make('envrc', { json: jsonOption }, ({ json }) =>
-  Effect.gen(function* () {
-    const cwd = yield* Cwd
-    const root = yield* findMegarepoRoot(cwd)
+/** Generate Nix workspace */
+interface NixGenerateTree {
+  readonly root: AbsoluteDirPath
+  readonly result: {
+    readonly workspaceRoot: AbsoluteDirPath
+    readonly flakePath: AbsoluteFilePath
+    readonly envrcPath: AbsoluteFilePath
+  }
+  readonly nested: readonly NixGenerateTree[]
+}
 
-    if (Option.isNone(root)) {
-      if (json) {
-        console.log(JSON.stringify({ error: 'not_found', message: 'No megarepo.json found' }))
-      } else {
-        yield* Effect.logError(`${styled.red(symbols.cross)} Not in a megarepo`)
-      }
-      return yield* Effect.fail(new Error('Not in a megarepo'))
-    }
+const flattenNixGenerateTree = (
+  tree: NixGenerateTree,
+): Array<NixGenerateTree['result'] & { root: AbsoluteDirPath }> => [
+  { root: tree.root, ...tree.result },
+  ...tree.nested.flatMap(flattenNixGenerateTree),
+]
 
-    // Load config
-    const fs = yield* FileSystem.FileSystem
-    const configPath = EffectPath.ops.join(
-      root.value,
-      EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+const generateNixForRoot = Effect.fn('megarepo/generate/nix/root')(function* ({
+  outermostRoot,
+  currentRoot,
+  deep,
+  json,
+  depth,
+  visited,
+}: {
+  outermostRoot: AbsoluteDirPath
+  currentRoot: AbsoluteDirPath
+  deep: boolean
+  json: boolean
+  depth: number
+  visited: Set<string>
+}): Effect.Effect<Option.Option<NixGenerateTree>, NixGeneratorError> {
+  const rootKey = currentRoot.replace(/\/$/, '')
+  if (visited.has(rootKey)) {
+    return Option.none()
+  }
+  visited.add(rootKey)
+
+  const indent = '  '.repeat(depth)
+  const fs = yield* FileSystem.FileSystem
+  const configPath = EffectPath.ops.join(
+    currentRoot,
+    EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+  )
+  const configContent = yield* fs.readFileString(configPath)
+  const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+
+  if (!json && depth > 0) {
+    yield* Console.log(`${indent}${styled.dim(`Generating ${currentRoot}...`)}`)
+  }
+
+  const result = yield* generateNix({
+    megarepoRootOutermost: outermostRoot,
+    megarepoRootNearest: currentRoot,
+    config,
+  })
+
+  if (!json) {
+    yield* Console.log(
+      `${indent}${styled.green(symbols.check)} Generated ${styled.bold('.envrc.generated.megarepo')}`,
     )
-    const configContent = yield* fs.readFileString(configPath)
-    const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+    yield* Console.log(
+      `${indent}${styled.green(symbols.check)} Generated ${styled.bold('.direnv/megarepo-nix/workspace')}`,
+    )
+  }
 
-    const result = yield* generateEnvrc({
-      megarepoRoot: root.value,
-      config,
-    })
-
-    if (json) {
-      console.log(JSON.stringify({ status: 'generated', path: result.path }))
-    } else {
-      yield* Effect.log(`${styled.green(symbols.check)} Generated ${styled.bold('.envrc.local')}`)
+  const nested: NixGenerateTree[] = []
+  if (deep) {
+    const nestedRoots: AbsoluteDirPath[] = []
+    for (const [name] of Object.entries(config.members)) {
+      const memberPath = getMemberPath({ megarepoRoot: currentRoot, name })
+      const nestedConfigPath = EffectPath.ops.join(
+        memberPath,
+        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+      )
+      const hasNestedConfig = yield* fs
+        .exists(nestedConfigPath)
+        .pipe(Effect.catchAll(() => Effect.succeed(false)))
+      if (hasNestedConfig) {
+        nestedRoots.push(
+          EffectPath.unsafe.absoluteDir(memberPath.endsWith('/') ? memberPath : `${memberPath}/`),
+        )
+      }
     }
-  }).pipe(Effect.withSpan('megarepo/generate/envrc')),
-).pipe(Cli.Command.withDescription('Generate .envrc.local file'))
+
+    if (nestedRoots.length > 0 && !json) {
+      yield* Console.log('')
+      yield* Console.log(`${indent}${styled.bold('Generating nested megarepos...')}`)
+    }
+
+    for (const nestedRoot of nestedRoots) {
+      const nestedResult = yield* generateNixForRoot({
+        outermostRoot,
+        currentRoot: nestedRoot,
+        deep,
+        json,
+        depth: depth + 1,
+        visited,
+      })
+      if (Option.isSome(nestedResult)) {
+        nested.push(nestedResult.value)
+      }
+    }
+  }
+
+  return Option.some({
+    root: currentRoot,
+    result,
+    nested,
+  })
+})
+
+const generateNixCommand = Cli.Command.make(
+  'nix',
+  {
+    json: jsonOption,
+    deep: Cli.Options.boolean('deep').pipe(
+      Cli.Options.withDescription('Recursively generate nested megarepos'),
+      Cli.Options.withDefault(false),
+    ),
+  },
+  ({ json, deep }) =>
+    Effect.gen(function* () {
+      const cwd = yield* Cwd
+      const root = yield* findMegarepoRoot(cwd)
+
+      if (Option.isNone(root)) {
+        if (json) {
+          console.log(JSON.stringify({ error: 'not_found', message: 'No megarepo.json found' }))
+        } else {
+          yield* Console.error(`${styled.red(symbols.cross)} Not in a megarepo`)
+        }
+        return yield* Effect.fail(new Error('Not in a megarepo'))
+      }
+
+      const result = yield* generateNixForRoot({
+        outermostRoot: root.value,
+        currentRoot: root.value,
+        deep,
+        json,
+        depth: 0,
+        visited: new Set(),
+      })
+
+      if (Option.isNone(result)) return
+
+      if (json) {
+        console.log(
+          JSON.stringify({
+            status: 'generated',
+            results: flattenNixGenerateTree(result.value),
+          }),
+        )
+      }
+    }).pipe(Effect.withSpan('megarepo/generate/nix')),
+).pipe(Cli.Command.withDescription('Generate local Nix workspace'))
 
 /** Generate VSCode workspace file */
 const generateVscodeCommand = Cli.Command.make(
@@ -2120,7 +2624,7 @@ const generateVscodeCommand = Cli.Command.make(
         if (json) {
           console.log(JSON.stringify({ error: 'not_found', message: 'No megarepo.json found' }))
         } else {
-          yield* Effect.logError(`${styled.red(symbols.cross)} Not in a megarepo`)
+          yield* Console.error(`${styled.red(symbols.cross)} Not in a megarepo`)
         }
         return yield* Effect.fail(new Error('Not in a megarepo'))
       }
@@ -2145,7 +2649,7 @@ const generateVscodeCommand = Cli.Command.make(
       if (json) {
         console.log(JSON.stringify({ status: 'generated', path: result.path }))
       } else {
-        yield* Effect.log(
+        yield* Console.log(
           `${styled.green(symbols.check)} Generated ${styled.bold('.vscode/megarepo.code-workspace')}`,
         )
       }
@@ -2172,7 +2676,7 @@ const generateSchemaCommand = Cli.Command.make(
         if (json) {
           console.log(JSON.stringify({ error: 'not_found', message: 'No megarepo.json found' }))
         } else {
-          yield* Effect.logError(`${styled.red(symbols.cross)} Not in a megarepo`)
+          yield* Console.error(`${styled.red(symbols.cross)} Not in a megarepo`)
         }
         return yield* Effect.fail(new Error('Not in a megarepo'))
       }
@@ -2195,7 +2699,7 @@ const generateSchemaCommand = Cli.Command.make(
       if (json) {
         console.log(JSON.stringify({ status: 'generated', path: result.path }))
       } else {
-        yield* Effect.log(`${styled.green(symbols.check)} Generated ${styled.bold(output)}`)
+        yield* Console.log(`${styled.green(symbols.check)} Generated ${styled.bold(output)}`)
       }
     }).pipe(Effect.withSpan('megarepo/generate/schema')),
 ).pipe(Cli.Command.withDescription('Generate JSON schema for megarepo.json'))
@@ -2210,7 +2714,7 @@ const generateAllCommand = Cli.Command.make('all', { json: jsonOption }, ({ json
       if (json) {
         console.log(JSON.stringify({ error: 'not_found', message: 'No megarepo.json found' }))
       } else {
-        yield* Effect.logError(`${styled.red(symbols.cross)} Not in a megarepo`)
+        yield* Console.error(`${styled.red(symbols.cross)} Not in a megarepo`)
       }
       return yield* Effect.fail(new Error('Not in a megarepo'))
     }
@@ -2226,16 +2730,27 @@ const generateAllCommand = Cli.Command.make('all', { json: jsonOption }, ({ json
 
     const results: Array<{ generator: string; path: string }> = []
 
-    // Generate envrc (default: enabled)
-    const envrcEnabled = config.generators?.envrc?.enabled !== false
-    if (envrcEnabled) {
-      const envrcResult = yield* generateEnvrc({
-        megarepoRoot: root.value,
-        config,
+    // Generate Nix workspace (default: disabled)
+    const nixEnabled = config.generators?.nix?.enabled === true
+    if (nixEnabled) {
+      const nixResult = yield* generateNixForRoot({
+        outermostRoot: root.value,
+        currentRoot: root.value,
+        deep: false,
+        json,
+        depth: 0,
+        visited: new Set(),
       })
-      results.push({ generator: 'envrc', path: envrcResult.path })
+      if (Option.isSome(nixResult)) {
+        results.push({ generator: 'nix', path: nixResult.value.result.workspaceRoot })
+      }
       if (!json) {
-        yield* Effect.log(`${styled.green(symbols.check)} Generated ${styled.bold('.envrc.local')}`)
+        yield* Console.log(
+          `${styled.green(symbols.check)} Generated ${styled.bold('.envrc.generated.megarepo')}`,
+        )
+        yield* Console.log(
+          `${styled.green(symbols.check)} Generated ${styled.bold('.direnv/megarepo-nix/workspace')}`,
+        )
       }
     }
 
@@ -2248,7 +2763,7 @@ const generateAllCommand = Cli.Command.make('all', { json: jsonOption }, ({ json
       })
       results.push({ generator: 'vscode', path: vscodeResult.path })
       if (!json) {
-        yield* Effect.log(
+        yield* Console.log(
           `${styled.green(symbols.check)} Generated ${styled.bold('.vscode/megarepo.code-workspace')}`,
         )
       }
@@ -2261,7 +2776,7 @@ const generateAllCommand = Cli.Command.make('all', { json: jsonOption }, ({ json
     })
     results.push({ generator: 'schema', path: schemaResult.path })
     if (!json) {
-      yield* Effect.log(
+      yield* Console.log(
         `${styled.green(symbols.check)} Generated ${styled.bold('.vscode/megarepo.schema.json')}`,
       )
     }
@@ -2269,8 +2784,8 @@ const generateAllCommand = Cli.Command.make('all', { json: jsonOption }, ({ json
     if (json) {
       console.log(JSON.stringify({ status: 'generated', results }))
     } else {
-      yield* Effect.log('')
-      yield* Effect.log(styled.dim(`Generated ${results.length} file(s)`))
+      yield* Console.log('')
+      yield* Console.log(styled.dim(`Generated ${results.length} file(s)`))
     }
   }).pipe(Effect.withSpan('megarepo/generate/all')),
 ).pipe(Cli.Command.withDescription('Generate all configured outputs'))
@@ -2279,7 +2794,7 @@ const generateAllCommand = Cli.Command.make('all', { json: jsonOption }, ({ json
 const generateCommand = Cli.Command.make('generate', {}).pipe(
   Cli.Command.withSubcommands([
     generateAllCommand,
-    generateEnvrcCommand,
+    generateNixCommand,
     generateSchemaCommand,
     generateVscodeCommand,
   ]),

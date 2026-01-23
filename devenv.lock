@@ -3,10 +3,10 @@
     "devenv": {
       "locked": {
         "dir": "src/modules",
-        "lastModified": 1768900549,
+        "lastModified": 1768954892,
         "owner": "cachix",
         "repo": "devenv",
-        "rev": "4d7b6ca000c508d7120cb5c7bfd8a250f782439d",
+        "rev": "c6267b9343bbc96c88038765d02e2a2ad2a3b8a0",
         "type": "github"
       },
       "original": {
@@ -108,12 +108,31 @@
         "type": "github"
       }
     },
-    "overeng-beads-public": {
+    "nixpkgs_2": {
       "locked": {
-        "lastModified": 1768836991,
+        "lastModified": 1768886240,
+        "narHash": "sha256-C2TjvwYZ2VDxYWeqvvJ5XPPp6U7H66zeJlRaErJKoEM=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "overeng-beads-public": {
+      "inputs": {
+        "nixpkgs": "nixpkgs_2"
+      },
+      "locked": {
+        "lastModified": 1768978591,
         "owner": "overengineeringstudio",
         "repo": "overeng-beads-public",
-        "rev": "9f7b5dce2b709f4d6a07e67eb28f438118107e78",
+        "rev": "3e39d2bf531e8c48c00221b3a307cc5bd75f920e",
         "type": "github"
       },
       "original": {

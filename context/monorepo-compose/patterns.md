@@ -13,7 +13,8 @@ Each repo must work standalone. It cannot import from or know about other repos 
 
 ### Dependencies via relative paths
 
-Repos depend on each other via `../` paths:
+Repos depend on each other via `../` paths. In a megarepo, repos live under
+`repos/`, so `repos/my-app` can depend on `../effect-utils`.
 
 ```json
 {
@@ -92,32 +93,19 @@ export default tsconfigJSON({
 })
 ```
 
-## Common Workflows
+## Typical Workflow
 
 ### Adding a dependency
 
-1. Add to `genie/repo.ts` catalog (or effect-utils if shared)
-2. Add to package's `package.json.genie.ts`
-3. Run `genie && bun install`
+1. Add to `genie/repo.ts` catalog (or effect-utils if shared).
+2. Add to the package's `package.json.genie.ts`.
+3. Run `genie && bun install`.
 
-### Adding a new repo dependency
+### Adding a new repo dependency (megarepo)
 
-1. Add entry to your repo's `dotdot.json`
-2. Run `dotdot sync` from workspace root
-3. Run `dotdot link` to create symlinks
-4. Use `../repo-name` in your package.json
-
-### Pinning current state
-
-```bash
-dotdot update-revs  # Saves all current HEADs to config files
-```
-
-### Restoring to pinned state
-
-```bash
-dotdot sync  # Clones missing repos, checks out pinned revisions
-```
+1. Add the repo to `megarepo.json`.
+2. Run the megarepo sync command to update symlinks.
+3. Use `../repo-name` in your package.json.
 
 ## Dual Dependencies Pattern (devDeps + peerDeps)
 
@@ -195,17 +183,7 @@ export default packageJson({
 
 **Avoid** these unnecessary workarounds: `preserveSymlinks`, path mappings for Effect, postinstall cleanup scripts, `bunfig.toml` tweaks.
 
-## Troubleshooting
+## Notes
 
-| Problem                      | Solution                                                                              |
-| ---------------------------- | ------------------------------------------------------------------------------------- |
-| "Cannot find package X"      | Run `dotdot link` then `bun install`                                                  |
-| Repo not cloned              | Run `dotdot sync`                                                                     |
-| Wrong revision               | Run `dotdot sync` to checkout pinned revisions                                        |
-| Revision conflict            | Run `dotdot tree --conflicts` to see conflicts                                        |
-| Symlink missing              | Run `dotdot link`                                                                     |
-| Nix can't find files         | Ensure repo is cloned, not just symlinked                                             |
-| Nix flake input is a symlink | Use `git+file:../repo` for nix, not `path:../repo`                                    |
-| Sub-flake purity boundaries  | See `../bun-cli-build/troubleshooting.md`                                             |
-| Effect type incompatibility  | Use dual deps pattern (see above), ensure all packages use same catalog versions      |
-| "Type X is not assignable"   | Usually duplicate Effect types - check nested node_modules for multiple Effect copies |
+- Use the local megarepo workspace path for Nix builds inside a megarepo.
+- If Effect types mismatch, check for duplicate versions in nested `node_modules`.

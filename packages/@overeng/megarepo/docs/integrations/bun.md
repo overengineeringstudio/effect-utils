@@ -22,7 +22,7 @@ Use environment variables to dynamically discover member packages:
 
 ```bash
 # .envrc
-source_env_if_exists .envrc.local
+source_env_if_exists .envrc.generated.megarepo
 
 # MEGAREPO_MEMBERS is now available
 # e.g., "effect,other-lib,local-lib"
@@ -77,18 +77,19 @@ my-megarepo/
 ├── bun.lock              # Root lockfile
 ├── megarepo.json
 ├── megarepo.lock
-├── effect -> ~/.megarepo/.../
-│   └── packages/
-│       ├── effect/
-│       │   └── package.json
-│       └── platform/
-│           └── package.json
-├── other-lib -> ~/.megarepo/.../
-│   └── packages/
-│       └── core/
-│           └── package.json
-└── local-lib/
-    └── package.json
+└── repos/
+    ├── effect -> ~/.megarepo/.../
+    │   └── packages/
+    │       ├── effect/
+    │       │   └── package.json
+    │       └── platform/
+    │           └── package.json
+    ├── other-lib -> ~/.megarepo/.../
+    │   └── packages/
+    │       └── core/
+    │           └── package.json
+    └── local-lib/
+        └── package.json
 ```
 
 ## Tips

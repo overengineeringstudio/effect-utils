@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@overeng/effect-schema-form':
-        specifier: file:../effect-schema-form
-        version: file:../effect-schema-form(effect@3.19.14)(react@19.2.3)
+        specifier: link:../effect-schema-form
+        version: link:../effect-schema-form
     devDependencies:
       '@effect/language-service':
         specifier: 0.69.2
@@ -373,12 +373,6 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
-
-  '@overeng/effect-schema-form@file:../effect-schema-form':
-    resolution: {directory: ../effect-schema-form, type: directory}
-    peerDependencies:
-      effect: ^3.19.14
-      react: ^19.2.3
 
   '@react-aria/autocomplete@3.0.0-rc.4':
     resolution: {integrity: sha512-4bMMVNaCuYDZX9HM4ZNSAImZMcL/orwhLLe818+lyzmSrvGmW9h433PZxTolb0d+FnJVfn1MDY0zEWLiyI86GA==}
@@ -2395,11 +2389,6 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
-
-  '@overeng/effect-schema-form@file:../effect-schema-form(effect@3.19.14)(react@19.2.3)':
-    dependencies:
-      effect: 3.19.14
-      react: 19.2.3
 
   '@react-aria/autocomplete@3.0.0-rc.4(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
     dependencies:

@@ -1,13 +1,13 @@
 # Bun CLI Build Pattern
 
-Reusable Nix builder for Bun-compiled TypeScript CLIs. Designed for dotdot
-workspaces: mk-bun-cli expects a dotdot workspace root and builds a package
-inside it.
+Reusable Nix builder for Bun-compiled TypeScript CLIs. Designed for megarepo
+workspaces and standalone repos: mk-bun-cli expects a workspace root and
+builds a package inside it.
 
 ## Builder
 
 - Path: `nix/workspace-tools/lib/mk-bun-cli.nix`
-- Inputs: `pkgs`, `pkgsUnstable`
+- Inputs: `pkgs`
 - Versioning: reads `packageJsonPath` for base version, appends `+<gitRev>`
 - Typecheck: runs `tsc --project <tsconfig> --noEmit` when `typecheck = true`
 - Default `typecheckTsconfig`: `<packageDir>/tsconfig.json`
@@ -22,7 +22,7 @@ inside it.
 | `name`              | yes      | -                            | Derivation name and default binary name.       |
 | `entry`             | yes      | -                            | CLI entry file relative to `workspaceRoot`.    |
 | `packageDir`        | yes      | -                            | Package directory relative to `workspaceRoot`. |
-| `workspaceRoot`     | yes      | -                            | Dotdot workspace root (flake input or path).   |
+| `workspaceRoot`     | yes      | -                            | Workspace root (flake input or path).          |
 | `bunDepsHash`       | yes      | -                            | Fixed-output hash for bun deps snapshot.       |
 | `binaryName`        | no       | `name`                       | Output binary name.                            |
 | `packageJsonPath`   | no       | `<packageDir>/package.json`  | Used for version extraction.                   |
@@ -32,7 +32,7 @@ inside it.
 | `smokeTestArgs`     | no       | `["--help"]`                 | Arguments for post-build smoke test.           |
 | `smokeTestCwd`      | no       | `null`                       | Relative working directory for the smoke test. |
 | `smokeTestSetup`    | no       | `null`                       | Shell snippet to prepare the smoke test dir.   |
-| `dirty`             | no       | `false`                      | Link local deps from the bun deps snapshot.    |
+| `dirty`             | no       | `false`                      | Optional local-deps overlay (rarely needed).   |
 
 ## CLI Version Pattern
 
@@ -92,7 +92,7 @@ stamp in the current shell.
 ```nix
 let
   mkBunCli = import ../../../../nix/workspace-tools/lib/mk-bun-cli.nix {
-    inherit pkgs pkgsUnstable;
+    inherit pkgs;
   };
 in
 mkBunCli {
@@ -114,7 +114,7 @@ parent’s commit:
 ```nix
 let
   mkBunCli = import "${effect-utils}/nix/workspace-tools/lib/mk-bun-cli.nix" {
-    inherit pkgs pkgsUnstable;
+    inherit pkgs;
   };
   gitRev = self.sourceInfo.dirtyShortRev or self.sourceInfo.shortRev or self.sourceInfo.rev or "unknown";
 in
@@ -123,7 +123,7 @@ in
     name = "my-cli";
     entry = "app/src/cli.ts";
     packageDir = "app";
-    workspaceRoot = inputs.workspace;
+    workspaceRoot = self;
     bunDepsHash = "sha256-...";
     inherit gitRev;
   };
@@ -132,23 +132,24 @@ in
 
 ## Local changes
 
-Use a dotdot workspace root as a `path:` input and pass it to `workspaceRoot`.
-For local edits, set `dirty = true` so mk-bun-cli overlays local deps on top of
-the bun deps snapshot. When using a `path:` input, refresh the input to pick up
-dirty changes:
+Inside a megarepo, use the generated local workspace path to avoid slow `path:.`
+hashing and keep builds pure. Build from the local workspace flake instead of
+the repo root:
 
 ```bash
-nix flake update workspace
-nix build .#my-cli --override-input workspace path:/path/to/workspace
+nix build --no-write-lock-file --no-link \\
+  "path:$MEGAREPO_NIX_WORKSPACE#packages.<system>.my-repo.my-cli"
 ```
+
+For standalone repos (outside a megarepo), use `path:.#my-cli` as usual.
 
 ## Notes
 
-- `bun.lock` must exist in `packageDir` (dotdot expects self-contained packages).
-- Local file dependencies must also include `bun.lock`; dirty builds install their
-  snapshots into the bun deps output and link them during the build.
-- mk-bun-cli assumes the dotdot workspace layout already exists; it does not run
-  `dotdot link` or create workspace symlinks for you.
+- `bun.lock` must exist in `packageDir` (each package is self-contained).
+- Local file dependencies must also include `bun.lock`; mk-bun-cli snapshots
+  their dependencies to keep builds deterministic.
+- mk-bun-cli assumes the workspace layout already exists; it does not create
+  workspace symlinks for you.
 - Package-local flakes in effect-utils are not the git root, so `sourceInfo.*`
   may be `none`.
 - When in doubt, pass `gitRev` from the calling repo’s flake (`self.sourceInfo`).

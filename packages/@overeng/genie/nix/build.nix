@@ -1,10 +1,9 @@
 # Nix derivation that builds genie CLI binary.
 # Uses bun build --compile for native platform.
-# TODO: Remove pkgsUnstable param once mk-bun-cli.nix is updated to use single pkgs
-{ pkgs, pkgsUnstable ? pkgs, src, gitRev ? "unknown", dirty ? false }:
+{ pkgs, src, gitRev ? "unknown", dirty ? false }:
 
 let
-  mkBunCli = import ../../../../nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs pkgsUnstable; };
+  mkBunCli = import ../../../../nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs; };
 in
 mkBunCli {
   name = "genie";

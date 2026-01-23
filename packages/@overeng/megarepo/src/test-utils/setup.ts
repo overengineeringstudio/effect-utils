@@ -210,6 +210,12 @@ export const createWorkspace = (fixture?: WorkspaceFixture) =>
       )
       yield* fs.makeDirectory(storePath, { recursive: true })
 
+      const membersRoot = EffectPath.ops.join(
+        workspacePath,
+        EffectPath.unsafe.relativeDir('repos/'),
+      )
+      yield* fs.makeDirectory(membersRoot, { recursive: true })
+
       for (const repoFixture of fixture.repos) {
         const repoPath = yield* createRepo({ basePath: storePath, fixture: repoFixture })
         repoPaths[repoFixture.name] = repoPath
@@ -217,7 +223,7 @@ export const createWorkspace = (fixture?: WorkspaceFixture) =>
         // Create symlink in workspace
         // Note: fs.symlink doesn't handle trailing slashes well, so strip them
         const symlinkPath = EffectPath.ops.join(
-          workspacePath,
+          membersRoot,
           EffectPath.unsafe.relativeFile(repoFixture.name),
         )
         yield* fs.symlink(repoPath.slice(0, -1), symlinkPath)

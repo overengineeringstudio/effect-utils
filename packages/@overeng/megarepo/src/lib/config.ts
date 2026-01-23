@@ -3,7 +3,7 @@
  *
  * A megarepo uses a single `megarepo.json` config file that declares:
  * - Members: repos to include (via unified source string format)
- * - Generators: optional config file generators (envrc, vscode, flake, devenv)
+ * - Generators: optional config file generators (nix, vscode)
  *
  * Source string format:
  * - GitHub shorthand: "owner/repo" or "owner/repo#ref"
@@ -35,14 +35,6 @@ export { EffectPath }
 // Generator Configuration
 // =============================================================================
 
-/** envrc generator configuration */
-export class EnvrcGeneratorConfig extends Schema.Class<EnvrcGeneratorConfig>(
-  'EnvrcGeneratorConfig',
-)({
-  /** Enable/disable the generator (default: true) */
-  enabled: Schema.optional(Schema.Boolean),
-}) {}
-
 /** VSCode workspace generator configuration */
 export class VscodeGeneratorConfig extends Schema.Class<VscodeGeneratorConfig>(
   'VscodeGeneratorConfig',
@@ -53,30 +45,18 @@ export class VscodeGeneratorConfig extends Schema.Class<VscodeGeneratorConfig>(
   exclude: Schema.optional(Schema.Array(Schema.String)),
 }) {}
 
-/** Nix flake generator configuration */
-export class FlakeGeneratorConfig extends Schema.Class<FlakeGeneratorConfig>(
-  'FlakeGeneratorConfig',
-)({
+/** Nix workspace generator configuration */
+export class NixGeneratorConfig extends Schema.Class<NixGeneratorConfig>('NixGeneratorConfig')({
   /** Enable/disable the generator (default: false) */
   enabled: Schema.optional(Schema.Boolean),
-  /** Members to skip in flake */
-  skip: Schema.optional(Schema.Array(Schema.String)),
-}) {}
-
-/** devenv generator configuration */
-export class DevenvGeneratorConfig extends Schema.Class<DevenvGeneratorConfig>(
-  'DevenvGeneratorConfig',
-)({
-  /** Enable/disable the generator (default: false) */
-  enabled: Schema.optional(Schema.Boolean),
+  /** Workspace directory (relative to megarepo root) */
+  workspaceDir: Schema.optional(Schema.String),
 }) {}
 
 /** All generator configurations */
 export class GeneratorsConfig extends Schema.Class<GeneratorsConfig>('GeneratorsConfig')({
-  envrc: Schema.optional(EnvrcGeneratorConfig),
+  nix: Schema.optional(NixGeneratorConfig),
   vscode: Schema.optional(VscodeGeneratorConfig),
-  flake: Schema.optional(FlakeGeneratorConfig),
-  devenv: Schema.optional(DevenvGeneratorConfig),
 }) {}
 
 // =============================================================================
@@ -114,15 +94,40 @@ export const CONFIG_FILE_NAME = 'megarepo.json'
 /** Default store location */
 export const DEFAULT_STORE_PATH = '~/.megarepo'
 
+/** Directory holding member symlinks/materialized repos in a megarepo */
+export const MEMBER_ROOT_DIR = 'repos'
+
 /** Environment variable names */
 export const ENV_VARS = {
-  /** Path to the megarepo root */
-  ROOT: 'MEGAREPO_ROOT',
+  /** Path to the outermost megarepo root */
+  ROOT_OUTERMOST: 'MEGAREPO_ROOT_OUTERMOST',
+  /** Path to the nearest megarepo root */
+  ROOT_NEAREST: 'MEGAREPO_ROOT_NEAREST',
   /** Global store location */
   STORE: 'MEGAREPO_STORE',
   /** Comma-separated list of member names */
   MEMBERS: 'MEGAREPO_MEMBERS',
+  /** Local Nix workspace path for generated flake */
+  NIX_WORKSPACE: 'MEGAREPO_NIX_WORKSPACE',
 } as const
+
+// =============================================================================
+// Path Helpers
+// =============================================================================
+
+/** Get the members root directory within a megarepo */
+export const getMembersRoot = (megarepoRoot: AbsoluteDirPath): AbsoluteDirPath =>
+  EffectPath.ops.join(megarepoRoot, EffectPath.unsafe.relativeDir(`${MEMBER_ROOT_DIR}/`))
+
+/** Get the path to a member within a megarepo */
+export const getMemberPath = ({
+  megarepoRoot,
+  name,
+}: {
+  megarepoRoot: AbsoluteDirPath
+  name: string
+}): AbsoluteDirPath =>
+  EffectPath.ops.join(megarepoRoot, EffectPath.unsafe.relativeDir(`${MEMBER_ROOT_DIR}/${name}/`))
 
 // =============================================================================
 // JSON Schema Generation

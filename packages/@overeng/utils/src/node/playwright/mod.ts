@@ -79,4 +79,8 @@ export {
 export * as Wait from './wait.ts'
 export { PwWaitTimeoutError } from './wait.ts'
 /** Playwright config factory for browser integration tests. */
-export { createPlaywrightConfig, type PlaywrightConfigOptions, type WebServerConfig } from './config/mod.ts'
+export {
+  createPlaywrightConfig,
+  type PlaywrightConfigOptions,
+  type WebServerConfig,
+} from './config/mod.ts'

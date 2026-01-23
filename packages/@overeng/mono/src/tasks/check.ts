@@ -19,9 +19,6 @@ import { resolveLocalTsc } from './typescript.ts'
 export const checkAllWithTaskSystem = Effect.fn('checkAllWithTaskSystem')(function* (
   config: CheckTasksConfig,
 ) {
-  // Task IDs for type safety
-  type CheckTaskId = 'genie' | 'typecheck' | 'lint' | 'test'
-
   // Define individual tasks
   const genieTask = task({
     id: 'genie' as const,

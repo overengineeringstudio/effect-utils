@@ -13,12 +13,15 @@ dist
 
 # Direnv
 .direnv
-.envrc.local
+.envrc.*
+repos/
 
 # Devenv
 .devenv/
 .devenv.lock
 devenv.local.nix
+# TODO(devenv2): remove stub once devenv 2 fixes generated .devenv.flake.nix handling:
+# https://github.com/cachix/devenv/issues/2392
 /.devenv.flake.nix
 result
 .pre-commit-config.yaml

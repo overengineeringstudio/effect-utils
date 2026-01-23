@@ -24,9 +24,6 @@ export default packageJson({
     ...effectLspScripts,
     postinstall: patchPostinstall(),
   },
-  bin: {
-    mr: './bin/mr.ts',
-  },
   exports: {
     '.': './src/mod.ts',
     './cli': './src/cli.ts',

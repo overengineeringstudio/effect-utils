@@ -74,19 +74,27 @@ const defaultProgressOptions: Required<ProgressOptions> = {
  * @example
  * ```ts
  * // Basic usage
- * console.log(progress(45, 100))
+ * console.log(progress({ current: 45, total: 100 }))
  * // ████████████░░░░░░░░
  *
  * // With custom width
- * console.log(progress(45, 100, { width: 10 }))
+ * console.log(progress({ current: 45, total: 100, options: { width: 10 } }))
  * // █████░░░░░
  *
  * // In a status line
- * console.log(`Downloading ${progress(45, 100)} 45%`)
+ * console.log(`Downloading ${progress({ current: 45, total: 100 })} 45%`)
  * // Downloading ████████████░░░░░░░░ 45%
  * ```
  */
-export const progress = (current: number, total: number, options?: ProgressOptions): string => {
+export const progress = ({
+  current,
+  total,
+  options,
+}: {
+  current: number
+  total: number
+  options?: ProgressOptions
+}): string => {
   const opts = { ...defaultProgressOptions, ...options }
   const ratio = Math.min(Math.max(current / Math.max(total, 1), 0), 1)
   const filledCount = Math.round(ratio * opts.width)

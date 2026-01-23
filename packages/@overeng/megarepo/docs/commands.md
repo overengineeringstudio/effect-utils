@@ -39,7 +39,7 @@ mr sync [--frozen] [--deep] [--dry-run]
    - If NOT in lock → resolve ref from remote, add to lock
 2. Clone bare repo to store if needed
 3. Create worktree at locked commit if needed
-4. Create symlink from workspace to worktree
+4. Create symlink under `repos/` pointing to the worktree
 5. Write updated lock file
 
 **`--frozen` mode:**
@@ -132,7 +132,7 @@ Print the megarepo root directory.
 mr root [--json]
 ```
 
-Searches up from current directory for `megarepo.json`. Respects `MEGAREPO_ROOT` if set.
+Searches up from current directory for `megarepo.json`.
 
 ### `mr status`
 
@@ -167,8 +167,10 @@ mr env [--shell bash|zsh|fish] [--json]
 Output:
 
 ```bash
-export MEGAREPO_ROOT="/path/to/megarepo"
+export MEGAREPO_ROOT_OUTERMOST="/path/to/megarepo"
+export MEGAREPO_ROOT_NEAREST="/path/to/megarepo"
 export MEGAREPO_MEMBERS="effect,other-lib"
+export MEGAREPO_NIX_WORKSPACE="/path/to/megarepo/.direnv/megarepo-nix/workspace"
 ```
 
 ## Exec Command
@@ -243,16 +245,16 @@ mr generate all [--json]
 
 Generates based on `generators` config:
 
-- `.envrc.local` (default: enabled)
+- `.envrc.generated.megarepo` + `.direnv/megarepo-nix/workspace` (when `generators.nix.enabled = true`)
 - `.vscode/megarepo.code-workspace` (default: disabled)
 - `.vscode/megarepo.schema.json` (always)
 
-### `mr generate envrc`
+### `mr generate nix`
 
-Generate `.envrc.local` for direnv.
+Generate the local Nix workspace and `.envrc.generated.megarepo`.
 
 ```bash
-mr generate envrc [--json]
+mr generate nix [--json]
 ```
 
 ### `mr generate vscode`

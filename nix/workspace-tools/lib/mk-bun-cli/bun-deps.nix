@@ -1,5 +1,4 @@
 { pkgs
-, pkgsUnstable
 , name
 , bunDepsHash
 , stageWorkspace
@@ -16,7 +15,7 @@ if bunDepsHash == null
 then throw "mk-bun-cli: bunDepsHash is required"
 else pkgs.stdenvNoCC.mkDerivation {
   name = "${name}-bun-deps";
-  nativeBuildInputs = [ pkgsUnstable.bun pkgs.cacert ];
+  nativeBuildInputs = [ pkgs.bun pkgs.cacert ];
 
   outputHashMode = "recursive";
   outputHashAlgo = "sha256";
@@ -76,7 +75,7 @@ else pkgs.stdenvNoCC.mkDerivation {
       exit 1
     fi
     if [ ! -f "$package_path/bun.lock" ]; then
-      echo "mk-bun-cli: missing bun.lock in ${packageDir} (dotdot expects self-contained packages)" >&2
+      echo "mk-bun-cli: missing bun.lock in ${packageDir} (workspace expects self-contained packages)" >&2
       exit 1
     fi
 

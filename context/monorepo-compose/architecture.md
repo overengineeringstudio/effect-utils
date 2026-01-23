@@ -1,24 +1,27 @@
 # Architecture
 
-## Workspace Structure
+## Workspace Structure (Megarepo)
 
 ```
-my-workspace/                     <- dotdot workspace
-├── dotdot-root.json              <- Workspace marker (auto-generated)
-├── my-app/                       <- Your main repo
-│   ├── .git/
-│   ├── dotdot.json               <- Declares dependencies
-│   ├── genie/repo.ts             <- Composes catalog from dependencies
-│   ├── package.json
-│   └── src/
-├── effect-utils/                 <- Dependency repo (flat peer)
-│   ├── .git/
-│   ├── genie/repo.ts             <- Base catalog
-│   └── packages/@overeng/*/
-└── @overeng/                     <- Symlinks to nested packages
-    ├── utils -> ../effect-utils/packages/@overeng/utils
-    └── genie -> ../effect-utils/packages/@overeng/genie
+my-workspace/                                  <- megarepo root
+├── megarepo.json                              <- repo list
+├── repos/
+│   ├── my-app/                                <- repo symlink
+│   │   ├── .git/
+│   │   ├── package.json
+│   │   └── src/
+│   └── effect-utils/                          <- repo symlink
+│       ├── .git/
+│       ├── genie/repo.ts
+│       └── packages/@overeng/*/
+└── .direnv/megarepo-nix/workspace/            <- local Nix workspace
+    ├── flake.nix
+    ├── my-app/
+    └── effect-utils/
 ```
+
+Repo symlinks point into the megarepo store (outside the workspace), while the
+local Nix workspace provides a filtered copy for fast `nix` eval/builds.
 
 ## Composition Hierarchy
 
@@ -38,44 +41,24 @@ my-workspace/                     <- dotdot workspace
 └───────────────────┘ └───────────────┘ └─────────────────┘
 ```
 
-Dependencies flow **upward**: repos import from their dependencies via `../` paths.
-
-## How Symlinks Work
-
-When a dependency has nested packages (like effect-utils with `packages/@overeng/*`), dotdot creates symlinks at the workspace root:
-
-1. `dotdot sync` clones the dependency repo
-2. `dotdot link` creates symlinks from `packages` config
-3. Your repo uses `../@overeng/utils` instead of `../effect-utils/packages/@overeng/utils`
-
-This simplifies path dependencies:
-
-```json
-{
-  "dependencies": {
-    "@overeng/utils": "../@overeng/utils"
-  }
-}
-```
+Dependencies flow **upward**: repos import from their dependencies via `../` paths
+inside `repos/` (for example `repos/my-app` depends on `../effect-utils`).
 
 ## Multi-level Composition
 
-When lib-a and lib-b both depend on effect-utils:
+When multiple repos depend on effect-utils:
 
 ```
 my-workspace/
-├── dotdot-root.json
-├── my-app/
-│   └── dotdot.json         <- Declares effect-utils, lib-a, lib-b
-├── lib-a/
-│   └── dotdot.json         <- Declares effect-utils
-├── lib-b/
-│   └── dotdot.json         <- Declares effect-utils
-├── effect-utils/           <- Only one copy, deduplicated
-└── @overeng/               <- Symlinks from effect-utils
+├── megarepo.json
+├── repos/
+│   ├── my-app/
+│   ├── lib-a/
+│   ├── lib-b/
+│   └── effect-utils/       <- Only one copy, deduplicated
 ```
 
-dotdot ensures:
+The megarepo ensures:
 
 - Only one copy of each repo exists in the workspace
 - Revision conflicts are detected and reported

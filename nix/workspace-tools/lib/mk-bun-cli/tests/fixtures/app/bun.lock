@@ -1,0 +1,15 @@
+{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "app-cli",
+      "dependencies": {
+        "shared-lib": "./shared-lib",
+      },
+    },
+  },
+  "packages": {
+    "shared-lib": ["shared-lib@file:shared-lib", {}],
+  }
+}

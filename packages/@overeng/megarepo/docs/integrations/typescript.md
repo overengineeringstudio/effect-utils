@@ -47,9 +47,9 @@ Configure path aliases for cleaner imports.
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@effect/*": ["./effect/packages/*/src"],
-      "@other/*": ["./other-lib/packages/*/src"],
-      "@local/*": ["./local-lib/src/*"]
+      "@effect/*": ["./repos/effect/packages/*/src"],
+      "@other/*": ["./repos/other-lib/packages/*/src"],
+      "@local/*": ["./repos/local-lib/src/*"]
     }
   }
 }
@@ -174,13 +174,14 @@ Create a shared types package that other members import:
 
 ```
 my-megarepo/
-├── shared-types/
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── src/
-│       └── index.ts
-├── app/  # imports from @my-org/shared-types
-└── api/  # imports from @my-org/shared-types
+└── repos/
+    ├── shared-types/
+    │   ├── package.json
+    │   ├── tsconfig.json
+    │   └── src/
+    │       └── index.ts
+    ├── app/  # imports from @my-org/shared-types
+    └── api/  # imports from @my-org/shared-types
 ```
 
 ### Declaration Files

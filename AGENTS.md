@@ -18,7 +18,7 @@ The `mono` CLI is only used for `mono nix *` and `mono context *` commands.
 
 If tools aren't directly in `$PATH`, prefix commands with `direnv exec .` (e.g., `direnv exec . dt ts:check`).
 
-We're using dotdot for repo management. We're using `bun` (not `pnpm`) as the package manager and `devenv` to manage the development environment.
+We're using megarepo for repo management. We're using `bun` (not `pnpm`) as the package manager and `devenv` to manage the development environment.
 
 # Genie (Config File Generation)
 

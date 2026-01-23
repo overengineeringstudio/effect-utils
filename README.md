@@ -116,7 +116,7 @@ Key features:
 
 ```bash
 mono nix build --package genie
-mono nix build --package dotdot
+mono nix build --package mono
 mono nix reload
 mono nix status
 mono nix status --scope flake
@@ -126,7 +126,7 @@ After `bun.lock` changes:
 
 ```bash
 mono nix hash --package genie
-mono nix hash --package dotdot
+mono nix hash --package mono
 ```
 
 ## Quick Start

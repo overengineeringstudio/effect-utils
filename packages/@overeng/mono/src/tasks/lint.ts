@@ -4,7 +4,6 @@
 
 import { Effect, Exit } from 'effect'
 
-import type { CommandError, GenieCoverageError } from '../errors.ts'
 import { runCommand } from '../utils.ts'
 import { formatCheck, formatFix } from './format.ts'
 import { checkGenieCoverage } from './genie.ts'

@@ -414,7 +414,7 @@ describe('megarepo.json parsing', () => {
         const config: typeof MegarepoConfig.Type = {
           members: { lib: 'owner/lib' },
           generators: {
-            envrc: { enabled: true },
+            nix: { enabled: true },
             vscode: { enabled: true, exclude: ['large-repo'] },
           },
         }
@@ -422,7 +422,7 @@ describe('megarepo.json parsing', () => {
         yield* fs.writeFileString(configPath, content + '\n')
 
         const parsed = yield* readConfig(workDir)
-        expect(parsed.generators?.envrc?.enabled).toBe(true)
+        expect(parsed.generators?.nix?.enabled).toBe(true)
         expect(parsed.generators?.vscode?.enabled).toBe(true)
         expect(parsed.generators?.vscode?.exclude).toEqual(['large-repo'])
       }),

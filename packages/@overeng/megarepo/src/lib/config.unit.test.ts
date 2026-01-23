@@ -27,9 +27,11 @@ describe('config', () => {
     })
 
     it('should have correct environment variable names', () => {
-      expect(ENV_VARS.ROOT).toBe('MEGAREPO_ROOT')
+      expect(ENV_VARS.ROOT_OUTERMOST).toBe('MEGAREPO_ROOT_OUTERMOST')
+      expect(ENV_VARS.ROOT_NEAREST).toBe('MEGAREPO_ROOT_NEAREST')
       expect(ENV_VARS.STORE).toBe('MEGAREPO_STORE')
       expect(ENV_VARS.MEMBERS).toBe('MEGAREPO_MEMBERS')
+      expect(ENV_VARS.NIX_WORKSPACE).toBe('MEGAREPO_NIX_WORKSPACE')
     })
   })
 
@@ -436,14 +438,14 @@ describe('config', () => {
       const input = {
         members: {},
         generators: {
+          nix: { enabled: true },
           vscode: { enabled: true, exclude: ['docs'] },
-          flake: { skip: ['internal'] },
         },
       }
       const result = Schema.decodeUnknownSync(MegarepoConfig)(input)
+      expect(result.generators?.nix?.enabled).toBe(true)
       expect(result.generators?.vscode?.enabled).toBe(true)
       expect(result.generators?.vscode?.exclude).toEqual(['docs'])
-      expect(result.generators?.flake?.skip).toEqual(['internal'])
     })
 
     it('should decode config with $schema field', () => {

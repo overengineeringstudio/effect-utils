@@ -21,6 +21,6 @@ export default packageJson({
     ),
   },
   devDependencies: {
-    ...catalog.pick('@types/node', 'typescript'),
+    ...catalog.pick('@types/bun', '@types/node', 'typescript'),
   },
 })

@@ -40,6 +40,7 @@ let
     lint-oxc = import ./nix/devenv-modules/tasks/lint-oxc.nix;
     bun = import ./nix/devenv-modules/tasks/bun.nix;
     pnpm = import ./nix/devenv-modules/tasks/pnpm.nix;
+    megarepo = ./nix/devenv-modules/tasks/megarepo.nix;
     nix-cli = import ./nix/devenv-modules/tasks/nix-cli.nix;
   };
 
@@ -105,6 +106,7 @@ in
     # Shared task modules
     taskModules.genie
     (taskModules.ts {})
+    taskModules.megarepo
     (taskModules.check {})
     (taskModules.clean { packages = allPackages; })
     # Per-package pnpm install tasks

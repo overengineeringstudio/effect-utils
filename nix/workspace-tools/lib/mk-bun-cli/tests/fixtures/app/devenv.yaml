@@ -3,6 +3,3 @@ inputs:
     url: github:NixOS/nixpkgs/nixos-unstable
   effect-utils:
     url: path:../effect-utils
-  workspace:
-    url: path:..
-    flake: false

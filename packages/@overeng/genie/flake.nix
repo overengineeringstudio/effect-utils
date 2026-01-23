@@ -2,8 +2,7 @@
   description = "Genie CLI for generating config files from .genie.ts templates";
 
   inputs = {
-    workspace.url = "github:overengineeringstudio/effect-utils?dir=nix/workspace-flake";
-    nixpkgs.follows = "workspace/nixpkgs";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
@@ -15,7 +14,6 @@
       {
         packages.default = import ./nix/build.nix {
           pkgs = import nixpkgs { inherit system; };
-          pkgsUnstable = import nixpkgs { inherit system; };
           src = ../../..;  # effect-utils root (for bun.lock, package.json)
           inherit gitRev;
         };

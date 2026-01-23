@@ -24,7 +24,7 @@ A git repository containing a `megarepo.json` file. The megarepo:
 
 A repository declared in `megarepo.json`. Members are:
 
-- Symlinked from the global store into the megarepo (for remote sources)
+- Symlinked from the global store into `repos/` (for remote sources)
 - Materialized directly (for local path sources)
 - Self-contained and work independently
 - Not aware they're part of a megarepo
@@ -82,11 +82,12 @@ Remote sources (`owner/repo`, `https://...`) are:
 
 - Cloned as bare repos to the store
 - Checked out as worktrees per ref
-- Symlinked into the megarepo
+- Symlinked into the megarepo under `repos/`
 
 ```
 megarepo/
-  effect -> ~/.megarepo/github.com/effect-ts/effect/refs/heads/main/
+  repos/
+    effect -> ~/.megarepo/github.com/effect-ts/effect/refs/heads/main/
 ```
 
 - Shared across all megarepos using the same repo+ref
@@ -103,9 +104,10 @@ Local paths (`./...`, `../...`) are:
 
 ```
 megarepo/
-  local-lib/                    # actual directory, not symlink
-    .git/
-    src/
+  repos/
+    local-lib/                  # actual directory, not symlink
+      .git/
+      src/
 ```
 
 - Each megarepo has its own independent copy
@@ -115,22 +117,45 @@ megarepo/
 
 ## Environment Variables
 
-| Variable           | Description                          | Default                   |
-| ------------------ | ------------------------------------ | ------------------------- |
-| `MEGAREPO_ROOT`    | Path to the megarepo root            | (auto-detected from $PWD) |
-| `MEGAREPO_STORE`   | Global store location                | `~/.megarepo`             |
-| `MEGAREPO_MEMBERS` | Comma-separated list of member names | (computed from config)    |
+### Core Environment Variables
 
-### `MEGAREPO_ROOT` Behavior
+These are set by `mr` itself and are available in all megarepos:
 
-Commands auto-detect the megarepo root by searching up from `$PWD` for `megarepo.json`. The search walks all the way to the filesystem root and returns the **outermost** megarepo found (closest to `/`). If `MEGAREPO_ROOT` is set, it takes precedence over auto-detection.
+| Variable                  | Description                          | Default                   |
+| ------------------------- | ------------------------------------ | ------------------------- |
+| `MEGAREPO_ROOT_OUTERMOST` | Path to the outermost megarepo root  | (auto-detected from $PWD) |
+| `MEGAREPO_ROOT_NEAREST`   | Path to the nearest megarepo root    | (auto-detected from $PWD) |
+| `MEGAREPO_STORE`          | Global store location                | `~/.megarepo`             |
+| `MEGAREPO_MEMBERS`        | Comma-separated list of member names | (computed from config)    |
 
-**Nested Megarepos:** When megarepo A contains megarepo B as a member:
+### Generator-Added Environment Variables
 
-- If working inside the nested B, auto-detection finds A (outermost wins)
-- If B is checked out standalone (not as member of another megarepo), auto-detection finds B
+Generators act like plugins. Their env vars are only set when the generator
+is enabled and `mr generate` has been run.
 
-This "outer wins" rule ensures:
+#### Nix Generator
+
+| Variable                 | Description                         | Default                |
+| ------------------------ | ----------------------------------- | ---------------------- |
+| `MEGAREPO_NIX_WORKSPACE` | Path to the generated Nix workspace | (computed from config) |
+
+### Root discovery behavior
+
+Commands auto-detect megarepo roots by searching up from `$PWD` for `megarepo.json`.
+The search captures both:
+
+- **Outermost root**: the highest `megarepo.json` in the directory tree (closest to `/`).
+- **Nearest root**: the first `megarepo.json` found when walking upward from `$PWD`.
+
+The `mr env` command and generators expose both values via
+`MEGAREPO_ROOT_OUTERMOST` and `MEGAREPO_ROOT_NEAREST` for tooling to consume.
+
+**Nested megarepos:** When megarepo A contains megarepo B as a member:
+
+- If working inside nested B, the nearest root is B and the outermost root is A.
+- If B is checked out standalone (not as a member), both roots resolve to B.
+
+The outermost-root rule ensures:
 
 - Consistent environment across the entire development context
 - No accidental scope changes when navigating into nested repos
@@ -138,9 +163,8 @@ This "outer wins" rule ensures:
 
 **Edge Cases:**
 
-- If `MEGAREPO_ROOT` is set but the directory no longer contains `megarepo.json`: commands should error
-- If `MEGAREPO_ROOT` points to a path that is itself inside another megarepo: the explicit setting wins (explicit > automatic)
-- Symlinked members: When entering a symlinked member, `MEGAREPO_ROOT` should still point to the outer megarepo
+- If either root points to a path that no longer contains `megarepo.json`, consumers should treat it as invalid.
+- Symlinked members: when entering a symlinked member, the outermost root should still point to the top-level megarepo.
 
 ---
 
@@ -202,19 +226,13 @@ interface MegarepoConfig {
 }
 
 interface GeneratorsConfig {
-  envrc?: {
-    enabled?: boolean // default: true
+  nix?: {
+    enabled?: boolean // default: false
+    workspaceDir?: string // default: .direnv/megarepo-nix/workspace
   }
   vscode?: {
     enabled?: boolean // default: false
     exclude?: string[] // members to exclude from workspace
-  }
-  flake?: {
-    enabled?: boolean // default: false
-    skip?: string[] // members to skip in flake
-  }
-  devenv?: {
-    enabled?: boolean // default: false
   }
 }
 ```
@@ -281,12 +299,12 @@ The megarepo name is derived automatically (no `name` field in config):
 Megarepo uses **absolute symlinks** for all member links:
 
 ```
-my-megarepo/effect-utils -> /Users/dev/.megarepo/github.com/overeng/effect-utils/refs/heads/main
+my-megarepo/repos/effect-utils -> /Users/dev/.megarepo/github.com/overeng/effect-utils/refs/heads/main
 ```
 
 **Rationale:**
 
-- Symlinks are never committed to git (gitignored)
+- The `repos/` directory is gitignored so symlinks are never committed
 - Each machine has its own store location anyway
 - Absolute paths are simpler and avoid path resolution complexity
 - No issues with moving the megarepo directory
@@ -411,8 +429,10 @@ Print environment variables for shell integration.
 ```bash
 mr env [--shell bash|zsh|fish]
 # Outputs:
-# export MEGAREPO_ROOT=/path/to/megarepo
+# export MEGAREPO_ROOT_OUTERMOST=/path/to/megarepo
+# export MEGAREPO_ROOT_NEAREST=/path/to/megarepo
 # export MEGAREPO_MEMBERS=effect-utils,livestore,...
+# export MEGAREPO_NIX_WORKSPACE=/path/to/megarepo/.direnv/megarepo-nix/workspace
 ```
 
 #### `mr ls`
@@ -547,12 +567,13 @@ my-megarepo/                    # Git repo (the megarepo itself)
 ├── .git/
 ├── megarepo.json
 ├── megarepo.lock               # Committed for CI reproducibility
-├── .envrc.local                # Generated by envrc generator
-├── effect -> ~/.megarepo/github.com/effect-ts/effect/refs/heads/main/
-├── local-lib/                  # Local path: actual directory, not symlink
-│   ├── .git/
-│   └── ...
-└── api-gateway -> ~/.megarepo/github.com/shareup/api-gateway/refs/tags/v2.0.0/
+├── .envrc.generated.megarepo                # Generated by nix generator
+└── repos/
+    ├── effect -> ~/.megarepo/github.com/effect-ts/effect/refs/heads/main/
+    ├── local-lib/              # Local path: actual directory, not symlink
+    │   ├── .git/
+    │   └── ...
+    └── api-gateway -> ~/.megarepo/github.com/shareup/api-gateway/refs/tags/v2.0.0/
 ```
 
 ### Nested Megarepos
@@ -597,7 +618,7 @@ mr sync --deep   # Recursive - includes nested megarepos
 ### Symlink Strategy
 
 - Symlinks are absolute paths
-- Point from megarepo directory to store worktree
+- Point from `repos/` to the store worktree
 - Only for remote sources (local paths are materialized)
 
 ### Conflict Resolution
@@ -614,23 +635,30 @@ mr sync --deep   # Recursive - includes nested megarepos
 
 | Generator | Output Path                                  |
 | --------- | -------------------------------------------- |
-| envrc     | `<megarepo>/.envrc.local`                    |
+| nix       | `<megarepo>/.envrc.generated.megarepo`       |
+| nix       | `<megarepo>/.direnv/megarepo-nix/workspace`  |
 | VSCode    | `<megarepo>/.vscode/megarepo.code-workspace` |
-| Nix Flake | `<megarepo>/flake.nix`                       |
-| devenv    | `<megarepo>/devenv.nix`                      |
 
-### envrc Generator
+### nix Generator
 
-Generates environment variable configuration for direnv integration.
+Generates a local Nix workspace and `.envrc.generated.megarepo` for direnv integration.
 
-**Output (`.envrc.local`):**
+**Output (`.envrc.generated.megarepo`):**
 
 ```bash
 # Generated by megarepo - do not edit manually
-# Regenerate with: mr sync
+# Regenerate with: mr generate nix
 
-export MEGAREPO_ROOT="/Users/dev/my-megarepo"
+export MEGAREPO_ROOT_OUTERMOST="/Users/dev/my-megarepo"
+export MEGAREPO_ROOT_NEAREST="/Users/dev/my-megarepo"
 export MEGAREPO_MEMBERS="effect-utils,livestore,api-gateway"
+export MEGAREPO_NIX_WORKSPACE="/Users/dev/my-megarepo/.direnv/megarepo-nix/workspace"
+```
+
+**Workspace flake usage:**
+
+```bash
+nix build "path:$MEGAREPO_NIX_WORKSPACE#packages.<system>.effect-utils.genie"
 ```
 
 **Integration pattern:**
@@ -639,7 +667,7 @@ The megarepo's `.envrc` (committed to git) should source the generated file:
 
 ```bash
 # .envrc
-source_env_if_exists .envrc.local
+source_env_if_exists .envrc.generated.megarepo
 
 # Rest of megarepo's devenv/nix setup
 use devenv
@@ -651,11 +679,11 @@ use devenv
 
 ### With direnv (recommended)
 
-The envrc generator creates `.envrc.local` which sets environment variables. Source it from your `.envrc`:
+The nix generator creates `.envrc.generated.megarepo` which sets environment variables. Source it from your `.envrc`:
 
 ```bash
 # .envrc
-source_env_if_exists .envrc.local
+source_env_if_exists .envrc.generated.megarepo
 use devenv
 ```
 

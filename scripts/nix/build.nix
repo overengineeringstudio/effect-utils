@@ -1,13 +1,12 @@
 # Nix derivation that builds the mono CLI binary.
 # Uses bun build --compile for native platform.
-# TODO: Remove pkgsUnstable param once mk-bun-cli.nix is updated to use single pkgs
-{ pkgs, pkgsUnstable ? pkgs, src, mkBunCli ? null, gitRev ? "unknown", dirty ? false }:
+{ pkgs, src, mkBunCli ? null, gitRev ? "unknown", dirty ? false }:
 
 let
   mkBunCliResolved =
     if mkBunCli != null
     then mkBunCli
-    else import ../../nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs pkgsUnstable; };
+    else import ../../nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs; };
 in
 mkBunCliResolved {
   name = "mono";

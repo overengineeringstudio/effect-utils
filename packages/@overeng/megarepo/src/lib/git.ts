@@ -4,8 +4,8 @@
  * Provides Effect-wrapped git operations for cloning, fetching, and managing worktrees.
  */
 
-import { Command, CommandExecutor } from '@effect/platform'
-import { Effect, Option } from 'effect'
+import { Command } from '@effect/platform'
+import { Chunk, Effect, Option, Stream } from 'effect'
 
 // =============================================================================
 // Git URL Parsing
@@ -46,17 +46,90 @@ export const parseGitRemoteUrl = (url: string): Option.Option<ParsedGitRemote> =
 }
 
 // =============================================================================
+// Git Command Error
+// =============================================================================
+
+/** Error thrown when a git command fails with non-zero exit code */
+export class GitCommandError extends Error {
+  readonly _tag = 'GitCommandError'
+  readonly args: ReadonlyArray<string>
+  readonly exitCode: number
+  readonly stderr: string
+
+  constructor({
+    args,
+    exitCode,
+    stderr,
+  }: {
+    args: ReadonlyArray<string>
+    exitCode: number
+    stderr: string
+  }) {
+    // Use stderr as the message if available, otherwise use a generic message
+    const stderrTrimmed = stderr.trim()
+    const message =
+      stderrTrimmed.length > 0
+        ? stderrTrimmed
+        : `git ${args.join(' ')} failed with exit code ${exitCode}`
+    super(message)
+    this.name = 'GitCommandError'
+    this.args = args
+    this.exitCode = exitCode
+    this.stderr = stderr
+  }
+}
+
+// =============================================================================
 // Git Commands
 // =============================================================================
 
+/**
+ * Run a git command and return stdout.
+ * Fails with GitCommandError if exit code is non-zero.
+ */
 const runGitCommand = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: string }) =>
   Effect.gen(function* () {
-    const executor = yield* CommandExecutor.CommandExecutor
-    const cmd = Command.make('git', ...args).pipe(cwd ? Command.workingDirectory(cwd) : (x) => x)
+    const cmd = Command.make('git', ...args).pipe(
+      cwd ? Command.workingDirectory(cwd) : (x) => x,
+      Command.stderr('pipe'),
+      Command.stdout('pipe'),
+    )
 
-    const result = yield* executor.string(cmd)
-    return result.trim()
-  })
+    const process = yield* Command.start(cmd)
+
+    // Collect stdout and stderr
+    const decoder = new TextDecoder('utf-8')
+    const [stdoutChunks, stderrChunks] = yield* Effect.all([
+      Stream.runCollect(process.stdout),
+      Stream.runCollect(process.stderr),
+    ])
+
+    const stdout = decoder.decode(
+      Chunk.toReadonlyArray(stdoutChunks).reduce((acc, chunk) => {
+        const result = new Uint8Array(acc.length + chunk.length)
+        result.set(acc)
+        result.set(chunk, acc.length)
+        return result
+      }, new Uint8Array()),
+    )
+
+    const stderr = decoder.decode(
+      Chunk.toReadonlyArray(stderrChunks).reduce((acc, chunk) => {
+        const result = new Uint8Array(acc.length + chunk.length)
+        result.set(acc)
+        result.set(chunk, acc.length)
+        return result
+      }, new Uint8Array()),
+    )
+
+    const exitCode = yield* process.exitCode
+
+    if (exitCode !== 0) {
+      return yield* Effect.fail(new GitCommandError({ args, exitCode, stderr }))
+    }
+
+    return stdout.trim()
+  }).pipe(Effect.scoped)
 
 /**
  * Clone a git repository

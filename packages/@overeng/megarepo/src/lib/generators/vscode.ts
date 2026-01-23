@@ -8,7 +8,12 @@
 import { FileSystem } from '@effect/platform'
 import { Effect } from 'effect'
 
-import { type AbsoluteDirPath, EffectPath, type MegarepoConfig } from '../config.ts'
+import {
+  type AbsoluteDirPath,
+  EffectPath,
+  MEMBER_ROOT_DIR,
+  type MegarepoConfig,
+} from '../config.ts'
 
 /** Options for the VSCode workspace generator */
 export interface VscodeGeneratorOptions {
@@ -35,7 +40,7 @@ export const generateVscodeContent = (options: VscodeGeneratorOptions): string =
     { path: '.', name: '(megarepo root)' },
     ...Object.keys(options.config.members)
       .filter((name) => !excludeSet.has(name))
-      .map((name) => ({ path: name, name })),
+      .map((name) => ({ path: `${MEMBER_ROOT_DIR}/${name}`, name })),
   ]
 
   const workspace: VscodeWorkspace = {
