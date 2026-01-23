@@ -200,6 +200,37 @@ export default packageJson({
 })
 ```
 
+## Local Package Dependencies: `link:` vs `file:`
+
+When referencing local packages, use `link:` protocol (via `catalog.pick()`), not `file:`:
+
+```typescript
+// GOOD: Use catalog.pick() - resolves to link: protocol
+dependencies: {
+  ...catalog.pick('@livestore/utils', '@livestore/common'),
+}
+
+// BAD: Hardcoded file: protocol
+dependencies: {
+  '@livestore/utils': 'file:../../packages/@livestore/utils',
+}
+```
+
+**Why this matters:**
+
+| Protocol | Behavior | Problem |
+|----------|----------|---------|
+| `link:` | Creates symlink to package | Works correctly |
+| `file:` | **Copies** package contents to pnpm store | Copies `src/` if in `files` array, causing duplicate type errors |
+
+When using `file:`, pnpm copies whatever is in the package's `files` array to its store. If `src/` is included (common for source maps), TypeScript will try to type-check both the original and the copied sources, causing duplicate identifier errors.
+
+**Always use `catalog.pick()` for workspace packages** - the catalog defines packages with `link:` protocol, and genie resolves these to correct relative paths at generation time.
+
+For detailed explanations of pnpm/bun protocol behaviors and workarounds, see:
+- [pnpm-issues.md](../workarounds/pnpm-issues.md) - TS2742 errors, `link:` vs `file:`, `enableGlobalVirtualStore`
+- [bun-issues.md](../workarounds/bun-issues.md) - Why bun `file:` ≈ pnpm `link:`
+
 ## Tips
 
 - Define `ownPeerDepNames` locally with only packages NOT in upstream (delta pattern)
