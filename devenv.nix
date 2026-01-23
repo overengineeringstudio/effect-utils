@@ -1,8 +1,6 @@
-{ pkgs, inputs, lib, ... }:
+{ pkgs, inputs, ... }:
 let
   system = pkgs.stdenv.hostPlatform.system;
-  pkgsStable = import inputs.nixpkgs { inherit system; };
-  pkgsUnstable = import inputs.nixpkgsUnstable { inherit system; };
   # Build CLIs against the same nixpkgs set as the flake outputs.
   # Keep devenv outputs aligned with flake outputs so mono nix status is accurate.
   # TODO use proper git rev
@@ -11,19 +9,16 @@ let
   playwrightDriver = inputs.playwright-web-flake.packages.${system}.playwright-driver;
   # Import CLI builds from their canonical build.nix files to avoid duplicate hash definitions.
   genie = import (./. + "/packages/@overeng/genie/nix/build.nix") {
-    pkgs = pkgsStable;
-    inherit pkgsUnstable gitRev;
+    inherit pkgs gitRev;
     src = workspaceSrc;
   };
   dotdot = import (./. + "/packages/@overeng/dotdot/nix/build.nix") {
-    pkgs = pkgsStable;
-    inherit pkgsUnstable gitRev;
+    inherit pkgs gitRev;
     src = workspaceSrc;
   };
   # Keep devenv shells fast; dirty mono builds are opt-in via direnv helper.
   mono = import ./scripts/nix/build.nix {
-    pkgs = pkgsStable;
-    inherit pkgsUnstable gitRev;
+    inherit pkgs gitRev;
     src = workspaceSrc;
     dirty = false;
   };
@@ -31,7 +26,7 @@ let
   # Use npm oxlint with NAPI bindings to enable JavaScript plugin support
   oxlintNpm = import ./nix/oxlint-npm.nix {
     inherit pkgs;
-    bun = pkgsUnstable.bun;
+    bun = pkgs.bun;
   };
 
   # Shared task modules
@@ -182,11 +177,11 @@ in
 
   packages = [
     pkgs.pnpm
-    pkgsUnstable.nodejs_24
-    pkgsUnstable.bun
-    pkgsUnstable.typescript
+    pkgs.nodejs_24
+    pkgs.bun
+    pkgs.typescript
     oxlintNpm
-    pkgsUnstable.oxfmt
+    pkgs.oxfmt
     genie
     dotdot
     mono

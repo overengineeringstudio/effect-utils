@@ -1,6 +1,7 @@
 # Nix derivation that builds dotdot CLI binary.
 # Uses bun build --compile for native platform.
-{ pkgs, pkgsUnstable, src, gitRev ? "unknown", dirty ? false }:
+# TODO: Remove pkgsUnstable param once mk-bun-cli.nix is updated to use single pkgs
+{ pkgs, pkgsUnstable ? pkgs, src, gitRev ? "unknown", dirty ? false }:
 
 let
   mkBunCli = import ../../../../nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs pkgsUnstable; };

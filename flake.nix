@@ -6,62 +6,58 @@
   # can import Nix helpers (for example lib.mkCliPackages) with a stable API.
   # This keeps the build logic reusable without requiring devenv in the parent.
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/release-25.11";
-    nixpkgsUnstable.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { self, nixpkgs, nixpkgsUnstable, flake-utils, ... }:
+  outputs = { self, nixpkgs, flake-utils, ... }:
     let
       gitRev = self.sourceInfo.dirtyShortRev or self.sourceInfo.shortRev or self.sourceInfo.rev or "unknown";
     in
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
-        pkgsUnstable = import nixpkgsUnstable { inherit system; };
-        mkBunCli = import ./nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs pkgsUnstable; };
+        mkBunCli = import ./nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs; pkgsUnstable = pkgs; };
         cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
         rootPath = self.outPath;
         cliPackages = {
           genie = import (rootPath + "/packages/@overeng/genie/nix/build.nix") {
-            inherit pkgs pkgsUnstable gitRev;
+            inherit pkgs gitRev;
             src = self;
           };
           dotdot = import (rootPath + "/packages/@overeng/dotdot/nix/build.nix") {
-            inherit pkgs pkgsUnstable gitRev;
+            inherit pkgs gitRev;
             src = self;
           };
           megarepo = import (rootPath + "/packages/@overeng/megarepo/nix/build.nix") {
-            inherit pkgs pkgsUnstable gitRev;
+            inherit pkgs gitRev;
             src = self;
           };
           mono = import ./scripts/nix/build.nix {
-            inherit pkgs pkgsUnstable mkBunCli;
+            inherit pkgs mkBunCli gitRev;
             src = self;
-            inherit gitRev;
             dirty = false;
           };
         };
         cliPackagesDirty = {
           genie = import (rootPath + "/packages/@overeng/genie/nix/build.nix") {
-            inherit pkgs pkgsUnstable gitRev;
+            inherit pkgs gitRev;
             src = self;
             dirty = true;
           };
           dotdot = import (rootPath + "/packages/@overeng/dotdot/nix/build.nix") {
-            inherit pkgs pkgsUnstable gitRev;
+            inherit pkgs gitRev;
             src = self;
             dirty = true;
           };
           megarepo = import (rootPath + "/packages/@overeng/megarepo/nix/build.nix") {
-            inherit pkgs pkgsUnstable gitRev;
+            inherit pkgs gitRev;
             src = self;
             dirty = true;
           };
           mono = import ./scripts/nix/build.nix {
-            inherit pkgs pkgsUnstable mkBunCli;
+            inherit pkgs mkBunCli gitRev;
             src = self;
-            inherit gitRev;
             dirty = true;
           };
         };
@@ -124,7 +120,8 @@
       direnv.effectUtilsEnvrc = import ./nix/workspace-tools/env/direnv/effect-utils-envrc.nix;
 
       # Builder function for external repos to create their own Bun CLIs
-      lib.mkBunCli = { pkgs, pkgsUnstable }:
+      # TODO: Remove pkgsUnstable param once mk-bun-cli.nix is updated
+      lib.mkBunCli = { pkgs, pkgsUnstable ? pkgs }:
         import ./nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs pkgsUnstable; };
 
       # Shell helper for runtime CLI build stamps.
@@ -132,9 +129,10 @@
         import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs workspaceRoot; };
 
       # Convenience helper for bundling the common genie/dotdot CLIs.
+      # TODO: Remove pkgsUnstable param once build.nix files are updated
       lib.mkCliPackages = {
         pkgs,
-        pkgsUnstable,
+        pkgsUnstable ? pkgs,
         gitRev ? "unknown",
         workspaceRoot ? ./.,
         dirty ? false,
@@ -147,11 +145,11 @@
         in
         {
           genie = import (workspaceRootPath + "/packages/@overeng/genie/nix/build.nix") {
-            inherit pkgs pkgsUnstable gitRev dirty;
+            inherit pkgs gitRev dirty;
             src = workspaceRoot;
           };
           dotdot = import (workspaceRootPath + "/packages/@overeng/dotdot/nix/build.nix") {
-            inherit pkgs pkgsUnstable gitRev dirty;
+            inherit pkgs gitRev dirty;
             src = workspaceRoot;
           };
         };

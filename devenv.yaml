@@ -1,15 +1,15 @@
 inputs:
+  git-hooks:
+    url: github:cachix/git-hooks.nix
+    inputs:
+      nixpkgs:
+        follows: nixpkgs
   nixpkgs:
-    follows: workspace/nixpkgs
-  nixpkgsUnstable:
     url: github:NixOS/nixpkgs/nixos-unstable
-  workspace:
-    url: github:overengineeringstudio/effect-utils?dir=nix/workspace-flake
+  overeng-beads-public:
+    url: github:overengineeringstudio/overeng-beads-public
   playwright-web-flake:
     url: github:pietdevries94/playwright-web-flake
     inputs:
       nixpkgs:
         follows: nixpkgs
-  overeng-beads-public:
-    url: github:overengineeringstudio/overeng-beads-public
-    flake: true
