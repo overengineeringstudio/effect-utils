@@ -117,13 +117,17 @@ These are generally fixed by the above solutions, but documented for reference:
 
 ---
 
-## Parallel pnpm installs cause store corruption
+## Parallel pnpm installs cause store corruption with `enableGlobalVirtualStore`
 
-> **Status: UNSOLVED** - Need to switch to single root install or serialize tasks
+> **Status: KNOWN BUG** - [pnpm#10232](https://github.com/pnpm/pnpm/issues/10232) - No fix yet
+>
+> Tracked in: [pnpm#9696](https://github.com/pnpm/pnpm/issues/9696) (GVS improvements)
 
-When running multiple `pnpm install` commands in parallel (as the devenv pnpm module does), race conditions corrupt the global pnpm store.
+When running multiple `pnpm install` commands in parallel with `enableGlobalVirtualStore`, race conditions corrupt the global pnpm store. This is a **known, open bug** in pnpm.
 
 **Root cause:** The pnpm module creates separate tasks (`pnpm:install:<name>`) for each package, all running concurrently after `genie:run`. When multiple pnpm processes try to create hardlinks/symlinks in the same global store (`~/Library/pnpm/store/v10/links/`), they race to rename temp directories.
+
+**Note:** `enableGlobalVirtualStore` is marked **experimental** in pnpm docs. pnpm auto-disables it in CI environments partly because of these stability issues.
 
 **Symptoms:**
 ```
@@ -141,12 +145,13 @@ The temp directory PIDs (62863, 62892, etc.) show different processes racing on 
 4. Process B already renamed its temp dir there
 5. Process A fails with `ENOTEMPTY`
 
-**Using `enableGlobalVirtualStore` makes this worse** because even more paths are shared in the global store.
+**Using `enableGlobalVirtualStore` makes this worse** because even more paths are shared in the global store. The traditional per-project virtual store (`node_modules/.pnpm`) handles concurrent access more safely.
 
 **Potential fixes:**
-1. **Single root install** (recommended) - Run `pnpm install` once at workspace root with `pnpm-workspace.yaml`. This is pnpm's intended monorepo workflow.
-2. **Serialize installs** - Chain tasks so only one runs at a time (slow but safe)
-3. **Use `--frozen-lockfile`** - Reduces store writes but doesn't fully prevent races
+1. **Disable GVS for parallel installs** - If using `link:` protocol for internal deps, GVS may not be needed
+2. **Single root install** (recommended) - Run `pnpm install` once at workspace root with `pnpm-workspace.yaml`. This is pnpm's intended monorepo workflow.
+3. **Serialize installs** - Chain tasks so only one runs at a time (slow but safe)
+4. **Use `--frozen-lockfile`** - Reduces store writes but doesn't fully prevent races
 
 **Recovery from corrupted store:**
 ```bash
@@ -165,3 +170,5 @@ pnpm install
 - pnpm docs on `file:` protocol: https://pnpm.io/package_json#dependencies
 - pnpm docs on workspaces: https://pnpm.io/workspaces
 - pnpm `enableGlobalVirtualStore` docs: https://pnpm.io/npmrc#enableglobalvirtualstore
+- [pnpm#10232](https://github.com/pnpm/pnpm/issues/10232) - ERR_PNPM_ENOTEMPTY for concurrent pnpm install with GVS
+- [pnpm#9696](https://github.com/pnpm/pnpm/issues/9696) - Improvements to global virtual store (tracking issue)
