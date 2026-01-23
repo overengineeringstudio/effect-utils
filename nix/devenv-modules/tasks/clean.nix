@@ -1,30 +1,33 @@
 # Clean build artifacts task
 #
 # Usage in devenv.nix:
-#   imports = [ inputs.effect-utils.devenvModules.tasks.clean ];
-#
-# Or with extra directories:
 #   imports = [
-#     (inputs.effect-utils.devenvModules.tasks.clean { extraDirs = [ ".contentlayer" "storybook-static" ]; })
+#     (inputs.effect-utils.devenvModules.tasks.clean {
+#       packages = myPackages;  # Same list as pnpm.nix
+#       extraDirs = [ ".contentlayer" "storybook-static" ];
+#     })
 #   ];
 #
 # Provides: build:clean
-{ extraDirs ? [] }:
-{ ... }:
+{ packages, extraDirs ? [] }:
+{ lib, ... }:
 let
-  extraDirCommands = builtins.concatStringsSep "\n" (
-    map (dir: ''find . -type d -name "${dir}" -not -path "*/node_modules/*" -exec rm -rf {} + 2>/dev/null || true'') extraDirs
-  );
+  # Clean dist, .next, and .tsbuildinfo for each package
+  packageCleanCommands = lib.concatMapStringsSep "\n" (p: ''
+    rm -rf ${p}/dist ${p}/.next
+    rm -f ${p}/*.tsbuildinfo
+  '') packages;
+  
+  # Clean extra directories at repo root
+  extraDirCommands = lib.concatMapStringsSep "\n" (d: "rm -rf ${d}") extraDirs;
 in
 {
   tasks = {
     "build:clean" = {
-      description = "Remove all build artifacts (dist, .next, tsbuildinfo${if extraDirs != [] then ", " + builtins.concatStringsSep ", " extraDirs else ""})";
+      description = "Remove build artifacts (dist, .next, tsbuildinfo${if extraDirs != [] then ", " + builtins.concatStringsSep ", " extraDirs else ""})";
       exec = ''
         echo "Cleaning build artifacts..."
-        find . -type d -name "dist" -not -path "*/node_modules/*" -exec rm -rf {} + 2>/dev/null || true
-        find . -type d -name ".next" -not -path "*/node_modules/*" -exec rm -rf {} + 2>/dev/null || true
-        find . -type f -name "*.tsbuildinfo" -not -path "*/node_modules/*" -delete 2>/dev/null || true
+        ${packageCleanCommands}
         ${extraDirCommands}
         echo "Done"
       '';

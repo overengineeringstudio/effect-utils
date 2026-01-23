@@ -49,12 +49,23 @@ let
     };
   };
 
+  nodeModulesPaths = lib.concatMapStringsSep " " (p: "${p}/node_modules") packages;
+  lockFilePaths = lib.concatMapStringsSep " " (p: "${p}/bun.lock") packages;
+
 in {
   tasks = lib.mkMerge (map mkInstallTask packages ++ [
     {
       "bun:install" = {
         description = "Install all bun dependencies";
         after = map (p: "bun:install:${toName p}") packages;
+      };
+      "bun:clean" = {
+        description = "Remove node_modules for all managed packages";
+        exec = "rm -rf ${nodeModulesPaths}";
+      };
+      "bun:clean-lock-files" = {
+        description = "Remove bun lock files for all managed packages";
+        exec = "rm -f ${lockFilePaths}";
       };
     }
   ]);

@@ -49,12 +49,23 @@ let
     };
   };
 
+  nodeModulesPaths = lib.concatMapStringsSep " " (p: "${p}/node_modules") packages;
+  lockFilePaths = lib.concatMapStringsSep " " (p: "${p}/pnpm-lock.yaml") packages;
+
 in {
   tasks = lib.mkMerge (map mkInstallTask packages ++ [
     {
       "pnpm:install" = {
         description = "Install all pnpm dependencies";
         after = map (p: "pnpm:install:${toName p}") packages;
+      };
+      "pnpm:clean" = {
+        description = "Remove node_modules for all managed packages";
+        exec = "rm -rf ${nodeModulesPaths}";
+      };
+      "pnpm:clean-lock-files" = {
+        description = "Remove pnpm lock files for all managed packages";
+        exec = "rm -f ${lockFilePaths}";
       };
     }
   ]);

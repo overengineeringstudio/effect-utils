@@ -111,7 +111,7 @@ in
     taskModules.genie
     taskModules.ts
     (taskModules.check {})
-    (taskModules.clean { extraDirs = []; })
+    (taskModules.clean { packages = allPackages; })
     # Per-package pnpm install tasks (using pnpm due to bun bugs, see context/workarounds/bun-issues.md)
     # TODO: Switch back to bun:install once bun file: dependency issues are fixed
     (taskModules.pnpm { packages = allPackages; })
