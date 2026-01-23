@@ -34,6 +34,9 @@
 #    at ~/Library/pnpm/store/v10/links/. Dependencies with identical graphs
 #    resolve to the exact same path, eliminating TS2742 errors.
 #
+# IMPORTANT: Installs run SEQUENTIALLY to avoid pnpm store corruption.
+# Parallel pnpm installs with enableGlobalVirtualStore cause race conditions.
+# See: https://github.com/pnpm/pnpm/issues/10232
 # See: context/workarounds/pnpm-issues.md for full details.
 { packages }:
 { lib, ... }:
@@ -56,24 +59,35 @@ let
     in
     sanitize final;
 
-  mkInstallTask = path: {
-    "pnpm:install:${toName path}" = {
-      description = "Install dependencies for ${toName path}";
-      # Use global virtual store to ensure all packages resolve dependencies to the same path.
-      # This prevents TypeScript TS2742 errors when packages depend on each other via link: protocol.
-      # Without this, each package gets its own .pnpm directory with different paths for the same deps.
-      exec = "npm_config_enable_global_virtual_store=true pnpm install";
-      cwd = path;
-      execIfModified = [ "${path}/package.json" "${path}/pnpm-lock.yaml" ];
-      after = [ "genie:run" ];
+  # Build sequential dependency chain to avoid parallel pnpm installs
+  # which cause store corruption with enableGlobalVirtualStore.
+  # See: https://github.com/pnpm/pnpm/issues/10232
+  mkInstallTask = idx: path:
+    let
+      prevTask = if idx == 0
+        then "genie:run"
+        else "pnpm:install:${toName (builtins.elemAt packages (idx - 1))}";
+    in {
+      "pnpm:install:${toName path}" = {
+        description = "Install dependencies for ${toName path}";
+        # Use global virtual store to ensure all packages resolve dependencies to the same path.
+        # This prevents TypeScript TS2742 errors when packages depend on each other via link: protocol.
+        # Without this, each package gets its own .pnpm directory with different paths for the same deps.
+        exec = "npm_config_enable_global_virtual_store=true pnpm install";
+        cwd = path;
+        execIfModified = [ "${path}/package.json" "${path}/pnpm-lock.yaml" ];
+        after = [ prevTask ];
+      };
     };
-  };
+
+  # Generate indexed list for sequential chaining
+  indexedPackages = lib.imap0 (idx: path: { inherit idx path; }) packages;
 
   nodeModulesPaths = lib.concatMapStringsSep " " (p: "${p}/node_modules") packages;
   lockFilePaths = lib.concatMapStringsSep " " (p: "${p}/pnpm-lock.yaml") packages;
 
 in {
-  tasks = lib.mkMerge (map mkInstallTask packages ++ [
+  tasks = lib.mkMerge (map (p: mkInstallTask p.idx p.path) indexedPackages ++ [
     {
       "pnpm:install" = {
         description = "Install all pnpm dependencies";
