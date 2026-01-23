@@ -36,6 +36,12 @@
 # be "skipped due to dependency failure".
 #
 # If you need to run setup during rebase, use: `FORCE_SETUP=1 dt setup:run`
+#
+# ## Strict Setup Tasks
+#
+# Some tasks (e.g. `ts:build`) can be marked as "strict" so they only run
+# when `DEVENV_STRICT=1`. This keeps shell entry resilient when those
+# tasks are temporarily broken, while still allowing opt-in enforcement.
 {
   tasks ? [ "genie:run" ],
   skipDuringRebase ? true,
@@ -56,7 +62,7 @@ let
     cached=$(cat ${hashFile} 2>/dev/null || echo "")
     [ "$current" = "$cached" ]
   '';
-  
+
   # Create status overrides for all setup tasks
   statusOverrides = lib.optionalAttrs skipIfGitHashUnchanged (
     lib.genAttrs tasks (_: {
@@ -98,7 +104,16 @@ in
     # Wire setup tasks to run during shell entry via native task dependencies
     # Also save the hash after setup completes
     "devenv:enterShell" = {
-      after = tasks ++ [ "setup:save-hash" ];
+      after = lib.mkIf (builtins.getEnv "DEVENV_STRICT" == "1") (tasks ++ [ "setup:save-hash" ]);
+      exec = lib.mkIf (builtins.getEnv "DEVENV_STRICT" != "1") ''
+        echo "devenv: setup tasks are non-blocking (set DEVENV_STRICT=1 to enforce)"
+        for task in ${lib.concatStringsSep " " tasks}; do
+          if ! devenv tasks run "$task"; then
+            echo "Warning: setup task '$task' failed. Run 'dt $task' for details." >&2
+          fi
+        done
+        devenv tasks run setup:save-hash >/dev/null 2>&1 || true
+      '';
     };
 
     # Force-run setup tasks (bypasses git hash check)

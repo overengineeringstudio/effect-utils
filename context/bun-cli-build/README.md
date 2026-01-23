@@ -78,16 +78,13 @@ runtime stamp when not, and a stable base version as fallback.
 To avoid re-implementing the stamp logic in each repo, use the helper from
 effect-utils:
 
-- `effect-utils.lib.cliBuildStamp { pkgs; }` returns `{ package, shellHook }`
-- add `package` to your shell `buildInputs` and append `${shellHook}` to your
+- `effect-utils.lib.cliBuildStamp { pkgs }` returns `{ package, shellHook }`
+- add `package` to your shell `buildInputs` and include `${shellHook}` in your
   shell entry hook (`enterShell` in devenv or `shellHook` in `mkShell`)
-- the helper sets `NIX_CLI_BUILD_STAMP` using `WORKSPACE_ROOT` or
-  `CLI_BUILD_STAMP_ROOT`
+- the shellHook exports `NIX_CLI_BUILD_STAMP` with git rev + timestamp
 
-When using direnv + devenv, `.envrc` runs `use devenv`, which executes
-`enterShell` from `devenv.nix`. That is where `cliBuildStamp.shellHook` runs and
-exports `NIX_CLI_BUILD_STAMP`, so every `direnv reload` refreshes the runtime
-stamp in the current shell.
+The stamp is generated from the current directory's git state. Since devenv
+shells always start from the repo root, this works automatically.
 
 ## Inside effect-utils
 

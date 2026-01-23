@@ -249,7 +249,7 @@ Add to `.envrc` in each code repo:
 
 ```bash
 # Beads configuration for commit correlation
-export BEADS_DB="$WORKSPACE_ROOT/../overeng-beads/.beads/beads.db"
+export BEADS_DB="$PWD/../overeng-beads/.beads/beads.db"
 export BEADS_PREFIX="eu"
 ```
 

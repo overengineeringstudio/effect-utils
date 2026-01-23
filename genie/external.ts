@@ -138,8 +138,8 @@ export const catalog = defineCatalog({
   // OpenTUI / Effect Atom (experimental)
   '@effect-atom/atom': '0.4.13',
   '@effect-atom/atom-react': '0.4.5',
-  '@opentui/core': '0.1.68',
-  '@opentui/react': '0.1.68',
+  '@opentui/core': '0.1.74',
+  '@opentui/react': '0.1.74',
 
   // Pi-tui (terminal UI framework)
   '@mariozechner/pi-tui': '0.45.7',

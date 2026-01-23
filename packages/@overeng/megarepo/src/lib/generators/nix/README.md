@@ -6,6 +6,8 @@ environment variables. It mirrors each member into the workspace (filtered to
 skip heavy build outputs) so the flake can use relative `path:./<member>` inputs
 in pure evaluation mode.
 
+`mr generate nix` only writes `.envrc.generated.megarepo`. `.envrc.local` is reserved for user customization and is never modified by generators.
+
 ## Outputs
 
 - `.envrc.generated.megarepo`

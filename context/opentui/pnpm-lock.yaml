@@ -15,11 +15,11 @@ importers:
         specifier: 0.4.5
         version: 0.4.5(@effect/experimental@0.57.11(@effect/platform@0.93.8(effect@3.19.14))(effect@3.19.14))(@effect/platform@0.93.8(effect@3.19.14))(@effect/rpc@0.72.2(@effect/platform@0.93.8(effect@3.19.14))(effect@3.19.14))(effect@3.19.14)(react@19.2.3)(scheduler@0.26.0)
       '@opentui/core':
-        specifier: 0.1.68
-        version: 0.1.68(stage-js@1.0.0-alpha.17)(typescript@5.9.3)(web-tree-sitter@0.25.10)
+        specifier: 0.1.74
+        version: 0.1.74(stage-js@1.0.0-alpha.17)(typescript@5.9.3)(web-tree-sitter@0.25.10)
       '@opentui/react':
-        specifier: 0.1.68
-        version: 0.1.68(react-devtools-core@7.0.1)(react@19.2.3)(stage-js@1.0.0-alpha.17)(typescript@5.9.3)(web-tree-sitter@0.25.10)(ws@8.19.0)
+        specifier: 0.1.74
+        version: 0.1.74(react-devtools-core@7.0.1)(react@19.2.3)(stage-js@1.0.0-alpha.17)(typescript@5.9.3)(web-tree-sitter@0.25.10)(ws@8.19.0)
       effect:
         specifier: 3.19.14
         version: 3.19.14
@@ -220,43 +220,43 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@opentui/core-darwin-arm64@0.1.68':
-    resolution: {integrity: sha512-ipPX2gavBLVtw3d8L4ZPJDLlEwIjIRNdlNlxu07rqSEGSfxD5s29yc+33wLAlYXbmnJDajOqm0Dx6HnlY1Y9Fg==}
+  '@opentui/core-darwin-arm64@0.1.74':
+    resolution: {integrity: sha512-rfmlDLtm/u17CnuhJgCxPeYMvOST+A2MOdVOk46IurtHO849bdYqK6iudKNlFRs1FOrymgSKF9GlWBHAOKeRjg==}
     cpu: [arm64]
     os: [darwin]
 
-  '@opentui/core-darwin-x64@0.1.68':
-    resolution: {integrity: sha512-9dW0S9HINnuVjvC9QLj+S+329H7qEBQQtyJ9WHpykemokiJ5k4rnuDkfws5FxgTHIf/ddoYYTyPoGCS7WN5gsQ==}
+  '@opentui/core-darwin-x64@0.1.74':
+    resolution: {integrity: sha512-WAD8orsDV0ZdW/5GwjOOB4FY96772xbkz+rcV7WRzEFUVaqoBaC04IuqYzS9d5s+cjkbT5Cpj47hrVYkkVQKng==}
     cpu: [x64]
     os: [darwin]
 
-  '@opentui/core-linux-arm64@0.1.68':
-    resolution: {integrity: sha512-/el6TbSQriBUfPhIa6SBfCCc7tjU98Bnhf2+w0zKwQFBjf3F3kmnI42++YxedMGFmL7bRt3EUawGOkQRZZzFAg==}
+  '@opentui/core-linux-arm64@0.1.74':
+    resolution: {integrity: sha512-lgmHzrzLy4e+rgBS+lhtsMLLgIMLbtLNMm6EzVPyYVDlLDGjM7+ulXMem7AtpaRrWrUUl4REiG9BoQUsCFDwYA==}
     cpu: [arm64]
     os: [linux]
 
-  '@opentui/core-linux-x64@0.1.68':
-    resolution: {integrity: sha512-9NzVI3GZzmICoIu3YhWBdkEt0KvY27m++tu/MqW+xb6fnvN74jZkRWzlgjTdM70obL4eUGQdvU08sDHgZjsIJw==}
+  '@opentui/core-linux-x64@0.1.74':
+    resolution: {integrity: sha512-8Mn2WbdBQ29xCThuPZezjDhd1N3+fXwKkGvCBOdTI0le6h2A/vCNbfUVjwfr/EGZSRXxCG+Yapol34BAULGpOA==}
     cpu: [x64]
     os: [linux]
 
-  '@opentui/core-win32-arm64@0.1.68':
-    resolution: {integrity: sha512-wrAeotyotOplUjQVBSxOGA8GCr9FWXSd6xCEo1PEGo/NjuAOtvHmKoENzyFEP0GzFsjvoUOyy2dZb987oFAn9A==}
+  '@opentui/core-win32-arm64@0.1.74':
+    resolution: {integrity: sha512-dvYUXz03avnI6ZluyLp00HPmR0UT/IE/6QS97XBsgJlUTtpnbKkBtB5jD1NHwWkElaRj1Qv2QP36ngFoJqbl9g==}
     cpu: [arm64]
     os: [win32]
 
-  '@opentui/core-win32-x64@0.1.68':
-    resolution: {integrity: sha512-w0yBjvzs/oMIwVdWICL4XlUrfsPoVXd4+RDqiuu+Xi/zD0UgANSTRY2asXca+gPe5zPHLsxvz1bAG0Z7uGtmyw==}
+  '@opentui/core-win32-x64@0.1.74':
+    resolution: {integrity: sha512-3wfWXaAKOIlDQz6ZZIESf2M+YGZ7uFHijjTEM8w/STRlLw8Y6+QyGYi1myHSM4d6RSO+/s2EMDxvjDf899W9vQ==}
     cpu: [x64]
     os: [win32]
 
-  '@opentui/core@0.1.68':
-    resolution: {integrity: sha512-SZz5qNO+2lJ8jDEoTSieyXH23t49myu6NetLex+xzqOf67XsU6QKlDcw5oMmc3zrKvETXhgbBvlSnbyJNQoBMg==}
+  '@opentui/core@0.1.74':
+    resolution: {integrity: sha512-g4W16ymv12JdgZ+9B4t7mpIICvzWy2+eHERfmDf80ALduOQCUedKQdULcBFhVCYUXIkDRtIy6CID5thMAah3FA==}
     peerDependencies:
       web-tree-sitter: 0.25.10
 
-  '@opentui/react@0.1.68':
-    resolution: {integrity: sha512-dN2I60zINykyty31fFt0q8oZuod3O3LTygzdLPmXl0m4FLLYTiINqtvJqt12z4ikRnwMW+t2Ia4C17LnZn19Hw==}
+  '@opentui/react@0.1.74':
+    resolution: {integrity: sha512-2wiTVtBcbjNuWJjVDaSNdfVM9x9Cs7U+wCRPMmzVrYYCbWGjYQcA0Ump+XSKJpN+swzZRDBYHIw9xBlgUUnoLw==}
     peerDependencies:
       react: '>=19.0.0'
       react-devtools-core: ^7.0.1
@@ -816,25 +816,25 @@ snapshots:
   '@msgpackr-extract/msgpackr-extract-win32-x64@3.0.3':
     optional: true
 
-  '@opentui/core-darwin-arm64@0.1.68':
+  '@opentui/core-darwin-arm64@0.1.74':
     optional: true
 
-  '@opentui/core-darwin-x64@0.1.68':
+  '@opentui/core-darwin-x64@0.1.74':
     optional: true
 
-  '@opentui/core-linux-arm64@0.1.68':
+  '@opentui/core-linux-arm64@0.1.74':
     optional: true
 
-  '@opentui/core-linux-x64@0.1.68':
+  '@opentui/core-linux-x64@0.1.74':
     optional: true
 
-  '@opentui/core-win32-arm64@0.1.68':
+  '@opentui/core-win32-arm64@0.1.74':
     optional: true
 
-  '@opentui/core-win32-x64@0.1.68':
+  '@opentui/core-win32-x64@0.1.74':
     optional: true
 
-  '@opentui/core@0.1.68(stage-js@1.0.0-alpha.17)(typescript@5.9.3)(web-tree-sitter@0.25.10)':
+  '@opentui/core@0.1.74(stage-js@1.0.0-alpha.17)(typescript@5.9.3)(web-tree-sitter@0.25.10)':
     dependencies:
       bun-ffi-structs: 0.1.2(typescript@5.9.3)
       diff: 8.0.2
@@ -843,12 +843,12 @@ snapshots:
       yoga-layout: 3.2.1
     optionalDependencies:
       '@dimforge/rapier2d-simd-compat': 0.17.3
-      '@opentui/core-darwin-arm64': 0.1.68
-      '@opentui/core-darwin-x64': 0.1.68
-      '@opentui/core-linux-arm64': 0.1.68
-      '@opentui/core-linux-x64': 0.1.68
-      '@opentui/core-win32-arm64': 0.1.68
-      '@opentui/core-win32-x64': 0.1.68
+      '@opentui/core-darwin-arm64': 0.1.74
+      '@opentui/core-darwin-x64': 0.1.74
+      '@opentui/core-linux-arm64': 0.1.74
+      '@opentui/core-linux-x64': 0.1.74
+      '@opentui/core-win32-arm64': 0.1.74
+      '@opentui/core-win32-x64': 0.1.74
       bun-webgpu: 0.1.4
       planck: 1.4.2(stage-js@1.0.0-alpha.17)
       three: 0.177.0
@@ -856,9 +856,9 @@ snapshots:
       - stage-js
       - typescript
 
-  '@opentui/react@0.1.68(react-devtools-core@7.0.1)(react@19.2.3)(stage-js@1.0.0-alpha.17)(typescript@5.9.3)(web-tree-sitter@0.25.10)(ws@8.19.0)':
+  '@opentui/react@0.1.74(react-devtools-core@7.0.1)(react@19.2.3)(stage-js@1.0.0-alpha.17)(typescript@5.9.3)(web-tree-sitter@0.25.10)(ws@8.19.0)':
     dependencies:
-      '@opentui/core': 0.1.68(stage-js@1.0.0-alpha.17)(typescript@5.9.3)(web-tree-sitter@0.25.10)
+      '@opentui/core': 0.1.74(stage-js@1.0.0-alpha.17)(typescript@5.9.3)(web-tree-sitter@0.25.10)
       react: 19.2.3
       react-devtools-core: 7.0.1
       react-reconciler: 0.32.0(react@19.2.3)

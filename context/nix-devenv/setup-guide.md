@@ -51,11 +51,6 @@ in
     pkgs.nodejs_22
     inputs.effect-utils.packages.${system}.genie
   ];
-
-  enterShell = ''
-    export WORKSPACE_ROOT="$PWD"
-    export PATH="$WORKSPACE_ROOT/node_modules/.bin:$PATH"
-  '';
 }
 ```
 
@@ -95,10 +90,12 @@ See [flake-packages.md](./flake-packages.md) for package definitions.
 
 ```bash
 source_env_if_exists ./.envrc.generated.megarepo
-use devenv
+use devenv ${MEGAREPO_NIX_WORKSPACE:+--override-input effect-utils path:$MEGAREPO_NIX_WORKSPACE/effect-utils}
 ```
 
 The `.envrc.generated.megarepo` file is created by `mr generate nix` and sets `MEGAREPO_ROOT_*` and `MEGAREPO_NIX_WORKSPACE` environment variables.
+
+The `${VAR:+...}` syntax expands to the override flag only when `MEGAREPO_NIX_WORKSPACE` is set. This makes the same `.envrc` work both inside a megarepo (using local workspace) and standalone (using pinned GitHub URL).
 
 ### .gitignore
 
@@ -129,13 +126,13 @@ devenv update effect-utils       # Update specific input
 
 ## Local Overrides
 
-When you need unpushed changes from a sibling repo:
+Inside a megarepo, the `.envrc` pattern above automatically uses the local workspace. For repos outside a megarepo, override manually:
 
 ```bash
 # One-time override
 devenv shell --override-input effect-utils path:../effect-utils
 
-# Or wire into .envrc
+# Or wire into .envrc permanently
 use devenv --override-input effect-utils path:../effect-utils
 ```
 

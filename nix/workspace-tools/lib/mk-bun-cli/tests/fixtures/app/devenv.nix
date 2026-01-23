@@ -17,9 +17,4 @@ in
     pkgs.nodejs_24
     appCli
   ];
-
-  enterShell = ''
-    export WORKSPACE_ROOT="$PWD"
-    export PATH="$WORKSPACE_ROOT/node_modules/.bin:$PATH"
-  '';
 }

@@ -32,22 +32,26 @@ We manage multiple interconnected repositories using a megarepo approach. Each r
 - R10 - Warm devenv shells must initialize in < 500ms. Use git hash caching to skip unchanged setup tasks.
 - R11 - Tasks must be incremental: use `status` checks to skip up-to-date work, `execIfModified` for file-triggered tasks.
 
+### Must be resilient
+
+- R12 - Devenv shell entry must not be blocked by transient task failures (e.g. TypeScript errors). The shell must still load, while failures remain visible and easy to run explicitly.
+
 ### Must be simple
 
-- R12 - Keep `.envrc` minimal; follow the standard pattern: source `.envrc.generated.megarepo`, then `use devenv`.
-- R13 - Use devenv tasks as the task runner with the `dt` wrapper for dependency resolution.
-- R14 - Avoid redundant implementations; prefer shared modules in `effect-utils/devenvModules`.
+- R13 - Keep `.envrc` minimal; follow the standard pattern: source `.envrc.generated.megarepo`, then `use devenv`.
+- R14 - Use devenv tasks as the task runner with the `dt` wrapper for dependency resolution.
+- R15 - Avoid redundant implementations; prefer shared modules in `effect-utils/devenvModules`.
 
 ### Must be clear
 
-- R15 - Provide clear error messages for missing lockfiles / stale dependency hashes. Make refresh easy.
-- R16 - Task descriptions must be concise and discoverable via `dt --help` or shell completions.
+- R16 - Provide clear error messages for missing lockfiles / stale dependency hashes. Make refresh easy.
+- R17 - Task descriptions must be concise and discoverable via `dt --help` or shell completions.
 
 ### Must be verified
 
-- R17 - Nested megarepos must work independently of their parent megarepo.
-- R18 - Devenv can override flake inputs for local development (`--override-input`).
-- R19 - Cover megarepo workspace builds vs standalone `mr sync` in tests.
+- R18 - Nested megarepos must work independently of their parent megarepo.
+- R19 - Devenv can override flake inputs for local development (`--override-input`).
+- R20 - Cover megarepo workspace builds vs standalone `mr sync` in tests.
 
 ## See Also
 

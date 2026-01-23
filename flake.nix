@@ -119,8 +119,8 @@
         import ./nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs; };
 
       # Shell helper for runtime CLI build stamps.
-      lib.cliBuildStamp = { pkgs, workspaceRoot ? null }:
-        import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs workspaceRoot; };
+      lib.cliBuildStamp = { pkgs }:
+        import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
 
       # Convenience helper for bundling the common genie/dotdot CLIs.
       lib.mkCliPackages = import ./nix/workspace-tools/lib/mk-cli-packages.nix;

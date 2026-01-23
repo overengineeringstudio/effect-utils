@@ -697,7 +697,7 @@ MEGAREPO_ROOT_OUTERMOST="${MEGAREPO_ROOT_OUTERMOST%/}/"
 export MEGAREPO_ROOT_OUTERMOST
 export MEGAREPO_ROOT_NEAREST
 export MEGAREPO_MEMBERS="effect-utils,livestore,api-gateway"
-export MEGAREPO_NIX_WORKSPACE="${MEGAREPO_ROOT_NEAREST}.direnv/megarepo-nix/workspace/"
+export MEGAREPO_NIX_WORKSPACE="${MEGAREPO_ROOT_NEAREST}.direnv/megarepo-nix/workspace"
 ```
 
 **Workspace flake usage:**
@@ -717,6 +717,8 @@ source_env_if_exists .envrc.generated.megarepo
 # Rest of megarepo's devenv/nix setup
 use devenv
 ```
+
+`mr generate nix` only writes `.envrc.generated.megarepo`. `.envrc.local` is reserved for user customization and is never modified by generators.
 
 ---
 

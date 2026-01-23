@@ -146,8 +146,11 @@ This creates:
 - `setup:gate` blocks during git rebase
 - `setup:save-hash` caches git hash to skip unchanged setups
 - `setup:run` forces re-run with `FORCE_SETUP=1`
+- Shell entry is non-blocking by default; failures print warnings
+- Set `DEVENV_STRICT=1` to enforce setup tasks and fail fast
 
 For warm shells (< 500ms), the git hash check skips setup when HEAD hasn't changed.
+Strict mode (`DEVENV_STRICT=1`) makes setup tasks fail fast.
 
 ## Available Task Modules
 

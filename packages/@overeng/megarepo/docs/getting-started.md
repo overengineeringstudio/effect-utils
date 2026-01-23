@@ -208,7 +208,7 @@ MEGAREPO_ROOT_OUTERMOST="${MEGAREPO_ROOT_OUTERMOST%/}/"
 export MEGAREPO_ROOT_OUTERMOST
 export MEGAREPO_ROOT_NEAREST
 export MEGAREPO_MEMBERS="effect,effect-next,effect-v3,gitlab-lib,shared-lib"
-export MEGAREPO_NIX_WORKSPACE="${MEGAREPO_ROOT_NEAREST}.direnv/megarepo-nix/workspace/"
+export MEGAREPO_NIX_WORKSPACE="${MEGAREPO_ROOT_NEAREST}.direnv/megarepo-nix/workspace"
 ```
 
 Source it from your `.envrc`:

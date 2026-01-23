@@ -127,7 +127,7 @@ MEGAREPO_ROOT_OUTERMOST="\${MEGAREPO_ROOT_OUTERMOST%/}/"
 export MEGAREPO_ROOT_OUTERMOST
 export MEGAREPO_ROOT_NEAREST
 export MEGAREPO_MEMBERS="${memberNames}"
-export MEGAREPO_NIX_WORKSPACE="\${MEGAREPO_ROOT_NEAREST}.direnv/megarepo-nix/workspace/"
+export MEGAREPO_NIX_WORKSPACE="\${MEGAREPO_ROOT_NEAREST}.direnv/megarepo-nix/workspace"
 `
 }
 
