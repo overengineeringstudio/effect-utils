@@ -8,6 +8,7 @@
 #   imports = [
 #     (taskModules.setup {
 #       tasks = [ "pnpm:install" "genie:run" "ts:build" ];
+#       completionsCliNames = [ "genie" "mono" "mr" ];
 #     })
 #   ];
 #
@@ -45,12 +46,113 @@
 # Set `DEVENV_STRICT=1` to enforce setup tasks and fail fast on errors.
 {
   tasks ? [ "genie:run" ],
+  completionsCliNames ? [],
   skipDuringRebase ? true,
   skipIfGitHashUnchanged ? true,
 }:
 { lib, config, ... }:
 let
   hashFile = "${config.devenv.root}/.devenv/setup-git-hash";
+  userTasks = tasks;
+  completionsEnabled = completionsCliNames != [];
+  completionsTaskName = "setup:completions";
+  completionsCliList = lib.concatStringsSep " " completionsCliNames;
+  completionsExec = ''
+    shell=""
+    if [ -n "''${FISH_VERSION:-}" ]; then
+      shell="fish"
+    elif [ -n "''${ZSH_VERSION:-}" ]; then
+      shell="zsh"
+    elif [ -n "''${BASH_VERSION:-}" ]; then
+      shell="bash"
+    elif [ -n "''${SHELL:-}" ]; then
+      case "$SHELL" in
+        */fish) shell="fish" ;;
+        */zsh) shell="zsh" ;;
+        */bash) shell="bash" ;;
+      esac
+    fi
+
+    if [ -z "$shell" ]; then
+      exit 0
+    fi
+
+    if [ "$shell" = "fish" ]; then
+      completions_dir="''${XDG_CONFIG_HOME:-$HOME/.config}/fish/completions"
+      file_prefix=""
+      file_suffix=".fish"
+    elif [ "$shell" = "zsh" ]; then
+      completions_dir="''${XDG_DATA_HOME:-$HOME/.local/share}/zsh/site-functions"
+      file_prefix="_"
+      file_suffix=""
+    else
+      completions_dir="''${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions"
+      file_prefix=""
+      file_suffix=""
+    fi
+
+    mkdir -p "$completions_dir"
+
+    for cli in ${completionsCliList}; do
+      if ! command -v "$cli" >/dev/null 2>&1; then
+        echo "[devenv] Skipping completions for $cli (not on PATH)" >&2
+        continue
+      fi
+
+      if ! "$cli" --completions "$shell" > "$completions_dir/$file_prefix$cli$file_suffix"; then
+        echo "[devenv] Failed to generate completions for $cli" >&2
+      fi
+    done
+
+    exit 0
+  '';
+  completionsStatus = ''
+    shell=""
+    if [ -n "''${FISH_VERSION:-}" ]; then
+      shell="fish"
+    elif [ -n "''${ZSH_VERSION:-}" ]; then
+      shell="zsh"
+    elif [ -n "''${BASH_VERSION:-}" ]; then
+      shell="bash"
+    elif [ -n "''${SHELL:-}" ]; then
+      case "$SHELL" in
+        */fish) shell="fish" ;;
+        */zsh) shell="zsh" ;;
+        */bash) shell="bash" ;;
+      esac
+    fi
+
+    if [ -z "$shell" ]; then
+      exit 0
+    fi
+
+    if [ "$shell" = "fish" ]; then
+      completions_dir="''${XDG_CONFIG_HOME:-$HOME/.config}/fish/completions"
+      file_prefix=""
+      file_suffix=".fish"
+    elif [ "$shell" = "zsh" ]; then
+      completions_dir="''${XDG_DATA_HOME:-$HOME/.local/share}/zsh/site-functions"
+      file_prefix="_"
+      file_suffix=""
+    else
+      completions_dir="''${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions"
+      file_prefix=""
+      file_suffix=""
+    fi
+
+    for cli in ${completionsCliList}; do
+      if ! command -v "$cli" >/dev/null 2>&1; then
+        continue
+      fi
+
+      if [ ! -f "$completions_dir/$file_prefix$cli$file_suffix" ]; then
+        exit 1
+      fi
+    done
+
+    exit 0
+  '';
+  setupTasks = userTasks ++ lib.optionals completionsEnabled [ completionsTaskName ];
   
   # Status check that skips task if git hash unchanged
   # Returns 0 (skip) if hash matches, non-zero (run) if different
@@ -66,14 +168,20 @@ let
 
   # Create status overrides for all setup tasks
   statusOverrides = lib.optionalAttrs skipIfGitHashUnchanged (
-    lib.genAttrs tasks (_: {
+    lib.genAttrs userTasks (_: {
       status = lib.mkDefault gitHashStatus;
     })
   );
 in
 {
   # Merge status overrides with setup-specific tasks
-  tasks = statusOverrides // {
+  tasks = statusOverrides // lib.optionalAttrs completionsEnabled {
+    "${completionsTaskName}" = {
+      description = "Install shell completions for CLI tools";
+      exec = completionsExec;
+      status = completionsStatus;
+    };
+  } // {
     # Gate task that fails during rebase, causing dependent tasks to skip
     # Uses `before` to inject itself as a dependency of each setup task
     "setup:gate" = lib.mkIf skipDuringRebase {
@@ -88,7 +196,7 @@ in
       '';
       # This makes setup:gate run BEFORE each of the setup tasks
       # If gate fails, the tasks will be "skipped due to dependency failure"
-      before = tasks;
+      before = setupTasks;
     };
 
     # Save git hash after successful setup
@@ -99,7 +207,7 @@ in
         # Allow override via SETUP_GIT_HASH for testing
         echo "''${SETUP_GIT_HASH:-$(git rev-parse HEAD 2>/dev/null || echo "no-git")}" > ${hashFile}
       '';
-      after = tasks;
+      after = setupTasks;
     };
 
     # Wire setup tasks to run during shell entry via native task dependencies
@@ -107,10 +215,10 @@ in
     # NOTE: We use lib.mkForce for exec because devenv 2.0 defines a default exec
     # that we need to override when running in non-strict mode
     "devenv:enterShell" = {
-      after = lib.mkIf (builtins.getEnv "DEVENV_STRICT" == "1") (tasks ++ [ "setup:save-hash" ]);
+      after = lib.mkIf (builtins.getEnv "DEVENV_STRICT" == "1") (setupTasks ++ [ "setup:save-hash" ]);
       exec = lib.mkIf (builtins.getEnv "DEVENV_STRICT" != "1") (lib.mkForce ''
         echo "devenv: setup tasks are non-blocking (set DEVENV_STRICT=1 to enforce)"
-        for task in ${lib.concatStringsSep " " tasks}; do
+        for task in ${lib.concatStringsSep " " setupTasks}; do
           if ! devenv tasks run "$task"; then
             echo "Warning: setup task '$task' failed. Run 'dt $task' for details." >&2
           fi
@@ -124,7 +232,7 @@ in
     "setup:run" = {
       description = "Force run setup tasks (ignores git hash cache)";
       exec = ''
-        FORCE_SETUP=1 devenv tasks run ${lib.concatStringsSep " " tasks}
+        FORCE_SETUP=1 devenv tasks run ${lib.concatStringsSep " " setupTasks}
         mkdir -p "$(dirname ${hashFile})"
         # Allow override via SETUP_GIT_HASH for testing
         echo "''${SETUP_GIT_HASH:-$(git rev-parse HEAD 2>/dev/null || echo "no-git")}" > ${hashFile}

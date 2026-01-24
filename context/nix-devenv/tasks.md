@@ -137,6 +137,7 @@ Wire tasks to run automatically when entering the devenv shell:
 imports = [
   (inputs.effect-utils.devenvModules.tasks.setup {
     tasks = [ "megarepo:generate" "pnpm:install" "genie:run" "ts:build" ];
+    completionsCliNames = [ "genie" "mono" "mr" ];
   })
 ];
 ```
@@ -196,6 +197,7 @@ in
     })
     (taskModules.setup {
       tasks = [ "megarepo:generate" "pnpm:install" "genie:run" "ts:build" ];
+      completionsCliNames = [ "genie" "mono" "mr" ];
     })
   ];
 

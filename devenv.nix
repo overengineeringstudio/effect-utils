@@ -1,31 +1,7 @@
 { pkgs, inputs, ... }:
 let
   system = pkgs.stdenv.hostPlatform.system;
-  # Build CLIs against the same nixpkgs set as the flake outputs.
-  # Keep devenv outputs aligned with flake outputs so mono nix status is accurate.
-  # TODO use proper git rev
-  gitRev = "unknown";
-  workspaceSrc = ./.;
   playwrightDriver = inputs.playwright-web-flake.packages.${system}.playwright-driver;
-  # Import CLI builds from their canonical build.nix files to avoid duplicate hash definitions.
-  genie = import (./. + "/packages/@overeng/genie/nix/build.nix") {
-    inherit pkgs gitRev;
-    src = workspaceSrc;
-  };
-  dotdot = import (./. + "/packages/@overeng/dotdot/nix/build.nix") {
-    inherit pkgs gitRev;
-    src = workspaceSrc;
-  };
-  megarepo = import (./. + "/packages/@overeng/megarepo/nix/build.nix") {
-    inherit pkgs gitRev;
-    src = workspaceSrc;
-  };
-  # Keep devenv shells fast; dirty mono builds are opt-in via direnv helper.
-  mono = import ./scripts/nix/build.nix {
-    inherit pkgs gitRev;
-    src = workspaceSrc;
-    dirty = false;
-  };
   cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
   # Use npm oxlint with NAPI bindings to enable JavaScript plugin support
   oxlintNpm = import ./nix/oxlint-npm.nix {
@@ -47,12 +23,15 @@ let
     megarepo = ./nix/devenv-modules/tasks/megarepo.nix;
     nix-cli = import ./nix/devenv-modules/tasks/nix-cli.nix;
   };
+  # Use bun source entrypoints for in-repo CLIs in devenv (flake builds stay strict).
+  mkSourceCli = import ./nix/devenv-modules/lib/mk-source-cli.nix { inherit pkgs; };
 
   # CLI packages built with Nix (for hash management)
   nixCliPackages = [
     { name = "genie"; flakeRef = ".#genie"; buildNix = "packages/@overeng/genie/nix/build.nix"; }
     { name = "dotdot"; flakeRef = ".#dotdot"; buildNix = "packages/@overeng/dotdot/nix/build.nix"; }
     { name = "mono"; flakeRef = ".#mono"; buildNix = "scripts/nix/build.nix"; }
+    { name = "megarepo"; flakeRef = ".#megarepo"; buildNix = "packages/@overeng/megarepo/nix/build.nix"; }
   ];
 
   # All packages for per-package install tasks
@@ -176,6 +155,7 @@ in
     # Setup task (auto-runs in enterShell)
     (taskModules.setup {
       tasks = [ "megarepo:generate" "pnpm:install" "genie:run" "ts:build" ];
+      completionsCliNames = [ "genie" "dotdot" "mono" "mr" ];
     })
     # Nix CLI build and hash management
     (taskModules.nix-cli { cliPackages = nixCliPackages; })
@@ -188,10 +168,10 @@ in
     pkgs.typescript
     oxlintNpm
     pkgs.oxfmt
-    genie
-    dotdot
-    megarepo
-    mono
+    (mkSourceCli { name = "genie"; entry = "packages/@overeng/genie/src/build/mod.ts"; })
+    (mkSourceCli { name = "dotdot"; entry = "packages/@overeng/dotdot/src/cli.ts"; })
+    (mkSourceCli { name = "mono"; entry = "scripts/mono.ts"; })
+    (mkSourceCli { name = "mr"; entry = "packages/@overeng/megarepo/bin/mr.ts"; })
     cliBuildStamp.package
   ];
 

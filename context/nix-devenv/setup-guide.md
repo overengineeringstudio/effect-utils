@@ -36,6 +36,7 @@ inputs:
 let
   system = pkgs.stdenv.hostPlatform.system;
   taskModules = inputs.effect-utils.devenvModules.tasks;
+  mkSourceCli = import ../nix/devenv-modules/lib/mk-source-cli.nix { inherit pkgs; };
 in
 {
   imports = [
@@ -44,17 +45,29 @@ in
     taskModules.megarepo
     (taskModules.pnpm { packages = [ "." ]; })
     (taskModules.ts { tsconfigFile = "tsconfig.json"; })
-    (taskModules.setup { tasks = [ "megarepo:generate" "pnpm:install" "genie:run" "ts:build" ]; })
+    (taskModules.setup {
+      tasks = [
+        "megarepo:generate"
+        "pnpm:install"
+        "genie:run"
+        "ts:build"
+      ];
+      completionsCliNames = [ "genie" "mono" "mr" ];
+    })
   ];
 
   packages = [
     pkgs.nodejs_22
-    inputs.effect-utils.packages.${system}.genie
+    pkgs.bun
+    (mkSourceCli { name = "genie"; entry = "packages/@overeng/genie/src/build/mod.ts"; })
+    (mkSourceCli { name = "mono"; entry = "scripts/mono.ts"; })
+    (mkSourceCli { name = "mr"; entry = "packages/@overeng/megarepo/bin/mr.ts"; })
   ];
 }
 ```
 
 See [tasks.md](./tasks.md) for available task modules.
+The source wrappers keep the CLI name stable, so `--completions` works as expected.
 
 ### flake.nix
 
