@@ -17,7 +17,7 @@
  * ```
  */
 
-import { Effect, Fiber, Stream, Ref } from 'effect'
+import { Effect, Fiber, Stream } from 'effect'
 
 import {
   isTTY,
@@ -218,12 +218,7 @@ export const createProgressUI = <TData, TProgress>(
   ops: ProgressOps<TData, TProgress>,
   options: ProgressUIOptions<TData> = {},
 ) => {
-  const {
-    formatItem,
-    showSummary = true,
-    spinnerInterval = 80,
-    formatSummary,
-  } = options
+  const { formatItem, showSummary = true, spinnerInterval = 80, formatSummary } = options
 
   const renderOptions: {
     formatItem?: (item: ProgressItem<TData>) => { label: string; message?: string | undefined }

@@ -8,15 +8,14 @@ import { Effect } from 'effect'
 
 import { isTTY, styled, formatElapsed } from '@overeng/cli-ui'
 
-import { createProgressUI, type ProgressUIHandle } from './ui.ts'
+import type { ProgressState, ProgressItem } from './service.ts'
 import {
-  SyncProgress,
   initSyncProgress,
   syncProgressChanges,
   getSyncProgress,
   type SyncItemData,
 } from './sync-adapter.ts'
-import type { ProgressState, ProgressItem } from './service.ts'
+import { createProgressUI, type ProgressUIHandle } from './ui.ts'
 
 // =============================================================================
 // Types

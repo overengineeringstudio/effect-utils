@@ -6,7 +6,7 @@
  * knowing about the underlying generic progress implementation.
  */
 
-import { Effect } from 'effect'
+
 
 import type { MemberSyncResult } from '../renderers/sync-renderer.ts'
 import { createProgressService, createState, type ProgressItemInput } from './service.ts'

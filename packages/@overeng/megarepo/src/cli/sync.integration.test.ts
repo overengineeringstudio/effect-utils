@@ -16,7 +16,13 @@ import {
   readLockFile,
   updateLockedMember,
 } from '../lib/lock.ts'
-import { addCommit, createRepo, createWorkspace, initGitRepo, runGitCommand } from '../test-utils/setup.ts'
+import {
+  addCommit,
+  createRepo,
+  createWorkspace,
+  initGitRepo,
+  runGitCommand,
+} from '../test-utils/setup.ts'
 import { createWorkspaceWithLock } from '../test-utils/store-setup.ts'
 import { withTestCtx } from '../test-utils/withTestCtx.ts'
 
@@ -727,8 +733,8 @@ describe('default sync mode (no --pull)', () => {
             },
           })
 
-          // Get the initial commit
-          const initialCommit = yield* runGitCommand(localRepoPath, 'rev-parse', 'HEAD')
+          // Get the initial commit (used for lock file setup below)
+          const _initialCommit = yield* runGitCommand(localRepoPath, 'rev-parse', 'HEAD')
 
           // Create workspace with lock pointing to an OLD commit
           const { workspacePath } = yield* createWorkspaceWithLock({
@@ -831,9 +837,9 @@ describe('default sync mode (no --pull)', () => {
               effect: 'effect-ts/effect',
             },
           }
-          const configContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
-            config,
-          )
+          const configContent = yield* Schema.encode(
+            Schema.parseJson(MegarepoConfig, { space: 2 }),
+          )(config)
           yield* fs.writeFileString(
             EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME)),
             configContent + '\n',
@@ -842,7 +848,10 @@ describe('default sync mode (no --pull)', () => {
 
           // Run sync (default mode) - this should NOT fetch since no worktree exists yet
           // It should try to clone since member doesn't exist
-          const result = yield* runSyncCommand({ cwd: workspacePath, args: ['--json', '--dry-run'] })
+          const result = yield* runSyncCommand({
+            cwd: workspacePath,
+            args: ['--json', '--dry-run'],
+          })
 
           // The command should complete (might error on clone attempt, but shouldn't hang on fetch)
           expect(result.exitCode).toBeDefined()
@@ -888,7 +897,10 @@ describe('sync --pull mode', () => {
           })
 
           // Create symlink manually to simulate existing member
-          const reposDir = EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeDir('repos/'))
+          const reposDir = EffectPath.ops.join(
+            workspacePath,
+            EffectPath.unsafe.relativeDir('repos/'),
+          )
           yield* fs.makeDirectory(reposDir, { recursive: true })
           yield* fs.symlink(
             localRepoPath.slice(0, -1),
@@ -940,7 +952,10 @@ describe('sync --pull mode', () => {
           })
 
           // Create symlink manually
-          const reposDir = EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeDir('repos/'))
+          const reposDir = EffectPath.ops.join(
+            workspacePath,
+            EffectPath.unsafe.relativeDir('repos/'),
+          )
           yield* fs.makeDirectory(reposDir, { recursive: true })
           yield* fs.symlink(
             localRepoPath.slice(0, -1),

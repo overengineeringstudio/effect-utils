@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
 import { Effect, Stream, Chunk } from 'effect'
+import { describe, it, expect } from 'vitest'
 
 import {
   createProgressService,
@@ -257,7 +257,7 @@ describe('createProgressService', () => {
   })
 
   describe('service operations', () => {
-    const { Progress, ops, layer } = createProgressService<{ value: number }>('test-ops')
+    const { ops, layer } = createProgressService<{ value: number }>('test-ops')
 
     it('init initializes state', async () => {
       const result = await Effect.runPromise(
