@@ -103,9 +103,11 @@ in
 
     # Wire setup tasks to run during shell entry via native task dependencies
     # Also save the hash after setup completes
+    # NOTE: We use lib.mkForce for exec because devenv 2.0 defines a default exec
+    # that we need to override when running in non-strict mode
     "devenv:enterShell" = {
       after = lib.mkIf (builtins.getEnv "DEVENV_STRICT" == "1") (tasks ++ [ "setup:save-hash" ]);
-      exec = lib.mkIf (builtins.getEnv "DEVENV_STRICT" != "1") ''
+      exec = lib.mkIf (builtins.getEnv "DEVENV_STRICT" != "1") (lib.mkForce ''
         echo "devenv: setup tasks are non-blocking (set DEVENV_STRICT=1 to enforce)"
         for task in ${lib.concatStringsSep " " tasks}; do
           if ! devenv tasks run "$task"; then
@@ -113,7 +115,7 @@ in
           fi
         done
         devenv tasks run setup:save-hash >/dev/null 2>&1 || true
-      '';
+      '');
     };
 
     # Force-run setup tasks (bypasses git hash check)
