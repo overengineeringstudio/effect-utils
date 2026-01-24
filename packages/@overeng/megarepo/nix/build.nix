@@ -27,6 +27,7 @@ in
 pkgs.stdenv.mkDerivation {
   pname = "megarepo-with-completions";
   version = base.version or "0.0.0";
+  meta.mainProgram = "mr";
 
   phases = [ "installPhase" ];
 
