@@ -70,19 +70,25 @@ else pkgs.stdenvNoCC.mkDerivation {
       log_name="$(printf '%s' "$dep_name" | tr '/@' '__')"
       local install_log="$PWD/${depsManager}-install-$log_name.log"
       if ${lib.boolToString (!isPnpm)}; then
+        # Use --ignore-scripts to avoid /usr/bin/env shebang failures in Nix sandbox.
+        # See: context/nix-devenv/ci.md
         bun install \
           --cwd "$dep_path" \
           --frozen-lockfile \
           --linker=hoisted \
           --backend=copyfile \
-          --no-cache 2>&1 | tee "$install_log"
+          --no-cache \
+          --ignore-scripts 2>&1 | tee "$install_log"
       else
         (
           cd "$dep_path"
+          # Use --ignore-scripts to avoid /usr/bin/env shebang failures in Nix sandbox.
+          # See: context/nix-devenv/ci.md
           pnpm install \
             --frozen-lockfile \
             --force \
-            --shamefully-hoist
+            --shamefully-hoist \
+            --ignore-scripts
         ) 2>&1 | tee "$install_log"
       fi
       if [ "''${PIPESTATUS[0]:-0}" -ne 0 ]; then
