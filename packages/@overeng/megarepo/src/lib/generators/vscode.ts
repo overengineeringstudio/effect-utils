@@ -36,11 +36,12 @@ interface VscodeWorkspace {
 export const generateVscodeContent = (options: VscodeGeneratorOptions): string => {
   const excludeSet = new Set(options.exclude ?? options.config.generators?.vscode?.exclude ?? [])
 
+  // Paths are relative to .vscode/ directory where the workspace file lives
   const folders: VscodeWorkspace['folders'] = [
-    { path: '.', name: '(megarepo root)' },
+    { path: '..', name: '(megarepo root)' },
     ...Object.keys(options.config.members)
       .filter((name) => !excludeSet.has(name))
-      .map((name) => ({ path: `${MEMBER_ROOT_DIR}/${name}`, name })),
+      .map((name) => ({ path: `../${MEMBER_ROOT_DIR}/${name}`, name })),
   ]
 
   const workspace: VscodeWorkspace = {

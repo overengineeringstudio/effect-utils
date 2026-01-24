@@ -38,9 +38,9 @@ describe('vscode generator', () => {
       const workspace = JSON.parse(content)
 
       expect(workspace.folders).toHaveLength(3) // root + 2 members
-      expect(workspace.folders[0]).toEqual({ path: '.', name: '(megarepo root)' })
-      expect(workspace.folders).toContainEqual({ path: 'repos/lib1', name: 'lib1' })
-      expect(workspace.folders).toContainEqual({ path: 'repos/lib2', name: 'lib2' })
+      expect(workspace.folders[0]).toEqual({ path: '..', name: '(megarepo root)' })
+      expect(workspace.folders).toContainEqual({ path: '../repos/lib1', name: 'lib1' })
+      expect(workspace.folders).toContainEqual({ path: '../repos/lib2', name: 'lib2' })
     })
 
     it('should exclude members from options.exclude', () => {
@@ -57,7 +57,7 @@ describe('vscode generator', () => {
       const workspace = JSON.parse(content)
 
       expect(workspace.folders).toHaveLength(3) // root + 2 (excluding large-repo)
-      expect(workspace.folders).not.toContainEqual(expect.objectContaining({ path: 'repos/large-repo' }))
+      expect(workspace.folders).not.toContainEqual(expect.objectContaining({ path: '../repos/large-repo' }))
     })
 
     it('should exclude members from config.generators.vscode.exclude', () => {
@@ -81,7 +81,7 @@ describe('vscode generator', () => {
       const workspace = JSON.parse(content)
 
       expect(workspace.folders).toHaveLength(3) // root + 2 (excluding 'excluded')
-      expect(workspace.folders).not.toContainEqual(expect.objectContaining({ path: 'repos/excluded' }))
+      expect(workspace.folders).not.toContainEqual(expect.objectContaining({ path: '../repos/excluded' }))
     })
 
     it('should prefer options.exclude over config.generators.vscode.exclude', () => {
@@ -105,8 +105,8 @@ describe('vscode generator', () => {
       const workspace = JSON.parse(content)
 
       // lib2 should be excluded (from options), lib1 should be included
-      expect(workspace.folders).toContainEqual({ path: 'repos/lib1', name: 'lib1' })
-      expect(workspace.folders).not.toContainEqual(expect.objectContaining({ path: 'repos/lib2' }))
+      expect(workspace.folders).toContainEqual({ path: '../repos/lib1', name: 'lib1' })
+      expect(workspace.folders).not.toContainEqual(expect.objectContaining({ path: '../repos/lib2' }))
     })
 
     it('should include default file exclusions in settings', () => {
@@ -134,7 +134,7 @@ describe('vscode generator', () => {
 
       expect(workspace.folders).toHaveLength(1) // only root
       expect(workspace.folders[0]).toEqual({
-        path: '.',
+        path: '..',
         name: '(megarepo root)',
       })
     })
