@@ -304,6 +304,75 @@ This directly adds the `key` prop to the JSX namespace, bypassing the broken `Re
 
 ---
 
+## PNPM-04: `patchedDependencies` and `link:` protocol isolation
+
+> **Status: DOCUMENTED** - Important consideration when switching back to bun
+
+When using pnpm's `link:` protocol for internal packages, **patches must be configured in the package that directly depends on the patched dependency**, not in consuming packages.
+
+### How it works with pnpm
+
+With `link:`, each package uses its **own** `node_modules`:
+
+```
+# misc.schickling.dev depends on @overeng/utils via link:
+misc.schickling.dev/
+  node_modules/
+    @overeng/utils -> ../../repos/effect-utils/packages/@overeng/utils  # symlink
+    # NO effect-distributed-lock here!
+
+@overeng/utils/
+  node_modules/
+    effect-distributed-lock/  # installed here, with patch applied
+```
+
+**Key behaviors:**
+
+1. `effect-distributed-lock` is installed in `@overeng/utils/node_modules/`, not in consuming packages
+2. Only `@overeng/utils` needs `pnpm.patchedDependencies` configured
+3. pnpm **errors** if you add `patchedDependencies` for packages not in your dependency tree:
+   ```
+   ERR_PNPM_UNUSED_PATCH  The following patches were not used: effect-distributed-lock@0.0.11
+   ```
+
+### Potential footgun when switching to bun
+
+**This behavior may differ with bun.** Bun might:
+
+1. Hoist transitive dependencies into consuming packages' `node_modules`
+2. Use different `file:`/`link:` semantics
+3. Require `patchedDependencies` (top-level, not under `pnpm`) in all consuming packages
+
+**When switching back to bun, verify:**
+
+1. Where `effect-distributed-lock` gets installed (check each package's `node_modules`)
+2. Whether the patch from `@overeng/utils` applies transitively
+3. If not, add `patchedDependencies` to all packages that use `@overeng/utils`:
+
+```json
+{
+  "patchedDependencies": {
+    "effect-distributed-lock@0.0.11": "path/to/patches/effect-distributed-lock@0.0.11.patch"
+  }
+}
+```
+
+**Testing the patch:**
+
+```bash
+# Check if RedisBacking export is removed (patch applied)
+grep "export.*RedisBacking" node_modules/effect-distributed-lock/dist/index.js
+# Should return nothing if patch is applied
+```
+
+### Current configuration (pnpm)
+
+- **Only** `@overeng/utils` has `pnpm.patchedDependencies`
+- All other packages removed both `postinstall` scripts AND `patchedDependencies`
+- Consuming packages get the patched version through the `link:` symlink
+
+---
+
 ## Related
 
 - **Detailed comparison gist:** https://gist.github.com/schickling/d05fe50fe4ffb1c2e9e48c8623579d7e

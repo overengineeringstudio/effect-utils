@@ -15,6 +15,7 @@ export * from './nix/mod.ts'
 export * from './schema.ts'
 export * from './vscode.ts'
 
+/** Output types from generator functions */
 export type GeneratorOutput =
   | {
       readonly _tag: 'nix'
@@ -24,6 +25,7 @@ export type GeneratorOutput =
   | { readonly _tag: 'vscode'; readonly path: AbsoluteFilePath }
   | { readonly _tag: 'schema'; readonly path: AbsoluteFilePath }
 
+/** Options for running all generators */
 export interface GenerateAllOptions {
   /** Path to the nearest megarepo root */
   readonly megarepoRoot: AbsoluteDirPath
@@ -33,6 +35,7 @@ export interface GenerateAllOptions {
   readonly config: typeof MegarepoConfig.Type
 }
 
+/** Run all enabled generators and return their outputs */
 export const generateAll = Effect.fn('megarepo/generate/all')((options: GenerateAllOptions) =>
   Effect.gen(function* () {
     const outputs: GeneratorOutput[] = []

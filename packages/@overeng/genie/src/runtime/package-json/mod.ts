@@ -377,7 +377,9 @@ const sortExports = (
  * @returns Relative path (e.g., '../utils')
  */
 const computeRelativePath = ({ from, to }: { from: string; to: string }): string => {
-  const fromParts = from.split('/').filter(Boolean)
+  // Normalize '.' to empty string (repo root)
+  const normalizedFrom = from === '.' ? '' : from
+  const fromParts = normalizedFrom.split('/').filter(Boolean)
   const toParts = to.split('/').filter(Boolean)
 
   // Find common prefix length

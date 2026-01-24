@@ -2,9 +2,15 @@ import { describe, expect, it } from 'vitest'
 
 import { packageJson, workspaceRoot, type GenieContext } from '../mod.ts'
 
-/** Mock GenieContext for tests */
+/** Mock GenieContext for package tests (nested package location) */
 const mockGenieContext: GenieContext = {
   location: 'packages/@test/package',
+  cwd: '/workspace',
+}
+
+/** Mock GenieContext for workspace root tests (repo root location) */
+const mockWorkspaceRootContext: GenieContext = {
+  location: '.',
   cwd: '/workspace',
 }
 
@@ -221,7 +227,7 @@ describe('workspaceRoot', () => {
       private: true,
     })
 
-    const json = result.stringify(mockGenieContext)
+    const json = result.stringify(mockWorkspaceRootContext)
     const parsed = JSON.parse(json)
 
     expect(parsed.$genie).toBe(true)
@@ -236,7 +242,7 @@ describe('workspaceRoot', () => {
       workspaces: ['packages/*', 'apps/*'],
     })
 
-    const json = result.stringify(mockGenieContext)
+    const json = result.stringify(mockWorkspaceRootContext)
     const parsed = JSON.parse(json)
     expect(parsed.workspaces).toEqual(['packages/*', 'apps/*'])
   })
@@ -252,7 +258,7 @@ describe('workspaceRoot', () => {
       },
     })
 
-    const json = result.stringify(mockGenieContext)
+    const json = result.stringify(mockWorkspaceRootContext)
     const parsed = JSON.parse(json)
     expect(parsed.pnpm.patchedDependencies).toEqual({
       'some-pkg@1.0.0': 'patches/some-pkg.patch',
@@ -274,7 +280,7 @@ describe('workspaceRoot', () => {
       },
     })
 
-    const json = result.stringify(mockGenieContext)
+    const json = result.stringify(mockWorkspaceRootContext)
     const parsed = JSON.parse(json)
     expect(parsed.catalog).toEqual({
       effect: '3.0.0',
@@ -294,7 +300,7 @@ describe('workspaceRoot', () => {
       trustedDependencies: ['esbuild', 'sharp'],
     })
 
-    const json = result.stringify(mockGenieContext)
+    const json = result.stringify(mockWorkspaceRootContext)
     const parsed = JSON.parse(json)
     expect(parsed.trustedDependencies).toEqual(['esbuild', 'sharp'])
   })
