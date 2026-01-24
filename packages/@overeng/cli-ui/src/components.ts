@@ -243,9 +243,9 @@ export type HighlightLineOptions = {
  *
  * @example
  * ```ts
- * console.log(highlightLine('Current item'))
- * console.log(highlightLine('Selected', { bgColor: 238 }))
- * console.log(highlightLine(styled.bold('Bold') + ' text')) // Background persists through styled text
+ * console.log(highlightLine({ text: 'Current item' }))
+ * console.log(highlightLine({ text: 'Selected', options: { bgColor: 238 } }))
+ * console.log(highlightLine({ text: styled.bold('Bold') + ' text' })) // Background persists through styled text
  * ```
  */
 export const highlightLine = ({

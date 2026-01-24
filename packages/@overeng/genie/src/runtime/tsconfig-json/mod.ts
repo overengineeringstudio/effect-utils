@@ -76,7 +76,7 @@ export type TSConfigCompilerOptions = {
   /** Module code generation */
   module?: Module
   /** Library files to include */
-  lib?: string[]
+  lib?: readonly string[] | string[]
   /** JSX code generation */
   jsx?: JSX
   /** JSX factory function */
@@ -136,7 +136,7 @@ export type TSConfigCompilerOptions = {
   /** Base directory for non-relative module names */
   baseUrl?: string
   /** Path mappings for module names */
-  paths?: Record<string, string[]>
+  paths?: Record<string, readonly string[] | string[]>
   /** Emit design-type metadata for decorators */
   emitDecoratorMetadata?: boolean
   /** Enable experimental decorator support */

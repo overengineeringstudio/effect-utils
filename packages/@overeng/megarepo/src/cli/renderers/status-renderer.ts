@@ -324,7 +324,7 @@ const formatMemberLine = ({
 
   // Apply full-width background highlight for current location
   if (isCurrent) {
-    return highlightLine(line)
+    return highlightLine({ text: line })
   }
 
   return line

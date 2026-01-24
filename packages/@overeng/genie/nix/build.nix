@@ -17,7 +17,8 @@ let
     workspaceRoot = src;
     extraExcludedSourceNames = [ "context" "scripts" ];
     typecheckTsconfig = "packages/@overeng/genie/tsconfig.json";
-    bunDepsHash = "sha256-qejMQMUL17HoLSMG9Q21QHCxJ+Q0mevYf552ed/MulU=";
+    depsManager = "pnpm";
+    pnpmDepsHash = "sha256-5k92LXncOqlaYKBz8zi0SMIIsu27evXamxM4nyb6SQg=";
     dirty = dirty;
     inherit gitRev;
   };

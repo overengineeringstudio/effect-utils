@@ -261,6 +261,47 @@ This tells TypeScript to resolve `react` imports (including those from `react-ar
 
 **Note:** This requires `@types/react` to be installed as a dependency in the package.
 
+### Variant: JSX `key` prop missing from IntrinsicAttributes
+
+The same underlying issue affects packages that use `jsxImportSource` (custom JSX runtimes). When using `@opentui/react` or similar packages with `jsxImportSource`, the `key` prop is missing from `IntrinsicAttributes`:
+
+**Symptoms:**
+
+```
+error TS2322: Type '{ key: string; name: string; }' is not assignable to type 'IntrinsicAttributes & ItemProps'.
+  Property 'key' does not exist on type 'IntrinsicAttributes & ItemProps'.
+```
+
+**Root cause:** The custom JSX package's type definitions extend `React.Attributes` for `IntrinsicAttributes`:
+
+```typescript
+// In @opentui/react/jsx-namespace.d.ts
+interface IntrinsicAttributes extends React.Attributes {}
+```
+
+When TypeScript can't resolve `React.Attributes` from the global store (same issue as above), the `key` prop is lost.
+
+**Solution: Module augmentation**
+
+Create a `.d.ts` file that augments the JSX runtime module:
+
+```typescript
+// src/opentui-jsx-fix.d.ts
+import type { Key } from 'react'
+
+declare module '@opentui/react/jsx-runtime' {
+  namespace JSX {
+    interface IntrinsicAttributes {
+      key?: Key | null | undefined
+    }
+  }
+}
+```
+
+This directly adds the `key` prop to the JSX namespace, bypassing the broken `React.Attributes` resolution.
+
+**Note:** The `paths` workaround for `react` doesn't help here because `jsxImportSource` resolution works differently - TypeScript resolves the JSX runtime from the package location, not using standard module resolution.
+
 ---
 
 ## Related
