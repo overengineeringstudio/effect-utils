@@ -128,7 +128,7 @@ const formatStatusIcon = (status: TreeProgressStatus, spinnerFrame: number): str
     case 'error':
       return styled.red(symbols.cross)
     case 'skipped':
-      return styled.dim(symbols.dash)
+      return styled.dim(symbols.separator)
   }
 }
 
@@ -176,7 +176,9 @@ const buildFlatTree = <T>(
     getParentId: (item) => item.parentId,
   })
 
-  return flattenTree({ nodes: tree, chars: state.options.chars })
+  return flattenTree(
+    state.options.chars ? { nodes: tree, chars: state.options.chars } : { nodes: tree },
+  )
 }
 
 /** Render the tree progress to a string array */

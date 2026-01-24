@@ -9,7 +9,7 @@ import path from 'node:path'
 import * as Cli from '@effect/cli'
 import type { CommandExecutor } from '@effect/platform'
 import { Command, FileSystem, type Error as PlatformError } from '@effect/platform'
-import { Console, Context, Effect, Layer, Option, type ParseResult, Schema } from 'effect'
+import { Console, Context, Effect, Fiber, Layer, Option, type ParseResult, Schema, Stream, SubscriptionRef } from 'effect'
 
 import {
   createProgressListState,
@@ -72,6 +72,16 @@ import {
   type MemberStatus,
   type GitStatus,
 } from './renderers/mod.ts'
+import {
+  SyncProgress,
+  SyncProgressEmpty,
+  setMemberSyncing,
+  applySyncResult,
+  completeSyncProgress,
+  startSyncProgressUI,
+  finishSyncProgressUI,
+  type SyncProgressService,
+} from './progress/mod.ts'
 
 // =============================================================================
 // CLI Context Services
@@ -1161,17 +1171,20 @@ class StaleLockFileError extends Schema.TaggedError<StaleLockFileError>()('Stale
  *
  * @param visited - Set of already-synced megarepo roots (resolved paths) to prevent duplicate syncing
  *                  in diamond dependency scenarios (e.g., A→B, A→C, B→D, C→D where D would be synced twice)
+ * @param withProgress - When true, uses limited concurrency (4) for visible progress updates
  */
 const syncMegarepo = ({
   megarepoRoot,
   options,
   depth = 0,
   visited = new Set<string>(),
+  withProgress = false,
 }: {
   megarepoRoot: AbsoluteDirPath
   options: { json: boolean; dryRun: boolean; pull: boolean; frozen: boolean; force: boolean; deep: boolean }
   depth?: number
   visited?: Set<string>
+  withProgress?: boolean
 }): Effect.Effect<
   MegarepoSyncResult,
   | NotInMegarepoError
@@ -1179,7 +1192,7 @@ const syncMegarepo = ({
   | StaleLockFileError
   | PlatformError.PlatformError
   | ParseResult.ParseError,
-  FileSystem.FileSystem | CommandExecutor.CommandExecutor | Store
+  FileSystem.FileSystem | CommandExecutor.CommandExecutor | Store | SyncProgressService
 > =>
   Effect.gen(function* () {
     const { json, dryRun, pull, frozen, force, deep } = options
@@ -1286,21 +1299,39 @@ const syncMegarepo = ({
 
     const members = Object.entries(config.members)
 
-    // Sync all members in parallel for better performance
+    // Sync all members with limited concurrency for visible progress
+    // Use unbounded for non-TTY (faster) or limited (4) for TTY (visible progress)
+    const concurrency = withProgress ? 4 : 'unbounded'
+
     const results = yield* Effect.all(
       members.map(([name, sourceString]) =>
-        syncMember({
-          name,
-          sourceString,
-          megarepoRoot,
-          lockFile,
-          dryRun,
-          pull,
-          frozen,
-          force,
+        Effect.gen(function* () {
+          // Mark as syncing in progress service
+          if (withProgress) {
+            yield* setMemberSyncing(name).pipe(Effect.catchAll(() => Effect.void))
+          }
+
+          // Perform the sync
+          const result = yield* syncMember({
+            name,
+            sourceString,
+            megarepoRoot,
+            lockFile,
+            dryRun,
+            pull,
+            frozen,
+            force,
+          })
+
+          // Apply result to progress service
+          if (withProgress) {
+            yield* applySyncResult(result).pipe(Effect.catchAll(() => Effect.void))
+          }
+
+          return result
         }),
       ),
-      { concurrency: 'unbounded' },
+      { concurrency },
     )
 
     // Check which members are themselves megarepos (for --deep)
@@ -1437,6 +1468,7 @@ const syncCommand = Cli.Command.make(
   ({ json, dryRun, pull, frozen, force, deep }) =>
     Effect.gen(function* () {
       const cwd = yield* Cwd
+      const fs = yield* FileSystem.FileSystem
       const root = yield* findMegarepoRoot(cwd)
 
       if (Option.isNone(root)) {
@@ -1451,30 +1483,71 @@ const syncCommand = Cli.Command.make(
       // Get workspace name
       const name = yield* Git.deriveMegarepoName(root.value)
 
-      // Run the sync
-      const syncResult = yield* syncMegarepo({
-        megarepoRoot: root.value,
-        options: { json, dryRun, pull, frozen, force, deep },
-      })
+      // Determine if we should use live progress (TTY and not JSON mode)
+      const useLiveProgress = !json && isTTY()
 
-      // Output results
-      if (json) {
-        console.log(JSON.stringify(flattenSyncResults(syncResult)))
-      } else {
-        // Render using the new renderer
-        const lines = renderSync({
-          name,
-          root: root.value,
-          results: syncResult.results,
-          nestedMegarepos: syncResult.nestedMegarepos,
-          deep,
+      if (useLiveProgress) {
+        // Load config to get member names for progress display
+        const configPath = EffectPath.ops.join(
+          root.value,
+          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+        )
+        const configContent = yield* fs.readFileString(configPath)
+        const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+        const memberNames = Object.keys(config.members)
+
+        // Start live progress UI
+        const ui = yield* startSyncProgressUI({
+          workspaceName: name,
+          workspaceRoot: root.value,
+          memberNames,
           dryRun,
           frozen,
           pull,
+          deep,
         })
-        yield* outputLines(lines)
+
+        // Run the sync with progress updates
+        const syncResult = yield* syncMegarepo({
+          megarepoRoot: root.value,
+          options: { json, dryRun, pull, frozen, force, deep },
+          withProgress: true,
+        })
+
+        // Mark complete and finish UI
+        yield* completeSyncProgress()
+        yield* finishSyncProgressUI(ui)
+
+        // Return result (already displayed via UI)
+        return syncResult
+      } else {
+        // Non-TTY or JSON mode: use original batch rendering
+        const syncResult = yield* syncMegarepo({
+          megarepoRoot: root.value,
+          options: { json, dryRun, pull, frozen, force, deep },
+        })
+
+        // Output results
+        if (json) {
+          console.log(JSON.stringify(flattenSyncResults(syncResult)))
+        } else {
+          // Render using the batch renderer (for non-TTY)
+          const lines = renderSync({
+            name,
+            root: root.value,
+            results: syncResult.results,
+            nestedMegarepos: syncResult.nestedMegarepos,
+            deep,
+            dryRun,
+            frozen,
+            pull,
+          })
+          yield* outputLines(lines)
+        }
+
+        return syncResult
       }
-    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/sync')),
+    }).pipe(Effect.provide(Layer.merge(StoreLayer, SyncProgressEmpty)), Effect.withSpan('megarepo/sync')),
 ).pipe(
   Cli.Command.withDescription(
     'Ensure members exist and update lock file to current worktree commits. Use --pull to fetch from remote.',
