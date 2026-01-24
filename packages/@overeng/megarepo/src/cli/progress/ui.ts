@@ -225,7 +225,11 @@ const rerender = <TData>({
     write(
       cursorToStart +
         clearToEOL +
-        formatSummaryLine({ state, elapsed, ...(formatSummary && { customFormat: formatSummary }) }) +
+        formatSummaryLine({
+          state,
+          elapsed,
+          ...(formatSummary && { customFormat: formatSummary }),
+        }) +
         '\n',
     )
     write(cursorToStart + clearToEOL + '\n')
@@ -310,7 +314,11 @@ export const createProgressUI = <TData, TProgress>({
       const initialState = yield* ops.get()
 
       // Initial render
-      const lines = renderItems({ state: initialState, frame: renderState.frame, ...(formatItem && { formatItem }) })
+      const lines = renderItems({
+        state: initialState,
+        frame: renderState.frame,
+        ...(formatItem && { formatItem }),
+      })
       for (const line of lines) {
         writeLine(line)
       }

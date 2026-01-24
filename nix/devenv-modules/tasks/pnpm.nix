@@ -38,9 +38,13 @@
 # Parallel pnpm installs with enableGlobalVirtualStore cause race conditions.
 # See: https://github.com/pnpm/pnpm/issues/10232
 # See: context/workarounds/pnpm-issues.md for full details.
+#
+# Shared caching rules live in ./lib/cache.nix (task-specific details below).
 { packages }:
-{ lib, ... }:
+{ lib, config, ... }:
 let
+  cache = import ./lib/cache.nix { inherit config; };
+  cacheRoot = cache.mkCachePath "pnpm-install";
   # Convert path to task name:
   # "packages/@scope/foo" -> "foo"
   # "packages/@scope/foo/examples/basic" -> "foo-examples-basic"
@@ -77,9 +81,8 @@ let
         # CI=true would disable GVS (see pnpm docs: "Default: false (always false in CI)").
         exec = ''
           set -euo pipefail
-          hash_dir="$DEVENV_DOTFILE/pnpm-install"
-          mkdir -p "$hash_dir"
-          hash_file="$hash_dir/${toName path}.hash"
+          mkdir -p "${cacheRoot}"
+          hash_file="${cacheRoot}/${toName path}.hash"
 
           npm_config_enable_global_virtual_store=true pnpm install --config.confirmModulesPurge=false
 
@@ -90,14 +93,15 @@ let
           fi
 
           current_hash="$(cat package.json pnpm-lock.yaml | $hash_cmd | awk '{print $1}')"
-          echo "$current_hash" > "$hash_file"
+          cache_value="$current_hash"
+          ${cache.writeCacheFile ''"$hash_file"''}
         '';
         cwd = path;
         after = [ prevTask ];
         status = ''
           set -euo pipefail
-          hash_file="$DEVENV_DOTFILE/pnpm-install/${toName path}.hash"
-          if [ ! -d "${path}/node_modules" ]; then
+          hash_file="${cacheRoot}/${toName path}.hash"
+          if [ ! -d "node_modules" ]; then
             exit 1
           fi
           if [ ! -f "$hash_file" ]; then
@@ -108,7 +112,7 @@ let
           else
             hash_cmd="shasum -a 256"
           fi
-          current_hash="$(cat "${path}/package.json" "${path}/pnpm-lock.yaml" | $hash_cmd | awk '{print $1}')"
+          current_hash="$(cat package.json pnpm-lock.yaml | $hash_cmd | awk '{print $1}')"
           stored_hash="$(cat "$hash_file")"
           if [ "$current_hash" != "$stored_hash" ]; then
             exit 1

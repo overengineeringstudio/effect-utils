@@ -5,7 +5,7 @@
  * and writes `.envrc.generated.megarepo` for direnv integration.
  */
 
-import { Command, CommandExecutor, FileSystem } from '@effect/platform'
+import { Command, FileSystem } from '@effect/platform'
 import { Effect, Schema } from 'effect'
 
 import {

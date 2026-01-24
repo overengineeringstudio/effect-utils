@@ -210,6 +210,13 @@ export const getItemsByStatus = <TData>({
 }
 
 // =============================================================================
+// Service Types
+// =============================================================================
+
+/** The underlying ref type for a progress service */
+export type ProgressRef<TData> = SubscriptionRef.SubscriptionRef<ProgressState<TData>>
+
+// =============================================================================
 // Service Factory
 // =============================================================================
 
@@ -218,12 +225,38 @@ export const getItemsByStatus = <TData>({
  *
  * @param name - Unique name for the service (used in Context.Tag)
  * @returns Progress service with tag, operations, and layer factory
+ *
+ * @internal This function is not exported in declarations to avoid TS4023 errors.
+ * Use the pre-created sync progress service from sync-adapter.ts instead.
  */
-export const createProgressService = <TData = unknown>(name: string) => {
+export const createProgressService = <TData = unknown>(
+  name: string,
+): {
+  Progress: Context.Tag<any, ProgressRef<TData>>
+  ops: {
+    init: (params: {
+      items: ReadonlyArray<ProgressItemInput<TData>>
+      metadata?: Record<string, unknown>
+    }) => Effect.Effect<void, never, any>
+    markActive: (params: { id: string; message?: string }) => Effect.Effect<void, never, any>
+    markSuccess: (params: { id: string; message?: string }) => Effect.Effect<void, never, any>
+    markError: (params: { id: string; message?: string }) => Effect.Effect<void, never, any>
+    markSkipped: (params: { id: string; message?: string }) => Effect.Effect<void, never, any>
+    update: (params: {
+      id: string
+      update: Partial<Pick<ProgressItem<TData>, 'status' | 'message' | 'data'>>
+    }) => Effect.Effect<void, never, any>
+    addItem: (item: ProgressItemInput<TData>) => Effect.Effect<void, never, any>
+    removeItem: (id: string) => Effect.Effect<void, never, any>
+    complete: () => Effect.Effect<void, never, any>
+    get: () => Effect.Effect<ProgressState<TData>, never, any>
+    changes: () => Effect.Effect<Stream.Stream<ProgressState<TData>>, never, any>
+  }
+  layer: Layer.Layer<any>
+  layerWith: (state: ProgressState<TData>) => Layer.Layer<any>
+} => {
   // Create the service tag
-  type ProgressRef = SubscriptionRef.SubscriptionRef<ProgressState<TData>>
-
-  class Progress extends Context.Tag(`megarepo/Progress/${name}`)<Progress, ProgressRef>() {}
+  class Progress extends Context.Tag(`megarepo/Progress/${name}`)<Progress, ProgressRef<TData>>() {}
 
   // Create operations that require the Progress service
   const ops = {
@@ -233,19 +266,13 @@ export const createProgressService = <TData = unknown>(name: string) => {
     }: {
       items: ReadonlyArray<ProgressItemInput<TData>>
       metadata?: Record<string, unknown>
-    }): Effect.Effect<void, never, Progress> =>
+    }) =>
       Effect.gen(function* () {
         const ref = yield* Progress
         yield* SubscriptionRef.set(ref, createState({ items, ...(metadata && { metadata }) }))
       }),
 
-    markActive: ({
-      id,
-      message,
-    }: {
-      id: string
-      message?: string
-    }): Effect.Effect<void, never, Progress> =>
+    markActive: ({ id, message }: { id: string; message?: string }) =>
       Effect.gen(function* () {
         const ref = yield* Progress
         yield* SubscriptionRef.update(ref, (state) =>
@@ -253,13 +280,7 @@ export const createProgressService = <TData = unknown>(name: string) => {
         )
       }),
 
-    markSuccess: ({
-      id,
-      message,
-    }: {
-      id: string
-      message?: string
-    }): Effect.Effect<void, never, Progress> =>
+    markSuccess: ({ id, message }: { id: string; message?: string }) =>
       Effect.gen(function* () {
         const ref = yield* Progress
         yield* SubscriptionRef.update(ref, (state) =>
@@ -267,13 +288,7 @@ export const createProgressService = <TData = unknown>(name: string) => {
         )
       }),
 
-    markError: ({
-      id,
-      message,
-    }: {
-      id: string
-      message?: string
-    }): Effect.Effect<void, never, Progress> =>
+    markError: ({ id, message }: { id: string; message?: string }) =>
       Effect.gen(function* () {
         const ref = yield* Progress
         yield* SubscriptionRef.update(ref, (state) =>
@@ -281,13 +296,7 @@ export const createProgressService = <TData = unknown>(name: string) => {
         )
       }),
 
-    markSkipped: ({
-      id,
-      message,
-    }: {
-      id: string
-      message?: string
-    }): Effect.Effect<void, never, Progress> =>
+    markSkipped: ({ id, message }: { id: string; message?: string }) =>
       Effect.gen(function* () {
         const ref = yield* Progress
         yield* SubscriptionRef.update(ref, (state) =>
@@ -301,37 +310,37 @@ export const createProgressService = <TData = unknown>(name: string) => {
     }: {
       id: string
       update: Partial<Pick<ProgressItem<TData>, 'status' | 'message' | 'data'>>
-    }): Effect.Effect<void, never, Progress> =>
+    }) =>
       Effect.gen(function* () {
         const ref = yield* Progress
         yield* SubscriptionRef.update(ref, (state) => updateItem({ state, id, update }))
       }),
 
-    addItem: (item: ProgressItemInput<TData>): Effect.Effect<void, never, Progress> =>
+    addItem: (item: ProgressItemInput<TData>) =>
       Effect.gen(function* () {
         const ref = yield* Progress
         yield* SubscriptionRef.update(ref, (state) => addItem({ state, item }))
       }),
 
-    removeItem: (id: string): Effect.Effect<void, never, Progress> =>
+    removeItem: (id: string) =>
       Effect.gen(function* () {
         const ref = yield* Progress
         yield* SubscriptionRef.update(ref, (state) => removeItem({ state, id }))
       }),
 
-    complete: (): Effect.Effect<void, never, Progress> =>
+    complete: () =>
       Effect.gen(function* () {
         const ref = yield* Progress
         yield* SubscriptionRef.update(ref, markComplete)
       }),
 
-    get: (): Effect.Effect<ProgressState<TData>, never, Progress> =>
+    get: () =>
       Effect.gen(function* () {
         const ref = yield* Progress
         return yield* SubscriptionRef.get(ref)
       }),
 
-    changes: (): Effect.Effect<Stream.Stream<ProgressState<TData>>, never, Progress> =>
+    changes: () =>
       Effect.gen(function* () {
         const ref = yield* Progress
         return ref.changes
@@ -339,12 +348,9 @@ export const createProgressService = <TData = unknown>(name: string) => {
   }
 
   // Create layer factories
-  const layer: Layer.Layer<Progress> = Layer.scoped(
-    Progress,
-    SubscriptionRef.make<ProgressState<TData>>(emptyState()),
-  )
+  const layer = Layer.scoped(Progress, SubscriptionRef.make<ProgressState<TData>>(emptyState()))
 
-  const layerWith = (state: ProgressState<TData>): Layer.Layer<Progress> =>
+  const layerWith = (state: ProgressState<TData>) =>
     Layer.scoped(Progress, SubscriptionRef.make(state))
 
   return { Progress, ops, layer, layerWith }

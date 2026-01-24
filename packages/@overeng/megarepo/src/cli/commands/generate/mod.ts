@@ -5,7 +5,7 @@
  */
 
 import * as Cli from '@effect/cli'
-import type { CommandExecutor} from '@effect/platform';
+import type { CommandExecutor } from '@effect/platform'
 import { FileSystem, type Error as PlatformError } from '@effect/platform'
 import { Console, Effect, Option, type ParseResult, Schema } from 'effect'
 

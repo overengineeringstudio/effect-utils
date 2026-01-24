@@ -17,8 +17,6 @@ sh: /build/workspace/.../node_modules/.bin/effect-language-service: /usr/bin/env
 3. In the Nix sandbox, `/usr/bin/env` doesn't exist
 4. The script fails, causing the entire dependency installation to fail
 
-
-
 ## References
 
 - [Nix manual: patchShebangs](https://nixos.org/manual/nixpkgs/stable/#fun-patchShebangs)

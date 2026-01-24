@@ -41,6 +41,7 @@ import { Cwd } from './context.ts'
 // =============================================================================
 
 /** Root CLI command */
+
 export const mrCommand = Cli.Command.make('mr', {}).pipe(
   Cli.Command.withSubcommands([
     initCommand,
@@ -60,6 +61,7 @@ export const mrCommand = Cli.Command.make('mr', {}).pipe(
 )
 
 /** Exported CLI for external use */
+
 export const cli = Cli.Command.run(mrCommand, {
   name: 'mr',
   version: MR_VERSION,

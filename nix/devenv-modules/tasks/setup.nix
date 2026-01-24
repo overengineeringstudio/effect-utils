@@ -15,12 +15,14 @@
 # The tasks will run in parallel (respecting their own dependencies)
 # as part of the shell entry process.
 #
+# Shared caching rules live in ./lib/cache.nix (task-specific details below).
+#
 # ## Git Hash Caching
 #
 # By default, setup tasks are skipped if the git HEAD hash hasn't changed
 # since the last successful setup. This makes warm shell entry nearly instant.
 #
-# The hash is stored in .devenv/setup-git-hash and updated after successful setup.
+# The hash is stored in .direnv/task-cache/setup-git-hash and updated after successful setup.
 #
 # To force tasks to run despite unchanged hash:
 #   FORCE_SETUP=1 dt genie:run
@@ -52,7 +54,9 @@
 }:
 { lib, config, ... }:
 let
-  hashFile = "${config.devenv.root}/.devenv/setup-git-hash";
+  cache = import ./lib/cache.nix { inherit config; };
+  cacheRoot = cache.cacheRoot;
+  hashFile = cache.mkCachePath "setup-git-hash";
   userTasks = tasks;
   completionsEnabled = completionsCliNames != [];
   completionsTaskName = "setup:completions";
@@ -165,6 +169,22 @@ let
     cached=$(cat ${hashFile} 2>/dev/null || echo "")
     [ "$current" = "$cached" ]
   '';
+  skipSetupIfHashUnchanged = lib.optionalString skipIfGitHashUnchanged ''
+    if [ "''${FORCE_SETUP:-}" != "1" ]; then
+      current=''${SETUP_GIT_HASH:-$(git rev-parse HEAD 2>/dev/null || echo "no-git")}
+      cached=$(cat ${hashFile} 2>/dev/null || echo "")
+      if [ "$current" = "$cached" ]; then
+        exit 0
+      fi
+    fi
+  '';
+  writeHashScript = ''
+    new_hash="''${SETUP_GIT_HASH:-$(git rev-parse HEAD 2>/dev/null || echo "no-git")}"
+    cache_dir="$(dirname ${hashFile})"
+    mkdir -p "$cache_dir"
+    cache_value="$new_hash"
+    ${cache.writeCacheFile hashFile}
+  '';
 
   # Create status overrides for all setup tasks
   statusOverrides = lib.optionalAttrs skipIfGitHashUnchanged (
@@ -203,9 +223,7 @@ in
     "setup:save-hash" = {
       description = "Save git hash after successful setup";
       exec = ''
-        mkdir -p "$(dirname ${hashFile})"
-        # Allow override via SETUP_GIT_HASH for testing
-        echo "''${SETUP_GIT_HASH:-$(git rev-parse HEAD 2>/dev/null || echo "no-git")}" > ${hashFile}
+        ${writeHashScript}
       '';
       after = setupTasks;
     };
@@ -217,6 +235,7 @@ in
     "devenv:enterShell" = {
       after = lib.mkIf (builtins.getEnv "DEVENV_STRICT" == "1") (setupTasks ++ [ "setup:save-hash" ]);
       exec = lib.mkIf (builtins.getEnv "DEVENV_STRICT" != "1") (lib.mkForce ''
+        ${skipSetupIfHashUnchanged}
         echo "devenv: setup tasks are non-blocking (set DEVENV_STRICT=1 to enforce)"
         for task in ${lib.concatStringsSep " " setupTasks}; do
           if ! devenv tasks run "$task"; then
@@ -233,9 +252,7 @@ in
       description = "Force run setup tasks (ignores git hash cache)";
       exec = ''
         FORCE_SETUP=1 devenv tasks run ${lib.concatStringsSep " " setupTasks}
-        mkdir -p "$(dirname ${hashFile})"
-        # Allow override via SETUP_GIT_HASH for testing
-        echo "''${SETUP_GIT_HASH:-$(git rev-parse HEAD 2>/dev/null || echo "no-git")}" > ${hashFile}
+        ${writeHashScript}
       '';
     };
   };
