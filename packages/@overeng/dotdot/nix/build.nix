@@ -18,7 +18,7 @@ mkBunCli {
     printf '%s\n' '{"repos":{}}' > "$smoke_test_cwd/dotdot-root.json"
   '';
   depsManager = "pnpm";
-  pnpmDepsHash = "sha256-cVD293Vsf1TH+qsnuyYFm6bJ4ZaqfZOv+z5jNDnVJa8=";
+  pnpmDepsHash = "sha256-VdgFoBQ/9Di0TVeCJz4hsIL1fiF9JWZ7TJ7RhMwJRcc=";
   dirty = dirty;
   inherit gitRev;
 }

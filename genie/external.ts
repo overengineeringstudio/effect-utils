@@ -123,8 +123,8 @@ export const catalog = defineCatalog({
   '@typescript-eslint/rule-tester': '8.52.0',
   '@typescript-eslint/utils': '8.52.0',
   'typescript-eslint': '8.52.0',
-  oxfmt: '0.21.0',
-  oxlint: '1.36.0',
+  oxfmt: '0.23.0',
+  oxlint: '1.39.0',
 
   // Crypto
   '@noble/hashes': '1.7.1',

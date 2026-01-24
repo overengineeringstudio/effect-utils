@@ -29,7 +29,7 @@ export {
 } from './errors.ts'
 
 /** Convention paths for oxfmt config relative to workspace root (checked in order) */
-const OXFMT_CONFIG_CONVENTION_PATHS = ['oxfmt.json', 'packages/@overeng/oxc-config/fmt.jsonc']
+const OXFMT_CONFIG_CONVENTION_PATHS = ['.oxfmtrc.json', 'oxfmt.json']
 
 /** Resolve the oxfmt config path: explicit option → convention paths → none */
 const resolveOxfmtConfigPath = Effect.fn('resolveOxfmtConfigPath')(function* ({

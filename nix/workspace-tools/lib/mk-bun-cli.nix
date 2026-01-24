@@ -176,7 +176,7 @@ pkgs.stdenv.mkDerivation {
         echo "│  ${lockFileName} has changed since the dependency cache was built.│" >&2
         echo "│  This can cause mysterious build failures with wrong versions.  │" >&2
         echo "│                                                                  │" >&2
-        echo "│  Run: mono nix hash --package ${name}                            │" >&2
+        echo "│  Run: dt nix:hash:${name}                                       │" >&2
         echo "└──────────────────────────────────────────────────────────────────┘" >&2
         echo "" >&2
         exit 1

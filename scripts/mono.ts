@@ -1,9 +1,9 @@
 #!/usr/bin/env bun
 
-import { nixCommand, runMonoCli } from '@overeng/mono'
+import { runMonoCli } from '@overeng/mono'
 import { resolveCliVersion } from '@overeng/utils/node/cli-version'
 
-import { contextCommand, nixPackages } from './commands/index.js'
+import { contextCommand } from './commands/index.js'
 
 const baseVersion = '0.1.0'
 const buildVersion = '__CLI_VERSION__'
@@ -25,5 +25,5 @@ runMonoCli({
   name: 'mono',
   version,
   description: 'Monorepo management CLI',
-  commands: [nixCommand({ packages: nixPackages }), contextCommand],
+  commands: [contextCommand],
 })

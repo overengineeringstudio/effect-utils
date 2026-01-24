@@ -4,8 +4,6 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./fmt": "./fmt.jsonc",
-    "./lint": "./lint.jsonc",
     "./plugin": "./src/mod.ts"
   },
   "devDependencies": {

@@ -2,10 +2,8 @@
  * Configuration types for mono CLI tasks.
  */
 
-/** Configuration for oxc-based format/lint tasks */
+/** Configuration for oxc-based lint tasks */
 export interface OxcConfig {
-  /** Path to the oxc config directory (containing fmt.jsonc and lint.jsonc) */
-  configPath: string
   /** Additional oxlint args (e.g. --report-unused-disable-directives) */
   extraLintArgs?: string[]
 }
@@ -44,7 +42,7 @@ export interface InstallConfig {
 
 /** Configuration for check task system */
 export interface CheckTasksConfig {
-  oxcConfig: OxcConfig
+  oxcConfig?: OxcConfig
   genieConfig: GenieCoverageConfig
   /** Skip genie check */
   skipGenie?: boolean

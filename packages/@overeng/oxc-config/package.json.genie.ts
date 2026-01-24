@@ -14,8 +14,6 @@ export default packageJson({
   name: '@overeng/oxc-config',
   ...privatePackageDefaults,
   exports: {
-    './lint': './lint.jsonc',
-    './fmt': './fmt.jsonc',
     './plugin': './src/mod.ts',
   },
   devDependencies: {

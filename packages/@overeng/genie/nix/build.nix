@@ -18,7 +18,7 @@ let
     extraExcludedSourceNames = [ "context" "scripts" ];
     typecheckTsconfig = "packages/@overeng/genie/tsconfig.json";
     depsManager = "pnpm";
-    pnpmDepsHash = "sha256-CKUo0d3SaslR+hhgnaH3iwacjlhwKivnXU27khjbcS0=";
+    pnpmDepsHash = "sha256-WY4PyjBPt57C6c8BC0TI5Etn4kzk7wefzjs4qZShZ6o=";
     dirty = dirty;
     inherit gitRev;
   };

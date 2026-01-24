@@ -99,7 +99,7 @@ else pkgs.stdenvNoCC.mkDerivation {
         if grep -q "lockfile had changes" "$install_log"; then
           echo "mk-bun-cli: ${lockFileName} changed while deps hash is frozen" >&2
         fi
-        echo "mk-bun-cli: deps hash may be stale; update it (mono nix hash --package ${name})" >&2
+        echo "mk-bun-cli: deps hash may be stale; update it (dt nix:hash:${name})" >&2
         exit 1
       fi
     }

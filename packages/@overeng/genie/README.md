@@ -54,13 +54,13 @@ in
 
 ```bash
 # After modifying genie source code
-mono nix build --package genie
+dt nix:build:genie
 
-# After bun.lock changes (updates dependency hash)
-mono nix hash --package genie
+# After pnpm-lock.yaml changes (updates dependency hash)
+dt nix:hash:genie
 
-# Reload direnv to pick up rebuilt binaries
-mono nix reload
+# Build all CLI packages (optional)
+dt nix:build
 ```
 
 ## Usage

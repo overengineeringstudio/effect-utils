@@ -39,8 +39,8 @@ export const checkAllWithTaskSystem = Effect.fn('checkAllWithTaskSystem')(functi
     id: 'lint' as const,
     name: 'Lint (format + oxlint + genie coverage)',
     effect: allLintChecks({
-      oxcConfig: config.oxcConfig,
       genieConfig: config.genieConfig,
+      ...(config.oxcConfig !== undefined ? { oxcConfig: config.oxcConfig } : {}),
     }),
   })
 

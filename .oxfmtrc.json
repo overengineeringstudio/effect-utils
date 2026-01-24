@@ -19,7 +19,6 @@
     "**/*.generated.tsx",
     "**/package.json",
     "**/tsconfig.json",
-    "**/tsconfig.*.json",
-    "packages/@overeng/oxc-config/*.jsonc"
+    "**/tsconfig.*.json"
   ]
 }

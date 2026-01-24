@@ -115,18 +115,18 @@ Key features:
 ### Rebuild and reload binaries
 
 ```bash
-mono nix build --package genie
-mono nix build --package mono
-mono nix reload
-mono nix status
-mono nix status --scope flake
+dt nix:build:genie
+dt nix:build:mono
+dt nix:build
+dt nix:check
 ```
 
-After `bun.lock` changes:
+After `pnpm-lock.yaml` changes:
 
 ```bash
-mono nix hash --package genie
-mono nix hash --package mono
+dt nix:hash:genie
+dt nix:hash:mono
+dt nix:hash
 ```
 
 ## Quick Start

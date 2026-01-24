@@ -58,7 +58,7 @@ ln -s "$dep_source" "$package_path/node_modules/$dep_name"
 if grep -q "lockfile had changes" "$bun_log"; then
   echo "mk-bun-cli: bun.lock changed while bunDepsHash is frozen" >&2
 fi
-echo "mk-bun-cli: bunDepsHash may be stale; update it (mono nix hash --package ${name})" >&2
+echo "mk-bun-cli: bunDepsHash may be stale; update it (dt nix:hash:${name})" >&2
 ```
 
 - **Fast dirty dependency resolution**: dirty builds avoid symlinking the full
