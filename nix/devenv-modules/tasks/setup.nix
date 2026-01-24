@@ -244,7 +244,7 @@ in
         ${skipSetupIfHashUnchanged}
         echo "devenv: setup tasks are non-blocking (set DEVENV_STRICT=1 to enforce)"
         for task in ${lib.concatStringsSep " " setupTasks}; do
-          if ! devenv tasks run "$task"; then
+          if ! devenv tasks run "$task" --mode before; then
             echo "Warning: setup task '$task' failed. Run 'dt $task' for details." >&2
           fi
         done
@@ -257,7 +257,7 @@ in
     "setup:run" = {
       description = "Force run setup tasks (ignores git hash cache)";
       exec = ''
-        FORCE_SETUP=1 devenv tasks run ${lib.concatStringsSep " " setupTasks}
+        FORCE_SETUP=1 devenv tasks run ${lib.concatStringsSep " " setupTasks} --mode before
         ${writeHashScript}
       '';
     };
