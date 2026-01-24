@@ -329,6 +329,52 @@ export const patchPostinstall = (customPatches: PatchesRegistry = patches): Scri
 }
 
 /**
+ * Returns pnpm.patchedDependencies config using the effect-utils patches registry.
+ *
+ * Uses pnpm's native patching which works with `--ignore-scripts` (patches are applied
+ * during package resolution, not as lifecycle scripts).
+ *
+ * Paths are repo-relative and will be resolved to package-relative paths at stringify time.
+ *
+ * @example
+ * ```ts
+ * import { pnpmPatchedDependencies } from '../genie/repo.ts'
+ *
+ * export default packageJson({
+ *   pnpm: {
+ *     patchedDependencies: pnpmPatchedDependencies(),
+ *   },
+ * })
+ * ```
+ */
+export const pnpmPatchedDependencies = (
+  customPatches: PatchesRegistry = patches,
+): PatchesRegistry => ({ ...customPatches })
+
+/**
+ * Creates a pnpmPatchedDependencies function with prefixed paths for use from a peer repo.
+ *
+ * @param basePath Path from consuming repo to effect-utils root (e.g. 'effect-utils')
+ * @returns A pnpmPatchedDependencies function that uses prefixed patch paths
+ *
+ * @example
+ * ```ts
+ * // In schickling.dev/genie/repo.ts
+ * import { createPnpmPatchedDependencies } from './effect-utils/genie/external.ts'
+ *
+ * export const pnpmPatchedDependencies = createPnpmPatchedDependencies({ basePath: 'effect-utils' })
+ * ```
+ */
+export const createPnpmPatchedDependencies = (args: { basePath: string }) => {
+  const prefixedPatches = Object.fromEntries(
+    Object.entries(patches).map(([pkg, path]) => [pkg, `${args.basePath}/${path}`]),
+  ) as PatchesRegistry
+  return (customPatches: PatchesRegistry = prefixedPatches): PatchesRegistry => ({
+    ...customPatches,
+  })
+}
+
+/**
  * Creates a patchPostinstall function with prefixed paths for use from a peer repo.
  *
  * @param basePath Path from consuming repo to effect-utils root (e.g. 'effect-utils')

@@ -3,7 +3,6 @@ import {
   effectLspDevDeps,
   effectLspScripts,
   packageJson,
-  patchPostinstall,
   privatePackageDefaults,
 } from '../../../genie/internal.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
@@ -16,7 +15,6 @@ export default packageJson({
   name: '@overeng/mono',
   scripts: {
     ...effectLspScripts,
-    postinstall: patchPostinstall(),
   },
   exports: {
     '.': './src/mod.ts',

@@ -33,8 +33,7 @@
     }
   },
   "scripts": {
-    "prepare": "effect-language-service patch",
-    "postinstall": "patch --forward -p1 -d node_modules/effect-distributed-lock < ../../../patches/effect-distributed-lock@0.0.11.patch || true"
+    "prepare": "effect-language-service patch"
   },
   "dependencies": {
     "@noble/hashes": "1.7.1",
@@ -80,6 +79,11 @@
     "@effect/workflow": "^0.16.0",
     "@playwright/test": "^1.57.0",
     "effect": "^3.19.14"
+  },
+  "pnpm": {
+    "patchedDependencies": {
+      "effect-distributed-lock@0.0.11": "../../../patches/effect-distributed-lock@0.0.11.patch"
+    }
   },
   "$genie": {
     "source": "package.json.genie.ts",

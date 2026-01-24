@@ -4,7 +4,7 @@ import {
   effectLspDevDeps,
   effectLspScripts,
   packageJson,
-  patchPostinstall,
+  pnpmPatchedDependencies,
   privatePackageDefaults,
 } from '../../../genie/internal.ts'
 
@@ -28,7 +28,9 @@ export default packageJson({
   ...privatePackageDefaults,
   scripts: {
     ...effectLspScripts,
-    postinstall: patchPostinstall(),
+  },
+  pnpm: {
+    patchedDependencies: pnpmPatchedDependencies(),
   },
   exports: {
     '.': './src/isomorphic/mod.ts',

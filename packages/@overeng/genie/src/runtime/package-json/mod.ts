@@ -259,17 +259,27 @@ export type PackageJsonData = {
   /** Package manager for corepack */
   packageManager?: string
   /**
-   * Bun/pnpm patched dependencies.
+   * Bun patched dependencies (top-level).
+   *
+   * For pnpm, use `pnpm.patchedDependencies` instead.
    *
    * Paths can be:
    * - Local: `./patches/pkg.patch` (relative to this package)
    * - Repo-relative: `packages/@overeng/utils/patches/pkg.patch` (resolved at stringify time)
-   *
-   * TODO: Re-embrace patchedDependencies once the bun bug is fixed.
-   * See context/workarounds/bun-patched-dependencies.md for details.
-   * Currently using postinstall scripts as a workaround via patchPostinstall().
    */
   patchedDependencies?: Record<string, string>
+  /**
+   * pnpm-specific configuration.
+   *
+   * For self-contained packages with their own pnpm-lock.yaml, use this field
+   * to configure pnpm-specific options like patchedDependencies.
+   */
+  pnpm?: {
+    overrides?: Record<string, string>
+    patchedDependencies?: Record<string, string>
+    onlyBuiltDependencies?: readonly string[]
+    neverBuiltDependencies?: readonly string[]
+  }
 }
 
 /** Workspace root package.json data (includes workspace-specific fields) */
@@ -532,6 +542,17 @@ const buildPackageJson = <T extends PackageJsonData>({
         patches: data.patchedDependencies,
         currentLocation: location,
       }),
+    }),
+    ...(data.pnpm !== undefined && {
+      pnpm: {
+        ...data.pnpm,
+        ...(data.pnpm.patchedDependencies !== undefined && {
+          patchedDependencies: resolvePatchPaths({
+            patches: data.pnpm.patchedDependencies,
+            currentLocation: location,
+          }),
+        }),
+      },
     }),
     ...(data.scripts !== undefined && {
       scripts: resolveScripts({ scripts: data.scripts, location }),

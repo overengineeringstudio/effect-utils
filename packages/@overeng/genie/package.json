@@ -15,8 +15,7 @@
     }
   },
   "scripts": {
-    "prepare": "effect-language-service patch",
-    "postinstall": "patch --forward -p1 -d node_modules/effect-distributed-lock < ../../../patches/effect-distributed-lock@0.0.11.patch || true"
+    "prepare": "effect-language-service patch"
   },
   "dependencies": {},
   "devDependencies": {
