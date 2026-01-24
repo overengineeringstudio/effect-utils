@@ -31,7 +31,7 @@ CLI output style guide.
 
 ### [mono-cli/](./mono-cli/)
 
-The `@overeng/mono` CLI framework for monorepo commands.
+The `@overeng/mono` package - a reusable framework for building Effect-based CLIs.
 
 ### [oxc-config/](./oxc-config/)
 

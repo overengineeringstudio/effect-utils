@@ -3,9 +3,6 @@
 {
   "references": [
     {
-      "path": "./scripts"
-    },
-    {
       "path": "./context/effect/socket"
     },
     {

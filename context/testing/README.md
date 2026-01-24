@@ -32,7 +32,7 @@ src/
 └── mod.ts
 ```
 
-## Running Tests via Mono
+## Running Tests
 
 Never use `package.json` scripts. Use devenv tasks via `dt`:
 
@@ -389,7 +389,7 @@ export default createPlaywrightConfig({
 | `node:fs`                           | `@effect/platform` FileSystem               |
 | `setTimeout` / `sleep` for timing   | `TestClock` or proper async coordination    |
 | Mocking when real impl works        | Effect layers for dependency injection      |
-| `package.json` scripts              | `mono` CLI                                  |
+| `package.json` scripts              | `dt` tasks                                  |
 | Tests in separate `test/` directory | Colocate with source in `src/`              |
 | `*.test.ts` (ambiguous)             | `*.unit.test.ts` or `*.integration.test.ts` |
 | `it.prop()` (non-Effect)            | `Vitest.scopedLive.prop()` with Effect      |

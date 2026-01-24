@@ -213,11 +213,11 @@ Requires JSDoc comments on exported declarations. Documents the public API.
 
 ## Running Lint/Format
 
-Via mono CLI:
+Via dt:
 
 ```bash
-./scripts/mono.ts lint        # Check formatting and linting
-./scripts/mono.ts lint --fix  # Auto-fix issues
+dt lint:check   # Check formatting and linting
+dt lint:fix     # Auto-fix issues
 ```
 
 Direct:
@@ -233,7 +233,7 @@ oxfmt --write .
 After modifying `*.genie.ts` files:
 
 ```bash
-./scripts/mono.ts check  # Includes genie check
+dt check:quick  # Includes genie check
 # or directly
 bun genie
 ```

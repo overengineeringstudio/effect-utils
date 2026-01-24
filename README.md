@@ -116,7 +116,6 @@ Key features:
 
 ```bash
 dt nix:build:genie
-dt nix:build:mono
 dt nix:build
 dt nix:check
 ```
@@ -125,7 +124,6 @@ After `pnpm-lock.yaml` changes:
 
 ```bash
 dt nix:hash:genie
-dt nix:hash:mono
 dt nix:hash
 ```
 
@@ -133,7 +131,7 @@ dt nix:hash
 
 ### Enter the dev shell
 
-This repo uses `devenv` to provide a consistent toolchain. Run commands inside the shell so `mono` can find the required tools:
+This repo uses `devenv` to provide a consistent toolchain. Run commands inside the shell:
 
 ```bash
 devenv shell
@@ -157,7 +155,7 @@ dt ts:build
 # All tests
 dt test:run
 
-# Single package (e.g., utils, genie, mono)
+# Single package (e.g., utils, genie)
 dt test:utils
 dt test:genie
 

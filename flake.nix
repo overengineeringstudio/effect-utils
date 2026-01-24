@@ -33,11 +33,6 @@
             inherit pkgs gitRev;
             src = self;
           };
-          mono = import ./scripts/nix/build.nix {
-            inherit pkgs mkBunCli gitRev;
-            src = self;
-            dirty = false;
-          };
         };
         cliPackagesDirty = {
           genie = import (rootPath + "/packages/@overeng/genie/nix/build.nix") {
@@ -55,11 +50,6 @@
             src = self;
             dirty = true;
           };
-          mono = import ./scripts/nix/build.nix {
-            inherit pkgs mkBunCli gitRev;
-            src = self;
-            dirty = true;
-          };
         };
       in
       {
@@ -68,7 +58,6 @@
           genie-dirty = cliPackagesDirty.genie;
           dotdot-dirty = cliPackagesDirty.dotdot;
           megarepo-dirty = cliPackagesDirty.megarepo;
-          mono-dirty = cliPackagesDirty.mono;
         };
 
         # Direnv helper for comparing expected CLI outputs to PATH entries.
@@ -76,13 +65,11 @@
           genie = cliPackages.genie.outPath;
           dotdot = cliPackages.dotdot.outPath;
           megarepo = cliPackages.megarepo.outPath;
-          mono = cliPackages.mono.outPath;
         };
         cliOutPathsDirty = {
           genie = cliPackagesDirty.genie.outPath;
           dotdot = cliPackagesDirty.dotdot.outPath;
           megarepo = cliPackagesDirty.megarepo.outPath;
-          mono = cliPackagesDirty.mono.outPath;
         };
 
         apps.update-bun-hashes = flake-utils.lib.mkApp {

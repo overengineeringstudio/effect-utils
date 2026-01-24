@@ -481,7 +481,7 @@ export const checkFile = Effect.fn('checkFile')(function* ({
   if (!fileExists) {
     return yield* new GenieCheckError({
       targetFilePath,
-      message: `File does not exist. Run 'mono genie' to generate it.`,
+      message: `File does not exist. Run 'genie' to generate it.`,
     })
   }
 
@@ -490,7 +490,7 @@ export const checkFile = Effect.fn('checkFile')(function* ({
   if (actualContent !== expectedContent) {
     return yield* new GenieCheckError({
       targetFilePath,
-      message: `File content is out of date. Run 'mono genie' to regenerate it.`,
+      message: `File content is out of date. Run 'genie' to regenerate it.`,
     })
   }
 

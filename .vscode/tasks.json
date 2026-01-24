@@ -7,7 +7,7 @@
     {
       "label": "install",
       "type": "shell",
-      "command": "bun install",
+      "command": "dt pnpm:install",
       "problemMatcher": [],
       "presentation": {
         "focus": true,
@@ -25,7 +25,7 @@
     {
       "label": "ts",
       "type": "shell",
-      "command": "mono ts",
+      "command": "dt ts:check",
       "problemMatcher": ["$tsc"],
       "presentation": {
         "focus": false,
@@ -38,7 +38,7 @@
     {
       "label": "ts:watch",
       "type": "shell",
-      "command": "mono ts --watch",
+      "command": "dt ts:watch",
       "problemMatcher": ["$tsc-watch"],
       "isBackground": true,
       "presentation": {
@@ -52,7 +52,7 @@
     {
       "label": "ts:clean",
       "type": "shell",
-      "command": "mono ts --clean",
+      "command": "dt ts:clean",
       "problemMatcher": ["$tsc"],
       "presentation": {
         "focus": false,
@@ -65,7 +65,7 @@
     {
       "label": "ts:clean:watch",
       "type": "shell",
-      "command": "mono ts --clean --watch",
+      "command": "dt ts:clean && dt ts:watch",
       "problemMatcher": ["$tsc-watch"],
       "isBackground": true,
       "presentation": {
@@ -83,7 +83,7 @@
     {
       "label": "lint",
       "type": "shell",
-      "command": "mono lint",
+      "command": "dt lint:check",
       "problemMatcher": [],
       "presentation": {
         "focus": false,
@@ -96,7 +96,7 @@
     {
       "label": "lint:fix",
       "type": "shell",
-      "command": "mono lint --fix",
+      "command": "dt lint:fix",
       "problemMatcher": [],
       "presentation": {
         "focus": true,
@@ -113,33 +113,7 @@
     {
       "label": "test",
       "type": "shell",
-      "command": "mono test",
-      "problemMatcher": [],
-      "presentation": {
-        "focus": true,
-        "panel": "shared",
-        "group": "test",
-        "showReuseMessage": false,
-        "clear": true
-      }
-    },
-    {
-      "label": "test:unit",
-      "type": "shell",
-      "command": "mono test --unit",
-      "problemMatcher": [],
-      "presentation": {
-        "focus": true,
-        "panel": "shared",
-        "group": "test",
-        "showReuseMessage": false,
-        "clear": true
-      }
-    },
-    {
-      "label": "test:integration",
-      "type": "shell",
-      "command": "mono test --integration",
+      "command": "dt test:run",
       "problemMatcher": [],
       "presentation": {
         "focus": true,
@@ -152,7 +126,7 @@
     {
       "label": "test:watch",
       "type": "shell",
-      "command": "mono test --watch",
+      "command": "dt test:watch",
       "isBackground": true,
       "problemMatcher": [],
       "presentation": {
@@ -170,7 +144,7 @@
     {
       "label": "build",
       "type": "shell",
-      "command": "mono build",
+      "command": "dt ts:build",
       "problemMatcher": ["$tsc"],
       "presentation": {
         "focus": true,
@@ -183,7 +157,7 @@
     {
       "label": "clean",
       "type": "shell",
-      "command": "mono clean",
+      "command": "dt build:clean",
       "problemMatcher": [],
       "presentation": {
         "focus": false,
@@ -196,7 +170,20 @@
     {
       "label": "check",
       "type": "shell",
-      "command": "mono check",
+      "command": "dt check:quick",
+      "problemMatcher": ["$tsc"],
+      "presentation": {
+        "focus": true,
+        "panel": "shared",
+        "group": "misc",
+        "showReuseMessage": false,
+        "clear": true
+      }
+    },
+    {
+      "label": "check:all",
+      "type": "shell",
+      "command": "dt check:all",
       "problemMatcher": ["$tsc"],
       "presentation": {
         "focus": true,

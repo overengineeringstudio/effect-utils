@@ -30,7 +30,6 @@ let
   nixCliPackages = [
     { name = "genie"; flakeRef = ".#genie"; buildNix = "packages/@overeng/genie/nix/build.nix"; }
     { name = "dotdot"; flakeRef = ".#dotdot"; buildNix = "packages/@overeng/dotdot/nix/build.nix"; }
-    { name = "mono"; flakeRef = ".#mono"; buildNix = "scripts/nix/build.nix"; }
     { name = "megarepo"; flakeRef = ".#megarepo"; buildNix = "packages/@overeng/megarepo/nix/build.nix"; }
   ];
 
@@ -56,7 +55,6 @@ let
     "packages/@overeng/oxc-config"
     "packages/@overeng/react-inspector"
     "packages/@overeng/utils"
-    "scripts"
     "context/opentui"
     "context/effect/socket"
   ];
@@ -145,12 +143,14 @@ in
         ".oxfmtrc.json.genie.ts"
         ".oxlintrc.json.genie.ts"
       ];
-      genieCoverageDirs = [ "packages" "scripts" ];
+      genieCoverageDirs = [ "packages" ];
     })
     # Setup task (auto-runs in enterShell)
+    # Context example tasks
+    ./nix/devenv-modules/tasks/context.nix
     (taskModules.setup {
       tasks = [ "megarepo:generate" "pnpm:install" "genie:run" "ts:build" ];
-      completionsCliNames = [ "genie" "dotdot" "mono" "mr" ];
+      completionsCliNames = [ "genie" "dotdot" "mr" ];
     })
     # Nix CLI build and hash management
     (taskModules.nix-cli { cliPackages = nixCliPackages; })
@@ -165,7 +165,6 @@ in
     pkgs.oxfmt
     (mkSourceCli { name = "genie"; entry = "packages/@overeng/genie/src/build/mod.ts"; })
     (mkSourceCli { name = "dotdot"; entry = "packages/@overeng/dotdot/src/cli.ts"; })
-    (mkSourceCli { name = "mono"; entry = "scripts/mono.ts"; })
     (mkSourceCli { name = "mr"; entry = "packages/@overeng/megarepo/bin/mr.ts"; })
     cliBuildStamp.package
   ];

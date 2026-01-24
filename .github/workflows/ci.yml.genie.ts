@@ -42,15 +42,15 @@ export default githubWorkflow({
   jobs: {
     typecheck: job({
       name: 'Type check',
-      run: 'mono ts',
+      run: 'dt ts:check',
     }),
     lint: job({
       name: 'Format + lint',
-      run: 'mono lint',
+      run: 'dt lint:check',
     }),
     test: job({
       name: 'Unit tests',
-      run: 'mono test --unit',
+      run: 'dt test:run',
     }),
   },
 })

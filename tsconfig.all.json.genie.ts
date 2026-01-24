@@ -4,7 +4,6 @@ import { tsconfigJson } from './packages/@overeng/genie/src/runtime/mod.ts'
 // properly detects cross-package changes. Missing packages can cause stale
 // .tsbuildinfo caches where signature changes aren't detected in dependents.
 const references = [
-  './scripts',
   './context/effect/socket',
   './context/opentui',
   './packages/@overeng/cli-ui',

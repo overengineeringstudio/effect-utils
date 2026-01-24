@@ -28,7 +28,7 @@ jobs:
         shell: bash
       - run: bun install --frozen-lockfile
       - name: Type check
-        run: mono ts
+        run: 'dt ts:check'
   lint:
     runs-on: ubuntu-latest
     defaults:
@@ -47,7 +47,7 @@ jobs:
         shell: bash
       - run: bun install --frozen-lockfile
       - name: Format + lint
-        run: mono lint
+        run: 'dt lint:check'
   test:
     runs-on: ubuntu-latest
     defaults:
@@ -66,4 +66,4 @@ jobs:
         shell: bash
       - run: bun install --frozen-lockfile
       - name: Unit tests
-        run: mono test --unit
+        run: 'dt test:run'

@@ -14,8 +14,6 @@ Use `dt <task>` (devenv tasks) to execute tasks with dependencies:
 - **Genie**: `dt genie:run` or `dt genie:watch` or `dt genie:check`
 - **Check all**: `dt check:quick` (ts + lint) or `dt check:all` (ts + lint + test)
 
-The `mono` CLI is only used for `mono context *` commands.
-
 If tools aren't directly in `$PATH`, prefix commands with `direnv exec .` (e.g., `direnv exec . dt ts:check`).
 
 We're using megarepo for repo management. We're using `pnpm` temporarily for installs (bun is still used to run scripts) and `devenv` to manage the development environment.

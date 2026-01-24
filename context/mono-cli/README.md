@@ -1,90 +1,30 @@
-# Mono CLI Pattern
+# @overeng/mono Package
 
-> Update: We're in the progress of migrating large parts of the `mono` CLI to the `dt` task system. Possilby all of it eventually.
+> **Note:** The `mono` CLI has been fully migrated to `dt` (devenv tasks). This package now serves as a **reusable framework** for building Effect-based CLIs, not as a direct CLI tool.
 
-Framework for building Effect-based monorepo CLIs using `@overeng/mono`. Provides
-reusable task primitives and command factories for common monorepo operations.
+## What This Package Provides
 
-## Package
+`@overeng/mono` is a framework for building Effect-based monorepo CLIs. It provides:
+
+- **Task primitives** - Reusable functions for common operations (lint, test, build, etc.)
+- **Command factories** - Pre-built CLI commands using `@effect/cli`
+- **Task system** - Concurrent task execution with live progress UI
+- **Utilities** - Process management, CI detection, command execution
+
+## Package Location
 
 - Path: `packages/@overeng/mono`
 - Exports: `@overeng/mono`
 
-## Prerequisites
+## Current Usage
 
-Expects `oxlint.json` and `oxfmt.json` config files at repo root. These are auto-discovered by oxlint/oxfmt. See [oxc-config guide](../oxc-config/README.md) for setup.
+While this repo now uses `dt` for all task execution, the `@overeng/mono` package remains useful for:
 
-## Quick Start
-
-```ts
-#!/usr/bin/env bun
-
-import {
-  buildCommand,
-  checkCommandWithTaskSystem,
-  cleanCommand,
-  lintCommand,
-  runMonoCli,
-  testCommand,
-  tsCommand,
-} from '@overeng/mono'
-
-const genieConfig = {
-  scanDirs: ['packages', 'scripts'],
-  skipDirs: ['node_modules', 'dist', '.git'],
-}
-
-runMonoCli({
-  name: 'mono',
-  version: '0.1.0',
-  description: 'Monorepo management CLI',
-  commands: [
-    buildCommand(),
-    testCommand(),
-    lintCommand(genieConfig),
-    tsCommand(),
-    cleanCommand(),
-    checkCommandWithTaskSystem({ genieConfig }),
-  ],
-})
-```
-
-## Standard Commands
-
-| Command | Description                               | Options                              |
-| ------- | ----------------------------------------- | ------------------------------------ |
-| `build` | Build all packages (tsc --build)          | -                                    |
-| `test`  | Run tests                                 | `--unit`, `--integration`, `--watch` |
-| `lint`  | Check formatting and linting              | `--fix`                              |
-| `ts`    | TypeScript type checking                  | `--watch`, `--clean`                 |
-| `clean` | Remove build artifacts                    | -                                    |
-| `check` | Run all checks (genie + ts + lint + test) | -                                    |
-
-## Configuration Types
-
-### GenieCoverageConfig
-
-```ts
-interface GenieCoverageConfig {
-  /** Directories to scan for config files that should have genie sources */
-  scanDirs: string[]
-  /** Directories to skip when scanning */
-  skipDirs: string[]
-}
-```
-
-### TypeCheckConfig
-
-```ts
-interface TypeCheckConfig {
-  /** Path to tsconfig file (default: 'tsconfig.all.json') */
-  tsconfigPath?: string
-}
-```
+1. **Building CLIs in other repos** that want Effect-based task execution
+2. **The task system UI** (`@overeng/mono/task-system`) for concurrent task rendering
+3. **Utility functions** like `runCommand`, `startProcess`, `ciGroup`
 
 ## Task Primitives
-
-For custom commands or compositions, use the task primitives directly:
 
 ```ts
 import {
@@ -112,86 +52,38 @@ import {
 } from '@overeng/mono'
 ```
 
-## Custom Commands
-
-Add custom commands alongside standard ones:
-
-```ts
-import { Command } from '@effect/cli'
-import { Effect } from 'effect'
-import { runMonoCli, buildCommand, runCommand } from '@overeng/mono'
-
-const deployCommand = Command.make('deploy', {}, () =>
-  Effect.gen(function* () {
-    yield* runCommand({ command: 'fly', args: ['deploy'] })
-  }),
-).pipe(Command.withDescription('Deploy to Fly.io'))
-
-runMonoCli({
-  name: 'mono',
-  version: '0.1.0',
-  description: 'My CLI',
-  commands: [
-    buildCommand(),
-    deployCommand, // Custom command
-  ],
-})
-```
-
-## CI vs Interactive Mode
-
-The check command automatically detects CI environments and adjusts output:
-
-- **CI mode**: Sequential execution with GitHub Actions groups (`::group::`)
-- **Interactive mode**: Concurrent execution with live inline progress display
-
 ## Utilities
 
 ```ts
 import {
-  IS_CI, // true in CI environments
-  runCommand, // Run a shell command as Effect
+  IS_CI,        // true in CI environments
+  runCommand,   // Run a shell command as Effect
   startProcess, // Start a long-running process
-  ciGroup, // Start a CI group (or print header locally)
-  ciGroupEnd, // End a CI group
+  ciGroup,      // Start a CI group (or print header locally)
+  ciGroupEnd,   // End a CI group
 } from '@overeng/mono'
 ```
 
-## Package Setup
+## Task System
 
-Add `@overeng/mono` to your scripts package:
-
-```ts
-// scripts/package.json.genie.ts
-export default pkg.package({
-  name: 'my-scripts',
-  private: true,
-  type: 'module',
-  dependencies: [
-    '@effect/cli',
-    '@effect/platform',
-    '@effect/platform-node',
-    '@overeng/mono',
-    'effect',
-  ],
-})
-```
-
-Add TypeScript reference:
+The task system provides concurrent task execution with live progress UI:
 
 ```ts
-// scripts/tsconfig.json.genie.ts
-export default tsconfigJSON({
-  extends: '../tsconfig.base.json',
-  compilerOptions: { noEmit: true, rootDir: '.' },
-  references: [{ path: '../effect-utils/packages/@overeng/mono' }],
-})
+import { runTaskGraph, opentuiRenderer } from '@overeng/mono/task-system'
 ```
 
-## Layers Provided
+See `packages/@overeng/mono/src/task-system/` for details.
 
-`runMonoCli` automatically provides these layers:
+## For This Repo: Use `dt` Instead
 
-- `NodeContext.layer` (FileSystem, CommandExecutor, etc.)
-- `CurrentWorkingDirectory.live`
-- `Logger.minimumLogLevel(LogLevel.Debug)`
+All development tasks in this repo should use `dt`:
+
+```bash
+dt ts:check      # TypeScript checking
+dt lint:check    # Linting
+dt test:run      # Run tests
+dt check:quick   # All quick checks
+dt check:all     # All checks including tests
+```
+
+See [AGENTS.md](/AGENTS.md) for the full command reference.
