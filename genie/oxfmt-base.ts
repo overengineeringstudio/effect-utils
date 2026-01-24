@@ -22,10 +22,15 @@ export const baseOxfmtOptions = {
   experimentalSortPackageJson: true,
 } as const satisfies Omit<OxfmtConfigArgs, 'ignorePatterns'>
 
-/** Standard ignore patterns for generated files */
+/** Standard ignore patterns for oxfmt */
 export const baseOxfmtIgnorePatterns = [
+  // Generated code files
   '**/*.gen.ts',
   '**/*.gen.tsx',
   '**/*.generated.ts',
   '**/*.generated.tsx',
+  // Genie-generated config files (read-only, formatted by genie itself)
+  '**/package.json',
+  '**/tsconfig.json',
+  '**/tsconfig.*.json',
 ] as const

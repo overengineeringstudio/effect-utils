@@ -12,5 +12,14 @@
     "newlinesBetween": true
   },
   "experimentalSortPackageJson": true,
-  "ignorePatterns": ["**/*.gen.ts", "**/*.gen.tsx", "**/*.generated.ts", "**/*.generated.tsx"]
+  "ignorePatterns": [
+    "**/*.gen.ts",
+    "**/*.gen.tsx",
+    "**/*.generated.ts",
+    "**/*.generated.tsx",
+    "**/package.json",
+    "**/tsconfig.json",
+    "**/tsconfig.*.json",
+    "packages/@overeng/oxc-config/*.jsonc"
+  ]
 }

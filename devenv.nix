@@ -132,8 +132,8 @@ in
         "context/effect/socket/examples/*.ts"
         "context/opentui/*.genie.ts"
         # linter config files (changes should trigger lint)
-        "oxfmt.json"
-        "oxlint.json"
+        ".oxfmtrc.json"
+        ".oxlintrc.json"
       ];
       # Genie file patterns for caching genie:check tasks
       geniePatterns = [
@@ -142,14 +142,10 @@ in
         "scripts/*.genie.ts"
         "context/effect/socket/*.genie.ts"
         "context/opentui/*.genie.ts"
+        ".oxfmtrc.json.genie.ts"
+        ".oxlintrc.json.genie.ts"
       ];
       genieCoverageDirs = [ "packages" "scripts" ];
-      oxfmtExcludes = [
-        "**/package.json"
-        "**/tsconfig.json"
-        "**/tsconfig.*.json"
-        "packages/@overeng/oxc-config/*.jsonc"
-      ];
     })
     # Setup task (auto-runs in enterShell)
     (taskModules.setup {
