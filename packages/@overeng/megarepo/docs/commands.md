@@ -41,6 +41,7 @@ mr sync [--frozen] [--deep] [--dry-run]
 3. Create worktree at locked commit if needed
 4. Create symlink under `repos/` pointing to the worktree
 5. Write updated lock file
+6. Run all configured generators (skipped for `--dry-run`)
 
 **`--frozen` mode:**
 

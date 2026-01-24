@@ -5,7 +5,7 @@
  * and writes `.envrc.generated.megarepo` for direnv integration.
  */
 
-import { Command, FileSystem } from '@effect/platform'
+import { Command, CommandExecutor, FileSystem } from '@effect/platform'
 import { Effect, Schema } from 'effect'
 
 import {
@@ -178,128 +178,136 @@ export const generateWorkspaceFlakeContent = (repos: readonly WorkspaceFlakeRepo
   ].join('\n')
 }
 
-const rsyncRepo = Effect.fn('megarepo/nix/rsyncRepo')(function* (source: string, dest: string) {
-  // Mirror repos into the workspace without copying heavy build outputs.
-  const args = [
-    '-a',
-    '--copy-links',
-    '--delete',
-    '--prune-empty-dirs',
-    // Always include bun.lock, even if a repo's .gitignore would exclude it.
-    '--filter',
-    '+ bun.lock',
-    '--filter',
-    '+ **/bun.lock',
-    '--filter',
-    ':- .gitignore',
-    '--exclude',
-    '.git',
-    '--exclude',
-    '.direnv',
-    '--exclude',
-    '.devenv',
-    '--exclude',
-    'result',
-    '--exclude',
-    'tmp',
-    '--exclude',
-    'node_modules',
-    `${source}/`,
-    `${dest}/`,
-  ]
+const rsyncRepo = Effect.fn('megarepo/nix/rsyncRepo')((source: string, dest: string) =>
+  Effect.gen(function* () {
+    // Mirror repos into the workspace without copying heavy build outputs.
+    const args = [
+      '-a',
+      '--copy-links',
+      '--delete',
+      '--prune-empty-dirs',
+      // Always include bun.lock, even if a repo's .gitignore would exclude it.
+      '--filter',
+      '+ bun.lock',
+      '--filter',
+      '+ **/bun.lock',
+      '--filter',
+      ':- .gitignore',
+      '--exclude',
+      '.git',
+      '--exclude',
+      '.direnv',
+      '--exclude',
+      '.devenv',
+      '--exclude',
+      'result',
+      '--exclude',
+      'tmp',
+      '--exclude',
+      'node_modules',
+      `${source}/`,
+      `${dest}/`,
+    ]
 
-  const command = Command.make('rsync', ...args).pipe(
-    Command.stdout('inherit'),
-    Command.stderr('inherit'),
-  )
+    const command = Command.make('rsync', ...args).pipe(
+      Command.stdout('inherit'),
+      Command.stderr('inherit'),
+    )
 
-  const exitCode = yield* Command.exitCode(command).pipe(
-    Effect.mapError(
-      (cause) =>
-        new NixGeneratorError({
-          message: `rsync failed for ${source}`,
-          cause,
-        }),
-    ),
-  )
+    const exitCode = yield* Command.exitCode(command).pipe(
+      Effect.mapError(
+        (cause) =>
+          new NixGeneratorError({
+            message: `rsync failed for ${source}`,
+            cause,
+          }),
+      ),
+    )
 
-  if (exitCode === 23) {
-    yield* Effect.logWarning(`rsync warning (code 23) while syncing ${source}`)
-    return
-  }
+    if (exitCode === 23) {
+      yield* Effect.logWarning(`rsync warning (code 23) while syncing ${source}`)
+      return
+    }
 
-  if (exitCode !== 0) {
-    return yield* new NixGeneratorError({
-      message: `rsync failed for ${source}`,
-    })
-  }
-})
-
-/** Generate the Nix workspace for a megarepo */
-export const generateNix = Effect.fn('megarepo/generate/nix')(function* (
-  options: NixGeneratorOptions,
-): Effect.Effect<NixGeneratorResult, NixGeneratorError> {
-  const fs = yield* FileSystem.FileSystem
-  const repoRoot = options.megarepoRootNearest
-  const repoNames = Object.keys(options.config.members).toSorted()
-
-  if (repoNames.length === 0) {
-    return yield* new NixGeneratorError({
-      message: 'megarepo.json has no members to sync',
-    })
-  }
-
-  const workspaceDir = options.config.generators?.nix?.workspaceDir ?? defaultWorkspaceDir
-  const workspaceRoot = EffectPath.ops.join(
-    repoRoot,
-    EffectPath.unsafe.relativeDir(normalizeWorkspaceDir(workspaceDir)),
-  )
-
-  yield* fs.makeDirectory(workspaceRoot, { recursive: true })
-
-  const flakePath = EffectPath.ops.join(workspaceRoot, EffectPath.unsafe.relativeFile('flake.nix'))
-  const envrcPath = EffectPath.ops.join(
-    repoRoot,
-    EffectPath.unsafe.relativeFile('.envrc.generated.megarepo'),
-  )
-  const repoInputs: WorkspaceFlakeRepo[] = []
-  const mirrorRepos: WorkspaceFlakeRepo[] = []
-  for (const repoName of repoNames) {
-    const source = getMemberPath({ megarepoRoot: repoRoot, name: repoName })
-    const exists = yield* fs.exists(source)
-    if (!exists) {
+    if (exitCode !== 0) {
       return yield* new NixGeneratorError({
-        message: `Repo ${repoName} does not exist at ${source}`,
+        message: `rsync failed for ${source}`,
       })
     }
-    mirrorRepos.push({ name: repoName, path: source })
+  }),
+)
 
-    const repoFlakePath = EffectPath.ops.join(source, EffectPath.unsafe.relativeFile('flake.nix'))
-    if (yield* fs.exists(repoFlakePath)) {
-      repoInputs.push({ name: repoName, path: source })
-    } else {
-      yield* Effect.logWarning(`Skipping ${repoName} in workspace flake (no flake.nix found).`)
+/** Generate the Nix workspace for a megarepo */
+export const generateNix = Effect.fn('megarepo/generate/nix')((options: NixGeneratorOptions) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const repoRoot = options.megarepoRootNearest
+    const repoNames = Object.keys(options.config.members).toSorted()
+
+    if (repoNames.length === 0) {
+      return yield* new NixGeneratorError({
+        message: 'megarepo.json has no members to sync',
+      })
     }
-  }
 
-  const flakeContent = generateWorkspaceFlakeContent(repoInputs)
-  const envrcContent = generateEnvrcContent({ options, workspaceRoot })
+    const workspaceDir = options.config.generators?.nix?.workspaceDir ?? defaultWorkspaceDir
+    const workspaceRoot = EffectPath.ops.join(
+      repoRoot,
+      EffectPath.unsafe.relativeDir(normalizeWorkspaceDir(workspaceDir)),
+    )
 
-  // Write files only if content changed (avoids unnecessary direnv reloads)
-  const flakeExists = yield* fs.exists(flakePath)
-  if (!flakeExists || (yield* fs.readFileString(flakePath)) !== flakeContent) {
-    yield* fs.writeFileString(flakePath, flakeContent)
-  }
-  const envrcExists = yield* fs.exists(envrcPath)
-  if (!envrcExists || (yield* fs.readFileString(envrcPath)) !== envrcContent) {
-    yield* fs.writeFileString(envrcPath, envrcContent)
-  }
+    yield* fs.makeDirectory(workspaceRoot, { recursive: true })
 
-  for (const repo of mirrorRepos) {
-    const dest = EffectPath.ops.join(workspaceRoot, EffectPath.unsafe.relativeDir(`${repo.name}/`))
-    yield* fs.makeDirectory(dest, { recursive: true })
-    yield* rsyncRepo(repo.path, dest)
-  }
+    const flakePath = EffectPath.ops.join(
+      workspaceRoot,
+      EffectPath.unsafe.relativeFile('flake.nix'),
+    )
+    const envrcPath = EffectPath.ops.join(
+      repoRoot,
+      EffectPath.unsafe.relativeFile('.envrc.generated.megarepo'),
+    )
+    const repoInputs: WorkspaceFlakeRepo[] = []
+    const mirrorRepos: WorkspaceFlakeRepo[] = []
+    for (const repoName of repoNames) {
+      const source = getMemberPath({ megarepoRoot: repoRoot, name: repoName })
+      const exists = yield* fs.exists(source)
+      if (!exists) {
+        return yield* new NixGeneratorError({
+          message: `Repo ${repoName} does not exist at ${source}`,
+        })
+      }
+      mirrorRepos.push({ name: repoName, path: source })
 
-  return { workspaceRoot, flakePath, envrcPath }
-})
+      const repoFlakePath = EffectPath.ops.join(source, EffectPath.unsafe.relativeFile('flake.nix'))
+      if (yield* fs.exists(repoFlakePath)) {
+        repoInputs.push({ name: repoName, path: source })
+      } else {
+        yield* Effect.logWarning(`Skipping ${repoName} in workspace flake (no flake.nix found).`)
+      }
+    }
+
+    const flakeContent = generateWorkspaceFlakeContent(repoInputs)
+    const envrcContent = generateEnvrcContent({ options, workspaceRoot })
+
+    // Write files only if content changed (avoids unnecessary direnv reloads)
+    const flakeExists = yield* fs.exists(flakePath)
+    if (!flakeExists || (yield* fs.readFileString(flakePath)) !== flakeContent) {
+      yield* fs.writeFileString(flakePath, flakeContent)
+    }
+    const envrcExists = yield* fs.exists(envrcPath)
+    if (!envrcExists || (yield* fs.readFileString(envrcPath)) !== envrcContent) {
+      yield* fs.writeFileString(envrcPath, envrcContent)
+    }
+
+    for (const repo of mirrorRepos) {
+      const dest = EffectPath.ops.join(
+        workspaceRoot,
+        EffectPath.unsafe.relativeDir(`${repo.name}/`),
+      )
+      yield* fs.makeDirectory(dest, { recursive: true })
+      yield* rsyncRepo(repo.path, dest)
+    }
+
+    return { workspaceRoot, flakePath, envrcPath }
+  }),
+)

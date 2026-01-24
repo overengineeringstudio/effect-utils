@@ -633,6 +633,7 @@ Default mode does NOT fetch from remote. It reads current worktree state and upd
 1. **Validate lock:** Fail if lock missing or stale
 2. **Use locked commits:** Checkout exact commits from lock
 3. **Never modify lock:** Lock file is read-only
+4. **Regenerate outputs:** Always run all configured generators after syncing (skipped for `--dry-run`)
 
 ### Symlink Strategy
 
@@ -661,6 +662,8 @@ Default mode does NOT fetch from remote. It reads current worktree state and upd
 ### nix Generator
 
 Generates a local Nix workspace and `.envrc.generated.megarepo` for direnv integration.
+
+`mr sync` always runs all configured generators after syncing members (unless `--dry-run`).
 
 **Output (`.envrc.generated.megarepo`):**
 
