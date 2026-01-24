@@ -90,7 +90,9 @@ describe('progress service state helpers', () => {
 
     it('preserves other item properties when updating', () => {
       type MyData = { value: number }
-      const state = createState<MyData>({ items: [{ id: 'item-1', label: 'Item 1', data: { value: 42 } }] })
+      const state = createState<MyData>({
+        items: [{ id: 'item-1', label: 'Item 1', data: { value: 42 } }],
+      })
 
       const updated = updateItem({ state, id: 'item-1', update: { status: 'success' } })
 

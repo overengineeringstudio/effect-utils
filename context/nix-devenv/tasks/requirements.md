@@ -52,18 +52,20 @@ tasks."verify:full" = { exec = "pnpm test"; };
 
 ### Must be resilient
 
-- R13 - Task failures must not block entering the shell; failures should be visible and easy to rerun.
-- R14 - Strict mode (`DEVENV_STRICT=1`) should enforce failures for CI or explicit runs.
+- R13 - Shell entry should provide a working environment on fresh checkout (auto-setup where useful, e.g. dependency installs) while keeping entry time reasonable and avoiding reload loops.
+- R14 - Task failures must not block entering the shell; failures should be visible and easy to rerun.
+- R15 - Strict mode (`DEVENV_STRICT=1`) should enforce failures for CI or explicit runs.
 
 ### Must be clear
 
-- R15 - User-facing tasks must have concise descriptions.
-- R16 - Failures must surface actionable context (what failed, how to rerun/fix).
-- R17 - Task dependency graphs must be explicit via `after`/`before`.
+- R16 - User-facing tasks must have concise descriptions.
+- R17 - Failures must surface actionable context (what failed, how to rerun/fix).
+- R18 - Task execution must be visible to users (auto and manual runs), including progress indication.
+- R19 - Task dependency graphs must be explicit via `after`/`before`.
 
 ### Must be verified
 
-- R18 - Task modules must have minimal smoke coverage in the test suite.
+- R20 - Task modules must have minimal smoke coverage in the test suite.
 
 ## See Also
 

@@ -269,7 +269,7 @@ export const markActive = <T>({
   id: string
   message?: string
 }): void => {
-  updateItemStatus({ state, id, status: 'active', message })
+  updateItemStatus({ state, id, status: 'active', ...(message !== undefined && { message }) })
 }
 
 /** Mark an item as success */
@@ -293,7 +293,7 @@ export const markError = <T>({
   id: string
   message?: string
 }): void => {
-  updateItemStatus({ state, id, status: 'error', message })
+  updateItemStatus({ state, id, status: 'error', ...(message !== undefined && { message }) })
 }
 
 /** Check if all items are completed */

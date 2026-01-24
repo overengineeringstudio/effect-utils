@@ -369,7 +369,7 @@ export const markTreeItemActive = <T>({
   id: string
   message?: string
 }): void => {
-  updateTreeItemStatus({ state, id, status: 'active', message })
+  updateTreeItemStatus({ state, id, status: 'active', ...(message !== undefined && { message }) })
 }
 
 /** Mark an item as success */
@@ -382,7 +382,7 @@ export const markTreeItemSuccess = <T>({
   id: string
   message?: string
 }): void => {
-  updateTreeItemStatus({ state, id, status: 'success', message })
+  updateTreeItemStatus({ state, id, status: 'success', ...(message !== undefined && { message }) })
 }
 
 /** Mark an item as error */
@@ -395,7 +395,7 @@ export const markTreeItemError = <T>({
   id: string
   message?: string
 }): void => {
-  updateTreeItemStatus({ state, id, status: 'error', message })
+  updateTreeItemStatus({ state, id, status: 'error', ...(message !== undefined && { message }) })
 }
 
 /** Mark an item as skipped */
@@ -408,7 +408,7 @@ export const markTreeItemSkipped = <T>({
   id: string
   message?: string
 }): void => {
-  updateTreeItemStatus({ state, id, status: 'skipped', message })
+  updateTreeItemStatus({ state, id, status: 'skipped', ...(message !== undefined && { message }) })
 }
 
 /**
