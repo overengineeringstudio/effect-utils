@@ -49,24 +49,25 @@ tasks."verify:full" = { exec = "pnpm test"; };
 - R10 - Task performance bottlenecks must be easy to identify (timings/logs/traces, clear task names).
 - R11 - Prefer deterministic, principled caching over ad-hoc shortcuts.
 - R12 - Provide a go-to quick check command that runs warm in under 5 seconds.
+- R13 - Maximize CPU utilization through optimal parallelism. When running parallel tasks that each spawn workers (e.g., vitest), configure worker limits to avoid over-subscription (total workers across all tasks should approximate available cores).
 
 ### Must be resilient
 
-- R13 - Shell entry should provide a working environment on fresh checkout (auto-setup where useful, e.g. dependency installs) while keeping entry time reasonable and avoiding reload loops.
-- R14 - Task failures must not block entering the shell; failures should be visible and easy to rerun.
-- R15 - Strict mode (`DEVENV_STRICT=1`) should enforce failures for CI or explicit runs.
+- R14 - Shell entry should provide a working environment on fresh checkout (auto-setup where useful, e.g. dependency installs) while keeping entry time reasonable and avoiding reload loops.
+- R15 - Task failures must not block entering the shell; failures should be visible and easy to rerun.
+- R16 - Strict mode (`DEVENV_STRICT=1`) should enforce failures for CI or explicit runs.
 
 ### Must be clear
 
-- R16 - User-facing tasks must have concise descriptions.
-- R17 - Failures must surface actionable context (what failed, how to rerun/fix).
-- R18 - Task execution must be visible to users (auto and manual runs), including progress indication.
-- R19 - Task dependency graphs must be explicit via `after`/`before`.
-- R20 - Task names should appear in shell completions with descriptions.
+- R17 - User-facing tasks must have concise descriptions.
+- R18 - Failures must surface actionable context (what failed, how to rerun/fix).
+- R19 - Task execution must be visible to users (auto and manual runs), including progress indication.
+- R20 - Task dependency graphs must be explicit via `after`/`before`.
+- R21 - Task names should appear in shell completions with descriptions.
 
 ### Must be verified
 
-- R21 - Task modules must have minimal smoke coverage in the test suite.
+- R22 - Task modules must have minimal smoke coverage in the test suite.
 
 ## See Also
 
