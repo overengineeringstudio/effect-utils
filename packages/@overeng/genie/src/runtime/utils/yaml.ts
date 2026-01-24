@@ -35,11 +35,11 @@ const quoteString = ({ str, indent }: { str: string; indent: number }): string =
       .join('\n')}`
   }
   if (needsQuoting(str)) {
-    // Prefer single quotes when string contains double quotes but no single quotes
-    if (str.includes('"') && !str.includes("'")) {
-      return `'${str}'`
+    // Prefer single quotes, fall back to double quotes if string contains single quotes
+    if (str.includes("'")) {
+      return `"${str.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
     }
-    return `"${str.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+    return `'${str}'`
   }
   return str
 }

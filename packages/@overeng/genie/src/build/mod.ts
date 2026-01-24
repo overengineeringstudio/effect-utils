@@ -28,10 +28,10 @@ export {
   GenieImportError,
 } from './errors.ts'
 
-/** Convention path for oxfmt config relative to workspace root */
-const OXFMT_CONFIG_CONVENTION_PATH = 'packages/@overeng/oxc-config/fmt.jsonc'
+/** Convention paths for oxfmt config relative to workspace root (checked in order) */
+const OXFMT_CONFIG_CONVENTION_PATHS = ['oxfmt.json', 'packages/@overeng/oxc-config/fmt.jsonc']
 
-/** Resolve the oxfmt config path: explicit option → convention path → none */
+/** Resolve the oxfmt config path: explicit option → convention paths → none */
 const resolveOxfmtConfigPath = Effect.fn('resolveOxfmtConfigPath')(function* ({
   explicitPath,
   cwd,
@@ -43,11 +43,16 @@ const resolveOxfmtConfigPath = Effect.fn('resolveOxfmtConfigPath')(function* ({
   if (Option.isSome(explicitPath)) {
     return explicitPath
   }
-  // Check convention path
+  // Check convention paths in order
   const fs = yield* FileSystem.FileSystem
-  const conventionPath = path.join(cwd, OXFMT_CONFIG_CONVENTION_PATH)
-  const exists = yield* fs.exists(conventionPath)
-  return exists ? Option.some(conventionPath) : Option.none()
+  for (const conventionPath of OXFMT_CONFIG_CONVENTION_PATHS) {
+    const fullPath = path.join(cwd, conventionPath)
+    const exists = yield* fs.exists(fullPath)
+    if (exists) {
+      return Option.some(fullPath)
+    }
+  }
+  return Option.none()
 })
 
 /** Genie CLI command - generates files from .genie.ts source files */
@@ -81,7 +86,7 @@ export const genieCommand: Cli.Command.Command<
     ),
     oxfmtConfig: Cli.Options.file('oxfmt-config').pipe(
       Cli.Options.withDescription(
-        `Path to oxfmt config file (default: ${OXFMT_CONFIG_CONVENTION_PATH})`,
+        `Path to oxfmt config file (default: ${OXFMT_CONFIG_CONVENTION_PATHS.join(' or ')})`,
       ),
       Cli.Options.optional,
     ),

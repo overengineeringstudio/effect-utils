@@ -40,6 +40,13 @@
 # See: context/workarounds/pnpm-issues.md for full details.
 #
 # Shared caching rules live in ./lib/cache.nix (task-specific details below).
+#
+# Cache inputs (per package path):
+# - package.json contents
+# - pnpm-lock.yaml contents
+#
+# Cache files:
+# - .direnv/task-cache/pnpm-install/<task-name>.hash
 { packages }:
 { lib, config, ... }:
 let

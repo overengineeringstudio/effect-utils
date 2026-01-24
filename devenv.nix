@@ -148,7 +148,6 @@ in
         "**/package.json"
         "**/tsconfig.json"
         "**/tsconfig.*.json"
-        ".github/workflows/*.yml"
         "packages/@overeng/oxc-config/*.jsonc"
       ];
     })

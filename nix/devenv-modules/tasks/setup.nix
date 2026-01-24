@@ -24,6 +24,12 @@
 #
 # The hash is stored in .direnv/task-cache/setup-git-hash and updated after successful setup.
 #
+# Cache inputs:
+# - git HEAD (or "no-git" fallback)
+#
+# Cache file:
+# - .direnv/task-cache/setup-git-hash
+#
 # To force tasks to run despite unchanged hash:
 #   FORCE_SETUP=1 dt genie:run
 #   dt setup:run  # Always forces all setup tasks
