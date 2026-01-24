@@ -8,6 +8,7 @@ import {
   getLockedMember,
   hasMember,
   isPinned,
+  lockedMembersEqual,
   LOCK_FILE_VERSION,
   LockFile,
   LockedMember,
@@ -16,6 +17,7 @@ import {
   syncLockWithConfig,
   unpinMember,
   updateLockedMember,
+  upsertLockedMember,
 } from './lock.ts'
 
 describe('lock', () => {
@@ -317,6 +319,174 @@ describe('lock', () => {
       expect(result.addedMembers).toEqual([])
       expect(result.removedMembers).toEqual([])
       expect(result.isStale).toBe(false)
+    })
+  })
+
+  describe('lockedMembersEqual', () => {
+    it('should return true for identical members', () => {
+      const member1 = createLockedMember({
+        url: 'https://github.com/owner/repo',
+        ref: 'main',
+        commit: 'abc123',
+        pinned: false,
+      })
+      const member2 = createLockedMember({
+        url: 'https://github.com/owner/repo',
+        ref: 'main',
+        commit: 'abc123',
+        pinned: false,
+      })
+      expect(lockedMembersEqual(member1, member2)).toBe(true)
+    })
+
+    it('should return false when url differs', () => {
+      const member1 = createLockedMember({ url: 'url1', ref: 'main', commit: 'abc' })
+      const member2 = createLockedMember({ url: 'url2', ref: 'main', commit: 'abc' })
+      expect(lockedMembersEqual(member1, member2)).toBe(false)
+    })
+
+    it('should return false when ref differs', () => {
+      const member1 = createLockedMember({ url: 'url', ref: 'main', commit: 'abc' })
+      const member2 = createLockedMember({ url: 'url', ref: 'develop', commit: 'abc' })
+      expect(lockedMembersEqual(member1, member2)).toBe(false)
+    })
+
+    it('should return false when commit differs', () => {
+      const member1 = createLockedMember({ url: 'url', ref: 'main', commit: 'abc' })
+      const member2 = createLockedMember({ url: 'url', ref: 'main', commit: 'def' })
+      expect(lockedMembersEqual(member1, member2)).toBe(false)
+    })
+
+    it('should return false when pinned differs', () => {
+      const member1 = createLockedMember({ url: 'url', ref: 'main', commit: 'abc', pinned: false })
+      const member2 = createLockedMember({ url: 'url', ref: 'main', commit: 'abc', pinned: true })
+      expect(lockedMembersEqual(member1, member2)).toBe(false)
+    })
+
+    it('should ignore lockedAt differences', () => {
+      const member1: LockedMember = {
+        url: 'url',
+        ref: 'main',
+        commit: 'abc',
+        pinned: false,
+        lockedAt: '2024-01-01T00:00:00Z',
+      }
+      const member2: LockedMember = {
+        url: 'url',
+        ref: 'main',
+        commit: 'abc',
+        pinned: false,
+        lockedAt: '2024-12-31T23:59:59Z',
+      }
+      expect(lockedMembersEqual(member1, member2)).toBe(true)
+    })
+  })
+
+  describe('upsertLockedMember', () => {
+    it('should create new member with fresh timestamp', () => {
+      const lockFile = createEmptyLockFile()
+      const updated = upsertLockedMember({
+        lockFile,
+        memberName: 'effect',
+        update: {
+          url: 'https://github.com/owner/repo',
+          ref: 'main',
+          commit: 'abc123',
+        },
+      })
+      expect(updated.members['effect']).toBeDefined()
+      expect(updated.members['effect']?.commit).toBe('abc123')
+      expect(updated.members['effect']?.lockedAt).toBeDefined()
+    })
+
+    it('should update member and timestamp when commit changes', () => {
+      let lockFile = createEmptyLockFile()
+      const originalLockedAt = '2024-01-01T00:00:00Z'
+      lockFile = updateLockedMember({
+        lockFile,
+        memberName: 'effect',
+        member: {
+          url: 'https://github.com/owner/repo',
+          ref: 'main',
+          commit: 'abc123',
+          pinned: false,
+          lockedAt: originalLockedAt,
+        },
+      })
+
+      const updated = upsertLockedMember({
+        lockFile,
+        memberName: 'effect',
+        update: {
+          url: 'https://github.com/owner/repo',
+          ref: 'main',
+          commit: 'def456', // Changed commit
+        },
+      })
+
+      expect(updated.members['effect']?.commit).toBe('def456')
+      expect(updated.members['effect']?.lockedAt).not.toBe(originalLockedAt)
+    })
+
+    it('should NOT update timestamp when nothing changes', () => {
+      let lockFile = createEmptyLockFile()
+      const originalLockedAt = '2024-01-01T00:00:00Z'
+      lockFile = updateLockedMember({
+        lockFile,
+        memberName: 'effect',
+        member: {
+          url: 'https://github.com/owner/repo',
+          ref: 'main',
+          commit: 'abc123',
+          pinned: false,
+          lockedAt: originalLockedAt,
+        },
+      })
+
+      const updated = upsertLockedMember({
+        lockFile,
+        memberName: 'effect',
+        update: {
+          url: 'https://github.com/owner/repo',
+          ref: 'main',
+          commit: 'abc123', // Same commit
+          pinned: false, // Same pinned
+        },
+      })
+
+      // Should return the same lock file (no update)
+      expect(updated).toBe(lockFile)
+      expect(updated.members['effect']?.lockedAt).toBe(originalLockedAt)
+    })
+
+    it('should preserve existing pinned status when not specified', () => {
+      let lockFile = createEmptyLockFile()
+      lockFile = updateLockedMember({
+        lockFile,
+        memberName: 'effect',
+        member: createLockedMember({
+          url: 'url',
+          ref: 'main',
+          commit: 'abc',
+          pinned: true,
+        }),
+      })
+
+      // Update without specifying pinned (defaults to false)
+      const updated = upsertLockedMember({
+        lockFile,
+        memberName: 'effect',
+        update: {
+          url: 'url',
+          ref: 'main',
+          commit: 'def', // Changed
+          // pinned not specified, defaults to false
+        },
+      })
+
+      // Since pinned changed (true -> false), timestamp should update
+      expect(updated.members['effect']?.pinned).toBe(false)
+      expect(updated.members['effect']?.commit).toBe('def')
     })
   })
 

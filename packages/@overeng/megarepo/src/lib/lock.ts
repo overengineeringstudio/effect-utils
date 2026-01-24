@@ -144,6 +144,57 @@ export const updateLockedMember = ({
 })
 
 /**
+ * Check if two locked members are equivalent (ignoring lockedAt)
+ */
+export const lockedMembersEqual = (a: LockedMember, b: LockedMember): boolean =>
+  a.url === b.url && a.ref === b.ref && a.commit === b.commit && a.pinned === b.pinned
+
+/**
+ * Update or create a member in the lock file, only updating lockedAt if something changed.
+ * This prevents unnecessary timestamp updates when nothing actually changed.
+ */
+export const upsertLockedMember = ({
+  lockFile,
+  memberName,
+  update,
+}: {
+  lockFile: LockFile
+  memberName: string
+  update: {
+    url: string
+    ref: string
+    commit: string
+    pinned?: boolean
+  }
+}): LockFile => {
+  const existing = lockFile.members[memberName]
+  const pinned = update.pinned ?? false
+
+  // If member exists and nothing changed, return unchanged lock file
+  if (
+    existing &&
+    existing.url === update.url &&
+    existing.ref === update.ref &&
+    existing.commit === update.commit &&
+    existing.pinned === pinned
+  ) {
+    return lockFile
+  }
+
+  // Something changed (or new member), create new entry with fresh timestamp
+  return updateLockedMember({
+    lockFile,
+    memberName,
+    member: createLockedMember({
+      url: update.url,
+      ref: update.ref,
+      commit: update.commit,
+      pinned,
+    }),
+  })
+}
+
+/**
  * Remove a member from the lock file
  */
 export const removeLockedMember = ({

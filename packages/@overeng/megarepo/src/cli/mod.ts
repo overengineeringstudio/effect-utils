@@ -60,7 +60,7 @@ import {
   readLockFile,
   syncLockWithConfig,
   unpinMember,
-  updateLockedMember,
+  upsertLockedMember,
   writeLockFile,
 } from '../lib/lock.ts'
 import { classifyRef } from '../lib/ref.ts'
@@ -1381,15 +1381,15 @@ const syncMegarepo = ({
         const url = getSourceUrl(source) ?? sourceString
         const existingLocked = lockFile.members[result.name]
 
-        lockFile = updateLockedMember({
+        lockFile = upsertLockedMember({
           lockFile,
           memberName: result.name,
-          member: createLockedMember({
+          update: {
             url,
             ref,
             commit,
             pinned: existingLocked?.pinned ?? false,
-          }),
+          },
         })
       }
 
@@ -1993,15 +1993,15 @@ const updateCommand = Cli.Command.make(
               : (lockFile.members[name]?.ref ?? 'main')
             const existingLocked = lockFile.members[name]
 
-            lockFile = updateLockedMember({
+            lockFile = upsertLockedMember({
               lockFile,
               memberName: name,
-              member: createLockedMember({
+              update: {
                 url,
                 ref,
                 commit: result.newCommit,
                 pinned: existingLocked?.pinned ?? false,
-              }),
+              },
             })
           }
         }
