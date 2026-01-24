@@ -136,19 +136,3 @@ export const formatElapsed = (ms: number): string => {
   return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`
 }
 
-// =============================================================================
-// Future Enhancement Ideas
-// =============================================================================
-
-/**
- * NOTE: ETA estimation is intentionally not included.
- *
- * For backfill operations, session processing times vary wildly (10 events vs 150k events),
- * making rate-based ETA unreliable and potentially misleading. Showing elapsed time
- * is more honest.
- *
- * If ETA is needed in the future, consider:
- * 1. Pre-scanning file sizes to estimate total work
- * 2. Using event counts instead of session counts as the progress metric
- * 3. Exponential moving average of processing rates
- */

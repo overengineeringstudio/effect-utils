@@ -13,6 +13,6 @@ export default packageJson({
     },
   },
   devDependencies: {
-    ...catalog.pick('@types/node', 'typescript'),
+    ...catalog.pick('@types/node', 'typescript', 'vitest'),
   },
 })

@@ -16,12 +16,16 @@ import { kv, separator, styled, symbols } from '@overeng/cli-ui'
 /** Sync result for a single member */
 export type MemberSyncResult = {
   readonly name: string
-  readonly status: 'cloned' | 'synced' | 'already_synced' | 'skipped' | 'error'
+  readonly status: 'cloned' | 'synced' | 'already_synced' | 'skipped' | 'error' | 'updated' | 'locked'
   readonly message?: string | undefined
   /** Commit that was synced to (for display) */
   readonly commit?: string | undefined
+  /** Previous commit (for showing lock updates) */
+  readonly previousCommit?: string | undefined
   /** Ref that was synced to */
   readonly ref?: string | undefined
+  /** Whether the lock was updated for this member */
+  readonly lockUpdated?: boolean | undefined
 }
 
 /** Input for rendering sync output */
@@ -40,6 +44,8 @@ export type SyncRenderInput = {
   dryRun: boolean
   /** Whether --frozen flag was used */
   frozen: boolean
+  /** Whether --pull flag was used */
+  pull?: boolean | undefined
 }
 
 // =============================================================================
@@ -52,12 +58,16 @@ const countResults = (
 ): {
   cloned: number
   synced: number
+  updated: number
+  locked: number
   alreadySynced: number
   skipped: number
   errors: number
 } => {
   let cloned = 0
   let synced = 0
+  let updated = 0
+  let locked = 0
   let alreadySynced = 0
   let skipped = 0
   let errors = 0
@@ -69,6 +79,12 @@ const countResults = (
         break
       case 'synced':
         synced++
+        break
+      case 'updated':
+        updated++
+        break
+      case 'locked':
+        locked++
         break
       case 'already_synced':
         alreadySynced++
@@ -82,7 +98,7 @@ const countResults = (
     }
   }
 
-  return { cloned, synced, alreadySynced, skipped, errors }
+  return { cloned, synced, updated, locked, alreadySynced, skipped, errors }
 }
 
 /** Format status text for a result */
@@ -92,6 +108,10 @@ const formatStatusText = (result: MemberSyncResult): string => {
       return 'cloned'
     case 'synced':
       return 'synced'
+    case 'updated':
+      return 'updated'
+    case 'locked':
+      return 'lock updated'
     case 'already_synced':
       return 'already synced'
     case 'skipped':
@@ -106,7 +126,10 @@ const getStatusSymbol = (result: MemberSyncResult): string => {
   switch (result.status) {
     case 'cloned':
     case 'synced':
+    case 'updated':
       return styled.green(symbols.check)
+    case 'locked':
+      return styled.cyan(symbols.check)
     case 'already_synced':
       return styled.dim(symbols.check)
     case 'skipped':
@@ -120,6 +143,19 @@ const getStatusSymbol = (result: MemberSyncResult): string => {
 // Main Renderer
 // =============================================================================
 
+/** Format commit transition (e.g., "abc1234 → def5678") */
+const formatCommitTransition = (result: MemberSyncResult): string => {
+  if (result.previousCommit && result.commit) {
+    const prev = result.previousCommit.slice(0, 7)
+    const curr = result.commit.slice(0, 7)
+    return styled.dim(`${prev} → ${curr}`)
+  }
+  if (result.commit) {
+    return styled.dim(result.commit.slice(0, 7))
+  }
+  return ''
+}
+
 /** Render sync output */
 export const renderSync = ({
   name,
@@ -129,6 +165,7 @@ export const renderSync = ({
   deep,
   dryRun,
   frozen,
+  pull,
 }: SyncRenderInput): string[] => {
   const output: string[] = []
 
@@ -140,6 +177,7 @@ export const renderSync = ({
   const modeIndicators: string[] = []
   if (dryRun) modeIndicators.push('dry run')
   if (frozen) modeIndicators.push('frozen')
+  if (pull) modeIndicators.push('pull')
   if (modeIndicators.length > 0) {
     output.push(styled.dim(`  mode: ${modeIndicators.join(', ')}`))
   }
@@ -147,7 +185,12 @@ export const renderSync = ({
 
   // Member results
   const counts = countResults(results)
-  const hasChanges = counts.cloned > 0 || counts.synced > 0 || counts.errors > 0
+  const hasChanges =
+    counts.cloned > 0 ||
+    counts.synced > 0 ||
+    counts.updated > 0 ||
+    counts.locked > 0 ||
+    counts.errors > 0
 
   if (dryRun && !hasChanges && counts.errors === 0) {
     // Nothing would change
@@ -157,11 +200,13 @@ export const renderSync = ({
     // Group by status for cleaner output
     const cloned = results.filter((r) => r.status === 'cloned')
     const synced = results.filter((r) => r.status === 'synced')
+    const updated = results.filter((r) => r.status === 'updated')
+    const locked = results.filter((r) => r.status === 'locked')
     const errors = results.filter((r) => r.status === 'error')
     const skipped = results.filter((r) => r.status === 'skipped')
     const alreadySynced = results.filter((r) => r.status === 'already_synced')
 
-    // Show changes first (cloned, synced)
+    // Show changes first (cloned, synced, updated)
     for (const r of cloned) {
       const refInfo = r.ref ? ` ${styled.dim(`(${r.ref})`)}` : ''
       output.push(`${getStatusSymbol(r)} ${styled.bold(r.name)} ${styled.green('cloned')}${refInfo}`)
@@ -170,6 +215,22 @@ export const renderSync = ({
     for (const r of synced) {
       const refInfo = r.ref ? ` ${styled.dim(`(${r.ref})`)}` : ''
       output.push(`${getStatusSymbol(r)} ${styled.bold(r.name)} ${styled.green('synced')}${refInfo}`)
+    }
+
+    // Updated members (from --pull mode)
+    for (const r of updated) {
+      const commitInfo = formatCommitTransition(r)
+      output.push(
+        `${getStatusSymbol(r)} ${styled.bold(r.name)} ${styled.green('updated')} ${commitInfo}`,
+      )
+    }
+
+    // Locked members (lock file updated to match current worktree)
+    for (const r of locked) {
+      const commitInfo = formatCommitTransition(r)
+      output.push(
+        `${getStatusSymbol(r)} ${styled.bold(r.name)} ${styled.cyan('lock updated')} ${commitInfo}`,
+      )
     }
 
     // Show errors
@@ -212,12 +273,16 @@ export const renderSync = ({
     // Dry run summary - what would happen
     if (counts.cloned > 0) summaryParts.push(`${counts.cloned} to clone`)
     if (counts.synced > 0) summaryParts.push(`${counts.synced} to sync`)
+    if (counts.updated > 0) summaryParts.push(`${counts.updated} to update`)
+    if (counts.locked > 0) summaryParts.push(`${counts.locked} lock updates`)
     if (counts.errors > 0) summaryParts.push(styled.red(`${counts.errors} errors`))
     if (counts.alreadySynced > 0) summaryParts.push(`${counts.alreadySynced} unchanged`)
   } else {
     // Actual sync summary
     if (counts.cloned > 0) summaryParts.push(`${counts.cloned} cloned`)
     if (counts.synced > 0) summaryParts.push(`${counts.synced} synced`)
+    if (counts.updated > 0) summaryParts.push(`${counts.updated} updated`)
+    if (counts.locked > 0) summaryParts.push(`${counts.locked} lock updates`)
     if (counts.errors > 0) summaryParts.push(styled.red(`${counts.errors} errors`))
     if (counts.alreadySynced > 0) summaryParts.push(`${counts.alreadySynced} unchanged`)
   }

@@ -79,3 +79,81 @@ export {
   formatElapsed,
   type ProgressOptions,
 } from './progress.ts'
+
+// Progress list (multi-line live updates)
+export {
+  createProgressListState,
+  renderProgressList,
+  formatProgressSummary,
+  isTTY,
+  startProgressList,
+  updateProgressList,
+  finishProgressList,
+  startSpinner,
+  updateItemStatus,
+  markActive,
+  markSuccess,
+  markError,
+  isComplete,
+  getStatusCounts,
+  type ProgressItemStatus,
+  type ProgressItem,
+  type ProgressListOptions,
+  type ProgressListState,
+} from './progress-list.ts'
+
+// ANSI escape code helpers
+export {
+  cursorUp,
+  cursorDown,
+  cursorToStart,
+  cursorToColumn,
+  clearToEOL,
+  clearToBOL,
+  clearLine,
+  hideCursor,
+  showCursor,
+  write,
+  writeLine,
+  rewriteLine,
+  clearLinesAbove,
+} from './ansi.ts'
+
+// Tree rendering helpers
+export {
+  treeChars,
+  treeCharsAscii,
+  buildTreePrefix,
+  buildContinuationPrefix,
+  flattenTree,
+  buildTree,
+  type TreeNode,
+  type FlatTreeItem,
+} from './tree.ts'
+
+// Tree progress (hierarchical live updates)
+export {
+  createTreeProgressState,
+  renderTreeProgress,
+  formatTreeProgressSummary,
+  startTreeProgress,
+  updateTreeProgress,
+  finishTreeProgress,
+  startTreeSpinner,
+  updateTreeItemStatus,
+  markTreeItemActive,
+  markTreeItemSuccess,
+  markTreeItemError,
+  markTreeItemSkipped,
+  addTreeItem,
+  removeTreeItem,
+  isTreeComplete,
+  getTreeStatusCounts,
+  getTreeElapsed,
+  getTreeItemsByStatus,
+  getTreeChildren,
+  type TreeProgressStatus,
+  type TreeProgressItem,
+  type TreeProgressOptions,
+  type TreeProgressState,
+} from './tree-progress.ts'

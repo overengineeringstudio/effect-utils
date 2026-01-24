@@ -317,28 +317,49 @@ my-megarepo/repos/effect-utils -> /Users/dev/.megarepo/github.com/overeng/effect
 
 #### `mr sync`
 
-Ensures worktrees exist and symlinks are correct. Does NOT pull or re-resolve refs.
+Bidirectional sync between worktrees and lock file. The default mode ensures members exist and updates the lock file to match current worktree HEADs.
 
 ```bash
-mr sync [--frozen] [--deep]
+mr sync [--pull] [--frozen] [--force] [--deep]
 ```
 
-**Behavior:**
+**Modes:**
+
+| Mode | Command | Behavior |
+|------|---------|----------|
+| Default | `mr sync` | Ensure members exist, update lock to current worktree commits |
+| Pull | `mr sync --pull` | Fetch from remote, update worktrees to latest |
+| Frozen | `mr sync --frozen` | Apply lock → worktrees exactly, never modify lock (CI mode) |
+
+**Default Mode Behavior:**
 
 1. For each member in config:
-   - If in lock → use locked commit
-   - If NOT in lock → resolve ref from remote, add to lock
-2. Ensure bare repo exists (clone if needed)
-3. Ensure worktree exists at locked commit (create if needed)
-4. Ensure symlink points to correct worktree
-5. Run generators
+   - If member exists → read current HEAD, update lock if different
+   - If member NOT exists → clone/create worktree, add to lock
+2. Does NOT fetch from remote
+3. Updates lock file to reflect current worktree state
 
-**Key point:** `mr sync` uses the lock file as-is. It only resolves refs for NEW members not yet in the lock. To update existing members, use `mr update`.
+This mode is ideal for local iteration: make commits in worktrees, then `mr sync` to capture the current state in the lock file.
 
 **Options:**
 
-- `--frozen` - CI mode: fail if lock is missing or stale
+- `--pull` - Fetch from remote and update to latest commits (like old `mr update`)
+- `--frozen` - CI mode: fail if lock is missing or stale, apply lock exactly
+- `--force` / `-f` - Override dirty worktree check, update pinned members
 - `--deep` - Recursively sync nested megarepos
+
+#### `mr sync --pull`
+
+Fetches from remotes and updates worktrees to latest commits:
+
+1. Fetch from remote for each member
+2. Resolve ref to latest commit
+3. Update worktree to new commit
+4. Update lock file entry
+
+**Dirty worktree protection:** Fails if worktree has uncommitted changes or unpushed commits (use `--force` to override).
+
+**Pinned members:** Skipped unless `--force` is used.
 
 #### `mr sync --frozen`
 
@@ -352,29 +373,6 @@ Strict mode for CI that guarantees exact reproducibility:
 
 This commit-based path approach ensures that even if the store's bare repo has been updated by another operation, frozen mode always materializes the exact commits from the lock file.
 
-### Update Commands
-
-#### `mr update [member]`
-
-Re-resolves refs from remotes and updates the lock file. This is how you get newer commits.
-
-```bash
-mr update              # update all non-pinned members
-mr update effect       # update specific member (even if pinned)
-mr update --all        # update ALL members including pinned
-```
-
-**Behavior:**
-
-1. For each member to update:
-   - Fetch from remote
-   - Resolve ref to latest commit
-   - Update lock file entry
-   - Update worktree to new commit
-2. Skip pinned members (unless specifically named or `--all`)
-
-**Example:** If `effect` tracks `main` and lock says `main=abc123`, running `mr update effect` will fetch, resolve main to `def456`, update lock, and checkout `def456`.
-
 #### `mr pin <member> [--commit=SHA]`
 
 Mark a member as pinned:
@@ -385,7 +383,7 @@ mr pin effect --commit=abc # pin to specific commit
 ```
 
 - Sets `pinned: true` in lock file
-- Pinned members won't update with `mr update`
+- Pinned members won't update with `mr sync --pull`
 - Pinned members use commit-based worktree paths (like `--frozen`), guaranteeing they stay at the exact pinned commit
 
 #### `mr unpin <member>`
@@ -397,7 +395,7 @@ mr unpin effect
 ```
 
 - Sets `pinned: false` in lock file
-- Next `mr update` will refresh to latest
+- Next `mr sync --pull` will refresh to latest
 
 ### Convenience Commands
 
@@ -518,13 +516,29 @@ All commands support:
 
 ## Workflows
 
-### Development (tracking latest)
+### Local Development (iterating on commits)
+
+```bash
+# Initial setup
+mr sync                    # clone members, create lock
+
+# Make changes in worktrees
+cd repos/effect && git commit -m "fix bug"
+cd repos/other-lib && git commit -m "add feature"
+
+# Capture current state in lock file
+mr sync                    # updates lock to current worktree HEADs
+git add megarepo.lock
+git commit -m "Update dependencies"
+```
+
+### Development (tracking latest from remote)
 
 ```bash
 # Config: effect tracks main branch
-mr sync                    # resolves main → abc123, creates lock
+mr sync                    # ensure members exist
 # ... time passes ...
-mr update                  # re-resolves main → def456
+mr sync --pull             # fetch and update to latest commits
 ```
 
 ### CI (reproducible builds)
@@ -543,7 +557,7 @@ git add megarepo.lock
 git commit -m "Pin dependencies for release"
 
 # Later updates skip pinned members
-mr update                  # effect stays pinned, others update
+mr sync --pull             # effect stays pinned, others update
 ```
 
 ### Investigating a regression
@@ -553,7 +567,7 @@ mr pin effect --commit=abc123   # pin to known-good commit
 mr sync                          # checkout that commit
 # ... test ...
 mr unpin effect                  # remove pin
-mr update effect                 # back to latest
+mr sync --pull                   # back to latest
 ```
 
 ---
@@ -598,22 +612,27 @@ mr sync --deep   # Recursive - includes nested megarepos
 
 ## Sync Behavior
 
-### `mr sync` Strategy
+### `mr sync` (Default Mode) Strategy
 
-1. **Check lock:** If member is in lock, use that commit
-2. **Resolve new members:** If member is NOT in lock, resolve ref from remote and add to lock
-3. **Ensure bare repo:** Clone as bare if not in store
-4. **Ensure worktree:** Create worktree at locked commit if not exists
-5. **Ensure symlink:** Create or fix symlink to worktree
+1. **For existing members:** Read current worktree HEAD, update lock if different
+2. **For new members:** Clone bare repo, create worktree, add to lock
+3. **Ensure symlink:** Create or fix symlink to worktree
 
-`mr sync` does NOT fetch or pull. It materializes the state declared in the lock file.
+Default mode does NOT fetch from remote. It reads current worktree state and updates the lock file to match.
 
-### `mr update` Strategy
+### `mr sync --pull` Strategy
 
 1. **Fetch:** Get latest refs from remote
-2. **Resolve:** Find current commit for the ref
-3. **Update lock:** Write new commit to lock file
+2. **Check dirty:** Fail if worktree has uncommitted changes (unless `--force`)
+3. **Resolve:** Find current commit for the ref
 4. **Update worktree:** Checkout new commit
+5. **Update lock:** Write new commit to lock file
+
+### `mr sync --frozen` Strategy
+
+1. **Validate lock:** Fail if lock missing or stale
+2. **Use locked commits:** Checkout exact commits from lock
+3. **Never modify lock:** Lock file is read-only
 
 ### Symlink Strategy
 

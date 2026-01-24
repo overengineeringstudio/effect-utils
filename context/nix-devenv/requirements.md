@@ -38,20 +38,21 @@ We manage multiple interconnected repositories using a megarepo approach. Each r
 
 ### Must be simple
 
-- R13 - Keep `.envrc` minimal; follow the standard pattern: source `.envrc.generated.megarepo`, then `use devenv`.
-- R14 - Use devenv tasks as the task runner with the `dt` wrapper for dependency resolution.
-- R15 - Avoid redundant implementations; prefer shared modules in `effect-utils/devenvModules`.
+- R13 - In devenv, run in-repo CLIs via `bun` from source; keep flake outputs strict for builds.
+- R14 - Keep `.envrc` minimal; follow the standard pattern: source `.envrc.generated.megarepo`, then `use devenv`.
+- R15 - Use devenv tasks as the task runner with the `dt` wrapper for dependency resolution.
+- R16 - Avoid redundant implementations; prefer shared modules in `effect-utils/devenvModules`.
 
 ### Must be clear
 
-- R16 - Provide clear error messages for missing lockfiles / stale dependency hashes. Make refresh easy.
-- R17 - Task descriptions must be concise and discoverable via `dt --help` or shell completions.
+- R17 - Provide clear error messages for missing lockfiles / stale dependency hashes. Make refresh easy.
+- R18 - Task descriptions must be concise and discoverable via `dt --help` or shell completions.
 
 ### Must be verified
 
-- R18 - Nested megarepos must work independently of their parent megarepo.
-- R19 - Devenv can override flake inputs for local development (`--override-input`).
-- R20 - Cover megarepo workspace builds vs standalone `mr sync` in tests.
+- R19 - Nested megarepos must work independently of their parent megarepo.
+- R20 - Devenv can override flake inputs for local development (`--override-input`).
+- R21 - Cover megarepo workspace builds vs standalone `mr sync` in tests.
 
 ## See Also
 

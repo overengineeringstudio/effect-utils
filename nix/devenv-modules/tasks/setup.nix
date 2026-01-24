@@ -37,11 +37,12 @@
 #
 # If you need to run setup during rebase, use: `FORCE_SETUP=1 dt setup:run`
 #
-# ## Strict Setup Tasks
+# ## Strict Mode
 #
-# Some tasks (e.g. `ts:build`) can be marked as "strict" so they only run
-# when `DEVENV_STRICT=1`. This keeps shell entry resilient when those
-# tasks are temporarily broken, while still allowing opt-in enforcement.
+# By default, setup tasks run in a non-blocking mode on shell entry; failures
+# emit warnings but do not prevent the shell from loading.
+#
+# Set `DEVENV_STRICT=1` to enforce setup tasks and fail fast on errors.
 {
   tasks ? [ "genie:run" ],
   skipDuringRebase ? true,

@@ -11,7 +11,22 @@ import type { CommandExecutor } from '@effect/platform'
 import { Command, FileSystem, type Error as PlatformError } from '@effect/platform'
 import { Console, Context, Effect, Layer, Option, type ParseResult, Schema } from 'effect'
 
-import { styled, symbols } from '@overeng/cli-ui'
+import {
+  createProgressListState,
+  finishProgressList,
+  formatElapsed,
+  isTTY,
+  kv,
+  markActive,
+  markError,
+  markSuccess,
+  separator,
+  startProgressList,
+  startSpinner,
+  styled,
+  symbols,
+  updateProgressList,
+} from '@overeng/cli-ui'
 import { EffectPath, type AbsoluteDirPath, type AbsoluteFilePath } from '@overeng/effect-path'
 import { jsonError, withJsonMode } from '@overeng/utils/node'
 
@@ -707,12 +722,16 @@ const lsCommand = Cli.Command.make('ls', { json: jsonOption }, ({ json }) =>
 /** Member sync result */
 interface MemberSyncResult {
   readonly name: string
-  readonly status: 'cloned' | 'synced' | 'already_synced' | 'skipped' | 'error'
+  readonly status: 'cloned' | 'synced' | 'already_synced' | 'skipped' | 'error' | 'updated' | 'locked'
   readonly message?: string | undefined
   /** Resolved commit for lock file (remote sources only) */
   readonly commit?: string | undefined
+  /** Previous commit (for showing changes) */
+  readonly previousCommit?: string | undefined
   /** Resolved ref for lock file */
   readonly ref?: string | undefined
+  /** Whether the lock was updated for this member */
+  readonly lockUpdated?: boolean | undefined
 }
 
 /**
@@ -731,6 +750,11 @@ const getCloneUrl = (source: MemberSource): string | undefined => {
 
 /**
  * Sync a single member: use bare repo + worktree pattern
+ *
+ * Modes:
+ * - Default: ensure member exists, read current HEAD to update lock
+ * - Pull: fetch from remote, update to latest (unless pinned)
+ * - Frozen: use exact commit from lock, never modify lock
  */
 const syncMember = ({
   name,
@@ -738,14 +762,18 @@ const syncMember = ({
   megarepoRoot,
   lockFile,
   dryRun,
+  pull,
   frozen,
+  force,
 }: {
   name: string
   sourceString: string
   megarepoRoot: AbsoluteDirPath
   lockFile: LockFile | undefined
   dryRun: boolean
+  pull: boolean
   frozen: boolean
+  force: boolean
 }) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -857,6 +885,53 @@ const syncMember = ({
       }
     }
 
+    // Check if member symlink already exists and points to a valid worktree
+    const currentLink = yield* fs
+      .readLink(memberPathNormalized)
+      .pipe(Effect.catchAll(() => Effect.succeed(null)))
+    const memberExists = currentLink !== null
+
+    // In default mode (no --pull), if member exists, just read current state for lock
+    if (memberExists && !pull && !frozen) {
+      // Read current HEAD from the worktree
+      const currentCommit = yield* Git.getCurrentCommit(memberPathNormalized).pipe(
+        Effect.catchAll(() => Effect.succeed(undefined)),
+      )
+      const currentBranchOpt = yield* Git.getCurrentBranch(memberPathNormalized).pipe(
+        Effect.catchAll(() => Effect.succeed(Option.none<string>())),
+      )
+      const currentBranch = Option.getOrUndefined(currentBranchOpt)
+
+      // Determine if lock needs updating
+      const previousCommit = lockedMember?.commit
+      const lockUpdated = currentCommit !== undefined && currentCommit !== previousCommit
+
+      return {
+        name,
+        status: lockUpdated ? 'locked' : 'already_synced',
+        commit: currentCommit,
+        previousCommit: lockUpdated ? previousCommit : undefined,
+        ref: currentBranch ?? lockedMember?.ref ?? targetRef,
+        lockUpdated,
+      } satisfies MemberSyncResult
+    }
+
+    // For --pull mode, check if worktree is dirty before making changes
+    if (pull && memberExists && !frozen && !dryRun) {
+      const worktreeStatus = yield* Git.getWorktreeStatus(currentLink).pipe(
+        Effect.catchAll(() => Effect.succeed({ isDirty: false, hasUnpushed: false, changesCount: 0 })),
+      )
+      if ((worktreeStatus.isDirty || worktreeStatus.hasUnpushed) && !force) {
+        return {
+          name,
+          status: 'skipped',
+          message: worktreeStatus.isDirty
+            ? `${worktreeStatus.changesCount} uncommitted changes (use --force to override)`
+            : 'has unpushed commits (use --force to override)',
+        } satisfies MemberSyncResult
+      }
+    }
+
     // Clone bare repo if needed
     let wasCloned = false
     if (!bareExists) {
@@ -873,8 +948,8 @@ const syncMember = ({
         yield* Git.cloneBare({ url: cloneUrl, targetPath: bareRepoPath })
         wasCloned = true
       }
-    } else if (!frozen && !dryRun) {
-      // Fetch updates (unless frozen)
+    } else if (pull && !frozen && !dryRun) {
+      // Only fetch when --pull is specified (not in default mode)
       yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(
         Effect.catchAll(() => Effect.void), // Ignore fetch errors
       )
@@ -987,11 +1062,17 @@ const syncMember = ({
       yield* createSymlink({ target: worktreePath, link: memberPathNormalized })
     }
 
+    // Determine if this is a pull update (changed commit)
+    const previousCommit = lockedMember?.commit
+    const isUpdate = pull && previousCommit !== undefined && previousCommit !== targetCommit
+
     return {
       name,
-      status: wasCloned ? 'cloned' : 'synced',
+      status: wasCloned ? 'cloned' : isUpdate ? 'updated' : 'synced',
       commit: targetCommit,
+      previousCommit: isUpdate ? previousCommit : undefined,
       ref: targetRef,
+      lockUpdated: true,
     } satisfies MemberSyncResult
   }).pipe(
     Effect.catchAll((error) =>
@@ -1022,8 +1103,10 @@ const flattenSyncResults = (result: MegarepoSyncResult): object => ({
 /** Count sync results including nested megarepos */
 const countSyncResults = (
   r: MegarepoSyncResult,
-): { synced: number; already: number; errors: number } => {
+): { synced: number; updated: number; locked: number; already: number; errors: number } => {
   const synced = r.results.filter((m) => m.status === 'cloned' || m.status === 'synced').length
+  const updated = r.results.filter((m) => m.status === 'updated').length
+  const locked = r.results.filter((m) => m.status === 'locked').length
   const already = r.results.filter((m) => m.status === 'already_synced').length
   const errors = r.results.filter((m) => m.status === 'error').length
   const nested = r.nestedResults.reduce(
@@ -1031,14 +1114,18 @@ const countSyncResults = (
       const nc = countSyncResults(nr)
       return {
         synced: acc.synced + nc.synced,
+        updated: acc.updated + nc.updated,
+        locked: acc.locked + nc.locked,
         already: acc.already + nc.already,
         errors: acc.errors + nc.errors,
       }
     },
-    { synced: 0, already: 0, errors: 0 },
+    { synced: 0, updated: 0, locked: 0, already: 0, errors: 0 },
   )
   return {
     synced: synced + nested.synced,
+    updated: updated + nested.updated,
+    locked: locked + nested.locked,
     already: already + nested.already,
     errors: errors + nested.errors,
   }
@@ -1082,7 +1169,7 @@ const syncMegarepo = ({
   visited = new Set<string>(),
 }: {
   megarepoRoot: AbsoluteDirPath
-  options: { json: boolean; dryRun: boolean; frozen: boolean; deep: boolean }
+  options: { json: boolean; dryRun: boolean; pull: boolean; frozen: boolean; force: boolean; deep: boolean }
   depth?: number
   visited?: Set<string>
 }): Effect.Effect<
@@ -1095,7 +1182,7 @@ const syncMegarepo = ({
   FileSystem.FileSystem | CommandExecutor.CommandExecutor | Store
 > =>
   Effect.gen(function* () {
-    const { json, dryRun, frozen, deep } = options
+    const { json, dryRun, pull, frozen, force, deep } = options
     const fs = yield* FileSystem.FileSystem
     const indent = '  '.repeat(depth)
 
@@ -1208,7 +1295,9 @@ const syncMegarepo = ({
           megarepoRoot,
           lockFile,
           dryRun,
+          pull,
           frozen,
+          force,
         }),
       ),
       { concurrency: 'unbounded' },
@@ -1325,10 +1414,19 @@ const syncCommand = Cli.Command.make(
       Cli.Options.withDescription('Show what would be done without making changes'),
       Cli.Options.withDefault(false),
     ),
+    pull: Cli.Options.boolean('pull').pipe(
+      Cli.Options.withDescription('Fetch and update unpinned members to latest remote commits'),
+      Cli.Options.withDefault(false),
+    ),
     frozen: Cli.Options.boolean('frozen').pipe(
       Cli.Options.withDescription(
         'Use exact commits from lock file (fail if lock missing or stale)',
       ),
+      Cli.Options.withDefault(false),
+    ),
+    force: Cli.Options.boolean('force').pipe(
+      Cli.Options.withAlias('f'),
+      Cli.Options.withDescription('Force sync even with dirty worktrees or pinned members'),
       Cli.Options.withDefault(false),
     ),
     deep: Cli.Options.boolean('deep').pipe(
@@ -1336,7 +1434,7 @@ const syncCommand = Cli.Command.make(
       Cli.Options.withDefault(false),
     ),
   },
-  ({ json, dryRun, frozen, deep }) =>
+  ({ json, dryRun, pull, frozen, force, deep }) =>
     Effect.gen(function* () {
       const cwd = yield* Cwd
       const root = yield* findMegarepoRoot(cwd)
@@ -1356,7 +1454,7 @@ const syncCommand = Cli.Command.make(
       // Run the sync
       const syncResult = yield* syncMegarepo({
         megarepoRoot: root.value,
-        options: { json, dryRun, frozen, deep },
+        options: { json, dryRun, pull, frozen, force, deep },
       })
 
       // Output results
@@ -1372,11 +1470,16 @@ const syncCommand = Cli.Command.make(
           deep,
           dryRun,
           frozen,
+          pull,
         })
         yield* outputLines(lines)
       }
     }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/sync')),
-).pipe(Cli.Command.withDescription('Sync members to their configured refs'))
+).pipe(
+  Cli.Command.withDescription(
+    'Ensure members exist and update lock file to current worktree commits. Use --pull to fetch from remote.',
+  ),
+)
 
 // =============================================================================
 // Add Command
@@ -1523,7 +1626,9 @@ const addCommand = Cli.Command.make(
           megarepoRoot: root.value,
           lockFile: undefined,
           dryRun: false,
+          pull: true, // Fetch when adding
           frozen: false,
+          force: false,
         })
         if (!json) {
           const statusSymbol =
@@ -2196,16 +2301,20 @@ const storeLsCommand = Cli.Command.make('ls', { json: jsonOption }, ({ json }) =
     if (json) {
       console.log(JSON.stringify({ repos }))
     } else {
+      yield* Console.log(styled.bold('store'))
+      yield* Console.log(kv('path', store.basePath, { keyStyle: (k) => styled.dim(`  ${k}`) }))
+      yield* Console.log('')
+
       if (repos.length === 0) {
-        yield* Console.log(styled.dim('Store is empty'))
+        yield* Console.log(styled.dim('(empty)'))
       } else {
-        yield* Console.log(styled.bold(`Store: ${store.basePath}`))
+        yield* Console.log(separator())
         yield* Console.log('')
         for (const repo of repos) {
-          yield* Console.log(`  ${repo.relativePath}`)
+          yield* Console.log(`${styled.green(symbols.check)} ${repo.relativePath}`)
         }
         yield* Console.log('')
-        yield* Console.log(styled.dim(`${repos.length} repo(s)`))
+        yield* Console.log(styled.dim(`${repos.length} repositories`))
       }
     }
   }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/ls'), withJsonMode(json)),
@@ -2216,35 +2325,118 @@ const storeFetchCommand = Cli.Command.make('fetch', { json: jsonOption }, ({ jso
   Effect.gen(function* () {
     const store = yield* Store
     const repos = yield* store.listRepos()
+    const startTime = Date.now()
 
-    const results: Array<{ path: string; status: 'fetched' | 'error'; message?: string }> = []
+    // For TTY: use live progress rendering
+    // For non-TTY (piped): just collect results silently
+    const useLiveProgress = !json && isTTY()
 
-    for (const repo of repos) {
-      const result = yield* Git.fetch({ repoPath: repo.fullPath, prune: true }).pipe(
-        Effect.map(() => ({ path: repo.relativePath, status: 'fetched' as const })),
-        Effect.catchAll((error) =>
-          Effect.succeed({
-            path: repo.relativePath,
-            status: 'error' as const,
-            message: error instanceof Error ? error.message : String(error),
-          }),
-        ),
-      )
-      results.push(result)
+    // Create progress state
+    const progressState = createProgressListState(
+      repos.map((repo) => ({ id: repo.relativePath, label: repo.relativePath })),
+    )
 
-      if (!json) {
-        const symbol =
-          result.status === 'error' ? styled.red(symbols.cross) : styled.green(symbols.check)
-        yield* Console.log(`${symbol} ${repo.relativePath}`)
-      }
+    if (useLiveProgress) {
+      // Print header
+      yield* Console.log(styled.bold('store'))
+      yield* Console.log(kv('path', store.basePath, { keyStyle: (k) => styled.dim(`  ${k}`) }))
+      yield* Console.log('')
+      yield* Console.log(separator())
+      yield* Console.log('')
+
+      // Start progress display
+      startProgressList(progressState)
+      startSpinner(progressState, 80)
     }
 
-    if (json) {
+    // Fetch repos with limited concurrency for visible progress
+    const results = yield* Effect.all(
+      repos.map((repo) =>
+        Effect.gen(function* () {
+          // Mark as active
+          if (useLiveProgress) {
+            markActive(progressState, repo.relativePath, 'fetching...')
+            updateProgressList(progressState)
+          }
+
+          // The bare repo is in the .bare/ subdirectory
+          const bareRepoPath = EffectPath.ops.join(
+            repo.fullPath,
+            EffectPath.unsafe.relativeDir('.bare/'),
+          )
+
+          const result = yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(
+            Effect.map(() => {
+              if (useLiveProgress) {
+                markSuccess(progressState, repo.relativePath)
+                updateProgressList(progressState)
+              }
+              return { path: repo.relativePath, status: 'fetched' as const }
+            }),
+            Effect.catchAll((error) => {
+              const message = error instanceof Error ? error.message : String(error)
+              if (useLiveProgress) {
+                markError(progressState, repo.relativePath, message)
+                updateProgressList(progressState)
+              }
+              return Effect.succeed({
+                path: repo.relativePath,
+                status: 'error' as const,
+                message,
+              })
+            }),
+          )
+
+          return result
+        }),
+      ),
+      { concurrency: 4 },
+    )
+
+    const elapsed = Date.now() - startTime
+
+    if (useLiveProgress) {
+      // Finish progress display
+      finishProgressList(progressState)
+
+      // Print summary
+      const fetchedCount = results.filter((r) => r.status === 'fetched').length
+      const errorCount = results.filter((r) => r.status === 'error').length
+      const parts: string[] = [`${fetchedCount} fetched`]
+      if (errorCount > 0) {
+        parts.push(styled.red(`${errorCount} error${errorCount > 1 ? 's' : ''}`))
+      }
+      parts.push(formatElapsed(elapsed))
+      yield* Console.log(styled.dim(parts.join(' · ')))
+    } else if (json) {
       console.log(JSON.stringify({ results }))
     } else {
-      const fetchedCount = results.filter((r) => r.status === 'fetched').length
+      // Non-TTY: print final results only
+      yield* Console.log(styled.bold('store'))
+      yield* Console.log(kv('path', store.basePath, { keyStyle: (k) => styled.dim(`  ${k}`) }))
       yield* Console.log('')
-      yield* Console.log(styled.dim(`Fetched ${fetchedCount} repo(s)`))
+      yield* Console.log(separator())
+      yield* Console.log('')
+
+      for (const result of results) {
+        const symbol =
+          result.status === 'error' ? styled.red(symbols.cross) : styled.green(symbols.check)
+        const suffix =
+          result.status === 'error' && result.message
+            ? styled.dim(` (${result.message})`)
+            : ''
+        yield* Console.log(`${symbol} ${result.path}${suffix}`)
+      }
+
+      yield* Console.log('')
+      const fetchedCount = results.filter((r) => r.status === 'fetched').length
+      const errorCount = results.filter((r) => r.status === 'error').length
+      const parts: string[] = [`${fetchedCount} fetched`]
+      if (errorCount > 0) {
+        parts.push(styled.red(`${errorCount} error${errorCount > 1 ? 's' : ''}`))
+      }
+      parts.push(formatElapsed(elapsed))
+      yield* Console.log(styled.dim(parts.join(' · ')))
     }
   }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/fetch')),
 ).pipe(Cli.Command.withDescription('Fetch all repositories in the store'))
@@ -2468,32 +2660,55 @@ const storeGcCommand = Cli.Command.make(
         const skippedDirty = results.filter((r) => r.status === 'skipped_dirty')
         const skippedInUse = results.filter((r) => r.status === 'skipped_in_use')
 
-        if (removed.length > 0) {
-          const verb = dryRun ? 'Would remove' : 'Removed'
-          for (const r of removed) {
-            yield* Console.log(`${styled.green(symbols.check)} ${verb} ${r.repo}refs/${r.ref}`)
-          }
+        // Header
+        yield* Console.log(styled.bold('store gc'))
+        yield* Console.log(kv('path', store.basePath, { keyStyle: (k) => styled.dim(`  ${k}`) }))
+        if (dryRun) {
+          yield* Console.log(styled.dim('  mode: dry run'))
         }
+        yield* Console.log('')
+        yield* Console.log(separator())
+        yield* Console.log('')
 
-        if (skippedDirty.length > 0) {
-          yield* Console.log('')
-          yield* Console.log(styled.yellow('Skipped (dirty):'))
-          for (const r of skippedDirty) {
+        if (results.length === 0) {
+          yield* Console.log(styled.dim('No worktrees found'))
+        } else {
+          // Removed worktrees
+          for (const r of removed) {
+            const verb = dryRun ? 'would remove' : 'removed'
             yield* Console.log(
-              `  ${styled.yellow('⊘')} ${r.repo}refs/${r.ref} ${styled.dim(`(${r.message})`)}`,
+              `${styled.green(symbols.check)} ${r.repo}refs/${r.ref} ${styled.dim(`(${verb})`)}`,
             )
           }
-          if (!force) {
-            yield* Console.log(styled.dim('  Use --force to remove dirty worktrees'))
+
+          // Skipped dirty worktrees
+          for (const r of skippedDirty) {
+            yield* Console.log(
+              `${styled.yellow(symbols.circle)} ${r.repo}refs/${r.ref} ${styled.dim(`(${r.message})`)}`,
+            )
+          }
+
+          // Skipped in-use worktrees (only show if few results)
+          if (skippedInUse.length > 0 && skippedInUse.length <= 5) {
+            for (const r of skippedInUse) {
+              yield* Console.log(
+                `${styled.dim(symbols.check)} ${styled.dim(`${r.repo}refs/${r.ref}`)} ${styled.dim('(in use)')}`,
+              )
+            }
           }
         }
 
+        // Summary
         yield* Console.log('')
         const parts: string[] = []
         if (removed.length > 0) parts.push(`${removed.length} ${dryRun ? 'would be ' : ''}removed`)
-        if (skippedDirty.length > 0) parts.push(`${skippedDirty.length} dirty`)
+        if (skippedDirty.length > 0) parts.push(`${skippedDirty.length} skipped (dirty)`)
         if (skippedInUse.length > 0) parts.push(`${skippedInUse.length} in use`)
-        yield* Console.log(styled.dim(parts.length > 0 ? parts.join(', ') : 'Nothing to clean up'))
+        yield* Console.log(styled.dim(parts.length > 0 ? parts.join(' · ') : 'Nothing to clean up'))
+
+        if (skippedDirty.length > 0 && !force) {
+          yield* Console.log(styled.dim('Use --force to remove dirty worktrees'))
+        }
       }
     }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/gc')),
 ).pipe(Cli.Command.withDescription('Garbage collect unused worktrees'))
