@@ -19,7 +19,9 @@ export type GenieContext = {
  * fn({ name: 'ok', typo: 1 })  // ❌ Error: Type 'number' is not assignable to type 'never'
  * ```
  */
-export type Strict<T, TBase> = T & { [K in Exclude<keyof T, keyof TBase>]: never }
+export type Strict<T, TBase> = T & {
+  [K in Exclude<keyof T, keyof TBase>]: never
+}
 
 /**
  * Standard output shape for all genie factories.

@@ -119,11 +119,20 @@ export const validateVersionConstraints = (args: {
 
   for (const constraint of args.constraints) {
     // Check if this package matches the constraint's package patterns
-    if (!matchesAnyPattern({ name: args.packageName, patterns: constraint.packages })) continue
+    if (
+      !matchesAnyPattern({
+        name: args.packageName,
+        patterns: constraint.packages,
+      })
+    )
+      continue
 
     // Check each dependency type
     const depTypes = constraint.dependencyTypes ?? ['prod', 'dev', 'peer']
-    const depSources: Array<{ type: string; deps: Record<string, string> | undefined }> = [
+    const depSources: Array<{
+      type: string
+      deps: Record<string, string> | undefined
+    }> = [
       { type: 'prod', deps: args.deps.dependencies },
       { type: 'dev', deps: args.deps.devDependencies },
       { type: 'peer', deps: args.deps.peerDependencies },

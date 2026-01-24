@@ -35,9 +35,9 @@ self.addEventListener('connect', (event: MessageEvent) => {
     }
 
     if (msg.type === 'emit-error') {
-      const program = Effect.logError('Something went wrong', { errorCode: 'E001' }).pipe(
-        Effect.provide(BroadcastLoggerLive('test-worker')),
-      )
+      const program = Effect.logError('Something went wrong', {
+        errorCode: 'E001',
+      }).pipe(Effect.provide(BroadcastLoggerLive('test-worker')))
 
       Effect.runPromise(program).then(() => {
         port.postMessage({ type: 'done' })

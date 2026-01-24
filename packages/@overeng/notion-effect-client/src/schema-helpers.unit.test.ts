@@ -69,7 +69,11 @@ describe('SchemaHelpers', () => {
       Effect.gen(function* () {
         const db = makeDatabase({
           Name: { id: 'prop-name', type: 'title', title: {} },
-          Amount: { id: 'prop-amount', type: 'number', number: { format: 'number' } },
+          Amount: {
+            id: 'prop-amount',
+            type: 'number',
+            number: { format: 'number' },
+          },
         })
 
         yield* SchemaHelpers.validateProperties({

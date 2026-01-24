@@ -259,7 +259,11 @@ export class TaskRunner extends Context.Tag('TaskRunner')<TaskRunner, TaskRunner
                   return Chunk.fromIterable(lines)
                 }),
                 Stream.runForEach((line) =>
-                  appendOutput({ id: options.id, channel: 'stdout', lines: [line] }),
+                  appendOutput({
+                    id: options.id,
+                    channel: 'stdout',
+                    lines: [line],
+                  }),
                 ),
                 Effect.fork,
               )
@@ -275,7 +279,11 @@ export class TaskRunner extends Context.Tag('TaskRunner')<TaskRunner, TaskRunner
                   return Chunk.fromIterable(lines)
                 }),
                 Stream.runForEach((line) =>
-                  appendOutput({ id: options.id, channel: 'stderr', lines: [line] }),
+                  appendOutput({
+                    id: options.id,
+                    channel: 'stderr',
+                    lines: [line],
+                  }),
                 ),
                 Effect.fork,
               )

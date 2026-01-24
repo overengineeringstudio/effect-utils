@@ -5,6 +5,7 @@
 > We're currently using pnpm due to the blocking issues below. Once these are fixed, we plan to switch back to bun.
 >
 > **Why we want bun:**
+>
 > - Significantly faster installs (when not hitting bugs)
 > - bun's `file:` protocol already works like pnpm's `link:` (symlinks with own deps)
 > - No need for `enableGlobalVirtualStore` workaround
@@ -66,11 +67,11 @@ Requires setting up a root `package.json` with workspaces config.
 
 When comparing package managers for monorepo local dependencies:
 
-| Protocol | Behavior |
-|----------|----------|
-| **bun `file:`** | Creates dir structure where nested `node_modules` symlinks back to source package's deps |
-| **pnpm `link:`** | Direct symlink to source directory (package uses its own `node_modules`) |
-| **pnpm `file:`** | Copies package, deps resolved from CONSUMER's context (different!) |
+| Protocol         | Behavior                                                                                 |
+| ---------------- | ---------------------------------------------------------------------------------------- |
+| **bun `file:`**  | Creates dir structure where nested `node_modules` symlinks back to source package's deps |
+| **pnpm `link:`** | Direct symlink to source directory (package uses its own `node_modules`)                 |
+| **pnpm `file:`** | Copies package, deps resolved from CONSUMER's context (different!)                       |
 
 Both **bun `file:`** and **pnpm `link:`** give packages their OWN dependency resolution - matching published behavior. This is why bun doesn't have TS2742 issues with `file:` dependencies.
 
@@ -86,4 +87,5 @@ Use these as concrete cleanup tasks once the corresponding Bun issues are resolv
 - **All BUN issues resolved**:
   - Remove pnpm-specific code paths in `mk-bun-cli` and `mk-bun-cli/bun-deps.nix`.
   - Remove pnpm notes from docs (`pnpm-issues.md`, bun issues header).
+  - Remove `reactTypesPathWorkaround` from tsconfigs and `genie/external.ts` (only needed for pnpm's `enableGlobalVirtualStore`).
   - Re-run `mr generate schema` if schema changes were made.

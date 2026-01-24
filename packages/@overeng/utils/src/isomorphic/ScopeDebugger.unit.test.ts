@@ -55,7 +55,10 @@ describe('ScopeDebugger', () => {
         const { getLogs, loggerLayer } = yield* makeTestLogger()
 
         yield* Effect.gen(function* () {
-          yield* addTracedFinalizer({ name: 'test-cleanup', finalizer: Effect.log('Cleaning up') })
+          yield* addTracedFinalizer({
+            name: 'test-cleanup',
+            finalizer: Effect.log('Cleaning up'),
+          })
           yield* Effect.log('Doing work')
         }).pipe(Effect.scoped, Effect.provide(loggerLayer))
 
@@ -99,7 +102,10 @@ describe('ScopeDebugger', () => {
       'does not swallow finalizer failures when debugging enabled',
       Effect.fnUntraced(function* () {
         const exit = yield* withScopeDebug(
-          addTracedFinalizer({ name: 'fails', finalizer: Effect.die('boom') }).pipe(Effect.scoped),
+          addTracedFinalizer({
+            name: 'fails',
+            finalizer: Effect.die('boom'),
+          }).pipe(Effect.scoped),
         ).pipe(Effect.exit)
 
         expect(Exit.isFailure(exit)).toBe(true)

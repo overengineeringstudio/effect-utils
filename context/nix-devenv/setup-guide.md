@@ -66,7 +66,7 @@ in
 }
 ```
 
-See [tasks.md](./tasks.md) for available task modules.
+See [tasks.md](./tasks/tasks.md) for available task modules.
 The source wrappers keep the CLI name stable, so `--completions` works as expected.
 
 ### flake.nix

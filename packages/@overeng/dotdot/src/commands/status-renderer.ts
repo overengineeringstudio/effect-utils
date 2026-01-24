@@ -185,7 +185,10 @@ export type StatusRenderInput = {
   workspaceRoot: string
   allRepos: RepoInfo[]
   packages: Record<string, PackageIndexEntry>
-  memberConfigs: { repoName: string; config: { deps?: Record<string, unknown> | undefined } }[]
+  memberConfigs: {
+    repoName: string
+    config: { deps?: Record<string, unknown> | undefined }
+  }[]
 }
 
 /** Renders styled status output and returns all lines */
@@ -236,7 +239,11 @@ export const renderStyledStatus = ({
   }
 
   // Main content - repos
-  const ctx: RepoRenderContext = { workspaceRoot, packagesByRepo, depsByMember }
+  const ctx: RepoRenderContext = {
+    workspaceRoot,
+    packagesByRepo,
+    depsByMember,
+  }
 
   // Partition repos
   const members = allRepos.filter(isMember)

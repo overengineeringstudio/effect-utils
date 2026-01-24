@@ -55,7 +55,11 @@ export type TaskEvent<TId extends string> =
       readonly taskId: TId
       readonly name: string
     }
-  | { readonly type: 'started'; readonly taskId: TId; readonly timestamp: number }
+  | {
+      readonly type: 'started'
+      readonly taskId: TId
+      readonly timestamp: number
+    }
   | {
       readonly type: 'retrying'
       readonly taskId: TId

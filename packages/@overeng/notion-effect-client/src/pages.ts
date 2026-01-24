@@ -46,9 +46,15 @@ export interface CreatePageOptions {
   /** Page icon */
   readonly icon?:
     | { readonly type: 'emoji'; readonly emoji: string }
-    | { readonly type: 'external'; readonly external: { readonly url: string } }
+    | {
+        readonly type: 'external'
+        readonly external: { readonly url: string }
+      }
   /** Page cover image */
-  readonly cover?: { readonly type: 'external'; readonly external: { readonly url: string } }
+  readonly cover?: {
+    readonly type: 'external'
+    readonly external: { readonly url: string }
+  }
 }
 
 /** Options for updating a page */
@@ -124,7 +130,10 @@ export function retrieve<TProperties, I, R>(
   NotionConfig | HttpClient.HttpClient | R
 > {
   return Effect.gen(function* () {
-    const page = yield* get({ path: `/pages/${opts.pageId}`, responseSchema: PageSchema })
+    const page = yield* get({
+      path: `/pages/${opts.pageId}`,
+      responseSchema: PageSchema,
+    })
 
     if (opts.schema !== undefined) {
       return yield* decodePage({ page, schema: opts.schema })
@@ -188,7 +197,11 @@ export const update = Effect.fn('NotionPages.update')(function* (opts: UpdatePag
     body.cover = opts.cover
   }
 
-  return yield* patch({ path: `/pages/${opts.pageId}`, body, responseSchema: PageSchema })
+  return yield* patch({
+    path: `/pages/${opts.pageId}`,
+    body,
+    responseSchema: PageSchema,
+  })
 })
 
 /**

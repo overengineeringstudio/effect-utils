@@ -248,7 +248,13 @@ export type HighlightLineOptions = {
  * console.log(highlightLine(styled.bold('Bold') + ' text')) // Background persists through styled text
  * ```
  */
-export const highlightLine = (text: string, options?: HighlightLineOptions): string => {
+export const highlightLine = ({
+  text,
+  options,
+}: {
+  text: string
+  options?: HighlightLineOptions
+}): string => {
   const bgColorCode = options?.bgColor ?? 236
   const bg = bgColor256(bgColorCode)
 
@@ -263,6 +269,7 @@ export const highlightLine = (text: string, options?: HighlightLineOptions): str
 
   // Replace all reset codes (\x1b[0m) with reset + re-apply background
   // This ensures the background persists through nested styled text
+  // oxlint-disable-next-line eslint(no-control-regex) -- required for ANSI matching
   const textWithBg = text.replace(/\x1b\[0m/g, `${colors.reset}${bg}`)
 
   // Apply background, modified text, padding, clear to EOL, then final reset

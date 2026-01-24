@@ -146,7 +146,9 @@ export const Select = {
             Schema.filter(
               (p): p is typeof p & { select: typeof optionSchema.Type | null } =>
                 p.select === null || isAllowedName({ nameSchema, name: p.select.name }),
-              { message: () => 'Select option must be one of the allowed options' },
+              {
+                message: () => 'Select option must be one of the allowed options',
+              },
             ),
           ),
           Schema.OptionFromSelf(optionSchema),
@@ -173,7 +175,9 @@ export const Select = {
           Schema.filter(
             (p): p is typeof p & { select: { name: TName } | null } =>
               p.select === null || isAllowedName({ nameSchema, name: p.select.name }),
-            { message: () => 'Select option must be one of the allowed options' },
+            {
+              message: () => 'Select option must be one of the allowed options',
+            },
           ),
         ),
         Schema.OptionFromSelf(nameSchema),
@@ -312,7 +316,9 @@ export const MultiSelect = {
         Schema.filter(
           (p): p is typeof p & { multi_select: Array<{ name: TName }> } =>
             p.multi_select.every((opt) => isAllowedName({ nameSchema, name: opt.name })),
-          { message: () => 'MultiSelect options must be one of the allowed options' },
+          {
+            message: () => 'MultiSelect options must be one of the allowed options',
+          },
         ),
       ),
       Schema.Array(nameSchema),
@@ -334,7 +340,9 @@ export const MultiSelect = {
       Schema.filter(
         (p): p is typeof p & { multi_select: Array<typeof optionSchema.Type> } =>
           p.multi_select.every((opt) => isAllowedName({ nameSchema, name: opt.name })),
-        { message: () => 'MultiSelect options must be one of the allowed options' },
+        {
+          message: () => 'MultiSelect options must be one of the allowed options',
+        },
       ),
     )
   },
@@ -347,9 +355,14 @@ export const MultiSelect = {
       schema: Schema.transform(
         MultiSelectProperty.pipe(
           Schema.filter(
-            (p): p is typeof p & { multi_select: Array<typeof optionSchema.Type> } =>
-              p.multi_select.every((opt) => isAllowedName({ nameSchema, name: opt.name })),
-            { message: () => 'MultiSelect options must be one of the allowed options' },
+            (
+              p,
+            ): p is typeof p & {
+              multi_select: Array<typeof optionSchema.Type>
+            } => p.multi_select.every((opt) => isAllowedName({ nameSchema, name: opt.name })),
+            {
+              message: () => 'MultiSelect options must be one of the allowed options',
+            },
           ),
         ),
         Schema.Array(optionSchema),

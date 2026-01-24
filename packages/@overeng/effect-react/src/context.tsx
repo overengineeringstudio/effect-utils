@@ -70,7 +70,9 @@ export const EffectProvider = <TEnv, TErr>({
   Error: ErrorComponent = DefaultError,
   onError = defaultErrorHandler,
   children,
-}: EffectProviderConfig<TEnv, TErr> & { children: React.ReactNode }): React.ReactNode => {
+}: EffectProviderConfig<TEnv, TErr> & {
+  children: React.ReactNode
+}): React.ReactNode => {
   const [state, setState] = React.useState<
     | { _tag: 'loading' }
     | { _tag: 'error'; cause: Cause.Cause<TErr> }

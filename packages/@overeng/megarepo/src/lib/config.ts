@@ -197,7 +197,11 @@ export type MemberSource =
       readonly repo: string
       readonly ref: Option.Option<string>
     }
-  | { readonly type: 'url'; readonly url: string; readonly ref: Option.Option<string> }
+  | {
+      readonly type: 'url'
+      readonly url: string
+      readonly ref: Option.Option<string>
+    }
   | { readonly type: 'path'; readonly path: string }
 
 /** Result of parsing a source string */

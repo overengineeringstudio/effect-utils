@@ -94,7 +94,12 @@ const sanitizeForBroadcast = (value: unknown): unknown => {
   if (typeof value !== 'object') return value
 
   if (value instanceof Error) {
-    return { _tag: 'Error', name: value.name, message: value.message, stack: value.stack }
+    return {
+      _tag: 'Error',
+      name: value.name,
+      message: value.message,
+      stack: value.stack,
+    }
   }
 
   const sc = globalThis.structuredClone

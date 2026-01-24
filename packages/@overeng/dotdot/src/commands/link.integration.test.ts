@@ -35,7 +35,9 @@ describe('symlink management', () => {
             `${workspacePath}/dotdot-root.json`,
             generateRootConfig({
               repos: { 'repo-a': { url: 'git@github.com:test/repo-a.git' } },
-              packages: { 'shared-lib': { repo: 'repo-a', path: 'shared-lib' } },
+              packages: {
+                'shared-lib': { repo: 'repo-a', path: 'shared-lib' },
+              },
             }),
           )
 
@@ -218,7 +220,9 @@ describe('symlink management', () => {
 
           const result = yield* syncSymlinks({
             workspaceRoot: workspacePath,
-            packages: { '@org/utils': { repo: 'repo-a', path: 'packages/utils' } },
+            packages: {
+              '@org/utils': { repo: 'repo-a', path: 'packages/utils' },
+            },
             dryRun: false,
             force: false,
           })
@@ -282,7 +286,9 @@ describe('symlink management', () => {
             packagePath: 'shared-lib',
           })
 
-          const packages = { 'shared-lib': { repo: 'repo-a', path: 'shared-lib' } }
+          const packages = {
+            'shared-lib': { repo: 'repo-a', path: 'shared-lib' },
+          }
 
           yield* syncSymlinks({
             workspaceRoot: workspacePath,

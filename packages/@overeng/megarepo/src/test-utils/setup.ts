@@ -198,7 +198,10 @@ export const createWorkspace = (fixture?: WorkspaceFixture) =>
     )
 
     // Commit config
-    yield* addCommit({ repoPath: workspacePath, message: 'Initialize megarepo' })
+    yield* addCommit({
+      repoPath: workspacePath,
+      message: 'Initialize megarepo',
+    })
 
     // Create repos and symlinks
     const repoPaths: Record<string, AbsoluteDirPath> = {}
@@ -217,7 +220,10 @@ export const createWorkspace = (fixture?: WorkspaceFixture) =>
       yield* fs.makeDirectory(membersRoot, { recursive: true })
 
       for (const repoFixture of fixture.repos) {
-        const repoPath = yield* createRepo({ basePath: storePath, fixture: repoFixture })
+        const repoPath = yield* createRepo({
+          basePath: storePath,
+          fixture: repoFixture,
+        })
         repoPaths[repoFixture.name] = repoPath
 
         // Create symlink in workspace
@@ -258,7 +264,10 @@ export const createStore = (repos: ReadonlyArray<RepoFixture>) =>
       }
       yield* fs.makeDirectory(parentDir, { recursive: true })
 
-      const repoPath = yield* createRepo({ basePath: parentDir, fixture: repoFixture })
+      const repoPath = yield* createRepo({
+        basePath: parentDir,
+        fixture: repoFixture,
+      })
       repoPaths[repoFixture.name] = repoPath
     }
 

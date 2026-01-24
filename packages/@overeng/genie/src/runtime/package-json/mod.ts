@@ -412,12 +412,18 @@ const resolveDeps = ({
     if (version.startsWith(INTERNAL_FILE_PREFIX)) {
       // Convert absolute repo path to relative path
       const targetLocation = version.slice('file:'.length)
-      const relativePath = computeRelativePath({ from: currentLocation, to: targetLocation })
+      const relativePath = computeRelativePath({
+        from: currentLocation,
+        to: targetLocation,
+      })
       resolved[name] = `file:${relativePath}`
     } else if (version.startsWith(INTERNAL_LINK_PREFIX)) {
       // Convert absolute repo path to relative path for link: protocol
       const targetLocation = version.slice('link:'.length)
-      const relativePath = computeRelativePath({ from: currentLocation, to: targetLocation })
+      const relativePath = computeRelativePath({
+        from: currentLocation,
+        to: targetLocation,
+      })
       resolved[name] = `link:${relativePath}`
     } else {
       resolved[name] = version
@@ -457,7 +463,10 @@ const resolvePatchPaths = ({
       resolved[pkg] = path
     } else {
       // Repo-relative path - compute relative path from current location
-      const relativePath = computeRelativePath({ from: currentLocation, to: path })
+      const relativePath = computeRelativePath({
+        from: currentLocation,
+        to: path,
+      })
       resolved[pkg] = relativePath
     }
   }
@@ -501,10 +510,16 @@ const buildPackageJson = <T extends PackageJsonData>({
     ...data,
     ...(data.exports !== undefined && { exports: sortExports(data.exports) }),
     ...(data.dependencies !== undefined && {
-      dependencies: resolveDeps({ deps: data.dependencies, currentLocation: location }),
+      dependencies: resolveDeps({
+        deps: data.dependencies,
+        currentLocation: location,
+      }),
     }),
     ...(data.devDependencies !== undefined && {
-      devDependencies: resolveDeps({ deps: data.devDependencies, currentLocation: location }),
+      devDependencies: resolveDeps({
+        deps: data.devDependencies,
+        currentLocation: location,
+      }),
     }),
     ...(data.peerDependencies !== undefined && {
       peerDependencies: sortDeps(data.peerDependencies),

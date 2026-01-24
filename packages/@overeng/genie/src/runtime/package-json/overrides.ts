@@ -74,7 +74,11 @@ export const defineOverrides = <
   for (const base of input.extends) {
     for (const [key, value] of Object.entries(base)) {
       if (key in merged && merged[key] !== value) {
-        throw new OverrideConflictError({ key, baseValue: merged[key]!, newValue: value })
+        throw new OverrideConflictError({
+          key,
+          baseValue: merged[key]!,
+          newValue: value,
+        })
       }
       merged[key] = value
     }
@@ -86,7 +90,11 @@ export const defineOverrides = <
       if (merged[key] === value) {
         console.warn(`[defineOverrides] Duplicate: "${key}" = "${value}" already defined`)
       } else {
-        throw new OverrideConflictError({ key, baseValue: merged[key]!, newValue: value })
+        throw new OverrideConflictError({
+          key,
+          baseValue: merged[key]!,
+          newValue: value,
+        })
       }
     }
     merged[key] = value

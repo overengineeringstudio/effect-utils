@@ -89,7 +89,13 @@ export const createProgressListState = <T = unknown>(
 // =============================================================================
 
 /** Format a single item line */
-const formatItemLine = (item: ProgressItem, spinnerFrame: number): string => {
+const formatItemLine = ({
+  item,
+  spinnerFrame,
+}: {
+  item: ProgressItem
+  spinnerFrame: number
+}): string => {
   switch (item.status) {
     case 'pending':
       return `${styled.dim(symbols.circle)} ${styled.dim(item.label)}`
@@ -109,14 +115,12 @@ const formatItemLine = (item: ProgressItem, spinnerFrame: number): string => {
 
 /** Render the progress list to a string array */
 export const renderProgressList = <T>(state: ProgressListState<T>): string[] => {
-  return state.items.map((item) => formatItemLine(item, state.spinnerFrame))
+  return state.items.map((item) => formatItemLine({ item, spinnerFrame: state.spinnerFrame }))
 }
 
 /** Format the summary line */
 export const formatProgressSummary = <T>(state: ProgressListState<T>): string => {
-  const completed = state.items.filter(
-    (i) => i.status === 'success' || i.status === 'error',
-  ).length
+  const completed = state.items.filter((i) => i.status === 'success' || i.status === 'error').length
   const total = state.items.length
   const errors = state.items.filter((i) => i.status === 'error').length
 
@@ -182,10 +186,13 @@ export const updateProgressList = <T>(state: ProgressListState<T>): void => {
  * Finish the progress list rendering.
  * Shows final state and restores cursor.
  */
-export const finishProgressList = <T>(
-  state: ProgressListState<T>,
-  options?: { elapsed?: number },
-): void => {
+export const finishProgressList = <T>({
+  state,
+  options: _options,
+}: {
+  state: ProgressListState<T>
+  options?: { elapsed?: number }
+}): void => {
   // Stop spinner interval if running
   if (state.intervalHandle !== null) {
     clearInterval(state.intervalHandle)
@@ -207,10 +214,13 @@ export const finishProgressList = <T>(
  * Start the spinner animation.
  * Returns a function to stop the animation.
  */
-export const startSpinner = <T>(
-  state: ProgressListState<T>,
+export const startSpinner = <T>({
+  state,
   interval = 80,
-): (() => void) => {
+}: {
+  state: ProgressListState<T>
+  interval?: number
+}): (() => void) => {
   if (!isTTY()) return () => {}
 
   state.intervalHandle = setInterval(() => {
@@ -231,12 +241,17 @@ export const startSpinner = <T>(
 // =============================================================================
 
 /** Update an item's status */
-export const updateItemStatus = <T>(
-  state: ProgressListState<T>,
-  id: string,
-  status: ProgressItemStatus,
-  message?: string,
-): void => {
+export const updateItemStatus = <T>({
+  state,
+  id,
+  status,
+  message,
+}: {
+  state: ProgressListState<T>
+  id: string
+  status: ProgressItemStatus
+  message?: string
+}): void => {
   const item = state.items.find((i) => i.id === id)
   if (item) {
     item.status = status
@@ -245,26 +260,40 @@ export const updateItemStatus = <T>(
 }
 
 /** Mark an item as active (in progress) */
-export const markActive = <T>(
-  state: ProgressListState<T>,
-  id: string,
-  message?: string,
-): void => {
-  updateItemStatus(state, id, 'active', message)
+export const markActive = <T>({
+  state,
+  id,
+  message,
+}: {
+  state: ProgressListState<T>
+  id: string
+  message?: string
+}): void => {
+  updateItemStatus({ state, id, status: 'active', message })
 }
 
 /** Mark an item as success */
-export const markSuccess = <T>(state: ProgressListState<T>, id: string): void => {
-  updateItemStatus(state, id, 'success')
+export const markSuccess = <T>({
+  state,
+  id,
+}: {
+  state: ProgressListState<T>
+  id: string
+}): void => {
+  updateItemStatus({ state, id, status: 'success' })
 }
 
 /** Mark an item as error */
-export const markError = <T>(
-  state: ProgressListState<T>,
-  id: string,
-  message?: string,
-): void => {
-  updateItemStatus(state, id, 'error', message)
+export const markError = <T>({
+  state,
+  id,
+  message,
+}: {
+  state: ProgressListState<T>
+  id: string
+  message?: string
+}): void => {
+  updateItemStatus({ state, id, status: 'error', message })
 }
 
 /** Check if all items are completed */

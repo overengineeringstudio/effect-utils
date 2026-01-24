@@ -52,8 +52,4 @@ export {
 } from './sync-adapter.ts'
 
 // Sync-specific UI
-export {
-  startSyncProgressUI,
-  finishSyncProgressUI,
-  type SyncProgressUIHandle,
-} from './sync-ui.ts'
+export { startSyncProgressUI, finishSyncProgressUI, type SyncProgressUIHandle } from './sync-ui.ts'

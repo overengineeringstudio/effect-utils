@@ -129,7 +129,11 @@ export const cmd: (
   const exitCode = yield* isNotUndefined(logPath)
     ? Effect.gen(function* () {
         yield* Effect.log(`Logging output to ${logPath}`)
-        return yield* runWithLogging({ ...baseArgs, logPath, threadName: commandDebugStr })
+        return yield* runWithLogging({
+          ...baseArgs,
+          logPath,
+          threadName: commandDebugStr,
+        })
       })
     : runWithoutLogging(baseArgs)
 
@@ -259,7 +263,11 @@ export const cmdText: (
   const subshellStr = options?.runInShell ? ' (in subshell)' : ''
 
   yield* Effect.logDebug(`Running '${commandDebugStr}' in '${cwd}'${subshellStr}`)
-  yield* Effect.annotateCurrentSpan({ 'span.label': commandDebugStr, command, cwd })
+  yield* Effect.annotateCurrentSpan({
+    'span.label': commandDebugStr,
+    command,
+    cwd,
+  })
 
   return yield* Command.make(command, ...args).pipe(
     // inherit = Stream stderr to process.stderr, pipe = Stream stderr to process.stdout
@@ -282,7 +290,10 @@ export class CmdError extends Schema.TaggedError<CmdError>()('CmdError', {
   command: Schema.String,
   args: Schema.Array(Schema.String),
   cwd: Schema.String,
-  env: Schema.Record({ key: Schema.String, value: Schema.String.pipe(Schema.UndefinedOr) }),
+  env: Schema.Record({
+    key: Schema.String,
+    value: Schema.String.pipe(Schema.UndefinedOr),
+  }),
   stderr: Schema.Literal('inherit', 'pipe'),
 }) {}
 
@@ -456,7 +467,10 @@ const sendSignalToProcessGroup = (opts: {
       try: () => process.kill(-proc.pid, signal),
       catch: (e) => {
         const errno = e as NodeJS.ErrnoException
-        return new ProcessSignalError({ cause: e, code: Option.fromNullable(errno.code) })
+        return new ProcessSignalError({
+          cause: e,
+          code: Option.fromNullable(errno.code),
+        })
       },
     }).pipe(
       Effect.catchAll((e) => {

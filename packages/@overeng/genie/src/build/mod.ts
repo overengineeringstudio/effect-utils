@@ -113,9 +113,9 @@ export const genieCommand: Cli.Command.Command<
        *
        * See: context/workarounds/pnpm-issues.md for the full investigation.
        */
-      const resolvedCwd = yield* fs.realPath(inputCwd).pipe(
-        Effect.catchAll(() => Effect.succeed(inputCwd)),
-      )
+      const resolvedCwd = yield* fs
+        .realPath(inputCwd)
+        .pipe(Effect.catchAll(() => Effect.succeed(inputCwd)))
 
       // Resolve oxfmt config path
       const oxfmtConfigPath = yield* resolveOxfmtConfigPath({
@@ -142,7 +142,10 @@ export const genieCommand: Cli.Command.Command<
         yield* Effect.log('✓ All generated files are up to date')
 
         // Validate tsconfig references
-        const warnings = yield* validateTsconfigReferences({ genieFiles, cwd: resolvedCwd })
+        const warnings = yield* validateTsconfigReferences({
+          genieFiles,
+          cwd: resolvedCwd,
+        })
         yield* logTsconfigWarnings(warnings)
 
         return
@@ -155,9 +158,13 @@ export const genieCommand: Cli.Command.Command<
       // Generate all files, capturing both successes and failures
       const results = yield* Effect.all(
         genieFiles.map((genieFilePath) =>
-          generateFile({ genieFilePath, cwd: resolvedCwd, readOnly, dryRun, oxfmtConfigPath }).pipe(
-            Effect.either,
-          ),
+          generateFile({
+            genieFilePath,
+            cwd: resolvedCwd,
+            readOnly,
+            dryRun,
+            oxfmtConfigPath,
+          }).pipe(Effect.either),
         ),
         { concurrency: 'unbounded' },
       )
@@ -194,7 +201,10 @@ export const genieCommand: Cli.Command.Command<
             revalidateErrors.push({
               genieFilePath,
               error,
-              isRootCause: errorOriginatesInFile({ error: error.cause, filePath: genieFilePath }),
+              isRootCause: errorOriginatesInFile({
+                error: error.cause,
+                filePath: genieFilePath,
+              }),
             })
           }
         }

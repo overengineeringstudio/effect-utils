@@ -78,7 +78,10 @@ export const formatCode = (
     const fs = yield* FileSystem.FileSystem
 
     // Create temp file for formatting
-    const tempFile = yield* fs.makeTempFile({ prefix: 'notion-schema-gen-', suffix: '.ts' })
+    const tempFile = yield* fs.makeTempFile({
+      prefix: 'notion-schema-gen-',
+      suffix: '.ts',
+    })
 
     const formatted = yield* Effect.gen(function* () {
       yield* fs.writeFileString(tempFile, code)

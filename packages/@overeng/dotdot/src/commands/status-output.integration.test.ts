@@ -126,18 +126,54 @@ describe('status command output', () => {
           },
           packages: {
             // project-b packages (12 total to test truncation)
-            '@scope/package-one': { repo: 'project-b', path: 'packages/package-one' },
-            '@scope/package-two': { repo: 'project-b', path: 'packages/package-two' },
-            '@scope/package-three': { repo: 'project-b', path: 'packages/package-three' },
-            '@scope/package-four': { repo: 'project-b', path: 'packages/package-four' },
-            '@scope/package-five': { repo: 'project-b', path: 'packages/package-five' },
-            '@scope/package-six': { repo: 'project-b', path: 'packages/package-six' },
-            '@scope/package-seven': { repo: 'project-b', path: 'packages/package-seven' },
-            '@scope/package-eight': { repo: 'project-b', path: 'packages/package-eight' },
-            '@scope/package-nine': { repo: 'project-b', path: 'packages/package-nine' },
-            '@scope/package-ten': { repo: 'project-b', path: 'packages/package-ten' },
-            '@scope/package-eleven': { repo: 'project-b', path: 'packages/package-eleven' },
-            '@scope/package-twelve': { repo: 'project-b', path: 'packages/package-twelve' },
+            '@scope/package-one': {
+              repo: 'project-b',
+              path: 'packages/package-one',
+            },
+            '@scope/package-two': {
+              repo: 'project-b',
+              path: 'packages/package-two',
+            },
+            '@scope/package-three': {
+              repo: 'project-b',
+              path: 'packages/package-three',
+            },
+            '@scope/package-four': {
+              repo: 'project-b',
+              path: 'packages/package-four',
+            },
+            '@scope/package-five': {
+              repo: 'project-b',
+              path: 'packages/package-five',
+            },
+            '@scope/package-six': {
+              repo: 'project-b',
+              path: 'packages/package-six',
+            },
+            '@scope/package-seven': {
+              repo: 'project-b',
+              path: 'packages/package-seven',
+            },
+            '@scope/package-eight': {
+              repo: 'project-b',
+              path: 'packages/package-eight',
+            },
+            '@scope/package-nine': {
+              repo: 'project-b',
+              path: 'packages/package-nine',
+            },
+            '@scope/package-ten': {
+              repo: 'project-b',
+              path: 'packages/package-ten',
+            },
+            '@scope/package-eleven': {
+              repo: 'project-b',
+              path: 'packages/package-eleven',
+            },
+            '@scope/package-twelve': {
+              repo: 'project-b',
+              path: 'packages/package-twelve',
+            },
           },
         })
 

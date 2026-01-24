@@ -133,7 +133,10 @@ export const syncMember = ({
       }
 
       if (!dryRun) {
-        yield* createSymlink({ target: resolvedPath, link: memberPathNormalized })
+        yield* createSymlink({
+          target: resolvedPath,
+          link: memberPathNormalized,
+        })
       }
 
       return { name, status: 'synced' } satisfies MemberSyncResult
@@ -142,7 +145,11 @@ export const syncMember = ({
     // For remote sources, use bare repo + worktree pattern
     const cloneUrl = getCloneUrl(source)
     if (cloneUrl === undefined) {
-      return { name, status: 'error', message: 'Cannot get clone URL' } satisfies MemberSyncResult
+      return {
+        name,
+        status: 'error',
+        message: 'Cannot get clone URL',
+      } satisfies MemberSyncResult
     }
 
     const bareRepoPath = store.getBareRepoPath(source)
@@ -176,7 +183,9 @@ export const syncMember = ({
       } else {
         // Need to determine default branch
         if (bareExists) {
-          const defaultBranch = yield* Git.getDefaultBranch({ repoPath: bareRepoPath })
+          const defaultBranch = yield* Git.getDefaultBranch({
+            repoPath: bareRepoPath,
+          })
           targetRef = Option.getOrElse(defaultBranch, () => 'main')
         } else {
           const defaultBranch = yield* Git.getDefaultBranch({ url: cloneUrl })
@@ -219,7 +228,13 @@ export const syncMember = ({
     // For --pull mode, check if worktree is dirty before making changes
     if (pull && memberExists && !frozen && !dryRun) {
       const worktreeStatus = yield* Git.getWorktreeStatus(currentLink).pipe(
-        Effect.catchAll(() => Effect.succeed({ isDirty: false, hasUnpushed: false, changesCount: 0 })),
+        Effect.catchAll(() =>
+          Effect.succeed({
+            isDirty: false,
+            hasUnpushed: false,
+            changesCount: 0,
+          }),
+        ),
       )
       if ((worktreeStatus.isDirty || worktreeStatus.hasUnpushed) && !force) {
         return {
@@ -281,7 +296,10 @@ export const syncMember = ({
     // TypeScript note: when useCommitBasedPath is true, targetCommit is guaranteed to be defined
     const worktreeRef: string = useCommitBasedPath ? targetCommit! : targetRef
     const worktreePath = store.getWorktreePath({ source, ref: worktreeRef })
-    const worktreeExists = yield* store.hasWorktree({ source, ref: worktreeRef })
+    const worktreeExists = yield* store.hasWorktree({
+      source,
+      ref: worktreeRef,
+    })
 
     if (!worktreeExists && !dryRun) {
       // Ensure worktree parent directory exists
@@ -359,7 +377,10 @@ export const syncMember = ({
     }
 
     if (!dryRun) {
-      yield* createSymlink({ target: worktreePath, link: memberPathNormalized })
+      yield* createSymlink({
+        target: worktreePath,
+        link: memberPathNormalized,
+      })
     }
 
     // Determine if this is a pull update (changed commit)

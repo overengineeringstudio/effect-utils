@@ -11,11 +11,26 @@ import { DateValue } from './date.ts'
  * Rollup result value.
  */
 export const RollupValue = Schema.Union(
-  Schema.Struct({ type: Schema.Literal('string'), string: Schema.NullOr(Schema.String) }),
-  Schema.Struct({ type: Schema.Literal('number'), number: Schema.NullOr(Schema.Number) }),
-  Schema.Struct({ type: Schema.Literal('boolean'), boolean: Schema.NullOr(Schema.Boolean) }),
-  Schema.Struct({ type: Schema.Literal('date'), date: Schema.NullOr(DateValue) }),
-  Schema.Struct({ type: Schema.Literal('array'), array: Schema.Array(Schema.Unknown) }),
+  Schema.Struct({
+    type: Schema.Literal('string'),
+    string: Schema.NullOr(Schema.String),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('number'),
+    number: Schema.NullOr(Schema.Number),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('boolean'),
+    boolean: Schema.NullOr(Schema.Boolean),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('date'),
+    date: Schema.NullOr(DateValue),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('array'),
+    array: Schema.Array(Schema.Unknown),
+  }),
   Schema.Struct({
     type: Schema.Literal('unsupported'),
     unsupported: Schema.NullOr(Schema.Unknown),
@@ -141,8 +156,11 @@ export const Rollup = {
   asArray: Schema.transform(
     RollupProperty.pipe(
       Schema.filter(
-        (p): p is typeof p & { rollup: { type: 'array'; array: Array<unknown> } } =>
-          p.rollup.type === 'array',
+        (
+          p,
+        ): p is typeof p & {
+          rollup: { type: 'array'; array: Array<unknown> }
+        } => p.rollup.type === 'array',
         { message: () => 'Rollup must be an array' },
       ),
     ),

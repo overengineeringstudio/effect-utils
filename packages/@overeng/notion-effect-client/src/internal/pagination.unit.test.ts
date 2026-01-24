@@ -40,7 +40,10 @@ describe('paginationParams', () => {
 
   it.effect('includes both params when provided', () =>
     Effect.sync(() => {
-      const params = paginationParams({ startCursor: 'cursor-xyz', pageSize: 25 })
+      const params = paginationParams({
+        startCursor: 'cursor-xyz',
+        pageSize: 25,
+      })
       expect(params).toEqual({ start_cursor: 'cursor-xyz', page_size: 25 })
     }),
   )

@@ -69,7 +69,10 @@ export const parentSpanFromEnv: (
     const ctx = yield* Schema.decode(Schema.parseJson(ParentSpanContextSchema))(raw).pipe(
       Effect.orDie,
     )
-    return Tracer.makeExternalSpan({ traceId: ctx.traceId, spanId: ctx.spanId })
+    return Tracer.makeExternalSpan({
+      traceId: ctx.traceId,
+      spanId: ctx.spanId,
+    })
   }),
 )
 

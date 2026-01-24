@@ -23,8 +23,8 @@ import {
 } from '../../lib/config.ts'
 import * as Git from '../../lib/git.ts'
 import { checkLockStaleness, LOCK_FILE_NAME, readLockFile } from '../../lib/lock.ts'
-import { outputLines, renderStatus, type GitStatus, type MemberStatus } from '../renderers/mod.ts'
 import { Cwd, findMegarepoRoot, jsonOption } from '../context.ts'
+import { outputLines, renderStatus, type GitStatus, type MemberStatus } from '../renderers/mod.ts'
 
 /**
  * Recursively scan members and build status tree.
@@ -97,7 +97,10 @@ const scanMembersRecursive = ({
         const nestedRoot = EffectPath.unsafe.absoluteDir(
           memberPath.endsWith('/') ? memberPath : `${memberPath}/`,
         )
-        nestedMembers = yield* scanMembersRecursive({ megarepoRoot: nestedRoot, visited })
+        nestedMembers = yield* scanMembersRecursive({
+          megarepoRoot: nestedRoot,
+          visited,
+        })
       }
 
       // Get git status if member exists
@@ -111,7 +114,11 @@ const scanMembersRecursive = ({
           // Get worktree status (dirty, unpushed)
           const worktreeStatus = yield* Git.getWorktreeStatus(memberPath).pipe(
             Effect.catchAll(() =>
-              Effect.succeed({ isDirty: false, hasUnpushed: false, changesCount: 0 }),
+              Effect.succeed({
+                isDirty: false,
+                hasUnpushed: false,
+                changesCount: 0,
+              }),
             ),
           )
 
@@ -167,7 +174,10 @@ export const statusCommand = Cli.Command.make('status', { json: jsonOption }, ({
 
     if (Option.isNone(root)) {
       if (json) {
-        return yield* jsonError({ error: 'not_found', message: 'No megarepo.json found' })
+        return yield* jsonError({
+          error: 'not_found',
+          message: 'No megarepo.json found',
+        })
       }
       yield* Console.error(`${styled.red(symbols.cross)} Not in a megarepo`)
       return yield* Effect.fail(new Error('Not in a megarepo'))
@@ -202,7 +212,9 @@ export const statusCommand = Cli.Command.make('status', { json: jsonOption }, ({
       const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
 
       // Recursively scan all members
-      const members = yield* scanMembersRecursive({ megarepoRoot: root.value })
+      const members = yield* scanMembersRecursive({
+        megarepoRoot: root.value,
+      })
 
       // Get last sync time and lock staleness from lock file
       const lockPath = EffectPath.ops.join(
@@ -211,11 +223,13 @@ export const statusCommand = Cli.Command.make('status', { json: jsonOption }, ({
       )
       const lockFileOpt = yield* readLockFile(lockPath)
       let lastSyncTime: Date | undefined = undefined
-      let lockStaleness: {
-        exists: boolean
-        missingFromLock: readonly string[]
-        extraInLock: readonly string[]
-      } | undefined = undefined
+      let lockStaleness:
+        | {
+            exists: boolean
+            missingFromLock: readonly string[]
+            extraInLock: readonly string[]
+          }
+        | undefined = undefined
 
       // Determine which members are remote (need lock tracking)
       const remoteMemberNames = new Set<string>()
@@ -287,20 +301,24 @@ export const statusCommand = Cli.Command.make('status', { json: jsonOption }, ({
         )
 
         // Find which member (if any) the cwd is inside by matching against member symlink targets
-        const findCurrentMemberPath = (
-          memberList: readonly MemberStatus[],
-          megarepoRoot: string,
-          pathSoFar: string[],
-        ): Effect.Effect<string[] | undefined, never, FileSystem.FileSystem> =>
+        const findCurrentMemberPath = ({
+          memberList,
+          megarepoRoot,
+          pathSoFar,
+        }: {
+          memberList: readonly MemberStatus[]
+          megarepoRoot: string
+          pathSoFar: string[]
+        }): Effect.Effect<string[] | undefined, never, FileSystem.FileSystem> =>
           Effect.gen(function* () {
             for (const member of memberList) {
               const memberSymlinkPath = getMemberPath({
                 megarepoRoot: EffectPath.unsafe.absoluteDir(megarepoRoot),
                 name: member.name,
               })
-              const memberRealPath = yield* fs.realPath(memberSymlinkPath.replace(/\/$/, '')).pipe(
-                Effect.catchAll(() => Effect.succeed(undefined)),
-              )
+              const memberRealPath = yield* fs
+                .realPath(memberSymlinkPath.replace(/\/$/, ''))
+                .pipe(Effect.catchAll(() => Effect.succeed(undefined)))
 
               if (memberRealPath !== undefined) {
                 const memberRealPathNorm = memberRealPath.replace(/\/$/, '')
@@ -316,11 +334,11 @@ export const statusCommand = Cli.Command.make('status', { json: jsonOption }, ({
                   }
                   // If inside, check nested members
                   if (member.nestedMembers && member.nestedMembers.length > 0) {
-                    const nestedResult = yield* findCurrentMemberPath(
-                      member.nestedMembers,
-                      memberRealPathNorm + '/',
-                      newPath,
-                    )
+                    const nestedResult = yield* findCurrentMemberPath({
+                      memberList: member.nestedMembers,
+                      megarepoRoot: memberRealPathNorm + '/',
+                      pathSoFar: newPath,
+                    })
                     if (nestedResult !== undefined) {
                       return nestedResult
                     }
@@ -333,7 +351,11 @@ export const statusCommand = Cli.Command.make('status', { json: jsonOption }, ({
             return undefined
           })
 
-        currentMemberPath = yield* findCurrentMemberPath(members, root.value, [])
+        currentMemberPath = yield* findCurrentMemberPath({
+          memberList: members,
+          megarepoRoot: root.value,
+          pathSoFar: [],
+        })
       }
 
       // Render and output

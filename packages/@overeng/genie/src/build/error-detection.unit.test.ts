@@ -68,9 +68,12 @@ describe('errorOriginatesInFile', () => {
   })
 
   it('returns false for non-Error values', () => {
-    expect(errorOriginatesInFile({ error: 'string error', filePath: '/path/to/file.ts' })).toBe(
-      false,
-    )
+    expect(
+      errorOriginatesInFile({
+        error: 'string error',
+        filePath: '/path/to/file.ts',
+      }),
+    ).toBe(false)
     expect(errorOriginatesInFile({ error: null, filePath: '/path/to/file.ts' })).toBe(false)
     expect(errorOriginatesInFile({ error: undefined, filePath: '/path/to/file.ts' })).toBe(false)
   })

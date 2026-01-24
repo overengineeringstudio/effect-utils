@@ -13,7 +13,7 @@
  * Matches sequences like \x1b[31m, \x1b[1;31m, \x1b[38;5;196m, etc.
  */
 // biome-ignore lint/suspicious/noControlCharactersInRegex: required for ANSI matching
-// oxlint-disable-next-line no-control-regex -- required for ANSI matching
+// oxlint-disable-next-line eslint(no-control-regex) -- required for ANSI matching
 const ANSI_PATTERN = /\x1b\[[0-9;]*m/g
 
 /** Strip all ANSI escape codes from a string */

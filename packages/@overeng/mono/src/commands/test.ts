@@ -32,18 +32,27 @@ export const testCommand = () =>
 
       if (unit) {
         yield* ciGroup('Running unit tests')
-        yield* runCommand({ command: 'vitest', args: [...watchArg, ...reporterArgs] })
+        yield* runCommand({
+          command: 'vitest',
+          args: [...watchArg, ...reporterArgs],
+        })
         yield* ciGroupEnd
       } else if (integration) {
         yield* ciGroup('Running integration tests')
-        yield* runCommand({ command: 'vitest', args: [...watchArg, ...reporterArgs] })
+        yield* runCommand({
+          command: 'vitest',
+          args: [...watchArg, ...reporterArgs],
+        })
         yield* ciGroupEnd
         yield* ciGroup('Running Playwright tests')
         yield* runCommand({ command: 'playwright', args: ['test'] })
         yield* ciGroupEnd
       } else {
         yield* ciGroup('Running all tests')
-        yield* runCommand({ command: 'vitest', args: [...watchArg, ...reporterArgs] })
+        yield* runCommand({
+          command: 'vitest',
+          args: [...watchArg, ...reporterArgs],
+        })
         yield* ciGroupEnd
       }
 

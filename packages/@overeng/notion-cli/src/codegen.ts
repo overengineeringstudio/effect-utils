@@ -112,15 +112,27 @@ export const NOTION_SCHEMA_TRANSFORM_KEYS: Partial<
   Record<NotionPropertyType, Record<string, string>>
 > = {
   title: { raw: 'titleRaw', asString: 'title' },
-  rich_text: { raw: 'richTextRaw', asString: 'richTextString', asOption: 'richTextOption' },
+  rich_text: {
+    raw: 'richTextRaw',
+    asString: 'richTextString',
+    asOption: 'richTextOption',
+  },
   number: { raw: 'numberRaw', asNumber: 'number', asOption: 'numberOption' },
-  select: { raw: 'select.asNullable', asOption: 'select', asName: 'select.asName' },
+  select: {
+    raw: 'select.asNullable',
+    asOption: 'select',
+    asName: 'select.asName',
+  },
   multi_select: {
     raw: 'multiSelect',
     asOptions: 'multiSelect',
     asNames: 'multiSelect.asNames',
   },
-  status: { raw: 'status.asNullable', asName: 'status.asName', asOption: 'status' },
+  status: {
+    raw: 'status.asNullable',
+    asName: 'status.asName',
+    asOption: 'status',
+  },
   date: { raw: 'dateRaw', asDate: 'dateDate', asOption: 'dateOption' },
   people: { raw: 'peopleRaw', asIds: 'peopleIds' },
   files: { raw: 'filesRaw', asUrls: 'filesUrls' },
@@ -157,7 +169,11 @@ export const NOTION_SCHEMA_TRANSFORM_KEYS: Partial<
   created_by: { raw: 'createdByRaw', asId: 'createdById' },
   last_edited_time: { raw: 'lastEditedTimeRaw', asDate: 'lastEditedTimeDate' },
   last_edited_by: { raw: 'lastEditedByRaw', asId: 'lastEditedById' },
-  unique_id: { raw: 'uniqueIdProperty', asString: 'uniqueIdString', asNumber: 'uniqueIdNumber' },
+  unique_id: {
+    raw: 'uniqueIdProperty',
+    asString: 'uniqueIdString',
+    asNumber: 'uniqueIdNumber',
+  },
 }
 
 const ROLLUP_NUMBER_FUNCTIONS = new Set([
@@ -349,7 +365,12 @@ const normalizeSelectOptions = (
   }))
 
 const normalizeStatusGroups = (
-  groups: readonly { id: string; name: string; color: string; option_ids: readonly string[] }[],
+  groups: readonly {
+    id: string
+    name: string
+    color: string
+    option_ids: readonly string[]
+  }[],
 ) =>
   groups.map((group) => ({
     id: group.id,
@@ -371,11 +392,16 @@ const buildPropertyMeta = (property: PropertyInfo): Record<string, unknown> => {
     case 'number':
       return { ...base, number: { format: schema.number.format } }
     case 'select':
-      return { ...base, select: { options: normalizeSelectOptions(schema.select.options) } }
+      return {
+        ...base,
+        select: { options: normalizeSelectOptions(schema.select.options) },
+      }
     case 'multi_select':
       return {
         ...base,
-        multi_select: { options: normalizeSelectOptions(schema.multi_select.options) },
+        multi_select: {
+          options: normalizeSelectOptions(schema.multi_select.options),
+        },
       }
     case 'status':
       return {
@@ -682,7 +708,11 @@ export function generateSchemaCode(opts: GenerateSchemaCodeOptions): string {
   const pascalName = toTopLevelIdentifier(schemaName)
 
   // Generate typed options if enabled
-  const typedOptionsDefs: Array<{ property: PropertyInfo; typeName: string; code: string }> = []
+  const typedOptionsDefs: Array<{
+    property: PropertyInfo
+    typeName: string
+    code: string
+  }> = []
   if (typedOptions) {
     for (const prop of dbInfo.properties) {
       const result = generateTypedOptions({ property: prop, pascalName })
@@ -703,7 +733,10 @@ export function generateSchemaCode(opts: GenerateSchemaCodeOptions): string {
       const field = generatePropertyField({
         property: prop,
         transformConfig: transforms,
-        typedOptions: { enabled: typedOptions, ...(typeName ? { typeName } : {}) },
+        typedOptions: {
+          enabled: typedOptions,
+          ...(typeName ? { typeName } : {}),
+        },
         schemaMeta,
       })
       // Add JSDoc comment if description is available

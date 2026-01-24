@@ -49,7 +49,11 @@ describe('TaskRunner', () => {
       const runner = yield* TaskRunner
 
       yield* runner.register({ id: 'fail', name: 'Failing test' })
-      yield* runner.runTask({ id: 'fail', command: 'bun', args: ['-e', 'process.exit(1)'] })
+      yield* runner.runTask({
+        id: 'fail',
+        command: 'bun',
+        args: ['-e', 'process.exit(1)'],
+      })
 
       const state = yield* runner.get
       expect(state.tasks[0]?.status).toBe('failed')
@@ -98,7 +102,11 @@ describe('TaskRunner', () => {
 
       yield* runner.runAll([
         runner.runTask({ id: 'ok', command: 'printf', args: ['ok'] }),
-        runner.runTask({ id: 'fail', command: 'bun', args: ['-e', 'process.exit(1)'] }),
+        runner.runTask({
+          id: 'fail',
+          command: 'bun',
+          args: ['-e', 'process.exit(1)'],
+        }),
       ])
 
       const result = yield* runner.checkForFailures().pipe(Effect.either)
@@ -187,7 +195,11 @@ describe('TaskRunner', () => {
       const runner = yield* TaskRunner
 
       yield* runner.register({ id: 'fail', name: 'Failing task' })
-      yield* runner.runTask({ id: 'fail', command: 'bun', args: ['-e', 'process.exit(1)'] })
+      yield* runner.runTask({
+        id: 'fail',
+        command: 'bun',
+        args: ['-e', 'process.exit(1)'],
+      })
 
       const result = yield* printFinalSummary.pipe(Effect.either)
       expect(result._tag).toBe('Left')

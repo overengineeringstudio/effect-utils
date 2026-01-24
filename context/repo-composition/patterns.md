@@ -38,6 +38,7 @@ packages/@org/my-pkg/
 ```
 
 **Do not use:**
+
 - Root-level `pnpm-workspace.yaml`
 - `workspaces` field in root `package.json`
 - Shared/hoisted `node_modules`
@@ -45,6 +46,7 @@ packages/@org/my-pkg/
 **Why:** Tools like pnpm and bun do not support nested monorepos. Since megarepos compose multiple monorepos together, we must use per-package lockfiles to avoid conflicts.
 
 Related issues:
+
 - [pnpm#10302](https://github.com/pnpm/pnpm/issues/10302) - No support for extending child workspaces
 - [bun#10640](https://github.com/oven-sh/bun/issues/10640) - Filter fails for nested workspaces
 - [bun#11295](https://github.com/oven-sh/bun/issues/11295) - ENOENT errors with nested workspaces
@@ -52,29 +54,31 @@ Related issues:
 ### Where packages belong
 
 **In effect-utils (foundation):**
+
 - Effect ecosystem (`effect`, `@effect/*`)
 - Build tools (`typescript`, `vite`, `vitest`)
 - Common UI (`react`, `tailwindcss`)
 - Packages used across multiple repos
 
 **In your repos only:**
+
 - Domain-specific packages (your business logic)
 - Experimental/unstable packages
 - Packages only used by that repo
 
 ## What effect-utils Provides
 
-| From `genie/repo.ts` | Purpose |
-|----------------------|---------|
-| `catalog` | Dependency versions (Effect, React, TypeScript, etc.) |
-| `baseTsconfigCompilerOptions` | Strict TS settings + Effect LSP plugin |
-| `packageTsconfigCompilerOptions` | Composite mode for package builds |
-| `domLib`, `reactJsx` | Browser/React compiler options |
+| From `genie/repo.ts`             | Purpose                                               |
+| -------------------------------- | ----------------------------------------------------- |
+| `catalog`                        | Dependency versions (Effect, React, TypeScript, etc.) |
+| `baseTsconfigCompilerOptions`    | Strict TS settings + Effect LSP plugin                |
+| `packageTsconfigCompilerOptions` | Composite mode for package builds                     |
+| `domLib`, `reactJsx`             | Browser/React compiler options                        |
 
-| From genie lib (`#genie/*`) | Purpose |
-|-----------------------------|---------|
-| `createPackageJson` | Type-safe package.json builder |
-| `tsconfigJSON` | tsconfig.json generator |
+| From genie lib (`#genie/*`) | Purpose                        |
+| --------------------------- | ------------------------------ |
+| `createPackageJson`         | Type-safe package.json builder |
+| `tsconfigJSON`              | tsconfig.json generator        |
 
 > **Note:** genie CLI is installed via Nix/devenv. The genie lib types are accessed via Node.js subpath imports (`#genie/*`), configured in the root `package.json#imports` and `tsconfig.json#paths`.
 
@@ -108,8 +112,8 @@ export default tsconfigJSON({
   extends: '../../../tsconfig.base.json',
   compilerOptions: {
     ...packageTsconfigCompilerOptions,
-    lib: domLib,      // If browser code
-    ...reactJsx,      // If React code
+    lib: domLib, // If browser code
+    ...reactJsx, // If React code
   },
   include: ['src'],
 })
@@ -218,16 +222,17 @@ dependencies: {
 
 **Why this matters:**
 
-| Protocol | Behavior | Problem |
-|----------|----------|---------|
-| `link:` | Creates symlink to package | Works correctly |
-| `file:` | **Copies** package contents to pnpm store | Copies `src/` if in `files` array, causing duplicate type errors |
+| Protocol | Behavior                                  | Problem                                                          |
+| -------- | ----------------------------------------- | ---------------------------------------------------------------- |
+| `link:`  | Creates symlink to package                | Works correctly                                                  |
+| `file:`  | **Copies** package contents to pnpm store | Copies `src/` if in `files` array, causing duplicate type errors |
 
 When using `file:`, pnpm copies whatever is in the package's `files` array to its store. If `src/` is included (common for source maps), TypeScript will try to type-check both the original and the copied sources, causing duplicate identifier errors.
 
 **Always use `catalog.pick()` for workspace packages** - the catalog defines packages with `link:` protocol, and genie resolves these to correct relative paths at generation time.
 
 For detailed explanations of pnpm/bun protocol behaviors and workarounds, see:
+
 - [pnpm-issues.md](../workarounds/pnpm-issues.md) - TS2742 errors, `link:` vs `file:`, `enableGlobalVirtualStore`
 - [bun-issues.md](../workarounds/bun-issues.md) - Why bun `file:` ≈ pnpm `link:`
 

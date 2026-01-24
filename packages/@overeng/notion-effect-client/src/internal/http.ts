@@ -287,7 +287,11 @@ export const executeRequest = <A, I, R>({
 
       retries++
     }
-  }).pipe(Effect.withSpan(`NotionHttp.${method}`, { attributes: { 'notion.path': path } }))
+  }).pipe(
+    Effect.withSpan(`NotionHttp.${method}`, {
+      attributes: { 'notion.path': path },
+    }),
+  )
 
 /** Options for GET request */
 export interface GetRequestOptions<A, I, R> {

@@ -45,7 +45,9 @@ import type {
 /** Validate basic path string (no null bytes, not empty, not too long) */
 const PathStringSchema = Schema.String.pipe(
   Schema.filter((s) => !isEmpty(s), { message: () => 'Path cannot be empty' }),
-  Schema.filter((s) => !hasNullByte(s), { message: () => 'Path cannot contain null bytes' }),
+  Schema.filter((s) => !hasNullByte(s), {
+    message: () => 'Path cannot contain null bytes',
+  }),
   Schema.filter((s) => s.length <= MAX_PATH_LENGTH, {
     message: () => `Path exceeds maximum length of ${MAX_PATH_LENGTH} characters`,
   }),
@@ -265,10 +267,10 @@ const buildPathInfoPure = <B extends Abs | Rel, T extends File | Dir>(args: {
     baseName: dirName,
     parent: isRoot
       ? (undefined as PathInfo<B, Dir>['parent'])
-      : (buildPathInfoPure<B, Dir>({ original: parentDirPath, isFile: false }) as PathInfo<
-          B,
-          Dir
-        >['parent']),
+      : (buildPathInfoPure<B, Dir>({
+          original: parentDirPath,
+          isFile: false,
+        }) as PathInfo<B, Dir>['parent']),
   }
   return dirInfo as PathInfo<B, T>
 }

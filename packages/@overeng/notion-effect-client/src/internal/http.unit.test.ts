@@ -50,14 +50,21 @@ describe('parseRateLimitHeaders', () => {
 describe('buildRequest', () => {
   it.effect('builds request with correct headers', () =>
     Effect.gen(function* () {
-      const request = yield* buildRequest({ method: 'GET', path: '/databases/123' })
+      const request = yield* buildRequest({
+        method: 'GET',
+        path: '/databases/123',
+      })
 
       expect(request.method).toBe('GET')
       expect(request.url).toBe(`${NOTION_API_BASE_URL}/databases/123`)
       expect(request.headers.authorization).toBe('Bearer secret-token')
       expect(request.headers['notion-version']).toBe(NOTION_API_VERSION)
       expect(request.headers['content-type']).toBe('application/json')
-    }).pipe(Effect.provideService(NotionConfig, { authToken: Redacted.make('secret-token') })),
+    }).pipe(
+      Effect.provideService(NotionConfig, {
+        authToken: Redacted.make('secret-token'),
+      }),
+    ),
   )
 
   it.effect('returns NotionApiError for JSON-encoding failures', () =>
@@ -76,17 +83,31 @@ describe('buildRequest', () => {
       expect(error.status).toBe(0)
       expect(Option.getOrNull(error.url)).toBe(`${NOTION_API_BASE_URL}/databases/123/query`)
       expect(Option.getOrNull(error.method)).toBe('POST')
-    }).pipe(Effect.provideService(NotionConfig, { authToken: Redacted.make('test-token') })),
+    }).pipe(
+      Effect.provideService(NotionConfig, {
+        authToken: Redacted.make('test-token'),
+      }),
+    ),
   )
 
   it.effect('includes body for POST requests', () =>
     Effect.gen(function* () {
-      const body = { filter: { property: 'Status', select: { equals: 'Done' } } }
-      const request = yield* buildRequest({ method: 'POST', path: '/databases/123/query', body })
+      const body = {
+        filter: { property: 'Status', select: { equals: 'Done' } },
+      }
+      const request = yield* buildRequest({
+        method: 'POST',
+        path: '/databases/123/query',
+        body,
+      })
 
       expect(request.method).toBe('POST')
       // Body is set but we can't easily inspect it without reading the stream
-    }).pipe(Effect.provideService(NotionConfig, { authToken: Redacted.make('test-token') })),
+    }).pipe(
+      Effect.provideService(NotionConfig, {
+        authToken: Redacted.make('test-token'),
+      }),
+    ),
   )
 })
 
@@ -98,7 +119,10 @@ describe('executeRequest', () => {
 
   it.effect('successfully parses valid response', () =>
     Effect.gen(function* () {
-      const result = yield* get({ path: '/databases/123', responseSchema: TestSchema })
+      const result = yield* get({
+        path: '/databases/123',
+        responseSchema: TestSchema,
+      })
 
       expect(result.object).toBe('database')
       expect(result.id).toBe('db-123')
@@ -114,9 +138,10 @@ describe('executeRequest', () => {
 
   it.effect('returns NotionApiError for 4xx responses', () =>
     Effect.gen(function* () {
-      const result = yield* get({ path: '/databases/invalid', responseSchema: TestSchema }).pipe(
-        Effect.flip,
-      )
+      const result = yield* get({
+        path: '/databases/invalid',
+        responseSchema: TestSchema,
+      }).pipe(Effect.flip)
 
       expect(result).toBeInstanceOf(NotionApiError)
       expect(result.status).toBe(404)
@@ -133,9 +158,10 @@ describe('executeRequest', () => {
 
   it.effect('returns NotionApiError for 5xx responses', () =>
     Effect.gen(function* () {
-      const result = yield* get({ path: '/databases/123', responseSchema: TestSchema }).pipe(
-        Effect.flip,
-      )
+      const result = yield* get({
+        path: '/databases/123',
+        responseSchema: TestSchema,
+      }).pipe(Effect.flip)
 
       expect(result).toBeInstanceOf(NotionApiError)
       expect(result.status).toBe(500)
@@ -152,9 +178,10 @@ describe('executeRequest', () => {
 
   it.effect('returns NotionApiError for invalid response schema', () =>
     Effect.gen(function* () {
-      const result = yield* get({ path: '/databases/123', responseSchema: TestSchema }).pipe(
-        Effect.flip,
-      )
+      const result = yield* get({
+        path: '/databases/123',
+        responseSchema: TestSchema,
+      }).pipe(Effect.flip)
 
       expect(result).toBeInstanceOf(NotionApiError)
       expect(result.code).toBe('invalid_request')
@@ -171,9 +198,10 @@ describe('executeRequest', () => {
 
   it.effect('includes request metadata in error', () =>
     Effect.gen(function* () {
-      const result = yield* get({ path: '/databases/123', responseSchema: TestSchema }).pipe(
-        Effect.flip,
-      )
+      const result = yield* get({
+        path: '/databases/123',
+        responseSchema: TestSchema,
+      }).pipe(Effect.flip)
 
       expect(Option.isSome(result.url)).toBe(true)
       expect(Option.getOrNull(result.url)).toBe(`${NOTION_API_BASE_URL}/databases/123`)
@@ -191,9 +219,10 @@ describe('executeRequest', () => {
 
   it.effect('captures x-request-id from error response', () =>
     Effect.gen(function* () {
-      const result = yield* get({ path: '/databases/123', responseSchema: TestSchema }).pipe(
-        Effect.flip,
-      )
+      const result = yield* get({
+        path: '/databases/123',
+        responseSchema: TestSchema,
+      }).pipe(Effect.flip)
 
       expect(Option.isSome(result.requestId)).toBe(true)
       expect(Option.getOrNull(result.requestId)).toBe('req-abc-123')
@@ -210,9 +239,10 @@ describe('executeRequest', () => {
 
   it.effect('captures retry-after for rate limited responses', () =>
     Effect.gen(function* () {
-      const result = yield* get({ path: '/databases/123', responseSchema: TestSchema }).pipe(
-        Effect.flip,
-      )
+      const result = yield* get({
+        path: '/databases/123',
+        responseSchema: TestSchema,
+      }).pipe(Effect.flip)
 
       expect(result.code).toBe('rate_limited')
       expect(Option.getOrNull(result.retryAfterSeconds)).toBe(2)

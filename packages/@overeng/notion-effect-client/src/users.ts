@@ -52,7 +52,10 @@ export interface ListUsersOptions extends PaginationOptions {}
  * @see https://developers.notion.com/reference/get-user
  */
 export const retrieve = Effect.fn('NotionUsers.retrieve')(function* (opts: RetrieveUserOptions) {
-  return yield* get({ path: `/users/${opts.userId}`, responseSchema: UserSchema })
+  return yield* get({
+    path: `/users/${opts.userId}`,
+    responseSchema: UserSchema,
+  })
 })
 
 /** Internal helper to build query params */
@@ -67,7 +70,10 @@ const buildListParams = (opts: ListUsersOptions): string => {
 const listRaw = Effect.fn('NotionUsers.list')(function* (opts: ListUsersOptions) {
   const queryString = buildListParams(opts)
   const path = `/users${queryString ? `?${queryString}` : ''}`
-  const response = yield* get({ path, responseSchema: ListUsersResponseSchema })
+  const response = yield* get({
+    path,
+    responseSchema: ListUsersResponseSchema,
+  })
   return toPaginatedResult(response)
 })
 

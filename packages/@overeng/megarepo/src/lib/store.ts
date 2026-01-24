@@ -64,7 +64,10 @@ export interface MegarepoStore {
 
   /** List all repos in the store */
   readonly listRepos: () => Effect.Effect<
-    ReadonlyArray<{ readonly relativePath: RelativeDirPath; readonly fullPath: AbsoluteDirPath }>,
+    ReadonlyArray<{
+      readonly relativePath: RelativeDirPath
+      readonly fullPath: AbsoluteDirPath
+    }>,
     PlatformError.PlatformError,
     FileSystem.FileSystem
   >
@@ -168,7 +171,10 @@ const make = (config: StoreConfig): MegarepoStore => {
           return []
         }
 
-        const result: Array<{ relativePath: RelativeDirPath; fullPath: AbsoluteDirPath }> = []
+        const result: Array<{
+          relativePath: RelativeDirPath
+          fullPath: AbsoluteDirPath
+        }> = []
 
         // Walk the store directory (2 levels deep for host/owner/repo structure)
         const hosts = yield* fs.readDirectory(basePath)

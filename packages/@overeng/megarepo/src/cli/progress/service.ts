@@ -26,7 +26,7 @@
  * ```
  */
 
-import { Context, Effect, Layer, Stream, SubscriptionRef } from 'effect'
+import { Context, Effect, Layer, type Stream, SubscriptionRef } from 'effect'
 
 // =============================================================================
 // Types
@@ -75,14 +75,22 @@ export const emptyState = <TData>(): ProgressState<TData> => ({
 })
 
 /** Create initial state from items */
-export const createState = <TData>(
-  items: ReadonlyArray<ProgressItemInput<TData>>,
-  metadata?: Record<string, unknown>,
-): ProgressState<TData> => ({
+export const createState = <TData>({
+  items,
+  metadata,
+}: {
+  items: ReadonlyArray<ProgressItemInput<TData>>
+  metadata?: Record<string, unknown>
+}): ProgressState<TData> => ({
   items: new Map(
     items.map((item) => [
       item.id,
-      { id: item.id, label: item.label, status: 'pending' as const, data: item.data },
+      {
+        id: item.id,
+        label: item.label,
+        status: 'pending' as const,
+        data: item.data,
+      },
     ]),
   ),
   startTime: Date.now(),
@@ -91,11 +99,15 @@ export const createState = <TData>(
 })
 
 /** Update an item in the state */
-export const updateItem = <TData>(
-  state: ProgressState<TData>,
-  id: string,
-  update: Partial<Pick<ProgressItem<TData>, 'status' | 'message' | 'data'>>,
-): ProgressState<TData> => {
+export const updateItem = <TData>({
+  state,
+  id,
+  update,
+}: {
+  state: ProgressState<TData>
+  id: string
+  update: Partial<Pick<ProgressItem<TData>, 'status' | 'message' | 'data'>>
+}): ProgressState<TData> => {
   const existing = state.items.get(id)
   if (!existing) return state
 
@@ -105,10 +117,13 @@ export const updateItem = <TData>(
 }
 
 /** Add an item to the state */
-export const addItem = <TData>(
-  state: ProgressState<TData>,
-  item: ProgressItemInput<TData>,
-): ProgressState<TData> => {
+export const addItem = <TData>({
+  state,
+  item,
+}: {
+  state: ProgressState<TData>
+  item: ProgressItemInput<TData>
+}): ProgressState<TData> => {
   if (state.items.has(item.id)) return state
 
   const newItems = new Map(state.items)
@@ -122,10 +137,13 @@ export const addItem = <TData>(
 }
 
 /** Remove an item from the state */
-export const removeItem = <TData>(
-  state: ProgressState<TData>,
-  id: string,
-): ProgressState<TData> => {
+export const removeItem = <TData>({
+  state,
+  id,
+}: {
+  state: ProgressState<TData>
+  id: string
+}): ProgressState<TData> => {
   if (!state.items.has(id)) return state
 
   const newItems = new Map(state.items)
@@ -175,10 +193,13 @@ export const getElapsed = <TData>(state: ProgressState<TData>): number =>
   Date.now() - state.startTime
 
 /** Get items by status */
-export const getItemsByStatus = <TData>(
-  state: ProgressState<TData>,
-  status: ProgressItemStatus,
-): ProgressItem<TData>[] => {
+export const getItemsByStatus = <TData>({
+  state,
+  status,
+}: {
+  state: ProgressState<TData>
+  status: ProgressItemStatus
+}): ProgressItem<TData>[] => {
   const result: ProgressItem<TData>[] = []
   for (const item of state.items.values()) {
     if (item.status === status) {
@@ -201,71 +222,101 @@ export const getItemsByStatus = <TData>(
 export const createProgressService = <TData = unknown>(name: string) => {
   // Create the service tag
   type ProgressRef = SubscriptionRef.SubscriptionRef<ProgressState<TData>>
-  
+
   class Progress extends Context.Tag(`megarepo/Progress/${name}`)<Progress, ProgressRef>() {}
 
   // Create operations that require the Progress service
   const ops = {
-    init: (
-      items: ReadonlyArray<ProgressItemInput<TData>>,
-      metadata?: Record<string, unknown>,
-    ): Effect.Effect<void, never, Progress> =>
+    init: ({
+      items,
+      metadata,
+    }: {
+      items: ReadonlyArray<ProgressItemInput<TData>>
+      metadata?: Record<string, unknown>
+    }): Effect.Effect<void, never, Progress> =>
       Effect.gen(function* () {
         const ref = yield* Progress
-        yield* SubscriptionRef.set(ref, createState(items, metadata))
+        yield* SubscriptionRef.set(ref, createState({ items, metadata }))
       }),
 
-    markActive: (id: string, message?: string): Effect.Effect<void, never, Progress> =>
+    markActive: ({
+      id,
+      message,
+    }: {
+      id: string
+      message?: string
+    }): Effect.Effect<void, never, Progress> =>
       Effect.gen(function* () {
         const ref = yield* Progress
         yield* SubscriptionRef.update(ref, (state) =>
-          updateItem(state, id, { status: 'active', message }),
+          updateItem({ state, id, update: { status: 'active', message } }),
         )
       }),
 
-    markSuccess: (id: string, message?: string): Effect.Effect<void, never, Progress> =>
+    markSuccess: ({
+      id,
+      message,
+    }: {
+      id: string
+      message?: string
+    }): Effect.Effect<void, never, Progress> =>
       Effect.gen(function* () {
         const ref = yield* Progress
         yield* SubscriptionRef.update(ref, (state) =>
-          updateItem(state, id, { status: 'success', message }),
+          updateItem({ state, id, update: { status: 'success', message } }),
         )
       }),
 
-    markError: (id: string, message?: string): Effect.Effect<void, never, Progress> =>
+    markError: ({
+      id,
+      message,
+    }: {
+      id: string
+      message?: string
+    }): Effect.Effect<void, never, Progress> =>
       Effect.gen(function* () {
         const ref = yield* Progress
         yield* SubscriptionRef.update(ref, (state) =>
-          updateItem(state, id, { status: 'error', message }),
+          updateItem({ state, id, update: { status: 'error', message } }),
         )
       }),
 
-    markSkipped: (id: string, message?: string): Effect.Effect<void, never, Progress> =>
+    markSkipped: ({
+      id,
+      message,
+    }: {
+      id: string
+      message?: string
+    }): Effect.Effect<void, never, Progress> =>
       Effect.gen(function* () {
         const ref = yield* Progress
         yield* SubscriptionRef.update(ref, (state) =>
-          updateItem(state, id, { status: 'skipped', message }),
+          updateItem({ state, id, update: { status: 'skipped', message } }),
         )
       }),
 
-    update: (
-      id: string,
-      upd: Partial<Pick<ProgressItem<TData>, 'status' | 'message' | 'data'>>,
-    ): Effect.Effect<void, never, Progress> =>
+    update: ({
+      id,
+      update,
+    }: {
+      id: string
+      update: Partial<Pick<ProgressItem<TData>, 'status' | 'message' | 'data'>>
+    }): Effect.Effect<void, never, Progress> =>
       Effect.gen(function* () {
         const ref = yield* Progress
-        yield* SubscriptionRef.update(ref, (state) => updateItem(state, id, upd))
+        yield* SubscriptionRef.update(ref, (state) => updateItem({ state, id, update }))
       }),
 
     addItem: (item: ProgressItemInput<TData>): Effect.Effect<void, never, Progress> =>
       Effect.gen(function* () {
         const ref = yield* Progress
-        yield* SubscriptionRef.update(ref, (state) => addItem(state, item))
+        yield* SubscriptionRef.update(ref, (state) => addItem({ state, item }))
       }),
 
     removeItem: (id: string): Effect.Effect<void, never, Progress> =>
       Effect.gen(function* () {
         const ref = yield* Progress
-        yield* SubscriptionRef.update(ref, (state) => removeItem(state, id))
+        yield* SubscriptionRef.update(ref, (state) => removeItem({ state, id }))
       }),
 
     complete: (): Effect.Effect<void, never, Progress> =>

@@ -36,7 +36,10 @@ const makeProperty = (info: Omit<PropertyInfo, 'schema'>): PropertyInfo => {
         return {
           ...schemaBase,
           _tag: 'status',
-          status: { options: info.status?.options ?? [], groups: info.status?.groups ?? [] },
+          status: {
+            options: info.status?.options ?? [],
+            groups: info.status?.groups ?? [],
+          },
         }
       case 'relation':
         return {
@@ -324,7 +327,11 @@ const foo = 'bar'
         options: [],
       }
 
-      const lines = formatDiff({ diff, databaseId: 'abc123', filePath: './schema.ts' })
+      const lines = formatDiff({
+        diff,
+        databaseId: 'abc123',
+        filePath: './schema.ts',
+      })
 
       expect(lines).toContain('No differences found')
     })
@@ -342,7 +349,11 @@ const foo = 'bar'
         options: [],
       }
 
-      const lines = formatDiff({ diff, databaseId: 'abc123', filePath: './schema.ts' })
+      const lines = formatDiff({
+        diff,
+        databaseId: 'abc123',
+        filePath: './schema.ts',
+      })
 
       expect(lines.some((l) => l.includes('+ NewField'))).toBe(true)
       expect(lines.some((l) => l.includes('new property in Notion'))).toBe(true)
@@ -361,7 +372,11 @@ const foo = 'bar'
         options: [],
       }
 
-      const lines = formatDiff({ diff, databaseId: 'abc123', filePath: './schema.ts' })
+      const lines = formatDiff({
+        diff,
+        databaseId: 'abc123',
+        filePath: './schema.ts',
+      })
 
       expect(lines.some((l) => l.includes('- OldField'))).toBe(true)
       expect(lines.some((l) => l.includes('removed from Notion'))).toBe(true)
@@ -381,7 +396,11 @@ const foo = 'bar'
         options: [],
       }
 
-      const lines = formatDiff({ diff, databaseId: 'abc123', filePath: './schema.ts' })
+      const lines = formatDiff({
+        diff,
+        databaseId: 'abc123',
+        filePath: './schema.ts',
+      })
 
       expect(lines.some((l) => l.includes('~ Status'))).toBe(true)
       expect(lines.some((l) => l.includes('type changed'))).toBe(true)
@@ -405,7 +424,11 @@ const foo = 'bar'
         options: [],
       }
 
-      const lines = formatDiff({ diff, databaseId: 'abc123', filePath: './schema.ts' })
+      const lines = formatDiff({
+        diff,
+        databaseId: 'abc123',
+        filePath: './schema.ts',
+      })
 
       expect(lines.some((l) => l.includes('Summary:'))).toBe(true)
       expect(lines.some((l) => l.includes('1 added'))).toBe(true)
@@ -419,7 +442,11 @@ const foo = 'bar'
         options: [],
       }
 
-      const lines = formatDiff({ diff, databaseId: 'abc123', filePath: './schema.ts' })
+      const lines = formatDiff({
+        diff,
+        databaseId: 'abc123',
+        filePath: './schema.ts',
+      })
 
       expect(lines.some((l) => l.includes('WARNING'))).toBe(true)
       expect(lines.some((l) => l.includes('does not match'))).toBe(true)
@@ -454,7 +481,11 @@ const foo = 'bar'
         hasDifferences({
           databaseIdMatch: true,
           properties: [
-            { name: 'Test', type: 'added', live: { type: 'title', transform: 'asString' } },
+            {
+              name: 'Test',
+              type: 'added',
+              live: { type: 'title', transform: 'asString' },
+            },
           ],
           options: [],
         }),

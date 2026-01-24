@@ -58,10 +58,18 @@ describe('tree', () => {
 
     it('uses custom chars when provided', () => {
       expect(
-        buildTreePrefix({ ancestors: [], isLast: false, chars: treeCharsAscii }),
+        buildTreePrefix({
+          ancestors: [],
+          isLast: false,
+          chars: treeCharsAscii,
+        }),
       ).toBe('+-- ')
       expect(
-        buildTreePrefix({ ancestors: [true], isLast: true, chars: treeCharsAscii }),
+        buildTreePrefix({
+          ancestors: [true],
+          isLast: true,
+          chars: treeCharsAscii,
+        }),
       ).toBe('|   \\-- ')
     })
   })
@@ -228,9 +236,7 @@ describe('tree', () => {
       const nodes: TreeNode<Item>[] = [
         {
           data: { name: 'root' },
-          children: [
-            { data: { name: 'child' }, children: [] },
-          ],
+          children: [{ data: { name: 'child' }, children: [] }],
         },
       ]
 

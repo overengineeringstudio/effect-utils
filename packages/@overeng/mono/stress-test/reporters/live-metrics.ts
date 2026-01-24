@@ -38,8 +38,14 @@ export const renderMetricsLine = (metrics: BenchMetrics, targetFps = 12.5): stri
   const parts = [
     fps,
     formatMetric('Frame', metrics.frameTimeMs, 'ms', { good: 10, warn: 50 }),
-    formatMetric('Events/s', metrics.eventThroughput, '', { good: 10000, warn: 50000 }),
-    formatMetric('State', metrics.stateUpdateTimeMs, 'ms', { good: 1, warn: 5 }),
+    formatMetric('Events/s', metrics.eventThroughput, '', {
+      good: 10000,
+      warn: 50000,
+    }),
+    formatMetric('State', metrics.stateUpdateTimeMs, 'ms', {
+      good: 1,
+      warn: 5,
+    }),
     formatMetric('Render', metrics.renderTimeMs, 'ms', { good: 5, warn: 20 }),
     formatMetric('Mem', metrics.memoryMB, 'MB', { good: 100, warn: 200 }),
   ]

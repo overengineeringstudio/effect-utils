@@ -78,7 +78,12 @@ export const addCommand = Cli.Command.make(
 
       if (Option.isNone(root)) {
         if (json) {
-          console.log(JSON.stringify({ error: 'not_found', message: 'No megarepo.json found' }))
+          console.log(
+            JSON.stringify({
+              error: 'not_found',
+              message: 'No megarepo.json found',
+            }),
+          )
         } else {
           yield* Console.error(`${styled.red(symbols.cross)} Not in a megarepo`)
         }
@@ -90,7 +95,10 @@ export const addCommand = Cli.Command.make(
       if (parsed === undefined) {
         if (json) {
           console.log(
-            JSON.stringify({ error: 'invalid_repo', message: `Invalid repo reference: ${repo}` }),
+            JSON.stringify({
+              error: 'invalid_repo',
+              message: `Invalid repo reference: ${repo}`,
+            }),
           )
         } else {
           yield* Console.error(`${styled.red(symbols.cross)} Invalid repo reference: ${repo}`)
@@ -141,7 +149,11 @@ export const addCommand = Cli.Command.make(
 
       if (json) {
         console.log(
-          JSON.stringify({ status: 'added', member: memberName, source: parsed.sourceString }),
+          JSON.stringify({
+            status: 'added',
+            member: memberName,
+            source: parsed.sourceString,
+          }),
         )
       } else {
         yield* Console.log(`${styled.green(symbols.check)} Added ${styled.bold(memberName)}`)

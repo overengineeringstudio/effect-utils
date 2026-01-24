@@ -13,27 +13,27 @@ For setup instructions and file templates, see [setup-guide](../nix-devenv/setup
 
 ## Megarepo Commands
 
-| Command | Description |
-|---------|-------------|
-| `mr sync` | Materialize repos from lock file |
-| `mr sync --frozen` | CI mode: fail if lock is stale |
-| `mr update` | Re-resolve refs and update lock |
-| `mr update <member>` | Update specific member |
-| `mr generate nix` | Generate `.envrc.generated.megarepo` and workspace flake |
-| `mr status` | Show megarepo state |
-| `mr pin <member>` | Pin member to current commit |
-| `mr unpin <member>` | Remove pin |
+| Command              | Description                                              |
+| -------------------- | -------------------------------------------------------- |
+| `mr sync`            | Materialize repos from lock file                         |
+| `mr sync --frozen`   | CI mode: fail if lock is stale                           |
+| `mr update`          | Re-resolve refs and update lock                          |
+| `mr update <member>` | Update specific member                                   |
+| `mr generate nix`    | Generate `.envrc.generated.megarepo` and workspace flake |
+| `mr status`          | Show megarepo state                                      |
+| `mr pin <member>`    | Pin member to current commit                             |
+| `mr unpin <member>`  | Remove pin                                               |
 
 ## Environment Variables
 
 Set by `mr env` and `.envrc.generated.megarepo`:
 
-| Variable | Description |
-|----------|-------------|
-| `MEGAREPO_ROOT_OUTERMOST` | Path to outermost megarepo root |
-| `MEGAREPO_ROOT_NEAREST` | Path to nearest megarepo root |
-| `MEGAREPO_NIX_WORKSPACE` | Path to generated nix workspace |
-| `MEGAREPO_MEMBERS` | Comma-separated list of member names |
+| Variable                  | Description                          |
+| ------------------------- | ------------------------------------ |
+| `MEGAREPO_ROOT_OUTERMOST` | Path to outermost megarepo root      |
+| `MEGAREPO_ROOT_NEAREST`   | Path to nearest megarepo root        |
+| `MEGAREPO_NIX_WORKSPACE`  | Path to generated nix workspace      |
+| `MEGAREPO_MEMBERS`        | Comma-separated list of member names |
 
 ## Further Reading
 

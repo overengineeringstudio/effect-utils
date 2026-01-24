@@ -102,7 +102,10 @@ describe.skipIf(SKIP_INTEGRATION)('NotionBlocks (integration)', () => {
                 type: 'paragraph',
                 paragraph: {
                   rich_text: [
-                    { type: 'text', text: { content: 'Test paragraph from integration test' } },
+                    {
+                      type: 'text',
+                      text: { content: 'Test paragraph from integration test' },
+                    },
                   ],
                 },
               },
@@ -203,7 +206,9 @@ describe.skipIf(SKIP_INTEGRATION)('NotionBlocks (integration)', () => {
           if (!blockToDelete) throw new Error('Expected appended block')
 
           // Delete the block
-          const deleted = yield* NotionBlocks.delete({ blockId: blockToDelete.id })
+          const deleted = yield* NotionBlocks.delete({
+            blockId: blockToDelete.id,
+          })
 
           expect(deleted.object).toBe('block')
           expect(deleted.id).toBe(blockToDelete.id)

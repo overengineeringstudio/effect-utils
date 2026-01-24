@@ -135,9 +135,9 @@ is enabled and `mr generate` has been run.
 
 #### Nix Generator
 
-| Variable                 | Description                         | Default                |
-| ------------------------ | ----------------------------------- | ---------------------- |
-| `MEGAREPO_NIX_WORKSPACE` | Path to the generated Nix workspace | (computed from root)   |
+| Variable                 | Description                         | Default              |
+| ------------------------ | ----------------------------------- | -------------------- |
+| `MEGAREPO_NIX_WORKSPACE` | Path to the generated Nix workspace | (computed from root) |
 
 ### Root discovery behavior
 
@@ -325,11 +325,11 @@ mr sync [--pull] [--frozen] [--force] [--deep]
 
 **Modes:**
 
-| Mode | Command | Behavior |
-|------|---------|----------|
-| Default | `mr sync` | Ensure members exist, update lock to current worktree commits |
-| Pull | `mr sync --pull` | Fetch from remote, update worktrees to latest |
-| Frozen | `mr sync --frozen` | Apply lock → worktrees exactly, never modify lock (CI mode) |
+| Mode    | Command            | Behavior                                                      |
+| ------- | ------------------ | ------------------------------------------------------------- |
+| Default | `mr sync`          | Ensure members exist, update lock to current worktree commits |
+| Pull    | `mr sync --pull`   | Fetch from remote, update worktrees to latest                 |
+| Frozen  | `mr sync --frozen` | Apply lock → worktrees exactly, never modify lock (CI mode)   |
 
 **Default Mode Behavior:**
 

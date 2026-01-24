@@ -89,7 +89,10 @@ export const installCommand = (config: InstallConfig) =>
           yield* Console.log('')
         }
 
-        return yield* new InstallError({ failedCount: failures.length, totalCount: total })
+        return yield* new InstallError({
+          failedCount: failures.length,
+          totalCount: total,
+        })
       }
 
       yield* Console.log(`\n✓ Installed dependencies for ${successes.length} packages`)

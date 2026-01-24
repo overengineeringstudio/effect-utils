@@ -43,11 +43,17 @@ const makeMention = (
   const mentionContent = (() => {
     switch (type) {
       case 'user':
-        return { type: 'user' as const, user: { object: 'user' as const, id: data.id as string } }
+        return {
+          type: 'user' as const,
+          user: { object: 'user' as const, id: data.id as string },
+        }
       case 'page':
         return { type: 'page' as const, page: { id: data.id as string } }
       case 'database':
-        return { type: 'database' as const, database: { id: data.id as string } }
+        return {
+          type: 'database' as const,
+          database: { id: data.id as string },
+        }
       case 'date':
         return {
           type: 'date' as const,
@@ -58,7 +64,10 @@ const makeMention = (
           },
         }
       case 'link_preview':
-        return { type: 'link_preview' as const, link_preview: { url: data.url as string } }
+        return {
+          type: 'link_preview' as const,
+          link_preview: { url: data.url as string },
+        }
     }
   })()
 

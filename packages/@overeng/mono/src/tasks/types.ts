@@ -55,7 +55,13 @@ export interface CheckTasksConfig {
 /** Result of installing a package */
 export type InstallResult =
   | { _tag: 'success'; dir: string }
-  | { _tag: 'failure'; dir: string; error: unknown; stderr?: string; stdout?: string }
+  | {
+      _tag: 'failure'
+      dir: string
+      error: unknown
+      stderr?: string
+      stdout?: string
+    }
 
 /** Install result with progress tracking */
 export type InstallProgress = {

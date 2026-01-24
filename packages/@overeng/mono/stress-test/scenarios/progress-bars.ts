@@ -175,13 +175,21 @@ if (import.meta.main) {
 
     // First run without renderer (baseline)
     console.log('\n=== Without Renderer ===')
-    yield* runProgressBars({ withRenderer: false, durationSeconds: 5, barCount: 20 })
+    yield* runProgressBars({
+      withRenderer: false,
+      durationSeconds: 5,
+      barCount: 20,
+    })
 
     yield* Effect.sleep('1 second')
 
     // Then with renderer
     console.log('\n=== With Renderer ===')
-    yield* runProgressBars({ withRenderer: true, durationSeconds: 5, barCount: 20 })
+    yield* runProgressBars({
+      withRenderer: true,
+      durationSeconds: 5,
+      barCount: 20,
+    })
   }).pipe(Effect.provide(NodeContext.layer))
 
   Effect.runPromise(main).then(

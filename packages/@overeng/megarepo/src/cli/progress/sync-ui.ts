@@ -21,6 +21,7 @@ import { createProgressUI, type ProgressUIHandle } from './ui.ts'
 // Types
 // =============================================================================
 
+/** Handle for managing the sync progress UI lifecycle. */
 export type SyncProgressUIHandle = ProgressUIHandle
 
 // =============================================================================
@@ -36,7 +37,13 @@ const formatSyncItem = (
 })
 
 /** Format the sync summary line */
-const formatSyncSummary = (state: ProgressState<SyncItemData>, elapsed: number): string => {
+const formatSyncSummary = ({
+  state,
+  elapsed,
+}: {
+  state: ProgressState<SyncItemData>
+  elapsed: number
+}): string => {
   const counts = { success: 0, error: 0, skipped: 0, pending: 0, active: 0 }
   for (const item of state.items.values()) {
     counts[item.status]++
@@ -59,18 +66,18 @@ const formatSyncSummary = (state: ProgressState<SyncItemData>, elapsed: number):
 // =============================================================================
 
 /** Create sync progress UI operations */
-const syncUI = createProgressUI(
-  {
+const syncUI = createProgressUI({
+  ops: {
     get: getSyncProgress,
     changes: syncProgressChanges,
   },
-  {
+  options: {
     formatItem: formatSyncItem,
     formatSummary: formatSyncSummary,
     showSummary: true,
     spinnerInterval: 80,
   },
-)
+})
 
 // =============================================================================
 // Public API

@@ -107,7 +107,9 @@ export const BotData = Schema.Struct({
   owner: BotOwner.annotations({
     description: 'Owner of the bot (workspace or user).',
   }),
-  workspace_name: Schema.optionalWith(Schema.String, { as: 'Option' }).annotations({
+  workspace_name: Schema.optionalWith(Schema.String, {
+    as: 'Option',
+  }).annotations({
     description: 'Name of the workspace owning the bot.',
   }),
 }).annotations({

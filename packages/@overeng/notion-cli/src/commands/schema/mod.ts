@@ -204,7 +204,9 @@ const generateCommand = Command.make(
         ...(Option.isSome(name) ? { schemaNameOverride: name.value } : {}),
       }
 
-      const configLayer = Layer.succeed(NotionConfig, { authToken: Redacted.make(resolvedToken) })
+      const configLayer = Layer.succeed(NotionConfig, {
+        authToken: Redacted.make(resolvedToken),
+      })
 
       const program = Effect.gen(function* () {
         yield* Console.log(`Introspecting database ${databaseId}...`)
@@ -213,7 +215,11 @@ const generateCommand = Command.make(
         const schemaName = name._tag === 'Some' ? name.value : dbInfo.name
         yield* Console.log(`Generating schema "${schemaName}"...`)
 
-        const rawCode = generateSchemaCode({ dbInfo, schemaName, options: generateOptions })
+        const rawCode = generateSchemaCode({
+          dbInfo,
+          schemaName,
+          options: generateOptions,
+        })
         const code = yield* formatCode(rawCode)
 
         if (dryRun) {
@@ -296,7 +302,9 @@ const introspectCommand = Command.make(
     Effect.gen(function* () {
       const resolvedToken = yield* resolveNotionToken(token)
 
-      const configLayer = Layer.succeed(NotionConfig, { authToken: Redacted.make(resolvedToken) })
+      const configLayer = Layer.succeed(NotionConfig, {
+        authToken: Redacted.make(resolvedToken),
+      })
 
       const program = Effect.gen(function* () {
         const db = yield* NotionDatabases.retrieve({ databaseId })
@@ -361,7 +369,12 @@ const configOption = Options.file('config').pipe(
 
 const generateFromConfigCommand = Command.make(
   'generate-config',
-  { config: configOption, token: tokenOption, dryRun: dryRunOption, writable: writableOption },
+  {
+    config: configOption,
+    token: tokenOption,
+    dryRun: dryRunOption,
+    writable: writableOption,
+  },
   ({ config, token, dryRun, writable }) =>
     Effect.gen(function* () {
       const { config: resolvedConfig, path: resolvedConfigPath } = yield* loadConfig(
@@ -371,7 +384,9 @@ const generateFromConfigCommand = Command.make(
       const resolvedToken = yield* resolveNotionToken(token)
       const generatorVersion = yield* getGeneratorVersion
 
-      const configLayer = Layer.succeed(NotionConfig, { authToken: Redacted.make(resolvedToken) })
+      const configLayer = Layer.succeed(NotionConfig, {
+        authToken: Redacted.make(resolvedToken),
+      })
 
       const program = Effect.gen(function* () {
         yield* Console.log(`Using config: ${resolvedConfigPath}`)
@@ -395,7 +410,11 @@ const generateFromConfigCommand = Command.make(
             ...(dbConfig.name !== undefined ? { schemaNameOverride: dbConfig.name } : {}),
           }
 
-          const rawCode = generateSchemaCode({ dbInfo, schemaName, options: generateOptions })
+          const rawCode = generateSchemaCode({
+            dbInfo,
+            schemaName,
+            options: generateOptions,
+          })
           const code = yield* formatCode(rawCode)
 
           if (dryRun) {
@@ -495,7 +514,9 @@ const diffCommand = Command.make(
       const resolvedToken = yield* resolveNotionToken(token)
       const fs = yield* FileSystem.FileSystem
 
-      const configLayer = Layer.succeed(NotionConfig, { authToken: Redacted.make(resolvedToken) })
+      const configLayer = Layer.succeed(NotionConfig, {
+        authToken: Redacted.make(resolvedToken),
+      })
 
       const program = Effect.gen(function* () {
         const fileContent = yield* fs.readFileString(file)

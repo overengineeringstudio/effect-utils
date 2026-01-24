@@ -62,7 +62,13 @@ describe('Block Helpers', () => {
       const block = mockBlock('image', {
         type: 'external',
         external: { url: 'https://example.com/img.png' },
-        caption: [{ type: 'text', text: { content: 'My image' }, plain_text: 'My image' }],
+        caption: [
+          {
+            type: 'text',
+            text: { content: 'My image' },
+            plain_text: 'My image',
+          },
+        ],
       })
       const result = getBlockCaption(block)
       expect(result).toHaveLength(1)
@@ -70,7 +76,10 @@ describe('Block Helpers', () => {
     })
 
     it('returns empty array when no caption', () => {
-      const block = mockBlock('image', { type: 'external', external: { url: 'https://x.com' } })
+      const block = mockBlock('image', {
+        type: 'external',
+        external: { url: 'https://x.com' },
+      })
       expect(getBlockCaption(block)).toEqual([])
     })
 
@@ -110,7 +119,9 @@ describe('Block Helpers', () => {
     })
 
     it('is accessible via BlockHelpers.getUrl', () => {
-      const block = mockBlock('embed', { url: 'https://youtube.com/watch?v=abc' })
+      const block = mockBlock('embed', {
+        url: 'https://youtube.com/watch?v=abc',
+      })
       expect(BlockHelpers.getUrl(block)).toBe('https://youtube.com/watch?v=abc')
     })
   })
@@ -139,7 +150,10 @@ describe('Block Helpers', () => {
 
   describe('getCodeLanguage', () => {
     it('extracts language from code block', () => {
-      const block = mockBlock('code', { language: 'typescript', rich_text: [] })
+      const block = mockBlock('code', {
+        language: 'typescript',
+        rich_text: [],
+      })
       expect(getCodeLanguage(block)).toBe('typescript')
     })
 

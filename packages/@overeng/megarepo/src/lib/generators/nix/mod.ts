@@ -53,8 +53,9 @@ const defaultWorkspaceDir = '.direnv/megarepo-nix/workspace/'
 const normalizeWorkspaceDir = (rawDir: string): string =>
   rawDir.endsWith('/') ? rawDir : `${rawDir}/`
 
+const pad = (value: number): string => value.toString().padStart(2, '0')
+
 const formatTimestamp = (date: Date = new Date()): string => {
-  const pad = (value: number): string => value.toString().padStart(2, '0')
   const offsetMinutes = -date.getTimezoneOffset()
   const sign = offsetMinutes >= 0 ? '+' : '-'
   const absOffset = Math.abs(offsetMinutes)

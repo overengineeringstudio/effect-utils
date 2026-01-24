@@ -200,7 +200,11 @@ export const exportsFirstRule = {
         }
 
         // First pass: collect all non-exported declarations and their positions
-        const nonExportedDecls: Array<{ names: Set<string>; node: any; index: number }> = []
+        const nonExportedDecls: Array<{
+          names: Set<string>
+          node: any
+          index: number
+        }> = []
         const exports: Array<{ node: any; index: number; refs: Set<string> }> = []
 
         for (let i = 0; i < programNode.body.length; i++) {

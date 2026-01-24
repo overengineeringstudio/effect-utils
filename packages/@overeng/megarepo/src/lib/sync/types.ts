@@ -60,7 +60,13 @@ export const flattenSyncResults = (result: MegarepoSyncResult): object => ({
 /** Count sync results including nested megarepos */
 export const countSyncResults = (
   r: MegarepoSyncResult,
-): { synced: number; updated: number; locked: number; already: number; errors: number } => {
+): {
+  synced: number
+  updated: number
+  locked: number
+  already: number
+  errors: number
+} => {
   const synced = r.results.filter((m) => m.status === 'cloned' || m.status === 'synced').length
   const updated = r.results.filter((m) => m.status === 'updated').length
   const locked = r.results.filter((m) => m.status === 'locked').length

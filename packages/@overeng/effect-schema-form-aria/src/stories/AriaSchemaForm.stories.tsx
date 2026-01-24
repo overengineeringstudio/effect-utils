@@ -17,9 +17,15 @@ export default meta
 // ============================================================================
 
 const UserSchema = Schema.Struct({
-  name: Schema.String.annotations({ title: 'Name', description: 'Your full name' }),
+  name: Schema.String.annotations({
+    title: 'Name',
+    description: 'Your full name',
+  }),
   email: Schema.String.annotations({ title: 'Email' }),
-  age: Schema.optional(Schema.Number).annotations({ title: 'Age', description: 'Optional' }),
+  age: Schema.optional(Schema.Number).annotations({
+    title: 'Age',
+    description: 'Optional',
+  }),
   role: Schema.Literal('admin', 'user', 'guest').annotations({ title: 'Role' }),
 })
 
@@ -119,9 +125,14 @@ export const EmptyTaggedStruct: StoryObj<typeof AriaSchemaForm<SimpleAction>> = 
 // ============================================================================
 
 const SettingsSchema = Schema.Struct({
-  darkMode: Schema.Boolean.annotations({ title: 'Dark Mode', description: 'Enable dark theme' }),
+  darkMode: Schema.Boolean.annotations({
+    title: 'Dark Mode',
+    description: 'Enable dark theme',
+  }),
   notifications: Schema.Boolean.annotations({ title: 'Notifications' }),
-  language: Schema.Literal('en', 'es', 'fr', 'de').annotations({ title: 'Language' }),
+  language: Schema.Literal('en', 'es', 'fr', 'de').annotations({
+    title: 'Language',
+  }),
 })
 
 type Settings = typeof SettingsSchema.Type
@@ -177,7 +188,9 @@ const ComplexSchema = Schema.Struct({
     title: 'Subscribe to newsletter',
     description: 'Receive weekly updates',
   }),
-  plan: Schema.Literal('free', 'pro', 'enterprise').annotations({ title: 'Plan' }),
+  plan: Schema.Literal('free', 'pro', 'enterprise').annotations({
+    title: 'Plan',
+  }),
   region: Schema.Literal(
     'us-east',
     'us-west',

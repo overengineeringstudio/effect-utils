@@ -165,9 +165,24 @@ const UsersArraySchema = Schema.Array(UserSchema).annotations({
 })
 
 const sampleUsers: User[] = [
-  { id: 1, name: 'Alice', email: 'alice@example.com', createdAt: new Date('2024-01-01') },
-  { id: 2, name: 'Bob', email: 'bob@example.com', createdAt: new Date('2024-02-15') },
-  { id: 3, name: 'Charlie', email: 'charlie@example.com', createdAt: new Date('2024-03-20') },
+  {
+    id: 1,
+    name: 'Alice',
+    email: 'alice@example.com',
+    createdAt: new Date('2024-01-01'),
+  },
+  {
+    id: 2,
+    name: 'Bob',
+    email: 'bob@example.com',
+    createdAt: new Date('2024-02-15'),
+  },
+  {
+    id: 3,
+    name: 'Charlie',
+    email: 'charlie@example.com',
+    createdAt: new Date('2024-03-20'),
+  },
 ]
 
 export const ArrayOfSchemaItems = {

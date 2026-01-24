@@ -338,9 +338,14 @@ describe('config', () => {
 
   describe('isRemoteSource', () => {
     it('should return true for GitHub source', () => {
-      expect(isRemoteSource({ type: 'github', owner: 'o', repo: 'r', ref: Option.none() })).toBe(
-        true,
-      )
+      expect(
+        isRemoteSource({
+          type: 'github',
+          owner: 'o',
+          repo: 'r',
+          ref: Option.none(),
+        }),
+      ).toBe(true)
     })
 
     it('should return true for URL source', () => {

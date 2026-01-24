@@ -224,9 +224,9 @@ const resolveActualBinaryPath = Effect.fn('nix-status-actual-binary-path')(funct
   binaryName: string,
 ) {
   const cwd = process.env.WORKSPACE_ROOT ?? process.cwd()
-  const output = yield* cmdText(['which', binaryName], { stderr: 'pipe' }).pipe(
-    Effect.provideService(CurrentWorkingDirectory, cwd),
-  )
+  const output = yield* cmdText(['which', binaryName], {
+    stderr: 'pipe',
+  }).pipe(Effect.provideService(CurrentWorkingDirectory, cwd))
   return output.trim()
 })
 
@@ -259,9 +259,15 @@ const resolveStatusScope = (scope: StatusScope): StatusScope => {
   return process.env.DEVENV_PROFILE ? 'devenv' : 'flake'
 }
 
-const toFlakeExpected = (outputRoot: string): ExpectedPath => ({ _tag: 'flake', outputRoot })
+const toFlakeExpected = (outputRoot: string): ExpectedPath => ({
+  _tag: 'flake',
+  outputRoot,
+})
 
-const toDevenvExpected = (binaryPath: string): ExpectedPath => ({ _tag: 'devenv', binaryPath })
+const toDevenvExpected = (binaryPath: string): ExpectedPath => ({
+  _tag: 'devenv',
+  binaryPath,
+})
 
 const resolveStatusEntry = Effect.fn('nix.resolveStatusEntry')(function* (opts: {
   packageSpec: NixPackageSpec

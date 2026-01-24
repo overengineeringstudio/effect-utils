@@ -133,7 +133,10 @@ describe('Title', () => {
           title: [
             {
               type: 'text' as const,
-              text: { content: 'Click here', link: { url: 'https://example.com' } },
+              text: {
+                content: 'Click here',
+                link: { url: 'https://example.com' },
+              },
             },
           ],
         }
@@ -1048,7 +1051,10 @@ describe('Date Property', () => {
 
 describe('NotionSchema.nullable', () => {
   const schema = Schema.NullOr(Schema.String).pipe(
-    NotionSchema.nullable({ valueSchema: Schema.String, message: 'String is required' }),
+    NotionSchema.nullable({
+      valueSchema: Schema.String,
+      message: 'String is required',
+    }),
   )
 
   it.effect('returns value when present', () =>

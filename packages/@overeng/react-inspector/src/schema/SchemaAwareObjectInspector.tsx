@@ -30,7 +30,10 @@ export const withSchemaSupport = <TInspector extends FC<any>>(
   ObjectInspector: TInspector,
   deps: SchemaAwareObjectInspectorDeps,
 ): FC<
-  ComponentProps<TInspector> & { schema?: S.Schema.AnyNoContext; schemas?: S.Schema.AnyNoContext[] }
+  ComponentProps<TInspector> & {
+    schema?: S.Schema.AnyNoContext
+    schemas?: S.Schema.AnyNoContext[]
+  }
 > => {
   const SchemaAwareObjectInspector: FC<
     ComponentProps<TInspector> & {
@@ -63,7 +66,10 @@ export const withSchemaSupport = <TInspector extends FC<any>>(
 export const withSchemaContext = <TInspector extends FC<any>>(
   ObjectInspector: TInspector,
 ): FC<
-  ComponentProps<TInspector> & { schema?: S.Schema.AnyNoContext; schemas?: S.Schema.AnyNoContext[] }
+  ComponentProps<TInspector> & {
+    schema?: S.Schema.AnyNoContext
+    schemas?: S.Schema.AnyNoContext[]
+  }
 > => {
   const SchemaAwareObjectInspector: FC<
     ComponentProps<TInspector> & {

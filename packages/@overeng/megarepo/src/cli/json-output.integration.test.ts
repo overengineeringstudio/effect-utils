@@ -164,7 +164,10 @@ describe('--json output (integration)', () => {
         yield* fs.makeDirectory(workDir, { recursive: true })
         yield* initGitRepo(workDir)
 
-        const result = yield* runCli({ cwd: workDir, args: ['root', '--json'] })
+        const result = yield* runCli({
+          cwd: workDir,
+          args: ['root', '--json'],
+        })
 
         // Verify stdout is still valid JSON even for errors
         const json = assertStdoutIsOnlyJson(result.stdout)
@@ -230,7 +233,10 @@ describe('--json output (integration)', () => {
         // Run CLI from the symlinked directory (via $PWD)
         // The physical cwd will be storeRepoDir, but PWD will be the symlink path
         const symlinkDir = EffectPath.unsafe.absoluteDir(`${symlinkPath}/`)
-        const result = yield* runCli({ cwd: symlinkDir, args: ['root', '--json'] })
+        const result = yield* runCli({
+          cwd: symlinkDir,
+          args: ['root', '--json'],
+        })
 
         // Should find the workspace's megarepo.json by following $PWD up
         const json = assertStdoutIsOnlyJson(result.stdout) as { root: string }

@@ -48,12 +48,20 @@ const pullRepo = (repo: RepoInfo) =>
 
     // Should already be filtered, but guard anyway
     if (!gitState) {
-      return { name, status: 'skipped', message: 'Not a git repo' } satisfies PullResult
+      return {
+        name,
+        status: 'skipped',
+        message: 'Not a git repo',
+      } satisfies PullResult
     }
 
     // Check if on a branch (not detached HEAD)
     if (gitState.branch === 'HEAD') {
-      return { name, status: 'skipped', message: 'Detached HEAD' } satisfies PullResult
+      return {
+        name,
+        status: 'skipped',
+        message: 'Detached HEAD',
+      } satisfies PullResult
     }
 
     // Check if dirty

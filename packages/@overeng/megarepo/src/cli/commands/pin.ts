@@ -11,7 +11,12 @@ import { Console, Effect, Option, Schema } from 'effect'
 import { styled, symbols } from '@overeng/cli-ui'
 import { EffectPath } from '@overeng/effect-path'
 
-import { CONFIG_FILE_NAME, MegarepoConfig, parseSourceString, isRemoteSource } from '../../lib/config.ts'
+import {
+  CONFIG_FILE_NAME,
+  MegarepoConfig,
+  parseSourceString,
+  isRemoteSource,
+} from '../../lib/config.ts'
 import {
   createEmptyLockFile,
   getLockedMember,
@@ -40,7 +45,12 @@ export const pinCommand = Cli.Command.make(
 
       if (Option.isNone(root)) {
         if (json) {
-          console.log(JSON.stringify({ error: 'not_found', message: 'No megarepo.json found' }))
+          console.log(
+            JSON.stringify({
+              error: 'not_found',
+              message: 'No megarepo.json found',
+            }),
+          )
         } else {
           yield* Console.error(`${styled.red(symbols.cross)} Not in a megarepo`)
         }
@@ -60,7 +70,10 @@ export const pinCommand = Cli.Command.make(
       if (!(member in config.members)) {
         if (json) {
           console.log(
-            JSON.stringify({ error: 'not_found', message: `Member '${member}' not found` }),
+            JSON.stringify({
+              error: 'not_found',
+              message: `Member '${member}' not found`,
+            }),
           )
         } else {
           yield* Console.error(`${styled.red(symbols.cross)} Member '${member}' not found`)
@@ -76,7 +89,12 @@ export const pinCommand = Cli.Command.make(
       const source = parseSourceString(sourceString)
       if (source === undefined) {
         if (json) {
-          console.log(JSON.stringify({ error: 'invalid_source', message: 'Invalid source string' }))
+          console.log(
+            JSON.stringify({
+              error: 'invalid_source',
+              message: 'Invalid source string',
+            }),
+          )
         } else {
           yield* Console.error(`${styled.red(symbols.cross)} Invalid source string`)
         }
@@ -85,7 +103,10 @@ export const pinCommand = Cli.Command.make(
       if (!isRemoteSource(source)) {
         if (json) {
           console.log(
-            JSON.stringify({ error: 'local_path', message: 'Cannot pin local path members' }),
+            JSON.stringify({
+              error: 'local_path',
+              message: 'Cannot pin local path members',
+            }),
           )
         } else {
           yield* Console.error(`${styled.red(symbols.cross)} Cannot pin local path members`)
@@ -122,7 +143,11 @@ export const pinCommand = Cli.Command.make(
       if (lockedMember.pinned) {
         if (json) {
           console.log(
-            JSON.stringify({ status: 'already_pinned', member, commit: lockedMember.commit }),
+            JSON.stringify({
+              status: 'already_pinned',
+              member,
+              commit: lockedMember.commit,
+            }),
           )
         } else {
           yield* Console.log(
@@ -139,7 +164,13 @@ export const pinCommand = Cli.Command.make(
       yield* writeLockFile({ lockPath, lockFile })
 
       if (json) {
-        console.log(JSON.stringify({ status: 'pinned', member, commit: lockedMember.commit }))
+        console.log(
+          JSON.stringify({
+            status: 'pinned',
+            member,
+            commit: lockedMember.commit,
+          }),
+        )
       } else {
         yield* Console.log(
           `${styled.green(symbols.check)} Pinned ${styled.bold(member)} at ${styled.dim(lockedMember.commit.slice(0, 7))}`,
@@ -164,7 +195,12 @@ export const unpinCommand = Cli.Command.make(
 
       if (Option.isNone(root)) {
         if (json) {
-          console.log(JSON.stringify({ error: 'not_found', message: 'No megarepo.json found' }))
+          console.log(
+            JSON.stringify({
+              error: 'not_found',
+              message: 'No megarepo.json found',
+            }),
+          )
         } else {
           yield* Console.error(`${styled.red(symbols.cross)} Not in a megarepo`)
         }
@@ -184,7 +220,10 @@ export const unpinCommand = Cli.Command.make(
       if (!(member in config.members)) {
         if (json) {
           console.log(
-            JSON.stringify({ error: 'not_found', message: `Member '${member}' not found` }),
+            JSON.stringify({
+              error: 'not_found',
+              message: `Member '${member}' not found`,
+            }),
           )
         } else {
           yield* Console.error(`${styled.red(symbols.cross)} Member '${member}' not found`)

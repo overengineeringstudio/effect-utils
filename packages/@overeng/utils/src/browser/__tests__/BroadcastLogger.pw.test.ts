@@ -19,10 +19,14 @@ test.describe('BroadcastLogger integration', () => {
     })
 
     // Wait for worker to finish
-    await expect(page.locator('#status')).toHaveText('Worker done', { timeout: 5000 })
+    await expect(page.locator('#status')).toHaveText('Worker done', {
+      timeout: 5000,
+    })
 
     await expect
-      .poll(async () => page.evaluate(() => window.receivedLogs.length), { timeout: 5000 })
+      .poll(async () => page.evaluate(() => window.receivedLogs.length), {
+        timeout: 5000,
+      })
       .toBe(3)
 
     // Check received logs
@@ -42,10 +46,14 @@ test.describe('BroadcastLogger integration', () => {
       window.workerPort?.postMessage({ type: 'emit-with-span' })
     })
 
-    await expect(page.locator('#status')).toHaveText('Worker done', { timeout: 5000 })
+    await expect(page.locator('#status')).toHaveText('Worker done', {
+      timeout: 5000,
+    })
 
     await expect
-      .poll(async () => page.evaluate(() => window.receivedLogs.length), { timeout: 5000 })
+      .poll(async () => page.evaluate(() => window.receivedLogs.length), {
+        timeout: 5000,
+      })
       .toBe(1)
 
     const logs = await page.evaluate(() => window.receivedLogs)
@@ -61,10 +69,14 @@ test.describe('BroadcastLogger integration', () => {
       window.workerPort?.postMessage({ type: 'emit-error' })
     })
 
-    await expect(page.locator('#status')).toHaveText('Worker done', { timeout: 5000 })
+    await expect(page.locator('#status')).toHaveText('Worker done', {
+      timeout: 5000,
+    })
 
     await expect
-      .poll(async () => page.evaluate(() => window.receivedLogs.length), { timeout: 5000 })
+      .poll(async () => page.evaluate(() => window.receivedLogs.length), {
+        timeout: 5000,
+      })
       .toBe(1)
 
     const logs = await page.evaluate(() => window.receivedLogs)

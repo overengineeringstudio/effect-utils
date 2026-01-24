@@ -44,7 +44,10 @@ const makeProperty = (info: Omit<PropertyInfo, 'schema'>): PropertyInfo => {
         return {
           ...schemaBase,
           _tag: 'status',
-          status: { options: info.status?.options ?? [], groups: info.status?.groups ?? [] },
+          status: {
+            options: info.status?.options ?? [],
+            groups: info.status?.groups ?? [],
+          },
         }
       case 'relation':
         return {
@@ -365,7 +368,10 @@ describe('codegen', () => {
         ).map(makeProperty),
       }
 
-      const code = generateSchemaCode({ dbInfo, schemaName: 'my-test-database' })
+      const code = generateSchemaCode({
+        dbInfo,
+        schemaName: 'my-test-database',
+      })
 
       expect(code).toContain('export const MyTestDatabasePageProperties')
       expect(code).toContain('export type MyTestDatabasePageProperties')
@@ -431,7 +437,10 @@ describe('codegen', () => {
     })
 
     it('should handle all property types with default transforms', () => {
-      const propertyTypes: Array<{ type: PropertyInfo['type']; expected: string }> = [
+      const propertyTypes: Array<{
+        type: PropertyInfo['type']
+        expected: string
+      }> = [
         { type: 'title', expected: 'NotionSchema.title' },
         { type: 'rich_text', expected: 'NotionSchema.richTextOption' },
         { type: 'number', expected: 'NotionSchema.numberOption' },
@@ -450,7 +459,10 @@ describe('codegen', () => {
         { type: 'rollup', expected: 'NotionSchema.rollupRaw' },
         { type: 'created_time', expected: 'NotionSchema.createdTimeDate' },
         { type: 'created_by', expected: 'NotionSchema.createdByRaw' },
-        { type: 'last_edited_time', expected: 'NotionSchema.lastEditedTimeDate' },
+        {
+          type: 'last_edited_time',
+          expected: 'NotionSchema.lastEditedTimeDate',
+        },
         { type: 'last_edited_by', expected: 'NotionSchema.lastEditedByRaw' },
         { type: 'unique_id', expected: 'NotionSchema.uniqueIdProperty' },
       ]
@@ -515,7 +527,11 @@ describe('codegen', () => {
         url: 'https://notion.so/test',
         properties: (
           [
-            { id: 'prop1', name: 'Unknown', type: 'button' as PropertyInfo['type'] },
+            {
+              id: 'prop1',
+              name: 'Unknown',
+              type: 'button' as PropertyInfo['type'],
+            },
           ] satisfies Array<Omit<PropertyInfo, 'schema'>>
         ).map(makeProperty),
       }

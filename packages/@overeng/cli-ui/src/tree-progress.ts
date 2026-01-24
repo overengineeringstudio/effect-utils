@@ -92,10 +92,18 @@ export type TreeProgressState<T = unknown> = {
 }
 
 /** Create initial tree progress state */
-export const createTreeProgressState = <T = unknown>(
-  items: Array<{ id: string; parentId: string | null; label: string; data?: T }>,
-  options: TreeProgressOptions = {},
-): TreeProgressState<T> => ({
+export const createTreeProgressState = <T = unknown>({
+  items,
+  options = {},
+}: {
+  items: Array<{
+    id: string
+    parentId: string | null
+    label: string
+    data?: T
+  }>
+  options?: TreeProgressOptions
+}): TreeProgressState<T> => ({
   items: items.map((item) => ({
     ...item,
     status: 'pending' as const,
@@ -117,7 +125,13 @@ export const createTreeProgressState = <T = unknown>(
 // =============================================================================
 
 /** Format status icon for an item */
-const formatStatusIcon = (status: TreeProgressStatus, spinnerFrame: number): string => {
+const formatStatusIcon = ({
+  status,
+  spinnerFrame,
+}: {
+  status: TreeProgressStatus
+  spinnerFrame: number
+}): string => {
   switch (status) {
     case 'pending':
       return styled.dim(symbols.circle)
@@ -133,12 +147,15 @@ const formatStatusIcon = (status: TreeProgressStatus, spinnerFrame: number): str
 }
 
 /** Format a single tree item line */
-const formatTreeItemLine = (
-  flat: FlatTreeItem<TreeProgressItem>,
-  spinnerFrame: number,
-): string => {
+const formatTreeItemLine = ({
+  flat,
+  spinnerFrame,
+}: {
+  flat: FlatTreeItem<TreeProgressItem>
+  spinnerFrame: number
+}): string => {
   const { data: item, prefix } = flat
-  const icon = formatStatusIcon(item.status, spinnerFrame)
+  const icon = formatStatusIcon({ status: item.status, spinnerFrame })
 
   // Build the label with appropriate styling
   let label: string
@@ -167,9 +184,7 @@ const formatTreeItemLine = (
 }
 
 /** Build flattened tree from items */
-const buildFlatTree = <T>(
-  state: TreeProgressState<T>,
-): FlatTreeItem<TreeProgressItem<T>>[] => {
+const buildFlatTree = <T>(state: TreeProgressState<T>): FlatTreeItem<TreeProgressItem<T>>[] => {
   const tree = buildTree({
     items: state.items,
     getId: (item) => item.id,
@@ -184,7 +199,7 @@ const buildFlatTree = <T>(
 /** Render the tree progress to a string array */
 export const renderTreeProgress = <T>(state: TreeProgressState<T>): string[] => {
   const flat = buildFlatTree(state)
-  return flat.map((item) => formatTreeItemLine(item, state.spinnerFrame))
+  return flat.map((item) => formatTreeItemLine({ flat: item, spinnerFrame: state.spinnerFrame }))
 }
 
 /** Format the summary line */
@@ -286,10 +301,13 @@ export const finishTreeProgress = <T>(state: TreeProgressState<T>): void => {
  * Start the spinner animation.
  * Returns a function to stop the animation.
  */
-export const startTreeSpinner = <T>(
-  state: TreeProgressState<T>,
-  interval?: number,
-): (() => void) => {
+export const startTreeSpinner = <T>({
+  state,
+  interval,
+}: {
+  state: TreeProgressState<T>
+  interval?: number
+}): (() => void) => {
   if (!isTTY()) return () => {}
 
   const spinnerInterval = interval ?? state.options.spinnerInterval ?? 80
@@ -312,18 +330,29 @@ export const startTreeSpinner = <T>(
 // =============================================================================
 
 /** Find an item by id */
-const findItem = <T>(state: TreeProgressState<T>, id: string): TreeProgressItem<T> | undefined => {
+const findItem = <T>({
+  state,
+  id,
+}: {
+  state: TreeProgressState<T>
+  id: string
+}): TreeProgressItem<T> | undefined => {
   return state.items.find((i) => i.id === id)
 }
 
 /** Update an item's status */
-export const updateTreeItemStatus = <T>(
-  state: TreeProgressState<T>,
-  id: string,
-  status: TreeProgressStatus,
-  message?: string,
-): void => {
-  const item = findItem(state, id)
+export const updateTreeItemStatus = <T>({
+  state,
+  id,
+  status,
+  message,
+}: {
+  state: TreeProgressState<T>
+  id: string
+  status: TreeProgressStatus
+  message?: string
+}): void => {
+  const item = findItem({ state, id })
   if (item) {
     item.status = status
     item.message = message
@@ -331,51 +360,70 @@ export const updateTreeItemStatus = <T>(
 }
 
 /** Mark an item as active (in progress) */
-export const markTreeItemActive = <T>(
-  state: TreeProgressState<T>,
-  id: string,
-  message?: string,
-): void => {
-  updateTreeItemStatus(state, id, 'active', message)
+export const markTreeItemActive = <T>({
+  state,
+  id,
+  message,
+}: {
+  state: TreeProgressState<T>
+  id: string
+  message?: string
+}): void => {
+  updateTreeItemStatus({ state, id, status: 'active', message })
 }
 
 /** Mark an item as success */
-export const markTreeItemSuccess = <T>(
-  state: TreeProgressState<T>,
-  id: string,
-  message?: string,
-): void => {
-  updateTreeItemStatus(state, id, 'success', message)
+export const markTreeItemSuccess = <T>({
+  state,
+  id,
+  message,
+}: {
+  state: TreeProgressState<T>
+  id: string
+  message?: string
+}): void => {
+  updateTreeItemStatus({ state, id, status: 'success', message })
 }
 
 /** Mark an item as error */
-export const markTreeItemError = <T>(
-  state: TreeProgressState<T>,
-  id: string,
-  message?: string,
-): void => {
-  updateTreeItemStatus(state, id, 'error', message)
+export const markTreeItemError = <T>({
+  state,
+  id,
+  message,
+}: {
+  state: TreeProgressState<T>
+  id: string
+  message?: string
+}): void => {
+  updateTreeItemStatus({ state, id, status: 'error', message })
 }
 
 /** Mark an item as skipped */
-export const markTreeItemSkipped = <T>(
-  state: TreeProgressState<T>,
-  id: string,
-  message?: string,
-): void => {
-  updateTreeItemStatus(state, id, 'skipped', message)
+export const markTreeItemSkipped = <T>({
+  state,
+  id,
+  message,
+}: {
+  state: TreeProgressState<T>
+  id: string
+  message?: string
+}): void => {
+  updateTreeItemStatus({ state, id, status: 'skipped', message })
 }
 
 /**
  * Add a new item to the tree progress.
  * Useful for dynamically discovered nested items.
  */
-export const addTreeItem = <T>(
-  state: TreeProgressState<T>,
-  item: { id: string; parentId: string | null; label: string; data?: T },
-): void => {
+export const addTreeItem = <T>({
+  state,
+  item,
+}: {
+  state: TreeProgressState<T>
+  item: { id: string; parentId: string | null; label: string; data?: T }
+}): void => {
   // Check if item already exists
-  if (findItem(state, item.id)) {
+  if (findItem({ state, id: item.id })) {
     return
   }
 
@@ -388,7 +436,13 @@ export const addTreeItem = <T>(
 /**
  * Remove an item from the tree progress.
  */
-export const removeTreeItem = <T>(state: TreeProgressState<T>, id: string): void => {
+export const removeTreeItem = <T>({
+  state,
+  id,
+}: {
+  state: TreeProgressState<T>
+  id: string
+}): void => {
   const index = state.items.findIndex((i) => i.id === id)
   if (index !== -1) {
     state.items.splice(index, 1)
@@ -429,17 +483,23 @@ export const getTreeElapsed = <T>(state: TreeProgressState<T>): number => {
 }
 
 /** Get items with a specific status */
-export const getTreeItemsByStatus = <T>(
-  state: TreeProgressState<T>,
-  status: TreeProgressStatus,
-): TreeProgressItem<T>[] => {
+export const getTreeItemsByStatus = <T>({
+  state,
+  status,
+}: {
+  state: TreeProgressState<T>
+  status: TreeProgressStatus
+}): TreeProgressItem<T>[] => {
   return state.items.filter((i) => i.status === status)
 }
 
 /** Get child items of a parent */
-export const getTreeChildren = <T>(
-  state: TreeProgressState<T>,
-  parentId: string | null,
-): TreeProgressItem<T>[] => {
+export const getTreeChildren = <T>({
+  state,
+  parentId,
+}: {
+  state: TreeProgressState<T>
+  parentId: string | null
+}): TreeProgressItem<T>[] => {
   return state.items.filter((i) => i.parentId === parentId)
 }

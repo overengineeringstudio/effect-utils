@@ -139,20 +139,31 @@ export const findGenieFiles = Effect.fn('discovery/findGenieFiles')(function* (d
   const safeStat = (fullPath: string): Effect.Effect<StatResult, never, never> =>
     fs.stat(fullPath).pipe(
       Effect.map(
-        (stat): StatResult => ({ type: stat.type === 'Directory' ? 'directory' : 'file' }),
+        (stat): StatResult => ({
+          type: stat.type === 'Directory' ? 'directory' : 'file',
+        }),
       ),
       Effect.catchTag('SystemError', (e) => {
         // Handle broken symlinks and other stat failures gracefully
         if (e.reason === 'NotFound') {
           warnings.push(`Skipping broken symlink: ${fullPath}`)
-          return Effect.succeed({ type: 'skip', reason: 'broken symlink' } as StatResult)
+          return Effect.succeed({
+            type: 'skip',
+            reason: 'broken symlink',
+          } as StatResult)
         }
         warnings.push(`Skipping ${fullPath}: ${e.message}`)
-        return Effect.succeed({ type: 'skip', reason: e.message } as StatResult)
+        return Effect.succeed({
+          type: 'skip',
+          reason: e.message,
+        } as StatResult)
       }),
       Effect.catchTag('BadArgument', (e) => {
         warnings.push(`Skipping ${fullPath}: ${e.message}`)
-        return Effect.succeed({ type: 'skip', reason: e.message } as StatResult)
+        return Effect.succeed({
+          type: 'skip',
+          reason: e.message,
+        } as StatResult)
       }),
     )
 

@@ -73,7 +73,10 @@ const program = Effect.scoped(
 ).pipe(
   Effect.provide(
     Layer.mergeAll(
-      nodeHttpLayer(() => createServer(), { port: httpPort, host: '127.0.0.1' }),
+      nodeHttpLayer(() => createServer(), {
+        port: httpPort,
+        host: '127.0.0.1',
+      }),
       layerWebSocket({ port: wsPort }),
     ),
   ),

@@ -63,7 +63,10 @@ export const type: (args: {
     effect: () => locator.pressSequentially(text, delayMs ? { delay: delayMs } : undefined),
   }).pipe(
     Effect.tap(() =>
-      Effect.annotateCurrentSpan({ 'pw.text.len': text.length, 'pw.delay.ms': delayMs ?? 0 }),
+      Effect.annotateCurrentSpan({
+        'pw.text.len': text.length,
+        'pw.delay.ms': delayMs ?? 0,
+      }),
     ),
     Effect.asVoid,
   ),

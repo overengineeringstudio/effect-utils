@@ -90,7 +90,9 @@ export const useEffectButton = <TEnv, TA, TE>({
   onSuccess,
   onError,
 }: UseEffectButtonOptions<TEnv, TA, TE>): EffectButtonResult<TA, TE> => {
-  const [state, setState] = React.useState<EffectButtonState<TA, TE>>({ _tag: 'idle' })
+  const [state, setState] = React.useState<EffectButtonState<TA, TE>>({
+    _tag: 'idle',
+  })
   const [liveDurationMs, setLiveDurationMs] = React.useState(0)
 
   React.useEffect(() => {
@@ -160,5 +162,10 @@ export const useEffectButton = <TEnv, TA, TE>({
     setState({ _tag: 'running', startedAt, cancel, progress: initialProgress })
   }, [effect, onError, onSuccess, runEffect, state])
 
-  return { state, isRunning: state._tag === 'running', liveDurationMs, onPress }
+  return {
+    state,
+    isRunning: state._tag === 'running',
+    liveDurationMs,
+    onPress,
+  }
 }

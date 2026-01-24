@@ -682,7 +682,10 @@ describe('FileSystemBacking', () => {
         const lockDir = `${tempDir}/locks`
         const options = { lockDir }
 
-        const holders = yield* FileSystemBacking.listHolders({ options, key: 'test-key' })
+        const holders = yield* FileSystemBacking.listHolders({
+          options,
+          key: 'test-key',
+        })
         expect(holders).toEqual([])
       }).pipe(Effect.provide(TestLayer), Effect.scoped),
     )
@@ -702,7 +705,10 @@ describe('FileSystemBacking', () => {
           yield* backing.tryAcquire('test-key', 'holder-a', Duration.seconds(30), 10, 2)
           yield* backing.tryAcquire('test-key', 'holder-b', Duration.seconds(30), 10, 3)
 
-          const holders = yield* FileSystemBacking.listHolders({ options, key: 'test-key' })
+          const holders = yield* FileSystemBacking.listHolders({
+            options,
+            key: 'test-key',
+          })
 
           expect(holders).toHaveLength(2)
 
@@ -746,7 +752,10 @@ describe('FileSystemBacking', () => {
           activeLockContent,
         )
 
-        const holders = yield* FileSystemBacking.listHolders({ options, key: 'test-key' })
+        const holders = yield* FileSystemBacking.listHolders({
+          options,
+          key: 'test-key',
+        })
 
         expect(holders).toHaveLength(1)
         expect(holders[0]?.holderId).toBe('holder-active')
@@ -771,7 +780,10 @@ describe('FileSystemBacking', () => {
           yield* backing.tryAcquire('test-key', 'holder-2', Duration.seconds(30), 10, 3)
           yield* backing.tryAcquire('test-key', 'holder-3', Duration.seconds(30), 10, 1)
 
-          const revoked = yield* FileSystemBacking.forceRevokeAll({ options, key: 'test-key' })
+          const revoked = yield* FileSystemBacking.forceRevokeAll({
+            options,
+            key: 'test-key',
+          })
 
           expect(revoked).toHaveLength(3)
           expect(revoked.map((r) => r.holderId).sort()).toEqual([
@@ -795,7 +807,10 @@ describe('FileSystemBacking', () => {
         const lockDir = `${tempDir}/locks`
         const options = { lockDir }
 
-        const revoked = yield* FileSystemBacking.forceRevokeAll({ options, key: 'nonexistent-key' })
+        const revoked = yield* FileSystemBacking.forceRevokeAll({
+          options,
+          key: 'nonexistent-key',
+        })
         expect(revoked).toEqual([])
       }).pipe(Effect.provide(TestLayer), Effect.scoped),
     )

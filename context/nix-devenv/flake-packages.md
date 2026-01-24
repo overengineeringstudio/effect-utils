@@ -98,7 +98,7 @@ To share devenv task modules from your flake:
 outputs = { self, ... }: {
   # Per-system outputs
   packages.x86_64-linux = { ... };
-  
+
   # System-independent outputs
   devenvModules = {
     myTask = ./nix/devenv-modules/my-task.nix;
@@ -110,6 +110,7 @@ outputs = { self, ... }: {
 ```
 
 Consumers import via:
+
 ```nix
 imports = [ inputs.my-repo.devenvModules.myTask ];
 ```

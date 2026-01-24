@@ -189,7 +189,13 @@ export class WorkspaceService extends Context.Tag('dotdot/WorkspaceService')<
           Effect.map((url) => url || undefined),
           Effect.catchAll(() => Effect.succeed(undefined)),
         )
-        return { rev, shortRev, branch, isDirty, remoteUrl } satisfies RepoGitState
+        return {
+          rev,
+          shortRev,
+          branch,
+          isDirty,
+          remoteUrl,
+        } satisfies RepoGitState
       },
       Effect.provideService(CommandExecutor.CommandExecutor, executor),
     )

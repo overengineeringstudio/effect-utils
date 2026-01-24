@@ -37,7 +37,7 @@ describe('progress service state helpers', () => {
         { id: 'item-2', label: 'Item 2' },
       ]
 
-      const state = createState(items)
+      const state = createState({ items })
 
       expect(state.items.size).toBe(2)
       expect(state.items.get('item-1')?.status).toBe('pending')
@@ -46,7 +46,7 @@ describe('progress service state helpers', () => {
     })
 
     it('creates state with metadata', () => {
-      const state = createState([], { foo: 'bar' })
+      const state = createState({ items: [], metadata: { foo: 'bar' } })
 
       expect(state.metadata).toEqual({ foo: 'bar' })
     })
@@ -57,7 +57,7 @@ describe('progress service state helpers', () => {
         { id: 'item-1', label: 'Item 1', data: { value: 42 } },
       ]
 
-      const state = createState(items)
+      const state = createState({ items })
 
       expect(state.items.get('item-1')?.data).toEqual({ value: 42 })
     })
@@ -65,27 +65,34 @@ describe('progress service state helpers', () => {
 
   describe('updateItem', () => {
     it('updates existing item status', () => {
-      const state = createState([{ id: 'item-1', label: 'Item 1' }])
+      const state = createState({ items: [{ id: 'item-1', label: 'Item 1' }] })
 
-      const updated = updateItem(state, 'item-1', { status: 'active', message: 'working...' })
+      const updated = updateItem({
+        state,
+        id: 'item-1',
+        update: {
+          status: 'active',
+          message: 'working...',
+        },
+      })
 
       expect(updated.items.get('item-1')?.status).toBe('active')
       expect(updated.items.get('item-1')?.message).toBe('working...')
     })
 
     it('returns same state for non-existent item', () => {
-      const state = createState([{ id: 'item-1', label: 'Item 1' }])
+      const state = createState({ items: [{ id: 'item-1', label: 'Item 1' }] })
 
-      const updated = updateItem(state, 'non-existent', { status: 'success' })
+      const updated = updateItem({ state, id: 'non-existent', update: { status: 'success' } })
 
       expect(updated).toBe(state)
     })
 
     it('preserves other item properties when updating', () => {
       type MyData = { value: number }
-      const state = createState<MyData>([{ id: 'item-1', label: 'Item 1', data: { value: 42 } }])
+      const state = createState<MyData>({ items: [{ id: 'item-1', label: 'Item 1', data: { value: 42 } }] })
 
-      const updated = updateItem(state, 'item-1', { status: 'success' })
+      const updated = updateItem({ state, id: 'item-1', update: { status: 'success' } })
 
       expect(updated.items.get('item-1')?.data).toEqual({ value: 42 })
       expect(updated.items.get('item-1')?.label).toBe('Item 1')
@@ -94,18 +101,24 @@ describe('progress service state helpers', () => {
 
   describe('addItem', () => {
     it('adds a new item', () => {
-      const state = createState([{ id: 'item-1', label: 'Item 1' }])
+      const state = createState({ items: [{ id: 'item-1', label: 'Item 1' }] })
 
-      const updated = addItem(state, { id: 'item-2', label: 'Item 2' })
+      const updated = addItem({ state, item: { id: 'item-2', label: 'Item 2' } })
 
       expect(updated.items.size).toBe(2)
       expect(updated.items.get('item-2')?.status).toBe('pending')
     })
 
     it('returns same state if item already exists', () => {
-      const state = createState([{ id: 'item-1', label: 'Item 1' }])
+      const state = createState({ items: [{ id: 'item-1', label: 'Item 1' }] })
 
-      const updated = addItem(state, { id: 'item-1', label: 'Different Label' })
+      const updated = addItem({
+        state,
+        item: {
+          id: 'item-1',
+          label: 'Different Label',
+        },
+      })
 
       expect(updated).toBe(state)
     })
@@ -113,21 +126,23 @@ describe('progress service state helpers', () => {
 
   describe('removeItem', () => {
     it('removes an existing item', () => {
-      const state = createState([
-        { id: 'item-1', label: 'Item 1' },
-        { id: 'item-2', label: 'Item 2' },
-      ])
+      const state = createState({
+        items: [
+          { id: 'item-1', label: 'Item 1' },
+          { id: 'item-2', label: 'Item 2' },
+        ],
+      })
 
-      const updated = removeItem(state, 'item-1')
+      const updated = removeItem({ state, id: 'item-1' })
 
       expect(updated.items.size).toBe(1)
       expect(updated.items.has('item-1')).toBe(false)
     })
 
     it('returns same state if item does not exist', () => {
-      const state = createState([{ id: 'item-1', label: 'Item 1' }])
+      const state = createState({ items: [{ id: 'item-1', label: 'Item 1' }] })
 
-      const updated = removeItem(state, 'non-existent')
+      const updated = removeItem({ state, id: 'non-existent' })
 
       expect(updated).toBe(state)
     })
@@ -135,7 +150,7 @@ describe('progress service state helpers', () => {
 
   describe('markComplete', () => {
     it('marks state as complete', () => {
-      const state = createState([{ id: 'item-1', label: 'Item 1' }])
+      const state = createState({ items: [{ id: 'item-1', label: 'Item 1' }] })
 
       const updated = markComplete(state)
 
@@ -151,42 +166,46 @@ describe('progress service state helpers', () => {
 describe('progress service query helpers', () => {
   describe('isAllDone', () => {
     it('returns false when items are pending', () => {
-      const state = createState([{ id: 'item-1', label: 'Item 1' }])
+      const state = createState({ items: [{ id: 'item-1', label: 'Item 1' }] })
 
       expect(isAllDone(state)).toBe(false)
     })
 
     it('returns false when items are active', () => {
-      let state = createState([{ id: 'item-1', label: 'Item 1' }])
-      state = updateItem(state, 'item-1', { status: 'active' })
+      let state = createState({ items: [{ id: 'item-1', label: 'Item 1' }] })
+      state = updateItem({ state, id: 'item-1', update: { status: 'active' } })
 
       expect(isAllDone(state)).toBe(false)
     })
 
     it('returns true when all items are success', () => {
-      let state = createState([
-        { id: 'item-1', label: 'Item 1' },
-        { id: 'item-2', label: 'Item 2' },
-      ])
-      state = updateItem(state, 'item-1', { status: 'success' })
-      state = updateItem(state, 'item-2', { status: 'success' })
+      let state = createState({
+        items: [
+          { id: 'item-1', label: 'Item 1' },
+          { id: 'item-2', label: 'Item 2' },
+        ],
+      })
+      state = updateItem({ state, id: 'item-1', update: { status: 'success' } })
+      state = updateItem({ state, id: 'item-2', update: { status: 'success' } })
 
       expect(isAllDone(state)).toBe(true)
     })
 
     it('returns true when items are error or skipped', () => {
-      let state = createState([
-        { id: 'item-1', label: 'Item 1' },
-        { id: 'item-2', label: 'Item 2' },
-      ])
-      state = updateItem(state, 'item-1', { status: 'error' })
-      state = updateItem(state, 'item-2', { status: 'skipped' })
+      let state = createState({
+        items: [
+          { id: 'item-1', label: 'Item 1' },
+          { id: 'item-2', label: 'Item 2' },
+        ],
+      })
+      state = updateItem({ state, id: 'item-1', update: { status: 'error' } })
+      state = updateItem({ state, id: 'item-2', update: { status: 'skipped' } })
 
       expect(isAllDone(state)).toBe(true)
     })
 
     it('returns true for empty state', () => {
-      const state = createState([])
+      const state = createState({ items: [] })
 
       expect(isAllDone(state)).toBe(true)
     })
@@ -194,17 +213,19 @@ describe('progress service query helpers', () => {
 
   describe('getStatusCounts', () => {
     it('counts items by status', () => {
-      let state = createState([
-        { id: 'a', label: 'A' },
-        { id: 'b', label: 'B' },
-        { id: 'c', label: 'C' },
-        { id: 'd', label: 'D' },
-        { id: 'e', label: 'E' },
-      ])
-      state = updateItem(state, 'b', { status: 'active' })
-      state = updateItem(state, 'c', { status: 'success' })
-      state = updateItem(state, 'd', { status: 'error' })
-      state = updateItem(state, 'e', { status: 'skipped' })
+      let state = createState({
+        items: [
+          { id: 'a', label: 'A' },
+          { id: 'b', label: 'B' },
+          { id: 'c', label: 'C' },
+          { id: 'd', label: 'D' },
+          { id: 'e', label: 'E' },
+        ],
+      })
+      state = updateItem({ state, id: 'b', update: { status: 'active' } })
+      state = updateItem({ state, id: 'c', update: { status: 'success' } })
+      state = updateItem({ state, id: 'd', update: { status: 'error' } })
+      state = updateItem({ state, id: 'e', update: { status: 'skipped' } })
 
       const counts = getStatusCounts(state)
 
@@ -218,15 +239,17 @@ describe('progress service query helpers', () => {
 
   describe('getItemsByStatus', () => {
     it('returns items with matching status', () => {
-      let state = createState([
-        { id: 'a', label: 'A' },
-        { id: 'b', label: 'B' },
-        { id: 'c', label: 'C' },
-      ])
-      state = updateItem(state, 'a', { status: 'success' })
-      state = updateItem(state, 'c', { status: 'success' })
+      let state = createState({
+        items: [
+          { id: 'a', label: 'A' },
+          { id: 'b', label: 'B' },
+          { id: 'c', label: 'C' },
+        ],
+      })
+      state = updateItem({ state, id: 'a', update: { status: 'success' } })
+      state = updateItem({ state, id: 'c', update: { status: 'success' } })
 
-      const successItems = getItemsByStatus(state, 'success')
+      const successItems = getItemsByStatus({ state, status: 'success' })
 
       expect(successItems).toHaveLength(2)
       expect(successItems.map((i) => i.id)).toContain('a')
@@ -234,9 +257,9 @@ describe('progress service query helpers', () => {
     })
 
     it('returns empty array when no items match', () => {
-      const state = createState([{ id: 'a', label: 'A' }])
+      const state = createState({ items: [{ id: 'a', label: 'A' }] })
 
-      const errorItems = getItemsByStatus(state, 'error')
+      const errorItems = getItemsByStatus({ state, status: 'error' })
 
       expect(errorItems).toHaveLength(0)
     })
@@ -262,10 +285,12 @@ describe('createProgressService', () => {
     it('init initializes state', async () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          yield* ops.init([
-            { id: 'item-1', label: 'Item 1', data: { value: 1 } },
-            { id: 'item-2', label: 'Item 2', data: { value: 2 } },
-          ])
+          yield* ops.init({
+            items: [
+              { id: 'item-1', label: 'Item 1', data: { value: 1 } },
+              { id: 'item-2', label: 'Item 2', data: { value: 2 } },
+            ],
+          })
           return yield* ops.get()
         }).pipe(Effect.provide(layer)),
       )
@@ -277,8 +302,8 @@ describe('createProgressService', () => {
     it('markActive updates item to active status', async () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          yield* ops.init([{ id: 'item-1', label: 'Item 1' }])
-          yield* ops.markActive('item-1', 'processing...')
+          yield* ops.init({ items: [{ id: 'item-1', label: 'Item 1' }] })
+          yield* ops.markActive({ id: 'item-1', message: 'processing...' })
           return yield* ops.get()
         }).pipe(Effect.provide(layer)),
       )
@@ -290,8 +315,8 @@ describe('createProgressService', () => {
     it('markSuccess updates item to success status', async () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          yield* ops.init([{ id: 'item-1', label: 'Item 1' }])
-          yield* ops.markSuccess('item-1', 'done')
+          yield* ops.init({ items: [{ id: 'item-1', label: 'Item 1' }] })
+          yield* ops.markSuccess({ id: 'item-1', message: 'done' })
           return yield* ops.get()
         }).pipe(Effect.provide(layer)),
       )
@@ -303,8 +328,8 @@ describe('createProgressService', () => {
     it('markError updates item to error status', async () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          yield* ops.init([{ id: 'item-1', label: 'Item 1' }])
-          yield* ops.markError('item-1', 'failed')
+          yield* ops.init({ items: [{ id: 'item-1', label: 'Item 1' }] })
+          yield* ops.markError({ id: 'item-1', message: 'failed' })
           return yield* ops.get()
         }).pipe(Effect.provide(layer)),
       )
@@ -316,8 +341,8 @@ describe('createProgressService', () => {
     it('markSkipped updates item to skipped status', async () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          yield* ops.init([{ id: 'item-1', label: 'Item 1' }])
-          yield* ops.markSkipped('item-1', 'not needed')
+          yield* ops.init({ items: [{ id: 'item-1', label: 'Item 1' }] })
+          yield* ops.markSkipped({ id: 'item-1', message: 'not needed' })
           return yield* ops.get()
         }).pipe(Effect.provide(layer)),
       )
@@ -329,8 +354,14 @@ describe('createProgressService', () => {
     it('update allows partial updates', async () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          yield* ops.init([{ id: 'item-1', label: 'Item 1' }])
-          yield* ops.update('item-1', { status: 'success', data: { value: 99 } })
+          yield* ops.init({ items: [{ id: 'item-1', label: 'Item 1' }] })
+          yield* ops.update({
+            id: 'item-1',
+            update: {
+              status: 'success',
+              data: { value: 99 },
+            },
+          })
           return yield* ops.get()
         }).pipe(Effect.provide(layer)),
       )
@@ -342,8 +373,12 @@ describe('createProgressService', () => {
     it('addItem adds a new item', async () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          yield* ops.init([{ id: 'item-1', label: 'Item 1' }])
-          yield* ops.addItem({ id: 'item-2', label: 'Item 2', data: { value: 2 } })
+          yield* ops.init({ items: [{ id: 'item-1', label: 'Item 1' }] })
+          yield* ops.addItem({
+            id: 'item-2',
+            label: 'Item 2',
+            data: { value: 2 },
+          })
           return yield* ops.get()
         }).pipe(Effect.provide(layer)),
       )
@@ -355,10 +390,12 @@ describe('createProgressService', () => {
     it('removeItem removes an item', async () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          yield* ops.init([
-            { id: 'item-1', label: 'Item 1' },
-            { id: 'item-2', label: 'Item 2' },
-          ])
+          yield* ops.init({
+            items: [
+              { id: 'item-1', label: 'Item 1' },
+              { id: 'item-2', label: 'Item 2' },
+            ],
+          })
           yield* ops.removeItem('item-1')
           return yield* ops.get()
         }).pipe(Effect.provide(layer)),
@@ -371,7 +408,7 @@ describe('createProgressService', () => {
     it('complete marks state as complete', async () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          yield* ops.init([])
+          yield* ops.init({ items: [] })
           yield* ops.complete()
           return yield* ops.get()
         }).pipe(Effect.provide(layer)),
@@ -383,7 +420,7 @@ describe('createProgressService', () => {
     it('changes returns a stream of state updates', async () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          yield* ops.init([{ id: 'item-1', label: 'Item 1' }])
+          yield* ops.init({ items: [{ id: 'item-1', label: 'Item 1' }] })
 
           const changes = yield* ops.changes()
           const firstState = yield* changes.pipe(Stream.take(1), Stream.runCollect)
@@ -403,8 +440,8 @@ describe('createProgressService', () => {
 
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          yield* service1.ops.init([{ id: 'a', label: 'A', data: 'from-1' }])
-          yield* service2.ops.init([{ id: 'b', label: 'B', data: 'from-2' }])
+          yield* service1.ops.init({ items: [{ id: 'a', label: 'A', data: 'from-1' }] })
+          yield* service2.ops.init({ items: [{ id: 'b', label: 'B', data: 'from-2' }] })
 
           const state1 = yield* service1.ops.get()
           const state2 = yield* service2.ops.get()
@@ -424,7 +461,9 @@ describe('createProgressService', () => {
     it('creates layer with initial state', async () => {
       const { ops, layerWith } = createProgressService<string>('test-layer-with')
 
-      const initialState = createState([{ id: 'pre-existing', label: 'Pre-existing', data: 'x' }])
+      const initialState = createState({
+        items: [{ id: 'pre-existing', label: 'Pre-existing', data: 'x' }],
+      })
       const customLayer = layerWith(initialState)
 
       const result = await Effect.runPromise(

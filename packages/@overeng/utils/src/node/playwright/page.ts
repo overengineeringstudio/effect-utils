@@ -33,7 +33,10 @@ export const goto: (args: {
         page.goto(url, waitUntil !== undefined ? { waitUntil } : {}).then(() => undefined),
     }).pipe(
       Effect.tap(() =>
-        Effect.annotateCurrentSpan({ 'pw.url': url, 'pw.waitUntil': waitUntil ?? '' }),
+        Effect.annotateCurrentSpan({
+          'pw.url': url,
+          'pw.waitUntil': waitUntil ?? '',
+        }),
       ),
     )
   }),
@@ -46,7 +49,10 @@ export const goto: (args: {
  */
 export const url: Effect.Effect<string, PwOpError, PwPage> = Effect.gen(function* () {
   const page = yield* PwPage
-  return yield* tryPw({ op: 'pw.page.url', effect: () => Promise.resolve(page.url()) })
+  return yield* tryPw({
+    op: 'pw.page.url',
+    effect: () => Promise.resolve(page.url()),
+  })
 }).pipe(Effect.withSpan('pw.page.url'))
 
 /** Waits for a specific load state. */
@@ -94,7 +100,10 @@ export const waitForURLChange: (args: {
             .then(() => undefined),
       }).pipe(
         Effect.tap(() =>
-          Effect.annotateCurrentSpan({ 'pw.waitUntil': waitUntil ?? '', 'pw.url': currentUrl }),
+          Effect.annotateCurrentSpan({
+            'pw.waitUntil': waitUntil ?? '',
+            'pw.url': currentUrl,
+          }),
         ),
       )
     }),
@@ -169,9 +178,10 @@ export const waitForTimeout: (args: {
 }) => Effect.Effect<void, PwOpError, PwPage> = Effect.fn('pw.page.waitForTimeout')(({ ms }) =>
   Effect.gen(function* () {
     const page = yield* PwPage
-    yield* tryPw({ op: 'pw.page.waitForTimeout', effect: () => page.waitForTimeout(ms) }).pipe(
-      Effect.tap(() => Effect.annotateCurrentSpan({ 'pw.timeout.ms': ms })),
-    )
+    yield* tryPw({
+      op: 'pw.page.waitForTimeout',
+      effect: () => page.waitForTimeout(ms),
+    }).pipe(Effect.tap(() => Effect.annotateCurrentSpan({ 'pw.timeout.ms': ms })))
   }),
 )
 
@@ -188,9 +198,14 @@ export const jitter: (args?: {
 }) => Effect.Effect<void, PwOpError, PwPage> = Effect.fn('pw.page.jitter')((args) => {
   const msMin = args?.msMin ?? 120
   const msMax = args?.msMax ?? 420
-  return waitForTimeout({ ms: Math.floor(Math.random() * (msMax - msMin + 1)) + msMin }).pipe(
+  return waitForTimeout({
+    ms: Math.floor(Math.random() * (msMax - msMin + 1)) + msMin,
+  }).pipe(
     Effect.tap(() =>
-      Effect.annotateCurrentSpan({ 'pw.jitter.msMin': msMin, 'pw.jitter.msMax': msMax }),
+      Effect.annotateCurrentSpan({
+        'pw.jitter.msMin': msMin,
+        'pw.jitter.msMax': msMax,
+      }),
     ),
   )
 })
@@ -216,7 +231,10 @@ export const setViewportSize: (args: {
         effect: () => page.setViewportSize({ width, height }),
       }).pipe(
         Effect.tap(() =>
-          Effect.annotateCurrentSpan({ 'pw.viewport.width': width, 'pw.viewport.height': height }),
+          Effect.annotateCurrentSpan({
+            'pw.viewport.width': width,
+            'pw.viewport.height': height,
+          }),
         ),
       )
     }),

@@ -252,7 +252,12 @@ export const fromMemberConfigs = (configs: MemberConfigSource[]): RepoGraph => {
     const existingConfig = getRepo({ repoGraph, id: repoName })
     const nodeConfig = existingConfig ?? { url: '' }
 
-    repoGraph = addRepo({ repoGraph, id: repoName, config: nodeConfig, dependencies: deps })
+    repoGraph = addRepo({
+      repoGraph,
+      id: repoName,
+      config: nodeConfig,
+      dependencies: deps,
+    })
   }
 
   return repoGraph

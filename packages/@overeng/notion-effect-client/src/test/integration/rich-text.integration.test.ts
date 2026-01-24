@@ -23,7 +23,9 @@ describe.skipIf(SKIP_INTEGRATION)('RichTextUtils with real Notion data (integrat
         expect(paragraphBlock).toBeDefined()
 
         if (paragraphBlock) {
-          const blockData = paragraphBlock as { paragraph?: { rich_text?: unknown[] } }
+          const blockData = paragraphBlock as {
+            paragraph?: { rich_text?: unknown[] }
+          }
           const richText = blockData.paragraph?.rich_text ?? []
 
           if (richText.length > 0) {
@@ -53,7 +55,9 @@ describe.skipIf(SKIP_INTEGRATION)('RichTextUtils with real Notion data (integrat
         )
 
         if (headingBlock) {
-          const blockData = headingBlock as unknown as { [key: string]: { rich_text?: unknown[] } }
+          const blockData = headingBlock as unknown as {
+            [key: string]: { rich_text?: unknown[] }
+          }
           const richText = blockData[headingBlock.type]?.rich_text ?? []
 
           if (richText.length > 0) {
@@ -80,7 +84,9 @@ describe.skipIf(SKIP_INTEGRATION)('RichTextUtils with real Notion data (integrat
         // Find a paragraph block with rich text
         for (const block of blocks) {
           if (block.type === 'paragraph') {
-            const blockData = block as { paragraph?: { rich_text?: unknown[] } }
+            const blockData = block as {
+              paragraph?: { rich_text?: unknown[] }
+            }
             const richText = blockData.paragraph?.rich_text ?? []
 
             if (richText.length > 0) {

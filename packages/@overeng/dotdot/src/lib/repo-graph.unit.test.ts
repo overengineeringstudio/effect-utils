@@ -12,9 +12,21 @@ describe('RepoGraph', () => {
   describe('topologicalSort', () => {
     it('sorts nodes with no dependencies', async () => {
       let graph = RepoGraph.empty()
-      graph = RepoGraph.addRepo({ repoGraph: graph, id: 'a', config: { url: 'url-a' } })
-      graph = RepoGraph.addRepo({ repoGraph: graph, id: 'b', config: { url: 'url-b' } })
-      graph = RepoGraph.addRepo({ repoGraph: graph, id: 'c', config: { url: 'url-c' } })
+      graph = RepoGraph.addRepo({
+        repoGraph: graph,
+        id: 'a',
+        config: { url: 'url-a' },
+      })
+      graph = RepoGraph.addRepo({
+        repoGraph: graph,
+        id: 'b',
+        config: { url: 'url-b' },
+      })
+      graph = RepoGraph.addRepo({
+        repoGraph: graph,
+        id: 'c',
+        config: { url: 'url-c' },
+      })
 
       const result = await Effect.runPromise(RepoGraph.topologicalSort(graph))
 
@@ -156,9 +168,21 @@ describe('RepoGraph', () => {
   describe('toLayers', () => {
     it('groups independent nodes in same layer', async () => {
       let graph = RepoGraph.empty()
-      graph = RepoGraph.addRepo({ repoGraph: graph, id: 'a', config: { url: 'url-a' } })
-      graph = RepoGraph.addRepo({ repoGraph: graph, id: 'b', config: { url: 'url-b' } })
-      graph = RepoGraph.addRepo({ repoGraph: graph, id: 'c', config: { url: 'url-c' } })
+      graph = RepoGraph.addRepo({
+        repoGraph: graph,
+        id: 'a',
+        config: { url: 'url-a' },
+      })
+      graph = RepoGraph.addRepo({
+        repoGraph: graph,
+        id: 'b',
+        config: { url: 'url-b' },
+      })
+      graph = RepoGraph.addRepo({
+        repoGraph: graph,
+        id: 'c',
+        config: { url: 'url-c' },
+      })
 
       const layers = await Effect.runPromise(RepoGraph.toLayers(graph))
 

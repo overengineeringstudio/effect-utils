@@ -90,7 +90,9 @@ describe('RenderScheduler', () => {
 
         yield* Effect.scoped(
           Effect.gen(function* () {
-            const scheduler = yield* RenderScheduler.make(tui, { intervalMs: 100 })
+            const scheduler = yield* RenderScheduler.make(tui, {
+              intervalMs: 100,
+            })
 
             // Request render
             yield* scheduler.requestRender()
@@ -114,7 +116,9 @@ describe('RenderScheduler', () => {
 
         yield* Effect.scoped(
           Effect.gen(function* () {
-            const scheduler = yield* RenderScheduler.make(tui, { intervalMs: 100 })
+            const scheduler = yield* RenderScheduler.make(tui, {
+              intervalMs: 100,
+            })
 
             // Multiple render requests in same interval
             yield* scheduler.requestRender()

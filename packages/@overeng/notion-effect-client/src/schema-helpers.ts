@@ -76,7 +76,10 @@ export const getProperties = (args: { schema: DatabaseSchema }): PropertySchema[
   const results: PropertySchema[] = []
 
   for (const [name, rawValue] of Object.entries(rawProperties)) {
-    const normalized = normalizeDatabasePropertyDefinition({ name, raw: rawValue })
+    const normalized = normalizeDatabasePropertyDefinition({
+      name,
+      raw: rawValue,
+    })
     if (Option.isNone(normalized)) {
       continue
     }
@@ -221,7 +224,11 @@ export const getSelectOptions = (args: {
   schema: DatabaseSchema
   property: string
 }): Option.Option<readonly SelectOptionConfig[]> => {
-  const prop = getPropertyByTag({ schema: args.schema, name: args.property, tag: 'select' })
+  const prop = getPropertyByTag({
+    schema: args.schema,
+    name: args.property,
+    tag: 'select',
+  })
   return Option.map(prop, (p) => p.select.options)
 }
 
@@ -232,7 +239,11 @@ export const getMultiSelectOptions = (args: {
   schema: DatabaseSchema
   property: string
 }): Option.Option<readonly SelectOptionConfig[]> => {
-  const prop = getPropertyByTag({ schema: args.schema, name: args.property, tag: 'multi_select' })
+  const prop = getPropertyByTag({
+    schema: args.schema,
+    name: args.property,
+    tag: 'multi_select',
+  })
   return Option.map(prop, (p) => p.multi_select.options)
 }
 
@@ -243,7 +254,11 @@ export const getStatusOptions = (args: {
   schema: DatabaseSchema
   property: string
 }): Option.Option<readonly SelectOptionConfig[]> => {
-  const prop = getPropertyByTag({ schema: args.schema, name: args.property, tag: 'status' })
+  const prop = getPropertyByTag({
+    schema: args.schema,
+    name: args.property,
+    tag: 'status',
+  })
   return Option.map(prop, (p) => p.status.options)
 }
 
@@ -290,7 +305,11 @@ export const getRelationTarget = (args: {
   schema: DatabaseSchema
   property: string
 }): Option.Option<RelationTarget> => {
-  const prop = getPropertyByTag({ schema: args.schema, name: args.property, tag: 'relation' })
+  const prop = getPropertyByTag({
+    schema: args.schema,
+    name: args.property,
+    tag: 'relation',
+  })
   return Option.map(prop, (p) => ({
     databaseId: p.relation.database_id,
     type: p.relation.type,
@@ -310,7 +329,10 @@ export const getRelationTargetOrFail = Effect.fnUntraced(function* (args: {
   databaseId: string
   property: string
 }) {
-  const target = getRelationTarget({ schema: args.schema, property: args.property })
+  const target = getRelationTarget({
+    schema: args.schema,
+    property: args.property,
+  })
   if (Option.isSome(target)) {
     return target.value
   }
@@ -334,7 +356,11 @@ export const getFormulaExpression = (args: {
   schema: DatabaseSchema
   property: string
 }): Option.Option<string> => {
-  const prop = getPropertyByTag({ schema: args.schema, name: args.property, tag: 'formula' })
+  const prop = getPropertyByTag({
+    schema: args.schema,
+    name: args.property,
+    tag: 'formula',
+  })
   return Option.map(prop, (p) => p.formula.expression)
 }
 
@@ -349,7 +375,11 @@ export const getNumberFormat = (args: {
   schema: DatabaseSchema
   property: string
 }): Option.Option<NumberFormat> => {
-  const prop = getPropertyByTag({ schema: args.schema, name: args.property, tag: 'number' })
+  const prop = getPropertyByTag({
+    schema: args.schema,
+    name: args.property,
+    tag: 'number',
+  })
   return Option.map(prop, (p) => p.number.format)
 }
 
@@ -373,7 +403,11 @@ export const getRollupConfig = (args: {
   schema: DatabaseSchema
   property: string
 }): Option.Option<RollupConfig> => {
-  const prop = getPropertyByTag({ schema: args.schema, name: args.property, tag: 'rollup' })
+  const prop = getPropertyByTag({
+    schema: args.schema,
+    name: args.property,
+    tag: 'rollup',
+  })
   return Option.map(prop, (p) => ({
     relationPropertyName: p.rollup.relation_property_name,
     relationPropertyId: p.rollup.relation_property_id,
@@ -394,7 +428,11 @@ export const getUniqueIdPrefix = (args: {
   schema: DatabaseSchema
   property: string
 }): Option.Option<string | null> => {
-  const prop = getPropertyByTag({ schema: args.schema, name: args.property, tag: 'unique_id' })
+  const prop = getPropertyByTag({
+    schema: args.schema,
+    name: args.property,
+    tag: 'unique_id',
+  })
   return Option.map(prop, (p) => p.unique_id.prefix)
 }
 

@@ -9,7 +9,12 @@ export { outputLines, formatMemberState, formatSyncResult, formatActionLine } fr
 export type { MemberState, SyncStatus } from './common.ts'
 
 export { renderStatus } from './status-renderer.ts'
-export type { MemberStatus, StatusRenderInput, GitStatus, LockStaleness } from './status-renderer.ts'
+export type {
+  MemberStatus,
+  StatusRenderInput,
+  GitStatus,
+  LockStaleness,
+} from './status-renderer.ts'
 
 export { renderSync } from './sync-renderer.ts'
 export type { MemberSyncResult, SyncRenderInput } from './sync-renderer.ts'

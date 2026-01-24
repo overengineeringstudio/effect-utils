@@ -36,7 +36,9 @@ ruleTester.run('named-args: valid zero or one param', rule, {
     { code: `const greet = (name) => 'hello ' + name` },
     { code: `function greet(name) { return 'hello ' + name }` },
     { code: `export const greet = (name) => 'hello ' + name` },
-    { code: `const createUser = ({ name, email, age }) => ({ name, email, age })` },
+    {
+      code: `const createUser = ({ name, email, age }) => ({ name, email, age })`,
+    },
     { code: `function createUser({ name, email }) { return { name, email } }` },
   ],
   invalid: [],
@@ -74,7 +76,9 @@ ruleTester.run('named-args: valid Effect patterns', rule, {
     { code: `const myEffect = Effect.gen(function* (_) { return 42 })` },
     { code: `const myFn = F.dual(2, (self, name) => self + name)` },
     { code: `const myFn = F.dual(3, (self, a, b) => self + a + b)` },
-    { code: `const myFn = F.dual(2, function(self, name) { return self + name })` },
+    {
+      code: `const myFn = F.dual(2, function(self, name) { return self + name })`,
+    },
     { code: `const myFn = Function.dual(2, (self, name) => self + name)` },
     { code: `const myFn = Fn.dual(2, (self, name) => self + name)` },
     { code: `const myFn = dual(2, (self, name) => self + name)` },

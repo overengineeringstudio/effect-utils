@@ -70,7 +70,11 @@ const buildSearchBody = (opts: SearchOptions): Record<string, unknown> => {
 /** Internal raw search - used by both search and searchStream */
 const searchRaw = Effect.fn('NotionSearch.search')(function* (opts: SearchOptions) {
   const body = buildSearchBody(opts)
-  const response = yield* post({ path: '/search', body, responseSchema: SearchResponseSchema })
+  const response = yield* post({
+    path: '/search',
+    body,
+    responseSchema: SearchResponseSchema,
+  })
   return toPaginatedResult(response)
 })
 

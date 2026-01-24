@@ -23,7 +23,10 @@ export interface ParsedSchema {
 export interface PropertyDiff {
   readonly name: string
   readonly type: 'added' | 'removed' | 'type_changed'
-  readonly live?: { readonly type: NotionPropertyType; readonly transform: string }
+  readonly live?: {
+    readonly type: NotionPropertyType
+    readonly transform: string
+  }
   readonly generated?: { readonly transformKey: string }
 }
 

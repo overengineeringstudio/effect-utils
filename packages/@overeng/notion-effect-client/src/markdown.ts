@@ -440,7 +440,11 @@ const nodeToMarkdown = (opts: {
 
     // Apply the transformer
     const blockWithData = node.block as Block & { [key: string]: unknown }
-    return yield* applyTransformer({ transformer, block: blockWithData, children: childrenMd })
+    return yield* applyTransformer({
+      transformer,
+      block: blockWithData,
+      children: childrenMd,
+    })
   })
 
 /**

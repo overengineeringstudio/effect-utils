@@ -59,7 +59,10 @@ export const createSchemaAwareNodeRenderer = ({
   /** Schema-aware ObjectPreview that uses schema annotations */
   const hasOwnPropertyOnObject = (obj: object, prop: string) => hasOwnProperty.call(obj, prop)
 
-  const SchemaAwareObjectPreviewForPath: FC<{ data: unknown; path: string }> = ({ data, path }) => {
+  const SchemaAwareObjectPreviewForPath: FC<{
+    data: unknown
+    path: string
+  }> = ({ data, path }) => {
     const rootCtx = useSchemaContext()
     const schemaCtx = rootCtx.getContextForPath(path)
 

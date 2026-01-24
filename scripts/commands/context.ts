@@ -22,7 +22,11 @@ const contextExamplesCommand = Command.make('examples', {}, () =>
           yield* ciGroup(options.label)
 
           yield* Effect.acquireRelease(
-            startProcess({ command: 'bun', args: options.serverArgs, cwd: socketCwd }),
+            startProcess({
+              command: 'bun',
+              args: options.serverArgs,
+              cwd: socketCwd,
+            }),
             (process) => process.kill('SIGTERM').pipe(Effect.catchAll(() => Effect.void)),
           )
 

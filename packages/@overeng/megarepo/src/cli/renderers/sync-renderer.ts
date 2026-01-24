@@ -16,7 +16,14 @@ import { kv, separator, styled, symbols } from '@overeng/cli-ui'
 /** Sync result for a single member */
 export type MemberSyncResult = {
   readonly name: string
-  readonly status: 'cloned' | 'synced' | 'already_synced' | 'skipped' | 'error' | 'updated' | 'locked'
+  readonly status:
+    | 'cloned'
+    | 'synced'
+    | 'already_synced'
+    | 'skipped'
+    | 'error'
+    | 'updated'
+    | 'locked'
   readonly message?: string | undefined
   /** Commit that was synced to (for display) */
   readonly commit?: string | undefined
@@ -209,12 +216,16 @@ export const renderSync = ({
     // Show changes first (cloned, synced, updated)
     for (const r of cloned) {
       const refInfo = r.ref ? ` ${styled.dim(`(${r.ref})`)}` : ''
-      output.push(`${getStatusSymbol(r)} ${styled.bold(r.name)} ${styled.green('cloned')}${refInfo}`)
+      output.push(
+        `${getStatusSymbol(r)} ${styled.bold(r.name)} ${styled.green('cloned')}${refInfo}`,
+      )
     }
 
     for (const r of synced) {
       const refInfo = r.ref ? ` ${styled.dim(`(${r.ref})`)}` : ''
-      output.push(`${getStatusSymbol(r)} ${styled.bold(r.name)} ${styled.green('synced')}${refInfo}`)
+      output.push(
+        `${getStatusSymbol(r)} ${styled.bold(r.name)} ${styled.green('synced')}${refInfo}`,
+      )
     }
 
     // Updated members (from --pull mode)
@@ -235,9 +246,7 @@ export const renderSync = ({
 
     // Show errors
     for (const r of errors) {
-      output.push(
-        `${getStatusSymbol(r)} ${styled.bold(r.name)} ${styled.red(formatStatusText(r))}`,
-      )
+      output.push(`${getStatusSymbol(r)} ${styled.bold(r.name)} ${styled.red(formatStatusText(r))}`)
     }
 
     // Show skipped
@@ -297,7 +306,9 @@ export const renderSync = ({
   if (nestedMegarepos.length > 0 && !deep) {
     output.push('')
     output.push(
-      styled.dim(`Note: ${nestedMegarepos.length} member${nestedMegarepos.length > 1 ? 's' : ''} contain nested megarepos`),
+      styled.dim(
+        `Note: ${nestedMegarepos.length} member${nestedMegarepos.length > 1 ? 's' : ''} contain nested megarepos`,
+      ),
     )
     output.push(styled.dim(`      Run 'mr sync --deep' to sync them`))
   }

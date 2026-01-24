@@ -31,7 +31,11 @@ const categorizeHandle = (handle: unknown): HandleInfo => {
       details = `timeout: ${timer._idleTimeout}ms`
     }
   } else if (type === 'Socket' || type === 'TCP') {
-    const socket = handle as { remoteAddress?: string; remotePort?: number; localPort?: number }
+    const socket = handle as {
+      remoteAddress?: string
+      remotePort?: number
+      localPort?: number
+    }
     if (socket.remoteAddress) {
       details = `remote: ${socket.remoteAddress}:${socket.remotePort}`
     } else if (socket.localPort) {

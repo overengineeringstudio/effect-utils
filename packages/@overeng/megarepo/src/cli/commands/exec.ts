@@ -35,7 +35,12 @@ export const execCommand = Cli.Command.make(
 
       if (Option.isNone(root)) {
         if (json) {
-          console.log(JSON.stringify({ error: 'not_found', message: 'No megarepo.json found' }))
+          console.log(
+            JSON.stringify({
+              error: 'not_found',
+              message: 'No megarepo.json found',
+            }),
+          )
         } else {
           yield* Console.error(`${styled.red(symbols.cross)} Not in a megarepo`)
         }
@@ -66,14 +71,24 @@ export const execCommand = Cli.Command.make(
         return yield* Effect.fail(new Error('Member not found'))
       }
 
-      const results: Array<{ name: string; exitCode: number; stdout: string; stderr: string }> = []
+      const results: Array<{
+        name: string
+        exitCode: number
+        stdout: string
+        stderr: string
+      }> = []
 
       for (const name of membersToRun) {
         const memberPath = getMemberPath({ megarepoRoot: root.value, name })
         const exists = yield* fs.exists(memberPath)
 
         if (!exists) {
-          results.push({ name, exitCode: -1, stdout: '', stderr: 'Member not synced' })
+          results.push({
+            name,
+            exitCode: -1,
+            stdout: '',
+            stderr: 'Member not synced',
+          })
           continue
         }
 

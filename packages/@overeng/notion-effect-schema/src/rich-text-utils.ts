@@ -74,7 +74,10 @@ const applyMarkdownAnnotations = (opts: { text: string; annotations: TextAnnotat
 
 /** Convert a single text rich text element to markdown */
 const textRichTextToMarkdown = (rt: TextRichText): string => {
-  let text = applyMarkdownAnnotations({ text: rt.plain_text, annotations: rt.annotations })
+  let text = applyMarkdownAnnotations({
+    text: rt.plain_text,
+    annotations: rt.annotations,
+  })
 
   // Apply link if present
   if (rt.href !== null) {
@@ -219,7 +222,10 @@ const applyHtmlAnnotations = (opts: { text: string; annotations: TextAnnotations
 /** Convert a single text rich text element to HTML */
 const textRichTextToHtml = (rt: TextRichText): string => {
   const escapedText = escapeHtml(rt.plain_text)
-  let html = applyHtmlAnnotations({ text: escapedText, annotations: rt.annotations })
+  let html = applyHtmlAnnotations({
+    text: escapedText,
+    annotations: rt.annotations,
+  })
 
   // Apply link if present
   if (rt.href !== null) {

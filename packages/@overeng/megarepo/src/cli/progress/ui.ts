@@ -43,13 +43,16 @@ import type { ProgressState, ProgressItem, ProgressItemStatus } from './service.
 /** Options for the progress UI */
 export type ProgressUIOptions<TData = unknown> = {
   /** Format an item for display (optional, defaults to label + message) */
-  formatItem?: (item: ProgressItem<TData>) => { label: string; message?: string | undefined }
+  formatItem?: (item: ProgressItem<TData>) => {
+    label: string
+    message?: string | undefined
+  }
   /** Whether to show the summary line (default: true) */
   showSummary?: boolean
   /** Spinner interval in ms (default: 80) */
   spinnerInterval?: number
   /** Custom summary formatter */
-  formatSummary?: (state: ProgressState<TData>, elapsed: number) => string
+  formatSummary?: (args: { state: ProgressState<TData>; elapsed: number }) => string
 }
 
 /** Header options for starting the UI */
@@ -81,7 +84,13 @@ export type ProgressUIHandle = {
 // =============================================================================
 
 /** Get status icon for an item */
-const getStatusIcon = (status: ProgressItemStatus, frame: number): string => {
+const getStatusIcon = ({
+  status,
+  frame,
+}: {
+  status: ProgressItemStatus
+  frame: number
+}): string => {
   switch (status) {
     case 'pending':
       return styled.dim(symbols.circle)
@@ -97,12 +106,19 @@ const getStatusIcon = (status: ProgressItemStatus, frame: number): string => {
 }
 
 /** Format an item line */
-const formatItemLine = <TData>(
-  item: ProgressItem<TData>,
-  frame: number,
-  formatItem?: (item: ProgressItem<TData>) => { label: string; message?: string | undefined },
-): string => {
-  const icon = getStatusIcon(item.status, frame)
+const formatItemLine = <TData>({
+  item,
+  frame,
+  formatItem,
+}: {
+  item: ProgressItem<TData>
+  frame: number
+  formatItem?: (item: ProgressItem<TData>) => {
+    label: string
+    message?: string | undefined
+  }
+}): string => {
+  const icon = getStatusIcon({ status: item.status, frame })
   const formatted = formatItem ? formatItem(item) : { label: item.label, message: item.message }
 
   let label: string
@@ -120,13 +136,17 @@ const formatItemLine = <TData>(
 }
 
 /** Format the summary line */
-const formatSummaryLine = <TData>(
-  state: ProgressState<TData>,
-  elapsed: number,
-  customFormat?: (state: ProgressState<TData>, elapsed: number) => string,
-): string => {
+const formatSummaryLine = <TData>({
+  state,
+  elapsed,
+  customFormat,
+}: {
+  state: ProgressState<TData>
+  elapsed: number
+  customFormat?: (args: { state: ProgressState<TData>; elapsed: number }) => string
+}): string => {
   if (customFormat) {
-    return customFormat(state, elapsed)
+    return customFormat({ state, elapsed })
   }
 
   const counts = { success: 0, error: 0, skipped: 0, pending: 0, active: 0 }
@@ -151,28 +171,42 @@ const formatSummaryLine = <TData>(
 // =============================================================================
 
 /** Render all items */
-const renderItems = <TData>(
-  state: ProgressState<TData>,
-  frame: number,
-  formatItem?: (item: ProgressItem<TData>) => { label: string; message?: string | undefined },
-): string[] => {
+const renderItems = <TData>({
+  state,
+  frame,
+  formatItem,
+}: {
+  state: ProgressState<TData>
+  frame: number
+  formatItem?: (item: ProgressItem<TData>) => {
+    label: string
+    message?: string | undefined
+  }
+}): string[] => {
   const lines: string[] = []
   for (const item of state.items.values()) {
-    lines.push(formatItemLine(item, frame, formatItem))
+    lines.push(formatItemLine({ item, frame, formatItem }))
   }
   return lines
 }
 
 /** Re-render the display */
-const rerender = <TData>(
-  state: ProgressState<TData>,
-  renderState: ProgressUIHandle['renderState'],
+const rerender = <TData>({
+  state,
+  renderState,
+  options,
+}: {
+  state: ProgressState<TData>
+  renderState: ProgressUIHandle['renderState']
   options: {
-    formatItem?: (item: ProgressItem<TData>) => { label: string; message?: string | undefined }
+    formatItem?: (item: ProgressItem<TData>) => {
+      label: string
+      message?: string | undefined
+    }
     showSummary: boolean
-    formatSummary?: (state: ProgressState<TData>, elapsed: number) => string
-  },
-): void => {
+    formatSummary?: (args: { state: ProgressState<TData>; elapsed: number }) => string
+  }
+}): void => {
   const { formatItem, showSummary, formatSummary } = options
 
   // Move cursor up
@@ -181,14 +215,19 @@ const rerender = <TData>(
   }
 
   // Re-render lines
-  const lines = renderItems(state, renderState.frame, formatItem)
+  const lines = renderItems({ state, frame: renderState.frame, formatItem })
   for (const line of lines) {
     write(cursorToStart + clearToEOL + line + '\n')
   }
 
   if (showSummary) {
     const elapsed = Date.now() - state.startTime
-    write(cursorToStart + clearToEOL + formatSummaryLine(state, elapsed, formatSummary) + '\n')
+    write(
+      cursorToStart +
+        clearToEOL +
+        formatSummaryLine({ state, elapsed, customFormat: formatSummary }) +
+        '\n',
+    )
     write(cursorToStart + clearToEOL + '\n')
     renderState.renderedLines = lines.length + 2
   } else {
@@ -214,16 +253,22 @@ type ProgressOps<TData, TProgress> = {
  * @param ops - The progress service operations
  * @param options - UI options
  */
-export const createProgressUI = <TData, TProgress>(
-  ops: ProgressOps<TData, TProgress>,
-  options: ProgressUIOptions<TData> = {},
-) => {
+export const createProgressUI = <TData, TProgress>({
+  ops,
+  options = {} as ProgressUIOptions<TData>,
+}: {
+  ops: ProgressOps<TData, TProgress>
+  options?: ProgressUIOptions<TData>
+}) => {
   const { formatItem, showSummary = true, spinnerInterval = 80, formatSummary } = options
 
   const renderOptions: {
-    formatItem?: (item: ProgressItem<TData>) => { label: string; message?: string | undefined }
+    formatItem?: (item: ProgressItem<TData>) => {
+      label: string
+      message?: string | undefined
+    }
     showSummary: boolean
-    formatSummary?: (state: ProgressState<TData>, elapsed: number) => string
+    formatSummary?: (args: { state: ProgressState<TData>; elapsed: number }) => string
   } = {
     showSummary,
     ...(formatItem ? { formatItem } : {}),
@@ -265,7 +310,7 @@ export const createProgressUI = <TData, TProgress>(
       const initialState = yield* ops.get()
 
       // Initial render
-      const lines = renderItems(initialState, renderState.frame, formatItem)
+      const lines = renderItems({ state: initialState, frame: renderState.frame, formatItem })
       for (const line of lines) {
         writeLine(line)
       }
@@ -284,7 +329,7 @@ export const createProgressUI = <TData, TProgress>(
       const subscriberFiber = yield* changes.pipe(
         Stream.tap((state) =>
           Effect.sync(() => {
-            rerender(state, renderState, renderOptions)
+            rerender({ state, renderState, options: renderOptions })
           }),
         ),
         Stream.takeUntil((state) => state.isComplete),
@@ -298,7 +343,11 @@ export const createProgressUI = <TData, TProgress>(
       spinnerHandle = setInterval(() => {
         renderState.frame++
         if (renderState.lastState) {
-          rerender(renderState.lastState as ProgressState<TData>, renderState, renderOptions)
+          rerender({
+            state: renderState.lastState as ProgressState<TData>,
+            renderState,
+            options: renderOptions,
+          })
         }
       }, spinnerInterval)
 
@@ -329,7 +378,7 @@ export const createProgressUI = <TData, TProgress>(
       // Final render
       const state = yield* ops.get()
       handle.renderState.frame = 0 // Reset frame for static final render
-      rerender(state, handle.renderState, renderOptions)
+      rerender({ state, renderState: handle.renderState, options: renderOptions })
 
       // Show cursor
       write(showCursor)

@@ -199,11 +199,21 @@ const buildResolvedDatabaseConfig = (opts: {
   id: opts.id,
   output: opts.output,
   ...(opts.merged.name !== undefined && { name: opts.merged.name }),
-  ...(opts.merged.includeWrite !== undefined && { includeWrite: opts.merged.includeWrite }),
-  ...(opts.merged.typedOptions !== undefined && { typedOptions: opts.merged.typedOptions }),
-  ...(opts.merged.schemaMeta !== undefined && { schemaMeta: opts.merged.schemaMeta }),
-  ...(opts.merged.includeApi !== undefined && { includeApi: opts.merged.includeApi }),
-  ...(opts.normalizedTransforms !== undefined && { transforms: opts.normalizedTransforms }),
+  ...(opts.merged.includeWrite !== undefined && {
+    includeWrite: opts.merged.includeWrite,
+  }),
+  ...(opts.merged.typedOptions !== undefined && {
+    typedOptions: opts.merged.typedOptions,
+  }),
+  ...(opts.merged.schemaMeta !== undefined && {
+    schemaMeta: opts.merged.schemaMeta,
+  }),
+  ...(opts.merged.includeApi !== undefined && {
+    includeApi: opts.merged.includeApi,
+  }),
+  ...(opts.normalizedTransforms !== undefined && {
+    transforms: opts.normalizedTransforms,
+  }),
 })
 
 /** Resolve database configs with outputDir and defaults applied */

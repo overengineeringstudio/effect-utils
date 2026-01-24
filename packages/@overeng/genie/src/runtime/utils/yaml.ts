@@ -112,7 +112,13 @@ const stringifyValue = (value: unknown, indent: number): string => {
           return `${prefix}${quotedKey}:${stringifiedVal}`
         }
         // Inline array - check if it needs wrapping to next line
-        if (shouldWrapInlineArray({ keyLength: quotedKey.length, arr: val, indent })) {
+        if (
+          shouldWrapInlineArray({
+            keyLength: quotedKey.length,
+            arr: val,
+            indent,
+          })
+        ) {
           // Check if it should use multi-line inline format
           if (shouldUseMultilineInlineArray({ arr: val, indent: indent + 1 })) {
             return `${prefix}${quotedKey}:\n${prefix}${INDENT}${formatMultilineInlineArray({ arr: val, indent: indent + 1 })}`
@@ -228,7 +234,13 @@ export const stringify = (value: unknown): string => {
         return `${quotedKey}:${stringifiedVal}`
       }
       // Inline array - check if it needs wrapping to next line
-      if (shouldWrapInlineArray({ keyLength: quotedKey.length, arr: val, indent: 0 })) {
+      if (
+        shouldWrapInlineArray({
+          keyLength: quotedKey.length,
+          arr: val,
+          indent: 0,
+        })
+      ) {
         // Check if it should use multi-line inline format
         if (shouldUseMultilineInlineArray({ arr: val, indent: 1 })) {
           return `${quotedKey}:\n${INDENT}${formatMultilineInlineArray({ arr: val, indent: 1 })}`

@@ -207,18 +207,27 @@ describe('store worktree paths', () => {
 
         // Test path generation for branch
         const branchSource = parseSourceString('owner/repo#main')!
-        const branchPath = store.getWorktreePath({ source: branchSource, ref: 'main' })
+        const branchPath = store.getWorktreePath({
+          source: branchSource,
+          ref: 'main',
+        })
         expect(branchPath).toContain('refs/heads/main/')
 
         // Test path generation for tag
         const tagSource = parseSourceString('owner/repo#v1.0.0')!
-        const tagPath = store.getWorktreePath({ source: tagSource, ref: 'v1.0.0' })
+        const tagPath = store.getWorktreePath({
+          source: tagSource,
+          ref: 'v1.0.0',
+        })
         expect(tagPath).toContain('refs/tags/v1.0.0/')
 
         // Test path generation for commit (must be exactly 40 hex chars)
         const commitRef = 'abcdef1234567890abcdef1234567890abcdef12'
         const commitSource = parseSourceString(`owner/repo#${commitRef}`)!
-        const commitPath = store.getWorktreePath({ source: commitSource, ref: commitRef })
+        const commitPath = store.getWorktreePath({
+          source: commitSource,
+          ref: commitRef,
+        })
         expect(commitPath).toContain('refs/commits/')
       }),
     ))
@@ -237,7 +246,10 @@ describe('store worktree paths', () => {
 
         // Test path generation for branch with special characters
         const source = parseSourceString('owner/repo')!
-        const pathWithSlash = store.getWorktreePath({ source, ref: 'feature/my-branch' })
+        const pathWithSlash = store.getWorktreePath({
+          source,
+          ref: 'feature/my-branch',
+        })
         // The slash should be URL-encoded
         expect(pathWithSlash).toContain('feature%2Fmy-branch')
       }),
@@ -313,7 +325,10 @@ describe('lock file pin/unpin operations', () => {
 
         // Import and use unpinMember
         const { unpinMember } = yield* Effect.promise(() => import('../lib/lock.ts'))
-        const unpinnedLockFile = unpinMember({ lockFile, memberName: 'my-lib' })
+        const unpinnedLockFile = unpinMember({
+          lockFile,
+          memberName: 'my-lib',
+        })
 
         // Verify the member is now unpinned
         expect(unpinnedLockFile.members['my-lib']!.pinned).toBe(false)

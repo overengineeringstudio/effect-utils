@@ -35,7 +35,10 @@ export const envCommand = Cli.Command.make(
 
       if (Option.isNone(root)) {
         if (json) {
-          return yield* jsonError({ error: 'not_found', message: 'No megarepo.json found' })
+          return yield* jsonError({
+            error: 'not_found',
+            message: 'No megarepo.json found',
+          })
         }
         yield* Console.error(`${styled.red(symbols.cross)} No megarepo.json found`)
         return yield* Effect.fail(new Error('Not in a megarepo'))

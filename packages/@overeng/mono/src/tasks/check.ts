@@ -29,13 +29,19 @@ export const checkAllWithTaskSystem = Effect.fn('checkAllWithTaskSystem')(functi
   const typecheckTask = task({
     id: 'typecheck' as const,
     name: 'Type checking',
-    command: { cmd: resolveLocalTsc(), args: ['--build', 'tsconfig.all.json'] },
+    command: {
+      cmd: resolveLocalTsc(),
+      args: ['--build', 'tsconfig.all.json'],
+    },
   })
 
   const lintTask = task({
     id: 'lint' as const,
     name: 'Lint (format + oxlint + genie coverage)',
-    effect: allLintChecks({ oxcConfig: config.oxcConfig, genieConfig: config.genieConfig }),
+    effect: allLintChecks({
+      oxcConfig: config.oxcConfig,
+      genieConfig: config.genieConfig,
+    }),
   })
 
   // Test task depends on all parallel tasks

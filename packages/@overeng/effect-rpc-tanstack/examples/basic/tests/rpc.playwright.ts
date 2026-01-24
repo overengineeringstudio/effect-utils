@@ -35,7 +35,10 @@ test.describe('Effect RPC + TanStack Start', () => {
         yield* Pw.Locator.fill({ locator: nameInput, value: 'Charlie' })
 
         const emailInput = yield* Pw.Locator.getByTestId('email-input')
-        yield* Pw.Locator.fill({ locator: emailInput, value: 'charlie@example.com' })
+        yield* Pw.Locator.fill({
+          locator: emailInput,
+          value: 'charlie@example.com',
+        })
 
         const submitButton = yield* Pw.Locator.getByTestId('submit-button')
         yield* Pw.Locator.click({ locator: submitButton })

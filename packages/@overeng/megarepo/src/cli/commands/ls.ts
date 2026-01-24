@@ -23,7 +23,10 @@ export const lsCommand = Cli.Command.make('ls', { json: jsonOption }, ({ json })
 
     if (Option.isNone(root)) {
       if (json) {
-        return yield* jsonError({ error: 'not_found', message: 'No megarepo.json found' })
+        return yield* jsonError({
+          error: 'not_found',
+          message: 'No megarepo.json found',
+        })
       }
       yield* Console.error(`${styled.red(symbols.cross)} Not in a megarepo`)
       return yield* Effect.fail(new Error('Not in a megarepo'))

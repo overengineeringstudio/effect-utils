@@ -46,7 +46,10 @@ const runPureBaseline = (config: ComparisonConfig): Effect.Effect<RunResult> =>
     const eventsPerTask = config.eventsPerSecond / config.taskCount
     const intervalMs = Math.max(1, Math.floor(1000 / eventsPerTask))
 
-    const eventQueue = yield* Queue.unbounded<{ taskId: string; data: string }>()
+    const eventQueue = yield* Queue.unbounded<{
+      taskId: string
+      data: string
+    }>()
     let totalEvents = 0
 
     const startTime = timer.now()
@@ -74,7 +77,9 @@ const runPureBaseline = (config: ComparisonConfig): Effect.Effect<RunResult> =>
 
     const tasks = Array.from({ length: config.taskCount }, (_, i) => simulateTask(`task-${i}`))
 
-    yield* Effect.all([...tasks, consumer], { concurrency: config.concurrency + 1 })
+    yield* Effect.all([...tasks, consumer], {
+      concurrency: config.concurrency + 1,
+    })
 
     const elapsedMs = timer.now() - startTime
 

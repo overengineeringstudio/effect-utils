@@ -88,7 +88,10 @@ export const getDirHandle = Effect.fn('OPFS.getDirHandle')(function* (opts?: {
 
   for (const segment of segments) {
     currentHandle = yield* Effect.tryPromise({
-      try: () => currentHandle.getDirectoryHandle(segment, { create: opts?.create ?? false }),
+      try: () =>
+        currentHandle.getDirectoryHandle(segment, {
+          create: opts?.create ?? false,
+        }),
       catch: (error) =>
         new OPFSError({
           operation: 'getDirectoryHandle',
@@ -113,7 +116,10 @@ export const getFileHandle = (opts: {
   create?: boolean
 }): Effect.Effect<FileSystemFileHandle, OPFSError> =>
   Effect.tryPromise({
-    try: () => opts.dirHandle.getFileHandle(opts.fileName, { create: opts.create ?? false }),
+    try: () =>
+      opts.dirHandle.getFileHandle(opts.fileName, {
+        create: opts.create ?? false,
+      }),
     catch: (error) =>
       new OPFSError({
         operation: 'getFileHandle',
@@ -199,7 +205,11 @@ export const getTree: (opts?: {
   const lines: TreeLine[] = []
 
   // Collect entries first
-  const entries: Array<{ name: string; kind: 'file' | 'directory'; size?: number }> = []
+  const entries: Array<{
+    name: string
+    kind: 'file' | 'directory'
+    size?: number
+  }> = []
   yield* Effect.tryPromise({
     try: async () => {
       for await (const entry of handle.values()) {
@@ -302,7 +312,10 @@ export const deleteEntry = (opts: {
   recursive?: boolean
 }): Effect.Effect<void, OPFSError> =>
   Effect.tryPromise({
-    try: () => opts.dirHandle.removeEntry(opts.name, { recursive: opts.recursive ?? false }),
+    try: () =>
+      opts.dirHandle.removeEntry(opts.name, {
+        recursive: opts.recursive ?? false,
+      }),
     catch: (error) =>
       new OPFSError({
         operation: 'deleteEntry',

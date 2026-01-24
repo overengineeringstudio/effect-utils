@@ -92,7 +92,10 @@ describe('update-revs command', () => {
           repoPath: `${workspacePath}/repo-a`,
           message: 'New commit A',
         })
-        yield* addCommit({ repoPath: `${workspacePath}/repo-b`, message: 'New commit B' })
+        yield* addCommit({
+          repoPath: `${workspacePath}/repo-b`,
+          message: 'New commit B',
+        })
 
         // Only update repo-a
         yield* updateRevsCommand
@@ -130,7 +133,10 @@ describe('update-revs command', () => {
         yield* fs.writeFileString(configPath, configContent)
 
         // Add new commit
-        yield* addCommit({ repoPath: `${workspacePath}/repo-a`, message: 'New commit' })
+        yield* addCommit({
+          repoPath: `${workspacePath}/repo-a`,
+          message: 'New commit',
+        })
 
         yield* updateRevsCommand
           .handler({ repos: [], dryRun: true })

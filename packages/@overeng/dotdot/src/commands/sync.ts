@@ -476,7 +476,12 @@ export const syncCommand = Cli.Command.make(
       const executeFn = ([name, config]: [string, RepoConfig]) =>
         Effect.gen(function* () {
           yield* Effect.log(`${styled.dim('syncing')} ${styled.bold(name)}`)
-          const result = yield* syncRepo({ workspaceRoot, name, config, force })
+          const result = yield* syncRepo({
+            workspaceRoot,
+            name,
+            config,
+            force,
+          })
           const statusIcon =
             result.status === 'cloned'
               ? styled.green(symbols.check)
@@ -513,7 +518,11 @@ export const syncCommand = Cli.Command.make(
           ),
         )
       } else {
-        results = yield* executeForAll({ items: repoEntries, fn: executeFn, options })
+        results = yield* executeForAll({
+          items: repoEntries,
+          fn: executeFn,
+          options,
+        })
       }
 
       // Run package install commands
@@ -524,7 +533,11 @@ export const syncCommand = Cli.Command.make(
       }
 
       // Write the generated config with merged repos and packages
-      yield* writeGeneratedConfig({ workspaceRoot, repos: allRepos, packages: merged.packages })
+      yield* writeGeneratedConfig({
+        workspaceRoot,
+        repos: allRepos,
+        packages: merged.packages,
+      })
 
       // Sync symlinks for packages
       if (packageCount > 0) {

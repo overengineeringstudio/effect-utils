@@ -82,7 +82,11 @@ type Problem =
   | { _tag: 'dirty'; members: MemberStatus[] }
   | { _tag: 'unpushed'; members: MemberStatus[] }
   | { _tag: 'lock_missing' }
-  | { _tag: 'lock_stale'; missingFromLock: readonly string[]; extraInLock: readonly string[] }
+  | {
+      _tag: 'lock_stale'
+      missingFromLock: readonly string[]
+      extraInLock: readonly string[]
+    }
 
 type Problems = {
   warnings: Problem[]
@@ -377,7 +381,13 @@ const renderMembersTree = ({
 /** Count members at different levels */
 const countMembers = (
   members: readonly MemberStatus[],
-): { direct: number; nested: number; synced: number; total: number; megarepos: number } => {
+): {
+  direct: number
+  nested: number
+  synced: number
+  total: number
+  megarepos: number
+} => {
   const direct = members.length
   let nested = 0
   let synced = 0
@@ -433,7 +443,9 @@ const formatRelativeTime = (date: Date): string => {
 // =============================================================================
 
 /** Detect which symbols are used in the member list for legend */
-const detectUsedSymbols = (members: readonly MemberStatus[]): {
+const detectUsedSymbols = (
+  members: readonly MemberStatus[],
+): {
   hasDirty: boolean
   hasUnpushed: boolean
   hasPinned: boolean

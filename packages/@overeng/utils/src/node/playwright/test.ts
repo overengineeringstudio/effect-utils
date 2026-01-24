@@ -17,7 +17,10 @@ import { OtelPlaywrightLive } from './otel.ts'
 import { PwBrowserContext, PwPage } from './tags.ts'
 
 /** Config provider for Playwright tests (constant-case environment variables). */
-const testEnvConfigProvider = ConfigProvider.fromEnv({ pathDelim: '_', seqDelim: ',' })
+const testEnvConfigProvider = ConfigProvider.fromEnv({
+  pathDelim: '_',
+  seqDelim: ',',
+})
 
 /** Layer that installs the Playwright test config provider. */
 export const TestEnvConfigLive = testEnvConfigProvider.pipe(Layer.setConfigProvider)
@@ -134,7 +137,11 @@ export const makeWithTestCtx =
 export const withTestCtx =
   (opts: { fixtures: PlaywrightFixtures; params?: WithTestCtxParams<never, never> }) =>
   <A, E, R>(self: Effect.Effect<A, E, R>): Promise<A> =>
-    runWithTestCtx({ fixtures: opts.fixtures, params: opts.params ?? {}, self })
+    runWithTestCtx({
+      fixtures: opts.fixtures,
+      params: opts.params ?? {},
+      self,
+    })
 
 interface RunWithTestCtxArgs<ROut, E1, A, E, R> {
   fixtures: PlaywrightFixtures

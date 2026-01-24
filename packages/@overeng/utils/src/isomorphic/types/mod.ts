@@ -20,7 +20,9 @@ export type AssertTrue<T extends true> = T
 export type Writeable<T> = { -readonly [P in keyof T]: T[P] }
 
 /** Recursively remove readonly modifier from all properties */
-export type DeepWriteable<T> = { -readonly [P in keyof T]: DeepWriteable<T[P]> }
+export type DeepWriteable<T> = {
+  -readonly [P in keyof T]: DeepWriteable<T[P]>
+}
 
 /** JavaScript primitive types */
 export type Primitive = null | undefined | string | number | boolean | symbol | bigint

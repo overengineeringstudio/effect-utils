@@ -196,7 +196,10 @@ export const getRemoteUrl = ({
   remote?: string
 }) =>
   Effect.gen(function* () {
-    return yield* runGitCommand({ args: ['remote', 'get-url', remote], cwd: repoPath }).pipe(
+    return yield* runGitCommand({
+      args: ['remote', 'get-url', remote],
+      cwd: repoPath,
+    }).pipe(
       Effect.map(Option.some),
       Effect.catchAll(() => Effect.succeed(Option.none())),
     )
@@ -207,7 +210,10 @@ export const getRemoteUrl = ({
  */
 export const isGitRepo = (path: string) =>
   Effect.gen(function* () {
-    return yield* runGitCommand({ args: ['rev-parse', '--git-dir'], cwd: path }).pipe(
+    return yield* runGitCommand({
+      args: ['rev-parse', '--git-dir'],
+      cwd: path,
+    }).pipe(
       Effect.map(() => true),
       Effect.catchAll(() => Effect.succeed(false)),
     )
@@ -259,7 +265,11 @@ export const listWorktrees = (repoPath: string) =>
       args: ['worktree', 'list', '--porcelain'],
       cwd: repoPath,
     })
-    const worktrees: Array<{ path: string; head: string; branch: Option.Option<string> }> = []
+    const worktrees: Array<{
+      path: string
+      head: string
+      branch: Option.Option<string>
+    }> = []
 
     let current: { path?: string; head?: string; branch?: string } = {}
     for (const line of output.split('\n')) {

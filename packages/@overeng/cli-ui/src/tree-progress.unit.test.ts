@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
+
 import {
   createTreeProgressState,
   renderTreeProgress,
@@ -26,10 +27,12 @@ describe('tree-progress', () => {
 
   describe('createTreeProgressState', () => {
     it('creates state with items set to pending', () => {
-      const state = createTreeProgressState([
-        { id: 'a', parentId: null, label: 'Item A' },
-        { id: 'b', parentId: null, label: 'Item B' },
-      ])
+      const state = createTreeProgressState({
+        items: [
+          { id: 'a', parentId: null, label: 'Item A' },
+          { id: 'b', parentId: null, label: 'Item B' },
+        ],
+      })
 
       expect(state.items).toHaveLength(2)
       expect(state.items[0]!.status).toBe('pending')
@@ -37,25 +40,28 @@ describe('tree-progress', () => {
     })
 
     it('preserves custom data on items', () => {
-      const state = createTreeProgressState([
-        { id: 'a', parentId: null, label: 'Item A', data: { path: '/foo' } },
-      ])
+      const state = createTreeProgressState({
+        items: [{ id: 'a', parentId: null, label: 'Item A', data: { path: '/foo' } }],
+      })
 
       expect(state.items[0]!.data).toEqual({ path: '/foo' })
     })
 
     it('initializes with default options', () => {
-      const state = createTreeProgressState([])
+      const state = createTreeProgressState({ items: [] })
 
       expect(state.options.spinnerInterval).toBe(80)
       expect(state.options.showSummary).toBe(true)
     })
 
     it('accepts custom options', () => {
-      const state = createTreeProgressState([], {
-        spinnerInterval: 100,
-        showSummary: false,
-        chars: treeCharsAscii,
+      const state = createTreeProgressState({
+        items: [],
+        options: {
+          spinnerInterval: 100,
+          showSummary: false,
+          chars: treeCharsAscii,
+        },
       })
 
       expect(state.options.spinnerInterval).toBe(100)
@@ -70,10 +76,12 @@ describe('tree-progress', () => {
 
   describe('renderTreeProgress', () => {
     it('renders flat list without tree prefixes', () => {
-      const state = createTreeProgressState([
-        { id: 'a', parentId: null, label: 'Item A' },
-        { id: 'b', parentId: null, label: 'Item B' },
-      ])
+      const state = createTreeProgressState({
+        items: [
+          { id: 'a', parentId: null, label: 'Item A' },
+          { id: 'b', parentId: null, label: 'Item B' },
+        ],
+      })
 
       const lines = renderTreeProgress(state)
       expect(lines).toHaveLength(2)
@@ -83,14 +91,14 @@ describe('tree-progress', () => {
     })
 
     it('renders nested items with tree prefixes', () => {
-      const state = createTreeProgressState(
-        [
+      const state = createTreeProgressState({
+        items: [
           { id: 'root', parentId: null, label: 'Root' },
           { id: 'child1', parentId: 'root', label: 'Child 1' },
           { id: 'child2', parentId: 'root', label: 'Child 2' },
         ],
-        { chars: treeCharsAscii },
-      )
+        options: { chars: treeCharsAscii },
+      })
 
       const lines = renderTreeProgress(state)
       expect(lines).toHaveLength(3)
@@ -104,14 +112,14 @@ describe('tree-progress', () => {
     })
 
     it('renders deeply nested items', () => {
-      const state = createTreeProgressState(
-        [
+      const state = createTreeProgressState({
+        items: [
           { id: 'a', parentId: null, label: 'A' },
           { id: 'b', parentId: 'a', label: 'B' },
           { id: 'c', parentId: 'b', label: 'C' },
         ],
-        { chars: treeCharsAscii },
-      )
+        options: { chars: treeCharsAscii },
+      })
 
       const lines = renderTreeProgress(state)
       const stripped = lines.map(stripAnsi)
@@ -124,18 +132,20 @@ describe('tree-progress', () => {
     })
 
     it('renders different status icons', () => {
-      const state = createTreeProgressState([
-        { id: 'pending', parentId: null, label: 'Pending' },
-        { id: 'active', parentId: null, label: 'Active' },
-        { id: 'success', parentId: null, label: 'Success' },
-        { id: 'error', parentId: null, label: 'Error' },
-        { id: 'skipped', parentId: null, label: 'Skipped' },
-      ])
+      const state = createTreeProgressState({
+        items: [
+          { id: 'pending', parentId: null, label: 'Pending' },
+          { id: 'active', parentId: null, label: 'Active' },
+          { id: 'success', parentId: null, label: 'Success' },
+          { id: 'error', parentId: null, label: 'Error' },
+          { id: 'skipped', parentId: null, label: 'Skipped' },
+        ],
+      })
 
-      markTreeItemActive(state, 'active')
-      markTreeItemSuccess(state, 'success')
-      markTreeItemError(state, 'error')
-      markTreeItemSkipped(state, 'skipped')
+      markTreeItemActive({ state, id: 'active' })
+      markTreeItemSuccess({ state, id: 'success' })
+      markTreeItemError({ state, id: 'error' })
+      markTreeItemSkipped({ state, id: 'skipped' })
 
       const lines = renderTreeProgress(state)
       const stripped = lines.map(stripAnsi)
@@ -149,20 +159,20 @@ describe('tree-progress', () => {
     })
 
     it('renders message for active items', () => {
-      const state = createTreeProgressState([
-        { id: 'a', parentId: null, label: 'Task' },
-      ])
-      markTreeItemActive(state, 'a', 'fetching...')
+      const state = createTreeProgressState({
+        items: [{ id: 'a', parentId: null, label: 'Task' }],
+      })
+      markTreeItemActive({ state, id: 'a', message: 'fetching...' })
 
       const lines = renderTreeProgress(state)
       expect(stripAnsi(lines[0]!)).toContain('fetching...')
     })
 
     it('renders message for error items', () => {
-      const state = createTreeProgressState([
-        { id: 'a', parentId: null, label: 'Task' },
-      ])
-      markTreeItemError(state, 'a', 'connection failed')
+      const state = createTreeProgressState({
+        items: [{ id: 'a', parentId: null, label: 'Task' }],
+      })
+      markTreeItemError({ state, id: 'a', message: 'connection failed' })
 
       const lines = renderTreeProgress(state)
       expect(stripAnsi(lines[0]!)).toContain('connection failed')
@@ -171,24 +181,28 @@ describe('tree-progress', () => {
 
   describe('formatTreeProgressSummary', () => {
     it('shows completion progress', () => {
-      const state = createTreeProgressState([
-        { id: 'a', parentId: null, label: 'A' },
-        { id: 'b', parentId: null, label: 'B' },
-        { id: 'c', parentId: null, label: 'C' },
-      ])
-      markTreeItemSuccess(state, 'a')
+      const state = createTreeProgressState({
+        items: [
+          { id: 'a', parentId: null, label: 'A' },
+          { id: 'b', parentId: null, label: 'B' },
+          { id: 'c', parentId: null, label: 'C' },
+        ],
+      })
+      markTreeItemSuccess({ state, id: 'a' })
 
       const summary = formatTreeProgressSummary(state)
       expect(stripAnsi(summary)).toContain('1/3')
     })
 
     it('shows error count when there are errors', () => {
-      const state = createTreeProgressState([
-        { id: 'a', parentId: null, label: 'A' },
-        { id: 'b', parentId: null, label: 'B' },
-      ])
-      markTreeItemSuccess(state, 'a')
-      markTreeItemError(state, 'b')
+      const state = createTreeProgressState({
+        items: [
+          { id: 'a', parentId: null, label: 'A' },
+          { id: 'b', parentId: null, label: 'B' },
+        ],
+      })
+      markTreeItemSuccess({ state, id: 'a' })
+      markTreeItemError({ state, id: 'b' })
 
       const summary = formatTreeProgressSummary(state)
       expect(stripAnsi(summary)).toContain('2/2')
@@ -196,23 +210,27 @@ describe('tree-progress', () => {
     })
 
     it('pluralizes errors correctly', () => {
-      const state = createTreeProgressState([
-        { id: 'a', parentId: null, label: 'A' },
-        { id: 'b', parentId: null, label: 'B' },
-      ])
-      markTreeItemError(state, 'a')
-      markTreeItemError(state, 'b')
+      const state = createTreeProgressState({
+        items: [
+          { id: 'a', parentId: null, label: 'A' },
+          { id: 'b', parentId: null, label: 'B' },
+        ],
+      })
+      markTreeItemError({ state, id: 'a' })
+      markTreeItemError({ state, id: 'b' })
 
       const summary = formatTreeProgressSummary(state)
       expect(stripAnsi(summary)).toContain('2 errors')
     })
 
     it('counts skipped as completed', () => {
-      const state = createTreeProgressState([
-        { id: 'a', parentId: null, label: 'A' },
-        { id: 'b', parentId: null, label: 'B' },
-      ])
-      markTreeItemSkipped(state, 'a')
+      const state = createTreeProgressState({
+        items: [
+          { id: 'a', parentId: null, label: 'A' },
+          { id: 'b', parentId: null, label: 'B' },
+        ],
+      })
+      markTreeItemSkipped({ state, id: 'a' })
 
       const summary = formatTreeProgressSummary(state)
       expect(stripAnsi(summary)).toContain('1/2')
@@ -227,55 +245,57 @@ describe('tree-progress', () => {
     let state: TreeProgressState
 
     beforeEach(() => {
-      state = createTreeProgressState([
-        { id: 'a', parentId: null, label: 'A' },
-        { id: 'b', parentId: null, label: 'B' },
-      ])
+      state = createTreeProgressState({
+        items: [
+          { id: 'a', parentId: null, label: 'A' },
+          { id: 'b', parentId: null, label: 'B' },
+        ],
+      })
     })
 
     it('markTreeItemActive sets active status', () => {
-      markTreeItemActive(state, 'a')
+      markTreeItemActive({ state, id: 'a' })
       expect(state.items[0]!.status).toBe('active')
     })
 
     it('markTreeItemActive sets message', () => {
-      markTreeItemActive(state, 'a', 'working...')
+      markTreeItemActive({ state, id: 'a', message: 'working...' })
       expect(state.items[0]!.message).toBe('working...')
     })
 
     it('markTreeItemSuccess sets success status', () => {
-      markTreeItemSuccess(state, 'a')
+      markTreeItemSuccess({ state, id: 'a' })
       expect(state.items[0]!.status).toBe('success')
     })
 
     it('markTreeItemSuccess can set message', () => {
-      markTreeItemSuccess(state, 'a', 'done in 2s')
+      markTreeItemSuccess({ state, id: 'a', message: 'done in 2s' })
       expect(state.items[0]!.message).toBe('done in 2s')
     })
 
     it('markTreeItemError sets error status', () => {
-      markTreeItemError(state, 'a')
+      markTreeItemError({ state, id: 'a' })
       expect(state.items[0]!.status).toBe('error')
     })
 
     it('markTreeItemError sets message', () => {
-      markTreeItemError(state, 'a', 'failed')
+      markTreeItemError({ state, id: 'a', message: 'failed' })
       expect(state.items[0]!.message).toBe('failed')
     })
 
     it('markTreeItemSkipped sets skipped status', () => {
-      markTreeItemSkipped(state, 'a')
+      markTreeItemSkipped({ state, id: 'a' })
       expect(state.items[0]!.status).toBe('skipped')
     })
 
     it('updateTreeItemStatus updates any status', () => {
-      updateTreeItemStatus(state, 'a', 'error', 'timeout')
+      updateTreeItemStatus({ state, id: 'a', status: 'error', message: 'timeout' })
       expect(state.items[0]!.status).toBe('error')
       expect(state.items[0]!.message).toBe('timeout')
     })
 
     it('ignores updates for non-existent items', () => {
-      markTreeItemActive(state, 'nonexistent')
+      markTreeItemActive({ state, id: 'nonexistent' })
       // Should not throw, just no-op
       expect(state.items).toHaveLength(2)
     })
@@ -283,11 +303,9 @@ describe('tree-progress', () => {
 
   describe('addTreeItem', () => {
     it('adds new item to state', () => {
-      const state = createTreeProgressState([
-        { id: 'a', parentId: null, label: 'A' },
-      ])
+      const state = createTreeProgressState({ items: [{ id: 'a', parentId: null, label: 'A' }] })
 
-      addTreeItem(state, { id: 'b', parentId: 'a', label: 'B' })
+      addTreeItem({ state, item: { id: 'b', parentId: 'a', label: 'B' } })
 
       expect(state.items).toHaveLength(2)
       expect(state.items[1]!.id).toBe('b')
@@ -296,20 +314,26 @@ describe('tree-progress', () => {
     })
 
     it('does not add duplicate items', () => {
-      const state = createTreeProgressState([
-        { id: 'a', parentId: null, label: 'A' },
-      ])
+      const state = createTreeProgressState({ items: [{ id: 'a', parentId: null, label: 'A' }] })
 
-      addTreeItem(state, { id: 'a', parentId: null, label: 'A duplicate' })
+      addTreeItem({ state, item: { id: 'a', parentId: null, label: 'A duplicate' } })
 
       expect(state.items).toHaveLength(1)
       expect(state.items[0]!.label).toBe('A') // Original unchanged
     })
 
     it('preserves custom data', () => {
-      const state = createTreeProgressState<{ path: string }>([])
+      const state = createTreeProgressState<{ path: string }>({ items: [] })
 
-      addTreeItem(state, { id: 'a', parentId: null, label: 'A', data: { path: '/a' } })
+      addTreeItem({
+        state,
+        item: {
+          id: 'a',
+          parentId: null,
+          label: 'A',
+          data: { path: '/a' },
+        },
+      })
 
       expect(state.items[0]!.data).toEqual({ path: '/a' })
     })
@@ -317,23 +341,23 @@ describe('tree-progress', () => {
 
   describe('removeTreeItem', () => {
     it('removes item from state', () => {
-      const state = createTreeProgressState([
-        { id: 'a', parentId: null, label: 'A' },
-        { id: 'b', parentId: null, label: 'B' },
-      ])
+      const state = createTreeProgressState({
+        items: [
+          { id: 'a', parentId: null, label: 'A' },
+          { id: 'b', parentId: null, label: 'B' },
+        ],
+      })
 
-      removeTreeItem(state, 'a')
+      removeTreeItem({ state, id: 'a' })
 
       expect(state.items).toHaveLength(1)
       expect(state.items[0]!.id).toBe('b')
     })
 
     it('does nothing for non-existent items', () => {
-      const state = createTreeProgressState([
-        { id: 'a', parentId: null, label: 'A' },
-      ])
+      const state = createTreeProgressState({ items: [{ id: 'a', parentId: null, label: 'A' }] })
 
-      removeTreeItem(state, 'nonexistent')
+      removeTreeItem({ state, id: 'nonexistent' })
 
       expect(state.items).toHaveLength(1)
     })
@@ -345,83 +369,81 @@ describe('tree-progress', () => {
 
   describe('isTreeComplete', () => {
     it('returns false when items are pending', () => {
-      const state = createTreeProgressState([
-        { id: 'a', parentId: null, label: 'A' },
-      ])
+      const state = createTreeProgressState({ items: [{ id: 'a', parentId: null, label: 'A' }] })
 
       expect(isTreeComplete(state)).toBe(false)
     })
 
     it('returns false when items are active', () => {
-      const state = createTreeProgressState([
-        { id: 'a', parentId: null, label: 'A' },
-      ])
-      markTreeItemActive(state, 'a')
+      const state = createTreeProgressState({ items: [{ id: 'a', parentId: null, label: 'A' }] })
+      markTreeItemActive({ state, id: 'a' })
 
       expect(isTreeComplete(state)).toBe(false)
     })
 
     it('returns true when all items are success', () => {
-      const state = createTreeProgressState([
-        { id: 'a', parentId: null, label: 'A' },
-        { id: 'b', parentId: null, label: 'B' },
-      ])
-      markTreeItemSuccess(state, 'a')
-      markTreeItemSuccess(state, 'b')
+      const state = createTreeProgressState({
+        items: [
+          { id: 'a', parentId: null, label: 'A' },
+          { id: 'b', parentId: null, label: 'B' },
+        ],
+      })
+      markTreeItemSuccess({ state, id: 'a' })
+      markTreeItemSuccess({ state, id: 'b' })
 
       expect(isTreeComplete(state)).toBe(true)
     })
 
     it('returns true when all items are error', () => {
-      const state = createTreeProgressState([
-        { id: 'a', parentId: null, label: 'A' },
-      ])
-      markTreeItemError(state, 'a')
+      const state = createTreeProgressState({ items: [{ id: 'a', parentId: null, label: 'A' }] })
+      markTreeItemError({ state, id: 'a' })
 
       expect(isTreeComplete(state)).toBe(true)
     })
 
     it('returns true when all items are skipped', () => {
-      const state = createTreeProgressState([
-        { id: 'a', parentId: null, label: 'A' },
-      ])
-      markTreeItemSkipped(state, 'a')
+      const state = createTreeProgressState({ items: [{ id: 'a', parentId: null, label: 'A' }] })
+      markTreeItemSkipped({ state, id: 'a' })
 
       expect(isTreeComplete(state)).toBe(true)
     })
 
     it('returns true for mixed completed statuses', () => {
-      const state = createTreeProgressState([
-        { id: 'a', parentId: null, label: 'A' },
-        { id: 'b', parentId: null, label: 'B' },
-        { id: 'c', parentId: null, label: 'C' },
-      ])
-      markTreeItemSuccess(state, 'a')
-      markTreeItemError(state, 'b')
-      markTreeItemSkipped(state, 'c')
+      const state = createTreeProgressState({
+        items: [
+          { id: 'a', parentId: null, label: 'A' },
+          { id: 'b', parentId: null, label: 'B' },
+          { id: 'c', parentId: null, label: 'C' },
+        ],
+      })
+      markTreeItemSuccess({ state, id: 'a' })
+      markTreeItemError({ state, id: 'b' })
+      markTreeItemSkipped({ state, id: 'c' })
 
       expect(isTreeComplete(state)).toBe(true)
     })
 
     it('returns true for empty state', () => {
-      const state = createTreeProgressState([])
+      const state = createTreeProgressState({ items: [] })
       expect(isTreeComplete(state)).toBe(true)
     })
   })
 
   describe('getTreeStatusCounts', () => {
     it('counts all statuses', () => {
-      const state = createTreeProgressState([
-        { id: 'a', parentId: null, label: 'A' },
-        { id: 'b', parentId: null, label: 'B' },
-        { id: 'c', parentId: null, label: 'C' },
-        { id: 'd', parentId: null, label: 'D' },
-        { id: 'e', parentId: null, label: 'E' },
-      ])
-      markTreeItemActive(state, 'b')
-      markTreeItemSuccess(state, 'c')
-      markTreeItemError(state, 'd')
-      markTreeItemSkipped(state, 'e')
+      const state = createTreeProgressState({
+        items: [
+          { id: 'a', parentId: null, label: 'A' },
+          { id: 'b', parentId: null, label: 'B' },
+          { id: 'c', parentId: null, label: 'C' },
+          { id: 'd', parentId: null, label: 'D' },
+          { id: 'e', parentId: null, label: 'E' },
+        ],
+      })
+      markTreeItemActive({ state, id: 'b' })
+      markTreeItemSuccess({ state, id: 'c' })
+      markTreeItemError({ state, id: 'd' })
+      markTreeItemSkipped({ state, id: 'e' })
 
       const counts = getTreeStatusCounts(state)
 
@@ -435,26 +457,26 @@ describe('tree-progress', () => {
 
   describe('getTreeItemsByStatus', () => {
     it('returns items matching status', () => {
-      const state = createTreeProgressState([
-        { id: 'a', parentId: null, label: 'A' },
-        { id: 'b', parentId: null, label: 'B' },
-        { id: 'c', parentId: null, label: 'C' },
-      ])
-      markTreeItemSuccess(state, 'a')
-      markTreeItemSuccess(state, 'c')
+      const state = createTreeProgressState({
+        items: [
+          { id: 'a', parentId: null, label: 'A' },
+          { id: 'b', parentId: null, label: 'B' },
+          { id: 'c', parentId: null, label: 'C' },
+        ],
+      })
+      markTreeItemSuccess({ state, id: 'a' })
+      markTreeItemSuccess({ state, id: 'c' })
 
-      const successItems = getTreeItemsByStatus(state, 'success')
+      const successItems = getTreeItemsByStatus({ state, status: 'success' })
 
       expect(successItems).toHaveLength(2)
       expect(successItems.map((i) => i.id)).toEqual(['a', 'c'])
     })
 
     it('returns empty array when no items match', () => {
-      const state = createTreeProgressState([
-        { id: 'a', parentId: null, label: 'A' },
-      ])
+      const state = createTreeProgressState({ items: [{ id: 'a', parentId: null, label: 'A' }] })
 
-      const errorItems = getTreeItemsByStatus(state, 'error')
+      const errorItems = getTreeItemsByStatus({ state, status: 'error' })
 
       expect(errorItems).toHaveLength(0)
     })
@@ -462,39 +484,45 @@ describe('tree-progress', () => {
 
   describe('getTreeChildren', () => {
     it('returns children of a parent', () => {
-      const state = createTreeProgressState([
-        { id: 'root', parentId: null, label: 'Root' },
-        { id: 'child1', parentId: 'root', label: 'Child 1' },
-        { id: 'child2', parentId: 'root', label: 'Child 2' },
-        { id: 'grandchild', parentId: 'child1', label: 'Grandchild' },
-      ])
+      const state = createTreeProgressState({
+        items: [
+          { id: 'root', parentId: null, label: 'Root' },
+          { id: 'child1', parentId: 'root', label: 'Child 1' },
+          { id: 'child2', parentId: 'root', label: 'Child 2' },
+          { id: 'grandchild', parentId: 'child1', label: 'Grandchild' },
+        ],
+      })
 
-      const children = getTreeChildren(state, 'root')
+      const children = getTreeChildren({ state, parentId: 'root' })
 
       expect(children).toHaveLength(2)
       expect(children.map((i) => i.id)).toEqual(['child1', 'child2'])
     })
 
     it('returns root items when parentId is null', () => {
-      const state = createTreeProgressState([
-        { id: 'root1', parentId: null, label: 'Root 1' },
-        { id: 'root2', parentId: null, label: 'Root 2' },
-        { id: 'child', parentId: 'root1', label: 'Child' },
-      ])
+      const state = createTreeProgressState({
+        items: [
+          { id: 'root1', parentId: null, label: 'Root 1' },
+          { id: 'root2', parentId: null, label: 'Root 2' },
+          { id: 'child', parentId: 'root1', label: 'Child' },
+        ],
+      })
 
-      const roots = getTreeChildren(state, null)
+      const roots = getTreeChildren({ state, parentId: null })
 
       expect(roots).toHaveLength(2)
       expect(roots.map((i) => i.id)).toEqual(['root1', 'root2'])
     })
 
     it('returns empty array for leaf nodes', () => {
-      const state = createTreeProgressState([
-        { id: 'root', parentId: null, label: 'Root' },
-        { id: 'leaf', parentId: 'root', label: 'Leaf' },
-      ])
+      const state = createTreeProgressState({
+        items: [
+          { id: 'root', parentId: null, label: 'Root' },
+          { id: 'leaf', parentId: 'root', label: 'Leaf' },
+        ],
+      })
 
-      const children = getTreeChildren(state, 'leaf')
+      const children = getTreeChildren({ state, parentId: 'leaf' })
 
       expect(children).toHaveLength(0)
     })

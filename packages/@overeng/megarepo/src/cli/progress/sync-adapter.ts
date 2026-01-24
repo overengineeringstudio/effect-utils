@@ -6,8 +6,6 @@
  * knowing about the underlying generic progress implementation.
  */
 
-
-
 import type { MemberSyncResult } from '../renderers/sync-renderer.ts'
 import { createProgressService, createState, type ProgressItemInput } from './service.ts'
 
@@ -52,17 +50,25 @@ export const initSyncProgress = (params: {
     id: name,
     label: name,
   }))
-  return ops.init(items, {
-    megarepoRoot: params.megarepoRoot,
-    workspaceName: params.workspaceName,
+  return ops.init({
+    items,
+    metadata: {
+      megarepoRoot: params.megarepoRoot,
+      workspaceName: params.workspaceName,
+    },
   })
 }
 
 /**
  * Mark a member as syncing (active).
  */
-export const setMemberSyncing = (memberName: string, message?: string) =>
-  ops.markActive(memberName, message ?? 'syncing...')
+export const setMemberSyncing = ({
+  memberName,
+  message,
+}: {
+  memberName: string
+  message?: string
+}) => ops.markActive({ id: memberName, message: message ?? 'syncing...' })
 
 /**
  * Apply a sync result to the progress.
@@ -71,12 +77,15 @@ export const setMemberSyncing = (memberName: string, message?: string) =>
 export const applySyncResult = (result: MemberSyncResult) => {
   const mapped = mapSyncResultToProgress(result)
 
-  return ops.update(result.name, {
-    status: mapped.status,
-    message: mapped.message,
-    data: {
-      ref: result.ref,
-      commit: result.commit,
+  return ops.update({
+    id: result.name,
+    update: {
+      status: mapped.status,
+      message: mapped.message,
+      data: {
+        ref: result.ref,
+        commit: result.commit,
+      },
     },
   })
 }
@@ -170,9 +179,12 @@ export const createSyncProgressLayer = (params: {
     id: name,
     label: name,
   }))
-  const state = createState(items, {
-    megarepoRoot: params.megarepoRoot,
-    workspaceName: params.workspaceName,
+  const state = createState({
+    items,
+    metadata: {
+      megarepoRoot: params.megarepoRoot,
+      workspaceName: params.workspaceName,
+    },
   })
   return layerWith(state)
 }

@@ -198,196 +198,182 @@ const reduceEvent = ({
 // =============================================================================
 
 describe('topologicalSort', () => {
-  it.effect('handles empty task list', () =>
-    Effect.gen(function* () {
-      const result = topologicalSort([])
-      expect(result).toEqual([])
-    }),
-  )
+  it('handles empty task list', () => {
+    const result = topologicalSort([])
+    expect(result).toEqual([])
+  })
 
-  it.effect('handles single task', () =>
-    Effect.gen(function* () {
-      const tasks: TaskDef<'a', unknown, unknown, unknown>[] = [
-        {
-          id: 'a',
-          name: 'Task A',
-          eventStream: () => Effect.succeed([]) as any,
-        },
-      ]
-      const result = topologicalSort(tasks)
-      expect(result).toEqual([['a']])
-    }),
-  )
+  it('handles single task', () => {
+    const tasks: TaskDef<'a', unknown, unknown, unknown>[] = [
+      {
+        id: 'a',
+        name: 'Task A',
+        eventStream: () => Effect.succeed([]) as any,
+      },
+    ]
+    const result = topologicalSort(tasks)
+    expect(result).toEqual([['a']])
+  })
 
-  it.effect('handles two independent tasks', () =>
-    Effect.gen(function* () {
-      const tasks: TaskDef<'a' | 'b', unknown, unknown, unknown>[] = [
-        { id: 'a', name: 'Task A', eventStream: () => Effect.succeed([]) as any },
-        { id: 'b', name: 'Task B', eventStream: () => Effect.succeed([]) as any },
-      ]
-      const result = topologicalSort(tasks)
-      expect(result).toEqual([['a', 'b']])
-    }),
-  )
+  it('handles two independent tasks', () => {
+    const tasks: TaskDef<'a' | 'b', unknown, unknown, unknown>[] = [
+      { id: 'a', name: 'Task A', eventStream: () => Effect.succeed([]) as any },
+      { id: 'b', name: 'Task B', eventStream: () => Effect.succeed([]) as any },
+    ]
+    const result = topologicalSort(tasks)
+    expect(result).toEqual([['a', 'b']])
+  })
 
-  it.effect('handles linear dependency chain', () =>
-    Effect.gen(function* () {
-      const tasks: TaskDef<'a' | 'b' | 'c', unknown, unknown, unknown>[] = [
-        { id: 'a', name: 'Task A', eventStream: () => Effect.succeed([]) as any },
-        {
-          id: 'b',
-          name: 'Task B',
-          dependencies: ['a'],
-          eventStream: () => Effect.succeed([]) as any,
-        },
-        {
-          id: 'c',
-          name: 'Task C',
-          dependencies: ['b'],
-          eventStream: () => Effect.succeed([]) as any,
-        },
-      ]
-      const result = topologicalSort(tasks)
-      expect(result).toEqual([['a'], ['b'], ['c']])
-    }),
-  )
+  it('handles linear dependency chain', () => {
+    const tasks: TaskDef<'a' | 'b' | 'c', unknown, unknown, unknown>[] = [
+      { id: 'a', name: 'Task A', eventStream: () => Effect.succeed([]) as any },
+      {
+        id: 'b',
+        name: 'Task B',
+        dependencies: ['a'],
+        eventStream: () => Effect.succeed([]) as any,
+      },
+      {
+        id: 'c',
+        name: 'Task C',
+        dependencies: ['b'],
+        eventStream: () => Effect.succeed([]) as any,
+      },
+    ]
+    const result = topologicalSort(tasks)
+    expect(result).toEqual([['a'], ['b'], ['c']])
+  })
 
-  it.effect('handles diamond dependency pattern', () =>
-    Effect.gen(function* () {
-      //    a
-      //   / \
-      //  b   c
-      //   \ /
-      //    d
-      const tasks: TaskDef<'a' | 'b' | 'c' | 'd', unknown, unknown, unknown>[] = [
-        { id: 'a', name: 'Task A', eventStream: () => Effect.succeed([]) as any },
-        {
-          id: 'b',
-          name: 'Task B',
-          dependencies: ['a'],
-          eventStream: () => Effect.succeed([]) as any,
-        },
-        {
-          id: 'c',
-          name: 'Task C',
-          dependencies: ['a'],
-          eventStream: () => Effect.succeed([]) as any,
-        },
-        {
-          id: 'd',
-          name: 'Task D',
-          dependencies: ['b', 'c'],
-          eventStream: () => Effect.succeed([]) as any,
-        },
-      ]
-      const result = topologicalSort(tasks)
-      expect(result).toEqual([['a'], ['b', 'c'], ['d']])
-    }),
-  )
+  it('handles diamond dependency pattern', () => {
+    //    a
+    //   / \
+    //  b   c
+    //   \ /
+    //    d
+    const tasks: TaskDef<'a' | 'b' | 'c' | 'd', unknown, unknown, unknown>[] = [
+      { id: 'a', name: 'Task A', eventStream: () => Effect.succeed([]) as any },
+      {
+        id: 'b',
+        name: 'Task B',
+        dependencies: ['a'],
+        eventStream: () => Effect.succeed([]) as any,
+      },
+      {
+        id: 'c',
+        name: 'Task C',
+        dependencies: ['a'],
+        eventStream: () => Effect.succeed([]) as any,
+      },
+      {
+        id: 'd',
+        name: 'Task D',
+        dependencies: ['b', 'c'],
+        eventStream: () => Effect.succeed([]) as any,
+      },
+    ]
+    const result = topologicalSort(tasks)
+    expect(result).toEqual([['a'], ['b', 'c'], ['d']])
+  })
 
-  it.effect('detects circular dependency', () =>
-    Effect.gen(function* () {
-      const tasks: TaskDef<'a' | 'b', unknown, unknown, unknown>[] = [
-        {
-          id: 'a',
-          name: 'Task A',
-          dependencies: ['b'],
-          eventStream: () => Effect.succeed([]) as any,
-        },
-        {
-          id: 'b',
-          name: 'Task B',
-          dependencies: ['a'],
-          eventStream: () => Effect.succeed([]) as any,
-        },
-      ]
+  it('detects circular dependency', () => {
+    const tasks: TaskDef<'a' | 'b', unknown, unknown, unknown>[] = [
+      {
+        id: 'a',
+        name: 'Task A',
+        dependencies: ['b'],
+        eventStream: () => Effect.succeed([]) as any,
+      },
+      {
+        id: 'b',
+        name: 'Task B',
+        dependencies: ['a'],
+        eventStream: () => Effect.succeed([]) as any,
+      },
+    ]
 
-      expect(() => topologicalSort(tasks)).toThrow('Circular dependency detected')
-    }),
-  )
+    expect(() => topologicalSort(tasks)).toThrow('Circular dependency detected')
+  })
 
-  it.effect('handles complex graph with multiple parallel branches', () =>
-    Effect.gen(function* () {
-      //      a     b
-      //     / \   / \
-      //    c   d e   f
-      //     \ /   \ /
-      //      g     h
-      //       \   /
-      //         i
-      const tasks: TaskDef<
-        'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i',
-        unknown,
-        unknown,
-        unknown
-      >[] = [
-        { id: 'a', name: 'Task A', eventStream: () => Effect.succeed([]) as any },
-        { id: 'b', name: 'Task B', eventStream: () => Effect.succeed([]) as any },
-        {
-          id: 'c',
-          name: 'Task C',
-          dependencies: ['a'],
-          eventStream: () => Effect.succeed([]) as any,
-        },
-        {
-          id: 'd',
-          name: 'Task D',
-          dependencies: ['a'],
-          eventStream: () => Effect.succeed([]) as any,
-        },
-        {
-          id: 'e',
-          name: 'Task E',
-          dependencies: ['b'],
-          eventStream: () => Effect.succeed([]) as any,
-        },
-        {
-          id: 'f',
-          name: 'Task F',
-          dependencies: ['b'],
-          eventStream: () => Effect.succeed([]) as any,
-        },
-        {
-          id: 'g',
-          name: 'Task G',
-          dependencies: ['c', 'd'],
-          eventStream: () => Effect.succeed([]) as any,
-        },
-        {
-          id: 'h',
-          name: 'Task H',
-          dependencies: ['e', 'f'],
-          eventStream: () => Effect.succeed([]) as any,
-        },
-        {
-          id: 'i',
-          name: 'Task I',
-          dependencies: ['g', 'h'],
-          eventStream: () => Effect.succeed([]) as any,
-        },
-      ]
+  it('handles complex graph with multiple parallel branches', () => {
+    //      a     b
+    //     / \   / \
+    //    c   d e   f
+    //     \ /   \ /
+    //      g     h
+    //       \   /
+    //         i
+    const tasks: TaskDef<
+      'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i',
+      unknown,
+      unknown,
+      unknown
+    >[] = [
+      { id: 'a', name: 'Task A', eventStream: () => Effect.succeed([]) as any },
+      { id: 'b', name: 'Task B', eventStream: () => Effect.succeed([]) as any },
+      {
+        id: 'c',
+        name: 'Task C',
+        dependencies: ['a'],
+        eventStream: () => Effect.succeed([]) as any,
+      },
+      {
+        id: 'd',
+        name: 'Task D',
+        dependencies: ['a'],
+        eventStream: () => Effect.succeed([]) as any,
+      },
+      {
+        id: 'e',
+        name: 'Task E',
+        dependencies: ['b'],
+        eventStream: () => Effect.succeed([]) as any,
+      },
+      {
+        id: 'f',
+        name: 'Task F',
+        dependencies: ['b'],
+        eventStream: () => Effect.succeed([]) as any,
+      },
+      {
+        id: 'g',
+        name: 'Task G',
+        dependencies: ['c', 'd'],
+        eventStream: () => Effect.succeed([]) as any,
+      },
+      {
+        id: 'h',
+        name: 'Task H',
+        dependencies: ['e', 'f'],
+        eventStream: () => Effect.succeed([]) as any,
+      },
+      {
+        id: 'i',
+        name: 'Task I',
+        dependencies: ['g', 'h'],
+        eventStream: () => Effect.succeed([]) as any,
+      },
+    ]
 
-      const result = topologicalSort(tasks)
+    const result = topologicalSort(tasks)
 
-      // Verify all tasks are present
-      const allTasks = result.flat()
-      expect(allTasks).toHaveLength(9)
-      expect(new Set(allTasks)).toEqual(new Set(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i']))
+    // Verify all tasks are present
+    const allTasks = result.flat()
+    expect(allTasks).toHaveLength(9)
+    expect(new Set(allTasks)).toEqual(new Set(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i']))
 
-      // Verify dependency ordering
-      const taskIndex = new Map(allTasks.map((id, idx) => [id, idx]))
-      expect(taskIndex.get('a')! < taskIndex.get('c')!).toBe(true)
-      expect(taskIndex.get('a')! < taskIndex.get('d')!).toBe(true)
-      expect(taskIndex.get('b')! < taskIndex.get('e')!).toBe(true)
-      expect(taskIndex.get('b')! < taskIndex.get('f')!).toBe(true)
-      expect(taskIndex.get('c')! < taskIndex.get('g')!).toBe(true)
-      expect(taskIndex.get('d')! < taskIndex.get('g')!).toBe(true)
-      expect(taskIndex.get('e')! < taskIndex.get('h')!).toBe(true)
-      expect(taskIndex.get('f')! < taskIndex.get('h')!).toBe(true)
-      expect(taskIndex.get('g')! < taskIndex.get('i')!).toBe(true)
-      expect(taskIndex.get('h')! < taskIndex.get('i')!).toBe(true)
-    }),
-  )
+    // Verify dependency ordering
+    const taskIndex = new Map(allTasks.map((id, idx) => [id, idx]))
+    expect(taskIndex.get('a')! < taskIndex.get('c')!).toBe(true)
+    expect(taskIndex.get('a')! < taskIndex.get('d')!).toBe(true)
+    expect(taskIndex.get('b')! < taskIndex.get('e')!).toBe(true)
+    expect(taskIndex.get('b')! < taskIndex.get('f')!).toBe(true)
+    expect(taskIndex.get('c')! < taskIndex.get('g')!).toBe(true)
+    expect(taskIndex.get('d')! < taskIndex.get('g')!).toBe(true)
+    expect(taskIndex.get('e')! < taskIndex.get('h')!).toBe(true)
+    expect(taskIndex.get('f')! < taskIndex.get('h')!).toBe(true)
+    expect(taskIndex.get('g')! < taskIndex.get('i')!).toBe(true)
+    expect(taskIndex.get('h')! < taskIndex.get('i')!).toBe(true)
+  })
 })
 
 // =============================================================================
@@ -395,246 +381,232 @@ describe('topologicalSort', () => {
 // =============================================================================
 
 describe('reduceEvent', () => {
-  it.effect('handles registered event', () =>
-    Effect.gen(function* () {
-      const initialState = new TaskSystemState({ tasks: {} })
-      const event: TaskEvent<'test'> = {
+  it('handles registered event', () => {
+    const initialState = new TaskSystemState({ tasks: {} })
+    const event: TaskEvent<'test'> = {
+      type: 'registered',
+      taskId: 'test',
+      name: 'Test Task',
+    }
+
+    const newState = reduceEvent({ state: initialState, event })
+
+    expect(newState.tasks.test!).toBeDefined()
+    expect(newState.tasks.test!.id).toBe('test')
+    expect(newState.tasks.test!.name).toBe('Test Task')
+    expect(newState.tasks.test!.status).toBe('pending')
+    expect(newState.tasks.test!.stdout).toEqual([])
+    expect(newState.tasks.test!.stderr).toEqual([])
+  })
+
+  it('handles started event', () => {
+    const initialState = new TaskSystemState({
+      tasks: {
+        test: new TaskState({
+          id: 'test',
+          name: 'Test Task',
+          status: 'pending',
+          stdout: [],
+          stderr: [],
+          startedAt: Option.none(),
+          completedAt: Option.none(),
+          error: Option.none(),
+          commandInfo: Option.none(),
+          retryAttempt: 0,
+          maxRetries: Option.none(),
+        }),
+      },
+    })
+
+    const timestamp = Date.now()
+    const event: TaskEvent<'test'> = {
+      type: 'started',
+      taskId: 'test',
+      timestamp,
+    }
+
+    const newState = reduceEvent({ state: initialState, event })
+
+    expect(newState.tasks.test!.status).toBe('running')
+    expect(Option.isSome(newState.tasks.test!.startedAt)).toBe(true)
+    expect(Option.getOrThrow(newState.tasks.test!.startedAt)).toBe(timestamp)
+  })
+
+  it('handles stdout event', () => {
+    const initialState = new TaskSystemState({
+      tasks: {
+        test: new TaskState({
+          id: 'test',
+          name: 'Test Task',
+          status: 'running',
+          stdout: ['line1'],
+          stderr: [],
+          startedAt: Option.some(Date.now()),
+          completedAt: Option.none(),
+          error: Option.none(),
+          commandInfo: Option.none(),
+          retryAttempt: 0,
+          maxRetries: Option.none(),
+        }),
+      },
+    })
+
+    const event: TaskEvent<'test'> = {
+      type: 'stdout',
+      taskId: 'test',
+      chunk: 'line2',
+    }
+
+    const newState = reduceEvent({ state: initialState, event })
+
+    expect(newState.tasks.test!.stdout).toEqual(['line1', 'line2'])
+  })
+
+  it('handles stderr event', () => {
+    const initialState = new TaskSystemState({
+      tasks: {
+        test: new TaskState({
+          id: 'test',
+          name: 'Test Task',
+          status: 'running',
+          stdout: [],
+          stderr: [],
+          startedAt: Option.some(Date.now()),
+          completedAt: Option.none(),
+          error: Option.none(),
+          commandInfo: Option.none(),
+          retryAttempt: 0,
+          maxRetries: Option.none(),
+        }),
+      },
+    })
+
+    const event: TaskEvent<'test'> = {
+      type: 'stderr',
+      taskId: 'test',
+      chunk: 'error message',
+    }
+
+    const newState = reduceEvent({ state: initialState, event })
+
+    expect(newState.tasks.test!.stderr).toEqual(['error message'])
+  })
+
+  it('handles completed event with success', () => {
+    const initialState = new TaskSystemState({
+      tasks: {
+        test: new TaskState({
+          id: 'test',
+          name: 'Test Task',
+          status: 'running',
+          stdout: [],
+          stderr: [],
+          startedAt: Option.some(Date.now()),
+          completedAt: Option.none(),
+          error: Option.none(),
+          commandInfo: Option.none(),
+          retryAttempt: 0,
+          maxRetries: Option.none(),
+        }),
+      },
+    })
+
+    const timestamp = Date.now()
+    const event: TaskEvent<'test'> = {
+      type: 'completed',
+      taskId: 'test',
+      timestamp,
+      exit: Exit.succeed('result'),
+    }
+
+    const newState = reduceEvent({ state: initialState, event })
+
+    expect(newState.tasks.test!.status).toBe('success')
+    expect(Option.isSome(newState.tasks.test!.completedAt)).toBe(true)
+    expect(Option.getOrThrow(newState.tasks.test!.completedAt)).toBe(timestamp)
+    expect(Option.isNone(newState.tasks.test!.error)).toBe(true)
+  })
+
+  it('handles completed event with failure', () => {
+    const initialState = new TaskSystemState({
+      tasks: {
+        test: new TaskState({
+          id: 'test',
+          name: 'Test Task',
+          status: 'running',
+          stdout: [],
+          stderr: [],
+          startedAt: Option.some(Date.now()),
+          completedAt: Option.none(),
+          error: Option.none(),
+          commandInfo: Option.none(),
+          retryAttempt: 0,
+          maxRetries: Option.none(),
+        }),
+      },
+    })
+
+    const timestamp = Date.now()
+    const event: TaskEvent<'test'> = {
+      type: 'completed',
+      taskId: 'test',
+      timestamp,
+      exit: Exit.fail(new Error('Task failed')),
+    }
+
+    const newState = reduceEvent({ state: initialState, event })
+
+    expect(newState.tasks.test!.status).toBe('failed')
+    expect(Option.isSome(newState.tasks.test!.completedAt)).toBe(true)
+    expect(Option.isSome(newState.tasks.test!.error)).toBe(true)
+  })
+
+  it('handles sequence of events correctly', () => {
+    let state = new TaskSystemState({ tasks: {} })
+
+    // Register
+    state = reduceEvent({
+      state,
+      event: {
         type: 'registered',
         taskId: 'test',
         name: 'Test Task',
-      }
+      },
+    })
+    expect(state.tasks.test!.status).toBe('pending')
 
-      const newState = reduceEvent({ state: initialState, event })
-
-      expect(newState.tasks.test!).toBeDefined()
-      expect(newState.tasks.test!.id).toBe('test')
-      expect(newState.tasks.test!.name).toBe('Test Task')
-      expect(newState.tasks.test!.status).toBe('pending')
-      expect(newState.tasks.test!.stdout).toEqual([])
-      expect(newState.tasks.test!.stderr).toEqual([])
-    }),
-  )
-
-  it.effect('handles started event', () =>
-    Effect.gen(function* () {
-      const initialState = new TaskSystemState({
-        tasks: {
-          test: new TaskState({
-            id: 'test',
-            name: 'Test Task',
-            status: 'pending',
-            stdout: [],
-            stderr: [],
-            startedAt: Option.none(),
-            completedAt: Option.none(),
-            error: Option.none(),
-            commandInfo: Option.none(),
-            retryAttempt: 0,
-            maxRetries: Option.none(),
-          }),
-        },
-      })
-
-      const timestamp = Date.now()
-      const event: TaskEvent<'test'> = {
+    // Start
+    state = reduceEvent({
+      state,
+      event: {
         type: 'started',
         taskId: 'test',
-        timestamp,
-      }
+        timestamp: 1000,
+      },
+    })
+    expect(state.tasks.test!.status).toBe('running')
 
-      const newState = reduceEvent({ state: initialState, event })
-
-      expect(newState.tasks.test!.status).toBe('running')
-      expect(Option.isSome(newState.tasks.test!.startedAt)).toBe(true)
-      expect(Option.getOrThrow(newState.tasks.test!.startedAt)).toBe(timestamp)
-    }),
-  )
-
-  it.effect('handles stdout event', () =>
-    Effect.gen(function* () {
-      const initialState = new TaskSystemState({
-        tasks: {
-          test: new TaskState({
-            id: 'test',
-            name: 'Test Task',
-            status: 'running',
-            stdout: ['line1'],
-            stderr: [],
-            startedAt: Option.some(Date.now()),
-            completedAt: Option.none(),
-            error: Option.none(),
-            commandInfo: Option.none(),
-            retryAttempt: 0,
-            maxRetries: Option.none(),
-          }),
-        },
-      })
-
-      const event: TaskEvent<'test'> = {
+    // Output
+    state = reduceEvent({
+      state,
+      event: {
         type: 'stdout',
         taskId: 'test',
-        chunk: 'line2',
-      }
+        chunk: 'output line',
+      },
+    })
+    expect(state.tasks.test!.stdout).toEqual(['output line'])
 
-      const newState = reduceEvent({ state: initialState, event })
-
-      expect(newState.tasks.test!.stdout).toEqual(['line1', 'line2'])
-    }),
-  )
-
-  it.effect('handles stderr event', () =>
-    Effect.gen(function* () {
-      const initialState = new TaskSystemState({
-        tasks: {
-          test: new TaskState({
-            id: 'test',
-            name: 'Test Task',
-            status: 'running',
-            stdout: [],
-            stderr: [],
-            startedAt: Option.some(Date.now()),
-            completedAt: Option.none(),
-            error: Option.none(),
-            commandInfo: Option.none(),
-            retryAttempt: 0,
-            maxRetries: Option.none(),
-          }),
-        },
-      })
-
-      const event: TaskEvent<'test'> = {
-        type: 'stderr',
-        taskId: 'test',
-        chunk: 'error message',
-      }
-
-      const newState = reduceEvent({ state: initialState, event })
-
-      expect(newState.tasks.test!.stderr).toEqual(['error message'])
-    }),
-  )
-
-  it.effect('handles completed event with success', () =>
-    Effect.gen(function* () {
-      const initialState = new TaskSystemState({
-        tasks: {
-          test: new TaskState({
-            id: 'test',
-            name: 'Test Task',
-            status: 'running',
-            stdout: [],
-            stderr: [],
-            startedAt: Option.some(Date.now()),
-            completedAt: Option.none(),
-            error: Option.none(),
-            commandInfo: Option.none(),
-            retryAttempt: 0,
-            maxRetries: Option.none(),
-          }),
-        },
-      })
-
-      const timestamp = Date.now()
-      const event: TaskEvent<'test'> = {
+    // Complete
+    state = reduceEvent({
+      state,
+      event: {
         type: 'completed',
         taskId: 'test',
-        timestamp,
-        exit: Exit.succeed('result'),
-      }
-
-      const newState = reduceEvent({ state: initialState, event })
-
-      expect(newState.tasks.test!.status).toBe('success')
-      expect(Option.isSome(newState.tasks.test!.completedAt)).toBe(true)
-      expect(Option.getOrThrow(newState.tasks.test!.completedAt)).toBe(timestamp)
-      expect(Option.isNone(newState.tasks.test!.error)).toBe(true)
-    }),
-  )
-
-  it.effect('handles completed event with failure', () =>
-    Effect.gen(function* () {
-      const initialState = new TaskSystemState({
-        tasks: {
-          test: new TaskState({
-            id: 'test',
-            name: 'Test Task',
-            status: 'running',
-            stdout: [],
-            stderr: [],
-            startedAt: Option.some(Date.now()),
-            completedAt: Option.none(),
-            error: Option.none(),
-            commandInfo: Option.none(),
-            retryAttempt: 0,
-            maxRetries: Option.none(),
-          }),
-        },
-      })
-
-      const timestamp = Date.now()
-      const event: TaskEvent<'test'> = {
-        type: 'completed',
-        taskId: 'test',
-        timestamp,
-        exit: Exit.fail(new Error('Task failed')),
-      }
-
-      const newState = reduceEvent({ state: initialState, event })
-
-      expect(newState.tasks.test!.status).toBe('failed')
-      expect(Option.isSome(newState.tasks.test!.completedAt)).toBe(true)
-      expect(Option.isSome(newState.tasks.test!.error)).toBe(true)
-    }),
-  )
-
-  it.effect('handles sequence of events correctly', () =>
-    Effect.gen(function* () {
-      let state = new TaskSystemState({ tasks: {} })
-
-      // Register
-      state = reduceEvent({
-        state,
-        event: {
-          type: 'registered',
-          taskId: 'test',
-          name: 'Test Task',
-        },
-      })
-      expect(state.tasks.test!.status).toBe('pending')
-
-      // Start
-      state = reduceEvent({
-        state,
-        event: {
-          type: 'started',
-          taskId: 'test',
-          timestamp: 1000,
-        },
-      })
-      expect(state.tasks.test!.status).toBe('running')
-
-      // Output
-      state = reduceEvent({
-        state,
-        event: {
-          type: 'stdout',
-          taskId: 'test',
-          chunk: 'output line',
-        },
-      })
-      expect(state.tasks.test!.stdout).toEqual(['output line'])
-
-      // Complete
-      state = reduceEvent({
-        state,
-        event: {
-          type: 'completed',
-          taskId: 'test',
-          timestamp: 2000,
-          exit: Exit.succeed(undefined),
-        },
-      })
-      expect(state.tasks.test!.status).toBe('success')
-    }),
-  )
+        timestamp: 2000,
+        exit: Exit.succeed(undefined),
+      },
+    })
+    expect(state.tasks.test!.status).toBe('success')
+  })
 })

@@ -11,10 +11,22 @@ import { DateValue } from './date.ts'
  * Formula result value.
  */
 export const FormulaValue = Schema.Union(
-  Schema.Struct({ type: Schema.Literal('string'), string: Schema.NullOr(Schema.String) }),
-  Schema.Struct({ type: Schema.Literal('number'), number: Schema.NullOr(Schema.Number) }),
-  Schema.Struct({ type: Schema.Literal('boolean'), boolean: Schema.NullOr(Schema.Boolean) }),
-  Schema.Struct({ type: Schema.Literal('date'), date: Schema.NullOr(DateValue) }),
+  Schema.Struct({
+    type: Schema.Literal('string'),
+    string: Schema.NullOr(Schema.String),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('number'),
+    number: Schema.NullOr(Schema.Number),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('boolean'),
+    boolean: Schema.NullOr(Schema.Boolean),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('date'),
+    date: Schema.NullOr(DateValue),
+  }),
 ).annotations({
   identifier: 'Notion.FormulaValue',
   title: 'Formula Value',

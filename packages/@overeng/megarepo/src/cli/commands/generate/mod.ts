@@ -146,7 +146,12 @@ const generateNixCommand = Cli.Command.make(
 
       if (Option.isNone(root)) {
         if (json) {
-          console.log(JSON.stringify({ error: 'not_found', message: 'No megarepo.json found' }))
+          console.log(
+            JSON.stringify({
+              error: 'not_found',
+              message: 'No megarepo.json found',
+            }),
+          )
         } else {
           yield* Console.error(`${styled.red(symbols.cross)} Not in a megarepo`)
         }
@@ -192,7 +197,12 @@ const generateVscodeCommand = Cli.Command.make(
 
       if (Option.isNone(root)) {
         if (json) {
-          console.log(JSON.stringify({ error: 'not_found', message: 'No megarepo.json found' }))
+          console.log(
+            JSON.stringify({
+              error: 'not_found',
+              message: 'No megarepo.json found',
+            }),
+          )
         } else {
           yield* Console.error(`${styled.red(symbols.cross)} Not in a megarepo`)
         }
@@ -244,7 +254,12 @@ const generateSchemaCommand = Cli.Command.make(
 
       if (Option.isNone(root)) {
         if (json) {
-          console.log(JSON.stringify({ error: 'not_found', message: 'No megarepo.json found' }))
+          console.log(
+            JSON.stringify({
+              error: 'not_found',
+              message: 'No megarepo.json found',
+            }),
+          )
         } else {
           yield* Console.error(`${styled.red(symbols.cross)} Not in a megarepo`)
         }
@@ -282,7 +297,12 @@ const generateAllCommand = Cli.Command.make('all', { json: jsonOption }, ({ json
 
     if (Option.isNone(root)) {
       if (json) {
-        console.log(JSON.stringify({ error: 'not_found', message: 'No megarepo.json found' }))
+        console.log(
+          JSON.stringify({
+            error: 'not_found',
+            message: 'No megarepo.json found',
+          }),
+        )
       } else {
         yield* Console.error(`${styled.red(symbols.cross)} Not in a megarepo`)
       }
@@ -312,7 +332,10 @@ const generateAllCommand = Cli.Command.make('all', { json: jsonOption }, ({ json
         visited: new Set(),
       })
       if (Option.isSome(nixResult)) {
-        results.push({ generator: 'nix', path: nixResult.value.result.workspaceRoot })
+        results.push({
+          generator: 'nix',
+          path: nixResult.value.result.workspaceRoot,
+        })
       }
       if (!json) {
         yield* Console.log(

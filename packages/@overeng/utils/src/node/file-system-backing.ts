@@ -72,7 +72,12 @@ const readHolderLock = Effect.fn('FileSystemBacking.readHolderLock')(function* (
       }
 
       if (failure !== undefined) {
-        return Effect.fail(new SemaphoreBackingError({ operation: 'readFile', cause: failure }))
+        return Effect.fail(
+          new SemaphoreBackingError({
+            operation: 'readFile',
+            cause: failure,
+          }),
+        )
       }
       if (defect !== undefined) {
         return Effect.fail(new SemaphoreBackingError({ operation: 'readFile', cause: defect }))
@@ -388,11 +393,18 @@ export const forceRevoke = Effect.fn('FileSystemBacking.forceRevoke')(function* 
   key: string
   targetHolderId: string
 }) {
-  yield* Effect.annotateCurrentSpan({ key: opts.key, targetHolderId: opts.targetHolderId })
+  yield* Effect.annotateCurrentSpan({
+    key: opts.key,
+    targetHolderId: opts.targetHolderId,
+  })
 
   const { options, key, targetHolderId } = opts
   const { lockDir } = options
-  const holderPath = getHolderPath({ lockDir, key, holderId: targetHolderId })
+  const holderPath = getHolderPath({
+    lockDir,
+    key,
+    holderId: targetHolderId,
+  })
   const now = Date.now()
 
   const existingLock = yield* readHolderLock({ filePath: holderPath, now })
@@ -449,7 +461,11 @@ export const listHolders = Effect.fn('FileSystemBacking.listHolders')(function* 
     if (lock !== undefined) {
       const holderId = yield* Effect.try({
         try: () => decodeURIComponent(entry.slice(0, -5)), // Remove .lock suffix
-        catch: (cause) => new SemaphoreBackingError({ operation: 'decodeURIComponent', cause }),
+        catch: (cause) =>
+          new SemaphoreBackingError({
+            operation: 'decodeURIComponent',
+            cause,
+          }),
       })
       holders.push({
         holderId,
@@ -481,7 +497,11 @@ export const forceRevokeAll = Effect.fn('FileSystemBacking.forceRevokeAll')(func
   const revoked: Array<{ holderId: string; permits: number }> = []
 
   for (const holder of holders) {
-    const permits = yield* forceRevoke({ options, key, targetHolderId: holder.holderId })
+    const permits = yield* forceRevoke({
+      options,
+      key,
+      targetHolderId: holder.holderId,
+    })
     if (permits > 0) {
       revoked.push({ holderId: holder.holderId, permits })
     }

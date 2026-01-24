@@ -86,7 +86,10 @@ describe('nix generator', () => {
   describe('generateWorkspaceFlakeContent', () => {
     it('should generate flake inputs for each repo', () => {
       const content = generateWorkspaceFlakeContent([
-        { name: 'app', path: EffectPath.unsafe.absoluteDir('/test/megarepo/repos/app/') },
+        {
+          name: 'app',
+          path: EffectPath.unsafe.absoluteDir('/test/megarepo/repos/app/'),
+        },
         {
           name: 'shared-lib',
           path: EffectPath.unsafe.absoluteDir('/test/megarepo/repos/shared-lib/'),
@@ -99,7 +102,10 @@ describe('nix generator', () => {
 
     it('should include repos output', () => {
       const content = generateWorkspaceFlakeContent([
-        { name: 'app', path: EffectPath.unsafe.absoluteDir('/test/megarepo/repos/app/') },
+        {
+          name: 'app',
+          path: EffectPath.unsafe.absoluteDir('/test/megarepo/repos/app/'),
+        },
       ])
 
       expect(content).toContain('repos = builtins.removeAttrs inputs [ "self" ];')

@@ -72,7 +72,10 @@ export interface DeleteBlockOptions {
  * @see https://developers.notion.com/reference/retrieve-a-block
  */
 export const retrieve = Effect.fn('NotionBlocks.retrieve')(function* (opts: RetrieveBlockOptions) {
-  return yield* get({ path: `/blocks/${opts.blockId}`, responseSchema: BlockSchema })
+  return yield* get({
+    path: `/blocks/${opts.blockId}`,
+    responseSchema: BlockSchema,
+  })
 })
 
 /** Internal helper to build query params for block children */
@@ -89,7 +92,10 @@ const retrieveChildrenRaw = Effect.fn('NotionBlocks.retrieveChildren')(function*
 ) {
   const queryString = buildBlockChildrenParams(opts)
   const path = `/blocks/${opts.blockId}/children${queryString ? `?${queryString}` : ''}`
-  const response = yield* get({ path, responseSchema: BlockChildrenResponseSchema })
+  const response = yield* get({
+    path,
+    responseSchema: BlockChildrenResponseSchema,
+  })
   return toPaginatedResult(response)
 })
 
@@ -168,7 +174,11 @@ export const append = Effect.fn('NotionBlocks.append')(function* (
 export const update = Effect.fn('NotionBlocks.update')(function* (opts: UpdateBlockOptions) {
   const { blockId, ...body } = opts
 
-  return yield* patch({ path: `/blocks/${blockId}`, body, responseSchema: BlockSchema })
+  return yield* patch({
+    path: `/blocks/${blockId}`,
+    body,
+    responseSchema: BlockSchema,
+  })
 })
 
 /**
@@ -177,7 +187,10 @@ export const update = Effect.fn('NotionBlocks.update')(function* (opts: UpdateBl
  * @see https://developers.notion.com/reference/delete-a-block
  */
 export const deleteBlock = Effect.fn('NotionBlocks.delete')(function* (opts: DeleteBlockOptions) {
-  return yield* del({ path: `/blocks/${opts.blockId}`, responseSchema: BlockSchema })
+  return yield* del({
+    path: `/blocks/${opts.blockId}`,
+    responseSchema: BlockSchema,
+  })
 })
 
 // -----------------------------------------------------------------------------
@@ -299,7 +312,11 @@ export const retrieveAllNested = (
           // Emit this block, then recurse into its children
           return Stream.concat(
             Stream.succeed(item),
-            fetchBlocksRecursive({ blockId: block.id, parentId: block.id, depth: depth + 1 }),
+            fetchBlocksRecursive({
+              blockId: block.id,
+              parentId: block.id,
+              depth: depth + 1,
+            }),
           )
         }
 
@@ -310,7 +327,11 @@ export const retrieveAllNested = (
     )
   }
 
-  return fetchBlocksRecursive({ blockId: opts.blockId, parentId: null, depth: 0 }).pipe(
+  return fetchBlocksRecursive({
+    blockId: opts.blockId,
+    parentId: null,
+    depth: 0,
+  }).pipe(
     Stream.tapError((error) =>
       Effect.logError('Failed to retrieve nested blocks', {
         blockId: opts.blockId,
@@ -372,7 +393,10 @@ export const retrieveAsTree = (
             let nodeChildren: BlockTree = []
 
             if (canHaveChildren({ block, skipTypes })) {
-              nodeChildren = yield* fetchTreeRecursive({ blockId: block.id, depth: depth + 1 })
+              nodeChildren = yield* fetchTreeRecursive({
+                blockId: block.id,
+                depth: depth + 1,
+              })
             }
 
             const node: BlockTreeNode = {

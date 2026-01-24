@@ -482,7 +482,10 @@ const createNestedMegarepoFixture = () =>
       EffectPath.ops.join(childPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME)),
       childConfigContent + '\n',
     )
-    yield* addCommit({ repoPath: childPath, message: 'Initialize child megarepo' })
+    yield* addCommit({
+      repoPath: childPath,
+      message: 'Initialize child megarepo',
+    })
 
     // Create parent megarepo that includes child as a member
     const parentPath = EffectPath.ops.join(
@@ -505,7 +508,10 @@ const createNestedMegarepoFixture = () =>
       EffectPath.ops.join(parentPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME)),
       parentConfigContent + '\n',
     )
-    yield* addCommit({ repoPath: parentPath, message: 'Initialize parent megarepo' })
+    yield* addCommit({
+      repoPath: parentPath,
+      message: 'Initialize parent megarepo',
+    })
 
     return {
       parentPath,
@@ -620,7 +626,10 @@ const createDiamondDependencyFixture = () =>
       EffectPath.ops.join(childAPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME)),
       childAConfigContent + '\n',
     )
-    yield* addCommit({ repoPath: childAPath, message: 'Initialize child-a megarepo' })
+    yield* addCommit({
+      repoPath: childAPath,
+      message: 'Initialize child-a megarepo',
+    })
 
     // Create child-b megarepo that ALSO includes shared-lib (diamond!)
     const childBPath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('child-b/'))
@@ -636,7 +645,10 @@ const createDiamondDependencyFixture = () =>
       EffectPath.ops.join(childBPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME)),
       childBConfigContent + '\n',
     )
-    yield* addCommit({ repoPath: childBPath, message: 'Initialize child-b megarepo' })
+    yield* addCommit({
+      repoPath: childBPath,
+      message: 'Initialize child-b megarepo',
+    })
 
     // Create root megarepo that includes both children
     const rootPath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('root/'))
@@ -655,7 +667,10 @@ const createDiamondDependencyFixture = () =>
       EffectPath.ops.join(rootPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME)),
       rootConfigContent + '\n',
     )
-    yield* addCommit({ repoPath: rootPath, message: 'Initialize root megarepo' })
+    yield* addCommit({
+      repoPath: rootPath,
+      message: 'Initialize root megarepo',
+    })
 
     return {
       rootPath,
@@ -751,9 +766,16 @@ describe('default sync mode (no --pull)', () => {
           })
 
           // Run sync (default mode, no --pull)
-          const result = yield* runSyncCommand({ cwd: workspacePath, args: ['--json'] })
+          const result = yield* runSyncCommand({
+            cwd: workspacePath,
+            args: ['--json'],
+          })
           const json = JSON.parse(result.stdout.trim()) as {
-            results: Array<{ name: string; status: string; lockUpdated?: boolean }>
+            results: Array<{
+              name: string
+              status: string
+              lockUpdated?: boolean
+            }>
           }
 
           // Should have synced successfully (local path sources are symlinks)
@@ -801,7 +823,10 @@ describe('default sync mode (no --pull)', () => {
           yield* runSyncCommand({ cwd: workspacePath, args: [] })
 
           // Second sync should show already_synced
-          const result = yield* runSyncCommand({ cwd: workspacePath, args: ['--json'] })
+          const result = yield* runSyncCommand({
+            cwd: workspacePath,
+            args: ['--json'],
+          })
           const json = JSON.parse(result.stdout.trim()) as {
             results: Array<{ name: string; status: string }>
           }
@@ -844,7 +869,10 @@ describe('default sync mode (no --pull)', () => {
             EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME)),
             configContent + '\n',
           )
-          yield* addCommit({ repoPath: workspacePath, message: 'Initialize megarepo' })
+          yield* addCommit({
+            repoPath: workspacePath,
+            message: 'Initialize megarepo',
+          })
 
           // Run sync (default mode) - this should NOT fetch since no worktree exists yet
           // It should try to clone since member doesn't exist
@@ -910,7 +938,10 @@ describe('sync --pull mode', () => {
           // Run sync --pull (should skip dirty worktree)
           // Note: For local path sources, dirty check may not apply the same way
           // This test documents the expected behavior
-          const result = yield* runSyncCommand({ cwd: workspacePath, args: ['--pull', '--json'] })
+          const result = yield* runSyncCommand({
+            cwd: workspacePath,
+            args: ['--pull', '--json'],
+          })
 
           // Should complete without error
           expect(result.exitCode).toBeDefined()
@@ -963,7 +994,10 @@ describe('sync --pull mode', () => {
           )
 
           // Run sync --pull
-          const result = yield* runSyncCommand({ cwd: workspacePath, args: ['--pull', '--json'] })
+          const result = yield* runSyncCommand({
+            cwd: workspacePath,
+            args: ['--pull', '--json'],
+          })
           const json = JSON.parse(result.stdout.trim()) as {
             results: Array<{ name: string; status: string }>
           }
@@ -1016,10 +1050,16 @@ describe('sync status types', () => {
           EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME)),
           configContent + '\n',
         )
-        yield* addCommit({ repoPath: workspacePath, message: 'Initialize megarepo' })
+        yield* addCommit({
+          repoPath: workspacePath,
+          message: 'Initialize megarepo',
+        })
 
         // Run sync for first time
-        const result = yield* runSyncCommand({ cwd: workspacePath, args: ['--json'] })
+        const result = yield* runSyncCommand({
+          cwd: workspacePath,
+          args: ['--json'],
+        })
         const json = JSON.parse(result.stdout.trim()) as {
           results: Array<{ name: string; status: string }>
         }
@@ -1062,10 +1102,16 @@ describe('sync error handling', () => {
           EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME)),
           configContent + '\n',
         )
-        yield* addCommit({ repoPath: workspacePath, message: 'Initialize megarepo' })
+        yield* addCommit({
+          repoPath: workspacePath,
+          message: 'Initialize megarepo',
+        })
 
         // Run sync --json to get structured output
-        const result = yield* runSyncCommand({ cwd: workspacePath, args: ['--json'] })
+        const result = yield* runSyncCommand({
+          cwd: workspacePath,
+          args: ['--json'],
+        })
 
         // Parse the JSON output
         const json = JSON.parse(result.stdout.trim()) as {

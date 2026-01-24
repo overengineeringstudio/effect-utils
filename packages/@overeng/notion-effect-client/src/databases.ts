@@ -78,7 +78,10 @@ export interface RetrieveDatabaseOptions {
 export const retrieve = Effect.fn('NotionDatabases.retrieve')(function* (
   opts: RetrieveDatabaseOptions,
 ) {
-  return yield* get({ path: `/databases/${opts.databaseId}`, responseSchema: DatabaseSchema })
+  return yield* get({
+    path: `/databases/${opts.databaseId}`,
+    responseSchema: DatabaseSchema,
+  })
 })
 
 /** Result of a typed database query */
@@ -165,7 +168,10 @@ export function query<TProperties, I, R>(
     const result = yield* queryRaw(opts)
 
     if (opts.schema !== undefined) {
-      const typedResults = yield* decodePages({ pages: result.results, schema: opts.schema })
+      const typedResults = yield* decodePages({
+        pages: result.results,
+        schema: opts.schema,
+      })
       return {
         results: typedResults,
         nextCursor: result.nextCursor,

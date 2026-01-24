@@ -31,13 +31,9 @@ import {
   upsertLockedMember,
   writeLockFile,
 } from '../../lib/lock.ts'
-import { Store, StoreLayer } from '../../lib/store.ts'
-import {
-  flattenSyncResults,
-  syncMember,
-  type MegarepoSyncResult,
-} from '../../lib/sync/mod.ts'
-import { outputLines, renderSync } from '../renderers/mod.ts'
+import { type Store, StoreLayer } from '../../lib/store.ts'
+import { flattenSyncResults, syncMember, type MegarepoSyncResult } from '../../lib/sync/mod.ts'
+import { Cwd, findMegarepoRoot, jsonOption } from '../context.ts'
 import {
   SyncProgressEmpty,
   setMemberSyncing,
@@ -47,7 +43,7 @@ import {
   finishSyncProgressUI,
   type SyncProgressService,
 } from '../progress/mod.ts'
-import { Cwd, findMegarepoRoot, jsonOption } from '../context.ts'
+import { outputLines, renderSync } from '../renderers/mod.ts'
 
 // =============================================================================
 // Sync Errors
@@ -95,7 +91,14 @@ export const syncMegarepo = ({
   withProgress = false,
 }: {
   megarepoRoot: AbsoluteDirPath
-  options: { json: boolean; dryRun: boolean; pull: boolean; frozen: boolean; force: boolean; deep: boolean }
+  options: {
+    json: boolean
+    dryRun: boolean
+    pull: boolean
+    frozen: boolean
+    force: boolean
+    deep: boolean
+  }
   depth?: number
   visited?: Set<string>
   withProgress?: boolean
@@ -176,11 +179,16 @@ export const syncMegarepo = ({
             `${indent}${styled.red(symbols.cross)} Lock file required for --frozen mode`,
           )
         }
-        return yield* new LockFileRequiredError({ message: 'Lock file required for --frozen' })
+        return yield* new LockFileRequiredError({
+          message: 'Lock file required for --frozen',
+        })
       }
 
       // Check for staleness
-      const staleness = checkLockStaleness({ lockFile, configMemberNames: remoteMemberNames })
+      const staleness = checkLockStaleness({
+        lockFile,
+        configMemberNames: remoteMemberNames,
+      })
       if (staleness.isStale) {
         if (json) {
           console.log(
@@ -222,7 +230,7 @@ export const syncMegarepo = ({
         Effect.gen(function* () {
           // Mark as syncing in progress service
           if (withProgress) {
-            yield* setMemberSyncing(name).pipe(Effect.catchAll(() => Effect.void))
+            yield* setMemberSyncing({ memberName: name }).pipe(Effect.catchAll(() => Effect.void))
           }
 
           // Perform the sync
@@ -278,7 +286,10 @@ export const syncMegarepo = ({
       }
 
       // Sync lock with config (remove stale entries)
-      lockFile = syncLockWithConfig({ lockFile, configMemberNames: remoteMemberNames })
+      lockFile = syncLockWithConfig({
+        lockFile,
+        configMemberNames: remoteMemberNames,
+      })
 
       // Update lock entries from results
       for (const result of results) {
@@ -387,11 +398,18 @@ export const syncCommand = Cli.Command.make(
 
       if (Option.isNone(root)) {
         if (json) {
-          console.log(JSON.stringify({ error: 'not_found', message: 'No megarepo.json found' }))
+          console.log(
+            JSON.stringify({
+              error: 'not_found',
+              message: 'No megarepo.json found',
+            }),
+          )
         } else {
           yield* Console.error(`${styled.red(symbols.cross)} Not in a megarepo`)
         }
-        return yield* new NotInMegarepoError({ message: 'No megarepo.json found' })
+        return yield* new NotInMegarepoError({
+          message: 'No megarepo.json found',
+        })
       }
 
       // Get workspace name
@@ -461,7 +479,10 @@ export const syncCommand = Cli.Command.make(
 
         return syncResult
       }
-    }).pipe(Effect.provide(Layer.merge(StoreLayer, SyncProgressEmpty)), Effect.withSpan('megarepo/sync')),
+    }).pipe(
+      Effect.provide(Layer.merge(StoreLayer, SyncProgressEmpty)),
+      Effect.withSpan('megarepo/sync'),
+    ),
 ).pipe(
   Cli.Command.withDescription(
     'Ensure members exist and update lock file to current worktree commits. Use --pull to fetch from remote.',

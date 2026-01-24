@@ -220,7 +220,12 @@ interface MutableTaskState {
   completedAt: number | undefined
   error: string | undefined
   commandInfo:
-    | { command: string; args: readonly string[]; cwd: string; exitCode: number }
+    | {
+        command: string
+        args: readonly string[]
+        cwd: string
+        exitCode: number
+      }
     | undefined
   retryAttempt: number
   maxRetries: number | undefined

@@ -425,7 +425,10 @@ export default workspaceRoot({
         yield* writeFile(filePath, '')
 
         const sourceCode = `import { foo } from '#lib/mod.ts'`
-        const result = yield* resolveImportMapsInSource({ sourceCode, sourcePath: filePath })
+        const result = yield* resolveImportMapsInSource({
+          sourceCode,
+          sourcePath: filePath,
+        })
 
         expect(result).toBe(`import { foo } from '${tempDir}/src/lib/mod.ts'`)
       }, Effect.provide(TestLayer)),
@@ -445,7 +448,10 @@ export default workspaceRoot({
         yield* writeFile(filePath, '')
 
         const sourceCode = `export { foo } from '#lib/mod.ts'`
-        const result = yield* resolveImportMapsInSource({ sourceCode, sourcePath: filePath })
+        const result = yield* resolveImportMapsInSource({
+          sourceCode,
+          sourcePath: filePath,
+        })
 
         expect(result).toBe(`export { foo } from '${tempDir}/src/lib/mod.ts'`)
       }, Effect.provide(TestLayer)),
@@ -467,7 +473,10 @@ export default workspaceRoot({
         const sourceCode = `import { foo } from '#lib/foo.ts'
 import { bar } from '#lib/bar.ts'
 import { baz } from './local.ts'`
-        const result = yield* resolveImportMapsInSource({ sourceCode, sourcePath: filePath })
+        const result = yield* resolveImportMapsInSource({
+          sourceCode,
+          sourcePath: filePath,
+        })
 
         expect(result).toContain(`from '${tempDir}/src/lib/foo.ts'`)
         expect(result).toContain(`from '${tempDir}/src/lib/bar.ts'`)
@@ -491,7 +500,10 @@ import { baz } from './local.ts'`
         const sourceCode = `import { Effect } from 'effect'
 import { foo } from './local.ts'
 import { bar } from '../parent.ts'`
-        const result = yield* resolveImportMapsInSource({ sourceCode, sourcePath: filePath })
+        const result = yield* resolveImportMapsInSource({
+          sourceCode,
+          sourcePath: filePath,
+        })
 
         expect(result).toBe(sourceCode)
       }, Effect.provide(TestLayer)),
@@ -504,7 +516,10 @@ import { bar } from '../parent.ts'`
         yield* writeFile(filePath, '')
 
         const sourceCode = `import { foo } from '#lib/mod.ts'`
-        const result = yield* resolveImportMapsInSource({ sourceCode, sourcePath: filePath })
+        const result = yield* resolveImportMapsInSource({
+          sourceCode,
+          sourcePath: filePath,
+        })
 
         expect(result).toBe(sourceCode)
       }, Effect.provide(TestLayer)),
@@ -519,7 +534,10 @@ import { bar } from '../parent.ts'`
         yield* writeFile(filePath, '')
 
         const sourceCode = `import { foo } from '#lib/mod.ts'`
-        const result = yield* resolveImportMapsInSource({ sourceCode, sourcePath: filePath })
+        const result = yield* resolveImportMapsInSource({
+          sourceCode,
+          sourcePath: filePath,
+        })
 
         expect(result).toBe(sourceCode)
       }, Effect.provide(TestLayer)),
@@ -539,7 +557,10 @@ import { bar } from '../parent.ts'`
         yield* writeFile(filePath, '')
 
         const sourceCode = `import { foo } from "#lib/mod.ts"`
-        const result = yield* resolveImportMapsInSource({ sourceCode, sourcePath: filePath })
+        const result = yield* resolveImportMapsInSource({
+          sourceCode,
+          sourcePath: filePath,
+        })
 
         expect(result).toBe(`import { foo } from "${tempDir}/src/lib/mod.ts"`)
       }, Effect.provide(TestLayer)),
@@ -559,7 +580,10 @@ import { bar } from '../parent.ts'`
         yield* writeFile(filePath, '')
 
         const sourceCode = `import type { Foo } from '#lib/types.ts'`
-        const result = yield* resolveImportMapsInSource({ sourceCode, sourcePath: filePath })
+        const result = yield* resolveImportMapsInSource({
+          sourceCode,
+          sourcePath: filePath,
+        })
 
         expect(result).toBe(`import type { Foo } from '${tempDir}/src/lib/types.ts'`)
       }, Effect.provide(TestLayer)),
@@ -579,7 +603,10 @@ import { bar } from '../parent.ts'`
         yield* writeFile(filePath, '')
 
         const sourceCode = `export * from '#lib/mod.ts'`
-        const result = yield* resolveImportMapsInSource({ sourceCode, sourcePath: filePath })
+        const result = yield* resolveImportMapsInSource({
+          sourceCode,
+          sourcePath: filePath,
+        })
 
         expect(result).toBe(`export * from '${tempDir}/src/lib/mod.ts'`)
       }, Effect.provide(TestLayer)),

@@ -53,7 +53,9 @@ export const objectWithKeyPrefix = <TObj extends Record<string, any>, TPrefix ex
 }: {
   obj: TObj
   prefix: TPrefix
-}): { [K in keyof TObj as K extends string ? `${TPrefix}${K}` : never]: TObj[K] } => {
+}): {
+  [K in keyof TObj as K extends string ? `${TPrefix}${K}` : never]: TObj[K]
+} => {
   const newObj: Record<string, any> = {}
   for (const [k, v] of Object.entries(obj)) {
     newObj[`${prefix}${k}` as any] = v

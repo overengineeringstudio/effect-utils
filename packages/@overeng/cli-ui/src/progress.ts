@@ -135,4 +135,3 @@ export const formatElapsed = (ms: number): string => {
   const remainingMinutes = minutes % 60
   return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`
 }
-

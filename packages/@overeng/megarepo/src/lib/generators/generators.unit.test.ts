@@ -38,9 +38,18 @@ describe('vscode generator', () => {
       const workspace = JSON.parse(content)
 
       expect(workspace.folders).toHaveLength(3) // root + 2 members
-      expect(workspace.folders[0]).toEqual({ path: '.', name: '(megarepo root)' })
-      expect(workspace.folders).toContainEqual({ path: 'repos/lib1', name: 'lib1' })
-      expect(workspace.folders).toContainEqual({ path: 'repos/lib2', name: 'lib2' })
+      expect(workspace.folders[0]).toEqual({
+        path: '.',
+        name: '(megarepo root)',
+      })
+      expect(workspace.folders).toContainEqual({
+        path: 'repos/lib1',
+        name: 'lib1',
+      })
+      expect(workspace.folders).toContainEqual({
+        path: 'repos/lib2',
+        name: 'lib2',
+      })
     })
 
     it('should exclude members from options.exclude', () => {
@@ -109,7 +118,10 @@ describe('vscode generator', () => {
       const workspace = JSON.parse(content)
 
       // lib2 should be excluded (from options), lib1 should be included
-      expect(workspace.folders).toContainEqual({ path: 'repos/lib1', name: 'lib1' })
+      expect(workspace.folders).toContainEqual({
+        path: 'repos/lib1',
+        name: 'lib1',
+      })
       expect(workspace.folders).not.toContainEqual(expect.objectContaining({ path: 'repos/lib2' }))
     })
 
@@ -137,7 +149,10 @@ describe('vscode generator', () => {
       const workspace = JSON.parse(content)
 
       expect(workspace.folders).toHaveLength(1) // only root
-      expect(workspace.folders[0]).toEqual({ path: '.', name: '(megarepo root)' })
+      expect(workspace.folders[0]).toEqual({
+        path: '.',
+        name: '(megarepo root)',
+      })
     })
 
     it('should produce valid JSON with trailing newline', () => {

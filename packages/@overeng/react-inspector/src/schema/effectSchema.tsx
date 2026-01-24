@@ -104,7 +104,9 @@ export const getFieldSchema = (
     const typeLiteralAst = ast as SchemaAST.TypeLiteral
     const propSig = typeLiteralAst.propertySignatures.find((sig) => sig.name === fieldName)
     if (propSig) {
-      return { ast: unwrapAstForDisplay(propSig.type) } as S.Schema.AnyNoContext
+      return {
+        ast: unwrapAstForDisplay(propSig.type),
+      } as S.Schema.AnyNoContext
     }
   }
 
@@ -122,7 +124,9 @@ export const getArrayElementSchema = (
     if (tupleAst.rest.length > 0) {
       const [firstRest] = tupleAst.rest
       if (firstRest) {
-        return { ast: unwrapAstForDisplay(firstRest.type) } as S.Schema.AnyNoContext
+        return {
+          ast: unwrapAstForDisplay(firstRest.type),
+        } as S.Schema.AnyNoContext
       }
     }
   }

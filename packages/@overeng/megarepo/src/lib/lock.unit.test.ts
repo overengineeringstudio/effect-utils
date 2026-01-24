@@ -129,7 +129,11 @@ describe('lock', () => {
         ref: 'main',
         commit: 'abc123',
       })
-      const updated = updateLockedMember({ lockFile, memberName: 'effect', member })
+      const updated = updateLockedMember({
+        lockFile,
+        memberName: 'effect',
+        member,
+      })
       expect(updated.members['effect']).toBe(member)
     })
 
@@ -140,14 +144,22 @@ describe('lock', () => {
         ref: 'main',
         commit: 'abc123',
       })
-      lockFile = updateLockedMember({ lockFile, memberName: 'effect', member: member1 })
+      lockFile = updateLockedMember({
+        lockFile,
+        memberName: 'effect',
+        member: member1,
+      })
 
       const member2 = createLockedMember({
         url: 'https://github.com/owner/repo',
         ref: 'main',
         commit: 'def456',
       })
-      const updated = updateLockedMember({ lockFile, memberName: 'effect', member: member2 })
+      const updated = updateLockedMember({
+        lockFile,
+        memberName: 'effect',
+        member: member2,
+      })
       expect(updated.members['effect']?.commit).toBe('def456')
     })
   })
@@ -247,12 +259,22 @@ describe('lock', () => {
       lockFile = updateLockedMember({
         lockFile,
         memberName: 'effect',
-        member: createLockedMember({ url: 'url', ref: 'main', commit: 'abc', pinned: true }),
+        member: createLockedMember({
+          url: 'url',
+          ref: 'main',
+          commit: 'abc',
+          pinned: true,
+        }),
       })
       lockFile = updateLockedMember({
         lockFile,
         memberName: 'other',
-        member: createLockedMember({ url: 'url', ref: 'main', commit: 'abc', pinned: false }),
+        member: createLockedMember({
+          url: 'url',
+          ref: 'main',
+          commit: 'abc',
+          pinned: false,
+        }),
       })
       expect(isPinned({ lockFile, memberName: 'effect' })).toBe(true)
       expect(isPinned({ lockFile, memberName: 'other' })).toBe(false)
@@ -336,31 +358,65 @@ describe('lock', () => {
         commit: 'abc123',
         pinned: false,
       })
-      expect(lockedMembersEqual(member1, member2)).toBe(true)
+      expect(lockedMembersEqual({ a: member1, b: member2 })).toBe(true)
     })
 
     it('should return false when url differs', () => {
-      const member1 = createLockedMember({ url: 'url1', ref: 'main', commit: 'abc' })
-      const member2 = createLockedMember({ url: 'url2', ref: 'main', commit: 'abc' })
-      expect(lockedMembersEqual(member1, member2)).toBe(false)
+      const member1 = createLockedMember({
+        url: 'url1',
+        ref: 'main',
+        commit: 'abc',
+      })
+      const member2 = createLockedMember({
+        url: 'url2',
+        ref: 'main',
+        commit: 'abc',
+      })
+      expect(lockedMembersEqual({ a: member1, b: member2 })).toBe(false)
     })
 
     it('should return false when ref differs', () => {
-      const member1 = createLockedMember({ url: 'url', ref: 'main', commit: 'abc' })
-      const member2 = createLockedMember({ url: 'url', ref: 'develop', commit: 'abc' })
-      expect(lockedMembersEqual(member1, member2)).toBe(false)
+      const member1 = createLockedMember({
+        url: 'url',
+        ref: 'main',
+        commit: 'abc',
+      })
+      const member2 = createLockedMember({
+        url: 'url',
+        ref: 'develop',
+        commit: 'abc',
+      })
+      expect(lockedMembersEqual({ a: member1, b: member2 })).toBe(false)
     })
 
     it('should return false when commit differs', () => {
-      const member1 = createLockedMember({ url: 'url', ref: 'main', commit: 'abc' })
-      const member2 = createLockedMember({ url: 'url', ref: 'main', commit: 'def' })
-      expect(lockedMembersEqual(member1, member2)).toBe(false)
+      const member1 = createLockedMember({
+        url: 'url',
+        ref: 'main',
+        commit: 'abc',
+      })
+      const member2 = createLockedMember({
+        url: 'url',
+        ref: 'main',
+        commit: 'def',
+      })
+      expect(lockedMembersEqual({ a: member1, b: member2 })).toBe(false)
     })
 
     it('should return false when pinned differs', () => {
-      const member1 = createLockedMember({ url: 'url', ref: 'main', commit: 'abc', pinned: false })
-      const member2 = createLockedMember({ url: 'url', ref: 'main', commit: 'abc', pinned: true })
-      expect(lockedMembersEqual(member1, member2)).toBe(false)
+      const member1 = createLockedMember({
+        url: 'url',
+        ref: 'main',
+        commit: 'abc',
+        pinned: false,
+      })
+      const member2 = createLockedMember({
+        url: 'url',
+        ref: 'main',
+        commit: 'abc',
+        pinned: true,
+      })
+      expect(lockedMembersEqual({ a: member1, b: member2 })).toBe(false)
     })
 
     it('should ignore lockedAt differences', () => {
@@ -378,7 +434,7 @@ describe('lock', () => {
         pinned: false,
         lockedAt: '2024-12-31T23:59:59Z',
       }
-      expect(lockedMembersEqual(member1, member2)).toBe(true)
+      expect(lockedMembersEqual({ a: member1, b: member2 })).toBe(true)
     })
   })
 
@@ -515,7 +571,12 @@ describe('lock', () => {
       lockFile = updateLockedMember({
         lockFile,
         memberName: 'effect',
-        member: createLockedMember({ url: 'url', ref: 'main', commit: 'abc', pinned: true }),
+        member: createLockedMember({
+          url: 'url',
+          ref: 'main',
+          commit: 'abc',
+          pinned: true,
+        }),
       })
       const configMemberNames = new Set(['effect'])
 

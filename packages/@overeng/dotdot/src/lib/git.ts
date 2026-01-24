@@ -57,7 +57,10 @@ export const getCurrentBranch = (repoPath: string) =>
 
 /** Check if working tree is dirty */
 export const isDirty = Effect.fn('git/isDirty')(function* (repoPath: string) {
-  const status = yield* runGit({ args: ['status', '--porcelain'], cwd: repoPath })
+  const status = yield* runGit({
+    args: ['status', '--porcelain'],
+    cwd: repoPath,
+  })
   return status.length > 0
 })
 

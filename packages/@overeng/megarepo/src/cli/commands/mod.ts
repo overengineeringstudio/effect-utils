@@ -12,7 +12,13 @@ export { lsCommand } from './ls.ts'
 export { pinCommand, unpinCommand } from './pin.ts'
 export { rootCommand } from './root.ts'
 export { statusCommand } from './status.ts'
-export { syncCommand, syncMegarepo, NotInMegarepoError, LockFileRequiredError, StaleLockFileError } from './sync.ts'
+export {
+  syncCommand,
+  syncMegarepo,
+  NotInMegarepoError,
+  LockFileRequiredError,
+  StaleLockFileError,
+} from './sync.ts'
 
 // Subcommand groups
 export { storeCommand } from './store/mod.ts'

@@ -8,7 +8,6 @@ import * as Cli from '@effect/cli'
 import { Effect } from 'effect'
 
 import { MR_VERSION } from '../lib/version.ts'
-
 // Import extracted commands
 import {
   addCommand,
@@ -26,7 +25,13 @@ import {
 } from './commands/mod.ts'
 
 // Re-export context for use by other modules
-export { Cwd, createSymlink, findMegarepoRoot, findNearestMegarepoRoot, jsonOption } from './context.ts'
+export {
+  Cwd,
+  createSymlink,
+  findMegarepoRoot,
+  findNearestMegarepoRoot,
+  jsonOption,
+} from './context.ts'
 
 // Import Cwd for CLI assembly
 import { Cwd } from './context.ts'

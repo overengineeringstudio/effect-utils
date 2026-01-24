@@ -19,7 +19,11 @@ const makeProperty = (info: Omit<PropertyInfo, 'schema'>): PropertyInfo => {
       case 'number':
         return { ...schemaBase, _tag: 'number', number: { format: 'number' } }
       case 'select':
-        return { ...schemaBase, _tag: 'select', select: { options: info.select?.options ?? [] } }
+        return {
+          ...schemaBase,
+          _tag: 'select',
+          select: { options: info.select?.options ?? [] },
+        }
       case 'multi_select':
         return {
           ...schemaBase,
@@ -214,7 +218,11 @@ describe('integration', () => {
       properties: properties.map(makeProperty),
     }
 
-    const code = generateSchemaCode({ dbInfo, schemaName: 'Test', options: { includeWrite: true } })
+    const code = generateSchemaCode({
+      dbInfo,
+      schemaName: 'Test',
+      options: { includeWrite: true },
+    })
 
     // Verify write schema uses nested Write API
     expect(code).toContain('Name: NotionSchema.titleWriteFromString')

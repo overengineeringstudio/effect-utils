@@ -23,7 +23,10 @@ describe('effect-rpc-tanstack streaming', () => {
       ),
     )
 
-    const { handler, dispose } = makeHandler({ group: Api, handlerLayer: handlers })
+    const { handler, dispose } = makeHandler({
+      group: Api,
+      handlerLayer: handlers,
+    })
 
     const body = `${JSON.stringify({
       _tag: 'Request',

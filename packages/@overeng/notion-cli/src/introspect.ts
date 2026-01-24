@@ -104,7 +104,10 @@ const toPropertyInfo = (prop: PropertySchema): PropertyInfo => {
     case 'select':
       return { ...base, select: { options: sortByName(prop.select.options) } }
     case 'multi_select':
-      return { ...base, multi_select: { options: sortByName(prop.multi_select.options) } }
+      return {
+        ...base,
+        multi_select: { options: sortByName(prop.multi_select.options) },
+      }
     case 'status':
       return {
         ...base,

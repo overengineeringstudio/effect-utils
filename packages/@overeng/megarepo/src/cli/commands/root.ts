@@ -23,7 +23,10 @@ export const rootCommand = Cli.Command.make('root', { json: jsonOption }, ({ jso
 
     if (Option.isNone(root)) {
       if (json) {
-        return yield* jsonError({ error: 'not_found', message: 'No megarepo.json found' })
+        return yield* jsonError({
+          error: 'not_found',
+          message: 'No megarepo.json found',
+        })
       }
       yield* Console.error(
         `${styled.red(symbols.cross)} No megarepo.json found in current directory or any parent.`,

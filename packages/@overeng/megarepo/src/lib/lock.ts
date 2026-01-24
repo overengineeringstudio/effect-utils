@@ -146,7 +146,7 @@ export const updateLockedMember = ({
 /**
  * Check if two locked members are equivalent (ignoring lockedAt)
  */
-export const lockedMembersEqual = (a: LockedMember, b: LockedMember): boolean =>
+export const lockedMembersEqual = ({ a, b }: { a: LockedMember; b: LockedMember }): boolean =>
   a.url === b.url && a.ref === b.ref && a.commit === b.commit && a.pinned === b.pinned
 
 /**

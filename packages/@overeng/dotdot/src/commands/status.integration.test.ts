@@ -109,7 +109,9 @@ describe('status command', () => {
         const workspacePath = yield* createWorkspace({
           rootRepos: {
             'shared-repo': { url: 'git@github.com:test/shared-repo.git' },
-            'repo-with-config': { url: 'git@github.com:test/repo-with-config.git' },
+            'repo-with-config': {
+              url: 'git@github.com:test/repo-with-config.git',
+            },
           },
           repos: [
             { name: 'shared-repo', isGitRepo: true },

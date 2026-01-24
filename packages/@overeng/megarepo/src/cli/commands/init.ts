@@ -28,7 +28,10 @@ export const initCommand = Cli.Command.make('init', { json: jsonOption }, ({ jso
     const isGit = yield* Git.isGitRepo(cwd)
     if (!isGit) {
       if (json) {
-        return yield* jsonError({ error: 'not_git_repo', message: 'Not a git repository' })
+        return yield* jsonError({
+          error: 'not_git_repo',
+          message: 'Not a git repository',
+        })
       }
       yield* Console.error(
         `${styled.red(symbols.cross)} Not a git repository. Run 'git init' first.`,

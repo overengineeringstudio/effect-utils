@@ -241,7 +241,10 @@ export default {
 
             // Create parent directories for generated files
             yield* env.writeFile({ path: 'apps/app/.gitkeep', content: '' })
-            yield* env.writeFile({ path: 'packages/lib/.gitkeep', content: '' })
+            yield* env.writeFile({
+              path: 'packages/lib/.gitkeep',
+              content: '',
+            })
             yield* env.writeFile({ path: 'standalone/.gitkeep', content: '' })
 
             const { stdout, stderr, exitCode } = yield* runGenie(env, ['--dry-run'])
@@ -438,8 +441,8 @@ export default {
               process.exitCode,
             ])
 
-            const stdout = decodeChunks(stdoutChunks)
-            const stderr = decodeChunks(stderrChunks)
+            const _stdout = decodeChunks(stdoutChunks)
+            const _stderr = decodeChunks(stderrChunks)
 
             // Generation should succeed
             expect(exitCode).toBe(0)

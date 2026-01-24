@@ -236,7 +236,10 @@ export const make = Effect.fnUntraced(function* (options: ClaudeCliOptions = {})
       }
 
       const command = Command.make('claude', ...args).pipe(Command.stdin('pipe'))
-      const commandDisplay = formatCommandForDisplay({ command: 'claude', args })
+      const commandDisplay = formatCommandForDisplay({
+        command: 'claude',
+        args,
+      })
 
       const result = yield* Effect.scoped(
         Effect.gen(function* () {
@@ -295,7 +298,10 @@ export const make = Effect.fnUntraced(function* (options: ClaudeCliOptions = {})
       if (!resultText) {
         return yield* new ClaudeCliParseError({
           message: 'Claude CLI returned no result',
-          rawOutput: truncateForDisplay({ text: result.stdout, maxChars: 5_000 }),
+          rawOutput: truncateForDisplay({
+            text: result.stdout,
+            maxChars: 5_000,
+          }),
         })
       }
 
@@ -391,7 +397,11 @@ export const make = Effect.fnUntraced(function* (options: ClaudeCliOptions = {})
                       parts.push({ type: 'text-start', id: textId })
                       yield* Ref.set(startEmittedRef, true)
                     }
-                    parts.push({ type: 'text-delta', id: textId, delta: content })
+                    parts.push({
+                      type: 'text-delta',
+                      id: textId,
+                      delta: content,
+                    })
                     return parts
                   }
                 }
@@ -403,7 +413,11 @@ export const make = Effect.fnUntraced(function* (options: ClaudeCliOptions = {})
                     parts.push({ type: 'text-start', id: textId })
                     yield* Ref.set(startEmittedRef, true)
                   }
-                  parts.push({ type: 'text-delta', id: textId, delta: parsed.delta.text })
+                  parts.push({
+                    type: 'text-delta',
+                    id: textId,
+                    delta: parsed.delta.text,
+                  })
                   return parts
                 }
 
@@ -414,7 +428,11 @@ export const make = Effect.fnUntraced(function* (options: ClaudeCliOptions = {})
                     if (!startEmitted) {
                       parts.push({ type: 'text-start', id: textId })
                     }
-                    parts.push({ type: 'text-delta', id: textId, delta: parsed.result })
+                    parts.push({
+                      type: 'text-delta',
+                      id: textId,
+                      delta: parsed.result,
+                    })
                     parts.push({ type: 'text-end', id: textId })
                     return parts
                   }

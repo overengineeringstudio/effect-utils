@@ -230,7 +230,11 @@ export const createStoreFixture = (repos: ReadonlyArray<StoreRepoFixture>) =>
       yield* fs.remove(sourceRepoPath, { recursive: true })
     }
 
-    return { storePath, worktreePaths, bareRepoPaths } satisfies StoreFixtureResult
+    return {
+      storePath,
+      worktreePaths,
+      bareRepoPaths,
+    } satisfies StoreFixtureResult
   })
 
 /**

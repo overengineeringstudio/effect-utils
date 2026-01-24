@@ -205,7 +205,12 @@ export const effectTask = <TId extends string, A, E, R>({
   options?: { dependencies?: ReadonlyArray<TId> }
 }): TaskDef<TId, A, E, R> => {
   if (options?.dependencies !== undefined) {
-    return task({ id, name, effect, options: { dependencies: options.dependencies } })
+    return task({
+      id,
+      name,
+      effect,
+      options: { dependencies: options.dependencies },
+    })
   }
   return task({ id, name, effect })
 }

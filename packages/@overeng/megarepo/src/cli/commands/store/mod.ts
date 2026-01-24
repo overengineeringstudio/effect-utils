@@ -27,7 +27,12 @@ import {
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 import { withJsonMode } from '@overeng/utils/node'
 
-import { CONFIG_FILE_NAME, MegarepoConfig, parseSourceString, isRemoteSource } from '../../../lib/config.ts'
+import {
+  CONFIG_FILE_NAME,
+  MegarepoConfig,
+  parseSourceString,
+  isRemoteSource,
+} from '../../../lib/config.ts'
 import * as Git from '../../../lib/git.ts'
 import { type LockFile, LOCK_FILE_NAME, readLockFile } from '../../../lib/lock.ts'
 import { Store, StoreLayer } from '../../../lib/store.ts'
@@ -74,7 +79,10 @@ const storeFetchCommand = Cli.Command.make('fetch', { json: jsonOption }, ({ jso
 
     // Create progress state
     const progressState = createProgressListState(
-      repos.map((repo) => ({ id: repo.relativePath, label: repo.relativePath })),
+      repos.map((repo) => ({
+        id: repo.relativePath,
+        label: repo.relativePath,
+      })),
     )
 
     if (useLiveProgress) {
@@ -106,7 +114,9 @@ const storeFetchCommand = Cli.Command.make('fetch', { json: jsonOption }, ({ jso
             EffectPath.unsafe.relativeDir('.bare/'),
           )
 
-          const result = yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(
+          const result = yield* Git.fetchBare({
+            repoPath: bareRepoPath,
+          }).pipe(
             Effect.map(() => {
               if (useLiveProgress) {
                 markSuccess(progressState, repo.relativePath)
@@ -163,9 +173,7 @@ const storeFetchCommand = Cli.Command.make('fetch', { json: jsonOption }, ({ jso
         const symbol =
           result.status === 'error' ? styled.red(symbols.cross) : styled.green(symbols.check)
         const suffix =
-          result.status === 'error' && result.message
-            ? styled.dim(` (${result.message})`)
-            : ''
+          result.status === 'error' && result.message ? styled.dim(` (${result.message})`) : ''
         yield* Console.log(`${symbol} ${result.path}${suffix}`)
       }
 
@@ -251,7 +259,10 @@ const storeGcCommand = Cli.Command.make(
             if (lockedMember === undefined) continue
 
             // Mark the worktree path as in use
-            const worktreePath = store.getWorktreePath({ source, ref: lockedMember.ref })
+            const worktreePath = store.getWorktreePath({
+              source,
+              ref: lockedMember.ref,
+            })
             inUsePaths.add(worktreePath)
           }
         }
@@ -330,7 +341,11 @@ const storeGcCommand = Cli.Command.make(
           // Check if worktree is dirty
           const status = yield* Git.getWorktreeStatus(worktree.path).pipe(
             Effect.catchAll(() =>
-              Effect.succeed({ isDirty: false, hasUnpushed: false, changesCount: 0 }),
+              Effect.succeed({
+                isDirty: false,
+                hasUnpushed: false,
+                changesCount: 0,
+              }),
             ),
           )
 

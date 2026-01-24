@@ -259,7 +259,11 @@ export const executeCommand = <TId extends string>({
                 // Fail if command exited with non-zero code
                 if (exitCode !== 0) {
                   return yield* Effect.fail(
-                    new CommandError({ command: spec.cmd, args: spec.args, exitCode }),
+                    new CommandError({
+                      command: spec.cmd,
+                      args: spec.args,
+                      exitCode,
+                    }),
                   )
                 }
               }),
@@ -342,7 +346,12 @@ export const runCommand = (
 
       if (exitCode !== 0) {
         return yield* Effect.fail(
-          new CommandError({ command: spec.cmd, args: spec.args, exitCode, stderr: stderrText }),
+          new CommandError({
+            command: spec.cmd,
+            args: spec.args,
+            exitCode,
+            stderr: stderrText,
+          }),
         )
       }
 

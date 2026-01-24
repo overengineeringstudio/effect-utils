@@ -230,13 +230,19 @@ describe('path operations', () => {
   describe('withExtension', () => {
     it('changes file extension', () => {
       const file = EffectPath.unsafe.absoluteFile('/path/to/file.txt')
-      const result = EffectPath.ops.withExtension({ path: file, extension: 'md' })
+      const result = EffectPath.ops.withExtension({
+        path: file,
+        extension: 'md',
+      })
       expect(result).toBe('/path/to/file.md')
     })
 
     it('adds extension to file without one', () => {
       const file = EffectPath.unsafe.absoluteFile('/path/to/Makefile')
-      const result = EffectPath.ops.withExtension({ path: file, extension: 'bak' })
+      const result = EffectPath.ops.withExtension({
+        path: file,
+        extension: 'bak',
+      })
       expect(result).toBe('/path/to/Makefile.bak')
     })
   })

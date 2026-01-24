@@ -52,7 +52,10 @@ export const prepareCmdLogging: (
       Effect.map((names) => names.filter((n) => n.endsWith('.log'))),
       Effect.map((names) =>
         names
-          .map((name) => ({ name, mtimeMs: fs.statSync(path.join(archiveDir, name)).mtimeMs }))
+          .map((name) => ({
+            name,
+            mtimeMs: fs.statSync(path.join(archiveDir, name)).mtimeMs,
+          }))
           .sort((a, b) => b.mtimeMs - a.mtimeMs),
       ),
       Effect.flatMap((entries) =>
