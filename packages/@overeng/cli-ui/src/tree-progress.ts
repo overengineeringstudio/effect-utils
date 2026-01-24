@@ -34,7 +34,7 @@ import {
 import { spinner } from './progress.ts'
 import { styled } from './styled.ts'
 import { symbols } from './tokens.ts'
-import { buildTree, flattenTree, treeChars, type FlatTreeItem } from './tree.ts'
+import { buildTree, flattenTree, treeChars, type FlatTreeItem, type TreeChars } from './tree.ts'
 
 // =============================================================================
 // Types
@@ -66,7 +66,7 @@ export type TreeProgressOptions = {
   /** Whether to show the summary line (default: true) */
   showSummary?: boolean
   /** Tree characters to use (default: unicode) */
-  chars?: typeof treeChars
+  chars?: TreeChars
 }
 
 // =============================================================================

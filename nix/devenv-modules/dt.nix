@@ -13,7 +13,12 @@
 { pkgs, ... }:
 {
   # Wrapper that runs tasks with --mode before so dependencies run automatically
-  scripts.dt.exec = ''devenv tasks run "$@" --mode before'';
+  scripts.dt.exec = ''
+    if ! devenv tasks run "$@" --mode before; then
+      echo "dt: task failed. Re-run with: devenv tasks run $* --mode before --verbose" >&2
+      exit 1
+    fi
+  '';
 
   packages = [ pkgs.jq ];
 

@@ -9,8 +9,20 @@
 // Tree Characters
 // =============================================================================
 
+/** Tree characters interface */
+export type TreeChars = {
+  /** Branch for middle items */
+  readonly middle: string
+  /** Branch for last item */
+  readonly last: string
+  /** Vertical continuation */
+  readonly vertical: string
+  /** Empty spacing (no line) */
+  readonly empty: string
+}
+
 /** Unicode box-drawing characters for tree rendering */
-export const treeChars = {
+export const treeChars: TreeChars = {
   /** Branch for middle items: ├── */
   middle: '\u251C\u2500\u2500 ',
   /** Branch for last item: └── */
@@ -22,7 +34,7 @@ export const treeChars = {
 } as const
 
 /** Simpler ASCII tree characters (for environments without Unicode support) */
-export const treeCharsAscii = {
+export const treeCharsAscii: TreeChars = {
   middle: '+-- ',
   last: '\\-- ',
   vertical: '|   ',
@@ -63,7 +75,7 @@ export const buildTreePrefix = ({
 }: {
   ancestors: readonly boolean[]
   isLast: boolean
-  chars?: typeof treeChars
+  chars?: TreeChars
 }): string => {
   // Build prefix from ancestor continuation lines
   let prefix = ''
@@ -92,7 +104,7 @@ export const buildContinuationPrefix = ({
 }: {
   ancestors: readonly boolean[]
   isLast: boolean
-  chars?: typeof treeChars
+  chars?: TreeChars
 }): string => {
   let prefix = ''
   for (const hasMoreSiblings of ancestors) {
@@ -141,7 +153,7 @@ export const flattenTree = <T>({
   chars = treeChars,
 }: {
   nodes: readonly TreeNode<T>[]
-  chars?: typeof treeChars
+  chars?: TreeChars
 }): FlatTreeItem<T>[] => {
   const result: FlatTreeItem<T>[] = []
 

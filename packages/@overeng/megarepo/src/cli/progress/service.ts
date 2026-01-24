@@ -236,7 +236,7 @@ export const createProgressService = <TData = unknown>(name: string) => {
     }): Effect.Effect<void, never, Progress> =>
       Effect.gen(function* () {
         const ref = yield* Progress
-        yield* SubscriptionRef.set(ref, createState({ items, metadata }))
+        yield* SubscriptionRef.set(ref, createState({ items, ...(metadata && { metadata }) }))
       }),
 
     markActive: ({

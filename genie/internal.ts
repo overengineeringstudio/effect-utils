@@ -24,6 +24,7 @@ export {
   patchPostinstall,
   privatePackageDefaults,
   reactJsx,
+  reactTypesPathWorkaround,
   type PatchesRegistry,
   type ScriptValue,
   type TSConfigCompilerOptions,

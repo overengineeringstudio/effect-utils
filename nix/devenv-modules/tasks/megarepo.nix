@@ -50,27 +50,35 @@
       fi
 
       if [ ! -f ./.envrc.generated.megarepo ]; then
-        echo "[devenv] Missing .envrc.generated.megarepo. Run: devenv tasks run megarepo:generate" >&2
+        echo "[devenv] Missing .envrc.generated.megarepo." >&2
+        echo "[devenv] Fix: mr generate nix && direnv reload" >&2
+        echo "[devenv] Or:  devenv tasks run megarepo:generate" >&2
         exit 1
       fi
 
       if [ ! -f ./.direnv/megarepo-nix/workspace/flake.nix ]; then
-        echo "[devenv] Missing .direnv/megarepo-nix/workspace/flake.nix. Run: devenv tasks run megarepo:generate" >&2
-        exit 1
-      fi
-
-      nearest=$(sed -nE 's/^export MEGAREPO_ROOT_NEAREST="(.*)"$/\1/p' ./.envrc.generated.megarepo)
-      if [ -z "$nearest" ]; then
-        echo "[devenv] MEGAREPO_ROOT_NEAREST missing in .envrc.generated.megarepo" >&2
+        echo "[devenv] Missing .direnv/megarepo-nix/workspace/flake.nix." >&2
+        echo "[devenv] Fix: mr generate nix && direnv reload" >&2
+        echo "[devenv] Or:  devenv tasks run megarepo:generate" >&2
         exit 1
       fi
 
       repo_root="$(pwd -P)/"
-      if [ "$nearest" != "$repo_root" ]; then
-        echo "[devenv] MEGAREPO_ROOT_NEAREST mismatch." >&2
-        echo "[devenv] Expected: $repo_root" >&2
-        echo "[devenv] Found:    $nearest" >&2
+      if ! grep -q '^export MEGAREPO_ROOT_NEAREST' ./.envrc.generated.megarepo; then
+        echo "[devenv] MEGAREPO_ROOT_NEAREST export missing in .envrc.generated.megarepo." >&2
+        echo "[devenv] Fix: mr generate nix && direnv reload" >&2
         exit 1
+      fi
+
+      if [ -n "''${MEGAREPO_ROOT_NEAREST:-}" ]; then
+        nearest="''${MEGAREPO_ROOT_NEAREST%/}/"
+        if [ "$nearest" != "$repo_root" ]; then
+          echo "[devenv] MEGAREPO_ROOT_NEAREST mismatch." >&2
+          echo "[devenv] Expected: $repo_root" >&2
+          echo "[devenv] Found:    $nearest" >&2
+          echo "[devenv] Fix: run from the repo root, then: mr generate nix && direnv reload" >&2
+          exit 1
+        fi
       fi
     '';
   };

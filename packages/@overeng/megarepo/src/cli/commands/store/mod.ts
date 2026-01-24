@@ -95,7 +95,7 @@ const storeFetchCommand = Cli.Command.make('fetch', { json: jsonOption }, ({ jso
 
       // Start progress display
       startProgressList(progressState)
-      startSpinner(progressState, 80)
+      startSpinner({ state: progressState, interval: 80 })
     }
 
     // Fetch repos with limited concurrency for visible progress
@@ -104,7 +104,7 @@ const storeFetchCommand = Cli.Command.make('fetch', { json: jsonOption }, ({ jso
         Effect.gen(function* () {
           // Mark as active
           if (useLiveProgress) {
-            markActive(progressState, repo.relativePath, 'fetching...')
+            markActive({ state: progressState, id: repo.relativePath, message: 'fetching...' })
             updateProgressList(progressState)
           }
 
@@ -119,7 +119,7 @@ const storeFetchCommand = Cli.Command.make('fetch', { json: jsonOption }, ({ jso
           }).pipe(
             Effect.map(() => {
               if (useLiveProgress) {
-                markSuccess(progressState, repo.relativePath)
+                markSuccess({ state: progressState, id: repo.relativePath })
                 updateProgressList(progressState)
               }
               return { path: repo.relativePath, status: 'fetched' as const }
@@ -127,7 +127,7 @@ const storeFetchCommand = Cli.Command.make('fetch', { json: jsonOption }, ({ jso
             Effect.catchAll((error) => {
               const message = error instanceof Error ? error.message : String(error)
               if (useLiveProgress) {
-                markError(progressState, repo.relativePath, message)
+                markError({ state: progressState, id: repo.relativePath, message })
                 updateProgressList(progressState)
               }
               return Effect.succeed({
@@ -148,7 +148,7 @@ const storeFetchCommand = Cli.Command.make('fetch', { json: jsonOption }, ({ jso
 
     if (useLiveProgress) {
       // Finish progress display
-      finishProgressList(progressState)
+      finishProgressList({ state: progressState })
 
       // Print summary
       const fetchedCount = results.filter((r) => r.status === 'fetched').length

@@ -9,7 +9,7 @@ Devenv tasks are the standard task runner across our repos. They provide a consi
 - A1 - These requirements build on [Nix & Devenv Specification](../requirements.md).
 - A2 - Devenv tasks are the primary task runner; `dt` is the preferred entrypoint for dependency resolution.
 - A3 - Common task modules live in `effect-utils/devenvModules/tasks` and are reused across repos.
-- A4 - Devenv treats task names as namespaces: `devenv tasks run check` runs `check:*` tasks (and does not run a plain `check` task), so commands must be hierarchical (e.g. `check:quick`).
+- A4 - Devenv task constraints/limitations: (a) task names are namespaces (`devenv tasks run check` runs `check:*`), (b) tasks don’t accept custom CLI flags beyond the task name (use separate tasks or wrappers).
 
 ## Requirements
 
@@ -62,10 +62,11 @@ tasks."verify:full" = { exec = "pnpm test"; };
 - R17 - Failures must surface actionable context (what failed, how to rerun/fix).
 - R18 - Task execution must be visible to users (auto and manual runs), including progress indication.
 - R19 - Task dependency graphs must be explicit via `after`/`before`.
+- R20 - Task names should appear in shell completions with descriptions.
 
 ### Must be verified
 
-- R20 - Task modules must have minimal smoke coverage in the test suite.
+- R21 - Task modules must have minimal smoke coverage in the test suite.
 
 ## See Also
 

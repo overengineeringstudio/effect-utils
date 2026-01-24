@@ -262,7 +262,6 @@ export const generateNix = Effect.fn('megarepo/generate/nix')(function* (
     repoRoot,
     EffectPath.unsafe.relativeFile('.envrc.generated.megarepo'),
   )
-
   const repoInputs: WorkspaceFlakeRepo[] = []
   const mirrorRepos: WorkspaceFlakeRepo[] = []
   for (const repoName of repoNames) {
@@ -283,8 +282,18 @@ export const generateNix = Effect.fn('megarepo/generate/nix')(function* (
     }
   }
 
-  yield* fs.writeFileString(flakePath, generateWorkspaceFlakeContent(repoInputs))
-  yield* fs.writeFileString(envrcPath, generateEnvrcContent({ options, workspaceRoot }))
+  const flakeContent = generateWorkspaceFlakeContent(repoInputs)
+  const envrcContent = generateEnvrcContent({ options, workspaceRoot })
+
+  // Write files only if content changed (avoids unnecessary direnv reloads)
+  const flakeExists = yield* fs.exists(flakePath)
+  if (!flakeExists || (yield* fs.readFileString(flakePath)) !== flakeContent) {
+    yield* fs.writeFileString(flakePath, flakeContent)
+  }
+  const envrcExists = yield* fs.exists(envrcPath)
+  if (!envrcExists || (yield* fs.readFileString(envrcPath)) !== envrcContent) {
+    yield* fs.writeFileString(envrcPath, envrcContent)
+  }
 
   for (const repo of mirrorRepos) {
     const dest = EffectPath.ops.join(workspaceRoot, EffectPath.unsafe.relativeDir(`${repo.name}/`))
