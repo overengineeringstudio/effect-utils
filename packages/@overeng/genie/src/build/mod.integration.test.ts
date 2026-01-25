@@ -471,4 +471,125 @@ export default {
       Effect.scoped,
     ),
   )
+
+  it.effect(
+    'computes locations relative to the nearest repo root (not parent cwd)',
+    Effect.fnUntraced(
+      function* () {
+        yield* withTestEnv((env) =>
+          Effect.gen(function* () {
+            const fs = yield* FileSystem.FileSystem
+            const pathSvc = yield* Path.Path
+
+            /**
+             * REGRESSION TEST: Parent cwd path normalization
+             *
+             * If genie runs from a parent directory (e.g. a megarepo root),
+             * we still want repo-relative locations like "packages/pkg-a",
+             * not "repo/packages/pkg-a" which would cause excessive "../".
+             */
+            yield* env.writeFile({
+              path: 'outer/megarepo.json',
+              content: '{}',
+            })
+            yield* env.writeFile({
+              path: 'outer/repo/megarepo.json',
+              content: '{}',
+            })
+
+            yield* env.writeFile({
+              path: 'outer/repo/packages/pkg-a/package.json.genie.ts',
+              content: `
+const INTERNAL_LINK_PREFIX = 'link:packages/'
+
+const computeRelativePath = ({ from, to }) => {
+  const fromParts = from.split('/').filter(Boolean)
+  const toParts = to.split('/').filter(Boolean)
+  let common = 0
+  while (common < fromParts.length && common < toParts.length && fromParts[common] === toParts[common]) {
+    common++
+  }
+  const upCount = fromParts.length - common
+  const downPath = toParts.slice(common).join('/')
+  return '../'.repeat(upCount) + downPath || '.'
+}
+
+const resolveDeps = ({ deps, currentLocation }) => {
+  const resolved = {}
+  for (const [name, version] of Object.entries(deps)) {
+    if (version.startsWith(INTERNAL_LINK_PREFIX)) {
+      const targetLocation = version.slice('link:'.length)
+      const relativePath = computeRelativePath({ from: currentLocation, to: targetLocation })
+      resolved[name] = 'link:' + relativePath
+    } else {
+      resolved[name] = version
+    }
+  }
+  return resolved
+}
+
+export default {
+  data: {
+    name: '@test/pkg-a',
+    dependencies: {
+      '@test/pkg-b': 'link:packages/pkg-b',
+    },
+  },
+  stringify: (ctx) => {
+    const data = {
+      name: '@test/pkg-a',
+      dependencies: resolveDeps({
+        deps: { '@test/pkg-b': 'link:packages/pkg-b' },
+        currentLocation: ctx.location,
+      }),
+    }
+    data._genieLocation = ctx.location
+    return JSON.stringify(data, null, 2)
+  },
+}
+`,
+            })
+
+            yield* env.writeFile({
+              path: 'outer/repo/packages/pkg-b/package.json',
+              content: '{"name": "@test/pkg-b"}',
+            })
+
+            const outerRoot = pathSvc.join(env.root, 'outer')
+            const cliPath = new URL('./mod.ts', import.meta.url).pathname
+            const command = Command.make('bun', cliPath, '--cwd', outerRoot).pipe(
+              Command.workingDirectory(outerRoot),
+              Command.stdout('pipe'),
+              Command.stderr('pipe'),
+            )
+
+            const process = yield* Command.start(command)
+            const [stdoutChunks, stderrChunks, exitCode] = yield* Effect.all([
+              Stream.runCollect(process.stdout),
+              Stream.runCollect(process.stderr),
+              process.exitCode,
+            ])
+
+            const _stdout = decodeChunks(stdoutChunks)
+            const _stderr = decodeChunks(stderrChunks)
+
+            expect(exitCode).toBe(0)
+
+            const generatedPath = pathSvc.join(
+              outerRoot,
+              'repo/packages/pkg-a/package.json',
+            )
+            const generatedContent = yield* fs.readFileString(generatedPath)
+            const generated = JSON.parse(generatedContent)
+
+            expect(generated._genieLocation).toBe('packages/pkg-a')
+            const linkPath = generated.dependencies['@test/pkg-b']
+            expect(linkPath).toBe('link:../pkg-b')
+          }),
+        )
+      },
+      Effect.provide(TestLayer),
+      Effect.scoped,
+    ),
+  )
 })

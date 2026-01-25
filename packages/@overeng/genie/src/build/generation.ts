@@ -161,20 +161,51 @@ const formatWithOxfmt = Effect.fn('formatWithOxfmt')(function* ({
 })
 
 /**
+ * Find the nearest repo root for a genie file.
+ * Prefers a local megarepo.json marker, falls back to .git.
+ */
+const findRepoRoot = Effect.fn('findRepoRoot')(function* ({
+  startDir,
+  cwd,
+}: {
+  startDir: string
+  cwd: string
+}) {
+  const fs = yield* FileSystem.FileSystem
+  let current = startDir
+  let last = ''
+
+  while (current !== last) {
+    if (yield* fs.exists(path.join(current, 'megarepo.json'))) {
+      return current
+    }
+    if (yield* fs.exists(path.join(current, '.git'))) {
+      return current
+    }
+    last = current
+    const parent = path.dirname(current)
+    if (parent === current) break
+    current = parent
+  }
+
+  return cwd
+})
+
+/**
  * Compute the package location from a genie file path.
- * Example: '/repo/packages/@overeng/utils/package.json.genie.ts' with cwd '/repo'
+ * Example: '/repo/packages/@overeng/utils/package.json.genie.ts' with repo root '/repo'
  *          → 'packages/@overeng/utils'
  */
 const computeLocationFromPath = ({
   genieFilePath,
-  cwd,
+  repoRoot,
 }: {
   genieFilePath: string
-  cwd: string
+  repoRoot: string
 }): string => {
   const targetFilePath = genieFilePath.replace('.genie.ts', '')
   const targetDir = path.dirname(targetFilePath)
-  const relativePath = path.relative(cwd, targetDir)
+  const relativePath = path.relative(repoRoot, targetDir)
   // Normalize to forward slashes and handle root case
   return relativePath === '' ? '.' : relativePath.split(path.sep).join('/')
 }
@@ -226,7 +257,11 @@ const importGenieFile = Effect.fn('importGenieFile')(function* ({
   }
 
   // Create context and call the stringify function
-  const location = computeLocationFromPath({ genieFilePath, cwd })
+  const repoRoot = yield* findRepoRoot({
+    startDir: path.dirname(genieFilePath),
+    cwd,
+  })
+  const location = computeLocationFromPath({ genieFilePath, repoRoot })
   const ctx: GenieContext = { location, cwd }
 
   return exported.stringify(ctx) as string
