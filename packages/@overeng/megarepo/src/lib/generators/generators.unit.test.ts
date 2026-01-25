@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { EffectPath, type MegarepoConfig } from '../config.ts'
+import { getEnabledGenerators } from './mod.ts'
 import { generateSchemaContent } from './schema.ts'
 import { generateVscodeContent } from './vscode.ts'
 
@@ -205,5 +206,61 @@ describe('schema generator', () => {
 
       expect(content1).toBe(content2)
     })
+  })
+})
+
+// =============================================================================
+// getEnabledGenerators Tests
+// =============================================================================
+
+describe('getEnabledGenerators', () => {
+  it('should return only schema when no generators enabled', () => {
+    const files = getEnabledGenerators({ members: { lib: 'owner/lib' } })
+
+    expect(files).toEqual(['schema/megarepo.schema.json'])
+  })
+
+  it('should include nix files when nix generator enabled', () => {
+    const files = getEnabledGenerators({
+      members: { lib: 'owner/lib' },
+      generators: { nix: { enabled: true } },
+    })
+
+    expect(files).toContain('.envrc.generated.megarepo')
+    expect(files).toContain('.direnv/megarepo-nix/workspace')
+    expect(files).toContain('schema/megarepo.schema.json')
+  })
+
+  it('should include vscode file when vscode generator enabled', () => {
+    const files = getEnabledGenerators({
+      members: { lib: 'owner/lib' },
+      generators: { vscode: { enabled: true } },
+    })
+
+    expect(files).toContain('.vscode/megarepo.code-workspace')
+    expect(files).toContain('schema/megarepo.schema.json')
+  })
+
+  it('should include all files when all generators enabled', () => {
+    const files = getEnabledGenerators({
+      members: { lib: 'owner/lib' },
+      generators: { nix: { enabled: true }, vscode: { enabled: true } },
+    })
+
+    expect(files).toEqual([
+      '.envrc.generated.megarepo',
+      '.direnv/megarepo-nix/workspace',
+      '.vscode/megarepo.code-workspace',
+      'schema/megarepo.schema.json',
+    ])
+  })
+
+  it('should not include disabled generators', () => {
+    const files = getEnabledGenerators({
+      members: { lib: 'owner/lib' },
+      generators: { nix: { enabled: false }, vscode: { enabled: false } },
+    })
+
+    expect(files).toEqual(['schema/megarepo.schema.json'])
   })
 })

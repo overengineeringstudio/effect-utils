@@ -8,8 +8,8 @@ inputs:
         follows: nixpkgs
   overeng-beads-public:
     url: github:overengineeringstudio/overeng-beads-public
-  playwright-web-flake:
-    url: github:pietdevries94/playwright-web-flake
+  playwright:
+    url: path:nix/playwright-flake
     inputs:
       nixpkgs:
         follows: nixpkgs

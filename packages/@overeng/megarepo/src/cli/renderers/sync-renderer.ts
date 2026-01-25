@@ -53,6 +53,8 @@ export type SyncRenderInput = {
   frozen: boolean
   /** Whether --pull flag was used */
   pull?: boolean | undefined
+  /** List of generated file paths (empty in dry-run mode) */
+  generatedFiles?: readonly string[] | undefined
 }
 
 // =============================================================================
@@ -173,6 +175,7 @@ export const renderSync = ({
   dryRun,
   frozen,
   pull,
+  generatedFiles,
 }: SyncRenderInput): string[] => {
   const output: string[] = []
 
@@ -301,6 +304,16 @@ export const renderSync = ({
   }
 
   output.push(styled.dim(summaryParts.join(` ${symbols.dot} `)))
+
+  // Generated files section
+  if (generatedFiles && generatedFiles.length > 0) {
+    output.push('')
+    output.push(dryRun ? 'Would generate:' : 'Generated:')
+    for (const file of generatedFiles) {
+      const symbol = dryRun ? styled.dim('→') : styled.green(symbols.check)
+      output.push(`  ${symbol} ${styled.bold(file)}`)
+    }
+  }
 
   // Nested megarepos hint (only if not using --deep and there are nested repos)
   if (nestedMegarepos.length > 0 && !deep) {

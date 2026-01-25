@@ -21,7 +21,7 @@ import {
   MegarepoConfig,
   parseSourceString,
 } from '../../lib/config.ts'
-import { generateAll, type NixGeneratorError } from '../../lib/generators/mod.ts'
+import { generateAll, getEnabledGenerators, type NixGeneratorError } from '../../lib/generators/mod.ts'
 import * as Git from '../../lib/git.ts'
 import {
   checkLockStaleness,
@@ -467,10 +467,21 @@ export const syncCommand = Cli.Command.make(
         return syncResult
       } else {
         // Non-TTY or JSON mode: use original batch rendering
+        // Load config to get enabled generators
+        const configPath = EffectPath.ops.join(
+          root.value,
+          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+        )
+        const configContent = yield* fs.readFileString(configPath)
+        const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+
         const syncResult = yield* syncMegarepo({
           megarepoRoot: root.value,
           options: { json, dryRun, pull, frozen, force, deep },
         })
+
+        // Get list of files that would be / were generated
+        const generatedFiles = getEnabledGenerators(config)
 
         // Output results
         if (json) {
@@ -486,6 +497,7 @@ export const syncCommand = Cli.Command.make(
             dryRun,
             frozen,
             pull,
+            generatedFiles,
           })
           yield* outputLines(lines)
         }

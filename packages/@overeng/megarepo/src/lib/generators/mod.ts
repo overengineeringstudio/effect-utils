@@ -8,7 +8,6 @@ import { Effect } from 'effect'
 
 import type { AbsoluteDirPath, AbsoluteFilePath, MegarepoConfig } from '../config.ts'
 import { generateNix } from './nix/mod.ts'
-import { generateSchema } from './schema.ts'
 import { generateVscode } from './vscode.ts'
 
 export * from './nix/mod.ts'
@@ -23,7 +22,6 @@ export type GeneratorOutput =
       readonly envrcPath: AbsoluteFilePath
     }
   | { readonly _tag: 'vscode'; readonly path: AbsoluteFilePath }
-  | { readonly _tag: 'schema'; readonly path: AbsoluteFilePath }
 
 /** Options for running all generators */
 export interface GenerateAllOptions {
@@ -33,6 +31,19 @@ export interface GenerateAllOptions {
   readonly outermostRoot: AbsoluteDirPath
   /** The megarepo config */
   readonly config: typeof MegarepoConfig.Type
+}
+
+/** Get list of generators that would run based on config */
+export const getEnabledGenerators = (config: typeof MegarepoConfig.Type): string[] => {
+  const generators: string[] = []
+  if (config.generators?.nix?.enabled === true) {
+    generators.push('.envrc.generated.megarepo')
+    generators.push('.direnv/megarepo-nix/workspace')
+  }
+  if (config.generators?.vscode?.enabled === true) {
+    generators.push('.vscode/megarepo.code-workspace')
+  }
+  return generators
 }
 
 /** Run all enabled generators and return their outputs */
@@ -62,12 +73,6 @@ export const generateAll = Effect.fn('megarepo/generate/all')((options: Generate
       })
       outputs.push({ _tag: 'vscode', path: vscodeResult.path })
     }
-
-    const schemaResult = yield* generateSchema({
-      megarepoRoot: options.megarepoRoot,
-      config: options.config,
-    })
-    outputs.push({ _tag: 'schema', path: schemaResult.path })
 
     return outputs
   }),

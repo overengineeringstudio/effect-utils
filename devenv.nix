@@ -1,7 +1,5 @@
 { pkgs, inputs, ... }:
 let
-  system = pkgs.stdenv.hostPlatform.system;
-  playwrightDriver = inputs.playwright-web-flake.packages.${system}.playwright-driver;
   cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
   # Use npm oxlint with NAPI bindings to enable JavaScript plugin support
   oxlintNpm = import ./nix/oxlint-npm.nix {
@@ -84,6 +82,8 @@ in
     })
     # `dt` (devenv tasks) wrapper script and shell completions
     ./nix/devenv-modules/dt.nix
+    # Playwright browser drivers and environment setup
+    inputs.playwright.devenvModules.default
     # Shared task modules
     taskModules.genie
     (taskModules.ts {})
@@ -169,9 +169,6 @@ in
     cliBuildStamp.package
   ];
 
-  env = {
-    PLAYWRIGHT_BROWSERS_PATH = playwrightDriver.browsers;
-  };
 
   enterShell = ''
     export WORKSPACE_ROOT="$PWD"
