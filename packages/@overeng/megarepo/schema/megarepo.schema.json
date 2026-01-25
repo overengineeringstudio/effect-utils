@@ -3,9 +3,7 @@
   "$defs": {
     "MegarepoConfig": {
       "type": "object",
-      "required": [
-        "members"
-      ],
+      "required": ["members"],
       "properties": {
         "$schema": {
           "type": "string"
