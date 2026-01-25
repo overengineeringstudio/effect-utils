@@ -35,7 +35,22 @@ export { EffectPath }
 // Generator Configuration
 // =============================================================================
 
-/** VSCode workspace generator configuration */
+/**
+ * VSCode workspace generator configuration
+ *
+ * Design: Option B - Typed shortcuts + settings escape hatch
+ *
+ * Tradeoffs:
+ * - `color`: Convenient typed shorthand for the common "branded workspace" pattern.
+ *   Auto-generates titleBar, activityBar, and statusBar colors with sensible foregrounds.
+ * - `settings`: Raw passthrough for any VSCode workspace settings. No type-safety,
+ *   but provides an escape hatch for edge cases and new VSCode features we haven't typed yet.
+ *
+ * Alternatives considered:
+ * - Option A (settings only): Simpler but verbose for common color theming use case
+ * - Option C (fully typed): Better DX but high maintenance, would lag behind VSCode
+ * - Option D (transform fn): Maximum flexibility but only works in .genie.ts, not JSON
+ */
 export class VscodeGeneratorConfig extends Schema.Class<VscodeGeneratorConfig>(
   'VscodeGeneratorConfig',
 )({
@@ -43,6 +58,20 @@ export class VscodeGeneratorConfig extends Schema.Class<VscodeGeneratorConfig>(
   enabled: Schema.optional(Schema.Boolean),
   /** Members to exclude from workspace */
   exclude: Schema.optional(Schema.Array(Schema.String)),
+  /**
+   * Primary accent color for the workspace (hex format, e.g. "#372d8e").
+   * Auto-generates titleBar, activityBar, and statusBar background colors
+   * with white foreground for contrast.
+   */
+  color: Schema.optional(Schema.String),
+  /**
+   * Raw VSCode workspace settings passthrough.
+   * Merged with (and overrides) auto-generated settings.
+   * Use this for any settings not covered by typed shortcuts above.
+   *
+   * @example { "editor.formatOnSave": true }
+   */
+  settings: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
 }) {}
 
 /** Nix workspace generator configuration */

@@ -31,10 +31,57 @@ interface VscodeWorkspace {
 }
 
 /**
+ * Generate color customizations from a single accent color.
+ * Creates a consistent "branded" look for titleBar, activityBar, and statusBar.
+ */
+const generateColorCustomizations = (color: string): Record<string, string> => ({
+  'titleBar.activeBackground': color,
+  'titleBar.activeForeground': '#FFFFFF',
+  'titleBar.inactiveBackground': color,
+  'titleBar.inactiveForeground': '#CCCCCC',
+  'activityBar.background': color,
+  'activityBar.foreground': '#FFFFFF',
+  'statusBar.background': color,
+  'statusBar.foreground': '#FFFFFF',
+})
+
+/**
+ * Deep merge two objects. Source values override target values.
+ * For nested objects, merges recursively. For arrays and primitives, source wins.
+ */
+const deepMerge = (
+  target: Record<string, unknown>,
+  source: Record<string, unknown>,
+): Record<string, unknown> => {
+  const result = { ...target }
+  for (const key of Object.keys(source)) {
+    const sourceVal = source[key]
+    const targetVal = result[key]
+    if (
+      sourceVal !== null &&
+      typeof sourceVal === 'object' &&
+      !Array.isArray(sourceVal) &&
+      targetVal !== null &&
+      typeof targetVal === 'object' &&
+      !Array.isArray(targetVal)
+    ) {
+      result[key] = deepMerge(
+        targetVal as Record<string, unknown>,
+        sourceVal as Record<string, unknown>,
+      )
+    } else {
+      result[key] = sourceVal
+    }
+  }
+  return result
+}
+
+/**
  * Generate VSCode workspace content
  */
 export const generateVscodeContent = (options: VscodeGeneratorOptions): string => {
-  const excludeSet = new Set(options.exclude ?? options.config.generators?.vscode?.exclude ?? [])
+  const vscodeConfig = options.config.generators?.vscode
+  const excludeSet = new Set(options.exclude ?? vscodeConfig?.exclude ?? [])
 
   // Paths are relative to .vscode/ directory where the workspace file lives
   const folders: VscodeWorkspace['folders'] = [
@@ -44,15 +91,30 @@ export const generateVscodeContent = (options: VscodeGeneratorOptions): string =
       .map((name) => ({ path: `../${MEMBER_ROOT_DIR}/${name}`, name })),
   ]
 
+  // Build settings: defaults -> color shorthand -> user settings (in order of precedence)
+  let settings: Record<string, unknown> = {
+    'files.exclude': {
+      '**/.git': true,
+      '**/node_modules': true,
+      '**/dist': true,
+    },
+  }
+
+  // Apply color shorthand if provided
+  if (vscodeConfig?.color) {
+    settings = deepMerge(settings, {
+      'workbench.colorCustomizations': generateColorCustomizations(vscodeConfig.color),
+    })
+  }
+
+  // Apply user settings passthrough (overrides everything)
+  if (vscodeConfig?.settings) {
+    settings = deepMerge(settings, vscodeConfig.settings as Record<string, unknown>)
+  }
+
   const workspace: VscodeWorkspace = {
     folders,
-    settings: {
-      'files.exclude': {
-        '**/.git': true,
-        '**/node_modules': true,
-        '**/dist': true,
-      },
-    },
+    settings,
   }
 
   return JSON.stringify(workspace, null, 2) + '\n'
