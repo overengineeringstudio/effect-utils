@@ -356,11 +356,6 @@ const generateAllCommand = Cli.Command.make('all', { json: jsonOption }, ({ json
             `${styled.green(symbols.check)} Generated ${styled.bold('.vscode/megarepo.code-workspace')}`,
           )
           break
-        case 'schema':
-          yield* Console.log(
-            `${styled.green(symbols.check)} Generated ${styled.bold('schema/megarepo.schema.json')}`,
-          )
-          break
       }
     }
 

@@ -463,6 +463,19 @@ export const syncCommand = Cli.Command.make(
         yield* completeSyncProgress()
         yield* finishSyncProgressUI(ui)
 
+        // Print generator output after progress UI completes
+        const generatedFiles = getEnabledGenerators(config)
+        if (generatedFiles.length > 0) {
+          yield* Console.log('')
+          yield* Console.log(dryRun ? 'Would generate:' : 'Generated:')
+          for (const file of generatedFiles) {
+            const symbol = dryRun
+              ? styled.dim('→')
+              : styled.green(symbols.check)
+            yield* Console.log(`  ${symbol} ${styled.bold(file)}`)
+          }
+        }
+
         // Return result (already displayed via UI)
         return syncResult
       } else {

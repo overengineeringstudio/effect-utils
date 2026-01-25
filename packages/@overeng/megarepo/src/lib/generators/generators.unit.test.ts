@@ -214,10 +214,10 @@ describe('schema generator', () => {
 // =============================================================================
 
 describe('getEnabledGenerators', () => {
-  it('should return only schema when no generators enabled', () => {
+  it('should return empty array when no generators enabled', () => {
     const files = getEnabledGenerators({ members: { lib: 'owner/lib' } })
 
-    expect(files).toEqual(['schema/megarepo.schema.json'])
+    expect(files).toEqual([])
   })
 
   it('should include nix files when nix generator enabled', () => {
@@ -228,7 +228,7 @@ describe('getEnabledGenerators', () => {
 
     expect(files).toContain('.envrc.generated.megarepo')
     expect(files).toContain('.direnv/megarepo-nix/workspace')
-    expect(files).toContain('schema/megarepo.schema.json')
+    expect(files).not.toContain('schema/megarepo.schema.json')
   })
 
   it('should include vscode file when vscode generator enabled', () => {
@@ -238,7 +238,7 @@ describe('getEnabledGenerators', () => {
     })
 
     expect(files).toContain('.vscode/megarepo.code-workspace')
-    expect(files).toContain('schema/megarepo.schema.json')
+    expect(files).not.toContain('schema/megarepo.schema.json')
   })
 
   it('should include all files when all generators enabled', () => {
@@ -251,16 +251,15 @@ describe('getEnabledGenerators', () => {
       '.envrc.generated.megarepo',
       '.direnv/megarepo-nix/workspace',
       '.vscode/megarepo.code-workspace',
-      'schema/megarepo.schema.json',
     ])
   })
 
-  it('should not include disabled generators', () => {
+  it('should return empty array when generators explicitly disabled', () => {
     const files = getEnabledGenerators({
       members: { lib: 'owner/lib' },
       generators: { nix: { enabled: false }, vscode: { enabled: false } },
     })
 
-    expect(files).toEqual(['schema/megarepo.schema.json'])
+    expect(files).toEqual([])
   })
 })
