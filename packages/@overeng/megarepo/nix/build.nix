@@ -17,7 +17,7 @@ let
     # TODO: Re-enable typecheck once Effect lint warnings are resolved
     typecheck = false;
     depsManager = "pnpm";
-    pnpmDepsHash = "sha256-Cy1V7Aupr9YRugaeW7ScdRXVX5eo32vSYClVU8bZgqg=";
+    pnpmDepsHash = "sha256-SaLAfvzoWqSpPmNvHdcNl1f3KJiOif2ntip3IdaX8yo=";
     # Smoke test just runs --help which doesn't need git
     smokeTestArgs = [ "--help" ];
     dirty = dirty;
