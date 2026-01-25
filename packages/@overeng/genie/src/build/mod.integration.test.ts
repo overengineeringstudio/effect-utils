@@ -575,10 +575,7 @@ export default {
 
             expect(exitCode).toBe(0)
 
-            const generatedPath = pathSvc.join(
-              outerRoot,
-              'repo/packages/pkg-a/package.json',
-            )
+            const generatedPath = pathSvc.join(outerRoot, 'repo/packages/pkg-a/package.json')
             const generatedContent = yield* fs.readFileString(generatedPath)
             const generated = JSON.parse(generatedContent)
 
