@@ -1,8 +1,8 @@
 /**
  * External configuration - reusable by peer repos
  *
- * This file contains configuration that peer repos (like dotdot) can import
- * when they include effect-utils as a submodule.
+ * This file contains configuration that peer repos can import when they
+ * include effect-utils as a submodule.
  *
  * For effect-utils internal use, import from `./internal.ts` instead.
  */

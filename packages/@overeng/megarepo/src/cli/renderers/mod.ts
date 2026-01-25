@@ -2,7 +2,6 @@
  * CLI output renderers
  *
  * Pure functions that render data to string arrays for CLI output.
- * Following the pattern from @overeng/dotdot.
  */
 
 export { outputLines, formatMemberState, formatSyncResult, formatActionLine } from './common.ts'

@@ -816,4 +816,3 @@ Check that the path is correct relative to the megarepo root.
 - Package-level management (handled by repos themselves)
 - Build orchestration (use mono or similar)
 - Dependency resolution between members
-- Migration from dotdot (users can manually convert)

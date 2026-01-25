@@ -12,9 +12,6 @@
       "path": "./packages/@overeng/cli-ui"
     },
     {
-      "path": "./packages/@overeng/dotdot"
-    },
-    {
       "path": "./packages/@overeng/effect-ai-claude-cli"
     },
     {

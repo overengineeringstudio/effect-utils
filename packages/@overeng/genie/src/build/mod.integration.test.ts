@@ -462,8 +462,8 @@ export default {
             expect(linkPath).toBe('link:../pkg-b')
 
             // Verify no excessive "../" in the path (the bug symptom)
-            const dotDotCount = (linkPath.match(/\.\.\//g) || []).length
-            expect(dotDotCount).toBeLessThanOrEqual(2) // "../pkg-b" has 1, which is correct
+            const parentRefCount = (linkPath.match(/\.\.\//g) || []).length
+            expect(parentRefCount).toBeLessThanOrEqual(2) // "../pkg-b" has 1, which is correct
           }),
         )
       },

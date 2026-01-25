@@ -27,7 +27,6 @@ let
   # CLI packages built with Nix (for hash management)
   nixCliPackages = [
     { name = "genie"; flakeRef = ".#genie"; buildNix = "packages/@overeng/genie/nix/build.nix"; }
-    { name = "dotdot"; flakeRef = ".#dotdot"; buildNix = "packages/@overeng/dotdot/nix/build.nix"; }
     { name = "megarepo"; flakeRef = ".#megarepo"; buildNix = "packages/@overeng/megarepo/nix/build.nix"; }
   ];
 
@@ -36,7 +35,6 @@ let
   # See: context/workarounds/bun-issues.md
   allPackages = [
     "packages/@overeng/cli-ui"
-    "packages/@overeng/dotdot"
     "packages/@overeng/effect-ai-claude-cli"
     "packages/@overeng/effect-path"
     "packages/@overeng/effect-react"
@@ -59,7 +57,6 @@ let
 
   # Packages that have vitest tests (subset of allPackages)
   packagesWithTests = [
-    { path = "packages/@overeng/dotdot"; name = "dotdot"; }
     { path = "packages/@overeng/effect-ai-claude-cli"; name = "effect-ai-claude-cli"; }
     { path = "packages/@overeng/effect-path"; name = "effect-path"; }
     { path = "packages/@overeng/effect-rpc-tanstack"; name = "effect-rpc-tanstack"; }
@@ -150,7 +147,7 @@ in
     ./nix/devenv-modules/tasks/context.nix
     (taskModules.setup {
       tasks = [ "megarepo:generate" "pnpm:install" "genie:run" "ts:build" ];
-      completionsCliNames = [ "genie" "dotdot" "mr" ];
+      completionsCliNames = [ "genie" "mr" ];
     })
     # Nix CLI build and hash management
     (taskModules.nix-cli { cliPackages = nixCliPackages; })
@@ -164,7 +161,6 @@ in
     oxlintNpm
     pkgs.oxfmt
     (mkSourceCli { name = "genie"; entry = "packages/@overeng/genie/src/build/mod.ts"; })
-    (mkSourceCli { name = "dotdot"; entry = "packages/@overeng/dotdot/src/cli.ts"; })
     (mkSourceCli { name = "mr"; entry = "packages/@overeng/megarepo/bin/mr.ts"; })
     cliBuildStamp.package
   ];

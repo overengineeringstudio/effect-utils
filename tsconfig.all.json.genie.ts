@@ -7,7 +7,6 @@ const references = [
   './context/effect/socket',
   './context/opentui',
   './packages/@overeng/cli-ui',
-  './packages/@overeng/dotdot',
   './packages/@overeng/effect-ai-claude-cli',
   './packages/@overeng/effect-path',
   './packages/@overeng/effect-react',

@@ -52,7 +52,7 @@ in
         "genie:run"
         "ts:build"
       ];
-      completionsCliNames = [ "genie" "dotdot" "mr" ];
+      completionsCliNames = [ "genie" "mr" ];
     })
   ];
 
@@ -60,7 +60,6 @@ in
     pkgs.nodejs_22
     pkgs.bun
     (mkSourceCli { name = "genie"; entry = "packages/@overeng/genie/src/build/mod.ts"; })
-    (mkSourceCli { name = "dotdot"; entry = "packages/@overeng/dotdot/src/cli.ts"; })
     (mkSourceCli { name = "mr"; entry = "packages/@overeng/megarepo/bin/mr.ts"; })
   ];
 }

@@ -6,7 +6,6 @@
 #     (inputs.effect-utils.devenvModules.tasks.test {
 #       packages = [
 #         { path = "packages/@overeng/genie"; name = "genie"; }
-#         { path = "packages/@overeng/dotdot"; name = "dotdot"; }
 #       ];
 #       # Optional: custom vitest binary and config (for monorepo setups)
 #       vitestBin = "packages/@overeng/utils/node_modules/.bin/vitest";

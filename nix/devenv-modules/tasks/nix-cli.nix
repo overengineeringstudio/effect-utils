@@ -5,7 +5,6 @@
 #     (inputs.effect-utils.devenvModules.tasks.nix-cli {
 #       cliPackages = [
 #         { name = "genie"; flakeRef = ".#genie"; buildNix = "packages/@overeng/genie/nix/build.nix"; }
-#         { name = "dotdot"; flakeRef = ".#dotdot"; buildNix = "packages/@overeng/dotdot/nix/build.nix"; }
 #       ];
 #     })
 #   ];

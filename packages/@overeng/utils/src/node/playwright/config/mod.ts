@@ -3,7 +3,7 @@
  *
  * Important: This module intentionally avoids importing `@playwright/test`
  * at runtime to prevent Playwright's duplicate-load guard from triggering in
- * dotdot setups. Keep this file free of runtime Playwright imports.
+ * nested dev shells. Keep this file free of runtime Playwright imports.
  *
  * Context: https://gist.github.com/schickling/c6484f40be38b250fab23e677461a3e2
  *

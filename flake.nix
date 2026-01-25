@@ -25,10 +25,6 @@
             inherit pkgs gitRev;
             src = self;
           };
-          dotdot = import (rootPath + "/packages/@overeng/dotdot/nix/build.nix") {
-            inherit pkgs gitRev;
-            src = self;
-          };
           megarepo = import (rootPath + "/packages/@overeng/megarepo/nix/build.nix") {
             inherit pkgs gitRev;
             src = self;
@@ -36,11 +32,6 @@
         };
         cliPackagesDirty = {
           genie = import (rootPath + "/packages/@overeng/genie/nix/build.nix") {
-            inherit pkgs gitRev;
-            src = self;
-            dirty = true;
-          };
-          dotdot = import (rootPath + "/packages/@overeng/dotdot/nix/build.nix") {
             inherit pkgs gitRev;
             src = self;
             dirty = true;
@@ -56,19 +47,16 @@
         packages = cliPackages // {
           cli-build-stamp = cliBuildStamp.package;
           genie-dirty = cliPackagesDirty.genie;
-          dotdot-dirty = cliPackagesDirty.dotdot;
           megarepo-dirty = cliPackagesDirty.megarepo;
         };
 
         # Direnv helper for comparing expected CLI outputs to PATH entries.
         cliOutPaths = {
           genie = cliPackages.genie.outPath;
-          dotdot = cliPackages.dotdot.outPath;
           megarepo = cliPackages.megarepo.outPath;
         };
         cliOutPathsDirty = {
           genie = cliPackagesDirty.genie.outPath;
-          dotdot = cliPackagesDirty.dotdot.outPath;
           megarepo = cliPackagesDirty.megarepo.outPath;
         };
 
@@ -109,7 +97,7 @@
       lib.cliBuildStamp = { pkgs }:
         import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
 
-      # Convenience helper for bundling the common genie/dotdot CLIs.
+      # Convenience helper for bundling the common genie/megarepo CLIs.
       lib.mkCliPackages = import ./nix/workspace-tools/lib/mk-cli-packages.nix;
     };
 }

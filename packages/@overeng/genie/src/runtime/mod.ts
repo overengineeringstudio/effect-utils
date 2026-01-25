@@ -53,7 +53,6 @@ export type GenieOutput<T> = {
   stringify: (ctx: GenieContext) => string
 }
 
-export * from './dotdot-config/mod.ts'
 export * from './github-workflow/mod.ts'
 export * from './megarepo-config/mod.ts'
 export * from './oxfmt-config/mod.ts'

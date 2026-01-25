@@ -182,7 +182,7 @@ export const installAll = Effect.fn('installAll')(function* (opts: {
  *
  * The `clean` option is currently needed as a workaround for a bun bug where parallel installs
  * with file: protocol dependencies and postinstall scripts cause cache corruption.
- * See: file:///Users/schickling/Code/overengineeringstudio/dotdot/effect-utils/context/workarounds/bun-patched-dependencies.md
+ * See: context/workarounds/bun-patched-dependencies.md
  */
 export const installAllWithTaskSystem = Effect.fn('installAllWithTaskSystem')(function* (opts: {
   config: InstallConfig

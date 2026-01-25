@@ -11,6 +11,7 @@
  */
 
 import { writeFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 
 const RESET = '\x1b[0m'
 const DIM = '\x1b[2m'
@@ -289,8 +290,7 @@ const runVisualStress = async (config: {
   }
 
   // Write results to file
-  const resultsPath =
-    '/Users/schickling/Code/overengineeringstudio/dotdot/effect-utils/packages/@overeng/mono/stress-test/stress-test-results.json'
+  const resultsPath = resolve(process.cwd(), 'stress-test-results.json')
   writeFileSync(resultsPath, JSON.stringify(results, null, 2))
 
   // Print summary

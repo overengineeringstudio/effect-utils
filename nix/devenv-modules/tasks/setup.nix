@@ -8,7 +8,7 @@
 #   imports = [
 #     (taskModules.setup {
 #       tasks = [ "pnpm:install" "genie:run" "ts:build" ];
-#       completionsCliNames = [ "genie" "dotdot" "mr" ];
+#       completionsCliNames = [ "genie" "mr" ];
 #     })
 #   ];
 #

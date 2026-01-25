@@ -312,7 +312,6 @@ pkg:effect-rpc-tanstack
 pkg:effect-path
 pkg:genie
 pkg:mono
-pkg:dotdot
 pkg:utils
 pkg:oxc-config
 pkg:cli-ui
@@ -374,7 +373,7 @@ Use this command to find labels not in the taxonomy (for manual cleanup):
 
 ```bash
 # Allowed labels (update if taxonomy changes)
-ALLOWED_LABELS="pkg:notion-effect-client pkg:notion-effect-schema pkg:notion-cli pkg:effect-schema-form pkg:effect-schema-form-aria pkg:effect-react pkg:react-inspector pkg:effect-ai-claude-cli pkg:effect-rpc-tanstack pkg:effect-path pkg:genie pkg:mono pkg:dotdot pkg:utils pkg:oxc-config pkg:cli-ui pkg:infra qa:needs-review qa:needs-tests qa:needs-docs qa:breaking-change size:small size:medium size:large meta:good-first-issue meta:technical-debt meta:perf meta:deps"
+ALLOWED_LABELS="pkg:notion-effect-client pkg:notion-effect-schema pkg:notion-cli pkg:effect-schema-form pkg:effect-schema-form-aria pkg:effect-react pkg:react-inspector pkg:effect-ai-claude-cli pkg:effect-rpc-tanstack pkg:effect-path pkg:genie pkg:mono pkg:utils pkg:oxc-config pkg:cli-ui pkg:infra qa:needs-review qa:needs-tests qa:needs-docs qa:breaking-change size:small size:medium size:large meta:good-first-issue meta:technical-debt meta:perf meta:deps"
 
 # Find undefined labels
 bd label list-all --json | jq -r '.[].label' | while read label; do
