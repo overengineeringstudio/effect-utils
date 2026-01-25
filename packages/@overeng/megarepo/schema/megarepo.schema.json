@@ -1,0 +1,71 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$defs": {
+    "MegarepoConfig": {
+      "type": "object",
+      "required": [
+        "members"
+      ],
+      "properties": {
+        "$schema": {
+          "type": "string"
+        },
+        "members": {
+          "type": "object",
+          "required": [],
+          "properties": {},
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "generators": {
+          "$ref": "#/$defs/GeneratorsConfig"
+        }
+      },
+      "additionalProperties": false
+    },
+    "GeneratorsConfig": {
+      "type": "object",
+      "required": [],
+      "properties": {
+        "nix": {
+          "$ref": "#/$defs/NixGeneratorConfig"
+        },
+        "vscode": {
+          "$ref": "#/$defs/VscodeGeneratorConfig"
+        }
+      },
+      "additionalProperties": false
+    },
+    "NixGeneratorConfig": {
+      "type": "object",
+      "required": [],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "workspaceDir": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "VscodeGeneratorConfig": {
+      "type": "object",
+      "required": [],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$ref": "#/$defs/MegarepoConfig"
+}
