@@ -42,8 +42,9 @@
       # The wrapper can be overridden via PLAYWRIGHT_BIN env var if needed.
       devenvModules.default = { pkgs, ... }:
         let
-          playwrightDriver = playwright-web-flake.packages.${pkgs.system}.playwright-driver;
-          playwrightWrapper = mkPlaywrightWrapper pkgs.system;
+          system = pkgs.stdenv.hostPlatform.system;
+          playwrightDriver = playwright-web-flake.packages.${system}.playwright-driver;
+          playwrightWrapper = mkPlaywrightWrapper system;
         in
         {
           packages = [ playwrightWrapper ];
