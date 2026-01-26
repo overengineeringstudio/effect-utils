@@ -103,6 +103,8 @@ export const syncMegarepo = ({
     frozen: boolean
     force: boolean
     deep: boolean
+    only: ReadonlyArray<string> | undefined
+    skip: ReadonlyArray<string> | undefined
   }
   depth?: number
   visited?: Set<string>
@@ -118,7 +120,7 @@ export const syncMegarepo = ({
   FileSystem.FileSystem | CommandExecutor.CommandExecutor | Store | SyncProgressService
 > =>
   Effect.gen(function* () {
-    const { json, dryRun, pull, frozen, force, deep } = options
+    const { json, dryRun, pull, frozen, force, deep, only, skip } = options
     const fs = yield* FileSystem.FileSystem
     const indent = '  '.repeat(depth)
 
@@ -190,10 +192,16 @@ export const syncMegarepo = ({
         })
       }
 
-      // Check for staleness
+      // When using --only or --skip, only check staleness for members we're actually syncing
+      // This allows CI to skip private repos without failing the staleness check
+      const filteredRemoteMemberNames = new Set(
+        [...remoteMemberNames].filter((name) => !skippedMemberNames.has(name)),
+      )
+
+      // Check for staleness (only for members we're syncing)
       const staleness = checkLockStaleness({
         lockFile,
-        configMemberNames: remoteMemberNames,
+        configMemberNames: filteredRemoteMemberNames,
       })
       if (staleness.isStale) {
         if (json) {
@@ -225,7 +233,22 @@ export const syncMegarepo = ({
       }
     }
 
-    const members = Object.entries(config.members)
+    // Filter members based on --only and --skip options
+    const allMembers = Object.entries(config.members)
+    const members = allMembers.filter(([name]) => {
+      if (only !== undefined && only.length > 0) {
+        return only.includes(name)
+      }
+      if (skip !== undefined && skip.length > 0) {
+        return !skip.includes(name)
+      }
+      return true
+    })
+
+    // Track which members were skipped due to filtering (for lock file handling)
+    const skippedMemberNames = new Set(
+      allMembers.filter(([name]) => !members.some(([n]) => n === name)).map(([name]) => name),
+    )
 
     // Sync all members with limited concurrency for visible progress
     // Use unbounded for non-TTY (faster) or limited (4) for TTY (visible progress)
@@ -378,6 +401,13 @@ export const syncMegarepo = ({
     } satisfies MegarepoSyncResult
   })
 
+/** Parse comma-separated member names */
+const parseMemberList = (value: string): ReadonlyArray<string> =>
+  value
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+
 /** Sync members: clone to store and create symlinks */
 export const syncCommand = Cli.Command.make(
   'sync',
@@ -406,12 +436,41 @@ export const syncCommand = Cli.Command.make(
       Cli.Options.withDescription('Recursively sync nested megarepos'),
       Cli.Options.withDefault(false),
     ),
+    only: Cli.Options.text('only').pipe(
+      Cli.Options.withDescription('Only sync specified members (comma-separated)'),
+      Cli.Options.optional,
+    ),
+    skip: Cli.Options.text('skip').pipe(
+      Cli.Options.withDescription('Skip specified members (comma-separated)'),
+      Cli.Options.optional,
+    ),
   },
-  ({ json, dryRun, pull, frozen, force, deep }) =>
+  ({ json, dryRun, pull, frozen, force, deep, only, skip }) =>
     Effect.gen(function* () {
       const cwd = yield* Cwd
       const fs = yield* FileSystem.FileSystem
       const root = yield* findMegarepoRoot(cwd)
+
+      // Validate mutual exclusivity of --only and --skip
+      if (Option.isSome(only) && Option.isSome(skip)) {
+        if (json) {
+          console.log(
+            JSON.stringify({
+              error: 'invalid_options',
+              message: '--only and --skip are mutually exclusive',
+            }),
+          )
+        } else {
+          yield* Console.error(
+            `${styled.red(symbols.cross)} --only and --skip are mutually exclusive`,
+          )
+        }
+        return yield* Effect.fail(new Error('--only and --skip are mutually exclusive'))
+      }
+
+      // Parse member filter options
+      const onlyMembers = Option.isSome(only) ? parseMemberList(only.value) : undefined
+      const skipMembers = Option.isSome(skip) ? parseMemberList(skip.value) : undefined
 
       if (Option.isNone(root)) {
         if (json) {
@@ -459,7 +518,7 @@ export const syncCommand = Cli.Command.make(
         // Run the sync with progress updates
         const syncResult = yield* syncMegarepo({
           megarepoRoot: root.value,
-          options: { json, dryRun, pull, frozen, force, deep },
+          options: { json, dryRun, pull, frozen, force, deep, only: onlyMembers, skip: skipMembers },
           withProgress: true,
         })
 
@@ -492,7 +551,7 @@ export const syncCommand = Cli.Command.make(
 
         const syncResult = yield* syncMegarepo({
           megarepoRoot: root.value,
-          options: { json, dryRun, pull, frozen, force, deep },
+          options: { json, dryRun, pull, frozen, force, deep, only: onlyMembers, skip: skipMembers },
         })
 
         // Get list of files that would be / were generated

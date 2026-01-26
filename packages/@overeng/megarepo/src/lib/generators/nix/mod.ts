@@ -244,11 +244,7 @@ export const generateNix = Effect.fn('megarepo/generate/nix')((options: NixGener
     const repoRoot = options.megarepoRootNearest
     const repoNames = Object.keys(options.config.members).toSorted()
 
-    if (repoNames.length === 0) {
-      return yield* new NixGeneratorError({
-        message: 'megarepo.json has no members to sync',
-      })
-    }
+    // Note: We allow empty member lists - all members may be skipped via --skip
 
     const workspaceDir = options.config.generators?.nix?.workspaceDir ?? defaultWorkspaceDir
     const workspaceRoot = EffectPath.ops.join(
@@ -272,9 +268,9 @@ export const generateNix = Effect.fn('megarepo/generate/nix')((options: NixGener
       const source = getMemberPath({ megarepoRoot: repoRoot, name: repoName })
       const exists = yield* fs.exists(source)
       if (!exists) {
-        return yield* new NixGeneratorError({
-          message: `Repo ${repoName} does not exist at ${source}`,
-        })
+        // Gracefully skip missing members - they may have been excluded via --skip
+        yield* Effect.logWarning(`Skipping ${repoName} in nix generator (path does not exist).`)
+        continue
       }
       mirrorRepos.push({ name: repoName, path: source })
 

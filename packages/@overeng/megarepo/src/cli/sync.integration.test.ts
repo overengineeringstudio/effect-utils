@@ -1138,3 +1138,187 @@ describe('sync error handling', () => {
       }),
     ))
 })
+
+// =============================================================================
+// Member Filtering Tests (--only and --skip)
+// =============================================================================
+
+describe('sync member filtering', () => {
+  describe('--only flag', () => {
+    it('should only sync specified members with --only', () =>
+      withTestCtx(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
+
+          // Create temp directory with two local repos
+          const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+          const repo1Path = yield* createRepo({
+            basePath: tmpDir,
+            fixture: {
+              name: 'repo1',
+              files: { 'package.json': '{"name": "repo1"}' },
+            },
+          })
+          const repo2Path = yield* createRepo({
+            basePath: tmpDir,
+            fixture: {
+              name: 'repo2',
+              files: { 'package.json': '{"name": "repo2"}' },
+            },
+          })
+
+          // Create workspace with both members
+          const workspacePath = EffectPath.ops.join(
+            tmpDir,
+            EffectPath.unsafe.relativeDir('workspace/'),
+          )
+          yield* fs.makeDirectory(workspacePath, { recursive: true })
+          yield* initGitRepo(workspacePath)
+
+          const config: typeof MegarepoConfig.Type = {
+            members: {
+              repo1: repo1Path,
+              repo2: repo2Path,
+            },
+          }
+          const configContent = yield* Schema.encode(
+            Schema.parseJson(MegarepoConfig, { space: 2 }),
+          )(config)
+          yield* fs.writeFileString(
+            EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME)),
+            configContent + '\n',
+          )
+          yield* addCommit({
+            repoPath: workspacePath,
+            message: 'Initialize megarepo',
+          })
+
+          // Run sync with --only repo1
+          const result = yield* runSyncCommand({
+            cwd: workspacePath,
+            args: ['--json', '--only', 'repo1'],
+          })
+          const json = JSON.parse(result.stdout.trim()) as {
+            results: Array<{ name: string; status: string }>
+          }
+
+          // Should only have synced repo1
+          expect(json.results).toHaveLength(1)
+          expect(json.results[0]?.name).toBe('repo1')
+        }),
+      ))
+  })
+
+  describe('--skip flag', () => {
+    it('should skip specified members with --skip', () =>
+      withTestCtx(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
+
+          // Create temp directory with two local repos
+          const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+          const repo1Path = yield* createRepo({
+            basePath: tmpDir,
+            fixture: {
+              name: 'repo1',
+              files: { 'package.json': '{"name": "repo1"}' },
+            },
+          })
+          const repo2Path = yield* createRepo({
+            basePath: tmpDir,
+            fixture: {
+              name: 'repo2',
+              files: { 'package.json': '{"name": "repo2"}' },
+            },
+          })
+
+          // Create workspace with both members
+          const workspacePath = EffectPath.ops.join(
+            tmpDir,
+            EffectPath.unsafe.relativeDir('workspace/'),
+          )
+          yield* fs.makeDirectory(workspacePath, { recursive: true })
+          yield* initGitRepo(workspacePath)
+
+          const config: typeof MegarepoConfig.Type = {
+            members: {
+              repo1: repo1Path,
+              repo2: repo2Path,
+            },
+          }
+          const configContent = yield* Schema.encode(
+            Schema.parseJson(MegarepoConfig, { space: 2 }),
+          )(config)
+          yield* fs.writeFileString(
+            EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME)),
+            configContent + '\n',
+          )
+          yield* addCommit({
+            repoPath: workspacePath,
+            message: 'Initialize megarepo',
+          })
+
+          // Run sync with --skip repo2
+          const result = yield* runSyncCommand({
+            cwd: workspacePath,
+            args: ['--json', '--skip', 'repo2'],
+          })
+          const json = JSON.parse(result.stdout.trim()) as {
+            results: Array<{ name: string; status: string }>
+          }
+
+          // Should only have synced repo1 (repo2 was skipped)
+          expect(json.results).toHaveLength(1)
+          expect(json.results[0]?.name).toBe('repo1')
+        }),
+      ))
+  })
+
+  describe('--only and --skip mutual exclusivity', () => {
+    it('should reject using both --only and --skip together', () =>
+      withTestCtx(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
+
+          // Create a minimal workspace
+          const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+          const workspacePath = EffectPath.ops.join(
+            tmpDir,
+            EffectPath.unsafe.relativeDir('workspace/'),
+          )
+          yield* fs.makeDirectory(workspacePath, { recursive: true })
+          yield* initGitRepo(workspacePath)
+
+          const config: typeof MegarepoConfig.Type = {
+            members: {
+              repo1: 'owner/repo1',
+            },
+          }
+          const configContent = yield* Schema.encode(
+            Schema.parseJson(MegarepoConfig, { space: 2 }),
+          )(config)
+          yield* fs.writeFileString(
+            EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME)),
+            configContent + '\n',
+          )
+          yield* addCommit({
+            repoPath: workspacePath,
+            message: 'Initialize megarepo',
+          })
+
+          // Run sync with both --only and --skip (should fail)
+          const result = yield* runSyncCommand({
+            cwd: workspacePath,
+            args: ['--json', '--only', 'repo1', '--skip', 'repo2'],
+          })
+
+          // Should have failed
+          expect(result.exitCode).not.toBe(0)
+
+          // Error message should mention mutual exclusivity
+          const output = result.stdout + result.stderr
+          expect(output.toLowerCase()).toContain('mutually exclusive')
+        }),
+      ))
+  })
+})

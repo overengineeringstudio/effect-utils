@@ -320,7 +320,7 @@ my-megarepo/repos/effect-utils -> /Users/dev/.megarepo/github.com/overeng/effect
 Bidirectional sync between worktrees and lock file. The default mode ensures members exist and updates the lock file to match current worktree HEADs.
 
 ```bash
-mr sync [--pull] [--frozen] [--force] [--deep]
+mr sync [--pull] [--frozen] [--force] [--deep] [--only <members...>] [--skip <members...>]
 ```
 
 **Modes:**
@@ -330,6 +330,18 @@ mr sync [--pull] [--frozen] [--force] [--deep]
 | Default | `mr sync`          | Ensure members exist, update lock to current worktree commits            |
 | Pull    | `mr sync --pull`   | Fetch from remote, update worktrees to latest                            |
 | Frozen  | `mr sync --frozen` | Clone if needed, apply lock → worktrees exactly, never modify lock (CI)  |
+
+**Member Filtering:**
+
+| Option              | Behavior                                                    |
+| ------------------- | ----------------------------------------------------------- |
+| `--only <members>`  | Only sync the specified members (comma-separated)           |
+| `--skip <members>`  | Sync all members except the specified ones (comma-separated)|
+
+These options are mutually exclusive. When filtering is applied:
+- Only the specified members are synced
+- Generators skip members that weren't synced (graceful handling of missing paths)
+- Lock file operations only affect synced members
 
 **Default Mode Behavior:**
 
@@ -347,6 +359,8 @@ This mode is ideal for local iteration: make commits in worktrees, then `mr sync
 - `--frozen` - CI mode: fail if lock is missing or stale, apply lock exactly
 - `--force` / `-f` - Override dirty worktree check, update pinned members
 - `--deep` - Recursively sync nested megarepos
+- `--only <members>` - Only sync specified members (comma-separated, mutually exclusive with `--skip`)
+- `--skip <members>` - Skip specified members (comma-separated, mutually exclusive with `--only`)
 
 #### `mr sync --pull`
 
@@ -550,6 +564,9 @@ mr sync --pull             # fetch and update to latest commits
 ```bash
 # Lock file is committed to git
 mr sync --frozen           # uses exactly what's in lock
+
+# Skip members that can't be cloned (e.g., private repos without auth)
+mr sync --frozen --skip private-repo
 ```
 
 ### Stabilizing for release
