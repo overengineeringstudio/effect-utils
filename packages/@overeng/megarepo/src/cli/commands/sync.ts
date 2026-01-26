@@ -36,6 +36,7 @@ import {
   upsertLockedMember,
   writeLockFile,
 } from '../../lib/lock.ts'
+import { syncNixLocks, type NixLockSyncResult } from '../../lib/nix-lock/mod.ts'
 import { type Store, StoreLayer } from '../../lib/store.ts'
 import { flattenSyncResults, syncMember, type MegarepoSyncResult } from '../../lib/sync/mod.ts'
 import { Cwd, findMegarepoRoot, jsonOption } from '../context.ts'
@@ -360,6 +361,26 @@ export const syncMegarepo = ({
 
       // Write lock file
       yield* writeLockFile({ lockPath, lockFile })
+
+      // Sync Nix lock files (flake.lock, devenv.lock) in member repos
+      // This is opt-out: enabled by default when nix generator is enabled
+      const nixLockSyncEnabled =
+        config.generators?.nix?.enabled === true &&
+        config.generators.nix.lockSync?.enabled !== false
+      if (nixLockSyncEnabled) {
+        const excludeMembers = new Set(config.generators?.nix?.lockSync?.exclude ?? [])
+        const nixLockResult = yield* syncNixLocks({
+          megarepoRoot,
+          config,
+          lockFile,
+          excludeMembers,
+        })
+        if (nixLockResult.totalUpdates > 0) {
+          yield* Effect.logInfo(
+            `Synced ${nixLockResult.totalUpdates} Nix lock input(s) across ${nixLockResult.memberResults.length} member(s)`,
+          )
+        }
+      }
     }
 
     // Always regenerate the local Nix workspace after syncing members.

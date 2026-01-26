@@ -74,12 +74,37 @@ export class VscodeGeneratorConfig extends Schema.Class<VscodeGeneratorConfig>(
   settings: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
 }) {}
 
+/**
+ * Configuration for syncing flake.lock and devenv.lock files
+ *
+ * When enabled, megarepo will update the `rev` fields in member repos'
+ * flake.lock and devenv.lock files to match the commits in megarepo.lock.
+ * This keeps all lock files in sync with megarepo as the source of truth.
+ */
+export class NixLockSyncConfig extends Schema.Class<NixLockSyncConfig>('NixLockSyncConfig')({
+  /**
+   * Enable/disable lock sync (default: true when nix generator is enabled)
+   * Set to false to opt-out of automatic lock file synchronization
+   */
+  enabled: Schema.optional(Schema.Boolean),
+  /**
+   * Members to exclude from lock sync
+   * These members' lock files will not be modified
+   */
+  exclude: Schema.optional(Schema.Array(Schema.String)),
+}) {}
+
 /** Nix workspace generator configuration */
 export class NixGeneratorConfig extends Schema.Class<NixGeneratorConfig>('NixGeneratorConfig')({
   /** Enable/disable the generator (default: false) */
   enabled: Schema.optional(Schema.Boolean),
   /** Workspace directory (relative to megarepo root) */
   workspaceDir: Schema.optional(Schema.String),
+  /**
+   * Configuration for syncing flake.lock and devenv.lock files
+   * When nix generator is enabled, lock sync is enabled by default
+   */
+  lockSync: Schema.optional(NixLockSyncConfig),
 }) {}
 
 /** All generator configurations */

@@ -229,6 +229,10 @@ interface GeneratorsConfig {
   nix?: {
     enabled?: boolean // default: false
     workspaceDir?: string // default: .direnv/megarepo-nix/workspace
+    lockSync?: {
+      enabled?: boolean // default: true (when nix generator is enabled)
+      exclude?: string[] // members to exclude from lock sync
+    }
   }
   vscode?: {
     enabled?: boolean // default: false
@@ -762,6 +766,107 @@ use devenv
 ```
 
 `mr generate nix` only writes `.envrc.generated.megarepo`. `.envrc.local` is reserved for user customization and is never modified by generators.
+
+### Nix Lock Sync
+
+When the nix generator is enabled, megarepo automatically synchronizes `flake.lock` and `devenv.lock` files in member repos to keep them in sync with `megarepo.lock`.
+
+**The Problem:**
+
+When repo A (a megarepo member) depends on repo B (also a megarepo member) via Nix flake inputs, you get duplicate version tracking:
+
+1. `megarepo.lock` tracks commit for repo B
+2. `repos/A/flake.lock` or `repos/A/devenv.lock` also tracks commit for repo B
+
+These can drift, causing CI reproducibility issues and confusion.
+
+**The Solution:**
+
+During `mr sync`, after `megarepo.lock` is updated, megarepo scans each member repo for `flake.lock` and `devenv.lock` files. For any input that matches another megarepo member (by URL), it updates the `rev` to match `megarepo.lock`.
+
+**How it works:**
+
+1. Matches flake inputs to megarepo members by comparing URLs (GitHub owner/repo or git URL)
+2. If a match is found and the `rev` differs, updates to the commit from `megarepo.lock`
+3. Removes `narHash` and `lastModified` fields (Nix recalculates these on demand)
+
+**Configuration:**
+
+Lock sync is **enabled by default** when the nix generator is enabled. To opt out:
+
+```json
+{
+  "generators": {
+    "nix": {
+      "enabled": true,
+      "lockSync": {
+        "enabled": false
+      }
+    }
+  }
+}
+```
+
+To exclude specific members from lock sync:
+
+```json
+{
+  "generators": {
+    "nix": {
+      "enabled": true,
+      "lockSync": {
+        "exclude": ["member-to-skip"]
+      }
+    }
+  }
+}
+```
+
+**Example:**
+
+Given `megarepo.lock`:
+```json
+{
+  "members": {
+    "effect-utils": {
+      "url": "https://github.com/overeng/effect-utils",
+      "commit": "abc123..."
+    }
+  }
+}
+```
+
+And `repos/my-app/flake.lock` with an input referencing effect-utils at a different commit:
+```json
+{
+  "nodes": {
+    "effect-utils": {
+      "locked": {
+        "owner": "overeng",
+        "repo": "effect-utils",
+        "rev": "old-commit...",
+        "type": "github"
+      }
+    }
+  }
+}
+```
+
+After `mr sync`, the flake.lock will be updated to:
+```json
+{
+  "nodes": {
+    "effect-utils": {
+      "locked": {
+        "owner": "overeng",
+        "repo": "effect-utils",
+        "rev": "abc123...",
+        "type": "github"
+      }
+    }
+  }
+}
+```
 
 ---
 

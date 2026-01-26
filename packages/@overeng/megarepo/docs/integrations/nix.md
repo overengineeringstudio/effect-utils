@@ -107,3 +107,50 @@ This pattern gives you:
 | Local path | Live updates during dev | Fails through megarepo symlinks |
 
 For flakes you're actively developing, use the `.envrc` override pattern or keep them in the same repo.
+
+## Nix Lock Sync
+
+When multiple megarepo members depend on each other via Nix flake inputs, you can end up with version drift between `megarepo.lock` and the individual `flake.lock`/`devenv.lock` files.
+
+Megarepo solves this with **Nix Lock Sync**: during `mr sync`, it automatically updates `flake.lock` and `devenv.lock` files in member repos to match the commits in `megarepo.lock`.
+
+### How It Works
+
+1. After `megarepo.lock` is written, megarepo scans each member for lock files
+2. For each input in `flake.lock`/`devenv.lock`, it checks if the URL matches another megarepo member
+3. If matched and the `rev` differs, it updates to match `megarepo.lock`
+4. `narHash` and `lastModified` are removed (Nix recalculates these)
+
+### Configuration
+
+Lock sync is **enabled by default** when the nix generator is enabled.
+
+To disable:
+```json
+{
+  "generators": {
+    "nix": {
+      "enabled": true,
+      "lockSync": { "enabled": false }
+    }
+  }
+}
+```
+
+To exclude specific members:
+```json
+{
+  "generators": {
+    "nix": {
+      "enabled": true,
+      "lockSync": { "exclude": ["member-name"] }
+    }
+  }
+}
+```
+
+### Benefits
+
+- **Single source of truth**: `megarepo.lock` controls all dependency versions
+- **CI reproducibility**: No more version drift between lock files
+- **Automatic**: No manual `nix flake update` needed for megarepo members
