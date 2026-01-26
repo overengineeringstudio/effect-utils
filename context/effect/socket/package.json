@@ -3,10 +3,10 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@effect/platform": "0.94.1",
-    "@effect/platform-node": "0.104.0",
+    "@effect/platform": "0.94.2",
+    "@effect/platform-node": "0.104.1",
     "@effect/rpc": "0.73.0",
-    "effect": "3.19.14"
+    "effect": "3.19.15"
   },
   "devDependencies": {
     "@types/node": "25.0.3"

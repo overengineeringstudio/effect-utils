@@ -23,7 +23,7 @@
     "@storybook/react-vite": "10.1.11",
     "@types/react": "19.2.7",
     "@vitejs/plugin-react": "5.1.2",
-    "effect": "3.19.14",
+    "effect": "3.19.15",
     "react": "19.2.3",
     "react-aria-components": "1.14.0",
     "react-dom": "19.2.3",
@@ -33,7 +33,7 @@
     "vitest": "3.2.4"
   },
   "peerDependencies": {
-    "effect": "^3.19.14",
+    "effect": "^3.19.15",
     "react": "^19.2.3",
     "react-aria-components": "^1.14.0",
     "react-dom": "^19.2.3"

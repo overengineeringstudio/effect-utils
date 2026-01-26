@@ -18,17 +18,17 @@
   "devDependencies": {
     "@effect/ai": "0.33.2",
     "@effect/language-service": "0.69.2",
-    "@effect/platform": "0.94.1",
+    "@effect/platform": "0.94.2",
     "@effect/vitest": "0.27.0",
-    "effect": "3.19.14",
+    "effect": "3.19.15",
     "typescript": "5.9.3",
     "vite": "7.3.0",
     "vitest": "3.2.4"
   },
   "peerDependencies": {
     "@effect/ai": "^0.33.2",
-    "@effect/platform": "^0.94.1",
-    "effect": "^3.19.14"
+    "@effect/platform": "^0.94.2",
+    "effect": "^3.19.15"
   },
   "$genie": {
     "source": "package.json.genie.ts",

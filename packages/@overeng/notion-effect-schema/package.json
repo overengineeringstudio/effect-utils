@@ -19,12 +19,12 @@
     "@effect/language-service": "0.69.2",
     "@effect/vitest": "0.27.0",
     "@types/node": "25.0.3",
-    "effect": "3.19.14",
+    "effect": "3.19.15",
     "typescript": "5.9.3",
     "vitest": "3.2.4"
   },
   "peerDependencies": {
-    "effect": "^3.19.14"
+    "effect": "^3.19.15"
   },
   "$genie": {
     "source": "package.json.genie.ts",

@@ -32,31 +32,83 @@ packages/@example/common/node_modules/.pnpm/effect@3.19.14_abc456.../node_module
 
 ---
 
-## Our Solution: Two-Part Approach
+## Our Solution: Protocol Selection by Context
 
-We use a combination of two techniques:
+Different dependency protocols work best in different contexts:
 
-### 1. Primary: Use `link:` protocol for internal packages
+| Context | Protocol | Why |
+|---------|----------|-----|
+| **Same-repo siblings** | `link:../pkg` | Simple relative paths, own dependency resolution |
+| **Cross-repo deps** | `workspace:*` | Works with per-package workspaces, proper symlink resolution |
+| **External examples/docs** | `file:` + `enableGlobalVirtualStore` | Behaves like npm consumers |
 
-All internal package dependencies use `link:` instead of `file:`:
+### 1. Same-repo dependencies: `link:` protocol
+
+For packages within the same repository referencing siblings:
 
 ```json
-// file: copies package, deps resolved from CONSUMER's context (BAD)
-"@example/utils": "file:../utils"
-
-// link: symlinks package, uses its OWN node_modules (GOOD)
-"@example/utils": "link:../utils"
+// In effect-utils packages:
+"@overeng/utils": "link:../utils"
 ```
 
-**Key insight:** `pnpm link:` behaves like `bun file:` - both give packages their OWN dependency resolution, matching how published packages behave.
+**Key insight:** `pnpm link:` creates symlinks where each package uses its OWN `node_modules`, matching how published packages behave.
 
 **Where we use `link:`:**
+- effect-utils: All `@overeng/*` internal packages (via genie catalog)
 
-- effect-utils: All `@overeng/*` internal packages (via `genie/internal.ts`)
+### 2. Cross-repo dependencies: `workspace:*` protocol
+
+For consuming packages from another repository (e.g., oi consuming livestore):
+
+```json
+// In oi/package.json:
+"@livestore/sync-cf": "workspace:*"
+```
+
+**Requires per-package `pnpm-workspace.yaml`:**
+
+```yaml
+# In oi/pnpm-workspace.yaml:
+packages:
+  - .
+  - ../../repos/livestore/packages/@livestore/*
+```
+
+**Why `workspace:*` instead of `file:`:**
+
+The `file:` protocol breaks when the referenced package has internal `link:` dependencies:
+
+1. pnpm copies `file:` deps into `.pnpm/` directory
+2. Internal `link:../sibling` paths get reinterpreted relative to `.pnpm/` location
+3. Symlinks resolve to wrong directories (e.g., `flakes/common` instead of `livestore/packages/@livestore/common`)
+
+With `workspace:*`:
+1. pnpm creates direct symlinks to source packages (not copies in `.pnpm/`)
+2. Internal `link:` deps resolve correctly relative to original source location
+3. Each package maintains its own dependency resolution
+
+**Where we use `workspace:*`:**
 - livestore: All `@livestore/*` and `@local/*` packages (via `genie/repo.ts`)
-- schickling.dev: All `@overeng/*` cross-repo deps (via `genie/internal.ts`)
+- oi: References to `@livestore/*` packages (via `genie/internal.ts`)
+- Any cross-repo consumption scenario
 
-### 2. Backup: `enableGlobalVirtualStore` for remaining `file:` deps
+**Per-package workspace pattern:**
+
+Each package has its own `pnpm-workspace.yaml` including siblings:
+
+```yaml
+# In livestore/packages/@livestore/sync-cf/pnpm-workspace.yaml:
+packages:
+  - .
+  - ../*
+```
+
+This enables:
+1. No monorepo root workspace needed
+2. Each package is self-contained
+3. External consumers include packages in their own workspace
+
+### 3. Backup: `enableGlobalVirtualStore` for `file:` deps
 
 Some locations still use `file:` (docs, tests, examples that need to behave like external consumers). For these, we use pnpm's experimental `enableGlobalVirtualStore`:
 
@@ -75,15 +127,7 @@ packages/b/node_modules/.pnpm/effect@3.19.14_hash2/...
 ~/Library/pnpm/store/v10/links/effect@3.19.14/...
 ```
 
-**Implementation in devenv:**
-
-```nix
-# In pnpm.nix task
-npm_config_enable_global_virtual_store=true pnpm install
-```
-
 **Requirements:**
-
 - pnpm 10.12.1+ (we use 10.28.0)
 - Must set via env var because pnpm auto-disables in CI-like environments
 
@@ -101,6 +145,8 @@ We're using pnpm temporarily due to bun bugs (see `bun-issues.md`). Once these a
 
 - [#13223 - file: deps extremely slow](https://github.com/oven-sh/bun/issues/13223)
 - [#22846 - install hangs in monorepo](https://github.com/oven-sh/bun/issues/22846)
+
+**Note:** The `workspace:*` pattern may need adaptation for bun, which has different workspace semantics.
 
 ---
 

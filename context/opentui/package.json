@@ -7,7 +7,7 @@
     "@effect-atom/atom-react": "0.4.5",
     "@opentui/core": "0.1.74",
     "@opentui/react": "0.1.74",
-    "effect": "3.19.14",
+    "effect": "3.19.15",
     "react": "19.2.3"
   },
   "devDependencies": {

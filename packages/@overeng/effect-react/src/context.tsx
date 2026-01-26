@@ -1,3 +1,4 @@
+/** @jsxImportSource react */
 import { Cause, Effect, Exit, Fiber, type Layer, ManagedRuntime, Runtime, type Scope } from 'effect'
 import React from 'react'
 

@@ -13,13 +13,13 @@ importers:
         version: 0.69.2
       '@effect/vitest':
         specifier: 0.27.0
-        version: 0.27.0(effect@3.19.14)(vitest@3.2.4(@types/node@25.0.3))
+        version: 0.27.0(effect@3.19.15)(vitest@3.2.4(@types/node@25.0.3))
       '@types/node':
         specifier: 25.0.3
         version: 25.0.3
       effect:
-        specifier: 3.19.14
-        version: 3.19.14
+        specifier: 3.19.15
+        version: 3.19.15
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -396,8 +396,8 @@ packages:
     resolution: {integrity: sha512-h5k/5U50IJJFpzfL6nO9jaaumfjO/f2NjK/oYB2Djzm4p9L+3T9qWpZqZ2hAbLPuuYq9wrU08WQyBTL5GbPk5Q==}
     engines: {node: '>=6'}
 
-  effect@3.19.14:
-    resolution: {integrity: sha512-3vwdq0zlvQOxXzXNKRIPKTqZNMyGCdaFUBfMPqpsyzZDre67kgC1EEHDV4EoQTovJ4w5fmJW756f86kkuz7WFA==}
+  effect@3.19.15:
+    resolution: {integrity: sha512-vzMmgfZKLcojmUjBdlQx+uaKryO7yULlRxjpDnHdnvcp1NPHxJyoM6IOXBLlzz2I/uPtZpGKavt5hBv7IvGZkA==}
 
   es-module-lexer@1.7.0:
     resolution: {integrity: sha512-jEQoCwk8hyb2AZziIOLhDqpm5+2ww5uIE6lkO/6jcOCusfk6LhMHpXXfBLXTZ7Ydyt0j4VoUQv6uGNYbdW+kBA==}
@@ -603,9 +603,9 @@ snapshots:
 
   '@effect/language-service@0.69.2': {}
 
-  '@effect/vitest@0.27.0(effect@3.19.14)(vitest@3.2.4(@types/node@25.0.3))':
+  '@effect/vitest@0.27.0(effect@3.19.15)(vitest@3.2.4(@types/node@25.0.3))':
     dependencies:
-      effect: 3.19.14
+      effect: 3.19.15
       vitest: 3.2.4(@types/node@25.0.3)
 
   '@esbuild/aix-ppc64@0.27.2':
@@ -840,7 +840,7 @@ snapshots:
 
   deep-eql@5.0.2: {}
 
-  effect@3.19.14:
+  effect@3.19.15:
     dependencies:
       '@standard-schema/spec': 1.1.0
       fast-check: 3.23.2
