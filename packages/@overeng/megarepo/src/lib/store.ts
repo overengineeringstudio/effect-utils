@@ -48,18 +48,28 @@ export interface MegarepoStore {
   /** Get the path to the bare repo (.bare directory) */
   readonly getBareRepoPath: (source: MemberSource) => AbsoluteDirPath
 
-  /** Get the path to a specific worktree for a ref */
-  readonly getWorktreePath: (args: { source: MemberSource; ref: string }) => AbsoluteDirPath
+  /** Get the path to a specific worktree for a ref.
+   * If refType is not provided, uses heuristic-based classification.
+   * For accurate classification, provide the refType from remote/local query.
+   */
+  readonly getWorktreePath: (args: {
+    source: MemberSource
+    ref: string
+    refType?: RefType
+  }) => AbsoluteDirPath
 
   /** Check if a bare repo exists in the store */
   readonly hasBareRepo: (
     source: MemberSource,
   ) => Effect.Effect<boolean, PlatformError.PlatformError, FileSystem.FileSystem>
 
-  /** Check if a worktree exists for a specific ref */
+  /** Check if a worktree exists for a specific ref.
+   * If refType is not provided, uses heuristic-based classification.
+   */
   readonly hasWorktree: (args: {
     source: MemberSource
     ref: string
+    refType?: RefType
   }) => Effect.Effect<boolean, PlatformError.PlatformError, FileSystem.FileSystem>
 
   /** List all repos in the store */
@@ -117,13 +127,16 @@ const make = (config: StoreConfig): MegarepoStore => {
   const getWorktreePath = ({
     source,
     ref,
+    refType,
   }: {
     source: MemberSource
     ref: string
+    refType?: RefType
   }): AbsoluteDirPath => {
     const repoBase = getRepoBasePath(source)
-    const refType = classifyRef(ref)
-    const pathSegment = refTypeToPathSegment(refType)
+    // Use provided refType or fall back to heuristic classification
+    const effectiveRefType = refType ?? classifyRef(ref)
+    const pathSegment = refTypeToPathSegment(effectiveRefType)
     const encodedRef = encodeRef(ref)
     return EffectPath.ops.join(
       repoBase,
@@ -147,10 +160,10 @@ const make = (config: StoreConfig): MegarepoStore => {
         return yield* fs.exists(barePath)
       }),
 
-    hasWorktree: ({ source, ref }) =>
+    hasWorktree: (args) =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
-        const worktreePath = getWorktreePath({ source, ref })
+        const worktreePath = getWorktreePath(args)
         return yield* fs.exists(worktreePath)
       }),
 

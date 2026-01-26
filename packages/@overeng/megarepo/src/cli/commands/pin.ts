@@ -6,13 +6,14 @@
 
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
-import { Console, Effect, Option, Schema } from 'effect'
+import { Console, Effect, Layer, Option, Schema } from 'effect'
 
 import { styled, symbols } from '@overeng/cli-ui'
 import { EffectPath } from '@overeng/effect-path'
 
 import {
   CONFIG_FILE_NAME,
+  getMemberPath,
   MegarepoConfig,
   parseSourceString,
   isRemoteSource,
@@ -26,6 +27,7 @@ import {
   unpinMember,
   writeLockFile,
 } from '../../lib/lock.ts'
+import { Store, StoreLayer } from '../../lib/store.ts'
 import { Cwd, findMegarepoRoot, jsonOption } from '../context.ts'
 
 /**
@@ -163,6 +165,40 @@ export const pinCommand = Cli.Command.make(
       lockFile = pinMember({ lockFile, memberName: member })
       yield* writeLockFile({ lockPath, lockFile })
 
+      // Update the symlink to point to a commit-based worktree path
+      // This ensures the pinned member stays at the exact commit
+      const store = yield* Store
+      const memberPath = getMemberPath({ megarepoRoot: root.value, name: member })
+      const memberPathNormalized = memberPath.replace(/\/$/, '')
+
+      // Get the commit-based worktree path
+      const commitWorktreePath = store.getWorktreePath({
+        source,
+        ref: lockedMember.commit,
+        refType: 'commit',
+      })
+
+      // Check if worktree exists at commit path
+      const commitWorktreeExists = yield* store.hasWorktree({
+        source,
+        ref: lockedMember.commit,
+        refType: 'commit',
+      })
+
+      // If the commit worktree doesn't exist, we need to create it
+      // For now, we'll just update the symlink if the worktree exists
+      // The sync command will handle creating it on next sync
+      if (commitWorktreeExists) {
+        // Update the symlink
+        const currentLink = yield* fs
+          .readLink(memberPathNormalized)
+          .pipe(Effect.catchAll(() => Effect.succeed(null)))
+        if (currentLink !== null && currentLink.replace(/\/$/, '') !== commitWorktreePath.replace(/\/$/, '')) {
+          yield* fs.remove(memberPathNormalized)
+          yield* fs.symlink(commitWorktreePath.replace(/\/$/, ''), memberPathNormalized)
+        }
+      }
+
       if (json) {
         console.log(
           JSON.stringify({
@@ -176,7 +212,10 @@ export const pinCommand = Cli.Command.make(
           `${styled.green(symbols.check)} Pinned ${styled.bold(member)} at ${styled.dim(lockedMember.commit.slice(0, 7))}`,
         )
       }
-    }).pipe(Effect.withSpan('megarepo/pin')),
+    }).pipe(
+      Effect.provide(StoreLayer),
+      Effect.withSpan('megarepo/pin'),
+    ),
 ).pipe(Cli.Command.withDescription('Pin a member to its current commit'))
 
 /**
@@ -272,10 +311,48 @@ export const unpinCommand = Cli.Command.make(
       lockFile = unpinMember({ lockFile, memberName: member })
       yield* writeLockFile({ lockPath, lockFile })
 
+      // Check if it's a remote source and update the symlink back to ref-based path
+      const sourceString = config.members[member]
+      if (sourceString !== undefined) {
+        const source = parseSourceString(sourceString)
+        if (source !== undefined && isRemoteSource(source)) {
+          const store = yield* Store
+          const memberPath = getMemberPath({ megarepoRoot: root.value, name: member })
+          const memberPathNormalized = memberPath.replace(/\/$/, '')
+
+          // Get the ref-based worktree path (use the locked ref)
+          const refWorktreePath = store.getWorktreePath({
+            source,
+            ref: lockedMember.ref,
+            // Use undefined to let heuristics determine the type
+          })
+
+          // Check if worktree exists at ref path
+          const refWorktreeExists = yield* store.hasWorktree({
+            source,
+            ref: lockedMember.ref,
+          })
+
+          // Update symlink if ref worktree exists and current link is different
+          if (refWorktreeExists) {
+            const currentLink = yield* fs
+              .readLink(memberPathNormalized)
+              .pipe(Effect.catchAll(() => Effect.succeed(null)))
+            if (currentLink !== null && currentLink.replace(/\/$/, '') !== refWorktreePath.replace(/\/$/, '')) {
+              yield* fs.remove(memberPathNormalized)
+              yield* fs.symlink(refWorktreePath.replace(/\/$/, ''), memberPathNormalized)
+            }
+          }
+        }
+      }
+
       if (json) {
         console.log(JSON.stringify({ status: 'unpinned', member }))
       } else {
         yield* Console.log(`${styled.green(symbols.check)} Unpinned ${styled.bold(member)}`)
       }
-    }).pipe(Effect.withSpan('megarepo/unpin')),
+    }).pipe(
+      Effect.provide(StoreLayer),
+      Effect.withSpan('megarepo/unpin'),
+    ),
 ).pipe(Cli.Command.withDescription('Unpin a member to allow updates'))

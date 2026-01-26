@@ -20,9 +20,36 @@ import {
 } from '../config.ts'
 import * as Git from '../git.ts'
 import type { LockFile } from '../lock.ts'
-import { classifyRef } from '../ref.ts'
+import { classifyRef, isCommitSha, type RefType } from '../ref.ts'
 import { Store } from '../store.ts'
 import type { MemberSyncResult } from './types.ts'
+
+/**
+ * Internal semaphore type from Effect
+ */
+type Semaphore = Effect.Semaphore
+
+/**
+ * Map of repo URL -> semaphore for serializing bare repo creation.
+ * This prevents race conditions when multiple members use the same underlying repo.
+ */
+export type RepoSemaphoreMap = Map<string, Semaphore>
+
+/**
+ * Get or create a semaphore for a given repo URL.
+ */
+export const getRepoSemaphore = (
+  semaphoreMap: RepoSemaphoreMap,
+  url: string,
+): Effect.Effect<Semaphore> =>
+  Effect.sync(() => {
+    let sem = semaphoreMap.get(url)
+    if (sem === undefined) {
+      sem = Effect.unsafeMakeSemaphore(1)
+      semaphoreMap.set(url, sem)
+    }
+    return sem
+  })
 
 /**
  * Get the git clone URL for a member source
@@ -65,6 +92,7 @@ export const syncMember = ({
   pull,
   frozen,
   force,
+  semaphoreMap,
 }: {
   name: string
   sourceString: string
@@ -74,6 +102,8 @@ export const syncMember = ({
   pull: boolean
   frozen: boolean
   force: boolean
+  /** Optional semaphore map for serializing bare repo creation per repo URL */
+  semaphoreMap?: RepoSemaphoreMap
 }) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -253,10 +283,26 @@ export const syncMember = ({
     let wasCloned = false
     if (!bareExists) {
       if (!dryRun) {
-        const repoBasePath = store.getRepoBasePath(source)
-        yield* fs.makeDirectory(repoBasePath, { recursive: true })
-        yield* Git.cloneBare({ url: cloneUrl, targetPath: bareRepoPath })
-        wasCloned = true
+        // Use semaphore to serialize bare repo creation for the same repo URL.
+        // This prevents race conditions when multiple members reference the same repo.
+        const createBareRepo = Effect.gen(function* () {
+          // Check again inside semaphore (double-check locking pattern)
+          const stillNotExists = !(yield* store.hasBareRepo(source))
+          if (stillNotExists) {
+            const repoBasePath = store.getRepoBasePath(source)
+            yield* fs.makeDirectory(repoBasePath, { recursive: true })
+            yield* Git.cloneBare({ url: cloneUrl, targetPath: bareRepoPath })
+            return true
+          }
+          return false
+        })
+
+        if (semaphoreMap !== undefined) {
+          const sem = yield* getRepoSemaphore(semaphoreMap, cloneUrl)
+          wasCloned = yield* sem.withPermits(1)(createBareRepo)
+        } else {
+          wasCloned = yield* createBareRepo
+        }
       }
     } else if (pull && !dryRun) {
       // Fetch when --pull is specified (includes frozen mode - frozen only prevents lock updates)
@@ -275,21 +321,49 @@ export const syncMember = ({
     }
 
     // Resolve ref to commit if not already known
+    // Use actual ref type from local repo query for accurate classification
+    let actualRefType: RefType = classifyRef(targetRef) // fallback to heuristic
     if (targetCommit === undefined && !dryRun) {
-      const refType = classifyRef(targetRef)
-      if (refType === 'commit') {
+      // If it's already a commit SHA, use it directly
+      if (isCommitSha(targetRef)) {
         targetCommit = targetRef
-      } else if (refType === 'tag') {
-        targetCommit = yield* Git.resolveRef({
-          repoPath: bareRepoPath,
-          ref: `refs/tags/${targetRef}`,
-        }).pipe(Effect.catchAll(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })))
+        actualRefType = 'commit'
       } else {
-        // Branch - resolve to HEAD of branch
-        targetCommit = yield* Git.resolveRef({
+        // Query local repo for actual ref type (more accurate than heuristic)
+        const refInfo = yield* Git.queryLocalRefType({
           repoPath: bareRepoPath,
-          ref: `refs/remotes/origin/${targetRef}`,
-        }).pipe(Effect.catchAll(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })))
+          ref: targetRef,
+        }).pipe(Effect.catchAll(() => Effect.succeed({ type: 'unknown' as const, commit: '' })))
+
+        if (refInfo.type === 'tag') {
+          actualRefType = 'tag'
+          targetCommit = yield* Git.resolveRef({
+            repoPath: bareRepoPath,
+            ref: `refs/tags/${targetRef}`,
+          }).pipe(Effect.catchAll(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })))
+        } else if (refInfo.type === 'branch') {
+          actualRefType = 'branch'
+          targetCommit = yield* Git.resolveRef({
+            repoPath: bareRepoPath,
+            ref: `refs/remotes/origin/${targetRef}`,
+          }).pipe(Effect.catchAll(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })))
+        } else {
+          // Unknown ref type - fall back to heuristic-based resolution
+          const heuristicType = classifyRef(targetRef)
+          actualRefType = heuristicType
+          if (heuristicType === 'tag') {
+            targetCommit = yield* Git.resolveRef({
+              repoPath: bareRepoPath,
+              ref: `refs/tags/${targetRef}`,
+            }).pipe(Effect.catchAll(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })))
+          } else {
+            // Treat as branch
+            targetCommit = yield* Git.resolveRef({
+              repoPath: bareRepoPath,
+              ref: `refs/remotes/origin/${targetRef}`,
+            }).pipe(Effect.catchAll(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })))
+          }
+        }
       }
     }
 
@@ -299,10 +373,13 @@ export const syncMember = ({
     const useCommitBasedPath = (frozen || lockedMember?.pinned) && targetCommit !== undefined
     // TypeScript note: when useCommitBasedPath is true, targetCommit is guaranteed to be defined
     const worktreeRef: string = useCommitBasedPath ? targetCommit! : targetRef
-    const worktreePath = store.getWorktreePath({ source, ref: worktreeRef })
+    // Use the actual ref type for accurate store path classification
+    const worktreeRefType = useCommitBasedPath ? ('commit' as const) : actualRefType
+    const worktreePath = store.getWorktreePath({ source, ref: worktreeRef, refType: worktreeRefType })
     const worktreeExists = yield* store.hasWorktree({
       source,
       ref: worktreeRef,
+      refType: worktreeRefType,
     })
 
     if (!worktreeExists && !dryRun) {
@@ -313,9 +390,9 @@ export const syncMember = ({
       }
 
       // Create worktree
-      // Use worktreeRef for classification - if commit-based path, always create detached
-      const refType = classifyRef(worktreeRef)
-      if (refType === 'commit' || refType === 'tag') {
+      // Use the actual ref type determined earlier, or check if using commit-based path
+      const worktreeRefType = useCommitBasedPath ? 'commit' : actualRefType
+      if (worktreeRefType === 'commit' || worktreeRefType === 'tag') {
         // Commit or tag: create detached worktree
         yield* Git.createWorktreeDetached({
           repoPath: bareRepoPath,
@@ -400,11 +477,23 @@ export const syncMember = ({
       lockUpdated: true,
     } satisfies MemberSyncResult
   }).pipe(
-    Effect.catchAll((error) =>
-      Effect.succeed({
+    Effect.catchAll((error) => {
+      // Interpret git errors to provide user-friendly messages
+      if (error instanceof Git.GitCommandError) {
+        const interpreted = Git.interpretGitError(error)
+        const message = interpreted.hint
+          ? `${interpreted.message}\n  hint: ${interpreted.hint}`
+          : interpreted.message
+        return Effect.succeed({
+          name,
+          status: 'error',
+          message,
+        } satisfies MemberSyncResult)
+      }
+      return Effect.succeed({
         name,
         status: 'error',
         message: error instanceof Error ? error.message : String(error),
-      } satisfies MemberSyncResult),
-    ),
+      } satisfies MemberSyncResult)
+    }),
   )

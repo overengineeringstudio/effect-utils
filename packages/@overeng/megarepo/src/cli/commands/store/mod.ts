@@ -273,6 +273,18 @@ const storeGcCommand = Cli.Command.make(
           styled.dim('Not in a megarepo - all worktrees will be considered unused'),
         )
         yield* Console.log('')
+      } else if (!json && !all && Option.isSome(root)) {
+        // Warn that we only check current megarepo
+        yield* Console.log(
+          styled.yellow(`${symbols.warning} Only checking current megarepo for in-use worktrees`),
+        )
+        yield* Console.log(
+          styled.dim('  Worktrees used by other megarepos may be removed'),
+        )
+        yield* Console.log(
+          styled.dim('  Run from each megarepo to preserve its worktrees, or use --dry-run first'),
+        )
+        yield* Console.log('')
       }
 
       // List all repos and their worktrees

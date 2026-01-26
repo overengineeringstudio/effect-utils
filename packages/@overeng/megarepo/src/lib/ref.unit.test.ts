@@ -115,9 +115,18 @@ describe('looksLikeTag', () => {
     expect(looksLikeTag('feature/foo')).toBe(false)
   })
 
-  test('rejects non-semver tags', () => {
-    expect(looksLikeTag('release-1.0')).toBe(false)
+  test('recognizes prefixed version tags', () => {
+    // Tags like jq-1.6, release-v1.0 should be recognized
+    expect(looksLikeTag('release-1.0')).toBe(true)
+    expect(looksLikeTag('release-v1.0')).toBe(true)
+    expect(looksLikeTag('jq-1.6')).toBe(true)
+    expect(looksLikeTag('beta-2.0.0')).toBe(true)
+  })
+
+  test('rejects non-version strings', () => {
     expect(looksLikeTag('v1')).toBe(false) // needs at least major.minor
+    expect(looksLikeTag('release')).toBe(false) // no version number
+    expect(looksLikeTag('stable')).toBe(false) // no version number
   })
 })
 

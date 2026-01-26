@@ -99,24 +99,32 @@ export const isCommitSha = (ref: string): boolean => {
 }
 
 /**
- * Semver-like pattern for tag detection.
+ * Semver-like pattern for tag detection (strict).
  * Matches: v1.0.0, v1.0, 1.0.0, 1.0
  */
-const SEMVER_PATTERN = /^v?\d+\.\d+(\.\d+)?/
+const SEMVER_STRICT_PATTERN = /^v?\d+\.\d+(\.\d+)?$/
+
+/**
+ * Extended pattern for tag detection (includes prefixed versions).
+ * Matches: jq-1.6, release-v1.0, prefix-1.2.3
+ */
+const SEMVER_EXTENDED_PATTERN = /^[a-zA-Z]+-v?\d+\.\d+(\.\d+)?$/
 
 /**
  * Check if a ref looks like a semantic version tag.
  * Uses heuristic: starts with optional 'v' followed by major.minor[.patch]
+ * Also matches prefixed versions like 'jq-1.6' or 'release-v1.0'
  *
  * @example
  * looksLikeTag('v1.0.0') // true
  * looksLikeTag('v1.0') // true
  * looksLikeTag('1.0.0') // true
+ * looksLikeTag('jq-1.6') // true (new)
+ * looksLikeTag('release-v1.0') // true (new)
  * looksLikeTag('main') // false
- * looksLikeTag('release-1.0') // false
  */
 export const looksLikeTag = (ref: string): boolean => {
-  return SEMVER_PATTERN.test(ref)
+  return SEMVER_STRICT_PATTERN.test(ref) || SEMVER_EXTENDED_PATTERN.test(ref)
 }
 
 /**

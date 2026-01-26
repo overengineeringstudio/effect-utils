@@ -37,7 +37,12 @@ import {
   writeLockFile,
 } from '../../lib/lock.ts'
 import { type Store, StoreLayer } from '../../lib/store.ts'
-import { flattenSyncResults, syncMember, type MegarepoSyncResult } from '../../lib/sync/mod.ts'
+import {
+  flattenSyncResults,
+  syncMember,
+  type MegarepoSyncResult,
+  type RepoSemaphoreMap,
+} from '../../lib/sync/mod.ts'
 import { Cwd, findMegarepoRoot, jsonOption } from '../context.ts'
 import {
   SyncProgressEmpty,
@@ -261,6 +266,11 @@ export const syncMegarepo = ({
     const allMembers = Object.entries(config.members)
     const members = allMembers.filter(([name]) => !skippedMemberNames.has(name))
 
+    // Create a semaphore map for serializing bare repo creation per repo URL.
+    // This prevents race conditions when multiple members reference the same repo
+    // (e.g., jq-latest and jq-v16 both from jqlang/jq).
+    const semaphoreMap: RepoSemaphoreMap = new Map()
+
     // Sync all members with limited concurrency for visible progress
     // Use unbounded for non-TTY (faster) or limited (4) for TTY (visible progress)
     const concurrency = withProgress ? 4 : 'unbounded'
@@ -283,6 +293,7 @@ export const syncMegarepo = ({
             pull,
             frozen,
             force,
+            semaphoreMap,
           })
 
           // Apply result to progress service
