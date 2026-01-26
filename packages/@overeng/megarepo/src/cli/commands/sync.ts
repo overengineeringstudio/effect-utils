@@ -171,6 +171,21 @@ export const syncMegarepo = ({
       }
     }
 
+    // Compute which members will be skipped based on --only and --skip options
+    // This is needed before the frozen check to correctly filter staleness detection
+    const allMemberNames = Object.keys(config.members)
+    const skippedMemberNames = new Set(
+      allMemberNames.filter((name) => {
+        if (only !== undefined && only.length > 0) {
+          return !only.includes(name)
+        }
+        if (skip !== undefined && skip.length > 0) {
+          return skip.includes(name)
+        }
+        return false
+      }),
+    )
+
     // Check --frozen requirements
     if (frozen) {
       if (lockFile === undefined) {
@@ -233,22 +248,9 @@ export const syncMegarepo = ({
       }
     }
 
-    // Filter members based on --only and --skip options
+    // Filter members based on --only and --skip options (uses pre-computed skippedMemberNames)
     const allMembers = Object.entries(config.members)
-    const members = allMembers.filter(([name]) => {
-      if (only !== undefined && only.length > 0) {
-        return only.includes(name)
-      }
-      if (skip !== undefined && skip.length > 0) {
-        return !skip.includes(name)
-      }
-      return true
-    })
-
-    // Track which members were skipped due to filtering (for lock file handling)
-    const skippedMemberNames = new Set(
-      allMembers.filter(([name]) => !members.some(([n]) => n === name)).map(([name]) => name),
-    )
+    const members = allMembers.filter(([name]) => !skippedMemberNames.has(name))
 
     // Sync all members with limited concurrency for visible progress
     // Use unbounded for non-TTY (faster) or limited (4) for TTY (visible progress)
