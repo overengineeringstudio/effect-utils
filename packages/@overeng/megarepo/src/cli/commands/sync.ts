@@ -209,13 +209,22 @@ export const syncMegarepo = ({
 
       // When using --only or --skip, only check staleness for members we're actually syncing
       // This allows CI to skip private repos without failing the staleness check
+      // We need to filter BOTH config members AND lock file members
       const filteredRemoteMemberNames = new Set(
         [...remoteMemberNames].filter((name) => !skippedMemberNames.has(name)),
       )
 
+      // Create a filtered lock file that excludes skipped members
+      const filteredLockFile = {
+        ...lockFile,
+        members: Object.fromEntries(
+          Object.entries(lockFile.members).filter(([name]) => !skippedMemberNames.has(name)),
+        ),
+      }
+
       // Check for staleness (only for members we're syncing)
       const staleness = checkLockStaleness({
-        lockFile,
+        lockFile: filteredLockFile,
         configMemberNames: filteredRemoteMemberNames,
       })
       if (staleness.isStale) {
