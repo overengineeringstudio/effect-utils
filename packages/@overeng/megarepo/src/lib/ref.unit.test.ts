@@ -123,6 +123,18 @@ describe('looksLikeTag', () => {
     expect(looksLikeTag('beta-2.0.0')).toBe(true)
   })
 
+  test('recognizes semver prerelease tags', () => {
+    // Prerelease versions like v1.0.0-rc.1, v1.2.3-beta.1
+    expect(looksLikeTag('v1.0.0-rc.1')).toBe(true)
+    expect(looksLikeTag('v1.2.3-beta.1')).toBe(true)
+    expect(looksLikeTag('v1.0.0-alpha')).toBe(true)
+    expect(looksLikeTag('1.0.0-rc1')).toBe(true)
+    expect(looksLikeTag('2.0.0-beta.2')).toBe(true)
+    // Prefixed prerelease
+    expect(looksLikeTag('release-v1.2.3-beta.1')).toBe(true)
+    expect(looksLikeTag('app-1.0.0-rc.1')).toBe(true)
+  })
+
   test('rejects non-version strings', () => {
     expect(looksLikeTag('v1')).toBe(false) // needs at least major.minor
     expect(looksLikeTag('release')).toBe(false) // no version number

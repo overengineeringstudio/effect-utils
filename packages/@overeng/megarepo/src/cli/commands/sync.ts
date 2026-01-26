@@ -43,7 +43,7 @@ import {
   type MegarepoSyncResult,
   type RepoSemaphoreMap,
 } from '../../lib/sync/mod.ts'
-import { Cwd, findMegarepoRoot, jsonOption } from '../context.ts'
+import { Cwd, findMegarepoRoot, jsonOption, verboseOption } from '../context.ts'
 import {
   SyncProgressEmpty,
   setMemberSyncing,
@@ -110,6 +110,7 @@ export const syncMegarepo = ({
     deep: boolean
     only: ReadonlyArray<string> | undefined
     skip: ReadonlyArray<string> | undefined
+    verbose: boolean
   }
   depth?: number
   visited?: Set<string>
@@ -125,7 +126,7 @@ export const syncMegarepo = ({
   FileSystem.FileSystem | CommandExecutor.CommandExecutor | Store | SyncProgressService
 > =>
   Effect.gen(function* () {
-    const { json, dryRun, pull, frozen, force, deep, only, skip } = options
+    const { json, dryRun, pull, frozen, force, deep, only, skip, verbose } = options
     const fs = yield* FileSystem.FileSystem
     const indent = '  '.repeat(depth)
 
@@ -466,8 +467,9 @@ export const syncCommand = Cli.Command.make(
       Cli.Options.withDescription('Skip specified members (comma-separated)'),
       Cli.Options.optional,
     ),
+    verbose: verboseOption,
   },
-  ({ json, dryRun, pull, frozen, force, deep, only, skip }) =>
+  ({ json, dryRun, pull, frozen, force, deep, only, skip, verbose }) =>
     Effect.gen(function* () {
       const cwd = yield* Cwd
       const fs = yield* FileSystem.FileSystem
@@ -540,7 +542,7 @@ export const syncCommand = Cli.Command.make(
         // Run the sync with progress updates
         const syncResult = yield* syncMegarepo({
           megarepoRoot: root.value,
-          options: { json, dryRun, pull, frozen, force, deep, only: onlyMembers, skip: skipMembers },
+          options: { json, dryRun, pull, frozen, force, deep, only: onlyMembers, skip: skipMembers, verbose },
           withProgress: true,
         })
 
@@ -573,7 +575,7 @@ export const syncCommand = Cli.Command.make(
 
         const syncResult = yield* syncMegarepo({
           megarepoRoot: root.value,
-          options: { json, dryRun, pull, frozen, force, deep, only: onlyMembers, skip: skipMembers },
+          options: { json, dryRun, pull, frozen, force, deep, only: onlyMembers, skip: skipMembers, verbose },
         })
 
         // Get list of files that would be / were generated

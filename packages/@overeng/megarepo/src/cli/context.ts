@@ -50,6 +50,13 @@ export const jsonOption = Cli.Options.boolean('json').pipe(
   Cli.Options.withDefault(false),
 )
 
+/** Verbose output option */
+export const verboseOption = Cli.Options.boolean('verbose').pipe(
+  Cli.Options.withAlias('v'),
+  Cli.Options.withDescription('Show detailed output'),
+  Cli.Options.withDefault(false),
+)
+
 // =============================================================================
 // Filesystem Helpers
 // =============================================================================

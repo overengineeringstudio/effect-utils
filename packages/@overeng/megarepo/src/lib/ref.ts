@@ -100,27 +100,33 @@ export const isCommitSha = (ref: string): boolean => {
 
 /**
  * Semver-like pattern for tag detection (strict).
- * Matches: v1.0.0, v1.0, 1.0.0, 1.0
+ * Matches: v1.0.0, v1.0, 1.0.0, 1.0, v1.0.0-rc.1, v1.2.3-beta.1, etc.
+ * Allows optional prerelease suffix: -alpha, -beta.1, -rc.2, etc.
  */
-const SEMVER_STRICT_PATTERN = /^v?\d+\.\d+(\.\d+)?$/
+const SEMVER_STRICT_PATTERN = /^v?\d+\.\d+(\.\d+)?(-[a-zA-Z0-9]+(\.[a-zA-Z0-9]+)*)?$/
 
 /**
  * Extended pattern for tag detection (includes prefixed versions).
- * Matches: jq-1.6, release-v1.0, prefix-1.2.3
+ * Matches: jq-1.6, release-v1.0, prefix-1.2.3, release-v1.2.3-beta.1
+ * Allows optional prerelease suffix after the version.
  */
-const SEMVER_EXTENDED_PATTERN = /^[a-zA-Z]+-v?\d+\.\d+(\.\d+)?$/
+const SEMVER_EXTENDED_PATTERN = /^[a-zA-Z]+-v?\d+\.\d+(\.\d+)?(-[a-zA-Z0-9]+(\.[a-zA-Z0-9]+)*)?$/
 
 /**
  * Check if a ref looks like a semantic version tag.
  * Uses heuristic: starts with optional 'v' followed by major.minor[.patch]
  * Also matches prefixed versions like 'jq-1.6' or 'release-v1.0'
+ * Supports prerelease suffixes like -alpha, -beta.1, -rc.2
  *
  * @example
  * looksLikeTag('v1.0.0') // true
  * looksLikeTag('v1.0') // true
  * looksLikeTag('1.0.0') // true
- * looksLikeTag('jq-1.6') // true (new)
- * looksLikeTag('release-v1.0') // true (new)
+ * looksLikeTag('v1.0.0-rc.1') // true
+ * looksLikeTag('v1.2.3-beta.1') // true
+ * looksLikeTag('jq-1.6') // true
+ * looksLikeTag('release-v1.0') // true
+ * looksLikeTag('release-v1.2.3-beta.1') // true
  * looksLikeTag('main') // false
  */
 export const looksLikeTag = (ref: string): boolean => {
