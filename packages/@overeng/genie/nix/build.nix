@@ -7,19 +7,19 @@
 { pkgs, src, gitRev ? "unknown", dirty ? false }:
 
 let
-  mkBunCli = import ../../../../nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs; };
+  mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs; };
 
-  unwrapped = mkBunCli {
+  unwrapped = mkPnpmCli {
     name = "genie-unwrapped";
     entry = "packages/@overeng/genie/src/build/mod.ts";
     binaryName = "genie";
     packageDir = "packages/@overeng/genie";
     workspaceRoot = src;
     extraExcludedSourceNames = [ "context" "scripts" ];
-    typecheckTsconfig = "packages/@overeng/genie/tsconfig.json";
-    depsManager = "pnpm";
-    pnpmDepsHash = "sha256-WY4PyjBPt57C6c8BC0TI5Etn4kzk7wefzjs4qZShZ6o=";
-    dirty = dirty;
+    pnpmDepsHash = "sha256-HRdAFE+2QvlWGG+toKsIKN5950YBl5SKgdlIqT230Zw=";
+    localDeps = [
+      { dir = "packages/@overeng/utils"; hash = "sha256-tfB62tzbL1MQD6QNHfMMlvZf5d0nnBTfo/9PWijZhSA="; }
+    ];
     inherit gitRev;
   };
 in

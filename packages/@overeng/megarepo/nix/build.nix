@@ -1,26 +1,25 @@
 # Nix derivation that builds megarepo CLI binary.
 # Uses bun build --compile for native platform.
 #
-# TODO: Move shell completion generation into mkBunCli helper
+# TODO: Move shell completion generation into mkPnpmCli helper
 # so all CLIs get completions automatically.
 { pkgs, src, gitRev ? "unknown", dirty ? false }:
 
 let
-  mkBunCli = import ../../../../nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs; };
-  base = mkBunCli {
+  mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs; };
+  base = mkPnpmCli {
     name = "megarepo";
     entry = "packages/@overeng/megarepo/bin/mr.ts";
     binaryName = "mr";
     packageDir = "packages/@overeng/megarepo";
     workspaceRoot = src;
-    extraExcludedSourceNames = [ ];
-    # TODO: Re-enable typecheck once Effect lint warnings are resolved
-    typecheck = false;
-    depsManager = "pnpm";
-    pnpmDepsHash = "sha256-gfqrk4WrWycHkOFHVs9Sb6si9V2kFCyEC92wKypn3As=";
-    # Smoke test just runs --help which doesn't need git
+    pnpmDepsHash = "sha256-HRdAFE+2QvlWGG+toKsIKN5950YBl5SKgdlIqT230Zw=";
+    localDeps = [
+      { dir = "packages/@overeng/utils"; hash = "sha256-tfB62tzbL1MQD6QNHfMMlvZf5d0nnBTfo/9PWijZhSA="; }
+      { dir = "packages/@overeng/cli-ui"; hash = "sha256-ve2v2z7iCkSuHxE6GvjPTXN3OKjfu7EOmSSanw8APg8="; }
+      { dir = "packages/@overeng/effect-path"; hash = "sha256-HYx1XElkVcn52gumOSAQoGW4KHKau8cnx63GNgl6xXQ="; }
+    ];
     smokeTestArgs = [ "--help" ];
-    dirty = dirty;
     inherit gitRev;
   };
 in
