@@ -197,21 +197,80 @@ export const parseLockedInput = (
   }
 }
 
+/** Metadata fetched from Nix for a flake input */
+export interface NixFlakeMetadata {
+  /** NAR hash (e.g., "sha256-ERK+4WsCALO93XrYzVBo7HJs373ifvbVU3A/y1spy6A=") */
+  readonly narHash: string
+  /** Unix timestamp of last modification */
+  readonly lastModified: number
+}
+
 /**
  * Create an updated locked input with new rev, removing narHash and lastModified
  *
- * IMPORTANT: When changing `rev`, we MUST remove `narHash` and `lastModified`
- * because they would be invalid for the new revision. Nix will re-fetch
- * this metadata on demand.
+ * @deprecated Use `updateLockedInputRevWithMetadata` instead to include proper metadata
+ *
+ * This function preserves the original key order of the object.
  */
 export const updateLockedInputRev = (
   locked: Record<string, unknown>,
   newRev: string,
 ): Record<string, unknown> => {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { narHash: _narHash, lastModified: _lastModified, ...rest } = locked
-  return {
-    ...rest,
-    rev: newRev,
+  const result: Record<string, unknown> = {}
+
+  // Preserve original key order, updating rev and removing narHash/lastModified
+  for (const key of Object.keys(locked)) {
+    if (key === 'rev') {
+      result['rev'] = newRev
+    } else if (key !== 'narHash' && key !== 'lastModified') {
+      result[key] = locked[key]
+    }
   }
+
+  // Ensure rev is present even if it wasn't in the original
+  if (!('rev' in result)) {
+    result['rev'] = newRev
+  }
+
+  return result
+}
+
+/**
+ * Create an updated locked input with new rev and metadata (narHash, lastModified).
+ *
+ * This function preserves the original key order of the object while updating
+ * rev, narHash, and lastModified to the new values.
+ */
+export const updateLockedInputRevWithMetadata = (
+  locked: Record<string, unknown>,
+  newRev: string,
+  metadata: NixFlakeMetadata,
+): Record<string, unknown> => {
+  const result: Record<string, unknown> = {}
+
+  // Preserve original key order, updating rev/narHash/lastModified
+  for (const key of Object.keys(locked)) {
+    if (key === 'rev') {
+      result['rev'] = newRev
+    } else if (key === 'narHash') {
+      result['narHash'] = metadata.narHash
+    } else if (key === 'lastModified') {
+      result['lastModified'] = metadata.lastModified
+    } else {
+      result[key] = locked[key]
+    }
+  }
+
+  // Ensure required fields are present even if they weren't in the original
+  if (!('rev' in result)) {
+    result['rev'] = newRev
+  }
+  if (!('narHash' in result)) {
+    result['narHash'] = metadata.narHash
+  }
+  if (!('lastModified' in result)) {
+    result['lastModified'] = metadata.lastModified
+  }
+
+  return result
 }

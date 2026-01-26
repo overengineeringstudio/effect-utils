@@ -130,10 +130,9 @@
         "nixpkgs": "nixpkgs_2"
       },
       "locked": {
-        "lastModified": 1768978591,
         "owner": "overengineeringstudio",
         "repo": "overeng-beads-public",
-        "rev": "3e39d2bf531e8c48c00221b3a307cc5bd75f920e",
+        "rev": "02b24e1e78f0bf741ac55389902b2884390ec509",
         "type": "github"
       },
       "original": {

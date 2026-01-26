@@ -16,7 +16,55 @@ import {
   GitLockedInput,
   parseLockedInput,
   updateLockedInputRev,
+  updateLockedInputRevWithMetadata,
 } from './schema.ts'
+
+// =============================================================================
+// Helper for full sync flow testing
+// =============================================================================
+
+/**
+ * Simulates the full sync flow to test order preservation.
+ * This mirrors the logic in syncSingleLockFile.
+ */
+const simulateSyncFlow = (
+  lockFileContent: string,
+  megarepoMembers: Record<string, LockedMember>,
+): string => {
+  // Parse raw JSON (preserves key order)
+  const rawJson = JSON.parse(lockFileContent) as {
+    nodes: Record<string, Record<string, unknown>>
+    root: string
+    version: number
+  }
+
+  // Validate with schema (like real code does)
+  Schema.decodeUnknownSync(FlakeLock)(rawJson)
+
+  // Process each node
+  for (const [nodeName, node] of Object.entries(rawJson.nodes)) {
+    const locked = node['locked'] as Record<string, unknown> | undefined
+    if (!locked) continue
+
+    const match = matchLockedInputToMember(locked, megarepoMembers)
+    if (match && needsRevUpdate(locked, match.member)) {
+      // Update using our order-preserving functions
+      const newLocked = updateLockedInputRev(locked, match.member.commit)
+      // Preserve node key order
+      const result: Record<string, unknown> = {}
+      for (const key of Object.keys(node)) {
+        if (key === 'locked') {
+          result['locked'] = newLocked
+        } else {
+          result[key] = node[key]
+        }
+      }
+      rawJson.nodes[nodeName] = result
+    }
+  }
+
+  return JSON.stringify(rawJson, null, 2)
+}
 
 // =============================================================================
 // Test Helpers
@@ -244,6 +292,139 @@ describe('nix-lock schema', () => {
         shallow: true,
       })
     })
+
+    it('should preserve key order from original object', () => {
+      // Nix natural order: lastModified, narHash, owner, repo, rev, type
+      const locked = {
+        lastModified: 1704067200,
+        narHash: 'sha256-oldHash',
+        owner: 'effect-ts',
+        repo: 'effect',
+        rev: 'old-rev',
+        type: 'github',
+      }
+      const result = updateLockedInputRev(locked, 'new-rev')
+      const keys = Object.keys(result)
+      // narHash and lastModified should be removed, but remaining keys preserve order
+      expect(keys).toEqual(['owner', 'repo', 'rev', 'type'])
+    })
+
+    it('should preserve Nix natural key order (type first)', () => {
+      // Another common Nix order: type, owner, repo, rev, narHash, lastModified
+      const locked = {
+        type: 'github',
+        owner: 'effect-ts',
+        repo: 'effect',
+        rev: 'old-rev',
+        narHash: 'sha256-oldHash',
+        lastModified: 1704067200,
+      }
+      const result = updateLockedInputRev(locked, 'new-rev')
+      const keys = Object.keys(result)
+      expect(keys).toEqual(['type', 'owner', 'repo', 'rev'])
+    })
+
+    it('should handle missing rev in original (adds it at end)', () => {
+      const locked = {
+        type: 'path',
+        path: '/some/path',
+      }
+      const result = updateLockedInputRev(locked, 'new-rev')
+      expect(result).toEqual({
+        type: 'path',
+        path: '/some/path',
+        rev: 'new-rev',
+      })
+    })
+  })
+
+  describe('updateLockedInputRevWithMetadata', () => {
+    it('should update rev and include new narHash and lastModified', () => {
+      const locked = {
+        lastModified: 1704067200,
+        narHash: 'sha256-oldHash',
+        owner: 'effect-ts',
+        repo: 'effect',
+        rev: 'old-rev',
+        type: 'github',
+      }
+      const metadata = {
+        narHash: 'sha256-newHash123',
+        lastModified: 1704153600,
+      }
+      const result = updateLockedInputRevWithMetadata(locked, 'new-rev', metadata)
+      expect(result).toEqual({
+        lastModified: 1704153600,
+        narHash: 'sha256-newHash123',
+        owner: 'effect-ts',
+        repo: 'effect',
+        rev: 'new-rev',
+        type: 'github',
+      })
+    })
+
+    it('should preserve key order from original object', () => {
+      const locked = {
+        lastModified: 1704067200,
+        narHash: 'sha256-oldHash',
+        owner: 'effect-ts',
+        repo: 'effect',
+        rev: 'old-rev',
+        type: 'github',
+      }
+      const metadata = {
+        narHash: 'sha256-newHash',
+        lastModified: 1704153600,
+      }
+      const result = updateLockedInputRevWithMetadata(locked, 'new-rev', metadata)
+      const keys = Object.keys(result)
+      // Key order should be preserved from original
+      expect(keys).toEqual(['lastModified', 'narHash', 'owner', 'repo', 'rev', 'type'])
+    })
+
+    it('should add missing metadata fields at the end', () => {
+      // Original doesn't have narHash/lastModified
+      const locked = {
+        owner: 'effect-ts',
+        repo: 'effect',
+        rev: 'old-rev',
+        type: 'github',
+      }
+      const metadata = {
+        narHash: 'sha256-newHash',
+        lastModified: 1704153600,
+      }
+      const result = updateLockedInputRevWithMetadata(locked, 'new-rev', metadata)
+      expect(result['narHash']).toBe('sha256-newHash')
+      expect(result['lastModified']).toBe(1704153600)
+      expect(result['rev']).toBe('new-rev')
+    })
+
+    it('should preserve other fields like ref and shallow', () => {
+      const locked = {
+        type: 'git',
+        url: 'https://github.com/owner/repo',
+        rev: 'old-rev',
+        ref: 'main',
+        shallow: true,
+        narHash: 'sha256-old',
+        lastModified: 1704067200,
+      }
+      const metadata = {
+        narHash: 'sha256-new',
+        lastModified: 1704153600,
+      }
+      const result = updateLockedInputRevWithMetadata(locked, 'new-rev', metadata)
+      expect(result).toEqual({
+        type: 'git',
+        url: 'https://github.com/owner/repo',
+        rev: 'new-rev',
+        ref: 'main',
+        shallow: true,
+        narHash: 'sha256-new',
+        lastModified: 1704153600,
+      })
+    })
   })
 })
 
@@ -427,6 +608,156 @@ describe('nix-lock matcher', () => {
     it('should return false for undefined locked', () => {
       const member = createLockedMember()
       expect(needsRevUpdate(undefined, member)).toBe(false)
+    })
+  })
+})
+
+// =============================================================================
+// Full Sync Flow Tests (Order Preservation)
+// =============================================================================
+
+describe('nix-lock full sync flow', () => {
+  describe('key order preservation', () => {
+    it('should preserve Nix natural node order (inputs, locked, original)', () => {
+      // This is the natural order Nix generates
+      const lockFile = JSON.stringify(
+        {
+          nodes: {
+            'effect-utils': {
+              inputs: { nixpkgs: ['nixpkgs'] },
+              locked: {
+                lastModified: 1704067200,
+                narHash: 'sha256-abc',
+                owner: 'owner',
+                repo: 'effect-utils',
+                rev: 'old-rev',
+                type: 'github',
+              },
+              original: { owner: 'owner', repo: 'effect-utils', type: 'github' },
+            },
+            root: { inputs: { 'effect-utils': 'effect-utils' } },
+          },
+          root: 'root',
+          version: 7,
+        },
+        null,
+        2,
+      )
+
+      const members = {
+        'effect-utils': createLockedMember({
+          url: 'https://github.com/owner/effect-utils',
+          commit: 'new-rev-12345',
+        }),
+      }
+
+      const result = simulateSyncFlow(lockFile, members)
+      const parsed = JSON.parse(result)
+
+      // Check that node key order is preserved
+      const nodeKeys = Object.keys(parsed.nodes['effect-utils'])
+      expect(nodeKeys).toEqual(['inputs', 'locked', 'original'])
+
+      // Check that locked key order is preserved (minus removed keys)
+      const lockedKeys = Object.keys(parsed.nodes['effect-utils'].locked)
+      expect(lockedKeys).toEqual(['owner', 'repo', 'rev', 'type'])
+
+      // Verify the rev was updated
+      expect(parsed.nodes['effect-utils'].locked.rev).toBe('new-rev-12345')
+
+      // Verify narHash and lastModified were removed
+      expect(parsed.nodes['effect-utils'].locked.narHash).toBeUndefined()
+      expect(parsed.nodes['effect-utils'].locked.lastModified).toBeUndefined()
+    })
+
+    it('should preserve node order with flake: false at start', () => {
+      const lockFile = JSON.stringify(
+        {
+          nodes: {
+            'some-input': {
+              flake: false,
+              locked: {
+                lastModified: 1704067200,
+                narHash: 'sha256-abc',
+                owner: 'owner',
+                repo: 'some-input',
+                rev: 'old-rev',
+                type: 'github',
+              },
+              original: { owner: 'owner', repo: 'some-input', type: 'github' },
+            },
+            root: { inputs: { 'some-input': 'some-input' } },
+          },
+          root: 'root',
+          version: 7,
+        },
+        null,
+        2,
+      )
+
+      const members = {
+        'some-input': createLockedMember({
+          url: 'https://github.com/owner/some-input',
+          commit: 'new-rev',
+        }),
+      }
+
+      const result = simulateSyncFlow(lockFile, members)
+      const parsed = JSON.parse(result)
+
+      // flake should stay at the beginning
+      const nodeKeys = Object.keys(parsed.nodes['some-input'])
+      expect(nodeKeys).toEqual(['flake', 'locked', 'original'])
+    })
+
+    it('should not modify unrelated nodes', () => {
+      const lockFile = JSON.stringify(
+        {
+          nodes: {
+            nixpkgs: {
+              locked: {
+                lastModified: 1704067200,
+                narHash: 'sha256-xyz',
+                owner: 'NixOS',
+                repo: 'nixpkgs',
+                rev: 'nixpkgs-rev',
+                type: 'github',
+              },
+              original: { owner: 'NixOS', repo: 'nixpkgs', type: 'github' },
+            },
+            'effect-utils': {
+              inputs: { nixpkgs: ['nixpkgs'] },
+              locked: {
+                owner: 'owner',
+                repo: 'effect-utils',
+                rev: 'old-rev',
+                type: 'github',
+              },
+              original: { owner: 'owner', repo: 'effect-utils', type: 'github' },
+            },
+            root: { inputs: {} },
+          },
+          root: 'root',
+          version: 7,
+        },
+        null,
+        2,
+      )
+
+      const members = {
+        'effect-utils': createLockedMember({
+          url: 'https://github.com/owner/effect-utils',
+          commit: 'new-rev',
+        }),
+      }
+
+      const result = simulateSyncFlow(lockFile, members)
+      const parsed = JSON.parse(result)
+
+      // nixpkgs should be completely unchanged (including narHash/lastModified)
+      expect(parsed.nodes['nixpkgs'].locked.narHash).toBe('sha256-xyz')
+      expect(parsed.nodes['nixpkgs'].locked.lastModified).toBe(1704067200)
+      expect(Object.keys(parsed.nodes['nixpkgs'])).toEqual(['locked', 'original'])
     })
   })
 })
