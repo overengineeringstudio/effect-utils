@@ -18,6 +18,7 @@ import {
   parseSourceString,
   isRemoteSource,
 } from '../../lib/config.ts'
+import * as Git from '../../lib/git.ts'
 import {
   createEmptyLockFile,
   getLockedMember,
@@ -185,10 +186,44 @@ export const pinCommand = Cli.Command.make(
         refType: 'commit',
       })
 
-      // If the commit worktree doesn't exist, we need to create it
-      // For now, we'll just update the symlink if the worktree exists
-      // The sync command will handle creating it on next sync
-      if (commitWorktreeExists) {
+      // If the commit worktree doesn't exist, create it
+      if (!commitWorktreeExists) {
+        const bareRepoPath = store.getBareRepoPath(source)
+        const bareExists = yield* store.hasBareRepo(source)
+
+        if (!bareExists) {
+          // Bare repo doesn't exist, can't create worktree - warn user
+          if (!json) {
+            yield* Console.log(
+              styled.yellow(
+                `${symbols.warning} Commit worktree not available (repo not in store). Run 'mr sync' to complete.`,
+              ),
+            )
+          }
+        } else {
+          // Create the worktree parent directory
+          const worktreeParent = EffectPath.ops.parent(commitWorktreePath)
+          if (worktreeParent !== undefined) {
+            yield* fs.makeDirectory(worktreeParent, { recursive: true })
+          }
+
+          // Create detached worktree at the pinned commit
+          yield* Git.createWorktreeDetached({
+            repoPath: bareRepoPath,
+            worktreePath: commitWorktreePath,
+            commit: lockedMember.commit,
+          })
+        }
+      }
+
+      // Check again if worktree exists (it may have been created above)
+      const worktreeReady = yield* store.hasWorktree({
+        source,
+        ref: lockedMember.commit,
+        refType: 'commit',
+      })
+
+      if (worktreeReady) {
         // Update the symlink
         const currentLink = yield* fs
           .readLink(memberPathNormalized)
@@ -313,7 +348,19 @@ export const unpinCommand = Cli.Command.make(
 
       // Check if it's a remote source and update the symlink back to ref-based path
       const sourceString = config.members[member]
-      if (sourceString !== undefined) {
+      if (sourceString === undefined) {
+        // Member was removed from config but still in lock file - warn user
+        if (!json) {
+          yield* Console.log(
+            styled.yellow(
+              `${symbols.warning} Member '${member}' was removed from config but still in lock file`,
+            ),
+          )
+          yield* Console.log(
+            styled.dim('  Consider running: mr sync --pull'),
+          )
+        }
+      } else {
         const source = parseSourceString(sourceString)
         if (source !== undefined && isRemoteSource(source)) {
           const store = yield* Store

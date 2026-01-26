@@ -7,7 +7,7 @@
 import path from 'node:path'
 
 import { FileSystem } from '@effect/platform'
-import { Effect, Option } from 'effect'
+import { Effect, Option, Ref } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
@@ -32,23 +32,36 @@ type Semaphore = Effect.Semaphore
 /**
  * Map of repo URL -> semaphore for serializing bare repo creation.
  * This prevents race conditions when multiple members use the same underlying repo.
+ * 
+ * We use a Ref to ensure atomic get-or-create operations, preventing race conditions
+ * when multiple fibers concurrently request a semaphore for the same URL.
  */
-export type RepoSemaphoreMap = Map<string, Semaphore>
+export type RepoSemaphoreMap = Ref.Ref<Map<string, Semaphore>>
+
+/**
+ * Create a new repo semaphore map.
+ */
+export const makeRepoSemaphoreMap = (): Effect.Effect<RepoSemaphoreMap> =>
+  Ref.make(new Map<string, Semaphore>())
 
 /**
  * Get or create a semaphore for a given repo URL.
+ * Uses Ref.modify for atomic check-and-set to prevent race conditions.
  */
 export const getRepoSemaphore = (
-  semaphoreMap: RepoSemaphoreMap,
+  semaphoreMapRef: RepoSemaphoreMap,
   url: string,
 ): Effect.Effect<Semaphore> =>
-  Effect.sync(() => {
-    let sem = semaphoreMap.get(url)
-    if (sem === undefined) {
-      sem = Effect.unsafeMakeSemaphore(1)
-      semaphoreMap.set(url, sem)
+  Ref.modify(semaphoreMapRef, (map) => {
+    const existing = map.get(url)
+    if (existing !== undefined) {
+      return [existing, map]
     }
-    return sem
+    // Create new semaphore and add to map
+    const sem = Effect.unsafeMakeSemaphore(1)
+    const newMap = new Map(map)
+    newMap.set(url, sem)
+    return [sem, newMap]
   })
 
 /**

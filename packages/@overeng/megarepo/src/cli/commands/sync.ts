@@ -39,9 +39,9 @@ import {
 import { type Store, StoreLayer } from '../../lib/store.ts'
 import {
   flattenSyncResults,
+  makeRepoSemaphoreMap,
   syncMember,
   type MegarepoSyncResult,
-  type RepoSemaphoreMap,
 } from '../../lib/sync/mod.ts'
 import { Cwd, findMegarepoRoot, jsonOption, verboseOption } from '../context.ts'
 import {
@@ -146,6 +146,14 @@ export const syncMegarepo = ({
 
     // Mark as visited
     visited.add(resolvedRoot)
+
+    // Verbose: show sync configuration
+    if (verbose && !json && depth === 0) {
+      yield* Console.log(styled.dim(`Sync mode: ${frozen ? 'frozen' : pull ? 'pull' : 'default'}`))
+      if (dryRun) yield* Console.log(styled.dim('Dry run: true'))
+      if (force) yield* Console.log(styled.dim('Force: true'))
+      if (deep) yield* Console.log(styled.dim('Deep: true'))
+    }
 
     // Load config
     const configPath = EffectPath.ops.join(
@@ -267,10 +275,17 @@ export const syncMegarepo = ({
     const allMembers = Object.entries(config.members)
     const members = allMembers.filter(([name]) => !skippedMemberNames.has(name))
 
+    // Verbose: show filtered members
+    if (verbose && !json && skippedMemberNames.size > 0) {
+      yield* Console.log(
+        styled.dim(`Skipping ${skippedMemberNames.size} member(s): ${[...skippedMemberNames].join(', ')}`),
+      )
+    }
+
     // Create a semaphore map for serializing bare repo creation per repo URL.
     // This prevents race conditions when multiple members reference the same repo
     // (e.g., jq-latest and jq-v16 both from jqlang/jq).
-    const semaphoreMap: RepoSemaphoreMap = new Map()
+    const semaphoreMap = yield* makeRepoSemaphoreMap()
 
     // Sync all members with limited concurrency for visible progress
     // Use unbounded for non-TTY (faster) or limited (4) for TTY (visible progress)

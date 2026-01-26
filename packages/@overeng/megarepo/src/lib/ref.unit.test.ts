@@ -123,6 +123,22 @@ describe('looksLikeTag', () => {
     expect(looksLikeTag('beta-2.0.0')).toBe(true)
   })
 
+  test('recognizes multi-word prefixed tags', () => {
+    // Multi-word prefixes like my-app-1.0.0, my-cool-app-v2.0
+    expect(looksLikeTag('my-app-1.0.0')).toBe(true)
+    expect(looksLikeTag('my-cool-app-v2.0')).toBe(true)
+    expect(looksLikeTag('some-long-prefix-1.2.3')).toBe(true)
+    expect(looksLikeTag('release-candidate-v3.0.0-rc.1')).toBe(true)
+  })
+
+  test('recognizes prefixes with numbers', () => {
+    // Prefixes containing numbers like app2-v1.0.0
+    expect(looksLikeTag('app2-v1.0.0')).toBe(true)
+    expect(looksLikeTag('thing3-1.2.3')).toBe(true)
+    expect(looksLikeTag('v8-10.0.0')).toBe(true)
+    expect(looksLikeTag('node18-v1.0.0')).toBe(true)
+  })
+
   test('recognizes semver prerelease tags', () => {
     // Prerelease versions like v1.0.0-rc.1, v1.2.3-beta.1
     expect(looksLikeTag('v1.0.0-rc.1')).toBe(true)
