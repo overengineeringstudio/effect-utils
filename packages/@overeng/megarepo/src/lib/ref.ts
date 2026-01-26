@@ -99,24 +99,49 @@ export const isCommitSha = (ref: string): boolean => {
 }
 
 /**
- * Semver-like pattern for tag detection.
- * Matches: v1.0.0, v1.0, 1.0.0, 1.0
+ * Semver-like pattern for tag detection (strict).
+ * Matches: v1.0.0, v1.0, 1.0.0, 1.0, v1.0.0-rc.1, v1.2.3-beta.1, etc.
+ * Allows optional prerelease suffix: -alpha, -beta.1, -rc.2, etc.
  */
-const SEMVER_PATTERN = /^v?\d+\.\d+(\.\d+)?/
+const SEMVER_STRICT_PATTERN = /^v?\d+\.\d+(\.\d+)?(-[a-zA-Z0-9]+(\.[a-zA-Z0-9]+)*)?$/
+
+/**
+ * Extended pattern for tag detection (includes prefixed versions).
+ * Matches: jq-1.6, release-v1.0, prefix-1.2.3, release-v1.2.3-beta.1
+ * Also matches multi-word prefixes: my-app-1.0.0, my-cool-app-v2.0
+ * Also matches prefixes with numbers: app2-v1.0.0, thing3-1.2.3
+ * Allows optional prerelease suffix after the version.
+ * 
+ * Pattern breakdown:
+ * - ^[a-zA-Z][a-zA-Z0-9]*  : starts with letter, then alphanumeric
+ * - (-[a-zA-Z][a-zA-Z0-9]*)* : zero or more additional word segments (each starting with letter)
+ * - -v?\d+\.\d+(\.\d+)?  : version number with optional v prefix
+ * - (-[a-zA-Z0-9]+(\.[a-zA-Z0-9]+)*)? : optional prerelease suffix
+ */
+const SEMVER_EXTENDED_PATTERN = /^[a-zA-Z][a-zA-Z0-9]*(-[a-zA-Z][a-zA-Z0-9]*)*-v?\d+\.\d+(\.\d+)?(-[a-zA-Z0-9]+(\.[a-zA-Z0-9]+)*)?$/
 
 /**
  * Check if a ref looks like a semantic version tag.
  * Uses heuristic: starts with optional 'v' followed by major.minor[.patch]
+ * Also matches prefixed versions like 'jq-1.6' or 'release-v1.0'
+ * Supports multi-word prefixes like 'my-app-1.0.0' or 'my-cool-app-v2.0'
+ * Supports prefixes with numbers like 'app2-v1.0.0' or 'node18-v1.0.0'
+ * Supports prerelease suffixes like -alpha, -beta.1, -rc.2
  *
  * @example
  * looksLikeTag('v1.0.0') // true
  * looksLikeTag('v1.0') // true
  * looksLikeTag('1.0.0') // true
+ * looksLikeTag('v1.0.0-rc.1') // true
+ * looksLikeTag('v1.2.3-beta.1') // true
+ * looksLikeTag('jq-1.6') // true
+ * looksLikeTag('release-v1.0') // true
+ * looksLikeTag('my-app-1.0.0') // true
+ * looksLikeTag('app2-v1.0.0') // true
  * looksLikeTag('main') // false
- * looksLikeTag('release-1.0') // false
  */
 export const looksLikeTag = (ref: string): boolean => {
-  return SEMVER_PATTERN.test(ref)
+  return SEMVER_STRICT_PATTERN.test(ref) || SEMVER_EXTENDED_PATTERN.test(ref)
 }
 
 /**

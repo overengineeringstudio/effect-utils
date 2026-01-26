@@ -492,3 +492,183 @@ export const deriveMegarepoName = (repoPath: string) =>
       }),
     )
   })
+
+// =============================================================================
+// Remote Ref Type Detection
+// =============================================================================
+
+/** The type of a git ref as determined by the remote */
+export type RemoteRefType = 'tag' | 'branch' | 'unknown'
+
+/** Result of querying remote refs */
+export interface RemoteRefInfo {
+  readonly type: RemoteRefType
+  readonly commit: string
+}
+
+/**
+ * Query a remote to determine the actual type of a ref (tag vs branch).
+ * This is more accurate than heuristic-based detection.
+ *
+ * @returns The ref type and commit SHA, or 'unknown' if the ref doesn't exist
+ */
+export const queryRemoteRefType = (args: { url: string; ref: string }) =>
+  Effect.gen(function* () {
+    // Query both tags and heads from remote
+    const output = yield* runGitCommand({
+      args: ['ls-remote', '--refs', args.url],
+    }).pipe(
+      Effect.catchAll(() => Effect.succeed('')),
+    )
+
+    if (output.length === 0) {
+      return { type: 'unknown' as const, commit: '' }
+    }
+
+    // Parse output: "sha\trefs/heads/branch" or "sha\trefs/tags/tag"
+    const lines = output.split('\n').filter((line) => line.trim().length > 0)
+
+    // Look for exact match
+    for (const line of lines) {
+      const [commit, refPath] = line.split('\t')
+      if (commit === undefined || refPath === undefined) continue
+
+      // Check if this is our ref
+      if (refPath === `refs/tags/${args.ref}`) {
+        return { type: 'tag' as const, commit }
+      }
+      if (refPath === `refs/heads/${args.ref}`) {
+        return { type: 'branch' as const, commit }
+      }
+    }
+
+    return { type: 'unknown' as const, commit: '' }
+  })
+
+/**
+ * Query a bare repo to determine the actual type of a ref (tag vs branch).
+ * Uses local refs after fetch.
+ */
+export const queryLocalRefType = (args: { repoPath: string; ref: string }) =>
+  Effect.gen(function* () {
+    // Check if it's a tag
+    const tagExists = yield* runGitCommand({
+      args: ['rev-parse', '--verify', `refs/tags/${args.ref}`],
+      cwd: args.repoPath,
+    }).pipe(
+      Effect.map((commit) => ({ exists: true, commit })),
+      Effect.catchAll(() => Effect.succeed({ exists: false, commit: '' })),
+    )
+
+    if (tagExists.exists) {
+      return { type: 'tag' as const, commit: tagExists.commit }
+    }
+
+    // Check if it's a branch (remote tracking)
+    const branchExists = yield* runGitCommand({
+      args: ['rev-parse', '--verify', `refs/remotes/origin/${args.ref}`],
+      cwd: args.repoPath,
+    }).pipe(
+      Effect.map((commit) => ({ exists: true, commit })),
+      Effect.catchAll(() => Effect.succeed({ exists: false, commit: '' })),
+    )
+
+    if (branchExists.exists) {
+      return { type: 'branch' as const, commit: branchExists.commit }
+    }
+
+    // Check local branch (less common in bare repos but possible)
+    const localBranchExists = yield* runGitCommand({
+      args: ['rev-parse', '--verify', `refs/heads/${args.ref}`],
+      cwd: args.repoPath,
+    }).pipe(
+      Effect.map((commit) => ({ exists: true, commit })),
+      Effect.catchAll(() => Effect.succeed({ exists: false, commit: '' })),
+    )
+
+    if (localBranchExists.exists) {
+      return { type: 'branch' as const, commit: localBranchExists.commit }
+    }
+
+    return { type: 'unknown' as const, commit: '' }
+  })
+
+// =============================================================================
+// Error Message Interpretation
+// =============================================================================
+
+/**
+ * Interpret a git error and return a user-friendly message with hints.
+ */
+export const interpretGitError = (error: GitCommandError): { message: string; hint?: string } => {
+  const stderr = error.stderr.toLowerCase()
+  const args = error.args
+
+  // Repository not found / access denied
+  if (
+    stderr.includes('repository not found') ||
+    stderr.includes('could not read from remote') ||
+    stderr.includes('permission denied')
+  ) {
+    return {
+      message: 'Repository not found or access denied',
+      hint: 'Check the repository URL and your access permissions',
+    }
+  }
+
+  // Authentication required
+  if (
+    stderr.includes('could not read username') ||
+    stderr.includes('authentication failed') ||
+    stderr.includes('invalid credentials')
+  ) {
+    return {
+      message: 'Authentication required',
+      hint: 'Configure git credentials or use SSH with an SSH key',
+    }
+  }
+
+  // Ref not found (ambiguous argument)
+  if (stderr.includes('ambiguous argument') || stderr.includes('unknown revision')) {
+    // Extract the ref from the error or args
+    const refMatch = error.stderr.match(/ambiguous argument '([^']+)'/)
+    const ref = refMatch?.[1] ?? args.find((a) => !a.startsWith('-'))
+    return {
+      message: `Ref '${ref}' not found`,
+      hint: `Check available refs with: git ls-remote --refs <url>`,
+    }
+  }
+
+  // Clone destination exists
+  if (stderr.includes('already exists and is not an empty directory')) {
+    return {
+      message: 'Target directory already exists',
+      hint: 'Remove the directory or choose a different location',
+    }
+  }
+
+  // Network errors
+  if (
+    stderr.includes('could not resolve host') ||
+    stderr.includes('network is unreachable') ||
+    stderr.includes('connection refused')
+  ) {
+    return {
+      message: 'Network error - could not connect to remote',
+      hint: 'Check your internet connection and the repository URL',
+    }
+  }
+
+  // SSH errors
+  if (stderr.includes('host key verification failed') || stderr.includes('no such identity')) {
+    return {
+      message: 'SSH connection failed',
+      hint: 'Check your SSH configuration and keys',
+    }
+  }
+
+  // Default: use original message but clean it up
+  return {
+    message: error.message.split('\n')[0] ?? error.message,
+  }
+}

@@ -31,6 +31,7 @@ export {
   findMegarepoRoot,
   findNearestMegarepoRoot,
   jsonOption,
+  verboseOption,
 } from './context.ts'
 
 // Import Cwd for CLI assembly

@@ -12,7 +12,10 @@ import { styled, symbols } from '@overeng/cli-ui'
 import { EffectPath } from '@overeng/effect-path'
 
 import { CONFIG_FILE_NAME, getMemberPath, MegarepoConfig } from '../../lib/config.ts'
-import { Cwd, findMegarepoRoot, jsonOption } from '../context.ts'
+import { Cwd, findMegarepoRoot, jsonOption, verboseOption } from '../context.ts'
+
+/** Execution mode for running commands across members */
+type ExecMode = 'parallel' | 'sequential'
 
 /** Execute command across members */
 export const execCommand = Cli.Command.make(
@@ -27,8 +30,13 @@ export const execCommand = Cli.Command.make(
       Cli.Options.withDescription('Run only in this member'),
       Cli.Options.optional,
     ),
+    mode: Cli.Options.choice('mode', ['parallel', 'sequential'] as const).pipe(
+      Cli.Options.withDescription('Execution mode: parallel (default) or sequential'),
+      Cli.Options.withDefault('parallel' as ExecMode),
+    ),
+    verbose: verboseOption,
   },
-  ({ command: cmd, json, member }) =>
+  ({ command: cmd, json, member, mode, verbose }) =>
     Effect.gen(function* () {
       const cwd = yield* Cwd
       const root = yield* findMegarepoRoot(cwd)
@@ -71,50 +79,89 @@ export const execCommand = Cli.Command.make(
         return yield* Effect.fail(new Error('Member not found'))
       }
 
-      const results: Array<{
+      // Verbose: show execution details
+      if (verbose && !json) {
+        yield* Console.log(styled.dim(`Command: ${cmd}`))
+        yield* Console.log(styled.dim(`Mode: ${mode}`))
+        yield* Console.log(styled.dim(`Members: ${membersToRun.join(', ')}`))
+      }
+
+      /** Run command in a single member */
+      const runInMember = (name: string) =>
+        Effect.gen(function* () {
+          const memberPath = getMemberPath({ megarepoRoot: root.value, name })
+          const exists = yield* fs.exists(memberPath)
+
+          if (!exists) {
+            if (verbose && !json) {
+              yield* Console.log(styled.dim(`  ${name}: skipped (not synced)`))
+            }
+            return {
+              name,
+              exitCode: -1,
+              stdout: '',
+              stderr: 'Member not synced',
+            }
+          }
+
+          if (verbose && !json) {
+            yield* Console.log(styled.dim(`  ${name}: ${memberPath}`))
+          }
+
+          // Run the command
+          return yield* Effect.gen(function* () {
+            const shellCmd = Command.make('sh', '-c', cmd).pipe(Command.workingDirectory(memberPath))
+            const output = yield* Command.string(shellCmd)
+            return { name, exitCode: 0, stdout: output, stderr: '' }
+          }).pipe(
+            Effect.catchAll((error) =>
+              Effect.succeed({
+                name,
+                exitCode: 1,
+                stdout: '',
+                stderr: error instanceof Error ? error.message : String(error),
+              }),
+            ),
+          )
+        })
+
+      let results: Array<{
         name: string
         exitCode: number
         stdout: string
         stderr: string
-      }> = []
+      }>
 
-      for (const name of membersToRun) {
-        const memberPath = getMemberPath({ megarepoRoot: root.value, name })
-        const exists = yield* fs.exists(memberPath)
-
-        if (!exists) {
-          results.push({
-            name,
-            exitCode: -1,
-            stdout: '',
-            stderr: 'Member not synced',
-          })
-          continue
-        }
-
-        if (!json) {
-          yield* Console.log(styled.bold(`\n${name}:`))
-        }
-
-        // Run the command
-        const result = yield* Effect.gen(function* () {
-          const shellCmd = Command.make('sh', '-c', cmd).pipe(Command.workingDirectory(memberPath))
-          const output = yield* Command.string(shellCmd)
-          return { name, exitCode: 0, stdout: output, stderr: '' }
-        }).pipe(
-          Effect.catchAll((error) =>
-            Effect.succeed({
-              name,
-              exitCode: 1,
-              stdout: '',
-              stderr: error instanceof Error ? error.message : String(error),
-            }),
-          ),
+      if (mode === 'parallel') {
+        // Run all commands in parallel
+        results = yield* Effect.all(
+          membersToRun.map((name) => runInMember(name)),
+          { concurrency: 'unbounded' },
         )
+      } else {
+        // Run commands sequentially
+        results = []
+        for (const name of membersToRun) {
+          const result = yield* runInMember(name)
+          results.push(result)
 
-        results.push(result)
+          // Print output immediately in sequential mode (unless JSON)
+          if (!json) {
+            yield* Console.log(styled.bold(`\n${name}:`))
+            if (result.stdout) {
+              console.log(result.stdout)
+            }
+            if (result.stderr) {
+              console.error(styled.red(result.stderr))
+            }
+          }
+        }
+      }
 
-        if (!json) {
+      // Print results for parallel mode (all at once at the end)
+      if (!json && mode === 'parallel') {
+        for (const result of results) {
+          yield* Console.log(styled.bold(`\n${result.name}:`))
           if (result.stdout) {
             console.log(result.stdout)
           }

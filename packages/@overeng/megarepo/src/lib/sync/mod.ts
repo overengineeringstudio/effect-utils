@@ -4,7 +4,13 @@
  * Core sync functionality for megarepo.
  */
 
-export { getCloneUrl, syncMember } from './member.ts'
+export {
+  getCloneUrl,
+  getRepoSemaphore,
+  makeRepoSemaphoreMap,
+  syncMember,
+  type RepoSemaphoreMap,
+} from './member.ts'
 export {
   countSyncResults,
   flattenSyncResults,

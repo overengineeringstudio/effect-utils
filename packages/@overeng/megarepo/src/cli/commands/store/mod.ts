@@ -32,7 +32,10 @@ import {
   MegarepoConfig,
   parseSourceString,
   isRemoteSource,
+  getSourceRef,
 } from '../../../lib/config.ts'
+import { classifyRef } from '../../../lib/ref.ts'
+import { getCloneUrl } from '../../../lib/sync/mod.ts'
 import * as Git from '../../../lib/git.ts'
 import { type LockFile, LOCK_FILE_NAME, readLockFile } from '../../../lib/lock.ts'
 import { Store, StoreLayer } from '../../../lib/store.ts'
@@ -273,6 +276,18 @@ const storeGcCommand = Cli.Command.make(
           styled.dim('Not in a megarepo - all worktrees will be considered unused'),
         )
         yield* Console.log('')
+      } else if (!json && !all && Option.isSome(root)) {
+        // Warn that we only check current megarepo
+        yield* Console.log(
+          styled.yellow(`${symbols.warning} Only checking current megarepo for in-use worktrees`),
+        )
+        yield* Console.log(
+          styled.dim('  Worktrees used by other megarepos may be removed'),
+        )
+        yield* Console.log(
+          styled.dim('  Run from each megarepo to preserve its worktrees, or use --dry-run first'),
+        )
+        yield* Console.log('')
       }
 
       // List all repos and their worktrees
@@ -469,8 +484,165 @@ const storeGcCommand = Cli.Command.make(
     }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/gc')),
 ).pipe(Cli.Command.withDescription('Garbage collect unused worktrees'))
 
+/**
+ * Add a repository to the store without adding it to a megarepo.
+ * Useful for pre-populating the cache or CI warm-up.
+ */
+const storeAddCommand = Cli.Command.make(
+  'add',
+  {
+    source: Cli.Args.text({ name: 'source' }).pipe(
+      Cli.Args.withDescription('Repository source (owner/repo, URL, or owner/repo#ref)'),
+    ),
+    json: jsonOption,
+  },
+  ({ source: sourceString, json }) =>
+    Effect.gen(function* () {
+      const store = yield* Store
+      const fs = yield* FileSystem.FileSystem
+
+      // Parse the source string
+      const source = parseSourceString(sourceString)
+      if (source === undefined) {
+        if (json) {
+          console.log(
+            JSON.stringify({
+              error: 'invalid_source',
+              message: `Invalid source string: ${sourceString}`,
+            }),
+          )
+        } else {
+          yield* Console.error(`${styled.red(symbols.cross)} Invalid source string: ${sourceString}`)
+        }
+        return yield* Effect.fail(new Error('Invalid source'))
+      }
+
+      if (!isRemoteSource(source)) {
+        if (json) {
+          console.log(
+            JSON.stringify({
+              error: 'local_path',
+              message: 'Cannot add local path to store',
+            }),
+          )
+        } else {
+          yield* Console.error(`${styled.red(symbols.cross)} Cannot add local path to store`)
+        }
+        return yield* Effect.fail(new Error('Cannot add local path'))
+      }
+
+      const cloneUrl = getCloneUrl(source)
+      if (cloneUrl === undefined) {
+        if (json) {
+          console.log(JSON.stringify({ error: 'no_url', message: 'Cannot determine clone URL' }))
+        } else {
+          yield* Console.error(`${styled.red(symbols.cross)} Cannot determine clone URL`)
+        }
+        return yield* Effect.fail(new Error('Cannot get clone URL'))
+      }
+
+      const bareRepoPath = store.getBareRepoPath(source)
+      const bareExists = yield* store.hasBareRepo(source)
+
+      // Clone if needed
+      if (!bareExists) {
+        if (!json) {
+          yield* Console.log(`${styled.dim('→')} Cloning ${sourceString}...`)
+        }
+        const repoBasePath = store.getRepoBasePath(source)
+        yield* fs.makeDirectory(repoBasePath, { recursive: true })
+        yield* Git.cloneBare({ url: cloneUrl, targetPath: bareRepoPath })
+      }
+
+      // Determine ref to use
+      const sourceRef = getSourceRef(source)
+      let targetRef: string
+      if (Option.isSome(sourceRef)) {
+        targetRef = sourceRef.value
+      } else {
+        // Get default branch
+        const defaultBranch = yield* Git.getDefaultBranch({ repoPath: bareRepoPath })
+        targetRef = Option.getOrElse(defaultBranch, () => 'main')
+      }
+
+      // Create worktree if needed
+      const refType = classifyRef(targetRef)
+      const worktreePath = store.getWorktreePath({ source, ref: targetRef, refType })
+      const worktreeExists = yield* store.hasWorktree({ source, ref: targetRef, refType })
+
+      if (!worktreeExists) {
+        if (!json) {
+          yield* Console.log(`${styled.dim('→')} Creating worktree at ${targetRef}...`)
+        }
+        const worktreeParent = EffectPath.ops.parent(worktreePath)
+        if (worktreeParent !== undefined) {
+          yield* fs.makeDirectory(worktreeParent, { recursive: true })
+        }
+
+        if (refType === 'commit' || refType === 'tag') {
+          yield* Git.createWorktreeDetached({
+            repoPath: bareRepoPath,
+            worktreePath,
+            commit: targetRef,
+          })
+        } else {
+          yield* Git.createWorktree({
+            repoPath: bareRepoPath,
+            worktreePath,
+            branch: targetRef,
+            createBranch: false,
+          }).pipe(
+            Effect.catchAll(() =>
+              Git.createWorktree({
+                repoPath: bareRepoPath,
+                worktreePath,
+                branch: `origin/${targetRef}`,
+                createBranch: false,
+              }),
+            ),
+            Effect.catchAll(() =>
+              Git.createWorktreeDetached({
+                repoPath: bareRepoPath,
+                worktreePath,
+                commit: targetRef,
+              }),
+            ),
+          )
+        }
+      }
+
+      // Get the current commit
+      const commit = yield* Git.getCurrentCommit(worktreePath).pipe(
+        Effect.catchAll(() => Effect.succeed(undefined)),
+      )
+
+      if (json) {
+        console.log(
+          JSON.stringify({
+            status: bareExists && worktreeExists ? 'already_exists' : 'added',
+            source: sourceString,
+            ref: targetRef,
+            commit,
+            worktreePath,
+          }),
+        )
+      } else {
+        const symbol = bareExists && worktreeExists ? styled.dim(symbols.check) : styled.green(symbols.check)
+        const status = bareExists && worktreeExists ? 'already in store' : 'added to store'
+        yield* Console.log(
+          `${symbol} ${styled.bold(sourceString)} ${styled.dim(`(${status})`)}`,
+        )
+        yield* Console.log(styled.dim(`  ref: ${targetRef}`))
+        if (commit) {
+          yield* Console.log(styled.dim(`  commit: ${commit.slice(0, 7)}`))
+        }
+        yield* Console.log(styled.dim(`  path: ${worktreePath}`))
+      }
+    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/add')),
+).pipe(Cli.Command.withDescription('Add a repository to the store (without adding to megarepo)'))
+
 /** Store subcommand group */
 export const storeCommand = Cli.Command.make('store', {}).pipe(
-  Cli.Command.withSubcommands([storeLsCommand, storeFetchCommand, storeGcCommand]),
+  Cli.Command.withSubcommands([storeAddCommand, storeLsCommand, storeFetchCommand, storeGcCommand]),
   Cli.Command.withDescription('Manage the shared git store'),
 )

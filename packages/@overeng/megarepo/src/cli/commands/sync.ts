@@ -38,8 +38,13 @@ import {
 } from '../../lib/lock.ts'
 import { syncNixLocks, type NixLockSyncResult } from '../../lib/nix-lock/mod.ts'
 import { type Store, StoreLayer } from '../../lib/store.ts'
-import { flattenSyncResults, syncMember, type MegarepoSyncResult } from '../../lib/sync/mod.ts'
-import { Cwd, findMegarepoRoot, jsonOption } from '../context.ts'
+import {
+  flattenSyncResults,
+  makeRepoSemaphoreMap,
+  syncMember,
+  type MegarepoSyncResult,
+} from '../../lib/sync/mod.ts'
+import { Cwd, findMegarepoRoot, jsonOption, verboseOption } from '../context.ts'
 import {
   SyncProgressEmpty,
   setMemberSyncing,
@@ -106,6 +111,7 @@ export const syncMegarepo = ({
     deep: boolean
     only: ReadonlyArray<string> | undefined
     skip: ReadonlyArray<string> | undefined
+    verbose: boolean
   }
   depth?: number
   visited?: Set<string>
@@ -121,7 +127,7 @@ export const syncMegarepo = ({
   FileSystem.FileSystem | CommandExecutor.CommandExecutor | Store | SyncProgressService
 > =>
   Effect.gen(function* () {
-    const { json, dryRun, pull, frozen, force, deep, only, skip } = options
+    const { json, dryRun, pull, frozen, force, deep, only, skip, verbose } = options
     const fs = yield* FileSystem.FileSystem
     const indent = '  '.repeat(depth)
 
@@ -141,6 +147,14 @@ export const syncMegarepo = ({
 
     // Mark as visited
     visited.add(resolvedRoot)
+
+    // Verbose: show sync configuration
+    if (verbose && !json && depth === 0) {
+      yield* Console.log(styled.dim(`Sync mode: ${frozen ? 'frozen' : pull ? 'pull' : 'default'}`))
+      if (dryRun) yield* Console.log(styled.dim('Dry run: true'))
+      if (force) yield* Console.log(styled.dim('Force: true'))
+      if (deep) yield* Console.log(styled.dim('Deep: true'))
+    }
 
     // Load config
     const configPath = EffectPath.ops.join(
@@ -262,6 +276,18 @@ export const syncMegarepo = ({
     const allMembers = Object.entries(config.members)
     const members = allMembers.filter(([name]) => !skippedMemberNames.has(name))
 
+    // Verbose: show filtered members
+    if (verbose && !json && skippedMemberNames.size > 0) {
+      yield* Console.log(
+        styled.dim(`Skipping ${skippedMemberNames.size} member(s): ${[...skippedMemberNames].join(', ')}`),
+      )
+    }
+
+    // Create a semaphore map for serializing bare repo creation per repo URL.
+    // This prevents race conditions when multiple members reference the same repo
+    // (e.g., jq-latest and jq-v16 both from jqlang/jq).
+    const semaphoreMap = yield* makeRepoSemaphoreMap()
+
     // Sync all members with limited concurrency for visible progress
     // Use unbounded for non-TTY (faster) or limited (4) for TTY (visible progress)
     const concurrency = withProgress ? 4 : 'unbounded'
@@ -284,6 +310,7 @@ export const syncMegarepo = ({
             pull,
             frozen,
             force,
+            semaphoreMap,
           })
 
           // Apply result to progress service
@@ -476,8 +503,9 @@ export const syncCommand = Cli.Command.make(
       Cli.Options.withDescription('Skip specified members (comma-separated)'),
       Cli.Options.optional,
     ),
+    verbose: verboseOption,
   },
-  ({ json, dryRun, pull, frozen, force, deep, only, skip }) =>
+  ({ json, dryRun, pull, frozen, force, deep, only, skip, verbose }) =>
     Effect.gen(function* () {
       const cwd = yield* Cwd
       const fs = yield* FileSystem.FileSystem
@@ -550,7 +578,7 @@ export const syncCommand = Cli.Command.make(
         // Run the sync with progress updates
         const syncResult = yield* syncMegarepo({
           megarepoRoot: root.value,
-          options: { json, dryRun, pull, frozen, force, deep, only: onlyMembers, skip: skipMembers },
+          options: { json, dryRun, pull, frozen, force, deep, only: onlyMembers, skip: skipMembers, verbose },
           withProgress: true,
         })
 
@@ -583,7 +611,7 @@ export const syncCommand = Cli.Command.make(
 
         const syncResult = yield* syncMegarepo({
           megarepoRoot: root.value,
-          options: { json, dryRun, pull, frozen, force, deep, only: onlyMembers, skip: skipMembers },
+          options: { json, dryRun, pull, frozen, force, deep, only: onlyMembers, skip: skipMembers, verbose },
         })
 
         // Get list of files that would be / were generated

@@ -206,15 +206,27 @@ The config declares intent using a unified string format:
 
 ### Ref Classification
 
-When a ref is specified via `#ref`:
+When a ref is specified via `#ref`, megarepo determines the ref type using a two-phase approach:
+
+**Phase 1: Query the repository** (most accurate)
+
+After cloning/fetching, megarepo queries the local bare repo to determine the actual ref type:
+- Checks `refs/tags/{ref}` for tags
+- Checks `refs/remotes/origin/{ref}` for branches
+
+This ensures tags like `jq-1.6`, `release-v1.0`, etc. are correctly classified.
+
+**Phase 2: Heuristic fallback** (when query unavailable)
+
+If the ref type cannot be determined from the repository:
 
 1. **40-char hex string** → commit (immutable)
 2. **Semver-like pattern** → tag (immutable)
-   - Matches: `v1.0.0`, `v1.0`, `1.0.0`, `1.0`
-   - Regex: `/^v?\d+\.\d+(\.\d+)?/`
+   - Strict: `v1.0.0`, `v1.0`, `1.0.0`, `1.0`
+   - Prefixed: `prefix-1.0`, `prefix-v1.0.0` (e.g., `jq-1.6`, `release-v2.0`)
 3. **Otherwise** → branch (mutable)
 
-**Note:** This heuristic may misclassify unusual branch/tag names. Future versions may support explicit `#tag:name` or `#branch:name` syntax.
+**Note:** The heuristic may still misclassify unusual branch/tag names. Future versions may support explicit `#tag:name` or `#branch:name` syntax for disambiguation.
 
 ### Config Schema
 
