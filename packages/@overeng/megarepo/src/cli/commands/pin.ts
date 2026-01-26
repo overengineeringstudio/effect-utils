@@ -6,7 +6,7 @@
 
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
-import { Console, Effect, Layer, Option, Schema } from 'effect'
+import { Console, Effect, Option, Schema } from 'effect'
 
 import { styled, symbols } from '@overeng/cli-ui'
 import { EffectPath } from '@overeng/effect-path'
