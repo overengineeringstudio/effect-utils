@@ -110,9 +110,98 @@ Clone effect-utils directly without megarepo:
 - Doesn't use megarepo.lock (no commit pinning)
 - Duplicates megarepo logic
 
-### Current Status
+### Current Status (Updated 2026-01-26)
 
-**Blocked**: The Nix flake approach has persistent hash mismatch issues. Recommend switching to Option 1 (bunx) for pragmatic CI support.
+**Progress**: The Nix flake approach now works with `--refresh` flag to bypass cache:
+
+```yaml
+- name: Install megarepo CLI
+  run: nix profile install --refresh github:overengineeringstudio/effect-utils#megarepo
+  shell: bash
+```
+
+**Resolved Issues:**
+1. ✅ `mr sync --frozen` now allows cloning in fresh CI environments (fix in commit 693eb6b)
+2. ✅ Added `--refresh` to bypass nix flake cache and get latest megarepo version
+
+**Remaining Issues:**
+1. GitHub shorthand sources (`owner/repo`) use SSH URLs which fail without SSH keys - use HTTPS URLs instead
+2. Path resolution issue with devenv inputs (see below)
+
+---
+
+## Megarepo + Devenv Path Resolution Issue
+
+### Problem
+
+When `devenv.yaml` references paths inside megarepo members:
+
+```yaml
+playwright:
+  url: path:repos/effect-utils/nix/playwright-flake
+```
+
+The `repos/effect-utils` is a symlink to the megarepo store (`~/.megarepo/github.com/.../refs/commits/...`). When devenv/nix tries to resolve this path, it fails with:
+
+```
+error: '«unknown»/.megarepo/github.com/overengineeringstudio/effect-utils/refs/commits/.../nix/playwright-flake/.devenv.flake.nix' does not exist
+```
+
+The `«unknown»` indicates nix couldn't resolve the home directory or symlink target properly.
+
+### Root Cause Analysis
+
+1. Megarepo creates symlinks from `repos/<member>` to store paths like `~/.megarepo/.../refs/commits/<sha>/`
+2. devenv.yaml uses relative paths like `path:repos/effect-utils/...`
+3. When devenv resolves these paths, it follows symlinks but loses the ability to resolve `~` or `$HOME`
+4. The path becomes invalid from nix's perspective
+
+### Additional Issue: Wrong devenv Version in CI
+
+The CI currently installs devenv via:
+```yaml
+run: nix profile install nixpkgs#devenv
+```
+
+This installs devenv from nixpkgs, which may NOT be devenv 2.0. The project uses devenv.lock version 7 (devenv 2.0).
+
+### Options
+
+See "Current Blocker Options" section below.
+
+---
+
+## Resolution (2026-01-26)
+
+### Root Cause
+
+Nix flakes explicitly **do not follow symlinks** in path inputs for security and reproducibility reasons. This is a fundamental Nix limitation, not a megarepo bug.
+
+### Solution: Use GitHub URLs
+
+Changed all `devenv.yaml` files to use GitHub URLs instead of local paths through symlinks:
+
+```yaml
+# Before (broken):
+playwright:
+  url: path:repos/effect-utils/nix/playwright-flake
+
+# After (works):
+playwright:
+  url: github:overengineeringstudio/effect-utils?dir=nix/playwright-flake
+```
+
+**Fixed repos:**
+- `schickling-stiftung`
+- `livestore`
+- `schickling.dev`
+
+### Documentation
+
+See [Megarepo Nix Integration Guide](../../packages/@overeng/megarepo/docs/integrations/nix.md) for:
+- Full explanation of the symlink limitation
+- Patterns to avoid
+- When local paths are OK
 
 ---
 
