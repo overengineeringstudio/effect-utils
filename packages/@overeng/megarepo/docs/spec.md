@@ -325,11 +325,11 @@ mr sync [--pull] [--frozen] [--force] [--deep]
 
 **Modes:**
 
-| Mode    | Command            | Behavior                                                      |
-| ------- | ------------------ | ------------------------------------------------------------- |
-| Default | `mr sync`          | Ensure members exist, update lock to current worktree commits |
-| Pull    | `mr sync --pull`   | Fetch from remote, update worktrees to latest                 |
-| Frozen  | `mr sync --frozen` | Apply lock → worktrees exactly, never modify lock (CI mode)   |
+| Mode    | Command            | Behavior                                                                 |
+| ------- | ------------------ | ------------------------------------------------------------------------ |
+| Default | `mr sync`          | Ensure members exist, update lock to current worktree commits            |
+| Pull    | `mr sync --pull`   | Fetch from remote, update worktrees to latest                            |
+| Frozen  | `mr sync --frozen` | Clone if needed, apply lock → worktrees exactly, never modify lock (CI)  |
 
 **Default Mode Behavior:**
 
@@ -369,9 +369,13 @@ Strict mode for CI that guarantees exact reproducibility:
 - Lock MUST cover all config members (no new members allowed)
 - Uses locked commits exactly
 - Fails if config has members not in lock
+- **Clones and fetches if needed** - frozen mode will clone bare repos and fetch updates to materialize the locked state; it only prevents *updating* the lock file
 - **Uses commit-based worktree paths** (e.g., `refs/commits/<sha>/`) to guarantee the exact locked commit is checked out, regardless of what branch refs currently point to
+- **Never modifies lock file** - the lock is read-only, all state comes from the committed lock
 
 This commit-based path approach ensures that even if the store's bare repo has been updated by another operation, frozen mode always materializes the exact commits from the lock file.
+
+**CI usage:** In a fresh CI environment, `mr sync --frozen` will clone repos and fetch as needed to materialize the exact commits specified in the lock file, then run generators. This provides reproducible builds without requiring a pre-populated store. The lock file is never modified.
 
 #### `mr pin <member> [--commit=SHA]`
 

@@ -248,26 +248,30 @@ export const syncMember = ({
     }
 
     // Clone bare repo if needed
+    // Note: --frozen mode still allows cloning - it only prevents updating the lock file.
+    // This enables CI to materialize the locked state in a fresh environment.
     let wasCloned = false
     if (!bareExists) {
-      if (frozen) {
-        return {
-          name,
-          status: 'error',
-          message: 'Bare repo not in store (--frozen prevents cloning)',
-        } satisfies MemberSyncResult
-      }
       if (!dryRun) {
         const repoBasePath = store.getRepoBasePath(source)
         yield* fs.makeDirectory(repoBasePath, { recursive: true })
         yield* Git.cloneBare({ url: cloneUrl, targetPath: bareRepoPath })
         wasCloned = true
       }
-    } else if (pull && !frozen && !dryRun) {
-      // Only fetch when --pull is specified (not in default mode)
+    } else if (pull && !dryRun) {
+      // Fetch when --pull is specified (includes frozen mode - frozen only prevents lock updates)
       yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(
         Effect.catchAll(() => Effect.void), // Ignore fetch errors
       )
+    } else if (frozen && targetCommit !== undefined && !dryRun) {
+      // In frozen mode, fetch if the locked commit is not available locally
+      // This ensures we can materialize the exact locked state even if the store is stale
+      const commitExists = yield* Git.refExists({ repoPath: bareRepoPath, ref: targetCommit })
+      if (!commitExists) {
+        yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(
+          Effect.catchAll(() => Effect.void),
+        )
+      }
     }
 
     // Resolve ref to commit if not already known

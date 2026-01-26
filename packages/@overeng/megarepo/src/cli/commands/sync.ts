@@ -393,7 +393,7 @@ export const syncCommand = Cli.Command.make(
     ),
     frozen: Cli.Options.boolean('frozen').pipe(
       Cli.Options.withDescription(
-        'Use exact commits from lock file (fail if lock missing or stale)',
+        'Use exact commits from lock file, clone if needed, never update lock (CI mode)',
       ),
       Cli.Options.withDefault(false),
     ),
