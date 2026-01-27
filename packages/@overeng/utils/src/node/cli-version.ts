@@ -120,7 +120,10 @@ const renderLocalVersion = (baseVersion: string, stamp: LocalStamp): string => {
  * - impure, dirty: "0.1.0+def456-dirty — built 2 hours ago, with uncommitted changes"
  */
 const renderNixVersion = (stamp: NixStamp): string => {
-  const dirtySuffix = stamp.dirty ? '-dirty' : ''
+  // Only add -dirty suffix if the rev doesn't already include it
+  // (Nix flakes may provide dirtyShortRev which already has the suffix)
+  const revAlreadyHasDirty = stamp.rev.endsWith('-dirty')
+  const dirtySuffix = stamp.dirty && !revAlreadyHasDirty ? '-dirty' : ''
   const versionStr = `${stamp.version}+${stamp.rev}${dirtySuffix}`
 
   const dirtyNote = stamp.dirty ? ', with uncommitted changes' : ''

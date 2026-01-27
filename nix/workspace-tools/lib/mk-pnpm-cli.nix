@@ -147,13 +147,10 @@ let
   packageVersion = packageJson.version or "0.0.0";
 
   # Build NixStamp JSON for embedding in binary
-  nixStampJson = builtins.toJSON {
-    type = "nix";
-    version = packageVersion;
-    rev = gitRev;
-    commitTs = commitTs;
-    dirty = dirty;
-  };
+  # Note: We manually construct the JSON to avoid escaping issues with builtins.toJSON
+  # when the string is interpolated into shell scripts and substituteInPlace.
+  dirtyStr = if dirty then "true" else "false";
+  nixStampJson = ''{\"type\":\"nix\",\"version\":\"${packageVersion}\",\"rev\":\"${gitRev}\",\"commitTs\":${toString commitTs},\"dirty\":${dirtyStr}}'';
 
   smokeTestArgsStr = lib.escapeShellArgs smokeTestArgs;
 

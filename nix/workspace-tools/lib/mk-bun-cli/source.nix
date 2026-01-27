@@ -66,14 +66,10 @@ let
 
   # Build NixStamp JSON for embedding in binary
   # Schema: {"type":"nix","version":"...","rev":"...","commitTs":...,"dirty":...}
+  # Note: We manually construct the JSON to avoid escaping issues with builtins.toJSON
+  # when the string is interpolated into shell scripts and substituteInPlace.
   dirtyStr = if dirty then "true" else "false";
-  nixStampJson = builtins.toJSON {
-    type = "nix";
-    version = baseVersion;
-    rev = gitRev;
-    commitTs = commitTs;
-    dirty = dirty;
-  };
+  nixStampJson = ''{\"type\":\"nix\",\"version\":\"${baseVersion}\",\"rev\":\"${gitRev}\",\"commitTs\":${toString commitTs},\"dirty\":${dirtyStr}}'';
 
   # Stage a writable copy so Bun and tsc can write caches in the sandbox.
   stageWorkspace = ''
