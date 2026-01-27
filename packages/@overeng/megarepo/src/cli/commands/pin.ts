@@ -193,8 +193,8 @@ export const pinCommand = Cli.Command.make(
               JSON.stringify({
                 status: 'dry_run',
                 member,
-                currentRef: currentLockRef,
-                newRef,
+                currentSource: sourceString,
+                newSource: newSourceString,
                 wouldClone: !bareExists,
                 wouldCreateWorktree: !worktreeExists,
               }),
@@ -203,10 +203,10 @@ export const pinCommand = Cli.Command.make(
             yield* Console.log(`Would pin ${styled.bold(member)} to ${styled.cyan(newRef)}`)
             yield* Console.log('')
 
-            // megarepo.json change
-            if (currentRef !== newRef) {
+            // megarepo.json change - show actual source string transformation
+            if (sourceString !== newSourceString) {
               yield* Console.log(
-                `  ${styled.dim('megarepo.json')}  ${currentRef} ${styled.dim('→')} ${newRef}`,
+                `  ${styled.dim('megarepo.json')}  ${sourceString} ${styled.dim('→')} ${newSourceString}`,
               )
             }
 

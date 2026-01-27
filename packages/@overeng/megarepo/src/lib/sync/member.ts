@@ -447,6 +447,24 @@ export const syncMember = ({
       }
     }
 
+    // In dry-run mode, validate that the ref exists before reporting success
+    // Uses hybrid approach: check local bare repo if exists, otherwise query remote
+    if (dryRun && targetCommit === undefined && !isCommitSha(targetRef)) {
+      const refValidation = yield* Git.validateRefExists({
+        ref: targetRef,
+        bareRepoPath: bareExists ? bareRepoPath : undefined,
+        bareExists,
+        cloneUrl,
+      })
+      if (!refValidation.exists) {
+        return {
+          name,
+          status: 'error',
+          message: `Ref '${targetRef}' not found\n  hint: Check available refs with: git ls-remote --refs ${cloneUrl}`,
+        } satisfies MemberSyncResult
+      }
+    }
+
     // Resolve ref to commit if not already known
     // Use actual ref type from local repo query for accurate classification
     let actualRefType: RefType = classifyRef(targetRef) // fallback to heuristic

@@ -593,6 +593,47 @@ export const queryLocalRefType = (args: { repoPath: string; ref: string }) =>
     return { type: 'unknown' as const, commit: '' }
   })
 
+/**
+ * Validate that a ref exists, using hybrid approach:
+ * - If bare repo exists locally, check there (fast, no network)
+ * - If bare repo doesn't exist, query remote via ls-remote (accurate for new repos)
+ *
+ * @returns Object with `exists` boolean and optional `type` ('branch' | 'tag' | 'commit')
+ */
+export const validateRefExists = (args: {
+  ref: string
+  bareRepoPath: string | undefined
+  bareExists: boolean
+  cloneUrl: string
+}) =>
+  Effect.gen(function* () {
+    const { ref, bareRepoPath, bareExists, cloneUrl } = args
+
+    // If it looks like a commit SHA, we can't validate without the repo
+    // Just assume it's valid - it will fail later if not
+    if (/^[0-9a-f]{40}$/i.test(ref)) {
+      return { exists: true, type: 'commit' as const }
+    }
+
+    if (bareExists && bareRepoPath !== undefined) {
+      // Check locally (fast path)
+      const localResult = yield* queryLocalRefType({ repoPath: bareRepoPath, ref })
+      if (localResult.type !== 'unknown') {
+        return { exists: true, type: localResult.type }
+      }
+      // Ref not found locally - could be a new remote branch
+      // Fall through to remote check
+    }
+
+    // Check remote (slower but accurate for new repos or refs)
+    const remoteResult = yield* queryRemoteRefType({ url: cloneUrl, ref })
+    if (remoteResult.type !== 'unknown') {
+      return { exists: true, type: remoteResult.type }
+    }
+
+    return { exists: false, type: undefined }
+  })
+
 // =============================================================================
 // Error Message Interpretation
 // =============================================================================
