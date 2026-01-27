@@ -36,6 +36,37 @@ packages:
   - ../../repos/effect-utils/packages/@overeng/*
 ```
 
+### Minimal Workspaces for Nix Builds
+
+For packages built with Nix (`mkPnpmCli`), use **minimal workspaces** that only include actual dependencies, not `../*`. This is required because:
+
+1. `fetchPnpmDeps` creates lockfiles with all importers
+2. Wide patterns like `../*` include unneeded sibling packages
+3. Nix sandbox can't write to sibling directories during install
+
+**Pattern for Nix-built CLIs:**
+
+```typescript
+// packages/@overeng/genie/pnpm-workspace.yaml.genie.ts
+import { pnpmWorkspace } from '../../../genie/internal.ts'
+
+// Only include actual workspace deps, not ../*
+export default pnpmWorkspace('../utils')
+```
+
+**Standalone packages (no workspace deps):**
+
+```typescript
+// packages/@overeng/utils/pnpm-workspace.yaml.genie.ts
+// Utils has no workspace deps - standalone package
+export default {
+  data: { packages: ['.'] },
+  stringify: () => `packages:\n  - .\n`,
+}
+```
+
+After changing workspace config, regenerate lockfile: `cd <package> && pnpm install`
+
 ### Genie Integration
 
 Workspace files are generated via genie using `pnpmWorkspace()`:
@@ -85,9 +116,10 @@ pnpm install
 
 ### PNPM-02: TypeScript type inference with `enableGlobalVirtualStore`
 
-> **Status: SOLVED** - Use TypeScript `paths` mapping
+> **Status: WORKAROUND IN PLACE** - May be removable with `workspace:*`
 
-Add to `tsconfig.json`:
+When using `enableGlobalVirtualStore`, packages symlink to the global pnpm store, which can break TypeScript's ability to resolve `@types/react`. The workaround adds a `paths` mapping in `tsconfig.json`:
+
 ```json
 {
   "compilerOptions": {
@@ -97,6 +129,11 @@ Add to `tsconfig.json`:
   }
 }
 ```
+
+**TODO:** Test if this workaround is still needed after migration to `workspace:*` protocol. With workspace symlinks, dependencies may resolve correctly without `enableGlobalVirtualStore`. To test:
+1. Remove `npm_config_enable_global_virtual_store=true` from pnpm install commands
+2. Remove `reactTypesPathWorkaround` from tsconfigs
+3. Run full TypeScript builds and check for TS2742 errors
 
 ## Future: Switch to Bun
 

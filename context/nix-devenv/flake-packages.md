@@ -50,22 +50,54 @@ inputs = {
 
 For building Bun-compiled TypeScript CLIs with `mkBunCli`, see [bun-cli-build](../bun-cli-build/README.md).
 
-## Exposing Packages to Devenv
+## CLI Pattern: Source for Dev, Nix for CI
 
-Devenv accesses flake packages via inputs:
+We use a hybrid approach for CLIs:
+
+| Context | Method | Pros |
+|---------|--------|------|
+| **Development** | `mkSourceCli` | Fast startup, no hash management |
+| **CI/Releases** | Nix packages (`.#genie`) | Hermetic, reproducible |
+
+### Source-based CLIs for Devenv
+
+Use `mkSourceCli` with the `root` parameter to bake in the effect-utils path:
 
 ```nix
 # devenv.nix
 { pkgs, inputs, ... }:
 let
-  system = pkgs.stdenv.hostPlatform.system;
+  effectUtils = inputs.effect-utils;
+  effectUtilsRoot = effectUtils.outPath;
+  mkSourceCli = effectUtils.lib.mkSourceCli { inherit pkgs; };
 in {
   packages = [
-    inputs.self.packages.${system}.my-cli
-    inputs.effect-utils.packages.${system}.genie
+    (mkSourceCli { name = "genie"; entry = "packages/@overeng/genie/src/build/mod.ts"; root = effectUtilsRoot; })
+    (mkSourceCli { name = "mr"; entry = "packages/@overeng/megarepo/bin/mr.ts"; root = effectUtilsRoot; })
   ];
 }
 ```
+
+The `root` parameter bakes in the path at Nix eval time, eliminating runtime environment variable dependencies.
+
+### Nix Packages for CI
+
+For CI builds and releases, use the pre-built Nix packages:
+
+```nix
+# devenv.nix (CI mode - not recommended for dev)
+{ pkgs, inputs, ... }:
+let
+  system = pkgs.stdenv.hostPlatform.system;
+in {
+  packages = [
+    inputs.effect-utils.packages.${system}.genie
+    inputs.effect-utils.packages.${system}.megarepo
+  ];
+}
+```
+
+**Note:** Nix packages require hash management. When deps change, run `dt nix:hash` to update hashes. For development, prefer source-based CLIs to avoid this overhead.
 
 ## Local Overrides
 

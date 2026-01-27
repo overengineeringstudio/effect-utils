@@ -10,7 +10,7 @@
 
 import {
   Command,
-  CommandExecutor,
+  type CommandExecutor,
   FileSystem,
   type Error as PlatformError,
 } from '@effect/platform'
@@ -148,7 +148,7 @@ const getFlakeRefFromLocked = (
     const url = locked['url']
     if (typeof url === 'string' && url.includes('github.com')) {
       const match = url.match(/github\.com[/:]([^/]+)\/([^/.]+)/)
-      if (match) {
+      if (match?.[1] && match[2]) {
         return { owner: match[1], repo: match[2] }
       }
     }

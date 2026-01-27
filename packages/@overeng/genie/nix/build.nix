@@ -16,9 +16,9 @@ let
     packageDir = "packages/@overeng/genie";
     workspaceRoot = src;
     extraExcludedSourceNames = [ "context" "scripts" ];
-    pnpmDepsHash = "sha256-HRdAFE+2QvlWGG+toKsIKN5950YBl5SKgdlIqT230Zw=";
+    pnpmDepsHash = "sha256-UHz5JLKnlPObFn9p21sA0Gq8lvilQl33S3mH6mkMQ94=";
     localDeps = [
-      { dir = "packages/@overeng/utils"; hash = "sha256-tfB62tzbL1MQD6QNHfMMlvZf5d0nnBTfo/9PWijZhSA="; }
+      { dir = "packages/@overeng/utils"; hash = "sha256-MycpokWA4roGBELpRdj5CXjRdPcboktPBLoVWP55rJI="; }
     ];
     inherit gitRev;
   };

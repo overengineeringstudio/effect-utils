@@ -8,7 +8,7 @@
  * @module
  */
 
-import { OtlpTracer, Tracer } from '@effect/opentelemetry'
+import { OtlpSerialization, OtlpTracer, Tracer } from '@effect/opentelemetry'
 import { FetchHttpClient } from '@effect/platform'
 import { Effect, Layer, Schema } from 'effect'
 
@@ -152,7 +152,10 @@ export const makeOtelPlaywrightLayer = (
         url: endpoint,
         resource: { serviceName },
         exportInterval,
-      }).pipe(Layer.provideMerge(FetchHttpClient.layer))
+      }).pipe(
+        Layer.provideMerge(FetchHttpClient.layer),
+        Layer.provideMerge(OtlpSerialization.layerJson),
+      )
 
       return Layer.mergeAll(rootSpanLive, exporterLive)
     }),

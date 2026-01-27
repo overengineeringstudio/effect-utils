@@ -11,7 +11,6 @@ import {
 } from './matcher.ts'
 import {
   FlakeLock,
-  FlakeLockNode,
   GitHubLockedInput,
   GitLockedInput,
   parseLockedInput,

@@ -34,13 +34,15 @@ inputs:
 ```nix
 { pkgs, inputs, ... }:
 let
-  system = pkgs.stdenv.hostPlatform.system;
-  taskModules = inputs.effect-utils.devenvModules.tasks;
-  mkSourceCli = import ../nix/devenv-modules/lib/mk-source-cli.nix { inherit pkgs; };
+  effectUtils = inputs.effect-utils;
+  effectUtilsRoot = effectUtils.outPath;
+  # Source-based CLIs - root baked in at Nix eval time
+  mkSourceCli = effectUtils.lib.mkSourceCli { inherit pkgs; };
+  taskModules = effectUtils.devenvModules.tasks;
 in
 {
   imports = [
-    inputs.effect-utils.devenvModules.dt
+    effectUtils.devenvModules.dt
     taskModules.genie
     taskModules.megarepo
     (taskModules.pnpm { packages = [ "." ]; })
@@ -52,21 +54,27 @@ in
         "genie:run"
         "ts:build"
       ];
-      completionsCliNames = [ "genie" "mr" ];
     })
   ];
 
   packages = [
-    pkgs.nodejs_22
+    pkgs.nodejs_24
     pkgs.bun
-    (mkSourceCli { name = "genie"; entry = "packages/@overeng/genie/src/build/mod.ts"; })
-    (mkSourceCli { name = "mr"; entry = "packages/@overeng/megarepo/bin/mr.ts"; })
+    # Use root parameter to bake in effect-utils path at Nix eval time
+    (mkSourceCli { name = "genie"; entry = "packages/@overeng/genie/src/build/mod.ts"; root = effectUtilsRoot; })
+    (mkSourceCli { name = "mr"; entry = "packages/@overeng/megarepo/bin/mr.ts"; root = effectUtilsRoot; })
   ];
+
+  enterShell = ''
+    # effect-utils packages available for Node resolution
+    export NODE_PATH="${effectUtilsRoot}/packages''${NODE_PATH:+:$NODE_PATH}"
+  '';
 }
 ```
 
 See [tasks.md](./tasks/tasks.md) for available task modules.
-The source wrappers keep the CLI name stable, so `--completions` works as expected.
+
+**Note on CLI pattern**: We use source-based CLIs for development (fast, no hash management). The `root` parameter bakes in the effect-utils path at Nix eval time, eliminating the need for runtime environment variables. For CI/releases, use Nix-built packages (`.#genie`, `.#megarepo`) which provide hermetic builds.
 
 ### flake.nix
 

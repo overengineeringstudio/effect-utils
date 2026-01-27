@@ -159,6 +159,27 @@ export const syncMember = ({
         if (existingLink.replace(/\/$/, '') === resolvedPath.replace(/\/$/, '')) {
           return { name, status: 'already_synced' } satisfies MemberSyncResult
         }
+        // Path changed - check if old worktree has uncommitted changes before switching
+        if (!force && !dryRun) {
+          const worktreeStatus = yield* Git.getWorktreeStatus(existingLink).pipe(
+            Effect.catchAll(() =>
+              Effect.succeed({
+                isDirty: false,
+                hasUnpushed: false,
+                changesCount: 0,
+              }),
+            ),
+          )
+          if (worktreeStatus.isDirty || worktreeStatus.hasUnpushed) {
+            return {
+              name,
+              status: 'skipped',
+              message: worktreeStatus.isDirty
+                ? `path changed but old worktree has ${worktreeStatus.changesCount} uncommitted changes (use --force to override)`
+                : 'path changed but old worktree has unpushed commits (use --force to override)',
+            } satisfies MemberSyncResult
+          }
+        }
         if (!dryRun) {
           yield* fs.remove(memberPathNormalized)
         }
@@ -243,29 +264,62 @@ export const syncMember = ({
       .pipe(Effect.catchAll(() => Effect.succeed(null)))
     const memberExists = currentLink !== null
 
-    // In default mode (no --pull), if member exists, just read current state for lock
+    // In default mode (no --pull), if member exists, check if symlink points to correct ref
     if (memberExists && !pull && !frozen) {
-      // Read current HEAD from the worktree
-      const currentCommit = yield* Git.getCurrentCommit(memberPathNormalized).pipe(
-        Effect.catchAll(() => Effect.succeed(undefined)),
-      )
-      const currentBranchOpt = yield* Git.getCurrentBranch(memberPathNormalized).pipe(
-        Effect.catchAll(() => Effect.succeed(Option.none<string>())),
-      )
-      const currentBranch = Option.getOrUndefined(currentBranchOpt)
+      // Compute expected worktree path based on configured ref
+      // Uses heuristic ref classification since we haven't queried the repo yet
+      const expectedWorktreePath = store.getWorktreePath({ source, ref: targetRef })
+      const currentLinkNormalized = currentLink?.replace(/\/$/, '')
+      const expectedPathNormalized = expectedWorktreePath.replace(/\/$/, '')
 
-      // Determine if lock needs updating
-      const previousCommit = lockedMember?.commit
-      const lockUpdated = currentCommit !== undefined && currentCommit !== previousCommit
+      // If symlink points to correct location, just read current state for lock
+      if (currentLinkNormalized === expectedPathNormalized) {
+        // Read current HEAD from the worktree
+        const currentCommit = yield* Git.getCurrentCommit(memberPathNormalized).pipe(
+          Effect.catchAll(() => Effect.succeed(undefined)),
+        )
+        const currentBranchOpt = yield* Git.getCurrentBranch(memberPathNormalized).pipe(
+          Effect.catchAll(() => Effect.succeed(Option.none<string>())),
+        )
+        const currentBranch = Option.getOrUndefined(currentBranchOpt)
 
-      return {
-        name,
-        status: lockUpdated ? 'locked' : 'already_synced',
-        commit: currentCommit,
-        previousCommit: lockUpdated ? previousCommit : undefined,
-        ref: currentBranch ?? lockedMember?.ref ?? targetRef,
-        lockUpdated,
-      } satisfies MemberSyncResult
+        // Determine if lock needs updating
+        const previousCommit = lockedMember?.commit
+        const lockUpdated = currentCommit !== undefined && currentCommit !== previousCommit
+
+        return {
+          name,
+          status: lockUpdated ? 'locked' : 'already_synced',
+          commit: currentCommit,
+          previousCommit: lockUpdated ? previousCommit : undefined,
+          ref: currentBranch ?? lockedMember?.ref ?? targetRef,
+          lockUpdated,
+        } satisfies MemberSyncResult
+      }
+
+      // Symlink points to wrong location (ref changed in config)
+      // Check if old worktree has uncommitted changes before switching
+      if (!force && !dryRun) {
+        const worktreeStatus = yield* Git.getWorktreeStatus(currentLink).pipe(
+          Effect.catchAll(() =>
+            Effect.succeed({
+              isDirty: false,
+              hasUnpushed: false,
+              changesCount: 0,
+            }),
+          ),
+        )
+        if (worktreeStatus.isDirty || worktreeStatus.hasUnpushed) {
+          return {
+            name,
+            status: 'skipped',
+            message: worktreeStatus.isDirty
+              ? `ref changed but old worktree has ${worktreeStatus.changesCount} uncommitted changes (use --force to override)`
+              : 'ref changed but old worktree has unpushed commits (use --force to override)',
+          } satisfies MemberSyncResult
+        }
+      }
+      // Fall through to update symlink to new ref
     }
 
     // For --pull mode, check if worktree is dirty before making changes

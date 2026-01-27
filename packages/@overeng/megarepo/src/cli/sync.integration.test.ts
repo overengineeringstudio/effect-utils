@@ -886,6 +886,318 @@ describe('default sync mode (no --pull)', () => {
         }),
       ))
   })
+
+  describe('ref change detection', () => {
+    it('should update symlink when ref changes in config', () =>
+      withTestCtx(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
+
+          // Create temp directory
+          const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+
+          // Create a local repo with two branches
+          const localRepoPath = yield* createRepo({
+            basePath: tmpDir,
+            fixture: {
+              name: 'my-lib',
+              files: { 'package.json': '{"name": "my-lib"}' },
+            },
+          })
+
+          // Create a feature branch with different content
+          yield* runGitCommand(localRepoPath, 'checkout', '-b', 'feature-branch')
+          yield* fs.writeFileString(
+            EffectPath.ops.join(localRepoPath, EffectPath.unsafe.relativeFile('feature.txt')),
+            'feature content\n',
+          )
+          yield* addCommit({ repoPath: localRepoPath, message: 'Add feature' })
+
+          // Go back to main branch
+          yield* runGitCommand(localRepoPath, 'checkout', 'main').pipe(
+            Effect.catchAll(() => runGitCommand(localRepoPath, 'checkout', 'master')),
+          )
+
+          // Create workspace pointing to main branch (no #ref means default branch)
+          const workspacePath = EffectPath.ops.join(
+            tmpDir,
+            EffectPath.unsafe.relativeDir('workspace/'),
+          )
+          yield* fs.makeDirectory(workspacePath, { recursive: true })
+          yield* initGitRepo(workspacePath)
+
+          // Create initial config pointing to the local repo (uses default branch)
+          const initialConfig: typeof MegarepoConfig.Type = {
+            members: {
+              'my-lib': localRepoPath,
+            },
+          }
+          const configPath = EffectPath.ops.join(
+            workspacePath,
+            EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+          )
+          yield* fs.writeFileString(
+            configPath,
+            (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(initialConfig)) +
+              '\n',
+          )
+          yield* addCommit({ repoPath: workspacePath, message: 'Initialize megarepo' })
+
+          // First sync to create symlink
+          yield* runSyncCommand({ cwd: workspacePath, args: [] })
+
+          // Verify symlink exists
+          const symlinkPath = EffectPath.ops.join(
+            workspacePath,
+            EffectPath.unsafe.relativeFile('repos/my-lib'),
+          )
+          const initialLink = yield* fs.readLink(symlinkPath)
+          expect(initialLink).toBeDefined()
+
+          // Verify feature.txt does NOT exist (we're on main branch)
+          const featureFileOnMain = yield* fs
+            .exists(
+              EffectPath.ops.join(
+                workspacePath,
+                EffectPath.unsafe.relativeFile('repos/my-lib/feature.txt'),
+              ),
+            )
+            .pipe(Effect.catchAll(() => Effect.succeed(false)))
+          expect(featureFileOnMain).toBe(false)
+
+          // Now update config to point to feature-branch
+          // For local paths, we can't use #ref syntax, so this test demonstrates the concept
+          // with a simulated path change that would trigger symlink update
+          // In practice, this would be tested with remote repos where #ref syntax works
+
+          // For local paths, changing the path itself triggers a symlink update
+          // Let's verify the symlink update mechanism works by pointing to a different path
+          const featureBranchPath = yield* createRepo({
+            basePath: tmpDir,
+            fixture: {
+              name: 'my-lib-feature',
+              files: {
+                'package.json': '{"name": "my-lib"}',
+                'feature.txt': 'feature content\n',
+              },
+            },
+          })
+
+          // Update config to point to the feature branch path
+          const updatedConfig: typeof MegarepoConfig.Type = {
+            members: {
+              'my-lib': featureBranchPath,
+            },
+          }
+          yield* fs.writeFileString(
+            configPath,
+            (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(updatedConfig)) +
+              '\n',
+          )
+
+          // Sync again - should update symlink
+          const result = yield* runSyncCommand({
+            cwd: workspacePath,
+            args: ['--json'],
+          })
+          const json = JSON.parse(result.stdout.trim()) as {
+            results: Array<{ name: string; status: string }>
+          }
+
+          // Should have synced (updated symlink)
+          expect(json.results).toHaveLength(1)
+          expect(json.results[0]?.status).toBe('synced')
+
+          // Verify symlink now points to new location
+          const updatedLink = yield* fs.readLink(symlinkPath)
+          expect(updatedLink).not.toBe(initialLink)
+          expect(updatedLink.replace(/\/$/, '')).toBe(featureBranchPath.replace(/\/$/, ''))
+
+          // Verify feature.txt now exists
+          const featureFileExists = yield* fs.exists(
+            EffectPath.ops.join(
+              workspacePath,
+              EffectPath.unsafe.relativeFile('repos/my-lib/feature.txt'),
+            ),
+          )
+          expect(featureFileExists).toBe(true)
+        }),
+      ))
+
+    it('should skip ref change if old worktree has uncommitted changes', () =>
+      withTestCtx(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
+
+          // Create temp directory
+          const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+
+          // Create two local repos (simulating two branches)
+          const mainRepoPath = yield* createRepo({
+            basePath: tmpDir,
+            fixture: {
+              name: 'my-lib-main',
+              files: { 'package.json': '{"name": "my-lib"}' },
+            },
+          })
+
+          const featureRepoPath = yield* createRepo({
+            basePath: tmpDir,
+            fixture: {
+              name: 'my-lib-feature',
+              files: {
+                'package.json': '{"name": "my-lib"}',
+                'feature.txt': 'feature content\n',
+              },
+            },
+          })
+
+          // Create workspace pointing to main
+          const workspacePath = EffectPath.ops.join(
+            tmpDir,
+            EffectPath.unsafe.relativeDir('workspace/'),
+          )
+          yield* fs.makeDirectory(workspacePath, { recursive: true })
+          yield* initGitRepo(workspacePath)
+
+          const configPath = EffectPath.ops.join(
+            workspacePath,
+            EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+          )
+          yield* fs.writeFileString(
+            configPath,
+            (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))({
+              members: { 'my-lib': mainRepoPath },
+            })) + '\n',
+          )
+          yield* addCommit({ repoPath: workspacePath, message: 'Initialize megarepo' })
+
+          // First sync to create symlink
+          yield* runSyncCommand({ cwd: workspacePath, args: [] })
+
+          // Add dirty changes to the main repo (simulating work in progress)
+          yield* fs.writeFileString(
+            EffectPath.ops.join(mainRepoPath, EffectPath.unsafe.relativeFile('dirty.txt')),
+            'uncommitted work\n',
+          )
+
+          // Update config to point to feature branch
+          yield* fs.writeFileString(
+            configPath,
+            (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))({
+              members: { 'my-lib': featureRepoPath },
+            })) + '\n',
+          )
+
+          // Sync again - should skip because old worktree is dirty
+          const result = yield* runSyncCommand({
+            cwd: workspacePath,
+            args: ['--json'],
+          })
+          const json = JSON.parse(result.stdout.trim()) as {
+            results: Array<{ name: string; status: string; message?: string }>
+          }
+
+          // Should have skipped due to dirty worktree
+          expect(json.results).toHaveLength(1)
+          expect(json.results[0]?.status).toBe('skipped')
+          expect(json.results[0]?.message).toContain('uncommitted')
+
+          // Verify symlink still points to main
+          const symlinkPath = EffectPath.ops.join(
+            workspacePath,
+            EffectPath.unsafe.relativeFile('repos/my-lib'),
+          )
+          const currentLink = yield* fs.readLink(symlinkPath)
+          expect(currentLink.replace(/\/$/, '')).toBe(mainRepoPath.replace(/\/$/, ''))
+        }),
+      ))
+
+    it('should allow ref change with --force even if old worktree is dirty', () =>
+      withTestCtx(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
+
+          // Create temp directory
+          const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+
+          // Create two local repos
+          const mainRepoPath = yield* createRepo({
+            basePath: tmpDir,
+            fixture: {
+              name: 'my-lib-main',
+              files: { 'package.json': '{"name": "my-lib"}' },
+            },
+          })
+
+          const featureRepoPath = yield* createRepo({
+            basePath: tmpDir,
+            fixture: {
+              name: 'my-lib-feature',
+              files: { 'package.json': '{"name": "my-lib"}', 'feature.txt': 'feature\n' },
+            },
+          })
+
+          // Create workspace
+          const workspacePath = EffectPath.ops.join(
+            tmpDir,
+            EffectPath.unsafe.relativeDir('workspace/'),
+          )
+          yield* fs.makeDirectory(workspacePath, { recursive: true })
+          yield* initGitRepo(workspacePath)
+
+          const configPath = EffectPath.ops.join(
+            workspacePath,
+            EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+          )
+          yield* fs.writeFileString(
+            configPath,
+            (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))({
+              members: { 'my-lib': mainRepoPath },
+            })) + '\n',
+          )
+          yield* addCommit({ repoPath: workspacePath, message: 'Initialize megarepo' })
+
+          // First sync
+          yield* runSyncCommand({ cwd: workspacePath, args: [] })
+
+          // Add dirty changes
+          yield* fs.writeFileString(
+            EffectPath.ops.join(mainRepoPath, EffectPath.unsafe.relativeFile('dirty.txt')),
+            'uncommitted work\n',
+          )
+
+          // Update config
+          yield* fs.writeFileString(
+            configPath,
+            (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))({
+              members: { 'my-lib': featureRepoPath },
+            })) + '\n',
+          )
+
+          // Sync with --force - should succeed
+          const result = yield* runSyncCommand({
+            cwd: workspacePath,
+            args: ['--json', '--force'],
+          })
+          const json = JSON.parse(result.stdout.trim()) as {
+            results: Array<{ name: string; status: string }>
+          }
+
+          // Should have synced despite dirty worktree
+          expect(json.results).toHaveLength(1)
+          expect(json.results[0]?.status).toBe('synced')
+
+          // Verify symlink now points to feature
+          const symlinkPath = EffectPath.ops.join(
+            workspacePath,
+            EffectPath.unsafe.relativeFile('repos/my-lib'),
+          )
+          const currentLink = yield* fs.readLink(symlinkPath)
+          expect(currentLink.replace(/\/$/, '')).toBe(featureRepoPath.replace(/\/$/, ''))
+        }),
+      ))
+  })
 })
 
 // =============================================================================

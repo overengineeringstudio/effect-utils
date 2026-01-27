@@ -98,6 +98,12 @@
         import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
 
       # Convenience helper for bundling the common genie/megarepo CLIs.
+      # Use this for releases/CI where hermetic Nix builds are needed.
       lib.mkCliPackages = import ./nix/workspace-tools/lib/mk-cli-packages.nix;
+
+      # Source-based CLI wrapper for devenv shells.
+      # Use this for development - no hash management needed.
+      # Consuming repos should set WORKSPACE_ROOT to effect-utils path in enterShell.
+      lib.mkSourceCli = import ./nix/devenv-modules/lib/mk-source-cli.nix;
     };
 }
