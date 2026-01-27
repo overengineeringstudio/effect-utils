@@ -50,9 +50,13 @@ export const pinCommand = Cli.Command.make(
       Cli.Options.withDescription('Ref to switch to (branch, tag, or commit SHA)'),
       Cli.Options.optional,
     ),
+    dryRun: Cli.Options.boolean('dry-run').pipe(
+      Cli.Options.withDescription('Show what would be changed without making changes'),
+      Cli.Options.withDefault(false),
+    ),
     json: jsonOption,
   },
-  ({ member, checkout, json }) =>
+  ({ member, checkout, dryRun, json }) =>
     Effect.gen(function* () {
       const cwd = yield* Cwd
       const root = yield* findMegarepoRoot(cwd)
@@ -144,8 +148,97 @@ export const pinCommand = Cli.Command.make(
       if (Option.isSome(checkout)) {
         const newRef = checkout.value
 
-        // Update megarepo.json with the new ref
+        // Get current ref from source string for display (source is guaranteed to be remote at this point)
+        const currentRef = source.type !== 'path' ? (source.ref ?? 'main') : 'main'
+
+        // Calculate new source string
         const newSourceString = buildSourceStringWithRef(sourceString, newRef)
+        const newSource = parseSourceString(newSourceString)!
+
+        // Get paths for display
+        const bareRepoPath = store.getBareRepoPath(newSource)
+        const bareExists = yield* store.hasBareRepo(newSource)
+        const refType = classifyRef(newRef)
+
+        // Get worktree path for the new ref
+        const worktreePath = store.getWorktreePath({
+          source: newSource,
+          ref: newRef,
+          refType,
+        })
+
+        // Get current symlink target
+        const currentLink = yield* fs
+          .readLink(memberPathNormalized)
+          .pipe(Effect.catchAll(() => Effect.succeed(null)))
+
+        // Check if worktree exists
+        const worktreeExists = yield* store.hasWorktree({
+          source: newSource,
+          ref: newRef,
+          refType,
+        })
+
+        // Get current lock info
+        const currentLockEntry = Option.getOrUndefined(getLockedMember({ lockFile, memberName: member }))
+        const currentLockRef = currentLockEntry?.ref ?? currentRef
+        const currentLockPinned = currentLockEntry?.pinned ?? false
+
+        // For dry-run, show what would happen
+        if (dryRun) {
+          if (json) {
+            console.log(
+              JSON.stringify({
+                status: 'dry_run',
+                member,
+                currentRef: currentLockRef,
+                newRef,
+                wouldClone: !bareExists,
+                wouldCreateWorktree: !worktreeExists,
+              }),
+            )
+          } else {
+            yield* Console.log(`Would pin ${styled.bold(member)} to ${styled.cyan(newRef)}`)
+            yield* Console.log('')
+
+            // megarepo.json change
+            if (currentRef !== newRef) {
+              yield* Console.log(
+                `  ${styled.dim('megarepo.json')}  ${currentRef} ${styled.dim('→')} ${newRef}`,
+              )
+            }
+
+            // symlink change
+            const shortCurrentLink = currentLink ? shortenPath(currentLink) : styled.dim('(none)')
+            const shortNewLink = shortenPath(worktreePath.replace(/\/$/, ''))
+            yield* Console.log(
+              `  ${styled.dim('symlink')}        ${shortCurrentLink} ${styled.dim('→')} ${shortNewLink}`,
+            )
+
+            // lock file change
+            const lockChanges: string[] = []
+            if (currentLockRef !== newRef) lockChanges.push(`ref: ${currentLockRef} → ${newRef}`)
+            if (!currentLockPinned) lockChanges.push('pinned: true')
+            if (lockChanges.length > 0) {
+              yield* Console.log(`  ${styled.dim('lock')}           ${lockChanges.join(', ')}`)
+            }
+
+            // Additional actions
+            if (!bareExists) {
+              yield* Console.log('')
+              yield* Console.log(styled.dim('  + would clone bare repo'))
+            }
+            if (!worktreeExists) {
+              yield* Console.log(styled.dim('  + would create worktree'))
+            }
+
+            yield* Console.log('')
+            yield* Console.log(styled.dim('No changes made (dry run)'))
+          }
+          return
+        }
+
+        // Actually perform the changes
         config = {
           ...config,
           members: {
@@ -163,10 +256,6 @@ export const pinCommand = Cli.Command.make(
         // Re-parse the source with the new ref
         sourceString = newSourceString
         source = parseSourceString(newSourceString)!
-
-        // Ensure bare repo exists
-        const bareRepoPath = store.getBareRepoPath(source)
-        const bareExists = yield* store.hasBareRepo(source)
 
         if (!bareExists) {
           // Clone the bare repo
@@ -189,8 +278,7 @@ export const pinCommand = Cli.Command.make(
           )
         }
 
-        // Determine ref type and resolve commit
-        const refType = classifyRef(newRef)
+        // Resolve commit
         let targetCommit: string
 
         if (refType === 'commit') {
@@ -208,20 +296,6 @@ export const pinCommand = Cli.Command.make(
             ),
           )
         }
-
-        // Get worktree path for the new ref
-        const worktreePath = store.getWorktreePath({
-          source,
-          ref: newRef,
-          refType,
-        })
-
-        // Create worktree if it doesn't exist
-        const worktreeExists = yield* store.hasWorktree({
-          source,
-          ref: newRef,
-          refType,
-        })
 
         if (!worktreeExists) {
           // Ensure parent directory exists
@@ -258,10 +332,6 @@ export const pinCommand = Cli.Command.make(
         }
 
         // Update the symlink
-        const currentLink = yield* fs
-          .readLink(memberPathNormalized)
-          .pipe(Effect.catchAll(() => Effect.succeed(null)))
-
         // Ensure repos directory exists
         const reposDir = EffectPath.ops.parent(memberPath)
         if (reposDir !== undefined) {
@@ -344,30 +414,82 @@ export const pinCommand = Cli.Command.make(
         return
       }
 
-      // Pin the member at current commit
-      lockFile = pinMember({ lockFile, memberName: member })
-      yield* writeLockFile({ lockPath, lockFile })
-
-      // Update the symlink to point to a commit-based worktree path
-      // This ensures the pinned member stays at the exact commit
+      // Get paths for display and dry-run
       const commitWorktreePath = store.getWorktreePath({
         source,
         ref: lockedMember.commit,
         refType: 'commit',
       })
 
-      // Check if worktree exists at commit path
       const commitWorktreeExists = yield* store.hasWorktree({
         source,
         ref: lockedMember.commit,
         refType: 'commit',
       })
 
+      const currentLink = yield* fs
+        .readLink(memberPathNormalized)
+        .pipe(Effect.catchAll(() => Effect.succeed(null)))
+
+      const bareRepoPath = store.getBareRepoPath(source)
+      const bareExists = yield* store.hasBareRepo(source)
+
+      // For dry-run, show what would happen
+      if (dryRun) {
+        if (json) {
+          console.log(
+            JSON.stringify({
+              status: 'dry_run',
+              member,
+              commit: lockedMember.commit,
+              wouldCreateWorktree: !commitWorktreeExists && bareExists,
+            }),
+          )
+        } else {
+          yield* Console.log(
+            `Would pin ${styled.bold(member)} at ${styled.dim(lockedMember.commit.slice(0, 7))}`,
+          )
+          yield* Console.log('')
+
+          // lock file change
+          yield* Console.log(`  ${styled.dim('lock')}           pinned: false → true`)
+
+          // symlink change (if would change)
+          const wouldChangeSymlink =
+            currentLink !== null &&
+            currentLink.replace(/\/$/, '') !== commitWorktreePath.replace(/\/$/, '')
+          if (wouldChangeSymlink) {
+            const shortCurrentLink = shortenPath(currentLink)
+            const shortNewLink = shortenPath(commitWorktreePath.replace(/\/$/, ''))
+            yield* Console.log(
+              `  ${styled.dim('symlink')}        ${shortCurrentLink} ${styled.dim('→')} ${shortNewLink}`,
+            )
+          }
+
+          // Additional actions
+          if (!commitWorktreeExists) {
+            yield* Console.log('')
+            if (bareExists) {
+              yield* Console.log(styled.dim('  + would create commit worktree'))
+            } else {
+              yield* Console.log(
+                styled.yellow('  ! commit worktree not available (repo not in store)'),
+              )
+            }
+          }
+
+          yield* Console.log('')
+          yield* Console.log(styled.dim('No changes made (dry run)'))
+        }
+        return
+      }
+
+      // Actually perform the changes
+      lockFile = pinMember({ lockFile, memberName: member })
+      yield* writeLockFile({ lockPath, lockFile })
+
       // If the commit worktree doesn't exist, create it
       if (!commitWorktreeExists) {
-        const bareRepoPath = store.getBareRepoPath(source)
-        const bareExists = yield* store.hasBareRepo(source)
-
         if (!bareExists) {
           // Bare repo doesn't exist, can't create worktree - warn user
           if (!json) {
@@ -402,9 +524,6 @@ export const pinCommand = Cli.Command.make(
 
       if (worktreeReady) {
         // Update the symlink
-        const currentLink = yield* fs
-          .readLink(memberPathNormalized)
-          .pipe(Effect.catchAll(() => Effect.succeed(null)))
         if (currentLink !== null && currentLink.replace(/\/$/, '') !== commitWorktreePath.replace(/\/$/, '')) {
           yield* fs.remove(memberPathNormalized)
           yield* fs.symlink(commitWorktreePath.replace(/\/$/, ''), memberPathNormalized)
@@ -443,6 +562,24 @@ const getCloneUrl = (source: ReturnType<typeof parseSourceString>): string | und
     case 'path':
       return undefined
   }
+}
+
+/**
+ * Shorten a path for display by replacing home directory with ~
+ * and keeping only the last few path components if too long
+ */
+const shortenPath = (path: string): string => {
+  const home = process.env['HOME'] ?? ''
+  let shortened = path
+  if (home && shortened.startsWith(home)) {
+    shortened = '~' + shortened.slice(home.length)
+  }
+  // If still too long, show .../<last-3-components>
+  const parts = shortened.split('/')
+  if (parts.length > 5) {
+    shortened = '.../' + parts.slice(-3).join('/')
+  }
+  return shortened
 }
 
 /**

@@ -21,7 +21,8 @@ const baseSteps = [
   },
   {
     name: 'Install devenv',
-    run: 'nix profile install nixpkgs#devenv',
+    // Install devenv from the commit pinned in devenv.lock to ensure version consistency
+    run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)',
     shell: 'bash',
   },
   { run: 'bun install --frozen-lockfile' },

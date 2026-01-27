@@ -24,7 +24,7 @@ jobs:
         with:
           name: devenv
       - name: Install devenv
-        run: 'nix profile install nixpkgs#devenv'
+        run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
         shell: bash
       - run: bun install --frozen-lockfile
       - name: Type check
@@ -43,7 +43,7 @@ jobs:
         with:
           name: devenv
       - name: Install devenv
-        run: 'nix profile install nixpkgs#devenv'
+        run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
         shell: bash
       - run: bun install --frozen-lockfile
       - name: Format + lint
@@ -62,7 +62,7 @@ jobs:
         with:
           name: devenv
       - name: Install devenv
-        run: 'nix profile install nixpkgs#devenv'
+        run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
         shell: bash
       - run: bun install --frozen-lockfile
       - name: Unit tests
@@ -81,7 +81,7 @@ jobs:
         with:
           name: devenv
       - name: Install devenv
-        run: 'nix profile install nixpkgs#devenv'
+        run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
         shell: bash
       - run: bun install --frozen-lockfile
       - name: Nix hash check
