@@ -21,22 +21,14 @@
 # ---
 # How we avoid TypeScript TS2742 errors:
 #
-# Two-part approach:
+# We use `workspace:*` protocol with per-package pnpm-workspace.yaml files.
+# Each package declares only its direct workspace dependencies, which ensures
+# TypeScript resolves types correctly without additional workarounds.
 #
-# 1. PRIMARY: Use `link:` protocol for internal packages
-#    Internal deps use link: instead of file: in package.json (configured via genie).
-#    link: creates a symlink to the source directory, so the package uses its OWN node_modules.
-#    This matches how published packages behave and avoids TS2742 errors.
-#
-# 2. BACKUP: `enableGlobalVirtualStore` for remaining file: deps
-#    Some locations (docs, tests) still use file:. For these, we use pnpm's
-#    enableGlobalVirtualStore which makes all packages symlink to a central store
-#    at ~/Library/pnpm/store/v10/links/. Dependencies with identical graphs
-#    resolve to the exact same path, eliminating TS2742 errors.
+# Note: `enableGlobalVirtualStore` was previously used but is no longer needed
+# with the `workspace:*` protocol approach. See PNPM-02 in context/workarounds/pnpm-issues.md
 #
 # IMPORTANT: Installs run SEQUENTIALLY to avoid pnpm store corruption.
-# Parallel pnpm installs with enableGlobalVirtualStore cause race conditions.
-# See: https://github.com/pnpm/pnpm/issues/10232
 # See: context/workarounds/pnpm-issues.md for full details.
 #
 # Shared caching rules live in ./lib/cache.nix (task-specific details below).
@@ -70,9 +62,8 @@ let
     in
     sanitize final;
 
-  # Build sequential dependency chain to avoid parallel pnpm installs
-  # which cause store corruption with enableGlobalVirtualStore.
-  # See: https://github.com/pnpm/pnpm/issues/10232
+  # Build sequential dependency chain for consistent installs.
+  # Sequential installs ensure genie:run completes first (generates pnpm-workspace.yaml files).
   mkInstallTask = idx: path:
     let
       prevTask = if idx == 0
@@ -81,17 +72,13 @@ let
     in {
       "pnpm:install:${toName path}" = {
         description = "Install dependencies for ${toName path}";
-        # Use global virtual store to ensure all packages resolve dependencies to the same path.
-        # This prevents TypeScript TS2742 errors when packages depend on each other via link: protocol.
-        # Without this, each package gets its own .pnpm directory with different paths for the same deps.
-        # NOTE: Use --config.confirmModulesPurge=false to avoid TTY prompts.
-        # CI=true would disable GVS (see pnpm docs: "Default: false (always false in CI)").
+        # NOTE: Use --config.confirmModulesPurge=false to avoid TTY prompts in non-interactive mode.
         exec = ''
           set -euo pipefail
           mkdir -p "${cacheRoot}"
           hash_file="${cacheRoot}/${toName path}.hash"
 
-          npm_config_enable_global_virtual_store=true pnpm install --config.confirmModulesPurge=false
+          pnpm install --config.confirmModulesPurge=false
 
           if command -v sha256sum >/dev/null 2>&1; then
             hash_cmd="sha256sum"

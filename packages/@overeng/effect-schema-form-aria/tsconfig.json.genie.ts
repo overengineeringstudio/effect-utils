@@ -3,7 +3,6 @@ import {
   domLib,
   packageTsconfigCompilerOptions,
   reactJsx,
-  reactTypesPathWorkaround,
 } from '../../../genie/internal.ts'
 import { tsconfigJson } from '../genie/src/runtime/mod.ts'
 
@@ -12,7 +11,6 @@ export default tsconfigJson({
     ...baseTsconfigCompilerOptions,
     ...packageTsconfigCompilerOptions,
     ...reactJsx,
-    ...reactTypesPathWorkaround,
     lib: [...domLib],
   },
   include: ['src/**/*'],

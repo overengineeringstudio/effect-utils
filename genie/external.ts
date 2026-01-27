@@ -199,23 +199,6 @@ export const domLib = ['ES2024', 'DOM', 'DOM.Iterable'] as const
 /** React JSX configuration for React packages */
 export const reactJsx = { jsx: 'react-jsx' as const }
 
-/**
- * TypeScript paths workaround for pnpm's enableGlobalVirtualStore.
- *
- * When using enableGlobalVirtualStore, packages are symlinked to the global pnpm store,
- * which breaks TypeScript's ability to resolve @types/react for libraries like react-aria-components.
- * This paths mapping redirects 'react' resolution to the project's @types/react.
- *
- * Note: baseUrl is not required for paths in TypeScript 5.x+
- *
- * See: context/workarounds/pnpm-issues.md for full details
- */
-export const reactTypesPathWorkaround = {
-  paths: {
-    react: ['./node_modules/@types/react'],
-  },
-} as const
-
 // =============================================================================
 // Effect Language Service Helpers
 // =============================================================================

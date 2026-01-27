@@ -87,5 +87,6 @@ Use these as concrete cleanup tasks once the corresponding Bun issues are resolv
 - **All BUN issues resolved**:
   - Remove pnpm-specific code paths in `mk-bun-cli` and `mk-bun-cli/bun-deps.nix`.
   - Remove pnpm notes from docs (`pnpm-issues.md`, bun issues header).
-  - Remove `reactTypesPathWorkaround` from tsconfigs and `genie/external.ts` (only needed for pnpm's `enableGlobalVirtualStore`).
   - Re-run `mr generate schema` if schema changes were made.
+
+Note: `reactTypesPathWorkaround` was already removed (PNPM-02 resolved with `workspace:*` protocol).

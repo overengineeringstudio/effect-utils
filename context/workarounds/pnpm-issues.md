@@ -116,24 +116,16 @@ pnpm install
 
 ### PNPM-02: TypeScript type inference with `enableGlobalVirtualStore`
 
-> **Status: WORKAROUND IN PLACE** - May be removable with `workspace:*`
+> **Status: RESOLVED** - No longer needed with `workspace:*` protocol
 
-When using `enableGlobalVirtualStore`, packages symlink to the global pnpm store, which can break TypeScript's ability to resolve `@types/react`. The workaround adds a `paths` mapping in `tsconfig.json`:
+~~When using `enableGlobalVirtualStore`, packages symlink to the global pnpm store, which can break TypeScript's ability to resolve `@types/react`.~~
 
-```json
-{
-  "compilerOptions": {
-    "paths": {
-      "react": ["./node_modules/@types/react"]
-    }
-  }
-}
-```
+**Resolution (2026-01-27):** After migrating to `workspace:*` protocol with minimal pnpm workspaces, testing confirmed that:
+- `enableGlobalVirtualStore` is no longer needed
+- `reactTypesPathWorkaround` paths mapping is no longer needed
+- No TS2742 errors occur without these workarounds
 
-**TODO:** Test if this workaround is still needed after migration to `workspace:*` protocol. With workspace symlinks, dependencies may resolve correctly without `enableGlobalVirtualStore`. To test:
-1. Remove `npm_config_enable_global_virtual_store=true` from pnpm install commands
-2. Remove `reactTypesPathWorkaround` from tsconfigs
-3. Run full TypeScript builds and check for TS2742 errors
+The `workspace:*` protocol properly resolves dependencies because each package uses its own `pnpm-workspace.yaml` that specifies only its direct workspace dependencies (see Pattern 1 in this doc).
 
 ## Future: Switch to Bun
 

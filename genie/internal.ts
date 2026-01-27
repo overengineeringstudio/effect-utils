@@ -27,7 +27,6 @@ export {
   pnpmWorkspace,
   privatePackageDefaults,
   reactJsx,
-  reactTypesPathWorkaround,
   type PatchesRegistry,
   type ScriptValue,
   type TSConfigCompilerOptions,
