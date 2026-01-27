@@ -7,11 +7,10 @@
 > **Why we want bun:**
 >
 > - Significantly faster installs (when not hitting bugs)
-> - bun's `file:` protocol already works like pnpm's `link:` (symlinks with own deps)
-> - No need for `enableGlobalVirtualStore` workaround
+> - Native TypeScript execution
+> - Better monorepo tooling
 >
-> See `pnpm-issues.md` for our current pnpm setup, or the detailed comparison gist:
-> https://gist.github.com/schickling/d05fe50fe4ffb1c2e9e48c8623579d7e
+> See `pnpm-issues.md` for our current pnpm setup.
 
 ---
 
@@ -51,7 +50,7 @@ Using `file:../path` dependencies is extremely slow (6-35+ seconds per package) 
 "@example/utils": "workspace:*"
 ```
 
-Requires setting up a root `package.json` with workspaces config.
+This aligns with our pnpm pattern - see "Bun Workspace Pattern" section below.
 
 ---
 
@@ -63,30 +62,69 @@ Requires setting up a root `package.json` with workspaces config.
 
 ---
 
-## Key insight: bun `file:` ≈ pnpm `link:`
+## Bun Workspace Pattern (Future)
 
-When comparing package managers for monorepo local dependencies:
+When we switch to bun, we'll use the same `workspace:*` protocol as pnpm, with per-package workspace declarations.
+
+### Per-Package Workspaces
+
+Each package declares its workspace scope in its own `package.json`:
+
+```json
+{
+  "name": "@livestore/devtools",
+  "workspaces": [
+    ".",
+    "../common",
+    "../utils",
+    "../../repos/effect-utils/packages/@overeng/*"
+  ],
+  "dependencies": {
+    "@livestore/common": "workspace:*",
+    "@overeng/utils": "workspace:*"
+  }
+}
+```
+
+This mirrors our pnpm pattern where each package has its own `pnpm-workspace.yaml`.
+
+### Why Per-Package Workspaces
+
+1. **No monorepo root required** - Works with megarepo pattern
+2. **Self-contained packages** - Each package declares its own workspace scope
+3. **Cross-repo consumption** - External repos can include packages in their workspace
+4. **Same dependency declarations** - `workspace:*` works identically in both pnpm and bun
+
+### Genie Integration
+
+We'll extend genie to generate the `workspaces` field in `package.json` based on the same dependency analysis used for `pnpm-workspace.yaml`.
+
+---
+
+## Historical Context: Protocol Comparison
+
+> This section explains the protocol differences for reference. Our standard is now `workspace:*` for both pnpm and bun.
 
 | Protocol         | Behavior                                                                                 |
 | ---------------- | ---------------------------------------------------------------------------------------- |
 | **bun `file:`**  | Creates dir structure where nested `node_modules` symlinks back to source package's deps |
 | **pnpm `link:`** | Direct symlink to source directory (package uses its own `node_modules`)                 |
-| **pnpm `file:`** | Copies package, deps resolved from CONSUMER's context (different!)                       |
+| **pnpm `file:`** | Copies package, deps resolved from CONSUMER's context (causes TS2742 errors)             |
+| **`workspace:*`** | Both managers: symlink to package root, correct dependency resolution                   |
 
-Both **bun `file:`** and **pnpm `link:`** give packages their OWN dependency resolution - matching published behavior. This is why bun doesn't have TS2742 issues with `file:` dependencies.
+Both **bun `file:`** and **pnpm `link:`** give packages their OWN dependency resolution - matching published behavior. However, `workspace:*` is preferred as it's consistent across package managers.
 
 ---
 
-## Cleanup checklist when issues are fixed
+## Cleanup Checklist (When Issues Are Fixed)
 
 Use these as concrete cleanup tasks once the corresponding Bun issues are resolved.
 
 - **BUN-01**: Revert mk-bun-cli to bun-only installs (remove `depsManager`, `pnpmDepsHash`, pnpm install path).
-- **BUN-02**: Drop pnpm fallback for local deps; switch back to bun `file:` or `workspace:*` with a single linker strategy.
-- **BUN-03**: Re-enable bun patchedDependencies flow if it was disabled; remove any related pnpm-specific guidance.
+- **BUN-02**: Switch to `workspace:*` with per-package workspaces in `package.json`.
+- **BUN-03**: Re-enable bun patchedDependencies flow; remove postinstall patch workaround.
 - **All BUN issues resolved**:
   - Remove pnpm-specific code paths in `mk-bun-cli` and `mk-bun-cli/bun-deps.nix`.
-  - Remove pnpm notes from docs (`pnpm-issues.md`, bun issues header).
-  - Re-run `mr generate schema` if schema changes were made.
-
-Note: `reactTypesPathWorkaround` was already removed (PNPM-02 resolved with `workspace:*` protocol).
+  - Update genie to generate `workspaces` field in `package.json` instead of `pnpm-workspace.yaml`.
+  - Remove `pnpm-workspace.yaml.genie.ts` files (or keep for pnpm compatibility).
+  - Update docs to reflect bun as primary package manager.

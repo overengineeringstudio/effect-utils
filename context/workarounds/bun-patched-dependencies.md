@@ -1,5 +1,7 @@
 # Bun patchedDependencies Bug Workaround
 
+> **Note:** This issue is specific to `file:` protocol dependencies. When we migrate to `workspace:*` protocol (see [bun-issues.md](./bun-issues.md#bun-workspace-pattern-future)), this issue may be resolved since workspace dependencies use a different resolution mechanism.
+
 Update (2026-01-18-10:19): There's a fix coming:
 https://github.com/oven-sh/bun/issues/13531
 
@@ -77,6 +79,8 @@ Instead of using bun's native `patchedDependencies` feature, we apply patches ou
 
 ### Known Issues with This Approach
 
+> **Note:** These issues are specific to `file:` protocol. With `workspace:*` protocol, cache corruption should not occur.
+
 The `postinstall` approach can cause Bun cache corruption with `file:` protocol dependencies during parallel installs.
 
 **Error observed:**
@@ -110,16 +114,16 @@ rm -rf node_modules && dt bun:install
 
 ## Removing the Workaround
 
-Once the bun bug is fixed, we can:
+Once bun supports `workspace:*` properly (BUN-01, BUN-02 fixed) or the patchedDependencies bug is fixed:
 
-1. Remove the `patches` parameter from `packageJson` calls
-2. Add back `patchedDependencies` to `package.json.genie.ts` files
-3. Genie already supports `patchedDependencies` with repo-relative path resolution
-4. Remove the postinstall script generation logic from genie
+1. Migrate to `workspace:*` protocol (see [bun-issues.md](./bun-issues.md#bun-workspace-pattern-future))
+2. Test if `patchedDependencies` works correctly with workspace dependencies
+3. If yes: remove `patches` parameter from `packageJson` calls, use native `patchedDependencies`
+4. If no: keep postinstall workaround until upstream fix lands
 
 ### Files to Update
 
-- `packages/@overeng/genie/src/runtime/package-json/mod.ts` - Remove patches logic
+- `packages/@overeng/genie/src/runtime/package-json/mod.ts` - Remove patches logic (if native works)
 - `genie/repo.ts` - Remove patches registry export
 - All `package.json.genie.ts` files - Remove `patches` prop, add `patchedDependencies`
 - This workaround file - Delete or archive
