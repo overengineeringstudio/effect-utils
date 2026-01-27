@@ -14,6 +14,14 @@
     "@types/node": "25.0.3",
     "@types/react": "19.2.7"
   },
+  "pnpm": {
+    "overrides": {
+      "effect": "3.19.15",
+      "@effect/platform": "0.94.2",
+      "@effect/experimental": "0.58.0",
+      "@effect/rpc": "0.73.0"
+    }
+  },
   "$genie": {
     "source": "package.json.genie.ts",
     "warning": "DO NOT EDIT - changes will be overwritten"

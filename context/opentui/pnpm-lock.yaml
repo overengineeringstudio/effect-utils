@@ -4,16 +4,22 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  effect: 3.19.15
+  '@effect/platform': 0.94.2
+  '@effect/experimental': 0.58.0
+  '@effect/rpc': 0.73.0
+
 importers:
 
   .:
     dependencies:
       '@effect-atom/atom':
         specifier: 0.4.13
-        version: 0.4.13(@effect/experimental@0.57.11(@effect/platform@0.93.8(effect@3.19.15))(effect@3.19.15))(@effect/platform@0.93.8(effect@3.19.15))(@effect/rpc@0.72.2(@effect/platform@0.93.8(effect@3.19.15))(effect@3.19.15))(effect@3.19.15)
+        version: 0.4.13(@effect/experimental@0.58.0(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15))(@effect/platform@0.94.2(effect@3.19.15))(@effect/rpc@0.73.0(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15))(effect@3.19.15)
       '@effect-atom/atom-react':
         specifier: 0.4.5
-        version: 0.4.5(@effect/experimental@0.57.11(@effect/platform@0.93.8(effect@3.19.15))(effect@3.19.15))(@effect/platform@0.93.8(effect@3.19.15))(@effect/rpc@0.72.2(@effect/platform@0.93.8(effect@3.19.15))(effect@3.19.15))(effect@3.19.15)(react@19.2.3)(scheduler@0.26.0)
+        version: 0.4.5(@effect/experimental@0.58.0(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15))(@effect/platform@0.94.2(effect@3.19.15))(@effect/rpc@0.73.0(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15))(effect@3.19.15)(react@19.2.3)(scheduler@0.26.0)
       '@opentui/core':
         specifier: 0.1.74
         version: 0.1.74(stage-js@1.0.0-alpha.17)(typescript@5.9.3)(web-tree-sitter@0.25.10)
@@ -42,23 +48,23 @@ packages:
   '@effect-atom/atom-react@0.4.5':
     resolution: {integrity: sha512-N29Lj3jZ4cnSGrubFwWuYmJHkxr7VyExDVnz6ZQJ+jhpBd+p3u0OJGXKI1pAZk7shs+FjO2SbklIx7Y9NZ4wPQ==}
     peerDependencies:
-      effect: ^3.19
+      effect: 3.19.15
       react: '>=18 <20'
       scheduler: '*'
 
   '@effect-atom/atom@0.4.13':
     resolution: {integrity: sha512-wYCPDg/vN2IWTqxho7kTTSivh//V2TSAcdkQvLXMJWww8YzhcCGmCiDpT6cefyNXvHj+qZrqYB54mrUqG6EYCA==}
     peerDependencies:
-      '@effect/experimental': ^0.57.0
-      '@effect/platform': ^0.93.0
-      '@effect/rpc': ^0.72.1
-      effect: ^3.19.0
+      '@effect/experimental': 0.58.0
+      '@effect/platform': 0.94.2
+      '@effect/rpc': 0.73.0
+      effect: 3.19.15
 
-  '@effect/experimental@0.57.11':
-    resolution: {integrity: sha512-M5uug3Drs/gyTHLfA+XzcIZQGUEV/Jn5yi1POki4oZswhpzNmsVTHl4THpxAordRKwa5lFvTSlsRP684YH7pSw==}
+  '@effect/experimental@0.58.0':
+    resolution: {integrity: sha512-IEP9sapjF6rFy5TkoqDPc86st/fnqUfjT7Xa3pWJrFGr1hzaMXHo+mWsYOZS9LAOVKnpHuVziDK97EP5qsCHVA==}
     peerDependencies:
-      '@effect/platform': ^0.93.6
-      effect: ^3.19.9
+      '@effect/platform': 0.94.2
+      effect: 3.19.15
       ioredis: ^5
       lmdb: ^3
     peerDependenciesMeta:
@@ -67,16 +73,16 @@ packages:
       lmdb:
         optional: true
 
-  '@effect/platform@0.93.8':
-    resolution: {integrity: sha512-xTEy6fyTy4ijmFC3afKgtvYtn/JyPoIov4ZSUWJZUv3VeOcUPNGrrqG6IJlWkXs3NhvSywKv7wc1kw3epCQVZw==}
+  '@effect/platform@0.94.2':
+    resolution: {integrity: sha512-85vdwpnK4oH/rJ3EuX/Gi2Hkt+K4HvXWr9bxCuqvty9hxyEcRxkJcqTesYrcVoQB6aULb1Za2B0MKoTbvffB3Q==}
     peerDependencies:
-      effect: ^3.19.12
+      effect: 3.19.15
 
-  '@effect/rpc@0.72.2':
-    resolution: {integrity: sha512-BmTXybXCOq96D2r9mvSW/YdiTQs5CStnd4II+lfVKrMr3pMNERKLZ2LG37Tfm4Sy3Q8ire6IVVKO/CN+VR0uQQ==}
+  '@effect/rpc@0.73.0':
+    resolution: {integrity: sha512-iMPf6tTriz8sK0l5x4koFId8Hz5nFptHYg8WqyjHGIIVLTpZxuiSqhmXZG7FnAs5N2n6uCEws4wWGcIgXNUrFg==}
     peerDependencies:
-      '@effect/platform': ^0.93.3
-      effect: ^3.19.5
+      '@effect/platform': 0.94.2
+      effect: 3.19.15
 
   '@jimp/core@1.6.0':
     resolution: {integrity: sha512-EQQlKU3s9QfdJqiSrZWNTxBs3rKXgO2W+GxNXDtwchF3a4IqxDheFX1ti+Env9hdJXDiYLp2jTRjlxhPthsk8w==}
@@ -572,9 +578,9 @@ snapshots:
   '@dimforge/rapier2d-simd-compat@0.17.3':
     optional: true
 
-  '@effect-atom/atom-react@0.4.5(@effect/experimental@0.57.11(@effect/platform@0.93.8(effect@3.19.15))(effect@3.19.15))(@effect/platform@0.93.8(effect@3.19.15))(@effect/rpc@0.72.2(@effect/platform@0.93.8(effect@3.19.15))(effect@3.19.15))(effect@3.19.15)(react@19.2.3)(scheduler@0.26.0)':
+  '@effect-atom/atom-react@0.4.5(@effect/experimental@0.58.0(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15))(@effect/platform@0.94.2(effect@3.19.15))(@effect/rpc@0.73.0(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15))(effect@3.19.15)(react@19.2.3)(scheduler@0.26.0)':
     dependencies:
-      '@effect-atom/atom': 0.4.13(@effect/experimental@0.57.11(@effect/platform@0.93.8(effect@3.19.15))(effect@3.19.15))(@effect/platform@0.93.8(effect@3.19.15))(@effect/rpc@0.72.2(@effect/platform@0.93.8(effect@3.19.15))(effect@3.19.15))(effect@3.19.15)
+      '@effect-atom/atom': 0.4.13(@effect/experimental@0.58.0(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15))(@effect/platform@0.94.2(effect@3.19.15))(@effect/rpc@0.73.0(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15))(effect@3.19.15)
       effect: 3.19.15
       react: 19.2.3
       scheduler: 0.26.0
@@ -583,29 +589,29 @@ snapshots:
       - '@effect/platform'
       - '@effect/rpc'
 
-  '@effect-atom/atom@0.4.13(@effect/experimental@0.57.11(@effect/platform@0.93.8(effect@3.19.15))(effect@3.19.15))(@effect/platform@0.93.8(effect@3.19.15))(@effect/rpc@0.72.2(@effect/platform@0.93.8(effect@3.19.15))(effect@3.19.15))(effect@3.19.15)':
+  '@effect-atom/atom@0.4.13(@effect/experimental@0.58.0(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15))(@effect/platform@0.94.2(effect@3.19.15))(@effect/rpc@0.73.0(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15))(effect@3.19.15)':
     dependencies:
-      '@effect/experimental': 0.57.11(@effect/platform@0.93.8(effect@3.19.15))(effect@3.19.15)
-      '@effect/platform': 0.93.8(effect@3.19.15)
-      '@effect/rpc': 0.72.2(@effect/platform@0.93.8(effect@3.19.15))(effect@3.19.15)
+      '@effect/experimental': 0.58.0(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15)
+      '@effect/platform': 0.94.2(effect@3.19.15)
+      '@effect/rpc': 0.73.0(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15)
       effect: 3.19.15
 
-  '@effect/experimental@0.57.11(@effect/platform@0.93.8(effect@3.19.15))(effect@3.19.15)':
+  '@effect/experimental@0.58.0(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15)':
     dependencies:
-      '@effect/platform': 0.93.8(effect@3.19.15)
+      '@effect/platform': 0.94.2(effect@3.19.15)
       effect: 3.19.15
       uuid: 11.1.0
 
-  '@effect/platform@0.93.8(effect@3.19.15)':
+  '@effect/platform@0.94.2(effect@3.19.15)':
     dependencies:
       effect: 3.19.15
       find-my-way-ts: 0.1.6
       msgpackr: 1.11.8
       multipasta: 0.2.7
 
-  '@effect/rpc@0.72.2(@effect/platform@0.93.8(effect@3.19.15))(effect@3.19.15)':
+  '@effect/rpc@0.73.0(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15)':
     dependencies:
-      '@effect/platform': 0.93.8(effect@3.19.15)
+      '@effect/platform': 0.94.2(effect@3.19.15)
       effect: 3.19.15
       msgpackr: 1.11.8
 

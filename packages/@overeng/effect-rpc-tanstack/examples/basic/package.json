@@ -19,7 +19,7 @@
     "react-dom": "19.2.3"
   },
   "devDependencies": {
-    "@overeng/utils": "link:../../../utils",
+    "@overeng/utils": "workspace:*",
     "@playwright/test": "1.57.0",
     "@tanstack/router-plugin": "1.145.10",
     "@types/node": "25.0.3",

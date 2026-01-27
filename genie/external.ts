@@ -22,6 +22,39 @@ import {
 export { CatalogBrand, defineCatalog, definePatchedDependencies, packageJson, workspaceRoot }
 export type { PatchesRegistry, ScriptValue, TSConfigCompilerOptions }
 
+// =============================================================================
+// pnpm Workspace Helpers
+// =============================================================================
+
+/**
+ * Generate pnpm-workspace.yaml content for a package directory.
+ *
+ * By default, includes the current directory and all sibling packages (`../*`).
+ * Pass custom patterns to include cross-repo packages.
+ *
+ * @example
+ * ```typescript
+ * // Basic usage - includes siblings
+ * export default pnpmWorkspace()
+ *
+ * // With cross-repo packages
+ * export default pnpmWorkspace(
+ *   '../*',
+ *   '../../repos/effect-utils/packages/@overeng/*'
+ * )
+ * ```
+ *
+ * See: context/workarounds/pnpm-issues.md for full details
+ */
+export const pnpmWorkspace = (...patterns: string[]) => {
+  const allPatterns = patterns.length > 0 ? patterns : ['../*']
+  const content = ['packages:', '  - .', ...allPatterns.map((p) => `  - ${p}`)].join('\n') + '\n'
+  return {
+    data: { packages: ['.', ...allPatterns] },
+    stringify: () => content,
+  }
+}
+
 /**
  * Catalog versions - single source of truth for dependency versions
  *
@@ -521,5 +554,5 @@ export const testFilesOxlintOverride = {
   },
 } as const satisfies OxlintOverride
 
-/** Standard oxlint ignore patterns */
-export const baseOxlintIgnorePatterns = ['dist', 'node_modules'] as const
+/** Re-export oxlint ignore patterns from oxlint-base */
+export { baseOxlintIgnorePatterns } from './oxlint-base.ts'

@@ -9,6 +9,31 @@ import type {
   OxlintOverride,
 } from '../packages/@overeng/genie/src/runtime/mod.ts'
 
+/** Standard ignore patterns for oxlint across all repos */
+export const baseOxlintIgnorePatterns = [
+  '**/node_modules/**',
+  '**/.pnpm/**',
+  '**/.pnpm-store/**',
+  '**/dist/**',
+  '**/build/**',
+  '**/out/**',
+  '**/.wrangler/**',
+  '**/.vercel/**',
+  '**/.netlify/**',
+  '**/.astro/**',
+  '**/.nitro/**',
+  '**/.tanstack/**',
+  '**/.direnv/**',
+  '**/playwright-report/**',
+  '**/test-results/**',
+  '**/nix/**',
+  '**/wip/**',
+  '**/.vite/**',
+  '**/patches/**',
+  '**/.cache/**',
+  '**/.turbo/**',
+] as const
+
 /** Standard plugins enabled across all repos */
 export const baseOxlintPlugins = ['import', 'typescript', 'unicorn', 'oxc'] as const
 

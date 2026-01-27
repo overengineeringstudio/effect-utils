@@ -238,6 +238,8 @@ in
     # Also save the hash after setup completes
     # NOTE: We use lib.mkForce for exec because devenv 2.0 defines a default exec
     # that we need to override when running in non-strict mode
+    # TODO: Replace exec workaround with native soft dependencies once supported
+    # See: https://github.com/cachix/devenv/issues/2435
     "devenv:enterShell" = {
       after = lib.mkIf (builtins.getEnv "DEVENV_STRICT" == "1") (setupTasks ++ [ "setup:save-hash" ]);
       exec = lib.mkIf (builtins.getEnv "DEVENV_STRICT" != "1") (lib.mkForce ''

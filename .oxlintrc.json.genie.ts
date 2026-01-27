@@ -1,5 +1,6 @@
 import {
   baseOxlintCategories,
+  baseOxlintIgnorePatterns,
   baseOxlintOverrides,
   baseOxlintPlugins,
   baseOxlintRules,
@@ -14,6 +15,7 @@ export default oxlintConfig({
   jsPlugins: [OXC_PLUGIN_PATH],
   categories: baseOxlintCategories,
   rules: baseOxlintRules,
+  ignorePatterns: baseOxlintIgnorePatterns,
   overrides: [
     ...baseOxlintOverrides,
     // effect-utils specific: react-inspector is a fork with its own style

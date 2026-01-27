@@ -18,9 +18,9 @@
     "prepare": "effect-language-service patch"
   },
   "dependencies": {
-    "@overeng/cli-ui": "link:../cli-ui",
-    "@overeng/effect-path": "link:../effect-path",
-    "@overeng/utils": "link:../utils"
+    "@overeng/cli-ui": "workspace:*",
+    "@overeng/effect-path": "workspace:*",
+    "@overeng/utils": "workspace:*"
   },
   "devDependencies": {
     "@effect/cli": "0.73.1",

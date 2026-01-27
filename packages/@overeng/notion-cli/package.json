@@ -21,10 +21,10 @@
     "prepare": "effect-language-service patch"
   },
   "dependencies": {
-    "@overeng/effect-path": "link:../effect-path",
-    "@overeng/notion-effect-client": "link:../notion-effect-client",
-    "@overeng/notion-effect-schema": "link:../notion-effect-schema",
-    "@overeng/utils": "link:../utils"
+    "@overeng/effect-path": "workspace:*",
+    "@overeng/notion-effect-client": "workspace:*",
+    "@overeng/notion-effect-schema": "workspace:*",
+    "@overeng/utils": "workspace:*"
   },
   "devDependencies": {
     "@effect/cli": "0.73.1",

@@ -16,7 +16,7 @@
     "prepare": "effect-language-service patch"
   },
   "dependencies": {
-    "@overeng/effect-schema-form": "link:../effect-schema-form"
+    "@overeng/effect-schema-form": "workspace:*"
   },
   "devDependencies": {
     "@effect/language-service": "0.69.2",
