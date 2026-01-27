@@ -83,21 +83,49 @@ export interface NixLockSyncOptions {
 const FLAKE_LOCK = 'flake.lock'
 const DEVENV_LOCK = 'devenv.lock'
 
+/** Schema for raw flake lock JSON (used to preserve key order during manipulation) */
+const RawFlakeLockJson = Schema.parseJson(
+  Schema.mutable(
+    Schema.Struct({
+      nodes: Schema.mutable(
+        Schema.Record({
+          key: Schema.String,
+          value: Schema.mutable(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+        }),
+      ),
+      root: Schema.String,
+      version: Schema.Number,
+    }),
+  ),
+)
+
 // =============================================================================
 // Nix Metadata Fetching
 // =============================================================================
 
-/** Schema for nix flake prefetch JSON output */
-const NixFlakePrefetchOutput = Schema.Struct({
-  hash: Schema.String,
-  locked: Schema.Struct({
-    lastModified: Schema.Number,
-    owner: Schema.optional(Schema.String),
-    repo: Schema.optional(Schema.String),
-    rev: Schema.String,
-    type: Schema.String,
+/** Schema for nix flake prefetch JSON output (parses JSON string directly) */
+const NixFlakePrefetchOutput = Schema.parseJson(
+  Schema.Struct({
+    hash: Schema.String,
+    locked: Schema.Struct({
+      lastModified: Schema.Number,
+      owner: Schema.optional(Schema.String),
+      repo: Schema.optional(Schema.String),
+      rev: Schema.String,
+      type: Schema.String,
+    }),
   }),
-})
+)
+
+/** Error for Nix flake metadata fetch failures */
+export class NixFlakeMetadataError extends Schema.TaggedError<NixFlakeMetadataError>()(
+  'NixFlakeMetadataError',
+  {
+    message: Schema.String,
+    flakeRef: Schema.String,
+    rawOutput: Schema.String,
+  },
+) {}
 
 /**
  * Fetch metadata (narHash, lastModified) for a GitHub flake input.
@@ -112,23 +140,51 @@ export const fetchNixFlakeMetadata = ({
   owner: string
   repo: string
   rev: string
-}): Effect.Effect<NixFlakeMetadata, PlatformError.PlatformError | ParseResult.ParseError, CommandExecutor.CommandExecutor> =>
+}): Effect.Effect<
+  NixFlakeMetadata,
+  PlatformError.PlatformError | ParseResult.ParseError | NixFlakeMetadataError,
+  CommandExecutor.CommandExecutor
+> =>
   Effect.gen(function* () {
     const flakeRef = `github:${owner}/${repo}/${rev}`
 
     const command = Command.make('nix', 'flake', 'prefetch', flakeRef, '--json')
     const result = yield* Command.string(command)
 
-    const json = JSON.parse(result) as unknown
-    const parsed = yield* Schema.decodeUnknown(NixFlakePrefetchOutput)(json)
+    // Check for empty output - this typically means the command failed.
+    // Nix outputs errors to stderr and returns empty stdout with non-zero exit code.
+    // Common causes: commit doesn't exist on GitHub (not pushed yet), repo inaccessible.
+    const trimmedResult = result.trim()
+    if (trimmedResult === '') {
+      return yield* new NixFlakeMetadataError({
+        message: `Nix returned empty output - the commit may not exist on GitHub (not pushed yet?) or the repository may be inaccessible`,
+        flakeRef,
+        rawOutput: result,
+      })
+    }
+
+    // Attempt to parse the JSON output
+    const parsed = yield* Schema.decodeUnknown(NixFlakePrefetchOutput)(result).pipe(
+      Effect.mapError((parseError) => {
+        // Check if output looks like a nix error message (shouldn't normally happen
+        // since nix errors go to stderr, but handle defensively)
+        if (trimmedResult.startsWith('error:') || trimmedResult.includes('error:')) {
+          return new NixFlakeMetadataError({
+            message: `Nix command failed with error`,
+            flakeRef,
+            rawOutput: trimmedResult.slice(0, 500), // Truncate for readability
+          })
+        }
+        // Otherwise return the parse error with context
+        return parseError
+      }),
+    )
 
     return {
       narHash: parsed.hash,
       lastModified: parsed.locked.lastModified,
     }
-  }).pipe(
-    Effect.withSpan('fetchNixFlakeMetadata', { attributes: { owner, repo, rev } }),
-  )
+  }).pipe(Effect.withSpan('fetchNixFlakeMetadata', { attributes: { owner, repo, rev } }))
 
 /**
  * Build a flake reference URL from locked input data.
@@ -198,6 +254,17 @@ const updateNodePreservingOrder = ({
   return result
 }
 
+/** Information collected about a node that needs updating */
+interface NodeUpdateInfo {
+  readonly nodeName: string
+  readonly node: Record<string, unknown>
+  readonly locked: Record<string, unknown>
+  readonly memberName: string
+  readonly oldRev: string
+  readonly newRev: string
+  readonly flakeRef: { owner: string; repo: string } | undefined
+}
+
 const syncSingleLockFile = ({
   lockPath,
   lockType,
@@ -214,21 +281,13 @@ const syncSingleLockFile = ({
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
 
-    // Read and parse the lock file
+    // Read and parse the lock file (Schema.parseJson handles both parsing and validation)
     const content = yield* fs.readFileString(lockPath)
-    // Keep raw JSON for preserving key order
-    const rawJson = JSON.parse(content) as {
-      nodes: Record<string, Record<string, unknown>>
-      root: string
-      version: number
-    }
+    const rawJson = yield* Schema.decodeUnknown(RawFlakeLockJson)(content)
 
-    // Validate schema (but we'll work with rawJson to preserve order)
-    yield* Schema.decodeUnknown(FlakeLock)(rawJson)
+    // First pass: collect all nodes that need metadata fetching
+    const nodesToUpdate: NodeUpdateInfo[] = []
 
-    const updatedInputs: NixLockSyncFileResult['updatedInputs'][number][] = []
-
-    // Process each node in the lock file (using rawJson to preserve order)
     for (const [nodeName, node] of Object.entries(rawJson.nodes)) {
       const locked = node['locked'] as Record<string, unknown> | undefined
 
@@ -241,58 +300,102 @@ const syncSingleLockFile = ({
       const match = matchLockedInputToMember({ locked, members: megarepoMembers })
 
       if (match && needsRevUpdate({ locked, member: match.member })) {
-        // Found a match and rev differs - update it
+        // Found a match and rev differs - collect for update
         const oldRev = typeof locked['rev'] === 'string' ? locked['rev'] : 'unknown'
         const newRev = match.member.commit
+        const flakeRef = getFlakeRefFromLocked(locked)
 
-        updatedInputs.push({
-          inputName: nodeName,
+        nodesToUpdate.push({
+          nodeName,
+          node,
+          locked,
           memberName: match.memberName,
           oldRev,
           newRev,
+          flakeRef,
         })
-
-        // Try to fetch metadata for the new revision
-        const flakeRef = getFlakeRefFromLocked(locked)
-        let newLocked: Record<string, unknown>
-
-        if (flakeRef) {
-          // Fetch proper metadata from Nix
-          const metadataResult = yield* fetchNixFlakeMetadata({
-            owner: flakeRef.owner,
-            repo: flakeRef.repo,
-            rev: newRev,
-          }).pipe(
-            Effect.tapError((e) =>
-              Effect.logWarning(
-                `Failed to fetch Nix metadata for ${flakeRef.owner}/${flakeRef.repo}@${newRev}: ${e}`,
-              ),
-            ),
-            Effect.option,
-          )
-
-          if (metadataResult._tag === 'Some') {
-            // Use the fetched metadata
-            newLocked = updateLockedInputRevWithMetadata({ locked, newRev, metadata: metadataResult.value })
-          } else {
-            // Fallback: update rev without metadata (will be incomplete)
-            yield* Effect.logWarning(
-              `Using incomplete lock entry for ${nodeName} (missing narHash/lastModified)`,
-            )
-            newLocked = updateLockedInputRev({ locked, newRev })
-          }
-        } else {
-          // Non-GitHub input, can't fetch metadata
-          newLocked = updateLockedInputRev({ locked, newRev })
-        }
-
-        // Update node in-place, preserving key order
-        rawJson.nodes[nodeName] = updateNodePreservingOrder({ node, newLocked })
       }
+    }
+
+    // Second pass: fetch all metadata in parallel (concurrency: 8)
+    const metadataResults = yield* Effect.all(
+      nodesToUpdate.map((info) =>
+        Effect.gen(function* () {
+          if (info.flakeRef) {
+            const result = yield* fetchNixFlakeMetadata({
+              owner: info.flakeRef.owner,
+              repo: info.flakeRef.repo,
+              rev: info.newRev,
+            }).pipe(
+              Effect.tapError((e) => {
+                // Provide more specific error messages based on error type
+                if (e._tag === 'NixFlakeMetadataError') {
+                  return Effect.logWarning(
+                    `Failed to fetch Nix metadata for ${info.flakeRef!.owner}/${info.flakeRef!.repo}@${info.newRev}: ${e.message}`,
+                  )
+                }
+                return Effect.logWarning(
+                  `Failed to fetch Nix metadata for ${info.flakeRef!.owner}/${info.flakeRef!.repo}@${info.newRev}: ${e}`,
+                )
+              }),
+              Effect.option,
+            )
+            return { nodeName: info.nodeName, metadata: result }
+          }
+          return { nodeName: info.nodeName, metadata: { _tag: 'None' as const } }
+        }),
+      ),
+      { concurrency: 8 },
+    )
+
+    // Build a map of nodeName -> metadata for quick lookup
+    const metadataMap = new Map(
+      metadataResults.map((r) => [r.nodeName, r.metadata]),
+    )
+
+    // Third pass: apply the fetched metadata to update the lock file
+    const updatedInputs: NixLockSyncFileResult['updatedInputs'][number][] = []
+
+    for (const info of nodesToUpdate) {
+      updatedInputs.push({
+        inputName: info.nodeName,
+        memberName: info.memberName,
+        oldRev: info.oldRev,
+        newRev: info.newRev,
+      })
+
+      const metadataResult = metadataMap.get(info.nodeName)
+      let newLocked: Record<string, unknown>
+
+      if (metadataResult && metadataResult._tag === 'Some') {
+        // Use the fetched metadata
+        newLocked = updateLockedInputRevWithMetadata({
+          locked: info.locked,
+          newRev: info.newRev,
+          metadata: metadataResult.value,
+        })
+      } else if (info.flakeRef) {
+        // Fallback: update rev without metadata (will be incomplete)
+        yield* Effect.logWarning(
+          `Using incomplete lock entry for ${info.nodeName} (missing narHash/lastModified)`,
+        )
+        newLocked = updateLockedInputRev({ locked: info.locked, newRev: info.newRev })
+      } else {
+        // Non-GitHub input, can't fetch metadata
+        newLocked = updateLockedInputRev({ locked: info.locked, newRev: info.newRev })
+      }
+
+      // Update node in-place, preserving key order
+      rawJson.nodes[info.nodeName] = updateNodePreservingOrder({
+        node: info.node,
+        newLocked,
+      })
     }
 
     // Write updated lock file if any changes were made
     if (updatedInputs.length > 0) {
+      // JSON.stringify is safe here - it doesn't throw on valid objects
+      // @effect-diagnostics-next-line preferSchemaOverJson:off
       const updatedContent = JSON.stringify(rawJson, null, 2)
       yield* fs.writeFileString(lockPath, updatedContent + '\n')
     }
