@@ -16,7 +16,8 @@
 # - pnpmDepsHash: Fixed-output hash for pnpm deps snapshot.
 # - binaryName: Output binary name (defaults to name).
 # - packageJsonPath: package.json path relative to workspaceRoot (defaults to <packageDir>/package.json).
-# - gitRev: Version suffix (defaults to "unknown").
+# - gitRev: Git short revision (defaults to "unknown").
+# - commitTs: Git commit timestamp in seconds (defaults to 0).
 # - typecheck: Run tsc --noEmit (defaults to true).
 # - typecheckTsconfig: Tsconfig path relative to workspaceRoot (defaults to <packageDir>/tsconfig.json).
 # - smokeTestArgs: Args for smoke test (defaults to ["--help"]).
@@ -37,6 +38,7 @@
   binaryName ? name,
   packageJsonPath ? "${packageDir}/package.json",
   gitRev ? "unknown",
+  commitTs ? 0,
   typecheck ? true,
   typecheckTsconfig ? null,
   smokeTestArgs ? [ "--help" ],
@@ -49,9 +51,9 @@
 let
   lib = pkgs.lib;
   source = import ./mk-bun-cli/source.nix {
-    inherit lib workspaceRoot extraExcludedSourceNames packageDir packageJsonPath gitRev dirty;
+    inherit lib workspaceRoot extraExcludedSourceNames packageDir packageJsonPath gitRev commitTs dirty;
   };
-  inherit (source) workspaceRootPath workspaceSrc packageJson fullVersion stageWorkspace;
+  inherit (source) workspaceRootPath workspaceSrc packageJson baseVersion nixStampJson stageWorkspace;
 
   localDeps = import ./mk-bun-cli/local-deps.nix {
     inherit lib workspaceRootPath packageJson packageDir depsManager;
@@ -162,7 +164,7 @@ pkgs.stdenv.mkDerivation {
     fi
 
     substituteInPlace "$workspace/${entry}" \
-      --replace-fail "const buildVersion = '__CLI_VERSION__'" "const buildVersion = '${fullVersion}'"
+      --replace-fail "const buildStamp = '__CLI_BUILD_STAMP__'" "const buildStamp = '${nixStampJson}'"
 
     # Check for stale bunDepsHash before expensive operations
     if [ -f "${bunDeps}/${lockHashFile}" ]; then

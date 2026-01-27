@@ -300,11 +300,11 @@ export const genieCommand: Cli.Command.Command<
 )
 
 const baseVersion = '0.1.0'
-const buildVersion = '__CLI_VERSION__'
+// Build stamp placeholder replaced by nix build with NixStamp JSON
+const buildStamp = '__CLI_BUILD_STAMP__'
 const version = resolveCliVersion({
   baseVersion,
-  buildVersion,
-  runtimeStampEnvVar: 'NIX_CLI_BUILD_STAMP',
+  buildStamp,
 })
 
 if (import.meta.main) {

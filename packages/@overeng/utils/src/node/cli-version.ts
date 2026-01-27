@@ -1,16 +1,28 @@
 /**
- * Structured stamp data injected at build time or runtime.
+ * Local stamp: set via CLI_BUILD_STAMP env var when entering a dev shell.
+ * Used for source-based CLI builds (running TypeScript directly).
  */
-export interface CliStamp {
-  /** Where this build came from: "local" (dev shell) or "nix" (nix build) */
-  source: 'local' | 'nix'
-  /** Git short revision */
+export interface LocalStamp {
+  type: 'local'
   rev: string
-  /** Unix timestamp in seconds */
   ts: number
-  /** Whether there were uncommitted changes */
   dirty: boolean
 }
+
+/**
+ * Nix stamp: embedded in the binary at Nix build time.
+ * Contains version info and commit timestamp for reproducible builds.
+ */
+export interface NixStamp {
+  type: 'nix'
+  version: string
+  rev: string
+  commitTs: number
+  dirty: boolean
+  buildTs?: number // only present for impure builds
+}
+
+export type CliStamp = LocalStamp | NixStamp
 
 /**
  * Format a Unix timestamp as a human-readable relative time.
@@ -52,21 +64,32 @@ const formatRelativeTime = (ts: number): string => {
 }
 
 /**
- * Parse a stamp string as JSON.
+ * Parse a JSON string as a CliStamp (LocalStamp or NixStamp).
  */
 const parseStamp = (stamp: string): CliStamp | undefined => {
   try {
     const parsed = JSON.parse(stamp)
-    // Validate it has the expected shape
-    if (
-      typeof parsed === 'object' &&
-      parsed !== null &&
-      typeof parsed.source === 'string' &&
-      typeof parsed.rev === 'string' &&
-      typeof parsed.ts === 'number' &&
-      typeof parsed.dirty === 'boolean'
-    ) {
-      return parsed as CliStamp
+    if (typeof parsed !== 'object' || parsed === null) {
+      return undefined
+    }
+
+    if (parsed.type === 'local') {
+      if (
+        typeof parsed.rev === 'string' &&
+        typeof parsed.ts === 'number' &&
+        typeof parsed.dirty === 'boolean'
+      ) {
+        return parsed as LocalStamp
+      }
+    } else if (parsed.type === 'nix') {
+      if (
+        typeof parsed.version === 'string' &&
+        typeof parsed.rev === 'string' &&
+        typeof parsed.commitTs === 'number' &&
+        typeof parsed.dirty === 'boolean'
+      ) {
+        return parsed as NixStamp
+      }
     }
   } catch {
     // Invalid JSON
@@ -75,59 +98,74 @@ const parseStamp = (stamp: string): CliStamp | undefined => {
 }
 
 /**
- * Render version string with human-friendly stamp information.
+ * Render version string for a LocalStamp.
  *
- * Output examples (Variant 8 - Human sentence, medium time formatting):
- * - Local dirty:  "0.1.0 — running from local source (abc123, 5 min ago, with uncommitted changes)"
- * - Local clean:  "0.1.0 — running from local source (abc123, 2 hours ago)"
- * - Nix w/ stamp: "0.1.0+def456 — built 3 days ago"
- * - Nix no stamp: "0.1.0+def456"
+ * Output examples:
+ * - dirty:  "0.1.0 — running from local source (abc123, 5 min ago, with uncommitted changes)"
+ * - clean:  "0.1.0 — running from local source (abc123, 2 hours ago)"
  */
-const renderVersion = (
-  version: string,
-  stamp: CliStamp | undefined,
-  isLocalDev: boolean,
-): string => {
-  if (!stamp) {
-    return version
-  }
-
+const renderLocalVersion = (baseVersion: string, stamp: LocalStamp): string => {
   const timeAgo = formatRelativeTime(stamp.ts)
-
-  if (isLocalDev) {
-    // Local dev build: show full context
-    const dirtyNote = stamp.dirty ? ', with uncommitted changes' : ''
-    return `${version} — running from local source (${stamp.rev}, ${timeAgo}${dirtyNote})`
-  }
-
-  // Nix build running in a dev shell: show when it was built
-  return `${version} — built ${timeAgo}`
+  const dirtyNote = stamp.dirty ? ', with uncommitted changes' : ''
+  return `${baseVersion} — running from local source (${stamp.rev}, ${timeAgo}${dirtyNote})`
 }
 
 /**
- * Resolve the CLI version with an optional runtime stamp.
+ * Render version string for a NixStamp.
  *
- * baseVersion - The package.json version (always present at build time).
- * buildVersion - The build-time injected version or the placeholder.
- * runtimeStampEnvVar - Environment variable that provides a runtime stamp.
+ * Output examples:
+ * - pure, clean:   "0.1.0+def456 — committed 3 days ago"
+ * - pure, dirty:   "0.1.0+def456-dirty — committed 3 days ago, with uncommitted changes"
+ * - impure, clean: "0.1.0+def456 — built 2 hours ago"
+ * - impure, dirty: "0.1.0+def456-dirty — built 2 hours ago, with uncommitted changes"
  */
-export const resolveCliVersion: (options: {
-  baseVersion: string
-  buildVersion: string
-  runtimeStampEnvVar: string
-}) => string = ({ baseVersion, buildVersion, runtimeStampEnvVar }) => {
-  const isPlaceholder = buildVersion === '__CLI_VERSION__' || buildVersion === baseVersion
-  const stampRaw = process.env[runtimeStampEnvVar]?.trim()
-  const hasStamp = stampRaw !== undefined && stampRaw !== ''
+const renderNixVersion = (stamp: NixStamp): string => {
+  const dirtySuffix = stamp.dirty ? '-dirty' : ''
+  const versionStr = `${stamp.version}+${stamp.rev}${dirtySuffix}`
 
-  // Try to parse as structured JSON stamp
-  const stamp = hasStamp ? parseStamp(stampRaw) : undefined
+  const dirtyNote = stamp.dirty ? ', with uncommitted changes' : ''
 
-  if (!isPlaceholder) {
-    // Nix build: version was injected at build time
-    return renderVersion(buildVersion, stamp, false)
+  if (stamp.buildTs !== undefined) {
+    // Impure build: show build time
+    const timeAgo = formatRelativeTime(stamp.buildTs)
+    return `${versionStr} — built ${timeAgo}${dirtyNote}`
   }
 
-  // Local/dev build: placeholder still present
-  return renderVersion(baseVersion, stamp, true)
+  // Pure build: show commit time
+  const timeAgo = formatRelativeTime(stamp.commitTs)
+  return `${versionStr} — committed ${timeAgo}${dirtyNote}`
+}
+
+/**
+ * Resolve the CLI version from build stamp and optional runtime stamp.
+ *
+ * @param baseVersion - The package.json version (used for local builds)
+ * @param buildStamp - JSON stamp embedded at build time, or placeholder '__CLI_BUILD_STAMP__'
+ * @param runtimeStampEnvVar - Environment variable name for runtime stamp (default: 'CLI_BUILD_STAMP')
+ */
+export const resolveCliVersion = (options: {
+  baseVersion: string
+  buildStamp: string
+  runtimeStampEnvVar?: string
+}): string => {
+  const { baseVersion, buildStamp, runtimeStampEnvVar = 'CLI_BUILD_STAMP' } = options
+
+  // Try to parse buildStamp as NixStamp (embedded at build time)
+  const nixStamp = parseStamp(buildStamp)
+  if (nixStamp?.type === 'nix') {
+    // Nix build: use embedded stamp, ignore runtime stamp
+    return renderNixVersion(nixStamp)
+  }
+
+  // Local/dev build: check for runtime stamp
+  const runtimeStampRaw = process.env[runtimeStampEnvVar]?.trim()
+  if (runtimeStampRaw) {
+    const localStamp = parseStamp(runtimeStampRaw)
+    if (localStamp?.type === 'local') {
+      return renderLocalVersion(baseVersion, localStamp)
+    }
+  }
+
+  // No valid stamp: just return base version
+  return baseVersion
 }

@@ -1,4 +1,5 @@
 # Helper for consistent runtime stamps across flake/dev shells.
+# Generates a LocalStamp JSON for source-based CLI builds.
 # Arguments:
 # - pkgs: Nixpkgs set providing coreutils + git.
 { pkgs }:
@@ -15,12 +16,12 @@ let
       if [ "$rev" != "unknown" ] && [ -n "$(git status --porcelain 2>/dev/null)" ]; then
         dirty="true"
       fi
-      # Output JSON: {"source":"local","rev":"...","ts":...,"dirty":...}
-      echo "{\"source\":\"local\",\"rev\":\"$rev\",\"ts\":$ts,\"dirty\":$dirty}"
+      # Output LocalStamp JSON
+      echo "{\"type\":\"local\",\"rev\":\"$rev\",\"ts\":$ts,\"dirty\":$dirty}"
     '';
   };
   shellHook = ''
-    export NIX_CLI_BUILD_STAMP="$(${package}/bin/cli-build-stamp)"
+    export CLI_BUILD_STAMP="$(${package}/bin/cli-build-stamp)"
   '';
 in
 {

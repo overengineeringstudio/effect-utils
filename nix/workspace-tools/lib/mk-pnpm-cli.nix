@@ -20,7 +20,9 @@
 # - localDeps: List of { dir, hash } for local link: dependencies.
 # - patchesDir: Patches directory relative to workspaceRoot (null to disable).
 # - binaryName: Output binary name (defaults to name).
-# - gitRev: Version suffix (defaults to "unknown").
+# - gitRev: Git short revision (defaults to "unknown").
+# - commitTs: Git commit timestamp in seconds (defaults to 0).
+# - dirty: Whether build includes uncommitted changes (defaults to false).
 # - smokeTestArgs: Args for smoke test (defaults to ["--help"]).
 # - extraExcludedSourceNames: Extra top-level paths to omit from the staged workspace.
 
@@ -36,6 +38,8 @@
   patchesDir ? "patches",
   binaryName ? name,
   gitRev ? "unknown",
+  commitTs ? 0,
+  dirty ? false,
   smokeTestArgs ? [ "--help" ],
   extraExcludedSourceNames ? [],
 }:
@@ -141,7 +145,15 @@ let
   packageJsonPath = workspaceRootPath + "/${packageDir}/package.json";
   packageJson = builtins.fromJSON (builtins.readFile packageJsonPath);
   packageVersion = packageJson.version or "0.0.0";
-  fullVersion = "${packageVersion}+${gitRev}";
+
+  # Build NixStamp JSON for embedding in binary
+  nixStampJson = builtins.toJSON {
+    type = "nix";
+    version = packageVersion;
+    rev = gitRev;
+    commitTs = commitTs;
+    dirty = dirty;
+  };
 
   smokeTestArgsStr = lib.escapeShellArgs smokeTestArgs;
 
@@ -201,10 +213,10 @@ pkgs.stdenv.mkDerivation {
       cd -
     '') localDeps}
 
-    # Inject version
+    # Inject build stamp
     if [ -f "${entry}" ]; then
       substituteInPlace "${entry}" \
-        --replace-quiet "const buildVersion = '__CLI_VERSION__'" "const buildVersion = '${fullVersion}'"
+        --replace-quiet "const buildStamp = '__CLI_BUILD_STAMP__'" "const buildStamp = '${nixStampJson}'"
     fi
 
     # Build the CLI

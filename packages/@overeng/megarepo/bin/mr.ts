@@ -9,12 +9,11 @@ import { resolveCliVersion } from '@overeng/utils/node/cli-version'
 import { Cwd, mrCommand } from '../src/cli/mod.ts'
 import { MR_VERSION } from '../src/lib/version.ts'
 
-// Version placeholder replaced by nix build
-const buildVersion = '__CLI_VERSION__'
+// Build stamp placeholder replaced by nix build with NixStamp JSON
+const buildStamp = '__CLI_BUILD_STAMP__'
 const version = resolveCliVersion({
   baseVersion: MR_VERSION,
-  buildVersion,
-  runtimeStampEnvVar: 'NIX_CLI_BUILD_STAMP',
+  buildStamp,
 })
 
 const baseLayer = Layer.mergeAll(NodeContext.layer, Cwd.live)

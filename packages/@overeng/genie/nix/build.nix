@@ -4,7 +4,7 @@
 # Fallback pattern: oxfmt is appended to PATH via --suffix, so system oxfmt
 # takes precedence when available, but bundled oxfmt is used as fallback.
 # This avoids formatting churn when oxfmt isn't installed in the environment.
-{ pkgs, src, gitRev ? "unknown", dirty ? false }:
+{ pkgs, src, gitRev ? "unknown", commitTs ? 0, dirty ? false }:
 
 let
   mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs; };
@@ -20,7 +20,7 @@ let
     localDeps = [
       { dir = "packages/@overeng/utils"; hash = "sha256-MycpokWA4roGBELpRdj5CXjRdPcboktPBLoVWP55rJI="; }
     ];
-    inherit gitRev;
+    inherit gitRev commitTs dirty;
   };
 in
 pkgs.runCommand "genie" {

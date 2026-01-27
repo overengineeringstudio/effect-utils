@@ -3,7 +3,7 @@
 #
 # TODO: Move shell completion generation into mkPnpmCli helper
 # so all CLIs get completions automatically.
-{ pkgs, src, gitRev ? "unknown", dirty ? false }:
+{ pkgs, src, gitRev ? "unknown", commitTs ? 0, dirty ? false }:
 
 let
   mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs; };
@@ -20,7 +20,7 @@ let
       { dir = "packages/@overeng/effect-path"; hash = "sha256-LCb6+D3hRFai59RFFZq0EFy5e+tIqACTJReT1WGNj8w="; }
     ];
     smokeTestArgs = [ "--help" ];
-    inherit gitRev;
+    inherit gitRev commitTs dirty;
   };
 in
 pkgs.stdenv.mkDerivation {

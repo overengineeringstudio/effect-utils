@@ -1,6 +1,7 @@
 {
   pkgs,
   gitRev ? "unknown",
+  commitTs ? 0,
   workspaceRoot ? ./.,
   dirty ? false,
 }:
@@ -12,11 +13,11 @@ let
 in
 {
   genie = import (workspaceRootPath + "/packages/@overeng/genie/nix/build.nix") {
-    inherit pkgs gitRev dirty;
+    inherit pkgs gitRev commitTs dirty;
     src = workspaceRoot;
   };
   megarepo = import (workspaceRootPath + "/packages/@overeng/megarepo/nix/build.nix") {
-    inherit pkgs gitRev dirty;
+    inherit pkgs gitRev commitTs dirty;
     src = workspaceRoot;
   };
 }

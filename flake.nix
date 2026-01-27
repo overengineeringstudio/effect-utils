@@ -13,6 +13,9 @@
   outputs = { self, nixpkgs, flake-utils, ... }:
     let
       gitRev = self.sourceInfo.dirtyShortRev or self.sourceInfo.shortRev or self.sourceInfo.rev or "unknown";
+      # lastModified is the git commit timestamp (Unix seconds)
+      commitTs = self.sourceInfo.lastModified or 0;
+      dirty = self.sourceInfo ? dirtyShortRev;
     in
     flake-utils.lib.eachDefaultSystem (system:
       let
@@ -22,22 +25,22 @@
         rootPath = self.outPath;
         cliPackages = {
           genie = import (rootPath + "/packages/@overeng/genie/nix/build.nix") {
-            inherit pkgs gitRev;
+            inherit pkgs gitRev commitTs dirty;
             src = self;
           };
           megarepo = import (rootPath + "/packages/@overeng/megarepo/nix/build.nix") {
-            inherit pkgs gitRev;
+            inherit pkgs gitRev commitTs dirty;
             src = self;
           };
         };
         cliPackagesDirty = {
           genie = import (rootPath + "/packages/@overeng/genie/nix/build.nix") {
-            inherit pkgs gitRev;
+            inherit pkgs gitRev commitTs;
             src = self;
             dirty = true;
           };
           megarepo = import (rootPath + "/packages/@overeng/megarepo/nix/build.nix") {
-            inherit pkgs gitRev;
+            inherit pkgs gitRev commitTs;
             src = self;
             dirty = true;
           };

@@ -1,4 +1,4 @@
-{ lib, workspaceRoot, extraExcludedSourceNames, packageDir, packageJsonPath, gitRev, dirty }:
+{ lib, workspaceRoot, extraExcludedSourceNames, packageDir, packageJsonPath, gitRev, commitTs, dirty }:
 
 let
   # Resolve flake inputs or paths into a concrete filesystem path.
@@ -63,7 +63,17 @@ let
   packageJsonFullPath = workspaceSrc + "/${packageJsonPath}";
   packageJson = builtins.fromJSON (builtins.readFile packageJsonFullPath);
   baseVersion = packageJson.version or "0.0.0";
-  fullVersion = if gitRev == "unknown" then baseVersion else "${baseVersion}+${gitRev}";
+
+  # Build NixStamp JSON for embedding in binary
+  # Schema: {"type":"nix","version":"...","rev":"...","commitTs":...,"dirty":...}
+  dirtyStr = if dirty then "true" else "false";
+  nixStampJson = builtins.toJSON {
+    type = "nix";
+    version = baseVersion;
+    rev = gitRev;
+    commitTs = commitTs;
+    dirty = dirty;
+  };
 
   # Stage a writable copy so Bun and tsc can write caches in the sandbox.
   stageWorkspace = ''
@@ -74,5 +84,5 @@ let
   '';
 in
 {
-  inherit workspaceRootPath workspaceSrc packageJson fullVersion stageWorkspace;
+  inherit workspaceRootPath workspaceSrc packageJson baseVersion nixStampJson stageWorkspace;
 }
