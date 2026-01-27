@@ -6,8 +6,11 @@
 
 export {
   getCloneUrl,
+  getCloneUrlHttps,
   getRepoSemaphore,
+  type GitProtocol,
   makeRepoSemaphoreMap,
+  resolveCloneUrl,
   syncMember,
   type RepoSemaphoreMap,
 } from './member.ts'

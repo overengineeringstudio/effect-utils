@@ -347,7 +347,7 @@ my-megarepo/repos/effect-utils -> /Users/dev/.megarepo/github.com/overeng/effect
 Bidirectional sync between worktrees and lock file. The default mode ensures members exist and updates the lock file to match current worktree HEADs.
 
 ```bash
-mr sync [--pull] [--frozen] [--force] [--deep] [--only <members...>] [--skip <members...>]
+mr sync [--pull] [--frozen] [--force] [--deep] [--only <members...>] [--skip <members...>] [--git-protocol <ssh|https|auto>]
 ```
 
 **Modes:**
@@ -388,6 +388,25 @@ This mode is ideal for local iteration: make commits in worktrees, then `mr sync
 - `--deep` - Recursively sync nested megarepos
 - `--only <members>` - Only sync specified members (comma-separated, mutually exclusive with `--skip`)
 - `--skip <members>` - Skip specified members (comma-separated, mutually exclusive with `--only`)
+- `--git-protocol <ssh|https|auto>` - Git protocol for cloning (see below)
+
+#### Git Protocol Selection
+
+The `--git-protocol` option controls which URL format is used when cloning repositories:
+
+| Value   | Behavior                                                                 |
+| ------- | ------------------------------------------------------------------------ |
+| `ssh`   | Always use SSH URLs (`git@github.com:owner/repo.git`)                    |
+| `https` | Always use HTTPS URLs (`https://github.com/owner/repo.git`)              |
+| `auto`  | Use lock file URL if available, otherwise SSH (default)                  |
+
+**CI Usage:** In CI environments without SSH keys configured, use `--git-protocol=https` to clone public repositories via HTTPS:
+
+```bash
+mr sync --frozen --git-protocol=https
+```
+
+**Note:** The `auto` mode prefers the URL stored in `megarepo.lock` (which is typically HTTPS), making it work well in most CI scenarios where the lock file exists.
 
 #### `mr sync --pull`
 
@@ -615,6 +634,9 @@ mr sync --frozen           # uses exactly what's in lock
 
 # Skip members that can't be cloned (e.g., private repos without auth)
 mr sync --frozen --skip private-repo
+
+# Use HTTPS for public repos when SSH keys aren't available
+mr sync --frozen --git-protocol=https
 ```
 
 ### Stabilizing for release

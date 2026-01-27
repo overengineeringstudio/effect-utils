@@ -68,7 +68,7 @@ export const getRepoSemaphore = ({
   })
 
 /**
- * Get the git clone URL for a member source
+ * Get the git clone URL for a member source (SSH format)
  */
 export const getCloneUrl = (source: MemberSource): string | undefined => {
   switch (source.type) {
@@ -78,6 +78,54 @@ export const getCloneUrl = (source: MemberSource): string | undefined => {
       return source.url
     case 'path':
       return undefined
+  }
+}
+
+/**
+ * Get the git clone URL for a member source (HTTPS format)
+ */
+export const getCloneUrlHttps = (source: MemberSource): string | undefined => {
+  switch (source.type) {
+    case 'github':
+      return `https://github.com/${source.owner}/${source.repo}.git`
+    case 'url':
+      return source.url
+    case 'path':
+      return undefined
+  }
+}
+
+/**
+ * Git protocol selection for cloning
+ * - 'ssh': Always use SSH URLs (git@github.com:...)
+ * - 'https': Always use HTTPS URLs (https://github.com/...)
+ * - 'auto': Use lock file URL if available, otherwise SSH (default)
+ */
+export type GitProtocol = 'ssh' | 'https' | 'auto'
+
+/**
+ * Resolve the clone URL based on git protocol preference.
+ * In 'auto' mode, uses the lock file URL if available (which is typically HTTPS),
+ * otherwise falls back to SSH.
+ */
+export const resolveCloneUrl = ({
+  source,
+  gitProtocol,
+  lockFileUrl,
+}: {
+  source: MemberSource
+  gitProtocol: GitProtocol
+  lockFileUrl: string | undefined
+}): string | undefined => {
+  switch (gitProtocol) {
+    case 'ssh':
+      return getCloneUrl(source)
+    case 'https':
+      return getCloneUrlHttps(source)
+    case 'auto':
+      // Prefer lock file URL if available (typically HTTPS from lock file)
+      // Otherwise fall back to SSH (original behavior)
+      return lockFileUrl ?? getCloneUrl(source)
   }
 }
 
@@ -109,6 +157,7 @@ export const syncMember = ({
   frozen,
   force,
   semaphoreMap,
+  gitProtocol = 'auto',
 }: {
   name: string
   sourceString: string
@@ -120,6 +169,8 @@ export const syncMember = ({
   force: boolean
   /** Optional semaphore map for serializing bare repo creation per repo URL */
   semaphoreMap?: RepoSemaphoreMap
+  /** Git protocol to use for cloning: 'ssh', 'https', or 'auto' (default) */
+  gitProtocol?: GitProtocol
 }) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -210,7 +261,13 @@ export const syncMember = ({
     }
 
     // For remote sources, use bare repo + worktree pattern
-    const cloneUrl = getCloneUrl(source)
+    // Resolve clone URL based on git protocol preference
+    const lockedMember = lockFile?.members[name]
+    const cloneUrl = resolveCloneUrl({
+      source,
+      gitProtocol,
+      lockFileUrl: lockedMember?.url,
+    })
     if (cloneUrl === undefined) {
       return {
         name,
@@ -227,7 +284,7 @@ export const syncMember = ({
     let targetCommit: string | undefined
 
     // Check lock file first (for --frozen mode or to use locked commit)
-    const lockedMember = lockFile?.members[name]
+    // Note: lockedMember was already retrieved above for resolveCloneUrl
     if (frozen) {
       if (lockedMember === undefined) {
         return {
