@@ -55,5 +55,7 @@ export const catalog = defineCatalog({
     '@overeng/notion-cli': 'workspace:*',
     '@overeng/effect-schema-form': 'workspace:*',
     '@overeng/effect-schema-form-aria': 'workspace:*',
+    '@overeng/tui-core': 'workspace:*',
+    '@overeng/tui-react': 'workspace:*',
   },
 })

@@ -1,0 +1,25 @@
+{
+  "name": "@overeng/tui-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/mod.ts"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": "./dist/mod.js"
+    }
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "25.0.3",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  },
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten"
+  }
+}
