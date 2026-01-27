@@ -3,11 +3,7 @@
 {
   "compilerOptions": {
     "target": "ES2024",
-    "lib": [
-      "ES2024",
-      "DOM",
-      "DOM.Iterable"
-    ],
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "allowImportingTsExtensions": true,
@@ -37,7 +33,8 @@
         "diagnosticSeverity": {
           "missedPipeableOpportunity": "suggestion",
           "schemaUnionOfLiterals": "warning",
-          "anyUnknownInErrorContext": "warning"
+          "anyUnknownInErrorContext": "warning",
+          "preferSchemaOverJson": "warning"
         }
       }
     ],
@@ -46,9 +43,7 @@
     "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
     "jsx": "react-jsx"
   },
-  "include": [
-    "src/**/*"
-  ],
+  "include": ["src/**/*"],
   "references": [
     {
       "path": "../effect-schema-form"

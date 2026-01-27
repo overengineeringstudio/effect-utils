@@ -450,6 +450,7 @@ export const baseTsconfigCompilerOptions = {
         missedPipeableOpportunity: 'suggestion',
         schemaUnionOfLiterals: 'warning',
         anyUnknownInErrorContext: 'warning',
+        preferSchemaOverJson: 'warning',
       },
     },
   ],
