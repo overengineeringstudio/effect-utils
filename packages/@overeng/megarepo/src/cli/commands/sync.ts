@@ -5,8 +5,9 @@
  */
 
 import * as Cli from '@effect/cli'
+import { Prompt } from '@effect/cli'
 import type { CommandExecutor } from '@effect/platform'
-import { FileSystem, type Error as PlatformError } from '@effect/platform'
+import { FileSystem, Terminal, type Error as PlatformError } from '@effect/platform'
 import { Console, Effect, Layer, Option, type ParseResult, Schema } from 'effect'
 
 import { isTTY, styled, symbols } from '@overeng/cli-ui'
@@ -43,18 +44,20 @@ import {
   flattenSyncResults,
   type GitProtocol,
   makeRepoSemaphoreMap,
+  type MissingRefAction,
+  type MissingRefInfo,
   syncMember,
   type MegarepoSyncResult,
   type MemberSyncResult,
 } from '../../lib/sync/mod.ts'
 import { Cwd, findMegarepoRoot, jsonOption, verboseOption } from '../context.ts'
 import {
-  SyncProgressEmpty,
+  SyncProgressReactLayer,
   setMemberSyncing,
   applySyncResult,
   completeSyncProgress,
-  startSyncProgressUI,
-  finishSyncProgressUI,
+  startSyncProgressUIReact,
+  finishSyncProgressUIReact,
   type SyncProgressService,
 } from '../progress/mod.ts'
 import { outputLines, renderSync } from '../renderers/mod.ts'
@@ -110,6 +113,7 @@ export const syncMegarepo = ({
   depth = 0,
   visited = new Set<string>(),
   withProgress = false,
+  onMissingRef,
 }: {
   megarepoRoot: AbsoluteDirPath
   options: {
@@ -128,6 +132,9 @@ export const syncMegarepo = ({
   depth?: number
   visited?: Set<string>
   withProgress?: boolean
+  /** Callback for interactive prompts when a ref doesn't exist */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  onMissingRef?: (info: MissingRefInfo) => Effect.Effect<MissingRefAction, any, any>
 }): Effect.Effect<
   MegarepoSyncResult,
   | NotInMegarepoError
@@ -325,6 +332,7 @@ export const syncMegarepo = ({
             semaphoreMap,
             gitProtocol,
             createBranches,
+            ...(onMissingRef !== undefined ? { onMissingRef } : {}),
           })
 
           // Apply result to progress service
@@ -499,6 +507,7 @@ export const syncMegarepo = ({
           options,
           depth: depth + 1,
           visited, // Pass visited set to prevent duplicate syncing
+          ...(onMissingRef !== undefined ? { onMissingRef } : {}),
         }).pipe(
           Effect.catchAll(() =>
             // Return an empty result on error (errors are already in results)
@@ -529,6 +538,38 @@ const parseMemberList = (value: string): ReadonlyArray<string> =>
     .split(',')
     .map((s) => s.trim())
     .filter((s) => s.length > 0)
+
+/**
+ * Create an interactive prompt for missing refs.
+ * Returns an Effect that prompts the user what to do when a branch doesn't exist.
+ */
+const createMissingRefPrompt = (info: MissingRefInfo): Effect.Effect<MissingRefAction, never, Terminal.Terminal> =>
+  Effect.gen(function* () {
+    const prompt = Prompt.select<MissingRefAction>({
+      message: `Branch '${info.ref}' doesn't exist in ${info.memberName}`,
+      choices: [
+        {
+          title: `Create from '${info.defaultBranch}'`,
+          value: 'create' as const,
+          description: `Create branch '${info.ref}' from '${info.defaultBranch}' and push to remote`,
+        },
+        {
+          title: 'Skip this member',
+          value: 'skip' as const,
+          description: 'Continue syncing other members',
+        },
+        {
+          title: 'Abort sync',
+          value: 'abort' as const,
+          description: 'Stop the sync operation',
+        },
+      ],
+    })
+    
+    return yield* prompt.pipe(
+      Effect.catchTag('QuitException', () => Effect.succeed('abort' as const)),
+    )
+  })
 
 /** Sync members: clone to store and create symlinks */
 export const syncCommand = Cli.Command.make(
@@ -637,8 +678,8 @@ export const syncCommand = Cli.Command.make(
         const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
         const memberNames = Object.keys(config.members)
 
-        // Start live progress UI
-        const ui = yield* startSyncProgressUI({
+        // Start live progress UI (React-based)
+        const ui = yield* startSyncProgressUIReact({
           workspaceName: name,
           workspaceRoot: root.value,
           memberNames,
@@ -648,16 +689,22 @@ export const syncCommand = Cli.Command.make(
           deep,
         })
 
+        // Create interactive prompt callback if in TTY mode and not using --create-branches
+        const onMissingRef = !createBranches && isTTY()
+          ? (info: MissingRefInfo) => createMissingRefPrompt(info)
+          : undefined
+
         // Run the sync with progress updates
         const syncResult = yield* syncMegarepo({
           megarepoRoot: root.value,
           options: { json, dryRun, pull, frozen, force, deep, only: onlyMembers, skip: skipMembers, verbose, gitProtocol, createBranches },
           withProgress: true,
+          ...(onMissingRef !== undefined ? { onMissingRef } : {}),
         })
 
         // Mark complete and finish UI
         yield* completeSyncProgress()
-        yield* finishSyncProgressUI(ui)
+        yield* finishSyncProgressUIReact(ui)
 
         // Print generator output after progress UI completes
         const generatedFiles = getEnabledGenerators(config)
@@ -694,6 +741,7 @@ export const syncCommand = Cli.Command.make(
         const configContent = yield* fs.readFileString(configPath)
         const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
 
+        // Non-TTY mode doesn't use interactive prompts
         const syncResult = yield* syncMegarepo({
           megarepoRoot: root.value,
           options: { json, dryRun, pull, frozen, force, deep, only: onlyMembers, skip: skipMembers, verbose, gitProtocol, createBranches },
@@ -737,7 +785,7 @@ export const syncCommand = Cli.Command.make(
         return syncResult
       }
     }).pipe(
-      Effect.provide(Layer.merge(StoreLayer, SyncProgressEmpty)),
+      Effect.provide(Layer.merge(StoreLayer, SyncProgressReactLayer)),
       Effect.withSpan('megarepo/sync'),
     ),
 ).pipe(

@@ -201,7 +201,7 @@ export const extractStaticContent = (
  */
 export const renderTreeSimple = (root: TuiElement, width: number): string[] => {
   const lines: string[] = []
-  
+
   const render = (node: TuiNode, style: TextStyle, indent: number): void => {
     if (isTextNode(node)) {
       return // Handled by parent

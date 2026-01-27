@@ -6,3 +6,5 @@ packages:
   - ../utils
   - ../cli-ui
   - ../effect-path
+  - ../tui-react
+  - ../tui-core

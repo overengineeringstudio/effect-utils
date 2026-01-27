@@ -98,7 +98,7 @@ export class InlineRenderer {
 
     // Print the new static lines
     for (const line of lines) {
-      this.terminal.write(line + '\n')
+      this.terminal.write(line + '\r\n')
     }
     this.staticLines.push(...lines)
 
@@ -160,7 +160,7 @@ export class InlineRenderer {
     if (!this.terminal.isTTY) {
       // Non-TTY: just print lines
       for (const line of this.dynamicLines) {
-        this.terminal.write(line + '\n')
+        this.terminal.write(line + '\r\n')
       }
       this.hasRendered = true
       return
@@ -198,7 +198,8 @@ export class InlineRenderer {
 
   private renderAllDynamic(): void {
     for (const line of this.dynamicLines) {
-      this.terminal.write(line + '\n')
+      // Use \r\n to ensure cursor returns to column 0 (xterm.js treats \n as line feed only)
+      this.terminal.write(line + '\r\n')
     }
   }
 
@@ -227,14 +228,14 @@ export class InlineRenderer {
 
     // Clear and rewrite from firstDiff onwards
     for (let i = firstDiff; i < currLen; i++) {
-      this.terminal.write(cursorToColumn(1) + clearLine() + curr[i] + '\n')
+      this.terminal.write(cursorToColumn(1) + clearLine() + curr[i] + '\r\n')
     }
 
     // If new content is shorter, clear remaining old lines
     if (currLen < prevLen) {
       const extraLines = prevLen - currLen
       for (let i = 0; i < extraLines; i++) {
-        this.terminal.write(clearLine() + '\n')
+        this.terminal.write(clearLine() + '\r\n')
       }
       // Move cursor back up to end of new content
       this.terminal.write(cursorUp(extraLines))
@@ -248,7 +249,7 @@ export class InlineRenderer {
     const linesToClear = this.previousDynamic.length
     this.terminal.write(cursorUp(linesToClear))
     for (let i = 0; i < linesToClear; i++) {
-      this.terminal.write(clearLine() + '\n')
+      this.terminal.write(clearLine() + '\r\n')
     }
     this.terminal.write(cursorUp(linesToClear))
     this.previousDynamic = []

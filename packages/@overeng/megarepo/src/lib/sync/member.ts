@@ -25,6 +25,21 @@ import { Store } from '../store.ts'
 import type { MemberSyncResult } from './types.ts'
 
 /**
+ * Action to take when a ref doesn't exist
+ */
+export type MissingRefAction = 'create' | 'skip' | 'abort' | 'error'
+
+/**
+ * Information about a missing ref, passed to the onMissingRef callback
+ */
+export interface MissingRefInfo {
+  readonly memberName: string
+  readonly ref: string
+  readonly defaultBranch: string
+  readonly cloneUrl: string
+}
+
+/**
  * Internal semaphore type from Effect
  */
 type Semaphore = Effect.Semaphore
@@ -159,6 +174,7 @@ export const syncMember = ({
   semaphoreMap,
   gitProtocol = 'auto',
   createBranches = false,
+  onMissingRef,
 }: {
   name: string
   sourceString: string
@@ -174,6 +190,9 @@ export const syncMember = ({
   gitProtocol?: GitProtocol
   /** Create branches that don't exist (from default branch) */
   createBranches?: boolean
+  /** Callback when a ref doesn't exist. If not provided, defaults to 'error' behavior. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  onMissingRef?: (info: MissingRefInfo) => Effect.Effect<MissingRefAction, any, any>
 }) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -464,33 +483,62 @@ export const syncMember = ({
         cloneUrl,
       })
       if (!refValidation.exists) {
+        // Get default branch to use as base (needed for both createBranches and interactive prompt)
+        if (bareExists) {
+          const defaultBranch = yield* Git.getDefaultBranch({ repoPath: bareRepoPath })
+          defaultBranchForCreate = Option.getOrElse(defaultBranch, () => 'main')
+        } else {
+          const defaultBranch = yield* Git.getDefaultBranch({ url: cloneUrl })
+          defaultBranchForCreate = Option.getOrElse(defaultBranch, () => 'main')
+        }
+
+        // Determine action: --create-branches flag, interactive prompt, or error
+        let action: MissingRefAction = 'error'
+        
         if (createBranches) {
-          // Branch doesn't exist but we should create it
-          needsCreateBranch = true
-          // Get default branch to use as base
-          if (bareExists) {
-            const defaultBranch = yield* Git.getDefaultBranch({ repoPath: bareRepoPath })
-            defaultBranchForCreate = Option.getOrElse(defaultBranch, () => 'main')
-          } else {
-            const defaultBranch = yield* Git.getDefaultBranch({ url: cloneUrl })
-            defaultBranchForCreate = Option.getOrElse(defaultBranch, () => 'main')
-          }
-          
-          if (dryRun) {
-            // In dry-run mode, report what would happen
+          action = 'create'
+        } else if (onMissingRef !== undefined) {
+          // Interactive mode - ask user what to do
+          action = yield* onMissingRef({
+            memberName: name,
+            ref: targetRef,
+            defaultBranch: defaultBranchForCreate,
+            cloneUrl,
+          })
+        }
+
+        switch (action) {
+          case 'create':
+            needsCreateBranch = true
+            if (dryRun) {
+              // In dry-run mode, report what would happen
+              return {
+                name,
+                status: 'synced',
+                ref: targetRef,
+                message: `would create branch '${targetRef}' from '${defaultBranchForCreate}'`,
+              } satisfies MemberSyncResult
+            }
+            break
+          case 'skip':
             return {
               name,
-              status: 'synced',
-              ref: targetRef,
-              message: `would create branch '${targetRef}' from '${defaultBranchForCreate}'`,
+              status: 'skipped',
+              message: `branch '${targetRef}' does not exist`,
             } satisfies MemberSyncResult
-          }
-        } else {
-          return {
-            name,
-            status: 'error',
-            message: `Ref '${targetRef}' not found\n  hint: Check available refs with: git ls-remote --refs ${cloneUrl}\n  hint: Use --create-branches to create missing branches`,
-          } satisfies MemberSyncResult
+          case 'abort':
+            return {
+              name,
+              status: 'error',
+              message: `Sync aborted: branch '${targetRef}' does not exist`,
+            } satisfies MemberSyncResult
+          case 'error':
+          default:
+            return {
+              name,
+              status: 'error',
+              message: `Ref '${targetRef}' not found\n  hint: Check available refs with: git ls-remote --refs ${cloneUrl}\n  hint: Use --create-branches to create missing branches`,
+            } satisfies MemberSyncResult
         }
       }
     }

@@ -47,9 +47,25 @@ export {
   completeSyncProgress,
   getSyncProgress,
   syncProgressChanges,
+  // Sync logs
+  SyncLogs,
+  SyncLogsEmpty,
+  appendSyncLog,
+  getSyncLogs,
+  clearSyncLogs,
   type SyncItemData,
   type SyncProgressService,
+  type SyncLogEntry,
+  type SyncLogsRef,
 } from './sync-adapter.ts'
 
-// Sync-specific UI
+// Sync-specific UI (ANSI-based)
 export { startSyncProgressUI, finishSyncProgressUI, type SyncProgressUIHandle } from './sync-ui.ts'
+
+// Sync-specific UI (React-based)
+export {
+  startSyncProgressUI as startSyncProgressUIReact,
+  finishSyncProgressUI as finishSyncProgressUIReact,
+  SyncProgressReactLayer,
+  type SyncProgressUIHandle as SyncProgressUIHandleReact,
+} from './sync-ui-react.tsx'

@@ -12,6 +12,10 @@
       ".": "./dist/mod.js"
     }
   },
+  "scripts": {
+    "storybook": "storybook dev -p 6006",
+    "storybook:build": "storybook build"
+  },
   "dependencies": {
     "@overeng/tui-core": "workspace:*",
     "react": "19.2.3",
@@ -21,12 +25,21 @@
   },
   "devDependencies": {
     "@effect/platform": "0.94.2",
+    "@storybook/addon-essentials": "^8.6.0",
+    "@storybook/react": "^8.6.0",
+    "@storybook/react-vite": "^8.6.0",
     "@types/node": "25.0.3",
     "@types/react": "19.2.7",
     "@types/react-reconciler": "^0.28.9",
+    "@vitejs/plugin-react": "^4.0.0",
+    "@xterm/addon-fit": "^0.10.0",
     "@xterm/headless": "^5.5.0",
+    "@xterm/xterm": "^5.5.0",
     "effect": "3.19.15",
+    "react-dom": "19.2.3",
+    "storybook": "^8.6.0",
     "typescript": "5.9.3",
+    "vite": "^6.0.0",
     "vitest": "3.2.4"
   },
   "peerDependencies": {

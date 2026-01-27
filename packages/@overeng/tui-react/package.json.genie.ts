@@ -6,6 +6,10 @@ export default packageJson({
   exports: {
     '.': './src/mod.ts',
   },
+  scripts: {
+    storybook: 'storybook dev -p 6006',
+    'storybook:build': 'storybook build',
+  },
   publishConfig: {
     access: 'public',
     exports: {
@@ -30,6 +34,16 @@ export default packageJson({
     ),
     '@types/react-reconciler': '^0.28.9', // Types for react-reconciler
     '@xterm/headless': '^5.5.0', // Virtual terminal for testing
+    // Storybook dependencies
+    storybook: '^8.6.0', // Storybook core
+    '@storybook/react': '^8.6.0', // Storybook React renderer
+    '@storybook/react-vite': '^8.6.0', // Storybook Vite builder for React
+    '@storybook/addon-essentials': '^8.6.0', // Essential addons (controls, docs, etc.)
+    '@xterm/xterm': '^5.5.0', // Terminal emulator for browser
+    '@xterm/addon-fit': '^0.10.0', // Auto-fit terminal to container
+    ...catalog.pick('react-dom'), // For storybook web rendering
+    vite: '^6.0.0', // Build tool for storybook
+    '@vitejs/plugin-react': '^4.0.0', // React plugin for Vite
   },
   peerDependencies: {
     effect: catalog.pick('effect').effect,

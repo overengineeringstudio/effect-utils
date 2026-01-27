@@ -10,6 +10,8 @@ export {
   getRepoSemaphore,
   type GitProtocol,
   makeRepoSemaphoreMap,
+  type MissingRefAction,
+  type MissingRefInfo,
   resolveCloneUrl,
   syncMember,
   type RepoSemaphoreMap,

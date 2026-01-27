@@ -39,6 +39,7 @@ export { Box, type BoxProps } from './components/Box.tsx'
 export { Text, type TextProps } from './components/Text.tsx'
 export { Static, type StaticProps } from './components/Static.tsx'
 export { Spinner, type SpinnerProps, type SpinnerType, spinnerFrames } from './components/Spinner.tsx'
+export { TaskList, type TaskListProps, type TaskItem, type TaskStatus } from './components/TaskList.tsx'
 
 // Internal types (for advanced use)
 export type {

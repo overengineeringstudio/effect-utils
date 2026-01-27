@@ -6,6 +6,8 @@
  * knowing about the underlying generic progress implementation.
  */
 
+import { Context, Effect, Layer, SubscriptionRef } from 'effect'
+
 import type { MemberSyncResult } from '../renderers/sync-renderer.ts'
 import { createProgressService, createState, type ProgressItemInput } from './service.ts'
 
@@ -154,6 +156,11 @@ const mapSyncResultToProgress = (result: MemberSyncResult): MappedResult => {
         status: 'error',
         message: result.message,
       }
+    case 'removed':
+      return {
+        status: 'success',
+        message: 'removed',
+      }
   }
 }
 
@@ -188,3 +195,59 @@ export const createSyncProgressLayer = (params: {
   })
   return layerWith(state)
 }
+
+// =============================================================================
+// Sync Logs Service
+// =============================================================================
+
+/** Log entry type for sync operations */
+export interface SyncLogEntry {
+  readonly id: string
+  readonly type: 'info' | 'warn' | 'error'
+  readonly message: string
+}
+
+/** SubscriptionRef holding sync log entries */
+export type SyncLogsRef = SubscriptionRef.SubscriptionRef<readonly SyncLogEntry[]>
+
+/** Service tag for sync logs */
+export class SyncLogs extends Context.Tag('SyncLogs')<SyncLogs, SyncLogsRef>() {}
+
+let logIdCounter = 0
+
+/**
+ * Append a log entry to the sync logs.
+ */
+export const appendSyncLog = (entry: Omit<SyncLogEntry, 'id'>) =>
+  Effect.gen(function* () {
+    const ref = yield* SyncLogs
+    const id = `log-${++logIdCounter}`
+    yield* SubscriptionRef.update(ref, (logs) => [...logs, { ...entry, id }])
+    return id
+  })
+
+/**
+ * Get the current sync logs.
+ */
+export const getSyncLogs = () =>
+  Effect.gen(function* () {
+    const ref = yield* SyncLogs
+    return yield* SubscriptionRef.get(ref)
+  })
+
+/**
+ * Clear all sync logs.
+ */
+export const clearSyncLogs = () =>
+  Effect.gen(function* () {
+    const ref = yield* SyncLogs
+    yield* SubscriptionRef.set(ref, [])
+  })
+
+/**
+ * Layer providing an empty SyncLogs service.
+ */
+export const SyncLogsEmpty: Layer.Layer<SyncLogs> = Layer.effect(
+  SyncLogs,
+  SubscriptionRef.make<readonly SyncLogEntry[]>([]),
+)

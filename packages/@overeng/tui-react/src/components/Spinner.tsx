@@ -14,13 +14,15 @@ import { useState, useEffect, type ReactNode } from 'react'
 import { Text } from './Text.tsx'
 
 /** Spinner animation types */
-export type SpinnerType = 'dots' | 'line' | 'arc'
+export type SpinnerType = 'dots' | 'line' | 'arc' | 'bounce' | 'bar'
 
 /** Spinner frames for each type */
 export const spinnerFrames: Record<SpinnerType, readonly string[]> = {
   dots: ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'],
   line: ['-', '\\', '|', '/'],
   arc: ['◜', '◠', '◝', '◞', '◡', '◟'],
+  bounce: ['⠁', '⠂', '⠄', '⠂'],
+  bar: ['▏', '▎', '▍', '▌', '▋', '▊', '▉', '█', '▉', '▊', '▋', '▌', '▍', '▎'],
 }
 
 /** Frame intervals (ms) for each type */
@@ -28,12 +30,18 @@ const spinnerIntervals: Record<SpinnerType, number> = {
   dots: 80,
   line: 100,
   arc: 100,
+  bounce: 120,
+  bar: 80,
 }
+
+import type { Color } from '@overeng/tui-core'
 
 /** Spinner component props */
 export interface SpinnerProps {
   /** Spinner animation type. Default: 'dots' */
   type?: SpinnerType | undefined
+  /** Spinner color. Default: 'cyan' */
+  color?: Color | undefined
 }
 
 /**
@@ -42,7 +50,7 @@ export interface SpinnerProps {
  * Uses state to animate through frames.
  */
 export const Spinner = (props: SpinnerProps): ReactNode => {
-  const { type = 'dots' } = props
+  const { type = 'dots', color = 'cyan' } = props
   const frames = spinnerFrames[type]
   const interval = spinnerIntervals[type]
   
@@ -56,5 +64,5 @@ export const Spinner = (props: SpinnerProps): ReactNode => {
     return () => clearInterval(timer)
   }, [frames.length, interval])
   
-  return Text({ color: 'cyan', children: frames[frameIndex] })
+  return Text({ color, children: frames[frameIndex] })
 }
