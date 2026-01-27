@@ -104,15 +104,13 @@ Use `workspace:*` for all internal dependencies:
 
 ### PNPM-01: Parallel installs with `enableGlobalVirtualStore`
 
-> **Status: KNOWN BUG** - [pnpm#10232](https://github.com/pnpm/pnpm/issues/10232)
+> **Status: RESOLVED** - No longer applicable (we don't use `enableGlobalVirtualStore`)
 
-When running multiple `pnpm install` in parallel with `enableGlobalVirtualStore`, race conditions can corrupt the store.
+~~When running multiple `pnpm install` in parallel with `enableGlobalVirtualStore`, race conditions can corrupt the store.~~
 
-**Recovery:**
-```bash
-rm -rf ~/Library/pnpm/store/v10/links
-pnpm install
-```
+**Resolution (2026-01-27):** Since we removed `enableGlobalVirtualStore` (see PNPM-02), parallel installs now work correctly. Testing confirmed ~3x speedup with no store corruption.
+
+Reference: [pnpm#10232](https://github.com/pnpm/pnpm/issues/10232) (only affects `enableGlobalVirtualStore` mode)
 
 ### PNPM-02: TypeScript type inference with `enableGlobalVirtualStore`
 

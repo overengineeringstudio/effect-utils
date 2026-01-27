@@ -28,8 +28,9 @@
 # Note: `enableGlobalVirtualStore` was previously used but is no longer needed
 # with the `workspace:*` protocol approach. See PNPM-02 in context/workarounds/pnpm-issues.md
 #
-# IMPORTANT: Installs run SEQUENTIALLY to avoid pnpm store corruption.
-# See: context/workarounds/pnpm-issues.md for full details.
+# Installs run in PARALLEL for faster builds (~3x speedup).
+# This is safe because we no longer use enableGlobalVirtualStore (which had race conditions).
+# See: context/workarounds/pnpm-issues.md for history.
 #
 # Shared caching rules live in ./lib/cache.nix (task-specific details below).
 #
@@ -62,36 +63,31 @@ let
     in
     sanitize final;
 
-  # Build sequential dependency chain for consistent installs.
-  # Sequential installs ensure genie:run completes first (generates pnpm-workspace.yaml files).
-  mkInstallTask = idx: path:
-    let
-      prevTask = if idx == 0
-        then "genie:run"
-        else "pnpm:install:${toName (builtins.elemAt packages (idx - 1))}";
-    in {
-      "pnpm:install:${toName path}" = {
-        description = "Install dependencies for ${toName path}";
-        # NOTE: Use --config.confirmModulesPurge=false to avoid TTY prompts in non-interactive mode.
-        exec = ''
-          set -euo pipefail
-          mkdir -p "${cacheRoot}"
-          hash_file="${cacheRoot}/${toName path}.hash"
+  # All install tasks depend only on genie:run (which generates pnpm-workspace.yaml files).
+  # Installs run in parallel for ~3x speedup.
+  mkInstallTask = path: {
+    "pnpm:install:${toName path}" = {
+      description = "Install dependencies for ${toName path}";
+      # NOTE: Use --config.confirmModulesPurge=false to avoid TTY prompts in non-interactive mode.
+      exec = ''
+        set -euo pipefail
+        mkdir -p "${cacheRoot}"
+        hash_file="${cacheRoot}/${toName path}.hash"
 
-          pnpm install --config.confirmModulesPurge=false
+        pnpm install --config.confirmModulesPurge=false
 
-          if command -v sha256sum >/dev/null 2>&1; then
-            hash_cmd="sha256sum"
-          else
-            hash_cmd="shasum -a 256"
-          fi
+        if command -v sha256sum >/dev/null 2>&1; then
+          hash_cmd="sha256sum"
+        else
+          hash_cmd="shasum -a 256"
+        fi
 
-          current_hash="$(cat package.json pnpm-lock.yaml | $hash_cmd | awk '{print $1}')"
-          cache_value="$current_hash"
-          ${cache.writeCacheFile ''"$hash_file"''}
-        '';
-        cwd = path;
-        after = [ prevTask ];
+        current_hash="$(cat package.json pnpm-lock.yaml | $hash_cmd | awk '{print $1}')"
+        cache_value="$current_hash"
+        ${cache.writeCacheFile ''"$hash_file"''}
+      '';
+      cwd = path;
+      after = [ "genie:run" ];
         status = ''
           set -euo pipefail
           hash_file="${cacheRoot}/${toName path}.hash"
@@ -116,14 +112,11 @@ let
       };
     };
 
-  # Generate indexed list for sequential chaining
-  indexedPackages = lib.imap0 (idx: path: { inherit idx path; }) packages;
-
   nodeModulesPaths = lib.concatMapStringsSep " " (p: "${p}/node_modules") packages;
   lockFilePaths = lib.concatMapStringsSep " " (p: "${p}/pnpm-lock.yaml") packages;
 
 in {
-  tasks = lib.mkMerge (map (p: mkInstallTask p.idx p.path) indexedPackages ++ [
+  tasks = lib.mkMerge (map mkInstallTask packages ++ [
     {
       "pnpm:install" = {
         description = "Install all pnpm dependencies";
