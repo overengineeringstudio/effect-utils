@@ -384,6 +384,86 @@ export const refExists = (args: { repoPath: string; ref: string }) =>
   })
 
 // =============================================================================
+// Branch Operations
+// =============================================================================
+
+/**
+ * Create a new branch in a bare repo from a base ref.
+ * The branch is created locally and can then be pushed.
+ *
+ * @param repoPath - Path to the bare repo
+ * @param branch - Name of the new branch to create
+ * @param baseRef - The ref to create the branch from (commit, tag, or branch)
+ */
+export const createBranch = (args: { repoPath: string; branch: string; baseRef: string }) =>
+  Effect.gen(function* () {
+    // Resolve the base ref to a commit
+    const baseCommit = yield* resolveRef({ repoPath: args.repoPath, ref: args.baseRef })
+
+    // Create the branch pointing to that commit
+    yield* runGitCommand({
+      args: ['branch', args.branch, baseCommit],
+      cwd: args.repoPath,
+    })
+
+    return baseCommit
+  })
+
+/**
+ * Push a branch to the remote.
+ *
+ * @param repoPath - Path to the bare repo
+ * @param branch - Name of the branch to push
+ * @param remote - Remote name (default: 'origin')
+ * @param setUpstream - Whether to set upstream tracking (default: true)
+ */
+export const pushBranch = (args: {
+  repoPath: string
+  branch: string
+  remote?: string
+  setUpstream?: boolean
+}) =>
+  Effect.gen(function* () {
+    const remote = args.remote ?? 'origin'
+    const cmdArgs = ['push']
+    if (args.setUpstream !== false) {
+      cmdArgs.push('-u')
+    }
+    cmdArgs.push(remote, args.branch)
+
+    yield* runGitCommand({
+      args: cmdArgs,
+      cwd: args.repoPath,
+    })
+  })
+
+/**
+ * Create a new branch and push it to the remote.
+ * Combines createBranch and pushBranch for convenience.
+ */
+export const createAndPushBranch = (args: {
+  repoPath: string
+  branch: string
+  baseRef: string
+  remote?: string
+}) =>
+  Effect.gen(function* () {
+    const baseCommit = yield* createBranch({
+      repoPath: args.repoPath,
+      branch: args.branch,
+      baseRef: args.baseRef,
+    })
+
+    yield* pushBranch({
+      repoPath: args.repoPath,
+      branch: args.branch,
+      remote: args.remote,
+    })
+
+    return baseCommit
+  })
+
+// =============================================================================
 // Enhanced Worktree Operations
 // =============================================================================
 

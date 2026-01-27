@@ -347,7 +347,7 @@ my-megarepo/repos/effect-utils -> /Users/dev/.megarepo/github.com/overeng/effect
 Bidirectional sync between worktrees and lock file. The default mode ensures members exist and updates the lock file to match current worktree HEADs.
 
 ```bash
-mr sync [--pull] [--frozen] [--force] [--deep] [--only <members...>] [--skip <members...>] [--git-protocol <ssh|https|auto>]
+mr sync [--pull] [--frozen] [--force] [--deep] [--only <members...>] [--skip <members...>] [--git-protocol <ssh|https|auto>] [--create-branches]
 ```
 
 **Modes:**
@@ -389,6 +389,7 @@ This mode is ideal for local iteration: make commits in worktrees, then `mr sync
 - `--only <members>` - Only sync specified members (comma-separated, mutually exclusive with `--skip`)
 - `--skip <members>` - Skip specified members (comma-separated, mutually exclusive with `--only`)
 - `--git-protocol <ssh|https|auto>` - Git protocol for cloning (see below)
+- `--create-branches` - Create branches that don't exist (from default branch)
 
 #### Git Protocol Selection
 
@@ -677,6 +678,37 @@ mr pin effect -c main            # back to main branch
 mr unpin effect                  # allow updates
 mr sync --pull                   # update to latest
 ```
+
+### Creating a new feature branch
+
+There are two ways to create a new branch that doesn't exist yet:
+
+**Using `--create-branches` flag:**
+
+```bash
+# In megarepo.json: "dotfiles": "schickling/dotfiles#new-feature"
+mr sync --create-branches        # creates missing branches from default branch
+```
+
+**Interactive mode (TTY only):**
+
+If you specify a branch that doesn't exist and you're running in an interactive terminal, `mr sync` will prompt:
+
+```bash
+# In megarepo.json: "dotfiles": "schickling/dotfiles#new-feature"
+mr sync
+
+# Output:
+# Branch 'new-feature' doesn't exist in schickling/dotfiles.
+#   [c] Create from default branch (main)
+#   [s] Skip this member  
+#   [a] Abort sync
+# Choice: c
+# ✓ Created branch 'new-feature' from 'main'
+# ✓ dotfiles synced (new-feature)
+```
+
+In non-interactive mode without `--create-branches`, missing refs result in an error.
 
 ---
 

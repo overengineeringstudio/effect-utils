@@ -228,7 +228,7 @@ export const renderSync = ({
     const skipped = results.filter((r) => r.status === 'skipped')
     const alreadySynced = results.filter((r) => r.status === 'already_synced')
 
-    // Show changes first (cloned, synced, updated)
+    // Show changes (cloned, synced, updated)
     for (const r of cloned) {
       const refInfo = r.ref ? ` ${styled.dim(`(${r.ref})`)}` : ''
       output.push(

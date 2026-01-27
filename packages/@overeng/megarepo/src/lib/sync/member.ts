@@ -158,6 +158,7 @@ export const syncMember = ({
   force,
   semaphoreMap,
   gitProtocol = 'auto',
+  createBranches = false,
 }: {
   name: string
   sourceString: string
@@ -171,6 +172,8 @@ export const syncMember = ({
   semaphoreMap?: RepoSemaphoreMap
   /** Git protocol to use for cloning: 'ssh', 'https', or 'auto' (default) */
   gitProtocol?: GitProtocol
+  /** Create branches that don't exist (from default branch) */
+  createBranches?: boolean
 }) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -447,9 +450,13 @@ export const syncMember = ({
       }
     }
 
-    // In dry-run mode, validate that the ref exists before reporting success
+    // Validate that the ref exists (for dry-run mode or before creating worktree)
     // Uses hybrid approach: check local bare repo if exists, otherwise query remote
-    if (dryRun && targetCommit === undefined && !isCommitSha(targetRef)) {
+    // Track whether we need to create the branch
+    let needsCreateBranch = false
+    let defaultBranchForCreate: string | undefined
+    
+    if (targetCommit === undefined && !isCommitSha(targetRef)) {
       const refValidation = yield* Git.validateRefExists({
         ref: targetRef,
         bareRepoPath: bareExists ? bareRepoPath : undefined,
@@ -457,12 +464,45 @@ export const syncMember = ({
         cloneUrl,
       })
       if (!refValidation.exists) {
-        return {
-          name,
-          status: 'error',
-          message: `Ref '${targetRef}' not found\n  hint: Check available refs with: git ls-remote --refs ${cloneUrl}`,
-        } satisfies MemberSyncResult
+        if (createBranches) {
+          // Branch doesn't exist but we should create it
+          needsCreateBranch = true
+          // Get default branch to use as base
+          if (bareExists) {
+            const defaultBranch = yield* Git.getDefaultBranch({ repoPath: bareRepoPath })
+            defaultBranchForCreate = Option.getOrElse(defaultBranch, () => 'main')
+          } else {
+            const defaultBranch = yield* Git.getDefaultBranch({ url: cloneUrl })
+            defaultBranchForCreate = Option.getOrElse(defaultBranch, () => 'main')
+          }
+          
+          if (dryRun) {
+            // In dry-run mode, report what would happen
+            return {
+              name,
+              status: 'synced',
+              ref: targetRef,
+              message: `would create branch '${targetRef}' from '${defaultBranchForCreate}'`,
+            } satisfies MemberSyncResult
+          }
+        } else {
+          return {
+            name,
+            status: 'error',
+            message: `Ref '${targetRef}' not found\n  hint: Check available refs with: git ls-remote --refs ${cloneUrl}\n  hint: Use --create-branches to create missing branches`,
+          } satisfies MemberSyncResult
+        }
       }
+    }
+
+    // Create branch if needed (--create-branches flag was used and ref doesn't exist)
+    if (needsCreateBranch && defaultBranchForCreate !== undefined && !dryRun) {
+      // Create the branch locally and push to remote
+      yield* Git.createAndPushBranch({
+        repoPath: bareRepoPath,
+        branch: targetRef,
+        baseRef: `origin/${defaultBranchForCreate}`,
+      })
     }
 
     // Resolve ref to commit if not already known
@@ -613,6 +653,11 @@ export const syncMember = ({
     const previousCommit = lockedMember?.commit
     const isUpdate = pull && previousCommit !== undefined && previousCommit !== targetCommit
 
+    // Build message for branch creation
+    const branchCreatedMessage = needsCreateBranch && defaultBranchForCreate
+      ? `created branch '${targetRef}' from '${defaultBranchForCreate}'`
+      : undefined
+
     return {
       name,
       status: wasCloned ? 'cloned' : isUpdate ? 'updated' : 'synced',
@@ -620,6 +665,7 @@ export const syncMember = ({
       previousCommit: isUpdate ? previousCommit : undefined,
       ref: targetRef,
       lockUpdated: true,
+      message: branchCreatedMessage,
     } satisfies MemberSyncResult
   }).pipe(
     Effect.catchAll((error) => {

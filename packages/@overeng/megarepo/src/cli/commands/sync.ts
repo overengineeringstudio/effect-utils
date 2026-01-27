@@ -123,6 +123,7 @@ export const syncMegarepo = ({
     skip: ReadonlyArray<string> | undefined
     verbose: boolean
     gitProtocol: GitProtocol
+    createBranches: boolean
   }
   depth?: number
   visited?: Set<string>
@@ -138,7 +139,7 @@ export const syncMegarepo = ({
   FileSystem.FileSystem | CommandExecutor.CommandExecutor | Store | SyncProgressService
 > =>
   Effect.gen(function* () {
-    const { json, dryRun, pull, frozen, force, deep, only, skip, verbose, gitProtocol } = options
+    const { json, dryRun, pull, frozen, force, deep, only, skip, verbose, gitProtocol, createBranches } = options
     const fs = yield* FileSystem.FileSystem
     const indent = '  '.repeat(depth)
 
@@ -323,6 +324,7 @@ export const syncMegarepo = ({
             force,
             semaphoreMap,
             gitProtocol,
+            createBranches,
           })
 
           // Apply result to progress service
@@ -570,9 +572,13 @@ export const syncCommand = Cli.Command.make(
       ),
       Cli.Options.withDefault('auto' as const),
     ),
+    createBranches: Cli.Options.boolean('create-branches').pipe(
+      Cli.Options.withDescription('Create branches that do not exist (from default branch)'),
+      Cli.Options.withDefault(false),
+    ),
     verbose: verboseOption,
   },
-  ({ json, dryRun, pull, frozen, force, deep, only, skip, gitProtocol, verbose }) =>
+  ({ json, dryRun, pull, frozen, force, deep, only, skip, gitProtocol, createBranches, verbose }) =>
     Effect.gen(function* () {
       const cwd = yield* Cwd
       const fs = yield* FileSystem.FileSystem
@@ -645,7 +651,7 @@ export const syncCommand = Cli.Command.make(
         // Run the sync with progress updates
         const syncResult = yield* syncMegarepo({
           megarepoRoot: root.value,
-          options: { json, dryRun, pull, frozen, force, deep, only: onlyMembers, skip: skipMembers, verbose, gitProtocol },
+          options: { json, dryRun, pull, frozen, force, deep, only: onlyMembers, skip: skipMembers, verbose, gitProtocol, createBranches },
           withProgress: true,
         })
 
@@ -690,7 +696,7 @@ export const syncCommand = Cli.Command.make(
 
         const syncResult = yield* syncMegarepo({
           megarepoRoot: root.value,
-          options: { json, dryRun, pull, frozen, force, deep, only: onlyMembers, skip: skipMembers, verbose, gitProtocol },
+          options: { json, dryRun, pull, frozen, force, deep, only: onlyMembers, skip: skipMembers, verbose, gitProtocol, createBranches },
         })
 
         // Get list of files that would be / were generated
