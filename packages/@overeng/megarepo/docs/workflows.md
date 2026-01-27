@@ -108,21 +108,57 @@ mr unpin other-lib
 mr update  # Now they update normally
 ```
 
+## Switching Branches
+
+### Working on a Feature Branch
+
+```bash
+# Switch effect to a feature branch
+mr pin effect -c feature/new-api
+
+# Work on the feature...
+cd repos/effect
+git commit -m "implement feature"
+git push
+
+# Switch back to main (feature worktree preserved with any uncommitted work)
+mr pin effect -c main
+
+# Resume tracking latest main
+mr unpin effect
+mr sync --pull
+```
+
+### Preserving Work Across Branch Switches
+
+Since megarepo uses separate worktrees per ref, uncommitted changes are preserved:
+
+```bash
+# On main branch, make some changes (don't commit yet)
+cd repos/effect && echo "wip" > temp.txt
+
+# Switch to feature branch for something urgent
+mr pin effect -c feature/hotfix
+# ... fix the issue ...
+
+# Switch back to main - your temp.txt is still there!
+mr pin effect -c main
+```
+
 ## Investigating Regressions
 
 ### Testing a Specific Commit
 
 ```bash
 # Pin to a known-good commit
-# First, edit megarepo.json to use commit SHA
-# effect: "effect-ts/effect#abc123def456..."
-mr sync
+mr pin effect -c abc123def456
 
 # Test...
 
-# Revert back
-# effect: "effect-ts/effect#main"
-mr update effect
+# Switch back to main
+mr pin effect -c main
+mr unpin effect
+mr sync --pull
 ```
 
 ### Comparing Versions
@@ -168,10 +204,17 @@ To work independently, use different refs:
 
 ```bash
 # project-a uses main
-mr add effect-ts/effect#main --name effect
+mr pin effect -c main
 
 # project-b uses a feature branch
-mr add effect-ts/effect#my-feature --name effect
+mr pin effect -c my-feature
+```
+
+Or when setting up new members:
+
+```bash
+mr add effect-ts/effect#main --name effect
+mr add effect-ts/effect#my-feature --name effect-feature
 ```
 
 ## Nested Megarepos

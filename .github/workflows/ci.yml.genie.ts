@@ -52,5 +52,27 @@ export default githubWorkflow({
       name: 'Unit tests',
       run: 'dt test:run',
     }),
+    // Verify Nix hashes are up-to-date (pnpmDepsHash + localDeps)
+    // This catches stale hashes before they break downstream consumers
+    'nix-check': {
+      'runs-on': 'ubuntu-latest',
+      steps: [
+        { uses: 'actions/checkout@v4' },
+        {
+          name: 'Install Nix',
+          uses: 'cachix/install-nix-action@v31',
+        },
+        {
+          name: 'Build genie',
+          // TODO refactor with `dt` task
+          run: 'nix build .#genie --no-link',
+        },
+        {
+          name: 'Build megarepo',
+          // TODO refactor with `dt` task
+          run: 'nix build .#megarepo --no-link',
+        },
+      ],
+    },
   },
 })

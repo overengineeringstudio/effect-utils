@@ -43,6 +43,7 @@ import {
   makeRepoSemaphoreMap,
   syncMember,
   type MegarepoSyncResult,
+  type MemberSyncResult,
 } from '../../lib/sync/mod.ts'
 import { Cwd, findMegarepoRoot, jsonOption, verboseOption } from '../context.ts'
 import {
@@ -324,6 +325,55 @@ export const syncMegarepo = ({
       { concurrency },
     )
 
+    // Detect and remove orphaned symlinks (members removed from config)
+    const membersRoot = getMembersRoot(megarepoRoot)
+    const configuredMemberNames = new Set(Object.keys(config.members))
+    const removedResults: Array<MemberSyncResult> = []
+
+    // Only check for orphans if repos/ directory exists
+    const membersRootExists = yield* fs
+      .exists(membersRoot)
+      .pipe(Effect.catchAll(() => Effect.succeed(false)))
+
+    if (membersRootExists) {
+      const existingEntries = yield* fs
+        .readDirectory(membersRoot)
+        .pipe(Effect.catchAll(() => Effect.succeed([] as string[])))
+
+      for (const entry of existingEntries) {
+        // Skip if this member is still in config
+        if (configuredMemberNames.has(entry)) continue
+
+        // Skip if this member was explicitly skipped via --only/--skip
+        if (skippedMemberNames.has(entry)) continue
+
+        const entryPath = EffectPath.ops.join(
+          membersRoot,
+          EffectPath.unsafe.relativeFile(entry),
+        )
+
+        // Only remove symlinks (not directories that might be local repos)
+        const linkTarget = yield* fs
+          .readLink(entryPath)
+          .pipe(Effect.catchAll(() => Effect.succeed(null)))
+
+        if (linkTarget !== null) {
+          // This is a symlink - it's an orphan, remove it
+          if (!dryRun) {
+            yield* fs.remove(entryPath).pipe(Effect.catchAll(() => Effect.void))
+          }
+          removedResults.push({
+            name: entry,
+            status: 'removed',
+            message: dryRun ? 'Would remove orphaned symlink' : 'Removed orphaned symlink',
+          })
+        }
+      }
+    }
+
+    // Combine results with removed members
+    const allResults = [...results, ...removedResults]
+
     // Check which members are themselves megarepos (for --deep)
     const nestedMegarepoChecks = yield* Effect.all(
       results.map((result) =>
@@ -454,7 +504,7 @@ export const syncMegarepo = ({
 
     return {
       root: megarepoRoot,
-      results,
+      results: allResults,
       nestedMegarepos,
       nestedResults,
     } satisfies MegarepoSyncResult

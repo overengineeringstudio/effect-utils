@@ -72,6 +72,8 @@ The path reveals:
 | `v1.0.0`       | `refs/tags/v1.0.0/`          |
 | `abc123...`    | `refs/commits/abc123.../`    |
 
+**Key implication:** Each ref has its own isolated worktree. Switching between refs (via `mr pin -c`) updates the symlink to point to a different worktree—it does NOT modify files in place like `git checkout`. This means uncommitted changes in one worktree are preserved when you switch to another ref.
+
 ---
 
 ## Source Types
@@ -283,15 +285,24 @@ The lock file records resolved state and is committed to git for CI reproducibil
 
 ### Lock Entry Fields
 
-| Field      | Description                                    |
-| ---------- | ---------------------------------------------- |
-| `url`      | Resolved URL (GitHub shorthand expanded)       |
-| `ref`      | Original ref from config (for context)         |
-| `commit`   | Resolved commit SHA (40 chars)                 |
-| `pinned`   | If true, `mr update` won't refresh this member |
-| `lockedAt` | Timestamp when this entry was resolved         |
+| Field      | Description                                                |
+| ---------- | ---------------------------------------------------------- |
+| `url`      | Resolved URL (GitHub shorthand expanded)                   |
+| `ref`      | Current ref (branch, tag, or commit SHA)                   |
+| `commit`   | Resolved commit SHA (40 chars)                             |
+| `pinned`   | If true, `mr sync --pull` won't refresh this member        |
+| `lockedAt` | Timestamp when this entry was resolved                     |
 
 **Note:** Local paths are NOT in the lock file - they're already local.
+
+**Pinned vs Ref Type:**
+
+The `pinned` flag and ref type serve different purposes:
+- **Ref type** determines what the member tracks (branch = mutable, tag/commit = immutable)
+- **Pinned flag** determines whether `sync --pull` should update the member
+
+A pinned branch stays at its current commit even though branches are normally mutable.
+An unpinned tag stays at the tagged commit because tags are inherently immutable.
 
 ---
 
@@ -407,18 +418,38 @@ This commit-based path approach ensures that even if the store's bare repo has b
 
 **CI usage:** In a fresh CI environment, `mr sync --frozen` will clone repos and fetch as needed to materialize the exact commits specified in the lock file, then run generators. This provides reproducible builds without requiring a pre-populated store. The lock file is never modified.
 
-#### `mr pin <member> [--commit=SHA]`
+#### `mr pin <member> [-c <ref>]`
 
-Mark a member as pinned:
+Point a member to a specific ref and mark it as pinned:
 
 ```bash
-mr pin effect              # pin to current commit
-mr pin effect --commit=abc # pin to specific commit
+mr pin effect                 # pin to current commit
+mr pin effect -c main         # pin to main branch
+mr pin effect -c v3.0.0       # pin to tag
+mr pin effect -c abc123def    # pin to specific commit
 ```
 
-- Sets `pinned: true` in lock file
-- Pinned members won't update with `mr sync --pull`
-- Pinned members use commit-based worktree paths (like `--frozen`), guaranteeing they stay at the exact pinned commit
+**Behavior:**
+
+1. Updates `megarepo.json` to use the specified ref (if `-c` provided)
+2. Creates a new worktree for that ref (if it doesn't exist)
+3. Updates the symlink in `repos/` to point to the new worktree
+4. Sets `pinned: true` in lock file
+5. Pinned members won't update with `mr sync --pull`
+
+**Worktree preservation:** Unlike `git checkout`, switching refs does NOT modify the current worktree. Each ref has its own worktree in the store. The previous worktree remains untouched with any uncommitted changes preserved. This enables safe context-switching between branches without stashing or committing work-in-progress.
+
+**Ref types and immutability:**
+
+The ref type determines mutability, not the `pin` command itself:
+
+| Ref Type | Example | Mutability | Behavior on `sync --pull` (if unpinned) |
+|----------|---------|------------|----------------------------------------|
+| Branch | `main`, `feature/foo` | Mutable | Updates to latest commit |
+| Tag | `v3.0.0`, `release-1.0` | Immutable | Stays at tagged commit |
+| Commit | `abc123def...` | Immutable | Stays at exact commit |
+
+When pinned, the member stays at its current commit regardless of ref type.
 
 #### `mr unpin <member>`
 
@@ -429,7 +460,8 @@ mr unpin effect
 ```
 
 - Sets `pinned: false` in lock file
-- Next `mr sync --pull` will refresh to latest
+- Next `mr sync --pull` will refresh to latest (for branch refs)
+- Tags and commits remain at their fixed points even when unpinned
 
 ### Convenience Commands
 
@@ -597,14 +629,31 @@ git commit -m "Pin dependencies for release"
 mr sync --pull             # effect stays pinned, others update
 ```
 
+### Switching branches
+
+```bash
+# Switch to a feature branch (preserves main worktree with any uncommitted changes)
+mr pin effect -c feature/new-api
+
+# Work on the feature branch...
+cd repos/effect && git commit -m "implement feature"
+
+# Switch back to main (feature branch worktree preserved)
+mr pin effect -c main
+
+# Allow updates again
+mr unpin effect
+mr sync --pull                   # update to latest main
+```
+
 ### Investigating a regression
 
 ```bash
-mr pin effect --commit=abc123   # pin to known-good commit
-mr sync                          # checkout that commit
+mr pin effect -c abc123          # pin to known-good commit
 # ... test ...
-mr unpin effect                  # remove pin
-mr sync --pull                   # back to latest
+mr pin effect -c main            # back to main branch
+mr unpin effect                  # allow updates
+mr sync --pull                   # update to latest
 ```
 
 ---
@@ -653,9 +702,12 @@ mr sync --deep   # Recursive - includes nested megarepos
 
 1. **For existing members:** Read current worktree HEAD, update lock if different
 2. **For new members:** Clone bare repo, create worktree, add to lock
-3. **Ensure symlink:** Create or fix symlink to worktree
+3. **For removed members:** Remove symlink from `repos/`, remove entry from lock file
+4. **Ensure symlink:** Create or fix symlink to worktree
 
 Default mode does NOT fetch from remote. It reads current worktree state and updates the lock file to match.
+
+**Removed member detection:** After syncing configured members, the sync command scans the `repos/` directory for orphaned symlinks (entries not in the current config). These are automatically removed to keep the workspace clean. The corresponding lock file entries are also removed. Note: The underlying worktrees in the store are NOT removed - use `mr store gc` to clean up unused worktrees.
 
 ### `mr sync --pull` Strategy
 
@@ -683,6 +735,7 @@ Default mode does NOT fetch from remote. It reads current worktree state and upd
 - **Remote member exists as directory (not symlink):** Error - user must remove or rename
 - **Local member already exists:** Skip - don't overwrite existing local content
 - **Symlink points to wrong location:** Update symlink silently
+- **Orphaned symlink (member removed from config):** Remove symlink automatically
 
 ---
 

@@ -113,19 +113,48 @@ mr add effect-ts/effect --sync  # Add and sync immediately
 
 ### `mr pin`
 
-Pin a member to its current commit. Pinned members won't update with `mr update`.
+Point a member to a specific ref and mark it as pinned.
 
 ```bash
-mr pin <member>
+mr pin <member> [-c <ref>]
 ```
+
+**Options:**
+
+| Option   | Description                                      |
+| -------- | ------------------------------------------------ |
+| `-c`     | Ref to point to (branch, tag, or commit SHA)     |
+
+**Examples:**
+
+```bash
+mr pin effect                 # pin to current commit
+mr pin effect -c main         # switch to and pin main branch
+mr pin effect -c v3.0.0       # switch to and pin tag
+mr pin effect -c feature/foo  # switch to and pin feature branch
+mr pin effect -c abc123def    # pin to specific commit
+```
+
+**Behavior:**
+
+1. If `-c <ref>` provided: updates `megarepo.json` with the new ref
+2. Creates a new worktree for that ref in the store (if it doesn't exist)
+3. Updates the symlink in `repos/` to point to the new worktree
+4. Sets `pinned: true` in lock file
+
+**Worktree preservation:** Unlike `git checkout`, switching refs does NOT modify the current worktree. Each ref has its own isolated worktree in the store. The previous worktree remains untouched with any uncommitted changes preserved.
 
 ### `mr unpin`
 
-Remove pin from a member.
+Remove pin from a member, allowing it to update on `sync --pull`.
 
 ```bash
 mr unpin <member>
 ```
+
+After unpinning:
+- Branch refs will update to latest on `mr sync --pull`
+- Tag and commit refs remain at their fixed points (they're inherently immutable)
 
 ## Info Commands
 

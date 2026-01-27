@@ -1634,3 +1634,356 @@ describe('sync member filtering', () => {
       ))
   })
 })
+
+// =============================================================================
+// Member Removal Detection Tests
+// =============================================================================
+
+describe('sync member removal detection', () => {
+  it('should detect and remove orphaned symlinks when member is removed from config', () =>
+    withTestCtx(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+
+        // Create temp directory with two local repos
+        const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+        const repo1Path = yield* createRepo({
+          basePath: tmpDir,
+          fixture: {
+            name: 'repo1',
+            files: { 'package.json': '{"name": "repo1"}' },
+          },
+        })
+        const repo2Path = yield* createRepo({
+          basePath: tmpDir,
+          fixture: {
+            name: 'repo2',
+            files: { 'package.json': '{"name": "repo2"}' },
+          },
+        })
+
+        // Create workspace with both members
+        const workspacePath = EffectPath.ops.join(
+          tmpDir,
+          EffectPath.unsafe.relativeDir('workspace/'),
+        )
+        yield* fs.makeDirectory(workspacePath, { recursive: true })
+        yield* initGitRepo(workspacePath)
+
+        const configPath = EffectPath.ops.join(
+          workspacePath,
+          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+        )
+
+        // Initial config with both members
+        const initialConfig: typeof MegarepoConfig.Type = {
+          members: {
+            repo1: repo1Path,
+            repo2: repo2Path,
+          },
+        }
+        yield* fs.writeFileString(
+          configPath,
+          (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(initialConfig)) +
+            '\n',
+        )
+        yield* addCommit({
+          repoPath: workspacePath,
+          message: 'Initialize megarepo',
+        })
+
+        // First sync - create both symlinks
+        yield* runSyncCommand({ cwd: workspacePath, args: [] })
+
+        // Verify both symlinks exist
+        const repo1Symlink = EffectPath.ops.join(
+          workspacePath,
+          EffectPath.unsafe.relativeFile('repos/repo1'),
+        )
+        const repo2Symlink = EffectPath.ops.join(
+          workspacePath,
+          EffectPath.unsafe.relativeFile('repos/repo2'),
+        )
+        expect(yield* fs.exists(repo1Symlink)).toBe(true)
+        expect(yield* fs.exists(repo2Symlink)).toBe(true)
+
+        // Update config to remove repo2
+        const updatedConfig: typeof MegarepoConfig.Type = {
+          members: {
+            repo1: repo1Path,
+            // repo2 removed!
+          },
+        }
+        yield* fs.writeFileString(
+          configPath,
+          (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(updatedConfig)) +
+            '\n',
+        )
+
+        // Second sync - should detect and remove orphaned repo2 symlink
+        const result = yield* runSyncCommand({
+          cwd: workspacePath,
+          args: ['--json'],
+        })
+        const json = JSON.parse(result.stdout.trim()) as {
+          results: Array<{ name: string; status: string; message?: string }>
+        }
+
+        // Should have results for repo1 (synced) and repo2 (removed)
+        expect(json.results).toHaveLength(2)
+
+        const repo1Result = json.results.find((r) => r.name === 'repo1')
+        const repo2Result = json.results.find((r) => r.name === 'repo2')
+
+        expect(repo1Result?.status).toBe('already_synced')
+        expect(repo2Result?.status).toBe('removed')
+
+        // Verify repo1 symlink still exists
+        expect(yield* fs.exists(repo1Symlink)).toBe(true)
+
+        // Verify repo2 symlink was removed
+        expect(yield* fs.exists(repo2Symlink)).toBe(false)
+      }),
+    ))
+
+  it('should report removed status in dry-run mode without actually removing', () =>
+    withTestCtx(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+
+        // Create temp directory with two local repos
+        const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+        const repo1Path = yield* createRepo({
+          basePath: tmpDir,
+          fixture: {
+            name: 'repo1',
+            files: { 'package.json': '{"name": "repo1"}' },
+          },
+        })
+        const repo2Path = yield* createRepo({
+          basePath: tmpDir,
+          fixture: {
+            name: 'repo2',
+            files: { 'package.json': '{"name": "repo2"}' },
+          },
+        })
+
+        // Create workspace with both members
+        const workspacePath = EffectPath.ops.join(
+          tmpDir,
+          EffectPath.unsafe.relativeDir('workspace/'),
+        )
+        yield* fs.makeDirectory(workspacePath, { recursive: true })
+        yield* initGitRepo(workspacePath)
+
+        const configPath = EffectPath.ops.join(
+          workspacePath,
+          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+        )
+
+        // Initial config with both members
+        const initialConfig: typeof MegarepoConfig.Type = {
+          members: {
+            repo1: repo1Path,
+            repo2: repo2Path,
+          },
+        }
+        yield* fs.writeFileString(
+          configPath,
+          (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(initialConfig)) +
+            '\n',
+        )
+        yield* addCommit({
+          repoPath: workspacePath,
+          message: 'Initialize megarepo',
+        })
+
+        // First sync - create both symlinks
+        yield* runSyncCommand({ cwd: workspacePath, args: [] })
+
+        // Update config to remove repo2
+        const updatedConfig: typeof MegarepoConfig.Type = {
+          members: {
+            repo1: repo1Path,
+          },
+        }
+        yield* fs.writeFileString(
+          configPath,
+          (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(updatedConfig)) +
+            '\n',
+        )
+
+        // Sync with --dry-run - should report removed but not actually remove
+        const result = yield* runSyncCommand({
+          cwd: workspacePath,
+          args: ['--json', '--dry-run'],
+        })
+        const json = JSON.parse(result.stdout.trim()) as {
+          results: Array<{ name: string; status: string; message?: string }>
+        }
+
+        // Should have results for repo2 as removed
+        const repo2Result = json.results.find((r) => r.name === 'repo2')
+        expect(repo2Result?.status).toBe('removed')
+        expect(repo2Result?.message).toContain('Would remove')
+
+        // But the symlink should still exist (dry-run didn't actually remove)
+        const repo2Symlink = EffectPath.ops.join(
+          workspacePath,
+          EffectPath.unsafe.relativeFile('repos/repo2'),
+        )
+        expect(yield* fs.exists(repo2Symlink)).toBe(true)
+      }),
+    ))
+
+  it('should not remove symlinks for members skipped via --skip', () =>
+    withTestCtx(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+
+        // Create temp directory with two local repos
+        const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+        const repo1Path = yield* createRepo({
+          basePath: tmpDir,
+          fixture: {
+            name: 'repo1',
+            files: { 'package.json': '{"name": "repo1"}' },
+          },
+        })
+        const repo2Path = yield* createRepo({
+          basePath: tmpDir,
+          fixture: {
+            name: 'repo2',
+            files: { 'package.json': '{"name": "repo2"}' },
+          },
+        })
+
+        // Create workspace with both members
+        const workspacePath = EffectPath.ops.join(
+          tmpDir,
+          EffectPath.unsafe.relativeDir('workspace/'),
+        )
+        yield* fs.makeDirectory(workspacePath, { recursive: true })
+        yield* initGitRepo(workspacePath)
+
+        const configPath = EffectPath.ops.join(
+          workspacePath,
+          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+        )
+
+        // Config with both members
+        const config: typeof MegarepoConfig.Type = {
+          members: {
+            repo1: repo1Path,
+            repo2: repo2Path,
+          },
+        }
+        yield* fs.writeFileString(
+          configPath,
+          (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(config)) + '\n',
+        )
+        yield* addCommit({
+          repoPath: workspacePath,
+          message: 'Initialize megarepo',
+        })
+
+        // First sync - create both symlinks
+        yield* runSyncCommand({ cwd: workspacePath, args: [] })
+
+        // Sync with --skip repo2 - should NOT treat repo2 as removed
+        const result = yield* runSyncCommand({
+          cwd: workspacePath,
+          args: ['--json', '--skip', 'repo2'],
+        })
+        const json = JSON.parse(result.stdout.trim()) as {
+          results: Array<{ name: string; status: string }>
+        }
+
+        // Should only have result for repo1 (repo2 was skipped, not removed)
+        expect(json.results).toHaveLength(1)
+        expect(json.results[0]?.name).toBe('repo1')
+
+        // repo2 symlink should still exist
+        const repo2Symlink = EffectPath.ops.join(
+          workspacePath,
+          EffectPath.unsafe.relativeFile('repos/repo2'),
+        )
+        expect(yield* fs.exists(repo2Symlink)).toBe(true)
+      }),
+    ))
+
+  it('should only remove symlinks, not actual directories', () =>
+    withTestCtx(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+
+        // Create temp directory with a local repo
+        const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+        const repo1Path = yield* createRepo({
+          basePath: tmpDir,
+          fixture: {
+            name: 'repo1',
+            files: { 'package.json': '{"name": "repo1"}' },
+          },
+        })
+
+        // Create workspace
+        const workspacePath = EffectPath.ops.join(
+          tmpDir,
+          EffectPath.unsafe.relativeDir('workspace/'),
+        )
+        yield* fs.makeDirectory(workspacePath, { recursive: true })
+        yield* initGitRepo(workspacePath)
+
+        const configPath = EffectPath.ops.join(
+          workspacePath,
+          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+        )
+
+        // Config with only repo1
+        const config: typeof MegarepoConfig.Type = {
+          members: {
+            repo1: repo1Path,
+          },
+        }
+        yield* fs.writeFileString(
+          configPath,
+          (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(config)) + '\n',
+        )
+        yield* addCommit({
+          repoPath: workspacePath,
+          message: 'Initialize megarepo',
+        })
+
+        // First sync - create repo1 symlink
+        yield* runSyncCommand({ cwd: workspacePath, args: [] })
+
+        // Manually create a directory (not symlink) called 'orphan-dir' in repos/
+        const orphanDirPath = EffectPath.ops.join(
+          workspacePath,
+          EffectPath.unsafe.relativeDir('repos/orphan-dir/'),
+        )
+        yield* fs.makeDirectory(orphanDirPath, { recursive: true })
+        yield* fs.writeFileString(
+          EffectPath.ops.join(orphanDirPath, EffectPath.unsafe.relativeFile('test.txt')),
+          'test content\n',
+        )
+
+        // Sync again - should NOT remove the directory (only removes symlinks)
+        const result = yield* runSyncCommand({
+          cwd: workspacePath,
+          args: ['--json'],
+        })
+        const json = JSON.parse(result.stdout.trim()) as {
+          results: Array<{ name: string; status: string }>
+        }
+
+        // Should not have a 'removed' result for orphan-dir
+        const orphanResult = json.results.find((r) => r.name === 'orphan-dir')
+        expect(orphanResult).toBeUndefined()
+
+        // The directory should still exist
+        expect(yield* fs.exists(orphanDirPath)).toBe(true)
+      }),
+    ))
+})

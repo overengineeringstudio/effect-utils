@@ -392,3 +392,29 @@ export const getSourceRef = (source: MemberSource): Option.Option<string> => {
 export const isRemoteSource = (source: MemberSource): boolean => {
   return source.type !== 'path'
 }
+
+/**
+ * Build a source string with a new ref.
+ * Takes the base source (without ref) and appends the new ref.
+ *
+ * @example
+ * buildSourceStringWithRef('owner/repo', 'main') // 'owner/repo#main'
+ * buildSourceStringWithRef('owner/repo#old', 'new') // 'owner/repo#new'
+ * buildSourceStringWithRef('https://github.com/o/r', 'v1.0') // 'https://github.com/o/r#v1.0'
+ */
+export const buildSourceStringWithRef = (sourceString: string, newRef: string): string => {
+  const { source } = parseSourceRef(sourceString)
+  return `${source}#${newRef}`
+}
+
+/**
+ * Get the base source string without any ref.
+ *
+ * @example
+ * getBaseSourceString('owner/repo#main') // 'owner/repo'
+ * getBaseSourceString('owner/repo') // 'owner/repo'
+ */
+export const getBaseSourceString = (sourceString: string): string => {
+  const { source } = parseSourceRef(sourceString)
+  return source
+}

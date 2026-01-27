@@ -67,3 +67,13 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Unit tests
         run: 'dt test:run'
+  nix-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+      - name: Build genie
+        run: 'nix build .#genie --no-link'
+      - name: Build megarepo
+        run: 'nix build .#megarepo --no-link'
