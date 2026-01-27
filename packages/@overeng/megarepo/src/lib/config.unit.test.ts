@@ -2,10 +2,12 @@ import { Option, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import {
+  buildSourceStringWithRef,
   CONFIG_FILE_NAME,
   DEFAULT_STORE_PATH,
   ENV_VARS,
   generateJsonSchema,
+  getBaseSourceString,
   getSourceRef,
   getSourceUrl,
   getStorePath,
@@ -487,6 +489,69 @@ describe('config', () => {
       const defs = schema['$defs'] as Record<string, Record<string, unknown>>
       expect(defs['MegarepoConfig']).toBeDefined()
       expect(defs['MegarepoConfig']?.['type']).toBe('object')
+    })
+  })
+
+  describe('buildSourceStringWithRef', () => {
+    it('should add ref to source without existing ref', () => {
+      expect(buildSourceStringWithRef('owner/repo', 'main')).toBe('owner/repo#main')
+    })
+
+    it('should replace existing ref', () => {
+      expect(buildSourceStringWithRef('owner/repo#old-branch', 'new-branch')).toBe(
+        'owner/repo#new-branch',
+      )
+    })
+
+    it('should work with URL sources', () => {
+      expect(buildSourceStringWithRef('https://github.com/owner/repo', 'v1.0.0')).toBe(
+        'https://github.com/owner/repo#v1.0.0',
+      )
+    })
+
+    it('should work with SSH URL sources', () => {
+      expect(buildSourceStringWithRef('git@github.com:owner/repo.git', 'feature/foo')).toBe(
+        'git@github.com:owner/repo.git#feature/foo',
+      )
+    })
+
+    it('should replace ref in URL sources', () => {
+      expect(buildSourceStringWithRef('https://github.com/owner/repo#old', 'new')).toBe(
+        'https://github.com/owner/repo#new',
+      )
+    })
+
+    it('should handle refs with slashes', () => {
+      expect(buildSourceStringWithRef('owner/repo', 'feature/my-feature')).toBe(
+        'owner/repo#feature/my-feature',
+      )
+    })
+
+    it('should handle commit SHA refs', () => {
+      const sha = 'abc123def456789012345678901234567890abcd'
+      expect(buildSourceStringWithRef('owner/repo', sha)).toBe(`owner/repo#${sha}`)
+    })
+  })
+
+  describe('getBaseSourceString', () => {
+    it('should return source without ref when no ref present', () => {
+      expect(getBaseSourceString('owner/repo')).toBe('owner/repo')
+    })
+
+    it('should strip ref from source', () => {
+      expect(getBaseSourceString('owner/repo#main')).toBe('owner/repo')
+    })
+
+    it('should strip ref from URL sources', () => {
+      expect(getBaseSourceString('https://github.com/o/r#v1.0.0')).toBe('https://github.com/o/r')
+    })
+
+    it('should strip ref from SSH URL sources', () => {
+      expect(getBaseSourceString('git@github.com:o/r.git#develop')).toBe('git@github.com:o/r.git')
+    })
+
+    it('should handle refs with slashes', () => {
+      expect(getBaseSourceString('owner/repo#feature/foo/bar')).toBe('owner/repo')
     })
   })
 })

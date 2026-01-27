@@ -36,8 +36,6 @@ inputs:
 let
   effectUtils = inputs.effect-utils;
   effectUtilsRoot = effectUtils.outPath;
-  # Source-based CLIs - root baked in at Nix eval time
-  mkSourceCli = effectUtils.lib.mkSourceCli { inherit pkgs; };
   taskModules = effectUtils.devenvModules.tasks;
 in
 {
@@ -60,9 +58,9 @@ in
   packages = [
     pkgs.nodejs_24
     pkgs.bun
-    # Use root parameter to bake in effect-utils path at Nix eval time
-    (mkSourceCli { name = "genie"; entry = "packages/@overeng/genie/src/build/mod.ts"; root = effectUtilsRoot; })
-    (mkSourceCli { name = "mr"; entry = "packages/@overeng/megarepo/bin/mr.ts"; root = effectUtilsRoot; })
+    # CLIs from effect-utils (Nix-built packages)
+    effectUtils.packages.${pkgs.system}.genie
+    effectUtils.packages.${pkgs.system}.megarepo
   ];
 
   enterShell = ''
@@ -74,7 +72,7 @@ in
 
 See [tasks.md](./tasks/tasks.md) for available task modules.
 
-**Note on CLI pattern**: We use source-based CLIs for development (fast, no hash management). The `root` parameter bakes in the effect-utils path at Nix eval time, eliminating the need for runtime environment variables. For CI/releases, use Nix-built packages (`.#genie`, `.#megarepo`) which provide hermetic builds.
+See [cli-patterns.md](./cli-patterns.md) for when to use Nix packages vs source-based CLIs.
 
 ### flake.nix
 

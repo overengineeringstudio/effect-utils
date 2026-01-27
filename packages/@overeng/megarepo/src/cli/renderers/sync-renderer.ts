@@ -24,6 +24,7 @@ export type MemberSyncResult = {
     | 'error'
     | 'updated'
     | 'locked'
+    | 'removed'
   readonly message?: string | undefined
   /** Commit that was synced to (for display) */
   readonly commit?: string | undefined
@@ -72,6 +73,7 @@ const countResults = (
   alreadySynced: number
   skipped: number
   errors: number
+  removed: number
 } => {
   let cloned = 0
   let synced = 0
@@ -80,6 +82,7 @@ const countResults = (
   let alreadySynced = 0
   let skipped = 0
   let errors = 0
+  let removed = 0
 
   for (const r of results) {
     switch (r.status) {
@@ -104,10 +107,13 @@ const countResults = (
       case 'error':
         errors++
         break
+      case 'removed':
+        removed++
+        break
     }
   }
 
-  return { cloned, synced, updated, locked, alreadySynced, skipped, errors }
+  return { cloned, synced, updated, locked, alreadySynced, skipped, errors, removed }
 }
 
 /** Format status text for a result */
@@ -127,6 +133,8 @@ const formatStatusText = (result: MemberSyncResult): string => {
       return result.message ? `skipped: ${result.message}` : 'skipped'
     case 'error':
       return result.message ? `error: ${result.message}` : 'error'
+    case 'removed':
+      return 'removed'
   }
 }
 
@@ -144,6 +152,8 @@ const getStatusSymbol = (result: MemberSyncResult): string => {
     case 'skipped':
       return styled.yellow(symbols.circle)
     case 'error':
+      return styled.red(symbols.cross)
+    case 'removed':
       return styled.red(symbols.cross)
   }
 }
@@ -200,6 +210,7 @@ export const renderSync = ({
     counts.synced > 0 ||
     counts.updated > 0 ||
     counts.locked > 0 ||
+    counts.removed > 0 ||
     counts.errors > 0
 
   if (dryRun && !hasChanges && counts.errors === 0) {
@@ -212,6 +223,7 @@ export const renderSync = ({
     const synced = results.filter((r) => r.status === 'synced')
     const updated = results.filter((r) => r.status === 'updated')
     const locked = results.filter((r) => r.status === 'locked')
+    const removed = results.filter((r) => r.status === 'removed')
     const errors = results.filter((r) => r.status === 'error')
     const skipped = results.filter((r) => r.status === 'skipped')
     const alreadySynced = results.filter((r) => r.status === 'already_synced')
@@ -245,6 +257,12 @@ export const renderSync = ({
       output.push(
         `${getStatusSymbol(r)} ${styled.bold(r.name)} ${styled.cyan('lock updated')} ${commitInfo}`,
       )
+    }
+
+    // Removed members (orphaned symlinks)
+    for (const r of removed) {
+      const actionText = dryRun ? 'would remove' : 'removed'
+      output.push(`${getStatusSymbol(r)} ${styled.bold(r.name)} ${styled.red(actionText)}`)
     }
 
     // Show errors
@@ -287,6 +305,7 @@ export const renderSync = ({
     if (counts.synced > 0) summaryParts.push(`${counts.synced} to sync`)
     if (counts.updated > 0) summaryParts.push(`${counts.updated} to update`)
     if (counts.locked > 0) summaryParts.push(`${counts.locked} lock updates`)
+    if (counts.removed > 0) summaryParts.push(styled.red(`${counts.removed} to remove`))
     if (counts.errors > 0) summaryParts.push(styled.red(`${counts.errors} errors`))
     if (counts.alreadySynced > 0) summaryParts.push(`${counts.alreadySynced} unchanged`)
   } else {
@@ -295,6 +314,7 @@ export const renderSync = ({
     if (counts.synced > 0) summaryParts.push(`${counts.synced} synced`)
     if (counts.updated > 0) summaryParts.push(`${counts.updated} updated`)
     if (counts.locked > 0) summaryParts.push(`${counts.locked} lock updates`)
+    if (counts.removed > 0) summaryParts.push(styled.red(`${counts.removed} removed`))
     if (counts.errors > 0) summaryParts.push(styled.red(`${counts.errors} errors`))
     if (counts.alreadySynced > 0) summaryParts.push(`${counts.alreadySynced} unchanged`)
   }

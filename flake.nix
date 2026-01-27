@@ -101,9 +101,10 @@
       # Use this for releases/CI where hermetic Nix builds are needed.
       lib.mkCliPackages = import ./nix/workspace-tools/lib/mk-cli-packages.nix;
 
-      # Source-based CLI wrapper for devenv shells.
-      # Use this for development - no hash management needed.
-      # Consuming repos should set WORKSPACE_ROOT to effect-utils path in enterShell.
-      lib.mkSourceCli = import ./nix/devenv-modules/lib/mk-source-cli.nix;
+      # Note: mkSourceCli is internal-only (not exported).
+      # For consuming genie/megarepo from other repos, use:
+      #   effectUtils.packages.${system}.genie
+      #   effectUtils.packages.${system}.megarepo
+      # See: context/nix-devenv/cli-patterns.md
     };
 }

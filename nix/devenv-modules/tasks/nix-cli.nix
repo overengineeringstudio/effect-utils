@@ -10,19 +10,18 @@
 #   ];
 #
 # Provides:
-#   - nix:hash - Update bunDepsHash for all CLI packages
-#   - nix:hash:<name> - Update bunDepsHash for specific package
+#   - nix:hash - Update all hashes (pnpmDepsHash + localDeps) for all CLI packages
+#   - nix:hash:<name> - Update all hashes for specific package
 #   - nix:build - Build all CLI packages
 #   - nix:build:<name> - Build specific package
 #   - nix:check - Check if any hashes are stale (for CI)
 { cliPackages ? [] }:
 { pkgs, lib, ... }:
 let
-  # Script to update bunDepsHash in a build.nix file
-  # Handles two error patterns:
-  # 1. Nix fixed-output hash mismatch: "got: sha256-..."
-  # 2. Custom bun.lock staleness check: "bunDepsHash is stale"
-  updateHashScript = pkgs.writeShellScript "update-bun-hash" ''
+  # Script to update all hashes in a build.nix file
+  # Handles both pnpmDepsHash/bunDepsHash AND localDeps[].hash entries
+  # Iteratively updates hashes until build succeeds
+  updateHashScript = pkgs.writeShellScript "update-all-hashes" ''
     set -euo pipefail
     
     flakeRef="$1"
@@ -30,91 +29,108 @@ let
     name="$3"
     
     FAKE_HASH="sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    MAX_ITERATIONS=20
     
     echo "Checking $name ($flakeRef)..."
     
-    # Try to build - if it succeeds, hash is already correct
+    # Try to build - if it succeeds, all hashes are correct
     if nix build "$flakeRef" --no-link 2>&1; then
-      echo "✓ $name: hash is up to date"
+      echo "✓ $name: all hashes up to date"
       exit 0
     fi
     
-    echo "Hash is stale, computing new hash..."
+    echo "Some hashes are stale, updating..."
     
-    # Read current hash from build.nix
-    hashKey="bunDepsHash"
+    # Determine the main hash key (bunDepsHash or pnpmDepsHash)
+    mainHashKey="bunDepsHash"
     if rg -q "pnpmDepsHash" "$buildNix"; then
-      hashKey="pnpmDepsHash"
-    fi
-    currentHash=$(grep -oE "$hashKey = \"sha256-[^\"]+\"" "$buildNix" | grep -oE 'sha256-[A-Za-z0-9+/=]+' | head -1 || true)
-    
-    if [ -z "$currentHash" ]; then
-      echo "✗ $name: could not find $hashKey in $buildNix"
-      exit 1
+      mainHashKey="pnpmDepsHash"
     fi
     
-    # Replace with fake hash to force Nix to compute the correct one
-    export HASH_KEY="$hashKey"
-    export HASH_VALUE="$FAKE_HASH"
-    perl -0777 -i -pe '
-      my $key = $ENV{"HASH_KEY"};
-      my $val = $ENV{"HASH_VALUE"};
-      s/\b\Q$key\E\s*=\s*"sha256-[^"]+"/$key = "$val"/g;
-    ' "$buildNix"
+    updated_any=false
+    iteration=0
     
-    # Build with fake hash to get the correct hash from Nix
-    output=$(nix build "$flakeRef" --no-link 2>&1 || true)
+    while [ $iteration -lt $MAX_ITERATIONS ]; do
+      iteration=$((iteration + 1))
+      echo ""
+      echo "=== Iteration $iteration ==="
+      
+      # Try to build and capture output
+      output=$(nix build "$flakeRef" --no-link 2>&1 || true)
+      
+      # Check if build succeeded
+      if echo "$output" | grep -q "^$"; then
+        # Empty stderr usually means success, verify
+        if nix build "$flakeRef" --no-link 2>&1; then
+          echo ""
+          if [ "$updated_any" = true ]; then
+            echo "✓ $name: all hashes updated successfully"
+          else
+            echo "✓ $name: all hashes up to date"
+          fi
+          exit 0
+        fi
+      fi
+      
+      # Extract the correct hash from "got: sha256-..."
+      newHash=$(echo "$output" | grep -oE 'got:\s+sha256-[A-Za-z0-9+/=]+' | grep -oE 'sha256-[A-Za-z0-9+/=]+' | head -1 || true)
+      
+      if [ -z "$newHash" ]; then
+        # No hash mismatch found - might be a different error
+        echo "✗ $name: build failed but no hash mismatch found"
+        echo "$output"
+        exit 1
+      fi
+      
+      # Try to identify which hash needs updating from the error
+      # fetchPnpmDeps errors include the pname which contains the dir path
+      # e.g., "genie-unwrapped-packages--overeng-utils-pnpm-deps" for localDeps dir "packages/@overeng/utils"
+      localDepDir=""
+      
+      # Look for packages-*-pnpm-deps pattern in the error (indicates localDeps hash)
+      if echo "$output" | grep -qE "packages-[a-zA-Z0-9_-]+-pnpm-deps"; then
+        # Extract the encoded dir (e.g., "packages--overeng-utils")
+        encodedDir=$(echo "$output" | grep -oE "packages-[a-zA-Z0-9_-]+-pnpm-deps" | head -1 | sed 's/-pnpm-deps$//' || true)
+        if [ -n "$encodedDir" ]; then
+          # Convert back to original path format
+          # packages--overeng-utils -> packages/@overeng/utils
+          localDepDir=$(echo "$encodedDir" | sed 's/--/\/@/g; s/-/\//g')
+          echo "Detected stale hash for localDep: $localDepDir"
+        fi
+      fi
+      
+      if [ -n "$localDepDir" ]; then
+        # Update localDeps hash for this specific dir
+        echo "Updating localDeps hash for $localDepDir to $newHash..."
+        
+        # Use perl to update the specific localDeps entry
+        export LOCAL_DEP_DIR="$localDepDir"
+        export NEW_HASH="$newHash"
+        perl -0777 -i -pe '
+          my $dir = $ENV{"LOCAL_DEP_DIR"};
+          my $hash = $ENV{"NEW_HASH"};
+          s/(\{\s*dir\s*=\s*"\Q$dir\E"\s*;\s*hash\s*=\s*)"sha256-[^"]+"/$1"$hash"/g;
+        ' "$buildNix"
+        
+        updated_any=true
+      else
+        # Assume it is the main hash (pnpmDepsHash/bunDepsHash)
+        echo "Updating $mainHashKey to $newHash..."
+        
+        export HASH_KEY="$mainHashKey"
+        export HASH_VALUE="$newHash"
+        perl -0777 -i -pe '
+          my $key = $ENV{"HASH_KEY"};
+          my $val = $ENV{"HASH_VALUE"};
+          s/\b\Q$key\E\s*=\s*"sha256-[^"]+"/$key = "$val"/g;
+        ' "$buildNix"
+        
+        updated_any=true
+      fi
+    done
     
-    # Extract the correct hash from "got: sha256-..."
-    newHash=$(echo "$output" | grep -oE 'got:\s+sha256-[A-Za-z0-9+/=]+' | grep -oE 'sha256-[A-Za-z0-9+/=]+' | head -1 || true)
-    
-    if [ -z "$newHash" ]; then
-      echo "✗ $name: could not extract hash from nix build output"
-      echo "Restoring original hash..."
-      export HASH_KEY="$hashKey"
-      export HASH_VALUE="$currentHash"
-      perl -0777 -i -pe '
-        my $key = $ENV{"HASH_KEY"};
-        my $val = $ENV{"HASH_VALUE"};
-        s/\b\Q$key\E\s*=\s*"sha256-[^"]+"/$key = "$val"/g;
-      ' "$buildNix"
-      echo "$output"
-      exit 1
-    fi
-    
-    # Check if hash actually changed
-    if [ "$newHash" = "$currentHash" ]; then
-      echo "Hash unchanged, restoring..."
-      export HASH_KEY="$hashKey"
-      export HASH_VALUE="$currentHash"
-      perl -0777 -i -pe '
-        my $key = $ENV{"HASH_KEY"};
-        my $val = $ENV{"HASH_VALUE"};
-        s/\b\Q$key\E\s*=\s*"sha256-[^"]+"/$key = "$val"/g;
-      ' "$buildNix"
-      echo "✓ $name: hash is up to date"
-      exit 0
-    fi
-    
-    echo "Found new hash: $newHash"
-    echo "Updating $buildNix..."
-    
-    # Update with the correct hash
-    export HASH_KEY="$hashKey"
-    export HASH_VALUE="$newHash"
-    perl -0777 -i -pe '
-      my $key = $ENV{"HASH_KEY"};
-      my $val = $ENV{"HASH_VALUE"};
-      s/\b\Q$key\E\s*=\s*"sha256-[^"]+"/$key = "$val"/g;
-    ' "$buildNix"
-    
-    echo "Verifying build..."
-    if ! nix build "$flakeRef" --no-link -L; then
-      echo "✗ $name: verification build failed"
-      exit 1
-    fi
-    
-    echo "✓ $name: updated to $newHash"
+    echo "✗ $name: exceeded max iterations ($MAX_ITERATIONS), something is wrong"
+    exit 1
   '';
 
   # Script to check if hash is stale (for CI)
@@ -150,7 +166,7 @@ let
   # Generate per-package tasks
   mkHashTask = pkg: {
     "nix:hash:${pkg.name}" = {
-      description = "Update bunDepsHash for ${pkg.name}";
+      description = "Update all Nix hashes for ${pkg.name} (pnpmDepsHash + localDeps)";
       exec = "${updateHashScript} '${pkg.flakeRef}' '${pkg.buildNix}' '${pkg.name}'";
     };
   };
@@ -180,7 +196,7 @@ in lib.mkIf hasPackages {
     # Aggregate tasks
     [{
       "nix:hash" = {
-        description = "Update bunDepsHash for all CLI packages";
+        description = "Update all Nix hashes for all CLI packages";
         after = map (p: "nix:hash:${p.name}") cliPackages;
       };
 
