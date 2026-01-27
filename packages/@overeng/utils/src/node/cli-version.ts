@@ -52,8 +52,7 @@ const formatRelativeTime = (ts: number): string => {
 }
 
 /**
- * Try to parse a stamp string as JSON. Returns undefined if not valid JSON
- * or if it's the legacy format.
+ * Parse a stamp string as JSON.
  */
 const parseStamp = (stamp: string): CliStamp | undefined => {
   try {
@@ -70,7 +69,7 @@ const parseStamp = (stamp: string): CliStamp | undefined => {
       return parsed as CliStamp
     }
   } catch {
-    // Not JSON, likely legacy format
+    // Invalid JSON
   }
   return undefined
 }
@@ -130,14 +129,5 @@ export const resolveCliVersion: (options: {
   }
 
   // Local/dev build: placeholder still present
-  if (stamp) {
-    return renderVersion(baseVersion, stamp, true)
-  }
-
-  // Legacy format or no stamp - fall back to old behavior for compatibility
-  if (hasStamp) {
-    return `${baseVersion}+${stampRaw}`
-  }
-
-  return baseVersion
+  return renderVersion(baseVersion, stamp, true)
 }

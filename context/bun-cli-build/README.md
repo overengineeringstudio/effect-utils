@@ -98,12 +98,6 @@ The relative time formatting uses medium granularity:
 This makes it easy to understand at a glance whether you're running a fresh
 local build or a potentially stale Nix-built binary.
 
-### Backward Compatibility
-
-The stamp parser also accepts the legacy format
-(`<git-short-sha>+<ISO8601-timestamp>[-dirty]`) for backward compatibility
-during migration.
-
 To avoid re-implementing the stamp logic in each repo, use the helper from
 effect-utils:
 
