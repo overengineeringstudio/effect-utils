@@ -10,7 +10,8 @@
  * ```
  */
 
-import type { ReactNode } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
+import { Text } from './Text.tsx'
 
 /** Spinner animation types */
 export type SpinnerType = 'dots' | 'line' | 'arc'
@@ -20,6 +21,13 @@ export const spinnerFrames: Record<SpinnerType, readonly string[]> = {
   dots: ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'],
   line: ['-', '\\', '|', '/'],
   arc: ['◜', '◠', '◝', '◞', '◡', '◟'],
+}
+
+/** Frame intervals (ms) for each type */
+const spinnerIntervals: Record<SpinnerType, number> = {
+  dots: 80,
+  line: 100,
+  arc: 100,
 }
 
 /** Spinner component props */
@@ -33,7 +41,20 @@ export interface SpinnerProps {
  *
  * Uses state to animate through frames.
  */
-export const Spinner = (_props: SpinnerProps): ReactNode => {
-  // Placeholder: actual implementation will use useEffect for animation
-  return null
+export const Spinner = (props: SpinnerProps): ReactNode => {
+  const { type = 'dots' } = props
+  const frames = spinnerFrames[type]
+  const interval = spinnerIntervals[type]
+  
+  const [frameIndex, setFrameIndex] = useState(0)
+  
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setFrameIndex(prev => (prev + 1) % frames.length)
+    }, interval)
+    
+    return () => clearInterval(timer)
+  }, [frames.length, interval])
+  
+  return Text({ color: 'cyan', children: frames[frameIndex] })
 }

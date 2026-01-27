@@ -14,6 +14,12 @@ importers:
       react:
         specifier: 19.2.3
         version: 19.2.3
+      react-reconciler:
+        specifier: ^0.32.0
+        version: 0.32.0(react@19.2.3)
+      string-width:
+        specifier: ^7.2.0
+        version: 7.2.0
       yoga-layout:
         specifier: ^3.2.1
         version: 3.2.1
@@ -27,6 +33,9 @@ importers:
       '@types/react':
         specifier: 19.2.7
         version: 19.2.7
+      '@types/react-reconciler':
+        specifier: ^0.28.9
+        version: 0.28.9(@types/react@19.2.7)
       '@xterm/headless':
         specifier: ^5.5.0
         version: 5.5.0
@@ -388,6 +397,11 @@ packages:
   '@types/node@25.0.3':
     resolution: {integrity: sha512-W609buLVRVmeW693xKfzHeIV6nJGGz98uCPfeXI1ELMLXVeKYZ9m15fAMSaUPBHYLGFsVRcMmSCksQOrZV9BYA==}
 
+  '@types/react-reconciler@0.28.9':
+    resolution: {integrity: sha512-HHM3nxyUZ3zAylX8ZEyrDNd2XZOnQ0D5XfunJF5FLQnZbHHYq4UWvW1QfelQNXv1ICNkwYhfxjwfnqivYB6bFg==}
+    peerDependencies:
+      '@types/react': '*'
+
   '@types/react@19.2.7':
     resolution: {integrity: sha512-MWtvHrGZLFttgeEj28VXHxpmwYbor/ATPYbBfSFZEIRK0ecCFLl2Qo55z52Hss+UV9CRN7trSeq1zbgx7YDWWg==}
 
@@ -422,6 +436,10 @@ packages:
 
   '@xterm/headless@5.5.0':
     resolution: {integrity: sha512-5xXB7kdQlFBP82ViMJTwwEc3gKCLGKR/eoxQm4zge7GPBl86tCdI0IdPJjoKd8mUSFXz5V7i/25sfsEkP4j46g==}
+
+  ansi-regex@6.2.2:
+    resolution: {integrity: sha512-Bq3SmSpyFHaWjPk8If9yc6svM8c56dB5BAtW4Qbw5jHTwwXXcTLoRMkpDJp6VL0XzlWaCHTXrkFURMYmD0sLqg==}
+    engines: {node: '>=12'}
 
   assertion-error@2.0.1:
     resolution: {integrity: sha512-Izi8RQcffqCeNVgFigKli1ssklIbpHnCYc6AknXGYoB6grJqyeby7jv12JUQgmTAnIDnbck1uxksT4dzN3PWBA==}
@@ -462,6 +480,9 @@ packages:
   effect@3.19.15:
     resolution: {integrity: sha512-vzMmgfZKLcojmUjBdlQx+uaKryO7yULlRxjpDnHdnvcp1NPHxJyoM6IOXBLlzz2I/uPtZpGKavt5hBv7IvGZkA==}
 
+  emoji-regex@10.6.0:
+    resolution: {integrity: sha512-toUI84YS5YmxW219erniWD0CIVOo46xGKColeNQRgOzDorgBi1v4D71/OFzgD9GO2UGKIv1C3Sp8DAn0+j5w7A==}
+
   es-module-lexer@1.7.0:
     resolution: {integrity: sha512-jEQoCwk8hyb2AZziIOLhDqpm5+2ww5uIE6lkO/6jcOCusfk6LhMHpXXfBLXTZ7Ydyt0j4VoUQv6uGNYbdW+kBA==}
 
@@ -497,6 +518,10 @@ packages:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
+
+  get-east-asian-width@1.4.0:
+    resolution: {integrity: sha512-QZjmEOC+IT1uk6Rx0sX22V6uHWVwbdbxf1faPqJ1QhLdGgsRGCZoyaQBm/piRdJy/D2um6hM1UP7ZEeQ4EkP+Q==}
+    engines: {node: '>=18'}
 
   js-tokens@9.0.1:
     resolution: {integrity: sha512-mxa9E9ITFOt0ban3j6L5MpjwegGz6lBQmM1IJkWeBZGcMxto50+eWdjC/52xDbS2vy0k7vIMK0Fe2wfL9OQSpQ==}
@@ -550,6 +575,12 @@ packages:
   pure-rand@6.1.0:
     resolution: {integrity: sha512-bVWawvoZoBYpp6yIoQtQXHZjmz35RSVHnUOTefl8Vcjr8snTPY1wnpSPMWekcFwbxI6gtmT7rSYPFvz71ldiOA==}
 
+  react-reconciler@0.32.0:
+    resolution: {integrity: sha512-2NPMOzgTlG0ZWdIf3qG+dcbLSoAc/uLfOwckc3ofy5sSK0pLJqnQLpUFxvGcN2rlXSjnVtGeeFLNimCQEj5gOQ==}
+    engines: {node: '>=0.10.0'}
+    peerDependencies:
+      react: ^19.1.0
+
   react@19.2.3:
     resolution: {integrity: sha512-Ku/hhYbVjOQnXDZFv2+RibmLFGwFdeeKHFcOTlrt7xplBnya5OGn/hIRDsqDiSUcfORsDC7MPxwork8jBwsIWA==}
     engines: {node: '>=0.10.0'}
@@ -558,6 +589,9 @@ packages:
     resolution: {integrity: sha512-e5lPJi/aui4TO1LpAXIRLySmwXSE8k3b9zoGfd42p67wzxog4WHjiZF3M2uheQih4DGyc25QEV4yRBbpueNiUA==}
     engines: {node: '>=18.0.0', npm: '>=8.0.0'}
     hasBin: true
+
+  scheduler@0.26.0:
+    resolution: {integrity: sha512-NlHwttCI/l5gCPR3D1nNXtWABUmBwvZpEQiD4IXSbIDq8BzLIK/7Ir5gTFSGZDUu37K5cMNp0hFtzO38sC7gWA==}
 
   siginfo@2.0.0:
     resolution: {integrity: sha512-ybx0WO1/8bSBLEWXZvEd7gMW3Sn3JFlW3TvX1nREbDLRNQNaeNN8WK0meBwPdAaOI7TtRRRJn/Es1zhrrCHu7g==}
@@ -571,6 +605,14 @@ packages:
 
   std-env@3.10.0:
     resolution: {integrity: sha512-5GS12FdOZNliM5mAOxFRg7Ir0pWz8MdpYm6AY6VPkGpbA7ZzmbzNcBJQ0GPvvyWgcY7QAhCgf9Uy89I03faLkg==}
+
+  string-width@7.2.0:
+    resolution: {integrity: sha512-tsaTIkKW9b4N+AEj+SVA+WhJzV7/zMhcSu78mLKWSk7cXMOSHsBKFWUs0fWwq8QyK3MgJBQRX6Gbi4kYbdvGkQ==}
+    engines: {node: '>=18'}
+
+  strip-ansi@7.1.2:
+    resolution: {integrity: sha512-gmBGslpoQJtgnMAvOVqGZpEz9dyoKTCzy2nfz/n8aIFhN/jCE/rCmcxabB6jOOHV+0WNnylOxaxBQPSvcWklhA==}
+    engines: {node: '>=12'}
 
   strip-literal@3.1.0:
     resolution: {integrity: sha512-8r3mkIM/2+PpjHoOtiAW8Rg3jJLHaV7xPwG+YRGrv6FP0wwk/toTpATxWYOW0BKdWwl82VT2tFYi5DlROa0Mxg==}
@@ -883,6 +925,10 @@ snapshots:
     dependencies:
       undici-types: 7.16.0
 
+  '@types/react-reconciler@0.28.9(@types/react@19.2.7)':
+    dependencies:
+      '@types/react': 19.2.7
+
   '@types/react@19.2.7':
     dependencies:
       csstype: 3.2.3
@@ -931,6 +977,8 @@ snapshots:
 
   '@xterm/headless@5.5.0': {}
 
+  ansi-regex@6.2.2: {}
+
   assertion-error@2.0.1: {}
 
   cac@6.7.14: {}
@@ -960,6 +1008,8 @@ snapshots:
     dependencies:
       '@standard-schema/spec': 1.1.0
       fast-check: 3.23.2
+
+  emoji-regex@10.6.0: {}
 
   es-module-lexer@1.7.0: {}
 
@@ -1010,6 +1060,8 @@ snapshots:
 
   fsevents@2.3.3:
     optional: true
+
+  get-east-asian-width@1.4.0: {}
 
   js-tokens@9.0.1: {}
 
@@ -1062,6 +1114,11 @@ snapshots:
 
   pure-rand@6.1.0: {}
 
+  react-reconciler@0.32.0(react@19.2.3):
+    dependencies:
+      react: 19.2.3
+      scheduler: 0.26.0
+
   react@19.2.3: {}
 
   rollup@4.57.0:
@@ -1095,6 +1152,8 @@ snapshots:
       '@rollup/rollup-win32-x64-msvc': 4.57.0
       fsevents: 2.3.3
 
+  scheduler@0.26.0: {}
+
   siginfo@2.0.0: {}
 
   source-map-js@1.2.1: {}
@@ -1102,6 +1161,16 @@ snapshots:
   stackback@0.0.2: {}
 
   std-env@3.10.0: {}
+
+  string-width@7.2.0:
+    dependencies:
+      emoji-regex: 10.6.0
+      get-east-asian-width: 1.4.0
+      strip-ansi: 7.1.2
+
+  strip-ansi@7.1.2:
+    dependencies:
+      ansi-regex: 6.2.2
 
   strip-literal@3.1.0:
     dependencies:

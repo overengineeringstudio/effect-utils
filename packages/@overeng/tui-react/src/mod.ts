@@ -31,18 +31,38 @@
 // Re-export tui-core utilities
 export { type Terminal, type TerminalLike, createTerminal } from '@overeng/tui-core'
 
-// Root API (placeholder - will be implemented in Phase 1)
+// Root API
 export { createRoot, type Root } from './root.ts'
 
-// Components (placeholders - will be implemented in Phase 1)
+// Components
 export { Box, type BoxProps } from './components/Box.tsx'
 export { Text, type TextProps } from './components/Text.tsx'
 export { Static, type StaticProps } from './components/Static.tsx'
-export { Spinner, type SpinnerProps } from './components/Spinner.tsx'
+export { Spinner, type SpinnerProps, type SpinnerType, spinnerFrames } from './components/Spinner.tsx'
 
-// Hooks (placeholders - will be implemented in Phase 3)
-// export { useAtom } from './hooks/useAtom.ts'
-// export { useLogs } from './hooks/useLogs.ts'
+// Internal types (for advanced use)
+export type {
+  TuiNode,
+  TuiElement,
+  TuiBoxElement,
+  TuiTextElement,
+  TuiStaticElement,
+  TuiTextNode,
+  TextStyle,
+} from './reconciler/types.ts'
 
-// Effect integration (placeholder - will be implemented in Phase 3)
-// export { TuiRenderer, TuiRendererLive } from './effect/TuiRenderer.ts'
+// Effect integration (optional - requires effect peer dependency)
+export { TuiRenderer, type TuiRendererService } from './effect/TuiRenderer.ts'
+export {
+  useSubscriptionRef,
+  useStream,
+  RuntimeContext,
+  RuntimeProvider,
+  useRuntime,
+  useEffectCallback,
+  RefRegistryContext,
+  RefRegistryProvider,
+  useRegistryRef,
+  createRefRegistry,
+  type RefRegistry,
+} from './effect/hooks.tsx'

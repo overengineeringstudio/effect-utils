@@ -14,7 +14,9 @@ export default packageJson({
   },
   dependencies: {
     ...catalog.pick('react'),
+    'react-reconciler': '^0.32.0', // React custom renderer API
     'yoga-layout': '^3.2.1', // Flexbox layout engine (pure JS, no native bindings)
+    'string-width': '^7.2.0', // Accurate string width for Unicode/emoji
     '@overeng/tui-core': 'workspace:*',
   },
   devDependencies: {
@@ -26,6 +28,7 @@ export default packageJson({
       'effect', // For TuiRenderer service
       '@effect/platform', // For terminal integration
     ),
+    '@types/react-reconciler': '^0.28.9', // Types for react-reconciler
     '@xterm/headless': '^5.5.0', // Virtual terminal for testing
   },
   peerDependencies: {

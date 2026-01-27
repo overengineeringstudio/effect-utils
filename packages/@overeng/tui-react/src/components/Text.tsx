@@ -8,7 +8,7 @@
  * ```
  */
 
-import type { ReactNode } from 'react'
+import { createElement, type ReactNode } from 'react'
 import type { Color } from '@overeng/tui-core'
 
 /** Text component props */
@@ -38,7 +38,7 @@ export interface TextProps {
  *
  * Applies ANSI styles to text content.
  */
-export const Text = (_props: TextProps): ReactNode => {
-  // Placeholder: actual implementation will use reconciler
-  return null
+export const Text = (props: TextProps): ReactNode => {
+  const { children, ...styleProps } = props
+  return createElement('tui-text' as never, styleProps, children)
 }

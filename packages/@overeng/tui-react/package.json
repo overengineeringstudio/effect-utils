@@ -15,12 +15,15 @@
   "dependencies": {
     "@overeng/tui-core": "workspace:*",
     "react": "19.2.3",
+    "react-reconciler": "^0.32.0",
+    "string-width": "^7.2.0",
     "yoga-layout": "^3.2.1"
   },
   "devDependencies": {
     "@effect/platform": "0.94.2",
     "@types/node": "25.0.3",
     "@types/react": "19.2.7",
+    "@types/react-reconciler": "^0.28.9",
     "@xterm/headless": "^5.5.0",
     "effect": "3.19.15",
     "typescript": "5.9.3",

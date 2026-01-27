@@ -17,7 +17,7 @@
  * ```
  */
 
-import type { ReactNode } from 'react'
+import { createElement, type ReactNode, Fragment } from 'react'
 
 /** Static component props */
 export interface StaticProps<T> {
@@ -33,8 +33,16 @@ export interface StaticProps<T> {
  * Renders items once and commits them to the static region.
  * The static region appears above the dynamic region and persists.
  */
-export const Static = <T,>(_props: StaticProps<T>): ReactNode => {
-  // Placeholder: actual implementation will track rendered items
-  // and commit new ones to the static region
-  return null
+export const Static = <T,>(props: StaticProps<T>): ReactNode => {
+  const { items, children: renderItem } = props
+  
+  // Render all items as children of the static element
+  // The reconciler tracks which have been committed
+  const renderedItems = items.map((item, index) => {
+    const rendered = renderItem(item, index)
+    // Wrap in a fragment with key if not already keyed
+    return createElement(Fragment, { key: index }, rendered)
+  })
+
+  return createElement('tui-static' as never, {}, ...renderedItems)
 }
