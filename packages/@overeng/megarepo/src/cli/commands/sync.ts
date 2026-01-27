@@ -365,7 +365,7 @@ export const syncMegarepo = ({
           removedResults.push({
             name: entry,
             status: 'removed',
-            message: dryRun ? 'Would remove orphaned symlink' : 'Removed orphaned symlink',
+            message: linkTarget, // Store symlink target for display
           })
         }
       }

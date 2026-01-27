@@ -1825,7 +1825,9 @@ describe('sync member removal detection', () => {
         // Should have results for repo2 as removed
         const repo2Result = json.results.find((r) => r.name === 'repo2')
         expect(repo2Result?.status).toBe('removed')
-        expect(repo2Result?.message).toContain('Would remove')
+        // Message contains the symlink target path
+        expect(repo2Result?.message).toBeDefined()
+        expect(repo2Result?.message).toContain('repo2')
 
         // But the symlink should still exist (dry-run didn't actually remove)
         const repo2Symlink = EffectPath.ops.join(

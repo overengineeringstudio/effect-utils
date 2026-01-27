@@ -262,7 +262,8 @@ export const renderSync = ({
     // Removed members (orphaned symlinks)
     for (const r of removed) {
       const actionText = dryRun ? 'would remove' : 'removed'
-      output.push(`${getStatusSymbol(r)} ${styled.bold(r.name)} ${styled.red(actionText)}`)
+      const targetInfo = r.message ? ` ${styled.dim(`(-> ${r.message})`)}` : ''
+      output.push(`${getStatusSymbol(r)} ${styled.bold(r.name)} ${styled.red(actionText)}${targetInfo}`)
     }
 
     // Show errors
