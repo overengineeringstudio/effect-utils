@@ -39,6 +39,7 @@ import {
 import { syncNixLocks } from '../../lib/nix-lock/mod.ts'
 import { type Store, StoreLayer } from '../../lib/store.ts'
 import {
+  countSyncResults,
   flattenSyncResults,
   makeRepoSemaphoreMap,
   syncMember,
@@ -86,6 +87,13 @@ export class StaleLockFileError extends Schema.TaggedError<StaleLockFileError>()
     removedMembers: Schema.Array(Schema.String),
   },
 ) {}
+
+/** Error when member sync operations fail */
+export class SyncFailedError extends Schema.TaggedError<SyncFailedError>()('SyncFailedError', {
+  message: Schema.String,
+  errorCount: Schema.Number,
+  failedMembers: Schema.Array(Schema.String),
+}) {}
 
 /**
  * Sync a megarepo at the given root path.
@@ -647,7 +655,19 @@ export const syncCommand = Cli.Command.make(
           }
         }
 
-        // Return result (already displayed via UI)
+        // Check for sync errors and fail if any occurred
+        const counts = countSyncResults(syncResult)
+        if (counts.errors > 0) {
+          const failedMembers = syncResult.results
+            .filter((r) => r.status === 'error')
+            .map((r) => r.name)
+          return yield* new SyncFailedError({
+            message: `${counts.errors} member(s) failed to sync`,
+            errorCount: counts.errors,
+            failedMembers,
+          })
+        }
+
         return syncResult
       } else {
         // Non-TTY or JSON mode: use original batch rendering
@@ -684,6 +704,19 @@ export const syncCommand = Cli.Command.make(
             generatedFiles,
           })
           yield* outputLines(lines)
+        }
+
+        // Check for sync errors and fail if any occurred
+        const counts = countSyncResults(syncResult)
+        if (counts.errors > 0) {
+          const failedMembers = syncResult.results
+            .filter((r) => r.status === 'error')
+            .map((r) => r.name)
+          return yield* new SyncFailedError({
+            message: `${counts.errors} member(s) failed to sync`,
+            errorCount: counts.errors,
+            failedMembers,
+          })
         }
 
         return syncResult
