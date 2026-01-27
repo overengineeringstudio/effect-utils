@@ -46,7 +46,8 @@ export const pinCommand = Cli.Command.make(
   'pin',
   {
     member: Cli.Args.text({ name: 'member' }).pipe(Cli.Args.withDescription('Member to pin')),
-    checkout: Cli.Options.text('c').pipe(
+    checkout: Cli.Options.text('checkout').pipe(
+      Cli.Options.withAlias('c'),
       Cli.Options.withDescription('Ref to switch to (branch, tag, or commit SHA)'),
       Cli.Options.optional,
     ),
@@ -149,7 +150,8 @@ export const pinCommand = Cli.Command.make(
         const newRef = checkout.value
 
         // Get current ref from source string for display (source is guaranteed to be remote at this point)
-        const currentRef = source.type !== 'path' ? (source.ref ?? 'main') : 'main'
+        const currentRef =
+          source.type !== 'path' ? Option.getOrElse(source.ref, () => 'main') : 'main'
 
         // Calculate new source string
         const newSourceString = buildSourceStringWithRef(sourceString, newRef)

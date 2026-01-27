@@ -60,20 +60,49 @@ with the resolved version string. The resolved version is:
 The substitution is enforced with `--replace-fail`, so builds will fail if the
 exact placeholder line is missing.
 
-If the placeholder remains (for example in local/dev runs or when `gitRev` is
-`"unknown"`), the CLI code can attach a runtime stamp via
-`resolveCliVersion`. In effect-utils, the devenv shell hook (via
-`cliBuildStamp.shellHook`) sets `NIX_CLI_BUILD_STAMP` to
-`<git-short-sha>+<YYYY-MM-DDTHH:MM:SS+/-HH:MM>[-dirty]`. CLIs call
-`resolveCliVersion({ baseVersion, buildVersion, runtimeStampEnvVar })`, so the
-final version becomes:
+### Runtime Stamp
 
-- `<package.json version>+<NIX_CLI_BUILD_STAMP>` when the placeholder is still present
-- `<buildVersion> (stamp <NIX_CLI_BUILD_STAMP>)` when a build version was injected and the stamp is set
-- the injected build version otherwise
+The devenv shell hook (via `cliBuildStamp.shellHook`) sets `NIX_CLI_BUILD_STAMP`
+to a JSON object containing structured build metadata:
 
-This creates a single end-to-end pattern: build-time injection when available,
-runtime stamp when not, and a stable base version as fallback.
+```json
+{"source":"local","rev":"abc123","ts":1738000000,"dirty":true}
+```
+
+Fields:
+- `source`: `"local"` for dev shell builds, `"nix"` for Nix-built binaries
+- `rev`: Git short revision
+- `ts`: Unix timestamp (seconds) when the shell was entered
+- `dirty`: Whether there were uncommitted changes
+
+### Version Output
+
+`resolveCliVersion` renders human-friendly version strings with relative time:
+
+| Context | Example Output |
+|---------|----------------|
+| Local dev, dirty | `0.1.0 — running from local source (abc123, 5 min ago, with uncommitted changes)` |
+| Local dev, clean | `0.1.0 — running from local source (abc123, 2 hours ago)` |
+| Nix build in dev shell | `0.1.0+def456 — built 3 days ago` |
+| Nix build, no shell | `0.1.0+def456` |
+| No stamp (fallback) | `0.1.0` |
+
+The relative time formatting uses medium granularity:
+- `just now` (< 1 min)
+- `5 min ago` (1-59 min)
+- `2 hours ago` (1-23 hours)
+- `3 days ago` (1-6 days)
+- `2 weeks ago` (7-30 days)
+- `Jan 15` (> 30 days)
+
+This makes it easy to understand at a glance whether you're running a fresh
+local build or a potentially stale Nix-built binary.
+
+### Backward Compatibility
+
+The stamp parser also accepts the legacy format
+(`<git-short-sha>+<ISO8601-timestamp>[-dirty]`) for backward compatibility
+during migration.
 
 To avoid re-implementing the stamp logic in each repo, use the helper from
 effect-utils:
