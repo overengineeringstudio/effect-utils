@@ -2,7 +2,7 @@
 
 This document describes the standard pnpm workspace pattern used across all repos.
 
-> **Historic context:** For details on the `link:` protocol and why we migrated away from it, see [this archived gist](https://gist.github.com/schickling/81f218f306d1d645847c6fdc2c7c86cb).
+> **Historical context:** For details on past workarounds (`enableGlobalVirtualStore`, `reactTypesPathWorkaround`, `link:` protocol migration), see [this archived gist](https://gist.github.com/schickling/81f218f306d1d645847c6fdc2c7c86cb).
 
 ## Pattern: `workspace:*` with Per-Package Workspaces
 
@@ -13,7 +13,7 @@ All repos use `workspace:*` protocol with per-package `pnpm-workspace.yaml` file
 1. **No monorepo root required** - Works with megarepo pattern where repos are nested
 2. **Self-contained packages** - Each package declares its own workspace scope
 3. **Cross-repo consumption** - External repos can include packages in their workspace
-4. **Consistent resolution** - pnpm creates direct symlinks, deps resolve correctly
+4. **Parallel installs** - No shared state, ~3x faster than sequential
 
 ### Structure
 
@@ -36,6 +36,19 @@ packages:
   - ../../repos/effect-utils/packages/@overeng/*
 ```
 
+### Package.json Dependencies
+
+Use `workspace:*` for all internal dependencies:
+
+```json
+{
+  "dependencies": {
+    "@overeng/utils": "workspace:*",
+    "@livestore/common": "workspace:*"
+  }
+}
+```
+
 ### Minimal Workspaces for Nix Builds
 
 For packages built with Nix (`mkPnpmCli`), use **minimal workspaces** that only include actual dependencies, not `../*`. This is required because:
@@ -54,19 +67,6 @@ import { pnpmWorkspace } from '../../../genie/internal.ts'
 export default pnpmWorkspace('../utils')
 ```
 
-**Standalone packages (no workspace deps):**
-
-```typescript
-// packages/@overeng/utils/pnpm-workspace.yaml.genie.ts
-// Utils has no workspace deps - standalone package
-export default {
-  data: { packages: ['.'] },
-  stringify: () => `packages:\n  - .\n`,
-}
-```
-
-After changing workspace config, regenerate lockfile: `cd <package> && pnpm install`
-
 ### Genie Integration
 
 Workspace files are generated via genie using `pnpmWorkspace()`:
@@ -78,52 +78,7 @@ import { pnpmWorkspace } from '../../genie/internal.ts'
 export default pnpmWorkspace()
 ```
 
-With custom patterns:
-
-```typescript
-export default pnpmWorkspace(
-  '../*',
-  '../../repos/effect-utils/packages/@overeng/*'
-)
-```
-
-### Package.json Dependencies
-
-Use `workspace:*` for all internal dependencies:
-
-```json
-{
-  "dependencies": {
-    "@overeng/utils": "workspace:*",
-    "@livestore/common": "workspace:*"
-  }
-}
-```
-
-## Known Issues
-
-### PNPM-01: Parallel installs with `enableGlobalVirtualStore`
-
-> **Status: RESOLVED** - No longer applicable (we don't use `enableGlobalVirtualStore`)
-
-~~When running multiple `pnpm install` in parallel with `enableGlobalVirtualStore`, race conditions can corrupt the store.~~
-
-**Resolution (2026-01-27):** Since we removed `enableGlobalVirtualStore` (see PNPM-02), parallel installs now work correctly. Testing confirmed ~3x speedup with no store corruption.
-
-Reference: [pnpm#10232](https://github.com/pnpm/pnpm/issues/10232) (only affects `enableGlobalVirtualStore` mode)
-
-### PNPM-02: TypeScript type inference with `enableGlobalVirtualStore`
-
-> **Status: RESOLVED** - No longer needed with `workspace:*` protocol
-
-~~When using `enableGlobalVirtualStore`, packages symlink to the global pnpm store, which can break TypeScript's ability to resolve `@types/react`.~~
-
-**Resolution (2026-01-27):** After migrating to `workspace:*` protocol with minimal pnpm workspaces, testing confirmed that:
-- `enableGlobalVirtualStore` is no longer needed
-- `reactTypesPathWorkaround` paths mapping is no longer needed
-- No TS2742 errors occur without these workarounds
-
-The `workspace:*` protocol properly resolves dependencies because each package uses its own `pnpm-workspace.yaml` that specifies only its direct workspace dependencies (see Pattern 1 in this doc).
+After changing workspace config, regenerate lockfile: `cd <package> && pnpm install`
 
 ## Future: Switch to Bun
 

@@ -127,6 +127,24 @@ node_modules/
 
 Commit `devenv.lock` and `megarepo.lock` (do not ignore).
 
+### .oxlintrc.json.genie.ts
+
+```typescript
+import { oxlintConfig } from './genie/internal.ts'
+
+export default oxlintConfig()
+```
+
+### .oxfmtrc.json.genie.ts
+
+```typescript
+import { oxfmtConfig } from './genie/internal.ts'
+
+export default oxfmtConfig()
+```
+
+These generate the linter and formatter configs. Run `genie` to create `.oxlintrc.json` and `.oxfmtrc.json`.
+
 ## Initial Setup
 
 ```bash
