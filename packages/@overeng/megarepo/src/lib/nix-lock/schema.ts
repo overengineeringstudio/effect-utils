@@ -212,10 +212,13 @@ export interface NixFlakeMetadata {
  *
  * This function preserves the original key order of the object.
  */
-export const updateLockedInputRev = (
-  locked: Record<string, unknown>,
-  newRev: string,
-): Record<string, unknown> => {
+export const updateLockedInputRev = ({
+  locked,
+  newRev,
+}: {
+  locked: Record<string, unknown>
+  newRev: string
+}): Record<string, unknown> => {
   const result: Record<string, unknown> = {}
 
   // Preserve original key order, updating rev and removing narHash/lastModified
@@ -241,11 +244,15 @@ export const updateLockedInputRev = (
  * This function preserves the original key order of the object while updating
  * rev, narHash, and lastModified to the new values.
  */
-export const updateLockedInputRevWithMetadata = (
-  locked: Record<string, unknown>,
-  newRev: string,
-  metadata: NixFlakeMetadata,
-): Record<string, unknown> => {
+export const updateLockedInputRevWithMetadata = ({
+  locked,
+  newRev,
+  metadata,
+}: {
+  locked: Record<string, unknown>
+  newRev: string
+  metadata: NixFlakeMetadata
+}): Record<string, unknown> => {
   const result: Record<string, unknown> = {}
 
   // Preserve original key order, updating rev/narHash/lastModified

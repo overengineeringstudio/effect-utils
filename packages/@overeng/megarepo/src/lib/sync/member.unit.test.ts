@@ -7,8 +7,8 @@ describe('getRepoSemaphore', () => {
   test('returns the same semaphore for the same URL', async () => {
     const program = Effect.gen(function* () {
       const semaphoreMap = yield* makeRepoSemaphoreMap()
-      const sem1 = yield* getRepoSemaphore(semaphoreMap, 'https://github.com/owner/repo.git')
-      const sem2 = yield* getRepoSemaphore(semaphoreMap, 'https://github.com/owner/repo.git')
+      const sem1 = yield* getRepoSemaphore({ semaphoreMapRef: semaphoreMap, url: 'https://github.com/owner/repo.git' })
+      const sem2 = yield* getRepoSemaphore({ semaphoreMapRef: semaphoreMap, url: 'https://github.com/owner/repo.git' })
       return sem1 === sem2
     })
 
@@ -19,8 +19,8 @@ describe('getRepoSemaphore', () => {
   test('returns different semaphores for different URLs', async () => {
     const program = Effect.gen(function* () {
       const semaphoreMap = yield* makeRepoSemaphoreMap()
-      const sem1 = yield* getRepoSemaphore(semaphoreMap, 'https://github.com/owner/repo1.git')
-      const sem2 = yield* getRepoSemaphore(semaphoreMap, 'https://github.com/owner/repo2.git')
+      const sem1 = yield* getRepoSemaphore({ semaphoreMapRef: semaphoreMap, url: 'https://github.com/owner/repo1.git' })
+      const sem2 = yield* getRepoSemaphore({ semaphoreMapRef: semaphoreMap, url: 'https://github.com/owner/repo2.git' })
       return sem1 !== sem2
     })
 
@@ -38,7 +38,7 @@ describe('getRepoSemaphore', () => {
       // Launch multiple fibers concurrently to get/create semaphore for same URL
       const fibers = yield* Effect.all(
         Array.from({ length: 100 }, () =>
-          Effect.fork(getRepoSemaphore(semaphoreMap, url)),
+          Effect.fork(getRepoSemaphore({ semaphoreMapRef: semaphoreMap, url })),
         ),
         { concurrency: 'unbounded' },
       )

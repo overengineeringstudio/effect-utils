@@ -104,11 +104,15 @@ const NixFlakePrefetchOutput = Schema.Struct({
  *
  * Uses `nix flake prefetch` to get the correct hash and timestamp for the revision.
  */
-export const fetchNixFlakeMetadata = (
-  owner: string,
-  repo: string,
-  rev: string,
-): Effect.Effect<NixFlakeMetadata, PlatformError.PlatformError | ParseResult.ParseError, CommandExecutor.CommandExecutor> =>
+export const fetchNixFlakeMetadata = ({
+  owner,
+  repo,
+  rev,
+}: {
+  owner: string
+  repo: string
+  rev: string
+}): Effect.Effect<NixFlakeMetadata, PlatformError.PlatformError | ParseResult.ParseError, CommandExecutor.CommandExecutor> =>
   Effect.gen(function* () {
     const flakeRef = `github:${owner}/${repo}/${rev}`
 
@@ -173,10 +177,13 @@ const getFlakeRefFromLocked = (
  * Update a node object in-place, preserving the original key order.
  * Returns a new object with the same key order but updated locked field.
  */
-const updateNodePreservingOrder = (
-  node: Record<string, unknown>,
-  newLocked: Record<string, unknown>,
-): Record<string, unknown> => {
+const updateNodePreservingOrder = ({
+  node,
+  newLocked,
+}: {
+  node: Record<string, unknown>
+  newLocked: Record<string, unknown>
+}): Record<string, unknown> => {
   const result: Record<string, unknown> = {}
 
   // Preserve original key order
@@ -231,9 +238,9 @@ const syncSingleLockFile = ({
       }
 
       // Try to match this input to a megarepo member
-      const match = matchLockedInputToMember(locked, megarepoMembers)
+      const match = matchLockedInputToMember({ locked, members: megarepoMembers })
 
-      if (match && needsRevUpdate(locked, match.member)) {
+      if (match && needsRevUpdate({ locked, member: match.member })) {
         // Found a match and rev differs - update it
         const oldRev = typeof locked['rev'] === 'string' ? locked['rev'] : 'unknown'
         const newRev = match.member.commit
@@ -251,11 +258,11 @@ const syncSingleLockFile = ({
 
         if (flakeRef) {
           // Fetch proper metadata from Nix
-          const metadataResult = yield* fetchNixFlakeMetadata(
-            flakeRef.owner,
-            flakeRef.repo,
-            newRev,
-          ).pipe(
+          const metadataResult = yield* fetchNixFlakeMetadata({
+            owner: flakeRef.owner,
+            repo: flakeRef.repo,
+            rev: newRev,
+          }).pipe(
             Effect.tapError((e) =>
               Effect.logWarning(
                 `Failed to fetch Nix metadata for ${flakeRef.owner}/${flakeRef.repo}@${newRev}: ${e}`,
@@ -266,21 +273,21 @@ const syncSingleLockFile = ({
 
           if (metadataResult._tag === 'Some') {
             // Use the fetched metadata
-            newLocked = updateLockedInputRevWithMetadata(locked, newRev, metadataResult.value)
+            newLocked = updateLockedInputRevWithMetadata({ locked, newRev, metadata: metadataResult.value })
           } else {
             // Fallback: update rev without metadata (will be incomplete)
             yield* Effect.logWarning(
               `Using incomplete lock entry for ${nodeName} (missing narHash/lastModified)`,
             )
-            newLocked = updateLockedInputRev(locked, newRev)
+            newLocked = updateLockedInputRev({ locked, newRev })
           }
         } else {
           // Non-GitHub input, can't fetch metadata
-          newLocked = updateLockedInputRev(locked, newRev)
+          newLocked = updateLockedInputRev({ locked, newRev })
         }
 
         // Update node in-place, preserving key order
-        rawJson.nodes[nodeName] = updateNodePreservingOrder(node, newLocked)
+        rawJson.nodes[nodeName] = updateNodePreservingOrder({ node, newLocked })
       }
     }
 

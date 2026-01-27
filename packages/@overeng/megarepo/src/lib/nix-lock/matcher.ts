@@ -49,7 +49,7 @@ export const normalizeGitUrl = (url: string): string => {
 /**
  * Check if two URLs point to the same repository
  */
-export const urlsMatch = (url1: string, url2: string): boolean => {
+export const urlsMatch = ({ url1, url2 }: { url1: string; url2: string }): boolean => {
   // Try GitHub normalization first
   const github1 = normalizeGitHubUrl(url1)
   const github2 = normalizeGitHubUrl(url2)
@@ -97,10 +97,13 @@ const getGitHubUrlFromInput = (input: ParsedLockedInput): string | undefined => 
  * @param members - Map of member names to locked member data from megarepo.lock
  * @returns Match result if found, undefined otherwise
  */
-export const matchLockedInputToMember = (
-  locked: Record<string, unknown> | undefined,
-  members: Record<string, LockedMember>,
-): MatchResult | undefined => {
+export const matchLockedInputToMember = ({
+  locked,
+  members,
+}: {
+  locked: Record<string, unknown> | undefined
+  members: Record<string, LockedMember>
+}): MatchResult | undefined => {
   const parsed = parseLockedInput(locked)
   if (!parsed) return undefined
 
@@ -110,7 +113,7 @@ export const matchLockedInputToMember = (
     if (!inputUrl) return undefined
 
     for (const [memberName, member] of Object.entries(members)) {
-      if (urlsMatch(member.url, inputUrl)) {
+      if (urlsMatch({ url1: member.url, url2: inputUrl })) {
         return { memberName, member }
       }
     }
@@ -119,7 +122,7 @@ export const matchLockedInputToMember = (
   // Git type: match by URL
   if (parsed.type === 'git' && parsed.url) {
     for (const [memberName, member] of Object.entries(members)) {
-      if (urlsMatch(member.url, parsed.url)) {
+      if (urlsMatch({ url1: member.url, url2: parsed.url })) {
         return { memberName, member }
       }
     }
@@ -135,10 +138,13 @@ export const matchLockedInputToMember = (
  * @param member - The megarepo locked member to compare against
  * @returns true if the revisions differ and an update is needed
  */
-export const needsRevUpdate = (
-  locked: Record<string, unknown> | undefined,
-  member: LockedMember,
-): boolean => {
+export const needsRevUpdate = ({
+  locked,
+  member,
+}: {
+  locked: Record<string, unknown> | undefined
+  member: LockedMember
+}): boolean => {
   const parsed = parseLockedInput(locked)
   if (!parsed?.rev) return false
 

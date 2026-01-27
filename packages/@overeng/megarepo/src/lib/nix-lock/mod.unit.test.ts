@@ -45,10 +45,10 @@ const simulateSyncFlow = (
     const locked = node['locked'] as Record<string, unknown> | undefined
     if (!locked) continue
 
-    const match = matchLockedInputToMember(locked, megarepoMembers)
-    if (match && needsRevUpdate(locked, match.member)) {
+    const match = matchLockedInputToMember({ locked, members: megarepoMembers })
+    if (match && needsRevUpdate({ locked, member: match.member })) {
       // Update using our order-preserving functions
-      const newLocked = updateLockedInputRev(locked, match.member.commit)
+      const newLocked = updateLockedInputRev({ locked, newRev: match.member.commit })
       // Preserve node key order
       const result: Record<string, unknown> = {}
       for (const key of Object.keys(node)) {
@@ -262,7 +262,7 @@ describe('nix-lock schema', () => {
         narHash: 'sha256-oldHash',
         lastModified: 1704067200,
       }
-      const result = updateLockedInputRev(locked, 'new-rev')
+      const result = updateLockedInputRev({ locked, newRev: 'new-rev' })
       expect(result).toEqual({
         type: 'github',
         owner: 'effect-ts',
@@ -282,7 +282,7 @@ describe('nix-lock schema', () => {
         ref: 'main',
         shallow: true,
       }
-      const result = updateLockedInputRev(locked, 'new-rev')
+      const result = updateLockedInputRev({ locked, newRev: 'new-rev' })
       expect(result).toEqual({
         type: 'git',
         url: 'https://github.com/owner/repo',
@@ -302,7 +302,7 @@ describe('nix-lock schema', () => {
         rev: 'old-rev',
         type: 'github',
       }
-      const result = updateLockedInputRev(locked, 'new-rev')
+      const result = updateLockedInputRev({ locked, newRev: 'new-rev' })
       const keys = Object.keys(result)
       // narHash and lastModified should be removed, but remaining keys preserve order
       expect(keys).toEqual(['owner', 'repo', 'rev', 'type'])
@@ -318,7 +318,7 @@ describe('nix-lock schema', () => {
         narHash: 'sha256-oldHash',
         lastModified: 1704067200,
       }
-      const result = updateLockedInputRev(locked, 'new-rev')
+      const result = updateLockedInputRev({ locked, newRev: 'new-rev' })
       const keys = Object.keys(result)
       expect(keys).toEqual(['type', 'owner', 'repo', 'rev'])
     })
@@ -328,7 +328,7 @@ describe('nix-lock schema', () => {
         type: 'path',
         path: '/some/path',
       }
-      const result = updateLockedInputRev(locked, 'new-rev')
+      const result = updateLockedInputRev({ locked, newRev: 'new-rev' })
       expect(result).toEqual({
         type: 'path',
         path: '/some/path',
@@ -351,7 +351,7 @@ describe('nix-lock schema', () => {
         narHash: 'sha256-newHash123',
         lastModified: 1704153600,
       }
-      const result = updateLockedInputRevWithMetadata(locked, 'new-rev', metadata)
+      const result = updateLockedInputRevWithMetadata({ locked, newRev: 'new-rev', metadata })
       expect(result).toEqual({
         lastModified: 1704153600,
         narHash: 'sha256-newHash123',
@@ -375,7 +375,7 @@ describe('nix-lock schema', () => {
         narHash: 'sha256-newHash',
         lastModified: 1704153600,
       }
-      const result = updateLockedInputRevWithMetadata(locked, 'new-rev', metadata)
+      const result = updateLockedInputRevWithMetadata({ locked, newRev: 'new-rev', metadata })
       const keys = Object.keys(result)
       // Key order should be preserved from original
       expect(keys).toEqual(['lastModified', 'narHash', 'owner', 'repo', 'rev', 'type'])
@@ -393,7 +393,7 @@ describe('nix-lock schema', () => {
         narHash: 'sha256-newHash',
         lastModified: 1704153600,
       }
-      const result = updateLockedInputRevWithMetadata(locked, 'new-rev', metadata)
+      const result = updateLockedInputRevWithMetadata({ locked, newRev: 'new-rev', metadata })
       expect(result['narHash']).toBe('sha256-newHash')
       expect(result['lastModified']).toBe(1704153600)
       expect(result['rev']).toBe('new-rev')
@@ -413,7 +413,7 @@ describe('nix-lock schema', () => {
         narHash: 'sha256-new',
         lastModified: 1704153600,
       }
-      const result = updateLockedInputRevWithMetadata(locked, 'new-rev', metadata)
+      const result = updateLockedInputRevWithMetadata({ locked, newRev: 'new-rev', metadata })
       expect(result).toEqual({
         type: 'git',
         url: 'https://github.com/owner/repo',
@@ -471,26 +471,26 @@ describe('nix-lock matcher', () => {
   describe('urlsMatch', () => {
     it('should match equivalent GitHub URLs', () => {
       expect(
-        urlsMatch('https://github.com/owner/repo', 'https://github.com/owner/repo.git'),
+        urlsMatch({ url1: 'https://github.com/owner/repo', url2: 'https://github.com/owner/repo.git' }),
       ).toBe(true)
-      expect(urlsMatch('https://github.com/owner/repo', 'git@github.com:owner/repo')).toBe(true)
+      expect(urlsMatch({ url1: 'https://github.com/owner/repo', url2: 'git@github.com:owner/repo' })).toBe(true)
       expect(
-        urlsMatch('git@github.com:owner/repo.git', 'https://github.com/owner/repo'),
+        urlsMatch({ url1: 'git@github.com:owner/repo.git', url2: 'https://github.com/owner/repo' }),
       ).toBe(true)
     })
 
     it('should be case-insensitive', () => {
       expect(
-        urlsMatch('https://github.com/Owner/Repo', 'https://github.com/owner/repo'),
+        urlsMatch({ url1: 'https://github.com/Owner/Repo', url2: 'https://github.com/owner/repo' }),
       ).toBe(true)
     })
 
     it('should not match different repos', () => {
       expect(
-        urlsMatch('https://github.com/owner/repo1', 'https://github.com/owner/repo2'),
+        urlsMatch({ url1: 'https://github.com/owner/repo1', url2: 'https://github.com/owner/repo2' }),
       ).toBe(false)
       expect(
-        urlsMatch('https://github.com/owner1/repo', 'https://github.com/owner2/repo'),
+        urlsMatch({ url1: 'https://github.com/owner1/repo', url2: 'https://github.com/owner2/repo' }),
       ).toBe(false)
     })
   })
@@ -509,7 +509,7 @@ describe('nix-lock matcher', () => {
           commit: 'def456',
         }),
       }
-      const result = matchLockedInputToMember(locked, members)
+      const result = matchLockedInputToMember({ locked, members })
       expect(result).toEqual({
         memberName: 'effect',
         member: members['effect'],
@@ -528,7 +528,7 @@ describe('nix-lock matcher', () => {
           commit: 'def456',
         }),
       }
-      const result = matchLockedInputToMember(locked, members)
+      const result = matchLockedInputToMember({ locked, members })
       expect(result).toEqual({
         memberName: 'my-lib',
         member: members['my-lib'],
@@ -547,7 +547,7 @@ describe('nix-lock matcher', () => {
           url: 'https://github.com/effect-ts/effect',
         }),
       }
-      const result = matchLockedInputToMember(locked, members)
+      const result = matchLockedInputToMember({ locked, members })
       expect(result).toBeUndefined()
     })
 
@@ -559,7 +559,7 @@ describe('nix-lock matcher', () => {
       const members = {
         effect: createLockedMember(),
       }
-      const result = matchLockedInputToMember(locked, members)
+      const result = matchLockedInputToMember({ locked, members })
       expect(result).toBeUndefined()
     })
 
@@ -567,7 +567,7 @@ describe('nix-lock matcher', () => {
       const members = {
         effect: createLockedMember(),
       }
-      const result = matchLockedInputToMember(undefined, members)
+      const result = matchLockedInputToMember({ locked: undefined, members })
       expect(result).toBeUndefined()
     })
   })
@@ -581,7 +581,7 @@ describe('nix-lock matcher', () => {
         rev: 'old-rev',
       }
       const member = createLockedMember({ commit: 'new-rev' })
-      expect(needsRevUpdate(locked, member)).toBe(true)
+      expect(needsRevUpdate({ locked, member })).toBe(true)
     })
 
     it('should return false when revs match', () => {
@@ -592,7 +592,7 @@ describe('nix-lock matcher', () => {
         rev: 'same-rev',
       }
       const member = createLockedMember({ commit: 'same-rev' })
-      expect(needsRevUpdate(locked, member)).toBe(false)
+      expect(needsRevUpdate({ locked, member })).toBe(false)
     })
 
     it('should return false when locked has no rev', () => {
@@ -601,12 +601,12 @@ describe('nix-lock matcher', () => {
         path: '/some/path',
       }
       const member = createLockedMember()
-      expect(needsRevUpdate(locked, member)).toBe(false)
+      expect(needsRevUpdate({ locked, member })).toBe(false)
     })
 
     it('should return false for undefined locked', () => {
       const member = createLockedMember()
-      expect(needsRevUpdate(undefined, member)).toBe(false)
+      expect(needsRevUpdate({ locked: undefined, member })).toBe(false)
     })
   })
 })

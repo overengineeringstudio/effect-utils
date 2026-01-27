@@ -48,10 +48,13 @@ export const makeRepoSemaphoreMap = (): Effect.Effect<RepoSemaphoreMap> =>
  * Get or create a semaphore for a given repo URL.
  * Uses Ref.modify for atomic check-and-set to prevent race conditions.
  */
-export const getRepoSemaphore = (
-  semaphoreMapRef: RepoSemaphoreMap,
-  url: string,
-): Effect.Effect<Semaphore> =>
+export const getRepoSemaphore = ({
+  semaphoreMapRef,
+  url,
+}: {
+  semaphoreMapRef: RepoSemaphoreMap
+  url: string
+}): Effect.Effect<Semaphore> =>
   Ref.modify(semaphoreMapRef, (map) => {
     const existing = map.get(url)
     if (existing !== undefined) {
@@ -365,7 +368,7 @@ export const syncMember = ({
         })
 
         if (semaphoreMap !== undefined) {
-          const sem = yield* getRepoSemaphore(semaphoreMap, cloneUrl)
+          const sem = yield* getRepoSemaphore({ semaphoreMapRef: semaphoreMap, url: cloneUrl })
           wasCloned = yield* sem.withPermits(1)(createBareRepo)
         } else {
           wasCloned = yield* createBareRepo
