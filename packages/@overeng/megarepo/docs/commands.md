@@ -21,15 +21,19 @@ mr init
 Ensure worktrees exist and symlinks are correct.
 
 ```bash
-mr sync [--frozen] [--deep] [--dry-run]
+mr sync [--pull] [--force] [--frozen] [--deep] [--only <members>] [--skip <members>] [--dry-run]
 ```
 
 **Options:**
 
 | Option      | Description                                    |
 | ----------- | ---------------------------------------------- |
+| `--pull`    | Fetch from remote and update to latest commits |
+| `--force`   | Override dirty worktree checks                 |
 | `--frozen`  | CI mode: fail if lock is missing or stale      |
 | `--deep`    | Recursively sync nested megarepos              |
+| `--only`    | Only sync specified members (comma-separated)  |
+| `--skip`    | Skip specified members (comma-separated)       |
 | `--dry-run` | Show what would be done without making changes |
 
 **Behavior:**
