@@ -166,13 +166,13 @@ importers:
         specifier: 19.2.3
         version: 19.2.3
       react-reconciler:
-        specifier: ^0.32.0
+        specifier: 0.32.0
         version: 0.32.0(react@19.2.3)
       string-width:
-        specifier: ^7.2.0
+        specifier: 7.2.0
         version: 7.2.0
       yoga-layout:
-        specifier: ^3.2.1
+        specifier: 3.2.1
         version: 3.2.1
     devDependencies:
       '@effect/platform':

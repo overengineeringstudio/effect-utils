@@ -13,11 +13,13 @@ let
     binaryName = "mr";
     packageDir = "packages/@overeng/megarepo";
     workspaceRoot = src;
-    pnpmDepsHash = "sha256-nXRs3SPrF55GmPswa/X0qs+uEIvE01jmiwzeqcDRALc=";
+    pnpmDepsHash = "sha256-HgNrZAXzcPZvflpmNY7eYPbDXgtJiTxb6BgMGZ7OT78=";
     localDeps = [
       { dir = "packages/@overeng/utils"; hash = "sha256-MycpokWA4roGBELpRdj5CXjRdPcboktPBLoVWP55rJI="; }
       { dir = "packages/@overeng/cli-ui"; hash = "sha256-ve2v2z7iCkSuHxE6GvjPTXN3OKjfu7EOmSSanw8APg8="; }
       { dir = "packages/@overeng/effect-path"; hash = "sha256-LCb6+D3hRFai59RFFZq0EFy5e+tIqACTJReT1WGNj8w="; }
+      { dir = "packages/@overeng/tui-react"; hash = "sha256-Ckveg+Rz22ioIINMIz4QSi3XBGvvreRpo0rGiK7zGLw="; }
+      { dir = "packages/@overeng/tui-core"; hash = "sha256-ugxYSg2CKgTeIQG077wCthCNSIi0dAbLcAFgvs268DM="; }
     ];
     smokeTestArgs = [ "--help" ];
     inherit gitRev commitTs dirty;

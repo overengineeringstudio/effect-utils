@@ -76,7 +76,27 @@ let
       newHash=$(echo "$output" | grep -oE 'got:\s+sha256-[A-Za-z0-9+/=]+' | grep -oE 'sha256-[A-Za-z0-9+/=]+' | head -1 || true)
       
       if [ -z "$newHash" ]; then
-        # No hash mismatch found - might be a different error
+        # No hash mismatch found - check for pnpm offline install failure
+        # This happens when pnpm-lock.yaml changed but the old hash still "works"
+        # (fetchPnpmDeps succeeds but creates incomplete store)
+        if echo "$output" | grep -qiE "ERR_PNPM_NO_OFFLINE_TARBALL|ERR_PNPM_TARBALL_INTEGRITY|lockfile:.*manifest:"; then
+          echo "Detected stale pnpmDepsHash (pnpm offline install failed)"
+          echo "Resetting $mainHashKey to trigger complete re-fetch..."
+
+          # Set fake hash to force Nix to re-fetch and report correct hash
+          export HASH_KEY="$mainHashKey"
+          export HASH_VALUE="$FAKE_HASH"
+          perl -0777 -i -pe '
+            my $key = $ENV{"HASH_KEY"};
+            my $val = $ENV{"HASH_VALUE"};
+            s/\b\Q$key\E\s*=\s*"sha256-[^"]+"/$key = "$val"/g;
+          ' "$buildNix"
+
+          updated_any=true
+          continue  # Next iteration will get the correct hash from mismatch error
+        fi
+
+        # Genuine build failure - not a hash issue
         echo "✗ $name: build failed but no hash mismatch found"
         echo "$output"
         exit 1
@@ -164,10 +184,12 @@ let
   '';
 
   # Generate per-package tasks
+  # nix:hash depends on pnpm:install to ensure lockfile is up-to-date before computing hash
   mkHashTask = pkg: {
     "nix:hash:${pkg.name}" = {
       description = "Update all Nix hashes for ${pkg.name} (pnpmDepsHash + localDeps)";
       exec = "${updateHashScript} '${pkg.flakeRef}' '${pkg.buildNix}' '${pkg.name}'";
+      after = [ "pnpm:install:${pkg.name}" ];
     };
   };
 

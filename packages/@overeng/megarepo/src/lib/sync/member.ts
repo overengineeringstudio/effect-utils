@@ -546,10 +546,11 @@ export const syncMember = ({
     // Create branch if needed (--create-branches flag was used and ref doesn't exist)
     if (needsCreateBranch && defaultBranchForCreate !== undefined && !dryRun) {
       // Create the branch locally and push to remote
+      // Note: In bare repos, branches are at refs/heads/<branch>, not refs/remotes/origin/<branch>
       yield* Git.createAndPushBranch({
         repoPath: bareRepoPath,
         branch: targetRef,
-        baseRef: `origin/${defaultBranchForCreate}`,
+        baseRef: defaultBranchForCreate,
       })
     }
 
