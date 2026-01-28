@@ -1,23 +1,14 @@
 /**
  * Storybook stories for SyncOutput component.
- *
- * These stories demonstrate the various states of the sync command output.
- * Supports both TTY (terminal preview) and non-TTY (string output) modes.
  */
 
-import type { Meta, StoryObj } from '@storybook/react'
-import React, { useEffect, useRef } from 'react'
-import { renderToString } from '@overeng/tui-react'
-import { xtermTheme, containerStyles } from '@overeng/tui-react/storybook'
+import type { StoryObj } from '@storybook/react'
+import React from 'react'
+import { createCliMeta, TerminalPreview, StringTerminalPreview } from '@overeng/tui-react/storybook'
 import { forceColorLevel } from '@overeng/cli-ui'
-import { Terminal } from '@xterm/xterm'
-import { FitAddon } from '@xterm/addon-fit'
-import '@xterm/xterm/css/xterm.css'
-import {
-  SyncOutput,
-  type SyncOutputProps,
-  type MemberSyncResult,
-} from './SyncOutput.tsx'
+import { SyncOutput, type SyncOutputProps, type MemberSyncResult } from './SyncOutput.tsx'
+
+forceColorLevel('truecolor')
 
 // =============================================================================
 // Example Data
@@ -46,115 +37,23 @@ const exampleAllSynced: MemberSyncResult[] = [
   { name: 'schickling.dev', status: 'already_synced' },
 ]
 
-// Force colors on in Storybook (browser environment has no TTY)
-forceColorLevel('truecolor')
-
 // =============================================================================
-// Non-TTY Preview Component
+// Meta
 // =============================================================================
 
-/**
- * Preview component that shows the string output (non-TTY mode).
- * Uses renderToString to generate the ANSI output, then renders it in xterm.js.
- */
-const StringOutputPreview = (props: SyncOutputProps) => {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const terminalRef = useRef<Terminal | null>(null)
-
-  useEffect(() => {
-    if (!containerRef.current) return
-
-    // Initialize terminal if not already done
-    if (!terminalRef.current) {
-      const terminal = new Terminal({
-        fontFamily: 'Monaco, Menlo, "DejaVu Sans Mono", Consolas, monospace',
-        fontSize: 14,
-        theme: xtermTheme,
-        allowProposedApi: true,
-        cursorBlink: false,
-        cursorStyle: 'bar',
-        disableStdin: true,
-      })
-
-      const fitAddon = new FitAddon()
-      terminal.loadAddon(fitAddon)
-      terminal.open(containerRef.current)
-      fitAddon.fit()
-
-      terminalRef.current = terminal
-    }
-
-    // Render to string and write to terminal
-    const terminal = terminalRef.current
-    terminal.clear()
-    terminal.reset()
-
-    renderToString(React.createElement(SyncOutput, props))
-      .then((ansiOutput) => {
-        // Write each line to terminal
-        const lines = ansiOutput.split('\n')
-        lines.forEach((line, i) => {
-          terminal.write(line)
-          if (i < lines.length - 1) {
-            terminal.write('\r\n')
-          }
-        })
-      })
-      .catch((err: Error) => {
-        terminal.write(`Error: ${err.message}`)
-      })
-
-    return () => {
-      // Don't dispose terminal on prop changes, only on unmount
-    }
-  }, [props])
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      terminalRef.current?.dispose()
-      terminalRef.current = null
-    }
-  }, [])
-
-  return <div ref={containerRef} style={containerStyles} />
-}
-
-// =============================================================================
-// Meta Configuration
-// =============================================================================
-
-/** Extended props with render mode toggle */
-interface SyncOutputStoryProps extends SyncOutputProps {
-  /** Render mode: tty (terminal) or string (non-TTY) */
-  renderMode: 'tty' | 'string'
-}
-
-const meta: Meta<SyncOutputStoryProps> = {
+const meta = createCliMeta<SyncOutputProps>(SyncOutput, {
   title: 'CLI/Sync Output',
-  component: SyncOutput,
-  parameters: {
-    docs: {
-      description: {
-        component: `
-Sync command output rendered with React components. This is a 1:1 port of sync-renderer.ts.
-
-**Render Modes:**
-- **TTY**: Renders in a terminal emulator (xterm.js) - used for interactive terminals
-- **String**: Shows the raw string output from \`renderToString\` - used for non-TTY (pipes, redirects)
-        `,
-      },
-    },
+  description: 'Sync command output. Shows results of syncing members in a megarepo.',
+  defaultArgs: {
+    name: 'my-workspace',
+    root: '/Users/dev/workspace',
+    results: [],
+    dryRun: false,
+    frozen: false,
+    pull: false,
+    deep: false,
   },
   argTypes: {
-    renderMode: {
-      description: 'Switch between TTY (terminal) and non-TTY (string) output',
-      control: { type: 'radio' },
-      options: ['tty', 'string'],
-      table: {
-        category: 'Render Mode',
-      },
-    },
     dryRun: {
       description: 'Dry run mode - shows what would happen without making changes',
       control: { type: 'boolean' },
@@ -176,51 +75,26 @@ Sync command output rendered with React components. This is a 1:1 port of sync-r
       table: { category: 'Sync Options' },
     },
   },
-  args: {
-    renderMode: 'tty',
-    dryRun: false,
-    frozen: false,
-    pull: false,
-    deep: false,
-  },
-  // Custom render function to handle mode switching
-  render: ({ renderMode, ...props }) => {
-    if (renderMode === 'string') {
-      return <StringOutputPreview {...props} />
-    }
-    // TTY mode uses the default terminal preview from the decorator
-    return <SyncOutput {...props} />
-  },
-}
+})
 
 export default meta
 
-type Story = StoryObj<SyncOutputStoryProps>
+type Story = StoryObj<typeof meta>
 
 // =============================================================================
 // Basic Stories
 // =============================================================================
 
-/**
- * Mixed results showing various sync statuses.
- */
 export const MixedResults: Story = {
   args: {
-    name: 'my-workspace',
-    root: '/Users/dev/workspace',
     results: exampleSyncResults,
     nestedMegarepos: ['effect-utils'],
     generatedFiles: ['flake.nix', '.envrc'],
   },
 }
 
-/**
- * Dry run mode - shows what would happen.
- */
 export const DryRun: Story = {
   args: {
-    name: 'my-workspace',
-    root: '/Users/dev/workspace',
     results: [
       { name: 'new-repo', status: 'cloned', ref: 'main' },
       { name: 'effect', status: 'synced', ref: 'main' },
@@ -231,9 +105,6 @@ export const DryRun: Story = {
   },
 }
 
-/**
- * All repos already synced - nothing to do.
- */
 export const AllSynced: Story = {
   args: {
     name: 'mr-all-blue',
@@ -243,20 +114,12 @@ export const AllSynced: Story = {
   },
 }
 
-/**
- * Sync with errors.
- */
 export const WithErrors: Story = {
   args: {
-    name: 'my-workspace',
-    root: '/Users/dev/workspace',
     results: exampleSyncResultsWithErrors,
   },
 }
 
-/**
- * Frozen mode (CI).
- */
 export const FrozenMode: Story = {
   args: {
     name: 'ci-workspace',
@@ -270,13 +133,8 @@ export const FrozenMode: Story = {
   },
 }
 
-/**
- * Pull mode with updates.
- */
 export const PullMode: Story = {
   args: {
-    name: 'my-workspace',
-    root: '/Users/dev/workspace',
     results: [
       { name: 'effect', status: 'updated', commit: 'abc1234def', previousCommit: '9876543fed' },
       { name: 'effect-utils', status: 'updated', commit: 'def5678abc', previousCommit: 'fedcba987' },
@@ -286,13 +144,8 @@ export const PullMode: Story = {
   },
 }
 
-/**
- * Lock updates.
- */
 export const LockUpdates: Story = {
   args: {
-    name: 'my-workspace',
-    root: '/Users/dev/workspace',
     results: [
       { name: 'effect', status: 'locked', commit: 'abc1234def', previousCommit: '9876543fed' },
       { name: 'effect-utils', status: 'locked', commit: 'def5678abc', previousCommit: 'fedcba987' },
@@ -301,13 +154,8 @@ export const LockUpdates: Story = {
   },
 }
 
-/**
- * Removed members (orphaned symlinks).
- */
 export const RemovedMembers: Story = {
   args: {
-    name: 'my-workspace',
-    root: '/Users/dev/workspace',
     results: [
       { name: 'effect', status: 'synced', ref: 'main' },
       { name: 'old-repo', status: 'removed', message: '/store/old-repo-abc123' },
@@ -316,13 +164,8 @@ export const RemovedMembers: Story = {
   },
 }
 
-/**
- * Skipped members.
- */
 export const SkippedMembers: Story = {
   args: {
-    name: 'my-workspace',
-    root: '/Users/dev/workspace',
     results: [
       { name: 'effect', status: 'synced', ref: 'main' },
       { name: 'dirty-repo', status: 'skipped', message: 'dirty worktree' },
@@ -332,13 +175,8 @@ export const SkippedMembers: Story = {
   },
 }
 
-/**
- * Deep sync with nested megarepos hint.
- */
 export const NestedMegareposHint: Story = {
   args: {
-    name: 'my-workspace',
-    root: '/Users/dev/workspace',
     results: [
       { name: 'effect', status: 'synced', ref: 'main' },
       { name: 'effect-utils', status: 'synced', ref: 'main' },
@@ -349,13 +187,8 @@ export const NestedMegareposHint: Story = {
   },
 }
 
-/**
- * Deep sync mode (no hint shown).
- */
 export const DeepSyncMode: Story = {
   args: {
-    name: 'my-workspace',
-    root: '/Users/dev/workspace',
     results: [
       { name: 'effect', status: 'synced', ref: 'main' },
       { name: 'effect-utils', status: 'synced', ref: 'main' },
@@ -366,69 +199,26 @@ export const DeepSyncMode: Story = {
   },
 }
 
-/**
- * With generators enabled (nix + vscode).
- */
 export const WithGenerators: Story = {
   args: {
-    name: 'my-workspace',
-    root: '/Users/dev/workspace',
     results: [
       { name: 'effect', status: 'synced', ref: 'main' },
       { name: 'effect-utils', status: 'synced', ref: 'main' },
       { name: 'livestore', status: 'cloned', ref: 'main' },
       { name: 'dotfiles', status: 'already_synced' },
     ],
-    generatedFiles: [
-      'flake.nix',
-      'flake.lock',
-      '.envrc.generated.megarepo',
-      '.vscode/megarepo.code-workspace',
-    ],
+    generatedFiles: ['flake.nix', 'flake.lock', '.envrc.generated.megarepo', '.vscode/megarepo.code-workspace'],
   },
 }
 
-/**
- * With generators in dry run mode.
- */
-export const WithGeneratorsDryRun: Story = {
-  args: {
-    name: 'my-workspace',
-    root: '/Users/dev/workspace',
-    results: [
-      { name: 'effect', status: 'synced', ref: 'main' },
-      { name: 'effect-utils', status: 'synced', ref: 'main' },
-      { name: 'livestore', status: 'cloned', ref: 'main' },
-    ],
-    dryRun: true,
-    generatedFiles: [
-      'flake.nix',
-      'flake.lock',
-      '.envrc.generated.megarepo',
-      '.vscode/megarepo.code-workspace',
-    ],
-  },
-}
-
-/**
- * Many members (compact already synced).
- */
 export const ManyMembers: Story = {
   args: {
     name: 'large-workspace',
     root: '/Users/dev/large-workspace',
-    results: [
-      { name: 'repo-01', status: 'already_synced' },
-      { name: 'repo-02', status: 'already_synced' },
-      { name: 'repo-03', status: 'already_synced' },
-      { name: 'repo-04', status: 'already_synced' },
-      { name: 'repo-05', status: 'already_synced' },
-      { name: 'repo-06', status: 'already_synced' },
-      { name: 'repo-07', status: 'already_synced' },
-      { name: 'repo-08', status: 'already_synced' },
-      { name: 'repo-09', status: 'already_synced' },
-      { name: 'repo-10', status: 'already_synced' },
-    ],
+    results: Array.from({ length: 10 }, (_, i) => ({
+      name: `repo-${String(i + 1).padStart(2, '0')}`,
+      status: 'already_synced' as const,
+    })),
   },
 }
 
@@ -436,9 +226,6 @@ export const ManyMembers: Story = {
 // Edge Cases
 // =============================================================================
 
-/**
- * First sync - everything is new.
- */
 export const FirstSync: Story = {
   args: {
     name: 'new-workspace',
@@ -453,13 +240,8 @@ export const FirstSync: Story = {
   },
 }
 
-/**
- * All errors - network outage scenario.
- */
 export const AllErrors: Story = {
   args: {
-    name: 'my-workspace',
-    root: '/Users/dev/workspace',
     results: [
       { name: 'effect', status: 'error', message: 'network timeout' },
       { name: 'effect-utils', status: 'error', message: 'authentication failed' },
@@ -469,13 +251,8 @@ export const AllErrors: Story = {
   },
 }
 
-/**
- * Mixed skipped - various reasons.
- */
 export const MixedSkipped: Story = {
   args: {
-    name: 'my-workspace',
-    root: '/Users/dev/workspace',
     results: [
       { name: 'effect', status: 'already_synced' },
       { name: 'dirty-repo', status: 'skipped', message: '5 uncommitted changes' },
@@ -486,9 +263,6 @@ export const MixedSkipped: Story = {
   },
 }
 
-/**
- * Deep sync with multiple nested megarepos.
- */
 export const DeepSyncHint: Story = {
   args: {
     name: 'mr-all-blue',
@@ -500,30 +274,18 @@ export const DeepSyncHint: Story = {
       { name: 'dotfiles', status: 'already_synced' },
     ],
     nestedMegarepos: ['effect-utils', 'livestore', 'dotfiles'],
-    deep: false, // Not deep, so show hint
+    deep: false,
   },
 }
 
-/**
- * Single member sync.
- */
 export const SingleMember: Story = {
   args: {
-    name: 'my-workspace',
-    root: '/Users/dev/workspace',
-    results: [
-      { name: 'effect', status: 'synced', ref: 'main' },
-    ],
+    results: [{ name: 'effect', status: 'synced', ref: 'main' }],
   },
 }
 
-/**
- * Ref change updates with commit transitions.
- */
 export const RefChanges: Story = {
   args: {
-    name: 'my-workspace',
-    root: '/Users/dev/workspace',
     results: [
       { name: 'effect', status: 'synced', ref: 'v3.1.0' },
       { name: 'effect-utils', status: 'updated', commit: 'abc1234', previousCommit: 'def5678' },
@@ -533,9 +295,6 @@ export const RefChanges: Story = {
   },
 }
 
-/**
- * Long member names.
- */
 export const LongNames: Story = {
   args: {
     name: 'organization-name/extremely-long-workspace-name-for-testing',
@@ -549,29 +308,20 @@ export const LongNames: Story = {
 }
 
 // =============================================================================
-// Interactive Story with Controls
+// Interactive Story
 // =============================================================================
 
-/** Extended props for Storybook controls */
-interface InteractiveSyncOutputProps extends Omit<SyncOutputStoryProps, 'results'> {
-  /** Number of cloned repos */
+interface InteractiveProps extends SyncOutputProps {
+  renderMode: 'tty' | 'string'
   clonedCount: number
-  /** Number of synced repos */
   syncedCount: number
-  /** Number of updated repos */
   updatedCount: number
-  /** Number of already synced repos */
   alreadySyncedCount: number
-  /** Number of skipped repos */
   skippedCount: number
-  /** Number of error repos */
   errorCount: number
 }
 
-/**
- * Interactive story with controls to adjust sync state.
- */
-export const Interactive: StoryObj<InteractiveSyncOutputProps> = {
+export const Interactive: StoryObj<InteractiveProps> = {
   args: {
     name: 'my-workspace',
     root: '/Users/dev/workspace',
@@ -584,80 +334,29 @@ export const Interactive: StoryObj<InteractiveSyncOutputProps> = {
     errorCount: 0,
   },
   argTypes: {
-    clonedCount: {
-      description: 'Number of cloned repos',
-      control: { type: 'range', min: 0, max: 10, step: 1 },
-      table: { category: 'Results' },
-    },
-    syncedCount: {
-      description: 'Number of synced repos',
-      control: { type: 'range', min: 0, max: 10, step: 1 },
-      table: { category: 'Results' },
-    },
-    updatedCount: {
-      description: 'Number of updated repos',
-      control: { type: 'range', min: 0, max: 10, step: 1 },
-      table: { category: 'Results' },
-    },
-    alreadySyncedCount: {
-      description: 'Number of already synced repos',
-      control: { type: 'range', min: 0, max: 10, step: 1 },
-      table: { category: 'Results' },
-    },
-    skippedCount: {
-      description: 'Number of skipped repos',
-      control: { type: 'range', min: 0, max: 10, step: 1 },
-      table: { category: 'Results' },
-    },
-    errorCount: {
-      description: 'Number of error repos',
-      control: { type: 'range', min: 0, max: 10, step: 1 },
-      table: { category: 'Results' },
-    },
+    clonedCount: { control: { type: 'range', min: 0, max: 10 }, table: { category: 'Results' } },
+    syncedCount: { control: { type: 'range', min: 0, max: 10 }, table: { category: 'Results' } },
+    updatedCount: { control: { type: 'range', min: 0, max: 10 }, table: { category: 'Results' } },
+    alreadySyncedCount: { control: { type: 'range', min: 0, max: 10 }, table: { category: 'Results' } },
+    skippedCount: { control: { type: 'range', min: 0, max: 10 }, table: { category: 'Results' } },
+    errorCount: { control: { type: 'range', min: 0, max: 10 }, table: { category: 'Results' } },
   },
-  render: ({
-    renderMode,
-    clonedCount,
-    syncedCount,
-    updatedCount,
-    alreadySyncedCount,
-    skippedCount,
-    errorCount,
-    ...args
-  }) => {
-    // Generate results based on counts
+  render: ({ renderMode, clonedCount, syncedCount, updatedCount, alreadySyncedCount, skippedCount, errorCount, ...args }) => {
     const results: MemberSyncResult[] = []
     let idx = 0
 
-    for (let i = 0; i < clonedCount; i++) {
-      results.push({ name: `cloned-repo-${++idx}`, status: 'cloned', ref: 'main' })
-    }
-    for (let i = 0; i < syncedCount; i++) {
-      results.push({ name: `synced-repo-${++idx}`, status: 'synced', ref: 'main' })
-    }
-    for (let i = 0; i < updatedCount; i++) {
-      results.push({
-        name: `updated-repo-${++idx}`,
-        status: 'updated',
-        commit: 'abc1234',
-        previousCommit: 'def5678',
-      })
-    }
-    for (let i = 0; i < alreadySyncedCount; i++) {
-      results.push({ name: `already-synced-${++idx}`, status: 'already_synced' })
-    }
-    for (let i = 0; i < skippedCount; i++) {
-      results.push({ name: `skipped-repo-${++idx}`, status: 'skipped', message: 'dirty worktree' })
-    }
-    for (let i = 0; i < errorCount; i++) {
-      results.push({ name: `error-repo-${++idx}`, status: 'error', message: 'network error' })
-    }
+    for (let i = 0; i < clonedCount; i++) results.push({ name: `cloned-repo-${++idx}`, status: 'cloned', ref: 'main' })
+    for (let i = 0; i < syncedCount; i++) results.push({ name: `synced-repo-${++idx}`, status: 'synced', ref: 'main' })
+    for (let i = 0; i < updatedCount; i++) results.push({ name: `updated-repo-${++idx}`, status: 'updated', commit: 'abc1234', previousCommit: 'def5678' })
+    for (let i = 0; i < alreadySyncedCount; i++) results.push({ name: `already-synced-${++idx}`, status: 'already_synced' })
+    for (let i = 0; i < skippedCount; i++) results.push({ name: `skipped-repo-${++idx}`, status: 'skipped', message: 'dirty worktree' })
+    for (let i = 0; i < errorCount; i++) results.push({ name: `error-repo-${++idx}`, status: 'error', message: 'network error' })
 
     const props = { ...args, results }
 
     if (renderMode === 'string') {
-      return <StringOutputPreview {...props} />
+      return <StringTerminalPreview component={SyncOutput} props={props} />
     }
-    return <SyncOutput {...props} />
+    return <TerminalPreview><SyncOutput {...props} /></TerminalPreview>
   },
 }

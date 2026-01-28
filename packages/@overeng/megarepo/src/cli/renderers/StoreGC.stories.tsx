@@ -2,14 +2,9 @@
  * Storybook stories for StoreGcOutput component.
  */
 
-import type { Meta, StoryObj } from '@storybook/react'
-import React, { useEffect, useRef } from 'react'
-import { renderToString } from '@overeng/tui-react'
-import { xtermTheme, containerStyles } from '@overeng/tui-react/storybook'
+import type { StoryObj } from '@storybook/react'
+import { createCliMeta } from '@overeng/tui-react/storybook'
 import { forceColorLevel } from '@overeng/cli-ui'
-import { Terminal } from '@xterm/xterm'
-import { FitAddon } from '@xterm/addon-fit'
-import '@xterm/xterm/css/xterm.css'
 import { StoreGcOutput, type StoreGcOutputProps, type StoreGcResult } from './StoreOutput.tsx'
 
 forceColorLevel('truecolor')
@@ -25,91 +20,20 @@ const exampleGcResults: StoreGcResult[] = [
 ]
 
 // =============================================================================
-// String Output Preview
+// Meta
 // =============================================================================
 
-const StringOutputPreview = (props: StoreGcOutputProps) => {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const terminalRef = useRef<Terminal | null>(null)
-
-  useEffect(() => {
-    if (!containerRef.current) return
-
-    if (!terminalRef.current) {
-      const terminal = new Terminal({
-        fontFamily: 'Monaco, Menlo, "DejaVu Sans Mono", Consolas, monospace',
-        fontSize: 14,
-        theme: xtermTheme,
-        allowProposedApi: true,
-        cursorBlink: false,
-        cursorStyle: 'bar',
-        disableStdin: true,
-      })
-
-      const fitAddon = new FitAddon()
-      terminal.loadAddon(fitAddon)
-      terminal.open(containerRef.current)
-      fitAddon.fit()
-
-      terminalRef.current = terminal
-    }
-
-    const terminal = terminalRef.current
-    terminal.clear()
-    terminal.reset()
-
-    renderToString(React.createElement(StoreGcOutput, props))
-      .then((ansiOutput) => {
-        const lines = ansiOutput.split('\n')
-        lines.forEach((line, i) => {
-          terminal.write(line)
-          if (i < lines.length - 1) {
-            terminal.write('\r\n')
-          }
-        })
-      })
-      .catch((err: Error) => {
-        terminal.write(`Error: ${err.message}`)
-      })
-
-    return () => {}
-  }, [props])
-
-  useEffect(() => {
-    return () => {
-      terminalRef.current?.dispose()
-      terminalRef.current = null
-    }
-  }, [])
-
-  return <div ref={containerRef} style={containerStyles} />
-}
-
-// =============================================================================
-// Stories
-// =============================================================================
-
-interface StoreGcStoryProps extends StoreGcOutputProps {
-  renderMode: 'tty' | 'string'
-}
-
-const meta: Meta<StoreGcStoryProps> = {
+const meta = createCliMeta<StoreGcOutputProps>(StoreGcOutput, {
   title: 'CLI/Store/GC',
-  component: StoreGcOutput,
-  parameters: {
-    docs: {
-      description: {
-        component: 'Output for the `mr store gc` command. Shows garbage collection results for worktrees.',
-      },
-    },
+  description: 'Output for the `mr store gc` command. Shows garbage collection results for worktrees.',
+  defaultArgs: {
+    basePath: '/Users/dev/.megarepo',
+    results: [],
+    dryRun: false,
+    showForceHint: true,
+    maxInUseToShow: 5,
   },
   argTypes: {
-    renderMode: {
-      description: 'Switch between TTY (terminal) and non-TTY (string) output',
-      control: { type: 'radio' },
-      options: ['tty', 'string'],
-      table: { category: 'Render Mode' },
-    },
     dryRun: {
       description: 'Dry run mode - shows what would be removed without removing',
       control: { type: 'boolean' },
@@ -126,25 +50,15 @@ const meta: Meta<StoreGcStoryProps> = {
       table: { category: 'Options' },
     },
   },
-  args: {
-    renderMode: 'tty',
-    basePath: '/Users/dev/.megarepo',
-    results: [],
-    dryRun: false,
-    showForceHint: true,
-    maxInUseToShow: 5,
-  },
-  render: ({ renderMode, ...props }) => {
-    if (renderMode === 'string') {
-      return <StringOutputPreview {...props} />
-    }
-    return <StoreGcOutput {...props} />
-  },
-}
+})
 
 export default meta
 
-type Story = StoryObj<StoreGcStoryProps>
+type Story = StoryObj<typeof meta>
+
+// =============================================================================
+// Stories
+// =============================================================================
 
 export const Mixed: Story = {
   args: {
@@ -207,7 +121,6 @@ export const AllSkipped: Story = {
 // Edge Cases
 // =============================================================================
 
-/** All worktrees removed successfully */
 export const AllRemoved: Story = {
   args: {
     results: [
@@ -219,7 +132,6 @@ export const AllRemoved: Story = {
   },
 }
 
-/** All worktrees have errors */
 export const AllErrors: Story = {
   args: {
     results: [
@@ -230,7 +142,6 @@ export const AllErrors: Story = {
   },
 }
 
-/** Many in-use worktrees (exceeds maxInUseToShow) */
 export const ManyInUse: Story = {
   args: {
     results: [
@@ -247,7 +158,6 @@ export const ManyInUse: Story = {
   },
 }
 
-/** Dirty worktrees with uncommitted changes count */
 export const DirtyWithDetails: Story = {
   args: {
     results: [
@@ -259,7 +169,6 @@ export const DirtyWithDetails: Story = {
   },
 }
 
-/** Dry run with force hint disabled (force mode) */
 export const DryRunForceMode: Story = {
   args: {
     results: [
@@ -271,7 +180,6 @@ export const DryRunForceMode: Story = {
   },
 }
 
-/** Large cleanup with all result types */
 export const LargeCleanup: Story = {
   args: {
     results: [

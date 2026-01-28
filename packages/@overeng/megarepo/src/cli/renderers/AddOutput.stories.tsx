@@ -2,20 +2,12 @@
  * Storybook stories for AddOutput component.
  */
 
-import type { Meta, StoryObj } from '@storybook/react'
-import React, { useEffect, useRef } from 'react'
-import { renderToString } from '@overeng/tui-react'
-import { xtermTheme, containerStyles } from '@overeng/tui-react/storybook'
+import type { StoryObj } from '@storybook/react'
+import { createCliMeta } from '@overeng/tui-react/storybook'
 import { forceColorLevel } from '@overeng/cli-ui'
-import { Terminal } from '@xterm/xterm'
-import { FitAddon } from '@xterm/addon-fit'
-import '@xterm/xterm/css/xterm.css'
-import {
-  AddOutput,
-  AddErrorOutput,
-  type AddOutputProps,
-  type AddErrorOutputProps,
-} from './AddOutput.tsx'
+import { AddOutput, AddErrorOutput, type AddOutputProps, type AddErrorOutputProps } from './AddOutput.tsx'
+
+forceColorLevel('truecolor')
 
 // =============================================================================
 // Example Data
@@ -41,125 +33,39 @@ const exampleAddSyncError: AddOutputProps = {
   syncMessage: 'authentication required',
 }
 
-// Force colors on in Storybook
-forceColorLevel('truecolor')
-
-// =============================================================================
-// String Output Preview
-// =============================================================================
-
-const StringOutputPreview = ({ component }: { component: React.ReactElement }) => {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const terminalRef = useRef<Terminal | null>(null)
-
-  useEffect(() => {
-    if (!containerRef.current) return
-
-    if (!terminalRef.current) {
-      const terminal = new Terminal({
-        fontFamily: 'Monaco, Menlo, "DejaVu Sans Mono", Consolas, monospace',
-        fontSize: 14,
-        theme: xtermTheme,
-        allowProposedApi: true,
-        cursorBlink: false,
-        cursorStyle: 'bar',
-        disableStdin: true,
-      })
-
-      const fitAddon = new FitAddon()
-      terminal.loadAddon(fitAddon)
-      terminal.open(containerRef.current)
-      fitAddon.fit()
-
-      terminalRef.current = terminal
-    }
-
-    const terminal = terminalRef.current
-    terminal.clear()
-    terminal.reset()
-
-    renderToString(component)
-      .then((ansiOutput) => {
-        const lines = ansiOutput.split('\n')
-        lines.forEach((line, i) => {
-          terminal.write(line)
-          if (i < lines.length - 1) {
-            terminal.write('\r\n')
-          }
-        })
-      })
-      .catch((err: Error) => {
-        terminal.write(`Error: ${err.message}`)
-      })
-  }, [component])
-
-  useEffect(() => {
-    return () => {
-      terminalRef.current?.dispose()
-      terminalRef.current = null
-    }
-  }, [])
-
-  return <div ref={containerRef} style={{ ...containerStyles, height: 200 }} />
-}
-
 // =============================================================================
 // Add Output Stories
 // =============================================================================
 
-interface AddOutputStoryProps extends AddOutputProps {
-  renderMode: 'tty' | 'string'
-}
-
-const addMeta: Meta<AddOutputStoryProps> = {
+const meta = createCliMeta<AddOutputProps>(AddOutput, {
   title: 'CLI/Add Output',
-  component: AddOutput,
+  description: 'Output for the `mr add` command.',
+  defaultArgs: {
+    member: 'effect',
+    source: 'effect-ts/effect',
+  },
   argTypes: {
-    renderMode: {
-      description: 'Switch between TTY and string output',
-      control: { type: 'radio' },
-      options: ['tty', 'string'],
-      table: { category: 'Render Mode' },
-    },
     syncStatus: {
       control: { type: 'select' },
       options: ['cloned', 'synced', 'error'],
     },
   },
-  args: {
-    renderMode: 'tty',
-  },
-  render: ({ renderMode, ...props }) => {
-    const component = <AddOutput {...props} />
-    if (renderMode === 'string') {
-      return <StringOutputPreview component={component} />
-    }
-    return component
-  },
-}
+  terminalHeight: 200,
+})
 
-export default addMeta
+export default meta
 
-type AddStory = StoryObj<AddOutputStoryProps>
+type Story = StoryObj<typeof meta>
 
-/**
- * Simple add without sync
- */
-export const AddSimple: AddStory = {
+export const AddSimple: Story = {
   args: exampleAddSuccess,
 }
 
-/**
- * Add with immediate sync (cloned)
- */
-export const AddWithSync: AddStory = {
+export const AddWithSync: Story = {
   args: exampleAddWithSync,
 }
 
-/**
- * Add with sync that succeeded (synced status)
- */
-export const AddWithSyncExisting: AddStory = {
+export const AddWithSyncExisting: Story = {
   args: {
     member: 'effect',
     source: 'effect-ts/effect',
@@ -168,10 +74,7 @@ export const AddWithSyncExisting: AddStory = {
   },
 }
 
-/**
- * Add with sync error
- */
-export const AddWithSyncError: AddStory = {
+export const AddWithSyncError: Story = {
   args: exampleAddSyncError,
 }
 
@@ -179,47 +82,31 @@ export const AddWithSyncError: AddStory = {
 // Add Error Stories
 // =============================================================================
 
-interface AddErrorStoryProps extends AddErrorOutputProps {
-  renderMode: 'tty' | 'string'
-}
-
-export const ErrorNotInMegarepo: StoryObj<AddErrorStoryProps> = {
-  args: {
+export const errorMeta = createCliMeta<AddErrorOutputProps>(AddErrorOutput, {
+  title: 'CLI/Add Error',
+  description: 'Error outputs for the `mr add` command.',
+  defaultArgs: {
     error: 'not_in_megarepo',
   },
-  render: ({ renderMode, ...props }) => {
-    const component = <AddErrorOutput {...props} />
-    if (renderMode === 'string') {
-      return <StringOutputPreview component={component} />
-    }
-    return component
+  argTypes: {
+    error: {
+      control: { type: 'select' },
+      options: ['not_in_megarepo', 'invalid_repo', 'already_exists'],
+    },
   },
+  terminalHeight: 150,
+})
+
+type ErrorStory = StoryObj<typeof errorMeta>
+
+export const ErrorNotInMegarepo: ErrorStory = {
+  args: { error: 'not_in_megarepo' },
 }
 
-export const ErrorInvalidRepo: StoryObj<AddErrorStoryProps> = {
-  args: {
-    error: 'invalid_repo',
-    repo: 'not-a-valid-repo',
-  },
-  render: ({ renderMode, ...props }) => {
-    const component = <AddErrorOutput {...props} />
-    if (renderMode === 'string') {
-      return <StringOutputPreview component={component} />
-    }
-    return component
-  },
+export const ErrorInvalidRepo: ErrorStory = {
+  args: { error: 'invalid_repo', repo: 'not-a-valid-repo' },
 }
 
-export const ErrorAlreadyExists: StoryObj<AddErrorStoryProps> = {
-  args: {
-    error: 'already_exists',
-    member: 'effect',
-  },
-  render: ({ renderMode, ...props }) => {
-    const component = <AddErrorOutput {...props} />
-    if (renderMode === 'string') {
-      return <StringOutputPreview component={component} />
-    }
-    return component
-  },
+export const ErrorAlreadyExists: ErrorStory = {
+  args: { error: 'already_exists', member: 'effect' },
 }

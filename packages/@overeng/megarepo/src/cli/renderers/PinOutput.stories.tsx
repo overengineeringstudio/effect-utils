@@ -2,20 +2,12 @@
  * Storybook stories for PinOutput component.
  */
 
-import type { Meta, StoryObj } from '@storybook/react'
-import React, { useEffect, useRef } from 'react'
-import { renderToString } from '@overeng/tui-react'
-import { xtermTheme, containerStyles } from '@overeng/tui-react/storybook'
+import type { StoryObj } from '@storybook/react'
+import { createCliMeta } from '@overeng/tui-react/storybook'
 import { forceColorLevel } from '@overeng/cli-ui'
-import { Terminal } from '@xterm/xterm'
-import { FitAddon } from '@xterm/addon-fit'
-import '@xterm/xterm/css/xterm.css'
-import {
-  PinOutput,
-  PinErrorOutput,
-  type PinOutputProps,
-  type PinErrorOutputProps,
-} from './PinOutput.tsx'
+import { PinOutput, PinErrorOutput, type PinOutputProps, type PinErrorOutputProps } from './PinOutput.tsx'
+
+forceColorLevel('truecolor')
 
 // =============================================================================
 // Example Data
@@ -50,86 +42,19 @@ const exampleUnpinSuccess: PinOutputProps = {
   status: 'success',
 }
 
-// Force colors on in Storybook
-forceColorLevel('truecolor')
-
-// =============================================================================
-// String Output Preview
-// =============================================================================
-
-const StringOutputPreview = ({ component }: { component: React.ReactElement }) => {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const terminalRef = useRef<Terminal | null>(null)
-
-  useEffect(() => {
-    if (!containerRef.current) return
-
-    if (!terminalRef.current) {
-      const terminal = new Terminal({
-        fontFamily: 'Monaco, Menlo, "DejaVu Sans Mono", Consolas, monospace',
-        fontSize: 14,
-        theme: xtermTheme,
-        allowProposedApi: true,
-        cursorBlink: false,
-        cursorStyle: 'bar',
-        disableStdin: true,
-      })
-
-      const fitAddon = new FitAddon()
-      terminal.loadAddon(fitAddon)
-      terminal.open(containerRef.current)
-      fitAddon.fit()
-
-      terminalRef.current = terminal
-    }
-
-    const terminal = terminalRef.current
-    terminal.clear()
-    terminal.reset()
-
-    renderToString(component)
-      .then((ansiOutput) => {
-        const lines = ansiOutput.split('\n')
-        lines.forEach((line, i) => {
-          terminal.write(line)
-          if (i < lines.length - 1) {
-            terminal.write('\r\n')
-          }
-        })
-      })
-      .catch((err: Error) => {
-        terminal.write(`Error: ${err.message}`)
-      })
-  }, [component])
-
-  useEffect(() => {
-    return () => {
-      terminalRef.current?.dispose()
-      terminalRef.current = null
-    }
-  }, [])
-
-  return <div ref={containerRef} style={{ ...containerStyles, height: 200 }} />
-}
-
 // =============================================================================
 // Pin Output Stories
 // =============================================================================
 
-interface PinOutputStoryProps extends PinOutputProps {
-  renderMode: 'tty' | 'string'
-}
-
-const pinMeta: Meta<PinOutputStoryProps> = {
+const meta = createCliMeta<PinOutputProps>(PinOutput, {
   title: 'CLI/Pin Output',
-  component: PinOutput,
+  description: 'Output for the `mr pin` and `mr unpin` commands.',
+  defaultArgs: {
+    action: 'pin',
+    member: 'effect',
+    status: 'success',
+  },
   argTypes: {
-    renderMode: {
-      description: 'Switch between TTY and string output',
-      control: { type: 'radio' },
-      options: ['tty', 'string'],
-      table: { category: 'Render Mode' },
-    },
     action: {
       control: { type: 'radio' },
       options: ['pin', 'unpin'],
@@ -139,33 +64,18 @@ const pinMeta: Meta<PinOutputStoryProps> = {
       options: ['success', 'already_pinned', 'already_unpinned', 'dry_run'],
     },
   },
-  args: {
-    renderMode: 'tty',
-  },
-  render: ({ renderMode, ...props }) => {
-    const component = <PinOutput {...props} />
-    if (renderMode === 'string') {
-      return <StringOutputPreview component={component} />
-    }
-    return component
-  },
-}
+  terminalHeight: 200,
+})
 
-export default pinMeta
+export default meta
 
-type PinStory = StoryObj<PinOutputStoryProps>
+type Story = StoryObj<typeof meta>
 
-/**
- * Pin with ref and commit
- */
-export const PinWithRef: PinStory = {
+export const PinWithRef: Story = {
   args: examplePinSuccess,
 }
 
-/**
- * Pin to current commit (no ref change)
- */
-export const PinCurrentCommit: PinStory = {
+export const PinCurrentCommit: Story = {
   args: {
     action: 'pin',
     member: 'effect',
@@ -174,17 +84,11 @@ export const PinCurrentCommit: PinStory = {
   },
 }
 
-/**
- * Unpin success
- */
-export const Unpin: PinStory = {
+export const Unpin: Story = {
   args: exampleUnpinSuccess,
 }
 
-/**
- * Already pinned
- */
-export const AlreadyPinned: PinStory = {
+export const AlreadyPinned: Story = {
   args: {
     action: 'pin',
     member: 'effect',
@@ -193,10 +97,7 @@ export const AlreadyPinned: PinStory = {
   },
 }
 
-/**
- * Already unpinned
- */
-export const AlreadyUnpinned: PinStory = {
+export const AlreadyUnpinned: Story = {
   args: {
     action: 'unpin',
     member: 'effect',
@@ -204,17 +105,11 @@ export const AlreadyUnpinned: PinStory = {
   },
 }
 
-/**
- * Dry run with all changes
- */
-export const DryRunFull: PinStory = {
+export const DryRunFull: Story = {
   args: examplePinDryRun,
 }
 
-/**
- * Dry run - pin to current commit
- */
-export const DryRunSimple: PinStory = {
+export const DryRunSimple: Story = {
   args: {
     action: 'pin',
     member: 'effect',
@@ -230,60 +125,35 @@ export const DryRunSimple: PinStory = {
 // Pin Error Stories
 // =============================================================================
 
-interface PinErrorStoryProps extends PinErrorOutputProps {
-  renderMode: 'tty' | 'string'
-}
-
-export const ErrorNotInMegarepo: StoryObj<PinErrorStoryProps> = {
-  args: {
+export const errorMeta = createCliMeta<PinErrorOutputProps>(PinErrorOutput, {
+  title: 'CLI/Pin Error',
+  description: 'Error outputs for the `mr pin` and `mr unpin` commands.',
+  defaultArgs: {
     error: 'not_in_megarepo',
   },
-  render: ({ renderMode, ...props }) => {
-    const component = <PinErrorOutput {...props} />
-    if (renderMode === 'string') {
-      return <StringOutputPreview component={component} />
-    }
-    return component
+  argTypes: {
+    error: {
+      control: { type: 'select' },
+      options: ['not_in_megarepo', 'member_not_found', 'not_synced', 'local_path'],
+    },
   },
+  terminalHeight: 150,
+})
+
+type ErrorStory = StoryObj<typeof errorMeta>
+
+export const ErrorNotInMegarepo: ErrorStory = {
+  args: { error: 'not_in_megarepo' },
 }
 
-export const ErrorMemberNotFound: StoryObj<PinErrorStoryProps> = {
-  args: {
-    error: 'member_not_found',
-    member: 'unknown-repo',
-  },
-  render: ({ renderMode, ...props }) => {
-    const component = <PinErrorOutput {...props} />
-    if (renderMode === 'string') {
-      return <StringOutputPreview component={component} />
-    }
-    return component
-  },
+export const ErrorMemberNotFound: ErrorStory = {
+  args: { error: 'member_not_found', member: 'unknown-repo' },
 }
 
-export const ErrorNotSynced: StoryObj<PinErrorStoryProps> = {
-  args: {
-    error: 'not_synced',
-    member: 'effect',
-  },
-  render: ({ renderMode, ...props }) => {
-    const component = <PinErrorOutput {...props} />
-    if (renderMode === 'string') {
-      return <StringOutputPreview component={component} />
-    }
-    return component
-  },
+export const ErrorNotSynced: ErrorStory = {
+  args: { error: 'not_synced', member: 'effect' },
 }
 
-export const ErrorLocalPath: StoryObj<PinErrorStoryProps> = {
-  args: {
-    error: 'local_path',
-  },
-  render: ({ renderMode, ...props }) => {
-    const component = <PinErrorOutput {...props} />
-    if (renderMode === 'string') {
-      return <StringOutputPreview component={component} />
-    }
-    return component
-  },
+export const ErrorLocalPath: ErrorStory = {
+  args: { error: 'local_path' },
 }
