@@ -4,13 +4,15 @@
  * Show workspace status and member states.
  */
 
+import React from 'react'
 import * as Cli from '@effect/cli'
 import type { CommandExecutor } from '@effect/platform'
 import { FileSystem, type Error as PlatformError } from '@effect/platform'
 import { Console, Effect, Option, type ParseResult, Schema } from 'effect'
 
-import { styled, symbols } from '@overeng/cli-ui'
+import { Box, Text } from '@overeng/tui-react'
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
+import { renderToString } from '@overeng/tui-react'
 import { jsonError, withJsonMode } from '@overeng/utils/node'
 
 import {
@@ -24,7 +26,7 @@ import {
 import * as Git from '../../lib/git.ts'
 import { checkLockStaleness, LOCK_FILE_NAME, readLockFile } from '../../lib/lock.ts'
 import { Cwd, findMegarepoRoot, jsonOption } from '../context.ts'
-import { outputLines, renderStatus, type GitStatus, type MemberStatus } from '../renderers/mod.ts'
+import { StatusOutput, type GitStatus, type MemberStatus } from '../renderers/StatusOutput.tsx'
 
 /**
  * Recursively scan members and build status tree.
@@ -179,7 +181,15 @@ export const statusCommand = Cli.Command.make('status', { json: jsonOption }, ({
           message: 'No megarepo.json found',
         })
       }
-      yield* Console.error(`${styled.red(symbols.cross)} Not in a megarepo`)
+      const output = yield* Effect.promise(() =>
+        renderToString(
+          React.createElement(Box, { flexDirection: 'row' },
+            React.createElement(Text, { color: 'red' }, '\u2717'),
+            React.createElement(Text, null, ' Not in a megarepo'),
+          ),
+        ),
+      )
+      yield* Console.error(output)
       return yield* Effect.fail(new Error('Not in a megarepo'))
     }
 
@@ -358,16 +368,20 @@ export const statusCommand = Cli.Command.make('status', { json: jsonOption }, ({
         })
       }
 
-      // Render and output
-      const lines = renderStatus({
-        name,
-        root: root.value,
-        members,
-        lastSyncTime,
-        lockStaleness,
-        currentMemberPath,
-      })
-      yield* outputLines(lines)
+      // Render using React StatusOutput component
+      const output = yield* Effect.promise(() =>
+        renderToString(
+          React.createElement(StatusOutput, {
+            name,
+            root: root.value,
+            members,
+            lastSyncTime,
+            lockStaleness,
+            currentMemberPath,
+          }),
+        ),
+      )
+      yield* Console.log(output)
     }
   }).pipe(Effect.withSpan('megarepo/status'), withJsonMode(json)),
 ).pipe(Cli.Command.withDescription('Show workspace status and member states'))

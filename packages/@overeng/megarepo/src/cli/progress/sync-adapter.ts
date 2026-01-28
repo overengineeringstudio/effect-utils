@@ -8,7 +8,7 @@
 
 import { Context, Effect, Layer, SubscriptionRef } from 'effect'
 
-import type { MemberSyncResult } from '../renderers/sync-renderer.ts'
+import type { MemberSyncResult } from '../renderers/SyncOutput.tsx'
 import { createProgressService, createState, type ProgressItemInput } from './service.ts'
 
 // =============================================================================

@@ -4,12 +4,13 @@
  * Print environment variables for shell integration.
  */
 
+import React from 'react'
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
 import { Console, Effect, Option, Schema } from 'effect'
 
-import { styled, symbols } from '@overeng/cli-ui'
 import { EffectPath } from '@overeng/effect-path'
+import { renderToString, Box, Text } from '@overeng/tui-react'
 import { jsonError, withJsonMode } from '@overeng/utils/node'
 
 import { CONFIG_FILE_NAME, ENV_VARS, MegarepoConfig } from '../../lib/config.ts'
@@ -40,7 +41,15 @@ export const envCommand = Cli.Command.make(
             message: 'No megarepo.json found',
           })
         }
-        yield* Console.error(`${styled.red(symbols.cross)} No megarepo.json found`)
+        const output = yield* Effect.promise(() =>
+          renderToString(
+            React.createElement(Box, { flexDirection: 'row' },
+              React.createElement(Text, { color: 'red' }, '\u2717'),
+              React.createElement(Text, null, ' No megarepo.json found'),
+            ),
+          ),
+        )
+        yield* Console.error(output)
         return yield* Effect.fail(new Error('Not in a megarepo'))
       }
 

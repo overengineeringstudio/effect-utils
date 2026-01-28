@@ -4,12 +4,13 @@
  * List all members in the megarepo.
  */
 
+import React from 'react'
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
 import { Console, Effect, Option, Schema } from 'effect'
 
-import { styled, symbols } from '@overeng/cli-ui'
 import { EffectPath } from '@overeng/effect-path'
+import { renderToString, Box, Text } from '@overeng/tui-react'
 import { jsonError, withJsonMode } from '@overeng/utils/node'
 
 import { CONFIG_FILE_NAME, MegarepoConfig } from '../../lib/config.ts'
@@ -28,7 +29,15 @@ export const lsCommand = Cli.Command.make('ls', { json: jsonOption }, ({ json })
           message: 'No megarepo.json found',
         })
       }
-      yield* Console.error(`${styled.red(symbols.cross)} Not in a megarepo`)
+      const output = yield* Effect.promise(() =>
+        renderToString(
+          React.createElement(Box, { flexDirection: 'row' },
+            React.createElement(Text, { color: 'red' }, '\u2717'),
+            React.createElement(Text, null, ' Not in a megarepo'),
+          ),
+        ),
+      )
+      yield* Console.error(output)
       return yield* Effect.fail(new Error('Not in a megarepo'))
     }
 
@@ -45,7 +54,15 @@ export const lsCommand = Cli.Command.make('ls', { json: jsonOption }, ({ json })
       console.log(JSON.stringify({ members: config.members }))
     } else {
       for (const [name, sourceString] of Object.entries(config.members)) {
-        yield* Console.log(`${styled.bold(name)} ${styled.dim(`(${sourceString})`)}`)
+        const memberOutput = yield* Effect.promise(() =>
+          renderToString(
+            React.createElement(Box, { flexDirection: 'row' },
+              React.createElement(Text, { bold: true }, name),
+              React.createElement(Text, { dim: true }, ` (${sourceString})`),
+            ),
+          ),
+        )
+        yield* Console.log(memberOutput)
       }
     }
   }).pipe(Effect.withSpan('megarepo/ls'), withJsonMode(json)),

@@ -4,13 +4,15 @@
  * Adds a new member repository to the megarepo configuration.
  */
 
+import React from 'react'
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
 import { Console, Effect, Option, Schema } from 'effect'
 
-import { styled, symbols } from '@overeng/cli-ui'
 import { EffectPath } from '@overeng/effect-path'
+import { renderToString } from '@overeng/tui-react'
 
+import { AddOutput, AddErrorOutput } from '../renderers/AddOutput.tsx'
 import { CONFIG_FILE_NAME, MegarepoConfig, parseSourceString } from '../../lib/config.ts'
 import * as Git from '../../lib/git.ts'
 import { StoreLayer } from '../../lib/store.ts'
@@ -85,7 +87,10 @@ export const addCommand = Cli.Command.make(
             }),
           )
         } else {
-          yield* Console.error(`${styled.red(symbols.cross)} Not in a megarepo`)
+          const output = yield* Effect.promise(() =>
+            renderToString(React.createElement(AddErrorOutput, { error: 'not_in_megarepo' })),
+          )
+          yield* Console.error(output)
         }
         return yield* Effect.fail(new Error('Not in a megarepo'))
       }
@@ -101,12 +106,10 @@ export const addCommand = Cli.Command.make(
             }),
           )
         } else {
-          yield* Console.error(`${styled.red(symbols.cross)} Invalid repo reference: ${repo}`)
-          yield* Console.log(
-            styled.dim(
-              '  Expected: owner/repo, git@host:owner/repo.git, https://host/owner/repo.git, or /path/to/repo',
-            ),
+          const output = yield* Effect.promise(() =>
+            renderToString(React.createElement(AddErrorOutput, { error: 'invalid_repo', repo })),
           )
+          yield* Console.error(output)
         }
         return yield* Effect.fail(new Error('Invalid repo reference'))
       }
@@ -127,7 +130,10 @@ export const addCommand = Cli.Command.make(
         if (json) {
           console.log(JSON.stringify({ error: 'already_exists', member: memberName }))
         } else {
-          yield* Console.error(`${styled.red(symbols.cross)} Member '${memberName}' already exists`)
+          const output = yield* Effect.promise(() =>
+            renderToString(React.createElement(AddErrorOutput, { error: 'already_exists', member: memberName })),
+          )
+          yield* Console.error(output)
         }
         return yield* Effect.fail(new Error('Member already exists'))
       }
@@ -156,13 +162,22 @@ export const addCommand = Cli.Command.make(
           }),
         )
       } else {
-        yield* Console.log(`${styled.green(symbols.check)} Added ${styled.bold(memberName)}`)
+        const output = yield* Effect.promise(() =>
+          renderToString(
+            React.createElement(AddOutput, { member: memberName, source: parsed.sourceString }),
+          ),
+        )
+        yield* Console.log(output)
       }
 
       // Sync if requested
       if (sync) {
+        const { Text, Box } = yield* Effect.promise(async () => import('@overeng/tui-react'))
         if (!json) {
-          yield* Console.log(styled.dim('Syncing...'))
+          const syncingOutput = yield* Effect.promise(() =>
+            renderToString(React.createElement(Text, { dim: true }, 'Syncing...')),
+          )
+          yield* Console.log(syncingOutput)
         }
         const result = yield* syncMember({
           name: memberName,
@@ -175,12 +190,22 @@ export const addCommand = Cli.Command.make(
           force: false,
         })
         if (!json) {
-          const statusSymbol =
-            result.status === 'error' ? styled.red(symbols.cross) : styled.green(symbols.check)
+          // Render just the sync result line (not the full AddOutput to avoid duplicating "Added")
+          const isError = result.status === 'error'
           const statusText = result.status === 'cloned' ? 'cloned' : result.status
-          yield* Console.log(
-            `${statusSymbol} ${styled.bold(memberName)} ${styled.dim(`(${statusText})`)}`,
+          const output = yield* Effect.promise(() =>
+            renderToString(
+              React.createElement(
+                Box,
+                { flexDirection: 'row' },
+                React.createElement(Text, { color: isError ? 'red' : 'green' }, isError ? '\u2717' : '\u2713'),
+                React.createElement(Text, null, ' '),
+                React.createElement(Text, { bold: true }, memberName),
+                React.createElement(Text, { dim: true }, ` (${statusText})`),
+              ),
+            ),
           )
+          yield* Console.log(output)
         }
       }
     }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/add')),

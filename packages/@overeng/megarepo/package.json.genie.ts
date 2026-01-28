@@ -21,6 +21,8 @@ export default packageJson({
   ...privatePackageDefaults,
   scripts: {
     ...effectLspScripts,
+    storybook: 'storybook dev -p 6007',
+    'storybook:build': 'storybook build',
   },
   exports: {
     '.': './src/mod.ts',
@@ -39,6 +41,16 @@ export default packageJson({
   devDependencies: {
     ...catalog.pick(...peerDepNames, '@effect/vitest', '@types/bun', '@types/node', '@types/react', 'vitest'),
     ...effectLspDevDeps(),
+    // Storybook dependencies
+    storybook: '^8.6.0',
+    '@storybook/react': '^8.6.0',
+    '@storybook/react-vite': '^8.6.0',
+    '@storybook/addon-essentials': '^8.6.0',
+    '@xterm/xterm': '^5.5.0',
+    '@xterm/addon-fit': '^0.10.0',
+    ...catalog.pick('react-dom'),
+    vite: '^6.0.0',
+    '@vitejs/plugin-react': '^4.0.0',
   },
   peerDependencies: {
     // Expose @overeng/utils peer deps transitively (consumers need them)

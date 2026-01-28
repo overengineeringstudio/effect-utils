@@ -4,12 +4,16 @@
  * Commands to pin and unpin members to specific refs.
  */
 
+import React from 'react'
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
 import { Console, Effect, Option, Schema } from 'effect'
 
-import { styled, symbols } from '@overeng/cli-ui'
+
 import { EffectPath } from '@overeng/effect-path'
+import { renderToString, Text } from '@overeng/tui-react'
+
+import { PinOutput, PinErrorOutput, PinWarningOutput } from '../renderers/PinOutput.tsx'
 
 import {
   buildSourceStringWithRef,
@@ -71,7 +75,10 @@ export const pinCommand = Cli.Command.make(
             }),
           )
         } else {
-          yield* Console.error(`${styled.red(symbols.cross)} Not in a megarepo`)
+          const output = yield* Effect.promise(() =>
+            renderToString(React.createElement(PinErrorOutput, { error: 'not_in_megarepo' })),
+          )
+          yield* Console.error(output)
         }
         return yield* Effect.fail(new Error('Not in a megarepo'))
       }
@@ -96,7 +103,10 @@ export const pinCommand = Cli.Command.make(
             }),
           )
         } else {
-          yield* Console.error(`${styled.red(symbols.cross)} Member '${member}' not found`)
+          const output = yield* Effect.promise(() =>
+            renderToString(React.createElement(PinErrorOutput, { error: 'member_not_found', member })),
+          )
+          yield* Console.error(output)
         }
         return yield* Effect.fail(new Error('Member not found'))
       }
@@ -116,7 +126,10 @@ export const pinCommand = Cli.Command.make(
             }),
           )
         } else {
-          yield* Console.error(`${styled.red(symbols.cross)} Invalid source string`)
+          const output = yield* Effect.promise(() =>
+            renderToString(React.createElement(PinErrorOutput, { error: 'invalid_source' })),
+          )
+          yield* Console.error(output)
         }
         return yield* Effect.fail(new Error('Invalid source'))
       }
@@ -129,7 +142,10 @@ export const pinCommand = Cli.Command.make(
             }),
           )
         } else {
-          yield* Console.error(`${styled.red(symbols.cross)} Cannot pin local path members`)
+          const output = yield* Effect.promise(() =>
+            renderToString(React.createElement(PinErrorOutput, { error: 'local_path' })),
+          )
+          yield* Console.error(output)
         }
         return yield* Effect.fail(new Error('Cannot pin local path'))
       }
@@ -200,42 +216,36 @@ export const pinCommand = Cli.Command.make(
               }),
             )
           } else {
-            yield* Console.log(`Would pin ${styled.bold(member)} to ${styled.cyan(newRef)}`)
-            yield* Console.log('')
-
-            // megarepo.json change - show actual source string transformation
-            if (sourceString !== newSourceString) {
-              yield* Console.log(
-                `  ${styled.dim('megarepo.json')}  ${sourceString} ${styled.dim('→')} ${newSourceString}`,
-              )
-            }
-
-            // symlink change
-            const shortCurrentLink = currentLink ? shortenPath(currentLink) : styled.dim('(none)')
+            const shortCurrentLink = currentLink ? shortenPath(currentLink) : '(none)'
             const shortNewLink = shortenPath(worktreePath.replace(/\/$/, ''))
-            yield* Console.log(
-              `  ${styled.dim('symlink')}        ${shortCurrentLink} ${styled.dim('→')} ${shortNewLink}`,
-            )
-
-            // lock file change
             const lockChanges: string[] = []
             if (currentLockRef !== newRef) lockChanges.push(`ref: ${currentLockRef} → ${newRef}`)
             if (!currentLockPinned) lockChanges.push('pinned: true')
+
+            const dryRunProps: NonNullable<Parameters<typeof PinOutput>[0]['dryRun']> = {
+              currentSource: sourceString!, // Already validated non-undefined above
+              newSource: newSourceString,
+              currentSymlink: shortCurrentLink,
+              newSymlink: shortNewLink,
+              wouldClone: !bareExists,
+              wouldCreateWorktree: !worktreeExists,
+            }
             if (lockChanges.length > 0) {
-              yield* Console.log(`  ${styled.dim('lock')}           ${lockChanges.join(', ')}`)
+              dryRunProps.lockChanges = lockChanges
             }
 
-            // Additional actions
-            if (!bareExists) {
-              yield* Console.log('')
-              yield* Console.log(styled.dim('  + would clone bare repo'))
-            }
-            if (!worktreeExists) {
-              yield* Console.log(styled.dim('  + would create worktree'))
-            }
-
-            yield* Console.log('')
-            yield* Console.log(styled.dim('No changes made (dry run)'))
+            const output = yield* Effect.promise(() =>
+              renderToString(
+                React.createElement(PinOutput, {
+                  action: 'pin',
+                  member,
+                  status: 'dry_run',
+                  ref: newRef,
+                  dryRun: dryRunProps,
+                }),
+              ),
+            )
+            yield* Console.log(output)
           }
           return
         }
@@ -271,7 +281,10 @@ export const pinCommand = Cli.Command.make(
           yield* Git.cloneBare({ url: cloneUrl, targetPath: bareRepoPath })
 
           if (!json) {
-            yield* Console.log(styled.dim(`  Cloned ${cloneUrl}`))
+            const clonedOutput = yield* Effect.promise(() =>
+              renderToString(React.createElement(Text, { dim: true }, `  Cloned ${cloneUrl}`)),
+            )
+            yield* Console.log(clonedOutput)
           }
         } else {
           // Fetch to ensure we have the latest refs
@@ -371,9 +384,18 @@ export const pinCommand = Cli.Command.make(
             }),
           )
         } else {
-          yield* Console.log(
-            `${styled.green(symbols.check)} Pinned ${styled.bold(member)} to ${styled.cyan(newRef)} at ${styled.dim(targetCommit.slice(0, 7))}`,
+          const output = yield* Effect.promise(() =>
+            renderToString(
+              React.createElement(PinOutput, {
+                action: 'pin',
+                member,
+                status: 'success',
+                ref: newRef,
+                commit: targetCommit,
+              }),
+            ),
           )
+          yield* Console.log(output)
         }
 
         return
@@ -390,8 +412,10 @@ export const pinCommand = Cli.Command.make(
             }),
           )
         } else {
-          yield* Console.error(`${styled.red(symbols.cross)} Member '${member}' not synced yet.`)
-          yield* Console.log(styled.dim('  Run: mr sync'))
+          const output = yield* Effect.promise(() =>
+            renderToString(React.createElement(PinErrorOutput, { error: 'not_synced', member })),
+          )
+          yield* Console.error(output)
         }
         return yield* Effect.fail(new Error('Member not synced'))
       }
@@ -407,11 +431,17 @@ export const pinCommand = Cli.Command.make(
             }),
           )
         } else {
-          yield* Console.log(
-            styled.dim(
-              `Member '${member}' is already pinned at ${lockedMember.commit.slice(0, 7)}`,
+          const output = yield* Effect.promise(() =>
+            renderToString(
+              React.createElement(PinOutput, {
+                action: 'pin',
+                member,
+                status: 'already_pinned',
+                commit: lockedMember.commit,
+              }),
             ),
           )
+          yield* Console.log(output)
         }
         return
       }
@@ -448,40 +478,32 @@ export const pinCommand = Cli.Command.make(
             }),
           )
         } else {
-          yield* Console.log(
-            `Would pin ${styled.bold(member)} at ${styled.dim(lockedMember.commit.slice(0, 7))}`,
-          )
-          yield* Console.log('')
-
-          // lock file change
-          yield* Console.log(`  ${styled.dim('lock')}           pinned: false → true`)
-
-          // symlink change (if would change)
           const wouldChangeSymlink =
             currentLink !== null &&
             currentLink.replace(/\/$/, '') !== commitWorktreePath.replace(/\/$/, '')
+
+          const dryRunProps: NonNullable<Parameters<typeof PinOutput>[0]['dryRun']> = {
+            lockChanges: ['pinned: false → true'],
+            wouldCreateWorktree: !commitWorktreeExists && bareExists,
+            worktreeNotAvailable: !commitWorktreeExists && !bareExists,
+          }
           if (wouldChangeSymlink) {
-            const shortCurrentLink = shortenPath(currentLink)
-            const shortNewLink = shortenPath(commitWorktreePath.replace(/\/$/, ''))
-            yield* Console.log(
-              `  ${styled.dim('symlink')}        ${shortCurrentLink} ${styled.dim('→')} ${shortNewLink}`,
-            )
+            dryRunProps.currentSymlink = shortenPath(currentLink)
+            dryRunProps.newSymlink = shortenPath(commitWorktreePath.replace(/\/$/, ''))
           }
 
-          // Additional actions
-          if (!commitWorktreeExists) {
-            yield* Console.log('')
-            if (bareExists) {
-              yield* Console.log(styled.dim('  + would create commit worktree'))
-            } else {
-              yield* Console.log(
-                styled.yellow('  ! commit worktree not available (repo not in store)'),
-              )
-            }
-          }
-
-          yield* Console.log('')
-          yield* Console.log(styled.dim('No changes made (dry run)'))
+          const output = yield* Effect.promise(() =>
+            renderToString(
+              React.createElement(PinOutput, {
+                action: 'pin',
+                member,
+                status: 'dry_run',
+                commit: lockedMember.commit,
+                dryRun: dryRunProps,
+              }),
+            ),
+          )
+          yield* Console.log(output)
         }
         return
       }
@@ -495,11 +517,12 @@ export const pinCommand = Cli.Command.make(
         if (!bareExists) {
           // Bare repo doesn't exist, can't create worktree - warn user
           if (!json) {
-            yield* Console.log(
-              styled.yellow(
-                `${symbols.warning} Commit worktree not available (repo not in store). Run 'mr sync' to complete.`,
+            const output = yield* Effect.promise(() =>
+              renderToString(
+                React.createElement(PinWarningOutput, { warning: 'worktree_not_available' }),
               ),
             )
+            yield* Console.log(output)
           }
         } else {
           // Create the worktree parent directory
@@ -541,9 +564,17 @@ export const pinCommand = Cli.Command.make(
           }),
         )
       } else {
-        yield* Console.log(
-          `${styled.green(symbols.check)} Pinned ${styled.bold(member)} at ${styled.dim(lockedMember.commit.slice(0, 7))}`,
+        const output = yield* Effect.promise(() =>
+          renderToString(
+            React.createElement(PinOutput, {
+              action: 'pin',
+              member,
+              status: 'success',
+              commit: lockedMember.commit,
+            }),
+          ),
         )
+        yield* Console.log(output)
       }
     }).pipe(
       Effect.provide(StoreLayer),
@@ -607,7 +638,10 @@ export const unpinCommand = Cli.Command.make(
             }),
           )
         } else {
-          yield* Console.error(`${styled.red(symbols.cross)} Not in a megarepo`)
+          const output = yield* Effect.promise(() =>
+            renderToString(React.createElement(PinErrorOutput, { error: 'not_in_megarepo' })),
+          )
+          yield* Console.error(output)
         }
         return yield* Effect.fail(new Error('Not in a megarepo'))
       }
@@ -631,7 +665,10 @@ export const unpinCommand = Cli.Command.make(
             }),
           )
         } else {
-          yield* Console.error(`${styled.red(symbols.cross)} Member '${member}' not found`)
+          const output = yield* Effect.promise(() =>
+            renderToString(React.createElement(PinErrorOutput, { error: 'member_not_found', member })),
+          )
+          yield* Console.error(output)
         }
         return yield* Effect.fail(new Error('Member not found'))
       }
@@ -646,7 +683,10 @@ export const unpinCommand = Cli.Command.make(
         if (json) {
           console.log(JSON.stringify({ error: 'no_lock', message: 'No lock file found' }))
         } else {
-          yield* Console.error(`${styled.red(symbols.cross)} No lock file found`)
+          const output = yield* Effect.promise(() =>
+            renderToString(React.createElement(PinErrorOutput, { error: 'no_lock' })),
+          )
+          yield* Console.error(output)
         }
         return yield* Effect.fail(new Error('No lock file'))
       }
@@ -658,7 +698,10 @@ export const unpinCommand = Cli.Command.make(
         if (json) {
           console.log(JSON.stringify({ status: 'not_in_lock', member }))
         } else {
-          yield* Console.log(styled.dim(`Member '${member}' not in lock file`))
+          const output = yield* Effect.promise(() =>
+            renderToString(React.createElement(PinErrorOutput, { error: 'not_in_lock', member })),
+          )
+          yield* Console.log(output)
         }
         return
       }
@@ -668,7 +711,12 @@ export const unpinCommand = Cli.Command.make(
         if (json) {
           console.log(JSON.stringify({ status: 'already_unpinned', member }))
         } else {
-          yield* Console.log(styled.dim(`Member '${member}' is not pinned`))
+          const output = yield* Effect.promise(() =>
+            renderToString(
+              React.createElement(PinOutput, { action: 'unpin', member, status: 'already_unpinned' }),
+            ),
+          )
+          yield* Console.log(output)
         }
         return
       }
@@ -682,14 +730,12 @@ export const unpinCommand = Cli.Command.make(
       if (sourceString === undefined) {
         // Member was removed from config but still in lock file - warn user
         if (!json) {
-          yield* Console.log(
-            styled.yellow(
-              `${symbols.warning} Member '${member}' was removed from config but still in lock file`,
+          const output = yield* Effect.promise(() =>
+            renderToString(
+              React.createElement(PinWarningOutput, { warning: 'member_removed_from_config', member }),
             ),
           )
-          yield* Console.log(
-            styled.dim('  Consider running: mr sync --pull'),
-          )
+          yield* Console.log(output)
         }
       } else {
         const source = parseSourceString(sourceString)
@@ -727,7 +773,12 @@ export const unpinCommand = Cli.Command.make(
       if (json) {
         console.log(JSON.stringify({ status: 'unpinned', member }))
       } else {
-        yield* Console.log(`${styled.green(symbols.check)} Unpinned ${styled.bold(member)}`)
+        const output = yield* Effect.promise(() =>
+          renderToString(
+            React.createElement(PinOutput, { action: 'unpin', member, status: 'success' }),
+          ),
+        )
+        yield* Console.log(output)
       }
     }).pipe(
       Effect.provide(StoreLayer),

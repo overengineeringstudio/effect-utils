@@ -4,15 +4,24 @@
  * Execute a command in member directories.
  */
 
+import React from 'react'
 import * as Cli from '@effect/cli'
 import { Command, FileSystem } from '@effect/platform'
 import { Console, Effect, Option, Schema } from 'effect'
 
-import { styled, symbols } from '@overeng/cli-ui'
 import { EffectPath } from '@overeng/effect-path'
+import { renderToString, Text } from '@overeng/tui-react'
 
 import { CONFIG_FILE_NAME, getMemberPath, MegarepoConfig } from '../../lib/config.ts'
 import { Cwd, findMegarepoRoot, jsonOption, verboseOption } from '../context.ts'
+import {
+  ExecErrorOutput,
+  ExecVerboseHeader,
+  ExecMemberSkipped,
+  ExecMemberPath,
+  ExecMemberHeader,
+  ExecStderr,
+} from '../renderers/ExecOutput.tsx'
 
 /** Execution mode for running commands across members */
 type ExecMode = 'parallel' | 'sequential'
@@ -50,7 +59,10 @@ export const execCommand = Cli.Command.make(
             }),
           )
         } else {
-          yield* Console.error(`${styled.red(symbols.cross)} Not in a megarepo`)
+          const output = yield* Effect.promise(() =>
+            renderToString(React.createElement(ExecErrorOutput, { type: 'not_in_megarepo' })),
+          )
+          yield* Console.error(output)
         }
         return yield* Effect.fail(new Error('Not in a megarepo'))
       }
@@ -74,16 +86,26 @@ export const execCommand = Cli.Command.make(
         if (json) {
           console.log(JSON.stringify({ error: 'not_found', message: 'Member not found' }))
         } else {
-          yield* Console.error(`${styled.red(symbols.cross)} Member not found`)
+          const output = yield* Effect.promise(() =>
+            renderToString(React.createElement(ExecErrorOutput, { type: 'member_not_found' })),
+          )
+          yield* Console.error(output)
         }
         return yield* Effect.fail(new Error('Member not found'))
       }
 
       // Verbose: show execution details
       if (verbose && !json) {
-        yield* Console.log(styled.dim(`Command: ${cmd}`))
-        yield* Console.log(styled.dim(`Mode: ${mode}`))
-        yield* Console.log(styled.dim(`Members: ${membersToRun.join(', ')}`))
+        const verboseOutput = yield* Effect.promise(() =>
+          renderToString(
+            React.createElement(ExecVerboseHeader, {
+              command: cmd,
+              mode,
+              members: membersToRun,
+            }),
+          ),
+        )
+        yield* Console.log(verboseOutput)
       }
 
       /** Run command in a single member */
@@ -94,7 +116,10 @@ export const execCommand = Cli.Command.make(
 
           if (!exists) {
             if (verbose && !json) {
-              yield* Console.log(styled.dim(`  ${name}: skipped (not synced)`))
+              const skippedOutput = yield* Effect.promise(() =>
+                renderToString(React.createElement(ExecMemberSkipped, { name })),
+              )
+              yield* Console.log(skippedOutput)
             }
             return {
               name,
@@ -105,7 +130,10 @@ export const execCommand = Cli.Command.make(
           }
 
           if (verbose && !json) {
-            yield* Console.log(styled.dim(`  ${name}: ${memberPath}`))
+            const pathOutput = yield* Effect.promise(() =>
+              renderToString(React.createElement(ExecMemberPath, { name, path: memberPath })),
+            )
+            yield* Console.log(pathOutput)
           }
 
           // Run the command
@@ -147,12 +175,18 @@ export const execCommand = Cli.Command.make(
 
           // Print output immediately in sequential mode (unless JSON)
           if (!json) {
-            yield* Console.log(styled.bold(`\n${name}:`))
+            const nameOutput = yield* Effect.promise(() =>
+              renderToString(React.createElement(ExecMemberHeader, { name })),
+            )
+            yield* Console.log(nameOutput)
             if (result.stdout) {
               console.log(result.stdout)
             }
             if (result.stderr) {
-              console.error(styled.red(result.stderr))
+              const stderrOutput = yield* Effect.promise(() =>
+                renderToString(React.createElement(ExecStderr, { stderr: result.stderr })),
+              )
+              console.error(stderrOutput)
             }
           }
         }
@@ -161,12 +195,18 @@ export const execCommand = Cli.Command.make(
       // Print results for parallel mode (all at once at the end)
       if (!json && mode === 'parallel') {
         for (const result of results) {
-          yield* Console.log(styled.bold(`\n${result.name}:`))
+          const nameOutput = yield* Effect.promise(() =>
+            renderToString(React.createElement(ExecMemberHeader, { name: result.name })),
+          )
+          yield* Console.log(nameOutput)
           if (result.stdout) {
             console.log(result.stdout)
           }
           if (result.stderr) {
-            console.error(styled.red(result.stderr))
+            const stderrOutput = yield* Effect.promise(() =>
+              renderToString(React.createElement(ExecStderr, { stderr: result.stderr })),
+            )
+            console.error(stderrOutput)
           }
         }
       }

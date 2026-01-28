@@ -8,6 +8,7 @@ import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
 import { Console, Effect, Option, Schema } from 'effect'
 
+import React from 'react'
 import {
   createProgressListState,
   finishProgressList,
@@ -20,10 +21,9 @@ import {
   separator,
   startProgressList,
   startSpinner,
-  styled,
-  symbols,
   updateProgressList,
 } from '@overeng/cli-ui'
+import { renderToString, Box, Text } from '@overeng/tui-react'
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 import { withJsonMode } from '@overeng/utils/node'
 
@@ -40,6 +40,17 @@ import * as Git from '../../../lib/git.ts'
 import { type LockFile, LOCK_FILE_NAME, readLockFile } from '../../../lib/lock.ts'
 import { Store, StoreLayer } from '../../../lib/store.ts'
 import { Cwd, findMegarepoRoot, jsonOption } from '../../context.ts'
+import {
+  StoreListOutput,
+  StoreFetchOutput,
+  StoreGcOutput,
+  StoreHeader,
+  StoreAddError,
+  StoreAddProgress,
+  StoreAddSuccess,
+  type StoreFetchResult,
+  type StoreGcResult,
+} from '../../renderers/StoreOutput.tsx'
 
 /** List repos in the store */
 const storeLsCommand = Cli.Command.make('ls', { json: jsonOption }, ({ json }) =>
@@ -50,21 +61,15 @@ const storeLsCommand = Cli.Command.make('ls', { json: jsonOption }, ({ json }) =
     if (json) {
       console.log(JSON.stringify({ repos }))
     } else {
-      yield* Console.log(styled.bold('store'))
-      yield* Console.log(kv('path', store.basePath, { keyStyle: (k) => styled.dim(`  ${k}`) }))
-      yield* Console.log('')
-
-      if (repos.length === 0) {
-        yield* Console.log(styled.dim('(empty)'))
-      } else {
-        yield* Console.log(separator())
-        yield* Console.log('')
-        for (const repo of repos) {
-          yield* Console.log(`${styled.green(symbols.check)} ${repo.relativePath}`)
-        }
-        yield* Console.log('')
-        yield* Console.log(styled.dim(`${repos.length} repositories`))
-      }
+      const output = yield* Effect.promise(() =>
+        renderToString(
+          React.createElement(StoreListOutput, {
+            basePath: store.basePath,
+            repos: repos.map((r) => ({ relativePath: r.relativePath })),
+          }),
+        ),
+      )
+      yield* Console.log(output)
     }
   }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/ls'), withJsonMode(json)),
 ).pipe(Cli.Command.withDescription('List repositories in the store'))
@@ -90,11 +95,10 @@ const storeFetchCommand = Cli.Command.make('fetch', { json: jsonOption }, ({ jso
 
     if (useLiveProgress) {
       // Print header
-      yield* Console.log(styled.bold('store'))
-      yield* Console.log(kv('path', store.basePath, { keyStyle: (k) => styled.dim(`  ${k}`) }))
-      yield* Console.log('')
-      yield* Console.log(separator())
-      yield* Console.log('')
+      const headerOutput = yield* Effect.promise(() =>
+        renderToString(React.createElement(StoreHeader, { basePath: store.basePath })),
+      )
+      yield* Console.log(headerOutput)
 
       // Start progress display
       startProgressList(progressState)
@@ -156,39 +160,35 @@ const storeFetchCommand = Cli.Command.make('fetch', { json: jsonOption }, ({ jso
       // Print summary
       const fetchedCount = results.filter((r) => r.status === 'fetched').length
       const errorCount = results.filter((r) => r.status === 'error').length
-      const parts: string[] = [`${fetchedCount} fetched`]
-      if (errorCount > 0) {
-        parts.push(styled.red(`${errorCount} error${errorCount > 1 ? 's' : ''}`))
-      }
-      parts.push(formatElapsed(elapsed))
-      yield* Console.log(styled.dim(parts.join(' · ')))
+      const summaryOutput = yield* Effect.promise(() =>
+        renderToString(
+          React.createElement(Box, { flexDirection: 'row' },
+            React.createElement(Text, { dim: true }, `${fetchedCount} fetched`),
+            errorCount > 0
+              ? React.createElement(Text, null,
+                  React.createElement(Text, { dim: true }, ' · '),
+                  React.createElement(Text, { color: 'red' }, `${errorCount} error${errorCount > 1 ? 's' : ''}`),
+                )
+              : null,
+            React.createElement(Text, { dim: true }, ` · ${formatElapsed(elapsed)}`),
+          ),
+        ),
+      )
+      yield* Console.log(summaryOutput)
     } else if (json) {
       console.log(JSON.stringify({ results }))
     } else {
-      // Non-TTY: print final results only
-      yield* Console.log(styled.bold('store'))
-      yield* Console.log(kv('path', store.basePath, { keyStyle: (k) => styled.dim(`  ${k}`) }))
-      yield* Console.log('')
-      yield* Console.log(separator())
-      yield* Console.log('')
-
-      for (const result of results) {
-        const symbol =
-          result.status === 'error' ? styled.red(symbols.cross) : styled.green(symbols.check)
-        const suffix =
-          result.status === 'error' && result.message ? styled.dim(` (${result.message})`) : ''
-        yield* Console.log(`${symbol} ${result.path}${suffix}`)
-      }
-
-      yield* Console.log('')
-      const fetchedCount = results.filter((r) => r.status === 'fetched').length
-      const errorCount = results.filter((r) => r.status === 'error').length
-      const parts: string[] = [`${fetchedCount} fetched`]
-      if (errorCount > 0) {
-        parts.push(styled.red(`${errorCount} error${errorCount > 1 ? 's' : ''}`))
-      }
-      parts.push(formatElapsed(elapsed))
-      yield* Console.log(styled.dim(parts.join(' · ')))
+      // Non-TTY: print final results using StoreFetchOutput component
+      const output = yield* Effect.promise(() =>
+        renderToString(
+          React.createElement(StoreFetchOutput, {
+            basePath: store.basePath,
+            results: results as StoreFetchResult[],
+            elapsedMs: elapsed,
+          }),
+        ),
+      )
+      yield* Console.log(output)
     }
   }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/fetch')),
 ).pipe(Cli.Command.withDescription('Fetch all repositories in the store'))
@@ -271,24 +271,13 @@ const storeGcCommand = Cli.Command.make(
         }
       }
 
-      if (!json && !all && Option.isNone(root)) {
-        yield* Console.log(
-          styled.dim('Not in a megarepo - all worktrees will be considered unused'),
-        )
-        yield* Console.log('')
-      } else if (!json && !all && Option.isSome(root)) {
-        // Warn that we only check current megarepo
-        yield* Console.log(
-          styled.yellow(`${symbols.warning} Only checking current megarepo for in-use worktrees`),
-        )
-        yield* Console.log(
-          styled.dim('  Worktrees used by other megarepos may be removed'),
-        )
-        yield* Console.log(
-          styled.dim('  Run from each megarepo to preserve its worktrees, or use --dry-run first'),
-        )
-        yield* Console.log('')
-      }
+      // Determine warning type for output
+      const gcWarning: { type: 'not_in_megarepo' | 'only_current_megarepo' } | undefined =
+        !all && Option.isNone(root)
+          ? { type: 'not_in_megarepo' }
+          : !all && Option.isSome(root)
+            ? { type: 'only_current_megarepo' }
+            : undefined
 
       // List all repos and their worktrees
       const repos = yield* store.listRepos()
@@ -427,59 +416,18 @@ const storeGcCommand = Cli.Command.make(
           }),
         )
       } else {
-        const removed = results.filter((r) => r.status === 'removed')
-        const skippedDirty = results.filter((r) => r.status === 'skipped_dirty')
-        const skippedInUse = results.filter((r) => r.status === 'skipped_in_use')
-
-        // Header
-        yield* Console.log(styled.bold('store gc'))
-        yield* Console.log(kv('path', store.basePath, { keyStyle: (k) => styled.dim(`  ${k}`) }))
-        if (dryRun) {
-          yield* Console.log(styled.dim('  mode: dry run'))
-        }
-        yield* Console.log('')
-        yield* Console.log(separator())
-        yield* Console.log('')
-
-        if (results.length === 0) {
-          yield* Console.log(styled.dim('No worktrees found'))
-        } else {
-          // Removed worktrees
-          for (const r of removed) {
-            const verb = dryRun ? 'would remove' : 'removed'
-            yield* Console.log(
-              `${styled.green(symbols.check)} ${r.repo}refs/${r.ref} ${styled.dim(`(${verb})`)}`,
-            )
-          }
-
-          // Skipped dirty worktrees
-          for (const r of skippedDirty) {
-            yield* Console.log(
-              `${styled.yellow(symbols.circle)} ${r.repo}refs/${r.ref} ${styled.dim(`(${r.message})`)}`,
-            )
-          }
-
-          // Skipped in-use worktrees (only show if few results)
-          if (skippedInUse.length > 0 && skippedInUse.length <= 5) {
-            for (const r of skippedInUse) {
-              yield* Console.log(
-                `${styled.dim(symbols.check)} ${styled.dim(`${r.repo}refs/${r.ref}`)} ${styled.dim('(in use)')}`,
-              )
-            }
-          }
-        }
-
-        // Summary
-        yield* Console.log('')
-        const parts: string[] = []
-        if (removed.length > 0) parts.push(`${removed.length} ${dryRun ? 'would be ' : ''}removed`)
-        if (skippedDirty.length > 0) parts.push(`${skippedDirty.length} skipped (dirty)`)
-        if (skippedInUse.length > 0) parts.push(`${skippedInUse.length} in use`)
-        yield* Console.log(styled.dim(parts.length > 0 ? parts.join(' · ') : 'Nothing to clean up'))
-
-        if (skippedDirty.length > 0 && !force) {
-          yield* Console.log(styled.dim('Use --force to remove dirty worktrees'))
-        }
+        const output = yield* Effect.promise(() =>
+          renderToString(
+            React.createElement(StoreGcOutput, {
+              basePath: store.basePath,
+              results: results as StoreGcResult[],
+              dryRun,
+              warning: gcWarning,
+              showForceHint: !force,
+            }),
+          ),
+        )
+        yield* Console.log(output)
       }
     }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/gc')),
 ).pipe(Cli.Command.withDescription('Garbage collect unused worktrees'))
@@ -512,7 +460,10 @@ const storeAddCommand = Cli.Command.make(
             }),
           )
         } else {
-          yield* Console.error(`${styled.red(symbols.cross)} Invalid source string: ${sourceString}`)
+          const output = yield* Effect.promise(() =>
+            renderToString(React.createElement(StoreAddError, { type: 'invalid_source', source: sourceString })),
+          )
+          yield* Console.error(output)
         }
         return yield* Effect.fail(new Error('Invalid source'))
       }
@@ -526,7 +477,10 @@ const storeAddCommand = Cli.Command.make(
             }),
           )
         } else {
-          yield* Console.error(`${styled.red(symbols.cross)} Cannot add local path to store`)
+          const output = yield* Effect.promise(() =>
+            renderToString(React.createElement(StoreAddError, { type: 'local_path' })),
+          )
+          yield* Console.error(output)
         }
         return yield* Effect.fail(new Error('Cannot add local path'))
       }
@@ -536,7 +490,10 @@ const storeAddCommand = Cli.Command.make(
         if (json) {
           console.log(JSON.stringify({ error: 'no_url', message: 'Cannot determine clone URL' }))
         } else {
-          yield* Console.error(`${styled.red(symbols.cross)} Cannot determine clone URL`)
+          const output = yield* Effect.promise(() =>
+            renderToString(React.createElement(StoreAddError, { type: 'no_url' })),
+          )
+          yield* Console.error(output)
         }
         return yield* Effect.fail(new Error('Cannot get clone URL'))
       }
@@ -547,7 +504,10 @@ const storeAddCommand = Cli.Command.make(
       // Clone if needed
       if (!bareExists) {
         if (!json) {
-          yield* Console.log(`${styled.dim('→')} Cloning ${sourceString}...`)
+          const cloneOutput = yield* Effect.promise(() =>
+            renderToString(React.createElement(StoreAddProgress, { type: 'cloning', source: sourceString })),
+          )
+          yield* Console.log(cloneOutput)
         }
         const repoBasePath = store.getRepoBasePath(source)
         yield* fs.makeDirectory(repoBasePath, { recursive: true })
@@ -572,7 +532,10 @@ const storeAddCommand = Cli.Command.make(
 
       if (!worktreeExists) {
         if (!json) {
-          yield* Console.log(`${styled.dim('→')} Creating worktree at ${targetRef}...`)
+          const wtOutput = yield* Effect.promise(() =>
+            renderToString(React.createElement(StoreAddProgress, { type: 'creating_worktree', ref: targetRef })),
+          )
+          yield* Console.log(wtOutput)
         }
         const worktreeParent = EffectPath.ops.parent(worktreePath)
         if (worktreeParent !== undefined) {
@@ -627,16 +590,19 @@ const storeAddCommand = Cli.Command.make(
           }),
         )
       } else {
-        const symbol = bareExists && worktreeExists ? styled.dim(symbols.check) : styled.green(symbols.check)
-        const status = bareExists && worktreeExists ? 'already in store' : 'added to store'
-        yield* Console.log(
-          `${symbol} ${styled.bold(sourceString)} ${styled.dim(`(${status})`)}`,
+        const alreadyExists = bareExists && worktreeExists
+        const successOutput = yield* Effect.promise(() =>
+          renderToString(
+            React.createElement(StoreAddSuccess, {
+              source: sourceString,
+              ref: targetRef,
+              commit,
+              path: worktreePath,
+              alreadyExists,
+            }),
+          ),
         )
-        yield* Console.log(styled.dim(`  ref: ${targetRef}`))
-        if (commit) {
-          yield* Console.log(styled.dim(`  commit: ${commit.slice(0, 7)}`))
-        }
-        yield* Console.log(styled.dim(`  path: ${worktreePath}`))
+        yield* Console.log(successOutput)
       }
     }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/add')),
 ).pipe(Cli.Command.withDescription('Add a repository to the store (without adding to megarepo)'))

@@ -33,6 +33,7 @@ export { type Terminal, type TerminalLike, createTerminal } from '@overeng/tui-c
 
 // Root API
 export { createRoot, type Root } from './root.ts'
+export { renderToString, renderToLines, type RenderToStringOptions } from './renderToString.ts'
 
 // Components
 export { Box, type BoxProps } from './components/Box.tsx'

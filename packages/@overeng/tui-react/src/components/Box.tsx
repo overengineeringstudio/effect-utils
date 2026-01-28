@@ -11,6 +11,7 @@
  */
 
 import { createElement, type ReactNode } from 'react'
+import type { Color } from '@overeng/tui-core'
 
 /** Box component props */
 export interface BoxProps {
@@ -62,6 +63,10 @@ export interface BoxProps {
   maxWidth?: number | undefined
   /** Maximum height */
   maxHeight?: number | undefined
+  /** Background color - fills the entire box area */
+  backgroundColor?: Color | undefined
+  /** Whether to extend background to end of line (uses ANSI clear-to-EOL) */
+  extendBackground?: boolean | undefined
   /** Children */
   children?: ReactNode | undefined
 }

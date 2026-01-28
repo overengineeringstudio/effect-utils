@@ -6,10 +6,16 @@
  */
 
 import stringWidth from 'string-width'
-import { bold, dim, italic, underline, strikethrough, fg, bg, type Color } from '@overeng/tui-core'
-import type { TuiNode, TuiElement, TuiTextNode, TextStyle } from './types.ts'
+import { bold, dim, italic, underline, strikethrough, fg, bg, bgCode, bgReset, clearToEndOfLine, type Color } from '@overeng/tui-core'
+import type { TuiNode, TuiElement, TuiTextNode, TextStyle, BoxNodeProps } from './types.ts'
 import { isTextNode, isBoxElement, isTextElement, isStaticElement } from './types.ts'
 import { getLayout } from './yoga-utils.ts'
+
+/** Box styling context passed down to children */
+interface BoxStyle {
+  backgroundColor?: Color | undefined
+  extendBackground?: boolean | undefined
+}
 
 /** Output buffer - 2D array of characters with styles */
 interface OutputBuffer {
@@ -194,6 +200,32 @@ export const extractStaticContent = (
 }
 
 /**
+ * Apply box background styling to a line
+ */
+const applyBoxStyle = (line: string, boxStyle: BoxStyle, terminalWidth: number): string => {
+  if (!boxStyle.backgroundColor) {
+    return line
+  }
+  
+  let result = line
+  
+  // Apply background color
+  const bgStart = bgCode(boxStyle.backgroundColor)
+  const bgEnd = bgReset()
+  
+  if (boxStyle.extendBackground) {
+    // Pad to terminal width and add clear-to-EOL for full-width background
+    const lineWidth = stringWidth(result)
+    const padding = Math.max(0, terminalWidth - lineWidth)
+    result = `${bgStart}${result}${' '.repeat(padding)}${clearToEndOfLine()}${bgEnd}`
+  } else {
+    result = `${bgStart}${result}${bgEnd}`
+  }
+  
+  return result
+}
+
+/**
  * Squash consecutive text nodes and text elements into single lines.
  *
  * This is a simple approach - for more complex layouts, we'd need
@@ -202,7 +234,7 @@ export const extractStaticContent = (
 export const renderTreeSimple = (root: TuiElement, width: number): string[] => {
   const lines: string[] = []
 
-  const render = (node: TuiNode, style: TextStyle, indent: number): void => {
+  const render = (node: TuiNode, style: TextStyle, indent: number, boxStyle: BoxStyle): void => {
     if (isTextNode(node)) {
       return // Handled by parent
     }
@@ -216,7 +248,8 @@ export const renderTreeSimple = (root: TuiElement, width: number): string[] => {
       const text = collectTextContent(node)
       const styledText = applyStyles(text, mergedStyle)
       const indentStr = ' '.repeat(indent)
-      lines.push(indentStr + styledText)
+      const line = indentStr + styledText
+      lines.push(applyBoxStyle(line, boxStyle, width))
       return
     }
 
@@ -224,6 +257,11 @@ export const renderTreeSimple = (root: TuiElement, width: number): string[] => {
       const isRow = node.props.flexDirection === 'row'
       const paddingLeft = node.props.paddingLeft ?? node.props.padding ?? 0
       const newIndent = indent + paddingLeft
+      
+      // Create box style context for children
+      const newBoxStyle: BoxStyle = node.props.backgroundColor 
+        ? { backgroundColor: node.props.backgroundColor, extendBackground: node.props.extendBackground }
+        : boxStyle
 
       if (isRow) {
         // For row layout, collect all children on one line
@@ -239,23 +277,24 @@ export const renderTreeSimple = (root: TuiElement, width: number): string[] => {
         }
         if (parts.length > 0) {
           const indentStr = ' '.repeat(newIndent)
-          lines.push(indentStr + parts.join(''))
+          const line = indentStr + parts.join('')
+          lines.push(applyBoxStyle(line, newBoxStyle, width))
         }
         // Also render any nested boxes
         for (const child of node.children) {
           if (isBoxElement(child)) {
-            render(child, style, newIndent)
+            render(child, style, newIndent, newBoxStyle)
           }
         }
       } else {
         // Column layout - render each child on its own line(s)
         for (const child of node.children) {
-          render(child, style, newIndent)
+          render(child, style, newIndent, newBoxStyle)
         }
       }
     }
   }
 
-  render(root, {}, 0)
+  render(root, {}, 0, {})
   return lines
 }

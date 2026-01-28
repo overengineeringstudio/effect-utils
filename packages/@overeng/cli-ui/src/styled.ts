@@ -8,40 +8,17 @@
  */
 
 import { colors, semantic } from './tokens.ts'
+import { supportsColor, resetColorCache as resetColorCacheInternal } from './color-support.ts'
 
 // =============================================================================
 // Color Detection
 // =============================================================================
 
-/** Check if colors should be disabled based on environment */
-const shouldDisableColors = (): boolean => {
-  // NO_COLOR takes precedence (any value disables colors)
-  if (typeof process !== 'undefined' && process.env?.NO_COLOR !== undefined) {
-    return true
-  }
-
-  // FORCE_COLOR overrides and enables colors
-  if (typeof process !== 'undefined' && process.env?.FORCE_COLOR !== undefined) {
-    return false
-  }
-
-  return false
-}
-
-/** Cached color state - computed once */
-let colorsDisabled: boolean | undefined
-
-const isColorDisabled = (): boolean => {
-  if (colorsDisabled === undefined) {
-    colorsDisabled = shouldDisableColors()
-  }
-  return colorsDisabled
-}
+/** Check if colors are disabled */
+const isColorDisabled = (): boolean => !supportsColor()
 
 /** Reset cached color state (useful for testing) */
-export const resetColorCache = (): void => {
-  colorsDisabled = undefined
-}
+export const resetColorCache = resetColorCacheInternal
 
 // =============================================================================
 // Style Application Helper

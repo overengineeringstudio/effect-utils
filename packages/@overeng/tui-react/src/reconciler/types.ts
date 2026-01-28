@@ -99,6 +99,10 @@ export interface BoxNodeProps {
   minHeight?: number | undefined
   maxWidth?: number | undefined
   maxHeight?: number | undefined
+  
+  // Styling
+  backgroundColor?: Color | undefined
+  extendBackground?: boolean | undefined
 }
 
 /** Text component props (internal) */

@@ -13,7 +13,7 @@ let
     binaryName = "mr";
     packageDir = "packages/@overeng/megarepo";
     workspaceRoot = src;
-    pnpmDepsHash = "sha256-UHz5JLKnlPObFn9p21sA0Gq8lvilQl33S3mH6mkMQ94=";
+    pnpmDepsHash = "sha256-nXRs3SPrF55GmPswa/X0qs+uEIvE01jmiwzeqcDRALc=";
     localDeps = [
       { dir = "packages/@overeng/utils"; hash = "sha256-MycpokWA4roGBELpRdj5CXjRdPcboktPBLoVWP55rJI="; }
       { dir = "packages/@overeng/cli-ui"; hash = "sha256-ve2v2z7iCkSuHxE6GvjPTXN3OKjfu7EOmSSanw8APg8="; }

@@ -420,8 +420,8 @@ export const createBranch = (args: { repoPath: string; branch: string; baseRef: 
 export const pushBranch = (args: {
   repoPath: string
   branch: string
-  remote?: string
-  setUpstream?: boolean
+  remote?: string | undefined
+  setUpstream?: boolean | undefined
 }) =>
   Effect.gen(function* () {
     const remote = args.remote ?? 'origin'

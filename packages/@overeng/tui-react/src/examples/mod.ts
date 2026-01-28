@@ -35,5 +35,15 @@ export { TaskListWithSummaryExample } from './task-list-with-summary.tsx'
 export { SpinnerBasicExample } from './spinner-basic.tsx'
 export { SpinnerAllTypesExample } from './spinner-all-types.tsx'
 
-// Interactive/animated examples (for terminal demos)
-export { SyncSimulationExample } from './sync-simulation.tsx'
+// Interactive/animated examples (for terminal demos and Storybook)
+export { SyncSimulationExample, type SyncSimulationProps, type SyncState, type SyncPhase } from './sync-simulation.tsx'
+export { LogsAboveProgressExample, type LogsAboveProgressExampleProps } from './logs-above-progress.tsx'
+export { ProgressListExample, type ProgressListExampleProps } from './progress-list.tsx'
+export { SyncDeepSimulationExample, type SyncDeepSimulationExampleProps, type SyncDeepState, type SyncDeepPhase } from './sync-deep-simulation.tsx'
+
+// Stress test examples
+export { StressRapidExample, type StressRapidExampleProps } from './stress-rapid.tsx'
+export { StressLinesExample, type StressLinesExampleProps } from './stress-lines.tsx'
+
+// Fun demos
+export { BouncingWindowsExample, type BouncingWindowsExampleProps } from './bouncing-windows.tsx'

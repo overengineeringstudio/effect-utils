@@ -113,8 +113,8 @@ export const strikethrough = (text: string): string => `${CSI}9m${text}${CSI}29m
 // Colors
 // =============================================================================
 
-/** Standard ANSI colors */
-export type Color =
+/** Standard ANSI color names */
+export type ColorName =
   | 'black'
   | 'red'
   | 'green'
@@ -135,8 +135,28 @@ export type Color =
   | 'cyanBright'
   | 'whiteBright'
 
+/** 256-color palette color (0-255) */
+export type Color256 = { ansi256: number }
+
+/** True color RGB */
+export type ColorRgb = { rgb: { r: number; g: number; b: number } }
+
+/** Extended color type supporting named colors, 256-color palette, and true color */
+export type Color = ColorName | Color256 | ColorRgb
+
+/** Type guard for named color */
+export const isColorName = (color: Color): color is ColorName => typeof color === 'string'
+
+/** Type guard for 256-color */
+export const isColor256 = (color: Color): color is Color256 =>
+  typeof color === 'object' && 'ansi256' in color
+
+/** Type guard for RGB color */
+export const isColorRgb = (color: Color): color is ColorRgb =>
+  typeof color === 'object' && 'rgb' in color
+
 /** Color name to ANSI foreground code */
-const fgCodes: Record<Color, number> = {
+const fgCodes: Record<ColorName, number> = {
   black: 30,
   red: 31,
   green: 32,
@@ -158,7 +178,7 @@ const fgCodes: Record<Color, number> = {
 }
 
 /** Color name to ANSI background code */
-const bgCodes: Record<Color, number> = {
+const bgCodes: Record<ColorName, number> = {
   black: 40,
   red: 41,
   green: 42,
@@ -179,8 +199,48 @@ const bgCodes: Record<Color, number> = {
   whiteBright: 107,
 }
 
+/** Get foreground ANSI escape sequence for a color */
+const getFgCode = (color: Color): string => {
+  if (isColorName(color)) {
+    return `${CSI}${fgCodes[color]}m`
+  }
+  if (isColor256(color)) {
+    return `${CSI}38;5;${color.ansi256}m`
+  }
+  if (isColorRgb(color)) {
+    return `${CSI}38;2;${color.rgb.r};${color.rgb.g};${color.rgb.b}m`
+  }
+  return ''
+}
+
+/** Get background ANSI escape sequence for a color */
+const getBgCode = (color: Color): string => {
+  if (isColorName(color)) {
+    return `${CSI}${bgCodes[color]}m`
+  }
+  if (isColor256(color)) {
+    return `${CSI}48;5;${color.ansi256}m`
+  }
+  if (isColorRgb(color)) {
+    return `${CSI}48;2;${color.rgb.r};${color.rgb.g};${color.rgb.b}m`
+  }
+  return ''
+}
+
 /** Apply foreground color */
-export const fg = (color: Color, text: string): string => `${CSI}${fgCodes[color]}m${text}${CSI}39m`
+export const fg = (color: Color, text: string): string => `${getFgCode(color)}${text}${CSI}39m`
 
 /** Apply background color */
-export const bg = (color: Color, text: string): string => `${CSI}${bgCodes[color]}m${text}${CSI}49m`
+export const bg = (color: Color, text: string): string => `${getBgCode(color)}${text}${CSI}49m`
+
+/** Get raw foreground ANSI code (without text wrapping) */
+export const fgCode = (color: Color): string => getFgCode(color)
+
+/** Get raw background ANSI code (without text wrapping) */
+export const bgCode = (color: Color): string => getBgCode(color)
+
+/** Reset foreground color */
+export const fgReset = (): string => `${CSI}39m`
+
+/** Reset background color */
+export const bgReset = (): string => `${CSI}49m`

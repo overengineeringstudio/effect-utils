@@ -4,12 +4,14 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/mod.ts"
+    ".": "./src/mod.ts",
+    "./storybook": "./src/storybook/mod.ts"
   },
   "publishConfig": {
     "access": "public",
     "exports": {
-      ".": "./dist/mod.js"
+      ".": "./dist/mod.js",
+      "./storybook": "./dist/storybook/mod.js"
     }
   },
   "scripts": {

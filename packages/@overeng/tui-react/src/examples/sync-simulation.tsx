@@ -7,6 +7,17 @@ type LogEntry = {
   type: 'info' | 'warn' | 'error'
 }
 
+/** Sync phase states */
+export type SyncPhase = 'running' | 'done'
+
+/** Current sync state for controlling the simulation */
+export interface SyncState {
+  /** Current phase of the sync */
+  phase: SyncPhase
+  /** Index of the currently active task (0-based), -1 for none */
+  activeIndex: number
+}
+
 export interface SyncSimulationProps {
   /** Repository names to simulate syncing */
   repos?: string[]
@@ -14,6 +25,10 @@ export interface SyncSimulationProps {
   workspaceName?: string
   /** Workspace path shown in header */
   workspacePath?: string
+  /** Whether to auto-run the simulation (default: true) */
+  autoRun?: boolean
+  /** Control the sync state directly (only used when autoRun is false) */
+  syncState?: SyncState
 }
 
 /**
@@ -26,23 +41,63 @@ export const SyncSimulationExample = ({
   repos = ['effect', 'effect-utils', 'livestore', 'mr-all-blue', 'dotfiles'],
   workspaceName = 'my-workspace',
   workspacePath = '/Users/test/workspace',
+  autoRun = true,
+  syncState,
 }: SyncSimulationProps) => {
-  const [items, setItems] = useState<TaskItem[]>(
-    repos.map((label, i) => ({ id: String(i), label, status: 'pending' as TaskStatus }))
-  )
+  // Compute items based on syncState when not auto-running
+  const computeItemsFromState = (state: SyncState | undefined): TaskItem[] => {
+    return repos.map((label, i) => {
+      if (!state || autoRun) {
+        return { id: String(i), label, status: 'pending' as TaskStatus }
+      }
+      
+      const { phase, activeIndex } = state
+      let status: TaskStatus
+      let message: string | undefined
+      
+      if (phase === 'done') {
+        // All items completed
+        status = 'success'
+        message = 'synced (main)'
+      } else if (i < activeIndex) {
+        // Completed items
+        status = 'success'
+        message = 'synced (main)'
+      } else if (i === activeIndex) {
+        // Currently active item
+        status = 'active'
+        message = 'syncing...'
+      } else {
+        // Pending items
+        status = 'pending'
+      }
+      
+      return { id: String(i), label, status, message }
+    })
+  }
+
+  const [items, setItems] = useState<TaskItem[]>(() => computeItemsFromState(syncState))
   const [logs, setLogs] = useState<LogEntry[]>([])
-  const [phase, setPhase] = useState<'running' | 'done'>('running')
+  const [phase, setPhase] = useState<SyncPhase>(syncState?.phase ?? 'running')
   const [elapsed, setElapsed] = useState(0)
   const startTime = Date.now()
+
+  // Update items when syncState changes (for controlled mode)
+  useEffect(() => {
+    if (!autoRun && syncState) {
+      setItems(computeItemsFromState(syncState))
+      setPhase(syncState.phase)
+    }
+  }, [autoRun, syncState?.phase, syncState?.activeIndex, repos.join(',')])
 
   const appendLog = (entry: Omit<LogEntry, 'id'>) => {
     const id = `log-${Date.now()}`
     setLogs(prev => [...prev, { ...entry, id }])
   }
 
-  // Simulate processing
+  // Simulate processing (only when autoRun is true)
   useEffect(() => {
-    if (phase !== 'running') return
+    if (!autoRun || phase !== 'running') return
 
     const processItem = (index: number) => {
       if (index >= items.length) {
@@ -92,7 +147,7 @@ export const SyncSimulationExample = ({
     }
 
     processItem(0)
-  }, [phase])
+  }, [autoRun, phase])
 
   // Update elapsed time
   useEffect(() => {

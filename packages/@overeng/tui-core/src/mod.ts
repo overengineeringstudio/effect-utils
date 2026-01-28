@@ -53,7 +53,18 @@ export {
   strikethrough,
   fg,
   bg,
+  fgCode,
+  bgCode,
+  fgReset,
+  bgReset,
+  // Color types and guards
   type Color,
+  type ColorName,
+  type Color256,
+  type ColorRgb,
+  isColorName,
+  isColor256,
+  isColorRgb,
 } from './ansi.ts'
 
 // Inline renderer

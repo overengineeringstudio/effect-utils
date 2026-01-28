@@ -29,8 +29,20 @@
 // Tokens
 export { colors, color256, bgColor256, symbols, spacing, semantic } from './tokens.ts'
 
+// Color support detection
+export {
+  getColorLevel,
+  supportsColor,
+  supports256Colors,
+  supportsTruecolor,
+  forceColorLevel,
+  resetColorCache,
+  resetColorState,
+  type ColorLevel,
+} from './color-support.ts'
+
 // Styled text functions
-export { styled, raw, resetColorCache } from './styled.ts'
+export { styled, raw } from './styled.ts'
 
 // Components
 export {

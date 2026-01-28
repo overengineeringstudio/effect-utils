@@ -4,10 +4,11 @@
  * Find and print the megarepo root directory.
  */
 
+import React from 'react'
 import * as Cli from '@effect/cli'
 import { Console, Effect, Option } from 'effect'
 
-import { styled, symbols } from '@overeng/cli-ui'
+import { renderToString, Box, Text } from '@overeng/tui-react'
 import { jsonError, withJsonMode } from '@overeng/utils/node'
 
 import * as Git from '../../lib/git.ts'
@@ -28,9 +29,15 @@ export const rootCommand = Cli.Command.make('root', { json: jsonOption }, ({ jso
           message: 'No megarepo.json found',
         })
       }
-      yield* Console.error(
-        `${styled.red(symbols.cross)} No megarepo.json found in current directory or any parent.`,
+      const output = yield* Effect.promise(() =>
+        renderToString(
+          React.createElement(Box, { flexDirection: 'row' },
+            React.createElement(Text, { color: 'red' }, '\u2717'),
+            React.createElement(Text, null, ' No megarepo.json found in current directory or any parent.'),
+          ),
+        ),
       )
+      yield* Console.error(output)
       return yield* Effect.fail(new Error('Not in a megarepo'))
     }
 

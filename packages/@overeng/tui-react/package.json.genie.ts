@@ -5,6 +5,7 @@ export default packageJson({
   ...privatePackageDefaults,
   exports: {
     '.': './src/mod.ts',
+    './storybook': './src/storybook/mod.ts',
   },
   scripts: {
     storybook: 'storybook dev -p 6006',
@@ -14,6 +15,7 @@ export default packageJson({
     access: 'public',
     exports: {
       '.': './dist/mod.js',
+      './storybook': './dist/storybook/mod.js',
     },
   },
   dependencies: {

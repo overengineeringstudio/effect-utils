@@ -6,12 +6,13 @@
 
 import path from 'node:path'
 
+import React from 'react'
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
 import { Console, Effect, Schema } from 'effect'
 
-import { styled, symbols } from '@overeng/cli-ui'
 import { EffectPath } from '@overeng/effect-path'
+import { renderToString, Box, Text } from '@overeng/tui-react'
 import { jsonError, withJsonMode } from '@overeng/utils/node'
 
 import { CONFIG_FILE_NAME, MegarepoConfig } from '../../lib/config.ts'
@@ -33,9 +34,15 @@ export const initCommand = Cli.Command.make('init', { json: jsonOption }, ({ jso
           message: 'Not a git repository',
         })
       }
-      yield* Console.error(
-        `${styled.red(symbols.cross)} Not a git repository. Run 'git init' first.`,
+      const output = yield* Effect.promise(() =>
+        renderToString(
+          React.createElement(Box, { flexDirection: 'row' },
+            React.createElement(Text, { color: 'red' }, '\u2717'),
+            React.createElement(Text, null, " Not a git repository. Run 'git init' first."),
+          ),
+        ),
       )
+      yield* Console.error(output)
       return yield* Effect.fail(new Error('Not a git repository'))
     }
 
@@ -47,7 +54,10 @@ export const initCommand = Cli.Command.make('init', { json: jsonOption }, ({ jso
       if (json) {
         console.log(JSON.stringify({ status: 'already_initialized', path: configPath }))
       } else {
-        yield* Console.log(styled.dim('megarepo already initialized'))
+        const alreadyOutput = yield* Effect.promise(() =>
+          renderToString(React.createElement(Text, { dim: true }, 'megarepo already initialized')),
+        )
+        yield* Console.log(alreadyOutput)
       }
       return
     }
@@ -67,9 +77,16 @@ export const initCommand = Cli.Command.make('init', { json: jsonOption }, ({ jso
     if (json) {
       console.log(JSON.stringify({ status: 'initialized', path: configPath }))
     } else {
-      yield* Console.log(
-        `${styled.green(symbols.check)} ${styled.dim('initialized megarepo at')} ${styled.bold(path.basename(cwd))}`,
+      const successOutput = yield* Effect.promise(() =>
+        renderToString(
+          React.createElement(Box, { flexDirection: 'row' },
+            React.createElement(Text, { color: 'green' }, '\u2713'),
+            React.createElement(Text, { dim: true }, ' initialized megarepo at '),
+            React.createElement(Text, { bold: true }, path.basename(cwd)),
+          ),
+        ),
       )
+      yield* Console.log(successOutput)
     }
   }).pipe(Effect.withSpan('megarepo/init'), withJsonMode(json)),
 ).pipe(Cli.Command.withDescription('Initialize a new megarepo in the current directory'))
