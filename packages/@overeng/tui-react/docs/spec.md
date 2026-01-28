@@ -543,339 +543,225 @@ Output:
 
 ---
 
-## Command Author API
+## Effect CLI Integration
 
-### Overview
+tui-react integrates with `@effect/cli` rather than creating a parallel command system. Commands use standard Effect CLI patterns with tui-react providing rendering capabilities via Effect services.
 
-Command authors define state schemas, create commands that produce state, and optionally handle input events.
+### Core Pattern
 
 ```typescript
-import { Command, CommandIO } from '@overeng/tui-react'
-import { Schema, Effect, SubscriptionRef } from 'effect'
+import * as Cli from '@effect/cli'
+import { useTuiState, OutputMode } from '@overeng/tui-react'
+import { Schema, Effect, Layer } from 'effect'
 
-// 1. Define state schema
+// 1. Define state schema (shared between visual and JSON modes)
 const DeployState = Schema.Union(
-  Schema.TaggedStruct('Deploy.Idle', {}),
-  Schema.TaggedStruct('Deploy.Validating', {}),
-  Schema.TaggedStruct('Deploy.Progress', {
+  Schema.TaggedStruct('Idle', {}),
+  Schema.TaggedStruct('Progress', {
     services: Schema.Array(Schema.Struct({
       name: Schema.String,
-      status: Schema.Literal('pending', 'deploying', 'healthy', 'failed'),
+      status: Schema.Literal('pending', 'deploying', 'healthy'),
     })),
   }),
-  Schema.TaggedStruct('Deploy.Complete', {
+  Schema.TaggedStruct('Complete', {
     services: Schema.Array(Schema.Struct({
       name: Schema.String,
-      status: Schema.Literal('updated', 'unchanged', 'rolled-back'),
+      result: Schema.Literal('updated', 'unchanged'),
+      duration: Schema.Number,
     })),
-    duration: Schema.Number,
-  }),
-  Schema.TaggedStruct('Deploy.Failed', {
-    service: Schema.String,
-    error: Schema.String,
+    totalDuration: Schema.Number,
   }),
 )
-type DeployState = Schema.Schema.Type<typeof DeployState>
 
-// 2. Define command
-const deploy = Command.make({
-  name: 'deploy',
-  stateSchema: DeployState,
-  initialState: { _tag: 'Deploy.Idle' } as DeployState,
-  run: (io: CommandIO<DeployState>) => Effect.gen(function* () {
-    // Update state as work progresses
-    yield* SubscriptionRef.set(io.state, { _tag: 'Deploy.Validating' })
-    
-    // ... do work ...
-    
-    yield* SubscriptionRef.set(io.state, {
-      _tag: 'Deploy.Progress',
-      services: [
-        { name: 'api-server', status: 'deploying' },
-        { name: 'web-client', status: 'pending' },
-      ],
-    })
-    
-    // ... continue ...
-  }),
-})
-```
-
-### Command.make
-
-```typescript
-interface CommandConfig<State, Action = never> {
-  /** Command name (used in help, errors) */
-  name: string
-  
-  /** Effect Schema for state (enables JSON serialization) */
-  stateSchema: Schema.Schema<State>
-  
-  /** Initial state value */
-  initialState: State
-  
-  /** Optional action schema for interactive commands */
-  actionSchema?: Schema.Schema<Action>
-  
-  /** Command implementation */
-  run: (io: CommandIO<State, Action>) => Effect.Effect<void, CommandError, R>
+// 2. Define React view component
+function DeployView({ stateRef }) {
+  const state = useSubscriptionRef(stateRef)
+  // ... render based on state
 }
 
-function make<State, Action, R>(
-  config: CommandConfig<State, Action>
-): Command<State, Action, R>
+// 3. Use standard Effect CLI command with TUI state
+const deployCommand = Cli.Command.make(
+  'deploy',
+  { json: jsonOption, stream: streamOption, services: servicesOption },
+  ({ json, stream, services }) =>
+    Effect.gen(function* () {
+      // Get TUI state - mode determines rendering behavior
+      const tui = yield* useTuiState(DeployState, { _tag: 'Idle' }, DeployView)
+      
+      // Update state as work progresses
+      yield* tui.set({ _tag: 'Progress', services: [...] })
+      
+      // ... do work ...
+      
+      yield* tui.set({ _tag: 'Complete', services: results, totalDuration })
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(Layer.succeed(OutputMode, OutputMode.fromFlags(json, stream)))
+    )
+)
 ```
 
-### CommandIO
+### useTuiState
 
-The `CommandIO` interface is passed to every command's `run` function:
+The `useTuiState` function creates scoped state that renders differently based on output mode:
 
 ```typescript
-interface CommandIO<State, Action = never> {
-  /** Current state (read/write) */
-  state: SubscriptionRef.SubscriptionRef<State>
-  
-  /** Input events from renderer (keyboard, resize) */
-  events: Stream.Stream<InputEvent>
-  
-  /** Dispatch action (for interactive commands) */
-  dispatch: (action: Action) => Effect.Effect<void>
-  
-  /** Output mode (for conditional behavior) */
-  mode: OutputMode
-  
-  /** Abort signal (for cancellation) */
-  signal: AbortSignal
+const useTuiState: <S>(
+  schema: Schema.Schema<S>,
+  initial: S,
+  View?: React.FC<{ stateRef: SubscriptionRef.SubscriptionRef<S> }>,
+) => Effect.Effect<TuiStateApi<S>, never, Scope.Scope | OutputMode>
+```
+
+**Returns:**
+```typescript
+interface TuiStateApi<S> {
+  /** Current state ref (for React components) */
+  readonly ref: SubscriptionRef.SubscriptionRef<S>
+  /** Set state */
+  readonly set: (s: S) => Effect.Effect<void>
+  /** Update state */
+  readonly update: (f: (s: S) => S) => Effect.Effect<void>
+  /** Get current state */
+  readonly get: Effect.Effect<S>
 }
 ```
 
-### Running Commands
+**Mode behavior:**
+- `progressive-visual`: Renders React component, updates on state change
+- `final-json`: Outputs final state as JSON when scope closes
+- `progressive-json`: Streams each state change as NDJSON
+- `final-visual`: No progressive rendering (for non-TTY)
+
+### OutputMode Service
 
 ```typescript
-import { Command } from '@overeng/tui-react'
+type OutputMode = 
+  | { readonly _tag: 'progressive-visual' }
+  | { readonly _tag: 'final-visual' }
+  | { readonly _tag: 'final-json' }
+  | { readonly _tag: 'progressive-json' }
 
-// Run with auto-detected mode
-await Command.run(deploy, { services: ['api-server', 'web-client'] })
+class OutputMode extends Context.Tag('OutputMode')<OutputMode, OutputMode>() {
+  /** Create mode from CLI flags */
+  static fromFlags(json: boolean, stream: boolean): OutputMode
+  
+  /** Detect mode from environment (TTY detection) */
+  static detect(): OutputMode
+}
+```
 
-// Run with explicit mode
-await Command.run(deploy, { services: ['api-server'] }, {
-  mode: 'final-json',
-})
+### Standard CLI Options
 
-// Run with custom renderer
-await Command.runWith(deploy, { services: ['api-server'] }, {
-  renderer: myCustomRenderer,
-})
+```typescript
+import * as Cli from '@effect/cli'
+
+// Standard --json flag
+const jsonOption = Cli.Options.boolean('json').pipe(
+  Cli.Options.withAlias('j'),
+  Cli.Options.withDescription('Output as JSON'),
+  Cli.Options.withDefault(false),
+)
+
+// Standard --stream flag for NDJSON
+const streamOption = Cli.Options.boolean('stream').pipe(
+  Cli.Options.withDescription('Stream JSON output (NDJSON)'),
+  Cli.Options.withDefault(false),
+)
 ```
 
 ---
 
 ## Complete Example
 
-A full deploy command implementation:
+A full deploy command using Effect CLI with tui-react:
 
 ```typescript
 // deploy.ts
-import { Command, CommandIO, Static, Box, Text, Spinner } from '@overeng/tui-react'
-import { Schema, Effect, SubscriptionRef, Stream, Duration } from 'effect'
+import * as Cli from '@effect/cli'
+import { NodeContext, NodeRuntime } from '@effect/platform-node'
+import { Effect, Layer, Schema, Duration } from 'effect'
+import { useTuiState, OutputMode, Box, Text, Spinner, Static, useSubscriptionRef } from '@overeng/tui-react'
 
 // ============================================================
-// State Schema
+// State Schema (shared between visual and JSON modes)
 // ============================================================
-
-const ServiceStatus = Schema.Literal('pending', 'deploying', 'healthy', 'failed')
-const ServiceResult = Schema.Literal('updated', 'unchanged', 'rolled-back')
-
-const Service = Schema.Struct({
-  name: Schema.String,
-  status: ServiceStatus,
-})
-
-const ServiceComplete = Schema.Struct({
-  name: Schema.String,
-  result: ServiceResult,
-  duration: Schema.Number,
-})
-
-const LogEntry = Schema.Struct({
-  id: Schema.String,
-  time: Schema.String,
-  message: Schema.String,
-})
 
 const DeployState = Schema.Union(
-  Schema.TaggedStruct('Deploy.Idle', {}),
-  Schema.TaggedStruct('Deploy.Validating', {
-    logs: Schema.Array(LogEntry),
+  Schema.TaggedStruct('Idle', {}),
+  Schema.TaggedStruct('Validating', {
+    logs: Schema.Array(Schema.String),
   }),
-  Schema.TaggedStruct('Deploy.Progress', {
-    services: Schema.Array(Service),
-    logs: Schema.Array(LogEntry),
+  Schema.TaggedStruct('Progress', {
+    services: Schema.Array(Schema.Struct({
+      name: Schema.String,
+      status: Schema.Literal('pending', 'deploying', 'healthy'),
+    })),
+    logs: Schema.Array(Schema.String),
   }),
-  Schema.TaggedStruct('Deploy.Complete', {
-    services: Schema.Array(ServiceComplete),
-    logs: Schema.Array(LogEntry),
+  Schema.TaggedStruct('Complete', {
+    services: Schema.Array(Schema.Struct({
+      name: Schema.String,
+      result: Schema.Literal('updated', 'unchanged'),
+      duration: Schema.Number,
+    })),
+    logs: Schema.Array(Schema.String),
     totalDuration: Schema.Number,
-  }),
-  Schema.TaggedStruct('Deploy.Failed', {
-    services: Schema.Array(ServiceComplete),
-    error: Schema.String,
-    logs: Schema.Array(LogEntry),
   }),
 )
 
 type DeployState = Schema.Schema.Type<typeof DeployState>
-type LogEntry = Schema.Schema.Type<typeof LogEntry>
 
 // ============================================================
-// Command Implementation
+// React View Component
 // ============================================================
 
-interface DeployArgs {
-  services: string[]
-  environment: string
-}
-
-const deployCommand = Command.make({
-  name: 'deploy',
-  stateSchema: DeployState,
-  initialState: { _tag: 'Deploy.Idle' } as DeployState,
+function DeployView({ stateRef }: { stateRef: SubscriptionRef.SubscriptionRef<DeployState> }) {
+  const state = useSubscriptionRef(stateRef)
   
-  run: (io: CommandIO<DeployState>, args: DeployArgs) => Effect.gen(function* () {
-    const startTime = Date.now()
-    const logs: LogEntry[] = []
-    
-    const log = (message: string) => {
-      logs.push({
-        id: crypto.randomUUID(),
-        time: new Date().toISOString().slice(11, 19),
-        message,
-      })
-    }
-    
-    // Phase 1: Validation
-    log(`Validating deployment to ${args.environment}`)
-    yield* SubscriptionRef.set(io.state, { _tag: 'Deploy.Validating', logs })
-    yield* Effect.sleep(Duration.millis(500))
-    log('Configuration valid')
-    
-    // Phase 2: Deploy services
-    const services = args.services.map(name => ({ name, status: 'pending' as const }))
-    yield* SubscriptionRef.set(io.state, { _tag: 'Deploy.Progress', services, logs })
-    
-    const results: Array<{ name: string; result: 'updated' | 'unchanged'; duration: number }> = []
-    
-    for (const service of args.services) {
-      // Update to deploying
-      log(`Deploying ${service}...`)
-      yield* SubscriptionRef.update(io.state, state => {
-        if (state._tag !== 'Deploy.Progress') return state
-        return {
-          ...state,
-          logs,
-          services: state.services.map(s =>
-            s.name === service ? { ...s, status: 'deploying' as const } : s
-          ),
-        }
-      })
-      
-      // Simulate deploy
-      const deployStart = Date.now()
-      yield* Effect.sleep(Duration.millis(800 + Math.random() * 400))
-      
-      // Update to healthy
-      log(`${service} is healthy`)
-      yield* SubscriptionRef.update(io.state, state => {
-        if (state._tag !== 'Deploy.Progress') return state
-        return {
-          ...state,
-          logs,
-          services: state.services.map(s =>
-            s.name === service ? { ...s, status: 'healthy' as const } : s
-          ),
-        }
-      })
-      
-      results.push({
-        name: service,
-        result: 'updated',
-        duration: Date.now() - deployStart,
-      })
-    }
-    
-    // Phase 3: Complete
-    const totalDuration = Date.now() - startTime
-    log(`Deploy complete in ${(totalDuration / 1000).toFixed(1)}s`)
-    
-    yield* SubscriptionRef.set(io.state, {
-      _tag: 'Deploy.Complete',
-      services: results,
-      logs,
-      totalDuration,
-    })
-  }),
-})
-
-// ============================================================
-// Visual Renderer (React Component)
-// ============================================================
-
-function DeployView({ state }: { state: DeployState }) {
-  if (state._tag === 'Deploy.Idle') {
-    return null
-  }
+  if (state._tag === 'Idle') return null
   
   const logs = 'logs' in state ? state.logs : []
   
   return (
     <>
       <Static items={logs}>
-        {(log) => (
-          <Text key={log.id} dim>
-            [{log.time}] {log.message}
-          </Text>
-        )}
+        {(log, i) => <Text key={i} dim>[deploy] {log}</Text>}
       </Static>
       
-      {state._tag === 'Deploy.Validating' && (
+      {state._tag === 'Validating' && (
         <Box>
-          <Spinner /> Validating configuration...
+          <Spinner type="dots" />
+          <Text> Validating configuration...</Text>
         </Box>
       )}
       
-      {state._tag === 'Deploy.Progress' && (
+      {state._tag === 'Progress' && (
         <Box flexDirection="column">
-          <Text>● Deploying {state.services.filter(s => s.status === 'healthy').length}/{state.services.length} services</Text>
-          {state.services.map(service => (
+          <Text>Deploying {state.services.filter(s => s.status === 'healthy').length}/{state.services.length} services</Text>
+          {state.services.map((service) => (
             <Box key={service.name} paddingLeft={2}>
-              <Text>
-                {service.status === 'healthy' && '✓ '}
-                {service.status === 'deploying' && <><Spinner /> </>}
-                {service.status === 'pending' && '○ '}
-                {service.status === 'failed' && '✗ '}
-                {service.name}
-                {service.status !== 'pending' && ` (${service.status})`}
-              </Text>
+              {service.status === 'healthy' && <Text color="green">✓ </Text>}
+              {service.status === 'deploying' && <><Spinner type="dots" /><Text> </Text></>}
+              {service.status === 'pending' && <Text dim>○ </Text>}
+              <Text>{service.name}</Text>
+              {service.status !== 'pending' && <Text dim> ({service.status})</Text>}
             </Box>
           ))}
         </Box>
       )}
       
-      {state._tag === 'Deploy.Complete' && (
+      {state._tag === 'Complete' && (
         <Box flexDirection="column">
           <Text color="green">✓ Deploy complete</Text>
-          {state.services.map(service => (
+          {state.services.map((service) => (
             <Box key={service.name} paddingLeft={2}>
-              <Text>✓ {service.name} ({service.result}, {(service.duration / 1000).toFixed(1)}s)</Text>
+              <Text color="green">✓ </Text>
+              <Text>{service.name}</Text>
+              <Text dim> ({service.result}, {(service.duration / 1000).toFixed(1)}s)</Text>
             </Box>
           ))}
           <Text dim>{'\n'}{state.services.length} services deployed in {(state.totalDuration / 1000).toFixed(1)}s</Text>
-        </Box>
-      )}
-      
-      {state._tag === 'Deploy.Failed' && (
-        <Box flexDirection="column">
-          <Text color="red">✗ Deploy failed: {state.error}</Text>
         </Box>
       )}
     </>
@@ -883,40 +769,168 @@ function DeployView({ state }: { state: DeployState }) {
 }
 
 // ============================================================
-// Usage
+// Command Logic (mode-agnostic)
 // ============================================================
 
-// CLI entry point
-await Command.run(deployCommand, {
-  services: ['api-server', 'web-client', 'worker'],
-  environment: 'production',
-})
+const runDeploy = (services: string[]) =>
+  Effect.gen(function* () {
+    // Get TUI state - rendering behavior determined by OutputMode
+    const tui = yield* useTuiState(DeployState, { _tag: 'Idle' }, DeployView)
+    
+    const startTime = Date.now()
+    const logs: string[] = []
+    const log = (msg: string) => { logs.push(msg) }
+    
+    // Phase 1: Validation
+    log('Validating configuration...')
+    yield* tui.set({ _tag: 'Validating', logs: [...logs] })
+    yield* Effect.sleep(Duration.millis(500))
+    log('Configuration valid')
+    
+    // Phase 2: Deploy services
+    const serviceStates = services.map(name => ({ name, status: 'pending' as const }))
+    yield* tui.set({ _tag: 'Progress', services: serviceStates, logs: [...logs] })
+    
+    const results: Array<{ name: string; result: 'updated'; duration: number }> = []
+    
+    for (let i = 0; i < services.length; i++) {
+      const service = services[i]!
+      
+      log(`Deploying ${service}...`)
+      yield* tui.update(s => {
+        if (s._tag !== 'Progress') return s
+        return {
+          ...s,
+          logs: [...logs],
+          services: s.services.map((svc, idx) =>
+            idx === i ? { ...svc, status: 'deploying' as const } : svc
+          ),
+        }
+      })
+      
+      const deployStart = Date.now()
+      yield* Effect.sleep(Duration.millis(600 + Math.random() * 400))
+      
+      log(`${service} is healthy`)
+      yield* tui.update(s => {
+        if (s._tag !== 'Progress') return s
+        return {
+          ...s,
+          logs: [...logs],
+          services: s.services.map((svc, idx) =>
+            idx === i ? { ...svc, status: 'healthy' as const } : svc
+          ),
+        }
+      })
+      
+      results.push({ name: service, result: 'updated', duration: Date.now() - deployStart })
+    }
+    
+    // Phase 3: Complete
+    const totalDuration = Date.now() - startTime
+    log(`Deploy complete in ${(totalDuration / 1000).toFixed(1)}s`)
+    
+    yield* tui.set({
+      _tag: 'Complete',
+      services: results,
+      logs: [...logs],
+      totalDuration,
+    })
+    
+    return { services: results, totalDuration }
+  }).pipe(Effect.scoped)
+
+// ============================================================
+// CLI Definition (standard @effect/cli)
+// ============================================================
+
+const jsonOption = Cli.Options.boolean('json').pipe(
+  Cli.Options.withAlias('j'),
+  Cli.Options.withDefault(false),
+)
+
+const streamOption = Cli.Options.boolean('stream').pipe(
+  Cli.Options.withDefault(false),
+)
+
+const servicesOption = Cli.Options.text('services').pipe(
+  Cli.Options.withAlias('s'),
+)
+
+const deployCommand = Cli.Command.make(
+  'deploy',
+  { json: jsonOption, stream: streamOption, services: servicesOption },
+  ({ json, stream, services }) =>
+    Effect.gen(function* () {
+      const serviceList = services.split(',').map(s => s.trim()).filter(Boolean)
+      
+      // Provide output mode based on flags
+      const mode = OutputMode.fromFlags(json, stream)
+      
+      yield* runDeploy(serviceList).pipe(
+        Effect.provide(Layer.succeed(OutputMode, mode))
+      )
+    })
+).pipe(Cli.Command.withDescription('Deploy services'))
+
+// Root command with subcommands
+const rootCommand = Cli.Command.make('mycli', {}).pipe(
+  Cli.Command.withSubcommands([deployCommand]),
+)
+
+// Run CLI
+Cli.Command.run(rootCommand, {
+  name: 'mycli',
+  version: '1.0.0',
+})(process.argv).pipe(
+  Effect.provide(NodeContext.layer),
+  NodeRuntime.runMain,
+)
 ```
 
-**Output in progressive-visual-inline mode:**
+**Usage:**
+```bash
+# Progressive visual (default)
+mycli deploy --services api,web,worker
+
+# Final JSON
+mycli deploy --services api,web --json
+
+# Streaming JSON (NDJSON)
+mycli deploy --services api,web --json --stream
 ```
-[14:23:01] Validating deployment to production
-[14:23:01] Configuration valid
-[14:23:02] Deploying api-server...
-[14:23:03] api-server is healthy
-[14:23:03] Deploying web-client...
-● Deploying 1/3 services
-  ✓ api-server (healthy)
-  ◐ web-client (deploying)
+
+**Output in progressive-visual mode:**
+```
+[deploy] Validating configuration...
+[deploy] Configuration valid
+[deploy] Deploying api...
+[deploy] api is healthy
+Deploying 1/3 services
+  ✓ api (healthy)
+  ◐ web (deploying)
   ○ worker
 ```
 
 **Output in final-json mode:**
 ```json
 {
-  "_tag": "Deploy.Complete",
+  "_tag": "Complete",
   "services": [
-    { "name": "api-server", "result": "updated", "duration": 1024 },
-    { "name": "web-client", "result": "updated", "duration": 892 },
-    { "name": "worker", "result": "updated", "duration": 756 }
+    { "name": "api", "result": "updated", "duration": 1024 },
+    { "name": "web", "result": "updated", "duration": 892 }
   ],
-  "totalDuration": 3421
+  "logs": ["Validating...", "..."],
+  "totalDuration": 2100
 }
+```
+
+**Output in progressive-json mode (NDJSON):**
+```
+{"_tag":"Validating","logs":["Validating configuration..."]}
+{"_tag":"Progress","services":[{"name":"api","status":"deploying"}...],"logs":[...]}
+{"_tag":"Progress","services":[{"name":"api","status":"healthy"}...],"logs":[...]}
+{"_tag":"Complete","services":[...],"totalDuration":2100}
 ```
 
 ---
@@ -1096,32 +1110,32 @@ Renderers guarantee terminal restoration:
 
 ## Testing
 
-### Testing Commands
+### Testing Command Logic
 
-Commands are pure Effect programs, testable without renderers:
+Command logic is a pure Effect program, testable by providing a test OutputMode:
 
 ```typescript
 import { expect, test } from 'vitest'
-import { Effect, SubscriptionRef, Stream } from 'effect'
+import { Effect, Layer, SubscriptionRef, Stream, Fiber } from 'effect'
+import { OutputMode } from '@overeng/tui-react'
 
 test('deploy command updates state correctly', async () => {
   const states: DeployState[] = []
   
   await Effect.gen(function* () {
-    // Create test IO
-    const state = yield* SubscriptionRef.make<DeployState>({ _tag: 'Deploy.Idle' })
+    // Create state ref to track changes
+    const stateRef = yield* SubscriptionRef.make<DeployState>({ _tag: 'Idle' })
     
-    // Collect state changes
-    const fiber = yield* state.changes.pipe(
+    // Collect state changes in background
+    const fiber = yield* stateRef.changes.pipe(
       Stream.tap(s => Effect.sync(() => states.push(s))),
       Stream.runDrain,
       Effect.fork,
     )
     
-    // Run command
-    yield* deployCommand.run(
-      { state, events: Stream.empty, dispatch: () => Effect.void, mode: 'final-json', signal: new AbortController().signal },
-      { services: ['api-server'], environment: 'test' }
+    // Run command with test mode (no rendering)
+    yield* runDeploy(['api-server', 'web-client']).pipe(
+      Effect.provide(Layer.succeed(OutputMode, { _tag: 'final-json' })),
     )
     
     yield* Fiber.interrupt(fiber)
@@ -1129,34 +1143,40 @@ test('deploy command updates state correctly', async () => {
   
   // Assert state transitions
   expect(states.map(s => s._tag)).toEqual([
-    'Deploy.Idle',
-    'Deploy.Validating',
-    'Deploy.Progress',
-    'Deploy.Complete',
+    'Idle',
+    'Validating',
+    'Progress',
+    'Progress', // deploying api
+    'Progress', // api healthy
+    'Progress', // deploying web
+    'Progress', // web healthy
+    'Complete',
   ])
 })
 ```
 
-### Testing Renderers
+### Testing React Components
 
 Use a test renderer that captures output:
 
 ```typescript
 import { TestRenderer } from '@overeng/tui-react/test'
+import { SubscriptionRef } from 'effect'
 
-test('deploy view renders progress correctly', () => {
+test('deploy view renders progress correctly', async () => {
   const renderer = TestRenderer.create()
-  
-  renderer.render(
-    <DeployView state={{
-      _tag: 'Deploy.Progress',
+  const stateRef = await Effect.runPromise(
+    SubscriptionRef.make<DeployState>({
+      _tag: 'Progress',
       services: [
         { name: 'api-server', status: 'healthy' },
         { name: 'web-client', status: 'deploying' },
       ],
       logs: [],
-    }} />
+    })
   )
+  
+  renderer.render(<DeployView stateRef={stateRef} />)
   
   expect(renderer.toText()).toContain('✓ api-server')
   expect(renderer.toText()).toContain('web-client (deploying)')
@@ -1168,20 +1188,21 @@ test('deploy view renders progress correctly', () => {
 ```typescript
 import { TestRenderer } from '@overeng/tui-react/test'
 
-test('deploy complete view matches snapshot', () => {
+test('deploy complete view matches snapshot', async () => {
   const renderer = TestRenderer.create({ columns: 80, rows: 24 })
-  
-  renderer.render(
-    <DeployView state={{
-      _tag: 'Deploy.Complete',
+  const stateRef = await Effect.runPromise(
+    SubscriptionRef.make<DeployState>({
+      _tag: 'Complete',
       services: [
         { name: 'api-server', result: 'updated', duration: 1024 },
         { name: 'web-client', result: 'unchanged', duration: 0 },
       ],
       logs: [],
       totalDuration: 1500,
-    }} />
+    })
   )
+  
+  renderer.render(<DeployView stateRef={stateRef} />)
   
   expect(renderer.toText()).toMatchSnapshot()
 })
@@ -1190,46 +1211,60 @@ test('deploy complete view matches snapshot', () => {
 ### Testing JSON Output
 
 ```typescript
+import { Effect, Layer, SubscriptionRef, Stream } from 'effect'
+import { OutputMode } from '@overeng/tui-react'
+
 test('deploy produces valid JSON output', async () => {
-  const output = await Command.runCapture(deployCommand, {
-    services: ['api-server'],
-    environment: 'test',
-  }, { mode: 'final-json' })
+  const outputs: string[] = []
   
-  // Validates against schema
-  const result = Schema.decodeUnknownSync(DeployState)(JSON.parse(output))
+  // Capture console.log output
+  const originalLog = console.log
+  console.log = (msg: string) => outputs.push(msg)
   
-  expect(result._tag).toBe('Deploy.Complete')
+  try {
+    await runDeploy(['api-server']).pipe(
+      Effect.provide(Layer.succeed(OutputMode, { _tag: 'final-json' })),
+      Effect.runPromise,
+    )
+  } finally {
+    console.log = originalLog
+  }
+  
+  // Validate JSON output against schema
+  const result = Schema.decodeUnknownSync(DeployState)(JSON.parse(outputs[0]!))
+  expect(result._tag).toBe('Complete')
 })
 ```
 
 ### Test Utilities
 
 ```typescript
-import { TestRenderer, TestIO, runTestCommand } from '@overeng/tui-react/test'
+import { TestRenderer, mockOutputMode } from '@overeng/tui-react/test'
 
-// Quick test helper
-const { states, output } = await runTestCommand(deployCommand, {
-  args: { services: ['api-server'], environment: 'test' },
-  mode: 'progressive-visual-inline',
+// Quick test helper for running commands with captured output
+const { states, jsonOutput } = await runTestCommand(runDeploy, {
+  args: ['api-server', 'web-client'],
+  mode: 'final-json',
 })
 
-// Simulate user input (for interactive commands)
-const io = TestIO.create()
-io.pressKey('enter')
-io.resize(120, 40)
+expect(states).toHaveLength(8)
+expect(jsonOutput._tag).toBe('Complete')
 ```
 
 ---
 
 ## Effect Integration
 
+tui-react integrates naturally with Effect's ecosystem since commands are standard Effect programs.
+
 ### Layer System
 
 Commands can require services via Effect's Layer system:
 
 ```typescript
-import { Layer, Context } from 'effect'
+import * as Cli from '@effect/cli'
+import { Layer, Context, Effect } from 'effect'
+import { useTuiState, OutputMode } from '@overeng/tui-react'
 
 // Define service
 class DeployService extends Context.Tag('DeployService')<
@@ -1241,105 +1276,98 @@ class DeployService extends Context.Tag('DeployService')<
   }
 >() {}
 
-// Command requires service
-const deployCommand = Command.make({
-  name: 'deploy',
-  stateSchema: DeployState,
-  initialState: { _tag: 'Deploy.Idle' },
-  
-  run: (io, args) => Effect.gen(function* () {
+// Command uses service alongside TUI state
+const runDeploy = (services: string[]) =>
+  Effect.gen(function* () {
+    const tui = yield* useTuiState(DeployState, { _tag: 'Idle' }, DeployView)
     const deployService = yield* DeployService
     
-    for (const service of args.services) {
+    for (const service of services) {
+      yield* tui.update(s => ({ ...s, current: service }))
       yield* deployService.deploy(service)
       yield* deployService.healthCheck(service)
     }
-  }),
-})
+  }).pipe(Effect.scoped)
 
-// Provide layer when running
-await Command.run(deployCommand, args).pipe(
-  Effect.provide(DeployServiceLive),
-  Effect.runPromise,
+// Provide layers when running
+const deployCommand = Cli.Command.make('deploy', { services: servicesOption }, ({ services }) =>
+  runDeploy(services.split(',')).pipe(
+    Effect.provide(Layer.succeed(OutputMode, { _tag: 'progressive-visual' })),
+    Effect.provide(DeployServiceLive),
+  )
 )
 ```
 
 ### Logging Integration
 
-The renderer integrates with Effect's logging:
+Effect logs can be captured and displayed in the TUI:
 
 ```typescript
-import { Effect, Logger, LogLevel } from 'effect'
+import { Effect, Logger } from 'effect'
 
-run: (io) => Effect.gen(function* () {
-  // Logs appear in static region (visual) or as JSON lines (json mode)
-  yield* Effect.log('Starting deployment')
-  yield* Effect.logDebug('Connecting to cluster')
-  
-  yield* Effect.logWarning('Service api-server has high memory usage')
-  
-  // Errors are also captured
-  yield* Effect.logError('Failed to connect').pipe(
-    Effect.annotateLogs({ service: 'api-server' })
-  )
+const runDeploy = (services: string[]) =>
+  Effect.gen(function* () {
+    const tui = yield* useTuiState(DeployState, { _tag: 'Idle' }, DeployView)
+    
+    // Standard Effect logging
+    yield* Effect.log('Starting deployment')
+    yield* Effect.logDebug('Connecting to cluster')
+    yield* Effect.logWarning('High memory usage detected')
+    
+    // Update TUI state separately
+    yield* tui.set({ _tag: 'Progress', ... })
+  }).pipe(Effect.scoped)
+
+// Custom logger that feeds into TUI static region (future enhancement)
+const TuiLogger = Logger.make(({ message }) => {
+  // Append to static region
 })
-
-// Configure log level
-await Command.run(deployCommand, args, {
-  logLevel: LogLevel.Debug,
-})
-```
-
-**Visual mode log output:**
-```
-[14:23:01] Starting deployment
-[14:23:01] [DEBUG] Connecting to cluster
-[14:23:02] [WARN] Service api-server has high memory usage
-```
-
-**JSON mode log output:**
-```json
-{"_tag":"Log","level":"Info","message":"Starting deployment","timestamp":"2024-01-15T14:23:01.000Z"}
-{"_tag":"Log","level":"Debug","message":"Connecting to cluster","timestamp":"2024-01-15T14:23:01.500Z"}
 ```
 
 ### Config Integration
 
 ```typescript
-import { Config } from 'effect'
+import { Config, Effect } from 'effect'
 
-const deployCommand = Command.make({
-  // ...
-  run: (io, args) => Effect.gen(function* () {
+const runDeploy = (services: string[]) =>
+  Effect.gen(function* () {
+    const tui = yield* useTuiState(DeployState, { _tag: 'Idle' }, DeployView)
+    
     // Read config (environment variables, etc.)
     const timeout = yield* Config.number('DEPLOY_TIMEOUT').pipe(
       Config.withDefault(30000)
     )
-    
     const cluster = yield* Config.string('DEPLOY_CLUSTER')
     
+    yield* tui.set({ _tag: 'Progress', cluster, ... })
     yield* deployToCluster(cluster, { timeout })
-  }),
-})
+  }).pipe(Effect.scoped)
 ```
 
 ### Scope and Resource Management
 
-```typescript
-import { Scope, Effect } from 'effect'
+The `useTuiState` function is scoped, ensuring cleanup on completion or error:
 
-run: (io) => Effect.gen(function* () {
-  // Scoped resources are cleaned up automatically
-  yield* Effect.scoped(
-    Effect.gen(function* () {
-      const connection = yield* acquireConnection()
-      const lock = yield* acquireDeployLock()
-      
-      // Both cleaned up when scope closes (success, error, or cancellation)
-      yield* runDeployment(connection, lock)
-    })
-  )
-})
+```typescript
+const runDeploy = (services: string[]) =>
+  Effect.gen(function* () {
+    // TUI state is scoped - renderer cleans up automatically
+    const tui = yield* useTuiState(DeployState, { _tag: 'Idle' }, DeployView)
+    
+    // Additional scoped resources
+    const connection = yield* Effect.acquireRelease(
+      acquireConnection(),
+      (conn) => releaseConnection(conn)
+    )
+    
+    const lock = yield* Effect.acquireRelease(
+      acquireDeployLock(),
+      (lock) => releaseLock(lock)
+    )
+    
+    // All resources cleaned up when scope closes (success, error, or cancellation)
+    yield* runDeployment(connection, lock, tui)
+  }).pipe(Effect.scoped)
 ```
 
 ### Metrics and Tracing
@@ -1350,15 +1378,16 @@ import { Metric, Effect } from 'effect'
 const deployCounter = Metric.counter('deploy.count')
 const deployDuration = Metric.histogram('deploy.duration')
 
-run: (io) => Effect.gen(function* () {
-  yield* Metric.increment(deployCounter)
-  
-  yield* deployServices().pipe(
-    Metric.trackDuration(deployDuration)
-  )
-})
-
-// Metrics are available for export (e.g., to Prometheus)
+const runDeploy = (services: string[]) =>
+  Effect.gen(function* () {
+    yield* Metric.increment(deployCounter)
+    
+    const tui = yield* useTuiState(DeployState, { _tag: 'Idle' }, DeployView)
+    
+    yield* deployServices(tui).pipe(
+      Metric.trackDuration(deployDuration)
+    )
+  }).pipe(Effect.scoped)
 ```
 
 ---
@@ -1369,8 +1398,9 @@ run: (io) => Effect.gen(function* () {
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
+| CLI integration | `@effect/cli` | Leverage existing CLI framework, don't reinvent command parsing |
 | State primitive | `SubscriptionRef` | Supports multiple consumers, late subscribers get current value |
-| Event primitive | `PubSub` | Decoupled, supports multiple publishers/subscribers |
+| Mode selection | `OutputMode` service | Layer-based, testable, composable with Effect patterns |
 | State typing | Effect Schema | Type-safe JSON encoding, shareable schemas |
 | Inline reconciler | Custom (`react-reconciler`) | Full control, no ink dependency |
 | Alternate renderer | OpenTUI | Production-ready, full-featured, same Yoga layout |
