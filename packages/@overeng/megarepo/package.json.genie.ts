@@ -39,18 +39,28 @@ export default packageJson({
     ...catalog.pick('@overeng/utils', '@overeng/cli-ui', '@overeng/effect-path', '@overeng/tui-react', 'react'),
   },
   devDependencies: {
-    ...catalog.pick(...peerDepNames, '@effect/vitest', '@types/bun', '@types/node', '@types/react', 'vitest'),
+    ...catalog.pick(
+      // Peer deps (for testing)
+      ...peerDepNames,
+      // Testing
+      '@effect/vitest',
+      '@types/bun',
+      '@types/node',
+      '@types/react',
+      'vitest',
+      // Storybook
+      'storybook',
+      '@storybook/react',
+      '@storybook/react-vite',
+      // xterm (terminal emulator for Storybook)
+      '@xterm/xterm',
+      '@xterm/addon-fit',
+      // Build tools
+      'react-dom',
+      'vite',
+      '@vitejs/plugin-react',
+    ),
     ...effectLspDevDeps(),
-    // Storybook dependencies
-    storybook: '^8.6.0',
-    '@storybook/react': '^8.6.0',
-    '@storybook/react-vite': '^8.6.0',
-    '@storybook/addon-essentials': '^8.6.0',
-    '@xterm/xterm': '^5.5.0',
-    '@xterm/addon-fit': '^0.10.0',
-    ...catalog.pick('react-dom'),
-    vite: '^6.0.0',
-    '@vitejs/plugin-react': '^4.0.0',
   },
   peerDependencies: {
     // Expose @overeng/utils peer deps transitively (consumers need them)

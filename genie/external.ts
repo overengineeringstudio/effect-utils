@@ -140,9 +140,17 @@ export const catalog = defineCatalog({
   '@tailwindcss/vite': '4.1.18',
 
   // Storybook
-  storybook: '10.1.11',
-  '@storybook/react': '10.1.11',
-  '@storybook/react-vite': '10.1.11',
+  storybook: '10.2.1',
+  '@storybook/react': '10.2.1',
+  '@storybook/react-vite': '10.2.1',
+
+  // xterm (terminal emulator for browser/testing)
+  '@xterm/xterm': '6.0.0',
+  '@xterm/headless': '6.0.0',
+  '@xterm/addon-fit': '0.11.0',
+
+  // React reconciler types
+  '@types/react-reconciler': '0.28.9',
 
   // Testing
   '@testing-library/react': '16.3.1',
@@ -176,6 +184,11 @@ export const catalog = defineCatalog({
 
   // Pi-tui (terminal UI framework)
   '@mariozechner/pi-tui': '0.45.7',
+
+  // TUI React renderer dependencies
+  'react-reconciler': '0.32.0',
+  'yoga-layout': '3.2.1',
+  'string-width': '7.2.0',
 })
 
 /** Common fields for private packages */

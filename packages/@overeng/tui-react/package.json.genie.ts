@@ -19,33 +19,38 @@ export default packageJson({
     },
   },
   dependencies: {
-    ...catalog.pick('react'),
-    'react-reconciler': '^0.32.0', // React custom renderer API
-    'yoga-layout': '^3.2.1', // Flexbox layout engine (pure JS, no native bindings)
-    'string-width': '^7.2.0', // Accurate string width for Unicode/emoji
-    '@overeng/tui-core': 'workspace:*',
+    ...catalog.pick(
+      'react',
+      'react-reconciler',
+      'yoga-layout',
+      'string-width',
+      '@overeng/tui-core',
+    ),
   },
   devDependencies: {
     ...catalog.pick(
+      // TypeScript & testing
       '@types/node',
       '@types/react',
+      '@types/react-reconciler',
       'typescript',
       'vitest',
-      'effect', // For TuiRenderer service
-      '@effect/platform', // For terminal integration
+      // Effect ecosystem
+      'effect',
+      '@effect/platform',
+      // Storybook
+      'storybook',
+      '@storybook/react',
+      '@storybook/react-vite',
+      // xterm (terminal emulator for browser/testing)
+      '@xterm/xterm',
+      '@xterm/headless',
+      '@xterm/addon-fit',
+      // Build tools
+      'react-dom',
+      'vite',
+      '@vitejs/plugin-react',
     ),
-    '@types/react-reconciler': '^0.28.9', // Types for react-reconciler
-    '@xterm/headless': '^5.5.0', // Virtual terminal for testing
-    // Storybook dependencies
-    storybook: '^8.6.0', // Storybook core
-    '@storybook/react': '^8.6.0', // Storybook React renderer
-    '@storybook/react-vite': '^8.6.0', // Storybook Vite builder for React
-    '@storybook/addon-essentials': '^8.6.0', // Essential addons (controls, docs, etc.)
-    '@xterm/xterm': '^5.5.0', // Terminal emulator for browser
-    '@xterm/addon-fit': '^0.10.0', // Auto-fit terminal to container
-    ...catalog.pick('react-dom'), // For storybook web rendering
-    vite: '^6.0.0', // Build tool for storybook
-    '@vitejs/plugin-react': '^4.0.0', // React plugin for Vite
   },
   peerDependencies: {
     effect: catalog.pick('effect').effect,
