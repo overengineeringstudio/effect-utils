@@ -92,11 +92,9 @@ const getTermSize = () => ({
 // Helpers
 // =============================================================================
 
-// oxlint-disable-next-line overeng/named-args -- simple utility
-const randomBetween = (min: number, max: number) => Math.random() * (max - min) + min
+const randomBetween = ({ min, max }: { min: number; max: number }) => Math.random() * (max - min) + min
 
-// oxlint-disable-next-line overeng/named-args -- simple factory
-const createWindow = (id: number, count: number): Window => {
+const createWindow = ({ id, count }: { id: number; count: number }): Window => {
   const { width, height } = getTermSize()
   // Spread windows out initially
   const startX = (id * (width / count)) % Math.max(1, width - WIN_WIDTH)
@@ -106,8 +104,8 @@ const createWindow = (id: number, count: number): Window => {
     id,
     x: startX,
     y: startY,
-    vx: randomBetween(0.8, 2.0) * (Math.random() > 0.5 ? 1 : -1),
-    vy: randomBetween(0.4, 1.0) * (Math.random() > 0.5 ? 1 : -1),
+    vx: randomBetween({ min: 0.8, max: 2.0 }) * (Math.random() > 0.5 ? 1 : -1),
+    vy: randomBetween({ min: 0.4, max: 1.0 }) * (Math.random() > 0.5 ? 1 : -1),
     width: WIN_WIDTH,
     height: WIN_HEIGHT,
     title: TITLES[id % TITLES.length] ?? 'Window',
@@ -121,8 +119,15 @@ const createWindow = (id: number, count: number): Window => {
   }
 }
 
-// oxlint-disable-next-line overeng/named-args -- simple utility
-const updateWindow = (win: Window, termWidth: number, termHeight: number): Window => {
+const updateWindow = ({
+  win,
+  termWidth,
+  termHeight,
+}: {
+  win: Window
+  termWidth: number
+  termHeight: number
+}): Window => {
   let { x, y, vx, vy } = win
 
   // Move
@@ -149,10 +154,10 @@ const updateWindow = (win: Window, termWidth: number, termHeight: number): Windo
 
   // Drift stats
   const stats = {
-    cpu: Math.max(0, Math.min(100, win.stats.cpu + randomBetween(-3, 3))),
-    mem: Math.max(0, Math.min(100, win.stats.mem + randomBetween(-2, 2))),
-    disk: Math.max(0, Math.min(100, win.stats.disk + randomBetween(-1, 1))),
-    net: Math.max(0, Math.min(1000, win.stats.net + randomBetween(-30, 30))),
+    cpu: Math.max(0, Math.min(100, win.stats.cpu + randomBetween({ min: -3, max: 3 }))),
+    mem: Math.max(0, Math.min(100, win.stats.mem + randomBetween({ min: -2, max: 2 }))),
+    disk: Math.max(0, Math.min(100, win.stats.disk + randomBetween({ min: -1, max: 1 }))),
+    net: Math.max(0, Math.min(1000, win.stats.net + randomBetween({ min: -30, max: 30 }))),
   }
 
   return { ...win, x, y, vx, vy, stats }
@@ -234,7 +239,7 @@ const appReducer = ({
       const { width, height } = getTermSize()
       return {
         ...state,
-        windows: state.windows.map((w) => updateWindow(w, width, height)),
+        windows: state.windows.map((w) => updateWindow({ win: w, termWidth: width, termHeight: height })),
         frame: state.frame + 1,
         termWidth: width,
         termHeight: height,
@@ -279,8 +284,15 @@ interface Cell {
   color: Color | null
 }
 
-// oxlint-disable-next-line overeng/named-args -- simple utility
-const renderWindowToCanvas = (canvas: Cell[][], win: Window, canvasWidth: number) => {
+const renderWindowToCanvas = ({
+  canvas,
+  win,
+  canvasWidth,
+}: {
+  canvas: Cell[][]
+  win: Window
+  canvasWidth: number
+}) => {
   const x = Math.floor(win.x)
   const y = Math.floor(win.y)
   const { width, height, title, stats, color } = win
@@ -291,9 +303,9 @@ const renderWindowToCanvas = (canvas: Cell[][], win: Window, canvasWidth: number
     '┌' + '─'.repeat(innerW) + '┐',
     '│' + ` ${title} `.padEnd(innerW, '─') + '│',
     '├' + '─'.repeat(innerW) + '┤',
-    '│' + formatStat('CPU', stats.cpu, innerW) + '│',
-    '│' + formatStat('MEM', stats.mem, innerW) + '│',
-    '│' + formatStat('DSK', stats.disk, innerW) + '│',
+    '│' + formatStat({ label: 'CPU', value: stats.cpu, width: innerW }) + '│',
+    '│' + formatStat({ label: 'MEM', value: stats.mem, width: innerW }) + '│',
+    '│' + formatStat({ label: 'DSK', value: stats.disk, width: innerW }) + '│',
     '│' + ` NET ${(stats.net / 100).toFixed(1).padStart(5)}Mb`.padEnd(innerW) + '│',
     '└' + '─'.repeat(innerW) + '┘',
   ]
@@ -312,16 +324,14 @@ const renderWindowToCanvas = (canvas: Cell[][], win: Window, canvasWidth: number
   }
 }
 
-// oxlint-disable-next-line overeng/named-args -- simple utility
-const formatStat = (label: string, value: number, width: number): string => {
+const formatStat = ({ label, value, width }: { label: string; value: number; width: number }): string => {
   const barW = width - 7 // label(3) + space + pct(3)
   const filled = Math.round((value / 100) * barW)
   const bar = '█'.repeat(filled) + '░'.repeat(barW - filled)
   return `${label} ${bar}${Math.round(value).toString().padStart(3)}`
 }
 
-// oxlint-disable-next-line overeng/named-args -- simple utility
-const createCanvas = (width: number, height: number): Cell[][] => {
+const createCanvas = ({ width, height }: { width: number; height: number }): Cell[][] => {
   return Array.from({ length: height }, () =>
     Array.from({ length: width }, () => ({ char: ' ', color: null })),
   )
@@ -341,11 +351,11 @@ const CanvasRenderer = ({
   height: number
 }) => {
   // Create fresh canvas
-  const canvas = createCanvas(width, height)
+  const canvas = createCanvas({ width, height })
 
   // Draw each window (last = on top)
   for (const win of windows) {
-    renderWindowToCanvas(canvas, win, width)
+    renderWindowToCanvas({ canvas, win, canvasWidth: width })
   }
 
   // Convert canvas to colored lines
@@ -467,8 +477,13 @@ const InterruptedView = ({ state }: { state: Extract<AppState, { _tag: 'Interrup
 // Main Program
 // =============================================================================
 
-// oxlint-disable-next-line overeng/named-args -- simple utility
-const runBouncingWindows = (windowCount: number, durationMs: number) =>
+const runBouncingWindows = ({
+  windowCount,
+  durationMs,
+}: {
+  windowCount: number
+  durationMs: number
+}) =>
   Effect.gen(function* () {
     const clampedCount = Math.min(Math.max(windowCount, 1), 6)
     const { width, height } = getTermSize()
@@ -478,7 +493,7 @@ const runBouncingWindows = (windowCount: number, durationMs: number) =>
       actionSchema: AppAction,
       initial: {
         _tag: 'Running',
-        windows: Array.from({ length: clampedCount }, (_, i) => createWindow(i, clampedCount)),
+        windows: Array.from({ length: clampedCount }, (_, i) => createWindow({ id: i, count: clampedCount })),
         frame: 0,
         termWidth: width,
         termHeight: height,
@@ -543,7 +558,7 @@ const bouncingWindowsCommand = Command.make(
     ...outputModeOptions,
   },
   ({ count, duration, json, stream }) =>
-    runBouncingWindows(count, duration * 1000).pipe(
+    runBouncingWindows({ windowCount: count, durationMs: duration * 1000 }).pipe(
       Effect.provide(outputModeLayerFromFlagsWithTTY({ json, stream, visual })),
     ),
 )

@@ -245,8 +245,7 @@ export const getEquationExpression = (block: BlockWithData): string => {
 const richTextToMd = (richText: RichTextArray): string => RichTextUtils.toMarkdown(richText)
 
 /** Indent each line of text */
-// oxlint-disable-next-line overeng/named-args -- internal helper with optional default
-const indentLines = (text: string, indent = '  '): string =>
+const indentLines = ({ text, indent = '  ' }: { text: string; indent?: string }): string =>
   text
     .split('\n')
     .map((line) => `${indent}${line}`)
@@ -273,18 +272,18 @@ const DEFAULT_TRANSFORMERS: Record<string, BlockTransformer> = {
 
   bulleted_list_item: (block, children) => {
     const text = richTextToMd(getBlockRichText(block))
-    return children ? `- ${text}\n${indentLines(children)}` : `- ${text}`
+    return children ? `- ${text}\n${indentLines({ text: children })}` : `- ${text}`
   },
 
   numbered_list_item: (block, children) => {
     const text = richTextToMd(getBlockRichText(block))
-    return children ? `1. ${text}\n${indentLines(children)}` : `1. ${text}`
+    return children ? `1. ${text}\n${indentLines({ text: children })}` : `1. ${text}`
   },
 
   to_do: (block, children) => {
     const text = richTextToMd(getBlockRichText(block))
     const checkbox = isTodoChecked(block) ? '[x]' : '[ ]'
-    return children ? `- ${checkbox} ${text}\n${indentLines(children)}` : `- ${checkbox} ${text}`
+    return children ? `- ${checkbox} ${text}\n${indentLines({ text: children })}` : `- ${checkbox} ${text}`
   },
 
   toggle: (block, children) => {
