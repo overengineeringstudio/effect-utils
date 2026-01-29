@@ -73,11 +73,13 @@ export interface Transform<TType extends NotionPropertyType = NotionPropertyType
 }
 
 /** Create a transform reference */
-// oxlint-disable-next-line overeng/named-args -- internal factory pattern
-const makeTransform = <TType extends NotionPropertyType>(
-  propertyType: TType,
-  name: string,
-): Transform<TType> => ({
+const makeTransform = <TType extends NotionPropertyType>({
+  propertyType,
+  name,
+}: {
+  propertyType: TType
+  name: string
+}): Transform<TType> => ({
   _tag: 'Transform',
   propertyType,
   name,
@@ -90,108 +92,108 @@ const makeTransform = <TType extends NotionPropertyType>(
  */
 export const transforms = {
   title: {
-    raw: makeTransform('title', 'raw'),
-    asString: makeTransform('title', 'asString'),
+    raw: makeTransform({ propertyType: 'title', name: 'raw' }),
+    asString: makeTransform({ propertyType: 'title', name: 'asString' }),
   },
   rich_text: {
-    raw: makeTransform('rich_text', 'raw'),
-    asString: makeTransform('rich_text', 'asString'),
+    raw: makeTransform({ propertyType: 'rich_text', name: 'raw' }),
+    asString: makeTransform({ propertyType: 'rich_text', name: 'asString' }),
   },
   number: {
-    raw: makeTransform('number', 'raw'),
-    asNumber: makeTransform('number', 'asNumber'),
-    asOption: makeTransform('number', 'asOption'),
+    raw: makeTransform({ propertyType: 'number', name: 'raw' }),
+    asNumber: makeTransform({ propertyType: 'number', name: 'asNumber' }),
+    asOption: makeTransform({ propertyType: 'number', name: 'asOption' }),
   },
   select: {
-    raw: makeTransform('select', 'raw'),
-    asOption: makeTransform('select', 'asOption'),
-    asName: makeTransform('select', 'asName'),
+    raw: makeTransform({ propertyType: 'select', name: 'raw' }),
+    asOption: makeTransform({ propertyType: 'select', name: 'asOption' }),
+    asName: makeTransform({ propertyType: 'select', name: 'asName' }),
   },
   multi_select: {
-    raw: makeTransform('multi_select', 'raw'),
-    asOptions: makeTransform('multi_select', 'asOptions'),
-    asNames: makeTransform('multi_select', 'asNames'),
+    raw: makeTransform({ propertyType: 'multi_select', name: 'raw' }),
+    asOptions: makeTransform({ propertyType: 'multi_select', name: 'asOptions' }),
+    asNames: makeTransform({ propertyType: 'multi_select', name: 'asNames' }),
   },
   status: {
-    raw: makeTransform('status', 'raw'),
-    asName: makeTransform('status', 'asName'),
-    asOption: makeTransform('status', 'asOption'),
+    raw: makeTransform({ propertyType: 'status', name: 'raw' }),
+    asName: makeTransform({ propertyType: 'status', name: 'asName' }),
+    asOption: makeTransform({ propertyType: 'status', name: 'asOption' }),
   },
   date: {
-    raw: makeTransform('date', 'raw'),
-    asDate: makeTransform('date', 'asDate'),
-    asOption: makeTransform('date', 'asOption'),
+    raw: makeTransform({ propertyType: 'date', name: 'raw' }),
+    asDate: makeTransform({ propertyType: 'date', name: 'asDate' }),
+    asOption: makeTransform({ propertyType: 'date', name: 'asOption' }),
   },
   people: {
-    raw: makeTransform('people', 'raw'),
-    asIds: makeTransform('people', 'asIds'),
+    raw: makeTransform({ propertyType: 'people', name: 'raw' }),
+    asIds: makeTransform({ propertyType: 'people', name: 'asIds' }),
   },
   files: {
-    raw: makeTransform('files', 'raw'),
-    asUrls: makeTransform('files', 'asUrls'),
+    raw: makeTransform({ propertyType: 'files', name: 'raw' }),
+    asUrls: makeTransform({ propertyType: 'files', name: 'asUrls' }),
   },
   checkbox: {
-    raw: makeTransform('checkbox', 'raw'),
-    asBoolean: makeTransform('checkbox', 'asBoolean'),
+    raw: makeTransform({ propertyType: 'checkbox', name: 'raw' }),
+    asBoolean: makeTransform({ propertyType: 'checkbox', name: 'asBoolean' }),
   },
   url: {
-    raw: makeTransform('url', 'raw'),
-    asString: makeTransform('url', 'asString'),
-    asOption: makeTransform('url', 'asOption'),
+    raw: makeTransform({ propertyType: 'url', name: 'raw' }),
+    asString: makeTransform({ propertyType: 'url', name: 'asString' }),
+    asOption: makeTransform({ propertyType: 'url', name: 'asOption' }),
   },
   email: {
-    raw: makeTransform('email', 'raw'),
-    asString: makeTransform('email', 'asString'),
-    asOption: makeTransform('email', 'asOption'),
+    raw: makeTransform({ propertyType: 'email', name: 'raw' }),
+    asString: makeTransform({ propertyType: 'email', name: 'asString' }),
+    asOption: makeTransform({ propertyType: 'email', name: 'asOption' }),
   },
   phone_number: {
-    raw: makeTransform('phone_number', 'raw'),
-    asString: makeTransform('phone_number', 'asString'),
-    asOption: makeTransform('phone_number', 'asOption'),
+    raw: makeTransform({ propertyType: 'phone_number', name: 'raw' }),
+    asString: makeTransform({ propertyType: 'phone_number', name: 'asString' }),
+    asOption: makeTransform({ propertyType: 'phone_number', name: 'asOption' }),
   },
   formula: {
-    raw: makeTransform('formula', 'raw'),
-    asBoolean: makeTransform('formula', 'asBoolean'),
-    asDate: makeTransform('formula', 'asDate'),
-    asNumber: makeTransform('formula', 'asNumber'),
-    asString: makeTransform('formula', 'asString'),
+    raw: makeTransform({ propertyType: 'formula', name: 'raw' }),
+    asBoolean: makeTransform({ propertyType: 'formula', name: 'asBoolean' }),
+    asDate: makeTransform({ propertyType: 'formula', name: 'asDate' }),
+    asNumber: makeTransform({ propertyType: 'formula', name: 'asNumber' }),
+    asString: makeTransform({ propertyType: 'formula', name: 'asString' }),
   },
   relation: {
-    raw: makeTransform('relation', 'raw'),
-    asIds: makeTransform('relation', 'asIds'),
-    asSingle: makeTransform('relation', 'asSingle'),
-    asSingleId: makeTransform('relation', 'asSingleId'),
+    raw: makeTransform({ propertyType: 'relation', name: 'raw' }),
+    asIds: makeTransform({ propertyType: 'relation', name: 'asIds' }),
+    asSingle: makeTransform({ propertyType: 'relation', name: 'asSingle' }),
+    asSingleId: makeTransform({ propertyType: 'relation', name: 'asSingleId' }),
   },
   rollup: {
-    raw: makeTransform('rollup', 'raw'),
-    asArray: makeTransform('rollup', 'asArray'),
-    asBoolean: makeTransform('rollup', 'asBoolean'),
-    asDate: makeTransform('rollup', 'asDate'),
-    asNumber: makeTransform('rollup', 'asNumber'),
-    asString: makeTransform('rollup', 'asString'),
+    raw: makeTransform({ propertyType: 'rollup', name: 'raw' }),
+    asArray: makeTransform({ propertyType: 'rollup', name: 'asArray' }),
+    asBoolean: makeTransform({ propertyType: 'rollup', name: 'asBoolean' }),
+    asDate: makeTransform({ propertyType: 'rollup', name: 'asDate' }),
+    asNumber: makeTransform({ propertyType: 'rollup', name: 'asNumber' }),
+    asString: makeTransform({ propertyType: 'rollup', name: 'asString' }),
   },
   created_time: {
-    raw: makeTransform('created_time', 'raw'),
-    asDate: makeTransform('created_time', 'asDate'),
+    raw: makeTransform({ propertyType: 'created_time', name: 'raw' }),
+    asDate: makeTransform({ propertyType: 'created_time', name: 'asDate' }),
   },
   created_by: {
-    raw: makeTransform('created_by', 'raw'),
+    raw: makeTransform({ propertyType: 'created_by', name: 'raw' }),
   },
   last_edited_time: {
-    raw: makeTransform('last_edited_time', 'raw'),
-    asDate: makeTransform('last_edited_time', 'asDate'),
+    raw: makeTransform({ propertyType: 'last_edited_time', name: 'raw' }),
+    asDate: makeTransform({ propertyType: 'last_edited_time', name: 'asDate' }),
   },
   last_edited_by: {
-    raw: makeTransform('last_edited_by', 'raw'),
+    raw: makeTransform({ propertyType: 'last_edited_by', name: 'raw' }),
   },
   unique_id: {
-    raw: makeTransform('unique_id', 'raw'),
+    raw: makeTransform({ propertyType: 'unique_id', name: 'raw' }),
   },
   verification: {
-    raw: makeTransform('verification', 'raw'),
+    raw: makeTransform({ propertyType: 'verification', name: 'raw' }),
   },
   button: {
-    raw: makeTransform('button', 'raw'),
+    raw: makeTransform({ propertyType: 'button', name: 'raw' }),
   },
 } as const
 

@@ -223,7 +223,7 @@ const resolveConfig = ({ config, configDir }: ResolveConfigOptions): ResolvedCon
     : configDir
 
   const databases = Object.entries(config.databases).map(([id, db]): ResolvedDatabaseConfig => {
-    const merged = mergeWithDefaults(db, config.defaults)
+    const merged = mergeWithDefaults({ database: db, ...(config.defaults && { defaults: config.defaults }) })
     const normalizedTransforms = normalizeTransforms(merged.transforms)
 
     return buildResolvedDatabaseConfig({
@@ -277,11 +277,13 @@ export const loadConfig = Effect.fnUntraced(function* (configPath?: string) {
 })
 
 /** Merges database config with defaults */
-// oxlint-disable-next-line overeng/named-args -- matches main branch
-export const mergeWithDefaults = (
-  database: DatabaseConfig,
-  defaults?: DefaultsConfig,
-): DatabaseConfig => {
+export const mergeWithDefaults = ({
+  database,
+  defaults,
+}: {
+  database: DatabaseConfig
+  defaults?: DefaultsConfig
+}): DatabaseConfig => {
   if (!defaults) return database
 
   const includeWrite = database.includeWrite ?? defaults.includeWrite

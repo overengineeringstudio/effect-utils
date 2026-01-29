@@ -27,8 +27,13 @@ type RuleContext = Readonly<TSESLint.RuleContext<'missingJsdoc', []>>
  * or with only line comments in between (e.g. `// oxlint-disable-next-line`).
  * This avoids attributing module-level doc comments to the first export.
  */
-// oxlint-disable-next-line overeng/named-args -- simple internal helper
-const hasJsDocComment = (node: ASTNode, sourceCode: Readonly<TSESLint.SourceCode>) => {
+const hasJsDocComment = ({
+  node,
+  sourceCode,
+}: {
+  node: ASTNode
+  sourceCode: Readonly<TSESLint.SourceCode>
+}) => {
   const comments = sourceCode.getCommentsBefore(node)
   const nodeStartLine = node.loc?.start.line
   if (nodeStartLine === undefined) return false
@@ -173,7 +178,7 @@ export const jsdocRequireExportsRule = {
         const n = node as any
         if (!n.exported) return
 
-        if (!hasJsDocComment(node, sourceCode)) {
+        if (!hasJsDocComment({ node, sourceCode })) {
           context.report({
             node,
             messageId: 'missingJsdoc',
@@ -194,7 +199,7 @@ export const jsdocRequireExportsRule = {
             // Only check JSDoc on the FIRST overload signature
             if (!functionOverloads.has(funcName)) {
               functionOverloads.add(funcName)
-              if (!hasJsDocComment(node, sourceCode)) {
+              if (!hasJsDocComment({ node, sourceCode })) {
                 context.report({
                   node,
                   messageId: 'missingJsdoc',
@@ -218,7 +223,7 @@ export const jsdocRequireExportsRule = {
           }
         }
 
-        if (!hasJsDocComment(node, sourceCode)) {
+        if (!hasJsDocComment({ node, sourceCode })) {
           context.report({
             node,
             messageId: 'missingJsdoc',
