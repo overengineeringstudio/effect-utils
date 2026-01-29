@@ -223,8 +223,7 @@ export const isNonEmptyString = (str: string | undefined | null): str is string 
 }
 
 /** Debug utility that logs a value and returns it unchanged */
-// oxlint-disable-next-line overeng/named-args -- debug utility
-export const __debugPassthroughLog = <T>(val: T, key = ''): T => {
+export const __debugPassthroughLog = <T>({ val, key = '' }: { val: T; key?: string }): T => {
   console.log(key, val)
   return val
 }

@@ -222,8 +222,7 @@ export class TestRenderer {
    * @param options - Search options (ansi: search in ANSI output, text: search in plain text)
    * @returns true if string is found
    */
-  // oxlint-disable-next-line overeng/named-args -- widely used API pattern (value, options)
-  contains(str: string, options: { ansi?: boolean } = {}): boolean {
+  contains({ str, options = {} }: { str: string; options?: { ansi?: boolean } }): boolean {
     this.ensureRendered()
     const source = options.ansi ? this.lastResult!.ansi : this.lastResult!.text
     return source.includes(str)
@@ -246,8 +245,9 @@ export class TestRenderer {
    * @param options - Options (ansi: return ANSI-formatted, text: return plain text)
    * @returns Line content or undefined if out of bounds
    */
-  // oxlint-disable-next-line overeng/named-args -- widely used API pattern (value, options)
-  getLine(index: number, options: { ansi?: boolean } = {}): string | undefined {
+  getLine({ index, options = {} }: { index: number; options?: { ansi?: boolean } }):
+    | string
+    | undefined {
     this.ensureRendered()
     const lines = options.ansi ? this.lastResult!.lines : this.lastResult!.textLines
     return lines[index]
@@ -293,15 +293,17 @@ export class TestRenderer {
  *
  * @example
  * ```typescript
- * const text = await renderToText(<MyComponent />)
+ * const text = await renderToText({ element: <MyComponent /> })
  * expect(text).toContain('Hello')
  * ```
  */
-// oxlint-disable-next-line overeng/named-args -- widely used API, breaking change
-export const renderToText = async (
-  element: ReactElement,
-  options: TestRendererOptions = {},
-): Promise<string> => {
+export const renderToText = async ({
+  element,
+  options = {},
+}: {
+  element: ReactElement
+  options?: TestRendererOptions
+}): Promise<string> => {
   const renderer = TestRenderer.create(options)
   await renderer.render(element)
   return renderer.toText()
@@ -316,15 +318,17 @@ export const renderToText = async (
  *
  * @example
  * ```typescript
- * const ansi = await renderToAnsi(<MyComponent />)
+ * const ansi = await renderToAnsi({ element: <MyComponent /> })
  * expect(ansi).toContain('\x1b[32m') // green
  * ```
  */
-// oxlint-disable-next-line overeng/named-args -- widely used API, breaking change
-export const renderToAnsi = async (
-  element: ReactElement,
-  options: TestRendererOptions = {},
-): Promise<string> => {
+export const renderToAnsi = async ({
+  element,
+  options = {},
+}: {
+  element: ReactElement
+  options?: TestRendererOptions
+}): Promise<string> => {
   const renderer = TestRenderer.create(options)
   await renderer.render(element)
   return renderer.toAnsi()

@@ -62,8 +62,8 @@ export const renderAsync = (
       onRender: () => {
         // This is called when React commits the tree
         if (container.root) {
-          calculateLayout(container.root.yogaNode, columns)
-          lines = renderTreeSimple(container.root, columns)
+          calculateLayout({ node: container.root.yogaNode, width: columns })
+          lines = renderTreeSimple({ root: container.root, width: columns })
         }
 
         // Use \r\n for proper terminal line breaks (CR returns to column 0, LF moves down)
@@ -112,8 +112,8 @@ export const render = (element: ReactNode, options: RenderOptions = {}): RenderR
     onRender: () => {
       // This is called when React commits the tree
       if (container.root) {
-        calculateLayout(container.root.yogaNode, columns)
-        lines = renderTreeSimple(container.root, columns)
+        calculateLayout({ node: container.root.yogaNode, width: columns })
+        lines = renderTreeSimple({ root: container.root, width: columns })
       }
     },
   }

@@ -24,26 +24,25 @@ const getRandomValue = () => {
   return Math.abs(crypto.randomBytes(4).readInt32BE() / lim)
 }
 
-// oxlint-disable-next-line overeng/named-args -- internal helper
-const pad = (num: number | string, size: number) => {
+const pad = ({ num, size }: { num: number | string; size: number }) => {
   const s = `000000000${num}`
   return s.slice(s.length - size)
 }
 
 const fingerprint = () => {
   const padding = 2
-  const pid = pad(process.pid.toString(36), padding)
+  const pid = pad({ num: process.pid.toString(36), size: padding })
   const hostname = os.hostname()
   const length = hostname.length
-  const hostId = pad(
-    hostname
+  const hostId = pad({
+    num: hostname
       .split('')
       .reduce((prev, char) => {
         return +prev + char.charCodeAt(0)
       }, +length + 36)
       .toString(36),
-    padding,
-  )
+    size: padding,
+  })
 
   return pid + hostId
 }
@@ -54,7 +53,7 @@ const base = 36
 const discreteValues = base ** blockSize
 
 const randomBlock = () => {
-  return pad(Math.trunc(getRandomValue() * discreteValues).toString(base), blockSize)
+  return pad({ num: Math.trunc(getRandomValue() * discreteValues).toString(base), size: blockSize })
 }
 
 const safeCounter = () => {
@@ -73,7 +72,7 @@ export const cuid = (): Cuid => {
   // that the uid was created.
   const timestamp = Date.now().toString(base)
   // Prevent same-machine collisions.
-  const counter = pad(safeCounter().toString(base), blockSize)
+  const counter = pad({ num: safeCounter().toString(base), size: blockSize })
   // A few chars to generate distinct ids for different
   // clients (so different computers are far less
   // likely to generate the same id)

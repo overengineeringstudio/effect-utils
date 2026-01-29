@@ -303,16 +303,18 @@ export const TuiLoggerServiceLayer = (
  * @param options - Formatting options
  * @returns Formatted string
  */
-// oxlint-disable-next-line overeng/named-args -- second param is optional options object
-export const formatLogEntry = (
-  entry: TuiLogEntry,
-  options: {
+export const formatLogEntry = ({
+  entry,
+  options = {},
+}: {
+  entry: TuiLogEntry
+  options?: {
     showTimestamp?: boolean
     showLevel?: boolean
     showFiber?: boolean
     timestampFormat?: 'time' | 'datetime' | 'iso'
-  } = {},
-): string => {
+  }
+}): string => {
   const {
     showTimestamp = true,
     showLevel = true,

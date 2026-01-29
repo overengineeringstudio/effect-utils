@@ -37,11 +37,10 @@ type TextInstance = TuiTextNode
 // Helper functions
 // =============================================================================
 
-// oxlint-disable-next-line overeng/named-args -- internal function with clear positional semantics
-const appendChild = (parent: Instance, child: TuiNode): void => {
+const appendChild = ({ parent, child }: { parent: Instance; child: TuiNode }): void => {
   // Remove from old parent if any
   if (child.parent && isElement(child.parent)) {
-    removeChild(child.parent, child)
+    removeChild({ parent: child.parent, child })
   }
 
   child.parent = parent
@@ -53,8 +52,7 @@ const appendChild = (parent: Instance, child: TuiNode): void => {
   }
 }
 
-// oxlint-disable-next-line overeng/named-args -- internal function with clear positional semantics
-const removeChild = (parent: Instance, child: TuiNode): void => {
+const removeChild = ({ parent, child }: { parent: Instance; child: TuiNode }): void => {
   const index = parent.children.indexOf(child)
   if (index === -1) return
 
@@ -87,7 +85,7 @@ export const hostConfig = {
     switch (type) {
       case 'tui-box': {
         const boxProps = props as BoxNodeProps
-        applyBoxProps(yogaNode, boxProps)
+        applyBoxProps({ node: yogaNode, props: boxProps })
         return {
           type: 'tui-box',
           parent: null,
@@ -135,12 +133,12 @@ export const hostConfig = {
   // Tree operations
   // oxlint-disable-next-line overeng/named-args -- React reconciler API
   appendInitialChild(parent: Instance, child: TuiNode) {
-    appendChild(parent, child)
+    appendChild({ parent, child })
   },
 
   // oxlint-disable-next-line overeng/named-args -- React reconciler API
   appendChild(parent: Instance, child: TuiNode) {
-    appendChild(parent, child)
+    appendChild({ parent, child })
   },
 
   // oxlint-disable-next-line overeng/named-args -- React reconciler API
@@ -154,12 +152,12 @@ export const hostConfig = {
   insertBefore(parent: Instance, child: TuiNode, beforeChild: TuiNode) {
     const index = parent.children.indexOf(beforeChild)
     if (index === -1) {
-      appendChild(parent, child)
+      appendChild({ parent, child })
       return
     }
 
     if (child.parent && isElement(child.parent)) {
-      removeChild(child.parent, child)
+      removeChild({ parent: child.parent, child })
     }
 
     child.parent = parent
@@ -179,7 +177,7 @@ export const hostConfig = {
 
   // oxlint-disable-next-line overeng/named-args -- React reconciler API
   removeChild(parent: Instance, child: TuiNode) {
-    removeChild(parent, child)
+    removeChild({ parent, child })
   },
 
   // oxlint-disable-next-line overeng/named-args -- React reconciler API
@@ -214,7 +212,7 @@ export const hostConfig = {
     if (type === 'tui-box') {
       const boxInstance = instance as TuiBoxElement
       boxInstance.props = newProps as BoxNodeProps
-      applyBoxProps(boxInstance.yogaNode, boxInstance.props)
+      applyBoxProps({ node: boxInstance.yogaNode, props: boxInstance.props })
     } else if (type === 'tui-text') {
       const textInstance = instance as TuiTextElement
       textInstance.props = newProps as TextNodeProps

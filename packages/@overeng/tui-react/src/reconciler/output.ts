@@ -39,22 +39,26 @@ interface OutputBuffer {
 }
 
 /** Create an empty output buffer */
-// oxlint-disable-next-line overeng/named-args -- internal function with clear positional semantics
-const createBuffer = (width: number, height: number): OutputBuffer => ({
+const createBuffer = ({ width, height }: { width: number; height: number }): OutputBuffer => ({
   lines: Array.from({ length: height }, () => Array.from({ length: width }, () => ' ')),
   width,
   height,
 })
 
 /** Write text to buffer at position */
-// oxlint-disable-next-line overeng/named-args -- internal function with clear positional semantics
-const writeToBuffer = (
-  buffer: OutputBuffer,
-  x: number,
-  y: number,
-  text: string,
-  maxWidth: number,
-): void => {
+const writeToBuffer = ({
+  buffer,
+  x,
+  y,
+  text,
+  maxWidth,
+}: {
+  buffer: OutputBuffer
+  x: number
+  y: number
+  text: string
+  maxWidth: number
+}): void => {
   if (y < 0 || y >= buffer.height) return
 
   let col = Math.floor(x)
@@ -81,8 +85,7 @@ const collectTextContent = (node: TuiNode): string => {
 }
 
 /** Apply text styles to a string */
-// oxlint-disable-next-line overeng/named-args -- internal function with clear positional semantics
-const applyStyles = (text: string, style: TextStyle): string => {
+const applyStyles = ({ text, style }: { text: string; style: TextStyle }): string => {
   let result = text
 
   if (style.bold) result = bold(result)
@@ -97,14 +100,19 @@ const applyStyles = (text: string, style: TextStyle): string => {
 }
 
 /** Render a node and its children to the buffer */
-// oxlint-disable-next-line overeng/named-args -- internal recursive function with clear positional semantics
-const renderNode = (
-  node: TuiNode,
-  buffer: OutputBuffer,
-  parentX: number,
-  parentY: number,
-  inheritedStyle: TextStyle,
-): void => {
+const renderNode = ({
+  node,
+  buffer,
+  parentX,
+  parentY,
+  inheritedStyle,
+}: {
+  node: TuiNode
+  buffer: OutputBuffer
+  parentX: number
+  parentY: number
+  inheritedStyle: TextStyle
+}): void => {
   if (isTextNode(node)) {
     // Raw text nodes are rendered by their parent text element
     return
@@ -125,12 +133,12 @@ const renderNode = (
 
     // Collect text content
     const text = collectTextContent(node)
-    const styledText = applyStyles(text, style)
+    const styledText = applyStyles({ text, style })
 
     // Write to buffer
     const row = Math.floor(y)
     if (row >= 0 && row < buffer.height) {
-      writeToBuffer(buffer, x, row, styledText, layout.width)
+      writeToBuffer({ buffer, x, y: row, text: styledText, maxWidth: layout.width })
     }
     return
   }
@@ -138,7 +146,7 @@ const renderNode = (
   if (isBoxElement(node)) {
     // Render children
     for (const child of node.children) {
-      renderNode(child, buffer, x, y, inheritedStyle)
+      renderNode({ node: child, buffer, parentX: x, parentY: y, inheritedStyle })
     }
   }
 }
@@ -150,8 +158,7 @@ const renderNode = (
  * @param width - Terminal width
  * @returns Array of strings, one per line
  */
-// oxlint-disable-next-line overeng/named-args -- internal function with clear positional semantics
-export const renderToLines = (root: TuiElement, width: number): string[] => {
+export const renderToLines = ({ root, width }: { root: TuiElement; width: number }): string[] => {
   const layout = getLayout(root.yogaNode)
   const height = Math.ceil(layout.height)
 
@@ -160,10 +167,10 @@ export const renderToLines = (root: TuiElement, width: number): string[] => {
   }
 
   // Create buffer
-  const buffer = createBuffer(width, height)
+  const buffer = createBuffer({ width, height })
 
   // Render tree to buffer
-  renderNode(root, buffer, 0, 0, {})
+  renderNode({ node: root, buffer, parentX: 0, parentY: 0, inheritedStyle: {} })
 
   // Convert buffer to lines, trimming trailing spaces
   return buffer.lines.map((line) => line.join('').trimEnd())
@@ -173,12 +180,24 @@ export const renderToLines = (root: TuiElement, width: number): string[] => {
  * Render a single element to lines using the simple (non-Yoga) approach.
  * Used for static content where elements are rendered individually.
  */
-// oxlint-disable-next-line overeng/named-args -- internal function with clear positional semantics
-const renderElementSimple = (element: TuiElement, width: number): string[] => {
+const renderElementSimple = ({
+  element,
+  width,
+}: {
+  element: TuiElement
+  width: number
+}): string[] => {
   const lines: string[] = []
 
-  // oxlint-disable-next-line overeng/named-args -- internal recursive function
-  const render = (node: TuiNode, style: TextStyle, boxStyle: BoxStyle): void => {
+  const render = ({
+    node,
+    style,
+    boxStyle,
+  }: {
+    node: TuiNode
+    style: TextStyle
+    boxStyle: BoxStyle
+  }): void => {
     if (isTextNode(node)) {
       return // Handled by parent
     }
@@ -190,8 +209,8 @@ const renderElementSimple = (element: TuiElement, width: number): string[] => {
     if (isTextElement(node)) {
       const mergedStyle = { ...style, ...node.props }
       const text = collectTextContent(node)
-      const styledText = applyStyles(text, mergedStyle)
-      lines.push(applyBoxStyle(styledText, boxStyle, width))
+      const styledText = applyStyles({ text, style: mergedStyle })
+      lines.push(applyBoxStyle({ line: styledText, boxStyle, terminalWidth: width }))
       return
     }
 
@@ -213,28 +232,28 @@ const renderElementSimple = (element: TuiElement, width: number): string[] => {
           if (isTextElement(child) || isTextNode(child)) {
             const mergedStyle = isTextElement(child) ? { ...style, ...child.props } : style
             const text = isTextNode(child) ? child.text : collectTextContent(child)
-            parts.push(applyStyles(text, mergedStyle))
+            parts.push(applyStyles({ text, style: mergedStyle }))
           }
         }
         if (parts.length > 0) {
-          lines.push(applyBoxStyle(parts.join(''), newBoxStyle, width))
+          lines.push(applyBoxStyle({ line: parts.join(''), boxStyle: newBoxStyle, terminalWidth: width }))
         }
         // Also render any nested boxes
         for (const child of node.children) {
           if (isBoxElement(child)) {
-            render(child, style, newBoxStyle)
+            render({ node: child, style, boxStyle: newBoxStyle })
           }
         }
       } else {
         // Column layout - render each child on its own line(s)
         for (const child of node.children) {
-          render(child, style, newBoxStyle)
+          render({ node: child, style, boxStyle: newBoxStyle })
         }
       }
     }
   }
 
-  render(element, {}, {})
+  render({ node: element, style: {}, boxStyle: {} })
   return lines
 }
 
@@ -244,11 +263,13 @@ const renderElementSimple = (element: TuiElement, width: number): string[] => {
  * Finds all Static elements and returns their rendered content
  * along with the count of items that have been committed.
  */
-// oxlint-disable-next-line overeng/named-args -- internal function with clear positional semantics
-export const extractStaticContent = (
-  root: TuiElement,
-  width: number,
-): { lines: string[]; newItemCount: number; element: TuiElement | null } => {
+export const extractStaticContent = ({
+  root,
+  width,
+}: {
+  root: TuiElement
+  width: number
+}): { lines: string[]; newItemCount: number; element: TuiElement | null } => {
   // Find the first static element
   const findStatic = (node: TuiNode): TuiElement | null => {
     if (isStaticElement(node)) {
@@ -277,7 +298,7 @@ export const extractStaticContent = (
       // Use renderTreeSimple which doesn't rely on Yoga layout measurements
       // This is necessary because standalone text elements have height=0 in Yoga
       // (text content isn't measured by Yoga, only by the terminal output)
-      const childLines = renderElementSimple(child, width)
+      const childLines = renderElementSimple({ element: child, width })
       lines.push(...childLines)
     }
   }
@@ -292,8 +313,15 @@ export const extractStaticContent = (
 /**
  * Apply box background styling to a line
  */
-// oxlint-disable-next-line overeng/named-args -- internal function with clear positional semantics
-const applyBoxStyle = (line: string, boxStyle: BoxStyle, terminalWidth: number): string => {
+const applyBoxStyle = ({
+  line,
+  boxStyle,
+  terminalWidth,
+}: {
+  line: string
+  boxStyle: BoxStyle
+  terminalWidth: number
+}): string => {
   if (!boxStyle.backgroundColor) {
     return line
   }
@@ -322,12 +350,26 @@ const applyBoxStyle = (line: string, boxStyle: BoxStyle, terminalWidth: number):
  * This is a simple approach - for more complex layouts, we'd need
  * proper 2D buffer rendering.
  */
-// oxlint-disable-next-line overeng/named-args -- internal function with clear positional semantics
-export const renderTreeSimple = (root: TuiElement, width: number): string[] => {
+export const renderTreeSimple = ({
+  root,
+  width,
+}: {
+  root: TuiElement
+  width: number
+}): string[] => {
   const lines: string[] = []
 
-  // oxlint-disable-next-line overeng/named-args -- internal recursive function
-  const render = (node: TuiNode, style: TextStyle, indent: number, boxStyle: BoxStyle): void => {
+  const render = ({
+    node,
+    style,
+    indent,
+    boxStyle,
+  }: {
+    node: TuiNode
+    style: TextStyle
+    indent: number
+    boxStyle: BoxStyle
+  }): void => {
     if (isTextNode(node)) {
       return // Handled by parent
     }
@@ -339,10 +381,10 @@ export const renderTreeSimple = (root: TuiElement, width: number): string[] => {
     if (isTextElement(node)) {
       const mergedStyle = { ...style, ...node.props }
       const text = collectTextContent(node)
-      const styledText = applyStyles(text, mergedStyle)
+      const styledText = applyStyles({ text, style: mergedStyle })
       const indentStr = ' '.repeat(indent)
       const line = indentStr + styledText
-      lines.push(applyBoxStyle(line, boxStyle, width))
+      lines.push(applyBoxStyle({ line, boxStyle, terminalWidth: width }))
       return
     }
 
@@ -366,29 +408,29 @@ export const renderTreeSimple = (root: TuiElement, width: number): string[] => {
           if (isTextElement(child) || isTextNode(child)) {
             const mergedStyle = isTextElement(child) ? { ...style, ...child.props } : style
             const text = isTextNode(child) ? child.text : collectTextContent(child)
-            parts.push(applyStyles(text, mergedStyle))
+            parts.push(applyStyles({ text, style: mergedStyle }))
           }
         }
         if (parts.length > 0) {
           const indentStr = ' '.repeat(newIndent)
           const line = indentStr + parts.join('')
-          lines.push(applyBoxStyle(line, newBoxStyle, width))
+          lines.push(applyBoxStyle({ line, boxStyle: newBoxStyle, terminalWidth: width }))
         }
         // Also render any nested boxes
         for (const child of node.children) {
           if (isBoxElement(child)) {
-            render(child, style, newIndent, newBoxStyle)
+            render({ node: child, style, indent: newIndent, boxStyle: newBoxStyle })
           }
         }
       } else {
         // Column layout - render each child on its own line(s)
         for (const child of node.children) {
-          render(child, style, newIndent, newBoxStyle)
+          render({ node: child, style, indent: newIndent, boxStyle: newBoxStyle })
         }
       }
     }
   }
 
-  render(root, {}, 0, {})
+  render({ node: root, style: {}, indent: 0, boxStyle: {} })
   return lines
 }

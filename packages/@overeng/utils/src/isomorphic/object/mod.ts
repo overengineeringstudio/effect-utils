@@ -77,14 +77,16 @@ export const objectWithKeyPrefix = <TObj extends Record<string, any>, TPrefix ex
  * const props: Props = { name: 'John', age: undefined } // Error!
  *
  * // With helper:
- * const props: Props = { name: 'John', ...optionalProp('age', maybeAge) } // OK
+ * const props: Props = { name: 'John', ...optionalProp({ key: 'age', value: maybeAge }) } // OK
  * ```
  */
-// oxlint-disable-next-line overeng/named-args -- simple spread helper with clear positional args (key, value)
-export const optionalProp = <K extends string, V>(
-  key: K,
-  value: V | undefined,
-): V extends undefined ? {} : { [P in K]: V } =>
+export const optionalProp = <K extends string, V>({
+  key,
+  value,
+}: {
+  key: K
+  value: V | undefined
+}): V extends undefined ? {} : { [P in K]: V } =>
   (value !== undefined ? { [key]: value } : {}) as V extends undefined ? {} : { [P in K]: V }
 
 /** Type that removes keys with undefined values from an object type */

@@ -211,7 +211,7 @@ export const createRoot = (
     const width = viewport.columns
 
     // Handle static content first
-    const staticResult = extractStaticContent(container.root, width)
+    const staticResult = extractStaticContent({ root: container.root, width })
     if (staticResult.lines.length > 0) {
       let linesToAppend = staticResult.lines
 
@@ -239,10 +239,10 @@ export const createRoot = (
     }
 
     // Calculate layout
-    calculateLayout(container.root.yogaNode, width)
+    calculateLayout({ node: container.root.yogaNode, width })
 
     // Render to lines
-    let lines = renderTreeSimple(container.root, width)
+    let lines = renderTreeSimple({ root: container.root, width })
 
     // Apply maxDynamicLines limit
     if (lines.length > maxDynamicLines) {

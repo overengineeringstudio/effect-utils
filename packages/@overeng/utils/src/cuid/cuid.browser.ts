@@ -25,14 +25,16 @@ const getRandomValue = () => {
   return Math.abs(crypto.getRandomValues(new Uint32Array(1))[0]! / lim)
 }
 
-// oxlint-disable-next-line overeng/named-args -- internal helper
-const pad = (num: number | string, size: number) => {
+const pad = ({ num, size }: { num: number | string; size: number }) => {
   const s = `000000000${num}`
   return s.slice(s.length - size)
 }
 
 const globalCount = Object.keys(globalThis).length
-const clientId = pad(navigator.userAgent.length.toString(36) + globalCount.toString(36), 4)
+const clientId = pad({
+  num: navigator.userAgent.length.toString(36) + globalCount.toString(36),
+  size: 4,
+})
 
 const fingerprint = () => clientId
 
@@ -42,7 +44,7 @@ const base = 36
 const discreteValues = base ** blockSize
 
 const randomBlock = () => {
-  return pad(Math.trunc(getRandomValue() * discreteValues).toString(base), blockSize)
+  return pad({ num: Math.trunc(getRandomValue() * discreteValues).toString(base), size: blockSize })
 }
 
 const safeCounter = () => {
@@ -61,7 +63,7 @@ export const cuid = (): Cuid => {
   // that the uid was created.
   const timestamp = Date.now().toString(base)
   // Prevent same-machine collisions.
-  const counter = pad(safeCounter().toString(base), blockSize)
+  const counter = pad({ num: safeCounter().toString(base), size: blockSize })
   // A few chars to generate distinct ids for different
   // clients (so different computers are far less
   // likely to generate the same id)

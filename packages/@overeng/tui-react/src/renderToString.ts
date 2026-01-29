@@ -81,7 +81,7 @@ export const renderToString = async (
       lines.length = 0
 
       // Handle static content first
-      const staticResult = extractStaticContent(container.root, width)
+      const staticResult = extractStaticContent({ root: container.root, width })
       if (staticResult.lines.length > 0) {
         lines.push(...staticResult.lines)
         // Update the committed count
@@ -91,10 +91,10 @@ export const renderToString = async (
       }
 
       // Calculate layout
-      calculateLayout(container.root.yogaNode, width)
+      calculateLayout({ node: container.root.yogaNode, width })
 
       // Render to lines
-      const dynamicLines = renderTreeSimple(container.root, width)
+      const dynamicLines = renderTreeSimple({ root: container.root, width })
       lines.push(...dynamicLines)
     },
   }

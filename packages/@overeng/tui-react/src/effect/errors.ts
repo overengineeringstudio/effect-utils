@@ -63,8 +63,13 @@ export type CommandError = Schema.Schema.Type<typeof CommandError>
 /**
  * Create a validation error.
  */
-// oxlint-disable-next-line overeng/named-args -- simple factory with clear positional semantics
-export const validationError = (message: string, field?: string): ValidationError => ({
+export const validationError = ({
+  message,
+  field,
+}: {
+  message: string
+  field?: string
+}): ValidationError => ({
   _tag: 'CommandError.Validation',
   message,
   ...(field !== undefined ? { field } : {}),
@@ -73,8 +78,13 @@ export const validationError = (message: string, field?: string): ValidationErro
 /**
  * Create a runtime error.
  */
-// oxlint-disable-next-line overeng/named-args -- simple factory with clear positional semantics
-export const runtimeError = (message: string, cause?: unknown): RuntimeError => ({
+export const runtimeError = ({
+  message,
+  cause,
+}: {
+  message: string
+  cause?: unknown
+}): RuntimeError => ({
   _tag: 'CommandError.Runtime',
   message,
   ...(cause !== undefined ? { cause } : {}),
@@ -107,10 +117,10 @@ export const outputJsonError = (error: CommandError): Effect.Effect<void> =>
  */
 export const toCommandError = (error: unknown): CommandError => {
   if (error instanceof Error) {
-    return runtimeError(error.message, error.cause)
+    return runtimeError({ message: error.message, cause: error.cause })
   }
   if (typeof error === 'string') {
-    return runtimeError(error)
+    return runtimeError({ message: error })
   }
   if (typeof error === 'object' && error !== null && '_tag' in error) {
     // Already a tagged error
@@ -118,9 +128,9 @@ export const toCommandError = (error: unknown): CommandError => {
     if (tagged._tag.startsWith('CommandError.')) {
       return error as CommandError
     }
-    return runtimeError(tagged.message ?? String(error), error)
+    return runtimeError({ message: tagged.message ?? String(error), cause: error })
   }
-  return runtimeError(String(error))
+  return runtimeError({ message: String(error) })
 }
 
 /**

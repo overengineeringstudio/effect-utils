@@ -445,13 +445,18 @@ const countMembers = (members: readonly MemberStatus[]) => {
   let nested = 0
   let synced = 0
 
-  // oxlint-disable-next-line overeng/named-args -- simple recursive helper
-  const countRecursive = (ms: readonly MemberStatus[], isNested: boolean): void => {
+  const countRecursive = ({
+    ms,
+    isNested,
+  }: {
+    ms: readonly MemberStatus[]
+    isNested: boolean
+  }): void => {
     for (const m of ms) {
       if (isNested) nested++
       if (m.exists) synced++
       if (m.nestedMembers) {
-        countRecursive(m.nestedMembers, true)
+        countRecursive({ ms: m.nestedMembers, isNested: true })
       }
     }
   }
@@ -459,7 +464,7 @@ const countMembers = (members: readonly MemberStatus[]) => {
   for (const m of members) {
     if (m.exists) synced++
     if (m.nestedMembers) {
-      countRecursive(m.nestedMembers, true)
+      countRecursive({ ms: m.nestedMembers, isNested: true })
     }
   }
 

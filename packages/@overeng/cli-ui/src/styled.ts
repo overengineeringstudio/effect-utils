@@ -25,8 +25,7 @@ export const resetColorCache = resetColorCacheInternal
 // =============================================================================
 
 /** Apply ANSI codes to text, respecting NO_COLOR */
-// oxlint-disable-next-line overeng/named-args -- simple internal utility
-const applyStyle = (code: string, text: string): string => {
+const applyStyle = ({ code, text }: { code: string; text: string }): string => {
   if (isColorDisabled()) {
     return text
   }
@@ -34,8 +33,7 @@ const applyStyle = (code: string, text: string): string => {
 }
 
 /** Apply multiple ANSI codes to text */
-// oxlint-disable-next-line overeng/named-args -- simple internal utility
-const applyStyles = (codes: string[], text: string): string => {
+const applyStyles = ({ codes, text }: { codes: string[]; text: string }): string => {
   if (isColorDisabled()) {
     return text
   }
@@ -49,53 +47,53 @@ const applyStyles = (codes: string[], text: string): string => {
 /** Text styling functions for terminal output */
 export const styled = {
   // Text decorations
-  bold: (text: string) => applyStyle(colors.bold, text),
-  dim: (text: string) => applyStyle(colors.dim, text),
-  italic: (text: string) => applyStyle(colors.italic, text),
-  underline: (text: string) => applyStyle(colors.underline, text),
+  bold: (text: string) => applyStyle({ code: colors.bold, text }),
+  dim: (text: string) => applyStyle({ code: colors.dim, text }),
+  italic: (text: string) => applyStyle({ code: colors.italic, text }),
+  underline: (text: string) => applyStyle({ code: colors.underline, text }),
 
   // Standard colors
-  black: (text: string) => applyStyle(colors.black, text),
-  red: (text: string) => applyStyle(colors.red, text),
-  green: (text: string) => applyStyle(colors.green, text),
-  yellow: (text: string) => applyStyle(colors.yellow, text),
-  blue: (text: string) => applyStyle(colors.blue, text),
-  magenta: (text: string) => applyStyle(colors.magenta, text),
-  cyan: (text: string) => applyStyle(colors.cyan, text),
-  white: (text: string) => applyStyle(colors.white, text),
+  black: (text: string) => applyStyle({ code: colors.black, text }),
+  red: (text: string) => applyStyle({ code: colors.red, text }),
+  green: (text: string) => applyStyle({ code: colors.green, text }),
+  yellow: (text: string) => applyStyle({ code: colors.yellow, text }),
+  blue: (text: string) => applyStyle({ code: colors.blue, text }),
+  magenta: (text: string) => applyStyle({ code: colors.magenta, text }),
+  cyan: (text: string) => applyStyle({ code: colors.cyan, text }),
+  white: (text: string) => applyStyle({ code: colors.white, text }),
 
   // Bright colors
-  brightBlack: (text: string) => applyStyle(colors.brightBlack, text),
-  brightRed: (text: string) => applyStyle(colors.brightRed, text),
-  brightGreen: (text: string) => applyStyle(colors.brightGreen, text),
-  brightYellow: (text: string) => applyStyle(colors.brightYellow, text),
-  brightBlue: (text: string) => applyStyle(colors.brightBlue, text),
-  brightMagenta: (text: string) => applyStyle(colors.brightMagenta, text),
-  brightCyan: (text: string) => applyStyle(colors.brightCyan, text),
-  brightWhite: (text: string) => applyStyle(colors.brightWhite, text),
+  brightBlack: (text: string) => applyStyle({ code: colors.brightBlack, text }),
+  brightRed: (text: string) => applyStyle({ code: colors.brightRed, text }),
+  brightGreen: (text: string) => applyStyle({ code: colors.brightGreen, text }),
+  brightYellow: (text: string) => applyStyle({ code: colors.brightYellow, text }),
+  brightBlue: (text: string) => applyStyle({ code: colors.brightBlue, text }),
+  brightMagenta: (text: string) => applyStyle({ code: colors.brightMagenta, text }),
+  brightCyan: (text: string) => applyStyle({ code: colors.brightCyan, text }),
+  brightWhite: (text: string) => applyStyle({ code: colors.brightWhite, text }),
 
   // Semantic colors
-  success: (text: string) => applyStyle(semantic.success, text),
-  error: (text: string) => applyStyle(semantic.error, text),
-  warning: (text: string) => applyStyle(semantic.warning, text),
-  info: (text: string) => applyStyle(semantic.info, text),
-  muted: (text: string) => applyStyle(semantic.muted, text),
+  success: (text: string) => applyStyle({ code: semantic.success, text }),
+  error: (text: string) => applyStyle({ code: semantic.error, text }),
+  warning: (text: string) => applyStyle({ code: semantic.warning, text }),
+  info: (text: string) => applyStyle({ code: semantic.info, text }),
+  muted: (text: string) => applyStyle({ code: semantic.muted, text }),
 
   // Combined styles (common patterns)
-  boldRed: (text: string) => applyStyles([colors.bold, colors.red], text),
-  boldGreen: (text: string) => applyStyles([colors.bold, colors.green], text),
-  boldYellow: (text: string) => applyStyles([colors.bold, colors.yellow], text),
-  boldBlue: (text: string) => applyStyles([colors.bold, colors.blue], text),
-  boldCyan: (text: string) => applyStyles([colors.bold, colors.cyan], text),
-  boldMagenta: (text: string) => applyStyles([colors.bold, colors.magenta], text),
+  boldRed: (text: string) => applyStyles({ codes: [colors.bold, colors.red], text }),
+  boldGreen: (text: string) => applyStyles({ codes: [colors.bold, colors.green], text }),
+  boldYellow: (text: string) => applyStyles({ codes: [colors.bold, colors.yellow], text }),
+  boldBlue: (text: string) => applyStyles({ codes: [colors.bold, colors.blue], text }),
+  boldCyan: (text: string) => applyStyles({ codes: [colors.bold, colors.cyan], text }),
+  boldMagenta: (text: string) => applyStyles({ codes: [colors.bold, colors.magenta], text }),
 
   // Dim + color combinations (for subtle colored text)
-  dimRed: (text: string) => applyStyles([colors.dim, colors.red], text),
-  dimGreen: (text: string) => applyStyles([colors.dim, colors.green], text),
-  dimYellow: (text: string) => applyStyles([colors.dim, colors.yellow], text),
-  dimBlue: (text: string) => applyStyles([colors.dim, colors.blue], text),
-  dimCyan: (text: string) => applyStyles([colors.dim, colors.cyan], text),
-  dimMagenta: (text: string) => applyStyles([colors.dim, colors.magenta], text),
+  dimRed: (text: string) => applyStyles({ codes: [colors.dim, colors.red], text }),
+  dimGreen: (text: string) => applyStyles({ codes: [colors.dim, colors.green], text }),
+  dimYellow: (text: string) => applyStyles({ codes: [colors.dim, colors.yellow], text }),
+  dimBlue: (text: string) => applyStyles({ codes: [colors.dim, colors.blue], text }),
+  dimCyan: (text: string) => applyStyles({ codes: [colors.dim, colors.cyan], text }),
+  dimMagenta: (text: string) => applyStyles({ codes: [colors.dim, colors.magenta], text }),
 } as const
 
 // =============================================================================
@@ -103,8 +101,13 @@ export const styled = {
 // =============================================================================
 
 /** Apply raw ANSI codes (for custom combinations) */
-// oxlint-disable-next-line overeng/named-args -- simple utility for custom ANSI codes
-export const raw = (codes: string | string[], text: string): string => {
+export const raw = ({
+  codes,
+  text,
+}: {
+  codes: string | string[]
+  text: string
+}): string => {
   const codeArray = Array.isArray(codes) ? codes : [codes]
-  return applyStyles(codeArray, text)
+  return applyStyles({ codes: codeArray, text })
 }

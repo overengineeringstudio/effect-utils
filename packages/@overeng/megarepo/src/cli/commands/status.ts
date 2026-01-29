@@ -215,8 +215,13 @@ export const statusCommand = Cli.Command.make(
         const members = yield* scanMembersRecursive({ megarepoRoot: root.value })
 
         // Emit each member as a separate NDJSON line
-        // oxlint-disable-next-line overeng/named-args -- simple utility with default
-        const emitMember = (member: MemberStatus, depth: number = 0): void => {
+        const emitMember = ({
+          member,
+          depth = 0,
+        }: {
+          member: MemberStatus
+          depth?: number
+        }): void => {
           console.log(
             JSON.stringify({
               _tag: 'member',
@@ -233,13 +238,13 @@ export const statusCommand = Cli.Command.make(
           // Recursively emit nested members
           if (member.nestedMembers) {
             for (const nested of member.nestedMembers) {
-              emitMember(nested, depth + 1)
+              emitMember({ member: nested, depth: depth + 1 })
             }
           }
         }
 
         for (const member of members) {
-          emitMember(member)
+          emitMember({ member })
         }
 
         // Emit completion
