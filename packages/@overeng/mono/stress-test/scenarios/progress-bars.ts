@@ -129,7 +129,7 @@ export const runProgressBars = (userConfig: Partial<ProgressBarsConfig> = {}) =>
             if (now - lastMetricsUpdate > 500) {
               metrics.tick()
               const m = metrics.getMetrics()
-              process.stdout.write(`\r${renderMetricsLine(m)}`)
+              process.stdout.write(`\r${renderMetricsLine({ metrics: m })}`)
               lastMetricsUpdate = now
             }
           }),

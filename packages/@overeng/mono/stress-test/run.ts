@@ -29,8 +29,7 @@ const parseArgs = () => {
   const args = process.argv.slice(2)
   const scenario = args.find((a) => !a.startsWith('--')) ?? 'comparison'
 
-  // oxlint-disable-next-line overeng/named-args -- simple CLI arg parser utility
-  const getArg = (name: string, defaultValue: number): number => {
+  const getArg = ({ name, defaultValue }: { name: string; defaultValue: number }): number => {
     const idx = args.findIndex((a) => a === `--${name}`)
     if (idx >= 0 && args[idx + 1]) {
       return parseInt(args[idx + 1], 10)
@@ -42,10 +41,10 @@ const parseArgs = () => {
 
   return {
     scenario,
-    taskCount: quick ? 20 : getArg('tasks', 50),
-    eventsPerSecond: quick ? 500 : getArg('events', 1000),
-    durationSeconds: quick ? 5 : getArg('duration', 10),
-    concurrency: getArg('concurrency', 8),
+    taskCount: quick ? 20 : getArg({ name: 'tasks', defaultValue: 50 }),
+    eventsPerSecond: quick ? 500 : getArg({ name: 'events', defaultValue: 1000 }),
+    durationSeconds: quick ? 5 : getArg({ name: 'duration', defaultValue: 10 }),
+    concurrency: getArg({ name: 'concurrency', defaultValue: 8 }),
     quick,
   }
 }

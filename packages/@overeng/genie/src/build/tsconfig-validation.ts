@@ -36,12 +36,15 @@ const getTsconfigReferences = (tsconfigContent: string): string[] => {
 }
 
 /** Map package name to expected tsconfig reference path */
-// oxlint-disable-next-line overeng/named-args -- simple internal mapper
-const packageNameToReferencePath = (
-  packageName: string,
-  currentPackageDir: string,
-  cwd: string,
-): string | undefined => {
+const packageNameToReferencePath = ({
+  packageName,
+  currentPackageDir,
+  cwd,
+}: {
+  packageName: string
+  currentPackageDir: string
+  cwd: string
+}): string | undefined => {
   // Common patterns for @overeng packages
   if (packageName.startsWith('@overeng/')) {
     const shortName = packageName.replace('@overeng/', '')
@@ -90,7 +93,7 @@ export const validateTsconfigReferences = Effect.fn('validateTsconfigReferences'
 
     // Convert workspace deps to expected reference paths
     const expectedReferences = workspaceDeps
-      .map((dep) => packageNameToReferencePath(dep, dir, cwd))
+      .map((dep) => packageNameToReferencePath({ packageName: dep, currentPackageDir: dir, cwd }))
       .filter((ref): ref is string => ref !== undefined)
 
     // Find missing and extra references

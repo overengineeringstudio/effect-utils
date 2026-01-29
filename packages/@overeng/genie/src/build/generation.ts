@@ -102,8 +102,13 @@ const oxfmtSupportedExtensions = new Set(['.json', '.jsonc', '.yml', '.yaml'])
  * ensures consistent output regardless of where genie is invoked, since the `.genie.ts` source
  * file is always a sibling of the generated file.
  */
-// oxlint-disable-next-line overeng/named-args -- simple internal helper
-const getHeaderComment = (targetFilePath: string, sourceFile: string): string => {
+const getHeaderComment = ({
+  targetFilePath,
+  sourceFile,
+}: {
+  targetFilePath: string
+  sourceFile: string
+}): string => {
   const ext = path.extname(targetFilePath)
   const basename = path.basename(targetFilePath)
 
@@ -312,7 +317,7 @@ export const getExpectedContent = Effect.fn('getExpectedContent')(function* ({
     rawContent = enrichPackageJsonMarker({ content: rawContent, sourceFile })
   }
 
-  const header = getHeaderComment(targetFilePath, sourceFile)
+  const header = getHeaderComment({ targetFilePath, sourceFile })
   const formattedContent = yield* formatWithOxfmt({
     targetFilePath,
     content: rawContent,

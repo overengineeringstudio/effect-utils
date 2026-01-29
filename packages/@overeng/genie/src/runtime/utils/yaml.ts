@@ -44,8 +44,7 @@ const quoteString = ({ str, indent }: { str: string; indent: number }): string =
   return str
 }
 
-// oxlint-disable-next-line overeng/named-args -- simple internal recursive helper
-const stringifyValue = (value: unknown, indent: number): string => {
+const stringifyValue = ({ value, indent }: { value: unknown; indent: number }): string => {
   if (value === null || value === undefined) {
     return 'null'
   }
@@ -78,7 +77,7 @@ const stringifyValue = (value: unknown, indent: number): string => {
 
     const prefix = INDENT.repeat(indent)
     return value
-      .map((item) => `\n${prefix}- ${stringifyValue(item, indent + 1).trimStart()}`)
+      .map((item) => `\n${prefix}- ${stringifyValue({ value: item, indent: indent + 1 }).trimStart()}`)
       .join('')
   }
 
@@ -97,7 +96,7 @@ const stringifyValue = (value: unknown, indent: number): string => {
 
     const lines = entries.map(([key, val]) => {
       const quotedKey = quoteKey(key)
-      const stringifiedVal = stringifyValue(val, indent + 1)
+      const stringifiedVal = stringifyValue({ value: val, indent: indent + 1 })
       if (
         typeof val === 'object' &&
         val !== null &&
@@ -203,7 +202,7 @@ const formatMultilineInlineArray = ({
  */
 export const stringify = (value: unknown): string => {
   if (typeof value !== 'object' || value === null) {
-    return stringifyValue(value, 0)
+    return stringifyValue({ value, indent: 0 })
   }
 
   const entries = Object.entries(value).filter(([k, v]) => v !== undefined && k !== COMMENT_KEY)
@@ -219,7 +218,7 @@ export const stringify = (value: unknown): string => {
 
   const lines = entries.map(([key, val]) => {
     const quotedKey = quoteKey(key)
-    const stringifiedVal = stringifyValue(val, 1)
+    const stringifiedVal = stringifyValue({ value: val, indent: 1 })
     if (
       typeof val === 'object' &&
       val !== null &&

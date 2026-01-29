@@ -235,11 +235,13 @@ interface MutableTaskState {
  * Apply event to mutable state (O(1) mutation, no copying).
  * Used by coordinator fiber for efficient state updates.
  */
-// oxlint-disable-next-line overeng/named-args -- internal event handler with clear params (tasks map, event)
-const applyEventToMutableState = (
-  tasks: Map<string, MutableTaskState>,
-  event: TaskEvent<string>,
-): void => {
+const applyEventToMutableState = ({
+  tasks,
+  event,
+}: {
+  tasks: Map<string, MutableTaskState>
+  event: TaskEvent<string>
+}): void => {
   switch (event.type) {
     case 'registered':
       tasks.set(event.taskId, {
@@ -639,10 +641,13 @@ export const runTaskGraph = <TTask extends TaskDef<string, unknown, unknown, unk
 
     // Register all tasks in mutable state
     for (const task of tasks) {
-      applyEventToMutableState(mutableTasks, {
-        type: 'registered',
-        taskId: task.id,
-        name: task.name,
+      applyEventToMutableState({
+        tasks: mutableTasks,
+        event: {
+          type: 'registered',
+          taskId: task.id,
+          name: task.name,
+        },
       })
     }
 
@@ -668,7 +673,7 @@ export const runTaskGraph = <TTask extends TaskDef<string, unknown, unknown, unk
           // Drain remaining events
           const remaining = yield* Queue.takeAll(eventQueue)
           for (const event of Chunk.toReadonlyArray(remaining)) {
-            applyEventToMutableState(mutableTasks, event)
+            applyEventToMutableState({ tasks: mutableTasks, event })
           }
           // Final snapshot
           yield* SubscriptionRef.set(stateRef, snapshotMutableState(mutableTasks))
@@ -681,7 +686,7 @@ export const runTaskGraph = <TTask extends TaskDef<string, unknown, unknown, unk
 
         // Apply events to mutable state (O(1) per event, no copying)
         for (const event of eventArray) {
-          applyEventToMutableState(mutableTasks, event)
+          applyEventToMutableState({ tasks: mutableTasks, event })
         }
 
         // Snapshot to SubscriptionRef at regular intervals (for render)

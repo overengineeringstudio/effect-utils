@@ -60,8 +60,15 @@ const hrtime = () => {
 }
 
 /** Render a progress bar */
-// oxlint-disable-next-line overeng/named-args -- simple render function with defaults
-const renderProgressBar = (progress: number, width = 30, color = GREEN): string => {
+const renderProgressBar = ({
+  progress,
+  width = 30,
+  color = GREEN,
+}: {
+  progress: number
+  width?: number
+  color?: string
+}): string => {
   const filled = Math.floor(progress * width)
   const empty = width - filled
   const bar = `${color}${'█'.repeat(filled)}${DIM}${'░'.repeat(empty)}${RESET}`
@@ -70,8 +77,15 @@ const renderProgressBar = (progress: number, width = 30, color = GREEN): string 
 }
 
 /** Render the FPS meter */
-// oxlint-disable-next-line overeng/named-args -- simple render function with clear params
-const renderFpsMeter = (fps: number, frameTimeMs: number, targetFps: number): string => {
+const renderFpsMeter = ({
+  fps,
+  frameTimeMs,
+  targetFps,
+}: {
+  fps: number
+  frameTimeMs: number
+  targetFps: number
+}): string => {
   const fpsRatio = fps / targetFps
   const fpsColor = fpsRatio >= 0.95 ? GREEN : fpsRatio >= 0.7 ? YELLOW : RED
   const frameColor = frameTimeMs < 20 ? GREEN : frameTimeMs < 50 ? YELLOW : RED
@@ -220,12 +234,12 @@ const runVisualStress = async (config: {
     const lines: string[] = []
 
     // Header with FPS meter
-    lines.push(renderFpsMeter(currentFps, frameTime, targetFps))
+    lines.push(renderFpsMeter({ fps: currentFps, frameTimeMs: frameTime, targetFps }))
 
     // Progress bars with live log messages
     for (const item of progressItems) {
       const spinner = getSpinner(frameNumber)
-      const bar = renderProgressBar(item.progress, 20, item.color)
+      const bar = renderProgressBar({ progress: item.progress, width: 20, color: item.color })
       const name = item.name.padEnd(22)
       const log = `${DIM}${item.logMessage.slice(0, 35).padEnd(35)}${RESET}`
       lines.push(`${CLEAR_LINE}${spinner} ${name} ${bar} ${log}`)
@@ -325,8 +339,7 @@ const runVisualStress = async (config: {
 
 // Parse args
 const args = process.argv.slice(2)
-// oxlint-disable-next-line overeng/named-args -- simple CLI arg parser utility
-const getArg = (name: string, defaultValue: number): number => {
+const getArg = ({ name, defaultValue }: { name: string; defaultValue: number }): number => {
   const idx = args.findIndex((a) => a === `--${name}`)
   if (idx >= 0 && args[idx + 1]) {
     return parseInt(args[idx + 1], 10)
@@ -335,9 +348,9 @@ const getArg = (name: string, defaultValue: number): number => {
 }
 
 const config = {
-  durationSeconds: getArg('duration', 10),
-  targetFps: getArg('fps', 30),
-  progressBarCount: getArg('bars', 20),
+  durationSeconds: getArg({ name: 'duration', defaultValue: 10 }),
+  targetFps: getArg({ name: 'fps', defaultValue: 30 }),
+  progressBarCount: getArg({ name: 'bars', defaultValue: 20 }),
 }
 
 console.log('╔═══════════════════════════════════════════════════════════════╗')

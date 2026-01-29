@@ -12,13 +12,17 @@ const YELLOW = '\x1b[33m'
 const RED = '\x1b[31m'
 
 /** Format a single metric with color based on threshold */
-// oxlint-disable-next-line overeng/named-args -- simple formatter with positional args
-const formatMetric = (
-  label: string,
-  value: number,
-  unit: string,
-  thresholds?: { good: number; warn: number },
-): string => {
+const formatMetric = ({
+  label,
+  value,
+  unit,
+  thresholds,
+}: {
+  label: string
+  value: number
+  unit: string
+  thresholds?: { good: number; warn: number }
+}): string => {
   let color = CYAN
   if (thresholds) {
     if (value <= thresholds.good) color = GREEN
@@ -29,33 +33,47 @@ const formatMetric = (
 }
 
 /** Render the live metrics line */
-// oxlint-disable-next-line overeng/named-args -- metrics + optional target is clear
-export const renderMetricsLine = (metrics: BenchMetrics, targetFps = 12.5): string => {
+export const renderMetricsLine = ({
+  metrics,
+  targetFps = 12.5,
+}: {
+  metrics: BenchMetrics
+  targetFps?: number
+}): string => {
   const fpsColor =
     metrics.fps >= targetFps * 0.9 ? GREEN : metrics.fps >= targetFps * 0.7 ? YELLOW : RED
   const fps = `${DIM}FPS${RESET} ${fpsColor}${metrics.fps.toFixed(1)}${RESET}${DIM}/${targetFps}${RESET}`
 
   const parts = [
     fps,
-    formatMetric('Frame', metrics.frameTimeMs, 'ms', { good: 10, warn: 50 }),
-    formatMetric('Events/s', metrics.eventThroughput, '', {
-      good: 10000,
-      warn: 50000,
+    formatMetric({ label: 'Frame', value: metrics.frameTimeMs, unit: 'ms', thresholds: { good: 10, warn: 50 } }),
+    formatMetric({
+      label: 'Events/s',
+      value: metrics.eventThroughput,
+      unit: '',
+      thresholds: { good: 10000, warn: 50000 },
     }),
-    formatMetric('State', metrics.stateUpdateTimeMs, 'ms', {
-      good: 1,
-      warn: 5,
+    formatMetric({
+      label: 'State',
+      value: metrics.stateUpdateTimeMs,
+      unit: 'ms',
+      thresholds: { good: 1, warn: 5 },
     }),
-    formatMetric('Render', metrics.renderTimeMs, 'ms', { good: 5, warn: 20 }),
-    formatMetric('Mem', metrics.memoryMB, 'MB', { good: 100, warn: 200 }),
+    formatMetric({ label: 'Render', value: metrics.renderTimeMs, unit: 'ms', thresholds: { good: 5, warn: 20 } }),
+    formatMetric({ label: 'Mem', value: metrics.memoryMB, unit: 'MB', thresholds: { good: 100, warn: 200 } }),
   ]
 
   return `┌─ BENCH: ${parts.join(' │ ')} ─┐`
 }
 
 /** Render a progress bar */
-// oxlint-disable-next-line overeng/named-args -- progress + optional width is clear
-export const renderProgressBar = (progress: number, width = 20): string => {
+export const renderProgressBar = ({
+  progress,
+  width = 20,
+}: {
+  progress: number
+  width?: number
+}): string => {
   const filled = Math.floor(progress * width)
   const empty = width - filled
   return `[${GREEN}${'█'.repeat(filled)}${DIM}${'░'.repeat(empty)}${RESET}]`
@@ -68,11 +86,13 @@ export const renderElapsed = (startTime: number): string => {
 }
 
 /** Full benchmark header with scenario info */
-// oxlint-disable-next-line overeng/named-args -- scenario + config object is clear
-export const renderBenchHeader = (
-  scenario: string,
-  config: { tasks?: number; eventsPerSec?: number; duration?: number },
-): string => {
+export const renderBenchHeader = ({
+  scenario,
+  config,
+}: {
+  scenario: string
+  config: { tasks?: number; eventsPerSec?: number; duration?: number }
+}): string => {
   const parts = [
     `${CYAN}${scenario}${RESET}`,
     config.tasks ? `${config.tasks} tasks` : null,
@@ -96,9 +116,18 @@ export const renderComparisonTable = (comparisons: {
   lines.push(`│ ${CYAN}COMPARISON${RESET}${' '.repeat(width - 12)}│`)
   lines.push('├' + '─'.repeat(width) + '┤')
 
-  // oxlint-disable-next-line overeng/named-args -- internal table row formatter
-  const formatRow = (name: string, progress: number, events: number, overhead?: number): string => {
-    const bar = renderProgressBar(progress, 20)
+  const formatRow = ({
+    name,
+    progress,
+    events,
+    overhead,
+  }: {
+    name: string
+    progress: number
+    events: number
+    overhead?: number
+  }): string => {
+    const bar = renderProgressBar({ progress, width: 20 })
     const pct = `${(progress * 100).toFixed(0)}%`.padStart(4)
     const evtStr = `events: ${events.toLocaleString()}`.padEnd(18)
     const overheadStr = overhead !== undefined ? `overhead: ${overhead.toFixed(1)}%` : ''
@@ -106,22 +135,22 @@ export const renderComparisonTable = (comparisons: {
     return `│ ${content.padEnd(width - 2)} │`
   }
 
-  lines.push(formatRow('Baseline:', comparisons.baseline.progress, comparisons.baseline.events))
+  lines.push(formatRow({ name: 'Baseline:', progress: comparisons.baseline.progress, events: comparisons.baseline.events }))
   lines.push(
-    formatRow(
-      'No renderer:',
-      comparisons.noRenderer.progress,
-      comparisons.noRenderer.events,
-      comparisons.noRenderer.overhead,
-    ),
+    formatRow({
+      name: 'No renderer:',
+      progress: comparisons.noRenderer.progress,
+      events: comparisons.noRenderer.events,
+      overhead: comparisons.noRenderer.overhead,
+    }),
   )
   lines.push(
-    formatRow(
-      'Full system:',
-      comparisons.fullSystem.progress,
-      comparisons.fullSystem.events,
-      comparisons.fullSystem.overhead,
-    ),
+    formatRow({
+      name: 'Full system:',
+      progress: comparisons.fullSystem.progress,
+      events: comparisons.fullSystem.events,
+      overhead: comparisons.fullSystem.overhead,
+    }),
   )
 
   lines.push('└' + '─'.repeat(width) + '┘')
