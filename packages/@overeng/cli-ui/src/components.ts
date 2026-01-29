@@ -25,8 +25,7 @@ const badgeStyles: Record<BadgeLevel, { bg: string; fg: string }> = {
 }
 
 /** Render a colored badge/pill (single line) */
-// oxlint-disable-next-line overeng/named-args -- simple component with clear positional args
-export const badge = (text: string, level: BadgeLevel): string => {
+export const badge = ({ text, level }: { text: string; level: BadgeLevel }): string => {
   const style = badgeStyles[level]
   return `${style.bg}${style.fg}${colors.bold} ${text} ${colors.reset}`
 }
@@ -55,8 +54,13 @@ const defaultListOptions: Required<ListOptions> = {
 }
 
 /** Render a list with optional truncation (multi-line) */
-// oxlint-disable-next-line overeng/named-args -- items + options is idiomatic
-export const list = (items: string[], options?: ListOptions): string[] => {
+export const list = ({
+  items,
+  options,
+}: {
+  items: string[]
+  options?: ListOptions
+}): string[] => {
   const opts = { ...defaultListOptions, ...options }
   const lines: string[] = []
 
@@ -95,8 +99,15 @@ const defaultKvOptions: Required<KvOptions> = {
 }
 
 /** Render a key-value pair (single line) */
-// oxlint-disable-next-line overeng/named-args -- key + value + options is idiomatic
-export const kv = (key: string, value: string, options?: KvOptions): string => {
+export const kv = ({
+  key,
+  value,
+  options,
+}: {
+  key: string
+  value: string
+  options?: KvOptions
+}): string => {
   const opts = { ...defaultKvOptions, ...options }
   return `${opts.keyStyle(key)}${opts.separator}${opts.valueStyle(value)}`
 }
@@ -151,8 +162,7 @@ const statusStyles: Record<StatusLevel, (s: string) => string> = {
 }
 
 /** Render a status indicator with optional label (single line) */
-// oxlint-disable-next-line overeng/named-args -- level + optional label is clear
-export const status = (level: StatusLevel, label?: string): string => {
+export const status = ({ level, label }: { level: StatusLevel; label?: string }): string => {
   const symbol = statusStyles[level](statusSymbols[level])
   return label ? `${symbol} ${label}` : symbol
 }
@@ -170,17 +180,27 @@ export type IndentOptions = {
 }
 
 /** Indent a single line */
-// oxlint-disable-next-line overeng/named-args -- text + options is idiomatic
-export const indent = (text: string, options?: IndentOptions): string => {
+export const indent = ({
+  text,
+  options,
+}: {
+  text: string
+  options?: IndentOptions
+}): string => {
   const size = options?.size ?? 2
   const level = options?.level ?? 1
   return `${' '.repeat(size * level)}${text}`
 }
 
 /** Indent multiple lines */
-// oxlint-disable-next-line overeng/named-args -- lines + options is idiomatic
-export const indentLines = (lines: string[], options?: IndentOptions): string[] => {
-  return lines.map((line) => indent(line, options))
+export const indentLines = ({
+  lines,
+  options,
+}: {
+  lines: string[]
+  options?: IndentOptions
+}): string[] => {
+  return lines.map((line) => indent({ text: line, ...(options && { options }) }))
 }
 
 // =============================================================================
@@ -194,8 +214,15 @@ export type SectionOptions = {
 }
 
 /** Render a labeled section with content (multi-line) */
-// oxlint-disable-next-line overeng/named-args -- label + content + options is idiomatic
-export const section = (label: string, content: string[], options?: SectionOptions): string[] => {
+export const section = ({
+  label,
+  content,
+  options,
+}: {
+  label: string
+  content: string[]
+  options?: SectionOptions
+}): string[] => {
   const contentIndent = options?.contentIndent ?? 2
   const lines: string[] = [styled.bold(label)]
 
