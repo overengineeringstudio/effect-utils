@@ -54,10 +54,10 @@ For building Bun-compiled TypeScript CLIs with `mkBunCli`, see [bun-cli-build](.
 
 We use a hybrid approach for CLIs:
 
-| Context | Method | Pros |
-|---------|--------|------|
-| **Development** | `mkSourceCli` | Fast startup, no hash management |
-| **CI/Releases** | Nix packages (`.#genie`) | Hermetic, reproducible |
+| Context         | Method                   | Pros                             |
+| --------------- | ------------------------ | -------------------------------- |
+| **Development** | `mkSourceCli`            | Fast startup, no hash management |
+| **CI/Releases** | Nix packages (`.#genie`) | Hermetic, reproducible           |
 
 ### Source-based CLIs for Devenv
 

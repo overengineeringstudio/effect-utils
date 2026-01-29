@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+
 import { InlineRenderer, type Terminal } from '../src/mod.ts'
 
 /**

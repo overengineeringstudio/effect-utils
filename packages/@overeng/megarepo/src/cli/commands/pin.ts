@@ -4,16 +4,13 @@
  * Commands to pin and unpin members to specific refs.
  */
 
-import React from 'react'
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
 import { Console, Effect, Option, Schema } from 'effect'
-
+import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'
 import { renderToString, Text } from '@overeng/tui-react'
-
-import { PinOutput, PinErrorOutput, PinWarningOutput } from '../renderers/PinOutput.tsx'
 
 import {
   buildSourceStringWithRef,
@@ -39,6 +36,7 @@ import {
 import { classifyRef } from '../../lib/ref.ts'
 import { Store, StoreLayer } from '../../lib/store.ts'
 import { Cwd, findMegarepoRoot, jsonOption } from '../context.ts'
+import { PinOutput, PinErrorOutput, PinWarningOutput } from '../renderers/PinOutput.tsx'
 
 /**
  * Pin a member to a specific ref.
@@ -104,7 +102,9 @@ export const pinCommand = Cli.Command.make(
           )
         } else {
           const output = yield* Effect.promise(() =>
-            renderToString(React.createElement(PinErrorOutput, { error: 'member_not_found', member })),
+            renderToString(
+              React.createElement(PinErrorOutput, { error: 'member_not_found', member }),
+            ),
           )
           yield* Console.error(output)
         }
@@ -170,7 +170,7 @@ export const pinCommand = Cli.Command.make(
           source.type !== 'path' ? Option.getOrElse(source.ref, () => 'main') : 'main'
 
         // Calculate new source string
-        const newSourceString = buildSourceStringWithRef(sourceString, newRef)
+        const newSourceString = buildSourceStringWithRef({ sourceString, newRef })
         const newSource = parseSourceString(newSourceString)!
 
         // Get paths for display
@@ -198,7 +198,9 @@ export const pinCommand = Cli.Command.make(
         })
 
         // Get current lock info
-        const currentLockEntry = Option.getOrUndefined(getLockedMember({ lockFile, memberName: member }))
+        const currentLockEntry = Option.getOrUndefined(
+          getLockedMember({ lockFile, memberName: member }),
+        )
         const currentLockRef = currentLockEntry?.ref ?? currentRef
         const currentLockPinned = currentLockEntry?.pinned ?? false
 
@@ -260,9 +262,9 @@ export const pinCommand = Cli.Command.make(
         }
 
         // Write updated config
-        const newConfigContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
-          config,
-        )
+        const newConfigContent = yield* Schema.encode(
+          Schema.parseJson(MegarepoConfig, { space: 2 }),
+        )(config)
         yield* fs.writeFileString(configPath, newConfigContent + '\n')
 
         // Re-parse the source with the new ref
@@ -288,9 +290,7 @@ export const pinCommand = Cli.Command.make(
           }
         } else {
           // Fetch to ensure we have the latest refs
-          yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(
-            Effect.catchAll(() => Effect.void),
-          )
+          yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(Effect.catchAll(() => Effect.void))
         }
 
         // Resolve commit
@@ -549,7 +549,10 @@ export const pinCommand = Cli.Command.make(
 
       if (worktreeReady) {
         // Update the symlink
-        if (currentLink !== null && currentLink.replace(/\/$/, '') !== commitWorktreePath.replace(/\/$/, '')) {
+        if (
+          currentLink !== null &&
+          currentLink.replace(/\/$/, '') !== commitWorktreePath.replace(/\/$/, '')
+        ) {
           yield* fs.remove(memberPathNormalized)
           yield* fs.symlink(commitWorktreePath.replace(/\/$/, ''), memberPathNormalized)
         }
@@ -576,10 +579,7 @@ export const pinCommand = Cli.Command.make(
         )
         yield* Console.log(output)
       }
-    }).pipe(
-      Effect.provide(StoreLayer),
-      Effect.withSpan('megarepo/pin'),
-    ),
+    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/pin')),
 ).pipe(Cli.Command.withDescription('Pin a member to a specific ref'))
 
 /**
@@ -666,7 +666,9 @@ export const unpinCommand = Cli.Command.make(
           )
         } else {
           const output = yield* Effect.promise(() =>
-            renderToString(React.createElement(PinErrorOutput, { error: 'member_not_found', member })),
+            renderToString(
+              React.createElement(PinErrorOutput, { error: 'member_not_found', member }),
+            ),
           )
           yield* Console.error(output)
         }
@@ -713,7 +715,11 @@ export const unpinCommand = Cli.Command.make(
         } else {
           const output = yield* Effect.promise(() =>
             renderToString(
-              React.createElement(PinOutput, { action: 'unpin', member, status: 'already_unpinned' }),
+              React.createElement(PinOutput, {
+                action: 'unpin',
+                member,
+                status: 'already_unpinned',
+              }),
             ),
           )
           yield* Console.log(output)
@@ -732,7 +738,10 @@ export const unpinCommand = Cli.Command.make(
         if (!json) {
           const output = yield* Effect.promise(() =>
             renderToString(
-              React.createElement(PinWarningOutput, { warning: 'member_removed_from_config', member }),
+              React.createElement(PinWarningOutput, {
+                warning: 'member_removed_from_config',
+                member,
+              }),
             ),
           )
           yield* Console.log(output)
@@ -762,7 +771,10 @@ export const unpinCommand = Cli.Command.make(
             const currentLink = yield* fs
               .readLink(memberPathNormalized)
               .pipe(Effect.catchAll(() => Effect.succeed(null)))
-            if (currentLink !== null && currentLink.replace(/\/$/, '') !== refWorktreePath.replace(/\/$/, '')) {
+            if (
+              currentLink !== null &&
+              currentLink.replace(/\/$/, '') !== refWorktreePath.replace(/\/$/, '')
+            ) {
               yield* fs.remove(memberPathNormalized)
               yield* fs.symlink(refWorktreePath.replace(/\/$/, ''), memberPathNormalized)
             }
@@ -780,8 +792,5 @@ export const unpinCommand = Cli.Command.make(
         )
         yield* Console.log(output)
       }
-    }).pipe(
-      Effect.provide(StoreLayer),
-      Effect.withSpan('megarepo/unpin'),
-    ),
+    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/unpin')),
 ).pipe(Cli.Command.withDescription('Unpin a member to allow updates'))

@@ -1,11 +1,22 @@
 import { catalog, packageJson, privatePackageDefaults } from '../../../genie/internal.ts'
 
+const peerDepNames = [
+  'effect',
+  'react',
+  'react-dom',
+  'react-reconciler',
+  '@effect/platform-node',
+  '@effect/cli',
+] as const
+const effectAtomDeps = ['@effect-atom/atom', '@effect-atom/atom-react'] as const
+
 export default packageJson({
   name: '@overeng/tui-react',
   ...privatePackageDefaults,
   exports: {
     '.': './src/mod.ts',
     './storybook': './src/storybook/mod.ts',
+    './opentui': './src/effect/opentui/mod.ts',
   },
   scripts: {
     storybook: 'storybook dev -p 6006',
@@ -16,19 +27,15 @@ export default packageJson({
     exports: {
       '.': './dist/mod.js',
       './storybook': './dist/storybook/mod.js',
+      './opentui': './dist/effect/opentui/mod.js',
     },
   },
   dependencies: {
-    ...catalog.pick(
-      'react',
-      'react-reconciler',
-      'yoga-layout',
-      'string-width',
-      '@overeng/tui-core',
-    ),
+    ...catalog.pick('yoga-layout', 'string-width', '@overeng/tui-core'),
   },
   devDependencies: {
     ...catalog.pick(
+      ...peerDepNames,
       // TypeScript & testing
       '@types/node',
       '@types/react',
@@ -38,6 +45,8 @@ export default packageJson({
       // Effect ecosystem
       'effect',
       '@effect/platform',
+      // Effect Atom (state management)
+      ...effectAtomDeps,
       // Storybook
       'storybook',
       '@storybook/react',
@@ -47,15 +56,14 @@ export default packageJson({
       '@xterm/headless',
       '@xterm/addon-fit',
       // Build tools
-      'react-dom',
       'vite',
       '@vitejs/plugin-react',
     ),
   },
-  peerDependencies: {
-    effect: catalog.pick('effect').effect,
-  },
+  peerDependencies: catalog.peers(...peerDepNames, ...effectAtomDeps),
   peerDependenciesMeta: {
     effect: { optional: true },
+    '@effect-atom/atom': { optional: true },
+    '@effect-atom/atom-react': { optional: true },
   },
 })

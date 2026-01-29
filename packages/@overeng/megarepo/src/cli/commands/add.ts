@@ -4,20 +4,20 @@
  * Adds a new member repository to the megarepo configuration.
  */
 
-import React from 'react'
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
 import { Console, Effect, Option, Schema } from 'effect'
+import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'
 import { renderToString } from '@overeng/tui-react'
 
-import { AddOutput, AddErrorOutput } from '../renderers/AddOutput.tsx'
 import { CONFIG_FILE_NAME, MegarepoConfig, parseSourceString } from '../../lib/config.ts'
 import * as Git from '../../lib/git.ts'
 import { StoreLayer } from '../../lib/store.ts'
 import { syncMember } from '../../lib/sync/mod.ts'
 import { Cwd, findMegarepoRoot, jsonOption } from '../context.ts'
+import { AddOutput, AddErrorOutput } from '../renderers/AddOutput.tsx'
 
 /**
  * Parse a repo reference and extract a suggested name.
@@ -131,7 +131,9 @@ export const addCommand = Cli.Command.make(
           console.log(JSON.stringify({ error: 'already_exists', member: memberName }))
         } else {
           const output = yield* Effect.promise(() =>
-            renderToString(React.createElement(AddErrorOutput, { error: 'already_exists', member: memberName })),
+            renderToString(
+              React.createElement(AddErrorOutput, { error: 'already_exists', member: memberName }),
+            ),
           )
           yield* Console.error(output)
         }
@@ -198,7 +200,11 @@ export const addCommand = Cli.Command.make(
               React.createElement(
                 Box,
                 { flexDirection: 'row' },
-                React.createElement(Text, { color: isError ? 'red' : 'green' }, isError ? '\u2717' : '\u2713'),
+                React.createElement(
+                  Text,
+                  { color: isError ? 'red' : 'green' },
+                  isError ? '\u2717' : '\u2713',
+                ),
                 React.createElement(Text, null, ' '),
                 React.createElement(Text, { bold: true }, memberName),
                 React.createElement(Text, { dim: true }, ` (${statusText})`),

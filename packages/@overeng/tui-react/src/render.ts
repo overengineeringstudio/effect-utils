@@ -5,9 +5,10 @@
  */
 
 import type { ReactNode } from 'react'
+
+import { renderTreeSimple } from './reconciler/output.ts'
 import { TuiReconciler, type TuiContainer } from './reconciler/reconciler.ts'
 import { calculateLayout } from './reconciler/yoga-utils.ts'
-import { renderTreeSimple } from './reconciler/output.ts'
 
 export interface RenderOptions {
   /** Terminal width in columns */
@@ -44,7 +45,11 @@ export interface RenderResult {
  * Synchronously render a React element to a string.
  * Note: Due to React's async nature, this returns a Promise.
  */
-export const renderAsync = (element: ReactNode, options: RenderOptions = {}): Promise<RenderResult> => {
+// oxlint-disable-next-line overeng/named-args -- widely used API, breaking change
+export const renderAsync = (
+  element: ReactNode,
+  options: RenderOptions = {},
+): Promise<RenderResult> => {
   const { columns = 80 } = options
 
   return new Promise((resolve) => {
@@ -60,7 +65,7 @@ export const renderAsync = (element: ReactNode, options: RenderOptions = {}): Pr
           calculateLayout(container.root.yogaNode, columns)
           lines = renderTreeSimple(container.root, columns)
         }
-        
+
         // Use \r\n for proper terminal line breaks (CR returns to column 0, LF moves down)
         const output = lines.join('\r\n')
         resolve({
@@ -95,6 +100,7 @@ export const renderAsync = (element: ReactNode, options: RenderOptions = {}): Pr
  * WARNING: Due to React's async scheduling, this may return empty results.
  * Use renderAsync for reliable results.
  */
+// oxlint-disable-next-line overeng/named-args -- widely used API, breaking change
 export const render = (element: ReactNode, options: RenderOptions = {}): RenderResult => {
   const { columns = 80 } = options
 

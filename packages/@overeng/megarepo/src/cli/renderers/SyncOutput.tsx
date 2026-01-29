@@ -6,6 +6,7 @@
  */
 
 import React from 'react'
+
 import { Box, Text, type BoxProps } from '@overeng/tui-react'
 
 // =============================================================================
@@ -62,10 +63,10 @@ export type SyncOutputProps = {
 // =============================================================================
 
 const symbols = {
-  check: '\u2713',  // ✓
-  cross: '\u2717',  // ✗
+  check: '\u2713', // ✓
+  cross: '\u2717', // ✗
   circle: '\u25cb', // ○
-  dot: '\u00b7',    // ·
+  dot: '\u00b7', // ·
 }
 
 // =============================================================================
@@ -85,14 +86,30 @@ const countResults = (results: readonly MemberSyncResult[]) => {
 
   for (const r of results) {
     switch (r.status) {
-      case 'cloned': cloned++; break
-      case 'synced': synced++; break
-      case 'updated': updated++; break
-      case 'locked': locked++; break
-      case 'already_synced': alreadySynced++; break
-      case 'skipped': skipped++; break
-      case 'error': errors++; break
-      case 'removed': removed++; break
+      case 'cloned':
+        cloned++
+        break
+      case 'synced':
+        synced++
+        break
+      case 'updated':
+        updated++
+        break
+      case 'locked':
+        locked++
+        break
+      case 'already_synced':
+        alreadySynced++
+        break
+      case 'skipped':
+        skipped++
+        break
+      case 'error':
+        errors++
+        break
+      case 'removed':
+        removed++
+        break
     }
   }
 
@@ -102,14 +119,22 @@ const countResults = (results: readonly MemberSyncResult[]) => {
 /** Format status text for a result */
 const formatStatusText = (result: MemberSyncResult): string => {
   switch (result.status) {
-    case 'cloned': return 'cloned'
-    case 'synced': return 'synced'
-    case 'updated': return 'updated'
-    case 'locked': return 'lock updated'
-    case 'already_synced': return 'already synced'
-    case 'skipped': return result.message ? `skipped: ${result.message}` : 'skipped'
-    case 'error': return result.message ? `error: ${result.message}` : 'error'
-    case 'removed': return 'removed'
+    case 'cloned':
+      return 'cloned'
+    case 'synced':
+      return 'synced'
+    case 'updated':
+      return 'updated'
+    case 'locked':
+      return 'lock updated'
+    case 'already_synced':
+      return 'already synced'
+    case 'skipped':
+      return result.message ? `skipped: ${result.message}` : 'skipped'
+    case 'error':
+      return result.message ? `error: ${result.message}` : 'error'
+    case 'removed':
+      return 'removed'
   }
 }
 
@@ -141,7 +166,11 @@ const CommitTransition = ({ result }: { result: MemberSyncResult }) => {
   if (result.previousCommit && result.commit) {
     const prev = result.previousCommit.slice(0, 7)
     const curr = result.commit.slice(0, 7)
-    return <Text dim>{prev} → {curr}</Text>
+    return (
+      <Text dim>
+        {prev} → {curr}
+      </Text>
+    )
   }
   if (result.commit) {
     return <Text dim>{result.commit.slice(0, 7)}</Text>
@@ -158,7 +187,10 @@ const Header = ({ name, root, modes }: { name: string; root: string; modes: stri
       <Text>{root}</Text>
     </Box>
     {modes.length > 0 && (
-      <Text dim>{'  mode: '}{modes.join(', ')}</Text>
+      <Text dim>
+        {'  mode: '}
+        {modes.join(', ')}
+      </Text>
     )}
   </Box>
 )
@@ -268,9 +300,7 @@ const AlreadySyncedLine = ({ result }: { result: MemberSyncResult }) => (
 )
 
 /** Separator line */
-const Separator = () => (
-  <Text dim>{'─'.repeat(40)}</Text>
-)
+const Separator = () => <Text dim>{'─'.repeat(40)}</Text>
 
 /** Summary section */
 /** Summary part type with key */
@@ -279,26 +309,46 @@ type SummaryPart = {
   element: React.ReactNode
 }
 
-const Summary = ({ results, dryRun }: { results: readonly MemberSyncResult[]; dryRun: boolean }) => {
+const Summary = ({
+  results,
+  dryRun,
+}: {
+  results: readonly MemberSyncResult[]
+  dryRun: boolean
+}) => {
   const counts = countResults(results)
   const parts: SummaryPart[] = []
 
   if (dryRun) {
-    if (counts.cloned > 0) parts.push({ key: 'cloned', element: <Text dim>{counts.cloned} to clone</Text> })
-    if (counts.synced > 0) parts.push({ key: 'synced', element: <Text dim>{counts.synced} to sync</Text> })
-    if (counts.updated > 0) parts.push({ key: 'updated', element: <Text dim>{counts.updated} to update</Text> })
-    if (counts.locked > 0) parts.push({ key: 'locked', element: <Text dim>{counts.locked} lock updates</Text> })
-    if (counts.removed > 0) parts.push({ key: 'removed', element: <Text color="red">{counts.removed} to remove</Text> })
-    if (counts.errors > 0) parts.push({ key: 'errors', element: <Text color="red">{counts.errors} errors</Text> })
-    if (counts.alreadySynced > 0) parts.push({ key: 'unchanged', element: <Text dim>{counts.alreadySynced} unchanged</Text> })
+    if (counts.cloned > 0)
+      parts.push({ key: 'cloned', element: <Text dim>{counts.cloned} to clone</Text> })
+    if (counts.synced > 0)
+      parts.push({ key: 'synced', element: <Text dim>{counts.synced} to sync</Text> })
+    if (counts.updated > 0)
+      parts.push({ key: 'updated', element: <Text dim>{counts.updated} to update</Text> })
+    if (counts.locked > 0)
+      parts.push({ key: 'locked', element: <Text dim>{counts.locked} lock updates</Text> })
+    if (counts.removed > 0)
+      parts.push({ key: 'removed', element: <Text color="red">{counts.removed} to remove</Text> })
+    if (counts.errors > 0)
+      parts.push({ key: 'errors', element: <Text color="red">{counts.errors} errors</Text> })
+    if (counts.alreadySynced > 0)
+      parts.push({ key: 'unchanged', element: <Text dim>{counts.alreadySynced} unchanged</Text> })
   } else {
-    if (counts.cloned > 0) parts.push({ key: 'cloned', element: <Text dim>{counts.cloned} cloned</Text> })
-    if (counts.synced > 0) parts.push({ key: 'synced', element: <Text dim>{counts.synced} synced</Text> })
-    if (counts.updated > 0) parts.push({ key: 'updated', element: <Text dim>{counts.updated} updated</Text> })
-    if (counts.locked > 0) parts.push({ key: 'locked', element: <Text dim>{counts.locked} lock updates</Text> })
-    if (counts.removed > 0) parts.push({ key: 'removed', element: <Text color="red">{counts.removed} removed</Text> })
-    if (counts.errors > 0) parts.push({ key: 'errors', element: <Text color="red">{counts.errors} errors</Text> })
-    if (counts.alreadySynced > 0) parts.push({ key: 'unchanged', element: <Text dim>{counts.alreadySynced} unchanged</Text> })
+    if (counts.cloned > 0)
+      parts.push({ key: 'cloned', element: <Text dim>{counts.cloned} cloned</Text> })
+    if (counts.synced > 0)
+      parts.push({ key: 'synced', element: <Text dim>{counts.synced} synced</Text> })
+    if (counts.updated > 0)
+      parts.push({ key: 'updated', element: <Text dim>{counts.updated} updated</Text> })
+    if (counts.locked > 0)
+      parts.push({ key: 'locked', element: <Text dim>{counts.locked} lock updates</Text> })
+    if (counts.removed > 0)
+      parts.push({ key: 'removed', element: <Text color="red">{counts.removed} removed</Text> })
+    if (counts.errors > 0)
+      parts.push({ key: 'errors', element: <Text color="red">{counts.errors} errors</Text> })
+    if (counts.alreadySynced > 0)
+      parts.push({ key: 'unchanged', element: <Text dim>{counts.alreadySynced} unchanged</Text> })
   }
 
   if (parts.length === 0) {
@@ -323,7 +373,7 @@ const GeneratedFiles = ({ files, dryRun }: { files: readonly string[]; dryRun: b
     <Text>{dryRun ? 'Would generate:' : 'Generated:'}</Text>
     {files.map((file) => (
       <Box key={file} flexDirection="row">
-        <Text>  </Text>
+        <Text> </Text>
         {dryRun ? <Text dim>→</Text> : <Text color="green">{symbols.check}</Text>}
         <Text> </Text>
         <Text bold>{file}</Text>
@@ -338,7 +388,7 @@ const NestedMegareposHint = ({ count }: { count: number }) => (
     <Text dim>
       Note: {count} member{count > 1 ? 's' : ''} contain nested megarepos
     </Text>
-    <Text dim>      Run 'mr sync --deep' to sync them</Text>
+    <Text dim> Run 'mr sync --deep' to sync them</Text>
   </Box>
 )
 
@@ -404,38 +454,53 @@ export const SyncOutput = ({
       ) : (
         <>
           {/* Cloned */}
-          {cloned.map((r) => <ClonedLine key={r.name} result={r} />)}
+          {cloned.map((r) => (
+            <ClonedLine key={r.name} result={r} />
+          ))}
 
           {/* Synced */}
-          {synced.map((r) => <SyncedLine key={r.name} result={r} />)}
+          {synced.map((r) => (
+            <SyncedLine key={r.name} result={r} />
+          ))}
 
           {/* Updated */}
-          {updated.map((r) => <UpdatedLine key={r.name} result={r} />)}
+          {updated.map((r) => (
+            <UpdatedLine key={r.name} result={r} />
+          ))}
 
           {/* Locked */}
-          {locked.map((r) => <LockedLine key={r.name} result={r} />)}
+          {locked.map((r) => (
+            <LockedLine key={r.name} result={r} />
+          ))}
 
           {/* Removed */}
-          {removed.map((r) => <RemovedLine key={r.name} result={r} dryRun={dryRun} />)}
+          {removed.map((r) => (
+            <RemovedLine key={r.name} result={r} dryRun={dryRun} />
+          ))}
 
           {/* Errors */}
-          {errors.map((r) => <ErrorLine key={r.name} result={r} />)}
+          {errors.map((r) => (
+            <ErrorLine key={r.name} result={r} />
+          ))}
 
           {/* Skipped */}
-          {skipped.map((r) => <SkippedLine key={r.name} result={r} />)}
+          {skipped.map((r) => (
+            <SkippedLine key={r.name} result={r} />
+          ))}
 
           {/* Already synced */}
-          {alreadySynced.length > 0 && (
-            alreadySynced.length <= 5 || hasChanges ? (
+          {alreadySynced.length > 0 &&
+            (alreadySynced.length <= 5 || hasChanges ? (
               // Show individually
               alreadySynced.map((r) => <AlreadySyncedLine key={r.name} result={r} />)
             ) : (
               // Compact display
               <Box flexDirection="row">
-                <Text dim>{symbols.check} {alreadySynced.length} members already synced</Text>
+                <Text dim>
+                  {symbols.check} {alreadySynced.length} members already synced
+                </Text>
               </Box>
-            )
-          )}
+            ))}
         </>
       )}
 
@@ -445,9 +510,7 @@ export const SyncOutput = ({
       <Summary results={results} dryRun={dryRun} />
 
       {/* Generated files */}
-      {generatedFiles.length > 0 && (
-        <GeneratedFiles files={generatedFiles} dryRun={dryRun} />
-      )}
+      {generatedFiles.length > 0 && <GeneratedFiles files={generatedFiles} dryRun={dryRun} />}
 
       {/* Nested megarepos hint */}
       {nestedMegarepos.length > 0 && !deep && (
@@ -456,5 +519,3 @@ export const SyncOutput = ({
     </Box>
   )
 }
-
-

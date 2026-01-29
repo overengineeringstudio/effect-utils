@@ -7,6 +7,7 @@
 [react-reconciler](https://www.npmjs.com/package/react-reconciler) is React's official package for creating custom renderers. It provides the reconciliation algorithm (diffing, scheduling) while you implement the "host config" that describes how to create and manipulate your target platform's primitives.
 
 **Used by:**
+
 - React DOM (browser)
 - React Native (mobile)
 - React ART (canvas/SVG)
@@ -26,17 +27,17 @@ const hostConfig = {
   createInstance(type, props) {
     return { type, props, children: [] }
   },
-  
+
   // Create a text node
   createTextInstance(text) {
     return { text }
   },
-  
+
   // Append child to parent
   appendChild(parent, child) {
     parent.children.push(child)
   },
-  
+
   // ... many more methods
 }
 
@@ -52,15 +53,15 @@ For platforms like DOM where nodes are mutated in place:
 ```typescript
 const hostConfig = {
   supportsMutation: true,
-  
+
   appendChild(parent, child) {
     parent.appendChild(child)
   },
-  
+
   removeChild(parent, child) {
     parent.removeChild(child)
   },
-  
+
   commitUpdate(instance, updatePayload, type, prevProps, nextProps) {
     // Mutate instance to match nextProps
   },
@@ -74,7 +75,7 @@ For immutable tree platforms (like React Native Fabric):
 ```typescript
 const hostConfig = {
   supportsPersistence: true,
-  
+
   cloneInstance(instance, updatePayload, type, prevProps, nextProps) {
     return { ...instance, props: nextProps }
   },
@@ -262,17 +263,17 @@ interface TuiContainer {
 const hostConfig = {
   supportsMutation: true,
   supportsPersistence: false,
-  
+
   createInstance(type, props): TuiElement {
     const yogaNode = Yoga.Node.create()
     applyLayoutProps(yogaNode, props)
     return { type, props, yogaNode, children: [], parent: null }
   },
-  
+
   createTextInstance(text): TuiTextNode {
     return { type: 'text', text, parent: null }
   },
-  
+
   appendInitialChild(parent, child) {
     child.parent = parent
     parent.children.push(child)
@@ -280,15 +281,15 @@ const hostConfig = {
       parent.yogaNode.insertChild(child.yogaNode, parent.yogaNode.getChildCount())
     }
   },
-  
+
   appendChild(parent, child) {
     this.appendInitialChild(parent, child)
   },
-  
+
   appendChildToContainer(container, child) {
     container.root = child as TuiElement
   },
-  
+
   removeChild(parent, child) {
     const index = parent.children.indexOf(child)
     if (index !== -1) {
@@ -299,46 +300,60 @@ const hostConfig = {
       }
     }
   },
-  
+
   removeChildFromContainer(container, child) {
     if (container.root === child) {
       container.root = null
     }
   },
-  
+
   prepareUpdate() {
     return true // Always update (simple approach)
   },
-  
+
   commitUpdate(instance, payload, type, prevProps, nextProps) {
     instance.props = nextProps
     applyLayoutProps(instance.yogaNode, nextProps)
   },
-  
+
   commitTextUpdate(textInstance, prevText, nextText) {
     textInstance.text = nextText
   },
-  
+
   resetAfterCommit(container) {
     container.onRender() // Trigger terminal render
   },
-  
-  prepareForCommit() { return null },
-  
-  getRootHostContext() { return {} },
-  getChildHostContext(parent) { return parent },
-  getPublicInstance(instance) { return instance },
-  
-  finalizeInitialChildren() { return false },
-  shouldSetTextContent() { return false },
-  
+
+  prepareForCommit() {
+    return null
+  },
+
+  getRootHostContext() {
+    return {}
+  },
+  getChildHostContext(parent) {
+    return parent
+  },
+  getPublicInstance(instance) {
+    return instance
+  },
+
+  finalizeInitialChildren() {
+    return false
+  },
+  shouldSetTextContent() {
+    return false
+  },
+
   scheduleTimeout: setTimeout,
   cancelTimeout: clearTimeout,
   noTimeout: -1,
   isPrimaryRenderer: true,
-  
-  getCurrentEventPriority() { return 16 }, // DefaultEventPriority
-  
+
+  getCurrentEventPriority() {
+    return 16
+  }, // DefaultEventPriority
+
   // No-ops for features we don't use
   preparePortalMount() {},
   hideInstance() {},
@@ -357,18 +372,18 @@ const TuiReconciler = Reconciler(hostConfig)
 // Create root
 function createRoot(onRender: () => void) {
   const container: TuiContainer = { root: null, onRender }
-  
+
   const fiberRoot = TuiReconciler.createContainer(
     container,
-    0,     // LegacyRoot
-    null,  // hydrationCallbacks
+    0, // LegacyRoot
+    null, // hydrationCallbacks
     false, // isStrictMode
-    null,  // concurrentUpdatesByDefault
-    '',    // identifierPrefix
+    null, // concurrentUpdatesByDefault
+    '', // identifierPrefix
     () => {}, // onRecoverableError
-    null,  // transitionCallbacks
+    null, // transitionCallbacks
   )
-  
+
   return {
     render(element: React.ReactElement) {
       TuiReconciler.updateContainer(element, fiberRoot, null, () => {})
@@ -419,6 +434,7 @@ resetAfterCommit(container) {
 ### 2. Yoga Integration
 
 Pair Yoga nodes with React elements:
+
 - Create Yoga node in `createInstance`
 - Update Yoga props in `commitUpdate`
 - Build Yoga tree in `appendChild`
@@ -428,12 +444,14 @@ Pair Yoga nodes with React elements:
 ### 3. Text Handling
 
 Two approaches:
+
 - **Text elements**: Create text nodes, handle in render
 - **shouldSetTextContent**: Return true for elements that manage their own text
 
 ### 4. Keep Host Config Simple
 
 For terminal UIs:
+
 - Skip hydration (not needed)
 - Skip persistence (use mutation)
 - Skip concurrent features initially

@@ -36,10 +36,23 @@ export { SpinnerBasicExample } from './spinner-basic.tsx'
 export { SpinnerAllTypesExample } from './spinner-all-types.tsx'
 
 // Interactive/animated examples (for terminal demos and Storybook)
-export { SyncSimulationExample, type SyncSimulationProps, type SyncState, type SyncPhase } from './sync-simulation.tsx'
-export { LogsAboveProgressExample, type LogsAboveProgressExampleProps } from './logs-above-progress.tsx'
+export {
+  SyncSimulationExample,
+  type SyncSimulationProps,
+  type SyncState,
+  type SyncPhase,
+} from './sync-simulation.tsx'
+export {
+  LogsAboveProgressExample,
+  type LogsAboveProgressExampleProps,
+} from './logs-above-progress.tsx'
 export { ProgressListExample, type ProgressListExampleProps } from './progress-list.tsx'
-export { SyncDeepSimulationExample, type SyncDeepSimulationExampleProps, type SyncDeepState, type SyncDeepPhase } from './sync-deep-simulation.tsx'
+export {
+  SyncDeepSimulationExample,
+  type SyncDeepSimulationExampleProps,
+  type SyncDeepState,
+  type SyncDeepPhase,
+} from './sync-deep-simulation.tsx'
 
 // Stress test examples
 export { StressRapidExample, type StressRapidExampleProps } from './stress-rapid.tsx'

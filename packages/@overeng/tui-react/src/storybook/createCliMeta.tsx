@@ -10,8 +10,8 @@
 import type { Meta, ArgTypes } from '@storybook/react'
 import React from 'react'
 
-import { TerminalPreview } from './TerminalPreview.tsx'
 import { StringTerminalPreview } from './StringTerminalPreview.tsx'
+import { TerminalPreview } from './TerminalPreview.tsx'
 
 /** Render mode for CLI stories */
 export type RenderMode = 'tty' | 'string'
@@ -55,6 +55,7 @@ export interface CliMetaConfig<P extends object> {
  * export const Mixed: Story = { args: { results: exampleGcResults } }
  * ```
  */
+// oxlint-disable-next-line overeng/named-args -- Storybook meta factory pattern
 export const createCliMeta = <P extends object>(
   Component: React.ComponentType<P>,
   config: CliMetaConfig<P>,
@@ -94,11 +95,7 @@ export const createCliMeta = <P extends object>(
       // TODO also support `alt-mode` via OpenTUI and `json` mode?
       if (renderMode === 'string') {
         return (
-          <StringTerminalPreview
-            component={Component}
-            props={props as P}
-            height={terminalHeight}
-          />
+          <StringTerminalPreview component={Component} props={props as P} height={terminalHeight} />
         )
       }
       return (

@@ -213,6 +213,7 @@ When a ref is specified via `#ref`, megarepo determines the ref type using a two
 **Phase 1: Query the repository** (most accurate)
 
 After cloning/fetching, megarepo queries the local bare repo to determine the actual ref type:
+
 - Checks `refs/tags/{ref}` for tags
 - Checks `refs/remotes/origin/{ref}` for branches
 
@@ -285,19 +286,20 @@ The lock file records resolved state and is committed to git for CI reproducibil
 
 ### Lock Entry Fields
 
-| Field      | Description                                                |
-| ---------- | ---------------------------------------------------------- |
-| `url`      | Resolved URL (GitHub shorthand expanded)                   |
-| `ref`      | Current ref (branch, tag, or commit SHA)                   |
-| `commit`   | Resolved commit SHA (40 chars)                             |
-| `pinned`   | If true, `mr sync --pull` won't refresh this member        |
-| `lockedAt` | Timestamp when this entry was resolved                     |
+| Field      | Description                                         |
+| ---------- | --------------------------------------------------- |
+| `url`      | Resolved URL (GitHub shorthand expanded)            |
+| `ref`      | Current ref (branch, tag, or commit SHA)            |
+| `commit`   | Resolved commit SHA (40 chars)                      |
+| `pinned`   | If true, `mr sync --pull` won't refresh this member |
+| `lockedAt` | Timestamp when this entry was resolved              |
 
 **Note:** Local paths are NOT in the lock file - they're already local.
 
 **Pinned vs Ref Type:**
 
 The `pinned` flag and ref type serve different purposes:
+
 - **Ref type** determines what the member tracks (branch = mutable, tag/commit = immutable)
 - **Pinned flag** determines whether `sync --pull` should update the member
 
@@ -352,20 +354,21 @@ mr sync [--pull] [--frozen] [--force] [--deep] [--only <members...>] [--skip <me
 
 **Modes:**
 
-| Mode    | Command            | Behavior                                                                 |
-| ------- | ------------------ | ------------------------------------------------------------------------ |
-| Default | `mr sync`          | Ensure members exist, update lock to current worktree commits            |
-| Pull    | `mr sync --pull`   | Fetch from remote, update worktrees to latest                            |
-| Frozen  | `mr sync --frozen` | Clone if needed, apply lock → worktrees exactly, never modify lock (CI)  |
+| Mode    | Command            | Behavior                                                                |
+| ------- | ------------------ | ----------------------------------------------------------------------- |
+| Default | `mr sync`          | Ensure members exist, update lock to current worktree commits           |
+| Pull    | `mr sync --pull`   | Fetch from remote, update worktrees to latest                           |
+| Frozen  | `mr sync --frozen` | Clone if needed, apply lock → worktrees exactly, never modify lock (CI) |
 
 **Member Filtering:**
 
-| Option              | Behavior                                                    |
-| ------------------- | ----------------------------------------------------------- |
-| `--only <members>`  | Only sync the specified members (comma-separated)           |
-| `--skip <members>`  | Sync all members except the specified ones (comma-separated)|
+| Option             | Behavior                                                     |
+| ------------------ | ------------------------------------------------------------ |
+| `--only <members>` | Only sync the specified members (comma-separated)            |
+| `--skip <members>` | Sync all members except the specified ones (comma-separated) |
 
 These options are mutually exclusive. When filtering is applied:
+
 - Only the specified members are synced
 - Generators skip members that weren't synced (graceful handling of missing paths)
 - Lock file operations only affect synced members
@@ -395,11 +398,11 @@ This mode is ideal for local iteration: make commits in worktrees, then `mr sync
 
 The `--git-protocol` option controls which URL format is used when cloning repositories:
 
-| Value   | Behavior                                                                 |
-| ------- | ------------------------------------------------------------------------ |
-| `ssh`   | Always use SSH URLs (`git@github.com:owner/repo.git`)                    |
-| `https` | Always use HTTPS URLs (`https://github.com/owner/repo.git`)              |
-| `auto`  | Use lock file URL if available, otherwise SSH (default)                  |
+| Value   | Behavior                                                    |
+| ------- | ----------------------------------------------------------- |
+| `ssh`   | Always use SSH URLs (`git@github.com:owner/repo.git`)       |
+| `https` | Always use HTTPS URLs (`https://github.com/owner/repo.git`) |
+| `auto`  | Use lock file URL if available, otherwise SSH (default)     |
 
 **CI Usage:** In CI environments without SSH keys configured, use `--git-protocol=https` to clone public repositories via HTTPS:
 
@@ -430,7 +433,7 @@ Strict mode for CI that guarantees exact reproducibility:
 - Lock MUST cover all config members (no new members allowed)
 - Uses locked commits exactly
 - Fails if config has members not in lock
-- **Clones and fetches if needed** - frozen mode will clone bare repos and fetch updates to materialize the locked state; it only prevents *updating* the lock file
+- **Clones and fetches if needed** - frozen mode will clone bare repos and fetch updates to materialize the locked state; it only prevents _updating_ the lock file
 - **Uses commit-based worktree paths** (e.g., `refs/commits/<sha>/`) to guarantee the exact locked commit is checked out, regardless of what branch refs currently point to
 - **Never modifies lock file** - the lock is read-only, all state comes from the committed lock
 
@@ -463,11 +466,11 @@ mr pin effect -c abc123def    # pin to specific commit
 
 The ref type determines mutability, not the `pin` command itself:
 
-| Ref Type | Example | Mutability | Behavior on `sync --pull` (if unpinned) |
-|----------|---------|------------|----------------------------------------|
-| Branch | `main`, `feature/foo` | Mutable | Updates to latest commit |
-| Tag | `v3.0.0`, `release-1.0` | Immutable | Stays at tagged commit |
-| Commit | `abc123def...` | Immutable | Stays at exact commit |
+| Ref Type | Example                 | Mutability | Behavior on `sync --pull` (if unpinned) |
+| -------- | ----------------------- | ---------- | --------------------------------------- |
+| Branch   | `main`, `feature/foo`   | Mutable    | Updates to latest commit                |
+| Tag      | `v3.0.0`, `release-1.0` | Immutable  | Stays at tagged commit                  |
+| Commit   | `abc123def...`          | Immutable  | Stays at exact commit                   |
 
 When pinned, the member stays at its current commit regardless of ref type.
 
@@ -701,7 +704,7 @@ mr sync
 # Output:
 # Branch 'new-feature' doesn't exist in schickling/dotfiles.
 #   [c] Create from default branch (main)
-#   [s] Skip this member  
+#   [s] Skip this member
 #   [a] Abort sync
 # Choice: c
 # ✓ Created branch 'new-feature' from 'main'
@@ -944,6 +947,7 @@ To exclude specific members from lock sync:
 **Example:**
 
 Given `megarepo.lock`:
+
 ```json
 {
   "members": {
@@ -956,6 +960,7 @@ Given `megarepo.lock`:
 ```
 
 And `repos/my-app/flake.lock` with an input referencing effect-utils at a different commit:
+
 ```json
 {
   "nodes": {
@@ -972,6 +977,7 @@ And `repos/my-app/flake.lock` with an input referencing effect-utils at a differ
 ```
 
 After `mr sync`, the flake.lock will be updated to:
+
 ```json
 {
   "nodes": {

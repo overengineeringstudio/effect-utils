@@ -4,10 +4,10 @@
  * List all members in the megarepo.
  */
 
-import React from 'react'
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
 import { Console, Effect, Option, Schema } from 'effect'
+import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'
 import { renderToString, Box, Text } from '@overeng/tui-react'
@@ -31,7 +31,9 @@ export const lsCommand = Cli.Command.make('ls', { json: jsonOption }, ({ json })
       }
       const output = yield* Effect.promise(() =>
         renderToString(
-          React.createElement(Box, { flexDirection: 'row' },
+          React.createElement(
+            Box,
+            { flexDirection: 'row' },
             React.createElement(Text, { color: 'red' }, '\u2717'),
             React.createElement(Text, null, ' Not in a megarepo'),
           ),
@@ -56,7 +58,9 @@ export const lsCommand = Cli.Command.make('ls', { json: jsonOption }, ({ json })
       for (const [name, sourceString] of Object.entries(config.members)) {
         const memberOutput = yield* Effect.promise(() =>
           renderToString(
-            React.createElement(Box, { flexDirection: 'row' },
+            React.createElement(
+              Box,
+              { flexDirection: 'row' },
               React.createElement(Text, { bold: true }, name),
               React.createElement(Text, { dim: true }, ` (${sourceString})`),
             ),

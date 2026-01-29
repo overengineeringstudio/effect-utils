@@ -7,10 +7,12 @@
 **Issue:** https://github.com/cachix/devenv/issues/2433
 
 **Affected repos:**
+
 - schickling-stiftung
 - livestore
 
 **Symptoms:**
+
 - `devenv info` works (evaluation succeeds)
 - `devenv build` returns `{}` (succeeds)
 - `devenv shell` hangs indefinitely, then fails with:

@@ -3,6 +3,7 @@
  */
 
 import React from 'react'
+
 import { Box, Text } from '@overeng/tui-react'
 
 // =============================================================================
@@ -41,7 +42,14 @@ export type PinOutputProps = {
 }
 
 export type PinErrorOutputProps = {
-  error: 'not_in_megarepo' | 'member_not_found' | 'invalid_source' | 'local_path' | 'not_synced' | 'no_lock' | 'not_in_lock'
+  error:
+    | 'not_in_megarepo'
+    | 'member_not_found'
+    | 'invalid_source'
+    | 'local_path'
+    | 'not_synced'
+    | 'no_lock'
+    | 'not_in_lock'
   member?: string
 }
 
@@ -58,7 +66,15 @@ export type PinWarningOutputProps = {
 /**
  * Success output for pin command
  */
-const PinSuccess = ({ member, ref, commit }: { member: string; ref?: string | undefined; commit?: string | undefined }) => (
+const PinSuccess = ({
+  member,
+  ref,
+  commit,
+}: {
+  member: string
+  ref?: string | undefined
+  commit?: string | undefined
+}) => (
   <Box flexDirection="row">
     <Text color="green">{symbols.check}</Text>
     <Text> Pinned </Text>
@@ -92,7 +108,15 @@ const UnpinSuccess = ({ member }: { member: string }) => (
 /**
  * Already pinned/unpinned message
  */
-const AlreadyStatus = ({ member, status, commit }: { member: string; status: 'pinned' | 'unpinned'; commit?: string | undefined }) => (
+const AlreadyStatus = ({
+  member,
+  status,
+  commit,
+}: {
+  member: string
+  status: 'pinned' | 'unpinned'
+  commit?: string | undefined
+}) => (
   <Text dim>
     Member '{member}' is {status === 'pinned' ? 'already pinned' : 'not pinned'}
     {commit && ` at ${commit.slice(0, 7)}`}
@@ -102,13 +126,13 @@ const AlreadyStatus = ({ member, status, commit }: { member: string; status: 'pi
 /**
  * Dry run output
  */
-const DryRunOutput = ({ 
-  action, 
-  member, 
-  ref, 
-  commit, 
-  dryRun 
-}: { 
+const DryRunOutput = ({
+  action,
+  member,
+  ref,
+  commit,
+  dryRun,
+}: {
   action: 'pin' | 'unpin'
   member: string
   ref?: string | undefined
@@ -163,7 +187,9 @@ const DryRunOutput = ({
     )}
 
     {/* Additional actions */}
-    {(dryRun.wouldClone || dryRun.wouldCreateWorktree || dryRun.worktreeNotAvailable) && <Text> </Text>}
+    {(dryRun.wouldClone || dryRun.wouldCreateWorktree || dryRun.worktreeNotAvailable) && (
+      <Text> </Text>
+    )}
     {dryRun.wouldClone && <Text dim>{'  + would clone bare repo'}</Text>}
     {dryRun.wouldCreateWorktree && <Text dim>{'  + would create worktree'}</Text>}
     {dryRun.worktreeNotAvailable && (
@@ -182,7 +208,9 @@ const DryRunOutput = ({
  */
 export const PinOutput = ({ action, member, status, ref, commit, dryRun }: PinOutputProps) => {
   if (status === 'dry_run' && dryRun) {
-    return <DryRunOutput action={action} member={member} ref={ref} commit={commit} dryRun={dryRun} />
+    return (
+      <DryRunOutput action={action} member={member} ref={ref} commit={commit} dryRun={dryRun} />
+    )
   }
 
   if (status === 'already_pinned') {
@@ -264,5 +292,3 @@ export const PinWarningOutput = ({ warning, member, message }: PinWarningOutputP
     </Box>
   )
 }
-
-

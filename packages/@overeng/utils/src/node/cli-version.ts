@@ -104,6 +104,7 @@ const parseStamp = (stamp: string): CliStamp | undefined => {
  * - dirty:  "0.1.0 — running from local source (abc123, 5 min ago, with uncommitted changes)"
  * - clean:  "0.1.0 — running from local source (abc123, 2 hours ago)"
  */
+// oxlint-disable-next-line overeng/named-args -- internal helper
 const renderLocalVersion = (baseVersion: string, stamp: LocalStamp): string => {
   const timeAgo = formatRelativeTime(stamp.ts)
   const dirtyNote = stamp.dirty ? ', with uncommitted changes' : ''

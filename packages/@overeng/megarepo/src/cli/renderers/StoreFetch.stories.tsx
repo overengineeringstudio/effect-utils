@@ -3,9 +3,15 @@
  */
 
 import type { StoryObj } from '@storybook/react'
-import { createCliMeta } from '@overeng/tui-react/storybook'
+
 import { forceColorLevel } from '@overeng/cli-ui'
-import { StoreFetchOutput, type StoreFetchOutputProps, type StoreFetchResult } from './StoreOutput.tsx'
+import { createCliMeta } from '@overeng/tui-react/storybook'
+
+import {
+  StoreFetchOutput,
+  type StoreFetchOutputProps,
+  type StoreFetchResult,
+} from './StoreOutput.tsx'
 
 forceColorLevel('truecolor')
 

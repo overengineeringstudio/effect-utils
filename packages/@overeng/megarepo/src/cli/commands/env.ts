@@ -4,10 +4,10 @@
  * Print environment variables for shell integration.
  */
 
-import React from 'react'
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
 import { Console, Effect, Option, Schema } from 'effect'
+import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'
 import { renderToString, Box, Text } from '@overeng/tui-react'
@@ -43,7 +43,9 @@ export const envCommand = Cli.Command.make(
         }
         const output = yield* Effect.promise(() =>
           renderToString(
-            React.createElement(Box, { flexDirection: 'row' },
+            React.createElement(
+              Box,
+              { flexDirection: 'row' },
               React.createElement(Text, { color: 'red' }, '\u2717'),
               React.createElement(Text, null, ' No megarepo.json found'),
             ),

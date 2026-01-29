@@ -5,7 +5,8 @@
  * Uses @overeng/tui-react for rendering.
  */
 
-import { Effect, Fiber, Layer, Stream, SubscriptionRef } from 'effect'
+import type { SubscriptionRef } from 'effect'
+import { Effect, Fiber, Layer, Stream } from 'effect'
 import React, { useState, useEffect, useMemo } from 'react'
 
 import { isTTY } from '@overeng/cli-ui'
@@ -94,10 +95,8 @@ const Header = ({
 }) => (
   <Box>
     <Text bold>{title}</Text>
-    {subtitle && <Text dim>  {subtitle}</Text>}
-    {modes && modes.length > 0 && (
-      <Text dim>  mode: {modes.join(', ')}</Text>
-    )}
+    {subtitle && <Text dim> {subtitle}</Text>}
+    {modes && modes.length > 0 && <Text dim> mode: {modes.join(', ')}</Text>}
     <Text> </Text>
   </Box>
 )
@@ -116,13 +115,7 @@ const LogLine = ({ log }: { log: SyncLogEntry }) => {
 }
 
 /** Summary component */
-const Summary = ({
-  items,
-  startTime,
-}: {
-  items: readonly TaskItem[]
-  startTime: number
-}) => {
+const Summary = ({ items, startTime }: { items: readonly TaskItem[]; startTime: number }) => {
   const [elapsed, setElapsed] = useState(() => Date.now() - startTime)
 
   useEffect(() => {
@@ -140,11 +133,21 @@ const Summary = ({
     let skipped = 0
     for (const item of items) {
       switch (item.status) {
-        case 'pending': pending++; break
-        case 'active': active++; break
-        case 'success': success++; break
-        case 'error': error++; break
-        case 'skipped': skipped++; break
+        case 'pending':
+          pending++
+          break
+        case 'active':
+          active++
+          break
+        case 'success':
+          success++
+          break
+        case 'error':
+          error++
+          break
+        case 'skipped':
+          skipped++
+          break
       }
     }
     return { pending, active, success, error, skipped }
@@ -157,8 +160,14 @@ const Summary = ({
     <Box paddingTop={1}>
       <Text dim>
         {completed}/{total}
-        {counts.error > 0 && <Text color="red"> · {counts.error} error{counts.error > 1 ? 's' : ''}</Text>}
-        {' · '}{formatElapsed(elapsed)}
+        {counts.error > 0 && (
+          <Text color="red">
+            {' '}
+            · {counts.error} error{counts.error > 1 ? 's' : ''}
+          </Text>
+        )}
+        {' · '}
+        {formatElapsed(elapsed)}
       </Text>
     </Box>
   )
@@ -194,9 +203,7 @@ const SyncProgressView = ({
   return (
     <>
       {/* Static region: logs */}
-      <Static items={logs}>
-        {(log: SyncLogEntry) => <LogLine key={log.id} log={log} />}
-      </Static>
+      <Static items={logs}>{(log: SyncLogEntry) => <LogLine key={log.id} log={log} />}</Static>
 
       {/* Dynamic region: header + task list */}
       <Box paddingTop={logs.length > 0 ? 1 : 0}>
@@ -205,7 +212,9 @@ const SyncProgressView = ({
         {!isComplete && <Summary items={items} startTime={state.startTime} />}
         {isComplete && (
           <Box paddingTop={1}>
-            <Text color="green" bold>Done</Text>
+            <Text color="green" bold>
+              Done
+            </Text>
           </Box>
         )}
       </Box>

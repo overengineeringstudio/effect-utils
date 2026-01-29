@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+
 import { Box, Text, Static, Spinner } from '../mod.ts'
 
 interface LogEntry {
@@ -82,16 +83,19 @@ export const LogsAboveProgressExample = ({ speed = 1 }: LogsAboveProgressExample
     const interval = setInterval(() => {
       // Add a log entry
       const timestamp = new Date().toISOString().split('T')[1]?.slice(0, 8) ?? '00:00:00'
-      
+
       if (step < logMessages.length) {
         const logMsg = logMessages[step]
         if (logMsg) {
-          setLogs(prev => [...prev, {
-            id: logId++,
-            timestamp,
-            level: logMsg.level,
-            message: logMsg.message,
-          }])
+          setLogs((prev) => [
+            ...prev,
+            {
+              id: logId++,
+              timestamp,
+              level: logMsg.level,
+              message: logMsg.message,
+            },
+          ])
         }
       }
 
@@ -120,17 +124,20 @@ export const LogsAboveProgressExample = ({ speed = 1 }: LogsAboveProgressExample
   return (
     <>
       {/* Static region: logs are rendered once and persist above */}
-      <Static items={logs}>
-        {(log) => <LogLine key={log.id} log={log} />}
-      </Static>
+      <Static items={logs}>{(log) => <LogLine key={log.id} log={log} />}</Static>
 
       {/* Dynamic region: progress updates in place */}
       <Box paddingTop={logs.length > 0 ? 1 : 0}>
         <Box flexDirection="row">
           {isDone ? (
-            <Text color="green" bold>✓ </Text>
+            <Text color="green" bold>
+              ✓{' '}
+            </Text>
           ) : (
-            <><Spinner /><Text> </Text></>
+            <>
+              <Spinner />
+              <Text> </Text>
+            </>
           )}
           <Text bold={!isDone} color={isDone ? 'green' : undefined}>
             {currentTask}

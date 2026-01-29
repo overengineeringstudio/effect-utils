@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'vitest'
 import { Effect, Fiber } from 'effect'
+import { describe, expect, test } from 'vitest'
 
 import { getRepoSemaphore, makeRepoSemaphoreMap } from './member.ts'
 
@@ -7,8 +7,14 @@ describe('getRepoSemaphore', () => {
   test('returns the same semaphore for the same URL', async () => {
     const program = Effect.gen(function* () {
       const semaphoreMap = yield* makeRepoSemaphoreMap()
-      const sem1 = yield* getRepoSemaphore({ semaphoreMapRef: semaphoreMap, url: 'https://github.com/owner/repo.git' })
-      const sem2 = yield* getRepoSemaphore({ semaphoreMapRef: semaphoreMap, url: 'https://github.com/owner/repo.git' })
+      const sem1 = yield* getRepoSemaphore({
+        semaphoreMapRef: semaphoreMap,
+        url: 'https://github.com/owner/repo.git',
+      })
+      const sem2 = yield* getRepoSemaphore({
+        semaphoreMapRef: semaphoreMap,
+        url: 'https://github.com/owner/repo.git',
+      })
       return sem1 === sem2
     })
 
@@ -19,8 +25,14 @@ describe('getRepoSemaphore', () => {
   test('returns different semaphores for different URLs', async () => {
     const program = Effect.gen(function* () {
       const semaphoreMap = yield* makeRepoSemaphoreMap()
-      const sem1 = yield* getRepoSemaphore({ semaphoreMapRef: semaphoreMap, url: 'https://github.com/owner/repo1.git' })
-      const sem2 = yield* getRepoSemaphore({ semaphoreMapRef: semaphoreMap, url: 'https://github.com/owner/repo2.git' })
+      const sem1 = yield* getRepoSemaphore({
+        semaphoreMapRef: semaphoreMap,
+        url: 'https://github.com/owner/repo1.git',
+      })
+      const sem2 = yield* getRepoSemaphore({
+        semaphoreMapRef: semaphoreMap,
+        url: 'https://github.com/owner/repo2.git',
+      })
       return sem1 !== sem2
     })
 

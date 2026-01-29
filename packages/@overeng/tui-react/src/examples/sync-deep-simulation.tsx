@@ -9,6 +9,7 @@
  */
 
 import React, { useState, useEffect } from 'react'
+
 import { Box, Text, Static, Spinner } from '../mod.ts'
 
 type RepoStatus = 'pending' | 'syncing' | 'done' | 'warning' | 'error'
@@ -104,11 +105,13 @@ const LogLine = ({ log }: { log: LogEntry }) => {
       <Text>{indent}</Text>
       <StatusIcon status={log.status} />
       <Text color={log.status === 'error' ? 'red' : log.status === 'warning' ? 'yellow' : 'green'}>
-        {' '}{log.path}
+        {' '}
+        {log.path}
       </Text>
       {log.message && (
         <Text color={log.status === 'error' ? 'red' : 'yellow'} dim>
-          {' '}({log.message})
+          {' '}
+          ({log.message})
         </Text>
       )}
     </Box>
@@ -121,12 +124,8 @@ const ActiveRepoLine = ({ repo }: { repo: Repo }) => {
     <Box flexDirection="row">
       <Text>{indent}</Text>
       <StatusIcon status={repo.status} />
-      <Text bold={repo.status === 'syncing'}>
-        {' '}{repo.path}
-      </Text>
-      {repo.status === 'syncing' && (
-        <Text dim> fetching...</Text>
-      )}
+      <Text bold={repo.status === 'syncing'}> {repo.path}</Text>
+      {repo.status === 'syncing' && <Text dim> fetching...</Text>}
     </Box>
   )
 }
@@ -165,21 +164,25 @@ export interface SyncDeepSimulationExampleProps {
 }
 
 /** Compute static state for controlled mode */
-const computeStaticState = (
-  baseWorkspace: Repo[],
-  state: SyncDeepState,
+const computeStaticState = ({
+  baseWorkspace,
+  state,
+  maxConcurrent,
+}: {
+  baseWorkspace: Repo[]
+  state: SyncDeepState
   maxConcurrent: number
-): { workspace: Repo[]; logs: LogEntry[] } => {
+}): { workspace: Repo[]; logs: LogEntry[] } => {
   const { phase, completedCount } = state
-  
+
   if (phase === 'scanning') {
     return { workspace: baseWorkspace, logs: [] }
   }
-  
+
   const workspace = JSON.parse(JSON.stringify(baseWorkspace)) as Repo[]
   const flat = flattenRepos(workspace)
   const logs: LogEntry[] = []
-  
+
   // Mark repos based on completedCount
   for (let i = 0; i < flat.length; i++) {
     const repo = flat[i]!
@@ -218,37 +221,38 @@ const computeStaticState = (
       repo.status = 'pending'
     }
   }
-  
+
   return { workspace, logs }
 }
 
 /**
  * Deep sync simulation with nested repositories and static log region.
  */
-export const SyncDeepSimulationExample = ({ 
-  speed = 1, 
+export const SyncDeepSimulationExample = ({
+  speed = 1,
   maxConcurrent = 3,
   autoRun = true,
   syncState,
 }: SyncDeepSimulationExampleProps = {}) => {
   const baseWorkspace = createWorkspace()
-  
+
   // Compute initial state based on mode
-  const initialState = !autoRun && syncState 
-    ? computeStaticState(baseWorkspace, syncState, maxConcurrent)
-    : { workspace: baseWorkspace, logs: [] as LogEntry[] }
-  
+  const initialState =
+    !autoRun && syncState
+      ? computeStaticState({ baseWorkspace, state: syncState, maxConcurrent })
+      : { workspace: baseWorkspace, logs: [] as LogEntry[] }
+
   const [workspace, setWorkspace] = useState<Repo[]>(initialState.workspace)
   const [logs, setLogs] = useState<LogEntry[]>(initialState.logs)
   const [phase, setPhase] = useState<SyncDeepPhase>(
-    !autoRun && syncState ? syncState.phase : 'scanning'
+    !autoRun && syncState ? syncState.phase : 'scanning',
   )
   const [logId, setLogId] = useState(0)
 
   // Update state when syncState changes (controlled mode)
   useEffect(() => {
     if (!autoRun && syncState) {
-      const computed = computeStaticState(baseWorkspace, syncState, maxConcurrent)
+      const computed = computeStaticState({ baseWorkspace, state: syncState, maxConcurrent })
       setWorkspace(computed.workspace)
       setLogs(computed.logs)
       setPhase(syncState.phase)
@@ -257,7 +261,7 @@ export const SyncDeepSimulationExample = ({
 
   useEffect(() => {
     if (!autoRun) return
-    
+
     // Phase 1: Scanning (brief)
     const scanTimeout = setTimeout(() => {
       setPhase('syncing')
@@ -275,21 +279,21 @@ export const SyncDeepSimulationExample = ({
 
     const processNext = () => {
       // Start new repos up to max concurrent
-      const syncing = flattenRepos(workspace).filter(r => r.status === 'syncing').length
+      const syncing = flattenRepos(workspace).filter((r) => r.status === 'syncing').length
       const toStart = Math.min(maxConcurrent - syncing, allRepos.length - currentIndex)
 
       if (toStart > 0) {
-        setWorkspace(prev => {
+        setWorkspace((prev) => {
           const newWorkspace = JSON.parse(JSON.stringify(prev)) as Repo[]
           const flat = flattenRepos(newWorkspace)
-          
+
           for (let i = 0; i < toStart && currentIndex + i < flat.length; i++) {
             const repo = flat[currentIndex + i]
             if (repo && repo.status === 'pending') {
               repo.status = 'syncing'
             }
           }
-          
+
           return newWorkspace
         })
         currentIndex += toStart
@@ -300,12 +304,12 @@ export const SyncDeepSimulationExample = ({
     processNext()
 
     const interval = setInterval(() => {
-      setWorkspace(prev => {
+      setWorkspace((prev) => {
         const newWorkspace = JSON.parse(JSON.stringify(prev)) as Repo[]
         const flat = flattenRepos(newWorkspace)
-        
+
         // Complete one syncing repo
-        const syncingRepo = flat.find(r => r.status === 'syncing')
+        const syncingRepo = flat.find((r) => r.status === 'syncing')
         if (syncingRepo) {
           // Determine final status
           if (syncingRepo.message?.includes('uncommitted')) {
@@ -320,7 +324,7 @@ export const SyncDeepSimulationExample = ({
           }
 
           // Add to logs
-          setLogs(prevLogs => {
+          setLogs((prevLogs) => {
             const newLogEntry: LogEntry = {
               id: logId + prevLogs.length,
               path: syncingRepo.path,
@@ -336,7 +340,7 @@ export const SyncDeepSimulationExample = ({
           completed++
 
           // Start next repo
-          const pending = flat.find(r => r.status === 'pending')
+          const pending = flat.find((r) => r.status === 'pending')
           if (pending) {
             pending.status = 'syncing'
           }
@@ -355,18 +359,16 @@ export const SyncDeepSimulationExample = ({
   }, [autoRun, phase, logId, speed, maxConcurrent])
 
   const allRepos = flattenRepos(workspace)
-  const syncingRepos = allRepos.filter(r => r.status === 'syncing')
-  const pendingRepos = allRepos.filter(r => r.status === 'pending')
-  const doneCount = logs.filter(l => l.status === 'done').length
-  const warningCount = logs.filter(l => l.status === 'warning').length
-  const errorCount = logs.filter(l => l.status === 'error').length
+  const syncingRepos = allRepos.filter((r) => r.status === 'syncing')
+  const pendingRepos = allRepos.filter((r) => r.status === 'pending')
+  const doneCount = logs.filter((l) => l.status === 'done').length
+  const warningCount = logs.filter((l) => l.status === 'warning').length
+  const errorCount = logs.filter((l) => l.status === 'error').length
 
   return (
     <>
       {/* Static region: completed repos */}
-      <Static items={logs}>
-        {(log) => <LogLine key={log.id} log={log} />}
-      </Static>
+      <Static items={logs}>{(log) => <LogLine key={log.id} log={log} />}</Static>
 
       {/* Dynamic region: header + active operations */}
       <Box paddingTop={logs.length > 0 ? 1 : 0}>
@@ -386,11 +388,9 @@ export const SyncDeepSimulationExample = ({
                 ))}
               </Box>
             )}
-            
+
             {pendingRepos.length > 0 && (
-              <Text dim>
-                {pendingRepos.length} repositories queued...
-              </Text>
+              <Text dim>{pendingRepos.length} repositories queued...</Text>
             )}
           </>
         )}

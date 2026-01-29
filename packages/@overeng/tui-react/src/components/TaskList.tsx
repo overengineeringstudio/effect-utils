@@ -11,31 +11,55 @@
  *   ]}
  * />
  * ```
+ *
+ * For type-safe state management with Effect Schema, use the exported schema:
+ * ```tsx
+ * import { TaskItemSchema } from '@overeng/tui-react'
+ *
+ * const AppState = Schema.Struct({
+ *   tasks: Schema.Array(TaskItemSchema),
+ * })
+ * ```
  */
 
+import { Schema } from 'effect'
 import type { ReactNode } from 'react'
+
 import { Box } from './Box.tsx'
-import { Text } from './Text.tsx'
 import { Spinner } from './Spinner.tsx'
+import { Text } from './Text.tsx'
 
 // =============================================================================
-// Types
+// Schema & Types (Single Source of Truth)
 // =============================================================================
 
 /** Status of a task item */
-export type TaskStatus = 'pending' | 'active' | 'success' | 'error' | 'skipped'
+export const TaskStatusSchema = Schema.Literal('pending', 'active', 'success', 'error', 'skipped')
+export type TaskStatus = Schema.Schema.Type<typeof TaskStatusSchema>
 
-/** A single task item */
-export interface TaskItem {
+/**
+ * Schema for a single task item.
+ *
+ * Use this in your state schemas for type-safe task management:
+ * ```typescript
+ * const AppState = Schema.Struct({
+ *   tasks: Schema.Array(TaskItemSchema),
+ * })
+ * ```
+ */
+export const TaskItemSchema = Schema.Struct({
   /** Unique identifier */
-  readonly id: string
+  id: Schema.String,
   /** Display label */
-  readonly label: string
+  label: Schema.String,
   /** Current status */
-  readonly status: TaskStatus
+  status: TaskStatusSchema,
   /** Optional status message */
-  readonly message?: string | undefined
-}
+  message: Schema.optional(Schema.String),
+})
+
+/** A single task item (derived from TaskItemSchema) */
+export type TaskItem = Schema.Schema.Type<typeof TaskItemSchema>
 
 /** Props for TaskList component */
 export interface TaskListProps {
@@ -79,9 +103,7 @@ const TaskLine = ({ item }: { item: TaskItem }): ReactNode => {
     <Box flexDirection="row">
       <StatusIcon status={item.status} />
       <Text dim={isDim}> {item.label}</Text>
-      {item.message && (
-        <Text dim> {item.message}</Text>
-      )}
+      {item.message && <Text dim> {item.message}</Text>}
     </Box>
   )
 }
@@ -99,7 +121,13 @@ const formatElapsed = (ms: number): string => {
   return `${minutes}m${remainingSeconds}s`
 }
 
-const Summary = ({ items, elapsed }: { items: readonly TaskItem[]; elapsed?: number }): ReactNode => {
+const Summary = ({
+  items,
+  elapsed,
+}: {
+  items: readonly TaskItem[]
+  elapsed?: number
+}): ReactNode => {
   const counts = { pending: 0, active: 0, success: 0, error: 0, skipped: 0 }
   for (const item of items) {
     counts[item.status]++
@@ -142,9 +170,7 @@ export const TaskList = (props: TaskListProps): ReactNode => {
 
   return (
     <Box>
-      {title && (
-        <Text bold>{title}</Text>
-      )}
+      {title && <Text bold>{title}</Text>}
       <Box>
         {items.map((item) => (
           <TaskLine key={item.id} item={item} />

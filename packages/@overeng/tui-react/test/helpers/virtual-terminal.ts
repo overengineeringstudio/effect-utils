@@ -5,6 +5,7 @@
  */
 
 import { Terminal } from '@xterm/headless'
+
 import type { Terminal as TuiTerminal } from '@overeng/tui-core'
 
 /**

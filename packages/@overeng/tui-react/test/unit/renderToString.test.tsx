@@ -2,8 +2,9 @@
  * Tests for renderToString
  */
 
-import { describe, test, expect } from 'vitest'
 import React from 'react'
+import { describe, test, expect } from 'vitest'
+
 import { renderToString, renderToLines, Box, Text } from '../../src/mod.ts'
 
 describe('renderToString', () => {
@@ -39,7 +40,7 @@ describe('renderToString', () => {
         <Text>Line 1</Text>
         <Text>Line 2</Text>
         <Text>Line 3</Text>
-      </Box>
+      </Box>,
     )
     const lines = output.split('\n')
     expect(lines).toHaveLength(3)
@@ -54,7 +55,7 @@ describe('renderToString', () => {
         <Text>A</Text>
         <Text>B</Text>
         <Text>C</Text>
-      </Box>
+      </Box>,
     )
     // Row layout should produce single line
     expect(output).toBe('ABC')
@@ -69,7 +70,7 @@ describe('renderToString', () => {
           <Text> - </Text>
           <Text>message</Text>
         </Box>
-      </Box>
+      </Box>,
     )
     const lines = output.split('\n')
     expect(lines).toHaveLength(2)
@@ -84,7 +85,7 @@ describe('renderToString', () => {
       <Box>
         <Text>Test</Text>
       </Box>,
-      { width: 40 }
+      { width: 40 },
     )
     expect(output).toBe('Test')
   })
@@ -103,7 +104,7 @@ describe('renderToLines', () => {
       <Box>
         <Text>Line 1</Text>
         <Text>Line 2</Text>
-      </Box>
+      </Box>,
     )
     expect(lines).toHaveLength(2)
     expect(lines[0]).toBe('Line 1')
@@ -125,9 +126,7 @@ describe('renderToString with complex components', () => {
   test('renders component with multiple styled elements', async () => {
     const StatusLine = ({ name, status }: { name: string; status: 'ok' | 'error' }) => (
       <Box flexDirection="row">
-        <Text color={status === 'ok' ? 'green' : 'red'}>
-          {status === 'ok' ? '✓' : '✗'}
-        </Text>
+        <Text color={status === 'ok' ? 'green' : 'red'}>{status === 'ok' ? '✓' : '✗'}</Text>
         <Text> </Text>
         <Text bold>{name}</Text>
         <Text> </Text>
@@ -139,7 +138,7 @@ describe('renderToString with complex components', () => {
       <Box>
         <StatusLine name="task1" status="ok" />
         <StatusLine name="task2" status="error" />
-      </Box>
+      </Box>,
     )
 
     const lines = output.split('\n')

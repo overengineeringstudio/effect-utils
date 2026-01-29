@@ -349,9 +349,7 @@ const syncSingleLockFile = ({
     )
 
     // Build a map of nodeName -> metadata for quick lookup
-    const metadataMap = new Map(
-      metadataResults.map((r) => [r.nodeName, r.metadata]),
-    )
+    const metadataMap = new Map(metadataResults.map((r) => [r.nodeName, r.metadata]))
 
     // Third pass: apply the fetched metadata to update the lock file
     const updatedInputs: NixLockSyncFileResult['updatedInputs'][number][] = []
@@ -418,110 +416,105 @@ const syncSingleLockFile = ({
  * and updates any inputs that match other megarepo members
  * to use the commits from megarepo.lock.
  */
-export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')(
-  (options: NixLockSyncOptions) =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem
-      const excludeMembers = options.excludeMembers ?? new Set()
+export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLockSyncOptions) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const excludeMembers = options.excludeMembers ?? new Set()
 
-      // Build a map of megarepo member URLs to their locked data
-      const megarepoMembers = options.lockFile.members
+    // Build a map of megarepo member URLs to their locked data
+    const megarepoMembers = options.lockFile.members
 
-      const memberResults: NixLockSyncResult['memberResults'][number][] = []
-      let totalUpdates = 0
+    const memberResults: NixLockSyncResult['memberResults'][number][] = []
+    let totalUpdates = 0
 
-      // Process each member in the megarepo
-      for (const memberName of Object.keys(options.config.members)) {
-        // Skip excluded members
-        if (excludeMembers.has(memberName)) {
-          continue
-        }
+    // Process each member in the megarepo
+    for (const memberName of Object.keys(options.config.members)) {
+      // Skip excluded members
+      if (excludeMembers.has(memberName)) {
+        continue
+      }
 
-        const memberPath = getMemberPath({
-          megarepoRoot: options.megarepoRoot,
-          name: memberName,
-        })
+      const memberPath = getMemberPath({
+        megarepoRoot: options.megarepoRoot,
+        name: memberName,
+      })
 
-        // Check if member directory exists
-        const memberExists = yield* fs.exists(memberPath)
-        if (!memberExists) {
-          continue
-        }
+      // Check if member directory exists
+      const memberExists = yield* fs.exists(memberPath)
+      if (!memberExists) {
+        continue
+      }
 
-        const files: NixLockSyncFileResult[] = []
+      const files: NixLockSyncFileResult[] = []
 
-        // Check for flake.lock
-        const flakeLockPath = EffectPath.ops.join(
-          memberPath,
-          EffectPath.unsafe.relativeFile(FLAKE_LOCK),
+      // Check for flake.lock
+      const flakeLockPath = EffectPath.ops.join(
+        memberPath,
+        EffectPath.unsafe.relativeFile(FLAKE_LOCK),
+      )
+      const hasFlakeLock = yield* fs.exists(flakeLockPath)
+      if (hasFlakeLock) {
+        const result = yield* syncSingleLockFile({
+          lockPath: flakeLockPath,
+          lockType: 'flake.lock',
+          megarepoMembers,
+        }).pipe(
+          Effect.catchTag('ParseError', (e) =>
+            Effect.gen(function* () {
+              yield* Effect.logWarning(`Failed to parse ${flakeLockPath}: ${e.message}`)
+              return {
+                path: flakeLockPath,
+                type: 'flake.lock' as const,
+                updatedInputs: [],
+              }
+            }),
+          ),
         )
-        const hasFlakeLock = yield* fs.exists(flakeLockPath)
-        if (hasFlakeLock) {
-          const result = yield* syncSingleLockFile({
-            lockPath: flakeLockPath,
-            lockType: 'flake.lock',
-            megarepoMembers,
-          }).pipe(
-            Effect.catchTag('ParseError', (e) =>
-              Effect.gen(function* () {
-                yield* Effect.logWarning(
-                  `Failed to parse ${flakeLockPath}: ${e.message}`,
-                )
-                return {
-                  path: flakeLockPath,
-                  type: 'flake.lock' as const,
-                  updatedInputs: [],
-                }
-              }),
-            ),
-          )
-          if (result.updatedInputs.length > 0) {
-            files.push(result)
-            totalUpdates += result.updatedInputs.length
-          }
-        }
-
-        // Check for devenv.lock
-        const devenvLockPath = EffectPath.ops.join(
-          memberPath,
-          EffectPath.unsafe.relativeFile(DEVENV_LOCK),
-        )
-        const hasDevenvLock = yield* fs.exists(devenvLockPath)
-        if (hasDevenvLock) {
-          const result = yield* syncSingleLockFile({
-            lockPath: devenvLockPath,
-            lockType: 'devenv.lock',
-            megarepoMembers,
-          }).pipe(
-            Effect.catchTag('ParseError', (e) =>
-              Effect.gen(function* () {
-                yield* Effect.logWarning(
-                  `Failed to parse ${devenvLockPath}: ${e.message}`,
-                )
-                return {
-                  path: devenvLockPath,
-                  type: 'devenv.lock' as const,
-                  updatedInputs: [],
-                }
-              }),
-            ),
-          )
-          if (result.updatedInputs.length > 0) {
-            files.push(result)
-            totalUpdates += result.updatedInputs.length
-          }
-        }
-
-        if (files.length > 0) {
-          memberResults.push({ memberName, files })
+        if (result.updatedInputs.length > 0) {
+          files.push(result)
+          totalUpdates += result.updatedInputs.length
         }
       }
 
-      return {
-        memberResults,
-        totalUpdates,
-      } satisfies NixLockSyncResult
-    }),
+      // Check for devenv.lock
+      const devenvLockPath = EffectPath.ops.join(
+        memberPath,
+        EffectPath.unsafe.relativeFile(DEVENV_LOCK),
+      )
+      const hasDevenvLock = yield* fs.exists(devenvLockPath)
+      if (hasDevenvLock) {
+        const result = yield* syncSingleLockFile({
+          lockPath: devenvLockPath,
+          lockType: 'devenv.lock',
+          megarepoMembers,
+        }).pipe(
+          Effect.catchTag('ParseError', (e) =>
+            Effect.gen(function* () {
+              yield* Effect.logWarning(`Failed to parse ${devenvLockPath}: ${e.message}`)
+              return {
+                path: devenvLockPath,
+                type: 'devenv.lock' as const,
+                updatedInputs: [],
+              }
+            }),
+          ),
+        )
+        if (result.updatedInputs.length > 0) {
+          files.push(result)
+          totalUpdates += result.updatedInputs.length
+        }
+      }
+
+      if (files.length > 0) {
+        memberResults.push({ memberName, files })
+      }
+    }
+
+    return {
+      memberResults,
+      totalUpdates,
+    } satisfies NixLockSyncResult
+  }),
 )
 
 // =============================================================================

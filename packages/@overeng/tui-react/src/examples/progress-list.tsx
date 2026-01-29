@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+
 import { Box, Text, Spinner } from '../mod.ts'
 
 interface Task {
@@ -23,7 +24,8 @@ const TaskItem = ({ task }: { task: Task }) => (
   <Box flexDirection="row">
     <StatusIcon status={task.status} />
     <Text color={task.status === 'done' ? 'green' : task.status === 'error' ? 'red' : undefined}>
-      {' '}{task.name}
+      {' '}
+      {task.name}
     </Text>
   </Box>
 )
@@ -51,7 +53,7 @@ export const ProgressListExample = ({
     items.map((name, i) => ({
       name,
       status: i < 2 ? 'done' : i === 2 ? 'running' : 'pending',
-    }))
+    })),
   )
 
   useEffect(() => {
@@ -59,20 +61,20 @@ export const ProgressListExample = ({
     if (currentIndex === -1) currentIndex = 2
 
     const interval = setInterval(() => {
-      setTasks(prev => {
+      setTasks((prev) => {
         const newTasks = [...prev]
-        
+
         // Complete current task
         if (newTasks[currentIndex]) {
           newTasks[currentIndex] = { ...newTasks[currentIndex]!, status: 'done' }
         }
-        
+
         // Start next task
         currentIndex++
         if (currentIndex < newTasks.length && newTasks[currentIndex]) {
           newTasks[currentIndex] = { ...newTasks[currentIndex]!, status: 'running' }
         }
-        
+
         return newTasks
       })
 
@@ -85,7 +87,7 @@ export const ProgressListExample = ({
     return () => clearInterval(interval)
   }, [speed, tasks.length])
 
-  const doneCount = tasks.filter(t => t.status === 'done').length
+  const doneCount = tasks.filter((t) => t.status === 'done').length
 
   return (
     <Box>
@@ -96,7 +98,9 @@ export const ProgressListExample = ({
         ))}
       </Box>
       <Box paddingTop={1}>
-        <Text dim>Progress: {doneCount}/{tasks.length}</Text>
+        <Text dim>
+          Progress: {doneCount}/{tasks.length}
+        </Text>
       </Box>
     </Box>
   )

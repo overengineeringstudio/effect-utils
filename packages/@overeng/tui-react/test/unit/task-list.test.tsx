@@ -2,8 +2,9 @@
  * Tests for TaskList component
  */
 
-import { describe, test, expect } from 'vitest'
 import React from 'react'
+import { describe, test, expect } from 'vitest'
+
 import { createRoot, TaskList, type TaskItem } from '../../src/mod.ts'
 import { createMockTerminal } from '../helpers/mod.ts'
 
@@ -23,20 +24,20 @@ describe('TaskList', () => {
     await new Promise((r) => setTimeout(r, 50))
 
     const output = terminal.getPlainOutput()
-    
+
     // Check for success icon (green checkmark)
     expect(output).toContain('✓')
     expect(output).toContain('Task 1')
-    
+
     // Check for error icon (red cross)
     expect(output).toContain('✗')
     expect(output).toContain('Task 2')
     expect(output).toContain('failed!')
-    
+
     // Check for pending icon
     expect(output).toContain('○')
     expect(output).toContain('Task 3')
-    
+
     // Check for skipped icon
     expect(output).toContain('-')
     expect(output).toContain('Task 4')
@@ -56,7 +57,7 @@ describe('TaskList', () => {
     await new Promise((r) => setTimeout(r, 50))
 
     const output = terminal.getPlainOutput()
-    
+
     // Spinner character (one of the dots frames)
     expect(output).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/)
     expect(output).toContain('Building')
@@ -69,9 +70,7 @@ describe('TaskList', () => {
     const terminal = createMockTerminal()
     const root = createRoot(terminal)
 
-    const items: TaskItem[] = [
-      { id: '1', label: 'Task 1', status: 'pending' },
-    ]
+    const items: TaskItem[] = [{ id: '1', label: 'Task 1', status: 'pending' }]
 
     root.render(<TaskList items={items} title="My Tasks" />)
     await new Promise((r) => setTimeout(r, 50))
@@ -109,9 +108,7 @@ describe('TaskList', () => {
     const terminal = createMockTerminal()
     const root = createRoot(terminal)
 
-    const items: TaskItem[] = [
-      { id: '1', label: 'Task 1', status: 'success' },
-    ]
+    const items: TaskItem[] = [{ id: '1', label: 'Task 1', status: 'success' }]
 
     root.render(<TaskList items={items} showSummary elapsed={1500} />)
     await new Promise((r) => setTimeout(r, 50))
@@ -127,9 +124,7 @@ describe('TaskList', () => {
     const terminal = createMockTerminal()
     const root = createRoot(terminal)
 
-    const items1: TaskItem[] = [
-      { id: '1', label: 'Task 1', status: 'pending' },
-    ]
+    const items1: TaskItem[] = [{ id: '1', label: 'Task 1', status: 'pending' }]
 
     root.render(<TaskList items={items1} />)
     await new Promise((r) => setTimeout(r, 50))
@@ -139,9 +134,7 @@ describe('TaskList', () => {
     expect(output).toContain('Task 1')
 
     // Update to success
-    const items2: TaskItem[] = [
-      { id: '1', label: 'Task 1', status: 'success' },
-    ]
+    const items2: TaskItem[] = [{ id: '1', label: 'Task 1', status: 'success' }]
 
     root.render(<TaskList items={items2} />)
     await new Promise((r) => setTimeout(r, 50))

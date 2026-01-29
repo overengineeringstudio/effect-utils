@@ -65,7 +65,7 @@ The system uses two stamp types:
 Set via `CLI_BUILD_STAMP` env var when entering a dev shell:
 
 ```json
-{"type":"local","rev":"abc123","ts":1738000000,"dirty":true}
+{ "type": "local", "rev": "abc123", "ts": 1738000000, "dirty": true }
 ```
 
 - `type`: Always `"local"`
@@ -78,7 +78,7 @@ Set via `CLI_BUILD_STAMP` env var when entering a dev shell:
 Embedded in binary at Nix build time:
 
 ```json
-{"type":"nix","version":"0.1.0","rev":"def456","commitTs":1737900000,"dirty":false}
+{ "type": "nix", "version": "0.1.0", "rev": "def456", "commitTs": 1737900000, "dirty": false }
 ```
 
 - `type`: Always `"nix"`
@@ -92,16 +92,17 @@ Embedded in binary at Nix build time:
 
 `resolveCliVersion` renders human-friendly version strings with relative time:
 
-| Context | Example Output |
-|---------|----------------|
-| Local dev, dirty | `0.1.0 — running from local source (abc123, 5 min ago, with uncommitted changes)` |
-| Local dev, clean | `0.1.0 — running from local source (abc123, 2 hours ago)` |
-| Nix build (pure), clean | `0.1.0+def456 — committed 3 days ago` |
-| Nix build (pure), dirty | `0.1.0+def456-dirty — committed 3 days ago, with uncommitted changes` |
-| Nix build (impure) | `0.1.0+def456 — built 2 hours ago` |
-| No stamp | `0.1.0` |
+| Context                 | Example Output                                                                    |
+| ----------------------- | --------------------------------------------------------------------------------- |
+| Local dev, dirty        | `0.1.0 — running from local source (abc123, 5 min ago, with uncommitted changes)` |
+| Local dev, clean        | `0.1.0 — running from local source (abc123, 2 hours ago)`                         |
+| Nix build (pure), clean | `0.1.0+def456 — committed 3 days ago`                                             |
+| Nix build (pure), dirty | `0.1.0+def456-dirty — committed 3 days ago, with uncommitted changes`             |
+| Nix build (impure)      | `0.1.0+def456 — built 2 hours ago`                                                |
+| No stamp                | `0.1.0`                                                                           |
 
 The relative time formatting uses medium granularity:
+
 - `just now` (< 1 min)
 - `5 min ago` (1-59 min)
 - `2 hours ago` (1-23 hours)

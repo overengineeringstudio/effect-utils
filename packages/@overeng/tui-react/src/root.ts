@@ -4,21 +4,73 @@
  * This is analogous to ReactDOM.createRoot() but for terminal output.
  */
 
-import type { ReactElement } from 'react'
-import { InlineRenderer, type Terminal, type TerminalLike } from '@overeng/tui-core'
+import React, { type ReactElement } from 'react'
+
+import { InlineRenderer, type Terminal, type TerminalLike, type ExitMode } from '@overeng/tui-core'
+
+import { ViewportProvider, type Viewport } from './hooks/useViewport.tsx'
+import { renderTreeSimple, extractStaticContent } from './reconciler/output.ts'
 import { TuiReconciler, type TuiContainer } from './reconciler/reconciler.ts'
 import type { TuiStaticElement } from './reconciler/types.ts'
 import { isStaticElement } from './reconciler/types.ts'
 import { calculateLayout } from './reconciler/yoga-utils.ts'
-import { renderTreeSimple, extractStaticContent } from './reconciler/output.ts'
+
+// =============================================================================
+// Types
+// =============================================================================
+
+/** Options for createRoot */
+export interface CreateRootOptions {
+  /**
+   * Minimum milliseconds between renders.
+   * Helps prevent excessive rendering for high-frequency state updates.
+   * @default 16 (~60fps)
+   */
+  readonly throttleMs?: number
+
+  /**
+   * Maximum lines for the dynamic region.
+   * Content exceeding this will be truncated with a "... N more lines" indicator.
+   * @default 100
+   */
+  readonly maxDynamicLines?: number
+
+  /**
+   * Maximum lines to keep in the static region buffer.
+   * Older lines are discarded when exceeded.
+   * Set to Infinity to keep all lines (default).
+   * @default Infinity
+   */
+  readonly maxStaticLines?: number
+}
+
+/** Options for unmount */
+export interface UnmountOptions {
+  /**
+   * Exit mode controlling what happens to rendered output.
+   * - `persist` (default): Keep all output visible (final render stays)
+   * - `clear`: Remove all output (both static and dynamic)
+   * - `clearDynamic`: Keep static logs, clear dynamic region
+   */
+  mode?: ExitMode
+}
 
 /** Root instance for rendering React elements to the terminal */
 export interface Root {
   /** Render a React element */
   render: (element: ReactElement) => void
-  /** Unmount the React tree and cleanup */
-  unmount: () => void
+  /**
+   * Unmount the React tree and cleanup.
+   * @param options - Options controlling exit behavior
+   */
+  unmount: (options?: UnmountOptions) => void
+  /** Current viewport dimensions */
+  readonly viewport: Viewport
 }
+
+// =============================================================================
+// Implementation
+// =============================================================================
 
 /**
  * Create a root for rendering React elements to the terminal.
@@ -31,23 +83,71 @@ export interface Root {
  * // Later, cleanup
  * root.unmount()
  * ```
+ *
+ * @example With options
+ * ```tsx
+ * const root = createRoot(process.stdout, {
+ *   throttleMs: 32,        // ~30fps max
+ *   maxDynamicLines: 50,   // Truncate if > 50 lines
+ * })
+ * ```
  */
-export const createRoot = (terminalOrStream: Terminal | TerminalLike): Root => {
+// oxlint-disable-next-line overeng/named-args -- widely used API, breaking change
+export const createRoot = (
+  terminalOrStream: Terminal | TerminalLike,
+  options: CreateRootOptions = {},
+): Root => {
+  const { throttleMs = 16, maxDynamicLines = 100, maxStaticLines = Infinity } = options
+
   const renderer = new InlineRenderer(terminalOrStream)
-  const terminal = 'columns' in terminalOrStream
-    ? terminalOrStream
-    : { columns: 80 }
+
+  // Resolve terminal interface
+  const terminal: Terminal =
+    'isTTY' in terminalOrStream && typeof terminalOrStream.columns === 'number'
+      ? (terminalOrStream as Terminal)
+      : {
+          write: (data: string) => {
+            ;(terminalOrStream as TerminalLike).write(data)
+          },
+          get columns() {
+            return (terminalOrStream as TerminalLike).columns ?? 80
+          },
+          get rows() {
+            return (terminalOrStream as TerminalLike).rows ?? 24
+          },
+          get isTTY() {
+            return (terminalOrStream as TerminalLike).isTTY ?? false
+          },
+        }
+
+  // Viewport state
+  let viewport: Viewport = {
+    columns: terminal.columns,
+    rows: terminal.rows,
+  }
+
+  // Throttling state
+  let lastRenderTime = 0
+  let pendingRender = false
+  let renderScheduled = false
+
+  // Static line tracking (for maxStaticLines)
+  let staticLineCount = 0
+
+  // Track if disposed (to prevent rendering after unmount)
+  let disposed = false
 
   // Container that holds the root of the tree
   const container: TuiContainer = {
     root: null,
     onRender: () => {
-      renderToTerminal()
+      if (!disposed) {
+        scheduleRender()
+      }
     },
   }
 
   // Create the fiber root
-  // Using legacy API for simplicity - works with react-reconciler 0.32
   const fiberRoot = TuiReconciler.createContainer(
     container,
     0, // LegacyRoot
@@ -59,19 +159,79 @@ export const createRoot = (terminalOrStream: Terminal | TerminalLike): Root => {
     null, // transitionCallbacks
   )
 
-  /** Render the tree to the terminal */
-  const renderToTerminal = (): void => {
+  /** Schedule a render with throttling */
+  const scheduleRender = (): void => {
+    if (disposed) return
+
+    if (throttleMs <= 0) {
+      // No throttling
+      doRender()
+      return
+    }
+
+    const now = Date.now()
+    const elapsed = now - lastRenderTime
+
+    if (elapsed >= throttleMs) {
+      // Enough time has passed, render immediately
+      doRender()
+      lastRenderTime = now
+      pendingRender = false
+    } else if (!renderScheduled) {
+      // Schedule render for later
+      renderScheduled = true
+      pendingRender = true
+      setTimeout(() => {
+        renderScheduled = false
+        if (pendingRender) {
+          doRender()
+          lastRenderTime = Date.now()
+          pendingRender = false
+        }
+      }, throttleMs - elapsed)
+    } else {
+      // Already scheduled, just mark as pending
+      pendingRender = true
+    }
+  }
+
+  /** Perform the actual render */
+  const doRender = (): void => {
     if (!container.root) {
       renderer.render([])
       return
     }
 
-    const width = terminal.columns ?? 80
+    // Update viewport (terminal might have resized)
+    viewport = {
+      columns: terminal.columns,
+      rows: terminal.rows,
+    }
+
+    const width = viewport.columns
 
     // Handle static content first
     const staticResult = extractStaticContent(container.root, width)
     if (staticResult.lines.length > 0) {
-      renderer.appendStatic(staticResult.lines)
+      let linesToAppend = staticResult.lines
+
+      // Apply maxStaticLines limit
+      if (maxStaticLines !== Infinity) {
+        const newTotal = staticLineCount + linesToAppend.length
+        if (newTotal > maxStaticLines) {
+          // Truncate oldest (we can only control new additions)
+          const allowedNew = Math.max(0, maxStaticLines - staticLineCount)
+          if (allowedNew < linesToAppend.length) {
+            linesToAppend = linesToAppend.slice(-allowedNew)
+          }
+        }
+        staticLineCount = Math.min(staticLineCount + linesToAppend.length, maxStaticLines)
+      }
+
+      if (linesToAppend.length > 0) {
+        renderer.appendStatic(linesToAppend)
+      }
+
       // Update the committed count
       if (staticResult.element && isStaticElement(staticResult.element)) {
         ;(staticResult.element as TuiStaticElement).committedCount = staticResult.newItemCount
@@ -81,18 +241,48 @@ export const createRoot = (terminalOrStream: Terminal | TerminalLike): Root => {
     // Calculate layout
     calculateLayout(container.root.yogaNode, width)
 
-    // Render to lines (excluding static content which is already rendered)
-    const lines = renderTreeSimple(container.root, width)
+    // Render to lines
+    let lines = renderTreeSimple(container.root, width)
+
+    // Apply maxDynamicLines limit
+    if (lines.length > maxDynamicLines) {
+      const truncated = lines.slice(0, maxDynamicLines - 1)
+      const hiddenCount = lines.length - maxDynamicLines + 1
+      truncated.push(`... ${hiddenCount} more line${hiddenCount > 1 ? 's' : ''}`)
+      lines = truncated
+    }
+
     renderer.render(lines)
+  }
+
+  /** Wrap element with viewport provider */
+  const wrapWithProviders = (element: ReactElement): ReactElement => {
+    return React.createElement(
+      ViewportProvider,
+      {
+        viewport,
+        onResize: (newViewport: Viewport) => {
+          viewport = newViewport
+        },
+      },
+      element,
+    )
   }
 
   return {
     render: (element: ReactElement) => {
-      TuiReconciler.updateContainer(element, fiberRoot, null, () => {})
+      TuiReconciler.updateContainer(wrapWithProviders(element), fiberRoot, null, () => {})
     },
-    unmount: () => {
+    unmount: (options?: UnmountOptions) => {
+      // Mark as disposed to prevent any more renders
+      disposed = true
+      // Dispose renderer (preserves content for persist mode)
+      renderer.dispose({ mode: options?.mode ?? 'persist' })
+      // Clean up React internals (won't trigger render due to disposed flag)
       TuiReconciler.updateContainer(null, fiberRoot, null, () => {})
-      renderer.dispose()
+    },
+    get viewport() {
+      return viewport
     },
   }
 }

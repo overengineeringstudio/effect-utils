@@ -3,6 +3,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
+
 import { createMockTerminal, stripAnsi } from '../helpers/mod.ts'
 
 describe('stripAnsi', () => {

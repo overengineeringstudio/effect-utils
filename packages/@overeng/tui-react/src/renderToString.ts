@@ -14,11 +14,12 @@
  */
 
 import type { ReactElement } from 'react'
+
+import { renderTreeSimple, extractStaticContent } from './reconciler/output.ts'
 import type { TuiContainer } from './reconciler/reconciler.ts'
 import { TuiReconciler } from './reconciler/reconciler.ts'
-import { calculateLayout } from './reconciler/yoga-utils.ts'
-import { renderTreeSimple, extractStaticContent } from './reconciler/output.ts'
 import { isStaticElement, type TuiStaticElement } from './reconciler/types.ts'
+import { calculateLayout } from './reconciler/yoga-utils.ts'
 
 // =============================================================================
 // Options
@@ -61,9 +62,10 @@ export interface RenderToStringOptions {
  * console.log(output) // "\x1b[32mHello\x1b[39m"
  * ```
  */
+// oxlint-disable-next-line overeng/named-args -- widely used API, breaking change
 export const renderToString = async (
   element: ReactElement,
-  options: RenderToStringOptions = {}
+  options: RenderToStringOptions = {},
 ): Promise<string> => {
   const width = options.width ?? 80
   const lines: string[] = []
@@ -135,9 +137,10 @@ export const renderToString = async (
  * @param options - Render options
  * @returns Promise that resolves to an array of output lines
  */
+// oxlint-disable-next-line overeng/named-args -- widely used API, breaking change
 export const renderToLines = async (
   element: ReactElement,
-  options: RenderToStringOptions = {}
+  options: RenderToStringOptions = {},
 ): Promise<string[]> => {
   const output = await renderToString(element, options)
   return output.split('\n')

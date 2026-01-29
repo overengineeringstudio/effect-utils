@@ -1,4 +1,5 @@
 import React from 'react'
+
 import { Box, Text } from '../mod.ts'
 
 /** Example showing all available text colors */

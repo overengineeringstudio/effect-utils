@@ -11,6 +11,7 @@
  */
 
 import { useState, useEffect, type ReactNode } from 'react'
+
 import { Text } from './Text.tsx'
 
 /** Spinner animation types */
@@ -53,16 +54,16 @@ export const Spinner = (props: SpinnerProps): ReactNode => {
   const { type = 'dots', color = 'cyan' } = props
   const frames = spinnerFrames[type]
   const interval = spinnerIntervals[type]
-  
+
   const [frameIndex, setFrameIndex] = useState(0)
-  
+
   useEffect(() => {
     const timer = setInterval(() => {
-      setFrameIndex(prev => (prev + 1) % frames.length)
+      setFrameIndex((prev) => (prev + 1) % frames.length)
     }, interval)
-    
+
     return () => clearInterval(timer)
   }, [frames.length, interval])
-  
+
   return Text({ color, children: frames[frameIndex] })
 }

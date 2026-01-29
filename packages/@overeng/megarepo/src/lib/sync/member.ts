@@ -47,7 +47,7 @@ type Semaphore = Effect.Semaphore
 /**
  * Map of repo URL -> semaphore for serializing bare repo creation.
  * This prevents race conditions when multiple members use the same underlying repo.
- * 
+ *
  * We use a Ref to ensure atomic get-or-create operations, preventing race conditions
  * when multiple fibers concurrently request a semaphore for the same URL.
  */
@@ -463,9 +463,7 @@ export const syncMember = ({
       // This ensures we can materialize the exact locked state even if the store is stale
       const commitExists = yield* Git.refExists({ repoPath: bareRepoPath, ref: targetCommit })
       if (!commitExists) {
-        yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(
-          Effect.catchAll(() => Effect.void),
-        )
+        yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(Effect.catchAll(() => Effect.void))
       }
     }
 
@@ -474,7 +472,7 @@ export const syncMember = ({
     // Track whether we need to create the branch
     let needsCreateBranch = false
     let defaultBranchForCreate: string | undefined
-    
+
     if (targetCommit === undefined && !isCommitSha(targetRef)) {
       const refValidation = yield* Git.validateRefExists({
         ref: targetRef,
@@ -494,7 +492,7 @@ export const syncMember = ({
 
         // Determine action: --create-branches flag, interactive prompt, or error
         let action: MissingRefAction = 'error'
-        
+
         if (createBranches) {
           action = 'create'
         } else if (onMissingRef !== undefined) {
@@ -589,13 +587,17 @@ export const syncMember = ({
             targetCommit = yield* Git.resolveRef({
               repoPath: bareRepoPath,
               ref: `refs/tags/${targetRef}`,
-            }).pipe(Effect.catchAll(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })))
+            }).pipe(
+              Effect.catchAll(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })),
+            )
           } else {
             // Treat as branch
             targetCommit = yield* Git.resolveRef({
               repoPath: bareRepoPath,
               ref: `refs/remotes/origin/${targetRef}`,
-            }).pipe(Effect.catchAll(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })))
+            }).pipe(
+              Effect.catchAll(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })),
+            )
           }
         }
       }
@@ -609,7 +611,11 @@ export const syncMember = ({
     const worktreeRef: string = useCommitBasedPath ? targetCommit! : targetRef
     // Use the actual ref type for accurate store path classification
     const worktreeRefType = useCommitBasedPath ? ('commit' as const) : actualRefType
-    const worktreePath = store.getWorktreePath({ source, ref: worktreeRef, refType: worktreeRefType })
+    const worktreePath = store.getWorktreePath({
+      source,
+      ref: worktreeRef,
+      refType: worktreeRefType,
+    })
     const worktreeExists = yield* store.hasWorktree({
       source,
       ref: worktreeRef,
@@ -703,9 +709,10 @@ export const syncMember = ({
     const isUpdate = pull && previousCommit !== undefined && previousCommit !== targetCommit
 
     // Build message for branch creation
-    const branchCreatedMessage = needsCreateBranch && defaultBranchForCreate
-      ? `created branch '${targetRef}' from '${defaultBranchForCreate}'`
-      : undefined
+    const branchCreatedMessage =
+      needsCreateBranch && defaultBranchForCreate
+        ? `created branch '${targetRef}' from '${defaultBranchForCreate}'`
+        : undefined
 
     return {
       name,

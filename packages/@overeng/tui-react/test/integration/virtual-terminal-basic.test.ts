@@ -3,6 +3,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
+
 import { createVirtualTerminal } from '../helpers/mod.ts'
 
 describe('VirtualTerminal basic', () => {
@@ -57,9 +58,9 @@ describe('VirtualTerminal basic', () => {
     const terminal = createVirtualTerminal()
     terminal.write('AAAAAAAAAA\n') // Line 0: 10 A's
     terminal.write('BBBBBBBBBB\n') // Line 1: 10 B's
-    terminal.write('\x1b[1A')      // Move up 1 line (to line 1)
-    terminal.write('\x1b[2K')      // Clear entire line
-    terminal.write('NEW')          // Write "NEW"
+    terminal.write('\x1b[1A') // Move up 1 line (to line 1)
+    terminal.write('\x1b[2K') // Clear entire line
+    terminal.write('NEW') // Write "NEW"
     await terminal.flush()
 
     const lines = terminal.getVisibleLines()
@@ -71,9 +72,9 @@ describe('VirtualTerminal basic', () => {
 
   it('handles cursor to column', async () => {
     const terminal = createVirtualTerminal()
-    terminal.write('AAAAAAAAAA')   // Write 10 A's
-    terminal.write('\x1b[1G')      // Move cursor to column 1 (1-based)
-    terminal.write('B')            // Overwrite with B
+    terminal.write('AAAAAAAAAA') // Write 10 A's
+    terminal.write('\x1b[1G') // Move cursor to column 1 (1-based)
+    terminal.write('B') // Overwrite with B
     await terminal.flush()
 
     const lines = terminal.getVisibleLines()
@@ -85,8 +86,8 @@ describe('VirtualTerminal basic', () => {
   it('handles carriage return', async () => {
     const terminal = createVirtualTerminal()
     terminal.write('AAAAAAAAAA')
-    terminal.write('\r')           // Return to start of line
-    terminal.write('BB')           // Overwrite first 2 chars
+    terminal.write('\r') // Return to start of line
+    terminal.write('BB') // Overwrite first 2 chars
     await terminal.flush()
 
     const lines = terminal.getVisibleLines()
@@ -97,9 +98,9 @@ describe('VirtualTerminal basic', () => {
 
   it('handles hide/show cursor', async () => {
     const terminal = createVirtualTerminal()
-    terminal.write('\x1b[?25l')    // Hide cursor
+    terminal.write('\x1b[?25l') // Hide cursor
     terminal.write('Text')
-    terminal.write('\x1b[?25h')    // Show cursor
+    terminal.write('\x1b[?25h') // Show cursor
     await terminal.flush()
 
     const lines = terminal.getVisibleLines()
@@ -110,9 +111,9 @@ describe('VirtualTerminal basic', () => {
 
   it('handles synchronized output', async () => {
     const terminal = createVirtualTerminal()
-    terminal.write('\x1b[?2026h')  // Begin sync
+    terminal.write('\x1b[?2026h') // Begin sync
     terminal.write('Synced content')
-    terminal.write('\x1b[?2026l')  // End sync
+    terminal.write('\x1b[?2026l') // End sync
     await terminal.flush()
 
     const lines = terminal.getVisibleLines()

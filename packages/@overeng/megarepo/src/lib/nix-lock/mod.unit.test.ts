@@ -446,9 +446,7 @@ describe('nix-lock matcher', () => {
     })
 
     it('should normalize SSH GitHub URLs', () => {
-      expect(normalizeGitHubUrl('git@github.com:owner/repo')).toBe(
-        'https://github.com/owner/repo',
-      )
+      expect(normalizeGitHubUrl('git@github.com:owner/repo')).toBe('https://github.com/owner/repo')
       expect(normalizeGitHubUrl('git@github.com:owner/repo.git')).toBe(
         'https://github.com/owner/repo',
       )
@@ -471,9 +469,14 @@ describe('nix-lock matcher', () => {
   describe('urlsMatch', () => {
     it('should match equivalent GitHub URLs', () => {
       expect(
-        urlsMatch({ url1: 'https://github.com/owner/repo', url2: 'https://github.com/owner/repo.git' }),
+        urlsMatch({
+          url1: 'https://github.com/owner/repo',
+          url2: 'https://github.com/owner/repo.git',
+        }),
       ).toBe(true)
-      expect(urlsMatch({ url1: 'https://github.com/owner/repo', url2: 'git@github.com:owner/repo' })).toBe(true)
+      expect(
+        urlsMatch({ url1: 'https://github.com/owner/repo', url2: 'git@github.com:owner/repo' }),
+      ).toBe(true)
       expect(
         urlsMatch({ url1: 'git@github.com:owner/repo.git', url2: 'https://github.com/owner/repo' }),
       ).toBe(true)
@@ -487,10 +490,16 @@ describe('nix-lock matcher', () => {
 
     it('should not match different repos', () => {
       expect(
-        urlsMatch({ url1: 'https://github.com/owner/repo1', url2: 'https://github.com/owner/repo2' }),
+        urlsMatch({
+          url1: 'https://github.com/owner/repo1',
+          url2: 'https://github.com/owner/repo2',
+        }),
       ).toBe(false)
       expect(
-        urlsMatch({ url1: 'https://github.com/owner1/repo', url2: 'https://github.com/owner2/repo' }),
+        urlsMatch({
+          url1: 'https://github.com/owner1/repo',
+          url2: 'https://github.com/owner2/repo',
+        }),
       ).toBe(false)
     })
   })

@@ -104,7 +104,9 @@ export class TuiRenderer extends Context.Tag('TuiRenderer')<TuiRenderer, TuiRend
    *
    * @param terminal - Terminal or stream to render to (defaults to process.stdout)
    */
-  static scoped = (terminal?: Terminal | TerminalLike): Layer.Layer<TuiRenderer, never, Scope.Scope> =>
+  static scoped = (
+    terminal?: Terminal | TerminalLike,
+  ): Layer.Layer<TuiRenderer, never, Scope.Scope> =>
     Layer.scoped(
       TuiRenderer,
       Effect.gen(function* () {

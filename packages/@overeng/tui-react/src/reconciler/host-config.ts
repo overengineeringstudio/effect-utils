@@ -37,28 +37,30 @@ type TextInstance = TuiTextNode
 // Helper functions
 // =============================================================================
 
+// oxlint-disable-next-line overeng/named-args -- internal function with clear positional semantics
 const appendChild = (parent: Instance, child: TuiNode): void => {
   // Remove from old parent if any
   if (child.parent && isElement(child.parent)) {
     removeChild(child.parent, child)
   }
-  
+
   child.parent = parent
   parent.children.push(child)
-  
+
   // Update yoga tree
   if (isElement(child)) {
     parent.yogaNode.insertChild(child.yogaNode, parent.yogaNode.getChildCount())
   }
 }
 
+// oxlint-disable-next-line overeng/named-args -- internal function with clear positional semantics
 const removeChild = (parent: Instance, child: TuiNode): void => {
   const index = parent.children.indexOf(child)
   if (index === -1) return
-  
+
   parent.children.splice(index, 1)
   child.parent = null
-  
+
   // Update yoga tree
   if (isElement(child)) {
     parent.yogaNode.removeChild(child.yogaNode)
@@ -76,11 +78,12 @@ export const hostConfig = {
   supportsHydration: false,
   isPrimaryRenderer: true,
   noTimeout: -1,
-  
+
   // Instance creation
+  // oxlint-disable-next-line overeng/named-args -- React reconciler API
   createInstance(type: string, props: Record<string, unknown>): Instance {
     const yogaNode = createYogaNode()
-    
+
     switch (type) {
       case 'tui-box': {
         const boxProps = props as BoxNodeProps
@@ -93,7 +96,7 @@ export const hostConfig = {
           children: [],
         } satisfies TuiBoxElement
       }
-      
+
       case 'tui-text': {
         const textProps = props as TextNodeProps
         return {
@@ -104,7 +107,7 @@ export const hostConfig = {
           children: [],
         } satisfies TuiTextElement
       }
-      
+
       case 'tui-static': {
         return {
           type: 'tui-static',
@@ -115,12 +118,12 @@ export const hostConfig = {
           committedCount: 0,
         } satisfies TuiStaticElement
       }
-      
+
       default:
         throw new Error(`Unknown element type: ${type}`)
     }
   },
-  
+
   createTextInstance(text: string): TextInstance {
     return {
       type: 'tui-text-node',
@@ -128,51 +131,58 @@ export const hostConfig = {
       text,
     }
   },
-  
+
   // Tree operations
+  // oxlint-disable-next-line overeng/named-args -- React reconciler API
   appendInitialChild(parent: Instance, child: TuiNode) {
     appendChild(parent, child)
   },
-  
+
+  // oxlint-disable-next-line overeng/named-args -- React reconciler API
   appendChild(parent: Instance, child: TuiNode) {
     appendChild(parent, child)
   },
-  
+
+  // oxlint-disable-next-line overeng/named-args -- React reconciler API
   appendChildToContainer(container: TuiContainer, child: TuiNode) {
     if (isElement(child)) {
       container.root = child as TuiBoxElement
     }
   },
-  
+
+  // oxlint-disable-next-line overeng/named-args -- React reconciler API
   insertBefore(parent: Instance, child: TuiNode, beforeChild: TuiNode) {
     const index = parent.children.indexOf(beforeChild)
     if (index === -1) {
       appendChild(parent, child)
       return
     }
-    
+
     if (child.parent && isElement(child.parent)) {
       removeChild(child.parent, child)
     }
-    
+
     child.parent = parent
     parent.children.splice(index, 0, child)
-    
+
     if (isElement(child)) {
       parent.yogaNode.insertChild(child.yogaNode, index)
     }
   },
-  
+
+  // oxlint-disable-next-line overeng/named-args -- React reconciler API
   insertInContainerBefore(container: TuiContainer, child: TuiNode, _beforeChild: TuiNode) {
     if (isElement(child)) {
       container.root = child as TuiBoxElement
     }
   },
-  
+
+  // oxlint-disable-next-line overeng/named-args -- React reconciler API
   removeChild(parent: Instance, child: TuiNode) {
     removeChild(parent, child)
   },
-  
+
+  // oxlint-disable-next-line overeng/named-args -- React reconciler API
   removeChildFromContainer(container: TuiContainer, child: TuiNode) {
     if (container.root === child) {
       container.root = null
@@ -181,24 +191,25 @@ export const hostConfig = {
       freeYogaNode(child.yogaNode)
     }
   },
-  
+
   clearContainer(_container: TuiContainer) {
     // Note: clearContainer is called before appendChildToContainer in the commit phase.
     // We don't want to clear the root here since appendChildToContainer will set the new root.
     // Cleanup is handled by removeChildFromContainer instead.
   },
-  
+
   // Updates
   prepareUpdate() {
     return true
   },
-  
+
+  // oxlint-disable-next-line overeng/named-args -- React reconciler API
   commitUpdate(
     instance: Instance,
     _updatePayload: unknown,
     type: string,
     _oldProps: unknown,
-    newProps: Record<string, unknown>
+    newProps: Record<string, unknown>,
   ) {
     if (type === 'tui-box') {
       const boxInstance = instance as TuiBoxElement
@@ -209,65 +220,66 @@ export const hostConfig = {
       textInstance.props = newProps as TextNodeProps
     }
   },
-  
+
+  // oxlint-disable-next-line overeng/named-args -- React reconciler API
   commitTextUpdate(textInstance: TextInstance, _oldText: string, newText: string) {
     textInstance.text = newText
   },
-  
+
   // Commit phase
   prepareForCommit() {
     return null
   },
-  
+
   resetAfterCommit(container: TuiContainer) {
     container.onRender()
   },
-  
+
   // Context
   getRootHostContext() {
     return {}
   },
-  
+
   getChildHostContext(parentContext: Record<string, unknown>) {
     return parentContext
   },
-  
+
   // Misc
   getPublicInstance(instance: Instance | TextInstance) {
     return instance
   },
-  
+
   preparePortalMount() {},
-  
+
   scheduleTimeout: setTimeout,
   cancelTimeout: clearTimeout,
-  
+
   // Priority constants from React internals
   // DiscreteEventPriority = 2
   // ContinuousEventPriority = 8
   // DefaultEventPriority = 16
   // IdleEventPriority = 536870912
-  
+
   getCurrentEventPriority() {
     return 16 // DefaultEventPriority
   },
-  
+
   resolveUpdatePriority() {
     return 16 // DefaultEventPriority
   },
-  
+
   getCurrentUpdatePriority() {
     return 16 // DefaultEventPriority
   },
-  
+
   setCurrentUpdatePriority(_priority: number) {
     // No-op for TUI
   },
-  
+
   getInstanceFromNode() {
     return null
   },
-  
+
   beforeActiveInstanceBlur() {},
   afterActiveInstanceBlur() {},
   prepareScopeUpdate() {},
@@ -275,21 +287,21 @@ export const hostConfig = {
     return null
   },
   detachDeletedInstance() {},
-  
+
   finalizeInitialChildren() {
     return false
   },
-  
+
   shouldSetTextContent() {
     return false
   },
-  
+
   hideInstance() {},
   unhideInstance() {},
   hideTextInstance() {},
   unhideTextInstance() {},
   resetTextContent() {},
-  
+
   // React 19 / react-reconciler 0.32 required methods
   maySuspendCommit() {
     return false

@@ -5,11 +5,10 @@
  * this component uses renderToString to get the ANSI output and displays it in xterm.
  */
 
-import React, { useEffect, useRef } from 'react'
-import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { Terminal } from '@xterm/xterm'
+import React, { useEffect, useRef } from 'react'
 import '@xterm/xterm/css/xterm.css'
-
 import { renderToString } from '../renderToString.ts'
 import { xtermTheme, containerStyles } from './theme.ts'
 

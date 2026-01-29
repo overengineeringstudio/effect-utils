@@ -8,6 +8,7 @@
  */
 
 import React, { useState, useEffect } from 'react'
+
 import { Box, Text, Spinner } from '../mod.ts'
 
 export interface StressRapidExampleProps {
@@ -31,13 +32,13 @@ export const StressRapidExample = ({ targetFps = 60, speed = 1 }: StressRapidExa
     let framesSinceLastFpsUpdate = 0
 
     const interval = setInterval(() => {
-      setFrame(f => f + 1)
+      setFrame((f) => f + 1)
       framesSinceLastFpsUpdate++
 
       // Calculate actual FPS every second
       const now = Date.now()
       if (now - lastFpsUpdate >= 1000) {
-        setFps(Math.round(framesSinceLastFpsUpdate * 1000 / (now - lastFpsUpdate)))
+        setFps(Math.round((framesSinceLastFpsUpdate * 1000) / (now - lastFpsUpdate)))
         framesSinceLastFpsUpdate = 0
         lastFpsUpdate = now
       }
@@ -72,11 +73,13 @@ export const StressRapidExample = ({ targetFps = 60, speed = 1 }: StressRapidExa
         <Box flexDirection="row">
           <Spinner />
           <Text> Frame: </Text>
-          <Text bold color="cyan">{frame.toString().padStart(6, ' ')}</Text>
+          <Text bold color="cyan">
+            {frame.toString().padStart(6, ' ')}
+          </Text>
         </Box>
 
         <Box flexDirection="row">
-          <Text>  Actual FPS: </Text>
+          <Text> Actual FPS: </Text>
           <Text bold color={fps >= 55 ? 'green' : fps >= 30 ? 'yellow' : 'red'}>
             {fps.toString().padStart(3, ' ')}
           </Text>
@@ -84,7 +87,13 @@ export const StressRapidExample = ({ targetFps = 60, speed = 1 }: StressRapidExa
       </Box>
 
       <Box paddingTop={1}>
-        <Text>Progress: [{progressBar}] {Math.round(progress * 100).toString().padStart(3, ' ')}%</Text>
+        <Text>
+          Progress: [{progressBar}]{' '}
+          {Math.round(progress * 100)
+            .toString()
+            .padStart(3, ' ')}
+          %
+        </Text>
       </Box>
 
       <Box paddingTop={1}>
@@ -93,7 +102,9 @@ export const StressRapidExample = ({ targetFps = 60, speed = 1 }: StressRapidExa
 
       <Box paddingTop={1}>
         <Text>Color: </Text>
-        <Text color={currentColor} bold>{currentColor?.toUpperCase()}</Text>
+        <Text color={currentColor} bold>
+          {currentColor?.toUpperCase()}
+        </Text>
       </Box>
 
       <Box paddingTop={1}>

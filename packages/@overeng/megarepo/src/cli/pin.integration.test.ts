@@ -81,7 +81,10 @@ describe('mr pin', () => {
           // Simulate what pin -c does: update the config
           const newRef = 'feature-branch'
           const oldSourceString = initialConfig.members['test-repo']!
-          const newSourceString = buildSourceStringWithRef(oldSourceString, newRef)
+          const newSourceString = buildSourceStringWithRef({
+            sourceString: oldSourceString,
+            newRef,
+          })
 
           const updatedConfig = {
             ...initialConfig,
@@ -130,10 +133,10 @@ describe('mr pin', () => {
           )
 
           // Now switch to main
-          const newSourceString = buildSourceStringWithRef(
-            config1.members['test-repo']!,
-            'main',
-          )
+          const newSourceString = buildSourceStringWithRef({
+            sourceString: config1.members['test-repo']!,
+            newRef: 'main',
+          })
           expect(newSourceString).toBe('test-owner/test-repo#main')
 
           // Verify the source was updated correctly (replaced, not appended)
@@ -269,23 +272,32 @@ describe('mr pin', () => {
     it('should build correct source strings for different refs', () => {
       const base = 'test-owner/test-repo'
 
-      expect(buildSourceStringWithRef(base, 'main')).toBe('test-owner/test-repo#main')
-      expect(buildSourceStringWithRef(base, 'v1.0.0')).toBe('test-owner/test-repo#v1.0.0')
-      expect(buildSourceStringWithRef(base, 'feature/foo')).toBe(
+      expect(buildSourceStringWithRef({ sourceString: base, newRef: 'main' })).toBe(
+        'test-owner/test-repo#main',
+      )
+      expect(buildSourceStringWithRef({ sourceString: base, newRef: 'v1.0.0' })).toBe(
+        'test-owner/test-repo#v1.0.0',
+      )
+      expect(buildSourceStringWithRef({ sourceString: base, newRef: 'feature/foo' })).toBe(
         'test-owner/test-repo#feature/foo',
       )
       expect(
-        buildSourceStringWithRef(base, 'abc123def456789012345678901234567890abcd'),
+        buildSourceStringWithRef({
+          sourceString: base,
+          newRef: 'abc123def456789012345678901234567890abcd',
+        }),
       ).toBe('test-owner/test-repo#abc123def456789012345678901234567890abcd')
     })
 
     it('should handle switching from one ref to another', () => {
       const withRef = 'test-owner/test-repo#old-branch'
 
-      expect(buildSourceStringWithRef(withRef, 'new-branch')).toBe(
+      expect(buildSourceStringWithRef({ sourceString: withRef, newRef: 'new-branch' })).toBe(
         'test-owner/test-repo#new-branch',
       )
-      expect(buildSourceStringWithRef(withRef, 'v2.0.0')).toBe('test-owner/test-repo#v2.0.0')
+      expect(buildSourceStringWithRef({ sourceString: withRef, newRef: 'v2.0.0' })).toBe(
+        'test-owner/test-repo#v2.0.0',
+      )
     })
   })
 })

@@ -1,4 +1,5 @@
 import React from 'react'
+
 import { Box, Text, Spinner } from '../mod.ts'
 
 /** Basic spinner with loading message */

@@ -7,8 +7,8 @@
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
 import { Console, Effect, Option, Schema } from 'effect'
-
 import React from 'react'
+
 import {
   createProgressListState,
   finishProgressList,
@@ -23,8 +23,8 @@ import {
   startSpinner,
   updateProgressList,
 } from '@overeng/cli-ui'
-import { renderToString, Box, Text } from '@overeng/tui-react'
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
+import { renderToString, Box, Text } from '@overeng/tui-react'
 import { withJsonMode } from '@overeng/utils/node'
 
 import {
@@ -34,11 +34,11 @@ import {
   isRemoteSource,
   getSourceRef,
 } from '../../../lib/config.ts'
-import { classifyRef } from '../../../lib/ref.ts'
-import { getCloneUrl } from '../../../lib/sync/mod.ts'
 import * as Git from '../../../lib/git.ts'
 import { type LockFile, LOCK_FILE_NAME, readLockFile } from '../../../lib/lock.ts'
+import { classifyRef } from '../../../lib/ref.ts'
 import { Store, StoreLayer } from '../../../lib/store.ts'
+import { getCloneUrl } from '../../../lib/sync/mod.ts'
 import { Cwd, findMegarepoRoot, jsonOption } from '../../context.ts'
 import {
   StoreListOutput,
@@ -162,12 +162,20 @@ const storeFetchCommand = Cli.Command.make('fetch', { json: jsonOption }, ({ jso
       const errorCount = results.filter((r) => r.status === 'error').length
       const summaryOutput = yield* Effect.promise(() =>
         renderToString(
-          React.createElement(Box, { flexDirection: 'row' },
+          React.createElement(
+            Box,
+            { flexDirection: 'row' },
             React.createElement(Text, { dim: true }, `${fetchedCount} fetched`),
             errorCount > 0
-              ? React.createElement(Text, null,
+              ? React.createElement(
+                  Text,
+                  null,
                   React.createElement(Text, { dim: true }, ' · '),
-                  React.createElement(Text, { color: 'red' }, `${errorCount} error${errorCount > 1 ? 's' : ''}`),
+                  React.createElement(
+                    Text,
+                    { color: 'red' },
+                    `${errorCount} error${errorCount > 1 ? 's' : ''}`,
+                  ),
                 )
               : null,
             React.createElement(Text, { dim: true }, ` · ${formatElapsed(elapsed)}`),
@@ -461,7 +469,9 @@ const storeAddCommand = Cli.Command.make(
           )
         } else {
           const output = yield* Effect.promise(() =>
-            renderToString(React.createElement(StoreAddError, { type: 'invalid_source', source: sourceString })),
+            renderToString(
+              React.createElement(StoreAddError, { type: 'invalid_source', source: sourceString }),
+            ),
           )
           yield* Console.error(output)
         }
@@ -505,7 +515,9 @@ const storeAddCommand = Cli.Command.make(
       if (!bareExists) {
         if (!json) {
           const cloneOutput = yield* Effect.promise(() =>
-            renderToString(React.createElement(StoreAddProgress, { type: 'cloning', source: sourceString })),
+            renderToString(
+              React.createElement(StoreAddProgress, { type: 'cloning', source: sourceString }),
+            ),
           )
           yield* Console.log(cloneOutput)
         }
@@ -533,7 +545,9 @@ const storeAddCommand = Cli.Command.make(
       if (!worktreeExists) {
         if (!json) {
           const wtOutput = yield* Effect.promise(() =>
-            renderToString(React.createElement(StoreAddProgress, { type: 'creating_worktree', ref: targetRef })),
+            renderToString(
+              React.createElement(StoreAddProgress, { type: 'creating_worktree', ref: targetRef }),
+            ),
           )
           yield* Console.log(wtOutput)
         }

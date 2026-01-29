@@ -3,9 +3,16 @@
  */
 
 import type { StoryObj } from '@storybook/react'
-import { createCliMeta } from '@overeng/tui-react/storybook'
+
 import { forceColorLevel } from '@overeng/cli-ui'
-import { PinOutput, PinErrorOutput, type PinOutputProps, type PinErrorOutputProps } from './PinOutput.tsx'
+import { createCliMeta } from '@overeng/tui-react/storybook'
+
+import {
+  PinOutput,
+  PinErrorOutput,
+  type PinOutputProps,
+  type PinErrorOutputProps,
+} from './PinOutput.tsx'
 
 forceColorLevel('truecolor')
 

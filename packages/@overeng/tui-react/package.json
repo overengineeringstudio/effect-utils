@@ -5,13 +5,15 @@
   "type": "module",
   "exports": {
     ".": "./src/mod.ts",
+    "./opentui": "./src/effect/opentui/mod.ts",
     "./storybook": "./src/storybook/mod.ts"
   },
   "publishConfig": {
     "access": "public",
     "exports": {
       ".": "./dist/mod.js",
-      "./storybook": "./dist/storybook/mod.js"
+      "./storybook": "./dist/storybook/mod.js",
+      "./opentui": "./dist/effect/opentui/mod.js"
     }
   },
   "scripts": {
@@ -20,13 +22,15 @@
   },
   "dependencies": {
     "@overeng/tui-core": "workspace:*",
-    "react": "19.2.3",
-    "react-reconciler": "0.32.0",
     "string-width": "7.2.0",
     "yoga-layout": "3.2.1"
   },
   "devDependencies": {
+    "@effect-atom/atom": "0.4.13",
+    "@effect-atom/atom-react": "0.4.5",
+    "@effect/cli": "0.73.1",
     "@effect/platform": "0.94.2",
+    "@effect/platform-node": "0.104.1",
     "@storybook/react": "10.2.1",
     "@storybook/react-vite": "10.2.1",
     "@types/node": "25.0.3",
@@ -37,17 +41,32 @@
     "@xterm/headless": "6.0.0",
     "@xterm/xterm": "6.0.0",
     "effect": "3.19.15",
+    "react": "19.2.3",
     "react-dom": "19.2.3",
+    "react-reconciler": "0.32.0",
     "storybook": "10.2.1",
     "typescript": "5.9.3",
     "vite": "7.3.0",
     "vitest": "3.2.4"
   },
   "peerDependencies": {
-    "effect": "3.19.15"
+    "@effect-atom/atom": "^0.4.13",
+    "@effect-atom/atom-react": "^0.4.5",
+    "@effect/cli": "^0.73.1",
+    "@effect/platform-node": "^0.104.1",
+    "effect": "^3.19.15",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "react-reconciler": "^0.32.0"
   },
   "peerDependenciesMeta": {
     "effect": {
+      "optional": true
+    },
+    "@effect-atom/atom": {
+      "optional": true
+    },
+    "@effect-atom/atom-react": {
       "optional": true
     }
   },

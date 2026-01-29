@@ -228,10 +228,12 @@ const getBgCode = (color: Color): string => {
 }
 
 /** Apply foreground color */
-export const fg = (color: Color, text: string): string => `${getFgCode(color)}${text}${CSI}39m`
+export const fg = ({ color, text }: { color: Color; text: string }): string =>
+  `${getFgCode(color)}${text}${CSI}39m`
 
 /** Apply background color */
-export const bg = (color: Color, text: string): string => `${getBgCode(color)}${text}${CSI}49m`
+export const bg = ({ color, text }: { color: Color; text: string }): string =>
+  `${getBgCode(color)}${text}${CSI}49m`
 
 /** Get raw foreground ANSI code (without text wrapping) */
 export const fgCode = (color: Color): string => getFgCode(color)

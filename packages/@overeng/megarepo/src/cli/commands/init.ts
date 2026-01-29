@@ -6,10 +6,10 @@
 
 import path from 'node:path'
 
-import React from 'react'
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
 import { Console, Effect, Schema } from 'effect'
+import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'
 import { renderToString, Box, Text } from '@overeng/tui-react'
@@ -36,7 +36,9 @@ export const initCommand = Cli.Command.make('init', { json: jsonOption }, ({ jso
       }
       const output = yield* Effect.promise(() =>
         renderToString(
-          React.createElement(Box, { flexDirection: 'row' },
+          React.createElement(
+            Box,
+            { flexDirection: 'row' },
             React.createElement(Text, { color: 'red' }, '\u2717'),
             React.createElement(Text, null, " Not a git repository. Run 'git init' first."),
           ),
@@ -79,7 +81,9 @@ export const initCommand = Cli.Command.make('init', { json: jsonOption }, ({ jso
     } else {
       const successOutput = yield* Effect.promise(() =>
         renderToString(
-          React.createElement(Box, { flexDirection: 'row' },
+          React.createElement(
+            Box,
+            { flexDirection: 'row' },
             React.createElement(Text, { color: 'green' }, '\u2713'),
             React.createElement(Text, { dim: true }, ' initialized megarepo at '),
             React.createElement(Text, { bold: true }, path.basename(cwd)),

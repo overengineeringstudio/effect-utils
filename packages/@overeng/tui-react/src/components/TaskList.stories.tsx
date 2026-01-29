@@ -1,14 +1,15 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
-import { TaskList, type TaskItem } from './TaskList.tsx'
-import { Box } from './Box.tsx'
-import { Text } from './Text.tsx'
+
 import {
   TaskListBasicExample,
   TaskListAllStatesExample,
   TaskListWithSummaryExample,
   SyncSimulationExample,
 } from '../examples/mod.ts'
+import { Box } from './Box.tsx'
+import { TaskList, type TaskItem } from './TaskList.tsx'
+import { Text } from './Text.tsx'
 
 const meta: Meta<typeof TaskList> = {
   title: 'Components/TaskList',
@@ -68,7 +69,7 @@ export const InContext: Story = {
     <Box>
       <Box flexDirection="row">
         <Text bold>mr sync</Text>
-        <Text dim>  schickling/megarepo-all</Text>
+        <Text dim> schickling/megarepo-all</Text>
       </Box>
       <Box paddingTop={1}>
         <TaskList

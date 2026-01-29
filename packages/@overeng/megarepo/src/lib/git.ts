@@ -597,9 +597,7 @@ export const queryRemoteRefType = (args: { url: string; ref: string }) =>
     // Query both tags and heads from remote
     const output = yield* runGitCommand({
       args: ['ls-remote', '--refs', args.url],
-    }).pipe(
-      Effect.catchAll(() => Effect.succeed('')),
-    )
+    }).pipe(Effect.catchAll(() => Effect.succeed('')))
 
     if (output.length === 0) {
       return { type: 'unknown' as const, commit: '' }

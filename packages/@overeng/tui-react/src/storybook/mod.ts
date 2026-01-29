@@ -35,7 +35,12 @@
 
 export { TerminalPreview, type TerminalPreviewProps } from './TerminalPreview.tsx'
 export { StringTerminalPreview, type StringTerminalPreviewProps } from './StringTerminalPreview.tsx'
-export { createCliMeta, type CliMetaConfig, type CliMetaProps, type RenderMode } from './createCliMeta.tsx'
+export {
+  createCliMeta,
+  type CliMetaConfig,
+  type CliMetaProps,
+  type RenderMode,
+} from './createCliMeta.tsx'
 export { withTerminalPreview } from './decorator.tsx'
 export { tuiPreview } from './preview.ts'
 export { xtermTheme, containerStyles } from './theme.ts'

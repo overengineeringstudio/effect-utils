@@ -7,6 +7,7 @@
  */
 
 import React, { useState, useEffect } from 'react'
+
 import { Box, Text, Spinner } from '../mod.ts'
 
 interface Item {
@@ -34,7 +35,8 @@ const ProgressBar = ({ progress, width = 10 }: { progress: number; width?: numbe
   const empty = width - filled
   return (
     <Text dim>
-      [{'█'.repeat(filled)}{'░'.repeat(empty)}]
+      [{'█'.repeat(filled)}
+      {'░'.repeat(empty)}]
     </Text>
   )
 }
@@ -43,7 +45,7 @@ const ItemRow = ({ item }: { item: Item }) => (
   <Box flexDirection="row">
     <StatusIcon status={item.status} />
     <Text> </Text>
-    <Text 
+    <Text
       color={item.status === 'done' ? 'green' : item.status === 'error' ? 'red' : undefined}
       dim={item.status === 'pending'}
     >
@@ -82,24 +84,28 @@ export const StressLinesExample = ({
       name: `task-${(i + 1).toString().padStart(3, '0')}`,
       status: 'pending' as const,
       progress: 0,
-    }))
+    })),
   )
   const [scrollOffset, setScrollOffset] = useState(0)
   const [frame, setFrame] = useState(0)
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setFrame(f => f + 1)
-      
-      setItems(prev => {
+      setFrame((f) => f + 1)
+
+      setItems((prev) => {
         const newItems = [...prev]
-        
+
         // Find running items and advance their progress
         newItems.forEach((item, i) => {
           if (item.status === 'running') {
             const newProgress = Math.min(100, item.progress + Math.random() * 15)
             if (newProgress >= 100) {
-              newItems[i] = { ...item, status: Math.random() > 0.1 ? 'done' : 'error', progress: 100 }
+              newItems[i] = {
+                ...item,
+                status: Math.random() > 0.1 ? 'done' : 'error',
+                progress: 100,
+              }
             } else {
               newItems[i] = { ...item, progress: Math.round(newProgress) }
             }
@@ -107,11 +113,11 @@ export const StressLinesExample = ({
         })
 
         // Start new items (up to 5 concurrent)
-        const runningCount = newItems.filter(i => i.status === 'running').length
+        const runningCount = newItems.filter((i) => i.status === 'running').length
         const toStart = Math.min(5 - runningCount, 2)
-        
+
         for (let i = 0; i < toStart; i++) {
-          const pendingIndex = newItems.findIndex(item => item.status === 'pending')
+          const pendingIndex = newItems.findIndex((item) => item.status === 'pending')
           if (pendingIndex !== -1) {
             newItems[pendingIndex] = { ...newItems[pendingIndex]!, status: 'running', progress: 0 }
           }
@@ -121,8 +127,8 @@ export const StressLinesExample = ({
       })
 
       // Auto-scroll to show active items
-      setItems(currentItems => {
-        const firstRunning = currentItems.findIndex(i => i.status === 'running')
+      setItems((currentItems) => {
+        const firstRunning = currentItems.findIndex((i) => i.status === 'running')
         if (firstRunning !== -1 && firstRunning >= scrollOffset + visibleItems - 3) {
           setScrollOffset(Math.min(firstRunning - 3, totalItems - visibleItems))
         }
@@ -134,30 +140,30 @@ export const StressLinesExample = ({
   }, [scrollOffset, speed, totalItems, visibleItems])
 
   const visibleItemsList = items.slice(scrollOffset, scrollOffset + visibleItems)
-  const doneCount = items.filter(i => i.status === 'done').length
-  const errorCount = items.filter(i => i.status === 'error').length
-  const runningCount = items.filter(i => i.status === 'running').length
+  const doneCount = items.filter((i) => i.status === 'done').length
+  const errorCount = items.filter((i) => i.status === 'error').length
+  const runningCount = items.filter((i) => i.status === 'running').length
   const allDone = doneCount + errorCount === totalItems
 
   return (
     <Box>
       <Box flexDirection="row">
         <Text bold>Stress Test: Many Lines </Text>
-        <Text dim>({totalItems} items, showing {visibleItems})</Text>
+        <Text dim>
+          ({totalItems} items, showing {visibleItems})
+        </Text>
       </Box>
       <Text dim>{'─'.repeat(50)}</Text>
 
       <Box paddingTop={1}>
-        {scrollOffset > 0 && (
-          <Text dim>  ↑ {scrollOffset} more items above</Text>
-        )}
-        
-        {visibleItemsList.map(item => (
+        {scrollOffset > 0 && <Text dim> ↑ {scrollOffset} more items above</Text>}
+
+        {visibleItemsList.map((item) => (
           <ItemRow key={item.id} item={item} />
         ))}
-        
+
         {scrollOffset + visibleItems < totalItems && (
-          <Text dim>  ↓ {totalItems - scrollOffset - visibleItems} more items below</Text>
+          <Text dim> ↓ {totalItems - scrollOffset - visibleItems} more items below</Text>
         )}
       </Box>
 
@@ -178,7 +184,9 @@ export const StressLinesExample = ({
           <Text dim>{totalItems - doneCount - errorCount - runningCount} pending</Text>
         </Box>
         {!allDone && (
-          <Text dim>Frame: {frame} | Scroll: {scrollOffset}</Text>
+          <Text dim>
+            Frame: {frame} | Scroll: {scrollOffset}
+          </Text>
         )}
         {allDone && (
           <Text color={errorCount > 0 ? 'yellow' : 'green'} bold>

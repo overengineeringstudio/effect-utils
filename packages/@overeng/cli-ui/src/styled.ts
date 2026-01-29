@@ -7,8 +7,8 @@
  * @see https://no-color.org/
  */
 
-import { colors, semantic } from './tokens.ts'
 import { supportsColor, resetColorCache as resetColorCacheInternal } from './color-support.ts'
+import { colors, semantic } from './tokens.ts'
 
 // =============================================================================
 // Color Detection

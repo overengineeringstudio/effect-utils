@@ -1,4 +1,5 @@
 import React from 'react'
+
 import { Box, Text } from '../mod.ts'
 
 /** Complex layout demonstrating CLI-like output */
@@ -6,7 +7,7 @@ export const BoxComplexLayoutExample = () => (
   <Box>
     <Box flexDirection="row">
       <Text bold>mr sync</Text>
-      <Text dim>  workspace/project</Text>
+      <Text dim> workspace/project</Text>
     </Box>
     <Text> </Text>
     <Box paddingLeft={2}>

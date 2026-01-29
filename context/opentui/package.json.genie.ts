@@ -23,12 +23,7 @@ export default packageJson({
       // @effect-atom/atom brings in older versions as transitive deps
       // TODO: Remove once new @effect-atom/atom is released
       // https://github.com/tim-smart/effect-atom/issues/401
-      ...catalog.pick(
-        'effect',
-        '@effect/platform',
-        '@effect/experimental',
-        '@effect/rpc',
-      ),
+      ...catalog.pick('effect', '@effect/platform', '@effect/experimental', '@effect/rpc'),
     },
   },
 })

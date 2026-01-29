@@ -8,10 +8,10 @@ import * as Cli from '@effect/cli'
 import type { CommandExecutor } from '@effect/platform'
 import { FileSystem, type Error as PlatformError } from '@effect/platform'
 import { Console, Effect, Option, type ParseResult, Schema } from 'effect'
-
 import React from 'react'
-import { renderToString, Box, Text } from '@overeng/tui-react'
+
 import { EffectPath, type AbsoluteDirPath, type AbsoluteFilePath } from '@overeng/effect-path'
+import { renderToString, Box, Text } from '@overeng/tui-react'
 
 import { CONFIG_FILE_NAME, getMemberPath, MegarepoConfig } from '../../../lib/config.ts'
 import { generateAll } from '../../../lib/generators/mod.ts'
@@ -73,7 +73,9 @@ const generateNixForRoot: (
 
     if (!json && depth > 0) {
       const genOutput = yield* Effect.promise(() =>
-        renderToString(React.createElement(Text, { dim: true }, `${indent}Generating ${currentRoot}...`)),
+        renderToString(
+          React.createElement(Text, { dim: true }, `${indent}Generating ${currentRoot}...`),
+        ),
       )
       yield* Console.log(genOutput)
     }
@@ -87,14 +89,20 @@ const generateNixForRoot: (
     if (!json) {
       const nixOutput = yield* Effect.promise(() =>
         renderToString(
-          React.createElement(Box, null,
-            React.createElement(Box, { flexDirection: 'row' },
+          React.createElement(
+            Box,
+            null,
+            React.createElement(
+              Box,
+              { flexDirection: 'row' },
               React.createElement(Text, null, indent),
               React.createElement(Text, { color: 'green' }, '\u2713'),
               React.createElement(Text, null, ' Generated '),
               React.createElement(Text, { bold: true }, '.envrc.generated.megarepo'),
             ),
-            React.createElement(Box, { flexDirection: 'row' },
+            React.createElement(
+              Box,
+              { flexDirection: 'row' },
               React.createElement(Text, null, indent),
               React.createElement(Text, { color: 'green' }, '\u2713'),
               React.createElement(Text, null, ' Generated '),
@@ -128,9 +136,13 @@ const generateNixForRoot: (
       if (nestedRoots.length > 0 && !json) {
         const nestedOutput = yield* Effect.promise(() =>
           renderToString(
-            React.createElement(Box, null,
+            React.createElement(
+              Box,
+              null,
               React.createElement(Text, null, ''),
-              React.createElement(Box, { flexDirection: 'row' },
+              React.createElement(
+                Box,
+                { flexDirection: 'row' },
                 React.createElement(Text, null, indent),
                 React.createElement(Text, { bold: true }, 'Generating nested megarepos...'),
               ),
@@ -188,7 +200,9 @@ const generateNixCommand = Cli.Command.make(
         } else {
           const output = yield* Effect.promise(() =>
             renderToString(
-              React.createElement(Box, { flexDirection: 'row' },
+              React.createElement(
+                Box,
+                { flexDirection: 'row' },
                 React.createElement(Text, { color: 'red' }, '\u2717'),
                 React.createElement(Text, null, ' Not in a megarepo'),
               ),
@@ -247,7 +261,9 @@ const generateVscodeCommand = Cli.Command.make(
         } else {
           const output = yield* Effect.promise(() =>
             renderToString(
-              React.createElement(Box, { flexDirection: 'row' },
+              React.createElement(
+                Box,
+                { flexDirection: 'row' },
                 React.createElement(Text, { color: 'red' }, '\u2717'),
                 React.createElement(Text, null, ' Not in a megarepo'),
               ),
@@ -280,7 +296,9 @@ const generateVscodeCommand = Cli.Command.make(
       } else {
         const vscodeOutput = yield* Effect.promise(() =>
           renderToString(
-            React.createElement(Box, { flexDirection: 'row' },
+            React.createElement(
+              Box,
+              { flexDirection: 'row' },
               React.createElement(Text, { color: 'green' }, '\u2713'),
               React.createElement(Text, null, ' Generated '),
               React.createElement(Text, { bold: true }, '.vscode/megarepo.code-workspace'),
@@ -319,7 +337,9 @@ const generateSchemaCommand = Cli.Command.make(
         } else {
           const output = yield* Effect.promise(() =>
             renderToString(
-              React.createElement(Box, { flexDirection: 'row' },
+              React.createElement(
+                Box,
+                { flexDirection: 'row' },
                 React.createElement(Text, { color: 'red' }, '\u2717'),
                 React.createElement(Text, null, ' Not in a megarepo'),
               ),
@@ -350,7 +370,9 @@ const generateSchemaCommand = Cli.Command.make(
       } else {
         const schemaOutput = yield* Effect.promise(() =>
           renderToString(
-            React.createElement(Box, { flexDirection: 'row' },
+            React.createElement(
+              Box,
+              { flexDirection: 'row' },
               React.createElement(Text, { color: 'green' }, '\u2713'),
               React.createElement(Text, null, ' Generated '),
               React.createElement(Text, { bold: true }, output),
@@ -376,30 +398,32 @@ const generateAllCommand = Cli.Command.make('all', { json: jsonOption }, ({ json
             message: 'No megarepo.json found',
           }),
         )
-        } else {
-          const output = yield* Effect.promise(() =>
-            renderToString(
-              React.createElement(Box, { flexDirection: 'row' },
-                React.createElement(Text, { color: 'red' }, '\u2717'),
-                React.createElement(Text, null, ' Not in a megarepo'),
-              ),
+      } else {
+        const output = yield* Effect.promise(() =>
+          renderToString(
+            React.createElement(
+              Box,
+              { flexDirection: 'row' },
+              React.createElement(Text, { color: 'red' }, '\u2717'),
+              React.createElement(Text, null, ' Not in a megarepo'),
             ),
-          )
-          yield* Console.error(output)
-        }
-        return yield* Effect.fail(new Error('Not in a megarepo'))
+          ),
+        )
+        yield* Console.error(output)
       }
+      return yield* Effect.fail(new Error('Not in a megarepo'))
+    }
 
-      // Load config
-      const fs = yield* FileSystem.FileSystem
-      const configPath = EffectPath.ops.join(
-        root.value,
-        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-      )
-      const configContent = yield* fs.readFileString(configPath)
-      const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+    // Load config
+    const fs = yield* FileSystem.FileSystem
+    const configPath = EffectPath.ops.join(
+      root.value,
+      EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+    )
+    const configContent = yield* fs.readFileString(configPath)
+    const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
 
-      const outputs = yield* generateAll({
+    const outputs = yield* generateAll({
       megarepoRoot: root.value,
       outermostRoot: root.value,
       config,
@@ -421,14 +445,18 @@ const generateAllCommand = Cli.Command.make('all', { json: jsonOption }, ({ json
       switch (output._tag) {
         case 'nix':
           outputLines.push(
-            React.createElement(Box, { flexDirection: 'row', key: 'nix1' },
+            React.createElement(
+              Box,
+              { flexDirection: 'row', key: 'nix1' },
               React.createElement(Text, { color: 'green' }, '\u2713'),
               React.createElement(Text, null, ' Generated '),
               React.createElement(Text, { bold: true }, '.envrc.generated.megarepo'),
             ),
           )
           outputLines.push(
-            React.createElement(Box, { flexDirection: 'row', key: 'nix2' },
+            React.createElement(
+              Box,
+              { flexDirection: 'row', key: 'nix2' },
               React.createElement(Text, { color: 'green' }, '\u2713'),
               React.createElement(Text, null, ' Generated '),
               React.createElement(Text, { bold: true }, '.direnv/megarepo-nix/workspace'),
@@ -437,7 +465,9 @@ const generateAllCommand = Cli.Command.make('all', { json: jsonOption }, ({ json
           break
         case 'vscode':
           outputLines.push(
-            React.createElement(Box, { flexDirection: 'row', key: 'vscode' },
+            React.createElement(
+              Box,
+              { flexDirection: 'row', key: 'vscode' },
               React.createElement(Text, { color: 'green' }, '\u2713'),
               React.createElement(Text, null, ' Generated '),
               React.createElement(Text, { bold: true }, '.vscode/megarepo.code-workspace'),
@@ -449,7 +479,9 @@ const generateAllCommand = Cli.Command.make('all', { json: jsonOption }, ({ json
 
     const allOutput = yield* Effect.promise(() =>
       renderToString(
-        React.createElement(Box, null,
+        React.createElement(
+          Box,
+          null,
           ...outputLines,
           React.createElement(Text, null, ''),
           React.createElement(Text, { dim: true }, `Generated ${results.length} file(s)`),

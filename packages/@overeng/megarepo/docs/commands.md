@@ -121,9 +121,9 @@ mr pin <member> [-c <ref>]
 
 **Options:**
 
-| Option   | Description                                      |
-| -------- | ------------------------------------------------ |
-| `-c`     | Ref to point to (branch, tag, or commit SHA)     |
+| Option | Description                                  |
+| ------ | -------------------------------------------- |
+| `-c`   | Ref to point to (branch, tag, or commit SHA) |
 
 **Examples:**
 
@@ -153,6 +153,7 @@ mr unpin <member>
 ```
 
 After unpinning:
+
 - Branch refs will update to latest on `mr sync --pull`
 - Tag and commit refs remain at their fixed points (they're inherently immutable)
 

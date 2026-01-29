@@ -5,8 +5,9 @@
  */
 
 import React from 'react'
-import { Box, Text } from '@overeng/tui-react'
+
 import { kv, separator } from '@overeng/cli-ui'
+import { Box, Text } from '@overeng/tui-react'
 
 // =============================================================================
 // Types
@@ -107,7 +108,8 @@ const formatElapsed = (ms: number): string => {
   if (ms < 1000) return `${ms}ms`
   const seconds = Math.floor(ms / 1000)
   const remainingMs = ms % 1000
-  if (seconds < 60) return remainingMs > 0 ? `${seconds}.${Math.floor(remainingMs / 100)}s` : `${seconds}s`
+  if (seconds < 60)
+    return remainingMs > 0 ? `${seconds}.${Math.floor(remainingMs / 100)}s` : `${seconds}s`
   const minutes = Math.floor(seconds / 60)
   const remainingSecs = seconds % 60
   return `${minutes}m ${remainingSecs}s`
@@ -130,9 +132,7 @@ export const StoreFetchOutput = ({ basePath, results, elapsedMs }: StoreFetchOut
             <Text color="green">{symbols.check}</Text>
           )}
           <Text> {result.path}</Text>
-          {result.status === 'error' && result.message && (
-            <Text dim> ({result.message})</Text>
-          )}
+          {result.status === 'error' && result.message && <Text dim> ({result.message})</Text>}
         </Box>
       ))}
       <Text> </Text>
@@ -141,10 +141,15 @@ export const StoreFetchOutput = ({ basePath, results, elapsedMs }: StoreFetchOut
         {errorCount > 0 && (
           <>
             <Text dim> {symbols.dot} </Text>
-            <Text color="red">{errorCount} error{errorCount > 1 ? 's' : ''}</Text>
+            <Text color="red">
+              {errorCount} error{errorCount > 1 ? 's' : ''}
+            </Text>
           </>
         )}
-        <Text dim> {symbols.dot} {formatElapsed(elapsedMs)}</Text>
+        <Text dim>
+          {' '}
+          {symbols.dot} {formatElapsed(elapsedMs)}
+        </Text>
       </Box>
     </Box>
   )
@@ -162,10 +167,12 @@ export type StoreGcOutputProps = {
   results: readonly StoreGcResult[]
   dryRun: boolean
   /** Warning to show before results */
-  warning?: {
-    type: StoreGcWarningType
-    message?: string | undefined
-  } | undefined
+  warning?:
+    | {
+        type: StoreGcWarningType
+        message?: string | undefined
+      }
+    | undefined
   /** Whether to show the force hint when there are dirty worktrees */
   showForceHint?: boolean | undefined
   /** Max number of in-use worktrees to show individually (default: 5) */
@@ -177,7 +184,7 @@ const StoreGcHeader = ({ basePath, dryRun }: { basePath: string; dryRun: boolean
   <Box flexDirection="column">
     <Text bold>store gc</Text>
     <Text>{kv('path', basePath, { keyStyle: (k: string) => `  ${k}` })}</Text>
-    {dryRun && <Text dim>  mode: dry run</Text>}
+    {dryRun && <Text dim> mode: dry run</Text>}
     <Text> </Text>
   </Box>
 )
@@ -200,8 +207,8 @@ const StoreGcWarning = ({ warning }: { warning: NonNullable<StoreGcOutputProps['
           <Text color="yellow">{symbols.warning}</Text>
           <Text color="yellow"> Only checking current megarepo for in-use worktrees</Text>
         </Box>
-        <Text dim>  Worktrees used by other megarepos may be removed</Text>
-        <Text dim>  Run from each megarepo to preserve its worktrees, or use --dry-run first</Text>
+        <Text dim> Worktrees used by other megarepos may be removed</Text>
+        <Text dim> Run from each megarepo to preserve its worktrees, or use --dry-run first</Text>
         <Text> </Text>
       </Box>
     )
@@ -253,9 +260,15 @@ const StoreGcResultLine = ({ result, dryRun }: { result: StoreGcResult; dryRun: 
     <Box flexDirection="row">
       {getSymbol()}
       {isDim ? (
-        <Text dim> {result.repo}refs/{result.ref} </Text>
+        <Text dim>
+          {' '}
+          {result.repo}refs/{result.ref}{' '}
+        </Text>
       ) : (
-        <Text> {result.repo}refs/{result.ref} </Text>
+        <Text>
+          {' '}
+          {result.repo}refs/{result.ref}{' '}
+        </Text>
       )}
       {getStatusText()}
     </Box>
@@ -281,7 +294,11 @@ const StoreGcSummary = ({
   if (removed > 0) {
     parts.push({
       key: 'removed',
-      element: <Text>{removed} {dryRun ? 'would be removed' : 'removed'}</Text>,
+      element: (
+        <Text>
+          {removed} {dryRun ? 'would be removed' : 'removed'}
+        </Text>
+      ),
     })
   }
   if (skippedDirty > 0) {
@@ -299,7 +316,11 @@ const StoreGcSummary = ({
   if (errors > 0) {
     parts.push({
       key: 'errors',
-      element: <Text color="red">{errors} error{errors > 1 ? 's' : ''}</Text>,
+      element: (
+        <Text color="red">
+          {errors} error{errors > 1 ? 's' : ''}
+        </Text>
+      ),
     })
   }
 
@@ -464,7 +485,13 @@ export type StoreAddSuccessProps = {
 }
 
 /** Success message for store add completion */
-export const StoreAddSuccess = ({ source, ref, commit, path, alreadyExists }: StoreAddSuccessProps) => {
+export const StoreAddSuccess = ({
+  source,
+  ref,
+  commit,
+  path,
+  alreadyExists,
+}: StoreAddSuccessProps) => {
   const status = alreadyExists ? 'already in store' : 'added to store'
 
   return (
@@ -479,11 +506,9 @@ export const StoreAddSuccess = ({ source, ref, commit, path, alreadyExists }: St
         <Text bold>{source}</Text>
         <Text dim> ({status})</Text>
       </Box>
-      <Text dim>  ref: {ref}</Text>
-      {commit && <Text dim>  commit: {commit.slice(0, 7)}</Text>}
-      <Text dim>  path: {path}</Text>
+      <Text dim> ref: {ref}</Text>
+      {commit && <Text dim> commit: {commit.slice(0, 7)}</Text>}
+      <Text dim> path: {path}</Text>
     </Box>
   )
 }
-
-

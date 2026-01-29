@@ -50,6 +50,12 @@ export const jsonOption = Cli.Options.boolean('json').pipe(
   Cli.Options.withDefault(false),
 )
 
+/** Stream JSON output as NDJSON (newline-delimited JSON) */
+export const streamOption = Cli.Options.boolean('stream').pipe(
+  Cli.Options.withDescription('Stream JSON output as NDJSON (requires --json)'),
+  Cli.Options.withDefault(false),
+)
+
 /** Verbose output option */
 export const verboseOption = Cli.Options.boolean('verbose').pipe(
   Cli.Options.withAlias('v'),

@@ -4,8 +4,10 @@
 
 import type { StoryObj } from '@storybook/react'
 import React from 'react'
-import { createCliMeta, TerminalPreview, StringTerminalPreview } from '@overeng/tui-react/storybook'
+
 import { forceColorLevel } from '@overeng/cli-ui'
+import { createCliMeta, TerminalPreview, StringTerminalPreview } from '@overeng/tui-react/storybook'
+
 import { SyncOutput, type SyncOutputProps, type MemberSyncResult } from './SyncOutput.tsx'
 
 forceColorLevel('truecolor')
@@ -137,7 +139,12 @@ export const PullMode: Story = {
   args: {
     results: [
       { name: 'effect', status: 'updated', commit: 'abc1234def', previousCommit: '9876543fed' },
-      { name: 'effect-utils', status: 'updated', commit: 'def5678abc', previousCommit: 'fedcba987' },
+      {
+        name: 'effect-utils',
+        status: 'updated',
+        commit: 'def5678abc',
+        previousCommit: 'fedcba987',
+      },
       { name: 'livestore', status: 'already_synced' },
     ],
     pull: true,
@@ -207,7 +214,12 @@ export const WithGenerators: Story = {
       { name: 'livestore', status: 'cloned', ref: 'main' },
       { name: 'dotfiles', status: 'already_synced' },
     ],
-    generatedFiles: ['flake.nix', 'flake.lock', '.envrc.generated.megarepo', '.vscode/megarepo.code-workspace'],
+    generatedFiles: [
+      'flake.nix',
+      'flake.lock',
+      '.envrc.generated.megarepo',
+      '.vscode/megarepo.code-workspace',
+    ],
   },
 }
 
@@ -300,7 +312,11 @@ export const LongNames: Story = {
     name: 'organization-name/extremely-long-workspace-name-for-testing',
     root: '/Users/dev/extremely-long-path-to-workspace-directory-for-testing-purposes',
     results: [
-      { name: '@organization/extremely-long-package-name-for-testing', status: 'synced', ref: 'main' },
+      {
+        name: '@organization/extremely-long-package-name-for-testing',
+        status: 'synced',
+        ref: 'main',
+      },
       { name: '@another-org/another-very-long-package-name', status: 'already_synced' },
       { name: 'short', status: 'cloned', ref: 'feature/very-long-branch-name-for-testing' },
     ],
@@ -337,26 +353,53 @@ export const Interactive: StoryObj<InteractiveProps> = {
     clonedCount: { control: { type: 'range', min: 0, max: 10 }, table: { category: 'Results' } },
     syncedCount: { control: { type: 'range', min: 0, max: 10 }, table: { category: 'Results' } },
     updatedCount: { control: { type: 'range', min: 0, max: 10 }, table: { category: 'Results' } },
-    alreadySyncedCount: { control: { type: 'range', min: 0, max: 10 }, table: { category: 'Results' } },
+    alreadySyncedCount: {
+      control: { type: 'range', min: 0, max: 10 },
+      table: { category: 'Results' },
+    },
     skippedCount: { control: { type: 'range', min: 0, max: 10 }, table: { category: 'Results' } },
     errorCount: { control: { type: 'range', min: 0, max: 10 }, table: { category: 'Results' } },
   },
-  render: ({ renderMode, clonedCount, syncedCount, updatedCount, alreadySyncedCount, skippedCount, errorCount, ...args }) => {
+  render: ({
+    renderMode,
+    clonedCount,
+    syncedCount,
+    updatedCount,
+    alreadySyncedCount,
+    skippedCount,
+    errorCount,
+    ...args
+  }) => {
     const results: MemberSyncResult[] = []
     let idx = 0
 
-    for (let i = 0; i < clonedCount; i++) results.push({ name: `cloned-repo-${++idx}`, status: 'cloned', ref: 'main' })
-    for (let i = 0; i < syncedCount; i++) results.push({ name: `synced-repo-${++idx}`, status: 'synced', ref: 'main' })
-    for (let i = 0; i < updatedCount; i++) results.push({ name: `updated-repo-${++idx}`, status: 'updated', commit: 'abc1234', previousCommit: 'def5678' })
-    for (let i = 0; i < alreadySyncedCount; i++) results.push({ name: `already-synced-${++idx}`, status: 'already_synced' })
-    for (let i = 0; i < skippedCount; i++) results.push({ name: `skipped-repo-${++idx}`, status: 'skipped', message: 'dirty worktree' })
-    for (let i = 0; i < errorCount; i++) results.push({ name: `error-repo-${++idx}`, status: 'error', message: 'network error' })
+    for (let i = 0; i < clonedCount; i++)
+      results.push({ name: `cloned-repo-${++idx}`, status: 'cloned', ref: 'main' })
+    for (let i = 0; i < syncedCount; i++)
+      results.push({ name: `synced-repo-${++idx}`, status: 'synced', ref: 'main' })
+    for (let i = 0; i < updatedCount; i++)
+      results.push({
+        name: `updated-repo-${++idx}`,
+        status: 'updated',
+        commit: 'abc1234',
+        previousCommit: 'def5678',
+      })
+    for (let i = 0; i < alreadySyncedCount; i++)
+      results.push({ name: `already-synced-${++idx}`, status: 'already_synced' })
+    for (let i = 0; i < skippedCount; i++)
+      results.push({ name: `skipped-repo-${++idx}`, status: 'skipped', message: 'dirty worktree' })
+    for (let i = 0; i < errorCount; i++)
+      results.push({ name: `error-repo-${++idx}`, status: 'error', message: 'network error' })
 
     const props = { ...args, results }
 
     if (renderMode === 'string') {
       return <StringTerminalPreview component={SyncOutput} props={props} />
     }
-    return <TerminalPreview><SyncOutput {...props} /></TerminalPreview>
+    return (
+      <TerminalPreview>
+        <SyncOutput {...props} />
+      </TerminalPreview>
+    )
   },
 }

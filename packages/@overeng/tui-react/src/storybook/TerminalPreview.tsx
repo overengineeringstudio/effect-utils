@@ -4,11 +4,10 @@
  * Uses xterm.js to create an authentic terminal experience.
  */
 
-import React, { useEffect, useRef, useState } from 'react'
-import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { Terminal } from '@xterm/xterm'
+import React, { useEffect, useRef, useState } from 'react'
 import '@xterm/xterm/css/xterm.css'
-
 import { createRoot, type Root } from '../root.ts'
 import { xtermTheme, containerStyles } from './theme.ts'
 
@@ -36,10 +35,7 @@ export interface TerminalPreviewProps {
 /**
  * TerminalPreview - renders TUI React components into an xterm.js terminal
  */
-export const TerminalPreview: React.FC<TerminalPreviewProps> = ({
-  children,
-  height = 400,
-}) => {
+export const TerminalPreview: React.FC<TerminalPreviewProps> = ({ children, height = 400 }) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)

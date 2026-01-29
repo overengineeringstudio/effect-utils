@@ -3,9 +3,16 @@
  */
 
 import type { StoryObj } from '@storybook/react'
-import { createCliMeta } from '@overeng/tui-react/storybook'
+
 import { forceColorLevel } from '@overeng/cli-ui'
-import { AddOutput, AddErrorOutput, type AddOutputProps, type AddErrorOutputProps } from './AddOutput.tsx'
+import { createCliMeta } from '@overeng/tui-react/storybook'
+
+import {
+  AddOutput,
+  AddErrorOutput,
+  type AddOutputProps,
+  type AddErrorOutputProps,
+} from './AddOutput.tsx'
 
 forceColorLevel('truecolor')
 

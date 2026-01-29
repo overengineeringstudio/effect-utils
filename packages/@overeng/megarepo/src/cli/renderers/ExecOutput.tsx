@@ -5,6 +5,7 @@
  */
 
 import React from 'react'
+
 import { Box, Text } from '@overeng/tui-react'
 
 // =============================================================================
@@ -77,7 +78,10 @@ export type ExecMemberSkippedProps = {
 }
 
 export const ExecMemberSkipped = ({ name, reason = 'not synced' }: ExecMemberSkippedProps) => (
-  <Text dim>  {name}: skipped ({reason})</Text>
+  <Text dim>
+    {' '}
+    {name}: skipped ({reason})
+  </Text>
 )
 
 export type ExecMemberPathProps = {
@@ -86,7 +90,10 @@ export type ExecMemberPathProps = {
 }
 
 export const ExecMemberPath = ({ name, path }: ExecMemberPathProps) => (
-  <Text dim>  {name}: {path}</Text>
+  <Text dim>
+    {' '}
+    {name}: {path}
+  </Text>
 )
 
 // =============================================================================
@@ -98,16 +105,17 @@ export type ExecMemberHeaderProps = {
 }
 
 export const ExecMemberHeader = ({ name }: ExecMemberHeaderProps) => (
-  <Text bold>{'\n'}{name}:</Text>
+  <Text bold>
+    {'\n'}
+    {name}:
+  </Text>
 )
 
 export type ExecStderrProps = {
   stderr: string
 }
 
-export const ExecStderr = ({ stderr }: ExecStderrProps) => (
-  <Text color="red">{stderr}</Text>
-)
+export const ExecStderr = ({ stderr }: ExecStderrProps) => <Text color="red">{stderr}</Text>
 
 // =============================================================================
 // Full Results Output
@@ -132,5 +140,3 @@ export const ExecResultsOutput = ({ results }: ExecResultsOutputProps) => (
     ))}
   </Box>
 )
-
-

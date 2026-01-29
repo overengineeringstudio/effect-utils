@@ -398,11 +398,17 @@ export const isRemoteSource = (source: MemberSource): boolean => {
  * Takes the base source (without ref) and appends the new ref.
  *
  * @example
- * buildSourceStringWithRef('owner/repo', 'main') // 'owner/repo#main'
- * buildSourceStringWithRef('owner/repo#old', 'new') // 'owner/repo#new'
- * buildSourceStringWithRef('https://github.com/o/r', 'v1.0') // 'https://github.com/o/r#v1.0'
+ * buildSourceStringWithRef({ sourceString: 'owner/repo', newRef: 'main' }) // 'owner/repo#main'
+ * buildSourceStringWithRef({ sourceString: 'owner/repo#old', newRef: 'new' }) // 'owner/repo#new'
+ * buildSourceStringWithRef({ sourceString: 'https://github.com/o/r', newRef: 'v1.0' }) // 'https://github.com/o/r#v1.0'
  */
-export const buildSourceStringWithRef = (sourceString: string, newRef: string): string => {
+export const buildSourceStringWithRef = ({
+  sourceString,
+  newRef,
+}: {
+  sourceString: string
+  newRef: string
+}): string => {
   const { source } = parseSourceRef(sourceString)
   return `${source}#${newRef}`
 }

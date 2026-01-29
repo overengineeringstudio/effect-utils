@@ -11,6 +11,7 @@
  */
 
 import { createElement, type ReactNode } from 'react'
+
 import type { Color } from '@overeng/tui-core'
 
 /** Box component props */
@@ -28,7 +29,13 @@ export interface BoxProps {
   /** Align self */
   alignSelf?: 'auto' | 'flex-start' | 'center' | 'flex-end' | 'stretch' | undefined
   /** Justify content on main axis */
-  justifyContent?: 'flex-start' | 'center' | 'flex-end' | 'space-between' | 'space-around' | undefined
+  justifyContent?:
+    | 'flex-start'
+    | 'center'
+    | 'flex-end'
+    | 'space-between'
+    | 'space-around'
+    | undefined
   /** Padding (all sides) */
   padding?: number | undefined
   /** Padding top */

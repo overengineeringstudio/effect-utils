@@ -4,16 +4,17 @@
  * Sync members: clone to store and create symlinks.
  */
 
-import React from 'react'
 import * as Cli from '@effect/cli'
 import { Prompt } from '@effect/cli'
-import type { CommandExecutor } from '@effect/platform'
-import { FileSystem, Terminal, type Error as PlatformError } from '@effect/platform'
+import type { CommandExecutor, Terminal } from '@effect/platform'
+import { FileSystem, type Error as PlatformError } from '@effect/platform'
 import { Console, Effect, Layer, Option, type ParseResult, Schema } from 'effect'
+import React from 'react'
 
 import { isTTY } from '@overeng/cli-ui'
-import { Box, Text } from '@overeng/tui-react'
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
+import { Box, Text } from '@overeng/tui-react'
+import { renderToString } from '@overeng/tui-react'
 
 import {
   CONFIG_FILE_NAME,
@@ -52,7 +53,7 @@ import {
   type MegarepoSyncResult,
   type MemberSyncResult,
 } from '../../lib/sync/mod.ts'
-import { Cwd, findMegarepoRoot, jsonOption, verboseOption } from '../context.ts'
+import { Cwd, findMegarepoRoot, jsonOption, streamOption, verboseOption } from '../context.ts'
 import {
   SyncProgressReactLayer,
   setMemberSyncing,
@@ -62,8 +63,6 @@ import {
   finishSyncProgressUIReact,
   type SyncProgressService,
 } from '../progress/mod.ts'
-import { renderToString } from '@overeng/tui-react'
-
 import { SyncOutput } from '../renderers/SyncOutput.tsx'
 
 // =============================================================================
@@ -118,6 +117,7 @@ export const syncMegarepo = ({
   visited = new Set<string>(),
   withProgress = false,
   onMissingRef,
+  onMemberSynced,
 }: {
   megarepoRoot: AbsoluteDirPath
   options: {
@@ -139,6 +139,8 @@ export const syncMegarepo = ({
   /** Callback for interactive prompts when a ref doesn't exist */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onMissingRef?: (info: MissingRefInfo) => Effect.Effect<MissingRefAction, any, any>
+  /** Callback when a member sync completes (for NDJSON streaming) */
+  onMemberSynced?: (result: MemberSyncResult) => Effect.Effect<void, never, never>
 }): Effect.Effect<
   MegarepoSyncResult,
   | NotInMegarepoError
@@ -150,7 +152,19 @@ export const syncMegarepo = ({
   FileSystem.FileSystem | CommandExecutor.CommandExecutor | Store | SyncProgressService
 > =>
   Effect.gen(function* () {
-    const { json, dryRun, pull, frozen, force, deep, only, skip, verbose, gitProtocol, createBranches } = options
+    const {
+      json,
+      dryRun,
+      pull,
+      frozen,
+      force,
+      deep,
+      only,
+      skip,
+      verbose,
+      gitProtocol,
+      createBranches,
+    } = options
     const fs = yield* FileSystem.FileSystem
     const indent = '  '.repeat(depth)
 
@@ -175,8 +189,14 @@ export const syncMegarepo = ({
     if (verbose && !json && depth === 0) {
       const verboseOutput = yield* Effect.promise(() =>
         renderToString(
-          React.createElement(Box, null,
-            React.createElement(Text, { dim: true }, `Sync mode: ${frozen ? 'frozen' : pull ? 'pull' : 'default'}`),
+          React.createElement(
+            Box,
+            null,
+            React.createElement(
+              Text,
+              { dim: true },
+              `Sync mode: ${frozen ? 'frozen' : pull ? 'pull' : 'default'}`,
+            ),
             dryRun ? React.createElement(Text, { dim: true }, 'Dry run: true') : null,
             force ? React.createElement(Text, { dim: true }, 'Force: true') : null,
             deep ? React.createElement(Text, { dim: true }, 'Deep: true') : null,
@@ -245,7 +265,9 @@ export const syncMegarepo = ({
         } else {
           const output = yield* Effect.promise(() =>
             renderToString(
-              React.createElement(Box, { flexDirection: 'row' },
+              React.createElement(
+                Box,
+                { flexDirection: 'row' },
                 React.createElement(Text, null, indent),
                 React.createElement(Text, { color: 'red' }, '\u2717'),
                 React.createElement(Text, null, ' Lock file required for --frozen mode'),
@@ -293,17 +315,29 @@ export const syncMegarepo = ({
         } else {
           const staleOutput = yield* Effect.promise(() =>
             renderToString(
-              React.createElement(Box, null,
-                React.createElement(Box, { flexDirection: 'row' },
+              React.createElement(
+                Box,
+                null,
+                React.createElement(
+                  Box,
+                  { flexDirection: 'row' },
                   React.createElement(Text, null, indent),
                   React.createElement(Text, { color: 'red' }, '\u2717'),
                   React.createElement(Text, null, ' Lock file is stale'),
                 ),
                 staleness.addedMembers.length > 0
-                  ? React.createElement(Text, { dim: true }, `${indent}  Added: ${staleness.addedMembers.join(', ')}`)
+                  ? React.createElement(
+                      Text,
+                      { dim: true },
+                      `${indent}  Added: ${staleness.addedMembers.join(', ')}`,
+                    )
                   : null,
                 staleness.removedMembers.length > 0
-                  ? React.createElement(Text, { dim: true }, `${indent}  Removed: ${staleness.removedMembers.join(', ')}`)
+                  ? React.createElement(
+                      Text,
+                      { dim: true },
+                      `${indent}  Removed: ${staleness.removedMembers.join(', ')}`,
+                    )
                   : null,
               ),
             ),
@@ -326,7 +360,11 @@ export const syncMegarepo = ({
     if (verbose && !json && skippedMemberNames.size > 0) {
       const skipOutput = yield* Effect.promise(() =>
         renderToString(
-          React.createElement(Text, { dim: true }, `Skipping ${skippedMemberNames.size} member(s): ${[...skippedMemberNames].join(', ')}`),
+          React.createElement(
+            Text,
+            { dim: true },
+            `Skipping ${skippedMemberNames.size} member(s): ${[...skippedMemberNames].join(', ')}`,
+          ),
         ),
       )
       yield* Console.log(skipOutput)
@@ -370,6 +408,11 @@ export const syncMegarepo = ({
             yield* applySyncResult(result).pipe(Effect.catchAll(() => Effect.void))
           }
 
+          // Call streaming callback if provided (for NDJSON output)
+          if (onMemberSynced !== undefined) {
+            yield* onMemberSynced(result)
+          }
+
           return result
         }),
       ),
@@ -398,10 +441,7 @@ export const syncMegarepo = ({
         // Skip if this member was explicitly skipped via --only/--skip
         if (skippedMemberNames.has(entry)) continue
 
-        const entryPath = EffectPath.ops.join(
-          membersRoot,
-          EffectPath.unsafe.relativeFile(entry),
-        )
+        const entryPath = EffectPath.ops.join(membersRoot, EffectPath.unsafe.relativeFile(entry))
 
         // Only remove symlinks (not directories that might be local repos)
         const linkTarget = yield* fs
@@ -573,7 +613,9 @@ const parseMemberList = (value: string): ReadonlyArray<string> =>
  * Create an interactive prompt for missing refs.
  * Returns an Effect that prompts the user what to do when a branch doesn't exist.
  */
-const createMissingRefPrompt = (info: MissingRefInfo): Effect.Effect<MissingRefAction, never, Terminal.Terminal> =>
+const createMissingRefPrompt = (
+  info: MissingRefInfo,
+): Effect.Effect<MissingRefAction, never, Terminal.Terminal> =>
   Effect.gen(function* () {
     const prompt = Prompt.select<MissingRefAction>({
       message: `Branch '${info.ref}' doesn't exist in ${info.memberName}`,
@@ -595,7 +637,7 @@ const createMissingRefPrompt = (info: MissingRefInfo): Effect.Effect<MissingRefA
         },
       ],
     })
-    
+
     return yield* prompt.pipe(
       Effect.catchTag('QuitException', () => Effect.succeed('abort' as const)),
     )
@@ -606,6 +648,7 @@ export const syncCommand = Cli.Command.make(
   'sync',
   {
     json: jsonOption,
+    stream: streamOption,
     dryRun: Cli.Options.boolean('dry-run').pipe(
       Cli.Options.withDescription('Show what would be done without making changes'),
       Cli.Options.withDefault(false),
@@ -649,7 +692,20 @@ export const syncCommand = Cli.Command.make(
     ),
     verbose: verboseOption,
   },
-  ({ json, dryRun, pull, frozen, force, deep, only, skip, gitProtocol, createBranches, verbose }) =>
+  ({
+    json,
+    stream,
+    dryRun,
+    pull,
+    frozen,
+    force,
+    deep,
+    only,
+    skip,
+    gitProtocol,
+    createBranches,
+    verbose,
+  }) =>
     Effect.gen(function* () {
       const cwd = yield* Cwd
       const fs = yield* FileSystem.FileSystem
@@ -667,7 +723,9 @@ export const syncCommand = Cli.Command.make(
         } else {
           const output = yield* Effect.promise(() =>
             renderToString(
-              React.createElement(Box, { flexDirection: 'row' },
+              React.createElement(
+                Box,
+                { flexDirection: 'row' },
                 React.createElement(Text, { color: 'red' }, '\u2717'),
                 React.createElement(Text, null, ' --only and --skip are mutually exclusive'),
               ),
@@ -693,7 +751,9 @@ export const syncCommand = Cli.Command.make(
         } else {
           const output = yield* Effect.promise(() =>
             renderToString(
-              React.createElement(Box, { flexDirection: 'row' },
+              React.createElement(
+                Box,
+                { flexDirection: 'row' },
                 React.createElement(Text, { color: 'red' }, '\u2717'),
                 React.createElement(Text, null, ' Not in a megarepo'),
               ),
@@ -734,14 +794,27 @@ export const syncCommand = Cli.Command.make(
         })
 
         // Create interactive prompt callback if in TTY mode and not using --create-branches
-        const onMissingRef = !createBranches && isTTY()
-          ? (info: MissingRefInfo) => createMissingRefPrompt(info)
-          : undefined
+        const onMissingRef =
+          !createBranches && isTTY()
+            ? (info: MissingRefInfo) => createMissingRefPrompt(info)
+            : undefined
 
         // Run the sync with progress updates
         const syncResult = yield* syncMegarepo({
           megarepoRoot: root.value,
-          options: { json, dryRun, pull, frozen, force, deep, only: onlyMembers, skip: skipMembers, verbose, gitProtocol, createBranches },
+          options: {
+            json,
+            dryRun,
+            pull,
+            frozen,
+            force,
+            deep,
+            only: onlyMembers,
+            skip: skipMembers,
+            verbose,
+            gitProtocol,
+            createBranches,
+          },
           withProgress: true,
           ...(onMissingRef !== undefined ? { onMissingRef } : {}),
         })
@@ -755,11 +828,15 @@ export const syncCommand = Cli.Command.make(
         if (generatedFiles.length > 0) {
           const genOutput = yield* Effect.promise(() =>
             renderToString(
-              React.createElement(Box, null,
+              React.createElement(
+                Box,
+                null,
                 React.createElement(Text, null, ''),
                 React.createElement(Text, null, dryRun ? 'Would generate:' : 'Generated:'),
                 ...generatedFiles.map((file) =>
-                  React.createElement(Box, { flexDirection: 'row', key: file },
+                  React.createElement(
+                    Box,
+                    { flexDirection: 'row', key: file },
                     React.createElement(Text, null, '  '),
                     dryRun
                       ? React.createElement(Text, { dim: true }, '\u2192')
@@ -798,10 +875,78 @@ export const syncCommand = Cli.Command.make(
         const configContent = yield* fs.readFileString(configPath)
         const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
 
+        // NDJSON streaming mode: emit each result as it completes
+        if (json && stream) {
+          // Emit initial state
+          console.log(
+            JSON.stringify({
+              _tag: 'started',
+              workspace: name,
+              root: root.value,
+              memberCount: Object.keys(config.members).length,
+            }),
+          )
+
+          // Stream each member result as it completes
+          const onMemberSynced = (result: MemberSyncResult) =>
+            Effect.sync(() => {
+              console.log(
+                JSON.stringify({
+                  _tag: 'member',
+                  ...result,
+                }),
+              )
+            })
+
+          const syncResult = yield* syncMegarepo({
+            megarepoRoot: root.value,
+            options: {
+              json,
+              dryRun,
+              pull,
+              frozen,
+              force,
+              deep,
+              only: onlyMembers,
+              skip: skipMembers,
+              verbose,
+              gitProtocol,
+              createBranches,
+            },
+            onMemberSynced,
+          })
+
+          // Emit final summary
+          const counts = countSyncResults(syncResult)
+          console.log(
+            JSON.stringify({
+              _tag: 'complete',
+              workspace: name,
+              root: root.value,
+              counts,
+              generatedFiles: getEnabledGenerators(config),
+            }),
+          )
+
+          return syncResult
+        }
+
         // Non-TTY mode doesn't use interactive prompts
         const syncResult = yield* syncMegarepo({
           megarepoRoot: root.value,
-          options: { json, dryRun, pull, frozen, force, deep, only: onlyMembers, skip: skipMembers, verbose, gitProtocol, createBranches },
+          options: {
+            json,
+            dryRun,
+            pull,
+            frozen,
+            force,
+            deep,
+            only: onlyMembers,
+            skip: skipMembers,
+            verbose,
+            gitProtocol,
+            createBranches,
+          },
         })
 
         // Get list of files that would be / were generated

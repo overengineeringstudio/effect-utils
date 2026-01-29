@@ -68,4 +68,9 @@ export {
 } from './ansi.ts'
 
 // Inline renderer
-export { InlineRenderer, type InlineRendererOptions } from './renderer.ts'
+export {
+  InlineRenderer,
+  type InlineRendererOptions,
+  type ExitMode,
+  type DisposeOptions,
+} from './renderer.ts'

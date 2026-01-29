@@ -111,14 +111,15 @@ const SEMVER_STRICT_PATTERN = /^v?\d+\.\d+(\.\d+)?(-[a-zA-Z0-9]+(\.[a-zA-Z0-9]+)
  * Also matches multi-word prefixes: my-app-1.0.0, my-cool-app-v2.0
  * Also matches prefixes with numbers: app2-v1.0.0, thing3-1.2.3
  * Allows optional prerelease suffix after the version.
- * 
+ *
  * Pattern breakdown:
  * - ^[a-zA-Z][a-zA-Z0-9]*  : starts with letter, then alphanumeric
  * - (-[a-zA-Z][a-zA-Z0-9]*)* : zero or more additional word segments (each starting with letter)
  * - -v?\d+\.\d+(\.\d+)?  : version number with optional v prefix
  * - (-[a-zA-Z0-9]+(\.[a-zA-Z0-9]+)*)? : optional prerelease suffix
  */
-const SEMVER_EXTENDED_PATTERN = /^[a-zA-Z][a-zA-Z0-9]*(-[a-zA-Z][a-zA-Z0-9]*)*-v?\d+\.\d+(\.\d+)?(-[a-zA-Z0-9]+(\.[a-zA-Z0-9]+)*)?$/
+const SEMVER_EXTENDED_PATTERN =
+  /^[a-zA-Z][a-zA-Z0-9]*(-[a-zA-Z][a-zA-Z0-9]*)*-v?\d+\.\d+(\.\d+)?(-[a-zA-Z0-9]+(\.[a-zA-Z0-9]+)*)?$/
 
 /**
  * Check if a ref looks like a semantic version tag.

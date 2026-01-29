@@ -6,6 +6,7 @@
  */
 
 import React from 'react'
+
 import { Box, Text } from '@overeng/tui-react'
 
 // =============================================================================
@@ -198,7 +199,9 @@ const WarningItem = ({ problem }: { problem: Problem }) => {
         <Box>
           <Box flexDirection="row">
             <Text>{'  '}</Text>
-            <Text bold>{count} member{count > 1 ? 's' : ''}</Text>
+            <Text bold>
+              {count} member{count > 1 ? 's' : ''}
+            </Text>
             <Text> </Text>
             <Text dim>not synced</Text>
           </Box>
@@ -221,7 +224,9 @@ const WarningItem = ({ problem }: { problem: Problem }) => {
         <Box>
           <Box flexDirection="row">
             <Text>{'  '}</Text>
-            <Text bold>{count} member{count > 1 ? 's' : ''}</Text>
+            <Text bold>
+              {count} member{count > 1 ? 's' : ''}
+            </Text>
             <Text> </Text>
             <Text dim>have uncommitted changes</Text>
           </Box>
@@ -241,7 +246,9 @@ const WarningItem = ({ problem }: { problem: Problem }) => {
         <Box>
           <Box flexDirection="row">
             <Text>{'  '}</Text>
-            <Text bold>{count} member{count > 1 ? 's' : ''}</Text>
+            <Text bold>
+              {count} member{count > 1 ? 's' : ''}
+            </Text>
             <Text> </Text>
             <Text dim>have unpushed commits</Text>
           </Box>
@@ -345,7 +352,7 @@ const MemberLine = ({
 }) => {
   // Use 256-color dark gray (index 236) for current line highlight
   const bgColor = isCurrent ? { ansi256: 236 } : undefined
-  
+
   return (
     <Box flexDirection="row" backgroundColor={bgColor} extendBackground={isCurrent}>
       <Text>{prefix}</Text>
@@ -438,6 +445,7 @@ const countMembers = (members: readonly MemberStatus[]) => {
   let nested = 0
   let synced = 0
 
+  // oxlint-disable-next-line overeng/named-args -- simple recursive helper
   const countRecursive = (ms: readonly MemberStatus[], isNested: boolean): void => {
     for (const m of ms) {
       if (isNested) nested++
@@ -654,5 +662,3 @@ export const StatusOutput = ({
     </Box>
   )
 }
-
-

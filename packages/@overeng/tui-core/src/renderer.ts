@@ -11,7 +11,6 @@
 import {
   beginSyncOutput,
   clearLine,
-  clearLinesAbove,
   cursorToColumn,
   cursorUp,
   endSyncOutput,
@@ -26,6 +25,20 @@ export interface InlineRendererOptions {
   syncOutput?: boolean | undefined
   /** Whether to hide cursor during rendering. Default: true */
   hideCursor?: boolean | undefined
+}
+
+/**
+ * Exit mode for dispose behavior.
+ * - `persist`: Keep all output visible (final render stays)
+ * - `clear`: Remove all output (both static and dynamic)
+ * - `clearDynamic`: Keep static logs, clear dynamic region
+ */
+export type ExitMode = 'persist' | 'clear' | 'clearDynamic'
+
+/** Options for dispose */
+export interface DisposeOptions {
+  /** Exit mode controlling what happens to rendered output. Default: 'persist' */
+  mode?: ExitMode
 }
 
 /**
@@ -70,10 +83,12 @@ export class InlineRenderer {
   /** Whether cursor is currently hidden */
   private cursorHidden = false
 
+  // oxlint-disable-next-line overeng/named-args -- constructor with standard positional args
   constructor(terminalOrStream: Terminal | TerminalLike, options: InlineRendererOptions = {}) {
-    this.terminal = 'isTTY' in terminalOrStream && typeof terminalOrStream.columns === 'number'
-      ? (terminalOrStream as Terminal)
-      : createTerminal(terminalOrStream as TerminalLike)
+    this.terminal =
+      'isTTY' in terminalOrStream && typeof terminalOrStream.columns === 'number'
+        ? (terminalOrStream as Terminal)
+        : createTerminal(terminalOrStream as TerminalLike)
 
     this.options = {
       syncOutput: options.syncOutput ?? true,
@@ -129,13 +144,44 @@ export class InlineRenderer {
   }
 
   /**
-   * Clear all dynamic content and show cursor.
-   * Call this before exiting.
+   * Clean up and optionally clear output based on exit mode.
+   *
+   * @param options - Dispose options
+   * @param options.mode - Exit mode:
+   *   - `persist` (default): Keep all output visible
+   *   - `clear`: Remove all output (static and dynamic)
+   *   - `clearDynamic`: Keep static logs, clear dynamic region
    */
-  dispose(): void {
-    if (this.hasRendered && this.dynamicLines.length > 0) {
-      this.clearDynamic()
+  dispose(options: DisposeOptions = {}): void {
+    const mode = options.mode ?? 'persist'
+
+    if (this.terminal.isTTY) {
+      switch (mode) {
+        case 'persist':
+          // Keep everything as-is, just show cursor
+          break
+
+        case 'clear':
+          // Clear both dynamic and static regions
+          if (this.hasRendered && this.dynamicLines.length > 0) {
+            this.clearDynamic()
+          }
+          // Clear static lines by moving up and clearing each line
+          if (this.staticLines.length > 0) {
+            this.clearStaticLines()
+          }
+          break
+
+        case 'clearDynamic':
+          // Clear only dynamic region, keep static
+          if (this.hasRendered && this.dynamicLines.length > 0) {
+            this.clearDynamic()
+          }
+          break
+      }
     }
+
+    // Always restore cursor visibility
     if (this.cursorHidden) {
       this.terminal.write(showCursor())
       this.cursorHidden = false
@@ -253,5 +299,18 @@ export class InlineRenderer {
     }
     this.terminal.write(cursorUp(linesToClear))
     this.previousDynamic = []
+  }
+
+  private clearStaticLines(): void {
+    if (!this.terminal.isTTY || this.staticLines.length === 0) return
+
+    // Move up past all static lines and clear them
+    const linesToClear = this.staticLines.length
+    this.terminal.write(cursorUp(linesToClear))
+    for (let i = 0; i < linesToClear; i++) {
+      this.terminal.write(clearLine() + '\r\n')
+    }
+    this.terminal.write(cursorUp(linesToClear))
+    this.staticLines = []
   }
 }

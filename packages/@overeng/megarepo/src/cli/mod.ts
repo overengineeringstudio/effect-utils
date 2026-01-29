@@ -31,6 +31,7 @@ export {
   findMegarepoRoot,
   findNearestMegarepoRoot,
   jsonOption,
+  streamOption,
   verboseOption,
 } from './context.ts'
 

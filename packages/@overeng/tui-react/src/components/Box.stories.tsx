@@ -1,8 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
+
+import { BoxBasicExample, BoxNestedExample, BoxComplexLayoutExample } from '../examples/mod.ts'
 import { Box } from './Box.tsx'
 import { Text } from './Text.tsx'
-import { BoxBasicExample, BoxNestedExample, BoxComplexLayoutExample } from '../examples/mod.ts'
 
 const meta: Meta<typeof Box> = {
   title: 'Primitives/Box',

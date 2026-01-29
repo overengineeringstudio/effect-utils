@@ -55,11 +55,13 @@ Install bun in CI and run megarepo via bunx:
 ```
 
 **Pros:**
+
 - No hash mismatch issues
 - Simpler CI setup
 - Faster (no Nix build)
 
 **Cons:**
+
 - Requires bun setup step
 - Less "pure" than Nix approach
 
@@ -72,9 +74,11 @@ Use a pinned commit instead of `main`:
 ```
 
 **Pros:**
+
 - Reproducible once hash is correct for that commit
 
 **Cons:**
+
 - Requires manual updates when effect-utils changes
 - Still susceptible to hash drift if pnpm-lock changes
 
@@ -87,10 +91,12 @@ Publish pre-built `mr` binaries as GitHub releases:
 ```
 
 **Pros:**
+
 - No build step in CI
 - Fully reproducible
 
 **Cons:**
+
 - Requires release automation
 - Binary management overhead
 
@@ -103,10 +109,12 @@ Clone effect-utils directly without megarepo:
 ```
 
 **Pros:**
+
 - No megarepo dependency in CI
 - Simple
 
 **Cons:**
+
 - Doesn't use megarepo.lock (no commit pinning)
 - Duplicates megarepo logic
 
@@ -121,10 +129,12 @@ Clone effect-utils directly without megarepo:
 ```
 
 **Resolved Issues:**
+
 1. ✅ `mr sync --frozen` now allows cloning in fresh CI environments (fix in commit 693eb6b)
 2. ✅ Added `--refresh` to bypass nix flake cache and get latest megarepo version
 
 **Remaining Issues:**
+
 1. GitHub shorthand sources (`owner/repo`) use SSH URLs which fail without SSH keys - use HTTPS URLs instead
 2. Path resolution issue with devenv inputs (see below)
 
@@ -159,6 +169,7 @@ The `«unknown»` indicates nix couldn't resolve the home directory or symlink t
 ### Additional Issue: Wrong devenv Version in CI
 
 The CI currently installs devenv via:
+
 ```yaml
 run: nix profile install nixpkgs#devenv
 ```
@@ -192,6 +203,7 @@ playwright:
 ```
 
 **Fixed repos:**
+
 - `schickling-stiftung`
 - `livestore`
 - `schickling.dev`
@@ -199,6 +211,7 @@ playwright:
 ### Documentation
 
 See [Megarepo Nix Integration Guide](../../packages/@overeng/megarepo/docs/integrations/nix.md) for:
+
 - Full explanation of the symlink limitation
 - Patterns to avoid
 - When local paths are OK

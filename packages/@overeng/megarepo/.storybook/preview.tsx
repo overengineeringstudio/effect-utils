@@ -7,6 +7,7 @@
 
 import type { Preview, Decorator } from '@storybook/react'
 import React from 'react'
+
 import { TerminalPreview } from '@overeng/tui-react/storybook'
 
 /**
@@ -14,6 +15,7 @@ import { TerminalPreview } from '@overeng/tui-react/storybook'
  * When args.renderMode === 'string', renders directly to DOM.
  * Otherwise, renders through the terminal preview.
  */
+// oxlint-disable-next-line overeng/named-args -- Storybook Decorator signature
 const withConditionalTerminalPreview: Decorator = (Story, context) => {
   const renderMode = context.args?.renderMode
 

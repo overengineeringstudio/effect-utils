@@ -6,7 +6,9 @@
  */
 
 import { describe, expect, it } from 'vitest'
+
 import { InlineRenderer } from '@overeng/tui-core'
+
 import { createVirtualTerminal } from '../helpers/mod.ts'
 
 describe('InlineRenderer (VirtualTerminal)', () => {

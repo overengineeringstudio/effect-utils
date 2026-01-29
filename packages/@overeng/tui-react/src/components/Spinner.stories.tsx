@@ -1,9 +1,10 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
-import { Spinner, type SpinnerType } from './Spinner.tsx'
-import { Box } from './Box.tsx'
-import { Text } from './Text.tsx'
+
 import { SpinnerBasicExample, SpinnerAllTypesExample } from '../examples/mod.ts'
+import { Box } from './Box.tsx'
+import { Spinner, type SpinnerType } from './Spinner.tsx'
+import { Text } from './Text.tsx'
 
 const meta: Meta<typeof Spinner> = {
   title: 'Components/Spinner',

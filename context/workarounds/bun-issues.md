@@ -73,12 +73,7 @@ Each package declares its workspace scope in its own `package.json`:
 ```json
 {
   "name": "@livestore/devtools",
-  "workspaces": [
-    ".",
-    "../common",
-    "../utils",
-    "../../repos/effect-utils/packages/@overeng/*"
-  ],
+  "workspaces": [".", "../common", "../utils", "../../repos/effect-utils/packages/@overeng/*"],
   "dependencies": {
     "@livestore/common": "workspace:*",
     "@overeng/utils": "workspace:*"
@@ -105,12 +100,12 @@ We'll extend genie to generate the `workspaces` field in `package.json` based on
 
 > This section explains the protocol differences for reference. Our standard is now `workspace:*` for both pnpm and bun.
 
-| Protocol         | Behavior                                                                                 |
-| ---------------- | ---------------------------------------------------------------------------------------- |
-| **bun `file:`**  | Creates dir structure where nested `node_modules` symlinks back to source package's deps |
-| **pnpm `link:`** | Direct symlink to source directory (package uses its own `node_modules`)                 |
-| **pnpm `file:`** | Copies package, deps resolved from CONSUMER's context (causes TS2742 errors)             |
-| **`workspace:*`** | Both managers: symlink to package root, correct dependency resolution                   |
+| Protocol          | Behavior                                                                                 |
+| ----------------- | ---------------------------------------------------------------------------------------- |
+| **bun `file:`**   | Creates dir structure where nested `node_modules` symlinks back to source package's deps |
+| **pnpm `link:`**  | Direct symlink to source directory (package uses its own `node_modules`)                 |
+| **pnpm `file:`**  | Copies package, deps resolved from CONSUMER's context (causes TS2742 errors)             |
+| **`workspace:*`** | Both managers: symlink to package root, correct dependency resolution                    |
 
 Both **bun `file:`** and **pnpm `link:`** give packages their OWN dependency resolution - matching published behavior. However, `workspace:*` is preferred as it's consistent across package managers.
 

@@ -14,15 +14,17 @@ Nix flakes explicitly **do not follow symlinks** in path inputs for security and
 # devenv.yaml - THIS WILL FAIL
 inputs:
   playwright:
-    url: path:repos/effect-utils/nix/playwright-flake  # Goes through symlink!
+    url: path:repos/effect-utils/nix/playwright-flake # Goes through symlink!
 ```
 
 Error:
+
 ```
 error: path '.../repos/effect-utils' is a symlink
 ```
 
 Or in CI:
+
 ```
 error: '«unknown»/.megarepo/github.com/.../nix/playwright-flake' does not exist
 ```
@@ -62,6 +64,7 @@ path:repos/<member>/...
 In CI environments, the symlink target path may also contain unresolvable elements (like `«unknown»` for home directory), causing additional failures even if Nix did follow symlinks.
 
 Using GitHub URLs ensures:
+
 1. No symlink traversal issues
 2. Portable across local dev and CI
 3. Explicit versioning via git refs
@@ -86,6 +89,7 @@ export DEVENV_NIX_FLAGS="--override-input playwright path:$(pwd)/repos/effect-ut
 ```
 
 This pattern gives you:
+
 - **CI**: Uses GitHub URL (works without symlinks)
 - **Local dev**: Uses resolved local path (live updates)
 
@@ -100,11 +104,11 @@ This pattern gives you:
 
 ## Trade-offs
 
-| Approach | Pros | Cons |
-|----------|------|------|
-| GitHub URL | Works everywhere, explicit versioning | Can't test local changes directly |
-| GitHub URL + .envrc override | Best of both worlds | Requires local .envrc setup |
-| Local path | Live updates during dev | Fails through megarepo symlinks |
+| Approach                     | Pros                                  | Cons                              |
+| ---------------------------- | ------------------------------------- | --------------------------------- |
+| GitHub URL                   | Works everywhere, explicit versioning | Can't test local changes directly |
+| GitHub URL + .envrc override | Best of both worlds                   | Requires local .envrc setup       |
+| Local path                   | Live updates during dev               | Fails through megarepo symlinks   |
 
 For flakes you're actively developing, use the `.envrc` override pattern or keep them in the same repo.
 
@@ -126,6 +130,7 @@ Megarepo solves this with **Nix Lock Sync**: during `mr sync`, it automatically 
 Lock sync is **enabled by default** when the nix generator is enabled.
 
 To disable:
+
 ```json
 {
   "generators": {
@@ -138,6 +143,7 @@ To disable:
 ```
 
 To exclude specific members:
+
 ```json
 {
   "generators": {

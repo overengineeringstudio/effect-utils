@@ -9,6 +9,7 @@
  */
 
 import { createElement, type ReactNode } from 'react'
+
 import type { Color } from '@overeng/tui-core'
 
 /** Text component props */

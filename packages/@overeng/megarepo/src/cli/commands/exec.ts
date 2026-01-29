@@ -4,10 +4,10 @@
  * Execute a command in member directories.
  */
 
-import React from 'react'
 import * as Cli from '@effect/cli'
 import { Command, FileSystem } from '@effect/platform'
 import { Console, Effect, Option, Schema } from 'effect'
+import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'
 import { renderToString, Text } from '@overeng/tui-react'
@@ -138,7 +138,9 @@ export const execCommand = Cli.Command.make(
 
           // Run the command
           return yield* Effect.gen(function* () {
-            const shellCmd = Command.make('sh', '-c', cmd).pipe(Command.workingDirectory(memberPath))
+            const shellCmd = Command.make('sh', '-c', cmd).pipe(
+              Command.workingDirectory(memberPath),
+            )
             const output = yield* Command.string(shellCmd)
             return { name, exitCode: 0, stdout: output, stderr: '' }
           }).pipe(

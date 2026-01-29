@@ -13,18 +13,18 @@ import Yoga, {
   Edge,
   type Node as YogaNode,
 } from 'yoga-layout'
+
 import type { BoxNodeProps } from './types.ts'
 
 /** Create a new Yoga node */
 export const createYogaNode = (): YogaNode => Yoga.Node.create()
 
 /** Apply box props to a Yoga node */
+// oxlint-disable-next-line overeng/named-args -- internal function with clear positional semantics
 export const applyBoxProps = (node: YogaNode, props: BoxNodeProps): void => {
   // Flex direction
   if (props.flexDirection !== undefined) {
-    node.setFlexDirection(
-      props.flexDirection === 'row' ? FlexDirection.Row : FlexDirection.Column
-    )
+    node.setFlexDirection(props.flexDirection === 'row' ? FlexDirection.Row : FlexDirection.Column)
   }
 
   // Flex grow/shrink
@@ -120,36 +120,51 @@ export const applyBoxProps = (node: YogaNode, props: BoxNodeProps): void => {
 /** Map align items prop to Yoga enum */
 const mapAlign = (align: NonNullable<BoxNodeProps['alignItems']>): Align => {
   switch (align) {
-    case 'flex-start': return Align.FlexStart
-    case 'center': return Align.Center
-    case 'flex-end': return Align.FlexEnd
-    case 'stretch': return Align.Stretch
+    case 'flex-start':
+      return Align.FlexStart
+    case 'center':
+      return Align.Center
+    case 'flex-end':
+      return Align.FlexEnd
+    case 'stretch':
+      return Align.Stretch
   }
 }
 
 /** Map align self prop to Yoga enum */
 const mapAlignSelf = (align: NonNullable<BoxNodeProps['alignSelf']>): Align => {
   switch (align) {
-    case 'auto': return Align.Auto
-    case 'flex-start': return Align.FlexStart
-    case 'center': return Align.Center
-    case 'flex-end': return Align.FlexEnd
-    case 'stretch': return Align.Stretch
+    case 'auto':
+      return Align.Auto
+    case 'flex-start':
+      return Align.FlexStart
+    case 'center':
+      return Align.Center
+    case 'flex-end':
+      return Align.FlexEnd
+    case 'stretch':
+      return Align.Stretch
   }
 }
 
 /** Map justify content prop to Yoga enum */
 const mapJustify = (justify: NonNullable<BoxNodeProps['justifyContent']>): Justify => {
   switch (justify) {
-    case 'flex-start': return Justify.FlexStart
-    case 'center': return Justify.Center
-    case 'flex-end': return Justify.FlexEnd
-    case 'space-between': return Justify.SpaceBetween
-    case 'space-around': return Justify.SpaceAround
+    case 'flex-start':
+      return Justify.FlexStart
+    case 'center':
+      return Justify.Center
+    case 'flex-end':
+      return Justify.FlexEnd
+    case 'space-between':
+      return Justify.SpaceBetween
+    case 'space-around':
+      return Justify.SpaceAround
   }
 }
 
 /** Calculate layout for a tree starting at node */
+// oxlint-disable-next-line overeng/named-args -- internal function with clear positional semantics
 export const calculateLayout = (node: YogaNode, width: number): void => {
   node.calculateLayout(width, undefined, Direction.LTR)
 }

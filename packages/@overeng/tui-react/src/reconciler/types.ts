@@ -3,6 +3,7 @@
  */
 
 import type { Node as YogaNode } from 'yoga-layout'
+
 import type { Color } from '@overeng/tui-core'
 
 // =============================================================================
@@ -77,8 +78,14 @@ export interface BoxNodeProps {
   flexBasis?: number | 'auto' | undefined
   alignItems?: 'flex-start' | 'center' | 'flex-end' | 'stretch' | undefined
   alignSelf?: 'auto' | 'flex-start' | 'center' | 'flex-end' | 'stretch' | undefined
-  justifyContent?: 'flex-start' | 'center' | 'flex-end' | 'space-between' | 'space-around' | undefined
-  
+  justifyContent?:
+    | 'flex-start'
+    | 'center'
+    | 'flex-end'
+    | 'space-between'
+    | 'space-around'
+    | undefined
+
   // Spacing
   padding?: number | undefined
   paddingTop?: number | undefined
@@ -91,7 +98,7 @@ export interface BoxNodeProps {
   marginLeft?: number | undefined
   marginRight?: number | undefined
   gap?: number | undefined
-  
+
   // Sizing
   width?: number | string | undefined
   height?: number | undefined
@@ -99,7 +106,7 @@ export interface BoxNodeProps {
   minHeight?: number | undefined
   maxWidth?: number | undefined
   maxHeight?: number | undefined
-  
+
   // Styling
   backgroundColor?: Color | undefined
   extendBackground?: boolean | undefined
@@ -119,17 +126,14 @@ export interface StaticNodeProps {
 // Type Guards
 // =============================================================================
 
-export const isTextNode = (node: TuiNode): node is TuiTextNode => 
-  node.type === 'tui-text-node'
+export const isTextNode = (node: TuiNode): node is TuiTextNode => node.type === 'tui-text-node'
 
 export const isElement = (node: TuiNode): node is TuiElement =>
   node.type === 'tui-box' || node.type === 'tui-text' || node.type === 'tui-static'
 
-export const isBoxElement = (node: TuiNode): node is TuiBoxElement =>
-  node.type === 'tui-box'
+export const isBoxElement = (node: TuiNode): node is TuiBoxElement => node.type === 'tui-box'
 
-export const isTextElement = (node: TuiNode): node is TuiTextElement =>
-  node.type === 'tui-text'
+export const isTextElement = (node: TuiNode): node is TuiTextElement => node.type === 'tui-text'
 
 export const isStaticElement = (node: TuiNode): node is TuiStaticElement =>
   node.type === 'tui-static'

@@ -35,7 +35,7 @@ export interface StaticProps<T> {
  */
 export const Static = <T,>(props: StaticProps<T>): ReactNode => {
   const { items, children: renderItem } = props
-  
+
   // Render all items as children of the static element
   // The reconciler tracks which have been committed
   const renderedItems = items.map((item, index) => {

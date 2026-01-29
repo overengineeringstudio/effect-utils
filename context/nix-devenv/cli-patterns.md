@@ -25,12 +25,14 @@ packages = [
 ```
 
 **Characteristics:**
+
 - Runs CLI directly from TypeScript source via `bun`
 - No Nix build step, instant changes
 - Uses `WORKSPACE_ROOT` or `$PWD` to find entry files
 - Only works within the repo where the CLI source lives
 
 **When to use:**
+
 - You're actively developing the CLI
 - The CLI source code is in the same repo as your devenv.nix
 
@@ -47,24 +49,26 @@ packages = [
 ```
 
 **Characteristics:**
+
 - Uses hermetically built CLI binary
 - Reproducible across machines
 - Hash-verified dependencies
 - Works regardless of where effect-utils source is
 
 **When to use:**
+
 - You're using a CLI defined in another repo
 - You want stable, reproducible CLI behavior
 - You don't need to modify the CLI source
 
 ## Quick Reference
 
-| Scenario | Pattern | Example |
-|----------|---------|---------|
+| Scenario                         | Pattern      | Example                               |
+| -------------------------------- | ------------ | ------------------------------------- |
 | Developing genie in effect-utils | Source-based | `mkSourceCli { name = "genie"; ... }` |
-| Using genie in schickling.dev | Nix packages | `effect-utils.packages.*.genie` |
-| Using genie in livestore | Nix packages | `effect-utils.packages.*.genie` |
-| Developing livestore's own CLI | Source-based | `mkSourceCli { name = "ls"; ... }` |
+| Using genie in schickling.dev    | Nix packages | `effect-utils.packages.*.genie`       |
+| Using genie in livestore         | Nix packages | `effect-utils.packages.*.genie`       |
+| Developing livestore's own CLI   | Source-based | `mkSourceCli { name = "ls"; ... }`    |
 
 ## Anti-pattern: Source-based for external CLIs
 
@@ -81,6 +85,7 @@ packages = [
 ```
 
 This pattern:
+
 - Requires hacks (`root` parameter) to make paths work
 - Defeats the purpose of Nix's reproducibility
 - Makes it unclear where the CLI comes from
@@ -98,7 +103,7 @@ This pattern:
     genie = ...;      # Nix-built genie binary
     megarepo = ...;   # Nix-built megarepo binary
   };
-  
+
   # mkSourceCli is internal-only, not exported
   # (used only in effect-utils devenv.nix)
 }
@@ -107,6 +112,7 @@ This pattern:
 ### Hash management
 
 Nix packages require hash updates when dependencies change:
+
 - `pnpmDepsHash` - hash of pnpm dependencies
 - `localDeps[].hash` - hashes of local workspace dependencies
 

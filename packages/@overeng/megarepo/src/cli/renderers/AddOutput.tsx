@@ -3,6 +3,7 @@
  */
 
 import React from 'react'
+
 import { Box, Text } from '@overeng/tui-react'
 
 // =============================================================================
@@ -98,5 +99,3 @@ export const AddErrorOutput = ({ error, member, repo }: AddErrorOutputProps) => 
     </Box>
   )
 }
-
-

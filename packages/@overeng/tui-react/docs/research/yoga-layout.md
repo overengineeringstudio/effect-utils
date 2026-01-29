@@ -7,6 +7,7 @@
 [Yoga](https://yogalayout.dev/) is an embeddable layout system created by Meta (Facebook). It implements a subset of CSS Flexbox and is used in production by React Native.
 
 **Key characteristics:**
+
 - Written in C++ with bindings for many languages
 - Implements CSS Flexbox subset
 - High performance, deterministic layout
@@ -57,16 +58,16 @@ const layout = child1.getComputedLayout()
 
 Yoga supports most CSS Flexbox properties:
 
-| Property | Yoga API | Values |
-|----------|----------|--------|
-| `flex-direction` | `setFlexDirection()` | `ROW`, `COLUMN`, `ROW_REVERSE`, `COLUMN_REVERSE` |
+| Property          | Yoga API              | Values                                                                              |
+| ----------------- | --------------------- | ----------------------------------------------------------------------------------- |
+| `flex-direction`  | `setFlexDirection()`  | `ROW`, `COLUMN`, `ROW_REVERSE`, `COLUMN_REVERSE`                                    |
 | `justify-content` | `setJustifyContent()` | `FLEX_START`, `CENTER`, `FLEX_END`, `SPACE_BETWEEN`, `SPACE_AROUND`, `SPACE_EVENLY` |
-| `align-items` | `setAlignItems()` | `FLEX_START`, `CENTER`, `FLEX_END`, `STRETCH`, `BASELINE` |
-| `align-self` | `setAlignSelf()` | Same as align-items |
-| `flex-wrap` | `setFlexWrap()` | `NO_WRAP`, `WRAP`, `WRAP_REVERSE` |
-| `flex-grow` | `setFlexGrow()` | Number |
-| `flex-shrink` | `setFlexShrink()` | Number |
-| `flex-basis` | `setFlexBasis()` | Number or `AUTO` |
+| `align-items`     | `setAlignItems()`     | `FLEX_START`, `CENTER`, `FLEX_END`, `STRETCH`, `BASELINE`                           |
+| `align-self`      | `setAlignSelf()`      | Same as align-items                                                                 |
+| `flex-wrap`       | `setFlexWrap()`       | `NO_WRAP`, `WRAP`, `WRAP_REVERSE`                                                   |
+| `flex-grow`       | `setFlexGrow()`       | Number                                                                              |
+| `flex-shrink`     | `setFlexShrink()`     | Number                                                                              |
+| `flex-basis`      | `setFlexBasis()`      | Number or `AUTO`                                                                    |
 
 ### Box Model
 
@@ -138,7 +139,7 @@ Yoga pairs naturally with React reconcilers:
 // In host config
 createInstance(type, props) {
   const node = Yoga.Node.create()
-  
+
   // Apply layout props
   if (props.flexDirection) {
     node.setFlexDirection(flexDirectionMap[props.flexDirection])
@@ -147,7 +148,7 @@ createInstance(type, props) {
     node.setPadding(Yoga.EDGE_ALL, props.padding)
   }
   // ... more props
-  
+
   return { type, props, yogaNode: node, children: [] }
 }
 
@@ -168,6 +169,7 @@ const { left, top, width, height } = node.yogaNode.getComputedLayout()
 ### Character Grid
 
 Terminals use a character grid, not pixels:
+
 - Width = columns (characters)
 - Height = rows (lines)
 
@@ -196,16 +198,16 @@ const textNode = Yoga.Node.create()
 textNode.setMeasureFunc((width, widthMode, height, heightMode) => {
   const text = getTextContent(textNode)
   const textWidth = stringWidth(text)
-  
+
   // Simple: single line
   return { width: textWidth, height: 1 }
-  
+
   // With wrapping: calculate lines needed
   if (widthMode === Yoga.MEASURE_MODE_AT_MOST && textWidth > width) {
     const lines = wrapText(text, width)
     return { width, height: lines.length }
   }
-  
+
   return { width: textWidth, height: 1 }
 })
 ```
@@ -213,6 +215,7 @@ textNode.setMeasureFunc((width, widthMode, height, heightMode) => {
 ### Performance
 
 For CLI-scale UIs (< 100 nodes), Yoga is extremely fast:
+
 - Layout calculation: < 1ms typically
 - Memory: ~1KB per node
 
@@ -257,8 +260,8 @@ footer.setHeight(2)
 ### Centering
 
 ```typescript
-container.setJustifyContent(Yoga.JUSTIFY_CENTER)  // Main axis
-container.setAlignItems(Yoga.ALIGN_CENTER)        // Cross axis
+container.setJustifyContent(Yoga.JUSTIFY_CENTER) // Main axis
+container.setAlignItems(Yoga.ALIGN_CENTER) // Cross axis
 ```
 
 ## Memory Management
@@ -290,6 +293,7 @@ removeChild(parent, child) {
 ## Limitations
 
 ### Not Supported
+
 - CSS Grid
 - `position: fixed` / `position: sticky`
 - `z-index` (no stacking context)
@@ -297,6 +301,7 @@ removeChild(parent, child) {
 - `calc()`
 
 ### Terminal-Specific
+
 - No sub-character positioning
 - No overlapping (need separate overlay system)
 - Text wrapping requires custom measure functions

@@ -4,9 +4,11 @@
 
 import type { StoryObj } from '@storybook/react'
 import React from 'react'
+
+import { forceColorLevel } from '@overeng/cli-ui'
 import { Box } from '@overeng/tui-react'
 import { createCliMeta } from '@overeng/tui-react/storybook'
-import { forceColorLevel } from '@overeng/cli-ui'
+
 import {
   ExecErrorOutput,
   ExecVerboseHeader,
@@ -32,7 +34,13 @@ const exampleExecResults: ExecMemberResult[] = [
 ]
 
 const exampleExecResultsWithOutput: ExecMemberResult[] = [
-  { name: 'effect', exitCode: 0, stdout: 'added 125 packages in 2.3s\n15 packages are looking for funding\n  run `npm fund` for details', stderr: '' },
+  {
+    name: 'effect',
+    exitCode: 0,
+    stdout:
+      'added 125 packages in 2.3s\n15 packages are looking for funding\n  run `npm fund` for details',
+    stderr: '',
+  },
   { name: 'effect-utils', exitCode: 0, stdout: 'added 45 packages in 1.1s', stderr: '' },
 ]
 
@@ -176,21 +184,32 @@ const VerboseMemberStatus = ({ members }: { members: MemberStatusItem[] }) => (
   </Box>
 )
 
-export const memberStatusMeta = createCliMeta<{ members: MemberStatusItem[] }>(VerboseMemberStatus, {
-  title: 'CLI/Exec/Member Status',
-  description: 'Verbose member status lines showing synced/skipped status for each member.',
-  defaultArgs: {
-    members: [],
+export const memberStatusMeta = createCliMeta<{ members: MemberStatusItem[] }>(
+  VerboseMemberStatus,
+  {
+    title: 'CLI/Exec/Member Status',
+    description: 'Verbose member status lines showing synced/skipped status for each member.',
+    defaultArgs: {
+      members: [],
+    },
   },
-})
+)
 
 type MemberStatusStory = StoryObj<typeof memberStatusMeta>
 
 export const AllSynced: MemberStatusStory = {
   args: {
     members: [
-      { name: 'effect', synced: true, path: '/Users/dev/.megarepo/github.com/effect-ts/effect/main' },
-      { name: 'effect-utils', synced: true, path: '/Users/dev/.megarepo/github.com/overeng/effect-utils/main' },
+      {
+        name: 'effect',
+        synced: true,
+        path: '/Users/dev/.megarepo/github.com/effect-ts/effect/main',
+      },
+      {
+        name: 'effect-utils',
+        synced: true,
+        path: '/Users/dev/.megarepo/github.com/overeng/effect-utils/main',
+      },
     ],
   },
 }
@@ -198,9 +217,17 @@ export const AllSynced: MemberStatusStory = {
 export const SomeSkipped: MemberStatusStory = {
   args: {
     members: [
-      { name: 'effect', synced: true, path: '/Users/dev/.megarepo/github.com/effect-ts/effect/main' },
+      {
+        name: 'effect',
+        synced: true,
+        path: '/Users/dev/.megarepo/github.com/effect-ts/effect/main',
+      },
       { name: 'effect-utils', synced: false },
-      { name: 'livestore', synced: true, path: '/Users/dev/.megarepo/github.com/livestore/livestore/main' },
+      {
+        name: 'livestore',
+        synced: true,
+        path: '/Users/dev/.megarepo/github.com/livestore/livestore/main',
+      },
     ],
   },
 }

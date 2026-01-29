@@ -1,8 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
-import { Text } from './Text.tsx'
-import { Box } from './Box.tsx'
+
 import { TextColorsExample, TextStylesExample } from '../examples/mod.ts'
+import { Box } from './Box.tsx'
+import { Text } from './Text.tsx'
 
 const meta: Meta<typeof Text> = {
   title: 'Primitives/Text',
@@ -63,7 +64,9 @@ export const AllStyles: Story = {
 export const Combined: Story = {
   render: () => (
     <Box flexDirection="row">
-      <Text color="green" bold>SUCCESS</Text>
+      <Text color="green" bold>
+        SUCCESS
+      </Text>
       <Text dim> - Operation completed</Text>
     </Box>
   ),

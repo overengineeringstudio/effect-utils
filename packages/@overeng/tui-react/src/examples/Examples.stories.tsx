@@ -15,11 +15,11 @@
 
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
+
 import { Box, Text } from '../mod.ts'
 import {
   SyncSimulationExample,
   type SyncSimulationProps,
-  type SyncState,
   type SyncPhase,
   LogsAboveProgressExample,
   type LogsAboveProgressExampleProps,
@@ -27,7 +27,6 @@ import {
   type ProgressListExampleProps,
   SyncDeepSimulationExample,
   type SyncDeepSimulationExampleProps,
-  type SyncDeepState,
   type SyncDeepPhase,
   StressRapidExample,
   type StressRapidExampleProps,
@@ -44,7 +43,8 @@ const meta: Meta = {
   parameters: {
     docs: {
       description: {
-        component: 'Interactive examples demonstrating @overeng/tui-react capabilities. Use the Controls panel to adjust parameters.',
+        component:
+          'Interactive examples demonstrating @overeng/tui-react capabilities. Use the Controls panel to adjust parameters.',
       },
     },
   },
@@ -68,7 +68,7 @@ type SyncSimulationStory = StoryObj<SyncSimulationStoryProps>
 
 /**
  * Simulates a basic repository sync with TaskList component.
- * 
+ *
  * Toggle `autoRun` off to manually control the sync state with `phase` and `activeIndex`.
  *
  * CLI: `npx tsx examples/task-list-demo.tsx`
@@ -115,7 +115,14 @@ export const SyncSimulation: SyncSimulationStory = {
     if (autoRun) {
       return <SyncSimulationExample key="auto" autoRun={true} {...args} />
     }
-    return <SyncSimulationExample key={`${phase}-${activeIndex}`} autoRun={false} syncState={{ phase, activeIndex }} {...args} />
+    return (
+      <SyncSimulationExample
+        key={`${phase}-${activeIndex}`}
+        autoRun={false}
+        syncState={{ phase, activeIndex }}
+        {...args}
+      />
+    )
   },
 }
 
@@ -138,7 +145,7 @@ type SyncDeepSimulationStory = StoryObj<SyncDeepSimulationStoryProps>
 /**
  * Deep sync simulation with nested repositories.
  * Demonstrates the <Static> component for persistent logs above dynamic progress.
- * 
+ *
  * Toggle `autoRun` off to manually control the sync state with `phase` and `completedCount`.
  *
  * CLI: `npx tsx examples/sync-simulation.tsx`
@@ -178,9 +185,18 @@ export const SyncDeepSimulation: SyncDeepSimulationStory = {
   },
   render: ({ phase, completedCount, autoRun = true, ...args }) => {
     if (autoRun) {
-      return <SyncDeepSimulationExample key={`auto-${args.maxConcurrent}`} autoRun={true} {...args} />
+      return (
+        <SyncDeepSimulationExample key={`auto-${args.maxConcurrent}`} autoRun={true} {...args} />
+      )
     }
-    return <SyncDeepSimulationExample key={`${phase}-${completedCount}-${args.maxConcurrent}`} autoRun={false} syncState={{ phase, completedCount }} {...args} />
+    return (
+      <SyncDeepSimulationExample
+        key={`${phase}-${completedCount}-${args.maxConcurrent}`}
+        autoRun={false}
+        syncState={{ phase, completedCount }}
+        {...args}
+      />
+    )
   },
 }
 
@@ -386,5 +402,7 @@ export const BouncingWindows: BouncingWindowsStory = {
       control: { type: 'boolean' },
     },
   },
-  render: (args) => <BouncingWindowsExample key={`${args.windowCount}-${args.width}-${args.height}`} {...args} />,
+  render: (args) => (
+    <BouncingWindowsExample key={`${args.windowCount}-${args.width}-${args.height}`} {...args} />
+  ),
 }
