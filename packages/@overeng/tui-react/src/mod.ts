@@ -66,8 +66,11 @@ export {
   useRenderConfig,
   ttyRenderConfig,
   ciRenderConfig,
+  ciPlainRenderConfig,
+  pipeRenderConfig,
   logRenderConfig,
-  fullscreenRenderConfig,
+  altScreenRenderConfig,
+  fullscreenRenderConfig, // deprecated alias
   isAnimated,
   hasColors,
   stripAnsi,
@@ -118,13 +121,16 @@ export {
   // Presets
   tty,
   ci,
+  ciPlain,
   pipe,
   log,
-  fullscreen,
+  altScreen,
+  fullscreen, // deprecated alias
   json,
   ndjson,
   // Detection
-  detect as detectOutputMode,
+  detectOutputMode,
+  detect, // deprecated alias
   // Environment helpers
   isTTY,
   isNonTTY,
@@ -139,9 +145,11 @@ export {
   layer,
   ttyLayer,
   ciLayer,
+  ciPlainLayer,
   pipeLayer,
   logLayer,
-  fullscreenLayer,
+  altScreenLayer,
+  fullscreenLayer, // deprecated alias
   jsonLayer,
   ndjsonLayer,
   detectLayer,

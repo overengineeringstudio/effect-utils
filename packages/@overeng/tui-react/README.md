@@ -45,7 +45,8 @@ Use `createTuiApp` for mode-dependent rendering in Effect-based CLIs:
 
 ```tsx
 import { Effect, Schema } from 'effect'
-import { createTuiApp, useTuiAppState, progressiveVisualLayer, Box, Text } from '@overeng/tui-react'
+import * as Cli from '@effect/cli'
+import { createTuiApp, useTuiAppState, outputOption, outputModeLayer, Box, Text } from '@overeng/tui-react'
 
 // 1. Define state and action schemas
 const AppState = Schema.Struct({
@@ -90,17 +91,22 @@ const AppView = () => {
   )
 }
 
-// 5. Use in Effect
-const program = Effect.gen(function* () {
-  const tui = yield* MyApp.run(<AppView />)
+// 5. Use with @effect/cli and --output flag
+const command = Cli.Command.make(
+  'mycommand',
+  { output: outputOption },
+  ({ output }) =>
+    Effect.gen(function* () {
+      const tui = yield* MyApp.run(<AppView />)
 
-  tui.dispatch({ _tag: 'SetProgress', progress: 50 })
-  yield* Effect.sleep('1 second')
-  tui.dispatch({ _tag: 'Complete' })
-}).pipe(Effect.scoped)
-
-// Run with mode layer
-Effect.runPromise(program.pipe(Effect.provide(progressiveVisualLayer)))
+      tui.dispatch({ _tag: 'SetProgress', progress: 50 })
+      yield* Effect.sleep('1 second')
+      tui.dispatch({ _tag: 'Complete' })
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(outputModeLayer(output))  // 'auto' detects from environment
+    )
+)
 ```
 
 ### Universal Components
@@ -127,24 +133,30 @@ const App = () => (
 
 ## Output Modes
 
-| Mode                           | Description                | Use Case             |
-| ------------------------------ | -------------------------- | -------------------- |
-| `progressive-visual`           | Real-time React rendering  | Interactive TTY      |
-| `progressive-visual-alternate` | Full-screen mode (OpenTUI) | Complex UIs          |
-| `final-visual`                 | No progressive output      | Batch processing     |
-| `final-json`                   | JSON output on completion  | CI/CD, piping        |
-| `progressive-json`             | NDJSON streaming           | Real-time monitoring |
+Use the `--output` / `-o` flag to control output mode:
+
+| Mode         | Timing | Animation | Colors | Use Case                      |
+| ------------ | ------ | --------- | ------ | ----------------------------- |
+| `auto`       | -      | -         | -      | Auto-detect from environment  |
+| `tty`        | live   | ✓         | ✓      | Interactive terminal (default)|
+| `alt-screen` | live   | ✓         | ✓      | Fullscreen TUI                |
+| `ci`         | live   | ✗         | ✓      | CI with colors                |
+| `ci-plain`   | live   | ✗         | ✗      | CI without colors             |
+| `pipe`       | final  | ✗         | ✓      | Piping output                 |
+| `log`        | final  | ✗         | ✗      | Log files                     |
+| `json`       | final  | -         | -      | Final JSON output             |
+| `ndjson`     | live   | -         | -      | Streaming NDJSON              |
 
 ```tsx
-import {
-  progressiveVisualLayer,
-  progressiveJsonLayer,
-  finalJsonLayer,
-  detectLayer, // Auto-detect based on TTY
-} from '@overeng/tui-react'
+import { outputOption, outputModeLayer, ttyLayer, jsonLayer, ciLayer } from '@overeng/tui-react'
 
-// Use TTY detection
-const layer = process.stdout.isTTY ? progressiveVisualLayer : finalJsonLayer
+// CLI usage: mycommand --output json
+// In command handler:
+Effect.provide(outputModeLayer(output))  // output from CLI flag
+
+// Or use specific layers directly for testing:
+Effect.provide(ttyLayer)
+Effect.provide(jsonLayer)
 ```
 
 ## Components

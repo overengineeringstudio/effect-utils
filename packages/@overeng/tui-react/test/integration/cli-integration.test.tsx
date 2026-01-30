@@ -241,13 +241,16 @@ describe('CLI Integration', () => {
     expect(tags).toContain('Complete')
   })
 
-  test('pipe mode produces no output', async () => {
+  test('pipe mode produces final output only', async () => {
     await runDeploy(['api', 'web']).pipe(
       Effect.provide(testModeLayer('pipe')),
       Effect.runPromise,
     )
 
-    expect(capturedOutput).toHaveLength(0)
+    // Pipe mode outputs the final rendered state (single output at end)
+    expect(capturedOutput).toHaveLength(1)
+    // Should contain the final "Deployed" message
+    expect(capturedOutput[0]).toContain('Deployed')
   })
 
   test('detectOutputMode returns appropriate mode for environment', () => {

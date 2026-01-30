@@ -112,13 +112,25 @@ export const tty: OutputMode = {
 /**
  * CI mode - Continuous Integration environment.
  *
- * Progressive React rendering with static spinners and colors.
+ * Live React rendering with static spinners and colors.
  * Use this in CI environments that support ANSI colors but not cursor movement.
  */
 export const ci: OutputMode = {
   _tag: 'react',
   timing: 'progressive',
   render: { animation: false, colors: true, alternate: false },
+}
+
+/**
+ * CI Plain mode - CI environment without color support.
+ *
+ * Live React rendering with static spinners and no colors.
+ * Use this in CI environments that don't support ANSI escape codes.
+ */
+export const ciPlain: OutputMode = {
+  _tag: 'react',
+  timing: 'progressive',
+  render: { animation: false, colors: false, alternate: false },
 }
 
 /**
@@ -146,18 +158,21 @@ export const log: OutputMode = {
 }
 
 /**
- * Fullscreen mode - Alternate buffer mode.
+ * Alt-screen mode - Alternate screen buffer.
  *
- * Progressive React rendering in alternate screen buffer.
+ * Live React rendering in alternate screen buffer.
  * Use this for fullscreen TUI applications.
  *
  * **Note:** Requires Bun runtime and OpenTUI packages.
  */
-export const fullscreen: OutputMode = {
+export const altScreen: OutputMode = {
   _tag: 'react',
   timing: 'progressive',
   render: { animation: true, colors: true, alternate: true },
 }
+
+/** @deprecated Use `altScreen` instead */
+export const fullscreen = altScreen
 
 /**
  * JSON mode - Single JSON output at completion.
@@ -198,16 +213,31 @@ export const ttyRenderConfig: RenderConfig = { animation: true, colors: true, al
 export const ciRenderConfig: RenderConfig = { animation: false, colors: true, alternate: false }
 
 /**
+ * RenderConfig for CI environments without color support.
+ * Live timing (React re-renders) with static spinners, no colors.
+ */
+export const ciPlainRenderConfig: RenderConfig = { animation: false, colors: false, alternate: false }
+
+/**
+ * RenderConfig for piped output.
+ * Final timing with static spinners, with colors.
+ */
+export const pipeRenderConfig: RenderConfig = { animation: false, colors: true, alternate: false }
+
+/**
  * RenderConfig for log files.
- * Static spinners without colors.
+ * Final timing with static spinners, no colors.
  */
 export const logRenderConfig: RenderConfig = { animation: false, colors: false, alternate: false }
 
 /**
- * RenderConfig for fullscreen mode.
+ * RenderConfig for alt-screen mode.
  * Animated spinners with colors in alternate buffer.
  */
-export const fullscreenRenderConfig: RenderConfig = { animation: true, colors: true, alternate: true }
+export const altScreenRenderConfig: RenderConfig = { animation: true, colors: true, alternate: true }
+
+/** @deprecated Use `altScreenRenderConfig` instead */
+export const fullscreenRenderConfig = altScreenRenderConfig
 
 // =============================================================================
 // Service Tag
@@ -455,14 +485,20 @@ export const ttyLayer: Layer.Layer<OutputModeTag> = layer(tty)
 /** Layer for ci mode */
 export const ciLayer: Layer.Layer<OutputModeTag> = layer(ci)
 
+/** Layer for ci-plain mode */
+export const ciPlainLayer: Layer.Layer<OutputModeTag> = layer(ciPlain)
+
 /** Layer for pipe mode */
 export const pipeLayer: Layer.Layer<OutputModeTag> = layer(pipe)
 
 /** Layer for log mode */
 export const logLayer: Layer.Layer<OutputModeTag> = layer(log)
 
-/** Layer for fullscreen mode */
-export const fullscreenLayer: Layer.Layer<OutputModeTag> = layer(fullscreen)
+/** Layer for alt-screen mode */
+export const altScreenLayer: Layer.Layer<OutputModeTag> = layer(altScreen)
+
+/** @deprecated Use `altScreenLayer` instead */
+export const fullscreenLayer = altScreenLayer
 
 /** Layer for json mode */
 export const jsonLayer: Layer.Layer<OutputModeTag> = layer(json)

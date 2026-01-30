@@ -23,9 +23,19 @@
  *    ```
  *
  * Features:
- * - Tabs for Visual/Fullscreen/String/JSON/NDJSON output modes
+ * - Tabs for all output modes: TTY, Alt Screen, CI, CI Plain, Pipe, Log, JSON, NDJSON
  * - Timeline playback with play/pause/scrub (stateful mode)
  * - Viewport size controls
+ *
+ * Output mode tabs align with CLI `--output` flag values:
+ * - `tty` - Interactive terminal (live, animated, colored)
+ * - `alt-screen` - Fullscreen TUI simulation
+ * - `ci` - CI output with colors
+ * - `ci-plain` - CI output without colors
+ * - `pipe` - Final output with colors (for piping)
+ * - `log` - Final output without colors (for log files)
+ * - `json` - Final JSON output
+ * - `ndjson` - Streaming NDJSON
  */
 
 import { FitAddon } from '@xterm/addon-fit'
@@ -34,7 +44,14 @@ import { Schema } from 'effect'
 import '@xterm/xterm/css/xterm.css'
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 
-import { RenderConfigProvider, ciRenderConfig, logRenderConfig, stripAnsi } from '../effect/OutputMode.tsx'
+import {
+  RenderConfigProvider,
+  ciRenderConfig,
+  ciPlainRenderConfig,
+  pipeRenderConfig,
+  logRenderConfig,
+  stripAnsi,
+} from '../effect/OutputMode.tsx'
 import { renderToString } from '../renderToString.ts'
 import { createRoot, type Root } from '../root.ts'
 import { xtermTheme, containerStyles } from './theme.ts'
@@ -43,7 +60,7 @@ import { xtermTheme, containerStyles } from './theme.ts'
 // Types
 // =============================================================================
 
-export type OutputTab = 'visual' | 'fullscreen' | 'ci' | 'log' | 'json' | 'ndjson'
+export type OutputTab = 'tty' | 'alt-screen' | 'ci' | 'ci-plain' | 'pipe' | 'log' | 'json' | 'ndjson'
 
 export interface TimelineEvent<A> {
   /** Time offset in milliseconds from start */
@@ -285,6 +302,8 @@ const PlaybackControls = <A,>({
   onPause,
   onReset,
   onSeek,
+  disabled = false,
+  disabledMessage,
 }: {
   isPlaying: boolean
   currentTime: number
@@ -294,6 +313,8 @@ const PlaybackControls = <A,>({
   onPause: () => void
   onReset: () => void
   onSeek: (time: number) => void
+  disabled?: boolean
+  disabledMessage?: string
 }): React.ReactElement => {
   // Hover state for tooltip
   const [hoveredEvent, setHoveredEvent] = useState<{
@@ -301,11 +322,17 @@ const PlaybackControls = <A,>({
     position: { x: number; y: number }
   } | null>(null)
 
+  // For disabled state, show timeline at 100%
+  const effectiveTime = disabled ? totalDuration : currentTime
+  const effectiveEventIndex = disabled ? timeline.length - 1 : -1
+
   // Calculate current event index (last event that has fired)
-  const currentEventIndex = timeline.findIndex((e, i) => {
-    const nextEvent = timeline[i + 1]
-    return e.at <= currentTime && (!nextEvent || nextEvent.at > currentTime)
-  })
+  const currentEventIndex = disabled
+    ? effectiveEventIndex
+    : timeline.findIndex((e, i) => {
+        const nextEvent = timeline[i + 1]
+        return e.at <= currentTime && (!nextEvent || nextEvent.at > currentTime)
+      })
 
   // Get current event info
   const currentEvent = currentEventIndex >= 0 ? timeline[currentEventIndex] : null
@@ -314,6 +341,7 @@ const PlaybackControls = <A,>({
 
   // Step to previous event
   const handlePrev = () => {
+    if (disabled) return
     if (currentEventIndex <= 0) {
       onSeek(0)
     } else {
@@ -324,6 +352,7 @@ const PlaybackControls = <A,>({
 
   // Step to next event
   const handleNext = () => {
+    if (disabled) return
     const nextIndex = currentEventIndex + 1
     if (nextIndex < timeline.length) {
       const nextEvent = timeline[nextIndex]
@@ -332,6 +361,13 @@ const PlaybackControls = <A,>({
   }
 
   const hasEvents = timeline.length > 0
+
+  // Disabled button style
+  const disabledButtonStyle: React.CSSProperties = {
+    ...smallButtonStyle,
+    opacity: 0.4,
+    cursor: 'not-allowed',
+  }
 
   return (
     <div
@@ -342,64 +378,71 @@ const PlaybackControls = <A,>({
         padding: '8px 12px',
         background: '#2d2d2d',
         borderTop: '1px solid #3d3d3d',
+        opacity: disabled ? 0.6 : 1,
       }}
     >
-      {/* Row 1: Step controls + Event index + Time */}
+      {/* Row 1: Step controls + Event index + Time (or disabled message) */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         {/* Step controls */}
         <div style={{ display: 'flex', gap: '4px' }}>
           <button
             onClick={handlePrev}
-            style={smallButtonStyle}
-            disabled={currentEventIndex <= 0 && currentTime === 0}
-            title="Previous event"
+            style={disabled ? disabledButtonStyle : smallButtonStyle}
+            disabled={disabled || (currentEventIndex <= 0 && currentTime === 0)}
+            title={disabled ? 'Timeline disabled' : 'Previous event'}
             aria-label="Previous event"
           >
             ◀
           </button>
           <button
-            onClick={isPlaying ? onPause : onPlay}
-            style={{ ...smallButtonStyle, minWidth: '40px' }}
-            title={isPlaying ? 'Pause' : 'Play'}
+            onClick={disabled ? undefined : isPlaying ? onPause : onPlay}
+            style={disabled ? { ...disabledButtonStyle, minWidth: '40px' } : { ...smallButtonStyle, minWidth: '40px' }}
+            disabled={disabled}
+            title={disabled ? 'Timeline disabled' : isPlaying ? 'Pause' : 'Play'}
             aria-label={isPlaying ? 'Pause' : 'Play'}
           >
             {isPlaying ? '⏸' : '▶'}
           </button>
           <button
             onClick={handleNext}
-            style={smallButtonStyle}
-            disabled={currentEventIndex >= timeline.length - 1}
-            title="Next event"
+            style={disabled ? disabledButtonStyle : smallButtonStyle}
+            disabled={disabled || currentEventIndex >= timeline.length - 1}
+            title={disabled ? 'Timeline disabled' : 'Next event'}
             aria-label="Next event"
           >
             ▶
           </button>
           <button
-            onClick={onReset}
-            style={smallButtonStyle}
-            title="Reset to beginning"
+            onClick={disabled ? undefined : onReset}
+            style={disabled ? disabledButtonStyle : smallButtonStyle}
+            disabled={disabled}
+            title={disabled ? 'Timeline disabled' : 'Reset to beginning'}
             aria-label="Reset"
           >
             ↺
           </button>
         </div>
 
-        {/* Event index + timestamp */}
-        {hasEvents && (
+        {/* Disabled message or Event index + timestamp */}
+        {disabled && disabledMessage ? (
+          <span style={{ color: '#666', fontSize: '11px', fontStyle: 'italic' }}>
+            {disabledMessage}
+          </span>
+        ) : hasEvents ? (
           <span style={{ color: '#888', fontSize: '11px' }}>
             Event {Math.max(0, currentEventIndex + 1)} of {timeline.length}
             {currentEvent && (
               <span style={{ color: '#666' }}> @ {(currentEvent.at / 1000).toFixed(1)}s</span>
             )}
           </span>
-        )}
+        ) : null}
 
         {/* Spacer */}
         <div style={{ flex: 1 }} />
 
         {/* Time display */}
         <span style={{ color: '#888', fontSize: '12px', fontFamily: 'Monaco, Menlo, monospace' }}>
-          {(currentTime / 1000).toFixed(1)}s / {(totalDuration / 1000).toFixed(1)}s
+          {(effectiveTime / 1000).toFixed(1)}s / {(totalDuration / 1000).toFixed(1)}s
         </span>
       </div>
 
@@ -435,9 +478,9 @@ const PlaybackControls = <A,>({
         {/* Event markers with labels */}
         {timeline.map((event, i) => {
           const position = totalDuration > 0 ? (event.at / totalDuration) * 100 : 0
-          const isFired = event.at <= currentTime
-          const isCurrent = i === currentEventIndex
-          const isHovered = hoveredEvent?.index === i
+          const isFired = disabled || event.at <= effectiveTime
+          const isCurrent = disabled ? i === timeline.length - 1 : i === currentEventIndex
+          const isHovered = !disabled && hoveredEvent?.index === i
 
           // Calculate gap to next marker to decide if label fits
           const nextEvent = timeline[i + 1]
@@ -463,22 +506,26 @@ const PlaybackControls = <A,>({
             >
               {/* Marker dot */}
               <div
-                onClick={() => onSeek(event.at)}
-                onMouseEnter={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect()
-                  setHoveredEvent({
-                    index: i,
-                    position: { x: rect.left + rect.width / 2, y: rect.top },
-                  })
-                }}
-                onMouseLeave={() => setHoveredEvent(null)}
+                onClick={disabled ? undefined : () => onSeek(event.at)}
+                onMouseEnter={
+                  disabled
+                    ? undefined
+                    : (e) => {
+                        const rect = e.currentTarget.getBoundingClientRect()
+                        setHoveredEvent({
+                          index: i,
+                          position: { x: rect.left + rect.width / 2, y: rect.top },
+                        })
+                      }
+                }
+                onMouseLeave={disabled ? undefined : () => setHoveredEvent(null)}
                 style={{
                   width: isCurrent || isHovered ? '14px' : '10px',
                   height: isCurrent || isHovered ? '14px' : '10px',
                   borderRadius: '50%',
                   background: isCurrent ? '#4a9eff' : isFired ? '#666' : '#444',
                   border: isCurrent ? '2px solid #fff' : isHovered ? '2px solid #4a9eff' : '1px solid #555',
-                  cursor: 'pointer',
+                  cursor: disabled ? 'default' : 'pointer',
                   transition: 'all 0.15s ease',
                   marginTop: '5px',
                 }}
@@ -487,14 +534,14 @@ const PlaybackControls = <A,>({
               {/* Label below marker */}
               {showLabel && (
                 <span
-                  onClick={() => onSeek(event.at)}
+                  onClick={disabled ? undefined : () => onSeek(event.at)}
                   style={{
                     marginTop: '4px',
                     fontSize: '9px',
                     fontFamily: 'Monaco, Menlo, monospace',
                     color: isCurrent ? '#4a9eff' : isFired ? '#888' : '#555',
                     whiteSpace: 'nowrap',
-                    cursor: 'pointer',
+                    cursor: disabled ? 'default' : 'pointer',
                     textAlign: 'center',
                   }}
                 >
@@ -505,8 +552,8 @@ const PlaybackControls = <A,>({
           )
         })}
 
-        {/* Tooltip */}
-        {hoveredEvent && timeline[hoveredEvent.index] && (
+        {/* Tooltip - only show when not disabled */}
+        {!disabled && hoveredEvent && timeline[hoveredEvent.index] && (
           <EventTooltip
             event={timeline[hoveredEvent.index] as { at: number; action: unknown }}
             index={hoveredEvent.index}
@@ -538,9 +585,9 @@ const PlaybackControls = <A,>({
             left: 0,
             top: '12px',
             transform: 'translateY(-50%)',
-            width: totalDuration > 0 ? `${(currentTime / totalDuration) * 100}%` : '0%',
+            width: totalDuration > 0 ? `${(effectiveTime / totalDuration) * 100}%` : '0%',
             height: '4px',
-            background: '#4a9eff',
+            background: disabled ? '#666' : '#4a9eff',
             borderRadius: '2px',
             zIndex: 1,
           }}
@@ -551,8 +598,9 @@ const PlaybackControls = <A,>({
           type="range"
           min={0}
           max={totalDuration}
-          value={currentTime}
-          onChange={(e) => onSeek(Number(e.target.value))}
+          value={effectiveTime}
+          onChange={disabled ? undefined : (e) => onSeek(Number(e.target.value))}
+          disabled={disabled}
           style={{
             position: 'absolute',
             left: 0,
@@ -562,7 +610,7 @@ const PlaybackControls = <A,>({
             width: '100%',
             height: '100%',
             opacity: 0,
-            cursor: 'pointer',
+            cursor: disabled ? 'default' : 'pointer',
             zIndex: 1,
           }}
         />
@@ -740,6 +788,128 @@ const LogPreviewPane: React.FC<{
       {output}
     </pre>
   )
+}
+
+// =============================================================================
+// CI Plain Preview Component (live output, no colors)
+// =============================================================================
+
+const CIPlainPreviewPane: React.FC<{
+  View: React.ComponentType<{ state: unknown }>
+  state: unknown
+  height: number
+}> = ({ View, state, height }) => {
+  const [output, setOutput] = useState<string>('')
+
+  useEffect(() => {
+    // Render with ci-plain mode (no animation, no colors)
+    const element = (
+      <RenderConfigProvider config={ciPlainRenderConfig}>
+        <View state={state} />
+      </RenderConfigProvider>
+    )
+
+    renderToString({ element })
+      .then((ansiOutput) => {
+        // Strip ANSI codes for plain text output
+        setOutput(stripAnsi(ansiOutput))
+      })
+      .catch((err: Error) => {
+        setOutput(`Error: ${err.message}`)
+      })
+  }, [state, View])
+
+  return (
+    <pre
+      style={{
+        margin: 0,
+        padding: '12px',
+        background: '#1e1e1e',
+        color: '#d4d4d4',
+        fontFamily: 'Monaco, Menlo, "DejaVu Sans Mono", Consolas, monospace',
+        fontSize: '14px',
+        overflow: 'auto',
+        height,
+        boxSizing: 'border-box',
+        whiteSpace: 'pre-wrap',
+        wordBreak: 'break-word',
+      }}
+    >
+      {output}
+    </pre>
+  )
+}
+
+// =============================================================================
+// Pipe Preview Component (final output with colors)
+// =============================================================================
+
+const PipePreviewPane: React.FC<{
+  View: React.ComponentType<{ state: unknown }>
+  state: unknown
+  height: number
+}> = ({ View, state, height }) => {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const terminalRef = useRef<Terminal | null>(null)
+
+  useEffect(() => {
+    if (!containerRef.current) return
+
+    if (!terminalRef.current) {
+      const terminal = new Terminal({
+        fontFamily: 'Monaco, Menlo, "DejaVu Sans Mono", Consolas, monospace',
+        fontSize: 14,
+        theme: xtermTheme,
+        allowProposedApi: true,
+        cursorBlink: false,
+        cursorStyle: 'bar',
+        disableStdin: true,
+      })
+
+      const fitAddon = new FitAddon()
+      terminal.loadAddon(fitAddon)
+      terminal.open(containerRef.current)
+      fitAddon.fit()
+
+      terminalRef.current = terminal
+    }
+
+    const terminal = terminalRef.current
+    terminal.clear()
+    terminal.reset()
+
+    // Render with pipe mode (final, with colors)
+    const element = (
+      <RenderConfigProvider config={pipeRenderConfig}>
+        <View state={state} />
+      </RenderConfigProvider>
+    )
+
+    renderToString({ element })
+      .then((ansiOutput) => {
+        const lines = ansiOutput.split('\n')
+        lines.forEach((line, i) => {
+          terminal.write(line)
+          if (i < lines.length - 1) {
+            terminal.write('\r\n')
+          }
+        })
+      })
+      .catch((err: Error) => {
+        terminal.write(`Error: ${err.message}`)
+      })
+
+    return () => {}
+  }, [state, View])
+
+  useEffect(() => {
+    return () => {
+      terminalRef.current?.dispose()
+      terminalRef.current = null
+    }
+  }, [])
+
+  return <div ref={containerRef} style={{ ...containerStyles, height }} />
 }
 
 // =============================================================================
@@ -924,16 +1094,34 @@ const FullscreenPreviewPane: React.FC<{
 // =============================================================================
 
 const TAB_LABELS: Record<OutputTab, string> = {
-  visual: 'Visual',
-  fullscreen: 'Fullscreen',
+  tty: 'TTY',
+  'alt-screen': 'Alt Screen',
   ci: 'CI',
+  'ci-plain': 'CI Plain',
+  pipe: 'Pipe',
   log: 'Log',
   json: 'JSON',
   ndjson: 'NDJSON',
 }
 
-const DEFAULT_TABS_STATEFUL: OutputTab[] = ['visual', 'fullscreen', 'ci', 'log', 'json', 'ndjson']
-const DEFAULT_TABS_SIMPLE: OutputTab[] = ['visual', 'fullscreen', 'ci', 'log']
+const TAB_DESCRIPTIONS: Record<OutputTab, string> = {
+  tty: 'Live • Animated • Colored',
+  'alt-screen': 'Live • Animated • Colored • Fullscreen',
+  ci: 'Live • Static • Colored',
+  'ci-plain': 'Live • Static • Plain',
+  pipe: 'Final • Static • Colored',
+  log: 'Final • Static • Plain',
+  json: 'Final JSON output',
+  ndjson: 'Streaming NDJSON',
+}
+
+/** Modes that only show final output (no timeline) */
+const FINAL_MODES: Set<OutputTab> = new Set(['pipe', 'log', 'json'])
+
+const isFinalMode = (tab: OutputTab): boolean => FINAL_MODES.has(tab)
+
+const DEFAULT_TABS_STATEFUL: OutputTab[] = ['tty', 'ci', 'log', 'json', 'ndjson']
+const DEFAULT_TABS_SIMPLE: OutputTab[] = ['tty', 'ci', 'log']
 
 // =============================================================================
 // Simple Mode Component (children-based)
@@ -943,7 +1131,7 @@ const SimpleTuiStoryPreview: React.FC<SimpleProps> = ({
   children,
   height = 400,
   tabs = DEFAULT_TABS_SIMPLE,
-  defaultTab = 'visual',
+  defaultTab = 'tty',
 }) => {
   const [activeTab, setActiveTab] = useState<OutputTab>(defaultTab)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -952,9 +1140,9 @@ const SimpleTuiStoryPreview: React.FC<SimpleProps> = ({
   const rootRef = useRef<Root | null>(null)
   const [isTerminalReady, setIsTerminalReady] = useState(false)
 
-  // Initialize terminal for visual tab
+  // Initialize terminal for tty tab
   useEffect(() => {
-    if (activeTab !== 'visual' || !containerRef.current || terminalRef.current) return
+    if (activeTab !== 'tty' || !containerRef.current || terminalRef.current) return
 
     const terminal = new Terminal({
       fontFamily: 'Monaco, Menlo, "DejaVu Sans Mono", Consolas, monospace',
@@ -1003,11 +1191,11 @@ const SimpleTuiStoryPreview: React.FC<SimpleProps> = ({
 
   // Render children to terminal (reuse existing root for differential updates)
   useEffect(() => {
-    if (activeTab !== 'visual' || !isTerminalReady || !rootRef.current) return
+    if (activeTab !== 'tty' || !isTerminalReady || !rootRef.current) return
     rootRef.current.render(children as React.ReactElement)
   }, [children, activeTab, isTerminalReady])
 
-  // Wrapper component for string/fullscreen panes
+  // Wrapper component for other panes
   const ChildrenView: React.FC<{ state: unknown }> = () => <>{children}</>
 
   return (
@@ -1015,7 +1203,12 @@ const SimpleTuiStoryPreview: React.FC<SimpleProps> = ({
       {/* Tabs - only show if more than one */}
       {tabs.length > 1 && (
         <div
-          style={{ display: 'flex', background: '#2d2d2d', borderBottom: '1px solid #3d3d3d' }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            background: '#2d2d2d',
+            borderBottom: '1px solid #3d3d3d',
+          }}
           data-testid="tui-preview-tabs"
         >
           {tabs.map((tab) => (
@@ -1028,19 +1221,37 @@ const SimpleTuiStoryPreview: React.FC<SimpleProps> = ({
               {TAB_LABELS[tab]}
             </TabButton>
           ))}
+          {/* Mode description */}
+          <div
+            style={{
+              marginLeft: 'auto',
+              paddingRight: '12px',
+              fontSize: '12px',
+              color: '#888',
+              fontFamily: 'system-ui, sans-serif',
+            }}
+          >
+            {TAB_DESCRIPTIONS[activeTab]}
+          </div>
         </div>
       )}
 
       {/* Content */}
       <div style={{ height, overflow: 'hidden' }}>
-        {activeTab === 'visual' && (
+        {activeTab === 'tty' && (
           <div ref={containerRef} style={{ ...containerStyles, height: '100%' }} />
         )}
-        {activeTab === 'fullscreen' && (
+        {activeTab === 'alt-screen' && (
           <FullscreenPreviewPane View={ChildrenView} state={null} height={height} />
         )}
         {activeTab === 'ci' && (
           <CIPreviewPane View={ChildrenView} state={null} height={height} />
+        )}
+        {activeTab === 'ci-plain' && (
+          <CIPlainPreviewPane View={ChildrenView} state={null} height={height} />
+        )}
+        {activeTab === 'pipe' && (
+          <PipePreviewPane View={ChildrenView} state={null} height={height} />
         )}
         {activeTab === 'log' && (
           <LogPreviewPane View={ChildrenView} state={null} height={height} />
@@ -1066,7 +1277,7 @@ const StatefulTuiStoryPreview = <S, A>({
   autoRun = true,
   playbackSpeed = 1,
   tabs = DEFAULT_TABS_STATEFUL,
-  defaultTab = 'visual',
+  defaultTab = 'tty',
 }: StatefulProps<S, A>): React.ReactElement => {
   // State
   const [activeTab, setActiveTab] = useState<OutputTab>(defaultTab)
@@ -1087,6 +1298,18 @@ const StatefulTuiStoryPreview = <S, A>({
     if (timeline.length === 0) return 0
     return Math.max(...timeline.map((e) => e.at)) + 1000 // Add 1s buffer
   }, [timeline])
+
+  // Compute final state by applying all timeline actions (for final modes)
+  const finalState = useMemo(() => {
+    let result = initialState
+    for (const event of timeline) {
+      result = reducer({ state: result, action: event.action })
+    }
+    return result
+  }, [initialState, timeline, reducer])
+
+  // Use final state for final modes, current state for live modes
+  const effectiveState = isFinalMode(activeTab) ? finalState : state
 
   // Dispatch action and update state
   const dispatch = useCallback(
@@ -1150,9 +1373,9 @@ const StatefulTuiStoryPreview = <S, A>({
     }
   }, [autoRun, timeline.length])
 
-  // Initialize terminal for visual tab
+  // Initialize terminal for tty tab
   useEffect(() => {
-    if (activeTab !== 'visual' || !containerRef.current || terminalRef.current) return
+    if (activeTab !== 'tty' || !containerRef.current || terminalRef.current) return
 
     const terminal = new Terminal({
       fontFamily: 'Monaco, Menlo, "DejaVu Sans Mono", Consolas, monospace',
@@ -1201,19 +1424,19 @@ const StatefulTuiStoryPreview = <S, A>({
 
   // Render view to terminal when state changes (reuse existing root for differential updates)
   useEffect(() => {
-    if (activeTab !== 'visual' || !isTerminalReady || !rootRef.current) return
-    rootRef.current.render(<View state={state} />)
-  }, [state, activeTab, isTerminalReady, View])
+    if (activeTab !== 'tty' || !isTerminalReady || !rootRef.current) return
+    rootRef.current.render(<View state={effectiveState} />)
+  }, [effectiveState, activeTab, isTerminalReady, View])
 
-  // Encode current state as JSON
+  // Encode state as JSON (uses finalState for json mode since it's a final mode)
   const jsonOutput = useMemo(() => {
     try {
-      const encoded = Schema.encodeSync(stateSchema)(state)
+      const encoded = Schema.encodeSync(stateSchema)(finalState)
       return JSON.stringify(encoded, null, 2)
     } catch {
       return '// Error encoding state'
     }
-  }, [state, stateSchema])
+  }, [finalState, stateSchema])
 
   // Cast View for non-generic components
   const ViewCast = View as React.ComponentType<{ state: unknown }>
@@ -1222,7 +1445,12 @@ const StatefulTuiStoryPreview = <S, A>({
     <div style={{ fontFamily: 'system-ui, sans-serif' }}>
       {/* Tabs */}
       <div
-        style={{ display: 'flex', background: '#2d2d2d', borderBottom: '1px solid #3d3d3d' }}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          background: '#2d2d2d',
+          borderBottom: '1px solid #3d3d3d',
+        }}
         data-testid="tui-preview-tabs"
       >
         {tabs.map((tab) => (
@@ -1235,18 +1463,32 @@ const StatefulTuiStoryPreview = <S, A>({
             {TAB_LABELS[tab]}
           </TabButton>
         ))}
+        {/* Mode description */}
+        <div
+          style={{
+            marginLeft: 'auto',
+            paddingRight: '12px',
+            fontSize: '12px',
+            color: '#888',
+            fontFamily: 'system-ui, sans-serif',
+          }}
+        >
+          {TAB_DESCRIPTIONS[activeTab]}
+        </div>
       </div>
 
       {/* Content */}
       <div style={{ height, overflow: 'hidden' }}>
-        {activeTab === 'visual' && (
+        {activeTab === 'tty' && (
           <div ref={containerRef} style={{ ...containerStyles, height: '100%' }} />
         )}
-        {activeTab === 'fullscreen' && (
-          <FullscreenPreviewPane View={ViewCast} state={state} height={height} />
+        {activeTab === 'alt-screen' && (
+          <FullscreenPreviewPane View={ViewCast} state={effectiveState} height={height} />
         )}
-        {activeTab === 'ci' && <CIPreviewPane View={ViewCast} state={state} height={height} />}
-        {activeTab === 'log' && <LogPreviewPane View={ViewCast} state={state} height={height} />}
+        {activeTab === 'ci' && <CIPreviewPane View={ViewCast} state={effectiveState} height={height} />}
+        {activeTab === 'ci-plain' && <CIPlainPreviewPane View={ViewCast} state={effectiveState} height={height} />}
+        {activeTab === 'pipe' && <PipePreviewPane View={ViewCast} state={effectiveState} height={height} />}
+        {activeTab === 'log' && <LogPreviewPane View={ViewCast} state={effectiveState} height={height} />}
         {activeTab === 'json' && <JsonPreviewPane json={jsonOutput} />}
         {activeTab === 'ndjson' && <NdjsonPreviewPane lines={ndjsonLines} />}
       </div>
@@ -1267,6 +1509,8 @@ const StatefulTuiStoryPreview = <S, A>({
             timeline.filter((e) => e.at <= time).forEach((e) => dispatch(e.action))
             setCurrentTime(time)
           }}
+          disabled={isFinalMode(activeTab)}
+          disabledMessage="Final output mode — showing end state"
         />
       )}
     </div>

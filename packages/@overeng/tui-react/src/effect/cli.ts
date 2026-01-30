@@ -31,9 +31,10 @@ import {
   OutputModeTag,
   tty,
   ci,
+  ciPlain,
   pipe,
   log,
-  fullscreen,
+  altScreen,
   json,
   ndjson,
   detectOutputMode,
@@ -50,10 +51,11 @@ import {
 export const OUTPUT_MODE_VALUES = [
   'auto',
   'tty',
+  'alt-screen',
   'ci',
+  'ci-plain',
   'pipe',
   'log',
-  'fullscreen',
   'json',
   'ndjson',
 ] as const
@@ -72,13 +74,14 @@ export type OutputModeValue = (typeof OUTPUT_MODE_VALUES)[number]
  *
  * Available modes:
  * - `auto` (default) - Auto-detect based on environment (TTY, CI, pipe)
- * - `tty` - Animated terminal UI with colors
- * - `ci` - Static terminal UI with colors (CI-friendly)
+ * - `tty` - Live output with animated spinners and colors
+ * - `alt-screen` - Live output in alternate screen buffer (fullscreen TUI)
+ * - `ci` - Live output with static spinners and colors
+ * - `ci-plain` - Live output with static spinners, no colors
  * - `pipe` - Final output only with colors (for piping)
- * - `log` - Plain text output, no colors (for log files)
- * - `fullscreen` - Alternate screen mode with animation
- * - `json` - JSON output (final state only)
- * - `ndjson` - Streaming JSON output (newline-delimited)
+ * - `log` - Final output only, no colors (for log files)
+ * - `json` - Final JSON output
+ * - `ndjson` - Live streaming JSON output (newline-delimited)
  *
  * @example
  * ```typescript
@@ -92,7 +95,7 @@ export type OutputModeValue = (typeof OUTPUT_MODE_VALUES)[number]
 export const outputOption = Options.choice('output', OUTPUT_MODE_VALUES).pipe(
   Options.withAlias('o'),
   Options.withDescription(
-    'Output mode: auto (default), tty, ci, pipe, log, fullscreen, json, ndjson',
+    'Output mode: auto, tty, alt-screen, ci, ci-plain, pipe, log, json, ndjson',
   ),
   Options.withDefault('auto' as OutputModeValue),
 )
@@ -105,13 +108,14 @@ export const outputOption = Options.choice('output', OUTPUT_MODE_VALUES).pipe(
  * Map from flag value to OutputMode preset.
  */
 const modeMap: Record<Exclude<OutputModeValue, 'auto'>, OutputMode> = {
-  tty,
-  ci,
-  pipe,
-  log,
-  fullscreen,
-  json,
-  ndjson,
+  'tty': tty,
+  'alt-screen': altScreen,
+  'ci': ci,
+  'ci-plain': ciPlain,
+  'pipe': pipe,
+  'log': log,
+  'json': json,
+  'ndjson': ndjson,
 }
 
 /**

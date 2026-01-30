@@ -218,7 +218,7 @@ const deployTimeline: Array<{ at: number; action: typeof DeployAction.Type }> = 
 // Story Meta
 // =============================================================================
 
-const ALL_TABS: OutputTab[] = ['visual', 'fullscreen', 'ci', 'log', 'json', 'ndjson']
+const ALL_TABS: OutputTab[] = ['tty', 'alt-screen', 'ci', 'ci-plain', 'pipe', 'log', 'json', 'ndjson']
 
 const meta: Meta = {
   title: 'Examples/03 CLI/Deploy',

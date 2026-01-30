@@ -44,7 +44,7 @@ export interface TerminalPreviewProps {
 /**
  * Simple terminal preview wrapper for CLI components.
  * By default renders just the terminal without tabs (ideal for decorators).
- * Set `showTabs={true}` to show Visual/CI/Log tabs.
+ * Set `showTabs={true}` to show TTY/CI/Log tabs.
  *
  * @example Simple usage (no tabs):
  * ```tsx
@@ -68,8 +68,8 @@ export const TerminalPreview: React.FC<TerminalPreviewProps> = ({
   return (
     <TuiStoryPreview
       height={height}
-      tabs={showTabs ? ['visual', 'ci', 'log'] : ['visual']}
-      defaultTab="visual"
+      tabs={showTabs ? ['tty', 'ci', 'log'] : ['tty']}
+      defaultTab="tty"
     >
       {children}
     </TuiStoryPreview>

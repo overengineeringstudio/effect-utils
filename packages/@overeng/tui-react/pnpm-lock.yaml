@@ -2189,46 +2189,6 @@ packages:
       yaml:
         optional: true
 
-  vite@7.3.1:
-    resolution: {integrity: sha512-w+N7Hifpc3gRjZ63vYBXA56dvvRlNWRczTdmCBBa+CotUzAPf5b7YMdMR/8CQoeYE5LX3W4wj6RYTgonm1b9DA==}
-    engines: {node: ^20.19.0 || >=22.12.0}
-    hasBin: true
-    peerDependencies:
-      '@types/node': ^20.19.0 || >=22.12.0
-      jiti: '>=1.21.0'
-      less: ^4.0.0
-      lightningcss: ^1.21.0
-      sass: ^1.70.0
-      sass-embedded: ^1.70.0
-      stylus: '>=0.54.8'
-      sugarss: ^5.0.0
-      terser: ^5.16.0
-      tsx: ^4.8.1
-      yaml: ^2.4.2
-    peerDependenciesMeta:
-      '@types/node':
-        optional: true
-      jiti:
-        optional: true
-      less:
-        optional: true
-      lightningcss:
-        optional: true
-      sass:
-        optional: true
-      sass-embedded:
-        optional: true
-      stylus:
-        optional: true
-      sugarss:
-        optional: true
-      terser:
-        optional: true
-      tsx:
-        optional: true
-      yaml:
-        optional: true
-
   vitest@3.2.4:
     resolution: {integrity: sha512-LUCP5ev3GURDysTWiP47wRRUpLKMOfPh+yKTx3kVIEiu5KOMeqzpnYNsKyOoVrULivR8tLcks4+lga33Whn90A==}
     engines: {node: ^18.0.0 || ^20.0.0 || >=22.0.0}
@@ -3345,11 +3305,11 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@vitest/browser@3.2.4(playwright@1.58.0)(vite@7.3.1(@types/node@25.0.3)(yaml@2.8.2))(vitest@3.2.4)':
+  '@vitest/browser@3.2.4(playwright@1.58.0)(vite@7.3.0(@types/node@25.0.3)(yaml@2.8.2))(vitest@3.2.4)':
     dependencies:
       '@testing-library/dom': 10.4.1
       '@testing-library/user-event': 14.6.1(@testing-library/dom@10.4.1)
-      '@vitest/mocker': 3.2.4(vite@7.3.1(@types/node@25.0.3)(yaml@2.8.2))
+      '@vitest/mocker': 3.2.4(vite@7.3.0(@types/node@25.0.3)(yaml@2.8.2))
       '@vitest/utils': 3.2.4
       magic-string: 0.30.21
       sirv: 3.0.2
@@ -3380,15 +3340,6 @@ snapshots:
       magic-string: 0.30.21
     optionalDependencies:
       vite: 7.3.0(@types/node@25.0.3)(yaml@2.8.2)
-
-  '@vitest/mocker@3.2.4(vite@7.3.1(@types/node@25.0.3)(yaml@2.8.2))':
-    dependencies:
-      '@vitest/spy': 3.2.4
-      estree-walker: 3.0.3
-      magic-string: 0.30.21
-    optionalDependencies:
-      vite: 7.3.1(@types/node@25.0.3)(yaml@2.8.2)
-    optional: true
 
   '@vitest/pretty-format@3.2.4':
     dependencies:
@@ -4279,20 +4230,6 @@ snapshots:
       fsevents: 2.3.3
       yaml: 2.8.2
 
-  vite@7.3.1(@types/node@25.0.3)(yaml@2.8.2):
-    dependencies:
-      esbuild: 0.27.2
-      fdir: 6.5.0(picomatch@4.0.3)
-      picomatch: 4.0.3
-      postcss: 8.5.6
-      rollup: 4.57.0
-      tinyglobby: 0.2.15
-    optionalDependencies:
-      '@types/node': 25.0.3
-      fsevents: 2.3.3
-      yaml: 2.8.2
-    optional: true
-
   vitest@3.2.4(@types/node@25.0.3)(@vitest/browser@3.2.4)(yaml@2.8.2):
     dependencies:
       '@types/chai': 5.2.3
@@ -4320,7 +4257,7 @@ snapshots:
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 25.0.3
-      '@vitest/browser': 3.2.4(playwright@1.58.0)(vite@7.3.1(@types/node@25.0.3)(yaml@2.8.2))(vitest@3.2.4)
+      '@vitest/browser': 3.2.4(playwright@1.58.0)(vite@7.3.0(@types/node@25.0.3)(yaml@2.8.2))(vitest@3.2.4)
     transitivePeerDependencies:
       - jiti
       - less

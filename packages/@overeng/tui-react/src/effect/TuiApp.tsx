@@ -442,7 +442,14 @@ const setupMode = <S, A>({
         : Effect.succeed(null)
     } else {
       // Final React rendering (single output at end)
-      return setupFinalVisual().pipe(Effect.as(null))
+      return setupFinalVisual({
+        stateRef,
+        view,
+        StateContext,
+        DispatchContext,
+        dispatch,
+        renderConfig: mode.render,
+      }).pipe(Effect.as(null))
     }
   } else {
     // JSON modes

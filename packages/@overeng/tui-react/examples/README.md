@@ -30,29 +30,34 @@ All examples can be run with Bun:
 ```bash
 # Basic examples
 bun examples/01-basic/hello-world.tsx
-bun examples/01-basic/hello-world.tsx --json
-bun examples/01-basic/hello-world.tsx --visual  # Force visual mode
+bun examples/01-basic/hello-world.tsx --output json
+bun examples/01-basic/hello-world.tsx --output tty   # Force TTY mode
 
-# Component examples
-bun examples/02-components/task-list/cli.tsx
-bun examples/02-components/task-list/cli.tsx --json
-bun examples/02-components/task-list/cli.tsx --visual
+# CLI examples
+bun examples/03-cli/deploy/main.ts --services api --dry-run
+bun examples/03-cli/deploy/main.ts --services api --dry-run --output json
+bun examples/03-cli/deploy/main.ts --services api --dry-run --output log
 
 # Effect integration examples
-bun examples/03-effect-integration/counter.tsx
-bun examples/03-effect-integration/counter.tsx --json
+bun examples/02-effect-integration/counter.tsx
+bun examples/02-effect-integration/counter.tsx --output json
 ```
 
 ## Output Modes
 
-All CLI examples support three output modes:
+All CLI examples use the `--output` / `-o` flag:
 
-| Flag              | Mode          | Description                       |
-| ----------------- | ------------- | --------------------------------- |
-| (none)            | Visual (TTY)  | Progressive rendering with colors |
-| `--json`          | Final JSON    | Single JSON output at completion  |
-| `--json --stream` | NDJSON        | Newline-delimited JSON stream     |
-| `--visual`        | Forced Visual | Visual mode even in non-TTY       |
+| Mode         | Timing | Description                        |
+| ------------ | ------ | ---------------------------------- |
+| `auto`       | -      | Auto-detect from environment       |
+| `tty`        | live   | Interactive terminal (default)     |
+| `ci`         | live   | CI with colors                     |
+| `ci-plain`   | live   | CI without colors                  |
+| `pipe`       | final  | Final output with colors           |
+| `log`        | final  | Final output without colors        |
+| `json`       | final  | Single JSON output at completion   |
+| `ndjson`     | live   | Streaming NDJSON                   |
+| `alt-screen` | live   | Fullscreen TUI                     |
 
 ## Creating a New Example
 
@@ -193,7 +198,7 @@ export const Demo: StoryObj = {
 
 The `TuiStoryPreview` component provides:
 
-- **Tabs**: Visual (xterm.js) | JSON | NDJSON Stream
+- **Tabs**: TTY | Alt Screen | CI | CI Plain | Pipe | Log | JSON | NDJSON
 - **Timeline Playback**: Play/Pause/Scrub through state changes
 - **State Simulation**: Reducer runs in browser (no CLI needed)
 - **Storybook Controls**: `autoRun`, `playbackSpeed`, `height`

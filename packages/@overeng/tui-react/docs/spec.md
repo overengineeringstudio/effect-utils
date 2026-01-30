@@ -46,34 +46,41 @@ JSON output represents semantic domain data, not visual structure.
 
 ### Dimensions
 
-Output behavior varies along four independent dimensions:
+Output behavior is determined by a `RenderConfig` with these properties:
 
-| Dimension         | Values                    | Description                                      |
-| ----------------- | ------------------------- | ------------------------------------------------ |
-| **Temporality**   | `progressive` / `final`   | Updates over time vs single output at completion |
-| **Format**        | `visual` / `json`         | Human-readable (ANSI) vs machine-readable (JSON) |
-| **Screen**        | `inline` / `alternate`    | Within scrollback vs full-screen takeover        |
-| **Interactivity** | `interactive` / `passive` | Accepts input vs output-only                     |
+| Property        | Values           | Description                                      |
+| --------------- | ---------------- | ------------------------------------------------ |
+| **timing**      | `live` / `final` | Updates over time vs single output at completion |
+| **animation**   | `true` / `false` | Whether spinners/progress animate                |
+| **colors**      | `true` / `false` | Whether ANSI color codes are used                |
+| **altScreen**   | `true` / `false` | Full-screen takeover vs inline                   |
 
-### Valid Modes
+### Named Modes
 
-| Mode Name                      | Temporality | Format | Screen    | Interactive | Use Case                      |
-| ------------------------------ | ----------- | ------ | --------- | ----------- | ----------------------------- |
-| `progressive-visual-inline`    | progressive | visual | inline    | no          | Progress bars, status updates |
-| `progressive-visual-alternate` | progressive | visual | alternate | yes         | Dashboards, interactive TUIs  |
-| `final-visual-inline`          | final       | visual | inline    | no          | CI output, simple results     |
-| `final-json`                   | final       | json   | n/a       | no          | Scripting, tool integration   |
-| `progressive-json`             | progressive | json   | n/a       | no          | Streaming (NDJSON)            |
+| Mode         | Timing | Animation | Colors | Alt Screen | Use Case                      |
+| ------------ | ------ | --------- | ------ | ---------- | ----------------------------- |
+| `tty`        | live   | ✓         | ✓      | ✗          | Interactive terminal (default)|
+| `alt-screen` | live   | ✓         | ✓      | ✓          | Fullscreen TUI, dashboards    |
+| `ci`         | live   | ✗         | ✓      | ✗          | CI with colors                |
+| `ci-plain`   | live   | ✗         | ✗      | ✗          | CI without colors             |
+| `pipe`       | final  | ✗         | ✓      | ✗          | Piping to another command     |
+| `log`        | final  | ✗         | ✗      | ✗          | Log files, plain output       |
+| `json`       | final  | -         | -      | -          | Final JSON for scripting      |
+| `ndjson`     | live   | -         | -      | -          | Streaming NDJSON              |
 
-**Invalid combinations:** JSON format cannot be interactive.
+**Auto-detection:** When `--output auto` (the default), the mode is detected from the environment:
+- TTY → `tty`
+- Non-TTY (piped) → `pipe`
+- `CI=true` environment variable → `ci`
+- `NO_COLOR` environment variable → removes colors from detected mode
 
 ---
 
 ## Mode Specifications
 
-### `progressive-visual-inline`
+### `tty` (Live Visual)
 
-Real-time visual updates within terminal scrollback.
+Real-time visual updates within terminal scrollback. This is the default mode for interactive terminals.
 
 **Use cases:** Progress bars, sync status, build output
 
@@ -95,7 +102,7 @@ Real-time visual updates within terminal scrollback.
 
 **Degradation:**
 
-- Non-TTY → Falls back to `final-visual-inline`
+- Non-TTY → Falls back to `pipe` mode
 
 **Example output:**
 
@@ -109,7 +116,7 @@ Real-time visual updates within terminal scrollback.
 
 ---
 
-### `progressive-visual-alternate`
+### `alt-screen` (Fullscreen TUI)
 
 Full-screen interactive application using alternate screen buffer. **Implemented via [OpenTUI](https://github.com/anomalyco/opentui)**.
 
@@ -149,7 +156,7 @@ createRoot(renderer).render(
 
 **tui-react Integration:**
 
-OpenTUI integration is handled automatically by `useTuiState` when the output mode is `progressive-visual-alternate`. The mode automatically falls back to inline if OpenTUI is not available (Node.js runtime).
+OpenTUI integration is handled automatically by `useTuiState` when the output mode is `alt-screen`. The mode automatically falls back to `tty` if OpenTUI is not available (Node.js runtime).
 
 ```typescript
 // useTuiState handles renderer selection based on OutputMode
@@ -187,21 +194,19 @@ if (isOpenTuiAvailable()) {
 - Different component set than inline mode (OpenTUI components)
 
 **Automatic Fallback:**
-When `progressive-visual-alternate` mode is requested but OpenTUI is not available (Node.js runtime), it automatically falls back to `progressive-visual` (inline mode). No manual handling required:
+When `alt-screen` mode is requested but OpenTUI is not available (Node.js runtime), it automatically falls back to `tty` mode. No manual handling required:
 
 ```typescript
-// Request alternate mode - automatically falls back if not available
-const mode = progressiveVisualAlternate
-
-runDeploy(services).pipe(Effect.provide(Layer.succeed(OutputModeTag, mode)))
-// In Node.js: uses inline rendering
+// Request alt-screen mode - automatically falls back if not available
+runDeploy(services).pipe(Effect.provide(altScreenLayer))
+// In Node.js: uses tty (inline) rendering
 // In Bun with OpenTUI: uses alternate screen
 ```
 
 **Additional degradation:**
 
-- Non-TTY → Falls back to `final-visual`
-- Non-interactive flag → Falls back to `progressive-visual` (inline)
+- Non-TTY → Falls back to `pipe`
+- Non-interactive flag → Falls back to `tty`
 
 **Cleanup requirements (handled by OpenTUI):**
 
@@ -212,18 +217,47 @@ runDeploy(services).pipe(Effect.provide(Layer.succeed(OutputModeTag, mode)))
 
 ---
 
-### `final-visual-inline`
+### `ci` and `ci-plain` (CI Modes)
+
+Live visual output optimized for CI environments.
+
+**Use cases:** GitHub Actions, Jenkins, other CI pipelines
+
+| Mode       | Colors | Animation | Description                    |
+| ---------- | ------ | --------- | ------------------------------ |
+| `ci`       | ✓      | ✗         | CI with ANSI colors            |
+| `ci-plain` | ✗      | ✗         | CI without colors (plain text) |
+
+**Requirements:**
+
+- Live updates (timing: `live`)
+- No cursor manipulation or screen clearing
+- No spinners (animation disabled)
+- `ci`: Respects ANSI colors for CI systems that support them
+- `ci-plain`: Plain text only, respects `NO_COLOR` env
+
+**Auto-detection:** When `CI=true` environment variable is set and `--output auto`, the `ci` mode is selected.
+
+---
+
+### `pipe` and `log` (Final Visual)
 
 Single visual output rendered at command completion.
 
-**Use cases:** CI pipelines, simple command results, non-TTY environments
+**Use cases:** Piping to other commands, log files, non-TTY environments
+
+| Mode   | Colors | Description                                  |
+| ------ | ------ | -------------------------------------------- |
+| `pipe` | ✓      | Final output with colors (for `less -R`, etc.) |
+| `log`  | ✗      | Final output without colors (plain text)     |
 
 **Requirements:**
 
 - Wait for command completion (final state)
 - Render final state once to stdout
 - No cursor manipulation or screen clearing
-- Plain output with optional ANSI colors (respect `NO_COLOR` env)
+- `pipe`: Keeps ANSI colors for tools that support them
+- `log`: Plain output, no ANSI codes
 
 **Constraints:**
 
@@ -232,9 +266,7 @@ Single visual output rendered at command completion.
 - No dynamic re-rendering
 - Output is append-only (like normal stdout)
 
-**Degradation:**
-
-- This is the baseline mode; no further degradation
+**Auto-detection:** When stdout is not a TTY (piped), the `pipe` mode is selected.
 
 **Example output:**
 
@@ -249,7 +281,7 @@ Deploy complete:
 
 ---
 
-### `final-json`
+### `json` (Final JSON)
 
 Structured JSON output at command completion.
 
@@ -297,7 +329,7 @@ Structured JSON output at command completion.
 
 ---
 
-### `progressive-json`
+### `ndjson` (Streaming JSON)
 
 Streaming JSON output (NDJSON format) as state changes.
 
@@ -521,47 +553,64 @@ interface TuiStateApi<S, A> {
 
 ## Mode Selection
 
-### Configuration
+### RenderConfig
+
+The internal configuration that controls rendering behavior:
 
 ```typescript
-interface OutputConfig {
-  temporality: 'progressive' | 'final'
-  format: 'visual' | 'json'
-  screen: 'inline' | 'alternate'
-  interactive: boolean
+interface RenderConfig {
+  timing: 'live' | 'final'
+  animation: boolean
+  colors: boolean
+  altScreen: boolean
 }
 ```
 
-### Resolution
+### CLI Option
 
-1. **Environment default:** TTY → `progressive-visual-inline`, non-TTY → `final-visual-inline`
-2. **Preset override:** `--output=<mode-name>` selects a preset
-3. **Dimensional override:** `--json`, `--stream`, `--alternate` modify individual dimensions
+Commands use a single `--output` / `-o` flag to select the mode:
 
 ```bash
-# Auto-detect from environment
-deploy                                 # TTY → progressive-visual-inline
-deploy                                 # Pipe → final-visual-inline
+# Auto-detect from environment (default)
+deploy                                 # TTY → tty
+deploy                                 # Pipe → pipe
+CI=true deploy                         # CI env → ci
 
 # Explicit mode selection
-deploy --output=final-json             # Explicit preset
-deploy --json                          # Shorthand for final-json
-deploy --json --stream                 # progressive-json (NDJSON)
-
-# Interactive dashboard
-deploy --alternate                     # progressive-visual-alternate (full-screen)
-deploy --watch --alternate             # Long-running with dashboard
+deploy --output tty                    # Force TTY mode
+deploy --output ci                     # CI with colors
+deploy --output ci-plain               # CI without colors
+deploy --output pipe                   # Final with colors
+deploy --output log                    # Final without colors
+deploy --output alt-screen             # Fullscreen TUI
+deploy --output json                   # Final JSON
+deploy --output ndjson                 # Streaming NDJSON
 
 # Scripting integration
-deploy --json | jq '.services[]'       # Parse with jq
-deploy --json --stream | process-logs  # Stream processing
+deploy --output json | jq '.services[]'    # Parse with jq
+deploy --output ndjson | process-logs      # Stream processing
+deploy --output log > deploy.log           # Log to file
 ```
 
-### Validation
+### Available Modes
 
-- JSON + interactive → Error
-- Alternate + non-TTY → Falls back to inline
-- Progressive + non-TTY → Falls back to final
+| Mode         | Use When                                      |
+| ------------ | --------------------------------------------- |
+| `auto`       | Default - detect from environment             |
+| `tty`        | Interactive terminal with progress            |
+| `alt-screen` | Fullscreen dashboard/TUI                      |
+| `ci`         | CI environment with color support             |
+| `ci-plain`   | CI environment without colors                 |
+| `pipe`       | Piping to commands that support ANSI          |
+| `log`        | Writing to log files                          |
+| `json`       | Machine-readable final output                 |
+| `ndjson`     | Machine-readable streaming output             |
+
+### Validation & Fallbacks
+
+- `alt-screen` + non-TTY → Falls back to `pipe`
+- `tty` + non-TTY → Falls back to `pipe`
+- `NO_COLOR` env → Disables colors in detected mode
 
 ---
 
@@ -569,7 +618,7 @@ deploy --json --stream | process-logs  # Stream processing
 
 ### Inline Renderer (tui-react)
 
-For `progressive-visual-inline` and `final-visual-inline` modes.
+For `tty`, `ci`, `ci-plain`, `pipe`, and `log` modes.
 
 Uses React with custom reconciler (`react-reconciler`) and Yoga for flexbox layout.
 
@@ -588,7 +637,7 @@ React Tree → TuiReconciler → Yoga Layout → Lines → InlineRenderer → Te
 
 ### Alternate Renderer (OpenTUI)
 
-For `progressive-visual-alternate` mode.
+For `alt-screen` mode.
 
 Uses [OpenTUI](https://github.com/anomalyco/opentui) with its React reconciler (`@opentui/react`).
 
@@ -767,7 +816,7 @@ Commands follow the Elm architecture: **State + Action + Reducer + View**
 
 ```typescript
 import * as Cli from '@effect/cli'
-import { useTuiState, OutputMode, Box, Text, Spinner } from '@overeng/tui-react'
+import { useTuiState, outputOption, outputModeLayer, Box, Text, Spinner } from '@overeng/tui-react'
 import { Schema, Effect, Layer } from 'effect'
 
 // 1. Define STATE schema (shared between visual and JSON modes)
@@ -859,11 +908,11 @@ function DeployView({ state, dispatch, viewport }: TuiViewProps<DeployState, Dep
   return <Text color="green">✓ Deploy complete in {state.totalDuration}ms</Text>
 }
 
-// 5. Use in Effect CLI command
+// 5. Use in Effect CLI command with --output option
 const deployCommand = Cli.Command.make(
   'deploy',
-  { json: jsonOption, services: servicesOption },
-  ({ json, services }) =>
+  { output: outputOption, services: servicesOption },
+  ({ output, services }) =>
     Effect.gen(function* () {
       // Create TUI state with reducer
       const tui = yield* useTuiState({
@@ -887,7 +936,7 @@ const deployCommand = Cli.Command.make(
       tui.dispatch({ _tag: 'Finish', results: [...], totalDuration: 1500 })
     }).pipe(
       Effect.scoped,
-      Effect.provide(OutputMode.fromFlagsLayer({ json, stream: false }))
+      Effect.provide(outputModeLayer(output))  // 'auto' | 'tty' | 'ci' | 'json' | etc.
     )
 )
 ```
@@ -960,10 +1009,10 @@ const MyView = () => {
 
 **Mode behavior:**
 
-- `progressive-visual`: Renders React component, re-renders on dispatch
-- `final-json`: Outputs final state as JSON when scope closes
-- `progressive-json`: Streams state as NDJSON after each dispatch
-- `final-visual`: Renders once at end (for non-TTY)
+- `tty` / `ci` / `ci-plain`: Renders React component, re-renders on dispatch (live modes)
+- `pipe` / `log`: Renders once at end (final visual modes)
+- `json`: Outputs final state as JSON when scope closes
+- `ndjson`: Streams state as NDJSON after each dispatch
 
 **Interrupt handling:**
 If `actionSchema` includes `Schema.TaggedStruct('Interrupted', {...})`, the system automatically dispatches it on Ctrl+C.
@@ -971,42 +1020,64 @@ If `actionSchema` includes `Schema.TaggedStruct('Interrupted', {...})`, the syst
 ### OutputMode Service
 
 ```typescript
-type OutputMode =
-  | { readonly _tag: 'progressive-visual' }
-  | { readonly _tag: 'final-visual' }
-  | { readonly _tag: 'final-json' }
-  | { readonly _tag: 'progressive-json' }
-
-class OutputMode extends Context.Tag('OutputMode')<OutputMode, OutputMode>() {
-  /** Create mode from CLI flags */
-  static fromFlags(options: { json: boolean; stream: boolean }): OutputMode
-
-  /** Create layer from CLI flags */
-  static fromFlagsLayer(options: { json: boolean; stream: boolean }): Layer<OutputMode>
-
-  /** Detect mode from environment (TTY detection) */
-  static detect(): OutputMode
+// The OutputMode type with render configuration
+type OutputMode = {
+  readonly _tag: string
+  readonly config: RenderConfig
 }
+
+interface RenderConfig {
+  timing: 'live' | 'final'
+  animation: boolean
+  colors: boolean
+  altScreen: boolean
+}
+
+// Available mode names
+type OutputModeValue = 
+  | 'auto' | 'tty' | 'alt-screen' | 'ci' | 'ci-plain' 
+  | 'pipe' | 'log' | 'json' | 'ndjson'
+
+// Create layer from --output flag value
+const outputModeLayer: (value: OutputModeValue) => Layer<OutputMode>
+
+// Resolve mode directly (for testing)
+const resolveOutputMode: (value: OutputModeValue) => OutputMode
+
+// Detect mode from environment
+const detectOutputMode: () => OutputMode
 ```
 
-### Standard CLI Options
+### Standard CLI Option
 
 ```typescript
 import * as Cli from '@effect/cli'
+import { outputOption, outputModeLayer } from '@overeng/tui-react'
 
-// Standard --json flag
-const jsonOption = Cli.Options.boolean('json').pipe(
-  Cli.Options.withAlias('j'),
-  Cli.Options.withDescription('Output as JSON'),
-  Cli.Options.withDefault(false),
-)
+// Standard --output / -o option (exported from tui-react)
+// outputOption: Cli.Options<OutputModeValue>
 
-// Standard --stream flag for NDJSON
-const streamOption = Cli.Options.boolean('stream').pipe(
-  Cli.Options.withDescription('Stream JSON output (NDJSON)'),
-  Cli.Options.withDefault(false),
+// Use in command
+const myCommand = Cli.Command.make(
+  'mycommand',
+  { output: outputOption, /* other options */ },
+  ({ output }) =>
+    myEffect.pipe(
+      Effect.provide(outputModeLayer(output))  // 'auto' by default
+    )
 )
 ```
+
+**Available mode values:**
+- `auto` - Detect from environment (default)
+- `tty` - Interactive terminal with animations
+- `alt-screen` - Fullscreen TUI
+- `ci` - CI with colors
+- `ci-plain` - CI without colors
+- `pipe` - Final output with colors
+- `log` - Final output without colors
+- `json` - Final JSON
+- `ndjson` - Streaming NDJSON
 
 ---
 
@@ -1019,7 +1090,7 @@ A full deploy command using Effect CLI with tui-react (Elm architecture):
 import * as Cli from '@effect/cli'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Effect, Layer, Schema, Duration } from 'effect'
-import { useTuiState, OutputMode, Box, Text, Spinner, Static, type TuiViewProps } from '@overeng/tui-react'
+import { useTuiState, outputOption, outputModeLayer, Box, Text, Spinner, Static, type TuiViewProps } from '@overeng/tui-react'
 
 // ============================================================
 // State Schema (shared between visual and JSON modes)
@@ -1229,28 +1300,19 @@ const runDeploy = (services: string[]) =>
 // CLI Definition (standard @effect/cli)
 // ============================================================
 
-const jsonOption = Cli.Options.boolean('json').pipe(
-  Cli.Options.withAlias('j'),
-  Cli.Options.withDefault(false),
-)
-
-const streamOption = Cli.Options.boolean('stream').pipe(
-  Cli.Options.withDefault(false),
-)
-
 const servicesOption = Cli.Options.text('services').pipe(
   Cli.Options.withAlias('s'),
 )
 
 const deployCommand = Cli.Command.make(
   'deploy',
-  { json: jsonOption, stream: streamOption, services: servicesOption },
-  ({ json, stream, services }) =>
+  { output: outputOption, services: servicesOption },
+  ({ output, services }) =>
     Effect.gen(function* () {
       const serviceList = services.split(',').map(s => s.trim()).filter(Boolean)
 
       yield* runDeploy(serviceList).pipe(
-        Effect.provide(OutputMode.fromFlagsLayer({ json, stream }))
+        Effect.provide(outputModeLayer(output))
       )
     })
 ).pipe(Cli.Command.withDescription('Deploy services'))
@@ -1273,17 +1335,18 @@ Cli.Command.run(rootCommand, {
 **Usage:**
 
 ```bash
-# Progressive visual (default)
+# Auto-detect mode (default: tty for interactive terminal)
 mycli deploy --services api,web,worker
 
-# Final JSON
-mycli deploy --services api,web --json
-
-# Streaming JSON (NDJSON)
-mycli deploy --services api,web --json --stream
+# Explicit modes
+mycli deploy --services api,web --output tty          # Interactive with animations
+mycli deploy --services api,web --output ci           # CI with colors
+mycli deploy --services api,web --output log          # Plain text for log files
+mycli deploy --services api,web --output json         # Final JSON
+mycli deploy --services api,web --output ndjson       # Streaming NDJSON
 ```
 
-**Output in progressive-visual mode:**
+**Output in `tty` mode:**
 
 ```
 [deploy] Validating configuration...
@@ -1296,7 +1359,7 @@ Deploying 1/3 services
   ○ worker
 ```
 
-**Output in final-json mode:**
+**Output in `json` mode:**
 
 ```json
 {
@@ -1310,7 +1373,7 @@ Deploying 1/3 services
 }
 ```
 
-**Output in progressive-json mode (NDJSON):**
+**Output in `ndjson` mode:**
 
 ```
 {"_tag":"Validating","logs":["Validating configuration..."]}
@@ -1353,13 +1416,14 @@ Command throws → Runner catches → Mode-specific error output → Cleanup →
 
 ### Mode-Specific Error Handling
 
-| Mode                           | Error Handling                                    |
-| ------------------------------ | ------------------------------------------------- |
-| `progressive-visual-inline`    | Clear dynamic region, print error, exit           |
-| `progressive-visual-alternate` | Exit alternate screen, print error to main screen |
-| `final-visual-inline`          | Print formatted error                             |
-| `final-json`                   | Output JSON error object                          |
-| `progressive-json`             | Output JSON error line, then close stream         |
+| Mode         | Error Handling                                    |
+| ------------ | ------------------------------------------------- |
+| `tty`        | Clear dynamic region, print error, exit           |
+| `alt-screen` | Exit alternate screen, print error to main screen |
+| `ci`/`ci-plain` | Print formatted error (with/without colors)    |
+| `pipe`/`log` | Print formatted error                             |
+| `json`       | Output JSON error object                          |
+| `ndjson`     | Output JSON error line, then close stream         |
 
 ### Error Output Examples
 
@@ -1841,7 +1905,7 @@ Command logic is testable by collecting dispatched actions:
 ```typescript
 import { expect, test } from 'vitest'
 import { Effect, Layer, Stream, Chunk } from 'effect'
-import { OutputMode } from '@overeng/tui-react'
+import { jsonLayer } from '@overeng/tui-react'
 
 test('deploy command dispatches correct actions', async () => {
   const actions: DeployAction[] = []
@@ -1864,7 +1928,7 @@ test('deploy command dispatches correct actions', async () => {
 
     // Run the command
     yield* runDeployLogic(tui, ['api-server'])
-  }).pipe(Effect.scoped, Effect.provide(OutputMode.finalJsonLayer), Effect.runPromise)
+  }).pipe(Effect.scoped, Effect.provide(jsonLayer), Effect.runPromise)
 
   // Assert action sequence
   expect(actions.map((a) => a._tag)).toContain('StartValidation')
@@ -1944,12 +2008,12 @@ test('deploy complete view matches snapshot', () => {
 
 ```typescript
 import { Effect, Layer } from 'effect'
-import { OutputMode, captureConsole } from '@overeng/tui-react/test'
+import { jsonLayer, captureConsole } from '@overeng/tui-react/test'
 
 test('deploy produces valid JSON output', async () => {
   const { outputs } = await captureConsole(async () => {
     await runDeploy(['api-server']).pipe(
-      Effect.provide(OutputMode.finalJsonLayer),
+      Effect.provide(jsonLayer),
       Effect.runPromise,
     )
   })
@@ -1972,7 +2036,7 @@ const { states, actions, jsonOutput } = await runTestCommand({
   initial: { _tag: 'Idle' },
   reducer: deployReducer,
   run: (tui) => runDeployLogic(tui, ['api', 'web']),
-  mode: 'final-json',
+  mode: 'json',
 })
 
 expect(states).toHaveLength(5)
@@ -2035,9 +2099,9 @@ const runDeploy = (services: string[]) =>
   }).pipe(Effect.scoped)
 
 // Provide layers when running
-const deployCommand = Cli.Command.make('deploy', { services: servicesOption }, ({ services }) =>
+const deployCommand = Cli.Command.make('deploy', { output: outputOption, services: servicesOption }, ({ output, services }) =>
   runDeploy(services.split(',')).pipe(
-    Effect.provide(OutputMode.progressiveVisualLayer),
+    Effect.provide(outputModeLayer(output)),
     Effect.provide(DeployServiceLive),
   ),
 )

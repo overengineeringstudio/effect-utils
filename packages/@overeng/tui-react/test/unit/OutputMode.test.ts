@@ -148,10 +148,18 @@ describe('resolveOutputMode', () => {
     expect(isReact(mode) && mode.render.colors).toBe(false)
   })
 
-  test('fullscreen returns fullscreen mode', () => {
-    const mode = resolveOutputMode('fullscreen')
+  test('alt-screen returns alt-screen mode', () => {
+    const mode = resolveOutputMode('alt-screen')
     expect(mode._tag).toBe('react')
     expect(isReact(mode) && mode.render.alternate).toBe(true)
+  })
+
+  test('ci-plain returns ci-plain mode', () => {
+    const mode = resolveOutputMode('ci-plain')
+    expect(mode._tag).toBe('react')
+    expect(mode.timing).toBe('progressive')
+    expect(isReact(mode) && mode.render.animation).toBe(false)
+    expect(isReact(mode) && mode.render.colors).toBe(false)
   })
 })
 
