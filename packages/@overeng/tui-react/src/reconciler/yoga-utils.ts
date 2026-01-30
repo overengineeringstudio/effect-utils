@@ -20,13 +20,7 @@ import type { BoxNodeProps } from './types.ts'
 export const createYogaNode = (): YogaNode => Yoga.Node.create()
 
 /** Apply box props to a Yoga node */
-export const applyBoxProps = ({
-  node,
-  props,
-}: {
-  node: YogaNode
-  props: BoxNodeProps
-}): void => {
+export const applyBoxProps = ({ node, props }: { node: YogaNode; props: BoxNodeProps }): void => {
   // Flex direction
   if (props.flexDirection !== undefined) {
     node.setFlexDirection(props.flexDirection === 'row' ? FlexDirection.Row : FlexDirection.Column)

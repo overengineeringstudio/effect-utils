@@ -358,15 +358,15 @@ export const syncMegarepo = ({
 
     // Verbose: show filtered members
     if (verbose && !json && skippedMemberNames.size > 0) {
-const skipOutput = yield* Effect.promise(() =>
-          renderToString({
-            element: React.createElement(
-              Text,
-              { dim: true },
-              `Skipping ${skippedMemberNames.size} member(s): ${[...skippedMemberNames].join(', ')}`,
-            ),
-          }),
-        )
+      const skipOutput = yield* Effect.promise(() =>
+        renderToString({
+          element: React.createElement(
+            Text,
+            { dim: true },
+            `Skipping ${skippedMemberNames.size} member(s): ${[...skippedMemberNames].join(', ')}`,
+          ),
+        }),
+      )
       yield* Console.log(skipOutput)
     }
 

@@ -223,7 +223,10 @@ const resolveConfig = ({ config, configDir }: ResolveConfigOptions): ResolvedCon
     : configDir
 
   const databases = Object.entries(config.databases).map(([id, db]): ResolvedDatabaseConfig => {
-    const merged = mergeWithDefaults({ database: db, ...(config.defaults && { defaults: config.defaults }) })
+    const merged = mergeWithDefaults({
+      database: db,
+      ...(config.defaults && { defaults: config.defaults }),
+    })
     const normalizedTransforms = normalizeTransforms(merged.transforms)
 
     return buildResolvedDatabaseConfig({

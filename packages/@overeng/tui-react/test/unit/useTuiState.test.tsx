@@ -36,13 +36,7 @@ type TestAction = Schema.Schema.Type<typeof TestAction>
 // Reducer
 // =============================================================================
 
-const testReducer = ({
-  state,
-  action,
-}: {
-  state: TestState
-  action: TestAction
-}): TestState => {
+const testReducer = ({ state, action }: { state: TestState; action: TestAction }): TestState => {
   switch (action._tag) {
     case 'Start':
       return { _tag: 'Running', count: 0 }

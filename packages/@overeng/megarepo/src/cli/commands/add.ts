@@ -88,7 +88,9 @@ export const addCommand = Cli.Command.make(
           )
         } else {
           const output = yield* Effect.promise(() =>
-            renderToString({ element: React.createElement(AddErrorOutput, { error: 'not_in_megarepo' }) }),
+            renderToString({
+              element: React.createElement(AddErrorOutput, { error: 'not_in_megarepo' }),
+            }),
           )
           yield* Console.error(output)
         }
@@ -107,7 +109,9 @@ export const addCommand = Cli.Command.make(
           )
         } else {
           const output = yield* Effect.promise(() =>
-            renderToString({ element: React.createElement(AddErrorOutput, { error: 'invalid_repo', repo }) }),
+            renderToString({
+              element: React.createElement(AddErrorOutput, { error: 'invalid_repo', repo }),
+            }),
           )
           yield* Console.error(output)
         }
@@ -132,7 +136,10 @@ export const addCommand = Cli.Command.make(
         } else {
           const output = yield* Effect.promise(() =>
             renderToString({
-              element: React.createElement(AddErrorOutput, { error: 'already_exists', member: memberName }),
+              element: React.createElement(AddErrorOutput, {
+                error: 'already_exists',
+                member: memberName,
+              }),
             }),
           )
           yield* Console.error(output)
@@ -166,7 +173,10 @@ export const addCommand = Cli.Command.make(
       } else {
         const output = yield* Effect.promise(() =>
           renderToString({
-            element: React.createElement(AddOutput, { member: memberName, source: parsed.sourceString }),
+            element: React.createElement(AddOutput, {
+              member: memberName,
+              source: parsed.sourceString,
+            }),
           }),
         )
         yield* Console.log(output)

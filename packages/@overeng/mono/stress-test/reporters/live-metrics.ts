@@ -46,7 +46,12 @@ export const renderMetricsLine = ({
 
   const parts = [
     fps,
-    formatMetric({ label: 'Frame', value: metrics.frameTimeMs, unit: 'ms', thresholds: { good: 10, warn: 50 } }),
+    formatMetric({
+      label: 'Frame',
+      value: metrics.frameTimeMs,
+      unit: 'ms',
+      thresholds: { good: 10, warn: 50 },
+    }),
     formatMetric({
       label: 'Events/s',
       value: metrics.eventThroughput,
@@ -59,8 +64,18 @@ export const renderMetricsLine = ({
       unit: 'ms',
       thresholds: { good: 1, warn: 5 },
     }),
-    formatMetric({ label: 'Render', value: metrics.renderTimeMs, unit: 'ms', thresholds: { good: 5, warn: 20 } }),
-    formatMetric({ label: 'Mem', value: metrics.memoryMB, unit: 'MB', thresholds: { good: 100, warn: 200 } }),
+    formatMetric({
+      label: 'Render',
+      value: metrics.renderTimeMs,
+      unit: 'ms',
+      thresholds: { good: 5, warn: 20 },
+    }),
+    formatMetric({
+      label: 'Mem',
+      value: metrics.memoryMB,
+      unit: 'MB',
+      thresholds: { good: 100, warn: 200 },
+    }),
   ]
 
   return `┌─ BENCH: ${parts.join(' │ ')} ─┐`
@@ -135,7 +150,13 @@ export const renderComparisonTable = (comparisons: {
     return `│ ${content.padEnd(width - 2)} │`
   }
 
-  lines.push(formatRow({ name: 'Baseline:', progress: comparisons.baseline.progress, events: comparisons.baseline.events }))
+  lines.push(
+    formatRow({
+      name: 'Baseline:',
+      progress: comparisons.baseline.progress,
+      events: comparisons.baseline.events,
+    }),
+  )
   lines.push(
     formatRow({
       name: 'No renderer:',

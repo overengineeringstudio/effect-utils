@@ -57,7 +57,9 @@ export type StoreHeaderProps = {
 export const StoreHeader = ({ basePath }: StoreHeaderProps) => (
   <Box flexDirection="column">
     <Text bold>store</Text>
-    <Text>{kv({ key: 'path', value: basePath, options: { keyStyle: (k: string) => `  ${k}` } })}</Text>
+    <Text>
+      {kv({ key: 'path', value: basePath, options: { keyStyle: (k: string) => `  ${k}` } })}
+    </Text>
     <Text> </Text>
   </Box>
 )
@@ -183,7 +185,9 @@ export type StoreGcOutputProps = {
 const StoreGcHeader = ({ basePath, dryRun }: { basePath: string; dryRun: boolean }) => (
   <Box flexDirection="column">
     <Text bold>store gc</Text>
-    <Text>{kv({ key: 'path', value: basePath, options: { keyStyle: (k: string) => `  ${k}` } })}</Text>
+    <Text>
+      {kv({ key: 'path', value: basePath, options: { keyStyle: (k: string) => `  ${k}` } })}
+    </Text>
     {dryRun && <Text dim> mode: dry run</Text>}
     <Text> </Text>
   </Box>

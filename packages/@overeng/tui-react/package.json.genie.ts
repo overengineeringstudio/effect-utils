@@ -22,6 +22,8 @@ export default packageJson({
   scripts: {
     storybook: 'storybook dev -p 6006',
     'storybook:build': 'storybook build',
+    'test:e2e': 'playwright test',
+    'test:e2e:ui': 'playwright test --ui',
   },
   publishConfig: {
     access: 'public',
@@ -43,6 +45,8 @@ export default packageJson({
       '@types/react-reconciler',
       'typescript',
       'vitest',
+      '@playwright/test',
+      '@overeng/utils',
       // Effect ecosystem
       'effect',
       '@effect/platform',

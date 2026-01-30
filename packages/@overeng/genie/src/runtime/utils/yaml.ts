@@ -77,7 +77,9 @@ const stringifyValue = ({ value, indent }: { value: unknown; indent: number }): 
 
     const prefix = INDENT.repeat(indent)
     return value
-      .map((item) => `\n${prefix}- ${stringifyValue({ value: item, indent: indent + 1 }).trimStart()}`)
+      .map(
+        (item) => `\n${prefix}- ${stringifyValue({ value: item, indent: indent + 1 }).trimStart()}`,
+      )
       .join('')
   }
 

@@ -11,7 +11,6 @@ import {
   supportsTruecolor,
   forceColorLevel,
   resetColorState,
-  type ColorLevel,
 } from './color-support.ts'
 
 describe('color-support', () => {

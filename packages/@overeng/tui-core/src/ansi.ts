@@ -9,7 +9,7 @@
 const CSI = '\x1b['
 
 /** OSC (Operating System Command) prefix */
-const OSC = '\x1b]'
+const _OSC = '\x1b]'
 
 // =============================================================================
 // Cursor Movement

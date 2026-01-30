@@ -27,7 +27,7 @@
 import type { Readable } from 'node:stream'
 
 import type { Scope } from 'effect'
-import { Effect, PubSub, Queue, Stream } from 'effect'
+import { Effect, PubSub, Stream } from 'effect'
 
 import { type KeyEvent, keyEvent, resizeEvent, type InputEvent } from './events.ts'
 
@@ -64,7 +64,7 @@ export const parseKeyInput = (data: Buffer): KeyEvent[] => {
 
       // Check for SS3 sequence (ESC O) - function keys
       if (i + 1 < data.length && data[i + 1] === 0x4f) {
-        const result = parseSS3Sequence(data, i + 2)
+        const result = parseSS3Sequence({ data, start: i + 2 })
         if (result) {
           events.push(result.event)
           i = result.nextIndex
@@ -113,7 +113,7 @@ export const parseKeyInput = (data: Buffer): KeyEvent[] => {
 
     // UTF-8 multi-byte character
     if (byte >= 0x80) {
-      const result = parseUTF8Char(data, i)
+      const result = parseUTF8Char({ data, start: i })
       if (result) {
         events.push(keyEvent({ key: result.char }))
         i = result.nextIndex
@@ -184,7 +184,7 @@ const parseCSISequence = ({
     case 0x5a: // Z - Shift+Tab
       return { event: keyEvent({ key: 'tab', shift: true }), nextIndex: i }
     case 0x7e: // ~ - Extended keys (based on params)
-      return parseExtendedKey(params, modifiers, i)
+      return parseExtendedKey({ params, modifiers, nextIndex: i })
     default:
       return null
   }
@@ -193,12 +193,15 @@ const parseCSISequence = ({
 /**
  * Parse extended key codes (CSI <num> ~).
  */
-// oxlint-disable-next-line overeng/named-args -- parser helper with params + modifiers + index pattern
-const parseExtendedKey = (
-  params: string,
-  modifiers: ReturnType<typeof parseCSIModifiers>,
-  nextIndex: number,
-): { event: KeyEvent; nextIndex: number } | null => {
+const parseExtendedKey = ({
+  params,
+  modifiers,
+  nextIndex,
+}: {
+  params: string
+  modifiers: ReturnType<typeof parseCSIModifiers>
+  nextIndex: number
+}): { event: KeyEvent; nextIndex: number } | null => {
   const parts = params.split(';')
   const keyCode = parseInt(parts[0] ?? '', 10)
 
@@ -253,11 +256,13 @@ const parseExtendedKey = (
  * Format: ESC O <char>
  * Used for function keys and keypad on some terminals.
  */
-// oxlint-disable-next-line overeng/named-args -- parser function with buffer + offset pattern
-const parseSS3Sequence = (
-  data: Buffer,
-  start: number,
-): { event: KeyEvent; nextIndex: number } | null => {
+const parseSS3Sequence = ({
+  data,
+  start,
+}: {
+  data: Buffer
+  start: number
+}): { event: KeyEvent; nextIndex: number } | null => {
   if (start >= data.length) return null
 
   const byte = data[start]!
@@ -389,8 +394,13 @@ const parseControlCharacter = (byte: number): KeyEvent | null => {
 /**
  * Parse UTF-8 multi-byte character.
  */
-// oxlint-disable-next-line overeng/named-args -- parser function with buffer + offset pattern
-const parseUTF8Char = (data: Buffer, start: number): { char: string; nextIndex: number } | null => {
+const parseUTF8Char = ({
+  data,
+  start,
+}: {
+  data: Buffer
+  start: number
+}): { char: string; nextIndex: number } | null => {
   const firstByte = data[start]!
   let numBytes: number
 

@@ -14,11 +14,9 @@ import {
   finishProgressList,
   formatElapsed,
   isTTY,
-  kv,
   markActive,
   markError,
   markSuccess,
-  separator,
   startProgressList,
   startSpinner,
   updateProgressList,
@@ -424,17 +422,17 @@ const storeGcCommand = Cli.Command.make(
           }),
         )
       } else {
-const output = yield* Effect.promise(() =>
-        renderToString({
-          element: React.createElement(StoreGcOutput, {
-            basePath: store.basePath,
-            results: results as StoreGcResult[],
-            dryRun,
-            warning: gcWarning,
-            showForceHint: !force,
+        const output = yield* Effect.promise(() =>
+          renderToString({
+            element: React.createElement(StoreGcOutput, {
+              basePath: store.basePath,
+              results: results as StoreGcResult[],
+              dryRun,
+              warning: gcWarning,
+              showForceHint: !force,
+            }),
           }),
-        }),
-      )
+        )
         yield* Console.log(output)
       }
     }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/gc')),
@@ -470,7 +468,10 @@ const storeAddCommand = Cli.Command.make(
         } else {
           const output = yield* Effect.promise(() =>
             renderToString({
-              element: React.createElement(StoreAddError, { type: 'invalid_source', source: sourceString }),
+              element: React.createElement(StoreAddError, {
+                type: 'invalid_source',
+                source: sourceString,
+              }),
             }),
           )
           yield* Console.error(output)
@@ -516,7 +517,10 @@ const storeAddCommand = Cli.Command.make(
         if (!json) {
           const cloneOutput = yield* Effect.promise(() =>
             renderToString({
-              element: React.createElement(StoreAddProgress, { type: 'cloning', source: sourceString }),
+              element: React.createElement(StoreAddProgress, {
+                type: 'cloning',
+                source: sourceString,
+              }),
             }),
           )
           yield* Console.log(cloneOutput)
@@ -546,7 +550,10 @@ const storeAddCommand = Cli.Command.make(
         if (!json) {
           const wtOutput = yield* Effect.promise(() =>
             renderToString({
-              element: React.createElement(StoreAddProgress, { type: 'creating_worktree', ref: targetRef }),
+              element: React.createElement(StoreAddProgress, {
+                type: 'creating_worktree',
+                ref: targetRef,
+              }),
             }),
           )
           yield* Console.log(wtOutput)

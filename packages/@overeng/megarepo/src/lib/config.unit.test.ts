@@ -525,7 +525,10 @@ describe('config', () => {
 
     it('should replace ref in URL sources', () => {
       expect(
-        buildSourceStringWithRef({ sourceString: 'https://github.com/owner/repo#old', newRef: 'new' }),
+        buildSourceStringWithRef({
+          sourceString: 'https://github.com/owner/repo#old',
+          newRef: 'new',
+        }),
       ).toBe('https://github.com/owner/repo#new')
     })
 

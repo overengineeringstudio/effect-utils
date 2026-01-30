@@ -283,7 +283,9 @@ const DEFAULT_TRANSFORMERS: Record<string, BlockTransformer> = {
   to_do: (block, children) => {
     const text = richTextToMd(getBlockRichText(block))
     const checkbox = isTodoChecked(block) ? '[x]' : '[ ]'
-    return children ? `- ${checkbox} ${text}\n${indentLines({ text: children })}` : `- ${checkbox} ${text}`
+    return children
+      ? `- ${checkbox} ${text}\n${indentLines({ text: children })}`
+      : `- ${checkbox} ${text}`
   },
 
   toggle: (block, children) => {

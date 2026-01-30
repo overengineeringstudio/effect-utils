@@ -1,14 +1,13 @@
 /**
- * Deploy CLI View Component
+ * Deploy CLI View Component (Pure - Prop-Based)
  *
  * React component for rendering deploy progress.
- * Uses app-scoped hooks to access TUI state (React-idiomatic pattern).
+ * Accepts state as a prop for maximum reusability (Storybook, tests, CLI).
  */
 
 import React from 'react'
 
 import { Box, Text, Spinner, Static } from '../../../src/mod.ts'
-import { DeployApp } from './deploy.tsx'
 import type { DeployState, LogEntry, ServiceProgress, ServiceResult } from './schema.ts'
 
 // =============================================================================
@@ -104,7 +103,7 @@ const ServiceResultLine = ({ service }: { service: ServiceResult }) => (
 // Progress Summary
 // =============================================================================
 
-const ProgressSummary = ({ services }: { services: ServiceProgress[] }) => {
+const ProgressSummary = ({ services }: { services: readonly ServiceProgress[] }) => {
   const completed = services.filter((s) => s.status === 'healthy').length
   const failed = services.filter((s) => s.status === 'failed').length
   const total = services.length
@@ -124,13 +123,22 @@ const ProgressSummary = ({ services }: { services: ServiceProgress[] }) => {
 }
 
 // =============================================================================
-// Main View Component (uses app-scoped hooks)
+// Main View Component (Pure - Prop-Based)
 // =============================================================================
 
-export const DeployView = () => {
-  // App-scoped hook: type is automatically inferred from DeployApp
-  const state = DeployApp.useState()
+export interface DeployViewProps {
+  state: DeployState
+}
 
+/**
+ * DeployView - Pure component for rendering deploy state.
+ *
+ * This component is reusable across:
+ * - CLI: wrap with ConnectedDeployView
+ * - Storybook: pass state directly via TuiStoryPreview
+ * - Tests: pass mock state directly
+ */
+export const DeployView = ({ state }: DeployViewProps) => {
   if (state._tag === 'Idle') {
     return <Text dim>Waiting to start...</Text>
   }

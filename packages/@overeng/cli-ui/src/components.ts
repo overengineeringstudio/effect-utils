@@ -54,13 +54,7 @@ const defaultListOptions: Required<ListOptions> = {
 }
 
 /** Render a list with optional truncation (multi-line) */
-export const list = ({
-  items,
-  options,
-}: {
-  items: string[]
-  options?: ListOptions
-}): string[] => {
+export const list = ({ items, options }: { items: string[]; options?: ListOptions }): string[] => {
   const opts = { ...defaultListOptions, ...options }
   const lines: string[] = []
 
@@ -180,13 +174,7 @@ export type IndentOptions = {
 }
 
 /** Indent a single line */
-export const indent = ({
-  text,
-  options,
-}: {
-  text: string
-  options?: IndentOptions
-}): string => {
+export const indent = ({ text, options }: { text: string; options?: IndentOptions }): string => {
   const size = options?.size ?? 2
   const level = options?.level ?? 1
   return `${' '.repeat(size * level)}${text}`

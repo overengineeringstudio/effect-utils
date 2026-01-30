@@ -18,210 +18,18 @@
 
 import { Command } from '@effect/cli'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
-import { Duration, Effect, Schema } from 'effect'
+import { Duration, Effect } from 'effect'
 import React from 'react'
 
 import {
   createTuiApp,
-  Box,
-  Text,
-  Spinner,
   outputModeOptions,
   outputModeLayerFromFlagsWithTTY,
 } from '../../src/mod.ts'
 
-// =============================================================================
-// State Schema
-// =============================================================================
-
-const RunningState = Schema.Struct({
-  _tag: Schema.Literal('Running'),
-  count: Schema.Number,
-  status: Schema.Literal('idle', 'loading'),
-  history: Schema.Array(Schema.String),
-})
-
-const CompleteState = Schema.Struct({
-  _tag: Schema.Literal('Complete'),
-  finalCount: Schema.Number,
-  history: Schema.Array(Schema.String),
-})
-
-const InterruptedState = Schema.Struct({
-  _tag: Schema.Literal('Interrupted'),
-  count: Schema.Number,
-  history: Schema.Array(Schema.String),
-})
-
-const CounterState = Schema.Union(RunningState, CompleteState, InterruptedState)
-
-type CounterState = typeof CounterState.Type
-
-// =============================================================================
-// Action Schema
-// =============================================================================
-
-const CounterAction = Schema.Union(
-  Schema.TaggedStruct('Increment', {}),
-  Schema.TaggedStruct('Decrement', {}),
-  Schema.TaggedStruct('SetLoading', {}),
-  Schema.TaggedStruct('SetComplete', { message: Schema.String }),
-  Schema.TaggedStruct('Interrupted', {}),
-)
-
-type CounterAction = typeof CounterAction.Type
-
-// =============================================================================
-// Reducer
-// =============================================================================
-
-const timestamp = () => new Date().toISOString().slice(11, 19)
-
-const counterReducer = ({
-  state,
-  action,
-}: {
-  state: CounterState
-  action: CounterAction
-}): CounterState => {
-  const addHistory = (entry: string) => {
-    const history = state._tag === 'Running' ? state.history : []
-    return [...history.slice(-4), `[${timestamp()}] ${entry}`]
-  }
-
-  switch (action._tag) {
-    case 'Increment': {
-      if (state._tag !== 'Running') return state
-      return {
-        ...state,
-        count: state.count + 1,
-        status: 'idle',
-        history: addHistory(`Incremented to ${state.count + 1}`),
-      }
-    }
-    case 'Decrement': {
-      if (state._tag !== 'Running') return state
-      return {
-        ...state,
-        count: state.count - 1,
-        status: 'idle',
-        history: addHistory(`Decremented to ${state.count - 1}`),
-      }
-    }
-    case 'SetLoading': {
-      if (state._tag !== 'Running') return state
-      return { ...state, status: 'loading' }
-    }
-    case 'SetComplete': {
-      if (state._tag !== 'Running') return state
-      return {
-        _tag: 'Complete',
-        finalCount: state.count,
-        history: addHistory(action.message),
-      }
-    }
-    case 'Interrupted': {
-      if (state._tag !== 'Running') return state
-      return {
-        _tag: 'Interrupted',
-        count: state.count,
-        history: addHistory('Interrupted by user'),
-      }
-    }
-  }
-}
-
-// =============================================================================
-// View Components
-// =============================================================================
-
-const RunningView = ({ state }: { state: Extract<CounterState, { _tag: 'Running' }> }) => (
-  <Box flexDirection="column" padding={1}>
-    <Text bold color="cyan">
-      Counter Example
-    </Text>
-
-    <Box marginTop={1} flexDirection="row">
-      {state.status === 'loading' ? (
-        <>
-          <Spinner color="yellow" />
-          <Text> Processing...</Text>
-        </>
-      ) : (
-        <>
-          <Text>Count: </Text>
-          <Text color={state.count >= 0 ? 'green' : 'red'} bold>
-            {state.count}
-          </Text>
-        </>
-      )}
-    </Box>
-
-    {state.history.length > 0 && (
-      <Box marginTop={1} flexDirection="column">
-        <Text dim>History:</Text>
-        {state.history.map((entry, i) => (
-          <Text key={i} dim>
-            {'  '}
-            {entry}
-          </Text>
-        ))}
-      </Box>
-    )}
-  </Box>
-)
-
-const CompleteView = ({ state }: { state: Extract<CounterState, { _tag: 'Complete' }> }) => (
-  <Box flexDirection="column" padding={1}>
-    <Text bold color="green">
-      Counter Example - Complete
-    </Text>
-
-    <Box marginTop={1} flexDirection="row">
-      <Text>Final Count: </Text>
-      <Text color={state.finalCount >= 0 ? 'green' : 'red'} bold>
-        {state.finalCount}
-      </Text>
-    </Box>
-
-    {state.history.length > 0 && (
-      <Box marginTop={1} flexDirection="column">
-        <Text dim>History:</Text>
-        {state.history.map((entry, i) => (
-          <Text key={i} dim>
-            {'  '}
-            {entry}
-          </Text>
-        ))}
-      </Box>
-    )}
-  </Box>
-)
-
-const InterruptedView = ({ state }: { state: Extract<CounterState, { _tag: 'Interrupted' }> }) => (
-  <Box flexDirection="column" padding={1}>
-    <Text bold color="yellow">
-      Counter Example - Interrupted
-    </Text>
-
-    <Box marginTop={1} flexDirection="row">
-      <Text>Count at interruption: </Text>
-      <Text bold>{state.count}</Text>
-    </Box>
-
-    {state.history.length > 0 && (
-      <Box marginTop={1} flexDirection="column">
-        <Text dim>History:</Text>
-        {state.history.map((entry, i) => (
-          <Text key={i} dim>
-            {'  '}
-            {entry}
-          </Text>
-        ))}
-      </Box>
-    )}
-  </Box>
-)
+// Import from shared modules
+import { CounterState, CounterAction, counterReducer } from './schema.ts'
+import { CounterView } from './view.tsx'
 
 // =============================================================================
 // Main Program
@@ -236,24 +44,18 @@ const runCounter = Effect.gen(function* () {
       count: 0,
       status: 'idle',
       history: [],
-    } as CounterState,
+    } as typeof CounterState.Type,
     reducer: counterReducer,
     interruptTimeout: 200,
   })
 
-  const CounterView = () => {
+  // Connected view using app-scoped hook
+  const ConnectedCounterView = () => {
     const state = CounterApp.useState()
-    switch (state._tag) {
-      case 'Running':
-        return <RunningView state={state} />
-      case 'Complete':
-        return <CompleteView state={state} />
-      case 'Interrupted':
-        return <InterruptedView state={state} />
-    }
+    return <CounterView state={state} />
   }
 
-  const tui = yield* CounterApp.run(<CounterView />)
+  const tui = yield* CounterApp.run(<ConnectedCounterView />)
 
   // Increment a few times
   for (let i = 0; i < 3; i++) {
@@ -276,7 +78,7 @@ const runCounter = Effect.gen(function* () {
 
   // Complete
   if (tui.getState()._tag === 'Running') {
-    const state = tui.getState() as Extract<CounterState, { _tag: 'Running' }>
+    const state = tui.getState() as Extract<typeof CounterState.Type, { _tag: 'Running' }>
     tui.dispatch({ _tag: 'SetComplete', message: `Final count: ${state.count}` })
   }
 

@@ -101,13 +101,7 @@ export const styled = {
 // =============================================================================
 
 /** Apply raw ANSI codes (for custom combinations) */
-export const raw = ({
-  codes,
-  text,
-}: {
-  codes: string | string[]
-  text: string
-}): string => {
+export const raw = ({ codes, text }: { codes: string | string[]; text: string }): string => {
   const codeArray = Array.isArray(codes) ? codes : [codes]
   return applyStyles({ codes: codeArray, text })
 }

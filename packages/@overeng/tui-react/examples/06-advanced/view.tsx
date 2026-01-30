@@ -1,0 +1,222 @@
+/**
+ * Bouncing Windows - Pure View Components
+ */
+
+import React from 'react'
+
+import { Box, Text } from '../../src/mod.ts'
+import type { AppState, Window, Color } from './schema.ts'
+
+// =============================================================================
+// Canvas Rendering Helpers
+// =============================================================================
+
+interface Cell {
+  char: string
+  color: Color | null
+}
+
+const formatStat = ({
+  label,
+  value,
+  width,
+}: {
+  label: string
+  value: number
+  width: number
+}): string => {
+  const barW = width - 7
+  const filled = Math.round((value / 100) * barW)
+  const bar = '█'.repeat(filled) + '░'.repeat(barW - filled)
+  return `${label} ${bar}${Math.round(value).toString().padStart(3)}`
+}
+
+const renderWindowToCanvas = ({
+  canvas,
+  win,
+  canvasWidth,
+}: {
+  canvas: Cell[][]
+  win: Window
+  canvasWidth: number
+}) => {
+  const x = Math.floor(win.x)
+  const y = Math.floor(win.y)
+  const { width, height, title, stats, color } = win
+  const innerW = width - 2
+
+  const lines = [
+    '┌' + '─'.repeat(innerW) + '┐',
+    '│' + ` ${title} `.padEnd(innerW, '─') + '│',
+    '├' + '─'.repeat(innerW) + '┤',
+    '│' + formatStat({ label: 'CPU', value: stats.cpu, width: innerW }) + '│',
+    '│' + formatStat({ label: 'MEM', value: stats.mem, width: innerW }) + '│',
+    '│' + formatStat({ label: 'DSK', value: stats.disk, width: innerW }) + '│',
+    '│' + ` NET ${(stats.net / 100).toFixed(1).padStart(5)}Mb`.padEnd(innerW) + '│',
+    '└' + '─'.repeat(innerW) + '┘',
+  ]
+
+  for (let row = 0; row < Math.min(lines.length, height); row++) {
+    const line = lines[row]!
+    const canvasY = y + row
+    if (canvasY < 0 || canvasY >= canvas.length) continue
+
+    for (let col = 0; col < line.length; col++) {
+      const canvasX = x + col
+      if (canvasX < 0 || canvasX >= canvasWidth) continue
+      canvas[canvasY]![canvasX] = { char: line[col]!, color }
+    }
+  }
+}
+
+const createCanvas = ({ width, height }: { width: number; height: number }): Cell[][] => {
+  return Array.from({ length: height }, () =>
+    Array.from({ length: width }, () => ({ char: ' ', color: null })),
+  )
+}
+
+// =============================================================================
+// View Components
+// =============================================================================
+
+const CanvasRenderer = ({
+  windows,
+  width,
+  height,
+}: {
+  windows: Window[]
+  width: number
+  height: number
+}) => {
+  const canvas = createCanvas({ width, height })
+
+  for (const win of windows) {
+    renderWindowToCanvas({ canvas, win, canvasWidth: width })
+  }
+
+  const renderedLines = canvas.map((row, rowIdx) => {
+    const segments: React.ReactNode[] = []
+    let currentColor: Color | null = null
+    let currentText = ''
+
+    for (let col = 0; col < row.length; col++) {
+      const cell = row[col]!
+      if (cell.color !== currentColor) {
+        if (currentText) {
+          segments.push(
+            currentColor ? (
+              <Text key={`${rowIdx}-${segments.length}`} color={currentColor}>
+                {currentText}
+              </Text>
+            ) : (
+              <Text key={`${rowIdx}-${segments.length}`}>{currentText}</Text>
+            ),
+          )
+        }
+        currentColor = cell.color
+        currentText = cell.char
+      } else {
+        currentText += cell.char
+      }
+    }
+    if (currentText) {
+      segments.push(
+        currentColor ? (
+          <Text key={`${rowIdx}-${segments.length}`} color={currentColor}>
+            {currentText}
+          </Text>
+        ) : (
+          <Text key={`${rowIdx}-${segments.length}`}>{currentText}</Text>
+        ),
+      )
+    }
+
+    return (
+      <Box key={rowIdx} flexDirection="row">
+        {segments}
+      </Box>
+    )
+  })
+
+  return <Box>{renderedLines}</Box>
+}
+
+const RunningView = ({ state }: { state: Extract<AppState, { _tag: 'Running' }> }) => (
+  <Box>
+    <Box flexDirection="row">
+      <Text bold color="cyan">
+        Bouncing Windows
+      </Text>
+      <Text dim>
+        {' '}
+        │ {state.windows.length} window{state.windows.length > 1 ? 's' : ''}
+      </Text>
+      <Text dim> │ Frame: {state.frame}</Text>
+      <Text dim>
+        {' '}
+        │ {state.termWidth}x{state.termHeight}
+      </Text>
+      <Text dim> │ Ctrl+C to exit</Text>
+    </Box>
+    <Text dim>{'─'.repeat(state.termWidth)}</Text>
+    <CanvasRenderer windows={state.windows as Window[]} width={state.termWidth} height={state.termHeight} />
+    <Text dim>{'─'.repeat(state.termWidth)}</Text>
+  </Box>
+)
+
+const FinishedView = ({ state }: { state: Extract<AppState, { _tag: 'Finished' }> }) => (
+  <Box flexDirection="column" padding={1}>
+    <Text bold color="green">
+      Bouncing Windows - Finished
+    </Text>
+    <Box flexDirection="column" marginTop={1}>
+      <Box flexDirection="row">
+        <Text>Total Frames: </Text>
+        <Text bold>{state.totalFrames}</Text>
+      </Box>
+      <Box flexDirection="row">
+        <Text>Windows: </Text>
+        <Text bold>{state.windowCount}</Text>
+      </Box>
+    </Box>
+    <Box marginTop={1}>
+      <Text dim>Demo completed after reaching the time limit.</Text>
+    </Box>
+  </Box>
+)
+
+const InterruptedView = ({ state }: { state: Extract<AppState, { _tag: 'Interrupted' }> }) => (
+  <Box flexDirection="column" padding={1}>
+    <Text bold color="yellow">
+      Bouncing Windows - Interrupted
+    </Text>
+    <Box flexDirection="column" marginTop={1}>
+      <Box flexDirection="row">
+        <Text>Frames rendered: </Text>
+        <Text bold>{state.frame}</Text>
+      </Box>
+      <Box flexDirection="row">
+        <Text>Windows: </Text>
+        <Text bold>{state.windowCount}</Text>
+      </Box>
+    </Box>
+    <Box marginTop={1}>
+      <Text dim>Demo was cancelled by user (Ctrl+C).</Text>
+    </Box>
+  </Box>
+)
+
+// =============================================================================
+// Main View (for Storybook)
+// =============================================================================
+
+export const BouncingWindowsView = ({ state }: { state: AppState }) => {
+  switch (state._tag) {
+    case 'Running':
+      return <RunningView state={state} />
+    case 'Finished':
+      return <FinishedView state={state} />
+    case 'Interrupted':
+      return <InterruptedView state={state} />
+  }
+}

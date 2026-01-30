@@ -21,7 +21,7 @@ import {
   type Color,
 } from '@overeng/tui-core'
 
-import type { TuiNode, TuiElement, TuiTextNode, TextStyle, BoxNodeProps } from './types.ts'
+import type { TuiNode, TuiElement, TextStyle } from './types.ts'
 import { isTextNode, isBoxElement, isTextElement, isStaticElement } from './types.ts'
 import { getLayout } from './yoga-utils.ts'
 
@@ -236,7 +236,9 @@ const renderElementSimple = ({
           }
         }
         if (parts.length > 0) {
-          lines.push(applyBoxStyle({ line: parts.join(''), boxStyle: newBoxStyle, terminalWidth: width }))
+          lines.push(
+            applyBoxStyle({ line: parts.join(''), boxStyle: newBoxStyle, terminalWidth: width }),
+          )
         }
         // Also render any nested boxes
         for (const child of node.children) {

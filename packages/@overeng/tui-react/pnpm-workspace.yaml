@@ -4,3 +4,4 @@
 packages:
   - .
   - ../tui-core
+  - ../utils

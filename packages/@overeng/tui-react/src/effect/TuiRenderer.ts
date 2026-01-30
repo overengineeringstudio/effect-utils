@@ -25,9 +25,12 @@
  * ```
  */
 
-import { Context, Effect, Layer, Scope } from 'effect'
+import type { Scope } from 'effect'
+import { Context, Effect, Layer } from 'effect'
 import type { ReactElement } from 'react'
+
 import type { Terminal, TerminalLike } from '@overeng/tui-core'
+
 import { createRoot, type Root } from '../root.ts'
 
 // =============================================================================

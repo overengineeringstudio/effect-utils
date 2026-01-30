@@ -7,7 +7,7 @@
 
 import React from 'react'
 
-import { Box, Text, type BoxProps } from '@overeng/tui-react'
+import { Box, Text } from '@overeng/tui-react'
 
 // =============================================================================
 // Types (matching sync-renderer.ts)

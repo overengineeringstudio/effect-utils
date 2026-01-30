@@ -3,44 +3,51 @@
  *
  * @example
  * ```ts
- * // Simple usage - just use the pre-configured preview
+ * // Use the pre-configured preview in .storybook/preview.tsx
  * import { tuiPreview } from '@overeng/tui-react/storybook'
  * export default tuiPreview
  * ```
  *
  * @example
- * ```ts
- * // Custom usage - compose your own preview
- * import { withTerminalPreview, TerminalPreview, xtermTheme } from '@overeng/tui-react/storybook'
+ * ```tsx
+ * // Simple mode - just wrap children in terminal preview
+ * import { TuiStoryPreview } from '@overeng/tui-react/storybook'
  *
- * export default {
- *   decorators: [withTerminalPreview],
- *   // ...
+ * export const MyStory = {
+ *   render: () => (
+ *     <TuiStoryPreview>
+ *       <Box><Text>Hello</Text></Box>
+ *     </TuiStoryPreview>
+ *   ),
  * }
  * ```
  *
  * @example
- * ```ts
- * // CLI component stories - use createCliMeta for minimal boilerplate
- * import { createCliMeta } from '@overeng/tui-react/storybook'
- * import { MyOutput, type MyOutputProps } from './MyOutput.tsx'
+ * ```tsx
+ * // Stateful mode - full state management with timeline
+ * import { TuiStoryPreview } from '@overeng/tui-react/storybook'
+ * import { MyView, MyState, MyAction, myReducer } from './my-example'
  *
- * const meta = createCliMeta(MyOutput, {
- *   title: 'CLI/MyOutput',
- *   defaultArgs: { ... },
- * })
- * export default meta
+ * export const MyStory = {
+ *   render: () => (
+ *     <TuiStoryPreview
+ *       View={MyView}
+ *       stateSchema={MyState}
+ *       actionSchema={MyAction}
+ *       reducer={myReducer}
+ *       initialState={initialState}
+ *       timeline={events}
+ *     />
+ *   ),
+ * }
  * ```
  */
 
-export { TerminalPreview, type TerminalPreviewProps } from './TerminalPreview.tsx'
-export { StringTerminalPreview, type StringTerminalPreviewProps } from './StringTerminalPreview.tsx'
 export {
-  createCliMeta,
-  type CliMetaConfig,
-  type CliMetaProps,
-  type RenderMode,
-} from './createCliMeta.tsx'
-export { withTerminalPreview } from './decorator.tsx'
+  TuiStoryPreview,
+  type TuiStoryPreviewProps,
+  type TimelineEvent,
+  type OutputTab,
+} from './TuiStoryPreview.tsx'
 export { tuiPreview } from './preview.ts'
 export { xtermTheme, containerStyles } from './theme.ts'

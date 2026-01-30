@@ -74,7 +74,11 @@ const generateNixForRoot: (
     if (!json && depth > 0) {
       const genOutput = yield* Effect.promise(() =>
         renderToString({
-          element: React.createElement(Text, { dim: true }, `${indent}Generating ${currentRoot}...`),
+          element: React.createElement(
+            Text,
+            { dim: true },
+            `${indent}Generating ${currentRoot}...`,
+          ),
         }),
       )
       yield* Console.log(genOutput)

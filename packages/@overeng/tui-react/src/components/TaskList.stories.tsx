@@ -7,12 +7,13 @@ import {
   TaskListWithSummaryExample,
   SyncSimulationExample,
 } from '../examples/mod.ts'
+import { TuiStoryPreview } from '../storybook/TuiStoryPreview.tsx'
 import { Box } from './Box.tsx'
 import { TaskList, type TaskItem } from './TaskList.tsx'
 import { Text } from './Text.tsx'
 
 const meta: Meta<typeof TaskList> = {
-  title: 'Components/TaskList',
+  title: 'Components/Lists/TaskList',
   component: TaskList,
 }
 
@@ -21,15 +22,28 @@ type Story = StoryObj<typeof TaskList>
 
 /** Basic task list with mixed states */
 export const Basic: Story = {
-  render: () => <TaskListBasicExample />,
+  render: () => (
+    <TuiStoryPreview>
+      <TaskListBasicExample />
+    </TuiStoryPreview>
+  ),
 }
 
 /** All possible task states */
 export const AllStates: Story = {
-  render: () => <TaskListAllStatesExample />,
+  render: () => (
+    <TuiStoryPreview>
+      <TaskListAllStatesExample />
+    </TuiStoryPreview>
+  ),
 }
 
 export const WithTitle: Story = {
+  render: (args) => (
+    <TuiStoryPreview>
+      <TaskList {...args} />
+    </TuiStoryPreview>
+  ),
   args: {
     items: [
       { id: '1', label: 'effect-utils', status: 'success' },
@@ -42,10 +56,19 @@ export const WithTitle: Story = {
 
 /** Task list with summary showing counts and elapsed time */
 export const WithSummary: Story = {
-  render: () => <TaskListWithSummaryExample />,
+  render: () => (
+    <TuiStoryPreview>
+      <TaskListWithSummaryExample />
+    </TuiStoryPreview>
+  ),
 }
 
 export const LongList: Story = {
+  render: (args) => (
+    <TuiStoryPreview>
+      <TaskList {...args} />
+    </TuiStoryPreview>
+  ),
   args: {
     items: Array.from({ length: 15 }, (_, i) => ({
       id: String(i),
@@ -61,27 +84,33 @@ export const LongList: Story = {
 
 /** Interactive sync simulation (animated in terminal) */
 export const SyncSimulation: Story = {
-  render: () => <SyncSimulationExample />,
+  render: () => (
+    <TuiStoryPreview>
+      <SyncSimulationExample />
+    </TuiStoryPreview>
+  ),
 }
 
 export const InContext: Story = {
   render: () => (
-    <Box>
-      <Box flexDirection="row">
-        <Text bold>mr sync</Text>
-        <Text dim> schickling/megarepo-all</Text>
+    <TuiStoryPreview>
+      <Box>
+        <Box flexDirection="row">
+          <Text bold>mr sync</Text>
+          <Text dim> schickling/megarepo-all</Text>
+        </Box>
+        <Box paddingTop={1}>
+          <TaskList
+            items={[
+              { id: '1', label: 'effect-utils', status: 'success' },
+              { id: '2', label: 'livestore', status: 'active', message: 'pulling...' },
+              { id: '3', label: 'dotfiles', status: 'pending' },
+            ]}
+            showSummary
+            elapsed={2100}
+          />
+        </Box>
       </Box>
-      <Box paddingTop={1}>
-        <TaskList
-          items={[
-            { id: '1', label: 'effect-utils', status: 'success' },
-            { id: '2', label: 'livestore', status: 'active', message: 'pulling...' },
-            { id: '3', label: 'dotfiles', status: 'pending' },
-          ]}
-          showSummary
-          elapsed={2100}
-        />
-      </Box>
-    </Box>
+    </TuiStoryPreview>
   ),
 }

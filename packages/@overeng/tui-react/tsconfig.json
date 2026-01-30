@@ -43,7 +43,7 @@
     "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
     "jsx": "react-jsx"
   },
-  "include": ["src/**/*", "test/**/*"],
+  "include": ["src/**/*", "test/**/*", "examples/**/*"],
   "references": [
     {
       "path": "../tui-core"

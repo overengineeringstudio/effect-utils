@@ -57,7 +57,9 @@ export const initCommand = Cli.Command.make('init', { json: jsonOption }, ({ jso
         console.log(JSON.stringify({ status: 'already_initialized', path: configPath }))
       } else {
         const alreadyOutput = yield* Effect.promise(() =>
-          renderToString({ element: React.createElement(Text, { dim: true }, 'megarepo already initialized') }),
+          renderToString({
+            element: React.createElement(Text, { dim: true }, 'megarepo already initialized'),
+          }),
         )
         yield* Console.log(alreadyOutput)
       }

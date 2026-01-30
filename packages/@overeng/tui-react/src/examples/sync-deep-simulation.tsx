@@ -247,7 +247,7 @@ export const SyncDeepSimulationExample = ({
   const [phase, setPhase] = useState<SyncDeepPhase>(
     !autoRun && syncState ? syncState.phase : 'scanning',
   )
-  const [logId, setLogId] = useState(0)
+  const [logId, _setLogId] = useState(0)
 
   // Update state when syncState changes (controlled mode)
   useEffect(() => {

@@ -18,7 +18,7 @@ import {
   type ServiceProgress,
   type ServiceResult,
 } from './schema.ts'
-import { DeployView } from './view.tsx'
+import { ConnectedDeployView } from './connected-view.tsx'
 
 // =============================================================================
 // TUI App Definition (exported for app-scoped hooks in view.tsx)
@@ -129,10 +129,18 @@ const simulateHealthcheck = (service: string) =>
 export const runDeploy = (options: DeployOptions): Effect.Effect<DeployResult, never, any> =>
   Effect.gen(function* () {
     const { services, environment, dryRun = false } = options
-    const tui = yield* DeployApp.run(<DeployView />)
+    const tui = yield* DeployApp.run(<ConnectedDeployView />)
 
     const logs: LogEntry[] = []
-    const log = ({ level, message, service }: { level: LogEntry['level']; message: string; service?: string }) => {
+    const log = ({
+      level,
+      message,
+      service,
+    }: {
+      level: LogEntry['level']
+      message: string
+      service?: string
+    }) => {
       logs.push(createLog({ level, message, service }))
     }
 

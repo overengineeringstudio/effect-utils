@@ -9,7 +9,7 @@ import { FileSystem } from '@effect/platform'
 import { Effect, Option, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
+import { EffectPath } from '@overeng/effect-path'
 
 import {
   buildSourceStringWithRef,
@@ -26,7 +26,7 @@ import {
   type LockFile,
 } from '../lib/lock.ts'
 import { classifyRef } from '../lib/ref.ts'
-import { addCommit, initGitRepo, readConfig, runGitCommand } from '../test-utils/setup.ts'
+import { addCommit, initGitRepo, readConfig } from '../test-utils/setup.ts'
 import { withTestCtx } from '../test-utils/withTestCtx.ts'
 
 /**
@@ -153,7 +153,6 @@ describe('mr pin', () => {
     it('should create lock entry with pinned=true when using -c', () =>
       withTestCtx(
         Effect.gen(function* () {
-          const fs = yield* FileSystem.FileSystem
           const { workspacePath } = yield* createMinimalTestSetup()
 
           const lockPath = EffectPath.ops.join(
@@ -198,7 +197,6 @@ describe('mr pin', () => {
     it('should update existing lock entry when switching refs', () =>
       withTestCtx(
         Effect.gen(function* () {
-          const fs = yield* FileSystem.FileSystem
           const { workspacePath } = yield* createMinimalTestSetup()
 
           const lockPath = EffectPath.ops.join(

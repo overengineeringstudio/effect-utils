@@ -18,7 +18,9 @@
   },
   "scripts": {
     "storybook": "storybook dev -p 6006",
-    "storybook:build": "storybook build"
+    "storybook:build": "storybook build",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@overeng/tui-core": "workspace:*",
@@ -33,6 +35,8 @@
     "@effect/platform-node": "0.104.1",
     "@opentui/core": "0.1.74",
     "@opentui/react": "0.1.74",
+    "@overeng/utils": "workspace:*",
+    "@playwright/test": "1.57.0",
     "@storybook/react": "10.2.1",
     "@storybook/react-vite": "10.2.1",
     "@types/node": "25.0.3",

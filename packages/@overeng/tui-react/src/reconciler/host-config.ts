@@ -118,7 +118,18 @@ export const hostConfig = {
       }
 
       default:
-        throw new Error(`Unknown element type: ${type}`)
+        throw new Error(
+          `Unknown element type: "${type}"\n\n` +
+            `The TUI reconciler only supports these element types:\n` +
+            `  - tui-box (via <Box>)\n` +
+            `  - tui-text (via <Text>)\n` +
+            `  - tui-static (via <Static>)\n\n` +
+            `Common causes:\n` +
+            `  - Using HTML elements (div, span, button) instead of TUI components\n` +
+            `  - Nested TerminalPreview components (Storybook decorator + story wrapper)\n` +
+            `  - Third-party components that render HTML\n\n` +
+            `If in Storybook, ensure you're not double-wrapping with TerminalPreview.`,
+        )
     }
   },
 

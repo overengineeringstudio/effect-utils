@@ -4,10 +4,12 @@
 
 import type { Preview } from '@storybook/react'
 
-import { withTerminalPreview } from './decorator.tsx'
-
 /**
  * Default TUI Storybook preview configuration
+ *
+ * NOTE: No global decorator is applied. Stories must explicitly wrap their
+ * content with TerminalPreview, TuiStoryPreview, or similar components.
+ * This prevents double-wrapping issues and makes each story's rendering explicit.
  *
  * Usage in .storybook/preview.tsx:
  * ```ts
@@ -15,15 +17,16 @@ import { withTerminalPreview } from './decorator.tsx'
  * export default tuiPreview
  * ```
  *
- * Or extend it:
- * ```ts
- * import { tuiPreview } from '@overeng/tui-react/storybook'
- * export default {
- *   ...tuiPreview,
- *   parameters: {
- *     ...tuiPreview.parameters,
- *     // your custom parameters
- *   },
+ * In your stories:
+ * ```tsx
+ * import { TerminalPreview } from '@overeng/tui-react/storybook'
+ *
+ * export const MyStory = {
+ *   render: () => (
+ *     <TerminalPreview>
+ *       <Box><Text>Hello</Text></Box>
+ *     </TerminalPreview>
+ *   ),
  * }
  * ```
  */
@@ -44,5 +47,5 @@ export const tuiPreview: Preview = {
       },
     },
   },
-  decorators: [withTerminalPreview],
+  // No global decorators - stories explicitly wrap with TerminalPreview
 }

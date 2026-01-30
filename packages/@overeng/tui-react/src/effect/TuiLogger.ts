@@ -41,7 +41,7 @@ import {
   SubscriptionRef,
   Fiber,
 } from 'effect'
-import { useState, useEffect, useSyncExternalStore } from 'react'
+import { useSyncExternalStore } from 'react'
 
 // =============================================================================
 // Types

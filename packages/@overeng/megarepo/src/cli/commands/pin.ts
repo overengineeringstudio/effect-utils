@@ -74,7 +74,9 @@ export const pinCommand = Cli.Command.make(
           )
         } else {
           const output = yield* Effect.promise(() =>
-            renderToString({ element: React.createElement(PinErrorOutput, { error: 'not_in_megarepo' }) }),
+            renderToString({
+              element: React.createElement(PinErrorOutput, { error: 'not_in_megarepo' }),
+            }),
           )
           yield* Console.error(output)
         }
@@ -127,7 +129,9 @@ export const pinCommand = Cli.Command.make(
           )
         } else {
           const output = yield* Effect.promise(() =>
-            renderToString({ element: React.createElement(PinErrorOutput, { error: 'invalid_source' }) }),
+            renderToString({
+              element: React.createElement(PinErrorOutput, { error: 'invalid_source' }),
+            }),
           )
           yield* Console.error(output)
         }
@@ -143,7 +147,9 @@ export const pinCommand = Cli.Command.make(
           )
         } else {
           const output = yield* Effect.promise(() =>
-            renderToString({ element: React.createElement(PinErrorOutput, { error: 'local_path' }) }),
+            renderToString({
+              element: React.createElement(PinErrorOutput, { error: 'local_path' }),
+            }),
           )
           yield* Console.error(output)
         }
@@ -284,7 +290,9 @@ export const pinCommand = Cli.Command.make(
 
           if (!json) {
             const clonedOutput = yield* Effect.promise(() =>
-              renderToString({ element: React.createElement(Text, { dim: true }, `  Cloned ${cloneUrl}`) }),
+              renderToString({
+                element: React.createElement(Text, { dim: true }, `  Cloned ${cloneUrl}`),
+              }),
             )
             yield* Console.log(clonedOutput)
           }
@@ -413,7 +421,9 @@ export const pinCommand = Cli.Command.make(
           )
         } else {
           const output = yield* Effect.promise(() =>
-            renderToString({ element: React.createElement(PinErrorOutput, { error: 'not_synced', member }) }),
+            renderToString({
+              element: React.createElement(PinErrorOutput, { error: 'not_synced', member }),
+            }),
           )
           yield* Console.error(output)
         }
@@ -519,7 +529,9 @@ export const pinCommand = Cli.Command.make(
           if (!json) {
             const output = yield* Effect.promise(() =>
               renderToString({
-                element: React.createElement(PinWarningOutput, { warning: 'worktree_not_available' }),
+                element: React.createElement(PinWarningOutput, {
+                  warning: 'worktree_not_available',
+                }),
               }),
             )
             yield* Console.log(output)
@@ -639,7 +651,9 @@ export const unpinCommand = Cli.Command.make(
           )
         } else {
           const output = yield* Effect.promise(() =>
-            renderToString({ element: React.createElement(PinErrorOutput, { error: 'not_in_megarepo' }) }),
+            renderToString({
+              element: React.createElement(PinErrorOutput, { error: 'not_in_megarepo' }),
+            }),
           )
           yield* Console.error(output)
         }
@@ -701,7 +715,9 @@ export const unpinCommand = Cli.Command.make(
           console.log(JSON.stringify({ status: 'not_in_lock', member }))
         } else {
           const output = yield* Effect.promise(() =>
-            renderToString({ element: React.createElement(PinErrorOutput, { error: 'not_in_lock', member }) }),
+            renderToString({
+              element: React.createElement(PinErrorOutput, { error: 'not_in_lock', member }),
+            }),
           )
           yield* Console.log(output)
         }

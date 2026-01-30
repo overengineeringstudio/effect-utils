@@ -82,6 +82,7 @@ export interface RenderResult {
  * - OSC sequences (hyperlinks, titles)
  * - Simple escape sequences
  */
+// oxlint-disable-next-line no-control-regex -- ANSI escape sequences require control characters
 const ANSI_REGEX = /\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[()][AB012]|\x1b[=>]/g
 
 /**
@@ -245,9 +246,13 @@ export class TestRenderer {
    * @param options - Options (ansi: return ANSI-formatted, text: return plain text)
    * @returns Line content or undefined if out of bounds
    */
-  getLine({ index, options = {} }: { index: number; options?: { ansi?: boolean } }):
-    | string
-    | undefined {
+  getLine({
+    index,
+    options = {},
+  }: {
+    index: number
+    options?: { ansi?: boolean }
+  }): string | undefined {
     this.ensureRendered()
     const lines = options.ansi ? this.lastResult!.lines : this.lastResult!.textLines
     return lines[index]

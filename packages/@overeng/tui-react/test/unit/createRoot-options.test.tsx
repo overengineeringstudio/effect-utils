@@ -12,7 +12,10 @@ describe('createRoot options', () => {
   describe('maxDynamicLines', () => {
     it('truncates output when exceeding limit', async () => {
       const terminal = createMockTerminal()
-      const root = createRoot({ terminalOrStream: terminal, options: { maxDynamicLines: 5, throttleMs: 0 } })
+      const root = createRoot({
+        terminalOrStream: terminal,
+        options: { maxDynamicLines: 5, throttleMs: 0 },
+      })
 
       // Render 10 lines
       const items = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten']
@@ -40,7 +43,10 @@ describe('createRoot options', () => {
 
     it('does not truncate when within limit', async () => {
       const terminal = createMockTerminal()
-      const root = createRoot({ terminalOrStream: terminal, options: { maxDynamicLines: 20, throttleMs: 0 } })
+      const root = createRoot({
+        terminalOrStream: terminal,
+        options: { maxDynamicLines: 20, throttleMs: 0 },
+      })
 
       const items = ['one', 'two', 'three', 'four', 'five']
       root.render(

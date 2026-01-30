@@ -12,6 +12,6 @@ export default tsconfigJson({
     ...reactJsx,
     lib: ['ES2024'],
   },
-  include: ['src/**/*', 'test/**/*'],
+  include: ['src/**/*', 'test/**/*', 'examples/**/*'],
   references: [{ path: '../tui-core' }],
 })

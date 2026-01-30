@@ -10,7 +10,7 @@ import { Console, Effect, Option, Schema } from 'effect'
 import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'
-import { renderToString, Text } from '@overeng/tui-react'
+import { renderToString } from '@overeng/tui-react'
 
 import { CONFIG_FILE_NAME, getMemberPath, MegarepoConfig } from '../../lib/config.ts'
 import { Cwd, findMegarepoRoot, jsonOption, verboseOption } from '../context.ts'
@@ -60,7 +60,9 @@ export const execCommand = Cli.Command.make(
           )
         } else {
           const output = yield* Effect.promise(() =>
-            renderToString({ element: React.createElement(ExecErrorOutput, { type: 'not_in_megarepo' }) }),
+            renderToString({
+              element: React.createElement(ExecErrorOutput, { type: 'not_in_megarepo' }),
+            }),
           )
           yield* Console.error(output)
         }
@@ -87,7 +89,9 @@ export const execCommand = Cli.Command.make(
           console.log(JSON.stringify({ error: 'not_found', message: 'Member not found' }))
         } else {
           const output = yield* Effect.promise(() =>
-            renderToString({ element: React.createElement(ExecErrorOutput, { type: 'member_not_found' }) }),
+            renderToString({
+              element: React.createElement(ExecErrorOutput, { type: 'member_not_found' }),
+            }),
           )
           yield* Console.error(output)
         }
@@ -131,7 +135,9 @@ export const execCommand = Cli.Command.make(
 
           if (verbose && !json) {
             const pathOutput = yield* Effect.promise(() =>
-              renderToString({ element: React.createElement(ExecMemberPath, { name, path: memberPath }) }),
+              renderToString({
+                element: React.createElement(ExecMemberPath, { name, path: memberPath }),
+              }),
             )
             yield* Console.log(pathOutput)
           }
@@ -186,7 +192,9 @@ export const execCommand = Cli.Command.make(
             }
             if (result.stderr) {
               const stderrOutput = yield* Effect.promise(() =>
-                renderToString({ element: React.createElement(ExecStderr, { stderr: result.stderr }) }),
+                renderToString({
+                  element: React.createElement(ExecStderr, { stderr: result.stderr }),
+                }),
               )
               console.error(stderrOutput)
             }
@@ -198,7 +206,9 @@ export const execCommand = Cli.Command.make(
       if (!json && mode === 'parallel') {
         for (const result of results) {
           const nameOutput = yield* Effect.promise(() =>
-            renderToString({ element: React.createElement(ExecMemberHeader, { name: result.name }) }),
+            renderToString({
+              element: React.createElement(ExecMemberHeader, { name: result.name }),
+            }),
           )
           yield* Console.log(nameOutput)
           if (result.stdout) {
@@ -206,7 +216,9 @@ export const execCommand = Cli.Command.make(
           }
           if (result.stderr) {
             const stderrOutput = yield* Effect.promise(() =>
-              renderToString({ element: React.createElement(ExecStderr, { stderr: result.stderr }) }),
+              renderToString({
+                element: React.createElement(ExecStderr, { stderr: result.stderr }),
+              }),
             )
             console.error(stderrOutput)
           }

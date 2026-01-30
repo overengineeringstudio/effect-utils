@@ -2,12 +2,13 @@ import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
 import { SpinnerBasicExample, SpinnerAllTypesExample } from '../examples/mod.ts'
+import { TuiStoryPreview } from '../storybook/TuiStoryPreview.tsx'
 import { Box } from './Box.tsx'
 import { Spinner, type SpinnerType } from './Spinner.tsx'
 import { Text } from './Text.tsx'
 
 const meta: Meta<typeof Spinner> = {
-  title: 'Components/Spinner',
+  title: 'Components/Feedback/Spinner',
   component: Spinner,
   argTypes: {
     type: {
@@ -26,38 +27,50 @@ type Story = StoryObj<typeof Spinner>
 
 /** Basic spinner with loading text */
 export const Default: Story = {
-  render: () => <SpinnerBasicExample />,
+  render: () => (
+    <TuiStoryPreview>
+      <SpinnerBasicExample />
+    </TuiStoryPreview>
+  ),
 }
 
 export const WithColor: Story = {
   render: () => (
-    <Box flexDirection="row">
-      <Spinner color="green" />
-      <Text> Processing...</Text>
-    </Box>
+    <TuiStoryPreview>
+      <Box flexDirection="row">
+        <Spinner color="green" />
+        <Text> Processing...</Text>
+      </Box>
+    </TuiStoryPreview>
   ),
 }
 
 /** All available spinner types */
 export const AllTypes: Story = {
-  render: () => <SpinnerAllTypesExample />,
+  render: () => (
+    <TuiStoryPreview>
+      <SpinnerAllTypesExample />
+    </TuiStoryPreview>
+  ),
 }
 
 export const InContext: Story = {
   render: () => (
-    <Box>
-      <Text bold>Syncing repositories</Text>
-      <Box paddingLeft={2}>
-        <Box flexDirection="row">
-          <Spinner color="cyan" />
-          <Text> effect-utils</Text>
-          <Text dim> fetching...</Text>
-        </Box>
-        <Box flexDirection="row">
-          <Text color="green">OK</Text>
-          <Text> livestore</Text>
+    <TuiStoryPreview>
+      <Box>
+        <Text bold>Syncing repositories</Text>
+        <Box paddingLeft={2}>
+          <Box flexDirection="row">
+            <Spinner color="cyan" />
+            <Text> effect-utils</Text>
+            <Text dim> fetching...</Text>
+          </Box>
+          <Box flexDirection="row">
+            <Text color="green">OK</Text>
+            <Text> livestore</Text>
+          </Box>
         </Box>
       </Box>
-    </Box>
+    </TuiStoryPreview>
   ),
 }
