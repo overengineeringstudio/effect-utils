@@ -127,69 +127,448 @@ const TabButton: React.FC<{
 )
 
 // =============================================================================
-// Playback Controls Component
+// Playback Controls Component (Hybrid: Slider + Event Markers + Step Controls)
 // =============================================================================
 
-const PlaybackControls: React.FC<{
+/** Format action tag for display */
+const formatActionTag = (action: unknown): string => {
+  if (action && typeof action === 'object' && '_tag' in action) {
+    return String((action as { _tag: string })._tag)
+  }
+  return 'Action'
+}
+
+/** Get action details (nested _tag or key summary) */
+const getActionDetails = (action: unknown): string | null => {
+  if (!action || typeof action !== 'object') return null
+
+  const obj = action as Record<string, unknown>
+
+  // Look for nested state with _tag
+  if ('state' in obj && obj.state && typeof obj.state === 'object') {
+    const state = obj.state as Record<string, unknown>
+    if ('_tag' in state) {
+      // Get additional info from state
+      const parts: string[] = [String(state._tag)]
+
+      // Add counts for arrays
+      for (const [key, value] of Object.entries(state)) {
+        if (key !== '_tag' && Array.isArray(value)) {
+          parts.push(`${key}: ${value.length}`)
+        }
+      }
+
+      return parts.join(', ')
+    }
+  }
+
+  // Summarize top-level keys (excluding _tag)
+  const keys = Object.keys(obj).filter((k) => k !== '_tag')
+  if (keys.length === 0) return null
+
+  const summaryParts: string[] = []
+  for (const key of keys.slice(0, 3)) {
+    const value = obj[key]
+    if (Array.isArray(value)) {
+      summaryParts.push(`${key}: ${value.length} items`)
+    } else if (typeof value === 'string') {
+      summaryParts.push(`${key}: "${value.slice(0, 20)}${value.length > 20 ? '...' : ''}"`)
+    } else if (typeof value === 'number' || typeof value === 'boolean') {
+      summaryParts.push(`${key}: ${value}`)
+    }
+  }
+
+  return summaryParts.length > 0 ? summaryParts.join(', ') : null
+}
+
+/** Small button style for step controls */
+const smallButtonStyle: React.CSSProperties = {
+  padding: '4px 8px',
+  border: '1px solid #555',
+  borderRadius: '4px',
+  background: '#3d3d3d',
+  color: '#fff',
+  cursor: 'pointer',
+  fontSize: '12px',
+  minWidth: '32px',
+}
+
+/** Tooltip for event markers */
+const EventTooltip: React.FC<{
+  event: { at: number; action: unknown }
+  index: number
+  total: number
+  prevEventAt: number | null
+  position: { x: number; y: number }
+}> = ({ event, index, total, prevEventAt, position }) => {
+  const actionTag = formatActionTag(event.action)
+  const actionDetails = getActionDetails(event.action)
+  const deltaTime = prevEventAt !== null ? event.at - prevEventAt : null
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        left: position.x,
+        top: position.y,
+        transform: 'translate(-50%, -100%) translateY(-8px)',
+        background: '#1e1e1e',
+        border: '1px solid #4a9eff',
+        borderRadius: '6px',
+        padding: '8px 12px',
+        zIndex: 1000,
+        minWidth: '160px',
+        maxWidth: '280px',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+        pointerEvents: 'none',
+      }}
+    >
+      {/* Header: Event index */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '6px',
+          paddingBottom: '6px',
+          borderBottom: '1px solid #333',
+        }}
+      >
+        <span style={{ color: '#888', fontSize: '11px' }}>
+          Event {index + 1} of {total}
+        </span>
+        <span style={{ color: '#4a9eff', fontSize: '11px', fontFamily: 'Monaco, Menlo, monospace' }}>
+          @ {(event.at / 1000).toFixed(1)}s
+          {deltaTime !== null && (
+            <span style={{ color: '#666' }}> (+{(deltaTime / 1000).toFixed(1)}s)</span>
+          )}
+        </span>
+      </div>
+
+      {/* Action tag */}
+      <div
+        style={{
+          color: '#fff',
+          fontSize: '12px',
+          fontFamily: 'Monaco, Menlo, monospace',
+          fontWeight: 'bold',
+        }}
+      >
+        {actionTag}
+      </div>
+
+      {/* Action details */}
+      {actionDetails && (
+        <div
+          style={{
+            color: '#aaa',
+            fontSize: '11px',
+            fontFamily: 'Monaco, Menlo, monospace',
+            marginTop: '4px',
+            wordBreak: 'break-word',
+          }}
+        >
+          → {actionDetails}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const PlaybackControls = <A,>({
+  isPlaying,
+  currentTime,
+  totalDuration,
+  timeline,
+  onPlay,
+  onPause,
+  onReset,
+  onSeek,
+}: {
   isPlaying: boolean
   currentTime: number
   totalDuration: number
+  timeline: Array<{ at: number; action: A }>
   onPlay: () => void
   onPause: () => void
   onReset: () => void
   onSeek: (time: number) => void
-}> = ({ isPlaying, currentTime, totalDuration, onPlay, onPause, onReset, onSeek }) => (
-  <div
-    style={{
-      display: 'flex',
-      alignItems: 'center',
-      gap: '8px',
-      padding: '8px 12px',
-      background: '#2d2d2d',
-      borderTop: '1px solid #3d3d3d',
-    }}
-  >
-    <button
-      onClick={isPlaying ? onPause : onPlay}
+}): React.ReactElement => {
+  // Hover state for tooltip
+  const [hoveredEvent, setHoveredEvent] = useState<{
+    index: number
+    position: { x: number; y: number }
+  } | null>(null)
+
+  // Calculate current event index (last event that has fired)
+  const currentEventIndex = timeline.findIndex((e, i) => {
+    const nextEvent = timeline[i + 1]
+    return e.at <= currentTime && (!nextEvent || nextEvent.at > currentTime)
+  })
+
+  // Get current event info
+  const currentEvent = currentEventIndex >= 0 ? timeline[currentEventIndex] : null
+  const currentActionTag = currentEvent ? formatActionTag(currentEvent.action) : 'Ready'
+  const currentActionDetails = currentEvent ? getActionDetails(currentEvent.action) : null
+
+  // Step to previous event
+  const handlePrev = () => {
+    if (currentEventIndex <= 0) {
+      onSeek(0)
+    } else {
+      const prevEvent = timeline[currentEventIndex - 1]
+      if (prevEvent) onSeek(prevEvent.at)
+    }
+  }
+
+  // Step to next event
+  const handleNext = () => {
+    const nextIndex = currentEventIndex + 1
+    if (nextIndex < timeline.length) {
+      const nextEvent = timeline[nextIndex]
+      if (nextEvent) onSeek(nextEvent.at)
+    }
+  }
+
+  const hasEvents = timeline.length > 0
+
+  return (
+    <div
       style={{
-        padding: '4px 12px',
-        border: '1px solid #555',
-        borderRadius: '4px',
-        background: '#3d3d3d',
-        color: '#fff',
-        cursor: 'pointer',
-        fontSize: '12px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '6px',
+        padding: '8px 12px',
+        background: '#2d2d2d',
+        borderTop: '1px solid #3d3d3d',
       }}
     >
-      {isPlaying ? '⏸ Pause' : '▶ Play'}
-    </button>
-    <button
-      onClick={onReset}
-      style={{
-        padding: '4px 12px',
-        border: '1px solid #555',
-        borderRadius: '4px',
-        background: '#3d3d3d',
-        color: '#fff',
-        cursor: 'pointer',
-        fontSize: '12px',
-      }}
-    >
-      ↺ Reset
-    </button>
-    <input
-      type="range"
-      min={0}
-      max={totalDuration}
-      value={currentTime}
-      onChange={(e) => onSeek(Number(e.target.value))}
-      style={{ flex: 1 }}
-    />
-    <span style={{ color: '#888', fontSize: '12px', minWidth: '80px' }}>
-      {(currentTime / 1000).toFixed(1)}s / {(totalDuration / 1000).toFixed(1)}s
-    </span>
-  </div>
-)
+      {/* Row 1: Step controls + Event index + Time */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {/* Step controls */}
+        <div style={{ display: 'flex', gap: '4px' }}>
+          <button
+            onClick={handlePrev}
+            style={smallButtonStyle}
+            disabled={currentEventIndex <= 0 && currentTime === 0}
+            title="Previous event"
+            aria-label="Previous event"
+          >
+            ◀
+          </button>
+          <button
+            onClick={isPlaying ? onPause : onPlay}
+            style={{ ...smallButtonStyle, minWidth: '40px' }}
+            title={isPlaying ? 'Pause' : 'Play'}
+            aria-label={isPlaying ? 'Pause' : 'Play'}
+          >
+            {isPlaying ? '⏸' : '▶'}
+          </button>
+          <button
+            onClick={handleNext}
+            style={smallButtonStyle}
+            disabled={currentEventIndex >= timeline.length - 1}
+            title="Next event"
+            aria-label="Next event"
+          >
+            ▶
+          </button>
+          <button
+            onClick={onReset}
+            style={smallButtonStyle}
+            title="Reset to beginning"
+            aria-label="Reset"
+          >
+            ↺
+          </button>
+        </div>
+
+        {/* Event index + timestamp */}
+        {hasEvents && (
+          <span style={{ color: '#888', fontSize: '11px' }}>
+            Event {Math.max(0, currentEventIndex + 1)} of {timeline.length}
+            {currentEvent && (
+              <span style={{ color: '#666' }}> @ {(currentEvent.at / 1000).toFixed(1)}s</span>
+            )}
+          </span>
+        )}
+
+        {/* Spacer */}
+        <div style={{ flex: 1 }} />
+
+        {/* Time display */}
+        <span style={{ color: '#888', fontSize: '12px', fontFamily: 'Monaco, Menlo, monospace' }}>
+          {(currentTime / 1000).toFixed(1)}s / {(totalDuration / 1000).toFixed(1)}s
+        </span>
+      </div>
+
+      {/* Row 2: Current action details */}
+      {hasEvents && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minHeight: '20px' }}>
+          <span
+            style={{
+              color: '#4a9eff',
+              fontSize: '12px',
+              fontFamily: 'Monaco, Menlo, monospace',
+              fontWeight: 'bold',
+            }}
+          >
+            {currentActionTag}
+          </span>
+          {currentActionDetails && (
+            <span
+              style={{
+                color: '#888',
+                fontSize: '11px',
+                fontFamily: 'Monaco, Menlo, monospace',
+              }}
+            >
+              → {currentActionDetails}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Row 3: Timeline slider with event markers and labels */}
+      <div style={{ position: 'relative', height: '44px', marginTop: '4px' }}>
+        {/* Event markers with labels */}
+        {timeline.map((event, i) => {
+          const position = totalDuration > 0 ? (event.at / totalDuration) * 100 : 0
+          const isFired = event.at <= currentTime
+          const isCurrent = i === currentEventIndex
+          const isHovered = hoveredEvent?.index === i
+
+          // Calculate gap to next marker to decide if label fits
+          const nextEvent = timeline[i + 1]
+          const nextPosition = nextEvent && totalDuration > 0 ? (nextEvent.at / totalDuration) * 100 : 100
+          const gapPercent = nextPosition - position
+          const showLabel = gapPercent > 8 || i === timeline.length - 1 // Show if >8% gap or last event
+
+          const actionTag = formatActionTag(event.action)
+
+          return (
+            <div
+              key={i}
+              style={{
+                position: 'absolute',
+                left: `${position}%`,
+                top: 0,
+                transform: 'translateX(-50%)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                zIndex: 2,
+              }}
+            >
+              {/* Marker dot */}
+              <div
+                onClick={() => onSeek(event.at)}
+                onMouseEnter={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect()
+                  setHoveredEvent({
+                    index: i,
+                    position: { x: rect.left + rect.width / 2, y: rect.top },
+                  })
+                }}
+                onMouseLeave={() => setHoveredEvent(null)}
+                style={{
+                  width: isCurrent || isHovered ? '14px' : '10px',
+                  height: isCurrent || isHovered ? '14px' : '10px',
+                  borderRadius: '50%',
+                  background: isCurrent ? '#4a9eff' : isFired ? '#666' : '#444',
+                  border: isCurrent ? '2px solid #fff' : isHovered ? '2px solid #4a9eff' : '1px solid #555',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  marginTop: '5px',
+                }}
+              />
+
+              {/* Label below marker */}
+              {showLabel && (
+                <span
+                  onClick={() => onSeek(event.at)}
+                  style={{
+                    marginTop: '4px',
+                    fontSize: '9px',
+                    fontFamily: 'Monaco, Menlo, monospace',
+                    color: isCurrent ? '#4a9eff' : isFired ? '#888' : '#555',
+                    whiteSpace: 'nowrap',
+                    cursor: 'pointer',
+                    textAlign: 'center',
+                  }}
+                >
+                  {actionTag}
+                </span>
+              )}
+            </div>
+          )
+        })}
+
+        {/* Tooltip */}
+        {hoveredEvent && timeline[hoveredEvent.index] && (
+          <EventTooltip
+            event={timeline[hoveredEvent.index] as { at: number; action: unknown }}
+            index={hoveredEvent.index}
+            total={timeline.length}
+            prevEventAt={hoveredEvent.index > 0 ? (timeline[hoveredEvent.index - 1]?.at ?? null) : null}
+            position={hoveredEvent.position}
+          />
+        )}
+
+        {/* Track background */}
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            top: '12px',
+            transform: 'translateY(-50%)',
+            height: '4px',
+            background: '#444',
+            borderRadius: '2px',
+            zIndex: 0,
+          }}
+        />
+
+        {/* Progress fill */}
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: '12px',
+            transform: 'translateY(-50%)',
+            width: totalDuration > 0 ? `${(currentTime / totalDuration) * 100}%` : '0%',
+            height: '4px',
+            background: '#4a9eff',
+            borderRadius: '2px',
+            zIndex: 1,
+          }}
+        />
+
+        {/* Invisible range input for scrubbing (z-index below markers so hover works) */}
+        <input
+          type="range"
+          min={0}
+          max={totalDuration}
+          value={currentTime}
+          onChange={(e) => onSeek(Number(e.target.value))}
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            top: 0,
+            bottom: 0,
+            width: '100%',
+            height: '100%',
+            opacity: 0,
+            cursor: 'pointer',
+            zIndex: 1,
+          }}
+        />
+      </div>
+    </div>
+  )
+}
 
 // =============================================================================
 // JSON Preview Component
@@ -380,24 +759,9 @@ const FullscreenPreviewPane: React.FC<{
     }
   }, [])
 
-  // Render content
+  // Render content (reuse existing root for differential updates)
   useEffect(() => {
-    if (!isReady || !rootRef.current || !terminalRef.current) return
-
-    terminalRef.current.clear()
-    terminalRef.current.reset()
-
-    const adapter = {
-      write: (data: string) => terminalRef.current?.write(data),
-      get columns() {
-        return terminalRef.current?.cols ?? 80
-      },
-      get rows() {
-        return terminalRef.current?.rows ?? 24
-      },
-      isTTY: true as const,
-    }
-    rootRef.current = createRoot({ terminalOrStream: adapter })
+    if (!isReady || !rootRef.current) return
     rootRef.current.render(React.createElement(View, { state }))
   }, [state, isReady, View])
 
@@ -510,7 +874,7 @@ const TAB_LABELS: Record<OutputTab, string> = {
 }
 
 const DEFAULT_TABS_STATEFUL: OutputTab[] = ['visual', 'fullscreen', 'string', 'json', 'ndjson']
-const DEFAULT_TABS_SIMPLE: OutputTab[] = ['visual']
+const DEFAULT_TABS_SIMPLE: OutputTab[] = ['visual', 'fullscreen', 'string']
 
 // =============================================================================
 // Simple Mode Component (children-based)
@@ -578,25 +942,9 @@ const SimpleTuiStoryPreview: React.FC<SimpleProps> = ({
     }
   }, [activeTab])
 
-  // Render children to terminal
+  // Render children to terminal (reuse existing root for differential updates)
   useEffect(() => {
-    if (activeTab !== 'visual' || !isTerminalReady || !rootRef.current || !terminalRef.current)
-      return
-
-    terminalRef.current.clear()
-    terminalRef.current.reset()
-
-    const adapter = {
-      write: (data: string) => terminalRef.current?.write(data),
-      get columns() {
-        return terminalRef.current?.cols ?? 80
-      },
-      get rows() {
-        return terminalRef.current?.rows ?? 24
-      },
-      isTTY: true as const,
-    }
-    rootRef.current = createRoot({ terminalOrStream: adapter })
+    if (activeTab !== 'visual' || !isTerminalReady || !rootRef.current) return
     rootRef.current.render(children as React.ReactElement)
   }, [children, activeTab, isTerminalReady])
 
@@ -789,25 +1137,9 @@ const StatefulTuiStoryPreview = <S, A>({
     }
   }, [activeTab])
 
-  // Render view to terminal when state changes
+  // Render view to terminal when state changes (reuse existing root for differential updates)
   useEffect(() => {
-    if (activeTab !== 'visual' || !isTerminalReady || !rootRef.current || !terminalRef.current)
-      return
-
-    terminalRef.current.clear()
-    terminalRef.current.reset()
-
-    const adapter = {
-      write: (data: string) => terminalRef.current?.write(data),
-      get columns() {
-        return terminalRef.current?.cols ?? 80
-      },
-      get rows() {
-        return terminalRef.current?.rows ?? 24
-      },
-      isTTY: true as const,
-    }
-    rootRef.current = createRoot({ terminalOrStream: adapter })
+    if (activeTab !== 'visual' || !isTerminalReady || !rootRef.current) return
     rootRef.current.render(<View state={state} />)
   }, [state, activeTab, isTerminalReady, View])
 
@@ -864,6 +1196,7 @@ const StatefulTuiStoryPreview = <S, A>({
           isPlaying={isPlaying}
           currentTime={currentTime}
           totalDuration={totalDuration}
+          timeline={timeline}
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
           onReset={reset}

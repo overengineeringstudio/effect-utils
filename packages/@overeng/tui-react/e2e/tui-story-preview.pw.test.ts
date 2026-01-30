@@ -138,8 +138,8 @@ test.describe('TuiStoryPreview Timeline Controls', () => {
     const resetButton = page.getByRole('button', { name: /reset/i })
     await resetButton.click()
 
-    // Timeline should reset to 0
-    const timeDisplay = page.locator('span:has-text("0.0s")')
+    // Timeline should reset to 0 - look for the time display format "0.0s / X.Xs"
+    const timeDisplay = page.locator('span:has-text("0.0s /")').first()
     await expect(timeDisplay).toBeVisible()
   })
 })
