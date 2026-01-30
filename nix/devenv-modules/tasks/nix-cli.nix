@@ -29,7 +29,7 @@
 { pkgs, lib, ... }:
 let
   # Script to update all hashes in a build.nix file
-  # Handles pnpmDepsHash/bunDepsHash AND lockfileHash
+  # Handles pnpmDepsHash/bunDepsHash, lockfileHash, and depsHash
   # Iteratively updates hashes until build succeeds
   updateHashScript = pkgs.writeShellScript "update-all-hashes" ''
     set -euo pipefail
@@ -42,14 +42,27 @@ let
     FAKE_HASH="sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
     MAX_ITERATIONS=20
 
-    # Helper to update lockfileHash in build.nix
-    update_lockfile_hash() {
+    # Helper to update lockfileHash and depsHash in build.nix
+    update_fingerprint_hashes() {
       if [ -n "$lockfile" ] && [ -f "$lockfile" ]; then
+        # Update lockfileHash
         newLockfileHash="sha256-$(nix-hash --type sha256 --base64 "$lockfile")"
         if grep -q "lockfileHash" "$buildNix"; then
           export NEW_LF_HASH="$newLockfileHash"
           perl -i -pe 's/lockfileHash\s*=\s*"sha256-[^"]+"/lockfileHash = "$ENV{NEW_LF_HASH}"/g' "$buildNix"
           echo "Updated lockfileHash to $newLockfileHash"
+        fi
+
+        # Update depsHash (package.json deps fingerprint)
+        packageJson="$(dirname "$lockfile")/package.json"
+        if [ -f "$packageJson" ] && grep -q "depsHash" "$buildNix"; then
+          tmpDeps=$(mktemp)
+          ${pkgs.jq}/bin/jq -cS '{dependencies, devDependencies, peerDependencies}' "$packageJson" > "$tmpDeps"
+          newDepsHash="sha256-$(nix-hash --type sha256 --base64 "$tmpDeps")"
+          rm "$tmpDeps"
+          export NEW_DEPS_HASH="$newDepsHash"
+          perl -i -pe 's/depsHash\s*=\s*"sha256-[^"]+"/depsHash = "$ENV{NEW_DEPS_HASH}"/g' "$buildNix"
+          echo "Updated depsHash to $newDepsHash"
         fi
       fi
     }
@@ -59,7 +72,7 @@ let
     # Try to build - if it succeeds, all hashes are correct
     if nix build "$flakeRef" --no-link 2>&1; then
       echo "✓ $name: all hashes up to date"
-      update_lockfile_hash
+      update_fingerprint_hashes
       exit 0
     fi
     
@@ -92,7 +105,7 @@ let
           else
             echo "✓ $name: all hashes up to date"
           fi
-          update_lockfile_hash
+          update_fingerprint_hashes
           exit 0
         fi
       fi
@@ -208,9 +221,10 @@ let
     exit 1
   '';
 
-  # Script for quick lockfile fingerprint check (for check:quick)
-  # Compares current lockfile SHA256 against stored lockfileHash in build.nix
-  # Fast (<1s) but may miss some edge cases (patch file changes)
+  # Script for quick lockfile/deps fingerprint check (for check:quick)
+  # Checks two things:
+  # 1. lockfileHash - detects lockfile changes without hash update
+  # 2. depsHash - detects package.json changes without lockfile update
   quickCheckScript = pkgs.writeShellScript "check-lockfile-hash" ''
     set -euo pipefail
 
@@ -218,31 +232,52 @@ let
     buildNix="$2"
     lockfile="$3"
 
-    # Compute current lockfile hash
-    currentHash=$(nix-hash --type sha256 --base64 "$lockfile" 2>/dev/null || echo "")
-    if [ -z "$currentHash" ]; then
-      echo "⚠ $name: lockfile not found ($lockfile), skipping quick check"
-      exit 0
-    fi
-    currentHash="sha256-$currentHash"
+    # Derive package.json path from lockfile path
+    packageJson="$(dirname "$lockfile")/package.json"
+    failed=false
 
-    # Extract stored lockfileHash from build.nix
-    storedHash=$(grep -oE 'lockfileHash\s*=\s*"sha256-[^"]+"' "$buildNix" | grep -oE 'sha256-[^"]+' | head -1 || echo "")
-
-    if [ -z "$storedHash" ]; then
-      echo "⚠ $name: no lockfileHash in build.nix, skipping quick check"
-      exit 0
-    fi
-
-    if [ "$currentHash" = "$storedHash" ]; then
-      echo "✓ $name: lockfile unchanged"
-      exit 0
+    # Check 1: lockfileHash (lockfile changed without hash update)
+    currentLockfileHash=$(nix-hash --type sha256 --base64 "$lockfile" 2>/dev/null || echo "")
+    if [ -z "$currentLockfileHash" ]; then
+      echo "⚠ $name: lockfile not found ($lockfile), skipping lockfile check"
     else
-      echo "✗ $name: lockfile changed (run: dt nix:hash:$name)"
-      echo "  stored:  $storedHash"
-      echo "  current: $currentHash"
+      currentLockfileHash="sha256-$currentLockfileHash"
+      storedLockfileHash=$(grep -oE 'lockfileHash\s*=\s*"sha256-[^"]+"' "$buildNix" | grep -oE 'sha256-[^"]+' | head -1 || echo "")
+
+      if [ -z "$storedLockfileHash" ]; then
+        echo "⚠ $name: no lockfileHash in build.nix, skipping lockfile check"
+      elif [ "$currentLockfileHash" != "$storedLockfileHash" ]; then
+        echo "✗ $name: lockfile changed (run: dt nix:hash:$name)"
+        echo "  stored:  $storedLockfileHash"
+        echo "  current: $currentLockfileHash"
+        failed=true
+      fi
+    fi
+
+    # Check 2: depsHash (package.json deps changed without lockfile update)
+    if [ -f "$packageJson" ]; then
+      tmpDeps=$(mktemp)
+      ${pkgs.jq}/bin/jq -cS '{dependencies, devDependencies, peerDependencies}' "$packageJson" > "$tmpDeps"
+      currentDepsHash="sha256-$(nix-hash --type sha256 --base64 "$tmpDeps")"
+      rm "$tmpDeps"
+
+      storedDepsHash=$(grep -oE 'depsHash\s*=\s*"sha256-[^"]+"' "$buildNix" | grep -oE 'sha256-[^"]+' | head -1 || echo "")
+
+      if [ -z "$storedDepsHash" ]; then
+        echo "⚠ $name: no depsHash in build.nix, skipping deps check"
+      elif [ "$currentDepsHash" != "$storedDepsHash" ]; then
+        echo "✗ $name: package.json deps changed (run: pnpm install && dt nix:hash:$name)"
+        echo "  stored:  $storedDepsHash"
+        echo "  current: $currentDepsHash"
+        failed=true
+      fi
+    fi
+
+    if [ "$failed" = true ]; then
       exit 1
     fi
+
+    echo "✓ $name: lockfile and deps unchanged"
   '';
 
   # Generate per-package tasks
