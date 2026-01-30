@@ -226,6 +226,18 @@ let
       exit 1
     fi
 
+    # Check for pnpm lockfile staleness (new deps added but not locked)
+    if echo "$output" | grep -qE 'ERR_PNPM_OUTDATED_LOCKFILE|lockfile.*not up to date'; then
+      echo "✗ $name: pnpm lockfile is stale (new deps added but not locked)"
+      echo ""
+      echo "To fix:"
+      echo "  1. Run: dt pnpm:update     # Update all lockfiles"
+      echo "  2. Run: dt nix:hash:$name  # Update Nix hashes"
+      echo "  3. Commit: pnpm-lock.yaml changes and build.nix hash updates"
+      echo ""
+      exit 1
+    fi
+
     echo "✗ $name: build failed"
     echo "$output"
     exit 1
@@ -291,11 +303,12 @@ let
   '';
 
   # Generate per-package tasks
-  # nix:hash depends on pnpm:install to ensure lockfile is up-to-date before computing hash
   mkHashTask = pkg: {
     "nix:hash:${pkg.name}" = {
       description = "Update Nix hashes for ${pkg.name}";
       exec = "${updateHashScript} '${pkg.flakeRef}' '${pkg.buildNix}' '${pkg.name}' '${pkg.lockfile or ""}'";
+      # pnpm:install ensures lockfile is current before we compute hashes.
+      # Hash computation reads the lockfile to update lockfileHash fingerprint.
       after = [ "pnpm:install:${pkg.name}" ];
     };
   };
@@ -311,6 +324,11 @@ let
     "nix:check:${pkg.name}" = {
       description = "Check if ${pkg.name} hash is stale (full build)";
       exec = "${checkHashScript} '${pkg.flakeRef}' '${pkg.name}'";
+      # Depends on full workspace pnpm:install (not per-package).
+      # Nix builds stage the entire workspace, so any stale lockfile in any package
+      # breaks the build. Per-package install only updates that package's lockfile,
+      # but Nix sees the whole workspace including stale packages like tui-react.
+      after = lib.optional (pkg ? lockfile) "pnpm:install";
     };
   };
 

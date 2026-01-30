@@ -16,9 +16,30 @@
 #   # Without nix checks (for repos without Nix CLI builds):
 #   imports = [ (inputs.effect-utils.devenvModules.tasks.check { hasNixCheck = false; }) ];
 #
+# Aggregate check tasks
+#
+# Usage in devenv.nix:
+#   # With unit tests (default):
+#   imports = [ (inputs.effect-utils.devenvModules.tasks.check {}) ];
+#
+#   # With unit tests and playwright e2e tests:
+#   imports = [ (inputs.effect-utils.devenvModules.tasks.check { hasPlaywright = true; }) ];
+#
+#   # Without any tests:
+#   imports = [ (inputs.effect-utils.devenvModules.tasks.check { hasTests = false; }) ];
+#
+#   # Without lint (for repos not using lint-oxc module yet):
+#   imports = [ (inputs.effect-utils.devenvModules.tasks.check { hasTests = false; hasLint = false; }) ];
+#
+#   # Without nix checks (for repos without Nix CLI builds):
+#   imports = [ (inputs.effect-utils.devenvModules.tasks.check { hasNixCheck = false; }) ];
+#
+#   # With additional custom checks:
+#   imports = [ (inputs.effect-utils.devenvModules.tasks.check { extraChecks = [ "workspace:check" ]; }) ];
+#
 # Provides: check:quick, check:all
 #
-# check:quick - Fast local development (genie, typecheck, lint, nix-fingerprint)
+# check:quick - Fast local development (ts:check, megarepo:check, lint, nix-fingerprint)
 # check:all   - Comprehensive pre-push validation (includes nix flake check)
 #
 # Note: Requires ts:check task to exist.
@@ -33,6 +54,7 @@
   hasPlaywright ? false,
   hasLint ? true,
   hasNixCheck ? true,
+  extraChecks ? [],  # Additional check tasks to include (e.g., [ "workspace:check" ])
 }:
 { lib, ... }:
 let
@@ -52,14 +74,14 @@ in
   tasks = {
     # Quick: Fast feedback for development (genie, typecheck, lint, nix fingerprint only)
     "check:quick" = {
-      description = "Fast checks for development (genie, typecheck${lib.optionalString hasLint ", lint"}${lib.optionalString hasNixCheck ", nix-fingerprint"}) without tests";
-      after = [ "ts:check" "megarepo:check" ] ++ lintTask ++ nixQuickTask;
+      description = "Fast checks for development (ts:check${lib.optionalString hasLint ", lint"}${lib.optionalString hasNixCheck ", nix-fingerprint"}) without tests";
+      after = [ "ts:check" "megarepo:check" ] ++ lintTask ++ nixQuickTask ++ extraChecks;
     };
 
     # All: Comprehensive pre-push validation (includes full nix flake check)
     "check:all" = {
-      description = "All checks (genie, typecheck${extraDesc})";
-      after = [ "ts:check" "megarepo:check" ] ++ lintTask ++ nixFullTask ++ testTasks;
+      description = "All checks (ts:check${extraDesc})";
+      after = [ "ts:check" "megarepo:check" ] ++ extraChecks ++ lintTask ++ nixFullTask ++ testTasks;
     };
   };
 }

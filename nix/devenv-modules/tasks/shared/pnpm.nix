@@ -16,7 +16,7 @@
 #     })
 #   ];
 #
-# Provides: pnpm:install, pnpm:install:<name> for each package
+# Provides: pnpm:install, pnpm:install:<name>, pnpm:update, pnpm:clean, pnpm:clean-lock-files
 #
 # ---
 # How we avoid TypeScript TS2742 errors:
@@ -32,7 +32,7 @@
 # This is safe because we no longer use enableGlobalVirtualStore (which had race conditions).
 # See: context/workarounds/pnpm-issues.md for history.
 #
-# Shared caching rules live in ./lib/cache.nix (task-specific details below).
+# Shared caching rules live in ../lib/cache.nix (task-specific details below).
 #
 # Cache inputs (per package path):
 # - package.json contents
@@ -43,7 +43,7 @@
 { packages }:
 { lib, config, ... }:
 let
-  cache = import ./lib/cache.nix { inherit config; };
+  cache = import ../lib/cache.nix { inherit config; };
   cacheRoot = cache.mkCachePath "pnpm-install";
   # Convert path to task name:
   # "packages/@scope/foo" -> "foo"
@@ -115,6 +115,12 @@ let
   nodeModulesPaths = lib.concatMapStringsSep " " (p: "${p}/node_modules") packages;
   lockFilePaths = lib.concatMapStringsSep " " (p: "${p}/pnpm-lock.yaml") packages;
 
+  # Build a shell script that updates lockfiles for all packages
+  updateScript = lib.concatStringsSep "\n" (map (p: ''
+    echo "Updating ${p}..."
+    (cd "${p}" && pnpm install --no-frozen-lockfile --config.confirmModulesPurge=false) || echo "Warning: ${p} update failed"
+  '') packages);
+
 in {
   tasks = lib.mkMerge (map mkInstallTask packages ++ [
     {
@@ -122,6 +128,14 @@ in {
         description = "Install all pnpm dependencies";
         exec = "echo 'All pnpm packages installed'";
         after = map (p: "pnpm:install:${toName p}") packages;
+      };
+      "pnpm:update" = {
+        description = "Update all pnpm lockfiles (use when adding new dependencies)";
+        exec = ''
+          echo "Updating pnpm lockfiles for all packages..."
+          ${updateScript}
+          echo "Lockfiles updated. Run 'dt nix:hash' to update Nix hashes."
+        '';
       };
       "pnpm:clean" = {
         description = "Remove node_modules for all managed packages";

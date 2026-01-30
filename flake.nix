@@ -72,23 +72,24 @@
       devenvModules = {
         # `dt` command wrapper for devenv tasks with shell completions
         dt = ./nix/devenv-modules/dt.nix;
-        # Shared task modules (parameterized)
+        # Shared task modules (parameterized) - meant for reuse in other repos
         tasks = {
           # Simple tasks (no config needed)
-          genie = ./nix/devenv-modules/tasks/genie.nix;
-          lint-genie = ./nix/devenv-modules/tasks/lint-genie.nix;
-          megarepo = ./nix/devenv-modules/tasks/megarepo.nix;
+          genie = ./nix/devenv-modules/tasks/shared/genie.nix;
+          lint-genie = ./nix/devenv-modules/tasks/shared/lint-genie.nix;
+          megarepo = ./nix/devenv-modules/tasks/shared/megarepo.nix;
           # Parameterized tasks (pass config)
-          ts = import ./nix/devenv-modules/tasks/ts.nix;
-          setup = import ./nix/devenv-modules/tasks/setup.nix;
-          check = import ./nix/devenv-modules/tasks/check.nix;
-          clean = import ./nix/devenv-modules/tasks/clean.nix;
-          test = import ./nix/devenv-modules/tasks/test.nix;
-          test-playwright = import ./nix/devenv-modules/tasks/test-playwright.nix;
-          lint-oxc = import ./nix/devenv-modules/tasks/lint-oxc.nix;
-          bun = import ./nix/devenv-modules/tasks/bun.nix;
-          pnpm = import ./nix/devenv-modules/tasks/pnpm.nix;
-          nix-cli = import ./nix/devenv-modules/tasks/nix-cli.nix;
+          ts = import ./nix/devenv-modules/tasks/shared/ts.nix;
+          setup = import ./nix/devenv-modules/tasks/shared/setup.nix;
+          check = import ./nix/devenv-modules/tasks/shared/check.nix;
+          clean = import ./nix/devenv-modules/tasks/shared/clean.nix;
+          test = import ./nix/devenv-modules/tasks/shared/test.nix;
+          test-playwright = import ./nix/devenv-modules/tasks/shared/test-playwright.nix;
+          lint-oxc = import ./nix/devenv-modules/tasks/shared/lint-oxc.nix;
+          bun = import ./nix/devenv-modules/tasks/shared/bun.nix;
+          pnpm = import ./nix/devenv-modules/tasks/shared/pnpm.nix;
+          nix-cli = import ./nix/devenv-modules/tasks/shared/nix-cli.nix;
+          # Note: local/ directory contains effect-utils specific tasks (not exported)
         };
       };
 

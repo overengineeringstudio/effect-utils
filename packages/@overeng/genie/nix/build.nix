@@ -15,8 +15,8 @@ let
     packageDir = "packages/@overeng/genie";
     workspaceRoot = src;
     extraExcludedSourceNames = [ "context" "scripts" ];
-    pnpmDepsHash = "sha256-UHz5JLKnlPObFn9p21sA0Gq8lvilQl33S3mH6mkMQ94=";
-    lockfileHash = "sha256-wzNIj0EDs8h89p6fB+HSrNJDggDrRUxfFsJbLW6UN4Q=";
+    pnpmDepsHash = "sha256-v2PHaOFuQjJd2xr5rggqK2XYyvbVHunm4cLbq5C3LPc=";
+    lockfileHash = "sha256-OALJqbiRJR+5fTbtgkwYlUKIBRZa5jSnhhp/oCRN540=";
     packageJsonDepsHash = "sha256-fm2cLPqI5aYd32VkpTNN5INkPb1re7iy97+NgzTsAE4=";
     inherit gitRev commitTs dirty;
   };

@@ -60,7 +60,7 @@
 }:
 { lib, config, ... }:
 let
-  cache = import ./lib/cache.nix { inherit config; };
+  cache = import ../lib/cache.nix { inherit config; };
   cacheRoot = cache.cacheRoot;
   hashFile = cache.mkCachePath "setup-git-hash";
   userTasks = tasks;

@@ -7,19 +7,22 @@ let
     bun = pkgs.bun;
   };
 
-  # Shared task modules
+  # Shared task modules (from shared/ directory)
   taskModules = {
-    genie = ./nix/devenv-modules/tasks/genie.nix;
-    ts = import ./nix/devenv-modules/tasks/ts.nix;
-    setup = import ./nix/devenv-modules/tasks/setup.nix;
-    check = import ./nix/devenv-modules/tasks/check.nix;
-    clean = import ./nix/devenv-modules/tasks/clean.nix;
-    test = import ./nix/devenv-modules/tasks/test.nix;
-    lint-oxc = import ./nix/devenv-modules/tasks/lint-oxc.nix;
-    bun = import ./nix/devenv-modules/tasks/bun.nix;
-    pnpm = import ./nix/devenv-modules/tasks/pnpm.nix;
-    megarepo = ./nix/devenv-modules/tasks/megarepo.nix;
-    nix-cli = import ./nix/devenv-modules/tasks/nix-cli.nix;
+    genie = ./nix/devenv-modules/tasks/shared/genie.nix;
+    ts = import ./nix/devenv-modules/tasks/shared/ts.nix;
+    setup = import ./nix/devenv-modules/tasks/shared/setup.nix;
+    check = import ./nix/devenv-modules/tasks/shared/check.nix;
+    clean = import ./nix/devenv-modules/tasks/shared/clean.nix;
+    test = import ./nix/devenv-modules/tasks/shared/test.nix;
+    test-playwright = import ./nix/devenv-modules/tasks/shared/test-playwright.nix;
+    lint-genie = ./nix/devenv-modules/tasks/shared/lint-genie.nix;
+    lint-oxc = import ./nix/devenv-modules/tasks/shared/lint-oxc.nix;
+    bun = import ./nix/devenv-modules/tasks/shared/bun.nix;
+    pnpm = import ./nix/devenv-modules/tasks/shared/pnpm.nix;
+    megarepo = ./nix/devenv-modules/tasks/shared/megarepo.nix;
+    nix-cli = import ./nix/devenv-modules/tasks/shared/nix-cli.nix;
+    context = ./nix/devenv-modules/tasks/shared/context.nix;
   };
   # Use bun source entrypoints for in-repo CLIs in devenv (flake builds stay strict).
   mkSourceCli = import ./nix/devenv-modules/lib/mk-source-cli.nix { inherit pkgs; };
@@ -50,6 +53,8 @@ let
     "packages/@overeng/notion-effect-schema"
     "packages/@overeng/oxc-config"
     "packages/@overeng/react-inspector"
+    "packages/@overeng/tui-core"
+    "packages/@overeng/tui-react"
     "packages/@overeng/utils"
     "context/opentui"
     "context/effect/socket"
@@ -85,7 +90,7 @@ in
     taskModules.genie
     (taskModules.ts {})
     taskModules.megarepo
-    (taskModules.check {})
+    (taskModules.check { extraChecks = [ "workspace:check" ]; })
     (taskModules.clean { packages = allPackages; })
     # Per-package pnpm install tasks
     # NOTE: Using pnpm temporarily. See: context/workarounds/bun-issues.md
@@ -144,13 +149,15 @@ in
     })
     # Setup task (auto-runs in enterShell)
     # Context example tasks
-    ./nix/devenv-modules/tasks/context.nix
+    taskModules.context
     (taskModules.setup {
       tasks = [ "megarepo:generate" "pnpm:install" "genie:run" "ts:build" ];
       completionsCliNames = [ "genie" "mr" ];
     })
     # Nix CLI build and hash management
     (taskModules.nix-cli { cliPackages = nixCliPackages; })
+    # Local task: Validate allPackages matches filesystem packages (effect-utils specific)
+    ./nix/devenv-modules/tasks/local/workspace-check.nix
   ];
 
   packages = [

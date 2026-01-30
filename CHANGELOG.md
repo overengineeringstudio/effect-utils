@@ -4,6 +4,51 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Infrastructure
+
+- **nix/workspace-tools/lib/mk-pnpm-cli.nix**: Added `packageJsonDepsHash` parameter to fix build failures
+  - `build.nix` files were passing `packageJsonDepsHash` but the function didn't accept it
+  - Fixes `nix flake check` failures and downstream repo devenv shell issues
+  - Renamed from `depsHash` to `packageJsonDepsHash` for clarity (breaking change)
+
+- **nix/workspace-tools/lib/mk-bun-cli.nix**: Added `lockfileHash` and `packageJsonDepsHash` parameters for consistency
+  - Both CLI builders now support the same fingerprint hash interface
+  - Enables `nix:check:quick` to work uniformly across both build types
+
+- **nix/devenv-modules/tasks/shared/nix-cli.nix**: Fixed missing task dependencies and improved error messages
+  - `nix:check:*` tasks now depend on `pnpm:install` (full workspace)
+  - Previously only depended on per-package install, causing failures when other packages had stale lockfiles
+  - Added clear error messages for stale lockfiles with actionable fix instructions
+  - Detects `ERR_PNPM_OUTDATED_LOCKFILE` and suggests `dt pnpm:update && dt nix:hash`
+
+- **nix/devenv-modules/tasks/shared/pnpm.nix**: Added `pnpm:update` task
+  - Runs `pnpm install --no-frozen-lockfile` in all packages to update lockfiles
+  - Use when adding new dependencies that cause `ERR_PNPM_OUTDATED_LOCKFILE` errors
+
+- **nix/devenv-modules/tasks/shared/check.nix**: Updated check task semantics
+  - `check:quick` - Fast development checks (genie, typecheck, lint, nix-fingerprint only)
+  - `check:all` - Comprehensive validation including full `nix flake check`
+  - `check:packages` - New task to validate allPackages matches filesystem
+
+- **nix/devenv-modules/tasks/local/workspace-check.nix**: New local validation task
+  - Validates that `allPackages` in devenv.nix matches actual filesystem packages
+  - Prevents Nix build failures from unmanaged packages with stale lockfiles
+  - Located in `local/` directory (effect-utils specific, not for reuse)
+
+- **nix/devenv-modules/tasks**: Reorganized into `shared/` and `local/` directories
+  - `shared/` - Reusable tasks meant for other repos via flake input
+  - `local/` - Effect-utils specific tasks (not exported in flake.nix)
+  - Added README.md documenting the organization
+
+- **nix/devenv-modules/tasks/shared/check.nix**: Added `extraChecks` parameter
+  - Allows repos to inject additional check tasks (e.g., `workspace:check`)
+  - Maintains reusability while enabling local customization
+
+- **devenv.nix**: Updated taskModules to use `shared/` directory paths
+  - Fixed regression where local paths weren't updated after directory restructure
+
+- **devenv.nix**: Added missing `packages/@overeng/tui-react` to `allPackages`
+
 ### Added
 
 - **@overeng/effect-rpc-tanstack**: New package for Effect RPC integration with TanStack Start
