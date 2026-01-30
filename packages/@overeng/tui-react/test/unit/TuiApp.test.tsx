@@ -95,7 +95,7 @@ describe('createTuiApp', () => {
       const result = await Effect.gen(function* () {
         const tui = yield* CounterApp.run()
         return tui.getState()
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('final-visual')), Effect.runPromise)
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe')), Effect.runPromise)
 
       expect(result).toEqual({ count: 0 })
     })
@@ -107,7 +107,7 @@ describe('createTuiApp', () => {
         tui.dispatch({ _tag: 'Increment' })
         tui.dispatch({ _tag: 'Increment' })
         return tui.getState()
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('final-visual')), Effect.runPromise)
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe')), Effect.runPromise)
 
       expect(result).toEqual({ count: 3 })
     })
@@ -117,19 +117,19 @@ describe('createTuiApp', () => {
         const tui = yield* CounterApp.run()
         tui.dispatch({ _tag: 'Set', value: 42 })
         return tui.getState()
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('final-visual')), Effect.runPromise)
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe')), Effect.runPromise)
 
       expect(result).toEqual({ count: 42 })
     })
   })
 
-  describe('final-json mode', () => {
+  describe('json mode', () => {
     test('outputs final state as JSON', async () => {
       await Effect.gen(function* () {
         const tui = yield* CounterApp.run()
         tui.dispatch({ _tag: 'Increment' })
         tui.dispatch({ _tag: 'Increment' })
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('final-json')), Effect.runPromise)
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('json')), Effect.runPromise)
 
       expect(capturedOutput).toHaveLength(1)
       expect(JSON.parse(capturedOutput[0]!)).toEqual({ count: 2 })
@@ -139,14 +139,14 @@ describe('createTuiApp', () => {
       await Effect.gen(function* () {
         const tui = yield* CounterApp.run(<CounterView />)
         tui.dispatch({ _tag: 'Set', value: 100 })
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('final-json')), Effect.runPromise)
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('json')), Effect.runPromise)
 
       expect(capturedOutput).toHaveLength(1)
       expect(JSON.parse(capturedOutput[0]!)).toEqual({ count: 100 })
     })
   })
 
-  describe('progressive-json mode', () => {
+  describe('ndjson mode', () => {
     test('streams state changes as NDJSON', async () => {
       await Effect.gen(function* () {
         const tui = yield* CounterApp.run()
@@ -155,7 +155,7 @@ describe('createTuiApp', () => {
         yield* Effect.sleep('10 millis')
         tui.dispatch({ _tag: 'Increment' })
         yield* Effect.sleep('10 millis')
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('progressive-json')), Effect.runPromise)
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('ndjson')), Effect.runPromise)
 
       expect(capturedOutput.length).toBeGreaterThanOrEqual(1)
 
@@ -206,7 +206,7 @@ describe('createTuiApp', () => {
           state1: tui1.getState(),
           state2: tui2.getState(),
         }
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('final-visual')), Effect.runPromise)
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe')), Effect.runPromise)
 
       expect(result.state1).toEqual({ count: 11 })
       expect(result.state2).toEqual({ count: 19 })

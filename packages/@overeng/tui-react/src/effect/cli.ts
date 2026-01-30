@@ -2,21 +2,20 @@
  * Effect CLI Integration
  *
  * Provides reusable CLI options for tui-react output modes.
- * Use these options in your Effect CLI commands to get consistent
- * `--json`, `--stream`, and `--visual` flags across all CLI tools.
+ * Use the `--output` flag in your Effect CLI commands to control output format.
  *
  * @example
  * ```typescript
  * import { Command, Options } from "@effect/cli"
  * import { Effect } from "effect"
- * import { outputModeOptions, outputModeLayerFromFlags } from "@overeng/tui-react"
+ * import { outputOption, outputModeLayer } from "@overeng/tui-react"
  *
  * const myCommand = Command.make("my-cmd", {
  *   name: Options.text("name"),
- *   ...outputModeOptions,  // Adds --json, --stream, --visual flags
- * }, (args) =>
- *   myProgram(args.name).pipe(
- *     Effect.provide(outputModeLayerFromFlags(args))
+ *   output: outputOption,
+ * }, ({ name, output }) =>
+ *   myProgram(name).pipe(
+ *     Effect.provide(outputModeLayer(output))
  *   )
  * )
  * ```
@@ -27,112 +26,134 @@
 import { Options } from '@effect/cli'
 import { Layer } from 'effect'
 
-import { OutputModeTag, fromFlags, fromFlagsWithTTY } from './OutputMode.ts'
+import {
+  type OutputMode,
+  OutputModeTag,
+  tty,
+  ci,
+  pipe,
+  log,
+  fullscreen,
+  json,
+  ndjson,
+  detectOutputMode,
+  layer,
+} from './OutputMode.tsx'
 
 // =============================================================================
-// Common CLI Options
+// Output Mode Values
 // =============================================================================
 
 /**
- * `--json` / `-j` flag for JSON output mode.
- *
- * When enabled, output is rendered as JSON instead of visual terminal UI.
- * Combined with `--stream`, produces NDJSON (newline-delimited JSON).
+ * Valid values for the `--output` flag.
  */
-export const jsonOption = Options.boolean('json').pipe(
-  Options.withAlias('j'),
-  Options.withDescription('Output as JSON instead of visual rendering'),
-  Options.withDefault(false),
-)
+export const OUTPUT_MODE_VALUES = [
+  'auto',
+  'tty',
+  'ci',
+  'pipe',
+  'log',
+  'fullscreen',
+  'json',
+  'ndjson',
+] as const
 
 /**
- * `--stream` flag for streaming JSON output (NDJSON).
- *
- * When enabled along with `--json`, outputs each state change as a
- * separate JSON line (newline-delimited JSON / NDJSON format).
- *
- * Without `--json`, this flag has no effect.
+ * Type for the `--output` flag value.
  */
-export const streamOption = Options.boolean('stream').pipe(
-  Options.withDescription('Stream JSON output (NDJSON) - requires --json'),
-  Options.withDefault(false),
-)
+export type OutputModeValue = (typeof OUTPUT_MODE_VALUES)[number]
+
+// =============================================================================
+// CLI Option
+// =============================================================================
 
 /**
- * `--visual` flag for forcing visual output mode.
+ * `--output` / `-o` flag for controlling output mode.
  *
- * When enabled, forces progressive-visual mode regardless of TTY detection.
- * Useful for debugging in non-TTY environments or CI.
- *
- * Can also be set via `TUI_VISUAL=1` environment variable.
- * Flag takes precedence over env var.
- */
-export const visualOption = Options.boolean('visual').pipe(
-  Options.withDescription('Force visual output mode (ignores TTY detection)'),
-  Options.withDefault(false),
-)
-
-/**
- * Combined output mode options object.
- *
- * Spread this into your command options to add `--json`, `--stream`, and `--visual` flags:
+ * Available modes:
+ * - `auto` (default) - Auto-detect based on environment (TTY, CI, pipe)
+ * - `tty` - Animated terminal UI with colors
+ * - `ci` - Static terminal UI with colors (CI-friendly)
+ * - `pipe` - Final output only with colors (for piping)
+ * - `log` - Plain text output, no colors (for log files)
+ * - `fullscreen` - Alternate screen mode with animation
+ * - `json` - JSON output (final state only)
+ * - `ndjson` - Streaming JSON output (newline-delimited)
  *
  * @example
  * ```typescript
  * const myCommand = Command.make("cmd", {
- *   myOption: Options.text("my-option"),
- *   ...outputModeOptions,
- * }, handler)
+ *   output: outputOption,
+ * }, ({ output }) =>
+ *   myProgram().pipe(Effect.provide(outputModeLayer(output)))
+ * )
  * ```
  */
-export const outputModeOptions = {
-  json: jsonOption,
-  stream: streamOption,
-  visual: visualOption,
-} as const
+export const outputOption = Options.choice('output', OUTPUT_MODE_VALUES).pipe(
+  Options.withAlias('o'),
+  Options.withDescription(
+    'Output mode: auto (default), tty, ci, pipe, log, fullscreen, json, ndjson',
+  ),
+  Options.withDefault('auto' as OutputModeValue),
+)
+
+// =============================================================================
+// Layer Helper
+// =============================================================================
 
 /**
- * Type for the parsed output mode flags.
+ * Map from flag value to OutputMode preset.
  */
-export interface OutputModeFlags {
-  readonly json: boolean
-  readonly stream: boolean
-  readonly visual: boolean
+const modeMap: Record<Exclude<OutputModeValue, 'auto'>, OutputMode> = {
+  tty,
+  ci,
+  pipe,
+  log,
+  fullscreen,
+  json,
+  ndjson,
 }
 
-// =============================================================================
-// Layer Helpers
-// =============================================================================
-
 /**
- * Create an OutputMode layer from parsed CLI flags.
- *
- * Uses `fromFlags` which maps:
- * - `json=false` -> `progressive-visual`
- * - `json=true, stream=false` -> `final-json`
- * - `json=true, stream=true` -> `progressive-json`
+ * Create an OutputMode layer from the `--output` flag value.
  *
  * @example
  * ```typescript
- * const layer = outputModeLayerFromFlags({ json: true, stream: false })
- * // Returns Layer for 'final-json' mode
+ * // In command handler:
+ * myProgram().pipe(Effect.provide(outputModeLayer(output)))
+ * ```
+ *
+ * @example
+ * ```typescript
+ * // Explicit mode:
+ * outputModeLayer('json')  // JSON output
+ * outputModeLayer('tty')   // Animated terminal
+ * outputModeLayer('auto')  // Auto-detect from environment
  * ```
  */
-export const outputModeLayerFromFlags = (flags: OutputModeFlags): Layer.Layer<OutputModeTag> =>
-  Layer.succeed(OutputModeTag, fromFlags({ json: flags.json, stream: flags.stream }))
+export const outputModeLayer = (value: OutputModeValue): Layer.Layer<OutputModeTag> => {
+  if (value === 'auto') {
+    return layer(detectOutputMode())
+  }
+  return layer(modeMap[value])
+}
 
 /**
- * Create an OutputMode layer from CLI flags with TTY detection.
+ * Resolve an OutputModeValue to an OutputMode.
  *
- * Priority (highest to lowest):
- * 1. `--json` flag (forces JSON mode)
- * 2. `--visual` flag (forces visual mode)
- * 3. `TUI_VISUAL=1` env var (forces visual mode)
- * 4. TTY detection (visual if TTY, JSON if not)
+ * Useful when you need the mode object directly rather than a layer.
  *
- * This is useful for commands that should output JSON when piped,
- * but can be forced to visual mode for debugging.
+ * @example
+ * ```typescript
+ * const mode = resolveOutputMode('json')
+ * if (isJson(mode)) {
+ *   // Handle JSON mode
+ * }
+ * ```
  */
-export const outputModeLayerFromFlagsWithTTY = (
-  flags: OutputModeFlags,
-): Layer.Layer<OutputModeTag> => Layer.succeed(OutputModeTag, fromFlagsWithTTY(flags))
+export const resolveOutputMode = (value: OutputModeValue): OutputMode => {
+  if (value === 'auto') {
+    return detectOutputMode()
+  }
+  return modeMap[value]
+}

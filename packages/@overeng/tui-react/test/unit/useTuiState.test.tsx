@@ -86,7 +86,7 @@ describe('createTuiApp', () => {
       const result = await Effect.gen(function* () {
         const tui = yield* TestApp.run()
         return tui.getState()
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('final-visual')), Effect.runPromise)
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe')), Effect.runPromise)
 
       expect(result).toEqual({ _tag: 'Idle' })
     })
@@ -96,7 +96,7 @@ describe('createTuiApp', () => {
         const tui = yield* TestApp.run()
         tui.dispatch({ _tag: 'Start' })
         return tui.getState()
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('final-visual')), Effect.runPromise)
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe')), Effect.runPromise)
 
       expect(result).toEqual({ _tag: 'Running', count: 0 })
     })
@@ -109,7 +109,7 @@ describe('createTuiApp', () => {
         tui.dispatch({ _tag: 'Increment' })
         tui.dispatch({ _tag: 'Increment' })
         return tui.getState()
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('final-visual')), Effect.runPromise)
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe')), Effect.runPromise)
 
       expect(result).toEqual({ _tag: 'Running', count: 3 })
     })
@@ -121,20 +121,20 @@ describe('createTuiApp', () => {
         tui.dispatch({ _tag: 'Increment' })
         tui.dispatch({ _tag: 'Finish', total: 42 })
         return tui.getState()
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('final-visual')), Effect.runPromise)
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe')), Effect.runPromise)
 
       expect(result).toEqual({ _tag: 'Complete', total: 42 })
     })
   })
 
-  describe('final-json mode', () => {
+  describe('json mode', () => {
     test('outputs JSON on scope close', async () => {
       await Effect.gen(function* () {
         const tui = yield* TestApp.run()
         tui.dispatch({ _tag: 'Start' })
         tui.dispatch({ _tag: 'Increment' })
         tui.dispatch({ _tag: 'Finish', total: 10 })
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('final-json')), Effect.runPromise)
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('json')), Effect.runPromise)
 
       expect(capturedOutput).toHaveLength(1)
       const parsed = JSON.parse(capturedOutput[0]!)
@@ -144,7 +144,7 @@ describe('createTuiApp', () => {
     test('outputs final state even if only initial', async () => {
       await Effect.gen(function* () {
         yield* TestApp.run()
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('final-json')), Effect.runPromise)
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('json')), Effect.runPromise)
 
       expect(capturedOutput).toHaveLength(1)
       const parsed = JSON.parse(capturedOutput[0]!)
@@ -152,7 +152,7 @@ describe('createTuiApp', () => {
     })
   })
 
-  describe('progressive-json mode', () => {
+  describe('ndjson mode', () => {
     test('outputs NDJSON for each state change', async () => {
       await Effect.gen(function* () {
         const tui = yield* TestApp.run()
@@ -162,7 +162,7 @@ describe('createTuiApp', () => {
         yield* Effect.sleep('10 millis')
         tui.dispatch({ _tag: 'Finish', total: 10 })
         yield* Effect.sleep('10 millis')
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('progressive-json')), Effect.runPromise)
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('ndjson')), Effect.runPromise)
 
       // Should have multiple JSON lines
       expect(capturedOutput.length).toBeGreaterThanOrEqual(1)
@@ -180,13 +180,13 @@ describe('createTuiApp', () => {
     })
   })
 
-  describe('final-visual mode', () => {
+  describe('pipe mode', () => {
     test('does not output anything', async () => {
       await Effect.gen(function* () {
         const tui = yield* TestApp.run()
         tui.dispatch({ _tag: 'Start' })
         tui.dispatch({ _tag: 'Finish', total: 10 })
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('final-visual')), Effect.runPromise)
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe')), Effect.runPromise)
 
       expect(capturedOutput).toHaveLength(0)
     })
@@ -206,7 +206,7 @@ describe('createTuiApp', () => {
         tui.dispatch({ _tag: 'Start' })
         const updated = yield* SubscriptionRef.get(tui.stateRef)
         states.push(updated)
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('final-visual')), Effect.runPromise)
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe')), Effect.runPromise)
 
       expect(states).toEqual([{ _tag: 'Idle' }, { _tag: 'Running', count: 0 }])
     })

@@ -4,10 +4,10 @@
  * Core deploy logic using createTuiApp for rendering.
  */
 
-import { Duration, Effect } from 'effect'
+import { Duration, Effect, Scope } from 'effect'
 import React from 'react'
 
-import { createTuiApp } from '../../../src/mod.ts'
+import { createTuiApp, OutputModeTag } from '../../../src/mod.ts'
 import {
   DeployState,
   DeployAction,
@@ -38,19 +38,15 @@ export const DeployApp = createTuiApp({
 
 const timestamp = () => new Date().toISOString().slice(11, 19)
 
-const createLog = ({
-  level,
-  message,
-  service,
-}: {
+const createLog = (entry: {
   level: LogEntry['level']
   message: string
   service?: string
 }): LogEntry => ({
   timestamp: timestamp(),
-  level,
-  message,
-  service,
+  level: entry.level,
+  message: entry.message,
+  ...(entry.service !== undefined ? { service: entry.service } : {}),
 })
 
 // Helper to dispatch SetState action
@@ -126,22 +122,16 @@ const simulateHealthcheck = (service: string) =>
 // Main Deploy Function
 // =============================================================================
 
-export const runDeploy = (options: DeployOptions): Effect.Effect<DeployResult, never, any> =>
+export const runDeploy = (
+  options: DeployOptions,
+): Effect.Effect<DeployResult, never, Scope.Scope | OutputModeTag> =>
   Effect.gen(function* () {
     const { services, environment, dryRun = false } = options
     const tui = yield* DeployApp.run(<ConnectedDeployView />)
 
     const logs: LogEntry[] = []
-    const log = ({
-      level,
-      message,
-      service,
-    }: {
-      level: LogEntry['level']
-      message: string
-      service?: string
-    }) => {
-      logs.push(createLog({ level, message, service }))
+    const log = (entry: { level: LogEntry['level']; message: string; service?: string }) => {
+      logs.push(createLog(entry))
     }
 
     const startedAt = Date.now()

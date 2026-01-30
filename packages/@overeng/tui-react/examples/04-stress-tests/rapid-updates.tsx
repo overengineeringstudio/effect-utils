@@ -21,8 +21,8 @@ import React from 'react'
 
 import {
   createTuiApp,
-  outputModeOptions,
-  outputModeLayerFromFlagsWithTTY,
+  outputOption,
+  outputModeLayer,
 } from '../../src/mod.ts'
 
 // Import from shared modules
@@ -103,12 +103,9 @@ const stressTestCommand = Command.make(
   'stress-test',
   {
     duration: durationOption,
-    ...outputModeOptions,
+    output: outputOption,
   },
-  ({ duration, json, stream, visual }) =>
-    runStressTest(duration * 1000).pipe(
-      Effect.provide(outputModeLayerFromFlagsWithTTY({ json, stream, visual })),
-    ),
+  ({ duration, output }) => runStressTest(duration * 1000).pipe(Effect.provide(outputModeLayer(output))),
 )
 
 const cli = Command.run(stressTestCommand, {

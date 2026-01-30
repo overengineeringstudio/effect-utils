@@ -21,8 +21,8 @@ import React from 'react'
 
 import {
   createTuiApp,
-  outputModeOptions,
-  outputModeLayerFromFlagsWithTTY,
+  outputOption,
+  outputModeLayer,
 } from '../../src/mod.ts'
 
 // Import from shared modules
@@ -85,12 +85,10 @@ const helloWorldCommand = Command.make(
   'hello-world',
   {
     duration: durationOption,
-    ...outputModeOptions,
+    output: outputOption,
   },
-  ({ duration, json, stream, visual }) =>
-    runHelloWorld(duration).pipe(
-      Effect.provide(outputModeLayerFromFlagsWithTTY({ json, stream, visual })),
-    ),
+  ({ duration, output }) =>
+    runHelloWorld(duration).pipe(Effect.provide(outputModeLayer(output))),
 )
 
 const cli = Command.run(helloWorldCommand, {

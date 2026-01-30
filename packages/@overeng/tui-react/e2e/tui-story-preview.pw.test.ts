@@ -4,7 +4,7 @@ import { test, expect } from '@playwright/test'
  * Tests for TuiStoryPreview component tabs functionality
  *
  * These tests verify that:
- * 1. All 5 output tabs are rendered and clickable
+ * 1. All 6 output tabs are rendered and clickable
  * 2. Tab switching works correctly
  * 3. Each tab displays appropriate content
  */
@@ -19,11 +19,12 @@ test.describe('TuiStoryPreview Tabs', () => {
     await page.waitForSelector('[data-testid="tui-preview-tabs"]', { timeout: 30000 })
   })
 
-  test('renders all 5 output mode tabs', async ({ page }) => {
+  test('renders all 6 output mode tabs', async ({ page }) => {
     // Verify all tabs are present
     await expect(page.getByTestId('tab-visual')).toBeVisible()
     await expect(page.getByTestId('tab-fullscreen')).toBeVisible()
-    await expect(page.getByTestId('tab-string')).toBeVisible()
+    await expect(page.getByTestId('tab-ci')).toBeVisible()
+    await expect(page.getByTestId('tab-log')).toBeVisible()
     await expect(page.getByTestId('tab-json')).toBeVisible()
     await expect(page.getByTestId('tab-ndjson')).toBeVisible()
   })
@@ -46,11 +47,18 @@ test.describe('TuiStoryPreview Tabs', () => {
     await expect(visualTab).toHaveCSS('border-bottom-color', 'rgba(0, 0, 0, 0)')
   })
 
-  test('can switch to string tab', async ({ page }) => {
-    const stringTab = page.getByTestId('tab-string')
-    await stringTab.click()
+  test('can switch to CI tab', async ({ page }) => {
+    const ciTab = page.getByTestId('tab-ci')
+    await ciTab.click()
 
-    await expect(stringTab).toHaveCSS('border-bottom-color', 'rgb(0, 122, 204)')
+    await expect(ciTab).toHaveCSS('border-bottom-color', 'rgb(0, 122, 204)')
+  })
+
+  test('can switch to Log tab', async ({ page }) => {
+    const logTab = page.getByTestId('tab-log')
+    await logTab.click()
+
+    await expect(logTab).toHaveCSS('border-bottom-color', 'rgb(0, 122, 204)')
   })
 
   test('can switch to JSON tab and see formatted JSON', async ({ page }) => {
@@ -76,7 +84,7 @@ test.describe('TuiStoryPreview Tabs', () => {
   })
 
   test('tabs cycle through all modes correctly', async ({ page }) => {
-    const tabs = ['visual', 'fullscreen', 'string', 'json', 'ndjson'] as const
+    const tabs = ['visual', 'fullscreen', 'ci', 'log', 'json', 'ndjson'] as const
 
     for (const tabName of tabs) {
       const tab = page.getByTestId(`tab-${tabName}`)

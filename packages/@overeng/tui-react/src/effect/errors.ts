@@ -18,7 +18,7 @@
 
 import { Console, Effect, Schema } from 'effect'
 
-import { OutputModeTag, isJson } from './OutputMode.ts'
+import { OutputModeTag, isJson } from './OutputMode.tsx'
 
 // =============================================================================
 // Error Schemas

@@ -3,24 +3,24 @@
  *
  * Demonstrates:
  * - Effect CLI for argument parsing and signal handling
- * - Reusable outputModeOptions for --json/--stream flags
+ * - Single `--output` flag for controlling output mode
  * - createTuiApp for state management
- * - Multiple output modes (visual, JSON, NDJSON)
+ * - Multiple output modes (tty, ci, pipe, json, ndjson, etc.)
  * - Graceful Ctrl+C handling with Interrupted state
  *
  * Run:
- *   bun examples/04-cli/deploy/main.ts --services api,web
- *   bun examples/04-cli/deploy/main.ts --services api,web --json
- *   bun examples/04-cli/deploy/main.ts --services api,web --json --stream
- *   bun examples/04-cli/deploy/main.ts --services api,web --dry-run
- *   bun examples/04-cli/deploy/main.ts --help
+ *   bun examples/03-cli/deploy/main.ts --services api,web
+ *   bun examples/03-cli/deploy/main.ts --services api,web --output json
+ *   bun examples/03-cli/deploy/main.ts --services api,web --output ndjson
+ *   bun examples/03-cli/deploy/main.ts --services api,web --dry-run
+ *   bun examples/03-cli/deploy/main.ts --help
  */
 
 import { Command, Options } from '@effect/cli'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Effect } from 'effect'
 
-import { outputModeOptions, outputModeLayerFromFlagsWithTTY } from '../../../src/mod.ts'
+import { outputOption, outputModeLayer } from '../../../src/mod.ts'
 import { runDeploy } from './deploy.tsx'
 
 // =============================================================================
@@ -43,6 +43,18 @@ const dryRun = Options.boolean('dry-run').pipe(
   Options.withDescription('Validate without deploying'),
 )
 
+const timeout = Options.integer('timeout').pipe(
+  Options.withAlias('t'),
+  Options.withDefault(30000),
+  Options.withDescription('Deployment timeout in milliseconds'),
+)
+
+const force = Options.boolean('force').pipe(
+  Options.withAlias('f'),
+  Options.withDefault(false),
+  Options.withDescription('Force deployment even with warnings'),
+)
+
 // =============================================================================
 // Command Definition
 // =============================================================================
@@ -53,9 +65,11 @@ const deploy = Command.make(
     services,
     env,
     dryRun,
-    ...outputModeOptions, // Adds --json and --stream flags
+    timeout,
+    force,
+    output: outputOption,
   },
-  ({ services: servicesArg, env: envArg, dryRun: dryRunArg, json, stream }) =>
+  ({ services: servicesArg, env: envArg, dryRun: dryRunArg, timeout: timeoutArg, force: forceArg, output }) =>
     runDeploy({
       services: servicesArg
         .split(',')
@@ -63,8 +77,11 @@ const deploy = Command.make(
         .filter(Boolean),
       environment: envArg,
       dryRun: dryRunArg,
+      timeout: timeoutArg,
+      force: forceArg,
     }).pipe(
-      Effect.provide(outputModeLayerFromFlagsWithTTY({ json, stream, visual })),
+      Effect.provide(outputModeLayer(output)),
+      Effect.scoped,
       Effect.flatMap((result) => {
         // Exit with appropriate code based on result
         if (!result.success) {

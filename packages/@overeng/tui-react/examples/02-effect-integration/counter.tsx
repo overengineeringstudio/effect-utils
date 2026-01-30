@@ -23,8 +23,8 @@ import React from 'react'
 
 import {
   createTuiApp,
-  outputModeOptions,
-  outputModeLayerFromFlagsWithTTY,
+  outputOption,
+  outputModeLayer,
 } from '../../src/mod.ts'
 
 // Import from shared modules
@@ -89,8 +89,8 @@ const runCounter = Effect.gen(function* () {
 // CLI Command
 // =============================================================================
 
-const counter = Command.make('counter', outputModeOptions, ({ json, stream, visual }) =>
-  runCounter.pipe(Effect.provide(outputModeLayerFromFlagsWithTTY({ json, stream, visual }))),
+const counter = Command.make('counter', { output: outputOption }, ({ output }) =>
+  runCounter.pipe(Effect.provide(outputModeLayer(output))),
 )
 
 const cli = Command.run(counter, {

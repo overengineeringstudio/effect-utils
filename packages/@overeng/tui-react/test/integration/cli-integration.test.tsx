@@ -8,7 +8,7 @@ import { Effect, Duration, Schema } from 'effect'
 import React from 'react'
 import { describe, test, expect, beforeEach, afterEach } from 'vitest'
 
-import { createTuiApp, fromFlags, Box, Text, testModeLayer } from '../../src/mod.ts'
+import { createTuiApp, detectOutputMode, Box, Text, testModeLayer } from '../../src/mod.ts'
 
 // =============================================================================
 // Test State Schema (simulating a deploy command)
@@ -207,9 +207,9 @@ describe('CLI Integration', () => {
     console.log = originalLog
   })
 
-  test('final-json mode outputs complete state', async () => {
+  test('json mode outputs complete state', async () => {
     const result = await runDeploy(['api', 'web']).pipe(
-      Effect.provide(testModeLayer('final-json')),
+      Effect.provide(testModeLayer('json')),
       Effect.runPromise,
     )
 
@@ -223,9 +223,9 @@ describe('CLI Integration', () => {
     expect(output.services[1].name).toBe('web')
   })
 
-  test('progressive-json mode streams state changes', async () => {
+  test('ndjson mode streams state changes', async () => {
     await runDeploy(['api']).pipe(
-      Effect.provide(testModeLayer('progressive-json')),
+      Effect.provide(testModeLayer('ndjson')),
       Effect.runPromise,
     )
 
@@ -241,24 +241,25 @@ describe('CLI Integration', () => {
     expect(tags).toContain('Complete')
   })
 
-  test('final-visual mode produces no output', async () => {
+  test('pipe mode produces no output', async () => {
     await runDeploy(['api', 'web']).pipe(
-      Effect.provide(testModeLayer('final-visual')),
+      Effect.provide(testModeLayer('pipe')),
       Effect.runPromise,
     )
 
     expect(capturedOutput).toHaveLength(0)
   })
 
-  test('fromFlags creates correct mode', () => {
-    expect(fromFlags({ json: false, stream: false })._tag).toBe('progressive-visual')
-    expect(fromFlags({ json: true, stream: false })._tag).toBe('final-json')
-    expect(fromFlags({ json: true, stream: true })._tag).toBe('progressive-json')
+  test('detectOutputMode returns appropriate mode for environment', () => {
+    // In test environment (non-TTY), detectOutputMode returns pipe mode
+    const mode = detectOutputMode()
+    expect(mode._tag).toBe('react')
+    expect(mode.timing).toBe('final') // pipe is final
   })
 
   test('command result is returned correctly', async () => {
     const result = await runDeploy(['api', 'web', 'worker']).pipe(
-      Effect.provide(testModeLayer('final-visual')),
+      Effect.provide(testModeLayer('pipe')),
       Effect.runPromise,
     )
 

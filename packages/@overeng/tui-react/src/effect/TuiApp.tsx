@@ -46,7 +46,16 @@ import { ViewportProvider } from '../hooks/useViewport.tsx'
 import { createRoot, type Root } from '../root.ts'
 import { RuntimeProvider, useSubscriptionRef } from './hooks.tsx'
 import { setupFinalVisual, setupFinalJson, setupProgressiveJson } from './modeSetup.ts'
-import { OutputModeTag, type OutputMode } from './OutputMode.ts'
+import {
+  OutputModeTag,
+  type OutputMode,
+  type RenderConfig,
+  RenderConfigProvider,
+  isTTY,
+  tty,
+  ci,
+  getRenderConfig,
+} from './OutputMode.tsx'
 
 // =============================================================================
 // Types
@@ -417,9 +426,10 @@ const setupMode = <S, A>({
   DispatchContext: React.Context<((action: A) => void) | null>
   view?: ReactElement | undefined
 }): Effect.Effect<Root | null, never, Scope.Scope> => {
-  switch (mode._tag) {
-    case 'progressive-visual':
-    case 'progressive-visual-alternate':
+  // Handle based on output format
+  if (mode._tag === 'react') {
+    if (mode.timing === 'progressive') {
+      // Progressive React rendering (inline or fullscreen)
       return view
         ? setupProgressiveVisualWithView({
             stateRef,
@@ -427,17 +437,20 @@ const setupMode = <S, A>({
             StateContext,
             DispatchContext,
             view,
+            renderConfig: mode.render,
           })
         : Effect.succeed(null)
-
-    case 'final-visual':
+    } else {
+      // Final React rendering (single output at end)
       return setupFinalVisual().pipe(Effect.as(null))
-
-    case 'final-json':
-      return setupFinalJson({ stateRef, schema: stateSchema }).pipe(Effect.as(null))
-
-    case 'progressive-json':
+    }
+  } else {
+    // JSON modes
+    if (mode.timing === 'progressive') {
       return setupProgressiveJson({ stateRef, schema: stateSchema }).pipe(Effect.as(null))
+    } else {
+      return setupFinalJson({ stateRef, schema: stateSchema }).pipe(Effect.as(null))
+    }
   }
 }
 
@@ -447,12 +460,14 @@ const setupProgressiveVisualWithView = <S, A>({
   StateContext,
   DispatchContext,
   view,
+  renderConfig,
 }: {
   stateRef: SubscriptionRef.SubscriptionRef<S>
   dispatch: (action: A) => void
   StateContext: React.Context<SubscriptionRef.SubscriptionRef<S> | null>
   DispatchContext: React.Context<((action: A) => void) | null>
   view: ReactElement
+  renderConfig: RenderConfig
 }): Effect.Effect<Root, never, Scope.Scope> =>
   Effect.gen(function* () {
     const runtime = yield* Effect.runtime<never>()
@@ -460,9 +475,11 @@ const setupProgressiveVisualWithView = <S, A>({
 
     // Wrapper that provides context
     const TuiAppWrapper = (): ReactNode => (
-      <StateContext.Provider value={stateRef}>
-        <DispatchContext.Provider value={dispatch}>{view}</DispatchContext.Provider>
-      </StateContext.Provider>
+      <RenderConfigProvider config={renderConfig}>
+        <StateContext.Provider value={stateRef}>
+          <DispatchContext.Provider value={dispatch}>{view}</DispatchContext.Provider>
+        </StateContext.Provider>
+      </RenderConfigProvider>
     )
 
     const initialViewport: Viewport = {

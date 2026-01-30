@@ -7,102 +7,208 @@ import { describe, test, expect } from 'vitest'
 
 import {
   OutputModeTag,
-  progressiveVisual,
-  finalVisual,
-  finalJson,
-  progressiveJson,
-  fromFlags,
-  fromFlagsWithTTY,
-  isVisual,
+  // Presets
+  tty,
+  ci,
+  pipe,
+  log,
+  fullscreen,
+  json,
+  ndjson,
+  // Detection
+  detectOutputMode,
+  // Type guards
+  isReact,
   isJson,
   isProgressive,
   isFinal,
+  isAnimated,
+  hasColors,
+  isAlternate,
+  // Layers
   layer,
-  progressiveVisualLayer,
-  finalJsonLayer,
-} from '../../src/effect/OutputMode.ts'
+  ttyLayer,
+  jsonLayer,
+} from '../../src/effect/OutputMode.tsx'
 
-describe('OutputMode constructors', () => {
-  test('progressiveVisual has correct tag', () => {
-    expect(progressiveVisual._tag).toBe('progressive-visual')
+import { resolveOutputMode } from '../../src/effect/cli.ts'
+
+describe('OutputMode presets', () => {
+  test('tty preset has correct config', () => {
+    expect(tty._tag).toBe('react')
+    expect(tty.timing).toBe('progressive')
+    if (tty._tag === 'react') {
+      expect(tty.render.animation).toBe(true)
+      expect(tty.render.colors).toBe(true)
+      expect(tty.render.alternate).toBe(false)
+    }
   })
 
-  test('finalVisual has correct tag', () => {
-    expect(finalVisual._tag).toBe('final-visual')
+  test('ci preset has correct config', () => {
+    expect(ci._tag).toBe('react')
+    expect(ci.timing).toBe('progressive')
+    if (ci._tag === 'react') {
+      expect(ci.render.animation).toBe(false)
+      expect(ci.render.colors).toBe(true)
+      expect(ci.render.alternate).toBe(false)
+    }
   })
 
-  test('finalJson has correct tag', () => {
-    expect(finalJson._tag).toBe('final-json')
+  test('pipe preset has correct config', () => {
+    expect(pipe._tag).toBe('react')
+    expect(pipe.timing).toBe('final')
+    if (pipe._tag === 'react') {
+      expect(pipe.render.animation).toBe(false)
+      expect(pipe.render.colors).toBe(true)
+    }
   })
 
-  test('progressiveJson has correct tag', () => {
-    expect(progressiveJson._tag).toBe('progressive-json')
+  test('log preset has correct config', () => {
+    expect(log._tag).toBe('react')
+    expect(log.timing).toBe('final')
+    if (log._tag === 'react') {
+      expect(log.render.animation).toBe(false)
+      expect(log.render.colors).toBe(false)
+    }
+  })
+
+  test('fullscreen preset has correct config', () => {
+    expect(fullscreen._tag).toBe('react')
+    expect(fullscreen.timing).toBe('progressive')
+    if (fullscreen._tag === 'react') {
+      expect(fullscreen.render.animation).toBe(true)
+      expect(fullscreen.render.colors).toBe(true)
+      expect(fullscreen.render.alternate).toBe(true)
+    }
+  })
+
+  test('json preset has correct config', () => {
+    expect(json._tag).toBe('json')
+    expect(json.timing).toBe('final')
+  })
+
+  test('ndjson preset has correct config', () => {
+    expect(ndjson._tag).toBe('json')
+    expect(ndjson.timing).toBe('progressive')
   })
 })
 
-describe('fromFlags', () => {
-  test('json=false, stream=false returns progressive-visual', () => {
-    const mode = fromFlags({ json: false, stream: false })
-    expect(mode._tag).toBe('progressive-visual')
-  })
-
-  test('json=true, stream=false returns final-json', () => {
-    const mode = fromFlags({ json: true, stream: false })
-    expect(mode._tag).toBe('final-json')
-  })
-
-  test('json=true, stream=true returns progressive-json', () => {
-    const mode = fromFlags({ json: true, stream: true })
-    expect(mode._tag).toBe('progressive-json')
-  })
-
-  test('json=false, stream=true returns progressive-visual (stream ignored without json)', () => {
-    const mode = fromFlags({ json: false, stream: true })
-    expect(mode._tag).toBe('progressive-visual')
+describe('detectOutputMode', () => {
+  test('in non-TTY test environment defaults to pipe mode', () => {
+    const mode = detectOutputMode()
+    // In non-TTY test environment, defaults to pipe (final react output)
+    expect(mode._tag).toBe('react')
+    expect(mode.timing).toBe('final')
   })
 })
 
-describe('fromFlagsWithTTY', () => {
-  test('json=true overrides TTY detection', () => {
-    const mode = fromFlagsWithTTY({ json: true, stream: false })
-    expect(mode._tag).toBe('final-json')
+describe('resolveOutputMode', () => {
+  test('auto resolves based on environment', () => {
+    const mode = resolveOutputMode('auto')
+    // In non-TTY test environment, auto resolves to pipe
+    expect(mode._tag).toBe('react')
   })
 
-  test('json=true, stream=true returns progressive-json', () => {
-    const mode = fromFlagsWithTTY({ json: true, stream: true })
-    expect(mode._tag).toBe('progressive-json')
+  test('json returns json mode', () => {
+    const mode = resolveOutputMode('json')
+    expect(mode._tag).toBe('json')
+    expect(mode.timing).toBe('final')
   })
 
-  // Note: TTY detection depends on environment, can't easily test both paths
+  test('ndjson returns ndjson mode', () => {
+    const mode = resolveOutputMode('ndjson')
+    expect(mode._tag).toBe('json')
+    expect(mode.timing).toBe('progressive')
+  })
+
+  test('tty returns tty mode', () => {
+    const mode = resolveOutputMode('tty')
+    expect(mode._tag).toBe('react')
+    expect(mode.timing).toBe('progressive')
+    expect(isReact(mode) && mode.render.animation).toBe(true)
+  })
+
+  test('ci returns ci mode', () => {
+    const mode = resolveOutputMode('ci')
+    expect(mode._tag).toBe('react')
+    expect(mode.timing).toBe('progressive')
+    expect(isReact(mode) && mode.render.animation).toBe(false)
+  })
+
+  test('pipe returns pipe mode', () => {
+    const mode = resolveOutputMode('pipe')
+    expect(mode._tag).toBe('react')
+    expect(mode.timing).toBe('final')
+  })
+
+  test('log returns log mode', () => {
+    const mode = resolveOutputMode('log')
+    expect(mode._tag).toBe('react')
+    expect(mode.timing).toBe('final')
+    expect(isReact(mode) && mode.render.colors).toBe(false)
+  })
+
+  test('fullscreen returns fullscreen mode', () => {
+    const mode = resolveOutputMode('fullscreen')
+    expect(mode._tag).toBe('react')
+    expect(isReact(mode) && mode.render.alternate).toBe(true)
+  })
 })
 
-describe('guards', () => {
-  test('isVisual returns true for visual modes', () => {
-    expect(isVisual(progressiveVisual)).toBe(true)
-    expect(isVisual(finalVisual)).toBe(true)
-    expect(isVisual(finalJson)).toBe(false)
-    expect(isVisual(progressiveJson)).toBe(false)
+describe('type guards', () => {
+  test('isReact returns true for react modes', () => {
+    expect(isReact(tty)).toBe(true)
+    expect(isReact(ci)).toBe(true)
+    expect(isReact(pipe)).toBe(true)
+    expect(isReact(log)).toBe(true)
+    expect(isReact(fullscreen)).toBe(true)
+    expect(isReact(json)).toBe(false)
+    expect(isReact(ndjson)).toBe(false)
   })
 
   test('isJson returns true for JSON modes', () => {
-    expect(isJson(progressiveVisual)).toBe(false)
-    expect(isJson(finalVisual)).toBe(false)
-    expect(isJson(finalJson)).toBe(true)
-    expect(isJson(progressiveJson)).toBe(true)
+    expect(isJson(tty)).toBe(false)
+    expect(isJson(ci)).toBe(false)
+    expect(isJson(json)).toBe(true)
+    expect(isJson(ndjson)).toBe(true)
   })
 
   test('isProgressive returns true for progressive modes', () => {
-    expect(isProgressive(progressiveVisual)).toBe(true)
-    expect(isProgressive(finalVisual)).toBe(false)
-    expect(isProgressive(finalJson)).toBe(false)
-    expect(isProgressive(progressiveJson)).toBe(true)
+    expect(isProgressive(tty)).toBe(true)
+    expect(isProgressive(ci)).toBe(true)
+    expect(isProgressive(pipe)).toBe(false)
+    expect(isProgressive(log)).toBe(false)
+    expect(isProgressive(json)).toBe(false)
+    expect(isProgressive(ndjson)).toBe(true)
   })
 
   test('isFinal returns true for final modes', () => {
-    expect(isFinal(progressiveVisual)).toBe(false)
-    expect(isFinal(finalVisual)).toBe(true)
-    expect(isFinal(finalJson)).toBe(true)
-    expect(isFinal(progressiveJson)).toBe(false)
+    expect(isFinal(tty)).toBe(false)
+    expect(isFinal(ci)).toBe(false)
+    expect(isFinal(pipe)).toBe(true)
+    expect(isFinal(log)).toBe(true)
+    expect(isFinal(json)).toBe(true)
+    expect(isFinal(ndjson)).toBe(false)
+  })
+
+  test('isAnimated returns true for animated modes', () => {
+    expect(isAnimated(tty)).toBe(true)
+    expect(isAnimated(ci)).toBe(false)
+    expect(isAnimated(fullscreen)).toBe(true)
+    expect(isAnimated(json)).toBe(false)
+  })
+
+  test('hasColors returns true for colored modes', () => {
+    expect(hasColors(tty)).toBe(true)
+    expect(hasColors(ci)).toBe(true)
+    expect(hasColors(log)).toBe(false)
+    expect(hasColors(json)).toBe(false)
+  })
+
+  test('isAlternate returns true for alternate buffer modes', () => {
+    expect(isAlternate(tty)).toBe(false)
+    expect(isAlternate(fullscreen)).toBe(true)
+    expect(isAlternate(json)).toBe(false)
   })
 })
 
@@ -110,25 +216,28 @@ describe('layers', () => {
   test('layer creates a valid layer', async () => {
     const mode = await Effect.gen(function* () {
       return yield* OutputModeTag
-    }).pipe(Effect.provide(layer(finalJson)), Effect.runPromise)
+    }).pipe(Effect.provide(layer(json)), Effect.runPromise)
 
-    expect(mode._tag).toBe('final-json')
+    expect(mode._tag).toBe('json')
+    expect(mode.timing).toBe('final')
   })
 
-  test('progressiveVisualLayer provides progressive-visual', async () => {
+  test('ttyLayer provides tty mode', async () => {
     const mode = await Effect.gen(function* () {
       return yield* OutputModeTag
-    }).pipe(Effect.provide(progressiveVisualLayer), Effect.runPromise)
+    }).pipe(Effect.provide(ttyLayer), Effect.runPromise)
 
-    expect(mode._tag).toBe('progressive-visual')
+    expect(mode._tag).toBe('react')
+    expect(mode.timing).toBe('progressive')
   })
 
-  test('finalJsonLayer provides final-json', async () => {
+  test('jsonLayer provides json mode', async () => {
     const mode = await Effect.gen(function* () {
       return yield* OutputModeTag
-    }).pipe(Effect.provide(finalJsonLayer), Effect.runPromise)
+    }).pipe(Effect.provide(jsonLayer), Effect.runPromise)
 
-    expect(mode._tag).toBe('final-json')
+    expect(mode._tag).toBe('json')
+    expect(mode.timing).toBe('final')
   })
 })
 
@@ -140,10 +249,10 @@ describe('OutputModeTag service', () => {
     })
 
     const result = await program.pipe(
-      Effect.provide(Layer.succeed(OutputModeTag, progressiveJson)),
+      Effect.provide(Layer.succeed(OutputModeTag, ndjson)),
       Effect.runPromise,
     )
 
-    expect(result).toBe('progressive-json')
+    expect(result).toBe('json')
   })
 })

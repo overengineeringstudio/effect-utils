@@ -41,6 +41,20 @@
  *   ),
  * }
  * ```
+ *
+ * @example
+ * ```tsx
+ * // CLI component with createCliMeta helper
+ * import { createCliMeta, TerminalPreview } from '@overeng/tui-react/storybook'
+ *
+ * const meta = createCliMeta<MyOutputProps>(MyOutput, {
+ *   title: 'CLI/MyOutput',
+ *   description: 'Output for my command',
+ *   defaultArgs: { status: 'success' },
+ * })
+ *
+ * export default meta
+ * ```
  */
 
 export {
@@ -51,3 +65,15 @@ export {
 } from './TuiStoryPreview.tsx'
 export { tuiPreview } from './preview.ts'
 export { xtermTheme, containerStyles } from './theme.ts'
+
+// CLI utilities
+export {
+  TerminalPreview,
+  StringTerminalPreview,
+  createCliMeta,
+  type TerminalPreviewProps,
+  type StringTerminalPreviewProps,
+  type CreateCliMetaOptions,
+  type CliStoryMeta,
+  type CliStory,
+} from './cli-utils.tsx'

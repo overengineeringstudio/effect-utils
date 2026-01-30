@@ -118,7 +118,7 @@ import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Effect } from 'effect'
 import React from 'react'
 
-import { createTuiApp, outputModeOptions, outputModeLayerFromFlagsWithTTY } from '../../../src/mod.ts'
+import { createTuiApp, outputOption, outputModeLayer } from '../../../src/mod.ts'
 import { AppState, AppAction } from './schema.ts'
 import { appReducer } from './reducer.ts'
 import { AppView } from './view.tsx'
@@ -140,8 +140,8 @@ const runApp = Effect.gen(function* () {
   tui.dispatch({ _tag: 'Finish' })
 }).pipe(Effect.scoped)
 
-const command = Command.make('my-app', outputModeOptions, ({ json, stream, visual }) =>
-  runApp.pipe(Effect.provide(outputModeLayerFromFlagsWithTTY({ json, stream, visual }))),
+const command = Command.make('my-app', { output: outputOption }, ({ output }) =>
+  runApp.pipe(Effect.provide(outputModeLayer(output))),
 )
 
 Command.run(command, { name: 'my-app', version: '1.0.0' })(process.argv).pipe(

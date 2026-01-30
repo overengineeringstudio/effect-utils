@@ -24,12 +24,14 @@ import { Effect, Layer, PubSub, Schema, Stream, SubscriptionRef } from 'effect'
 import {
   type OutputMode,
   OutputModeTag,
-  finalJson,
-  finalVisual,
-  progressiveJson,
-  progressiveVisual,
-  progressiveVisualAlternate,
-} from './OutputMode.ts'
+  tty,
+  ci,
+  pipe,
+  log,
+  fullscreen,
+  json,
+  ndjson,
+} from './OutputMode.tsx'
 import type { TuiAppConfig, TuiAppApi } from './TuiApp.tsx'
 
 // =============================================================================
@@ -37,13 +39,18 @@ import type { TuiAppConfig, TuiAppApi } from './TuiApp.tsx'
 // =============================================================================
 
 /**
+ * Mode preset name for testing.
+ */
+export type TestModePreset = 'tty' | 'ci' | 'pipe' | 'log' | 'fullscreen' | 'json' | 'ndjson'
+
+/**
  * Options for running a test command.
  */
 export interface RunTestCommandOptions<S, Args> {
   /** Command arguments */
   args: Args
-  /** Output mode to use */
-  mode: OutputMode['_tag']
+  /** Output mode preset to use */
+  mode: TestModePreset
   /** Schema for parsing and validating JSON output */
   schema: Schema.Schema<S>
 }
@@ -75,28 +82,32 @@ export interface CaptureOptions {
 // =============================================================================
 
 /**
- * Convert mode tag to OutputMode value.
+ * Convert mode preset name to OutputMode value.
  */
-export const modeFromTag = (tag: OutputMode['_tag']): OutputMode => {
-  switch (tag) {
-    case 'progressive-visual':
-      return progressiveVisual
-    case 'progressive-visual-alternate':
-      return progressiveVisualAlternate
-    case 'final-visual':
-      return finalVisual
-    case 'final-json':
-      return finalJson
-    case 'progressive-json':
-      return progressiveJson
+export const modeFromTag = (preset: TestModePreset): OutputMode => {
+  switch (preset) {
+    case 'tty':
+      return tty
+    case 'ci':
+      return ci
+    case 'pipe':
+      return pipe
+    case 'log':
+      return log
+    case 'fullscreen':
+      return fullscreen
+    case 'json':
+      return json
+    case 'ndjson':
+      return ndjson
   }
 }
 
 /**
  * Create a layer for a specific output mode.
  */
-export const testModeLayer = (tag: OutputMode['_tag']): Layer.Layer<OutputModeTag> =>
-  Layer.succeed(OutputModeTag, modeFromTag(tag))
+export const testModeLayer = (preset: TestModePreset): Layer.Layer<OutputModeTag> =>
+  Layer.succeed(OutputModeTag, modeFromTag(preset))
 
 /**
  * Run a command function with test utilities.

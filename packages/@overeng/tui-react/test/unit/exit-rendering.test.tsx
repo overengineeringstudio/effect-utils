@@ -278,7 +278,7 @@ describe('Interrupt Handling', () => {
         states.push(tui.getState())
 
         // Scope will close here, which should dispatch Interrupted
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('final-visual')), Effect.runPromise)
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe')), Effect.runPromise)
 
       // After scope closes, Interrupted should have been dispatched
       // The finalizer dispatches Interrupted, so the last state should have interrupted: true
@@ -296,7 +296,7 @@ describe('Interrupt Handling', () => {
         states.push(tui.getState())
         tui.dispatch({ _tag: 'SetValue', value: 'updated' })
         states.push(tui.getState())
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('final-visual')), Effect.runPromise)
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe')), Effect.runPromise)
 
       // Should not have interrupted state since schema doesn't have Interrupted
       expect(states.every((s) => s.interrupted === false)).toBe(true)
@@ -311,7 +311,7 @@ describe('Interrupt Handling', () => {
         // AppWithInterrupt has interruptTimeout: 50
         yield* AppWithInterrupt.run()
         // Scope closes here
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('final-visual')), Effect.runPromise)
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe')), Effect.runPromise)
 
       const elapsed = Date.now() - startTime
 
@@ -340,7 +340,7 @@ describe('TuiAppApi.unmount()', () => {
 
       // State should still be accessible
       expect(tui.getState().value).toBe('before unmount')
-    }).pipe(Effect.scoped, Effect.provide(testModeLayer('final-visual')), Effect.runPromise)
+    }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe')), Effect.runPromise)
   })
 
   test('explicit unmount prevents double unmount', async () => {
@@ -354,7 +354,7 @@ describe('TuiAppApi.unmount()', () => {
       yield* tui.unmount()
 
       // Scope close should also be safe
-    }).pipe(Effect.scoped, Effect.provide(testModeLayer('final-visual')), Effect.runPromise)
+    }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe')), Effect.runPromise)
 
     // If we get here without error, the test passes
     expect(true).toBe(true)
@@ -385,7 +385,7 @@ describe('Final state output', () => {
     await Effect.gen(function* () {
       const tui = yield* AppWithInterrupt.run()
       tui.dispatch({ _tag: 'SetValue', value: 'final' })
-    }).pipe(Effect.scoped, Effect.provide(testModeLayer('final-json')), Effect.runPromise)
+    }).pipe(Effect.scoped, Effect.provide(testModeLayer('json')), Effect.runPromise)
 
     expect(capturedOutput).toHaveLength(1)
     const output = JSON.parse(capturedOutput[0]!)

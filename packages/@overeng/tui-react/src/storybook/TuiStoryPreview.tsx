@@ -34,6 +34,7 @@ import { Schema } from 'effect'
 import '@xterm/xterm/css/xterm.css'
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 
+import { RenderConfigProvider, ciRenderConfig, logRenderConfig, stripAnsi } from '../effect/OutputMode.tsx'
 import { renderToString } from '../renderToString.ts'
 import { createRoot, type Root } from '../root.ts'
 import { xtermTheme, containerStyles } from './theme.ts'
@@ -42,7 +43,7 @@ import { xtermTheme, containerStyles } from './theme.ts'
 // Types
 // =============================================================================
 
-export type OutputTab = 'visual' | 'fullscreen' | 'string' | 'json' | 'ndjson'
+export type OutputTab = 'visual' | 'fullscreen' | 'ci' | 'log' | 'json' | 'ndjson'
 
 export interface TimelineEvent<A> {
   /** Time offset in milliseconds from start */
@@ -620,10 +621,10 @@ const NdjsonPreviewPane: React.FC<{ lines: string[] }> = ({ lines }) => (
 )
 
 // =============================================================================
-// String Preview Component
+// CI Preview Component (static output with colors)
 // =============================================================================
 
-const StringPreviewPane: React.FC<{
+const CIPreviewPane: React.FC<{
   View: React.ComponentType<{ state: unknown }>
   state: unknown
   height: number
@@ -657,7 +658,14 @@ const StringPreviewPane: React.FC<{
     terminal.clear()
     terminal.reset()
 
-    renderToString({ element: React.createElement(View, { state }) })
+    // Render with CI mode (static, with colors)
+    const element = (
+      <RenderConfigProvider config={ciRenderConfig}>
+        <View state={state} />
+      </RenderConfigProvider>
+    )
+
+    renderToString({ element })
       .then((ansiOutput) => {
         const lines = ansiOutput.split('\n')
         lines.forEach((line, i) => {
@@ -682,6 +690,56 @@ const StringPreviewPane: React.FC<{
   }, [])
 
   return <div ref={containerRef} style={{ ...containerStyles, height }} />
+}
+
+// =============================================================================
+// Log Preview Component (static output, plain text - no colors)
+// =============================================================================
+
+const LogPreviewPane: React.FC<{
+  View: React.ComponentType<{ state: unknown }>
+  state: unknown
+  height: number
+}> = ({ View, state, height }) => {
+  const [output, setOutput] = useState<string>('')
+
+  useEffect(() => {
+    // Render with log mode (static, no colors)
+    const element = (
+      <RenderConfigProvider config={logRenderConfig}>
+        <View state={state} />
+      </RenderConfigProvider>
+    )
+
+    renderToString({ element })
+      .then((ansiOutput) => {
+        // Strip ANSI codes for plain text output
+        setOutput(stripAnsi(ansiOutput))
+      })
+      .catch((err: Error) => {
+        setOutput(`Error: ${err.message}`)
+      })
+  }, [state, View])
+
+  return (
+    <pre
+      style={{
+        margin: 0,
+        padding: '12px',
+        background: '#1e1e1e',
+        color: '#d4d4d4',
+        fontFamily: 'Monaco, Menlo, "DejaVu Sans Mono", Consolas, monospace',
+        fontSize: '14px',
+        overflow: 'auto',
+        height,
+        boxSizing: 'border-box',
+        whiteSpace: 'pre-wrap',
+        wordBreak: 'break-word',
+      }}
+    >
+      {output}
+    </pre>
+  )
 }
 
 // =============================================================================
@@ -868,13 +926,14 @@ const FullscreenPreviewPane: React.FC<{
 const TAB_LABELS: Record<OutputTab, string> = {
   visual: 'Visual',
   fullscreen: 'Fullscreen',
-  string: 'String',
+  ci: 'CI',
+  log: 'Log',
   json: 'JSON',
   ndjson: 'NDJSON',
 }
 
-const DEFAULT_TABS_STATEFUL: OutputTab[] = ['visual', 'fullscreen', 'string', 'json', 'ndjson']
-const DEFAULT_TABS_SIMPLE: OutputTab[] = ['visual', 'fullscreen', 'string']
+const DEFAULT_TABS_STATEFUL: OutputTab[] = ['visual', 'fullscreen', 'ci', 'log', 'json', 'ndjson']
+const DEFAULT_TABS_SIMPLE: OutputTab[] = ['visual', 'fullscreen', 'ci', 'log']
 
 // =============================================================================
 // Simple Mode Component (children-based)
@@ -980,8 +1039,11 @@ const SimpleTuiStoryPreview: React.FC<SimpleProps> = ({
         {activeTab === 'fullscreen' && (
           <FullscreenPreviewPane View={ChildrenView} state={null} height={height} />
         )}
-        {activeTab === 'string' && (
-          <StringPreviewPane View={ChildrenView} state={null} height={height} />
+        {activeTab === 'ci' && (
+          <CIPreviewPane View={ChildrenView} state={null} height={height} />
+        )}
+        {activeTab === 'log' && (
+          <LogPreviewPane View={ChildrenView} state={null} height={height} />
         )}
         {activeTab === 'json' && <JsonPreviewPane json="// Simple mode - no state schema" />}
         {activeTab === 'ndjson' && <NdjsonPreviewPane lines={['// Simple mode - no state tracking']} />}
@@ -1183,9 +1245,8 @@ const StatefulTuiStoryPreview = <S, A>({
         {activeTab === 'fullscreen' && (
           <FullscreenPreviewPane View={ViewCast} state={state} height={height} />
         )}
-        {activeTab === 'string' && (
-          <StringPreviewPane View={ViewCast} state={state} height={height} />
-        )}
+        {activeTab === 'ci' && <CIPreviewPane View={ViewCast} state={state} height={height} />}
+        {activeTab === 'log' && <LogPreviewPane View={ViewCast} state={state} height={height} />}
         {activeTab === 'json' && <JsonPreviewPane json={jsonOutput} />}
         {activeTab === 'ndjson' && <NdjsonPreviewPane lines={ndjsonLines} />}
       </div>

@@ -56,7 +56,22 @@ export {
   type SpinnerProps,
   type SpinnerType,
   spinnerFrames,
+  spinnerStaticChars,
 } from './components/Spinner.tsx'
+
+// Render Config (for CI/Log output)
+export {
+  type RenderConfig,
+  RenderConfigProvider,
+  useRenderConfig,
+  ttyRenderConfig,
+  ciRenderConfig,
+  logRenderConfig,
+  fullscreenRenderConfig,
+  isAnimated,
+  hasColors,
+  stripAnsi,
+} from './effect/OutputMode.tsx'
 export {
   TaskList,
   type TaskListProps,
@@ -95,31 +110,42 @@ export {
 // =============================================================================
 
 export {
+  // Types
   OutputModeTag,
   type OutputMode,
-  progressiveVisual,
-  progressiveVisualAlternate,
-  finalVisual,
-  finalJson,
-  progressiveJson,
-  fromFlags,
-  fromFlagsWithTTY,
+  type ReactOutputMode,
+  type JsonOutputMode,
+  // Presets
+  tty,
+  ci,
+  pipe,
+  log,
+  fullscreen,
+  json,
+  ndjson,
+  // Detection
   detect as detectOutputMode,
+  // Environment helpers
   isTTY,
   isNonTTY,
-  isVisual,
+  // Type guards
+  isReact,
   isJson,
   isProgressive,
   isFinal,
-  layer as outputModeLayer,
-  progressiveVisualLayer,
-  progressiveVisualAlternateLayer,
-  finalVisualLayer,
-  finalJsonLayer,
-  progressiveJsonLayer,
+  isAlternate,
+  getRenderConfig,
+  // Layers
+  layer,
+  ttyLayer,
+  ciLayer,
+  pipeLayer,
+  logLayer,
+  fullscreenLayer,
+  jsonLayer,
+  ndjsonLayer,
   detectLayer,
-  fromFlagsLayer,
-} from './effect/OutputMode.ts'
+} from './effect/OutputMode.tsx'
 
 // =============================================================================
 // TuiApp - Main API
@@ -181,7 +207,6 @@ export {
 
 export {
   TestRenderer,
-  stripAnsi,
   renderToText as renderComponentToText,
   renderToAnsi as renderComponentToAnsi,
   type TestRendererOptions,
@@ -279,12 +304,11 @@ export {
 // =============================================================================
 
 export {
-  jsonOption,
-  streamOption,
-  outputModeOptions,
-  outputModeLayerFromFlags,
-  outputModeLayerFromFlagsWithTTY,
-  type OutputModeFlags,
+  outputOption,
+  outputModeLayer,
+  resolveOutputMode,
+  OUTPUT_MODE_VALUES,
+  type OutputModeValue,
 } from './effect/cli.ts'
 
 // =============================================================================

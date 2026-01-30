@@ -1,6 +1,10 @@
 /**
  * Spinner component - animated loading indicator.
  *
+ * Adapts to RenderConfig context:
+ * - **animation: true**: Shows animated spinner frames
+ * - **animation: false**: Shows a fixed character (for CI/log output)
+ *
  * @example
  * ```tsx
  * <Box flexDirection="row">
@@ -12,6 +16,7 @@
 
 import { useState, useEffect, type ReactNode } from 'react'
 
+import { useRenderConfig } from '../effect/OutputMode.tsx'
 import { Text } from './Text.tsx'
 
 /** Spinner animation types */
@@ -24,6 +29,15 @@ export const spinnerFrames: Record<SpinnerType, readonly string[]> = {
   arc: ['◜', '◠', '◝', '◞', '◡', '◟'],
   bounce: ['⠁', '⠂', '⠄', '⠂'],
   bar: ['▏', '▎', '▍', '▌', '▋', '▊', '▉', '█', '▉', '▊', '▋', '▌', '▍', '▎'],
+}
+
+/** Static characters for each spinner type (used in CI/log mode) */
+export const spinnerStaticChars: Record<SpinnerType, string> = {
+  dots: '⠿',
+  line: '*',
+  arc: '◉',
+  bounce: '⠿',
+  bar: '█',
 }
 
 /** Frame intervals (ms) for each type */
@@ -43,27 +57,41 @@ export interface SpinnerProps {
   type?: SpinnerType | undefined
   /** Spinner color. Default: 'cyan' */
   color?: Color | undefined
+  /** Static character to use in non-animated modes. Overrides default. */
+  staticChar?: string | undefined
 }
 
 /**
  * Spinner component for loading indication.
  *
- * Uses state to animate through frames.
+ * Uses state to animate through frames when animation is enabled.
+ * Shows a static character in CI/log mode.
  */
 export const Spinner = (props: SpinnerProps): ReactNode => {
-  const { type = 'dots', color = 'cyan' } = props
+  const { type = 'dots', color = 'cyan', staticChar } = props
   const frames = spinnerFrames[type]
   const interval = spinnerIntervals[type]
+  const renderConfig = useRenderConfig()
 
   const [frameIndex, setFrameIndex] = useState(0)
 
+  // Only animate when animation is enabled
   useEffect(() => {
+    if (!renderConfig.animation) return
+
     const timer = setInterval(() => {
       setFrameIndex((prev) => (prev + 1) % frames.length)
     }, interval)
 
     return () => clearInterval(timer)
-  }, [frames.length, interval])
+  }, [frames.length, interval, renderConfig.animation])
 
+  // In static mode (animation: false), show a fixed character
+  if (!renderConfig.animation) {
+    const char = staticChar ?? spinnerStaticChars[type]
+    return Text({ color: renderConfig.colors ? color : undefined, children: char })
+  }
+
+  // In animated mode, show the current frame
   return Text({ color, children: frames[frameIndex] })
 }

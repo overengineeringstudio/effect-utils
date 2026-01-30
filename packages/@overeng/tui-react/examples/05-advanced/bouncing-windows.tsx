@@ -24,8 +24,8 @@ import React from 'react'
 
 import {
   createTuiApp,
-  outputModeOptions,
-  outputModeLayerFromFlagsWithTTY,
+  outputOption,
+  outputModeLayer,
 } from '../../src/mod.ts'
 
 // Import from shared modules
@@ -137,11 +137,11 @@ const bouncingWindowsCommand = Command.make(
   {
     count: countOption,
     duration: durationOption,
-    ...outputModeOptions,
+    output: outputOption,
   },
-  ({ count, duration, json, stream, visual }) =>
+  ({ count, duration, output }) =>
     runBouncingWindows({ windowCount: count, durationMs: duration * 1000 }).pipe(
-      Effect.provide(outputModeLayerFromFlagsWithTTY({ json, stream, visual })),
+      Effect.provide(outputModeLayer(output)),
     ),
 )
 
