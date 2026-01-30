@@ -221,7 +221,7 @@ const deployTimeline: Array<{ at: number; action: typeof DeployAction.Type }> = 
 const ALL_TABS: OutputTab[] = ['visual', 'fullscreen', 'string', 'json', 'ndjson']
 
 const meta: Meta = {
-  title: 'Examples/04 CLI/Deploy',
+  title: 'Examples/03 CLI/Deploy',
   parameters: {
     layout: 'fullscreen',
     docs: {
@@ -238,8 +238,8 @@ Deploy CLI view demonstrating progressive rendering with TuiStoryPreview.
 
 **CLI Usage:**
 \`\`\`bash
-bun examples/04-cli/deploy/main.ts --environment production --services api,web,worker
-bun examples/04-cli/deploy/main.ts --dry-run
+bun examples/03-cli/deploy/main.ts --environment production --services api,web,worker
+bun examples/03-cli/deploy/main.ts --dry-run
 \`\`\`
         `,
       },

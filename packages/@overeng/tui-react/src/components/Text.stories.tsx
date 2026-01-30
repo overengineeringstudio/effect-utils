@@ -1,7 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
-import { TextColorsExample, TextStylesExample } from '../examples/mod.ts'
 import { TuiStoryPreview } from '../storybook/TuiStoryPreview.tsx'
 import { Box } from './Box.tsx'
 import { Text } from './Text.tsx'
@@ -76,7 +75,16 @@ export const Dim: Story = {
 export const AllColors: Story = {
   render: () => (
     <TuiStoryPreview>
-      <TextColorsExample />
+      <Box>
+        <Text color="red">Red text</Text>
+        <Text color="green">Green text</Text>
+        <Text color="yellow">Yellow text</Text>
+        <Text color="blue">Blue text</Text>
+        <Text color="magenta">Magenta text</Text>
+        <Text color="cyan">Cyan text</Text>
+        <Text color="white">White text</Text>
+        <Text color="gray">Gray text</Text>
+      </Box>
     </TuiStoryPreview>
   ),
 }
@@ -85,7 +93,16 @@ export const AllColors: Story = {
 export const AllStyles: Story = {
   render: () => (
     <TuiStoryPreview>
-      <TextStylesExample />
+      <Box>
+        <Text bold>Bold text</Text>
+        <Text dim>Dim text</Text>
+        <Text italic>Italic text</Text>
+        <Text underline>Underlined text</Text>
+        <Text strikethrough>Strikethrough text</Text>
+        <Text bold color="cyan">
+          Bold + Cyan
+        </Text>
+      </Box>
     </TuiStoryPreview>
   ),
 }

@@ -1,7 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
-import { SpinnerBasicExample, SpinnerAllTypesExample } from '../examples/mod.ts'
 import { TuiStoryPreview } from '../storybook/TuiStoryPreview.tsx'
 import { Box } from './Box.tsx'
 import { Spinner, type SpinnerType } from './Spinner.tsx'
@@ -29,7 +28,10 @@ type Story = StoryObj<typeof Spinner>
 export const Default: Story = {
   render: () => (
     <TuiStoryPreview>
-      <SpinnerBasicExample />
+      <Box flexDirection="row">
+        <Spinner />
+        <Text> Loading...</Text>
+      </Box>
     </TuiStoryPreview>
   ),
 }
@@ -49,7 +51,28 @@ export const WithColor: Story = {
 export const AllTypes: Story = {
   render: () => (
     <TuiStoryPreview>
-      <SpinnerAllTypesExample />
+      <Box>
+        <Box flexDirection="row">
+          <Spinner type="dots" />
+          <Text> dots</Text>
+        </Box>
+        <Box flexDirection="row">
+          <Spinner type="line" />
+          <Text> line</Text>
+        </Box>
+        <Box flexDirection="row">
+          <Spinner type="arc" />
+          <Text> arc</Text>
+        </Box>
+        <Box flexDirection="row">
+          <Spinner type="bounce" />
+          <Text> bounce</Text>
+        </Box>
+        <Box flexDirection="row">
+          <Spinner type="bar" />
+          <Text> bar</Text>
+        </Box>
+      </Box>
     </TuiStoryPreview>
   ),
 }

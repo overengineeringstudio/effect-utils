@@ -81,9 +81,9 @@ Counter example demonstrating Effect integration with createTuiApp.
 
 **CLI Usage:**
 \`\`\`bash
-bun examples/03-effect-integration/counter.tsx
-bun examples/03-effect-integration/counter.tsx --json
-bun examples/03-effect-integration/counter.tsx --help
+bun examples/02-effect-integration/counter.tsx
+bun examples/02-effect-integration/counter.tsx --json
+bun examples/02-effect-integration/counter.tsx --help
 \`\`\`
         `,
       },

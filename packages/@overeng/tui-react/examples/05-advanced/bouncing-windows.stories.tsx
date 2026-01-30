@@ -73,10 +73,10 @@ DVD screensaver style bouncing windows with fake system stats.
 
 **CLI Usage:**
 \`\`\`bash
-bun examples/06-advanced/bouncing-windows.tsx
-bun examples/06-advanced/bouncing-windows.tsx --count 3
-bun examples/06-advanced/bouncing-windows.tsx --count 6 --duration 30
-bun examples/06-advanced/bouncing-windows.tsx --json
+bun examples/05-advanced/bouncing-windows.tsx
+bun examples/05-advanced/bouncing-windows.tsx --count 3
+bun examples/05-advanced/bouncing-windows.tsx --count 6 --duration 30
+bun examples/05-advanced/bouncing-windows.tsx --json
 \`\`\`
         `,
       },

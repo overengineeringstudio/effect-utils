@@ -10,7 +10,7 @@ import { test, expect } from '@playwright/test'
  */
 
 // Story URL for DeployView which uses TuiStoryPreview with all tabs
-const DEPLOY_STORY_URL = '/iframe.html?id=examples-04-cli-deploy--demo&viewMode=story'
+const DEPLOY_STORY_URL = '/iframe.html?id=examples-03-cli-deploy--demo&viewMode=story'
 
 test.describe('TuiStoryPreview Tabs', () => {
   test.beforeEach(async ({ page }) => {

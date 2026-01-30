@@ -58,7 +58,7 @@ const demoTimeline = createRapidTimeline(3000, 100) // 3 seconds, tick every 100
 // =============================================================================
 
 const meta: Meta = {
-  title: 'Examples/03 Stress/Rapid Updates',
+  title: 'Examples/04 Stress/Rapid Updates',
   parameters: {
     layout: 'fullscreen',
     docs: {
@@ -74,9 +74,9 @@ Rapid updates stress test - tests differential rendering performance.
 
 **CLI Usage:**
 \`\`\`bash
-bun examples/05-stress-tests/rapid-updates.tsx
-bun examples/05-stress-tests/rapid-updates.tsx --duration 10
-bun examples/05-stress-tests/rapid-updates.tsx --json
+bun examples/04-stress-tests/rapid-updates.tsx
+bun examples/04-stress-tests/rapid-updates.tsx --duration 10
+bun examples/04-stress-tests/rapid-updates.tsx --json
 \`\`\`
         `,
       },
