@@ -34,6 +34,34 @@ export type StoreGcResult = {
   message?: string | undefined
 }
 
+/** Issue type for store status */
+export type StoreWorktreeIssueType =
+  | 'dirty'
+  | 'unpushed'
+  | 'ref_mismatch'
+  | 'missing_bare'
+  | 'broken_worktree'
+  | 'orphaned'
+
+/** Issue severity */
+export type StoreIssueSeverity = 'error' | 'warning' | 'info'
+
+/** A single issue found in a worktree */
+export type StoreWorktreeIssue = {
+  type: StoreWorktreeIssueType
+  severity: StoreIssueSeverity
+  message: string
+}
+
+/** Status result for a single worktree */
+export type StoreWorktreeStatus = {
+  repo: string
+  ref: string
+  refType: 'heads' | 'tags' | 'commits'
+  path: string
+  issues: readonly StoreWorktreeIssue[]
+}
+
 // =============================================================================
 // Symbols
 // =============================================================================
@@ -513,6 +541,212 @@ export const StoreAddSuccess = ({
       <Text dim> ref: {ref}</Text>
       {commit && <Text dim> commit: {commit.slice(0, 7)}</Text>}
       <Text dim> path: {path}</Text>
+    </Box>
+  )
+}
+
+// =============================================================================
+// Store Status Output
+// =============================================================================
+
+export type StoreStatusOutputProps = {
+  basePath: string
+  repoCount: number
+  worktreeCount: number
+  diskUsage?: string | undefined
+  worktrees: readonly StoreWorktreeStatus[]
+}
+
+/** Get symbol for issue severity */
+const getIssueSeveritySymbol = (severity: StoreIssueSeverity) => {
+  switch (severity) {
+    case 'error':
+      return <Text color="red">{symbols.cross}</Text>
+    case 'warning':
+      return <Text color="yellow">{symbols.warning}</Text>
+    case 'info':
+      return <Text dim>{symbols.circle}</Text>
+  }
+}
+
+/** Get color for issue type */
+const getIssueColor = (
+  severity: StoreIssueSeverity,
+): 'red' | 'yellow' | 'gray' | 'green' | 'blue' | 'cyan' | 'magenta' | 'white' | undefined => {
+  switch (severity) {
+    case 'error':
+      return 'red'
+    case 'warning':
+      return 'yellow'
+    case 'info':
+      return 'gray'
+  }
+}
+
+/** Single worktree with issues */
+const StoreStatusWorktree = ({ worktree }: { worktree: StoreWorktreeStatus }) => {
+  // Get highest severity for the header
+  const highestSeverity = worktree.issues.reduce<StoreIssueSeverity>(
+    (acc, issue) => {
+      if (issue.severity === 'error') return 'error'
+      if (issue.severity === 'warning' && acc !== 'error') return 'warning'
+      return acc
+    },
+    'info' as StoreIssueSeverity,
+  )
+
+  return (
+    <Box flexDirection="column">
+      <Box flexDirection="row">
+        {getIssueSeveritySymbol(highestSeverity)}
+        <Text> </Text>
+        <Text>{worktree.repo}</Text>
+        <Text dim>/refs/{worktree.refType}/</Text>
+        <Text bold>{worktree.ref}</Text>
+      </Box>
+      {worktree.issues.map((issue, i) => (
+        <Box key={`${issue.type}-${i}`} flexDirection="row">
+          <Text>{'    '}</Text>
+          <Text color={getIssueColor(issue.severity)}>{issue.type}</Text>
+          <Text dim>: {issue.message}</Text>
+        </Box>
+      ))}
+    </Box>
+  )
+}
+
+/** Store status header */
+const StoreStatusHeader = ({
+  basePath,
+  diskUsage,
+  repoCount,
+  worktreeCount,
+}: {
+  basePath: string
+  diskUsage: string | undefined
+  repoCount: number
+  worktreeCount: number
+}) => (
+  <Box flexDirection="column">
+    <Box flexDirection="row">
+      <Text bold>Store: </Text>
+      <Text>{basePath}</Text>
+      {diskUsage && <Text dim> ({diskUsage})</Text>}
+    </Box>
+    <Text dim>
+      {'  '}
+      {repoCount} repo{repoCount !== 1 ? 's' : ''}, {worktreeCount} worktree
+      {worktreeCount !== 1 ? 's' : ''}
+    </Text>
+    <Text> </Text>
+  </Box>
+)
+
+/** Store status summary */
+const StoreStatusSummary = ({
+  errorCount,
+  warningCount,
+  infoCount,
+}: {
+  errorCount: number
+  warningCount: number
+  infoCount: number
+}) => {
+  const totalIssues = errorCount + warningCount + infoCount
+
+  if (totalIssues === 0) {
+    return (
+      <Box flexDirection="row">
+        <Text color="green">{symbols.check}</Text>
+        <Text> All worktrees healthy</Text>
+      </Box>
+    )
+  }
+
+  const parts: React.ReactNode[] = []
+  if (errorCount > 0) {
+    parts.push(
+      <Text key="errors" color="red">
+        {errorCount} error{errorCount !== 1 ? 's' : ''}
+      </Text>,
+    )
+  }
+  if (warningCount > 0) {
+    parts.push(
+      <Text key="warnings" color="yellow">
+        {warningCount} warning{warningCount !== 1 ? 's' : ''}
+      </Text>,
+    )
+  }
+  if (infoCount > 0) {
+    parts.push(
+      <Text key="info" dim>
+        {infoCount} info
+      </Text>,
+    )
+  }
+
+  return (
+    <Box flexDirection="row">
+      {parts.map((part, i) => (
+        <React.Fragment key={`part-${i}-${totalIssues}`}>
+          {i > 0 && <Text dim> {symbols.dot} </Text>}
+          {part}
+        </React.Fragment>
+      ))}
+    </Box>
+  )
+}
+
+export const StoreStatusOutput = ({
+  basePath,
+  repoCount,
+  worktreeCount,
+  diskUsage,
+  worktrees,
+}: StoreStatusOutputProps) => {
+  // Filter to only worktrees with issues
+  const worktreesWithIssues = worktrees.filter((w) => w.issues.length > 0)
+
+  // Count issues by severity
+  const errorCount = worktrees.reduce(
+    (acc, w) => acc + w.issues.filter((i) => i.severity === 'error').length,
+    0,
+  )
+  const warningCount = worktrees.reduce(
+    (acc, w) => acc + w.issues.filter((i) => i.severity === 'warning').length,
+    0,
+  )
+  const infoCount = worktrees.reduce(
+    (acc, w) => acc + w.issues.filter((i) => i.severity === 'info').length,
+    0,
+  )
+
+  return (
+    <Box flexDirection="column">
+      <StoreStatusHeader
+        basePath={basePath}
+        diskUsage={diskUsage}
+        repoCount={repoCount}
+        worktreeCount={worktreeCount}
+      />
+      {worktreesWithIssues.length > 0 && (
+        <>
+          <Text bold>Issues:</Text>
+          {worktreesWithIssues.map((worktree) => (
+            <StoreStatusWorktree
+              key={`${worktree.repo}-${worktree.refType}-${worktree.ref}`}
+              worktree={worktree}
+            />
+          ))}
+          <Text> </Text>
+        </>
+      )}
+      <StoreStatusSummary
+        errorCount={errorCount}
+        warningCount={warningCount}
+        infoCount={infoCount}
+      />
     </Box>
   )
 }

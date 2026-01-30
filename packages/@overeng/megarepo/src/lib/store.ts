@@ -192,27 +192,36 @@ const make = (config: StoreConfig): MegarepoStore => {
         // Walk the store directory (2 levels deep for host/owner/repo structure)
         const hosts = yield* fs.readDirectory(basePath)
         for (const host of hosts) {
+          // Skip hidden files/directories (like .DS_Store)
+          if (host.startsWith('.')) continue
+
           const hostPath = EffectPath.ops.join(basePath, EffectPath.unsafe.relativeDir(`${host}/`))
-          const hostStat = yield* fs.stat(hostPath)
-          if (hostStat.type !== 'Directory') continue
+          const hostStat = yield* fs.stat(hostPath).pipe(Effect.catchAll(() => Effect.succeed(null)))
+          if (hostStat?.type !== 'Directory') continue
 
           const owners = yield* fs.readDirectory(hostPath)
           for (const owner of owners) {
+            // Skip hidden files/directories
+            if (owner.startsWith('.')) continue
+
             const ownerPath = EffectPath.ops.join(
               hostPath,
               EffectPath.unsafe.relativeDir(`${owner}/`),
             )
-            const ownerStat = yield* fs.stat(ownerPath)
-            if (ownerStat.type !== 'Directory') continue
+            const ownerStat = yield* fs.stat(ownerPath).pipe(Effect.catchAll(() => Effect.succeed(null)))
+            if (ownerStat?.type !== 'Directory') continue
 
             const repos = yield* fs.readDirectory(ownerPath)
             for (const repo of repos) {
+              // Skip hidden files/directories
+              if (repo.startsWith('.')) continue
+
               const repoPath = EffectPath.ops.join(
                 ownerPath,
                 EffectPath.unsafe.relativeDir(`${repo}/`),
               )
-              const repoStat = yield* fs.stat(repoPath)
-              if (repoStat.type !== 'Directory') continue
+              const repoStat = yield* fs.stat(repoPath).pipe(Effect.catchAll(() => Effect.succeed(null)))
+              if (repoStat?.type !== 'Directory') continue
 
               // Only include repos that have a .bare directory
               const barePath = EffectPath.ops.join(

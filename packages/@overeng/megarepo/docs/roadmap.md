@@ -58,7 +58,7 @@ This document tracks potential future features for consideration. These are **no
 
 **Use case**: Debugging, understanding disk usage, finding dirty worktrees.
 
-**Status**: Add if `mr store gc` proves insufficient.
+**Status**: ✅ Implemented - detects ref mismatches, dirty worktrees, orphaned worktrees.
 
 ---
 

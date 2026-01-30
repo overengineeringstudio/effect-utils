@@ -598,6 +598,56 @@ mr store gc [--dry-run] [--force]
 
 List repos in global store.
 
+#### `mr store status`
+
+Show detailed store health and detect issues:
+
+```bash
+mr store status [--json]
+# Shows:
+# - Store location and disk usage
+# - Number of repos and worktrees
+# - Invalid or problematic worktrees
+```
+
+**Detected Issues:**
+
+| Issue | Description | Severity |
+|-------|-------------|----------|
+| `dirty` | Worktree has uncommitted changes | warning |
+| `unpushed` | Worktree has commits not pushed to remote | warning |
+| `ref_mismatch` | Checked-out branch doesn't match worktree path | error |
+| `missing_bare` | Worktree exists but `.bare/` repo is missing | error |
+| `broken_worktree` | Worktree directory is corrupted or incomplete | error |
+| `orphaned` | Not referenced by current megarepo's lock | info |
+
+**Example output:**
+
+```
+Store: ~/.megarepo (2.3 GB)
+  12 repos, 47 worktrees
+
+Issues:
+  ✗ github.com/effect-ts/effect/refs/heads/main
+    ref_mismatch: path says 'main' but HEAD is 'feature/experiment'
+    
+  ⚠ github.com/livestorejs/livestore/refs/heads/dev
+    dirty: 3 uncommitted changes
+    
+  ⚠ github.com/org/repo/refs/heads/old-branch
+    orphaned: not in current megarepo.lock
+```
+
+**Ref mismatch detection:** Similar to symlink drift in `mr status`, this detects when a worktree's actual git HEAD doesn't match what the store path implies. This can happen if someone ran `git checkout` directly inside a worktree instead of using `mr pin`.
+
+**Use with GC:**
+
+```bash
+mr store status              # identify issues
+mr store gc --dry-run        # see what would be cleaned
+mr store gc                  # clean orphaned worktrees
+```
+
 #### `mr store add <repo>`
 
 Add repo to store without adding to megarepo.
@@ -1082,6 +1132,20 @@ This occurs when:
 - Update `megarepo.json` to explicitly specify the ref: `"effect": "effect-ts/effect#refactor/feature"`
 - If the lock is outdated, update it by checking out the desired ref and running `mr sync`
 
+### Store worktree ref mismatch
+
+```
+✗ github.com/effect-ts/effect/refs/heads/main
+  ref_mismatch: path says 'main' but HEAD is 'feature/experiment'
+```
+
+This occurs when someone uses `git checkout` directly inside a store worktree. The store path implies one ref, but git is on a different branch.
+
+**Resolution:**
+- If the checkout was intentional: use `mr pin <member> -c <new-ref>` to create the proper worktree
+- If accidental: `cd` into the worktree and `git checkout <expected-ref>`
+- To prevent: always use `mr pin` to switch refs, not `git checkout`
+
 ---
 
 ## Invariants
@@ -1093,6 +1157,7 @@ This occurs when:
 5. **Path reveals mutability**: `refs/heads/*` is mutable, all else immutable
 6. **Lock file is source of truth**: Sync uses lock for commits, config for intent
 7. **No silent drift**: Sync never reports "already synced" when lock and symlink refs differ
+8. **Worktree path matches HEAD**: The ref encoded in a worktree's store path should match its git HEAD
 
 ---
 

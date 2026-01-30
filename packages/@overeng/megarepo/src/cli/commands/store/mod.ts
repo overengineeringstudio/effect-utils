@@ -38,6 +38,7 @@ import { classifyRef } from '../../../lib/ref.ts'
 import { Store, StoreLayer } from '../../../lib/store.ts'
 import { getCloneUrl } from '../../../lib/sync/mod.ts'
 import { Cwd, findMegarepoRoot, jsonOption } from '../../context.ts'
+import { extractRefFromSymlinkPath } from '../../../lib/ref.ts'
 import {
   StoreListOutput,
   StoreFetchOutput,
@@ -46,8 +47,11 @@ import {
   StoreAddError,
   StoreAddProgress,
   StoreAddSuccess,
+  StoreStatusOutput,
   type StoreFetchResult,
   type StoreGcResult,
+  type StoreWorktreeStatus,
+  type StoreWorktreeIssue,
 } from '../../renderers/StoreOutput.tsx'
 
 /** List repos in the store */
@@ -71,6 +75,219 @@ const storeLsCommand = Cli.Command.make('ls', { json: jsonOption }, ({ json }) =
     }
   }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/ls'), withJsonMode(json)),
 ).pipe(Cli.Command.withDescription('List repositories in the store'))
+
+/** Show store status and detect issues */
+const storeStatusCommand = Cli.Command.make('status', { json: jsonOption }, ({ json }) =>
+  Effect.gen(function* () {
+    const cwd = yield* Cwd
+    const store = yield* Store
+    const fs = yield* FileSystem.FileSystem
+
+    // Get lock file from current megarepo (if any) to determine orphaned worktrees
+    const root = yield* findMegarepoRoot(cwd)
+    let inUsePaths = new Set<string>()
+
+    if (Option.isSome(root)) {
+      const lockPath = EffectPath.ops.join(
+        root.value,
+        EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+      )
+      const lockFileOpt = yield* readLockFile(lockPath)
+      const lockFile = Option.getOrUndefined(lockFileOpt)
+
+      if (lockFile !== undefined) {
+        const configPath = EffectPath.ops.join(
+          root.value,
+          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+        )
+        const configContent = yield* fs.readFileString(configPath)
+        const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+
+        for (const [name, sourceString] of Object.entries(config.members)) {
+          const source = parseSourceString(sourceString)
+          if (source === undefined || !isRemoteSource(source)) continue
+
+          const lockedMember = lockFile.members[name]
+          if (lockedMember === undefined) continue
+
+          const worktreePath = store.getWorktreePath({
+            source,
+            ref: lockedMember.ref,
+          })
+          inUsePaths.add(worktreePath)
+        }
+      }
+    }
+
+    // List all repos and analyze worktrees
+    const repos = yield* store.listRepos()
+    const worktreeStatuses: StoreWorktreeStatus[] = []
+    let totalWorktreeCount = 0
+
+    for (const repo of repos) {
+      // Check if .bare/ exists
+      const bareRepoPath = EffectPath.ops.join(
+        repo.fullPath,
+        EffectPath.unsafe.relativeDir('.bare/'),
+      )
+      const bareExists = yield* fs.exists(bareRepoPath)
+
+      // List worktrees for this repo
+      const refsDir = EffectPath.ops.join(repo.fullPath, EffectPath.unsafe.relativeDir('refs/'))
+      const refsExists = yield* fs.exists(refsDir)
+      if (!refsExists) continue
+
+      const refTypes = yield* fs.readDirectory(refsDir)
+      for (const refTypeDir of refTypes) {
+        if (refTypeDir !== 'heads' && refTypeDir !== 'tags' && refTypeDir !== 'commits') continue
+
+        const refTypePath = EffectPath.ops.join(
+          refsDir,
+          EffectPath.unsafe.relativeDir(`${refTypeDir}/`),
+        )
+        const refTypeStat = yield* fs
+          .stat(refTypePath)
+          .pipe(Effect.catchAll(() => Effect.succeed(null)))
+        if (refTypeStat?.type !== 'Directory') continue
+
+        const encodedRefs = yield* fs.readDirectory(refTypePath)
+        for (const encodedRef of encodedRefs) {
+          const worktreePath = EffectPath.ops.join(
+            refTypePath,
+            EffectPath.unsafe.relativeDir(`${encodedRef}/`),
+          ) as AbsoluteDirPath
+          const worktreeStat = yield* fs
+            .stat(worktreePath)
+            .pipe(Effect.catchAll(() => Effect.succeed(null)))
+          if (worktreeStat?.type !== 'Directory') continue
+
+          totalWorktreeCount++
+          const expectedRef = decodeURIComponent(encodedRef)
+          const issues: StoreWorktreeIssue[] = []
+
+          // Check for missing bare repo
+          if (!bareExists) {
+            issues.push({
+              type: 'missing_bare',
+              severity: 'error',
+              message: '.bare/ directory not found',
+            })
+          }
+
+          // Check if worktree is a valid git repo
+          // In worktrees, .git is a file (not directory) containing "gitdir: <path>"
+          const gitPath = EffectPath.ops.join(
+            worktreePath,
+            EffectPath.unsafe.relativeFile('.git'),
+          )
+          const gitExists = yield* fs
+            .exists(gitPath)
+            .pipe(Effect.catchAll(() => Effect.succeed(false)))
+          if (!gitExists) {
+            issues.push({
+              type: 'broken_worktree',
+              severity: 'error',
+              message: '.git not found in worktree',
+            })
+          } else {
+            // Check for ref mismatch (only for branches)
+            if (refTypeDir === 'heads') {
+              const actualBranch = yield* Git.getCurrentBranch(worktreePath).pipe(
+                Effect.catchAll(() => Effect.succeed(Option.none<string>())),
+              )
+              if (Option.isSome(actualBranch) && actualBranch.value !== expectedRef) {
+                issues.push({
+                  type: 'ref_mismatch',
+                  severity: 'error',
+                  message: `path says '${expectedRef}' but HEAD is '${actualBranch.value}'`,
+                })
+              }
+            }
+
+            // Check for dirty worktree
+            const worktreeStatus = yield* Git.getWorktreeStatus(worktreePath).pipe(
+              Effect.catchAll(() =>
+                Effect.succeed({
+                  isDirty: false,
+                  hasUnpushed: false,
+                  changesCount: 0,
+                }),
+              ),
+            )
+            if (worktreeStatus.isDirty) {
+              issues.push({
+                type: 'dirty',
+                severity: 'warning',
+                message: `${worktreeStatus.changesCount} uncommitted change${worktreeStatus.changesCount !== 1 ? 's' : ''}`,
+              })
+            }
+            if (worktreeStatus.hasUnpushed) {
+              issues.push({
+                type: 'unpushed',
+                severity: 'warning',
+                message: 'has unpushed commits',
+              })
+            }
+          }
+
+          // Check if orphaned (not in current megarepo's lock)
+          if (!inUsePaths.has(worktreePath)) {
+            issues.push({
+              type: 'orphaned',
+              severity: 'info',
+              message: 'not in current megarepo.lock',
+            })
+          }
+
+          worktreeStatuses.push({
+            repo: repo.relativePath,
+            ref: expectedRef,
+            refType: refTypeDir as 'heads' | 'tags' | 'commits',
+            path: worktreePath,
+            issues,
+          })
+        }
+      }
+    }
+
+    // Output results
+    if (json) {
+      const summary = {
+        basePath: store.basePath,
+        repoCount: repos.length,
+        worktreeCount: totalWorktreeCount,
+        issues: {
+          errors: worktreeStatuses.reduce(
+            (acc, w) => acc + w.issues.filter((i) => i.severity === 'error').length,
+            0,
+          ),
+          warnings: worktreeStatuses.reduce(
+            (acc, w) => acc + w.issues.filter((i) => i.severity === 'warning').length,
+            0,
+          ),
+          info: worktreeStatuses.reduce(
+            (acc, w) => acc + w.issues.filter((i) => i.severity === 'info').length,
+            0,
+          ),
+        },
+        worktrees: worktreeStatuses.filter((w) => w.issues.length > 0),
+      }
+      console.log(JSON.stringify(summary))
+    } else {
+      const output = yield* Effect.promise(() =>
+        renderToString({
+          element: React.createElement(StoreStatusOutput, {
+            basePath: store.basePath,
+            repoCount: repos.length,
+            worktreeCount: totalWorktreeCount,
+            worktrees: worktreeStatuses,
+          }),
+        }),
+      )
+      yield* Console.log(output)
+    }
+  }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/status'), withJsonMode(json)),
+).pipe(Cli.Command.withDescription('Show store status and detect issues'))
 
 /** Fetch all repos in the store */
 const storeFetchCommand = Cli.Command.make('fetch', { json: jsonOption }, ({ json }) =>
@@ -630,6 +847,12 @@ const storeAddCommand = Cli.Command.make(
 
 /** Store subcommand group */
 export const storeCommand = Cli.Command.make('store', {}).pipe(
-  Cli.Command.withSubcommands([storeAddCommand, storeLsCommand, storeFetchCommand, storeGcCommand]),
+  Cli.Command.withSubcommands([
+    storeAddCommand,
+    storeLsCommand,
+    storeStatusCommand,
+    storeFetchCommand,
+    storeGcCommand,
+  ]),
   Cli.Command.withDescription('Manage the shared git store'),
 )
