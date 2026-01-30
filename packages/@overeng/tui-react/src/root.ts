@@ -92,14 +92,16 @@ export interface Root {
  * })
  * ```
  */
-// oxlint-disable-next-line overeng/named-args -- widely used API, breaking change
-export const createRoot = (
-  terminalOrStream: Terminal | TerminalLike,
-  options: CreateRootOptions = {},
-): Root => {
+export const createRoot = ({
+  terminalOrStream,
+  options = {},
+}: {
+  terminalOrStream: Terminal | TerminalLike
+  options?: CreateRootOptions
+}): Root => {
   const { throttleMs = 16, maxDynamicLines = 100, maxStaticLines = Infinity } = options
 
-  const renderer = new InlineRenderer(terminalOrStream)
+  const renderer = new InlineRenderer({ terminalOrStream })
 
   // Resolve terminal interface
   const terminal: Terminal =

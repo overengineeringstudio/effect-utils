@@ -58,7 +58,7 @@ export const opentuiRenderer = () => {
             exitOnCtrlC: true,
           }),
         )
-        root = createRoot(renderer)
+        root = createRoot({ terminalOrStream: renderer })
 
         // Subscribe to atom changes → trigger re-render
         registry.subscribe(stateAtom, () => {

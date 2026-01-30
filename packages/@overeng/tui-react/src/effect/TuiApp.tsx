@@ -456,7 +456,7 @@ const setupProgressiveVisualWithView = <S, A>({
 }): Effect.Effect<Root, never, Scope.Scope> =>
   Effect.gen(function* () {
     const runtime = yield* Effect.runtime<never>()
-    const root = createRoot(process.stdout)
+    const root = createRoot({ terminalOrStream: process.stdout })
 
     // Wrapper that provides context
     const TuiAppWrapper = (): ReactNode => (

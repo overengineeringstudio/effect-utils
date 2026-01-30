@@ -45,11 +45,13 @@ export interface RenderResult {
  * Synchronously render a React element to a string.
  * Note: Due to React's async nature, this returns a Promise.
  */
-// oxlint-disable-next-line overeng/named-args -- widely used API, breaking change
-export const renderAsync = (
-  element: ReactNode,
-  options: RenderOptions = {},
-): Promise<RenderResult> => {
+export const renderAsync = ({
+  element,
+  options = {},
+}: {
+  element: ReactNode
+  options?: RenderOptions
+}): Promise<RenderResult> => {
   const { columns = 80 } = options
 
   return new Promise((resolve) => {
@@ -100,8 +102,13 @@ export const renderAsync = (
  * WARNING: Due to React's async scheduling, this may return empty results.
  * Use renderAsync for reliable results.
  */
-// oxlint-disable-next-line overeng/named-args -- widely used API, breaking change
-export const render = (element: ReactNode, options: RenderOptions = {}): RenderResult => {
+export const render = ({
+  element,
+  options = {},
+}: {
+  element: ReactNode
+  options?: RenderOptions
+}): RenderResult => {
   const { columns = 80 } = options
 
   let lines: string[] = []

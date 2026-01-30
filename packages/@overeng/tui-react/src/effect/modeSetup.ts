@@ -38,8 +38,8 @@ export const setupFinalJson = <S>({
   Effect.addFinalizer(() =>
     Effect.gen(function* () {
       const finalState = yield* SubscriptionRef.get(stateRef)
-      const encoded = yield* Schema.encode(schema)(finalState)
-      yield* Console.log(JSON.stringify(encoded))
+      const jsonString = yield* Schema.encode(Schema.parseJson(schema))(finalState)
+      yield* Console.log(jsonString)
     }).pipe(Effect.orDie),
   )
 
@@ -66,8 +66,8 @@ export const setupProgressiveJson = <S>({
       // Signal that stream is subscribed on first item
       Stream.tap(() => Deferred.succeed(started, undefined)),
       Stream.tap((state) =>
-        Schema.encode(schema)(state).pipe(
-          Effect.flatMap((encoded) => Console.log(JSON.stringify(encoded))),
+        Schema.encode(Schema.parseJson(schema))(state).pipe(
+          Effect.flatMap((jsonString) => Console.log(jsonString)),
           Effect.orDie, // Schema encoding of valid state should never fail
         ),
       ),

@@ -64,7 +64,7 @@ export class OpenTuiInlineRenderer implements TaskRenderer {
               exitOnCtrlC: true,
             }),
           )
-          this.root = createRoot(this.renderer)
+          this.root = createRoot({ terminalOrStream: this.renderer })
 
           // Subscribe to atom changes → clear previous output and trigger re-render
           this.registry.subscribe(this.stateAtom, () => {

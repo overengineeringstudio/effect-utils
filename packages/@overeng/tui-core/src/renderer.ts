@@ -83,8 +83,13 @@ export class InlineRenderer {
   /** Whether cursor is currently hidden */
   private cursorHidden = false
 
-  // oxlint-disable-next-line overeng/named-args -- constructor with standard positional args
-  constructor(terminalOrStream: Terminal | TerminalLike, options: InlineRendererOptions = {}) {
+  constructor({
+    terminalOrStream,
+    options = {},
+  }: {
+    terminalOrStream: Terminal | TerminalLike
+    options?: InlineRendererOptions
+  }) {
     this.terminal =
       'isTTY' in terminalOrStream && typeof terminalOrStream.columns === 'number'
         ? (terminalOrStream as Terminal)

@@ -12,7 +12,7 @@ describe('createRoot options', () => {
   describe('maxDynamicLines', () => {
     it('truncates output when exceeding limit', async () => {
       const terminal = createMockTerminal()
-      const root = createRoot(terminal, { maxDynamicLines: 5, throttleMs: 0 })
+      const root = createRoot({ terminalOrStream: terminal, options: { maxDynamicLines: 5, throttleMs: 0 } })
 
       // Render 10 lines
       const items = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten']
@@ -40,7 +40,7 @@ describe('createRoot options', () => {
 
     it('does not truncate when within limit', async () => {
       const terminal = createMockTerminal()
-      const root = createRoot(terminal, { maxDynamicLines: 20, throttleMs: 0 })
+      const root = createRoot({ terminalOrStream: terminal, options: { maxDynamicLines: 20, throttleMs: 0 } })
 
       const items = ['one', 'two', 'three', 'four', 'five']
       root.render(
@@ -64,7 +64,7 @@ describe('createRoot options', () => {
   describe('throttleMs', () => {
     it('throttles rapid renders', async () => {
       const terminal = createMockTerminal()
-      const root = createRoot(terminal, { throttleMs: 100 })
+      const root = createRoot({ terminalOrStream: terminal, options: { throttleMs: 100 } })
 
       // Trigger many rapid renders
       for (let i = 0; i < 10; i++) {
@@ -82,7 +82,7 @@ describe('createRoot options', () => {
 
     it('eventually renders the last state after throttle period', async () => {
       const terminal = createMockTerminal()
-      const root = createRoot(terminal, { throttleMs: 20 })
+      const root = createRoot({ terminalOrStream: terminal, options: { throttleMs: 20 } })
 
       // Trigger renders
       root.render(<Text>First</Text>)
@@ -103,7 +103,7 @@ describe('createRoot options', () => {
   describe('viewport', () => {
     it('exposes current viewport dimensions', () => {
       const terminal = createMockTerminal({ cols: 120, rows: 40 })
-      const root = createRoot(terminal)
+      const root = createRoot({ terminalOrStream: terminal })
 
       expect(root.viewport).toEqual({ columns: 120, rows: 40 })
 
@@ -112,7 +112,7 @@ describe('createRoot options', () => {
 
     it('uses default dimensions when not specified', () => {
       const terminal = createMockTerminal()
-      const root = createRoot(terminal)
+      const root = createRoot({ terminalOrStream: terminal })
 
       expect(root.viewport).toEqual({ columns: 80, rows: 24 })
 

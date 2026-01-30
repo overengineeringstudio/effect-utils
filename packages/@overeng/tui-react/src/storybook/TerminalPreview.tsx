@@ -66,7 +66,7 @@ export const TerminalPreview: React.FC<TerminalPreviewProps> = ({ children, heig
 
     // Create TUI root with xterm adapter
     const adapter = createXtermAdapter(terminal)
-    rootRef.current = createRoot(adapter)
+    rootRef.current = createRoot({ terminalOrStream: adapter })
 
     setIsReady(true)
 
@@ -96,7 +96,7 @@ export const TerminalPreview: React.FC<TerminalPreviewProps> = ({ children, heig
 
     // Recreate root for clean state (InlineRenderer has internal state)
     const adapter = createXtermAdapter(terminalRef.current)
-    rootRef.current = createRoot(adapter)
+    rootRef.current = createRoot({ terminalOrStream: adapter })
 
     // Render the React element - createRoot handles re-renders automatically
     rootRef.current.render(children as React.ReactElement)

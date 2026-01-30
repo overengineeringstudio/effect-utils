@@ -29,7 +29,7 @@ describe('InlineRenderer', () => {
   describe('basic rendering', () => {
     it('renders lines to terminal', () => {
       const terminal = new MockTerminal()
-      const renderer = new InlineRenderer(terminal)
+      const renderer = new InlineRenderer({ terminalOrStream: terminal })
 
       renderer.render(['Line 1', 'Line 2'])
 
@@ -42,7 +42,7 @@ describe('InlineRenderer', () => {
 
     it('tracks dynamic lines', () => {
       const terminal = new MockTerminal()
-      const renderer = new InlineRenderer(terminal)
+      const renderer = new InlineRenderer({ terminalOrStream: terminal })
 
       renderer.render(['Line 1', 'Line 2'])
 
@@ -55,7 +55,7 @@ describe('InlineRenderer', () => {
   describe('static region', () => {
     it('appends static content', () => {
       const terminal = new MockTerminal()
-      const renderer = new InlineRenderer(terminal)
+      const renderer = new InlineRenderer({ terminalOrStream: terminal })
 
       renderer.appendStatic(['[INFO] Log 1'])
 
@@ -69,7 +69,7 @@ describe('InlineRenderer', () => {
 
     it('preserves static content when rendering dynamic', () => {
       const terminal = new MockTerminal()
-      const renderer = new InlineRenderer(terminal)
+      const renderer = new InlineRenderer({ terminalOrStream: terminal })
 
       renderer.appendStatic(['[INFO] Log 1'])
       renderer.render(['Progress: 50%'])
@@ -84,7 +84,7 @@ describe('InlineRenderer', () => {
   describe('cursor management', () => {
     it('hides cursor by default', () => {
       const terminal = new MockTerminal()
-      const renderer = new InlineRenderer(terminal)
+      const renderer = new InlineRenderer({ terminalOrStream: terminal })
 
       renderer.render(['Line 1'])
 
@@ -97,7 +97,7 @@ describe('InlineRenderer', () => {
 
     it('shows cursor on dispose', () => {
       const terminal = new MockTerminal()
-      const renderer = new InlineRenderer(terminal)
+      const renderer = new InlineRenderer({ terminalOrStream: terminal })
 
       renderer.render(['Line 1'])
       renderer.dispose()
@@ -114,7 +114,7 @@ describe('InlineRenderer', () => {
       // @ts-expect-error - override for testing
       terminal.isTTY = false
 
-      const renderer = new InlineRenderer(terminal)
+      const renderer = new InlineRenderer({ terminalOrStream: terminal })
       renderer.render(['Line 1', 'Line 2'])
 
       const output = terminal.getOutput()

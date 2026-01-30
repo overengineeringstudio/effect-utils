@@ -11,7 +11,7 @@ import { createMockTerminal } from '../helpers/mod.ts'
 describe('TaskList', () => {
   test('renders items with correct status icons', async () => {
     const terminal = createMockTerminal()
-    const root = createRoot(terminal)
+    const root = createRoot({ terminalOrStream: terminal })
 
     const items: TaskItem[] = [
       { id: '1', label: 'Task 1', status: 'success' },
@@ -47,7 +47,7 @@ describe('TaskList', () => {
 
   test('renders active item with spinner', async () => {
     const terminal = createMockTerminal()
-    const root = createRoot(terminal)
+    const root = createRoot({ terminalOrStream: terminal })
 
     const items: TaskItem[] = [
       { id: '1', label: 'Building', status: 'active', message: 'compiling...' },
@@ -68,7 +68,7 @@ describe('TaskList', () => {
 
   test('renders title when provided', async () => {
     const terminal = createMockTerminal()
-    const root = createRoot(terminal)
+    const root = createRoot({ terminalOrStream: terminal })
 
     const items: TaskItem[] = [{ id: '1', label: 'Task 1', status: 'pending' }]
 
@@ -83,7 +83,7 @@ describe('TaskList', () => {
 
   test('renders summary when showSummary=true', async () => {
     const terminal = createMockTerminal()
-    const root = createRoot(terminal)
+    const root = createRoot({ terminalOrStream: terminal })
 
     const items: TaskItem[] = [
       { id: '1', label: 'Task 1', status: 'success' },
@@ -106,7 +106,7 @@ describe('TaskList', () => {
 
   test('renders summary with elapsed time', async () => {
     const terminal = createMockTerminal()
-    const root = createRoot(terminal)
+    const root = createRoot({ terminalOrStream: terminal })
 
     const items: TaskItem[] = [{ id: '1', label: 'Task 1', status: 'success' }]
 
@@ -122,7 +122,7 @@ describe('TaskList', () => {
 
   test('updates when items change', async () => {
     const terminal = createMockTerminal()
-    const root = createRoot(terminal)
+    const root = createRoot({ terminalOrStream: terminal })
 
     const items1: TaskItem[] = [{ id: '1', label: 'Task 1', status: 'pending' }]
 

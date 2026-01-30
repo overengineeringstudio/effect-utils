@@ -111,7 +111,7 @@ export class TuiRenderer extends Context.Tag('TuiRenderer')<TuiRenderer, TuiRend
       TuiRenderer,
       Effect.gen(function* () {
         const target = terminal ?? process.stdout
-        const root = createRoot(target)
+        const root = createRoot({ terminalOrStream: target })
 
         // Register cleanup when scope closes
         yield* Effect.addFinalizer(() =>

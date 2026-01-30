@@ -39,11 +39,13 @@ import type { TuiAppConfig, TuiAppApi } from './TuiApp.tsx'
 /**
  * Options for running a test command.
  */
-export interface RunTestCommandOptions<Args> {
+export interface RunTestCommandOptions<S, Args> {
   /** Command arguments */
   args: Args
   /** Output mode to use */
   mode: OutputMode['_tag']
+  /** Schema for parsing and validating JSON output */
+  schema: Schema.Schema<S>
 }
 
 /**
@@ -116,7 +118,7 @@ export const runTestCommand = async <S, Args>({
   options,
 }: {
   commandFn: (args: Args) => Effect.Effect<unknown, unknown, Scope.Scope | OutputModeTag>
-  options: RunTestCommandOptions<Args>
+  options: RunTestCommandOptions<S, Args>
 }): Promise<TestCommandResult<S>> => {
   const jsonOutput: string[] = []
 
@@ -134,14 +136,12 @@ export const runTestCommand = async <S, Args>({
     console.log = originalLog
   }
 
-  // Parse JSON output to get states
+  // Parse and validate JSON output using schema
+  const jsonSchema = Schema.parseJson(options.schema)
   const parsedStates = jsonOutput
     .map((line) => {
-      try {
-        return JSON.parse(line) as S
-      } catch {
-        return null
-      }
+      const result = Schema.decodeUnknownEither(jsonSchema)(line)
+      return result._tag === 'Right' ? result.right : null
     })
     .filter((s): s is S => s !== null)
 
@@ -289,8 +289,7 @@ export const assertJsonMatchesSchema = <S, I>({
   jsonString: string
   schema: Schema.Schema<S, I>
 }): S => {
-  const parsed = JSON.parse(jsonString)
-  return Schema.decodeUnknownSync(schema)(parsed)
+  return Schema.decodeSync(Schema.parseJson(schema))(jsonString)
 }
 
 /**

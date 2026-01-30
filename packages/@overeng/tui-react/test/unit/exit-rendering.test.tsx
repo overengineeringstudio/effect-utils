@@ -124,7 +124,7 @@ describe('ExitMode', () => {
   describe('createRoot unmount modes', () => {
     test('persist mode keeps final output visible', async () => {
       const terminal = createMockTerminal({ isTTY: true, cols: 40 })
-      const root = createRoot(terminal, { throttleMs: 0 })
+      const root = createRoot({ terminalOrStream: terminal, options: { throttleMs: 0 } })
 
       root.render(
         <Box flexDirection="column">
@@ -148,7 +148,7 @@ describe('ExitMode', () => {
 
     test('clearDynamic mode clears dynamic region', async () => {
       const terminal = createMockTerminal({ isTTY: true, cols: 40 })
-      const root = createRoot(terminal, { throttleMs: 0 })
+      const root = createRoot({ terminalOrStream: terminal, options: { throttleMs: 0 } })
 
       root.render(
         <Box flexDirection="column">
@@ -171,7 +171,7 @@ describe('ExitMode', () => {
 
     test('clear mode removes all output', async () => {
       const terminal = createMockTerminal({ isTTY: true, cols: 40 })
-      const root = createRoot(terminal, { throttleMs: 0 })
+      const root = createRoot({ terminalOrStream: terminal, options: { throttleMs: 0 } })
 
       root.render(
         <Box flexDirection="column">
@@ -194,7 +194,7 @@ describe('ExitMode', () => {
 
     test('default mode is persist', async () => {
       const terminal = createMockTerminal({ isTTY: true, cols: 40 })
-      const root = createRoot(terminal, { throttleMs: 0 })
+      const root = createRoot({ terminalOrStream: terminal, options: { throttleMs: 0 } })
 
       root.render(<Text>Content</Text>)
 
@@ -212,7 +212,7 @@ describe('ExitMode', () => {
 
     test('multiple renders then persist', async () => {
       const terminal = createMockTerminal({ isTTY: true, cols: 40 })
-      const root = createRoot(terminal, { throttleMs: 0 })
+      const root = createRoot({ terminalOrStream: terminal, options: { throttleMs: 0 } })
 
       root.render(<Text>First</Text>)
       await waitForRender()
@@ -405,7 +405,7 @@ describe('VirtualTerminal (actual screen state)', () => {
   describe('persist mode - visible content', () => {
     test('final content is visible after unmount', async () => {
       const terminal = createVirtualTerminal({ cols: 40, rows: 10 })
-      const root = createRoot(terminal, { throttleMs: 0 })
+      const root = createRoot({ terminalOrStream: terminal, options: { throttleMs: 0 } })
 
       root.render(
         <Box flexDirection="column">
@@ -435,7 +435,7 @@ describe('VirtualTerminal (actual screen state)', () => {
 
     test('horizontal layout renders on single lines', async () => {
       const terminal = createVirtualTerminal({ cols: 40, rows: 10 })
-      const root = createRoot(terminal, { throttleMs: 0 })
+      const root = createRoot({ terminalOrStream: terminal, options: { throttleMs: 0 } })
 
       root.render(
         <Box flexDirection="column">
@@ -470,7 +470,7 @@ describe('VirtualTerminal (actual screen state)', () => {
 
     test('multiple renders preserve final state', async () => {
       const terminal = createVirtualTerminal({ cols: 40, rows: 10 })
-      const root = createRoot(terminal, { throttleMs: 0 })
+      const root = createRoot({ terminalOrStream: terminal, options: { throttleMs: 0 } })
 
       // First render
       root.render(<Text>Count: 0</Text>)
@@ -504,7 +504,7 @@ describe('VirtualTerminal (actual screen state)', () => {
   describe('clearDynamic mode - content cleared', () => {
     test('dynamic content is cleared after unmount', async () => {
       const terminal = createVirtualTerminal({ cols: 40, rows: 10 })
-      const root = createRoot(terminal, { throttleMs: 0 })
+      const root = createRoot({ terminalOrStream: terminal, options: { throttleMs: 0 } })
 
       root.render(
         <Box flexDirection="column">
@@ -531,7 +531,7 @@ describe('VirtualTerminal (actual screen state)', () => {
   describe('stress test scenario', () => {
     test('renders all lines including Frame/FPS/Progress/Spinner', async () => {
       const terminal = createVirtualTerminal({ cols: 60, rows: 20 })
-      const root = createRoot(terminal, { throttleMs: 0 })
+      const root = createRoot({ terminalOrStream: terminal, options: { throttleMs: 0 } })
 
       // Simulate the stress test component structure
       const StressTestView = ({ frame }: { frame: number }) => {
@@ -602,7 +602,7 @@ describe('VirtualTerminal (actual screen state)', () => {
 
     test('multiple frame updates show final state', async () => {
       const terminal = createVirtualTerminal({ cols: 60, rows: 20 })
-      const root = createRoot(terminal, { throttleMs: 0 })
+      const root = createRoot({ terminalOrStream: terminal, options: { throttleMs: 0 } })
 
       const SimpleCounter = ({ count }: { count: number }) => (
         <Box flexDirection="column">
@@ -637,7 +637,7 @@ describe('VirtualTerminal (actual screen state)', () => {
 
     test('unmount does not trigger additional clear (regression test)', async () => {
       const terminal = createVirtualTerminal({ cols: 60, rows: 20 })
-      const root = createRoot(terminal, { throttleMs: 0 })
+      const root = createRoot({ terminalOrStream: terminal, options: { throttleMs: 0 } })
 
       // Render some content
       root.render(
@@ -669,7 +669,7 @@ describe('VirtualTerminal (actual screen state)', () => {
 
     test('component with React hooks (useState/useEffect) renders all lines', async () => {
       const terminal = createVirtualTerminal({ cols: 60, rows: 20 })
-      const root = createRoot(terminal, { throttleMs: 0 })
+      const root = createRoot({ terminalOrStream: terminal, options: { throttleMs: 0 } })
 
       // Component using actual React hooks like the stress test
       const HookCounter = () => {
