@@ -22,6 +22,16 @@ export type GitStatus = {
   shortRev: string | undefined
 }
 
+/** Symlink drift information - when symlink target doesn't match expected ref */
+export type SymlinkDrift = {
+  /** The ref the symlink path corresponds to (e.g., 'dev' from refs/heads/dev) */
+  symlinkRef: string
+  /** The ref we expected based on config/lock (e.g., 'refactor/genie-igor-ci') */
+  expectedRef: string
+  /** The actual git branch inside the worktree (may differ from both) */
+  actualGitBranch: string | undefined
+}
+
 /** Member status information */
 export type MemberStatus = {
   name: string
@@ -38,6 +48,8 @@ export type MemberStatus = {
   isMegarepo: boolean
   nestedMembers: readonly MemberStatus[] | undefined
   gitStatus: GitStatus | undefined
+  /** Symlink drift detection - present when symlink points to wrong worktree */
+  symlinkDrift?: SymlinkDrift | undefined
 }
 
 /** Lock file staleness information */
@@ -80,6 +92,7 @@ type Problem =
   | { _tag: 'unpushed'; members: MemberStatus[] }
   | { _tag: 'lock_missing' }
   | { _tag: 'lock_stale'; missingFromLock: readonly string[]; extraInLock: readonly string[] }
+  | { _tag: 'symlink_drift'; members: MemberStatus[] }
 
 const flattenMembers = (members: readonly MemberStatus[]): MemberStatus[] => {
   const result: MemberStatus[] = []
@@ -101,6 +114,12 @@ const analyzeProblems = ({
 }): Problem[] => {
   const warnings: Problem[] = []
   const allMembers = flattenMembers(members)
+
+  // Symlink drift is a critical issue - show first
+  const drifted = allMembers.filter((m) => m.symlinkDrift !== undefined)
+  if (drifted.length > 0) {
+    warnings.push({ _tag: 'symlink_drift', members: drifted })
+  }
 
   if (lockStaleness !== undefined) {
     if (!lockStaleness.exists) {
@@ -149,6 +168,55 @@ const WarningBadge = () => (
 /** Single warning item */
 const WarningItem = ({ problem }: { problem: Problem }) => {
   switch (problem._tag) {
+    case 'symlink_drift': {
+      const count = problem.members.length
+      return (
+        <Box>
+          <Box flexDirection="row">
+            <Text>{'  '}</Text>
+            <Text bold color="red">
+              {count} member{count > 1 ? 's' : ''}
+            </Text>
+            <Text> </Text>
+            <Text dim>symlink points to wrong worktree</Text>
+          </Box>
+          {problem.members.map((m) => {
+            const drift = m.symlinkDrift!
+            return (
+              <Box key={m.name}>
+                <Box flexDirection="row">
+                  <Text>{'    '}</Text>
+                  <Text bold>{m.name}</Text>
+                </Box>
+                <Box flexDirection="row">
+                  <Text>{'      '}</Text>
+                  <Text dim>symlink: </Text>
+                  <Text color="yellow">{drift.symlinkRef}</Text>
+                </Box>
+                <Box flexDirection="row">
+                  <Text>{'      '}</Text>
+                  <Text dim>expected: </Text>
+                  <Text color="green">{drift.expectedRef}</Text>
+                  <Text dim> (from lock)</Text>
+                </Box>
+                {drift.actualGitBranch && drift.actualGitBranch !== drift.symlinkRef && (
+                  <Box flexDirection="row">
+                    <Text>{'      '}</Text>
+                    <Text dim>git branch: </Text>
+                    <Text color="magenta">{drift.actualGitBranch}</Text>
+                  </Box>
+                )}
+              </Box>
+            )
+          })}
+          <Box flexDirection="row">
+            <Text>{'    '}</Text>
+            <Text color="cyan">fix:</Text>
+            <Text> mr sync --pull</Text>
+          </Box>
+        </Box>
+      )
+    }
     case 'lock_missing':
       return (
         <Box>
@@ -278,6 +346,8 @@ const getProblemKey = (problem: Problem): string => {
       return 'lock_missing'
     case 'lock_stale':
       return `lock_stale-${problem.missingFromLock.join(',')}-${problem.extraInLock.join(',')}`
+    case 'symlink_drift':
+      return `symlink_drift-${problem.members.map((m) => m.name).join(',')}`
   }
 }
 

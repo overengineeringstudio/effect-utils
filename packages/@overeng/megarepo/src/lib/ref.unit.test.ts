@@ -5,6 +5,7 @@ import {
   classifyRef,
   decodeRef,
   encodeRef,
+  extractRefFromSymlinkPath,
   isCommitSha,
   isImmutableRef,
   looksLikeTag,
@@ -191,5 +192,85 @@ describe('isImmutableRef', () => {
 
   test('branches are mutable', () => {
     expect(isImmutableRef('branch')).toBe(false)
+  })
+})
+
+describe('extractRefFromSymlinkPath', () => {
+  test('extracts simple branch name', () => {
+    const result = extractRefFromSymlinkPath(
+      '/Users/foo/.megarepo/github.com/org/repo/refs/heads/main',
+    )
+    expect(result).toEqual({ ref: 'main', type: 'branch' })
+  })
+
+  test('extracts branch name with trailing slash', () => {
+    const result = extractRefFromSymlinkPath(
+      '/Users/foo/.megarepo/github.com/org/repo/refs/heads/main/',
+    )
+    expect(result).toEqual({ ref: 'main', type: 'branch' })
+  })
+
+  test('extracts URL-encoded branch name with slash', () => {
+    const result = extractRefFromSymlinkPath(
+      '/Users/foo/.megarepo/github.com/org/repo/refs/heads/refactor%2Fgenie-igor-ci',
+    )
+    expect(result).toEqual({ ref: 'refactor/genie-igor-ci', type: 'branch' })
+  })
+
+  test('extracts deeply nested URL-encoded branch name', () => {
+    const result = extractRefFromSymlinkPath(
+      '/Users/foo/.megarepo/github.com/org/repo/refs/heads/feature%2Fteam%2Fproject',
+    )
+    expect(result).toEqual({ ref: 'feature/team/project', type: 'branch' })
+  })
+
+  test('extracts tag name', () => {
+    const result = extractRefFromSymlinkPath(
+      '/Users/foo/.megarepo/github.com/org/repo/refs/tags/v1.0.0',
+    )
+    expect(result).toEqual({ ref: 'v1.0.0', type: 'tag' })
+  })
+
+  test('extracts tag name with trailing slash', () => {
+    const result = extractRefFromSymlinkPath(
+      '/Users/foo/.megarepo/github.com/org/repo/refs/tags/v1.0.0/',
+    )
+    expect(result).toEqual({ ref: 'v1.0.0', type: 'tag' })
+  })
+
+  test('extracts commit SHA', () => {
+    const result = extractRefFromSymlinkPath(
+      '/Users/foo/.megarepo/github.com/org/repo/commits/abc123def456789012345678901234567890abcd',
+    )
+    expect(result).toEqual({ ref: 'abc123def456789012345678901234567890abcd', type: 'commit' })
+  })
+
+  test('extracts short commit SHA', () => {
+    // Short SHAs are still valid in commit paths
+    const result = extractRefFromSymlinkPath(
+      '/Users/foo/.megarepo/github.com/org/repo/commits/abc123',
+    )
+    expect(result).toEqual({ ref: 'abc123', type: 'commit' })
+  })
+
+  test('returns undefined for non-megarepo paths', () => {
+    expect(extractRefFromSymlinkPath('/some/random/path')).toBeUndefined()
+    expect(extractRefFromSymlinkPath('/Users/foo/Code/repo')).toBeUndefined()
+    expect(extractRefFromSymlinkPath('')).toBeUndefined()
+  })
+
+  test('returns undefined for partial megarepo paths', () => {
+    // Missing refs/heads prefix
+    expect(extractRefFromSymlinkPath('/Users/foo/.megarepo/github.com/org/repo/main')).toBeUndefined()
+    // Just the store root
+    expect(extractRefFromSymlinkPath('/Users/foo/.megarepo/github.com/org/repo')).toBeUndefined()
+  })
+
+  test('handles real-world megarepo store paths', () => {
+    // Actual path format from the bug report
+    const result = extractRefFromSymlinkPath(
+      '/Users/schickling/.megarepo/github.com/livestorejs/livestore/refs/heads/dev',
+    )
+    expect(result).toEqual({ ref: 'dev', type: 'branch' })
   })
 })

@@ -16,7 +16,7 @@
 #     })
 #   ];
 #
-# Provides: pnpm:install, pnpm:install:<name>, pnpm:update, pnpm:clean, pnpm:clean-lock-files
+# Provides: pnpm:install, pnpm:install:<name>, pnpm:update, pnpm:clean, pnpm:reset-lock-files
 #
 # ---
 # How we avoid TypeScript TS2742 errors:
@@ -131,6 +131,8 @@ in {
       };
       "pnpm:update" = {
         description = "Update all pnpm lockfiles (use when adding new dependencies)";
+        # Ensure generated package.json files are up to date before updating lockfiles.
+        after = [ "genie:run" ];
         exec = ''
           echo "Updating pnpm lockfiles for all packages..."
           ${updateScript}
@@ -141,8 +143,8 @@ in {
         description = "Remove node_modules for all managed packages";
         exec = "rm -rf ${nodeModulesPaths}";
       };
-      "pnpm:clean-lock-files" = {
-        description = "Remove pnpm lock files for all managed packages";
+      "pnpm:reset-lock-files" = {
+        description = "Remove pnpm lock files for all managed packages (⚠ destructive, last resort)";
         exec = "rm -f ${lockFilePaths}";
       };
     }

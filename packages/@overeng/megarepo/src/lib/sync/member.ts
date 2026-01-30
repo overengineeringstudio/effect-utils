@@ -20,7 +20,7 @@ import {
 } from '../config.ts'
 import * as Git from '../git.ts'
 import type { LockFile } from '../lock.ts'
-import { classifyRef, isCommitSha, type RefType } from '../ref.ts'
+import { classifyRef, extractRefFromSymlinkPath, isCommitSha, type RefType } from '../ref.ts'
 import { Store } from '../store.ts'
 import type { MemberSyncResult } from './types.ts'
 
@@ -353,6 +353,22 @@ export const syncMember = ({
       const expectedWorktreePath = store.getWorktreePath({ source, ref: targetRef })
       const currentLinkNormalized = currentLink?.replace(/\/$/, '')
       const expectedPathNormalized = expectedWorktreePath.replace(/\/$/, '')
+
+      // Check for symlink drift: lock file ref differs from source string ref
+      // This happens when lock says "refactor/foo" but source has no ref (defaulting to "dev")
+      if (lockedMember !== undefined && lockedMember.ref !== targetRef) {
+        // Extract the ref from the current symlink path for display
+        const extracted = currentLinkNormalized
+          ? extractRefFromSymlinkPath(currentLinkNormalized)
+          : undefined
+        const symlinkRef = extracted?.ref
+
+        return {
+          name,
+          status: 'skipped',
+          message: `symlink drift: lock says '${lockedMember.ref}' but source resolves to '${targetRef}' (symlink points to '${symlinkRef ?? 'unknown'}')\n  hint: run 'mr sync --pull' to update to lock ref, or update megarepo.json to include #${lockedMember.ref}`,
+        } satisfies MemberSyncResult
+      }
 
       // If symlink points to correct location, just read current state for lock
       if (currentLinkNormalized === expectedPathNormalized) {

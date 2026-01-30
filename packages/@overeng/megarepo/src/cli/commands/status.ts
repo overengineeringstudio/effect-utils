@@ -25,8 +25,14 @@ import {
 } from '../../lib/config.ts'
 import * as Git from '../../lib/git.ts'
 import { checkLockStaleness, LOCK_FILE_NAME, readLockFile } from '../../lib/lock.ts'
+import { extractRefFromSymlinkPath } from '../../lib/ref.ts'
 import { Cwd, findMegarepoRoot, jsonOption, streamOption } from '../context.ts'
-import { StatusOutput, type GitStatus, type MemberStatus } from '../renderers/StatusOutput.tsx'
+import {
+  StatusOutput,
+  type GitStatus,
+  type MemberStatus,
+  type SymlinkDrift,
+} from '../renderers/StatusOutput.tsx'
 
 /**
  * Recursively scan members and build status tree.
@@ -107,6 +113,7 @@ const scanMembersRecursive = ({
 
       // Get git status if member exists
       let gitStatus: GitStatus | undefined = undefined
+      let currentBranch: string | undefined = undefined
       if (memberExists) {
         // Check if it's a git repo first
         const isGit = yield* Git.isGitRepo(memberPath).pipe(
@@ -129,6 +136,7 @@ const scanMembersRecursive = ({
             Effect.catchAll(() => Effect.succeed(Option.none())),
           )
           const branch = Option.getOrElse(branchOpt, () => 'HEAD')
+          currentBranch = branch !== 'HEAD' ? branch : undefined
 
           // Get short rev
           const shortRev = yield* Git.getCurrentCommit(memberPath).pipe(
@@ -142,6 +150,29 @@ const scanMembersRecursive = ({
             hasUnpushed: worktreeStatus.hasUnpushed,
             branch,
             shortRev,
+          }
+        }
+      }
+
+      // Detect symlink drift: symlink target doesn't match expected ref from lock
+      let symlinkDrift: SymlinkDrift | undefined = undefined
+      if (memberExists && !isLocal && lockedMember) {
+        // Read symlink target
+        const symlinkTarget = yield* fs
+          .readLink(memberPath.replace(/\/$/, ''))
+          .pipe(Effect.catchAll(() => Effect.succeed(null)))
+
+        if (symlinkTarget !== null) {
+          // Extract ref from symlink path using shared utility
+          const extracted = extractRefFromSymlinkPath(symlinkTarget)
+
+          // Compare with expected ref from lock file
+          if (extracted !== undefined && extracted.ref !== lockedMember.ref) {
+            symlinkDrift = {
+              symlinkRef: extracted.ref,
+              expectedRef: lockedMember.ref,
+              actualGitBranch: currentBranch,
+            }
           }
         }
       }
@@ -161,6 +192,7 @@ const scanMembersRecursive = ({
         isMegarepo,
         nestedMembers,
         gitStatus,
+        symlinkDrift,
       })
     }
 

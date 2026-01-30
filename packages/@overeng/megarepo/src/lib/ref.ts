@@ -195,3 +195,63 @@ export const refTypeToPathSegment = (type: RefType): string => {
 export const isImmutableRef = (type: RefType): boolean => {
   return type === 'commit' || type === 'tag'
 }
+
+// =============================================================================
+// Symlink Path Parsing
+// =============================================================================
+
+/**
+ * Result of extracting a ref from a symlink path
+ */
+export interface ExtractedSymlinkRef {
+  /** The decoded ref (e.g., 'refactor/genie-igor-ci') */
+  readonly ref: string
+  /** The type of ref based on the path segment */
+  readonly type: 'branch' | 'tag' | 'commit'
+}
+
+/**
+ * Extract a git ref from a megarepo store symlink path.
+ *
+ * Store paths follow the pattern:
+ * - `~/.megarepo/<url>/refs/heads/<branch>` for branches
+ * - `~/.megarepo/<url>/refs/tags/<tag>` for tags
+ * - `~/.megarepo/<url>/commits/<sha>` for commits
+ *
+ * Branch names with `/` are URL-encoded as `%2F`.
+ *
+ * @example
+ * extractRefFromSymlinkPath('/Users/foo/.megarepo/github.com/org/repo/refs/heads/main')
+ * // { ref: 'main', type: 'branch' }
+ *
+ * extractRefFromSymlinkPath('/Users/foo/.megarepo/github.com/org/repo/refs/heads/refactor%2Fgenie-igor-ci')
+ * // { ref: 'refactor/genie-igor-ci', type: 'branch' }
+ *
+ * extractRefFromSymlinkPath('/Users/foo/.megarepo/github.com/org/repo/refs/tags/v1.0.0')
+ * // { ref: 'v1.0.0', type: 'tag' }
+ *
+ * extractRefFromSymlinkPath('/Users/foo/.megarepo/github.com/org/repo/commits/abc123def456789012345678901234567890abcd')
+ * // { ref: 'abc123def456789012345678901234567890abcd', type: 'commit' }
+ *
+ * extractRefFromSymlinkPath('/some/other/path')
+ * // undefined
+ */
+export const extractRefFromSymlinkPath = (symlinkTarget: string): ExtractedSymlinkRef | undefined => {
+  // Path format: .../refs/heads/<branch> or .../refs/tags/<tag> or .../commits/<sha>
+  // Branch names with / are URL-encoded as %2F
+  const refsMatch = symlinkTarget.match(/\/refs\/heads\/([^/]+(?:\/[^/]+)*)(?:\/)?$/)
+  const tagsMatch = symlinkTarget.match(/\/refs\/tags\/([^/]+)(?:\/)?$/)
+  const commitsMatch = symlinkTarget.match(/\/commits\/([a-f0-9]+)(?:\/)?$/)
+
+  if (refsMatch) {
+    // Decode URL-encoded branch names (e.g., refactor%2Fgenie-igor-ci -> refactor/genie-igor-ci)
+    return { ref: decodeURIComponent(refsMatch[1]!), type: 'branch' }
+  }
+  if (tagsMatch) {
+    return { ref: tagsMatch[1]!, type: 'tag' }
+  }
+  if (commitsMatch) {
+    return { ref: commitsMatch[1]!, type: 'commit' }
+  }
+  return undefined
+}

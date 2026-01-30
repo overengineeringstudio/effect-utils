@@ -383,6 +383,18 @@ These options are mutually exclusive. When filtering is applied:
 
 This mode is ideal for local iteration: make commits in worktrees, then `mr sync` to capture the current state in the lock file.
 
+**Symlink drift detection:** In default mode, `mr sync` detects when there's a mismatch between:
+- The ref in the lock file (e.g., `refactor/feature-branch`)
+- The ref the source string resolves to (e.g., `dev` when no `#ref` is specified)
+
+When drift is detected, the member is skipped with a helpful message:
+```
+symlink drift: lock says 'refactor/feature-branch' but source resolves to 'dev'
+  hint: run 'mr sync --pull' to update to lock ref, or update megarepo.json to include #refactor/feature-branch
+```
+
+This prevents silent "already synced" messages when the lock and config are out of sync.
+
 **Options:**
 
 - `--pull` - Fetch from remote and update to latest commits (like old `mr update`)
@@ -507,7 +519,12 @@ mr status
 # Shows:
 # - Megarepo name (derived)
 # - Each member: sync state, git state, pinned status
+# - Symlink drift warnings (when symlink points to wrong worktree)
 ```
+
+**Symlink drift detection:** Warns when a member's symlink points to a different worktree than expected by the lock file. This can happen when:
+- The lock file was updated (e.g., by a teammate) but `mr sync` wasn't run
+- The source string in `megarepo.json` was changed without syncing
 
 #### `mr env`
 
@@ -1049,6 +1066,22 @@ Error: Local path does not exist: ./packages/missing
 Check that the path is correct relative to the megarepo root.
 ```
 
+### Symlink drift detected
+
+```
+Skipped: effect (symlink drift: lock says 'refactor/feature' but source resolves to 'dev')
+  hint: run 'mr sync --pull' to update to lock ref, or update megarepo.json to include #refactor/feature
+```
+
+This occurs when:
+- The lock file specifies one ref (e.g., from a previous sync or teammate's commit)
+- But the source string in `megarepo.json` resolves to a different ref
+
+**Resolution options:**
+- Run `mr sync --pull` to fetch and update to the lock file's ref
+- Update `megarepo.json` to explicitly specify the ref: `"effect": "effect-ts/effect#refactor/feature"`
+- If the lock is outdated, update it by checking out the desired ref and running `mr sync`
+
 ---
 
 ## Invariants
@@ -1059,6 +1092,7 @@ Check that the path is correct relative to the megarepo root.
 4. **Bare repo always exists**: If any worktree exists, `.bare/` exists
 5. **Path reveals mutability**: `refs/heads/*` is mutable, all else immutable
 6. **Lock file is source of truth**: Sync uses lock for commits, config for intent
+7. **No silent drift**: Sync never reports "already synced" when lock and symlink refs differ
 
 ---
 

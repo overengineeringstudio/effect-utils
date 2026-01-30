@@ -44,6 +44,36 @@
   };
   tasks."megarepo:check" = {
     description = "Verify megarepo envrc + workspace mirror are present and consistent";
+    # Use status to short-circuit when everything is already valid.
+    # This keeps check:quick/ check:all fast by avoiding redundant work.
+    # The status logic mirrors exec and returns non-zero only when a real issue exists.
+    status = ''
+      if [ ! -f ./megarepo.json ]; then
+        exit 0
+      fi
+
+      if [ ! -f ./.envrc.generated.megarepo ]; then
+        exit 1
+      fi
+
+      if [ ! -f ./.direnv/megarepo-nix/workspace/flake.nix ]; then
+        exit 1
+      fi
+
+      if ! grep -q '^export MEGAREPO_ROOT_NEAREST' ./.envrc.generated.megarepo; then
+        exit 1
+      fi
+
+      repo_root="$(pwd -P)/"
+      if [ -n "''${MEGAREPO_ROOT_NEAREST:-}" ]; then
+        nearest="''${MEGAREPO_ROOT_NEAREST%/}/"
+        if [ "$nearest" != "$repo_root" ]; then
+          exit 1
+        fi
+      fi
+
+      exit 0
+    '';
     exec = ''
       if [ ! -f ./megarepo.json ]; then
         exit 0
