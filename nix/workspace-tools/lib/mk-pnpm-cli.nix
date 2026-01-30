@@ -6,18 +6,17 @@
 #
 # Design:
 # - Uses fetchPnpmDeps (not our custom bun-deps.nix)
-# - Handles per-package lockfiles (not pnpm workspaces)
-# - Handles local `link:` dependencies by fetching deps for each and combining stores
+# - Each package has its own pnpm-workspace.yaml listing its workspace members
+# - The package's pnpm-lock.yaml contains deps for all workspace members
+# - Single fetchPnpmDeps + single pnpm install handles everything
 # - Handles `patchedDependencies` by including patches directory in filtered source
-# - Uses `rsync` to merge multiple pnpm stores (content-addressed = duplicates are identical)
 #
 # Arguments:
 # - name: Derivation name and default binary name.
 # - entry: CLI entry file relative to workspaceRoot.
 # - packageDir: Package directory relative to workspaceRoot.
 # - workspaceRoot: Workspace root (flake input or path).
-# - pnpmDepsHash: Hash for main package's pnpm deps.
-# - localDeps: List of { dir, hash } for local link: dependencies.
+# - pnpmDepsHash: Hash for package's pnpm deps (includes all workspace members).
 # - patchesDir: Patches directory relative to workspaceRoot (null to disable).
 # - binaryName: Output binary name (defaults to name).
 # - gitRev: Git short revision (defaults to "unknown").
@@ -34,7 +33,6 @@
   packageDir,
   workspaceRoot,
   pnpmDepsHash,
-  localDeps ? [],
   patchesDir ? "patches",
   binaryName ? name,
   gitRev ? "unknown",
@@ -55,76 +53,37 @@ let
     then workspaceRoot
     else builtins.toPath workspaceRoot;
 
-  # Create filtered source for a package that includes:
-  # - The package itself
-  # - The patches directory (if it exists and patchesDir is set)
-  # This preserves directory structure so relative patch paths work
+  # Create filtered source for fetching pnpm deps
+  # ONLY includes the main package - workspace members are excluded to avoid
+  # pnpm trying to create node_modules in read-only sibling directories
   mkPackageSource = pkgDir:
     lib.cleanSourceWith {
       src = workspaceRootPath;
       filter = path: type:
         let
           relPath = lib.removePrefix (toString workspaceRootPath + "/") (toString path);
-          # Check if path is under the package directory
+          # Only include the main package directory
           isInPackage = lib.hasPrefix "${pkgDir}/" relPath || relPath == pkgDir;
-          # Check if path is under patches directory
-          isInPatches = patchesDir != null && (lib.hasPrefix "${patchesDir}/" relPath || relPath == patchesDir);
           # Include parent directories needed for structure
           parts = lib.splitString "/" pkgDir;
           isParentDir = lib.any (n: relPath == lib.concatStringsSep "/" (lib.take n parts)) (lib.range 1 (lib.length parts));
+          # Check if path is under patches directory
+          isInPatches = patchesDir != null && (lib.hasPrefix "${patchesDir}/" relPath || relPath == patchesDir);
         in
         type == "directory" || isInPackage || isInPatches || isParentDir;
     };
 
-  # Fetch pnpm deps for a single package
-  mkPnpmDeps = { dir, hash }:
-    pkgs.fetchPnpmDeps {
-      pname = "${name}-${builtins.replaceStrings ["/"] ["-"] dir}";
-      src = mkPackageSource dir;
-      sourceRoot = "source/${dir}";
-      inherit hash;
-      # fetcherVersion 3 is for pnpm 9.x/10.x
-      fetcherVersion = 3;
-    };
-
-  # Main package deps
-  mainDeps = mkPnpmDeps { dir = packageDir; hash = pnpmDepsHash; };
-
-  # Local dependency deps
-  localDepsList = map mkPnpmDeps localDeps;
-
-  # Combine all pnpm stores into one
-  # Since pnpm stores are content-addressed, duplicates are identical
-  # We use rsync to merge (handles duplicates gracefully)
-  combinedDeps = if localDeps == []
-    then mainDeps
-    else pkgs.runCommand "${name}-combined-pnpm-deps" {
-      nativeBuildInputs = [ pkgs.zstd pkgs.rsync ];
-    } ''
-      mkdir -p $out
-      STORE=$(mktemp -d)
-
-      # Extract and merge all stores
-      # Use rsync to handle duplicates gracefully (content-addressed = identical files)
-      ${lib.concatMapStringsSep "\n" (deps: ''
-        echo "Extracting ${deps.name}..."
-        TEMP_EXTRACT=$(mktemp -d)
-        zstd -d -c ${deps}/pnpm-store.tar.zst | tar -xf - -C $TEMP_EXTRACT
-        chmod -R +w $TEMP_EXTRACT
-        rsync -a $TEMP_EXTRACT/ $STORE/
-        rm -rf $TEMP_EXTRACT
-      '') ([mainDeps] ++ localDepsList)}
-
-      echo "Combined store has $(find $STORE -type f | wc -l) files"
-
-      # Create combined tarball
-      echo "Creating combined store tarball..."
-      tar --sort=name \
-        --mtime="@$SOURCE_DATE_EPOCH" \
-        --owner=0 --group=0 --numeric-owner \
-        --pax-option=exthdr.name=%d/PaxHeaders/%f,delete=atime,delete=ctime \
-        --zstd -cf $out/pnpm-store.tar.zst -C $STORE .
-    '';
+  # Fetch pnpm deps - single call since lockfile includes all workspace members
+  # Source only includes main package, so pnpm can't try to write to sibling dirs
+  # This fetches ALL deps from lockfile (including workspace member deps)
+  pnpmDeps = pkgs.fetchPnpmDeps {
+    pname = "${name}-pnpm-deps";
+    src = mkPackageSource packageDir;
+    sourceRoot = "source/${packageDir}";
+    hash = pnpmDepsHash;
+    # fetcherVersion 3 is for pnpm 9.x/10.x
+    fetcherVersion = 3;
+  };
 
   # Full workspace source for building
   workspaceSrc = lib.cleanSourceWith {
@@ -166,7 +125,7 @@ pkgs.stdenv.mkDerivation {
     pkgs.zstd
   ];
 
-  pnpmDeps = combinedDeps;
+  inherit pnpmDeps;
 
   dontUnpack = true;
   dontFixup = true;
@@ -180,7 +139,7 @@ pkgs.stdenv.mkDerivation {
 
     # Extract pnpm store
     echo "Extracting pnpm store..."
-    zstd -d -c ${combinedDeps}/pnpm-store.tar.zst | tar -xf - -C $STORE_PATH
+    zstd -d -c ${pnpmDeps}/pnpm-store.tar.zst | tar -xf - -C $STORE_PATH
     chmod -R +w $STORE_PATH
 
     # Configure pnpm
@@ -194,21 +153,12 @@ pkgs.stdenv.mkDerivation {
     chmod -R +w workspace
     cd workspace
 
-    # Install deps for main package
-    echo "Installing main package deps..."
+    # Install deps for main package and all workspace members recursively
+    echo "Installing package deps..."
     cd ${packageDir}
-    pnpm install --offline --frozen-lockfile --ignore-scripts
-    patchShebangs node_modules
+    pnpm install --offline --frozen-lockfile --ignore-scripts --recursive
+    patchShebangs .
     cd -
-
-    # Install deps for local dependencies
-    ${lib.concatMapStringsSep "\n" (dep: ''
-      echo "Installing deps for ${dep.dir}..."
-      cd ${dep.dir}
-      pnpm install --offline --frozen-lockfile --ignore-scripts
-      patchShebangs node_modules
-      cd -
-    '') localDeps}
 
     # Inject build stamp
     if [ -f "${entry}" ]; then
