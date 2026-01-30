@@ -137,8 +137,8 @@ export class TestRenderer {
    * ```
    */
   async render(element: ReactElement): Promise<void> {
-    const ansi = await renderToString(element, { width: this.options.columns })
-    const lines = await renderToLines(element, { width: this.options.columns })
+    const ansi = await renderToString({ element, options: { width: this.options.columns } })
+    const lines = await renderToLines({ element, options: { width: this.options.columns } })
     const text = stripAnsi(ansi)
     const textLines = lines.map(stripAnsi)
 

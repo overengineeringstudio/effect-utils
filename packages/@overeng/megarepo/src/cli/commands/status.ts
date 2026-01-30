@@ -185,14 +185,14 @@ export const statusCommand = Cli.Command.make(
           })
         }
         const output = yield* Effect.promise(() =>
-          renderToString(
-            React.createElement(
+          renderToString({
+            element: React.createElement(
               Box,
               { flexDirection: 'row' },
               React.createElement(Text, { color: 'red' }, '\u2717'),
               React.createElement(Text, null, ' Not in a megarepo'),
             ),
-          ),
+          }),
         )
         yield* Console.error(output)
         return yield* Effect.fail(new Error('Not in a megarepo'))
@@ -433,8 +433,8 @@ export const statusCommand = Cli.Command.make(
 
         // Render using React StatusOutput component
         const output = yield* Effect.promise(() =>
-          renderToString(
-            React.createElement(StatusOutput, {
+          renderToString({
+            element: React.createElement(StatusOutput, {
               name,
               root: root.value,
               members,
@@ -442,7 +442,7 @@ export const statusCommand = Cli.Command.make(
               lockStaleness,
               currentMemberPath,
             }),
-          ),
+          }),
         )
         yield* Console.log(output)
       }

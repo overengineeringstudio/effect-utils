@@ -35,14 +35,14 @@ export const initCommand = Cli.Command.make('init', { json: jsonOption }, ({ jso
         })
       }
       const output = yield* Effect.promise(() =>
-        renderToString(
-          React.createElement(
+        renderToString({
+          element: React.createElement(
             Box,
             { flexDirection: 'row' },
             React.createElement(Text, { color: 'red' }, '\u2717'),
             React.createElement(Text, null, " Not a git repository. Run 'git init' first."),
           ),
-        ),
+        }),
       )
       yield* Console.error(output)
       return yield* Effect.fail(new Error('Not a git repository'))
@@ -57,7 +57,7 @@ export const initCommand = Cli.Command.make('init', { json: jsonOption }, ({ jso
         console.log(JSON.stringify({ status: 'already_initialized', path: configPath }))
       } else {
         const alreadyOutput = yield* Effect.promise(() =>
-          renderToString(React.createElement(Text, { dim: true }, 'megarepo already initialized')),
+          renderToString({ element: React.createElement(Text, { dim: true }, 'megarepo already initialized') }),
         )
         yield* Console.log(alreadyOutput)
       }
@@ -80,15 +80,15 @@ export const initCommand = Cli.Command.make('init', { json: jsonOption }, ({ jso
       console.log(JSON.stringify({ status: 'initialized', path: configPath }))
     } else {
       const successOutput = yield* Effect.promise(() =>
-        renderToString(
-          React.createElement(
+        renderToString({
+          element: React.createElement(
             Box,
             { flexDirection: 'row' },
             React.createElement(Text, { color: 'green' }, '\u2713'),
             React.createElement(Text, { dim: true }, ' initialized megarepo at '),
             React.createElement(Text, { bold: true }, path.basename(cwd)),
           ),
-        ),
+        }),
       )
       yield* Console.log(successOutput)
     }

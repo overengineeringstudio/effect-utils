@@ -30,14 +30,14 @@ export const lsCommand = Cli.Command.make('ls', { json: jsonOption }, ({ json })
         })
       }
       const output = yield* Effect.promise(() =>
-        renderToString(
-          React.createElement(
+        renderToString({
+          element: React.createElement(
             Box,
             { flexDirection: 'row' },
             React.createElement(Text, { color: 'red' }, '\u2717'),
             React.createElement(Text, null, ' Not in a megarepo'),
           ),
-        ),
+        }),
       )
       yield* Console.error(output)
       return yield* Effect.fail(new Error('Not in a megarepo'))
@@ -57,14 +57,14 @@ export const lsCommand = Cli.Command.make('ls', { json: jsonOption }, ({ json })
     } else {
       for (const [name, sourceString] of Object.entries(config.members)) {
         const memberOutput = yield* Effect.promise(() =>
-          renderToString(
-            React.createElement(
+          renderToString({
+            element: React.createElement(
               Box,
               { flexDirection: 'row' },
               React.createElement(Text, { bold: true }, name),
               React.createElement(Text, { dim: true }, ` (${sourceString})`),
             ),
-          ),
+          }),
         )
         yield* Console.log(memberOutput)
       }

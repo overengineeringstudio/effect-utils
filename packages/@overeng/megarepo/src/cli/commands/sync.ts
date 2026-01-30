@@ -188,8 +188,8 @@ export const syncMegarepo = ({
     // Verbose: show sync configuration
     if (verbose && !json && depth === 0) {
       const verboseOutput = yield* Effect.promise(() =>
-        renderToString(
-          React.createElement(
+        renderToString({
+          element: React.createElement(
             Box,
             null,
             React.createElement(
@@ -201,7 +201,7 @@ export const syncMegarepo = ({
             force ? React.createElement(Text, { dim: true }, 'Force: true') : null,
             deep ? React.createElement(Text, { dim: true }, 'Deep: true') : null,
           ),
-        ),
+        }),
       )
       yield* Console.log(verboseOutput)
     }
@@ -264,15 +264,15 @@ export const syncMegarepo = ({
           )
         } else {
           const output = yield* Effect.promise(() =>
-            renderToString(
-              React.createElement(
+            renderToString({
+              element: React.createElement(
                 Box,
                 { flexDirection: 'row' },
                 React.createElement(Text, null, indent),
                 React.createElement(Text, { color: 'red' }, '\u2717'),
                 React.createElement(Text, null, ' Lock file required for --frozen mode'),
               ),
-            ),
+            }),
           )
           yield* Console.error(output)
         }
@@ -314,8 +314,8 @@ export const syncMegarepo = ({
           )
         } else {
           const staleOutput = yield* Effect.promise(() =>
-            renderToString(
-              React.createElement(
+            renderToString({
+              element: React.createElement(
                 Box,
                 null,
                 React.createElement(
@@ -340,7 +340,7 @@ export const syncMegarepo = ({
                     )
                   : null,
               ),
-            ),
+            }),
           )
           yield* Console.log(staleOutput)
         }
@@ -358,15 +358,15 @@ export const syncMegarepo = ({
 
     // Verbose: show filtered members
     if (verbose && !json && skippedMemberNames.size > 0) {
-      const skipOutput = yield* Effect.promise(() =>
-        renderToString(
-          React.createElement(
-            Text,
-            { dim: true },
-            `Skipping ${skippedMemberNames.size} member(s): ${[...skippedMemberNames].join(', ')}`,
-          ),
-        ),
-      )
+const skipOutput = yield* Effect.promise(() =>
+          renderToString({
+            element: React.createElement(
+              Text,
+              { dim: true },
+              `Skipping ${skippedMemberNames.size} member(s): ${[...skippedMemberNames].join(', ')}`,
+            ),
+          }),
+        )
       yield* Console.log(skipOutput)
     }
 
@@ -722,14 +722,14 @@ export const syncCommand = Cli.Command.make(
           )
         } else {
           const output = yield* Effect.promise(() =>
-            renderToString(
-              React.createElement(
+            renderToString({
+              element: React.createElement(
                 Box,
                 { flexDirection: 'row' },
                 React.createElement(Text, { color: 'red' }, '\u2717'),
                 React.createElement(Text, null, ' --only and --skip are mutually exclusive'),
               ),
-            ),
+            }),
           )
           yield* Console.error(output)
         }
@@ -750,14 +750,14 @@ export const syncCommand = Cli.Command.make(
           )
         } else {
           const output = yield* Effect.promise(() =>
-            renderToString(
-              React.createElement(
+            renderToString({
+              element: React.createElement(
                 Box,
                 { flexDirection: 'row' },
                 React.createElement(Text, { color: 'red' }, '\u2717'),
                 React.createElement(Text, null, ' Not in a megarepo'),
               ),
-            ),
+            }),
           )
           yield* Console.error(output)
         }
@@ -827,8 +827,8 @@ export const syncCommand = Cli.Command.make(
         const generatedFiles = getEnabledGenerators(config)
         if (generatedFiles.length > 0) {
           const genOutput = yield* Effect.promise(() =>
-            renderToString(
-              React.createElement(
+            renderToString({
+              element: React.createElement(
                 Box,
                 null,
                 React.createElement(Text, null, ''),
@@ -846,7 +846,7 @@ export const syncCommand = Cli.Command.make(
                   ),
                 ),
               ),
-            ),
+            }),
           )
           yield* Console.log(genOutput)
         }
@@ -961,8 +961,8 @@ export const syncCommand = Cli.Command.make(
         } else {
           // Render using the React SyncOutput component
           const output = yield* Effect.promise(() =>
-            renderToString(
-              React.createElement(SyncOutput, {
+            renderToString({
+              element: React.createElement(SyncOutput, {
                 name,
                 root: root.value,
                 results: syncResult.results,
@@ -973,7 +973,7 @@ export const syncCommand = Cli.Command.make(
                 pull,
                 generatedFiles,
               }),
-            ),
+            }),
           )
           yield* Console.log(output)
         }

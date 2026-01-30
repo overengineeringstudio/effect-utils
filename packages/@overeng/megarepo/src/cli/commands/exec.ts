@@ -60,7 +60,7 @@ export const execCommand = Cli.Command.make(
           )
         } else {
           const output = yield* Effect.promise(() =>
-            renderToString(React.createElement(ExecErrorOutput, { type: 'not_in_megarepo' })),
+            renderToString({ element: React.createElement(ExecErrorOutput, { type: 'not_in_megarepo' }) }),
           )
           yield* Console.error(output)
         }
@@ -87,7 +87,7 @@ export const execCommand = Cli.Command.make(
           console.log(JSON.stringify({ error: 'not_found', message: 'Member not found' }))
         } else {
           const output = yield* Effect.promise(() =>
-            renderToString(React.createElement(ExecErrorOutput, { type: 'member_not_found' })),
+            renderToString({ element: React.createElement(ExecErrorOutput, { type: 'member_not_found' }) }),
           )
           yield* Console.error(output)
         }
@@ -97,13 +97,13 @@ export const execCommand = Cli.Command.make(
       // Verbose: show execution details
       if (verbose && !json) {
         const verboseOutput = yield* Effect.promise(() =>
-          renderToString(
-            React.createElement(ExecVerboseHeader, {
+          renderToString({
+            element: React.createElement(ExecVerboseHeader, {
               command: cmd,
               mode,
               members: membersToRun,
             }),
-          ),
+          }),
         )
         yield* Console.log(verboseOutput)
       }
@@ -117,7 +117,7 @@ export const execCommand = Cli.Command.make(
           if (!exists) {
             if (verbose && !json) {
               const skippedOutput = yield* Effect.promise(() =>
-                renderToString(React.createElement(ExecMemberSkipped, { name })),
+                renderToString({ element: React.createElement(ExecMemberSkipped, { name }) }),
               )
               yield* Console.log(skippedOutput)
             }
@@ -131,7 +131,7 @@ export const execCommand = Cli.Command.make(
 
           if (verbose && !json) {
             const pathOutput = yield* Effect.promise(() =>
-              renderToString(React.createElement(ExecMemberPath, { name, path: memberPath })),
+              renderToString({ element: React.createElement(ExecMemberPath, { name, path: memberPath }) }),
             )
             yield* Console.log(pathOutput)
           }
@@ -178,7 +178,7 @@ export const execCommand = Cli.Command.make(
           // Print output immediately in sequential mode (unless JSON)
           if (!json) {
             const nameOutput = yield* Effect.promise(() =>
-              renderToString(React.createElement(ExecMemberHeader, { name })),
+              renderToString({ element: React.createElement(ExecMemberHeader, { name }) }),
             )
             yield* Console.log(nameOutput)
             if (result.stdout) {
@@ -186,7 +186,7 @@ export const execCommand = Cli.Command.make(
             }
             if (result.stderr) {
               const stderrOutput = yield* Effect.promise(() =>
-                renderToString(React.createElement(ExecStderr, { stderr: result.stderr })),
+                renderToString({ element: React.createElement(ExecStderr, { stderr: result.stderr }) }),
               )
               console.error(stderrOutput)
             }
@@ -198,7 +198,7 @@ export const execCommand = Cli.Command.make(
       if (!json && mode === 'parallel') {
         for (const result of results) {
           const nameOutput = yield* Effect.promise(() =>
-            renderToString(React.createElement(ExecMemberHeader, { name: result.name })),
+            renderToString({ element: React.createElement(ExecMemberHeader, { name: result.name }) }),
           )
           yield* Console.log(nameOutput)
           if (result.stdout) {
@@ -206,7 +206,7 @@ export const execCommand = Cli.Command.make(
           }
           if (result.stderr) {
             const stderrOutput = yield* Effect.promise(() =>
-              renderToString(React.createElement(ExecStderr, { stderr: result.stderr })),
+              renderToString({ element: React.createElement(ExecStderr, { stderr: result.stderr }) }),
             )
             console.error(stderrOutput)
           }

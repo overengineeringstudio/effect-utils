@@ -73,9 +73,9 @@ const generateNixForRoot: (
 
     if (!json && depth > 0) {
       const genOutput = yield* Effect.promise(() =>
-        renderToString(
-          React.createElement(Text, { dim: true }, `${indent}Generating ${currentRoot}...`),
-        ),
+        renderToString({
+          element: React.createElement(Text, { dim: true }, `${indent}Generating ${currentRoot}...`),
+        }),
       )
       yield* Console.log(genOutput)
     }
@@ -88,8 +88,8 @@ const generateNixForRoot: (
 
     if (!json) {
       const nixOutput = yield* Effect.promise(() =>
-        renderToString(
-          React.createElement(
+        renderToString({
+          element: React.createElement(
             Box,
             null,
             React.createElement(
@@ -109,7 +109,7 @@ const generateNixForRoot: (
               React.createElement(Text, { bold: true }, '.direnv/megarepo-nix/workspace'),
             ),
           ),
-        ),
+        }),
       )
       yield* Console.log(nixOutput)
     }
@@ -135,8 +135,8 @@ const generateNixForRoot: (
 
       if (nestedRoots.length > 0 && !json) {
         const nestedOutput = yield* Effect.promise(() =>
-          renderToString(
-            React.createElement(
+          renderToString({
+            element: React.createElement(
               Box,
               null,
               React.createElement(Text, null, ''),
@@ -147,7 +147,7 @@ const generateNixForRoot: (
                 React.createElement(Text, { bold: true }, 'Generating nested megarepos...'),
               ),
             ),
-          ),
+          }),
         )
         yield* Console.log(nestedOutput)
       }
@@ -199,14 +199,14 @@ const generateNixCommand = Cli.Command.make(
           )
         } else {
           const output = yield* Effect.promise(() =>
-            renderToString(
-              React.createElement(
+            renderToString({
+              element: React.createElement(
                 Box,
                 { flexDirection: 'row' },
                 React.createElement(Text, { color: 'red' }, '\u2717'),
                 React.createElement(Text, null, ' Not in a megarepo'),
               ),
-            ),
+            }),
           )
           yield* Console.error(output)
         }
@@ -260,14 +260,14 @@ const generateVscodeCommand = Cli.Command.make(
           )
         } else {
           const output = yield* Effect.promise(() =>
-            renderToString(
-              React.createElement(
+            renderToString({
+              element: React.createElement(
                 Box,
                 { flexDirection: 'row' },
                 React.createElement(Text, { color: 'red' }, '\u2717'),
                 React.createElement(Text, null, ' Not in a megarepo'),
               ),
-            ),
+            }),
           )
           yield* Console.error(output)
         }
@@ -295,15 +295,15 @@ const generateVscodeCommand = Cli.Command.make(
         console.log(JSON.stringify({ status: 'generated', path: result.path }))
       } else {
         const vscodeOutput = yield* Effect.promise(() =>
-          renderToString(
-            React.createElement(
+          renderToString({
+            element: React.createElement(
               Box,
               { flexDirection: 'row' },
               React.createElement(Text, { color: 'green' }, '\u2713'),
               React.createElement(Text, null, ' Generated '),
               React.createElement(Text, { bold: true }, '.vscode/megarepo.code-workspace'),
             ),
-          ),
+          }),
         )
         yield* Console.log(vscodeOutput)
       }
@@ -336,14 +336,14 @@ const generateSchemaCommand = Cli.Command.make(
           )
         } else {
           const output = yield* Effect.promise(() =>
-            renderToString(
-              React.createElement(
+            renderToString({
+              element: React.createElement(
                 Box,
                 { flexDirection: 'row' },
                 React.createElement(Text, { color: 'red' }, '\u2717'),
                 React.createElement(Text, null, ' Not in a megarepo'),
               ),
-            ),
+            }),
           )
           yield* Console.error(output)
         }
@@ -369,15 +369,15 @@ const generateSchemaCommand = Cli.Command.make(
         console.log(JSON.stringify({ status: 'generated', path: result.path }))
       } else {
         const schemaOutput = yield* Effect.promise(() =>
-          renderToString(
-            React.createElement(
+          renderToString({
+            element: React.createElement(
               Box,
               { flexDirection: 'row' },
               React.createElement(Text, { color: 'green' }, '\u2713'),
               React.createElement(Text, null, ' Generated '),
               React.createElement(Text, { bold: true }, output),
             ),
-          ),
+          }),
         )
         yield* Console.log(schemaOutput)
       }
@@ -400,14 +400,14 @@ const generateAllCommand = Cli.Command.make('all', { json: jsonOption }, ({ json
         )
       } else {
         const output = yield* Effect.promise(() =>
-          renderToString(
-            React.createElement(
+          renderToString({
+            element: React.createElement(
               Box,
               { flexDirection: 'row' },
               React.createElement(Text, { color: 'red' }, '\u2717'),
               React.createElement(Text, null, ' Not in a megarepo'),
             ),
-          ),
+          }),
         )
         yield* Console.error(output)
       }
@@ -478,15 +478,15 @@ const generateAllCommand = Cli.Command.make('all', { json: jsonOption }, ({ json
     }
 
     const allOutput = yield* Effect.promise(() =>
-      renderToString(
-        React.createElement(
+      renderToString({
+        element: React.createElement(
           Box,
           null,
           ...outputLines,
           React.createElement(Text, null, ''),
           React.createElement(Text, { dim: true }, `Generated ${results.length} file(s)`),
         ),
-      ),
+      }),
     )
     yield* Console.log(allOutput)
   }).pipe(Effect.withSpan('megarepo/generate/all')),

@@ -88,7 +88,7 @@ export const addCommand = Cli.Command.make(
           )
         } else {
           const output = yield* Effect.promise(() =>
-            renderToString(React.createElement(AddErrorOutput, { error: 'not_in_megarepo' })),
+            renderToString({ element: React.createElement(AddErrorOutput, { error: 'not_in_megarepo' }) }),
           )
           yield* Console.error(output)
         }
@@ -107,7 +107,7 @@ export const addCommand = Cli.Command.make(
           )
         } else {
           const output = yield* Effect.promise(() =>
-            renderToString(React.createElement(AddErrorOutput, { error: 'invalid_repo', repo })),
+            renderToString({ element: React.createElement(AddErrorOutput, { error: 'invalid_repo', repo }) }),
           )
           yield* Console.error(output)
         }
@@ -131,9 +131,9 @@ export const addCommand = Cli.Command.make(
           console.log(JSON.stringify({ error: 'already_exists', member: memberName }))
         } else {
           const output = yield* Effect.promise(() =>
-            renderToString(
-              React.createElement(AddErrorOutput, { error: 'already_exists', member: memberName }),
-            ),
+            renderToString({
+              element: React.createElement(AddErrorOutput, { error: 'already_exists', member: memberName }),
+            }),
           )
           yield* Console.error(output)
         }
@@ -165,9 +165,9 @@ export const addCommand = Cli.Command.make(
         )
       } else {
         const output = yield* Effect.promise(() =>
-          renderToString(
-            React.createElement(AddOutput, { member: memberName, source: parsed.sourceString }),
-          ),
+          renderToString({
+            element: React.createElement(AddOutput, { member: memberName, source: parsed.sourceString }),
+          }),
         )
         yield* Console.log(output)
       }
@@ -177,7 +177,7 @@ export const addCommand = Cli.Command.make(
         const { Text, Box } = yield* Effect.promise(async () => import('@overeng/tui-react'))
         if (!json) {
           const syncingOutput = yield* Effect.promise(() =>
-            renderToString(React.createElement(Text, { dim: true }, 'Syncing...')),
+            renderToString({ element: React.createElement(Text, { dim: true }, 'Syncing...') }),
           )
           yield* Console.log(syncingOutput)
         }
@@ -196,8 +196,8 @@ export const addCommand = Cli.Command.make(
           const isError = result.status === 'error'
           const statusText = result.status === 'cloned' ? 'cloned' : result.status
           const output = yield* Effect.promise(() =>
-            renderToString(
-              React.createElement(
+            renderToString({
+              element: React.createElement(
                 Box,
                 { flexDirection: 'row' },
                 React.createElement(
@@ -209,7 +209,7 @@ export const addCommand = Cli.Command.make(
                 React.createElement(Text, { bold: true }, memberName),
                 React.createElement(Text, { dim: true }, ` (${statusText})`),
               ),
-            ),
+            }),
           )
           yield* Console.log(output)
         }

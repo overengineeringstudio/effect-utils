@@ -62,12 +62,12 @@ const storeLsCommand = Cli.Command.make('ls', { json: jsonOption }, ({ json }) =
       console.log(JSON.stringify({ repos }))
     } else {
       const output = yield* Effect.promise(() =>
-        renderToString(
-          React.createElement(StoreListOutput, {
+        renderToString({
+          element: React.createElement(StoreListOutput, {
             basePath: store.basePath,
             repos: repos.map((r) => ({ relativePath: r.relativePath })),
           }),
-        ),
+        }),
       )
       yield* Console.log(output)
     }
@@ -96,7 +96,7 @@ const storeFetchCommand = Cli.Command.make('fetch', { json: jsonOption }, ({ jso
     if (useLiveProgress) {
       // Print header
       const headerOutput = yield* Effect.promise(() =>
-        renderToString(React.createElement(StoreHeader, { basePath: store.basePath })),
+        renderToString({ element: React.createElement(StoreHeader, { basePath: store.basePath }) }),
       )
       yield* Console.log(headerOutput)
 
@@ -161,8 +161,8 @@ const storeFetchCommand = Cli.Command.make('fetch', { json: jsonOption }, ({ jso
       const fetchedCount = results.filter((r) => r.status === 'fetched').length
       const errorCount = results.filter((r) => r.status === 'error').length
       const summaryOutput = yield* Effect.promise(() =>
-        renderToString(
-          React.createElement(
+        renderToString({
+          element: React.createElement(
             Box,
             { flexDirection: 'row' },
             React.createElement(Text, { dim: true }, `${fetchedCount} fetched`),
@@ -180,7 +180,7 @@ const storeFetchCommand = Cli.Command.make('fetch', { json: jsonOption }, ({ jso
               : null,
             React.createElement(Text, { dim: true }, ` · ${formatElapsed(elapsed)}`),
           ),
-        ),
+        }),
       )
       yield* Console.log(summaryOutput)
     } else if (json) {
@@ -188,13 +188,13 @@ const storeFetchCommand = Cli.Command.make('fetch', { json: jsonOption }, ({ jso
     } else {
       // Non-TTY: print final results using StoreFetchOutput component
       const output = yield* Effect.promise(() =>
-        renderToString(
-          React.createElement(StoreFetchOutput, {
+        renderToString({
+          element: React.createElement(StoreFetchOutput, {
             basePath: store.basePath,
             results: results as StoreFetchResult[],
             elapsedMs: elapsed,
           }),
-        ),
+        }),
       )
       yield* Console.log(output)
     }
@@ -424,17 +424,17 @@ const storeGcCommand = Cli.Command.make(
           }),
         )
       } else {
-        const output = yield* Effect.promise(() =>
-          renderToString(
-            React.createElement(StoreGcOutput, {
-              basePath: store.basePath,
-              results: results as StoreGcResult[],
-              dryRun,
-              warning: gcWarning,
-              showForceHint: !force,
-            }),
-          ),
-        )
+const output = yield* Effect.promise(() =>
+        renderToString({
+          element: React.createElement(StoreGcOutput, {
+            basePath: store.basePath,
+            results: results as StoreGcResult[],
+            dryRun,
+            warning: gcWarning,
+            showForceHint: !force,
+          }),
+        }),
+      )
         yield* Console.log(output)
       }
     }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/gc')),
@@ -469,9 +469,9 @@ const storeAddCommand = Cli.Command.make(
           )
         } else {
           const output = yield* Effect.promise(() =>
-            renderToString(
-              React.createElement(StoreAddError, { type: 'invalid_source', source: sourceString }),
-            ),
+            renderToString({
+              element: React.createElement(StoreAddError, { type: 'invalid_source', source: sourceString }),
+            }),
           )
           yield* Console.error(output)
         }
@@ -488,7 +488,7 @@ const storeAddCommand = Cli.Command.make(
           )
         } else {
           const output = yield* Effect.promise(() =>
-            renderToString(React.createElement(StoreAddError, { type: 'local_path' })),
+            renderToString({ element: React.createElement(StoreAddError, { type: 'local_path' }) }),
           )
           yield* Console.error(output)
         }
@@ -501,7 +501,7 @@ const storeAddCommand = Cli.Command.make(
           console.log(JSON.stringify({ error: 'no_url', message: 'Cannot determine clone URL' }))
         } else {
           const output = yield* Effect.promise(() =>
-            renderToString(React.createElement(StoreAddError, { type: 'no_url' })),
+            renderToString({ element: React.createElement(StoreAddError, { type: 'no_url' }) }),
           )
           yield* Console.error(output)
         }
@@ -515,9 +515,9 @@ const storeAddCommand = Cli.Command.make(
       if (!bareExists) {
         if (!json) {
           const cloneOutput = yield* Effect.promise(() =>
-            renderToString(
-              React.createElement(StoreAddProgress, { type: 'cloning', source: sourceString }),
-            ),
+            renderToString({
+              element: React.createElement(StoreAddProgress, { type: 'cloning', source: sourceString }),
+            }),
           )
           yield* Console.log(cloneOutput)
         }
@@ -545,9 +545,9 @@ const storeAddCommand = Cli.Command.make(
       if (!worktreeExists) {
         if (!json) {
           const wtOutput = yield* Effect.promise(() =>
-            renderToString(
-              React.createElement(StoreAddProgress, { type: 'creating_worktree', ref: targetRef }),
-            ),
+            renderToString({
+              element: React.createElement(StoreAddProgress, { type: 'creating_worktree', ref: targetRef }),
+            }),
           )
           yield* Console.log(wtOutput)
         }
@@ -606,15 +606,15 @@ const storeAddCommand = Cli.Command.make(
       } else {
         const alreadyExists = bareExists && worktreeExists
         const successOutput = yield* Effect.promise(() =>
-          renderToString(
-            React.createElement(StoreAddSuccess, {
+          renderToString({
+            element: React.createElement(StoreAddSuccess, {
               source: sourceString,
               ref: targetRef,
               commit,
               path: worktreePath,
               alreadyExists,
             }),
-          ),
+          }),
         )
         yield* Console.log(successOutput)
       }

@@ -30,8 +30,8 @@ export const rootCommand = Cli.Command.make('root', { json: jsonOption }, ({ jso
         })
       }
       const output = yield* Effect.promise(() =>
-        renderToString(
-          React.createElement(
+        renderToString({
+          element: React.createElement(
             Box,
             { flexDirection: 'row' },
             React.createElement(Text, { color: 'red' }, '\u2717'),
@@ -41,7 +41,7 @@ export const rootCommand = Cli.Command.make('root', { json: jsonOption }, ({ jso
               ' No megarepo.json found in current directory or any parent.',
             ),
           ),
-        ),
+        }),
       )
       yield* Console.error(output)
       return yield* Effect.fail(new Error('Not in a megarepo'))

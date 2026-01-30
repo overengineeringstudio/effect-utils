@@ -15,7 +15,7 @@ describe('InlineRenderer (VirtualTerminal)', () => {
   describe('basic rendering', () => {
     it('renders lines to correct positions', async () => {
       const terminal = createVirtualTerminal({ cols: 40, rows: 10 })
-      const renderer = new InlineRenderer(terminal)
+      const renderer = new InlineRenderer({ terminalOrStream: terminal })
 
       renderer.render(['Line 1', 'Line 2', 'Line 3'])
       await terminal.flush()
@@ -31,7 +31,7 @@ describe('InlineRenderer (VirtualTerminal)', () => {
 
     it('positions cursor after rendered content', async () => {
       const terminal = createVirtualTerminal({ cols: 40, rows: 10 })
-      const renderer = new InlineRenderer(terminal)
+      const renderer = new InlineRenderer({ terminalOrStream: terminal })
 
       renderer.render(['Line 1', 'Line 2'])
       await terminal.flush()
@@ -49,7 +49,7 @@ describe('InlineRenderer (VirtualTerminal)', () => {
   describe('differential updates', () => {
     it('updates only changed lines', async () => {
       const terminal = createVirtualTerminal({ cols: 40, rows: 10 })
-      const renderer = new InlineRenderer(terminal)
+      const renderer = new InlineRenderer({ terminalOrStream: terminal })
 
       // Initial render
       renderer.render(['Header', 'Count: 0', 'Footer'])
@@ -70,7 +70,7 @@ describe('InlineRenderer (VirtualTerminal)', () => {
 
     it('handles content shrinking', async () => {
       const terminal = createVirtualTerminal({ cols: 40, rows: 10 })
-      const renderer = new InlineRenderer(terminal)
+      const renderer = new InlineRenderer({ terminalOrStream: terminal })
 
       // Initial render with 4 lines
       renderer.render(['Line 1', 'Line 2', 'Line 3', 'Line 4'])
@@ -89,7 +89,7 @@ describe('InlineRenderer (VirtualTerminal)', () => {
 
     it('handles content growing', async () => {
       const terminal = createVirtualTerminal({ cols: 40, rows: 10 })
-      const renderer = new InlineRenderer(terminal)
+      const renderer = new InlineRenderer({ terminalOrStream: terminal })
 
       // Initial render with 2 lines
       renderer.render(['Line 1', 'Line 2'])
@@ -113,7 +113,7 @@ describe('InlineRenderer (VirtualTerminal)', () => {
   describe('static region', () => {
     it('renders static content above dynamic', async () => {
       const terminal = createVirtualTerminal({ cols: 40, rows: 10 })
-      const renderer = new InlineRenderer(terminal)
+      const renderer = new InlineRenderer({ terminalOrStream: terminal })
 
       // Append static content
       renderer.appendStatic(['[INFO] Log message'])
@@ -132,7 +132,7 @@ describe('InlineRenderer (VirtualTerminal)', () => {
 
     it('preserves static content through dynamic updates', async () => {
       const terminal = createVirtualTerminal({ cols: 40, rows: 10 })
-      const renderer = new InlineRenderer(terminal)
+      const renderer = new InlineRenderer({ terminalOrStream: terminal })
 
       // Static content
       renderer.appendStatic(['[INFO] Started'])
@@ -157,7 +157,7 @@ describe('InlineRenderer (VirtualTerminal)', () => {
 
     it('appends new static content correctly', async () => {
       const terminal = createVirtualTerminal({ cols: 40, rows: 10 })
-      const renderer = new InlineRenderer(terminal)
+      const renderer = new InlineRenderer({ terminalOrStream: terminal })
 
       // Initial static + dynamic
       renderer.appendStatic(['[INFO] Log 1'])
@@ -181,7 +181,7 @@ describe('InlineRenderer (VirtualTerminal)', () => {
   describe('cleanup', () => {
     it('clears dynamic content on dispose', async () => {
       const terminal = createVirtualTerminal({ cols: 40, rows: 10 })
-      const renderer = new InlineRenderer(terminal)
+      const renderer = new InlineRenderer({ terminalOrStream: terminal })
 
       renderer.render(['Temporary content'])
       await terminal.flush()
@@ -199,7 +199,7 @@ describe('InlineRenderer (VirtualTerminal)', () => {
 
     it('preserves static content on dispose', async () => {
       const terminal = createVirtualTerminal({ cols: 40, rows: 10 })
-      const renderer = new InlineRenderer(terminal)
+      const renderer = new InlineRenderer({ terminalOrStream: terminal })
 
       renderer.appendStatic(['[INFO] Permanent log'])
       renderer.render(['Temporary progress'])

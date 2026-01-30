@@ -17,7 +17,7 @@ describe('useViewport', () => {
       return <Text>Test</Text>
     }
 
-    await renderAsync(<TestComponent />, { columns: 80 })
+    await renderAsync({ element: <TestComponent />, options: { columns: 80 } })
 
     expect(capturedViewport).toEqual({ columns: 80, rows: 24 })
   })
@@ -30,12 +30,14 @@ describe('useViewport', () => {
       return <Text>Test</Text>
     }
 
-    await renderAsync(
-      <ViewportProvider viewport={{ columns: 120, rows: 40 }}>
-        <TestComponent />
-      </ViewportProvider>,
-      { columns: 80 },
-    )
+    await renderAsync({
+      element: (
+        <ViewportProvider viewport={{ columns: 120, rows: 40 }}>
+          <TestComponent />
+        </ViewportProvider>
+      ),
+      options: { columns: 80 },
+    })
 
     expect(capturedViewport).toEqual({ columns: 120, rows: 40 })
   })
@@ -60,23 +62,27 @@ describe('useViewport', () => {
     const items = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j']
 
     // With small viewport, should truncate
-    const { lines: smallLines } = await renderAsync(
-      <ViewportProvider viewport={{ columns: 80, rows: 5 }}>
-        <AdaptiveList items={items} />
-      </ViewportProvider>,
-      { columns: 80 },
-    )
+    const { lines: smallLines } = await renderAsync({
+      element: (
+        <ViewportProvider viewport={{ columns: 80, rows: 5 }}>
+          <AdaptiveList items={items} />
+        </ViewportProvider>
+      ),
+      options: { columns: 80 },
+    })
 
     expect(smallLines.length).toBeLessThanOrEqual(5)
     expect(smallLines.some((l) => l.includes('more'))).toBe(true)
 
     // With large viewport, should show all
-    const { lines: largeLines } = await renderAsync(
-      <ViewportProvider viewport={{ columns: 80, rows: 20 }}>
-        <AdaptiveList items={items} />
-      </ViewportProvider>,
-      { columns: 80 },
-    )
+    const { lines: largeLines } = await renderAsync({
+      element: (
+        <ViewportProvider viewport={{ columns: 80, rows: 20 }}>
+          <AdaptiveList items={items} />
+        </ViewportProvider>
+      ),
+      options: { columns: 80 },
+    })
 
     expect(largeLines.some((l) => l.includes('more'))).toBe(false)
   })

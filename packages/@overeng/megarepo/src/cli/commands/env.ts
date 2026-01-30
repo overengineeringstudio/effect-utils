@@ -42,14 +42,14 @@ export const envCommand = Cli.Command.make(
           })
         }
         const output = yield* Effect.promise(() =>
-          renderToString(
-            React.createElement(
+          renderToString({
+            element: React.createElement(
               Box,
               { flexDirection: 'row' },
               React.createElement(Text, { color: 'red' }, '\u2717'),
               React.createElement(Text, null, ' No megarepo.json found'),
             ),
-          ),
+          }),
         )
         yield* Console.error(output)
         return yield* Effect.fail(new Error('Not in a megarepo'))
