@@ -1,4 +1,4 @@
-# Nix CLI build and hash management tasks
+# Nix CLI build, hash management, and flake validation tasks
 #
 # Usage in devenv.nix:
 #   imports = [
@@ -10,26 +10,36 @@
 #   ];
 #
 # Provides:
-#   - nix:hash - Update all hashes (pnpmDepsHash + lockfileHash) for all CLI packages
+#   - nix:hash - Update all hashes (pnpmDepsHash + lockfileHash + packageJsonDepsHash) for all CLI packages
 #   - nix:hash:<name> - Update all hashes for specific package
 #   - nix:build - Build all CLI packages
 #   - nix:build:<name> - Build specific package
-#   - nix:check - Check if any hashes are stale (for CI, does full build)
-#   - nix:check:quick - Fast lockfile fingerprint check (for check:quick)
+#   - nix:check - Check if any CLI hashes are stale (full build per package)
+#   - nix:check:quick - Fast lockfile + package.json fingerprint check (for check:quick)
+#   - nix:flake:check - Full flake validation (builds all packages, for check:all)
 #
-# Lockfile Fingerprint Check:
-#   Each build.nix stores a `lockfileHash` - the SHA256 of the lockfile when
-#   pnpmDepsHash was last computed. The quick check compares current lockfile
-#   hash against this stored value. If they differ, the pnpmDepsHash is likely
-#   stale. This runs in <1s vs 80-120s for full nix build.
+# Lockfile and Package.json Fingerprint Checks (nix:check:quick):
+#   Each build.nix stores two fingerprint hashes for fast stale detection:
 #
-#   Trade-off: May have rare false positives (lockfile changed cosmetically)
-#   or false negatives (patch files changed). CI runs full check as backup.
+#   1. `lockfileHash` - SHA256 of pnpm-lock.yaml when pnpmDepsHash was last computed.
+#      Detects lockfile changes without hash updates. This catches most stale hash
+#      scenarios and runs in <1s vs 80-120s for full nix build.
+#
+#   2. `packageJsonDepsHash` - SHA256 of package.json dependency fields (dependencies,
+#      devDependencies, peerDependencies). Detects when package.json deps changed
+#      but lockfile wasn't updated (forgetting to run `pnpm install`).
+#
+#   Trade-off: May have rare false positives (cosmetic changes) or false negatives
+#   (patch files changed). CI runs full `nix:flake:check` as backup.
+#
+# nix:flake:check vs nix:check:
+#   - nix:check - Validates individual CLI package hashes (per-package builds)
+#   - nix:flake:check - Runs `nix flake check` (validates entire flake, all packages)
 { cliPackages ? [] }:
 { pkgs, lib, ... }:
 let
   # Script to update all hashes in a build.nix file
-  # Handles pnpmDepsHash/bunDepsHash, lockfileHash, and depsHash
+  # Handles pnpmDepsHash/bunDepsHash, lockfileHash, and packageJsonDepsHash
   # Iteratively updates hashes until build succeeds
   updateHashScript = pkgs.writeShellScript "update-all-hashes" ''
     set -euo pipefail
@@ -42,7 +52,7 @@ let
     FAKE_HASH="sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
     MAX_ITERATIONS=20
 
-    # Helper to update lockfileHash and depsHash in build.nix
+    # Helper to update lockfileHash and packageJsonDepsHash in build.nix
     update_fingerprint_hashes() {
       if [ -n "$lockfile" ] && [ -f "$lockfile" ]; then
         # Update lockfileHash
@@ -53,16 +63,16 @@ let
           echo "Updated lockfileHash to $newLockfileHash"
         fi
 
-        # Update depsHash (package.json deps fingerprint)
+        # Update packageJsonDepsHash (package.json deps fingerprint)
         packageJson="$(dirname "$lockfile")/package.json"
-        if [ -f "$packageJson" ] && grep -q "depsHash" "$buildNix"; then
+        if [ -f "$packageJson" ] && grep -q "packageJsonDepsHash" "$buildNix"; then
           tmpDeps=$(mktemp)
           ${pkgs.jq}/bin/jq -cS '{dependencies, devDependencies, peerDependencies}' "$packageJson" > "$tmpDeps"
-          newDepsHash="sha256-$(nix-hash --type sha256 --base64 "$tmpDeps")"
+          newPackageJsonDepsHash="sha256-$(nix-hash --type sha256 --base64 "$tmpDeps")"
           rm "$tmpDeps"
-          export NEW_DEPS_HASH="$newDepsHash"
-          perl -i -pe 's/depsHash\s*=\s*"sha256-[^"]+"/depsHash = "$ENV{NEW_DEPS_HASH}"/g' "$buildNix"
-          echo "Updated depsHash to $newDepsHash"
+          export NEW_PACKAGE_JSON_DEPS_HASH="$newPackageJsonDepsHash"
+          perl -i -pe 's/packageJsonDepsHash\s*=\s*"sha256-[^"]+"/packageJsonDepsHash = "$ENV{NEW_PACKAGE_JSON_DEPS_HASH}"/g' "$buildNix"
+          echo "Updated packageJsonDepsHash to $newPackageJsonDepsHash"
         fi
       fi
     }
@@ -224,7 +234,7 @@ let
   # Script for quick lockfile/deps fingerprint check (for check:quick)
   # Checks two things:
   # 1. lockfileHash - detects lockfile changes without hash update
-  # 2. depsHash - detects package.json changes without lockfile update
+  # 2. packageJsonDepsHash - detects package.json changes without lockfile update
   quickCheckScript = pkgs.writeShellScript "check-lockfile-hash" ''
     set -euo pipefail
 
@@ -254,21 +264,21 @@ let
       fi
     fi
 
-    # Check 2: depsHash (package.json deps changed without lockfile update)
+    # Check 2: packageJsonDepsHash (package.json deps changed without lockfile update)
     if [ -f "$packageJson" ]; then
       tmpDeps=$(mktemp)
       ${pkgs.jq}/bin/jq -cS '{dependencies, devDependencies, peerDependencies}' "$packageJson" > "$tmpDeps"
-      currentDepsHash="sha256-$(nix-hash --type sha256 --base64 "$tmpDeps")"
+      currentPackageJsonDepsHash="sha256-$(nix-hash --type sha256 --base64 "$tmpDeps")"
       rm "$tmpDeps"
 
-      storedDepsHash=$(grep -oE 'depsHash\s*=\s*"sha256-[^"]+"' "$buildNix" | grep -oE 'sha256-[^"]+' | head -1 || echo "")
+      storedPackageJsonDepsHash=$(grep -oE 'packageJsonDepsHash\s*=\s*"sha256-[^"]+"' "$buildNix" | grep -oE 'sha256-[^"]+' | head -1 || echo "")
 
-      if [ -z "$storedDepsHash" ]; then
-        echo "⚠ $name: no depsHash in build.nix, skipping deps check"
-      elif [ "$currentDepsHash" != "$storedDepsHash" ]; then
+      if [ -z "$storedPackageJsonDepsHash" ]; then
+        echo "⚠ $name: no packageJsonDepsHash in build.nix, skipping deps check"
+      elif [ "$currentPackageJsonDepsHash" != "$storedPackageJsonDepsHash" ]; then
         echo "✗ $name: package.json deps changed (run: pnpm install && dt nix:hash:$name)"
-        echo "  stored:  $storedDepsHash"
-        echo "  current: $currentDepsHash"
+        echo "  stored:  $storedPackageJsonDepsHash"
+        echo "  current: $currentPackageJsonDepsHash"
         failed=true
       fi
     fi
@@ -344,6 +354,11 @@ in lib.mkIf hasPackages {
       "nix:check:quick" = {
         description = "Quick lockfile fingerprint check for all CLI packages";
         after = map (p: "nix:check:quick:${p.name}") packagesWithLockfile;
+      };
+
+      "nix:flake:check" = {
+        description = "Full nix flake validation (builds all flake packages)";
+        exec = "nix flake check";
       };
     }]
   );

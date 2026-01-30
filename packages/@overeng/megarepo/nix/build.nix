@@ -15,7 +15,7 @@ let
     workspaceRoot = src;
     pnpmDepsHash = "sha256-x+YpNp1tAi3GBBNDKF4wInvQ/yUPIPKBAOmJl2DBAEg=";
     lockfileHash = "sha256-LwFRtt/hPEdieGD7zA7urtlf5wWidUKMfiN12hD3iJ0=";
-    depsHash = "sha256-Jg/6gay8Kv9EYZ+Cvi6rku8PMmptthh5Sv513W79Q9w=";
+    packageJsonDepsHash = "sha256-Jg/6gay8Kv9EYZ+Cvi6rku8PMmptthh5Sv513W79Q9w=";
     smokeTestArgs = [ "--help" ];
     inherit gitRev commitTs dirty;
   };
