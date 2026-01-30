@@ -8,7 +8,6 @@
 
 let
   mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs; };
-
   unwrapped = mkPnpmCli {
     name = "genie-unwrapped";
     entry = "packages/@overeng/genie/src/build/mod.ts";
@@ -17,6 +16,7 @@ let
     workspaceRoot = src;
     extraExcludedSourceNames = [ "context" "scripts" ];
     pnpmDepsHash = "sha256-UHz5JLKnlPObFn9p21sA0Gq8lvilQl33S3mH6mkMQ94=";
+    lockfileHash = "sha256-wzNIj0EDs8h89p6fB+HSrNJDggDrRUxfFsJbLW6UN4Q=";
     inherit gitRev commitTs dirty;
   };
 in

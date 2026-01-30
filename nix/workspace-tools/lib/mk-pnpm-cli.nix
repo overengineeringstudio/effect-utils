@@ -17,6 +17,7 @@
 # - packageDir: Package directory relative to workspaceRoot.
 # - workspaceRoot: Workspace root (flake input or path).
 # - pnpmDepsHash: Hash for package's pnpm deps (includes all workspace members).
+# - lockfileHash: SHA256 of lockfile for staleness check (optional, enables early validation).
 # - patchesDir: Patches directory relative to workspaceRoot (null to disable).
 # - binaryName: Output binary name (defaults to name).
 # - gitRev: Git short revision (defaults to "unknown").
@@ -33,6 +34,7 @@
   packageDir,
   workspaceRoot,
   pnpmDepsHash,
+  lockfileHash ? null,
   patchesDir ? "patches",
   binaryName ? name,
   gitRev ? "unknown",
@@ -123,7 +125,7 @@ pkgs.stdenv.mkDerivation {
     pkgs.bun
     pkgs.cacert
     pkgs.zstd
-  ];
+  ] ++ lib.optionals (lockfileHash != null) [ pkgs.nix ];
 
   inherit pnpmDeps;
 
@@ -133,6 +135,19 @@ pkgs.stdenv.mkDerivation {
   buildPhase = ''
     set -euo pipefail
     runHook preBuild
+
+    ${if lockfileHash != null then ''
+    # Validate lockfile hash (early failure with clear message)
+    currentHash="sha256-$(nix-hash --type sha256 --base64 ${workspaceSrc}/${packageDir}/pnpm-lock.yaml)"
+    if [ "$currentHash" != "${lockfileHash}" ]; then
+      echo ""
+      echo "error: lockfileHash is stale (run: dt nix:hash)"
+      echo "  expected: ${lockfileHash}"
+      echo "  actual:   $currentHash"
+      echo ""
+      exit 1
+    fi
+    '' else ""}
 
     export HOME=$PWD
     export STORE_PATH=$(mktemp -d)
