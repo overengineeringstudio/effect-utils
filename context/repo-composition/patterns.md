@@ -151,6 +151,8 @@ export default packageJson({
 
 **Why:** `devDependencies` enables standalone `tsc --noEmit`. `peerDependencies` signals version requirements to consumers.
 
+**Optional deps:** For optional features, use the same pattern. The deps will be in the lockfile for Nix builds, and consumers install them as needed.
+
 ## Delta Pattern for Library Consumers
 
 **Library consumers** (also consumed by others) re-expose peer deps using the **delta pattern** - only define packages not already in the upstream:

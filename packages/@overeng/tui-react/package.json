@@ -31,6 +31,8 @@
     "@effect/cli": "0.73.1",
     "@effect/platform": "0.94.2",
     "@effect/platform-node": "0.104.1",
+    "@opentui/core": "0.1.74",
+    "@opentui/react": "0.1.74",
     "@storybook/react": "10.2.1",
     "@storybook/react-vite": "10.2.1",
     "@types/node": "25.0.3",
@@ -54,21 +56,12 @@
     "@effect-atom/atom-react": "^0.4.5",
     "@effect/cli": "^0.73.1",
     "@effect/platform-node": "^0.104.1",
+    "@opentui/core": "^0.1.74",
+    "@opentui/react": "^0.1.74",
     "effect": "^3.19.15",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "react-reconciler": "^0.32.0"
-  },
-  "peerDependenciesMeta": {
-    "effect": {
-      "optional": true
-    },
-    "@effect-atom/atom": {
-      "optional": true
-    },
-    "@effect-atom/atom-react": {
-      "optional": true
-    }
   },
   "$genie": {
     "source": "package.json.genie.ts",

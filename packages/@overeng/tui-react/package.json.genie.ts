@@ -9,6 +9,7 @@ const peerDepNames = [
   '@effect/cli',
 ] as const
 const effectAtomDeps = ['@effect-atom/atom', '@effect-atom/atom-react'] as const
+const opentuiDeps = ['@opentui/core', '@opentui/react'] as const
 
 export default packageJson({
   name: '@overeng/tui-react',
@@ -47,6 +48,8 @@ export default packageJson({
       '@effect/platform',
       // Effect Atom (state management)
       ...effectAtomDeps,
+      // OpenTUI (alternate screen mode - requires Bun)
+      ...opentuiDeps,
       // Storybook
       'storybook',
       '@storybook/react',
@@ -60,10 +63,5 @@ export default packageJson({
       '@vitejs/plugin-react',
     ),
   },
-  peerDependencies: catalog.peers(...peerDepNames, ...effectAtomDeps),
-  peerDependenciesMeta: {
-    effect: { optional: true },
-    '@effect-atom/atom': { optional: true },
-    '@effect-atom/atom-react': { optional: true },
-  },
+  peerDependencies: catalog.peers(...peerDepNames, ...effectAtomDeps, ...opentuiDeps),
 })
