@@ -96,20 +96,77 @@ const FileItem = ({ file }: { file: GenieFile }) => {
 // Header Component
 // =============================================================================
 
-const Header = ({ cwd, mode }: { cwd: string; mode: string }) => {
-  const modeLabel = mode === 'dry-run' ? '(dry run)' : mode === 'check' ? '(check)' : ''
+interface HeaderProps {
+  mode: string
+  phase: GenieState['phase']
+  files: readonly GenieFile[]
+  cwd: string
+}
+
+const Header = ({ mode, phase, files, cwd }: HeaderProps) => {
+  // Calculate progress counts
+  const completed = files.filter((f) => f.status !== 'pending' && f.status !== 'active').length
+  const total = files.length
+  const errors = files.filter((f) => f.status === 'error').length
+
+  // Mode badge
+  const modeBadge = mode === 'dry-run' ? '[DRY RUN]' : mode === 'check' ? '[CHECK]' : null
+
+  // Phase display
+  const renderPhase = () => {
+    switch (phase) {
+      case 'discovering':
+        return (
+          <>
+            <Spinner type="dots" />
+            <Text> Discovering...</Text>
+          </>
+        )
+      case 'generating':
+        return (
+          <>
+            <Spinner type="dots" />
+            <Text> Generating </Text>
+            <Text bold>
+              {completed}/{total}
+            </Text>
+            {errors > 0 && (
+              <Text color="red">
+                {' '}
+                {icons.dot} {errors} error{errors > 1 ? 's' : ''}
+              </Text>
+            )}
+          </>
+        )
+      case 'complete':
+        return (
+          <>
+            <Text color="green">{icons.check}</Text>
+            <Text> Complete</Text>
+          </>
+        )
+      case 'error':
+        return (
+          <>
+            <Text color="red">{icons.cross}</Text>
+            <Text color="red"> Error</Text>
+          </>
+        )
+    }
+  }
 
   return (
     <Box flexDirection="row">
       <Text bold>Genie</Text>
-      {modeLabel && (
+      {modeBadge && (
         <>
           <Text> </Text>
-          <Text dim>{modeLabel}</Text>
+          <Text color="yellow">{modeBadge}</Text>
         </>
       )}
-      <Text> </Text>
-      <Text dim>{cwd}</Text>
+      <Text dim> › </Text>
+      {renderPhase()}
+      <Text dim> {icons.dot} {cwd}</Text>
     </Box>
   )
 }
@@ -163,31 +220,6 @@ const Summary = ({
   )
 }
 
-// =============================================================================
-// Progress Counter
-// =============================================================================
-
-const ProgressCounter = ({ files }: { files: readonly GenieFile[] }) => {
-  const completed = files.filter((f) => f.status !== 'pending' && f.status !== 'active').length
-  const total = files.length
-  const errors = files.filter((f) => f.status === 'error').length
-
-  return (
-    <Box flexDirection="row" paddingTop={1}>
-      <Text dim>
-        {completed}/{total}
-      </Text>
-      {errors > 0 && (
-        <>
-          <Text> </Text>
-          <Text color="red">
-            {icons.dot} {errors} error{errors > 1 ? 's' : ''}
-          </Text>
-        </>
-      )}
-    </Box>
-  )
-}
 
 // =============================================================================
 // Main View Component
@@ -215,13 +247,7 @@ export const GenieView = ({ state }: GenieViewProps) => {
   if (phase === 'discovering') {
     return (
       <Box>
-        <Header cwd={cwd} mode={mode} />
-        <Text> </Text>
-        <Box flexDirection="row">
-          <Spinner type="dots" />
-          <Text> </Text>
-          <Text>Discovering .genie.ts files...</Text>
-        </Box>
+        <Header mode={mode} phase={phase} files={files} cwd={cwd} />
       </Box>
     )
   }
@@ -232,13 +258,9 @@ export const GenieView = ({ state }: GenieViewProps) => {
   if (phase === 'error') {
     return (
       <Box>
-        <Header cwd={cwd} mode={mode} />
+        <Header mode={mode} phase={phase} files={files} cwd={cwd} />
         <Text> </Text>
-        <Box flexDirection="row">
-          <Text color="red">{icons.cross}</Text>
-          <Text> </Text>
-          <Text color="red">{error ?? 'An error occurred'}</Text>
-        </Box>
+        <Text color="red">{error ?? 'An error occurred'}</Text>
       </Box>
     )
   }
@@ -249,7 +271,7 @@ export const GenieView = ({ state }: GenieViewProps) => {
   if (phase === 'generating') {
     return (
       <Box>
-        <Header cwd={cwd} mode={mode} />
+        <Header mode={mode} phase={phase} files={files} cwd={cwd} />
         {watchCycle !== undefined && watchCycle > 0 && (
           <Text dim>Watch cycle #{watchCycle + 1}</Text>
         )}
@@ -259,9 +281,6 @@ export const GenieView = ({ state }: GenieViewProps) => {
         {files.map((file) => (
           <FileItem key={file.path} file={file} />
         ))}
-
-        {/* Progress counter */}
-        <ProgressCounter files={files} />
       </Box>
     )
   }
@@ -276,7 +295,7 @@ export const GenieView = ({ state }: GenieViewProps) => {
 
   return (
     <Box>
-      <Header cwd={cwd} mode={mode} />
+      <Header mode={mode} phase={phase} files={files} cwd={cwd} />
       {watchCycle !== undefined && watchCycle > 0 && <Text dim>Watch cycle #{watchCycle + 1}</Text>}
       <Text> </Text>
 
