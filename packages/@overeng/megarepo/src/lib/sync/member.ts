@@ -581,7 +581,7 @@ export const syncMember = ({
         const refInfo = yield* Git.queryLocalRefType({
           repoPath: bareRepoPath,
           ref: targetRef,
-        }).pipe(Effect.catchAll(() => Effect.succeed({ type: 'unknown' as const, commit: '' })))
+        })
 
         if (refInfo.type === 'tag') {
           actualRefType = 'tag'

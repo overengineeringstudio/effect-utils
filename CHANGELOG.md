@@ -24,6 +24,10 @@ All notable changes to this project will be documented in this file.
 - **nix/devenv-modules/tasks/shared/pnpm.nix**: Added `pnpm:update` task
   - Runs `pnpm install --no-frozen-lockfile` in all packages to update lockfiles
   - Use when adding new dependencies that cause `ERR_PNPM_OUTDATED_LOCKFILE` errors
+  - Now depends on `genie:run` so generated package.json files are up to date
+
+- **nix/devenv-modules/tasks/shared/pnpm.nix**: Renamed `pnpm:clean-lock-files` to `pnpm:reset-lock-files`
+  - Makes it clear this is a destructive, last-resort operation
 
 - **nix/devenv-modules/tasks/shared/check.nix**: Updated check task semantics
   - `check:quick` - Fast development checks (genie, typecheck, lint, nix-fingerprint only)

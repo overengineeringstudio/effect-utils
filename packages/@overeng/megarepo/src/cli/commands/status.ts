@@ -36,6 +36,32 @@ import {
 } from '../renderers/StatusOutput.tsx'
 
 /**
+ * Emit a member as NDJSON (for streaming output).
+ * Recursively emits nested members with increasing depth.
+ */
+const emitMember = ({ member, depth = 0 }: { member: MemberStatus; depth?: number }): void => {
+  console.log(
+    JSON.stringify({
+      _tag: 'member',
+      depth,
+      name: member.name,
+      exists: member.exists,
+      source: member.source,
+      isLocal: member.isLocal,
+      isMegarepo: member.isMegarepo,
+      lockInfo: member.lockInfo,
+      gitStatus: member.gitStatus,
+    }),
+  )
+  // Recursively emit nested members
+  if (member.nestedMembers) {
+    for (const nested of member.nestedMembers) {
+      emitMember({ member: nested, depth: depth + 1 })
+    }
+  }
+}
+
+/**
  * Recursively scan members and build status tree.
  * @param megarepoRoot - Root path of the megarepo
  * @param visited - Set of visited paths to prevent cycles
@@ -117,9 +143,7 @@ const scanMembersRecursive = ({
       let currentBranch: string | undefined = undefined
       if (memberExists) {
         // Check if it's a git repo first
-        const isGit = yield* Git.isGitRepo(memberPath).pipe(
-          Effect.catchAll(() => Effect.succeed(false)),
-        )
+        const isGit = yield* Git.isGitRepo(memberPath)
         if (isGit) {
           // Get worktree status (dirty, unpushed)
           const worktreeStatus = yield* Git.getWorktreeStatus(memberPath).pipe(
@@ -248,34 +272,6 @@ export const statusCommand = Cli.Command.make(
         const members = yield* scanMembersRecursive({ megarepoRoot: root.value })
 
         // Emit each member as a separate NDJSON line
-        const emitMember = ({
-          member,
-          depth = 0,
-        }: {
-          member: MemberStatus
-          depth?: number
-        }): void => {
-          console.log(
-            JSON.stringify({
-              _tag: 'member',
-              depth,
-              name: member.name,
-              exists: member.exists,
-              source: member.source,
-              isLocal: member.isLocal,
-              isMegarepo: member.isMegarepo,
-              lockInfo: member.lockInfo,
-              gitStatus: member.gitStatus,
-            }),
-          )
-          // Recursively emit nested members
-          if (member.nestedMembers) {
-            for (const nested of member.nestedMembers) {
-              emitMember({ member: nested, depth: depth + 1 })
-            }
-          }
-        }
-
         for (const member of members) {
           emitMember({ member })
         }
