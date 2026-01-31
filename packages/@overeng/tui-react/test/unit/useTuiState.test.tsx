@@ -5,7 +5,7 @@
 import { Effect, Schema, SubscriptionRef } from 'effect'
 import { describe, test, expect, beforeEach, afterEach } from 'vitest'
 
-import { createTestTuiState, testModeLayer } from '../../src/effect/testing.ts'
+import { createTestTuiState, testModeLayer } from '../../src/effect/testing.tsx'
 import { createTuiApp } from '../../src/effect/TuiApp.tsx'
 
 // =============================================================================

@@ -43,9 +43,9 @@ import React, { createContext, useContext, type ReactElement, type ReactNode } f
 
 import type { Viewport } from '../hooks/useViewport.tsx'
 import { ViewportProvider } from '../hooks/useViewport.tsx'
-import { createRoot, type Root } from '../root.ts'
+import { createRoot, type Root } from '../root.tsx'
 import { RuntimeProvider, useSubscriptionRef } from './hooks.tsx'
-import { setupFinalVisual, setupFinalJson, setupProgressiveJson } from './modeSetup.ts'
+import { setupFinalVisual, setupFinalJson, setupProgressiveJson } from './modeSetup.tsx'
 import {
   OutputModeTag,
   type OutputMode,

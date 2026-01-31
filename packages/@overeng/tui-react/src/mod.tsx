@@ -33,7 +33,7 @@
 export { type Terminal, type TerminalLike, createTerminal } from '@overeng/tui-core'
 
 // Root API
-export { createRoot, type Root, type CreateRootOptions, type UnmountOptions } from './root.ts'
+export { createRoot, type Root, type CreateRootOptions, type UnmountOptions } from './root.tsx'
 
 // Re-export ExitMode from tui-core
 export { type ExitMode } from '@overeng/tui-core'
@@ -47,11 +47,7 @@ export {
 } from './hooks/useViewport.tsx'
 
 // Text truncation utilities
-export {
-  truncateText,
-  getTextWidth,
-  type TruncateOptions,
-} from './truncate.ts'
+export { truncateText, getTextWidth, type TruncateOptions } from './truncate.ts'
 
 export { renderToString, renderToLines, type RenderToStringOptions } from './renderToString.ts'
 
@@ -202,7 +198,7 @@ export {
   toCommandError,
   withJsonErrors,
   runWithJsonErrors,
-} from './effect/errors.ts'
+} from './effect/errors.tsx'
 
 // =============================================================================
 // Test Utilities
@@ -219,7 +215,7 @@ export {
   type RunTestCommandOptions,
   type TestCommandResult,
   type CaptureOptions,
-} from './effect/testing.ts'
+} from './effect/testing.tsx'
 
 export {
   TestRenderer,
@@ -325,10 +321,10 @@ export {
   resolveOutputMode,
   OUTPUT_MODE_VALUES,
   type OutputModeValue,
-} from './effect/cli.ts'
+} from './effect/cli.tsx'
 
 // =============================================================================
 // Universal Components (renderer-agnostic)
 // =============================================================================
 
-export * as Universal from './universal/mod.ts'
+export * as Universal from './universal/mod.tsx'

@@ -24,11 +24,11 @@
  */
 
 import { Options } from '@effect/cli'
-import { Layer } from 'effect'
+import type { Layer } from 'effect'
 
+import type { OutputModeTag } from './OutputMode.tsx'
 import {
   type OutputMode,
-  OutputModeTag,
   tty,
   ci,
   ciPlain,
@@ -108,14 +108,14 @@ export const outputOption = Options.choice('output', OUTPUT_MODE_VALUES).pipe(
  * Map from flag value to OutputMode preset.
  */
 const modeMap: Record<Exclude<OutputModeValue, 'auto'>, OutputMode> = {
-  'tty': tty,
+  tty: tty,
   'alt-screen': altScreen,
-  'ci': ci,
+  ci: ci,
   'ci-plain': ciPlain,
-  'pipe': pipe,
-  'log': log,
-  'json': json,
-  'ndjson': ndjson,
+  pipe: pipe,
+  log: log,
+  json: json,
+  ndjson: ndjson,
 }
 
 /**

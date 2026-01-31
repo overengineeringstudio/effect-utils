@@ -30,7 +30,7 @@ import {
   jsonLayer,
 } from '../../src/effect/OutputMode.tsx'
 
-import { resolveOutputMode } from '../../src/effect/cli.ts'
+import { resolveOutputMode } from '../../src/effect/cli.tsx'
 
 describe('OutputMode presets', () => {
   test('tty preset has correct config', () => {

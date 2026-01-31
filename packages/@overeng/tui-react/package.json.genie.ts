@@ -15,9 +15,9 @@ export default packageJson({
   name: '@overeng/tui-react',
   ...privatePackageDefaults,
   exports: {
-    '.': './src/mod.ts',
-    './storybook': './src/storybook/mod.ts',
-    './opentui': './src/effect/opentui/mod.ts',
+    '.': './src/mod.tsx',
+    './storybook': './src/storybook/mod.tsx',
+    './opentui': './src/effect/opentui/mod.tsx',
   },
   scripts: {
     storybook: 'storybook dev -p 6006',

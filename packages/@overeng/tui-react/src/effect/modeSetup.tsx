@@ -10,8 +10,8 @@
  */
 
 import type { Scope } from 'effect'
-import type { ReactElement } from 'react'
 import { Console, Deferred, Effect, Schema, Stream, SubscriptionRef } from 'effect'
+import type { ReactElement } from 'react'
 import React from 'react'
 
 import { renderToString } from '../renderToString.ts'
@@ -80,7 +80,7 @@ export const setupFinalVisual = <S, A>({
  * @param options.stateRef - The state SubscriptionRef
  * @param options.schema - Schema for encoding state to JSON
  */
-export const setupFinalJson = <S>({
+export const setupFinalJson = <S,>({
   stateRef,
   schema,
 }: {
@@ -102,7 +102,7 @@ export const setupFinalJson = <S>({
  * @param options.stateRef - The state SubscriptionRef
  * @param options.schema - Schema for encoding state to JSON
  */
-export const setupProgressiveJson = <S>({
+export const setupProgressiveJson = <S,>({
   stateRef,
   schema,
 }: {

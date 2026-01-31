@@ -6,15 +6,21 @@
 
 import React, { type ReactElement } from 'react'
 
-import { InlineRenderer, type Terminal, type TerminalLike, type ExitMode } from '@overeng/tui-core'
+import {
+  InlineRenderer,
+  resolveTerminal,
+  type Terminal,
+  type TerminalLike,
+  type ExitMode,
+} from '@overeng/tui-core'
 
 import { ViewportProvider, type Viewport } from './hooks/useViewport.tsx'
 import { renderTreeSimple, extractStaticContent } from './reconciler/output.ts'
-import { truncateLines } from './truncate.ts'
 import { TuiReconciler, type TuiContainer } from './reconciler/reconciler.ts'
 import type { TuiStaticElement } from './reconciler/types.ts'
 import { isStaticElement } from './reconciler/types.ts'
 import { calculateLayout } from './reconciler/yoga-utils.ts'
+import { truncateLines } from './truncate.ts'
 
 // =============================================================================
 // Types
@@ -65,6 +71,17 @@ export interface Root {
    * @param options - Options controlling exit behavior
    */
   unmount: (options?: UnmountOptions) => void
+  /**
+   * Flush any pending renders synchronously.
+   * Use this before unmount to ensure all state changes are rendered.
+   */
+  flush: () => void
+  /**
+   * Notify the root that the terminal has resized.
+   * Triggers a re-render which will self-correct if dimensions changed.
+   * Call this from ResizeObserver (browser) or process.stdout.on('resize') (Node).
+   */
+  resize: () => void
   /** Current viewport dimensions */
   readonly viewport: Viewport
 }
@@ -102,26 +119,9 @@ export const createRoot = ({
 }): Root => {
   const { throttleMs = 16, maxDynamicLines = 100, maxStaticLines = Infinity } = options
 
-  const renderer = new InlineRenderer({ terminalOrStream })
-
-  // Resolve terminal interface
-  const terminal: Terminal =
-    'isTTY' in terminalOrStream && typeof terminalOrStream.columns === 'number'
-      ? (terminalOrStream as Terminal)
-      : {
-          write: (data: string) => {
-            ;(terminalOrStream as TerminalLike).write(data)
-          },
-          get columns() {
-            return (terminalOrStream as TerminalLike).columns ?? 80
-          },
-          get rows() {
-            return (terminalOrStream as TerminalLike).rows ?? 24
-          },
-          get isTTY() {
-            return (terminalOrStream as TerminalLike).isTTY ?? false
-          },
-        }
+  // Resolve terminal interface once, share with renderer
+  const terminal = resolveTerminal(terminalOrStream)
+  const renderer = new InlineRenderer({ terminal })
 
   // Viewport state
   let viewport: Viewport = {
@@ -139,6 +139,9 @@ export const createRoot = ({
 
   // Track if disposed (to prevent rendering after unmount)
   let disposed = false
+
+  // Track last rendered width for self-correcting resize detection
+  let lastRenderedWidth = terminal.columns
 
   // Container that holds the root of the tree
   const container: TuiContainer = {
@@ -161,6 +164,32 @@ export const createRoot = ({
     () => {}, // onRecoverableError
     null, // transitionCallbacks
   )
+
+  /** Find Static element and reset its committedCount for full re-render */
+  const resetStaticCommittedCount = (): void => {
+    if (!container.root) return
+
+    // Walk the tree to find Static element
+    const findStatic = (
+      node: TuiStaticElement | { children?: unknown[] },
+    ): TuiStaticElement | null => {
+      if (isStaticElement(node as TuiStaticElement)) {
+        return node as TuiStaticElement
+      }
+      if ('children' in node && Array.isArray(node.children)) {
+        for (const child of node.children) {
+          const found = findStatic(child as { children?: unknown[] })
+          if (found) return found
+        }
+      }
+      return null
+    }
+
+    const staticEl = findStatic(container.root as unknown as { children?: unknown[] })
+    if (staticEl) {
+      staticEl.committedCount = 0
+    }
+  }
 
   /** Schedule a render with throttling */
   const scheduleRender = (): void => {
@@ -212,6 +241,15 @@ export const createRoot = ({
     }
 
     const width = viewport.columns
+
+    // Self-correcting resize detection: if width changed, reset everything
+    // This prevents ghost lines from differential rendering with stale positions
+    if (width !== lastRenderedWidth) {
+      lastRenderedWidth = width
+      resetStaticCommittedCount()
+      staticLineCount = 0
+      renderer.reset()
+    }
 
     // Handle static content first
     const staticResult = extractStaticContent({ root: container.root, width })
@@ -288,6 +326,26 @@ export const createRoot = ({
       renderer.dispose({ mode: options?.mode ?? 'persist' })
       // Clean up React internals (won't trigger render due to disposed flag)
       TuiReconciler.updateContainer(null, fiberRoot, null, () => {})
+    },
+    flush: () => {
+      if (disposed)
+        return // Flush any pending React reconciler work synchronously
+        // This ensures all state updates are committed before we render
+        // Note: flushSyncWork exists at runtime but @types/react-reconciler is outdated
+      ;(TuiReconciler as unknown as { flushSyncWork: () => void }).flushSyncWork()
+
+      // Cancel any pending throttled render
+      pendingRender = false
+      renderScheduled = false
+
+      // Force a render with current React tree state
+      doRender()
+      lastRenderTime = Date.now()
+    },
+    resize: () => {
+      // Just schedule a render - doRender() will detect the width change
+      // and self-correct by resetting state if needed
+      if (!disposed) scheduleRender()
     },
     get viewport() {
       return viewport

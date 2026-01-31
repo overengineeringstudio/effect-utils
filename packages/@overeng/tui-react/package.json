@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/mod.ts",
-    "./opentui": "./src/effect/opentui/mod.ts",
-    "./storybook": "./src/storybook/mod.ts"
+    ".": "./src/mod.tsx",
+    "./opentui": "./src/effect/opentui/mod.tsx",
+    "./storybook": "./src/storybook/mod.tsx"
   },
   "publishConfig": {
     "access": "public",

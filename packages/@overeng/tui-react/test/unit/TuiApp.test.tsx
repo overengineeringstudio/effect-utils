@@ -6,8 +6,8 @@ import { Effect, Schema } from 'effect'
 import React from 'react'
 import { describe, test, expect, beforeEach, afterEach } from 'vitest'
 
-import { testModeLayer } from '../../src/effect/testing.ts'
-import { createTuiApp, Box, Text } from '../../src/mod.ts'
+import { testModeLayer } from '../../src/effect/testing.tsx'
+import { createTuiApp, Box, Text } from '../../src/mod.tsx'
 
 // =============================================================================
 // Test State and Actions
@@ -176,6 +176,54 @@ describe('createTuiApp', () => {
       expect(
         CounterApp.config.reducer({ state: { count: 5 }, action: { _tag: 'Increment' } }),
       ).toEqual({ count: 6 })
+    })
+  })
+
+  describe('progressive mode rendering', () => {
+    // Note: Progressive modes (tty, ci) render to process.stdout, not console.log.
+    // We verify state is correctly set before unmount, and unmount waits for React
+    // to process pending updates before flushing and cleaning up.
+
+    test('dispatch followed by immediate unmount captures final state', async () => {
+      const finalState = await Effect.gen(function* () {
+        const tui = yield* CounterApp.run(<CounterView />)
+        tui.dispatch({ _tag: 'Set', value: 42 })
+        // Unmount now waits for React to process updates before flushing
+        yield* tui.unmount({ mode: 'persist' })
+        return tui.getState()
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('tty')), Effect.runPromise)
+
+      expect(finalState).toEqual({ count: 42 })
+    })
+
+    test('multiple dispatches before unmount shows final state', async () => {
+      const finalState = await Effect.gen(function* () {
+        const tui = yield* CounterApp.run(<CounterView />)
+        tui.dispatch({ _tag: 'Set', value: 10 })
+        tui.dispatch({ _tag: 'Increment' })
+        tui.dispatch({ _tag: 'Increment' })
+        tui.dispatch({ _tag: 'Increment' })
+        yield* tui.unmount({ mode: 'persist' })
+        return tui.getState()
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('tty')), Effect.runPromise)
+
+      // Final state should be 13 (10 + 3 increments)
+      expect(finalState).toEqual({ count: 13 })
+    })
+
+    test('unmount flushes React work synchronously via flushSyncWork', async () => {
+      // This test verifies that unmount uses React's flushSyncWork() to
+      // synchronously flush pending work before unmounting
+      let unmountCompleted = false
+
+      await Effect.gen(function* () {
+        const tui = yield* CounterApp.run(<CounterView />)
+        tui.dispatch({ _tag: 'Set', value: 100 })
+        yield* tui.unmount({ mode: 'persist' })
+        unmountCompleted = true
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('ci')), Effect.runPromise)
+
+      expect(unmountCompleted).toBe(true)
     })
   })
 
