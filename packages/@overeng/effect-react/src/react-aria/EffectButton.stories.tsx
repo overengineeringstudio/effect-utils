@@ -34,7 +34,7 @@ export default {
       </EffectProvider>
     ),
   ],
-} as Meta
+} satisfies Meta
 
 export const Success: StoryObj = {
   render: () => <EffectButton effect={demoSuccessEffect}>Run success</EffectButton>,

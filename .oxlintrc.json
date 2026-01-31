@@ -71,22 +71,31 @@
       }
     },
     {
-      "files": ["**/*.stories.tsx", "**/*.stories.ts", "**/*.stories.jsx", "**/.storybook/**"],
+      "files": ["**/*.stories.tsx", "**/*.stories.ts", "**/*.stories.jsx"],
       "rules": {
         "overeng/exports-first": "off",
-        "overeng/jsdoc-require-exports": "off"
+        "overeng/jsdoc-require-exports": "off",
+        "overeng/storybook/meta-satisfies-type": "error",
+        "overeng/storybook/default-exports": "error",
+        "overeng/storybook/story-exports": "warn",
+        "overeng/storybook/csf-component": "warn",
+        "overeng/storybook/hierarchy-separator": "warn",
+        "overeng/storybook/no-redundant-story-name": "warn",
+        "overeng/storybook/prefer-pascal-case": "warn"
+      }
+    },
+    {
+      "files": ["**/.storybook/**"],
+      "rules": {
+        "overeng/exports-first": "off",
+        "overeng/jsdoc-require-exports": "off",
+        "import/no-unassigned-import": "off"
       }
     },
     {
       "files": ["**/vitest.config.ts", "**/vite.config.ts", "**/playwright.config.ts"],
       "rules": {
         "overeng/jsdoc-require-exports": "off"
-      }
-    },
-    {
-      "files": ["**/.storybook/**"],
-      "rules": {
-        "import/no-unassigned-import": "off"
       }
     },
     {

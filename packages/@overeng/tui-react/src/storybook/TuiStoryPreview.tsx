@@ -1414,8 +1414,9 @@ const StatefulTuiStoryPreview = <S, A>({
       setCurrentTime(elapsed)
 
       // Find and dispatch any actions that should have fired
+      // Use >= for lower bound so events at time 0 can fire when currentTime is also 0
       timeline.forEach((event) => {
-        if (event.at <= elapsed && event.at > currentTime) {
+        if (event.at <= elapsed && event.at >= currentTime) {
           dispatch(event.action)
         }
       })

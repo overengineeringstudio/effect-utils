@@ -42,6 +42,41 @@ import type { FC } from 'react'
 import type { InputEvent } from './events.ts'
 import { keyEvent, resizeEvent } from './events.ts'
 
+// =============================================================================
+// Error Types
+// =============================================================================
+
+/** Error when OpenTUI core module fails to import */
+export class OpenTuiCoreImportError {
+  readonly _tag = 'OpenTuiCoreImportError'
+  constructor(readonly message: string) {}
+}
+
+/** Error when OpenTUI react module fails to import */
+export class OpenTuiReactImportError {
+  readonly _tag = 'OpenTuiReactImportError'
+  constructor(readonly message: string) {}
+}
+
+/** Error when OpenTUI renderer fails to initialize */
+export class OpenTuiRendererError {
+  readonly _tag = 'OpenTuiRendererError'
+  constructor(readonly message: string) {}
+}
+
+/** Error when OpenTUI is not available (wrong runtime) */
+export class OpenTuiUnavailableError {
+  readonly _tag = 'OpenTuiUnavailableError'
+  constructor(readonly message: string) {}
+}
+
+/** Union of all OpenTUI-related errors */
+export type OpenTuiError =
+  | OpenTuiCoreImportError
+  | OpenTuiReactImportError
+  | OpenTuiRendererError
+  | OpenTuiUnavailableError
+
 /**
  * View props for OpenTUI renderer - passes stateRef directly.
  */
@@ -108,28 +143,28 @@ interface OpenTuiReactModule {
 // Dynamic Import Helpers
 // =============================================================================
 
-const importOpenTuiCore = (): Effect.Effect<OpenTuiCoreModule, Error> =>
+const importOpenTuiCore = (): Effect.Effect<OpenTuiCoreModule, OpenTuiCoreImportError> =>
   Effect.tryPromise({
     try: async () => {
       const mod = await import('@opentui/core')
       return mod as OpenTuiCoreModule
     },
     catch: () =>
-      new Error(
+      new OpenTuiCoreImportError(
         'Failed to import @opentui/core. ' +
           'Install with: bun add @opentui/core @opentui/react\n' +
           'Note: OpenTUI requires Bun runtime (not Node.js)',
       ),
   })
 
-const importOpenTuiReact = (): Effect.Effect<OpenTuiReactModule, Error> =>
+const importOpenTuiReact = (): Effect.Effect<OpenTuiReactModule, OpenTuiReactImportError> =>
   Effect.tryPromise({
     try: async () => {
       const mod = await import('@opentui/react')
       return mod as OpenTuiReactModule
     },
     catch: () =>
-      new Error(
+      new OpenTuiReactImportError(
         'Failed to import @opentui/react. Install with: bun add @opentui/core @opentui/react',
       ),
   })
@@ -166,7 +201,7 @@ const bridgeResizeEvent = ({ width, height }: { width: number; height: number })
  * This dynamically imports OpenTUI and sets up the renderer with event bridging.
  * The renderer is automatically cleaned up when the scope closes.
  *
- * @throws Error if OpenTUI packages are not installed or Bun is not the runtime
+ * @throws OpenTuiError if OpenTUI packages are not installed or Bun is not the runtime
  *
  * @example
  * ```typescript
@@ -179,14 +214,14 @@ const bridgeResizeEvent = ({ width, height }: { width: number; height: number })
  */
 export const useOpenTuiRenderer = <S>(
   options: OpenTuiRendererOptions<S>,
-): Effect.Effect<OpenTuiRenderer, Error, Scope.Scope> =>
+): Effect.Effect<OpenTuiRenderer, OpenTuiError, Scope.Scope> =>
   Effect.gen(function* () {
     const { View, stateRef, eventPubSub, exitOnCtrlC = true } = options
 
     // Check if we're running in Bun
     if (!isOpenTuiAvailable()) {
       return yield* Effect.fail(
-        new Error(
+        new OpenTuiUnavailableError(
           'OpenTUI requires Bun runtime. ' +
             'Use inline modes (progressive-visual, final-visual) with Node.js.',
         ),
@@ -199,7 +234,7 @@ export const useOpenTuiRenderer = <S>(
     // Create the CLI renderer
     const cliRenderer = yield* Effect.tryPromise({
       try: () => core.createCliRenderer({ exitOnCtrlC }),
-      catch: (e) => new Error(`Failed to create OpenTUI renderer: ${e}`),
+      catch: (e) => new OpenTuiRendererError(`Failed to create OpenTUI renderer: ${e}`),
     })
 
     // Create React root

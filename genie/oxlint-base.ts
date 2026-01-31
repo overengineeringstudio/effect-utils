@@ -105,23 +105,36 @@ export const baseOxlintOverrides = [
     files: ['**/mod.ts'],
     rules: { 'oxc/no-barrel-file': 'off' },
   },
-  // Storybook files have a specific pattern
+  // Storybook story files (*.stories.*)
   {
-    files: ['**/*.stories.tsx', '**/*.stories.ts', '**/*.stories.jsx', '**/.storybook/**'],
+    files: ['**/*.stories.tsx', '**/*.stories.ts', '**/*.stories.jsx'],
+    rules: {
+      // Relaxed rules for story files
+      'overeng/exports-first': 'off',
+      'overeng/jsdoc-require-exports': 'off',
+      // Storybook best practices (re-exported from eslint-plugin-storybook)
+      'overeng/storybook/meta-satisfies-type': 'error',
+      'overeng/storybook/default-exports': 'error',
+      'overeng/storybook/story-exports': 'warn',
+      'overeng/storybook/csf-component': 'warn',
+      'overeng/storybook/hierarchy-separator': 'warn',
+      'overeng/storybook/no-redundant-story-name': 'warn',
+      'overeng/storybook/prefer-pascal-case': 'warn',
+    },
+  },
+  // Storybook config files (.storybook/*) - not story files
+  {
+    files: ['**/.storybook/**'],
     rules: {
       'overeng/exports-first': 'off',
       'overeng/jsdoc-require-exports': 'off',
+      'import/no-unassigned-import': 'off',
     },
   },
   // Config files don't need JSDoc
   {
     files: ['**/vitest.config.ts', '**/vite.config.ts', '**/playwright.config.ts'],
     rules: { 'overeng/jsdoc-require-exports': 'off' },
-  },
-  // Allow CSS side-effect imports in storybook previews
-  {
-    files: ['**/.storybook/**'],
-    rules: { 'import/no-unassigned-import': 'off' },
   },
   // Test files have more relaxed rules
   {

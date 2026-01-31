@@ -16,6 +16,10 @@ export default packageJson({
   exports: {
     './plugin': './src/mod.ts',
   },
+  dependencies: {
+    // Re-exported as part of the overeng plugin for storybook linting
+    ...catalog.pick('eslint-plugin-storybook'),
+  },
   devDependencies: {
     ...catalog.pick(
       '@types/eslint',

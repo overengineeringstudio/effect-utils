@@ -269,14 +269,10 @@ export const GenieView = ({ state }: GenieViewProps) => {
   // ===================
   // Complete Phase
   // ===================
-  // Group files by status for ordered display
-  const created = files.filter((f) => f.status === 'created')
-  const updated = files.filter((f) => f.status === 'updated')
-  const unchanged = files.filter((f) => f.status === 'unchanged')
-  const skipped = files.filter((f) => f.status === 'skipped')
-  const errors = files.filter((f) => f.status === 'error')
-
-  const hasChanges = created.length > 0 || updated.length > 0 || errors.length > 0
+  // Check for changes/errors
+  const hasChanges = files.some(
+    (f) => f.status === 'created' || f.status === 'updated' || f.status === 'error',
+  )
 
   return (
     <Box>
@@ -284,38 +280,15 @@ export const GenieView = ({ state }: GenieViewProps) => {
       {watchCycle !== undefined && watchCycle > 0 && <Text dim>Watch cycle #{watchCycle + 1}</Text>}
       <Text> </Text>
 
-      {/* Results */}
-      {!hasChanges && errors.length === 0 ? (
+      {/* Results - use original file order for consistency with generating phase */}
+      {!hasChanges ? (
         <Box flexDirection="row">
           <Text color="green">{icons.check}</Text>
           <Text> </Text>
           <Text dim>All files up to date</Text>
         </Box>
       ) : (
-        <>
-          {created.map((f) => (
-            <FileItem key={f.path} file={f} />
-          ))}
-          {updated.map((f) => (
-            <FileItem key={f.path} file={f} />
-          ))}
-          {errors.map((f) => (
-            <FileItem key={f.path} file={f} />
-          ))}
-          {skipped.map((f) => (
-            <FileItem key={f.path} file={f} />
-          ))}
-          {/* Show unchanged only if there are other changes, otherwise summarize */}
-          {unchanged.length > 0 && hasChanges && unchanged.length <= 5 ? (
-            unchanged.map((f) => <FileItem key={f.path} file={f} />)
-          ) : unchanged.length > 0 && hasChanges ? (
-            <Box flexDirection="row">
-              <Text dim>
-                {icons.check} {unchanged.length} files unchanged
-              </Text>
-            </Box>
-          ) : null}
-        </>
+        files.map((f) => <FileItem key={f.path} file={f} />)
       )}
 
       {/* Separator and summary */}

@@ -173,6 +173,7 @@ export const catalog = defineCatalog({
   storybook: '10.2.1',
   '@storybook/react': '10.2.1',
   '@storybook/react-vite': '10.2.1',
+  'eslint-plugin-storybook': '10.2.3',
 
   // xterm (terminal emulator for browser/testing)
   '@xterm/xterm': '6.0.0',
@@ -549,9 +550,28 @@ export const modEntryOxlintOverride = {
   rules: { 'oxc/no-barrel-file': 'off' },
 } as const satisfies OxlintOverride
 
-/** Standard overrides for storybook files */
+/** Standard overrides for storybook story files (*.stories.*) */
 export const storybookOxlintOverride = {
-  files: ['**/*.stories.tsx', '**/*.stories.ts', '**/.storybook/**'],
+  files: ['**/*.stories.tsx', '**/*.stories.ts'],
+  rules: {
+    // Relaxed rules for story files
+    'func-style': 'off',
+    'overeng/exports-first': 'off',
+    'overeng/jsdoc-require-exports': 'off',
+    // Storybook best practices (re-exported from eslint-plugin-storybook)
+    'overeng/storybook/meta-satisfies-type': 'error',
+    'overeng/storybook/default-exports': 'error',
+    'overeng/storybook/story-exports': 'warn',
+    'overeng/storybook/csf-component': 'warn',
+    'overeng/storybook/hierarchy-separator': 'warn',
+    'overeng/storybook/no-redundant-story-name': 'warn',
+    'overeng/storybook/prefer-pascal-case': 'warn',
+  },
+} as const satisfies OxlintOverride
+
+/** Standard overrides for storybook config files (.storybook/*) */
+export const storybookConfigOxlintOverride = {
+  files: ['**/.storybook/**'],
   rules: {
     'func-style': 'off',
     'overeng/exports-first': 'off',

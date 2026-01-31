@@ -128,7 +128,7 @@ export const runTestCommand = async <S, Args>({
   commandFn,
   options,
 }: {
-  commandFn: (args: Args) => Effect.Effect<unknown, unknown, Scope.Scope | OutputModeTag>
+  commandFn: (args: Args) => Effect.Effect<unknown, never, Scope.Scope | OutputModeTag>
   options: RunTestCommandOptions<S, Args>
 }): Promise<TestCommandResult<S>> => {
   const jsonOutput: string[] = []
@@ -140,9 +140,11 @@ export const runTestCommand = async <S, Args>({
   }
 
   try {
-    await Effect.gen(function* () {
-      yield* commandFn(options.args)
-    }).pipe(Effect.scoped, Effect.provide(testModeLayer(options.mode)), Effect.runPromise)
+    await commandFn(options.args).pipe(
+      Effect.scoped,
+      Effect.provide(testModeLayer(options.mode)),
+      Effect.runPromise,
+    )
   } finally {
     console.log = originalLog
   }

@@ -6,6 +6,9 @@
   "exports": {
     "./plugin": "./src/mod.ts"
   },
+  "dependencies": {
+    "eslint-plugin-storybook": "10.2.3"
+  },
   "devDependencies": {
     "@types/eslint": "9.6.1",
     "@typescript-eslint/parser": "8.52.0",
