@@ -54,7 +54,7 @@ import {
 } from '../effect/OutputMode.tsx'
 import { renderToString } from '../renderToString.ts'
 import { createRoot, type Root } from '../root.ts'
-import { xtermTheme, containerStyles } from './theme.ts'
+import { xtermTheme, containerStyles, previewTextStyles, previewPadding } from './theme.ts'
 
 // =============================================================================
 // Types
@@ -626,12 +626,10 @@ const PlaybackControls = <A,>({
 const JsonPreviewPane: React.FC<{ json: string }> = ({ json }) => (
   <pre
     style={{
-      margin: 0,
-      padding: '12px',
-      background: '#1e1e1e',
-      color: '#d4d4d4',
-      fontFamily: 'Monaco, Menlo, monospace',
-      fontSize: '12px',
+      ...containerStyles,
+      ...previewTextStyles,
+      fontSize: '12px', // Slightly smaller for JSON
+      lineHeight: '15px',
       overflow: 'auto',
       height: '100%',
     }}
@@ -644,15 +642,29 @@ const JsonPreviewPane: React.FC<{ json: string }> = ({ json }) => (
 // NDJSON Preview Component
 // =============================================================================
 
-const NdjsonPreviewPane: React.FC<{ lines: string[] }> = ({ lines }) => (
+interface NdjsonLine {
+  timestamp: number
+  json: string
+}
+
+const formatTimestamp = (ms: number): string => {
+  const date = new Date(ms)
+  return date.toLocaleTimeString('en-US', { 
+    hour12: false, 
+    hour: '2-digit', 
+    minute: '2-digit', 
+    second: '2-digit',
+    fractionalSecondDigits: 3,
+  })
+}
+
+const NdjsonPreviewPane: React.FC<{ lines: NdjsonLine[] }> = ({ lines }) => (
   <pre
     style={{
-      margin: 0,
-      padding: '12px',
-      background: '#1e1e1e',
-      color: '#d4d4d4',
-      fontFamily: 'Monaco, Menlo, monospace',
-      fontSize: '11px',
+      ...containerStyles,
+      ...previewTextStyles,
+      fontSize: '11px', // Slightly smaller for NDJSON
+      lineHeight: '16px',
       overflow: 'auto',
       height: '100%',
     }}
@@ -660,9 +672,20 @@ const NdjsonPreviewPane: React.FC<{ lines: string[] }> = ({ lines }) => (
     {lines.map((line, i) => (
       <div
         key={i}
-        style={{ borderBottom: '1px solid #333', paddingBottom: '4px', marginBottom: '4px' }}
+        style={{ 
+          borderBottom: '1px solid #333', 
+          paddingBottom: '4px', 
+          marginBottom: '4px',
+          display: 'flex',
+          gap: '12px',
+        }}
       >
-        {line}
+        <span style={{ color: '#666', flexShrink: 0 }}>
+          {formatTimestamp(line.timestamp)}
+        </span>
+        <span style={{ color: '#eee' }}>
+          {line.json}
+        </span>
       </div>
     ))}
   </pre>
@@ -737,7 +760,7 @@ const CIPreviewPane: React.FC<{
     }
   }, [])
 
-  return <div ref={containerRef} style={{ ...containerStyles, height }} />
+  return <div ref={containerRef} style={{ ...containerStyles, padding: previewPadding, height }} />
 }
 
 // =============================================================================
@@ -772,17 +795,10 @@ const LogPreviewPane: React.FC<{
   return (
     <pre
       style={{
-        margin: 0,
-        padding: '12px',
-        background: '#1e1e1e',
-        color: '#d4d4d4',
-        fontFamily: 'Monaco, Menlo, "DejaVu Sans Mono", Consolas, monospace',
-        fontSize: '14px',
+        ...containerStyles,
+        ...previewTextStyles,
         overflow: 'auto',
         height,
-        boxSizing: 'border-box',
-        whiteSpace: 'pre-wrap',
-        wordBreak: 'break-word',
       }}
     >
       {output}
@@ -822,17 +838,10 @@ const CIPlainPreviewPane: React.FC<{
   return (
     <pre
       style={{
-        margin: 0,
-        padding: '12px',
-        background: '#1e1e1e',
-        color: '#d4d4d4',
-        fontFamily: 'Monaco, Menlo, "DejaVu Sans Mono", Consolas, monospace',
-        fontSize: '14px',
+        ...containerStyles,
+        ...previewTextStyles,
         overflow: 'auto',
         height,
-        boxSizing: 'border-box',
-        whiteSpace: 'pre-wrap',
-        wordBreak: 'break-word',
       }}
     >
       {output}
@@ -909,7 +918,7 @@ const PipePreviewPane: React.FC<{
     }
   }, [])
 
-  return <div ref={containerRef} style={{ ...containerStyles, height }} />
+  return <div ref={containerRef} style={{ ...containerStyles, padding: previewPadding, height }} />
 }
 
 // =============================================================================
@@ -937,10 +946,7 @@ const FullscreenPreviewPane: React.FC<{
     const terminal = new Terminal({
       fontFamily: 'Monaco, Menlo, "DejaVu Sans Mono", Consolas, monospace',
       fontSize: 14,
-      theme: {
-        ...xtermTheme,
-        background: '#0a0a0f', // Slightly different background for fullscreen
-      },
+      theme: xtermTheme,
       allowProposedApi: true,
       cursorBlink: false,
       cursorStyle: 'block',
@@ -1015,62 +1021,55 @@ const FullscreenPreviewPane: React.FC<{
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleKeyDown])
 
-  const statusBarHeight = 28
+  const statusBarHeight = 24
   const terminalHeight = height - statusBarHeight
 
   return (
     <div
       style={{
+        ...containerStyles,
         display: 'flex',
         flexDirection: 'column',
         height,
-        backgroundColor: '#0a0a0f',
-        overflow: 'hidden',
-        border: isFocused ? '2px solid #4a9eff' : '2px solid #333',
         outline: 'none',
-        boxSizing: 'border-box',
       }}
       tabIndex={0}
       onFocus={() => setIsFocused(true)}
       onBlur={() => setIsFocused(false)}
     >
-      {/* Status Bar */}
+      {/* Terminal */}
+      <div
+        ref={containerRef}
+        style={{ flex: 1, height: terminalHeight, padding: previewPadding, boxSizing: 'border-box' }}
+      />
+
+      {/* Status Bar (at bottom) */}
       <div
         style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
           padding: '4px 12px',
-          backgroundColor: '#1a1a2e',
-          borderBottom: '1px solid #333',
-          fontSize: '12px',
+          backgroundColor: '#252538',
+          borderTop: '1px solid #333',
+          fontSize: '11px',
           fontFamily: 'system-ui, sans-serif',
-          color: '#888',
+          color: '#666',
           height: statusBarHeight,
           boxSizing: 'border-box',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <span
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#4a9eff' }}
-          >
-            <span
-              style={{
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                backgroundColor: '#4a9eff',
-              }}
-            />
-            Fullscreen Mode (Simulated)
+          <span style={{ color: '#888' }}>
+            Alt Screen (Simulated)
           </span>
-          <span style={{ color: '#666' }}>
+          <span>
             {dimensions.cols}x{dimensions.rows}
           </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           {lastKey && (
-            <span style={{ color: '#666' }}>
+            <span>
               Key: <code style={{ color: '#aaa' }}>{lastKey}</code>
             </span>
           )}
@@ -1079,12 +1078,6 @@ const FullscreenPreviewPane: React.FC<{
           </span>
         </div>
       </div>
-
-      {/* Terminal */}
-      <div
-        ref={containerRef}
-        style={{ flex: 1, height: terminalHeight, padding: '8px', boxSizing: 'border-box' }}
-      />
     </div>
   )
 }
@@ -1239,7 +1232,7 @@ const SimpleTuiStoryPreview: React.FC<SimpleProps> = ({
       {/* Content */}
       <div style={{ height, overflow: 'hidden' }}>
         {activeTab === 'tty' && (
-          <div ref={containerRef} style={{ ...containerStyles, height: '100%' }} />
+          <div ref={containerRef} style={{ ...containerStyles, padding: previewPadding, height: '100%' }} />
         )}
         {activeTab === 'alt-screen' && (
           <FullscreenPreviewPane View={ChildrenView} state={null} height={height} />
@@ -1257,7 +1250,7 @@ const SimpleTuiStoryPreview: React.FC<SimpleProps> = ({
           <LogPreviewPane View={ChildrenView} state={null} height={height} />
         )}
         {activeTab === 'json' && <JsonPreviewPane json="// Simple mode - no state schema" />}
-        {activeTab === 'ndjson' && <NdjsonPreviewPane lines={['// Simple mode - no state tracking']} />}
+        {activeTab === 'ndjson' && <NdjsonPreviewPane lines={[{ timestamp: Date.now(), json: '// Simple mode - no state tracking' }]} />}
       </div>
     </div>
   )
@@ -1284,7 +1277,7 @@ const StatefulTuiStoryPreview = <S, A>({
   const [state, setState] = useState<S>(initialState)
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
-  const [ndjsonLines, setNdjsonLines] = useState<string[]>([])
+  const [ndjsonLines, setNdjsonLines] = useState<NdjsonLine[]>([])
 
   // Refs for visual terminal only
   const containerRef = useRef<HTMLDivElement>(null)
@@ -1316,10 +1309,13 @@ const StatefulTuiStoryPreview = <S, A>({
     (action: A) => {
       setState((prev) => {
         const next = reducer({ state: prev, action })
-        // Add to NDJSON log
+        // Add to NDJSON log with timestamp
         try {
           const encoded = Schema.encodeSync(stateSchema)(next)
-          setNdjsonLines((lines) => [...lines, JSON.stringify(encoded)])
+          setNdjsonLines((lines) => [...lines, { 
+            timestamp: Date.now(), 
+            json: JSON.stringify(encoded) 
+          }])
         } catch {
           // Ignore encoding errors
         }
@@ -1480,7 +1476,7 @@ const StatefulTuiStoryPreview = <S, A>({
       {/* Content */}
       <div style={{ height, overflow: 'hidden' }}>
         {activeTab === 'tty' && (
-          <div ref={containerRef} style={{ ...containerStyles, height: '100%' }} />
+          <div ref={containerRef} style={{ ...containerStyles, padding: previewPadding, height: '100%' }} />
         )}
         {activeTab === 'alt-screen' && (
           <FullscreenPreviewPane View={ViewCast} state={effectiveState} height={height} />

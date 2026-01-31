@@ -64,7 +64,7 @@ export {
   type OutputTab,
 } from './TuiStoryPreview.tsx'
 export { tuiPreview } from './preview.ts'
-export { xtermTheme, containerStyles } from './theme.ts'
+export { xtermTheme, containerStyles, previewTextStyles } from './theme.ts'
 
 // CLI utilities
 export {

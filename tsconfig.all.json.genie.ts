@@ -22,6 +22,8 @@ const references = [
   './packages/@overeng/notion-effect-schema',
   './packages/@overeng/oxc-config',
   './packages/@overeng/react-inspector',
+  './packages/@overeng/tui-react',
+  './packages/@overeng/tui-core',
   './packages/@overeng/utils',
 ]
 
