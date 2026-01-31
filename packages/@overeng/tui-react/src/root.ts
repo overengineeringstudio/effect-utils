@@ -10,6 +10,7 @@ import { InlineRenderer, type Terminal, type TerminalLike, type ExitMode } from 
 
 import { ViewportProvider, type Viewport } from './hooks/useViewport.tsx'
 import { renderTreeSimple, extractStaticContent } from './reconciler/output.ts'
+import { truncateLines } from './truncate.ts'
 import { TuiReconciler, type TuiContainer } from './reconciler/reconciler.ts'
 import type { TuiStaticElement } from './reconciler/types.ts'
 import { isStaticElement } from './reconciler/types.ts'
@@ -231,7 +232,9 @@ export const createRoot = ({
       }
 
       if (linesToAppend.length > 0) {
-        renderer.appendStatic(linesToAppend)
+        // Truncate lines to prevent soft wrapping
+        const truncatedStaticLines = truncateLines(linesToAppend, width)
+        renderer.appendStatic(truncatedStaticLines)
       }
 
       // Update the committed count
@@ -245,6 +248,9 @@ export const createRoot = ({
 
     // Render to lines
     let lines = renderTreeSimple({ root: container.root, width })
+
+    // Truncate lines to prevent soft wrapping (which causes ghost lines during updates)
+    lines = truncateLines(lines, width)
 
     // Apply maxDynamicLines limit
     if (lines.length > maxDynamicLines) {

@@ -397,3 +397,151 @@ export const Idle: Story = {
     />
   ),
 }
+
+// =============================================================================
+// Edge Case Stories - Long Lines
+// =============================================================================
+
+const longServiceNames = [
+  'api-gateway-service-with-very-long-name-that-exceeds-normal-terminal-width',
+  'authentication-and-authorization-microservice-with-oauth2-and-saml-support',
+  'background-job-worker-processor-service-for-async-tasks-and-scheduled-jobs',
+]
+
+const longLogsBase: readonly LogEntry[] = [
+  { timestamp: '10:15:30', level: 'info', message: 'Starting deployment to production-us-east-1-kubernetes-cluster-primary environment with rolling update strategy (maxUnavailable: 25%, maxSurge: 25%)' },
+  { timestamp: '10:15:30', level: 'info', message: `Services to deploy: ${longServiceNames.join(', ')}` },
+  { timestamp: '10:15:31', level: 'info', message: 'Configuration validated successfully. Found 3 services with 12 replicas total across 4 availability zones. Using container registry: gcr.io/my-organization-production-12345/services' },
+]
+
+const longLinesTimeline: Array<{ at: number; action: typeof DeployAction.Type }> = [
+  // Start - Idle
+  { at: 0, action: { _tag: 'SetState', state: { _tag: 'Idle' } } },
+
+  // Validating with long env name
+  {
+    at: 500,
+    action: {
+      _tag: 'SetState',
+      state: {
+        _tag: 'Validating',
+        environment: 'production-us-east-1-kubernetes-cluster-primary',
+        services: longServiceNames,
+        logs: [longLogsBase[0]!, longLogsBase[1]!],
+      },
+    },
+  },
+
+  // Progress - first service starting
+  {
+    at: 2000,
+    action: {
+      _tag: 'SetState',
+      state: {
+        _tag: 'Progress',
+        environment: 'production-us-east-1-kubernetes-cluster-primary',
+        services: [
+          { name: longServiceNames[0]!, status: 'pulling', message: 'Pulling image gcr.io/my-organization-production-12345/api-gateway:v2.34.1-alpine-slim...' },
+          { name: longServiceNames[1]!, status: 'pending' },
+          { name: longServiceNames[2]!, status: 'pending' },
+        ],
+        logs: [...longLogsBase],
+        startedAt: Date.now(),
+      },
+    },
+  },
+
+  // Progress - first healthy, second starting with long message
+  {
+    at: 4000,
+    action: {
+      _tag: 'SetState',
+      state: {
+        _tag: 'Progress',
+        environment: 'production-us-east-1-kubernetes-cluster-primary',
+        services: [
+          { name: longServiceNames[0]!, status: 'healthy' },
+          { name: longServiceNames[1]!, status: 'healthcheck', message: 'Waiting for health check endpoint GET /api/v1/health/ready to return 200 OK...' },
+          { name: longServiceNames[2]!, status: 'pulling', message: 'Pulling image gcr.io/my-organization-production-12345/background-worker:v1.12.0...' },
+        ],
+        logs: [
+          ...longLogsBase,
+          { timestamp: '10:15:35', level: 'info', message: `Successfully deployed ${longServiceNames[0]} to all 4 replicas in us-east-1a, us-east-1b, us-east-1c, us-east-1d`, service: longServiceNames[0] },
+        ],
+        startedAt: Date.now(),
+      },
+    },
+  },
+
+  // Progress - second failing with long error
+  {
+    at: 6000,
+    action: {
+      _tag: 'SetState',
+      state: {
+        _tag: 'Progress',
+        environment: 'production-us-east-1-kubernetes-cluster-primary',
+        services: [
+          { name: longServiceNames[0]!, status: 'healthy' },
+          { name: longServiceNames[1]!, status: 'failed' },
+          { name: longServiceNames[2]!, status: 'starting', message: 'Starting container with environment variables from ConfigMap/auth-service-config and Secret/auth-service-credentials...' },
+        ],
+        logs: [
+          ...longLogsBase,
+          { timestamp: '10:15:35', level: 'info', message: `Successfully deployed ${longServiceNames[0]} to all 4 replicas`, service: longServiceNames[0] },
+          { timestamp: '10:15:40', level: 'error', message: 'Health check failed: GET http://10.0.42.156:8080/api/v1/health/ready returned ECONNREFUSED after 30000ms. Container logs: "Error: Unable to connect to Redis cluster at redis-primary.internal.production.svc.cluster.local:6379 - CLUSTERDOWN The cluster is down. Please check Redis Sentinel configuration."', service: longServiceNames[1] },
+        ],
+        startedAt: Date.now(),
+      },
+    },
+  },
+
+  // Failed state with long error message
+  {
+    at: 8000,
+    action: {
+      _tag: 'SetState',
+      state: {
+        _tag: 'Failed',
+        environment: 'production-us-east-1-kubernetes-cluster-primary',
+        services: [
+          { name: longServiceNames[0]!, result: 'updated', duration: 4500 },
+          { name: longServiceNames[1]!, result: 'failed', duration: 5000, error: 'Health check timeout: GET /api/v1/health/ready failed after 30s. Last response: ECONNREFUSED 10.0.42.156:8080. Check container logs for details.' },
+          { name: longServiceNames[2]!, result: 'rolled-back', duration: 2000 },
+        ],
+        error: 'Deployment failed: authentication-and-authorization-microservice-with-oauth2-and-saml-support health check timeout after 30s. The service failed to respond to GET /api/v1/health/ready endpoint. Last error: ECONNREFUSED 10.0.42.156:8080. This may indicate the container failed to start or there is a configuration issue. Run: kubectl logs -n production deployment/authentication-and-authorization-microservice-with-oauth2-and-saml-support --tail=100',
+        logs: [
+          ...longLogsBase,
+          { timestamp: '10:15:35', level: 'info', message: `Successfully deployed ${longServiceNames[0]} to all 4 replicas`, service: longServiceNames[0] },
+          { timestamp: '10:15:40', level: 'error', message: 'Health check failed: GET http://10.0.42.156:8080/api/v1/health/ready returned ECONNREFUSED after 30000ms timeout', service: longServiceNames[1] },
+          { timestamp: '10:15:41', level: 'warn', message: `Initiating automatic rollback for ${longServiceNames[2]} due to deployment failure in dependent service`, service: longServiceNames[2] },
+          { timestamp: '10:15:43', level: 'error', message: 'Deployment failed after 8.2s. 1 service updated, 1 service failed, 1 service rolled back. Please check the error details above and container logs for more information.' },
+        ],
+        startedAt: Date.now() - 8000,
+        failedAt: Date.now(),
+      },
+    },
+  },
+]
+
+export const LongLines: Story = {
+  args: {
+    autoRun: true,
+    playbackSpeed: 1,
+    height: 400,
+  },
+  render: (args) => (
+    <TuiStoryPreview
+      View={DeployView}
+      stateSchema={DeployState}
+      actionSchema={DeployAction}
+      reducer={deployReducer}
+      initialState={{ _tag: 'Idle' }}
+      timeline={longLinesTimeline}
+      autoRun={args.autoRun}
+      playbackSpeed={args.playbackSpeed}
+      height={args.height}
+      tabs={ALL_TABS}
+    />
+  ),
+}

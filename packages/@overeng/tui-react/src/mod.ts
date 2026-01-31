@@ -45,6 +45,14 @@ export {
   type Viewport,
   type ViewportProviderProps,
 } from './hooks/useViewport.tsx'
+
+// Text truncation utilities
+export {
+  truncateText,
+  getTextWidth,
+  type TruncateOptions,
+} from './truncate.ts'
+
 export { renderToString, renderToLines, type RenderToStringOptions } from './renderToString.ts'
 
 // Components

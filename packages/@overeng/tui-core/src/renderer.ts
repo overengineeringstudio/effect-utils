@@ -8,6 +8,8 @@
  * - Supports synchronized output (CSI 2026) for atomic updates
  */
 
+import cliTruncate from 'cli-truncate'
+
 import {
   beginSyncOutput,
   clearLine,
@@ -111,16 +113,22 @@ export class InlineRenderer {
   appendStatic(lines: readonly string[]): void {
     if (lines.length === 0) return
 
+    // Truncate lines to terminal width to prevent soft wrapping
+    const width = this.terminal.columns
+    const truncatedLines = lines.map((line) =>
+      cliTruncate(line, width, { position: 'end', truncationCharacter: '…' }),
+    )
+
     // If we have dynamic content, we need to clear it first, print static, then re-render dynamic
     if (this.hasRendered && this.dynamicLines.length > 0) {
       this.clearDynamic()
     }
 
     // Print the new static lines
-    for (const line of lines) {
+    for (const line of truncatedLines) {
       this.terminal.write(line + '\r\n')
     }
-    this.staticLines.push(...lines)
+    this.staticLines.push(...truncatedLines)
 
     // Re-render dynamic content below the new static content
     if (this.hasRendered && this.dynamicLines.length > 0) {
@@ -136,7 +144,11 @@ export class InlineRenderer {
    * Uses differential rendering to minimize output.
    */
   render(lines: readonly string[]): void {
-    this.dynamicLines = [...lines]
+    // Truncate lines to terminal width to prevent soft wrapping (which causes ghost lines)
+    const width = this.terminal.columns
+    this.dynamicLines = lines.map((line) =>
+      cliTruncate(line, width, { position: 'end', truncationCharacter: '…' }),
+    )
 
     // Check for terminal resize
     const currentWidth = this.terminal.columns
