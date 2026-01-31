@@ -326,28 +326,6 @@ export const getExpectedContent = Effect.fn('getExpectedContent')(function* ({
   return { targetFilePath, content: header + formattedContent }
 })
 
-/** Generate a brief diff summary showing line count changes */
-const generateDiffSummary = ({
-  oldContent,
-  newContent,
-}: {
-  oldContent: string
-  newContent: string
-}): string => {
-  if (oldContent === newContent) return ''
-
-  const oldLines = oldContent.split('\n').length
-  const newLines = newContent.split('\n').length
-  const diff = newLines - oldLines
-
-  if (diff > 0) {
-    return `  (+${diff} lines)`
-  } else if (diff < 0) {
-    return `  (${diff} lines)`
-  }
-  return '  (content changed)'
-}
-
 /**
  * Atomically write a file by writing to a temp file first, then renaming.
  * This prevents file corruption if an error occurs during write.
@@ -422,7 +400,6 @@ export const generateFile = ({
     const targetDirExists = yield* fs.exists(targetDir)
     if (!targetDirExists) {
       const reason = `Parent directory missing: ${targetDir}`
-      yield* Effect.logWarning(`Skipping ${targetFilePath}: ${reason}`)
       return { _tag: 'skipped', targetFilePath, reason } as const
     }
 
@@ -436,18 +413,11 @@ export const generateFile = ({
 
     if (dryRun) {
       if (!fileExists) {
-        yield* Effect.log(`Would create: ${targetFilePath}`)
         return { _tag: 'created', targetFilePath } as const
       }
       if (isUnchanged) {
         return { _tag: 'unchanged', targetFilePath } as const
       }
-      // Show diff summary
-      const diffSummary = generateDiffSummary({
-        oldContent: currentContent,
-        newContent: fileContentString,
-      })
-      yield* Effect.log(`Would update: ${targetFilePath}${diffSummary}`)
       return { _tag: 'updated', targetFilePath } as const
     }
 
@@ -460,19 +430,12 @@ export const generateFile = ({
 
     // Determine result status
     if (!fileExists) {
-      yield* Effect.log(`✓ Created ${targetFilePath}`)
       return { _tag: 'created', targetFilePath } as const
     }
     if (isUnchanged) {
       return { _tag: 'unchanged', targetFilePath } as const
     }
 
-    // Show diff summary for changed files
-    const diffSummary = generateDiffSummary({
-      oldContent: currentContent,
-      newContent: fileContentString,
-    })
-    yield* Effect.log(`✓ Updated ${targetFilePath}${diffSummary}`)
     return { _tag: 'updated', targetFilePath } as const
   }).pipe(
     Effect.mapError((cause) => {
@@ -532,54 +495,5 @@ export const checkFile = Effect.fn('checkFile')(function* ({
       targetFilePath,
       message: `File content is out of date. Run 'genie' to regenerate it.`,
     })
-  }
-
-  yield* Effect.log(`✓ ${targetFilePath} is up to date`)
-})
-
-/**
- * Logs a summary of file generation results and returns counts by category.
- */
-export const summarizeResults = Effect.fn('summarizeResults')(function* ({
-  successes,
-  failures,
-}: {
-  successes: GenerateSuccess[]
-  failures: GenieFileError[]
-}) {
-  const created = successes.filter((s) => s._tag === 'created')
-  const updated = successes.filter((s) => s._tag === 'updated')
-  const unchanged = successes.filter((s) => s._tag === 'unchanged')
-  const skipped = successes.filter((s) => s._tag === 'skipped')
-  const total = successes.length + failures.length
-
-  yield* Effect.log('')
-  yield* Effect.log(`Summary: ${total} files processed`)
-
-  if (created.length > 0) {
-    yield* Effect.log(`  ✓ ${created.length} created`)
-  }
-  if (updated.length > 0) {
-    yield* Effect.log(`  ✓ ${updated.length} updated`)
-  }
-  if (unchanged.length > 0) {
-    yield* Effect.log(`  · ${unchanged.length} unchanged`)
-  }
-  if (skipped.length > 0) {
-    yield* Effect.log(`  · ${skipped.length} skipped`)
-  }
-  if (failures.length > 0) {
-    yield* Effect.logError(`  ✗ ${failures.length} failed:`)
-    for (const f of failures) {
-      yield* Effect.logError(`    - ${f.targetFilePath}: ${f.message}`)
-    }
-  }
-
-  return {
-    created: created.length,
-    updated: updated.length,
-    unchanged: unchanged.length,
-    skipped: skipped.length,
-    failed: failures.length,
   }
 })

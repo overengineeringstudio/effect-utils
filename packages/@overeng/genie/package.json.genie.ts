@@ -43,14 +43,16 @@ export default packageJson({
       '@types/bun',
       'effect',
       'vitest',
-      // Storybook
-      '@storybook/addon-essentials',
+      // Storybook (addon-essentials is built into storybook 10.x)
       '@storybook/react',
       '@storybook/react-vite',
       'storybook',
       'react',
       'react-dom',
       '@types/react',
+      // Required for tui-react storybook (react-reconciler is a peer dep of tui-react)
+      'react-reconciler',
+      '@types/react-reconciler',
     ),
     ...effectLspDevDeps(),
   },

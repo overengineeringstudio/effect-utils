@@ -1,0 +1,440 @@
+/**
+ * GenieOutput Stories
+ *
+ * Storybook stories using TuiStoryPreview stateful mode.
+ * Supports all output modes: TTY, CI, Log, JSON, NDJSON.
+ */
+
+import type { Meta, StoryObj } from '@storybook/react'
+import React from 'react'
+
+import { TuiStoryPreview, type OutputTab } from '@overeng/tui-react/storybook'
+
+import { GenieState, GenieAction, genieReducer } from './schema.ts'
+import { GenieView } from './view.tsx'
+
+// =============================================================================
+// Sample Data
+// =============================================================================
+
+const sampleFiles = [
+  { path: '/workspace/packages/foo/package.json', relativePath: 'packages/foo/package.json' },
+  { path: '/workspace/packages/foo/tsconfig.json', relativePath: 'packages/foo/tsconfig.json' },
+  { path: '/workspace/packages/bar/package.json', relativePath: 'packages/bar/package.json' },
+  { path: '/workspace/.github/workflows/ci.yml', relativePath: '.github/workflows/ci.yml' },
+  { path: '/workspace/tsconfig.base.json', relativePath: 'tsconfig.base.json' },
+]
+
+// =============================================================================
+// State Factories
+// =============================================================================
+
+const createState = (overrides: Partial<typeof GenieState.Type> = {}): typeof GenieState.Type => ({
+  phase: 'complete',
+  mode: 'generate',
+  cwd: '/workspace',
+  files: [],
+  ...overrides,
+})
+
+const createMixedResultsState = (): typeof GenieState.Type =>
+  createState({
+    files: [
+      {
+        path: '/workspace/packages/foo/package.json',
+        relativePath: 'packages/foo/package.json',
+        status: 'created',
+      },
+      {
+        path: '/workspace/packages/foo/tsconfig.json',
+        relativePath: 'packages/foo/tsconfig.json',
+        status: 'updated',
+        message: '(+2 lines)',
+      },
+      {
+        path: '/workspace/packages/bar/package.json',
+        relativePath: 'packages/bar/package.json',
+        status: 'unchanged',
+      },
+      {
+        path: '/workspace/.github/workflows/ci.yml',
+        relativePath: '.github/workflows/ci.yml',
+        status: 'updated',
+        message: '(content changed)',
+      },
+      {
+        path: '/workspace/tsconfig.base.json',
+        relativePath: 'tsconfig.base.json',
+        status: 'unchanged',
+      },
+    ],
+    summary: { created: 1, updated: 2, unchanged: 2, skipped: 0, failed: 0 },
+  })
+
+const createAllUnchangedState = (): typeof GenieState.Type =>
+  createState({
+    files: sampleFiles.map((f) => ({ ...f, status: 'unchanged' as const })),
+    summary: { created: 0, updated: 0, unchanged: 5, skipped: 0, failed: 0 },
+  })
+
+const createWithErrorsState = (): typeof GenieState.Type =>
+  createState({
+    files: [
+      {
+        path: '/workspace/packages/foo/package.json',
+        relativePath: 'packages/foo/package.json',
+        status: 'created',
+      },
+      {
+        path: '/workspace/packages/bar/package.json',
+        relativePath: 'packages/bar/package.json',
+        status: 'error',
+        message: 'Failed to import: SyntaxError',
+      },
+      {
+        path: '/workspace/packages/baz/package.json',
+        relativePath: 'packages/baz/package.json',
+        status: 'error',
+        message: 'TDZ: Cannot access catalog',
+      },
+      {
+        path: '/workspace/tsconfig.base.json',
+        relativePath: 'tsconfig.base.json',
+        status: 'unchanged',
+      },
+    ],
+    summary: { created: 1, updated: 0, unchanged: 1, skipped: 0, failed: 2 },
+  })
+
+const createDryRunState = (): typeof GenieState.Type =>
+  createState({
+    mode: 'dry-run',
+    files: [
+      {
+        path: '/workspace/packages/foo/package.json',
+        relativePath: 'packages/foo/package.json',
+        status: 'created',
+      },
+      {
+        path: '/workspace/packages/foo/tsconfig.json',
+        relativePath: 'packages/foo/tsconfig.json',
+        status: 'updated',
+        message: '(+5 lines)',
+      },
+      {
+        path: '/workspace/packages/bar/package.json',
+        relativePath: 'packages/bar/package.json',
+        status: 'unchanged',
+      },
+    ],
+    summary: { created: 1, updated: 1, unchanged: 1, skipped: 0, failed: 0 },
+  })
+
+const createCheckModeState = (): typeof GenieState.Type =>
+  createState({
+    mode: 'check',
+    files: sampleFiles.map((f) => ({ ...f, status: 'unchanged' as const })),
+    summary: { created: 0, updated: 0, unchanged: 5, skipped: 0, failed: 0 },
+  })
+
+const createCheckModeFailedState = (): typeof GenieState.Type =>
+  createState({
+    mode: 'check',
+    files: [
+      {
+        path: '/workspace/packages/foo/package.json',
+        relativePath: 'packages/foo/package.json',
+        status: 'unchanged',
+      },
+      {
+        path: '/workspace/packages/bar/package.json',
+        relativePath: 'packages/bar/package.json',
+        status: 'error',
+        message: 'File is out of date',
+      },
+      {
+        path: '/workspace/tsconfig.base.json',
+        relativePath: 'tsconfig.base.json',
+        status: 'unchanged',
+      },
+    ],
+    summary: { created: 0, updated: 0, unchanged: 2, skipped: 0, failed: 1 },
+  })
+
+const createWithSkippedState = (): typeof GenieState.Type =>
+  createState({
+    files: [
+      {
+        path: '/workspace/packages/foo/package.json',
+        relativePath: 'packages/foo/package.json',
+        status: 'created',
+      },
+      {
+        path: '/workspace/packages/orphan/package.json',
+        relativePath: 'packages/orphan/package.json',
+        status: 'skipped',
+        message: 'Parent directory missing',
+      },
+      {
+        path: '/workspace/tsconfig.base.json',
+        relativePath: 'tsconfig.base.json',
+        status: 'unchanged',
+      },
+    ],
+    summary: { created: 1, updated: 0, unchanged: 1, skipped: 1, failed: 0 },
+  })
+
+// =============================================================================
+// Timeline for Animated Demo
+// =============================================================================
+
+const genieTimeline: Array<{ at: number; action: typeof GenieAction.Type }> = [
+  // Files discovered
+  {
+    at: 0,
+    action: {
+      _tag: 'FilesDiscovered',
+      files: sampleFiles,
+    },
+  },
+
+  // First file - start
+  { at: 100, action: { _tag: 'FileStarted', path: sampleFiles[0]!.path } },
+  // First file - complete
+  { at: 400, action: { _tag: 'FileCompleted', path: sampleFiles[0]!.path, status: 'created' } },
+
+  // Second file - start
+  { at: 450, action: { _tag: 'FileStarted', path: sampleFiles[1]!.path } },
+  // Second file - complete
+  {
+    at: 700,
+    action: {
+      _tag: 'FileCompleted',
+      path: sampleFiles[1]!.path,
+      status: 'updated',
+      message: '(+2 lines)',
+    },
+  },
+
+  // Third file - start
+  { at: 750, action: { _tag: 'FileStarted', path: sampleFiles[2]!.path } },
+  // Third file - complete
+  { at: 950, action: { _tag: 'FileCompleted', path: sampleFiles[2]!.path, status: 'unchanged' } },
+
+  // Fourth file - start
+  { at: 1000, action: { _tag: 'FileStarted', path: sampleFiles[3]!.path } },
+  // Fourth file - complete
+  {
+    at: 1300,
+    action: {
+      _tag: 'FileCompleted',
+      path: sampleFiles[3]!.path,
+      status: 'updated',
+      message: '(content changed)',
+    },
+  },
+
+  // Fifth file - start
+  { at: 1350, action: { _tag: 'FileStarted', path: sampleFiles[4]!.path } },
+  // Fifth file - complete
+  { at: 1500, action: { _tag: 'FileCompleted', path: sampleFiles[4]!.path, status: 'unchanged' } },
+
+  // Complete
+  {
+    at: 1700,
+    action: {
+      _tag: 'Complete',
+      summary: { created: 1, updated: 2, unchanged: 2, skipped: 0, failed: 0 },
+    },
+  },
+]
+
+// =============================================================================
+// Story Configuration
+// =============================================================================
+
+const ALL_TABS: OutputTab[] = ['tty', 'ci', 'ci-plain', 'log', 'json', 'ndjson']
+
+const meta: Meta = {
+  title: 'CLI/Genie Output',
+  parameters: {
+    layout: 'fullscreen',
+    docs: {
+      description: {
+        component: `
+Genie command output for code generation.
+
+**Demonstrates:**
+- File generation status (created, updated, unchanged, skipped, error)
+- Dry run mode
+- Check mode (CI)
+- TDZ error handling
+- Progress tracking with spinners
+
+**Output modes:** TTY, CI, CI Plain, Log, JSON, NDJSON
+        `,
+      },
+    },
+  },
+}
+
+export default meta
+
+type Story = StoryObj<{
+  autoRun: boolean
+  playbackSpeed: number
+  height: number
+}>
+
+// =============================================================================
+// Stories
+// =============================================================================
+
+/** Animated generation simulation */
+export const Demo: Story = {
+  args: { autoRun: true, playbackSpeed: 1, height: 350 },
+  argTypes: {
+    autoRun: { description: 'Auto-start timeline', control: { type: 'boolean' } },
+    playbackSpeed: {
+      description: 'Playback speed',
+      control: { type: 'range', min: 0.5, max: 3, step: 0.5 },
+    },
+    height: {
+      description: 'Terminal height',
+      control: { type: 'range', min: 200, max: 600, step: 50 },
+    },
+  },
+  render: (args) => (
+    <TuiStoryPreview
+      View={GenieView}
+      stateSchema={GenieState}
+      actionSchema={GenieAction}
+      reducer={genieReducer}
+      initialState={createState()}
+      timeline={genieTimeline}
+      autoRun={args.autoRun}
+      playbackSpeed={args.playbackSpeed}
+      height={args.height}
+      tabs={ALL_TABS}
+    />
+  ),
+}
+
+/** Mixed results - created, updated, unchanged */
+export const MixedResults: Story = {
+  args: { height: 350 },
+  render: (args) => (
+    <TuiStoryPreview
+      View={GenieView}
+      stateSchema={GenieState}
+      actionSchema={GenieAction}
+      reducer={genieReducer}
+      initialState={createMixedResultsState()}
+      height={args.height}
+      autoRun={false}
+      tabs={ALL_TABS}
+    />
+  ),
+}
+
+/** All files unchanged */
+export const AllUnchanged: Story = {
+  args: { height: 350 },
+  render: (args) => (
+    <TuiStoryPreview
+      View={GenieView}
+      stateSchema={GenieState}
+      actionSchema={GenieAction}
+      reducer={genieReducer}
+      initialState={createAllUnchangedState()}
+      height={args.height}
+      autoRun={false}
+      tabs={ALL_TABS}
+    />
+  ),
+}
+
+/** With errors (including TDZ cascade) */
+export const WithErrors: Story = {
+  args: { height: 350 },
+  render: (args) => (
+    <TuiStoryPreview
+      View={GenieView}
+      stateSchema={GenieState}
+      actionSchema={GenieAction}
+      reducer={genieReducer}
+      initialState={createWithErrorsState()}
+      height={args.height}
+      autoRun={false}
+      tabs={ALL_TABS}
+    />
+  ),
+}
+
+/** Dry run mode */
+export const DryRun: Story = {
+  args: { height: 350 },
+  render: (args) => (
+    <TuiStoryPreview
+      View={GenieView}
+      stateSchema={GenieState}
+      actionSchema={GenieAction}
+      reducer={genieReducer}
+      initialState={createDryRunState()}
+      height={args.height}
+      autoRun={false}
+      tabs={ALL_TABS}
+    />
+  ),
+}
+
+/** Check mode - all up to date */
+export const CheckModeSuccess: Story = {
+  args: { height: 350 },
+  render: (args) => (
+    <TuiStoryPreview
+      View={GenieView}
+      stateSchema={GenieState}
+      actionSchema={GenieAction}
+      reducer={genieReducer}
+      initialState={createCheckModeState()}
+      height={args.height}
+      autoRun={false}
+      tabs={ALL_TABS}
+    />
+  ),
+}
+
+/** Check mode - files out of date */
+export const CheckModeFailed: Story = {
+  args: { height: 350 },
+  render: (args) => (
+    <TuiStoryPreview
+      View={GenieView}
+      stateSchema={GenieState}
+      actionSchema={GenieAction}
+      reducer={genieReducer}
+      initialState={createCheckModeFailedState()}
+      height={args.height}
+      autoRun={false}
+      tabs={ALL_TABS}
+    />
+  ),
+}
+
+/** With skipped files */
+export const WithSkipped: Story = {
+  args: { height: 350 },
+  render: (args) => (
+    <TuiStoryPreview
+      View={GenieView}
+      stateSchema={GenieState}
+      actionSchema={GenieAction}
+      reducer={genieReducer}
+      initialState={createWithSkippedState()}
+      height={args.height}
+      autoRun={false}
+      tabs={ALL_TABS}
+    />
+  ),
+}
