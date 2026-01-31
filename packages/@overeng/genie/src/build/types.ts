@@ -2,6 +2,7 @@ import type { Error as PlatformError, FileSystem, Path } from '@effect/platform'
 import type * as CommandExecutor from '@effect/platform/CommandExecutor'
 import type { Option } from 'effect'
 
+import type { OutputModeValue } from '@overeng/tui-react'
 import type { CurrentWorkingDirectory } from '@overeng/utils/node'
 
 import type { GenieCheckError, GenieGenerationFailedError, GenieImportError } from './errors.ts'
@@ -22,6 +23,7 @@ export type GenieCommandConfig = {
   check: boolean
   dryRun: boolean
   oxfmtConfig: Option.Option<string>
+  output: OutputModeValue
 }
 
 /** Effect dependencies required by genie commands */
