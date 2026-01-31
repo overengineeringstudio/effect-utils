@@ -326,6 +326,28 @@ export const getExpectedContent = Effect.fn('getExpectedContent')(function* ({
   return { targetFilePath, content: header + formattedContent }
 })
 
+/** Generate a brief diff summary showing line count changes */
+const generateDiffSummary = ({
+  oldContent,
+  newContent,
+}: {
+  oldContent: string
+  newContent: string
+}): string | undefined => {
+  if (oldContent === newContent) return undefined
+
+  const oldLines = oldContent.split('\n').length
+  const newLines = newContent.split('\n').length
+  const diff = newLines - oldLines
+
+  if (diff > 0) {
+    return `(+${diff} lines)`
+  } else if (diff < 0) {
+    return `(${diff} lines)`
+  }
+  return '(content changed)'
+}
+
 /**
  * Atomically write a file by writing to a temp file first, then renaming.
  * This prevents file corruption if an error occurs during write.
@@ -411,6 +433,12 @@ export const generateFile = ({
 
     const isUnchanged = fileExists && currentContent === fileContentString
 
+    // Compute diff summary for updated files
+    const diffSummary =
+      fileExists && !isUnchanged
+        ? generateDiffSummary({ oldContent: currentContent, newContent: fileContentString })
+        : undefined
+
     if (dryRun) {
       if (!fileExists) {
         return { _tag: 'created', targetFilePath } as const
@@ -418,7 +446,7 @@ export const generateFile = ({
       if (isUnchanged) {
         return { _tag: 'unchanged', targetFilePath } as const
       }
-      return { _tag: 'updated', targetFilePath } as const
+      return { _tag: 'updated', targetFilePath, diffSummary } as const
     }
 
     // Atomically write the file (write to temp, then rename)
@@ -436,7 +464,7 @@ export const generateFile = ({
       return { _tag: 'unchanged', targetFilePath } as const
     }
 
-    return { _tag: 'updated', targetFilePath } as const
+    return { _tag: 'updated', targetFilePath, diffSummary } as const
   }).pipe(
     Effect.mapError((cause) => {
       const targetFilePath = genieFilePath.replace('.genie.ts', '')

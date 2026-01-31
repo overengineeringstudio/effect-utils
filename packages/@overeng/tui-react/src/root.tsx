@@ -143,6 +143,9 @@ export const createRoot = ({
   // Track last rendered width for self-correcting resize detection
   let lastRenderedWidth = terminal.columns
 
+  // Track last rendered element for re-rendering in flush
+  let lastRenderedElement: ReactElement | null = null
+
   // Container that holds the root of the tree
   const container: TuiContainer = {
     root: null,
@@ -153,8 +156,20 @@ export const createRoot = ({
     },
   }
 
+  // Cast reconciler to include methods that exist at runtime but are missing from
+  // @types/react-reconciler. These are stable React internals used by Ink and other
+  // custom renderers for synchronous rendering control.
+  const reconciler = TuiReconciler as typeof TuiReconciler & {
+    /** Synchronously update the container (unlike updateContainer which is async) */
+    updateContainerSync: typeof TuiReconciler.updateContainer
+    /** Flush all pending synchronous work */
+    flushSyncWork: () => void
+    /** Flush passive effects (useEffect, useSyncExternalStore subscriptions) */
+    flushPassiveEffects: () => boolean
+  }
+
   // Create the fiber root
-  const fiberRoot = TuiReconciler.createContainer(
+  const fiberRoot = reconciler.createContainer(
     container,
     0, // LegacyRoot
     null, // hydrationCallbacks
@@ -315,27 +330,63 @@ export const createRoot = ({
     )
   }
 
-  /** Internal flush implementation */
+  /**
+   * Flush pending React work and render the current state synchronously.
+   *
+   * This is critical for progressive output modes (tty, ci) where we need to ensure
+   * all state changes are reflected in the output before unmounting. The flush process:
+   *
+   * 1. Flush passive effects - ensures useSyncExternalStore subscriptions are set up
+   * 2. Flush sync work - processes any pending React updates
+   * 3. Force re-render - triggers React to read the latest store values
+   * 4. Render to terminal - outputs the final state
+   *
+   * Note: Simply flushing React work isn't enough because useSyncExternalStore
+   * may have received change notifications that scheduled updates at a priority
+   * level not covered by flushSyncWork. Re-rendering the same element forces
+   * React to call getSnapshot() again and render with the current state.
+   */
   const doFlush = (): void => {
     if (disposed) return
 
-    // Flush any pending React reconciler work synchronously
-    // This ensures all state updates are committed before we render
-    // Note: flushSyncWork exists at runtime but @types/react-reconciler is outdated
-    ;(TuiReconciler as unknown as { flushSyncWork: () => void }).flushSyncWork()
+    // Step 1: Flush passive effects (useEffect callbacks, subscription setup)
+    reconciler.flushPassiveEffects()
+    // Step 2: Flush any synchronous work that was scheduled
+    reconciler.flushSyncWork()
 
-    // Cancel any pending throttled render
+    // Step 3: Force React to re-render with current external store state.
+    // When useSyncExternalStore's onStoreChange callback is invoked, React schedules
+    // an update, but this update may not be flushed by flushSyncWork alone.
+    // By calling updateContainerSync with the same element, we force React to
+    // re-execute the component and call getSnapshot() to get the latest value.
+    if (lastRenderedElement) {
+      reconciler.updateContainerSync(
+        wrapWithProviders(lastRenderedElement),
+        fiberRoot,
+        null,
+        () => {},
+      )
+      reconciler.flushSyncWork()
+    }
+
+    // Cancel any pending throttled render since we're rendering now
     pendingRender = false
     renderScheduled = false
 
-    // Force a render with current React tree state
+    // Step 4: Render the React tree to terminal output
     doRender()
     lastRenderTime = Date.now()
   }
 
   return {
     render: (element: ReactElement) => {
-      TuiReconciler.updateContainer(wrapWithProviders(element), fiberRoot, null, () => {})
+      // Store for re-rendering in flush()
+      lastRenderedElement = element
+      // Use updateContainerSync for synchronous rendering
+      // This ensures the render completes before returning, which is needed
+      // for proper flush behavior in progressive modes
+      reconciler.updateContainerSync(wrapWithProviders(element), fiberRoot, null, () => {})
+      reconciler.flushSyncWork()
     },
     unmount: (options?: UnmountOptions) => {
       // Flush pending React work and render final state before unmounting
@@ -347,7 +398,8 @@ export const createRoot = ({
       // Dispose renderer (preserves content for persist mode)
       renderer.dispose({ mode: options?.mode ?? 'persist' })
       // Clean up React internals (won't trigger render due to disposed flag)
-      TuiReconciler.updateContainer(null, fiberRoot, null, () => {})
+      reconciler.updateContainerSync(null, fiberRoot, null, () => {})
+      reconciler.flushSyncWork()
     },
     flush: doFlush,
     resize: () => {

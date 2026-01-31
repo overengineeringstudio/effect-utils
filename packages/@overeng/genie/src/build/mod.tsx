@@ -68,28 +68,6 @@ const mapResultToStatus = (result: { _tag: string }): GenieFileStatus => {
   }
 }
 
-/** Generate diff summary message */
-const generateDiffSummary = ({
-  oldContent,
-  newContent,
-}: {
-  oldContent: string
-  newContent: string
-}): string | undefined => {
-  if (oldContent === newContent) return undefined
-
-  const oldLines = oldContent.split('\n').length
-  const newLines = newContent.split('\n').length
-  const diff = newLines - oldLines
-
-  if (diff > 0) {
-    return `(+${diff} lines)`
-  } else if (diff < 0) {
-    return `(${diff} lines)`
-  }
-  return '(content changed)'
-}
-
 /** Genie CLI command - generates files from .genie.ts source files */
 export const genieCommand: Cli.Command.Command<
   'genie',
@@ -257,11 +235,13 @@ export const genieCommand: Cli.Command.Command<
 
             if (Either.isRight(result)) {
               const status = mapResultToStatus(result.right)
+              const message =
+                result.right._tag === 'updated' ? result.right.diffSummary : undefined
               tui.dispatch({
                 _tag: 'FileCompleted',
                 path: genieFilePath,
                 status,
-                // Note: diff summary would need to be computed in generateFile
+                message,
               })
               return result
             } else {
@@ -397,10 +377,13 @@ export const genieCommand: Cli.Command.Command<
               }).pipe(Effect.either)
 
               if (Either.isRight(result)) {
+                const message =
+                  result.right._tag === 'updated' ? result.right.diffSummary : undefined
                 tui.dispatch({
                   _tag: 'FileCompleted',
                   path: genieFilePath,
                   status: mapResultToStatus(result.right),
+                  message,
                 })
               } else {
                 tui.dispatch({

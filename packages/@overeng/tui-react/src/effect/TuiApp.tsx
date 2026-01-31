@@ -342,15 +342,40 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
       let rootRef: Root | null = null
       let exitMode: ExitMode = 'persist' // default for inline
 
-      // Unmount function
+      /**
+       * Unmount the TUI and render final output.
+       *
+       * This function handles the critical timing between Effect state updates and
+       * React rendering. The sequence when dispatch() is called followed by unmount():
+       *
+       * 1. dispatch() calls Effect.runSync(SubscriptionRef.update(...))
+       *    - The SubscriptionRef value is updated synchronously
+       *    - A change event is published to ref.changes stream
+       *
+       * 2. useSubscriptionRef has a fiber (via Effect.runFork) listening to ref.changes
+       *    - This fiber needs to run to receive the change event
+       *    - When it runs, it calls useSyncExternalStore's onStoreChange callback
+       *    - This schedules a React re-render
+       *
+       * 3. Effect.yieldNow() gives the listening fiber a chance to process the change
+       *    - Without this yield, the fiber hasn't run yet when we flush React
+       *    - React would render with stale state (the value before dispatch)
+       *
+       * 4. Root.unmount() flushes React work and renders to terminal
+       *    - Now React sees the updated state via getSnapshot()
+       *    - Final output reflects the dispatched state
+       */
       const unmount = (options?: UnmountOptions): Effect.Effect<void> =>
-        Effect.sync(() => {
+        Effect.gen(function* () {
           if (options?.mode) {
             exitMode = options.mode
           }
           if (rootRef) {
-            // Root.unmount() automatically flushes pending React work
-            // before unmounting, ensuring final state is rendered
+            // Yield to the Effect scheduler, allowing fibers listening to SubscriptionRef.changes
+            // to process pending change events and notify React via onStoreChange callbacks.
+            yield* Effect.yieldNow()
+
+            // Now flush React and render - the state updates will be visible
             rootRef.unmount({ mode: exitMode })
             rootRef = null
           }

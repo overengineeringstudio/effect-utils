@@ -57,11 +57,16 @@ export const resolveTerminal = (terminalOrStream: Terminal | TerminalLike): Term
 
 /**
  * Check if an object is a Terminal.
+ *
+ * This checks for both property existence AND types to distinguish
+ * a proper Terminal from a Node.js stream that needs wrapping.
+ * A Node.js stream (like process.stdout) has these properties but
+ * they may be undefined when not a TTY - we need to wrap it.
  */
 export const isTerminal = (value: unknown): value is Terminal =>
   typeof value === 'object' &&
   value !== null &&
   'write' in value &&
-  'columns' in value &&
-  'rows' in value &&
-  'isTTY' in value
+  typeof (value as Terminal).columns === 'number' &&
+  typeof (value as Terminal).rows === 'number' &&
+  typeof (value as Terminal).isTTY === 'boolean'

@@ -34,6 +34,22 @@ import {
  * This hook bridges Effect's reactive SubscriptionRef with React's rendering.
  * It uses useSyncExternalStore for proper concurrent mode support.
  *
+ * ## Implementation Notes
+ *
+ * The subscription uses Effect.runFork to listen to `ref.changes`, which means
+ * change notifications are processed asynchronously by an Effect fiber. When
+ * the ref is updated (e.g., via dispatch), the sequence is:
+ *
+ * 1. SubscriptionRef is updated synchronously
+ * 2. Change event is published to the changes stream
+ * 3. The listening fiber (created by runFork) needs to be scheduled to run
+ * 4. When the fiber runs, it calls onStoreChange to notify React
+ * 5. React schedules a re-render and calls getSnapshot for the new value
+ *
+ * This async nature means callers must yield to the Effect scheduler (e.g.,
+ * Effect.yieldNow) before flushing React if they need updates to be visible.
+ * See TuiApp.unmount() for the canonical pattern.
+ *
  * @param ref - The SubscriptionRef to subscribe to
  * @returns The current value of the ref
  *
@@ -46,9 +62,9 @@ import {
  * ```
  */
 export const useSubscriptionRef = <A,>(ref: SubscriptionRef.SubscriptionRef<A>): A => {
-  // Get initial value synchronously
+  // Get current value synchronously - called by React during render and after
+  // onStoreChange notifications to check if the value actually changed
   const getSnapshot = (): A => {
-    // This is safe because SubscriptionRef.get is synchronous
     let value: A
     Effect.runSync(
       SubscriptionRef.get(ref).pipe(
@@ -62,9 +78,12 @@ export const useSubscriptionRef = <A,>(ref: SubscriptionRef.SubscriptionRef<A>):
     return value!
   }
 
-  // Subscribe to changes
+  // Subscribe to changes - called once during the passive effect phase after
+  // the component mounts. Returns an unsubscribe function for cleanup.
   const subscribe = (onStoreChange: () => void): (() => void) => {
-    // Create a fiber that listens to changes
+    // Start a fiber that listens to the SubscriptionRef's change stream.
+    // When a change is detected, we call onStoreChange to notify React.
+    // Note: This fiber runs asynchronously - see docstring for implications.
     const fiber = Effect.runFork(
       ref.changes.pipe(
         Stream.runForEach(() =>
@@ -75,7 +94,7 @@ export const useSubscriptionRef = <A,>(ref: SubscriptionRef.SubscriptionRef<A>):
       ),
     )
 
-    // Return cleanup function
+    // Cleanup: interrupt the listening fiber when the component unmounts
     return () => {
       Effect.runFork(Fiber.interrupt(fiber))
     }

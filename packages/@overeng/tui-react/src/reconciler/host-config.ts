@@ -74,6 +74,10 @@ export const hostConfig = {
   supportsMutation: true,
   supportsPersistence: false,
   supportsHydration: false,
+  // Enable microtask scheduling for passive effects (useEffect, useSyncExternalStore).
+  // Without this, React hooks that set up subscriptions during the commit phase won't work,
+  // because the reconciler won't schedule the passive effect callbacks.
+  supportsMicrotasks: true,
   isPrimaryRenderer: true,
   noTimeout: -1,
 
@@ -262,6 +266,14 @@ export const hostConfig = {
 
   scheduleTimeout: setTimeout,
   cancelTimeout: clearTimeout,
+  // Required when supportsMicrotasks is true. React uses this to schedule passive effects
+  // (useEffect callbacks, useSyncExternalStore subscriptions) after the commit phase.
+  // The subscription setup for useSyncExternalStore happens via microtask, which is why
+  // both supportsMicrotasks and scheduleMicrotask must be configured for hooks to work.
+  scheduleMicrotask:
+    typeof queueMicrotask === 'function'
+      ? queueMicrotask
+      : (fn: () => void) => Promise.resolve().then(fn),
 
   // Priority constants from React internals
   // DiscreteEventPriority = 2

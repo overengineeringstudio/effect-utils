@@ -7,13 +7,8 @@ import type { CurrentWorkingDirectory } from '@overeng/utils/node'
 
 import type { GenieCheckError, GenieGenerationFailedError, GenieImportError } from './errors.ts'
 
-/** Context passed to genie generator functions */
-export type GenieContext = {
-  /** Repo-relative path to the directory containing this genie file (e.g., 'packages/@overeng/utils') */
-  location: string
-  /** Absolute path to the working directory (repo root) */
-  cwd: string
-}
+// Re-export GenieContext from runtime (single source of truth)
+export type { GenieContext } from '../runtime/mod.ts'
 
 /** Configuration options for genie commands */
 export type GenieCommandConfig = {
@@ -43,7 +38,7 @@ export type GenieCommandError =
 /** Successful generation of a single file */
 export type GenerateSuccess =
   | { _tag: 'created'; targetFilePath: string }
-  | { _tag: 'updated'; targetFilePath: string }
+  | { _tag: 'updated'; targetFilePath: string; diffSummary?: string }
   | { _tag: 'unchanged'; targetFilePath: string }
   | { _tag: 'skipped'; targetFilePath: string; reason: string }
 
