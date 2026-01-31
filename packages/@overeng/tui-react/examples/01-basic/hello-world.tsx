@@ -19,12 +19,7 @@ import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Effect } from 'effect'
 import React from 'react'
 
-import {
-  createTuiApp,
-  outputOption,
-  outputModeLayer,
-} from '../../src/mod.ts'
-
+import { createTuiApp, outputOption, outputModeLayer } from '../../src/mod.ts'
 // Import from shared modules
 import { AppState, AppAction, appReducer } from './schema.ts'
 import { HelloWorldView } from './view.tsx'
@@ -87,8 +82,7 @@ const helloWorldCommand = Command.make(
     duration: durationOption,
     output: outputOption,
   },
-  ({ duration, output }) =>
-    runHelloWorld(duration).pipe(Effect.provide(outputModeLayer(output))),
+  ({ duration, output }) => runHelloWorld(duration).pipe(Effect.provide(outputModeLayer(output))),
 )
 
 const cli = Command.run(helloWorldCommand, {

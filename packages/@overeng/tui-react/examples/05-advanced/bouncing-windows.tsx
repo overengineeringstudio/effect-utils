@@ -22,12 +22,7 @@ import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Effect, Fiber } from 'effect'
 import React from 'react'
 
-import {
-  createTuiApp,
-  outputOption,
-  outputModeLayer,
-} from '../../src/mod.ts'
-
+import { createTuiApp, outputOption, outputModeLayer } from '../../src/mod.ts'
 // Import from shared modules
 import { AppState, AppAction, appReducer, createWindow } from './schema.ts'
 import { BouncingWindowsView } from './view.tsx'

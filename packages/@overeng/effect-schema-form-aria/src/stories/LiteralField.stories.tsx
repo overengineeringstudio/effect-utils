@@ -3,13 +3,12 @@ import { useState } from 'react'
 
 import { LiteralField } from '../components/LiteralField.tsx'
 
-const meta: Meta<typeof LiteralField> = {
+export default {
   title: 'Components/LiteralField',
   component: LiteralField,
   tags: ['autodocs'],
-}
+} satisfies Meta<typeof LiteralField>
 
-export default meta
 type Story = StoryObj<typeof LiteralField>
 
 /** Segmented control with 3 options */

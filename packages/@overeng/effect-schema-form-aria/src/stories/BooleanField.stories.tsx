@@ -3,13 +3,12 @@ import { useState } from 'react'
 
 import { BooleanField } from '../components/BooleanField.tsx'
 
-const meta: Meta<typeof BooleanField> = {
+export default {
   title: 'Components/BooleanField',
   component: BooleanField,
   tags: ['autodocs'],
-}
+} satisfies Meta<typeof BooleanField>
 
-export default meta
 type Story = StoryObj<typeof BooleanField>
 
 /** Unchecked checkbox */

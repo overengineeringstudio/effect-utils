@@ -61,7 +61,7 @@ const demoTimeline: Array<{ at: number; action: typeof CounterAction.Type }> = [
 // Story Meta
 // =============================================================================
 
-const meta: Meta = {
+export default {
   title: 'Examples/02 Effect/Counter',
   parameters: {
     layout: 'fullscreen',
@@ -89,9 +89,7 @@ bun examples/02-effect-integration/counter.tsx --help
       },
     },
   },
-}
-
-export default meta
+} satisfies Meta
 
 // =============================================================================
 // Stories

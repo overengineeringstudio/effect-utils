@@ -19,12 +19,7 @@ import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Effect, Fiber } from 'effect'
 import React from 'react'
 
-import {
-  createTuiApp,
-  outputOption,
-  outputModeLayer,
-} from '../../src/mod.ts'
-
+import { createTuiApp, outputOption, outputModeLayer } from '../../src/mod.ts'
 // Import from shared modules
 import { StressTestState, StressTestAction, createStressTestReducer } from './schema.ts'
 import { StressTestView } from './view.tsx'
@@ -105,7 +100,8 @@ const stressTestCommand = Command.make(
     duration: durationOption,
     output: outputOption,
   },
-  ({ duration, output }) => runStressTest(duration * 1000).pipe(Effect.provide(outputModeLayer(output))),
+  ({ duration, output }) =>
+    runStressTest(duration * 1000).pipe(Effect.provide(outputModeLayer(output))),
 )
 
 const cli = Command.run(stressTestCommand, {

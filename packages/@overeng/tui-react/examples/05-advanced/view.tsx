@@ -159,7 +159,11 @@ const RunningView = ({ state }: { state: Extract<AppState, { _tag: 'Running' }> 
       <Text dim> │ Ctrl+C to exit</Text>
     </Box>
     <Text dim>{'─'.repeat(state.termWidth)}</Text>
-    <CanvasRenderer windows={state.windows as Window[]} width={state.termWidth} height={state.termHeight} />
+    <CanvasRenderer
+      windows={state.windows as Window[]}
+      width={state.termWidth}
+      height={state.termHeight}
+    />
     <Text dim>{'─'.repeat(state.termWidth)}</Text>
   </Box>
 )

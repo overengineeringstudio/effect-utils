@@ -25,7 +25,7 @@ const demoFailureEffect = Effect.gen(function* () {
   return yield* Effect.die('Boom')
 })
 
-const meta: Meta = {
+export default {
   title: 'Effect React/EffectButton',
   decorators: [
     (Story) => (
@@ -34,9 +34,7 @@ const meta: Meta = {
       </EffectProvider>
     ),
   ],
-}
-
-export default meta
+} as Meta
 
 export const Success: StoryObj = {
   render: () => <EffectButton effect={demoSuccessEffect}>Run success</EffectButton>,

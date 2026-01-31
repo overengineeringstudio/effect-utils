@@ -6,13 +6,12 @@ import { FieldGroup, FieldGroupEmpty } from '../components/FieldGroup.tsx'
 import { LiteralField } from '../components/LiteralField.tsx'
 import { TextField } from '../components/TextField.tsx'
 
-const meta: Meta<typeof FieldGroup> = {
+export default {
   title: 'Components/FieldGroup',
   component: FieldGroup,
   tags: ['autodocs'],
-}
+} satisfies Meta<typeof FieldGroup>
 
-export default meta
 type Story = StoryObj<typeof FieldGroup>
 
 /** Default variant with border and background */

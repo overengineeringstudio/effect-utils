@@ -3,13 +3,12 @@ import { useState } from 'react'
 
 import { NumberField } from '../components/NumberField.tsx'
 
-const meta: Meta<typeof NumberField> = {
+export default {
   title: 'Components/NumberField',
   component: NumberField,
   tags: ['autodocs'],
-}
+} satisfies Meta<typeof NumberField>
 
-export default meta
 type Story = StoryObj<typeof NumberField>
 
 /** Required number field with standard input */

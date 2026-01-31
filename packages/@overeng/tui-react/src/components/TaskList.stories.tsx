@@ -7,12 +7,11 @@ import { Static } from './Static.tsx'
 import { TaskList, type TaskItem, type TaskStatus } from './TaskList.tsx'
 import { Text } from './Text.tsx'
 
-const meta: Meta<typeof TaskList> = {
+export default {
   title: 'Components/Lists/TaskList',
   component: TaskList,
-}
+} satisfies Meta<typeof TaskList>
 
-export default meta
 type Story = StoryObj<typeof TaskList>
 
 /** Basic task list with mixed states */
@@ -140,29 +139,34 @@ const SyncSimulationDemo = () => {
         ),
       )
 
-      setTimeout(() => {
-        const rand = Math.random()
-        let status: TaskStatus
-        let message: string | undefined
+      setTimeout(
+        () => {
+          const rand = Math.random()
+          let status: TaskStatus
+          let message: string | undefined
 
-        if (rand < 0.7) {
-          status = 'success'
-          message = 'synced (main)'
-        } else if (rand < 0.85) {
-          status = 'success'
-        } else if (rand < 0.95) {
-          status = 'skipped'
-          message = 'dirty worktree'
-          appendLog({ message: `${repos[index]}: skipped - dirty worktree`, type: 'warn' })
-        } else {
-          status = 'error'
-          message = 'network error'
-          appendLog({ message: `${repos[index]}: error - network error`, type: 'error' })
-        }
+          if (rand < 0.7) {
+            status = 'success'
+            message = 'synced (main)'
+          } else if (rand < 0.85) {
+            status = 'success'
+          } else if (rand < 0.95) {
+            status = 'skipped'
+            message = 'dirty worktree'
+            appendLog({ message: `${repos[index]}: skipped - dirty worktree`, type: 'warn' })
+          } else {
+            status = 'error'
+            message = 'network error'
+            appendLog({ message: `${repos[index]}: error - network error`, type: 'error' })
+          }
 
-        setItems((prev) => prev.map((item, i) => (i === index ? { ...item, status, message } : item)))
-        processItem(index + 1)
-      }, 300 + Math.random() * 400)
+          setItems((prev) =>
+            prev.map((item, i) => (i === index ? { ...item, status, message } : item)),
+          )
+          processItem(index + 1)
+        },
+        300 + Math.random() * 400,
+      )
     }
 
     processItem(0)

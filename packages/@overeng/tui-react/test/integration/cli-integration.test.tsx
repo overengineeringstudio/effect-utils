@@ -224,10 +224,7 @@ describe('CLI Integration', () => {
   })
 
   test('ndjson mode streams state changes', async () => {
-    await runDeploy(['api']).pipe(
-      Effect.provide(testModeLayer('ndjson')),
-      Effect.runPromise,
-    )
+    await runDeploy(['api']).pipe(Effect.provide(testModeLayer('ndjson')), Effect.runPromise)
 
     // Should have multiple JSON outputs
     expect(capturedOutput.length).toBeGreaterThan(1)
@@ -242,10 +239,7 @@ describe('CLI Integration', () => {
   })
 
   test('pipe mode produces final output only', async () => {
-    await runDeploy(['api', 'web']).pipe(
-      Effect.provide(testModeLayer('pipe')),
-      Effect.runPromise,
-    )
+    await runDeploy(['api', 'web']).pipe(Effect.provide(testModeLayer('pipe')), Effect.runPromise)
 
     // Pipe mode outputs the final rendered state (single output at end)
     expect(capturedOutput).toHaveLength(1)

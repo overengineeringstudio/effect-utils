@@ -69,7 +69,14 @@ const deploy = Command.make(
     force,
     output: outputOption,
   },
-  ({ services: servicesArg, env: envArg, dryRun: dryRunArg, timeout: timeoutArg, force: forceArg, output }) =>
+  ({
+    services: servicesArg,
+    env: envArg,
+    dryRun: dryRunArg,
+    timeout: timeoutArg,
+    force: forceArg,
+    output,
+  }) =>
     runDeploy({
       services: servicesArg
         .split(',')

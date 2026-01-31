@@ -3,7 +3,7 @@ import { useState } from 'react'
 
 import { TextField } from '../components/TextField.tsx'
 
-const meta: Meta<typeof TextField> = {
+export default {
   title: 'Components/TextField',
   component: TextField,
   tags: ['autodocs'],
@@ -13,9 +13,8 @@ const meta: Meta<typeof TextField> = {
       options: ['text', 'email', 'password', 'url'],
     },
   },
-}
+} satisfies Meta<typeof TextField>
 
-export default meta
 type Story = StoryObj<typeof TextField>
 
 /** Default text input */

@@ -255,7 +255,7 @@ const genieTimeline: Array<{ at: number; action: typeof GenieAction.Type }> = [
 
 const ALL_TABS: OutputTab[] = ['tty', 'ci', 'ci-plain', 'log', 'json', 'ndjson']
 
-const meta: Meta = {
+export default {
   title: 'CLI/Genie Output',
   parameters: {
     layout: 'fullscreen',
@@ -276,9 +276,7 @@ Genie command output for code generation.
       },
     },
   },
-}
-
-export default meta
+} satisfies Meta
 
 type Story = StoryObj<{
   autoRun: boolean

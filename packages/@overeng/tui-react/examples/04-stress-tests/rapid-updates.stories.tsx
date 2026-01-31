@@ -15,10 +15,14 @@ import { StressTestView } from './view.tsx'
 // Initial States
 // =============================================================================
 
-const runningState = (frame: number, fps: number, progress: number): typeof StressTestState.Type => ({
+const runningState = (
+  frame: number,
+  fps: number,
+  progress: number,
+): typeof StressTestState.Type => ({
   _tag: 'Running',
   frame,
-  startTime: Date.now() - (frame * 16), // Approximate based on 60fps
+  startTime: Date.now() - frame * 16, // Approximate based on 60fps
   fps,
   progress,
 })
@@ -30,7 +34,11 @@ const finishedState = (totalFrames: number, avgFps: number): typeof StressTestSt
   duration: Math.round((totalFrames / avgFps) * 1000),
 })
 
-const interruptedState = (frame: number, fps: number, progress: number): typeof StressTestState.Type => ({
+const interruptedState = (
+  frame: number,
+  fps: number,
+  progress: number,
+): typeof StressTestState.Type => ({
   _tag: 'Interrupted',
   frame,
   fps,
@@ -42,7 +50,10 @@ const interruptedState = (frame: number, fps: number, progress: number): typeof 
 // =============================================================================
 
 // Create a timeline with rapid ticks
-const createRapidTimeline = (durationMs: number, frameMs: number = 100): Array<{ at: number; action: typeof StressTestAction.Type }> => {
+const createRapidTimeline = (
+  durationMs: number,
+  frameMs: number = 100,
+): Array<{ at: number; action: typeof StressTestAction.Type }> => {
   const events: Array<{ at: number; action: typeof StressTestAction.Type }> = []
   for (let t = frameMs; t < durationMs; t += frameMs) {
     events.push({ at: t, action: { _tag: 'Tick' } })
@@ -57,7 +68,7 @@ const demoTimeline = createRapidTimeline(3000, 100) // 3 seconds, tick every 100
 // Story Meta
 // =============================================================================
 
-const meta: Meta = {
+export default {
   title: 'Examples/04 Stress/Rapid Updates',
   parameters: {
     layout: 'fullscreen',
@@ -82,9 +93,7 @@ bun examples/04-stress-tests/rapid-updates.tsx --json
       },
     },
   },
-}
-
-export default meta
+} satisfies Meta
 
 // =============================================================================
 // Stories

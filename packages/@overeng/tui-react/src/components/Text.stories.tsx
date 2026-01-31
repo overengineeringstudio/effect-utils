@@ -5,7 +5,7 @@ import { TuiStoryPreview } from '../storybook/TuiStoryPreview.tsx'
 import { Box } from './Box.tsx'
 import { Text } from './Text.tsx'
 
-const meta: Meta<typeof Text> = {
+export default {
   title: 'Components/Typography/Text',
   component: Text,
   argTypes: {
@@ -19,9 +19,8 @@ const meta: Meta<typeof Text> = {
     underline: { control: 'boolean' },
     strikethrough: { control: 'boolean' },
   },
-}
+} satisfies Meta<typeof Text>
 
-export default meta
 type Story = StoryObj<typeof Text>
 
 export const Basic: Story = {

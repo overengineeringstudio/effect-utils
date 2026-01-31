@@ -48,27 +48,28 @@ JSON output represents semantic domain data, not visual structure.
 
 Output behavior is determined by a `RenderConfig` with these properties:
 
-| Property        | Values           | Description                                      |
-| --------------- | ---------------- | ------------------------------------------------ |
-| **timing**      | `live` / `final` | Updates over time vs single output at completion |
-| **animation**   | `true` / `false` | Whether spinners/progress animate                |
-| **colors**      | `true` / `false` | Whether ANSI color codes are used                |
-| **altScreen**   | `true` / `false` | Full-screen takeover vs inline                   |
+| Property      | Values           | Description                                      |
+| ------------- | ---------------- | ------------------------------------------------ |
+| **timing**    | `live` / `final` | Updates over time vs single output at completion |
+| **animation** | `true` / `false` | Whether spinners/progress animate                |
+| **colors**    | `true` / `false` | Whether ANSI color codes are used                |
+| **altScreen** | `true` / `false` | Full-screen takeover vs inline                   |
 
 ### Named Modes
 
-| Mode         | Timing | Animation | Colors | Alt Screen | Use Case                      |
-| ------------ | ------ | --------- | ------ | ---------- | ----------------------------- |
-| `tty`        | live   | ✓         | ✓      | ✗          | Interactive terminal (default)|
-| `alt-screen` | live   | ✓         | ✓      | ✓          | Fullscreen TUI, dashboards    |
-| `ci`         | live   | ✗         | ✓      | ✗          | CI with colors                |
-| `ci-plain`   | live   | ✗         | ✗      | ✗          | CI without colors             |
-| `pipe`       | final  | ✗         | ✓      | ✗          | Piping to another command     |
-| `log`        | final  | ✗         | ✗      | ✗          | Log files, plain output       |
-| `json`       | final  | -         | -      | -          | Final JSON for scripting      |
-| `ndjson`     | live   | -         | -      | -          | Streaming NDJSON              |
+| Mode         | Timing | Animation | Colors | Alt Screen | Use Case                       |
+| ------------ | ------ | --------- | ------ | ---------- | ------------------------------ |
+| `tty`        | live   | ✓         | ✓      | ✗          | Interactive terminal (default) |
+| `alt-screen` | live   | ✓         | ✓      | ✓          | Fullscreen TUI, dashboards     |
+| `ci`         | live   | ✗         | ✓      | ✗          | CI with colors                 |
+| `ci-plain`   | live   | ✗         | ✗      | ✗          | CI without colors              |
+| `pipe`       | final  | ✗         | ✓      | ✗          | Piping to another command      |
+| `log`        | final  | ✗         | ✗      | ✗          | Log files, plain output        |
+| `json`       | final  | -         | -      | -          | Final JSON for scripting       |
+| `ndjson`     | live   | -         | -      | -          | Streaming NDJSON               |
 
 **Auto-detection:** When `--output auto` (the default), the mode is detected from the environment:
+
 - TTY → `tty`
 - Non-TTY (piped) → `pipe`
 - `CI=true` environment variable → `ci`
@@ -246,10 +247,10 @@ Single visual output rendered at command completion.
 
 **Use cases:** Piping to other commands, log files, non-TTY environments
 
-| Mode   | Colors | Description                                  |
-| ------ | ------ | -------------------------------------------- |
+| Mode   | Colors | Description                                    |
+| ------ | ------ | ---------------------------------------------- |
 | `pipe` | ✓      | Final output with colors (for `less -R`, etc.) |
-| `log`  | ✗      | Final output without colors (plain text)     |
+| `log`  | ✗      | Final output without colors (plain text)       |
 
 **Requirements:**
 
@@ -594,17 +595,17 @@ deploy --output log > deploy.log           # Log to file
 
 ### Available Modes
 
-| Mode         | Use When                                      |
-| ------------ | --------------------------------------------- |
-| `auto`       | Default - detect from environment             |
-| `tty`        | Interactive terminal with progress            |
-| `alt-screen` | Fullscreen dashboard/TUI                      |
-| `ci`         | CI environment with color support             |
-| `ci-plain`   | CI environment without colors                 |
-| `pipe`       | Piping to commands that support ANSI          |
-| `log`        | Writing to log files                          |
-| `json`       | Machine-readable final output                 |
-| `ndjson`     | Machine-readable streaming output             |
+| Mode         | Use When                             |
+| ------------ | ------------------------------------ |
+| `auto`       | Default - detect from environment    |
+| `tty`        | Interactive terminal with progress   |
+| `alt-screen` | Fullscreen dashboard/TUI             |
+| `ci`         | CI environment with color support    |
+| `ci-plain`   | CI environment without colors        |
+| `pipe`       | Piping to commands that support ANSI |
+| `log`        | Writing to log files                 |
+| `json`       | Machine-readable final output        |
+| `ndjson`     | Machine-readable streaming output    |
 
 ### Validation & Fallbacks
 
@@ -1034,9 +1035,16 @@ interface RenderConfig {
 }
 
 // Available mode names
-type OutputModeValue = 
-  | 'auto' | 'tty' | 'alt-screen' | 'ci' | 'ci-plain' 
-  | 'pipe' | 'log' | 'json' | 'ndjson'
+type OutputModeValue =
+  | 'auto'
+  | 'tty'
+  | 'alt-screen'
+  | 'ci'
+  | 'ci-plain'
+  | 'pipe'
+  | 'log'
+  | 'json'
+  | 'ndjson'
 
 // Create layer from --output flag value
 const outputModeLayer: (value: OutputModeValue) => Layer<OutputMode>
@@ -1060,15 +1068,16 @@ import { outputOption, outputModeLayer } from '@overeng/tui-react'
 // Use in command
 const myCommand = Cli.Command.make(
   'mycommand',
-  { output: outputOption, /* other options */ },
+  { output: outputOption /* other options */ },
   ({ output }) =>
     myEffect.pipe(
-      Effect.provide(outputModeLayer(output))  // 'auto' by default
-    )
+      Effect.provide(outputModeLayer(output)), // 'auto' by default
+    ),
 )
 ```
 
 **Available mode values:**
+
 - `auto` - Detect from environment (default)
 - `tty` - Interactive terminal with animations
 - `alt-screen` - Fullscreen TUI
@@ -1416,14 +1425,14 @@ Command throws → Runner catches → Mode-specific error output → Cleanup →
 
 ### Mode-Specific Error Handling
 
-| Mode         | Error Handling                                    |
-| ------------ | ------------------------------------------------- |
-| `tty`        | Clear dynamic region, print error, exit           |
-| `alt-screen` | Exit alternate screen, print error to main screen |
-| `ci`/`ci-plain` | Print formatted error (with/without colors)    |
-| `pipe`/`log` | Print formatted error                             |
-| `json`       | Output JSON error object                          |
-| `ndjson`     | Output JSON error line, then close stream         |
+| Mode            | Error Handling                                    |
+| --------------- | ------------------------------------------------- |
+| `tty`           | Clear dynamic region, print error, exit           |
+| `alt-screen`    | Exit alternate screen, print error to main screen |
+| `ci`/`ci-plain` | Print formatted error (with/without colors)       |
+| `pipe`/`log`    | Print formatted error                             |
+| `json`          | Output JSON error object                          |
+| `ndjson`        | Output JSON error line, then close stream         |
 
 ### Error Output Examples
 
@@ -2012,10 +2021,7 @@ import { jsonLayer, captureConsole } from '@overeng/tui-react/test'
 
 test('deploy produces valid JSON output', async () => {
   const { outputs } = await captureConsole(async () => {
-    await runDeploy(['api-server']).pipe(
-      Effect.provide(jsonLayer),
-      Effect.runPromise,
-    )
+    await runDeploy(['api-server']).pipe(Effect.provide(jsonLayer), Effect.runPromise)
   })
 
   // Validate JSON output against schema
@@ -2099,11 +2105,14 @@ const runDeploy = (services: string[]) =>
   }).pipe(Effect.scoped)
 
 // Provide layers when running
-const deployCommand = Cli.Command.make('deploy', { output: outputOption, services: servicesOption }, ({ output, services }) =>
-  runDeploy(services.split(',')).pipe(
-    Effect.provide(outputModeLayer(output)),
-    Effect.provide(DeployServiceLive),
-  ),
+const deployCommand = Cli.Command.make(
+  'deploy',
+  { output: outputOption, services: servicesOption },
+  ({ output, services }) =>
+    runDeploy(services.split(',')).pipe(
+      Effect.provide(outputModeLayer(output)),
+      Effect.provide(DeployServiceLive),
+    ),
 )
 ```
 

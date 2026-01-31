@@ -46,7 +46,17 @@ export const WIN_HEIGHT = 8
 const randomBetween = ({ min, max }: { min: number; max: number }) =>
   Math.random() * (max - min) + min
 
-export const createWindow = ({ id, count, width, height }: { id: number; count: number; width: number; height: number }): Window => {
+export const createWindow = ({
+  id,
+  count,
+  width,
+  height,
+}: {
+  id: number
+  count: number
+  width: number
+  height: number
+}): Window => {
   const startX = (id * (width / count)) % Math.max(1, width - WIN_WIDTH)
   const startY = (id * 3) % Math.max(1, height - WIN_HEIGHT)
 
@@ -83,10 +93,22 @@ export const updateWindow = ({
   x += vx
   y += vy
 
-  if (x <= 0) { x = 0; vx = Math.abs(vx) }
-  if (x + WIN_WIDTH >= termWidth) { x = termWidth - WIN_WIDTH; vx = -Math.abs(vx) }
-  if (y <= 0) { y = 0; vy = Math.abs(vy) }
-  if (y + WIN_HEIGHT >= termHeight) { y = termHeight - WIN_HEIGHT; vy = -Math.abs(vy) }
+  if (x <= 0) {
+    x = 0
+    vx = Math.abs(vx)
+  }
+  if (x + WIN_WIDTH >= termWidth) {
+    x = termWidth - WIN_WIDTH
+    vx = -Math.abs(vx)
+  }
+  if (y <= 0) {
+    y = 0
+    vy = Math.abs(vy)
+  }
+  if (y + WIN_HEIGHT >= termHeight) {
+    y = termHeight - WIN_HEIGHT
+    vy = -Math.abs(vy)
+  }
 
   const stats = {
     cpu: Math.max(0, Math.min(100, win.stats.cpu + randomBetween({ min: -3, max: 3 }))),
@@ -168,7 +190,11 @@ export const appReducer = ({ state, action }: { state: AppState; action: AppActi
       return {
         ...state,
         windows: state.windows.map((w) =>
-          updateWindow({ win: w as Window, termWidth: state.termWidth, termHeight: state.termHeight }),
+          updateWindow({
+            win: w as Window,
+            termWidth: state.termWidth,
+            termHeight: state.termHeight,
+          }),
         ),
         frame: state.frame + 1,
       }

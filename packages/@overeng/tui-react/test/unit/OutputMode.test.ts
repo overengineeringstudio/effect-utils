@@ -4,7 +4,6 @@
 
 import { Effect, Layer } from 'effect'
 import { describe, test, expect } from 'vitest'
-
 import {
   OutputModeTag,
   // Presets

@@ -15,7 +15,12 @@ import { BouncingWindowsView } from './view.tsx'
 // Initial States
 // =============================================================================
 
-const createRunningState = (windowCount: number, width: number, height: number, frame: number = 0): typeof AppState.Type => ({
+const createRunningState = (
+  windowCount: number,
+  width: number,
+  height: number,
+  frame: number = 0,
+): typeof AppState.Type => ({
   _tag: 'Running',
   windows: Array.from({ length: windowCount }, (_, i) =>
     createWindow({ id: i, count: windowCount, width, height }),
@@ -41,7 +46,10 @@ const interruptedState = (frame: number, windows: number): typeof AppState.Type 
 // Timeline - simulates bouncing animation
 // =============================================================================
 
-const createBouncingTimeline = (durationMs: number, frameMs: number = 80): Array<{ at: number; action: typeof AppAction.Type }> => {
+const createBouncingTimeline = (
+  durationMs: number,
+  frameMs: number = 80,
+): Array<{ at: number; action: typeof AppAction.Type }> => {
   const events: Array<{ at: number; action: typeof AppAction.Type }> = []
   for (let t = frameMs; t < durationMs; t += frameMs) {
     events.push({ at: t, action: { _tag: 'Tick' } })
@@ -56,7 +64,7 @@ const demoTimeline = createBouncingTimeline(5000, 80) // 5 seconds
 // Story Meta
 // =============================================================================
 
-const meta: Meta = {
+export default {
   title: 'Examples/05 Advanced/Bouncing Windows',
   parameters: {
     layout: 'fullscreen',
@@ -82,9 +90,7 @@ bun examples/05-advanced/bouncing-windows.tsx --json
       },
     },
   },
-}
-
-export default meta
+} satisfies Meta
 
 // =============================================================================
 // Stories

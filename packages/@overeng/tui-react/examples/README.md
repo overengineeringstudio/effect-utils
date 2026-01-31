@@ -47,17 +47,17 @@ bun examples/02-effect-integration/counter.tsx --output json
 
 All CLI examples use the `--output` / `-o` flag:
 
-| Mode         | Timing | Description                        |
-| ------------ | ------ | ---------------------------------- |
-| `auto`       | -      | Auto-detect from environment       |
-| `tty`        | live   | Interactive terminal (default)     |
-| `ci`         | live   | CI with colors                     |
-| `ci-plain`   | live   | CI without colors                  |
-| `pipe`       | final  | Final output with colors           |
-| `log`        | final  | Final output without colors        |
-| `json`       | final  | Single JSON output at completion   |
-| `ndjson`     | live   | Streaming NDJSON                   |
-| `alt-screen` | live   | Fullscreen TUI                     |
+| Mode         | Timing | Description                      |
+| ------------ | ------ | -------------------------------- |
+| `auto`       | -      | Auto-detect from environment     |
+| `tty`        | live   | Interactive terminal (default)   |
+| `ci`         | live   | CI with colors                   |
+| `ci-plain`   | live   | CI without colors                |
+| `pipe`       | final  | Final output with colors         |
+| `log`        | final  | Final output without colors      |
+| `json`       | final  | Single JSON output at completion |
+| `ndjson`     | live   | Streaming NDJSON                 |
+| `alt-screen` | live   | Fullscreen TUI                   |
 
 ## Creating a New Example
 

@@ -5,7 +5,7 @@ import { TuiStoryPreview } from '../storybook/TuiStoryPreview.tsx'
 import { Box } from './Box.tsx'
 import { Text } from './Text.tsx'
 
-const meta: Meta<typeof Box> = {
+export default {
   title: 'Components/Layout/Box',
   component: Box,
   argTypes: {
@@ -20,9 +20,8 @@ const meta: Meta<typeof Box> = {
     paddingRight: { control: 'number' },
     gap: { control: 'number' },
   },
-}
+} satisfies Meta<typeof Box>
 
-export default meta
 type Story = StoryObj<typeof Box>
 
 /** Basic vertical layout */

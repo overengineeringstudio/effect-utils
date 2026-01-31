@@ -4,13 +4,11 @@ import { useState } from 'react'
 
 import { AriaSchemaForm } from '../AriaSchemaForm.tsx'
 
-const meta: Meta<typeof AriaSchemaForm> = {
+export default {
   title: 'Forms/AriaSchemaForm',
   component: AriaSchemaForm,
   tags: ['autodocs'],
-}
-
-export default meta
+} satisfies Meta<typeof AriaSchemaForm>
 
 // ============================================================================
 // Basic User Form

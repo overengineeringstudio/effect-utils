@@ -6,7 +6,7 @@ import { Box } from './Box.tsx'
 import { Spinner, type SpinnerType } from './Spinner.tsx'
 import { Text } from './Text.tsx'
 
-const meta: Meta<typeof Spinner> = {
+export default {
   title: 'Components/Feedback/Spinner',
   component: Spinner,
   argTypes: {
@@ -19,9 +19,8 @@ const meta: Meta<typeof Spinner> = {
       options: ['cyan', 'green', 'yellow', 'red', 'magenta', 'blue', 'white'],
     },
   },
-}
+} satisfies Meta<typeof Spinner>
 
-export default meta
 type Story = StoryObj<typeof Spinner>
 
 /** Basic spinner with loading text */

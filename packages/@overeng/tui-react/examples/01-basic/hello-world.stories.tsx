@@ -53,7 +53,7 @@ const interruptTimeline: Array<{ at: number; action: typeof AppAction.Type }> = 
 // Story Meta
 // =============================================================================
 
-const meta: Meta = {
+export default {
   title: 'Examples/01 Basic/Hello World',
   parameters: {
     layout: 'fullscreen',
@@ -79,9 +79,7 @@ bun examples/01-basic/hello-world.tsx --help
       },
     },
   },
-}
-
-export default meta
+} satisfies Meta
 
 // =============================================================================
 // Stories

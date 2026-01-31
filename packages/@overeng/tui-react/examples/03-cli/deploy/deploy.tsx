@@ -4,10 +4,13 @@
  * Core deploy logic using createTuiApp for rendering.
  */
 
-import { Duration, Effect, Scope } from 'effect'
+import type { Scope } from 'effect'
+import { Duration, Effect } from 'effect'
 import React from 'react'
 
-import { createTuiApp, OutputModeTag } from '../../../src/mod.ts'
+import type { OutputModeTag } from '../../../src/mod.ts'
+import { createTuiApp } from '../../../src/mod.ts'
+import { ConnectedDeployView } from './connected-view.tsx'
 import {
   DeployState,
   DeployAction,
@@ -18,7 +21,6 @@ import {
   type ServiceProgress,
   type ServiceResult,
 } from './schema.ts'
-import { ConnectedDeployView } from './connected-view.tsx'
 
 // =============================================================================
 // TUI App Definition (exported for app-scoped hooks in view.tsx)

@@ -384,10 +384,12 @@ These options are mutually exclusive. When filtering is applied:
 This mode is ideal for local iteration: make commits in worktrees, then `mr sync` to capture the current state in the lock file.
 
 **Symlink drift detection:** In default mode, `mr sync` detects when there's a mismatch between:
+
 - The ref in the lock file (e.g., `refactor/feature-branch`)
 - The ref the source string resolves to (e.g., `dev` when no `#ref` is specified)
 
 When drift is detected, the member is skipped with a helpful message:
+
 ```
 symlink drift: lock says 'refactor/feature-branch' but source resolves to 'dev'
   hint: run 'mr sync --pull' to update to lock ref, or update megarepo.json to include #refactor/feature-branch
@@ -523,6 +525,7 @@ mr status
 ```
 
 **Symlink drift detection:** Warns when a member's symlink points to a different worktree than expected by the lock file. This can happen when:
+
 - The lock file was updated (e.g., by a teammate) but `mr sync` wasn't run
 - The source string in `megarepo.json` was changed without syncing
 
@@ -612,14 +615,14 @@ mr store status [--json]
 
 **Detected Issues:**
 
-| Issue | Description | Severity |
-|-------|-------------|----------|
-| `dirty` | Worktree has uncommitted changes | warning |
-| `unpushed` | Worktree has commits not pushed to remote | warning |
-| `ref_mismatch` | Checked-out branch doesn't match worktree path | error |
-| `missing_bare` | Worktree exists but `.bare/` repo is missing | error |
-| `broken_worktree` | Worktree directory is corrupted or incomplete | error |
-| `orphaned` | Not referenced by current megarepo's lock | info |
+| Issue             | Description                                    | Severity |
+| ----------------- | ---------------------------------------------- | -------- |
+| `dirty`           | Worktree has uncommitted changes               | warning  |
+| `unpushed`        | Worktree has commits not pushed to remote      | warning  |
+| `ref_mismatch`    | Checked-out branch doesn't match worktree path | error    |
+| `missing_bare`    | Worktree exists but `.bare/` repo is missing   | error    |
+| `broken_worktree` | Worktree directory is corrupted or incomplete  | error    |
+| `orphaned`        | Not referenced by current megarepo's lock      | info     |
 
 **Example output:**
 
@@ -630,10 +633,10 @@ Store: ~/.megarepo (2.3 GB)
 Issues:
   ✗ github.com/effect-ts/effect/refs/heads/main
     ref_mismatch: path says 'main' but HEAD is 'feature/experiment'
-    
+
   ⚠ github.com/livestorejs/livestore/refs/heads/dev
     dirty: 3 uncommitted changes
-    
+
   ⚠ github.com/org/repo/refs/heads/old-branch
     orphaned: not in current megarepo.lock
 ```
@@ -1124,10 +1127,12 @@ Skipped: effect (symlink drift: lock says 'refactor/feature' but source resolves
 ```
 
 This occurs when:
+
 - The lock file specifies one ref (e.g., from a previous sync or teammate's commit)
 - But the source string in `megarepo.json` resolves to a different ref
 
 **Resolution options:**
+
 - Run `mr sync --pull` to fetch and update to the lock file's ref
 - Update `megarepo.json` to explicitly specify the ref: `"effect": "effect-ts/effect#refactor/feature"`
 - If the lock is outdated, update it by checking out the desired ref and running `mr sync`
@@ -1142,6 +1147,7 @@ This occurs when:
 This occurs when someone uses `git checkout` directly inside a store worktree. The store path implies one ref, but git is on a different branch.
 
 **Resolution:**
+
 - If the checkout was intentional: use `mr pin <member> -c <new-ref>` to create the proper worktree
 - If accidental: `cd` into the worktree and `git checkout <expected-ref>`
 - To prevent: always use `mr pin` to switch refs, not `git checkout`
