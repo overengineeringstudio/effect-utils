@@ -99,6 +99,7 @@ in
       packages = packagesWithTests;
       vitestBin = "packages/@overeng/utils/node_modules/.bin/vitest";
       vitestConfig = "packages/@overeng/utils/vitest.config.ts";
+      extraTests = [ "nix:test" ];
     })
     (taskModules.lint-oxc {
       lintPaths = [

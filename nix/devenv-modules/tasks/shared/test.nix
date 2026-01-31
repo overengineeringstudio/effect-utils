@@ -27,6 +27,7 @@
   vitestBin ? "vitest",
   vitestConfig ? null,
   installTaskPrefix ? "pnpm",
+  extraTests ? [],
 }:
 { lib, ... }:
 let
@@ -77,7 +78,7 @@ in {
         description = "Run all tests";
         exec = if hasPackages then null else vitestCmd;
         after = if hasPackages 
-          then map (pkg: "test:${pkg.name}") packages
+          then map (pkg: "test:${pkg.name}") packages ++ extraTests
           else [ "genie:run" ];
       };
 

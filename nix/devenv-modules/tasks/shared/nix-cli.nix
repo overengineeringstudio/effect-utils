@@ -77,15 +77,18 @@ let
       fi
     }
 
+    extract_got_hash() {
+      echo "$1" | grep -oE 'got:\s+sha256-[A-Za-z0-9+/=]+' | grep -oE 'sha256-[A-Za-z0-9+/=]+' | head -1 || true
+    }
+
+    extract_actual_hash() {
+      echo "$1" | grep -oE 'actual:\s+sha256-[A-Za-z0-9+/=]+' | grep -oE 'sha256-[A-Za-z0-9+/=]+' | head -1 || true
+    }
+
     echo "Checking $name ($flakeRef)..."
 
-    # Try to build - if it succeeds, all hashes are correct
-    if nix build "$flakeRef" --no-link 2>&1; then
-      echo "✓ $name: all hashes up to date"
-      update_fingerprint_hashes
-      exit 0
-    fi
-    
+    update_fingerprint_hashes
+
     echo "Some hashes are stale, updating..."
     
     # Determine the main hash key (bunDepsHash or pnpmDepsHash)
@@ -102,27 +105,31 @@ let
       echo ""
       echo "=== Iteration $iteration ==="
       
-      # Try to build and capture output
       output=$(nix build "$flakeRef" --no-link 2>&1 || true)
-      
-      # Check if build succeeded
-      if echo "$output" | grep -q "^$"; then
-        # Empty stderr usually means success, verify
-        if nix build "$flakeRef" --no-link 2>&1; then
-          echo ""
-          if [ "$updated_any" = true ]; then
-            echo "✓ $name: all hashes updated successfully"
-          else
-            echo "✓ $name: all hashes up to date"
-          fi
-          update_fingerprint_hashes
-          exit 0
+      status=$?
+
+      if [ $status -eq 0 ]; then
+        echo ""
+        if [ "$updated_any" = true ]; then
+          echo "✓ $name: all hashes updated successfully"
+        else
+          echo "✓ $name: all hashes up to date"
         fi
+        update_fingerprint_hashes
+        exit 0
       fi
-      
-      # Extract the correct hash from "got: sha256-..."
-      newHash=$(echo "$output" | grep -oE 'got:\s+sha256-[A-Za-z0-9+/=]+' | grep -oE 'sha256-[A-Za-z0-9+/=]+' | head -1 || true)
-      
+
+      newHash=$(extract_got_hash "$output")
+      actualHash=$(extract_actual_hash "$output")
+
+      if [ -n "$actualHash" ] && grep -q "lockfileHash" "$buildNix"; then
+        export NEW_LF_HASH="$actualHash"
+        perl -i -pe 's/lockfileHash\s*=\s*"sha256-[^"]+"/lockfileHash = "$ENV{NEW_LF_HASH}"/g' "$buildNix"
+        echo "Updated lockfileHash to $actualHash"
+        updated_any=true
+        continue
+      fi
+
       if [ -z "$newHash" ]; then
         # No hash mismatch found - check for pnpm offline install failure
         # This happens when pnpm-lock.yaml changed but the old hash still "works"
@@ -220,6 +227,11 @@ let
       exit 1
     fi
 
+    if echo "$output" | grep -q 'lockfileHash is stale'; then
+      echo "✗ $name: lockfileHash is stale (run: dt nix:hash:$name)"
+      exit 1
+    fi
+
     # Check for custom bun.lock staleness
     if echo "$output" | grep -q 'deps hash is stale'; then
       echo "✗ $name: lockfile changed, deps hash is stale (run: dt nix:hash:$name)"
@@ -302,6 +314,25 @@ let
     echo "✓ $name: lockfile and deps unchanged"
   '';
 
+  # Script to run nix-cli tests colocated with this module
+  nixTestsScript = pkgs.writeShellScript "nix-cli-tests" ''
+    set -euo pipefail
+    testDir="${toString ./tests}"
+    if [ ! -d "$testDir" ]; then
+      echo "No nix-cli tests found (missing $testDir)"
+      exit 1
+    fi
+
+    for testFile in "$testDir"/*.test.sh; do
+      if [ ! -f "$testFile" ]; then
+        echo "No nix-cli tests found in $testDir"
+        exit 1
+      fi
+      echo "Running $testFile"
+      bash "$testFile"
+    done
+  '';
+
   # Generate per-package tasks
   mkHashTask = pkg: {
     "nix:hash:${pkg.name}" = {
@@ -354,6 +385,11 @@ in lib.mkIf hasPackages {
     (map mkQuickCheckTask packagesWithLockfile) ++
     # Aggregate tasks
     [{
+      "nix:test" = {
+        description = "Run nix-cli tooling tests";
+        exec = "${nixTestsScript}";
+      };
+
       "nix:hash" = {
         description = "Update all Nix hashes for all CLI packages";
         after = map (p: "nix:hash:${p.name}") cliPackages;
