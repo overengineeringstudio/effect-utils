@@ -349,6 +349,8 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
             exitMode = options.mode
           }
           if (rootRef) {
+            // Root.unmount() automatically flushes pending React work
+            // before unmounting, ensuring final state is rendered
             rootRef.unmount({ mode: exitMode })
             rootRef = null
           }

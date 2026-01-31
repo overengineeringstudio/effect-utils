@@ -315,11 +315,33 @@ export const createRoot = ({
     )
   }
 
+  /** Internal flush implementation */
+  const doFlush = (): void => {
+    if (disposed) return
+
+    // Flush any pending React reconciler work synchronously
+    // This ensures all state updates are committed before we render
+    // Note: flushSyncWork exists at runtime but @types/react-reconciler is outdated
+    ;(TuiReconciler as unknown as { flushSyncWork: () => void }).flushSyncWork()
+
+    // Cancel any pending throttled render
+    pendingRender = false
+    renderScheduled = false
+
+    // Force a render with current React tree state
+    doRender()
+    lastRenderTime = Date.now()
+  }
+
   return {
     render: (element: ReactElement) => {
       TuiReconciler.updateContainer(wrapWithProviders(element), fiberRoot, null, () => {})
     },
     unmount: (options?: UnmountOptions) => {
+      // Flush pending React work and render final state before unmounting
+      // This ensures all dispatched state updates are visible in the output
+      doFlush()
+
       // Mark as disposed to prevent any more renders
       disposed = true
       // Dispose renderer (preserves content for persist mode)
@@ -327,21 +349,7 @@ export const createRoot = ({
       // Clean up React internals (won't trigger render due to disposed flag)
       TuiReconciler.updateContainer(null, fiberRoot, null, () => {})
     },
-    flush: () => {
-      if (disposed)
-        return // Flush any pending React reconciler work synchronously
-        // This ensures all state updates are committed before we render
-        // Note: flushSyncWork exists at runtime but @types/react-reconciler is outdated
-      ;(TuiReconciler as unknown as { flushSyncWork: () => void }).flushSyncWork()
-
-      // Cancel any pending throttled render
-      pendingRender = false
-      renderScheduled = false
-
-      // Force a render with current React tree state
-      doRender()
-      lastRenderTime = Date.now()
-    },
+    flush: doFlush,
     resize: () => {
       // Just schedule a render - doRender() will detect the width change
       // and self-correct by resetting state if needed

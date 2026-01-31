@@ -23,7 +23,13 @@
  */
 
 // Terminal abstraction
-export { type Terminal, type TerminalLike, createTerminal, isTerminal } from './terminal.ts'
+export {
+  type Terminal,
+  type TerminalLike,
+  createTerminal,
+  isTerminal,
+  resolveTerminal,
+} from './terminal.ts'
 
 // ANSI escape code utilities
 export {

@@ -48,6 +48,14 @@ export const createTerminal = (stream: TerminalLike): Terminal => ({
 })
 
 /**
+ * Resolve a Terminal or TerminalLike to a Terminal.
+ *
+ * If already a Terminal, returns as-is. Otherwise wraps in createTerminal().
+ */
+export const resolveTerminal = (terminalOrStream: Terminal | TerminalLike): Terminal =>
+  isTerminal(terminalOrStream) ? terminalOrStream : createTerminal(terminalOrStream)
+
+/**
  * Check if an object is a Terminal.
  */
 export const isTerminal = (value: unknown): value is Terminal =>

@@ -38,21 +38,21 @@ export const containerStyles: React.CSSProperties = {
   boxSizing: 'border-box',
 }
 
-/** 
+/**
  * Padding for all preview containers.
  * Both terminal and text containers use the same padding to ensure
  * text alignment when switching between tabs.
  */
 export const previewPadding = '8px'
 
-/** 
+/**
  * Text styles for plain text preview panes (matches xterm.js rendering).
- * 
+ *
  * IMPORTANT: These must match xterm.js Terminal options exactly:
  * - fontFamily: Same as Terminal constructor
- * - fontSize: Same as Terminal constructor  
+ * - fontSize: Same as Terminal constructor
  * - lineHeight: Must match xterm.js cell height (18px for 14px font)
- * 
+ *
  * Measured via Playwright: xterm.js DOM renderer uses 18px line-height.
  * The first character must align vertically with xterm's first row.
  */

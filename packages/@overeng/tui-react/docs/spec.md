@@ -681,9 +681,40 @@ interface CreateRootOptions {
   maxStaticLines?: number
 }
 
+interface Root {
+  /** Render a React element */
+  render: (element: ReactElement) => void
+  
+  /**
+   * Unmount the React tree and cleanup.
+   * 
+   * Automatically flushes pending React work using `flushSyncWork()` before
+   * unmounting, ensuring all dispatched state updates are rendered to the
+   * terminal. This makes it safe to dispatch and immediately unmount.
+   */
+  unmount: (options?: { mode?: ExitMode }) => void
+  
+  /**
+   * Flush pending React work and render synchronously.
+   * 
+   * Uses React's `flushSyncWork()` internally to ensure all pending state
+   * updates are committed before rendering.
+   * 
+   * Note: This is called automatically by `unmount()`, so you typically
+   * don't need to call it manually.
+   */
+  flush: () => void
+  
+  /** Notify the root that the terminal has resized */
+  resize: () => void
+  
+  /** Current viewport dimensions */
+  readonly viewport: { columns: number; rows: number }
+}
+
 const root = createRoot({ output: process.stdout })
 root.render(<App />)
-root.unmount()
+root.unmount()  // Automatically flushes before unmounting
 ```
 
 ### Viewport
@@ -988,7 +1019,18 @@ interface TuiApi<S, A> {
   readonly stateRef: SubscriptionRef.SubscriptionRef<S>
   /** Action stream for side effects */
   readonly actions: Stream.Stream<A>
-  /** Explicit unmount with exit mode */
+  /**
+   * Explicit unmount with exit mode.
+   * 
+   * Automatically flushes pending React work using `flushSyncWork()` before
+   * unmounting, ensuring all dispatched state updates are rendered to the
+   * terminal. This makes it safe to dispatch and immediately unmount:
+   * 
+   * ```typescript
+   * tui.dispatch({ _tag: 'Complete', result })
+   * yield* tui.unmount({ mode: 'persist' })  // Final state is rendered
+   * ```
+   */
   readonly unmount: (options?: { mode?: ExitMode }) => Effect.Effect<void>
 }
 

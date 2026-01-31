@@ -187,7 +187,7 @@ in
     pkgs.typescript
     oxlintNpm
     pkgs.oxfmt
-    (mkSourceCli { name = "genie"; entry = "packages/@overeng/genie/src/build/mod.tsx"; })
+    (mkSourceCli { name = "genie"; entry = "packages/@overeng/genie/bin/genie.tsx"; })
     (mkSourceCli { name = "mr"; entry = "packages/@overeng/megarepo/bin/mr.ts"; })
     cliBuildStamp.package
   ];

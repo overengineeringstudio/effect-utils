@@ -16,18 +16,18 @@ import stringWidth from 'string-width'
 export interface TruncateOptions {
   /**
    * Position to truncate from.
-   * - 'end': Truncate from the end (default) - "long text..." 
+   * - 'end': Truncate from the end (default) - "long text..."
    * - 'start': Truncate from the start - "...ng text"
    * - 'middle': Truncate from the middle - "long...text"
    */
   readonly position?: 'start' | 'middle' | 'end'
-  
+
   /**
    * String to use as ellipsis indicator.
    * @default '…'
    */
   readonly ellipsis?: string
-  
+
   /**
    * Preserve ANSI escape codes in truncated output.
    * @default true

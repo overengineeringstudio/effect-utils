@@ -53,14 +53,22 @@ import {
   stripAnsi,
 } from '../effect/OutputMode.tsx'
 import { renderToString } from '../renderToString.ts'
-import { createRoot, type Root } from '../root.ts'
+import { createRoot, type Root } from '../root.tsx'
 import { xtermTheme, containerStyles, previewTextStyles, previewPadding } from './theme.ts'
 
 // =============================================================================
 // Types
 // =============================================================================
 
-export type OutputTab = 'tty' | 'alt-screen' | 'ci' | 'ci-plain' | 'pipe' | 'log' | 'json' | 'ndjson'
+export type OutputTab =
+  | 'tty'
+  | 'alt-screen'
+  | 'ci'
+  | 'ci-plain'
+  | 'pipe'
+  | 'log'
+  | 'json'
+  | 'ndjson'
 
 export interface TimelineEvent<A> {
   /** Time offset in milliseconds from start */
@@ -110,9 +118,7 @@ interface StatefulProps<S, A> {
 export type TuiStoryPreviewProps<S, A> = SimpleProps | StatefulProps<S, A>
 
 /** Type guard to check if props are for stateful mode */
-const isStatefulProps = <S, A>(
-  props: TuiStoryPreviewProps<S, A>,
-): props is StatefulProps<S, A> => {
+const isStatefulProps = <S, A>(props: TuiStoryPreviewProps<S, A>): props is StatefulProps<S, A> => {
   return 'View' in props && props.View !== undefined
 }
 
@@ -255,7 +261,9 @@ const EventTooltip: React.FC<{
         <span style={{ color: '#888', fontSize: '11px' }}>
           Event {index + 1} of {total}
         </span>
-        <span style={{ color: '#4a9eff', fontSize: '11px', fontFamily: 'Monaco, Menlo, monospace' }}>
+        <span
+          style={{ color: '#4a9eff', fontSize: '11px', fontFamily: 'Monaco, Menlo, monospace' }}
+        >
           @ {(event.at / 1000).toFixed(1)}s
           {deltaTime !== null && (
             <span style={{ color: '#666' }}> (+{(deltaTime / 1000).toFixed(1)}s)</span>
@@ -396,7 +404,11 @@ const PlaybackControls = <A,>({
           </button>
           <button
             onClick={disabled ? undefined : isPlaying ? onPause : onPlay}
-            style={disabled ? { ...disabledButtonStyle, minWidth: '40px' } : { ...smallButtonStyle, minWidth: '40px' }}
+            style={
+              disabled
+                ? { ...disabledButtonStyle, minWidth: '40px' }
+                : { ...smallButtonStyle, minWidth: '40px' }
+            }
             disabled={disabled}
             title={disabled ? 'Timeline disabled' : isPlaying ? 'Pause' : 'Play'}
             aria-label={isPlaying ? 'Pause' : 'Play'}
@@ -484,7 +496,8 @@ const PlaybackControls = <A,>({
 
           // Calculate gap to next marker to decide if label fits
           const nextEvent = timeline[i + 1]
-          const nextPosition = nextEvent && totalDuration > 0 ? (nextEvent.at / totalDuration) * 100 : 100
+          const nextPosition =
+            nextEvent && totalDuration > 0 ? (nextEvent.at / totalDuration) * 100 : 100
           const gapPercent = nextPosition - position
           const showLabel = gapPercent > 8 || i === timeline.length - 1 // Show if >8% gap or last event
 
@@ -524,7 +537,11 @@ const PlaybackControls = <A,>({
                   height: isCurrent || isHovered ? '14px' : '10px',
                   borderRadius: '50%',
                   background: isCurrent ? '#4a9eff' : isFired ? '#666' : '#444',
-                  border: isCurrent ? '2px solid #fff' : isHovered ? '2px solid #4a9eff' : '1px solid #555',
+                  border: isCurrent
+                    ? '2px solid #fff'
+                    : isHovered
+                      ? '2px solid #4a9eff'
+                      : '1px solid #555',
                   cursor: disabled ? 'default' : 'pointer',
                   transition: 'all 0.15s ease',
                   marginTop: '5px',
@@ -558,7 +575,9 @@ const PlaybackControls = <A,>({
             event={timeline[hoveredEvent.index] as { at: number; action: unknown }}
             index={hoveredEvent.index}
             total={timeline.length}
-            prevEventAt={hoveredEvent.index > 0 ? (timeline[hoveredEvent.index - 1]?.at ?? null) : null}
+            prevEventAt={
+              hoveredEvent.index > 0 ? (timeline[hoveredEvent.index - 1]?.at ?? null) : null
+            }
             position={hoveredEvent.position}
           />
         )}
@@ -649,10 +668,10 @@ interface NdjsonLine {
 
 const formatTimestamp = (ms: number): string => {
   const date = new Date(ms)
-  return date.toLocaleTimeString('en-US', { 
-    hour12: false, 
-    hour: '2-digit', 
-    minute: '2-digit', 
+  return date.toLocaleTimeString('en-US', {
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
     second: '2-digit',
     fractionalSecondDigits: 3,
   })
@@ -672,20 +691,16 @@ const NdjsonPreviewPane: React.FC<{ lines: NdjsonLine[] }> = ({ lines }) => (
     {lines.map((line, i) => (
       <div
         key={i}
-        style={{ 
-          borderBottom: '1px solid #333', 
-          paddingBottom: '4px', 
+        style={{
+          borderBottom: '1px solid #333',
+          paddingBottom: '4px',
           marginBottom: '4px',
           display: 'flex',
           gap: '12px',
         }}
       >
-        <span style={{ color: '#666', flexShrink: 0 }}>
-          {formatTimestamp(line.timestamp)}
-        </span>
-        <span style={{ color: '#eee' }}>
-          {line.json}
-        </span>
+        <span style={{ color: '#666', flexShrink: 0 }}>{formatTimestamp(line.timestamp)}</span>
+        <span style={{ color: '#eee' }}>{line.json}</span>
       </div>
     ))}
   </pre>
@@ -764,6 +779,41 @@ const CIPreviewPane: React.FC<{
 }
 
 // =============================================================================
+// Hook: Measure container width and convert to columns
+// =============================================================================
+
+const CHAR_WIDTH_PX = 8.4 // Approximate char width for 14px Monaco
+
+const useContainerColumns = (containerRef: React.RefObject<HTMLElement | null>): number => {
+  const [columns, setColumns] = useState(80)
+
+  useEffect(() => {
+    if (!containerRef.current) return
+
+    const calculateColumns = () => {
+      const width = containerRef.current?.clientWidth ?? 0
+      // Account for padding (8px on each side)
+      const contentWidth = Math.max(0, width - 16)
+      const cols = Math.floor(contentWidth / CHAR_WIDTH_PX)
+      setColumns(Math.max(40, cols)) // Minimum 40 columns
+    }
+
+    // Initial calculation
+    calculateColumns()
+
+    // Observe resize
+    const resizeObserver = new ResizeObserver(() => {
+      calculateColumns()
+    })
+    resizeObserver.observe(containerRef.current)
+
+    return () => resizeObserver.disconnect()
+  }, [containerRef])
+
+  return columns
+}
+
+// =============================================================================
 // Log Preview Component (static output, plain text - no colors)
 // =============================================================================
 
@@ -773,6 +823,8 @@ const LogPreviewPane: React.FC<{
   height: number
 }> = ({ View, state, height }) => {
   const [output, setOutput] = useState<string>('')
+  const containerRef = useRef<HTMLPreElement>(null)
+  const columns = useContainerColumns(containerRef)
 
   useEffect(() => {
     // Render with log mode (static, no colors)
@@ -782,7 +834,7 @@ const LogPreviewPane: React.FC<{
       </RenderConfigProvider>
     )
 
-    renderToString({ element })
+    renderToString({ element, options: { width: columns } })
       .then((ansiOutput) => {
         // Strip ANSI codes for plain text output
         setOutput(stripAnsi(ansiOutput))
@@ -790,10 +842,11 @@ const LogPreviewPane: React.FC<{
       .catch((err: Error) => {
         setOutput(`Error: ${err.message}`)
       })
-  }, [state, View])
+  }, [state, View, columns])
 
   return (
     <pre
+      ref={containerRef}
       style={{
         ...containerStyles,
         ...previewTextStyles,
@@ -816,6 +869,8 @@ const CIPlainPreviewPane: React.FC<{
   height: number
 }> = ({ View, state, height }) => {
   const [output, setOutput] = useState<string>('')
+  const containerRef = useRef<HTMLPreElement>(null)
+  const columns = useContainerColumns(containerRef)
 
   useEffect(() => {
     // Render with ci-plain mode (no animation, no colors)
@@ -825,7 +880,7 @@ const CIPlainPreviewPane: React.FC<{
       </RenderConfigProvider>
     )
 
-    renderToString({ element })
+    renderToString({ element, options: { width: columns } })
       .then((ansiOutput) => {
         // Strip ANSI codes for plain text output
         setOutput(stripAnsi(ansiOutput))
@@ -833,10 +888,11 @@ const CIPlainPreviewPane: React.FC<{
       .catch((err: Error) => {
         setOutput(`Error: ${err.message}`)
       })
-  }, [state, View])
+  }, [state, View, columns])
 
   return (
     <pre
+      ref={containerRef}
       style={{
         ...containerStyles,
         ...previewTextStyles,
@@ -980,6 +1036,7 @@ const FullscreenPreviewPane: React.FC<{
     const resizeObserver = new ResizeObserver(() => {
       fitAddon.fit()
       setDimensions({ cols: terminal.cols, rows: terminal.rows })
+      rootRef.current?.resize()
     })
     resizeObserver.observe(containerRef.current)
 
@@ -1040,7 +1097,12 @@ const FullscreenPreviewPane: React.FC<{
       {/* Terminal */}
       <div
         ref={containerRef}
-        style={{ flex: 1, height: terminalHeight, padding: previewPadding, boxSizing: 'border-box' }}
+        style={{
+          flex: 1,
+          height: terminalHeight,
+          padding: previewPadding,
+          boxSizing: 'border-box',
+        }}
       />
 
       {/* Status Bar (at bottom) */}
@@ -1060,9 +1122,7 @@ const FullscreenPreviewPane: React.FC<{
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <span style={{ color: '#888' }}>
-            Alt Screen (Simulated)
-          </span>
+          <span style={{ color: '#888' }}>Alt Screen (Simulated)</span>
           <span>
             {dimensions.cols}x{dimensions.rows}
           </span>
@@ -1168,7 +1228,10 @@ const SimpleTuiStoryPreview: React.FC<SimpleProps> = ({
     rootRef.current = createRoot({ terminalOrStream: adapter })
     setIsTerminalReady(true)
 
-    const resizeObserver = new ResizeObserver(() => fitAddon.fit())
+    const resizeObserver = new ResizeObserver(() => {
+      fitAddon.fit()
+      rootRef.current?.resize()
+    })
     resizeObserver.observe(containerRef.current)
 
     return () => {
@@ -1232,25 +1295,28 @@ const SimpleTuiStoryPreview: React.FC<SimpleProps> = ({
       {/* Content */}
       <div style={{ height, overflow: 'hidden' }}>
         {activeTab === 'tty' && (
-          <div ref={containerRef} style={{ ...containerStyles, padding: previewPadding, height: '100%' }} />
+          <div
+            ref={containerRef}
+            style={{ ...containerStyles, padding: previewPadding, height: '100%' }}
+          />
         )}
         {activeTab === 'alt-screen' && (
           <FullscreenPreviewPane View={ChildrenView} state={null} height={height} />
         )}
-        {activeTab === 'ci' && (
-          <CIPreviewPane View={ChildrenView} state={null} height={height} />
-        )}
+        {activeTab === 'ci' && <CIPreviewPane View={ChildrenView} state={null} height={height} />}
         {activeTab === 'ci-plain' && (
           <CIPlainPreviewPane View={ChildrenView} state={null} height={height} />
         )}
         {activeTab === 'pipe' && (
           <PipePreviewPane View={ChildrenView} state={null} height={height} />
         )}
-        {activeTab === 'log' && (
-          <LogPreviewPane View={ChildrenView} state={null} height={height} />
-        )}
+        {activeTab === 'log' && <LogPreviewPane View={ChildrenView} state={null} height={height} />}
         {activeTab === 'json' && <JsonPreviewPane json="// Simple mode - no state schema" />}
-        {activeTab === 'ndjson' && <NdjsonPreviewPane lines={[{ timestamp: Date.now(), json: '// Simple mode - no state tracking' }]} />}
+        {activeTab === 'ndjson' && (
+          <NdjsonPreviewPane
+            lines={[{ timestamp: Date.now(), json: '// Simple mode - no state tracking' }]}
+          />
+        )}
       </div>
     </div>
   )
@@ -1312,10 +1378,13 @@ const StatefulTuiStoryPreview = <S, A>({
         // Add to NDJSON log with timestamp
         try {
           const encoded = Schema.encodeSync(stateSchema)(next)
-          setNdjsonLines((lines) => [...lines, { 
-            timestamp: Date.now(), 
-            json: JSON.stringify(encoded) 
-          }])
+          setNdjsonLines((lines) => [
+            ...lines,
+            {
+              timestamp: Date.now(),
+              json: JSON.stringify(encoded),
+            },
+          ])
         } catch {
           // Ignore encoding errors
         }
@@ -1404,7 +1473,10 @@ const StatefulTuiStoryPreview = <S, A>({
     rootRef.current = createRoot({ terminalOrStream: adapter })
     setIsTerminalReady(true)
 
-    const resizeObserver = new ResizeObserver(() => fitAddon.fit())
+    const resizeObserver = new ResizeObserver(() => {
+      fitAddon.fit()
+      rootRef.current?.resize()
+    })
     resizeObserver.observe(containerRef.current)
 
     return () => {
@@ -1476,15 +1548,26 @@ const StatefulTuiStoryPreview = <S, A>({
       {/* Content */}
       <div style={{ height, overflow: 'hidden' }}>
         {activeTab === 'tty' && (
-          <div ref={containerRef} style={{ ...containerStyles, padding: previewPadding, height: '100%' }} />
+          <div
+            ref={containerRef}
+            style={{ ...containerStyles, padding: previewPadding, height: '100%' }}
+          />
         )}
         {activeTab === 'alt-screen' && (
           <FullscreenPreviewPane View={ViewCast} state={effectiveState} height={height} />
         )}
-        {activeTab === 'ci' && <CIPreviewPane View={ViewCast} state={effectiveState} height={height} />}
-        {activeTab === 'ci-plain' && <CIPlainPreviewPane View={ViewCast} state={effectiveState} height={height} />}
-        {activeTab === 'pipe' && <PipePreviewPane View={ViewCast} state={effectiveState} height={height} />}
-        {activeTab === 'log' && <LogPreviewPane View={ViewCast} state={effectiveState} height={height} />}
+        {activeTab === 'ci' && (
+          <CIPreviewPane View={ViewCast} state={effectiveState} height={height} />
+        )}
+        {activeTab === 'ci-plain' && (
+          <CIPlainPreviewPane View={ViewCast} state={effectiveState} height={height} />
+        )}
+        {activeTab === 'pipe' && (
+          <PipePreviewPane View={ViewCast} state={effectiveState} height={height} />
+        )}
+        {activeTab === 'log' && (
+          <LogPreviewPane View={ViewCast} state={effectiveState} height={height} />
+        )}
         {activeTab === 'json' && <JsonPreviewPane json={jsonOutput} />}
         {activeTab === 'ndjson' && <NdjsonPreviewPane lines={ndjsonLines} />}
       </div>
@@ -1517,9 +1600,7 @@ const StatefulTuiStoryPreview = <S, A>({
 // Main Component (dispatches to Simple or Stateful)
 // =============================================================================
 
-export const TuiStoryPreview = <S, A>(
-  props: TuiStoryPreviewProps<S, A>,
-): React.ReactElement => {
+export const TuiStoryPreview = <S, A>(props: TuiStoryPreviewProps<S, A>): React.ReactElement => {
   if (isStatefulProps(props)) {
     return <StatefulTuiStoryPreview {...props} />
   }

@@ -8,18 +8,17 @@
  * - Supports synchronized output (CSI 2026) for atomic updates
  */
 
-import cliTruncate from 'cli-truncate'
-
 import {
   beginSyncOutput,
   clearLine,
+  clearScreenAndHome,
   cursorToColumn,
   cursorUp,
   endSyncOutput,
   hideCursor,
   showCursor,
 } from './ansi.ts'
-import { createTerminal, type Terminal, type TerminalLike } from './terminal.ts'
+import type { Terminal } from './terminal.ts'
 
 /** Options for InlineRenderer */
 export interface InlineRendererOptions {
@@ -76,48 +75,28 @@ export class InlineRenderer {
   /** Previous dynamic lines (for diff computation) */
   private previousDynamic: string[] = []
 
-  /** Previous terminal width (to detect resize) */
-  private previousWidth: number
-
   /** Whether we've done the initial render */
   private hasRendered = false
 
   /** Whether cursor is currently hidden */
   private cursorHidden = false
 
-  constructor({
-    terminalOrStream,
-    options = {},
-  }: {
-    terminalOrStream: Terminal | TerminalLike
-    options?: InlineRendererOptions
-  }) {
-    this.terminal =
-      'isTTY' in terminalOrStream && typeof terminalOrStream.columns === 'number'
-        ? (terminalOrStream as Terminal)
-        : createTerminal(terminalOrStream as TerminalLike)
-
+  constructor({ terminal, options = {} }: { terminal: Terminal; options?: InlineRendererOptions }) {
+    this.terminal = terminal
     this.options = {
       syncOutput: options.syncOutput ?? true,
       hideCursor: options.hideCursor ?? true,
     }
-    this.previousWidth = this.terminal.columns
   }
 
   /**
    * Append content to the static region.
    *
-   * This content will be printed immediately above the dynamic region
-   * and will never be re-rendered or cleared.
+   * This content will be printed immediately above the dynamic region.
+   * Lines should already be truncated by the caller.
    */
   appendStatic(lines: readonly string[]): void {
     if (lines.length === 0) return
-
-    // Truncate lines to terminal width to prevent soft wrapping
-    const width = this.terminal.columns
-    const truncatedLines = lines.map((line) =>
-      cliTruncate(line, width, { position: 'end', truncationCharacter: '…' }),
-    )
 
     // If we have dynamic content, we need to clear it first, print static, then re-render dynamic
     if (this.hasRendered && this.dynamicLines.length > 0) {
@@ -125,10 +104,10 @@ export class InlineRenderer {
     }
 
     // Print the new static lines
-    for (const line of truncatedLines) {
+    for (const line of lines) {
       this.terminal.write(line + '\r\n')
     }
-    this.staticLines.push(...truncatedLines)
+    this.staticLines.push(...lines)
 
     // Re-render dynamic content below the new static content
     if (this.hasRendered && this.dynamicLines.length > 0) {
@@ -142,21 +121,10 @@ export class InlineRenderer {
    *
    * This content updates in place below the static region.
    * Uses differential rendering to minimize output.
+   * Lines should already be truncated by the caller.
    */
   render(lines: readonly string[]): void {
-    // Truncate lines to terminal width to prevent soft wrapping (which causes ghost lines)
-    const width = this.terminal.columns
-    this.dynamicLines = lines.map((line) =>
-      cliTruncate(line, width, { position: 'end', truncationCharacter: '…' }),
-    )
-
-    // Check for terminal resize
-    const currentWidth = this.terminal.columns
-    if (currentWidth !== this.previousWidth) {
-      this.previousWidth = currentWidth
-      this.previousDynamic = [] // Force full re-render on resize
-    }
-
+    this.dynamicLines = [...lines]
     this.renderDynamic()
   }
 
@@ -213,6 +181,28 @@ export class InlineRenderer {
   /** Get current dynamic lines (for testing) */
   getDynamicLines(): readonly string[] {
     return this.dynamicLines
+  }
+
+  /**
+   * Reset the renderer state, clearing all content from the terminal.
+   *
+   * This is used during resize to start fresh. After calling reset(),
+   * the next render will be treated as the first render.
+   *
+   * Uses clearScreenAndHome() instead of line-by-line clearing because
+   * terminal reflow during resize invalidates cursor position assumptions.
+   */
+  reset(): void {
+    if (this.terminal.isTTY) {
+      // Clear entire screen - line-by-line clearing doesn't work after reflow
+      this.terminal.write(clearScreenAndHome())
+    }
+
+    // Reset internal state
+    this.staticLines = []
+    this.dynamicLines = []
+    this.previousDynamic = []
+    this.hasRendered = false
   }
 
   // ===========================================================================

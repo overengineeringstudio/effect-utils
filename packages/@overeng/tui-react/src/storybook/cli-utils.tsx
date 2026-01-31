@@ -223,8 +223,15 @@ export const createCliMeta = <Props extends object>(
   Component: React.ComponentType<Props>,
   options: CreateCliMetaOptions<Props>,
 ): Meta<Props> => {
-  const { title, description, defaultArgs, argTypes, terminalHeight = 400, decorators, parameters = {} } =
-    options
+  const {
+    title,
+    description,
+    defaultArgs,
+    argTypes,
+    terminalHeight = 400,
+    decorators,
+    parameters = {},
+  } = options
 
   const terminalDecorator = (Story: React.ComponentType) => (
     <TerminalPreview height={terminalHeight}>

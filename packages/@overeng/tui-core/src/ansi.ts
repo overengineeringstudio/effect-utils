@@ -43,6 +43,15 @@ export const clearToEndOfLine = (): string => `${CSI}0K`
 /** Clear from cursor to start of line */
 export const clearToStartOfLine = (): string => `${CSI}1K`
 
+/** Clear entire screen */
+export const clearScreen = (): string => `${CSI}2J`
+
+/** Move cursor to home position (1,1) */
+export const cursorHome = (): string => `${CSI}H`
+
+/** Clear screen and move cursor to home - useful for full reset */
+export const clearScreenAndHome = (): string => `${CSI}2J${CSI}H`
+
 /**
  * Generate sequence to clear N lines above cursor.
  * Moves up, clears each line, then returns to original position.

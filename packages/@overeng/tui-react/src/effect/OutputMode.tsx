@@ -216,7 +216,11 @@ export const ciRenderConfig: RenderConfig = { animation: false, colors: true, al
  * RenderConfig for CI environments without color support.
  * Live timing (React re-renders) with static spinners, no colors.
  */
-export const ciPlainRenderConfig: RenderConfig = { animation: false, colors: false, alternate: false }
+export const ciPlainRenderConfig: RenderConfig = {
+  animation: false,
+  colors: false,
+  alternate: false,
+}
 
 /**
  * RenderConfig for piped output.
@@ -234,7 +238,11 @@ export const logRenderConfig: RenderConfig = { animation: false, colors: false, 
  * RenderConfig for alt-screen mode.
  * Animated spinners with colors in alternate buffer.
  */
-export const altScreenRenderConfig: RenderConfig = { animation: true, colors: true, alternate: true }
+export const altScreenRenderConfig: RenderConfig = {
+  animation: true,
+  colors: true,
+  alternate: true,
+}
 
 /** @deprecated Use `altScreenRenderConfig` instead */
 export const fullscreenRenderConfig = altScreenRenderConfig
@@ -277,14 +285,12 @@ const isNoColorSet = (): boolean =>
 /**
  * Check if running in a CI environment.
  */
-const isCIEnv = (): boolean =>
-  typeof process !== 'undefined' && process.env?.CI !== undefined
+const isCIEnv = (): boolean => typeof process !== 'undefined' && process.env?.CI !== undefined
 
 /**
  * Check if running in a TTY environment.
  */
-export const isTTY = (): boolean =>
-  typeof process !== 'undefined' && process.stdout?.isTTY === true
+export const isTTY = (): boolean => typeof process !== 'undefined' && process.stdout?.isTTY === true
 
 /**
  * Check if running in a non-TTY environment.
@@ -374,8 +380,7 @@ export const isAnimated = (mode: OutputMode): boolean =>
  * Check if mode has colors enabled.
  * Returns false for JSON modes.
  */
-export const hasColors = (mode: OutputMode): boolean =>
-  mode._tag === 'react' && mode.render.colors
+export const hasColors = (mode: OutputMode): boolean => mode._tag === 'react' && mode.render.colors
 
 /**
  * Check if mode uses alternate screen buffer.

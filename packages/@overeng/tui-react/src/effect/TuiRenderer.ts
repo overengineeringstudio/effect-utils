@@ -31,7 +31,7 @@ import type { ReactElement } from 'react'
 
 import type { Terminal, TerminalLike } from '@overeng/tui-core'
 
-import { createRoot, type Root } from '../root.ts'
+import { createRoot, type Root } from '../root.tsx'
 
 // =============================================================================
 // Service Interface

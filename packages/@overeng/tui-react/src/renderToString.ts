@@ -20,6 +20,7 @@ import type { TuiContainer } from './reconciler/reconciler.ts'
 import { TuiReconciler } from './reconciler/reconciler.ts'
 import { isStaticElement, type TuiStaticElement } from './reconciler/types.ts'
 import { calculateLayout } from './reconciler/yoga-utils.ts'
+import { truncateLines } from './truncate.ts'
 
 // =============================================================================
 // Options
@@ -85,7 +86,6 @@ export const renderToString = async ({
       // Handle static content first
       const staticResult = extractStaticContent({ root: container.root, width })
       if (staticResult.lines.length > 0) {
-        lines.push(...staticResult.lines)
         // Update the committed count
         if (staticResult.element && isStaticElement(staticResult.element)) {
           ;(staticResult.element as TuiStaticElement).committedCount = staticResult.newItemCount
@@ -97,7 +97,10 @@ export const renderToString = async ({
 
       // Render to lines
       const dynamicLines = renderTreeSimple({ root: container.root, width })
-      lines.push(...dynamicLines)
+
+      // Combine static and dynamic lines, then truncate
+      const allLines = [...staticResult.lines, ...dynamicLines]
+      lines.push(...truncateLines(allLines, width))
     },
   }
 

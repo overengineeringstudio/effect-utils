@@ -9,6 +9,7 @@ export default tsconfigJson({
     ...baseTsconfigCompilerOptions,
     ...packageTsconfigCompilerOptions,
     types: ['node', 'bun'],
+    jsx: 'react-jsx',
   },
-  include: ['src/**/*.ts', 'bin/**/*.ts'],
+  include: ['src/**/*.ts', 'src/**/*.tsx', 'bin/**/*.ts', 'bin/**/*.tsx'],
 })

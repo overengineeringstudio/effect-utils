@@ -2,16 +2,15 @@ import path from 'node:path'
 
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
-import * as PlatformNode from '@effect/platform-node'
-import { Effect, Either, Layer, Option, pipe, Stream } from 'effect'
+import { Effect, Either, Option, pipe, Stream } from 'effect'
 import React from 'react'
 
 import { outputOption, outputModeLayer } from '@overeng/tui-react'
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
-import { resolveCliVersion } from '@overeng/utils/node/cli-version'
 
-import { GenieApp, GenieConnectedView, createInitialGenieState } from '../cli/mod.tsx'
-import type { GenieFileStatus, GenieSummary, GenieMode } from '../cli/schema.ts'
+import { GenieApp } from './app.ts'
+import { GenieConnectedView } from './view.tsx'
+import { createInitialGenieState, type GenieFileStatus, type GenieSummary, type GenieMode } from './schema.ts'
 import { findGenieFiles } from './discovery.ts'
 import type { GenieFileError } from './errors.ts'
 import { GenieGenerationFailedError } from './errors.ts'
@@ -448,22 +447,3 @@ export const genieCommand: Cli.Command.Command<
       }
     }).pipe(Effect.provide(outputModeLayer(output)), Effect.scoped, Effect.withSpan('genie')),
 )
-
-const baseVersion = '0.1.0'
-// Build stamp placeholder replaced by nix build with NixStamp JSON
-const buildStamp = '__CLI_BUILD_STAMP__'
-const version = resolveCliVersion({
-  baseVersion,
-  buildStamp,
-})
-
-if (import.meta.main) {
-  pipe(
-    Cli.Command.run(genieCommand, {
-      name: 'genie',
-      version,
-    })(process.argv),
-    Effect.provide(Layer.mergeAll(PlatformNode.NodeContext.layer, CurrentWorkingDirectory.live)),
-    PlatformNode.NodeRuntime.runMain,
-  )
-}

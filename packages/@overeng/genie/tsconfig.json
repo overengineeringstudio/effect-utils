@@ -41,7 +41,8 @@
     "composite": true,
     "rootDir": ".",
     "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
-    "types": ["node", "bun"]
+    "types": ["node", "bun"],
+    "jsx": "react-jsx"
   },
-  "include": ["src/**/*.ts", "bin/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "bin/**/*.ts", "bin/**/*.tsx"]
 }

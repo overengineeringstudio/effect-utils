@@ -10,7 +10,7 @@ let
   mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs; };
   unwrapped = mkPnpmCli {
     name = "genie-unwrapped";
-    entry = "packages/@overeng/genie/src/build/mod.ts";
+    entry = "packages/@overeng/genie/bin/genie.tsx";
     binaryName = "genie";
     packageDir = "packages/@overeng/genie";
     workspaceRoot = src;
