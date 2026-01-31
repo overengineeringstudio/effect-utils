@@ -190,6 +190,84 @@ const createWithSkippedState = (): typeof GenieState.Type =>
     summary: { created: 1, updated: 0, unchanged: 1, skipped: 1, failed: 0 },
   })
 
+/** Generate many files for viewport overflow testing */
+const createManyFilesState = (phase: 'generating' | 'complete'): typeof GenieState.Type => {
+  const packages = [
+    'api', 'auth', 'cache', 'config', 'core', 'crypto', 'database', 'email',
+    'events', 'files', 'gateway', 'http', 'i18n', 'jobs', 'kafka', 'logger',
+    'metrics', 'notifications', 'oauth', 'payments', 'queue', 'redis', 'search',
+    'sessions', 'storage', 'telemetry', 'uploads', 'validation', 'websocket', 'workers',
+  ]
+
+  const fileTypes = ['package.json', 'tsconfig.json', 'index.ts']
+
+  const files: Array<typeof GenieState.Type['files'][number]> = []
+
+  // Generate files for each package
+  for (const pkg of packages) {
+    for (const fileType of fileTypes) {
+      const path = `/workspace/packages/${pkg}/${fileType}`
+      const relativePath = `packages/${pkg}/${fileType}`
+
+      // Assign varied statuses to make it interesting
+      let status: typeof GenieState.Type['files'][number]['status']
+      let message: string | undefined
+      let linesAdded: number | undefined
+      let linesRemoved: number | undefined
+
+      if (pkg === 'auth' && fileType === 'package.json') {
+        status = 'error'
+        message = 'Failed to import: SyntaxError in source file'
+      } else if (pkg === 'payments' && fileType === 'tsconfig.json') {
+        status = 'error'
+        message = 'TDZ: Cannot access catalog before initialization'
+      } else if (pkg === 'gateway' && fileType === 'index.ts') {
+        status = phase === 'generating' ? 'active' : 'updated'
+        linesAdded = 45
+        linesRemoved = 12
+      } else if (pkg === 'websocket' && fileType === 'package.json') {
+        status = phase === 'generating' ? 'active' : 'created'
+        linesAdded = 38
+      } else if (pkg === 'redis' && fileType === 'index.ts') {
+        status = phase === 'generating' ? 'active' : 'updated'
+        linesAdded = 23
+        linesRemoved = 5
+      } else if (['api', 'core', 'http'].includes(pkg)) {
+        status = 'created'
+        linesAdded = Math.floor(Math.random() * 50) + 10
+      } else if (['cache', 'config', 'logger'].includes(pkg)) {
+        status = 'updated'
+        linesAdded = Math.floor(Math.random() * 20) + 5
+        linesRemoved = Math.floor(Math.random() * 10) + 1
+      } else if (pkg === 'i18n') {
+        status = 'skipped'
+        message = 'Parent directory missing'
+      } else if (phase === 'generating' && ['telemetry', 'workers', 'validation'].includes(pkg)) {
+        status = 'pending'
+      } else {
+        status = 'unchanged'
+      }
+
+      files.push({ path, relativePath, status, message, linesAdded, linesRemoved })
+    }
+  }
+
+  // Calculate summary
+  const summary = {
+    created: files.filter(f => f.status === 'created').length,
+    updated: files.filter(f => f.status === 'updated').length,
+    unchanged: files.filter(f => f.status === 'unchanged').length,
+    skipped: files.filter(f => f.status === 'skipped').length,
+    failed: files.filter(f => f.status === 'error').length,
+  }
+
+  return createState({
+    phase,
+    files,
+    summary: phase === 'complete' ? summary : undefined,
+  })
+}
+
 // =============================================================================
 // Timeline for Animated Demo
 // =============================================================================
@@ -446,6 +524,52 @@ export const WithSkipped: Story = {
       actionSchema={GenieAction}
       reducer={genieReducer}
       initialState={createWithSkippedState()}
+      height={args.height}
+      autoRun={false}
+      tabs={ALL_TABS}
+    />
+  ),
+}
+
+/** Many files - generating phase (viewport overflow demo) */
+export const ManyFilesGenerating: Story = {
+  args: { height: 300 },
+  argTypes: {
+    height: {
+      description: 'Terminal height (reduce to see truncation)',
+      control: { type: 'range', min: 150, max: 600, step: 25 },
+    },
+  },
+  render: (args) => (
+    <TuiStoryPreview
+      View={GenieView}
+      stateSchema={GenieState}
+      actionSchema={GenieAction}
+      reducer={genieReducer}
+      initialState={createManyFilesState('generating')}
+      height={args.height}
+      autoRun={false}
+      tabs={ALL_TABS}
+    />
+  ),
+}
+
+/** Many files - complete phase (viewport overflow demo) */
+export const ManyFilesComplete: Story = {
+  args: { height: 300 },
+  argTypes: {
+    height: {
+      description: 'Terminal height (reduce to see truncation)',
+      control: { type: 'range', min: 150, max: 600, step: 25 },
+    },
+  },
+  render: (args) => (
+    <TuiStoryPreview
+      View={GenieView}
+      stateSchema={GenieState}
+      actionSchema={GenieAction}
+      reducer={genieReducer}
+      initialState={createManyFilesState('complete')}
       height={args.height}
       autoRun={false}
       tabs={ALL_TABS}

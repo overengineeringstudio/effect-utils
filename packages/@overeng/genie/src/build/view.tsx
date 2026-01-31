@@ -7,7 +7,7 @@
 
 import React, { useMemo } from 'react'
 
-import { Box, Text, Spinner } from '@overeng/tui-react'
+import { Box, Text, Spinner, useViewport } from '@overeng/tui-react'
 
 import { GenieApp } from './app.ts'
 import type { GenieState, GenieFile, GenieFileStatus } from './schema.ts'
@@ -23,6 +23,46 @@ const icons = {
   dot: '\u00b7', // ·
   separator: '\u2500', // ─
 } as const
+
+// =============================================================================
+// File List Utilities
+// =============================================================================
+
+/** Priority order for file statuses (lower = higher priority) */
+const statusPriority: Record<GenieFileStatus, number> = {
+  error: 0,
+  active: 1,
+  created: 2,
+  updated: 3,
+  skipped: 4,
+  pending: 5,
+  unchanged: 6,
+}
+
+/** Sort files by priority: errors > active > changed > pending > unchanged */
+const sortFilesByPriority = (files: readonly GenieFile[]): GenieFile[] => {
+  return [...files].sort((a, b) => statusPriority[a.status] - statusPriority[b.status])
+}
+
+/** Calculate overflow summary from hidden files */
+const getOverflowSummary = (hiddenFiles: readonly GenieFile[]): string => {
+  const counts: Partial<Record<GenieFileStatus, number>> = {}
+  for (const file of hiddenFiles) {
+    counts[file.status] = (counts[file.status] ?? 0) + 1
+  }
+
+  const parts: string[] = []
+  if (counts.unchanged) parts.push(`${counts.unchanged} ${icons.check}`)
+  if (counts.pending) parts.push(`${counts.pending} pending`)
+  if (counts.created) parts.push(`${counts.created} created`)
+  if (counts.updated) parts.push(`${counts.updated} updated`)
+  if (counts.skipped) parts.push(`${counts.skipped} skipped`)
+  // errors and active should never be hidden, but just in case
+  if (counts.error) parts.push(`${counts.error} errors`)
+  if (counts.active) parts.push(`${counts.active} active`)
+
+  return `... ${hiddenFiles.length} more files (${parts.join(', ')})`
+}
 
 // =============================================================================
 // Status Icon Component
@@ -249,6 +289,54 @@ const Summary = ({
 
 
 // =============================================================================
+// Viewport-Aware File List
+// =============================================================================
+
+interface FileListProps {
+  files: readonly GenieFile[]
+  hasWatchCycle: boolean
+}
+
+/**
+ * Viewport-aware file list that prioritizes important files.
+ * Shows errors and active files first, then fills remaining space with others.
+ * Displays overflow summary when files exceed available viewport height.
+ */
+const FileList = ({ files, hasWatchCycle }: FileListProps) => {
+  const viewport = useViewport()
+
+  const { visibleFiles, hiddenFiles } = useMemo(() => {
+    // Calculate available lines for file list
+    // Layout: Header (1) + watch cycle? (1) + blank (1) + files + overflow? (1)
+    const reservedLines = 1 + (hasWatchCycle ? 1 : 0) + 1 + 1 // +1 for overflow line
+    const availableLines = Math.max(1, viewport.rows - reservedLines)
+
+    // If all files fit, no need to sort/truncate
+    if (files.length <= availableLines) {
+      return { visibleFiles: files, hiddenFiles: [] as GenieFile[] }
+    }
+
+    // Sort by priority and split into visible/hidden
+    const sorted = sortFilesByPriority(files)
+    return {
+      visibleFiles: sorted.slice(0, availableLines - 1), // -1 for overflow indicator
+      hiddenFiles: sorted.slice(availableLines - 1),
+    }
+  }, [files, viewport.rows, hasWatchCycle])
+
+  return (
+    <>
+      {visibleFiles.map((file) => (
+        <FileItem key={file.path} file={file} />
+      ))}
+      {hiddenFiles.length > 0 && (
+        <Text dim>{getOverflowSummary(hiddenFiles)}</Text>
+      )}
+    </>
+  )
+}
+
+// =============================================================================
 // Main View Component
 // =============================================================================
 
@@ -304,10 +392,8 @@ export const GenieView = ({ state }: GenieViewProps) => {
         )}
         <Text> </Text>
 
-        {/* File progress items */}
-        {files.map((file) => (
-          <FileItem key={file.path} file={file} />
-        ))}
+        {/* File progress items - viewport aware */}
+        <FileList files={files} hasWatchCycle={watchCycle !== undefined && watchCycle > 0} />
       </Box>
     )
   }
@@ -326,7 +412,7 @@ export const GenieView = ({ state }: GenieViewProps) => {
       {watchCycle !== undefined && watchCycle > 0 && <Text dim>Watch cycle #{watchCycle + 1}</Text>}
       <Text> </Text>
 
-      {/* Results - use original file order for consistency with generating phase */}
+      {/* Results - viewport aware with priority sorting */}
       {!hasChanges ? (
         <Box flexDirection="row">
           <Text color="green">{icons.check}</Text>
@@ -334,7 +420,10 @@ export const GenieView = ({ state }: GenieViewProps) => {
           <Text dim>All files up to date</Text>
         </Box>
       ) : (
-        files.map((f) => <FileItem key={f.path} file={f} />)
+        <FileList
+          files={files}
+          hasWatchCycle={watchCycle !== undefined && watchCycle > 0}
+        />
       )}
 
       {/* Separator and summary */}

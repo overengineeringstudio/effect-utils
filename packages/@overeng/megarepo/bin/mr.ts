@@ -21,4 +21,4 @@ const baseLayer = Layer.mergeAll(NodeContext.layer, Cwd.live)
 Cli.Command.run(mrCommand, {
   name: 'mr',
   version,
-})(process.argv).pipe(Effect.provide(baseLayer), NodeRuntime.runMain)
+})(process.argv).pipe(Effect.scoped, Effect.provide(baseLayer), NodeRuntime.runMain)
