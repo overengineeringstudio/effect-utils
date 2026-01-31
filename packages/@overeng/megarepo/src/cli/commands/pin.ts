@@ -21,6 +21,45 @@ import {
   parseSourceString,
   isRemoteSource,
 } from '../../lib/config.ts'
+
+// Tagged error classes for pin/unpin commands
+class NotInMegarepoError extends Schema.TaggedError<NotInMegarepoError>()('NotInMegarepoError', {
+  message: Schema.String,
+}) {}
+
+class MemberNotFoundError extends Schema.TaggedError<MemberNotFoundError>()('MemberNotFoundError', {
+  message: Schema.String,
+}) {}
+
+class InvalidSourceError extends Schema.TaggedError<InvalidSourceError>()('InvalidSourceError', {
+  message: Schema.String,
+}) {}
+
+class CannotPinLocalPathError extends Schema.TaggedError<CannotPinLocalPathError>()(
+  'CannotPinLocalPathError',
+  {
+    message: Schema.String,
+  },
+) {}
+
+class CannotGetCloneUrlError extends Schema.TaggedError<CannotGetCloneUrlError>()(
+  'CannotGetCloneUrlError',
+  {
+    message: Schema.String,
+  },
+) {}
+
+class MemberNotSyncedError extends Schema.TaggedError<MemberNotSyncedError>()(
+  'MemberNotSyncedError',
+  {
+    message: Schema.String,
+  },
+) {}
+
+class NoLockFileError extends Schema.TaggedError<NoLockFileError>()('NoLockFileError', {
+  message: Schema.String,
+}) {}
+
 import * as Git from '../../lib/git.ts'
 import {
   createEmptyLockFile,
@@ -80,7 +119,7 @@ export const pinCommand = Cli.Command.make(
           )
           yield* Console.error(output)
         }
-        return yield* Effect.fail(new Error('Not in a megarepo'))
+        return yield* Effect.fail(new NotInMegarepoError({ message: 'Not in a megarepo' }))
       }
 
       const fs = yield* FileSystem.FileSystem
@@ -110,13 +149,13 @@ export const pinCommand = Cli.Command.make(
           )
           yield* Console.error(output)
         }
-        return yield* Effect.fail(new Error('Member not found'))
+        return yield* Effect.fail(new MemberNotFoundError({ message: 'Member not found' }))
       }
 
       // Check if it's a local path (can't pin local paths)
       let sourceString = config.members[member]
       if (sourceString === undefined) {
-        return yield* Effect.fail(new Error('Member not found'))
+        return yield* Effect.fail(new MemberNotFoundError({ message: 'Member not found' }))
       }
       let source = parseSourceString(sourceString)
       if (source === undefined) {

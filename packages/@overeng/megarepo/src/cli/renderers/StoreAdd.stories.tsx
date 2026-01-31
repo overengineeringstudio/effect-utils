@@ -2,21 +2,18 @@
  * Storybook stories for StoreAdd components.
  */
 
-import type { StoryObj } from '@storybook/react'
+import type { Meta, StoryObj } from '@storybook/react'
+import React from 'react'
 
-import { forceColorLevel } from '@overeng/cli-ui'
-import { createCliMeta } from '@overeng/tui-react/storybook'
+import { TerminalPreview } from '@overeng/tui-react/storybook'
 
 import {
   StoreAddError,
   StoreAddProgress,
   StoreAddSuccess,
   type StoreAddErrorProps,
-  type StoreAddProgressProps,
   type StoreAddSuccessProps,
 } from './StoreOutput.tsx'
-
-forceColorLevel('truecolor')
 
 // =============================================================================
 // Example Data
@@ -39,13 +36,13 @@ const exampleAddSuccessExisting: StoreAddSuccessProps = {
 }
 
 // =============================================================================
-// Error Stories
+// Meta
 // =============================================================================
 
-const errorMeta = createCliMeta<StoreAddErrorProps>(StoreAddError, {
-  title: 'CLI/Store/Add/Error',
-  description: 'Error output for the `mr store add` command when inputs are invalid.',
-  defaultArgs: {
+const meta: Meta<StoreAddErrorProps> = {
+  title: 'CLI/Store/Add',
+  component: StoreAddError,
+  args: {
     type: 'invalid_source',
   },
   argTypes: {
@@ -61,26 +58,45 @@ const errorMeta = createCliMeta<StoreAddErrorProps>(StoreAddError, {
       table: { category: 'Error' },
     },
   },
-})
+  decorators: [
+    (Story) => (
+      <TerminalPreview height={200}>
+        <Story />
+      </TerminalPreview>
+    ),
+  ],
+  parameters: {
+    layout: 'padded',
+    docs: {
+      description: {
+        component: 'Error output for the `mr store add` command when inputs are invalid.',
+      },
+    },
+  },
+}
 
-export default errorMeta
+export default meta
 
-type ErrorStory = StoryObj<typeof errorMeta>
+type Story = StoryObj<typeof meta>
 
-export const InvalidSource: ErrorStory = {
+// =============================================================================
+// Error Stories
+// =============================================================================
+
+export const InvalidSource: Story = {
   args: {
     type: 'invalid_source',
     source: 'not-a-valid-source',
   },
 }
 
-export const LocalPath: ErrorStory = {
+export const LocalPath: Story = {
   args: {
     type: 'local_path',
   },
 }
 
-export const NoUrl: ErrorStory = {
+export const NoUrl: Story = {
   args: {
     type: 'no_url',
   },
@@ -90,81 +106,66 @@ export const NoUrl: ErrorStory = {
 // Progress Stories
 // =============================================================================
 
-export const progressMeta = createCliMeta<StoreAddProgressProps>(StoreAddProgress, {
-  title: 'CLI/Store/Add/Progress',
-  description: 'Progress output for the `mr store add` command during clone/worktree creation.',
-  defaultArgs: {
-    type: 'cloning',
-  },
-  argTypes: {
-    type: {
-      description: 'Progress step type',
-      control: { type: 'select' },
-      options: ['cloning', 'creating_worktree'],
-      table: { category: 'Progress' },
-    },
-  },
-})
-
-type ProgressStory = StoryObj<typeof progressMeta>
-
-export const Cloning: ProgressStory = {
-  args: {
-    type: 'cloning',
-    source: 'effect-ts/effect',
-  },
+export const Cloning: Story = {
+  render: () => (
+    <TerminalPreview height={200}>
+      <StoreAddProgress type="cloning" source="effect-ts/effect" />
+    </TerminalPreview>
+  ),
 }
 
-export const CreatingWorktree: ProgressStory = {
-  args: {
-    type: 'creating_worktree',
-    ref: 'main',
-  },
+export const CreatingWorktree: Story = {
+  render: () => (
+    <TerminalPreview height={200}>
+      <StoreAddProgress type="creating_worktree" ref="main" />
+    </TerminalPreview>
+  ),
 }
 
 // =============================================================================
 // Success Stories
 // =============================================================================
 
-export const successMeta = createCliMeta<StoreAddSuccessProps>(StoreAddSuccess, {
-  title: 'CLI/Store/Add/Success',
-  description: 'Success output for the `mr store add` command after successful add.',
-  defaultArgs: exampleAddSuccess,
-  argTypes: {
-    alreadyExists: {
-      description: 'Whether the repository already existed in the store',
-      control: { type: 'boolean' },
-      table: { category: 'Status' },
-    },
-  },
-})
-
-type SuccessStory = StoryObj<typeof successMeta>
-
-export const SuccessNew: SuccessStory = {
-  args: exampleAddSuccess,
+export const SuccessNew: Story = {
+  render: () => (
+    <TerminalPreview height={200}>
+      <StoreAddSuccess {...exampleAddSuccess} />
+    </TerminalPreview>
+  ),
 }
 
-export const SuccessExisting: SuccessStory = {
-  args: exampleAddSuccessExisting,
+export const SuccessExisting: Story = {
+  render: () => (
+    <TerminalPreview height={200}>
+      <StoreAddSuccess {...exampleAddSuccessExisting} />
+    </TerminalPreview>
+  ),
 }
 
-export const SuccessWithRef: SuccessStory = {
-  args: {
-    source: 'effect-ts/effect#feat/new-feature',
-    ref: 'feat/new-feature',
-    commit: 'def456789012',
-    path: '/Users/me/.megarepo/store/github.com/effect-ts/effect/refs/feat/new-feature',
-    alreadyExists: false,
-  },
+export const SuccessWithRef: Story = {
+  render: () => (
+    <TerminalPreview height={200}>
+      <StoreAddSuccess
+        source="effect-ts/effect#feat/new-feature"
+        ref="feat/new-feature"
+        commit="def456789012"
+        path="/Users/me/.megarepo/store/github.com/effect-ts/effect/refs/feat/new-feature"
+        alreadyExists={false}
+      />
+    </TerminalPreview>
+  ),
 }
 
-export const SuccessNoCommit: SuccessStory = {
-  args: {
-    source: 'effect-ts/effect',
-    ref: 'v3.0.0',
-    commit: undefined,
-    path: '/Users/me/.megarepo/store/github.com/effect-ts/effect/refs/v3.0.0',
-    alreadyExists: false,
-  },
+export const SuccessNoCommit: Story = {
+  render: () => (
+    <TerminalPreview height={200}>
+      <StoreAddSuccess
+        source="effect-ts/effect"
+        ref="v3.0.0"
+        commit={undefined}
+        path="/Users/me/.megarepo/store/github.com/effect-ts/effect/refs/v3.0.0"
+        alreadyExists={false}
+      />
+    </TerminalPreview>
+  ),
 }

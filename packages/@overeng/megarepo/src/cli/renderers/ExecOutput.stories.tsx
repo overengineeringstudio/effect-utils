@@ -2,12 +2,11 @@
  * Storybook stories for ExecOutput components.
  */
 
-import type { StoryObj } from '@storybook/react'
+import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
-import { forceColorLevel } from '@overeng/cli-ui'
 import { Box } from '@overeng/tui-react'
-import { createCliMeta } from '@overeng/tui-react/storybook'
+import { TerminalPreview } from '@overeng/tui-react/storybook'
 
 import {
   ExecErrorOutput,
@@ -16,12 +15,8 @@ import {
   ExecMemberPath,
   ExecResultsOutput,
   type ExecErrorOutputProps,
-  type ExecVerboseHeaderProps,
-  type ExecResultsOutputProps,
   type ExecMemberResult,
 } from './ExecOutput.tsx'
-
-forceColorLevel('truecolor')
 
 // =============================================================================
 // Example Data
@@ -45,13 +40,13 @@ const exampleExecResultsWithOutput: ExecMemberResult[] = [
 ]
 
 // =============================================================================
-// Error Output Stories
+// Meta
 // =============================================================================
 
-const errorMeta = createCliMeta<ExecErrorOutputProps>(ExecErrorOutput, {
-  title: 'CLI/Exec/Error',
-  description: 'Error outputs for the `mr exec` command.',
-  defaultArgs: {
+const meta: Meta<ExecErrorOutputProps> = {
+  title: 'CLI/Exec',
+  component: ExecErrorOutput,
+  args: {
     type: 'not_in_megarepo',
   },
   argTypes: {
@@ -62,17 +57,36 @@ const errorMeta = createCliMeta<ExecErrorOutputProps>(ExecErrorOutput, {
       table: { category: 'Error' },
     },
   },
-})
+  decorators: [
+    (Story) => (
+      <TerminalPreview height={300}>
+        <Story />
+      </TerminalPreview>
+    ),
+  ],
+  parameters: {
+    layout: 'padded',
+    docs: {
+      description: {
+        component: 'Error outputs for the `mr exec` command.',
+      },
+    },
+  },
+}
 
-export default errorMeta
+export default meta
 
-type ExecErrorStory = StoryObj<typeof errorMeta>
+type Story = StoryObj<typeof meta>
 
-export const NotInMegarepo: ExecErrorStory = {
+// =============================================================================
+// Error Output Stories
+// =============================================================================
+
+export const NotInMegarepo: Story = {
   args: { type: 'not_in_megarepo' },
 }
 
-export const MemberNotFound: ExecErrorStory = {
+export const MemberNotFound: Story = {
   args: { type: 'member_not_found' },
 }
 
@@ -80,90 +94,80 @@ export const MemberNotFound: ExecErrorStory = {
 // Verbose Header Stories
 // =============================================================================
 
-export const verboseMeta = createCliMeta<ExecVerboseHeaderProps>(ExecVerboseHeader, {
-  title: 'CLI/Exec/Verbose Header',
-  description: 'Verbose header output for the `mr exec` command when using `--verbose`.',
-  defaultArgs: {
-    command: 'npm version',
-    mode: 'parallel',
-    members: ['effect', 'effect-utils', 'livestore'],
-  },
-  argTypes: {
-    mode: {
-      description: 'Execution mode',
-      control: { type: 'select' },
-      options: ['parallel', 'sequential'],
-      table: { category: 'Options' },
-    },
-  },
-})
-
-type ExecVerboseStory = StoryObj<typeof verboseMeta>
-
-export const VerboseParallel: ExecVerboseStory = {
-  args: {
-    command: 'npm version',
-    mode: 'parallel',
-    members: ['effect', 'effect-utils', 'livestore'],
-  },
+export const VerboseParallel: Story = {
+  render: () => (
+    <TerminalPreview height={200}>
+      <ExecVerboseHeader
+        command="npm version"
+        mode="parallel"
+        members={['effect', 'effect-utils', 'livestore']}
+      />
+    </TerminalPreview>
+  ),
 }
 
-export const VerboseSequential: ExecVerboseStory = {
-  args: {
-    command: 'git status',
-    mode: 'sequential',
-    members: ['effect', 'effect-utils'],
-  },
+export const VerboseSequential: Story = {
+  render: () => (
+    <TerminalPreview height={200}>
+      <ExecVerboseHeader command="git status" mode="sequential" members={['effect', 'effect-utils']} />
+    </TerminalPreview>
+  ),
 }
 
-export const VerboseSingleMember: ExecVerboseStory = {
-  args: {
-    command: 'pnpm install',
-    mode: 'parallel',
-    members: ['effect'],
-  },
+export const VerboseSingleMember: Story = {
+  render: () => (
+    <TerminalPreview height={200}>
+      <ExecVerboseHeader command="pnpm install" mode="parallel" members={['effect']} />
+    </TerminalPreview>
+  ),
 }
 
 // =============================================================================
 // Results Output Stories
 // =============================================================================
 
-export const resultsMeta = createCliMeta<ExecResultsOutputProps>(ExecResultsOutput, {
-  title: 'CLI/Exec/Results',
-  description: 'Results output for the `mr exec` command showing command output per member.',
-  defaultArgs: {
-    results: [],
-  },
-})
-
-type ExecResultsStory = StoryObj<typeof resultsMeta>
-
-export const MixedResults: ExecResultsStory = {
-  args: { results: exampleExecResults },
+export const MixedResults: Story = {
+  render: () => (
+    <TerminalPreview height={300}>
+      <ExecResultsOutput results={exampleExecResults} />
+    </TerminalPreview>
+  ),
 }
 
-export const WithMultilineOutput: ExecResultsStory = {
-  args: { results: exampleExecResultsWithOutput },
+export const WithMultilineOutput: Story = {
+  render: () => (
+    <TerminalPreview height={300}>
+      <ExecResultsOutput results={exampleExecResultsWithOutput} />
+    </TerminalPreview>
+  ),
 }
 
-export const AllSuccess: ExecResultsStory = {
-  args: {
-    results: [
-      { name: 'effect', exitCode: 0, stdout: 'ok', stderr: '' },
-      { name: 'effect-utils', exitCode: 0, stdout: 'ok', stderr: '' },
-      { name: 'livestore', exitCode: 0, stdout: 'ok', stderr: '' },
-    ],
-  },
+export const AllSuccess: Story = {
+  render: () => (
+    <TerminalPreview height={300}>
+      <ExecResultsOutput
+        results={[
+          { name: 'effect', exitCode: 0, stdout: 'ok', stderr: '' },
+          { name: 'effect-utils', exitCode: 0, stdout: 'ok', stderr: '' },
+          { name: 'livestore', exitCode: 0, stdout: 'ok', stderr: '' },
+        ]}
+      />
+    </TerminalPreview>
+  ),
 }
 
-export const AllErrors: ExecResultsStory = {
-  args: {
-    results: [
-      { name: 'effect', exitCode: 1, stdout: '', stderr: 'Command not found: foo' },
-      { name: 'effect-utils', exitCode: 1, stdout: '', stderr: 'Permission denied' },
-      { name: 'livestore', exitCode: 127, stdout: '', stderr: 'sh: command not found' },
-    ],
-  },
+export const AllErrors: Story = {
+  render: () => (
+    <TerminalPreview height={300}>
+      <ExecResultsOutput
+        results={[
+          { name: 'effect', exitCode: 1, stdout: '', stderr: 'Command not found: foo' },
+          { name: 'effect-utils', exitCode: 1, stdout: '', stderr: 'Permission denied' },
+          { name: 'livestore', exitCode: 127, stdout: '', stderr: 'sh: command not found' },
+        ]}
+      />
+    </TerminalPreview>
+  ),
 }
 
 // =============================================================================
@@ -184,50 +188,45 @@ const VerboseMemberStatus = ({ members }: { members: MemberStatusItem[] }) => (
   </Box>
 )
 
-export const memberStatusMeta = createCliMeta<{ members: MemberStatusItem[] }>(
-  VerboseMemberStatus,
-  {
-    title: 'CLI/Exec/Member Status',
-    description: 'Verbose member status lines showing synced/skipped status for each member.',
-    defaultArgs: {
-      members: [],
-    },
-  },
-)
-
-type MemberStatusStory = StoryObj<typeof memberStatusMeta>
-
-export const AllSynced: MemberStatusStory = {
-  args: {
-    members: [
-      {
-        name: 'effect',
-        synced: true,
-        path: '/Users/dev/.megarepo/github.com/effect-ts/effect/main',
-      },
-      {
-        name: 'effect-utils',
-        synced: true,
-        path: '/Users/dev/.megarepo/github.com/overeng/effect-utils/main',
-      },
-    ],
-  },
+export const AllSynced: Story = {
+  render: () => (
+    <TerminalPreview height={200}>
+      <VerboseMemberStatus
+        members={[
+          {
+            name: 'effect',
+            synced: true,
+            path: '/Users/dev/.megarepo/github.com/effect-ts/effect/main',
+          },
+          {
+            name: 'effect-utils',
+            synced: true,
+            path: '/Users/dev/.megarepo/github.com/overeng/effect-utils/main',
+          },
+        ]}
+      />
+    </TerminalPreview>
+  ),
 }
 
-export const SomeSkipped: MemberStatusStory = {
-  args: {
-    members: [
-      {
-        name: 'effect',
-        synced: true,
-        path: '/Users/dev/.megarepo/github.com/effect-ts/effect/main',
-      },
-      { name: 'effect-utils', synced: false },
-      {
-        name: 'livestore',
-        synced: true,
-        path: '/Users/dev/.megarepo/github.com/livestore/livestore/main',
-      },
-    ],
-  },
+export const SomeSkipped: Story = {
+  render: () => (
+    <TerminalPreview height={200}>
+      <VerboseMemberStatus
+        members={[
+          {
+            name: 'effect',
+            synced: true,
+            path: '/Users/dev/.megarepo/github.com/effect-ts/effect/main',
+          },
+          { name: 'effect-utils', synced: false },
+          {
+            name: 'livestore',
+            synced: true,
+            path: '/Users/dev/.megarepo/github.com/livestore/livestore/main',
+          },
+        ]}
+      />
+    </TerminalPreview>
+  ),
 }

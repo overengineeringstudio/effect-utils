@@ -2,15 +2,12 @@
  * Storybook stories for SyncOutput component.
  */
 
-import type { StoryObj } from '@storybook/react'
+import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
-import { forceColorLevel } from '@overeng/cli-ui'
-import { createCliMeta, TerminalPreview, StringTerminalPreview } from '@overeng/tui-react/storybook'
+import { TerminalPreview, StringTerminalPreview } from '@overeng/tui-react/storybook'
 
 import { SyncOutput, type SyncOutputProps, type MemberSyncResult } from './SyncOutput.tsx'
-
-forceColorLevel('truecolor')
 
 // =============================================================================
 // Example Data
@@ -43,10 +40,10 @@ const exampleAllSynced: MemberSyncResult[] = [
 // Meta
 // =============================================================================
 
-const meta = createCliMeta<SyncOutputProps>(SyncOutput, {
+const meta: Meta<SyncOutputProps> = {
   title: 'CLI/Sync Output',
-  description: 'Sync command output. Shows results of syncing members in a megarepo.',
-  defaultArgs: {
+  component: SyncOutput,
+  args: {
     name: 'my-workspace',
     root: '/Users/dev/workspace',
     results: [],
@@ -77,7 +74,22 @@ const meta = createCliMeta<SyncOutputProps>(SyncOutput, {
       table: { category: 'Sync Options' },
     },
   },
-})
+  decorators: [
+    (Story) => (
+      <TerminalPreview height={400}>
+        <Story />
+      </TerminalPreview>
+    ),
+  ],
+  parameters: {
+    layout: 'padded',
+    docs: {
+      description: {
+        component: 'Sync command output. Shows results of syncing members in a megarepo.',
+      },
+    },
+  },
+}
 
 export default meta
 

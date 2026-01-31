@@ -8,7 +8,7 @@ import * as Cli from '@effect/cli'
 import { Prompt } from '@effect/cli'
 import type { CommandExecutor, Terminal } from '@effect/platform'
 import { FileSystem, type Error as PlatformError } from '@effect/platform'
-import { Console, Effect, Layer, Option, type ParseResult, Schema } from 'effect'
+import { Console, Effect, Option, type ParseResult, Schema } from 'effect'
 import React from 'react'
 
 import { isTTY } from '@overeng/cli-ui'
@@ -55,13 +55,12 @@ import {
 } from '../../lib/sync/mod.ts'
 import { Cwd, findMegarepoRoot, jsonOption, streamOption, verboseOption } from '../context.ts'
 import {
-  SyncProgressReactLayer,
-  setMemberSyncing,
-  applySyncResult,
-  completeSyncProgress,
-  startSyncProgressUIReact,
-  finishSyncProgressUIReact,
-  type SyncProgressService,
+  startSyncProgressUI,
+  finishSyncProgressUI,
+  mapSyncResultToAction,
+  createSyncingAction,
+  createCompleteAction,
+  type SyncProgressUIHandle,
 } from '../progress/mod.ts'
 import { SyncOutput } from '../renderers/SyncOutput.tsx'
 
@@ -115,7 +114,7 @@ export const syncMegarepo = ({
   options,
   depth = 0,
   visited = new Set<string>(),
-  withProgress = false,
+  progressHandle,
   onMissingRef,
   onMemberSynced,
 }: {
@@ -135,7 +134,8 @@ export const syncMegarepo = ({
   }
   depth?: number
   visited?: Set<string>
-  withProgress?: boolean
+  /** Handle for dispatching progress updates (replaces withProgress flag) */
+  progressHandle?: SyncProgressUIHandle
   /** Callback for interactive prompts when a ref doesn't exist */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onMissingRef?: (info: MissingRefInfo) => Effect.Effect<MissingRefAction, any, any>
@@ -149,7 +149,7 @@ export const syncMegarepo = ({
   | NixGeneratorError
   | PlatformError.PlatformError
   | ParseResult.ParseError,
-  FileSystem.FileSystem | CommandExecutor.CommandExecutor | Store | SyncProgressService
+  FileSystem.FileSystem | CommandExecutor.CommandExecutor | Store
 > =>
   Effect.gen(function* () {
     const {
@@ -377,14 +377,14 @@ export const syncMegarepo = ({
 
     // Sync all members with limited concurrency for visible progress
     // Use unbounded for non-TTY (faster) or limited (4) for TTY (visible progress)
-    const concurrency = withProgress ? 4 : 'unbounded'
+    const concurrency = progressHandle !== undefined ? 4 : 'unbounded'
 
     const results = yield* Effect.all(
       members.map(([name, sourceString]) =>
         Effect.gen(function* () {
-          // Mark as syncing in progress service
-          if (withProgress) {
-            yield* setMemberSyncing({ memberName: name }).pipe(Effect.catchAll(() => Effect.void))
+          // Mark as syncing in progress UI
+          if (progressHandle !== undefined) {
+            progressHandle.dispatch(createSyncingAction({ memberName: name }))
           }
 
           // Perform the sync
@@ -403,9 +403,9 @@ export const syncMegarepo = ({
             ...(onMissingRef !== undefined ? { onMissingRef } : {}),
           })
 
-          // Apply result to progress service
-          if (withProgress) {
-            yield* applySyncResult(result).pipe(Effect.catchAll(() => Effect.void))
+          // Apply result to progress UI
+          if (progressHandle !== undefined) {
+            progressHandle.dispatch(mapSyncResultToAction(result))
           }
 
           // Call streaming callback if provided (for NDJSON output)
@@ -783,7 +783,7 @@ export const syncCommand = Cli.Command.make(
         const memberNames = Object.keys(config.members)
 
         // Start live progress UI (React-based)
-        const ui = yield* startSyncProgressUIReact({
+        const ui = yield* startSyncProgressUI({
           workspaceName: name,
           workspaceRoot: root.value,
           memberNames,
@@ -815,13 +815,13 @@ export const syncCommand = Cli.Command.make(
             gitProtocol,
             createBranches,
           },
-          withProgress: true,
+          progressHandle: ui,
           ...(onMissingRef !== undefined ? { onMissingRef } : {}),
         })
 
         // Mark complete and finish UI
-        yield* completeSyncProgress()
-        yield* finishSyncProgressUIReact(ui)
+        ui.dispatch(createCompleteAction())
+        yield* finishSyncProgressUI(ui)
 
         // Print generator output after progress UI completes
         const generatedFiles = getEnabledGenerators(config)
@@ -994,7 +994,8 @@ export const syncCommand = Cli.Command.make(
         return syncResult
       }
     }).pipe(
-      Effect.provide(Layer.merge(StoreLayer, SyncProgressReactLayer)),
+      Effect.scoped, // For startSyncProgressUI which requires Scope
+      Effect.provide(StoreLayer),
       Effect.withSpan('megarepo/sync'),
     ),
 ).pipe(

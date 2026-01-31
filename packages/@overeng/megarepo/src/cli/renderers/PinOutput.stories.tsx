@@ -2,19 +2,16 @@
  * Storybook stories for PinOutput component.
  */
 
-import type { StoryObj } from '@storybook/react'
+import type { Meta, StoryObj } from '@storybook/react'
+import React from 'react'
 
-import { forceColorLevel } from '@overeng/cli-ui'
-import { createCliMeta } from '@overeng/tui-react/storybook'
+import { TerminalPreview } from '@overeng/tui-react/storybook'
 
 import {
   PinOutput,
   PinErrorOutput,
   type PinOutputProps,
-  type PinErrorOutputProps,
 } from './PinOutput.tsx'
-
-forceColorLevel('truecolor')
 
 // =============================================================================
 // Example Data
@@ -53,10 +50,10 @@ const exampleUnpinSuccess: PinOutputProps = {
 // Pin Output Stories
 // =============================================================================
 
-const meta = createCliMeta<PinOutputProps>(PinOutput, {
+const meta: Meta<PinOutputProps> = {
   title: 'CLI/Pin Output',
-  description: 'Output for the `mr pin` and `mr unpin` commands.',
-  defaultArgs: {
+  component: PinOutput,
+  args: {
     action: 'pin',
     member: 'effect',
     status: 'success',
@@ -71,8 +68,22 @@ const meta = createCliMeta<PinOutputProps>(PinOutput, {
       options: ['success', 'already_pinned', 'already_unpinned', 'dry_run'],
     },
   },
-  terminalHeight: 200,
-})
+  decorators: [
+    (Story) => (
+      <TerminalPreview height={200}>
+        <Story />
+      </TerminalPreview>
+    ),
+  ],
+  parameters: {
+    layout: 'padded',
+    docs: {
+      description: {
+        component: 'Output for the `mr pin` and `mr unpin` commands.',
+      },
+    },
+  },
+}
 
 export default meta
 
@@ -132,35 +143,34 @@ export const DryRunSimple: Story = {
 // Pin Error Stories
 // =============================================================================
 
-export const errorMeta = createCliMeta<PinErrorOutputProps>(PinErrorOutput, {
-  title: 'CLI/Pin Error',
-  description: 'Error outputs for the `mr pin` and `mr unpin` commands.',
-  defaultArgs: {
-    error: 'not_in_megarepo',
-  },
-  argTypes: {
-    error: {
-      control: { type: 'select' },
-      options: ['not_in_megarepo', 'member_not_found', 'not_synced', 'local_path'],
-    },
-  },
-  terminalHeight: 150,
-})
-
-type ErrorStory = StoryObj<typeof errorMeta>
-
-export const ErrorNotInMegarepo: ErrorStory = {
-  args: { error: 'not_in_megarepo' },
+export const ErrorNotInMegarepo: Story = {
+  render: () => (
+    <TerminalPreview height={150}>
+      <PinErrorOutput error="not_in_megarepo" />
+    </TerminalPreview>
+  ),
 }
 
-export const ErrorMemberNotFound: ErrorStory = {
-  args: { error: 'member_not_found', member: 'unknown-repo' },
+export const ErrorMemberNotFound: Story = {
+  render: () => (
+    <TerminalPreview height={150}>
+      <PinErrorOutput error="member_not_found" member="unknown-repo" />
+    </TerminalPreview>
+  ),
 }
 
-export const ErrorNotSynced: ErrorStory = {
-  args: { error: 'not_synced', member: 'effect' },
+export const ErrorNotSynced: Story = {
+  render: () => (
+    <TerminalPreview height={150}>
+      <PinErrorOutput error="not_synced" member="effect" />
+    </TerminalPreview>
+  ),
 }
 
-export const ErrorLocalPath: ErrorStory = {
-  args: { error: 'local_path' },
+export const ErrorLocalPath: Story = {
+  render: () => (
+    <TerminalPreview height={150}>
+      <PinErrorOutput error="local_path" />
+    </TerminalPreview>
+  ),
 }

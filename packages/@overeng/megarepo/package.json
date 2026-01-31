@@ -44,6 +44,7 @@
     "@xterm/xterm": "6.0.0",
     "effect": "3.19.15",
     "react-dom": "19.2.3",
+    "react-reconciler": "0.32.0",
     "storybook": "10.2.1",
     "typescript": "5.9.3",
     "vite": "7.3.0",

@@ -38,7 +38,6 @@ import { classifyRef } from '../../../lib/ref.ts'
 import { Store, StoreLayer } from '../../../lib/store.ts'
 import { getCloneUrl } from '../../../lib/sync/mod.ts'
 import { Cwd, findMegarepoRoot, jsonOption } from '../../context.ts'
-import { extractRefFromSymlinkPath } from '../../../lib/ref.ts'
 import {
   StoreListOutput,
   StoreFetchOutput,
@@ -53,6 +52,10 @@ import {
   type StoreWorktreeStatus,
   type StoreWorktreeIssue,
 } from '../../renderers/StoreOutput.tsx'
+
+class StoreCommandError extends Schema.TaggedError<StoreCommandError>()('StoreCommandError', {
+  message: Schema.String,
+}) {}
 
 /** List repos in the store */
 const storeLsCommand = Cli.Command.make('ls', { json: jsonOption }, ({ json }) =>
@@ -693,7 +696,7 @@ const storeAddCommand = Cli.Command.make(
           )
           yield* Console.error(output)
         }
-        return yield* Effect.fail(new Error('Invalid source'))
+        return yield* Effect.fail(new StoreCommandError({ message: 'Invalid source' }))
       }
 
       if (!isRemoteSource(source)) {
@@ -710,7 +713,7 @@ const storeAddCommand = Cli.Command.make(
           )
           yield* Console.error(output)
         }
-        return yield* Effect.fail(new Error('Cannot add local path'))
+        return yield* Effect.fail(new StoreCommandError({ message: 'Cannot add local path' }))
       }
 
       const cloneUrl = getCloneUrl(source)
@@ -723,7 +726,7 @@ const storeAddCommand = Cli.Command.make(
           )
           yield* Console.error(output)
         }
-        return yield* Effect.fail(new Error('Cannot get clone URL'))
+        return yield* Effect.fail(new StoreCommandError({ message: 'Cannot get clone URL' }))
       }
 
       const bareRepoPath = store.getBareRepoPath(source)

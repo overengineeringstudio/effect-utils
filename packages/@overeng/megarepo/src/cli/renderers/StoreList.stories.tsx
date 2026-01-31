@@ -2,14 +2,12 @@
  * Storybook stories for StoreListOutput component.
  */
 
-import type { StoryObj } from '@storybook/react'
+import type { Meta, StoryObj } from '@storybook/react'
+import React from 'react'
 
-import { forceColorLevel } from '@overeng/cli-ui'
-import { createCliMeta } from '@overeng/tui-react/storybook'
+import { TerminalPreview } from '@overeng/tui-react/storybook'
 
 import { StoreListOutput, type StoreListOutputProps, type StoreRepo } from './StoreOutput.tsx'
-
-forceColorLevel('truecolor')
 
 // =============================================================================
 // Example Data
@@ -25,14 +23,29 @@ const exampleStoreRepos: StoreRepo[] = [
 // Meta
 // =============================================================================
 
-const meta = createCliMeta<StoreListOutputProps>(StoreListOutput, {
+const meta: Meta<StoreListOutputProps> = {
   title: 'CLI/Store/List',
-  description: 'Output for the `mr store ls` command. Shows repositories in the store.',
-  defaultArgs: {
+  component: StoreListOutput,
+  args: {
     basePath: '/Users/dev/.megarepo',
     repos: [],
   },
-})
+  decorators: [
+    (Story) => (
+      <TerminalPreview height={400}>
+        <Story />
+      </TerminalPreview>
+    ),
+  ],
+  parameters: {
+    layout: 'padded',
+    docs: {
+      description: {
+        component: 'Output for the `mr store ls` command. Shows repositories in the store.',
+      },
+    },
+  },
+}
 
 export default meta
 

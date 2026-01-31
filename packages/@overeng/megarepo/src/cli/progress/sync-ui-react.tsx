@@ -1,36 +1,24 @@
 /**
  * React-based Sync Progress UI
  *
- * Replaces the manual ANSI manipulation in sync-ui.ts with declarative React components.
- * Uses @overeng/tui-react for rendering.
+ * Uses createTuiApp pattern for schema-validated state management.
+ * Provides typed dispatch for all sync progress actions.
  */
 
-import type { SubscriptionRef } from 'effect'
-import { Effect, Fiber, Layer, Stream } from 'effect'
-import React, { useState, useEffect, useMemo } from 'react'
+import type { Scope } from 'effect'
+import { Effect, Layer } from 'effect'
+import React from 'react'
 
 import { isTTY } from '@overeng/cli-ui'
-import {
-  Box,
-  Text,
-  Static,
-  TaskList,
-  TuiRenderer,
-  useSubscriptionRef,
-  type TaskItem,
-  type TaskStatus,
-} from '@overeng/tui-react'
+import { OutputModeTag, tty } from '@overeng/tui-react'
 
-import type { ProgressState, ProgressItem } from './service.ts'
+import type { MemberSyncResult } from '../renderers/SyncOutput.tsx'
 import {
-  initSyncProgress,
-  SyncProgress,
-  SyncProgressEmpty,
-  SyncLogs,
-  SyncLogsEmpty,
-  type SyncItemData,
-  type SyncLogEntry,
-} from './sync-adapter.ts'
+  createSyncApp,
+  createInitialState,
+  createConnectedView,
+  type SyncProgressAction,
+} from './sync-app.tsx'
 
 // =============================================================================
 // Types
@@ -38,188 +26,87 @@ import {
 
 /** Handle for managing the sync progress UI lifecycle */
 export type SyncProgressUIHandle = {
-  /** Fiber running the UI */
-  fiber: Fiber.RuntimeFiber<void, never>
-  /** Cleanup function */
+  /** Dispatch an action to update state */
+  dispatch: (action: SyncProgressAction) => void
+  /** Cleanup function - call when sync is complete */
   cleanup: () => Effect.Effect<void>
 }
 
 // =============================================================================
-// Formatters
+// Result Mapping
 // =============================================================================
 
-const formatElapsed = (ms: number): string => {
-  if (ms < 1000) return `${ms}ms`
-  const seconds = ms / 1000
-  if (seconds < 60) return `${seconds.toFixed(1)}s`
-  const minutes = Math.floor(seconds / 60)
-  const remainingSeconds = Math.floor(seconds % 60)
-  return `${minutes}m${remainingSeconds}s`
-}
-
-const mapProgressStatus = (status: ProgressItem['status']): TaskStatus => {
-  switch (status) {
-    case 'pending':
-      return 'pending'
-    case 'active':
-      return 'active'
-    case 'success':
-      return 'success'
-    case 'error':
-      return 'error'
-    case 'skipped':
-      return 'skipped'
+/**
+ * Map a MemberSyncResult to a SetItemStatus action.
+ */
+export const mapSyncResultToAction = (result: MemberSyncResult): SyncProgressAction => {
+  const baseData = {
+    ref: 'ref' in result ? result.ref : undefined,
+    commit: 'commit' in result ? result.commit : undefined,
   }
-}
 
-const mapProgressItemToTask = (item: ProgressItem<SyncItemData>): TaskItem => ({
-  id: item.id,
-  label: item.label,
-  status: mapProgressStatus(item.status),
-  message: item.message,
-})
-
-// =============================================================================
-// Components
-// =============================================================================
-
-/** Header component showing workspace info */
-const Header = ({
-  title,
-  subtitle,
-  modes,
-}: {
-  title: string
-  subtitle: string | undefined
-  modes: string[] | undefined
-}) => (
-  <Box>
-    <Text bold>{title}</Text>
-    {subtitle && <Text dim> {subtitle}</Text>}
-    {modes && modes.length > 0 && <Text dim> mode: {modes.join(', ')}</Text>}
-    <Text> </Text>
-  </Box>
-)
-
-/** Log line component for static region */
-const LogLine = ({ log }: { log: SyncLogEntry }) => {
-  const color = log.type === 'error' ? 'red' : log.type === 'warn' ? 'yellow' : 'cyan'
-  const prefix = log.type === 'error' ? '!' : log.type === 'warn' ? '!' : 'i'
-
-  return (
-    <Box flexDirection="row">
-      <Text color={color}>[{prefix}]</Text>
-      <Text dim> {log.message}</Text>
-    </Box>
-  )
-}
-
-/** Summary component */
-const Summary = ({ items, startTime }: { items: readonly TaskItem[]; startTime: number }) => {
-  const [elapsed, setElapsed] = useState(() => Date.now() - startTime)
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setElapsed(Date.now() - startTime)
-    }, 100)
-    return () => clearInterval(interval)
-  }, [startTime])
-
-  const counts = useMemo(() => {
-    let pending = 0
-    let active = 0
-    let success = 0
-    let error = 0
-    let skipped = 0
-    for (const item of items) {
-      switch (item.status) {
-        case 'pending':
-          pending++
-          break
-        case 'active':
-          active++
-          break
-        case 'success':
-          success++
-          break
-        case 'error':
-          error++
-          break
-        case 'skipped':
-          skipped++
-          break
+  switch (result.status) {
+    case 'cloned':
+      return {
+        _tag: 'SetItemStatus',
+        id: result.name,
+        status: 'success',
+        message: result.ref ? `cloned (${result.ref})` : 'cloned',
+        data: baseData,
       }
-    }
-    return { pending, active, success, error, skipped }
-  }, [items])
-
-  const total = items.length
-  const completed = counts.success + counts.error + counts.skipped
-
-  return (
-    <Box paddingTop={1}>
-      <Text dim>
-        {completed}/{total}
-        {counts.error > 0 && (
-          <Text color="red">
-            {' '}
-            · {counts.error} error{counts.error > 1 ? 's' : ''}
-          </Text>
-        )}
-        {' · '}
-        {formatElapsed(elapsed)}
-      </Text>
-    </Box>
-  )
-}
-
-/** Main sync progress component */
-const SyncProgressView = ({
-  progressRef,
-  logsRef,
-  title,
-  subtitle,
-  modes,
-}: {
-  progressRef: SubscriptionRef.SubscriptionRef<ProgressState<SyncItemData>>
-  logsRef: SubscriptionRef.SubscriptionRef<readonly SyncLogEntry[]>
-  title: string
-  subtitle: string | undefined
-  modes: string[] | undefined
-}) => {
-  const state = useSubscriptionRef(progressRef)
-  const logs = useSubscriptionRef(logsRef)
-
-  const items = useMemo(() => {
-    const result: TaskItem[] = []
-    for (const item of state.items.values()) {
-      result.push(mapProgressItemToTask(item))
-    }
-    return result
-  }, [state.items])
-
-  const isComplete = state.isComplete
-
-  return (
-    <>
-      {/* Static region: logs */}
-      <Static items={logs}>{(log: SyncLogEntry) => <LogLine key={log.id} log={log} />}</Static>
-
-      {/* Dynamic region: header + task list */}
-      <Box paddingTop={logs.length > 0 ? 1 : 0}>
-        <Header title={title} subtitle={subtitle} modes={modes} />
-        <TaskList items={items} />
-        {!isComplete && <Summary items={items} startTime={state.startTime} />}
-        {isComplete && (
-          <Box paddingTop={1}>
-            <Text color="green" bold>
-              Done
-            </Text>
-          </Box>
-        )}
-      </Box>
-    </>
-  )
+    case 'synced':
+      return {
+        _tag: 'SetItemStatus',
+        id: result.name,
+        status: 'success',
+        message: result.ref ? `synced (${result.ref})` : 'synced',
+        data: baseData,
+      }
+    case 'updated':
+      return {
+        _tag: 'SetItemStatus',
+        id: result.name,
+        status: 'success',
+        message: result.commit ? `updated → ${result.commit.slice(0, 7)}` : 'updated',
+        data: baseData,
+      }
+    case 'locked':
+      return {
+        _tag: 'SetItemStatus',
+        id: result.name,
+        status: 'success',
+        message: 'lock updated',
+        data: baseData,
+      }
+    case 'already_synced':
+      return {
+        _tag: 'SetItemStatus',
+        id: result.name,
+        status: 'success',
+        data: baseData,
+      }
+    case 'skipped':
+      return {
+        _tag: 'SetItemStatus',
+        id: result.name,
+        status: 'skipped',
+        message: result.message,
+      }
+    case 'error':
+      return {
+        _tag: 'SetItemStatus',
+        id: result.name,
+        status: 'error',
+        message: result.message,
+      }
+    case 'removed':
+      return {
+        _tag: 'SetItemStatus',
+        id: result.name,
+        status: 'success',
+        message: 'removed',
+      }
+  }
 }
 
 // =============================================================================
@@ -227,7 +114,9 @@ const SyncProgressView = ({
 // =============================================================================
 
 /**
- * Start the React-based sync progress UI.
+ * Start the React-based sync progress UI using createTuiApp.
+ *
+ * Returns a handle with dispatch() for updating state and cleanup() for teardown.
  */
 export const startSyncProgressUI = (options: {
   workspaceName: string
@@ -237,16 +126,9 @@ export const startSyncProgressUI = (options: {
   frozen?: boolean
   pull?: boolean
   deep?: boolean
-}) =>
+}): Effect.Effect<SyncProgressUIHandle, never, Scope.Scope> =>
   Effect.gen(function* () {
     const { workspaceName, workspaceRoot, memberNames, dryRun, frozen, pull, deep } = options
-
-    // Initialize progress state
-    yield* initSyncProgress({
-      megarepoRoot: workspaceRoot,
-      workspaceName,
-      memberNames,
-    })
 
     // Build mode indicators
     const modes: string[] = []
@@ -258,64 +140,95 @@ export const startSyncProgressUI = (options: {
     // If not TTY, return a no-op handle
     if (!isTTY()) {
       return {
-        fiber: yield* Effect.fork(Effect.void),
+        dispatch: () => {},
         cleanup: () => Effect.void,
       } satisfies SyncProgressUIHandle
     }
 
-    // Get the refs
-    const progressRef = yield* SyncProgress
-    const logsRef = yield* SyncLogs
+    // Create initial state with member items
+    const initialState = createInitialState({
+      title: workspaceName,
+      subtitle: workspaceRoot,
+      ...(modes.length > 0 ? { modes } : {}),
+    })
 
-    // Start TUI renderer
-    const tui = yield* TuiRenderer
+    // Initialize with member items
+    const stateWithItems = {
+      ...initialState,
+      items: memberNames.map((name) => ({
+        id: name,
+        label: name,
+        status: 'pending' as const,
+      })),
+    }
 
-    yield* tui.render(
-      <SyncProgressView
-        progressRef={progressRef}
-        logsRef={logsRef}
-        title={workspaceName}
-        subtitle={workspaceRoot}
-        modes={modes.length > 0 ? modes : undefined}
-      />,
-    )
+    // Create the app instance
+    const app = createSyncApp(stateWithItems)
 
-    // Create a fiber that waits for completion
-    const completionFiber = yield* progressRef.changes.pipe(
-      Stream.takeUntil((state) => state.isComplete),
-      Stream.runDrain,
-      Effect.fork,
-    )
+    // Create connected view
+    const ConnectedView = createConnectedView(app)
+
+    // Run the app with the view
+    const tui = yield* app.run(<ConnectedView />).pipe(Effect.provide(Layer.succeed(OutputModeTag, tty)))
 
     return {
-      fiber: completionFiber,
-      cleanup: () => tui.unmount(),
+      dispatch: tui.dispatch,
+      cleanup: () => tui.unmount({ mode: 'persist' }),
     } satisfies SyncProgressUIHandle
   })
 
 /**
  * Finish the React-based sync progress UI.
+ * Cleans up the TUI renderer.
  */
-export const finishSyncProgressUI = (handle: SyncProgressUIHandle) =>
-  Effect.gen(function* () {
-    // Wait for completion
-    yield* Fiber.join(handle.fiber)
-    // Cleanup
-    yield* handle.cleanup()
-  })
+export const finishSyncProgressUI = (handle: SyncProgressUIHandle) => handle.cleanup()
 
 export { isTTY }
 
 // =============================================================================
-// Layer
+// Convenience Functions (for sync-adapter.ts compatibility)
 // =============================================================================
 
 /**
- * Layer that provides SyncProgress, SyncLogs, and TuiRenderer.
- * Use this instead of SyncProgressEmpty when using React-based UI.
+ * Initialize sync progress - dispatches Init action.
  */
-export const SyncProgressReactLayer = Layer.mergeAll(
-  SyncProgressEmpty,
-  SyncLogsEmpty,
-  TuiRenderer.live,
-)
+export const createInitAction = (params: {
+  memberNames: readonly string[]
+  metadata?: Record<string, unknown>
+}): SyncProgressAction => ({
+  _tag: 'Init',
+  items: params.memberNames.map((name) => ({ id: name, label: name })),
+  metadata: params.metadata,
+})
+
+/**
+ * Mark a member as syncing - dispatches SetItemStatus action.
+ */
+export const createSyncingAction = (params: {
+  memberName: string
+  message?: string
+}): SyncProgressAction => ({
+  _tag: 'SetItemStatus',
+  id: params.memberName,
+  status: 'active',
+  message: params.message ?? 'syncing...',
+})
+
+/**
+ * Mark sync as complete - dispatches SetComplete action.
+ */
+export const createCompleteAction = (): SyncProgressAction => ({
+  _tag: 'SetComplete',
+})
+
+/**
+ * Add a log entry - dispatches AddLog action.
+ */
+export const createLogAction = (params: {
+  type: 'info' | 'warn' | 'error'
+  message: string
+}): SyncProgressAction => ({
+  _tag: 'AddLog',
+  type: params.type,
+  message: params.message,
+})

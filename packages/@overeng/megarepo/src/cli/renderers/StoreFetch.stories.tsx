@@ -2,18 +2,16 @@
  * Storybook stories for StoreFetchOutput component.
  */
 
-import type { StoryObj } from '@storybook/react'
+import type { Meta, StoryObj } from '@storybook/react'
+import React from 'react'
 
-import { forceColorLevel } from '@overeng/cli-ui'
-import { createCliMeta } from '@overeng/tui-react/storybook'
+import { TerminalPreview } from '@overeng/tui-react/storybook'
 
 import {
   StoreFetchOutput,
   type StoreFetchOutputProps,
   type StoreFetchResult,
 } from './StoreOutput.tsx'
-
-forceColorLevel('truecolor')
 
 // =============================================================================
 // Example Data
@@ -29,10 +27,10 @@ const exampleFetchResults: StoreFetchResult[] = [
 // Meta
 // =============================================================================
 
-const meta = createCliMeta<StoreFetchOutputProps>(StoreFetchOutput, {
+const meta: Meta<StoreFetchOutputProps> = {
   title: 'CLI/Store/Fetch',
-  description: 'Output for the `mr store fetch` command. Shows fetch results for all repositories.',
-  defaultArgs: {
+  component: StoreFetchOutput,
+  args: {
     basePath: '/Users/dev/.megarepo',
     results: [],
     elapsedMs: 2350,
@@ -44,7 +42,22 @@ const meta = createCliMeta<StoreFetchOutputProps>(StoreFetchOutput, {
       table: { category: 'Performance' },
     },
   },
-})
+  decorators: [
+    (Story) => (
+      <TerminalPreview height={400}>
+        <Story />
+      </TerminalPreview>
+    ),
+  ],
+  parameters: {
+    layout: 'padded',
+    docs: {
+      description: {
+        component: 'Output for the `mr store fetch` command. Shows fetch results for all repositories.',
+      },
+    },
+  },
+}
 
 export default meta
 

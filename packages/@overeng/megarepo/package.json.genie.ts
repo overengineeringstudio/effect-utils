@@ -63,6 +63,7 @@ export default packageJson({
       '@xterm/addon-fit',
       // Build tools
       'react-dom',
+      'react-reconciler', // Peer dep of @overeng/tui-react
       'vite',
       '@vitejs/plugin-react',
     ),

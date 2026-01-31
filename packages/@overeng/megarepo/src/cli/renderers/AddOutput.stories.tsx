@@ -2,19 +2,16 @@
  * Storybook stories for AddOutput component.
  */
 
-import type { StoryObj } from '@storybook/react'
+import type { Meta, StoryObj } from '@storybook/react'
+import React from 'react'
 
-import { forceColorLevel } from '@overeng/cli-ui'
-import { createCliMeta } from '@overeng/tui-react/storybook'
+import { TerminalPreview } from '@overeng/tui-react/storybook'
 
 import {
   AddOutput,
   AddErrorOutput,
   type AddOutputProps,
-  type AddErrorOutputProps,
 } from './AddOutput.tsx'
-
-forceColorLevel('truecolor')
 
 // =============================================================================
 // Example Data
@@ -44,10 +41,10 @@ const exampleAddSyncError: AddOutputProps = {
 // Add Output Stories
 // =============================================================================
 
-const meta = createCliMeta<AddOutputProps>(AddOutput, {
+const meta: Meta<AddOutputProps> = {
   title: 'CLI/Add Output',
-  description: 'Output for the `mr add` command.',
-  defaultArgs: {
+  component: AddOutput,
+  args: {
     member: 'effect',
     source: 'effect-ts/effect',
   },
@@ -57,8 +54,22 @@ const meta = createCliMeta<AddOutputProps>(AddOutput, {
       options: ['cloned', 'synced', 'error'],
     },
   },
-  terminalHeight: 200,
-})
+  decorators: [
+    (Story) => (
+      <TerminalPreview height={200}>
+        <Story />
+      </TerminalPreview>
+    ),
+  ],
+  parameters: {
+    layout: 'padded',
+    docs: {
+      description: {
+        component: 'Output for the `mr add` command.',
+      },
+    },
+  },
+}
 
 export default meta
 
@@ -89,31 +100,26 @@ export const AddWithSyncError: Story = {
 // Add Error Stories
 // =============================================================================
 
-export const errorMeta = createCliMeta<AddErrorOutputProps>(AddErrorOutput, {
-  title: 'CLI/Add Error',
-  description: 'Error outputs for the `mr add` command.',
-  defaultArgs: {
-    error: 'not_in_megarepo',
-  },
-  argTypes: {
-    error: {
-      control: { type: 'select' },
-      options: ['not_in_megarepo', 'invalid_repo', 'already_exists'],
-    },
-  },
-  terminalHeight: 150,
-})
-
-type ErrorStory = StoryObj<typeof errorMeta>
-
-export const ErrorNotInMegarepo: ErrorStory = {
-  args: { error: 'not_in_megarepo' },
+export const ErrorNotInMegarepo: Story = {
+  render: () => (
+    <TerminalPreview height={150}>
+      <AddErrorOutput error="not_in_megarepo" />
+    </TerminalPreview>
+  ),
 }
 
-export const ErrorInvalidRepo: ErrorStory = {
-  args: { error: 'invalid_repo', repo: 'not-a-valid-repo' },
+export const ErrorInvalidRepo: Story = {
+  render: () => (
+    <TerminalPreview height={150}>
+      <AddErrorOutput error="invalid_repo" repo="not-a-valid-repo" />
+    </TerminalPreview>
+  ),
 }
 
-export const ErrorAlreadyExists: ErrorStory = {
-  args: { error: 'already_exists', member: 'effect' },
+export const ErrorAlreadyExists: Story = {
+  render: () => (
+    <TerminalPreview height={150}>
+      <AddErrorOutput error="already_exists" member="effect" />
+    </TerminalPreview>
+  ),
 }

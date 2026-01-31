@@ -23,6 +23,10 @@ import {
   ExecStderr,
 } from '../renderers/ExecOutput.tsx'
 
+class ExecCommandError extends Schema.TaggedError<ExecCommandError>()('ExecCommandError', {
+  message: Schema.String,
+}) {}
+
 /** Execution mode for running commands across members */
 type ExecMode = 'parallel' | 'sequential'
 
@@ -66,7 +70,7 @@ export const execCommand = Cli.Command.make(
           )
           yield* Console.error(output)
         }
-        return yield* Effect.fail(new Error('Not in a megarepo'))
+        return yield* Effect.fail(new ExecCommandError({ message: 'Not in a megarepo' }))
       }
 
       // Load config
@@ -95,7 +99,7 @@ export const execCommand = Cli.Command.make(
           )
           yield* Console.error(output)
         }
-        return yield* Effect.fail(new Error('Member not found'))
+        return yield* Effect.fail(new ExecCommandError({ message: 'Member not found' }))
       }
 
       // Verbose: show execution details

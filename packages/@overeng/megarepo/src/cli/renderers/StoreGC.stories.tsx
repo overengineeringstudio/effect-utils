@@ -2,14 +2,12 @@
  * Storybook stories for StoreGcOutput component.
  */
 
-import type { StoryObj } from '@storybook/react'
+import type { Meta, StoryObj } from '@storybook/react'
+import React from 'react'
 
-import { forceColorLevel } from '@overeng/cli-ui'
-import { createCliMeta } from '@overeng/tui-react/storybook'
+import { TerminalPreview } from '@overeng/tui-react/storybook'
 
 import { StoreGcOutput, type StoreGcOutputProps, type StoreGcResult } from './StoreOutput.tsx'
-
-forceColorLevel('truecolor')
 
 // =============================================================================
 // Example Data
@@ -40,11 +38,10 @@ const exampleGcResults: StoreGcResult[] = [
 // Meta
 // =============================================================================
 
-const meta = createCliMeta<StoreGcOutputProps>(StoreGcOutput, {
+const meta: Meta<StoreGcOutputProps> = {
   title: 'CLI/Store/GC',
-  description:
-    'Output for the `mr store gc` command. Shows garbage collection results for worktrees.',
-  defaultArgs: {
+  component: StoreGcOutput,
+  args: {
     basePath: '/Users/dev/.megarepo',
     results: [],
     dryRun: false,
@@ -68,7 +65,23 @@ const meta = createCliMeta<StoreGcOutputProps>(StoreGcOutput, {
       table: { category: 'Options' },
     },
   },
-})
+  decorators: [
+    (Story) => (
+      <TerminalPreview height={400}>
+        <Story />
+      </TerminalPreview>
+    ),
+  ],
+  parameters: {
+    layout: 'padded',
+    docs: {
+      description: {
+        component:
+          'Output for the `mr store gc` command. Shows garbage collection results for worktrees.',
+      },
+    },
+  },
+}
 
 export default meta
 
@@ -164,10 +177,6 @@ export const AllSkipped: Story = {
     ],
   },
 }
-
-// =============================================================================
-// Edge Cases
-// =============================================================================
 
 export const AllRemoved: Story = {
   args: {

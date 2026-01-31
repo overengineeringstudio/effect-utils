@@ -2,14 +2,12 @@
  * Storybook stories for StatusOutput component.
  */
 
-import type { StoryObj } from '@storybook/react'
+import type { Meta, StoryObj } from '@storybook/react'
+import React from 'react'
 
-import { forceColorLevel } from '@overeng/cli-ui'
-import { createCliMeta } from '@overeng/tui-react/storybook'
+import { TerminalPreview } from '@overeng/tui-react/storybook'
 
 import { StatusOutput, type StatusOutputProps, type MemberStatus } from './StatusOutput.tsx'
-
-forceColorLevel('truecolor')
 
 // =============================================================================
 // Example Data
@@ -116,15 +114,30 @@ const exampleMembersClean: MemberStatus[] = [
 // Meta
 // =============================================================================
 
-const meta = createCliMeta<StatusOutputProps>(StatusOutput, {
+const meta: Meta<StatusOutputProps> = {
   title: 'CLI/Status Output',
-  description: 'Status command output showing workspace state, member status, and problems.',
-  defaultArgs: {
+  component: StatusOutput,
+  args: {
     name: 'my-workspace',
     root: '/Users/dev/workspace',
     members: [],
   },
-})
+  decorators: [
+    (Story) => (
+      <TerminalPreview height={600}>
+        <Story />
+      </TerminalPreview>
+    ),
+  ],
+  parameters: {
+    layout: 'padded',
+    docs: {
+      description: {
+        component: 'Status command output showing workspace state, member status, and problems.',
+      },
+    },
+  },
+}
 
 export default meta
 
@@ -748,6 +761,131 @@ export const MultipleProblems: Story = {
       exists: true,
       missingFromLock: ['new-member'],
       extraInLock: ['removed-member'],
+    },
+  },
+}
+
+export const SymlinkDrift: Story = {
+  args: {
+    name: 'my-megarepo',
+    root: '/Users/dev/my-megarepo',
+    members: [
+      {
+        name: 'effect',
+        exists: true,
+        source: 'effect-ts/effect',
+        isLocal: false,
+        lockInfo: { ref: 'main', commit: 'abc1234def', pinned: false },
+        isMegarepo: false,
+        nestedMembers: undefined,
+        gitStatus: {
+          isDirty: false,
+          changesCount: 0,
+          hasUnpushed: false,
+          branch: 'main',
+          shortRev: 'abc1234',
+        },
+        symlinkDrift: undefined,
+      },
+      {
+        name: 'livestore',
+        exists: true,
+        source: 'livestorejs/livestore',
+        isLocal: false,
+        lockInfo: { ref: 'refactor/genie-igor-ci', commit: 'def5678abc', pinned: false },
+        isMegarepo: false,
+        nestedMembers: undefined,
+        gitStatus: {
+          isDirty: true,
+          changesCount: 27,
+          hasUnpushed: false,
+          branch: 'refactor/genie-igor-ci',
+          shortRev: 'def5678',
+        },
+        symlinkDrift: {
+          symlinkRef: 'dev',
+          expectedRef: 'refactor/genie-igor-ci',
+          actualGitBranch: 'refactor/genie-igor-ci',
+        },
+      },
+      {
+        name: 'effect-utils',
+        exists: true,
+        source: 'overengineeringstudio/effect-utils',
+        isLocal: false,
+        lockInfo: { ref: 'main', commit: 'fed9876543', pinned: false },
+        isMegarepo: false,
+        nestedMembers: undefined,
+        gitStatus: {
+          isDirty: false,
+          changesCount: 0,
+          hasUnpushed: false,
+          branch: 'main',
+          shortRev: 'fed9876',
+        },
+        symlinkDrift: undefined,
+      },
+    ],
+    lockStaleness: {
+      exists: true,
+      missingFromLock: [],
+      extraInLock: [],
+    },
+  },
+}
+
+export const MultipleSymlinkDrift: Story = {
+  args: {
+    name: 'my-megarepo',
+    root: '/Users/dev/my-megarepo',
+    members: [
+      {
+        name: 'livestore',
+        exists: true,
+        source: 'livestorejs/livestore',
+        isLocal: false,
+        lockInfo: { ref: 'refactor/genie-igor-ci', commit: 'def5678abc', pinned: false },
+        isMegarepo: false,
+        nestedMembers: undefined,
+        gitStatus: {
+          isDirty: true,
+          changesCount: 27,
+          hasUnpushed: false,
+          branch: 'refactor/genie-igor-ci',
+          shortRev: 'def5678',
+        },
+        symlinkDrift: {
+          symlinkRef: 'dev',
+          expectedRef: 'refactor/genie-igor-ci',
+          actualGitBranch: 'refactor/genie-igor-ci',
+        },
+      },
+      {
+        name: 'effect',
+        exists: true,
+        source: 'effect-ts/effect',
+        isLocal: false,
+        lockInfo: { ref: 'next', commit: 'abc1234def', pinned: false },
+        isMegarepo: false,
+        nestedMembers: undefined,
+        gitStatus: {
+          isDirty: false,
+          changesCount: 0,
+          hasUnpushed: false,
+          branch: 'main',
+          shortRev: 'abc1234',
+        },
+        symlinkDrift: {
+          symlinkRef: 'main',
+          expectedRef: 'next',
+          actualGitBranch: 'main',
+        },
+      },
+    ],
+    lockStaleness: {
+      exists: true,
+      missingFromLock: [],
+      extraInLock: [],
     },
   },
 }
