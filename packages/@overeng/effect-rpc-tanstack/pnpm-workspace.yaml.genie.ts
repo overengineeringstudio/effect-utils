@@ -1,3 +1,3 @@
 import { pnpmWorkspace } from '../../../genie/internal.ts'
 
-export default pnpmWorkspace()
+export default pnpmWorkspace('../*', 'examples/*')
