@@ -15,7 +15,9 @@
     }
   },
   "scripts": {
-    "prepare": "effect-language-service patch"
+    "prepare": "effect-language-service patch",
+    "storybook": "storybook dev -p 6009",
+    "storybook:build": "storybook build"
   },
   "devDependencies": {
     "@effect/language-service": "0.69.2",

@@ -171,9 +171,6 @@ export const catalog = defineCatalog({
   '@xterm/headless': '6.0.0',
   '@xterm/addon-fit': '0.11.0',
 
-  // React reconciler types
-  '@types/react-reconciler': '0.28.9',
-
   // Testing
   '@testing-library/react': '16.3.1',
   '@testing-library/user-event': '14.6.1',
@@ -209,6 +206,7 @@ export const catalog = defineCatalog({
 
   // TUI React renderer dependencies
   'react-reconciler': '0.32.0',
+  '@types/react-reconciler': '0.28.9',
   'yoga-layout': '3.2.1',
   'string-width': '7.2.0',
   'cli-truncate': '5.1.1',

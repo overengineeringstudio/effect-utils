@@ -21,6 +21,10 @@ export default packageJson({
       },
     },
   },
+  scripts: {
+    storybook: 'storybook dev -p 6011',
+    'storybook:build': 'storybook build',
+  },
   dependencies: {
     ...catalog.pick('is-dom'),
   },

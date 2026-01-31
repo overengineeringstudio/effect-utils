@@ -13,7 +13,9 @@
     }
   },
   "scripts": {
-    "prepare": "effect-language-service patch"
+    "prepare": "effect-language-service patch",
+    "storybook": "storybook dev -p 6010",
+    "storybook:build": "storybook build"
   },
   "dependencies": {
     "@overeng/effect-schema-form": "workspace:*"

@@ -24,6 +24,8 @@ export default packageJson({
   },
   scripts: {
     ...effectLspScripts,
+    storybook: 'storybook dev -p 6009',
+    'storybook:build': 'storybook build',
   },
   devDependencies: {
     ...catalog.pick(

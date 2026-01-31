@@ -16,6 +16,7 @@ let
     clean = import ./nix/devenv-modules/tasks/shared/clean.nix;
     test = import ./nix/devenv-modules/tasks/shared/test.nix;
     test-playwright = import ./nix/devenv-modules/tasks/shared/test-playwright.nix;
+    storybook = import ./nix/devenv-modules/tasks/shared/storybook.nix;
     lint-genie = ./nix/devenv-modules/tasks/shared/lint-genie.nix;
     lint-oxc = import ./nix/devenv-modules/tasks/shared/lint-oxc.nix;
     bun = import ./nix/devenv-modules/tasks/shared/bun.nix;
@@ -74,6 +75,16 @@ let
     { path = "packages/@overeng/oxc-config"; name = "oxc-config"; }
     { path = "packages/@overeng/utils"; name = "utils"; }
   ];
+
+  # Packages that have storybook (subset of allPackages)
+  packagesWithStorybook = [
+    { path = "packages/@overeng/tui-react"; name = "tui-react"; port = 6006; }
+    { path = "packages/@overeng/megarepo"; name = "megarepo"; port = 6007; }
+    { path = "packages/@overeng/genie"; name = "genie"; port = 6008; }
+    { path = "packages/@overeng/effect-react"; name = "effect-react"; port = 6009; }
+    { path = "packages/@overeng/effect-schema-form-aria"; name = "effect-schema-form-aria"; port = 6010; }
+    { path = "packages/@overeng/react-inspector"; name = "react-inspector"; port = 6011; }
+  ];
 in
 {
   imports = [
@@ -100,6 +111,9 @@ in
       vitestBin = "packages/@overeng/utils/node_modules/.bin/vitest";
       vitestConfig = "packages/@overeng/utils/vitest.config.ts";
       extraTests = [ "nix:test" ];
+    })
+    (taskModules.storybook {
+      packages = packagesWithStorybook;
     })
     (taskModules.lint-oxc {
       lintPaths = [
@@ -173,7 +187,7 @@ in
     pkgs.typescript
     oxlintNpm
     pkgs.oxfmt
-    (mkSourceCli { name = "genie"; entry = "packages/@overeng/genie/src/build/mod.ts"; })
+    (mkSourceCli { name = "genie"; entry = "packages/@overeng/genie/src/build/mod.tsx"; })
     (mkSourceCli { name = "mr"; entry = "packages/@overeng/megarepo/bin/mr.ts"; })
     cliBuildStamp.package
   ];

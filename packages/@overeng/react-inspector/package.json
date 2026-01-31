@@ -16,6 +16,10 @@
       }
     }
   },
+  "scripts": {
+    "storybook": "storybook dev -p 6011",
+    "storybook:build": "storybook build"
+  },
   "dependencies": {
     "is-dom": "1.1.0"
   },

@@ -12,9 +12,7 @@ export default packageJson({
       '.': './dist/mod.js',
     },
   },
-  dependencies: {
-    ...catalog.pick('cli-truncate'),
-  },
+  dependencies: {},
   devDependencies: {
     ...catalog.pick('@types/node', 'typescript', 'vitest'),
   },
