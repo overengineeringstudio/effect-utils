@@ -1,228 +1,147 @@
 /**
  * React hooks for Effect integration.
  *
- * These hooks allow React components to subscribe to Effect's reactive primitives
- * like SubscriptionRef, enabling reactive UI updates from Effect business logic.
+ * This module re-exports effect-atom primitives for TUI state management.
+ * Components use `useAtomValue` to subscribe to state and `useAtomSet` to dispatch actions.
  *
  * @example
  * ```tsx
- * // In Effect code
- * const countRef = yield* SubscriptionRef.make(0)
+ * // Define app with atoms
+ * const CounterApp = createTuiApp({
+ *   stateSchema: CounterState,
+ *   actionSchema: CounterAction,
+ *   initial: { count: 0 },
+ *   reducer: counterReducer,
+ * })
  *
- * // In React component (via context)
- * const count = useSubscriptionRef(countRef)
+ * // View uses atoms directly
+ * const CounterView = () => {
+ *   const state = useAtomValue(CounterApp.stateAtom)
+ *   const dispatch = useAtomSet(CounterApp.dispatchAtom)
+ *   return (
+ *     <Box>
+ *       <Text>Count: {state.count}</Text>
+ *     </Box>
+ *   )
+ * }
  * ```
+ *
+ * @module
  */
 
-import { Effect, Stream, SubscriptionRef, Runtime, Fiber } from 'effect'
-import {
+// =============================================================================
+// Re-exports from effect-atom
+// =============================================================================
+
+/**
+ * Atom - Reactive state primitive.
+ * @see https://github.com/effect-ts/effect-atom
+ */
+export { Atom, Result } from '@effect-atom/atom'
+export type { Registry } from '@effect-atom/atom'
+
+/**
+ * React hooks for atoms.
+ *
+ * - `useAtomValue(atom)` - Subscribe to an atom's value
+ * - `useAtom(atom)` - Get [value, setValue] tuple
+ * - `useAtomSet(atom)` - Get setter function only
+ * - `useAtomMount(atom)` - Mount atom without reading value
+ * - `useAtomRefresh(atom)` - Get refresh function for async atoms
+ * - `useAtomSuspense(atom)` - Use with React Suspense
+ * - `useAtomSubscribe(atom, callback)` - Side-effect subscription
+ */
+export {
+  useAtomValue,
+  useAtom,
+  useAtomSet,
+  useAtomMount,
+  useAtomRefresh,
+  useAtomSuspense,
+  useAtomSubscribe,
+  useAtomInitialValues,
+  RegistryProvider,
+  RegistryContext,
+} from '@effect-atom/atom-react'
+
+// =============================================================================
+// React hook re-exports (to ensure single React instance)
+// =============================================================================
+
+/**
+ * Re-export React hooks to ensure consumers use the same React instance.
+ * This prevents "Invalid hook call" errors in monorepo setups where
+ * module resolution can lead to multiple React copies.
+ *
+ * @example
+ * ```tsx
+ * // Import hooks from tui-react instead of react
+ * import { useMemo, useCallback, useState, useEffect } from '@overeng/tui-react'
+ * ```
+ */
+export {
+  useMemo,
+  useCallback,
   useState,
   useEffect,
-  useSyncExternalStore,
-  createContext,
+  useRef,
   useContext,
-  type ReactNode,
+  useReducer,
+  useLayoutEffect,
+  useSyncExternalStore,
+  useId,
+  useTransition,
+  useDeferredValue,
+  useImperativeHandle,
+  useDebugValue,
 } from 'react'
 
 // =============================================================================
-// useSubscriptionRef
+// TUI-specific utilities
 // =============================================================================
 
+import { Atom } from '@effect-atom/atom'
+
 /**
- * Subscribe to a SubscriptionRef and re-render when it changes.
+ * Create a pair of atoms for reducer-style state management.
  *
- * This hook bridges Effect's reactive SubscriptionRef with React's rendering.
- * It uses useSyncExternalStore for proper concurrent mode support.
+ * This is a convenience utility for the common pattern of having a state atom
+ * and a dispatch atom that applies actions through a reducer.
  *
- * ## Implementation Notes
- *
- * The subscription uses Effect.runFork to listen to `ref.changes`, which means
- * change notifications are processed asynchronously by an Effect fiber. When
- * the ref is updated (e.g., via dispatch), the sequence is:
- *
- * 1. SubscriptionRef is updated synchronously
- * 2. Change event is published to the changes stream
- * 3. The listening fiber (created by runFork) needs to be scheduled to run
- * 4. When the fiber runs, it calls onStoreChange to notify React
- * 5. React schedules a re-render and calls getSnapshot for the new value
- *
- * This async nature means callers must yield to the Effect scheduler (e.g.,
- * Effect.yieldNow) before flushing React if they need updates to be visible.
- * See TuiApp.unmount() for the canonical pattern.
- *
- * @param ref - The SubscriptionRef to subscribe to
- * @returns The current value of the ref
+ * @param options.initial - Initial state value
+ * @param options.reducer - Pure function: (state, action) => newState
+ * @returns Object with `stateAtom` and `dispatchAtom`
  *
  * @example
- * ```tsx
- * const MyComponent = ({ countRef }: { countRef: SubscriptionRef.SubscriptionRef<number> }) => {
- *   const count = useSubscriptionRef(countRef)
- *   return <Text>Count: {count}</Text>
- * }
- * ```
- */
-export const useSubscriptionRef = <A,>(ref: SubscriptionRef.SubscriptionRef<A>): A => {
-  // Get current value synchronously - called by React during render and after
-  // onStoreChange notifications to check if the value actually changed
-  const getSnapshot = (): A => {
-    let value: A
-    Effect.runSync(
-      SubscriptionRef.get(ref).pipe(
-        Effect.tap((v) =>
-          Effect.sync(() => {
-            value = v
-          }),
-        ),
-      ),
-    )
-    return value!
-  }
-
-  // Subscribe to changes - called once during the passive effect phase after
-  // the component mounts. Returns an unsubscribe function for cleanup.
-  const subscribe = (onStoreChange: () => void): (() => void) => {
-    // Start a fiber that listens to the SubscriptionRef's change stream.
-    // When a change is detected, we call onStoreChange to notify React.
-    // Note: This fiber runs asynchronously - see docstring for implications.
-    const fiber = Effect.runFork(
-      ref.changes.pipe(
-        Stream.runForEach(() =>
-          Effect.sync(() => {
-            onStoreChange()
-          }),
-        ),
-      ),
-    )
-
-    // Cleanup: interrupt the listening fiber when the component unmounts
-    return () => {
-      Effect.runFork(Fiber.interrupt(fiber))
-    }
-  }
-
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
-}
-
-// =============================================================================
-// useStream
-// =============================================================================
-
-/**
- * Subscribe to a Stream and accumulate values.
- *
- * @param options.stream - The Stream to subscribe to
- * @param options.initial - Initial value before any stream emissions
- * @returns The latest value from the stream
- */
-export const useStream = <A, E>({
-  stream,
-  initial,
-}: {
-  stream: Stream.Stream<A, E>
-  initial: A
-}): A => {
-  const [value, setValue] = useState<A>(initial)
-
-  useEffect(() => {
-    const fiber = Effect.runFork(
-      stream.pipe(
-        Stream.runForEach((v) =>
-          Effect.sync(() => {
-            setValue(v)
-          }),
-        ),
-      ),
-    )
-
-    return () => {
-      Effect.runFork(Fiber.interrupt(fiber))
-    }
-  }, [stream])
-
-  return value
-}
-
-// =============================================================================
-// RuntimeContext
-// =============================================================================
-
-/**
- * Context for providing an Effect Runtime to React components.
- */
-export const RuntimeContext = createContext<Runtime.Runtime<never> | null>(null)
-
-/**
- * Provider component for Effect Runtime.
- *
- * @example
- * ```tsx
- * const runtime = Runtime.defaultRuntime
- *
- * <RuntimeProvider runtime={runtime}>
- *   <App />
- * </RuntimeProvider>
- * ```
- */
-export const RuntimeProvider = <R,>({
-  runtime,
-  children,
-}: {
-  runtime: Runtime.Runtime<R>
-  children?: ReactNode
-}): ReactNode => {
-  return (
-    <RuntimeContext.Provider value={runtime as Runtime.Runtime<never>}>
-      {children}
-    </RuntimeContext.Provider>
-  )
-}
-
-/**
- * Get the Effect Runtime from context.
- *
- * @throws If used outside of RuntimeProvider
- */
-export const useRuntime = <R = never>(): Runtime.Runtime<R> => {
-  const runtime = useContext(RuntimeContext)
-  if (!runtime) {
-    throw new Error('useRuntime must be used within a RuntimeProvider')
-  }
-  return runtime as Runtime.Runtime<R>
-}
-
-// =============================================================================
-// useEffectCallback
-// =============================================================================
-
-/**
- * Create a callback that runs an Effect.
- *
- * @param options.effect - Effect to run when callback is invoked
- * @param options.runtime - Optional runtime to use for execution
- * @returns A function that runs the effect
- *
- * @example
- * ```tsx
- * const handleClick = useEffectCallback({
- *   effect: Effect.log('Button clicked!')
+ * ```typescript
+ * const { stateAtom, dispatchAtom } = createReducerAtoms({
+ *   initial: { count: 0 },
+ *   reducer: (state, action) => {
+ *     switch (action._tag) {
+ *       case 'Increment': return { count: state.count + 1 }
+ *       case 'Decrement': return { count: state.count - 1 }
+ *     }
+ *   }
  * })
+ *
+ * // In React component
+ * const state = useAtomValue(stateAtom)      // { count: 0 }
+ * const dispatch = useAtomSet(dispatchAtom)
+ * dispatch({ _tag: 'Increment' })            // state becomes { count: 1 }
  * ```
  */
-export const useEffectCallback = <A, E, R>({
-  effect,
-  runtime,
+export const createReducerAtoms = <S, A>({
+  initial,
+  reducer,
 }: {
-  effect: Effect.Effect<A, E, R>
-  runtime?: Runtime.Runtime<R>
-}): (() => void) => {
-  const contextRuntime = useContext(RuntimeContext)
-  const actualRuntime = runtime ?? (contextRuntime as Runtime.Runtime<R> | null)
-
-  return () => {
-    if (actualRuntime) {
-      Runtime.runFork(actualRuntime)(effect)
-    } else {
-      Effect.runFork(effect as Effect.Effect<A, E, never>)
-    }
-  }
+  readonly initial: S
+  readonly reducer: (state: S, action: A) => S
+}) => {
+  const stateAtom = Atom.make(initial)
+  const dispatchAtom = Atom.fnSync((action: A, get) => {
+    const currentState = get(stateAtom)
+    const newState = reducer(currentState, action)
+    get.set(stateAtom, newState)
+  })
+  return { stateAtom, dispatchAtom } as const
 }

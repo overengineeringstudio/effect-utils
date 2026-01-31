@@ -18,8 +18,9 @@
  * ```
  */
 
+import { Atom, Registry } from '@effect-atom/atom'
 import type { Scope } from 'effect'
-import { Effect, Layer, PubSub, Schema, Stream, SubscriptionRef } from 'effect'
+import { Effect, Layer, PubSub, Schema, Stream } from 'effect'
 
 import {
   type OutputMode,
@@ -204,15 +205,23 @@ export const createTestTuiState = <S, A>(
     const states: S[] = [initial]
     const actions: A[] = []
 
-    const stateRef = yield* SubscriptionRef.make(initial)
+    // Create atoms for state management
+    const stateAtom = Atom.make(initial)
+    const dispatchAtom = Atom.fnSync((action: A, get) => {
+      const currentState = get(stateAtom)
+      const newState = reducer({ state: currentState, action })
+      get.set(stateAtom, newState)
+    })
+    const registry = Registry.make()
+
     const actionPubSub = yield* PubSub.unbounded<A>()
 
     // Create sync dispatch function that captures states and actions directly
     const dispatch = (action: A): void => {
-      // First, apply the reducer
-      Effect.runSync(SubscriptionRef.update(stateRef, (state) => reducer({ state, action })))
+      // Update atom via registry
+      registry.set(dispatchAtom, action)
       // Capture the new state synchronously
-      const newState = Effect.runSync(SubscriptionRef.get(stateRef))
+      const newState = registry.get(stateAtom)
       states.push(newState)
       // Capture the action
       actions.push(action)
@@ -222,8 +231,9 @@ export const createTestTuiState = <S, A>(
 
     const api: TuiAppApi<S, A> = {
       dispatch,
-      getState: () => Effect.runSync(SubscriptionRef.get(stateRef)),
-      stateRef,
+      getState: () => registry.get(stateAtom),
+      stateAtom,
+      dispatchAtom,
       actions: Stream.fromPubSub(actionPubSub),
       unmount: () => Effect.void,
     }

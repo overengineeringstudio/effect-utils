@@ -1,0 +1,65 @@
+/**
+ * Header Stories
+ */
+
+import type { Meta, StoryObj } from '@storybook/react'
+import React from 'react'
+
+import { TuiStoryPreview } from '@overeng/tui-react/storybook'
+
+import { Header } from './Header.tsx'
+
+// =============================================================================
+// Meta
+// =============================================================================
+
+export default {
+  title: 'Components/Header',
+  parameters: {
+    layout: 'fullscreen',
+    docs: {
+      description: {
+        component: `
+Workspace header with name, path, and mode indicators.
+
+Renders in expanded multi-line format:
+\`\`\`
+mr-workspace
+  root: /path/to/workspace
+  mode: dry run
+\`\`\`
+        `,
+      },
+    },
+  },
+} satisfies Meta
+
+type Story = StoryObj
+
+// =============================================================================
+// Stories
+// =============================================================================
+
+export const Default: Story = {
+  render: () => (
+    <TuiStoryPreview>
+      <Header name="mr-workspace" root="/Users/dev/workspace" />
+    </TuiStoryPreview>
+  ),
+}
+
+export const WithModes: Story = {
+  render: () => (
+    <TuiStoryPreview>
+      <Header name="mr-workspace" root="/Users/dev/workspace" modes={['dry run', 'frozen']} />
+    </TuiStoryPreview>
+  ),
+}
+
+export const NameOnly: Story = {
+  render: () => (
+    <TuiStoryPreview>
+      <Header name="mr-workspace" />
+    </TuiStoryPreview>
+  ),
+}

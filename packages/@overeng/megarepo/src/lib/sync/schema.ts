@@ -1,0 +1,127 @@
+/**
+ * Sync Schema
+ *
+ * Effect Schema definitions for sync operations.
+ * Used for JSON serialization in CLI output and Storybook.
+ */
+
+import { Schema } from 'effect'
+
+// =============================================================================
+// Member Sync Result
+// =============================================================================
+
+/** Member sync status */
+export const MemberSyncStatus = Schema.Literal(
+  'cloned',
+  'synced',
+  'already_synced',
+  'skipped',
+  'error',
+  'updated',
+  'locked',
+  'removed',
+)
+export type MemberSyncStatus = Schema.Schema.Type<typeof MemberSyncStatus>
+
+/** Sync result for a single member */
+export const MemberSyncResult = Schema.Struct({
+  name: Schema.String,
+  status: MemberSyncStatus,
+  message: Schema.optional(Schema.String),
+  commit: Schema.optional(Schema.String),
+  previousCommit: Schema.optional(Schema.String),
+  ref: Schema.optional(Schema.String),
+  lockUpdated: Schema.optional(Schema.Boolean),
+})
+export type MemberSyncResult = Schema.Schema.Type<typeof MemberSyncResult>
+
+// =============================================================================
+// Sync Options (flags)
+// =============================================================================
+
+export const SyncOptions = Schema.Struct({
+  dryRun: Schema.Boolean,
+  frozen: Schema.Boolean,
+  pull: Schema.Boolean,
+  deep: Schema.Boolean,
+})
+export type SyncOptions = Schema.Schema.Type<typeof SyncOptions>
+
+/** Default sync options */
+export const defaultSyncOptions: SyncOptions = {
+  dryRun: false,
+  frozen: false,
+  pull: false,
+  deep: false,
+}
+
+// =============================================================================
+// Sync Summary (computed from results)
+// =============================================================================
+
+export const SyncSummary = Schema.Struct({
+  cloned: Schema.Number,
+  synced: Schema.Number,
+  updated: Schema.Number,
+  locked: Schema.Number,
+  alreadySynced: Schema.Number,
+  skipped: Schema.Number,
+  errors: Schema.Number,
+  removed: Schema.Number,
+  total: Schema.Number,
+})
+export type SyncSummary = Schema.Schema.Type<typeof SyncSummary>
+
+/** Compute summary from results */
+export const computeSyncSummary = (results: readonly MemberSyncResult[]): SyncSummary => {
+  let cloned = 0
+  let synced = 0
+  let updated = 0
+  let locked = 0
+  let alreadySynced = 0
+  let skipped = 0
+  let errors = 0
+  let removed = 0
+
+  for (const r of results) {
+    switch (r.status) {
+      case 'cloned':
+        cloned++
+        break
+      case 'synced':
+        synced++
+        break
+      case 'updated':
+        updated++
+        break
+      case 'locked':
+        locked++
+        break
+      case 'already_synced':
+        alreadySynced++
+        break
+      case 'skipped':
+        skipped++
+        break
+      case 'error':
+        errors++
+        break
+      case 'removed':
+        removed++
+        break
+    }
+  }
+
+  return {
+    cloned,
+    synced,
+    updated,
+    locked,
+    alreadySynced,
+    skipped,
+    errors,
+    removed,
+    total: results.length,
+  }
+}

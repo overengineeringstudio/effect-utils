@@ -100,16 +100,42 @@ export type {
 } from './reconciler/types.ts'
 
 // =============================================================================
-// Effect Integration - Low-level hooks
+// Effect Integration - Atom-based state management
 // =============================================================================
 
 export {
-  useSubscriptionRef,
-  useStream,
-  RuntimeContext,
-  RuntimeProvider,
-  useRuntime,
-  useEffectCallback,
+  // Re-exports from effect-atom
+  Atom,
+  Result,
+  type Registry,
+  // React hooks for atoms
+  useAtomValue,
+  useAtom,
+  useAtomSet,
+  useAtomMount,
+  useAtomRefresh,
+  useAtomSuspense,
+  useAtomSubscribe,
+  useAtomInitialValues,
+  RegistryProvider,
+  RegistryContext,
+  // TUI-specific utilities
+  createReducerAtoms,
+  // React hooks (re-exported to ensure single React instance)
+  useMemo,
+  useCallback,
+  useState,
+  useEffect,
+  useRef,
+  useContext,
+  useReducer,
+  useLayoutEffect,
+  useSyncExternalStore,
+  useId,
+  useTransition,
+  useDeferredValue,
+  useImperativeHandle,
+  useDebugValue,
 } from './effect/hooks.tsx'
 
 // =============================================================================
@@ -170,6 +196,9 @@ export {
   type TuiAppConfig,
   type TuiAppApi,
   type UnmountOptions as TuiAppUnmountOptions,
+  // TUI-specific atom hook (works around multiple React instance issues)
+  useTuiAtomValue,
+  TuiRegistryContext,
 } from './effect/TuiApp.tsx'
 
 // =============================================================================

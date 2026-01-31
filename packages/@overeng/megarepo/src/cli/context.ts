@@ -64,6 +64,12 @@ export const verboseOption = Cli.Options.boolean('verbose').pipe(
 )
 
 // =============================================================================
+// TUI Output Mode (re-exports from tui-react)
+// =============================================================================
+
+export { outputOption, outputModeLayer, type OutputModeValue } from '@overeng/tui-react'
+
+// =============================================================================
 // Filesystem Helpers
 // =============================================================================
 

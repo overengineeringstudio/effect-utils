@@ -2,7 +2,7 @@
  * Tests for TuiApp (createTuiApp pattern)
  */
 
-import { Effect, Schema, SubscriptionRef } from 'effect'
+import { Effect, Schema } from 'effect'
 import { describe, test, expect, beforeEach, afterEach } from 'vitest'
 
 import { createTestTuiState, testModeLayer } from '../../src/effect/testing.tsx'
@@ -192,19 +192,19 @@ describe('createTuiApp', () => {
     })
   })
 
-  describe('stateRef access', () => {
-    test('stateRef can be used with SubscriptionRef operations', async () => {
+  describe('stateAtom access', () => {
+    test('stateAtom can be used with getState()', async () => {
       const states: TestState[] = []
 
       await Effect.gen(function* () {
         const tui = yield* TestApp.run()
 
-        // Manually subscribe to changes
-        const current = yield* SubscriptionRef.get(tui.stateRef)
+        // Get current state
+        const current = tui.getState()
         states.push(current)
 
         tui.dispatch({ _tag: 'Start' })
-        const updated = yield* SubscriptionRef.get(tui.stateRef)
+        const updated = tui.getState()
         states.push(updated)
       }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe')), Effect.runPromise)
 

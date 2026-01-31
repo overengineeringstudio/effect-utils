@@ -2,7 +2,7 @@
  * TuiApp - Factory pattern for TUI applications
  *
  * Creates a reusable TUI app definition that separates state configuration
- * from view rendering. Uses app-scoped hooks for type-safe state access.
+ * from view rendering. Uses effect-atom for reactive state management.
  *
  * @example
  * ```typescript
@@ -14,10 +14,9 @@
  *   reducer: deployReducer,
  * })
  *
- * // 2. View uses app-scoped hooks (types inferred!)
+ * // 2. View uses atoms directly (types inferred!)
  * const DeployView = () => {
- *   const state = DeployApp.useState()
- *   const dispatch = DeployApp.useDispatch()
+ *   const state = useTuiAtomValue(DeployApp.stateAtom)
  *   return <Box><Text>{state._tag}</Text></Box>
  * }
  *
@@ -37,25 +36,71 @@
  * @module
  */
 
+import { Atom, Registry } from '@effect-atom/atom'
 import type { Scope } from 'effect'
-import { Effect, PubSub, Stream, SubscriptionRef, type Schema } from 'effect'
-import React, { createContext, useContext, type ReactElement, type ReactNode } from 'react'
+import { Console, Effect, PubSub, Schema, Stream } from 'effect'
+import React, { type ReactElement, type ReactNode, createContext } from 'react'
 
+import { useContext, useSyncExternalStore, useCallback } from './hooks.tsx'
 import type { Viewport } from '../hooks/useViewport.tsx'
 import { ViewportProvider } from '../hooks/useViewport.tsx'
+import { renderToString } from '../renderToString.ts'
 import { createRoot, type Root } from '../root.tsx'
-import { RuntimeProvider, useSubscriptionRef } from './hooks.tsx'
-import { setupFinalVisual, setupFinalJson, setupProgressiveJson } from './modeSetup.tsx'
 import {
   OutputModeTag,
   type OutputMode,
   type RenderConfig,
   RenderConfigProvider,
-  isTTY,
-  tty,
-  ci,
-  getRenderConfig,
+  stripAnsi,
 } from './OutputMode.tsx'
+
+// =============================================================================
+// TUI Registry Context (avoids multiple React instance issues with @effect-atom/atom-react)
+// =============================================================================
+
+/**
+ * Context for providing the TUI registry to components.
+ * Uses our own React instance to avoid context sharing issues with @effect-atom/atom-react.
+ */
+export const TuiRegistryContext = createContext<Registry.Registry | null>(null)
+
+/**
+ * Hook to get an atom's value from the TUI registry.
+ * This is a workaround for multiple React instance issues with @effect-atom/atom-react.
+ * 
+ * Uses useSyncExternalStore for proper React 18+ integration.
+ * 
+ * @example
+ * ```tsx
+ * const state = useTuiAtomValue(MyApp.stateAtom)
+ * ```
+ */
+export const useTuiAtomValue = <T,>(atom: Atom.Atom<T>): T => {
+  const registry = useContext(TuiRegistryContext)
+  if (!registry) {
+    throw new Error(
+      'useTuiAtomValue must be used within a TUI component. ' +
+      'Make sure your component is rendered by TuiApp.run().'
+    )
+  }
+
+  // Use useSyncExternalStore for proper React integration
+  const subscribe = useCallback(
+    (callback: () => void) => {
+      // Registry.subscribe returns an unsubscribe function
+      const unsubscribe = registry.subscribe(atom, callback)
+      return unsubscribe
+    },
+    [atom, registry]
+  )
+
+  const getSnapshot = useCallback(
+    () => registry.get(atom),
+    [atom, registry]
+  )
+
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
+}
 
 // =============================================================================
 // Types
@@ -65,6 +110,19 @@ import {
  * Exit mode for TUI unmount behavior.
  */
 export type ExitMode = 'persist' | 'clear' | 'clearDynamic'
+
+/**
+ * Options for TuiAppApi.unmount()
+ */
+export interface UnmountOptions {
+  /**
+   * Exit mode controlling what happens to rendered output.
+   * - `persist` (default for inline): Keep all output visible
+   * - `clear`: Remove all output
+   * - `clearDynamic`: Keep static logs, clear dynamic region
+   */
+  readonly mode?: ExitMode
+}
 
 /**
  * Configuration for creating a TUI app.
@@ -100,19 +158,6 @@ export interface TuiAppConfig<S, A> {
 }
 
 /**
- * Options for TuiAppApi.unmount()
- */
-export interface UnmountOptions {
-  /**
-   * Exit mode controlling what happens to rendered output.
-   * - `persist` (default for inline): Keep all output visible
-   * - `clear`: Remove all output
-   * - `clearDynamic`: Keep static logs, clear dynamic region
-   */
-  readonly mode?: ExitMode
-}
-
-/**
  * API returned by TuiApp.run() for interacting with state.
  */
 export interface TuiAppApi<S, A> {
@@ -127,9 +172,15 @@ export interface TuiAppApi<S, A> {
   readonly getState: () => S
 
   /**
-   * The underlying SubscriptionRef for advanced use.
+   * The state atom for advanced use.
    */
-  readonly stateRef: SubscriptionRef.SubscriptionRef<S>
+  readonly stateAtom: Atom.Writable<S>
+
+  /**
+   * The dispatch atom for advanced use.
+   * Note: The return type of the dispatch atom is Option<void> due to effect-atom internals.
+   */
+  readonly dispatchAtom: Atom.Atom<unknown>
 
   /**
    * Stream of dispatched actions (for logging/debugging).
@@ -144,9 +195,20 @@ export interface TuiAppApi<S, A> {
 }
 
 /**
- * A TUI application definition with app-scoped hooks.
+ * A TUI application definition with atoms for state management.
  */
 export interface TuiApp<S, A> {
+  /**
+   * Atom containing the current state. Use with `useTuiAtomValue(App.stateAtom)`.
+   */
+  readonly stateAtom: Atom.Writable<S>
+
+  /**
+   * Atom for dispatching actions. Use with registry.set(App.dispatchAtom, action).
+   * Note: The return type of the dispatch atom is Option<void> due to effect-atom internals.
+   */
+  readonly dispatchAtom: Atom.Atom<unknown>
+
   /**
    * Run the app, optionally rendering a view.
    *
@@ -167,29 +229,14 @@ export interface TuiApp<S, A> {
   ) => Effect.Effect<TuiAppApi<S, A>, never, Scope.Scope | OutputModeTag>
 
   /**
-   * App-scoped hook to get current state. Subscribes to changes.
-   * Must be used within a component rendered by this app's run().
-   *
-   * @example
-   * ```typescript
-   * const MyView = () => {
-   *   const state = MyApp.useState()
-   *   return <Text>{state.count}</Text>
-   * }
-   * ```
+   * @deprecated Use `useTuiAtomValue(App.stateAtom)` instead.
+   * App-scoped hook to get current state.
    */
   readonly useState: () => S
 
   /**
-   * App-scoped hook to get dispatch function. Does not subscribe to state changes.
-   *
-   * @example
-   * ```typescript
-   * const MyView = () => {
-   *   const dispatch = MyApp.useDispatch()
-   *   return <Text onPress={() => dispatch({ _tag: 'Click' })}>Click me</Text>
-   * }
-   * ```
+   * @deprecated Use registry.set(App.dispatchAtom, action) instead.
+   * App-scoped hook to get dispatch function.
    */
   readonly useDispatch: () => (action: A) => void
 
@@ -253,10 +300,10 @@ const createInterruptedAction = <A,>(schema: Schema.Schema<A>): A | null => {
 // =============================================================================
 
 /**
- * Create a TUI application with app-scoped hooks.
+ * Create a TUI application with effect-atom state management.
  *
  * @param config - App configuration (state schema, reducer, initial state)
- * @returns TuiApp instance with run() method and app-scoped hooks
+ * @returns TuiApp instance with atoms, run() method, and legacy hooks
  *
  * @example
  * ```typescript
@@ -275,14 +322,12 @@ const createInterruptedAction = <A,>(schema: Schema.Schema<A>): A | null => {
  *   },
  * })
  *
- * // View uses app-scoped hooks
+ * // View uses atoms directly
  * const CounterView = () => {
- *   const state = CounterApp.useState()
- *   const dispatch = CounterApp.useDispatch()
+ *   const state = useTuiAtomValue(CounterApp.stateAtom)
  *   return (
  *     <Box>
  *       <Text>Count: {state.count}</Text>
- *       <Text onPress={() => dispatch({ _tag: 'Inc' })}>+</Text>
  *     </Box>
  *   )
  * }
@@ -293,26 +338,31 @@ const createInterruptedAction = <A,>(schema: Schema.Schema<A>): A | null => {
  * ```
  */
 export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => {
-  // Create app-specific context for this app instance
-  // Using a unique symbol to prevent cross-app context conflicts
-  const StateContext = createContext<SubscriptionRef.SubscriptionRef<S> | null>(null)
-  const DispatchContext = createContext<((action: A) => void) | null>(null)
+  const { initial, reducer } = config
 
-  // App-scoped hooks
+  // Create atoms at app definition time (shared across all runs)
+  const stateAtom = Atom.make(initial)
+  const dispatchAtom = Atom.fnSync((action: A, get) => {
+    const currentState = get(stateAtom)
+    const newState = reducer({ state: currentState, action })
+    get.set(stateAtom, newState)
+  })
+
+  // Create a registry for this app
+  const registry = Registry.make()
+
+  // Legacy hooks for backward compatibility (deprecated)
   const useState = (): S => {
-    const ref = useContext(StateContext)
-    if (!ref) {
-      throw new Error('useState must be used within a component rendered by this TuiApp')
-    }
-    return useSubscriptionRef(ref)
+    // This requires the component to be wrapped in TuiRegistryContext
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    return useTuiAtomValue(stateAtom)
   }
 
   const useDispatch = (): ((action: A) => void) => {
-    const dispatch = useContext(DispatchContext)
-    if (!dispatch) {
-      throw new Error('useDispatch must be used within a component rendered by this TuiApp')
+    // Return a function that updates the dispatch atom
+    return (action: A) => {
+      registry.set(dispatchAtom, action)
     }
-    return dispatch
   }
 
   // Check once if schema has Interrupted variant
@@ -324,17 +374,16 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
   ): Effect.Effect<TuiAppApi<S, A>, never, Scope.Scope | OutputModeTag> =>
     Effect.gen(function* () {
       const mode = yield* OutputModeTag
-      const { initial, reducer, stateSchema } = config
-
-      // Create state ref
-      const stateRef = yield* SubscriptionRef.make(initial)
+      const { stateSchema } = config
 
       // Create action PubSub for streaming
       const actionPubSub = yield* PubSub.unbounded<A>()
 
-      // Sync dispatch function
+      // Sync dispatch function that updates the atom and publishes to PubSub
       const dispatch = (action: A): void => {
-        Effect.runSync(SubscriptionRef.update(stateRef, (state) => reducer({ state, action })))
+        // Update atom synchronously via registry
+        registry.set(dispatchAtom, action)
+        // Also publish to PubSub for action stream
         Effect.runFork(PubSub.publish(actionPubSub, action))
       }
 
@@ -345,37 +394,15 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
       /**
        * Unmount the TUI and render final output.
        *
-       * This function handles the critical timing between Effect state updates and
-       * React rendering. The sequence when dispatch() is called followed by unmount():
-       *
-       * 1. dispatch() calls Effect.runSync(SubscriptionRef.update(...))
-       *    - The SubscriptionRef value is updated synchronously
-       *    - A change event is published to ref.changes stream
-       *
-       * 2. useSubscriptionRef has a fiber (via Effect.runFork) listening to ref.changes
-       *    - This fiber needs to run to receive the change event
-       *    - When it runs, it calls useSyncExternalStore's onStoreChange callback
-       *    - This schedules a React re-render
-       *
-       * 3. Effect.yieldNow() gives the listening fiber a chance to process the change
-       *    - Without this yield, the fiber hasn't run yet when we flush React
-       *    - React would render with stale state (the value before dispatch)
-       *
-       * 4. Root.unmount() flushes React work and renders to terminal
-       *    - Now React sees the updated state via getSnapshot()
-       *    - Final output reflects the dispatched state
+       * With effect-atom, state updates are synchronous, so we don't need
+       * the Effect.yieldNow() pattern that was required with SubscriptionRef.
        */
       const unmount = (options?: UnmountOptions): Effect.Effect<void> =>
-        Effect.gen(function* () {
+        Effect.sync(() => {
           if (options?.mode) {
             exitMode = options.mode
           }
           if (rootRef) {
-            // Yield to the Effect scheduler, allowing fibers listening to SubscriptionRef.changes
-            // to process pending change events and notify React via onStoreChange callbacks.
-            yield* Effect.yieldNow()
-
-            // Now flush React and render - the state updates will be visible
             rootRef.unmount({ mode: exitMode })
             rootRef = null
           }
@@ -384,8 +411,9 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
       // Create API
       const api: TuiAppApi<S, A> = {
         dispatch,
-        getState: () => Effect.runSync(SubscriptionRef.get(stateRef)),
-        stateRef,
+        getState: () => registry.get(stateAtom),
+        stateAtom,
+        dispatchAtom,
         actions: Stream.fromPubSub(actionPubSub),
         unmount,
       }
@@ -393,25 +421,19 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
       // Setup mode-specific behavior
       rootRef = yield* setupMode({
         mode,
-        stateRef,
+        stateAtom,
         dispatch,
         stateSchema,
-        StateContext,
-        DispatchContext,
+        registry,
         view,
       })
 
       // Add finalizer for cleanup
       yield* Effect.addFinalizer(() =>
-        Effect.gen(function* () {
+        Effect.sync(() => {
           // Handle interrupt: dispatch Interrupted action if schema supports it
           if (interruptedAction) {
             dispatch(interruptedAction)
-            // Wait for render to complete using actual setTimeout to yield to event loop
-            // This ensures React has time to process the state update and re-render
-            yield* Effect.promise(
-              () => new Promise<void>((resolve) => setTimeout(resolve, interruptTimeout)),
-            )
           }
           // Unmount with current exit mode
           if (rootRef) {
@@ -425,6 +447,8 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
     })
 
   return {
+    stateAtom,
+    dispatchAtom,
     run,
     useState,
     useDispatch,
@@ -438,19 +462,17 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
 
 const setupMode = <S, A>({
   mode,
-  stateRef,
+  stateAtom,
   dispatch,
   stateSchema,
-  StateContext,
-  DispatchContext,
+  registry,
   view,
 }: {
   mode: OutputMode
-  stateRef: SubscriptionRef.SubscriptionRef<S>
+  stateAtom: Atom.Writable<S>
   dispatch: (action: A) => void
   stateSchema: Schema.Schema<S>
-  StateContext: React.Context<SubscriptionRef.SubscriptionRef<S> | null>
-  DispatchContext: React.Context<((action: A) => void) | null>
+  registry: Registry.Registry
   view?: ReactElement | undefined
 }): Effect.Effect<Root | null, never, Scope.Scope> => {
   // Handle based on output format
@@ -459,61 +481,58 @@ const setupMode = <S, A>({
       // Progressive React rendering (inline or fullscreen)
       return view
         ? setupProgressiveVisualWithView({
-            stateRef,
+            stateAtom,
             dispatch,
-            StateContext,
-            DispatchContext,
+            registry,
             view,
             renderConfig: mode.render,
           })
         : Effect.succeed(null)
     } else {
       // Final React rendering (single output at end)
-      return setupFinalVisual({
-        stateRef,
+      return setupFinalVisualWithAtom({
+        stateAtom,
         view,
-        StateContext,
-        DispatchContext,
         dispatch,
+        registry,
         renderConfig: mode.render,
       }).pipe(Effect.as(null))
     }
   } else {
     // JSON modes
     if (mode.timing === 'progressive') {
-      return setupProgressiveJson({ stateRef, schema: stateSchema }).pipe(Effect.as(null))
+      return setupProgressiveJsonWithAtom({ stateAtom, schema: stateSchema, registry }).pipe(
+        Effect.as(null),
+      )
     } else {
-      return setupFinalJson({ stateRef, schema: stateSchema }).pipe(Effect.as(null))
+      return setupFinalJsonWithAtom({ stateAtom, schema: stateSchema, registry }).pipe(
+        Effect.as(null),
+      )
     }
   }
 }
 
 const setupProgressiveVisualWithView = <S, A>({
-  stateRef,
-  dispatch,
-  StateContext,
-  DispatchContext,
+  stateAtom: _stateAtom,
+  dispatch: _dispatch,
+  registry,
   view,
   renderConfig,
 }: {
-  stateRef: SubscriptionRef.SubscriptionRef<S>
+  stateAtom: Atom.Writable<S>
   dispatch: (action: A) => void
-  StateContext: React.Context<SubscriptionRef.SubscriptionRef<S> | null>
-  DispatchContext: React.Context<((action: A) => void) | null>
+  registry: Registry.Registry
   view: ReactElement
   renderConfig: RenderConfig
 }): Effect.Effect<Root, never, Scope.Scope> =>
   Effect.gen(function* () {
-    const runtime = yield* Effect.runtime<never>()
     const root = createRoot({ terminalOrStream: process.stdout })
 
-    // Wrapper that provides context
+    // Wrapper that provides Registry via our own context (avoids multiple React instance issues)
     const TuiAppWrapper = (): ReactNode => (
-      <RenderConfigProvider config={renderConfig}>
-        <StateContext.Provider value={stateRef}>
-          <DispatchContext.Provider value={dispatch}>{view}</DispatchContext.Provider>
-        </StateContext.Provider>
-      </RenderConfigProvider>
+      <TuiRegistryContext.Provider value={registry}>
+        <RenderConfigProvider config={renderConfig}>{view}</RenderConfigProvider>
+      </TuiRegistryContext.Provider>
     )
 
     const initialViewport: Viewport = {
@@ -522,14 +541,115 @@ const setupProgressiveVisualWithView = <S, A>({
     }
 
     root.render(
-      <RuntimeProvider<never> runtime={runtime}>
-        <ViewportProvider viewport={initialViewport}>
-          <TuiAppWrapper />
-        </ViewportProvider>
-      </RuntimeProvider>,
+      <ViewportProvider viewport={initialViewport}>
+        <TuiAppWrapper />
+      </ViewportProvider>,
     )
 
     return root
+  })
+
+// =============================================================================
+// Atom-based mode setup functions
+// =============================================================================
+
+/**
+ * Final visual mode with atoms: Render to string on scope close.
+ */
+const setupFinalVisualWithAtom = <S, A>({
+  stateAtom: _stateAtom,
+  view,
+  dispatch: _dispatch,
+  registry,
+  renderConfig,
+}: {
+  stateAtom: Atom.Writable<S>
+  view: ReactElement | undefined
+  dispatch: (action: A) => void
+  registry: Registry.Registry
+  renderConfig: RenderConfig
+}): Effect.Effect<void, never, Scope.Scope> => {
+  if (!view) return Effect.void
+
+  return Effect.addFinalizer(() =>
+    Effect.gen(function* () {
+      // Wrapper component that provides registry context (using our own context)
+      const RegistryWrapper = ({ children }: { children: ReactNode }): ReactElement => (
+        <TuiRegistryContext.Provider value={registry}>
+          <RenderConfigProvider config={renderConfig}>{children}</RenderConfigProvider>
+        </TuiRegistryContext.Provider>
+      )
+
+      const element = <RegistryWrapper>{view}</RegistryWrapper>
+
+      // Render to string
+      const output = yield* Effect.promise(() => renderToString({ element }))
+
+      // Strip ANSI codes if colors are disabled
+      const finalOutput = renderConfig.colors ? output : stripAnsi(output)
+
+      // Output to stdout
+      yield* Console.log(finalOutput)
+    }).pipe(Effect.orDie),
+  )
+}
+
+/**
+ * Final JSON mode with atoms: Output final state as JSON on scope close.
+ */
+const setupFinalJsonWithAtom = <S,>({
+  stateAtom,
+  schema,
+  registry,
+}: {
+  stateAtom: Atom.Writable<S>
+  schema: Schema.Schema<S>
+  registry: Registry.Registry
+}): Effect.Effect<void, never, Scope.Scope> =>
+  Effect.addFinalizer(() =>
+    Effect.gen(function* () {
+      const finalState = registry.get(stateAtom)
+      const jsonString = yield* Schema.encode(Schema.parseJson(schema))(finalState)
+      yield* Console.log(jsonString)
+    }).pipe(Effect.orDie),
+  )
+
+/**
+ * Progressive JSON mode with atoms: Stream state changes as NDJSON.
+ *
+ * Note: effect-atom atoms don't have a built-in .changes stream like SubscriptionRef.
+ * We use Atom.subscribe to watch for changes.
+ */
+const setupProgressiveJsonWithAtom = <S,>({
+  stateAtom,
+  schema,
+  registry,
+}: {
+  stateAtom: Atom.Writable<S>
+  schema: Schema.Schema<S>
+  registry: Registry.Registry
+}): Effect.Effect<void, never, Scope.Scope> =>
+  Effect.gen(function* () {
+    // Output initial state
+    const initialState = registry.get(stateAtom)
+    const initialJson = yield* Schema.encode(Schema.parseJson(schema))(initialState).pipe(
+      Effect.orDie,
+    )
+    yield* Console.log(initialJson)
+
+    // Subscribe to changes and output as NDJSON
+    const unsubscribe = registry.subscribe(stateAtom, (state) => {
+      // Encode and output synchronously
+      Effect.runSync(
+        Schema.encode(Schema.parseJson(schema))(state).pipe(
+          Effect.flatMap((jsonString) => Console.log(jsonString)),
+          Effect.orDie,
+        ),
+      )
+    })
+
+    // Add finalizer to unsubscribe
+    yield* Effect.addFinalizer(() => Effect.sync(() => unsubscribe()))
   })
 
 // =============================================================================
