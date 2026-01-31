@@ -16,8 +16,8 @@ let
     workspaceRoot = src;
     extraExcludedSourceNames = [ "context" "scripts" ];
     pnpmDepsHash = "sha256-v2PHaOFuQjJd2xr5rggqK2XYyvbVHunm4cLbq5C3LPc=";
-    lockfileHash = "sha256-OALJqbiRJR+5fTbtgkwYlUKIBRZa5jSnhhp/oCRN540=";
-    packageJsonDepsHash = "sha256-fm2cLPqI5aYd32VkpTNN5INkPb1re7iy97+NgzTsAE4=";
+    lockfileHash = "sha256-NNKpuasxFdog+RCaeX7/NrDwkQO95SEtuzBtgFPFsdM=";
+    packageJsonDepsHash = "sha256-3ad3uT1EN0PqzVs3uH/s9tfbE++beU+xVPoH6VPdW7Y=";
     inherit gitRev commitTs dirty;
   };
 in

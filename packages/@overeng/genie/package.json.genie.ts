@@ -12,10 +12,12 @@ export default packageJson({
   ...privatePackageDefaults,
   scripts: {
     ...effectLspScripts,
+    storybook: 'storybook dev -p 6008',
+    'storybook:build': 'storybook build',
   },
   exports: {
     '.': './src/runtime/mod.ts',
-    './cli': './src/build/mod.ts',
+    './cli': './src/build/mod.tsx',
   },
   publishConfig: {
     access: 'public',
@@ -30,6 +32,7 @@ export default packageJson({
     ...utilsPkg.data.peerDependencies,
     ...catalog.pick(
       '@overeng/utils',
+      '@overeng/tui-react',
       '@effect/cli',
       '@effect/platform',
       '@effect/platform-node',
@@ -40,6 +43,14 @@ export default packageJson({
       '@types/bun',
       'effect',
       'vitest',
+      // Storybook
+      '@storybook/addon-essentials',
+      '@storybook/react',
+      '@storybook/react-vite',
+      'storybook',
+      'react',
+      'react-dom',
+      '@types/react',
     ),
     ...effectLspDevDeps(),
   },
