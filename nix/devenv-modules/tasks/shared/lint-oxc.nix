@@ -37,6 +37,7 @@
   geniePatterns,
   genieCoverageDirs,
   genieCoverageExcludes ? [],
+  lintPaths ? [ "." ],
 }:
 { lib, ... }:
 let
@@ -54,6 +55,7 @@ let
   allExcludes = defaultExcludes ++ genieCoverageExcludes;
   excludeArgs = builtins.concatStringsSep " " (map (d: "-not -path \"*/${d}/*\"") allExcludes);
   scanDirsArg = builtins.concatStringsSep " " genieCoverageDirs;
+  lintPathsArg = builtins.concatStringsSep " " lintPaths;
 in
 {
   tasks = {
@@ -61,13 +63,13 @@ in
     # Uses default config files (.oxfmtrc.json, .oxlintrc.json) - no -c flags needed
     "lint:check:format" = {
       description = "Check code formatting with oxfmt";
-      exec = "oxfmt --check .";
+      exec = "oxfmt --check ${lintPathsArg}";
       after = [ "genie:run" ];
       execIfModified = execIfModifiedPatterns;
     };
     "lint:check:oxlint" = {
       description = "Run oxlint linter";
-      exec = "oxlint --import-plugin --deny-warnings";
+      exec = "oxlint --import-plugin --deny-warnings ${lintPathsArg}";
       after = [ "genie:run" ];
       execIfModified = execIfModifiedPatterns;
     };
@@ -103,11 +105,11 @@ in
     # Lint fix tasks
     "lint:fix:format" = {
       description = "Fix code formatting with oxfmt";
-      exec = "oxfmt .";
+      exec = "oxfmt ${lintPathsArg}";
     };
     "lint:fix:oxlint" = {
       description = "Fix lint issues with oxlint";
-      exec = "oxlint --import-plugin --deny-warnings --fix";
+      exec = "oxlint --import-plugin --deny-warnings --fix ${lintPathsArg}";
     };
     "lint:fix" = {
       description = "Fix all lint issues";

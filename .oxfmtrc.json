@@ -13,6 +13,12 @@
   },
   "experimentalSortPackageJson": true,
   "ignorePatterns": [
+    "**/node_modules/**",
+    "**/.pnpm/**",
+    "**/.pnpm-store/**",
+    "**/dist/**",
+    "**/storybook-static/**",
+    "**/.turbo/**",
     "**/*.gen.ts",
     "**/*.gen.tsx",
     "**/*.generated.ts",

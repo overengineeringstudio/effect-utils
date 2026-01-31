@@ -101,6 +101,11 @@ in
       vitestConfig = "packages/@overeng/utils/vitest.config.ts";
     })
     (taskModules.lint-oxc {
+      lintPaths = [
+        "packages"
+        "scripts"
+        "context"
+      ];
       # Explicit patterns that avoid node_modules traversal
       # Key insight: patterns like "packages/*/src/**" are safe because src/ never contains node_modules
       execIfModifiedPatterns = [

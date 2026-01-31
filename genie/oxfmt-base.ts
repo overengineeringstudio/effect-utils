@@ -24,6 +24,13 @@ export const baseOxfmtOptions = {
 
 /** Standard ignore patterns for oxfmt */
 export const baseOxfmtIgnorePatterns = [
+  // Package manager caches and build outputs
+  '**/node_modules/**',
+  '**/.pnpm/**',
+  '**/.pnpm-store/**',
+  '**/dist/**',
+  '**/storybook-static/**',
+  '**/.turbo/**',
   // Generated code files
   '**/*.gen.ts',
   '**/*.gen.tsx',
