@@ -189,6 +189,7 @@ export const catalog = defineCatalog({
   'react-reconciler': '0.32.0',
   'yoga-layout': '3.2.1',
   'string-width': '7.2.0',
+  'cli-truncate': '5.1.1',
 })
 
 /** Common fields for private packages */

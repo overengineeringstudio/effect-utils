@@ -13,7 +13,7 @@
     }
   },
   "dependencies": {
-    "cli-truncate": "^5.1.1"
+    "cli-truncate": "5.1.1"
   },
   "devDependencies": {
     "@types/node": "25.0.3",
