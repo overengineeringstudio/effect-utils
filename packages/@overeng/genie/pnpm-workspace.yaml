@@ -1,10 +1,6 @@
 # Generated file - DO NOT EDIT
 # Source: pnpm-workspace.yaml.genie.ts
 
-packages:
-  - .
-  - ../utils
-  - ../tui-react
-  - ../tui-core
+packages: [., ../utils, ../tui-react, ../tui-core]
 
 dedupePeerDependents: true
