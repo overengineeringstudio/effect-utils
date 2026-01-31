@@ -257,9 +257,22 @@ export const createRoot = ({
 
     const width = viewport.columns
 
+    // Debug: log terminal dimensions on each render
+    if (typeof process !== 'undefined' && process.env?.TUI_DEBUG === '1') {
+      console.error(
+        `[TUI_DEBUG] doRender: cols=${width} rows=${viewport.rows} lastWidth=${lastRenderedWidth} isTTY=${terminal.isTTY}`,
+      )
+    }
+
     // Self-correcting resize detection: if width changed, reset everything
     // This prevents ghost lines from differential rendering with stale positions
     if (width !== lastRenderedWidth) {
+      // Debug: log when width change triggers reset
+      if (typeof process !== 'undefined' && process.env?.TUI_DEBUG === '1') {
+        console.error(
+          `[TUI_DEBUG] Width changed: ${lastRenderedWidth} -> ${width}, triggering renderer.reset()`,
+        )
+      }
       lastRenderedWidth = width
       resetStaticCommittedCount()
       staticLineCount = 0
@@ -305,10 +318,12 @@ export const createRoot = ({
     // Truncate lines to prevent soft wrapping (which causes ghost lines during updates)
     lines = truncateLines(lines, width)
 
-    // Apply maxDynamicLines limit
-    if (lines.length > maxDynamicLines) {
-      const truncated = lines.slice(0, maxDynamicLines - 1)
-      const hiddenCount = lines.length - maxDynamicLines + 1
+    // Apply maxDynamicLines limit - also ensure we don't exceed terminal height
+    // to prevent scrolling which breaks cursor positioning in differential rendering
+    const effectiveMaxLines = Math.min(maxDynamicLines, viewport.rows - 1)
+    if (lines.length > effectiveMaxLines) {
+      const truncated = lines.slice(0, effectiveMaxLines - 1)
+      const hiddenCount = lines.length - effectiveMaxLines + 1
       truncated.push(`... ${hiddenCount} more line${hiddenCount > 1 ? 's' : ''}`)
       lines = truncated
     }

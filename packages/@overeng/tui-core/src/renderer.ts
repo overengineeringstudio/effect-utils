@@ -6,7 +6,17 @@
  * - Supports static region (logs) that persists above dynamic region (progress)
  * - Uses differential rendering to minimize flicker
  * - Supports synchronized output (CSI 2026) for atomic updates
+ *
+ * Debug mode: Set TUI_DEBUG=1 environment variable to see render state on stderr.
  */
+
+// Check if debug mode is enabled
+const DEBUG =
+  typeof process !== 'undefined' && process.env?.TUI_DEBUG === '1'
+
+// Global render counter for debugging
+let globalRenderCount = 0
+let globalInstanceCount = 0
 
 import {
   beginSyncOutput,
@@ -81,11 +91,20 @@ export class InlineRenderer {
   /** Whether cursor is currently hidden */
   private cursorHidden = false
 
+  /** Instance ID for debugging */
+  private readonly instanceId: number
+
   constructor({ terminal, options = {} }: { terminal: Terminal; options?: InlineRendererOptions }) {
     this.terminal = terminal
     this.options = {
       syncOutput: options.syncOutput ?? true,
       hideCursor: options.hideCursor ?? true,
+    }
+    this.instanceId = ++globalInstanceCount
+    if (DEBUG) {
+      console.error(
+        `[TUI_DEBUG] InlineRenderer created: instance=${this.instanceId} isTTY=${terminal.isTTY} cols=${terminal.columns} rows=${terminal.rows}`,
+      )
     }
   }
 
@@ -193,6 +212,11 @@ export class InlineRenderer {
    * terminal reflow during resize invalidates cursor position assumptions.
    */
   reset(): void {
+    if (DEBUG) {
+      console.error(
+        `[TUI_DEBUG] reset() called: instance=${this.instanceId} hadRendered=${this.hasRendered} staticLines=${this.staticLines.length} dynamicLines=${this.dynamicLines.length}`,
+      )
+    }
     if (this.terminal.isTTY) {
       // Clear entire screen - line-by-line clearing doesn't work after reflow
       this.terminal.write(clearScreenAndHome())
@@ -210,8 +234,18 @@ export class InlineRenderer {
   // ===========================================================================
 
   private renderDynamic(): void {
+    const renderNum = ++globalRenderCount
+    if (DEBUG) {
+      console.error(
+        `[TUI_DEBUG] renderDynamic #${renderNum}: instance=${this.instanceId} isTTY=${this.terminal.isTTY} hasRendered=${this.hasRendered} prevLines=${this.previousDynamic.length} currLines=${this.dynamicLines.length}`,
+      )
+    }
+
     if (!this.terminal.isTTY) {
-      // Non-TTY: just print lines
+      // Non-TTY: just print lines (no cursor control available)
+      if (DEBUG) {
+        console.error(`[TUI_DEBUG] #${renderNum}: Taking NON-TTY path (isTTY=${this.terminal.isTTY})`)
+      }
       for (const line of this.dynamicLines) {
         this.terminal.write(line + '\r\n')
       }
@@ -233,9 +267,15 @@ export class InlineRenderer {
     try {
       if (!this.hasRendered) {
         // First render: just output all lines
+        if (DEBUG) {
+          console.error(`[TUI_DEBUG] #${renderNum}: Taking FIRST-RENDER path (hasRendered=false)`)
+        }
         this.renderAllDynamic()
       } else {
         // Subsequent render: use differential update
+        if (DEBUG) {
+          console.error(`[TUI_DEBUG] #${renderNum}: Taking DIFFERENTIAL path (hasRendered=true)`)
+        }
         this.renderDifferential()
       }
     } finally {
@@ -270,11 +310,19 @@ export class InlineRenderer {
 
     // If nothing changed, nothing to do
     if (firstDiff === prevLen && firstDiff === currLen) {
+      if (DEBUG) {
+        console.error(`[TUI_DEBUG] renderDifferential: NO CHANGES, skipping`)
+      }
       return
     }
 
     // Move cursor to first differing line
     const linesToMoveUp = prevLen - firstDiff
+    if (DEBUG) {
+      console.error(
+        `[TUI_DEBUG] renderDifferential: firstDiff=${firstDiff} prevLen=${prevLen} currLen=${currLen} linesToMoveUp=${linesToMoveUp}`,
+      )
+    }
     if (linesToMoveUp > 0) {
       this.terminal.write(cursorUp(linesToMoveUp))
     }

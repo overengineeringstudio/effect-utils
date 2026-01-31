@@ -44,12 +44,14 @@ const createMixedResultsState = (): typeof GenieState.Type =>
         path: '/workspace/packages/foo/package.json',
         relativePath: 'packages/foo/package.json',
         status: 'created',
+        linesAdded: 42,
       },
       {
         path: '/workspace/packages/foo/tsconfig.json',
         relativePath: 'packages/foo/tsconfig.json',
         status: 'updated',
-        message: '(+2 lines)',
+        linesAdded: 5,
+        linesRemoved: 3,
       },
       {
         path: '/workspace/packages/bar/package.json',
@@ -60,7 +62,8 @@ const createMixedResultsState = (): typeof GenieState.Type =>
         path: '/workspace/.github/workflows/ci.yml',
         relativePath: '.github/workflows/ci.yml',
         status: 'updated',
-        message: '(content changed)',
+        linesAdded: 12,
+        linesRemoved: 8,
       },
       {
         path: '/workspace/tsconfig.base.json',
@@ -84,6 +87,7 @@ const createWithErrorsState = (): typeof GenieState.Type =>
         path: '/workspace/packages/foo/package.json',
         relativePath: 'packages/foo/package.json',
         status: 'created',
+        linesAdded: 38,
       },
       {
         path: '/workspace/packages/bar/package.json',
@@ -114,12 +118,14 @@ const createDryRunState = (): typeof GenieState.Type =>
         path: '/workspace/packages/foo/package.json',
         relativePath: 'packages/foo/package.json',
         status: 'created',
+        linesAdded: 35,
       },
       {
         path: '/workspace/packages/foo/tsconfig.json',
         relativePath: 'packages/foo/tsconfig.json',
         status: 'updated',
-        message: '(+5 lines)',
+        linesAdded: 8,
+        linesRemoved: 3,
       },
       {
         path: '/workspace/packages/bar/package.json',
@@ -200,43 +206,53 @@ const genieTimeline: Array<{ at: number; action: typeof GenieAction.Type }> = [
 
   // First file - start
   { at: 100, action: { _tag: 'FileStarted', path: sampleFiles[0]!.path } },
-  // First file - complete
-  { at: 400, action: { _tag: 'FileCompleted', path: sampleFiles[0]!.path, status: 'created' } },
+  // First file - complete (created, all new lines)
+  {
+    at: 400,
+    action: {
+      _tag: 'FileCompleted',
+      path: sampleFiles[0]!.path,
+      status: 'created',
+      linesAdded: 42,
+    },
+  },
 
   // Second file - start
   { at: 450, action: { _tag: 'FileStarted', path: sampleFiles[1]!.path } },
-  // Second file - complete
+  // Second file - complete (updated with diff)
   {
     at: 700,
     action: {
       _tag: 'FileCompleted',
       path: sampleFiles[1]!.path,
       status: 'updated',
-      message: '(+2 lines)',
+      linesAdded: 5,
+      linesRemoved: 3,
     },
   },
 
   // Third file - start
   { at: 750, action: { _tag: 'FileStarted', path: sampleFiles[2]!.path } },
-  // Third file - complete
+  // Third file - complete (unchanged)
   { at: 950, action: { _tag: 'FileCompleted', path: sampleFiles[2]!.path, status: 'unchanged' } },
 
   // Fourth file - start
   { at: 1000, action: { _tag: 'FileStarted', path: sampleFiles[3]!.path } },
-  // Fourth file - complete
+  // Fourth file - complete (updated with diff)
   {
     at: 1300,
     action: {
       _tag: 'FileCompleted',
       path: sampleFiles[3]!.path,
       status: 'updated',
-      message: '(content changed)',
+      linesAdded: 12,
+      linesRemoved: 8,
     },
   },
 
   // Fifth file - start
   { at: 1350, action: { _tag: 'FileStarted', path: sampleFiles[4]!.path } },
-  // Fifth file - complete
+  // Fifth file - complete (unchanged)
   { at: 1500, action: { _tag: 'FileCompleted', path: sampleFiles[4]!.path, status: 'unchanged' } },
 
   // Complete
@@ -308,7 +324,7 @@ export const Demo: Story = {
       stateSchema={GenieState}
       actionSchema={GenieAction}
       reducer={genieReducer}
-      initialState={createState()}
+      initialState={createState({ phase: 'discovering' })}
       timeline={genieTimeline}
       autoRun={args.autoRun}
       playbackSpeed={args.playbackSpeed}

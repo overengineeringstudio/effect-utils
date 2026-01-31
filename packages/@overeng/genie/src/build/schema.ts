@@ -36,8 +36,12 @@ export const GenieFile = Schema.Struct({
   relativePath: Schema.String,
   /** Current status */
   status: GenieFileStatus,
-  /** Optional message (error message or diff summary like "+2 lines") */
+  /** Optional message (error message, etc.) */
   message: Schema.optional(Schema.String),
+  /** Lines added (for created/updated files) */
+  linesAdded: Schema.optional(Schema.Number),
+  /** Lines removed (for updated files) */
+  linesRemoved: Schema.optional(Schema.Number),
 })
 /** File entry with path and status */
 export type GenieFile = Schema.Schema.Type<typeof GenieFile>
@@ -138,6 +142,8 @@ export const GenieAction = Schema.Union(
     path: Schema.String,
     status: GenieFileStatus,
     message: Schema.optional(Schema.String),
+    linesAdded: Schema.optional(Schema.Number),
+    linesRemoved: Schema.optional(Schema.Number),
   }),
 
   /** All files processed successfully */
@@ -191,7 +197,15 @@ export const genieReducer = ({
       return {
         ...state,
         files: state.files.map((f) =>
-          f.path === action.path ? { ...f, status: action.status, message: action.message } : f,
+          f.path === action.path
+            ? {
+                ...f,
+                status: action.status,
+                message: action.message,
+                linesAdded: action.linesAdded,
+                linesRemoved: action.linesRemoved,
+              }
+            : f,
         ),
       }
 

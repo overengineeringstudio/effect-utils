@@ -50,7 +50,9 @@ export const createTerminal = (stream: TerminalLike): Terminal => ({
 /**
  * Resolve a Terminal or TerminalLike to a Terminal.
  *
- * If already a Terminal, returns as-is. Otherwise wraps in createTerminal().
+ * Always wraps streams (like process.stdout) in createTerminal() to ensure
+ * consistent behavior with proper defaults for isTTY, columns, and rows.
+ * Only returns the value directly if it's a proper Terminal object (like MockTerminal).
  */
 export const resolveTerminal = (terminalOrStream: Terminal | TerminalLike): Terminal =>
   isTerminal(terminalOrStream) ? terminalOrStream : createTerminal(terminalOrStream)

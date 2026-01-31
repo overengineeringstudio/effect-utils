@@ -36,8 +36,9 @@ const StatusIcon = ({ status }: { status: GenieFileStatus }) => {
       return <Spinner type="dots" />
     case 'created':
     case 'updated':
-    case 'unchanged':
       return <Text color="green">{icons.check}</Text>
+    case 'unchanged':
+      return <Text dim>{icons.check}</Text>
     case 'skipped':
       return <Text color="yellow">{icons.circle}</Text>
     case 'error':
@@ -50,20 +51,29 @@ const StatusIcon = ({ status }: { status: GenieFileStatus }) => {
 // =============================================================================
 
 const FileItem = ({ file }: { file: GenieFile }) => {
-  const isPending = file.status === 'pending'
   const isActive = file.status === 'active'
+  const hasDiffStats =
+    file.linesAdded !== undefined || file.linesRemoved !== undefined
 
-  // Format status message
-  const statusMessage = useMemo(() => {
+  // Determine if this file should be highlighted (changed) or dimmed
+  const isHighlighted =
+    file.status === 'created' ||
+    file.status === 'updated' ||
+    file.status === 'error' ||
+    file.status === 'skipped' ||
+    file.status === 'active'
+
+  // Format status label (created, updated, etc.)
+  const statusLabel = useMemo(() => {
     switch (file.status) {
       case 'active':
         return 'generating...'
       case 'created':
         return 'created'
       case 'updated':
-        return file.message ? `updated ${file.message}` : 'updated'
+        return 'updated'
       case 'unchanged':
-        return undefined // No message for unchanged
+        return undefined
       case 'skipped':
         return file.message ? `skipped: ${file.message}` : 'skipped'
       case 'error':
@@ -77,14 +87,31 @@ const FileItem = ({ file }: { file: GenieFile }) => {
     <Box flexDirection="row">
       <StatusIcon status={file.status} />
       <Text> </Text>
-      <Text bold={!isPending} dim={isPending}>
+      <Text color={isHighlighted ? 'white' : undefined} dim={!isHighlighted}>
         {file.relativePath}
       </Text>
-      {statusMessage && (
+      {/* Diff stats: +N in green, -M in red */}
+      {hasDiffStats && (
+        <>
+          <Text> </Text>
+          {file.linesAdded !== undefined && file.linesAdded > 0 && (
+            <Text color="green">+{file.linesAdded}</Text>
+          )}
+          {file.linesAdded !== undefined && file.linesRemoved !== undefined &&
+           file.linesAdded > 0 && file.linesRemoved > 0 && (
+            <Text dim>/</Text>
+          )}
+          {file.linesRemoved !== undefined && file.linesRemoved > 0 && (
+            <Text color="red">-{file.linesRemoved}</Text>
+          )}
+        </>
+      )}
+      {/* Status label */}
+      {statusLabel && (
         <>
           <Text> </Text>
           <Text dim={!isActive} color={file.status === 'error' ? 'red' : undefined}>
-            {statusMessage}
+            {statusLabel}
           </Text>
         </>
       )}
