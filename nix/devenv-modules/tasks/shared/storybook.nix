@@ -1,4 +1,4 @@
-# Storybook tasks (dev server & build)
+# Storybook tasks and processes
 #
 # Usage in devenv.nix:
 #   imports = [
@@ -13,9 +13,11 @@
 #   ];
 #
 # Provides:
-#   - storybook:dev:<name> - Start storybook dev server for specific package
-#   - storybook:build:<name> - Build storybook for specific package
-#   - storybook:build - Aggregate task to build all storybooks
+#   Tasks:
+#     - storybook:build:<name> - Build storybook for specific package
+#     - storybook:build - Aggregate task to build all storybooks
+#   Processes (for dev servers):
+#     - storybook-<name> - Run with: devenv up storybook-<name>
 {
   packages ? [],
   installTaskPrefix ? "pnpm",
@@ -24,28 +26,30 @@
 let
   hasPackages = packages != [];
 
-  mkDevTask = pkg: {
-    "storybook:dev:${pkg.name}" = {
-      description = "Start storybook dev server for ${pkg.name} (port ${toString pkg.port})";
-      exec = "pnpm storybook";
+  # Use storybook binary directly from package's node_modules (relative to cwd)
+  storybookBin = "./node_modules/.bin/storybook";
+
+  mkBuildTask = pkg: {
+    "storybook:build:${pkg.name}" = {
+      description = "Build storybook for ${pkg.name}";
+      exec = "${storybookBin} build";
       cwd = pkg.path;
       after = [ "${installTaskPrefix}:install:${pkg.name}" ];
     };
   };
 
-  mkBuildTask = pkg: {
-    "storybook:build:${pkg.name}" = {
-      description = "Build storybook for ${pkg.name}";
-      exec = "pnpm storybook:build";
+  # Dev servers as processes (long-running, with TUI via process-compose)
+  # CI=true prevents storybook from prompting when port is taken - it auto-selects an available port
+  mkProcess = pkg: {
+    "storybook-${pkg.name}" = {
+      exec = "CI=true ${storybookBin} dev -p ${toString pkg.port}";
       cwd = pkg.path;
-      after = [ "${installTaskPrefix}:install:${pkg.name}" ];
     };
   };
 
 in {
   tasks = lib.mkMerge (
-    (if hasPackages then map mkDevTask packages else [])
-    ++ (if hasPackages then map mkBuildTask packages else [])
+    (if hasPackages then map mkBuildTask packages else [])
     ++ [{
       "storybook:build" = {
         description = "Build all storybooks";
@@ -55,5 +59,9 @@ in {
           else [];
       };
     }]
+  );
+
+  processes = lib.mkMerge (
+    if hasPackages then map mkProcess packages else []
   );
 }
