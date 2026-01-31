@@ -2,11 +2,13 @@ import path from 'node:path'
 
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
-import { Effect, Either, Option, pipe, Stream } from 'effect'
+import { NodeContext, NodeRuntime } from '@effect/platform-node'
+import { Effect, Either, Layer, Option, pipe, Stream } from 'effect'
 import React from 'react'
 
 import { outputOption, outputModeLayer } from '@overeng/tui-react'
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
+import { resolveCliVersion } from '@overeng/utils/node/cli-version'
 
 import { GenieApp } from './app.ts'
 import { GenieConnectedView } from './view.tsx'
@@ -145,6 +147,7 @@ export const genieCommand: Cli.Command.Command<
           _tag: 'Complete',
           summary: { created: 0, updated: 0, unchanged: 0, skipped: 0, failed: 0 },
         })
+        yield* tui.unmount({ mode: 'persist' })
         return
       }
 
@@ -201,6 +204,9 @@ export const genieCommand: Cli.Command.Command<
         }
 
         tui.dispatch({ _tag: 'Complete', summary })
+
+        // Persist output before exiting
+        yield* tui.unmount({ mode: 'persist' })
 
         // Validate tsconfig references
         const warnings = yield* validateTsconfigReferences({
@@ -318,6 +324,9 @@ export const genieCommand: Cli.Command.Command<
 
         tui.dispatch({ _tag: 'Complete', summary })
 
+        // Persist output before exiting
+        yield* tui.unmount({ mode: 'persist' })
+
         return yield* new GenieGenerationFailedError({
           failedCount: revalidateErrors.length,
           message: `${rootCauses.length} root cause error(s), ${dependentCount} dependent failure(s)`,
@@ -334,6 +343,11 @@ export const genieCommand: Cli.Command.Command<
       }
 
       tui.dispatch({ _tag: 'Complete', summary })
+
+      // Persist output before exiting (non-watch mode)
+      if (!watch || dryRun) {
+        yield* tui.unmount({ mode: 'persist' })
+      }
 
       // Exit with error code if any files failed
       if (summary.failed > 0) {
@@ -430,3 +444,23 @@ export const genieCommand: Cli.Command.Command<
       }
     }).pipe(Effect.provide(outputModeLayer(output)), Effect.scoped, Effect.withSpan('genie')),
 )
+
+// =============================================================================
+// CLI Runner
+// =============================================================================
+
+const GENIE_VERSION = '0.1.0'
+
+// Build stamp placeholder replaced by nix build with NixStamp JSON
+const buildStamp = '__CLI_BUILD_STAMP__'
+const version = resolveCliVersion({
+  baseVersion: GENIE_VERSION,
+  buildStamp,
+})
+
+const baseLayer = Layer.mergeAll(NodeContext.layer, CurrentWorkingDirectory.live)
+
+Cli.Command.run(genieCommand, {
+  name: 'genie',
+  version,
+})(process.argv).pipe(Effect.scoped, Effect.provide(baseLayer), NodeRuntime.runMain)

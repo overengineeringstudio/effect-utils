@@ -7,7 +7,7 @@
 
 import React, { useMemo } from 'react'
 
-import { Box, Text, Spinner, useViewport } from '@overeng/tui-react'
+import { Box, Text, Spinner, useViewport, useTuiAtomValue } from '@overeng/tui-react'
 
 import { GenieApp } from './app.ts'
 import type { GenieState, GenieFile, GenieFileStatus } from './schema.ts'
@@ -447,6 +447,6 @@ export const GenieView = ({ state }: GenieViewProps) => {
  * Use this when rendering with GenieApp.run().
  */
 export const GenieConnectedView = () => {
-  const state = GenieApp.useState()
+  const state = useTuiAtomValue(GenieApp.stateAtom)
   return <GenieView state={state} />
 }
