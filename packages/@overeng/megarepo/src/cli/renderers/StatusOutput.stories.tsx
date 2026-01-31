@@ -5,7 +5,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
-import { TerminalPreview } from '@overeng/tui-react/storybook'
+import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
 import { StatusOutput, type StatusOutputProps, type MemberStatus } from './StatusOutput.tsx'
 
@@ -117,18 +117,16 @@ const exampleMembersClean: MemberStatus[] = [
 const meta: Meta<StatusOutputProps> = {
   title: 'CLI/Status Output',
   component: StatusOutput,
+  render: (args) => (
+    <TuiStoryPreview>
+      <StatusOutput {...args} />
+    </TuiStoryPreview>
+  ),
   args: {
     name: 'my-workspace',
     root: '/Users/dev/workspace',
     members: [],
   },
-  decorators: [
-    (Story) => (
-      <TerminalPreview height={600}>
-        <Story />
-      </TerminalPreview>
-    ),
-  ],
   parameters: {
     layout: 'padded',
     docs: {

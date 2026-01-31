@@ -5,7 +5,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
-import { TerminalPreview } from '@overeng/tui-react/storybook'
+import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
 import { StoreGcOutput, type StoreGcOutputProps, type StoreGcResult } from './StoreOutput.tsx'
 
@@ -41,6 +41,11 @@ const exampleGcResults: StoreGcResult[] = [
 const meta: Meta<StoreGcOutputProps> = {
   title: 'CLI/Store/GC',
   component: StoreGcOutput,
+  render: (args) => (
+    <TuiStoryPreview>
+      <StoreGcOutput {...args} />
+    </TuiStoryPreview>
+  ),
   args: {
     basePath: '/Users/dev/.megarepo',
     results: [],
@@ -65,13 +70,6 @@ const meta: Meta<StoreGcOutputProps> = {
       table: { category: 'Options' },
     },
   },
-  decorators: [
-    (Story) => (
-      <TerminalPreview height={400}>
-        <Story />
-      </TerminalPreview>
-    ),
-  ],
   parameters: {
     layout: 'padded',
     docs: {

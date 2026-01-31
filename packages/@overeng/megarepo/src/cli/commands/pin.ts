@@ -21,45 +21,15 @@ import {
   parseSourceString,
   isRemoteSource,
 } from '../../lib/config.ts'
-
-// Tagged error classes for pin/unpin commands
-class NotInMegarepoError extends Schema.TaggedError<NotInMegarepoError>()('NotInMegarepoError', {
-  message: Schema.String,
-}) {}
-
-class MemberNotFoundError extends Schema.TaggedError<MemberNotFoundError>()('MemberNotFoundError', {
-  message: Schema.String,
-}) {}
-
-class InvalidSourceError extends Schema.TaggedError<InvalidSourceError>()('InvalidSourceError', {
-  message: Schema.String,
-}) {}
-
-class CannotPinLocalPathError extends Schema.TaggedError<CannotPinLocalPathError>()(
-  'CannotPinLocalPathError',
-  {
-    message: Schema.String,
-  },
-) {}
-
-class CannotGetCloneUrlError extends Schema.TaggedError<CannotGetCloneUrlError>()(
-  'CannotGetCloneUrlError',
-  {
-    message: Schema.String,
-  },
-) {}
-
-class MemberNotSyncedError extends Schema.TaggedError<MemberNotSyncedError>()(
-  'MemberNotSyncedError',
-  {
-    message: Schema.String,
-  },
-) {}
-
-class NoLockFileError extends Schema.TaggedError<NoLockFileError>()('NoLockFileError', {
-  message: Schema.String,
-}) {}
-
+import {
+  NotInMegarepoError,
+  MemberNotFoundError,
+  InvalidSourceError,
+  CannotUseLocalPathError,
+  CannotGetCloneUrlError,
+  MemberNotSyncedError,
+  NoLockFileError,
+} from '../errors.ts'
 import * as Git from '../../lib/git.ts'
 import {
   createEmptyLockFile,
@@ -119,7 +89,7 @@ export const pinCommand = Cli.Command.make(
           )
           yield* Console.error(output)
         }
-        return yield* Effect.fail(new NotInMegarepoError({ message: 'Not in a megarepo' }))
+        return yield* new NotInMegarepoError({ message: 'Not in a megarepo' })
       }
 
       const fs = yield* FileSystem.FileSystem
@@ -149,13 +119,13 @@ export const pinCommand = Cli.Command.make(
           )
           yield* Console.error(output)
         }
-        return yield* Effect.fail(new MemberNotFoundError({ message: 'Member not found' }))
+        return yield* new MemberNotFoundError({ message: 'Member not found', member })
       }
 
       // Check if it's a local path (can't pin local paths)
       let sourceString = config.members[member]
       if (sourceString === undefined) {
-        return yield* Effect.fail(new MemberNotFoundError({ message: 'Member not found' }))
+        return yield* new MemberNotFoundError({ message: 'Member not found', member })
       }
       let source = parseSourceString(sourceString)
       if (source === undefined) {
@@ -174,7 +144,7 @@ export const pinCommand = Cli.Command.make(
           )
           yield* Console.error(output)
         }
-        return yield* Effect.fail(new Error('Invalid source'))
+        return yield* new InvalidSourceError({ message: 'Invalid source', source: sourceString })
       }
       if (!isRemoteSource(source)) {
         if (json) {
@@ -192,7 +162,7 @@ export const pinCommand = Cli.Command.make(
           )
           yield* Console.error(output)
         }
-        return yield* Effect.fail(new Error('Cannot pin local path'))
+        return yield* new CannotUseLocalPathError({ message: 'Cannot pin local path' })
       }
 
       // Load or create lock file
@@ -320,7 +290,7 @@ export const pinCommand = Cli.Command.make(
           // Clone the bare repo
           const cloneUrl = getCloneUrl(source)
           if (cloneUrl === undefined) {
-            return yield* Effect.fail(new Error('Cannot get clone URL'))
+            return yield* new CannotGetCloneUrlError({ message: 'Cannot get clone URL' })
           }
 
           const repoBasePath = store.getRepoBasePath(source)
@@ -466,7 +436,7 @@ export const pinCommand = Cli.Command.make(
           )
           yield* Console.error(output)
         }
-        return yield* Effect.fail(new Error('Member not synced'))
+        return yield* new MemberNotSyncedError({ message: 'Member not synced', member })
       }
 
       // Check if already pinned (only when not switching refs)
@@ -696,7 +666,7 @@ export const unpinCommand = Cli.Command.make(
           )
           yield* Console.error(output)
         }
-        return yield* Effect.fail(new Error('Not in a megarepo'))
+        return yield* new NotInMegarepoError({ message: 'Not in a megarepo' })
       }
 
       const fs = yield* FileSystem.FileSystem
@@ -725,7 +695,7 @@ export const unpinCommand = Cli.Command.make(
           )
           yield* Console.error(output)
         }
-        return yield* Effect.fail(new Error('Member not found'))
+        return yield* new MemberNotFoundError({ message: 'Member not found', member })
       }
 
       // Load lock file
@@ -743,7 +713,7 @@ export const unpinCommand = Cli.Command.make(
           )
           yield* Console.error(output)
         }
-        return yield* Effect.fail(new Error('No lock file'))
+        return yield* new NoLockFileError({ message: 'No lock file' })
       }
       let lockFile = lockFileOpt.value
 

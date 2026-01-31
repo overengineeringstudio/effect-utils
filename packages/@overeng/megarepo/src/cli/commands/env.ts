@@ -15,6 +15,7 @@ import { jsonError, withJsonMode } from '@overeng/utils/node'
 
 import { CONFIG_FILE_NAME, ENV_VARS, MegarepoConfig } from '../../lib/config.ts'
 import { Cwd, findMegarepoRoot, findNearestMegarepoRoot, jsonOption } from '../context.ts'
+import { NotInMegarepoError } from '../errors.ts'
 
 /** Print environment variables for shell integration */
 export const envCommand = Cli.Command.make(
@@ -52,7 +53,7 @@ export const envCommand = Cli.Command.make(
           }),
         )
         yield* Console.error(output)
-        return yield* Effect.fail(new Error('Not in a megarepo'))
+        return yield* new NotInMegarepoError({ message: 'Not in a megarepo' })
       }
 
       // Load config to get member names

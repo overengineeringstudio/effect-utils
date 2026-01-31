@@ -14,6 +14,7 @@ import { renderToString } from '@overeng/tui-react'
 
 import { CONFIG_FILE_NAME, getMemberPath, MegarepoConfig } from '../../lib/config.ts'
 import { Cwd, findMegarepoRoot, jsonOption, verboseOption } from '../context.ts'
+import { ExecCommandError } from '../errors.ts'
 import {
   ExecErrorOutput,
   ExecVerboseHeader,
@@ -22,10 +23,6 @@ import {
   ExecMemberHeader,
   ExecStderr,
 } from '../renderers/ExecOutput.tsx'
-
-class ExecCommandError extends Schema.TaggedError<ExecCommandError>()('ExecCommandError', {
-  message: Schema.String,
-}) {}
 
 /** Execution mode for running commands across members */
 type ExecMode = 'parallel' | 'sequential'
@@ -70,7 +67,7 @@ export const execCommand = Cli.Command.make(
           )
           yield* Console.error(output)
         }
-        return yield* Effect.fail(new ExecCommandError({ message: 'Not in a megarepo' }))
+        return yield* new ExecCommandError({ message: 'Not in a megarepo' })
       }
 
       // Load config
@@ -99,7 +96,7 @@ export const execCommand = Cli.Command.make(
           )
           yield* Console.error(output)
         }
-        return yield* Effect.fail(new ExecCommandError({ message: 'Member not found' }))
+        return yield* new ExecCommandError({ message: 'Member not found' })
       }
 
       // Verbose: show execution details

@@ -5,7 +5,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
-import { TerminalPreview } from '@overeng/tui-react/storybook'
+import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
 import { StoreListOutput, type StoreListOutputProps, type StoreRepo } from './StoreOutput.tsx'
 
@@ -26,17 +26,15 @@ const exampleStoreRepos: StoreRepo[] = [
 const meta: Meta<StoreListOutputProps> = {
   title: 'CLI/Store/List',
   component: StoreListOutput,
+  render: (args) => (
+    <TuiStoryPreview>
+      <StoreListOutput {...args} />
+    </TuiStoryPreview>
+  ),
   args: {
     basePath: '/Users/dev/.megarepo',
     repos: [],
   },
-  decorators: [
-    (Story) => (
-      <TerminalPreview height={400}>
-        <Story />
-      </TerminalPreview>
-    ),
-  ],
   parameters: {
     layout: 'padded',
     docs: {

@@ -19,10 +19,7 @@ import { generateNix, type NixGeneratorError } from '../../../lib/generators/nix
 import { generateSchema } from '../../../lib/generators/schema.ts'
 import { generateVscode } from '../../../lib/generators/vscode.ts'
 import { Cwd, findMegarepoRoot, jsonOption } from '../../context.ts'
-
-class GenerateError extends Schema.TaggedError<GenerateError>()('GenerateError', {
-  message: Schema.String,
-}) {}
+import { GenerateError } from '../../errors.ts'
 
 /** Generate Nix workspace */
 interface NixGenerateTree {
@@ -218,7 +215,7 @@ const generateNixCommand = Cli.Command.make(
           )
           yield* Console.error(output)
         }
-        return yield* Effect.fail(new GenerateError({ message: 'Not in a megarepo' }))
+        return yield* new GenerateError({ message: 'Not in a megarepo' })
       }
 
       const result = yield* generateNixForRoot({
@@ -279,7 +276,7 @@ const generateVscodeCommand = Cli.Command.make(
           )
           yield* Console.error(output)
         }
-        return yield* Effect.fail(new GenerateError({ message: 'Not in a megarepo' }))
+        return yield* new GenerateError({ message: 'Not in a megarepo' })
       }
 
       // Load config
@@ -355,7 +352,7 @@ const generateSchemaCommand = Cli.Command.make(
           )
           yield* Console.error(output)
         }
-        return yield* Effect.fail(new GenerateError({ message: 'Not in a megarepo' }))
+        return yield* new GenerateError({ message: 'Not in a megarepo' })
       }
 
       // Load config
@@ -419,7 +416,7 @@ const generateAllCommand = Cli.Command.make('all', { json: jsonOption }, ({ json
         )
         yield* Console.error(output)
       }
-      return yield* Effect.fail(new GenerateError({ message: 'Not in a megarepo' }))
+      return yield* new GenerateError({ message: 'Not in a megarepo' })
     }
 
     // Load config

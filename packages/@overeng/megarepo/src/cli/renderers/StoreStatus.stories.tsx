@@ -5,7 +5,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
-import { TerminalPreview } from '@overeng/tui-react/storybook'
+import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
 import {
   StoreStatusOutput,
@@ -80,6 +80,11 @@ const mixedIssuesWorktrees: StoreWorktreeStatus[] = [
 const meta: Meta<StoreStatusOutputProps> = {
   title: 'CLI/Store/Status',
   component: StoreStatusOutput,
+  render: (args) => (
+    <TuiStoryPreview>
+      <StoreStatusOutput {...args} />
+    </TuiStoryPreview>
+  ),
   args: {
     basePath: '/Users/dev/.megarepo',
     repoCount: 5,
@@ -104,13 +109,6 @@ const meta: Meta<StoreStatusOutputProps> = {
       table: { category: 'Stats' },
     },
   },
-  decorators: [
-    (Story) => (
-      <TerminalPreview height={500}>
-        <Story />
-      </TerminalPreview>
-    ),
-  ],
   parameters: {
     layout: 'padded',
     docs: {

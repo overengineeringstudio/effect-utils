@@ -5,7 +5,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
-import { TerminalPreview } from '@overeng/tui-react/storybook'
+import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
 import {
   StoreAddError,
@@ -42,6 +42,11 @@ const exampleAddSuccessExisting: StoreAddSuccessProps = {
 const meta: Meta<StoreAddErrorProps> = {
   title: 'CLI/Store/Add',
   component: StoreAddError,
+  render: (args) => (
+    <TuiStoryPreview>
+      <StoreAddError {...args} />
+    </TuiStoryPreview>
+  ),
   args: {
     type: 'invalid_source',
   },
@@ -58,13 +63,6 @@ const meta: Meta<StoreAddErrorProps> = {
       table: { category: 'Error' },
     },
   },
-  decorators: [
-    (Story) => (
-      <TerminalPreview height={200}>
-        <Story />
-      </TerminalPreview>
-    ),
-  ],
   parameters: {
     layout: 'padded',
     docs: {
@@ -108,17 +106,17 @@ export const NoUrl: Story = {
 
 export const Cloning: Story = {
   render: () => (
-    <TerminalPreview height={200}>
+    <TuiStoryPreview>
       <StoreAddProgress type="cloning" source="effect-ts/effect" />
-    </TerminalPreview>
+    </TuiStoryPreview>
   ),
 }
 
 export const CreatingWorktree: Story = {
   render: () => (
-    <TerminalPreview height={200}>
+    <TuiStoryPreview>
       <StoreAddProgress type="creating_worktree" ref="main" />
-    </TerminalPreview>
+    </TuiStoryPreview>
   ),
 }
 
@@ -128,23 +126,23 @@ export const CreatingWorktree: Story = {
 
 export const SuccessNew: Story = {
   render: () => (
-    <TerminalPreview height={200}>
+    <TuiStoryPreview>
       <StoreAddSuccess {...exampleAddSuccess} />
-    </TerminalPreview>
+    </TuiStoryPreview>
   ),
 }
 
 export const SuccessExisting: Story = {
   render: () => (
-    <TerminalPreview height={200}>
+    <TuiStoryPreview>
       <StoreAddSuccess {...exampleAddSuccessExisting} />
-    </TerminalPreview>
+    </TuiStoryPreview>
   ),
 }
 
 export const SuccessWithRef: Story = {
   render: () => (
-    <TerminalPreview height={200}>
+    <TuiStoryPreview>
       <StoreAddSuccess
         source="effect-ts/effect#feat/new-feature"
         ref="feat/new-feature"
@@ -152,13 +150,13 @@ export const SuccessWithRef: Story = {
         path="/Users/me/.megarepo/store/github.com/effect-ts/effect/refs/feat/new-feature"
         alreadyExists={false}
       />
-    </TerminalPreview>
+    </TuiStoryPreview>
   ),
 }
 
 export const SuccessNoCommit: Story = {
   render: () => (
-    <TerminalPreview height={200}>
+    <TuiStoryPreview>
       <StoreAddSuccess
         source="effect-ts/effect"
         ref="v3.0.0"
@@ -166,6 +164,6 @@ export const SuccessNoCommit: Story = {
         path="/Users/me/.megarepo/store/github.com/effect-ts/effect/refs/v3.0.0"
         alreadyExists={false}
       />
-    </TerminalPreview>
+    </TuiStoryPreview>
   ),
 }

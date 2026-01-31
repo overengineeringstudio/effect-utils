@@ -18,6 +18,7 @@ import { jsonError, withJsonMode } from '@overeng/utils/node'
 import { CONFIG_FILE_NAME, MegarepoConfig } from '../../lib/config.ts'
 import * as Git from '../../lib/git.ts'
 import { Cwd, jsonOption } from '../context.ts'
+import { NotGitRepoError } from '../errors.ts'
 
 /** Initialize a new megarepo in current directory */
 export const initCommand = Cli.Command.make('init', { json: jsonOption }, ({ json }) =>
@@ -45,7 +46,7 @@ export const initCommand = Cli.Command.make('init', { json: jsonOption }, ({ jso
         }),
       )
       yield* Console.error(output)
-      return yield* Effect.fail(new Error('Not a git repository'))
+      return yield* new NotGitRepoError({ message: 'Not a git repository' })
     }
 
     const configPath = EffectPath.ops.join(cwd, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME))

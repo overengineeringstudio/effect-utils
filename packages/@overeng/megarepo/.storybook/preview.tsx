@@ -1,36 +1,11 @@
 /**
  * Storybook preview configuration for @overeng/megarepo
  *
- * Uses the shared TUI Storybook utilities from @overeng/tui-react,
- * but with custom handling for string render mode.
+ * Follows the same pattern as @overeng/tui-react - no global decorators.
+ * Each story uses TuiStoryPreview directly in its render function.
  */
 
-import type { Preview, Decorator } from '@storybook/react'
-import React from 'react'
-
-import { TerminalPreview } from '@overeng/tui-react/storybook'
-
-/**
- * Custom decorator that conditionally applies terminal preview.
- * When args.renderMode === 'string', renders directly to DOM.
- * Otherwise, renders through the terminal preview.
- */
-// oxlint-disable-next-line overeng/named-args -- Storybook Decorator signature
-const withConditionalTerminalPreview: Decorator = (Story, context) => {
-  const renderMode = context.args?.renderMode
-
-  // String mode: render directly to DOM (no terminal wrapper)
-  if (renderMode === 'string') {
-    return <Story />
-  }
-
-  // TTY mode: render through terminal preview
-  return (
-    <TerminalPreview>
-      <Story />
-    </TerminalPreview>
-  )
-}
+import type { Preview } from '@storybook/react'
 
 const preview: Preview = {
   parameters: {
@@ -49,7 +24,6 @@ const preview: Preview = {
       },
     },
   },
-  decorators: [withConditionalTerminalPreview],
 }
 
 export default preview

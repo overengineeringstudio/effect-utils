@@ -12,13 +12,14 @@ export { lsCommand } from './ls.ts'
 export { pinCommand, unpinCommand } from './pin.ts'
 export { rootCommand } from './root.ts'
 export { statusCommand } from './status.ts'
+export { syncCommand, syncMegarepo } from './sync.ts'
+
+// Re-export errors from centralized errors module
 export {
-  syncCommand,
-  syncMegarepo,
   NotInMegarepoError,
   LockFileRequiredError,
   StaleLockFileError,
-} from './sync.ts'
+} from '../errors.ts'
 
 // Subcommand groups
 export { storeCommand } from './store/mod.ts'

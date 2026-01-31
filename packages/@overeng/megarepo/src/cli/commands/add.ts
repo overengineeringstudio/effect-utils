@@ -13,14 +13,11 @@ import { EffectPath } from '@overeng/effect-path'
 import { renderToString } from '@overeng/tui-react'
 
 import { CONFIG_FILE_NAME, MegarepoConfig, parseSourceString } from '../../lib/config.ts'
-
-class AddCommandError extends Schema.TaggedError<AddCommandError>()('AddCommandError', {
-  message: Schema.String,
-}) {}
 import * as Git from '../../lib/git.ts'
 import { StoreLayer } from '../../lib/store.ts'
 import { syncMember } from '../../lib/sync/mod.ts'
 import { Cwd, findMegarepoRoot, jsonOption } from '../context.ts'
+import { AddCommandError } from '../errors.ts'
 import { AddOutput, AddErrorOutput } from '../renderers/AddOutput.tsx'
 
 /**
@@ -98,7 +95,7 @@ export const addCommand = Cli.Command.make(
           )
           yield* Console.error(output)
         }
-        return yield* Effect.fail(new AddCommandError({ message: 'Not in a megarepo' }))
+        return yield* new AddCommandError({ message: 'Not in a megarepo' })
       }
 
       // Parse the repo reference
@@ -119,7 +116,7 @@ export const addCommand = Cli.Command.make(
           )
           yield* Console.error(output)
         }
-        return yield* Effect.fail(new AddCommandError({ message: 'Invalid repo reference' }))
+        return yield* new AddCommandError({ message: 'Invalid repo reference' })
       }
 
       const memberName = Option.getOrElse(name, () => parsed.suggestedName)
@@ -148,7 +145,7 @@ export const addCommand = Cli.Command.make(
           )
           yield* Console.error(output)
         }
-        return yield* Effect.fail(new Error('Member already exists'))
+        return yield* new AddCommandError({ message: 'Member already exists' })
       }
 
       // Add the new member

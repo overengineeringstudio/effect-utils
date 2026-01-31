@@ -55,6 +55,13 @@ import {
 } from '../../lib/sync/mod.ts'
 import { Cwd, findMegarepoRoot, jsonOption, streamOption, verboseOption } from '../context.ts'
 import {
+  NotInMegarepoError,
+  LockFileRequiredError,
+  StaleLockFileError,
+  SyncFailedError,
+  InvalidOptionsError,
+} from '../errors.ts'
+import {
   startSyncProgressUI,
   finishSyncProgressUI,
   mapSyncResultToAction,
@@ -63,43 +70,6 @@ import {
   type SyncProgressUIHandle,
 } from '../progress/mod.ts'
 import { SyncOutput } from '../renderers/SyncOutput.tsx'
-
-// =============================================================================
-// Sync Errors
-// =============================================================================
-
-/** Error when not in a megarepo */
-export class NotInMegarepoError extends Schema.TaggedError<NotInMegarepoError>()(
-  'NotInMegarepoError',
-  {
-    message: Schema.String,
-  },
-) {}
-
-/** Error when lock file is required but missing */
-export class LockFileRequiredError extends Schema.TaggedError<LockFileRequiredError>()(
-  'LockFileRequiredError',
-  {
-    message: Schema.String,
-  },
-) {}
-
-/** Error when lock file is stale */
-export class StaleLockFileError extends Schema.TaggedError<StaleLockFileError>()(
-  'StaleLockFileError',
-  {
-    message: Schema.String,
-    addedMembers: Schema.Array(Schema.String),
-    removedMembers: Schema.Array(Schema.String),
-  },
-) {}
-
-/** Error when member sync operations fail */
-export class SyncFailedError extends Schema.TaggedError<SyncFailedError>()('SyncFailedError', {
-  message: Schema.String,
-  errorCount: Schema.Number,
-  failedMembers: Schema.Array(Schema.String),
-}) {}
 
 /**
  * Sync a megarepo at the given root path.
@@ -276,9 +246,7 @@ export const syncMegarepo = ({
           )
           yield* Console.error(output)
         }
-        return yield* new LockFileRequiredError({
-          message: 'Lock file required for --frozen',
-        })
+        return yield* new LockFileRequiredError({ message: 'Lock file required for --frozen' })
       }
 
       // When using --only or --skip, only check staleness for members we're actually syncing
@@ -344,11 +312,7 @@ export const syncMegarepo = ({
           )
           yield* Console.log(staleOutput)
         }
-        return yield* new StaleLockFileError({
-          message: 'Lock file is stale',
-          addedMembers: staleness.addedMembers,
-          removedMembers: staleness.removedMembers,
-        })
+        return yield* new StaleLockFileError({ message: 'Lock file is stale', addedMembers: staleness.addedMembers, removedMembers: staleness.removedMembers })
       }
     }
 
@@ -733,7 +697,7 @@ export const syncCommand = Cli.Command.make(
           )
           yield* Console.error(output)
         }
-        return yield* Effect.fail(new Error('--only and --skip are mutually exclusive'))
+        return yield* new InvalidOptionsError({ message: '--only and --skip are mutually exclusive' })
       }
 
       // Parse member filter options
@@ -761,9 +725,7 @@ export const syncCommand = Cli.Command.make(
           )
           yield* Console.error(output)
         }
-        return yield* new NotInMegarepoError({
-          message: 'No megarepo.json found',
-        })
+        return yield* new NotInMegarepoError({ message: 'No megarepo.json found' })
       }
 
       // Get workspace name
@@ -857,11 +819,7 @@ export const syncCommand = Cli.Command.make(
           const failedMembers = syncResult.results
             .filter((r) => r.status === 'error')
             .map((r) => r.name)
-          return yield* new SyncFailedError({
-            message: `${counts.errors} member(s) failed to sync`,
-            errorCount: counts.errors,
-            failedMembers,
-          })
+          return yield* new SyncFailedError({ message: `${counts.errors} member(s) failed to sync`, errorCount: counts.errors, failedMembers })
         }
 
         return syncResult
@@ -984,11 +942,7 @@ export const syncCommand = Cli.Command.make(
           const failedMembers = syncResult.results
             .filter((r) => r.status === 'error')
             .map((r) => r.name)
-          return yield* new SyncFailedError({
-            message: `${counts.errors} member(s) failed to sync`,
-            errorCount: counts.errors,
-            failedMembers,
-          })
+          return yield* new SyncFailedError({ message: `${counts.errors} member(s) failed to sync`, errorCount: counts.errors, failedMembers })
         }
 
         return syncResult

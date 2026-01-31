@@ -5,7 +5,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
-import { TerminalPreview, StringTerminalPreview } from '@overeng/tui-react/storybook'
+import { TuiStoryPreview, StringTerminalPreview } from '@overeng/tui-react/storybook'
 
 import { SyncOutput, type SyncOutputProps, type MemberSyncResult } from './SyncOutput.tsx'
 
@@ -43,6 +43,11 @@ const exampleAllSynced: MemberSyncResult[] = [
 const meta: Meta<SyncOutputProps> = {
   title: 'CLI/Sync Output',
   component: SyncOutput,
+  render: (args) => (
+    <TuiStoryPreview>
+      <SyncOutput {...args} />
+    </TuiStoryPreview>
+  ),
   args: {
     name: 'my-workspace',
     root: '/Users/dev/workspace',
@@ -74,13 +79,6 @@ const meta: Meta<SyncOutputProps> = {
       table: { category: 'Sync Options' },
     },
   },
-  decorators: [
-    (Story) => (
-      <TerminalPreview height={400}>
-        <Story />
-      </TerminalPreview>
-    ),
-  ],
   parameters: {
     layout: 'padded',
     docs: {
@@ -409,9 +407,9 @@ export const Interactive: StoryObj<InteractiveProps> = {
       return <StringTerminalPreview component={SyncOutput} props={props} />
     }
     return (
-      <TerminalPreview>
+      <TuiStoryPreview>
         <SyncOutput {...props} />
-      </TerminalPreview>
+      </TuiStoryPreview>
     )
   },
 }

@@ -13,6 +13,7 @@ import { jsonError, withJsonMode } from '@overeng/utils/node'
 
 import * as Git from '../../lib/git.ts'
 import { Cwd, findMegarepoRoot, jsonOption } from '../context.ts'
+import { NotInMegarepoError } from '../errors.ts'
 
 /** Find and print the megarepo root directory */
 export const rootCommand = Cli.Command.make('root', { json: jsonOption }, ({ json }) =>
@@ -44,7 +45,7 @@ export const rootCommand = Cli.Command.make('root', { json: jsonOption }, ({ jso
         }),
       )
       yield* Console.error(output)
-      return yield* Effect.fail(new Error('Not in a megarepo'))
+      return yield* new NotInMegarepoError({ message: 'Not in a megarepo' })
     }
 
     const name = yield* Git.deriveMegarepoName(root.value)

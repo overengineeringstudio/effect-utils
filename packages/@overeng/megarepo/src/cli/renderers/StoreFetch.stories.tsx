@@ -5,7 +5,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
-import { TerminalPreview } from '@overeng/tui-react/storybook'
+import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
 import {
   StoreFetchOutput,
@@ -30,6 +30,11 @@ const exampleFetchResults: StoreFetchResult[] = [
 const meta: Meta<StoreFetchOutputProps> = {
   title: 'CLI/Store/Fetch',
   component: StoreFetchOutput,
+  render: (args) => (
+    <TuiStoryPreview>
+      <StoreFetchOutput {...args} />
+    </TuiStoryPreview>
+  ),
   args: {
     basePath: '/Users/dev/.megarepo',
     results: [],
@@ -42,13 +47,6 @@ const meta: Meta<StoreFetchOutputProps> = {
       table: { category: 'Performance' },
     },
   },
-  decorators: [
-    (Story) => (
-      <TerminalPreview height={400}>
-        <Story />
-      </TerminalPreview>
-    ),
-  ],
   parameters: {
     layout: 'padded',
     docs: {

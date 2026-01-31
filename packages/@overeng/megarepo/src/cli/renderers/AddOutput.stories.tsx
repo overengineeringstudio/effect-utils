@@ -5,62 +5,17 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
-import { TerminalPreview } from '@overeng/tui-react/storybook'
+import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
-import {
-  AddOutput,
-  AddErrorOutput,
-  type AddOutputProps,
-} from './AddOutput.tsx'
+import { AddOutput, AddErrorOutput, type AddOutputProps } from './AddOutput.tsx'
 
 // =============================================================================
-// Example Data
-// =============================================================================
-
-const exampleAddSuccess: AddOutputProps = {
-  member: 'effect',
-  source: 'effect-ts/effect',
-}
-
-const exampleAddWithSync: AddOutputProps = {
-  member: 'effect',
-  source: 'effect-ts/effect',
-  synced: true,
-  syncStatus: 'cloned',
-}
-
-const exampleAddSyncError: AddOutputProps = {
-  member: 'private-repo',
-  source: 'org/private-repo',
-  synced: true,
-  syncStatus: 'error',
-  syncMessage: 'authentication required',
-}
-
-// =============================================================================
-// Add Output Stories
+// Meta
 // =============================================================================
 
 const meta: Meta<AddOutputProps> = {
   title: 'CLI/Add Output',
   component: AddOutput,
-  args: {
-    member: 'effect',
-    source: 'effect-ts/effect',
-  },
-  argTypes: {
-    syncStatus: {
-      control: { type: 'select' },
-      options: ['cloned', 'synced', 'error'],
-    },
-  },
-  decorators: [
-    (Story) => (
-      <TerminalPreview height={200}>
-        <Story />
-      </TerminalPreview>
-    ),
-  ],
   parameters: {
     layout: 'padded',
     docs: {
@@ -75,25 +30,46 @@ export default meta
 
 type Story = StoryObj<typeof meta>
 
+// =============================================================================
+// Add Output Stories
+// =============================================================================
+
 export const AddSimple: Story = {
-  args: exampleAddSuccess,
+  render: () => (
+    <TuiStoryPreview>
+      <AddOutput member="effect" source="effect-ts/effect" />
+    </TuiStoryPreview>
+  ),
 }
 
 export const AddWithSync: Story = {
-  args: exampleAddWithSync,
+  render: () => (
+    <TuiStoryPreview>
+      <AddOutput member="effect" source="effect-ts/effect" synced syncStatus="cloned" />
+    </TuiStoryPreview>
+  ),
 }
 
 export const AddWithSyncExisting: Story = {
-  args: {
-    member: 'effect',
-    source: 'effect-ts/effect',
-    synced: true,
-    syncStatus: 'synced',
-  },
+  render: () => (
+    <TuiStoryPreview>
+      <AddOutput member="effect" source="effect-ts/effect" synced syncStatus="synced" />
+    </TuiStoryPreview>
+  ),
 }
 
 export const AddWithSyncError: Story = {
-  args: exampleAddSyncError,
+  render: () => (
+    <TuiStoryPreview>
+      <AddOutput
+        member="private-repo"
+        source="org/private-repo"
+        synced
+        syncStatus="error"
+        syncMessage="authentication required"
+      />
+    </TuiStoryPreview>
+  ),
 }
 
 // =============================================================================
@@ -102,24 +78,24 @@ export const AddWithSyncError: Story = {
 
 export const ErrorNotInMegarepo: Story = {
   render: () => (
-    <TerminalPreview height={150}>
+    <TuiStoryPreview>
       <AddErrorOutput error="not_in_megarepo" />
-    </TerminalPreview>
+    </TuiStoryPreview>
   ),
 }
 
 export const ErrorInvalidRepo: Story = {
   render: () => (
-    <TerminalPreview height={150}>
+    <TuiStoryPreview>
       <AddErrorOutput error="invalid_repo" repo="not-a-valid-repo" />
-    </TerminalPreview>
+    </TuiStoryPreview>
   ),
 }
 
 export const ErrorAlreadyExists: Story = {
   render: () => (
-    <TerminalPreview height={150}>
+    <TuiStoryPreview>
       <AddErrorOutput error="already_exists" member="effect" />
-    </TerminalPreview>
+    </TuiStoryPreview>
   ),
 }

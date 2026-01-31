@@ -6,7 +6,7 @@ import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
 import { Box } from '@overeng/tui-react'
-import { TerminalPreview } from '@overeng/tui-react/storybook'
+import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
 import {
   ExecErrorOutput,
@@ -46,6 +46,11 @@ const exampleExecResultsWithOutput: ExecMemberResult[] = [
 const meta: Meta<ExecErrorOutputProps> = {
   title: 'CLI/Exec',
   component: ExecErrorOutput,
+  render: (args) => (
+    <TuiStoryPreview>
+      <ExecErrorOutput {...args} />
+    </TuiStoryPreview>
+  ),
   args: {
     type: 'not_in_megarepo',
   },
@@ -57,13 +62,6 @@ const meta: Meta<ExecErrorOutputProps> = {
       table: { category: 'Error' },
     },
   },
-  decorators: [
-    (Story) => (
-      <TerminalPreview height={300}>
-        <Story />
-      </TerminalPreview>
-    ),
-  ],
   parameters: {
     layout: 'padded',
     docs: {
@@ -96,29 +94,29 @@ export const MemberNotFound: Story = {
 
 export const VerboseParallel: Story = {
   render: () => (
-    <TerminalPreview height={200}>
+    <TuiStoryPreview>
       <ExecVerboseHeader
         command="npm version"
         mode="parallel"
         members={['effect', 'effect-utils', 'livestore']}
       />
-    </TerminalPreview>
+    </TuiStoryPreview>
   ),
 }
 
 export const VerboseSequential: Story = {
   render: () => (
-    <TerminalPreview height={200}>
+    <TuiStoryPreview>
       <ExecVerboseHeader command="git status" mode="sequential" members={['effect', 'effect-utils']} />
-    </TerminalPreview>
+    </TuiStoryPreview>
   ),
 }
 
 export const VerboseSingleMember: Story = {
   render: () => (
-    <TerminalPreview height={200}>
+    <TuiStoryPreview>
       <ExecVerboseHeader command="pnpm install" mode="parallel" members={['effect']} />
-    </TerminalPreview>
+    </TuiStoryPreview>
   ),
 }
 
@@ -128,23 +126,23 @@ export const VerboseSingleMember: Story = {
 
 export const MixedResults: Story = {
   render: () => (
-    <TerminalPreview height={300}>
+    <TuiStoryPreview>
       <ExecResultsOutput results={exampleExecResults} />
-    </TerminalPreview>
+    </TuiStoryPreview>
   ),
 }
 
 export const WithMultilineOutput: Story = {
   render: () => (
-    <TerminalPreview height={300}>
+    <TuiStoryPreview>
       <ExecResultsOutput results={exampleExecResultsWithOutput} />
-    </TerminalPreview>
+    </TuiStoryPreview>
   ),
 }
 
 export const AllSuccess: Story = {
   render: () => (
-    <TerminalPreview height={300}>
+    <TuiStoryPreview>
       <ExecResultsOutput
         results={[
           { name: 'effect', exitCode: 0, stdout: 'ok', stderr: '' },
@@ -152,13 +150,13 @@ export const AllSuccess: Story = {
           { name: 'livestore', exitCode: 0, stdout: 'ok', stderr: '' },
         ]}
       />
-    </TerminalPreview>
+    </TuiStoryPreview>
   ),
 }
 
 export const AllErrors: Story = {
   render: () => (
-    <TerminalPreview height={300}>
+    <TuiStoryPreview>
       <ExecResultsOutput
         results={[
           { name: 'effect', exitCode: 1, stdout: '', stderr: 'Command not found: foo' },
@@ -166,7 +164,7 @@ export const AllErrors: Story = {
           { name: 'livestore', exitCode: 127, stdout: '', stderr: 'sh: command not found' },
         ]}
       />
-    </TerminalPreview>
+    </TuiStoryPreview>
   ),
 }
 
@@ -190,7 +188,7 @@ const VerboseMemberStatus = ({ members }: { members: MemberStatusItem[] }) => (
 
 export const AllSynced: Story = {
   render: () => (
-    <TerminalPreview height={200}>
+    <TuiStoryPreview>
       <VerboseMemberStatus
         members={[
           {
@@ -205,13 +203,13 @@ export const AllSynced: Story = {
           },
         ]}
       />
-    </TerminalPreview>
+    </TuiStoryPreview>
   ),
 }
 
 export const SomeSkipped: Story = {
   render: () => (
-    <TerminalPreview height={200}>
+    <TuiStoryPreview>
       <VerboseMemberStatus
         members={[
           {
@@ -227,6 +225,6 @@ export const SomeSkipped: Story = {
           },
         ]}
       />
-    </TerminalPreview>
+    </TuiStoryPreview>
   ),
 }

@@ -5,13 +5,9 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
-import { TerminalPreview } from '@overeng/tui-react/storybook'
+import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
-import {
-  PinOutput,
-  PinErrorOutput,
-  type PinOutputProps,
-} from './PinOutput.tsx'
+import { PinOutput, PinErrorOutput, type PinOutputProps } from './PinOutput.tsx'
 
 // =============================================================================
 // Example Data
@@ -53,6 +49,11 @@ const exampleUnpinSuccess: PinOutputProps = {
 const meta: Meta<PinOutputProps> = {
   title: 'CLI/Pin Output',
   component: PinOutput,
+  render: (args) => (
+    <TuiStoryPreview>
+      <PinOutput {...args} />
+    </TuiStoryPreview>
+  ),
   args: {
     action: 'pin',
     member: 'effect',
@@ -68,13 +69,6 @@ const meta: Meta<PinOutputProps> = {
       options: ['success', 'already_pinned', 'already_unpinned', 'dry_run'],
     },
   },
-  decorators: [
-    (Story) => (
-      <TerminalPreview height={200}>
-        <Story />
-      </TerminalPreview>
-    ),
-  ],
   parameters: {
     layout: 'padded',
     docs: {
@@ -145,32 +139,32 @@ export const DryRunSimple: Story = {
 
 export const ErrorNotInMegarepo: Story = {
   render: () => (
-    <TerminalPreview height={150}>
+    <TuiStoryPreview>
       <PinErrorOutput error="not_in_megarepo" />
-    </TerminalPreview>
+    </TuiStoryPreview>
   ),
 }
 
 export const ErrorMemberNotFound: Story = {
   render: () => (
-    <TerminalPreview height={150}>
+    <TuiStoryPreview>
       <PinErrorOutput error="member_not_found" member="unknown-repo" />
-    </TerminalPreview>
+    </TuiStoryPreview>
   ),
 }
 
 export const ErrorNotSynced: Story = {
   render: () => (
-    <TerminalPreview height={150}>
+    <TuiStoryPreview>
       <PinErrorOutput error="not_synced" member="effect" />
-    </TerminalPreview>
+    </TuiStoryPreview>
   ),
 }
 
 export const ErrorLocalPath: Story = {
   render: () => (
-    <TerminalPreview height={150}>
+    <TuiStoryPreview>
       <PinErrorOutput error="local_path" />
-    </TerminalPreview>
+    </TuiStoryPreview>
   ),
 }

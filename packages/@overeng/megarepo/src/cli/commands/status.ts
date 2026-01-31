@@ -27,6 +27,7 @@ import * as Git from '../../lib/git.ts'
 import { checkLockStaleness, LOCK_FILE_NAME, readLockFile } from '../../lib/lock.ts'
 import { extractRefFromSymlinkPath } from '../../lib/ref.ts'
 import { Cwd, findMegarepoRoot, jsonOption, streamOption } from '../context.ts'
+import { NotInMegarepoError } from '../errors.ts'
 import {
   StatusOutput,
   type GitStatus,
@@ -227,7 +228,7 @@ export const statusCommand = Cli.Command.make(
           }),
         )
         yield* Console.error(output)
-        return yield* Effect.fail(new Error('Not in a megarepo'))
+        return yield* new NotInMegarepoError({ message: 'Not in a megarepo' })
       }
 
       const name = yield* Git.deriveMegarepoName(root.value)
