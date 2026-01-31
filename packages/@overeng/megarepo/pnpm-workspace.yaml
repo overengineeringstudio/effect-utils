@@ -8,3 +8,5 @@ packages:
   - ../effect-path
   - ../tui-react
   - ../tui-core
+
+dedupePeerDependents: true

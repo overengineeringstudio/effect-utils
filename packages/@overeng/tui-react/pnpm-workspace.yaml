@@ -5,3 +5,5 @@ packages:
   - .
   - ../tui-core
   - ../utils
+
+dedupePeerDependents: true

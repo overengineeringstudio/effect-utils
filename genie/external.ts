@@ -32,10 +32,19 @@ export type { PatchesRegistry, ScriptValue, TSConfigCompilerOptions }
  * By default, includes the current directory and all sibling packages (`../*`).
  * Pass custom patterns to include cross-repo packages.
  *
+ * Automatically sets `dedupePeerDependents: true` to prevent React duplication
+ * issues when packages with peer dependencies are used across package boundaries.
+ *
  * @example
  * ```typescript
+ * // Standalone package (no siblings)
+ * export default pnpmWorkspace('.')
+ *
  * // Basic usage - includes siblings
  * export default pnpmWorkspace()
+ *
+ * // With specific workspace deps
+ * export default pnpmWorkspace('../utils', '../tui-react')
  *
  * // With cross-repo packages
  * export default pnpmWorkspace(
@@ -47,11 +56,24 @@ export type { PatchesRegistry, ScriptValue, TSConfigCompilerOptions }
  * See: context/workarounds/pnpm-issues.md for full details
  */
 export const pnpmWorkspace = (...patterns: string[]) => {
-  const allPatterns = patterns.length > 0 ? patterns : ['../*']
-  const content = ['packages:', '  - .', ...allPatterns.map((p) => `  - ${p}`)].join('\n') + '\n'
+  // '.' means standalone (no siblings), otherwise default to '../*'
+  const isStandalone = patterns.length === 1 && patterns[0] === '.'
+  const additionalPatterns = isStandalone ? [] : patterns.length > 0 ? patterns : ['../*']
+
+  // Build YAML content with dedupePeerDependents enabled by default
+  // This prevents "Invalid hook call" errors when React is used across package boundaries
+  // See: https://pnpm.io/next/settings#dedupepeerdependents
+  const lines = [
+    'packages:',
+    '  - .',
+    ...additionalPatterns.map((p) => `  - ${p}`),
+    '',
+    'dedupePeerDependents: true',
+  ]
+
   return {
-    data: { packages: ['.', ...allPatterns] },
-    stringify: () => content,
+    data: { packages: ['.', ...additionalPatterns], dedupePeerDependents: true },
+    stringify: () => lines.join('\n') + '\n',
   }
 }
 

@@ -34,7 +34,7 @@ export default packageJson({
     },
   },
   dependencies: {
-    ...catalog.pick('yoga-layout', 'string-width', '@overeng/tui-core'),
+    ...catalog.pick('yoga-layout', 'string-width', 'cli-truncate', '@overeng/tui-core'),
   },
   devDependencies: {
     ...catalog.pick(

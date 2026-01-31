@@ -6,3 +6,5 @@ packages:
   - ../utils
   - ../tui-react
   - ../tui-core
+
+dedupePeerDependents: true
