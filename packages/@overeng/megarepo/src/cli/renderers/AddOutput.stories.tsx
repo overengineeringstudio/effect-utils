@@ -7,7 +7,8 @@ import React from 'react'
 
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
-import { AddApp, AddState } from './AddOutput/mod.ts'
+import type { AddState } from './AddOutput/mod.ts';
+import { AddApp } from './AddOutput/mod.ts'
 import { AddView } from './AddOutput/view.tsx'
 
 // =============================================================================
@@ -95,22 +96,12 @@ type Story = StoryObj<typeof AddView>
 // =============================================================================
 
 export const AddSimple: Story = {
-  render: () => (
-    <TuiStoryPreview
-      View={AddView}
-      app={AddApp}
-      initialState={createSuccessState()}
-    />
-  ),
+  render: () => <TuiStoryPreview View={AddView} app={AddApp} initialState={createSuccessState()} />,
 }
 
 export const AddWithSync: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={AddView}
-      app={AddApp}
-      initialState={createSuccessSyncedState()}
-    />
+    <TuiStoryPreview View={AddView} app={AddApp} initialState={createSuccessSyncedState()} />
   ),
 }
 
@@ -126,11 +117,7 @@ export const AddWithSyncExisting: Story = {
 
 export const AddWithSyncError: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={AddView}
-      app={AddApp}
-      initialState={createSuccessSyncErrorState()}
-    />
+    <TuiStoryPreview View={AddView} app={AddApp} initialState={createSuccessSyncErrorState()} />
   ),
 }
 
@@ -140,30 +127,18 @@ export const AddWithSyncError: Story = {
 
 export const ErrorNotInMegarepo: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={AddView}
-      app={AddApp}
-      initialState={createErrorNotInMegarepoState()}
-    />
+    <TuiStoryPreview View={AddView} app={AddApp} initialState={createErrorNotInMegarepoState()} />
   ),
 }
 
 export const ErrorInvalidRepo: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={AddView}
-      app={AddApp}
-      initialState={createErrorInvalidRepoState()}
-    />
+    <TuiStoryPreview View={AddView} app={AddApp} initialState={createErrorInvalidRepoState()} />
   ),
 }
 
 export const ErrorAlreadyExists: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={AddView}
-      app={AddApp}
-      initialState={createErrorAlreadyExistsState()}
-    />
+    <TuiStoryPreview View={AddView} app={AddApp} initialState={createErrorAlreadyExistsState()} />
   ),
 }

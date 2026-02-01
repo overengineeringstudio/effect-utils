@@ -7,7 +7,8 @@ import React from 'react'
 
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
-import { PinApp, PinState } from './PinOutput/mod.ts'
+import type { PinState } from './PinOutput/mod.ts';
+import { PinApp } from './PinOutput/mod.ts'
 import { PinView } from './PinOutput/view.tsx'
 
 // =============================================================================
@@ -137,72 +138,38 @@ type Story = StoryObj<typeof PinView>
 
 export const PinWithRef: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={PinView}
-      app={PinApp}
-      initialState={createPinSuccessWithRef()}
-    />
+    <TuiStoryPreview View={PinView} app={PinApp} initialState={createPinSuccessWithRef()} />
   ),
 }
 
 export const PinCurrentCommit: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={PinView}
-      app={PinApp}
-      initialState={createPinSuccessWithCommit()}
-    />
+    <TuiStoryPreview View={PinView} app={PinApp} initialState={createPinSuccessWithCommit()} />
   ),
 }
 
 export const Unpin: Story = {
-  render: () => (
-    <TuiStoryPreview
-      View={PinView}
-      app={PinApp}
-      initialState={createUnpinSuccess()}
-    />
-  ),
+  render: () => <TuiStoryPreview View={PinView} app={PinApp} initialState={createUnpinSuccess()} />,
 }
 
 export const AlreadyPinned: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={PinView}
-      app={PinApp}
-      initialState={createAlreadyPinned()}
-    />
+    <TuiStoryPreview View={PinView} app={PinApp} initialState={createAlreadyPinned()} />
   ),
 }
 
 export const AlreadyUnpinned: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={PinView}
-      app={PinApp}
-      initialState={createAlreadyUnpinned()}
-    />
+    <TuiStoryPreview View={PinView} app={PinApp} initialState={createAlreadyUnpinned()} />
   ),
 }
 
 export const DryRunFull: Story = {
-  render: () => (
-    <TuiStoryPreview
-      View={PinView}
-      app={PinApp}
-      initialState={createDryRunFull()}
-    />
-  ),
+  render: () => <TuiStoryPreview View={PinView} app={PinApp} initialState={createDryRunFull()} />,
 }
 
 export const DryRunSimple: Story = {
-  render: () => (
-    <TuiStoryPreview
-      View={PinView}
-      app={PinApp}
-      initialState={createDryRunSimple()}
-    />
-  ),
+  render: () => <TuiStoryPreview View={PinView} app={PinApp} initialState={createDryRunSimple()} />,
 }
 
 // =============================================================================
@@ -211,51 +178,31 @@ export const DryRunSimple: Story = {
 
 export const ErrorNotInMegarepo: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={PinView}
-      app={PinApp}
-      initialState={createErrorNotInMegarepo()}
-    />
+    <TuiStoryPreview View={PinView} app={PinApp} initialState={createErrorNotInMegarepo()} />
   ),
 }
 
 export const ErrorMemberNotFound: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={PinView}
-      app={PinApp}
-      initialState={createErrorMemberNotFound()}
-    />
+    <TuiStoryPreview View={PinView} app={PinApp} initialState={createErrorMemberNotFound()} />
   ),
 }
 
 export const ErrorNotSynced: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={PinView}
-      app={PinApp}
-      initialState={createErrorNotSynced()}
-    />
+    <TuiStoryPreview View={PinView} app={PinApp} initialState={createErrorNotSynced()} />
   ),
 }
 
 export const ErrorLocalPath: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={PinView}
-      app={PinApp}
-      initialState={createErrorLocalPath()}
-    />
+    <TuiStoryPreview View={PinView} app={PinApp} initialState={createErrorLocalPath()} />
   ),
 }
 
 export const ErrorNotInLock: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={PinView}
-      app={PinApp}
-      initialState={createErrorNotInLock()}
-    />
+    <TuiStoryPreview View={PinView} app={PinApp} initialState={createErrorNotInLock()} />
   ),
 }
 

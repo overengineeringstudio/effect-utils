@@ -112,9 +112,23 @@ export const startSyncUI = (options: {
   frozen?: boolean
   pull?: boolean
   deep?: boolean
+  force?: boolean
+  verbose?: boolean
+  skippedMembers?: readonly string[]
 }): Effect.Effect<SyncUIHandle, never, Scope.Scope> =>
   Effect.gen(function* () {
-    const { workspaceName, workspaceRoot, memberNames, dryRun, frozen, pull, deep } = options
+    const {
+      workspaceName,
+      workspaceRoot,
+      memberNames,
+      dryRun,
+      frozen,
+      pull,
+      deep,
+      force,
+      verbose,
+      skippedMembers,
+    } = options
 
     // If not TTY, return a no-op handle
     if (!isTTY()) {
@@ -139,6 +153,10 @@ export const startSyncUI = (options: {
           frozen: frozen ?? false,
           pull: pull ?? false,
           deep: deep ?? false,
+          force: force || undefined,
+          verbose: verbose || undefined,
+          skippedMembers:
+            skippedMembers && skippedMembers.length > 0 ? [...skippedMembers] : undefined,
         },
         phase: 'syncing',
         members: [...memberNames],

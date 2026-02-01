@@ -7,7 +7,15 @@
 
 import React, { useMemo } from 'react'
 
-import { type Atom, Box, Text, Spinner, useViewport, useTuiAtomValue, unicodeSymbols } from '@overeng/tui-react'
+import {
+  type Atom,
+  Box,
+  Text,
+  Spinner,
+  useViewport,
+  useTuiAtomValue,
+  unicodeSymbols,
+} from '@overeng/tui-react'
 
 import type { GenieState, GenieFile, GenieFileStatus } from './schema.ts'
 

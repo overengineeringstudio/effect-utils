@@ -1,6 +1,7 @@
-import { unicodeSymbols } from '@overeng/tui-core'
 import { Option } from 'effect'
 import { useEffect, useState } from 'react'
+
+import { unicodeSymbols } from '@overeng/tui-core'
 
 import type { TaskState } from '../../types.ts'
 

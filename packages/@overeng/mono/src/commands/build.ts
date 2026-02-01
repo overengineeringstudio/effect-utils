@@ -1,6 +1,7 @@
 import { Command } from '@effect/cli'
-import { unicodeSymbols } from '@overeng/tui-core'
 import { Console, Effect } from 'effect'
+
+import { unicodeSymbols } from '@overeng/tui-core'
 
 import type { TypeCheckConfig } from '../tasks/mod.ts'
 import { build } from '../tasks/mod.ts'

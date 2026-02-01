@@ -25,10 +25,10 @@
 import { Schema } from 'effect'
 import type { ReactNode } from 'react'
 
+import { useSymbols } from '../hooks/useSymbols.tsx'
 import { Box } from './Box.tsx'
 import { Spinner } from './Spinner.tsx'
 import { Text } from './Text.tsx'
-import { useSymbols } from '../hooks/useSymbols.tsx'
 
 // =============================================================================
 // Schema & Types (Single Source of Truth)

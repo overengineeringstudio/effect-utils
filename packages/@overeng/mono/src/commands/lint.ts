@@ -1,6 +1,7 @@
 import { Command, Options } from '@effect/cli'
-import { unicodeSymbols } from '@overeng/tui-core'
 import { Console, Effect } from 'effect'
+
+import { unicodeSymbols } from '@overeng/tui-core'
 
 import type { GenieCoverageConfig, OxcConfig } from '../tasks/mod.ts'
 import { allLintChecks, allLintFixes } from '../tasks/mod.ts'

@@ -11,7 +11,7 @@ import { TuiStoryPreview, type OutputTab } from '@overeng/tui-react/storybook'
 
 import type { MemberSyncResult } from '../../lib/sync/schema.ts'
 import { SyncApp, type SyncState as SyncStateType } from './SyncOutput/mod.ts'
-import { SyncAction } from './SyncOutput/schema.ts'
+import type { SyncAction } from './SyncOutput/schema.ts'
 import { SyncView } from './SyncOutput/view.tsx'
 
 // =============================================================================
@@ -251,7 +251,12 @@ export const LockUpdates: Story = {
       initialState={createBaseState({
         results: [
           { name: 'effect', status: 'locked', commit: 'abc1234def', previousCommit: '9876543fed' },
-          { name: 'effect-utils', status: 'locked', commit: 'def5678abc', previousCommit: 'fedcba987' },
+          {
+            name: 'effect-utils',
+            status: 'locked',
+            commit: 'def5678abc',
+            previousCommit: 'fedcba987',
+          },
           { name: 'livestore', status: 'already_synced' },
         ],
         members: ['effect', 'effect-utils', 'livestore'],

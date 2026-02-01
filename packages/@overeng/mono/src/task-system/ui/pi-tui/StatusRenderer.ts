@@ -4,8 +4,9 @@
  * Handles status icons, colors, spinners, and timing information.
  */
 
-import { unicodeSymbols } from '@overeng/tui-core'
 import { Option } from 'effect'
+
+import { unicodeSymbols } from '@overeng/tui-core'
 
 import type { TaskState, TaskStatus } from '../../types.ts'
 

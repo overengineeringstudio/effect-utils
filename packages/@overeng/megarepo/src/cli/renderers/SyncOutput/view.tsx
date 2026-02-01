@@ -64,6 +64,8 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
   if (options.dryRun) modes.push('dry run')
   if (options.frozen) modes.push('frozen')
   if (options.pull) modes.push('pull')
+  if (options.force) modes.push('force')
+  if (options.deep) modes.push('deep')
 
   // Create a map of results by name for quick lookup
   const resultsByName = useMemo(() => {
@@ -168,6 +170,14 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
     <Box>
       {/* Header */}
       <Header name={workspace.name} root={workspace.root} modes={modes} />
+
+      {/* Skipped members info */}
+      {options.skippedMembers && options.skippedMembers.length > 0 && (
+        <Text dim>
+          {'  '}skipping {options.skippedMembers.length} member
+          {options.skippedMembers.length > 1 ? 's' : ''}: {options.skippedMembers.join(', ')}
+        </Text>
+      )}
 
       {/* Empty line after header */}
       <Text> </Text>

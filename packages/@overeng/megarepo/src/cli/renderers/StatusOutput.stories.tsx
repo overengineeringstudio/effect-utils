@@ -7,7 +7,8 @@ import React from 'react'
 
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
-import { StatusApp, StatusState, type MemberStatus } from './StatusOutput/mod.ts'
+import type { StatusState} from './StatusOutput/mod.ts';
+import { StatusApp, type MemberStatus } from './StatusOutput/mod.ts'
 import { StatusView } from './StatusOutput/view.tsx'
 
 // =============================================================================
@@ -857,31 +858,19 @@ type Story = StoryObj<typeof StatusView>
 
 export const Default: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={StatusView}
-      app={StatusApp}
-      initialState={createDefaultState()}
-    />
+    <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createDefaultState()} />
   ),
 }
 
 export const AllClean: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={StatusView}
-      app={StatusApp}
-      initialState={createCleanState()}
-    />
+    <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createCleanState()} />
   ),
 }
 
 export const WithWarnings: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={StatusView}
-      app={StatusApp}
-      initialState={createWarningsState()}
-    />
+    <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createWarningsState()} />
   ),
 }
 
@@ -907,41 +896,25 @@ export const CurrentLocation: Story = {
 
 export const LockStale: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={StatusView}
-      app={StatusApp}
-      initialState={createLockStaleState()}
-    />
+    <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createLockStaleState()} />
   ),
 }
 
 export const LockMissing: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={StatusView}
-      app={StatusApp}
-      initialState={createLockMissingState()}
-    />
+    <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createLockMissingState()} />
   ),
 }
 
 export const PinnedMembers: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={StatusView}
-      app={StatusApp}
-      initialState={createPinnedMembersState()}
-    />
+    <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createPinnedMembersState()} />
   ),
 }
 
 export const ManyMembers: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={StatusView}
-      app={StatusApp}
-      initialState={createManyMembersState()}
-    />
+    <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createManyMembersState()} />
   ),
 }
 
@@ -951,21 +924,13 @@ export const ManyMembers: Story = {
 
 export const AllNotSynced: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={StatusView}
-      app={StatusApp}
-      initialState={createAllNotSyncedState()}
-    />
+    <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createAllNotSyncedState()} />
   ),
 }
 
 export const AllDirty: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={StatusView}
-      app={StatusApp}
-      initialState={createAllDirtyState()}
-    />
+    <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createAllDirtyState()} />
   ),
 }
 
@@ -981,31 +946,19 @@ export const LocalPathMembers: Story = {
 
 export const SingleMember: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={StatusView}
-      app={StatusApp}
-      initialState={createSingleMemberState()}
-    />
+    <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createSingleMemberState()} />
   ),
 }
 
 export const EmptyWorkspace: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={StatusView}
-      app={StatusApp}
-      initialState={createEmptyWorkspaceState()}
-    />
+    <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createEmptyWorkspaceState()} />
   ),
 }
 
 export const DeeplyNested: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={StatusView}
-      app={StatusApp}
-      initialState={createDeeplyNestedState()}
-    />
+    <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createDeeplyNestedState()} />
   ),
 }
 
@@ -1021,11 +974,7 @@ export const MultipleProblems: Story = {
 
 export const SymlinkDrift: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={StatusView}
-      app={StatusApp}
-      initialState={createSymlinkDriftState()}
-    />
+    <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createSymlinkDriftState()} />
   ),
 }
 

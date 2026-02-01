@@ -8,7 +8,7 @@ import * as Cli from '@effect/cli'
 import { Prompt } from '@effect/cli'
 import type { CommandExecutor, Terminal } from '@effect/platform'
 import { FileSystem, type Error as PlatformError } from '@effect/platform'
-import { Console, Effect, Option, type ParseResult, Schema } from 'effect'
+import { Effect, Option, type ParseResult, Schema } from 'effect'
 import React from 'react'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -49,13 +49,7 @@ import {
   type MegarepoSyncResult,
   type MemberSyncResult,
 } from '../../lib/sync/mod.ts'
-import {
-  Cwd,
-  findMegarepoRoot,
-  outputOption,
-  outputModeLayer,
-  verboseOption,
-} from '../context.ts'
+import { Cwd, findMegarepoRoot, outputOption, outputModeLayer, verboseOption } from '../context.ts'
 import {
   NotInMegarepoError,
   LockFileRequiredError,
@@ -153,15 +147,6 @@ export const syncMegarepo = ({
     // Mark as visited
     visited.add(resolvedRoot)
 
-    // Verbose: show sync configuration
-    if (verbose && !json && depth === 0) {
-      const modeLabel = frozen ? 'frozen' : pull ? 'pull' : 'default'
-      yield* Console.log(`Sync mode: ${modeLabel}`)
-      if (dryRun) yield* Console.log('Dry run: true')
-      if (force) yield* Console.log('Force: true')
-      if (deep) yield* Console.log('Deep: true')
-    }
-
     // Load config
     const configPath = EffectPath.ops.join(
       megarepoRoot,
@@ -245,13 +230,6 @@ export const syncMegarepo = ({
     // Filter members based on --only and --skip options (uses pre-computed skippedMemberNames)
     const allMembers = Object.entries(config.members)
     const members = allMembers.filter(([name]) => !skippedMemberNames.has(name))
-
-    // Verbose: show filtered members
-    if (verbose && !json && skippedMemberNames.size > 0) {
-      yield* Console.log(
-        `Skipping ${skippedMemberNames.size} member(s): ${[...skippedMemberNames].join(', ')}`,
-      )
-    }
 
     // Create a semaphore map for serializing bare repo creation per repo URL.
     // This prevents race conditions when multiple members reference the same repo
@@ -616,6 +594,24 @@ export const syncCommand = Cli.Command.make(
       const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
       const memberNames = Object.keys(config.members)
 
+      // Compute skipped members for display
+      const skippedMembers = memberNames.filter((name) => {
+        if (onlyMembers !== undefined && onlyMembers.length > 0) return !onlyMembers.includes(name)
+        if (skipMembers !== undefined && skipMembers.length > 0) return skipMembers.includes(name)
+        return false
+      })
+
+      // Build options object for state
+      const syncDisplayOptions = {
+        dryRun,
+        frozen,
+        pull,
+        deep,
+        force: force || undefined,
+        verbose: verbose || undefined,
+        skippedMembers: skippedMembers.length > 0 ? skippedMembers : undefined,
+      }
+
       // Determine if we should use live progress (TTY and not JSON mode)
       const useLiveProgress = !json && isTTY()
 
@@ -629,6 +625,9 @@ export const syncCommand = Cli.Command.make(
           frozen,
           pull,
           deep,
+          force,
+          verbose,
+          skippedMembers,
         })
 
         // Create interactive prompt callback if in TTY mode and not using --create-branches
@@ -712,7 +711,7 @@ export const syncCommand = Cli.Command.make(
               _tag: 'SetState',
               state: {
                 workspace: { name, root: root.value },
-                options: { dryRun, frozen, pull, deep },
+                options: syncDisplayOptions,
                 phase: 'complete',
                 members: memberNames,
                 results: syncResult.results,
@@ -739,11 +738,7 @@ export const syncCommand = Cli.Command.make(
 
         return syncResult
       }
-    }).pipe(
-      Effect.scoped,
-      Effect.provide(StoreLayer),
-      Effect.withSpan('megarepo/sync'),
-    ),
+    }).pipe(Effect.scoped, Effect.provide(StoreLayer), Effect.withSpan('megarepo/sync')),
 ).pipe(
   Cli.Command.withDescription(
     'Ensure members exist and update lock file to current worktree commits. Use --pull to fetch from remote.',

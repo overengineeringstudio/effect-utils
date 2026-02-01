@@ -45,6 +45,10 @@ export const SyncOptions = Schema.Struct({
   frozen: Schema.Boolean,
   pull: Schema.Boolean,
   deep: Schema.Boolean,
+  force: Schema.optional(Schema.Boolean),
+  verbose: Schema.optional(Schema.Boolean),
+  /** Members skipped via --only or --skip */
+  skippedMembers: Schema.optional(Schema.Array(Schema.String)),
 })
 export type SyncOptions = Schema.Schema.Type<typeof SyncOptions>
 

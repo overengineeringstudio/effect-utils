@@ -240,7 +240,6 @@ export const pinCommand = Cli.Command.make(
               const repoBasePath = store.getRepoBasePath(source)
               yield* fs.makeDirectory(repoBasePath, { recursive: true })
               yield* Git.cloneBare({ url: cloneUrl, targetPath: bareRepoPath })
-
             } else {
               // Fetch to ensure we have the latest refs
               yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(

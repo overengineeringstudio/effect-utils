@@ -7,8 +7,8 @@ import React from 'react'
 
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
-import { ExecView } from './ExecOutput/view.tsx'
 import { ExecApp, type ExecStateType } from './ExecOutput/mod.ts'
+import { ExecView } from './ExecOutput/view.tsx'
 
 // =============================================================================
 // Example States
@@ -139,22 +139,12 @@ type Story = StoryObj<typeof ExecView>
 // =============================================================================
 
 export const NotInMegarepo: Story = {
-  render: () => (
-    <TuiStoryPreview
-      View={ExecView}
-      app={ExecApp}
-      initialState={errorState}
-    />
-  ),
+  render: () => <TuiStoryPreview View={ExecView} app={ExecApp} initialState={errorState} />,
 }
 
 export const MemberNotFound: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={ExecView}
-      app={ExecApp}
-      initialState={memberNotFoundState}
-    />
+    <TuiStoryPreview View={ExecView} app={ExecApp} initialState={memberNotFoundState} />
   ),
 }
 
@@ -164,21 +154,13 @@ export const MemberNotFound: Story = {
 
 export const RunningVerboseParallel: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={ExecView}
-      app={ExecApp}
-      initialState={runningVerboseState}
-    />
+    <TuiStoryPreview View={ExecView} app={ExecApp} initialState={runningVerboseState} />
   ),
 }
 
 export const RunningVerboseSequential: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={ExecView}
-      app={ExecApp}
-      initialState={runningSequentialState}
-    />
+    <TuiStoryPreview View={ExecView} app={ExecApp} initialState={runningSequentialState} />
   ),
 }
 
@@ -188,50 +170,28 @@ export const RunningVerboseSequential: Story = {
 
 export const CompleteSuccess: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={ExecView}
-      app={ExecApp}
-      initialState={completeSuccessState}
-    />
+    <TuiStoryPreview View={ExecView} app={ExecApp} initialState={completeSuccessState} />
   ),
 }
 
 export const CompleteMixed: Story = {
-  render: () => (
-    <TuiStoryPreview
-      View={ExecView}
-      app={ExecApp}
-      initialState={completeMixedState}
-    />
-  ),
+  render: () => <TuiStoryPreview View={ExecView} app={ExecApp} initialState={completeMixedState} />,
 }
 
 export const CompleteWithSkipped: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={ExecView}
-      app={ExecApp}
-      initialState={completeWithSkippedState}
-    />
+    <TuiStoryPreview View={ExecView} app={ExecApp} initialState={completeWithSkippedState} />
   ),
 }
 
 export const CompleteAllErrors: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={ExecView}
-      app={ExecApp}
-      initialState={completeAllErrorsState}
-    />
+    <TuiStoryPreview View={ExecView} app={ExecApp} initialState={completeAllErrorsState} />
   ),
 }
 
 export const CompleteVerbose: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={ExecView}
-      app={ExecApp}
-      initialState={completeVerboseState}
-    />
+    <TuiStoryPreview View={ExecView} app={ExecApp} initialState={completeVerboseState} />
   ),
 }

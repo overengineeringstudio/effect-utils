@@ -1,6 +1,7 @@
 import { Command } from '@effect/cli'
-import { unicodeSymbols } from '@overeng/tui-core'
 import { Console, Effect } from 'effect'
+
+import { unicodeSymbols } from '@overeng/tui-core'
 
 import { ciGroup, ciGroupEnd, runCommand } from '../utils.ts'
 

@@ -218,10 +218,7 @@ export const statusCommand = Cli.Command.make('status', { output: outputOption }
     })
 
     // Get last sync time and lock staleness from lock file
-    const lockPath = EffectPath.ops.join(
-      root.value,
-      EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
-    )
+    const lockPath = EffectPath.ops.join(root.value, EffectPath.unsafe.relativeFile(LOCK_FILE_NAME))
     const lockFileOpt = yield* readLockFile(lockPath)
     let lastSyncTime: Date | undefined = undefined
     let lockStaleness:

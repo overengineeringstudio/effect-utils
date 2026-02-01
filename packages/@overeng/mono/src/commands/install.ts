@@ -1,8 +1,8 @@
 import { Command, Options } from '@effect/cli'
 import { Path } from '@effect/platform'
-import { unicodeSymbols } from '@overeng/tui-core'
 import { Console, Effect } from 'effect'
 
+import { unicodeSymbols } from '@overeng/tui-core'
 import type { CmdError } from '@overeng/utils/node'
 
 import { InstallError } from '../errors.ts'
@@ -60,7 +60,9 @@ export const installCommand = (config: InstallConfig) =>
 
       // Show failures with full error output (task system already showed the summary)
       if (failures.length > 0) {
-        yield* Console.log(`\n${unicodeSymbols.status.cross} Failed to install ${failures.length}/${total} packages:\n`)
+        yield* Console.log(
+          `\n${unicodeSymbols.status.cross} Failed to install ${failures.length}/${total} packages:\n`,
+        )
 
         for (const result of failures) {
           const relativePath = pathService.relative(cwd, result.dir)
@@ -96,6 +98,8 @@ export const installCommand = (config: InstallConfig) =>
         })
       }
 
-      yield* Console.log(`\n${unicodeSymbols.status.check} Installed dependencies for ${successes.length} packages`)
+      yield* Console.log(
+        `\n${unicodeSymbols.status.check} Installed dependencies for ${successes.length} packages`,
+      )
     }),
   ).pipe(Command.withDescription('Install dependencies for all packages (bun install)'))

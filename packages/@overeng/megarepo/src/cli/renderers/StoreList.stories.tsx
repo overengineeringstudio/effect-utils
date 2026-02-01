@@ -63,11 +63,7 @@ export const WithRepos: Story = {
 
 export const Empty: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={StoreView}
-      app={StoreApp}
-      initialState={createLsState([])}
-    />
+    <TuiStoryPreview View={StoreView} app={StoreApp} initialState={createLsState([])} />
   ),
 }
 
