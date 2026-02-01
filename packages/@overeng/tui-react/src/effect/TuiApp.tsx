@@ -146,12 +146,6 @@ export interface TuiAppConfig<S, A> {
   readonly reducer: (args: { state: S; action: A }) => S
 
   /**
-   * Timeout for final render on interrupt (default: 500ms).
-   * Only used if actionSchema includes 'Interrupted' variant.
-   */
-  readonly interruptTimeout?: number
-
-  /**
    * Optional function to determine process exit code based on final state.
    * Called on unmount - if returns a number, sets process.exitCode.
    * If returns undefined, exit code is not modified.

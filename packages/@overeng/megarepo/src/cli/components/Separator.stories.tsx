@@ -40,34 +40,40 @@ type Story = StoryObj<typeof Separator>
 // =============================================================================
 
 export const Default: Story = {
-  render: () => (
-    <TuiStoryPreview app={StaticApp} View={() => <Separator />} initialState={null} />
-  ),
+  render: () => <TuiStoryPreview app={StaticApp} View={() => <Separator />} initialState={null} />,
 }
 
 export const CustomWidth: Story = {
   render: () => (
-    <TuiStoryPreview app={StaticApp} View={() => (
-      <Box flexDirection="column" gap={1}>
-        <Separator width={20} />
-        <Separator width={40} />
-        <Separator width={60} />
-      </Box>
-    )} initialState={null} />
+    <TuiStoryPreview
+      app={StaticApp}
+      View={() => (
+        <Box flexDirection="column" gap={1}>
+          <Separator width={20} />
+          <Separator width={40} />
+          <Separator width={60} />
+        </Box>
+      )}
+      initialState={null}
+    />
   ),
 }
 
 export const InContext: Story = {
   render: () => (
-    <TuiStoryPreview app={StaticApp} View={() => (
-      <Box flexDirection="column">
-        <Text>Results:</Text>
-        <Text> ✓ effect synced</Text>
-        <Text> ✓ livestore cloned</Text>
-        <Text> </Text>
-        <Separator />
-        <Text dim>2 synced · 1 cloned</Text>
-      </Box>
-    )} initialState={null} />
+    <TuiStoryPreview
+      app={StaticApp}
+      View={() => (
+        <Box flexDirection="column">
+          <Text>Results:</Text>
+          <Text> ✓ effect synced</Text>
+          <Text> ✓ livestore cloned</Text>
+          <Text> </Text>
+          <Separator />
+          <Text dim>2 synced · 1 cloned</Text>
+        </Box>
+      )}
+      initialState={null}
+    />
   ),
 }

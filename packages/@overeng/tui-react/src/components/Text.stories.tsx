@@ -28,9 +28,11 @@ type Story = StoryObj<typeof Text>
 
 export const Basic: Story = {
   render: (args) => (
-    <TuiStoryPreview app={StaticApp} View={() => (
-      <Text {...args}>{args.children ?? 'Hello, World!'}</Text>
-    )} initialState={null} />
+    <TuiStoryPreview
+      app={StaticApp}
+      View={() => <Text {...args}>{args.children ?? 'Hello, World!'}</Text>}
+      initialState={null}
+    />
   ),
   args: {
     children: 'Hello, World!',
@@ -39,9 +41,11 @@ export const Basic: Story = {
 
 export const WithColor: Story = {
   render: (args) => (
-    <TuiStoryPreview app={StaticApp} View={() => (
-      <Text {...args}>{args.children ?? 'Success message'}</Text>
-    )} initialState={null} />
+    <TuiStoryPreview
+      app={StaticApp}
+      View={() => <Text {...args}>{args.children ?? 'Success message'}</Text>}
+      initialState={null}
+    />
   ),
   args: {
     color: 'green',
@@ -51,9 +55,11 @@ export const WithColor: Story = {
 
 export const Bold: Story = {
   render: (args) => (
-    <TuiStoryPreview app={StaticApp} View={() => (
-      <Text {...args}>{args.children ?? 'Bold text'}</Text>
-    )} initialState={null} />
+    <TuiStoryPreview
+      app={StaticApp}
+      View={() => <Text {...args}>{args.children ?? 'Bold text'}</Text>}
+      initialState={null}
+    />
   ),
   args: {
     bold: true,
@@ -63,9 +69,11 @@ export const Bold: Story = {
 
 export const Dim: Story = {
   render: (args) => (
-    <TuiStoryPreview app={StaticApp} View={() => (
-      <Text {...args}>{args.children ?? 'Dimmed text'}</Text>
-    )} initialState={null} />
+    <TuiStoryPreview
+      app={StaticApp}
+      View={() => <Text {...args}>{args.children ?? 'Dimmed text'}</Text>}
+      initialState={null}
+    />
   ),
   args: {
     dim: true,
@@ -76,48 +84,60 @@ export const Dim: Story = {
 /** All available text colors */
 export const AllColors: Story = {
   render: () => (
-    <TuiStoryPreview app={StaticApp} View={() => (
-      <Box>
-        <Text color="red">Red text</Text>
-        <Text color="green">Green text</Text>
-        <Text color="yellow">Yellow text</Text>
-        <Text color="blue">Blue text</Text>
-        <Text color="magenta">Magenta text</Text>
-        <Text color="cyan">Cyan text</Text>
-        <Text color="white">White text</Text>
-        <Text color="gray">Gray text</Text>
-      </Box>
-    )} initialState={null} />
+    <TuiStoryPreview
+      app={StaticApp}
+      View={() => (
+        <Box>
+          <Text color="red">Red text</Text>
+          <Text color="green">Green text</Text>
+          <Text color="yellow">Yellow text</Text>
+          <Text color="blue">Blue text</Text>
+          <Text color="magenta">Magenta text</Text>
+          <Text color="cyan">Cyan text</Text>
+          <Text color="white">White text</Text>
+          <Text color="gray">Gray text</Text>
+        </Box>
+      )}
+      initialState={null}
+    />
   ),
 }
 
 /** All available text styles */
 export const AllStyles: Story = {
   render: () => (
-    <TuiStoryPreview app={StaticApp} View={() => (
-      <Box>
-        <Text bold>Bold text</Text>
-        <Text dim>Dim text</Text>
-        <Text italic>Italic text</Text>
-        <Text underline>Underlined text</Text>
-        <Text strikethrough>Strikethrough text</Text>
-        <Text bold color="cyan">
-          Bold + Cyan
-        </Text>
-      </Box>
-    )} initialState={null} />
+    <TuiStoryPreview
+      app={StaticApp}
+      View={() => (
+        <Box>
+          <Text bold>Bold text</Text>
+          <Text dim>Dim text</Text>
+          <Text italic>Italic text</Text>
+          <Text underline>Underlined text</Text>
+          <Text strikethrough>Strikethrough text</Text>
+          <Text bold color="cyan">
+            Bold + Cyan
+          </Text>
+        </Box>
+      )}
+      initialState={null}
+    />
   ),
 }
 
 export const Combined: Story = {
   render: () => (
-    <TuiStoryPreview app={StaticApp} View={() => (
-      <Box flexDirection="row">
-        <Text color="green" bold>
-          SUCCESS
-        </Text>
-        <Text dim> - Operation completed</Text>
-      </Box>
-    )} initialState={null} />
+    <TuiStoryPreview
+      app={StaticApp}
+      View={() => (
+        <Box flexDirection="row">
+          <Text color="green" bold>
+            SUCCESS
+          </Text>
+          <Text dim> - Operation completed</Text>
+        </Box>
+      )}
+      initialState={null}
+    />
   ),
 }

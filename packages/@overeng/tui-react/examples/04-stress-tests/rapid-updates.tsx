@@ -57,7 +57,6 @@ const runStressTest = (durationMs: number) =>
         progress: 0,
       } as typeof StressTestState.Type,
       reducer: createStressTestReducer(durationMs),
-      interruptTimeout: 200,
     })
 
     const tui = yield* StressTestApp.run(<StressTestView stateAtom={StressTestApp.stateAtom} />)

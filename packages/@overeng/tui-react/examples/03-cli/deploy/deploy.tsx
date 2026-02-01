@@ -31,7 +31,6 @@ export const DeployApp = createTuiApp({
   actionSchema: DeployAction,
   initial: { _tag: 'Idle' } as DeployState,
   reducer: deployReducer,
-  interruptTimeout: 200,
 })
 
 // =============================================================================

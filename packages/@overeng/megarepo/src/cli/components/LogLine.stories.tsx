@@ -44,35 +44,47 @@ type Story = StoryObj<typeof LogLine>
 
 export const AllTypes: Story = {
   render: () => (
-    <TuiStoryPreview app={StaticApp} View={() => (
-      <Box flexDirection="column">
-        <LogLine type="info" message="Cloning effect from github.com/Effect-TS/effect" />
-        <LogLine type="warn" message="dotfiles has uncommitted changes, skipping" />
-        <LogLine type="error" message="effect-utils: network timeout after 30s" />
-      </Box>
-    )} initialState={null} />
+    <TuiStoryPreview
+      app={StaticApp}
+      View={() => (
+        <Box flexDirection="column">
+          <LogLine type="info" message="Cloning effect from github.com/Effect-TS/effect" />
+          <LogLine type="warn" message="dotfiles has uncommitted changes, skipping" />
+          <LogLine type="error" message="effect-utils: network timeout after 30s" />
+        </Box>
+      )}
+      initialState={null}
+    />
   ),
 }
 
 export const InfoLogs: Story = {
   render: () => (
-    <TuiStoryPreview app={StaticApp} View={() => (
-      <Box flexDirection="column">
-        <LogLine type="info" message="Syncing livestore from github.com/livestore/livestore" />
-        <LogLine type="info" message="Generated flake.nix" />
-        <LogLine type="info" message="Generated .envrc" />
-      </Box>
-    )} initialState={null} />
+    <TuiStoryPreview
+      app={StaticApp}
+      View={() => (
+        <Box flexDirection="column">
+          <LogLine type="info" message="Syncing livestore from github.com/livestore/livestore" />
+          <LogLine type="info" message="Generated flake.nix" />
+          <LogLine type="info" message="Generated .envrc" />
+        </Box>
+      )}
+      initialState={null}
+    />
   ),
 }
 
 export const ErrorLogs: Story = {
   render: () => (
-    <TuiStoryPreview app={StaticApp} View={() => (
-      <Box flexDirection="column">
-        <LogLine type="error" message="effect-utils: network timeout after 30s" />
-        <LogLine type="error" message="schickling.dev: authentication failed" />
-      </Box>
-    )} initialState={null} />
+    <TuiStoryPreview
+      app={StaticApp}
+      View={() => (
+        <Box flexDirection="column">
+          <LogLine type="error" message="effect-utils: network timeout after 30s" />
+          <LogLine type="error" message="schickling.dev: authentication failed" />
+        </Box>
+      )}
+      initialState={null}
+    />
   ),
 }

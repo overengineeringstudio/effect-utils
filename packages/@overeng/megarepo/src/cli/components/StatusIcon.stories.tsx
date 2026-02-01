@@ -116,33 +116,45 @@ export const AllStatuses: Story = {}
 
 export const ActiveSpinner: Story = {
   render: () => (
-    <TuiStoryPreview app={StaticApp} View={() => (
-      <Box flexDirection="row" gap={1}>
-        <StatusIcon status="active" />
-        <Text>Syncing...</Text>
-      </Box>
-    )} initialState={null} />
+    <TuiStoryPreview
+      app={StaticApp}
+      View={() => (
+        <Box flexDirection="row" gap={1}>
+          <StatusIcon status="active" />
+          <Text>Syncing...</Text>
+        </Box>
+      )}
+      initialState={null}
+    />
   ),
 }
 
 export const SuccessCheck: Story = {
   render: () => (
-    <TuiStoryPreview app={StaticApp} View={() => (
-      <Box flexDirection="row" gap={1}>
-        <StatusIcon status="success" />
-        <Text>Completed</Text>
-      </Box>
-    )} initialState={null} />
+    <TuiStoryPreview
+      app={StaticApp}
+      View={() => (
+        <Box flexDirection="row" gap={1}>
+          <StatusIcon status="success" />
+          <Text>Completed</Text>
+        </Box>
+      )}
+      initialState={null}
+    />
   ),
 }
 
 export const ErrorCross: Story = {
   render: () => (
-    <TuiStoryPreview app={StaticApp} View={() => (
-      <Box flexDirection="row" gap={1}>
-        <StatusIcon status="error" />
-        <Text>Failed</Text>
-      </Box>
-    )} initialState={null} />
+    <TuiStoryPreview
+      app={StaticApp}
+      View={() => (
+        <Box flexDirection="row" gap={1}>
+          <StatusIcon status="error" />
+          <Text>Failed</Text>
+        </Box>
+      )}
+      initialState={null}
+    />
   ),
 }

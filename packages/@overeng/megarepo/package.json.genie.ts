@@ -39,12 +39,7 @@ export default packageJson({
     },
   },
   dependencies: {
-    ...catalog.pick(
-      '@overeng/utils',
-      '@overeng/effect-path',
-      '@overeng/tui-react',
-      'react',
-    ),
+    ...catalog.pick('@overeng/utils', '@overeng/effect-path', '@overeng/tui-react', 'react'),
   },
   devDependencies: {
     ...catalog.pick(

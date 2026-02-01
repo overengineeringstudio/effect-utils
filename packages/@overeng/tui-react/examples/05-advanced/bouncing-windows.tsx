@@ -82,7 +82,6 @@ const runBouncingWindows = ({
         termHeight: height,
       } as typeof AppState.Type,
       reducer: appReducer,
-      interruptTimeout: 200,
     })
 
     const tui = yield* BouncingApp.run(<BouncingWindowsView stateAtom={BouncingApp.stateAtom} />)

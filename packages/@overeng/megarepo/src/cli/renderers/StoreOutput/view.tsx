@@ -115,7 +115,8 @@ function StoreHeader({ basePath, title = 'store' }: { basePath: string; title?: 
   return (
     <Box flexDirection="column">
       <Text bold>{title}</Text>
-      <Text dim>  path</Text><Text>: {basePath}</Text>
+      <Text dim> path</Text>
+      <Text>: {basePath}</Text>
       <Text> </Text>
     </Box>
   )
@@ -405,7 +406,8 @@ function StoreGcView({
     <Box flexDirection="column">
       <Box flexDirection="column">
         <Text bold>store gc</Text>
-        <Text dim>  path</Text><Text>: {basePath}</Text>
+        <Text dim> path</Text>
+        <Text>: {basePath}</Text>
         {dryRun && <Text dim> mode: dry run</Text>}
         <Text> </Text>
       </Box>

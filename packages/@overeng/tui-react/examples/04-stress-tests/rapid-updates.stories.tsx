@@ -15,7 +15,13 @@ import { StressTestView } from './view.tsx'
 const StressTestApp = createTuiApp({
   stateSchema: StressTestState,
   actionSchema: StressTestAction,
-  initial: { _tag: 'Running', frame: 0, startTime: Date.now(), fps: 0, progress: 0 } as typeof StressTestState.Type,
+  initial: {
+    _tag: 'Running',
+    frame: 0,
+    startTime: Date.now(),
+    fps: 0,
+    progress: 0,
+  } as typeof StressTestState.Type,
   reducer: stressTestReducer,
 })
 

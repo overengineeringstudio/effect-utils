@@ -41,7 +41,6 @@ const runCounter = Effect.gen(function* () {
       history: [],
     } as typeof CounterState.Type,
     reducer: counterReducer,
-    interruptTimeout: 200,
   })
 
   const tui = yield* CounterApp.run(<CounterView stateAtom={CounterApp.stateAtom} />)

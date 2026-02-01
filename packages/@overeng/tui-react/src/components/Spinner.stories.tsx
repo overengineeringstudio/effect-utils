@@ -29,73 +29,89 @@ type Story = StoryObj<typeof Spinner>
 /** Basic spinner with loading text */
 export const Default: Story = {
   render: () => (
-    <TuiStoryPreview app={StaticApp} View={() => (
-      <Box flexDirection="row">
-        <Spinner />
-        <Text> Loading...</Text>
-      </Box>
-    )} initialState={null} />
+    <TuiStoryPreview
+      app={StaticApp}
+      View={() => (
+        <Box flexDirection="row">
+          <Spinner />
+          <Text> Loading...</Text>
+        </Box>
+      )}
+      initialState={null}
+    />
   ),
 }
 
 export const WithColor: Story = {
   render: () => (
-    <TuiStoryPreview app={StaticApp} View={() => (
-      <Box flexDirection="row">
-        <Spinner color="green" />
-        <Text> Processing...</Text>
-      </Box>
-    )} initialState={null} />
+    <TuiStoryPreview
+      app={StaticApp}
+      View={() => (
+        <Box flexDirection="row">
+          <Spinner color="green" />
+          <Text> Processing...</Text>
+        </Box>
+      )}
+      initialState={null}
+    />
   ),
 }
 
 /** All available spinner types */
 export const AllTypes: Story = {
   render: () => (
-    <TuiStoryPreview app={StaticApp} View={() => (
-      <Box>
-        <Box flexDirection="row">
-          <Spinner type="dots" />
-          <Text> dots</Text>
+    <TuiStoryPreview
+      app={StaticApp}
+      View={() => (
+        <Box>
+          <Box flexDirection="row">
+            <Spinner type="dots" />
+            <Text> dots</Text>
+          </Box>
+          <Box flexDirection="row">
+            <Spinner type="line" />
+            <Text> line</Text>
+          </Box>
+          <Box flexDirection="row">
+            <Spinner type="arc" />
+            <Text> arc</Text>
+          </Box>
+          <Box flexDirection="row">
+            <Spinner type="bounce" />
+            <Text> bounce</Text>
+          </Box>
+          <Box flexDirection="row">
+            <Spinner type="bar" />
+            <Text> bar</Text>
+          </Box>
         </Box>
-        <Box flexDirection="row">
-          <Spinner type="line" />
-          <Text> line</Text>
-        </Box>
-        <Box flexDirection="row">
-          <Spinner type="arc" />
-          <Text> arc</Text>
-        </Box>
-        <Box flexDirection="row">
-          <Spinner type="bounce" />
-          <Text> bounce</Text>
-        </Box>
-        <Box flexDirection="row">
-          <Spinner type="bar" />
-          <Text> bar</Text>
-        </Box>
-      </Box>
-    )} initialState={null} />
+      )}
+      initialState={null}
+    />
   ),
 }
 
 export const InContext: Story = {
   render: () => (
-    <TuiStoryPreview app={StaticApp} View={() => (
-      <Box>
-        <Text bold>Syncing repositories</Text>
-        <Box paddingLeft={2}>
-          <Box flexDirection="row">
-            <Spinner color="cyan" />
-            <Text> effect-utils</Text>
-            <Text dim> fetching...</Text>
-          </Box>
-          <Box flexDirection="row">
-            <Text color="green">OK</Text>
-            <Text> livestore</Text>
+    <TuiStoryPreview
+      app={StaticApp}
+      View={() => (
+        <Box>
+          <Text bold>Syncing repositories</Text>
+          <Box paddingLeft={2}>
+            <Box flexDirection="row">
+              <Spinner color="cyan" />
+              <Text> effect-utils</Text>
+              <Text dim> fetching...</Text>
+            </Box>
+            <Box flexDirection="row">
+              <Text color="green">OK</Text>
+              <Text> livestore</Text>
+            </Box>
           </Box>
         </Box>
-      </Box>
-    )} initialState={null} />
+      )}
+      initialState={null}
+    />
   ),
 }

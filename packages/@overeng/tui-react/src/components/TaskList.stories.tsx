@@ -20,43 +20,49 @@ type Story = StoryObj<typeof TaskList>
 /** Basic task list with mixed states */
 export const Basic: Story = {
   render: () => (
-    <TuiStoryPreview app={StaticApp} View={() => (
-      <TaskList
-        items={[
-          { id: '1', label: 'effect-utils', status: 'success' },
-          { id: '2', label: 'livestore', status: 'active', message: 'syncing...' },
-          { id: '3', label: 'dotfiles', status: 'pending' },
-        ]}
-      />
-    )} initialState={null} />
+    <TuiStoryPreview
+      app={StaticApp}
+      View={() => (
+        <TaskList
+          items={[
+            { id: '1', label: 'effect-utils', status: 'success' },
+            { id: '2', label: 'livestore', status: 'active', message: 'syncing...' },
+            { id: '3', label: 'dotfiles', status: 'pending' },
+          ]}
+        />
+      )}
+      initialState={null}
+    />
   ),
 }
 
 /** All possible task states */
 export const AllStates: Story = {
   render: () => (
-    <TuiStoryPreview app={StaticApp} View={() => (
-      <TaskList
-        items={[
-          { id: '1', label: 'pending-task', status: 'pending' },
-          { id: '2', label: 'active-task', status: 'active', message: 'working...' },
-          { id: '3', label: 'success-task', status: 'success', message: 'done' },
-          { id: '4', label: 'error-task', status: 'error', message: 'network failed' },
-          { id: '5', label: 'skipped-task', status: 'skipped', message: 'dirty worktree' },
-        ]}
-        title="All Task States"
-        showSummary
-        elapsed={5700}
-      />
-    )} initialState={null} />
+    <TuiStoryPreview
+      app={StaticApp}
+      View={() => (
+        <TaskList
+          items={[
+            { id: '1', label: 'pending-task', status: 'pending' },
+            { id: '2', label: 'active-task', status: 'active', message: 'working...' },
+            { id: '3', label: 'success-task', status: 'success', message: 'done' },
+            { id: '4', label: 'error-task', status: 'error', message: 'network failed' },
+            { id: '5', label: 'skipped-task', status: 'skipped', message: 'dirty worktree' },
+          ]}
+          title="All Task States"
+          showSummary
+          elapsed={5700}
+        />
+      )}
+      initialState={null}
+    />
   ),
 }
 
 export const WithTitle: Story = {
   render: (args) => (
-    <TuiStoryPreview app={StaticApp} View={() => (
-      <TaskList {...args} />
-    )} initialState={null} />
+    <TuiStoryPreview app={StaticApp} View={() => <TaskList {...args} />} initialState={null} />
   ),
   args: {
     items: [
@@ -71,27 +77,29 @@ export const WithTitle: Story = {
 /** Task list with summary showing counts and elapsed time */
 export const WithSummary: Story = {
   render: () => (
-    <TuiStoryPreview app={StaticApp} View={() => (
-      <TaskList
-        items={[
-          { id: '1', label: 'effect-utils', status: 'success' },
-          { id: '2', label: 'livestore', status: 'success' },
-          { id: '3', label: 'dotfiles', status: 'error', message: 'auth failed' },
-          { id: '4', label: 'schickling.dev', status: 'success' },
-          { id: '5', label: 'private-repo', status: 'skipped', message: 'not pinned' },
-        ]}
-        showSummary
-        elapsed={12300}
-      />
-    )} initialState={null} />
+    <TuiStoryPreview
+      app={StaticApp}
+      View={() => (
+        <TaskList
+          items={[
+            { id: '1', label: 'effect-utils', status: 'success' },
+            { id: '2', label: 'livestore', status: 'success' },
+            { id: '3', label: 'dotfiles', status: 'error', message: 'auth failed' },
+            { id: '4', label: 'schickling.dev', status: 'success' },
+            { id: '5', label: 'private-repo', status: 'skipped', message: 'not pinned' },
+          ]}
+          showSummary
+          elapsed={12300}
+        />
+      )}
+      initialState={null}
+    />
   ),
 }
 
 export const LongList: Story = {
   render: (args) => (
-    <TuiStoryPreview app={StaticApp} View={() => (
-      <TaskList {...args} />
-    )} initialState={null} />
+    <TuiStoryPreview app={StaticApp} View={() => <TaskList {...args} />} initialState={null} />
   ),
   args: {
     items: Array.from({ length: 15 }, (_, i) => ({
@@ -213,32 +221,34 @@ const SyncSimulationDemo = () => {
 /** Interactive sync simulation (animated in terminal) */
 export const SyncSimulation: Story = {
   render: () => (
-    <TuiStoryPreview app={StaticApp} View={() => (
-      <SyncSimulationDemo />
-    )} initialState={null} />
+    <TuiStoryPreview app={StaticApp} View={() => <SyncSimulationDemo />} initialState={null} />
   ),
 }
 
 export const InContext: Story = {
   render: () => (
-    <TuiStoryPreview app={StaticApp} View={() => (
-      <Box>
-        <Box flexDirection="row">
-          <Text bold>mr sync</Text>
-          <Text dim> schickling/megarepo-all</Text>
+    <TuiStoryPreview
+      app={StaticApp}
+      View={() => (
+        <Box>
+          <Box flexDirection="row">
+            <Text bold>mr sync</Text>
+            <Text dim> schickling/megarepo-all</Text>
+          </Box>
+          <Box paddingTop={1}>
+            <TaskList
+              items={[
+                { id: '1', label: 'effect-utils', status: 'success' },
+                { id: '2', label: 'livestore', status: 'active', message: 'pulling...' },
+                { id: '3', label: 'dotfiles', status: 'pending' },
+              ]}
+              showSummary
+              elapsed={2100}
+            />
+          </Box>
         </Box>
-        <Box paddingTop={1}>
-          <TaskList
-            items={[
-              { id: '1', label: 'effect-utils', status: 'success' },
-              { id: '2', label: 'livestore', status: 'active', message: 'pulling...' },
-              { id: '3', label: 'dotfiles', status: 'pending' },
-            ]}
-            showSummary
-            elapsed={2100}
-          />
-        </Box>
-      </Box>
-    )} initialState={null} />
+      )}
+      initialState={null}
+    />
   ),
 }

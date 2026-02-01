@@ -20,10 +20,18 @@ const hostConfig = {
   supportsPersistence: false,
   supportsHydration: false,
 
-  createInstance(type, props) { /* ... */ },
-  createTextInstance(text) { /* ... */ },
-  appendChild(parent, child) { /* ... */ },
-  commitUpdate(instance, type, oldProps, newProps) { /* ... */ },
+  createInstance(type, props) {
+    /* ... */
+  },
+  createTextInstance(text) {
+    /* ... */
+  },
+  appendChild(parent, child) {
+    /* ... */
+  },
+  commitUpdate(instance, type, oldProps, newProps) {
+    /* ... */
+  },
   // ... many more methods
 }
 
@@ -248,7 +256,12 @@ function doFlush() {
 
   // Phase 2: re-render to pick up store changes from effects
   if (lastRenderedElement) {
-    reconciler.updateContainerSync(wrapWithProviders(lastRenderedElement), fiberRoot, null, () => {})
+    reconciler.updateContainerSync(
+      wrapWithProviders(lastRenderedElement),
+      fiberRoot,
+      null,
+      () => {},
+    )
     for (let i = 0; i < 20; i++) {
       reconciler.flushPassiveEffects()
       reconciler.flushSyncWork()
@@ -264,13 +277,13 @@ function doFlush() {
 
 [OpenTUI](https://github.com/sst/opentui) is a terminal React renderer using react-reconciler 0.32. Key differences from our implementation:
 
-| Aspect                 | OpenTUI                            | tui-react                           |
-| ---------------------- | ---------------------------------- | ----------------------------------- |
-| Container model        | Stateful object with add/remove    | Plain `{ root, onRender }` object   |
-| `clearContainer`       | Removes all children               | Frees yoga node, clears root        |
-| Root type              | ConcurrentRoot                     | LegacyRoot                          |
-| `detachDeletedInstance` | Recursive destroy                 | No-op (cleanup via removeChild)     |
-| `commitUpdate`         | Calls `updateProperties` + render  | Updates props + yoga layout         |
+| Aspect                  | OpenTUI                           | tui-react                         |
+| ----------------------- | --------------------------------- | --------------------------------- |
+| Container model         | Stateful object with add/remove   | Plain `{ root, onRender }` object |
+| `clearContainer`        | Removes all children              | Frees yoga node, clears root      |
+| Root type               | ConcurrentRoot                    | LegacyRoot                        |
+| `detachDeletedInstance` | Recursive destroy                 | No-op (cleanup via removeChild)   |
+| `commitUpdate`          | Calls `updateProperties` + render | Updates props + yoga layout       |
 
 Both implementations now use the correct React 19 `commitUpdate` signature.
 

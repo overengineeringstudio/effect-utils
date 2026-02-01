@@ -1512,4 +1512,3 @@ export const TuiStoryPreview = <S, A>({
     </div>
   )
 }
-

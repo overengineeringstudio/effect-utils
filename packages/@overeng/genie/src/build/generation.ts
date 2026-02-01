@@ -3,9 +3,10 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { Command, FileSystem } from '@effect/platform'
+import { Duration, Effect, Option } from 'effect'
+
 import { DistributedSemaphore } from '@overeng/utils'
 import { FileSystemBacking } from '@overeng/utils/node'
-import { Duration, Effect, Option } from 'effect'
 
 import { ensureImportMapResolver } from './discovery.ts'
 import { GenieCheckError, GenieFileError, GenieImportError } from './errors.ts'

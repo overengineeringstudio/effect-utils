@@ -48,7 +48,6 @@ const runHelloWorld = (durationSeconds: number) =>
         secondsRemaining: durationSeconds,
       } as typeof AppState.Type,
       reducer: appReducer,
-      interruptTimeout: 200,
     })
 
     const tui = yield* HelloApp.run(<HelloWorldView stateAtom={HelloApp.stateAtom} />)

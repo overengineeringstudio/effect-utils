@@ -366,9 +366,3 @@ export {
   OUTPUT_MODE_VALUES,
   type OutputModeValue,
 } from './effect/cli.tsx'
-
-// =============================================================================
-// Universal Components (renderer-agnostic)
-// =============================================================================
-
-export * as Universal from './universal/mod.tsx'
