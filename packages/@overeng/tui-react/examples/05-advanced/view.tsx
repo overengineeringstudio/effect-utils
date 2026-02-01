@@ -1,15 +1,8 @@
-/**
- * Bouncing Windows - Pure View Components
- */
-
+import { Atom } from '@effect-atom/atom'
 import React from 'react'
 
-import { Box, Text } from '../../src/mod.ts'
+import { Box, Text, useTuiAtomValue } from '../../src/mod.ts'
 import type { AppState, Window, Color } from './schema.ts'
-
-// =============================================================================
-// Canvas Rendering Helpers
-// =============================================================================
 
 interface Cell {
   char: string
@@ -75,16 +68,12 @@ const createCanvas = ({ width, height }: { width: number; height: number }): Cel
   )
 }
 
-// =============================================================================
-// View Components
-// =============================================================================
-
 const CanvasRenderer = ({
   windows,
   width,
   height,
 }: {
-  windows: Window[]
+  windows: readonly Window[]
   width: number
   height: number
 }) => {
@@ -160,7 +149,7 @@ const RunningView = ({ state }: { state: Extract<AppState, { _tag: 'Running' }> 
     </Box>
     <Text dim>{'─'.repeat(state.termWidth)}</Text>
     <CanvasRenderer
-      windows={state.windows as Window[]}
+      windows={state.windows}
       width={state.termWidth}
       height={state.termHeight}
     />
@@ -210,11 +199,9 @@ const InterruptedView = ({ state }: { state: Extract<AppState, { _tag: 'Interrup
   </Box>
 )
 
-// =============================================================================
-// Main View (for Storybook)
-// =============================================================================
+export const BouncingWindowsView = ({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) => {
+  const state = useTuiAtomValue(stateAtom)
 
-export const BouncingWindowsView = ({ state }: { state: AppState }) => {
   switch (state._tag) {
     case 'Running':
       return <RunningView state={state} />

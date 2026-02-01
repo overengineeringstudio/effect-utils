@@ -53,8 +53,7 @@ export type LsState = Schema.Schema.Type<typeof LsState>
 // Type Guards
 // =============================================================================
 
-export const isLsError = (state: LsState): state is typeof LsErrorState.Type =>
-  'error' in state
+export const isLsError = (state: LsState): state is typeof LsErrorState.Type => 'error' in state
 
 export const isLsSuccess = (state: LsState): state is typeof LsSuccessState.Type =>
   'members' in state
@@ -77,7 +76,13 @@ export type LsAction = Schema.Schema.Type<typeof LsAction>
 // Reducer
 // =============================================================================
 
-export const lsReducer = ({ state: _state, action }: { state: LsState; action: LsAction }): LsState => {
+export const lsReducer = ({
+  state: _state,
+  action,
+}: {
+  state: LsState
+  action: LsAction
+}): LsState => {
   switch (action._tag) {
     case 'SetMembers':
       return { members: action.members }

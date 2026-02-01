@@ -51,13 +51,7 @@ const runHelloWorld = (durationSeconds: number) =>
       interruptTimeout: 200,
     })
 
-    // Connected view using app-scoped hook
-    const ConnectedHelloView = () => {
-      const state = HelloApp.useState()
-      return <HelloWorldView state={state} />
-    }
-
-    const tui = yield* HelloApp.run(<ConnectedHelloView />)
+    const tui = yield* HelloApp.run(<HelloWorldView stateAtom={HelloApp.stateAtom} />)
 
     // Countdown timer
     for (let i = durationSeconds; i > 0; i--) {

@@ -2,6 +2,10 @@
  * Deploy CLI - Storybook Stories
  *
  * Demonstrates the deploy CLI view using TuiStoryPreview with all output modes.
+ *
+ * The DeployView component receives a stateAtom and subscribes internally.
+ * TuiStoryPreview creates the atom and registry, passing them to the View.
+ * This is the same pattern used in CLI - no bridging needed!
  */
 
 import type { Meta, StoryObj } from '@storybook/react'
@@ -259,11 +263,21 @@ Deploy CLI view demonstrating progressive rendering with TuiStoryPreview.
 - Log streaming with Static component
 - Error handling and rollback states
 - All output modes: Visual, Fullscreen, String, JSON, NDJSON
+- **Atom-based view pattern** - view receives stateAtom and subscribes internally
 
 **CLI Usage:**
 \`\`\`bash
 bun examples/03-cli/deploy/main.ts --environment production --services api,web,worker
 bun examples/03-cli/deploy/main.ts --dry-run
+\`\`\`
+
+**View Pattern (same everywhere!):**
+\`\`\`typescript
+// CLI
+<DeployView stateAtom={DeployApp.stateAtom} />
+
+// Storybook - TuiStoryPreview creates atom internally
+<TuiStoryPreview View={DeployView} ... />
 \`\`\`
         `,
       },

@@ -1,20 +1,8 @@
-/**
- * Hello World - Pure View Components
- *
- * These components are pure and stateless, suitable for:
- * - Storybook stories
- * - Testing
- * - CLI usage via connected wrapper
- */
-
+import type { Atom } from '@effect-atom/atom'
 import React from 'react'
 
-import { Box, Text } from '../../src/mod.ts'
+import { Box, Text, useTuiAtomValue } from '../../src/mod.ts'
 import type { AppState } from './schema.ts'
-
-// =============================================================================
-// View Components
-// =============================================================================
 
 const DisplayingView = ({ state }: { state: Extract<AppState, { _tag: 'Displaying' }> }) => (
   <Box flexDirection="column" padding={1}>
@@ -53,11 +41,9 @@ const InterruptedView = () => (
   </Box>
 )
 
-// =============================================================================
-// Main View (for Storybook)
-// =============================================================================
+export const HelloWorldView = ({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) => {
+  const state = useTuiAtomValue(stateAtom)
 
-export const HelloWorldView = ({ state }: { state: AppState }) => {
   switch (state._tag) {
     case 'Displaying':
       return <DisplayingView state={state} />

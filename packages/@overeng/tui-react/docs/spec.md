@@ -274,8 +274,8 @@ State management uses Effect Atom with an Elm-style reducer pattern:
 
 - Same view component in CLI, Storybook, and tests
 - No `connected-view.tsx` wrapper needed
-- Fine-grained reactivity via derived atoms
-- Views receive `stateAtom`, subscribe with `useTuiAtomValue`
+- Fine-grained reactivity - propagate atoms down, materialize late with `useTuiAtomValue`
+- Derived atoms via `Atom.map` for focused subscriptions
 
 ### State & Actions
 
@@ -340,9 +340,7 @@ const deployReducer = (state: DeployState, action: DeployAction): DeployState =>
       if (state._tag !== 'Progress') return state
       return {
         ...state,
-        services: state.services.map((s) =>
-          s.name === action.name ? { ...s, status: action.status } : s,
-        ),
+        services: state.services.map((s) => (s.name === action.name ? { ...s, status: action.status } : s)),
       }
     case 'Complete':
       return { _tag: 'Complete', services: action.results, totalDuration: action.totalDuration }
@@ -563,7 +561,7 @@ const DeployApp = createTuiApp({
 // 2. View receives stateAtom, subscribes internally
 function DeployView({ stateAtom }: { stateAtom: Atom.Atom<DeployState> }) {
   const state = useTuiAtomValue(stateAtom)
-  
+
   if (state._tag === 'Progress') {
     return (
       <Box flexDirection="column">
@@ -604,6 +602,7 @@ const deployCommand = Cli.Command.make(
 ```
 
 **Key benefits of atom-based views:**
+
 - Same view works in CLI, Storybook, and tests
 - No `connected-view.tsx` wrapper needed
 - Fine-grained reactivity via derived atoms
@@ -896,16 +895,7 @@ const outputOption: Cli.Options<OutputModeValue>
 // Create layer from option value
 const outputModeLayer: (value: OutputModeValue) => Layer<OutputMode>
 
-type OutputModeValue =
-  | 'auto'
-  | 'tty'
-  | 'alt-screen'
-  | 'ci'
-  | 'ci-plain'
-  | 'pipe'
-  | 'log'
-  | 'json'
-  | 'ndjson'
+type OutputModeValue = 'auto' | 'tty' | 'alt-screen' | 'ci' | 'ci-plain' | 'pipe' | 'log' | 'json' | 'ndjson'
 ```
 
 ### useViewport

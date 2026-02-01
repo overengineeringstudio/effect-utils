@@ -60,13 +60,7 @@ const runStressTest = (durationMs: number) =>
       interruptTimeout: 200,
     })
 
-    // Connected view using app-scoped hook
-    const ConnectedStressTestView = () => {
-      const state = StressTestApp.useState()
-      return <StressTestView state={state} />
-    }
-
-    const tui = yield* StressTestApp.run(<ConnectedStressTestView />)
+    const tui = yield* StressTestApp.run(<StressTestView stateAtom={StressTestApp.stateAtom} />)
 
     // Run the animation loop
     const animationFiber = yield* Effect.fork(

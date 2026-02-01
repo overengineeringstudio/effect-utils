@@ -21,15 +21,6 @@ import {
   parseSourceString,
   isRemoteSource,
 } from '../../lib/config.ts'
-import {
-  NotInMegarepoError,
-  MemberNotFoundError,
-  InvalidSourceError,
-  CannotUseLocalPathError,
-  CannotGetCloneUrlError,
-  MemberNotSyncedError,
-  NoLockFileError,
-} from '../errors.ts'
 import * as Git from '../../lib/git.ts'
 import {
   createEmptyLockFile,
@@ -45,6 +36,15 @@ import {
 import { classifyRef } from '../../lib/ref.ts'
 import { Store, StoreLayer } from '../../lib/store.ts'
 import { Cwd, findMegarepoRoot, outputOption } from '../context.ts'
+import {
+  NotInMegarepoError,
+  MemberNotFoundError,
+  InvalidSourceError,
+  CannotUseLocalPathError,
+  CannotGetCloneUrlError,
+  MemberNotSyncedError,
+  NoLockFileError,
+} from '../errors.ts'
 import { PinOutput, PinErrorOutput, PinWarningOutput } from '../renderers/PinOutput.tsx'
 
 /**

@@ -49,8 +49,7 @@ export type EnvState = Schema.Schema.Type<typeof EnvState>
 // Type Guards
 // =============================================================================
 
-export const isEnvError = (state: EnvState): state is typeof EnvErrorState.Type =>
-  'error' in state
+export const isEnvError = (state: EnvState): state is typeof EnvErrorState.Type => 'error' in state
 
 export const isEnvSuccess = (state: EnvState): state is typeof EnvSuccessState.Type =>
   'MEGAREPO_ROOT_OUTERMOST' in state

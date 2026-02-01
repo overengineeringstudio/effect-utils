@@ -1,15 +1,8 @@
-/**
- * Rapid Updates Stress Test - Pure View Components
- */
-
+import { Atom } from '@effect-atom/atom'
 import React from 'react'
 
-import { Box, Text } from '../../src/mod.ts'
+import { Box, Text, useTuiAtomValue } from '../../src/mod.ts'
 import type { StressTestState } from './schema.ts'
-
-// =============================================================================
-// Helper Components
-// =============================================================================
 
 const ProgressBar = ({ progress, width = 40 }: { progress: number; width?: number }) => {
   const filled = Math.round((progress / 100) * width)
@@ -32,10 +25,6 @@ const Spinner = ({ frame }: { frame: number }) => {
     </Box>
   )
 }
-
-// =============================================================================
-// View Components
-// =============================================================================
 
 const RunningView = ({ state }: { state: Extract<StressTestState, { _tag: 'Running' }> }) => (
   <Box flexDirection="column" padding={1}>
@@ -132,11 +121,9 @@ const InterruptedView = ({
   </Box>
 )
 
-// =============================================================================
-// Main View (for Storybook)
-// =============================================================================
+export const StressTestView = ({ stateAtom }: { stateAtom: Atom.Atom<StressTestState> }) => {
+  const state = useTuiAtomValue(stateAtom)
 
-export const StressTestView = ({ state }: { state: StressTestState }) => {
   switch (state._tag) {
     case 'Running':
       return <RunningView state={state} />

@@ -85,13 +85,7 @@ const runBouncingWindows = ({
       interruptTimeout: 200,
     })
 
-    // Connected view using app-scoped hook
-    const ConnectedBouncingView = () => {
-      const state = BouncingApp.useState()
-      return <BouncingWindowsView state={state} />
-    }
-
-    const tui = yield* BouncingApp.run(<ConnectedBouncingView />)
+    const tui = yield* BouncingApp.run(<BouncingWindowsView stateAtom={BouncingApp.stateAtom} />)
 
     // Handle terminal resize
     const resizeHandler = () => {

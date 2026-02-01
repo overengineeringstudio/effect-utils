@@ -38,6 +38,7 @@
  * - `ndjson` - Streaming NDJSON
  */
 
+import { Atom, Registry } from '@effect-atom/atom'
 import { FitAddon } from '@xterm/addon-fit'
 import { Terminal } from '@xterm/xterm'
 import { Schema } from 'effect'
@@ -52,6 +53,7 @@ import {
   logRenderConfig,
   stripAnsi,
 } from '../effect/OutputMode.tsx'
+import { TuiRegistryContext } from '../effect/TuiApp.tsx'
 import { renderToString } from '../renderToString.ts'
 import { createRoot, type Root } from '../root.tsx'
 import { xtermTheme, containerStyles, previewTextStyles, previewPadding } from './theme.ts'
@@ -91,8 +93,8 @@ interface SimpleProps {
 
 /** Props for stateful mode - full state management */
 interface StatefulProps<S, A> {
-  /** The view component to render */
-  View: React.ComponentType<{ state: S }>
+  /** The view component to render (receives stateAtom, subscribes internally) */
+  View: React.ComponentType<{ stateAtom: Atom.Atom<S> }>
   /** State schema for JSON encoding */
   stateSchema: Schema.Schema<S>
   /** Action schema for button generation */
@@ -711,12 +713,15 @@ const NdjsonPreviewPane: React.FC<{ lines: NdjsonLine[] }> = ({ lines }) => (
 // =============================================================================
 
 const CIPreviewPane: React.FC<{
-  View: React.ComponentType<{ state: unknown }>
-  state: unknown
+  View: React.ComponentType<{ stateAtom: Atom.Atom<unknown> }>
+  stateAtom: Atom.Atom<unknown>
+  registry: Registry.Registry
   height: number
-}> = ({ View, state, height }) => {
+}> = ({ View, stateAtom, registry, height }) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
+  // Get current state for dependency tracking
+  const state = registry.get(stateAtom)
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -745,10 +750,13 @@ const CIPreviewPane: React.FC<{
     terminal.reset()
 
     // Render with CI mode (static, with colors)
+    // Wrap in registry context so useTuiAtomValue works
     const element = (
-      <RenderConfigProvider config={ciRenderConfig}>
-        <View state={state} />
-      </RenderConfigProvider>
+      <TuiRegistryContext.Provider value={registry}>
+        <RenderConfigProvider config={ciRenderConfig}>
+          <View stateAtom={stateAtom} />
+        </RenderConfigProvider>
+      </TuiRegistryContext.Provider>
     )
 
     renderToString({ element })
@@ -766,7 +774,7 @@ const CIPreviewPane: React.FC<{
       })
 
     return () => {}
-  }, [state, View])
+  }, [state, stateAtom, registry])
 
   useEffect(() => {
     return () => {
@@ -818,20 +826,26 @@ const useContainerColumns = (containerRef: React.RefObject<HTMLElement | null>):
 // =============================================================================
 
 const LogPreviewPane: React.FC<{
-  View: React.ComponentType<{ state: unknown }>
-  state: unknown
+  View: React.ComponentType<{ stateAtom: Atom.Atom<unknown> }>
+  stateAtom: Atom.Atom<unknown>
+  registry: Registry.Registry
   height: number
-}> = ({ View, state, height }) => {
+}> = ({ View, stateAtom, registry, height }) => {
   const [output, setOutput] = useState<string>('')
   const containerRef = useRef<HTMLPreElement>(null)
   const columns = useContainerColumns(containerRef)
+  // Get current state for dependency tracking
+  const state = registry.get(stateAtom)
 
   useEffect(() => {
     // Render with log mode (static, no colors)
+    // Wrap in registry context so useTuiAtomValue works
     const element = (
-      <RenderConfigProvider config={logRenderConfig}>
-        <View state={state} />
-      </RenderConfigProvider>
+      <TuiRegistryContext.Provider value={registry}>
+        <RenderConfigProvider config={logRenderConfig}>
+          <View stateAtom={stateAtom} />
+        </RenderConfigProvider>
+      </TuiRegistryContext.Provider>
     )
 
     renderToString({ element, options: { width: columns } })
@@ -842,7 +856,7 @@ const LogPreviewPane: React.FC<{
       .catch((err: Error) => {
         setOutput(`Error: ${err.message}`)
       })
-  }, [state, View, columns])
+  }, [state, stateAtom, registry, columns])
 
   return (
     <pre
@@ -864,20 +878,26 @@ const LogPreviewPane: React.FC<{
 // =============================================================================
 
 const CIPlainPreviewPane: React.FC<{
-  View: React.ComponentType<{ state: unknown }>
-  state: unknown
+  View: React.ComponentType<{ stateAtom: Atom.Atom<unknown> }>
+  stateAtom: Atom.Atom<unknown>
+  registry: Registry.Registry
   height: number
-}> = ({ View, state, height }) => {
+}> = ({ View, stateAtom, registry, height }) => {
   const [output, setOutput] = useState<string>('')
   const containerRef = useRef<HTMLPreElement>(null)
   const columns = useContainerColumns(containerRef)
+  // Get current state for dependency tracking
+  const state = registry.get(stateAtom)
 
   useEffect(() => {
     // Render with ci-plain mode (no animation, no colors)
+    // Wrap in registry context so useTuiAtomValue works
     const element = (
-      <RenderConfigProvider config={ciPlainRenderConfig}>
-        <View state={state} />
-      </RenderConfigProvider>
+      <TuiRegistryContext.Provider value={registry}>
+        <RenderConfigProvider config={ciPlainRenderConfig}>
+          <View stateAtom={stateAtom} />
+        </RenderConfigProvider>
+      </TuiRegistryContext.Provider>
     )
 
     renderToString({ element, options: { width: columns } })
@@ -888,7 +908,7 @@ const CIPlainPreviewPane: React.FC<{
       .catch((err: Error) => {
         setOutput(`Error: ${err.message}`)
       })
-  }, [state, View, columns])
+  }, [state, stateAtom, registry, columns])
 
   return (
     <pre
@@ -910,12 +930,15 @@ const CIPlainPreviewPane: React.FC<{
 // =============================================================================
 
 const PipePreviewPane: React.FC<{
-  View: React.ComponentType<{ state: unknown }>
-  state: unknown
+  View: React.ComponentType<{ stateAtom: Atom.Atom<unknown> }>
+  stateAtom: Atom.Atom<unknown>
+  registry: Registry.Registry
   height: number
-}> = ({ View, state, height }) => {
+}> = ({ View, stateAtom, registry, height }) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
+  // Get current state for dependency tracking
+  const state = registry.get(stateAtom)
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -944,10 +967,13 @@ const PipePreviewPane: React.FC<{
     terminal.reset()
 
     // Render with pipe mode (final, with colors)
+    // Wrap in registry context so useTuiAtomValue works
     const element = (
-      <RenderConfigProvider config={pipeRenderConfig}>
-        <View state={state} />
-      </RenderConfigProvider>
+      <TuiRegistryContext.Provider value={registry}>
+        <RenderConfigProvider config={pipeRenderConfig}>
+          <View stateAtom={stateAtom} />
+        </RenderConfigProvider>
+      </TuiRegistryContext.Provider>
     )
 
     renderToString({ element })
@@ -965,7 +991,7 @@ const PipePreviewPane: React.FC<{
       })
 
     return () => {}
-  }, [state, View])
+  }, [state, stateAtom, registry])
 
   useEffect(() => {
     return () => {
@@ -982,10 +1008,11 @@ const PipePreviewPane: React.FC<{
 // =============================================================================
 
 const FullscreenPreviewPane: React.FC<{
-  View: React.ComponentType<{ state: unknown }>
-  state: unknown
+  View: React.ComponentType<{ stateAtom: Atom.Atom<unknown> }>
+  stateAtom: Atom.Atom<unknown>
+  registry: Registry.Registry
   height: number
-}> = ({ View, state, height }) => {
+}> = ({ View, stateAtom, registry, height }) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
@@ -994,6 +1021,8 @@ const FullscreenPreviewPane: React.FC<{
   const [isFocused, setIsFocused] = useState(false)
   const [dimensions, setDimensions] = useState({ cols: 80, rows: 24 })
   const [lastKey, setLastKey] = useState<string | null>(null)
+  // Get current state for dependency tracking
+  const state = registry.get(stateAtom)
 
   // Initialize terminal
   useEffect(() => {
@@ -1051,10 +1080,15 @@ const FullscreenPreviewPane: React.FC<{
   }, [])
 
   // Render content (reuse existing root for differential updates)
+  // Wrap in registry context so useTuiAtomValue works
   useEffect(() => {
     if (!isReady || !rootRef.current) return
-    rootRef.current.render(React.createElement(View, { state }))
-  }, [state, isReady, View])
+    rootRef.current.render(
+      <TuiRegistryContext.Provider value={registry}>
+        <View stateAtom={stateAtom} />
+      </TuiRegistryContext.Provider>,
+    )
+  }, [state, isReady, stateAtom, registry])
 
   // Keyboard handling
   const handleKeyDown = useCallback(
@@ -1193,6 +1227,10 @@ const SimpleTuiStoryPreview: React.FC<SimpleProps> = ({
   const rootRef = useRef<Root | null>(null)
   const [isTerminalReady, setIsTerminalReady] = useState(false)
 
+  // Create registry and dummy atom for simple mode (needed by preview panes)
+  const registry = useMemo(() => Registry.make(), [])
+  const stateAtom = useMemo(() => Atom.make<unknown>(null), [])
+
   // Initialize terminal for tty tab
   useEffect(() => {
     if (activeTab !== 'tty' || !containerRef.current || terminalRef.current) return
@@ -1251,8 +1289,8 @@ const SimpleTuiStoryPreview: React.FC<SimpleProps> = ({
     rootRef.current.render(children as React.ReactElement)
   }, [children, activeTab, isTerminalReady])
 
-  // Wrapper component for other panes
-  const ChildrenView: React.FC<{ state: unknown }> = () => <>{children}</>
+  // Wrapper component for other panes (accepts stateAtom but ignores it)
+  const ChildrenView: React.FC<{ stateAtom: Atom.Atom<unknown> }> = () => <>{children}</>
 
   return (
     <div style={{ fontFamily: 'system-ui, sans-serif' }}>
@@ -1301,16 +1339,35 @@ const SimpleTuiStoryPreview: React.FC<SimpleProps> = ({
           />
         )}
         {activeTab === 'alt-screen' && (
-          <FullscreenPreviewPane View={ChildrenView} state={null} height={height} />
+          <FullscreenPreviewPane
+            View={ChildrenView}
+            stateAtom={stateAtom}
+            registry={registry}
+            height={height}
+          />
         )}
-        {activeTab === 'ci' && <CIPreviewPane View={ChildrenView} state={null} height={height} />}
+        {activeTab === 'ci' && (
+          <CIPreviewPane View={ChildrenView} stateAtom={stateAtom} registry={registry} height={height} />
+        )}
         {activeTab === 'ci-plain' && (
-          <CIPlainPreviewPane View={ChildrenView} state={null} height={height} />
+          <CIPlainPreviewPane
+            View={ChildrenView}
+            stateAtom={stateAtom}
+            registry={registry}
+            height={height}
+          />
         )}
         {activeTab === 'pipe' && (
-          <PipePreviewPane View={ChildrenView} state={null} height={height} />
+          <PipePreviewPane
+            View={ChildrenView}
+            stateAtom={stateAtom}
+            registry={registry}
+            height={height}
+          />
         )}
-        {activeTab === 'log' && <LogPreviewPane View={ChildrenView} state={null} height={height} />}
+        {activeTab === 'log' && (
+          <LogPreviewPane View={ChildrenView} stateAtom={stateAtom} registry={registry} height={height} />
+        )}
         {activeTab === 'json' && <JsonPreviewPane json="// Simple mode - no state schema" />}
         {activeTab === 'ndjson' && (
           <NdjsonPreviewPane
@@ -1338,12 +1395,25 @@ const StatefulTuiStoryPreview = <S, A>({
   tabs = DEFAULT_TABS_STATEFUL,
   defaultTab = 'tty',
 }: StatefulProps<S, A>): React.ReactElement => {
-  // State
+  // UI State
   const [activeTab, setActiveTab] = useState<OutputTab>(defaultTab)
-  const [state, setState] = useState<S>(initialState)
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [ndjsonLines, setNdjsonLines] = useState<NdjsonLine[]>([])
+  // Force re-render when atom changes (for panes that need current state value)
+  const [, forceUpdate] = useState(0)
+
+  // Atom-based state management (replaces React useState for state)
+  const registryRef = useRef<Registry.Registry | null>(null)
+  const stateAtomRef = useRef<Atom.Writable<S> | null>(null)
+  if (!registryRef.current) {
+    registryRef.current = Registry.make()
+  }
+  if (!stateAtomRef.current) {
+    stateAtomRef.current = Atom.make(initialState)
+  }
+  const registry = registryRef.current
+  const stateAtom = stateAtomRef.current
 
   // Refs for visual terminal only
   const containerRef = useRef<HTMLDivElement>(null)
@@ -1367,40 +1437,45 @@ const StatefulTuiStoryPreview = <S, A>({
     return result
   }, [initialState, timeline, reducer])
 
-  // Use final state for final modes, current state for live modes
-  const effectiveState = isFinalMode(activeTab) ? finalState : state
+  // Get current state from atom (for panes and JSON output)
+  const currentState = registry.get(stateAtom)
 
-  // Dispatch action and update state
+  // Use final state for final modes, current state for live modes
+  const effectiveState = isFinalMode(activeTab) ? finalState : currentState
+
+  // Dispatch action and update state via atom
   const dispatch = useCallback(
     (action: A) => {
-      setState((prev) => {
-        const next = reducer({ state: prev, action })
-        // Add to NDJSON log with timestamp
-        try {
-          const encoded = Schema.encodeSync(stateSchema)(next)
-          setNdjsonLines((lines) => [
-            ...lines,
-            {
-              timestamp: Date.now(),
-              json: JSON.stringify(encoded),
-            },
-          ])
-        } catch {
-          // Ignore encoding errors
-        }
-        return next
-      })
+      const prev = registry.get(stateAtom)
+      const next = reducer({ state: prev, action })
+      registry.set(stateAtom, next)
+      // Add to NDJSON log with timestamp
+      try {
+        const encoded = Schema.encodeSync(stateSchema)(next)
+        setNdjsonLines((lines) => [
+          ...lines,
+          {
+            timestamp: Date.now(),
+            json: JSON.stringify(encoded),
+          },
+        ])
+      } catch {
+        // Ignore encoding errors
+      }
+      // Force re-render for panes that read effectiveState
+      forceUpdate((n) => n + 1)
     },
-    [reducer, stateSchema],
+    [reducer, stateSchema, registry, stateAtom],
   )
 
   // Reset to initial state
   const reset = useCallback(() => {
-    setState(initialState)
+    registry.set(stateAtom, initialState)
     setCurrentTime(0)
     setIsPlaying(false)
     setNdjsonLines([])
-  }, [initialState])
+    forceUpdate((n) => n + 1)
+  }, [initialState, registry, stateAtom])
 
   // Timeline playback effect
   useEffect(() => {
@@ -1425,10 +1500,6 @@ const StatefulTuiStoryPreview = <S, A>({
         animationFrame = requestAnimationFrame(tick)
       } else {
         setIsPlaying(false)
-        // Flush the final render after a brief delay to ensure React has processed all state updates
-        setTimeout(() => {
-          rootRef.current?.flush()
-        }, 50)
       }
     }
 
@@ -1498,8 +1569,13 @@ const StatefulTuiStoryPreview = <S, A>({
   // Render view to terminal when state changes (reuse existing root for differential updates)
   useEffect(() => {
     if (activeTab !== 'tty' || !isTerminalReady || !rootRef.current) return
-    rootRef.current.render(<View state={effectiveState} />)
-  }, [effectiveState, activeTab, isTerminalReady, View])
+    // Wrap in registry context so useTuiAtomValue works
+    rootRef.current.render(
+      <TuiRegistryContext.Provider value={registry}>
+        <View stateAtom={stateAtom} />
+      </TuiRegistryContext.Provider>,
+    )
+  }, [effectiveState, activeTab, isTerminalReady, registry, stateAtom])
 
   // Encode state as JSON (uses finalState for json mode since it's a final mode)
   const jsonOutput = useMemo(() => {
@@ -1512,7 +1588,7 @@ const StatefulTuiStoryPreview = <S, A>({
   }, [finalState, stateSchema])
 
   // Cast View for non-generic components
-  const ViewCast = View as React.ComponentType<{ state: unknown }>
+  const ViewCast = View as React.ComponentType<{ stateAtom: Atom.Atom<unknown> }>
 
   return (
     <div style={{ fontFamily: 'system-ui, sans-serif' }}>
@@ -1559,19 +1635,44 @@ const StatefulTuiStoryPreview = <S, A>({
           />
         )}
         {activeTab === 'alt-screen' && (
-          <FullscreenPreviewPane View={ViewCast} state={effectiveState} height={height} />
+          <FullscreenPreviewPane
+            View={ViewCast}
+            stateAtom={stateAtom as Atom.Atom<unknown>}
+            registry={registry}
+            height={height}
+          />
         )}
         {activeTab === 'ci' && (
-          <CIPreviewPane View={ViewCast} state={effectiveState} height={height} />
+          <CIPreviewPane
+            View={ViewCast}
+            stateAtom={stateAtom as Atom.Atom<unknown>}
+            registry={registry}
+            height={height}
+          />
         )}
         {activeTab === 'ci-plain' && (
-          <CIPlainPreviewPane View={ViewCast} state={effectiveState} height={height} />
+          <CIPlainPreviewPane
+            View={ViewCast}
+            stateAtom={stateAtom as Atom.Atom<unknown>}
+            registry={registry}
+            height={height}
+          />
         )}
         {activeTab === 'pipe' && (
-          <PipePreviewPane View={ViewCast} state={effectiveState} height={height} />
+          <PipePreviewPane
+            View={ViewCast}
+            stateAtom={stateAtom as Atom.Atom<unknown>}
+            registry={registry}
+            height={height}
+          />
         )}
         {activeTab === 'log' && (
-          <LogPreviewPane View={ViewCast} state={effectiveState} height={height} />
+          <LogPreviewPane
+            View={ViewCast}
+            stateAtom={stateAtom as Atom.Atom<unknown>}
+            registry={registry}
+            height={height}
+          />
         )}
         {activeTab === 'json' && <JsonPreviewPane json={jsonOutput} />}
         {activeTab === 'ndjson' && <NdjsonPreviewPane lines={ndjsonLines} />}

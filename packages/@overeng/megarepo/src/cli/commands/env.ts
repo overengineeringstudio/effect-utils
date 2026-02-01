@@ -12,9 +12,15 @@ import React from 'react'
 import { EffectPath } from '@overeng/effect-path'
 
 import { CONFIG_FILE_NAME, MegarepoConfig } from '../../lib/config.ts'
-import { Cwd, findMegarepoRoot, findNearestMegarepoRoot, outputOption, outputModeLayer } from '../context.ts'
-import { EnvApp } from '../renderers/EnvOutput/mod.ts'
+import {
+  Cwd,
+  findMegarepoRoot,
+  findNearestMegarepoRoot,
+  outputOption,
+  outputModeLayer,
+} from '../context.ts'
 import { EnvConnectedView } from '../renderers/EnvOutput/connected-view.tsx'
+import { EnvApp } from '../renderers/EnvOutput/mod.ts'
 
 /** Print environment variables for shell integration */
 export const envCommand = Cli.Command.make(
@@ -56,7 +62,9 @@ export const envCommand = Cli.Command.make(
             EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
           )
           const configContent = yield* fs.readFileString(configPath)
-          const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+          const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
+            configContent,
+          )
 
           const memberNames = Object.keys(config.members).join(',')
           const nearestRootValue = Option.getOrElse(nearestRoot, () => root.value)

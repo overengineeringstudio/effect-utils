@@ -44,13 +44,7 @@ const runCounter = Effect.gen(function* () {
     interruptTimeout: 200,
   })
 
-  // Connected view using app-scoped hook
-  const ConnectedCounterView = () => {
-    const state = CounterApp.useState()
-    return <CounterView state={state} />
-  }
-
-  const tui = yield* CounterApp.run(<ConnectedCounterView />)
+  const tui = yield* CounterApp.run(<CounterView stateAtom={CounterApp.stateAtom} />)
 
   // Increment a few times
   for (let i = 0; i < 3; i++) {

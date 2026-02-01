@@ -3,7 +3,14 @@
  */
 
 // Schema
-export { InitState, InitAction, initReducer, isInitError, isInitSuccess, isInitAlready } from './schema.ts'
+export {
+  InitState,
+  InitAction,
+  initReducer,
+  isInitError,
+  isInitSuccess,
+  isInitAlready,
+} from './schema.ts'
 export type { InitState as InitStateType, InitAction as InitActionType } from './schema.ts'
 
 // App

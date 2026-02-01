@@ -10,7 +10,6 @@ import React from 'react'
 
 import type { OutputModeTag } from '../../../src/mod.ts'
 import { createTuiApp } from '../../../src/mod.ts'
-import { ConnectedDeployView } from './connected-view.tsx'
 import {
   DeployState,
   DeployAction,
@@ -21,6 +20,7 @@ import {
   type ServiceProgress,
   type ServiceResult,
 } from './schema.ts'
+import { DeployView } from './view.tsx'
 
 // =============================================================================
 // TUI App Definition (exported for app-scoped hooks in view.tsx)
@@ -129,7 +129,8 @@ export const runDeploy = (
 ): Effect.Effect<DeployResult, never, Scope.Scope | OutputModeTag> =>
   Effect.gen(function* () {
     const { services, environment, dryRun = false } = options
-    const tui = yield* DeployApp.run(<ConnectedDeployView />)
+    // Pass the atom directly to the view - no connected wrapper needed!
+    const tui = yield* DeployApp.run(<DeployView stateAtom={DeployApp.stateAtom} />)
 
     const logs: LogEntry[] = []
     const log = (entry: { level: LogEntry['level']; message: string; service?: string }) => {

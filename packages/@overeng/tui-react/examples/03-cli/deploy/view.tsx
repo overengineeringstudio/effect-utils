@@ -1,17 +1,15 @@
 /**
- * Deploy CLI View Component (Pure - Prop-Based)
- *
- * React component for rendering deploy progress.
- * Accepts state as a prop for maximum reusability (Storybook, tests, CLI).
+ * Deploy CLI View Component
  */
 
-import React from 'react'
+import { Atom } from '@effect-atom/atom'
+import React, { useMemo } from 'react'
 
-import { Box, Text, Spinner, Static } from '../../../src/mod.ts'
+import { Box, Text, Spinner, Static, useTuiAtomValue } from '../../../src/mod.ts'
 import type { DeployState, LogEntry, ServiceProgress, ServiceResult } from './schema.ts'
 
 // =============================================================================
-// Status Icons
+// Status Icons (Pure - receive values)
 // =============================================================================
 
 const StatusIcon = ({ status }: { status: ServiceProgress['status'] }) => {
@@ -48,7 +46,7 @@ const ResultIcon = ({ result }: { result: ServiceResult['result'] }) => {
 }
 
 // =============================================================================
-// Log Entry Component
+// Log Entry Component (Pure - receives value)
 // =============================================================================
 
 const LogLine = ({ entry }: { entry: LogEntry }) => {
@@ -69,7 +67,7 @@ const LogLine = ({ entry }: { entry: LogEntry }) => {
 }
 
 // =============================================================================
-// Service Progress Component
+// Service Progress Component (Pure - receives value)
 // =============================================================================
 
 const ServiceProgressLine = ({ service }: { service: ServiceProgress }) => (
@@ -84,7 +82,7 @@ const ServiceProgressLine = ({ service }: { service: ServiceProgress }) => (
 )
 
 // =============================================================================
-// Service Result Component
+// Service Result Component (Pure - receives value)
 // =============================================================================
 
 const ServiceResultLine = ({ service }: { service: ServiceResult }) => (
@@ -100,51 +98,174 @@ const ServiceResultLine = ({ service }: { service: ServiceResult }) => (
 )
 
 // =============================================================================
-// Progress Summary
+// Progress Section (subscribes to services via derived atom)
 // =============================================================================
 
-const ProgressSummary = ({ services }: { services: readonly ServiceProgress[] }) => {
+const ProgressSection = ({ stateAtom }: { stateAtom: Atom.Atom<DeployState> }) => {
+  // Derive a focused atom for just the services array
+  const servicesAtom = useMemo(
+    () =>
+      Atom.map(stateAtom, (s): readonly ServiceProgress[] =>
+        s._tag === 'Progress' ? s.services : [],
+      ),
+    [stateAtom],
+  )
+  const services = useTuiAtomValue(servicesAtom)
+
   const completed = services.filter((s) => s.status === 'healthy').length
   const failed = services.filter((s) => s.status === 'failed').length
   const total = services.length
 
   return (
-    <Box flexDirection="row">
-      <Text>Deploying </Text>
-      <Text color={failed > 0 ? 'red' : 'green'}>{completed}</Text>
-      {failed > 0 && (
-        <>
-          <Text color="red">/{failed} failed</Text>
-        </>
-      )}
-      <Text>/{total} services</Text>
+    <Box flexDirection="column">
+      <Box flexDirection="row">
+        <Text>Deploying </Text>
+        <Text color={failed > 0 ? 'red' : 'green'}>{completed}</Text>
+        {failed > 0 && <Text color="red">/{failed} failed</Text>}
+        <Text>/{total} services</Text>
+      </Box>
+      {services.map((service) => (
+        <ServiceProgressLine key={service.name} service={service} />
+      ))}
     </Box>
   )
 }
 
 // =============================================================================
-// Main View Component (Pure - Prop-Based)
+// Rolling Back Section
 // =============================================================================
 
-export interface DeployViewProps {
-  state: DeployState
+const RollingBackSection = ({ stateAtom }: { stateAtom: Atom.Atom<DeployState> }) => {
+  const state = useTuiAtomValue(stateAtom)
+  if (state._tag !== 'RollingBack') return null
+
+  return (
+    <Box flexDirection="column">
+      <Box flexDirection="row">
+        <Text color="yellow">↩ Rolling back: </Text>
+        <Text>{state.reason}</Text>
+      </Box>
+      {state.services.map((service) => (
+        <ServiceProgressLine key={service.name} service={service} />
+      ))}
+    </Box>
+  )
 }
 
-/**
- * DeployView - Pure component for rendering deploy state.
- *
- * This component is reusable across:
- * - CLI: wrap with ConnectedDeployView
- * - Storybook: pass state directly via TuiStoryPreview
- * - Tests: pass mock state directly
- */
-export const DeployView = ({ state }: DeployViewProps) => {
-  if (state._tag === 'Idle') {
+// =============================================================================
+// Complete Section
+// =============================================================================
+
+const CompleteSection = ({
+  stateAtom,
+  environment,
+}: {
+  stateAtom: Atom.Atom<DeployState>
+  environment: string
+}) => {
+  const state = useTuiAtomValue(stateAtom)
+  if (state._tag !== 'Complete') return null
+
+  return (
+    <Box flexDirection="column">
+      <Text color="green" bold>
+        ✓ Deploy complete
+      </Text>
+      {state.services.map((service) => (
+        <ServiceResultLine key={service.name} service={service} />
+      ))}
+      <Text dim>
+        {'\n'}
+        {state.services.length} services deployed to {environment} in{' '}
+        {(state.totalDuration / 1000).toFixed(1)}s
+      </Text>
+    </Box>
+  )
+}
+
+// =============================================================================
+// Failed Section
+// =============================================================================
+
+const FailedSection = ({ stateAtom }: { stateAtom: Atom.Atom<DeployState> }) => {
+  const state = useTuiAtomValue(stateAtom)
+  if (state._tag !== 'Failed') return null
+
+  return (
+    <Box flexDirection="column">
+      <Text color="red" bold>
+        ✗ Deploy failed
+      </Text>
+      <Box paddingLeft={2}>
+        <Text color="red">{state.error}</Text>
+      </Box>
+      {state.services.length > 0 && (
+        <>
+          <Text dim>{'\n'}Service status:</Text>
+          {state.services.map((service) => (
+            <ServiceResultLine key={service.name} service={service} />
+          ))}
+        </>
+      )}
+    </Box>
+  )
+}
+
+// =============================================================================
+// Interrupted Section
+// =============================================================================
+
+const InterruptedSection = ({ stateAtom }: { stateAtom: Atom.Atom<DeployState> }) => {
+  const state = useTuiAtomValue(stateAtom)
+  if (state._tag !== 'Interrupted') return null
+
+  return (
+    <Box flexDirection="column">
+      <Text color="yellow" bold>
+        ⚠ Deploy interrupted
+      </Text>
+      <Text dim>Deployment to {state.environment} was cancelled by user (Ctrl+C)</Text>
+      {state.services.length > 0 && (
+        <>
+          <Text dim>{'\n'}Service status at interruption:</Text>
+          {state.services.map((service) => (
+            <ServiceResultLine key={service.name} service={service} />
+          ))}
+        </>
+      )}
+      <Text dim>
+        {'\n'}Duration before interrupt: {((state.interruptedAt - state.startedAt) / 1000).toFixed(
+          1,
+        )}
+        s
+      </Text>
+    </Box>
+  )
+}
+
+// =============================================================================
+// Main View
+// =============================================================================
+
+export const DeployView = ({ stateAtom }: { stateAtom: Atom.Atom<DeployState> }) => {
+  // Derive atoms for routing and shared data
+  const tagAtom = useMemo(() => Atom.map(stateAtom, (s) => s._tag), [stateAtom])
+  const logsAtom = useMemo(
+    () => Atom.map(stateAtom, (s): readonly LogEntry[] => ('logs' in s ? s.logs : [])),
+    [stateAtom],
+  )
+  const environmentAtom = useMemo(
+    () => Atom.map(stateAtom, (s) => ('environment' in s ? s.environment : '')),
+    [stateAtom],
+  )
+
+  const tag = useTuiAtomValue(tagAtom)
+  const logs = useTuiAtomValue(logsAtom)
+  const environment = useTuiAtomValue(environmentAtom)
+
+  if (tag === 'Idle') {
     return <Text dim>Waiting to start...</Text>
   }
-
-  const logs = 'logs' in state ? state.logs : []
-  const environment = 'environment' in state ? state.environment : ''
 
   return (
     <>
@@ -153,7 +274,7 @@ export const DeployView = ({ state }: DeployViewProps) => {
       <Static items={logs}>{(log, i) => <LogLine key={i} entry={log} />}</Static>
 
       {/* Validating state */}
-      {state._tag === 'Validating' && (
+      {tag === 'Validating' && (
         <Box flexDirection="column">
           <Box flexDirection="row">
             <Spinner type="dots" />
@@ -164,87 +285,20 @@ export const DeployView = ({ state }: DeployViewProps) => {
         </Box>
       )}
 
-      {/* Progress state */}
-      {state._tag === 'Progress' && (
-        <Box flexDirection="column">
-          <ProgressSummary services={state.services} />
-          {state.services.map((service) => (
-            <ServiceProgressLine key={service.name} service={service} />
-          ))}
-        </Box>
-      )}
+      {/* Progress state - uses derived atom for services */}
+      {tag === 'Progress' && <ProgressSection stateAtom={stateAtom} />}
 
       {/* Rolling back state */}
-      {state._tag === 'RollingBack' && (
-        <Box flexDirection="column">
-          <Box flexDirection="row">
-            <Text color="yellow">↩ Rolling back: </Text>
-            <Text>{state.reason}</Text>
-          </Box>
-          {state.services.map((service) => (
-            <ServiceProgressLine key={service.name} service={service} />
-          ))}
-        </Box>
-      )}
+      {tag === 'RollingBack' && <RollingBackSection stateAtom={stateAtom} />}
 
       {/* Complete state */}
-      {state._tag === 'Complete' && (
-        <Box flexDirection="column">
-          <Text color="green" bold>
-            ✓ Deploy complete
-          </Text>
-          {state.services.map((service) => (
-            <ServiceResultLine key={service.name} service={service} />
-          ))}
-          <Text dim>
-            {'\n'}
-            {state.services.length} services deployed to {environment} in{' '}
-            {(state.totalDuration / 1000).toFixed(1)}s
-          </Text>
-        </Box>
-      )}
+      {tag === 'Complete' && <CompleteSection stateAtom={stateAtom} environment={environment} />}
 
       {/* Failed state */}
-      {state._tag === 'Failed' && (
-        <Box flexDirection="column">
-          <Text color="red" bold>
-            ✗ Deploy failed
-          </Text>
-          <Box paddingLeft={2}>
-            <Text color="red">{state.error}</Text>
-          </Box>
-          {state.services.length > 0 && (
-            <>
-              <Text dim>{'\n'}Service status:</Text>
-              {state.services.map((service) => (
-                <ServiceResultLine key={service.name} service={service} />
-              ))}
-            </>
-          )}
-        </Box>
-      )}
+      {tag === 'Failed' && <FailedSection stateAtom={stateAtom} />}
 
       {/* Interrupted state */}
-      {state._tag === 'Interrupted' && (
-        <Box flexDirection="column">
-          <Text color="yellow" bold>
-            ⚠ Deploy interrupted
-          </Text>
-          <Text dim>Deployment to {state.environment} was cancelled by user (Ctrl+C)</Text>
-          {state.services.length > 0 && (
-            <>
-              <Text dim>{'\n'}Service status at interruption:</Text>
-              {state.services.map((service) => (
-                <ServiceResultLine key={service.name} service={service} />
-              ))}
-            </>
-          )}
-          <Text dim>
-            {'\n'}Duration before interrupt:{' '}
-            {((state.interruptedAt - state.startedAt) / 1000).toFixed(1)}s
-          </Text>
-        </Box>
-      )}
+      {tag === 'Interrupted' && <InterruptedSection stateAtom={stateAtom} />}
     </>
   )
 }

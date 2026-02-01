@@ -14,8 +14,8 @@ import { EffectPath } from '@overeng/effect-path'
 import { CONFIG_FILE_NAME, MegarepoConfig } from '../../lib/config.ts'
 import * as Git from '../../lib/git.ts'
 import { Cwd, outputOption, outputModeLayer } from '../context.ts'
-import { InitApp } from '../renderers/InitOutput/mod.ts'
 import { InitConnectedView } from '../renderers/InitOutput/connected-view.tsx'
+import { InitApp } from '../renderers/InitOutput/mod.ts'
 
 /** Initialize a new megarepo in current directory */
 export const initCommand = Cli.Command.make('init', { output: outputOption }, ({ output }) =>
@@ -40,7 +40,10 @@ export const initCommand = Cli.Command.make('init', { output: outputOption }, ({
           return
         }
 
-        const configPath = EffectPath.ops.join(cwd, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME))
+        const configPath = EffectPath.ops.join(
+          cwd,
+          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+        )
 
         // Check if config already exists
         const exists = yield* fs.exists(configPath)
