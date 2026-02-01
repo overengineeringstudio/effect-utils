@@ -36,4 +36,5 @@ export const StatusApp = createTuiApp({
   actionSchema: StatusAction,
   initial: createInitialStatusState(),
   reducer: statusReducer,
+  exitCode: () => 0, // Status errors handled via Effect errors, not state
 })

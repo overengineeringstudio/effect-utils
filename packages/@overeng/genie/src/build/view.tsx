@@ -433,5 +433,3 @@ export const GenieView = ({ stateAtom }: GenieViewProps) => {
     </Box>
   )
 }
-
-

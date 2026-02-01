@@ -46,9 +46,11 @@ export type InitState = Schema.Schema.Type<typeof InitState>
 // Type Guards
 // =============================================================================
 
-export const isInitError = (state: InitState): state is typeof InitErrorState.Type => state._tag === 'Error'
+export const isInitError = (state: InitState): state is typeof InitErrorState.Type =>
+  state._tag === 'Error'
 
-export const isInitSuccess = (state: InitState): state is typeof InitSuccessState.Type => state._tag === 'Success'
+export const isInitSuccess = (state: InitState): state is typeof InitSuccessState.Type =>
+  state._tag === 'Success'
 
 export const isInitAlready = (state: InitState): state is typeof InitAlreadyState.Type =>
   state._tag === 'AlreadyInitialized'

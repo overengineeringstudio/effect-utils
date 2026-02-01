@@ -20,7 +20,9 @@ export const rootCommand = Cli.Command.make('root', { output: outputOption }, ({
     // Run TuiApp for all output (handles JSON/TTY modes automatically)
     yield* Effect.scoped(
       Effect.gen(function* () {
-        const tui = yield* RootApp.run(React.createElement(RootView, { stateAtom: RootApp.stateAtom }))
+        const tui = yield* RootApp.run(
+          React.createElement(RootView, { stateAtom: RootApp.stateAtom }),
+        )
 
         // Search up from current directory
         const root = yield* findMegarepoRoot(cwd)

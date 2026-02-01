@@ -6,9 +6,11 @@
  * Uses the same schemas and view as production code from sync-app.tsx.
  */
 
+import type { Atom } from '@effect-atom/atom'
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
+import { useTuiAtomValue } from '@overeng/tui-react'
 import { TuiStoryPreview, type OutputTab } from '@overeng/tui-react/storybook'
 
 import {
@@ -19,6 +21,19 @@ import {
   type SyncProgressState as SyncProgressStateType,
   type SyncProgressAction as SyncProgressActionType,
 } from './sync-app.tsx'
+
+// =============================================================================
+// Story View Wrapper
+// =============================================================================
+
+/**
+ * Wrapper view that accepts stateAtom (required by TuiStoryPreview)
+ * and passes the resolved state to SyncProgressView.
+ */
+const SyncProgressStoryView = ({ stateAtom }: { stateAtom: Atom.Atom<SyncProgressStateType> }) => {
+  const state = useTuiAtomValue(stateAtom)
+  return <SyncProgressView state={state} />
+}
 
 // =============================================================================
 // Initial States
@@ -315,7 +330,7 @@ export const FullSync: Story = {
   },
   render: (args) => (
     <TuiStoryPreview
-      View={SyncProgressView}
+      View={SyncProgressStoryView}
       stateSchema={SyncProgressState}
       actionSchema={SyncProgressAction}
       reducer={syncProgressReducer}
@@ -338,7 +353,7 @@ export const IncrementalSync: Story = {
   },
   render: (args) => (
     <TuiStoryPreview
-      View={SyncProgressView}
+      View={SyncProgressStoryView}
       stateSchema={SyncProgressState}
       actionSchema={SyncProgressAction}
       reducer={syncProgressReducer}
@@ -361,7 +376,7 @@ export const WithErrors: Story = {
   },
   render: (args) => (
     <TuiStoryPreview
-      View={SyncProgressView}
+      View={SyncProgressStoryView}
       stateSchema={SyncProgressState}
       actionSchema={SyncProgressAction}
       reducer={syncProgressReducer}
@@ -384,7 +399,7 @@ export const DryRunMode: Story = {
   },
   render: (args) => (
     <TuiStoryPreview
-      View={SyncProgressView}
+      View={SyncProgressStoryView}
       stateSchema={SyncProgressState}
       actionSchema={SyncProgressAction}
       reducer={syncProgressReducer}
@@ -407,7 +422,7 @@ export const FrozenMode: Story = {
   },
   render: (args) => (
     <TuiStoryPreview
-      View={SyncProgressView}
+      View={SyncProgressStoryView}
       stateSchema={SyncProgressState}
       actionSchema={SyncProgressAction}
       reducer={syncProgressReducer}
@@ -430,7 +445,7 @@ export const AllPending: Story = {
   args: { height: 400 },
   render: (args) => (
     <TuiStoryPreview
-      View={SyncProgressView}
+      View={SyncProgressStoryView}
       stateSchema={SyncProgressState}
       actionSchema={SyncProgressAction}
       reducer={syncProgressReducer}
@@ -447,7 +462,7 @@ export const InProgress: Story = {
   args: { height: 400 },
   render: (args) => (
     <TuiStoryPreview
-      View={SyncProgressView}
+      View={SyncProgressStoryView}
       stateSchema={SyncProgressState}
       actionSchema={SyncProgressAction}
       reducer={syncProgressReducer}
@@ -488,7 +503,7 @@ export const Complete: Story = {
   args: { height: 400 },
   render: (args) => (
     <TuiStoryPreview
-      View={SyncProgressView}
+      View={SyncProgressStoryView}
       stateSchema={SyncProgressState}
       actionSchema={SyncProgressAction}
       reducer={syncProgressReducer}
@@ -526,7 +541,7 @@ export const CompleteWithErrors: Story = {
   args: { height: 400 },
   render: (args) => (
     <TuiStoryPreview
-      View={SyncProgressView}
+      View={SyncProgressStoryView}
       stateSchema={SyncProgressState}
       actionSchema={SyncProgressAction}
       reducer={syncProgressReducer}

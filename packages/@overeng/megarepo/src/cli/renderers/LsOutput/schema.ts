@@ -53,7 +53,8 @@ export type LsState = typeof LsState.Type
 // Type Guards
 // =============================================================================
 
-export const isLsError = (state: LsState): state is typeof LsErrorState.Type => state._tag === 'Error'
+export const isLsError = (state: LsState): state is typeof LsErrorState.Type =>
+  state._tag === 'Error'
 
 export const isLsSuccess = (state: LsState): state is typeof LsSuccessState.Type =>
   state._tag === 'Success'

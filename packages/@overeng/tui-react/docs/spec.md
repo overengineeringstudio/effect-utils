@@ -340,7 +340,9 @@ const deployReducer = (state: DeployState, action: DeployAction): DeployState =>
       if (state._tag !== 'Progress') return state
       return {
         ...state,
-        services: state.services.map((s) => (s.name === action.name ? { ...s, status: action.status } : s)),
+        services: state.services.map((s) =>
+          s.name === action.name ? { ...s, status: action.status } : s,
+        ),
       }
     case 'Complete':
       return { _tag: 'Complete', services: action.results, totalDuration: action.totalDuration }
@@ -895,7 +897,16 @@ const outputOption: Cli.Options<OutputModeValue>
 // Create layer from option value
 const outputModeLayer: (value: OutputModeValue) => Layer<OutputMode>
 
-type OutputModeValue = 'auto' | 'tty' | 'alt-screen' | 'ci' | 'ci-plain' | 'pipe' | 'log' | 'json' | 'ndjson'
+type OutputModeValue =
+  | 'auto'
+  | 'tty'
+  | 'alt-screen'
+  | 'ci'
+  | 'ci-plain'
+  | 'pipe'
+  | 'log'
+  | 'json'
+  | 'ndjson'
 ```
 
 ### useViewport

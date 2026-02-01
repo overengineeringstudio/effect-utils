@@ -215,7 +215,7 @@ export const catalog = defineCatalog({
   '@mariozechner/pi-tui': '0.45.7',
 
   // TUI React renderer dependencies
-  'react-reconciler': '0.32.0',
+  'react-reconciler': '0.33.0',
   '@types/react-reconciler': '0.28.9',
   'yoga-layout': '3.2.1',
   'string-width': '7.2.0',

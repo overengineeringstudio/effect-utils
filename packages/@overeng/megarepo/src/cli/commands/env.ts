@@ -38,7 +38,9 @@ export const envCommand = Cli.Command.make(
       // Run TuiApp for all output (handles JSON/TTY modes automatically)
       yield* Effect.scoped(
         Effect.gen(function* () {
-          const tui = yield* EnvApp.run(React.createElement(EnvView, { stateAtom: EnvApp.stateAtom }))
+          const tui = yield* EnvApp.run(
+            React.createElement(EnvView, { stateAtom: EnvApp.stateAtom }),
+          )
 
           // Find the megarepo root
           const root = yield* findMegarepoRoot(cwd)

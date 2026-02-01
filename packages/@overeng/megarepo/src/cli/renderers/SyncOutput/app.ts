@@ -55,4 +55,10 @@ export const SyncApp = createTuiApp({
   actionSchema: SyncAction,
   initial: createInitialSyncState({ workspaceName: '', workspaceRoot: '' }),
   reducer: syncReducer,
+  exitCode: (state) => {
+    if (state.phase === 'interrupted') return 130 // SIGINT
+    const hasErrors = state.results.some((r) => r.status === 'error')
+    if (hasErrors) return 1
+    return 0
+  },
 })

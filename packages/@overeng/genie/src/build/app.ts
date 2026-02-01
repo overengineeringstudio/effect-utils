@@ -30,4 +30,13 @@ export const GenieApp = createTuiApp({
   actionSchema: GenieAction,
   initial: createInitialGenieState({ cwd: '', mode: 'generate' }),
   reducer: genieReducer,
+  exitCode: (state) => {
+    if (state.phase === 'error') return 1
+    // Check if any files failed
+    const hasFailures = state.files.some((f) => f.status === 'error')
+    if (hasFailures) return 1
+    // Check summary if available
+    if (state.summary && state.summary.failed > 0) return 1
+    return 0
+  },
 })

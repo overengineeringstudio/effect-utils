@@ -50,9 +50,11 @@ export type EnvState = Schema.Schema.Type<typeof EnvState>
 // Type Guards
 // =============================================================================
 
-export const isEnvError = (state: EnvState): state is typeof EnvErrorState.Type => state._tag === 'Error'
+export const isEnvError = (state: EnvState): state is typeof EnvErrorState.Type =>
+  state._tag === 'Error'
 
-export const isEnvSuccess = (state: EnvState): state is typeof EnvSuccessState.Type => state._tag === 'Success'
+export const isEnvSuccess = (state: EnvState): state is typeof EnvSuccessState.Type =>
+  state._tag === 'Success'
 
 // =============================================================================
 // Env Actions

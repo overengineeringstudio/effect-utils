@@ -25,7 +25,9 @@ export const initCommand = Cli.Command.make('init', { output: outputOption }, ({
     // Run TuiApp for all output (handles JSON/TTY modes automatically)
     yield* Effect.scoped(
       Effect.gen(function* () {
-        const tui = yield* InitApp.run(React.createElement(InitView, { stateAtom: InitApp.stateAtom }))
+        const tui = yield* InitApp.run(
+          React.createElement(InitView, { stateAtom: InitApp.stateAtom }),
+        )
 
         // Check if already in a git repo
         const isGit = yield* Git.isGitRepo(cwd)
