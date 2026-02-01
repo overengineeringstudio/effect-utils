@@ -1,12 +1,15 @@
+import type { Meta, StoryObj } from '@storybook/react'
+
 import { Inspector } from '../src'
 
 export default {
   title: 'Table Inspector',
   component: Inspector,
-}
+} satisfies Meta<typeof Inspector>
 
-export const Simple = {
-  name: 'Simple',
+type Story = StoryObj<typeof Inspector>
+
+export const Simple: Story = {
   args: {
     table: true,
     data: [
@@ -16,8 +19,7 @@ export const Simple = {
   },
 }
 
-export const DifferentColumns = {
-  name: 'Different Columns',
+export const DifferentColumns: Story = {
   args: {
     table: true,
     data: {
@@ -27,8 +29,7 @@ export const DifferentColumns = {
   },
 }
 
-export const DifferentColumnsWithNames = {
-  name: 'Different Columns With Names',
+export const DifferentColumnsWithNames: Story = {
   args: {
     table: true,
     data: {
@@ -42,8 +43,7 @@ export const DifferentColumnsWithNames = {
   },
 }
 
-export const DataAndColumnsProps = {
-  name: 'Data And Columns Props',
+export const DataAndColumnsProps: Story = {
   args: {
     table: true,
     data: {
@@ -54,8 +54,7 @@ export const DataAndColumnsProps = {
   },
 }
 
-export const Sudoku = {
-  name: 'Sudoku',
+export const Sudoku: Story = {
   args: {
     table: true,
     data: [
@@ -72,40 +71,35 @@ export const Sudoku = {
   },
 }
 
-export const Null = {
-  name: 'Null',
+export const Null: Story = {
   args: {
     table: true,
     data: null,
   },
 }
 
-export const Undefined = {
-  name: 'Undefined',
+export const Undefined: Story = {
   args: {
     table: true,
     data: undefined,
   },
 }
 
-export const ArrayOfUndefined = {
-  name: 'Array Of Undefined',
+export const ArrayOfUndefined: Story = {
   args: {
     table: true,
     data: [undefined],
   },
 }
 
-export const ArrayOfAnEmptyObject = {
-  name: 'Array Of An Empty Object',
+export const ArrayOfAnEmptyObject: Story = {
   args: {
     table: true,
     data: [{}],
   },
 }
 
-export const ArrayOfArray = {
-  name: 'Array Of Array',
+export const ArrayOfArray: Story = {
   args: {
     table: true,
     data: [[1, 2]],
