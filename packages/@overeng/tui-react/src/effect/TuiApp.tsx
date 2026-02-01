@@ -41,8 +41,6 @@ import type { Scope } from 'effect'
 import { Console, Effect, PubSub, Schema, Stream } from 'effect'
 import React, { type ReactElement, type ReactNode, createContext } from 'react'
 
-import type { Viewport } from '../hooks/useViewport.tsx'
-import { ViewportProvider } from '../hooks/useViewport.tsx'
 import { renderToString } from '../renderToString.ts'
 import { createRoot, type Root } from '../root.tsx'
 import { useContext, useSyncExternalStore, useCallback } from './hooks.tsx'
@@ -242,18 +240,6 @@ export interface TuiApp<S, A> {
   ) => Effect.Effect<TuiAppApi<S, A>, never, Scope.Scope | OutputModeTag>
 
   /**
-   * @deprecated Use `useTuiAtomValue(App.stateAtom)` instead.
-   * App-scoped hook to get current state.
-   */
-  readonly useState: () => S
-
-  /**
-   * @deprecated Use registry.set(App.dispatchAtom, action) instead.
-   * App-scoped hook to get dispatch function.
-   */
-  readonly useDispatch: () => (action: A) => void
-
-  /**
    * The app configuration (useful for testing).
    */
   readonly config: TuiAppConfig<S, A>
@@ -364,20 +350,6 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
   // Create a registry for this app
   const registry = Registry.make()
 
-  // Legacy hooks for backward compatibility (deprecated)
-  const useState = (): S => {
-    // This requires the component to be wrapped in TuiRegistryContext
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    return useTuiAtomValue(stateAtom)
-  }
-
-  const useDispatch = (): ((action: A) => void) => {
-    // Return a function that updates the dispatch atom
-    return (action: A) => {
-      registry.set(dispatchAtom, action)
-    }
-  }
-
   // Check once if schema has Interrupted variant
   const interruptedAction = createInterruptedAction(config.actionSchema)
   // TODO: Implement interrupt timeout handling
@@ -481,8 +453,6 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
     stateAtom,
     dispatchAtom,
     run,
-    useState,
-    useDispatch,
     config,
   }
 }
@@ -566,16 +536,7 @@ const setupProgressiveVisualWithView = <S, A>({
       </TuiRegistryContext.Provider>
     )
 
-    const initialViewport: Viewport = {
-      columns: process.stdout.columns ?? 80,
-      rows: process.stdout.rows ?? 24,
-    }
-
-    root.render(
-      <ViewportProvider viewport={initialViewport}>
-        <TuiAppWrapper />
-      </ViewportProvider>,
-    )
+    root.render(<TuiAppWrapper />)
 
     // Clean up root when scope closes
     yield* Effect.addFinalizer(() => Effect.sync(() => root.unmount()))

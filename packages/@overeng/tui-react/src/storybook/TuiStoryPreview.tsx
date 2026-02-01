@@ -74,7 +74,7 @@ export interface TimelineEvent<A> {
   action: A
 }
 
-/** Props for simple mode - just render children */
+/** Props for a tab button */
 /** Props for TuiStoryPreview - uses a TuiApp for state management */
 export interface TuiStoryPreviewProps<S, A> {
   /** A TuiApp instance (or any object with a compatible config) */
@@ -1190,11 +1190,7 @@ const isFinalMode = (tab: OutputTab): boolean => FINAL_MODES.has(tab)
 const DEFAULT_TABS: OutputTab[] = ['tty', 'ci', 'log', 'json', 'ndjson']
 
 // =============================================================================
-// Simple Mode Component (children-based)
-// =============================================================================
-
-// =============================================================================
-// Main Stateful Component (View + state management)
+// Main Component
 // =============================================================================
 
 export const TuiStoryPreview = <S, A>({
