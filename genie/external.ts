@@ -299,7 +299,7 @@ export const createEffectUtilsRefs = (basePath: string) =>
  * we use postinstall scripts instead of bun's patchedDependencies.
  */
 const patches = {
-  'effect-distributed-lock@0.0.11': 'patches/effect-distributed-lock@0.0.11.patch',
+  'effect-distributed-lock@0.0.11': 'packages/@overeng/utils/patches/effect-distributed-lock@0.0.11.patch',
 } as const satisfies PatchesRegistry
 
 /**

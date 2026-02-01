@@ -4,6 +4,11 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  effect-distributed-lock@0.0.11:
+    hash: a365d5c8857e3a421ea3b83b6be483433a5a75b344072aa68c4c984b14ec5a0b
+    path: ../utils/patches/effect-distributed-lock@0.0.11.patch
+
 importers:
 
   .:
@@ -42,6 +47,12 @@ importers:
         specifier: 19.2.3
         version: 19.2.3
     devDependencies:
+      '@effect-atom/atom':
+        specifier: 0.4.13
+        version: 0.4.13(@effect/experimental@0.58.0(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15)(ioredis@5.6.1))(@effect/platform@0.94.2(effect@3.19.15))(@effect/rpc@0.73.0(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15))(effect@3.19.15)
+      '@effect-atom/atom-react':
+        specifier: 0.4.5
+        version: 0.4.5(@effect/experimental@0.58.0(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15)(ioredis@5.6.1))(@effect/platform@0.94.2(effect@3.19.15))(@effect/rpc@0.73.0(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15))(effect@3.19.15)(react@19.2.3)(scheduler@0.27.0)
       '@effect/cli':
         specifier: 0.73.1
         version: 0.73.1(@effect/platform@0.94.2(effect@3.19.15))(@effect/printer-ansi@0.47.0(@effect/typeclass@0.38.0(effect@3.19.15))(effect@3.19.15))(@effect/printer@0.47.0(@effect/typeclass@0.38.0(effect@3.19.15))(effect@3.19.15))(effect@3.19.15)
@@ -63,6 +74,12 @@ importers:
       '@effect/vitest':
         specifier: 0.27.0
         version: 0.27.0(effect@3.19.15)(vitest@3.2.4(@types/node@25.0.3)(yaml@2.8.2))
+      '@opentui/core':
+        specifier: 0.1.74
+        version: 0.1.74(stage-js@1.0.0-alpha.17)(typescript@5.9.3)(web-tree-sitter@0.25.10)
+      '@opentui/react':
+        specifier: 0.1.74
+        version: 0.1.74(react-devtools-core@7.0.1)(react@19.2.3)(stage-js@1.0.0-alpha.17)(typescript@5.9.3)(web-tree-sitter@0.25.10)(ws@8.19.0)
       '@storybook/react':
         specifier: 10.2.1
         version: 10.2.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(storybook@10.2.1(@testing-library/dom@10.4.1)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(typescript@5.9.3)
@@ -264,7 +281,7 @@ importers:
         version: 1.9.0
       effect-distributed-lock:
         specifier: 0.0.11
-        version: 0.0.11(effect@3.19.15)(ioredis@5.6.1)(typescript@5.9.3)
+        version: 0.0.11(patch_hash=a365d5c8857e3a421ea3b83b6be483433a5a75b344072aa68c4c984b14ec5a0b)(effect@3.19.15)(ioredis@5.6.1)(typescript@5.9.3)
       ioredis:
         specifier: 5.6.1
         version: 5.6.1
@@ -3643,7 +3660,7 @@ snapshots:
 
   eastasianwidth@0.2.0: {}
 
-  effect-distributed-lock@0.0.11(effect@3.19.15)(ioredis@5.6.1)(typescript@5.9.3):
+  effect-distributed-lock@0.0.11(patch_hash=a365d5c8857e3a421ea3b83b6be483433a5a75b344072aa68c4c984b14ec5a0b)(effect@3.19.15)(ioredis@5.6.1)(typescript@5.9.3):
     dependencies:
       effect: 3.19.15
       typescript: 5.9.3

@@ -23,6 +23,7 @@ import {
 } from './schema.ts'
 import { logTsconfigWarnings, validateTsconfigReferences } from './tsconfig-validation.ts'
 import type { GenieCommandConfig, GenieCommandEnv, GenieCommandError } from './types.ts'
+import { runGenieValidationPlugins } from './validation.ts'
 import { GenieConnectedView } from './view.tsx'
 
 export {
@@ -226,6 +227,17 @@ export const genieCommand: Cli.Command.Command<
             message: `${failed} file(s) are out of date`,
           })
         }
+
+        yield* runGenieValidationPlugins({ cwd: resolvedCwd }).pipe(
+          Effect.catchAll((error) =>
+            Effect.fail(
+              new GenieGenerationFailedError({
+                failedCount: 1,
+                message: error.message,
+              }),
+            ),
+          ),
+        )
 
         return
       }

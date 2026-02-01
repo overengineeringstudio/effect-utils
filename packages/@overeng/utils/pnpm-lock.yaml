@@ -7,7 +7,7 @@ settings:
 patchedDependencies:
   effect-distributed-lock@0.0.11:
     hash: a365d5c8857e3a421ea3b83b6be483433a5a75b344072aa68c4c984b14ec5a0b
-    path: ../../../patches/effect-distributed-lock@0.0.11.patch
+    path: patches/effect-distributed-lock@0.0.11.patch
 
 importers:
 

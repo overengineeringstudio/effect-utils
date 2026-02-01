@@ -5,6 +5,7 @@ import {
   packageJson,
   privatePackageDefaults,
 } from '../../../genie/internal.ts'
+import tuiReactPkg from '../tui-react/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
 const peerDepNames = [
@@ -15,6 +16,8 @@ const peerDepNames = [
   '@effect/printer-ansi',
   'effect',
 ] as const
+
+const tuiReactPeerNames = Object.keys(tuiReactPkg.data.peerDependencies ?? {})
 
 export default packageJson({
   name: '@overeng/megarepo',
@@ -48,6 +51,7 @@ export default packageJson({
     ...catalog.pick(
       // Peer deps (for testing)
       ...peerDepNames,
+      ...tuiReactPeerNames,
       // Testing
       '@effect/vitest',
       '@types/bun',
@@ -72,6 +76,13 @@ export default packageJson({
   peerDependencies: {
     // Expose @overeng/utils peer deps transitively (consumers need them)
     ...utilsPkg.data.peerDependencies,
+    ...tuiReactPkg.data.peerDependencies,
     ...catalog.peers(...peerDepNames),
+  },
+  pnpm: {
+    patchedDependencies: {
+      ...utilsPkg.data.pnpm?.patchedDependencies,
+      ...tuiReactPkg.data.pnpm?.patchedDependencies,
+    },
   },
 })

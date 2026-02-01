@@ -1,10 +1,10 @@
 import { otelSdkDeps } from '../../../genie/external.ts'
 import {
   catalog,
+  definePatchedDependencies,
   effectLspDevDeps,
   effectLspScripts,
   packageJson,
-  pnpmPatchedDependencies,
   privatePackageDefaults,
 } from '../../../genie/internal.ts'
 
@@ -23,6 +23,13 @@ const peerDepNames = [
   'effect',
 ] as const
 
+const utilsPatches = definePatchedDependencies({
+  location: 'packages/@overeng/utils',
+  patches: {
+    'effect-distributed-lock@0.0.11': './patches/effect-distributed-lock@0.0.11.patch',
+  },
+})
+
 export default packageJson({
   name: '@overeng/utils',
   ...privatePackageDefaults,
@@ -30,7 +37,7 @@ export default packageJson({
     ...effectLspScripts,
   },
   pnpm: {
-    patchedDependencies: pnpmPatchedDependencies(),
+    patchedDependencies: utilsPatches,
   },
   exports: {
     '.': './src/isomorphic/mod.ts',
