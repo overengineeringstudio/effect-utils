@@ -8,7 +8,14 @@ import { Effect, Duration, Schema } from 'effect'
 import React from 'react'
 import { describe, test, expect, beforeEach, afterEach } from 'vitest'
 
-import { createTuiApp, detectOutputMode, Box, Text, testModeLayer } from '../../src/mod.ts'
+import {
+  createTuiApp,
+  useTuiAtomValue,
+  detectOutputMode,
+  Box,
+  Text,
+  testModeLayer,
+} from '../../src/mod.ts'
 
 // =============================================================================
 // Test State Schema (simulating a deploy command)
@@ -120,7 +127,7 @@ const DeployApp = createTuiApp({
 // =============================================================================
 
 const DeployView = () => {
-  const state = DeployApp.useState()
+  const state = useTuiAtomValue(DeployApp.stateAtom)
 
   if (state._tag === 'Idle') return null
 

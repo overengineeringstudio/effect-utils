@@ -163,8 +163,16 @@ const mapJustify = (justify: NonNullable<BoxNodeProps['justifyContent']>): Justi
 }
 
 /** Calculate layout for a tree starting at node */
-export const calculateLayout = ({ node, width }: { node: YogaNode; width: number }): void => {
-  node.calculateLayout(width, undefined, Direction.LTR)
+export const calculateLayout = ({
+  node,
+  width,
+  height,
+}: {
+  node: YogaNode
+  width: number
+  height?: number
+}): void => {
+  node.calculateLayout(width, height, Direction.LTR)
 }
 
 /** Get computed layout for a node */

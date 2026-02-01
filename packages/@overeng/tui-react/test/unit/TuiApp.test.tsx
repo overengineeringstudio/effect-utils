@@ -7,7 +7,7 @@ import React from 'react'
 import { describe, test, expect, beforeEach, afterEach } from 'vitest'
 
 import { testModeLayer } from '../../src/effect/testing.tsx'
-import { createTuiApp, Box, Text } from '../../src/mod.tsx'
+import { createTuiApp, useTuiAtomValue, Box, Text } from '../../src/mod.tsx'
 
 // =============================================================================
 // Test State and Actions
@@ -60,8 +60,7 @@ const CounterApp = createTuiApp({
 // =============================================================================
 
 const CounterView = () => {
-  const state = CounterApp.useState()
-  const _dispatch = CounterApp.useDispatch()
+  const state = useTuiAtomValue(CounterApp.stateAtom)
 
   return (
     <Box flexDirection="column">

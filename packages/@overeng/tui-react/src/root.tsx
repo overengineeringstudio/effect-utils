@@ -287,29 +287,16 @@ export const createRoot = ({
 
     const width = viewport.columns
 
-    // Debug: log terminal dimensions on each render
-    if (typeof process !== 'undefined' && process.env?.TUI_DEBUG === '1') {
-      console.error(
-        `[TUI_DEBUG] doRender: cols=${width} rows=${viewport.rows} lastWidth=${lastRenderedWidth} isTTY=${terminal.isTTY}`,
-      )
-    }
-
     // Self-correcting resize detection: if width changed, reset everything
     // This prevents ghost lines from differential rendering with stale positions
     if (width !== lastRenderedWidth) {
-      // Debug: log when width change triggers reset
-      if (typeof process !== 'undefined' && process.env?.TUI_DEBUG === '1') {
-        console.error(
-          `[TUI_DEBUG] Width changed: ${lastRenderedWidth} -> ${width}, triggering renderer.reset()`,
-        )
-      }
       lastRenderedWidth = width
       resetStaticCommittedCount()
       staticLineCount = 0
       renderer.reset()
     }
 
-    // Handle static content first
+    // Handle static content first (before computing budget so staticLineCount is up to date)
     const staticResult = extractStaticContent({ root: container.root, width })
     if (staticResult.lines.length > 0) {
       let linesToAppend = staticResult.lines
@@ -318,7 +305,6 @@ export const createRoot = ({
       if (maxStaticLines !== Infinity) {
         const newTotal = staticLineCount + linesToAppend.length
         if (newTotal > maxStaticLines) {
-          // Truncate oldest (we can only control new additions)
           const allowedNew = Math.max(0, maxStaticLines - staticLineCount)
           if (allowedNew < linesToAppend.length) {
             linesToAppend = linesToAppend.slice(-allowedNew)
@@ -327,45 +313,43 @@ export const createRoot = ({
       }
 
       if (linesToAppend.length > 0) {
-        // Truncate lines to prevent soft wrapping
         const truncatedStaticLines = truncateLines(linesToAppend, width)
         renderer.appendStatic(truncatedStaticLines)
       }
 
-      // Always track static line count for viewport height calculation
       staticLineCount += linesToAppend.length
       if (maxStaticLines !== Infinity) {
         staticLineCount = Math.min(staticLineCount, maxStaticLines)
       }
 
-      // Update the committed count
       if (staticResult.element && isStaticElement(staticResult.element)) {
         ;(staticResult.element as TuiStaticElement).committedCount = staticResult.newItemCount
       }
     }
 
-    // Calculate layout
-    calculateLayout({ node: container.root.yogaNode, width })
-
-    // Render to lines
-    let lines = renderTreeSimple({ root: container.root, width })
-
-    // Apply maxDynamicLines limit - also ensure we don't exceed terminal height
-    // to prevent scrolling which breaks cursor positioning in differential rendering.
-    // Account for static lines already consuming viewport rows.
+    // Compute hard budget: rows - 1 (for trailing cursor line) - static lines consumed.
+    // This is the superconsole pattern (saturating_sub).
     const effectiveMaxLines = Math.min(
       maxDynamicLines,
       Math.max(1, viewport.rows - 1 - staticLineCount),
     )
+
+    // Calculate layout with height constraint so yoga can distribute space
+    // via flexShrink (large sections shrink, fixed elements keep their lines).
+    calculateLayout({ node: container.root.yogaNode, width, height: effectiveMaxLines })
+
+    // Render to lines. Both maxLines and yoga height clipping enforce the budget.
+    let lines = renderTreeSimple({ root: container.root, width, maxLines: effectiveMaxLines })
+
+    // Safety net: hard-truncate if lines still exceed budget (should rarely trigger
+    // with yoga constraint + render clipping, but catches edge cases).
     if (lines.length > effectiveMaxLines) {
-      const truncated = lines.slice(0, effectiveMaxLines - 1)
       const hiddenCount = lines.length - effectiveMaxLines + 1
-      truncated.push(`... ${hiddenCount} more line${hiddenCount > 1 ? 's' : ''}`)
-      lines = truncated
+      lines = lines.slice(0, effectiveMaxLines - 1)
+      lines.push(`... ${hiddenCount} more line${hiddenCount > 1 ? 's' : ''}`)
     }
 
-    // Truncate lines to prevent soft wrapping (which causes ghost lines during updates).
-    // Done after vertical truncation so the overflow indicator is also truncated.
+    // Truncate lines horizontally to prevent soft wrapping.
     lines = truncateLines(lines, width)
 
     renderer.render(lines)

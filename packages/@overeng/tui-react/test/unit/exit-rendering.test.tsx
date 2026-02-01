@@ -13,7 +13,14 @@ import { Effect, Schema } from 'effect'
 import React from 'react'
 import { describe, test, expect, beforeEach, afterEach } from 'vitest'
 
-import { createTuiApp, createRoot, Box, Text, testModeLayer } from '../../src/mod.ts'
+import {
+  createTuiApp,
+  useTuiAtomValue,
+  createRoot,
+  Box,
+  Text,
+  testModeLayer,
+} from '../../src/mod.ts'
 import { createMockTerminal } from '../helpers/mock-terminal.ts'
 import { createVirtualTerminal } from '../helpers/virtual-terminal.ts'
 
@@ -80,7 +87,6 @@ const AppWithInterrupt = createTuiApp({
   actionSchema: TestActionWithInterrupt,
   initial: { value: 'initial', interrupted: false },
   reducer: testReducerWithInterrupt,
-  interruptTimeout: 50, // Short timeout for tests
 })
 
 const AppNoInterrupt = createTuiApp({
@@ -95,7 +101,7 @@ const AppNoInterrupt = createTuiApp({
 // =============================================================================
 
 const _TestViewWithInterrupt = () => {
-  const state = AppWithInterrupt.useState()
+  const state = useTuiAtomValue(AppWithInterrupt.stateAtom)
   return (
     <Box flexDirection="column">
       <Text>Value: {state.value}</Text>
@@ -105,7 +111,7 @@ const _TestViewWithInterrupt = () => {
 }
 
 const _TestViewNoInterrupt = () => {
-  const state = AppNoInterrupt.useState()
+  const state = useTuiAtomValue(AppNoInterrupt.stateAtom)
   return (
     <Box flexDirection="column">
       <Text>Value: {state.value}</Text>
@@ -303,24 +309,7 @@ describe('Interrupt Handling', () => {
     })
   })
 
-  describe('interruptTimeout config', () => {
-    test('respects custom interruptTimeout', async () => {
-      const startTime = Date.now()
 
-      await Effect.gen(function* () {
-        // AppWithInterrupt has interruptTimeout: 50
-        yield* AppWithInterrupt.run()
-        // Scope closes here
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe')), Effect.runPromise)
-
-      const elapsed = Date.now() - startTime
-
-      // Should have waited approximately 50ms for the interrupt timeout
-      // Allow some variance for execution time
-      expect(elapsed).toBeGreaterThanOrEqual(40)
-      expect(elapsed).toBeLessThan(200) // Should not wait too long
-    })
-  })
 })
 
 // =============================================================================

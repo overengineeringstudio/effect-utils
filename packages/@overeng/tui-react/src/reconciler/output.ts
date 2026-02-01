@@ -355,9 +355,11 @@ const applyBoxStyle = ({
 export const renderTreeSimple = ({
   root,
   width,
+  maxLines,
 }: {
   root: TuiElement
   width: number
+  maxLines?: number
 }): string[] => {
   const lines: string[] = []
 
@@ -380,6 +382,8 @@ export const renderTreeSimple = ({
       return // Static handled separately
     }
 
+    if (maxLines !== undefined && lines.length >= maxLines) return
+
     if (isTextElement(node)) {
       const mergedStyle = { ...style, ...node.props }
       const text = collectTextContent(node)
@@ -394,6 +398,13 @@ export const renderTreeSimple = ({
       const isRow = node.props.flexDirection === 'row'
       const paddingLeft = node.props.paddingLeft ?? node.props.padding ?? 0
       const newIndent = indent + paddingLeft
+
+      // Yoga height clipping: track lines produced by this box and stop
+      // when the box exceeds its yoga-computed height.
+      const computedHeight = Math.ceil(getLayout(node.yogaNode).height)
+      const startLineCount = lines.length
+      const boxFull = (): boolean =>
+        computedHeight > 0 && lines.length - startLineCount >= computedHeight
 
       // Create box style context for children
       const newBoxStyle: BoxStyle = node.props.backgroundColor
@@ -420,6 +431,8 @@ export const renderTreeSimple = ({
         }
         // Also render any nested boxes
         for (const child of node.children) {
+          if (maxLines !== undefined && lines.length >= maxLines) break
+          if (boxFull()) break
           if (isBoxElement(child)) {
             render({ node: child, style, indent: newIndent, boxStyle: newBoxStyle })
           }
@@ -427,8 +440,15 @@ export const renderTreeSimple = ({
       } else {
         // Column layout - render each child on its own line(s)
         for (const child of node.children) {
+          if (maxLines !== undefined && lines.length >= maxLines) break
+          if (boxFull()) break
           render({ node: child, style, indent: newIndent, boxStyle: newBoxStyle })
         }
+      }
+
+      // Hard clip: if a child produced more lines than yoga allocated
+      while (computedHeight > 0 && lines.length - startLineCount > computedHeight) {
+        lines.pop()
       }
     }
   }

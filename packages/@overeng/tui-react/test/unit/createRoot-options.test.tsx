@@ -5,10 +5,10 @@
 import React from 'react'
 import { describe, it, expect } from 'vitest'
 
-import { createRoot } from '../../src/root.tsx'
 import { Box } from '../../src/components/Box.tsx'
-import { Text } from '../../src/components/Text.tsx'
 import { Static } from '../../src/components/Static.tsx'
+import { Text } from '../../src/components/Text.tsx'
+import { createRoot } from '../../src/root.tsx'
 import { createMockTerminal } from '../helpers/mock-terminal.ts'
 
 describe('createRoot options', () => {
@@ -35,10 +35,8 @@ describe('createRoot options', () => {
 
       const output = terminal.getPlainOutput()
 
-      // Should contain truncation message
-      expect(output).toContain('more line')
-
-      // Should not contain all lines (some were truncated)
+      // Yoga clips to maxDynamicLines — later lines are not rendered
+      expect(output).toContain('Line one')
       expect(output).not.toContain('Line ten')
 
       root.unmount()
@@ -101,10 +99,8 @@ describe('createRoot options', () => {
 
       const output = terminal.getPlainOutput()
 
-      // The dynamic region should be truncated because static lines consume viewport space
-      expect(output).toContain('more line')
-
-      // Last dynamic item should NOT appear (truncated)
+      // Dynamic region clipped by yoga — later items not rendered
+      expect(output).toContain('Item one')
       expect(output).not.toContain('Item eight')
 
       root.unmount()
@@ -142,40 +138,28 @@ describe('createRoot options', () => {
     })
   })
 
-  describe('horizontal truncation of overflow indicator', () => {
-    it('truncates the "... N more lines" indicator to terminal width', async () => {
-      // Very narrow terminal (10 cols) where "... 18 more lines" (18 chars) would soft-wrap
-      const terminal = createMockTerminal({ cols: 10, rows: 5 })
+  describe('horizontal truncation', () => {
+    it('truncates long lines to terminal width', async () => {
+      const terminal = createMockTerminal({ cols: 15, rows: 5 })
       const root = createRoot({
         terminalOrStream: terminal,
-        options: { maxDynamicLines: 3, throttleMs: 0 },
+        options: { throttleMs: 0 },
       })
 
-      // Render enough lines to trigger vertical truncation with large hidden count
-      const items = Array.from({ length: 20 }, (_, i) => `item-${i}`)
       root.render(
         <Box flexDirection="column">
-          {items.map((item) => (
-            <Text key={item}>{item}</Text>
-          ))}
+          <Text>short</Text>
+          <Text>this line is way too long for the terminal</Text>
         </Box>,
       )
 
       await new Promise((resolve) => setTimeout(resolve, 50))
 
-      const output = terminal.getPlainOutput()
-      // The overflow indicator should be present (possibly truncated itself)
-      expect(output).toMatch(/\.\.\..*mo/)
-
-      // Every line in the output should fit within terminal width (10 cols).
-      // The overflow indicator "... 18 more lines" is 18 chars which exceeds 10 cols.
-      // It must be truncated to prevent soft-wrapping.
       const rawOutput = terminal.getRawOutput()
       const renderedLines = rawOutput.split('\r\n').filter((l) => l.length > 0)
       for (const line of renderedLines) {
-        // Strip ANSI codes and measure visible width
         const plain = line.replace(/\x1b\[[0-9;]*[a-zA-Z]|\x1b\[\?[0-9;]*[a-zA-Z]/g, '')
-        expect(plain.length).toBeLessThanOrEqual(10)
+        expect(plain.length).toBeLessThanOrEqual(15)
       }
 
       root.unmount()

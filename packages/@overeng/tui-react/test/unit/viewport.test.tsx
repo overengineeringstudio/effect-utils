@@ -5,8 +5,7 @@
 import React from 'react'
 import { describe, it, expect } from 'vitest'
 
-import { Box, Text, useViewport, ViewportProvider } from '../../src/mod.ts'
-import { renderAsync } from '../../src/render.ts'
+import { Box, Text, useViewport, ViewportProvider, renderToLines } from '../../src/mod.ts'
 
 describe('useViewport', () => {
   it('provides default viewport when no provider', async () => {
@@ -17,7 +16,7 @@ describe('useViewport', () => {
       return <Text>Test</Text>
     }
 
-    await renderAsync({ element: <TestComponent />, options: { columns: 80 } })
+    await renderToLines({ element: <TestComponent />, options: { width: 80 } })
 
     expect(capturedViewport).toEqual({ columns: 80, rows: 24 })
   })
@@ -30,13 +29,13 @@ describe('useViewport', () => {
       return <Text>Test</Text>
     }
 
-    await renderAsync({
+    await renderToLines({
       element: (
         <ViewportProvider viewport={{ columns: 120, rows: 40 }}>
           <TestComponent />
         </ViewportProvider>
       ),
-      options: { columns: 80 },
+      options: { width: 80 },
     })
 
     expect(capturedViewport).toEqual({ columns: 120, rows: 40 })
@@ -62,28 +61,28 @@ describe('useViewport', () => {
     const items = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j']
 
     // With small viewport, should truncate
-    const { lines: smallLines } = await renderAsync({
+    const smallLines = await renderToLines({
       element: (
         <ViewportProvider viewport={{ columns: 80, rows: 5 }}>
           <AdaptiveList items={items} />
         </ViewportProvider>
       ),
-      options: { columns: 80 },
+      options: { width: 80 },
     })
 
     expect(smallLines.length).toBeLessThanOrEqual(5)
-    expect(smallLines.some((l) => l.includes('more'))).toBe(true)
+    expect(smallLines.some((l: string) => l.includes('more'))).toBe(true)
 
     // With large viewport, should show all
-    const { lines: largeLines } = await renderAsync({
+    const largeLines = await renderToLines({
       element: (
         <ViewportProvider viewport={{ columns: 80, rows: 20 }}>
           <AdaptiveList items={items} />
         </ViewportProvider>
       ),
-      options: { columns: 80 },
+      options: { width: 80 },
     })
 
-    expect(largeLines.some((l) => l.includes('more'))).toBe(false)
+    expect(largeLines.some((l: string) => l.includes('more'))).toBe(false)
   })
 })

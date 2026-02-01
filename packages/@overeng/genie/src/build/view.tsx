@@ -303,6 +303,7 @@ const Summary = ({
 interface FileListProps {
   files: readonly GenieFile[]
   hasWatchCycle: boolean
+  hasSummary: boolean
 }
 
 /**
@@ -310,13 +311,13 @@ interface FileListProps {
  * Shows errors and active files first, then fills remaining space with others.
  * Displays overflow summary when files exceed available viewport height.
  */
-const FileList = ({ files, hasWatchCycle }: FileListProps) => {
+const FileList = ({ files, hasWatchCycle, hasSummary }: FileListProps) => {
   const viewport = useViewport()
 
   const { visibleFiles, hiddenFiles } = useMemo(() => {
-    // Calculate available lines for file list
-    // Layout: Header (1) + watch cycle? (1) + blank (1) + files + overflow? (1)
-    const reservedLines = 1 + (hasWatchCycle ? 1 : 0) + 1 + 1 // +1 for overflow line
+    // Reserve lines for everything outside the file list:
+    // Header (1) + watch cycle? (1) + blank (1) + [files] + blank? (1) + separator? (1) + summary? (1)
+    const reservedLines = 1 + (hasWatchCycle ? 1 : 0) + 1 + (hasSummary ? 3 : 0) + 1 // +1 for overflow line
     const availableLines = Math.max(1, viewport.rows - reservedLines)
 
     // If all files fit, no need to sort/truncate
@@ -330,15 +331,15 @@ const FileList = ({ files, hasWatchCycle }: FileListProps) => {
       visibleFiles: sorted.slice(0, availableLines - 1), // -1 for overflow indicator
       hiddenFiles: sorted.slice(availableLines - 1),
     }
-  }, [files, viewport.rows, hasWatchCycle])
+  }, [files, viewport.rows, hasWatchCycle, hasSummary])
 
   return (
-    <>
+    <Box flexShrink={1}>
       {visibleFiles.map((file) => (
         <FileItem key={file.path} file={file} />
       ))}
       {hiddenFiles.length > 0 && <Text dim>{getOverflowSummary(hiddenFiles)}</Text>}
-    </>
+    </Box>
   )
 }
 
@@ -400,7 +401,11 @@ export const GenieView = ({ stateAtom }: GenieViewProps) => {
         <Text> </Text>
 
         {/* File progress items - viewport aware */}
-        <FileList files={files} hasWatchCycle={watchCycle !== undefined && watchCycle > 0} />
+        <FileList
+          files={files}
+          hasWatchCycle={watchCycle !== undefined && watchCycle > 0}
+          hasSummary={false}
+        />
       </Box>
     )
   }
@@ -427,7 +432,11 @@ export const GenieView = ({ stateAtom }: GenieViewProps) => {
           <Text dim>All files up to date</Text>
         </Box>
       ) : (
-        <FileList files={files} hasWatchCycle={watchCycle !== undefined && watchCycle > 0} />
+        <FileList
+          files={files}
+          hasWatchCycle={watchCycle !== undefined && watchCycle > 0}
+          hasSummary={summary !== undefined}
+        />
       )}
 
       {/* Separator and summary */}

@@ -80,11 +80,28 @@ export class VirtualTerminal implements TuiTerminal {
   getViewport(): string[] {
     const lines: string[] = []
     const buffer = this.xterm.buffer.active
-    for (let i = 0; i < this.rows; i++) {
+    // Read from the actual viewport position, not from line 0.
+    // After terminal scrolling, baseY > 0 and lines 0..baseY-1 are scrollback.
+    const baseY = buffer.baseY
+    for (let i = baseY; i < baseY + this.rows; i++) {
       const line = buffer.getLine(i)
       lines.push(line?.translateToString(true).trimEnd() ?? '')
     }
     return lines
+  }
+
+  /**
+   * Check if the terminal has scrolled (content exceeded viewport).
+   */
+  hasScrolled(): boolean {
+    return this.xterm.buffer.active.baseY > 0
+  }
+
+  /**
+   * Get the number of lines that have scrolled off the top.
+   */
+  getScrollbackSize(): number {
+    return this.xterm.buffer.active.baseY
   }
 
   /**
