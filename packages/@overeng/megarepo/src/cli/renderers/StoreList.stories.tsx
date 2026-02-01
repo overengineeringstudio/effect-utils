@@ -23,7 +23,7 @@ const exampleStoreRepos: StoreRepo[] = [
 // Meta
 // =============================================================================
 
-const meta: Meta<StoreListOutputProps> = {
+const meta = {
   title: 'CLI/Store/List',
   component: StoreListOutput,
   render: (args) => (
@@ -43,7 +43,7 @@ const meta: Meta<StoreListOutputProps> = {
       },
     },
   },
-}
+} satisfies Meta<StoreListOutputProps>
 
 export default meta
 

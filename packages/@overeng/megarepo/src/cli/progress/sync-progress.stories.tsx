@@ -24,7 +24,10 @@ import {
 // Initial States
 // =============================================================================
 
-const createInitialState = (members: string[], options?: { modes?: string[] }): SyncProgressStateType => ({
+const createInitialState = (
+  members: string[],
+  options?: { modes?: string[] },
+): SyncProgressStateType => ({
   title: 'mr-workspace',
   subtitle: '/Users/dev/workspace',
   modes: options?.modes,
@@ -47,27 +50,79 @@ const members = ['effect', 'effect-utils', 'livestore', 'dotfiles', 'schickling.
 /** Full sync timeline - fresh workspace sync */
 const fullSyncTimeline: Array<{ at: number; action: SyncProgressActionType }> = [
   // Start syncing effect
-  { at: 200, action: { _tag: 'SetItemStatus', id: 'effect', status: 'active', message: 'cloning...' } },
-  { at: 400, action: { _tag: 'AddLog', type: 'info', message: 'Cloning effect from github.com/Effect-TS/effect' } },
+  {
+    at: 200,
+    action: { _tag: 'SetItemStatus', id: 'effect', status: 'active', message: 'cloning...' },
+  },
+  {
+    at: 400,
+    action: {
+      _tag: 'AddLog',
+      type: 'info',
+      message: 'Cloning effect from github.com/Effect-TS/effect',
+    },
+  },
 
   // effect done, start effect-utils
-  { at: 1200, action: { _tag: 'SetItemStatus', id: 'effect', status: 'success', message: 'cloned (main)' } },
-  { at: 1200, action: { _tag: 'SetItemStatus', id: 'effect-utils', status: 'active', message: 'cloning...' } },
+  {
+    at: 1200,
+    action: { _tag: 'SetItemStatus', id: 'effect', status: 'success', message: 'cloned (main)' },
+  },
+  {
+    at: 1200,
+    action: { _tag: 'SetItemStatus', id: 'effect-utils', status: 'active', message: 'cloning...' },
+  },
 
   // effect-utils done, start livestore
-  { at: 2000, action: { _tag: 'SetItemStatus', id: 'effect-utils', status: 'success', message: 'cloned (main)' } },
-  { at: 2000, action: { _tag: 'SetItemStatus', id: 'livestore', status: 'active', message: 'cloning...' } },
+  {
+    at: 2000,
+    action: {
+      _tag: 'SetItemStatus',
+      id: 'effect-utils',
+      status: 'success',
+      message: 'cloned (main)',
+    },
+  },
+  {
+    at: 2000,
+    action: { _tag: 'SetItemStatus', id: 'livestore', status: 'active', message: 'cloning...' },
+  },
 
   // livestore done, start dotfiles
-  { at: 2800, action: { _tag: 'SetItemStatus', id: 'livestore', status: 'success', message: 'cloned (main)' } },
-  { at: 2800, action: { _tag: 'SetItemStatus', id: 'dotfiles', status: 'active', message: 'cloning...' } },
+  {
+    at: 2800,
+    action: { _tag: 'SetItemStatus', id: 'livestore', status: 'success', message: 'cloned (main)' },
+  },
+  {
+    at: 2800,
+    action: { _tag: 'SetItemStatus', id: 'dotfiles', status: 'active', message: 'cloning...' },
+  },
 
   // dotfiles done, start schickling.dev
-  { at: 3400, action: { _tag: 'SetItemStatus', id: 'dotfiles', status: 'success', message: 'cloned (main)' } },
-  { at: 3400, action: { _tag: 'SetItemStatus', id: 'schickling.dev', status: 'active', message: 'cloning...' } },
+  {
+    at: 3400,
+    action: { _tag: 'SetItemStatus', id: 'dotfiles', status: 'success', message: 'cloned (main)' },
+  },
+  {
+    at: 3400,
+    action: {
+      _tag: 'SetItemStatus',
+      id: 'schickling.dev',
+      status: 'active',
+      message: 'cloning...',
+    },
+  },
 
   // All done
-  { at: 4000, action: { _tag: 'SetItemStatus', id: 'schickling.dev', status: 'success', message: 'cloned (main)' } },
+  {
+    at: 4000,
+    action: {
+      _tag: 'SetItemStatus',
+      id: 'schickling.dev',
+      status: 'success',
+      message: 'cloned (main)',
+    },
+  },
   { at: 4200, action: { _tag: 'AddLog', type: 'info', message: 'Generated flake.nix' } },
   { at: 4400, action: { _tag: 'SetComplete' } },
 ]
@@ -78,15 +133,32 @@ const incrementalSyncTimeline: Array<{ at: number; action: SyncProgressActionTyp
   { at: 200, action: { _tag: 'SetItemStatus', id: 'effect', status: 'success' } },
 
   // effect-utils needs update
-  { at: 400, action: { _tag: 'SetItemStatus', id: 'effect-utils', status: 'active', message: 'updating...' } },
-  { at: 1000, action: { _tag: 'SetItemStatus', id: 'effect-utils', status: 'success', message: 'updated → abc1234' } },
+  {
+    at: 400,
+    action: { _tag: 'SetItemStatus', id: 'effect-utils', status: 'active', message: 'updating...' },
+  },
+  {
+    at: 1000,
+    action: {
+      _tag: 'SetItemStatus',
+      id: 'effect-utils',
+      status: 'success',
+      message: 'updated → abc1234',
+    },
+  },
 
   // livestore already synced
   { at: 1200, action: { _tag: 'SetItemStatus', id: 'livestore', status: 'success' } },
 
   // dotfiles skipped (dirty)
-  { at: 1400, action: { _tag: 'AddLog', type: 'warn', message: 'dotfiles has uncommitted changes, skipping' } },
-  { at: 1400, action: { _tag: 'SetItemStatus', id: 'dotfiles', status: 'skipped', message: 'dirty worktree' } },
+  {
+    at: 1400,
+    action: { _tag: 'AddLog', type: 'warn', message: 'dotfiles has uncommitted changes, skipping' },
+  },
+  {
+    at: 1400,
+    action: { _tag: 'SetItemStatus', id: 'dotfiles', status: 'skipped', message: 'dirty worktree' },
+  },
 
   // schickling.dev already synced
   { at: 1600, action: { _tag: 'SetItemStatus', id: 'schickling.dev', status: 'success' } },
@@ -98,26 +170,77 @@ const incrementalSyncTimeline: Array<{ at: number; action: SyncProgressActionTyp
 /** Error scenario timeline */
 const errorSyncTimeline: Array<{ at: number; action: SyncProgressActionType }> = [
   // effect succeeds
-  { at: 200, action: { _tag: 'SetItemStatus', id: 'effect', status: 'active', message: 'syncing...' } },
-  { at: 800, action: { _tag: 'SetItemStatus', id: 'effect', status: 'success', message: 'synced (main)' } },
+  {
+    at: 200,
+    action: { _tag: 'SetItemStatus', id: 'effect', status: 'active', message: 'syncing...' },
+  },
+  {
+    at: 800,
+    action: { _tag: 'SetItemStatus', id: 'effect', status: 'success', message: 'synced (main)' },
+  },
 
   // effect-utils fails
-  { at: 1000, action: { _tag: 'SetItemStatus', id: 'effect-utils', status: 'active', message: 'syncing...' } },
-  { at: 1800, action: { _tag: 'AddLog', type: 'error', message: 'effect-utils: network timeout after 30s' } },
-  { at: 1800, action: { _tag: 'SetItemStatus', id: 'effect-utils', status: 'error', message: 'network timeout' } },
+  {
+    at: 1000,
+    action: { _tag: 'SetItemStatus', id: 'effect-utils', status: 'active', message: 'syncing...' },
+  },
+  {
+    at: 1800,
+    action: { _tag: 'AddLog', type: 'error', message: 'effect-utils: network timeout after 30s' },
+  },
+  {
+    at: 1800,
+    action: {
+      _tag: 'SetItemStatus',
+      id: 'effect-utils',
+      status: 'error',
+      message: 'network timeout',
+    },
+  },
 
   // Continue with others
-  { at: 2000, action: { _tag: 'SetItemStatus', id: 'livestore', status: 'active', message: 'syncing...' } },
-  { at: 2600, action: { _tag: 'SetItemStatus', id: 'livestore', status: 'success', message: 'synced (main)' } },
+  {
+    at: 2000,
+    action: { _tag: 'SetItemStatus', id: 'livestore', status: 'active', message: 'syncing...' },
+  },
+  {
+    at: 2600,
+    action: { _tag: 'SetItemStatus', id: 'livestore', status: 'success', message: 'synced (main)' },
+  },
 
   // dotfiles fails too
-  { at: 2800, action: { _tag: 'SetItemStatus', id: 'dotfiles', status: 'active', message: 'syncing...' } },
-  { at: 3200, action: { _tag: 'AddLog', type: 'error', message: 'dotfiles: authentication failed' } },
-  { at: 3200, action: { _tag: 'SetItemStatus', id: 'dotfiles', status: 'error', message: 'auth failed' } },
+  {
+    at: 2800,
+    action: { _tag: 'SetItemStatus', id: 'dotfiles', status: 'active', message: 'syncing...' },
+  },
+  {
+    at: 3200,
+    action: { _tag: 'AddLog', type: 'error', message: 'dotfiles: authentication failed' },
+  },
+  {
+    at: 3200,
+    action: { _tag: 'SetItemStatus', id: 'dotfiles', status: 'error', message: 'auth failed' },
+  },
 
   // Last one succeeds
-  { at: 3400, action: { _tag: 'SetItemStatus', id: 'schickling.dev', status: 'active', message: 'syncing...' } },
-  { at: 4000, action: { _tag: 'SetItemStatus', id: 'schickling.dev', status: 'success', message: 'synced (main)' } },
+  {
+    at: 3400,
+    action: {
+      _tag: 'SetItemStatus',
+      id: 'schickling.dev',
+      status: 'active',
+      message: 'syncing...',
+    },
+  },
+  {
+    at: 4000,
+    action: {
+      _tag: 'SetItemStatus',
+      id: 'schickling.dev',
+      status: 'success',
+      message: 'synced (main)',
+    },
+  },
 
   // Done with errors
   { at: 4200, action: { _tag: 'SetComplete' } },
@@ -129,7 +252,7 @@ const errorSyncTimeline: Array<{ at: number; action: SyncProgressActionType }> =
 
 const ALL_TABS: OutputTab[] = ['tty', 'ci', 'log', 'json', 'ndjson']
 
-const meta: Meta = {
+const meta = {
   title: 'CLI/Sync Progress',
   args: {
     // Bypass TerminalPreview decorator - TuiStoryPreview handles its own terminal rendering
@@ -164,7 +287,7 @@ The same schemas and view component are used in both production and Storybook.
       },
     },
   },
-}
+} satisfies Meta
 
 export default meta
 
@@ -333,12 +456,23 @@ export const InProgress: Story = {
         subtitle: '/Users/dev/workspace',
         items: [
           { id: 'effect', label: 'effect', status: 'success', message: 'synced (main)' },
-          { id: 'effect-utils', label: 'effect-utils', status: 'success', message: 'updated → abc1234' },
+          {
+            id: 'effect-utils',
+            label: 'effect-utils',
+            status: 'success',
+            message: 'updated → abc1234',
+          },
           { id: 'livestore', label: 'livestore', status: 'active', message: 'syncing...' },
           { id: 'dotfiles', label: 'dotfiles', status: 'pending' },
           { id: 'schickling.dev', label: 'schickling.dev', status: 'pending' },
         ],
-        logs: [{ id: 'log-1', type: 'info', message: 'Syncing livestore from github.com/livestore/livestore' }],
+        logs: [
+          {
+            id: 'log-1',
+            type: 'info',
+            message: 'Syncing livestore from github.com/livestore/livestore',
+          },
+        ],
         startTime: Date.now() - 3000,
         isComplete: false,
       }}
@@ -363,7 +497,12 @@ export const Complete: Story = {
         subtitle: '/Users/dev/workspace',
         items: [
           { id: 'effect', label: 'effect', status: 'success', message: 'synced (main)' },
-          { id: 'effect-utils', label: 'effect-utils', status: 'success', message: 'updated → abc1234' },
+          {
+            id: 'effect-utils',
+            label: 'effect-utils',
+            status: 'success',
+            message: 'updated → abc1234',
+          },
           { id: 'livestore', label: 'livestore', status: 'success', message: 'cloned (main)' },
           { id: 'dotfiles', label: 'dotfiles', status: 'success' },
           { id: 'schickling.dev', label: 'schickling.dev', status: 'success' },
@@ -396,10 +535,20 @@ export const CompleteWithErrors: Story = {
         subtitle: '/Users/dev/workspace',
         items: [
           { id: 'effect', label: 'effect', status: 'success', message: 'synced (main)' },
-          { id: 'effect-utils', label: 'effect-utils', status: 'error', message: 'network timeout' },
+          {
+            id: 'effect-utils',
+            label: 'effect-utils',
+            status: 'error',
+            message: 'network timeout',
+          },
           { id: 'livestore', label: 'livestore', status: 'success', message: 'synced (main)' },
           { id: 'dotfiles', label: 'dotfiles', status: 'skipped', message: 'dirty worktree' },
-          { id: 'schickling.dev', label: 'schickling.dev', status: 'error', message: 'auth failed' },
+          {
+            id: 'schickling.dev',
+            label: 'schickling.dev',
+            status: 'error',
+            message: 'auth failed',
+          },
         ],
         logs: [
           { id: 'log-1', type: 'error', message: 'effect-utils: network timeout after 30s' },

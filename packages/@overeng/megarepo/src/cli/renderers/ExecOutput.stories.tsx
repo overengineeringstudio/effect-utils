@@ -43,7 +43,7 @@ const exampleExecResultsWithOutput: ExecMemberResult[] = [
 // Meta
 // =============================================================================
 
-const meta: Meta<ExecErrorOutputProps> = {
+const meta = {
   title: 'CLI/Exec',
   component: ExecErrorOutput,
   render: (args) => (
@@ -70,7 +70,7 @@ const meta: Meta<ExecErrorOutputProps> = {
       },
     },
   },
-}
+} satisfies Meta<ExecErrorOutputProps>
 
 export default meta
 
@@ -107,7 +107,11 @@ export const VerboseParallel: Story = {
 export const VerboseSequential: Story = {
   render: () => (
     <TuiStoryPreview>
-      <ExecVerboseHeader command="git status" mode="sequential" members={['effect', 'effect-utils']} />
+      <ExecVerboseHeader
+        command="git status"
+        mode="sequential"
+        members={['effect', 'effect-utils']}
+      />
     </TuiStoryPreview>
   ),
 }

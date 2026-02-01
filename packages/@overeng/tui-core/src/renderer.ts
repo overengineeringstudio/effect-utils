@@ -11,8 +11,7 @@
  */
 
 // Check if debug mode is enabled
-const DEBUG =
-  typeof process !== 'undefined' && process.env?.TUI_DEBUG === '1'
+const DEBUG = typeof process !== 'undefined' && process.env?.TUI_DEBUG === '1'
 
 // Global render counter for debugging
 let globalRenderCount = 0
@@ -244,7 +243,9 @@ export class InlineRenderer {
     if (!this.terminal.isTTY) {
       // Non-TTY: just print lines (no cursor control available)
       if (DEBUG) {
-        console.error(`[TUI_DEBUG] #${renderNum}: Taking NON-TTY path (isTTY=${this.terminal.isTTY})`)
+        console.error(
+          `[TUI_DEBUG] #${renderNum}: Taking NON-TTY path (isTTY=${this.terminal.isTTY})`,
+        )
       }
       for (const line of this.dynamicLines) {
         this.terminal.write(line + '\r\n')

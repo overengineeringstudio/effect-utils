@@ -12,6 +12,9 @@ import { Console, Effect, Layer, Option, Redacted, Schema } from 'effect'
 import { EffectPath } from '@overeng/effect-path'
 import { NotionConfig, NotionDatabases } from '@overeng/notion-effect-client'
 
+/** Re-export internal types for TypeScript declaration emit */
+export type { PlatformError } from '@effect/platform/Error'
+
 import { type GenerateOptions, generateApiCode, generateSchemaCode } from '../../codegen.ts'
 import { loadConfig } from '../../config.ts'
 import { computeDiff, formatDiff, hasDifferences, parseGeneratedFile } from '../../diff.ts'

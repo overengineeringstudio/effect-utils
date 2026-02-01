@@ -586,14 +586,11 @@ const getIssueColor = (
 /** Single worktree with issues */
 const StoreStatusWorktree = ({ worktree }: { worktree: StoreWorktreeStatus }) => {
   // Get highest severity for the header
-  const highestSeverity = worktree.issues.reduce<StoreIssueSeverity>(
-    (acc, issue) => {
-      if (issue.severity === 'error') return 'error'
-      if (issue.severity === 'warning' && acc !== 'error') return 'warning'
-      return acc
-    },
-    'info' as StoreIssueSeverity,
-  )
+  const highestSeverity = worktree.issues.reduce<StoreIssueSeverity>((acc, issue) => {
+    if (issue.severity === 'error') return 'error'
+    if (issue.severity === 'warning' && acc !== 'error') return 'warning'
+    return acc
+  }, 'info' as StoreIssueSeverity)
 
   return (
     <Box flexDirection="column">

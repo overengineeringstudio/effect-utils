@@ -27,7 +27,7 @@ const exampleFetchResults: StoreFetchResult[] = [
 // Meta
 // =============================================================================
 
-const meta: Meta<StoreFetchOutputProps> = {
+const meta = {
   title: 'CLI/Store/Fetch',
   component: StoreFetchOutput,
   render: (args) => (
@@ -51,11 +51,12 @@ const meta: Meta<StoreFetchOutputProps> = {
     layout: 'padded',
     docs: {
       description: {
-        component: 'Output for the `mr store fetch` command. Shows fetch results for all repositories.',
+        component:
+          'Output for the `mr store fetch` command. Shows fetch results for all repositories.',
       },
     },
   },
-}
+} satisfies Meta<StoreFetchOutputProps>
 
 export default meta
 

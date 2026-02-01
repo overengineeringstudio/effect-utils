@@ -236,7 +236,9 @@ export interface ExtractedSymlinkRef {
  * extractRefFromSymlinkPath('/some/other/path')
  * // undefined
  */
-export const extractRefFromSymlinkPath = (symlinkTarget: string): ExtractedSymlinkRef | undefined => {
+export const extractRefFromSymlinkPath = (
+  symlinkTarget: string,
+): ExtractedSymlinkRef | undefined => {
   // Path format: .../refs/heads/<branch> or .../refs/tags/<tag> or .../commits/<sha>
   // Branch names with / are URL-encoded as %2F
   const refsMatch = symlinkTarget.match(/\/refs\/heads\/([^/]+(?:\/[^/]+)*)(?:\/)?$/)

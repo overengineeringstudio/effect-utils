@@ -27,6 +27,7 @@ const demoFailureEffect = Effect.gen(function* () {
 
 export default {
   title: 'Effect React/EffectButton',
+  component: EffectButton,
   decorators: [
     (Story) => (
       <EffectProvider layer={Layer.empty}>
@@ -34,7 +35,7 @@ export default {
       </EffectProvider>
     ),
   ],
-} satisfies Meta
+} satisfies Meta<typeof EffectButton>
 
 export const Success: StoryObj = {
   render: () => <EffectButton effect={demoSuccessEffect}>Run success</EffectButton>,

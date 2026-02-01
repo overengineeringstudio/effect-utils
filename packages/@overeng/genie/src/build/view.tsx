@@ -92,8 +92,7 @@ const StatusIcon = ({ status }: { status: GenieFileStatus }) => {
 
 const FileItem = ({ file }: { file: GenieFile }) => {
   const isActive = file.status === 'active'
-  const hasDiffStats =
-    file.linesAdded !== undefined || file.linesRemoved !== undefined
+  const hasDiffStats = file.linesAdded !== undefined || file.linesRemoved !== undefined
 
   // Determine if this file should be highlighted (changed) or dimmed
   const isHighlighted =
@@ -137,10 +136,10 @@ const FileItem = ({ file }: { file: GenieFile }) => {
           {file.linesAdded !== undefined && file.linesAdded > 0 && (
             <Text color="green">+{file.linesAdded}</Text>
           )}
-          {file.linesAdded !== undefined && file.linesRemoved !== undefined &&
-           file.linesAdded > 0 && file.linesRemoved > 0 && (
-            <Text dim>/</Text>
-          )}
+          {file.linesAdded !== undefined &&
+            file.linesRemoved !== undefined &&
+            file.linesAdded > 0 &&
+            file.linesRemoved > 0 && <Text dim>/</Text>}
           {file.linesRemoved !== undefined && file.linesRemoved > 0 && (
             <Text color="red">-{file.linesRemoved}</Text>
           )}
@@ -233,7 +232,10 @@ const Header = ({ mode, phase, files, cwd }: HeaderProps) => {
       )}
       <Text dim> › </Text>
       {renderPhase()}
-      <Text dim> {icons.dot} {cwd}</Text>
+      <Text dim>
+        {' '}
+        {icons.dot} {cwd}
+      </Text>
     </Box>
   )
 }
@@ -287,7 +289,6 @@ const Summary = ({
   )
 }
 
-
 // =============================================================================
 // Viewport-Aware File List
 // =============================================================================
@@ -329,9 +330,7 @@ const FileList = ({ files, hasWatchCycle }: FileListProps) => {
       {visibleFiles.map((file) => (
         <FileItem key={file.path} file={file} />
       ))}
-      {hiddenFiles.length > 0 && (
-        <Text dim>{getOverflowSummary(hiddenFiles)}</Text>
-      )}
+      {hiddenFiles.length > 0 && <Text dim>{getOverflowSummary(hiddenFiles)}</Text>}
     </>
   )
 }
@@ -420,10 +419,7 @@ export const GenieView = ({ state }: GenieViewProps) => {
           <Text dim>All files up to date</Text>
         </Box>
       ) : (
-        <FileList
-          files={files}
-          hasWatchCycle={watchCycle !== undefined && watchCycle > 0}
-        />
+        <FileList files={files} hasWatchCycle={watchCycle !== undefined && watchCycle > 0} />
       )}
 
       {/* Separator and summary */}

@@ -169,7 +169,9 @@ export const startSyncProgressUI = (options: {
     const ConnectedView = createConnectedView(app)
 
     // Run the app with the view
-    const tui = yield* app.run(<ConnectedView />).pipe(Effect.provide(Layer.succeed(OutputModeTag, tty)))
+    const tui = yield* app
+      .run(<ConnectedView />)
+      .pipe(Effect.provide(Layer.succeed(OutputModeTag, tty)))
 
     return {
       dispatch: tui.dispatch,

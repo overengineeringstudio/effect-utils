@@ -39,7 +39,7 @@ const exampleAddSuccessExisting: StoreAddSuccessProps = {
 // Meta
 // =============================================================================
 
-const meta: Meta<StoreAddErrorProps> = {
+const meta = {
   title: 'CLI/Store/Add',
   component: StoreAddError,
   render: (args) => (
@@ -71,7 +71,7 @@ const meta: Meta<StoreAddErrorProps> = {
       },
     },
   },
-}
+} satisfies Meta<StoreAddErrorProps>
 
 export default meta
 

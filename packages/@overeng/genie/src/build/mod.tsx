@@ -11,14 +11,19 @@ import { CurrentWorkingDirectory } from '@overeng/utils/node'
 import { resolveCliVersion } from '@overeng/utils/node/cli-version'
 
 import { GenieApp } from './app.ts'
-import { GenieConnectedView } from './view.tsx'
-import { createInitialGenieState, type GenieFileStatus, type GenieSummary, type GenieMode } from './schema.ts'
 import { findGenieFiles } from './discovery.ts'
 import type { GenieFileError } from './errors.ts'
 import { GenieGenerationFailedError } from './errors.ts'
 import { checkFile, errorOriginatesInFile, generateFile, isTdzError } from './generation.ts'
+import {
+  createInitialGenieState,
+  type GenieFileStatus,
+  type GenieSummary,
+  type GenieMode,
+} from './schema.ts'
 import { logTsconfigWarnings, validateTsconfigReferences } from './tsconfig-validation.ts'
 import type { GenieCommandConfig, GenieCommandEnv, GenieCommandError } from './types.ts'
+import { GenieConnectedView } from './view.tsx'
 
 export {
   GenieCheckError,
@@ -241,8 +246,7 @@ export const genieCommand: Cli.Command.Command<
 
             if (Either.isRight(result)) {
               const status = mapResultToStatus(result.right)
-              const message =
-                result.right._tag === 'updated' ? result.right.diffSummary : undefined
+              const message = result.right._tag === 'updated' ? result.right.diffSummary : undefined
               tui.dispatch({
                 _tag: 'FileCompleted',
                 path: genieFilePath,

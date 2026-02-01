@@ -193,15 +193,41 @@ const createWithSkippedState = (): typeof GenieState.Type =>
 /** Generate many files for viewport overflow testing */
 const createManyFilesState = (phase: 'generating' | 'complete'): typeof GenieState.Type => {
   const packages = [
-    'api', 'auth', 'cache', 'config', 'core', 'crypto', 'database', 'email',
-    'events', 'files', 'gateway', 'http', 'i18n', 'jobs', 'kafka', 'logger',
-    'metrics', 'notifications', 'oauth', 'payments', 'queue', 'redis', 'search',
-    'sessions', 'storage', 'telemetry', 'uploads', 'validation', 'websocket', 'workers',
+    'api',
+    'auth',
+    'cache',
+    'config',
+    'core',
+    'crypto',
+    'database',
+    'email',
+    'events',
+    'files',
+    'gateway',
+    'http',
+    'i18n',
+    'jobs',
+    'kafka',
+    'logger',
+    'metrics',
+    'notifications',
+    'oauth',
+    'payments',
+    'queue',
+    'redis',
+    'search',
+    'sessions',
+    'storage',
+    'telemetry',
+    'uploads',
+    'validation',
+    'websocket',
+    'workers',
   ]
 
   const fileTypes = ['package.json', 'tsconfig.json', 'index.ts']
 
-  const files: Array<typeof GenieState.Type['files'][number]> = []
+  const files: Array<(typeof GenieState.Type)['files'][number]> = []
 
   // Generate files for each package
   for (const pkg of packages) {
@@ -210,7 +236,7 @@ const createManyFilesState = (phase: 'generating' | 'complete'): typeof GenieSta
       const relativePath = `packages/${pkg}/${fileType}`
 
       // Assign varied statuses to make it interesting
-      let status: typeof GenieState.Type['files'][number]['status']
+      let status: (typeof GenieState.Type)['files'][number]['status']
       let message: string | undefined
       let linesAdded: number | undefined
       let linesRemoved: number | undefined
@@ -254,11 +280,11 @@ const createManyFilesState = (phase: 'generating' | 'complete'): typeof GenieSta
 
   // Calculate summary
   const summary = {
-    created: files.filter(f => f.status === 'created').length,
-    updated: files.filter(f => f.status === 'updated').length,
-    unchanged: files.filter(f => f.status === 'unchanged').length,
-    skipped: files.filter(f => f.status === 'skipped').length,
-    failed: files.filter(f => f.status === 'error').length,
+    created: files.filter((f) => f.status === 'created').length,
+    updated: files.filter((f) => f.status === 'updated').length,
+    unchanged: files.filter((f) => f.status === 'unchanged').length,
+    skipped: files.filter((f) => f.status === 'skipped').length,
+    failed: files.filter((f) => f.status === 'error').length,
   }
 
   return createState({

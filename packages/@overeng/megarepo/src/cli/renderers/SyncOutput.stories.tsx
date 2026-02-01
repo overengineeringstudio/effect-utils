@@ -40,7 +40,7 @@ const exampleAllSynced: MemberSyncResult[] = [
 // Meta
 // =============================================================================
 
-const meta: Meta<SyncOutputProps> = {
+const meta = {
   title: 'CLI/Sync Output',
   component: SyncOutput,
   render: (args) => (
@@ -87,7 +87,7 @@ const meta: Meta<SyncOutputProps> = {
       },
     },
   },
-}
+} satisfies Meta<SyncOutputProps>
 
 export default meta
 

@@ -13,6 +13,7 @@ import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 /** Re-export internal types for TypeScript declaration emit */
 export type { Cause, Channel, Sink, Stream } from 'effect'
 export type { NodeInspectSymbol } from 'effect/Inspectable'
+export type { PlatformError } from '@effect/platform/Error'
 
 import {
   type BlockWithDepth,

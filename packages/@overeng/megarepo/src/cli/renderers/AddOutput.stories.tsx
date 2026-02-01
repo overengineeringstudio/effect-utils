@@ -28,7 +28,7 @@ const meta: Meta<AddOutputProps> = {
 
 export default meta
 
-type Story = StoryObj<typeof meta>
+type Story = StoryObj<AddOutputProps>
 
 // =============================================================================
 // Add Output Stories

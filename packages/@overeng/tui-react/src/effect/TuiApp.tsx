@@ -41,11 +41,11 @@ import type { Scope } from 'effect'
 import { Console, Effect, PubSub, Schema, Stream } from 'effect'
 import React, { type ReactElement, type ReactNode, createContext } from 'react'
 
-import { useContext, useSyncExternalStore, useCallback } from './hooks.tsx'
 import type { Viewport } from '../hooks/useViewport.tsx'
 import { ViewportProvider } from '../hooks/useViewport.tsx'
 import { renderToString } from '../renderToString.ts'
 import { createRoot, type Root } from '../root.tsx'
+import { useContext, useSyncExternalStore, useCallback } from './hooks.tsx'
 import {
   OutputModeTag,
   type OutputMode,
@@ -67,9 +67,9 @@ export const TuiRegistryContext = createContext<Registry.Registry | null>(null)
 /**
  * Hook to get an atom's value from the TUI registry.
  * This is a workaround for multiple React instance issues with @effect-atom/atom-react.
- * 
+ *
  * Uses useSyncExternalStore for proper React 18+ integration.
- * 
+ *
  * @example
  * ```tsx
  * const state = useTuiAtomValue(MyApp.stateAtom)
@@ -80,7 +80,7 @@ export const useTuiAtomValue = <T,>(atom: Atom.Atom<T>): T => {
   if (!registry) {
     throw new Error(
       'useTuiAtomValue must be used within a TUI component. ' +
-      'Make sure your component is rendered by TuiApp.run().'
+        'Make sure your component is rendered by TuiApp.run().',
     )
   }
 
@@ -91,13 +91,10 @@ export const useTuiAtomValue = <T,>(atom: Atom.Atom<T>): T => {
       const unsubscribe = registry.subscribe(atom, callback)
       return unsubscribe
     },
-    [atom, registry]
+    [atom, registry],
   )
 
-  const getSnapshot = useCallback(
-    () => registry.get(atom),
-    [atom, registry]
-  )
+  const getSnapshot = useCallback(() => registry.get(atom), [atom, registry])
 
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 }

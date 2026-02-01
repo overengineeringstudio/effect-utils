@@ -46,7 +46,7 @@ const exampleUnpinSuccess: PinOutputProps = {
 // Pin Output Stories
 // =============================================================================
 
-const meta: Meta<PinOutputProps> = {
+const meta = {
   title: 'CLI/Pin Output',
   component: PinOutput,
   render: (args) => (
@@ -77,7 +77,7 @@ const meta: Meta<PinOutputProps> = {
       },
     },
   },
-}
+} satisfies Meta<PinOutputProps>
 
 export default meta
 

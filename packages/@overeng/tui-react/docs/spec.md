@@ -310,7 +310,13 @@ const DeployAction = Schema.Union(
     status: Schema.Literal('pending', 'deploying', 'healthy'),
   }),
   Schema.TaggedStruct('Complete', {
-    results: Schema.Array(Schema.Struct({ name: Schema.String, result: Schema.Literal('updated', 'unchanged'), duration: Schema.Number })),
+    results: Schema.Array(
+      Schema.Struct({
+        name: Schema.String,
+        result: Schema.Literal('updated', 'unchanged'),
+        duration: Schema.Number,
+      }),
+    ),
     totalDuration: Schema.Number,
   }),
 )
@@ -319,10 +325,18 @@ const DeployAction = Schema.Union(
 const deployReducer = (state: DeployState, action: DeployAction): DeployState => {
   switch (action._tag) {
     case 'StartDeploy':
-      return { _tag: 'Progress', services: action.services.map(name => ({ name, status: 'pending' as const })) }
+      return {
+        _tag: 'Progress',
+        services: action.services.map((name) => ({ name, status: 'pending' as const })),
+      }
     case 'UpdateService':
       if (state._tag !== 'Progress') return state
-      return { ...state, services: state.services.map(s => s.name === action.name ? { ...s, status: action.status } : s) }
+      return {
+        ...state,
+        services: state.services.map((s) =>
+          s.name === action.name ? { ...s, status: action.status } : s,
+        ),
+      }
     case 'Complete':
       return { _tag: 'Complete', services: action.results, totalDuration: action.totalDuration }
   }
@@ -345,7 +359,7 @@ const ResizeEvent = Schema.TaggedStruct('Event.Resize', {
 })
 
 // Create PubSub with replay buffer for late subscribers
-const eventPubSub = yield* PubSub.unbounded<InputEvent>({ replay: 16 })
+const eventPubSub = yield * PubSub.unbounded<InputEvent>({ replay: 16 })
 ```
 
 ---
@@ -481,7 +495,11 @@ Content in `<Static>` is rendered once and persists in terminal scrollback:
 ```tsx
 <>
   <Static items={logs}>
-    {(log) => <Text key={log.id} dim>[{log.time}] {log.message}</Text>}
+    {(log) => (
+      <Text key={log.id} dim>
+        [{log.time}] {log.message}
+      </Text>
+    )}
   </Static>
   <Box>
     <Spinner /> Processing...
@@ -507,12 +525,12 @@ function MyView({ state }) {
 }
 ```
 
-| Capability   | Inline | Alternate | Description                 |
-| ------------ | ------ | --------- | --------------------------- |
-| `static`     | ✓      | -         | Persistent log region       |
-| `scrollable` | -      | ✓         | Scrollable containers       |
-| `input`      | -      | ✓         | Text input fields           |
-| `focus`      | -      | ✓         | Focus management            |
+| Capability   | Inline | Alternate | Description           |
+| ------------ | ------ | --------- | --------------------- |
+| `static`     | ✓      | -         | Persistent log region |
+| `scrollable` | -      | ✓         | Scrollable containers |
+| `input`      | -      | ✓         | Text input fields     |
+| `focus`      | -      | ✓         | Focus management      |
 
 ---
 
@@ -601,12 +619,12 @@ const program = Effect.gen(function* () {
 
 ### Mode Behavior
 
-| Mode              | Behavior                                          |
-| ----------------- | ------------------------------------------------- |
-| `tty` / `ci`      | Renders React component, re-renders on dispatch   |
-| `pipe` / `log`    | Renders once at end (final visual)                |
-| `json`            | Outputs final state as JSON when scope closes     |
-| `ndjson`          | Streams state as NDJSON after each dispatch       |
+| Mode           | Behavior                                        |
+| -------------- | ----------------------------------------------- |
+| `tty` / `ci`   | Renders React component, re-renders on dispatch |
+| `pipe` / `log` | Renders once at end (final visual)              |
+| `json`         | Outputs final state as JSON when scope closes   |
+| `ndjson`       | Streams state as NDJSON after each dispatch     |
 
 ---
 
@@ -624,16 +642,16 @@ Signals (SIGINT, SIGTERM) can interrupt any phase. Cleanup always runs.
 
 When unmounting, control what happens to rendered output:
 
-| Mode           | Dynamic Region | Static Region | Use Case                     |
-| -------------- | -------------- | ------------- | ---------------------------- |
-| `persist`      | Keep           | Keep          | Show final state (default)   |
-| `clear`        | Clear          | Clear         | Clean exit, no trace         |
-| `clearDynamic` | Clear          | Keep          | Keep logs, remove progress   |
+| Mode           | Dynamic Region | Static Region | Use Case                   |
+| -------------- | -------------- | ------------- | -------------------------- |
+| `persist`      | Keep           | Keep          | Show final state (default) |
+| `clear`        | Clear          | Clear         | Clean exit, no trace       |
+| `clearDynamic` | Clear          | Keep          | Keep logs, remove progress |
 
 ```typescript
 // Let scope close - uses default (persist)
 // Or explicit:
-yield* tui.unmount({ mode: 'clear' })
+yield * tui.unmount({ mode: 'clear' })
 ```
 
 ### Interrupt Handling (Ctrl+C)
@@ -660,11 +678,11 @@ const MyView = () => {
 
 Renderers guarantee terminal restoration:
 
-| Renderer  | Cleanup                                    |
-| --------- | ------------------------------------------ |
+| Renderer  | Cleanup                                       |
+| --------- | --------------------------------------------- |
 | Inline    | Restore cursor, reset styles, apply exit mode |
-| Alternate | Exit alt buffer, restore cursor            |
-| JSON      | Flush buffer, trailing newline             |
+| Alternate | Exit alt buffer, restore cursor               |
+| JSON      | Flush buffer, trailing newline                |
 
 ---
 
@@ -799,7 +817,7 @@ interface TuiAppConfig<S, A> {
   readonly actionSchema: Schema.Schema<A>
   readonly initial: S
   readonly reducer: (state: S, action: A) => S
-  readonly interruptTimeout?: number  // Default: 500ms
+  readonly interruptTimeout?: number // Default: 500ms
 }
 
 interface TuiApp<S, A> {
@@ -837,7 +855,7 @@ interface TuiStateApi<S, A> {
   readonly actions: Stream.Stream<A>
 }
 
-const tui = yield* useTuiState({ stateSchema, actionSchema, initial, reducer, View })
+const tui = yield * useTuiState({ stateSchema, actionSchema, initial, reducer, View })
 ```
 
 ### outputOption & outputModeLayer
@@ -851,7 +869,16 @@ const outputOption: Cli.Options<OutputModeValue>
 // Create layer from option value
 const outputModeLayer: (value: OutputModeValue) => Layer<OutputMode>
 
-type OutputModeValue = 'auto' | 'tty' | 'alt-screen' | 'ci' | 'ci-plain' | 'pipe' | 'log' | 'json' | 'ndjson'
+type OutputModeValue =
+  | 'auto'
+  | 'tty'
+  | 'alt-screen'
+  | 'ci'
+  | 'ci-plain'
+  | 'pipe'
+  | 'log'
+  | 'json'
+  | 'ndjson'
 ```
 
 ### useViewport
@@ -1053,17 +1080,17 @@ Cli.Command.run(deployCommand, { name: 'deploy', version: '1.0.0' })(process.arg
 
 ### Key Decisions
 
-| Decision          | Choice                      | Rationale                                         |
-| ----------------- | --------------------------- | ------------------------------------------------- |
-| CLI integration   | `@effect/cli`               | Leverage existing framework                       |
-| State primitive   | `@effect-atom/atom`         | Better React integration, sync updates            |
-| State updates     | Reducer-only (Elm)          | Predictable, testable                             |
-| Mode selection    | `OutputMode` service        | Layer-based, composable                           |
-| Inline reconciler | Custom (`react-reconciler`) | Full control, no ink dependency                   |
-| Alternate renderer| OpenTUI                     | Production-ready, same Yoga layout                |
-| Layout            | Yoga                        | Proven flexbox implementation                     |
-| Output diffing    | Line-level                  | Simple, sufficient for CLI                        |
-| Truncation        | Automatic at render layer   | Prevents cursor positioning bugs                  |
+| Decision           | Choice                      | Rationale                              |
+| ------------------ | --------------------------- | -------------------------------------- |
+| CLI integration    | `@effect/cli`               | Leverage existing framework            |
+| State primitive    | `@effect-atom/atom`         | Better React integration, sync updates |
+| State updates      | Reducer-only (Elm)          | Predictable, testable                  |
+| Mode selection     | `OutputMode` service        | Layer-based, composable                |
+| Inline reconciler  | Custom (`react-reconciler`) | Full control, no ink dependency        |
+| Alternate renderer | OpenTUI                     | Production-ready, same Yoga layout     |
+| Layout             | Yoga                        | Proven flexbox implementation          |
+| Output diffing     | Line-level                  | Simple, sufficient for CLI             |
+| Truncation         | Automatic at render layer   | Prevents cursor positioning bugs       |
 
 ### References
 

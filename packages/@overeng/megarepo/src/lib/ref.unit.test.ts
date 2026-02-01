@@ -261,7 +261,9 @@ describe('extractRefFromSymlinkPath', () => {
 
   test('returns undefined for partial megarepo paths', () => {
     // Missing refs/heads prefix
-    expect(extractRefFromSymlinkPath('/Users/foo/.megarepo/github.com/org/repo/main')).toBeUndefined()
+    expect(
+      extractRefFromSymlinkPath('/Users/foo/.megarepo/github.com/org/repo/main'),
+    ).toBeUndefined()
     // Just the store root
     expect(extractRefFromSymlinkPath('/Users/foo/.megarepo/github.com/org/repo')).toBeUndefined()
   })

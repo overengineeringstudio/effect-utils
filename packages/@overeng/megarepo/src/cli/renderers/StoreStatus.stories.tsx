@@ -77,7 +77,7 @@ const mixedIssuesWorktrees: StoreWorktreeStatus[] = [
 // Meta
 // =============================================================================
 
-const meta: Meta<StoreStatusOutputProps> = {
+const meta = {
   title: 'CLI/Store/Status',
   component: StoreStatusOutput,
   render: (args) => (
@@ -118,7 +118,7 @@ const meta: Meta<StoreStatusOutputProps> = {
       },
     },
   },
-}
+} satisfies Meta<StoreStatusOutputProps>
 
 export default meta
 
@@ -261,14 +261,18 @@ export const BrokenWorktrees: Story = {
         ref: 'main',
         refType: 'heads',
         path: '/Users/dev/.megarepo/github.com/effect-ts/effect/refs/heads/main/',
-        issues: [{ type: 'broken_worktree', severity: 'error', message: '.git not found in worktree' }],
+        issues: [
+          { type: 'broken_worktree', severity: 'error', message: '.git not found in worktree' },
+        ],
       },
       {
         repo: 'github.com/overengineeringstudio/effect-utils/',
         ref: 'main',
         refType: 'heads',
         path: '/Users/dev/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/main/',
-        issues: [{ type: 'missing_bare', severity: 'error', message: '.bare/ directory not found' }],
+        issues: [
+          { type: 'missing_bare', severity: 'error', message: '.bare/ directory not found' },
+        ],
       },
     ],
   },
@@ -300,7 +304,9 @@ export const AllIssueTypes: Story = {
         ref: 'main',
         refType: 'heads',
         path: '/Users/dev/.megarepo/github.com/effect-ts/effect/refs/heads/main/',
-        issues: [{ type: 'broken_worktree', severity: 'error', message: '.git not found in worktree' }],
+        issues: [
+          { type: 'broken_worktree', severity: 'error', message: '.git not found in worktree' },
+        ],
       },
       {
         repo: 'github.com/overengineeringstudio/effect-utils/',

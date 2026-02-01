@@ -5,8 +5,9 @@
  * This separation allows the pure view to be used in Storybook and tests.
  */
 
-import { useTuiAtomValue } from '@overeng/tui-react'
 import React from 'react'
+
+import { useTuiAtomValue } from '@overeng/tui-react'
 
 import { StatusApp } from './app.ts'
 import { StatusView } from './view.tsx'

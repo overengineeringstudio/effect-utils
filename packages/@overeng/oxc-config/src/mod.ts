@@ -16,10 +16,11 @@
  * See: https://github.com/oxc-project/oxc/discussions/10342
  */
 
+import storybookPlugin from 'eslint-plugin-storybook'
+
 import { exportsFirstRule } from './exports-first.ts'
 import { jsdocRequireExportsRule } from './jsdoc-require-exports.ts'
 import { namedArgsRule } from './named-args.ts'
-import storybookPlugin from 'eslint-plugin-storybook'
 
 const storybookRules = storybookPlugin.rules
 
@@ -27,13 +28,13 @@ type Rules = {
   'exports-first': typeof exportsFirstRule
   'jsdoc-require-exports': typeof jsdocRequireExportsRule
   'named-args': typeof namedArgsRule
-  'storybook/meta-satisfies-type': typeof storybookRules['meta-satisfies-type']
-  'storybook/default-exports': typeof storybookRules['default-exports']
-  'storybook/story-exports': typeof storybookRules['story-exports']
-  'storybook/csf-component': typeof storybookRules['csf-component']
-  'storybook/hierarchy-separator': typeof storybookRules['hierarchy-separator']
-  'storybook/no-redundant-story-name': typeof storybookRules['no-redundant-story-name']
-  'storybook/prefer-pascal-case': typeof storybookRules['prefer-pascal-case']
+  'storybook/meta-satisfies-type': (typeof storybookRules)['meta-satisfies-type']
+  'storybook/default-exports': (typeof storybookRules)['default-exports']
+  'storybook/story-exports': (typeof storybookRules)['story-exports']
+  'storybook/csf-component': (typeof storybookRules)['csf-component']
+  'storybook/hierarchy-separator': (typeof storybookRules)['hierarchy-separator']
+  'storybook/no-redundant-story-name': (typeof storybookRules)['no-redundant-story-name']
+  'storybook/prefer-pascal-case': (typeof storybookRules)['prefer-pascal-case']
 }
 
 const rules: Rules = {

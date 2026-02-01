@@ -114,7 +114,7 @@ const exampleMembersClean: MemberStatus[] = [
 // Meta
 // =============================================================================
 
-const meta: Meta<StatusOutputProps> = {
+const meta = {
   title: 'CLI/Status Output',
   component: StatusOutput,
   render: (args) => (
@@ -135,7 +135,7 @@ const meta: Meta<StatusOutputProps> = {
       },
     },
   },
-}
+} satisfies Meta<StatusOutputProps>
 
 export default meta
 

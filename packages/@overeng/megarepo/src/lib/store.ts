@@ -196,7 +196,9 @@ const make = (config: StoreConfig): MegarepoStore => {
           if (host.startsWith('.')) continue
 
           const hostPath = EffectPath.ops.join(basePath, EffectPath.unsafe.relativeDir(`${host}/`))
-          const hostStat = yield* fs.stat(hostPath).pipe(Effect.catchAll(() => Effect.succeed(null)))
+          const hostStat = yield* fs
+            .stat(hostPath)
+            .pipe(Effect.catchAll(() => Effect.succeed(null)))
           if (hostStat?.type !== 'Directory') continue
 
           const owners = yield* fs.readDirectory(hostPath)
@@ -208,7 +210,9 @@ const make = (config: StoreConfig): MegarepoStore => {
               hostPath,
               EffectPath.unsafe.relativeDir(`${owner}/`),
             )
-            const ownerStat = yield* fs.stat(ownerPath).pipe(Effect.catchAll(() => Effect.succeed(null)))
+            const ownerStat = yield* fs
+              .stat(ownerPath)
+              .pipe(Effect.catchAll(() => Effect.succeed(null)))
             if (ownerStat?.type !== 'Directory') continue
 
             const repos = yield* fs.readDirectory(ownerPath)
@@ -220,7 +224,9 @@ const make = (config: StoreConfig): MegarepoStore => {
                 ownerPath,
                 EffectPath.unsafe.relativeDir(`${repo}/`),
               )
-              const repoStat = yield* fs.stat(repoPath).pipe(Effect.catchAll(() => Effect.succeed(null)))
+              const repoStat = yield* fs
+                .stat(repoPath)
+                .pipe(Effect.catchAll(() => Effect.succeed(null)))
               if (repoStat?.type !== 'Directory') continue
 
               // Only include repos that have a .bare directory

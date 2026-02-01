@@ -38,7 +38,7 @@ const exampleGcResults: StoreGcResult[] = [
 // Meta
 // =============================================================================
 
-const meta: Meta<StoreGcOutputProps> = {
+const meta = {
   title: 'CLI/Store/GC',
   component: StoreGcOutput,
   render: (args) => (
@@ -79,7 +79,7 @@ const meta: Meta<StoreGcOutputProps> = {
       },
     },
   },
-}
+} satisfies Meta<StoreGcOutputProps>
 
 export default meta
 
