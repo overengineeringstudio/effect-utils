@@ -6,23 +6,14 @@
 
 import * as Cli from '@effect/cli'
 import { Command, FileSystem } from '@effect/platform'
-import { Console, Effect, Option, Schema } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'
-import { renderToString } from '@overeng/tui-react'
 
 import { CONFIG_FILE_NAME, getMemberPath, MegarepoConfig } from '../../lib/config.ts'
-import { Cwd, findMegarepoRoot, outputOption, verboseOption } from '../context.ts'
-import { ExecCommandError } from '../errors.ts'
-import {
-  ExecErrorOutput,
-  ExecVerboseHeader,
-  ExecMemberSkipped,
-  ExecMemberPath,
-  ExecMemberHeader,
-  ExecStderr,
-} from '../renderers/ExecOutput.tsx'
+import { Cwd, findMegarepoRoot, outputOption, outputModeLayer, verboseOption } from '../context.ts'
+import { ExecApp, ExecView } from '../renderers/ExecOutput/mod.ts'
 
 /** Execution mode for running commands across members */
 type ExecMode = 'parallel' | 'sequential'
@@ -46,191 +37,128 @@ export const execCommand = Cli.Command.make(
     ),
     verbose: verboseOption,
   },
-  ({ command: cmd, output, member, mode, verbose }) => {
-    const json = output === 'json' || output === 'ndjson'
-
-    return Effect.gen(function* () {
+  ({ command: cmd, output, member, mode, verbose }) =>
+    Effect.gen(function* () {
       const cwd = yield* Cwd
       const root = yield* findMegarepoRoot(cwd)
 
-      if (Option.isNone(root)) {
-        if (json) {
-          console.log(
-            JSON.stringify({
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const tui = yield* ExecApp.run(
+            React.createElement(ExecView, { stateAtom: ExecApp.stateAtom }),
+          )
+
+          if (Option.isNone(root)) {
+            tui.dispatch({
+              _tag: 'SetError',
               error: 'not_found',
               message: 'No megarepo.json found',
-            }),
-          )
-        } else {
-          const output = yield* Effect.promise(() =>
-            renderToString({
-              element: React.createElement(ExecErrorOutput, { type: 'not_in_megarepo' }),
-            }),
-          )
-          yield* Console.error(output)
-        }
-        return yield* new ExecCommandError({ message: 'Not in a megarepo' })
-      }
-
-      // Load config
-      const fs = yield* FileSystem.FileSystem
-      const configPath = EffectPath.ops.join(
-        root.value,
-        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-      )
-      const configContent = yield* fs.readFileString(configPath)
-      const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
-
-      // Filter members
-      const membersToRun = Option.match(member, {
-        onNone: () => Object.keys(config.members),
-        onSome: (m) => (m in config.members ? [m] : []),
-      })
-
-      if (membersToRun.length === 0) {
-        if (json) {
-          console.log(JSON.stringify({ error: 'not_found', message: 'Member not found' }))
-        } else {
-          const output = yield* Effect.promise(() =>
-            renderToString({
-              element: React.createElement(ExecErrorOutput, { type: 'member_not_found' }),
-            }),
-          )
-          yield* Console.error(output)
-        }
-        return yield* new ExecCommandError({ message: 'Member not found' })
-      }
-
-      // Verbose: show execution details
-      if (verbose && !json) {
-        const verboseOutput = yield* Effect.promise(() =>
-          renderToString({
-            element: React.createElement(ExecVerboseHeader, {
-              command: cmd,
-              mode,
-              members: membersToRun,
-            }),
-          }),
-        )
-        yield* Console.log(verboseOutput)
-      }
-
-      /** Run command in a single member */
-      const runInMember = (name: string) =>
-        Effect.gen(function* () {
-          const memberPath = getMemberPath({ megarepoRoot: root.value, name })
-          const exists = yield* fs.exists(memberPath)
-
-          if (!exists) {
-            if (verbose && !json) {
-              const skippedOutput = yield* Effect.promise(() =>
-                renderToString({ element: React.createElement(ExecMemberSkipped, { name }) }),
-              )
-              yield* Console.log(skippedOutput)
-            }
-            return {
-              name,
-              exitCode: -1,
-              stdout: '',
-              stderr: 'Member not synced',
-            }
+            })
+            return
           }
 
-          if (verbose && !json) {
-            const pathOutput = yield* Effect.promise(() =>
-              renderToString({
-                element: React.createElement(ExecMemberPath, { name, path: memberPath }),
-              }),
-            )
-            yield* Console.log(pathOutput)
+          // Load config
+          const fs = yield* FileSystem.FileSystem
+          const configPath = EffectPath.ops.join(
+            root.value,
+            EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+          )
+          const configContent = yield* fs.readFileString(configPath)
+          const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
+            configContent,
+          )
+
+          // Filter members
+          const membersToRun = Option.match(member, {
+            onNone: () => Object.keys(config.members),
+            onSome: (m) => (m in config.members ? [m] : []),
+          })
+
+          if (membersToRun.length === 0) {
+            tui.dispatch({
+              _tag: 'SetError',
+              error: 'not_found',
+              message: 'Member not found',
+            })
+            return
           }
 
-          // Run the command
-          return yield* Effect.gen(function* () {
-            const shellCmd = Command.make('sh', '-c', cmd).pipe(
-              Command.workingDirectory(memberPath),
-            )
-            const output = yield* Command.string(shellCmd)
-            return { name, exitCode: 0, stdout: output, stderr: '' }
-          }).pipe(
-            Effect.catchAll((error) =>
-              Effect.succeed({
+          // Start exec with members
+          tui.dispatch({
+            _tag: 'Start',
+            command: cmd,
+            mode,
+            verbose,
+            members: membersToRun,
+          })
+
+          /** Run command in a single member */
+          const runInMember = (name: string) =>
+            Effect.gen(function* () {
+              const memberPath = getMemberPath({ megarepoRoot: root.value, name })
+              const exists = yield* fs.exists(memberPath)
+
+              if (!exists) {
+                tui.dispatch({
+                  _tag: 'UpdateMember',
+                  name,
+                  status: 'skipped',
+                  stderr: 'Member not synced',
+                })
+                return
+              }
+
+              // Mark as running
+              tui.dispatch({
+                _tag: 'UpdateMember',
                 name,
-                exitCode: 1,
-                stdout: '',
-                stderr: error instanceof Error ? error.message : String(error),
-              }),
-            ),
-          )
-        })
+                status: 'running',
+              })
 
-      let results: Array<{
-        name: string
-        exitCode: number
-        stdout: string
-        stderr: string
-      }>
-
-      if (mode === 'parallel') {
-        // Run all commands in parallel
-        results = yield* Effect.all(
-          membersToRun.map((name) => runInMember(name)),
-          { concurrency: 'unbounded' },
-        )
-      } else {
-        // Run commands sequentially
-        results = []
-        for (const name of membersToRun) {
-          const result = yield* runInMember(name)
-          results.push(result)
-
-          // Print output immediately in sequential mode (unless JSON)
-          if (!json) {
-            const nameOutput = yield* Effect.promise(() =>
-              renderToString({ element: React.createElement(ExecMemberHeader, { name }) }),
-            )
-            yield* Console.log(nameOutput)
-            if (result.stdout) {
-              console.log(result.stdout)
-            }
-            if (result.stderr) {
-              const stderrOutput = yield* Effect.promise(() =>
-                renderToString({
-                  element: React.createElement(ExecStderr, { stderr: result.stderr }),
-                }),
+              // Run the command
+              yield* Effect.gen(function* () {
+                const shellCmd = Command.make('sh', '-c', cmd).pipe(
+                  Command.workingDirectory(memberPath),
+                )
+                const output = yield* Command.string(shellCmd)
+                tui.dispatch({
+                  _tag: 'UpdateMember',
+                  name,
+                  status: 'success',
+                  exitCode: 0,
+                  stdout: output,
+                })
+              }).pipe(
+                Effect.catchAll((error) =>
+                  Effect.sync(() => {
+                    tui.dispatch({
+                      _tag: 'UpdateMember',
+                      name,
+                      status: 'error',
+                      exitCode: 1,
+                      stderr: error instanceof Error ? error.message : String(error),
+                    })
+                  }),
+                ),
               )
-              console.error(stderrOutput)
+            })
+
+          if (mode === 'parallel') {
+            // Run all commands in parallel
+            yield* Effect.all(
+              membersToRun.map((name) => runInMember(name)),
+              { concurrency: 'unbounded' },
+            )
+          } else {
+            // Run commands sequentially
+            for (const name of membersToRun) {
+              yield* runInMember(name)
             }
           }
-        }
-      }
 
-      // Print results for parallel mode (all at once at the end)
-      if (!json && mode === 'parallel') {
-        for (const result of results) {
-          const nameOutput = yield* Effect.promise(() =>
-            renderToString({
-              element: React.createElement(ExecMemberHeader, { name: result.name }),
-            }),
-          )
-          yield* Console.log(nameOutput)
-          if (result.stdout) {
-            console.log(result.stdout)
-          }
-          if (result.stderr) {
-            const stderrOutput = yield* Effect.promise(() =>
-              renderToString({
-                element: React.createElement(ExecStderr, { stderr: result.stderr }),
-              }),
-            )
-            console.error(stderrOutput)
-          }
-        }
-      }
-
-      if (json) {
-        console.log(JSON.stringify({ results }))
-      }
-    }).pipe(Effect.withSpan('megarepo/exec'))
-  },
+          // Mark exec as complete
+          tui.dispatch({ _tag: 'Complete' })
+        }),
+      ).pipe(Effect.provide(outputModeLayer(output)))
+    }).pipe(Effect.withSpan('megarepo/exec')),
 ).pipe(Cli.Command.withDescription('Execute a command in member directories'))

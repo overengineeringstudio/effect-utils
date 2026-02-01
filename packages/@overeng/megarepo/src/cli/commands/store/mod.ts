@@ -22,8 +22,6 @@ import {
   updateProgressList,
 } from '@overeng/cli-ui'
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
-import { renderToString, Box, Text } from '@overeng/tui-react'
-import { withJsonMode } from '@overeng/utils/node'
 
 import {
   CONFIG_FILE_NAME,
@@ -37,52 +35,36 @@ import { type LockFile, LOCK_FILE_NAME, readLockFile } from '../../../lib/lock.t
 import { classifyRef } from '../../../lib/ref.ts'
 import { Store, StoreLayer } from '../../../lib/store.ts'
 import { getCloneUrl } from '../../../lib/sync/mod.ts'
-import { Cwd, findMegarepoRoot, outputOption } from '../../context.ts'
+import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../../context.ts'
 import { StoreCommandError } from '../../errors.ts'
-import {
-  StoreListOutput,
-  StoreFetchOutput,
-  StoreGcOutput,
-  StoreHeader,
-  StoreAddError,
-  StoreAddProgress,
-  StoreAddSuccess,
-  StoreStatusOutput,
-  type StoreFetchResult,
-  type StoreGcResult,
-  type StoreWorktreeStatus,
-  type StoreWorktreeIssue,
-} from '../../renderers/StoreOutput.tsx'
+import { StoreApp, StoreView } from '../../renderers/StoreOutput/mod.ts'
+import type { StoreWorktreeStatus, StoreWorktreeIssue } from '../../renderers/StoreOutput/mod.ts'
 
 /** List repos in the store */
-const storeLsCommand = Cli.Command.make('ls', { output: outputOption }, ({ output }) => {
-  const json = output === 'json' || output === 'ndjson'
-
-  return Effect.gen(function* () {
+const storeLsCommand = Cli.Command.make('ls', { output: outputOption }, ({ output }) =>
+  Effect.gen(function* () {
     const store = yield* Store
     const repos = yield* store.listRepos()
 
-    if (json) {
-      console.log(JSON.stringify({ repos }))
-    } else {
-      const renderOutput = yield* Effect.promise(() =>
-        renderToString({
-          element: React.createElement(StoreListOutput, {
-            basePath: store.basePath,
-            repos: repos.map((r) => ({ relativePath: r.relativePath })),
-          }),
-        }),
-      )
-      yield* Console.log(renderOutput)
-    }
-  }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/ls'), withJsonMode(json))
-}).pipe(Cli.Command.withDescription('List repositories in the store'))
+    yield* Effect.scoped(
+      Effect.gen(function* () {
+        const tui = yield* StoreApp.run(
+          React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }),
+        )
+
+        tui.dispatch({
+          _tag: 'SetLs',
+          basePath: store.basePath,
+          repos: repos.map((r) => ({ relativePath: r.relativePath })),
+        })
+      }),
+    ).pipe(Effect.provide(outputModeLayer(output)))
+  }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/ls')),
+).pipe(Cli.Command.withDescription('List repositories in the store'))
 
 /** Show store status and detect issues */
-const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, ({ output }) => {
-  const json = output === 'json' || output === 'ndjson'
-
-  return Effect.gen(function* () {
+const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, ({ output }) =>
+  Effect.gen(function* () {
     const cwd = yield* Cwd
     const store = yield* Store
     const fs = yield* FileSystem.FileSystem
@@ -251,57 +233,35 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
       }
     }
 
-    // Output results
-    if (json) {
-      const summary = {
-        basePath: store.basePath,
-        repoCount: repos.length,
-        worktreeCount: totalWorktreeCount,
-        issues: {
-          errors: worktreeStatuses.reduce(
-            (acc, w) => acc + w.issues.filter((i) => i.severity === 'error').length,
-            0,
-          ),
-          warnings: worktreeStatuses.reduce(
-            (acc, w) => acc + w.issues.filter((i) => i.severity === 'warning').length,
-            0,
-          ),
-          info: worktreeStatuses.reduce(
-            (acc, w) => acc + w.issues.filter((i) => i.severity === 'info').length,
-            0,
-          ),
-        },
-        worktrees: worktreeStatuses.filter((w) => w.issues.length > 0),
-      }
-      console.log(JSON.stringify(summary))
-    } else {
-      const renderOutput = yield* Effect.promise(() =>
-        renderToString({
-          element: React.createElement(StoreStatusOutput, {
-            basePath: store.basePath,
-            repoCount: repos.length,
-            worktreeCount: totalWorktreeCount,
-            worktrees: worktreeStatuses,
-          }),
-        }),
-      )
-      yield* Console.log(renderOutput)
-    }
-  }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/status'), withJsonMode(json))
-}).pipe(Cli.Command.withDescription('Show store status and detect issues'))
+    // Use TuiApp for output
+    yield* Effect.scoped(
+      Effect.gen(function* () {
+        const tui = yield* StoreApp.run(
+          React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }),
+        )
+
+        tui.dispatch({
+          _tag: 'SetStatus',
+          basePath: store.basePath,
+          repoCount: repos.length,
+          worktreeCount: totalWorktreeCount,
+          worktrees: worktreeStatuses,
+        })
+      }),
+    ).pipe(Effect.provide(outputModeLayer(output)))
+  }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/status')),
+).pipe(Cli.Command.withDescription('Show store status and detect issues'))
 
 /** Fetch all repos in the store */
-const storeFetchCommand = Cli.Command.make('fetch', { output: outputOption }, ({ output }) => {
-  const json = output === 'json' || output === 'ndjson'
-
-  return Effect.gen(function* () {
+const storeFetchCommand = Cli.Command.make('fetch', { output: outputOption }, ({ output }) =>
+  Effect.gen(function* () {
     const store = yield* Store
     const repos = yield* store.listRepos()
     const startTime = Date.now()
 
     // For TTY: use live progress rendering
     // For non-TTY (piped): just collect results silently
-    const useLiveProgress = !json && isTTY()
+    const useLiveProgress = output !== 'json' && output !== 'ndjson' && isTTY()
 
     // Create progress state
     const progressState = createProgressListState(
@@ -312,13 +272,8 @@ const storeFetchCommand = Cli.Command.make('fetch', { output: outputOption }, ({
     )
 
     if (useLiveProgress) {
-      // Print header
-      const headerOutput = yield* Effect.promise(() =>
-        renderToString({ element: React.createElement(StoreHeader, { basePath: store.basePath }) }),
-      )
-      yield* Console.log(headerOutput)
-
-      // Start progress display
+      // Print header and start progress display
+      yield* Console.log(`store\n  path: ${store.basePath}\n`)
       startProgressList(progressState)
       startSpinner({ state: progressState, interval: 80 })
     }
@@ -378,55 +333,27 @@ const storeFetchCommand = Cli.Command.make('fetch', { output: outputOption }, ({
       // Print summary
       const fetchedCount = results.filter((r) => r.status === 'fetched').length
       const errorCount = results.filter((r) => r.status === 'error').length
-      const summaryOutput = yield* Effect.promise(() =>
-        renderToString({
-          element: React.createElement(
-            Box,
-            { flexDirection: 'row' },
-            React.createElement(Text, { dim: true }, `${fetchedCount} fetched`),
-            errorCount > 0
-              ? React.createElement(
-                  Text,
-                  null,
-                  React.createElement(Text, { dim: true }, ' · '),
-                  React.createElement(
-                    Text,
-                    { color: 'red' },
-                    `${errorCount} error${errorCount > 1 ? 's' : ''}`,
-                  ),
-                )
-              : null,
-            React.createElement(Text, { dim: true }, ` · ${formatElapsed(elapsed)}`),
-          ),
-        }),
-      )
-      yield* Console.log(summaryOutput)
-    } else if (json) {
-      console.log(JSON.stringify({ results }))
+      const errorPart = errorCount > 0 ? ` \u00b7 ${errorCount} error${errorCount > 1 ? 's' : ''}` : ''
+      yield* Console.log(`${fetchedCount} fetched${errorPart} \u00b7 ${formatElapsed(elapsed)}`)
     } else {
-      // Non-TTY: print final results using StoreFetchOutput component
-      const renderOutput = yield* Effect.promise(() =>
-        renderToString({
-          element: React.createElement(StoreFetchOutput, {
-            basePath: store.basePath,
-            results: results as StoreFetchResult[],
-            elapsedMs: elapsed,
-          }),
-        }),
-      )
-      yield* Console.log(renderOutput)
-    }
-  }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/fetch'))
-}).pipe(Cli.Command.withDescription('Fetch all repositories in the store'))
+      // Use TuiApp for JSON/non-TTY output
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const tui = yield* StoreApp.run(
+            React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }),
+          )
 
-/** GC result for a single worktree */
-interface GcWorktreeResult {
-  readonly repo: string
-  readonly ref: string
-  readonly path: string
-  readonly status: 'removed' | 'skipped_dirty' | 'skipped_in_use' | 'error'
-  readonly message?: string
-}
+          tui.dispatch({
+            _tag: 'SetFetch',
+            basePath: store.basePath,
+            results: results,
+            elapsedMs: elapsed,
+          })
+        }),
+      ).pipe(Effect.provide(outputModeLayer(output)))
+    }
+  }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/fetch')),
+).pipe(Cli.Command.withDescription('Fetch all repositories in the store'))
 
 /**
  * Garbage collect unused worktrees from the store.
@@ -450,10 +377,8 @@ const storeGcCommand = Cli.Command.make(
       Cli.Options.withDefault(false),
     ),
   },
-  ({ output, dryRun, force, all }) => {
-    const json = output === 'json' || output === 'ndjson'
-
-    return Effect.gen(function* () {
+  ({ output, dryRun, force, all }) =>
+    Effect.gen(function* () {
       const cwd = yield* Cwd
       const store = yield* Store
       const fs = yield* FileSystem.FileSystem
@@ -509,7 +434,13 @@ const storeGcCommand = Cli.Command.make(
 
       // List all repos and their worktrees
       const repos = yield* store.listRepos()
-      const results: GcWorktreeResult[] = []
+      const results: Array<{
+        repo: string
+        ref: string
+        path: string
+        status: 'removed' | 'skipped_dirty' | 'skipped_in_use' | 'error'
+        message?: string
+      }> = []
 
       for (const repo of repos) {
         // List worktrees for this repo
@@ -629,36 +560,24 @@ const storeGcCommand = Cli.Command.make(
         }
       }
 
-      // Output results
-      if (json) {
-        console.log(
-          JSON.stringify({
+      // Use TuiApp for output
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const tui = yield* StoreApp.run(
+            React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }),
+          )
+
+          tui.dispatch({
+            _tag: 'SetGc',
+            basePath: store.basePath,
+            results: results,
             dryRun,
-            results,
-            summary: {
-              removed: results.filter((r) => r.status === 'removed').length,
-              skippedDirty: results.filter((r) => r.status === 'skipped_dirty').length,
-              skippedInUse: results.filter((r) => r.status === 'skipped_in_use').length,
-              errors: results.filter((r) => r.status === 'error').length,
-            },
-          }),
-        )
-      } else {
-        const renderOutput = yield* Effect.promise(() =>
-          renderToString({
-            element: React.createElement(StoreGcOutput, {
-              basePath: store.basePath,
-              results: results as StoreGcResult[],
-              dryRun,
-              warning: gcWarning,
-              showForceHint: !force,
-            }),
-          }),
-        )
-        yield* Console.log(renderOutput)
-      }
-    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/gc'))
-  },
+            warning: gcWarning,
+            showForceHint: !force,
+          })
+        }),
+      ).pipe(Effect.provide(outputModeLayer(output)))
+    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/gc')),
 ).pipe(Cli.Command.withDescription('Garbage collect unused worktrees'))
 
 /**
@@ -673,82 +592,70 @@ const storeAddCommand = Cli.Command.make(
     ),
     output: outputOption,
   },
-  ({ source: sourceString, output }) => {
-    const json = output === 'json' || output === 'ndjson'
-
-    return Effect.gen(function* () {
+  ({ source: sourceString, output }) =>
+    Effect.gen(function* () {
       const store = yield* Store
       const fs = yield* FileSystem.FileSystem
 
       // Parse the source string
       const source = parseSourceString(sourceString)
       if (source === undefined) {
-        if (json) {
-          console.log(
-            JSON.stringify({
+        yield* Effect.scoped(
+          Effect.gen(function* () {
+            const tui = yield* StoreApp.run(
+              React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }),
+            )
+            tui.dispatch({
+              _tag: 'SetError',
               error: 'invalid_source',
               message: `Invalid source string: ${sourceString}`,
-            }),
-          )
-        } else {
-          const renderOutput = yield* Effect.promise(() =>
-            renderToString({
-              element: React.createElement(StoreAddError, {
-                type: 'invalid_source',
-                source: sourceString,
-              }),
-            }),
-          )
-          yield* Console.error(renderOutput)
-        }
+              source: sourceString,
+            })
+          }),
+        ).pipe(Effect.provide(outputModeLayer(output)))
         return yield* new StoreCommandError({ message: 'Invalid source' })
       }
 
       if (!isRemoteSource(source)) {
-        if (json) {
-          console.log(
-            JSON.stringify({
+        yield* Effect.scoped(
+          Effect.gen(function* () {
+            const tui = yield* StoreApp.run(
+              React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }),
+            )
+            tui.dispatch({
+              _tag: 'SetError',
               error: 'local_path',
               message: 'Cannot add local path to store',
-            }),
-          )
-        } else {
-          const renderOutput = yield* Effect.promise(() =>
-            renderToString({ element: React.createElement(StoreAddError, { type: 'local_path' }) }),
-          )
-          yield* Console.error(renderOutput)
-        }
+            })
+          }),
+        ).pipe(Effect.provide(outputModeLayer(output)))
         return yield* new StoreCommandError({ message: 'Cannot add local path' })
       }
 
       const cloneUrl = getCloneUrl(source)
       if (cloneUrl === undefined) {
-        if (json) {
-          console.log(JSON.stringify({ error: 'no_url', message: 'Cannot determine clone URL' }))
-        } else {
-          const renderOutput = yield* Effect.promise(() =>
-            renderToString({ element: React.createElement(StoreAddError, { type: 'no_url' }) }),
-          )
-          yield* Console.error(renderOutput)
-        }
+        yield* Effect.scoped(
+          Effect.gen(function* () {
+            const tui = yield* StoreApp.run(
+              React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }),
+            )
+            tui.dispatch({
+              _tag: 'SetError',
+              error: 'no_url',
+              message: 'Cannot determine clone URL',
+            })
+          }),
+        ).pipe(Effect.provide(outputModeLayer(output)))
         return yield* new StoreCommandError({ message: 'Cannot get clone URL' })
       }
 
       const bareRepoPath = store.getBareRepoPath(source)
       const bareExists = yield* store.hasBareRepo(source)
 
-      // Clone if needed
+      // Clone if needed (show progress for non-JSON modes)
       if (!bareExists) {
-        if (!json) {
-          const cloneOutput = yield* Effect.promise(() =>
-            renderToString({
-              element: React.createElement(StoreAddProgress, {
-                type: 'cloning',
-                source: sourceString,
-              }),
-            }),
-          )
-          yield* Console.log(cloneOutput)
+        if (output !== 'json' && output !== 'ndjson') {
+          yield* Console.log(`\u2192 Cloning ${sourceString}...`)
         }
         const repoBasePath = store.getRepoBasePath(source)
         yield* fs.makeDirectory(repoBasePath, { recursive: true })
@@ -772,16 +679,8 @@ const storeAddCommand = Cli.Command.make(
       const worktreeExists = yield* store.hasWorktree({ source, ref: targetRef, refType })
 
       if (!worktreeExists) {
-        if (!json) {
-          const wtOutput = yield* Effect.promise(() =>
-            renderToString({
-              element: React.createElement(StoreAddProgress, {
-                type: 'creating_worktree',
-                ref: targetRef,
-              }),
-            }),
-          )
-          yield* Console.log(wtOutput)
+        if (output !== 'json' && output !== 'ndjson') {
+          yield* Console.log(`\u2192 Creating worktree at ${targetRef}...`)
         }
         const worktreeParent = EffectPath.ops.parent(worktreePath)
         if (worktreeParent !== undefined) {
@@ -825,33 +724,25 @@ const storeAddCommand = Cli.Command.make(
         Effect.catchAll(() => Effect.succeed(undefined)),
       )
 
-      if (json) {
-        console.log(
-          JSON.stringify({
-            status: bareExists && worktreeExists ? 'already_exists' : 'added',
+      // Use TuiApp for output
+      const alreadyExists = bareExists && worktreeExists
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const tui = yield* StoreApp.run(
+            React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }),
+          )
+
+          tui.dispatch({
+            _tag: 'SetAdd',
+            status: alreadyExists ? 'already_exists' : 'added',
             source: sourceString,
             ref: targetRef,
             commit,
-            worktreePath,
-          }),
-        )
-      } else {
-        const alreadyExists = bareExists && worktreeExists
-        const successOutput = yield* Effect.promise(() =>
-          renderToString({
-            element: React.createElement(StoreAddSuccess, {
-              source: sourceString,
-              ref: targetRef,
-              commit,
-              path: worktreePath,
-              alreadyExists,
-            }),
-          }),
-        )
-        yield* Console.log(successOutput)
-      }
-    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/add'))
-  },
+            path: worktreePath,
+          })
+        }),
+      ).pipe(Effect.provide(outputModeLayer(output)))
+    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/add')),
 ).pipe(Cli.Command.withDescription('Add a repository to the store (without adding to megarepo)'))
 
 /** Store subcommand group */

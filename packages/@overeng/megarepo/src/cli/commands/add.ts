@@ -6,19 +6,18 @@
 
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
-import { Console, Effect, Option, Schema } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'
-import { renderToString } from '@overeng/tui-react'
 
 import { CONFIG_FILE_NAME, MegarepoConfig, parseSourceString } from '../../lib/config.ts'
 import * as Git from '../../lib/git.ts'
 import { StoreLayer } from '../../lib/store.ts'
 import { syncMember } from '../../lib/sync/mod.ts'
-import { Cwd, findMegarepoRoot, outputOption } from '../context.ts'
+import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../context.ts'
 import { AddCommandError } from '../errors.ts'
-import { AddOutput, AddErrorOutput } from '../renderers/AddOutput.tsx'
+import { AddApp, AddView } from '../renderers/AddOutput/mod.ts'
 
 /**
  * Parse a repo reference and extract a suggested name.
@@ -74,159 +73,112 @@ export const addCommand = Cli.Command.make(
     ),
     output: outputOption,
   },
-  ({ repo, name, sync, output }) => {
-    const json = output === 'json' || output === 'ndjson'
-
-    return Effect.gen(function* () {
+  ({ repo, name, sync, output }) =>
+    Effect.gen(function* () {
       const cwd = yield* Cwd
       const root = yield* findMegarepoRoot(cwd)
 
-      if (Option.isNone(root)) {
-        if (json) {
-          console.log(
-            JSON.stringify({
-              error: 'not_found',
-              message: 'No megarepo.json found',
-            }),
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const tui = yield* AddApp.run(
+            React.createElement(AddView, { stateAtom: AddApp.stateAtom }),
           )
-        } else {
-          const output = yield* Effect.promise(() =>
-            renderToString({
-              element: React.createElement(AddErrorOutput, { error: 'not_in_megarepo' }),
-            }),
-          )
-          yield* Console.error(output)
-        }
-        return yield* new AddCommandError({ message: 'Not in a megarepo' })
-      }
 
-      // Parse the repo reference
-      const parsed = parseRepoRef(repo)
-      if (parsed === undefined) {
-        if (json) {
-          console.log(
-            JSON.stringify({
+          if (Option.isNone(root)) {
+            tui.dispatch({
+              _tag: 'SetError',
+              error: 'not_in_megarepo',
+              message: 'No megarepo.json found',
+            })
+            return yield* new AddCommandError({ message: 'Not in a megarepo' })
+          }
+
+          // Parse the repo reference
+          const parsed = parseRepoRef(repo)
+          if (parsed === undefined) {
+            tui.dispatch({
+              _tag: 'SetError',
               error: 'invalid_repo',
               message: `Invalid repo reference: ${repo}`,
-            }),
+            })
+            return yield* new AddCommandError({ message: 'Invalid repo reference' })
+          }
+
+          const memberName = Option.getOrElse(name, () => parsed.suggestedName)
+
+          // Load current config
+          const fs = yield* FileSystem.FileSystem
+          const configPath = EffectPath.ops.join(
+            root.value,
+            EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
           )
-        } else {
-          const output = yield* Effect.promise(() =>
-            renderToString({
-              element: React.createElement(AddErrorOutput, { error: 'invalid_repo', repo }),
-            }),
+          const configContent = yield* fs.readFileString(configPath)
+          const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+
+          // Check if member already exists
+          if (memberName in config.members) {
+            tui.dispatch({
+              _tag: 'SetError',
+              error: 'already_exists',
+              message: `Member '${memberName}' already exists`,
+            })
+            return yield* new AddCommandError({ message: 'Member already exists' })
+          }
+
+          // Add the new member
+          const newConfig = {
+            ...config,
+            members: {
+              ...config.members,
+              [memberName]: parsed.sourceString,
+            },
+          }
+
+          // Write updated config
+          const newConfigContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
+            newConfig,
           )
-          yield* Console.error(output)
-        }
-        return yield* new AddCommandError({ message: 'Invalid repo reference' })
-      }
+          yield* fs.writeFileString(configPath, newConfigContent + '\n')
 
-      const memberName = Option.getOrElse(name, () => parsed.suggestedName)
-
-      // Load current config
-      const fs = yield* FileSystem.FileSystem
-      const configPath = EffectPath.ops.join(
-        root.value,
-        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-      )
-      const configContent = yield* fs.readFileString(configPath)
-      const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
-
-      // Check if member already exists
-      if (memberName in config.members) {
-        if (json) {
-          console.log(JSON.stringify({ error: 'already_exists', member: memberName }))
-        } else {
-          const output = yield* Effect.promise(() =>
-            renderToString({
-              element: React.createElement(AddErrorOutput, {
-                error: 'already_exists',
-                member: memberName,
-              }),
-            }),
-          )
-          yield* Console.error(output)
-        }
-        return yield* new AddCommandError({ message: 'Member already exists' })
-      }
-
-      // Add the new member
-      const newConfig = {
-        ...config,
-        members: {
-          ...config.members,
-          [memberName]: parsed.sourceString,
-        },
-      }
-
-      // Write updated config
-      const newConfigContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
-        newConfig,
-      )
-      yield* fs.writeFileString(configPath, newConfigContent + '\n')
-
-      if (json) {
-        console.log(
-          JSON.stringify({
-            status: 'added',
-            member: memberName,
-            source: parsed.sourceString,
-          }),
-        )
-      } else {
-        const output = yield* Effect.promise(() =>
-          renderToString({
-            element: React.createElement(AddOutput, {
+          // Sync if requested
+          if (sync) {
+            tui.dispatch({
+              _tag: 'SetAdding',
               member: memberName,
               source: parsed.sourceString,
-            }),
-          }),
-        )
-        yield* Console.log(output)
-      }
+            })
 
-      // Sync if requested
-      if (sync) {
-        const { Text, Box } = yield* Effect.promise(async () => import('@overeng/tui-react'))
-        if (!json) {
-          const syncingOutput = yield* Effect.promise(() =>
-            renderToString({ element: React.createElement(Text, { dim: true }, 'Syncing...') }),
-          )
-          yield* Console.log(syncingOutput)
-        }
-        const result = yield* syncMember({
-          name: memberName,
-          sourceString: parsed.sourceString,
-          megarepoRoot: root.value,
-          lockFile: undefined,
-          dryRun: false,
-          pull: true, // Fetch when adding
-          frozen: false,
-          force: false,
-        })
-        if (!json) {
-          // Render just the sync result line (not the full AddOutput to avoid duplicating "Added")
-          const isError = result.status === 'error'
-          const statusText = result.status === 'cloned' ? 'cloned' : result.status
-          const output = yield* Effect.promise(() =>
-            renderToString({
-              element: React.createElement(
-                Box,
-                { flexDirection: 'row' },
-                React.createElement(
-                  Text,
-                  { color: isError ? 'red' : 'green' },
-                  isError ? '\u2717' : '\u2713',
-                ),
-                React.createElement(Text, null, ' '),
-                React.createElement(Text, { bold: true }, memberName),
-                React.createElement(Text, { dim: true }, ` (${statusText})`),
-              ),
-            }),
-          )
-          yield* Console.log(output)
-        }
-      }
-    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/add'))
-  },
+            const result = yield* syncMember({
+              name: memberName,
+              sourceString: parsed.sourceString,
+              megarepoRoot: root.value,
+              lockFile: undefined,
+              dryRun: false,
+              pull: true, // Fetch when adding
+              frozen: false,
+              force: false,
+            })
+
+            const syncStatus = result.status === 'cloned' ? 'cloned' as const
+              : result.status === 'error' ? 'error' as const
+              : 'synced' as const
+
+            tui.dispatch({
+              _tag: 'SetSuccess',
+              member: memberName,
+              source: parsed.sourceString,
+              synced: true,
+              syncStatus,
+            })
+          } else {
+            tui.dispatch({
+              _tag: 'SetSuccess',
+              member: memberName,
+              source: parsed.sourceString,
+              synced: false,
+            })
+          }
+        }),
+      ).pipe(Effect.provide(outputModeLayer(output)))
+    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/add')),
 ).pipe(Cli.Command.withDescription('Add a new member repository'))

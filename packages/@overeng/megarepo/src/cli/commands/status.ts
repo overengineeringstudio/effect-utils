@@ -11,9 +11,7 @@ import { Console, Effect, Option, type ParseResult, Schema } from 'effect'
 import React from 'react'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
-import { Box, Text } from '@overeng/tui-react'
 import { renderToString } from '@overeng/tui-react'
-import { jsonError, withJsonMode } from '@overeng/utils/node'
 
 import {
   CONFIG_FILE_NAME,
@@ -236,23 +234,6 @@ export const statusCommand = Cli.Command.make('status', { output: outputOption }
     const root = yield* findMegarepoRoot(cwd)
 
     if (Option.isNone(root)) {
-      if (json) {
-        return yield* jsonError({
-          error: 'not_found',
-          message: 'No megarepo.json found',
-        })
-      }
-      const output = yield* Effect.promise(() =>
-        renderToString({
-          element: React.createElement(
-            Box,
-            { flexDirection: 'row' },
-            React.createElement(Text, { color: 'red' }, '\u2717'),
-            React.createElement(Text, null, ' Not in a megarepo'),
-          ),
-        }),
-      )
-      yield* Console.error(output)
       return yield* new NotInMegarepoError({ message: 'Not in a megarepo' })
     }
 
@@ -476,5 +457,5 @@ export const statusCommand = Cli.Command.make('status', { output: outputOption }
       )
       yield* Console.log(output)
     }
-  }).pipe(Effect.withSpan('megarepo/status'), withJsonMode(json))
+  }).pipe(Effect.withSpan('megarepo/status'))
 }).pipe(Cli.Command.withDescription('Show workspace status and member states'))

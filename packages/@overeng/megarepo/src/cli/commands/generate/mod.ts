@@ -7,19 +7,23 @@
 import * as Cli from '@effect/cli'
 import type { CommandExecutor } from '@effect/platform'
 import { FileSystem, type Error as PlatformError } from '@effect/platform'
-import { Console, Effect, Option, type ParseResult, Schema } from 'effect'
+import { Effect, Option, type ParseResult, Schema } from 'effect'
 import React from 'react'
 
 import { EffectPath, type AbsoluteDirPath, type AbsoluteFilePath } from '@overeng/effect-path'
-import { renderToString, Box, Text } from '@overeng/tui-react'
 
 import { CONFIG_FILE_NAME, getMemberPath, MegarepoConfig } from '../../../lib/config.ts'
 import { generateAll } from '../../../lib/generators/mod.ts'
 import { generateNix, type NixGeneratorError } from '../../../lib/generators/nix/mod.ts'
 import { generateSchema } from '../../../lib/generators/schema.ts'
 import { generateVscode } from '../../../lib/generators/vscode.ts'
-import { Cwd, findMegarepoRoot, outputOption } from '../../context.ts'
+import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../../context.ts'
 import { GenerateError } from '../../errors.ts'
+import {
+  GenerateApp,
+  GenerateView,
+  type GenerateActionType,
+} from '../../renderers/GenerateOutput/mod.ts'
 
 /** Generate Nix workspace */
 interface NixGenerateTree {
@@ -43,9 +47,9 @@ type GenerateNixForRootParams = {
   outermostRoot: AbsoluteDirPath
   currentRoot: AbsoluteDirPath
   deep: boolean
-  json: boolean
   depth: number
   visited: Set<string>
+  tui: { dispatch: (action: GenerateActionType) => void }
 }
 
 const generateNixForRoot: (
@@ -56,14 +60,13 @@ const generateNixForRoot: (
   FileSystem.FileSystem | CommandExecutor.CommandExecutor
 > = Effect.fn('megarepo/generate/nix/root')((params: GenerateNixForRootParams) =>
   Effect.gen(function* () {
-    const { outermostRoot, currentRoot, deep, json, depth, visited } = params
+    const { outermostRoot, currentRoot, deep, depth, visited, tui } = params
     const rootKey = currentRoot.replace(/\/$/, '')
     if (visited.has(rootKey)) {
       return Option.none<NixGenerateTree>()
     }
     visited.add(rootKey)
 
-    const indent = '  '.repeat(depth)
     const fs = yield* FileSystem.FileSystem
     const configPath = EffectPath.ops.join(
       currentRoot,
@@ -72,17 +75,12 @@ const generateNixForRoot: (
     const configContent = yield* fs.readFileString(configPath)
     const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
 
-    if (!json && depth > 0) {
-      const genOutput = yield* Effect.promise(() =>
-        renderToString({
-          element: React.createElement(
-            Text,
-            { dim: true },
-            `${indent}Generating ${currentRoot}...`,
-          ),
-        }),
-      )
-      yield* Console.log(genOutput)
+    if (depth > 0) {
+      tui.dispatch({
+        _tag: 'SetProgress',
+        generator: 'nix',
+        progress: `Generating ${currentRoot}...`,
+      })
     }
 
     const result = yield* generateNix({
@@ -90,34 +88,6 @@ const generateNixForRoot: (
       megarepoRootNearest: currentRoot,
       config,
     })
-
-    if (!json) {
-      const nixOutput = yield* Effect.promise(() =>
-        renderToString({
-          element: React.createElement(
-            Box,
-            null,
-            React.createElement(
-              Box,
-              { flexDirection: 'row' },
-              React.createElement(Text, null, indent),
-              React.createElement(Text, { color: 'green' }, '\u2713'),
-              React.createElement(Text, null, ' Generated '),
-              React.createElement(Text, { bold: true }, '.envrc.generated.megarepo'),
-            ),
-            React.createElement(
-              Box,
-              { flexDirection: 'row' },
-              React.createElement(Text, null, indent),
-              React.createElement(Text, { color: 'green' }, '\u2713'),
-              React.createElement(Text, null, ' Generated '),
-              React.createElement(Text, { bold: true }, '.direnv/megarepo-nix/workspace'),
-            ),
-          ),
-        }),
-      )
-      yield* Console.log(nixOutput)
-    }
 
     const nested: NixGenerateTree[] = []
     if (deep) {
@@ -138,23 +108,12 @@ const generateNixForRoot: (
         }
       }
 
-      if (nestedRoots.length > 0 && !json) {
-        const nestedOutput = yield* Effect.promise(() =>
-          renderToString({
-            element: React.createElement(
-              Box,
-              null,
-              React.createElement(Text, null, ''),
-              React.createElement(
-                Box,
-                { flexDirection: 'row' },
-                React.createElement(Text, null, indent),
-                React.createElement(Text, { bold: true }, 'Generating nested megarepos...'),
-              ),
-            ),
-          }),
-        )
-        yield* Console.log(nestedOutput)
+      if (nestedRoots.length > 0) {
+        tui.dispatch({
+          _tag: 'SetProgress',
+          generator: 'nix',
+          progress: 'Generating nested megarepos...',
+        })
       }
 
       for (const nestedRoot of nestedRoots) {
@@ -162,9 +121,9 @@ const generateNixForRoot: (
           outermostRoot,
           currentRoot: nestedRoot,
           deep,
-          json,
           depth: depth + 1,
           visited,
+          tui,
         })
         if (Option.isSome(nestedResult)) {
           nested.push(nestedResult.value)
@@ -189,58 +148,52 @@ const generateNixCommand = Cli.Command.make(
       Cli.Options.withDefault(false),
     ),
   },
-  ({ output, deep }) => {
-    const json = output === 'json' || output === 'ndjson'
-
-    return Effect.gen(function* () {
+  ({ output, deep }) =>
+    Effect.gen(function* () {
       const cwd = yield* Cwd
       const root = yield* findMegarepoRoot(cwd)
 
-      if (Option.isNone(root)) {
-        if (json) {
-          console.log(
-            JSON.stringify({
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const tui = yield* GenerateApp.run(
+            React.createElement(GenerateView, { stateAtom: GenerateApp.stateAtom }),
+          )
+
+          if (Option.isNone(root)) {
+            tui.dispatch({
+              _tag: 'SetError',
               error: 'not_found',
-              message: 'No megarepo.json found',
-            }),
-          )
-        } else {
-          const renderOutput = yield* Effect.promise(() =>
-            renderToString({
-              element: React.createElement(
-                Box,
-                { flexDirection: 'row' },
-                React.createElement(Text, { color: 'red' }, '\u2717'),
-                React.createElement(Text, null, ' Not in a megarepo'),
-              ),
-            }),
-          )
-          yield* Console.error(renderOutput)
-        }
-        return yield* new GenerateError({ message: 'Not in a megarepo' })
-      }
+              message: 'Not in a megarepo',
+            })
+            return yield* new GenerateError({ message: 'Not in a megarepo' })
+          }
 
-      const result = yield* generateNixForRoot({
-        outermostRoot: root.value,
-        currentRoot: root.value,
-        deep,
-        json,
-        depth: 0,
-        visited: new Set(),
-      })
+          tui.dispatch({ _tag: 'Start', generator: 'nix' })
 
-      if (Option.isNone(result)) return
+          const result = yield* generateNixForRoot({
+            outermostRoot: root.value,
+            currentRoot: root.value,
+            deep,
+            depth: 0,
+            visited: new Set(),
+            tui,
+          })
 
-      if (json) {
-        console.log(
-          JSON.stringify({
-            status: 'generated',
-            results: flattenNixGenerateTree(result.value),
-          }),
-        )
-      }
-    }).pipe(Effect.withSpan('megarepo/generate/nix'))
-  },
+          if (Option.isNone(result)) {
+            tui.dispatch({ _tag: 'SetSuccess', results: [] })
+            return
+          }
+
+          const flatResults = flattenNixGenerateTree(result.value)
+          const results = flatResults.flatMap((r) => [
+            { generator: 'nix', status: '.envrc.generated.megarepo' },
+            { generator: 'nix', status: '.direnv/megarepo-nix/workspace' },
+          ])
+
+          tui.dispatch({ _tag: 'SetSuccess', results })
+        }),
+      ).pipe(Effect.provide(outputModeLayer(output)))
+    }).pipe(Effect.withSpan('megarepo/generate/nix')),
 ).pipe(Cli.Command.withDescription('Generate local Nix workspace'))
 
 /** Generate VSCode workspace file */
@@ -253,72 +206,54 @@ const generateVscodeCommand = Cli.Command.make(
       Cli.Options.optional,
     ),
   },
-  ({ output, exclude }) => {
-    const json = output === 'json' || output === 'ndjson'
-
-    return Effect.gen(function* () {
+  ({ output, exclude }) =>
+    Effect.gen(function* () {
       const cwd = yield* Cwd
       const root = yield* findMegarepoRoot(cwd)
 
-      if (Option.isNone(root)) {
-        if (json) {
-          console.log(
-            JSON.stringify({
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const tui = yield* GenerateApp.run(
+            React.createElement(GenerateView, { stateAtom: GenerateApp.stateAtom }),
+          )
+
+          if (Option.isNone(root)) {
+            tui.dispatch({
+              _tag: 'SetError',
               error: 'not_found',
-              message: 'No megarepo.json found',
-            }),
+              message: 'Not in a megarepo',
+            })
+            return yield* new GenerateError({ message: 'Not in a megarepo' })
+          }
+
+          tui.dispatch({ _tag: 'Start', generator: 'vscode' })
+
+          // Load config
+          const fs = yield* FileSystem.FileSystem
+          const configPath = EffectPath.ops.join(
+            root.value,
+            EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
           )
-        } else {
-          const renderOutput = yield* Effect.promise(() =>
-            renderToString({
-              element: React.createElement(
-                Box,
-                { flexDirection: 'row' },
-                React.createElement(Text, { color: 'red' }, '\u2717'),
-                React.createElement(Text, null, ' Not in a megarepo'),
-              ),
-            }),
+          const configContent = yield* fs.readFileString(configPath)
+          const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
+            configContent,
           )
-          yield* Console.error(renderOutput)
-        }
-        return yield* new GenerateError({ message: 'Not in a megarepo' })
-      }
 
-      // Load config
-      const fs = yield* FileSystem.FileSystem
-      const configPath = EffectPath.ops.join(
-        root.value,
-        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-      )
-      const configContent = yield* fs.readFileString(configPath)
-      const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+          const excludeList = Option.map(exclude, (e) => e.split(',').map((s) => s.trim()))
 
-      const excludeList = Option.map(exclude, (e) => e.split(',').map((s) => s.trim()))
+          yield* generateVscode({
+            megarepoRoot: root.value,
+            config,
+            ...(Option.isSome(excludeList) ? { exclude: excludeList.value } : {}),
+          })
 
-      const result = yield* generateVscode({
-        megarepoRoot: root.value,
-        config,
-        ...(Option.isSome(excludeList) ? { exclude: excludeList.value } : {}),
-      })
-
-      if (json) {
-        console.log(JSON.stringify({ status: 'generated', path: result.path }))
-      } else {
-        const vscodeOutput = yield* Effect.promise(() =>
-          renderToString({
-            element: React.createElement(
-              Box,
-              { flexDirection: 'row' },
-              React.createElement(Text, { color: 'green' }, '\u2713'),
-              React.createElement(Text, null, ' Generated '),
-              React.createElement(Text, { bold: true }, '.vscode/megarepo.code-workspace'),
-            ),
-          }),
-        )
-        yield* Console.log(vscodeOutput)
-      }
-    }).pipe(Effect.withSpan('megarepo/generate/vscode'))
-  },
+          tui.dispatch({
+            _tag: 'SetSuccess',
+            results: [{ generator: 'vscode', status: '.vscode/megarepo.code-workspace' }],
+          })
+        }),
+      ).pipe(Effect.provide(outputModeLayer(output)))
+    }).pipe(Effect.withSpan('megarepo/generate/vscode')),
 ).pipe(Cli.Command.withDescription('Generate VS Code workspace file'))
 
 /** Generate JSON Schema */
@@ -332,181 +267,111 @@ const generateSchemaCommand = Cli.Command.make(
       Cli.Options.withDefault('schema/megarepo.schema.json'),
     ),
   },
-  ({ output, outputPath }) => {
-    const json = output === 'json' || output === 'ndjson'
-
-    return Effect.gen(function* () {
+  ({ output, outputPath }) =>
+    Effect.gen(function* () {
       const cwd = yield* Cwd
       const root = yield* findMegarepoRoot(cwd)
 
-      if (Option.isNone(root)) {
-        if (json) {
-          console.log(
-            JSON.stringify({
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const tui = yield* GenerateApp.run(
+            React.createElement(GenerateView, { stateAtom: GenerateApp.stateAtom }),
+          )
+
+          if (Option.isNone(root)) {
+            tui.dispatch({
+              _tag: 'SetError',
               error: 'not_found',
-              message: 'No megarepo.json found',
-            }),
+              message: 'Not in a megarepo',
+            })
+            return yield* new GenerateError({ message: 'Not in a megarepo' })
+          }
+
+          tui.dispatch({ _tag: 'Start', generator: 'schema' })
+
+          // Load config
+          const fs = yield* FileSystem.FileSystem
+          const configPath = EffectPath.ops.join(
+            root.value,
+            EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
           )
-        } else {
-          const renderOutput = yield* Effect.promise(() =>
-            renderToString({
-              element: React.createElement(
-                Box,
-                { flexDirection: 'row' },
-                React.createElement(Text, { color: 'red' }, '\u2717'),
-                React.createElement(Text, null, ' Not in a megarepo'),
-              ),
-            }),
+          const configContent = yield* fs.readFileString(configPath)
+          const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
+            configContent,
           )
-          yield* Console.error(renderOutput)
-        }
-        return yield* new GenerateError({ message: 'Not in a megarepo' })
-      }
 
-      // Load config
-      const fs = yield* FileSystem.FileSystem
-      const configPath = EffectPath.ops.join(
-        root.value,
-        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-      )
-      const configContent = yield* fs.readFileString(configPath)
-      const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+          yield* generateSchema({
+            megarepoRoot: root.value,
+            config,
+            outputPath,
+          })
 
-      const result = yield* generateSchema({
-        megarepoRoot: root.value,
-        config,
-        outputPath,
-      })
-
-      if (json) {
-        console.log(JSON.stringify({ status: 'generated', path: result.path }))
-      } else {
-        const schemaOutput = yield* Effect.promise(() =>
-          renderToString({
-            element: React.createElement(
-              Box,
-              { flexDirection: 'row' },
-              React.createElement(Text, { color: 'green' }, '\u2713'),
-              React.createElement(Text, null, ' Generated '),
-              React.createElement(Text, { bold: true }, outputPath),
-            ),
-          }),
-        )
-        yield* Console.log(schemaOutput)
-      }
-    }).pipe(Effect.withSpan('megarepo/generate/schema'))
-  },
+          tui.dispatch({
+            _tag: 'SetSuccess',
+            results: [{ generator: 'schema', status: outputPath }],
+          })
+        }),
+      ).pipe(Effect.provide(outputModeLayer(output)))
+    }).pipe(Effect.withSpan('megarepo/generate/schema')),
 ).pipe(Cli.Command.withDescription('Generate JSON schema for megarepo.json'))
 
 /** Generate all configured outputs */
-const generateAllCommand = Cli.Command.make('all', { output: outputOption }, ({ output }) => {
-  const json = output === 'json' || output === 'ndjson'
-
-  return Effect.gen(function* () {
+const generateAllCommand = Cli.Command.make('all', { output: outputOption }, ({ output }) =>
+  Effect.gen(function* () {
     const cwd = yield* Cwd
     const root = yield* findMegarepoRoot(cwd)
 
-    if (Option.isNone(root)) {
-      if (json) {
-        console.log(
-          JSON.stringify({
+    yield* Effect.scoped(
+      Effect.gen(function* () {
+        const tui = yield* GenerateApp.run(
+          React.createElement(GenerateView, { stateAtom: GenerateApp.stateAtom }),
+        )
+
+        if (Option.isNone(root)) {
+          tui.dispatch({
+            _tag: 'SetError',
             error: 'not_found',
-            message: 'No megarepo.json found',
-          }),
+            message: 'Not in a megarepo',
+          })
+          return yield* new GenerateError({ message: 'Not in a megarepo' })
+        }
+
+        tui.dispatch({ _tag: 'Start', generator: 'all' })
+
+        // Load config
+        const fs = yield* FileSystem.FileSystem
+        const configPath = EffectPath.ops.join(
+          root.value,
+          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
         )
-      } else {
-        const renderOutput = yield* Effect.promise(() =>
-          renderToString({
-            element: React.createElement(
-              Box,
-              { flexDirection: 'row' },
-              React.createElement(Text, { color: 'red' }, '\u2717'),
-              React.createElement(Text, null, ' Not in a megarepo'),
-            ),
-          }),
-        )
-        yield* Console.error(renderOutput)
-      }
-      return yield* new GenerateError({ message: 'Not in a megarepo' })
-    }
+        const configContent = yield* fs.readFileString(configPath)
+        const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
 
-    // Load config
-    const fs = yield* FileSystem.FileSystem
-    const configPath = EffectPath.ops.join(
-      root.value,
-      EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-    )
-    const configContent = yield* fs.readFileString(configPath)
-    const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+        const outputs = yield* generateAll({
+          megarepoRoot: root.value,
+          outermostRoot: root.value,
+          config,
+        })
 
-    const outputs = yield* generateAll({
-      megarepoRoot: root.value,
-      outermostRoot: root.value,
-      config,
-    })
+        const results = outputs.flatMap((genOutput) => {
+          switch (genOutput._tag) {
+            case 'nix':
+              return [
+                { generator: 'nix', status: '.envrc.generated.megarepo' },
+                { generator: 'nix', status: '.direnv/megarepo-nix/workspace' },
+              ]
+            case 'vscode':
+              return [{ generator: 'vscode', status: '.vscode/megarepo.code-workspace' }]
+            default:
+              return []
+          }
+        })
 
-    const results = outputs.map((output) =>
-      output._tag === 'nix'
-        ? { generator: output._tag, path: output.workspaceRoot }
-        : { generator: output._tag, path: output.path },
-    )
-
-    if (json) {
-      console.log(JSON.stringify({ status: 'generated', results }))
-      return
-    }
-
-    const outputLines: React.ReactElement[] = []
-    for (const output of outputs) {
-      switch (output._tag) {
-        case 'nix':
-          outputLines.push(
-            React.createElement(
-              Box,
-              { flexDirection: 'row', key: 'nix1' },
-              React.createElement(Text, { color: 'green' }, '\u2713'),
-              React.createElement(Text, null, ' Generated '),
-              React.createElement(Text, { bold: true }, '.envrc.generated.megarepo'),
-            ),
-          )
-          outputLines.push(
-            React.createElement(
-              Box,
-              { flexDirection: 'row', key: 'nix2' },
-              React.createElement(Text, { color: 'green' }, '\u2713'),
-              React.createElement(Text, null, ' Generated '),
-              React.createElement(Text, { bold: true }, '.direnv/megarepo-nix/workspace'),
-            ),
-          )
-          break
-        case 'vscode':
-          outputLines.push(
-            React.createElement(
-              Box,
-              { flexDirection: 'row', key: 'vscode' },
-              React.createElement(Text, { color: 'green' }, '\u2713'),
-              React.createElement(Text, null, ' Generated '),
-              React.createElement(Text, { bold: true }, '.vscode/megarepo.code-workspace'),
-            ),
-          )
-          break
-      }
-    }
-
-    const allOutput = yield* Effect.promise(() =>
-      renderToString({
-        element: React.createElement(
-          Box,
-          null,
-          ...outputLines,
-          React.createElement(Text, null, ''),
-          React.createElement(Text, { dim: true }, `Generated ${results.length} file(s)`),
-        ),
+        tui.dispatch({ _tag: 'SetSuccess', results })
       }),
-    )
-    yield* Console.log(allOutput)
-  }).pipe(Effect.withSpan('megarepo/generate/all'))
-}).pipe(Cli.Command.withDescription('Generate all configured outputs'))
+    ).pipe(Effect.provide(outputModeLayer(output)))
+  }).pipe(Effect.withSpan('megarepo/generate/all')),
+).pipe(Cli.Command.withDescription('Generate all configured outputs'))
 
 /** Generate subcommand group */
 export const generateCommand = Cli.Command.make('generate', {}).pipe(

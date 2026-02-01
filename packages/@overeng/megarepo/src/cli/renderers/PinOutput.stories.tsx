@@ -7,68 +7,118 @@ import React from 'react'
 
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
-import { PinOutput, PinErrorOutput, type PinOutputProps } from './PinOutput.tsx'
+import { PinState, PinAction, pinReducer } from './PinOutput/schema.ts'
+import { PinView } from './PinOutput/view.tsx'
 
 // =============================================================================
-// Example Data
+// State Factories
 // =============================================================================
 
-const examplePinSuccess: PinOutputProps = {
-  action: 'pin',
+const createIdleState = (): typeof PinState.Type => ({ _tag: 'Idle' })
+
+const createPinSuccessWithRef = (): typeof PinState.Type => ({
+  _tag: 'Success',
   member: 'effect',
-  status: 'success',
+  action: 'pin',
   ref: 'v3.0.0',
   commit: 'abc1234def5678',
-}
+})
 
-const examplePinDryRun: PinOutputProps = {
+const createPinSuccessWithCommit = (): typeof PinState.Type => ({
+  _tag: 'Success',
+  member: 'effect',
   action: 'pin',
-  member: 'effect',
-  status: 'dry_run',
-  ref: 'v3.0.0',
-  dryRun: {
-    currentSource: 'effect-ts/effect',
-    newSource: 'effect-ts/effect#v3.0.0',
-    currentSymlink: '~/.megarepo/.../refs/heads/main',
-    newSymlink: '~/.megarepo/.../refs/tags/v3.0.0',
-    lockChanges: ['ref: main → v3.0.0', 'pinned: true'],
-    wouldCreateWorktree: true,
-  },
-}
+  commit: 'abc1234def5678',
+})
 
-const exampleUnpinSuccess: PinOutputProps = {
+const createUnpinSuccess = (): typeof PinState.Type => ({
+  _tag: 'Success',
+  member: 'effect',
   action: 'unpin',
+})
+
+const createAlreadyPinned = (): typeof PinState.Type => ({
+  _tag: 'Already',
   member: 'effect',
-  status: 'success',
-}
+  action: 'pin',
+  commit: 'abc1234def5678',
+})
+
+const createAlreadyUnpinned = (): typeof PinState.Type => ({
+  _tag: 'Already',
+  member: 'effect',
+  action: 'unpin',
+})
+
+const createDryRunFull = (): typeof PinState.Type => ({
+  _tag: 'DryRun',
+  member: 'effect',
+  action: 'pin',
+  ref: 'v3.0.0',
+  currentSource: 'effect-ts/effect',
+  newSource: 'effect-ts/effect#v3.0.0',
+  currentSymlink: '~/.megarepo/.../refs/heads/main',
+  newSymlink: '~/.megarepo/.../refs/tags/v3.0.0',
+  lockChanges: ['ref: main → v3.0.0', 'pinned: true'],
+  wouldCreateWorktree: true,
+})
+
+const createDryRunSimple = (): typeof PinState.Type => ({
+  _tag: 'DryRun',
+  member: 'effect',
+  action: 'pin',
+  commit: 'abc1234def5678',
+  lockChanges: ['pinned: false → true'],
+})
+
+const createErrorNotInMegarepo = (): typeof PinState.Type => ({
+  _tag: 'Error',
+  error: 'not_in_megarepo',
+  message: 'Not in a megarepo',
+})
+
+const createErrorMemberNotFound = (): typeof PinState.Type => ({
+  _tag: 'Error',
+  error: 'member_not_found',
+  message: "Member 'unknown-repo' not found",
+})
+
+const createErrorNotSynced = (): typeof PinState.Type => ({
+  _tag: 'Error',
+  error: 'not_synced',
+  message: "Member 'effect' not synced yet",
+})
+
+const createErrorLocalPath = (): typeof PinState.Type => ({
+  _tag: 'Error',
+  error: 'local_path',
+  message: 'Cannot pin local path members',
+})
+
+const createErrorNotInLock = (): typeof PinState.Type => ({
+  _tag: 'Error',
+  error: 'not_in_lock',
+  message: "Member 'effect' not in lock file",
+})
+
+const createWarningWorktreeNotAvailable = (): typeof PinState.Type => ({
+  _tag: 'Warning',
+  warning: 'worktree_not_available',
+})
+
+const createWarningMemberRemovedFromConfig = (): typeof PinState.Type => ({
+  _tag: 'Warning',
+  warning: 'member_removed_from_config',
+  member: 'old-member',
+})
 
 // =============================================================================
-// Pin Output Stories
+// Meta
 // =============================================================================
 
-const meta = {
+export default {
   title: 'CLI/Pin Output',
-  component: PinOutput,
-  render: (args) => (
-    <TuiStoryPreview>
-      <PinOutput {...args} />
-    </TuiStoryPreview>
-  ),
-  args: {
-    action: 'pin',
-    member: 'effect',
-    status: 'success',
-  },
-  argTypes: {
-    action: {
-      control: { type: 'radio' },
-      options: ['pin', 'unpin'],
-    },
-    status: {
-      control: { type: 'select' },
-      options: ['success', 'already_pinned', 'already_unpinned', 'dry_run'],
-    },
-  },
+  component: PinView,
   parameters: {
     layout: 'padded',
     docs: {
@@ -77,60 +127,96 @@ const meta = {
       },
     },
   },
-} satisfies Meta<PinOutputProps>
+} satisfies Meta<typeof PinView>
 
-export default meta
+type Story = StoryObj<typeof PinView>
 
-type Story = StoryObj<typeof meta>
+// =============================================================================
+// Pin Output Stories
+// =============================================================================
 
 export const PinWithRef: Story = {
-  args: examplePinSuccess,
+  render: () => (
+    <TuiStoryPreview
+      View={PinView}
+      stateSchema={PinState}
+      actionSchema={PinAction}
+      reducer={pinReducer}
+      initialState={createPinSuccessWithRef()}
+    />
+  ),
 }
 
 export const PinCurrentCommit: Story = {
-  args: {
-    action: 'pin',
-    member: 'effect',
-    status: 'success',
-    commit: 'abc1234def5678',
-  },
+  render: () => (
+    <TuiStoryPreview
+      View={PinView}
+      stateSchema={PinState}
+      actionSchema={PinAction}
+      reducer={pinReducer}
+      initialState={createPinSuccessWithCommit()}
+    />
+  ),
 }
 
 export const Unpin: Story = {
-  args: exampleUnpinSuccess,
+  render: () => (
+    <TuiStoryPreview
+      View={PinView}
+      stateSchema={PinState}
+      actionSchema={PinAction}
+      reducer={pinReducer}
+      initialState={createUnpinSuccess()}
+    />
+  ),
 }
 
 export const AlreadyPinned: Story = {
-  args: {
-    action: 'pin',
-    member: 'effect',
-    status: 'already_pinned',
-    commit: 'abc1234def5678',
-  },
+  render: () => (
+    <TuiStoryPreview
+      View={PinView}
+      stateSchema={PinState}
+      actionSchema={PinAction}
+      reducer={pinReducer}
+      initialState={createAlreadyPinned()}
+    />
+  ),
 }
 
 export const AlreadyUnpinned: Story = {
-  args: {
-    action: 'unpin',
-    member: 'effect',
-    status: 'already_unpinned',
-  },
+  render: () => (
+    <TuiStoryPreview
+      View={PinView}
+      stateSchema={PinState}
+      actionSchema={PinAction}
+      reducer={pinReducer}
+      initialState={createAlreadyUnpinned()}
+    />
+  ),
 }
 
 export const DryRunFull: Story = {
-  args: examplePinDryRun,
+  render: () => (
+    <TuiStoryPreview
+      View={PinView}
+      stateSchema={PinState}
+      actionSchema={PinAction}
+      reducer={pinReducer}
+      initialState={createDryRunFull()}
+    />
+  ),
 }
 
 export const DryRunSimple: Story = {
-  args: {
-    action: 'pin',
-    member: 'effect',
-    status: 'dry_run',
-    commit: 'abc1234def5678',
-    dryRun: {
-      lockChanges: ['pinned: false → true'],
-    },
-  },
+  render: () => (
+    <TuiStoryPreview
+      View={PinView}
+      stateSchema={PinState}
+      actionSchema={PinAction}
+      reducer={pinReducer}
+      initialState={createDryRunSimple()}
+    />
+  ),
 }
 
 // =============================================================================
@@ -139,32 +225,88 @@ export const DryRunSimple: Story = {
 
 export const ErrorNotInMegarepo: Story = {
   render: () => (
-    <TuiStoryPreview>
-      <PinErrorOutput error="not_in_megarepo" />
-    </TuiStoryPreview>
+    <TuiStoryPreview
+      View={PinView}
+      stateSchema={PinState}
+      actionSchema={PinAction}
+      reducer={pinReducer}
+      initialState={createErrorNotInMegarepo()}
+    />
   ),
 }
 
 export const ErrorMemberNotFound: Story = {
   render: () => (
-    <TuiStoryPreview>
-      <PinErrorOutput error="member_not_found" member="unknown-repo" />
-    </TuiStoryPreview>
+    <TuiStoryPreview
+      View={PinView}
+      stateSchema={PinState}
+      actionSchema={PinAction}
+      reducer={pinReducer}
+      initialState={createErrorMemberNotFound()}
+    />
   ),
 }
 
 export const ErrorNotSynced: Story = {
   render: () => (
-    <TuiStoryPreview>
-      <PinErrorOutput error="not_synced" member="effect" />
-    </TuiStoryPreview>
+    <TuiStoryPreview
+      View={PinView}
+      stateSchema={PinState}
+      actionSchema={PinAction}
+      reducer={pinReducer}
+      initialState={createErrorNotSynced()}
+    />
   ),
 }
 
 export const ErrorLocalPath: Story = {
   render: () => (
-    <TuiStoryPreview>
-      <PinErrorOutput error="local_path" />
-    </TuiStoryPreview>
+    <TuiStoryPreview
+      View={PinView}
+      stateSchema={PinState}
+      actionSchema={PinAction}
+      reducer={pinReducer}
+      initialState={createErrorLocalPath()}
+    />
+  ),
+}
+
+export const ErrorNotInLock: Story = {
+  render: () => (
+    <TuiStoryPreview
+      View={PinView}
+      stateSchema={PinState}
+      actionSchema={PinAction}
+      reducer={pinReducer}
+      initialState={createErrorNotInLock()}
+    />
+  ),
+}
+
+// =============================================================================
+// Pin Warning Stories
+// =============================================================================
+
+export const WarningWorktreeNotAvailable: Story = {
+  render: () => (
+    <TuiStoryPreview
+      View={PinView}
+      stateSchema={PinState}
+      actionSchema={PinAction}
+      reducer={pinReducer}
+      initialState={createWarningWorktreeNotAvailable()}
+    />
+  ),
+}
+
+export const WarningMemberRemovedFromConfig: Story = {
+  render: () => (
+    <TuiStoryPreview
+      View={PinView}
+      stateSchema={PinState}
+      actionSchema={PinAction}
+      reducer={pinReducer}
+      initialState={createWarningMemberRemovedFromConfig()}
+    />
   ),
 }

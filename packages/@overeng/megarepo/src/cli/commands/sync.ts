@@ -13,7 +13,6 @@ import React from 'react'
 
 import { isTTY } from '@overeng/cli-ui'
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
-import { Box, Text } from '@overeng/tui-react'
 import { renderToString } from '@overeng/tui-react'
 
 import {
@@ -163,23 +162,11 @@ export const syncMegarepo = ({
 
     // Verbose: show sync configuration
     if (verbose && !json && depth === 0) {
-      const verboseOutput = yield* Effect.promise(() =>
-        renderToString({
-          element: React.createElement(
-            Box,
-            null,
-            React.createElement(
-              Text,
-              { dim: true },
-              `Sync mode: ${frozen ? 'frozen' : pull ? 'pull' : 'default'}`,
-            ),
-            dryRun ? React.createElement(Text, { dim: true }, 'Dry run: true') : null,
-            force ? React.createElement(Text, { dim: true }, 'Force: true') : null,
-            deep ? React.createElement(Text, { dim: true }, 'Deep: true') : null,
-          ),
-        }),
-      )
-      yield* Console.log(verboseOutput)
+      const modeLabel = frozen ? 'frozen' : pull ? 'pull' : 'default'
+      yield* Console.log(`Sync mode: ${modeLabel}`)
+      if (dryRun) yield* Console.log('Dry run: true')
+      if (force) yield* Console.log('Force: true')
+      if (deep) yield* Console.log('Deep: true')
     }
 
     // Load config
@@ -239,18 +226,7 @@ export const syncMegarepo = ({
             }),
           )
         } else {
-          const output = yield* Effect.promise(() =>
-            renderToString({
-              element: React.createElement(
-                Box,
-                { flexDirection: 'row' },
-                React.createElement(Text, null, indent),
-                React.createElement(Text, { color: 'red' }, '\u2717'),
-                React.createElement(Text, null, ' Lock file required for --frozen mode'),
-              ),
-            }),
-          )
-          yield* Console.error(output)
+          yield* Console.error(`${indent}\u2717 Lock file required for --frozen mode`)
         }
         return yield* new LockFileRequiredError({ message: 'Lock file required for --frozen' })
       }
@@ -287,36 +263,13 @@ export const syncMegarepo = ({
             }),
           )
         } else {
-          const staleOutput = yield* Effect.promise(() =>
-            renderToString({
-              element: React.createElement(
-                Box,
-                null,
-                React.createElement(
-                  Box,
-                  { flexDirection: 'row' },
-                  React.createElement(Text, null, indent),
-                  React.createElement(Text, { color: 'red' }, '\u2717'),
-                  React.createElement(Text, null, ' Lock file is stale'),
-                ),
-                staleness.addedMembers.length > 0
-                  ? React.createElement(
-                      Text,
-                      { dim: true },
-                      `${indent}  Added: ${staleness.addedMembers.join(', ')}`,
-                    )
-                  : null,
-                staleness.removedMembers.length > 0
-                  ? React.createElement(
-                      Text,
-                      { dim: true },
-                      `${indent}  Removed: ${staleness.removedMembers.join(', ')}`,
-                    )
-                  : null,
-              ),
-            }),
-          )
-          yield* Console.log(staleOutput)
+          yield* Console.log(`${indent}\u2717 Lock file is stale`)
+          if (staleness.addedMembers.length > 0) {
+            yield* Console.log(`${indent}  Added: ${staleness.addedMembers.join(', ')}`)
+          }
+          if (staleness.removedMembers.length > 0) {
+            yield* Console.log(`${indent}  Removed: ${staleness.removedMembers.join(', ')}`)
+          }
         }
         return yield* new StaleLockFileError({
           message: 'Lock file is stale',
@@ -332,16 +285,9 @@ export const syncMegarepo = ({
 
     // Verbose: show filtered members
     if (verbose && !json && skippedMemberNames.size > 0) {
-      const skipOutput = yield* Effect.promise(() =>
-        renderToString({
-          element: React.createElement(
-            Text,
-            { dim: true },
-            `Skipping ${skippedMemberNames.size} member(s): ${[...skippedMemberNames].join(', ')}`,
-          ),
-        }),
+      yield* Console.log(
+        `Skipping ${skippedMemberNames.size} member(s): ${[...skippedMemberNames].join(', ')}`,
       )
-      yield* Console.log(skipOutput)
     }
 
     // Create a semaphore map for serializing bare repo creation per repo URL.
@@ -697,17 +643,7 @@ export const syncCommand = Cli.Command.make(
             }),
           )
         } else {
-          const output = yield* Effect.promise(() =>
-            renderToString({
-              element: React.createElement(
-                Box,
-                { flexDirection: 'row' },
-                React.createElement(Text, { color: 'red' }, '\u2717'),
-                React.createElement(Text, null, ' --only and --skip are mutually exclusive'),
-              ),
-            }),
-          )
-          yield* Console.error(output)
+          yield* Console.error('\u2717 --only and --skip are mutually exclusive')
         }
         return yield* new InvalidOptionsError({
           message: '--only and --skip are mutually exclusive',
@@ -727,17 +663,7 @@ export const syncCommand = Cli.Command.make(
             }),
           )
         } else {
-          const output = yield* Effect.promise(() =>
-            renderToString({
-              element: React.createElement(
-                Box,
-                { flexDirection: 'row' },
-                React.createElement(Text, { color: 'red' }, '\u2717'),
-                React.createElement(Text, null, ' Not in a megarepo'),
-              ),
-            }),
-          )
-          yield* Console.error(output)
+          yield* Console.error('\u2717 Not in a megarepo')
         }
         return yield* new NotInMegarepoError({ message: 'No megarepo.json found' })
       }
@@ -802,29 +728,12 @@ export const syncCommand = Cli.Command.make(
         // Print generator output after progress UI completes
         const generatedFiles = getEnabledGenerators(config)
         if (generatedFiles.length > 0) {
-          const genOutput = yield* Effect.promise(() =>
-            renderToString({
-              element: React.createElement(
-                Box,
-                null,
-                React.createElement(Text, null, ''),
-                React.createElement(Text, null, dryRun ? 'Would generate:' : 'Generated:'),
-                ...generatedFiles.map((file) =>
-                  React.createElement(
-                    Box,
-                    { flexDirection: 'row', key: file },
-                    React.createElement(Text, null, '  '),
-                    dryRun
-                      ? React.createElement(Text, { dim: true }, '\u2192')
-                      : React.createElement(Text, { color: 'green' }, '\u2713'),
-                    React.createElement(Text, null, ' '),
-                    React.createElement(Text, { bold: true }, file),
-                  ),
-                ),
-              ),
-            }),
-          )
-          yield* Console.log(genOutput)
+          yield* Console.log('')
+          yield* Console.log(dryRun ? 'Would generate:' : 'Generated:')
+          for (const file of generatedFiles) {
+            const symbol = dryRun ? '\u2192' : '\u2713'
+            yield* Console.log(`  ${symbol} ${file}`)
+          }
         }
 
         // Check for sync errors and fail if any occurred

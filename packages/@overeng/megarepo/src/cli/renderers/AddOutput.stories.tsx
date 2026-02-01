@@ -7,7 +7,69 @@ import React from 'react'
 
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
-import { AddOutput, AddErrorOutput, type AddOutputProps } from './AddOutput.tsx'
+import { AddState, AddAction, addReducer } from './AddOutput/schema.ts'
+import { AddView } from './AddOutput/view.tsx'
+
+// =============================================================================
+// State Factories
+// =============================================================================
+
+const createIdleState = (): typeof AddState.Type => ({ _tag: 'Idle' })
+
+const createAddingState = (): typeof AddState.Type => ({
+  _tag: 'Adding',
+  member: 'effect',
+  source: 'effect-ts/effect',
+})
+
+const createSuccessState = (): typeof AddState.Type => ({
+  _tag: 'Success',
+  member: 'effect',
+  source: 'effect-ts/effect',
+  synced: false,
+})
+
+const createSuccessSyncedState = (): typeof AddState.Type => ({
+  _tag: 'Success',
+  member: 'effect',
+  source: 'effect-ts/effect',
+  synced: true,
+  syncStatus: 'cloned',
+})
+
+const createSuccessSyncedExistingState = (): typeof AddState.Type => ({
+  _tag: 'Success',
+  member: 'effect',
+  source: 'effect-ts/effect',
+  synced: true,
+  syncStatus: 'synced',
+})
+
+const createSuccessSyncErrorState = (): typeof AddState.Type => ({
+  _tag: 'Success',
+  member: 'private-repo',
+  source: 'org/private-repo',
+  synced: true,
+  syncStatus: 'error',
+})
+
+const createErrorNotInMegarepoState = (): typeof AddState.Type => ({
+  _tag: 'Error',
+  error: 'not_in_megarepo',
+  message: 'No megarepo.json found',
+})
+
+const createErrorInvalidRepoState = (): typeof AddState.Type => ({
+  _tag: 'Error',
+  error: 'invalid_repo',
+  message: 'Invalid repo reference: not-a-valid-repo',
+})
+
+const createErrorAlreadyExistsState = (): typeof AddState.Type => ({
+  _tag: 'Error',
+  error: 'already_exists',
+  message: "Member 'effect' already exists",
+})
 
 // =============================================================================
 // Meta
@@ -15,7 +77,7 @@ import { AddOutput, AddErrorOutput, type AddOutputProps } from './AddOutput.tsx'
 
 export default {
   title: 'CLI/Add Output',
-  component: AddOutput,
+  component: AddView,
   parameters: {
     layout: 'padded',
     docs: {
@@ -24,9 +86,9 @@ export default {
       },
     },
   },
-} satisfies Meta<typeof AddOutput>
+} satisfies Meta<typeof AddView>
 
-type Story = StoryObj<typeof AddOutput>
+type Story = StoryObj<typeof AddView>
 
 // =============================================================================
 // Add Output Stories
@@ -34,39 +96,49 @@ type Story = StoryObj<typeof AddOutput>
 
 export const AddSimple: Story = {
   render: () => (
-    <TuiStoryPreview>
-      <AddOutput member="effect" source="effect-ts/effect" />
-    </TuiStoryPreview>
+    <TuiStoryPreview
+      View={AddView}
+      stateSchema={AddState}
+      actionSchema={AddAction}
+      reducer={addReducer}
+      initialState={createSuccessState()}
+    />
   ),
 }
 
 export const AddWithSync: Story = {
   render: () => (
-    <TuiStoryPreview>
-      <AddOutput member="effect" source="effect-ts/effect" synced syncStatus="cloned" />
-    </TuiStoryPreview>
+    <TuiStoryPreview
+      View={AddView}
+      stateSchema={AddState}
+      actionSchema={AddAction}
+      reducer={addReducer}
+      initialState={createSuccessSyncedState()}
+    />
   ),
 }
 
 export const AddWithSyncExisting: Story = {
   render: () => (
-    <TuiStoryPreview>
-      <AddOutput member="effect" source="effect-ts/effect" synced syncStatus="synced" />
-    </TuiStoryPreview>
+    <TuiStoryPreview
+      View={AddView}
+      stateSchema={AddState}
+      actionSchema={AddAction}
+      reducer={addReducer}
+      initialState={createSuccessSyncedExistingState()}
+    />
   ),
 }
 
 export const AddWithSyncError: Story = {
   render: () => (
-    <TuiStoryPreview>
-      <AddOutput
-        member="private-repo"
-        source="org/private-repo"
-        synced
-        syncStatus="error"
-        syncMessage="authentication required"
-      />
-    </TuiStoryPreview>
+    <TuiStoryPreview
+      View={AddView}
+      stateSchema={AddState}
+      actionSchema={AddAction}
+      reducer={addReducer}
+      initialState={createSuccessSyncErrorState()}
+    />
   ),
 }
 
@@ -76,24 +148,36 @@ export const AddWithSyncError: Story = {
 
 export const ErrorNotInMegarepo: Story = {
   render: () => (
-    <TuiStoryPreview>
-      <AddErrorOutput error="not_in_megarepo" />
-    </TuiStoryPreview>
+    <TuiStoryPreview
+      View={AddView}
+      stateSchema={AddState}
+      actionSchema={AddAction}
+      reducer={addReducer}
+      initialState={createErrorNotInMegarepoState()}
+    />
   ),
 }
 
 export const ErrorInvalidRepo: Story = {
   render: () => (
-    <TuiStoryPreview>
-      <AddErrorOutput error="invalid_repo" repo="not-a-valid-repo" />
-    </TuiStoryPreview>
+    <TuiStoryPreview
+      View={AddView}
+      stateSchema={AddState}
+      actionSchema={AddAction}
+      reducer={addReducer}
+      initialState={createErrorInvalidRepoState()}
+    />
   ),
 }
 
 export const ErrorAlreadyExists: Story = {
   render: () => (
-    <TuiStoryPreview>
-      <AddErrorOutput error="already_exists" member="effect" />
-    </TuiStoryPreview>
+    <TuiStoryPreview
+      View={AddView}
+      stateSchema={AddState}
+      actionSchema={AddAction}
+      reducer={addReducer}
+      initialState={createErrorAlreadyExistsState()}
+    />
   ),
 }

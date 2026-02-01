@@ -5,39 +5,122 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
-import { Box } from '@overeng/tui-react'
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
+import { useAtom } from '@effect-atom/react'
 
-import {
-  ExecErrorOutput,
-  ExecVerboseHeader,
-  ExecMemberSkipped,
-  ExecMemberPath,
-  ExecResultsOutput,
-  type ExecErrorOutputProps,
-  type ExecMemberResult,
-} from './ExecOutput.tsx'
+import { ExecView, ExecApp, type ExecViewProps, type ExecState } from './ExecOutput/mod.ts'
 
 // =============================================================================
-// Example Data
+// Helper for stories with initial state
 // =============================================================================
 
-const exampleExecResults: ExecMemberResult[] = [
-  { name: 'effect', exitCode: 0, stdout: 'v3.0.0', stderr: '' },
-  { name: 'effect-utils', exitCode: 0, stdout: 'v1.2.3', stderr: '' },
-  { name: 'livestore', exitCode: 1, stdout: '', stderr: 'Command failed: npm version' },
-]
+const ExecViewWithState = ({ initialState }: { initialState: ExecState }) => {
+  const stateAtom = useAtom(() => initialState)
+  return <ExecView stateAtom={stateAtom} />
+}
 
-const exampleExecResultsWithOutput: ExecMemberResult[] = [
-  {
-    name: 'effect',
-    exitCode: 0,
-    stdout:
-      'added 125 packages in 2.3s\n15 packages are looking for funding\n  run `npm fund` for details',
-    stderr: '',
-  },
-  { name: 'effect-utils', exitCode: 0, stdout: 'added 45 packages in 1.1s', stderr: '' },
-]
+// =============================================================================
+// Example States
+// =============================================================================
+
+const errorState: ExecState = {
+  _tag: 'Error',
+  error: 'not_found',
+  message: 'No megarepo.json found',
+}
+
+const memberNotFoundState: ExecState = {
+  _tag: 'Error',
+  error: 'not_found',
+  message: 'Member not found',
+}
+
+const runningVerboseState: ExecState = {
+  _tag: 'Running',
+  command: 'npm version',
+  mode: 'parallel',
+  verbose: true,
+  members: [
+    { name: 'effect', status: 'running' },
+    { name: 'effect-utils', status: 'pending' },
+    { name: 'livestore', status: 'pending' },
+  ],
+}
+
+const runningSequentialState: ExecState = {
+  _tag: 'Running',
+  command: 'git status',
+  mode: 'sequential',
+  verbose: true,
+  members: [
+    { name: 'effect', status: 'success', exitCode: 0, stdout: 'On branch main' },
+    { name: 'effect-utils', status: 'running' },
+  ],
+}
+
+const completeSuccessState: ExecState = {
+  _tag: 'Complete',
+  command: 'npm version',
+  mode: 'parallel',
+  verbose: false,
+  hasErrors: false,
+  members: [
+    { name: 'effect', status: 'success', exitCode: 0, stdout: 'v3.0.0' },
+    { name: 'effect-utils', status: 'success', exitCode: 0, stdout: 'v1.2.3' },
+    { name: 'livestore', status: 'success', exitCode: 0, stdout: 'v0.5.0' },
+  ],
+}
+
+const completeMixedState: ExecState = {
+  _tag: 'Complete',
+  command: 'npm version',
+  mode: 'parallel',
+  verbose: false,
+  hasErrors: true,
+  members: [
+    { name: 'effect', status: 'success', exitCode: 0, stdout: 'v3.0.0' },
+    { name: 'effect-utils', status: 'success', exitCode: 0, stdout: 'v1.2.3' },
+    { name: 'livestore', status: 'error', exitCode: 1, stderr: 'Command failed: npm version' },
+  ],
+}
+
+const completeWithSkippedState: ExecState = {
+  _tag: 'Complete',
+  command: 'npm install',
+  mode: 'parallel',
+  verbose: false,
+  hasErrors: false,
+  members: [
+    { name: 'effect', status: 'success', exitCode: 0, stdout: 'added 125 packages in 2.3s' },
+    { name: 'effect-utils', status: 'skipped', stderr: 'Member not synced' },
+    { name: 'livestore', status: 'success', exitCode: 0, stdout: 'added 45 packages in 1.1s' },
+  ],
+}
+
+const completeAllErrorsState: ExecState = {
+  _tag: 'Complete',
+  command: 'foo',
+  mode: 'parallel',
+  verbose: false,
+  hasErrors: true,
+  members: [
+    { name: 'effect', status: 'error', exitCode: 1, stderr: 'Command not found: foo' },
+    { name: 'effect-utils', status: 'error', exitCode: 1, stderr: 'Permission denied' },
+    { name: 'livestore', status: 'error', exitCode: 127, stderr: 'sh: command not found' },
+  ],
+}
+
+const completeVerboseState: ExecState = {
+  _tag: 'Complete',
+  command: 'npm version',
+  mode: 'parallel',
+  verbose: true,
+  hasErrors: false,
+  members: [
+    { name: 'effect', status: 'success', exitCode: 0, stdout: 'v3.0.0' },
+    { name: 'effect-utils', status: 'success', exitCode: 0, stdout: 'v1.2.3' },
+  ],
+}
 
 // =============================================================================
 // Meta
@@ -45,32 +128,24 @@ const exampleExecResultsWithOutput: ExecMemberResult[] = [
 
 const meta = {
   title: 'CLI/Exec',
-  component: ExecErrorOutput,
-  render: (args) => (
+  component: ExecView,
+  render: (args: { initialState: ExecState }) => (
     <TuiStoryPreview>
-      <ExecErrorOutput {...args} />
+      <ExecViewWithState initialState={args.initialState} />
     </TuiStoryPreview>
   ),
   args: {
-    type: 'not_in_megarepo',
-  },
-  argTypes: {
-    type: {
-      description: 'Type of error',
-      control: { type: 'select' },
-      options: ['not_in_megarepo', 'member_not_found'],
-      table: { category: 'Error' },
-    },
+    initialState: errorState,
   },
   parameters: {
     layout: 'padded',
     docs: {
       description: {
-        component: 'Error outputs for the `mr exec` command.',
+        component: 'Output views for the `mr exec` command.',
       },
     },
   },
-} satisfies Meta<ExecErrorOutputProps>
+} satisfies Meta<{ initialState: ExecState }>
 
 export default meta
 
@@ -81,154 +156,45 @@ type Story = StoryObj<typeof meta>
 // =============================================================================
 
 export const NotInMegarepo: Story = {
-  args: { type: 'not_in_megarepo' },
+  args: { initialState: errorState },
 }
 
 export const MemberNotFound: Story = {
-  args: { type: 'member_not_found' },
+  args: { initialState: memberNotFoundState },
 }
 
 // =============================================================================
-// Verbose Header Stories
+// Running State Stories
 // =============================================================================
 
-export const VerboseParallel: Story = {
-  render: () => (
-    <TuiStoryPreview>
-      <ExecVerboseHeader
-        command="npm version"
-        mode="parallel"
-        members={['effect', 'effect-utils', 'livestore']}
-      />
-    </TuiStoryPreview>
-  ),
+export const RunningVerboseParallel: Story = {
+  args: { initialState: runningVerboseState },
 }
 
-export const VerboseSequential: Story = {
-  render: () => (
-    <TuiStoryPreview>
-      <ExecVerboseHeader
-        command="git status"
-        mode="sequential"
-        members={['effect', 'effect-utils']}
-      />
-    </TuiStoryPreview>
-  ),
-}
-
-export const VerboseSingleMember: Story = {
-  render: () => (
-    <TuiStoryPreview>
-      <ExecVerboseHeader command="pnpm install" mode="parallel" members={['effect']} />
-    </TuiStoryPreview>
-  ),
+export const RunningVerboseSequential: Story = {
+  args: { initialState: runningSequentialState },
 }
 
 // =============================================================================
-// Results Output Stories
+// Complete State Stories
 // =============================================================================
 
-export const MixedResults: Story = {
-  render: () => (
-    <TuiStoryPreview>
-      <ExecResultsOutput results={exampleExecResults} />
-    </TuiStoryPreview>
-  ),
+export const CompleteSuccess: Story = {
+  args: { initialState: completeSuccessState },
 }
 
-export const WithMultilineOutput: Story = {
-  render: () => (
-    <TuiStoryPreview>
-      <ExecResultsOutput results={exampleExecResultsWithOutput} />
-    </TuiStoryPreview>
-  ),
+export const CompleteMixed: Story = {
+  args: { initialState: completeMixedState },
 }
 
-export const AllSuccess: Story = {
-  render: () => (
-    <TuiStoryPreview>
-      <ExecResultsOutput
-        results={[
-          { name: 'effect', exitCode: 0, stdout: 'ok', stderr: '' },
-          { name: 'effect-utils', exitCode: 0, stdout: 'ok', stderr: '' },
-          { name: 'livestore', exitCode: 0, stdout: 'ok', stderr: '' },
-        ]}
-      />
-    </TuiStoryPreview>
-  ),
+export const CompleteWithSkipped: Story = {
+  args: { initialState: completeWithSkippedState },
 }
 
-export const AllErrors: Story = {
-  render: () => (
-    <TuiStoryPreview>
-      <ExecResultsOutput
-        results={[
-          { name: 'effect', exitCode: 1, stdout: '', stderr: 'Command not found: foo' },
-          { name: 'effect-utils', exitCode: 1, stdout: '', stderr: 'Permission denied' },
-          { name: 'livestore', exitCode: 127, stdout: '', stderr: 'sh: command not found' },
-        ]}
-      />
-    </TuiStoryPreview>
-  ),
+export const CompleteAllErrors: Story = {
+  args: { initialState: completeAllErrorsState },
 }
 
-// =============================================================================
-// Verbose Member Status Stories (Composite)
-// =============================================================================
-
-type MemberStatusItem = { name: string; synced: boolean; path?: string | undefined }
-
-const VerboseMemberStatus = ({ members }: { members: MemberStatusItem[] }) => (
-  <Box flexDirection="column">
-    {members.map((m) =>
-      m.synced ? (
-        <ExecMemberPath key={m.name} name={m.name} path={m.path ?? `/repos/${m.name}`} />
-      ) : (
-        <ExecMemberSkipped key={m.name} name={m.name} />
-      ),
-    )}
-  </Box>
-)
-
-export const AllSynced: Story = {
-  render: () => (
-    <TuiStoryPreview>
-      <VerboseMemberStatus
-        members={[
-          {
-            name: 'effect',
-            synced: true,
-            path: '/Users/dev/.megarepo/github.com/effect-ts/effect/main',
-          },
-          {
-            name: 'effect-utils',
-            synced: true,
-            path: '/Users/dev/.megarepo/github.com/overeng/effect-utils/main',
-          },
-        ]}
-      />
-    </TuiStoryPreview>
-  ),
-}
-
-export const SomeSkipped: Story = {
-  render: () => (
-    <TuiStoryPreview>
-      <VerboseMemberStatus
-        members={[
-          {
-            name: 'effect',
-            synced: true,
-            path: '/Users/dev/.megarepo/github.com/effect-ts/effect/main',
-          },
-          { name: 'effect-utils', synced: false },
-          {
-            name: 'livestore',
-            synced: true,
-            path: '/Users/dev/.megarepo/github.com/livestore/livestore/main',
-          },
-        ]}
-      />
-    </TuiStoryPreview>
-  ),
+export const CompleteVerbose: Story = {
+  args: { initialState: completeVerboseState },
 }
