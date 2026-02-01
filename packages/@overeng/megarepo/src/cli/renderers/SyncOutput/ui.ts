@@ -9,7 +9,7 @@ import type { Scope } from 'effect'
 import { Effect } from 'effect'
 import React from 'react'
 
-import { isTTY } from '@overeng/cli-ui'
+import { isTTY } from '@overeng/tui-react'
 import { tty, layer as outputModeLayer } from '@overeng/tui-react'
 
 import type { MemberSyncResult } from '../../../lib/sync/schema.ts'

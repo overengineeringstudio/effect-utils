@@ -1,7 +1,11 @@
+import { createHash } from 'node:crypto'
+import os from 'node:os'
 import path from 'node:path'
 
 import { Command, FileSystem } from '@effect/platform'
-import { Effect, Option } from 'effect'
+import { DistributedSemaphore } from '@overeng/utils'
+import { FileSystemBacking } from '@overeng/utils/node'
+import { Duration, Effect, Option } from 'effect'
 
 import { ensureImportMapResolver } from './discovery.ts'
 import { GenieCheckError, GenieFileError, GenieImportError } from './errors.ts'
@@ -394,6 +398,28 @@ const atomicWriteFile = ({
     Effect.withSpan('atomicWriteFile'),
   )
 
+const withTargetLock = Effect.fn('genie/withTargetLock')(function* ({
+  cwd,
+  targetFilePath,
+  effect,
+}: {
+  cwd: string
+  targetFilePath: string
+  effect: Effect.Effect<void, unknown, FileSystem.FileSystem>
+}) {
+  const lockNamespace = createHash('sha256').update(cwd).digest('hex').slice(0, 16)
+  const lockDir = path.join(os.tmpdir(), 'genie-locks', lockNamespace)
+  const lockLayer = FileSystemBacking.layer({ lockDir })
+  const lockKey = `genie:file:${path.resolve(targetFilePath)}`
+
+  const semaphore = yield* DistributedSemaphore.make(lockKey, {
+    limit: 1,
+    ttl: Duration.seconds(120),
+  }).pipe(Effect.provide(lockLayer))
+
+  return yield* semaphore.withPermits(1)(effect).pipe(Effect.provide(lockLayer))
+})
+
 /** Generate output file from a genie template */
 export const generateFile = ({
   genieFilePath,
@@ -450,10 +476,14 @@ export const generateFile = ({
     }
 
     // Atomically write the file (write to temp, then rename)
-    yield* atomicWriteFile({
+    yield* withTargetLock({
+      cwd,
       targetFilePath,
-      content: fileContentString,
-      ...(readOnly && { mode: 0o444 }),
+      effect: atomicWriteFile({
+        targetFilePath,
+        content: fileContentString,
+        ...(readOnly && { mode: 0o444 }),
+      }),
     })
 
     // Determine result status

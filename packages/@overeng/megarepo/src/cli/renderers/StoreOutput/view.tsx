@@ -8,7 +8,6 @@
 import type { Atom } from '@effect-atom/atom'
 import React from 'react'
 
-import { kv, separator } from '@overeng/cli-ui'
 import { Box, Text, useTuiAtomValue, unicodeSymbols } from '@overeng/tui-react'
 
 import type { StoreState, StoreGcResult, StoreWorktreeStatus, StoreGcWarning } from './schema.ts'
@@ -116,9 +115,7 @@ function StoreHeader({ basePath, title = 'store' }: { basePath: string; title?: 
   return (
     <Box flexDirection="column">
       <Text bold>{title}</Text>
-      <Text>
-        {kv({ key: 'path', value: basePath, options: { keyStyle: (k: string) => `  ${k}` } })}
-      </Text>
+      <Text dim>  path</Text><Text>: {basePath}</Text>
       <Text> </Text>
     </Box>
   )
@@ -135,7 +132,7 @@ function StoreLsView({
   return (
     <Box flexDirection="column">
       <StoreHeader basePath={basePath} />
-      <Text>{separator()}</Text>
+      <Text dim>{'─'.repeat(40)}</Text>
       <Text> </Text>
       {repos.length === 0 ? (
         <Text dim>(empty)</Text>
@@ -347,7 +344,7 @@ function StoreFetchView({
   return (
     <Box flexDirection="column">
       <StoreHeader basePath={basePath} />
-      <Text>{separator()}</Text>
+      <Text dim>{'─'.repeat(40)}</Text>
       <Text> </Text>
       {results.map((result) => (
         <Box key={result.path} flexDirection="row">
@@ -408,14 +405,12 @@ function StoreGcView({
     <Box flexDirection="column">
       <Box flexDirection="column">
         <Text bold>store gc</Text>
-        <Text>
-          {kv({ key: 'path', value: basePath, options: { keyStyle: (k: string) => `  ${k}` } })}
-        </Text>
+        <Text dim>  path</Text><Text>: {basePath}</Text>
         {dryRun && <Text dim> mode: dry run</Text>}
         <Text> </Text>
       </Box>
       {warning && <StoreGcWarningRow warning={warning} />}
-      <Text>{separator()}</Text>
+      <Text dim>{'─'.repeat(40)}</Text>
       <Text> </Text>
       {results.length === 0 ? (
         <Text dim>No worktrees found</Text>

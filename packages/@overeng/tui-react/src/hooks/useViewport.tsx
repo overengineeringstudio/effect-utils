@@ -5,7 +5,7 @@
  * adapt their rendering to available space.
  */
 
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, type ReactNode } from 'react'
 
 // =============================================================================
 // Types
@@ -57,17 +57,10 @@ export interface ViewportProviderProps {
  * actual terminal dimensions.
  */
 export const ViewportProvider = ({
-  viewport: initialViewport,
+  viewport,
   children,
   onResize,
 }: ViewportProviderProps): ReactNode => {
-  const [viewport, setViewport] = useState<Viewport>(initialViewport)
-
-  // Update if initial viewport changes (e.g., from createRoot)
-  useEffect(() => {
-    setViewport(initialViewport)
-  }, [initialViewport])
-
   // Listen for resize events if in Node.js environment
   useEffect(() => {
     if (typeof process === 'undefined' || !process.stdout?.on) {
@@ -79,7 +72,6 @@ export const ViewportProvider = ({
         columns: process.stdout.columns ?? 80,
         rows: process.stdout.rows ?? 24,
       }
-      setViewport(newViewport)
       onResize?.(newViewport)
     }
 
@@ -89,6 +81,8 @@ export const ViewportProvider = ({
     }
   }, [onResize])
 
+  // Pass viewport prop directly through context. The createRoot doRender()
+  // re-renders the tree with updated viewport, so no local state is needed.
   return <ViewportContext.Provider value={{ viewport }}>{children}</ViewportContext.Provider>
 }
 

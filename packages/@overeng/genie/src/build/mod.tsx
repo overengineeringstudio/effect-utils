@@ -7,6 +7,7 @@ import { Effect, Either, Layer, Option, pipe, Stream } from 'effect'
 import React from 'react'
 
 import { outputOption, outputModeLayer } from '@overeng/tui-react'
+import { assertNever } from '@overeng/utils'
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
 import { resolveCliVersion } from '@overeng/utils/node/cli-version'
 
@@ -147,6 +148,20 @@ export const genieCommand: Cli.Command.Command<
 
       // Discover genie files
       const genieFiles = yield* findGenieFiles(resolvedCwd)
+
+      const targetCounts = new Map<string, number>()
+      for (const genieFilePath of genieFiles) {
+        const targetFilePath = genieFilePath.replace('.genie.ts', '')
+        targetCounts.set(targetFilePath, (targetCounts.get(targetFilePath) ?? 0) + 1)
+      }
+      const duplicateTargets = Array.from(targetCounts.entries()).filter(([, count]) => count > 1)
+      assertNever({
+        condition: duplicateTargets.length === 0,
+        msg: () =>
+          `Duplicate genie targets detected: ${duplicateTargets
+            .map(([target, count]) => `${target} (${count}x)`)
+            .join(', ')}`,
+      })
 
       if (genieFiles.length === 0) {
         tui.dispatch({

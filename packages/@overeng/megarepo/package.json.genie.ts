@@ -41,7 +41,6 @@ export default packageJson({
   dependencies: {
     ...catalog.pick(
       '@overeng/utils',
-      '@overeng/cli-ui',
       '@overeng/effect-path',
       '@overeng/tui-react',
       'react',
