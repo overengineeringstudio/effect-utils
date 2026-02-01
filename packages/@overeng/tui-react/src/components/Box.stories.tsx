@@ -39,7 +39,6 @@ export const Basic: Story = {
           <Text>Line 3</Text>
         </Box>
       )}
-      initialState={null}
     />
   ),
 }
@@ -54,7 +53,6 @@ export const Row: Story = {
           <Text> Something went wrong</Text>
         </Box>
       )}
-      initialState={null}
     />
   ),
 }
@@ -70,7 +68,6 @@ export const Column: Story = {
           <Text>Content line 2</Text>
         </Box>
       )}
-      initialState={null}
     />
   ),
 }
@@ -84,7 +81,6 @@ export const WithPadding: Story = {
           <Text>This text has padding around it</Text>
         </Box>
       )}
-      initialState={null}
     />
   ),
 }
@@ -104,7 +100,6 @@ export const Nested: Story = {
           </Box>
         </Box>
       )}
-      initialState={null}
     />
   ),
 }
@@ -138,7 +133,6 @@ export const ComplexLayout: Story = {
           </Box>
         </Box>
       )}
-      initialState={null}
     />
   ),
 }

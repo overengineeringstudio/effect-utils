@@ -31,7 +31,6 @@ export const Basic: Story = {
     <TuiStoryPreview
       app={StaticApp}
       View={() => <Text {...args}>{args.children ?? 'Hello, World!'}</Text>}
-      initialState={null}
     />
   ),
   args: {
@@ -44,7 +43,6 @@ export const WithColor: Story = {
     <TuiStoryPreview
       app={StaticApp}
       View={() => <Text {...args}>{args.children ?? 'Success message'}</Text>}
-      initialState={null}
     />
   ),
   args: {
@@ -58,7 +56,6 @@ export const Bold: Story = {
     <TuiStoryPreview
       app={StaticApp}
       View={() => <Text {...args}>{args.children ?? 'Bold text'}</Text>}
-      initialState={null}
     />
   ),
   args: {
@@ -72,7 +69,6 @@ export const Dim: Story = {
     <TuiStoryPreview
       app={StaticApp}
       View={() => <Text {...args}>{args.children ?? 'Dimmed text'}</Text>}
-      initialState={null}
     />
   ),
   args: {
@@ -98,7 +94,6 @@ export const AllColors: Story = {
           <Text color="gray">Gray text</Text>
         </Box>
       )}
-      initialState={null}
     />
   ),
 }
@@ -120,7 +115,6 @@ export const AllStyles: Story = {
           </Text>
         </Box>
       )}
-      initialState={null}
     />
   ),
 }
@@ -137,7 +131,6 @@ export const Combined: Story = {
           <Text dim> - Operation completed</Text>
         </Box>
       )}
-      initialState={null}
     />
   ),
 }

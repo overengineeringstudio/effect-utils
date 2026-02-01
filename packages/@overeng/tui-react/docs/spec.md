@@ -815,7 +815,6 @@ interface TuiAppConfig<S, A> {
   readonly actionSchema: Schema.Schema<A>
   readonly initial: S
   readonly reducer: (params: { state: S; action: A }) => S
-  readonly interruptTimeout?: number // Default: 500ms
 }
 
 interface TuiApp<S, A> {
