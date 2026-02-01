@@ -188,12 +188,6 @@ export interface TuiAppApi<S, A> {
   readonly stateAtom: Atom.Writable<S>
 
   /**
-   * The dispatch atom for advanced use.
-   * Note: The return type of the dispatch atom is Option<void> due to effect-atom internals.
-   */
-  readonly dispatchAtom: Atom.Atom<unknown>
-
-  /**
    * Stream of dispatched actions (for logging/debugging).
    */
   readonly actions: Stream.Stream<A>
@@ -213,12 +207,6 @@ export interface TuiApp<S, A> {
    * Atom containing the current state. Use with `useTuiAtomValue(App.stateAtom)`.
    */
   readonly stateAtom: Atom.Writable<S>
-
-  /**
-   * Atom for dispatching actions. Use with registry.set(App.dispatchAtom, action).
-   * Note: The return type of the dispatch atom is Option<void> due to effect-atom internals.
-   */
-  readonly dispatchAtom: Atom.Atom<unknown>
 
   /**
    * Run the app, optionally rendering a view.
@@ -302,7 +290,7 @@ const createInterruptedAction = <A,>(schema: Schema.Schema<A>): A | null => {
  * Create a TUI application with effect-atom state management.
  *
  * @param config - App configuration (state schema, reducer, initial state)
- * @returns TuiApp instance with atoms, run() method, and legacy hooks
+ * @returns TuiApp instance with atoms and run() method
  *
  * @example
  * ```typescript
@@ -352,9 +340,6 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
 
   // Check once if schema has Interrupted variant
   const interruptedAction = createInterruptedAction(config.actionSchema)
-  // TODO: Implement interrupt timeout handling
-  const _interruptTimeout = config.interruptTimeout ?? 500
-
   const run = (
     view?: ReactElement,
   ): Effect.Effect<TuiAppApi<S, A>, never, Scope.Scope | OutputModeTag> =>
@@ -393,8 +378,7 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
       /**
        * Unmount the TUI and render final output.
        *
-       * With effect-atom, state updates are synchronous, so we don't need
-       * the Effect.yieldNow() pattern that was required with SubscriptionRef.
+       * State updates are synchronous via effect-atom.
        */
       const unmount = (options?: UnmountOptions): Effect.Effect<void> =>
         Effect.sync(() => {
@@ -414,7 +398,6 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
         dispatch,
         getState: () => registry.get(stateAtom),
         stateAtom,
-        dispatchAtom,
         actions: Stream.fromPubSub(actionPubSub),
         unmount,
       }
@@ -423,7 +406,6 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
       rootRef = yield* setupMode({
         mode,
         stateAtom,
-        dispatch,
         stateSchema,
         registry,
         view,
@@ -451,7 +433,6 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
 
   return {
     stateAtom,
-    dispatchAtom,
     run,
     config,
   }
@@ -461,17 +442,15 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
 // Mode Setup
 // =============================================================================
 
-const setupMode = <S, A>({
+const setupMode = <S,>({
   mode,
   stateAtom,
-  dispatch,
   stateSchema,
   registry,
   view,
 }: {
   mode: OutputMode
   stateAtom: Atom.Writable<S>
-  dispatch: (action: A) => void
   stateSchema: Schema.Schema<S>
   registry: Registry.Registry
   view?: ReactElement | undefined
@@ -482,8 +461,6 @@ const setupMode = <S, A>({
       // Progressive React rendering (inline or fullscreen)
       return view
         ? setupProgressiveVisualWithView({
-            stateAtom,
-            dispatch,
             registry,
             view,
             renderConfig: mode.render,
@@ -492,9 +469,7 @@ const setupMode = <S, A>({
     } else {
       // Final React rendering (single output at end)
       return setupFinalVisualWithAtom({
-        stateAtom,
         view,
-        dispatch,
         registry,
         renderConfig: mode.render,
       }).pipe(Effect.as(null))
@@ -513,15 +488,11 @@ const setupMode = <S, A>({
   }
 }
 
-const setupProgressiveVisualWithView = <S, A>({
-  stateAtom: _stateAtom,
-  dispatch: _dispatch,
+const setupProgressiveVisualWithView = ({
   registry,
   view,
   renderConfig,
 }: {
-  stateAtom: Atom.Writable<S>
-  dispatch: (action: A) => void
   registry: Registry.Registry
   view: ReactElement
   renderConfig: RenderConfig
@@ -551,16 +522,12 @@ const setupProgressiveVisualWithView = <S, A>({
 /**
  * Final visual mode with atoms: Render to string on scope close.
  */
-const setupFinalVisualWithAtom = <S, A>({
-  stateAtom: _stateAtom,
+const setupFinalVisualWithAtom = ({
   view,
-  dispatch: _dispatch,
   registry,
   renderConfig,
 }: {
-  stateAtom: Atom.Writable<S>
   view: ReactElement | undefined
-  dispatch: (action: A) => void
   registry: Registry.Registry
   renderConfig: RenderConfig
 }): Effect.Effect<void, never, Scope.Scope> => {
@@ -610,10 +577,7 @@ const setupFinalJsonWithAtom = <S,>({
   )
 
 /**
- * Progressive JSON mode with atoms: Stream state changes as NDJSON.
- *
- * Note: effect-atom atoms don't have a built-in .changes stream like SubscriptionRef.
- * We use Atom.subscribe to watch for changes.
+ * Progressive JSON mode: Stream state changes as NDJSON via atom subscriptions.
  */
 const setupProgressiveJsonWithAtom = <S,>({
   stateAtom,

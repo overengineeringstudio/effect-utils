@@ -5,10 +5,7 @@
  * All renderers follow the TuiApp pattern with schema, app, view, mod.
  */
 
-export { outputLines, formatMemberState, formatSyncResult, formatActionLine } from './common.ts'
-export type { MemberState, SyncStatus } from './common.ts'
-
-// TuiApp renderers (new pattern)
+// TuiApp renderers
 export * from './AddOutput/mod.ts'
 export * from './EnvOutput/mod.ts'
 export * from './ExecOutput/mod.ts'

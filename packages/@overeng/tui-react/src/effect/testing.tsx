@@ -233,7 +233,6 @@ export const createTestTuiState = <S, A>(
       dispatch,
       getState: () => registry.get(stateAtom),
       stateAtom,
-      dispatchAtom,
       actions: Stream.fromPubSub(actionPubSub),
       unmount: () => Effect.void,
     }
