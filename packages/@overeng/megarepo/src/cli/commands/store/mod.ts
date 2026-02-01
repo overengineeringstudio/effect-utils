@@ -6,21 +6,9 @@
 
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
-import { Console, Effect, Option, Schema } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 import React from 'react'
 
-import {
-  createProgressListState,
-  finishProgressList,
-  formatElapsed,
-  isTTY,
-  markActive,
-  markError,
-  markSuccess,
-  startProgressList,
-  startSpinner,
-  updateProgressList,
-} from '@overeng/cli-ui'
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import {
@@ -259,57 +247,21 @@ const storeFetchCommand = Cli.Command.make('fetch', { output: outputOption }, ({
     const repos = yield* store.listRepos()
     const startTime = Date.now()
 
-    // For TTY: use live progress rendering
-    // For non-TTY (piped): just collect results silently
-    const useLiveProgress = output !== 'json' && output !== 'ndjson' && isTTY()
-
-    // Create progress state
-    const progressState = createProgressListState(
-      repos.map((repo) => ({
-        id: repo.relativePath,
-        label: repo.relativePath,
-      })),
-    )
-
-    if (useLiveProgress) {
-      // Print header and start progress display
-      yield* Console.log(`store\n  path: ${store.basePath}\n`)
-      startProgressList(progressState)
-      startSpinner({ state: progressState, interval: 80 })
-    }
-
-    // Fetch repos with limited concurrency for visible progress
+    // Fetch repos with limited concurrency
     const results = yield* Effect.all(
       repos.map((repo) =>
         Effect.gen(function* () {
-          // Mark as active
-          if (useLiveProgress) {
-            markActive({ state: progressState, id: repo.relativePath, message: 'fetching...' })
-            updateProgressList(progressState)
-          }
-
-          // The bare repo is in the .bare/ subdirectory
           const bareRepoPath = EffectPath.ops.join(
             repo.fullPath,
             EffectPath.unsafe.relativeDir('.bare/'),
           )
 
-          const result = yield* Git.fetchBare({
+          return yield* Git.fetchBare({
             repoPath: bareRepoPath,
           }).pipe(
-            Effect.map(() => {
-              if (useLiveProgress) {
-                markSuccess({ state: progressState, id: repo.relativePath })
-                updateProgressList(progressState)
-              }
-              return { path: repo.relativePath, status: 'fetched' as const }
-            }),
+            Effect.map(() => ({ path: repo.relativePath, status: 'fetched' as const })),
             Effect.catchAll((error) => {
               const message = error instanceof Error ? error.message : String(error)
-              if (useLiveProgress) {
-                markError({ state: progressState, id: repo.relativePath, message })
-                updateProgressList(progressState)
-              }
               return Effect.succeed({
                 path: repo.relativePath,
                 status: 'error' as const,
@@ -317,8 +269,6 @@ const storeFetchCommand = Cli.Command.make('fetch', { output: outputOption }, ({
               })
             }),
           )
-
-          return result
         }),
       ),
       { concurrency: 4 },
@@ -326,33 +276,21 @@ const storeFetchCommand = Cli.Command.make('fetch', { output: outputOption }, ({
 
     const elapsed = Date.now() - startTime
 
-    if (useLiveProgress) {
-      // Finish progress display
-      finishProgressList({ state: progressState })
+    // Use StoreApp for all output modes
+    yield* Effect.scoped(
+      Effect.gen(function* () {
+        const tui = yield* StoreApp.run(
+          React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }),
+        )
 
-      // Print summary
-      const fetchedCount = results.filter((r) => r.status === 'fetched').length
-      const errorCount = results.filter((r) => r.status === 'error').length
-      const errorPart =
-        errorCount > 0 ? ` \u00b7 ${errorCount} error${errorCount > 1 ? 's' : ''}` : ''
-      yield* Console.log(`${fetchedCount} fetched${errorPart} \u00b7 ${formatElapsed(elapsed)}`)
-    } else {
-      // Use TuiApp for JSON/non-TTY output
-      yield* Effect.scoped(
-        Effect.gen(function* () {
-          const tui = yield* StoreApp.run(
-            React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }),
-          )
-
-          tui.dispatch({
-            _tag: 'SetFetch',
-            basePath: store.basePath,
-            results: results,
-            elapsedMs: elapsed,
-          })
-        }),
-      ).pipe(Effect.provide(outputModeLayer(output)))
-    }
+        tui.dispatch({
+          _tag: 'SetFetch',
+          basePath: store.basePath,
+          results: results,
+          elapsedMs: elapsed,
+        })
+      }),
+    ).pipe(Effect.provide(outputModeLayer(output)))
   }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/fetch')),
 ).pipe(Cli.Command.withDescription('Fetch all repositories in the store'))
 
@@ -655,9 +593,6 @@ const storeAddCommand = Cli.Command.make(
 
       // Clone if needed (show progress for non-JSON modes)
       if (!bareExists) {
-        if (output !== 'json' && output !== 'ndjson') {
-          yield* Console.log(`\u2192 Cloning ${sourceString}...`)
-        }
         const repoBasePath = store.getRepoBasePath(source)
         yield* fs.makeDirectory(repoBasePath, { recursive: true })
         yield* Git.cloneBare({ url: cloneUrl, targetPath: bareRepoPath })
@@ -680,9 +615,6 @@ const storeAddCommand = Cli.Command.make(
       const worktreeExists = yield* store.hasWorktree({ source, ref: targetRef, refType })
 
       if (!worktreeExists) {
-        if (output !== 'json' && output !== 'ndjson') {
-          yield* Console.log(`\u2192 Creating worktree at ${targetRef}...`)
-        }
         const worktreeParent = EffectPath.ops.parent(worktreePath)
         if (worktreeParent !== undefined) {
           yield* fs.makeDirectory(worktreeParent, { recursive: true })

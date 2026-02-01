@@ -11,10 +11,7 @@ import { FileSystem, type Error as PlatformError } from '@effect/platform'
 import { Console, Effect, Option, type ParseResult, Schema } from 'effect'
 import React from 'react'
 
-import { Atom, Registry } from '@effect-atom/atom'
-import { isTTY } from '@overeng/cli-ui'
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
-import { renderToString, TuiRegistryContext } from '@overeng/tui-react'
 
 import {
   CONFIG_FILE_NAME,
@@ -44,7 +41,6 @@ import { syncNixLocks } from '../../lib/nix-lock/mod.ts'
 import { type Store, StoreLayer } from '../../lib/store.ts'
 import {
   countSyncResults,
-  flattenSyncResults,
   type GitProtocol,
   makeRepoSemaphoreMap,
   type MissingRefAction,
@@ -57,7 +53,7 @@ import {
   Cwd,
   findMegarepoRoot,
   outputOption,
-  type OutputModeValue,
+  outputModeLayer,
   verboseOption,
 } from '../context.ts'
 import {
@@ -68,14 +64,13 @@ import {
   InvalidOptionsError,
 } from '../errors.ts'
 import {
-  startSyncProgressUI,
-  finishSyncProgressUI,
-  mapSyncResultToAction,
-  createSyncingAction,
-  createCompleteAction,
-  type SyncProgressUIHandle,
-} from '../progress/mod.ts'
-import { createInitialSyncState, SyncView } from '../renderers/SyncOutput/mod.ts'
+  SyncApp,
+  SyncView,
+  startSyncUI,
+  finishSyncUI,
+  isTTY,
+  type SyncUIHandle,
+} from '../renderers/SyncOutput/mod.ts'
 
 /**
  * Sync a megarepo at the given root path.
@@ -92,7 +87,6 @@ export const syncMegarepo = ({
   visited = new Set<string>(),
   progressHandle,
   onMissingRef,
-  onMemberSynced,
 }: {
   megarepoRoot: AbsoluteDirPath
   options: {
@@ -110,13 +104,11 @@ export const syncMegarepo = ({
   }
   depth?: number
   visited?: Set<string>
-  /** Handle for dispatching progress updates (replaces withProgress flag) */
-  progressHandle?: SyncProgressUIHandle
+  /** Handle for dispatching progress updates */
+  progressHandle?: SyncUIHandle
   /** Callback for interactive prompts when a ref doesn't exist */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onMissingRef?: (info: MissingRefInfo) => Effect.Effect<MissingRefAction, any, any>
-  /** Callback when a member sync completes (for NDJSON streaming) */
-  onMemberSynced?: (result: MemberSyncResult) => Effect.Effect<void, never, never>
 }): Effect.Effect<
   MegarepoSyncResult,
   | NotInMegarepoError
@@ -218,17 +210,6 @@ export const syncMegarepo = ({
     // Check --frozen requirements
     if (frozen) {
       if (lockFile === undefined) {
-        if (json) {
-          console.log(
-            JSON.stringify({
-              error: 'no_lock',
-              message: 'Lock file required for --frozen',
-              root: megarepoRoot,
-            }),
-          )
-        } else {
-          yield* Console.error(`${indent}\u2717 Lock file required for --frozen mode`)
-        }
         return yield* new LockFileRequiredError({ message: 'Lock file required for --frozen' })
       }
 
@@ -253,25 +234,6 @@ export const syncMegarepo = ({
         configMemberNames: filteredRemoteMemberNames,
       })
       if (staleness.isStale) {
-        if (json) {
-          console.log(
-            JSON.stringify({
-              error: 'stale_lock',
-              message: 'Lock file is stale',
-              root: megarepoRoot,
-              added: staleness.addedMembers,
-              removed: staleness.removedMembers,
-            }),
-          )
-        } else {
-          yield* Console.log(`${indent}\u2717 Lock file is stale`)
-          if (staleness.addedMembers.length > 0) {
-            yield* Console.log(`${indent}  Added: ${staleness.addedMembers.join(', ')}`)
-          }
-          if (staleness.removedMembers.length > 0) {
-            yield* Console.log(`${indent}  Removed: ${staleness.removedMembers.join(', ')}`)
-          }
-        }
         return yield* new StaleLockFileError({
           message: 'Lock file is stale',
           addedMembers: staleness.addedMembers,
@@ -305,7 +267,7 @@ export const syncMegarepo = ({
         Effect.gen(function* () {
           // Mark as syncing in progress UI
           if (progressHandle !== undefined) {
-            progressHandle.dispatch(createSyncingAction({ memberName: name }))
+            progressHandle.dispatch({ _tag: 'SetActiveMember', name })
           }
 
           // Perform the sync
@@ -326,12 +288,7 @@ export const syncMegarepo = ({
 
           // Apply result to progress UI
           if (progressHandle !== undefined) {
-            progressHandle.dispatch(mapSyncResultToAction(result))
-          }
-
-          // Call streaming callback if provided (for NDJSON output)
-          if (onMemberSynced !== undefined) {
-            yield* onMemberSynced(result)
+            progressHandle.dispatch({ _tag: 'AddResult', result })
           }
 
           return result
@@ -626,9 +583,7 @@ export const syncCommand = Cli.Command.make(
     verbose,
   }) =>
     Effect.gen(function* () {
-      // Derive json/stream from output mode for backward compatibility with existing logic
       const json = output === 'json' || output === 'ndjson'
-      const stream = output === 'ndjson'
 
       const cwd = yield* Cwd
       const fs = yield* FileSystem.FileSystem
@@ -636,16 +591,6 @@ export const syncCommand = Cli.Command.make(
 
       // Validate mutual exclusivity of --only and --skip
       if (Option.isSome(only) && Option.isSome(skip)) {
-        if (json) {
-          console.log(
-            JSON.stringify({
-              error: 'invalid_options',
-              message: '--only and --skip are mutually exclusive',
-            }),
-          )
-        } else {
-          yield* Console.error('\u2717 --only and --skip are mutually exclusive')
-        }
         return yield* new InvalidOptionsError({
           message: '--only and --skip are mutually exclusive',
         })
@@ -656,37 +601,27 @@ export const syncCommand = Cli.Command.make(
       const skipMembers = Option.isSome(skip) ? parseMemberList(skip.value) : undefined
 
       if (Option.isNone(root)) {
-        if (json) {
-          console.log(
-            JSON.stringify({
-              error: 'not_found',
-              message: 'No megarepo.json found',
-            }),
-          )
-        } else {
-          yield* Console.error('\u2717 Not in a megarepo')
-        }
         return yield* new NotInMegarepoError({ message: 'No megarepo.json found' })
       }
 
       // Get workspace name
       const name = yield* Git.deriveMegarepoName(root.value)
 
+      // Load config
+      const configPath = EffectPath.ops.join(
+        root.value,
+        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+      )
+      const configContent = yield* fs.readFileString(configPath)
+      const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+      const memberNames = Object.keys(config.members)
+
       // Determine if we should use live progress (TTY and not JSON mode)
       const useLiveProgress = !json && isTTY()
 
       if (useLiveProgress) {
-        // Load config to get member names for progress display
-        const configPath = EffectPath.ops.join(
-          root.value,
-          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-        )
-        const configContent = yield* fs.readFileString(configPath)
-        const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
-        const memberNames = Object.keys(config.members)
-
         // Start live progress UI (React-based)
-        const ui = yield* startSyncProgressUI({
+        const ui = yield* startSyncUI({
           workspaceName: name,
           workspaceRoot: root.value,
           memberNames,
@@ -723,19 +658,13 @@ export const syncCommand = Cli.Command.make(
         })
 
         // Mark complete and finish UI
-        ui.dispatch(createCompleteAction())
-        yield* finishSyncProgressUI(ui)
-
-        // Print generator output after progress UI completes
         const generatedFiles = getEnabledGenerators(config)
-        if (generatedFiles.length > 0) {
-          yield* Console.log('')
-          yield* Console.log(dryRun ? 'Would generate:' : 'Generated:')
-          for (const file of generatedFiles) {
-            const symbol = dryRun ? '\u2192' : '\u2713'
-            yield* Console.log(`  ${symbol} ${file}`)
-          }
-        }
+        ui.dispatch({
+          _tag: 'Complete',
+          nestedMegarepos: [...syncResult.nestedMegarepos],
+          generatedFiles,
+        })
+        yield* finishSyncUI(ui)
 
         // Check for sync errors and fail if any occurred
         const counts = countSyncResults(syncResult)
@@ -752,72 +681,7 @@ export const syncCommand = Cli.Command.make(
 
         return syncResult
       } else {
-        // Non-TTY or JSON mode: use original batch rendering
-        // Load config to get enabled generators
-        const configPath = EffectPath.ops.join(
-          root.value,
-          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-        )
-        const configContent = yield* fs.readFileString(configPath)
-        const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
-
-        // NDJSON streaming mode: emit each result as it completes
-        if (json && stream) {
-          // Emit initial state
-          console.log(
-            JSON.stringify({
-              _tag: 'started',
-              workspace: name,
-              root: root.value,
-              memberCount: Object.keys(config.members).length,
-            }),
-          )
-
-          // Stream each member result as it completes
-          const onMemberSynced = (result: MemberSyncResult) =>
-            Effect.sync(() => {
-              console.log(
-                JSON.stringify({
-                  _tag: 'member',
-                  ...result,
-                }),
-              )
-            })
-
-          const syncResult = yield* syncMegarepo({
-            megarepoRoot: root.value,
-            options: {
-              json,
-              dryRun,
-              pull,
-              frozen,
-              force,
-              deep,
-              only: onlyMembers,
-              skip: skipMembers,
-              verbose,
-              gitProtocol,
-              createBranches,
-            },
-            onMemberSynced,
-          })
-
-          // Emit final summary
-          const counts = countSyncResults(syncResult)
-          console.log(
-            JSON.stringify({
-              _tag: 'complete',
-              workspace: name,
-              root: root.value,
-              counts,
-              generatedFiles: getEnabledGenerators(config),
-            }),
-          )
-
-          return syncResult
-        }
-
-        // Non-TTY mode doesn't use interactive prompts
+        // Non-TTY / JSON / NDJSON / CI: use SyncApp with outputModeLayer
         const syncResult = yield* syncMegarepo({
           megarepoRoot: root.value,
           options: {
@@ -835,41 +699,32 @@ export const syncCommand = Cli.Command.make(
           },
         })
 
-        // Get list of files that would be / were generated
         const generatedFiles = getEnabledGenerators(config)
 
-        // Output results
-        if (json) {
-          console.log(JSON.stringify(flattenSyncResults(syncResult)))
-          // In JSON mode, don't throw errors - the JSON output includes error info
-          // and callers can check results for errors. Throwing would add extra output.
-          return syncResult
-        } else {
-          // Render using the new SyncView component with a temporary registry/atom
-          const finalState = {
-            ...createInitialSyncState({ workspaceName: name, workspaceRoot: root.value }),
-            options: { dryRun, frozen, pull, deep },
-            phase: 'complete' as const,
-            results: syncResult.results,
-            nestedMegarepos: syncResult.nestedMegarepos,
-            generatedFiles,
-          }
-          const registry = Registry.make()
-          const stateAtom = Atom.make(finalState)
-          registry.set(stateAtom, finalState)
-          const output = yield* Effect.promise(() =>
-            renderToString({
-              element: React.createElement(
-                TuiRegistryContext.Provider,
-                { value: registry },
-                React.createElement(SyncView, { stateAtom }),
-              ),
-            }),
-          )
-          yield* Console.log(output)
-        }
+        // Render final state via SyncApp
+        yield* Effect.scoped(
+          Effect.gen(function* () {
+            const tui = yield* SyncApp.run(
+              React.createElement(SyncView, { stateAtom: SyncApp.stateAtom }),
+            )
 
-        // Check for sync errors and fail if any occurred (non-JSON mode only)
+            tui.dispatch({
+              _tag: 'SetState',
+              state: {
+                workspace: { name, root: root.value },
+                options: { dryRun, frozen, pull, deep },
+                phase: 'complete',
+                members: memberNames,
+                results: syncResult.results,
+                logs: [],
+                nestedMegarepos: [...syncResult.nestedMegarepos],
+                generatedFiles,
+              },
+            })
+          }),
+        ).pipe(Effect.provide(outputModeLayer(output)))
+
+        // Check for sync errors and fail if any occurred
         const counts = countSyncResults(syncResult)
         if (counts.errors > 0) {
           const failedMembers = syncResult.results
@@ -885,7 +740,7 @@ export const syncCommand = Cli.Command.make(
         return syncResult
       }
     }).pipe(
-      Effect.scoped, // For startSyncProgressUI which requires Scope
+      Effect.scoped,
       Effect.provide(StoreLayer),
       Effect.withSpan('megarepo/sync'),
     ),

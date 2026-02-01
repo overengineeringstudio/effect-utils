@@ -86,3 +86,21 @@ We're using pnpm temporarily due to bun bugs. Once fixed, we plan to switch back
 
 - [#13223 - file: deps extremely slow](https://github.com/oven-sh/bun/issues/13223)
 - [#22846 - install hangs in monorepo](https://github.com/oven-sh/bun/issues/22846)
+
+## Issue: Duplicate React Instances in Per-Package Workspaces
+
+When multiple self-contained packages install their own React devDependencies,
+Node resolves different React instances for each package. This triggers
+"Invalid hook call" at runtime when a React renderer (e.g. @overeng/tui-react)
+and a consumer (e.g. @overeng/genie) each import React from their local
+node_modules. A shared pnpm store does not fix this because the store is just a
+cache; separate node_modules still produce distinct module instances.
+
+Workarounds to enforce a single React instance during dev:
+
+- Add hoisting rules for React-family packages (e.g. public-hoist-pattern for
+  react, react-dom, react-reconciler) in the workspace .npmrc.
+- Centralize React devDependencies in a shared tooling package so libraries do
+  not install local React copies.
+- Add a lint/check rule to prevent direct 'react' imports in CLI packages that
+  should use @overeng/tui-react hooks instead.

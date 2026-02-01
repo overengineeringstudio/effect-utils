@@ -6,7 +6,7 @@
 
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
-import { Console, Effect, Option, Schema } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'
@@ -241,7 +241,6 @@ export const pinCommand = Cli.Command.make(
               yield* fs.makeDirectory(repoBasePath, { recursive: true })
               yield* Git.cloneBare({ url: cloneUrl, targetPath: bareRepoPath })
 
-              yield* Console.log(`  Cloned ${cloneUrl}`)
             } else {
               // Fetch to ensure we have the latest refs
               yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(
