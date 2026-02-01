@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Infrastructure
 
+- **pnpm workspaces**: Hoist React-family packages in React-enabled workspaces to prevent duplicate React instances during local dev
+
 - **nix/workspace-tools/lib/mk-pnpm-cli.nix**: Added `packageJsonDepsHash` parameter to fix build failures
   - `build.nix` files were passing `packageJsonDepsHash` but the function didn't accept it
   - Fixes `nix flake check` failures and downstream repo devenv shell issues

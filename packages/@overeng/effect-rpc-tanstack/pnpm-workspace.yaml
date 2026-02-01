@@ -4,3 +4,5 @@
 packages: [., ../*, examples/*]
 
 dedupePeerDependents: true
+
+publicHoistPattern: [react, react-dom, react-reconciler]

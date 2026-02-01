@@ -7,7 +7,7 @@ import React from 'react'
 
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
-import type { AddState } from './AddOutput/mod.ts';
+import type { AddState } from './AddOutput/mod.ts'
 import { AddApp } from './AddOutput/mod.ts'
 import { AddView } from './AddOutput/view.tsx'
 

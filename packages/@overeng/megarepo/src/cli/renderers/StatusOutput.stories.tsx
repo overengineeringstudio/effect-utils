@@ -7,7 +7,7 @@ import React from 'react'
 
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
-import type { StatusState} from './StatusOutput/mod.ts';
+import type { StatusState } from './StatusOutput/mod.ts'
 import { StatusApp, type MemberStatus } from './StatusOutput/mod.ts'
 import { StatusView } from './StatusOutput/view.tsx'
 

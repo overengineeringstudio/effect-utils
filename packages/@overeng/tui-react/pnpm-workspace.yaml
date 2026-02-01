@@ -4,3 +4,5 @@
 packages: [., ../tui-core, ../utils]
 
 dedupePeerDependents: true
+
+publicHoistPattern: [react, react-dom, react-reconciler]

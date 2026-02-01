@@ -62,3 +62,13 @@ export const catalog = defineCatalog({
     '@overeng/tui-react': 'workspace:*',
   },
 })
+
+/**
+ * Pnpm workspace with React hoisting for single-instance React in dev.
+ */
+export const pnpmWorkspaceReact = (packages: readonly string[]) =>
+  pnpmWorkspaceYaml({
+    packages: ['.', ...packages],
+    publicHoistPattern: ['react', 'react-dom', 'react-reconciler'],
+    dedupePeerDependents: true,
+  })

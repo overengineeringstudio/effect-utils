@@ -7,7 +7,7 @@ import React from 'react'
 
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
-import type { PinState } from './PinOutput/mod.ts';
+import type { PinState } from './PinOutput/mod.ts'
 import { PinApp } from './PinOutput/mod.ts'
 import { PinView } from './PinOutput/view.tsx'
 
