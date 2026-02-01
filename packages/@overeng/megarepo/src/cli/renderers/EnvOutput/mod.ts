@@ -11,4 +11,3 @@ export { EnvApp, createInitialEnvState } from './app.ts'
 
 // Views
 export { EnvView, type EnvViewProps } from './view.tsx'
-export { EnvConnectedView } from './connected-view.tsx'

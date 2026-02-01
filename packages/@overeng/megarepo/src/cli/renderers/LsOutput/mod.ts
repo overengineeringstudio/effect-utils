@@ -26,4 +26,3 @@ export { LsApp, createInitialLsState } from './app.ts'
 
 // Views
 export { LsView, type LsViewProps } from './view.tsx'
-export { LsConnectedView } from './connected-view.tsx'

@@ -14,8 +14,8 @@ import { tty, layer as outputModeLayer } from '@overeng/tui-react'
 
 import type { MemberSyncResult } from '../../../lib/sync/schema.ts'
 import { SyncApp } from './app.ts'
-import { SyncConnectedView } from './connected-view.tsx'
 import type { SyncState } from './schema.ts'
+import { SyncView } from './view.tsx'
 
 // Re-export SyncAction for consumers
 export type { SyncAction } from './schema.ts'
@@ -124,10 +124,10 @@ export const startSyncUI = (options: {
       } satisfies SyncUIHandle
     }
 
-    // Run the app with the connected view
-    const tui = yield* SyncApp.run(React.createElement(SyncConnectedView)).pipe(
-      Effect.provide(outputModeLayer(tty)),
-    )
+    // Run the app with the view using atom-first pattern
+    const tui = yield* SyncApp.run(
+      React.createElement(SyncView, { stateAtom: SyncApp.stateAtom }),
+    ).pipe(Effect.provide(outputModeLayer(tty)))
 
     // Initialize with start action
     tui.dispatch({

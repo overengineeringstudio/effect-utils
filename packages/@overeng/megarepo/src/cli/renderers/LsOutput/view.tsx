@@ -5,12 +5,12 @@
  * Handles both success (member list) and error states.
  */
 
+import type { Atom } from '@effect-atom/atom'
 import React from 'react'
 
-import { Box, Text } from '@overeng/tui-react'
+import { Box, Text, useTuiAtomValue } from '@overeng/tui-react'
 
 import type { LsState } from './schema.ts'
-import { isLsError } from './schema.ts'
 
 // =============================================================================
 // Symbols
@@ -25,7 +25,7 @@ const symbols = {
 // =============================================================================
 
 export interface LsViewProps {
-  state: LsState
+  stateAtom: Atom.Atom<LsState>
 }
 
 /**
@@ -35,9 +35,11 @@ export interface LsViewProps {
  * - A list of members with their sources (success)
  * - An error message (error)
  */
-export const LsView = ({ state }: LsViewProps) => {
+export const LsView = ({ stateAtom }: LsViewProps) => {
+  const state = useTuiAtomValue(stateAtom)
+
   // Handle error state
-  if (isLsError(state)) {
+  if (state._tag === 'Error') {
     return (
       <Box flexDirection="row">
         <Text color="red">{symbols.cross}</Text>

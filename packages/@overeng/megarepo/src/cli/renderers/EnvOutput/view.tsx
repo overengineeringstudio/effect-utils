@@ -5,12 +5,12 @@
  * TTY mode outputs shell-specific export commands.
  */
 
+import type { Atom } from '@effect-atom/atom'
 import React from 'react'
 
-import { Box, Text } from '@overeng/tui-react'
+import { Box, Text, useTuiAtomValue } from '@overeng/tui-react'
 
 import type { EnvState } from './schema.ts'
-import { isEnvError } from './schema.ts'
 
 const symbols = {
   cross: '\u2717',
@@ -21,7 +21,7 @@ const symbols = {
 // =============================================================================
 
 export interface EnvViewProps {
-  state: EnvState
+  stateAtom: Atom.Atom<EnvState>
 }
 
 /**
@@ -30,9 +30,11 @@ export interface EnvViewProps {
  * In TTY mode, outputs shell-specific export commands.
  * JSON mode outputs the environment variables as a JSON object.
  */
-export const EnvView = ({ state }: EnvViewProps) => {
+export const EnvView = ({ stateAtom }: EnvViewProps) => {
+  const state = useTuiAtomValue(stateAtom)
+
   // Handle error state
-  if (isEnvError(state)) {
+  if (state._tag === 'Error') {
     return (
       <Box flexDirection="row">
         <Text color="red">{symbols.cross}</Text>

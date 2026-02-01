@@ -22,7 +22,7 @@ export const createInitialLsState = (): typeof LsState.Type => ({
  *
  * Usage in CLI:
  * ```typescript
- * const tui = yield* LsApp.run(<LsConnectedView />).pipe(
+ * const tui = yield* LsApp.run(<LsView stateAtom={LsApp.stateAtom} />).pipe(
  *   Effect.provide(outputModeLayer(output))
  * )
  *

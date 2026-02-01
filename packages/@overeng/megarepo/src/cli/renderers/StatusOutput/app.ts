@@ -23,7 +23,7 @@ export const createInitialStatusState = (): typeof StatusState.Type => ({
  *
  * Usage in CLI:
  * ```typescript
- * const tui = yield* StatusApp.run(<StatusConnectedView />).pipe(
+ * const tui = yield* StatusApp.run(<StatusView stateAtom={StatusApp.stateAtom} />).pipe(
  *   Effect.provide(outputModeLayer(output))
  * )
  *

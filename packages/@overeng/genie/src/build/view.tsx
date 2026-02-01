@@ -7,9 +7,8 @@
 
 import React, { useMemo } from 'react'
 
-import { Box, Text, Spinner, useViewport, useTuiAtomValue } from '@overeng/tui-react'
+import { type Atom, Box, Text, Spinner, useViewport, useTuiAtomValue } from '@overeng/tui-react'
 
-import { GenieApp } from './app.ts'
 import type { GenieState, GenieFile, GenieFileStatus } from './schema.ts'
 
 // =============================================================================
@@ -341,7 +340,7 @@ const FileList = ({ files, hasWatchCycle }: FileListProps) => {
 
 /** Props for GenieView component */
 export interface GenieViewProps {
-  state: GenieState
+  stateAtom: Atom.Atom<GenieState>
 }
 
 /**
@@ -352,7 +351,8 @@ export interface GenieViewProps {
  * - Final output after completion (phase='complete')
  * - Error display (phase='error')
  */
-export const GenieView = ({ state }: GenieViewProps) => {
+export const GenieView = ({ stateAtom }: GenieViewProps) => {
+  const state = useTuiAtomValue(stateAtom)
   const { phase, mode, cwd, files, summary, error, watchCycle } = state
 
   // ===================
@@ -434,15 +434,4 @@ export const GenieView = ({ state }: GenieViewProps) => {
   )
 }
 
-// =============================================================================
-// Connected View (uses app-scoped hooks)
-// =============================================================================
 
-/**
- * Connected view that uses GenieApp's hooks.
- * Use this when rendering with GenieApp.run().
- */
-export const GenieConnectedView = () => {
-  const state = useTuiAtomValue(GenieApp.stateAtom)
-  return <GenieView state={state} />
-}

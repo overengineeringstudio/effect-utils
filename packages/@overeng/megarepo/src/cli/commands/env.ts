@@ -19,8 +19,7 @@ import {
   outputOption,
   outputModeLayer,
 } from '../context.ts'
-import { EnvConnectedView } from '../renderers/EnvOutput/connected-view.tsx'
-import { EnvApp } from '../renderers/EnvOutput/mod.ts'
+import { EnvApp, EnvView } from '../renderers/EnvOutput/mod.ts'
 
 /** Print environment variables for shell integration */
 export const envCommand = Cli.Command.make(
@@ -39,7 +38,7 @@ export const envCommand = Cli.Command.make(
       // Run TuiApp for all output (handles JSON/TTY modes automatically)
       yield* Effect.scoped(
         Effect.gen(function* () {
-          const tui = yield* EnvApp.run(React.createElement(EnvConnectedView))
+          const tui = yield* EnvApp.run(React.createElement(EnvView, { stateAtom: EnvApp.stateAtom }))
 
           // Find the megarepo root
           const root = yield* findMegarepoRoot(cwd)

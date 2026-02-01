@@ -10,6 +10,7 @@ import { EnvState, EnvAction, envReducer } from './schema.ts'
  * Initial empty state for env output.
  */
 export const createInitialEnvState = (): typeof EnvState.Type => ({
+  _tag: 'Success',
   MEGAREPO_ROOT_OUTERMOST: '',
   MEGAREPO_ROOT_NEAREST: '',
   MEGAREPO_MEMBERS: '',
@@ -24,5 +25,5 @@ export const EnvApp = createTuiApp({
   actionSchema: EnvAction,
   initial: createInitialEnvState(),
   reducer: envReducer,
-  exitCode: (state) => ('error' in state ? 1 : 0),
+  exitCode: (state) => (state._tag === 'Error' ? 1 : 0),
 })

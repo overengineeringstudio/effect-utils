@@ -7,9 +7,10 @@
  * Uses megarepo's design system components for consistent styling.
  */
 
+import type { Atom } from '@effect-atom/atom'
 import React from 'react'
 
-import { Box, Text } from '@overeng/tui-react'
+import { Box, Text, useTuiAtomValue } from '@overeng/tui-react'
 
 import { icons, Separator } from '../../components/mod.ts'
 import type { StatusState, MemberStatus, LockStaleness, GitStatus, SymlinkDrift } from './schema.ts'
@@ -25,16 +26,7 @@ export type { GitStatus, SymlinkDrift, MemberStatus, LockStaleness }
 // =============================================================================
 
 export interface StatusViewProps {
-  state: StatusState
-}
-
-export type StatusOutputProps = {
-  name: string
-  root: string
-  members: readonly MemberStatus[]
-  lastSyncTime?: Date | undefined
-  lockStaleness?: LockStaleness | undefined
-  currentMemberPath?: readonly string[] | undefined
+  stateAtom: Atom.Atom<StatusState>
 }
 
 // =============================================================================
@@ -50,7 +42,8 @@ export type StatusOutputProps = {
  * - Member tree with status indicators
  * - Summary line and legend
  */
-export const StatusView = ({ state }: StatusViewProps) => {
+export const StatusView = ({ stateAtom }: StatusViewProps) => {
+  const state = useTuiAtomValue(stateAtom)
   const { name, root, members, lastSyncTime, lockStaleness, currentMemberPath } = state
   const problems = analyzeProblems({ members, lockStaleness })
   const hasNesting = members.some((m) => m.nestedMembers && m.nestedMembers.length > 0)
@@ -113,34 +106,7 @@ export const StatusView = ({ state }: StatusViewProps) => {
   )
 }
 
-/**
- * Legacy StatusOutput component for backwards compatibility.
- * Converts old props format to new StatusState.
- */
-export const StatusOutput = ({
-  name,
-  root,
-  members,
-  lastSyncTime,
-  lockStaleness,
-  currentMemberPath,
-}: StatusOutputProps) => {
-  const state: StatusState = {
-    name,
-    root,
-    members: members as MemberStatus[],
-    lastSyncTime: lastSyncTime?.toISOString(),
-    lockStaleness: lockStaleness
-      ? {
-          exists: lockStaleness.exists,
-          missingFromLock: [...lockStaleness.missingFromLock],
-          extraInLock: [...lockStaleness.extraInLock],
-        }
-      : undefined,
-    currentMemberPath: currentMemberPath ? [...currentMemberPath] : undefined,
-  }
-  return <StatusView state={state} />
-}
+
 
 // =============================================================================
 // Internal Types

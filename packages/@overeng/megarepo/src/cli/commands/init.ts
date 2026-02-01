@@ -14,8 +14,7 @@ import { EffectPath } from '@overeng/effect-path'
 import { CONFIG_FILE_NAME, MegarepoConfig } from '../../lib/config.ts'
 import * as Git from '../../lib/git.ts'
 import { Cwd, outputOption, outputModeLayer } from '../context.ts'
-import { InitConnectedView } from '../renderers/InitOutput/connected-view.tsx'
-import { InitApp } from '../renderers/InitOutput/mod.ts'
+import { InitApp, InitView } from '../renderers/InitOutput/mod.ts'
 
 /** Initialize a new megarepo in current directory */
 export const initCommand = Cli.Command.make('init', { output: outputOption }, ({ output }) =>
@@ -26,7 +25,7 @@ export const initCommand = Cli.Command.make('init', { output: outputOption }, ({
     // Run TuiApp for all output (handles JSON/TTY modes automatically)
     yield* Effect.scoped(
       Effect.gen(function* () {
-        const tui = yield* InitApp.run(React.createElement(InitConnectedView))
+        const tui = yield* InitApp.run(React.createElement(InitView, { stateAtom: InitApp.stateAtom }))
 
         // Check if already in a git repo
         const isGit = yield* Git.isGitRepo(cwd)

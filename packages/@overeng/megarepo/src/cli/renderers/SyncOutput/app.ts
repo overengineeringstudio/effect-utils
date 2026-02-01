@@ -39,7 +39,7 @@ export const createInitialSyncState = (params: {
  *
  * Usage in CLI:
  * ```typescript
- * const tui = yield* SyncApp.run(<SyncConnectedView />).pipe(
+ * const tui = yield* SyncApp.run(<SyncView stateAtom={SyncApp.stateAtom} />).pipe(
  *   Effect.provide(outputModeLayer(output))
  * )
  *

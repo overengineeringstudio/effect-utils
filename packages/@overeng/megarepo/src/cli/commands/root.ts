@@ -10,8 +10,7 @@ import React from 'react'
 
 import * as Git from '../../lib/git.ts'
 import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../context.ts'
-import { RootConnectedView } from '../renderers/RootOutput/connected-view.tsx'
-import { RootApp } from '../renderers/RootOutput/mod.ts'
+import { RootApp, RootView } from '../renderers/RootOutput/mod.ts'
 
 /** Find and print the megarepo root directory */
 export const rootCommand = Cli.Command.make('root', { output: outputOption }, ({ output }) =>
@@ -21,7 +20,7 @@ export const rootCommand = Cli.Command.make('root', { output: outputOption }, ({
     // Run TuiApp for all output (handles JSON/TTY modes automatically)
     yield* Effect.scoped(
       Effect.gen(function* () {
-        const tui = yield* RootApp.run(React.createElement(RootConnectedView))
+        const tui = yield* RootApp.run(React.createElement(RootView, { stateAtom: RootApp.stateAtom }))
 
         // Search up from current directory
         const root = yield* findMegarepoRoot(cwd)

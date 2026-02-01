@@ -7,9 +7,10 @@
  * Uses megarepo's design system components for consistent styling.
  */
 
+import type { Atom } from '@effect-atom/atom'
 import React from 'react'
 
-import { Box, Text, Static, useMemo } from '@overeng/tui-react'
+import { Box, Text, Static, useMemo, useTuiAtomValue } from '@overeng/tui-react'
 
 import { computeSyncSummary, type MemberSyncResult } from '../../../lib/sync/schema.ts'
 import {
@@ -29,7 +30,7 @@ import type { SyncState, SyncLogEntry } from './schema.ts'
 // =============================================================================
 
 export interface SyncViewProps {
-  state: SyncState
+  stateAtom: Atom.Atom<SyncState>
 }
 
 // =============================================================================
@@ -43,7 +44,8 @@ export interface SyncViewProps {
  * - Progress display during sync (phase='syncing')
  * - Final output after sync (phase='complete' or 'idle')
  */
-export const SyncView = ({ state }: SyncViewProps) => {
+export const SyncView = ({ stateAtom }: SyncViewProps) => {
+  const state = useTuiAtomValue(stateAtom)
   const {
     workspace,
     options,

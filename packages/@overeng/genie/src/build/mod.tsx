@@ -24,7 +24,7 @@ import {
 import { logTsconfigWarnings, validateTsconfigReferences } from './tsconfig-validation.ts'
 import type { GenieCommandConfig, GenieCommandEnv, GenieCommandError } from './types.ts'
 import { runGenieValidationPlugins } from './validation.ts'
-import { GenieConnectedView } from './view.tsx'
+import { GenieView } from './view.tsx'
 
 export {
   GenieCheckError,
@@ -137,7 +137,7 @@ export const genieCommand: Cli.Command.Command<
       const mode: GenieMode = check ? 'check' : dryRun ? 'dry-run' : 'generate'
 
       // Start TUI
-      const tui = yield* GenieApp.run(<GenieConnectedView />)
+      const tui = yield* GenieApp.run(<GenieView stateAtom={GenieApp.stateAtom} />)
 
       // Set initial state
       tui.dispatch({

@@ -13,8 +13,7 @@ import { EffectPath } from '@overeng/effect-path'
 
 import { CONFIG_FILE_NAME, MegarepoConfig } from '../../lib/config.ts'
 import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../context.ts'
-import { LsConnectedView } from '../renderers/LsOutput/connected-view.tsx'
-import { LsApp } from '../renderers/LsOutput/mod.ts'
+import { LsApp, LsView } from '../renderers/LsOutput/mod.ts'
 
 /** List members */
 export const lsCommand = Cli.Command.make('ls', { output: outputOption }, ({ output }) =>
@@ -25,7 +24,7 @@ export const lsCommand = Cli.Command.make('ls', { output: outputOption }, ({ out
     // Run TuiApp for all output (handles JSON/TTY modes automatically)
     yield* Effect.scoped(
       Effect.gen(function* () {
-        const tui = yield* LsApp.run(React.createElement(LsConnectedView))
+        const tui = yield* LsApp.run(React.createElement(LsView, { stateAtom: LsApp.stateAtom }))
 
         if (Option.isNone(root)) {
           // Dispatch error state
