@@ -37,18 +37,6 @@ importers:
         specifier: 3.2.4
         version: 3.2.4(@types/node@25.0.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
 
-  ../cli-ui:
-    devDependencies:
-      '@types/node':
-        specifier: 25.0.3
-        version: 25.0.3
-      typescript:
-        specifier: 5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: 3.2.4
-        version: 3.2.4(@types/node@25.0.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
-
   ../effect-ai-claude-cli:
     devDependencies:
       '@effect/ai':
@@ -341,8 +329,8 @@ importers:
         specifier: 19.2.3
         version: 19.2.3(react@19.2.3)
       react-reconciler:
-        specifier: 0.32.0
-        version: 0.32.0(react@19.2.3)
+        specifier: 0.33.0
+        version: 0.33.0(react@19.2.3)
       storybook:
         specifier: 10.2.1
         version: 10.2.1(@testing-library/dom@10.4.1)(prettier@3.8.1)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -370,9 +358,6 @@ importers:
       '@effect/workflow':
         specifier: ^0.16.0
         version: 0.16.0(@effect/experimental@0.58.0(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15)(ioredis@5.6.1))(@effect/platform@0.94.2(effect@3.19.15))(@effect/rpc@0.73.0(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15))(effect@3.19.15)
-      '@overeng/cli-ui':
-        specifier: workspace:*
-        version: link:../cli-ui
       '@overeng/effect-path':
         specifier: workspace:*
         version: link:../effect-path
@@ -389,6 +374,12 @@ importers:
         specifier: 19.2.3
         version: 19.2.3
     devDependencies:
+      '@effect-atom/atom':
+        specifier: 0.4.13
+        version: 0.4.13(@effect/experimental@0.58.0(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15)(ioredis@5.6.1))(@effect/platform@0.94.2(effect@3.19.15))(@effect/rpc@0.73.0(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15))(effect@3.19.15)
+      '@effect-atom/atom-react':
+        specifier: 0.4.5
+        version: 0.4.5(@effect/experimental@0.58.0(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15)(ioredis@5.6.1))(@effect/platform@0.94.2(effect@3.19.15))(@effect/rpc@0.73.0(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15))(effect@3.19.15)(react@19.2.3)(scheduler@0.27.0)
       '@effect/cli':
         specifier: 0.73.1
         version: 0.73.1(@effect/platform@0.94.2(effect@3.19.15))(@effect/printer-ansi@0.47.0(@effect/typeclass@0.38.0(effect@3.19.15))(effect@3.19.15))(@effect/printer@0.47.0(@effect/typeclass@0.38.0(effect@3.19.15))(effect@3.19.15))(effect@3.19.15)
@@ -410,6 +401,12 @@ importers:
       '@effect/vitest':
         specifier: 0.27.0
         version: 0.27.0(effect@3.19.15)(vitest@3.2.4(@types/node@25.0.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
+      '@opentui/core':
+        specifier: 0.1.74
+        version: 0.1.74(stage-js@1.0.0-alpha.17)(typescript@5.9.3)(web-tree-sitter@0.25.10)
+      '@opentui/react':
+        specifier: 0.1.74
+        version: 0.1.74(react-devtools-core@7.0.1)(react@19.2.3)(stage-js@1.0.0-alpha.17)(typescript@5.9.3)(web-tree-sitter@0.25.10)(ws@8.19.0)
       '@storybook/react':
         specifier: 10.2.1
         version: 10.2.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(storybook@10.2.1(@testing-library/dom@10.4.1)(prettier@3.8.1)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(typescript@5.9.3)
@@ -441,8 +438,8 @@ importers:
         specifier: 19.2.3
         version: 19.2.3(react@19.2.3)
       react-reconciler:
-        specifier: 0.32.0
-        version: 0.32.0(react@19.2.3)
+        specifier: 0.33.0
+        version: 0.33.0(react@19.2.3)
       storybook:
         specifier: 10.2.1
         version: 10.2.1(@testing-library/dom@10.4.1)(prettier@3.8.1)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -473,6 +470,9 @@ importers:
       '@opentui/react':
         specifier: 0.1.74
         version: 0.1.74(react-devtools-core@7.0.1)(react@19.2.3)(stage-js@1.0.0-alpha.17)(typescript@5.9.3)(web-tree-sitter@0.25.10)(ws@8.19.0)
+      '@overeng/tui-core':
+        specifier: workspace:*
+        version: link:../tui-core
       '@overeng/utils':
         specifier: workspace:*
         version: link:../utils
@@ -824,8 +824,8 @@ importers:
         specifier: 19.2.3
         version: 19.2.3(react@19.2.3)
       react-reconciler:
-        specifier: 0.32.0
-        version: 0.32.0(react@19.2.3)
+        specifier: 0.33.0
+        version: 0.33.0(react@19.2.3)
       storybook:
         specifier: 10.2.1
         version: 10.2.1(@testing-library/dom@10.4.1)(prettier@3.8.1)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -847,6 +847,9 @@ importers:
       '@opentelemetry/api':
         specifier: 1.9.0
         version: 1.9.0
+      '@overeng/tui-core':
+        specifier: workspace:*
+        version: link:../tui-core
       effect-distributed-lock:
         specifier: 0.0.11
         version: 0.0.11(effect@3.19.15)(ioredis@5.6.1)(typescript@5.9.3)
@@ -4099,6 +4102,12 @@ packages:
     engines: {node: '>=0.10.0'}
     peerDependencies:
       react: ^19.1.0
+
+  react-reconciler@0.33.0:
+    resolution: {integrity: sha512-KetWRytFv1epdpJc3J4G75I4WrplZE5jOL7Yq0p34+OVOKF4Se7WrdIdVC45XsSSmUTlht2FM/fM1FZb1mfQeA==}
+    engines: {node: '>=0.10.0'}
+    peerDependencies:
+      react: ^19.2.0
 
   react-refresh@0.18.0:
     resolution: {integrity: sha512-QgT5//D3jfjJb6Gsjxv0Slpj23ip+HtOpnNgnb2S5zU3CB26G/IDPGoy4RJB42wzFE46DRsstbW6tKHoKbhAxw==}
@@ -8389,6 +8398,11 @@ snapshots:
     dependencies:
       react: 19.2.3
       scheduler: 0.26.0
+
+  react-reconciler@0.33.0(react@19.2.3):
+    dependencies:
+      react: 19.2.3
+      scheduler: 0.27.0
 
   react-refresh@0.18.0: {}
 
