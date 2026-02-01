@@ -4,8 +4,26 @@ import React, { useMemo } from 'react'
 import { Box, Text, Spinner, useTuiAtomValue } from '../../src/mod.ts'
 import type { CounterState } from './schema.ts'
 
-const HistoryView = ({ history }: { history: readonly string[] }) =>
-  history.length > 0 ? (
+export const CounterView = ({ stateAtom }: { stateAtom: Atom.Atom<CounterState> }) => {
+  const tagAtom = useMemo(() => Atom.map(stateAtom, (s) => s._tag), [stateAtom])
+  const tag = useTuiAtomValue(tagAtom)
+
+  switch (tag) {
+    case 'Running':
+      return <RunningView stateAtom={stateAtom} />
+    case 'Complete':
+      return <CompleteView stateAtom={stateAtom} />
+    case 'Interrupted':
+      return <InterruptedView stateAtom={stateAtom} />
+  }
+}
+
+// =============================================================================
+// Internal Components
+// =============================================================================
+
+function HistoryView({ history }: { history: readonly string[] }) {
+  return history.length > 0 ? (
     <Box marginTop={1} flexDirection="column">
       <Text dim>History:</Text>
       {history.map((entry, i) => (
@@ -16,8 +34,9 @@ const HistoryView = ({ history }: { history: readonly string[] }) =>
       ))}
     </Box>
   ) : null
+}
 
-const RunningView = ({ stateAtom }: { stateAtom: Atom.Atom<CounterState> }) => {
+function RunningView({ stateAtom }: { stateAtom: Atom.Atom<CounterState> }) {
   const state = useTuiAtomValue(stateAtom)
   if (state._tag !== 'Running') return null
 
@@ -46,7 +65,7 @@ const RunningView = ({ stateAtom }: { stateAtom: Atom.Atom<CounterState> }) => {
   )
 }
 
-const CompleteView = ({ stateAtom }: { stateAtom: Atom.Atom<CounterState> }) => {
+function CompleteView({ stateAtom }: { stateAtom: Atom.Atom<CounterState> }) {
   const state = useTuiAtomValue(stateAtom)
   if (state._tag !== 'Complete') return null
 
@@ -66,7 +85,7 @@ const CompleteView = ({ stateAtom }: { stateAtom: Atom.Atom<CounterState> }) => 
   )
 }
 
-const InterruptedView = ({ stateAtom }: { stateAtom: Atom.Atom<CounterState> }) => {
+function InterruptedView({ stateAtom }: { stateAtom: Atom.Atom<CounterState> }) {
   const state = useTuiAtomValue(stateAtom)
   if (state._tag !== 'Interrupted') return null
 
@@ -82,18 +101,4 @@ const InterruptedView = ({ stateAtom }: { stateAtom: Atom.Atom<CounterState> }) 
       <HistoryView history={state.history} />
     </Box>
   )
-}
-
-export const CounterView = ({ stateAtom }: { stateAtom: Atom.Atom<CounterState> }) => {
-  const tagAtom = useMemo(() => Atom.map(stateAtom, (s) => s._tag), [stateAtom])
-  const tag = useTuiAtomValue(tagAtom)
-
-  switch (tag) {
-    case 'Running':
-      return <RunningView stateAtom={stateAtom} />
-    case 'Complete':
-      return <CompleteView stateAtom={stateAtom} />
-    case 'Interrupted':
-      return <InterruptedView stateAtom={stateAtom} />
-  }
 }

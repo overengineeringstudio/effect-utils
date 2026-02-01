@@ -4,12 +4,30 @@ import React, { useMemo } from 'react'
 import { Box, Text, useTuiAtomValue } from '../../src/mod.ts'
 import type { AppState, Window, Color } from './schema.ts'
 
+export const BouncingWindowsView = ({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) => {
+  const tagAtom = useMemo(() => Atom.map(stateAtom, (s) => s._tag), [stateAtom])
+  const tag = useTuiAtomValue(tagAtom)
+
+  switch (tag) {
+    case 'Running':
+      return <RunningView stateAtom={stateAtom} />
+    case 'Finished':
+      return <FinishedView stateAtom={stateAtom} />
+    case 'Interrupted':
+      return <InterruptedView stateAtom={stateAtom} />
+  }
+}
+
+// =============================================================================
+// Internal Types and Helpers
+// =============================================================================
+
 interface Cell {
   char: string
   color: Color | null
 }
 
-const formatStat = ({
+function formatStat({
   label,
   value,
   width,
@@ -17,14 +35,14 @@ const formatStat = ({
   label: string
   value: number
   width: number
-}): string => {
+}): string {
   const barW = width - 7
   const filled = Math.round((value / 100) * barW)
   const bar = '█'.repeat(filled) + '░'.repeat(barW - filled)
   return `${label} ${bar}${Math.round(value).toString().padStart(3)}`
 }
 
-const renderWindowToCanvas = ({
+function renderWindowToCanvas({
   canvas,
   win,
   canvasWidth,
@@ -32,7 +50,7 @@ const renderWindowToCanvas = ({
   canvas: Cell[][]
   win: Window
   canvasWidth: number
-}) => {
+}) {
   const x = Math.floor(win.x)
   const y = Math.floor(win.y)
   const { width, height, title, stats, color } = win
@@ -62,13 +80,17 @@ const renderWindowToCanvas = ({
   }
 }
 
-const createCanvas = ({ width, height }: { width: number; height: number }): Cell[][] => {
+function createCanvas({ width, height }: { width: number; height: number }): Cell[][] {
   return Array.from({ length: height }, () =>
     Array.from({ length: width }, () => ({ char: ' ', color: null })),
   )
 }
 
-const CanvasRenderer = ({
+// =============================================================================
+// Internal Components
+// =============================================================================
+
+function CanvasRenderer({
   windows,
   width,
   height,
@@ -76,7 +98,7 @@ const CanvasRenderer = ({
   windows: readonly Window[]
   width: number
   height: number
-}) => {
+}) {
   const canvas = createCanvas({ width, height })
 
   for (const win of windows) {
@@ -130,7 +152,7 @@ const CanvasRenderer = ({
   return <Box>{renderedLines}</Box>
 }
 
-const RunningView = ({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) => {
+function RunningView({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) {
   const state = useTuiAtomValue(stateAtom)
   if (state._tag !== 'Running') return null
   return (
@@ -161,7 +183,7 @@ const RunningView = ({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) => {
   )
 }
 
-const FinishedView = ({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) => {
+function FinishedView({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) {
   const state = useTuiAtomValue(stateAtom)
   if (state._tag !== 'Finished') return null
   return (
@@ -186,7 +208,7 @@ const FinishedView = ({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) => {
   )
 }
 
-const InterruptedView = ({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) => {
+function InterruptedView({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) {
   const state = useTuiAtomValue(stateAtom)
   if (state._tag !== 'Interrupted') return null
   return (
@@ -209,18 +231,4 @@ const InterruptedView = ({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) => {
       </Box>
     </Box>
   )
-}
-
-export const BouncingWindowsView = ({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) => {
-  const tagAtom = useMemo(() => Atom.map(stateAtom, (s) => s._tag), [stateAtom])
-  const tag = useTuiAtomValue(tagAtom)
-
-  switch (tag) {
-    case 'Running':
-      return <RunningView stateAtom={stateAtom} />
-    case 'Finished':
-      return <FinishedView stateAtom={stateAtom} />
-    case 'Interrupted':
-      return <InterruptedView stateAtom={stateAtom} />
-  }
 }

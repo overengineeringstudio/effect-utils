@@ -4,7 +4,25 @@ import React, { useMemo } from 'react'
 import { Box, Text, useTuiAtomValue } from '../../src/mod.ts'
 import type { StressTestState } from './schema.ts'
 
-const ProgressBar = ({ progress, width = 40 }: { progress: number; width?: number }) => {
+export const StressTestView = ({ stateAtom }: { stateAtom: Atom.Atom<StressTestState> }) => {
+  const tagAtom = useMemo(() => Atom.map(stateAtom, (s) => s._tag), [stateAtom])
+  const tag = useTuiAtomValue(tagAtom)
+
+  switch (tag) {
+    case 'Running':
+      return <RunningView stateAtom={stateAtom} />
+    case 'Finished':
+      return <FinishedView stateAtom={stateAtom} />
+    case 'Interrupted':
+      return <InterruptedView stateAtom={stateAtom} />
+  }
+}
+
+// =============================================================================
+// Internal Components
+// =============================================================================
+
+function ProgressBar({ progress, width = 40 }: { progress: number; width?: number }) {
   const filled = Math.round((progress / 100) * width)
   return (
     <Box flexDirection="row">
@@ -16,7 +34,7 @@ const ProgressBar = ({ progress, width = 40 }: { progress: number; width?: numbe
   )
 }
 
-const Spinner = ({ frame }: { frame: number }) => {
+function Spinner({ frame }: { frame: number }) {
   const spinnerChars = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
   return (
     <Box flexDirection="row">
@@ -26,7 +44,7 @@ const Spinner = ({ frame }: { frame: number }) => {
   )
 }
 
-const RunningView = ({ stateAtom }: { stateAtom: Atom.Atom<StressTestState> }) => {
+function RunningView({ stateAtom }: { stateAtom: Atom.Atom<StressTestState> }) {
   const state = useTuiAtomValue(stateAtom)
   if (state._tag !== 'Running') return null
 
@@ -57,7 +75,7 @@ const RunningView = ({ stateAtom }: { stateAtom: Atom.Atom<StressTestState> }) =
   )
 }
 
-const FinishedView = ({ stateAtom }: { stateAtom: Atom.Atom<StressTestState> }) => {
+function FinishedView({ stateAtom }: { stateAtom: Atom.Atom<StressTestState> }) {
   const state = useTuiAtomValue(stateAtom)
   if (state._tag !== 'Finished') return null
 
@@ -100,7 +118,7 @@ const FinishedView = ({ stateAtom }: { stateAtom: Atom.Atom<StressTestState> }) 
   )
 }
 
-const InterruptedView = ({ stateAtom }: { stateAtom: Atom.Atom<StressTestState> }) => {
+function InterruptedView({ stateAtom }: { stateAtom: Atom.Atom<StressTestState> }) {
   const state = useTuiAtomValue(stateAtom)
   if (state._tag !== 'Interrupted') return null
 
@@ -130,18 +148,4 @@ const InterruptedView = ({ stateAtom }: { stateAtom: Atom.Atom<StressTestState> 
       </Box>
     </Box>
   )
-}
-
-export const StressTestView = ({ stateAtom }: { stateAtom: Atom.Atom<StressTestState> }) => {
-  const tagAtom = useMemo(() => Atom.map(stateAtom, (s) => s._tag), [stateAtom])
-  const tag = useTuiAtomValue(tagAtom)
-
-  switch (tag) {
-    case 'Running':
-      return <RunningView stateAtom={stateAtom} />
-    case 'Finished':
-      return <FinishedView stateAtom={stateAtom} />
-    case 'Interrupted':
-      return <InterruptedView stateAtom={stateAtom} />
-  }
 }

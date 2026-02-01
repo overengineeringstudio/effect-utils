@@ -220,70 +220,8 @@ export const createSyncApp = (initialState: SyncProgressState) =>
 export type SyncApp = ReturnType<typeof createSyncApp>
 
 // =============================================================================
-// View Component
+// View Components
 // =============================================================================
-
-const mapStatus = (status: SyncItemStatus): TaskStatus => status
-
-/** Log line component */
-const LogLine = ({ log }: { log: SyncLogEntry }) => {
-  const color = log.type === 'error' ? 'red' : log.type === 'warn' ? 'yellow' : 'cyan'
-  const prefix = log.type === 'error' ? '!' : log.type === 'warn' ? '!' : 'i'
-
-  return (
-    <Box flexDirection="row">
-      <Text color={color}>[{prefix}]</Text>
-      <Text dim> {log.message}</Text>
-    </Box>
-  )
-}
-
-/** Header component */
-const Header = ({
-  title,
-  subtitle,
-  modes,
-}: {
-  title: string
-  subtitle: string | undefined
-  modes: readonly string[] | undefined
-}) => (
-  <Box>
-    <Text bold>{title}</Text>
-    {subtitle && <Text dim> {subtitle}</Text>}
-    {modes && modes.length > 0 && <Text dim> mode: {modes.join(', ')}</Text>}
-    <Text> </Text>
-  </Box>
-)
-
-/** Summary footer */
-const Summary = ({ items }: { items: readonly SyncItem[] }) => {
-  const counts = useMemo(() => {
-    let success = 0
-    let error = 0
-    let skipped = 0
-    for (const item of items) {
-      if (item.status === 'success') success++
-      else if (item.status === 'error') error++
-      else if (item.status === 'skipped') skipped++
-    }
-    return { completed: success + error + skipped, error }
-  }, [items])
-
-  return (
-    <Box paddingTop={1}>
-      <Text dim>
-        {counts.completed}/{items.length}
-        {counts.error > 0 && (
-          <Text color="red">
-            {' '}
-            · {counts.error} error{counts.error > 1 ? 's' : ''}
-          </Text>
-        )}
-      </Text>
-    </Box>
-  )
-}
 
 /**
  * Sync progress view component.
@@ -335,4 +273,71 @@ export const createConnectedView = (app: SyncApp) => {
     return <SyncProgressView state={state} />
   }
   return ConnectedSyncProgressView
+}
+
+// =============================================================================
+// Internal Helpers
+// =============================================================================
+
+function mapStatus(status: SyncItemStatus): TaskStatus {
+  return status
+}
+
+function LogLine({ log }: { log: SyncLogEntry }) {
+  const color = log.type === 'error' ? 'red' : log.type === 'warn' ? 'yellow' : 'cyan'
+  const prefix = log.type === 'error' ? '!' : log.type === 'warn' ? '!' : 'i'
+
+  return (
+    <Box flexDirection="row">
+      <Text color={color}>[{prefix}]</Text>
+      <Text dim> {log.message}</Text>
+    </Box>
+  )
+}
+
+function Header({
+  title,
+  subtitle,
+  modes,
+}: {
+  title: string
+  subtitle: string | undefined
+  modes: readonly string[] | undefined
+}) {
+  return (
+    <Box>
+      <Text bold>{title}</Text>
+      {subtitle && <Text dim> {subtitle}</Text>}
+      {modes && modes.length > 0 && <Text dim> mode: {modes.join(', ')}</Text>}
+      <Text> </Text>
+    </Box>
+  )
+}
+
+function Summary({ items }: { items: readonly SyncItem[] }) {
+  const counts = useMemo(() => {
+    let success = 0
+    let error = 0
+    let skipped = 0
+    for (const item of items) {
+      if (item.status === 'success') success++
+      else if (item.status === 'error') error++
+      else if (item.status === 'skipped') skipped++
+    }
+    return { completed: success + error + skipped, error }
+  }, [items])
+
+  return (
+    <Box paddingTop={1}>
+      <Text dim>
+        {counts.completed}/{items.length}
+        {counts.error > 0 && (
+          <Text color="red">
+            {' '}
+            · {counts.error} error{counts.error > 1 ? 's' : ''}
+          </Text>
+        )}
+      </Text>
+    </Box>
+  )
 }
