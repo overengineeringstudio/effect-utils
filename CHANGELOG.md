@@ -55,6 +55,10 @@ All notable changes to this project will be documented in this file.
 
 - **devenv.nix**: Added missing `packages/@overeng/tui-react` to `allPackages`
 
+### Fixed
+
+- **genie/internal**: Ensure `pnpmWorkspaceYaml` is locally imported so `pnpmWorkspaceReact` does not throw a ReferenceError
+
 ### Added
 
 - **@overeng/effect-rpc-tanstack**: New package for Effect RPC integration with TanStack Start

@@ -20,7 +20,6 @@
     "storybook:build": "storybook build"
   },
   "dependencies": {
-    "@overeng/cli-ui": "workspace:*",
     "@overeng/effect-path": "workspace:*",
     "@overeng/tui-react": "workspace:*",
     "@overeng/utils": "workspace:*",

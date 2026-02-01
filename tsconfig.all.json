@@ -9,9 +9,6 @@
       "path": "./context/opentui"
     },
     {
-      "path": "./packages/@overeng/cli-ui"
-    },
-    {
       "path": "./packages/@overeng/effect-ai-claude-cli"
     },
     {

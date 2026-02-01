@@ -41,7 +41,7 @@ packages/@org/my-pkg/
 
 - Root-level `pnpm-workspace.yaml`
 - `workspaces` field in root `package.json`
-- Shared/hoisted `node_modules`
+- Shared/hoisted `node_modules` (except targeted hoisting inside each package workspace for singleton runtimes like React)
 
 **Why:** Tools like pnpm and bun do not support nested monorepos. Since megarepos compose multiple monorepos together, we must use per-package lockfiles to avoid conflicts.
 

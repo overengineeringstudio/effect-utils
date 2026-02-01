@@ -6,7 +6,6 @@ import { tsconfigJson } from './packages/@overeng/genie/src/runtime/mod.ts'
 const references = [
   './context/effect/socket',
   './context/opentui',
-  './packages/@overeng/cli-ui',
   './packages/@overeng/effect-ai-claude-cli',
   './packages/@overeng/effect-path',
   './packages/@overeng/effect-react',

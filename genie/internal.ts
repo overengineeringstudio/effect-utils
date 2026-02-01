@@ -5,7 +5,7 @@
  * For external/peer repo use, import from `./external.ts` instead.
  */
 
-import { catalog as externalCatalog, defineCatalog } from './external.ts'
+import { catalog as externalCatalog, defineCatalog, pnpmWorkspaceYaml } from './external.ts'
 
 // Re-export from external for convenience (explicit exports to avoid barrel file)
 export {
@@ -50,7 +50,6 @@ export const catalog = defineCatalog({
     '@overeng/utils': 'workspace:*',
     '@overeng/genie': 'workspace:*',
     '@overeng/mono': 'workspace:*',
-    '@overeng/cli-ui': 'workspace:*',
     '@overeng/megarepo': 'workspace:*',
     '@overeng/effect-path': 'workspace:*',
     '@overeng/notion-effect-schema': 'workspace:*',

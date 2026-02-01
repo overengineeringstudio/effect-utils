@@ -2,7 +2,7 @@
  * ANSI escape code utilities for terminal manipulation.
  *
  * These are low-level building blocks for terminal rendering.
- * For higher-level styled text, use @overeng/cli-ui.
+ * For higher-level styled text, see tui-react or implement locally.
  */
 
 // =============================================================================

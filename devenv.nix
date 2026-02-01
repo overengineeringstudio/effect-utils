@@ -38,7 +38,6 @@ let
   # NOTE: Using pnpm temporarily due to bun bugs. Plan to switch back once fixed.
   # See: context/workarounds/bun-issues.md
   allPackages = [
-    "packages/@overeng/cli-ui"
     "packages/@overeng/effect-ai-claude-cli"
     "packages/@overeng/effect-path"
     "packages/@overeng/effect-react"
