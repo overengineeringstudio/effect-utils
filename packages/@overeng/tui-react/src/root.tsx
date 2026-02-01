@@ -150,6 +150,14 @@ export const createRoot = ({
   // Track last rendered element for re-rendering in flush
   let lastRenderedElement: ReactElement | null = null
 
+  // Auto-rerender on terminal resize (Node.js only)
+  const resizeHandler = () => {
+    if (!disposed) scheduleRender()
+  }
+  if (typeof process !== 'undefined' && process.stdout?.on) {
+    process.stdout.on('resize', resizeHandler)
+  }
+
   // Microtask batching for render scheduling.
   // React's reconciler can trigger multiple commit phases for a single update
   // (e.g., empty commit → remove element → create new element). By batching
@@ -443,6 +451,10 @@ export const createRoot = ({
 
       // Mark as disposed to prevent any more renders
       disposed = true
+      // Remove resize listener
+      if (typeof process !== 'undefined' && process.stdout?.off) {
+        process.stdout.off('resize', resizeHandler)
+      }
       // Dispose renderer (preserves content for persist mode)
       renderer.dispose({ mode: options?.mode ?? 'persist' })
       // Clean up React internals (won't trigger render due to disposed flag)
