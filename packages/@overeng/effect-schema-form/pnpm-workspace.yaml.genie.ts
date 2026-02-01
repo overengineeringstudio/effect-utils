@@ -1,3 +1,3 @@
 import { pnpmWorkspaceReact } from '../../../genie/internal.ts'
 
-export default pnpmWorkspaceReact(['../*'])
+export default pnpmWorkspaceReact([])

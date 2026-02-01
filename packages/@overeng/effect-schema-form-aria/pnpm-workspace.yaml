@@ -1,7 +1,7 @@
 # Generated file - DO NOT EDIT
 # Source: pnpm-workspace.yaml.genie.ts
 
-packages: [., ../*]
+packages: [., ../effect-schema-form]
 
 dedupePeerDependents: true
 

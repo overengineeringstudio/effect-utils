@@ -8,7 +8,7 @@ import {
 import utilsPkg from '../utils/package.json.genie.ts'
 
 /** Effect packages not already in @overeng/utils */
-const ownPeerDepNames = ['@effect/cli'] as const
+const ownPeerDepNames = ['@effect/cli', '@effect/printer', '@effect/printer-ansi'] as const
 
 export default packageJson({
   ...privatePackageDefaults,

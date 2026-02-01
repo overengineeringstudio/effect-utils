@@ -57,8 +57,6 @@
     "@effect/opentelemetry": "^0.61.0",
     "@effect/platform": "^0.94.2",
     "@effect/platform-node": "^0.104.1",
-    "@effect/printer": "^0.47.0",
-    "@effect/printer-ansi": "^0.47.0",
     "@effect/rpc": "^0.73.0",
     "@effect/workflow": "^0.16.0",
     "@playwright/test": "^1.57.0",

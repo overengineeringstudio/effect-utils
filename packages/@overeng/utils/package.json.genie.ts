@@ -16,8 +16,6 @@ const peerDepNames = [
   '@effect/workflow',
   '@effect/platform',
   '@effect/platform-node',
-  '@effect/printer',
-  '@effect/printer-ansi',
   '@effect/rpc',
   '@playwright/test',
   'effect',
@@ -73,7 +71,6 @@ export default packageJson({
     ...catalog.pick(
       '@noble/hashes',
       '@opentelemetry/api',
-      '@overeng/tui-core',
       'effect-distributed-lock',
       'ioredis',
     ),

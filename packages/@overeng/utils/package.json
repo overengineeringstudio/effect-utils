@@ -38,7 +38,6 @@
   "dependencies": {
     "@noble/hashes": "1.7.1",
     "@opentelemetry/api": "1.9.0",
-    "@overeng/tui-core": "workspace:*",
     "effect-distributed-lock": "0.0.11",
     "ioredis": "5.6.1"
   },
@@ -49,8 +48,6 @@
     "@effect/opentelemetry": "0.61.0",
     "@effect/platform": "0.94.2",
     "@effect/platform-node": "0.104.1",
-    "@effect/printer": "0.47.0",
-    "@effect/printer-ansi": "0.47.0",
     "@effect/rpc": "0.73.0",
     "@effect/vitest": "0.27.0",
     "@effect/workflow": "0.16.0",
@@ -74,8 +71,6 @@
     "@effect/opentelemetry": "^0.61.0",
     "@effect/platform": "^0.94.2",
     "@effect/platform-node": "^0.104.1",
-    "@effect/printer": "^0.47.0",
-    "@effect/printer-ansi": "^0.47.0",
     "@effect/rpc": "^0.73.0",
     "@effect/workflow": "^0.16.0",
     "@playwright/test": "^1.57.0",
