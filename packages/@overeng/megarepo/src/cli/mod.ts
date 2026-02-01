@@ -30,8 +30,7 @@ export {
   createSymlink,
   findMegarepoRoot,
   findNearestMegarepoRoot,
-  jsonOption,
-  streamOption,
+  outputOption,
   verboseOption,
 } from './context.ts'
 

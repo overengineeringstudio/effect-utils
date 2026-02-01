@@ -18,7 +18,7 @@ import { generateAll } from '../../../lib/generators/mod.ts'
 import { generateNix, type NixGeneratorError } from '../../../lib/generators/nix/mod.ts'
 import { generateSchema } from '../../../lib/generators/schema.ts'
 import { generateVscode } from '../../../lib/generators/vscode.ts'
-import { Cwd, findMegarepoRoot, jsonOption } from '../../context.ts'
+import { Cwd, findMegarepoRoot, outputOption } from '../../context.ts'
 import { GenerateError } from '../../errors.ts'
 
 /** Generate Nix workspace */
@@ -183,14 +183,16 @@ const generateNixForRoot: (
 const generateNixCommand = Cli.Command.make(
   'nix',
   {
-    json: jsonOption,
+    output: outputOption,
     deep: Cli.Options.boolean('deep').pipe(
       Cli.Options.withDescription('Recursively generate nested megarepos'),
       Cli.Options.withDefault(false),
     ),
   },
-  ({ json, deep }) =>
-    Effect.gen(function* () {
+  ({ output, deep }) => {
+    const json = output === 'json' || output === 'ndjson'
+
+    return Effect.gen(function* () {
       const cwd = yield* Cwd
       const root = yield* findMegarepoRoot(cwd)
 
@@ -203,7 +205,7 @@ const generateNixCommand = Cli.Command.make(
             }),
           )
         } else {
-          const output = yield* Effect.promise(() =>
+          const renderOutput = yield* Effect.promise(() =>
             renderToString({
               element: React.createElement(
                 Box,
@@ -213,7 +215,7 @@ const generateNixCommand = Cli.Command.make(
               ),
             }),
           )
-          yield* Console.error(output)
+          yield* Console.error(renderOutput)
         }
         return yield* new GenerateError({ message: 'Not in a megarepo' })
       }
@@ -237,21 +239,24 @@ const generateNixCommand = Cli.Command.make(
           }),
         )
       }
-    }).pipe(Effect.withSpan('megarepo/generate/nix')),
+    }).pipe(Effect.withSpan('megarepo/generate/nix'))
+  },
 ).pipe(Cli.Command.withDescription('Generate local Nix workspace'))
 
 /** Generate VSCode workspace file */
 const generateVscodeCommand = Cli.Command.make(
   'vscode',
   {
-    json: jsonOption,
+    output: outputOption,
     exclude: Cli.Options.text('exclude').pipe(
       Cli.Options.withDescription('Comma-separated list of members to exclude'),
       Cli.Options.optional,
     ),
   },
-  ({ json, exclude }) =>
-    Effect.gen(function* () {
+  ({ output, exclude }) => {
+    const json = output === 'json' || output === 'ndjson'
+
+    return Effect.gen(function* () {
       const cwd = yield* Cwd
       const root = yield* findMegarepoRoot(cwd)
 
@@ -264,7 +269,7 @@ const generateVscodeCommand = Cli.Command.make(
             }),
           )
         } else {
-          const output = yield* Effect.promise(() =>
+          const renderOutput = yield* Effect.promise(() =>
             renderToString({
               element: React.createElement(
                 Box,
@@ -274,7 +279,7 @@ const generateVscodeCommand = Cli.Command.make(
               ),
             }),
           )
-          yield* Console.error(output)
+          yield* Console.error(renderOutput)
         }
         return yield* new GenerateError({ message: 'Not in a megarepo' })
       }
@@ -312,22 +317,25 @@ const generateVscodeCommand = Cli.Command.make(
         )
         yield* Console.log(vscodeOutput)
       }
-    }).pipe(Effect.withSpan('megarepo/generate/vscode')),
+    }).pipe(Effect.withSpan('megarepo/generate/vscode'))
+  },
 ).pipe(Cli.Command.withDescription('Generate VS Code workspace file'))
 
 /** Generate JSON Schema */
 const generateSchemaCommand = Cli.Command.make(
   'schema',
   {
-    json: jsonOption,
-    output: Cli.Options.text('output').pipe(
-      Cli.Options.withAlias('o'),
+    output: outputOption,
+    outputPath: Cli.Options.text('output-path').pipe(
+      Cli.Options.withAlias('p'),
       Cli.Options.withDescription('Output path (relative to megarepo root)'),
       Cli.Options.withDefault('schema/megarepo.schema.json'),
     ),
   },
-  ({ json, output }) =>
-    Effect.gen(function* () {
+  ({ output, outputPath }) => {
+    const json = output === 'json' || output === 'ndjson'
+
+    return Effect.gen(function* () {
       const cwd = yield* Cwd
       const root = yield* findMegarepoRoot(cwd)
 
@@ -340,7 +348,7 @@ const generateSchemaCommand = Cli.Command.make(
             }),
           )
         } else {
-          const output = yield* Effect.promise(() =>
+          const renderOutput = yield* Effect.promise(() =>
             renderToString({
               element: React.createElement(
                 Box,
@@ -350,7 +358,7 @@ const generateSchemaCommand = Cli.Command.make(
               ),
             }),
           )
-          yield* Console.error(output)
+          yield* Console.error(renderOutput)
         }
         return yield* new GenerateError({ message: 'Not in a megarepo' })
       }
@@ -367,7 +375,7 @@ const generateSchemaCommand = Cli.Command.make(
       const result = yield* generateSchema({
         megarepoRoot: root.value,
         config,
-        outputPath: output,
+        outputPath,
       })
 
       if (json) {
@@ -380,18 +388,21 @@ const generateSchemaCommand = Cli.Command.make(
               { flexDirection: 'row' },
               React.createElement(Text, { color: 'green' }, '\u2713'),
               React.createElement(Text, null, ' Generated '),
-              React.createElement(Text, { bold: true }, output),
+              React.createElement(Text, { bold: true }, outputPath),
             ),
           }),
         )
         yield* Console.log(schemaOutput)
       }
-    }).pipe(Effect.withSpan('megarepo/generate/schema')),
+    }).pipe(Effect.withSpan('megarepo/generate/schema'))
+  },
 ).pipe(Cli.Command.withDescription('Generate JSON schema for megarepo.json'))
 
 /** Generate all configured outputs */
-const generateAllCommand = Cli.Command.make('all', { json: jsonOption }, ({ json }) =>
-  Effect.gen(function* () {
+const generateAllCommand = Cli.Command.make('all', { output: outputOption }, ({ output }) => {
+  const json = output === 'json' || output === 'ndjson'
+
+  return Effect.gen(function* () {
     const cwd = yield* Cwd
     const root = yield* findMegarepoRoot(cwd)
 
@@ -404,7 +415,7 @@ const generateAllCommand = Cli.Command.make('all', { json: jsonOption }, ({ json
           }),
         )
       } else {
-        const output = yield* Effect.promise(() =>
+        const renderOutput = yield* Effect.promise(() =>
           renderToString({
             element: React.createElement(
               Box,
@@ -414,7 +425,7 @@ const generateAllCommand = Cli.Command.make('all', { json: jsonOption }, ({ json
             ),
           }),
         )
-        yield* Console.error(output)
+        yield* Console.error(renderOutput)
       }
       return yield* new GenerateError({ message: 'Not in a megarepo' })
     }
@@ -494,8 +505,8 @@ const generateAllCommand = Cli.Command.make('all', { json: jsonOption }, ({ json
       }),
     )
     yield* Console.log(allOutput)
-  }).pipe(Effect.withSpan('megarepo/generate/all')),
-).pipe(Cli.Command.withDescription('Generate all configured outputs'))
+  }).pipe(Effect.withSpan('megarepo/generate/all'))
+}).pipe(Cli.Command.withDescription('Generate all configured outputs'))
 
 /** Generate subcommand group */
 export const generateCommand = Cli.Command.make('generate', {}).pipe(

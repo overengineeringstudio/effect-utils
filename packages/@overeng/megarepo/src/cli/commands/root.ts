@@ -12,12 +12,14 @@ import { renderToString, Box, Text } from '@overeng/tui-react'
 import { jsonError, withJsonMode } from '@overeng/utils/node'
 
 import * as Git from '../../lib/git.ts'
-import { Cwd, findMegarepoRoot, jsonOption } from '../context.ts'
+import { Cwd, findMegarepoRoot, outputOption } from '../context.ts'
 import { NotInMegarepoError } from '../errors.ts'
 
 /** Find and print the megarepo root directory */
-export const rootCommand = Cli.Command.make('root', { json: jsonOption }, ({ json }) =>
-  Effect.gen(function* () {
+export const rootCommand = Cli.Command.make('root', { output: outputOption }, ({ output }) => {
+  const json = output === 'json' || output === 'ndjson'
+
+  return Effect.gen(function* () {
     const cwd = yield* Cwd
 
     // Search up from current directory
@@ -55,5 +57,5 @@ export const rootCommand = Cli.Command.make('root', { json: jsonOption }, ({ jso
     } else {
       yield* Console.log(root.value)
     }
-  }).pipe(Effect.withSpan('megarepo/root'), withJsonMode(json)),
-).pipe(Cli.Command.withDescription('Print the megarepo root directory'))
+  }).pipe(Effect.withSpan('megarepo/root'), withJsonMode(json))
+}).pipe(Cli.Command.withDescription('Print the megarepo root directory'))

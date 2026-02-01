@@ -768,7 +768,7 @@ describe('default sync mode (no --pull)', () => {
           // Run sync (default mode, no --pull)
           const result = yield* runSyncCommand({
             cwd: workspacePath,
-            args: ['--json'],
+            args: ['--output', 'json'],
           })
           const json = JSON.parse(result.stdout.trim()) as {
             results: Array<{
@@ -825,7 +825,7 @@ describe('default sync mode (no --pull)', () => {
           // Second sync should show already_synced
           const result = yield* runSyncCommand({
             cwd: workspacePath,
-            args: ['--json'],
+            args: ['--output', 'json'],
           })
           const json = JSON.parse(result.stdout.trim()) as {
             results: Array<{ name: string; status: string }>
@@ -878,7 +878,7 @@ describe('default sync mode (no --pull)', () => {
           // It should try to clone since member doesn't exist
           const result = yield* runSyncCommand({
             cwd: workspacePath,
-            args: ['--json', '--dry-run'],
+            args: ['--output', 'json', '--dry-run'],
           })
 
           // The command should complete (might error on clone attempt, but shouldn't hang on fetch)
@@ -998,7 +998,7 @@ describe('default sync mode (no --pull)', () => {
           // Sync again - should update symlink
           const result = yield* runSyncCommand({
             cwd: workspacePath,
-            args: ['--json'],
+            args: ['--output', 'json'],
           })
           const json = JSON.parse(result.stdout.trim()) as {
             results: Array<{ name: string; status: string }>
@@ -1092,7 +1092,7 @@ describe('default sync mode (no --pull)', () => {
           // Sync again - should skip because old worktree is dirty
           const result = yield* runSyncCommand({
             cwd: workspacePath,
-            args: ['--json'],
+            args: ['--output', 'json'],
           })
           const json = JSON.parse(result.stdout.trim()) as {
             results: Array<{ name: string; status: string; message?: string }>
@@ -1178,7 +1178,7 @@ describe('default sync mode (no --pull)', () => {
           // Sync with --force - should succeed
           const result = yield* runSyncCommand({
             cwd: workspacePath,
-            args: ['--json', '--force'],
+            args: ['--output', 'json', '--force'],
           })
           const json = JSON.parse(result.stdout.trim()) as {
             results: Array<{ name: string; status: string }>
@@ -1252,7 +1252,7 @@ describe('sync --pull mode', () => {
           // This test documents the expected behavior
           const result = yield* runSyncCommand({
             cwd: workspacePath,
-            args: ['--pull', '--json'],
+            args: ['--pull', '--output', 'json'],
           })
 
           // Should complete without error
@@ -1308,7 +1308,7 @@ describe('sync --pull mode', () => {
           // Run sync --pull
           const result = yield* runSyncCommand({
             cwd: workspacePath,
-            args: ['--pull', '--json'],
+            args: ['--pull', '--output', 'json'],
           })
           const json = JSON.parse(result.stdout.trim()) as {
             results: Array<{ name: string; status: string }>
@@ -1370,7 +1370,7 @@ describe('sync status types', () => {
         // Run sync for first time
         const result = yield* runSyncCommand({
           cwd: workspacePath,
-          args: ['--json'],
+          args: ['--output', 'json'],
         })
         const json = JSON.parse(result.stdout.trim()) as {
           results: Array<{ name: string; status: string }>
@@ -1422,7 +1422,7 @@ describe('sync error handling', () => {
         // Run sync --json to get structured output
         const result = yield* runSyncCommand({
           cwd: workspacePath,
-          args: ['--json'],
+          args: ['--output', 'json'],
         })
 
         // Parse the JSON output
@@ -1508,7 +1508,7 @@ describe('sync member filtering', () => {
           // Run sync with --only repo1
           const result = yield* runSyncCommand({
             cwd: workspacePath,
-            args: ['--json', '--only', 'repo1'],
+            args: ['--output', 'json', '--only', 'repo1'],
           })
           const json = JSON.parse(result.stdout.trim()) as {
             results: Array<{ name: string; status: string }>
@@ -1573,7 +1573,7 @@ describe('sync member filtering', () => {
           // Run sync with --skip repo2
           const result = yield* runSyncCommand({
             cwd: workspacePath,
-            args: ['--json', '--skip', 'repo2'],
+            args: ['--output', 'json', '--skip', 'repo2'],
           })
           const json = JSON.parse(result.stdout.trim()) as {
             results: Array<{ name: string; status: string }>
@@ -1621,7 +1621,7 @@ describe('sync member filtering', () => {
           // Run sync with both --only and --skip (should fail)
           const result = yield* runSyncCommand({
             cwd: workspacePath,
-            args: ['--json', '--only', 'repo1', '--skip', 'repo2'],
+            args: ['--output', 'json', '--only', 'repo1', '--skip', 'repo2'],
           })
 
           // Should have failed
@@ -1723,7 +1723,7 @@ describe('sync member removal detection', () => {
         // Second sync - should detect and remove orphaned repo2 symlink
         const result = yield* runSyncCommand({
           cwd: workspacePath,
-          args: ['--json'],
+          args: ['--output', 'json'],
         })
         const json = JSON.parse(result.stdout.trim()) as {
           results: Array<{ name: string; status: string; message?: string }>
@@ -1816,7 +1816,7 @@ describe('sync member removal detection', () => {
         // Sync with --dry-run - should report removed but not actually remove
         const result = yield* runSyncCommand({
           cwd: workspacePath,
-          args: ['--json', '--dry-run'],
+          args: ['--output', 'json', '--dry-run'],
         })
         const json = JSON.parse(result.stdout.trim()) as {
           results: Array<{ name: string; status: string; message?: string }>
@@ -1895,7 +1895,7 @@ describe('sync member removal detection', () => {
         // Sync with --skip repo2 - should NOT treat repo2 as removed
         const result = yield* runSyncCommand({
           cwd: workspacePath,
-          args: ['--json', '--skip', 'repo2'],
+          args: ['--output', 'json', '--skip', 'repo2'],
         })
         const json = JSON.parse(result.stdout.trim()) as {
           results: Array<{ name: string; status: string }>
@@ -1974,7 +1974,7 @@ describe('sync member removal detection', () => {
         // Sync again - should NOT remove the directory (only removes symlinks)
         const result = yield* runSyncCommand({
           cwd: workspacePath,
-          args: ['--json'],
+          args: ['--output', 'json'],
         })
         const json = JSON.parse(result.stdout.trim()) as {
           results: Array<{ name: string; status: string }>

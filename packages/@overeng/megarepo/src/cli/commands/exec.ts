@@ -13,7 +13,7 @@ import { EffectPath } from '@overeng/effect-path'
 import { renderToString } from '@overeng/tui-react'
 
 import { CONFIG_FILE_NAME, getMemberPath, MegarepoConfig } from '../../lib/config.ts'
-import { Cwd, findMegarepoRoot, jsonOption, verboseOption } from '../context.ts'
+import { Cwd, findMegarepoRoot, outputOption, verboseOption } from '../context.ts'
 import { ExecCommandError } from '../errors.ts'
 import {
   ExecErrorOutput,
@@ -34,7 +34,7 @@ export const execCommand = Cli.Command.make(
     command: Cli.Args.text({ name: 'command' }).pipe(
       Cli.Args.withDescription('Command to execute'),
     ),
-    json: jsonOption,
+    output: outputOption,
     member: Cli.Options.text('member').pipe(
       Cli.Options.withAlias('m'),
       Cli.Options.withDescription('Run only in this member'),
@@ -46,8 +46,10 @@ export const execCommand = Cli.Command.make(
     ),
     verbose: verboseOption,
   },
-  ({ command: cmd, json, member, mode, verbose }) =>
-    Effect.gen(function* () {
+  ({ command: cmd, output, member, mode, verbose }) => {
+    const json = output === 'json' || output === 'ndjson'
+
+    return Effect.gen(function* () {
       const cwd = yield* Cwd
       const root = yield* findMegarepoRoot(cwd)
 
@@ -229,5 +231,6 @@ export const execCommand = Cli.Command.make(
       if (json) {
         console.log(JSON.stringify({ results }))
       }
-    }).pipe(Effect.withSpan('megarepo/exec')),
+    }).pipe(Effect.withSpan('megarepo/exec'))
+  },
 ).pipe(Cli.Command.withDescription('Execute a command in member directories'))

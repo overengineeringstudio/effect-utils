@@ -16,7 +16,7 @@ import { CONFIG_FILE_NAME, MegarepoConfig, parseSourceString } from '../../lib/c
 import * as Git from '../../lib/git.ts'
 import { StoreLayer } from '../../lib/store.ts'
 import { syncMember } from '../../lib/sync/mod.ts'
-import { Cwd, findMegarepoRoot, jsonOption } from '../context.ts'
+import { Cwd, findMegarepoRoot, outputOption } from '../context.ts'
 import { AddCommandError } from '../errors.ts'
 import { AddOutput, AddErrorOutput } from '../renderers/AddOutput.tsx'
 
@@ -72,10 +72,12 @@ export const addCommand = Cli.Command.make(
       Cli.Options.withDescription('Sync the added repo immediately'),
       Cli.Options.withDefault(false),
     ),
-    json: jsonOption,
+    output: outputOption,
   },
-  ({ repo, name, sync, json }) =>
-    Effect.gen(function* () {
+  ({ repo, name, sync, output }) => {
+    const json = output === 'json' || output === 'ndjson'
+
+    return Effect.gen(function* () {
       const cwd = yield* Cwd
       const root = yield* findMegarepoRoot(cwd)
 
@@ -225,5 +227,6 @@ export const addCommand = Cli.Command.make(
           yield* Console.log(output)
         }
       }
-    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/add')),
+    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/add'))
+  },
 ).pipe(Cli.Command.withDescription('Add a new member repository'))

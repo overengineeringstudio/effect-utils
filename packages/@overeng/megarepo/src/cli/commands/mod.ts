@@ -15,11 +15,7 @@ export { statusCommand } from './status.ts'
 export { syncCommand, syncMegarepo } from './sync.ts'
 
 // Re-export errors from centralized errors module
-export {
-  NotInMegarepoError,
-  LockFileRequiredError,
-  StaleLockFileError,
-} from '../errors.ts'
+export { NotInMegarepoError, LockFileRequiredError, StaleLockFileError } from '../errors.ts'
 
 // Subcommand groups
 export { storeCommand } from './store/mod.ts'

@@ -14,7 +14,7 @@ import { renderToString, Box, Text } from '@overeng/tui-react'
 import { jsonError, withJsonMode } from '@overeng/utils/node'
 
 import { CONFIG_FILE_NAME, ENV_VARS, MegarepoConfig } from '../../lib/config.ts'
-import { Cwd, findMegarepoRoot, findNearestMegarepoRoot, jsonOption } from '../context.ts'
+import { Cwd, findMegarepoRoot, findNearestMegarepoRoot, outputOption } from '../context.ts'
 import { NotInMegarepoError } from '../errors.ts'
 
 /** Print environment variables for shell integration */
@@ -25,10 +25,12 @@ export const envCommand = Cli.Command.make(
       Cli.Options.withDescription('Shell type for output format'),
       Cli.Options.withDefault('bash' as const),
     ),
-    json: jsonOption,
+    output: outputOption,
   },
-  ({ shell, json }) =>
-    Effect.gen(function* () {
+  ({ shell, output }) => {
+    const json = output === 'json' || output === 'ndjson'
+
+    return Effect.gen(function* () {
       const cwd = yield* Cwd
 
       // Find the megarepo root
@@ -93,5 +95,6 @@ export const envCommand = Cli.Command.make(
             yield* Console.log(`export ${ENV_VARS.MEMBERS}="${memberNames}"`)
         }
       }
-    }).pipe(Effect.withSpan('megarepo/env'), withJsonMode(json)),
+    }).pipe(Effect.withSpan('megarepo/env'), withJsonMode(json))
+  },
 ).pipe(Cli.Command.withDescription('Output environment variables for shell integration'))

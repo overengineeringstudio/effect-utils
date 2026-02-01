@@ -53,7 +53,13 @@ import {
   type MegarepoSyncResult,
   type MemberSyncResult,
 } from '../../lib/sync/mod.ts'
-import { Cwd, findMegarepoRoot, jsonOption, streamOption, verboseOption } from '../context.ts'
+import {
+  Cwd,
+  findMegarepoRoot,
+  outputOption,
+  type OutputModeValue,
+  verboseOption,
+} from '../context.ts'
 import {
   NotInMegarepoError,
   LockFileRequiredError,
@@ -312,7 +318,11 @@ export const syncMegarepo = ({
           )
           yield* Console.log(staleOutput)
         }
-        return yield* new StaleLockFileError({ message: 'Lock file is stale', addedMembers: staleness.addedMembers, removedMembers: staleness.removedMembers })
+        return yield* new StaleLockFileError({
+          message: 'Lock file is stale',
+          addedMembers: staleness.addedMembers,
+          removedMembers: staleness.removedMembers,
+        })
       }
     }
 
@@ -611,8 +621,7 @@ const createMissingRefPrompt = (
 export const syncCommand = Cli.Command.make(
   'sync',
   {
-    json: jsonOption,
-    stream: streamOption,
+    output: outputOption,
     dryRun: Cli.Options.boolean('dry-run').pipe(
       Cli.Options.withDescription('Show what would be done without making changes'),
       Cli.Options.withDefault(false),
@@ -657,8 +666,7 @@ export const syncCommand = Cli.Command.make(
     verbose: verboseOption,
   },
   ({
-    json,
-    stream,
+    output,
     dryRun,
     pull,
     frozen,
@@ -671,6 +679,10 @@ export const syncCommand = Cli.Command.make(
     verbose,
   }) =>
     Effect.gen(function* () {
+      // Derive json/stream from output mode for backward compatibility with existing logic
+      const json = output === 'json' || output === 'ndjson'
+      const stream = output === 'ndjson'
+
       const cwd = yield* Cwd
       const fs = yield* FileSystem.FileSystem
       const root = yield* findMegarepoRoot(cwd)
@@ -697,7 +709,9 @@ export const syncCommand = Cli.Command.make(
           )
           yield* Console.error(output)
         }
-        return yield* new InvalidOptionsError({ message: '--only and --skip are mutually exclusive' })
+        return yield* new InvalidOptionsError({
+          message: '--only and --skip are mutually exclusive',
+        })
       }
 
       // Parse member filter options
@@ -819,7 +833,11 @@ export const syncCommand = Cli.Command.make(
           const failedMembers = syncResult.results
             .filter((r) => r.status === 'error')
             .map((r) => r.name)
-          return yield* new SyncFailedError({ message: `${counts.errors} member(s) failed to sync`, errorCount: counts.errors, failedMembers })
+          return yield* new SyncFailedError({
+            message: `${counts.errors} member(s) failed to sync`,
+            errorCount: counts.errors,
+            failedMembers,
+          })
         }
 
         return syncResult
@@ -942,7 +960,11 @@ export const syncCommand = Cli.Command.make(
           const failedMembers = syncResult.results
             .filter((r) => r.status === 'error')
             .map((r) => r.name)
-          return yield* new SyncFailedError({ message: `${counts.errors} member(s) failed to sync`, errorCount: counts.errors, failedMembers })
+          return yield* new SyncFailedError({
+            message: `${counts.errors} member(s) failed to sync`,
+            errorCount: counts.errors,
+            failedMembers,
+          })
         }
 
         return syncResult

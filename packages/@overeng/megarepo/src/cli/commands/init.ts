@@ -17,12 +17,14 @@ import { jsonError, withJsonMode } from '@overeng/utils/node'
 
 import { CONFIG_FILE_NAME, MegarepoConfig } from '../../lib/config.ts'
 import * as Git from '../../lib/git.ts'
-import { Cwd, jsonOption } from '../context.ts'
+import { Cwd, outputOption } from '../context.ts'
 import { NotGitRepoError } from '../errors.ts'
 
 /** Initialize a new megarepo in current directory */
-export const initCommand = Cli.Command.make('init', { json: jsonOption }, ({ json }) =>
-  Effect.gen(function* () {
+export const initCommand = Cli.Command.make('init', { output: outputOption }, ({ output }) => {
+  const json = output === 'json' || output === 'ndjson'
+
+  return Effect.gen(function* () {
     const cwd = yield* Cwd
     const fs = yield* FileSystem.FileSystem
 
@@ -95,5 +97,5 @@ export const initCommand = Cli.Command.make('init', { json: jsonOption }, ({ jso
       )
       yield* Console.log(successOutput)
     }
-  }).pipe(Effect.withSpan('megarepo/init'), withJsonMode(json)),
-).pipe(Cli.Command.withDescription('Initialize a new megarepo in the current directory'))
+  }).pipe(Effect.withSpan('megarepo/init'), withJsonMode(json))
+}).pipe(Cli.Command.withDescription('Initialize a new megarepo in the current directory'))

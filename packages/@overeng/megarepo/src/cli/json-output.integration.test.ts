@@ -136,7 +136,7 @@ describe('--json output (integration)', () => {
           'test-lib': 'owner/test-lib',
         })
 
-        const result = yield* runCli({ cwd: workDir, args: ['ls', '--json'] })
+        const result = yield* runCli({ cwd: workDir, args: ['ls', '--output', 'json'] })
 
         // Verify stdout is valid JSON only
         const json = assertStdoutIsOnlyJson(result.stdout) as {
@@ -166,7 +166,7 @@ describe('--json output (integration)', () => {
 
         const result = yield* runCli({
           cwd: workDir,
-          args: ['root', '--json'],
+          args: ['root', '--output', 'json'],
         })
 
         // Verify stdout is still valid JSON even for errors
@@ -235,7 +235,7 @@ describe('--json output (integration)', () => {
         const symlinkDir = EffectPath.unsafe.absoluteDir(`${symlinkPath}/`)
         const result = yield* runCli({
           cwd: symlinkDir,
-          args: ['root', '--json'],
+          args: ['root', '--output', 'json'],
         })
 
         // Should find the workspace's megarepo.json by following $PWD up

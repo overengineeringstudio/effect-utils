@@ -37,7 +37,7 @@ import { type LockFile, LOCK_FILE_NAME, readLockFile } from '../../../lib/lock.t
 import { classifyRef } from '../../../lib/ref.ts'
 import { Store, StoreLayer } from '../../../lib/store.ts'
 import { getCloneUrl } from '../../../lib/sync/mod.ts'
-import { Cwd, findMegarepoRoot, jsonOption } from '../../context.ts'
+import { Cwd, findMegarepoRoot, outputOption } from '../../context.ts'
 import { StoreCommandError } from '../../errors.ts'
 import {
   StoreListOutput,
@@ -55,15 +55,17 @@ import {
 } from '../../renderers/StoreOutput.tsx'
 
 /** List repos in the store */
-const storeLsCommand = Cli.Command.make('ls', { json: jsonOption }, ({ json }) =>
-  Effect.gen(function* () {
+const storeLsCommand = Cli.Command.make('ls', { output: outputOption }, ({ output }) => {
+  const json = output === 'json' || output === 'ndjson'
+
+  return Effect.gen(function* () {
     const store = yield* Store
     const repos = yield* store.listRepos()
 
     if (json) {
       console.log(JSON.stringify({ repos }))
     } else {
-      const output = yield* Effect.promise(() =>
+      const renderOutput = yield* Effect.promise(() =>
         renderToString({
           element: React.createElement(StoreListOutput, {
             basePath: store.basePath,
@@ -71,14 +73,16 @@ const storeLsCommand = Cli.Command.make('ls', { json: jsonOption }, ({ json }) =
           }),
         }),
       )
-      yield* Console.log(output)
+      yield* Console.log(renderOutput)
     }
-  }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/ls'), withJsonMode(json)),
-).pipe(Cli.Command.withDescription('List repositories in the store'))
+  }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/ls'), withJsonMode(json))
+}).pipe(Cli.Command.withDescription('List repositories in the store'))
 
 /** Show store status and detect issues */
-const storeStatusCommand = Cli.Command.make('status', { json: jsonOption }, ({ json }) =>
-  Effect.gen(function* () {
+const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, ({ output }) => {
+  const json = output === 'json' || output === 'ndjson'
+
+  return Effect.gen(function* () {
     const cwd = yield* Cwd
     const store = yield* Store
     const fs = yield* FileSystem.FileSystem
@@ -176,10 +180,7 @@ const storeStatusCommand = Cli.Command.make('status', { json: jsonOption }, ({ j
 
           // Check if worktree is a valid git repo
           // In worktrees, .git is a file (not directory) containing "gitdir: <path>"
-          const gitPath = EffectPath.ops.join(
-            worktreePath,
-            EffectPath.unsafe.relativeFile('.git'),
-          )
+          const gitPath = EffectPath.ops.join(worktreePath, EffectPath.unsafe.relativeFile('.git'))
           const gitExists = yield* fs
             .exists(gitPath)
             .pipe(Effect.catchAll(() => Effect.succeed(false)))
@@ -274,7 +275,7 @@ const storeStatusCommand = Cli.Command.make('status', { json: jsonOption }, ({ j
       }
       console.log(JSON.stringify(summary))
     } else {
-      const output = yield* Effect.promise(() =>
+      const renderOutput = yield* Effect.promise(() =>
         renderToString({
           element: React.createElement(StoreStatusOutput, {
             basePath: store.basePath,
@@ -284,14 +285,16 @@ const storeStatusCommand = Cli.Command.make('status', { json: jsonOption }, ({ j
           }),
         }),
       )
-      yield* Console.log(output)
+      yield* Console.log(renderOutput)
     }
-  }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/status'), withJsonMode(json)),
-).pipe(Cli.Command.withDescription('Show store status and detect issues'))
+  }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/status'), withJsonMode(json))
+}).pipe(Cli.Command.withDescription('Show store status and detect issues'))
 
 /** Fetch all repos in the store */
-const storeFetchCommand = Cli.Command.make('fetch', { json: jsonOption }, ({ json }) =>
-  Effect.gen(function* () {
+const storeFetchCommand = Cli.Command.make('fetch', { output: outputOption }, ({ output }) => {
+  const json = output === 'json' || output === 'ndjson'
+
+  return Effect.gen(function* () {
     const store = yield* Store
     const repos = yield* store.listRepos()
     const startTime = Date.now()
@@ -402,7 +405,7 @@ const storeFetchCommand = Cli.Command.make('fetch', { json: jsonOption }, ({ jso
       console.log(JSON.stringify({ results }))
     } else {
       // Non-TTY: print final results using StoreFetchOutput component
-      const output = yield* Effect.promise(() =>
+      const renderOutput = yield* Effect.promise(() =>
         renderToString({
           element: React.createElement(StoreFetchOutput, {
             basePath: store.basePath,
@@ -411,10 +414,10 @@ const storeFetchCommand = Cli.Command.make('fetch', { json: jsonOption }, ({ jso
           }),
         }),
       )
-      yield* Console.log(output)
+      yield* Console.log(renderOutput)
     }
-  }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/fetch')),
-).pipe(Cli.Command.withDescription('Fetch all repositories in the store'))
+  }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/fetch'))
+}).pipe(Cli.Command.withDescription('Fetch all repositories in the store'))
 
 /** GC result for a single worktree */
 interface GcWorktreeResult {
@@ -432,7 +435,7 @@ interface GcWorktreeResult {
 const storeGcCommand = Cli.Command.make(
   'gc',
   {
-    json: jsonOption,
+    output: outputOption,
     dryRun: Cli.Options.boolean('dry-run').pipe(
       Cli.Options.withDescription('Show what would be removed without removing'),
       Cli.Options.withDefault(false),
@@ -447,8 +450,10 @@ const storeGcCommand = Cli.Command.make(
       Cli.Options.withDefault(false),
     ),
   },
-  ({ json, dryRun, force, all }) =>
-    Effect.gen(function* () {
+  ({ output, dryRun, force, all }) => {
+    const json = output === 'json' || output === 'ndjson'
+
+    return Effect.gen(function* () {
       const cwd = yield* Cwd
       const store = yield* Store
       const fs = yield* FileSystem.FileSystem
@@ -639,7 +644,7 @@ const storeGcCommand = Cli.Command.make(
           }),
         )
       } else {
-        const output = yield* Effect.promise(() =>
+        const renderOutput = yield* Effect.promise(() =>
           renderToString({
             element: React.createElement(StoreGcOutput, {
               basePath: store.basePath,
@@ -650,9 +655,10 @@ const storeGcCommand = Cli.Command.make(
             }),
           }),
         )
-        yield* Console.log(output)
+        yield* Console.log(renderOutput)
       }
-    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/gc')),
+    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/gc'))
+  },
 ).pipe(Cli.Command.withDescription('Garbage collect unused worktrees'))
 
 /**
@@ -665,10 +671,12 @@ const storeAddCommand = Cli.Command.make(
     source: Cli.Args.text({ name: 'source' }).pipe(
       Cli.Args.withDescription('Repository source (owner/repo, URL, or owner/repo#ref)'),
     ),
-    json: jsonOption,
+    output: outputOption,
   },
-  ({ source: sourceString, json }) =>
-    Effect.gen(function* () {
+  ({ source: sourceString, output }) => {
+    const json = output === 'json' || output === 'ndjson'
+
+    return Effect.gen(function* () {
       const store = yield* Store
       const fs = yield* FileSystem.FileSystem
 
@@ -683,7 +691,7 @@ const storeAddCommand = Cli.Command.make(
             }),
           )
         } else {
-          const output = yield* Effect.promise(() =>
+          const renderOutput = yield* Effect.promise(() =>
             renderToString({
               element: React.createElement(StoreAddError, {
                 type: 'invalid_source',
@@ -691,7 +699,7 @@ const storeAddCommand = Cli.Command.make(
               }),
             }),
           )
-          yield* Console.error(output)
+          yield* Console.error(renderOutput)
         }
         return yield* new StoreCommandError({ message: 'Invalid source' })
       }
@@ -705,10 +713,10 @@ const storeAddCommand = Cli.Command.make(
             }),
           )
         } else {
-          const output = yield* Effect.promise(() =>
+          const renderOutput = yield* Effect.promise(() =>
             renderToString({ element: React.createElement(StoreAddError, { type: 'local_path' }) }),
           )
-          yield* Console.error(output)
+          yield* Console.error(renderOutput)
         }
         return yield* new StoreCommandError({ message: 'Cannot add local path' })
       }
@@ -718,10 +726,10 @@ const storeAddCommand = Cli.Command.make(
         if (json) {
           console.log(JSON.stringify({ error: 'no_url', message: 'Cannot determine clone URL' }))
         } else {
-          const output = yield* Effect.promise(() =>
+          const renderOutput = yield* Effect.promise(() =>
             renderToString({ element: React.createElement(StoreAddError, { type: 'no_url' }) }),
           )
-          yield* Console.error(output)
+          yield* Console.error(renderOutput)
         }
         return yield* new StoreCommandError({ message: 'Cannot get clone URL' })
       }
@@ -842,7 +850,8 @@ const storeAddCommand = Cli.Command.make(
         )
         yield* Console.log(successOutput)
       }
-    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/add')),
+    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/add'))
+  },
 ).pipe(Cli.Command.withDescription('Add a repository to the store (without adding to megarepo)'))
 
 /** Store subcommand group */

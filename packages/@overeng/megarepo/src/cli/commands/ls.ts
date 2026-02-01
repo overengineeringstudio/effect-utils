@@ -14,12 +14,14 @@ import { renderToString, Box, Text } from '@overeng/tui-react'
 import { jsonError, withJsonMode } from '@overeng/utils/node'
 
 import { CONFIG_FILE_NAME, MegarepoConfig } from '../../lib/config.ts'
-import { Cwd, findMegarepoRoot, jsonOption } from '../context.ts'
+import { Cwd, findMegarepoRoot, outputOption } from '../context.ts'
 import { NotInMegarepoError } from '../errors.ts'
 
 /** List members */
-export const lsCommand = Cli.Command.make('ls', { json: jsonOption }, ({ json }) =>
-  Effect.gen(function* () {
+export const lsCommand = Cli.Command.make('ls', { output: outputOption }, ({ output }) => {
+  const json = output === 'json' || output === 'ndjson'
+
+  return Effect.gen(function* () {
     const cwd = yield* Cwd
     const root = yield* findMegarepoRoot(cwd)
 
@@ -70,5 +72,5 @@ export const lsCommand = Cli.Command.make('ls', { json: jsonOption }, ({ json })
         yield* Console.log(memberOutput)
       }
     }
-  }).pipe(Effect.withSpan('megarepo/ls'), withJsonMode(json)),
-).pipe(Cli.Command.withDescription('List all members in the megarepo'))
+  }).pipe(Effect.withSpan('megarepo/ls'), withJsonMode(json))
+}).pipe(Cli.Command.withDescription('List all members in the megarepo'))

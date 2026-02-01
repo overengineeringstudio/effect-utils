@@ -44,7 +44,7 @@ import {
 } from '../../lib/lock.ts'
 import { classifyRef } from '../../lib/ref.ts'
 import { Store, StoreLayer } from '../../lib/store.ts'
-import { Cwd, findMegarepoRoot, jsonOption } from '../context.ts'
+import { Cwd, findMegarepoRoot, outputOption } from '../context.ts'
 import { PinOutput, PinErrorOutput, PinWarningOutput } from '../renderers/PinOutput.tsx'
 
 /**
@@ -66,10 +66,12 @@ export const pinCommand = Cli.Command.make(
       Cli.Options.withDescription('Show what would be changed without making changes'),
       Cli.Options.withDefault(false),
     ),
-    json: jsonOption,
+    output: outputOption,
   },
-  ({ member, checkout, dryRun, json }) =>
-    Effect.gen(function* () {
+  ({ member, checkout, dryRun, output }) => {
+    const json = output === 'json' || output === 'ndjson'
+
+    return Effect.gen(function* () {
       const cwd = yield* Cwd
       const root = yield* findMegarepoRoot(cwd)
 
@@ -82,12 +84,12 @@ export const pinCommand = Cli.Command.make(
             }),
           )
         } else {
-          const output = yield* Effect.promise(() =>
+          const renderOutput = yield* Effect.promise(() =>
             renderToString({
               element: React.createElement(PinErrorOutput, { error: 'not_in_megarepo' }),
             }),
           )
-          yield* Console.error(output)
+          yield* Console.error(renderOutput)
         }
         return yield* new NotInMegarepoError({ message: 'Not in a megarepo' })
       }
@@ -112,12 +114,12 @@ export const pinCommand = Cli.Command.make(
             }),
           )
         } else {
-          const output = yield* Effect.promise(() =>
+          const renderOutput = yield* Effect.promise(() =>
             renderToString({
               element: React.createElement(PinErrorOutput, { error: 'member_not_found', member }),
             }),
           )
-          yield* Console.error(output)
+          yield* Console.error(renderOutput)
         }
         return yield* new MemberNotFoundError({ message: 'Member not found', member })
       }
@@ -137,12 +139,12 @@ export const pinCommand = Cli.Command.make(
             }),
           )
         } else {
-          const output = yield* Effect.promise(() =>
+          const renderOutput = yield* Effect.promise(() =>
             renderToString({
               element: React.createElement(PinErrorOutput, { error: 'invalid_source' }),
             }),
           )
-          yield* Console.error(output)
+          yield* Console.error(renderOutput)
         }
         return yield* new InvalidSourceError({ message: 'Invalid source', source: sourceString })
       }
@@ -155,12 +157,12 @@ export const pinCommand = Cli.Command.make(
             }),
           )
         } else {
-          const output = yield* Effect.promise(() =>
+          const renderOutput = yield* Effect.promise(() =>
             renderToString({
               element: React.createElement(PinErrorOutput, { error: 'local_path' }),
             }),
           )
-          yield* Console.error(output)
+          yield* Console.error(renderOutput)
         }
         return yield* new CannotUseLocalPathError({ message: 'Cannot pin local path' })
       }
@@ -251,7 +253,7 @@ export const pinCommand = Cli.Command.make(
               dryRunProps.lockChanges = lockChanges
             }
 
-            const output = yield* Effect.promise(() =>
+            const renderOutput = yield* Effect.promise(() =>
               renderToString({
                 element: React.createElement(PinOutput, {
                   action: 'pin',
@@ -262,7 +264,7 @@ export const pinCommand = Cli.Command.make(
                 }),
               }),
             )
-            yield* Console.log(output)
+            yield* Console.log(renderOutput)
           }
           return
         }
@@ -401,7 +403,7 @@ export const pinCommand = Cli.Command.make(
             }),
           )
         } else {
-          const output = yield* Effect.promise(() =>
+          const renderOutput = yield* Effect.promise(() =>
             renderToString({
               element: React.createElement(PinOutput, {
                 action: 'pin',
@@ -412,7 +414,7 @@ export const pinCommand = Cli.Command.make(
               }),
             }),
           )
-          yield* Console.log(output)
+          yield* Console.log(renderOutput)
         }
 
         return
@@ -429,12 +431,12 @@ export const pinCommand = Cli.Command.make(
             }),
           )
         } else {
-          const output = yield* Effect.promise(() =>
+          const renderOutput = yield* Effect.promise(() =>
             renderToString({
               element: React.createElement(PinErrorOutput, { error: 'not_synced', member }),
             }),
           )
-          yield* Console.error(output)
+          yield* Console.error(renderOutput)
         }
         return yield* new MemberNotSyncedError({ message: 'Member not synced', member })
       }
@@ -450,7 +452,7 @@ export const pinCommand = Cli.Command.make(
             }),
           )
         } else {
-          const output = yield* Effect.promise(() =>
+          const renderOutput = yield* Effect.promise(() =>
             renderToString({
               element: React.createElement(PinOutput, {
                 action: 'pin',
@@ -460,7 +462,7 @@ export const pinCommand = Cli.Command.make(
               }),
             }),
           )
-          yield* Console.log(output)
+          yield* Console.log(renderOutput)
         }
         return
       }
@@ -511,7 +513,7 @@ export const pinCommand = Cli.Command.make(
             dryRunProps.newSymlink = shortenPath(commitWorktreePath.replace(/\/$/, ''))
           }
 
-          const output = yield* Effect.promise(() =>
+          const renderOutput = yield* Effect.promise(() =>
             renderToString({
               element: React.createElement(PinOutput, {
                 action: 'pin',
@@ -522,7 +524,7 @@ export const pinCommand = Cli.Command.make(
               }),
             }),
           )
-          yield* Console.log(output)
+          yield* Console.log(renderOutput)
         }
         return
       }
@@ -536,14 +538,14 @@ export const pinCommand = Cli.Command.make(
         if (!bareExists) {
           // Bare repo doesn't exist, can't create worktree - warn user
           if (!json) {
-            const output = yield* Effect.promise(() =>
+            const renderOutput = yield* Effect.promise(() =>
               renderToString({
                 element: React.createElement(PinWarningOutput, {
                   warning: 'worktree_not_available',
                 }),
               }),
             )
-            yield* Console.log(output)
+            yield* Console.log(renderOutput)
           }
         } else {
           // Create the worktree parent directory
@@ -588,7 +590,7 @@ export const pinCommand = Cli.Command.make(
           }),
         )
       } else {
-        const output = yield* Effect.promise(() =>
+        const renderOutput = yield* Effect.promise(() =>
           renderToString({
             element: React.createElement(PinOutput, {
               action: 'pin',
@@ -598,9 +600,10 @@ export const pinCommand = Cli.Command.make(
             }),
           }),
         )
-        yield* Console.log(output)
+        yield* Console.log(renderOutput)
       }
-    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/pin')),
+    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/pin'))
+  },
 ).pipe(Cli.Command.withDescription('Pin a member to a specific ref'))
 
 /**
@@ -643,10 +646,12 @@ export const unpinCommand = Cli.Command.make(
   'unpin',
   {
     member: Cli.Args.text({ name: 'member' }).pipe(Cli.Args.withDescription('Member to unpin')),
-    json: jsonOption,
+    output: outputOption,
   },
-  ({ member, json }) =>
-    Effect.gen(function* () {
+  ({ member, output }) => {
+    const json = output === 'json' || output === 'ndjson'
+
+    return Effect.gen(function* () {
       const cwd = yield* Cwd
       const root = yield* findMegarepoRoot(cwd)
 
@@ -659,12 +664,12 @@ export const unpinCommand = Cli.Command.make(
             }),
           )
         } else {
-          const output = yield* Effect.promise(() =>
+          const renderOutput = yield* Effect.promise(() =>
             renderToString({
               element: React.createElement(PinErrorOutput, { error: 'not_in_megarepo' }),
             }),
           )
-          yield* Console.error(output)
+          yield* Console.error(renderOutput)
         }
         return yield* new NotInMegarepoError({ message: 'Not in a megarepo' })
       }
@@ -688,12 +693,12 @@ export const unpinCommand = Cli.Command.make(
             }),
           )
         } else {
-          const output = yield* Effect.promise(() =>
+          const renderOutput = yield* Effect.promise(() =>
             renderToString({
               element: React.createElement(PinErrorOutput, { error: 'member_not_found', member }),
             }),
           )
-          yield* Console.error(output)
+          yield* Console.error(renderOutput)
         }
         return yield* new MemberNotFoundError({ message: 'Member not found', member })
       }
@@ -708,10 +713,10 @@ export const unpinCommand = Cli.Command.make(
         if (json) {
           console.log(JSON.stringify({ error: 'no_lock', message: 'No lock file found' }))
         } else {
-          const output = yield* Effect.promise(() =>
+          const renderOutput = yield* Effect.promise(() =>
             renderToString({ element: React.createElement(PinErrorOutput, { error: 'no_lock' }) }),
           )
-          yield* Console.error(output)
+          yield* Console.error(renderOutput)
         }
         return yield* new NoLockFileError({ message: 'No lock file' })
       }
@@ -723,12 +728,12 @@ export const unpinCommand = Cli.Command.make(
         if (json) {
           console.log(JSON.stringify({ status: 'not_in_lock', member }))
         } else {
-          const output = yield* Effect.promise(() =>
+          const renderOutput = yield* Effect.promise(() =>
             renderToString({
               element: React.createElement(PinErrorOutput, { error: 'not_in_lock', member }),
             }),
           )
-          yield* Console.log(output)
+          yield* Console.log(renderOutput)
         }
         return
       }
@@ -738,7 +743,7 @@ export const unpinCommand = Cli.Command.make(
         if (json) {
           console.log(JSON.stringify({ status: 'already_unpinned', member }))
         } else {
-          const output = yield* Effect.promise(() =>
+          const renderOutput = yield* Effect.promise(() =>
             renderToString({
               element: React.createElement(PinOutput, {
                 action: 'unpin',
@@ -747,7 +752,7 @@ export const unpinCommand = Cli.Command.make(
               }),
             }),
           )
-          yield* Console.log(output)
+          yield* Console.log(renderOutput)
         }
         return
       }
@@ -761,7 +766,7 @@ export const unpinCommand = Cli.Command.make(
       if (sourceString === undefined) {
         // Member was removed from config but still in lock file - warn user
         if (!json) {
-          const output = yield* Effect.promise(() =>
+          const renderOutput = yield* Effect.promise(() =>
             renderToString({
               element: React.createElement(PinWarningOutput, {
                 warning: 'member_removed_from_config',
@@ -769,7 +774,7 @@ export const unpinCommand = Cli.Command.make(
               }),
             }),
           )
-          yield* Console.log(output)
+          yield* Console.log(renderOutput)
         }
       } else {
         const source = parseSourceString(sourceString)
@@ -810,12 +815,13 @@ export const unpinCommand = Cli.Command.make(
       if (json) {
         console.log(JSON.stringify({ status: 'unpinned', member }))
       } else {
-        const output = yield* Effect.promise(() =>
+        const renderOutput = yield* Effect.promise(() =>
           renderToString({
             element: React.createElement(PinOutput, { action: 'unpin', member, status: 'success' }),
           }),
         )
-        yield* Console.log(output)
+        yield* Console.log(renderOutput)
       }
-    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/unpin')),
+    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/unpin'))
+  },
 ).pipe(Cli.Command.withDescription('Unpin a member to allow updates'))
