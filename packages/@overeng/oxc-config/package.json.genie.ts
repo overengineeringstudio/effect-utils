@@ -29,6 +29,7 @@ export default packageJson({
       'eslint',
       'typescript',
       'vitest',
+      'oxlint-tsgolint',
     ),
   },
 })

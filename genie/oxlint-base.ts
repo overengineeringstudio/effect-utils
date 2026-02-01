@@ -80,8 +80,55 @@ export const baseOxlintRules = {
   // Don't enforce type vs interface
   'typescript/consistent-type-definitions': 'off',
 
-  // Disallow usage of deprecated APIs
+  // Disallow usage of deprecated APIs (requires --type-aware)
   'typescript/no-deprecated': 'error',
+
+  // =============================================================================
+  // Type-aware rules - temporarily disabled
+  // These rules require --type-aware mode. Re-enable incrementally after cleanup.
+  // =============================================================================
+
+  // TODO: Re-enable - warns about unsafe type assertions (325 occurrences)
+  'typescript/no-unsafe-type-assertion': 'off',
+
+  // TODO: Re-enable - detects unnecessary type arguments (54 occurrences)
+  'typescript/no-unnecessary-type-arguments': 'off',
+
+  // TODO: Re-enable - detects unnecessary type assertions (48 occurrences)
+  'typescript/no-unnecessary-type-assertion': 'off',
+
+  // TODO: Re-enable - detects unnecessary boolean literal comparisons (46 occurrences)
+  'typescript/no-unnecessary-boolean-literal-compare': 'off',
+
+  // TODO: Re-enable - detects misused spread operators (18 occurrences)
+  'typescript/no-misused-spread': 'off',
+
+  // TODO: Re-enable - detects redundant type constituents (12 occurrences)
+  'typescript/no-redundant-type-constituents': 'off',
+
+  // TODO: Re-enable - detects floating promises (9 occurrences)
+  'typescript/no-floating-promises': 'off',
+
+  // TODO: Re-enable - detects improper toString usage (6 occurrences)
+  'typescript/no-base-to-string': 'off',
+
+  // TODO: Re-enable - detects unsafe enum comparisons (5 occurrences)
+  'typescript/no-unsafe-enum-comparison': 'off',
+
+  // TODO: Re-enable - detects unbound methods (4 occurrences)
+  'typescript/unbound-method': 'off',
+
+  // TODO: Re-enable - restricts template expression types (3 occurrences)
+  'typescript/restrict-template-expressions': 'off',
+
+  // TODO: Re-enable - detects duplicate type constituents (3 occurrences)
+  'typescript/no-duplicate-type-constituents': 'off',
+
+  // TODO: Re-enable - detects unsafe unary minus (1 occurrence)
+  'typescript/no-unsafe-unary-minus': 'off',
+
+  // TODO: Re-enable - detects unnecessary template expressions (1 occurrence)
+  'typescript/no-unnecessary-template-expression': 'off',
 } as const satisfies OxlintConfigArgs['rules']
 
 /** Rules to disable for generated files */

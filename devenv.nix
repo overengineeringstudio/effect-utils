@@ -166,6 +166,10 @@ in
         ".oxlintrc.json.genie.ts"
       ];
       genieCoverageDirs = [ "packages" ];
+      # Type-aware linting for typescript/no-deprecated rule
+      tsconfig = "tsconfig.all.json";
+      # TODO use tsgolint from nix to get rid of this complexity
+      tsgolintPackage = "packages/@overeng/oxc-config";
     })
     # Setup task (auto-runs in enterShell)
     # Context example tasks

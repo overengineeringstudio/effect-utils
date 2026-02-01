@@ -194,6 +194,7 @@ export const catalog = defineCatalog({
   'typescript-eslint': '8.52.0',
   oxfmt: '0.23.0',
   oxlint: '1.39.0',
+  'oxlint-tsgolint': '0.11.4',
 
   // Crypto
   '@noble/hashes': '1.7.1',

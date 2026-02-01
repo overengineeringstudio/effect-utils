@@ -15,6 +15,7 @@
     "@typescript-eslint/rule-tester": "8.52.0",
     "@typescript-eslint/utils": "8.52.0",
     "eslint": "9.39.2",
+    "oxlint-tsgolint": "0.11.4",
     "typescript": "5.9.3",
     "vitest": "3.2.4"
   },

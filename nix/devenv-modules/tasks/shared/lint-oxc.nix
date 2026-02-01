@@ -27,6 +27,10 @@
 #       genieCoverageDirs = [ "packages" "scripts" ];  # required
 #       # Extra directories to exclude from genie coverage
 #       genieCoverageExcludes = [ "storybook-static" ];  # optional
+#       # Path to tsconfig for type-aware linting (enables typescript/no-deprecated etc)
+#       tsconfig = "tsconfig.all.json";  # optional
+#       # Path to package with oxlint-tsgolint installed (for type-aware linting)
+#       tsgolintPackage = "packages/@overeng/oxc-config";  # optional
 #     })
 #   ];
 #
@@ -38,6 +42,9 @@
   genieCoverageDirs,
   genieCoverageExcludes ? [],
   lintPaths ? [ "." ],
+  # Type-aware linting options
+  tsconfig ? null,
+  tsgolintPackage ? null,
 }:
 { lib, ... }:
 let
@@ -56,6 +63,12 @@ let
   excludeArgs = builtins.concatStringsSep " " (map (d: "-not -path \"*/${d}/*\"") allExcludes);
   scanDirsArg = builtins.concatStringsSep " " genieCoverageDirs;
   lintPathsArg = builtins.concatStringsSep " " lintPaths;
+
+  # Type-aware linting flags (enabled when tsconfig is provided)
+  typeAwareFlags = if tsconfig != null then "--type-aware --tsconfig ${tsconfig}" else "";
+  # PATH prefix for tsgolint (required for type-aware linting)
+  # TODO use tsgolint from nix to get rid of this complexity
+  tsgolintPathPrefix = if tsgolintPackage != null then "PATH=\"${tsgolintPackage}/node_modules/.bin:$PATH\" " else "";
 in
 {
   tasks = {
@@ -69,7 +82,7 @@ in
     };
     "lint:check:oxlint" = {
       description = "Run oxlint linter";
-      exec = "oxlint --import-plugin --deny-warnings ${lintPathsArg}";
+      exec = "${tsgolintPathPrefix}oxlint --import-plugin --deny-warnings ${typeAwareFlags} ${lintPathsArg}";
       after = [ "genie:run" ];
       execIfModified = execIfModifiedPatterns;
     };
@@ -109,7 +122,7 @@ in
     };
     "lint:fix:oxlint" = {
       description = "Fix lint issues with oxlint";
-      exec = "oxlint --import-plugin --deny-warnings --fix ${lintPathsArg}";
+      exec = "${tsgolintPathPrefix}oxlint --import-plugin --deny-warnings ${typeAwareFlags} --fix ${lintPathsArg}";
     };
     "lint:fix" = {
       description = "Fix all lint issues";
