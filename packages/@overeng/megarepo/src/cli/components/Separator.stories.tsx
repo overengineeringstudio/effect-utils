@@ -16,6 +16,7 @@ import { Separator } from './Separator.tsx'
 
 export default {
   title: 'Components/Separator',
+  component: Separator,
   parameters: {
     layout: 'fullscreen',
     docs: {
@@ -28,9 +29,9 @@ Default width: 40 characters.
       },
     },
   },
-} satisfies Meta
+} satisfies Meta<typeof Separator>
 
-type Story = StoryObj
+type Story = StoryObj<typeof Separator>
 
 // =============================================================================
 // Stories

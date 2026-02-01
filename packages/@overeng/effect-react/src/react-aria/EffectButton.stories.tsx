@@ -25,9 +25,9 @@ const demoFailureEffect = Effect.gen(function* () {
   return yield* Effect.die('Boom')
 })
 
-const meta = {
+export default {
   title: 'Effect React/EffectButton',
-  // Note: component omitted to avoid type portability issues with react-aria types
+  component: EffectButton,
   decorators: [
     (Story: React.ComponentType) => (
       <EffectProvider layer={Layer.empty}>
@@ -35,9 +35,7 @@ const meta = {
       </EffectProvider>
     ),
   ],
-} satisfies Meta
-
-export default meta
+} satisfies Meta<typeof EffectButton>
 
 export const Success: StoryObj = {
   render: () => <EffectButton effect={demoSuccessEffect}>Run success</EffectButton>,

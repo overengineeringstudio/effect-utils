@@ -16,6 +16,7 @@ import { Summary } from './Summary.tsx'
 
 export default {
   title: 'Components/Summary',
+  component: Summary,
   parameters: {
     layout: 'fullscreen',
     docs: {
@@ -29,9 +30,9 @@ Renders dot-separated counts:
       },
     },
   },
-} satisfies Meta
+} satisfies Meta<typeof Summary>
 
-type Story = StoryObj
+type Story = StoryObj<typeof Summary>
 
 // =============================================================================
 // Stories

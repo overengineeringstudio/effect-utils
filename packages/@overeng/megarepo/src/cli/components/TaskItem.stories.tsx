@@ -16,6 +16,7 @@ import { TaskItem } from './TaskItem.tsx'
 
 export default {
   title: 'Components/TaskItem',
+  component: TaskItem,
   parameters: {
     layout: 'fullscreen',
     docs: {
@@ -33,9 +34,9 @@ Single task row with status icon, label, and optional message.
       },
     },
   },
-} satisfies Meta
+} satisfies Meta<typeof TaskItem>
 
-type Story = StoryObj
+type Story = StoryObj<typeof TaskItem>
 
 // =============================================================================
 // Stories

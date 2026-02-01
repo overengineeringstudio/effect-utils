@@ -1,3 +1,4 @@
+import type { Meta } from '@storybook/react'
 import { Schema } from 'effect'
 import React from 'react'
 
@@ -16,7 +17,7 @@ import {
 export default {
   title: 'Effect Schema',
   component: Inspector,
-}
+} satisfies Meta<typeof Inspector>
 
 /** Create a schema-aware version of ObjectInspector using the HOC */
 const SchemaObjectInspector = withSchemaSupport(ObjectInspector, {
@@ -47,9 +48,9 @@ const sampleUser: User = {
   createdAt: new Date('2024-01-15'),
 }
 
+/** Schema with title annotation */
 export const BasicSchemaWithTitle = {
   render: () => <SchemaObjectInspector data={sampleUser} schema={UserSchema} expandLevel={1} />,
-  name: 'Schema with title annotation',
 }
 
 /** Product schema with pretty print annotation */
@@ -77,11 +78,11 @@ const sampleProduct: Product = {
   quantity: 100,
 }
 
+/** Schema with pretty print annotation */
 export const SchemaWithPrettyPrint = {
   render: () => (
     <SchemaObjectInspector data={sampleProduct} schema={ProductSchema} expandLevel={1} />
   ),
-  name: 'Schema with pretty print annotation',
 }
 
 /** Address schema for nested structures */
@@ -118,9 +119,9 @@ const samplePerson: Person = {
   },
 }
 
+/** Nested schema with annotations */
 export const NestedSchemaWithAnnotations = {
   render: () => <SchemaObjectInspector data={samplePerson} schema={PersonSchema} expandLevel={2} />,
-  name: 'Nested schema with annotations',
 }
 
 /** Temperature schema with pretty print for formatting */
@@ -151,11 +152,11 @@ const sampleWeather: WeatherReport = {
   conditions: 'Partly Cloudy',
 }
 
+/** Pretty print for multiple fields */
 export const PrettyPrintForMultipleFields = {
   render: () => (
     <SchemaObjectInspector data={sampleWeather} schema={WeatherReportSchema} expandLevel={1} />
   ),
-  name: 'Pretty print for multiple fields',
 }
 
 /** Array of users example */
@@ -185,17 +186,16 @@ const sampleUsers: User[] = [
   },
 ]
 
+/** Array of schema items */
 export const ArrayOfSchemaItems = {
   render: () => (
     <SchemaObjectInspector data={sampleUsers} schema={UsersArraySchema} expandLevel={2} />
   ),
-  name: 'Array of schema items',
 }
 
-/** Example without schema for comparison */
+/** Without schema (for comparison) */
 export const WithoutSchema = {
   render: () => <ObjectInspector data={sampleUser} expandLevel={1} />,
-  name: 'Without schema (for comparison)',
 }
 
 /** Order schema with complex formatting */
@@ -248,9 +248,9 @@ const sampleOrder: Order = {
   status: 'Shipped',
 }
 
+/** Complex order with currency formatting */
 export const ComplexOrderExample = {
   render: () => <SchemaObjectInspector data={sampleOrder} schema={OrderSchema} expandLevel={3} />,
-  name: 'Complex order with currency formatting',
 }
 
 /** Enum-like union type example */
@@ -290,9 +290,9 @@ const sampleTask: Task = {
   priority: 9,
 }
 
+/** Task with priority formatting */
 export const TaskWithPriorityFormatting = {
   render: () => <SchemaObjectInspector data={sampleTask} schema={TaskSchema} expandLevel={1} />,
-  name: 'Task with priority formatting',
 }
 
 /** Using top-level pretty print for an entire object */
@@ -312,12 +312,12 @@ type Point = typeof PointSchema.Type
 
 const samplePoint: Point = { x: 10, y: 20 }
 
+/** Object with top-level pretty print */
 export const ObjectWithTopLevelPrettyPrint = {
   render: () => <SchemaObjectInspector data={samplePoint} schema={PointSchema} />,
-  name: 'Object with top-level pretty print',
 }
 
-/** Comparison: same data with and without schema */
+/** Comparison: with and without schema */
 export const ComparisonWithAndWithoutSchema = {
   render: () => (
     <div style={{ display: 'flex', gap: '40px' }}>
@@ -331,17 +331,15 @@ export const ComparisonWithAndWithoutSchema = {
       </div>
     </div>
   ),
-  name: 'Comparison: with and without schema',
 }
 
-/** Example using SchemaProvider directly for more control */
+/** Using SchemaProvider directly */
 export const UsingSchemaProviderDirectly = {
   render: () => (
     <SchemaProvider schema={UserSchema}>
       <ObjectInspector data={sampleUser} expandLevel={1} />
     </SchemaProvider>
   ),
-  name: 'Using SchemaProvider directly',
 }
 
 /** Schema with description annotations - hover over fields to see tooltips */
@@ -397,6 +395,7 @@ const sampleDocumentedUser: DocumentedUser = {
   },
 }
 
+/** Schema with description tooltips */
 export const SchemaWithDescriptionTooltips = {
   render: () => (
     <div>
@@ -410,7 +409,6 @@ export const SchemaWithDescriptionTooltips = {
       />
     </div>
   ),
-  name: 'Schema with description tooltips',
 }
 
 /** API Response schema with detailed field descriptions */
@@ -487,6 +485,7 @@ const sampleApiResponse: ApiResponse = {
   },
 }
 
+/** API response with descriptions and formatting */
 export const ApiResponseWithDescriptions = {
   render: () => (
     <div>
@@ -497,10 +496,11 @@ export const ApiResponseWithDescriptions = {
       <SchemaObjectInspector data={sampleApiResponse} schema={ApiResponseSchema} expandLevel={3} />
     </div>
   ),
-  name: 'API response with descriptions and formatting',
 }
 
 /**
+ * Expanded vs collapsed preview
+ *
  * Demonstrates expanded vs collapsed behavior:
  * - Collapsed: Shows full inline preview "Order {orderId: "ORD-2024-001", customer: "John Doe", ...}"
  * - Expanded: Shows only the type identifier "Order" since children are visible below
@@ -527,5 +527,4 @@ export const ExpandedVsCollapsedPreview = {
       </div>
     </div>
   ),
-  name: 'Expanded vs collapsed preview',
 }

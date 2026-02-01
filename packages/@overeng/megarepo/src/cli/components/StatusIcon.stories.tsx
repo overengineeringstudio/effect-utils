@@ -85,6 +85,7 @@ const StatusIconShowcase = () => (
 
 export default {
   title: 'Components/StatusIcon',
+  component: StatusIcon,
   render: () => (
     <TuiStoryPreview>
       <StatusIconShowcase />
@@ -103,9 +104,9 @@ Status indicator icons for task and sync states.
       },
     },
   },
-} satisfies Meta
+} satisfies Meta<typeof StatusIcon>
 
-type Story = StoryObj
+type Story = StoryObj<typeof StatusIcon>
 
 // =============================================================================
 // Stories

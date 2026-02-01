@@ -13,7 +13,7 @@ import { AddOutput, AddErrorOutput, type AddOutputProps } from './AddOutput.tsx'
 // Meta
 // =============================================================================
 
-const meta: Meta<AddOutputProps> = {
+export default {
   title: 'CLI/Add Output',
   component: AddOutput,
   parameters: {
@@ -24,11 +24,9 @@ const meta: Meta<AddOutputProps> = {
       },
     },
   },
-}
+} satisfies Meta<typeof AddOutput>
 
-export default meta
-
-type Story = StoryObj<AddOutputProps>
+type Story = StoryObj<typeof AddOutput>
 
 // =============================================================================
 // Add Output Stories

@@ -15,6 +15,7 @@ import { Header } from './Header.tsx'
 
 export default {
   title: 'Components/Header',
+  component: Header,
   parameters: {
     layout: 'fullscreen',
     docs: {
@@ -32,9 +33,9 @@ mr-workspace
       },
     },
   },
-} satisfies Meta
+} satisfies Meta<typeof Header>
 
-type Story = StoryObj
+type Story = StoryObj<typeof Header>
 
 // =============================================================================
 // Stories

@@ -16,6 +16,7 @@ import { LogLine } from './LogLine.tsx'
 
 export default {
   title: 'Components/LogLine',
+  component: LogLine,
   parameters: {
     layout: 'fullscreen',
     docs: {
@@ -31,9 +32,9 @@ Log entry with colored type indicator.
       },
     },
   },
-} satisfies Meta
+} satisfies Meta<typeof LogLine>
 
-type Story = StoryObj
+type Story = StoryObj<typeof LogLine>
 
 // =============================================================================
 // Stories
