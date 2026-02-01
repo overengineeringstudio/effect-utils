@@ -333,7 +333,8 @@ const storeFetchCommand = Cli.Command.make('fetch', { output: outputOption }, ({
       // Print summary
       const fetchedCount = results.filter((r) => r.status === 'fetched').length
       const errorCount = results.filter((r) => r.status === 'error').length
-      const errorPart = errorCount > 0 ? ` \u00b7 ${errorCount} error${errorCount > 1 ? 's' : ''}` : ''
+      const errorPart =
+        errorCount > 0 ? ` \u00b7 ${errorCount} error${errorCount > 1 ? 's' : ''}` : ''
       yield* Console.log(`${fetchedCount} fetched${errorPart} \u00b7 ${formatElapsed(elapsed)}`)
     } else {
       // Use TuiApp for JSON/non-TTY output

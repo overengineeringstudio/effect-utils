@@ -2,11 +2,11 @@
  * Storybook stories for ExecOutput components.
  */
 
+import { useAtom } from '@effect-atom/react'
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
-import { useAtom } from '@effect-atom/react'
 
 import { ExecView, ExecApp, type ExecViewProps, type ExecState } from './ExecOutput/mod.ts'
 

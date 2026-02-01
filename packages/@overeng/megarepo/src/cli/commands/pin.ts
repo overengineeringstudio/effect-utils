@@ -119,7 +119,10 @@ export const pinCommand = Cli.Command.make(
               error: 'invalid_source',
               message: 'Invalid source string',
             })
-            return yield* new InvalidSourceError({ message: 'Invalid source', source: sourceString })
+            return yield* new InvalidSourceError({
+              message: 'Invalid source',
+              source: sourceString,
+            })
           }
           if (!isRemoteSource(source)) {
             tui.dispatch({
@@ -241,7 +244,9 @@ export const pinCommand = Cli.Command.make(
               yield* Console.log(`  Cloned ${cloneUrl}`)
             } else {
               // Fetch to ensure we have the latest refs
-              yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(Effect.catchAll(() => Effect.void))
+              yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(
+                Effect.catchAll(() => Effect.void),
+              )
             }
 
             // Resolve commit
@@ -337,7 +342,9 @@ export const pinCommand = Cli.Command.make(
           }
 
           // No -c provided: pin to current commit (existing behavior)
-          const lockedMember = Option.getOrUndefined(getLockedMember({ lockFile, memberName: member }))
+          const lockedMember = Option.getOrUndefined(
+            getLockedMember({ lockFile, memberName: member }),
+          )
           if (lockedMember === undefined) {
             tui.dispatch({
               _tag: 'SetError',
@@ -390,7 +397,9 @@ export const pinCommand = Cli.Command.make(
               action: 'pin',
               commit: lockedMember.commit,
               currentSymlink: wouldChangeSymlink ? shortenPath(currentLink) : undefined,
-              newSymlink: wouldChangeSymlink ? shortenPath(commitWorktreePath.replace(/\/$/, '')) : undefined,
+              newSymlink: wouldChangeSymlink
+                ? shortenPath(commitWorktreePath.replace(/\/$/, ''))
+                : undefined,
               lockChanges: ['pinned: false → true'],
               wouldCreateWorktree: !commitWorktreeExists && bareExists,
               worktreeNotAvailable: !commitWorktreeExists && !bareExists,
@@ -525,7 +534,9 @@ export const unpinCommand = Cli.Command.make(
             EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
           )
           const configContent = yield* fs.readFileString(configPath)
-          const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+          const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
+            configContent,
+          )
 
           if (!(member in config.members)) {
             tui.dispatch({
@@ -553,7 +564,9 @@ export const unpinCommand = Cli.Command.make(
           let lockFile = lockFileOpt.value
 
           // Check if member is in lock file
-          const lockedMember = Option.getOrUndefined(getLockedMember({ lockFile, memberName: member }))
+          const lockedMember = Option.getOrUndefined(
+            getLockedMember({ lockFile, memberName: member }),
+          )
           if (lockedMember === undefined) {
             tui.dispatch({
               _tag: 'SetError',

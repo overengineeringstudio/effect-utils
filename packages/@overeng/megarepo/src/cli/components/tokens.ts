@@ -2,25 +2,40 @@
  * Megarepo CLI Visual Tokens
  *
  * Centralized visual constants for consistent CLI output.
+ * Symbols are imported from @overeng/tui-react for consistency.
  */
 
+import { unicodeSymbols } from '@overeng/tui-react'
+
 // =============================================================================
-// Icons
+// Symbols (re-exported for convenience)
 // =============================================================================
 
-export const icons = {
+/**
+ * CLI symbols - shorthand accessors for common symbols.
+ *
+ * For React components, prefer `useSymbols()` hook for automatic
+ * unicode/ascii fallback support based on RenderConfig.
+ */
+export const symbols = {
   // Status indicators
-  check: '\u2713', // ✓
-  cross: '\u2717', // ✗
-  circle: '\u25cb', // ○
-  dot: '\u00b7', // ·
+  check: unicodeSymbols.status.check,
+  cross: unicodeSymbols.status.cross,
+  circle: unicodeSymbols.status.circle,
+  dot: unicodeSymbols.status.dot,
+  warning: unicodeSymbols.status.warning,
 
   // Arrows
-  arrow: '\u2192', // →
+  arrow: unicodeSymbols.arrows.right,
 
   // Structural
-  separator: '\u2500', // ─
+  separator: unicodeSymbols.line.horizontal,
 } as const
+
+/**
+ * @deprecated Use `symbols` instead
+ */
+export const icons = symbols
 
 // =============================================================================
 // Task Status Types
@@ -52,23 +67,23 @@ export type StatusConfig = {
 
 /** Generic task status styling */
 export const taskStatusConfig: Record<TaskStatus, StatusConfig> = {
-  pending: { icon: icons.circle, dim: true },
+  pending: { icon: symbols.circle, dim: true },
   active: { icon: 'spinner', color: 'cyan' },
-  success: { icon: icons.check, color: 'green' },
-  error: { icon: icons.cross, color: 'red' },
-  skipped: { icon: icons.circle, color: 'yellow' },
+  success: { icon: symbols.check, color: 'green' },
+  error: { icon: symbols.cross, color: 'red' },
+  skipped: { icon: symbols.circle, color: 'yellow' },
 }
 
 /** Sync result status styling */
 export const syncStatusConfig: Record<SyncResultStatus, StatusConfig> = {
-  cloned: { icon: icons.check, color: 'green' },
-  synced: { icon: icons.check, color: 'green' },
-  updated: { icon: icons.check, color: 'green' },
-  locked: { icon: icons.check, color: 'cyan' },
-  already_synced: { icon: icons.check, dim: true },
-  skipped: { icon: icons.circle, color: 'yellow' },
-  error: { icon: icons.cross, color: 'red' },
-  removed: { icon: icons.cross, color: 'red' },
+  cloned: { icon: symbols.check, color: 'green' },
+  synced: { icon: symbols.check, color: 'green' },
+  updated: { icon: symbols.check, color: 'green' },
+  locked: { icon: symbols.check, color: 'cyan' },
+  already_synced: { icon: symbols.check, dim: true },
+  skipped: { icon: symbols.circle, color: 'yellow' },
+  error: { icon: symbols.cross, color: 'red' },
+  removed: { icon: symbols.cross, color: 'red' },
 }
 
 /** Map sync result status to task status for progress display */

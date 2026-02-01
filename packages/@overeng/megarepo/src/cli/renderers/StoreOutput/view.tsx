@@ -11,12 +11,7 @@ import React from 'react'
 import { kv, separator } from '@overeng/cli-ui'
 import { Box, Text, useTuiAtomValue } from '@overeng/tui-react'
 
-import type {
-  StoreState,
-  StoreGcResult,
-  StoreWorktreeStatus,
-  StoreGcWarning,
-} from './schema.ts'
+import type { StoreState, StoreGcResult, StoreWorktreeStatus, StoreGcWarning } from './schema.ts'
 
 // =============================================================================
 // Symbols

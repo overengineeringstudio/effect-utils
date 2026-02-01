@@ -32,6 +32,21 @@
 // Re-export tui-core utilities
 export { type Terminal, type TerminalLike, createTerminal } from '@overeng/tui-core'
 
+// Terminal symbols
+export {
+  // From tui-core
+  symbolDefs,
+  type SymbolDef,
+  type SymbolDefs,
+  type Symbols,
+  resolveSymbols,
+  unicodeSymbols,
+  asciiSymbols,
+} from '@overeng/tui-core'
+
+// React hook for symbols
+export { useSymbols } from './hooks/useSymbols.tsx'
+
 // Root API
 export { createRoot, type Root, type CreateRootOptions, type UnmountOptions } from './root.tsx'
 

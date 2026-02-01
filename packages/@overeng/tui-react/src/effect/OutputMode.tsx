@@ -60,6 +60,8 @@ export interface RenderConfig {
   readonly animation: boolean
   /** Whether to output ANSI color codes */
   readonly colors: boolean
+  /** Whether to use unicode symbols (vs ASCII fallbacks) */
+  readonly unicode: boolean
   /** Whether to use alternate screen buffer (fullscreen mode) */
   readonly alternate: boolean
 }
@@ -106,7 +108,7 @@ export type OutputMode = ReactOutputMode | JsonOutputMode
 export const tty: OutputMode = {
   _tag: 'react',
   timing: 'progressive',
-  render: { animation: true, colors: true, alternate: false },
+  render: { animation: true, colors: true, unicode: true, alternate: false },
 }
 
 /**
@@ -118,7 +120,7 @@ export const tty: OutputMode = {
 export const ci: OutputMode = {
   _tag: 'react',
   timing: 'progressive',
-  render: { animation: false, colors: true, alternate: false },
+  render: { animation: false, colors: true, unicode: true, alternate: false },
 }
 
 /**
@@ -130,7 +132,7 @@ export const ci: OutputMode = {
 export const ciPlain: OutputMode = {
   _tag: 'react',
   timing: 'progressive',
-  render: { animation: false, colors: false, alternate: false },
+  render: { animation: false, colors: false, unicode: true, alternate: false },
 }
 
 /**
@@ -142,7 +144,7 @@ export const ciPlain: OutputMode = {
 export const pipe: OutputMode = {
   _tag: 'react',
   timing: 'final',
-  render: { animation: false, colors: true, alternate: false },
+  render: { animation: false, colors: true, unicode: true, alternate: false },
 }
 
 /**
@@ -154,7 +156,7 @@ export const pipe: OutputMode = {
 export const log: OutputMode = {
   _tag: 'react',
   timing: 'final',
-  render: { animation: false, colors: false, alternate: false },
+  render: { animation: false, colors: false, unicode: true, alternate: false },
 }
 
 /**
@@ -168,7 +170,7 @@ export const log: OutputMode = {
 export const altScreen: OutputMode = {
   _tag: 'react',
   timing: 'progressive',
-  render: { animation: true, colors: true, alternate: true },
+  render: { animation: true, colors: true, unicode: true, alternate: true },
 }
 
 /** @deprecated Use `altScreen` instead */
@@ -202,45 +204,67 @@ export const ndjson: OutputMode = {
 
 /**
  * RenderConfig for interactive TTY.
- * Animated spinners with colors.
+ * Animated spinners with colors and unicode.
  */
-export const ttyRenderConfig: RenderConfig = { animation: true, colors: true, alternate: false }
+export const ttyRenderConfig: RenderConfig = {
+  animation: true,
+  colors: true,
+  unicode: true,
+  alternate: false,
+}
 
 /**
  * RenderConfig for CI environments.
- * Static spinners with colors.
+ * Static spinners with colors and unicode.
  */
-export const ciRenderConfig: RenderConfig = { animation: false, colors: true, alternate: false }
+export const ciRenderConfig: RenderConfig = {
+  animation: false,
+  colors: true,
+  unicode: true,
+  alternate: false,
+}
 
 /**
  * RenderConfig for CI environments without color support.
- * Live timing (React re-renders) with static spinners, no colors.
+ * Live timing (React re-renders) with static spinners, no colors, unicode enabled.
  */
 export const ciPlainRenderConfig: RenderConfig = {
   animation: false,
   colors: false,
+  unicode: true,
   alternate: false,
 }
 
 /**
  * RenderConfig for piped output.
- * Final timing with static spinners, with colors.
+ * Final timing with static spinners, with colors and unicode.
  */
-export const pipeRenderConfig: RenderConfig = { animation: false, colors: true, alternate: false }
+export const pipeRenderConfig: RenderConfig = {
+  animation: false,
+  colors: true,
+  unicode: true,
+  alternate: false,
+}
 
 /**
  * RenderConfig for log files.
- * Final timing with static spinners, no colors.
+ * Final timing with static spinners, no colors, unicode enabled.
  */
-export const logRenderConfig: RenderConfig = { animation: false, colors: false, alternate: false }
+export const logRenderConfig: RenderConfig = {
+  animation: false,
+  colors: false,
+  unicode: true,
+  alternate: false,
+}
 
 /**
  * RenderConfig for alt-screen mode.
- * Animated spinners with colors in alternate buffer.
+ * Animated spinners with colors and unicode in alternate buffer.
  */
 export const altScreenRenderConfig: RenderConfig = {
   animation: true,
   colors: true,
+  unicode: true,
   alternate: true,
 }
 
@@ -283,6 +307,12 @@ const isNoColorSet = (): boolean =>
   typeof process !== 'undefined' && process.env?.NO_COLOR !== undefined
 
 /**
+ * Check if NO_UNICODE env var is set.
+ */
+const isNoUnicodeSet = (): boolean =>
+  typeof process !== 'undefined' && process.env?.NO_UNICODE !== undefined
+
+/**
  * Check if running in a CI environment.
  */
 const isCIEnv = (): boolean => typeof process !== 'undefined' && process.env?.CI !== undefined
@@ -322,24 +352,29 @@ export const detectOutputMode = (): OutputMode => {
   const ttyEnv = isTTY()
   const ciEnv = isCIEnv()
   const noColor = isNoColorSet()
+  const noUnicode = isNoUnicodeSet()
 
-  // Helper to apply noColor
-  const withColorCheck = (mode: ReactOutputMode): OutputMode =>
-    noColor ? { ...mode, render: { ...mode.render, colors: false } } : mode
+  // Helper to apply noColor and noUnicode
+  const withEnvOverrides = (mode: ReactOutputMode): OutputMode => {
+    let render = mode.render
+    if (noColor) render = { ...render, colors: false }
+    if (noUnicode) render = { ...render, unicode: false }
+    return render === mode.render ? mode : { ...mode, render }
+  }
 
   if (forceVisual) {
     // Forced visual: use tty if actually TTY, otherwise ci mode
-    return withColorCheck(ttyEnv && !ciEnv ? tty : ci)
+    return withEnvOverrides(ttyEnv && !ciEnv ? tty : ci)
   }
 
   // Auto-detect based on environment
   if (ttyEnv) {
-    return withColorCheck(ciEnv ? ci : tty)
+    return withEnvOverrides(ciEnv ? ci : tty)
   }
 
   // Non-TTY defaults to pipe (final React output, useful for piping)
   // Use json explicitly via --output=json if you want JSON
-  return withColorCheck(pipe)
+  return withEnvOverrides(pipe)
 }
 
 /** @deprecated Use `detectOutputMode()` instead */
@@ -399,8 +434,8 @@ export const isAlternate = (mode: OutputMode): boolean =>
  */
 export const getRenderConfig = (mode: OutputMode): RenderConfig => {
   if (mode._tag === 'react') return mode.render
-  // JSON modes get static, no-color config
-  return { animation: false, colors: false, alternate: false }
+  // JSON modes get static, no-color, unicode config
+  return { animation: false, colors: false, unicode: true, alternate: false }
 }
 
 // =============================================================================
@@ -410,7 +445,12 @@ export const getRenderConfig = (mode: OutputMode): RenderConfig => {
 /**
  * Default render config (used when no provider is present).
  */
-const defaultRenderConfig: RenderConfig = { animation: true, colors: true, alternate: false }
+const defaultRenderConfig: RenderConfig = {
+  animation: true,
+  colors: true,
+  unicode: true,
+  alternate: false,
+}
 
 const RenderConfigContext = createContext<RenderConfig>(defaultRenderConfig)
 

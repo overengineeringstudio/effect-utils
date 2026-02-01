@@ -45,6 +45,7 @@ export {
 } from './AddOutput/mod.ts'
 export type { AddViewProps, AddStateType, AddActionType } from './AddOutput/mod.ts'
 
+// Legacy Store components (for stories)
 export {
   StoreListOutput,
   StoreFetchOutput,
@@ -69,6 +70,45 @@ export type {
   StoreAddSuccessProps,
 } from './StoreOutput.tsx'
 
+// StoreOutput TuiApp (new pattern)
+export {
+  StoreApp,
+  StoreView,
+  StoreState,
+  StoreAction,
+  StoreLsState,
+  StoreStatusState,
+  StoreFetchState,
+  StoreGcState,
+  StoreAddState,
+  StoreErrorState,
+  StoreRepo as StoreRepoSchema,
+  StoreFetchResult as StoreFetchResultSchema,
+  StoreGcResult as StoreGcResultSchema,
+  StoreWorktreeIssue,
+  StoreWorktreeStatus,
+  StoreGcWarning,
+  storeReducer,
+  isStoreError,
+  isStoreLs,
+  isStoreStatus,
+  isStoreFetch,
+  isStoreGc,
+  isStoreAdd,
+  createInitialStoreState,
+} from './StoreOutput/mod.ts'
+export type {
+  StoreViewProps,
+  StoreStateType,
+  StoreActionType,
+  StoreRepoType,
+  StoreFetchResultType,
+  StoreGcResultType,
+  StoreWorktreeIssueType,
+  StoreWorktreeStatusType,
+  StoreGcWarningType as StoreGcWarningSchemaType,
+} from './StoreOutput/mod.ts'
+
 // ExecOutput TuiApp (new pattern)
 export {
   ExecApp,
@@ -85,4 +125,9 @@ export {
   isExecRunning,
   createInitialExecState,
 } from './ExecOutput/mod.ts'
-export type { ExecViewProps, ExecStateType, ExecActionType, MemberExecStatusType } from './ExecOutput/mod.ts'
+export type {
+  ExecViewProps,
+  ExecStateType,
+  ExecActionType,
+  MemberExecStatusType,
+} from './ExecOutput/mod.ts'

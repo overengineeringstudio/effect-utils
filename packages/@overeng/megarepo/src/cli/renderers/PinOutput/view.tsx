@@ -97,16 +97,14 @@ export const PinView = ({ stateAtom }: PinViewProps) => {
           <Text> </Text>
 
           {/* Source change */}
-          {state.currentSource &&
-            state.newSource &&
-            state.currentSource !== state.newSource && (
-              <Box flexDirection="row">
-                <Text dim>{'  megarepo.json  '}</Text>
-                <Text>{state.currentSource}</Text>
-                <Text dim> {symbols.arrow} </Text>
-                <Text>{state.newSource}</Text>
-              </Box>
-            )}
+          {state.currentSource && state.newSource && state.currentSource !== state.newSource && (
+            <Box flexDirection="row">
+              <Text dim>{'  megarepo.json  '}</Text>
+              <Text>{state.currentSource}</Text>
+              <Text dim> {symbols.arrow} </Text>
+              <Text>{state.newSource}</Text>
+            </Box>
+          )}
 
           {/* Symlink change */}
           {state.currentSymlink &&

@@ -113,7 +113,9 @@ export const addCommand = Cli.Command.make(
             EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
           )
           const configContent = yield* fs.readFileString(configPath)
-          const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+          const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
+            configContent,
+          )
 
           // Check if member already exists
           if (memberName in config.members) {
@@ -135,9 +137,9 @@ export const addCommand = Cli.Command.make(
           }
 
           // Write updated config
-          const newConfigContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
-            newConfig,
-          )
+          const newConfigContent = yield* Schema.encode(
+            Schema.parseJson(MegarepoConfig, { space: 2 }),
+          )(newConfig)
           yield* fs.writeFileString(configPath, newConfigContent + '\n')
 
           // Sync if requested
@@ -159,9 +161,12 @@ export const addCommand = Cli.Command.make(
               force: false,
             })
 
-            const syncStatus = result.status === 'cloned' ? 'cloned' as const
-              : result.status === 'error' ? 'error' as const
-              : 'synced' as const
+            const syncStatus =
+              result.status === 'cloned'
+                ? ('cloned' as const)
+                : result.status === 'error'
+                  ? ('error' as const)
+                  : ('synced' as const)
 
             tui.dispatch({
               _tag: 'SetSuccess',

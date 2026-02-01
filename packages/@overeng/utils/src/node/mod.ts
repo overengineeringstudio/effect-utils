@@ -19,6 +19,3 @@ export * from './task-runner.ts'
 
 /** CLI version resolution with optional runtime stamp */
 export * from './cli-version.ts'
-
-/** JSON mode helpers for CLIs with --json output */
-export * from './json-mode.ts'

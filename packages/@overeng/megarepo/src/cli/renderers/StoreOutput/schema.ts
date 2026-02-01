@@ -36,7 +36,14 @@ export const StoreGcResult = Schema.Struct({
 export type StoreGcResult = Schema.Schema.Type<typeof StoreGcResult>
 
 export const StoreWorktreeIssue = Schema.Struct({
-  type: Schema.Literal('dirty', 'unpushed', 'ref_mismatch', 'missing_bare', 'broken_worktree', 'orphaned'),
+  type: Schema.Literal(
+    'dirty',
+    'unpushed',
+    'ref_mismatch',
+    'missing_bare',
+    'broken_worktree',
+    'orphaned',
+  ),
   severity: Schema.Literal('error', 'warning', 'info'),
   message: Schema.String,
 })

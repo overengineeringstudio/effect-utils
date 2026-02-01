@@ -81,3 +81,18 @@ export {
   type ExitMode,
   type DisposeOptions,
 } from './renderer.ts'
+
+// Terminal symbols
+export {
+  // Definitions
+  symbolDefs,
+  type SymbolDef,
+  type SymbolDefs,
+  // Resolved types
+  type Symbols,
+  // Resolution
+  resolveSymbols,
+  // Pre-resolved
+  unicodeSymbols,
+  asciiSymbols,
+} from './symbols.ts'

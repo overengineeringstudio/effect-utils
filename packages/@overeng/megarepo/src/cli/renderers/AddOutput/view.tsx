@@ -46,7 +46,9 @@ export const AddView = ({ stateAtom }: AddViewProps) => {
           </Box>
           {state.error === 'invalid_repo' && (
             <Text dim>
-              {'  Expected: owner/repo, git@host:owner/repo.git, https://host/owner/repo.git, or /path/to/repo'}
+              {
+                '  Expected: owner/repo, git@host:owner/repo.git, https://host/owner/repo.git, or /path/to/repo'
+              }
             </Text>
           )}
         </Box>
@@ -70,10 +72,7 @@ export const AddView = ({ stateAtom }: AddViewProps) => {
                 </Text>
                 <Text> </Text>
                 <Text bold>{state.member}</Text>
-                <Text dim>
-                  {' '}
-                  ({state.syncStatus === 'cloned' ? 'cloned' : state.syncStatus})
-                </Text>
+                <Text dim> ({state.syncStatus === 'cloned' ? 'cloned' : state.syncStatus})</Text>
               </Box>
             </>
           )}

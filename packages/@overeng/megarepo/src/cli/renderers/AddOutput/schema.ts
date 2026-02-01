@@ -34,11 +34,9 @@ export const AddSuccessState = Schema.TaggedStruct('Success', {
   member: Schema.String,
   source: Schema.String,
   synced: Schema.Boolean,
-  syncStatus: Schema.optional(Schema.Union(
-    Schema.Literal('cloned'),
-    Schema.Literal('synced'),
-    Schema.Literal('error'),
-  )),
+  syncStatus: Schema.optional(
+    Schema.Union(Schema.Literal('cloned'), Schema.Literal('synced'), Schema.Literal('error')),
+  ),
 })
 
 /**
@@ -82,11 +80,9 @@ export const AddAction = Schema.Union(
     member: Schema.String,
     source: Schema.String,
     synced: Schema.Boolean,
-    syncStatus: Schema.optional(Schema.Union(
-      Schema.Literal('cloned'),
-      Schema.Literal('synced'),
-      Schema.Literal('error'),
-    )),
+    syncStatus: Schema.optional(
+      Schema.Union(Schema.Literal('cloned'), Schema.Literal('synced'), Schema.Literal('error')),
+    ),
   }),
   Schema.TaggedStruct('SetError', { error: Schema.String, message: Schema.String }),
 )
