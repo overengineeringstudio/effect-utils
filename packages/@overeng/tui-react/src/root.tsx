@@ -138,7 +138,7 @@ export const createRoot = ({
   let pendingRender = false
   let renderScheduled = false
 
-  // Static line tracking (for maxStaticLines)
+  // Static line tracking (for maxStaticLines and viewport height calculation)
   let staticLineCount = 0
 
   // Track if disposed (to prevent rendering after unmount)
@@ -316,13 +316,18 @@ export const createRoot = ({
             linesToAppend = linesToAppend.slice(-allowedNew)
           }
         }
-        staticLineCount = Math.min(staticLineCount + linesToAppend.length, maxStaticLines)
       }
 
       if (linesToAppend.length > 0) {
         // Truncate lines to prevent soft wrapping
         const truncatedStaticLines = truncateLines(linesToAppend, width)
         renderer.appendStatic(truncatedStaticLines)
+      }
+
+      // Always track static line count for viewport height calculation
+      staticLineCount += linesToAppend.length
+      if (maxStaticLines !== Infinity) {
+        staticLineCount = Math.min(staticLineCount, maxStaticLines)
       }
 
       // Update the committed count
@@ -337,18 +342,23 @@ export const createRoot = ({
     // Render to lines
     let lines = renderTreeSimple({ root: container.root, width })
 
-    // Truncate lines to prevent soft wrapping (which causes ghost lines during updates)
-    lines = truncateLines(lines, width)
-
     // Apply maxDynamicLines limit - also ensure we don't exceed terminal height
-    // to prevent scrolling which breaks cursor positioning in differential rendering
-    const effectiveMaxLines = Math.min(maxDynamicLines, viewport.rows - 1)
+    // to prevent scrolling which breaks cursor positioning in differential rendering.
+    // Account for static lines already consuming viewport rows.
+    const effectiveMaxLines = Math.min(
+      maxDynamicLines,
+      Math.max(1, viewport.rows - 1 - staticLineCount),
+    )
     if (lines.length > effectiveMaxLines) {
       const truncated = lines.slice(0, effectiveMaxLines - 1)
       const hiddenCount = lines.length - effectiveMaxLines + 1
       truncated.push(`... ${hiddenCount} more line${hiddenCount > 1 ? 's' : ''}`)
       lines = truncated
     }
+
+    // Truncate lines to prevent soft wrapping (which causes ghost lines during updates).
+    // Done after vertical truncation so the overflow indicator is also truncated.
+    lines = truncateLines(lines, width)
 
     renderer.render(lines)
   }
