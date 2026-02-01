@@ -23,7 +23,7 @@
  */
 
 // Import types from our type declarations (works whether OpenTUI is installed or not)
-import type { OpenTuiKeyEvent } from '@opentui/react'
+import type { KeyEvent } from '@opentui/core'
 import { Effect, Fiber, PubSub, Stream, SubscriptionRef } from 'effect'
 import { useState, useEffect, useCallback, useRef } from 'react'
 
@@ -79,7 +79,7 @@ export interface UseOKeyboardOptions {
   /** Handle key release events (default: false) */
   release?: boolean
   /** Custom key handler (called in addition to PubSub publish) */
-  onKey?: (key: OpenTuiKeyEvent) => void
+  onKey?: (key: KeyEvent) => void
 }
 
 /**
@@ -129,7 +129,7 @@ export const useOKeyboard = ({
 
   // Provide a callback that users can use with OpenTUI's useKeyboard
   const handleKey = useCallback(
-    (key: OpenTuiKeyEvent) => {
+    (key: KeyEvent) => {
       // Convert to our KeyEvent format and publish
       const event = keyEvent({
         key: key.name,
@@ -169,9 +169,9 @@ export const createKeyboardHandler = ({
   onKey,
 }: {
   eventPubSub: PubSub.PubSub<InputEvent>
-  onKey?: (key: OpenTuiKeyEvent) => void
-}): ((key: OpenTuiKeyEvent) => void) => {
-  return (key: OpenTuiKeyEvent) => {
+  onKey?: (key: KeyEvent) => void
+}): ((key: KeyEvent) => void) => {
+  return (key: KeyEvent) => {
     const event = keyEvent({
       key: key.name,
       ctrl: key.ctrl,

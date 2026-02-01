@@ -4,6 +4,6 @@
  * Uses the shared TUI Storybook utilities (dogfooding our own export).
  */
 
-import { tuiPreview } from '../src/storybook/mod.ts'
+import { tuiPreview } from '../src/storybook/mod.tsx'
 
 export default tuiPreview

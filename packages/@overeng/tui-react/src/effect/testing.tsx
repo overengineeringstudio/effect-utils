@@ -29,7 +29,7 @@ import {
   ci,
   pipe,
   log,
-  fullscreen,
+  altScreen,
   json,
   ndjson,
 } from './OutputMode.tsx'
@@ -96,7 +96,7 @@ export const modeFromTag = (preset: TestModePreset): OutputMode => {
     case 'log':
       return log
     case 'fullscreen':
-      return fullscreen
+      return altScreen
     case 'json':
       return json
     case 'ndjson':

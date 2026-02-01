@@ -109,6 +109,9 @@ export const bold = (text: string): string => `${CSI}1m${text}${CSI}22m`
 /** Dim text */
 export const dim = (text: string): string => `${CSI}2m${text}${CSI}22m`
 
+/** Normal intensity (resets bold/dim) - use when explicitly turning off dim */
+export const normalIntensity = (): string => `${CSI}22m`
+
 /** Italic text */
 export const italic = (text: string): string => `${CSI}3m${text}${CSI}23m`
 

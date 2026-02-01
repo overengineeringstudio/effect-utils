@@ -364,7 +364,8 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
 
   // Check once if schema has Interrupted variant
   const interruptedAction = createInterruptedAction(config.actionSchema)
-  const interruptTimeout = config.interruptTimeout ?? 500
+  // TODO: Implement interrupt timeout handling
+  const _interruptTimeout = config.interruptTimeout ?? 500
 
   const run = (
     view?: ReactElement,
@@ -542,6 +543,9 @@ const setupProgressiveVisualWithView = <S, A>({
         <TuiAppWrapper />
       </ViewportProvider>,
     )
+
+    // Clean up root when scope closes
+    yield* Effect.addFinalizer(() => Effect.sync(() => root.unmount()))
 
     return root
   })

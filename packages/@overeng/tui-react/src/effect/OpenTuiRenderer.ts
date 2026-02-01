@@ -32,11 +32,24 @@
  * @module
  */
 
-// Import types from our type declarations (works whether OpenTUI is installed or not)
-import type { CliRenderer, CliRendererOptions } from '@opentui/core'
-import type { OpenTuiKeyEvent, OpenTuiRoot } from '@opentui/react'
+// =============================================================================
+// TYPE WORKAROUND: Why we define OpenTUI types locally
+// =============================================================================
+//
+// OpenTUI is an optional Bun-only peer dependency. We use local type definitions
+// + `as unknown as` casts instead of importing types directly because:
+//
+// 1. This package must compile without @opentui/* installed (optional dep)
+// 2. OpenTUI's .d.ts files use extensionless re-exports which don't resolve
+//    with moduleResolution: "NodeNext" - see https://github.com/anomalyco/opentui/issues/504
+//
+// The pattern: opentui.d.ts provides ambient decls, this file defines local
+// interfaces, and dynamic imports cast via `as unknown as LocalType`.
+// =============================================================================
+
 import type { Scope, SubscriptionRef } from 'effect'
 import { Effect, PubSub } from 'effect'
+import type React from 'react'
 import type { FC } from 'react'
 
 import type { InputEvent } from './events.ts'
@@ -125,15 +138,44 @@ export interface OpenTuiRenderer {
 }
 
 // =============================================================================
+// OpenTUI Types (local definitions to avoid import issues across workspaces)
+// =============================================================================
+
+/** OpenTUI CLI renderer configuration */
+interface OpenTuiCliRendererConfig {
+  exitOnCtrlC?: boolean
+}
+
+/** OpenTUI CLI renderer instance (opaque) */
+interface OpenTuiCliRenderer {
+  // Opaque - we don't access internals directly
+}
+
+/** OpenTUI key event from keyboard handler */
+interface OpenTuiKeyEvent {
+  name: string
+  ctrl: boolean
+  shift: boolean
+  meta: boolean
+  option: boolean
+}
+
+/** OpenTUI React root for rendering */
+interface OpenTuiRoot {
+  render(element: React.ReactNode): void
+  unmount(): void
+}
+
+// =============================================================================
 // OpenTUI Module Types (for dynamic import return values)
 // =============================================================================
 
 interface OpenTuiCoreModule {
-  createCliRenderer: (options?: CliRendererOptions) => Promise<CliRenderer>
+  createCliRenderer: (options?: OpenTuiCliRendererConfig) => Promise<OpenTuiCliRenderer>
 }
 
 interface OpenTuiReactModule {
-  createRoot: (renderer: CliRenderer) => OpenTuiRoot
+  createRoot: (renderer: OpenTuiCliRenderer) => OpenTuiRoot
   useKeyboard: (handler: (key: OpenTuiKeyEvent) => void, options?: { release?: boolean }) => void
   useOnResize: (handler: (width: number, height: number) => void) => void
   useTerminalDimensions: () => { width: number; height: number }
@@ -147,7 +189,8 @@ const importOpenTuiCore = (): Effect.Effect<OpenTuiCoreModule, OpenTuiCoreImport
   Effect.tryPromise({
     try: async () => {
       const mod = await import('@opentui/core')
-      return mod as OpenTuiCoreModule
+      // Use unknown intermediate cast since actual module types may differ across workspaces
+      return mod as unknown as OpenTuiCoreModule
     },
     catch: () =>
       new OpenTuiCoreImportError(
@@ -161,7 +204,8 @@ const importOpenTuiReact = (): Effect.Effect<OpenTuiReactModule, OpenTuiReactImp
   Effect.tryPromise({
     try: async () => {
       const mod = await import('@opentui/react')
-      return mod as OpenTuiReactModule
+      // Use unknown intermediate cast since actual module types may differ across workspaces
+      return mod as unknown as OpenTuiReactModule
     },
     catch: () =>
       new OpenTuiReactImportError(

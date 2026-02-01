@@ -54,6 +54,7 @@ export {
   reset,
   bold,
   dim,
+  normalIntensity,
   italic,
   underline,
   strikethrough,
