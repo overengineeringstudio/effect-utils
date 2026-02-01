@@ -1,5 +1,5 @@
 /**
- * Storybook stories for StoreFetchOutput component.
+ * Storybook stories for StoreFetch output.
  */
 
 import type { Meta, StoryObj } from '@storybook/react'
@@ -8,10 +8,12 @@ import React from 'react'
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
 import {
-  StoreFetchOutput,
-  type StoreFetchOutputProps,
+  StoreView,
+  StoreState,
+  StoreAction,
+  storeReducer,
   type StoreFetchResult,
-} from './StoreOutput.tsx'
+} from './StoreOutput/mod.ts'
 
 // =============================================================================
 // Example Data
@@ -24,29 +26,26 @@ const exampleFetchResults: StoreFetchResult[] = [
 ]
 
 // =============================================================================
+// State Factory
+// =============================================================================
+
+const createFetchState = (opts: {
+  results: StoreFetchResult[]
+  elapsedMs: number
+}): typeof StoreState.Type => ({
+  _tag: 'Fetch',
+  basePath: '/Users/dev/.megarepo',
+  results: opts.results,
+  elapsedMs: opts.elapsedMs,
+})
+
+// =============================================================================
 // Meta
 // =============================================================================
 
 const meta = {
   title: 'CLI/Store/Fetch',
-  component: StoreFetchOutput,
-  render: (args) => (
-    <TuiStoryPreview>
-      <StoreFetchOutput {...args} />
-    </TuiStoryPreview>
-  ),
-  args: {
-    basePath: '/Users/dev/.megarepo',
-    results: [],
-    elapsedMs: 2350,
-  },
-  argTypes: {
-    elapsedMs: {
-      description: 'Elapsed time in milliseconds',
-      control: { type: 'number' },
-      table: { category: 'Performance' },
-    },
-  },
+  component: StoreView,
   parameters: {
     layout: 'padded',
     docs: {
@@ -56,7 +55,7 @@ const meta = {
       },
     },
   },
-} satisfies Meta<StoreFetchOutputProps>
+} satisfies Meta<typeof StoreView>
 
 export default meta
 
@@ -67,29 +66,53 @@ type Story = StoryObj<typeof meta>
 // =============================================================================
 
 export const Success: Story = {
-  args: {
-    results: [
-      { path: 'github.com/effect-ts/effect', status: 'fetched' },
-      { path: 'github.com/overengineeringstudio/effect-utils', status: 'fetched' },
-      { path: 'github.com/schickling/dotfiles', status: 'fetched' },
-    ],
-    elapsedMs: 1850,
-  },
+  render: () => (
+    <TuiStoryPreview
+      View={StoreView}
+      stateSchema={StoreState}
+      actionSchema={StoreAction}
+      reducer={storeReducer}
+      initialState={createFetchState({
+        results: [
+          { path: 'github.com/effect-ts/effect', status: 'fetched' },
+          { path: 'github.com/overengineeringstudio/effect-utils', status: 'fetched' },
+          { path: 'github.com/schickling/dotfiles', status: 'fetched' },
+        ],
+        elapsedMs: 1850,
+      })}
+    />
+  ),
 }
 
 export const WithErrors: Story = {
-  args: {
-    results: exampleFetchResults,
-    elapsedMs: 3200,
-  },
+  render: () => (
+    <TuiStoryPreview
+      View={StoreView}
+      stateSchema={StoreState}
+      actionSchema={StoreAction}
+      reducer={storeReducer}
+      initialState={createFetchState({
+        results: exampleFetchResults,
+        elapsedMs: 3200,
+      })}
+    />
+  ),
 }
 
 export const AllErrors: Story = {
-  args: {
-    results: [
-      { path: 'github.com/effect-ts/effect', status: 'error', message: 'network timeout' },
-      { path: 'github.com/private/repo', status: 'error', message: 'authentication failed' },
-    ],
-    elapsedMs: 30500,
-  },
+  render: () => (
+    <TuiStoryPreview
+      View={StoreView}
+      stateSchema={StoreState}
+      actionSchema={StoreAction}
+      reducer={storeReducer}
+      initialState={createFetchState({
+        results: [
+          { path: 'github.com/effect-ts/effect', status: 'error', message: 'network timeout' },
+          { path: 'github.com/private/repo', status: 'error', message: 'authentication failed' },
+        ],
+        elapsedMs: 30500,
+      })}
+    />
+  ),
 }

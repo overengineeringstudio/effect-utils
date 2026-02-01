@@ -9,21 +9,18 @@ import type { Atom } from '@effect-atom/atom'
 import React from 'react'
 
 import { kv, separator } from '@overeng/cli-ui'
-import { Box, Text, useTuiAtomValue } from '@overeng/tui-react'
+import { Box, Text, useTuiAtomValue, unicodeSymbols } from '@overeng/tui-react'
 
 import type { StoreState, StoreGcResult, StoreWorktreeStatus, StoreGcWarning } from './schema.ts'
 
-// =============================================================================
-// Symbols
-// =============================================================================
-
+// Shorthand for commonly used symbols
 const SYMBOLS = {
-  check: '\u2713',
-  cross: '\u2717',
-  warning: '\u26a0',
-  circle: '\u25cb',
-  dot: '\u00b7',
-  arrow: '\u2192',
+  check: unicodeSymbols.status.check,
+  cross: unicodeSymbols.status.cross,
+  warning: unicodeSymbols.status.warning,
+  circle: unicodeSymbols.status.circle,
+  dot: unicodeSymbols.status.dot,
+  arrow: unicodeSymbols.arrows.right,
 }
 
 // =============================================================================

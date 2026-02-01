@@ -7,7 +7,7 @@
 import React from 'react'
 
 import { kv, separator } from '@overeng/cli-ui'
-import { Box, Text } from '@overeng/tui-react'
+import { Box, Text, unicodeSymbols } from '@overeng/tui-react'
 
 // =============================================================================
 // Types
@@ -425,12 +425,13 @@ export const StoreStatusOutput = ({
 // Internal Constants and Helpers
 // =============================================================================
 
+// Use centralized symbols from tui-react
 const SYMBOLS = {
-  check: '\u2713',
-  cross: '\u2717',
-  warning: '\u26a0',
-  circle: '\u25cb',
-  dot: '\u00b7',
+  check: unicodeSymbols.status.check,
+  cross: unicodeSymbols.status.cross,
+  warning: unicodeSymbols.status.warning,
+  circle: unicodeSymbols.status.circle,
+  dot: unicodeSymbols.status.dot,
 }
 
 /** Format elapsed time */

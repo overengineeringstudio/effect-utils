@@ -5,35 +5,20 @@
 import type { Atom } from '@effect-atom/atom'
 import React from 'react'
 
-import { Box, Text, useTuiAtomValue } from '@overeng/tui-react'
+import { Box, Text, useTuiAtomValue, useSymbols, type Symbols } from '@overeng/tui-react'
 
 import type { GenerateState, GenerateResultItem } from './schema.ts'
-
-const symbols = {
-  check: '\u2713',
-  cross: '\u2717',
-}
 
 export interface GenerateViewProps {
   stateAtom: Atom.Atom<GenerateState>
 }
 
 /**
- * Renders a single result item.
- */
-const ResultItem = ({ item }: { item: GenerateResultItem }) => (
-  <Box flexDirection="row">
-    <Text color="green">{symbols.check}</Text>
-    <Text> Generated </Text>
-    <Text bold>{item.status}</Text>
-  </Box>
-)
-
-/**
  * GenerateView - View for generate command.
  */
 export const GenerateView = ({ stateAtom }: GenerateViewProps) => {
   const state = useTuiAtomValue(stateAtom)
+  const symbols = useSymbols()
 
   switch (state._tag) {
     case 'Idle':
@@ -48,7 +33,7 @@ export const GenerateView = ({ stateAtom }: GenerateViewProps) => {
     case 'Error':
       return (
         <Box flexDirection="row">
-          <Text color="red">{symbols.cross}</Text>
+          <Text color="red">{symbols.status.cross}</Text>
           <Text> {state.message}</Text>
         </Box>
       )
@@ -57,7 +42,7 @@ export const GenerateView = ({ stateAtom }: GenerateViewProps) => {
       return (
         <Box flexDirection="column">
           {state.results.map((item) => (
-            <ResultItem key={`${item.generator}-${item.status}`} item={item} />
+            <ResultItem key={`${item.generator}-${item.status}`} item={item} symbols={symbols} />
           ))}
           {resultCount > 0 && (
             <>
@@ -69,4 +54,17 @@ export const GenerateView = ({ stateAtom }: GenerateViewProps) => {
       )
     }
   }
+}
+
+/**
+ * Renders a single result item.
+ */
+function ResultItem({ item, symbols }: { item: GenerateResultItem; symbols: Symbols }) {
+  return (
+    <Box flexDirection="row">
+      <Text color="green">{symbols.status.check}</Text>
+      <Text> Generated </Text>
+      <Text bold>{item.status}</Text>
+    </Box>
+  )
 }

@@ -7,7 +7,7 @@
 
 import React from 'react'
 
-import { Box, Text } from '@overeng/tui-react'
+import { Box, Text, unicodeSymbols } from '@overeng/tui-react'
 
 // =============================================================================
 // Types (matching sync-renderer.ts)
@@ -62,11 +62,12 @@ export type SyncOutputProps = {
 // Symbols
 // =============================================================================
 
+// Use centralized symbols from tui-react
 const symbols = {
-  check: '\u2713', // ✓
-  cross: '\u2717', // ✗
-  circle: '\u25cb', // ○
-  dot: '\u00b7', // ·
+  check: unicodeSymbols.status.check,
+  cross: unicodeSymbols.status.cross,
+  circle: unicodeSymbols.status.circle,
+  dot: unicodeSymbols.status.dot,
 }
 
 // =============================================================================

@@ -6,15 +6,7 @@
 
 import React from 'react'
 
-import { Box, Text } from '@overeng/tui-react'
-
-// =============================================================================
-// Symbols
-// =============================================================================
-
-const symbols = {
-  cross: '\u2717',
-}
+import { Box, Text, unicodeSymbols } from '@overeng/tui-react'
 
 // =============================================================================
 // Components
@@ -30,7 +22,7 @@ export interface NotInMegarepoViewProps {
  */
 export const NotInMegarepoView = ({ message = 'Not in a megarepo' }: NotInMegarepoViewProps) => (
   <Box flexDirection="row">
-    <Text color="red">{symbols.cross}</Text>
+    <Text color="red">{unicodeSymbols.status.cross}</Text>
     <Text> {message}</Text>
   </Box>
 )
@@ -47,7 +39,7 @@ export const NotGitRepoView = ({
   message = "Not a git repository. Run 'git init' first.",
 }: NotGitRepoViewProps) => (
   <Box flexDirection="row">
-    <Text color="red">{symbols.cross}</Text>
+    <Text color="red">{unicodeSymbols.status.cross}</Text>
     <Text> {message}</Text>
   </Box>
 )
@@ -61,7 +53,7 @@ export interface GenericErrorViewProps {
  */
 export const GenericErrorView = ({ message }: GenericErrorViewProps) => (
   <Box flexDirection="row">
-    <Text color="red">{symbols.cross}</Text>
+    <Text color="red">{unicodeSymbols.status.cross}</Text>
     <Text> {message}</Text>
   </Box>
 )

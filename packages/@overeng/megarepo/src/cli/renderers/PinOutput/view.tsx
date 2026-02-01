@@ -5,16 +5,9 @@
 import type { Atom } from '@effect-atom/atom'
 import React from 'react'
 
-import { Box, Text, useTuiAtomValue } from '@overeng/tui-react'
+import { Box, Text, useTuiAtomValue, useSymbols } from '@overeng/tui-react'
 
 import type { PinState } from './schema.ts'
-
-const symbols = {
-  check: '\u2713',
-  cross: '\u2717',
-  warning: '\u26a0',
-  arrow: '\u2192',
-}
 
 export interface PinViewProps {
   stateAtom: Atom.Atom<PinState>
@@ -25,6 +18,7 @@ export interface PinViewProps {
  */
 export const PinView = ({ stateAtom }: PinViewProps) => {
   const state = useTuiAtomValue(stateAtom)
+  const symbols = useSymbols()
 
   switch (state._tag) {
     case 'Idle':
@@ -41,7 +35,7 @@ export const PinView = ({ stateAtom }: PinViewProps) => {
       if (state.action === 'unpin') {
         return (
           <Box flexDirection="row">
-            <Text color="green">{symbols.check}</Text>
+            <Text color="green">{symbols.status.check}</Text>
             <Text> Unpinned </Text>
             <Text bold>{state.member}</Text>
           </Box>
@@ -49,7 +43,7 @@ export const PinView = ({ stateAtom }: PinViewProps) => {
       }
       return (
         <Box flexDirection="row">
-          <Text color="green">{symbols.check}</Text>
+          <Text color="green">{symbols.status.check}</Text>
           <Text> Pinned </Text>
           <Text bold>{state.member}</Text>
           {state.ref && (
@@ -101,7 +95,7 @@ export const PinView = ({ stateAtom }: PinViewProps) => {
             <Box flexDirection="row">
               <Text dim>{'  megarepo.json  '}</Text>
               <Text>{state.currentSource}</Text>
-              <Text dim> {symbols.arrow} </Text>
+              <Text dim> {symbols.arrows.right} </Text>
               <Text>{state.newSource}</Text>
             </Box>
           )}
@@ -113,7 +107,7 @@ export const PinView = ({ stateAtom }: PinViewProps) => {
               <Box flexDirection="row">
                 <Text dim>{'  symlink        '}</Text>
                 <Text>{state.currentSymlink}</Text>
-                <Text dim> {symbols.arrow} </Text>
+                <Text dim> {symbols.arrows.right} </Text>
                 <Text>{state.newSymlink}</Text>
               </Box>
             )}
@@ -156,7 +150,7 @@ export const PinView = ({ stateAtom }: PinViewProps) => {
       return (
         <Box>
           <Box flexDirection="row">
-            <Text color="yellow">{symbols.warning}</Text>
+            <Text color="yellow">{symbols.status.warning}</Text>
             <Text color="yellow"> {state.message ?? getWarningMessage()}</Text>
           </Box>
           {state.warning === 'member_removed_from_config' && (
@@ -175,7 +169,7 @@ export const PinView = ({ stateAtom }: PinViewProps) => {
       return (
         <Box>
           <Box flexDirection="row">
-            <Text color="red">{symbols.cross}</Text>
+            <Text color="red">{symbols.status.cross}</Text>
             <Text> {state.message}</Text>
           </Box>
           {state.error === 'not_synced' && <Text dim>{'  Run: mr sync'}</Text>}

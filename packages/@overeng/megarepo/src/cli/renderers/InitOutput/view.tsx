@@ -7,14 +7,9 @@ import path from 'node:path'
 import type { Atom } from '@effect-atom/atom'
 import React from 'react'
 
-import { Box, Text, useTuiAtomValue } from '@overeng/tui-react'
+import { Box, Text, useTuiAtomValue, useSymbols } from '@overeng/tui-react'
 
 import type { InitState } from './schema.ts'
-
-const symbols = {
-  check: '\u2713',
-  cross: '\u2717',
-}
 
 export interface InitViewProps {
   stateAtom: Atom.Atom<InitState>
@@ -25,12 +20,13 @@ export interface InitViewProps {
  */
 export const InitView = ({ stateAtom }: InitViewProps) => {
   const state = useTuiAtomValue(stateAtom)
+  const symbols = useSymbols()
 
   switch (state._tag) {
     case 'Error':
       return (
         <Box flexDirection="row">
-          <Text color="red">{symbols.cross}</Text>
+          <Text color="red">{symbols.status.cross}</Text>
           <Text> {state.message}</Text>
         </Box>
       )
@@ -40,7 +36,7 @@ export const InitView = ({ stateAtom }: InitViewProps) => {
       const dirName = path.basename(path.dirname(state.path))
       return (
         <Box flexDirection="row">
-          <Text color="green">{symbols.check}</Text>
+          <Text color="green">{symbols.status.check}</Text>
           <Text dim> initialized megarepo at </Text>
           <Text bold>{dirName}</Text>
         </Box>

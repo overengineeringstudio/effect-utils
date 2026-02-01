@@ -7,7 +7,7 @@
 
 import React from 'react'
 
-import { Box, Text } from '@overeng/tui-react'
+import { Box, Text, unicodeSymbols } from '@overeng/tui-react'
 
 // =============================================================================
 // Types
@@ -73,13 +73,14 @@ export type StatusOutputProps = {
 // Symbols
 // =============================================================================
 
+// Use centralized symbols from tui-react
 const symbols = {
-  check: '\u2713',
-  cross: '\u2717',
-  circle: '\u25cb',
-  dot: '\u00b7',
-  dirty: '\u25cf',
-  ahead: '\u2191',
+  check: unicodeSymbols.status.check,
+  cross: unicodeSymbols.status.cross,
+  circle: unicodeSymbols.status.circle,
+  dot: unicodeSymbols.status.dot,
+  dirty: unicodeSymbols.status.dirty,
+  ahead: unicodeSymbols.arrows.up,
 }
 
 // =============================================================================
@@ -466,12 +467,12 @@ const MemberLine = ({
   )
 }
 
-/** Tree branch characters */
+/** Tree branch characters - use centralized symbols from tui-react */
 const tree = {
-  middle: '\u251c\u2500\u2500 ',
-  last: '\u2514\u2500\u2500 ',
-  vertical: '\u2502   ',
-  empty: '    ',
+  middle: unicodeSymbols.tree.branch,
+  last: unicodeSymbols.tree.last,
+  vertical: unicodeSymbols.tree.vertical,
+  empty: unicodeSymbols.tree.empty,
 }
 
 /** Recursive tree rendering */

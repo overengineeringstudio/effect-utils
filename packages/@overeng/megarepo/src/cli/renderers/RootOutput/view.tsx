@@ -5,13 +5,9 @@
 import type { Atom } from '@effect-atom/atom'
 import React from 'react'
 
-import { Box, Text, useTuiAtomValue } from '@overeng/tui-react'
+import { Box, Text, useTuiAtomValue, useSymbols } from '@overeng/tui-react'
 
 import type { RootState } from './schema.ts'
-
-const symbols = {
-  cross: '\u2717',
-}
 
 export interface RootViewProps {
   stateAtom: Atom.Atom<RootState>
@@ -22,12 +18,13 @@ export interface RootViewProps {
  */
 export const RootView = ({ stateAtom }: RootViewProps) => {
   const state = useTuiAtomValue(stateAtom)
+  const symbols = useSymbols()
 
   // Handle error state
   if (state._tag === 'Error') {
     return (
       <Box flexDirection="row">
-        <Text color="red">{symbols.cross}</Text>
+        <Text color="red">{symbols.status.cross}</Text>
         <Text> {state.message}</Text>
       </Box>
     )

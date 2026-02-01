@@ -8,13 +8,9 @@
 import type { Atom } from '@effect-atom/atom'
 import React from 'react'
 
-import { Box, Text, useTuiAtomValue } from '@overeng/tui-react'
+import { Box, Text, useTuiAtomValue, useSymbols } from '@overeng/tui-react'
 
 import type { EnvState } from './schema.ts'
-
-const symbols = {
-  cross: '\u2717',
-}
 
 // =============================================================================
 // Main Component
@@ -32,12 +28,13 @@ export interface EnvViewProps {
  */
 export const EnvView = ({ stateAtom }: EnvViewProps) => {
   const state = useTuiAtomValue(stateAtom)
+  const symbols = useSymbols()
 
   // Handle error state
   if (state._tag === 'Error') {
     return (
       <Box flexDirection="row">
-        <Text color="red">{symbols.cross}</Text>
+        <Text color="red">{symbols.status.cross}</Text>
         <Text> {state.message}</Text>
       </Box>
     )

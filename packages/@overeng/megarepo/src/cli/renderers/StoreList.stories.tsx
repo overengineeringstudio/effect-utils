@@ -1,5 +1,5 @@
 /**
- * Storybook stories for StoreListOutput component.
+ * Storybook stories for StoreLs (list) output.
  */
 
 import type { Meta, StoryObj } from '@storybook/react'
@@ -7,7 +7,13 @@ import React from 'react'
 
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
-import { StoreListOutput, type StoreListOutputProps, type StoreRepo } from './StoreOutput.tsx'
+import {
+  StoreView,
+  StoreState,
+  StoreAction,
+  storeReducer,
+  type StoreRepo,
+} from './StoreOutput/mod.ts'
 
 // =============================================================================
 // Example Data
@@ -20,21 +26,21 @@ const exampleStoreRepos: StoreRepo[] = [
 ]
 
 // =============================================================================
+// State Factories
+// =============================================================================
+
+const createLsState = (repos: StoreRepo[]): typeof StoreState.Type => ({
+  _tag: 'Ls',
+  basePath: '/Users/dev/.megarepo',
+  repos,
+})
+
+// =============================================================================
 // Meta
 // =============================================================================
 
-const meta = {
+export default {
   title: 'CLI/Store/List',
-  component: StoreListOutput,
-  render: (args) => (
-    <TuiStoryPreview>
-      <StoreListOutput {...args} />
-    </TuiStoryPreview>
-  ),
-  args: {
-    basePath: '/Users/dev/.megarepo',
-    repos: [],
-  },
   parameters: {
     layout: 'padded',
     docs: {
@@ -43,39 +49,55 @@ const meta = {
       },
     },
   },
-} satisfies Meta<StoreListOutputProps>
+} satisfies Meta
 
-export default meta
-
-type Story = StoryObj<typeof meta>
+type Story = StoryObj<{ height?: number }>
 
 // =============================================================================
 // Stories
 // =============================================================================
 
 export const WithRepos: Story = {
-  args: {
-    repos: exampleStoreRepos,
-  },
+  render: () => (
+    <TuiStoryPreview
+      View={StoreView}
+      stateSchema={StoreState}
+      actionSchema={StoreAction}
+      reducer={storeReducer}
+      initialState={createLsState(exampleStoreRepos)}
+    />
+  ),
 }
 
 export const Empty: Story = {
-  args: {
-    repos: [],
-  },
+  render: () => (
+    <TuiStoryPreview
+      View={StoreView}
+      stateSchema={StoreState}
+      actionSchema={StoreAction}
+      reducer={storeReducer}
+      initialState={createLsState([])}
+    />
+  ),
 }
 
 export const ManyRepos: Story = {
-  args: {
-    repos: [
-      { relativePath: 'github.com/effect-ts/effect' },
-      { relativePath: 'github.com/effect-ts/effect-schema' },
-      { relativePath: 'github.com/effect-ts/effect-platform' },
-      { relativePath: 'github.com/overengineeringstudio/effect-utils' },
-      { relativePath: 'github.com/overengineeringstudio/tui-react' },
-      { relativePath: 'github.com/schickling/dotfiles' },
-      { relativePath: 'github.com/schickling/config' },
-      { relativePath: 'gitlab.com/company/internal-lib' },
-    ],
-  },
+  render: () => (
+    <TuiStoryPreview
+      View={StoreView}
+      stateSchema={StoreState}
+      actionSchema={StoreAction}
+      reducer={storeReducer}
+      initialState={createLsState([
+        { relativePath: 'github.com/effect-ts/effect' },
+        { relativePath: 'github.com/effect-ts/effect-schema' },
+        { relativePath: 'github.com/effect-ts/effect-platform' },
+        { relativePath: 'github.com/overengineeringstudio/effect-utils' },
+        { relativePath: 'github.com/overengineeringstudio/tui-react' },
+        { relativePath: 'github.com/schickling/dotfiles' },
+        { relativePath: 'github.com/schickling/config' },
+        { relativePath: 'gitlab.com/company/internal-lib' },
+      ])}
+    />
+  ),
 }

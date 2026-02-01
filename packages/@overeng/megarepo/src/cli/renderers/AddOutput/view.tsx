@@ -5,14 +5,9 @@
 import type { Atom } from '@effect-atom/atom'
 import React from 'react'
 
-import { Box, Text, useTuiAtomValue } from '@overeng/tui-react'
+import { Box, Text, useTuiAtomValue, useSymbols } from '@overeng/tui-react'
 
 import type { AddState } from './schema.ts'
-
-const symbols = {
-  check: '\u2713',
-  cross: '\u2717',
-}
 
 export interface AddViewProps {
   stateAtom: Atom.Atom<AddState>
@@ -23,6 +18,7 @@ export interface AddViewProps {
  */
 export const AddView = ({ stateAtom }: AddViewProps) => {
   const state = useTuiAtomValue(stateAtom)
+  const symbols = useSymbols()
 
   switch (state._tag) {
     case 'Idle':
@@ -41,7 +37,7 @@ export const AddView = ({ stateAtom }: AddViewProps) => {
       return (
         <Box>
           <Box flexDirection="row">
-            <Text color="red">{symbols.cross}</Text>
+            <Text color="red">{symbols.status.cross}</Text>
             <Text> {state.message}</Text>
           </Box>
           {state.error === 'invalid_repo' && (
@@ -58,7 +54,7 @@ export const AddView = ({ stateAtom }: AddViewProps) => {
       return (
         <Box>
           <Box flexDirection="row">
-            <Text color="green">{symbols.check}</Text>
+            <Text color="green">{symbols.status.check}</Text>
             <Text> Added </Text>
             <Text bold>{state.member}</Text>
           </Box>
@@ -68,7 +64,7 @@ export const AddView = ({ stateAtom }: AddViewProps) => {
               <Text dim>Syncing...</Text>
               <Box flexDirection="row">
                 <Text color={state.syncStatus === 'error' ? 'red' : 'green'}>
-                  {state.syncStatus === 'error' ? symbols.cross : symbols.check}
+                  {state.syncStatus === 'error' ? symbols.status.cross : symbols.status.check}
                 </Text>
                 <Text> </Text>
                 <Text bold>{state.member}</Text>

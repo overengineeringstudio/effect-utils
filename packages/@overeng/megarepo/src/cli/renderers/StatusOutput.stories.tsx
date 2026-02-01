@@ -7,7 +7,8 @@ import React from 'react'
 
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
-import { StatusOutput, type StatusOutputProps, type MemberStatus } from './StatusOutput.tsx'
+import { StatusState, StatusAction, statusReducer, type MemberStatus } from './StatusOutput/schema.ts'
+import { StatusView } from './StatusOutput/view.tsx'
 
 // =============================================================================
 // Example Data
@@ -111,22 +112,733 @@ const exampleMembersClean: MemberStatus[] = [
 ]
 
 // =============================================================================
+// State Factories
+// =============================================================================
+
+const createDefaultState = (): typeof StatusState.Type => ({
+  name: 'my-workspace',
+  root: '/Users/dev/workspace',
+  members: exampleMembers,
+})
+
+const createCleanState = (): typeof StatusState.Type => ({
+  name: 'my-workspace',
+  root: '/Users/dev/workspace',
+  members: exampleMembersClean,
+  lastSyncTime: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
+})
+
+const createWarningsState = (): typeof StatusState.Type => ({
+  name: 'my-workspace',
+  root: '/Users/dev/workspace',
+  members: [
+    {
+      name: 'effect',
+      exists: true,
+      source: 'effect-ts/effect',
+      isLocal: false,
+      lockInfo: { ref: 'main', commit: 'abc1234', pinned: false },
+      isMegarepo: false,
+      nestedMembers: undefined,
+      gitStatus: {
+        isDirty: true,
+        changesCount: 5,
+        hasUnpushed: false,
+        branch: 'main',
+        shortRev: 'abc1234',
+      },
+    },
+    {
+      name: 'livestore',
+      exists: false,
+      source: 'livestorejs/livestore',
+      isLocal: false,
+      lockInfo: { ref: 'dev', commit: 'def5678', pinned: false },
+      isMegarepo: false,
+      nestedMembers: undefined,
+      gitStatus: undefined,
+    },
+    {
+      name: 'dotfiles',
+      exists: true,
+      source: 'schickling/dotfiles',
+      isLocal: false,
+      lockInfo: { ref: 'main', commit: '9876543', pinned: false },
+      isMegarepo: false,
+      nestedMembers: undefined,
+      gitStatus: {
+        isDirty: false,
+        changesCount: 0,
+        hasUnpushed: true,
+        branch: 'main',
+        shortRev: '9876543',
+      },
+    },
+  ],
+})
+
+const createNestedMegareposState = (): typeof StatusState.Type => ({
+  name: 'mr-all-blue',
+  root: '/Users/dev/mr-all-blue',
+  members: [
+    {
+      name: 'effect-utils',
+      exists: true,
+      source: 'overengineeringstudio/effect-utils',
+      isLocal: false,
+      lockInfo: { ref: 'main', commit: 'abc1234', pinned: false },
+      isMegarepo: true,
+      nestedMembers: [
+        {
+          name: 'cli-ui',
+          exists: true,
+          source: 'local',
+          isLocal: true,
+          lockInfo: undefined,
+          isMegarepo: false,
+          nestedMembers: undefined,
+          gitStatus: {
+            isDirty: false,
+            changesCount: 0,
+            hasUnpushed: false,
+            branch: 'main',
+            shortRev: 'def5678',
+          },
+        },
+        {
+          name: 'tui-react',
+          exists: true,
+          source: 'local',
+          isLocal: true,
+          lockInfo: undefined,
+          isMegarepo: false,
+          nestedMembers: undefined,
+          gitStatus: {
+            isDirty: true,
+            changesCount: 2,
+            hasUnpushed: false,
+            branch: 'feature',
+            shortRev: 'fed9876',
+          },
+        },
+      ],
+      gitStatus: {
+        isDirty: false,
+        changesCount: 0,
+        hasUnpushed: false,
+        branch: 'main',
+        shortRev: 'abc1234',
+      },
+    },
+    {
+      name: 'livestore',
+      exists: true,
+      source: 'livestorejs/livestore',
+      isLocal: false,
+      lockInfo: { ref: 'dev', commit: '9876543', pinned: false },
+      isMegarepo: true,
+      nestedMembers: [
+        {
+          name: 'examples',
+          exists: true,
+          source: 'local',
+          isLocal: true,
+          lockInfo: undefined,
+          isMegarepo: false,
+          nestedMembers: undefined,
+          gitStatus: {
+            isDirty: false,
+            changesCount: 0,
+            hasUnpushed: false,
+            branch: 'dev',
+            shortRev: 'aaa1111',
+          },
+        },
+      ],
+      gitStatus: {
+        isDirty: false,
+        changesCount: 0,
+        hasUnpushed: false,
+        branch: 'dev',
+        shortRev: '9876543',
+      },
+    },
+  ],
+})
+
+const createCurrentLocationState = (): typeof StatusState.Type => ({
+  name: 'mr-all-blue',
+  root: '/Users/dev/mr-all-blue',
+  members: [
+    {
+      name: 'effect-utils',
+      exists: true,
+      source: 'overengineeringstudio/effect-utils',
+      isLocal: false,
+      lockInfo: { ref: 'main', commit: 'abc1234', pinned: false },
+      isMegarepo: true,
+      nestedMembers: [
+        {
+          name: 'tui-react',
+          exists: true,
+          source: 'local',
+          isLocal: true,
+          lockInfo: undefined,
+          isMegarepo: false,
+          nestedMembers: undefined,
+          gitStatus: {
+            isDirty: false,
+            changesCount: 0,
+            hasUnpushed: false,
+            branch: 'main',
+            shortRev: 'def5678',
+          },
+        },
+      ],
+      gitStatus: {
+        isDirty: false,
+        changesCount: 0,
+        hasUnpushed: false,
+        branch: 'main',
+        shortRev: 'abc1234',
+      },
+    },
+    {
+      name: 'livestore',
+      exists: true,
+      source: 'livestorejs/livestore',
+      isLocal: false,
+      lockInfo: { ref: 'dev', commit: '9876543', pinned: false },
+      isMegarepo: false,
+      nestedMembers: undefined,
+      gitStatus: {
+        isDirty: false,
+        changesCount: 0,
+        hasUnpushed: false,
+        branch: 'dev',
+        shortRev: '9876543',
+      },
+    },
+  ],
+  currentMemberPath: ['effect-utils', 'tui-react'],
+})
+
+const createLockStaleState = (): typeof StatusState.Type => ({
+  name: 'my-workspace',
+  root: '/Users/dev/workspace',
+  members: exampleMembersClean,
+  lockStaleness: {
+    exists: true,
+    missingFromLock: ['new-repo', 'another-repo'],
+    extraInLock: ['old-repo'],
+  },
+})
+
+const createLockMissingState = (): typeof StatusState.Type => ({
+  name: 'my-workspace',
+  root: '/Users/dev/workspace',
+  members: exampleMembersClean,
+  lockStaleness: {
+    exists: false,
+    missingFromLock: [],
+    extraInLock: [],
+  },
+})
+
+const createPinnedMembersState = (): typeof StatusState.Type => ({
+  name: 'my-workspace',
+  root: '/Users/dev/workspace',
+  members: [
+    {
+      name: 'effect',
+      exists: true,
+      source: 'effect-ts/effect',
+      isLocal: false,
+      lockInfo: { ref: 'v3.0.0', commit: 'abc1234', pinned: true },
+      isMegarepo: false,
+      nestedMembers: undefined,
+      gitStatus: {
+        isDirty: false,
+        changesCount: 0,
+        hasUnpushed: false,
+        branch: 'HEAD',
+        shortRev: 'abc1234',
+      },
+    },
+    {
+      name: 'effect-utils',
+      exists: true,
+      source: 'overengineeringstudio/effect-utils',
+      isLocal: false,
+      lockInfo: { ref: 'main', commit: 'def5678', pinned: false },
+      isMegarepo: false,
+      nestedMembers: undefined,
+      gitStatus: {
+        isDirty: false,
+        changesCount: 0,
+        hasUnpushed: false,
+        branch: 'main',
+        shortRev: 'def5678',
+      },
+    },
+  ],
+})
+
+const createManyMembersState = (): typeof StatusState.Type => ({
+  name: 'large-workspace',
+  root: '/Users/dev/large-workspace',
+  members: Array.from({ length: 10 }, (_, i) => ({
+    name: `repo-${String(i + 1).padStart(2, '0')}`,
+    exists: true,
+    source: `org/repo-${i + 1}`,
+    isLocal: false,
+    lockInfo: { ref: 'main', commit: `abc${i}def`, pinned: false },
+    isMegarepo: false,
+    nestedMembers: undefined,
+    gitStatus: {
+      isDirty: i % 3 === 0,
+      changesCount: i % 3 === 0 ? i + 1 : 0,
+      hasUnpushed: i % 5 === 0,
+      branch: 'main',
+      shortRev: `abc${i}def`.slice(0, 7),
+    },
+  })),
+  lastSyncTime: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
+})
+
+const createAllNotSyncedState = (): typeof StatusState.Type => ({
+  name: 'new-workspace',
+  root: '/Users/dev/new-workspace',
+  members: [
+    {
+      name: 'effect',
+      exists: false,
+      source: 'effect-ts/effect',
+      isLocal: false,
+      lockInfo: { ref: 'main', commit: 'abc1234', pinned: false },
+      isMegarepo: false,
+      nestedMembers: undefined,
+      gitStatus: undefined,
+    },
+    {
+      name: 'effect-utils',
+      exists: false,
+      source: 'overengineeringstudio/effect-utils',
+      isLocal: false,
+      lockInfo: { ref: 'main', commit: 'def5678', pinned: false },
+      isMegarepo: false,
+      nestedMembers: undefined,
+      gitStatus: undefined,
+    },
+    {
+      name: 'livestore',
+      exists: false,
+      source: 'livestorejs/livestore',
+      isLocal: false,
+      lockInfo: { ref: 'dev', commit: '9876543', pinned: false },
+      isMegarepo: false,
+      nestedMembers: undefined,
+      gitStatus: undefined,
+    },
+  ],
+})
+
+const createAllDirtyState = (): typeof StatusState.Type => ({
+  name: 'my-workspace',
+  root: '/Users/dev/workspace',
+  members: [
+    {
+      name: 'effect',
+      exists: true,
+      source: 'effect-ts/effect',
+      isLocal: false,
+      lockInfo: { ref: 'main', commit: 'abc1234', pinned: false },
+      isMegarepo: false,
+      nestedMembers: undefined,
+      gitStatus: {
+        isDirty: true,
+        changesCount: 12,
+        hasUnpushed: false,
+        branch: 'main',
+        shortRev: 'abc1234',
+      },
+    },
+    {
+      name: 'effect-utils',
+      exists: true,
+      source: 'overengineeringstudio/effect-utils',
+      isLocal: false,
+      lockInfo: { ref: 'main', commit: 'def5678', pinned: false },
+      isMegarepo: false,
+      nestedMembers: undefined,
+      gitStatus: {
+        isDirty: true,
+        changesCount: 3,
+        hasUnpushed: false,
+        branch: 'feature',
+        shortRev: 'def5678',
+      },
+    },
+    {
+      name: 'livestore',
+      exists: true,
+      source: 'livestorejs/livestore',
+      isLocal: false,
+      lockInfo: { ref: 'dev', commit: '9876543', pinned: false },
+      isMegarepo: false,
+      nestedMembers: undefined,
+      gitStatus: {
+        isDirty: true,
+        changesCount: 25,
+        hasUnpushed: true,
+        branch: 'dev',
+        shortRev: '9876543',
+      },
+    },
+  ],
+})
+
+const createLocalPathMembersState = (): typeof StatusState.Type => ({
+  name: 'local-dev',
+  root: '/Users/dev/local-dev',
+  members: [
+    {
+      name: 'my-lib',
+      exists: true,
+      source: '../my-lib',
+      isLocal: true,
+      lockInfo: undefined,
+      isMegarepo: false,
+      nestedMembers: undefined,
+      gitStatus: {
+        isDirty: false,
+        changesCount: 0,
+        hasUnpushed: false,
+        branch: 'main',
+        shortRev: 'abc1234',
+      },
+    },
+    {
+      name: 'shared-utils',
+      exists: true,
+      source: '/Users/dev/shared-utils',
+      isLocal: true,
+      lockInfo: undefined,
+      isMegarepo: false,
+      nestedMembers: undefined,
+      gitStatus: {
+        isDirty: true,
+        changesCount: 2,
+        hasUnpushed: false,
+        branch: 'main',
+        shortRev: 'def5678',
+      },
+    },
+  ],
+})
+
+const createSingleMemberState = (): typeof StatusState.Type => ({
+  name: 'minimal',
+  root: '/Users/dev/minimal',
+  members: [
+    {
+      name: 'effect',
+      exists: true,
+      source: 'effect-ts/effect',
+      isLocal: false,
+      lockInfo: { ref: 'main', commit: 'abc1234', pinned: false },
+      isMegarepo: false,
+      nestedMembers: undefined,
+      gitStatus: {
+        isDirty: false,
+        changesCount: 0,
+        hasUnpushed: false,
+        branch: 'main',
+        shortRev: 'abc1234',
+      },
+    },
+  ],
+  lastSyncTime: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
+})
+
+const createEmptyWorkspaceState = (): typeof StatusState.Type => ({
+  name: 'empty-workspace',
+  root: '/Users/dev/empty-workspace',
+  members: [],
+})
+
+const createDeeplyNestedState = (): typeof StatusState.Type => ({
+  name: 'deep-workspace',
+  root: '/Users/dev/deep-workspace',
+  members: [
+    {
+      name: 'level-1',
+      exists: true,
+      source: 'org/level-1',
+      isLocal: false,
+      lockInfo: { ref: 'main', commit: 'aaa1111', pinned: false },
+      isMegarepo: true,
+      nestedMembers: [
+        {
+          name: 'level-2a',
+          exists: true,
+          source: 'org/level-2a',
+          isLocal: false,
+          lockInfo: { ref: 'main', commit: 'bbb2222', pinned: false },
+          isMegarepo: true,
+          nestedMembers: [
+            {
+              name: 'level-3',
+              exists: true,
+              source: 'org/level-3',
+              isLocal: false,
+              lockInfo: { ref: 'main', commit: 'ccc3333', pinned: false },
+              isMegarepo: false,
+              nestedMembers: undefined,
+              gitStatus: {
+                isDirty: false,
+                changesCount: 0,
+                hasUnpushed: false,
+                branch: 'main',
+                shortRev: 'ccc3333',
+              },
+            },
+          ],
+          gitStatus: {
+            isDirty: false,
+            changesCount: 0,
+            hasUnpushed: false,
+            branch: 'main',
+            shortRev: 'bbb2222',
+          },
+        },
+        {
+          name: 'level-2b',
+          exists: true,
+          source: 'org/level-2b',
+          isLocal: false,
+          lockInfo: { ref: 'dev', commit: 'ddd4444', pinned: false },
+          isMegarepo: false,
+          nestedMembers: undefined,
+          gitStatus: {
+            isDirty: true,
+            changesCount: 3,
+            hasUnpushed: false,
+            branch: 'dev',
+            shortRev: 'ddd4444',
+          },
+        },
+      ],
+      gitStatus: {
+        isDirty: false,
+        changesCount: 0,
+        hasUnpushed: false,
+        branch: 'main',
+        shortRev: 'aaa1111',
+      },
+    },
+  ],
+  currentMemberPath: ['level-1', 'level-2a', 'level-3'],
+})
+
+const createMultipleProblemsState = (): typeof StatusState.Type => ({
+  name: 'problematic-workspace',
+  root: '/Users/dev/problematic-workspace',
+  members: [
+    {
+      name: 'dirty-repo',
+      exists: true,
+      source: 'org/dirty-repo',
+      isLocal: false,
+      lockInfo: { ref: 'main', commit: 'abc1234', pinned: false },
+      isMegarepo: false,
+      nestedMembers: undefined,
+      gitStatus: {
+        isDirty: true,
+        changesCount: 5,
+        hasUnpushed: false,
+        branch: 'main',
+        shortRev: 'abc1234',
+      },
+    },
+    {
+      name: 'unpushed-repo',
+      exists: true,
+      source: 'org/unpushed-repo',
+      isLocal: false,
+      lockInfo: { ref: 'main', commit: 'def5678', pinned: false },
+      isMegarepo: false,
+      nestedMembers: undefined,
+      gitStatus: {
+        isDirty: false,
+        changesCount: 0,
+        hasUnpushed: true,
+        branch: 'feature',
+        shortRev: 'def5678',
+      },
+    },
+    {
+      name: 'not-synced-repo',
+      exists: false,
+      source: 'org/not-synced-repo',
+      isLocal: false,
+      lockInfo: { ref: 'dev', commit: '9876543', pinned: false },
+      isMegarepo: false,
+      nestedMembers: undefined,
+      gitStatus: undefined,
+    },
+    {
+      name: 'all-problems',
+      exists: true,
+      source: 'org/all-problems',
+      isLocal: false,
+      lockInfo: { ref: 'main', commit: 'xyz9999', pinned: false },
+      isMegarepo: false,
+      nestedMembers: undefined,
+      gitStatus: {
+        isDirty: true,
+        changesCount: 10,
+        hasUnpushed: true,
+        branch: 'wip',
+        shortRev: 'xyz9999',
+      },
+    },
+  ],
+  lockStaleness: {
+    exists: true,
+    missingFromLock: ['new-member'],
+    extraInLock: ['removed-member'],
+  },
+})
+
+const createSymlinkDriftState = (): typeof StatusState.Type => ({
+  name: 'my-megarepo',
+  root: '/Users/dev/my-megarepo',
+  members: [
+    {
+      name: 'effect',
+      exists: true,
+      source: 'effect-ts/effect',
+      isLocal: false,
+      lockInfo: { ref: 'main', commit: 'abc1234def', pinned: false },
+      isMegarepo: false,
+      nestedMembers: undefined,
+      gitStatus: {
+        isDirty: false,
+        changesCount: 0,
+        hasUnpushed: false,
+        branch: 'main',
+        shortRev: 'abc1234',
+      },
+      symlinkDrift: undefined,
+    },
+    {
+      name: 'livestore',
+      exists: true,
+      source: 'livestorejs/livestore',
+      isLocal: false,
+      lockInfo: { ref: 'refactor/genie-igor-ci', commit: 'def5678abc', pinned: false },
+      isMegarepo: false,
+      nestedMembers: undefined,
+      gitStatus: {
+        isDirty: true,
+        changesCount: 27,
+        hasUnpushed: false,
+        branch: 'refactor/genie-igor-ci',
+        shortRev: 'def5678',
+      },
+      symlinkDrift: {
+        symlinkRef: 'dev',
+        expectedRef: 'refactor/genie-igor-ci',
+        actualGitBranch: 'refactor/genie-igor-ci',
+      },
+    },
+    {
+      name: 'effect-utils',
+      exists: true,
+      source: 'overengineeringstudio/effect-utils',
+      isLocal: false,
+      lockInfo: { ref: 'main', commit: 'fed9876543', pinned: false },
+      isMegarepo: false,
+      nestedMembers: undefined,
+      gitStatus: {
+        isDirty: false,
+        changesCount: 0,
+        hasUnpushed: false,
+        branch: 'main',
+        shortRev: 'fed9876',
+      },
+      symlinkDrift: undefined,
+    },
+  ],
+  lockStaleness: {
+    exists: true,
+    missingFromLock: [],
+    extraInLock: [],
+  },
+})
+
+const createMultipleSymlinkDriftState = (): typeof StatusState.Type => ({
+  name: 'my-megarepo',
+  root: '/Users/dev/my-megarepo',
+  members: [
+    {
+      name: 'livestore',
+      exists: true,
+      source: 'livestorejs/livestore',
+      isLocal: false,
+      lockInfo: { ref: 'refactor/genie-igor-ci', commit: 'def5678abc', pinned: false },
+      isMegarepo: false,
+      nestedMembers: undefined,
+      gitStatus: {
+        isDirty: true,
+        changesCount: 27,
+        hasUnpushed: false,
+        branch: 'refactor/genie-igor-ci',
+        shortRev: 'def5678',
+      },
+      symlinkDrift: {
+        symlinkRef: 'dev',
+        expectedRef: 'refactor/genie-igor-ci',
+        actualGitBranch: 'refactor/genie-igor-ci',
+      },
+    },
+    {
+      name: 'effect',
+      exists: true,
+      source: 'effect-ts/effect',
+      isLocal: false,
+      lockInfo: { ref: 'next', commit: 'abc1234def', pinned: false },
+      isMegarepo: false,
+      nestedMembers: undefined,
+      gitStatus: {
+        isDirty: false,
+        changesCount: 0,
+        hasUnpushed: false,
+        branch: 'main',
+        shortRev: 'abc1234',
+      },
+      symlinkDrift: {
+        symlinkRef: 'main',
+        expectedRef: 'next',
+        actualGitBranch: 'main',
+      },
+    },
+  ],
+  lockStaleness: {
+    exists: true,
+    missingFromLock: [],
+    extraInLock: [],
+  },
+})
+
+// =============================================================================
 // Meta
 // =============================================================================
 
-const meta = {
+export default {
   title: 'CLI/Status Output',
-  component: StatusOutput,
-  render: (args) => (
-    <TuiStoryPreview>
-      <StatusOutput {...args} />
-    </TuiStoryPreview>
-  ),
-  args: {
-    name: 'my-workspace',
-    root: '/Users/dev/workspace',
-    members: [],
-  },
+  component: StatusView,
   parameters: {
     layout: 'padded',
     docs: {
@@ -135,311 +847,120 @@ const meta = {
       },
     },
   },
-} satisfies Meta<StatusOutputProps>
+} satisfies Meta<typeof StatusView>
 
-export default meta
-
-type Story = StoryObj<typeof meta>
+type Story = StoryObj<typeof StatusView>
 
 // =============================================================================
 // Stories
 // =============================================================================
 
 export const Default: Story = {
-  args: {
-    members: exampleMembers,
-  },
+  render: () => (
+    <TuiStoryPreview
+      View={StatusView}
+      stateSchema={StatusState}
+      actionSchema={StatusAction}
+      reducer={statusReducer}
+      initialState={createDefaultState()}
+    />
+  ),
 }
 
 export const AllClean: Story = {
-  args: {
-    members: exampleMembersClean,
-    lastSyncTime: new Date(Date.now() - 1000 * 60 * 30),
-  },
+  render: () => (
+    <TuiStoryPreview
+      View={StatusView}
+      stateSchema={StatusState}
+      actionSchema={StatusAction}
+      reducer={statusReducer}
+      initialState={createCleanState()}
+    />
+  ),
 }
 
 export const WithWarnings: Story = {
-  args: {
-    members: [
-      {
-        name: 'effect',
-        exists: true,
-        source: 'effect-ts/effect',
-        isLocal: false,
-        lockInfo: { ref: 'main', commit: 'abc1234', pinned: false },
-        isMegarepo: false,
-        nestedMembers: undefined,
-        gitStatus: {
-          isDirty: true,
-          changesCount: 5,
-          hasUnpushed: false,
-          branch: 'main',
-          shortRev: 'abc1234',
-        },
-      },
-      {
-        name: 'livestore',
-        exists: false,
-        source: 'livestorejs/livestore',
-        isLocal: false,
-        lockInfo: { ref: 'dev', commit: 'def5678', pinned: false },
-        isMegarepo: false,
-        nestedMembers: undefined,
-        gitStatus: undefined,
-      },
-      {
-        name: 'dotfiles',
-        exists: true,
-        source: 'schickling/dotfiles',
-        isLocal: false,
-        lockInfo: { ref: 'main', commit: '9876543', pinned: false },
-        isMegarepo: false,
-        nestedMembers: undefined,
-        gitStatus: {
-          isDirty: false,
-          changesCount: 0,
-          hasUnpushed: true,
-          branch: 'main',
-          shortRev: '9876543',
-        },
-      },
-    ],
-  },
+  render: () => (
+    <TuiStoryPreview
+      View={StatusView}
+      stateSchema={StatusState}
+      actionSchema={StatusAction}
+      reducer={statusReducer}
+      initialState={createWarningsState()}
+    />
+  ),
 }
 
 export const NestedMegarepos: Story = {
-  args: {
-    name: 'mr-all-blue',
-    root: '/Users/dev/mr-all-blue',
-    members: [
-      {
-        name: 'effect-utils',
-        exists: true,
-        source: 'overengineeringstudio/effect-utils',
-        isLocal: false,
-        lockInfo: { ref: 'main', commit: 'abc1234', pinned: false },
-        isMegarepo: true,
-        nestedMembers: [
-          {
-            name: 'cli-ui',
-            exists: true,
-            source: 'local',
-            isLocal: true,
-            lockInfo: undefined,
-            isMegarepo: false,
-            nestedMembers: undefined,
-            gitStatus: {
-              isDirty: false,
-              changesCount: 0,
-              hasUnpushed: false,
-              branch: 'main',
-              shortRev: 'def5678',
-            },
-          },
-          {
-            name: 'tui-react',
-            exists: true,
-            source: 'local',
-            isLocal: true,
-            lockInfo: undefined,
-            isMegarepo: false,
-            nestedMembers: undefined,
-            gitStatus: {
-              isDirty: true,
-              changesCount: 2,
-              hasUnpushed: false,
-              branch: 'feature',
-              shortRev: 'fed9876',
-            },
-          },
-        ],
-        gitStatus: {
-          isDirty: false,
-          changesCount: 0,
-          hasUnpushed: false,
-          branch: 'main',
-          shortRev: 'abc1234',
-        },
-      },
-      {
-        name: 'livestore',
-        exists: true,
-        source: 'livestorejs/livestore',
-        isLocal: false,
-        lockInfo: { ref: 'dev', commit: '9876543', pinned: false },
-        isMegarepo: true,
-        nestedMembers: [
-          {
-            name: 'examples',
-            exists: true,
-            source: 'local',
-            isLocal: true,
-            lockInfo: undefined,
-            isMegarepo: false,
-            nestedMembers: undefined,
-            gitStatus: {
-              isDirty: false,
-              changesCount: 0,
-              hasUnpushed: false,
-              branch: 'dev',
-              shortRev: 'aaa1111',
-            },
-          },
-        ],
-        gitStatus: {
-          isDirty: false,
-          changesCount: 0,
-          hasUnpushed: false,
-          branch: 'dev',
-          shortRev: '9876543',
-        },
-      },
-    ],
-  },
+  render: () => (
+    <TuiStoryPreview
+      View={StatusView}
+      stateSchema={StatusState}
+      actionSchema={StatusAction}
+      reducer={statusReducer}
+      initialState={createNestedMegareposState()}
+    />
+  ),
 }
 
 export const CurrentLocation: Story = {
-  args: {
-    name: 'mr-all-blue',
-    root: '/Users/dev/mr-all-blue',
-    members: [
-      {
-        name: 'effect-utils',
-        exists: true,
-        source: 'overengineeringstudio/effect-utils',
-        isLocal: false,
-        lockInfo: { ref: 'main', commit: 'abc1234', pinned: false },
-        isMegarepo: true,
-        nestedMembers: [
-          {
-            name: 'tui-react',
-            exists: true,
-            source: 'local',
-            isLocal: true,
-            lockInfo: undefined,
-            isMegarepo: false,
-            nestedMembers: undefined,
-            gitStatus: {
-              isDirty: false,
-              changesCount: 0,
-              hasUnpushed: false,
-              branch: 'main',
-              shortRev: 'def5678',
-            },
-          },
-        ],
-        gitStatus: {
-          isDirty: false,
-          changesCount: 0,
-          hasUnpushed: false,
-          branch: 'main',
-          shortRev: 'abc1234',
-        },
-      },
-      {
-        name: 'livestore',
-        exists: true,
-        source: 'livestorejs/livestore',
-        isLocal: false,
-        lockInfo: { ref: 'dev', commit: '9876543', pinned: false },
-        isMegarepo: false,
-        nestedMembers: undefined,
-        gitStatus: {
-          isDirty: false,
-          changesCount: 0,
-          hasUnpushed: false,
-          branch: 'dev',
-          shortRev: '9876543',
-        },
-      },
-    ],
-    currentMemberPath: ['effect-utils', 'tui-react'],
-  },
+  render: () => (
+    <TuiStoryPreview
+      View={StatusView}
+      stateSchema={StatusState}
+      actionSchema={StatusAction}
+      reducer={statusReducer}
+      initialState={createCurrentLocationState()}
+    />
+  ),
 }
 
 export const LockStale: Story = {
-  args: {
-    members: exampleMembersClean,
-    lockStaleness: {
-      exists: true,
-      missingFromLock: ['new-repo', 'another-repo'],
-      extraInLock: ['old-repo'],
-    },
-  },
+  render: () => (
+    <TuiStoryPreview
+      View={StatusView}
+      stateSchema={StatusState}
+      actionSchema={StatusAction}
+      reducer={statusReducer}
+      initialState={createLockStaleState()}
+    />
+  ),
 }
 
 export const LockMissing: Story = {
-  args: {
-    members: exampleMembersClean,
-    lockStaleness: {
-      exists: false,
-      missingFromLock: [],
-      extraInLock: [],
-    },
-  },
+  render: () => (
+    <TuiStoryPreview
+      View={StatusView}
+      stateSchema={StatusState}
+      actionSchema={StatusAction}
+      reducer={statusReducer}
+      initialState={createLockMissingState()}
+    />
+  ),
 }
 
 export const PinnedMembers: Story = {
-  args: {
-    members: [
-      {
-        name: 'effect',
-        exists: true,
-        source: 'effect-ts/effect',
-        isLocal: false,
-        lockInfo: { ref: 'v3.0.0', commit: 'abc1234', pinned: true },
-        isMegarepo: false,
-        nestedMembers: undefined,
-        gitStatus: {
-          isDirty: false,
-          changesCount: 0,
-          hasUnpushed: false,
-          branch: 'HEAD',
-          shortRev: 'abc1234',
-        },
-      },
-      {
-        name: 'effect-utils',
-        exists: true,
-        source: 'overengineeringstudio/effect-utils',
-        isLocal: false,
-        lockInfo: { ref: 'main', commit: 'def5678', pinned: false },
-        isMegarepo: false,
-        nestedMembers: undefined,
-        gitStatus: {
-          isDirty: false,
-          changesCount: 0,
-          hasUnpushed: false,
-          branch: 'main',
-          shortRev: 'def5678',
-        },
-      },
-    ],
-  },
+  render: () => (
+    <TuiStoryPreview
+      View={StatusView}
+      stateSchema={StatusState}
+      actionSchema={StatusAction}
+      reducer={statusReducer}
+      initialState={createPinnedMembersState()}
+    />
+  ),
 }
 
 export const ManyMembers: Story = {
-  args: {
-    name: 'large-workspace',
-    root: '/Users/dev/large-workspace',
-    members: Array.from({ length: 10 }, (_, i) => ({
-      name: `repo-${String(i + 1).padStart(2, '0')}`,
-      exists: true,
-      source: `org/repo-${i + 1}`,
-      isLocal: false,
-      lockInfo: { ref: 'main', commit: `abc${i}def`, pinned: false },
-      isMegarepo: false,
-      nestedMembers: undefined,
-      gitStatus: {
-        isDirty: i % 3 === 0,
-        changesCount: i % 3 === 0 ? i + 1 : 0,
-        hasUnpushed: i % 5 === 0,
-        branch: 'main',
-        shortRev: `abc${i}def`.slice(0, 7),
-      },
-    })),
-    lastSyncTime: new Date(Date.now() - 1000 * 60 * 60 * 2),
-  },
+  render: () => (
+    <TuiStoryPreview
+      View={StatusView}
+      stateSchema={StatusState}
+      actionSchema={StatusAction}
+      reducer={statusReducer}
+      initialState={createManyMembersState()}
+    />
+  ),
 }
 
 // =============================================================================
@@ -447,443 +968,109 @@ export const ManyMembers: Story = {
 // =============================================================================
 
 export const AllNotSynced: Story = {
-  args: {
-    name: 'new-workspace',
-    root: '/Users/dev/new-workspace',
-    members: [
-      {
-        name: 'effect',
-        exists: false,
-        source: 'effect-ts/effect',
-        isLocal: false,
-        lockInfo: { ref: 'main', commit: 'abc1234', pinned: false },
-        isMegarepo: false,
-        nestedMembers: undefined,
-        gitStatus: undefined,
-      },
-      {
-        name: 'effect-utils',
-        exists: false,
-        source: 'overengineeringstudio/effect-utils',
-        isLocal: false,
-        lockInfo: { ref: 'main', commit: 'def5678', pinned: false },
-        isMegarepo: false,
-        nestedMembers: undefined,
-        gitStatus: undefined,
-      },
-      {
-        name: 'livestore',
-        exists: false,
-        source: 'livestorejs/livestore',
-        isLocal: false,
-        lockInfo: { ref: 'dev', commit: '9876543', pinned: false },
-        isMegarepo: false,
-        nestedMembers: undefined,
-        gitStatus: undefined,
-      },
-    ],
-  },
+  render: () => (
+    <TuiStoryPreview
+      View={StatusView}
+      stateSchema={StatusState}
+      actionSchema={StatusAction}
+      reducer={statusReducer}
+      initialState={createAllNotSyncedState()}
+    />
+  ),
 }
 
 export const AllDirty: Story = {
-  args: {
-    members: [
-      {
-        name: 'effect',
-        exists: true,
-        source: 'effect-ts/effect',
-        isLocal: false,
-        lockInfo: { ref: 'main', commit: 'abc1234', pinned: false },
-        isMegarepo: false,
-        nestedMembers: undefined,
-        gitStatus: {
-          isDirty: true,
-          changesCount: 12,
-          hasUnpushed: false,
-          branch: 'main',
-          shortRev: 'abc1234',
-        },
-      },
-      {
-        name: 'effect-utils',
-        exists: true,
-        source: 'overengineeringstudio/effect-utils',
-        isLocal: false,
-        lockInfo: { ref: 'main', commit: 'def5678', pinned: false },
-        isMegarepo: false,
-        nestedMembers: undefined,
-        gitStatus: {
-          isDirty: true,
-          changesCount: 3,
-          hasUnpushed: false,
-          branch: 'feature',
-          shortRev: 'def5678',
-        },
-      },
-      {
-        name: 'livestore',
-        exists: true,
-        source: 'livestorejs/livestore',
-        isLocal: false,
-        lockInfo: { ref: 'dev', commit: '9876543', pinned: false },
-        isMegarepo: false,
-        nestedMembers: undefined,
-        gitStatus: {
-          isDirty: true,
-          changesCount: 25,
-          hasUnpushed: true,
-          branch: 'dev',
-          shortRev: '9876543',
-        },
-      },
-    ],
-  },
+  render: () => (
+    <TuiStoryPreview
+      View={StatusView}
+      stateSchema={StatusState}
+      actionSchema={StatusAction}
+      reducer={statusReducer}
+      initialState={createAllDirtyState()}
+    />
+  ),
 }
 
 export const LocalPathMembers: Story = {
-  args: {
-    name: 'local-dev',
-    root: '/Users/dev/local-dev',
-    members: [
-      {
-        name: 'my-lib',
-        exists: true,
-        source: '../my-lib',
-        isLocal: true,
-        lockInfo: undefined,
-        isMegarepo: false,
-        nestedMembers: undefined,
-        gitStatus: {
-          isDirty: false,
-          changesCount: 0,
-          hasUnpushed: false,
-          branch: 'main',
-          shortRev: 'abc1234',
-        },
-      },
-      {
-        name: 'shared-utils',
-        exists: true,
-        source: '/Users/dev/shared-utils',
-        isLocal: true,
-        lockInfo: undefined,
-        isMegarepo: false,
-        nestedMembers: undefined,
-        gitStatus: {
-          isDirty: true,
-          changesCount: 2,
-          hasUnpushed: false,
-          branch: 'main',
-          shortRev: 'def5678',
-        },
-      },
-    ],
-  },
+  render: () => (
+    <TuiStoryPreview
+      View={StatusView}
+      stateSchema={StatusState}
+      actionSchema={StatusAction}
+      reducer={statusReducer}
+      initialState={createLocalPathMembersState()}
+    />
+  ),
 }
 
 export const SingleMember: Story = {
-  args: {
-    name: 'minimal',
-    root: '/Users/dev/minimal',
-    members: [
-      {
-        name: 'effect',
-        exists: true,
-        source: 'effect-ts/effect',
-        isLocal: false,
-        lockInfo: { ref: 'main', commit: 'abc1234', pinned: false },
-        isMegarepo: false,
-        nestedMembers: undefined,
-        gitStatus: {
-          isDirty: false,
-          changesCount: 0,
-          hasUnpushed: false,
-          branch: 'main',
-          shortRev: 'abc1234',
-        },
-      },
-    ],
-    lastSyncTime: new Date(Date.now() - 1000 * 60 * 5),
-  },
+  render: () => (
+    <TuiStoryPreview
+      View={StatusView}
+      stateSchema={StatusState}
+      actionSchema={StatusAction}
+      reducer={statusReducer}
+      initialState={createSingleMemberState()}
+    />
+  ),
 }
 
 export const EmptyWorkspace: Story = {
-  args: {
-    name: 'empty-workspace',
-    root: '/Users/dev/empty-workspace',
-    members: [],
-  },
+  render: () => (
+    <TuiStoryPreview
+      View={StatusView}
+      stateSchema={StatusState}
+      actionSchema={StatusAction}
+      reducer={statusReducer}
+      initialState={createEmptyWorkspaceState()}
+    />
+  ),
 }
 
 export const DeeplyNested: Story = {
-  args: {
-    name: 'deep-workspace',
-    root: '/Users/dev/deep-workspace',
-    members: [
-      {
-        name: 'level-1',
-        exists: true,
-        source: 'org/level-1',
-        isLocal: false,
-        lockInfo: { ref: 'main', commit: 'aaa1111', pinned: false },
-        isMegarepo: true,
-        nestedMembers: [
-          {
-            name: 'level-2a',
-            exists: true,
-            source: 'org/level-2a',
-            isLocal: false,
-            lockInfo: { ref: 'main', commit: 'bbb2222', pinned: false },
-            isMegarepo: true,
-            nestedMembers: [
-              {
-                name: 'level-3',
-                exists: true,
-                source: 'org/level-3',
-                isLocal: false,
-                lockInfo: { ref: 'main', commit: 'ccc3333', pinned: false },
-                isMegarepo: false,
-                nestedMembers: undefined,
-                gitStatus: {
-                  isDirty: false,
-                  changesCount: 0,
-                  hasUnpushed: false,
-                  branch: 'main',
-                  shortRev: 'ccc3333',
-                },
-              },
-            ],
-            gitStatus: {
-              isDirty: false,
-              changesCount: 0,
-              hasUnpushed: false,
-              branch: 'main',
-              shortRev: 'bbb2222',
-            },
-          },
-          {
-            name: 'level-2b',
-            exists: true,
-            source: 'org/level-2b',
-            isLocal: false,
-            lockInfo: { ref: 'dev', commit: 'ddd4444', pinned: false },
-            isMegarepo: false,
-            nestedMembers: undefined,
-            gitStatus: {
-              isDirty: true,
-              changesCount: 3,
-              hasUnpushed: false,
-              branch: 'dev',
-              shortRev: 'ddd4444',
-            },
-          },
-        ],
-        gitStatus: {
-          isDirty: false,
-          changesCount: 0,
-          hasUnpushed: false,
-          branch: 'main',
-          shortRev: 'aaa1111',
-        },
-      },
-    ],
-    currentMemberPath: ['level-1', 'level-2a', 'level-3'],
-  },
+  render: () => (
+    <TuiStoryPreview
+      View={StatusView}
+      stateSchema={StatusState}
+      actionSchema={StatusAction}
+      reducer={statusReducer}
+      initialState={createDeeplyNestedState()}
+    />
+  ),
 }
 
 export const MultipleProblems: Story = {
-  args: {
-    name: 'problematic-workspace',
-    root: '/Users/dev/problematic-workspace',
-    members: [
-      {
-        name: 'dirty-repo',
-        exists: true,
-        source: 'org/dirty-repo',
-        isLocal: false,
-        lockInfo: { ref: 'main', commit: 'abc1234', pinned: false },
-        isMegarepo: false,
-        nestedMembers: undefined,
-        gitStatus: {
-          isDirty: true,
-          changesCount: 5,
-          hasUnpushed: false,
-          branch: 'main',
-          shortRev: 'abc1234',
-        },
-      },
-      {
-        name: 'unpushed-repo',
-        exists: true,
-        source: 'org/unpushed-repo',
-        isLocal: false,
-        lockInfo: { ref: 'main', commit: 'def5678', pinned: false },
-        isMegarepo: false,
-        nestedMembers: undefined,
-        gitStatus: {
-          isDirty: false,
-          changesCount: 0,
-          hasUnpushed: true,
-          branch: 'feature',
-          shortRev: 'def5678',
-        },
-      },
-      {
-        name: 'not-synced-repo',
-        exists: false,
-        source: 'org/not-synced-repo',
-        isLocal: false,
-        lockInfo: { ref: 'dev', commit: '9876543', pinned: false },
-        isMegarepo: false,
-        nestedMembers: undefined,
-        gitStatus: undefined,
-      },
-      {
-        name: 'all-problems',
-        exists: true,
-        source: 'org/all-problems',
-        isLocal: false,
-        lockInfo: { ref: 'main', commit: 'xyz9999', pinned: false },
-        isMegarepo: false,
-        nestedMembers: undefined,
-        gitStatus: {
-          isDirty: true,
-          changesCount: 10,
-          hasUnpushed: true,
-          branch: 'wip',
-          shortRev: 'xyz9999',
-        },
-      },
-    ],
-    lockStaleness: {
-      exists: true,
-      missingFromLock: ['new-member'],
-      extraInLock: ['removed-member'],
-    },
-  },
+  render: () => (
+    <TuiStoryPreview
+      View={StatusView}
+      stateSchema={StatusState}
+      actionSchema={StatusAction}
+      reducer={statusReducer}
+      initialState={createMultipleProblemsState()}
+    />
+  ),
 }
 
 export const SymlinkDrift: Story = {
-  args: {
-    name: 'my-megarepo',
-    root: '/Users/dev/my-megarepo',
-    members: [
-      {
-        name: 'effect',
-        exists: true,
-        source: 'effect-ts/effect',
-        isLocal: false,
-        lockInfo: { ref: 'main', commit: 'abc1234def', pinned: false },
-        isMegarepo: false,
-        nestedMembers: undefined,
-        gitStatus: {
-          isDirty: false,
-          changesCount: 0,
-          hasUnpushed: false,
-          branch: 'main',
-          shortRev: 'abc1234',
-        },
-        symlinkDrift: undefined,
-      },
-      {
-        name: 'livestore',
-        exists: true,
-        source: 'livestorejs/livestore',
-        isLocal: false,
-        lockInfo: { ref: 'refactor/genie-igor-ci', commit: 'def5678abc', pinned: false },
-        isMegarepo: false,
-        nestedMembers: undefined,
-        gitStatus: {
-          isDirty: true,
-          changesCount: 27,
-          hasUnpushed: false,
-          branch: 'refactor/genie-igor-ci',
-          shortRev: 'def5678',
-        },
-        symlinkDrift: {
-          symlinkRef: 'dev',
-          expectedRef: 'refactor/genie-igor-ci',
-          actualGitBranch: 'refactor/genie-igor-ci',
-        },
-      },
-      {
-        name: 'effect-utils',
-        exists: true,
-        source: 'overengineeringstudio/effect-utils',
-        isLocal: false,
-        lockInfo: { ref: 'main', commit: 'fed9876543', pinned: false },
-        isMegarepo: false,
-        nestedMembers: undefined,
-        gitStatus: {
-          isDirty: false,
-          changesCount: 0,
-          hasUnpushed: false,
-          branch: 'main',
-          shortRev: 'fed9876',
-        },
-        symlinkDrift: undefined,
-      },
-    ],
-    lockStaleness: {
-      exists: true,
-      missingFromLock: [],
-      extraInLock: [],
-    },
-  },
+  render: () => (
+    <TuiStoryPreview
+      View={StatusView}
+      stateSchema={StatusState}
+      actionSchema={StatusAction}
+      reducer={statusReducer}
+      initialState={createSymlinkDriftState()}
+    />
+  ),
 }
 
 export const MultipleSymlinkDrift: Story = {
-  args: {
-    name: 'my-megarepo',
-    root: '/Users/dev/my-megarepo',
-    members: [
-      {
-        name: 'livestore',
-        exists: true,
-        source: 'livestorejs/livestore',
-        isLocal: false,
-        lockInfo: { ref: 'refactor/genie-igor-ci', commit: 'def5678abc', pinned: false },
-        isMegarepo: false,
-        nestedMembers: undefined,
-        gitStatus: {
-          isDirty: true,
-          changesCount: 27,
-          hasUnpushed: false,
-          branch: 'refactor/genie-igor-ci',
-          shortRev: 'def5678',
-        },
-        symlinkDrift: {
-          symlinkRef: 'dev',
-          expectedRef: 'refactor/genie-igor-ci',
-          actualGitBranch: 'refactor/genie-igor-ci',
-        },
-      },
-      {
-        name: 'effect',
-        exists: true,
-        source: 'effect-ts/effect',
-        isLocal: false,
-        lockInfo: { ref: 'next', commit: 'abc1234def', pinned: false },
-        isMegarepo: false,
-        nestedMembers: undefined,
-        gitStatus: {
-          isDirty: false,
-          changesCount: 0,
-          hasUnpushed: false,
-          branch: 'main',
-          shortRev: 'abc1234',
-        },
-        symlinkDrift: {
-          symlinkRef: 'main',
-          expectedRef: 'next',
-          actualGitBranch: 'main',
-        },
-      },
-    ],
-    lockStaleness: {
-      exists: true,
-      missingFromLock: [],
-      extraInLock: [],
-    },
-  },
+  render: () => (
+    <TuiStoryPreview
+      View={StatusView}
+      stateSchema={StatusState}
+      actionSchema={StatusAction}
+      reducer={statusReducer}
+      initialState={createMultipleSymlinkDriftState()}
+    />
+  ),
 }

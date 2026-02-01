@@ -1,5 +1,5 @@
 /**
- * Storybook stories for StoreAdd components.
+ * Storybook stories for StoreAdd output.
  */
 
 import type { Meta, StoryObj } from '@storybook/react'
@@ -7,33 +7,37 @@ import React from 'react'
 
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
-import {
-  StoreAddError,
-  StoreAddProgress,
-  StoreAddSuccess,
-  type StoreAddErrorProps,
-  type StoreAddSuccessProps,
-} from './StoreOutput.tsx'
+import { StoreView, StoreState, StoreAction, storeReducer } from './StoreOutput/mod.ts'
 
 // =============================================================================
-// Example Data
+// State Factories
 // =============================================================================
 
-const exampleAddSuccess: StoreAddSuccessProps = {
-  source: 'effect-ts/effect',
-  ref: 'main',
-  commit: 'abc1234567890',
-  path: '/Users/me/.megarepo/store/github.com/effect-ts/effect/refs/main',
-  alreadyExists: false,
-}
+const createAddState = (opts: {
+  status: 'added' | 'already_exists'
+  source: string
+  ref: string
+  commit?: string
+  path: string
+}): typeof StoreState.Type => ({
+  _tag: 'Add',
+  status: opts.status,
+  source: opts.source,
+  ref: opts.ref,
+  commit: opts.commit,
+  path: opts.path,
+})
 
-const exampleAddSuccessExisting: StoreAddSuccessProps = {
-  source: 'effect-ts/effect',
-  ref: 'main',
-  commit: 'abc1234567890',
-  path: '/Users/me/.megarepo/store/github.com/effect-ts/effect/refs/main',
-  alreadyExists: true,
-}
+const createErrorState = (opts: {
+  error: string
+  message: string
+  source?: string
+}): typeof StoreState.Type => ({
+  _tag: 'Error',
+  error: opts.error,
+  message: opts.message,
+  source: opts.source,
+})
 
 // =============================================================================
 // Meta
@@ -41,37 +45,16 @@ const exampleAddSuccessExisting: StoreAddSuccessProps = {
 
 const meta = {
   title: 'CLI/Store/Add',
-  component: StoreAddError,
-  render: (args) => (
-    <TuiStoryPreview>
-      <StoreAddError {...args} />
-    </TuiStoryPreview>
-  ),
-  args: {
-    type: 'invalid_source',
-  },
-  argTypes: {
-    type: {
-      description: 'Error type',
-      control: { type: 'select' },
-      options: ['invalid_source', 'local_path', 'no_url'],
-      table: { category: 'Error' },
-    },
-    source: {
-      description: 'Source string that caused the error (for invalid_source)',
-      control: { type: 'text' },
-      table: { category: 'Error' },
-    },
-  },
+  component: StoreView,
   parameters: {
     layout: 'padded',
     docs: {
       description: {
-        component: 'Error output for the `mr store add` command when inputs are invalid.',
+        component: 'Output for the `mr store add` command. Shows add results and errors.',
       },
     },
   },
-} satisfies Meta<StoreAddErrorProps>
+} satisfies Meta<typeof StoreView>
 
 export default meta
 
@@ -82,41 +65,48 @@ type Story = StoryObj<typeof meta>
 // =============================================================================
 
 export const InvalidSource: Story = {
-  args: {
-    type: 'invalid_source',
-    source: 'not-a-valid-source',
-  },
-}
-
-export const LocalPath: Story = {
-  args: {
-    type: 'local_path',
-  },
-}
-
-export const NoUrl: Story = {
-  args: {
-    type: 'no_url',
-  },
-}
-
-// =============================================================================
-// Progress Stories
-// =============================================================================
-
-export const Cloning: Story = {
   render: () => (
-    <TuiStoryPreview>
-      <StoreAddProgress type="cloning" source="effect-ts/effect" />
-    </TuiStoryPreview>
+    <TuiStoryPreview
+      View={StoreView}
+      stateSchema={StoreState}
+      actionSchema={StoreAction}
+      reducer={storeReducer}
+      initialState={createErrorState({
+        error: 'invalid_source',
+        message: "Invalid source: 'not-a-valid-source'",
+        source: 'not-a-valid-source',
+      })}
+    />
   ),
 }
 
-export const CreatingWorktree: Story = {
+export const LocalPath: Story = {
   render: () => (
-    <TuiStoryPreview>
-      <StoreAddProgress type="creating_worktree" ref="main" />
-    </TuiStoryPreview>
+    <TuiStoryPreview
+      View={StoreView}
+      stateSchema={StoreState}
+      actionSchema={StoreAction}
+      reducer={storeReducer}
+      initialState={createErrorState({
+        error: 'local_path',
+        message: 'Local paths are not supported. Use a remote URL or owner/repo format.',
+      })}
+    />
+  ),
+}
+
+export const NoUrl: Story = {
+  render: () => (
+    <TuiStoryPreview
+      View={StoreView}
+      stateSchema={StoreState}
+      actionSchema={StoreAction}
+      reducer={storeReducer}
+      initialState={createErrorState({
+        error: 'no_url',
+        message: 'No URL provided',
+      })}
+    />
   ),
 }
 
@@ -126,44 +116,72 @@ export const CreatingWorktree: Story = {
 
 export const SuccessNew: Story = {
   render: () => (
-    <TuiStoryPreview>
-      <StoreAddSuccess {...exampleAddSuccess} />
-    </TuiStoryPreview>
+    <TuiStoryPreview
+      View={StoreView}
+      stateSchema={StoreState}
+      actionSchema={StoreAction}
+      reducer={storeReducer}
+      initialState={createAddState({
+        status: 'added',
+        source: 'effect-ts/effect',
+        ref: 'main',
+        commit: 'abc1234567890',
+        path: '/Users/me/.megarepo/store/github.com/effect-ts/effect/refs/main',
+      })}
+    />
   ),
 }
 
 export const SuccessExisting: Story = {
   render: () => (
-    <TuiStoryPreview>
-      <StoreAddSuccess {...exampleAddSuccessExisting} />
-    </TuiStoryPreview>
+    <TuiStoryPreview
+      View={StoreView}
+      stateSchema={StoreState}
+      actionSchema={StoreAction}
+      reducer={storeReducer}
+      initialState={createAddState({
+        status: 'already_exists',
+        source: 'effect-ts/effect',
+        ref: 'main',
+        commit: 'abc1234567890',
+        path: '/Users/me/.megarepo/store/github.com/effect-ts/effect/refs/main',
+      })}
+    />
   ),
 }
 
 export const SuccessWithRef: Story = {
   render: () => (
-    <TuiStoryPreview>
-      <StoreAddSuccess
-        source="effect-ts/effect#feat/new-feature"
-        ref="feat/new-feature"
-        commit="def456789012"
-        path="/Users/me/.megarepo/store/github.com/effect-ts/effect/refs/feat/new-feature"
-        alreadyExists={false}
-      />
-    </TuiStoryPreview>
+    <TuiStoryPreview
+      View={StoreView}
+      stateSchema={StoreState}
+      actionSchema={StoreAction}
+      reducer={storeReducer}
+      initialState={createAddState({
+        status: 'added',
+        source: 'effect-ts/effect#feat/new-feature',
+        ref: 'feat/new-feature',
+        commit: 'def456789012',
+        path: '/Users/me/.megarepo/store/github.com/effect-ts/effect/refs/feat/new-feature',
+      })}
+    />
   ),
 }
 
 export const SuccessNoCommit: Story = {
   render: () => (
-    <TuiStoryPreview>
-      <StoreAddSuccess
-        source="effect-ts/effect"
-        ref="v3.0.0"
-        commit={undefined}
-        path="/Users/me/.megarepo/store/github.com/effect-ts/effect/refs/v3.0.0"
-        alreadyExists={false}
-      />
-    </TuiStoryPreview>
+    <TuiStoryPreview
+      View={StoreView}
+      stateSchema={StoreState}
+      actionSchema={StoreAction}
+      reducer={storeReducer}
+      initialState={createAddState({
+        status: 'added',
+        source: 'effect-ts/effect',
+        ref: 'v3.0.0',
+        commit: undefined,
+        path: '/Users/me/.megarepo/store/github.com/effect-ts/effect/refs/v3.0.0',
+      })}
+    />
   ),
 }

@@ -10,9 +10,9 @@
 import type { Atom } from '@effect-atom/atom'
 import React from 'react'
 
-import { Box, Text, useTuiAtomValue } from '@overeng/tui-react'
+import { Box, Text, useTuiAtomValue, unicodeSymbols } from '@overeng/tui-react'
 
-import { icons, Separator } from '../../components/mod.ts'
+import { Separator } from '../../components/mod.ts'
 import type { StatusState, MemberStatus, LockStaleness, GitStatus, SymlinkDrift } from './schema.ts'
 
 // =============================================================================
@@ -125,24 +125,24 @@ type LegendItem = {
 }
 
 // =============================================================================
-// Internal Symbols
+// Symbols (from centralized definitions)
 // =============================================================================
 
 const symbols = {
-  check: '\u2713',
-  cross: '\u2717',
-  circle: '\u25cb',
-  dot: '\u00b7',
-  dirty: '\u25cf',
-  ahead: '\u2191',
+  check: unicodeSymbols.status.check,
+  cross: unicodeSymbols.status.cross,
+  circle: unicodeSymbols.status.circle,
+  dot: unicodeSymbols.status.dot,
+  dirty: unicodeSymbols.status.dirty,
+  ahead: unicodeSymbols.arrows.up,
 }
 
 /** Tree branch characters */
 const tree = {
-  middle: '\u251c\u2500\u2500 ',
-  last: '\u2514\u2500\u2500 ',
-  vertical: '\u2502   ',
-  empty: '    ',
+  middle: unicodeSymbols.tree.branch,
+  last: unicodeSymbols.tree.last,
+  vertical: unicodeSymbols.tree.vertical,
+  empty: unicodeSymbols.tree.empty,
 }
 
 // =============================================================================
