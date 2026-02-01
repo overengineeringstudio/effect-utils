@@ -1,21 +1,14 @@
 # react-reconciler Research
 
-> Research document for building custom React renderers.
+> Research document for building custom React renderers with react-reconciler 0.33 (React 19).
 
 ## Overview
 
 [react-reconciler](https://www.npmjs.com/package/react-reconciler) is React's official package for creating custom renderers. It provides the reconciliation algorithm (diffing, scheduling) while you implement the "host config" that describes how to create and manipulate your target platform's primitives.
 
-**Used by:**
+**Used by:** React DOM, React Native, ink (terminal), react-three-fiber (3D), OpenTUI (terminal), and our tui-react.
 
-- React DOM (browser)
-- React Native (mobile)
-- React ART (canvas/SVG)
-- ink (terminal)
-- react-three-fiber (3D)
-- Many others
-
-## Core Concept: Host Config
+## Host Config
 
 A "host config" is an object describing how to interact with your target platform:
 
@@ -23,411 +16,155 @@ A "host config" is an object describing how to interact with your target platfor
 import Reconciler from 'react-reconciler'
 
 const hostConfig = {
-  // Create a platform element
-  createInstance(type, props) {
-    return { type, props, children: [] }
-  },
+  supportsMutation: true,
+  supportsPersistence: false,
+  supportsHydration: false,
 
-  // Create a text node
-  createTextInstance(text) {
-    return { text }
-  },
-
-  // Append child to parent
-  appendChild(parent, child) {
-    parent.children.push(child)
-  },
-
+  createInstance(type, props) { /* ... */ },
+  createTextInstance(text) { /* ... */ },
+  appendChild(parent, child) { /* ... */ },
+  commitUpdate(instance, type, oldProps, newProps) { /* ... */ },
   // ... many more methods
 }
 
 const MyRenderer = Reconciler(hostConfig)
 ```
 
-## Modes
+For terminal UIs, use **mutation mode** (`supportsMutation: true`).
 
-### Mutation Mode
+## React 19 API Changes (0.32 → 0.33)
 
-For platforms like DOM where nodes are mutated in place:
+These are the significant breaking changes from React 18 to React 19 reconciler:
 
-```typescript
-const hostConfig = {
-  supportsMutation: true,
+### `commitUpdate` signature changed
 
-  appendChild(parent, child) {
-    parent.appendChild(child)
-  },
-
-  removeChild(parent, child) {
-    parent.removeChild(child)
-  },
-
-  commitUpdate(instance, updatePayload, type, prevProps, nextProps) {
-    // Mutate instance to match nextProps
-  },
-}
-```
-
-### Persistent Mode
-
-For immutable tree platforms (like React Native Fabric):
+The `updatePayload` parameter was removed. This is the most impactful change for custom renderers.
 
 ```typescript
-const hostConfig = {
-  supportsPersistence: true,
+// Old (React 18 / pre-0.32) — DO NOT USE
+commitUpdate(instance, updatePayload, type, prevProps, nextProps) { ... }
 
-  cloneInstance(instance, updatePayload, type, prevProps, nextProps) {
-    return { ...instance, props: nextProps }
-  },
-}
+// New (React 19 / 0.33)
+commitUpdate(instance, type, oldProps, newProps) { ... }
 ```
 
-**For terminal UIs, use mutation mode.**
+**Pitfall:** Because host config methods are loosely typed, TypeScript won't catch a signature mismatch. If you use the old signature, all parameters shift by one position — `type` receives old props, `oldProps` receives new props, etc. — and `commitUpdate` silently does nothing.
 
-## Required Methods
+Reference: [pmndrs/react-three-fiber#3224](https://github.com/pmndrs/react-three-fiber/pull/3224)
+
+### `prepareUpdate` return value ignored
+
+In React 19, `prepareUpdate` is still called but its return value is **ignored** in mutation mode. `commitUpdate` is always called when props differ. Returning `true` unconditionally is fine.
+
+### New required fields
+
+React 19 / react-reconciler 0.33 requires these additional host config fields:
+
+```typescript
+// Transition support
+NotPendingTransition: null,
+HostTransitionContext: createContext(null),
+resetFormInstance() {},
+requestPostPaintCallback() {},
+shouldAttemptEagerTransition() { return false },
+
+// Event system
+resolveEventTimeStamp() { return Date.now() },
+resolveEventType() { return null },
+resolveEventPriority() { return 16 }, // DefaultEventPriority
+trackSchedulerEvent() {},
+
+// Suspense (must be present even if unused)
+maySuspendCommit() { return false },
+preloadInstance() { return true },
+startSuspendingCommit() {},
+suspendInstance() {},
+waitForCommitToBeReady() { return null },
+```
+
+## Required Host Config Methods
 
 ### Instance Creation
 
 ```typescript
-// Create element instance
-createInstance(
-  type: string,           // e.g., 'div', 'tui-box'
-  props: object,          // Component props
-  rootContainer: any,     // Root container
-  hostContext: any,       // Context from parent
-  internalHandle: any     // React internal (opaque)
-): Instance
-
-// Create text node
-createTextInstance(
-  text: string,
-  rootContainer: any,
-  hostContext: any,
-  internalHandle: any
-): TextInstance
+createInstance(type: string, props: object): Instance
+createTextInstance(text: string): TextInstance
 ```
 
 ### Tree Building (Render Phase)
 
-These run during render - must not cause side effects:
+No side effects allowed:
 
 ```typescript
-// Add child during initial render
 appendInitialChild(parent: Instance, child: Instance | TextInstance): void
-
-// Check if element handles its own text content
 shouldSetTextContent(type: string, props: object): boolean
-
-// Final setup before connecting to tree
-finalizeInitialChildren(
-  instance: Instance,
-  type: string,
-  props: object,
-  rootContainer: any,
-  hostContext: any
-): boolean // Return true if commitMount needed
+finalizeInitialChildren(instance, type, props, rootContainer, hostContext): boolean
 ```
 
 ### Tree Mutations (Commit Phase)
 
-These run during commit - can cause side effects:
-
 ```typescript
-// Add child to parent
 appendChild(parent: Instance, child: Instance | TextInstance): void
-
-// Add child to root container
 appendChildToContainer(container: Container, child: Instance): void
-
-// Insert before another child
-insertBefore(
-  parent: Instance,
-  child: Instance | TextInstance,
-  beforeChild: Instance | TextInstance
-): void
-
-// Remove child
+insertBefore(parent: Instance, child: Instance | TextInstance, beforeChild: Instance | TextInstance): void
 removeChild(parent: Instance, child: Instance | TextInstance): void
-
-// Remove from container
 removeChildFromContainer(container: Container, child: Instance): void
+clearContainer(container: Container): void
 ```
 
 ### Updates
 
 ```typescript
-// Prepare update (can return null to skip)
-prepareUpdate(
-  instance: Instance,
-  type: string,
-  prevProps: object,
-  nextProps: object,
-  rootContainer: any,
-  hostContext: any
-): UpdatePayload | null
+// Return truthy to signal update needed (return value ignored in React 19 mutation mode)
+prepareUpdate(): any
 
-// Apply update
-commitUpdate(
-  instance: Instance,
-  updatePayload: UpdatePayload,
-  type: string,
-  prevProps: object,
-  nextProps: object,
-  internalHandle: any
-): void
+// Apply prop changes to an existing instance — React 19 signature
+commitUpdate(instance: Instance, type: string, oldProps: object, newProps: object): void
 
 // Update text content
-commitTextUpdate(
-  textInstance: TextInstance,
-  prevText: string,
-  nextText: string
-): void
+commitTextUpdate(textInstance: TextInstance, oldText: string, newText: string): void
 ```
 
 ### Commit Lifecycle
 
 ```typescript
-// Before commit starts
 prepareForCommit(container: Container): object | null
-
-// After commit completes
 resetAfterCommit(container: Container): void
-
-// Called if finalizeInitialChildren returned true
-commitMount(
-  instance: Instance,
-  type: string,
-  props: object,
-  internalHandle: any
-): void
 ```
 
 ### Context
 
 ```typescript
-// Get root context
 getRootHostContext(rootContainer: Container): HostContext
-
-// Get child context (for nested elements)
-getChildHostContext(
-  parentHostContext: HostContext,
-  type: string,
-  rootContainer: Container
-): HostContext
+getChildHostContext(parentHostContext: HostContext, type: string): HostContext
 ```
 
-### Scheduling
+### Scheduling & Priority
 
 ```typescript
-// Timeout helpers
 scheduleTimeout: typeof setTimeout
 cancelTimeout: typeof clearTimeout
 noTimeout: -1
-
-// Microtask support (optional)
-supportsMicrotasks: boolean
-scheduleMicrotask?: typeof queueMicrotask
-
-// Is this the primary renderer?
 isPrimaryRenderer: boolean
 
-// Event priority (for concurrent features)
-getCurrentEventPriority(): EventPriority
-```
+supportsMicrotasks: boolean
+scheduleMicrotask: (fn: () => void) => void
 
-## Minimal Terminal Host Config
-
-```typescript
-import Reconciler from 'react-reconciler'
-import Yoga from 'yoga-layout'
-
-interface TuiElement {
-  type: string
-  props: Record<string, any>
-  yogaNode: Yoga.Node
-  children: (TuiElement | TuiTextNode)[]
-  parent: TuiElement | null
-}
-
-interface TuiTextNode {
-  type: 'text'
-  text: string
-  parent: TuiElement | null
-}
-
-interface TuiContainer {
-  root: TuiElement | null
-  onRender: () => void
-}
-
-const hostConfig = {
-  supportsMutation: true,
-  supportsPersistence: false,
-
-  createInstance(type, props): TuiElement {
-    const yogaNode = Yoga.Node.create()
-    applyLayoutProps(yogaNode, props)
-    return { type, props, yogaNode, children: [], parent: null }
-  },
-
-  createTextInstance(text): TuiTextNode {
-    return { type: 'text', text, parent: null }
-  },
-
-  appendInitialChild(parent, child) {
-    child.parent = parent
-    parent.children.push(child)
-    if ('yogaNode' in child) {
-      parent.yogaNode.insertChild(child.yogaNode, parent.yogaNode.getChildCount())
-    }
-  },
-
-  appendChild(parent, child) {
-    this.appendInitialChild(parent, child)
-  },
-
-  appendChildToContainer(container, child) {
-    container.root = child as TuiElement
-  },
-
-  removeChild(parent, child) {
-    const index = parent.children.indexOf(child)
-    if (index !== -1) {
-      parent.children.splice(index, 1)
-      if ('yogaNode' in child) {
-        parent.yogaNode.removeChild(child.yogaNode)
-        child.yogaNode.free()
-      }
-    }
-  },
-
-  removeChildFromContainer(container, child) {
-    if (container.root === child) {
-      container.root = null
-    }
-  },
-
-  prepareUpdate() {
-    return true // Always update (simple approach)
-  },
-
-  commitUpdate(instance, payload, type, prevProps, nextProps) {
-    instance.props = nextProps
-    applyLayoutProps(instance.yogaNode, nextProps)
-  },
-
-  commitTextUpdate(textInstance, prevText, nextText) {
-    textInstance.text = nextText
-  },
-
-  resetAfterCommit(container) {
-    container.onRender() // Trigger terminal render
-  },
-
-  prepareForCommit() {
-    return null
-  },
-
-  getRootHostContext() {
-    return {}
-  },
-  getChildHostContext(parent) {
-    return parent
-  },
-  getPublicInstance(instance) {
-    return instance
-  },
-
-  finalizeInitialChildren() {
-    return false
-  },
-  shouldSetTextContent() {
-    return false
-  },
-
-  scheduleTimeout: setTimeout,
-  cancelTimeout: clearTimeout,
-  noTimeout: -1,
-  isPrimaryRenderer: true,
-
-  getCurrentEventPriority() {
-    return 16
-  }, // DefaultEventPriority
-
-  // No-ops for features we don't use
-  preparePortalMount() {},
-  hideInstance() {},
-  unhideInstance() {},
-  hideTextInstance() {},
-  unhideTextInstance() {},
-  clearContainer() {},
-}
-
-const TuiReconciler = Reconciler(hostConfig)
-```
-
-## Using the Reconciler
-
-```typescript
-// Create root
-function createRoot(onRender: () => void) {
-  const container: TuiContainer = { root: null, onRender }
-
-  const fiberRoot = TuiReconciler.createContainer(
-    container,
-    0, // LegacyRoot
-    null, // hydrationCallbacks
-    false, // isStrictMode
-    null, // concurrentUpdatesByDefault
-    '', // identifierPrefix
-    () => {}, // onRecoverableError
-    null, // transitionCallbacks
-  )
-
-  return {
-    render(element: React.ReactElement) {
-      TuiReconciler.updateContainer(element, fiberRoot, null, () => {})
-    },
-    unmount() {
-      TuiReconciler.updateContainer(null, fiberRoot, null, () => {})
-    },
-    getRoot() {
-      return container.root
-    },
-  }
-}
-```
-
-## Lifecycle Flow
-
-```
-1. Initial Render
-   createInstance() → appendInitialChild() → finalizeInitialChildren()
-   → prepareForCommit() → appendChild/appendChildToContainer()
-   → commitMount() (if finalizeInitialChildren returned true)
-   → resetAfterCommit()
-
-2. Update
-   prepareUpdate() → commitUpdate() / commitTextUpdate()
-   → resetAfterCommit()
-
-3. Removal
-   removeChild() / removeChildFromContainer()
-   → resetAfterCommit()
+getCurrentEventPriority(): number   // 16 = DefaultEventPriority
+resolveUpdatePriority(): number
+getCurrentUpdatePriority(): number
+setCurrentUpdatePriority(priority: number): void
 ```
 
 ## Key Insights for Terminal Renderers
 
 ### 1. Use `resetAfterCommit` for Output
 
-This is called after React finishes all mutations - perfect for triggering terminal render:
+Called after React finishes all mutations — trigger terminal render here:
 
 ```typescript
 resetAfterCommit(container) {
-  if (container.root) {
-    const lines = renderTreeToLines(container.root)
-    writeToTerminal(lines)
-  }
+  container.onRender()
 }
 ```
 
@@ -437,29 +174,110 @@ Pair Yoga nodes with React elements:
 
 - Create Yoga node in `createInstance`
 - Update Yoga props in `commitUpdate`
-- Build Yoga tree in `appendChild`
-- Free Yoga nodes in `removeChild`
-- Calculate layout in `resetAfterCommit` before rendering
+- Build Yoga tree in `appendChild` / `appendInitialChild`
+- Free Yoga nodes in `removeChild` / `removeChildFromContainer`
+- Calculate layout in the render path (before writing to terminal)
 
-### 3. Text Handling
+### 3. `clearContainer` Should Actually Clear
 
-Two approaches:
+`clearContainer` is called before `appendChildToContainer` during certain commit phases. Implement it properly — a no-op can leave stale state:
 
-- **Text elements**: Create text nodes, handle in render
-- **shouldSetTextContent**: Return true for elements that manage their own text
+```typescript
+clearContainer(container) {
+  if (container.root) {
+    freeYogaNode(container.root.yogaNode)
+    container.root = null
+  }
+}
+```
 
-### 4. Keep Host Config Simple
+### 4. Microtask Tracking for Synchronous Flush
 
-For terminal UIs:
+When `supportsMicrotasks` is true, React schedules passive effects (useEffect, useSyncExternalStore) via microtasks. To flush synchronously (needed for terminal output before unmount), wrap `scheduleMicrotask` to track pending work:
 
-- Skip hydration (not needed)
-- Skip persistence (use mutation)
-- Skip concurrent features initially
-- Focus on the core: create, append, remove, update
+```typescript
+const pendingMicrotasks: Array<() => void> = []
+
+scheduleMicrotask: (fn) => {
+  pendingMicrotasks.push(fn)
+  queueMicrotask(() => {
+    const index = pendingMicrotasks.indexOf(fn)
+    if (index !== -1) {
+      pendingMicrotasks.splice(index, 1)
+      fn()
+    }
+  })
+}
+
+// Call before rendering to ensure all React work is done
+function flushPendingMicrotasks() {
+  while (pendingMicrotasks.length > 0) {
+    pendingMicrotasks.shift()!()
+  }
+}
+```
+
+### 5. Render Batching via Microtask
+
+React can trigger multiple commit phases for a single update (e.g., effect cleanup + re-render). Batch renders via microtask in `resetAfterCommit` to avoid rendering intermediate states:
+
+```typescript
+resetAfterCommit(container) {
+  if (!microtaskScheduled) {
+    microtaskScheduled = true
+    queueMicrotask(() => {
+      microtaskScheduled = false
+      scheduleRender()
+    })
+  }
+}
+```
+
+### 6. `doFlush()` Double-Update Pattern
+
+For `useSyncExternalStore` subscriptions, a single flush loop may not pick up store changes that arrive during passive effects. Re-rendering the same element forces React to call `getSnapshot()` again:
+
+```typescript
+function doFlush() {
+  // Phase 1: flush all pending React work
+  for (let i = 0; i < 20; i++) {
+    reconciler.flushPassiveEffects()
+    reconciler.flushSyncWork()
+    flushPendingMicrotasks()
+  }
+
+  // Phase 2: re-render to pick up store changes from effects
+  if (lastRenderedElement) {
+    reconciler.updateContainerSync(wrapWithProviders(lastRenderedElement), fiberRoot, null, () => {})
+    for (let i = 0; i < 20; i++) {
+      reconciler.flushPassiveEffects()
+      reconciler.flushSyncWork()
+      flushPendingMicrotasks()
+    }
+  }
+
+  doRender()
+}
+```
+
+## Comparison with OpenTUI
+
+[OpenTUI](https://github.com/sst/opentui) is a terminal React renderer using react-reconciler 0.32. Key differences from our implementation:
+
+| Aspect                 | OpenTUI                            | tui-react                           |
+| ---------------------- | ---------------------------------- | ----------------------------------- |
+| Container model        | Stateful object with add/remove    | Plain `{ root, onRender }` object   |
+| `clearContainer`       | Removes all children               | Frees yoga node, clears root        |
+| Root type              | ConcurrentRoot                     | LegacyRoot                          |
+| `detachDeletedInstance` | Recursive destroy                 | No-op (cleanup via removeChild)     |
+| `commitUpdate`         | Calls `updateProperties` + render  | Updates props + yoga layout         |
+
+Both implementations now use the correct React 19 `commitUpdate` signature.
 
 ## References
 
 - [react-reconciler README](https://github.com/facebook/react/tree/main/packages/react-reconciler)
-- [Building a Custom React Renderer](https://medium.com/@agent_hunt/hello-world-custom-react-renderer-9a95b7cd04bc)
-- [React ART host config](https://github.com/facebook/react/blob/main/packages/react-art/src/ReactFiberConfigART.js)
+- [react-three-fiber React 19 migration](https://github.com/pmndrs/react-three-fiber/pull/3224) — documents `commitUpdate` signature change
 - [ink reconciler](https://github.com/vadimdemedes/ink/blob/master/src/reconciler.ts)
+- [OpenTUI host config](https://github.com/sst/opentui/blob/main/packages/react/src/reconciler/host-config.ts)
+- [facebook/react#13006](https://github.com/facebook/react/issues/13006) — Core Q&A about react-reconciler

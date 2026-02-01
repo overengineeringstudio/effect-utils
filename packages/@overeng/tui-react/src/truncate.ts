@@ -27,12 +27,6 @@ export interface TruncateOptions {
    * @default '…'
    */
   readonly ellipsis?: string
-
-  /**
-   * Preserve ANSI escape codes in truncated output.
-   * @default true
-   */
-  readonly preserveAnsi?: boolean
 }
 
 // =============================================================================
@@ -71,7 +65,7 @@ export const truncateText = (
   width: number,
   options: TruncateOptions = {},
 ): string => {
-  const { position = 'end', ellipsis = '…', preserveAnsi = true } = options
+  const { position = 'end', ellipsis = '…' } = options
 
   // Don't truncate if it fits
   if (stringWidth(text) <= width) {
