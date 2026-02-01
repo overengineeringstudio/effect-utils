@@ -12,7 +12,8 @@ import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
 import { TuiStoryPreview, type OutputTab } from '../../../src/storybook/TuiStoryPreview.tsx'
-import { DeployState, DeployAction, deployReducer, type LogEntry } from './schema.ts'
+import { DeployState, DeployAction, type LogEntry } from './schema.ts'
+import { DeployApp } from './deploy.tsx'
 import { DeployView } from './view.tsx'
 
 // =============================================================================
@@ -319,9 +320,7 @@ export const Demo: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={DeployView}
-      stateSchema={DeployState}
-      actionSchema={DeployAction}
-      reducer={deployReducer}
+      app={DeployApp}
       initialState={createIdleState()}
       timeline={deployTimeline}
       autoRun={args.autoRun}
@@ -338,9 +337,7 @@ export const Progress: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={DeployView}
-      stateSchema={DeployState}
-      actionSchema={DeployAction}
-      reducer={deployReducer}
+      app={DeployApp}
       initialState={createProgressState()}
       height={args.height}
       autoRun={false}
@@ -355,9 +352,7 @@ export const Complete: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={DeployView}
-      stateSchema={DeployState}
-      actionSchema={DeployAction}
-      reducer={deployReducer}
+      app={DeployApp}
       initialState={createCompleteState()}
       height={args.height}
       autoRun={false}
@@ -372,9 +367,7 @@ export const Failed: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={DeployView}
-      stateSchema={DeployState}
-      actionSchema={DeployAction}
-      reducer={deployReducer}
+      app={DeployApp}
       initialState={createFailedState()}
       height={args.height}
       autoRun={false}
@@ -389,9 +382,7 @@ export const RollingBack: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={DeployView}
-      stateSchema={DeployState}
-      actionSchema={DeployAction}
-      reducer={deployReducer}
+      app={DeployApp}
       initialState={createRollingBackState()}
       height={args.height}
       autoRun={false}
@@ -406,9 +397,7 @@ export const Validating: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={DeployView}
-      stateSchema={DeployState}
-      actionSchema={DeployAction}
-      reducer={deployReducer}
+      app={DeployApp}
       initialState={createValidatingState()}
       height={args.height}
       autoRun={false}
@@ -423,9 +412,7 @@ export const Idle: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={DeployView}
-      stateSchema={DeployState}
-      actionSchema={DeployAction}
-      reducer={deployReducer}
+      app={DeployApp}
       initialState={createIdleState()}
       height={args.height}
       autoRun={false}
@@ -647,9 +634,7 @@ export const LongLines: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={DeployView}
-      stateSchema={DeployState}
-      actionSchema={DeployAction}
-      reducer={deployReducer}
+      app={DeployApp}
       initialState={{ _tag: 'Idle' }}
       timeline={longLinesTimeline}
       autoRun={args.autoRun}

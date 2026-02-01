@@ -6,7 +6,9 @@ import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
 import { Box, Text } from '@overeng/tui-react'
-import { TuiStoryPreview } from '@overeng/tui-react/storybook'
+import { createStaticApp, TuiStoryPreview } from '@overeng/tui-react/storybook'
+
+const StaticApp = createStaticApp()
 
 import { Separator } from './Separator.tsx'
 
@@ -39,27 +41,25 @@ type Story = StoryObj<typeof Separator>
 
 export const Default: Story = {
   render: () => (
-    <TuiStoryPreview>
-      <Separator />
-    </TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => <Separator />} initialState={null} />
   ),
 }
 
 export const CustomWidth: Story = {
   render: () => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <Box flexDirection="column" gap={1}>
         <Separator width={20} />
         <Separator width={40} />
         <Separator width={60} />
       </Box>
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
 }
 
 export const InContext: Story = {
   render: () => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <Box flexDirection="column">
         <Text>Results:</Text>
         <Text> ✓ effect synced</Text>
@@ -68,6 +68,6 @@ export const InContext: Story = {
         <Separator />
         <Text dim>2 synced · 1 cloned</Text>
       </Box>
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
 }

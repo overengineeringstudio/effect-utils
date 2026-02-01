@@ -6,7 +6,9 @@ import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
 import { Box } from '@overeng/tui-react'
-import { TuiStoryPreview } from '@overeng/tui-react/storybook'
+import { createStaticApp, TuiStoryPreview } from '@overeng/tui-react/storybook'
+
+const StaticApp = createStaticApp()
 
 import { TaskItem } from './TaskItem.tsx'
 
@@ -44,7 +46,7 @@ type Story = StoryObj<typeof TaskItem>
 
 export const AllStates: Story = {
   render: () => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <Box flexDirection="column">
         <TaskItem id="1" label="effect" status="success" message="synced (main)" />
         <TaskItem id="2" label="effect-utils" status="success" message="updated → abc1234" />
@@ -52,13 +54,13 @@ export const AllStates: Story = {
         <TaskItem id="4" label="dotfiles" status="pending" />
         <TaskItem id="5" label="schickling.dev" status="pending" />
       </Box>
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
 }
 
 export const WithErrors: Story = {
   render: () => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <Box flexDirection="column">
         <TaskItem id="1" label="effect" status="success" message="synced (main)" />
         <TaskItem id="2" label="effect-utils" status="error" message="network timeout" />
@@ -66,13 +68,13 @@ export const WithErrors: Story = {
         <TaskItem id="4" label="dotfiles" status="skipped" message="dirty worktree" />
         <TaskItem id="5" label="schickling.dev" status="error" message="auth failed" />
       </Box>
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
 }
 
 export const AllPending: Story = {
   render: () => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <Box flexDirection="column">
         <TaskItem id="1" label="effect" status="pending" />
         <TaskItem id="2" label="effect-utils" status="pending" />
@@ -80,13 +82,13 @@ export const AllPending: Story = {
         <TaskItem id="4" label="dotfiles" status="pending" />
         <TaskItem id="5" label="schickling.dev" status="pending" />
       </Box>
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
 }
 
 export const AllSuccess: Story = {
   render: () => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <Box flexDirection="column">
         <TaskItem id="1" label="effect" status="success" message="synced (main)" />
         <TaskItem id="2" label="effect-utils" status="success" message="cloned (main)" />
@@ -94,14 +96,12 @@ export const AllSuccess: Story = {
         <TaskItem id="4" label="dotfiles" status="success" />
         <TaskItem id="5" label="schickling.dev" status="success" />
       </Box>
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
 }
 
 export const SingleActive: Story = {
   render: () => (
-    <TuiStoryPreview>
-      <TaskItem id="1" label="livestore" status="active" message="cloning..." />
-    </TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => <TaskItem id="1" label="livestore" status="active" message="cloning..." />} initialState={null} />
   ),
 }

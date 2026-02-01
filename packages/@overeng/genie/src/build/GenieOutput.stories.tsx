@@ -10,7 +10,8 @@ import React from 'react'
 
 import { TuiStoryPreview, type OutputTab } from '@overeng/tui-react/storybook'
 
-import { GenieState, GenieAction, genieReducer } from './schema.ts'
+import { GenieApp } from './app.ts'
+import { GenieState, GenieAction } from './schema.ts'
 import { GenieView } from './view.tsx'
 
 // =============================================================================
@@ -425,9 +426,7 @@ export const Demo: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={GenieView}
-      stateSchema={GenieState}
-      actionSchema={GenieAction}
-      reducer={genieReducer}
+      app={GenieApp}
       initialState={createState({ phase: 'discovering' })}
       timeline={genieTimeline}
       autoRun={args.autoRun}
@@ -444,9 +443,7 @@ export const MixedResults: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={GenieView}
-      stateSchema={GenieState}
-      actionSchema={GenieAction}
-      reducer={genieReducer}
+      app={GenieApp}
       initialState={createMixedResultsState()}
       height={args.height}
       autoRun={false}
@@ -461,9 +458,7 @@ export const AllUnchanged: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={GenieView}
-      stateSchema={GenieState}
-      actionSchema={GenieAction}
-      reducer={genieReducer}
+      app={GenieApp}
       initialState={createAllUnchangedState()}
       height={args.height}
       autoRun={false}
@@ -478,9 +473,7 @@ export const WithErrors: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={GenieView}
-      stateSchema={GenieState}
-      actionSchema={GenieAction}
-      reducer={genieReducer}
+      app={GenieApp}
       initialState={createWithErrorsState()}
       height={args.height}
       autoRun={false}
@@ -495,9 +488,7 @@ export const DryRun: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={GenieView}
-      stateSchema={GenieState}
-      actionSchema={GenieAction}
-      reducer={genieReducer}
+      app={GenieApp}
       initialState={createDryRunState()}
       height={args.height}
       autoRun={false}
@@ -512,9 +503,7 @@ export const CheckModeSuccess: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={GenieView}
-      stateSchema={GenieState}
-      actionSchema={GenieAction}
-      reducer={genieReducer}
+      app={GenieApp}
       initialState={createCheckModeState()}
       height={args.height}
       autoRun={false}
@@ -529,9 +518,7 @@ export const CheckModeFailed: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={GenieView}
-      stateSchema={GenieState}
-      actionSchema={GenieAction}
-      reducer={genieReducer}
+      app={GenieApp}
       initialState={createCheckModeFailedState()}
       height={args.height}
       autoRun={false}
@@ -546,9 +533,7 @@ export const WithSkipped: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={GenieView}
-      stateSchema={GenieState}
-      actionSchema={GenieAction}
-      reducer={genieReducer}
+      app={GenieApp}
       initialState={createWithSkippedState()}
       height={args.height}
       autoRun={false}
@@ -569,9 +554,7 @@ export const ManyFilesGenerating: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={GenieView}
-      stateSchema={GenieState}
-      actionSchema={GenieAction}
-      reducer={genieReducer}
+      app={GenieApp}
       initialState={createManyFilesState('generating')}
       height={args.height}
       autoRun={false}
@@ -592,9 +575,7 @@ export const ManyFilesComplete: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={GenieView}
-      stateSchema={GenieState}
-      actionSchema={GenieAction}
-      reducer={genieReducer}
+      app={GenieApp}
       initialState={createManyFilesState('complete')}
       height={args.height}
       autoRun={false}

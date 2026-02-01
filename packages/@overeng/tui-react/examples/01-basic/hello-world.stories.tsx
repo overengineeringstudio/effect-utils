@@ -10,9 +10,17 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
+import { createTuiApp } from '../../src/mod.ts'
 import { TuiStoryPreview } from '../../src/storybook/TuiStoryPreview.tsx'
 import { AppState, AppAction, appReducer } from './schema.ts'
 import { HelloWorldView } from './view.tsx'
+
+const HelloApp = createTuiApp({
+  stateSchema: AppState,
+  actionSchema: AppAction,
+  initial: { _tag: 'Displaying', secondsRemaining: 3 } as typeof AppState.Type,
+  reducer: appReducer,
+})
 
 // =============================================================================
 // Initial States
@@ -108,9 +116,7 @@ export const Demo: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={HelloWorldView}
-      stateSchema={AppState}
-      actionSchema={AppAction}
-      reducer={appReducer}
+      app={HelloApp}
       initialState={displayingState(3)}
       timeline={demoTimeline}
       autoRun={args.autoRun}
@@ -128,9 +134,7 @@ export const Displaying: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={HelloWorldView}
-      stateSchema={AppState}
-      actionSchema={AppAction}
-      reducer={appReducer}
+      app={HelloApp}
       initialState={displayingState(3)}
       height={args.height}
       autoRun={false}
@@ -146,9 +150,7 @@ export const Finished: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={HelloWorldView}
-      stateSchema={AppState}
-      actionSchema={AppAction}
-      reducer={appReducer}
+      app={HelloApp}
       initialState={finishedState}
       height={args.height}
       autoRun={false}
@@ -168,9 +170,7 @@ export const InterruptDemo: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={HelloWorldView}
-      stateSchema={AppState}
-      actionSchema={AppAction}
-      reducer={appReducer}
+      app={HelloApp}
       initialState={displayingState(3)}
       timeline={interruptTimeline}
       autoRun={args.autoRun}
@@ -188,9 +188,7 @@ export const Interrupted: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={HelloWorldView}
-      stateSchema={AppState}
-      actionSchema={AppAction}
-      reducer={appReducer}
+      app={HelloApp}
       initialState={interruptedState}
       height={args.height}
       autoRun={false}

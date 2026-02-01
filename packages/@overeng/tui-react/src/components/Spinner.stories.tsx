@@ -1,10 +1,13 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
+import { createStaticApp } from '../storybook/static-app.ts'
 import { TuiStoryPreview } from '../storybook/TuiStoryPreview.tsx'
 import { Box } from './Box.tsx'
 import { Spinner, type SpinnerType } from './Spinner.tsx'
 import { Text } from './Text.tsx'
+
+const StaticApp = createStaticApp()
 
 export default {
   title: 'Components/Feedback/Spinner',
@@ -26,30 +29,30 @@ type Story = StoryObj<typeof Spinner>
 /** Basic spinner with loading text */
 export const Default: Story = {
   render: () => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <Box flexDirection="row">
         <Spinner />
         <Text> Loading...</Text>
       </Box>
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
 }
 
 export const WithColor: Story = {
   render: () => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <Box flexDirection="row">
         <Spinner color="green" />
         <Text> Processing...</Text>
       </Box>
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
 }
 
 /** All available spinner types */
 export const AllTypes: Story = {
   render: () => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <Box>
         <Box flexDirection="row">
           <Spinner type="dots" />
@@ -72,13 +75,13 @@ export const AllTypes: Story = {
           <Text> bar</Text>
         </Box>
       </Box>
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
 }
 
 export const InContext: Story = {
   render: () => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <Box>
         <Text bold>Syncing repositories</Text>
         <Box paddingLeft={2}>
@@ -93,6 +96,6 @@ export const InContext: Story = {
           </Box>
         </Box>
       </Box>
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
 }

@@ -5,7 +5,9 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
-import { TuiStoryPreview } from '@overeng/tui-react/storybook'
+import { createStaticApp, TuiStoryPreview } from '@overeng/tui-react/storybook'
+
+const StaticApp = createStaticApp()
 
 import { Header } from './Header.tsx'
 
@@ -43,24 +45,18 @@ type Story = StoryObj<typeof Header>
 
 export const Default: Story = {
   render: () => (
-    <TuiStoryPreview>
-      <Header name="mr-workspace" root="/Users/dev/workspace" />
-    </TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => <Header name="mr-workspace" root="/Users/dev/workspace" />} initialState={null} />
   ),
 }
 
 export const WithModes: Story = {
   render: () => (
-    <TuiStoryPreview>
-      <Header name="mr-workspace" root="/Users/dev/workspace" modes={['dry run', 'frozen']} />
-    </TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => <Header name="mr-workspace" root="/Users/dev/workspace" modes={['dry run', 'frozen']} />} initialState={null} />
   ),
 }
 
 export const NameOnly: Story = {
   render: () => (
-    <TuiStoryPreview>
-      <Header name="mr-workspace" />
-    </TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => <Header name="mr-workspace" />} initialState={null} />
   ),
 }

@@ -6,7 +6,9 @@ import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
 import { Box } from '@overeng/tui-react'
-import { TuiStoryPreview } from '@overeng/tui-react/storybook'
+import { createStaticApp, TuiStoryPreview } from '@overeng/tui-react/storybook'
+
+const StaticApp = createStaticApp()
 
 import { LogLine } from './LogLine.tsx'
 
@@ -42,35 +44,35 @@ type Story = StoryObj<typeof LogLine>
 
 export const AllTypes: Story = {
   render: () => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <Box flexDirection="column">
         <LogLine type="info" message="Cloning effect from github.com/Effect-TS/effect" />
         <LogLine type="warn" message="dotfiles has uncommitted changes, skipping" />
         <LogLine type="error" message="effect-utils: network timeout after 30s" />
       </Box>
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
 }
 
 export const InfoLogs: Story = {
   render: () => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <Box flexDirection="column">
         <LogLine type="info" message="Syncing livestore from github.com/livestore/livestore" />
         <LogLine type="info" message="Generated flake.nix" />
         <LogLine type="info" message="Generated .envrc" />
       </Box>
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
 }
 
 export const ErrorLogs: Story = {
   render: () => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <Box flexDirection="column">
         <LogLine type="error" message="effect-utils: network timeout after 30s" />
         <LogLine type="error" message="schickling.dev: authentication failed" />
       </Box>
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
 }

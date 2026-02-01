@@ -1,9 +1,12 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
+import { createStaticApp } from '../storybook/static-app.ts'
 import { TuiStoryPreview } from '../storybook/TuiStoryPreview.tsx'
 import { Box } from './Box.tsx'
 import { Text } from './Text.tsx'
+
+const StaticApp = createStaticApp()
 
 export default {
   title: 'Components/Layout/Box',
@@ -27,53 +30,53 @@ type Story = StoryObj<typeof Box>
 /** Basic vertical layout */
 export const Basic: Story = {
   render: () => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <Box>
         <Text>Line 1</Text>
         <Text>Line 2</Text>
         <Text>Line 3</Text>
       </Box>
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
 }
 
 export const Row: Story = {
   render: () => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <Box flexDirection="row">
         <Text color="red">[ERROR]</Text>
         <Text> Something went wrong</Text>
       </Box>
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
 }
 
 export const Column: Story = {
   render: () => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <Box flexDirection="column">
         <Text bold>Header</Text>
         <Text>Content line 1</Text>
         <Text>Content line 2</Text>
       </Box>
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
 }
 
 export const WithPadding: Story = {
   render: () => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <Box padding={2}>
         <Text>This text has padding around it</Text>
       </Box>
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
 }
 
 /** Nested boxes with indentation */
 export const Nested: Story = {
   render: () => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <Box>
         <Text bold>Tasks</Text>
         <Box paddingLeft={2}>
@@ -82,14 +85,14 @@ export const Nested: Story = {
           <Text dim>Task 3 - Pending</Text>
         </Box>
       </Box>
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
 }
 
 /** Complex CLI-like layout */
 export const ComplexLayout: Story = {
   render: () => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <Box>
         <Box flexDirection="row">
           <Text bold>mr sync</Text>
@@ -112,6 +115,6 @@ export const ComplexLayout: Story = {
           </Box>
         </Box>
       </Box>
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
 }

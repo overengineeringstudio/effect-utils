@@ -7,9 +7,17 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
+import { createTuiApp } from '../../src/mod.ts'
 import { TuiStoryPreview } from '../../src/storybook/TuiStoryPreview.tsx'
 import { StressTestState, StressTestAction, stressTestReducer } from './schema.ts'
 import { StressTestView } from './view.tsx'
+
+const StressTestApp = createTuiApp({
+  stateSchema: StressTestState,
+  actionSchema: StressTestAction,
+  initial: { _tag: 'Running', frame: 0, startTime: Date.now(), fps: 0, progress: 0 } as typeof StressTestState.Type,
+  reducer: stressTestReducer,
+})
 
 // =============================================================================
 // Initial States
@@ -122,9 +130,7 @@ export const Demo: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={StressTestView}
-      stateSchema={StressTestState}
-      actionSchema={StressTestAction}
-      reducer={stressTestReducer}
+      app={StressTestApp}
       initialState={runningState(0, 0, 0)}
       timeline={demoTimeline}
       autoRun={args.autoRun}
@@ -142,9 +148,7 @@ export const Running: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={StressTestView}
-      stateSchema={StressTestState}
-      actionSchema={StressTestAction}
-      reducer={stressTestReducer}
+      app={StressTestApp}
       initialState={runningState(150, 58, 50)}
       height={args.height}
       autoRun={false}
@@ -160,9 +164,7 @@ export const FinishedExcellent: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={StressTestView}
-      stateSchema={StressTestState}
-      actionSchema={StressTestAction}
-      reducer={stressTestReducer}
+      app={StressTestApp}
       initialState={finishedState(300, 60)}
       height={args.height}
       autoRun={false}
@@ -178,9 +180,7 @@ export const FinishedGood: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={StressTestView}
-      stateSchema={StressTestState}
-      actionSchema={StressTestAction}
-      reducer={stressTestReducer}
+      app={StressTestApp}
       initialState={finishedState(200, 40)}
       height={args.height}
       autoRun={false}
@@ -196,9 +196,7 @@ export const Interrupted: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={StressTestView}
-      stateSchema={StressTestState}
-      actionSchema={StressTestAction}
-      reducer={stressTestReducer}
+      app={StressTestApp}
       initialState={interruptedState(100, 55, 33)}
       height={args.height}
       autoRun={false}

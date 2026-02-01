@@ -6,7 +6,9 @@ import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
 import { Box, Text } from '@overeng/tui-react'
-import { TuiStoryPreview } from '@overeng/tui-react/storybook'
+import { createStaticApp, TuiStoryPreview } from '@overeng/tui-react/storybook'
+
+const StaticApp = createStaticApp()
 
 import { StatusIcon } from './StatusIcon.tsx'
 
@@ -87,9 +89,7 @@ export default {
   title: 'Components/StatusIcon',
   component: StatusIcon,
   render: () => (
-    <TuiStoryPreview>
-      <StatusIconShowcase />
-    </TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => <StatusIconShowcase />} initialState={null} />
   ),
   parameters: {
     layout: 'fullscreen',
@@ -116,33 +116,33 @@ export const AllStatuses: Story = {}
 
 export const ActiveSpinner: Story = {
   render: () => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <Box flexDirection="row" gap={1}>
         <StatusIcon status="active" />
         <Text>Syncing...</Text>
       </Box>
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
 }
 
 export const SuccessCheck: Story = {
   render: () => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <Box flexDirection="row" gap={1}>
         <StatusIcon status="success" />
         <Text>Completed</Text>
       </Box>
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
 }
 
 export const ErrorCross: Story = {
   render: () => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <Box flexDirection="row" gap={1}>
         <StatusIcon status="error" />
         <Text>Failed</Text>
       </Box>
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
 }

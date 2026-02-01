@@ -1,9 +1,12 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
+import { createStaticApp } from '../storybook/static-app.ts'
 import { TuiStoryPreview } from '../storybook/TuiStoryPreview.tsx'
 import { Box } from './Box.tsx'
 import { Text } from './Text.tsx'
+
+const StaticApp = createStaticApp()
 
 export default {
   title: 'Components/Typography/Text',
@@ -25,9 +28,9 @@ type Story = StoryObj<typeof Text>
 
 export const Basic: Story = {
   render: (args) => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <Text {...args}>{args.children ?? 'Hello, World!'}</Text>
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
   args: {
     children: 'Hello, World!',
@@ -36,9 +39,9 @@ export const Basic: Story = {
 
 export const WithColor: Story = {
   render: (args) => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <Text {...args}>{args.children ?? 'Success message'}</Text>
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
   args: {
     color: 'green',
@@ -48,9 +51,9 @@ export const WithColor: Story = {
 
 export const Bold: Story = {
   render: (args) => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <Text {...args}>{args.children ?? 'Bold text'}</Text>
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
   args: {
     bold: true,
@@ -60,9 +63,9 @@ export const Bold: Story = {
 
 export const Dim: Story = {
   render: (args) => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <Text {...args}>{args.children ?? 'Dimmed text'}</Text>
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
   args: {
     dim: true,
@@ -73,7 +76,7 @@ export const Dim: Story = {
 /** All available text colors */
 export const AllColors: Story = {
   render: () => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <Box>
         <Text color="red">Red text</Text>
         <Text color="green">Green text</Text>
@@ -84,14 +87,14 @@ export const AllColors: Story = {
         <Text color="white">White text</Text>
         <Text color="gray">Gray text</Text>
       </Box>
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
 }
 
 /** All available text styles */
 export const AllStyles: Story = {
   render: () => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <Box>
         <Text bold>Bold text</Text>
         <Text dim>Dim text</Text>
@@ -102,19 +105,19 @@ export const AllStyles: Story = {
           Bold + Cyan
         </Text>
       </Box>
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
 }
 
 export const Combined: Story = {
   render: () => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <Box flexDirection="row">
         <Text color="green" bold>
           SUCCESS
         </Text>
         <Text dim> - Operation completed</Text>
       </Box>
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
 }

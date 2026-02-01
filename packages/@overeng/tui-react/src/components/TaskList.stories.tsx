@@ -1,11 +1,14 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React, { useState, useEffect } from 'react'
 
+import { createStaticApp } from '../storybook/static-app.ts'
 import { TuiStoryPreview } from '../storybook/TuiStoryPreview.tsx'
 import { Box } from './Box.tsx'
 import { Static } from './Static.tsx'
 import { TaskList, type TaskItem, type TaskStatus } from './TaskList.tsx'
 import { Text } from './Text.tsx'
+
+const StaticApp = createStaticApp()
 
 export default {
   title: 'Components/Lists/TaskList',
@@ -17,7 +20,7 @@ type Story = StoryObj<typeof TaskList>
 /** Basic task list with mixed states */
 export const Basic: Story = {
   render: () => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <TaskList
         items={[
           { id: '1', label: 'effect-utils', status: 'success' },
@@ -25,14 +28,14 @@ export const Basic: Story = {
           { id: '3', label: 'dotfiles', status: 'pending' },
         ]}
       />
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
 }
 
 /** All possible task states */
 export const AllStates: Story = {
   render: () => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <TaskList
         items={[
           { id: '1', label: 'pending-task', status: 'pending' },
@@ -45,15 +48,15 @@ export const AllStates: Story = {
         showSummary
         elapsed={5700}
       />
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
 }
 
 export const WithTitle: Story = {
   render: (args) => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <TaskList {...args} />
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
   args: {
     items: [
@@ -68,7 +71,7 @@ export const WithTitle: Story = {
 /** Task list with summary showing counts and elapsed time */
 export const WithSummary: Story = {
   render: () => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <TaskList
         items={[
           { id: '1', label: 'effect-utils', status: 'success' },
@@ -80,15 +83,15 @@ export const WithSummary: Story = {
         showSummary
         elapsed={12300}
       />
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
 }
 
 export const LongList: Story = {
   render: (args) => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <TaskList {...args} />
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
   args: {
     items: Array.from({ length: 15 }, (_, i) => ({
@@ -210,15 +213,15 @@ const SyncSimulationDemo = () => {
 /** Interactive sync simulation (animated in terminal) */
 export const SyncSimulation: Story = {
   render: () => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <SyncSimulationDemo />
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
 }
 
 export const InContext: Story = {
   render: () => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <Box>
         <Box flexDirection="row">
           <Text bold>mr sync</Text>
@@ -236,6 +239,6 @@ export const InContext: Story = {
           />
         </Box>
       </Box>
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
 }

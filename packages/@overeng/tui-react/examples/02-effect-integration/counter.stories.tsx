@@ -10,9 +10,17 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
+import { createTuiApp } from '../../src/mod.ts'
 import { TuiStoryPreview } from '../../src/storybook/TuiStoryPreview.tsx'
 import { CounterState, CounterAction, counterReducer } from './schema.ts'
 import { CounterView } from './view.tsx'
+
+const CounterApp = createTuiApp({
+  stateSchema: CounterState,
+  actionSchema: CounterAction,
+  initial: { _tag: 'Running', count: 0, status: 'idle', history: [] } as typeof CounterState.Type,
+  reducer: counterReducer,
+})
 
 // =============================================================================
 // Initial States
@@ -118,9 +126,7 @@ export const Demo: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={CounterView}
-      stateSchema={CounterState}
-      actionSchema={CounterAction}
-      reducer={counterReducer}
+      app={CounterApp}
       initialState={runningState(0)}
       timeline={demoTimeline}
       autoRun={args.autoRun}
@@ -138,9 +144,7 @@ export const Running: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={CounterView}
-      stateSchema={CounterState}
-      actionSchema={CounterAction}
-      reducer={counterReducer}
+      app={CounterApp}
       initialState={runningState(5, ['[12:00:01] Incremented to 5'])}
       height={args.height}
       autoRun={false}
@@ -156,9 +160,7 @@ export const Loading: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={CounterView}
-      stateSchema={CounterState}
-      actionSchema={CounterAction}
-      reducer={counterReducer}
+      app={CounterApp}
       initialState={loadingState(3)}
       height={args.height}
       autoRun={false}
@@ -174,9 +176,7 @@ export const Complete: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={CounterView}
-      stateSchema={CounterState}
-      actionSchema={CounterAction}
-      reducer={counterReducer}
+      app={CounterApp}
       initialState={completeState(2)}
       height={args.height}
       autoRun={false}
@@ -192,9 +192,7 @@ export const Interrupted: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={CounterView}
-      stateSchema={CounterState}
-      actionSchema={CounterAction}
-      reducer={counterReducer}
+      app={CounterApp}
       initialState={interruptedState(3)}
       height={args.height}
       autoRun={false}

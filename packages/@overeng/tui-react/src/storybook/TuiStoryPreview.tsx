@@ -80,29 +80,21 @@ export interface TimelineEvent<A> {
 }
 
 /** Props for simple mode - just render children */
-interface SimpleProps {
-  /** React children to render in the terminal */
-  children: React.ReactNode
-  /** Terminal height in pixels */
-  height?: number
-  /** Which tabs to show (defaults to ['visual'] in simple mode) */
-  tabs?: OutputTab[]
-  /** Initial active tab */
-  defaultTab?: OutputTab
-}
-
-/** Props for stateful mode - full state management */
-interface StatefulProps<S, A> {
+/** Props for TuiStoryPreview - uses a TuiApp for state management */
+export interface TuiStoryPreviewProps<S, A> {
+  /** A TuiApp instance (or any object with a compatible config) */
+  app: {
+    config: {
+      stateSchema: Schema.Schema<S>
+      actionSchema: Schema.Schema<A>
+      initial: S
+      reducer: (args: { state: S; action: A }) => S
+    }
+  }
   /** The view component to render (receives stateAtom, subscribes internally) */
   View: React.ComponentType<{ stateAtom: Atom.Atom<S> }>
-  /** State schema for JSON encoding */
-  stateSchema: Schema.Schema<S>
-  /** Action schema for button generation */
-  actionSchema: Schema.Schema<A>
-  /** Reducer function */
-  reducer: (params: { state: S; action: A }) => S
-  /** Initial state */
-  initialState: S
+  /** Initial state (defaults to app.config.initial) */
+  initialState?: S
   /** Timeline of actions for auto-playback */
   timeline?: TimelineEvent<A>[]
   /** Terminal height in pixels */
@@ -115,13 +107,6 @@ interface StatefulProps<S, A> {
   tabs?: OutputTab[]
   /** Initial active tab */
   defaultTab?: OutputTab
-}
-
-export type TuiStoryPreviewProps<S, A> = SimpleProps | StatefulProps<S, A>
-
-/** Type guard to check if props are for stateful mode */
-const isStatefulProps = <S, A>(props: TuiStoryPreviewProps<S, A>): props is StatefulProps<S, A> => {
-  return 'View' in props && props.View !== undefined
 }
 
 // =============================================================================
@@ -1207,8 +1192,7 @@ const FINAL_MODES: Set<OutputTab> = new Set(['pipe', 'log', 'json'])
 
 const isFinalMode = (tab: OutputTab): boolean => FINAL_MODES.has(tab)
 
-const DEFAULT_TABS_STATEFUL: OutputTab[] = ['tty', 'ci', 'log', 'json', 'ndjson']
-const DEFAULT_TABS_SIMPLE: OutputTab[] = ['tty', 'ci', 'log']
+const DEFAULT_TABS: OutputTab[] = ['tty', 'ci', 'log', 'json', 'ndjson']
 
 // =============================================================================
 // Simple Mode Component (children-based)
@@ -1717,6 +1701,16 @@ const StatefulTuiStoryPreview = <S, A>({
 // =============================================================================
 
 export const TuiStoryPreview = <S, A>(props: TuiStoryPreviewProps<S, A>): React.ReactElement => {
+  if (isAppStatefulProps(props)) {
+    const { app, ...rest } = props
+    const statefulProps: StatefulProps<S, A> = {
+      ...rest,
+      stateSchema: app.config.stateSchema,
+      actionSchema: app.config.actionSchema,
+      reducer: app.config.reducer,
+    }
+    return <StatefulTuiStoryPreview {...statefulProps} />
+  }
   if (isStatefulProps(props)) {
     return <StatefulTuiStoryPreview {...props} />
   }

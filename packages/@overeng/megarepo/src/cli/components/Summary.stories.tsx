@@ -6,7 +6,9 @@ import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
 import { Box, Text } from '@overeng/tui-react'
-import { TuiStoryPreview } from '@overeng/tui-react/storybook'
+import { createStaticApp, TuiStoryPreview } from '@overeng/tui-react/storybook'
+
+const StaticApp = createStaticApp()
 
 import { Summary } from './Summary.tsx'
 
@@ -40,58 +42,48 @@ type Story = StoryObj<typeof Summary>
 
 export const MixedResults: Story = {
   render: () => (
-    <TuiStoryPreview>
-      <Summary counts={{ cloned: 3, synced: 2, updated: 1, errors: 1 }} />
-    </TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => <Summary counts={{ cloned: 3, synced: 2, updated: 1, errors: 1 }} />} initialState={null} />
   ),
 }
 
 export const AllSuccess: Story = {
   render: () => (
-    <TuiStoryPreview>
-      <Summary counts={{ synced: 5 }} />
-    </TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => <Summary counts={{ synced: 5 }} />} initialState={null} />
   ),
 }
 
 export const WithErrors: Story = {
   render: () => (
-    <TuiStoryPreview>
-      <Summary counts={{ synced: 3, errors: 2 }} />
-    </TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => <Summary counts={{ synced: 3, errors: 2 }} />} initialState={null} />
   ),
 }
 
 export const AlreadySynced: Story = {
   render: () => (
-    <TuiStoryPreview>
-      <Summary counts={{ alreadySynced: 5 }} />
-    </TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => <Summary counts={{ alreadySynced: 5 }} />} initialState={null} />
   ),
 }
 
 export const NoChanges: Story = {
   render: () => (
-    <TuiStoryPreview>
-      <Summary counts={{}} />
-    </TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => <Summary counts={{}} />} initialState={null} />
   ),
 }
 
 export const DryRunMode: Story = {
   render: () => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <Box flexDirection="column" gap={1}>
         <Text bold>Dry run summary:</Text>
         <Summary counts={{ cloned: 3, synced: 2, updated: 1 }} dryRun />
       </Box>
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
 }
 
 export const FullExample: Story = {
   render: () => (
-    <TuiStoryPreview>
+    <TuiStoryPreview app={StaticApp} View={() => (
       <Summary
         counts={{
           cloned: 2,
@@ -102,6 +94,6 @@ export const FullExample: Story = {
           alreadySynced: 2,
         }}
       />
-    </TuiStoryPreview>
+    )} initialState={null} />
   ),
 }

@@ -7,9 +7,23 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
+import { createTuiApp } from '../../src/mod.ts'
 import { TuiStoryPreview } from '../../src/storybook/TuiStoryPreview.tsx'
 import { AppState, AppAction, appReducer, createWindow } from './schema.ts'
 import { BouncingWindowsView } from './view.tsx'
+
+const BouncingApp = createTuiApp({
+  stateSchema: AppState,
+  actionSchema: AppAction,
+  initial: {
+    _tag: 'Running',
+    windows: [createWindow({ id: 0, count: 1, width: 78, height: 20 })],
+    frame: 0,
+    termWidth: 78,
+    termHeight: 20,
+  } as typeof AppState.Type,
+  reducer: appReducer,
+})
 
 // =============================================================================
 // Initial States
@@ -128,9 +142,7 @@ export const Demo: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={BouncingWindowsView}
-      stateSchema={AppState}
-      actionSchema={AppAction}
-      reducer={appReducer}
+      app={BouncingApp}
       initialState={createRunningState(args.windowCount, args.termWidth, args.termHeight)}
       timeline={demoTimeline}
       autoRun={args.autoRun}
@@ -152,9 +164,7 @@ export const SingleWindow: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={BouncingWindowsView}
-      stateSchema={AppState}
-      actionSchema={AppAction}
-      reducer={appReducer}
+      app={BouncingApp}
       initialState={createRunningState(1, 80, 20)}
       timeline={demoTimeline}
       autoRun={args.autoRun}
@@ -176,9 +186,7 @@ export const SixWindows: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={BouncingWindowsView}
-      stateSchema={AppState}
-      actionSchema={AppAction}
-      reducer={appReducer}
+      app={BouncingApp}
       initialState={createRunningState(6, 100, 28)}
       timeline={demoTimeline}
       autoRun={args.autoRun}
@@ -196,9 +204,7 @@ export const Finished: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={BouncingWindowsView}
-      stateSchema={AppState}
-      actionSchema={AppAction}
-      reducer={appReducer}
+      app={BouncingApp}
       initialState={finishedState(300, 3)}
       height={args.height}
       autoRun={false}
@@ -214,9 +220,7 @@ export const Interrupted: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={BouncingWindowsView}
-      stateSchema={AppState}
-      actionSchema={AppAction}
-      reducer={appReducer}
+      app={BouncingApp}
       initialState={interruptedState(150, 3)}
       height={args.height}
       autoRun={false}
