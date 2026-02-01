@@ -25,261 +25,16 @@ import {
 import type { SyncState, SyncLogEntry } from './schema.ts'
 
 // =============================================================================
-// Result Line Components (sync-specific formatting)
-// =============================================================================
-
-/** Format commit transition (e.g., "abc1234 → def5678") */
-const CommitTransition = ({ result }: { result: MemberSyncResult }) => {
-  if (result.previousCommit && result.commit) {
-    const prev = result.previousCommit.slice(0, 7)
-    const curr = result.commit.slice(0, 7)
-    return (
-      <Text dim>
-        {prev} {icons.arrow} {curr}
-      </Text>
-    )
-  }
-  if (result.commit) {
-    return <Text dim>{result.commit.slice(0, 7)}</Text>
-  }
-  return null
-}
-
-/** Result line for cloned member */
-const ClonedLine = ({ result }: { result: MemberSyncResult }) => (
-  <Box flexDirection="row">
-    <StatusIcon status="cloned" variant="sync" />
-    <Text> </Text>
-    <Text bold>{result.name}</Text>
-    <Text> </Text>
-    <Text color="green">cloned</Text>
-    {result.ref && <Text dim> ({result.ref})</Text>}
-  </Box>
-)
-
-/** Result line for synced member */
-const SyncedLine = ({ result }: { result: MemberSyncResult }) => (
-  <Box flexDirection="row">
-    <StatusIcon status="synced" variant="sync" />
-    <Text> </Text>
-    <Text bold>{result.name}</Text>
-    <Text> </Text>
-    <Text color="green">synced</Text>
-    {result.ref && <Text dim> ({result.ref})</Text>}
-  </Box>
-)
-
-/** Result line for updated member */
-const UpdatedLine = ({ result }: { result: MemberSyncResult }) => (
-  <Box flexDirection="row">
-    <StatusIcon status="updated" variant="sync" />
-    <Text> </Text>
-    <Text bold>{result.name}</Text>
-    <Text> </Text>
-    <Text color="green">updated</Text>
-    <Text> </Text>
-    <CommitTransition result={result} />
-  </Box>
-)
-
-/** Result line for locked member */
-const LockedLine = ({ result }: { result: MemberSyncResult }) => (
-  <Box flexDirection="row">
-    <StatusIcon status="locked" variant="sync" />
-    <Text> </Text>
-    <Text bold>{result.name}</Text>
-    <Text> </Text>
-    <Text color="cyan">lock updated</Text>
-    <Text> </Text>
-    <CommitTransition result={result} />
-  </Box>
-)
-
-/** Result line for removed member */
-const RemovedLine = ({ result, dryRun }: { result: MemberSyncResult; dryRun: boolean }) => (
-  <Box flexDirection="row">
-    <StatusIcon status="removed" variant="sync" />
-    <Text> </Text>
-    <Text bold>{result.name}</Text>
-    <Text> </Text>
-    <Text color="red">{dryRun ? 'would remove' : 'removed'}</Text>
-    {result.message && (
-      <Text dim>
-        {' '}
-        ({icons.arrow} {result.message})
-      </Text>
-    )}
-  </Box>
-)
-
-/** Result line for error */
-const ErrorLine = ({ result }: { result: MemberSyncResult }) => (
-  <Box flexDirection="row">
-    <StatusIcon status="error" variant="sync" />
-    <Text> </Text>
-    <Text bold>{result.name}</Text>
-    <Text> </Text>
-    <Text color="red">{result.message ? `error: ${result.message}` : 'error'}</Text>
-  </Box>
-)
-
-/** Result line for skipped member */
-const SkippedLine = ({ result }: { result: MemberSyncResult }) => (
-  <Box flexDirection="row">
-    <StatusIcon status="skipped" variant="sync" />
-    <Text> </Text>
-    <Text bold>{result.name}</Text>
-    <Text> </Text>
-    <Text color="yellow">{result.message ? `skipped: ${result.message}` : 'skipped'}</Text>
-  </Box>
-)
-
-/** Result line for already synced member */
-const AlreadySyncedLine = ({ result }: { result: MemberSyncResult }) => (
-  <Box flexDirection="row">
-    <StatusIcon status="already_synced" variant="sync" />
-    <Text> </Text>
-    <Text bold>{result.name}</Text>
-    <Text> </Text>
-    <Text dim>already synced</Text>
-  </Box>
-)
-
-/** Render a result line based on status */
-const ResultLine = ({ result, dryRun }: { result: MemberSyncResult; dryRun: boolean }) => {
-  switch (result.status) {
-    case 'cloned':
-      return <ClonedLine result={result} />
-    case 'synced':
-      return <SyncedLine result={result} />
-    case 'updated':
-      return <UpdatedLine result={result} />
-    case 'locked':
-      return <LockedLine result={result} />
-    case 'removed':
-      return <RemovedLine result={result} dryRun={dryRun} />
-    case 'error':
-      return <ErrorLine result={result} />
-    case 'skipped':
-      return <SkippedLine result={result} />
-    case 'already_synced':
-      return <AlreadySyncedLine result={result} />
-  }
-}
-
-// =============================================================================
-// Generated Files Component
-// =============================================================================
-
-const GeneratedFiles = ({ files, dryRun }: { files: readonly string[]; dryRun: boolean }) => (
-  <Box paddingTop={1}>
-    <Text>{dryRun ? 'Would generate:' : 'Generated:'}</Text>
-    {files.map((file) => (
-      <Box key={file} flexDirection="row">
-        <Text> </Text>
-        {dryRun ? <Text dim>{icons.arrow}</Text> : <Text color="green">{icons.check}</Text>}
-        <Text> </Text>
-        <Text bold>{file}</Text>
-      </Box>
-    ))}
-  </Box>
-)
-
-// =============================================================================
-// Nested Megarepos Hint
-// =============================================================================
-
-const NestedMegareposHint = ({ count }: { count: number }) => (
-  <Box paddingTop={1}>
-    <Text dim>
-      Note: {count} member{count > 1 ? 's' : ''} contain nested megarepos
-    </Text>
-    <Text dim> Run 'mr sync --deep' to sync them</Text>
-  </Box>
-)
-
-// =============================================================================
-// Progress View Components
-// =============================================================================
-
-/** Progress item - shows pending, active (spinner), or completed result */
-const ProgressItem = ({
-  name,
-  isActive,
-  result,
-}: {
-  name: string
-  isActive: boolean
-  result: MemberSyncResult | undefined
-}) => {
-  if (result) {
-    // Show completed result using TaskItem with mapped status
-    const message = getResultMessage(result)
-    return (
-      <TaskItem
-        id={name}
-        label={name}
-        status={syncToTaskStatus(result.status)}
-        {...(message !== undefined && { message })}
-      />
-    )
-  }
-
-  if (isActive) {
-    // Show active with spinner
-    return <TaskItem id={name} label={name} status="active" message="syncing..." />
-  }
-
-  // Show pending
-  return <TaskItem id={name} label={name} status="pending" />
-}
-
-/** Format commit transition string (e.g., "abc1234 → def5678") */
-const formatCommitTransition = (result: MemberSyncResult): string | undefined => {
-  if (result.previousCommit && result.commit) {
-    const prev = result.previousCommit.slice(0, 7)
-    const curr = result.commit.slice(0, 7)
-    return `${prev} ${icons.arrow} ${curr}`
-  }
-  if (result.commit) {
-    return result.commit.slice(0, 7)
-  }
-  return undefined
-}
-
-/** Get display message for a sync result */
-const getResultMessage = (result: MemberSyncResult): string | undefined => {
-  switch (result.status) {
-    case 'cloned':
-      return result.ref ? `cloned (${result.ref})` : 'cloned'
-    case 'synced':
-      return result.ref ? `synced (${result.ref})` : 'synced'
-    case 'updated': {
-      const transition = formatCommitTransition(result)
-      return transition ? `updated ${transition}` : 'updated'
-    }
-    case 'locked': {
-      const transition = formatCommitTransition(result)
-      return transition ? `lock updated ${transition}` : 'lock updated'
-    }
-    case 'already_synced':
-      return undefined // No message for already synced
-    case 'skipped':
-      return result.message ? `skipped: ${result.message}` : 'skipped'
-    case 'error':
-      return result.message ? `error: ${result.message}` : 'error'
-    case 'removed':
-      return 'removed'
-  }
-}
-
-// =============================================================================
-// Main View Component
+// Types
 // =============================================================================
 
 export interface SyncViewProps {
   state: SyncState
 }
+
+// =============================================================================
+// Main View Component
+// =============================================================================
 
 /**
  * SyncView - Unified view for sync command.
@@ -482,4 +237,273 @@ export const SyncView = ({ state }: SyncViewProps) => {
       )}
     </Box>
   )
+}
+
+// =============================================================================
+// Internal Components - Result Line Components (sync-specific formatting)
+// =============================================================================
+
+/** Format commit transition (e.g., "abc1234 → def5678") */
+function CommitTransition({ result }: { result: MemberSyncResult }) {
+  if (result.previousCommit && result.commit) {
+    const prev = result.previousCommit.slice(0, 7)
+    const curr = result.commit.slice(0, 7)
+    return (
+      <Text dim>
+        {prev} {icons.arrow} {curr}
+      </Text>
+    )
+  }
+  if (result.commit) {
+    return <Text dim>{result.commit.slice(0, 7)}</Text>
+  }
+  return null
+}
+
+/** Result line for cloned member */
+function ClonedLine({ result }: { result: MemberSyncResult }) {
+  return (
+    <Box flexDirection="row">
+      <StatusIcon status="cloned" variant="sync" />
+      <Text> </Text>
+      <Text bold>{result.name}</Text>
+      <Text> </Text>
+      <Text color="green">cloned</Text>
+      {result.ref && <Text dim> ({result.ref})</Text>}
+    </Box>
+  )
+}
+
+/** Result line for synced member */
+function SyncedLine({ result }: { result: MemberSyncResult }) {
+  return (
+    <Box flexDirection="row">
+      <StatusIcon status="synced" variant="sync" />
+      <Text> </Text>
+      <Text bold>{result.name}</Text>
+      <Text> </Text>
+      <Text color="green">synced</Text>
+      {result.ref && <Text dim> ({result.ref})</Text>}
+    </Box>
+  )
+}
+
+/** Result line for updated member */
+function UpdatedLine({ result }: { result: MemberSyncResult }) {
+  return (
+    <Box flexDirection="row">
+      <StatusIcon status="updated" variant="sync" />
+      <Text> </Text>
+      <Text bold>{result.name}</Text>
+      <Text> </Text>
+      <Text color="green">updated</Text>
+      <Text> </Text>
+      <CommitTransition result={result} />
+    </Box>
+  )
+}
+
+/** Result line for locked member */
+function LockedLine({ result }: { result: MemberSyncResult }) {
+  return (
+    <Box flexDirection="row">
+      <StatusIcon status="locked" variant="sync" />
+      <Text> </Text>
+      <Text bold>{result.name}</Text>
+      <Text> </Text>
+      <Text color="cyan">lock updated</Text>
+      <Text> </Text>
+      <CommitTransition result={result} />
+    </Box>
+  )
+}
+
+/** Result line for removed member */
+function RemovedLine({ result, dryRun }: { result: MemberSyncResult; dryRun: boolean }) {
+  return (
+    <Box flexDirection="row">
+      <StatusIcon status="removed" variant="sync" />
+      <Text> </Text>
+      <Text bold>{result.name}</Text>
+      <Text> </Text>
+      <Text color="red">{dryRun ? 'would remove' : 'removed'}</Text>
+      {result.message && (
+        <Text dim>
+          {' '}
+          ({icons.arrow} {result.message})
+        </Text>
+      )}
+    </Box>
+  )
+}
+
+/** Result line for error */
+function ErrorLine({ result }: { result: MemberSyncResult }) {
+  return (
+    <Box flexDirection="row">
+      <StatusIcon status="error" variant="sync" />
+      <Text> </Text>
+      <Text bold>{result.name}</Text>
+      <Text> </Text>
+      <Text color="red">{result.message ? `error: ${result.message}` : 'error'}</Text>
+    </Box>
+  )
+}
+
+/** Result line for skipped member */
+function SkippedLine({ result }: { result: MemberSyncResult }) {
+  return (
+    <Box flexDirection="row">
+      <StatusIcon status="skipped" variant="sync" />
+      <Text> </Text>
+      <Text bold>{result.name}</Text>
+      <Text> </Text>
+      <Text color="yellow">{result.message ? `skipped: ${result.message}` : 'skipped'}</Text>
+    </Box>
+  )
+}
+
+/** Result line for already synced member */
+function AlreadySyncedLine({ result }: { result: MemberSyncResult }) {
+  return (
+    <Box flexDirection="row">
+      <StatusIcon status="already_synced" variant="sync" />
+      <Text> </Text>
+      <Text bold>{result.name}</Text>
+      <Text> </Text>
+      <Text dim>already synced</Text>
+    </Box>
+  )
+}
+
+/** Render a result line based on status */
+function ResultLine({ result, dryRun }: { result: MemberSyncResult; dryRun: boolean }) {
+  switch (result.status) {
+    case 'cloned':
+      return <ClonedLine result={result} />
+    case 'synced':
+      return <SyncedLine result={result} />
+    case 'updated':
+      return <UpdatedLine result={result} />
+    case 'locked':
+      return <LockedLine result={result} />
+    case 'removed':
+      return <RemovedLine result={result} dryRun={dryRun} />
+    case 'error':
+      return <ErrorLine result={result} />
+    case 'skipped':
+      return <SkippedLine result={result} />
+    case 'already_synced':
+      return <AlreadySyncedLine result={result} />
+  }
+}
+
+// =============================================================================
+// Internal Components - Generated Files
+// =============================================================================
+
+function GeneratedFiles({ files, dryRun }: { files: readonly string[]; dryRun: boolean }) {
+  return (
+    <Box paddingTop={1}>
+      <Text>{dryRun ? 'Would generate:' : 'Generated:'}</Text>
+      {files.map((file) => (
+        <Box key={file} flexDirection="row">
+          <Text> </Text>
+          {dryRun ? <Text dim>{icons.arrow}</Text> : <Text color="green">{icons.check}</Text>}
+          <Text> </Text>
+          <Text bold>{file}</Text>
+        </Box>
+      ))}
+    </Box>
+  )
+}
+
+// =============================================================================
+// Internal Components - Nested Megarepos Hint
+// =============================================================================
+
+function NestedMegareposHint({ count }: { count: number }) {
+  return (
+    <Box paddingTop={1}>
+      <Text dim>
+        Note: {count} member{count > 1 ? 's' : ''} contain nested megarepos
+      </Text>
+      <Text dim> Run 'mr sync --deep' to sync them</Text>
+    </Box>
+  )
+}
+
+// =============================================================================
+// Internal Components - Progress View
+// =============================================================================
+
+/** Progress item - shows pending, active (spinner), or completed result */
+function ProgressItem({
+  name,
+  isActive,
+  result,
+}: {
+  name: string
+  isActive: boolean
+  result: MemberSyncResult | undefined
+}) {
+  if (result) {
+    // Show completed result using TaskItem with mapped status
+    const message = getResultMessage(result)
+    return (
+      <TaskItem
+        id={name}
+        label={name}
+        status={syncToTaskStatus(result.status)}
+        {...(message !== undefined && { message })}
+      />
+    )
+  }
+
+  if (isActive) {
+    // Show active with spinner
+    return <TaskItem id={name} label={name} status="active" message="syncing..." />
+  }
+
+  // Show pending
+  return <TaskItem id={name} label={name} status="pending" />
+}
+
+/** Format commit transition string (e.g., "abc1234 → def5678") */
+function formatCommitTransition(result: MemberSyncResult): string | undefined {
+  if (result.previousCommit && result.commit) {
+    const prev = result.previousCommit.slice(0, 7)
+    const curr = result.commit.slice(0, 7)
+    return `${prev} ${icons.arrow} ${curr}`
+  }
+  if (result.commit) {
+    return result.commit.slice(0, 7)
+  }
+  return undefined
+}
+
+/** Get display message for a sync result */
+function getResultMessage(result: MemberSyncResult): string | undefined {
+  switch (result.status) {
+    case 'cloned':
+      return result.ref ? `cloned (${result.ref})` : 'cloned'
+    case 'synced':
+      return result.ref ? `synced (${result.ref})` : 'synced'
+    case 'updated': {
+      const transition = formatCommitTransition(result)
+      return transition ? `updated ${transition}` : 'updated'
+    }
+    case 'locked': {
+      const transition = formatCommitTransition(result)
+      return transition ? `lock updated ${transition}` : 'lock updated'
+    }
+    case 'already_synced':
+      return undefined // No message for already synced
+    case 'skipped':
+      return result.message ? `skipped: ${result.message}` : 'skipped'
+    case 'error':
+      return result.message ? `error: ${result.message}` : 'error'
+    case 'removed':
+      return 'removed'
+  }
 }

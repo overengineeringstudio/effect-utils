@@ -10,7 +10,7 @@ import { InitState, InitAction, initReducer } from './schema.ts'
  * Initial state (default to initialized with empty path).
  */
 export const createInitialInitState = (): typeof InitState.Type => ({
-  status: 'initialized',
+  _tag: 'Success',
   path: '',
 })
 
@@ -22,4 +22,5 @@ export const InitApp = createTuiApp({
   actionSchema: InitAction,
   initial: createInitialInitState(),
   reducer: initReducer,
+  exitCode: (state) => (state._tag === 'Error' ? 1 : 0),
 })

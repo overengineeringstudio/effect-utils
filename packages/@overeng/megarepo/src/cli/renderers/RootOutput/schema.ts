@@ -13,24 +13,24 @@ import { Schema } from 'effect'
 
 /**
  * Success state - JSON output:
- * { "root": "/path/to/megarepo", "name": "my-workspace", "source": "search" }
+ * { "_tag": "Success", "root": "/path/to/megarepo", "name": "my-workspace", "source": "search" }
  */
-export const RootSuccessState = Schema.Struct({
+export const RootSuccessState = Schema.TaggedStruct('Success', {
   root: Schema.String,
   name: Schema.String,
   source: Schema.Literal('search'),
 })
 
 /**
- * Error state - JSON output: { "error": "...", "message": "..." }
+ * Error state - JSON output: { "_tag": "Error", "error": "...", "message": "..." }
  */
-export const RootErrorState = Schema.Struct({
+export const RootErrorState = Schema.TaggedStruct('Error', {
   error: Schema.String,
   message: Schema.String,
 })
 
 /**
- * State for root command - discriminated by property presence.
+ * State for root command - discriminated by _tag.
  */
 export const RootState = Schema.Union(RootSuccessState, RootErrorState)
 
@@ -41,10 +41,10 @@ export type RootState = Schema.Schema.Type<typeof RootState>
 // =============================================================================
 
 export const isRootError = (state: RootState): state is typeof RootErrorState.Type =>
-  'error' in state
+  state._tag === 'Error'
 
 export const isRootSuccess = (state: RootState): state is typeof RootSuccessState.Type =>
-  'root' in state
+  state._tag === 'Success'
 
 // =============================================================================
 // Root Actions
@@ -73,8 +73,8 @@ export const rootReducer = ({
 }): RootState => {
   switch (action._tag) {
     case 'SetSuccess':
-      return { root: action.root, name: action.name, source: 'search' }
+      return { _tag: 'Success', root: action.root, name: action.name, source: 'search' }
     case 'SetError':
-      return { error: action.error, message: action.message }
+      return { _tag: 'Error', error: action.error, message: action.message }
   }
 }

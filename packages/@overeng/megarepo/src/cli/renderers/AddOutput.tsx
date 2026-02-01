@@ -7,15 +7,6 @@ import React from 'react'
 import { Box, Text } from '@overeng/tui-react'
 
 // =============================================================================
-// Symbols
-// =============================================================================
-
-const symbols = {
-  check: '\u2713',
-  cross: '\u2717',
-}
-
-// =============================================================================
 // Types
 // =============================================================================
 
@@ -43,7 +34,7 @@ export type AddErrorOutputProps = {
 export const AddOutput = ({ member, synced, syncStatus, syncMessage }: AddOutputProps) => (
   <Box>
     <Box flexDirection="row">
-      <Text color="green">{symbols.check}</Text>
+      <Text color="green">{'\u2713'}</Text>
       <Text> Added </Text>
       <Text bold>{member}</Text>
     </Box>
@@ -53,7 +44,7 @@ export const AddOutput = ({ member, synced, syncStatus, syncMessage }: AddOutput
         <Text dim>Syncing...</Text>
         <Box flexDirection="row">
           <Text color={syncStatus === 'error' ? 'red' : 'green'}>
-            {syncStatus === 'error' ? symbols.cross : symbols.check}
+            {syncStatus === 'error' ? '\u2717' : '\u2713'}
           </Text>
           <Text> </Text>
           <Text bold>{member}</Text>
@@ -92,7 +83,7 @@ export const AddErrorOutput = ({ error, member, repo }: AddErrorOutputProps) => 
   return (
     <Box>
       <Box flexDirection="row">
-        <Text color="red">{symbols.cross}</Text>
+        <Text color="red">{'\u2717'}</Text>
         <Text> {getMessage()}</Text>
       </Box>
       {hint && <Text dim>{'  ' + hint}</Text>}

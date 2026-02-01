@@ -13,6 +13,7 @@ import { LsState, LsAction, lsReducer } from './schema.ts'
  * Initial state for ls output (empty members list).
  */
 export const createInitialLsState = (): typeof LsState.Type => ({
+  _tag: 'Success',
   members: [],
 })
 
@@ -37,4 +38,5 @@ export const LsApp = createTuiApp({
   actionSchema: LsAction,
   initial: createInitialLsState(),
   reducer: lsReducer,
+  exitCode: (state) => (state._tag === 'Error' ? 1 : 0),
 })

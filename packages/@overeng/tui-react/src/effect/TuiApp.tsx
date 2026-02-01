@@ -152,6 +152,22 @@ export interface TuiAppConfig<S, A> {
    * Only used if actionSchema includes 'Interrupted' variant.
    */
   readonly interruptTimeout?: number
+
+  /**
+   * Optional function to determine process exit code based on final state.
+   * Called on unmount - if returns a number, sets process.exitCode.
+   * If returns undefined, exit code is not modified.
+   *
+   * @example
+   * ```typescript
+   * exitCode: (state) => {
+   *   if (state._tag === 'Error') return 1
+   *   if (state._tag === 'Interrupted') return 130  // Standard SIGINT
+   *   return 0
+   * }
+   * ```
+   */
+  readonly exitCode?: (state: S) => number | undefined
 }
 
 /**
@@ -390,6 +406,19 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
       let exitMode: ExitMode = 'persist' // default for inline
 
       /**
+       * Apply exit code based on final state if exitCode mapper is configured.
+       */
+      const applyExitCode = (): void => {
+        if (config.exitCode) {
+          const finalState = registry.get(stateAtom)
+          const code = config.exitCode(finalState)
+          if (code !== undefined) {
+            process.exitCode = code
+          }
+        }
+      }
+
+      /**
        * Unmount the TUI and render final output.
        *
        * With effect-atom, state updates are synchronous, so we don't need
@@ -404,6 +433,8 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
             rootRef.unmount({ mode: exitMode })
             rootRef = null
           }
+          // Apply exit code based on final state
+          applyExitCode()
         })
 
       // Create API
@@ -438,6 +469,8 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
             rootRef.unmount({ mode: exitMode })
             rootRef = null
           }
+          // Apply exit code based on final state
+          applyExitCode()
         }),
       )
 

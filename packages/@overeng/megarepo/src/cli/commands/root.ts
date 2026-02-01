@@ -33,8 +33,6 @@ export const rootCommand = Cli.Command.make('root', { output: outputOption }, ({
             error: 'not_found',
             message: 'No megarepo.json found in current directory or any parent.',
           })
-          // Set exit code for error
-          process.exitCode = 1
           return
         }
 

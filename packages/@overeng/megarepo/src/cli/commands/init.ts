@@ -36,7 +36,6 @@ export const initCommand = Cli.Command.make('init', { output: outputOption }, ({
             error: 'not_git_repo',
             message: 'Not a git repository',
           })
-          process.exitCode = 1
           return
         }
 

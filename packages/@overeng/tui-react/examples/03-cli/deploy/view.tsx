@@ -254,10 +254,8 @@ function InterruptedSection({ stateAtom }: { stateAtom: Atom.Atom<DeployState> }
         </>
       )}
       <Text dim>
-        {'\n'}Duration before interrupt: {((state.interruptedAt - state.startedAt) / 1000).toFixed(
-          1,
-        )}
-        s
+        {'\n'}Duration before interrupt:{' '}
+        {((state.interruptedAt - state.startedAt) / 1000).toFixed(1)}s
       </Text>
     </Box>
   )

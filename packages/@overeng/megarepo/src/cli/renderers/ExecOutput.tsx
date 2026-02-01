@@ -20,44 +20,56 @@ export type ExecMemberResult = {
   stderr: string
 }
 
-// =============================================================================
-// Symbols
-// =============================================================================
-
-const symbols = {
-  cross: '\u2717',
-}
-
-// =============================================================================
-// Error Output Components
-// =============================================================================
-
 export type ExecErrorType = 'not_in_megarepo' | 'member_not_found'
 
 export type ExecErrorOutputProps = {
   type: ExecErrorType
 }
 
-const errorMessages: Record<ExecErrorType, string> = {
-  not_in_megarepo: 'Not in a megarepo',
-  member_not_found: 'Member not found',
-}
-
-export const ExecErrorOutput = ({ type }: ExecErrorOutputProps) => (
-  <Box flexDirection="row">
-    <Text color="red">{symbols.cross}</Text>
-    <Text> {errorMessages[type]}</Text>
-  </Box>
-)
-
-// =============================================================================
-// Verbose Output Components
-// =============================================================================
-
 export type ExecVerboseHeaderProps = {
   command: string
   mode: 'parallel' | 'sequential'
   members: readonly string[]
+}
+
+export type ExecMemberSkippedProps = {
+  name: string
+  reason?: string | undefined
+}
+
+export type ExecMemberPathProps = {
+  name: string
+  path: string
+}
+
+export type ExecMemberHeaderProps = {
+  name: string
+}
+
+export type ExecStderrProps = {
+  stderr: string
+}
+
+export type ExecResultsOutputProps = {
+  results: readonly ExecMemberResult[]
+}
+
+// =============================================================================
+// Components
+// =============================================================================
+
+export const ExecErrorOutput = ({ type }: ExecErrorOutputProps) => {
+  const errorMessages: Record<ExecErrorType, string> = {
+    not_in_megarepo: 'Not in a megarepo',
+    member_not_found: 'Member not found',
+  }
+
+  return (
+    <Box flexDirection="row">
+      <Text color="red">{'\u2717'}</Text>
+      <Text> {errorMessages[type]}</Text>
+    </Box>
+  )
 }
 
 export const ExecVerboseHeader = ({ command, mode, members }: ExecVerboseHeaderProps) => (
@@ -68,26 +80,12 @@ export const ExecVerboseHeader = ({ command, mode, members }: ExecVerboseHeaderP
   </Box>
 )
 
-// =============================================================================
-// Member Status Components
-// =============================================================================
-
-export type ExecMemberSkippedProps = {
-  name: string
-  reason?: string | undefined
-}
-
 export const ExecMemberSkipped = ({ name, reason = 'not synced' }: ExecMemberSkippedProps) => (
   <Text dim>
     {' '}
     {name}: skipped ({reason})
   </Text>
 )
-
-export type ExecMemberPathProps = {
-  name: string
-  path: string
-}
 
 export const ExecMemberPath = ({ name, path }: ExecMemberPathProps) => (
   <Text dim>
@@ -96,14 +94,6 @@ export const ExecMemberPath = ({ name, path }: ExecMemberPathProps) => (
   </Text>
 )
 
-// =============================================================================
-// Result Output Components
-// =============================================================================
-
-export type ExecMemberHeaderProps = {
-  name: string
-}
-
 export const ExecMemberHeader = ({ name }: ExecMemberHeaderProps) => (
   <Text bold>
     {'\n'}
@@ -111,19 +101,7 @@ export const ExecMemberHeader = ({ name }: ExecMemberHeaderProps) => (
   </Text>
 )
 
-export type ExecStderrProps = {
-  stderr: string
-}
-
 export const ExecStderr = ({ stderr }: ExecStderrProps) => <Text color="red">{stderr}</Text>
-
-// =============================================================================
-// Full Results Output
-// =============================================================================
-
-export type ExecResultsOutputProps = {
-  results: readonly ExecMemberResult[]
-}
 
 /**
  * Renders all exec results (for parallel mode output).

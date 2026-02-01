@@ -8,21 +8,18 @@ import { Schema } from 'effect'
 // State Schema
 // =============================================================================
 
-export const RunningState = Schema.Struct({
-  _tag: Schema.Literal('Running'),
+export const RunningState = Schema.TaggedStruct('Running', {
   count: Schema.Number,
   status: Schema.Literal('idle', 'loading'),
   history: Schema.Array(Schema.String),
 })
 
-export const CompleteState = Schema.Struct({
-  _tag: Schema.Literal('Complete'),
+export const CompleteState = Schema.TaggedStruct('Complete', {
   finalCount: Schema.Number,
   history: Schema.Array(Schema.String),
 })
 
-export const InterruptedState = Schema.Struct({
-  _tag: Schema.Literal('Interrupted'),
+export const InterruptedState = Schema.TaggedStruct('Interrupted', {
   count: Schema.Number,
   history: Schema.Array(Schema.String),
 })

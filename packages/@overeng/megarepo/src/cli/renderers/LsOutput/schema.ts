@@ -25,38 +25,38 @@ export type MemberInfo = Schema.Schema.Type<typeof MemberInfo>
 // =============================================================================
 
 /**
- * Success state - JSON output: { "members": [...] }
+ * Success state - JSON output: { "_tag": "Success", "members": [...] }
  */
-export const LsSuccessState = Schema.Struct({
+export const LsSuccessState = Schema.TaggedStruct('Success', {
   members: Schema.Array(MemberInfo),
 })
 
 /**
- * Error state - JSON output: { "error": "...", "message": "..." }
+ * Error state - JSON output: { "_tag": "Error", "error": "...", "message": "..." }
  */
-export const LsErrorState = Schema.Struct({
+export const LsErrorState = Schema.TaggedStruct('Error', {
   error: Schema.String,
   message: Schema.String,
 })
 
 /**
- * State for ls command - discriminated by property presence.
+ * State for ls command - discriminated by _tag property.
  *
- * Success JSON: { "members": [...] }
- * Error JSON: { "error": "...", "message": "..." }
+ * Success JSON: { "_tag": "Success", "members": [...] }
+ * Error JSON: { "_tag": "Error", "error": "...", "message": "..." }
  */
 export const LsState = Schema.Union(LsSuccessState, LsErrorState)
 
-export type LsState = Schema.Schema.Type<typeof LsState>
+export type LsState = typeof LsState.Type
 
 // =============================================================================
 // Type Guards
 // =============================================================================
 
-export const isLsError = (state: LsState): state is typeof LsErrorState.Type => 'error' in state
+export const isLsError = (state: LsState): state is typeof LsErrorState.Type => state._tag === 'Error'
 
 export const isLsSuccess = (state: LsState): state is typeof LsSuccessState.Type =>
-  'members' in state
+  state._tag === 'Success'
 
 // =============================================================================
 // Ls Actions
@@ -85,8 +85,8 @@ export const lsReducer = ({
 }): LsState => {
   switch (action._tag) {
     case 'SetMembers':
-      return { members: action.members }
+      return { _tag: 'Success', members: action.members }
     case 'SetError':
-      return { error: action.error, message: action.message }
+      return { _tag: 'Error', error: action.error, message: action.message }
   }
 }

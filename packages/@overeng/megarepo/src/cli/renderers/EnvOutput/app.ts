@@ -24,4 +24,5 @@ export const EnvApp = createTuiApp({
   actionSchema: EnvAction,
   initial: createInitialEnvState(),
   reducer: envReducer,
+  exitCode: (state) => ('error' in state ? 1 : 0),
 })

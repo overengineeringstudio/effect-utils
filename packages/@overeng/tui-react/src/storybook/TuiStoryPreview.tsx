@@ -1347,7 +1347,12 @@ const SimpleTuiStoryPreview: React.FC<SimpleProps> = ({
           />
         )}
         {activeTab === 'ci' && (
-          <CIPreviewPane View={ChildrenView} stateAtom={stateAtom} registry={registry} height={height} />
+          <CIPreviewPane
+            View={ChildrenView}
+            stateAtom={stateAtom}
+            registry={registry}
+            height={height}
+          />
         )}
         {activeTab === 'ci-plain' && (
           <CIPlainPreviewPane
@@ -1366,7 +1371,12 @@ const SimpleTuiStoryPreview: React.FC<SimpleProps> = ({
           />
         )}
         {activeTab === 'log' && (
-          <LogPreviewPane View={ChildrenView} stateAtom={stateAtom} registry={registry} height={height} />
+          <LogPreviewPane
+            View={ChildrenView}
+            stateAtom={stateAtom}
+            registry={registry}
+            height={height}
+          />
         )}
         {activeTab === 'json' && <JsonPreviewPane json="// Simple mode - no state schema" />}
         {activeTab === 'ndjson' && (

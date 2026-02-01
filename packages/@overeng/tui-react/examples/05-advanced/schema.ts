@@ -142,22 +142,19 @@ const WindowSchema = Schema.Struct({
   }),
 })
 
-export const RunningState = Schema.Struct({
-  _tag: Schema.Literal('Running'),
+export const RunningState = Schema.TaggedStruct('Running', {
   windows: Schema.Array(WindowSchema),
   frame: Schema.Number,
   termWidth: Schema.Number,
   termHeight: Schema.Number,
 })
 
-export const FinishedState = Schema.Struct({
-  _tag: Schema.Literal('Finished'),
+export const FinishedState = Schema.TaggedStruct('Finished', {
   totalFrames: Schema.Number,
   windowCount: Schema.Number,
 })
 
-export const InterruptedState = Schema.Struct({
-  _tag: Schema.Literal('Interrupted'),
+export const InterruptedState = Schema.TaggedStruct('Interrupted', {
   frame: Schema.Number,
   windowCount: Schema.Number,
 })

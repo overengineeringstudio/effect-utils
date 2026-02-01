@@ -173,11 +173,7 @@ function RunningView({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) {
         <Text dim> │ Ctrl+C to exit</Text>
       </Box>
       <Text dim>{'─'.repeat(state.termWidth)}</Text>
-      <CanvasRenderer
-        windows={state.windows}
-        width={state.termWidth}
-        height={state.termHeight}
-      />
+      <CanvasRenderer windows={state.windows} width={state.termWidth} height={state.termHeight} />
       <Text dim>{'─'.repeat(state.termWidth)}</Text>
     </Box>
   )

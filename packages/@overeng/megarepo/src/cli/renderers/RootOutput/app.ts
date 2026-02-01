@@ -4,12 +4,13 @@
 
 import { createTuiApp } from '@overeng/tui-react'
 
-import { RootState, RootAction, rootReducer } from './schema.ts'
+import { RootState, RootAction, rootReducer, isRootError } from './schema.ts'
 
 /**
  * Initial state (empty success state).
  */
 export const createInitialRootState = (): typeof RootState.Type => ({
+  _tag: 'Success',
   root: '',
   name: '',
   source: 'search',
@@ -23,4 +24,5 @@ export const RootApp = createTuiApp({
   actionSchema: RootAction,
   initial: createInitialRootState(),
   reducer: rootReducer,
+  exitCode: (state) => (isRootError(state) ? 1 : 0),
 })

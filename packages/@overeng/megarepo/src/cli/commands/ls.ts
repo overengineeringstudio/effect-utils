@@ -34,8 +34,6 @@ export const lsCommand = Cli.Command.make('ls', { output: outputOption }, ({ out
             error: 'not_found',
             message: 'No megarepo.json found',
           })
-          // Set exit code for error
-          process.exitCode = 1
           return
         }
 

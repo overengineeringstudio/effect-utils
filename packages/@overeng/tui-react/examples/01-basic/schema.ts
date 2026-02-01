@@ -8,19 +8,15 @@ import { Schema } from 'effect'
 // State Schema
 // =============================================================================
 
-export const DisplayingState = Schema.Struct({
-  _tag: Schema.Literal('Displaying'),
+export const DisplayingState = Schema.TaggedStruct('Displaying', {
   secondsRemaining: Schema.Number,
 })
 
-export const FinishedState = Schema.Struct({
-  _tag: Schema.Literal('Finished'),
+export const FinishedState = Schema.TaggedStruct('Finished', {
   message: Schema.String,
 })
 
-export const InterruptedState = Schema.Struct({
-  _tag: Schema.Literal('Interrupted'),
-})
+export const InterruptedState = Schema.TaggedStruct('Interrupted', {})
 
 export const AppState = Schema.Union(DisplayingState, FinishedState, InterruptedState)
 

@@ -21,7 +21,147 @@ import type { StatusState, MemberStatus, LockStaleness, GitStatus, SymlinkDrift 
 export type { GitStatus, SymlinkDrift, MemberStatus, LockStaleness }
 
 // =============================================================================
-// Symbols
+// Types
+// =============================================================================
+
+export interface StatusViewProps {
+  state: StatusState
+}
+
+export type StatusOutputProps = {
+  name: string
+  root: string
+  members: readonly MemberStatus[]
+  lastSyncTime?: Date | undefined
+  lockStaleness?: LockStaleness | undefined
+  currentMemberPath?: readonly string[] | undefined
+}
+
+// =============================================================================
+// Main Components
+// =============================================================================
+
+/**
+ * StatusView - View for status command.
+ *
+ * Renders workspace status including:
+ * - Workspace header
+ * - Warnings section (problems detected)
+ * - Member tree with status indicators
+ * - Summary line and legend
+ */
+export const StatusView = ({ state }: StatusViewProps) => {
+  const { name, root, members, lastSyncTime, lockStaleness, currentMemberPath } = state
+  const problems = analyzeProblems({ members, lockStaleness })
+  const hasNesting = members.some((m) => m.nestedMembers && m.nestedMembers.length > 0)
+
+  return (
+    <Box>
+      {/* Header */}
+      <Text bold>{name}</Text>
+      <Box flexDirection="row">
+        <Text dim>{'  root: '}</Text>
+        <Text>{root}</Text>
+      </Box>
+      <Text> </Text>
+
+      {/* Warnings */}
+      <WarningsSection problems={problems} />
+
+      {/* Members */}
+      {hasNesting ? (
+        // Tree mode
+        <>
+          {members.map((member, i) => {
+            const isOnCurrentPath =
+              currentMemberPath !== undefined && currentMemberPath[0] === member.name
+            const isCurrent = isOnCurrentPath && currentMemberPath.length === 1
+
+            return (
+              <React.Fragment key={member.name}>
+                <MemberLine member={member} isCurrent={isCurrent} />
+                {member.isMegarepo && member.nestedMembers && member.nestedMembers.length > 0 && (
+                  <MembersTree
+                    members={member.nestedMembers}
+                    prefix=""
+                    currentPath={isOnCurrentPath ? currentMemberPath.slice(1) : undefined}
+                  />
+                )}
+                {i < members.length - 1 && <Text> </Text>}
+              </React.Fragment>
+            )
+          })}
+        </>
+      ) : (
+        // Flat mode
+        <>
+          {members.map((member) => {
+            const isCurrent =
+              currentMemberPath !== undefined &&
+              currentMemberPath.length === 1 &&
+              currentMemberPath[0] === member.name
+            return <MemberLine key={member.name} member={member} isCurrent={isCurrent} />
+          })}
+        </>
+      )}
+
+      {/* Summary */}
+      <Text> </Text>
+      <StatusSummary members={members} lastSyncTime={lastSyncTime} />
+      <Legend members={members} />
+    </Box>
+  )
+}
+
+/**
+ * Legacy StatusOutput component for backwards compatibility.
+ * Converts old props format to new StatusState.
+ */
+export const StatusOutput = ({
+  name,
+  root,
+  members,
+  lastSyncTime,
+  lockStaleness,
+  currentMemberPath,
+}: StatusOutputProps) => {
+  const state: StatusState = {
+    name,
+    root,
+    members: members as MemberStatus[],
+    lastSyncTime: lastSyncTime?.toISOString(),
+    lockStaleness: lockStaleness
+      ? {
+          exists: lockStaleness.exists,
+          missingFromLock: [...lockStaleness.missingFromLock],
+          extraInLock: [...lockStaleness.extraInLock],
+        }
+      : undefined,
+    currentMemberPath: currentMemberPath ? [...currentMemberPath] : undefined,
+  }
+  return <StatusView state={state} />
+}
+
+// =============================================================================
+// Internal Types
+// =============================================================================
+
+type Problem =
+  | { _tag: 'not_synced'; members: MemberStatus[] }
+  | { _tag: 'dirty'; members: MemberStatus[] }
+  | { _tag: 'unpushed'; members: MemberStatus[] }
+  | { _tag: 'lock_missing' }
+  | { _tag: 'lock_stale'; missingFromLock: readonly string[]; extraInLock: readonly string[] }
+  | { _tag: 'symlink_drift'; members: MemberStatus[] }
+
+/** Legend item type with key */
+type LegendItem = {
+  key: string
+  element: React.ReactNode
+}
+
+// =============================================================================
+// Internal Symbols
 // =============================================================================
 
 const symbols = {
@@ -33,19 +173,19 @@ const symbols = {
   ahead: '\u2191',
 }
 
+/** Tree branch characters */
+const tree = {
+  middle: '\u251c\u2500\u2500 ',
+  last: '\u2514\u2500\u2500 ',
+  vertical: '\u2502   ',
+  empty: '    ',
+}
+
 // =============================================================================
-// Problem Analysis
+// Internal Helper Functions
 // =============================================================================
 
-type Problem =
-  | { _tag: 'not_synced'; members: MemberStatus[] }
-  | { _tag: 'dirty'; members: MemberStatus[] }
-  | { _tag: 'unpushed'; members: MemberStatus[] }
-  | { _tag: 'lock_missing' }
-  | { _tag: 'lock_stale'; missingFromLock: readonly string[]; extraInLock: readonly string[] }
-  | { _tag: 'symlink_drift'; members: MemberStatus[] }
-
-const flattenMembers = (members: readonly MemberStatus[]): MemberStatus[] => {
+function flattenMembers(members: readonly MemberStatus[]): MemberStatus[] {
   const result: MemberStatus[] = []
   for (const member of members) {
     result.push(member)
@@ -56,13 +196,13 @@ const flattenMembers = (members: readonly MemberStatus[]): MemberStatus[] => {
   return result
 }
 
-const analyzeProblems = ({
+function analyzeProblems({
   members,
   lockStaleness,
 }: {
   members: readonly MemberStatus[]
   lockStaleness: LockStaleness | undefined
-}): Problem[] => {
+}): Problem[] {
   const warnings: Problem[] = []
   const allMembers = flattenMembers(members)
 
@@ -105,19 +245,97 @@ const analyzeProblems = ({
   return warnings
 }
 
+/** Generate a unique key for a problem based on its tag and content */
+function getProblemKey(problem: Problem): string {
+  switch (problem._tag) {
+    case 'not_synced':
+      return `not_synced-${problem.members.map((m) => m.name).join(',')}`
+    case 'dirty':
+      return `dirty-${problem.members.map((m) => m.name).join(',')}`
+    case 'unpushed':
+      return `unpushed-${problem.members.map((m) => m.name).join(',')}`
+    case 'lock_missing':
+      return 'lock_missing'
+    case 'lock_stale':
+      return `lock_stale-${problem.missingFromLock.join(',')}-${problem.extraInLock.join(',')}`
+    case 'symlink_drift':
+      return `symlink_drift-${problem.members.map((m) => m.name).join(',')}`
+  }
+}
+
+/** Count members at different levels */
+function countMembers(members: readonly MemberStatus[]) {
+  const direct = members.length
+  let nested = 0
+  let synced = 0
+
+  const countRecursive = ({
+    ms,
+    isNested,
+  }: {
+    ms: readonly MemberStatus[]
+    isNested: boolean
+  }): void => {
+    for (const m of ms) {
+      if (isNested) nested++
+      if (m.exists) synced++
+      if (m.nestedMembers) {
+        countRecursive({ ms: m.nestedMembers, isNested: true })
+      }
+    }
+  }
+
+  for (const m of members) {
+    if (m.exists) synced++
+    if (m.nestedMembers) {
+      countRecursive({ ms: m.nestedMembers, isNested: true })
+    }
+  }
+
+  return { direct, nested, synced, total: direct + nested }
+}
+
+/** Format relative time */
+function formatRelativeTime(date: Date): string {
+  const now = Date.now()
+  const diff = now - date.getTime()
+  const seconds = Math.floor(diff / 1000)
+  const minutes = Math.floor(seconds / 60)
+  const hours = Math.floor(minutes / 60)
+  const days = Math.floor(hours / 24)
+
+  if (days > 0) return `${days}d ago`
+  if (hours > 0) return `${hours}h ago`
+  if (minutes > 0) return `${minutes}m ago`
+  return 'just now'
+}
+
+/** Detect which symbols are used for legend */
+function detectUsedSymbols(members: readonly MemberStatus[]) {
+  const allMembers = flattenMembers(members)
+  return {
+    hasDirty: allMembers.some((m) => m.gitStatus?.isDirty),
+    hasUnpushed: allMembers.some((m) => m.gitStatus?.hasUnpushed),
+    hasPinned: allMembers.some((m) => m.lockInfo?.pinned),
+    hasNotSynced: allMembers.some((m) => !m.exists),
+  }
+}
+
 // =============================================================================
-// Helper Components
+// Internal Components - Warnings
 // =============================================================================
 
 /** Warning badge - matches cli-ui badge('WARNING', 'warning') */
-const WarningBadge = () => (
-  <Text backgroundColor="yellow" color="black" bold>
-    {' WARNING '}
-  </Text>
-)
+function WarningBadge() {
+  return (
+    <Text backgroundColor="yellow" color="black" bold>
+      {' WARNING '}
+    </Text>
+  )
+}
 
 /** Single warning item */
-const WarningItem = ({ problem }: { problem: Problem }) => {
+function WarningItem({ problem }: { problem: Problem }) {
   switch (problem._tag) {
     case 'symlink_drift': {
       const count = problem.members.length
@@ -283,26 +501,8 @@ const WarningItem = ({ problem }: { problem: Problem }) => {
   }
 }
 
-/** Generate a unique key for a problem based on its tag and content */
-const getProblemKey = (problem: Problem): string => {
-  switch (problem._tag) {
-    case 'not_synced':
-      return `not_synced-${problem.members.map((m) => m.name).join(',')}`
-    case 'dirty':
-      return `dirty-${problem.members.map((m) => m.name).join(',')}`
-    case 'unpushed':
-      return `unpushed-${problem.members.map((m) => m.name).join(',')}`
-    case 'lock_missing':
-      return 'lock_missing'
-    case 'lock_stale':
-      return `lock_stale-${problem.missingFromLock.join(',')}-${problem.extraInLock.join(',')}`
-    case 'symlink_drift':
-      return `symlink_drift-${problem.members.map((m) => m.name).join(',')}`
-  }
-}
-
 /** Warnings section */
-const WarningsSection = ({ problems }: { problems: Problem[] }) => {
+function WarningsSection({ problems }: { problems: Problem[] }) {
   if (problems.length === 0) return null
   return (
     <Box>
@@ -320,8 +520,12 @@ const WarningsSection = ({ problems }: { problems: Problem[] }) => {
   )
 }
 
+// =============================================================================
+// Internal Components - Member Display
+// =============================================================================
+
 /** Member status symbol */
-const MemberSymbol = ({ member }: { member: MemberStatus }) => {
+function MemberSymbol({ member }: { member: MemberStatus }) {
   if (!member.exists) {
     return <Text color="yellow">{symbols.circle}</Text>
   }
@@ -332,7 +536,7 @@ const MemberSymbol = ({ member }: { member: MemberStatus }) => {
 }
 
 /** Branch display with color coding */
-const BranchInfo = ({ member }: { member: MemberStatus }) => {
+function BranchInfo({ member }: { member: MemberStatus }) {
   if (member.gitStatus?.branch && member.gitStatus?.shortRev) {
     const branch = member.gitStatus.branch
     const rev = member.gitStatus.shortRev
@@ -362,7 +566,7 @@ const BranchInfo = ({ member }: { member: MemberStatus }) => {
 }
 
 /** Single member line */
-const MemberLine = ({
+function MemberLine({
   member,
   isCurrent,
   prefix = '',
@@ -370,7 +574,7 @@ const MemberLine = ({
   member: MemberStatus
   isCurrent: boolean
   prefix?: string
-}) => {
+}) {
   // Use 256-color dark gray (index 236) for current line highlight
   const bgColor = isCurrent ? { ansi256: 236 } : undefined
 
@@ -417,16 +621,8 @@ const MemberLine = ({
   )
 }
 
-/** Tree branch characters */
-const tree = {
-  middle: '\u251c\u2500\u2500 ',
-  last: '\u2514\u2500\u2500 ',
-  vertical: '\u2502   ',
-  empty: '    ',
-}
-
 /** Recursive tree rendering */
-const MembersTree = ({
+function MembersTree({
   members,
   prefix,
   currentPath,
@@ -434,7 +630,7 @@ const MembersTree = ({
   members: readonly MemberStatus[]
   prefix: string
   currentPath: readonly string[] | undefined
-}) => {
+}) {
   return (
     <>
       {members.map((member, i) => {
@@ -460,61 +656,18 @@ const MembersTree = ({
   )
 }
 
-/** Count members at different levels */
-const countMembers = (members: readonly MemberStatus[]) => {
-  const direct = members.length
-  let nested = 0
-  let synced = 0
-
-  const countRecursive = ({
-    ms,
-    isNested,
-  }: {
-    ms: readonly MemberStatus[]
-    isNested: boolean
-  }): void => {
-    for (const m of ms) {
-      if (isNested) nested++
-      if (m.exists) synced++
-      if (m.nestedMembers) {
-        countRecursive({ ms: m.nestedMembers, isNested: true })
-      }
-    }
-  }
-
-  for (const m of members) {
-    if (m.exists) synced++
-    if (m.nestedMembers) {
-      countRecursive({ ms: m.nestedMembers, isNested: true })
-    }
-  }
-
-  return { direct, nested, synced, total: direct + nested }
-}
-
-/** Format relative time */
-const formatRelativeTime = (date: Date): string => {
-  const now = Date.now()
-  const diff = now - date.getTime()
-  const seconds = Math.floor(diff / 1000)
-  const minutes = Math.floor(seconds / 60)
-  const hours = Math.floor(minutes / 60)
-  const days = Math.floor(hours / 24)
-
-  if (days > 0) return `${days}d ago`
-  if (hours > 0) return `${hours}h ago`
-  if (minutes > 0) return `${minutes}m ago`
-  return 'just now'
-}
+// =============================================================================
+// Internal Components - Summary
+// =============================================================================
 
 /** Summary line */
-const StatusSummary = ({
+function StatusSummary({
   members,
   lastSyncTime,
 }: {
   members: readonly MemberStatus[]
   lastSyncTime?: string | undefined
-}) => {
+}) {
   const counts = countMembers(members)
   const parts: string[] = []
 
@@ -539,25 +692,8 @@ const StatusSummary = ({
   return <Text dim>{parts.join(` ${symbols.dot} `)}</Text>
 }
 
-/** Detect which symbols are used for legend */
-const detectUsedSymbols = (members: readonly MemberStatus[]) => {
-  const allMembers = flattenMembers(members)
-  return {
-    hasDirty: allMembers.some((m) => m.gitStatus?.isDirty),
-    hasUnpushed: allMembers.some((m) => m.gitStatus?.hasUnpushed),
-    hasPinned: allMembers.some((m) => m.lockInfo?.pinned),
-    hasNotSynced: allMembers.some((m) => !m.exists),
-  }
-}
-
-/** Legend item type with key */
-type LegendItem = {
-  key: string
-  element: React.ReactNode
-}
-
 /** Legend component */
-const Legend = ({ members }: { members: readonly MemberStatus[] }) => {
+function Legend({ members }: { members: readonly MemberStatus[] }) {
   const used = detectUsedSymbols(members)
   const items: LegendItem[] = []
 
@@ -614,126 +750,4 @@ const Legend = ({ members }: { members: readonly MemberStatus[] }) => {
       ))}
     </Box>
   )
-}
-
-// =============================================================================
-// Main Component
-// =============================================================================
-
-export interface StatusViewProps {
-  state: StatusState
-}
-
-/**
- * StatusView - View for status command.
- *
- * Renders workspace status including:
- * - Workspace header
- * - Warnings section (problems detected)
- * - Member tree with status indicators
- * - Summary line and legend
- */
-export const StatusView = ({ state }: StatusViewProps) => {
-  const { name, root, members, lastSyncTime, lockStaleness, currentMemberPath } = state
-  const problems = analyzeProblems({ members, lockStaleness })
-  const hasNesting = members.some((m) => m.nestedMembers && m.nestedMembers.length > 0)
-
-  return (
-    <Box>
-      {/* Header */}
-      <Text bold>{name}</Text>
-      <Box flexDirection="row">
-        <Text dim>{'  root: '}</Text>
-        <Text>{root}</Text>
-      </Box>
-      <Text> </Text>
-
-      {/* Warnings */}
-      <WarningsSection problems={problems} />
-
-      {/* Members */}
-      {hasNesting ? (
-        // Tree mode
-        <>
-          {members.map((member, i) => {
-            const isOnCurrentPath =
-              currentMemberPath !== undefined && currentMemberPath[0] === member.name
-            const isCurrent = isOnCurrentPath && currentMemberPath.length === 1
-
-            return (
-              <React.Fragment key={member.name}>
-                <MemberLine member={member} isCurrent={isCurrent} />
-                {member.isMegarepo && member.nestedMembers && member.nestedMembers.length > 0 && (
-                  <MembersTree
-                    members={member.nestedMembers}
-                    prefix=""
-                    currentPath={isOnCurrentPath ? currentMemberPath.slice(1) : undefined}
-                  />
-                )}
-                {i < members.length - 1 && <Text> </Text>}
-              </React.Fragment>
-            )
-          })}
-        </>
-      ) : (
-        // Flat mode
-        <>
-          {members.map((member) => {
-            const isCurrent =
-              currentMemberPath !== undefined &&
-              currentMemberPath.length === 1 &&
-              currentMemberPath[0] === member.name
-            return <MemberLine key={member.name} member={member} isCurrent={isCurrent} />
-          })}
-        </>
-      )}
-
-      {/* Summary */}
-      <Text> </Text>
-      <StatusSummary members={members} lastSyncTime={lastSyncTime} />
-      <Legend members={members} />
-    </Box>
-  )
-}
-
-// =============================================================================
-// Legacy Export (for backwards compatibility during migration)
-// =============================================================================
-
-export type StatusOutputProps = {
-  name: string
-  root: string
-  members: readonly MemberStatus[]
-  lastSyncTime?: Date | undefined
-  lockStaleness?: LockStaleness | undefined
-  currentMemberPath?: readonly string[] | undefined
-}
-
-/**
- * Legacy StatusOutput component for backwards compatibility.
- * Converts old props format to new StatusState.
- */
-export const StatusOutput = ({
-  name,
-  root,
-  members,
-  lastSyncTime,
-  lockStaleness,
-  currentMemberPath,
-}: StatusOutputProps) => {
-  const state: StatusState = {
-    name,
-    root,
-    members: members as MemberStatus[],
-    lastSyncTime: lastSyncTime?.toISOString(),
-    lockStaleness: lockStaleness
-      ? {
-          exists: lockStaleness.exists,
-          missingFromLock: [...lockStaleness.missingFromLock],
-          extraInLock: [...lockStaleness.extraInLock],
-        }
-      : undefined,
-    currentMemberPath: currentMemberPath ? [...currentMemberPath] : undefined,
-  }
-  return <StatusView state={state} />
 }

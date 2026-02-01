@@ -51,7 +51,6 @@ export const envCommand = Cli.Command.make(
               error: 'not_found',
               message: 'No megarepo.json found',
             })
-            process.exitCode = 1
             return
           }
 

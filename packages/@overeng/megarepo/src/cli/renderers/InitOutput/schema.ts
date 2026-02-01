@@ -13,26 +13,24 @@ import { Schema } from 'effect'
 
 /**
  * Success state - JSON output:
- * { "status": "initialized", "path": "/path/to/megarepo.json" }
+ * { "_tag": "Success", "path": "/path/to/megarepo.json" }
  */
-export const InitSuccessState = Schema.Struct({
-  status: Schema.Literal('initialized'),
+export const InitSuccessState = Schema.TaggedStruct('Success', {
   path: Schema.String,
 })
 
 /**
  * Already initialized state - JSON output:
- * { "status": "already_initialized", "path": "/path/to/megarepo.json" }
+ * { "_tag": "AlreadyInitialized", "path": "/path/to/megarepo.json" }
  */
-export const InitAlreadyState = Schema.Struct({
-  status: Schema.Literal('already_initialized'),
+export const InitAlreadyState = Schema.TaggedStruct('AlreadyInitialized', {
   path: Schema.String,
 })
 
 /**
- * Error state - JSON output: { "error": "...", "message": "..." }
+ * Error state - JSON output: { "_tag": "Error", "error": "...", "message": "..." }
  */
-export const InitErrorState = Schema.Struct({
+export const InitErrorState = Schema.TaggedStruct('Error', {
   error: Schema.String,
   message: Schema.String,
 })
@@ -48,14 +46,12 @@ export type InitState = Schema.Schema.Type<typeof InitState>
 // Type Guards
 // =============================================================================
 
-export const isInitError = (state: InitState): state is typeof InitErrorState.Type =>
-  'error' in state
+export const isInitError = (state: InitState): state is typeof InitErrorState.Type => state._tag === 'Error'
 
-export const isInitSuccess = (state: InitState): state is typeof InitSuccessState.Type =>
-  'status' in state && state.status === 'initialized'
+export const isInitSuccess = (state: InitState): state is typeof InitSuccessState.Type => state._tag === 'Success'
 
 export const isInitAlready = (state: InitState): state is typeof InitAlreadyState.Type =>
-  'status' in state && state.status === 'already_initialized'
+  state._tag === 'AlreadyInitialized'
 
 // =============================================================================
 // Init Actions
@@ -82,10 +78,10 @@ export const initReducer = ({
 }): InitState => {
   switch (action._tag) {
     case 'SetInitialized':
-      return { status: 'initialized', path: action.path }
+      return { _tag: 'Success', path: action.path }
     case 'SetAlreadyInitialized':
-      return { status: 'already_initialized', path: action.path }
+      return { _tag: 'AlreadyInitialized', path: action.path }
     case 'SetError':
-      return { error: action.error, message: action.message }
+      return { _tag: 'Error', error: action.error, message: action.message }
   }
 }
