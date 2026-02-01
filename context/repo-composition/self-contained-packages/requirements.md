@@ -25,12 +25,16 @@ Self-contained packages are the default composition model for our repos. Each pa
 - R6 - Tooling must use the same workspace scope when generating the pnpm store and running installs.
 - R7 - Offline installs must succeed if lockfiles and hashes are in sync.
 
+### Must handle singleton runtimes
+
+- R8 - Singleton runtime dependencies (e.g. React, React DOM, React Reconciler) must resolve to a single instance within a package workspace during local development, and workspace configuration must explicitly enforce this (e.g. hoisting policy) rather than relying on implicit Node resolution.
+
 ### Must be consistent across repos
 
-- R8 - Use shared Genie templates for package config generation.
-- R9 - Use shared task modules from effect-utils for installs, checks, and builds.
+- R9 - Use shared Genie templates for package config generation.
+- R10 - Use shared task modules from effect-utils for installs, checks, and builds.
 
 ### Must be verifiable
 
-- R10 - Provide a quick check to detect lockfile drift.
-- R11 - Provide a hash/update task that restores consistency after dependency changes.
+- R11 - Provide a quick check to detect lockfile drift.
+- R12 - Provide a hash/update task that restores consistency after dependency changes.
