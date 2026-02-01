@@ -247,16 +247,16 @@ State management uses Effect Atom with an Elm-style reducer pattern:
 │   tui.dispatch({ _tag: 'SetProgress', services: [...] })        │
 └───────────────────────────────┬─────────────────────────────────┘
                                 │
-                    yield* useTuiState({...})
+                    yield* DeployApp.run(<View stateAtom={...} />)
                                 │
                                 ▼
                     ┌───────────────────────────────┐
-                    │         TuiStateAtom          │
+                    │       createTuiApp            │
                     │                               │
                     │   stateAtom ◀── reducer(s,a) │
                     │       │                       │
                     │       ▼                       │
-                    │   useAtomValue()              │
+                    │   useTuiAtomValue(stateAtom)  │
                     │                               │
                     │   actionStream ──▶ command   │
                     └───────────────┬───────────────┘
@@ -269,6 +269,13 @@ State management uses Effect Atom with an Elm-style reducer pattern:
           │  (React render) │           │  (Schema.encode)│
           └─────────────────┘           └─────────────────┘
 ```
+
+**Atom-based views enable:**
+
+- Same view component in CLI, Storybook, and tests
+- No `connected-view.tsx` wrapper needed
+- Fine-grained reactivity via derived atoms
+- Views receive `stateAtom`, subscribe with `useTuiAtomValue`
 
 ### State & Actions
 
@@ -536,16 +543,27 @@ function MyView({ state }) {
 
 ## CLI Integration
 
-### Basic Pattern
+### createTuiApp Pattern
 
-Commands use `useTuiState` with the Elm architecture (State + Action + Reducer + View):
+Commands use `createTuiApp` with Elm architecture (State + Action + Reducer) and atom-based views:
 
 ```typescript
+import { Atom } from '@effect-atom/atom'
 import * as Cli from '@effect/cli'
-import { useTuiState, outputOption, outputModeLayer, Box, Text, Spinner } from '@overeng/tui-react'
+import { createTuiApp, useTuiAtomValue, outputOption, outputModeLayer, Box, Text, Spinner } from '@overeng/tui-react'
 
-// View component receives state and dispatch
-function DeployView({ state, dispatch }: TuiViewProps<DeployState, DeployAction>) {
+// 1. Define the app (state + reducer)
+const DeployApp = createTuiApp({
+  stateSchema: DeployState,
+  actionSchema: DeployAction,
+  initial: { _tag: 'Idle' },
+  reducer: deployReducer,
+})
+
+// 2. View receives stateAtom, subscribes internally
+function DeployView({ stateAtom }: { stateAtom: Atom.Atom<DeployState> }) {
+  const state = useTuiAtomValue(stateAtom)
+  
   if (state._tag === 'Progress') {
     return (
       <Box flexDirection="column">
@@ -559,19 +577,14 @@ function DeployView({ state, dispatch }: TuiViewProps<DeployState, DeployAction>
   return <Text color="green">✓ Complete</Text>
 }
 
-// Command with --output option
+// 3. Command runs app with view
 const deployCommand = Cli.Command.make(
   'deploy',
   { output: outputOption, services: servicesOption },
   ({ output, services }) =>
     Effect.gen(function* () {
-      const tui = yield* useTuiState({
-        stateSchema: DeployState,
-        actionSchema: DeployAction,
-        initial: { _tag: 'Idle' },
-        reducer: deployReducer,
-        View: DeployView,
-      })
+      // Pass stateAtom to view - same pattern in CLI, Storybook, tests
+      const tui = yield* DeployApp.run(<DeployView stateAtom={DeployApp.stateAtom} />)
 
       // Dispatch actions (sync, not Effect!)
       tui.dispatch({ _tag: 'StartDeploy', services: services.split(',') })
@@ -590,32 +603,10 @@ const deployCommand = Cli.Command.make(
 )
 ```
 
-### createTuiApp Pattern
-
-For reusable apps with scoped hooks:
-
-```typescript
-const DeployApp = createTuiApp({
-  stateSchema: DeployState,
-  actionSchema: DeployAction,
-  initial: { _tag: 'Idle' },
-  reducer: deployReducer,
-})
-
-// View uses app-scoped hooks (types inferred)
-const DeployView = () => {
-  const state = DeployApp.useState()
-  const dispatch = DeployApp.useDispatch()
-  return <Text>{state._tag}</Text>
-}
-
-// Run the app
-const program = Effect.gen(function* () {
-  const tui = yield* DeployApp.run(<DeployView />)
-  tui.dispatch({ _tag: 'StartDeploy', services: ['api'] })
-  // ...
-}).pipe(Effect.scoped)
-```
+**Key benefits of atom-based views:**
+- Same view works in CLI, Storybook, and tests
+- No `connected-view.tsx` wrapper needed
+- Fine-grained reactivity via derived atoms
 
 ### Mode Behavior
 
@@ -665,8 +656,8 @@ const MyAction = Schema.Union(
 )
 
 // View renders interrupted state
-const MyView = () => {
-  const state = MyApp.useState()
+const MyView = ({ stateAtom }: { stateAtom: Atom.Atom<MyState> }) => {
+  const state = useTuiAtomValue(stateAtom)
   if (state._tag === 'Interrupted') {
     return <Text color="yellow">⚠ Operation cancelled</Text>
   }
@@ -756,16 +747,22 @@ test('deploy dispatches correct actions', async () => {
 ### Testing React Components
 
 ```typescript
-import { TestRenderer } from '@overeng/tui-react/test'
+import { Atom, Registry } from '@effect-atom/atom'
+import { TestRenderer, TuiRegistryContext } from '@overeng/tui-react/test'
 
 test('deploy view renders progress', () => {
   const renderer = TestRenderer.create()
-  const state: DeployState = {
+  const registry = Registry.make()
+  const stateAtom = Atom.make<DeployState>({
     _tag: 'Progress',
     services: [{ name: 'api-server', status: 'healthy' }],
-  }
+  })
 
-  renderer.render(<DeployView state={state} dispatch={() => {}} viewport={{ columns: 80, rows: 24 }} />)
+  renderer.render(
+    <TuiRegistryContext.Provider value={registry}>
+      <DeployView stateAtom={stateAtom} />
+    </TuiRegistryContext.Provider>
+  )
 
   expect(renderer.toText()).toContain('✓ api-server')
 })
@@ -809,21 +806,22 @@ root.unmount()
 
 ### createTuiApp
 
-Factory for TUI applications with Elm-style state management.
+Factory for TUI applications with Elm-style state management and atom-based reactivity.
 
 ```typescript
 interface TuiAppConfig<S, A> {
   readonly stateSchema: Schema.Schema<S>
   readonly actionSchema: Schema.Schema<A>
   readonly initial: S
-  readonly reducer: (state: S, action: A) => S
+  readonly reducer: (params: { state: S; action: A }) => S
   readonly interruptTimeout?: number // Default: 500ms
 }
 
 interface TuiApp<S, A> {
+  /** Run the app with a view element */
   readonly run: (view: ReactElement) => Effect.Effect<TuiApi<S, A>, never, Scope.Scope | OutputMode>
-  readonly useState: () => S
-  readonly useDispatch: () => (action: A) => void
+  /** State atom - pass to views for reactive subscriptions */
+  readonly stateAtom: Atom.Writable<S>
 }
 
 interface TuiApi<S, A> {
@@ -835,28 +833,57 @@ interface TuiApi<S, A> {
 }
 ```
 
-### useTuiState
+### useTuiAtomValue
 
-Hook for creating TUI state within a command.
+Hook for subscribing to an atom's value within a TUI component.
 
 ```typescript
-interface UseTuiStateConfig<S, A> {
-  readonly stateSchema: Schema.Schema<S>
-  readonly actionSchema: Schema.Schema<A>
-  readonly initial: S
-  readonly reducer: (state: S, action: A) => S
-  readonly View: React.ComponentType<TuiViewProps<S, A>>
+// In a view component
+const MyView = ({ stateAtom }: { stateAtom: Atom.Atom<MyState> }) => {
+  const state = useTuiAtomValue(stateAtom)
+  return <Text>{state.message}</Text>
 }
-
-interface TuiStateApi<S, A> {
-  readonly dispatch: (action: A) => void
-  readonly getState: () => S
-  readonly stateAtom: Atom.Atom<S>
-  readonly actions: Stream.Stream<A>
-}
-
-const tui = yield * useTuiState({ stateSchema, actionSchema, initial, reducer, View })
 ```
+
+### View Component Pattern
+
+Views receive a `stateAtom` prop and subscribe internally using `useTuiAtomValue`:
+
+```typescript
+import { Atom } from '@effect-atom/atom'
+import { useTuiAtomValue } from '@overeng/tui-react'
+
+interface MyViewProps {
+  stateAtom: Atom.Atom<MyState>
+}
+
+const MyView = ({ stateAtom }: MyViewProps) => {
+  const state = useTuiAtomValue(stateAtom)
+
+  // Render based on state
+  return <Text>{state.message}</Text>
+}
+
+// Usage in CLI:
+const tui = yield* MyApp.run(<MyView stateAtom={MyApp.stateAtom} />)
+
+// Usage in Storybook (TuiStoryPreview creates atom internally):
+<TuiStoryPreview View={MyView} initialState={mockState} ... />
+
+// Usage in tests:
+const registry = Registry.make()
+const stateAtom = Atom.make(testState)
+<TuiRegistryContext.Provider value={registry}>
+  <MyView stateAtom={stateAtom} />
+</TuiRegistryContext.Provider>
+```
+
+**Benefits of this pattern:**
+
+- Same view component works everywhere (CLI, Storybook, tests)
+- No `connected-view.tsx` wrapper needed
+- Fine-grained reactivity via derived atoms
+- Clear data flow: atom → useTuiAtomValue → render
 
 ### outputOption & outputModeLayer
 
@@ -906,10 +933,9 @@ interface RenderConfig {
   altScreen: boolean
 }
 
-interface TuiViewProps<S, A> {
-  state: S
-  dispatch: (action: A) => void
-  viewport: Viewport
+// View props pattern - views receive stateAtom
+interface MyViewProps<S> {
+  stateAtom: Atom.Atom<S>
 }
 ```
 
@@ -917,13 +943,14 @@ interface TuiViewProps<S, A> {
 
 ## Complete Example
 
-A full deploy command using Effect CLI with tui-react:
+A full deploy command using Effect CLI with tui-react and atom-based views:
 
 ```typescript
+import { Atom } from '@effect-atom/atom'
 import * as Cli from '@effect/cli'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Effect, Schema, Duration } from 'effect'
-import { useTuiState, outputOption, outputModeLayer, Box, Text, Spinner, Static, useViewport } from '@overeng/tui-react'
+import { createTuiApp, useTuiAtomValue, outputOption, outputModeLayer, Box, Text, Spinner, Static, useViewport } from '@overeng/tui-react'
 
 // State & Action schemas
 const DeployState = Schema.Union(
@@ -947,6 +974,8 @@ const DeployState = Schema.Union(
   Schema.TaggedStruct('Interrupted', {}),
 )
 
+type DeployState = Schema.Schema.Type<typeof DeployState>
+
 const DeployAction = Schema.Union(
   Schema.TaggedStruct('AddLog', { message: Schema.String }),
   Schema.TaggedStruct('StartDeploy', { services: Schema.Array(Schema.String) }),
@@ -956,13 +985,13 @@ const DeployAction = Schema.Union(
 )
 
 // Reducer
-const deployReducer = (state, action) => {
+const deployReducer = ({ state, action }: { state: DeployState; action: typeof DeployAction.Type }): DeployState => {
   switch (action._tag) {
     case 'AddLog':
       if (!('logs' in state)) return state
-      return { ...state, logs: [...state.logs, action.message] }
+      return { ...state, logs: [...state.logs, action.message] } as DeployState
     case 'StartDeploy':
-      return { _tag: 'Progress', services: action.services.map(name => ({ name, status: 'pending' })), logs: [] }
+      return { _tag: 'Progress', services: action.services.map(name => ({ name, status: 'pending' as const })), logs: [] }
     case 'UpdateService':
       if (state._tag !== 'Progress') return state
       return { ...state, services: state.services.map(s => s.name === action.name ? { ...s, status: action.status } : s) }
@@ -974,8 +1003,17 @@ const deployReducer = (state, action) => {
   }
 }
 
-// View with viewport-aware service list
-function DeployView({ state, dispatch }) {
+// Create the app
+const DeployApp = createTuiApp({
+  stateSchema: DeployState,
+  actionSchema: DeployAction,
+  initial: { _tag: 'Idle' } as DeployState,
+  reducer: deployReducer,
+})
+
+// View receives stateAtom, subscribes internally
+function DeployView({ stateAtom }: { stateAtom: Atom.Atom<DeployState> }) {
+  const state = useTuiAtomValue(stateAtom)
   const { rows } = useViewport()
 
   if (state._tag === 'Idle') return null
@@ -1037,7 +1075,7 @@ function ServiceItem({ service }) {
   )
 }
 
-// Command
+// Command - uses DeployApp.run() with atom-based view
 const deployCommand = Cli.Command.make(
   'deploy',
   { output: outputOption, services: Cli.Options.text('services').pipe(Cli.Options.withAlias('s')) },
@@ -1046,13 +1084,8 @@ const deployCommand = Cli.Command.make(
       const serviceList = services.split(',').map(s => s.trim())
       const startTime = Date.now()
 
-      const tui = yield* useTuiState({
-        stateSchema: DeployState,
-        actionSchema: DeployAction,
-        initial: { _tag: 'Idle' },
-        reducer: deployReducer,
-        View: DeployView,
-      })
+      // Pass stateAtom to view - same pattern works in CLI, Storybook, tests
+      const tui = yield* DeployApp.run(<DeployView stateAtom={DeployApp.stateAtom} />)
 
       tui.dispatch({ _tag: 'StartDeploy', services: serviceList })
 
@@ -1063,7 +1096,7 @@ const deployCommand = Cli.Command.make(
         tui.dispatch({ _tag: 'UpdateService', name: service, status: 'healthy' })
       }
 
-      tui.dispatch({ _tag: 'Finish', results: serviceList.map(name => ({ name, result: 'updated', duration: 500 })), totalDuration: Date.now() - startTime })
+      tui.dispatch({ _tag: 'Finish', results: serviceList.map(name => ({ name, result: 'updated' as const, duration: 500 })), totalDuration: Date.now() - startTime })
     }).pipe(Effect.scoped, Effect.provide(outputModeLayer(output)))
 )
 
