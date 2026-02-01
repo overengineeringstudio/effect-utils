@@ -65,13 +65,9 @@ tasks."verify:full" = { exec = "pnpm test"; };
 - R20 - Task dependency graphs must be explicit via `after`/`before`.
 - R21 - Task names should appear in shell completions with descriptions.
 
-### Must respect task outcomes
-
-- R22 - Failed tasks must not be cached as successful. Task cache must respect exit status - a cached "pass" can only be returned if the task actually succeeded on the cached run. (See [devenv#2443](https://github.com/cachix/devenv/issues/2443))
-
 ### Must be verified
 
-- R23 - Task modules must have minimal smoke coverage in the test suite.
+- R22 - Task modules must have minimal smoke coverage in the test suite.
 
 ## See Also
 
