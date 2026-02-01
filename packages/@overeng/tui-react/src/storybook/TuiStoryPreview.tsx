@@ -1,31 +1,26 @@
 /**
- * TuiStoryPreview - Unified Storybook wrapper for TUI components
+ * TuiStoryPreview - Storybook wrapper for TUI components
  *
- * Supports two modes:
+ * Takes a TuiApp and a View component. Provides multi-tab output preview
+ * with timeline playback, viewport controls, and state inspection.
  *
- * 1. **Simple mode** - Just wrap children in a terminal preview:
- *    ```tsx
- *    <TuiStoryPreview>
- *      <Box><Text>Hello</Text></Box>
- *    </TuiStoryPreview>
- *    ```
+ * ```tsx
+ * const MyApp = createTuiApp({ stateSchema, actionSchema, initial, reducer })
  *
- * 2. **Stateful mode** - Full state management with timeline playback:
- *    ```tsx
- *    <TuiStoryPreview
- *      View={MyView}
- *      stateSchema={MyState}
- *      actionSchema={MyAction}
- *      reducer={myReducer}
- *      initialState={initialState}
- *      timeline={events}
- *    />
- *    ```
+ * <TuiStoryPreview
+ *   app={MyApp}
+ *   View={MyView}
+ *   initialState={customState} // optional, defaults to app.config.initial
+ *   timeline={events}
+ * />
+ * ```
  *
- * Features:
- * - Tabs for all output modes: TTY, Alt Screen, CI, CI Plain, Pipe, Log, JSON, NDJSON
- * - Timeline playback with play/pause/scrub (stateful mode)
- * - Viewport size controls
+ * For static/stateless component demos, use `createStaticApp()`:
+ *
+ * ```tsx
+ * const StaticApp = createStaticApp()
+ * <TuiStoryPreview app={StaticApp} View={() => <MyComponent />} initialState={null} />
+ * ```
  *
  * Output mode tabs align with CLI `--output` flag values:
  * - `tty` - Interactive terminal (live, animated, colored)
@@ -1202,18 +1197,19 @@ const DEFAULT_TABS: OutputTab[] = ['tty', 'ci', 'log', 'json', 'ndjson']
 // Main Stateful Component (View + state management)
 // =============================================================================
 
-const StatefulTuiStoryPreview = <S, A>({
+export const TuiStoryPreview = <S, A>({
+  app,
   View,
-  stateSchema,
-  reducer,
-  initialState,
+  initialState: initialStateProp,
   timeline = [],
   height = 400,
   autoRun = true,
   playbackSpeed = 1,
-  tabs = DEFAULT_TABS_STATEFUL,
+  tabs = DEFAULT_TABS,
   defaultTab = 'tty',
-}: StatefulProps<S, A>): React.ReactElement => {
+}: TuiStoryPreviewProps<S, A>): React.ReactElement => {
+  const { stateSchema, reducer } = app.config
+  const initialState = initialStateProp ?? app.config.initial
   // UI State
   const [activeTab, setActiveTab] = useState<OutputTab>(defaultTab)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -1521,23 +1517,3 @@ const StatefulTuiStoryPreview = <S, A>({
   )
 }
 
-// =============================================================================
-// Main Component (dispatches to Simple or Stateful)
-// =============================================================================
-
-export const TuiStoryPreview = <S, A>(props: TuiStoryPreviewProps<S, A>): React.ReactElement => {
-  if (isAppStatefulProps(props)) {
-    const { app, ...rest } = props
-    const statefulProps: StatefulProps<S, A> = {
-      ...rest,
-      stateSchema: app.config.stateSchema,
-      actionSchema: app.config.actionSchema,
-      reducer: app.config.reducer,
-    }
-    return <StatefulTuiStoryPreview {...statefulProps} />
-  }
-  if (isStatefulProps(props)) {
-    return <StatefulTuiStoryPreview {...props} />
-  }
-  return <SimpleTuiStoryPreview {...props} />
-}

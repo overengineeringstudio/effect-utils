@@ -2,58 +2,31 @@
  * Storybook utilities for TUI React components
  *
  * @example
- * ```ts
- * // Use the pre-configured preview in .storybook/preview.tsx
- * import { tuiPreview } from '@overeng/tui-react/storybook'
- * export default tuiPreview
- * ```
- *
- * @example
  * ```tsx
- * // Simple mode - just wrap children in terminal preview
+ * // App-based story with timeline playback
  * import { TuiStoryPreview } from '@overeng/tui-react/storybook'
+ *
+ * const MyApp = createTuiApp({ stateSchema, actionSchema, initial, reducer })
  *
  * export const MyStory = {
  *   render: () => (
- *     <TuiStoryPreview>
- *       <Box><Text>Hello</Text></Box>
- *     </TuiStoryPreview>
+ *     <TuiStoryPreview app={MyApp} View={MyView} timeline={events} />
  *   ),
  * }
  * ```
  *
  * @example
  * ```tsx
- * // Stateful mode - full state management with timeline
- * import { TuiStoryPreview } from '@overeng/tui-react/storybook'
- * import { MyView, MyState, MyAction, myReducer } from './my-example'
+ * // Static component demo
+ * import { TuiStoryPreview, createStaticApp } from '@overeng/tui-react/storybook'
+ *
+ * const StaticApp = createStaticApp()
  *
  * export const MyStory = {
  *   render: () => (
- *     <TuiStoryPreview
- *       View={MyView}
- *       stateSchema={MyState}
- *       actionSchema={MyAction}
- *       reducer={myReducer}
- *       initialState={initialState}
- *       timeline={events}
- *     />
+ *     <TuiStoryPreview app={StaticApp} View={() => <MyComponent />} initialState={null} />
  *   ),
  * }
- * ```
- *
- * @example
- * ```tsx
- * // CLI component with createCliMeta helper
- * import { createCliMeta, TerminalPreview } from '@overeng/tui-react/storybook'
- *
- * const meta = createCliMeta<MyOutputProps>(MyOutput, {
- *   title: 'CLI/MyOutput',
- *   description: 'Output for my command',
- *   defaultArgs: { status: 'success' },
- * })
- *
- * export default meta
  * ```
  */
 
@@ -63,17 +36,6 @@ export {
   type TimelineEvent,
   type OutputTab,
 } from './TuiStoryPreview.tsx'
+export { createStaticApp } from './static-app.ts'
 export { tuiPreview } from './preview.ts'
 export { xtermTheme, containerStyles, previewTextStyles } from './theme.ts'
-
-// CLI utilities
-export {
-  TerminalPreview,
-  StringTerminalPreview,
-  createCliMeta,
-  type TerminalPreviewProps,
-  type StringTerminalPreviewProps,
-  type CreateCliMetaOptions,
-  type CliStoryMeta,
-  type CliStory,
-} from './cli-utils.tsx'
