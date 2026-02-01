@@ -10,8 +10,9 @@ import { FileSystem, type Error as PlatformError } from '@effect/platform'
 import { Console, Effect, Option, type ParseResult, Schema } from 'effect'
 import React from 'react'
 
+import { Atom, Registry } from '@effect-atom/atom'
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
-import { renderToString } from '@overeng/tui-react'
+import { renderToString, TuiRegistryContext } from '@overeng/tui-react'
 
 import {
   CONFIG_FILE_NAME,
@@ -26,12 +27,8 @@ import { checkLockStaleness, LOCK_FILE_NAME, readLockFile } from '../../lib/lock
 import { extractRefFromSymlinkPath } from '../../lib/ref.ts'
 import { Cwd, findMegarepoRoot, outputOption } from '../context.ts'
 import { NotInMegarepoError } from '../errors.ts'
-import {
-  StatusOutput,
-  type GitStatus,
-  type MemberStatus,
-  type SymlinkDrift,
-} from '../renderers/StatusOutput.tsx'
+import { StatusView } from '../renderers/StatusOutput/mod.ts'
+import type { GitStatus, MemberStatus, SymlinkDrift } from '../renderers/StatusOutput/mod.ts'
 
 /**
  * Emit a member as NDJSON (for streaming output).
@@ -442,17 +439,23 @@ export const statusCommand = Cli.Command.make('status', { output: outputOption }
         })
       }
 
-      // Render using React StatusOutput component
+      // Render using React StatusView component
+      const registry = Registry.make()
+      const stateAtom = Atom.make({
+        name,
+        root: root.value,
+        members,
+        lastSyncTime: lastSyncTime?.toISOString(),
+        lockStaleness,
+        currentMemberPath,
+      })
       const output = yield* Effect.promise(() =>
         renderToString({
-          element: React.createElement(StatusOutput, {
-            name,
-            root: root.value,
-            members,
-            lastSyncTime,
-            lockStaleness,
-            currentMemberPath,
-          }),
+          element: React.createElement(
+            TuiRegistryContext.Provider,
+            { value: registry },
+            React.createElement(StatusView, { stateAtom }),
+          ),
         }),
       )
       yield* Console.log(output)

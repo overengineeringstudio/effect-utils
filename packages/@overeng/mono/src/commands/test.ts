@@ -1,4 +1,5 @@
 import { Command, Options } from '@effect/cli'
+import { unicodeSymbols } from '@overeng/tui-core'
 import { Console, Effect } from 'effect'
 
 import { ciGroup, ciGroupEnd, IS_CI, runCommand } from '../utils.ts'
@@ -56,6 +57,6 @@ export const testCommand = () =>
         yield* ciGroupEnd
       }
 
-      yield* Console.log('✓ Tests complete')
+      yield* Console.log(`${unicodeSymbols.status.check} Tests complete`)
     }),
   ).pipe(Command.withDescription('Run tests'))

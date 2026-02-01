@@ -7,7 +7,7 @@ import React from 'react'
 
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
-import { PinState, PinAction, pinReducer } from './PinOutput/schema.ts'
+import { PinApp, PinState } from './PinOutput/mod.ts'
 import { PinView } from './PinOutput/view.tsx'
 
 // =============================================================================
@@ -139,9 +139,7 @@ export const PinWithRef: Story = {
   render: () => (
     <TuiStoryPreview
       View={PinView}
-      stateSchema={PinState}
-      actionSchema={PinAction}
-      reducer={pinReducer}
+      app={PinApp}
       initialState={createPinSuccessWithRef()}
     />
   ),
@@ -151,9 +149,7 @@ export const PinCurrentCommit: Story = {
   render: () => (
     <TuiStoryPreview
       View={PinView}
-      stateSchema={PinState}
-      actionSchema={PinAction}
-      reducer={pinReducer}
+      app={PinApp}
       initialState={createPinSuccessWithCommit()}
     />
   ),
@@ -163,9 +159,7 @@ export const Unpin: Story = {
   render: () => (
     <TuiStoryPreview
       View={PinView}
-      stateSchema={PinState}
-      actionSchema={PinAction}
-      reducer={pinReducer}
+      app={PinApp}
       initialState={createUnpinSuccess()}
     />
   ),
@@ -175,9 +169,7 @@ export const AlreadyPinned: Story = {
   render: () => (
     <TuiStoryPreview
       View={PinView}
-      stateSchema={PinState}
-      actionSchema={PinAction}
-      reducer={pinReducer}
+      app={PinApp}
       initialState={createAlreadyPinned()}
     />
   ),
@@ -187,9 +179,7 @@ export const AlreadyUnpinned: Story = {
   render: () => (
     <TuiStoryPreview
       View={PinView}
-      stateSchema={PinState}
-      actionSchema={PinAction}
-      reducer={pinReducer}
+      app={PinApp}
       initialState={createAlreadyUnpinned()}
     />
   ),
@@ -199,9 +189,7 @@ export const DryRunFull: Story = {
   render: () => (
     <TuiStoryPreview
       View={PinView}
-      stateSchema={PinState}
-      actionSchema={PinAction}
-      reducer={pinReducer}
+      app={PinApp}
       initialState={createDryRunFull()}
     />
   ),
@@ -211,9 +199,7 @@ export const DryRunSimple: Story = {
   render: () => (
     <TuiStoryPreview
       View={PinView}
-      stateSchema={PinState}
-      actionSchema={PinAction}
-      reducer={pinReducer}
+      app={PinApp}
       initialState={createDryRunSimple()}
     />
   ),
@@ -227,9 +213,7 @@ export const ErrorNotInMegarepo: Story = {
   render: () => (
     <TuiStoryPreview
       View={PinView}
-      stateSchema={PinState}
-      actionSchema={PinAction}
-      reducer={pinReducer}
+      app={PinApp}
       initialState={createErrorNotInMegarepo()}
     />
   ),
@@ -239,9 +223,7 @@ export const ErrorMemberNotFound: Story = {
   render: () => (
     <TuiStoryPreview
       View={PinView}
-      stateSchema={PinState}
-      actionSchema={PinAction}
-      reducer={pinReducer}
+      app={PinApp}
       initialState={createErrorMemberNotFound()}
     />
   ),
@@ -251,9 +233,7 @@ export const ErrorNotSynced: Story = {
   render: () => (
     <TuiStoryPreview
       View={PinView}
-      stateSchema={PinState}
-      actionSchema={PinAction}
-      reducer={pinReducer}
+      app={PinApp}
       initialState={createErrorNotSynced()}
     />
   ),
@@ -263,9 +243,7 @@ export const ErrorLocalPath: Story = {
   render: () => (
     <TuiStoryPreview
       View={PinView}
-      stateSchema={PinState}
-      actionSchema={PinAction}
-      reducer={pinReducer}
+      app={PinApp}
       initialState={createErrorLocalPath()}
     />
   ),
@@ -275,9 +253,7 @@ export const ErrorNotInLock: Story = {
   render: () => (
     <TuiStoryPreview
       View={PinView}
-      stateSchema={PinState}
-      actionSchema={PinAction}
-      reducer={pinReducer}
+      app={PinApp}
       initialState={createErrorNotInLock()}
     />
   ),
@@ -291,9 +267,7 @@ export const WarningWorktreeNotAvailable: Story = {
   render: () => (
     <TuiStoryPreview
       View={PinView}
-      stateSchema={PinState}
-      actionSchema={PinAction}
-      reducer={pinReducer}
+      app={PinApp}
       initialState={createWarningWorktreeNotAvailable()}
     />
   ),
@@ -303,9 +277,7 @@ export const WarningMemberRemovedFromConfig: Story = {
   render: () => (
     <TuiStoryPreview
       View={PinView}
-      stateSchema={PinState}
-      actionSchema={PinAction}
-      reducer={pinReducer}
+      app={PinApp}
       initialState={createWarningMemberRemovedFromConfig()}
     />
   ),

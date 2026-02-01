@@ -1,3 +1,4 @@
+import { unicodeSymbols } from '@overeng/tui-core'
 import { Option } from 'effect'
 import { useEffect, useState } from 'react'
 
@@ -28,9 +29,9 @@ export const TaskStatus = ({ task }: TaskStatusProps) => {
   const getIcon = (): string => {
     if (task.status === 'pending') return SPINNER_FRAMES[spinnerFrame]!
     if (task.status === 'running') return SPINNER_FRAMES[spinnerFrame]!
-    if (task.status === 'success') return '✓'
-    if (task.status === 'failed') return '✗'
-    return '○' // fallback
+    if (task.status === 'success') return unicodeSymbols.status.check
+    if (task.status === 'failed') return unicodeSymbols.status.cross
+    return unicodeSymbols.status.circle // fallback
   }
 
   const color = {

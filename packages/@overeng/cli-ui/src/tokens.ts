@@ -5,6 +5,8 @@
  * Uses ANSI 256-color palette for wide compatibility.
  */
 
+import { unicodeSymbols } from '@overeng/tui-core'
+
 // =============================================================================
 // Color Tokens (ANSI 256-color)
 // =============================================================================
@@ -69,19 +71,19 @@ export const bgColor256 = (n: number): string => `${ESC}48;5;${n}m`
 /** Unicode symbols for CLI output */
 export const symbols = {
   // Status indicators
-  check: '✓',
-  cross: '✗',
-  bullet: '●',
-  circle: '○',
+  check: unicodeSymbols.status.check,
+  cross: unicodeSymbols.status.cross,
+  bullet: unicodeSymbols.status.dirty,
+  circle: unicodeSymbols.status.circle,
   circleEmpty: '◌',
-  dot: '·',
+  dot: unicodeSymbols.status.dot,
   questionMark: '?',
   exclamation: '!',
 
   // Arrows
-  arrowRight: '→',
+  arrowRight: unicodeSymbols.arrows.right,
   arrowLeft: '←',
-  arrowUp: '↑',
+  arrowUp: unicodeSymbols.arrows.up,
   arrowDown: '↓',
   arrowLeftRight: '↔',
   arrowUpDown: '↕',
@@ -89,11 +91,11 @@ export const symbols = {
   // Git/Version control
   dirty: '*',
   diverged: '↕',
-  ahead: '↑',
+  ahead: unicodeSymbols.arrows.up,
   behind: '↓',
 
   // Structural
-  separator: '─',
+  separator: unicodeSymbols.line.horizontal,
   verticalBar: '│',
   cornerTopLeft: '┌',
   cornerTopRight: '┐',
@@ -103,14 +105,14 @@ export const symbols = {
   teeLeft: '┤',
 
   // Tree structure
-  treeMiddle: '├── ',
-  treeLast: '└── ',
-  treeVertical: '│   ',
+  treeMiddle: unicodeSymbols.tree.branch,
+  treeLast: unicodeSymbols.tree.last,
+  treeVertical: unicodeSymbols.tree.vertical,
 
   // Other
   ellipsis: '…',
   info: 'ℹ',
-  warning: '⚠',
+  warning: unicodeSymbols.status.warning,
   error: '✖',
 } as const
 

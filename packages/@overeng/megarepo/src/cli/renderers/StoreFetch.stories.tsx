@@ -8,11 +8,10 @@ import React from 'react'
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
 import {
+  StoreApp,
   StoreView,
-  StoreState,
-  StoreAction,
-  storeReducer,
   type StoreFetchResult,
+  type StoreStateType,
 } from './StoreOutput/mod.ts'
 
 // =============================================================================
@@ -32,7 +31,7 @@ const exampleFetchResults: StoreFetchResult[] = [
 const createFetchState = (opts: {
   results: StoreFetchResult[]
   elapsedMs: number
-}): typeof StoreState.Type => ({
+}): StoreStateType => ({
   _tag: 'Fetch',
   basePath: '/Users/dev/.megarepo',
   results: opts.results,
@@ -43,9 +42,8 @@ const createFetchState = (opts: {
 // Meta
 // =============================================================================
 
-const meta = {
+export default {
   title: 'CLI/Store/Fetch',
-  component: StoreView,
   parameters: {
     layout: 'padded',
     docs: {
@@ -55,11 +53,9 @@ const meta = {
       },
     },
   },
-} satisfies Meta<typeof StoreView>
+} satisfies Meta
 
-export default meta
-
-type Story = StoryObj<typeof meta>
+type Story = StoryObj<{ height?: number }>
 
 // =============================================================================
 // Stories
@@ -69,9 +65,7 @@ export const Success: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createFetchState({
         results: [
           { path: 'github.com/effect-ts/effect', status: 'fetched' },
@@ -88,9 +82,7 @@ export const WithErrors: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createFetchState({
         results: exampleFetchResults,
         elapsedMs: 3200,
@@ -103,9 +95,7 @@ export const AllErrors: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createFetchState({
         results: [
           { path: 'github.com/effect-ts/effect', status: 'error', message: 'network timeout' },

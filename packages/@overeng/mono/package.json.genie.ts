@@ -27,6 +27,7 @@ export default packageJson({
   },
   dependencies: {
     ...catalog.pick(
+      '@overeng/tui-core',
       '@overeng/utils',
       '@effect-atom/atom',
       '@effect-atom/atom-react',

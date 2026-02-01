@@ -28,6 +28,7 @@ import type { ReactNode } from 'react'
 import { Box } from './Box.tsx'
 import { Spinner } from './Spinner.tsx'
 import { Text } from './Text.tsx'
+import { useSymbols } from '../hooks/useSymbols.tsx'
 
 // =============================================================================
 // Schema & Types (Single Source of Truth)
@@ -108,15 +109,17 @@ export const TaskList = (props: TaskListProps): ReactNode => {
 // =============================================================================
 
 function StatusIcon({ status }: { status: TaskStatus }): ReactNode {
+  const symbols = useSymbols()
+
   switch (status) {
     case 'pending':
-      return <Text dim>○</Text>
+      return <Text dim>{symbols.status.circle}</Text>
     case 'active':
       return <Spinner />
     case 'success':
-      return <Text color="green">✓</Text>
+      return <Text color="green">{symbols.status.check}</Text>
     case 'error':
-      return <Text color="red">✗</Text>
+      return <Text color="red">{symbols.status.cross}</Text>
     case 'skipped':
       return <Text dim>-</Text>
   }

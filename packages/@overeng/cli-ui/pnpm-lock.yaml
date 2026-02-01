@@ -7,6 +7,22 @@ settings:
 importers:
 
   .:
+    dependencies:
+      '@overeng/tui-core':
+        specifier: workspace:*
+        version: link:../tui-core
+    devDependencies:
+      '@types/node':
+        specifier: 25.0.3
+        version: 25.0.3
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: 3.2.4
+        version: 3.2.4(@types/node@25.0.3)
+
+  ../tui-core:
     devDependencies:
       '@types/node':
         specifier: 25.0.3

@@ -8,12 +8,11 @@ import React from 'react'
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
 import {
+  StoreApp,
   StoreView,
-  StoreState,
-  StoreAction,
-  storeReducer,
   type StoreGcResult,
   type StoreGcWarning,
+  type StoreStateType,
 } from './StoreOutput/mod.ts'
 
 // =============================================================================
@@ -50,7 +49,7 @@ const createGcState = (opts: {
   dryRun: boolean
   warning?: StoreGcWarning
   showForceHint?: boolean
-}): typeof StoreState.Type => ({
+}): StoreStateType => ({
   _tag: 'Gc',
   basePath: '/Users/dev/.megarepo',
   results: opts.results,
@@ -63,9 +62,8 @@ const createGcState = (opts: {
 // Meta
 // =============================================================================
 
-const meta = {
+export default {
   title: 'CLI/Store/GC',
-  component: StoreView,
   parameters: {
     layout: 'padded',
     docs: {
@@ -75,11 +73,9 @@ const meta = {
       },
     },
   },
-} satisfies Meta<typeof StoreView>
+} satisfies Meta
 
-export default meta
-
-type Story = StoryObj<typeof meta>
+type Story = StoryObj<{ height?: number }>
 
 // =============================================================================
 // Stories
@@ -89,9 +85,7 @@ export const Mixed: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createGcState({
         results: exampleGcResults,
         dryRun: false,
@@ -104,9 +98,7 @@ export const DryRun: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createGcState({
         results: [
           {
@@ -132,9 +124,7 @@ export const OnlyCurrentMegarepo: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createGcState({
         results: exampleGcResults,
         dryRun: false,
@@ -148,9 +138,7 @@ export const NotInMegarepo: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createGcState({
         results: [
           {
@@ -177,9 +165,7 @@ export const CustomWarning: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createGcState({
         results: exampleGcResults,
         dryRun: false,
@@ -193,9 +179,7 @@ export const Empty: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createGcState({
         results: [],
         dryRun: false,
@@ -208,9 +192,7 @@ export const AllSkipped: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createGcState({
         results: [
           {
@@ -242,9 +224,7 @@ export const AllRemoved: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createGcState({
         results: [
           {
@@ -282,9 +262,7 @@ export const AllErrors: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createGcState({
         results: [
           {
@@ -319,9 +297,7 @@ export const ManyInUse: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createGcState({
         results: [
           {
@@ -383,9 +359,7 @@ export const DirtyWithDetails: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createGcState({
         results: [
           {
@@ -421,9 +395,7 @@ export const DryRunForceMode: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createGcState({
         results: [
           {
@@ -450,9 +422,7 @@ export const LargeCleanup: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createGcState({
         results: [
           {

@@ -7,13 +7,7 @@ import React from 'react'
 
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
-import {
-  StoreView,
-  StoreState,
-  StoreAction,
-  storeReducer,
-  type StoreRepo,
-} from './StoreOutput/mod.ts'
+import { StoreApp, StoreView, type StoreRepo, type StoreStateType } from './StoreOutput/mod.ts'
 
 // =============================================================================
 // Example Data
@@ -29,7 +23,7 @@ const exampleStoreRepos: StoreRepo[] = [
 // State Factories
 // =============================================================================
 
-const createLsState = (repos: StoreRepo[]): typeof StoreState.Type => ({
+const createLsState = (repos: StoreRepo[]): StoreStateType => ({
   _tag: 'Ls',
   basePath: '/Users/dev/.megarepo',
   repos,
@@ -61,9 +55,7 @@ export const WithRepos: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createLsState(exampleStoreRepos)}
     />
   ),
@@ -73,9 +65,7 @@ export const Empty: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createLsState([])}
     />
   ),
@@ -85,9 +75,7 @@ export const ManyRepos: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createLsState([
         { relativePath: 'github.com/effect-ts/effect' },
         { relativePath: 'github.com/effect-ts/effect-schema' },

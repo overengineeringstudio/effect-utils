@@ -1,4 +1,5 @@
 import { Command, Options } from '@effect/cli'
+import { unicodeSymbols } from '@overeng/tui-core'
 import { Console, Effect } from 'effect'
 
 import type { TypeCheckConfig } from '../tasks/mod.ts'
@@ -36,7 +37,7 @@ export const tsCommand = (config?: TypeCheckConfig) =>
         yield* ciGroup('Type checking')
         yield* typeCheck(config)
         yield* ciGroupEnd
-        yield* Console.log('✓ Type check complete')
+        yield* Console.log(`${unicodeSymbols.status.check} Type check complete`)
       }
     }),
   ).pipe(Command.withDescription('Run TypeScript type checking'))

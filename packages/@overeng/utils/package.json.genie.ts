@@ -70,7 +70,7 @@ export default packageJson({
     },
   },
   dependencies: {
-    ...catalog.pick('@noble/hashes', '@opentelemetry/api', 'effect-distributed-lock', 'ioredis'),
+    ...catalog.pick('@noble/hashes', '@opentelemetry/api', '@overeng/tui-core', 'effect-distributed-lock', 'ioredis'),
   },
   devDependencies: {
     ...catalog.pick(

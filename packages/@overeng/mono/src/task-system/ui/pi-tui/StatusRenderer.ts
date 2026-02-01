@@ -4,6 +4,7 @@
  * Handles status icons, colors, spinners, and timing information.
  */
 
+import { unicodeSymbols } from '@overeng/tui-core'
 import { Option } from 'effect'
 
 import type { TaskState, TaskStatus } from '../../types.ts'
@@ -33,9 +34,9 @@ export const getStatusIcon = ({
 }): string => {
   if (status === 'pending') return SPINNER_FRAMES[spinnerFrame % SPINNER_FRAMES.length]!
   if (status === 'running') return SPINNER_FRAMES[spinnerFrame % SPINNER_FRAMES.length]!
-  if (status === 'success') return '✓'
-  if (status === 'failed') return '✗'
-  return '○' // fallback
+  if (status === 'success') return unicodeSymbols.status.check
+  if (status === 'failed') return unicodeSymbols.status.cross
+  return unicodeSymbols.status.circle // fallback
 }
 
 /**

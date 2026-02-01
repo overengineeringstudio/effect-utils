@@ -7,7 +7,7 @@ import React from 'react'
 
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
-import { StoreView, StoreState, StoreAction, storeReducer } from './StoreOutput/mod.ts'
+import { StoreApp, StoreView, type StoreStateType } from './StoreOutput/mod.ts'
 
 // =============================================================================
 // State Factories
@@ -19,7 +19,7 @@ const createAddState = (opts: {
   ref: string
   commit?: string
   path: string
-}): typeof StoreState.Type => ({
+}): StoreStateType => ({
   _tag: 'Add',
   status: opts.status,
   source: opts.source,
@@ -32,7 +32,7 @@ const createErrorState = (opts: {
   error: string
   message: string
   source?: string
-}): typeof StoreState.Type => ({
+}): StoreStateType => ({
   _tag: 'Error',
   error: opts.error,
   message: opts.message,
@@ -43,9 +43,8 @@ const createErrorState = (opts: {
 // Meta
 // =============================================================================
 
-const meta = {
+export default {
   title: 'CLI/Store/Add',
-  component: StoreView,
   parameters: {
     layout: 'padded',
     docs: {
@@ -54,11 +53,9 @@ const meta = {
       },
     },
   },
-} satisfies Meta<typeof StoreView>
+} satisfies Meta
 
-export default meta
-
-type Story = StoryObj<typeof meta>
+type Story = StoryObj<{ height?: number }>
 
 // =============================================================================
 // Error Stories
@@ -68,9 +65,7 @@ export const InvalidSource: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createErrorState({
         error: 'invalid_source',
         message: "Invalid source: 'not-a-valid-source'",
@@ -84,9 +79,7 @@ export const LocalPath: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createErrorState({
         error: 'local_path',
         message: 'Local paths are not supported. Use a remote URL or owner/repo format.',
@@ -99,9 +92,7 @@ export const NoUrl: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createErrorState({
         error: 'no_url',
         message: 'No URL provided',
@@ -118,9 +109,7 @@ export const SuccessNew: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createAddState({
         status: 'added',
         source: 'effect-ts/effect',
@@ -136,9 +125,7 @@ export const SuccessExisting: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createAddState({
         status: 'already_exists',
         source: 'effect-ts/effect',
@@ -154,9 +141,7 @@ export const SuccessWithRef: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createAddState({
         status: 'added',
         source: 'effect-ts/effect#feat/new-feature',
@@ -172,14 +157,11 @@ export const SuccessNoCommit: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createAddState({
         status: 'added',
         source: 'effect-ts/effect',
         ref: 'v3.0.0',
-        commit: undefined,
         path: '/Users/me/.megarepo/store/github.com/effect-ts/effect/refs/v3.0.0',
       })}
     />

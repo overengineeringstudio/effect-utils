@@ -21,6 +21,7 @@
     "@mariozechner/pi-tui": "0.45.7",
     "@opentui/core": "0.1.74",
     "@opentui/react": "0.1.74",
+    "@overeng/tui-core": "workspace:*",
     "@overeng/utils": "workspace:*",
     "react": "19.2.3"
   },

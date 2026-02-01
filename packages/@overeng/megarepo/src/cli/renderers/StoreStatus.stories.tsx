@@ -8,11 +8,10 @@ import React from 'react'
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
 import {
+  StoreApp,
   StoreView,
-  StoreState,
-  StoreAction,
-  storeReducer,
   type StoreWorktreeStatus,
+  type StoreStateType,
 } from './StoreOutput/mod.ts'
 
 // =============================================================================
@@ -84,7 +83,7 @@ const createStatusState = (opts: {
   worktreeCount: number
   diskUsage?: string
   worktrees: StoreWorktreeStatus[]
-}): typeof StoreState.Type => ({
+}): StoreStateType => ({
   _tag: 'Status',
   basePath: '/Users/dev/.megarepo',
   repoCount: opts.repoCount,
@@ -97,9 +96,8 @@ const createStatusState = (opts: {
 // Meta
 // =============================================================================
 
-const meta = {
+export default {
   title: 'CLI/Store/Status',
-  component: StoreView,
   parameters: {
     layout: 'padded',
     docs: {
@@ -109,11 +107,9 @@ const meta = {
       },
     },
   },
-} satisfies Meta<typeof StoreView>
+} satisfies Meta
 
-export default meta
-
-type Story = StoryObj<typeof meta>
+type Story = StoryObj<{ height?: number }>
 
 // =============================================================================
 // Stories
@@ -123,9 +119,7 @@ export const Healthy: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createStatusState({
         repoCount: 2,
         worktreeCount: 2,
@@ -139,9 +133,7 @@ export const HealthyWithDiskUsage: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createStatusState({
         repoCount: 11,
         worktreeCount: 15,
@@ -156,9 +148,7 @@ export const MixedIssues: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createStatusState({
         repoCount: 4,
         worktreeCount: 6,
@@ -172,9 +162,7 @@ export const RefMismatch: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createStatusState({
         repoCount: 2,
         worktreeCount: 2,
@@ -215,9 +203,7 @@ export const DirtyWorktrees: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createStatusState({
         repoCount: 3,
         worktreeCount: 3,
@@ -256,9 +242,7 @@ export const OrphanedWorktrees: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createStatusState({
         repoCount: 4,
         worktreeCount: 5,
@@ -300,9 +284,7 @@ export const BrokenWorktrees: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createStatusState({
         repoCount: 2,
         worktreeCount: 2,
@@ -335,9 +317,7 @@ export const AllIssueTypes: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createStatusState({
         repoCount: 6,
         worktreeCount: 8,
@@ -396,9 +376,7 @@ export const Empty: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createStatusState({
         repoCount: 0,
         worktreeCount: 0,
@@ -412,9 +390,7 @@ export const LargeStore: Story = {
   render: () => (
     <TuiStoryPreview
       View={StoreView}
-      stateSchema={StoreState}
-      actionSchema={StoreAction}
-      reducer={storeReducer}
+      app={StoreApp}
       initialState={createStatusState({
         repoCount: 25,
         worktreeCount: 87,

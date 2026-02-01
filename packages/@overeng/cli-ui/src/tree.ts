@@ -5,6 +5,8 @@
  * Used by status and progress components for nested display.
  */
 
+import { unicodeSymbols, asciiSymbols } from '@overeng/tui-core'
+
 // =============================================================================
 // Tree Characters
 // =============================================================================
@@ -24,21 +26,21 @@ export type TreeChars = {
 /** Unicode box-drawing characters for tree rendering */
 export const treeChars: TreeChars = {
   /** Branch for middle items: ├── */
-  middle: '\u251C\u2500\u2500 ',
+  middle: unicodeSymbols.tree.branch,
   /** Branch for last item: └── */
-  last: '\u2514\u2500\u2500 ',
+  last: unicodeSymbols.tree.last,
   /** Vertical continuation: │   */
-  vertical: '\u2502   ',
+  vertical: unicodeSymbols.tree.vertical,
   /** Empty spacing (no line):     */
-  empty: '    ',
+  empty: unicodeSymbols.tree.empty,
 } as const
 
 /** Simpler ASCII tree characters (for environments without Unicode support) */
 export const treeCharsAscii: TreeChars = {
-  middle: '+-- ',
-  last: '\\-- ',
-  vertical: '|   ',
-  empty: '    ',
+  middle: asciiSymbols.tree.branch,
+  last: asciiSymbols.tree.last,
+  vertical: asciiSymbols.tree.vertical,
+  empty: asciiSymbols.tree.empty,
 } as const
 
 // =============================================================================

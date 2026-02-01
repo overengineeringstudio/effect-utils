@@ -2,40 +2,31 @@
  * Storybook stories for ExecOutput components.
  */
 
-import { useAtom } from '@effect-atom/react'
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
-import { ExecView, ExecApp, type ExecViewProps, type ExecState } from './ExecOutput/mod.ts'
-
-// =============================================================================
-// Helper for stories with initial state
-// =============================================================================
-
-const ExecViewWithState = ({ initialState }: { initialState: ExecState }) => {
-  const stateAtom = useAtom(() => initialState)
-  return <ExecView stateAtom={stateAtom} />
-}
+import { ExecView } from './ExecOutput/view.tsx'
+import { ExecApp, type ExecStateType } from './ExecOutput/mod.ts'
 
 // =============================================================================
 // Example States
 // =============================================================================
 
-const errorState: ExecState = {
+const errorState: ExecStateType = {
   _tag: 'Error',
   error: 'not_found',
   message: 'No megarepo.json found',
 }
 
-const memberNotFoundState: ExecState = {
+const memberNotFoundState: ExecStateType = {
   _tag: 'Error',
   error: 'not_found',
   message: 'Member not found',
 }
 
-const runningVerboseState: ExecState = {
+const runningVerboseState: ExecStateType = {
   _tag: 'Running',
   command: 'npm version',
   mode: 'parallel',
@@ -47,7 +38,7 @@ const runningVerboseState: ExecState = {
   ],
 }
 
-const runningSequentialState: ExecState = {
+const runningSequentialState: ExecStateType = {
   _tag: 'Running',
   command: 'git status',
   mode: 'sequential',
@@ -58,7 +49,7 @@ const runningSequentialState: ExecState = {
   ],
 }
 
-const completeSuccessState: ExecState = {
+const completeSuccessState: ExecStateType = {
   _tag: 'Complete',
   command: 'npm version',
   mode: 'parallel',
@@ -71,7 +62,7 @@ const completeSuccessState: ExecState = {
   ],
 }
 
-const completeMixedState: ExecState = {
+const completeMixedState: ExecStateType = {
   _tag: 'Complete',
   command: 'npm version',
   mode: 'parallel',
@@ -84,7 +75,7 @@ const completeMixedState: ExecState = {
   ],
 }
 
-const completeWithSkippedState: ExecState = {
+const completeWithSkippedState: ExecStateType = {
   _tag: 'Complete',
   command: 'npm install',
   mode: 'parallel',
@@ -97,7 +88,7 @@ const completeWithSkippedState: ExecState = {
   ],
 }
 
-const completeAllErrorsState: ExecState = {
+const completeAllErrorsState: ExecStateType = {
   _tag: 'Complete',
   command: 'foo',
   mode: 'parallel',
@@ -110,7 +101,7 @@ const completeAllErrorsState: ExecState = {
   ],
 }
 
-const completeVerboseState: ExecState = {
+const completeVerboseState: ExecStateType = {
   _tag: 'Complete',
   command: 'npm version',
   mode: 'parallel',
@@ -129,14 +120,6 @@ const completeVerboseState: ExecState = {
 const meta = {
   title: 'CLI/Exec',
   component: ExecView,
-  render: (args: { initialState: ExecState }) => (
-    <TuiStoryPreview>
-      <ExecViewWithState initialState={args.initialState} />
-    </TuiStoryPreview>
-  ),
-  args: {
-    initialState: errorState,
-  },
   parameters: {
     layout: 'padded',
     docs: {
@@ -145,22 +128,34 @@ const meta = {
       },
     },
   },
-} satisfies Meta<{ initialState: ExecState }>
+} satisfies Meta<typeof ExecView>
 
 export default meta
 
-type Story = StoryObj<typeof meta>
+type Story = StoryObj<typeof ExecView>
 
 // =============================================================================
 // Error Output Stories
 // =============================================================================
 
 export const NotInMegarepo: Story = {
-  args: { initialState: errorState },
+  render: () => (
+    <TuiStoryPreview
+      View={ExecView}
+      app={ExecApp}
+      initialState={errorState}
+    />
+  ),
 }
 
 export const MemberNotFound: Story = {
-  args: { initialState: memberNotFoundState },
+  render: () => (
+    <TuiStoryPreview
+      View={ExecView}
+      app={ExecApp}
+      initialState={memberNotFoundState}
+    />
+  ),
 }
 
 // =============================================================================
@@ -168,11 +163,23 @@ export const MemberNotFound: Story = {
 // =============================================================================
 
 export const RunningVerboseParallel: Story = {
-  args: { initialState: runningVerboseState },
+  render: () => (
+    <TuiStoryPreview
+      View={ExecView}
+      app={ExecApp}
+      initialState={runningVerboseState}
+    />
+  ),
 }
 
 export const RunningVerboseSequential: Story = {
-  args: { initialState: runningSequentialState },
+  render: () => (
+    <TuiStoryPreview
+      View={ExecView}
+      app={ExecApp}
+      initialState={runningSequentialState}
+    />
+  ),
 }
 
 // =============================================================================
@@ -180,21 +187,51 @@ export const RunningVerboseSequential: Story = {
 // =============================================================================
 
 export const CompleteSuccess: Story = {
-  args: { initialState: completeSuccessState },
+  render: () => (
+    <TuiStoryPreview
+      View={ExecView}
+      app={ExecApp}
+      initialState={completeSuccessState}
+    />
+  ),
 }
 
 export const CompleteMixed: Story = {
-  args: { initialState: completeMixedState },
+  render: () => (
+    <TuiStoryPreview
+      View={ExecView}
+      app={ExecApp}
+      initialState={completeMixedState}
+    />
+  ),
 }
 
 export const CompleteWithSkipped: Story = {
-  args: { initialState: completeWithSkippedState },
+  render: () => (
+    <TuiStoryPreview
+      View={ExecView}
+      app={ExecApp}
+      initialState={completeWithSkippedState}
+    />
+  ),
 }
 
 export const CompleteAllErrors: Story = {
-  args: { initialState: completeAllErrorsState },
+  render: () => (
+    <TuiStoryPreview
+      View={ExecView}
+      app={ExecApp}
+      initialState={completeAllErrorsState}
+    />
+  ),
 }
 
 export const CompleteVerbose: Story = {
-  args: { initialState: completeVerboseState },
+  render: () => (
+    <TuiStoryPreview
+      View={ExecView}
+      app={ExecApp}
+      initialState={completeVerboseState}
+    />
+  ),
 }

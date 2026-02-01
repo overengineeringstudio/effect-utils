@@ -1,4 +1,5 @@
 import { Command } from '@effect/cli'
+import { unicodeSymbols } from '@overeng/tui-core'
 import { Console, Effect } from 'effect'
 
 import type { TypeCheckConfig } from '../tasks/mod.ts'
@@ -14,6 +15,6 @@ export const buildCommand = (config?: TypeCheckConfig) =>
       yield* ciGroup('Building all packages')
       yield* build(config)
       yield* ciGroupEnd
-      yield* Console.log('✓ Build complete')
+      yield* Console.log(`${unicodeSymbols.status.check} Build complete`)
     }),
   ).pipe(Command.withDescription('Build all packages (tsc --build)'))

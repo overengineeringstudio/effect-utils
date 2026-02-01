@@ -11,9 +11,10 @@ import { FileSystem, type Error as PlatformError } from '@effect/platform'
 import { Console, Effect, Option, type ParseResult, Schema } from 'effect'
 import React from 'react'
 
+import { Atom, Registry } from '@effect-atom/atom'
 import { isTTY } from '@overeng/cli-ui'
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
-import { renderToString } from '@overeng/tui-react'
+import { renderToString, TuiRegistryContext } from '@overeng/tui-react'
 
 import {
   CONFIG_FILE_NAME,
@@ -74,7 +75,7 @@ import {
   createCompleteAction,
   type SyncProgressUIHandle,
 } from '../progress/mod.ts'
-import { SyncOutput } from '../renderers/SyncOutput.tsx'
+import { createInitialSyncState, SyncView } from '../renderers/SyncOutput/mod.ts'
 
 /**
  * Sync a megarepo at the given root path.
@@ -844,20 +845,25 @@ export const syncCommand = Cli.Command.make(
           // and callers can check results for errors. Throwing would add extra output.
           return syncResult
         } else {
-          // Render using the React SyncOutput component
+          // Render using the new SyncView component with a temporary registry/atom
+          const finalState = {
+            ...createInitialSyncState({ workspaceName: name, workspaceRoot: root.value }),
+            options: { dryRun, frozen, pull, deep },
+            phase: 'complete' as const,
+            results: syncResult.results,
+            nestedMegarepos: syncResult.nestedMegarepos,
+            generatedFiles,
+          }
+          const registry = Registry.make()
+          const stateAtom = Atom.make(finalState)
+          registry.set(stateAtom, finalState)
           const output = yield* Effect.promise(() =>
             renderToString({
-              element: React.createElement(SyncOutput, {
-                name,
-                root: root.value,
-                results: syncResult.results,
-                nestedMegarepos: syncResult.nestedMegarepos,
-                deep,
-                dryRun,
-                frozen,
-                pull,
-                generatedFiles,
-              }),
+              element: React.createElement(
+                TuiRegistryContext.Provider,
+                { value: registry },
+                React.createElement(SyncView, { stateAtom }),
+              ),
             }),
           )
           yield* Console.log(output)

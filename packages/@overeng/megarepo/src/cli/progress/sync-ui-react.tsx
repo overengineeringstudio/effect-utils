@@ -12,7 +12,7 @@ import React from 'react'
 import { isTTY } from '@overeng/cli-ui'
 import { OutputModeTag, tty } from '@overeng/tui-react'
 
-import type { MemberSyncResult } from '../renderers/SyncOutput.tsx'
+import type { MemberSyncResult } from '../../lib/sync/schema.ts'
 import {
   createSyncApp,
   createInitialState,

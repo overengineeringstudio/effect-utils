@@ -7,7 +7,7 @@
 
 import React, { useMemo } from 'react'
 
-import { type Atom, Box, Text, Spinner, useViewport, useTuiAtomValue } from '@overeng/tui-react'
+import { type Atom, Box, Text, Spinner, useViewport, useTuiAtomValue, unicodeSymbols } from '@overeng/tui-react'
 
 import type { GenieState, GenieFile, GenieFileStatus } from './schema.ts'
 
@@ -16,11 +16,11 @@ import type { GenieState, GenieFile, GenieFileStatus } from './schema.ts'
 // =============================================================================
 
 const icons = {
-  check: '\u2713', // ✓
-  cross: '\u2717', // ✗
-  circle: '\u25cb', // ○
-  dot: '\u00b7', // ·
-  separator: '\u2500', // ─
+  check: unicodeSymbols.status.check,
+  cross: unicodeSymbols.status.cross,
+  circle: unicodeSymbols.status.circle,
+  dot: unicodeSymbols.status.dot,
+  separator: unicodeSymbols.line.horizontal,
 } as const
 
 // =============================================================================

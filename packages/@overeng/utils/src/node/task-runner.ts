@@ -61,6 +61,7 @@ import {
   SubscriptionRef,
 } from 'effect'
 
+import { unicodeSymbols } from '@overeng/tui-core'
 import { cmdStart } from './cmd.ts'
 import { CurrentWorkingDirectory } from './workspace.ts'
 
@@ -355,10 +356,10 @@ export class TaskRunner extends Context.Tag('TaskRunner')<TaskRunner, TaskRunner
               }[task.status]
 
               const statusIcon = {
-                pending: '○',
+                pending: unicodeSymbols.status.circle,
                 running: '◐',
-                success: '✓',
-                failed: '✗',
+                success: unicodeSymbols.status.check,
+                failed: unicodeSymbols.status.cross,
               }[task.status]
 
               const durationStr = Option.match(task.duration, {

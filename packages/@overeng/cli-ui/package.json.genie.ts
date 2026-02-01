@@ -12,6 +12,9 @@ export default packageJson({
       '.': './dist/mod.js',
     },
   },
+  dependencies: {
+    ...catalog.pick('@overeng/tui-core'),
+  },
   devDependencies: {
     ...catalog.pick('@types/node', 'typescript', 'vitest'),
   },

@@ -1,4 +1,5 @@
 import { Command } from '@effect/cli'
+import { unicodeSymbols } from '@overeng/tui-core'
 import { Console, Effect } from 'effect'
 
 import { ciGroup, ciGroupEnd, runCommand } from '../utils.ts'
@@ -29,6 +30,6 @@ export const cleanCommand = () =>
 
       yield* Console.log('  Removed dist folders and .tsbuildinfo files')
       yield* ciGroupEnd
-      yield* Console.log('✓ Clean complete')
+      yield* Console.log(`${unicodeSymbols.status.check} Clean complete`)
     }),
   ).pipe(Command.withDescription('Remove build artifacts (dist/, *.tsbuildinfo)'))

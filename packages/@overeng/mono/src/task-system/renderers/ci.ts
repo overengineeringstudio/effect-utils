@@ -7,6 +7,7 @@
  * - Works well in CI environments where in-place updates aren't supported
  */
 
+import { unicodeSymbols } from '@overeng/tui-core'
 import * as Ansi from '@effect/printer-ansi/Ansi'
 import * as AnsiDoc from '@effect/printer-ansi/AnsiDoc'
 import * as Doc from '@effect/printer/Doc'
@@ -64,7 +65,7 @@ export class CIRenderer implements TaskRenderer {
                 }),
             })
 
-            const statusIcon = task.status === 'success' ? '✓' : '✗'
+            const statusIcon = task.status === 'success' ? unicodeSymbols.status.check : unicodeSymbols.status.cross
             const statusStyle = task.status === 'success' ? Ansi.green : Ansi.red
             const statusDoc = Doc.annotate(
               Doc.text(`${statusIcon} ${task.name}${duration}`),
@@ -91,13 +92,13 @@ export class CIRenderer implements TaskRenderer {
 
       if (failed.length === 0) {
         const successDoc = Doc.annotate(
-          Doc.text(`✓ All ${success.length} task(s) completed successfully`),
+          Doc.text(`${unicodeSymbols.status.check} All ${success.length} task(s) completed successfully`),
           Ansi.combine(Ansi.green, Ansi.bold),
         )
         yield* Console.log(renderAnsiDoc(successDoc))
       } else {
         const failureDoc = Doc.annotate(
-          Doc.text(`✗ ${failed.length} task(s) failed`),
+          Doc.text(`${unicodeSymbols.status.cross} ${failed.length} task(s) failed`),
           Ansi.combine(Ansi.red, Ansi.bold),
         )
         yield* Console.log(renderAnsiDoc(failureDoc))

@@ -10,7 +10,8 @@ import React from 'react'
 import { TuiStoryPreview, type OutputTab } from '@overeng/tui-react/storybook'
 
 import type { MemberSyncResult } from '../../lib/sync/schema.ts'
-import { SyncState, SyncAction, syncReducer, type SyncState as SyncStateType } from './SyncOutput/schema.ts'
+import { SyncApp, type SyncState as SyncStateType } from './SyncOutput/mod.ts'
+import { SyncAction } from './SyncOutput/schema.ts'
 import { SyncView } from './SyncOutput/view.tsx'
 
 // =============================================================================
@@ -118,9 +119,7 @@ export const MixedResults: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={SyncView}
-      stateSchema={SyncState}
-      actionSchema={SyncAction}
-      reducer={syncReducer}
+      app={SyncApp}
       initialState={createBaseState({
         results: exampleSyncResults,
         members: exampleSyncResults.map((r) => r.name),
@@ -139,9 +138,7 @@ export const DryRun: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={SyncView}
-      stateSchema={SyncState}
-      actionSchema={SyncAction}
-      reducer={syncReducer}
+      app={SyncApp}
       initialState={createBaseState({
         options: { dryRun: true, frozen: false, pull: false, deep: false },
         results: [
@@ -164,9 +161,7 @@ export const AllSynced: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={SyncView}
-      stateSchema={SyncState}
-      actionSchema={SyncAction}
-      reducer={syncReducer}
+      app={SyncApp}
       initialState={createBaseState({
         workspace: { name: 'mr-all-blue', root: '/Users/dev/mr-all-blue' },
         options: { dryRun: true, frozen: false, pull: false, deep: false },
@@ -185,9 +180,7 @@ export const WithErrors: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={SyncView}
-      stateSchema={SyncState}
-      actionSchema={SyncAction}
-      reducer={syncReducer}
+      app={SyncApp}
       initialState={createBaseState({
         results: exampleSyncResultsWithErrors,
         members: exampleSyncResultsWithErrors.map((r) => r.name),
@@ -204,9 +197,7 @@ export const FrozenMode: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={SyncView}
-      stateSchema={SyncState}
-      actionSchema={SyncAction}
-      reducer={syncReducer}
+      app={SyncApp}
       initialState={createBaseState({
         workspace: { name: 'ci-workspace', root: '/home/runner/workspace' },
         options: { dryRun: false, frozen: true, pull: false, deep: false },
@@ -229,9 +220,7 @@ export const PullMode: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={SyncView}
-      stateSchema={SyncState}
-      actionSchema={SyncAction}
-      reducer={syncReducer}
+      app={SyncApp}
       initialState={createBaseState({
         options: { dryRun: false, frozen: false, pull: true, deep: false },
         results: [
@@ -258,9 +247,7 @@ export const LockUpdates: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={SyncView}
-      stateSchema={SyncState}
-      actionSchema={SyncAction}
-      reducer={syncReducer}
+      app={SyncApp}
       initialState={createBaseState({
         results: [
           { name: 'effect', status: 'locked', commit: 'abc1234def', previousCommit: '9876543fed' },
@@ -281,9 +268,7 @@ export const RemovedMembers: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={SyncView}
-      stateSchema={SyncState}
-      actionSchema={SyncAction}
-      reducer={syncReducer}
+      app={SyncApp}
       initialState={createBaseState({
         results: [
           { name: 'effect', status: 'synced', ref: 'main' },
@@ -304,9 +289,7 @@ export const SkippedMembers: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={SyncView}
-      stateSchema={SyncState}
-      actionSchema={SyncAction}
-      reducer={syncReducer}
+      app={SyncApp}
       initialState={createBaseState({
         results: [
           { name: 'effect', status: 'synced', ref: 'main' },
@@ -328,9 +311,7 @@ export const NestedMegareposHint: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={SyncView}
-      stateSchema={SyncState}
-      actionSchema={SyncAction}
-      reducer={syncReducer}
+      app={SyncApp}
       initialState={createBaseState({
         options: { dryRun: false, frozen: false, pull: false, deep: false },
         results: [
@@ -353,9 +334,7 @@ export const DeepSyncMode: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={SyncView}
-      stateSchema={SyncState}
-      actionSchema={SyncAction}
-      reducer={syncReducer}
+      app={SyncApp}
       initialState={createBaseState({
         options: { dryRun: false, frozen: false, pull: false, deep: true },
         results: [
@@ -378,9 +357,7 @@ export const WithGenerators: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={SyncView}
-      stateSchema={SyncState}
-      actionSchema={SyncAction}
-      reducer={syncReducer}
+      app={SyncApp}
       initialState={createBaseState({
         results: [
           { name: 'effect', status: 'synced', ref: 'main' },
@@ -413,9 +390,7 @@ export const ManyMembers: Story = {
     return (
       <TuiStoryPreview
         View={SyncView}
-        stateSchema={SyncState}
-        actionSchema={SyncAction}
-        reducer={syncReducer}
+        app={SyncApp}
         initialState={createBaseState({
           workspace: { name: 'large-workspace', root: '/Users/dev/large-workspace' },
           results,
@@ -438,9 +413,7 @@ export const FirstSync: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={SyncView}
-      stateSchema={SyncState}
-      actionSchema={SyncAction}
-      reducer={syncReducer}
+      app={SyncApp}
       initialState={createBaseState({
         workspace: { name: 'new-workspace', root: '/Users/dev/new-workspace' },
         results: [
@@ -464,9 +437,7 @@ export const AllErrors: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={SyncView}
-      stateSchema={SyncState}
-      actionSchema={SyncAction}
-      reducer={syncReducer}
+      app={SyncApp}
       initialState={createBaseState({
         results: [
           { name: 'effect', status: 'error', message: 'network timeout' },
@@ -488,9 +459,7 @@ export const MixedSkipped: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={SyncView}
-      stateSchema={SyncState}
-      actionSchema={SyncAction}
-      reducer={syncReducer}
+      app={SyncApp}
       initialState={createBaseState({
         results: [
           { name: 'effect', status: 'already_synced' },
@@ -513,9 +482,7 @@ export const DeepSyncHint: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={SyncView}
-      stateSchema={SyncState}
-      actionSchema={SyncAction}
-      reducer={syncReducer}
+      app={SyncApp}
       initialState={createBaseState({
         workspace: { name: 'mr-all-blue', root: '/Users/dev/mr-all-blue' },
         options: { dryRun: false, frozen: false, pull: false, deep: false },
@@ -540,9 +507,7 @@ export const SingleMember: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={SyncView}
-      stateSchema={SyncState}
-      actionSchema={SyncAction}
-      reducer={syncReducer}
+      app={SyncApp}
       initialState={createBaseState({
         results: [{ name: 'effect', status: 'synced', ref: 'main' }],
         members: ['effect'],
@@ -559,9 +524,7 @@ export const RefChanges: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={SyncView}
-      stateSchema={SyncState}
-      actionSchema={SyncAction}
-      reducer={syncReducer}
+      app={SyncApp}
       initialState={createBaseState({
         options: { dryRun: false, frozen: false, pull: true, deep: false },
         results: [
@@ -583,9 +546,7 @@ export const LongNames: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={SyncView}
-      stateSchema={SyncState}
-      actionSchema={SyncAction}
-      reducer={syncReducer}
+      app={SyncApp}
       initialState={createBaseState({
         workspace: {
           name: 'organization-name/extremely-long-workspace-name-for-testing',
@@ -622,9 +583,7 @@ export const SyncInProgress: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={SyncView}
-      stateSchema={SyncState}
-      actionSchema={SyncAction}
-      reducer={syncReducer}
+      app={SyncApp}
       initialState={createBaseState({
         phase: 'syncing',
         members: ['effect', 'effect-utils', 'livestore', 'dotfiles'],
@@ -643,9 +602,7 @@ export const Interrupted: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={SyncView}
-      stateSchema={SyncState}
-      actionSchema={SyncAction}
-      reducer={syncReducer}
+      app={SyncApp}
       initialState={createBaseState({
         phase: 'interrupted',
         members: ['effect', 'effect-utils', 'livestore', 'dotfiles'],
@@ -755,9 +712,7 @@ export const AnimatedSync: Story = {
   render: (args) => (
     <TuiStoryPreview
       View={SyncView}
-      stateSchema={SyncState}
-      actionSchema={SyncAction}
-      reducer={syncReducer}
+      app={SyncApp}
       initialState={createBaseState({ phase: 'idle' })}
       timeline={syncTimeline}
       autoRun={true}
