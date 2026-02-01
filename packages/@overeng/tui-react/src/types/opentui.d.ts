@@ -46,8 +46,8 @@ declare module '@opentui/core' {
 }
 
 declare module '@opentui/react' {
-  import type { ReactNode } from 'react'
   import type { CliRenderer, KeyEvent } from '@opentui/core'
+  import type { ReactNode } from 'react'
 
   export interface UseKeyboardOptions {
     release?: boolean

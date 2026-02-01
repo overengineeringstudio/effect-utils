@@ -1,5 +1,5 @@
 import { Atom } from '@effect-atom/atom'
-import React from 'react'
+import React, { useMemo } from 'react'
 
 import { Box, Text, useTuiAtomValue } from '../../src/mod.ts'
 import type { AppState, Window, Color } from './schema.ts'
@@ -130,84 +130,94 @@ const CanvasRenderer = ({
   return <Box>{renderedLines}</Box>
 }
 
-const RunningView = ({ state }: { state: Extract<AppState, { _tag: 'Running' }> }) => (
-  <Box>
-    <Box flexDirection="row">
-      <Text bold color="cyan">
-        Bouncing Windows
-      </Text>
-      <Text dim>
-        {' '}
-        │ {state.windows.length} window{state.windows.length > 1 ? 's' : ''}
-      </Text>
-      <Text dim> │ Frame: {state.frame}</Text>
-      <Text dim>
-        {' '}
-        │ {state.termWidth}x{state.termHeight}
-      </Text>
-      <Text dim> │ Ctrl+C to exit</Text>
+const RunningView = ({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) => {
+  const state = useTuiAtomValue(stateAtom) as Extract<AppState, { _tag: 'Running' }>
+  return (
+    <Box>
+      <Box flexDirection="row">
+        <Text bold color="cyan">
+          Bouncing Windows
+        </Text>
+        <Text dim>
+          {' '}
+          │ {state.windows.length} window{state.windows.length > 1 ? 's' : ''}
+        </Text>
+        <Text dim> │ Frame: {state.frame}</Text>
+        <Text dim>
+          {' '}
+          │ {state.termWidth}x{state.termHeight}
+        </Text>
+        <Text dim> │ Ctrl+C to exit</Text>
+      </Box>
+      <Text dim>{'─'.repeat(state.termWidth)}</Text>
+      <CanvasRenderer
+        windows={state.windows}
+        width={state.termWidth}
+        height={state.termHeight}
+      />
+      <Text dim>{'─'.repeat(state.termWidth)}</Text>
     </Box>
-    <Text dim>{'─'.repeat(state.termWidth)}</Text>
-    <CanvasRenderer
-      windows={state.windows}
-      width={state.termWidth}
-      height={state.termHeight}
-    />
-    <Text dim>{'─'.repeat(state.termWidth)}</Text>
-  </Box>
-)
+  )
+}
 
-const FinishedView = ({ state }: { state: Extract<AppState, { _tag: 'Finished' }> }) => (
-  <Box flexDirection="column" padding={1}>
-    <Text bold color="green">
-      Bouncing Windows - Finished
-    </Text>
-    <Box flexDirection="column" marginTop={1}>
-      <Box flexDirection="row">
-        <Text>Total Frames: </Text>
-        <Text bold>{state.totalFrames}</Text>
+const FinishedView = ({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) => {
+  const state = useTuiAtomValue(stateAtom) as Extract<AppState, { _tag: 'Finished' }>
+  return (
+    <Box flexDirection="column" padding={1}>
+      <Text bold color="green">
+        Bouncing Windows - Finished
+      </Text>
+      <Box flexDirection="column" marginTop={1}>
+        <Box flexDirection="row">
+          <Text>Total Frames: </Text>
+          <Text bold>{state.totalFrames}</Text>
+        </Box>
+        <Box flexDirection="row">
+          <Text>Windows: </Text>
+          <Text bold>{state.windowCount}</Text>
+        </Box>
       </Box>
-      <Box flexDirection="row">
-        <Text>Windows: </Text>
-        <Text bold>{state.windowCount}</Text>
+      <Box marginTop={1}>
+        <Text dim>Demo completed after reaching the time limit.</Text>
       </Box>
     </Box>
-    <Box marginTop={1}>
-      <Text dim>Demo completed after reaching the time limit.</Text>
-    </Box>
-  </Box>
-)
+  )
+}
 
-const InterruptedView = ({ state }: { state: Extract<AppState, { _tag: 'Interrupted' }> }) => (
-  <Box flexDirection="column" padding={1}>
-    <Text bold color="yellow">
-      Bouncing Windows - Interrupted
-    </Text>
-    <Box flexDirection="column" marginTop={1}>
-      <Box flexDirection="row">
-        <Text>Frames rendered: </Text>
-        <Text bold>{state.frame}</Text>
+const InterruptedView = ({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) => {
+  const state = useTuiAtomValue(stateAtom) as Extract<AppState, { _tag: 'Interrupted' }>
+  return (
+    <Box flexDirection="column" padding={1}>
+      <Text bold color="yellow">
+        Bouncing Windows - Interrupted
+      </Text>
+      <Box flexDirection="column" marginTop={1}>
+        <Box flexDirection="row">
+          <Text>Frames rendered: </Text>
+          <Text bold>{state.frame}</Text>
+        </Box>
+        <Box flexDirection="row">
+          <Text>Windows: </Text>
+          <Text bold>{state.windowCount}</Text>
+        </Box>
       </Box>
-      <Box flexDirection="row">
-        <Text>Windows: </Text>
-        <Text bold>{state.windowCount}</Text>
+      <Box marginTop={1}>
+        <Text dim>Demo was cancelled by user (Ctrl+C).</Text>
       </Box>
     </Box>
-    <Box marginTop={1}>
-      <Text dim>Demo was cancelled by user (Ctrl+C).</Text>
-    </Box>
-  </Box>
-)
+  )
+}
 
 export const BouncingWindowsView = ({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) => {
-  const state = useTuiAtomValue(stateAtom)
+  const tagAtom = useMemo(() => Atom.map(stateAtom, (s) => s._tag), [stateAtom])
+  const tag = useTuiAtomValue(tagAtom)
 
-  switch (state._tag) {
+  switch (tag) {
     case 'Running':
-      return <RunningView state={state} />
+      return <RunningView stateAtom={stateAtom} />
     case 'Finished':
-      return <FinishedView state={state} />
+      return <FinishedView stateAtom={stateAtom} />
     case 'Interrupted':
-      return <InterruptedView state={state} />
+      return <InterruptedView stateAtom={stateAtom} />
   }
 }
