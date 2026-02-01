@@ -25,6 +25,7 @@ import {
   cursorUp,
   endSyncOutput,
   hideCursor,
+  reset,
   showCursor,
 } from './ansi.ts'
 import type { Terminal } from './terminal.ts'
@@ -292,8 +293,8 @@ export class InlineRenderer {
 
   private renderAllDynamic(): void {
     for (const line of this.dynamicLines) {
-      // Use \r\n to ensure cursor returns to column 0 (xterm.js treats \n as line feed only)
-      this.terminal.write(line + '\r\n')
+      // Use reset() to clear any inherited SGR attributes, then \r\n to ensure cursor returns to column 0
+      this.terminal.write(reset() + line + '\r\n')
     }
   }
 
@@ -329,8 +330,12 @@ export class InlineRenderer {
     }
 
     // Clear and rewrite from firstDiff onwards
+    // Note: reset() is prepended to clear any inherited SGR attributes from previous renders.
+    // This ensures correct styling when attributes change (e.g., dim -> not dim).
+    // Future optimization: Track SGR state and only emit reset when transitioning between
+    // incompatible attribute states, avoiding the overhead of reset() on every line.
     for (let i = firstDiff; i < currLen; i++) {
-      this.terminal.write(cursorToColumn(1) + clearLine() + curr[i] + '\r\n')
+      this.terminal.write(cursorToColumn(1) + clearLine() + reset() + curr[i] + '\r\n')
     }
 
     // If new content is shorter, clear remaining old lines
