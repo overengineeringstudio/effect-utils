@@ -6,16 +6,15 @@
 
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
-import { Console, Effect, Option, Schema } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'
-import { renderToString, Box, Text } from '@overeng/tui-react'
-import { jsonError, withJsonMode } from '@overeng/utils/node'
 
-import { CONFIG_FILE_NAME, ENV_VARS, MegarepoConfig } from '../../lib/config.ts'
-import { Cwd, findMegarepoRoot, findNearestMegarepoRoot, outputOption } from '../context.ts'
-import { NotInMegarepoError } from '../errors.ts'
+import { CONFIG_FILE_NAME, MegarepoConfig } from '../../lib/config.ts'
+import { Cwd, findMegarepoRoot, findNearestMegarepoRoot, outputOption, outputModeLayer } from '../context.ts'
+import { EnvApp } from '../renderers/EnvOutput/mod.ts'
+import { EnvConnectedView } from '../renderers/EnvOutput/connected-view.tsx'
 
 /** Print environment variables for shell integration */
 export const envCommand = Cli.Command.make(
@@ -27,74 +26,49 @@ export const envCommand = Cli.Command.make(
     ),
     output: outputOption,
   },
-  ({ shell, output }) => {
-    const json = output === 'json' || output === 'ndjson'
-
-    return Effect.gen(function* () {
+  ({ shell, output }) =>
+    Effect.gen(function* () {
       const cwd = yield* Cwd
 
-      // Find the megarepo root
-      const root = yield* findMegarepoRoot(cwd)
-      const nearestRoot = yield* findNearestMegarepoRoot(cwd)
+      // Run TuiApp for all output (handles JSON/TTY modes automatically)
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const tui = yield* EnvApp.run(React.createElement(EnvConnectedView))
 
-      if (Option.isNone(root)) {
-        if (json) {
-          return yield* jsonError({
-            error: 'not_found',
-            message: 'No megarepo.json found',
+          // Find the megarepo root
+          const root = yield* findMegarepoRoot(cwd)
+          const nearestRoot = yield* findNearestMegarepoRoot(cwd)
+
+          if (Option.isNone(root)) {
+            tui.dispatch({
+              _tag: 'SetError',
+              error: 'not_found',
+              message: 'No megarepo.json found',
+            })
+            process.exitCode = 1
+            return
+          }
+
+          // Load config to get member names
+          const fs = yield* FileSystem.FileSystem
+          const configPath = EffectPath.ops.join(
+            root.value,
+            EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+          )
+          const configContent = yield* fs.readFileString(configPath)
+          const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+
+          const memberNames = Object.keys(config.members).join(',')
+          const nearestRootValue = Option.getOrElse(nearestRoot, () => root.value)
+
+          tui.dispatch({
+            _tag: 'SetEnv',
+            MEGAREPO_ROOT_OUTERMOST: root.value,
+            MEGAREPO_ROOT_NEAREST: nearestRootValue,
+            MEGAREPO_MEMBERS: memberNames,
+            shell,
           })
-        }
-        const output = yield* Effect.promise(() =>
-          renderToString({
-            element: React.createElement(
-              Box,
-              { flexDirection: 'row' },
-              React.createElement(Text, { color: 'red' }, '\u2717'),
-              React.createElement(Text, null, ' No megarepo.json found'),
-            ),
-          }),
-        )
-        yield* Console.error(output)
-        return yield* new NotInMegarepoError({ message: 'Not in a megarepo' })
-      }
-
-      // Load config to get member names
-      const fs = yield* FileSystem.FileSystem
-      const configPath = EffectPath.ops.join(
-        root.value,
-        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-      )
-      const configContent = yield* fs.readFileString(configPath)
-      const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
-
-      const memberNames = Object.keys(config.members).join(',')
-
-      if (json) {
-        console.log(
-          JSON.stringify({
-            [ENV_VARS.ROOT_OUTERMOST]: root.value,
-            [ENV_VARS.ROOT_NEAREST]: Option.getOrElse(nearestRoot, () => root.value),
-            [ENV_VARS.MEMBERS]: memberNames,
-          }),
-        )
-      } else {
-        // Output shell-specific format
-        switch (shell) {
-          case 'fish':
-            yield* Console.log(`set -gx ${ENV_VARS.ROOT_OUTERMOST} "${root.value}"`)
-            yield* Console.log(
-              `set -gx ${ENV_VARS.ROOT_NEAREST} "${Option.getOrElse(nearestRoot, () => root.value)}"`,
-            )
-            yield* Console.log(`set -gx ${ENV_VARS.MEMBERS} "${memberNames}"`)
-            break
-          default:
-            yield* Console.log(`export ${ENV_VARS.ROOT_OUTERMOST}="${root.value}"`)
-            yield* Console.log(
-              `export ${ENV_VARS.ROOT_NEAREST}="${Option.getOrElse(nearestRoot, () => root.value)}"`,
-            )
-            yield* Console.log(`export ${ENV_VARS.MEMBERS}="${memberNames}"`)
-        }
-      }
-    }).pipe(Effect.withSpan('megarepo/env'), withJsonMode(json))
-  },
+        }),
+      ).pipe(Effect.provide(outputModeLayer(output)))
+    }).pipe(Effect.withSpan('megarepo/env')),
 ).pipe(Cli.Command.withDescription('Output environment variables for shell integration'))

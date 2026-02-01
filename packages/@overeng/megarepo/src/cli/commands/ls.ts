@@ -6,71 +6,55 @@
 
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
-import { Console, Effect, Option, Schema } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'
-import { renderToString, Box, Text } from '@overeng/tui-react'
-import { jsonError, withJsonMode } from '@overeng/utils/node'
 
 import { CONFIG_FILE_NAME, MegarepoConfig } from '../../lib/config.ts'
-import { Cwd, findMegarepoRoot, outputOption } from '../context.ts'
-import { NotInMegarepoError } from '../errors.ts'
+import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../context.ts'
+import { LsApp } from '../renderers/LsOutput/mod.ts'
+import { LsConnectedView } from '../renderers/LsOutput/connected-view.tsx'
 
 /** List members */
-export const lsCommand = Cli.Command.make('ls', { output: outputOption }, ({ output }) => {
-  const json = output === 'json' || output === 'ndjson'
-
-  return Effect.gen(function* () {
+export const lsCommand = Cli.Command.make('ls', { output: outputOption }, ({ output }) =>
+  Effect.gen(function* () {
     const cwd = yield* Cwd
     const root = yield* findMegarepoRoot(cwd)
 
-    if (Option.isNone(root)) {
-      if (json) {
-        return yield* jsonError({
-          error: 'not_found',
-          message: 'No megarepo.json found',
-        })
-      }
-      const output = yield* Effect.promise(() =>
-        renderToString({
-          element: React.createElement(
-            Box,
-            { flexDirection: 'row' },
-            React.createElement(Text, { color: 'red' }, '\u2717'),
-            React.createElement(Text, null, ' Not in a megarepo'),
-          ),
-        }),
-      )
-      yield* Console.error(output)
-      return yield* new NotInMegarepoError({ message: 'Not in a megarepo' })
-    }
+    // Run TuiApp for all output (handles JSON/TTY modes automatically)
+    yield* Effect.scoped(
+      Effect.gen(function* () {
+        const tui = yield* LsApp.run(React.createElement(LsConnectedView))
 
-    // Load config
-    const fs = yield* FileSystem.FileSystem
-    const configPath = EffectPath.ops.join(
-      root.value,
-      EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-    )
-    const configContent = yield* fs.readFileString(configPath)
-    const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+        if (Option.isNone(root)) {
+          // Dispatch error state
+          tui.dispatch({
+            _tag: 'SetError',
+            error: 'not_found',
+            message: 'No megarepo.json found',
+          })
+          // Set exit code for error
+          process.exitCode = 1
+          return
+        }
 
-    if (json) {
-      console.log(JSON.stringify({ members: config.members }))
-    } else {
-      for (const [name, sourceString] of Object.entries(config.members)) {
-        const memberOutput = yield* Effect.promise(() =>
-          renderToString({
-            element: React.createElement(
-              Box,
-              { flexDirection: 'row' },
-              React.createElement(Text, { bold: true }, name),
-              React.createElement(Text, { dim: true }, ` (${sourceString})`),
-            ),
-          }),
+        // Load config
+        const fs = yield* FileSystem.FileSystem
+        const configPath = EffectPath.ops.join(
+          root.value,
+          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
         )
-        yield* Console.log(memberOutput)
-      }
-    }
-  }).pipe(Effect.withSpan('megarepo/ls'), withJsonMode(json))
-}).pipe(Cli.Command.withDescription('List all members in the megarepo'))
+        const configContent = yield* fs.readFileString(configPath)
+        const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+
+        // Convert members to array format and dispatch success
+        const members = Object.entries(config.members).map(([name, source]) => ({
+          name,
+          source,
+        }))
+        tui.dispatch({ _tag: 'SetMembers', members })
+      }),
+    ).pipe(Effect.provide(outputModeLayer(output)))
+  }).pipe(Effect.withSpan('megarepo/ls')),
+).pipe(Cli.Command.withDescription('List all members in the megarepo'))

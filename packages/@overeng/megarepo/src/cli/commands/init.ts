@@ -4,98 +4,67 @@
  * Initialize a new megarepo in the current directory.
  */
 
-import path from 'node:path'
-
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
-import { Console, Effect, Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'
-import { renderToString, Box, Text } from '@overeng/tui-react'
-import { jsonError, withJsonMode } from '@overeng/utils/node'
 
 import { CONFIG_FILE_NAME, MegarepoConfig } from '../../lib/config.ts'
 import * as Git from '../../lib/git.ts'
-import { Cwd, outputOption } from '../context.ts'
-import { NotGitRepoError } from '../errors.ts'
+import { Cwd, outputOption, outputModeLayer } from '../context.ts'
+import { InitApp } from '../renderers/InitOutput/mod.ts'
+import { InitConnectedView } from '../renderers/InitOutput/connected-view.tsx'
 
 /** Initialize a new megarepo in current directory */
-export const initCommand = Cli.Command.make('init', { output: outputOption }, ({ output }) => {
-  const json = output === 'json' || output === 'ndjson'
-
-  return Effect.gen(function* () {
+export const initCommand = Cli.Command.make('init', { output: outputOption }, ({ output }) =>
+  Effect.gen(function* () {
     const cwd = yield* Cwd
     const fs = yield* FileSystem.FileSystem
 
-    // Check if already in a git repo
-    const isGit = yield* Git.isGitRepo(cwd)
-    if (!isGit) {
-      if (json) {
-        return yield* jsonError({
-          error: 'not_git_repo',
-          message: 'Not a git repository',
-        })
-      }
-      const output = yield* Effect.promise(() =>
-        renderToString({
-          element: React.createElement(
-            Box,
-            { flexDirection: 'row' },
-            React.createElement(Text, { color: 'red' }, '\u2717'),
-            React.createElement(Text, null, " Not a git repository. Run 'git init' first."),
-          ),
-        }),
-      )
-      yield* Console.error(output)
-      return yield* new NotGitRepoError({ message: 'Not a git repository' })
-    }
+    // Run TuiApp for all output (handles JSON/TTY modes automatically)
+    yield* Effect.scoped(
+      Effect.gen(function* () {
+        const tui = yield* InitApp.run(React.createElement(InitConnectedView))
 
-    const configPath = EffectPath.ops.join(cwd, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME))
+        // Check if already in a git repo
+        const isGit = yield* Git.isGitRepo(cwd)
+        if (!isGit) {
+          tui.dispatch({
+            _tag: 'SetError',
+            error: 'not_git_repo',
+            message: 'Not a git repository',
+          })
+          process.exitCode = 1
+          return
+        }
 
-    // Check if config already exists
-    const exists = yield* fs.exists(configPath)
-    if (exists) {
-      if (json) {
-        console.log(JSON.stringify({ status: 'already_initialized', path: configPath }))
-      } else {
-        const alreadyOutput = yield* Effect.promise(() =>
-          renderToString({
-            element: React.createElement(Text, { dim: true }, 'megarepo already initialized'),
-          }),
+        const configPath = EffectPath.ops.join(cwd, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME))
+
+        // Check if config already exists
+        const exists = yield* fs.exists(configPath)
+        if (exists) {
+          // Already initialized
+          tui.dispatch({ _tag: 'SetAlreadyInitialized', path: configPath })
+          return
+        }
+
+        // Create initial config
+        const initialConfig = {
+          $schema:
+            'https://raw.githubusercontent.com/overengineeringstudio/megarepo/main/schema/megarepo.schema.json',
+          members: {},
+        }
+
+        const configContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
+          initialConfig,
         )
-        yield* Console.log(alreadyOutput)
-      }
-      return
-    }
+        yield* fs.writeFileString(configPath, configContent + '\n')
 
-    // Create initial config
-    const initialConfig = {
-      $schema:
-        'https://raw.githubusercontent.com/overengineeringstudio/megarepo/main/schema/megarepo.schema.json',
-      members: {},
-    }
-
-    const configContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
-      initialConfig,
-    )
-    yield* fs.writeFileString(configPath, configContent + '\n')
-
-    if (json) {
-      console.log(JSON.stringify({ status: 'initialized', path: configPath }))
-    } else {
-      const successOutput = yield* Effect.promise(() =>
-        renderToString({
-          element: React.createElement(
-            Box,
-            { flexDirection: 'row' },
-            React.createElement(Text, { color: 'green' }, '\u2713'),
-            React.createElement(Text, { dim: true }, ' initialized megarepo at '),
-            React.createElement(Text, { bold: true }, path.basename(cwd)),
-          ),
-        }),
-      )
-      yield* Console.log(successOutput)
-    }
-  }).pipe(Effect.withSpan('megarepo/init'), withJsonMode(json))
-}).pipe(Cli.Command.withDescription('Initialize a new megarepo in the current directory'))
+        // Output success
+        tui.dispatch({ _tag: 'SetInitialized', path: configPath })
+      }),
+    ).pipe(Effect.provide(outputModeLayer(output)))
+  }).pipe(Effect.withSpan('megarepo/init')),
+).pipe(Cli.Command.withDescription('Initialize a new megarepo in the current directory'))
