@@ -5,6 +5,8 @@
  * Implements the required methods for react-reconciler.
  */
 
+import { createContext } from 'react'
+
 import type {
   TuiNode,
   TuiElement,
@@ -32,6 +34,29 @@ export interface TuiContainer {
 
 type Instance = TuiElement
 type TextInstance = TuiTextNode
+
+// =============================================================================
+// Microtask Tracking
+// =============================================================================
+
+/**
+ * Pending microtasks scheduled by React that haven't run yet.
+ * This allows flush() to synchronously process all pending React work.
+ */
+const pendingMicrotasks: Array<() => void> = []
+
+/**
+ * Flush all pending microtasks synchronously.
+ * Call this before rendering to ensure React has finished all its work.
+ */
+export const flushPendingMicrotasks = (): void => {
+  // Process all pending microtasks. As we process them, React might schedule
+  // more work, so we loop until the queue is empty.
+  while (pendingMicrotasks.length > 0) {
+    const fn = pendingMicrotasks.shift()!
+    fn()
+  }
+}
 
 // =============================================================================
 // Helper functions
@@ -205,10 +230,11 @@ export const hostConfig = {
     }
   },
 
-  clearContainer(_container: TuiContainer) {
-    // Note: clearContainer is called before appendChildToContainer in the commit phase.
-    // We don't want to clear the root here since appendChildToContainer will set the new root.
-    // Cleanup is handled by removeChildFromContainer instead.
+  clearContainer(container: TuiContainer) {
+    if (container.root) {
+      freeYogaNode(container.root.yogaNode)
+      container.root = null
+    }
   },
 
   // Updates
@@ -219,9 +245,8 @@ export const hostConfig = {
   // oxlint-disable-next-line overeng/named-args -- React reconciler API
   commitUpdate(
     instance: Instance,
-    _updatePayload: unknown,
     type: string,
-    _oldProps: unknown,
+    oldProps: Record<string, unknown>,
     newProps: Record<string, unknown>,
   ) {
     if (type === 'tui-box') {
@@ -270,10 +295,20 @@ export const hostConfig = {
   // (useEffect callbacks, useSyncExternalStore subscriptions) after the commit phase.
   // The subscription setup for useSyncExternalStore happens via microtask, which is why
   // both supportsMicrotasks and scheduleMicrotask must be configured for hooks to work.
-  scheduleMicrotask:
-    typeof queueMicrotask === 'function'
-      ? queueMicrotask
-      : (fn: () => void) => Promise.resolve().then(fn),
+  //
+  // We wrap the default scheduleMicrotask to track pending work, allowing flush() to
+  // synchronously process all scheduled microtasks before rendering.
+  scheduleMicrotask: (fn: () => void) => {
+    pendingMicrotasks.push(fn)
+    queueMicrotask(() => {
+      // Only run if still in queue (not flushed synchronously)
+      const index = pendingMicrotasks.indexOf(fn)
+      if (index !== -1) {
+        pendingMicrotasks.splice(index, 1)
+        fn()
+      }
+    })
+  },
 
   // Priority constants from React internals
   // DiscreteEventPriority = 2
@@ -307,7 +342,10 @@ export const hostConfig = {
   getInstanceFromScope() {
     return null
   },
-  detachDeletedInstance() {},
+  detachDeletedInstance(_instance: Instance) {
+    // Yoga node cleanup is handled by removeChild/removeChildFromContainer.
+    // We intentionally don't free here to avoid double-free issues.
+  },
 
   finalizeInitialChildren() {
     return false
@@ -334,5 +372,26 @@ export const hostConfig = {
   suspendInstance() {},
   waitForCommitToBeReady() {
     return null
+  },
+
+  // React 19 / react-reconciler 0.33 required methods
+  NotPendingTransition: null as null,
+  HostTransitionContext: createContext(null),
+  resetFormInstance() {},
+  requestPostPaintCallback() {},
+  shouldAttemptEagerTransition() {
+    return false
+  },
+  resolveEventTimeStamp() {
+    return Date.now()
+  },
+  resolveEventType() {
+    return null // Not event-driven
+  },
+  resolveEventPriority() {
+    return 16 // DefaultEventPriority
+  },
+  trackSchedulerEvent() {
+    // No-op for TUI
   },
 }

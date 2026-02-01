@@ -16,7 +16,11 @@ import {
 
 import { ViewportProvider, type Viewport } from './hooks/useViewport.tsx'
 import { renderTreeSimple, extractStaticContent } from './reconciler/output.ts'
-import { TuiReconciler, type TuiContainer } from './reconciler/reconciler.ts'
+import {
+  TuiReconciler,
+  flushPendingMicrotasks,
+  type TuiContainer,
+} from './reconciler/reconciler.ts'
 import type { TuiStaticElement } from './reconciler/types.ts'
 import { isStaticElement } from './reconciler/types.ts'
 import { calculateLayout } from './reconciler/yoga-utils.ts'
@@ -146,12 +150,30 @@ export const createRoot = ({
   // Track last rendered element for re-rendering in flush
   let lastRenderedElement: ReactElement | null = null
 
+  // Microtask batching for render scheduling.
+  // React's reconciler can trigger multiple commit phases for a single update
+  // (e.g., empty commit → remove element → create new element). By batching
+  // renders via microtask, we ensure we only render once after React completes
+  // all its work for the current update cycle.
+  let microtaskScheduled = false
+
   // Container that holds the root of the tree
   const container: TuiContainer = {
     root: null,
     onRender: () => {
-      if (!disposed) {
-        scheduleRender()
+      if (disposed) return
+
+      // Use microtask batching to ensure React completes all commit phases
+      // before we render. Without this, we might render intermediate states
+      // (e.g., empty container during a recreate operation).
+      if (!microtaskScheduled) {
+        microtaskScheduled = true
+        queueMicrotask(() => {
+          microtaskScheduled = false
+          if (!disposed) {
+            scheduleRender()
+          }
+        })
       }
     },
   }
@@ -351,29 +373,25 @@ export const createRoot = ({
    * This is critical for progressive output modes (tty, ci) where we need to ensure
    * all state changes are reflected in the output before unmounting. The flush process:
    *
-   * 1. Flush passive effects - ensures useSyncExternalStore subscriptions are set up
-   * 2. Flush sync work - processes any pending React updates
-   * 3. Force re-render - triggers React to read the latest store values
-   * 4. Render to terminal - outputs the final state
-   *
-   * Note: Simply flushing React work isn't enough because useSyncExternalStore
-   * may have received change notifications that scheduled updates at a priority
-   * level not covered by flushSyncWork. Re-rendering the same element forces
-   * React to call getSnapshot() again and render with the current state.
+   * 1. Flush passive effects (useEffect, useSyncExternalStore subscriptions)
+   * 2. Flush sync work and microtasks
+   * 3. Re-render to pick up any state changes triggered by effects
+   * 4. Render to terminal
    */
   const doFlush = (): void => {
     if (disposed) return
 
-    // Step 1: Flush passive effects (useEffect callbacks, subscription setup)
-    reconciler.flushPassiveEffects()
-    // Step 2: Flush any synchronous work that was scheduled
-    reconciler.flushSyncWork()
+    // Flush React work repeatedly. React's reconciler can schedule work across
+    // multiple phases (sync work, passive effects, microtasks). We need to keep
+    // flushing until all work is complete.
+    for (let i = 0; i < 20; i++) {
+      reconciler.flushPassiveEffects()
+      reconciler.flushSyncWork()
+      flushPendingMicrotasks()
+    }
 
-    // Step 3: Force React to re-render with current external store state.
-    // When useSyncExternalStore's onStoreChange callback is invoked, React schedules
-    // an update, but this update may not be flushed by flushSyncWork alone.
-    // By calling updateContainerSync with the same element, we force React to
-    // re-execute the component and call getSnapshot() to get the latest value.
+    // Re-render to pick up state changes from effects (e.g., useSyncExternalStore
+    // subscriptions or useEffect callbacks that called setState).
     if (lastRenderedElement) {
       reconciler.updateContainerSync(
         wrapWithProviders(lastRenderedElement),
@@ -381,14 +399,19 @@ export const createRoot = ({
         null,
         () => {},
       )
-      reconciler.flushSyncWork()
+      for (let i = 0; i < 20; i++) {
+        reconciler.flushPassiveEffects()
+        reconciler.flushSyncWork()
+        flushPendingMicrotasks()
+      }
     }
 
-    // Cancel any pending throttled render since we're rendering now
+    // Cancel any pending throttled/microtask-batched render since we're rendering now
     pendingRender = false
     renderScheduled = false
+    microtaskScheduled = false
 
-    // Step 4: Render the React tree to terminal output
+    // Render the React tree to terminal output
     doRender()
     lastRenderTime = Date.now()
   }
