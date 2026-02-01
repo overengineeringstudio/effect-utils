@@ -74,84 +74,6 @@ export interface TaskListProps {
 }
 
 // =============================================================================
-// Status Icons
-// =============================================================================
-
-const StatusIcon = ({ status }: { status: TaskStatus }): ReactNode => {
-  switch (status) {
-    case 'pending':
-      return <Text dim>○</Text>
-    case 'active':
-      return <Spinner />
-    case 'success':
-      return <Text color="green">✓</Text>
-    case 'error':
-      return <Text color="red">✗</Text>
-    case 'skipped':
-      return <Text dim>-</Text>
-  }
-}
-
-// =============================================================================
-// Task Line
-// =============================================================================
-
-const TaskLine = ({ item }: { item: TaskItem }): ReactNode => {
-  const isDim = item.status === 'pending' || item.status === 'skipped'
-
-  return (
-    <Box flexDirection="row">
-      <StatusIcon status={item.status} />
-      <Text dim={isDim}> {item.label}</Text>
-      {item.message && <Text dim> {item.message}</Text>}
-    </Box>
-  )
-}
-
-// =============================================================================
-// Summary
-// =============================================================================
-
-const formatElapsed = (ms: number): string => {
-  if (ms < 1000) return `${ms}ms`
-  const seconds = ms / 1000
-  if (seconds < 60) return `${seconds.toFixed(1)}s`
-  const minutes = Math.floor(seconds / 60)
-  const remainingSeconds = Math.floor(seconds % 60)
-  return `${minutes}m${remainingSeconds}s`
-}
-
-const Summary = ({
-  items,
-  elapsed,
-}: {
-  items: readonly TaskItem[]
-  elapsed?: number
-}): ReactNode => {
-  const counts = { pending: 0, active: 0, success: 0, error: 0, skipped: 0 }
-  for (const item of items) {
-    counts[item.status]++
-  }
-
-  const total = items.length
-  const completed = counts.success + counts.error + counts.skipped
-
-  const parts: string[] = [`${completed}/${total}`]
-  if (counts.error > 0) {
-    parts.push(`${counts.error} error${counts.error > 1 ? 's' : ''}`)
-  }
-  if (elapsed !== undefined) {
-    parts.push(formatElapsed(elapsed))
-  }
-
-  return (
-    <Box paddingTop={1}>
-      <Text dim>{parts.join(' · ')}</Text>
-    </Box>
-  )
-}
-
-// =============================================================================
 // TaskList Component
 // =============================================================================
 
@@ -177,6 +99,70 @@ export const TaskList = (props: TaskListProps): ReactNode => {
         ))}
       </Box>
       {showSummary && <Summary items={items} {...(elapsed !== undefined ? { elapsed } : {})} />}
+    </Box>
+  )
+}
+
+// =============================================================================
+// Internal Components
+// =============================================================================
+
+function StatusIcon({ status }: { status: TaskStatus }): ReactNode {
+  switch (status) {
+    case 'pending':
+      return <Text dim>○</Text>
+    case 'active':
+      return <Spinner />
+    case 'success':
+      return <Text color="green">✓</Text>
+    case 'error':
+      return <Text color="red">✗</Text>
+    case 'skipped':
+      return <Text dim>-</Text>
+  }
+}
+
+function TaskLine({ item }: { item: TaskItem }): ReactNode {
+  const isDim = item.status === 'pending' || item.status === 'skipped'
+
+  return (
+    <Box flexDirection="row">
+      <StatusIcon status={item.status} />
+      <Text dim={isDim}> {item.label}</Text>
+      {item.message && <Text dim> {item.message}</Text>}
+    </Box>
+  )
+}
+
+function formatElapsed(ms: number): string {
+  if (ms < 1000) return `${ms}ms`
+  const seconds = ms / 1000
+  if (seconds < 60) return `${seconds.toFixed(1)}s`
+  const minutes = Math.floor(seconds / 60)
+  const remainingSeconds = Math.floor(seconds % 60)
+  return `${minutes}m${remainingSeconds}s`
+}
+
+function Summary({ items, elapsed }: { items: readonly TaskItem[]; elapsed?: number }): ReactNode {
+  const counts = { pending: 0, active: 0, success: 0, error: 0, skipped: 0 }
+  for (const item of items) {
+    counts[item.status]++
+  }
+
+  const total = items.length
+  const completed = counts.success + counts.error + counts.skipped
+
+  const parts: string[] = [`${completed}/${total}`]
+  if (counts.error > 0) {
+    parts.push(`${counts.error} error${counts.error > 1 ? 's' : ''}`)
+  }
+  if (elapsed !== undefined) {
+    parts.push(formatElapsed(elapsed))
+  }
+
+  return (
+    <Box paddingTop={1}>
+      <Text dim>{parts.join(' · ')}</Text>
     </Box>
   )
 }

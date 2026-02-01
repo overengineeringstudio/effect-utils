@@ -5,12 +5,6 @@
  * For higher-level styled text, use @overeng/cli-ui.
  */
 
-/** CSI (Control Sequence Introducer) prefix */
-const CSI = '\x1b['
-
-/** OSC (Operating System Command) prefix */
-const _OSC = '\x1b]'
-
 // =============================================================================
 // Cursor Movement
 // =============================================================================
@@ -167,6 +161,36 @@ export const isColor256 = (color: Color): color is Color256 =>
 export const isColorRgb = (color: Color): color is ColorRgb =>
   typeof color === 'object' && 'rgb' in color
 
+/** Apply foreground color */
+export const fg = ({ color, text }: { color: Color; text: string }): string =>
+  `${getFgCode(color)}${text}${CSI}39m`
+
+/** Apply background color */
+export const bg = ({ color, text }: { color: Color; text: string }): string =>
+  `${getBgCode(color)}${text}${CSI}49m`
+
+/** Get raw foreground ANSI code (without text wrapping) */
+export const fgCode = (color: Color): string => getFgCode(color)
+
+/** Get raw background ANSI code (without text wrapping) */
+export const bgCode = (color: Color): string => getBgCode(color)
+
+/** Reset foreground color */
+export const fgReset = (): string => `${CSI}39m`
+
+/** Reset background color */
+export const bgReset = (): string => `${CSI}49m`
+
+// =============================================================================
+// Internal Constants and Helpers
+// =============================================================================
+
+/** CSI (Control Sequence Introducer) prefix */
+const CSI = '\x1b['
+
+/** OSC (Operating System Command) prefix */
+const _OSC = '\x1b]'
+
 /** Color name to ANSI foreground code */
 const fgCodes: Record<ColorName, number> = {
   black: 30,
@@ -212,7 +236,7 @@ const bgCodes: Record<ColorName, number> = {
 }
 
 /** Get foreground ANSI escape sequence for a color */
-const getFgCode = (color: Color): string => {
+function getFgCode(color: Color): string {
   if (isColorName(color)) {
     return `${CSI}${fgCodes[color]}m`
   }
@@ -226,7 +250,7 @@ const getFgCode = (color: Color): string => {
 }
 
 /** Get background ANSI escape sequence for a color */
-const getBgCode = (color: Color): string => {
+function getBgCode(color: Color): string {
   if (isColorName(color)) {
     return `${CSI}${bgCodes[color]}m`
   }
@@ -238,23 +262,3 @@ const getBgCode = (color: Color): string => {
   }
   return ''
 }
-
-/** Apply foreground color */
-export const fg = ({ color, text }: { color: Color; text: string }): string =>
-  `${getFgCode(color)}${text}${CSI}39m`
-
-/** Apply background color */
-export const bg = ({ color, text }: { color: Color; text: string }): string =>
-  `${getBgCode(color)}${text}${CSI}49m`
-
-/** Get raw foreground ANSI code (without text wrapping) */
-export const fgCode = (color: Color): string => getFgCode(color)
-
-/** Get raw background ANSI code (without text wrapping) */
-export const bgCode = (color: Color): string => getBgCode(color)
-
-/** Reset foreground color */
-export const fgReset = (): string => `${CSI}39m`
-
-/** Reset background color */
-export const bgReset = (): string => `${CSI}49m`

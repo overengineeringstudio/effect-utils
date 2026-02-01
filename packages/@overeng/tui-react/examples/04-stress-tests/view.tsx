@@ -26,12 +26,9 @@ const Spinner = ({ frame }: { frame: number }) => {
   )
 }
 
-const RunningView = ({
-  stateAtom,
-}: {
-  stateAtom: Atom.Atom<StressTestState>
-}) => {
-  const state = useTuiAtomValue(stateAtom) as Extract<StressTestState, { _tag: 'Running' }>
+const RunningView = ({ stateAtom }: { stateAtom: Atom.Atom<StressTestState> }) => {
+  const state = useTuiAtomValue(stateAtom)
+  if (state._tag !== 'Running') return null
 
   return (
     <Box flexDirection="column" padding={1}>
@@ -60,12 +57,9 @@ const RunningView = ({
   )
 }
 
-const FinishedView = ({
-  stateAtom,
-}: {
-  stateAtom: Atom.Atom<StressTestState>
-}) => {
-  const state = useTuiAtomValue(stateAtom) as Extract<StressTestState, { _tag: 'Finished' }>
+const FinishedView = ({ stateAtom }: { stateAtom: Atom.Atom<StressTestState> }) => {
+  const state = useTuiAtomValue(stateAtom)
+  if (state._tag !== 'Finished') return null
 
   return (
     <Box flexDirection="column" padding={1}>
@@ -106,12 +100,9 @@ const FinishedView = ({
   )
 }
 
-const InterruptedView = ({
-  stateAtom,
-}: {
-  stateAtom: Atom.Atom<StressTestState>
-}) => {
-  const state = useTuiAtomValue(stateAtom) as Extract<StressTestState, { _tag: 'Interrupted' }>
+const InterruptedView = ({ stateAtom }: { stateAtom: Atom.Atom<StressTestState> }) => {
+  const state = useTuiAtomValue(stateAtom)
+  if (state._tag !== 'Interrupted') return null
 
   return (
     <Box flexDirection="column" padding={1}>

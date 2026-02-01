@@ -5,7 +5,9 @@ import { Box, Text, useTuiAtomValue } from '../../src/mod.ts'
 import type { AppState } from './schema.ts'
 
 const DisplayingView = ({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) => {
-  const state = useTuiAtomValue(stateAtom) as Extract<AppState, { _tag: 'Displaying' }>
+  const state = useTuiAtomValue(stateAtom)
+  if (state._tag !== 'Displaying') return null
+
   return (
     <Box flexDirection="column" padding={1}>
       <Text bold color="cyan">
@@ -27,7 +29,9 @@ const DisplayingView = ({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) => {
 }
 
 const FinishedView = ({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) => {
-  const state = useTuiAtomValue(stateAtom) as Extract<AppState, { _tag: 'Finished' }>
+  const state = useTuiAtomValue(stateAtom)
+  if (state._tag !== 'Finished') return null
+
   return (
     <Box flexDirection="column" padding={1}>
       <Text bold color="green">

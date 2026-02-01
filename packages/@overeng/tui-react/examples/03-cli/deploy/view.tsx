@@ -102,16 +102,10 @@ const ServiceResultLine = ({ service }: { service: ServiceResult }) => (
 // =============================================================================
 
 const ProgressSection = ({ stateAtom }: { stateAtom: Atom.Atom<DeployState> }) => {
-  // Derive a focused atom for just the services array
-  const servicesAtom = useMemo(
-    () =>
-      Atom.map(stateAtom, (s): readonly ServiceProgress[] =>
-        s._tag === 'Progress' ? s.services : [],
-      ),
-    [stateAtom],
-  )
-  const services = useTuiAtomValue(servicesAtom)
+  const state = useTuiAtomValue(stateAtom)
+  if (state._tag !== 'Progress') return null
 
+  const services = state.services
   const completed = services.filter((s) => s.status === 'healthy').length
   const failed = services.filter((s) => s.status === 'failed').length
   const total = services.length
@@ -156,13 +150,7 @@ const RollingBackSection = ({ stateAtom }: { stateAtom: Atom.Atom<DeployState> }
 // Complete Section
 // =============================================================================
 
-const CompleteSection = ({
-  stateAtom,
-  environment,
-}: {
-  stateAtom: Atom.Atom<DeployState>
-  environment: string
-}) => {
+const CompleteSection = ({ stateAtom }: { stateAtom: Atom.Atom<DeployState> }) => {
   const state = useTuiAtomValue(stateAtom)
   if (state._tag !== 'Complete') return null
 
@@ -176,7 +164,7 @@ const CompleteSection = ({
       ))}
       <Text dim>
         {'\n'}
-        {state.services.length} services deployed to {environment} in{' '}
+        {state.services.length} services deployed to {state.environment} in{' '}
         {(state.totalDuration / 1000).toFixed(1)}s
       </Text>
     </Box>
@@ -292,7 +280,7 @@ export const DeployView = ({ stateAtom }: { stateAtom: Atom.Atom<DeployState> })
       {tag === 'RollingBack' && <RollingBackSection stateAtom={stateAtom} />}
 
       {/* Complete state */}
-      {tag === 'Complete' && <CompleteSection stateAtom={stateAtom} environment={environment} />}
+      {tag === 'Complete' && <CompleteSection stateAtom={stateAtom} />}
 
       {/* Failed state */}
       {tag === 'Failed' && <FailedSection stateAtom={stateAtom} />}

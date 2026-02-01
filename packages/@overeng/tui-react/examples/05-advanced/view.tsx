@@ -131,7 +131,8 @@ const CanvasRenderer = ({
 }
 
 const RunningView = ({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) => {
-  const state = useTuiAtomValue(stateAtom) as Extract<AppState, { _tag: 'Running' }>
+  const state = useTuiAtomValue(stateAtom)
+  if (state._tag !== 'Running') return null
   return (
     <Box>
       <Box flexDirection="row">
@@ -161,7 +162,8 @@ const RunningView = ({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) => {
 }
 
 const FinishedView = ({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) => {
-  const state = useTuiAtomValue(stateAtom) as Extract<AppState, { _tag: 'Finished' }>
+  const state = useTuiAtomValue(stateAtom)
+  if (state._tag !== 'Finished') return null
   return (
     <Box flexDirection="column" padding={1}>
       <Text bold color="green">
@@ -185,7 +187,8 @@ const FinishedView = ({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) => {
 }
 
 const InterruptedView = ({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) => {
-  const state = useTuiAtomValue(stateAtom) as Extract<AppState, { _tag: 'Interrupted' }>
+  const state = useTuiAtomValue(stateAtom)
+  if (state._tag !== 'Interrupted') return null
   return (
     <Box flexDirection="column" padding={1}>
       <Text bold color="yellow">

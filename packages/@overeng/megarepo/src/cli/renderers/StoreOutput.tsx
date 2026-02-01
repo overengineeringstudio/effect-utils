@@ -63,18 +63,6 @@ export type StoreWorktreeStatus = {
 }
 
 // =============================================================================
-// Symbols
-// =============================================================================
-
-const symbols = {
-  check: '\u2713',
-  cross: '\u2717',
-  warning: '\u26a0',
-  circle: '\u25cb',
-  dot: '\u00b7',
-}
-
-// =============================================================================
 // Store Header Component
 // =============================================================================
 
@@ -112,7 +100,7 @@ export const StoreListOutput = ({ basePath, repos }: StoreListOutputProps) => (
       <>
         {repos.map((repo) => (
           <Box key={repo.relativePath} flexDirection="row">
-            <Text color="green">{symbols.check}</Text>
+            <Text color="green">{SYMBOLS.check}</Text>
             <Text> {repo.relativePath}</Text>
           </Box>
         ))}
@@ -133,18 +121,6 @@ export type StoreFetchOutputProps = {
   elapsedMs: number
 }
 
-/** Format elapsed time */
-const formatElapsed = (ms: number): string => {
-  if (ms < 1000) return `${ms}ms`
-  const seconds = Math.floor(ms / 1000)
-  const remainingMs = ms % 1000
-  if (seconds < 60)
-    return remainingMs > 0 ? `${seconds}.${Math.floor(remainingMs / 100)}s` : `${seconds}s`
-  const minutes = Math.floor(seconds / 60)
-  const remainingSecs = seconds % 60
-  return `${minutes}m ${remainingSecs}s`
-}
-
 export const StoreFetchOutput = ({ basePath, results, elapsedMs }: StoreFetchOutputProps) => {
   const fetchedCount = results.filter((r) => r.status === 'fetched').length
   const errorCount = results.filter((r) => r.status === 'error').length
@@ -157,9 +133,9 @@ export const StoreFetchOutput = ({ basePath, results, elapsedMs }: StoreFetchOut
       {results.map((result) => (
         <Box key={result.path} flexDirection="row">
           {result.status === 'error' ? (
-            <Text color="red">{symbols.cross}</Text>
+            <Text color="red">{SYMBOLS.cross}</Text>
           ) : (
-            <Text color="green">{symbols.check}</Text>
+            <Text color="green">{SYMBOLS.check}</Text>
           )}
           <Text> {result.path}</Text>
           {result.status === 'error' && result.message && <Text dim> ({result.message})</Text>}
@@ -170,7 +146,7 @@ export const StoreFetchOutput = ({ basePath, results, elapsedMs }: StoreFetchOut
         <Text dim>{fetchedCount} fetched</Text>
         {errorCount > 0 && (
           <>
-            <Text dim> {symbols.dot} </Text>
+            <Text dim> {SYMBOLS.dot} </Text>
             <Text color="red">
               {errorCount} error{errorCount > 1 ? 's' : ''}
             </Text>
@@ -178,7 +154,7 @@ export const StoreFetchOutput = ({ basePath, results, elapsedMs }: StoreFetchOut
         )}
         <Text dim>
           {' '}
-          {symbols.dot} {formatElapsed(elapsedMs)}
+          {SYMBOLS.dot} {formatElapsed(elapsedMs)}
         </Text>
       </Box>
     </Box>
@@ -207,171 +183,6 @@ export type StoreGcOutputProps = {
   showForceHint?: boolean | undefined
   /** Max number of in-use worktrees to show individually (default: 5) */
   maxInUseToShow?: number | undefined
-}
-
-/** GC Header component */
-const StoreGcHeader = ({ basePath, dryRun }: { basePath: string; dryRun: boolean }) => (
-  <Box flexDirection="column">
-    <Text bold>store gc</Text>
-    <Text>
-      {kv({ key: 'path', value: basePath, options: { keyStyle: (k: string) => `  ${k}` } })}
-    </Text>
-    {dryRun && <Text dim> mode: dry run</Text>}
-    <Text> </Text>
-  </Box>
-)
-
-/** GC Warning component */
-const StoreGcWarning = ({ warning }: { warning: NonNullable<StoreGcOutputProps['warning']> }) => {
-  if (warning.type === 'not_in_megarepo') {
-    return (
-      <Box flexDirection="column">
-        <Text dim>Not in a megarepo - all worktrees will be considered unused</Text>
-        <Text> </Text>
-      </Box>
-    )
-  }
-
-  if (warning.type === 'only_current_megarepo') {
-    return (
-      <Box flexDirection="column">
-        <Box flexDirection="row">
-          <Text color="yellow">{symbols.warning}</Text>
-          <Text color="yellow"> Only checking current megarepo for in-use worktrees</Text>
-        </Box>
-        <Text dim> Worktrees used by other megarepos may be removed</Text>
-        <Text dim> Run from each megarepo to preserve its worktrees, or use --dry-run first</Text>
-        <Text> </Text>
-      </Box>
-    )
-  }
-
-  // Custom warning
-  return (
-    <Box flexDirection="column">
-      <Box flexDirection="row">
-        <Text color="yellow">{symbols.warning}</Text>
-        <Text> {warning.message}</Text>
-      </Box>
-      <Text> </Text>
-    </Box>
-  )
-}
-
-/** GC Result line component */
-const StoreGcResultLine = ({ result, dryRun }: { result: StoreGcResult; dryRun: boolean }) => {
-  const getSymbol = () => {
-    switch (result.status) {
-      case 'removed':
-        return <Text color="green">{symbols.check}</Text>
-      case 'error':
-        return <Text color="red">{symbols.cross}</Text>
-      case 'skipped_dirty':
-        return <Text color="yellow">{symbols.circle}</Text>
-      case 'skipped_in_use':
-        return <Text dim>{symbols.check}</Text>
-    }
-  }
-
-  const getStatusText = () => {
-    switch (result.status) {
-      case 'removed':
-        return <Text dim> ({dryRun ? 'would remove' : 'removed'})</Text>
-      case 'skipped_dirty':
-        return <Text dim> ({result.message ?? 'dirty'})</Text>
-      case 'skipped_in_use':
-        return <Text dim> (in use)</Text>
-      case 'error':
-        return <Text color="red"> (error: {result.message})</Text>
-    }
-  }
-
-  const isDim = result.status === 'skipped_in_use'
-
-  return (
-    <Box flexDirection="row">
-      {getSymbol()}
-      {isDim ? (
-        <Text dim>
-          {' '}
-          {result.repo}refs/{result.ref}{' '}
-        </Text>
-      ) : (
-        <Text>
-          {' '}
-          {result.repo}refs/{result.ref}{' '}
-        </Text>
-      )}
-      {getStatusText()}
-    </Box>
-  )
-}
-
-/** GC Summary component */
-const StoreGcSummary = ({
-  removed,
-  skippedDirty,
-  skippedInUse,
-  errors,
-  dryRun,
-}: {
-  removed: number
-  skippedDirty: number
-  skippedInUse: number
-  errors: number
-  dryRun: boolean
-}) => {
-  const parts: Array<{ key: string; element: React.ReactNode }> = []
-
-  if (removed > 0) {
-    parts.push({
-      key: 'removed',
-      element: (
-        <Text>
-          {removed} {dryRun ? 'would be removed' : 'removed'}
-        </Text>
-      ),
-    })
-  }
-  if (skippedDirty > 0) {
-    parts.push({
-      key: 'dirty',
-      element: <Text>{skippedDirty} skipped (dirty)</Text>,
-    })
-  }
-  if (skippedInUse > 0) {
-    parts.push({
-      key: 'in-use',
-      element: <Text>{skippedInUse} in use</Text>,
-    })
-  }
-  if (errors > 0) {
-    parts.push({
-      key: 'errors',
-      element: (
-        <Text color="red">
-          {errors} error{errors > 1 ? 's' : ''}
-        </Text>
-      ),
-    })
-  }
-
-  if (parts.length === 0) {
-    return <Text dim>Nothing to clean up</Text>
-  }
-
-  return (
-    <Box flexDirection="row">
-      <Text dim>
-        {parts.map((part, i) => (
-          <React.Fragment key={part.key}>
-            {i > 0 && ` ${symbols.dot} `}
-            {part.element}
-          </React.Fragment>
-        ))}
-      </Text>
-    </Box>
-  )
 }
 
 export const StoreGcOutput = ({
@@ -477,7 +288,7 @@ export const StoreAddError = ({ type, source }: StoreAddErrorProps) => {
 
   return (
     <Box flexDirection="row">
-      <Text color="red">{symbols.cross}</Text>
+      <Text color="red">{SYMBOLS.cross}</Text>
       <Text> {getMessage()}</Text>
     </Box>
   )
@@ -530,9 +341,9 @@ export const StoreAddSuccess = ({
     <Box flexDirection="column">
       <Box flexDirection="row">
         {alreadyExists ? (
-          <Text dim>{symbols.check}</Text>
+          <Text dim>{SYMBOLS.check}</Text>
         ) : (
-          <Text color="green">{symbols.check}</Text>
+          <Text color="green">{SYMBOLS.check}</Text>
         )}
         <Text> </Text>
         <Text bold>{source}</Text>
@@ -555,144 +366,6 @@ export type StoreStatusOutputProps = {
   worktreeCount: number
   diskUsage?: string | undefined
   worktrees: readonly StoreWorktreeStatus[]
-}
-
-/** Get symbol for issue severity */
-const getIssueSeveritySymbol = (severity: StoreIssueSeverity) => {
-  switch (severity) {
-    case 'error':
-      return <Text color="red">{symbols.cross}</Text>
-    case 'warning':
-      return <Text color="yellow">{symbols.warning}</Text>
-    case 'info':
-      return <Text dim>{symbols.circle}</Text>
-  }
-}
-
-/** Get color for issue type */
-const getIssueColor = (
-  severity: StoreIssueSeverity,
-): 'red' | 'yellow' | 'gray' | 'green' | 'blue' | 'cyan' | 'magenta' | 'white' | undefined => {
-  switch (severity) {
-    case 'error':
-      return 'red'
-    case 'warning':
-      return 'yellow'
-    case 'info':
-      return 'gray'
-  }
-}
-
-/** Single worktree with issues */
-const StoreStatusWorktree = ({ worktree }: { worktree: StoreWorktreeStatus }) => {
-  // Get highest severity for the header
-  const highestSeverity = worktree.issues.reduce<StoreIssueSeverity>((acc, issue) => {
-    if (issue.severity === 'error') return 'error'
-    if (issue.severity === 'warning' && acc !== 'error') return 'warning'
-    return acc
-  }, 'info' as StoreIssueSeverity)
-
-  return (
-    <Box flexDirection="column">
-      <Box flexDirection="row">
-        {getIssueSeveritySymbol(highestSeverity)}
-        <Text> </Text>
-        <Text>{worktree.repo}</Text>
-        <Text dim>/refs/{worktree.refType}/</Text>
-        <Text bold>{worktree.ref}</Text>
-      </Box>
-      {worktree.issues.map((issue, i) => (
-        <Box key={`${issue.type}-${i}`} flexDirection="row">
-          <Text>{'    '}</Text>
-          <Text color={getIssueColor(issue.severity)}>{issue.type}</Text>
-          <Text dim>: {issue.message}</Text>
-        </Box>
-      ))}
-    </Box>
-  )
-}
-
-/** Store status header */
-const StoreStatusHeader = ({
-  basePath,
-  diskUsage,
-  repoCount,
-  worktreeCount,
-}: {
-  basePath: string
-  diskUsage: string | undefined
-  repoCount: number
-  worktreeCount: number
-}) => (
-  <Box flexDirection="column">
-    <Box flexDirection="row">
-      <Text bold>Store: </Text>
-      <Text>{basePath}</Text>
-      {diskUsage && <Text dim> ({diskUsage})</Text>}
-    </Box>
-    <Text dim>
-      {'  '}
-      {repoCount} repo{repoCount !== 1 ? 's' : ''}, {worktreeCount} worktree
-      {worktreeCount !== 1 ? 's' : ''}
-    </Text>
-    <Text> </Text>
-  </Box>
-)
-
-/** Store status summary */
-const StoreStatusSummary = ({
-  errorCount,
-  warningCount,
-  infoCount,
-}: {
-  errorCount: number
-  warningCount: number
-  infoCount: number
-}) => {
-  const totalIssues = errorCount + warningCount + infoCount
-
-  if (totalIssues === 0) {
-    return (
-      <Box flexDirection="row">
-        <Text color="green">{symbols.check}</Text>
-        <Text> All worktrees healthy</Text>
-      </Box>
-    )
-  }
-
-  const parts: React.ReactNode[] = []
-  if (errorCount > 0) {
-    parts.push(
-      <Text key="errors" color="red">
-        {errorCount} error{errorCount !== 1 ? 's' : ''}
-      </Text>,
-    )
-  }
-  if (warningCount > 0) {
-    parts.push(
-      <Text key="warnings" color="yellow">
-        {warningCount} warning{warningCount !== 1 ? 's' : ''}
-      </Text>,
-    )
-  }
-  if (infoCount > 0) {
-    parts.push(
-      <Text key="info" dim>
-        {infoCount} info
-      </Text>,
-    )
-  }
-
-  return (
-    <Box flexDirection="row">
-      {parts.map((part, i) => (
-        <React.Fragment key={`part-${i}-${totalIssues}`}>
-          {i > 0 && <Text dim> {symbols.dot} </Text>}
-          {part}
-        </React.Fragment>
-      ))}
-    </Box>
-  )
 }
 
 export const StoreStatusOutput = ({
@@ -744,6 +417,337 @@ export const StoreStatusOutput = ({
         warningCount={warningCount}
         infoCount={infoCount}
       />
+    </Box>
+  )
+}
+
+// =============================================================================
+// Internal Constants and Helpers
+// =============================================================================
+
+const SYMBOLS = {
+  check: '\u2713',
+  cross: '\u2717',
+  warning: '\u26a0',
+  circle: '\u25cb',
+  dot: '\u00b7',
+}
+
+/** Format elapsed time */
+function formatElapsed(ms: number): string {
+  if (ms < 1000) return `${ms}ms`
+  const seconds = Math.floor(ms / 1000)
+  const remainingMs = ms % 1000
+  if (seconds < 60)
+    return remainingMs > 0 ? `${seconds}.${Math.floor(remainingMs / 100)}s` : `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  const remainingSecs = seconds % 60
+  return `${minutes}m ${remainingSecs}s`
+}
+
+/** GC Header component */
+function StoreGcHeader({ basePath, dryRun }: { basePath: string; dryRun: boolean }) {
+  return (
+    <Box flexDirection="column">
+      <Text bold>store gc</Text>
+      <Text>
+        {kv({ key: 'path', value: basePath, options: { keyStyle: (k: string) => `  ${k}` } })}
+      </Text>
+      {dryRun && <Text dim> mode: dry run</Text>}
+      <Text> </Text>
+    </Box>
+  )
+}
+
+/** GC Warning component */
+function StoreGcWarning({ warning }: { warning: NonNullable<StoreGcOutputProps['warning']> }) {
+  if (warning.type === 'not_in_megarepo') {
+    return (
+      <Box flexDirection="column">
+        <Text dim>Not in a megarepo - all worktrees will be considered unused</Text>
+        <Text> </Text>
+      </Box>
+    )
+  }
+
+  if (warning.type === 'only_current_megarepo') {
+    return (
+      <Box flexDirection="column">
+        <Box flexDirection="row">
+          <Text color="yellow">{SYMBOLS.warning}</Text>
+          <Text color="yellow"> Only checking current megarepo for in-use worktrees</Text>
+        </Box>
+        <Text dim> Worktrees used by other megarepos may be removed</Text>
+        <Text dim> Run from each megarepo to preserve its worktrees, or use --dry-run first</Text>
+        <Text> </Text>
+      </Box>
+    )
+  }
+
+  // Custom warning
+  return (
+    <Box flexDirection="column">
+      <Box flexDirection="row">
+        <Text color="yellow">{SYMBOLS.warning}</Text>
+        <Text> {warning.message}</Text>
+      </Box>
+      <Text> </Text>
+    </Box>
+  )
+}
+
+/** GC Result line component */
+function StoreGcResultLine({ result, dryRun }: { result: StoreGcResult; dryRun: boolean }) {
+  const getSymbol = () => {
+    switch (result.status) {
+      case 'removed':
+        return <Text color="green">{SYMBOLS.check}</Text>
+      case 'error':
+        return <Text color="red">{SYMBOLS.cross}</Text>
+      case 'skipped_dirty':
+        return <Text color="yellow">{SYMBOLS.circle}</Text>
+      case 'skipped_in_use':
+        return <Text dim>{SYMBOLS.check}</Text>
+    }
+  }
+
+  const getStatusText = () => {
+    switch (result.status) {
+      case 'removed':
+        return <Text dim> ({dryRun ? 'would remove' : 'removed'})</Text>
+      case 'skipped_dirty':
+        return <Text dim> ({result.message ?? 'dirty'})</Text>
+      case 'skipped_in_use':
+        return <Text dim> (in use)</Text>
+      case 'error':
+        return <Text color="red"> (error: {result.message})</Text>
+    }
+  }
+
+  const isDim = result.status === 'skipped_in_use'
+
+  return (
+    <Box flexDirection="row">
+      {getSymbol()}
+      {isDim ? (
+        <Text dim>
+          {' '}
+          {result.repo}refs/{result.ref}{' '}
+        </Text>
+      ) : (
+        <Text>
+          {' '}
+          {result.repo}refs/{result.ref}{' '}
+        </Text>
+      )}
+      {getStatusText()}
+    </Box>
+  )
+}
+
+/** GC Summary component */
+function StoreGcSummary({
+  removed,
+  skippedDirty,
+  skippedInUse,
+  errors,
+  dryRun,
+}: {
+  removed: number
+  skippedDirty: number
+  skippedInUse: number
+  errors: number
+  dryRun: boolean
+}) {
+  const parts: Array<{ key: string; element: React.ReactNode }> = []
+
+  if (removed > 0) {
+    parts.push({
+      key: 'removed',
+      element: (
+        <Text>
+          {removed} {dryRun ? 'would be removed' : 'removed'}
+        </Text>
+      ),
+    })
+  }
+  if (skippedDirty > 0) {
+    parts.push({
+      key: 'dirty',
+      element: <Text>{skippedDirty} skipped (dirty)</Text>,
+    })
+  }
+  if (skippedInUse > 0) {
+    parts.push({
+      key: 'in-use',
+      element: <Text>{skippedInUse} in use</Text>,
+    })
+  }
+  if (errors > 0) {
+    parts.push({
+      key: 'errors',
+      element: (
+        <Text color="red">
+          {errors} error{errors > 1 ? 's' : ''}
+        </Text>
+      ),
+    })
+  }
+
+  if (parts.length === 0) {
+    return <Text dim>Nothing to clean up</Text>
+  }
+
+  return (
+    <Box flexDirection="row">
+      <Text dim>
+        {parts.map((part, i) => (
+          <React.Fragment key={part.key}>
+            {i > 0 && ` ${SYMBOLS.dot} `}
+            {part.element}
+          </React.Fragment>
+        ))}
+      </Text>
+    </Box>
+  )
+}
+
+/** Get symbol for issue severity */
+function getIssueSeveritySymbol(severity: StoreIssueSeverity) {
+  switch (severity) {
+    case 'error':
+      return <Text color="red">{SYMBOLS.cross}</Text>
+    case 'warning':
+      return <Text color="yellow">{SYMBOLS.warning}</Text>
+    case 'info':
+      return <Text dim>{SYMBOLS.circle}</Text>
+  }
+}
+
+/** Get color for issue type */
+function getIssueColor(
+  severity: StoreIssueSeverity,
+): 'red' | 'yellow' | 'gray' | 'green' | 'blue' | 'cyan' | 'magenta' | 'white' | undefined {
+  switch (severity) {
+    case 'error':
+      return 'red'
+    case 'warning':
+      return 'yellow'
+    case 'info':
+      return 'gray'
+  }
+}
+
+/** Single worktree with issues */
+function StoreStatusWorktree({ worktree }: { worktree: StoreWorktreeStatus }) {
+  // Get highest severity for the header
+  const highestSeverity = worktree.issues.reduce<StoreIssueSeverity>((acc, issue) => {
+    if (issue.severity === 'error') return 'error'
+    if (issue.severity === 'warning' && acc !== 'error') return 'warning'
+    return acc
+  }, 'info' as StoreIssueSeverity)
+
+  return (
+    <Box flexDirection="column">
+      <Box flexDirection="row">
+        {getIssueSeveritySymbol(highestSeverity)}
+        <Text> </Text>
+        <Text>{worktree.repo}</Text>
+        <Text dim>/refs/{worktree.refType}/</Text>
+        <Text bold>{worktree.ref}</Text>
+      </Box>
+      {worktree.issues.map((issue, i) => (
+        <Box key={`${issue.type}-${i}`} flexDirection="row">
+          <Text>{'    '}</Text>
+          <Text color={getIssueColor(issue.severity)}>{issue.type}</Text>
+          <Text dim>: {issue.message}</Text>
+        </Box>
+      ))}
+    </Box>
+  )
+}
+
+/** Store status header */
+function StoreStatusHeader({
+  basePath,
+  diskUsage,
+  repoCount,
+  worktreeCount,
+}: {
+  basePath: string
+  diskUsage: string | undefined
+  repoCount: number
+  worktreeCount: number
+}) {
+  return (
+    <Box flexDirection="column">
+      <Box flexDirection="row">
+        <Text bold>Store: </Text>
+        <Text>{basePath}</Text>
+        {diskUsage && <Text dim> ({diskUsage})</Text>}
+      </Box>
+      <Text dim>
+        {'  '}
+        {repoCount} repo{repoCount !== 1 ? 's' : ''}, {worktreeCount} worktree
+        {worktreeCount !== 1 ? 's' : ''}
+      </Text>
+      <Text> </Text>
+    </Box>
+  )
+}
+
+/** Store status summary */
+function StoreStatusSummary({
+  errorCount,
+  warningCount,
+  infoCount,
+}: {
+  errorCount: number
+  warningCount: number
+  infoCount: number
+}) {
+  const totalIssues = errorCount + warningCount + infoCount
+
+  if (totalIssues === 0) {
+    return (
+      <Box flexDirection="row">
+        <Text color="green">{SYMBOLS.check}</Text>
+        <Text> All worktrees healthy</Text>
+      </Box>
+    )
+  }
+
+  const parts: React.ReactNode[] = []
+  if (errorCount > 0) {
+    parts.push(
+      <Text key="errors" color="red">
+        {errorCount} error{errorCount !== 1 ? 's' : ''}
+      </Text>,
+    )
+  }
+  if (warningCount > 0) {
+    parts.push(
+      <Text key="warnings" color="yellow">
+        {warningCount} warning{warningCount !== 1 ? 's' : ''}
+      </Text>,
+    )
+  }
+  if (infoCount > 0) {
+    parts.push(
+      <Text key="info" dim>
+        {infoCount} info
+      </Text>,
+    )
+  }
+
+  return (
+    <Box flexDirection="row">
+      {parts.map((part, i) => (
+        <React.Fragment key={`part-${i}-${totalIssues}`}>
+          {i > 0 && <Text dim> {SYMBOLS.dot} </Text>}
+          {part}
+        </React.Fragment>
+      ))}
     </Box>
   )
 }

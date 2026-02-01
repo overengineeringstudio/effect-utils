@@ -18,7 +18,9 @@ const HistoryView = ({ history }: { history: readonly string[] }) =>
   ) : null
 
 const RunningView = ({ stateAtom }: { stateAtom: Atom.Atom<CounterState> }) => {
-  const state = useTuiAtomValue(stateAtom) as Extract<CounterState, { _tag: 'Running' }>
+  const state = useTuiAtomValue(stateAtom)
+  if (state._tag !== 'Running') return null
+
   return (
     <Box flexDirection="column" padding={1}>
       <Text bold color="cyan">
@@ -45,7 +47,9 @@ const RunningView = ({ stateAtom }: { stateAtom: Atom.Atom<CounterState> }) => {
 }
 
 const CompleteView = ({ stateAtom }: { stateAtom: Atom.Atom<CounterState> }) => {
-  const state = useTuiAtomValue(stateAtom) as Extract<CounterState, { _tag: 'Complete' }>
+  const state = useTuiAtomValue(stateAtom)
+  if (state._tag !== 'Complete') return null
+
   return (
     <Box flexDirection="column" padding={1}>
       <Text bold color="green">
@@ -63,7 +67,9 @@ const CompleteView = ({ stateAtom }: { stateAtom: Atom.Atom<CounterState> }) => 
 }
 
 const InterruptedView = ({ stateAtom }: { stateAtom: Atom.Atom<CounterState> }) => {
-  const state = useTuiAtomValue(stateAtom) as Extract<CounterState, { _tag: 'Interrupted' }>
+  const state = useTuiAtomValue(stateAtom)
+  if (state._tag !== 'Interrupted') return null
+
   return (
     <Box flexDirection="column" padding={1}>
       <Text bold color="yellow">
