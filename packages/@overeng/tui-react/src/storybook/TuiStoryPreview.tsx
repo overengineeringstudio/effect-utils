@@ -1425,6 +1425,10 @@ const StatefulTuiStoryPreview = <S, A>({
         animationFrame = requestAnimationFrame(tick)
       } else {
         setIsPlaying(false)
+        // Flush the final render after a brief delay to ensure React has processed all state updates
+        setTimeout(() => {
+          rootRef.current?.flush()
+        }, 50)
       }
     }
 
