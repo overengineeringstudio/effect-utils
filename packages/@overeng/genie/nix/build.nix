@@ -15,7 +15,12 @@ let
     packageDir = "packages/@overeng/genie";
     workspaceRoot = src;
     extraExcludedSourceNames = [ "context" "scripts" ];
-    pnpmDepsHash = "sha256-QWlBf9PgI/KNSfgV4q+xu8jTjieOusdNc7XrhozRRjs=";
+    # Platform-specific hash: fetchPnpmDeps only fetches native binaries for the current platform.
+    # Each platform produces different hashes due to platform-specific optional dependencies
+    # (e.g., @esbuild/darwin-arm64 vs @esbuild/linux-x64).
+    pnpmDepsHash = if pkgs.stdenv.isDarwin
+      then "sha256-QWlBf9PgI/KNSfgV4q+xu8jTjieOusdNc7XrhozRRjs="
+      else "sha256-iFLooc+a37yX3grR/D5nUpvkJO9UGwVCHOqgcloVceE=";
     lockfileHash = "sha256-QGGaglW35zh/PsdeAgHchf83RSDgQLUL7y25aXlz5bI=";
     packageJsonDepsHash = "sha256-slNo40B9ZwvVopL7htF9m0Skywj5G8zVhlAZbE/lCHM=";
     inherit gitRev commitTs dirty;
