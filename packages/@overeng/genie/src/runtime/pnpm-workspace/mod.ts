@@ -643,9 +643,15 @@ export interface PnpmWorkspaceData {
   /**
    * If true, pnpm will exit with error if script is not found.
    * @see https://pnpm.io/settings#strict-scripts
-   * @deprecated Use `script-missing` instead
+   * @deprecated Use `scriptMissing` instead
    */
   strictScripts?: boolean
+
+  /**
+   * Behavior when script is missing.
+   * @see https://pnpm.io/settings#script-missing
+   */
+  scriptMissing?: 'error' | 'warn' | 'silent'
 
   /**
    * Save to dev dependencies by default.
@@ -833,8 +839,8 @@ const buildPnpmWorkspaceYaml = <T extends PnpmWorkspaceData>({
     result.ignoreScripts = data.ignoreScripts
   }
 
-  if (data.strictScripts !== undefined) {
-    result.strictScripts = data.strictScripts
+  if (data.scriptMissing !== undefined) {
+    result.scriptMissing = data.scriptMissing
   }
 
   if (data.saveWorkspaceProtocol !== undefined) {

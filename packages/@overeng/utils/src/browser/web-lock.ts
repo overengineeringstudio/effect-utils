@@ -112,7 +112,7 @@ export const waitForDeferredLock = (opts: {
           return Deferred.await(deferred).pipe(Effect.runPromise)
         })
         .catch((error: DOMException) => {
-          if (error.code === 20 && error.message === 'signal is aborted without reason') {
+          if (error.name === 'AbortError' && error.message === 'signal is aborted without reason') {
             // Signal interruption is handled via Effect, ignore
           } else {
             throw error
@@ -230,7 +230,7 @@ export const getLockAndWaitForSteal = (
         })
         .catch((error: DOMException) => {
           if (
-            error.code === 20 &&
+            error.name === 'AbortError' &&
             (error.message === 'signal is aborted without reason' ||
               error.message === `Lock broken by another request with the 'steal' option.`)
           ) {

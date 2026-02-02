@@ -11,7 +11,7 @@ import {
   ci,
   pipe,
   log,
-  fullscreen,
+  altScreen,
   json,
   ndjson,
   // Detection
@@ -72,13 +72,13 @@ describe('OutputMode presets', () => {
     }
   })
 
-  test('fullscreen preset has correct config', () => {
-    expect(fullscreen._tag).toBe('react')
-    expect(fullscreen.timing).toBe('progressive')
-    if (fullscreen._tag === 'react') {
-      expect(fullscreen.render.animation).toBe(true)
-      expect(fullscreen.render.colors).toBe(true)
-      expect(fullscreen.render.alternate).toBe(true)
+  test('altScreen preset has correct config', () => {
+    expect(altScreen._tag).toBe('react')
+    expect(altScreen.timing).toBe('progressive')
+    if (altScreen._tag === 'react') {
+      expect(altScreen.render.animation).toBe(true)
+      expect(altScreen.render.colors).toBe(true)
+      expect(altScreen.render.alternate).toBe(true)
     }
   })
 
@@ -344,7 +344,7 @@ describe('type guards', () => {
     expect(isReact(ci)).toBe(true)
     expect(isReact(pipe)).toBe(true)
     expect(isReact(log)).toBe(true)
-    expect(isReact(fullscreen)).toBe(true)
+    expect(isReact(altScreen)).toBe(true)
     expect(isReact(json)).toBe(false)
     expect(isReact(ndjson)).toBe(false)
   })
@@ -377,7 +377,7 @@ describe('type guards', () => {
   test('isAnimated returns true for animated modes', () => {
     expect(isAnimated(tty)).toBe(true)
     expect(isAnimated(ci)).toBe(false)
-    expect(isAnimated(fullscreen)).toBe(true)
+    expect(isAnimated(altScreen)).toBe(true)
     expect(isAnimated(json)).toBe(false)
   })
 
@@ -390,7 +390,7 @@ describe('type guards', () => {
 
   test('isAlternate returns true for alternate buffer modes', () => {
     expect(isAlternate(tty)).toBe(false)
-    expect(isAlternate(fullscreen)).toBe(true)
+    expect(isAlternate(altScreen)).toBe(true)
     expect(isAlternate(json)).toBe(false)
   })
 })

@@ -97,8 +97,8 @@ export const LiteralField = ({
   return (
     <Select
       id={id}
-      selectedKey={value ?? null}
-      onSelectionChange={(key) =>
+      value={value ?? null}
+      onChange={(key) =>
         onChange(key === '' || key === null || key === undefined ? undefined : String(key))
       }
       isDisabled={isDisabled}

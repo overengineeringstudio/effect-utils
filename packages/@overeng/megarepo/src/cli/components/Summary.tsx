@@ -8,7 +8,7 @@ import React from 'react'
 
 import { Box, Text } from '@overeng/tui-react'
 
-import { icons } from './tokens.ts'
+import { symbols } from './tokens.ts'
 
 // =============================================================================
 // Types
@@ -100,7 +100,7 @@ export const Summary = ({ counts, dryRun = false }: SummaryProps) => {
     <Box flexDirection="row">
       {parts.map((part, i) => (
         <React.Fragment key={part.key}>
-          {i > 0 && <Text dim> {icons.dot} </Text>}
+          {i > 0 && <Text dim> {symbols.dot} </Text>}
           {part.element}
         </React.Fragment>
       ))}

@@ -21,12 +21,7 @@ import { EffectPath, type AbsoluteDirPath, type AbsoluteFilePath } from '@overen
 import { getMemberPath, type MegarepoConfig } from '../config.ts'
 import type { LockFile, LockedMember } from '../lock.ts'
 import { matchLockedInputToMember, needsRevUpdate } from './matcher.ts'
-import {
-  FlakeLock,
-  updateLockedInputRev,
-  updateLockedInputRevWithMetadata,
-  type NixFlakeMetadata,
-} from './schema.ts'
+import { FlakeLock, updateLockedInputRev, type NixFlakeMetadata } from './schema.ts'
 
 // =============================================================================
 // Types
@@ -367,7 +362,7 @@ const syncSingleLockFile = ({
 
       if (metadataResult && metadataResult._tag === 'Some') {
         // Use the fetched metadata
-        newLocked = updateLockedInputRevWithMetadata({
+        newLocked = updateLockedInputRev({
           locked: info.locked,
           newRev: info.newRev,
           metadata: metadataResult.value,
@@ -525,7 +520,6 @@ export {
   FlakeLock,
   FlakeLockNode,
   updateLockedInputRev,
-  updateLockedInputRevWithMetadata,
   parseLockedInput,
   type NixFlakeMetadata,
 } from './schema.ts'

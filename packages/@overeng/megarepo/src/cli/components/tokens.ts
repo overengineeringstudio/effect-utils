@@ -32,11 +32,6 @@ export const symbols = {
   separator: unicodeSymbols.line.horizontal,
 } as const
 
-/**
- * @deprecated Use `symbols` instead
- */
-export const icons = symbols
-
 // =============================================================================
 // Task Status Types
 // =============================================================================

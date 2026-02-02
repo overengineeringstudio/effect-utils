@@ -15,7 +15,6 @@ import {
   GitLockedInput,
   parseLockedInput,
   updateLockedInputRev,
-  updateLockedInputRevWithMetadata,
 } from './schema.ts'
 
 // =============================================================================
@@ -337,7 +336,7 @@ describe('nix-lock schema', () => {
     })
   })
 
-  describe('updateLockedInputRevWithMetadata', () => {
+  describe('updateLockedInputRev with metadata', () => {
     it('should update rev and include new narHash and lastModified', () => {
       const locked = {
         lastModified: 1704067200,
@@ -351,7 +350,7 @@ describe('nix-lock schema', () => {
         narHash: 'sha256-newHash123',
         lastModified: 1704153600,
       }
-      const result = updateLockedInputRevWithMetadata({ locked, newRev: 'new-rev', metadata })
+      const result = updateLockedInputRev({ locked, newRev: 'new-rev', metadata })
       expect(result).toEqual({
         lastModified: 1704153600,
         narHash: 'sha256-newHash123',
@@ -375,7 +374,7 @@ describe('nix-lock schema', () => {
         narHash: 'sha256-newHash',
         lastModified: 1704153600,
       }
-      const result = updateLockedInputRevWithMetadata({ locked, newRev: 'new-rev', metadata })
+      const result = updateLockedInputRev({ locked, newRev: 'new-rev', metadata })
       const keys = Object.keys(result)
       // Key order should be preserved from original
       expect(keys).toEqual(['lastModified', 'narHash', 'owner', 'repo', 'rev', 'type'])
@@ -393,7 +392,7 @@ describe('nix-lock schema', () => {
         narHash: 'sha256-newHash',
         lastModified: 1704153600,
       }
-      const result = updateLockedInputRevWithMetadata({ locked, newRev: 'new-rev', metadata })
+      const result = updateLockedInputRev({ locked, newRev: 'new-rev', metadata })
       expect(result['narHash']).toBe('sha256-newHash')
       expect(result['lastModified']).toBe(1704153600)
       expect(result['rev']).toBe('new-rev')
@@ -413,7 +412,7 @@ describe('nix-lock schema', () => {
         narHash: 'sha256-new',
         lastModified: 1704153600,
       }
-      const result = updateLockedInputRevWithMetadata({ locked, newRev: 'new-rev', metadata })
+      const result = updateLockedInputRev({ locked, newRev: 'new-rev', metadata })
       expect(result).toEqual({
         type: 'git',
         url: 'https://github.com/owner/repo',

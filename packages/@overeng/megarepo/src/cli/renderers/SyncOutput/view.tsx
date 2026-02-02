@@ -21,7 +21,7 @@ import {
   LogLine as LogLineComponent,
   Separator,
   Summary,
-  icons,
+  symbols,
   syncToTaskStatus,
 } from '../../components/mod.ts'
 import type { SyncState, SyncLogEntry } from './schema.ts'
@@ -119,7 +119,7 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
               {errorCount > 0 && (
                 <Text color="red">
                   {' '}
-                  {icons.dot} {errorCount} error{errorCount > 1 ? 's' : ''}
+                  {symbols.dot} {errorCount} error{errorCount > 1 ? 's' : ''}
                 </Text>
               )}
             </Text>
@@ -138,7 +138,7 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
         <Header name={workspace.name} root={workspace.root} modes={modes} />
         <Text> </Text>
         <Text color="yellow" bold>
-          {icons.circle} Sync interrupted
+          {symbols.circle} Sync interrupted
         </Text>
         <Text dim>
           Synced {results.length} of {members.length} members before interruption
@@ -187,7 +187,7 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
       {/* Results */}
       {dryRun && !hasChanges && summaryCounts.errors === 0 ? (
         <Box flexDirection="row">
-          <Text color="green">{icons.check}</Text>
+          <Text color="green">{symbols.check}</Text>
           <Text dim> workspace is up to date</Text>
         </Box>
       ) : (
@@ -219,7 +219,7 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
             ) : (
               <Box flexDirection="row">
                 <Text dim>
-                  {icons.check} {alreadySynced.length} members already synced
+                  {symbols.check} {alreadySynced.length} members already synced
                 </Text>
               </Box>
             ))}
@@ -264,7 +264,7 @@ const CommitTransition = ({ result }: { result: MemberSyncResult }) => {
     const curr = result.commit.slice(0, 7)
     return (
       <Text dim>
-        {prev} {icons.arrow} {curr}
+        {prev} {symbols.arrow} {curr}
       </Text>
     )
   }
@@ -344,7 +344,7 @@ const RemovedLine = ({ result, dryRun }: { result: MemberSyncResult; dryRun: boo
       {result.message && (
         <Text dim>
           {' '}
-          ({icons.arrow} {result.message})
+          ({symbols.arrow} {result.message})
         </Text>
       )}
     </Box>
@@ -401,7 +401,7 @@ const GeneratedFiles = ({ files, dryRun }: { files: readonly string[]; dryRun: b
       {files.map((file) => (
         <Box key={file} flexDirection="row">
           <Text> </Text>
-          {dryRun ? <Text dim>{icons.arrow}</Text> : <Text color="green">{icons.check}</Text>}
+          {dryRun ? <Text dim>{symbols.arrow}</Text> : <Text color="green">{symbols.check}</Text>}
           <Text> </Text>
           <Text bold>{file}</Text>
         </Box>
@@ -466,7 +466,7 @@ const formatCommitTransition = (result: MemberSyncResult): string | undefined =>
   if (result.previousCommit && result.commit) {
     const prev = result.previousCommit.slice(0, 7)
     const curr = result.commit.slice(0, 7)
-    return `${prev} ${icons.arrow} ${curr}`
+    return `${prev} ${symbols.arrow} ${curr}`
   }
   if (result.commit) {
     return result.commit.slice(0, 7)

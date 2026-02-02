@@ -89,7 +89,6 @@ export {
   pipeRenderConfig,
   logRenderConfig,
   altScreenRenderConfig,
-  fullscreenRenderConfig, // deprecated alias
   isAnimated,
   hasColors,
   stripAnsi,
@@ -151,12 +150,10 @@ export {
   pipe,
   log,
   altScreen,
-  fullscreen, // deprecated alias
   json,
   ndjson,
   // Detection
   detectOutputMode,
-  detect, // deprecated alias
   // Environment helpers
   isTTY,
   isNonTTY,
@@ -175,7 +172,6 @@ export {
   pipeLayer,
   logLayer,
   altScreenLayer,
-  fullscreenLayer, // deprecated alias
   jsonLayer,
   ndjsonLayer,
   detectLayer,

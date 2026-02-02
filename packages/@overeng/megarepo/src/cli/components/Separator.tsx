@@ -8,7 +8,7 @@ import React from 'react'
 
 import { Text } from '@overeng/tui-react'
 
-import { icons } from './tokens.ts'
+import { symbols } from './tokens.ts'
 
 // =============================================================================
 // Types
@@ -39,5 +39,5 @@ export interface SeparatorProps {
  * ```
  */
 export const Separator = ({ width = 40 }: SeparatorProps) => (
-  <Text dim>{icons.separator.repeat(width)}</Text>
+  <Text dim>{symbols.separator.repeat(width)}</Text>
 )
