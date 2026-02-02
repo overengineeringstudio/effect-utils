@@ -12,32 +12,6 @@ import { Box, Text, useTuiAtomValue, unicodeSymbols } from '@overeng/tui-react'
 
 import type { StoreState, StoreGcResult, StoreWorktreeStatus, StoreGcWarning } from './schema.ts'
 
-// Shorthand for commonly used symbols
-const SYMBOLS = {
-  check: unicodeSymbols.status.check,
-  cross: unicodeSymbols.status.cross,
-  warning: unicodeSymbols.status.warning,
-  circle: unicodeSymbols.status.circle,
-  dot: unicodeSymbols.status.dot,
-  arrow: unicodeSymbols.arrows.right,
-}
-
-// =============================================================================
-// Helpers
-// =============================================================================
-
-/** Format elapsed time */
-const formatElapsed = (ms: number): string => {
-  if (ms < 1000) return `${ms}ms`
-  const seconds = Math.floor(ms / 1000)
-  const remainingMs = ms % 1000
-  if (seconds < 60)
-    return remainingMs > 0 ? `${seconds}.${Math.floor(remainingMs / 100)}s` : `${seconds}s`
-  const minutes = Math.floor(seconds / 60)
-  const remainingSecs = seconds % 60
-  return `${minutes}m ${remainingSecs}s`
-}
-
 // =============================================================================
 // Main Component
 // =============================================================================
@@ -105,6 +79,32 @@ export const StoreView = ({ stateAtom }: StoreViewProps) => {
     case 'Error':
       return <StoreErrorView error={state.error} message={state.message} source={state.source} />
   }
+}
+
+// =============================================================================
+// Helpers
+// =============================================================================
+
+// Shorthand for commonly used symbols
+const SYMBOLS = {
+  check: unicodeSymbols.status.check,
+  cross: unicodeSymbols.status.cross,
+  warning: unicodeSymbols.status.warning,
+  circle: unicodeSymbols.status.circle,
+  dot: unicodeSymbols.status.dot,
+  arrow: unicodeSymbols.arrows.right,
+}
+
+/** Format elapsed time */
+const formatElapsed = (ms: number): string => {
+  if (ms < 1000) return `${ms}ms`
+  const seconds = Math.floor(ms / 1000)
+  const remainingMs = ms % 1000
+  if (seconds < 60)
+    return remainingMs > 0 ? `${seconds}.${Math.floor(remainingMs / 100)}s` : `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  const remainingSecs = seconds % 60
+  return `${minutes}m ${remainingSecs}s`
 }
 
 // =============================================================================

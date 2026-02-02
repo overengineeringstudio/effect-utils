@@ -107,6 +107,331 @@ export interface TuiStoryPreviewProps<S, A> {
 }
 
 // =============================================================================
+// Main Component
+// =============================================================================
+
+/** Storybook preview component that renders a TuiApp with multi-tab output modes and timeline playback. */
+export const TuiStoryPreview = <S, A>({
+  app,
+  View,
+  initialState: initialStateProp,
+  timeline = [],
+  height = 400,
+  autoRun = true,
+  playbackSpeed = 1,
+  tabs = DEFAULT_TABS,
+  defaultTab = 'tty',
+}: TuiStoryPreviewProps<S, A>): React.ReactElement => {
+  const { stateSchema, reducer } = app.config
+  const initialState = initialStateProp ?? app.config.initial
+  // UI State
+  const [activeTab, setActiveTab] = useState<OutputTab>(defaultTab)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [currentTime, setCurrentTime] = useState(0)
+  const [ndjsonLines, setNdjsonLines] = useState<NdjsonLine[]>([])
+  // Force re-render when atom changes (for panes that need current state value)
+  const [, forceUpdate] = useState(0)
+
+  // Atom-based state management (replaces React useState for state)
+  const registryRef = useRef<Registry.Registry | null>(null)
+  const stateAtomRef = useRef<Atom.Writable<S> | null>(null)
+  if (!registryRef.current) {
+    registryRef.current = Registry.make()
+  }
+  if (!stateAtomRef.current) {
+    stateAtomRef.current = Atom.make(initialState)
+  }
+  const registry = registryRef.current
+  const stateAtom = stateAtomRef.current
+
+  // Refs for visual terminal only
+  const containerRef = useRef<HTMLDivElement>(null)
+  const terminalRef = useRef<Terminal | null>(null)
+  const fitAddonRef = useRef<FitAddon | null>(null)
+  const rootRef = useRef<Root | null>(null)
+  const [isTerminalReady, setIsTerminalReady] = useState(false)
+
+  // Calculate total duration from timeline
+  const totalDuration = useMemo(() => {
+    if (timeline.length === 0) return 0
+    return Math.max(...timeline.map((e) => e.at)) + 1000 // Add 1s buffer
+  }, [timeline])
+
+  // Compute final state by applying all timeline actions (for final modes)
+  const finalState = useMemo(() => {
+    let result = initialState
+    for (const event of timeline) {
+      result = reducer({ state: result, action: event.action })
+    }
+    return result
+  }, [initialState, timeline, reducer])
+
+  // Get current state from atom (for panes and JSON output)
+  const currentState = registry.get(stateAtom)
+
+  // Use final state for final modes, current state for live modes
+  const effectiveState = isFinalMode(activeTab) ? finalState : currentState
+
+  // Dispatch action and update state via atom
+  const dispatch = useCallback(
+    (action: A) => {
+      const prev = registry.get(stateAtom)
+      const next = reducer({ state: prev, action })
+      registry.set(stateAtom, next)
+      // Add to NDJSON log with timestamp
+      try {
+        const encoded = Schema.encodeSync(stateSchema)(next)
+        setNdjsonLines((lines) => [
+          ...lines,
+          {
+            timestamp: Date.now(),
+            json: JSON.stringify(encoded),
+          },
+        ])
+      } catch {
+        // Ignore encoding errors
+      }
+      // Force re-render for panes that read effectiveState
+      forceUpdate((n) => n + 1)
+    },
+    [reducer, stateSchema, registry, stateAtom],
+  )
+
+  // Reset to initial state
+  const reset = useCallback(() => {
+    registry.set(stateAtom, initialState)
+    setCurrentTime(0)
+    setIsPlaying(false)
+    setNdjsonLines([])
+    forceUpdate((n) => n + 1)
+  }, [initialState, registry, stateAtom])
+
+  // Timeline playback effect
+  useEffect(() => {
+    if (!isPlaying || timeline.length === 0) return
+
+    const startTime = Date.now() - currentTime / playbackSpeed
+    let animationFrame: number
+
+    const tick = () => {
+      const elapsed = (Date.now() - startTime) * playbackSpeed
+      setCurrentTime(elapsed)
+
+      // Find and dispatch any actions that should have fired
+      // Use >= for lower bound so events at time 0 can fire when currentTime is also 0
+      timeline.forEach((event) => {
+        if (event.at <= elapsed && event.at >= currentTime) {
+          dispatch(event.action)
+        }
+      })
+
+      if (elapsed < totalDuration) {
+        animationFrame = requestAnimationFrame(tick)
+      } else {
+        setIsPlaying(false)
+      }
+    }
+
+    animationFrame = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(animationFrame)
+  }, [isPlaying, timeline, totalDuration, playbackSpeed, dispatch, currentTime])
+
+  // Auto-run on mount
+  useEffect(() => {
+    if (autoRun && timeline.length > 0) {
+      setIsPlaying(true)
+    }
+  }, [autoRun, timeline.length])
+
+  // Initialize terminal for tty tab
+  useEffect(() => {
+    if (activeTab !== 'tty' || !containerRef.current || terminalRef.current) return
+
+    const terminal = new Terminal({
+      fontFamily: 'Monaco, Menlo, "DejaVu Sans Mono", Consolas, monospace',
+      fontSize: 14,
+      theme: xtermTheme,
+      allowProposedApi: true,
+      cursorBlink: false,
+      cursorStyle: 'bar',
+      disableStdin: true,
+    })
+
+    const fitAddon = new FitAddon()
+    terminal.loadAddon(fitAddon)
+    terminal.open(containerRef.current)
+    fitAddon.fit()
+
+    terminalRef.current = terminal
+    fitAddonRef.current = fitAddon
+
+    const adapter = {
+      write: (data: string) => terminal.write(data),
+      get columns() {
+        return terminal.cols
+      },
+      get rows() {
+        return terminal.rows
+      },
+      isTTY: true as const,
+    }
+    rootRef.current = createRoot({ terminalOrStream: adapter })
+    setIsTerminalReady(true)
+
+    const resizeObserver = new ResizeObserver(() => {
+      fitAddon.fit()
+      rootRef.current?.resize()
+    })
+    resizeObserver.observe(containerRef.current)
+
+    return () => {
+      resizeObserver.disconnect()
+      rootRef.current?.unmount()
+      rootRef.current = null
+      terminal.dispose()
+      terminalRef.current = null
+      fitAddonRef.current = null
+      setIsTerminalReady(false)
+    }
+  }, [activeTab])
+
+  // Render view to terminal when state changes (reuse existing root for differential updates)
+  useEffect(() => {
+    if (activeTab !== 'tty' || !isTerminalReady || !rootRef.current) return
+    // Wrap in registry context so useTuiAtomValue works
+    rootRef.current.render(
+      <TuiRegistryContext.Provider value={registry}>
+        <View stateAtom={stateAtom} />
+      </TuiRegistryContext.Provider>,
+    )
+  }, [effectiveState, activeTab, isTerminalReady, registry, stateAtom])
+
+  // Encode state as JSON (uses finalState for json mode since it's a final mode)
+  const jsonOutput = useMemo(() => {
+    try {
+      const encoded = Schema.encodeSync(stateSchema)(finalState)
+      return JSON.stringify(encoded, null, 2)
+    } catch {
+      return '// Error encoding state'
+    }
+  }, [finalState, stateSchema])
+
+  // Cast View for non-generic components
+  const ViewCast = View as React.ComponentType<{ stateAtom: Atom.Atom<unknown> }>
+
+  return (
+    <div style={{ fontFamily: 'system-ui, sans-serif' }}>
+      {/* Tabs */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          background: '#2d2d2d',
+          borderBottom: '1px solid #3d3d3d',
+        }}
+        data-testid="tui-preview-tabs"
+      >
+        {tabs.map((tab) => (
+          <TabButton
+            key={tab}
+            active={activeTab === tab}
+            onClick={() => setActiveTab(tab)}
+            testId={`tab-${tab}`}
+          >
+            {TAB_LABELS[tab]}
+          </TabButton>
+        ))}
+        {/* Mode description */}
+        <div
+          style={{
+            marginLeft: 'auto',
+            paddingRight: '12px',
+            fontSize: '12px',
+            color: '#888',
+            fontFamily: 'system-ui, sans-serif',
+          }}
+        >
+          {TAB_DESCRIPTIONS[activeTab]}
+        </div>
+      </div>
+
+      {/* Content */}
+      <div style={{ height, overflow: 'hidden' }}>
+        {activeTab === 'tty' && (
+          <div
+            ref={containerRef}
+            style={{ ...containerStyles, padding: previewPadding, height: '100%' }}
+          />
+        )}
+        {activeTab === 'alt-screen' && (
+          <FullscreenPreviewPane
+            View={ViewCast}
+            stateAtom={stateAtom as Atom.Atom<unknown>}
+            registry={registry}
+            height={height}
+          />
+        )}
+        {activeTab === 'ci' && (
+          <CIPreviewPane
+            View={ViewCast}
+            stateAtom={stateAtom as Atom.Atom<unknown>}
+            registry={registry}
+            height={height}
+          />
+        )}
+        {activeTab === 'ci-plain' && (
+          <CIPlainPreviewPane
+            View={ViewCast}
+            stateAtom={stateAtom as Atom.Atom<unknown>}
+            registry={registry}
+            height={height}
+          />
+        )}
+        {activeTab === 'pipe' && (
+          <PipePreviewPane
+            View={ViewCast}
+            stateAtom={stateAtom as Atom.Atom<unknown>}
+            registry={registry}
+            height={height}
+          />
+        )}
+        {activeTab === 'log' && (
+          <LogPreviewPane
+            View={ViewCast}
+            stateAtom={stateAtom as Atom.Atom<unknown>}
+            registry={registry}
+            height={height}
+          />
+        )}
+        {activeTab === 'json' && <JsonPreviewPane json={jsonOutput} />}
+        {activeTab === 'ndjson' && <NdjsonPreviewPane lines={ndjsonLines} />}
+      </div>
+
+      {/* Playback Controls */}
+      {timeline.length > 0 && (
+        <PlaybackControls
+          isPlaying={isPlaying}
+          currentTime={currentTime}
+          totalDuration={totalDuration}
+          timeline={timeline}
+          onPlay={() => setIsPlaying(true)}
+          onPause={() => setIsPlaying(false)}
+          onReset={reset}
+          onSeek={(time) => {
+            // Seek to time - replay actions up to that point
+            reset()
+            timeline.filter((e) => e.at <= time).forEach((e) => dispatch(e.action))
+            setCurrentTime(time)
+          }}
+          disabled={isFinalMode(activeTab)}
+          disabledMessage="Final output mode — showing end state"
+        />
+      )}
+    </div>
+  )
+}
+
+// =============================================================================
 // Tab Button Component
 // =============================================================================
 
@@ -1191,327 +1516,3 @@ const isFinalMode = (tab: OutputTab): boolean => FINAL_MODES.has(tab)
 
 const DEFAULT_TABS: OutputTab[] = ['tty', 'ci', 'log', 'json', 'ndjson']
 
-// =============================================================================
-// Main Component
-// =============================================================================
-
-/** Storybook preview component that renders a TuiApp with multi-tab output modes and timeline playback. */
-export const TuiStoryPreview = <S, A>({
-  app,
-  View,
-  initialState: initialStateProp,
-  timeline = [],
-  height = 400,
-  autoRun = true,
-  playbackSpeed = 1,
-  tabs = DEFAULT_TABS,
-  defaultTab = 'tty',
-}: TuiStoryPreviewProps<S, A>): React.ReactElement => {
-  const { stateSchema, reducer } = app.config
-  const initialState = initialStateProp ?? app.config.initial
-  // UI State
-  const [activeTab, setActiveTab] = useState<OutputTab>(defaultTab)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [currentTime, setCurrentTime] = useState(0)
-  const [ndjsonLines, setNdjsonLines] = useState<NdjsonLine[]>([])
-  // Force re-render when atom changes (for panes that need current state value)
-  const [, forceUpdate] = useState(0)
-
-  // Atom-based state management (replaces React useState for state)
-  const registryRef = useRef<Registry.Registry | null>(null)
-  const stateAtomRef = useRef<Atom.Writable<S> | null>(null)
-  if (!registryRef.current) {
-    registryRef.current = Registry.make()
-  }
-  if (!stateAtomRef.current) {
-    stateAtomRef.current = Atom.make(initialState)
-  }
-  const registry = registryRef.current
-  const stateAtom = stateAtomRef.current
-
-  // Refs for visual terminal only
-  const containerRef = useRef<HTMLDivElement>(null)
-  const terminalRef = useRef<Terminal | null>(null)
-  const fitAddonRef = useRef<FitAddon | null>(null)
-  const rootRef = useRef<Root | null>(null)
-  const [isTerminalReady, setIsTerminalReady] = useState(false)
-
-  // Calculate total duration from timeline
-  const totalDuration = useMemo(() => {
-    if (timeline.length === 0) return 0
-    return Math.max(...timeline.map((e) => e.at)) + 1000 // Add 1s buffer
-  }, [timeline])
-
-  // Compute final state by applying all timeline actions (for final modes)
-  const finalState = useMemo(() => {
-    let result = initialState
-    for (const event of timeline) {
-      result = reducer({ state: result, action: event.action })
-    }
-    return result
-  }, [initialState, timeline, reducer])
-
-  // Get current state from atom (for panes and JSON output)
-  const currentState = registry.get(stateAtom)
-
-  // Use final state for final modes, current state for live modes
-  const effectiveState = isFinalMode(activeTab) ? finalState : currentState
-
-  // Dispatch action and update state via atom
-  const dispatch = useCallback(
-    (action: A) => {
-      const prev = registry.get(stateAtom)
-      const next = reducer({ state: prev, action })
-      registry.set(stateAtom, next)
-      // Add to NDJSON log with timestamp
-      try {
-        const encoded = Schema.encodeSync(stateSchema)(next)
-        setNdjsonLines((lines) => [
-          ...lines,
-          {
-            timestamp: Date.now(),
-            json: JSON.stringify(encoded),
-          },
-        ])
-      } catch {
-        // Ignore encoding errors
-      }
-      // Force re-render for panes that read effectiveState
-      forceUpdate((n) => n + 1)
-    },
-    [reducer, stateSchema, registry, stateAtom],
-  )
-
-  // Reset to initial state
-  const reset = useCallback(() => {
-    registry.set(stateAtom, initialState)
-    setCurrentTime(0)
-    setIsPlaying(false)
-    setNdjsonLines([])
-    forceUpdate((n) => n + 1)
-  }, [initialState, registry, stateAtom])
-
-  // Timeline playback effect
-  useEffect(() => {
-    if (!isPlaying || timeline.length === 0) return
-
-    const startTime = Date.now() - currentTime / playbackSpeed
-    let animationFrame: number
-
-    const tick = () => {
-      const elapsed = (Date.now() - startTime) * playbackSpeed
-      setCurrentTime(elapsed)
-
-      // Find and dispatch any actions that should have fired
-      // Use >= for lower bound so events at time 0 can fire when currentTime is also 0
-      timeline.forEach((event) => {
-        if (event.at <= elapsed && event.at >= currentTime) {
-          dispatch(event.action)
-        }
-      })
-
-      if (elapsed < totalDuration) {
-        animationFrame = requestAnimationFrame(tick)
-      } else {
-        setIsPlaying(false)
-      }
-    }
-
-    animationFrame = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(animationFrame)
-  }, [isPlaying, timeline, totalDuration, playbackSpeed, dispatch, currentTime])
-
-  // Auto-run on mount
-  useEffect(() => {
-    if (autoRun && timeline.length > 0) {
-      setIsPlaying(true)
-    }
-  }, [autoRun, timeline.length])
-
-  // Initialize terminal for tty tab
-  useEffect(() => {
-    if (activeTab !== 'tty' || !containerRef.current || terminalRef.current) return
-
-    const terminal = new Terminal({
-      fontFamily: 'Monaco, Menlo, "DejaVu Sans Mono", Consolas, monospace',
-      fontSize: 14,
-      theme: xtermTheme,
-      allowProposedApi: true,
-      cursorBlink: false,
-      cursorStyle: 'bar',
-      disableStdin: true,
-    })
-
-    const fitAddon = new FitAddon()
-    terminal.loadAddon(fitAddon)
-    terminal.open(containerRef.current)
-    fitAddon.fit()
-
-    terminalRef.current = terminal
-    fitAddonRef.current = fitAddon
-
-    const adapter = {
-      write: (data: string) => terminal.write(data),
-      get columns() {
-        return terminal.cols
-      },
-      get rows() {
-        return terminal.rows
-      },
-      isTTY: true as const,
-    }
-    rootRef.current = createRoot({ terminalOrStream: adapter })
-    setIsTerminalReady(true)
-
-    const resizeObserver = new ResizeObserver(() => {
-      fitAddon.fit()
-      rootRef.current?.resize()
-    })
-    resizeObserver.observe(containerRef.current)
-
-    return () => {
-      resizeObserver.disconnect()
-      rootRef.current?.unmount()
-      rootRef.current = null
-      terminal.dispose()
-      terminalRef.current = null
-      fitAddonRef.current = null
-      setIsTerminalReady(false)
-    }
-  }, [activeTab])
-
-  // Render view to terminal when state changes (reuse existing root for differential updates)
-  useEffect(() => {
-    if (activeTab !== 'tty' || !isTerminalReady || !rootRef.current) return
-    // Wrap in registry context so useTuiAtomValue works
-    rootRef.current.render(
-      <TuiRegistryContext.Provider value={registry}>
-        <View stateAtom={stateAtom} />
-      </TuiRegistryContext.Provider>,
-    )
-  }, [effectiveState, activeTab, isTerminalReady, registry, stateAtom])
-
-  // Encode state as JSON (uses finalState for json mode since it's a final mode)
-  const jsonOutput = useMemo(() => {
-    try {
-      const encoded = Schema.encodeSync(stateSchema)(finalState)
-      return JSON.stringify(encoded, null, 2)
-    } catch {
-      return '// Error encoding state'
-    }
-  }, [finalState, stateSchema])
-
-  // Cast View for non-generic components
-  const ViewCast = View as React.ComponentType<{ stateAtom: Atom.Atom<unknown> }>
-
-  return (
-    <div style={{ fontFamily: 'system-ui, sans-serif' }}>
-      {/* Tabs */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          background: '#2d2d2d',
-          borderBottom: '1px solid #3d3d3d',
-        }}
-        data-testid="tui-preview-tabs"
-      >
-        {tabs.map((tab) => (
-          <TabButton
-            key={tab}
-            active={activeTab === tab}
-            onClick={() => setActiveTab(tab)}
-            testId={`tab-${tab}`}
-          >
-            {TAB_LABELS[tab]}
-          </TabButton>
-        ))}
-        {/* Mode description */}
-        <div
-          style={{
-            marginLeft: 'auto',
-            paddingRight: '12px',
-            fontSize: '12px',
-            color: '#888',
-            fontFamily: 'system-ui, sans-serif',
-          }}
-        >
-          {TAB_DESCRIPTIONS[activeTab]}
-        </div>
-      </div>
-
-      {/* Content */}
-      <div style={{ height, overflow: 'hidden' }}>
-        {activeTab === 'tty' && (
-          <div
-            ref={containerRef}
-            style={{ ...containerStyles, padding: previewPadding, height: '100%' }}
-          />
-        )}
-        {activeTab === 'alt-screen' && (
-          <FullscreenPreviewPane
-            View={ViewCast}
-            stateAtom={stateAtom as Atom.Atom<unknown>}
-            registry={registry}
-            height={height}
-          />
-        )}
-        {activeTab === 'ci' && (
-          <CIPreviewPane
-            View={ViewCast}
-            stateAtom={stateAtom as Atom.Atom<unknown>}
-            registry={registry}
-            height={height}
-          />
-        )}
-        {activeTab === 'ci-plain' && (
-          <CIPlainPreviewPane
-            View={ViewCast}
-            stateAtom={stateAtom as Atom.Atom<unknown>}
-            registry={registry}
-            height={height}
-          />
-        )}
-        {activeTab === 'pipe' && (
-          <PipePreviewPane
-            View={ViewCast}
-            stateAtom={stateAtom as Atom.Atom<unknown>}
-            registry={registry}
-            height={height}
-          />
-        )}
-        {activeTab === 'log' && (
-          <LogPreviewPane
-            View={ViewCast}
-            stateAtom={stateAtom as Atom.Atom<unknown>}
-            registry={registry}
-            height={height}
-          />
-        )}
-        {activeTab === 'json' && <JsonPreviewPane json={jsonOutput} />}
-        {activeTab === 'ndjson' && <NdjsonPreviewPane lines={ndjsonLines} />}
-      </div>
-
-      {/* Playback Controls */}
-      {timeline.length > 0 && (
-        <PlaybackControls
-          isPlaying={isPlaying}
-          currentTime={currentTime}
-          totalDuration={totalDuration}
-          timeline={timeline}
-          onPlay={() => setIsPlaying(true)}
-          onPause={() => setIsPlaying(false)}
-          onReset={reset}
-          onSeek={(time) => {
-            // Seek to time - replay actions up to that point
-            reset()
-            timeline.filter((e) => e.at <= time).forEach((e) => dispatch(e.action))
-            setCurrentTime(time)
-          }}
-          disabled={isFinalMode(activeTab)}
-          disabledMessage="Final output mode — showing end state"
-        />
-      )}
-    </div>
-  )
-}
