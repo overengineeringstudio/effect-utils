@@ -15,13 +15,6 @@ import { AddView } from './AddOutput/view.tsx'
 // State Factories
 // =============================================================================
 
-const createIdleState = (): typeof AddState.Type => ({ _tag: 'Idle' })
-
-const createAddingState = (): typeof AddState.Type => ({
-  _tag: 'Adding',
-  member: 'effect',
-  source: 'effect-ts/effect',
-})
 
 const createSuccessState = (): typeof AddState.Type => ({
   _tag: 'Success',

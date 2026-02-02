@@ -220,6 +220,19 @@ function StoreStatusView({
   )
 }
 
+const getColor = (
+  severity: 'error' | 'warning' | 'info',
+): 'red' | 'yellow' | 'gray' | undefined => {
+  switch (severity) {
+    case 'error':
+      return 'red'
+    case 'warning':
+      return 'yellow'
+    case 'info':
+      return 'gray'
+  }
+}
+
 /** Single worktree with issues */
 function StoreStatusWorktreeRow({ worktree }: { worktree: StoreWorktreeStatus }) {
   // Get highest severity for the header
@@ -237,19 +250,6 @@ function StoreStatusWorktreeRow({ worktree }: { worktree: StoreWorktreeStatus })
         return <Text color="yellow">{SYMBOLS.warning}</Text>
       case 'info':
         return <Text dim>{SYMBOLS.circle}</Text>
-    }
-  }
-
-  const getColor = (
-    severity: 'error' | 'warning' | 'info',
-  ): 'red' | 'yellow' | 'gray' | undefined => {
-    switch (severity) {
-      case 'error':
-        return 'red'
-      case 'warning':
-        return 'yellow'
-      case 'info':
-        return 'gray'
     }
   }
 

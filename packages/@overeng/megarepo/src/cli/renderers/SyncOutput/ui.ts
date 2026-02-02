@@ -19,7 +19,7 @@ import { SyncView } from './view.tsx'
 
 // Re-export SyncAction for consumers
 export type { SyncAction } from './schema.ts'
-type SyncAction = import('./schema.ts').SyncAction
+import type { SyncAction } from './schema.ts'
 
 // =============================================================================
 // Types

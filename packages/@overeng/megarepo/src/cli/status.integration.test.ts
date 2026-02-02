@@ -19,7 +19,6 @@ import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 import { MegarepoConfig } from '../lib/config.ts'
 import { createLockedMember, type LockFile, LOCK_FILE_NAME, writeLockFile } from '../lib/lock.ts'
 import {
-  addCommit,
   createRepo,
   initGitRepo,
   runGitCommand,

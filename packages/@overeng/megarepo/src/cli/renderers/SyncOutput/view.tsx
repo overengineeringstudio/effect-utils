@@ -389,27 +389,6 @@ function AlreadySyncedLine({ result }: { result: MemberSyncResult }) {
   )
 }
 
-/** Render a result line based on status */
-function ResultLine({ result, dryRun }: { result: MemberSyncResult; dryRun: boolean }) {
-  switch (result.status) {
-    case 'cloned':
-      return <ClonedLine result={result} />
-    case 'synced':
-      return <SyncedLine result={result} />
-    case 'updated':
-      return <UpdatedLine result={result} />
-    case 'locked':
-      return <LockedLine result={result} />
-    case 'removed':
-      return <RemovedLine result={result} dryRun={dryRun} />
-    case 'error':
-      return <ErrorLine result={result} />
-    case 'skipped':
-      return <SkippedLine result={result} />
-    case 'already_synced':
-      return <AlreadySyncedLine result={result} />
-  }
-}
 
 // =============================================================================
 // Internal Components - Generated Files

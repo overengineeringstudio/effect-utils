@@ -15,8 +15,6 @@ import { PinView } from './PinOutput/view.tsx'
 // State Factories
 // =============================================================================
 
-const createIdleState = (): typeof PinState.Type => ({ _tag: 'Idle' })
-
 const createPinSuccessWithRef = (): typeof PinState.Type => ({
   _tag: 'Success',
   member: 'effect',

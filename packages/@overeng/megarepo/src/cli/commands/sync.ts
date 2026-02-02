@@ -84,7 +84,6 @@ export const syncMegarepo = <R = never>({
 }: {
   megarepoRoot: AbsoluteDirPath
   options: {
-    json: boolean
     dryRun: boolean
     pull: boolean
     frozen: boolean
@@ -92,7 +91,6 @@ export const syncMegarepo = <R = never>({
     all: boolean
     only: ReadonlyArray<string> | undefined
     skip: ReadonlyArray<string> | undefined
-    verbose: boolean
     gitProtocol: GitProtocol
     createBranches: boolean
   }
@@ -114,7 +112,6 @@ export const syncMegarepo = <R = never>({
 > =>
   Effect.gen(function* () {
     const {
-      json,
       dryRun,
       pull,
       frozen,
@@ -122,12 +119,10 @@ export const syncMegarepo = <R = never>({
       all,
       only,
       skip,
-      verbose,
       gitProtocol,
       createBranches,
     } = options
     const fs = yield* FileSystem.FileSystem
-    const indent = '  '.repeat(depth)
 
     // Resolve to physical path for deduplication (handles symlinks)
     const resolvedRoot = yield* fs.realPath(megarepoRoot)
@@ -639,7 +634,6 @@ export const syncCommand = Cli.Command.make(
         const syncResult = yield* syncMegarepo({
           megarepoRoot: root.value,
           options: {
-            json,
             dryRun,
             pull,
             frozen,
@@ -647,7 +641,6 @@ export const syncCommand = Cli.Command.make(
             all,
             only: onlyMembers,
             skip: skipMembers,
-            verbose,
             gitProtocol,
             createBranches,
           },
@@ -683,7 +676,6 @@ export const syncCommand = Cli.Command.make(
         const syncResult = yield* syncMegarepo({
           megarepoRoot: root.value,
           options: {
-            json,
             dryRun,
             pull,
             frozen,
@@ -691,7 +683,6 @@ export const syncCommand = Cli.Command.make(
             all,
             only: onlyMembers,
             skip: skipMembers,
-            verbose,
             gitProtocol,
             createBranches,
           },

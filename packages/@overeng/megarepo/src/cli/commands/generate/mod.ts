@@ -185,7 +185,7 @@ const generateNixCommand = Cli.Command.make(
           }
 
           const flatResults = flattenNixGenerateTree(result.value)
-          const results = flatResults.flatMap((r) => [
+          const results = flatResults.flatMap((_r) => [
             { generator: 'nix', status: '.envrc.generated.megarepo' },
             { generator: 'nix', status: '.direnv/megarepo-nix/workspace' },
           ])

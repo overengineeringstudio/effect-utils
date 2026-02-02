@@ -158,6 +158,7 @@ describe('createRoot options', () => {
       const rawOutput = terminal.getRawOutput()
       const renderedLines = rawOutput.split('\r\n').filter((l) => l.length > 0)
       for (const line of renderedLines) {
+        // oxlint-disable-next-line no-control-regex -- intentional: stripping terminal escape sequences
         const plain = line.replace(/\x1b\[[0-9;]*[a-zA-Z]|\x1b\[\?[0-9;]*[a-zA-Z]/g, '')
         expect(plain.length).toBeLessThanOrEqual(15)
       }

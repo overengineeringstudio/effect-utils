@@ -109,7 +109,7 @@ export class Store extends Context.Tag('megarepo/Store')<Store, MegarepoStore>()
 // Store Implementation
 // =============================================================================
 
-const make = (config: StoreConfig, fs: FileSystem.FileSystem): MegarepoStore => {
+const make = ({ config, fs }: { config: StoreConfig; fs: FileSystem.FileSystem }): MegarepoStore => {
   const basePath = config.basePath
 
   const getRepoBasePath = (source: MemberSource): AbsoluteDirPath => {
@@ -320,7 +320,7 @@ export const makeStoreLayer = (config: StoreConfig) =>
     Store,
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
-      return make(config, fs)
+      return make({ config, fs })
     }),
   )
 
@@ -335,6 +335,6 @@ export const StoreLayer = Layer.effect(
       Option.getOrElse(() => DEFAULT_STORE_PATH),
     )
     const basePath = expandStorePath(storePathRaw)
-    return make({ basePath }, fs)
+    return make({ config: { basePath }, fs })
   }),
 )
