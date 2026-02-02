@@ -8,6 +8,8 @@
  */
 
 import type { GenieOutput, Strict } from '../mod.ts'
+import type { GenieValidationContext } from '../validation/mod.ts'
+import { validatePackageRecompositionForPackage } from './validators/recompose.ts'
 
 // Re-export catalog utilities (useful for defining version catalogs)
 export {
@@ -28,6 +30,10 @@ export {
   type OverridesInput,
   type ExtendedOverridesInput,
 } from './overrides.ts'
+
+export { buildPackageJsonValidationContext } from './context.ts'
+
+export { validatePackageRecompositionForPackage } from './validators/recompose.ts'
 
 /**
  * Field ordering for package.json (matches syncpack sortFirst convention).
@@ -614,6 +620,8 @@ export const packageJson = <const T extends PackageJsonData>(
   data,
   stringify: (ctx) =>
     JSON.stringify(buildPackageJson({ data, location: ctx.location }), null, 2) + '\n',
+  validate: (ctx: GenieValidationContext) =>
+    data.name ? validatePackageRecompositionForPackage(ctx, data.name) : [],
 })
 
 /**

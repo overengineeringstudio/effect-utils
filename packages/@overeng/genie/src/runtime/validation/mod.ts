@@ -9,8 +9,6 @@ export type WorkspaceProvider = {
   discoverPackageJsonPaths: (args: { cwd: string }) => Effect.Effect<string[], Error, unknown>
 }
 
-export type GenieValidationScope = 'package-json' | 'tsconfig' | 'workflow' | 'all'
-
 export type PackageInfo = {
   name: string
   path: string
@@ -30,8 +28,4 @@ export type GenieValidationContext = {
   }
 }
 
-export type GenieValidationPlugin = {
-  name: string
-  scope: GenieValidationScope
-  validate: (ctx: GenieValidationContext) => Promise<ValidationIssue[]> | ValidationIssue[]
-}
+export type GenieValidationIssue = ValidationIssue

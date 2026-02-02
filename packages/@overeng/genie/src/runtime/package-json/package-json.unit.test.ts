@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { packageJson, workspaceRoot, type GenieContext } from '../mod.ts'
+import { packageJson, workspaceRoot, type GenieContext, type GenieValidationContext, type PackageInfo } from '../mod.ts'
 
 /** Mock GenieContext for package tests (nested package location) */
 const mockGenieContext: GenieContext = {
@@ -202,6 +202,85 @@ describe('packageJson with function scripts', () => {
     const parsed = JSON.parse(json)
 
     expect(parsed.scripts.setup).toBe('echo "packages/nested/deep"')
+  })
+})
+
+const makePackage = (overrides: Partial<PackageInfo> & { name: string; path: string }): PackageInfo => ({
+  ...overrides,
+})
+
+const makeValidationContext = (packages: PackageInfo[]): GenieValidationContext => ({
+  cwd: '/workspace',
+  packageJson: {
+    packages,
+    byName: new Map(packages.map((p) => [p.name, p])),
+    workspaceProvider: {
+      name: 'pnpm',
+      discoverPackageJsonPaths: () => {
+        throw new Error('not implemented')
+      },
+    },
+  },
+})
+
+describe('packageJson validate hook', () => {
+  it('returns a validate function', () => {
+    const result = packageJson({ name: '@test/pkg', version: '1.0.0' })
+    expect(typeof result.validate).toBe('function')
+  })
+
+  it('returns no issues when recomposition is correct', () => {
+    const upstream = makePackage({
+      name: '@test/utils',
+      path: 'packages/utils',
+      peerDependencies: { effect: '^3.0.0' },
+    })
+    const downstream = makePackage({
+      name: '@test/app',
+      path: 'packages/app',
+      dependencies: { '@test/utils': 'workspace:*' },
+      peerDependencies: { effect: '^3.0.0' },
+    })
+    const ctx = makeValidationContext([upstream, downstream])
+
+    const result = packageJson({
+      name: '@test/app',
+      version: '1.0.0',
+      dependencies: { '@test/utils': 'workspace:*' },
+      peerDependencies: { effect: '^3.0.0' },
+    })
+
+    expect(result.validate!(ctx)).toEqual([])
+  })
+
+  it('reports issues when peer deps are missing', () => {
+    const upstream = makePackage({
+      name: '@test/utils',
+      path: 'packages/utils',
+      peerDependencies: { effect: '^3.0.0' },
+    })
+    const downstream = makePackage({
+      name: '@test/app',
+      path: 'packages/app',
+      dependencies: { '@test/utils': 'workspace:*' },
+    })
+    const ctx = makeValidationContext([upstream, downstream])
+
+    const result = packageJson({
+      name: '@test/app',
+      version: '1.0.0',
+      dependencies: { '@test/utils': 'workspace:*' },
+    })
+
+    const issues = result.validate!(ctx)
+    expect(issues).toHaveLength(1)
+    expect(issues[0]).toMatchObject({ rule: 'recompose-peer-deps' })
+  })
+
+  it('returns empty array when name is missing', () => {
+    const result = packageJson({ version: '1.0.0' })
+    const ctx = makeValidationContext([])
+    expect(result.validate!(ctx)).toEqual([])
   })
 })
 

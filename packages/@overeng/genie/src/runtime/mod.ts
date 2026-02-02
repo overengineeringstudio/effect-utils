@@ -46,11 +46,15 @@ export type Strict<T, TBase> = T & {
  * })
  * ```
  */
+import type { GenieValidationContext, GenieValidationIssue } from './validation/mod.ts'
+
 export type GenieOutput<T> = {
   /** The structured configuration data */
   data: T
   /** Serialize the data to a string for file output */
   stringify: (ctx: GenieContext) => string
+  /** Optional validation hook for genie --check */
+  validate?: (ctx: GenieValidationContext) => GenieValidationIssue[]
 }
 
 export * from './github-workflow/mod.ts'

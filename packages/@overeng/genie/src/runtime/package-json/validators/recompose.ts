@@ -1,4 +1,4 @@
-import type { GenieValidationPlugin, PackageInfo } from '../../validation/mod.ts'
+import type { GenieValidationContext, PackageInfo } from '../../validation/mod.ts'
 import { matchesAnyPattern, type ValidationIssue } from '../validation.ts'
 
 type RecomposeValidatorConfig = {
@@ -80,29 +80,22 @@ const validatePackageRecomposition = (args: {
   return issues
 }
 
-export const recomposeValidationPlugin = (
+export const validatePackageRecompositionForPackage = (
+  ctx: GenieValidationContext,
+  pkgName: string,
   config: RecomposeValidatorConfig = {},
-): GenieValidationPlugin => ({
-  name: 'package-json-recompose',
-  scope: 'package-json',
-  validate: (ctx) => {
-    const packageJson = ctx.packageJson
-    if (!packageJson) return []
+): ValidationIssue[] => {
+  const packageJson = ctx.packageJson
+  if (!packageJson) return []
 
-    const excludePatterns = config.excludePackagePatterns ?? DEFAULT_EXCLUDES
-    const issues: ValidationIssue[] = []
+  const excludePatterns = config.excludePackagePatterns ?? DEFAULT_EXCLUDES
+  const pkg = packageJson.byName.get(pkgName)
+  if (!pkg) return []
+  if (shouldExclude(pkg.path, excludePatterns)) return []
 
-    for (const pkg of packageJson.packages) {
-      if (shouldExclude(pkg.path, excludePatterns)) continue
-      issues.push(
-        ...validatePackageRecomposition({
-          pkg,
-          packageMap: packageJson.byName,
-          excludePatterns,
-        }),
-      )
-    }
-
-    return issues
-  },
-})
+  return validatePackageRecomposition({
+    pkg,
+    packageMap: packageJson.byName,
+    excludePatterns,
+  })
+}

@@ -1,97 +1,121 @@
 import { FileSystem, Path } from '@effect/platform'
 import { Effect } from 'effect'
 
+import { buildPackageJsonValidationContext } from '../runtime/package-json/context.ts'
 import { formatValidationIssues, type ValidationIssue } from '../runtime/package-json/validation.ts'
-import { recomposeValidationPlugin } from '../runtime/package-json/validators/recompose.ts'
-import type {
-  GenieValidationContext,
-  GenieValidationPlugin,
-  PackageInfo,
-} from '../runtime/validation/mod.ts'
+import type { GenieValidationContext, GenieValidationIssue } from '../runtime/validation/mod.ts'
+import { findGenieFiles } from './discovery.ts'
+import { GenieImportError } from './errors.ts'
 import { resolveWorkspaceProvider } from './workspace.ts'
 
-const normalizePath = (input: string): string => input.replace(/\\/g, '/')
-
-const buildPackageJsonContext = Effect.fn('genie/buildPackageJsonContext')(function* ({
+const importGenieOutput = Effect.fn('genie/importGenieOutput')(function* ({
+  genieFilePath,
   cwd,
 }: {
+  genieFilePath: string
   cwd: string
+}) {
+  const importPath = `${genieFilePath}?import=${Date.now()}`
+  const module = yield* Effect.tryPromise({
+    // oxlint-disable-next-line eslint-plugin-import/no-dynamic-require -- dynamic import path required for genie
+    try: () => import(importPath),
+    catch: (error) =>
+      new GenieImportError({
+        genieFilePath,
+        message: `Failed to import ${genieFilePath}: ${error instanceof Error ? error.message : String(error)}`,
+        cause: error,
+      }),
+  })
+
+  const exported = module.default
+  if (
+    typeof exported !== 'object' ||
+    exported === null ||
+    !('stringify' in exported) ||
+    typeof exported.stringify !== 'function'
+  ) {
+    return yield* new GenieImportError({
+      genieFilePath,
+      message: `Genie file must export a GenieOutput object with { data, stringify }, got ${typeof exported}`,
+      cause: new Error(`Invalid export type: ${typeof exported}`),
+    })
+  }
+
+  return exported as {
+    data: unknown
+    validate?: (ctx: GenieValidationContext) => GenieValidationIssue[]
+  }
+})
+
+export const runGenieValidation = Effect.fn('genie/runValidation')(function* ({
+  cwd,
+  requirePackageJsonValidate = process.env.GENIE_REQUIRE_PACKAGE_JSON_VALIDATE === '1',
+}: {
+  cwd: string
+  requirePackageJsonValidate?: boolean
 }) {
   const fs = yield* FileSystem.FileSystem
   const pathService = yield* Path.Path
   const workspaceProvider = yield* resolveWorkspaceProvider({ cwd })
-  const packageJsonPaths = yield* workspaceProvider.discoverPackageJsonPaths({ cwd })
-
-  const packages: PackageInfo[] = []
-  for (const packageJsonPath of packageJsonPaths) {
-    const content = yield* fs
-      .readFileString(packageJsonPath)
-      .pipe(Effect.catchAll(() => Effect.succeed(undefined)))
-    if (!content) continue
-    const parsed = Effect.try({
-      try: () => JSON.parse(content) as Omit<PackageInfo, 'path'>,
-      catch: () => undefined,
-    })
-    const data = yield* parsed
-    if (!data?.name) continue
-    const pkgDir = pathService.dirname(packageJsonPath)
-    const relativePath = pathService.relative(cwd, pkgDir)
-    packages.push({ ...data, path: normalizePath(relativePath) })
-  }
-
-  const byName = new Map<string, PackageInfo>(packages.map((pkg) => [pkg.name, pkg]))
-
-  return {
-    packages,
-    byName,
-    workspaceProvider,
-  }
-})
-
-const defaultPlugins = (): GenieValidationPlugin[] => [recomposeValidationPlugin()]
-
-export const runGenieValidationPlugins = Effect.fn('genie/runValidationPlugins')(function* ({
-  cwd,
-  plugins,
-}: {
-  cwd: string
-  plugins?: GenieValidationPlugin[]
-}) {
-  const activePlugins = plugins ?? defaultPlugins()
-  const packageJsonContext = yield* buildPackageJsonContext({ cwd })
+  const packageJsonContext = yield* buildPackageJsonValidationContext({ cwd, workspaceProvider })
+  const genieFiles = yield* findGenieFiles(cwd)
 
   const ctx: GenieValidationContext = {
     cwd,
     packageJson: packageJsonContext,
   }
 
-  const pluginIssues = yield* Effect.all(
-    activePlugins.map((plugin) =>
-      Effect.tryPromise({
-        try: async () => {
-          if (plugin.scope !== 'package-json' && plugin.scope !== 'all') return []
-          const result = await plugin.validate(ctx)
-          return Array.isArray(result) ? result : []
-        },
-        catch: (error) => [
-          {
-            severity: 'error' as const,
-            packageName: 'genie',
-            dependency: plugin.name,
-            message: `Validation plugin failed: ${error instanceof Error ? error.message : String(error)}`,
-            rule: 'validation-plugin-error',
-          } satisfies ValidationIssue,
-        ],
-      }),
-    ),
-    { concurrency: 'unbounded' },
-  )
+  const issues: ValidationIssue[] = []
 
-  const flattened = pluginIssues.flat()
-  if (flattened.length > 0) {
-    const formatted = formatValidationIssues(flattened)
+  for (const genieFilePath of genieFiles) {
+    const targetFilePath = genieFilePath.replace('.genie.ts', '')
+    const isPackageJson = pathService.basename(targetFilePath) === 'package.json'
+
+    const output = yield* importGenieOutput({ genieFilePath, cwd }).pipe(
+      Effect.catchAll((error) => {
+        issues.push({
+          severity: 'error',
+          packageName: 'genie',
+          dependency: genieFilePath,
+          message: `Validation import failed: ${error instanceof Error ? error.message : String(error)}`,
+          rule: 'validation-import',
+        })
+        return Effect.succeed(undefined)
+      }),
+    )
+
+    if (!output) continue
+    if (output.validate) {
+      issues.push(...output.validate(ctx))
+      continue
+    }
+
+    if (requirePackageJsonValidate && isPackageJson) {
+      const pkgContent = yield* fs
+        .readFileString(targetFilePath)
+        .pipe(Effect.catchAll(() => Effect.succeed('')))
+      const pkgName = (() => {
+        try {
+          return JSON.parse(pkgContent)?.name as string | undefined
+        } catch {
+          return undefined
+        }
+      })()
+
+      issues.push({
+        severity: 'error',
+        packageName: pkgName ?? 'unknown',
+        dependency: targetFilePath,
+        message: 'Missing package.json validate hook (self-contained validation required)',
+        rule: 'package-json-validate-missing',
+      })
+    }
+  }
+
+  if (issues.length > 0) {
+    const formatted = formatValidationIssues(issues)
     return yield* Effect.fail(new Error(`Genie validation failed:${formatted}`))
   }
 
-  return flattened
+  return issues
 })

@@ -1,0 +1,208 @@
+import { describe, expect, it } from 'vitest'
+
+import type { GenieValidationContext, PackageInfo } from '../../validation/mod.ts'
+import { validatePackageRecompositionForPackage } from './recompose.ts'
+
+const makePackage = (overrides: Partial<PackageInfo> & { name: string; path: string }): PackageInfo => ({
+  ...overrides,
+})
+
+const makeContext = (packages: PackageInfo[]): GenieValidationContext => ({
+  cwd: '/workspace',
+  packageJson: {
+    packages,
+    byName: new Map(packages.map((p) => [p.name, p])),
+    workspaceProvider: {
+      name: 'pnpm',
+      discoverPackageJsonPaths: () => {
+        throw new Error('not implemented')
+      },
+    },
+  },
+})
+
+describe('validatePackageRecompositionForPackage', () => {
+  it('returns no issues when there are no workspace deps', () => {
+    const pkg = makePackage({
+      name: '@test/app',
+      path: 'packages/app',
+      dependencies: { effect: '3.0.0' },
+    })
+    const ctx = makeContext([pkg])
+
+    const issues = validatePackageRecompositionForPackage(ctx, '@test/app')
+    expect(issues).toEqual([])
+  })
+
+  it('returns no issues when peer deps are properly re-exported', () => {
+    const upstream = makePackage({
+      name: '@test/utils',
+      path: 'packages/utils',
+      peerDependencies: { effect: '^3.0.0' },
+    })
+    const downstream = makePackage({
+      name: '@test/app',
+      path: 'packages/app',
+      dependencies: { '@test/utils': 'workspace:*' },
+      peerDependencies: { effect: '^3.0.0' },
+    })
+    const ctx = makeContext([upstream, downstream])
+
+    const issues = validatePackageRecompositionForPackage(ctx, '@test/app')
+    expect(issues).toEqual([])
+  })
+
+  it('reports missing peer dep from upstream', () => {
+    const upstream = makePackage({
+      name: '@test/utils',
+      path: 'packages/utils',
+      peerDependencies: { effect: '^3.0.0', react: '^19.0.0' },
+    })
+    const downstream = makePackage({
+      name: '@test/app',
+      path: 'packages/app',
+      dependencies: { '@test/utils': 'workspace:*' },
+      peerDependencies: { effect: '^3.0.0' },
+    })
+    const ctx = makeContext([upstream, downstream])
+
+    const issues = validatePackageRecompositionForPackage(ctx, '@test/app')
+    expect(issues).toHaveLength(1)
+    expect(issues[0]).toMatchObject({
+      severity: 'error',
+      packageName: '@test/app',
+      dependency: 'react',
+      rule: 'recompose-peer-deps',
+    })
+  })
+
+  it('reports missing optional peer meta', () => {
+    const upstream = makePackage({
+      name: '@test/utils',
+      path: 'packages/utils',
+      peerDependencies: { react: '^19.0.0' },
+      peerDependenciesMeta: { react: { optional: true } },
+    })
+    const downstream = makePackage({
+      name: '@test/app',
+      path: 'packages/app',
+      dependencies: { '@test/utils': 'workspace:*' },
+      peerDependencies: { react: '^19.0.0' },
+      // missing peerDependenciesMeta for react
+    })
+    const ctx = makeContext([upstream, downstream])
+
+    const issues = validatePackageRecompositionForPackage(ctx, '@test/app')
+    expect(issues).toHaveLength(1)
+    expect(issues[0]).toMatchObject({
+      severity: 'error',
+      rule: 'recompose-peer-meta',
+    })
+  })
+
+  it('reports missing patch from upstream', () => {
+    const upstream = makePackage({
+      name: '@test/utils',
+      path: 'packages/utils',
+      pnpm: { patchedDependencies: { 'some-pkg@1.0.0': 'patches/some-pkg.patch' } },
+    })
+    const downstream = makePackage({
+      name: '@test/app',
+      path: 'packages/app',
+      dependencies: { '@test/utils': 'workspace:*' },
+    })
+    const ctx = makeContext([upstream, downstream])
+
+    const issues = validatePackageRecompositionForPackage(ctx, '@test/app')
+    expect(issues).toHaveLength(1)
+    expect(issues[0]).toMatchObject({
+      severity: 'error',
+      rule: 'recompose-patches',
+    })
+  })
+
+  it('skips excluded packages (default: examples/**, apps/**, docs/**, tests/**)', () => {
+    const upstream = makePackage({
+      name: '@test/utils',
+      path: 'packages/utils',
+      peerDependencies: { effect: '^3.0.0' },
+    })
+    const downstream = makePackage({
+      name: '@test/example',
+      path: 'examples/my-example',
+      dependencies: { '@test/utils': 'workspace:*' },
+      // missing peer dep - but should be excluded
+    })
+    const ctx = makeContext([upstream, downstream])
+
+    const issues = validatePackageRecompositionForPackage(ctx, '@test/example')
+    expect(issues).toEqual([])
+  })
+
+  it('skips non-workspace dependencies', () => {
+    const upstream = makePackage({
+      name: 'lodash',
+      path: 'packages/lodash',
+      peerDependencies: { react: '^19.0.0' },
+    })
+    const downstream = makePackage({
+      name: '@test/app',
+      path: 'packages/app',
+      dependencies: { lodash: '^4.17.0' }, // not a workspace spec
+    })
+    const ctx = makeContext([upstream, downstream])
+
+    const issues = validatePackageRecompositionForPackage(ctx, '@test/app')
+    expect(issues).toEqual([])
+  })
+
+  it('handles file: and link: workspace specs', () => {
+    const upstream = makePackage({
+      name: '@test/utils',
+      path: 'packages/utils',
+      peerDependencies: { effect: '^3.0.0' },
+    })
+    const downstream = makePackage({
+      name: '@test/app',
+      path: 'packages/app',
+      dependencies: { '@test/utils': 'file:../utils' },
+      // missing peer dep
+    })
+    const ctx = makeContext([upstream, downstream])
+
+    const issues = validatePackageRecompositionForPackage(ctx, '@test/app')
+    expect(issues).toHaveLength(1)
+    expect(issues[0]).toMatchObject({ rule: 'recompose-peer-deps' })
+  })
+
+  it('returns empty when package not found in context', () => {
+    const ctx = makeContext([])
+    const issues = validatePackageRecompositionForPackage(ctx, '@test/nonexistent')
+    expect(issues).toEqual([])
+  })
+
+  it('returns empty when packageJson context is missing', () => {
+    const ctx: GenieValidationContext = { cwd: '/workspace' }
+    const issues = validatePackageRecompositionForPackage(ctx, '@test/app')
+    expect(issues).toEqual([])
+  })
+
+  it('checks optionalDependencies as well as dependencies', () => {
+    const upstream = makePackage({
+      name: '@test/utils',
+      path: 'packages/utils',
+      peerDependencies: { effect: '^3.0.0' },
+    })
+    const downstream = makePackage({
+      name: '@test/app',
+      path: 'packages/app',
+      optionalDependencies: { '@test/utils': 'workspace:*' },
+      // missing peer dep
+    })
+    const ctx = makeContext([upstream, downstream])
+
+    const issues = validatePackageRecompositionForPackage(ctx, '@test/app')
+    expect(issues).toHaveLength(1)
+    expect(issues[0]).toMatchObject({ rule: 'recompose-peer-deps' })
+  })
+})

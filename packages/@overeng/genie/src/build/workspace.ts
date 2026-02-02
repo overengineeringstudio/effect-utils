@@ -109,6 +109,7 @@ const parsePnpmWorkspacePackages = (content: string): string[] => {
       continue
     }
 
+    if (listMatch[2] === undefined) continue
     const rawValue = listMatch[2].trim()
     const unquoted = rawValue.replace(/^['"]|['"]$/g, '')
     patterns.push(unquoted)
