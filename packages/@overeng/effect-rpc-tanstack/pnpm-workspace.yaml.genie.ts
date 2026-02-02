@@ -3,7 +3,7 @@ import { workspaceRegistry } from '../../../genie/workspace-registry.ts'
 import examplePkg from './examples/basic/package.json.genie.ts'
 import pkg from './package.json.genie.ts'
 
-// Merge global registry with local packages for transitive resolution
+// Extend global registry with local example packages
 const localRegistry = new Map([
   ...workspaceRegistry,
   ...createWorkspaceRegistry([pkg, examplePkg]),

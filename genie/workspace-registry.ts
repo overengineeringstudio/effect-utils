@@ -1,10 +1,15 @@
 /**
  * Central registry of all @overeng/* packages for transitive dependency resolution.
  *
- * Import this registry in pnpm-workspace.yaml.genie.ts files to enable
- * automatic resolution of transitive workspace dependencies.
+ * Use the pre-configured helpers for simple workspace generation:
+ *   import { pnpmWorkspaceReact } from '../../../genie/workspace-registry.ts'
+ *   export default pnpmWorkspaceReact(pkg)
  */
-import { createWorkspaceRegistry } from './internal.ts'
+import {
+  createWorkspaceRegistry,
+  pnpmWorkspaceFromPackageJson,
+  pnpmWorkspaceReactFromPackageJson,
+} from './internal.ts'
 
 // Import all package.json.genie.ts files
 import effectPathPkg from '../packages/@overeng/effect-path/package.json.genie.ts'
@@ -36,3 +41,20 @@ export const workspaceRegistry = createWorkspaceRegistry([
   tuiReactPkg,
   utilsPkg,
 ])
+
+type PackageJsonGenie = Parameters<typeof pnpmWorkspaceFromPackageJson>[0]
+type ExtraOptions = { extraPackages?: readonly string[] }
+
+/**
+ * Pre-configured workspace helper with React hoisting.
+ * Automatically uses the workspace registry for transitive dependency resolution.
+ */
+export const pnpmWorkspaceReact = (pkg: PackageJsonGenie, options?: ExtraOptions) =>
+  pnpmWorkspaceReactFromPackageJson(pkg, { ...options, registry: workspaceRegistry })
+
+/**
+ * Pre-configured workspace helper without React hoisting.
+ * Automatically uses the workspace registry for transitive dependency resolution.
+ */
+export const pnpmWorkspace = (pkg: PackageJsonGenie, options?: ExtraOptions) =>
+  pnpmWorkspaceFromPackageJson(pkg, { ...options, registry: workspaceRegistry })
