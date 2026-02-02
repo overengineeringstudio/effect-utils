@@ -70,6 +70,8 @@ let
     { path = "packages/@overeng/notion-effect-client"; name = "notion-effect-client"; }
     { path = "packages/@overeng/notion-effect-schema"; name = "notion-effect-schema"; }
     { path = "packages/@overeng/oxc-config"; name = "oxc-config"; }
+    { path = "packages/@overeng/tui-core"; name = "tui-core"; useLocalConfig = true; }
+    { path = "packages/@overeng/tui-react"; name = "tui-react"; useLocalConfig = true; }
     { path = "packages/@overeng/utils"; name = "utils"; }
   ];
 
@@ -197,11 +199,12 @@ in
     cliBuildStamp.package
   ];
 
-  # Genie is a source-mode pnpm package here, so it needs pnpm:install:genie
-  # before running. (The shared genie module doesn't assume this — see genie.nix.)
+  # Source-mode CLIs need pnpm install before running.
+  # (The shared modules don't assume this — they work with Nix packages too.)
   tasks."genie:run".after = [ "pnpm:install:genie" ];
   tasks."genie:watch".after = [ "pnpm:install:genie" ];
   tasks."genie:check".after = [ "pnpm:install:genie" ];
+  tasks."megarepo:sync".after = [ "pnpm:install:megarepo" ];
 
   # Repo-local pnpm store for consistent local installs (not used by Nix builds).
   env.PNPM_STORE_DIR = "${config.devenv.root}/.pnpm-store";

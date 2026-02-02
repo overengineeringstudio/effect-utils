@@ -1,18 +1,20 @@
 # Megarepo sync and workspace generation tasks.
 #
-# Uses the source CLI (`mr`) from the repo for speed in devenv shells.
-# This assumes dependencies are installed (pnpm:install).
+# Uses the `mr` CLI for megarepo operations.
 #
 # Tasks:
 # - megarepo:sync - Clone/update member repos and create symlinks
 # - megarepo:generate - Generate .envrc.generated.megarepo and nix workspace
 # - megarepo:check - Verify megarepo setup is complete and consistent
+#
+# NOTE: No pnpm:install:megarepo dependency here — this shared module is used by
+# repos where megarepo may be a Nix package (no pnpm install needed). Repos that
+# use source-mode megarepo via pnpm should add the dependency in their devenv.nix:
+#   tasks."megarepo:sync".after = [ "pnpm:install:megarepo" ];
 { lib, pkgs, ... }:
 {
   tasks."megarepo:sync" = {
     description = "Sync megarepo members (clone repos, create symlinks)";
-    # Source CLI requires deps; keep bootstrap order predictable.
-    after = [ "pnpm:install:megarepo" ];
     exec = ''
       if [ ! -f ./megarepo.json ]; then
         exit 0
