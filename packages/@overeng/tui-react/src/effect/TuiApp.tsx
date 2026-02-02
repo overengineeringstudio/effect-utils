@@ -38,7 +38,7 @@
 
 import { Atom, Registry } from '@effect-atom/atom'
 import type { Scope } from 'effect'
-import { Console, Effect, PubSub, Runtime, Schema, Stream } from 'effect'
+import { Cause, Console, Effect, PubSub, Runtime, Schema, Stream } from 'effect'
 import React, { type ReactElement, type ReactNode, createContext } from 'react'
 
 import { renderToString } from '../renderToString.ts'
@@ -407,10 +407,11 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
       })
 
       // Add finalizer for cleanup
-      yield* Effect.addFinalizer(() =>
+      yield* Effect.addFinalizer((exit) =>
         Effect.sync(() => {
-          // Handle interrupt: dispatch Interrupted action if schema supports it
-          if (interruptedAction) {
+          // Only dispatch Interrupted when the fiber was actually interrupted (e.g. Ctrl+C),
+          // not on normal scope close. Without this check, normal exits get exitCode 130.
+          if (interruptedAction && exit._tag === 'Failure' && Cause.isInterruptedOnly(exit.cause)) {
             dispatch(interruptedAction)
           }
           // Unmount with current exit mode
