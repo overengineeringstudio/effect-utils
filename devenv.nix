@@ -88,10 +88,10 @@ in
 {
   imports = [
     # Beads commit correlation for issue tracking
-    # (inputs.overeng-beads-public.devenvModules.beads {
-    #   beadsPrefix = "oep";
-    #   beadsRepoName = "overeng-beads-public";
-    # })
+    (inputs.overeng-beads-public.devenvModules.beads {
+      beadsPrefix = "oep";
+      beadsRepoName = "overeng-beads-public";
+    })
     # `dt` (devenv tasks) wrapper script and shell completions
     ./nix/devenv-modules/dt.nix
     # Playwright browser drivers and environment setup
@@ -201,4 +201,13 @@ in
     export PATH="$WORKSPACE_ROOT/node_modules/.bin:$PATH"
     ${cliBuildStamp.shellHook}
   '';
+
+  # TODO: Enable pre-commit check once all checks pass
+  # git-hooks.hooks.check-quick = {
+  #   enable = true;
+  #   entry = "${pkgs.bash}/bin/bash -c 'dt check:quick'";
+  #   stages = ["pre-commit"];
+  #   always_run = true;
+  #   pass_filenames = false;
+  # };
 }
