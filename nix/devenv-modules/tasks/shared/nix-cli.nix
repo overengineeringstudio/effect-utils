@@ -105,8 +105,10 @@ let
       echo ""
       echo "=== Iteration $iteration ==="
       
-      output=$(nix build "$flakeRef" --no-link 2>&1 || true)
+      set +e
+      output=$(nix build "$flakeRef" --no-link 2>&1)
       status=$?
+      set -e
 
       if [ $status -eq 0 ]; then
         echo ""
@@ -246,6 +248,16 @@ let
       echo "  1. Run: dt pnpm:update     # Update all lockfiles"
       echo "  2. Run: dt nix:hash:$name  # Update Nix hashes"
       echo "  3. Commit: pnpm-lock.yaml changes and build.nix hash updates"
+      echo ""
+      exit 1
+    fi
+
+    if echo "$output" | grep -qi 'ERR_PNPM_NO_OFFLINE_TARBALL'; then
+      echo "✗ $name: Nix pnpm store is missing tarballs (offline install failed)"
+      echo ""
+      echo "To fix:"
+      echo "  1. Run: dt nix:hash:$name  # Refresh pnpmDepsHash and vendored store"
+      echo "  2. If lockfiles changed: dt pnpm:update"
       echo ""
       exit 1
     fi
