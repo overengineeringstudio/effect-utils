@@ -204,6 +204,7 @@ in
   '';
 
   # TODO: Enable pre-commit check once all checks pass
+  # https://github.com/cachix/devenv/issues/2447
   git-hooks.enable = !pkgs.stdenv.isDarwin;
   # git-hooks.hooks.check-quick = {
   #   enable = true;

@@ -14,7 +14,7 @@ let
     packageDir = "packages/@overeng/megarepo";
     workspaceRoot = src;
     pnpmDepsHash = "sha256-x+YpNp1tAi3GBBNDKF4wInvQ/yUPIPKBAOmJl2DBAEg=";
-    lockfileHash = "sha256-MnAVrDUVmlzLoFR2Gno7N22ZM2XwY4NTpHxey+LKKC4=";
+    lockfileHash = "sha256-4Wc5ClYLTU7Va45tNaUf+RpMhaV3GikGByb5+M61x2M=";
     packageJsonDepsHash = "sha256-tGkiG+aEO0TUw/SVvU9T0cgD4nMjENqRioocT5w3XMQ=";
     smokeTestArgs = [ "--help" ];
     inherit gitRev commitTs dirty;
