@@ -1,3 +1,4 @@
 import { pnpmWorkspaceReact } from '../../../genie/internal.ts'
 
-export default pnpmWorkspaceReact(['examples/basic'])
+// Include workspace deps that examples/basic needs
+export default pnpmWorkspaceReact(['examples/basic', '../utils'])
