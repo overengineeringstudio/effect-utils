@@ -39,6 +39,7 @@ export default packageJson({
       '@effect/printer',
       '@effect/printer-ansi',
       '@effect/vitest',
+      '@effect-atom/atom',
       '@types/node',
       '@types/bun',
       'effect',

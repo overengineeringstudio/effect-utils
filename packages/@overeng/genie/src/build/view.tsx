@@ -7,8 +7,8 @@
 
 import React, { useMemo } from 'react'
 
+import type { Atom } from '@effect-atom/atom'
 import {
-  type Atom,
   Box,
   Text,
   Spinner,

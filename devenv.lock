@@ -131,11 +131,11 @@
         "nixpkgs": "nixpkgs_2"
       },
       "locked": {
-        "lastModified": 1769335873,
-        "narHash": "sha256-UrnaG3Yxc4ULP6Oiyu0juw0+DjCYZkAyiFdw75fNqgE=",
+        "lastModified": 1770036763,
+        "narHash": "sha256-58xNKd+qT7XR4K57yUwIpCXcXVJF2M6F2y6lrT93xWY=",
         "owner": "overengineeringstudio",
         "repo": "overeng-beads-public",
-        "rev": "02b24e1e78f0bf741ac55389902b2884390ec509",
+        "rev": "db919d24135f5973f1314a585042c5e76837f19c",
         "type": "github"
       },
       "original": {

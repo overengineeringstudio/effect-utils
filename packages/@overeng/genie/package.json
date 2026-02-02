@@ -21,6 +21,7 @@
   },
   "dependencies": {},
   "devDependencies": {
+    "@effect-atom/atom": "0.4.13",
     "@effect/cli": "0.73.1",
     "@effect/cluster": "^0.56.1",
     "@effect/experimental": "^0.58.0",
