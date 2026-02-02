@@ -52,7 +52,9 @@
 # Tasks run on shell entry but failures don't prevent shell loading.
 # See: https://github.com/cachix/devenv/issues/2435
 {
-  tasks ? [ "genie:run" ],
+  tasks ? null,
+  requiredTasks ? [ ],
+  optionalTasks ? [ ],
   completionsCliNames ? [],
   skipDuringRebase ? true,
   skipIfGitHashUnchanged ? true,
@@ -62,7 +64,8 @@ let
   cache = import ../lib/cache.nix { inherit config; };
   cacheRoot = cache.cacheRoot;
   hashFile = cache.mkCachePath "setup-git-hash";
-  userTasks = tasks;
+  userRequiredTasks = if tasks == null then requiredTasks else tasks;
+  userOptionalTasks = if tasks == null then optionalTasks else [ ];
   completionsEnabled = completionsCliNames != [];
   completionsTaskName = "setup:completions";
   completionsCliList = lib.concatStringsSep " " completionsCliNames;
@@ -161,7 +164,9 @@ let
 
     exit 0
   '';
-  setupTasks = userTasks ++ lib.optionals completionsEnabled [ completionsTaskName ];
+  setupRequiredTasks = userRequiredTasks;
+  setupOptionalTasks = userOptionalTasks ++ lib.optionals completionsEnabled [ completionsTaskName ];
+  setupTasks = setupRequiredTasks ++ setupOptionalTasks;
   
   # Status check that skips task if git hash unchanged
   # Returns 0 (skip) if hash matches, non-zero (run) if different
@@ -184,7 +189,7 @@ let
 
   # Create status overrides for all setup tasks
   statusOverrides = lib.optionalAttrs skipIfGitHashUnchanged (
-    lib.genAttrs userTasks (_: {
+    lib.genAttrs setupTasks (_: {
       status = lib.mkDefault gitHashStatus;
     })
   );
@@ -221,13 +226,15 @@ in
       exec = ''
         ${writeHashScript}
       '';
-      after = setupTasks;
+      after = setupRequiredTasks;
     };
 
     # Wire setup tasks to run during shell entry via native soft dependencies.
     # The @complete suffix means: wait for task to finish, but don't fail if it fails.
     "devenv:enterShell" = {
-      after = map (t: "${t}@complete") setupTasks ++ [ "setup:save-hash@complete" ];
+      after = setupRequiredTasks ++
+        (map (t: "${t}@complete") setupOptionalTasks) ++
+        [ "setup:save-hash@complete" ];
     };
 
     # Force-run setup tasks (bypasses git hash check)

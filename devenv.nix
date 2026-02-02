@@ -1,4 +1,4 @@
-{ pkgs, inputs, ... }:
+{ pkgs, inputs, config, ... }:
 let
   cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
   # Use npm oxlint with NAPI bindings to enable JavaScript plugin support
@@ -173,7 +173,8 @@ in
     # Context example tasks
     taskModules.context
     (taskModules.setup {
-      tasks = [ "megarepo:sync" "megarepo:generate" "pnpm:install" "genie:run" "ts:build" ];
+      requiredTasks = [ "megarepo:sync" "megarepo:generate" ];
+      optionalTasks = [ "pnpm:install" "genie:run" "ts:build" ];
       completionsCliNames = [ "genie" "mr" ];
     })
     # Nix CLI build and hash management
@@ -193,6 +194,9 @@ in
     (mkSourceCli { name = "mr"; entry = "packages/@overeng/megarepo/bin/mr.ts"; })
     cliBuildStamp.package
   ];
+
+  # Repo-local pnpm store for consistent local installs (not used by Nix builds).
+  env.PNPM_STORE_DIR = "${config.devenv.root}/.pnpm-store";
 
 
   enterShell = ''

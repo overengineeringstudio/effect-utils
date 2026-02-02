@@ -115,6 +115,7 @@ let
 
   nodeModulesPaths = lib.concatMapStringsSep " " (p: "${p}/node_modules") packages;
   lockFilePaths = lib.concatMapStringsSep " " (p: "${p}/pnpm-lock.yaml") packages;
+  pnpmStorePath = "${config.devenv.root}/.pnpm-store";
 
   # Build a shell script that updates lockfiles for all packages
   updateScript = lib.concatStringsSep "\n" (map (p: ''
@@ -142,7 +143,7 @@ in {
       };
       "pnpm:clean" = {
         description = "Remove node_modules for all managed packages";
-        exec = "rm -rf ${nodeModulesPaths}";
+        exec = "rm -rf ${nodeModulesPaths} ${pnpmStorePath}";
       };
       "pnpm:reset-lock-files" = {
         description = "Remove pnpm lock files for all managed packages (⚠ destructive, last resort)";
