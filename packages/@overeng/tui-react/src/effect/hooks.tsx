@@ -29,17 +29,6 @@
  * @module
  */
 
-// =============================================================================
-// Re-exports from effect-atom
-// =============================================================================
-
-/**
- * Atom - Reactive state primitive.
- * @see https://github.com/effect-ts/effect-atom
- */
-export { Atom, Result } from '@effect-atom/atom'
-export type { Registry } from '@effect-atom/atom'
-
 /**
  * React hooks for atoms.
  *
