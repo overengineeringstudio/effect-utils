@@ -142,9 +142,11 @@ describe('createTuiApp', () => {
     })
 
     test('outputs final state even if only initial', async () => {
-      await Effect.gen(function* () {
-        yield* TestApp.run()
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('json')), Effect.runPromise)
+      await TestApp.run().pipe(
+        Effect.scoped,
+        Effect.provide(testModeLayer('json')),
+        Effect.runPromise,
+      )
 
       expect(capturedOutput).toHaveLength(1)
       const parsed = JSON.parse(capturedOutput[0]!)

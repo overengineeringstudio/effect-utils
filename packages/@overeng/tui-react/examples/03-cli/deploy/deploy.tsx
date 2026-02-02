@@ -89,8 +89,6 @@ const simulatePull = (service: string) =>
     if (Math.random() < 0.05) {
       return yield* Effect.fail(new Error(`Failed to pull image for ${service}`))
     }
-
-    return Effect.void
   })
 
 const simulateStart = (service: string) =>
@@ -102,8 +100,6 @@ const simulateStart = (service: string) =>
     if (Math.random() < 0.03) {
       return yield* Effect.fail(new Error(`Failed to start ${service}`))
     }
-
-    return Effect.void
   })
 
 const simulateHealthcheck = (service: string) =>
@@ -115,8 +111,6 @@ const simulateHealthcheck = (service: string) =>
     if (Math.random() < 0.02) {
       return yield* Effect.fail(new Error(`Health check failed for ${service}`))
     }
-
-    return Effect.void
   })
 
 // =============================================================================

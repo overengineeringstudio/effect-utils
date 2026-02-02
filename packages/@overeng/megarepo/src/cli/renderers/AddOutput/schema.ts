@@ -34,9 +34,7 @@ export const AddSuccessState = Schema.TaggedStruct('Success', {
   member: Schema.String,
   source: Schema.String,
   synced: Schema.Boolean,
-  syncStatus: Schema.optional(
-    Schema.Literal('cloned', 'synced', 'error'),
-  ),
+  syncStatus: Schema.optional(Schema.Literal('cloned', 'synced', 'error')),
 })
 
 /**
@@ -80,9 +78,7 @@ export const AddAction = Schema.Union(
     member: Schema.String,
     source: Schema.String,
     synced: Schema.Boolean,
-    syncStatus: Schema.optional(
-      Schema.Literal('cloned', 'synced', 'error'),
-    ),
+    syncStatus: Schema.optional(Schema.Literal('cloned', 'synced', 'error')),
   }),
   Schema.TaggedStruct('SetError', { error: Schema.String, message: Schema.String }),
 )

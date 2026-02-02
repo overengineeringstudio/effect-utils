@@ -312,6 +312,4 @@ export const createWorkspaceWithLock = (args: {
  * Get the commit SHA from a worktree path
  */
 export const getWorktreeCommit = (worktreePath: AbsoluteDirPath) =>
-  Effect.gen(function* () {
-    return yield* runGitCommand(worktreePath, 'rev-parse', 'HEAD')
-  })
+  runGitCommand(worktreePath, 'rev-parse', 'HEAD')

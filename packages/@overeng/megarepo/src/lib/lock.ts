@@ -92,7 +92,11 @@ export const writeLockFile = ({
 }: {
   lockPath: AbsoluteFilePath
   lockFile: LockFile
-}): Effect.Effect<void, PlatformError.PlatformError | ParseResult.ParseError, FileSystem.FileSystem> =>
+}): Effect.Effect<
+  void,
+  PlatformError.PlatformError | ParseResult.ParseError,
+  FileSystem.FileSystem
+> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const encoded = yield* Schema.encode(LockFile)(lockFile)
