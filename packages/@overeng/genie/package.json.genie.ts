@@ -29,6 +29,12 @@ export default packageJson({
   },
   // Genie must not use any runtime dependencies (only bundled/dev dependencies)
   dependencies: {},
+  // Inject tui-react so it resolves React from *this* package's .pnpm store,
+  // preventing duplicate React instances across independent workspace stores.
+  // See: requirements.md R8 (singleton runtimes)
+  dependenciesMeta: {
+    '@overeng/tui-react': { injected: true },
+  },
   devDependencies: {
     ...utilsPkg.data.peerDependencies,
     ...tuiReactPkg.data.peerDependencies,

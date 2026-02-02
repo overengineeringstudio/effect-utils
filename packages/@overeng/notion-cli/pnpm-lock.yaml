@@ -27,10 +27,13 @@ importers:
         version: link:../tui-core
       '@overeng/tui-react':
         specifier: workspace:*
-        version: link:../tui-react
+        version: file:../tui-react(5053a6a9420de8d2c2ae9b4a27677825)
       '@overeng/utils':
         specifier: workspace:*
         version: link:../utils
+    dependenciesMeta:
+      '@overeng/tui-react':
+        injected: true
     devDependencies:
       '@effect-atom/atom':
         specifier: ^0.4.13
@@ -1132,6 +1135,20 @@ packages:
       react: '>=19.0.0'
       react-devtools-core: ^7.0.1
       ws: ^8.18.0
+
+  '@overeng/tui-react@file:../tui-react':
+    resolution: {directory: ../tui-react, type: directory}
+    peerDependencies:
+      '@effect-atom/atom': ^0.4.13
+      '@effect-atom/atom-react': ^0.4.5
+      '@effect/cli': ^0.73.1
+      '@effect/platform-node': ^0.104.1
+      '@opentui/core': ^0.1.74
+      '@opentui/react': ^0.1.74
+      effect: ^3.19.15
+      react: ^19.2.3
+      react-dom: ^19.2.3
+      react-reconciler: ^0.33.0
 
   '@parcel/watcher-android-arm64@2.5.6':
     resolution: {integrity: sha512-YQxSS34tPF/6ZG7r/Ih9xy+kP/WwediEUsqmtf0cuCV5TPPKw/PQHRhueUo6JdeFJaqV3pyjm0GdYjZotbRt/A==}
@@ -3417,6 +3434,23 @@ snapshots:
       - stage-js
       - typescript
       - web-tree-sitter
+
+  '@overeng/tui-react@file:../tui-react(5053a6a9420de8d2c2ae9b4a27677825)':
+    dependencies:
+      '@effect-atom/atom': 0.4.13(@effect/experimental@0.58.0(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15)(ioredis@5.6.1))(@effect/platform@0.94.2(effect@3.19.15))(@effect/rpc@0.73.0(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15))(effect@3.19.15)
+      '@effect-atom/atom-react': 0.4.5(@effect/experimental@0.58.0(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15)(ioredis@5.6.1))(@effect/platform@0.94.2(effect@3.19.15))(@effect/rpc@0.73.0(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15))(effect@3.19.15)(react@19.2.3)(scheduler@0.27.0)
+      '@effect/cli': 0.73.1(@effect/platform@0.94.2(effect@3.19.15))(@effect/printer-ansi@0.47.0(@effect/typeclass@0.38.0(effect@3.19.15))(effect@3.19.15))(@effect/printer@0.47.0(@effect/typeclass@0.38.0(effect@3.19.15))(effect@3.19.15))(effect@3.19.15)
+      '@effect/platform-node': 0.104.1(@effect/cluster@0.56.1(@effect/platform@0.94.2(effect@3.19.15))(@effect/rpc@0.73.0(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15))(@effect/sql@0.49.0(@effect/experimental@0.58.0(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15)(ioredis@5.6.1))(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15))(@effect/workflow@0.16.0(@effect/experimental@0.58.0(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15)(ioredis@5.6.1))(@effect/platform@0.94.2(effect@3.19.15))(@effect/rpc@0.73.0(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15))(effect@3.19.15))(effect@3.19.15))(@effect/platform@0.94.2(effect@3.19.15))(@effect/rpc@0.73.0(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15))(@effect/sql@0.49.0(@effect/experimental@0.58.0(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15)(ioredis@5.6.1))(@effect/platform@0.94.2(effect@3.19.15))(effect@3.19.15))(effect@3.19.15)
+      '@opentui/core': 0.1.74(stage-js@1.0.0-alpha.17)(typescript@5.9.3)(web-tree-sitter@0.25.10)
+      '@opentui/react': 0.1.74(react-devtools-core@7.0.1)(react@19.2.3)(stage-js@1.0.0-alpha.17)(typescript@5.9.3)(web-tree-sitter@0.25.10)(ws@8.19.0)
+      '@overeng/tui-core': link:../tui-core
+      cli-truncate: 5.1.1
+      effect: 3.19.15
+      react: 19.2.3
+      react-dom: 19.2.3(react@19.2.3)
+      react-reconciler: 0.33.0(react@19.2.3)
+      string-width: 7.2.0
+      yoga-layout: 3.2.1
 
   '@parcel/watcher-android-arm64@2.5.6':
     optional: true

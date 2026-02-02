@@ -54,6 +54,11 @@
     "typescript": "5.9.3",
     "vitest": "3.2.4"
   },
+  "dependenciesMeta": {
+    "@overeng/tui-react": {
+      "injected": true
+    }
+  },
   "peerDependencies": {
     "@effect/cli": "^0.73.1",
     "@effect/cluster": "^0.56.1",

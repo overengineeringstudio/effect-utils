@@ -61,6 +61,11 @@
     "vite": "7.3.0",
     "vitest": "3.2.4"
   },
+  "dependenciesMeta": {
+    "@overeng/tui-react": {
+      "injected": true
+    }
+  },
   "peerDependencies": {
     "@effect-atom/atom": "^0.4.13",
     "@effect-atom/atom-react": "^0.4.5",

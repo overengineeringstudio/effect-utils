@@ -64,6 +64,7 @@ const FIELD_ORDER = [
   'files',
   'scripts',
   'dependencies',
+  'dependenciesMeta',
   'devDependencies',
   'peerDependencies',
   'peerDependenciesMeta',
@@ -230,6 +231,8 @@ export type PackageJsonData = {
   peerDependencies?: Record<string, string>
   /** Peer dependency metadata */
   peerDependenciesMeta?: Record<string, { optional?: boolean }>
+  /** Dependency metadata (e.g. injected workspace deps for singleton resolution) */
+  dependenciesMeta?: Record<string, { injected?: boolean }>
   /** Optional dependencies */
   optionalDependencies?: Record<string, string>
   /** Bundled dependencies */

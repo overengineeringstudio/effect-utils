@@ -41,6 +41,13 @@ export default packageJson({
   dependencies: {
     ...catalog.pick('@overeng/utils', '@overeng/effect-path', '@overeng/tui-react', 'react'),
   },
+  // Inject tui-react so it resolves React from *this* package's .pnpm store,
+  // not from tui-react's own independent workspace store. Without this, pnpm
+  // workspace symlinks cause two physical React copies → "Invalid hook call".
+  // See: requirements.md R8 (singleton runtimes)
+  dependenciesMeta: {
+    '@overeng/tui-react': { injected: true },
+  },
   devDependencies: {
     ...catalog.pick(
       // Peer deps (for testing)
