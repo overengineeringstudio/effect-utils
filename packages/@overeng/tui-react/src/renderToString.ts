@@ -101,7 +101,7 @@ export const renderToString = async ({
 
       // Combine static and dynamic lines, then truncate
       const allLines = [...staticResult.lines, ...dynamicLines]
-      lines.push(...truncateLines(allLines, width))
+      lines.push(...truncateLines({ lines: allLines, width }))
     },
   }
 

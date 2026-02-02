@@ -313,7 +313,7 @@ export const createRoot = ({
       }
 
       if (linesToAppend.length > 0) {
-        const truncatedStaticLines = truncateLines(linesToAppend, width)
+        const truncatedStaticLines = truncateLines({ lines: linesToAppend, width })
         renderer.appendStatic(truncatedStaticLines)
       }
 
@@ -350,7 +350,7 @@ export const createRoot = ({
     }
 
     // Truncate lines horizontally to prevent soft wrapping.
-    lines = truncateLines(lines, width)
+    lines = truncateLines({ lines, width })
 
     renderer.render(lines)
   }

@@ -48,24 +48,28 @@ export interface TruncateOptions {
  * @example
  * ```ts
  * // Basic usage
- * truncateText('Hello, World!', 10) // 'Hello, Wo…'
+ * truncateText({ text: 'Hello, World!', width: 10 }) // 'Hello, Wo…'
  *
  * // With ANSI codes
- * truncateText('\x1b[31mRed text\x1b[0m', 5) // '\x1b[31mRed …\x1b[0m'
+ * truncateText({ text: '\x1b[31mRed text\x1b[0m', width: 5 }) // '\x1b[31mRed …\x1b[0m'
  *
  * // Custom ellipsis
- * truncateText('Long text', 8, { ellipsis: '...' }) // 'Long ...'
+ * truncateText({ text: 'Long text', width: 8, options: { ellipsis: '...' } }) // 'Long ...'
  *
  * // Truncate from middle (useful for file paths)
- * truncateText('/very/long/path/to/file.ts', 20, { position: 'middle' })
+ * truncateText({ text: '/very/long/path/to/file.ts', width: 20, options: { position: 'middle' } })
  * // '/very/lo…/file.ts'
  * ```
  */
-export const truncateText = (
-  text: string,
-  width: number,
-  options: TruncateOptions = {},
-): string => {
+export const truncateText = ({
+  text,
+  width,
+  options = {},
+}: {
+  text: string
+  width: number
+  options?: TruncateOptions
+}): string => {
   const { position = 'end', ellipsis = '…' } = options
 
   // Don't truncate if it fits
@@ -92,12 +96,16 @@ export const truncateText = (
  *
  * @internal
  */
-export const truncateLines = (
-  lines: readonly string[],
-  width: number,
-  options: TruncateOptions = {},
-): string[] => {
-  return lines.map((line) => truncateText(line, width, options))
+export const truncateLines = ({
+  lines,
+  width,
+  options = {},
+}: {
+  lines: readonly string[]
+  width: number
+  options?: TruncateOptions
+}): string[] => {
+  return lines.map((line) => truncateText({ text: line, width, options }))
 }
 
 // =============================================================================

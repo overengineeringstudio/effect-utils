@@ -26,7 +26,7 @@ const CounterApp = createTuiApp({
 // Initial States
 // =============================================================================
 
-const runningState = (count: number, history: string[] = []): typeof CounterState.Type => ({
+const runningState = ({ count, history = [] }: { count: number; history?: string[] }): typeof CounterState.Type => ({
   _tag: 'Running',
   count,
   status: 'idle',
@@ -128,7 +128,7 @@ export const Demo: Story = {
     <TuiStoryPreview
       View={CounterView}
       app={CounterApp}
-      initialState={runningState(0)}
+      initialState={runningState({ count: 0 })}
       timeline={demoTimeline}
       autoRun={args.autoRun}
       playbackSpeed={args.playbackSpeed}
@@ -146,7 +146,7 @@ export const Running: Story = {
     <TuiStoryPreview
       View={CounterView}
       app={CounterApp}
-      initialState={runningState(5, ['[12:00:01] Incremented to 5'])}
+      initialState={runningState({ count: 5, history: ['[12:00:01] Incremented to 5'] })}
       height={args.height}
       autoRun={false}
     />

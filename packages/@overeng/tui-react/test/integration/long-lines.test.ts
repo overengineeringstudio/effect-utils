@@ -119,7 +119,7 @@ describe('Long Lines Handling (VirtualTerminal)', () => {
 
       for (let i = 0; i < states.length; i++) {
         // Pre-truncate lines (as createRoot would do)
-        renderer.render(truncateLines(states[i]!, cols))
+        renderer.render(truncateLines({ lines: states[i]!, width: cols }))
         await terminal.flush()
 
         const lines = terminal.getVisibleLines()
@@ -147,7 +147,7 @@ describe('Long Lines Handling (VirtualTerminal)', () => {
       const longLine = 'This is a very long line that exceeds the terminal width of 40 characters'
 
       // Pre-truncate lines (as createRoot would do)
-      renderer.render(truncateLines([longLine], cols))
+      renderer.render(truncateLines({ lines: [longLine], width: cols }))
       await terminal.flush()
 
       const lines = terminal.getVisibleLines()
@@ -168,10 +168,10 @@ describe('Long Lines Handling (VirtualTerminal)', () => {
 
       // Pre-truncate lines (as createRoot would do)
       renderer.render(
-        truncateLines(
-          ['This is a very long line that definitely exceeds fifty characters in width'],
-          cols,
-        ),
+        truncateLines({
+          lines: ['This is a very long line that definitely exceeds fifty characters in width'],
+          width: cols,
+        }),
       )
       await terminal.flush()
 

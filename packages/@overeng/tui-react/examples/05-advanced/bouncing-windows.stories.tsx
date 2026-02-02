@@ -29,12 +29,17 @@ const BouncingApp = createTuiApp({
 // Initial States
 // =============================================================================
 
-const createRunningState = (
-  windowCount: number,
-  width: number,
-  height: number,
-  frame: number = 0,
-): typeof AppState.Type => ({
+const createRunningState = ({
+  windowCount,
+  width,
+  height,
+  frame = 0,
+}: {
+  windowCount: number
+  width: number
+  height: number
+  frame?: number
+}): typeof AppState.Type => ({
   _tag: 'Running',
   windows: Array.from({ length: windowCount }, (_, i) =>
     createWindow({ id: i, count: windowCount, width, height }),
@@ -44,13 +49,13 @@ const createRunningState = (
   termHeight: height,
 })
 
-const finishedState = (frames: number, windows: number): typeof AppState.Type => ({
+const finishedState = ({ frames, windows }: { frames: number; windows: number }): typeof AppState.Type => ({
   _tag: 'Finished',
   totalFrames: frames,
   windowCount: windows,
 })
 
-const interruptedState = (frame: number, windows: number): typeof AppState.Type => ({
+const interruptedState = ({ frame, windows }: { frame: number; windows: number }): typeof AppState.Type => ({
   _tag: 'Interrupted',
   frame,
   windowCount: windows,
@@ -60,10 +65,13 @@ const interruptedState = (frame: number, windows: number): typeof AppState.Type 
 // Timeline - simulates bouncing animation
 // =============================================================================
 
-const createBouncingTimeline = (
-  durationMs: number,
-  frameMs: number = 80,
-): Array<{ at: number; action: typeof AppAction.Type }> => {
+const createBouncingTimeline = ({
+  durationMs,
+  frameMs = 80,
+}: {
+  durationMs: number
+  frameMs?: number
+}): Array<{ at: number; action: typeof AppAction.Type }> => {
   const events: Array<{ at: number; action: typeof AppAction.Type }> = []
   for (let t = frameMs; t < durationMs; t += frameMs) {
     events.push({ at: t, action: { _tag: 'Tick' } })
@@ -72,7 +80,7 @@ const createBouncingTimeline = (
   return events
 }
 
-const demoTimeline = createBouncingTimeline(5000, 80) // 5 seconds
+const demoTimeline = createBouncingTimeline({ durationMs: 5000, frameMs: 80 }) // 5 seconds
 
 // =============================================================================
 // Story Meta
@@ -144,7 +152,7 @@ export const Demo: Story = {
     <TuiStoryPreview
       View={BouncingWindowsView}
       app={BouncingApp}
-      initialState={createRunningState(args.windowCount, args.termWidth, args.termHeight)}
+      initialState={createRunningState({ windowCount: args.windowCount, width: args.termWidth, height: args.termHeight })}
       timeline={demoTimeline}
       autoRun={args.autoRun}
       playbackSpeed={args.playbackSpeed}
@@ -166,7 +174,7 @@ export const SingleWindow: Story = {
     <TuiStoryPreview
       View={BouncingWindowsView}
       app={BouncingApp}
-      initialState={createRunningState(1, 80, 20)}
+      initialState={createRunningState({ windowCount: 1, width: 80, height: 20 })}
       timeline={demoTimeline}
       autoRun={args.autoRun}
       playbackSpeed={args.playbackSpeed}
@@ -188,7 +196,7 @@ export const SixWindows: Story = {
     <TuiStoryPreview
       View={BouncingWindowsView}
       app={BouncingApp}
-      initialState={createRunningState(6, 100, 28)}
+      initialState={createRunningState({ windowCount: 6, width: 100, height: 28 })}
       timeline={demoTimeline}
       autoRun={args.autoRun}
       playbackSpeed={args.playbackSpeed}
@@ -206,7 +214,7 @@ export const Finished: Story = {
     <TuiStoryPreview
       View={BouncingWindowsView}
       app={BouncingApp}
-      initialState={finishedState(300, 3)}
+      initialState={finishedState({ frames: 300, windows: 3 })}
       height={args.height}
       autoRun={false}
     />
@@ -222,7 +230,7 @@ export const Interrupted: Story = {
     <TuiStoryPreview
       View={BouncingWindowsView}
       app={BouncingApp}
-      initialState={interruptedState(150, 3)}
+      initialState={interruptedState({ frame: 150, windows: 3 })}
       height={args.height}
       autoRun={false}
     />

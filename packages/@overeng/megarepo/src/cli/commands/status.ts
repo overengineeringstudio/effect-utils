@@ -408,7 +408,13 @@ export const statusCommand = Cli.Command.make(
       const syncReasons: string[] = []
 
       // Helper to collect sync reasons from members recursively
-      const collectMemberSyncReasons = (memberList: readonly MemberStatus[], prefix = '') => {
+      const collectMemberSyncReasons = ({
+        memberList,
+        prefix = '',
+      }: {
+        memberList: readonly MemberStatus[]
+        prefix?: string
+      }) => {
         for (const member of memberList) {
           const memberLabel = prefix ? `${prefix}/${member.name}` : member.name
           if (!member.symlinkExists) {
@@ -422,11 +428,11 @@ export const statusCommand = Cli.Command.make(
             )
           }
           if (member.nestedMembers) {
-            collectMemberSyncReasons(member.nestedMembers, memberLabel)
+            collectMemberSyncReasons({ memberList: member.nestedMembers, prefix: memberLabel })
           }
         }
       }
-      collectMemberSyncReasons(members)
+      collectMemberSyncReasons({ memberList: members })
 
       // Check lock staleness
       if (lockStaleness) {

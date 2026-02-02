@@ -286,7 +286,7 @@ const CombinedView = ({ stateAtom }: { stateAtom: Atom.Atom<typeof VerticalState
 // Command Logic
 // =============================================================================
 
-const runFooter = (fileCount: number, delayMs: number) =>
+const runFooter = ({ fileCount, delayMs }: { fileCount: number; delayMs: number }) =>
   Effect.gen(function* () {
     const files = Array.from({ length: fileCount }, (_, i) => ({
       name: `packages/@overeng/pkg-${i}/config.json`,
@@ -323,7 +323,7 @@ const runFooter = (fileCount: number, delayMs: number) =>
     yield* Effect.sleep('50 millis')
   }).pipe(Effect.scoped)
 
-const runStatic = (mode: 'vertical' | 'combined', count: number) =>
+const runStatic = ({ mode, count }: { mode: 'vertical' | 'combined'; count: number }) =>
   Effect.gen(function* () {
     const App = createTuiApp({
       stateSchema: VerticalState,
@@ -353,11 +353,11 @@ const program = Effect.gen(function* () {
   switch (mode) {
     case 'vertical':
     case 'combined':
-      yield* runStatic(mode, count)
+      yield* runStatic({ mode, count })
       break
     case 'footer':
     default:
-      yield* runFooter(count, delayMs)
+      yield* runFooter({ fileCount: count, delayMs })
       break
   }
 }).pipe(Effect.provide(outputModeLayer('tty')))

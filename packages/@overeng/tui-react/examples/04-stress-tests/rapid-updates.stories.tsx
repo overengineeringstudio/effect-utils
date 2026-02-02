@@ -29,11 +29,15 @@ const StressTestApp = createTuiApp({
 // Initial States
 // =============================================================================
 
-const runningState = (
-  frame: number,
-  fps: number,
-  progress: number,
-): typeof StressTestState.Type => ({
+const runningState = ({
+  frame,
+  fps,
+  progress,
+}: {
+  frame: number
+  fps: number
+  progress: number
+}): typeof StressTestState.Type => ({
   _tag: 'Running',
   frame,
   startTime: Date.now() - frame * 16, // Approximate based on 60fps
@@ -41,18 +45,22 @@ const runningState = (
   progress,
 })
 
-const finishedState = (totalFrames: number, avgFps: number): typeof StressTestState.Type => ({
+const finishedState = ({ totalFrames, avgFps }: { totalFrames: number; avgFps: number }): typeof StressTestState.Type => ({
   _tag: 'Finished',
   totalFrames,
   averageFps: avgFps,
   duration: Math.round((totalFrames / avgFps) * 1000),
 })
 
-const interruptedState = (
-  frame: number,
-  fps: number,
-  progress: number,
-): typeof StressTestState.Type => ({
+const interruptedState = ({
+  frame,
+  fps,
+  progress,
+}: {
+  frame: number
+  fps: number
+  progress: number
+}): typeof StressTestState.Type => ({
   _tag: 'Interrupted',
   frame,
   fps,
@@ -64,10 +72,13 @@ const interruptedState = (
 // =============================================================================
 
 // Create a timeline with rapid ticks
-const createRapidTimeline = (
-  durationMs: number,
-  frameMs: number = 100,
-): Array<{ at: number; action: typeof StressTestAction.Type }> => {
+const createRapidTimeline = ({
+  durationMs,
+  frameMs = 100,
+}: {
+  durationMs: number
+  frameMs?: number
+}): Array<{ at: number; action: typeof StressTestAction.Type }> => {
   const events: Array<{ at: number; action: typeof StressTestAction.Type }> = []
   for (let t = frameMs; t < durationMs; t += frameMs) {
     events.push({ at: t, action: { _tag: 'Tick' } })
@@ -76,7 +87,7 @@ const createRapidTimeline = (
   return events
 }
 
-const demoTimeline = createRapidTimeline(3000, 100) // 3 seconds, tick every 100ms
+const demoTimeline = createRapidTimeline({ durationMs: 3000, frameMs: 100 }) // 3 seconds, tick every 100ms
 
 // =============================================================================
 // Story Meta
@@ -138,7 +149,7 @@ export const Demo: Story = {
     <TuiStoryPreview
       View={StressTestView}
       app={StressTestApp}
-      initialState={runningState(0, 0, 0)}
+      initialState={runningState({ frame: 0, fps: 0, progress: 0 })}
       timeline={demoTimeline}
       autoRun={args.autoRun}
       playbackSpeed={args.playbackSpeed}
@@ -156,7 +167,7 @@ export const Running: Story = {
     <TuiStoryPreview
       View={StressTestView}
       app={StressTestApp}
-      initialState={runningState(150, 58, 50)}
+      initialState={runningState({ frame: 150, fps: 58, progress: 50 })}
       height={args.height}
       autoRun={false}
     />
@@ -172,7 +183,7 @@ export const FinishedExcellent: Story = {
     <TuiStoryPreview
       View={StressTestView}
       app={StressTestApp}
-      initialState={finishedState(300, 60)}
+      initialState={finishedState({ totalFrames: 300, avgFps: 60 })}
       height={args.height}
       autoRun={false}
     />
@@ -188,7 +199,7 @@ export const FinishedGood: Story = {
     <TuiStoryPreview
       View={StressTestView}
       app={StressTestApp}
-      initialState={finishedState(200, 40)}
+      initialState={finishedState({ totalFrames: 200, avgFps: 40 })}
       height={args.height}
       autoRun={false}
     />
@@ -204,7 +215,7 @@ export const Interrupted: Story = {
     <TuiStoryPreview
       View={StressTestView}
       app={StressTestApp}
-      initialState={interruptedState(100, 55, 33)}
+      initialState={interruptedState({ frame: 100, fps: 55, progress: 33 })}
       height={args.height}
       autoRun={false}
     />
