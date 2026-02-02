@@ -15,7 +15,7 @@ import {
   Box,
   Text,
   testModeLayer,
-} from '../../src/mod.ts'
+} from '../../src/mod.tsx'
 
 // =============================================================================
 // Test State Schema (simulating a deploy command)

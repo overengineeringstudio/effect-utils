@@ -20,7 +20,7 @@ import {
   Box,
   Text,
   testModeLayer,
-} from '../../src/mod.ts'
+} from '../../src/mod.tsx'
 import { createMockTerminal } from '../helpers/mock-terminal.ts'
 import { createVirtualTerminal } from '../helpers/virtual-terminal.ts'
 

@@ -6,6 +6,8 @@
 #     (inputs.effect-utils.devenvModules.tasks.test {
 #       packages = [
 #         { path = "packages/@overeng/genie"; name = "genie"; }
+#         # Use local vitest.config.ts instead of shared config:
+#         { path = "packages/@overeng/tui-core"; name = "tui-core"; useLocalConfig = true; }
 #       ];
 #       # Optional: custom vitest binary and config (for monorepo setups)
 #       vitestBin = "packages/@overeng/utils/node_modules/.bin/vitest";
@@ -53,7 +55,9 @@ let
       relativeVitestBin = if vitestBin == "vitest" 
         then "vitest" 
         else "${prefix}/${vitestBin}";
-      relativeVitestConfig = if vitestConfig == null
+      # When useLocalConfig is true, don't pass --config so vitest discovers the package's own vitest.config.ts
+      useLocalConfig = pkg.useLocalConfig or false;
+      relativeVitestConfig = if useLocalConfig || vitestConfig == null
         then ""
         else " --config ${prefix}/${vitestConfig}";
     in {
@@ -63,7 +67,13 @@ let
         cwd = pkg.path;
         execIfModified = [
           "${pkg.path}/src/**/*.ts"
+          "${pkg.path}/src/**/*.tsx"
           "${pkg.path}/src/**/*.test.ts"
+          "${pkg.path}/src/**/*.test.tsx"
+          "${pkg.path}/test/**/*.ts"
+          "${pkg.path}/test/**/*.tsx"
+          "${pkg.path}/test/**/*.test.ts"
+          "${pkg.path}/test/**/*.test.tsx"
           "${pkg.path}/vitest.config.ts"
         ];
         after = [ "${installTaskPrefix}:install:${pkg.name}" ];

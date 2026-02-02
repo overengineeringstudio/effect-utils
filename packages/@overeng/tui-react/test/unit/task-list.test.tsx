@@ -5,7 +5,7 @@
 import React from 'react'
 import { describe, test, expect } from 'vitest'
 
-import { createRoot, TaskList, type TaskItem } from '../../src/mod.ts'
+import { createRoot, TaskList, type TaskItem } from '../../src/mod.tsx'
 import { createMockTerminal } from '../helpers/mod.ts'
 
 describe('TaskList', () => {

@@ -5,7 +5,7 @@
 import React from 'react'
 import { describe, it, expect } from 'vitest'
 
-import { Box, Text, useViewport, ViewportProvider, renderToLines } from '../../src/mod.ts'
+import { Box, Text, useViewport, ViewportProvider, renderToLines } from '../../src/mod.tsx'
 
 describe('useViewport', () => {
   it('provides default viewport when no provider', async () => {

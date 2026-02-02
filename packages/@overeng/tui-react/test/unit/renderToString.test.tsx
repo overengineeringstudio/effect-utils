@@ -5,7 +5,7 @@
 import React from 'react'
 import { describe, test, expect } from 'vitest'
 
-import { renderToString, renderToLines, Box, Text } from '../../src/mod.ts'
+import { renderToString, renderToLines, Box, Text } from '../../src/mod.tsx'
 
 describe('renderToString', () => {
   test('renders simple text', async () => {
