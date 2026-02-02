@@ -1,3 +1,4 @@
-import { pnpmWorkspaceReact } from '../../../genie/internal.ts'
+import { pnpmWorkspaceReactFromPackageJson } from '../../../genie/internal.ts'
+import pkg from './package.json.genie.ts'
 
-export default pnpmWorkspaceReact(['../tui-core', '../utils'])
+export default pnpmWorkspaceReactFromPackageJson(pkg)

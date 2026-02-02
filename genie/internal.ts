@@ -71,3 +71,67 @@ export const pnpmWorkspaceReact = (packages: readonly string[]) =>
     publicHoistPattern: ['react', 'react-dom', 'react-reconciler'],
     dedupePeerDependents: true,
   })
+
+type PackageJsonGenie = {
+  data: {
+    dependencies?: Record<string, string>
+    devDependencies?: Record<string, string>
+    peerDependencies?: Record<string, string>
+  }
+}
+
+const internalPackagePrefix = '@overeng/'
+
+const collectInternalPackageNames = (pkg: PackageJsonGenie): string[] => {
+  const names = new Set<string>()
+  const collect = (deps?: Record<string, string>) => {
+    if (!deps) return
+    for (const name of Object.keys(deps)) {
+      if (name.startsWith(internalPackagePrefix)) {
+        names.add(name)
+      }
+    }
+  }
+
+  collect(pkg.data.dependencies)
+  collect(pkg.data.devDependencies)
+  collect(pkg.data.peerDependencies)
+
+  return [...names]
+}
+
+const toWorkspacePath = (packageName: string): string => {
+  const name = packageName.split('/')[1]
+  return `../${name}`
+}
+
+/**
+ * Derive a pnpm workspace from package.json.genie.ts dependencies.
+ *
+ * - Includes internal @overeng/* deps from dependencies/devDependencies/peerDependencies.
+ * - Converts package names to sibling workspace paths (../<package-name>).
+ * - Allows extra packages (examples, non-dependency workspaces) via extraPackages.
+ * - Use include to pull transitive workspace deps from related packages.
+ */
+export const pnpmWorkspaceReactFromPackageJson = (
+  pkg: PackageJsonGenie,
+  options?: {
+    include?: readonly PackageJsonGenie[]
+    extraPackages?: readonly string[]
+  },
+) => {
+  const workspacePackages = new Set<string>()
+  const allPkgs = [pkg, ...(options?.include ?? [])]
+
+  for (const entry of allPkgs) {
+    for (const name of collectInternalPackageNames(entry)) {
+      workspacePackages.add(toWorkspacePath(name))
+    }
+  }
+
+  for (const extra of options?.extraPackages ?? []) {
+    workspacePackages.add(extra)
+  }
+
+  return pnpmWorkspaceReact([...workspacePackages].toSorted((a, b) => a.localeCompare(b)))
+}

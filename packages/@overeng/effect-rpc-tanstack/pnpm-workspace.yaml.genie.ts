@@ -1,4 +1,8 @@
-import { pnpmWorkspaceReact } from '../../../genie/internal.ts'
+import { pnpmWorkspaceReactFromPackageJson } from '../../../genie/internal.ts'
+import pkg from './package.json.genie.ts'
+import examplePkg from './examples/basic/package.json.genie.ts'
 
-// Include workspace deps that examples/basic needs
-export default pnpmWorkspaceReact(['examples/basic', '../utils'])
+export default pnpmWorkspaceReactFromPackageJson(examplePkg, {
+  include: [pkg],
+  extraPackages: ['examples/basic'],
+})
