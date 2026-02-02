@@ -105,27 +105,73 @@ const toWorkspacePath = (packageName: string): string => {
   return `../${name}`
 }
 
-/**
- * Derive a pnpm workspace from package.json.genie.ts dependencies.
- *
- * - Includes internal @overeng/* deps from dependencies/devDependencies/peerDependencies.
- * - Converts package names to sibling workspace paths (../<package-name>).
- * - Allows extra packages (examples, non-dependency workspaces) via extraPackages.
- * - Use include to pull transitive workspace deps from related packages.
- */
-export const pnpmWorkspaceReactFromPackageJson = (
-  pkg: PackageJsonGenie,
-  options?: {
-    include?: readonly PackageJsonGenie[]
-    extraPackages?: readonly string[]
-  },
-) => {
-  const workspacePackages = new Set<string>()
-  const allPkgs = [pkg, ...(options?.include ?? [])]
+type WorkspaceFromPackageJsonOptions = {
+  /**
+   * Additional packages to include in workspace resolution.
+   * Their @overeng/* dependencies will be collected recursively.
+   * @deprecated No longer needed - transitive deps are resolved automatically via registry
+   */
+  include?: readonly PackageJsonGenie[]
+  /** Extra workspace paths to include (for non-dependency packages like examples) */
+  extraPackages?: readonly string[]
+  /**
+   * Registry mapping package names to their genie configs.
+   * Used to recursively resolve transitive workspace dependencies.
+   * If not provided, only direct dependencies are collected.
+   */
+  registry?: ReadonlyMap<string, PackageJsonGenie>
+}
 
-  for (const entry of allPkgs) {
-    for (const name of collectInternalPackageNames(entry)) {
-      workspacePackages.add(toWorkspacePath(name))
+/**
+ * Recursively collect all @overeng/* workspace dependencies.
+ * Uses BFS to traverse the dependency graph via the registry.
+ */
+const collectWorkspacePackagesRecursive = (
+  pkg: PackageJsonGenie,
+  registry: ReadonlyMap<string, PackageJsonGenie>,
+  visited: Set<string> = new Set(),
+): Set<string> => {
+  const result = new Set<string>()
+
+  const directDeps = collectInternalPackageNames(pkg)
+  for (const depName of directDeps) {
+    if (visited.has(depName)) continue
+    visited.add(depName)
+
+    result.add(toWorkspacePath(depName))
+
+    // Recursively collect transitive deps if in registry
+    const depPkg = registry.get(depName)
+    if (depPkg) {
+      const transitiveDeps = collectWorkspacePackagesRecursive(depPkg, registry, visited)
+      for (const path of transitiveDeps) {
+        result.add(path)
+      }
+    }
+  }
+
+  return result
+}
+
+const collectWorkspacePackages = (
+  pkg: PackageJsonGenie,
+  options?: WorkspaceFromPackageJsonOptions,
+): string[] => {
+  const workspacePackages = new Set<string>()
+
+  if (options?.registry) {
+    // Use recursive resolution with registry
+    const transitiveDeps = collectWorkspacePackagesRecursive(pkg, options.registry)
+    for (const path of transitiveDeps) {
+      workspacePackages.add(path)
+    }
+  } else {
+    // Fallback: collect from pkg and explicit includes only
+    const allPkgs = [pkg, ...(options?.include ?? [])]
+    for (const entry of allPkgs) {
+      for (const name of collectInternalPackageNames(entry)) {
+        workspacePackages.add(toWorkspacePath(name))
+      }
     }
   }
 
@@ -133,5 +179,58 @@ export const pnpmWorkspaceReactFromPackageJson = (
     workspacePackages.add(extra)
   }
 
-  return pnpmWorkspaceReact([...workspacePackages].toSorted((a, b) => a.localeCompare(b)))
+  return [...workspacePackages].toSorted((a, b) => a.localeCompare(b))
+}
+
+/**
+ * Derive a pnpm workspace from package.json.genie.ts dependencies (no React hoisting).
+ *
+ * - Includes internal @overeng/* deps from dependencies/devDependencies/peerDependencies.
+ * - Converts package names to sibling workspace paths (../<package-name>).
+ * - Allows extra packages (examples, non-dependency workspaces) via extraPackages.
+ * - Use include to pull transitive workspace deps from related packages.
+ */
+export const pnpmWorkspaceFromPackageJson = (
+  pkg: PackageJsonGenie,
+  options?: WorkspaceFromPackageJsonOptions,
+) => {
+  const packages = collectWorkspacePackages(pkg, options)
+  return pnpmWorkspaceYaml({
+    packages: ['.', ...packages],
+    dedupePeerDependents: true,
+  })
+}
+
+/**
+ * Derive a pnpm workspace from package.json.genie.ts dependencies with React hoisting.
+ *
+ * - Includes internal @overeng/* deps from dependencies/devDependencies/peerDependencies.
+ * - Converts package names to sibling workspace paths (../<package-name>).
+ * - Allows extra packages (examples, non-dependency workspaces) via extraPackages.
+ * - Use registry to automatically resolve transitive workspace deps.
+ */
+export const pnpmWorkspaceReactFromPackageJson = (
+  pkg: PackageJsonGenie,
+  options?: WorkspaceFromPackageJsonOptions,
+) => {
+  const packages = collectWorkspacePackages(pkg, options)
+  return pnpmWorkspaceReact(packages)
+}
+
+/**
+ * Create a registry map from package.json.genie.ts objects.
+ * Pass this to pnpmWorkspaceFromPackageJson/pnpmWorkspaceReactFromPackageJson
+ * to enable automatic transitive dependency resolution.
+ */
+export const createWorkspaceRegistry = (
+  packages: readonly PackageJsonGenie[],
+): ReadonlyMap<string, PackageJsonGenie> => {
+  const registry = new Map<string, PackageJsonGenie>()
+  for (const pkg of packages) {
+    const name = (pkg.data as { name?: string }).name
+    if (name) {
+      registry.set(name, pkg)
+    }
+  }
+  return registry
 }

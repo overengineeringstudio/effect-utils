@@ -15,13 +15,14 @@
     }
   },
   "scripts": {
-    "prepare": "effect-language-service patch",
+    "postinstall": "effect-language-service patch",
     "storybook": "storybook dev -p 6008",
     "storybook:build": "storybook build"
   },
   "dependencies": {},
   "devDependencies": {
-    "@effect-atom/atom": "0.4.13",
+    "@effect-atom/atom": "^0.4.13",
+    "@effect-atom/atom-react": "^0.4.5",
     "@effect/cli": "0.73.1",
     "@effect/cluster": "^0.56.1",
     "@effect/experimental": "^0.58.0",
@@ -34,6 +35,8 @@
     "@effect/rpc": "^0.73.0",
     "@effect/vitest": "0.27.0",
     "@effect/workflow": "^0.16.0",
+    "@opentui/core": "^0.1.74",
+    "@opentui/react": "^0.1.74",
     "@overeng/tui-react": "workspace:*",
     "@overeng/utils": "workspace:*",
     "@playwright/test": "^1.57.0",
@@ -43,10 +46,10 @@
     "@types/node": "25.0.3",
     "@types/react": "19.2.7",
     "@types/react-reconciler": "0.28.9",
-    "effect": "3.19.15",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "react-reconciler": "0.33.0",
+    "effect": "^3.19.15",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "react-reconciler": "^0.33.0",
     "storybook": "10.2.1",
     "typescript": "5.9.3",
     "vitest": "3.2.4"

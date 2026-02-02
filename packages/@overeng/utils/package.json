@@ -33,7 +33,7 @@
     }
   },
   "scripts": {
-    "prepare": "effect-language-service patch"
+    "postinstall": "effect-language-service patch"
   },
   "dependencies": {
     "@noble/hashes": "1.7.1",

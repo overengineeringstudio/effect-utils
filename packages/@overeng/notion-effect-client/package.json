@@ -14,7 +14,7 @@
     }
   },
   "scripts": {
-    "prepare": "effect-language-service patch"
+    "postinstall": "effect-language-service patch"
   },
   "dependencies": {
     "@overeng/notion-effect-schema": "workspace:*"

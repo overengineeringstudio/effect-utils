@@ -13,7 +13,7 @@ All repos use `workspace:*` protocol with per-package `pnpm-workspace.yaml` file
 1. **No monorepo root required** - Works with megarepo pattern where repos are nested
 2. **Self-contained packages** - Each package declares its own workspace scope
 3. **Cross-repo consumption** - External repos can include packages in their workspace
-4. **Parallel installs** - No shared state, ~3x faster than sequential
+4. **`workspace:*` resolution** - Each package's workspace defines where to find internal deps
 
 ### Structure
 
@@ -79,6 +79,27 @@ export default pnpmWorkspace()
 ```
 
 After changing workspace config, regenerate lockfile: `cd <package> && pnpm install`
+
+### Sequential Installs (Race Condition Avoidance)
+
+When `pnpm install` runs in a package, it operates on **all** workspace members listed
+in `pnpm-workspace.yaml`, not just the current package. This means it installs
+dependencies into each workspace member's `node_modules/`.
+
+When multiple packages have overlapping workspace members (e.g., both `genie` and
+`notion-cli` include `../utils`, `../tui-react`), running their installs in parallel
+causes race conditions - both try to write to the same directories simultaneously,
+resulting in ENOENT errors like:
+
+```
+ENOENT: no such file or directory, chmod '.../tui-react/node_modules/typescript/bin/tsc'
+```
+
+**Solution:** Install tasks run sequentially, each depending on the previous one.
+
+**Alternative:** Dependency-aware parallelism could analyze workspace overlap and only
+serialize installs with shared members, restoring parallel execution for non-overlapping
+packages. This adds complexity but could provide ~3x speedup for large monorepos
 
 ## Future: Switch to Bun
 

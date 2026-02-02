@@ -5,9 +5,10 @@ import {
   packageJson,
   privatePackageDefaults,
 } from '../../../genie/internal.ts'
+import tuiReactPkg from '../tui-react/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
-/** Effect packages not already in @overeng/utils */
+/** Effect packages not already in @overeng/utils or @overeng/tui-react */
 const ownPeerDepNames = ['@effect/cli', '@effect/sql', '@effect/typeclass'] as const
 
 export default packageJson({
@@ -17,6 +18,11 @@ export default packageJson({
     ...effectLspScripts,
     storybook: 'storybook dev -p 6012',
     'storybook:build': 'storybook build',
+  },
+  pnpm: {
+    patchedDependencies: {
+      ...utilsPkg.data.pnpm?.patchedDependencies,
+    },
   },
   exports: {
     '.': './src/mod.ts',
@@ -34,27 +40,24 @@ export default packageJson({
   },
   dependencies: {
     ...catalog.pick(
-      '@effect-atom/atom',
       '@overeng/effect-path',
       '@overeng/notion-effect-client',
       '@overeng/notion-effect-schema',
       '@overeng/tui-core',
       '@overeng/tui-react',
       '@overeng/utils',
-      'react',
     ),
   },
   devDependencies: {
+    ...utilsPkg.data.peerDependencies,
+    ...tuiReactPkg.data.peerDependencies,
     ...catalog.pick(
-      ...Object.keys(utilsPkg.data.peerDependencies ?? {}),
       ...ownPeerDepNames,
       '@effect/vitest',
       '@storybook/react',
       '@storybook/react-vite',
       '@types/react',
       '@vitejs/plugin-react',
-      'react-dom',
-      'react-reconciler',
       'storybook',
       'vite',
       'vitest',
@@ -62,8 +65,8 @@ export default packageJson({
     ...effectLspDevDeps(),
   },
   peerDependencies: {
-    // Re-expose @overeng/utils peer deps + own additional peer deps
     ...utilsPkg.data.peerDependencies,
+    ...tuiReactPkg.data.peerDependencies,
     ...catalog.peers(...ownPeerDepNames),
   },
 })

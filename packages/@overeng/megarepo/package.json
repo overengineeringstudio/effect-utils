@@ -15,7 +15,7 @@
     }
   },
   "scripts": {
-    "prepare": "effect-language-service patch",
+    "postinstall": "effect-language-service patch",
     "storybook": "storybook dev -p 6007",
     "storybook:build": "storybook build"
   },

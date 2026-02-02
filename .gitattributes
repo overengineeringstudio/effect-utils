@@ -7,5 +7,13 @@ tsconfig.json linguist-generated=true
 tsconfig.*.json linguist-generated=true
 .github/workflows/*.yml linguist-generated=true
 
+# Lock files - collapse in GitHub PR diffs
+*.lock linguist-generated=true
+**/*.lock linguist-generated=true
+*.lockb linguist-generated=true
+**/*.lockb linguist-generated=true
+pnpm-lock.yaml linguist-generated=true
+**/pnpm-lock.yaml linguist-generated=true
+
 # Use bd merge for beads JSONL files
 .beads/issues.jsonl merge=beads

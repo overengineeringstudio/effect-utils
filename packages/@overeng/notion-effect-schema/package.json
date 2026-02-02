@@ -13,7 +13,7 @@
     }
   },
   "scripts": {
-    "prepare": "effect-language-service patch"
+    "postinstall": "effect-language-service patch"
   },
   "devDependencies": {
     "@effect/language-service": "0.69.2",

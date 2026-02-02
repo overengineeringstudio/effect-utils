@@ -1,6 +1,15 @@
 # Generated file - DO NOT EDIT
 # Source: pnpm-workspace.yaml.genie.ts
 
-packages: [., ../*]
+packages:
+  - .
+  - ../effect-path
+  - ../notion-effect-client
+  - ../notion-effect-schema
+  - ../tui-core
+  - ../tui-react
+  - ../utils
 
 dedupePeerDependents: true
+
+publicHoistPattern: [react, react-dom, react-reconciler]
