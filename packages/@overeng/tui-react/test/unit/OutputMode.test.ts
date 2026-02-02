@@ -94,7 +94,14 @@ describe('OutputMode presets', () => {
 })
 
 describe('isAgentEnv', () => {
-  const agentVars = ['AGENT', 'CLAUDE_PROJECT_DIR', 'CLAUDECODE', 'OPENCODE', 'CLINE_ACTIVE', 'CODEX_SANDBOX'] as const
+  const agentVars = [
+    'AGENT',
+    'CLAUDE_PROJECT_DIR',
+    'CLAUDECODE',
+    'OPENCODE',
+    'CLINE_ACTIVE',
+    'CODEX_SANDBOX',
+  ] as const
 
   // Save and clear all agent env vars before each test
   let savedEnv: Record<string, string | undefined> = {}
@@ -212,7 +219,14 @@ describe('isAgentEnv', () => {
 })
 
 describe('detectOutputMode', () => {
-  const agentVars = ['AGENT', 'CLAUDE_PROJECT_DIR', 'CLAUDECODE', 'OPENCODE', 'CLINE_ACTIVE', 'CODEX_SANDBOX'] as const
+  const agentVars = [
+    'AGENT',
+    'CLAUDE_PROJECT_DIR',
+    'CLAUDECODE',
+    'OPENCODE',
+    'CLINE_ACTIVE',
+    'CODEX_SANDBOX',
+  ] as const
   let savedEnv: Record<string, string | undefined> = {}
 
   const clearAgentEnv = () => {

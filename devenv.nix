@@ -213,13 +213,12 @@ in
     ${cliBuildStamp.shellHook}
   '';
 
-  # TODO: Enable pre-commit check once all checks pass
   git-hooks.enable = true;
-  # git-hooks.hooks.check-quick = {
-  #   enable = true;
-  #   entry = "${pkgs.bash}/bin/bash -c 'dt check:quick'";
-  #   stages = ["pre-commit"];
-  #   always_run = true;
-  #   pass_filenames = false;
-  # };
+  git-hooks.hooks.check-quick = {
+    enable = true;
+    entry = "${pkgs.bash}/bin/bash -c 'dt check:quick'";
+    stages = ["pre-commit"];
+    always_run = true;
+    pass_filenames = false;
+  };
 }

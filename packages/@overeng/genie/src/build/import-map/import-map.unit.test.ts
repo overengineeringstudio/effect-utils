@@ -111,13 +111,15 @@ describe('import-map', () => {
 
     it.effect(
       'returns None when no package.json exists',
-      Effect.fnUntraced(function* () {
-        const filePath = path.join(tempDir, 'src', 'file.ts')
-        yield* writeFile(filePath, '')
+      Effect.fnUntraced(
+        function* () {
+          const filePath = path.join(tempDir, 'src', 'file.ts')
 
-        const result = yield* findNearestPackageJson(filePath)
-        expect(Option.isNone(result)).toBe(true)
-      }, Effect.provide(TestLayer)),
+          const result = yield* findNearestPackageJson(filePath)
+          expect(Option.isNone(result)).toBe(true)
+        },
+        Effect.provide(FileSystem.layerNoop({ exists: () => Effect.succeed(false) })),
+      ),
     )
   })
 
