@@ -1,3 +1,4 @@
-import { pnpmWorkspace } from '../../../genie/internal.ts'
+import { pnpmWorkspaceFromPackageJson } from '../../../genie/internal.ts'
+import pkg from './package.json.genie.ts'
 
-export default pnpmWorkspace()
+export default pnpmWorkspaceFromPackageJson(pkg)

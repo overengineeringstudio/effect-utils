@@ -5,6 +5,7 @@ import {
   packageJson,
   privatePackageDefaults,
 } from '../../../genie/internal.ts'
+import tuiReactPkg from '../tui-react/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
 export default packageJson({
@@ -30,6 +31,7 @@ export default packageJson({
   dependencies: {},
   devDependencies: {
     ...utilsPkg.data.peerDependencies,
+    ...tuiReactPkg.data.peerDependencies,
     ...catalog.pick(
       '@overeng/utils',
       '@overeng/tui-react',
@@ -39,20 +41,14 @@ export default packageJson({
       '@effect/printer',
       '@effect/printer-ansi',
       '@effect/vitest',
-      '@effect-atom/atom',
       '@types/node',
       '@types/bun',
-      'effect',
       'vitest',
       // Storybook (addon-essentials is built into storybook 10.x)
       '@storybook/react',
       '@storybook/react-vite',
       'storybook',
-      'react',
-      'react-dom',
       '@types/react',
-      // Required for tui-react storybook (react-reconciler is a peer dep of tui-react)
-      'react-reconciler',
       '@types/react-reconciler',
     ),
     ...effectLspDevDeps(),
