@@ -197,6 +197,12 @@ in
     cliBuildStamp.package
   ];
 
+  # Genie is a source-mode pnpm package here, so it needs pnpm:install:genie
+  # before running. (The shared genie module doesn't assume this — see genie.nix.)
+  tasks."genie:run".after = [ "pnpm:install:genie" ];
+  tasks."genie:watch".after = [ "pnpm:install:genie" ];
+  tasks."genie:check".after = [ "pnpm:install:genie" ];
+
   # Repo-local pnpm store for consistent local installs (not used by Nix builds).
   env.PNPM_STORE_DIR = "${config.devenv.root}/.pnpm-store";
 
