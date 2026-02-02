@@ -27,7 +27,7 @@
 import type { Readable } from 'node:stream'
 
 import type { Scope } from 'effect'
-import { Effect, PubSub, Stream } from 'effect'
+import { Effect, PubSub, Runtime, Stream } from 'effect'
 
 import { type KeyEvent, keyEvent, resizeEvent, type InputEvent } from './events.ts'
 
@@ -517,6 +517,7 @@ export const createTerminalInput = (
 
     // Create event PubSub
     const pubsub = yield* PubSub.unbounded<InputEvent>()
+    const runtime = yield* Effect.runtime<never>()
 
     // Track if raw mode was set
     let wasRawMode = false
@@ -546,7 +547,7 @@ export const createTerminalInput = (
         }
 
         // Publish event - fire and forget for the sync callback
-        Effect.runFork(PubSub.publish(pubsub, event))
+        Runtime.runFork(runtime)(PubSub.publish(pubsub, event))
       }
     }
 
@@ -573,7 +574,7 @@ export const createTerminalInput = (
       const resizeHandler = () => {
         const cols = output.columns ?? 80
         const rows = output.rows ?? 24
-        Effect.runFork(PubSub.publish(pubsub, resizeEvent({ cols, rows })))
+        Runtime.runFork(runtime)(PubSub.publish(pubsub, resizeEvent({ cols, rows })))
       }
 
       // Listen for SIGWINCH (terminal resize signal)
@@ -655,6 +656,7 @@ export const createTerminalResize = (
   Effect.gen(function* () {
     // Create PubSub for resize events
     const pubsub = yield* PubSub.unbounded<{ cols: number; rows: number }>()
+    const runtime = yield* Effect.runtime<never>()
 
     // Get dimensions helper
     const getDimensions = (): { cols: number; rows: number } => ({
@@ -666,7 +668,7 @@ export const createTerminalResize = (
       // Set up resize handler
       const resizeHandler = () => {
         const dims = getDimensions()
-        Effect.runFork(PubSub.publish(pubsub, dims))
+        Runtime.runFork(runtime)(PubSub.publish(pubsub, dims))
       }
 
       // Listen for SIGWINCH

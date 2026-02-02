@@ -48,7 +48,7 @@
 // =============================================================================
 
 import type { Scope, SubscriptionRef } from 'effect'
-import { Effect, PubSub } from 'effect'
+import { Effect, PubSub, Runtime } from 'effect'
 import type React from 'react'
 import type { FC } from 'react'
 
@@ -287,6 +287,8 @@ export const useOpenTuiRenderer = <S>(
     // Import React for createElement
     const React = yield* Effect.promise(() => import('react'))
 
+    const runtime = yield* Effect.runtime<never>()
+
     // Create wrapper component that bridges events
     const WrapperComponent: FC = () => {
       // Bridge keyboard events
@@ -294,7 +296,7 @@ export const useOpenTuiRenderer = <S>(
         (key) => {
           if (eventPubSub) {
             const event = bridgeKeyEvent(key)
-            Effect.runFork(PubSub.publish(eventPubSub, event))
+            Runtime.runFork(runtime)(PubSub.publish(eventPubSub, event))
           }
         },
         { release: false },
@@ -304,7 +306,7 @@ export const useOpenTuiRenderer = <S>(
       reactLib.useOnResize((width, height) => {
         if (eventPubSub) {
           const event = bridgeResizeEvent({ width, height })
-          Effect.runFork(PubSub.publish(eventPubSub, event))
+          Runtime.runFork(runtime)(PubSub.publish(eventPubSub, event))
         }
       })
 

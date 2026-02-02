@@ -1,4 +1,4 @@
-import { FileSystem, Path } from '@effect/platform'
+import { type Error as PlatformError, FileSystem, Path } from '@effect/platform'
 import { Effect } from 'effect'
 
 import { buildPackageJsonValidationContext } from '../runtime/package-json/context.ts'
@@ -47,13 +47,18 @@ const importGenieOutput = Effect.fn('genie/importGenieOutput')(function* ({
   }
 })
 
-export const runGenieValidation = Effect.fn('genie/runValidation')(function* ({
+export const runGenieValidation = ({
   cwd,
   requirePackageJsonValidate = process.env.GENIE_REQUIRE_PACKAGE_JSON_VALIDATE === '1',
 }: {
   cwd: string
   requirePackageJsonValidate?: boolean
-}) {
+}): Effect.Effect<
+  ValidationIssue[],
+  GenieValidationError | GenieImportError | PlatformError.PlatformError | Error | undefined,
+  FileSystem.FileSystem | Path.Path
+> =>
+  Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
   const pathService = yield* Path.Path
   const workspaceProvider = yield* resolveWorkspaceProvider({ cwd })
@@ -118,4 +123,4 @@ export const runGenieValidation = Effect.fn('genie/runValidation')(function* ({
   }
 
   return issues
-})
+}).pipe(Effect.withSpan('genie/runValidation'))

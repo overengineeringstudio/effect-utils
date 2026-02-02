@@ -20,7 +20,7 @@
 
 import { Atom, Registry } from '@effect-atom/atom'
 import type { Scope } from 'effect'
-import { Effect, Layer, PubSub, Schema, Stream } from 'effect'
+import { Effect, Layer, PubSub, Runtime, Schema, Stream } from 'effect'
 
 import {
   type OutputMode,
@@ -215,6 +215,7 @@ export const createTestTuiState = <S, A>(
     const registry = Registry.make()
 
     const actionPubSub = yield* PubSub.unbounded<A>()
+    const runtime = yield* Effect.runtime<never>()
 
     // Create sync dispatch function that captures states and actions directly
     const dispatch = (action: A): void => {
@@ -226,7 +227,7 @@ export const createTestTuiState = <S, A>(
       // Capture the action
       actions.push(action)
       // Also publish to PubSub for the actions stream
-      Effect.runFork(PubSub.publish(actionPubSub, action))
+      Runtime.runFork(runtime)(PubSub.publish(actionPubSub, action))
     }
 
     const api: TuiAppApi<S, A> = {

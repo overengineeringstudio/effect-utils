@@ -1,6 +1,6 @@
 import path from 'node:path'
 
-import { FileSystem } from '@effect/platform'
+import { type Error as PlatformError, FileSystem } from '@effect/platform'
 import { Array as A, Effect } from 'effect'
 
 import type { TsconfigReferencesWarning } from './types.ts'
@@ -59,13 +59,18 @@ const packageNameToReferencePath = ({
 }
 
 /** Validate tsconfig references against package.json workspace dependencies */
-export const validateTsconfigReferences = Effect.fn('validateTsconfigReferences')(function* ({
+export const validateTsconfigReferences = ({
   genieFiles,
   cwd,
 }: {
   genieFiles: string[]
   cwd: string
-}) {
+}): Effect.Effect<
+  TsconfigReferencesWarning[],
+  PlatformError.PlatformError,
+  FileSystem.FileSystem
+> =>
+  Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
   const warnings: TsconfigReferencesWarning[] = []
 
@@ -116,7 +121,7 @@ export const validateTsconfigReferences = Effect.fn('validateTsconfigReferences'
   }
 
   return warnings
-})
+}).pipe(Effect.withSpan('validateTsconfigReferences'))
 
 /** Log tsconfig reference warnings */
 export const logTsconfigWarnings = Effect.fn('logTsconfigWarnings')(function* (

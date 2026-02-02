@@ -38,7 +38,7 @@
 
 import { Atom, Registry } from '@effect-atom/atom'
 import type { Scope } from 'effect'
-import { Console, Effect, PubSub, Schema, Stream } from 'effect'
+import { Console, Effect, PubSub, Runtime, Schema, Stream } from 'effect'
 import React, { type ReactElement, type ReactNode, createContext } from 'react'
 
 import { renderToString } from '../renderToString.ts'
@@ -343,13 +343,14 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
 
       // Create action PubSub for streaming
       const actionPubSub = yield* PubSub.unbounded<A>()
+      const runtime = yield* Effect.runtime<never>()
 
       // Sync dispatch function that updates the atom and publishes to PubSub
       const dispatch = (action: A): void => {
         // Update atom synchronously via registry
         registry.set(dispatchAtom, action)
         // Also publish to PubSub for action stream
-        Effect.runFork(PubSub.publish(actionPubSub, action))
+        Runtime.runFork(runtime)(PubSub.publish(actionPubSub, action))
       }
 
       // Track root for manual unmount
@@ -583,6 +584,8 @@ const setupProgressiveJsonWithAtom = <S,>({
   registry: Registry.Registry
 }): Effect.Effect<void, never, Scope.Scope> =>
   Effect.gen(function* () {
+    const runtime = yield* Effect.runtime<never>()
+
     // Output initial state
     const initialState = registry.get(stateAtom)
     const initialJson = yield* Schema.encode(Schema.parseJson(schema))(initialState).pipe(
@@ -593,7 +596,7 @@ const setupProgressiveJsonWithAtom = <S,>({
     // Subscribe to changes and output as NDJSON
     const unsubscribe = registry.subscribe(stateAtom, (state) => {
       // Encode and output synchronously
-      Effect.runSync(
+      Runtime.runSync(runtime)(
         Schema.encode(Schema.parseJson(schema))(state).pipe(
           Effect.flatMap((jsonString) => Console.log(jsonString)),
           Effect.orDie,

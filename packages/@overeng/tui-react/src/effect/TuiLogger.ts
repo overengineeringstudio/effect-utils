@@ -40,6 +40,7 @@ import {
   Stream,
   SubscriptionRef,
   Fiber,
+  Runtime,
 } from 'effect'
 import { useSyncExternalStore } from 'react'
 
@@ -158,6 +159,8 @@ export const createTuiLogger = (
         return newLogs.length > maxEntries ? newLogs.slice(-maxEntries) : newLogs
       })
 
+    const runtime = yield* Effect.runtime<never>()
+
     // Create the TUI logger
     const tuiLogger = Logger.make<unknown, void>(
       ({ logLevel, message, date, fiberId, annotations, spans }) => {
@@ -175,7 +178,7 @@ export const createTuiLogger = (
           }
 
           // Fire and forget - we don't want logging to block
-          Effect.runFork(appendLog(entry))
+          Runtime.runFork(runtime)(appendLog(entry))
         }
       },
     )

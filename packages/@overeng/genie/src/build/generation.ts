@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
 
-import { Command, FileSystem } from '@effect/platform'
+import { Command, type CommandExecutor, type Error as PlatformError, FileSystem, Path } from '@effect/platform'
 import { Duration, Effect, Option } from 'effect'
 
 import { DistributedSemaphore } from '@overeng/utils'
@@ -304,7 +304,7 @@ const enrichPackageJsonMarker = ({
 }
 
 /** Generate expected content for a genie file (shared between generate and dry-run) */
-export const getExpectedContent = Effect.fn('getExpectedContent')(function* ({
+export const getExpectedContent = ({
   genieFilePath,
   cwd,
   oxfmtConfigPath,
@@ -312,8 +312,13 @@ export const getExpectedContent = Effect.fn('getExpectedContent')(function* ({
   genieFilePath: string
   cwd: string
   oxfmtConfigPath: Option.Option<string>
-}) {
-  const targetFilePath = genieFilePath.replace('.genie.ts', '')
+}): Effect.Effect<
+  { targetFilePath: string; content: string },
+  PlatformError.PlatformError | GenieImportError,
+  FileSystem.FileSystem | CommandExecutor.CommandExecutor
+> =>
+  Effect.gen(function* () {
+    const targetFilePath = genieFilePath.replace('.genie.ts', '')
   const sourceFile = path.basename(genieFilePath)
   let rawContent = yield* importGenieFile({ genieFilePath, cwd })
 
@@ -329,7 +334,7 @@ export const getExpectedContent = Effect.fn('getExpectedContent')(function* ({
     configPath: oxfmtConfigPath,
   })
   return { targetFilePath, content: header + formattedContent }
-})
+}).pipe(Effect.withSpan('getExpectedContent'))
 
 /** Generate a brief diff summary showing line count changes */
 const generateDiffSummary = ({
@@ -399,14 +404,14 @@ const atomicWriteFile = ({
     Effect.withSpan('atomicWriteFile'),
   )
 
-const withTargetLock = Effect.fn('genie/withTargetLock')(function* ({
+const withTargetLock = Effect.fn('genie/withTargetLock')(function* <E>({
   cwd,
   targetFilePath,
   effect,
 }: {
   cwd: string
   targetFilePath: string
-  effect: Effect.Effect<void, unknown, FileSystem.FileSystem>
+  effect: Effect.Effect<void, E, FileSystem.FileSystem>
 }) {
   const lockNamespace = createHash('sha256').update(cwd).digest('hex').slice(0, 16)
   const lockDir = path.join(os.tmpdir(), 'genie-locks', lockNamespace)
@@ -434,7 +439,11 @@ export const generateFile = ({
   readOnly: boolean
   dryRun?: boolean
   oxfmtConfigPath: Option.Option<string>
-}) =>
+}): Effect.Effect<
+  GenerateSuccess,
+  GenieFileError,
+  FileSystem.FileSystem | CommandExecutor.CommandExecutor | Path.Path
+> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const targetFilePath = genieFilePath.replace('.genie.ts', '')
@@ -449,7 +458,7 @@ export const generateFile = ({
     const targetDirExists = yield* fs.exists(targetDir)
     if (!targetDirExists) {
       const reason = `Parent directory missing: ${targetDir}`
-      return { _tag: 'skipped', targetFilePath, reason } as const
+      return { _tag: 'skipped' as const, targetFilePath, reason }
     }
 
     // Check if file exists and get current content
@@ -497,6 +506,7 @@ export const generateFile = ({
 
     return { _tag: 'updated', targetFilePath, diffSummary } as const
   }).pipe(
+    Effect.map((_) => _ as GenerateSuccess),
     Effect.mapError((cause) => {
       const targetFilePath = genieFilePath.replace('.genie.ts', '')
       // Extract the underlying error for TDZ detection
@@ -523,7 +533,7 @@ export const generateFile = ({
   )
 
 /** Check if a generated file matches its expected content */
-export const checkFile = Effect.fn('checkFile')(function* ({
+export const checkFile = ({
   genieFilePath,
   cwd,
   oxfmtConfigPath,
@@ -531,9 +541,14 @@ export const checkFile = Effect.fn('checkFile')(function* ({
   genieFilePath: string
   cwd: string
   oxfmtConfigPath: Option.Option<string>
-}) {
-  const fs = yield* FileSystem.FileSystem
-  const { targetFilePath, content: expectedContent } = yield* getExpectedContent({
+}): Effect.Effect<
+  void,
+  GenieCheckError | GenieImportError | PlatformError.PlatformError,
+  FileSystem.FileSystem | CommandExecutor.CommandExecutor
+> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const { targetFilePath, content: expectedContent } = yield* getExpectedContent({
     genieFilePath,
     cwd,
     oxfmtConfigPath,
@@ -555,4 +570,4 @@ export const checkFile = Effect.fn('checkFile')(function* ({
       message: `File content is out of date. Run 'genie' to regenerate it.`,
     })
   }
-})
+}).pipe(Effect.withSpan('checkFile'))
