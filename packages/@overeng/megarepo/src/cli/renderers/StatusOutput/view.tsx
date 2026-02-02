@@ -44,9 +44,10 @@ export interface StatusViewProps {
  */
 export const StatusView = ({ stateAtom }: StatusViewProps) => {
   const state = useTuiAtomValue(stateAtom)
-  const { name, root, members, lastSyncTime, lockStaleness, currentMemberPath } = state
+  const { name, root, members, all, lastSyncTime, lockStaleness, currentMemberPath } = state
   const problems = analyzeProblems({ members, lockStaleness })
   const hasNesting = members.some((m) => m.nestedMembers && m.nestedMembers.length > 0)
+  const hasNestedMegarepos = members.some((m) => m.isMegarepo)
 
   return (
     <Box>
@@ -63,7 +64,7 @@ export const StatusView = ({ stateAtom }: StatusViewProps) => {
 
       {/* Members */}
       {hasNesting ? (
-        // Tree mode
+        // Tree mode (when --all is used and there are nested members)
         <>
           {members.map((member, i) => {
             const isOnCurrentPath =
@@ -98,10 +99,28 @@ export const StatusView = ({ stateAtom }: StatusViewProps) => {
         </>
       )}
 
+      {/* Hint for nested megarepos */}
+      {!all && hasNestedMegarepos && <NestedMegareposHint count={members.filter((m) => m.isMegarepo).length} />}
+
       {/* Summary */}
       <Text> </Text>
       <StatusSummary members={members} lastSyncTime={lastSyncTime} />
       <Legend members={members} />
+    </Box>
+  )
+}
+
+// =============================================================================
+// Internal Components - Nested Megarepos Hint
+// =============================================================================
+
+function NestedMegareposHint({ count }: { count: number }) {
+  return (
+    <Box paddingTop={1}>
+      <Text dim>
+        Note: {count} member{count > 1 ? 's' : ''} {count > 1 ? 'are' : 'is a'} nested megarepo{count > 1 ? 's' : ''}.
+      </Text>
+      <Text dim> Run 'mr status --all' to see their members.</Text>
     </Box>
   )
 }

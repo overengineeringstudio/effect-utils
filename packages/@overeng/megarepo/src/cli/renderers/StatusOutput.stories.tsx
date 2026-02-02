@@ -120,16 +120,19 @@ const createDefaultState = (): typeof StatusState.Type => ({
   name: 'my-workspace',
   root: '/Users/dev/workspace',
   members: exampleMembers,
+  all: false,
 })
 
 const createCleanState = (): typeof StatusState.Type => ({
   name: 'my-workspace',
   root: '/Users/dev/workspace',
   members: exampleMembersClean,
+  all: false,
   lastSyncTime: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
 })
 
 const createWarningsState = (): typeof StatusState.Type => ({
+  all: false,
   name: 'my-workspace',
   root: '/Users/dev/workspace',
   members: [
@@ -179,6 +182,7 @@ const createWarningsState = (): typeof StatusState.Type => ({
 })
 
 const createNestedMegareposState = (): typeof StatusState.Type => ({
+  all: true,
   name: 'mr-all-blue',
   root: '/Users/dev/mr-all-blue',
   members: [
@@ -268,6 +272,7 @@ const createNestedMegareposState = (): typeof StatusState.Type => ({
 })
 
 const createCurrentLocationState = (): typeof StatusState.Type => ({
+  all: true,
   name: 'mr-all-blue',
   root: '/Users/dev/mr-all-blue',
   members: [
@@ -325,6 +330,7 @@ const createCurrentLocationState = (): typeof StatusState.Type => ({
 })
 
 const createLockStaleState = (): typeof StatusState.Type => ({
+  all: false,
   name: 'my-workspace',
   root: '/Users/dev/workspace',
   members: exampleMembersClean,
@@ -336,6 +342,7 @@ const createLockStaleState = (): typeof StatusState.Type => ({
 })
 
 const createLockMissingState = (): typeof StatusState.Type => ({
+  all: false,
   name: 'my-workspace',
   root: '/Users/dev/workspace',
   members: exampleMembersClean,
@@ -347,6 +354,7 @@ const createLockMissingState = (): typeof StatusState.Type => ({
 })
 
 const createPinnedMembersState = (): typeof StatusState.Type => ({
+  all: false,
   name: 'my-workspace',
   root: '/Users/dev/workspace',
   members: [
@@ -386,6 +394,7 @@ const createPinnedMembersState = (): typeof StatusState.Type => ({
 })
 
 const createManyMembersState = (): typeof StatusState.Type => ({
+  all: false,
   name: 'large-workspace',
   root: '/Users/dev/large-workspace',
   members: Array.from({ length: 10 }, (_, i) => ({
@@ -408,6 +417,7 @@ const createManyMembersState = (): typeof StatusState.Type => ({
 })
 
 const createAllNotSyncedState = (): typeof StatusState.Type => ({
+  all: false,
   name: 'new-workspace',
   root: '/Users/dev/new-workspace',
   members: [
@@ -445,6 +455,7 @@ const createAllNotSyncedState = (): typeof StatusState.Type => ({
 })
 
 const createAllDirtyState = (): typeof StatusState.Type => ({
+  all: false,
   name: 'my-workspace',
   root: '/Users/dev/workspace',
   members: [
@@ -500,6 +511,7 @@ const createAllDirtyState = (): typeof StatusState.Type => ({
 })
 
 const createLocalPathMembersState = (): typeof StatusState.Type => ({
+  all: false,
   name: 'local-dev',
   root: '/Users/dev/local-dev',
   members: [
@@ -539,6 +551,7 @@ const createLocalPathMembersState = (): typeof StatusState.Type => ({
 })
 
 const createSingleMemberState = (): typeof StatusState.Type => ({
+  all: false,
   name: 'minimal',
   root: '/Users/dev/minimal',
   members: [
@@ -563,12 +576,14 @@ const createSingleMemberState = (): typeof StatusState.Type => ({
 })
 
 const createEmptyWorkspaceState = (): typeof StatusState.Type => ({
+  all: false,
   name: 'empty-workspace',
   root: '/Users/dev/empty-workspace',
   members: [],
 })
 
 const createDeeplyNestedState = (): typeof StatusState.Type => ({
+  all: true,
   name: 'deep-workspace',
   root: '/Users/dev/deep-workspace',
   members: [
@@ -643,6 +658,7 @@ const createDeeplyNestedState = (): typeof StatusState.Type => ({
 })
 
 const createMultipleProblemsState = (): typeof StatusState.Type => ({
+  all: false,
   name: 'problematic-workspace',
   root: '/Users/dev/problematic-workspace',
   members: [
@@ -713,6 +729,7 @@ const createMultipleProblemsState = (): typeof StatusState.Type => ({
 })
 
 const createSymlinkDriftState = (): typeof StatusState.Type => ({
+  all: false,
   name: 'my-megarepo',
   root: '/Users/dev/my-megarepo',
   members: [
@@ -780,6 +797,7 @@ const createSymlinkDriftState = (): typeof StatusState.Type => ({
 })
 
 const createMultipleSymlinkDriftState = (): typeof StatusState.Type => ({
+  all: false,
   name: 'my-megarepo',
   root: '/Users/dev/my-megarepo',
   members: [

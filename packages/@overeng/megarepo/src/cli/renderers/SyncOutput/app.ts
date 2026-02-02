@@ -24,7 +24,7 @@ export const createInitialSyncState = (params: {
     dryRun: false,
     frozen: false,
     pull: false,
-    deep: false,
+    all: false,
   },
   phase: 'idle',
   members: [],

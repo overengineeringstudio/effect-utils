@@ -44,7 +44,7 @@ export const SyncOptions = Schema.Struct({
   dryRun: Schema.Boolean,
   frozen: Schema.Boolean,
   pull: Schema.Boolean,
-  deep: Schema.Boolean,
+  all: Schema.Boolean,
   force: Schema.optional(Schema.Boolean),
   verbose: Schema.optional(Schema.Boolean),
   /** Members skipped via --only or --skip */
@@ -57,7 +57,7 @@ export const defaultSyncOptions: SyncOptions = {
   dryRun: false,
   frozen: false,
   pull: false,
-  deep: false,
+  all: false,
 }
 
 // =============================================================================

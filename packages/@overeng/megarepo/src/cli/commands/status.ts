@@ -31,13 +31,16 @@ import type { GitStatus, MemberStatus, SymlinkDrift } from '../renderers/StatusO
 /**
  * Recursively scan members and build status tree.
  * @param megarepoRoot - Root path of the megarepo
+ * @param all - Whether to recurse into nested megarepos
  * @param visited - Set of visited paths to prevent cycles
  */
 const scanMembersRecursive = ({
   megarepoRoot,
+  all,
   visited = new Set<string>(),
 }: {
   megarepoRoot: AbsoluteDirPath
+  all: boolean
   visited?: Set<string>
 }): Effect.Effect<
   MemberStatus[],
@@ -93,14 +96,15 @@ const scanMembersRecursive = ({
         ? yield* fs.exists(nestedConfigPath).pipe(Effect.catchAll(() => Effect.succeed(false)))
         : false
 
-      // Recursively scan nested members if this is a megarepo
+      // Recursively scan nested members if this is a megarepo and --all is used
       let nestedMembers: readonly MemberStatus[] | undefined = undefined
-      if (isMegarepo && memberExists) {
+      if (all && isMegarepo && memberExists) {
         const nestedRoot = EffectPath.unsafe.absoluteDir(
           memberPath.endsWith('/') ? memberPath : `${memberPath}/`,
         )
         nestedMembers = yield* scanMembersRecursive({
           megarepoRoot: nestedRoot,
+          all,
           visited,
         })
       }
@@ -192,180 +196,194 @@ const scanMembersRecursive = ({
   })
 
 /** Show megarepo status */
-export const statusCommand = Cli.Command.make('status', { output: outputOption }, ({ output }) =>
-  Effect.gen(function* () {
-    const cwd = yield* Cwd
-    const fs = yield* FileSystem.FileSystem
-    const root = yield* findMegarepoRoot(cwd)
+export const statusCommand = Cli.Command.make(
+  'status',
+  {
+    output: outputOption,
+    all: Cli.Options.boolean('all').pipe(
+      Cli.Options.withDescription('Recursively show status of nested megarepos'),
+      Cli.Options.withDefault(false),
+    ),
+  },
+  ({ output, all }) =>
+    Effect.gen(function* () {
+      const cwd = yield* Cwd
+      const fs = yield* FileSystem.FileSystem
+      const root = yield* findMegarepoRoot(cwd)
 
-    if (Option.isNone(root)) {
-      return yield* new NotInMegarepoError({ message: 'Not in a megarepo' })
-    }
-
-    const name = yield* Git.deriveMegarepoName(root.value)
-
-    // Load config
-    const configPath = EffectPath.ops.join(
-      root.value,
-      EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-    )
-    const configContent = yield* fs.readFileString(configPath)
-    const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
-
-    // Recursively scan all members
-    const members = yield* scanMembersRecursive({
-      megarepoRoot: root.value,
-    })
-
-    // Get last sync time and lock staleness from lock file
-    const lockPath = EffectPath.ops.join(root.value, EffectPath.unsafe.relativeFile(LOCK_FILE_NAME))
-    const lockFileOpt = yield* readLockFile(lockPath)
-    let lastSyncTime: Date | undefined = undefined
-    let lockStaleness:
-      | {
-          exists: boolean
-          missingFromLock: readonly string[]
-          extraInLock: readonly string[]
-        }
-      | undefined = undefined
-
-    // Determine which members are remote (need lock tracking)
-    const remoteMemberNames = new Set<string>()
-    for (const [memberName, sourceString] of Object.entries(config.members)) {
-      const source = parseSourceString(sourceString)
-      if (source !== undefined && isRemoteSource(source)) {
-        remoteMemberNames.add(memberName)
-      }
-    }
-
-    if (Option.isSome(lockFileOpt)) {
-      // Find the most recent lockedAt timestamp across all members
-      const timestamps = Object.values(lockFileOpt.value.members)
-        .map((m) => new Date(m.lockedAt).getTime())
-        .filter((t) => !Number.isNaN(t))
-      if (timestamps.length > 0) {
-        lastSyncTime = new Date(Math.max(...timestamps))
+      if (Option.isNone(root)) {
+        return yield* new NotInMegarepoError({ message: 'Not in a megarepo' })
       }
 
-      // Check staleness
-      const staleness = checkLockStaleness({
-        lockFile: lockFileOpt.value,
-        configMemberNames: remoteMemberNames,
-      })
-      lockStaleness = {
-        exists: true,
-        missingFromLock: staleness.addedMembers,
-        extraInLock: staleness.removedMembers,
-      }
-    } else if (remoteMemberNames.size > 0) {
-      // Lock file doesn't exist but we have remote members
-      lockStaleness = {
-        exists: false,
-        missingFromLock: [...remoteMemberNames],
-        extraInLock: [],
-      }
-    }
+      const name = yield* Git.deriveMegarepoName(root.value)
 
-    // Compute current member path (for highlighting current location)
-    const cwdNormalized = cwd.replace(/\/$/, '')
-    const rootNormalized = root.value.replace(/\/$/, '')
-
-    // First try path-based detection (handles repos/<member>/repos/<member>/... paths)
-    let currentMemberPath: string[] | undefined = undefined
-    if (cwdNormalized !== rootNormalized && cwdNormalized.startsWith(rootNormalized)) {
-      const relativePath = cwdNormalized.slice(rootNormalized.length + 1)
-      const parts = relativePath.split('/')
-      const memberPath: string[] = []
-      for (let i = 0; i < parts.length; i++) {
-        if (parts[i] === MEMBER_ROOT_DIR && i + 1 < parts.length) {
-          memberPath.push(parts[i + 1]!)
-          i++ // Skip the member name we just added
-        }
-      }
-      if (memberPath.length > 0) {
-        currentMemberPath = memberPath
-      }
-    }
-
-    // If path-based detection didn't work, try symlink resolution
-    if (currentMemberPath === undefined) {
-      const cwdRealPath = yield* fs.realPath(cwd).pipe(
-        Effect.map((p) => p.replace(/\/$/, '')),
-        Effect.catchAll(() => Effect.succeed(cwdNormalized)),
+      // Load config
+      const configPath = EffectPath.ops.join(
+        root.value,
+        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
       )
+      const configContent = yield* fs.readFileString(configPath)
+      const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
 
-      const findCurrentMemberPath = ({
-        memberList,
-        megarepoRoot,
-        pathSoFar,
-      }: {
-        memberList: readonly MemberStatus[]
-        megarepoRoot: string
-        pathSoFar: string[]
-      }): Effect.Effect<string[] | undefined, never, FileSystem.FileSystem> =>
-        Effect.gen(function* () {
-          for (const member of memberList) {
-            const memberSymlinkPath = getMemberPath({
-              megarepoRoot: EffectPath.unsafe.absoluteDir(megarepoRoot),
-              name: member.name,
-            })
-            const memberRealPath = yield* fs
-              .realPath(memberSymlinkPath.replace(/\/$/, ''))
-              .pipe(Effect.catchAll(() => Effect.succeed(undefined)))
-
-            if (memberRealPath !== undefined) {
-              const memberRealPathNorm = memberRealPath.replace(/\/$/, '')
-              if (
-                cwdRealPath === memberRealPathNorm ||
-                cwdRealPath.startsWith(memberRealPathNorm + '/')
-              ) {
-                const newPath = [...pathSoFar, member.name]
-                if (cwdRealPath === memberRealPathNorm) {
-                  return newPath
-                }
-                if (member.nestedMembers && member.nestedMembers.length > 0) {
-                  const nestedResult = yield* findCurrentMemberPath({
-                    memberList: member.nestedMembers,
-                    megarepoRoot: memberRealPathNorm + '/',
-                    pathSoFar: newPath,
-                  })
-                  if (nestedResult !== undefined) {
-                    return nestedResult
-                  }
-                }
-                return newPath
-              }
-            }
-          }
-          return undefined
-        })
-
-      currentMemberPath = yield* findCurrentMemberPath({
-        memberList: members,
+      // Scan members (recursively if --all)
+      const members = yield* scanMembersRecursive({
         megarepoRoot: root.value,
-        pathSoFar: [],
+        all,
       })
-    }
 
-    // Use StatusApp for all output modes (TTY, CI, JSON, NDJSON)
-    yield* Effect.scoped(
-      Effect.gen(function* () {
-        const tui = yield* StatusApp.run(
-          React.createElement(StatusView, { stateAtom: StatusApp.stateAtom }),
+      // Get last sync time and lock staleness from lock file
+      const lockPath = EffectPath.ops.join(
+        root.value,
+        EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+      )
+      const lockFileOpt = yield* readLockFile(lockPath)
+      let lastSyncTime: Date | undefined = undefined
+      let lockStaleness:
+        | {
+            exists: boolean
+            missingFromLock: readonly string[]
+            extraInLock: readonly string[]
+          }
+        | undefined = undefined
+
+      // Determine which members are remote (need lock tracking)
+      const remoteMemberNames = new Set<string>()
+      for (const [memberName, sourceString] of Object.entries(config.members)) {
+        const source = parseSourceString(sourceString)
+        if (source !== undefined && isRemoteSource(source)) {
+          remoteMemberNames.add(memberName)
+        }
+      }
+
+      if (Option.isSome(lockFileOpt)) {
+        // Find the most recent lockedAt timestamp across all members
+        const timestamps = Object.values(lockFileOpt.value.members)
+          .map((m) => new Date(m.lockedAt).getTime())
+          .filter((t) => !Number.isNaN(t))
+        if (timestamps.length > 0) {
+          lastSyncTime = new Date(Math.max(...timestamps))
+        }
+
+        // Check staleness
+        const staleness = checkLockStaleness({
+          lockFile: lockFileOpt.value,
+          configMemberNames: remoteMemberNames,
+        })
+        lockStaleness = {
+          exists: true,
+          missingFromLock: staleness.addedMembers,
+          extraInLock: staleness.removedMembers,
+        }
+      } else if (remoteMemberNames.size > 0) {
+        // Lock file doesn't exist but we have remote members
+        lockStaleness = {
+          exists: false,
+          missingFromLock: [...remoteMemberNames],
+          extraInLock: [],
+        }
+      }
+
+      // Compute current member path (for highlighting current location)
+      const cwdNormalized = cwd.replace(/\/$/, '')
+      const rootNormalized = root.value.replace(/\/$/, '')
+
+      // First try path-based detection (handles repos/<member>/repos/<member>/... paths)
+      let currentMemberPath: string[] | undefined = undefined
+      if (cwdNormalized !== rootNormalized && cwdNormalized.startsWith(rootNormalized)) {
+        const relativePath = cwdNormalized.slice(rootNormalized.length + 1)
+        const parts = relativePath.split('/')
+        const memberPath: string[] = []
+        for (let i = 0; i < parts.length; i++) {
+          if (parts[i] === MEMBER_ROOT_DIR && i + 1 < parts.length) {
+            memberPath.push(parts[i + 1]!)
+            i++ // Skip the member name we just added
+          }
+        }
+        if (memberPath.length > 0) {
+          currentMemberPath = memberPath
+        }
+      }
+
+      // If path-based detection didn't work, try symlink resolution
+      if (currentMemberPath === undefined) {
+        const cwdRealPath = yield* fs.realPath(cwd).pipe(
+          Effect.map((p) => p.replace(/\/$/, '')),
+          Effect.catchAll(() => Effect.succeed(cwdNormalized)),
         )
 
-        tui.dispatch({
-          _tag: 'SetState',
-          state: {
-            name,
-            root: root.value,
-            members,
-            lastSyncTime: lastSyncTime?.toISOString(),
-            lockStaleness,
-            currentMemberPath,
-          },
+        const findCurrentMemberPath = ({
+          memberList,
+          megarepoRoot,
+          pathSoFar,
+        }: {
+          memberList: readonly MemberStatus[]
+          megarepoRoot: string
+          pathSoFar: string[]
+        }): Effect.Effect<string[] | undefined, never, FileSystem.FileSystem> =>
+          Effect.gen(function* () {
+            for (const member of memberList) {
+              const memberSymlinkPath = getMemberPath({
+                megarepoRoot: EffectPath.unsafe.absoluteDir(megarepoRoot),
+                name: member.name,
+              })
+              const memberRealPath = yield* fs
+                .realPath(memberSymlinkPath.replace(/\/$/, ''))
+                .pipe(Effect.catchAll(() => Effect.succeed(undefined)))
+
+              if (memberRealPath !== undefined) {
+                const memberRealPathNorm = memberRealPath.replace(/\/$/, '')
+                if (
+                  cwdRealPath === memberRealPathNorm ||
+                  cwdRealPath.startsWith(memberRealPathNorm + '/')
+                ) {
+                  const newPath = [...pathSoFar, member.name]
+                  if (cwdRealPath === memberRealPathNorm) {
+                    return newPath
+                  }
+                  if (member.nestedMembers && member.nestedMembers.length > 0) {
+                    const nestedResult = yield* findCurrentMemberPath({
+                      memberList: member.nestedMembers,
+                      megarepoRoot: memberRealPathNorm + '/',
+                      pathSoFar: newPath,
+                    })
+                    if (nestedResult !== undefined) {
+                      return nestedResult
+                    }
+                  }
+                  return newPath
+                }
+              }
+            }
+            return undefined
+          })
+
+        currentMemberPath = yield* findCurrentMemberPath({
+          memberList: members,
+          megarepoRoot: root.value,
+          pathSoFar: [],
         })
-      }),
-    ).pipe(Effect.provide(outputModeLayer(output)))
-  }).pipe(Effect.withSpan('megarepo/status')),
+      }
+
+      // Use StatusApp for all output modes (TTY, CI, JSON, NDJSON)
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const tui = yield* StatusApp.run(
+            React.createElement(StatusView, { stateAtom: StatusApp.stateAtom }),
+          )
+
+          tui.dispatch({
+            _tag: 'SetState',
+            state: {
+              name,
+              root: root.value,
+              members,
+              all,
+              lastSyncTime: lastSyncTime?.toISOString(),
+              lockStaleness,
+              currentMemberPath,
+            },
+          })
+        }),
+      ).pipe(Effect.provide(outputModeLayer(output)))
+    }).pipe(Effect.withSpan('megarepo/status')),
 ).pipe(Cli.Command.withDescription('Show workspace status and member states'))

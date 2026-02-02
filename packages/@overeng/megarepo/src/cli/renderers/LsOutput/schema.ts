@@ -16,6 +16,10 @@ export const MemberInfo = Schema.Struct({
   name: Schema.String,
   /** Source string (e.g., "github:org/repo" or "../path") */
   source: Schema.String,
+  /** Path to owning megarepo (empty array = own megarepo) */
+  megarepoPath: Schema.Array(Schema.String),
+  /** Is this member itself a megarepo? */
+  isMegarepo: Schema.Boolean,
 })
 
 export type MemberInfo = Schema.Schema.Type<typeof MemberInfo>
@@ -25,10 +29,14 @@ export type MemberInfo = Schema.Schema.Type<typeof MemberInfo>
 // =============================================================================
 
 /**
- * Success state - JSON output: { "_tag": "Success", "members": [...] }
+ * Success state - JSON output: { "_tag": "Success", "members": [...], "all": false }
  */
 export const LsSuccessState = Schema.TaggedStruct('Success', {
   members: Schema.Array(MemberInfo),
+  /** Whether --all was used (for context in output) */
+  all: Schema.Boolean,
+  /** Name of the root megarepo */
+  megarepoName: Schema.String,
 })
 
 /**
@@ -67,7 +75,11 @@ export const isLsSuccess = (state: LsState): state is typeof LsSuccessState.Type
  * Actions for ls output.
  */
 export const LsAction = Schema.Union(
-  Schema.TaggedStruct('SetMembers', { members: Schema.Array(MemberInfo) }),
+  Schema.TaggedStruct('SetMembers', {
+    members: Schema.Array(MemberInfo),
+    all: Schema.Boolean,
+    megarepoName: Schema.String,
+  }),
   Schema.TaggedStruct('SetError', { error: Schema.String, message: Schema.String }),
 )
 
@@ -86,7 +98,12 @@ export const lsReducer = ({
 }): LsState => {
   switch (action._tag) {
     case 'SetMembers':
-      return { _tag: 'Success', members: action.members }
+      return {
+        _tag: 'Success',
+        members: action.members,
+        all: action.all,
+        megarepoName: action.megarepoName,
+      }
     case 'SetError':
       return { _tag: 'Error', error: action.error, message: action.message }
   }

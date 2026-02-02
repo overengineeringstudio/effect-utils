@@ -78,7 +78,7 @@ export const SyncState = Schema.Struct({
   /** Timestamp when sync started */
   startedAt: Schema.optional(Schema.Number),
 
-  /** Members that are themselves megarepos (for --deep hint) */
+  /** Members that are themselves megarepos (for --all hint) */
   nestedMegarepos: Schema.Array(Schema.String),
 
   /** List of generated file paths */

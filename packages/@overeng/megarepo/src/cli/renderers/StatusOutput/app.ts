@@ -16,6 +16,7 @@ export const createInitialStatusState = (): typeof StatusState.Type => ({
   name: '',
   root: '',
   members: [],
+  all: false,
 })
 
 /**
