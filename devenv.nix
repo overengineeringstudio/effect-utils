@@ -173,8 +173,10 @@ in
     # Context example tasks
     taskModules.context
     (taskModules.setup {
-      requiredTasks = [ "megarepo:sync" "megarepo:generate" ];
-      optionalTasks = [ "pnpm:install" "genie:run" "ts:build" ];
+      requiredTasks = [ ];
+      # Keep shell entry resilient (R12): optional tasks run via @complete.
+      # Ordering ensures source CLIs have deps before use.
+      optionalTasks = [ "pnpm:install" "genie:run" "megarepo:sync" "megarepo:generate" "ts:build" ];
       completionsCliNames = [ "genie" "mr" ];
     })
     # Nix CLI build and hash management

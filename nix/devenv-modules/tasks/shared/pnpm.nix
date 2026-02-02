@@ -63,7 +63,8 @@ let
     in
     sanitize final;
 
-  # All install tasks depend only on genie:run (which generates pnpm-workspace.yaml files).
+  # Install tasks run without a hard dependency on genie:run.
+  # pnpm-workspace.yaml files are committed, so fresh clones can install first.
   # Installs run in parallel for ~3x speedup.
   mkInstallTask = path: {
     "pnpm:install:${toName path}" = {
@@ -87,7 +88,6 @@ let
         ${cache.writeCacheFile ''"$hash_file"''}
       '';
       cwd = path;
-      after = [ "genie:run" ];
         status = ''
           set -euo pipefail
           hash_file="${cacheRoot}/${toName path}.hash"

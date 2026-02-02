@@ -1,14 +1,7 @@
 # Megarepo sync and workspace generation tasks.
 #
-# Uses `nix run git+file:$PWD#megarepo` to build and run the CLI via Nix.
-# This is a bootstrap exception to R13 (which prefers source CLIs in devenv):
-# on fresh clones, node_modules don't exist yet, so the source CLI (`mr` via bun)
-# can't resolve imports. The Nix-built binary has deps baked in and works without
-# node_modules.
-#
-# IMPORTANT: Must use `git+file:` (not `path:`) flake ref. The `path:` scheme copies
-# the entire working directory to the Nix store (including node_modules, .devenv, etc.),
-# which can be gigabytes and causes hangs. `git+file:` only copies git-tracked files.
+# Uses the source CLI (`mr`) from the repo for speed in devenv shells.
+# This assumes dependencies are installed (pnpm:install).
 #
 # Tasks:
 # - megarepo:sync - Clone/update member repos and create symlinks
@@ -18,13 +11,14 @@
 {
   tasks."megarepo:sync" = {
     description = "Sync megarepo members (clone repos, create symlinks)";
+    # Source CLI requires deps; keep bootstrap order predictable.
+    after = [ "pnpm:install:megarepo" ];
     exec = ''
       if [ ! -f ./megarepo.json ]; then
         exit 0
       fi
 
-      # Use git+file: flake ref with $PWD to ensure correct directory resolution
-      nix run "git+file:$PWD#megarepo" -- sync --all
+      mr sync --all
     '';
     # Status: use `mr status --output json` to detect if sync is needed.
     # The CLI computes syncNeeded based on: missing symlinks/worktrees, symlink drift, lock staleness.
@@ -54,8 +48,7 @@
         exit 0
       fi
 
-      # Use git+file: flake ref with $PWD to ensure correct directory resolution
-      nix run "git+file:$PWD#megarepo" -- generate nix --all
+      mr generate nix --all
     '';
     status = ''
       if [ ! -f ./megarepo.json ]; then
