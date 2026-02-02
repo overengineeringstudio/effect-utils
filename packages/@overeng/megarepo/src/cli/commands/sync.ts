@@ -74,7 +74,7 @@ import {
  *                  in diamond dependency scenarios (e.g., A→B, A→C, B→D, C→D where D would be synced twice)
  * @param withProgress - When true, uses limited concurrency (4) for visible progress updates
  */
-export const syncMegarepo = ({
+export const syncMegarepo = <R = never>({
   megarepoRoot,
   options,
   depth = 0,
@@ -101,8 +101,7 @@ export const syncMegarepo = ({
   /** Handle for dispatching progress updates */
   progressHandle?: SyncUIHandle
   /** Callback for interactive prompts when a ref doesn't exist */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  onMissingRef?: (info: MissingRefInfo) => Effect.Effect<MissingRefAction, any, any>
+  onMissingRef?: (info: MissingRefInfo) => Effect.Effect<MissingRefAction, never, R>
 }): Effect.Effect<
   MegarepoSyncResult,
   | NotInMegarepoError
@@ -111,7 +110,7 @@ export const syncMegarepo = ({
   | NixGeneratorError
   | PlatformError.PlatformError
   | ParseResult.ParseError,
-  FileSystem.FileSystem | CommandExecutor.CommandExecutor | Store
+  FileSystem.FileSystem | CommandExecutor.CommandExecutor | Store | R
 > =>
   Effect.gen(function* () {
     const {

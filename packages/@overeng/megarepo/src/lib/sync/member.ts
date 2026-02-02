@@ -162,7 +162,7 @@ const createSymlink = ({ target, link }: { target: string; link: string }) =>
  * - Pull: fetch from remote, update to latest (unless pinned)
  * - Frozen: use exact commit from lock, never modify lock
  */
-export const syncMember = ({
+export const syncMember = <R = never>({
   name,
   sourceString,
   megarepoRoot,
@@ -191,8 +191,7 @@ export const syncMember = ({
   /** Create branches that don't exist (from default branch) */
   createBranches?: boolean
   /** Callback when a ref doesn't exist. If not provided, defaults to 'error' behavior. */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  onMissingRef?: (info: MissingRefInfo) => Effect.Effect<MissingRefAction, any, any>
+  onMissingRef?: (info: MissingRefInfo) => Effect.Effect<MissingRefAction, never, R>
 }) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
