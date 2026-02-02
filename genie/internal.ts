@@ -6,6 +6,7 @@
  */
 
 import { catalog as externalCatalog, defineCatalog, pnpmWorkspaceYaml } from './external.ts'
+import { internalPackageCatalogEntries } from './packages.ts'
 
 // Re-export from external for convenience (explicit exports to avoid barrel file)
 export {
@@ -43,23 +44,12 @@ export {
  * Internal packages use `workspace:*` protocol with per-package pnpm-workspace.yaml files.
  * Each package declares its siblings in its workspace, enabling proper symlink resolution.
  *
+ * Package list is derived from genie/packages.ts (single source of truth).
  * See: context/workarounds/pnpm-issues.md for full details
  */
 export const catalog = defineCatalog({
   extends: externalCatalog,
-  packages: {
-    '@overeng/utils': 'workspace:*',
-    '@overeng/genie': 'workspace:*',
-    '@overeng/megarepo': 'workspace:*',
-    '@overeng/effect-path': 'workspace:*',
-    '@overeng/notion-effect-schema': 'workspace:*',
-    '@overeng/notion-effect-client': 'workspace:*',
-    '@overeng/notion-cli': 'workspace:*',
-    '@overeng/effect-schema-form': 'workspace:*',
-    '@overeng/effect-schema-form-aria': 'workspace:*',
-    '@overeng/tui-core': 'workspace:*',
-    '@overeng/tui-react': 'workspace:*',
-  },
+  packages: internalPackageCatalogEntries,
 })
 
 /**
