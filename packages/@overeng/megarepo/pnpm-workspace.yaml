@@ -1,7 +1,7 @@
 # Generated file - DO NOT EDIT
 # Source: pnpm-workspace.yaml.genie.ts
 
-packages: [., ../utils, ../effect-path, ../tui-react, ../tui-core]
+packages: [., ../effect-path, ../tui-core, ../tui-react, ../utils]
 
 dedupePeerDependents: true
 
