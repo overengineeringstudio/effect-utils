@@ -59,7 +59,7 @@ export const GenerateView = ({ stateAtom }: GenerateViewProps) => {
 /**
  * Renders a single result item.
  */
-function ResultItem({ item, symbols }: { item: GenerateResultItem; symbols: Symbols }) {
+const ResultItem = ({ item, symbols }: { item: GenerateResultItem; symbols: Symbols }) => {
   return (
     <Box flexDirection="row">
       <Text color="green">{symbols.status.check}</Text>

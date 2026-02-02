@@ -63,6 +63,7 @@ export type FlexJustify =
 // OText - Text component for OpenTUI
 // =============================================================================
 
+/** Props for the OText component that maps tui-react text styling to OpenTUI. */
 export interface OTextProps {
   /** Text color (maps to OpenTUI's `fg`) */
   color?: Color
@@ -109,6 +110,7 @@ export const OText = (props: OTextProps) => {
 // OBox - Box/container component for OpenTUI
 // =============================================================================
 
+/** Props for the OBox container component that maps tui-react layout to OpenTUI. */
 export interface OBoxProps {
   /** Flex direction */
   flexDirection?: FlexDirection
@@ -239,6 +241,7 @@ export const OBox = (props: OBoxProps) => {
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 const SPINNER_INTERVAL = 80
 
+/** Props for the OSpinner animated spinner component. */
 export interface OSpinnerProps {
   /** Spinner color */
   color?: Color
@@ -272,6 +275,7 @@ export const OSpinner = (props: OSpinnerProps) => {
 // OScrollBox - Scrollable container for OpenTUI
 // =============================================================================
 
+/** Props for the OScrollBox scrollable container component. */
 export interface OScrollBoxProps {
   /** Width */
   width?: number | string
@@ -301,6 +305,7 @@ export const OScrollBox = (props: OScrollBoxProps) => {
 // OInput - Text input for OpenTUI
 // =============================================================================
 
+/** Props for the OInput text input component for OpenTUI. */
 export interface OInputProps {
   /** Placeholder text */
   placeholder?: string

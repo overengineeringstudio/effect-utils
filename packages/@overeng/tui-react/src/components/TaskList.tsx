@@ -36,6 +36,7 @@ import { Text } from './Text.tsx'
 
 /** Status of a task item */
 export const TaskStatusSchema = Schema.Literal('pending', 'active', 'success', 'error', 'skipped')
+/** Inferred type for a task status literal ('pending' | 'active' | 'success' | 'error' | 'skipped'). */
 export type TaskStatus = Schema.Schema.Type<typeof TaskStatusSchema>
 
 /**
@@ -108,7 +109,7 @@ export const TaskList = (props: TaskListProps): ReactNode => {
 // Internal Components
 // =============================================================================
 
-function StatusIcon({ status }: { status: TaskStatus }): ReactNode {
+const StatusIcon = ({ status }: { status: TaskStatus }): ReactNode => {
   const symbols = useSymbols()
 
   switch (status) {
@@ -125,7 +126,7 @@ function StatusIcon({ status }: { status: TaskStatus }): ReactNode {
   }
 }
 
-function TaskLine({ item }: { item: TaskItem }): ReactNode {
+const TaskLine = ({ item }: { item: TaskItem }): ReactNode => {
   const isDim = item.status === 'pending' || item.status === 'skipped'
 
   return (
@@ -137,7 +138,7 @@ function TaskLine({ item }: { item: TaskItem }): ReactNode {
   )
 }
 
-function formatElapsed(ms: number): string {
+const formatElapsed = (ms: number): string => {
   if (ms < 1000) return `${ms}ms`
   const seconds = ms / 1000
   if (seconds < 60) return `${seconds.toFixed(1)}s`
@@ -146,7 +147,7 @@ function formatElapsed(ms: number): string {
   return `${minutes}m${remainingSeconds}s`
 }
 
-function Summary({ items, elapsed }: { items: readonly TaskItem[]; elapsed?: number }): ReactNode {
+const Summary = ({ items, elapsed }: { items: readonly TaskItem[]; elapsed?: number }): ReactNode => {
   const counts = { pending: 0, active: 0, success: 0, error: 0, skipped: 0 }
   for (const item of items) {
     counts[item.status]++

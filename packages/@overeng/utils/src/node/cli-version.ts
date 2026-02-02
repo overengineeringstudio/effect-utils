@@ -22,6 +22,7 @@ export interface NixStamp {
   buildTs?: number // only present for impure builds
 }
 
+/** Discriminated union of build stamp types used to resolve CLI version strings. */
 export type CliStamp = LocalStamp | NixStamp
 
 /**

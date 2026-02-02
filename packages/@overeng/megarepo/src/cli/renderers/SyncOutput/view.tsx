@@ -30,6 +30,7 @@ import type { SyncState, SyncLogEntry } from './schema.ts'
 // Types
 // =============================================================================
 
+/** Props for the SyncView component that renders sync progress and results. */
 export interface SyncViewProps {
   stateAtom: Atom.Atom<SyncState>
 }
@@ -257,7 +258,7 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
 // =============================================================================
 
 /** Format commit transition (e.g., "abc1234 → def5678") */
-function CommitTransition({ result }: { result: MemberSyncResult }) {
+const CommitTransition = ({ result }: { result: MemberSyncResult }) => {
   if (result.previousCommit && result.commit) {
     const prev = result.previousCommit.slice(0, 7)
     const curr = result.commit.slice(0, 7)
@@ -274,7 +275,7 @@ function CommitTransition({ result }: { result: MemberSyncResult }) {
 }
 
 /** Result line for cloned member */
-function ClonedLine({ result }: { result: MemberSyncResult }) {
+const ClonedLine = ({ result }: { result: MemberSyncResult }) => {
   return (
     <Box flexDirection="row">
       <StatusIcon status="cloned" variant="sync" />
@@ -288,7 +289,7 @@ function ClonedLine({ result }: { result: MemberSyncResult }) {
 }
 
 /** Result line for synced member */
-function SyncedLine({ result }: { result: MemberSyncResult }) {
+const SyncedLine = ({ result }: { result: MemberSyncResult }) => {
   return (
     <Box flexDirection="row">
       <StatusIcon status="synced" variant="sync" />
@@ -302,7 +303,7 @@ function SyncedLine({ result }: { result: MemberSyncResult }) {
 }
 
 /** Result line for updated member */
-function UpdatedLine({ result }: { result: MemberSyncResult }) {
+const UpdatedLine = ({ result }: { result: MemberSyncResult }) => {
   return (
     <Box flexDirection="row">
       <StatusIcon status="updated" variant="sync" />
@@ -317,7 +318,7 @@ function UpdatedLine({ result }: { result: MemberSyncResult }) {
 }
 
 /** Result line for locked member */
-function LockedLine({ result }: { result: MemberSyncResult }) {
+const LockedLine = ({ result }: { result: MemberSyncResult }) => {
   return (
     <Box flexDirection="row">
       <StatusIcon status="locked" variant="sync" />
@@ -332,7 +333,7 @@ function LockedLine({ result }: { result: MemberSyncResult }) {
 }
 
 /** Result line for removed member */
-function RemovedLine({ result, dryRun }: { result: MemberSyncResult; dryRun: boolean }) {
+const RemovedLine = ({ result, dryRun }: { result: MemberSyncResult; dryRun: boolean }) => {
   return (
     <Box flexDirection="row">
       <StatusIcon status="removed" variant="sync" />
@@ -351,7 +352,7 @@ function RemovedLine({ result, dryRun }: { result: MemberSyncResult; dryRun: boo
 }
 
 /** Result line for error */
-function ErrorLine({ result }: { result: MemberSyncResult }) {
+const ErrorLine = ({ result }: { result: MemberSyncResult }) => {
   return (
     <Box flexDirection="row">
       <StatusIcon status="error" variant="sync" />
@@ -364,7 +365,7 @@ function ErrorLine({ result }: { result: MemberSyncResult }) {
 }
 
 /** Result line for skipped member */
-function SkippedLine({ result }: { result: MemberSyncResult }) {
+const SkippedLine = ({ result }: { result: MemberSyncResult }) => {
   return (
     <Box flexDirection="row">
       <StatusIcon status="skipped" variant="sync" />
@@ -377,7 +378,7 @@ function SkippedLine({ result }: { result: MemberSyncResult }) {
 }
 
 /** Result line for already synced member */
-function AlreadySyncedLine({ result }: { result: MemberSyncResult }) {
+const AlreadySyncedLine = ({ result }: { result: MemberSyncResult }) => {
   return (
     <Box flexDirection="row">
       <StatusIcon status="already_synced" variant="sync" />
@@ -394,7 +395,7 @@ function AlreadySyncedLine({ result }: { result: MemberSyncResult }) {
 // Internal Components - Generated Files
 // =============================================================================
 
-function GeneratedFiles({ files, dryRun }: { files: readonly string[]; dryRun: boolean }) {
+const GeneratedFiles = ({ files, dryRun }: { files: readonly string[]; dryRun: boolean }) => {
   return (
     <Box paddingTop={1}>
       <Text>{dryRun ? 'Would generate:' : 'Generated:'}</Text>
@@ -414,7 +415,7 @@ function GeneratedFiles({ files, dryRun }: { files: readonly string[]; dryRun: b
 // Internal Components - Nested Megarepos Hint
 // =============================================================================
 
-function NestedMegareposHint({ count }: { count: number }) {
+const NestedMegareposHint = ({ count }: { count: number }) => {
   return (
     <Box paddingTop={1}>
       <Text dim>
@@ -430,7 +431,7 @@ function NestedMegareposHint({ count }: { count: number }) {
 // =============================================================================
 
 /** Progress item - shows pending, active (spinner), or completed result */
-function ProgressItem({
+const ProgressItem = ({
   name,
   isActive,
   result,
@@ -438,7 +439,7 @@ function ProgressItem({
   name: string
   isActive: boolean
   result: MemberSyncResult | undefined
-}) {
+}) => {
   if (result) {
     // Show completed result using TaskItem with mapped status
     const message = getResultMessage(result)
@@ -462,7 +463,7 @@ function ProgressItem({
 }
 
 /** Format commit transition string (e.g., "abc1234 → def5678") */
-function formatCommitTransition(result: MemberSyncResult): string | undefined {
+const formatCommitTransition = (result: MemberSyncResult): string | undefined => {
   if (result.previousCommit && result.commit) {
     const prev = result.previousCommit.slice(0, 7)
     const curr = result.commit.slice(0, 7)
@@ -475,7 +476,7 @@ function formatCommitTransition(result: MemberSyncResult): string | undefined {
 }
 
 /** Get display message for a sync result */
-function getResultMessage(result: MemberSyncResult): string | undefined {
+const getResultMessage = (result: MemberSyncResult): string | undefined => {
   switch (result.status) {
     case 'cloned':
       return result.ref ? `cloned (${result.ref})` : 'cloned'

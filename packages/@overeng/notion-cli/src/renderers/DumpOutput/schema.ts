@@ -1,5 +1,6 @@
 import { Schema } from 'effect'
 
+/** Schema for the dump command's UI state (Loading → Introspecting → Fetching → Done/Error). */
 export const DumpState = Schema.Union(
   Schema.TaggedStruct('Loading', {
     databaseId: Schema.String,
@@ -28,6 +29,7 @@ export const DumpState = Schema.Union(
 
 export type DumpState = typeof DumpState.Type
 
+/** Actions dispatched during a database dump to transition through fetch stages and report results. */
 export const DumpAction = Schema.Union(
   Schema.TaggedStruct('SetIntrospecting', {
     databaseId: Schema.String,
@@ -52,6 +54,7 @@ export const DumpAction = Schema.Union(
 
 export type DumpAction = typeof DumpAction.Type
 
+/** Reducer that applies {@link DumpAction} to produce the next {@link DumpState}. */
 export const dumpReducer = ({
   state,
   action,

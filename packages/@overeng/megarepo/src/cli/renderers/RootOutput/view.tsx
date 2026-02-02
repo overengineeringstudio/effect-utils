@@ -9,6 +9,7 @@ import { Box, Text, useTuiAtomValue, useSymbols } from '@overeng/tui-react'
 
 import type { RootState } from './schema.ts'
 
+/** Props for the RootView component that displays the megarepo root path. */
 export interface RootViewProps {
   stateAtom: Atom.Atom<RootState>
 }

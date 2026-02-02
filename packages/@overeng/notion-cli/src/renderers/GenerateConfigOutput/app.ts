@@ -2,6 +2,7 @@ import { createTuiApp } from '@overeng/tui-react'
 
 import { GenerateConfigState, GenerateConfigAction, generateConfigReducer } from './schema.ts'
 
+/** TUI app definition for the config-based schema generation command. */
 export const GenerateConfigApp = createTuiApp({
   stateSchema: GenerateConfigState,
   actionSchema: GenerateConfigAction,

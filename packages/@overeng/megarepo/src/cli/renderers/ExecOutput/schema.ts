@@ -11,6 +11,7 @@ import { Schema } from 'effect'
 // Member Exec Status
 // =============================================================================
 
+/** Schema for a member's execution status including exit code and captured output. */
 export const MemberExecStatus = Schema.Struct({
   /** Member name */
   name: Schema.String,
@@ -24,6 +25,7 @@ export const MemberExecStatus = Schema.Struct({
   stderr: Schema.optional(Schema.String),
 })
 
+/** Inferred type for a member's execution status. */
 export type MemberExecStatus = Schema.Schema.Type<typeof MemberExecStatus>
 
 // =============================================================================
@@ -82,12 +84,15 @@ export type ExecState = typeof ExecState.Type
 // Type Guards
 // =============================================================================
 
+/** Type guard that checks if the exec state is an error. */
 export const isExecError = (state: ExecState): state is typeof ExecErrorState.Type =>
   state._tag === 'Error'
 
+/** Type guard that checks if the exec state is complete (finished with results). */
 export const isExecComplete = (state: ExecState): state is typeof ExecCompleteState.Type =>
   state._tag === 'Complete'
 
+/** Type guard that checks if the exec state is currently running. */
 export const isExecRunning = (state: ExecState): state is typeof ExecRunningState.Type =>
   state._tag === 'Running'
 
@@ -95,6 +100,7 @@ export const isExecRunning = (state: ExecState): state is typeof ExecRunningStat
 // Exec Actions
 // =============================================================================
 
+/** Tagged union of actions that can be dispatched to update exec state. */
 export const ExecAction = Schema.Union(
   /** Initialize exec with members */
   Schema.TaggedStruct('Start', {
@@ -123,12 +129,14 @@ export const ExecAction = Schema.Union(
   }),
 )
 
+/** Inferred type for exec actions. */
 export type ExecAction = Schema.Schema.Type<typeof ExecAction>
 
 // =============================================================================
 // Reducer
 // =============================================================================
 
+/** Reduces exec actions into state, handling start, member updates, completion, and errors. */
 export const execReducer = ({
   state,
   action,

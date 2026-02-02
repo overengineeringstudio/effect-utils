@@ -30,7 +30,7 @@ const tree = {
  * Get the owner path as a string key for grouping.
  * Root -> '', Nested -> 'foo' or 'foo/bar'
  */
-function getOwnerKey(member: MemberInfo): string {
+const getOwnerKey = (member: MemberInfo): string => {
   if (member.owner._tag === 'Root') {
     return ''
   }
@@ -41,7 +41,7 @@ function getOwnerKey(member: MemberInfo): string {
  * Group members by their owner for hierarchical display.
  * Returns a map from owner path (as string) to members.
  */
-function groupByOwner(members: readonly MemberInfo[]): Map<string, MemberInfo[]> {
+const groupByOwner = (members: readonly MemberInfo[]): Map<string, MemberInfo[]> => {
   const groups = new Map<string, MemberInfo[]>()
   for (const member of members) {
     const key = getOwnerKey(member)
@@ -56,6 +56,7 @@ function groupByOwner(members: readonly MemberInfo[]): Map<string, MemberInfo[]>
 // Main Component
 // =============================================================================
 
+/** Props for the LsView component that renders the member list or error. */
 export interface LsViewProps {
   stateAtom: Atom.Atom<LsState>
 }

@@ -126,14 +126,19 @@ export interface StaticNodeProps {
 // Type Guards
 // =============================================================================
 
+/** Type guard that checks if a node is a raw text node. */
 export const isTextNode = (node: TuiNode): node is TuiTextNode => node.type === 'tui-text-node'
 
+/** Type guard that checks if a node is an element (box, text, or static). */
 export const isElement = (node: TuiNode): node is TuiElement =>
   node.type === 'tui-box' || node.type === 'tui-text' || node.type === 'tui-static'
 
+/** Type guard that checks if a node is a box element. */
 export const isBoxElement = (node: TuiNode): node is TuiBoxElement => node.type === 'tui-box'
 
+/** Type guard that checks if a node is a text element. */
 export const isTextElement = (node: TuiNode): node is TuiTextElement => node.type === 'tui-text'
 
+/** Type guard that checks if a node is a static element. */
 export const isStaticElement = (node: TuiNode): node is TuiStaticElement =>
   node.type === 'tui-static'

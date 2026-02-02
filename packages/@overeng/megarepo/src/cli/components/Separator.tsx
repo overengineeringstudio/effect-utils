@@ -14,6 +14,7 @@ import { icons } from './tokens.ts'
 // Types
 // =============================================================================
 
+/** Props for the Separator component that renders a horizontal divider line. */
 export interface SeparatorProps {
   /** Width of the separator (default: 40) */
   width?: number

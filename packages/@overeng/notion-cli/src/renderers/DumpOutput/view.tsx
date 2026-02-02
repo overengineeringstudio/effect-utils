@@ -5,6 +5,7 @@ import { Box, Text, useTuiAtomValue, useSymbols } from '@overeng/tui-react'
 
 import type { DumpState } from './schema.ts'
 
+/** Props for {@link DumpView}. */
 export interface DumpViewProps {
   stateAtom: Atom.Atom<DumpState>
 }
@@ -16,6 +17,7 @@ const formatBytes = (bytes: number): string => {
   return `${(bytes / 1024).toFixed(1)} KB`
 }
 
+/** Renders dump progress and completion summary including page count, asset stats, and failures. */
 export const DumpView = ({ stateAtom }: DumpViewProps) => {
   const state = useTuiAtomValue(stateAtom)
   const symbols = useSymbols()

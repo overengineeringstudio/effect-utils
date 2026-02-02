@@ -14,6 +14,7 @@ import { icons } from './tokens.ts'
 // Types
 // =============================================================================
 
+/** Counts of sync results by category, used to render the summary line. */
 export interface SummaryCounts {
   cloned?: number
   synced?: number
@@ -25,6 +26,7 @@ export interface SummaryCounts {
   alreadySynced?: number
 }
 
+/** Props for the Summary component that renders a dot-separated result counts line. */
 export interface SummaryProps {
   /** Result counts */
   counts: SummaryCounts

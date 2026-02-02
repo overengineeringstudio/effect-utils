@@ -22,7 +22,7 @@ export const StressTestView = ({ stateAtom }: { stateAtom: Atom.Atom<StressTestS
 // Internal Components
 // =============================================================================
 
-function ProgressBar({ progress, width = 40 }: { progress: number; width?: number }) {
+const ProgressBar = ({ progress, width = 40 }: { progress: number; width?: number }) => {
   const filled = Math.round((progress / 100) * width)
   return (
     <Box flexDirection="row">
@@ -34,7 +34,7 @@ function ProgressBar({ progress, width = 40 }: { progress: number; width?: numbe
   )
 }
 
-function Spinner({ frame }: { frame: number }) {
+const Spinner = ({ frame }: { frame: number }) => {
   const spinnerChars = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
   return (
     <Box flexDirection="row">
@@ -44,7 +44,7 @@ function Spinner({ frame }: { frame: number }) {
   )
 }
 
-function RunningView({ stateAtom }: { stateAtom: Atom.Atom<StressTestState> }) {
+const RunningView = ({ stateAtom }: { stateAtom: Atom.Atom<StressTestState> }) => {
   const state = useTuiAtomValue(stateAtom)
   if (state._tag !== 'Running') return null
 
@@ -75,7 +75,7 @@ function RunningView({ stateAtom }: { stateAtom: Atom.Atom<StressTestState> }) {
   )
 }
 
-function FinishedView({ stateAtom }: { stateAtom: Atom.Atom<StressTestState> }) {
+const FinishedView = ({ stateAtom }: { stateAtom: Atom.Atom<StressTestState> }) => {
   const state = useTuiAtomValue(stateAtom)
   if (state._tag !== 'Finished') return null
 
@@ -118,7 +118,7 @@ function FinishedView({ stateAtom }: { stateAtom: Atom.Atom<StressTestState> }) 
   )
 }
 
-function InterruptedView({ stateAtom }: { stateAtom: Atom.Atom<StressTestState> }) {
+const InterruptedView = ({ stateAtom }: { stateAtom: Atom.Atom<StressTestState> }) => {
   const state = useTuiAtomValue(stateAtom)
   if (state._tag !== 'Interrupted') return null
 

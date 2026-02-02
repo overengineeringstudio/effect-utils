@@ -8,6 +8,7 @@ import { Schema } from 'effect'
 // State Schema
 // =============================================================================
 
+/** Schema for the running stress test state with frame count, FPS, and progress. */
 export const RunningState = Schema.TaggedStruct('Running', {
   frame: Schema.Number,
   startTime: Schema.Number,

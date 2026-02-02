@@ -26,6 +26,7 @@ import { Schema } from 'effect'
 
 import { createTuiApp } from '../effect/TuiApp.tsx'
 
+/** Creates a minimal TuiApp with null state for previewing stateless components in Storybook. */
 export const createStaticApp = () =>
   createTuiApp({
     stateSchema: Schema.Null,

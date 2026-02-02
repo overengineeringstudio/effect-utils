@@ -11,6 +11,7 @@ import { Schema } from 'effect'
 // Service Status
 // =============================================================================
 
+/** Schema for the lifecycle status of a service during deployment. */
 export const ServiceStatus = Schema.Literal(
   'pending',
   'pulling',
@@ -19,43 +20,51 @@ export const ServiceStatus = Schema.Literal(
   'healthy',
   'failed',
 )
+/** Inferred type for a service's deployment lifecycle status. */
 export type ServiceStatus = Schema.Schema.Type<typeof ServiceStatus>
 
 // =============================================================================
 // Service Definitions
 // =============================================================================
 
+/** Schema for a service's in-progress deployment state (name, status, message). */
 export const ServiceProgress = Schema.Struct({
   name: Schema.String,
   status: ServiceStatus,
   message: Schema.optional(Schema.String),
 })
+/** Inferred type for a service's in-progress deployment state. */
 export type ServiceProgress = Schema.Schema.Type<typeof ServiceProgress>
 
+/** Schema for a service's final deployment result (updated, unchanged, rolled-back, or failed). */
 export const ServiceResult = Schema.Struct({
   name: Schema.String,
   result: Schema.Literal('updated', 'unchanged', 'rolled-back', 'failed'),
   duration: Schema.Number,
   error: Schema.optional(Schema.String),
 })
+/** Inferred type for a service's final deployment result. */
 export type ServiceResult = Schema.Schema.Type<typeof ServiceResult>
 
 // =============================================================================
 // Log Entry
 // =============================================================================
 
+/** Schema for a timestamped log entry with level, message, and optional service context. */
 export const LogEntry = Schema.Struct({
   timestamp: Schema.String,
   level: Schema.Literal('info', 'warn', 'error', 'debug'),
   message: Schema.String,
   service: Schema.optional(Schema.String),
 })
+/** Inferred type for a log entry. */
 export type LogEntry = Schema.Schema.Type<typeof LogEntry>
 
 // =============================================================================
 // Deploy State
 // =============================================================================
 
+/** Union schema of all deploy states (Idle, Validating, Progress, Complete, Failed, RollingBack, Interrupted). */
 export const DeployState = Schema.Union(
   Schema.TaggedStruct('Idle', {}),
 
@@ -107,12 +116,14 @@ export const DeployState = Schema.Union(
   }),
 )
 
+/** Inferred type for the deploy state union. */
 export type DeployState = Schema.Schema.Type<typeof DeployState>
 
 // =============================================================================
 // Deploy Options
 // =============================================================================
 
+/** Schema for deploy command options (services, environment, dryRun, force, timeout). */
 export const DeployOptions = Schema.Struct({
   services: Schema.Array(Schema.String),
   environment: Schema.String,
@@ -120,24 +131,28 @@ export const DeployOptions = Schema.Struct({
   force: Schema.optionalWith(Schema.Boolean, { default: () => false }),
   timeout: Schema.optionalWith(Schema.Number, { default: () => 30000 }),
 })
+/** Inferred type for deploy command options. */
 export type DeployOptions = Schema.Schema.Type<typeof DeployOptions>
 
 // =============================================================================
 // Deploy Result (for programmatic use)
 // =============================================================================
 
+/** Schema for the programmatic deploy result (success, services, duration, error). */
 export const DeployResult = Schema.Struct({
   success: Schema.Boolean,
   services: Schema.Array(ServiceResult),
   totalDuration: Schema.Number,
   error: Schema.optional(Schema.String),
 })
+/** Inferred type for the deploy result. */
 export type DeployResult = Schema.Schema.Type<typeof DeployResult>
 
 // =============================================================================
 // Deploy Actions (for reducer pattern)
 // =============================================================================
 
+/** Union schema of deploy actions (SetState, UpdateServiceStatus, AddLog, Interrupted). */
 export const DeployAction = Schema.Union(
   // Direct state transitions
   Schema.TaggedStruct('SetState', { state: DeployState }),
@@ -156,6 +171,7 @@ export const DeployAction = Schema.Union(
   Schema.TaggedStruct('Interrupted', {}),
 )
 
+/** Inferred type for the deploy action union. */
 export type DeployAction = Schema.Schema.Type<typeof DeployAction>
 
 // =============================================================================
@@ -164,6 +180,7 @@ export type DeployAction = Schema.Schema.Type<typeof DeployAction>
 
 const timestamp = () => new Date().toISOString().slice(11, 19)
 
+/** Reducer that handles deploy state transitions, service status updates, log additions, and interrupts. */
 export const deployReducer = ({
   state,
   action,

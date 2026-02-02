@@ -236,7 +236,7 @@ const bgCodes: Record<ColorName, number> = {
 }
 
 /** Get foreground ANSI escape sequence for a color */
-function getFgCode(color: Color): string {
+const getFgCode = (color: Color): string => {
   if (isColorName(color)) {
     return `${CSI}${fgCodes[color]}m`
   }
@@ -250,7 +250,7 @@ function getFgCode(color: Color): string {
 }
 
 /** Get background ANSI escape sequence for a color */
-function getBgCode(color: Color): string {
+const getBgCode = (color: Color): string => {
   if (isColorName(color)) {
     return `${CSI}${bgCodes[color]}m`
   }

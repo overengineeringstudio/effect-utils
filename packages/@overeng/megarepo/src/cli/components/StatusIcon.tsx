@@ -19,6 +19,7 @@ import {
 // Types
 // =============================================================================
 
+/** Props for the StatusIcon component, accepting either a task status or sync result status. */
 export type StatusIconProps =
   | { status: TaskStatus; variant?: 'task' }
   | { status: SyncResultStatus; variant: 'sync' }

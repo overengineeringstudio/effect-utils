@@ -41,6 +41,7 @@ const ViewportContext = createContext<ViewportContextValue>({
 // Provider
 // =============================================================================
 
+/** Props for the ViewportProvider component that supplies terminal dimensions to children. */
 export interface ViewportProviderProps {
   /** Initial viewport dimensions */
   readonly viewport: Viewport

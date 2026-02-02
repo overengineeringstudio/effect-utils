@@ -4,6 +4,7 @@ import React, { useMemo } from 'react'
 import { Box, Text, useTuiAtomValue } from '../../src/mod.ts'
 import type { AppState } from './schema.ts'
 
+/** Renders the hello world example with countdown, colors, and completion states. */
 export const HelloWorldView = ({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) => {
   const tagAtom = useMemo(() => Atom.map(stateAtom, (s) => s._tag), [stateAtom])
   const tag = useTuiAtomValue(tagAtom)
@@ -22,7 +23,7 @@ export const HelloWorldView = ({ stateAtom }: { stateAtom: Atom.Atom<AppState> }
 // Internal Components
 // =============================================================================
 
-function DisplayingView({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) {
+const DisplayingView = ({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) => {
   const state = useTuiAtomValue(stateAtom)
   if (state._tag !== 'Displaying') return null
 
@@ -46,7 +47,7 @@ function DisplayingView({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) {
   )
 }
 
-function FinishedView({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) {
+const FinishedView = ({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) => {
   const state = useTuiAtomValue(stateAtom)
   if (state._tag !== 'Finished') return null
 
@@ -60,7 +61,7 @@ function FinishedView({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) {
   )
 }
 
-function InterruptedView() {
+const InterruptedView = () => {
   return (
     <Box flexDirection="column" padding={1}>
       <Text bold color="yellow">

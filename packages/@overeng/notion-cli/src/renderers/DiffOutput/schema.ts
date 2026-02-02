@@ -14,6 +14,7 @@ const OptionsChange = Schema.Struct({
   removed: Schema.Array(Schema.String),
 })
 
+/** Schema for the diff command's UI state (Loading → Success/NoDifferences/Error). */
 export const DiffState = Schema.Union(
   Schema.TaggedStruct('Loading', {}),
   Schema.TaggedStruct('Success', {
@@ -34,6 +35,7 @@ export const DiffState = Schema.Union(
 
 export type DiffState = typeof DiffState.Type
 
+/** Actions dispatched by the diff command to report schema comparison results. */
 export const DiffAction = Schema.Union(
   Schema.TaggedStruct('SetResult', {
     databaseId: Schema.String,
@@ -51,6 +53,7 @@ export const DiffAction = Schema.Union(
 
 export type DiffAction = typeof DiffAction.Type
 
+/** Reducer that applies {@link DiffAction} to produce the next {@link DiffState}. */
 export const diffReducer = ({
   state: _state,
   action,

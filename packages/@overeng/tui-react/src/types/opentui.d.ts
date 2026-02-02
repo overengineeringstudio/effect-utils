@@ -23,14 +23,17 @@
 // =============================================================================
 
 declare module '@opentui/core' {
+  /** Configuration options for creating a CLI renderer instance. */
   export interface CliRendererConfig {
     exitOnCtrlC?: boolean
   }
 
+  /** Opaque handle to an OpenTUI CLI renderer instance. */
   export interface CliRenderer {
     // Opaque type - we don't need the internals
   }
 
+  /** Represents a keyboard event with key name, modifiers, and event type. */
   export class KeyEvent {
     name: string
     sequence: string
@@ -42,6 +45,7 @@ declare module '@opentui/core' {
     eventType: 'press' | 'release'
   }
 
+  /** Creates an OpenTUI CLI renderer for alternate-screen terminal output. */
   export function createCliRenderer(options?: CliRendererConfig): Promise<CliRenderer>
 }
 
@@ -49,17 +53,23 @@ declare module '@opentui/react' {
   import type { CliRenderer, KeyEvent } from '@opentui/core'
   import type { ReactNode } from 'react'
 
+  /** Options for the useKeyboard hook (e.g. whether to listen for key release events). */
   export interface UseKeyboardOptions {
     release?: boolean
   }
 
+  /** An OpenTUI React root that can render and unmount component trees. */
   export interface Root {
     render(element: ReactNode): void
     unmount(): void
   }
 
+  /** Creates an OpenTUI React root from a CLI renderer for rendering component trees. */
   export function createRoot(renderer: CliRenderer): Root
+  /** Registers a keyboard event handler for the current OpenTUI component. */
   export function useKeyboard(handler: (key: KeyEvent) => void, options?: UseKeyboardOptions): void
+  /** Registers a terminal resize handler and returns the CLI renderer. */
   export function useOnResize(handler: (width: number, height: number) => void): CliRenderer
+  /** Returns the current terminal dimensions (width and height in characters). */
   export function useTerminalDimensions(): { width: number; height: number }
 }

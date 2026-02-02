@@ -94,6 +94,7 @@ const removeChild = ({ parent, child }: { parent: Instance; child: TuiNode }): v
 // Host Config Implementation
 // =============================================================================
 
+/** React reconciler host config that maps React operations to the TUI node tree and Yoga layout engine. */
 export const hostConfig = {
   // Configuration
   supportsMutation: true,

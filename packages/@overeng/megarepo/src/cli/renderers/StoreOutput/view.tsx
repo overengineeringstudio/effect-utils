@@ -27,7 +27,7 @@ const SYMBOLS = {
 // =============================================================================
 
 /** Format elapsed time */
-function formatElapsed(ms: number): string {
+const formatElapsed = (ms: number): string => {
   if (ms < 1000) return `${ms}ms`
   const seconds = Math.floor(ms / 1000)
   const remainingMs = ms % 1000
@@ -42,6 +42,7 @@ function formatElapsed(ms: number): string {
 // Main Component
 // =============================================================================
 
+/** Props for the StoreView component that renders store subcommand outputs. */
 export interface StoreViewProps {
   stateAtom: Atom.Atom<StoreState>
 }
@@ -111,7 +112,7 @@ export const StoreView = ({ stateAtom }: StoreViewProps) => {
 // =============================================================================
 
 /** Header component shared by most views */
-function StoreHeader({ basePath, title = 'store' }: { basePath: string; title?: string }) {
+const StoreHeader = ({ basePath, title = 'store' }: { basePath: string; title?: string }) => {
   return (
     <Box flexDirection="column">
       <Text bold>{title}</Text>
@@ -123,13 +124,13 @@ function StoreHeader({ basePath, title = 'store' }: { basePath: string; title?: 
 }
 
 /** Ls view - list repos */
-function StoreLsView({
+const StoreLsView = ({
   basePath,
   repos,
 }: {
   basePath: string
   repos: readonly { relativePath: string }[]
-}) {
+}) => {
   return (
     <Box flexDirection="column">
       <StoreHeader basePath={basePath} />
@@ -154,7 +155,7 @@ function StoreLsView({
 }
 
 /** Status view - show worktree status */
-function StoreStatusView({
+const StoreStatusView = ({
   basePath,
   repoCount,
   worktreeCount,
@@ -166,7 +167,7 @@ function StoreStatusView({
   worktreeCount: number
   diskUsage?: string | undefined
   worktrees: readonly StoreWorktreeStatus[]
-}) {
+}) => {
   // Filter to only worktrees with issues
   const worktreesWithIssues = worktrees.filter((w) => w.issues.length > 0)
 
@@ -234,7 +235,7 @@ const getColor = (
 }
 
 /** Single worktree with issues */
-function StoreStatusWorktreeRow({ worktree }: { worktree: StoreWorktreeStatus }) {
+const StoreStatusWorktreeRow = ({ worktree }: { worktree: StoreWorktreeStatus }) => {
   // Get highest severity for the header
   const highestSeverity = worktree.issues.reduce<'error' | 'warning' | 'info'>((acc, issue) => {
     if (issue.severity === 'error') return 'error'
@@ -274,7 +275,7 @@ function StoreStatusWorktreeRow({ worktree }: { worktree: StoreWorktreeStatus })
 }
 
 /** Status summary */
-function StoreStatusSummary({
+const StoreStatusSummary = ({
   errorCount,
   warningCount,
   infoCount,
@@ -282,7 +283,7 @@ function StoreStatusSummary({
   errorCount: number
   warningCount: number
   infoCount: number
-}) {
+}) => {
   const totalIssues = errorCount + warningCount + infoCount
 
   if (totalIssues === 0) {
@@ -330,7 +331,7 @@ function StoreStatusSummary({
 }
 
 /** Fetch view - show fetch results */
-function StoreFetchView({
+const StoreFetchView = ({
   basePath,
   results,
   elapsedMs,
@@ -338,7 +339,7 @@ function StoreFetchView({
   basePath: string
   results: readonly { path: string; status: 'fetched' | 'error'; message?: string | undefined }[]
   elapsedMs: number
-}) {
+}) => {
   const fetchedCount = results.filter((r) => r.status === 'fetched').length
   const errorCount = results.filter((r) => r.status === 'error').length
 
@@ -379,7 +380,7 @@ function StoreFetchView({
 }
 
 /** GC view - show garbage collection results */
-function StoreGcView({
+const StoreGcView = ({
   basePath,
   results,
   dryRun,
@@ -393,7 +394,7 @@ function StoreGcView({
   warning?: StoreGcWarning | undefined
   showForceHint: boolean
   maxInUseToShow?: number
-}) {
+}) => {
   const removed = results.filter((r) => r.status === 'removed')
   const skippedDirty = results.filter((r) => r.status === 'skipped_dirty')
   const skippedInUse = results.filter((r) => r.status === 'skipped_in_use')
@@ -465,7 +466,7 @@ function StoreGcView({
 }
 
 /** GC Warning component */
-function StoreGcWarningRow({ warning }: { warning: StoreGcWarning }) {
+const StoreGcWarningRow = ({ warning }: { warning: StoreGcWarning }) => {
   if (warning.type === 'not_in_megarepo') {
     return (
       <Box flexDirection="column">
@@ -502,7 +503,7 @@ function StoreGcWarningRow({ warning }: { warning: StoreGcWarning }) {
 }
 
 /** GC Result line component */
-function StoreGcResultRow({ result, dryRun }: { result: StoreGcResult; dryRun: boolean }) {
+const StoreGcResultRow = ({ result, dryRun }: { result: StoreGcResult; dryRun: boolean }) => {
   const getSymbol = () => {
     switch (result.status) {
       case 'removed':
@@ -551,7 +552,7 @@ function StoreGcResultRow({ result, dryRun }: { result: StoreGcResult; dryRun: b
 }
 
 /** GC Summary component */
-function StoreGcSummary({
+const StoreGcSummary = ({
   removed,
   skippedDirty,
   skippedInUse,
@@ -563,7 +564,7 @@ function StoreGcSummary({
   skippedInUse: number
   errors: number
   dryRun: boolean
-}) {
+}) => {
   const parts: Array<{ key: string; element: React.ReactNode }> = []
 
   if (removed > 0) {
@@ -618,7 +619,7 @@ function StoreGcSummary({
 }
 
 /** Add view - show add result */
-function StoreAddView({
+const StoreAddView = ({
   source,
   ref,
   commit,
@@ -630,7 +631,7 @@ function StoreAddView({
   commit?: string | undefined
   path: string
   alreadyExists: boolean
-}) {
+}) => {
   const status = alreadyExists ? 'already in store' : 'added to store'
 
   return (
@@ -653,7 +654,7 @@ function StoreAddView({
 }
 
 /** Error view - show error message */
-function StoreErrorView({
+const StoreErrorView = ({
   error: _error,
   message,
   source: _source,
@@ -661,7 +662,7 @@ function StoreErrorView({
   error: string
   message: string
   source?: string | undefined
-}) {
+}) => {
   return (
     <Box flexDirection="row">
       <Text color="red">{SYMBOLS.cross}</Text>

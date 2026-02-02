@@ -5,10 +5,12 @@ import { Box, Text, useTuiAtomValue, useSymbols } from '@overeng/tui-react'
 
 import type { GenerateState } from './schema.ts'
 
+/** Props for {@link GenerateView}. */
 export interface GenerateViewProps {
   stateAtom: Atom.Atom<GenerateState>
 }
 
+/** Renders single-database generation progress through introspect → generate → write stages. */
 export const GenerateView = ({ stateAtom }: GenerateViewProps) => {
   const state = useTuiAtomValue(stateAtom)
   const symbols = useSymbols()

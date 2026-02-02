@@ -48,6 +48,7 @@ export type Strict<T, TBase> = T & {
  */
 import type { GenieValidationContext, GenieValidationIssue } from './validation/mod.ts'
 
+/** Standard output shape returned by genie factory functions, containing structured data and a serializer. */
 export type GenieOutput<T> = {
   /** The structured configuration data */
   data: T

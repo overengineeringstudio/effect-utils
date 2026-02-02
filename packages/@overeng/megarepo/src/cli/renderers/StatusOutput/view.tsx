@@ -116,7 +116,7 @@ export const StatusView = ({ stateAtom }: StatusViewProps) => {
 // Internal Components - Nested Megarepos Hint
 // =============================================================================
 
-function NestedMegareposHint({ count }: { count: number }) {
+const NestedMegareposHint = ({ count }: { count: number }) => {
   return (
     <Box paddingTop={1}>
       <Text dim>
@@ -171,7 +171,7 @@ const tree = {
 // Internal Helper Functions
 // =============================================================================
 
-function flattenMembers(members: readonly MemberStatus[]): MemberStatus[] {
+const flattenMembers = (members: readonly MemberStatus[]): MemberStatus[] => {
   const result: MemberStatus[] = []
   for (const member of members) {
     result.push(member)
@@ -182,13 +182,13 @@ function flattenMembers(members: readonly MemberStatus[]): MemberStatus[] {
   return result
 }
 
-function analyzeProblems({
+const analyzeProblems = ({
   members,
   lockStaleness,
 }: {
   members: readonly MemberStatus[]
   lockStaleness: LockStaleness | undefined
-}): Problem[] {
+}): Problem[] => {
   const warnings: Problem[] = []
   const allMembers = flattenMembers(members)
 
@@ -232,7 +232,7 @@ function analyzeProblems({
 }
 
 /** Generate a unique key for a problem based on its tag and content */
-function getProblemKey(problem: Problem): string {
+const getProblemKey = (problem: Problem): string => {
   switch (problem._tag) {
     case 'not_synced':
       return `not_synced-${problem.members.map((m) => m.name).join(',')}`
@@ -250,7 +250,7 @@ function getProblemKey(problem: Problem): string {
 }
 
 /** Count members at different levels */
-function countMembers(members: readonly MemberStatus[]) {
+const countMembers = (members: readonly MemberStatus[]) => {
   const direct = members.length
   let nested = 0
   let synced = 0
@@ -282,7 +282,7 @@ function countMembers(members: readonly MemberStatus[]) {
 }
 
 /** Format relative time */
-function formatRelativeTime(date: Date): string {
+const formatRelativeTime = (date: Date): string => {
   const now = Date.now()
   const diff = now - date.getTime()
   const seconds = Math.floor(diff / 1000)
@@ -297,7 +297,7 @@ function formatRelativeTime(date: Date): string {
 }
 
 /** Detect which symbols are used for legend */
-function detectUsedSymbols(members: readonly MemberStatus[]) {
+const detectUsedSymbols = (members: readonly MemberStatus[]) => {
   const allMembers = flattenMembers(members)
   return {
     hasDirty: allMembers.some((m) => m.gitStatus?.isDirty),
@@ -312,7 +312,7 @@ function detectUsedSymbols(members: readonly MemberStatus[]) {
 // =============================================================================
 
 /** Warning badge - matches cli-ui badge('WARNING', 'warning') */
-function WarningBadge() {
+const WarningBadge = () => {
   return (
     <Text backgroundColor="yellow" color="black" bold>
       {' WARNING '}
@@ -321,7 +321,7 @@ function WarningBadge() {
 }
 
 /** Single warning item */
-function WarningItem({ problem }: { problem: Problem }) {
+const WarningItem = ({ problem }: { problem: Problem }) => {
   switch (problem._tag) {
     case 'symlink_drift': {
       const count = problem.members.length
@@ -488,7 +488,7 @@ function WarningItem({ problem }: { problem: Problem }) {
 }
 
 /** Warnings section */
-function WarningsSection({ problems }: { problems: Problem[] }) {
+const WarningsSection = ({ problems }: { problems: Problem[] }) => {
   if (problems.length === 0) return null
   return (
     <Box>
@@ -511,7 +511,7 @@ function WarningsSection({ problems }: { problems: Problem[] }) {
 // =============================================================================
 
 /** Member status symbol */
-function MemberSymbol({ member }: { member: MemberStatus }) {
+const MemberSymbol = ({ member }: { member: MemberStatus }) => {
   if (!member.exists) {
     return <Text color="yellow">{symbols.circle}</Text>
   }
@@ -522,7 +522,7 @@ function MemberSymbol({ member }: { member: MemberStatus }) {
 }
 
 /** Branch display with color coding */
-function BranchInfo({ member }: { member: MemberStatus }) {
+const BranchInfo = ({ member }: { member: MemberStatus }) => {
   if (member.gitStatus?.branch && member.gitStatus?.shortRev) {
     const branch = member.gitStatus.branch
     const rev = member.gitStatus.shortRev
@@ -552,7 +552,7 @@ function BranchInfo({ member }: { member: MemberStatus }) {
 }
 
 /** Single member line */
-function MemberLine({
+const MemberLine = ({
   member,
   isCurrent,
   prefix = '',
@@ -560,7 +560,7 @@ function MemberLine({
   member: MemberStatus
   isCurrent: boolean
   prefix?: string
-}) {
+}) => {
   // Use 256-color dark gray (index 236) for current line highlight
   const bgColor = isCurrent ? { ansi256: 236 } : undefined
 
@@ -608,7 +608,7 @@ function MemberLine({
 }
 
 /** Recursive tree rendering */
-function MembersTree({
+const MembersTree = ({
   members,
   prefix,
   currentPath,
@@ -616,7 +616,7 @@ function MembersTree({
   members: readonly MemberStatus[]
   prefix: string
   currentPath: readonly string[] | undefined
-}) {
+}) => {
   return (
     <>
       {members.map((member, i) => {
@@ -647,13 +647,13 @@ function MembersTree({
 // =============================================================================
 
 /** Summary line */
-function StatusSummary({
+const StatusSummary = ({
   members,
   lastSyncTime,
 }: {
   members: readonly MemberStatus[]
   lastSyncTime?: string | undefined
-}) {
+}) => {
   const counts = countMembers(members)
   const parts: string[] = []
 
@@ -679,7 +679,7 @@ function StatusSummary({
 }
 
 /** Legend component */
-function Legend({ members }: { members: readonly MemberStatus[] }) {
+const Legend = ({ members }: { members: readonly MemberStatus[] }) => {
   const used = detectUsedSymbols(members)
   const items: LegendItem[] = []
 

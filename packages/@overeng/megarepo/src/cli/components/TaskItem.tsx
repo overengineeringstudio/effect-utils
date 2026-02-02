@@ -15,6 +15,7 @@ import { type TaskStatus } from './tokens.ts'
 // Types
 // =============================================================================
 
+/** Props for the TaskItem component that renders a single task row with status icon and label. */
 export interface TaskItemProps {
   /** Unique identifier */
   id: string

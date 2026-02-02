@@ -23,6 +23,7 @@ import {
 } from './schema.ts'
 import { DeployView } from './view.tsx'
 
+/** Tagged error type for deployment failures. */
 export class DeployError extends Schema.TaggedError<DeployError>()('DeployError', {
   message: Schema.String,
 }) {}
@@ -31,6 +32,7 @@ export class DeployError extends Schema.TaggedError<DeployError>()('DeployError'
 // TUI App Definition (exported for app-scoped hooks in view.tsx)
 // =============================================================================
 
+/** TuiApp instance for the deploy command with state schema, action schema, and reducer. */
 export const DeployApp = createTuiApp({
   stateSchema: DeployState,
   actionSchema: DeployAction,
@@ -122,6 +124,7 @@ const simulateHealthcheck = (service: string) =>
 // Main Deploy Function
 // =============================================================================
 
+/** Runs a simulated multi-service deployment with validation, progress tracking, and error handling. */
 export const runDeploy = (
   options: DeployOptions,
 ): Effect.Effect<DeployResult, never, Scope.Scope | OutputModeTag> =>

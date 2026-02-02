@@ -11,20 +11,25 @@ import { Schema } from 'effect'
 // Common Types
 // =============================================================================
 
+/** Schema for a repository entry in the store with its relative path. */
 export const StoreRepo = Schema.Struct({
   relativePath: Schema.String,
 })
 
+/** Inferred type for a store repository entry. */
 export type StoreRepo = Schema.Schema.Type<typeof StoreRepo>
 
+/** Schema for the result of fetching a single repository in the store. */
 export const StoreFetchResult = Schema.Struct({
   path: Schema.String,
   status: Schema.Literal('fetched', 'error'),
   message: Schema.optional(Schema.String),
 })
 
+/** Inferred type for a store fetch result. */
 export type StoreFetchResult = Schema.Schema.Type<typeof StoreFetchResult>
 
+/** Schema for the result of garbage-collecting a single worktree. */
 export const StoreGcResult = Schema.Struct({
   repo: Schema.String,
   ref: Schema.String,
@@ -33,8 +38,10 @@ export const StoreGcResult = Schema.Struct({
   message: Schema.optional(Schema.String),
 })
 
+/** Inferred type for a store GC result. */
 export type StoreGcResult = Schema.Schema.Type<typeof StoreGcResult>
 
+/** Schema for a health issue detected on a worktree (dirty, unpushed, orphaned, etc.). */
 export const StoreWorktreeIssue = Schema.Struct({
   type: Schema.Literal(
     'dirty',
@@ -48,8 +55,10 @@ export const StoreWorktreeIssue = Schema.Struct({
   message: Schema.String,
 })
 
+/** Inferred type for a worktree issue. */
 export type StoreWorktreeIssue = Schema.Schema.Type<typeof StoreWorktreeIssue>
 
+/** Schema for a worktree's status including its repo, ref, path, and any detected issues. */
 export const StoreWorktreeStatus = Schema.Struct({
   repo: Schema.String,
   ref: Schema.String,
@@ -58,13 +67,16 @@ export const StoreWorktreeStatus = Schema.Struct({
   issues: Schema.Array(StoreWorktreeIssue),
 })
 
+/** Inferred type for a worktree's status. */
 export type StoreWorktreeStatus = Schema.Schema.Type<typeof StoreWorktreeStatus>
 
+/** Schema for warnings shown before garbage collection (e.g., not in megarepo). */
 export const StoreGcWarning = Schema.Struct({
   type: Schema.Literal('not_in_megarepo', 'only_current_megarepo', 'custom'),
   message: Schema.optional(Schema.String),
 })
 
+/** Inferred type for a store GC warning. */
 export type StoreGcWarning = Schema.Schema.Type<typeof StoreGcWarning>
 
 // =============================================================================
@@ -148,21 +160,27 @@ export type StoreState = typeof StoreState.Type
 // Type Guards
 // =============================================================================
 
+/** Type guard that checks if the store state is an error. */
 export const isStoreError = (state: StoreState): state is typeof StoreErrorState.Type =>
   state._tag === 'Error'
 
+/** Type guard that checks if the store state is a repository listing. */
 export const isStoreLs = (state: StoreState): state is typeof StoreLsState.Type =>
   state._tag === 'Ls'
 
+/** Type guard that checks if the store state is a worktree status report. */
 export const isStoreStatus = (state: StoreState): state is typeof StoreStatusState.Type =>
   state._tag === 'Status'
 
+/** Type guard that checks if the store state is a fetch result. */
 export const isStoreFetch = (state: StoreState): state is typeof StoreFetchState.Type =>
   state._tag === 'Fetch'
 
+/** Type guard that checks if the store state is a garbage collection result. */
 export const isStoreGc = (state: StoreState): state is typeof StoreGcState.Type =>
   state._tag === 'Gc'
 
+/** Type guard that checks if the store state is an add-to-store result. */
 export const isStoreAdd = (state: StoreState): state is typeof StoreAddState.Type =>
   state._tag === 'Add'
 
@@ -211,12 +229,14 @@ export const StoreAction = Schema.Union(
   }),
 )
 
+/** Inferred type for store actions. */
 export type StoreAction = Schema.Schema.Type<typeof StoreAction>
 
 // =============================================================================
 // Reducer
 // =============================================================================
 
+/** Reduces store actions into state, replacing the state with the appropriate subcommand result. */
 export const storeReducer = ({
   state: _state,
   action,

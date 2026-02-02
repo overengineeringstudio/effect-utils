@@ -7,6 +7,7 @@ const DatabaseEntry = Schema.Struct({
   outputPath: Schema.optional(Schema.String),
 })
 
+/** Schema for the generate-config command's UI state (Loading → Running → Done/Error). */
 export const GenerateConfigState = Schema.Union(
   Schema.TaggedStruct('Loading', {
     configPath: Schema.String,
@@ -26,6 +27,7 @@ export const GenerateConfigState = Schema.Union(
 
 export type GenerateConfigState = typeof GenerateConfigState.Type
 
+/** Actions dispatched during config-based generation to update database progress and completion status. */
 export const GenerateConfigAction = Schema.Union(
   Schema.TaggedStruct('SetConfig', {
     configPath: Schema.String,
@@ -52,6 +54,7 @@ export const GenerateConfigAction = Schema.Union(
 
 export type GenerateConfigAction = typeof GenerateConfigAction.Type
 
+/** Reducer that applies {@link GenerateConfigAction} to produce the next {@link GenerateConfigState}. */
 export const generateConfigReducer = ({
   state,
   action,

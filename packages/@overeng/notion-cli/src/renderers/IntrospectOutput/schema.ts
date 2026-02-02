@@ -8,6 +8,7 @@ const PropertyInfo = Schema.Struct({
   relationDatabase: Schema.optional(Schema.String),
 })
 
+/** Schema for the introspect command's UI state (Loading → Success/Error). */
 export const IntrospectState = Schema.Union(
   Schema.TaggedStruct('Loading', {}),
   Schema.TaggedStruct('Success', {
@@ -23,6 +24,7 @@ export const IntrospectState = Schema.Union(
 
 export type IntrospectState = typeof IntrospectState.Type
 
+/** Actions dispatched by the introspect command to report results or errors. */
 export const IntrospectAction = Schema.Union(
   Schema.TaggedStruct('SetResult', {
     dbName: Schema.String,
@@ -35,6 +37,7 @@ export const IntrospectAction = Schema.Union(
 
 export type IntrospectAction = typeof IntrospectAction.Type
 
+/** Reducer that applies {@link IntrospectAction} to produce the next {@link IntrospectState}. */
 export const introspectReducer = ({
   state: _state,
   action,

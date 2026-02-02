@@ -5,6 +5,7 @@ const PropertyInfo = Schema.Struct({
   type: Schema.String,
 })
 
+/** Schema for the info command's UI state (Loading → Success/Error). */
 export const InfoState = Schema.Union(
   Schema.TaggedStruct('Loading', {}),
   Schema.TaggedStruct('Success', {
@@ -21,6 +22,7 @@ export const InfoState = Schema.Union(
 
 export type InfoState = typeof InfoState.Type
 
+/** Actions dispatched by the info command to report database metadata or errors. */
 export const InfoAction = Schema.Union(
   Schema.TaggedStruct('SetResult', {
     dbName: Schema.String,
@@ -34,6 +36,7 @@ export const InfoAction = Schema.Union(
 
 export type InfoAction = typeof InfoAction.Type
 
+/** Reducer that applies {@link InfoAction} to produce the next {@link InfoState}. */
 export const infoReducer = ({
   state: _state,
   action,

@@ -26,6 +26,7 @@ import { truncateLines } from './truncate.ts'
 // Options
 // =============================================================================
 
+/** Options for rendering TUI components to a string. */
 export interface RenderToStringOptions {
   /**
    * Terminal width for layout calculation.

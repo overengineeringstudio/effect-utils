@@ -229,9 +229,9 @@ export const createTuiLogger = (
  * }
  * ```
  */
-export function useTuiLogs(
+export const useTuiLogs = (
   logsRef: SubscriptionRef.SubscriptionRef<readonly TuiLogEntry[]>,
-): readonly TuiLogEntry[] {
+): readonly TuiLogEntry[] => {
   // Get current value synchronously
   const getSnapshot = (): readonly TuiLogEntry[] => {
     let value: readonly TuiLogEntry[] = []

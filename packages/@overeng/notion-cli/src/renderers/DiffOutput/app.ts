@@ -2,6 +2,7 @@ import { createTuiApp } from '@overeng/tui-react'
 
 import { DiffState, DiffAction, diffReducer } from './schema.ts'
 
+/** TUI app definition for the schema diff command. */
 export const DiffApp = createTuiApp({
   stateSchema: DiffState,
   actionSchema: DiffAction,

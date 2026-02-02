@@ -13,6 +13,7 @@ import stringWidth from 'string-width'
 // Types
 // =============================================================================
 
+/** Options for controlling text truncation behavior (position and ellipsis character). */
 export interface TruncateOptions {
   /**
    * Position to truncate from.

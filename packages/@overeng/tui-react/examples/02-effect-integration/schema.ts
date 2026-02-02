@@ -8,22 +8,26 @@ import { Schema } from 'effect'
 // State Schema
 // =============================================================================
 
+/** Schema for the running counter state with count, loading status, and action history. */
 export const RunningState = Schema.TaggedStruct('Running', {
   count: Schema.Number,
   status: Schema.Literal('idle', 'loading'),
   history: Schema.Array(Schema.String),
 })
 
+/** Schema for the completed counter state with final count and history. */
 export const CompleteState = Schema.TaggedStruct('Complete', {
   finalCount: Schema.Number,
   history: Schema.Array(Schema.String),
 })
 
+/** Schema for the interrupted counter state preserving count and history at interruption. */
 export const InterruptedState = Schema.TaggedStruct('Interrupted', {
   count: Schema.Number,
   history: Schema.Array(Schema.String),
 })
 
+/** Union schema of all counter states (Running, Complete, Interrupted). */
 export const CounterState = Schema.Union(RunningState, CompleteState, InterruptedState)
 
 export type CounterState = typeof CounterState.Type
@@ -32,6 +36,7 @@ export type CounterState = typeof CounterState.Type
 // Action Schema
 // =============================================================================
 
+/** Union schema of counter actions (Increment, Decrement, SetLoading, SetComplete, Interrupted). */
 export const CounterAction = Schema.Union(
   Schema.TaggedStruct('Increment', {}),
   Schema.TaggedStruct('Decrement', {}),
@@ -48,6 +53,7 @@ export type CounterAction = typeof CounterAction.Type
 
 const timestamp = () => new Date().toISOString().slice(11, 19)
 
+/** Reducer that handles counter increment/decrement, loading, completion, and interrupt actions. */
 export const counterReducer = ({
   state,
   action,

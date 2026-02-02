@@ -23,12 +23,14 @@ export const MemberOwnerNested = Schema.TaggedStruct('Nested', {
 /** Discriminated union for member ownership */
 export const MemberOwner = Schema.Union(MemberOwnerRoot, MemberOwnerNested)
 
+/** Inferred type representing whether a member belongs to the root or a nested megarepo. */
 export type MemberOwner = Schema.Schema.Type<typeof MemberOwner>
 
 // =============================================================================
 // Member Info
 // =============================================================================
 
+/** Schema for a member's metadata including name, source, owner, and megarepo flag. */
 export const MemberInfo = Schema.Struct({
   /** Member name */
   name: Schema.String,
@@ -40,6 +42,7 @@ export const MemberInfo = Schema.Struct({
   isMegarepo: Schema.Boolean,
 })
 
+/** Inferred type for member metadata in ls output. */
 export type MemberInfo = Schema.Schema.Type<typeof MemberInfo>
 
 // =============================================================================
@@ -79,9 +82,11 @@ export type LsState = typeof LsState.Type
 // Type Guards
 // =============================================================================
 
+/** Type guard that checks if the ls state is an error. */
 export const isLsError = (state: LsState): state is typeof LsErrorState.Type =>
   state._tag === 'Error'
 
+/** Type guard that checks if the ls state is a successful result with members. */
 export const isLsSuccess = (state: LsState): state is typeof LsSuccessState.Type =>
   state._tag === 'Success'
 
@@ -101,12 +106,14 @@ export const LsAction = Schema.Union(
   Schema.TaggedStruct('SetError', { error: Schema.String, message: Schema.String }),
 )
 
+/** Inferred type for ls actions. */
 export type LsAction = Schema.Schema.Type<typeof LsAction>
 
 // =============================================================================
 // Reducer
 // =============================================================================
 
+/** Reduces ls actions into state, setting members or error. */
 export const lsReducer = ({
   state: _state,
   action,

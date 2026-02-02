@@ -12,6 +12,7 @@ import type { DeployState, LogEntry, ServiceProgress, ServiceResult } from './sc
 // Main View
 // =============================================================================
 
+/** Renders the deploy command UI with service progress, log lines, and completion/failure states. */
 export const DeployView = ({ stateAtom }: { stateAtom: Atom.Atom<DeployState> }) => {
   // Derive atoms for routing and shared data
   const tagAtom = useMemo(() => Atom.map(stateAtom, (s) => s._tag), [stateAtom])
@@ -72,7 +73,7 @@ export const DeployView = ({ stateAtom }: { stateAtom: Atom.Atom<DeployState> })
 // Internal Components
 // =============================================================================
 
-function StatusIcon({ status }: { status: ServiceProgress['status'] }) {
+const StatusIcon = ({ status }: { status: ServiceProgress['status'] }) => {
   switch (status) {
     case 'pending':
       return <Text dim>○ </Text>
@@ -92,7 +93,7 @@ function StatusIcon({ status }: { status: ServiceProgress['status'] }) {
   }
 }
 
-function ResultIcon({ result }: { result: ServiceResult['result'] }) {
+const ResultIcon = ({ result }: { result: ServiceResult['result'] }) => {
   switch (result) {
     case 'updated':
       return <Text color="green">✓ </Text>
@@ -105,7 +106,7 @@ function ResultIcon({ result }: { result: ServiceResult['result'] }) {
   }
 }
 
-function LogLine({ entry }: { entry: LogEntry }) {
+const LogLine = ({ entry }: { entry: LogEntry }) => {
   const levelColor = {
     info: undefined,
     warn: 'yellow',
@@ -122,7 +123,7 @@ function LogLine({ entry }: { entry: LogEntry }) {
   )
 }
 
-function ServiceProgressLine({ service }: { service: ServiceProgress }) {
+const ServiceProgressLine = ({ service }: { service: ServiceProgress }) => {
   return (
     <Box flexDirection="row" paddingLeft={2}>
       <StatusIcon status={service.status} />
@@ -135,7 +136,7 @@ function ServiceProgressLine({ service }: { service: ServiceProgress }) {
   )
 }
 
-function ServiceResultLine({ service }: { service: ServiceResult }) {
+const ServiceResultLine = ({ service }: { service: ServiceResult }) => {
   return (
     <Box flexDirection="row" paddingLeft={2}>
       <ResultIcon result={service.result} />
@@ -149,7 +150,7 @@ function ServiceResultLine({ service }: { service: ServiceResult }) {
   )
 }
 
-function ProgressSection({ stateAtom }: { stateAtom: Atom.Atom<DeployState> }) {
+const ProgressSection = ({ stateAtom }: { stateAtom: Atom.Atom<DeployState> }) => {
   const state = useTuiAtomValue(stateAtom)
   if (state._tag !== 'Progress') return null
 
@@ -173,7 +174,7 @@ function ProgressSection({ stateAtom }: { stateAtom: Atom.Atom<DeployState> }) {
   )
 }
 
-function RollingBackSection({ stateAtom }: { stateAtom: Atom.Atom<DeployState> }) {
+const RollingBackSection = ({ stateAtom }: { stateAtom: Atom.Atom<DeployState> }) => {
   const state = useTuiAtomValue(stateAtom)
   if (state._tag !== 'RollingBack') return null
 
@@ -190,7 +191,7 @@ function RollingBackSection({ stateAtom }: { stateAtom: Atom.Atom<DeployState> }
   )
 }
 
-function CompleteSection({ stateAtom }: { stateAtom: Atom.Atom<DeployState> }) {
+const CompleteSection = ({ stateAtom }: { stateAtom: Atom.Atom<DeployState> }) => {
   const state = useTuiAtomValue(stateAtom)
   if (state._tag !== 'Complete') return null
 
@@ -211,7 +212,7 @@ function CompleteSection({ stateAtom }: { stateAtom: Atom.Atom<DeployState> }) {
   )
 }
 
-function FailedSection({ stateAtom }: { stateAtom: Atom.Atom<DeployState> }) {
+const FailedSection = ({ stateAtom }: { stateAtom: Atom.Atom<DeployState> }) => {
   const state = useTuiAtomValue(stateAtom)
   if (state._tag !== 'Failed') return null
 
@@ -235,7 +236,7 @@ function FailedSection({ stateAtom }: { stateAtom: Atom.Atom<DeployState> }) {
   )
 }
 
-function InterruptedSection({ stateAtom }: { stateAtom: Atom.Atom<DeployState> }) {
+const InterruptedSection = ({ stateAtom }: { stateAtom: Atom.Atom<DeployState> }) => {
   const state = useTuiAtomValue(stateAtom)
   if (state._tag !== 'Interrupted') return null
 

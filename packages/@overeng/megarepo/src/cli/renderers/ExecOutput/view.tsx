@@ -16,6 +16,7 @@ import type { ExecState, MemberExecStatus } from './schema.ts'
 // Main Component
 // =============================================================================
 
+/** Props for the ExecView component that renders command execution results per member. */
 export interface ExecViewProps {
   stateAtom: Atom.Atom<ExecState>
 }
@@ -84,7 +85,7 @@ export const ExecView = ({ stateAtom }: ExecViewProps) => {
 // Internal Components
 // =============================================================================
 
-function MemberResult({ member }: { member: MemberExecStatus }) {
+const MemberResult = ({ member }: { member: MemberExecStatus }) => {
   const hasOutput = member.stdout || member.stderr
 
   return (

@@ -27,7 +27,7 @@ interface Cell {
   color: Color | null
 }
 
-function formatStat({
+const formatStat = ({
   label,
   value,
   width,
@@ -35,14 +35,14 @@ function formatStat({
   label: string
   value: number
   width: number
-}): string {
+}): string => {
   const barW = width - 7
   const filled = Math.round((value / 100) * barW)
   const bar = '█'.repeat(filled) + '░'.repeat(barW - filled)
   return `${label} ${bar}${Math.round(value).toString().padStart(3)}`
 }
 
-function renderWindowToCanvas({
+const renderWindowToCanvas = ({
   canvas,
   win,
   canvasWidth,
@@ -50,7 +50,7 @@ function renderWindowToCanvas({
   canvas: Cell[][]
   win: Window
   canvasWidth: number
-}) {
+}) => {
   const x = Math.floor(win.x)
   const y = Math.floor(win.y)
   const { width, height, title, stats, color } = win
@@ -80,7 +80,7 @@ function renderWindowToCanvas({
   }
 }
 
-function createCanvas({ width, height }: { width: number; height: number }): Cell[][] {
+const createCanvas = ({ width, height }: { width: number; height: number }): Cell[][] => {
   return Array.from({ length: height }, () =>
     Array.from({ length: width }, () => ({ char: ' ', color: null })),
   )
@@ -90,7 +90,7 @@ function createCanvas({ width, height }: { width: number; height: number }): Cel
 // Internal Components
 // =============================================================================
 
-function CanvasRenderer({
+const CanvasRenderer = ({
   windows,
   width,
   height,
@@ -98,7 +98,7 @@ function CanvasRenderer({
   windows: readonly Window[]
   width: number
   height: number
-}) {
+}) => {
   const canvas = createCanvas({ width, height })
 
   for (const win of windows) {
@@ -152,7 +152,7 @@ function CanvasRenderer({
   return <Box>{renderedLines}</Box>
 }
 
-function RunningView({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) {
+const RunningView = ({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) => {
   const state = useTuiAtomValue(stateAtom)
   if (state._tag !== 'Running') return null
   return (
@@ -179,7 +179,7 @@ function RunningView({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) {
   )
 }
 
-function FinishedView({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) {
+const FinishedView = ({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) => {
   const state = useTuiAtomValue(stateAtom)
   if (state._tag !== 'Finished') return null
   return (
@@ -204,7 +204,7 @@ function FinishedView({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) {
   )
 }
 
-function InterruptedView({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) {
+const InterruptedView = ({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) => {
   const state = useTuiAtomValue(stateAtom)
   if (state._tag !== 'Interrupted') return null
   return (

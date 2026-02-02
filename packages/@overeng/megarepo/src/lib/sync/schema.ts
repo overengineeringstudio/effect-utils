@@ -22,6 +22,7 @@ export const MemberSyncStatus = Schema.Literal(
   'locked',
   'removed',
 )
+/** Inferred type for the possible outcomes of syncing a single member. */
 export type MemberSyncStatus = Schema.Schema.Type<typeof MemberSyncStatus>
 
 /** Sync result for a single member */
@@ -34,12 +35,14 @@ export const MemberSyncResult = Schema.Struct({
   ref: Schema.optional(Schema.String),
   lockUpdated: Schema.optional(Schema.Boolean),
 })
+/** Inferred type for a member's sync result including status, commit info, and optional message. */
 export type MemberSyncResult = Schema.Schema.Type<typeof MemberSyncResult>
 
 // =============================================================================
 // Sync Options (flags)
 // =============================================================================
 
+/** Schema for sync command flags (dry-run, frozen, pull, all, force, etc.). */
 export const SyncOptions = Schema.Struct({
   dryRun: Schema.Boolean,
   frozen: Schema.Boolean,
@@ -50,6 +53,7 @@ export const SyncOptions = Schema.Struct({
   /** Members skipped via --only or --skip */
   skippedMembers: Schema.optional(Schema.Array(Schema.String)),
 })
+/** Inferred type for sync command options. */
 export type SyncOptions = Schema.Schema.Type<typeof SyncOptions>
 
 /** Default sync options */
@@ -64,6 +68,7 @@ export const defaultSyncOptions: SyncOptions = {
 // Sync Summary (computed from results)
 // =============================================================================
 
+/** Schema for aggregated sync result counts by status category. */
 export const SyncSummary = Schema.Struct({
   cloned: Schema.Number,
   synced: Schema.Number,
@@ -75,6 +80,7 @@ export const SyncSummary = Schema.Struct({
   removed: Schema.Number,
   total: Schema.Number,
 })
+/** Inferred type for aggregated sync summary counts. */
 export type SyncSummary = Schema.Schema.Type<typeof SyncSummary>
 
 /** Compute summary from results */

@@ -31,6 +31,7 @@ export const ValidationError = Schema.TaggedStruct('CommandError.Validation', {
   message: Schema.String,
   field: Schema.optional(Schema.String),
 })
+/** Inferred type for a validation error (invalid input, configuration, etc.). */
 export type ValidationError = Schema.Schema.Type<typeof ValidationError>
 
 /**
@@ -40,6 +41,7 @@ export const RuntimeError = Schema.TaggedStruct('CommandError.Runtime', {
   message: Schema.String,
   cause: Schema.optional(Schema.Unknown),
 })
+/** Inferred type for a runtime error during command execution. */
 export type RuntimeError = Schema.Schema.Type<typeof RuntimeError>
 
 /**
@@ -48,12 +50,14 @@ export type RuntimeError = Schema.Schema.Type<typeof RuntimeError>
 export const CancelledError = Schema.TaggedStruct('CommandError.Cancelled', {
   reason: Schema.Literal('user', 'timeout', 'signal'),
 })
+/** Inferred type for a cancellation error (user, timeout, or signal). */
 export type CancelledError = Schema.Schema.Type<typeof CancelledError>
 
 /**
  * Union of all command error types.
  */
 export const CommandError = Schema.Union(ValidationError, RuntimeError, CancelledError)
+/** Inferred union type of all command error variants. */
 export type CommandError = Schema.Schema.Type<typeof CommandError>
 
 // =============================================================================

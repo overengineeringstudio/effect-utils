@@ -5,10 +5,12 @@ import { Box, Text, useTuiAtomValue, useSymbols } from '@overeng/tui-react'
 
 import type { GenerateConfigState } from './schema.ts'
 
+/** Props for {@link GenerateConfigView}. */
 export interface GenerateConfigViewProps {
   stateAtom: Atom.Atom<GenerateConfigState>
 }
 
+/** Renders the config-based generation progress, showing per-database status indicators. */
 export const GenerateConfigView = ({ stateAtom }: GenerateConfigViewProps) => {
   const state = useTuiAtomValue(stateAtom)
   const symbols = useSymbols()

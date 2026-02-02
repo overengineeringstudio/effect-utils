@@ -7,10 +7,12 @@ import { DatabaseHeader } from '../shared/DatabaseHeader.tsx'
 import { PropertyList } from '../shared/PropertyList.tsx'
 import type { InfoState } from './schema.ts'
 
+/** Props for {@link InfoView}. */
 export interface InfoViewProps {
   stateAtom: Atom.Atom<InfoState>
 }
 
+/** Renders database info including header, property list, and row count. */
 export const InfoView = ({ stateAtom }: InfoViewProps) => {
   const state = useTuiAtomValue(stateAtom)
   const symbols = useSymbols()

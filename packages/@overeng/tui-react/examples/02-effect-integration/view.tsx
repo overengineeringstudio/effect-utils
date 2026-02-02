@@ -4,6 +4,7 @@ import React, { useMemo } from 'react'
 import { Box, Text, Spinner, useTuiAtomValue } from '../../src/mod.ts'
 import type { CounterState } from './schema.ts'
 
+/** Renders the counter example with running count, loading spinner, and completion states. */
 export const CounterView = ({ stateAtom }: { stateAtom: Atom.Atom<CounterState> }) => {
   const tagAtom = useMemo(() => Atom.map(stateAtom, (s) => s._tag), [stateAtom])
   const tag = useTuiAtomValue(tagAtom)
@@ -22,7 +23,7 @@ export const CounterView = ({ stateAtom }: { stateAtom: Atom.Atom<CounterState> 
 // Internal Components
 // =============================================================================
 
-function HistoryView({ history }: { history: readonly string[] }) {
+const HistoryView = ({ history }: { history: readonly string[] }) => {
   return history.length > 0 ? (
     <Box marginTop={1} flexDirection="column">
       <Text dim>History:</Text>
@@ -36,7 +37,7 @@ function HistoryView({ history }: { history: readonly string[] }) {
   ) : null
 }
 
-function RunningView({ stateAtom }: { stateAtom: Atom.Atom<CounterState> }) {
+const RunningView = ({ stateAtom }: { stateAtom: Atom.Atom<CounterState> }) => {
   const state = useTuiAtomValue(stateAtom)
   if (state._tag !== 'Running') return null
 
@@ -65,7 +66,7 @@ function RunningView({ stateAtom }: { stateAtom: Atom.Atom<CounterState> }) {
   )
 }
 
-function CompleteView({ stateAtom }: { stateAtom: Atom.Atom<CounterState> }) {
+const CompleteView = ({ stateAtom }: { stateAtom: Atom.Atom<CounterState> }) => {
   const state = useTuiAtomValue(stateAtom)
   if (state._tag !== 'Complete') return null
 
@@ -85,7 +86,7 @@ function CompleteView({ stateAtom }: { stateAtom: Atom.Atom<CounterState> }) {
   )
 }
 
-function InterruptedView({ stateAtom }: { stateAtom: Atom.Atom<CounterState> }) {
+const InterruptedView = ({ stateAtom }: { stateAtom: Atom.Atom<CounterState> }) => {
   const state = useTuiAtomValue(stateAtom)
   if (state._tag !== 'Interrupted') return null
 

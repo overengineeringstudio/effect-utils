@@ -3,6 +3,7 @@ import React from 'react'
 import type { Color } from '@overeng/tui-core'
 import { Box, Text } from '@overeng/tui-react'
 
+/** Describes a single Notion database property with optional select options, groups, and relation info. */
 export interface PropertyInfo {
   readonly name: string
   readonly type: string
@@ -11,6 +12,7 @@ export interface PropertyInfo {
   readonly relationDatabase?: string
 }
 
+/** Props for {@link PropertyList}. */
 export interface PropertyListProps {
   properties: readonly PropertyInfo[]
   detailed?: boolean
@@ -50,6 +52,7 @@ const typeColor = (type: string): Color | undefined => {
   }
 }
 
+/** Renders a color-coded list of database properties, optionally including options and relation details. */
 export const PropertyList = ({ properties, detailed = false }: PropertyListProps) => (
   <Box flexDirection="column">
     <Text bold>Properties ({properties.length}):</Text>

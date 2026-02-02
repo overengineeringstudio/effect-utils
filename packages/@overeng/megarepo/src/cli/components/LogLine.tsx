@@ -14,6 +14,7 @@ import { type LogType, logConfig } from './tokens.ts'
 // Types
 // =============================================================================
 
+/** Props for the LogLine component that renders a single log entry with a typed prefix. */
 export interface LogLineProps {
   /** Log type */
   type: LogType

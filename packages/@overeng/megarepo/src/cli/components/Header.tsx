@@ -12,6 +12,7 @@ import { Box, Text } from '@overeng/tui-react'
 // Types
 // =============================================================================
 
+/** Props for the Header component that renders workspace name, path, and mode indicators. */
 export interface HeaderProps {
   /** Workspace name (bold) */
   name: string

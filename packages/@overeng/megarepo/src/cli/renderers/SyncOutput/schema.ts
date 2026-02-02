@@ -13,18 +13,22 @@ import { MemberSyncResult, SyncOptions } from '../../../lib/sync/schema.ts'
 // Sync Phase
 // =============================================================================
 
+/** Schema for the current phase of a sync operation. */
 export const SyncPhase = Schema.Literal('idle', 'syncing', 'complete', 'interrupted')
+/** Inferred type for sync phase literals. */
 export type SyncPhase = Schema.Schema.Type<typeof SyncPhase>
 
 // =============================================================================
 // Log Entry (for TTY progress display)
 // =============================================================================
 
+/** Schema for a log entry displayed during TTY progress output. */
 export const SyncLogEntry = Schema.Struct({
   id: Schema.String,
   type: Schema.Literal('info', 'warn', 'error'),
   message: Schema.String,
 })
+/** Inferred type for a sync log entry. */
 export type SyncLogEntry = Schema.Schema.Type<typeof SyncLogEntry>
 
 // =============================================================================
@@ -85,6 +89,7 @@ export const SyncState = Schema.Struct({
   generatedFiles: Schema.Array(Schema.String),
 })
 
+/** Inferred type for sync command state including workspace, options, phase, and results. */
 export type SyncState = Schema.Schema.Type<typeof SyncState>
 
 // =============================================================================
@@ -93,6 +98,7 @@ export type SyncState = Schema.Schema.Type<typeof SyncState>
 
 let logIdCounter = 0
 
+/** Tagged union of actions for progressing through a sync operation. */
 export const SyncAction = Schema.Union(
   /** Replace entire state */
   Schema.TaggedStruct('SetState', { state: SyncState }),
@@ -126,12 +132,14 @@ export const SyncAction = Schema.Union(
   Schema.TaggedStruct('Interrupted', {}),
 )
 
+/** Inferred type for sync actions. */
 export type SyncAction = Schema.Schema.Type<typeof SyncAction>
 
 // =============================================================================
 // Reducer
 // =============================================================================
 
+/** Reduces sync actions into state, managing phases, results, logs, and active member. */
 export const syncReducer = ({
   state,
   action,

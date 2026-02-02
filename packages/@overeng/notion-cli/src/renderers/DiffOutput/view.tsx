@@ -5,10 +5,12 @@ import { Box, Text, useTuiAtomValue, useSymbols } from '@overeng/tui-react'
 
 import type { DiffState } from './schema.ts'
 
+/** Props for {@link DiffView}. */
 export interface DiffViewProps {
   stateAtom: Atom.Atom<DiffState>
 }
 
+/** Renders a color-coded diff of property and option changes between live and generated schemas. */
 export const DiffView = ({ stateAtom }: DiffViewProps) => {
   const state = useTuiAtomValue(stateAtom)
   const symbols = useSymbols()

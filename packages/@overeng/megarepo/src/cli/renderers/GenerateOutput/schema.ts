@@ -32,6 +32,7 @@ export const GenerateResultItem = Schema.Struct({
   status: Schema.String,
 })
 
+/** Inferred type for a single generated file result. */
 export type GenerateResultItem = Schema.Schema.Type<typeof GenerateResultItem>
 
 /**
@@ -60,23 +61,28 @@ export const GenerateState = Schema.Union(
   GenerateErrorState,
 )
 
+/** Inferred type for the generate command state (idle, running, success, or error). */
 export type GenerateState = Schema.Schema.Type<typeof GenerateState>
 
 // =============================================================================
 // Type Guards
 // =============================================================================
 
+/** Type guard that checks if the generate state is an error. */
 export const isGenerateError = (state: GenerateState): state is typeof GenerateErrorState.Type =>
   state._tag === 'Error'
 
+/** Type guard that checks if the generate state completed successfully with results. */
 export const isGenerateSuccess = (
   state: GenerateState,
 ): state is typeof GenerateSuccessState.Type => state._tag === 'Success'
 
+/** Type guard that checks if the generate state is currently running. */
 export const isGenerateRunning = (
   state: GenerateState,
 ): state is typeof GenerateRunningState.Type => state._tag === 'Running'
 
+/** Type guard that checks if the generate state is idle (not yet started). */
 export const isGenerateIdle = (state: GenerateState): state is typeof GenerateIdleState.Type =>
   state._tag === 'Idle'
 

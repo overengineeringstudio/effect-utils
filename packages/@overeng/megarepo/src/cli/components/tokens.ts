@@ -59,6 +59,7 @@ export type SyncResultStatus =
 // Status Configuration
 // =============================================================================
 
+/** Configuration for rendering a status indicator icon with optional color and dim styling. */
 export type StatusConfig = {
   icon: string | 'spinner'
   color?: 'green' | 'red' | 'yellow' | 'cyan' | 'blue' | 'magenta'
@@ -107,8 +108,10 @@ export const syncToTaskStatus = (status: SyncResultStatus): TaskStatus => {
 // Log Types
 // =============================================================================
 
+/** Log severity levels used by the LogLine component. */
 export type LogType = 'info' | 'warn' | 'error'
 
+/** Maps each log type to its prefix character and color for CLI display. */
 export const logConfig: Record<LogType, { prefix: string; color: 'cyan' | 'yellow' | 'red' }> = {
   info: { prefix: 'i', color: 'cyan' },
   warn: { prefix: '!', color: 'yellow' },

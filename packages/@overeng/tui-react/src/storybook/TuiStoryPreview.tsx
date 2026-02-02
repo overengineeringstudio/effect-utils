@@ -57,6 +57,7 @@ import { xtermTheme, containerStyles, previewTextStyles, previewPadding } from '
 // Types
 // =============================================================================
 
+/** Identifier for a preview output mode tab (tty, ci, json, etc.). */
 export type OutputTab =
   | 'tty'
   | 'alt-screen'
@@ -67,6 +68,7 @@ export type OutputTab =
   | 'json'
   | 'ndjson'
 
+/** A timed action event for storybook timeline playback. */
 export interface TimelineEvent<A> {
   /** Time offset in milliseconds from start */
   at: number
@@ -1193,6 +1195,7 @@ const DEFAULT_TABS: OutputTab[] = ['tty', 'ci', 'log', 'json', 'ndjson']
 // Main Component
 // =============================================================================
 
+/** Storybook preview component that renders a TuiApp with multi-tab output modes and timeline playback. */
 export const TuiStoryPreview = <S, A>({
   app,
   View,

@@ -7,10 +7,12 @@ import { DatabaseHeader } from '../shared/DatabaseHeader.tsx'
 import { PropertyList, type PropertyInfo } from '../shared/PropertyList.tsx'
 import type { IntrospectState } from './schema.ts'
 
+/** Props for {@link IntrospectView}. */
 export interface IntrospectViewProps {
   stateAtom: Atom.Atom<IntrospectState>
 }
 
+/** Renders introspection results showing database metadata and a detailed property list. */
 export const IntrospectView = ({ stateAtom }: IntrospectViewProps) => {
   const state = useTuiAtomValue(stateAtom)
   const symbols = useSymbols()
