@@ -92,7 +92,7 @@ deploy --output ndjson           # Streaming NDJSON
 - `NO_COLOR` environment variable → removes colors from detected mode
 - `NO_UNICODE` environment variable → removes unicode from detected mode
 
-**Agent detection:** Commands automatically detect when they're being executed by a coding agent (e.g. Claude Code, OpenCode, Amp, Cline, Codex CLI) by checking for well-known environment variables these tools inject into their shell sessions. When an agent is detected, the output defaults to `json` so the agent receives structured, machine-readable data instead of visual terminal output. This can be overridden with `TUI_VISUAL=1` or an explicit `--output` flag.
+**Agent detection:** Commands automatically detect when they're being executed by a coding agent (e.g. Claude Code, OpenCode, Amp, Cline, Codex CLI) by checking for well-known environment variables these tools inject into their shell sessions. The most prominent signal is the `AGENT` env var — a convention adopted by multiple tools (OpenCode sets `AGENT=1`, Amp sets `AGENT=amp`). When an agent is detected, the output defaults to `json` so the agent receives structured, machine-readable data instead of visual terminal output. This can be overridden with `TUI_VISUAL=1` or an explicit `--output` flag.
 
 **Validation & Fallbacks:**
 
