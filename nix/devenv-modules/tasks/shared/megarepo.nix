@@ -1,6 +1,6 @@
 # Megarepo sync and workspace generation tasks.
 #
-# Uses `nix run path:$PWD#megarepo` to run the CLI, which works without node_modules.
+# Uses `nix run git+file:$PWD#megarepo` to run the CLI, which works without node_modules.
 # This enables bootstrap on fresh clones where source CLIs can't resolve imports.
 #
 # Tasks:
@@ -16,8 +16,8 @@
         exit 0
       fi
 
-      # Use path: flake ref with $PWD to ensure correct directory resolution
-      nix run "path:$PWD#megarepo" -- sync --deep
+      # Use git+file: flake ref with $PWD to ensure correct directory resolution
+      nix run "git+file:$PWD#megarepo" -- sync --all
     '';
     # Status: use `mr status --output json` to detect if sync is needed.
     # The CLI computes syncNeeded based on: missing symlinks/worktrees, symlink drift, lock staleness.
@@ -26,13 +26,13 @@
         exit 0
       fi
 
-      # Fast path: if repos/ doesn't exist, definitely need sync
+      # Fast git+file: if repos/ doesn't exist, definitely need sync
       if [ ! -d ./repos ]; then
         exit 1
       fi
 
       # Use mr status to check syncNeeded field
-      status_json=$(nix run "path:$PWD#megarepo" -- status --output json 2>/dev/null) || exit 1
+      status_json=$(nix run "git+file:$PWD#megarepo" -- status --output json 2>/dev/null) || exit 1
 
       # Use the top-level syncNeeded boolean for a simple check
       echo "$status_json" | ${pkgs.jq}/bin/jq -e '.syncNeeded == false' >/dev/null 2>&1
@@ -47,8 +47,8 @@
         exit 0
       fi
 
-      # Use path: flake ref with $PWD to ensure correct directory resolution
-      nix run "path:$PWD#megarepo" -- generate nix --deep
+      # Use git+file: flake ref with $PWD to ensure correct directory resolution
+      nix run "git+file:$PWD#megarepo" -- generate nix --all
     '';
     status = ''
       if [ ! -f ./megarepo.json ]; then
