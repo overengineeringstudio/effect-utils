@@ -15,7 +15,7 @@ let
     workspaceRoot = src;
     # Patches are in packages/@overeng/utils/patches/ (referenced by pnpm-lock.yaml)
     patchesDir = "packages/@overeng/utils/patches";
-    pnpmDepsHash = "sha256-x+YpNp1tAi3GBBNDKF4wInvQ/yUPIPKBAOmJl2DBAEg=";
+    pnpmDepsHash = "sha256-QWlBf9PgI/KNSfgV4q+xu8jTjieOusdNc7XrhozRRjs=";
     lockfileHash = "sha256-4Wc5ClYLTU7Va45tNaUf+RpMhaV3GikGByb5+M61x2M=";
     packageJsonDepsHash = "sha256-tGkiG+aEO0TUw/SVvU9T0cgD4nMjENqRioocT5w3XMQ=";
     smokeTestArgs = [ "--help" ];
