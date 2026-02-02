@@ -15,12 +15,20 @@ let
     packageDir = "packages/@overeng/genie";
     workspaceRoot = src;
     extraExcludedSourceNames = [ "context" "scripts" ];
+    # Workspace members from pnpm-workspace.yaml (relative paths resolved to absolute)
+    # Their package.json files are included in fetchPnpmDeps source so pnpm fetches their deps
+    workspaceMembers = [
+      "packages/@overeng/tui-core"
+      "packages/@overeng/tui-react"
+      "packages/@overeng/utils"
+    ];
     # Platform-specific hash: fetchPnpmDeps only fetches native binaries for the current platform.
     # Each platform produces different hashes due to platform-specific optional dependencies
     # (e.g., @esbuild/darwin-arm64 vs @esbuild/linux-x64).
+    # Platform-specific hash: pnpm fetches different platform-specific native binaries
     pnpmDepsHash = if pkgs.stdenv.isDarwin
-      then "sha256-QWlBf9PgI/KNSfgV4q+xu8jTjieOusdNc7XrhozRRjs="
-      else "sha256-iFLooc+a37yX3grR/D5nUpvkJO9UGwVCHOqgcloVceE=";
+      then "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="  # TODO: get Darwin hash
+      else "sha256-0OHMzQED/RhUu53PzfxvTnveqewCZgphJasIJXyrPSc=";
     lockfileHash = "sha256-QGGaglW35zh/PsdeAgHchf83RSDgQLUL7y25aXlz5bI=";
     packageJsonDepsHash = "sha256-slNo40B9ZwvVopL7htF9m0Skywj5G8zVhlAZbE/lCHM=";
     inherit gitRev commitTs dirty;

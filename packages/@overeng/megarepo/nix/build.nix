@@ -15,7 +15,18 @@ let
     workspaceRoot = src;
     # Patches are in packages/@overeng/utils/patches/ (referenced by pnpm-lock.yaml)
     patchesDir = "packages/@overeng/utils/patches";
-    pnpmDepsHash = "sha256-QWlBf9PgI/KNSfgV4q+xu8jTjieOusdNc7XrhozRRjs=";
+    # Workspace members from pnpm-workspace.yaml (relative paths resolved to absolute)
+    # Their package.json files are included in fetchPnpmDeps source so pnpm fetches their deps
+    workspaceMembers = [
+      "packages/@overeng/effect-path"
+      "packages/@overeng/tui-core"
+      "packages/@overeng/tui-react"
+      "packages/@overeng/utils"
+    ];
+    # Platform-specific hash: pnpm fetches different platform-specific native binaries
+    pnpmDepsHash = if pkgs.stdenv.isDarwin
+      then "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="  # TODO: get Darwin hash
+      else "sha256-iuZYzZbieCwiH/gwNgnWg0n7GVEBV7feLvEcI60tYOY=";
     lockfileHash = "sha256-cVz9AVt2R+J9nbg/dtYX9YYlBFiWGAnkYYFFjn7HX5w=";
     packageJsonDepsHash = "sha256-tGkiG+aEO0TUw/SVvU9T0cgD4nMjENqRioocT5w3XMQ=";
     smokeTestArgs = [ "--help" ];

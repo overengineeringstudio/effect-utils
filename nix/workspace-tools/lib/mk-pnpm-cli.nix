@@ -22,6 +22,10 @@
 #                        Not used by the builder itself; accepted for API compatibility.
 #                        Used externally by nix:check:quick to detect package.json changes
 #                        without lockfile update (e.g., forgetting to run `pnpm install`).
+# - workspaceMembers: List of workspace member directories relative to workspaceRoot.
+#                     Only their package.json files are included in fetchPnpmDeps source
+#                     (not full directories) to let pnpm know what to fetch without
+#                     triggering EACCES errors from trying to create node_modules.
 # - patchesDir: Patches directory relative to workspaceRoot (null to disable).
 # - binaryName: Output binary name (defaults to name).
 # - gitRev: Git short revision (defaults to "unknown").
@@ -40,6 +44,7 @@
   pnpmDepsHash,
   lockfileHash ? null,
   packageJsonDepsHash ? null,
+  workspaceMembers ? [],
   patchesDir ? "patches",
   binaryName ? name,
   gitRev ? "unknown",
@@ -61,35 +66,91 @@ let
     else builtins.toPath workspaceRoot;
 
   # Create filtered source for fetching pnpm deps
-  # ONLY includes the main package - workspace members are excluded to avoid
-  # pnpm trying to create node_modules in read-only sibling directories
+  # Includes the main package and ONLY package.json files from workspace members
+  # (not full directories) to let pnpm know what deps to fetch without trying
+  # to create node_modules in read-only sibling directories
   mkPackageSource = pkgDir:
     lib.cleanSourceWith {
       src = workspaceRootPath;
       filter = path: type:
         let
           relPath = lib.removePrefix (toString workspaceRootPath + "/") (toString path);
-          # Only include the main package directory
+          # Include everything under the main package directory
           isInPackage = lib.hasPrefix "${pkgDir}/" relPath || relPath == pkgDir;
           # Include parent directories needed for structure
           parts = lib.splitString "/" pkgDir;
           isParentDir = lib.any (n: relPath == lib.concatStringsSep "/" (lib.take n parts)) (lib.range 1 (lib.length parts));
           # Check if path is under patches directory
           isInPatches = patchesDir != null && (lib.hasPrefix "${patchesDir}/" relPath || relPath == patchesDir);
+          # Include workspace member package.json files (not full directories)
+          # Also include their parent directories as directories
+          isWorkspaceMemberPackageJson = lib.any (memberDir:
+            relPath == "${memberDir}/package.json"
+          ) workspaceMembers;
+          isWorkspaceMemberDir = type == "directory" && lib.any (memberDir:
+            relPath == memberDir
+          ) workspaceMembers;
+          isWorkspaceMemberParentDir = type == "directory" && lib.any (memberDir:
+            let memberParts = lib.splitString "/" memberDir;
+            in lib.any (n: relPath == lib.concatStringsSep "/" (lib.take n memberParts)) (lib.range 1 (lib.length memberParts - 1))
+          ) workspaceMembers;
         in
-        type == "directory" || isInPackage || isInPatches || isParentDir;
+        type == "directory" || isInPackage || isInPatches || isParentDir ||
+        isWorkspaceMemberPackageJson || isWorkspaceMemberDir || isWorkspaceMemberParentDir;
     };
 
-  # Fetch pnpm deps - single call since lockfile includes all workspace members
-  # Source only includes main package, so pnpm can't try to write to sibling dirs
-  # This fetches ALL deps from lockfile (including workspace member deps)
-  pnpmDeps = pkgs.fetchPnpmDeps {
+  # Custom pnpm deps fetcher that handles workspace members
+  # Standard fetchPnpmDeps fails because workspace member directories are read-only
+  # and pnpm tries to create node_modules in them. This fetcher makes the source
+  # writable before running pnpm install.
+  pnpmDeps = pkgs.stdenvNoCC.mkDerivation {
     pname = "${name}-pnpm-deps";
+    version = "0.0.0";
+
     src = mkPackageSource packageDir;
     sourceRoot = "source/${packageDir}";
-    hash = pnpmDepsHash;
-    # fetcherVersion 3 is for pnpm 9.x/10.x
-    fetcherVersion = 3;
+
+    nativeBuildInputs = [
+      pkgs.pnpm
+      pkgs.nodejs
+      pkgs.cacert
+      pkgs.zstd
+    ];
+
+    dontConfigure = true;
+    dontBuild = true;
+
+    installPhase = ''
+      runHook preInstall
+
+      # Make the entire source tree writable (critical for workspace members)
+      cd "$NIX_BUILD_TOP/source"
+      chmod -R +w .
+      cd "$NIX_BUILD_TOP/source/${packageDir}"
+
+      export HOME=$PWD
+      export STORE_PATH=$PWD/.pnpm-store
+
+      # Configure pnpm
+      pnpm config set store-dir "$STORE_PATH"
+      pnpm config set manage-package-manager-versions false
+
+      # Install with network access - this downloads all deps to the store
+      # Use --force to skip workspace member validation since we only have package.json files
+      pnpm install --frozen-lockfile --ignore-scripts --force
+
+      # Create output directory
+      mkdir -p $out
+
+      # Archive the pnpm store
+      cd $STORE_PATH
+      tar -cf - . | zstd -o $out/pnpm-store.tar.zst
+
+      runHook postInstall
+    '';
+
+    outputHashMode = "recursive";
+    outputHash = pnpmDepsHash;
   };
 
   # Full workspace source for building
