@@ -1,16 +1,12 @@
 /**
  * Single source of truth for all @overeng/* packages in effect-utils.
  *
- * When adding a new package:
- * 1. Add it to `internalPackages` below
- * 2. Add the import in `workspace-registry.ts`
- *
- * The catalog in internal.ts is derived from this list automatically.
+ * This list is used to generate catalog entries in internal.ts.
+ * When adding a new package, add it here.
  */
 
 /**
  * All internal @overeng/* package short names.
- * Used to derive catalog entries and validate registry completeness.
  */
 export const internalPackages = [
   'effect-path',
@@ -27,12 +23,6 @@ export const internalPackages = [
 ] as const
 
 export type InternalPackageName = (typeof internalPackages)[number]
-
-/**
- * Convert short name to full package name.
- */
-export const toFullPackageName = (shortName: InternalPackageName): string =>
-  `@overeng/${shortName}`
 
 /**
  * Generate catalog entries for all internal packages.

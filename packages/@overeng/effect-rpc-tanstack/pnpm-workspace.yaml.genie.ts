@@ -1,15 +1,7 @@
-import { createWorkspaceRegistry, pnpmWorkspaceReactFromPackageJson } from '../../../genie/internal.ts'
-import { workspaceRegistry } from '../../../genie/workspace-registry.ts'
+import { pnpmWorkspaceWithDepsReact } from '../../../genie/internal.ts'
 import examplePkg from './examples/basic/package.json.genie.ts'
 import pkg from './package.json.genie.ts'
 
-// Extend global registry with local example packages
-const localRegistry = new Map([
-  ...workspaceRegistry,
-  ...createWorkspaceRegistry([pkg, examplePkg]),
-])
-
-export default pnpmWorkspaceReactFromPackageJson(examplePkg, {
-  registry: localRegistry,
+export default pnpmWorkspaceWithDepsReact(pkg, [examplePkg], {
   extraPackages: ['examples/basic'],
 })

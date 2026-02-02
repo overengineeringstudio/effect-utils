@@ -1,3 +1,3 @@
-import { pnpmWorkspace } from '../../../genie/internal.ts'
+import { pnpmWorkspaceStandalone } from '../../../genie/internal.ts'
 
-export default pnpmWorkspace('../tui-core')
+export default pnpmWorkspaceStandalone()

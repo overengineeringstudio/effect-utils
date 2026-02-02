@@ -1,4 +1,3 @@
-import { pnpmWorkspaceReactFromPackageJson } from '../../../genie/internal.ts'
-import pkg from './package.json.genie.ts'
+import { pnpmWorkspaceStandaloneReact } from '../../../genie/internal.ts'
 
-export default pnpmWorkspaceReactFromPackageJson(pkg)
+export default pnpmWorkspaceStandaloneReact()
