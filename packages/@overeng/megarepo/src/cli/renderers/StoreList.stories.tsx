@@ -34,6 +34,7 @@ const createLsState = (repos: StoreRepo[]): StoreStateType => ({
 // =============================================================================
 
 export default {
+  component: StoreView,
   title: 'CLI/Store/List',
   parameters: {
     layout: 'padded',

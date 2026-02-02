@@ -83,6 +83,7 @@ const demoTimeline = createRapidTimeline(3000, 100) // 3 seconds, tick every 100
 // =============================================================================
 
 export default {
+  component: StressTestView,
   title: 'Examples/04 Stress/Rapid Updates',
   parameters: {
     layout: 'fullscreen',

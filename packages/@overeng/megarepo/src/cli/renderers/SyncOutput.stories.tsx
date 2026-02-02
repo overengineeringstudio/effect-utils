@@ -77,6 +77,7 @@ const createBaseState = (overrides?: Partial<SyncStateType>): SyncStateType => (
 // =============================================================================
 
 const meta = {
+  component: SyncView,
   title: 'CLI/Sync Output',
   parameters: {
     layout: 'fullscreen',

@@ -62,6 +62,7 @@ const interruptTimeline: Array<{ at: number; action: typeof AppAction.Type }> = 
 // =============================================================================
 
 export default {
+  component: HelloWorldView,
   title: 'Examples/01 Basic/Hello World',
   parameters: {
     layout: 'fullscreen',

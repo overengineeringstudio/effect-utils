@@ -70,6 +70,7 @@ const demoTimeline: Array<{ at: number; action: typeof CounterAction.Type }> = [
 // =============================================================================
 
 export default {
+  component: CounterView,
   title: 'Examples/02 Effect/Counter',
   parameters: {
     layout: 'fullscreen',

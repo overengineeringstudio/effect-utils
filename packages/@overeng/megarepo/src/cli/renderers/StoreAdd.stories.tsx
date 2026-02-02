@@ -44,6 +44,7 @@ const createErrorState = (opts: {
 // =============================================================================
 
 export default {
+  component: StoreView,
   title: 'CLI/Store/Add',
   parameters: {
     layout: 'padded',

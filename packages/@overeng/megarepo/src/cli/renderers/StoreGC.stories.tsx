@@ -63,6 +63,7 @@ const createGcState = (opts: {
 // =============================================================================
 
 export default {
+  component: StoreView,
   title: 'CLI/Store/GC',
   parameters: {
     layout: 'padded',

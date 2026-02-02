@@ -97,6 +97,7 @@ const createStatusState = (opts: {
 // =============================================================================
 
 export default {
+  component: StoreView,
   title: 'CLI/Store/Status',
   parameters: {
     layout: 'padded',

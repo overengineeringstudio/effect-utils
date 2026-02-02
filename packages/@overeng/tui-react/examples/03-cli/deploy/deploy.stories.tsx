@@ -251,6 +251,7 @@ const ALL_TABS: OutputTab[] = [
 ]
 
 export default {
+  component: DeployView,
   title: 'Examples/03 CLI/Deploy',
   parameters: {
     layout: 'fullscreen',

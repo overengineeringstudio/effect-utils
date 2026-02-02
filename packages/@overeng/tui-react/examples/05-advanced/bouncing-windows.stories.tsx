@@ -79,6 +79,7 @@ const demoTimeline = createBouncingTimeline(5000, 80) // 5 seconds
 // =============================================================================
 
 export default {
+  component: BouncingWindowsView,
   title: 'Examples/05 Advanced/Bouncing Windows',
   parameters: {
     layout: 'fullscreen',

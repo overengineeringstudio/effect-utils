@@ -43,6 +43,7 @@ const createFetchState = (opts: {
 // =============================================================================
 
 export default {
+  component: StoreView,
   title: 'CLI/Store/Fetch',
   parameters: {
     layout: 'padded',
