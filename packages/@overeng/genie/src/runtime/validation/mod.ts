@@ -1,3 +1,4 @@
+import type { FileSystem, Path } from '@effect/platform'
 import type { Effect } from 'effect'
 
 import type { ValidationIssue } from '../package-json/validation.ts'
@@ -6,7 +7,9 @@ export type WorkspaceProviderName = 'pnpm' | 'bun' | 'manual'
 
 export type WorkspaceProvider = {
   name: WorkspaceProviderName
-  discoverPackageJsonPaths: (args: { cwd: string }) => Effect.Effect<string[], Error, unknown>
+  discoverPackageJsonPaths: (args: {
+    cwd: string
+  }) => Effect.Effect<string[], Error, FileSystem.FileSystem | Path.Path>
 }
 
 export type PackageInfo = {

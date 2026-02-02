@@ -11,7 +11,7 @@ import { CurrentWorkingDirectory } from '@overeng/utils/node'
 
 import { GenieApp } from './app.ts'
 import { findGenieFiles } from './discovery.ts'
-import type { GenieCheckError, GenieFileError, GenieImportError } from './errors.ts'
+import { GenieFileError, type GenieCheckError, type GenieImportError } from './errors.ts'
 import { GenieGenerationFailedError } from './errors.ts'
 import { checkFile, errorOriginatesInFile, generateFile, isTdzError } from './generation.ts'
 import {
@@ -113,7 +113,7 @@ export const genieCommand: Cli.Command.Command<
     output: outputOption,
   },
   ({ cwd, writeable, watch, check, dryRun, oxfmtConfig, output }) => {
-    const handler: Effect.Effect<void, GenieCommandError, GenieCommandEnv> = Effect.gen(
+    const handler = Effect.gen(
       function* () {
         const fs = yield* FileSystem.FileSystem
         const readOnly = !writeable
@@ -305,7 +305,7 @@ export const genieCommand: Cli.Command.Command<
           // Re-validate sequentially to identify root causes
           const revalidateErrors: Array<{
             genieFilePath: string
-            error: GenieFileError | GenieCheckError | GenieImportError | PlatformError
+            error: GenieCheckError | GenieImportError | PlatformError.PlatformError
             isRootCause: boolean
           }> = []
 
@@ -318,12 +318,11 @@ export const genieCommand: Cli.Command.Command<
 
             if (Either.isLeft(result)) {
               const error = result.left
-              const errorCause = error instanceof GenieFileError ? error.cause : error
               revalidateErrors.push({
                 genieFilePath,
                 error,
                 isRootCause: errorOriginatesInFile({
-                  error: errorCause,
+                  error,
                   filePath: genieFilePath,
                 }),
               })
