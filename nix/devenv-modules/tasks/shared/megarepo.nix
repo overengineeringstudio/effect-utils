@@ -1,7 +1,14 @@
 # Megarepo sync and workspace generation tasks.
 #
-# Uses `nix run git+file:$PWD#megarepo` to run the CLI, which works without node_modules.
-# This enables bootstrap on fresh clones where source CLIs can't resolve imports.
+# Uses `nix run git+file:$PWD#megarepo` to build and run the CLI via Nix.
+# This is a bootstrap exception to R13 (which prefers source CLIs in devenv):
+# on fresh clones, node_modules don't exist yet, so the source CLI (`mr` via bun)
+# can't resolve imports. The Nix-built binary has deps baked in and works without
+# node_modules.
+#
+# IMPORTANT: Must use `git+file:` (not `path:`) flake ref. The `path:` scheme copies
+# the entire working directory to the Nix store (including node_modules, .devenv, etc.),
+# which can be gigabytes and causes hangs. `git+file:` only copies git-tracked files.
 #
 # Tasks:
 # - megarepo:sync - Clone/update member repos and create symlinks

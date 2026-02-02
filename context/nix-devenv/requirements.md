@@ -38,7 +38,7 @@ We manage multiple interconnected repositories using a megarepo approach. Each r
 
 ### Must be simple
 
-- R13 - In devenv, run in-repo CLIs via `bun` from source; keep flake outputs strict for builds.
+- R13 - In devenv, run in-repo CLIs via `bun` from source; keep flake outputs strict for builds. Exception: bootstrap tasks (e.g. `megarepo:sync`) that run before `node_modules` exist may use `nix run git+file:$PWD#<pkg>` to build and run the CLI via Nix.
 - R14 - Keep `.envrc` minimal; follow the standard pattern: source `.envrc.generated.megarepo`, then `use devenv`.
 - R15 - Use devenv tasks as the task runner with the `dt` wrapper for dependency resolution.
 - R16 - Avoid redundant implementations; prefer shared modules in `effect-utils/devenvModules`.
