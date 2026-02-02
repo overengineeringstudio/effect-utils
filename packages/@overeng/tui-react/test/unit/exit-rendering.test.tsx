@@ -169,8 +169,8 @@ describe('ExitMode', () => {
 
       // Should have cursor up + clear line sequences after the content
       expect(terminal.getRawOutput()).toMatchInlineSnapshot(`
-        "[?25l[?2026hDynamic content
-        [?2026l[1A[2K
+        "[?25l[?2026h[0mDynamic content
+        [?2026l[?2026h[?2026l[1A[2K
         [1A[?25h"
       `)
     })
@@ -192,8 +192,8 @@ describe('ExitMode', () => {
 
       // Should have clearing sequences
       expect(terminal.getRawOutput()).toMatchInlineSnapshot(`
-        "[?25l[?2026hWill be cleared
-        [?2026l[1A[2K
+        "[?25l[?2026h[0mWill be cleared
+        [?2026l[?2026h[?2026l[1A[2K
         [1A[?25h"
       `)
     })
@@ -379,8 +379,8 @@ describe('Final state output', () => {
 
     // The final state should have the value we set
     expect(output.value).toBe('final')
-    // And should be interrupted (from scope close)
-    expect(output.interrupted).toBe(true)
+    // Normal scope close should NOT dispatch Interrupted (only actual fiber interruption does)
+    expect(output.interrupted).toBe(false)
   })
 })
 

@@ -255,10 +255,31 @@ describe('CLI Integration', () => {
   })
 
   test('detectOutputMode returns appropriate mode for environment', () => {
-    // In test environment (non-TTY), detectOutputMode returns pipe mode
-    const mode = detectOutputMode()
-    expect(mode._tag).toBe('react')
-    expect(mode.timing).toBe('final') // pipe is final
+    // Clear agent env vars so we test the non-agent, non-TTY path
+    const savedEnv: Record<string, string | undefined> = {}
+    const agentVars = [
+      'AGENT',
+      'CLAUDE_PROJECT_DIR',
+      'CLAUDECODE',
+      'OPENCODE',
+      'CLINE_ACTIVE',
+      'CODEX_SANDBOX',
+    ]
+    for (const key of agentVars) {
+      savedEnv[key] = process.env[key]
+      delete process.env[key]
+    }
+    try {
+      // In non-TTY, non-agent environment, detectOutputMode returns pipe (react + final)
+      const mode = detectOutputMode()
+      expect(mode._tag).toBe('react')
+      expect(mode.timing).toBe('final') // pipe is final
+    } finally {
+      for (const key of agentVars) {
+        if (savedEnv[key] !== undefined) process.env[key] = savedEnv[key]
+        else delete process.env[key]
+      }
+    }
   })
 
   test('command result is returned correctly', async () => {
