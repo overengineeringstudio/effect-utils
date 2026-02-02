@@ -15,6 +15,8 @@ import { LsState, LsAction, lsReducer } from './schema.ts'
 export const createInitialLsState = (): typeof LsState.Type => ({
   _tag: 'Success',
   members: [],
+  all: false,
+  megarepoName: '',
 })
 
 /**

@@ -68,7 +68,7 @@ import {
 
 /**
  * Sync a megarepo at the given root path.
- * This is extracted to enable recursive syncing for --deep mode.
+ * This is extracted to enable recursive syncing for --all mode.
  *
  * @param visited - Set of already-synced megarepo roots (resolved paths) to prevent duplicate syncing
  *                  in diamond dependency scenarios (e.g., A→B, A→C, B→D, C→D where D would be synced twice)
@@ -89,7 +89,7 @@ export const syncMegarepo = ({
     pull: boolean
     frozen: boolean
     force: boolean
-    deep: boolean
+    all: boolean
     only: ReadonlyArray<string> | undefined
     skip: ReadonlyArray<string> | undefined
     verbose: boolean
@@ -120,7 +120,7 @@ export const syncMegarepo = ({
       pull,
       frozen,
       force,
-      deep,
+      all,
       only,
       skip,
       verbose,
@@ -321,7 +321,7 @@ export const syncMegarepo = ({
     // Combine results with removed members
     const allResults = [...results, ...removedResults]
 
-    // Check which members are themselves megarepos (for --deep)
+    // Check which members are themselves megarepos (for --all)
     const nestedMegarepoChecks = yield* Effect.all(
       results.map((result) =>
         Effect.gen(function* () {
@@ -418,9 +418,9 @@ export const syncMegarepo = ({
       })
     }
 
-    // Handle --deep flag: recursively sync nested megarepos
+    // Handle --all flag: recursively sync nested megarepos
     const nestedResults: MegarepoSyncResult[] = []
-    if (deep && nestedMegarepos.length > 0) {
+    if (all && nestedMegarepos.length > 0) {
       for (const nestedName of nestedMegarepos) {
         const nestedPath = getMemberPath({ megarepoRoot, name: nestedName })
         // Convert to AbsoluteDirPath (add trailing slash if needed)
@@ -523,7 +523,7 @@ export const syncCommand = Cli.Command.make(
       Cli.Options.withDescription('Force sync even with dirty worktrees or pinned members'),
       Cli.Options.withDefault(false),
     ),
-    deep: Cli.Options.boolean('deep').pipe(
+    all: Cli.Options.boolean('all').pipe(
       Cli.Options.withDescription('Recursively sync nested megarepos'),
       Cli.Options.withDefault(false),
     ),
@@ -553,7 +553,7 @@ export const syncCommand = Cli.Command.make(
     pull,
     frozen,
     force,
-    deep,
+    all,
     only,
     skip,
     gitProtocol,
@@ -606,7 +606,7 @@ export const syncCommand = Cli.Command.make(
         dryRun,
         frozen,
         pull,
-        deep,
+        all,
         force: force || undefined,
         verbose: verbose || undefined,
         skippedMembers: skippedMembers.length > 0 ? skippedMembers : undefined,
@@ -624,7 +624,7 @@ export const syncCommand = Cli.Command.make(
           dryRun,
           frozen,
           pull,
-          deep,
+          all,
           force,
           verbose,
           skippedMembers,
@@ -645,7 +645,7 @@ export const syncCommand = Cli.Command.make(
             pull,
             frozen,
             force,
-            deep,
+            all,
             only: onlyMembers,
             skip: skipMembers,
             verbose,
@@ -689,7 +689,7 @@ export const syncCommand = Cli.Command.make(
             pull,
             frozen,
             force,
-            deep,
+            all,
             only: onlyMembers,
             skip: skipMembers,
             verbose,

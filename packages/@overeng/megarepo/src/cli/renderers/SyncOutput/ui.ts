@@ -111,7 +111,7 @@ export const startSyncUI = (options: {
   dryRun?: boolean
   frozen?: boolean
   pull?: boolean
-  deep?: boolean
+  all?: boolean
   force?: boolean
   verbose?: boolean
   skippedMembers?: readonly string[]
@@ -124,7 +124,7 @@ export const startSyncUI = (options: {
       dryRun,
       frozen,
       pull,
-      deep,
+      all,
       force,
       verbose,
       skippedMembers,
@@ -152,7 +152,7 @@ export const startSyncUI = (options: {
           dryRun: dryRun ?? false,
           frozen: frozen ?? false,
           pull: pull ?? false,
-          deep: deep ?? false,
+          all: all ?? false,
           force: force || undefined,
           verbose: verbose || undefined,
           skippedMembers:

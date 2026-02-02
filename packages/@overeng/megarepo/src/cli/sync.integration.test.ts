@@ -441,7 +441,7 @@ describe('frozen mode', () => {
 })
 
 // =============================================================================
-// Nested Megarepo Tests (--deep mode)
+// Nested Megarepo Tests (--all mode)
 // =============================================================================
 
 /**
@@ -520,7 +520,7 @@ const createNestedMegarepoFixture = () =>
     }
   })
 
-describe('deep sync mode', () => {
+describe('--all sync mode', () => {
   describe('nested megarepo detection', () => {
     it('should detect when a member is itself a megarepo', () =>
       withTestCtx(
@@ -680,7 +680,7 @@ const createDiamondDependencyFixture = () =>
     }
   })
 
-describe('deep sync deduplication', () => {
+describe('--all sync deduplication', () => {
   it('should create valid diamond dependency structure', () =>
     withTestCtx(
       Effect.gen(function* () {

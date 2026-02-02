@@ -47,7 +47,7 @@ export interface SyncOptions {
   readonly pull: boolean
   readonly frozen: boolean
   readonly force: boolean
-  readonly deep: boolean
+  readonly all: boolean
 }
 
 /** Flatten nested sync results for JSON output */

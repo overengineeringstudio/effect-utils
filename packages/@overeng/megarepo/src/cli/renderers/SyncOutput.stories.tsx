@@ -62,7 +62,7 @@ const exampleAllSynced: MemberSyncResult[] = [
 
 const createBaseState = (overrides?: Partial<SyncStateType>): SyncStateType => ({
   workspace: { name: 'my-workspace', root: '/Users/dev/workspace' },
-  options: { dryRun: false, frozen: false, pull: false, deep: false },
+  options: { dryRun: false, frozen: false, pull: false, all: false },
   phase: 'complete',
   members: [],
   results: [],
@@ -140,7 +140,7 @@ export const DryRun: Story = {
       View={SyncView}
       app={SyncApp}
       initialState={createBaseState({
-        options: { dryRun: true, frozen: false, pull: false, deep: false },
+        options: { dryRun: true, frozen: false, pull: false, all: false },
         results: [
           { name: 'new-repo', status: 'cloned', ref: 'main' },
           { name: 'effect', status: 'synced', ref: 'main' },
@@ -164,7 +164,7 @@ export const AllSynced: Story = {
       app={SyncApp}
       initialState={createBaseState({
         workspace: { name: 'mr-all-blue', root: '/Users/dev/mr-all-blue' },
-        options: { dryRun: true, frozen: false, pull: false, deep: false },
+        options: { dryRun: true, frozen: false, pull: false, all: false },
         results: exampleAllSynced,
         members: exampleAllSynced.map((r) => r.name),
       })}
@@ -200,7 +200,7 @@ export const FrozenMode: Story = {
       app={SyncApp}
       initialState={createBaseState({
         workspace: { name: 'ci-workspace', root: '/home/runner/workspace' },
-        options: { dryRun: false, frozen: true, pull: false, deep: false },
+        options: { dryRun: false, frozen: true, pull: false, all: false },
         results: [
           { name: 'effect', status: 'synced', ref: 'main', commit: 'abc1234' },
           { name: 'effect-utils', status: 'synced', ref: 'main', commit: 'def5678' },
@@ -222,7 +222,7 @@ export const PullMode: Story = {
       View={SyncView}
       app={SyncApp}
       initialState={createBaseState({
-        options: { dryRun: false, frozen: false, pull: true, deep: false },
+        options: { dryRun: false, frozen: false, pull: true, all: false },
         results: [
           { name: 'effect', status: 'updated', commit: 'abc1234def', previousCommit: '9876543fed' },
           {
@@ -318,7 +318,7 @@ export const NestedMegareposHint: Story = {
       View={SyncView}
       app={SyncApp}
       initialState={createBaseState({
-        options: { dryRun: false, frozen: false, pull: false, deep: false },
+        options: { dryRun: false, frozen: false, pull: false, all: false },
         results: [
           { name: 'effect', status: 'synced', ref: 'main' },
           { name: 'effect-utils', status: 'synced', ref: 'main' },
@@ -341,7 +341,7 @@ export const DeepSyncMode: Story = {
       View={SyncView}
       app={SyncApp}
       initialState={createBaseState({
-        options: { dryRun: false, frozen: false, pull: false, deep: true },
+        options: { dryRun: false, frozen: false, pull: false, all: true },
         results: [
           { name: 'effect', status: 'synced', ref: 'main' },
           { name: 'effect-utils', status: 'synced', ref: 'main' },
@@ -490,7 +490,7 @@ export const DeepSyncHint: Story = {
       app={SyncApp}
       initialState={createBaseState({
         workspace: { name: 'mr-all-blue', root: '/Users/dev/mr-all-blue' },
-        options: { dryRun: false, frozen: false, pull: false, deep: false },
+        options: { dryRun: false, frozen: false, pull: false, all: false },
         results: [
           { name: 'effect', status: 'synced', ref: 'main' },
           { name: 'effect-utils', status: 'synced', ref: 'main' },
@@ -531,7 +531,7 @@ export const RefChanges: Story = {
       View={SyncView}
       app={SyncApp}
       initialState={createBaseState({
-        options: { dryRun: false, frozen: false, pull: true, deep: false },
+        options: { dryRun: false, frozen: false, pull: true, all: false },
         results: [
           { name: 'effect', status: 'synced', ref: 'v3.1.0' },
           { name: 'effect-utils', status: 'updated', commit: 'abc1234', previousCommit: 'def5678' },

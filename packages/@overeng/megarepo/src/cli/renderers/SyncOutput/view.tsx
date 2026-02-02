@@ -66,7 +66,7 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
   if (options.frozen) modes.push('frozen')
   if (options.pull) modes.push('pull')
   if (options.force) modes.push('force')
-  if (options.deep) modes.push('deep')
+  if (options.all) modes.push('all')
 
   // Create a map of results by name for quick lookup
   const resultsByName = useMemo(() => {
@@ -245,7 +245,7 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
       {generatedFiles.length > 0 && <GeneratedFiles files={generatedFiles} dryRun={dryRun} />}
 
       {/* Nested megarepos hint */}
-      {nestedMegarepos.length > 0 && !options.deep && (
+      {nestedMegarepos.length > 0 && !options.all && (
         <NestedMegareposHint count={nestedMegarepos.length} />
       )}
     </Box>
@@ -441,7 +441,7 @@ function NestedMegareposHint({ count }: { count: number }) {
       <Text dim>
         Note: {count} member{count > 1 ? 's' : ''} contain nested megarepos
       </Text>
-      <Text dim> Run 'mr sync --deep' to sync them</Text>
+      <Text dim> Run 'mr sync --all' to sync them</Text>
     </Box>
   )
 }

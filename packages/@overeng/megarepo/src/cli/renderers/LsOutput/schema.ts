@@ -8,6 +8,24 @@
 import { Schema } from 'effect'
 
 // =============================================================================
+// Member Owner (tagged union)
+// =============================================================================
+
+/** Member belongs to the root megarepo */
+export const MemberOwnerRoot = Schema.TaggedStruct('Root', {})
+
+/** Member belongs to a nested megarepo */
+export const MemberOwnerNested = Schema.TaggedStruct('Nested', {
+  /** Path to the owning megarepo (non-empty) */
+  path: Schema.NonEmptyArray(Schema.String),
+})
+
+/** Discriminated union for member ownership */
+export const MemberOwner = Schema.Union(MemberOwnerRoot, MemberOwnerNested)
+
+export type MemberOwner = Schema.Schema.Type<typeof MemberOwner>
+
+// =============================================================================
 // Member Info
 // =============================================================================
 
@@ -16,6 +34,10 @@ export const MemberInfo = Schema.Struct({
   name: Schema.String,
   /** Source string (e.g., "github:org/repo" or "../path") */
   source: Schema.String,
+  /** Which megarepo owns this member */
+  owner: MemberOwner,
+  /** Is this member itself a megarepo? */
+  isMegarepo: Schema.Boolean,
 })
 
 export type MemberInfo = Schema.Schema.Type<typeof MemberInfo>
@@ -25,10 +47,14 @@ export type MemberInfo = Schema.Schema.Type<typeof MemberInfo>
 // =============================================================================
 
 /**
- * Success state - JSON output: { "_tag": "Success", "members": [...] }
+ * Success state - JSON output: { "_tag": "Success", "members": [...], "all": false }
  */
 export const LsSuccessState = Schema.TaggedStruct('Success', {
   members: Schema.Array(MemberInfo),
+  /** Whether --all was used (for context in output) */
+  all: Schema.Boolean,
+  /** Name of the root megarepo */
+  megarepoName: Schema.String,
 })
 
 /**
@@ -67,7 +93,11 @@ export const isLsSuccess = (state: LsState): state is typeof LsSuccessState.Type
  * Actions for ls output.
  */
 export const LsAction = Schema.Union(
-  Schema.TaggedStruct('SetMembers', { members: Schema.Array(MemberInfo) }),
+  Schema.TaggedStruct('SetMembers', {
+    members: Schema.Array(MemberInfo),
+    all: Schema.Boolean,
+    megarepoName: Schema.String,
+  }),
   Schema.TaggedStruct('SetError', { error: Schema.String, message: Schema.String }),
 )
 
@@ -86,7 +116,12 @@ export const lsReducer = ({
 }): LsState => {
   switch (action._tag) {
     case 'SetMembers':
-      return { _tag: 'Success', members: action.members }
+      return {
+        _tag: 'Success',
+        members: action.members,
+        all: action.all,
+        megarepoName: action.megarepoName,
+      }
     case 'SetError':
       return { _tag: 'Error', error: action.error, message: action.message }
   }

@@ -11,6 +11,9 @@ export {
   LsSuccessState,
   LsErrorState,
   MemberInfo,
+  MemberOwner,
+  MemberOwnerRoot,
+  MemberOwnerNested,
   lsReducer,
   isLsError,
   isLsSuccess,
@@ -19,6 +22,7 @@ export type {
   LsState as LsStateType,
   LsAction as LsActionType,
   MemberInfo as MemberInfoType,
+  MemberOwner as MemberOwnerType,
 } from './schema.ts'
 
 // App

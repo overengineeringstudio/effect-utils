@@ -46,7 +46,7 @@ const flattenNixGenerateTree = (
 type GenerateNixForRootParams = {
   outermostRoot: AbsoluteDirPath
   currentRoot: AbsoluteDirPath
-  deep: boolean
+  all: boolean
   depth: number
   visited: Set<string>
   tui: { dispatch: (action: GenerateActionType) => void }
@@ -60,7 +60,7 @@ const generateNixForRoot: (
   FileSystem.FileSystem | CommandExecutor.CommandExecutor
 > = Effect.fn('megarepo/generate/nix/root')((params: GenerateNixForRootParams) =>
   Effect.gen(function* () {
-    const { outermostRoot, currentRoot, deep, depth, visited, tui } = params
+    const { outermostRoot, currentRoot, all, depth, visited, tui } = params
     const rootKey = currentRoot.replace(/\/$/, '')
     if (visited.has(rootKey)) {
       return Option.none<NixGenerateTree>()
@@ -90,7 +90,7 @@ const generateNixForRoot: (
     })
 
     const nested: NixGenerateTree[] = []
-    if (deep) {
+    if (all) {
       const nestedRoots: AbsoluteDirPath[] = []
       for (const [name] of Object.entries(config.members)) {
         const memberPath = getMemberPath({ megarepoRoot: currentRoot, name })
@@ -120,7 +120,7 @@ const generateNixForRoot: (
         const nestedResult = yield* generateNixForRoot({
           outermostRoot,
           currentRoot: nestedRoot,
-          deep,
+          all,
           depth: depth + 1,
           visited,
           tui,
@@ -143,12 +143,12 @@ const generateNixCommand = Cli.Command.make(
   'nix',
   {
     output: outputOption,
-    deep: Cli.Options.boolean('deep').pipe(
+    all: Cli.Options.boolean('all').pipe(
       Cli.Options.withDescription('Recursively generate nested megarepos'),
       Cli.Options.withDefault(false),
     ),
   },
-  ({ output, deep }) =>
+  ({ output, all }) =>
     Effect.gen(function* () {
       const cwd = yield* Cwd
       const root = yield* findMegarepoRoot(cwd)
@@ -173,7 +173,7 @@ const generateNixCommand = Cli.Command.make(
           const result = yield* generateNixForRoot({
             outermostRoot: root.value,
             currentRoot: root.value,
-            deep,
+            all,
             depth: 0,
             visited: new Set(),
             tui,

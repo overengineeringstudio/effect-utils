@@ -106,6 +106,7 @@ export type LockStaleness = Schema.Schema.Type<typeof LockStaleness>
  *   "name": "my-workspace",
  *   "root": "/path/to/workspace",
  *   "members": [...],
+ *   "all": false,
  *   "lastSyncTime": "2024-01-30T12:00:00Z",
  *   "lockStaleness": { ... },
  *   "currentMemberPath": ["member1", "nested-member"]
@@ -119,8 +120,11 @@ export const StatusState = Schema.Struct({
   /** Workspace root path */
   root: Schema.String,
 
-  /** All member statuses (recursive tree) */
+  /** All member statuses (recursive tree when --all is used) */
   members: Schema.Array(MemberStatus),
+
+  /** Whether --all was used (shows nested megarepos recursively) */
+  all: Schema.Boolean,
 
   /** Last sync timestamp (ISO string for JSON compat) */
   lastSyncTime: Schema.optional(Schema.String),

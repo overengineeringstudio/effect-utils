@@ -9,6 +9,12 @@ const config: StorybookConfig = {
     options: {},
   },
   viteFinal: async (config) => {
+    // Allow access from any host (for remote dev servers)
+    config.server = {
+      ...config.server,
+      host: '0.0.0.0',
+      allowedHosts: true,
+    }
     // Ensure we're using esnext for top-level await support
     config.build = {
       ...config.build,
