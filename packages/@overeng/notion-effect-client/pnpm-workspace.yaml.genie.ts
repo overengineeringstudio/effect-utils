@@ -3,4 +3,4 @@ import notionEffectSchemaPkg from '../notion-effect-schema/package.json.genie.ts
 import utilsPkg from '../utils/package.json.genie.ts'
 import pkg from './package.json.genie.ts'
 
-export default pnpmWorkspaceWithDeps(pkg, [notionEffectSchemaPkg, utilsPkg])
+export default pnpmWorkspaceWithDeps({ pkg, deps: [notionEffectSchemaPkg, utilsPkg] })

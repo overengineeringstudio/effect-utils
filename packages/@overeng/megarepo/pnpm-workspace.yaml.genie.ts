@@ -5,4 +5,7 @@ import tuiReactPkg from '../tui-react/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 import pkg from './package.json.genie.ts'
 
-export default pnpmWorkspaceWithDepsReact(pkg, [effectPathPkg, tuiCorePkg, tuiReactPkg, utilsPkg])
+export default pnpmWorkspaceWithDepsReact({
+  pkg,
+  deps: [effectPathPkg, tuiCorePkg, tuiReactPkg, utilsPkg],
+})
