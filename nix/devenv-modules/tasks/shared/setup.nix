@@ -46,12 +46,11 @@
 #
 # If you need to run setup during rebase, use: `FORCE_SETUP=1 dt setup:run`
 #
-# ## Strict Mode
+# ## Soft Dependencies
 #
-# By default, setup tasks run in a non-blocking mode on shell entry; failures
-# emit warnings but do not prevent the shell from loading.
-#
-# Set `DEVENV_STRICT=1` to enforce setup tasks and fail fast on errors.
+# Setup tasks use the `@complete` suffix for non-blocking dependencies.
+# Tasks run on shell entry but failures don't prevent shell loading.
+# See: https://github.com/cachix/devenv/issues/2435
 {
   tasks ? [ "genie:run" ],
   completionsCliNames ? [],
@@ -175,15 +174,6 @@ let
     cached=$(cat ${hashFile} 2>/dev/null || echo "")
     [ "$current" = "$cached" ]
   '';
-  skipSetupIfHashUnchanged = lib.optionalString skipIfGitHashUnchanged ''
-    if [ "''${FORCE_SETUP:-}" != "1" ]; then
-      current=''${SETUP_GIT_HASH:-$(git rev-parse HEAD 2>/dev/null || echo "no-git")}
-      cached=$(cat ${hashFile} 2>/dev/null || echo "")
-      if [ "$current" = "$cached" ]; then
-        exit 0
-      fi
-    fi
-  '';
   writeHashScript = ''
     new_hash="''${SETUP_GIT_HASH:-$(git rev-parse HEAD 2>/dev/null || echo "no-git")}"
     cache_dir="$(dirname ${hashFile})"
@@ -234,24 +224,10 @@ in
       after = setupTasks;
     };
 
-    # Wire setup tasks to run during shell entry via native task dependencies
-    # Also save the hash after setup completes
-    # NOTE: We use lib.mkForce for exec because devenv 2.0 defines a default exec
-    # that we need to override when running in non-strict mode
-    # TODO: Replace exec workaround with native soft dependencies once supported
-    # See: https://github.com/cachix/devenv/issues/2435
+    # Wire setup tasks to run during shell entry via native soft dependencies.
+    # The @complete suffix means: wait for task to finish, but don't fail if it fails.
     "devenv:enterShell" = {
-      after = lib.mkIf (builtins.getEnv "DEVENV_STRICT" == "1") (setupTasks ++ [ "setup:save-hash" ]);
-      exec = lib.mkIf (builtins.getEnv "DEVENV_STRICT" != "1") (lib.mkForce ''
-        ${skipSetupIfHashUnchanged}
-        echo "devenv: setup tasks are non-blocking (set DEVENV_STRICT=1 to enforce)"
-        for task in ${lib.concatStringsSep " " setupTasks}; do
-          if ! devenv tasks run "$task" --mode before; then
-            echo "Warning: setup task '$task' failed. Run 'dt $task' for details." >&2
-          fi
-        done
-        devenv tasks run setup:save-hash >/dev/null 2>&1 || true
-      '');
+      after = map (t: "${t}@complete") setupTasks ++ [ "setup:save-hash@complete" ];
     };
 
     # Force-run setup tasks (bypasses git hash check)
