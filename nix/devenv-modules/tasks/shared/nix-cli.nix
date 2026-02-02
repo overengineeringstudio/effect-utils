@@ -52,6 +52,50 @@ let
     FAKE_HASH="sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
     MAX_ITERATIONS=20
 
+    # Helper function to update a hash value in build.nix
+    # Handles both simple hashes and platform-specific (if isDarwin then/else) patterns
+    # Args: $1=hashKey (e.g., pnpmDepsHash), $2=newValue, $3=buildNixPath
+    update_hash_in_file() {
+      local hashKey="$1"
+      local newValue="$2"
+      local buildNixPath="$3"
+
+      # Check if this is a platform-specific hash (if pkgs.stdenv.isDarwin pattern)
+      if grep -qE "$hashKey\s*=\s*if\s+pkgs\.stdenv\.isDarwin" "$buildNixPath"; then
+        # Platform-specific hash - update only the current platform's hash
+        if [[ "$(uname -s)" == "Darwin" ]]; then
+          echo "  (platform-specific: updating Darwin/then branch)"
+          export HASH_KEY="$hashKey"
+          export HASH_VALUE="$newValue"
+          perl -0777 -i -pe '
+            my $key = $ENV{"HASH_KEY"};
+            my $val = $ENV{"HASH_VALUE"};
+            # Match: pnpmDepsHash = if pkgs.stdenv.isDarwin\s+then "sha256-..."
+            s/(\b\Q$key\E\s*=\s*if\s+pkgs\.stdenv\.isDarwin\s+then\s+)"sha256-[^"]+"/$1"$val"/gs;
+          ' "$buildNixPath"
+        else
+          echo "  (platform-specific: updating Linux/else branch)"
+          export HASH_KEY="$hashKey"
+          export HASH_VALUE="$newValue"
+          perl -0777 -i -pe '
+            my $key = $ENV{"HASH_KEY"};
+            my $val = $ENV{"HASH_VALUE"};
+            # Match the else branch: ... then "sha256-..." else "sha256-..."
+            s/(\b\Q$key\E\s*=\s*if\s+pkgs\.stdenv\.isDarwin\s+then\s+"sha256-[^"]+"\s+else\s+)"sha256-[^"]+"/$1"$val"/gs;
+          ' "$buildNixPath"
+        fi
+      else
+        # Simple single hash pattern
+        export HASH_KEY="$hashKey"
+        export HASH_VALUE="$newValue"
+        perl -0777 -i -pe '
+          my $key = $ENV{"HASH_KEY"};
+          my $val = $ENV{"HASH_VALUE"};
+          s/\b\Q$key\E\s*=\s*"sha256-[^"]+"/$key = "$val"/g;
+        ' "$buildNixPath"
+      fi
+    }
+
     # Helper to update lockfileHash and packageJsonDepsHash in build.nix
     update_fingerprint_hashes() {
       if [ -n "$lockfile" ] && [ -f "$lockfile" ]; then
@@ -141,13 +185,7 @@ let
           echo "Resetting $mainHashKey to trigger complete re-fetch..."
 
           # Set fake hash to force Nix to re-fetch and report correct hash
-          export HASH_KEY="$mainHashKey"
-          export HASH_VALUE="$FAKE_HASH"
-          perl -0777 -i -pe '
-            my $key = $ENV{"HASH_KEY"};
-            my $val = $ENV{"HASH_VALUE"};
-            s/\b\Q$key\E\s*=\s*"sha256-[^"]+"/$key = "$val"/g;
-          ' "$buildNix"
+          update_hash_in_file "$mainHashKey" "$FAKE_HASH" "$buildNix"
 
           updated_any=true
           continue  # Next iteration will get the correct hash from mismatch error
@@ -193,15 +231,7 @@ let
       else
         # Assume it is the main hash (pnpmDepsHash/bunDepsHash)
         echo "Updating $mainHashKey to $newHash..."
-        
-        export HASH_KEY="$mainHashKey"
-        export HASH_VALUE="$newHash"
-        perl -0777 -i -pe '
-          my $key = $ENV{"HASH_KEY"};
-          my $val = $ENV{"HASH_VALUE"};
-          s/\b\Q$key\E\s*=\s*"sha256-[^"]+"/$key = "$val"/g;
-        ' "$buildNix"
-        
+        update_hash_in_file "$mainHashKey" "$newHash" "$buildNix"
         updated_any=true
       fi
     done
