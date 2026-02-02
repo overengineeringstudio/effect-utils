@@ -100,7 +100,9 @@ export const StatusView = ({ stateAtom }: StatusViewProps) => {
       )}
 
       {/* Hint for nested megarepos */}
-      {!all && hasNestedMegarepos && <NestedMegareposHint count={members.filter((m) => m.isMegarepo).length} />}
+      {!all && hasNestedMegarepos && (
+        <NestedMegareposHint count={members.filter((m) => m.isMegarepo).length} />
+      )}
 
       {/* Summary */}
       <Text> </Text>
@@ -118,7 +120,8 @@ function NestedMegareposHint({ count }: { count: number }) {
   return (
     <Box paddingTop={1}>
       <Text dim>
-        Note: {count} member{count > 1 ? 's' : ''} {count > 1 ? 'are' : 'is a'} nested megarepo{count > 1 ? 's' : ''}.
+        Note: {count} member{count > 1 ? 's' : ''} {count > 1 ? 'are' : 'is a'} nested megarepo
+        {count > 1 ? 's' : ''}.
       </Text>
       <Text dim> Run 'mr status --all' to see their members.</Text>
     </Box>

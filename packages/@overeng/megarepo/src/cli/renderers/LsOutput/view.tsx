@@ -116,7 +116,7 @@ export const LsView = ({ stateAtom }: LsViewProps) => {
 
   // Hierarchical display for --all mode
   const groups = groupByOwner(members)
-  const sortedPaths = Array.from(groups.keys()).sort()
+  const sortedPaths = Array.from(groups.keys()).toSorted()
 
   return (
     <Box flexDirection="column">
