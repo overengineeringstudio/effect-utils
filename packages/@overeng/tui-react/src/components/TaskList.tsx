@@ -147,7 +147,13 @@ const formatElapsed = (ms: number): string => {
   return `${minutes}m${remainingSeconds}s`
 }
 
-const Summary = ({ items, elapsed }: { items: readonly TaskItem[]; elapsed?: number }): ReactNode => {
+const Summary = ({
+  items,
+  elapsed,
+}: {
+  items: readonly TaskItem[]
+  elapsed?: number
+}): ReactNode => {
   const counts = { pending: 0, active: 0, success: 0, error: 0, skipped: 0 }
   for (const item of items) {
     counts[item.status]++

@@ -97,9 +97,7 @@ export interface MegarepoStore {
   readonly getRepoPath: (source: MemberSource) => AbsoluteDirPath
 
   /** @deprecated Use hasBareRepo instead */
-  readonly hasRepo: (
-    source: MemberSource,
-  ) => Effect.Effect<boolean, PlatformError.PlatformError>
+  readonly hasRepo: (source: MemberSource) => Effect.Effect<boolean, PlatformError.PlatformError>
 }
 
 /** Store service tag */
@@ -109,7 +107,13 @@ export class Store extends Context.Tag('megarepo/Store')<Store, MegarepoStore>()
 // Store Implementation
 // =============================================================================
 
-const make = ({ config, fs }: { config: StoreConfig; fs: FileSystem.FileSystem }): MegarepoStore => {
+const make = ({
+  config,
+  fs,
+}: {
+  config: StoreConfig
+  fs: FileSystem.FileSystem
+}): MegarepoStore => {
   const basePath = config.basePath
 
   const getRepoBasePath = (source: MemberSource): AbsoluteDirPath => {

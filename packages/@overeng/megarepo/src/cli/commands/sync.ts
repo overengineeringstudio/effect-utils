@@ -111,17 +111,7 @@ export const syncMegarepo = <R = never>({
   FileSystem.FileSystem | CommandExecutor.CommandExecutor | Store | R
 > =>
   Effect.gen(function* () {
-    const {
-      dryRun,
-      pull,
-      frozen,
-      force,
-      all,
-      only,
-      skip,
-      gitProtocol,
-      createBranches,
-    } = options
+    const { dryRun, pull, frozen, force, all, only, skip, gitProtocol, createBranches } = options
     const fs = yield* FileSystem.FileSystem
 
     // Resolve to physical path for deduplication (handles symlinks)

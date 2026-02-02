@@ -45,7 +45,13 @@ const runningState = ({
   progress,
 })
 
-const finishedState = ({ totalFrames, avgFps }: { totalFrames: number; avgFps: number }): typeof StressTestState.Type => ({
+const finishedState = ({
+  totalFrames,
+  avgFps,
+}: {
+  totalFrames: number
+  avgFps: number
+}): typeof StressTestState.Type => ({
   _tag: 'Finished',
   totalFrames,
   averageFps: avgFps,

@@ -26,7 +26,13 @@ const CounterApp = createTuiApp({
 // Initial States
 // =============================================================================
 
-const runningState = ({ count, history = [] }: { count: number; history?: string[] }): typeof CounterState.Type => ({
+const runningState = ({
+  count,
+  history = [],
+}: {
+  count: number
+  history?: string[]
+}): typeof CounterState.Type => ({
   _tag: 'Running',
   count,
   status: 'idle',

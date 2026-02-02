@@ -1516,4 +1516,3 @@ const FINAL_MODES: Set<OutputTab> = new Set(['pipe', 'log', 'json'])
 const isFinalMode = (tab: OutputTab): boolean => FINAL_MODES.has(tab)
 
 const DEFAULT_TABS: OutputTab[] = ['tty', 'ci', 'log', 'json', 'ndjson']
-

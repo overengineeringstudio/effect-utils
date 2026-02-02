@@ -94,7 +94,13 @@ const makeRunning = ({
   databases,
 })
 
-const makeDone = ({ configPath, count }: { configPath: string; count: number }): GenerateConfigState => ({
+const makeDone = ({
+  configPath,
+  count,
+}: {
+  configPath: string
+  count: number
+}): GenerateConfigState => ({
   _tag: 'Done',
   configPath,
   count,
@@ -135,12 +141,15 @@ export const AllPending: Story = {
     <TuiStoryPreview
       View={GenerateConfigView}
       app={GenerateConfigApp}
-      initialState={makeRunning({ configPath: './notion.config.ts', databases: [
-        makeDatabase({ name: 'Tasks', status: 'pending' }),
-        makeDatabase({ name: 'Projects', status: 'pending' }),
-        makeDatabase({ name: 'People', status: 'pending' }),
-        makeDatabase({ name: 'Sprint Backlog', status: 'pending' }),
-      ] })}
+      initialState={makeRunning({
+        configPath: './notion.config.ts',
+        databases: [
+          makeDatabase({ name: 'Tasks', status: 'pending' }),
+          makeDatabase({ name: 'Projects', status: 'pending' }),
+          makeDatabase({ name: 'People', status: 'pending' }),
+          makeDatabase({ name: 'Sprint Backlog', status: 'pending' }),
+        ],
+      })}
     />
   ),
 }
@@ -150,12 +159,15 @@ export const InProgress: Story = {
     <TuiStoryPreview
       View={GenerateConfigView}
       app={GenerateConfigApp}
-      initialState={makeRunning({ configPath: './notion.config.ts', databases: [
-        makeDatabase({ name: 'Tasks', status: 'done', outputPath: './src/generated/tasks.ts' }),
-        makeDatabase({ name: 'Projects', status: 'generating' }),
-        makeDatabase({ name: 'People', status: 'introspecting' }),
-        makeDatabase({ name: 'Sprint Backlog', status: 'pending' }),
-      ] })}
+      initialState={makeRunning({
+        configPath: './notion.config.ts',
+        databases: [
+          makeDatabase({ name: 'Tasks', status: 'done', outputPath: './src/generated/tasks.ts' }),
+          makeDatabase({ name: 'Projects', status: 'generating' }),
+          makeDatabase({ name: 'People', status: 'introspecting' }),
+          makeDatabase({ name: 'Sprint Backlog', status: 'pending' }),
+        ],
+      })}
     />
   ),
 }
@@ -175,12 +187,15 @@ export const WithErrors: Story = {
     <TuiStoryPreview
       View={GenerateConfigView}
       app={GenerateConfigApp}
-      initialState={makeRunning({ configPath: './notion.config.ts', databases: [
-        makeDatabase({ name: 'Tasks', status: 'done', outputPath: './src/generated/tasks.ts' }),
-        makeDatabase({ name: 'Projects', status: 'error' }),
-        makeDatabase({ name: 'People', status: 'done', outputPath: './src/generated/people.ts' }),
-        makeDatabase({ name: 'Sprint Backlog', status: 'error' }),
-      ] })}
+      initialState={makeRunning({
+        configPath: './notion.config.ts',
+        databases: [
+          makeDatabase({ name: 'Tasks', status: 'done', outputPath: './src/generated/tasks.ts' }),
+          makeDatabase({ name: 'Projects', status: 'error' }),
+          makeDatabase({ name: 'People', status: 'done', outputPath: './src/generated/people.ts' }),
+          makeDatabase({ name: 'Sprint Backlog', status: 'error' }),
+        ],
+      })}
     />
   ),
 }
@@ -190,7 +205,10 @@ export const SingleDatabase: Story = {
     <TuiStoryPreview
       View={GenerateConfigView}
       app={GenerateConfigApp}
-      initialState={makeRunning({ configPath: './notion.config.ts', databases: [makeDatabase({ name: 'Tasks', status: 'generating' })] })}
+      initialState={makeRunning({
+        configPath: './notion.config.ts',
+        databases: [makeDatabase({ name: 'Tasks', status: 'generating' })],
+      })}
     />
   ),
 }
@@ -200,16 +218,23 @@ export const ManyDatabases: Story = {
     <TuiStoryPreview
       View={GenerateConfigView}
       app={GenerateConfigApp}
-      initialState={makeRunning({ configPath: './notion.config.ts', databases: [
-        makeDatabase({ name: 'Tasks', status: 'done', outputPath: './src/generated/tasks.ts' }),
-        makeDatabase({ name: 'Projects', status: 'done', outputPath: './src/generated/projects.ts' }),
-        makeDatabase({ name: 'People', status: 'writing' }),
-        makeDatabase({ name: 'Sprint Backlog', status: 'generating' }),
-        makeDatabase({ name: 'Meeting Notes', status: 'introspecting' }),
-        makeDatabase({ name: 'Knowledge Base', status: 'pending' }),
-        makeDatabase({ name: 'Bug Tracker', status: 'pending' }),
-        makeDatabase({ name: 'Release Notes', status: 'error' }),
-      ] })}
+      initialState={makeRunning({
+        configPath: './notion.config.ts',
+        databases: [
+          makeDatabase({ name: 'Tasks', status: 'done', outputPath: './src/generated/tasks.ts' }),
+          makeDatabase({
+            name: 'Projects',
+            status: 'done',
+            outputPath: './src/generated/projects.ts',
+          }),
+          makeDatabase({ name: 'People', status: 'writing' }),
+          makeDatabase({ name: 'Sprint Backlog', status: 'generating' }),
+          makeDatabase({ name: 'Meeting Notes', status: 'introspecting' }),
+          makeDatabase({ name: 'Knowledge Base', status: 'pending' }),
+          makeDatabase({ name: 'Bug Tracker', status: 'pending' }),
+          makeDatabase({ name: 'Release Notes', status: 'error' }),
+        ],
+      })}
     />
   ),
 }

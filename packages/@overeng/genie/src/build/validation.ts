@@ -59,68 +59,68 @@ export const runGenieValidation = ({
   FileSystem.FileSystem | Path.Path
 > =>
   Effect.gen(function* () {
-  const fs = yield* FileSystem.FileSystem
-  const pathService = yield* Path.Path
-  const workspaceProvider = yield* resolveWorkspaceProvider({ cwd })
-  const packageJsonContext = yield* buildPackageJsonValidationContext({ cwd, workspaceProvider })
-  const genieFiles = yield* findGenieFiles(cwd)
+    const fs = yield* FileSystem.FileSystem
+    const pathService = yield* Path.Path
+    const workspaceProvider = yield* resolveWorkspaceProvider({ cwd })
+    const packageJsonContext = yield* buildPackageJsonValidationContext({ cwd, workspaceProvider })
+    const genieFiles = yield* findGenieFiles(cwd)
 
-  const ctx: GenieValidationContext = {
-    cwd,
-    packageJson: packageJsonContext,
-  }
+    const ctx: GenieValidationContext = {
+      cwd,
+      packageJson: packageJsonContext,
+    }
 
-  const issues: ValidationIssue[] = []
+    const issues: ValidationIssue[] = []
 
-  for (const genieFilePath of genieFiles) {
-    const targetFilePath = genieFilePath.replace('.genie.ts', '')
-    const isPackageJson = pathService.basename(targetFilePath) === 'package.json'
+    for (const genieFilePath of genieFiles) {
+      const targetFilePath = genieFilePath.replace('.genie.ts', '')
+      const isPackageJson = pathService.basename(targetFilePath) === 'package.json'
 
-    const output = yield* importGenieOutput({ genieFilePath, cwd }).pipe(
-      Effect.catchAll((error) => {
+      const output = yield* importGenieOutput({ genieFilePath, cwd }).pipe(
+        Effect.catchAll((error) => {
+          issues.push({
+            severity: 'error',
+            packageName: 'genie',
+            dependency: genieFilePath,
+            message: `Validation import failed: ${error instanceof Error ? error.message : String(error)}`,
+            rule: 'validation-import',
+          })
+          return Effect.succeed(undefined)
+        }),
+      )
+
+      if (!output) continue
+      if (output.validate) {
+        issues.push(...output.validate(ctx))
+        continue
+      }
+
+      if (requirePackageJsonValidate && isPackageJson) {
+        const pkgContent = yield* fs
+          .readFileString(targetFilePath)
+          .pipe(Effect.catchAll(() => Effect.succeed('')))
+        const pkgName = (() => {
+          try {
+            return JSON.parse(pkgContent)?.name as string | undefined
+          } catch {
+            return undefined
+          }
+        })()
+
         issues.push({
           severity: 'error',
-          packageName: 'genie',
-          dependency: genieFilePath,
-          message: `Validation import failed: ${error instanceof Error ? error.message : String(error)}`,
-          rule: 'validation-import',
+          packageName: pkgName ?? 'unknown',
+          dependency: targetFilePath,
+          message: 'Missing package.json validate hook (self-contained validation required)',
+          rule: 'package-json-validate-missing',
         })
-        return Effect.succeed(undefined)
-      }),
-    )
-
-    if (!output) continue
-    if (output.validate) {
-      issues.push(...output.validate(ctx))
-      continue
+      }
     }
 
-    if (requirePackageJsonValidate && isPackageJson) {
-      const pkgContent = yield* fs
-        .readFileString(targetFilePath)
-        .pipe(Effect.catchAll(() => Effect.succeed('')))
-      const pkgName = (() => {
-        try {
-          return JSON.parse(pkgContent)?.name as string | undefined
-        } catch {
-          return undefined
-        }
-      })()
-
-      issues.push({
-        severity: 'error',
-        packageName: pkgName ?? 'unknown',
-        dependency: targetFilePath,
-        message: 'Missing package.json validate hook (self-contained validation required)',
-        rule: 'package-json-validate-missing',
-      })
+    if (issues.length > 0) {
+      const formatted = formatValidationIssues(issues)
+      return yield* new GenieValidationError({ message: `Genie validation failed:${formatted}` })
     }
-  }
 
-  if (issues.length > 0) {
-    const formatted = formatValidationIssues(issues)
-    return yield* new GenieValidationError({ message: `Genie validation failed:${formatted}` })
-  }
-
-  return issues
-}).pipe(Effect.withSpan('genie/runValidation'))
+    return issues
+  }).pipe(Effect.withSpan('genie/runValidation'))

@@ -2,7 +2,13 @@ import { createHash } from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
 
-import { Command, type CommandExecutor, type Error as PlatformError, FileSystem, Path } from '@effect/platform'
+import {
+  Command,
+  type CommandExecutor,
+  type Error as PlatformError,
+  FileSystem,
+  Path,
+} from '@effect/platform'
 import { Duration, Effect, Option } from 'effect'
 
 import { DistributedSemaphore } from '@overeng/utils'
@@ -319,22 +325,22 @@ export const getExpectedContent = ({
 > =>
   Effect.gen(function* () {
     const targetFilePath = genieFilePath.replace('.genie.ts', '')
-  const sourceFile = path.basename(genieFilePath)
-  let rawContent = yield* importGenieFile({ genieFilePath, cwd })
+    const sourceFile = path.basename(genieFilePath)
+    let rawContent = yield* importGenieFile({ genieFilePath, cwd })
 
-  // For package.json files, enrich the $genie marker with source info
-  if (path.basename(targetFilePath) === 'package.json') {
-    rawContent = enrichPackageJsonMarker({ content: rawContent, sourceFile })
-  }
+    // For package.json files, enrich the $genie marker with source info
+    if (path.basename(targetFilePath) === 'package.json') {
+      rawContent = enrichPackageJsonMarker({ content: rawContent, sourceFile })
+    }
 
-  const header = getHeaderComment({ targetFilePath, sourceFile })
-  const formattedContent = yield* formatWithOxfmt({
-    targetFilePath,
-    content: rawContent,
-    configPath: oxfmtConfigPath,
-  })
-  return { targetFilePath, content: header + formattedContent }
-}).pipe(Effect.withSpan('getExpectedContent'))
+    const header = getHeaderComment({ targetFilePath, sourceFile })
+    const formattedContent = yield* formatWithOxfmt({
+      targetFilePath,
+      content: rawContent,
+      configPath: oxfmtConfigPath,
+    })
+    return { targetFilePath, content: header + formattedContent }
+  }).pipe(Effect.withSpan('getExpectedContent'))
 
 /** Generate a brief diff summary showing line count changes */
 const generateDiffSummary = ({
@@ -549,25 +555,25 @@ export const checkFile = ({
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const { targetFilePath, content: expectedContent } = yield* getExpectedContent({
-    genieFilePath,
-    cwd,
-    oxfmtConfigPath,
-  })
-
-  const fileExists = yield* fs.exists(targetFilePath)
-  if (!fileExists) {
-    return yield* new GenieCheckError({
-      targetFilePath,
-      message: `File does not exist. Run 'genie' to generate it.`,
+      genieFilePath,
+      cwd,
+      oxfmtConfigPath,
     })
-  }
 
-  const actualContent = yield* fs.readFileString(targetFilePath)
+    const fileExists = yield* fs.exists(targetFilePath)
+    if (!fileExists) {
+      return yield* new GenieCheckError({
+        targetFilePath,
+        message: `File does not exist. Run 'genie' to generate it.`,
+      })
+    }
 
-  if (actualContent !== expectedContent) {
-    return yield* new GenieCheckError({
-      targetFilePath,
-      message: `File content is out of date. Run 'genie' to regenerate it.`,
-    })
-  }
-}).pipe(Effect.withSpan('checkFile'))
+    const actualContent = yield* fs.readFileString(targetFilePath)
+
+    if (actualContent !== expectedContent) {
+      return yield* new GenieCheckError({
+        targetFilePath,
+        message: `File content is out of date. Run 'genie' to regenerate it.`,
+      })
+    }
+  }).pipe(Effect.withSpan('checkFile'))

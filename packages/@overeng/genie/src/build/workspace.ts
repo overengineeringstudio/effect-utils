@@ -175,7 +175,9 @@ export const resolveWorkspaceProvider = Effect.fn('workspace/resolveWorkspacePro
 
   if (providerName === 'bun') {
     return createProvider('bun', () =>
-      Effect.fail(new GenieNotImplementedError({ message: 'Bun workspace provider is not implemented yet.' })),
+      Effect.fail(
+        new GenieNotImplementedError({ message: 'Bun workspace provider is not implemented yet.' }),
+      ),
     )
   }
   if (providerName === 'manual') {

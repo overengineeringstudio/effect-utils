@@ -49,13 +49,25 @@ const createRunningState = ({
   termHeight: height,
 })
 
-const finishedState = ({ frames, windows }: { frames: number; windows: number }): typeof AppState.Type => ({
+const finishedState = ({
+  frames,
+  windows,
+}: {
+  frames: number
+  windows: number
+}): typeof AppState.Type => ({
   _tag: 'Finished',
   totalFrames: frames,
   windowCount: windows,
 })
 
-const interruptedState = ({ frame, windows }: { frame: number; windows: number }): typeof AppState.Type => ({
+const interruptedState = ({
+  frame,
+  windows,
+}: {
+  frame: number
+  windows: number
+}): typeof AppState.Type => ({
   _tag: 'Interrupted',
   frame,
   windowCount: windows,
@@ -152,7 +164,11 @@ export const Demo: Story = {
     <TuiStoryPreview
       View={BouncingWindowsView}
       app={BouncingApp}
-      initialState={createRunningState({ windowCount: args.windowCount, width: args.termWidth, height: args.termHeight })}
+      initialState={createRunningState({
+        windowCount: args.windowCount,
+        width: args.termWidth,
+        height: args.termHeight,
+      })}
       timeline={demoTimeline}
       autoRun={args.autoRun}
       playbackSpeed={args.playbackSpeed}

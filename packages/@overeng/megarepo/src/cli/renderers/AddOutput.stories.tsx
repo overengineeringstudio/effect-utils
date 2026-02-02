@@ -15,7 +15,6 @@ import { AddView } from './AddOutput/view.tsx'
 // State Factories
 // =============================================================================
 
-
 const createSuccessState = (): typeof AddState.Type => ({
   _tag: 'Success',
   member: 'effect',
