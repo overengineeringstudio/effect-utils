@@ -112,17 +112,6 @@ let
       };
     };
 
-  mkCheckTask = path: {
-    "pnpm:check:${toName path}" = {
-      description = "Check pnpm offline deps for ${toName path}";
-      exec = ''
-        set -euo pipefail
-        pnpm fetch --offline --frozen-lockfile
-      '';
-      cwd = path;
-      after = [ "genie:run" ];
-    };
-  };
 
   nodeModulesPaths = lib.concatMapStringsSep " " (p: "${p}/node_modules") packages;
   lockFilePaths = lib.concatMapStringsSep " " (p: "${p}/pnpm-lock.yaml") packages;
@@ -134,7 +123,7 @@ let
   '') packages);
 
 in {
-  tasks = lib.mkMerge (map mkInstallTask packages ++ map mkCheckTask packages ++ [
+  tasks = lib.mkMerge (map mkInstallTask packages ++ [
     {
       "pnpm:install" = {
         description = "Install all pnpm dependencies";
@@ -150,10 +139,6 @@ in {
           ${updateScript}
           echo "Lockfiles updated. Run 'dt nix:hash' to update Nix hashes."
         '';
-      };
-      "pnpm:check" = {
-        description = "Check pnpm offline deps for all packages";
-        after = map (p: "pnpm:check:${toName p}") packages;
       };
       "pnpm:clean" = {
         description = "Remove node_modules for all managed packages";
