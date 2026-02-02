@@ -15,7 +15,6 @@ const references = [
   './packages/@overeng/effect-schema-form-aria',
   './packages/@overeng/genie',
   './packages/@overeng/megarepo',
-  './packages/@overeng/mono',
   './packages/@overeng/notion-cli',
   './packages/@overeng/notion-effect-client',
   './packages/@overeng/notion-effect-schema',

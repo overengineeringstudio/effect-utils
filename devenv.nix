@@ -47,7 +47,6 @@ let
     "packages/@overeng/effect-schema-form-aria"
     "packages/@overeng/genie"
     "packages/@overeng/megarepo"
-    "packages/@overeng/mono"
     "packages/@overeng/notion-cli"
     "packages/@overeng/notion-effect-client"
     "packages/@overeng/notion-effect-schema"
@@ -67,7 +66,6 @@ let
     { path = "packages/@overeng/effect-rpc-tanstack"; name = "effect-rpc-tanstack"; }
     { path = "packages/@overeng/genie"; name = "genie"; }
     { path = "packages/@overeng/megarepo"; name = "megarepo"; }
-    { path = "packages/@overeng/mono"; name = "mono"; }
     { path = "packages/@overeng/notion-cli"; name = "notion-cli"; }
     { path = "packages/@overeng/notion-effect-client"; name = "notion-effect-client"; }
     { path = "packages/@overeng/notion-effect-schema"; name = "notion-effect-schema"; }
@@ -204,8 +202,7 @@ in
   '';
 
   # TODO: Enable pre-commit check once all checks pass
-  # https://github.com/cachix/devenv/issues/2447
-  git-hooks.enable = !pkgs.stdenv.isDarwin;
+  git-hooks.enable = true;
   # git-hooks.hooks.check-quick = {
   #   enable = true;
   #   entry = "${pkgs.bash}/bin/bash -c 'dt check:quick'";

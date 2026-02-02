@@ -1,7 +1,0 @@
-export { buildCommand } from './build.ts'
-export { cleanCommand } from './clean.ts'
-export { checkCommandWithTaskSystem } from './check.ts'
-export { installCommand } from './install.ts'
-export { lintCommand } from './lint.ts'
-export { testCommand } from './test.ts'
-export { tsCommand } from './ts.ts'

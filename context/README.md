@@ -29,10 +29,6 @@ Building Bun-compiled TypeScript CLIs with Nix.
 
 CLI output style guide.
 
-### [mono-cli/](./mono-cli/)
-
-The `@overeng/mono` package - a reusable framework for building Effect-based CLIs.
-
 ### [oxc-config/](./oxc-config/)
 
 OXC (oxlint, oxfmt) configuration.

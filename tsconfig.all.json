@@ -36,9 +36,6 @@
       "path": "./packages/@overeng/megarepo"
     },
     {
-      "path": "./packages/@overeng/mono"
-    },
-    {
       "path": "./packages/@overeng/notion-cli"
     },
     {

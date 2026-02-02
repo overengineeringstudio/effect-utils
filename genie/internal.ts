@@ -50,7 +50,6 @@ export const catalog = defineCatalog({
   packages: {
     '@overeng/utils': 'workspace:*',
     '@overeng/genie': 'workspace:*',
-    '@overeng/mono': 'workspace:*',
     '@overeng/megarepo': 'workspace:*',
     '@overeng/effect-path': 'workspace:*',
     '@overeng/notion-effect-schema': 'workspace:*',
