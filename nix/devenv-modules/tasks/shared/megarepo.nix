@@ -1,22 +1,54 @@
-# Megarepo workspace generation task.
+# Megarepo sync and workspace generation tasks.
 #
-# Runs `mr generate nix --deep` when megarepo inputs change, and skips otherwise.
-{ lib, ... }:
+# Uses `nix run path:$PWD#megarepo` to run the CLI, which works without node_modules.
+# This enables bootstrap on fresh clones where source CLIs can't resolve imports.
+#
+# Tasks:
+# - megarepo:sync - Clone/update member repos and create symlinks
+# - megarepo:generate - Generate .envrc.generated.megarepo and nix workspace
+# - megarepo:check - Verify megarepo setup is complete and consistent
+{ lib, pkgs, ... }:
 {
-  tasks."megarepo:generate" = {
-    description = "Generate megarepo envrc + workspace mirror";
+  tasks."megarepo:sync" = {
+    description = "Sync megarepo members (clone repos, create symlinks)";
     exec = ''
       if [ ! -f ./megarepo.json ]; then
         exit 0
       fi
 
-      if ! command -v mr >/dev/null 2>&1; then
-        echo "[devenv] Missing mr CLI in PATH. Add effect-utils megarepo package to devenv packages." >&2
+      # Use path: flake ref with $PWD to ensure correct directory resolution
+      nix run "path:$PWD#megarepo" -- sync --deep
+    '';
+    # Status: use `mr status --output json` to detect if sync is needed.
+    # The CLI computes syncNeeded based on: missing symlinks/worktrees, symlink drift, lock staleness.
+    status = ''
+      if [ ! -f ./megarepo.json ]; then
+        exit 0
+      fi
+
+      # Fast path: if repos/ doesn't exist, definitely need sync
+      if [ ! -d ./repos ]; then
         exit 1
       fi
 
-      mr generate nix --deep
-      exit 0
+      # Use mr status to check syncNeeded field
+      status_json=$(nix run "path:$PWD#megarepo" -- status --output json 2>/dev/null) || exit 1
+
+      # Use the top-level syncNeeded boolean for a simple check
+      echo "$status_json" | ${pkgs.jq}/bin/jq -e '.syncNeeded == false' >/dev/null 2>&1
+    '';
+  };
+
+  tasks."megarepo:generate" = {
+    description = "Generate megarepo envrc + workspace mirror";
+    after = [ "megarepo:sync" ];
+    exec = ''
+      if [ ! -f ./megarepo.json ]; then
+        exit 0
+      fi
+
+      # Use path: flake ref with $PWD to ensure correct directory resolution
+      nix run "path:$PWD#megarepo" -- generate nix --deep
     '';
     status = ''
       if [ ! -f ./megarepo.json ]; then
@@ -32,10 +64,6 @@
       fi
 
       if [ -f ./megarepo.lock ] && [ ./megarepo.lock -nt ./.envrc.generated.megarepo ]; then
-        exit 1
-      fi
-
-      if ! command -v mr >/dev/null 2>&1; then
         exit 1
       fi
 

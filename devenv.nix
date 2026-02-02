@@ -173,7 +173,7 @@ in
     # Context example tasks
     taskModules.context
     (taskModules.setup {
-      tasks = [ "megarepo:generate" "pnpm:install" "genie:run" "ts:build" ];
+      tasks = [ "megarepo:sync" "megarepo:generate" "pnpm:install" "genie:run" "ts:build" ];
       completionsCliNames = [ "genie" "mr" ];
     })
     # Nix CLI build and hash management

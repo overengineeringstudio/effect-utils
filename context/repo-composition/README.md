@@ -24,6 +24,8 @@ For setup instructions and file templates, see [setup-guide](../nix-devenv/setup
 | `mr pin <member>`    | Pin member to current commit                             |
 | `mr unpin <member>`  | Remove pin                                               |
 
+> **Auto-setup:** On fresh clone/worktree, `mr sync` runs automatically during devenv shell entry. Use `mr status` to check sync state or `mr status --output json` for scripting.
+
 ## Environment Variables
 
 Set by `mr env` and `.envrc.generated.megarepo`:

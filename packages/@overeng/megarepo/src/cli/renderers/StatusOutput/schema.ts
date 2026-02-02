@@ -37,6 +37,19 @@ export const SymlinkDrift = Schema.Struct({
 export type SymlinkDrift = Schema.Schema.Type<typeof SymlinkDrift>
 
 // =============================================================================
+// Commit Drift
+// =============================================================================
+
+export const CommitDrift = Schema.Struct({
+  /** The commit SHA in the local worktree */
+  localCommit: Schema.String,
+  /** The commit SHA recorded in the lock file */
+  lockedCommit: Schema.String,
+})
+
+export type CommitDrift = Schema.Schema.Type<typeof CommitDrift>
+
+// =============================================================================
 // Lock Info
 // =============================================================================
 
@@ -54,7 +67,10 @@ export type LockInfo = Schema.Schema.Type<typeof LockInfo>
 
 export interface MemberStatus {
   name: string
+  /** Whether the worktree exists in ~/.megarepo (for remote members) */
   exists: boolean
+  /** Whether the symlink exists in repos/<name> */
+  symlinkExists: boolean
   source: string
   isLocal: boolean
   lockInfo?: LockInfo | undefined
@@ -62,13 +78,18 @@ export interface MemberStatus {
   nestedMembers?: readonly MemberStatus[] | undefined
   gitStatus?: GitStatus | undefined
   symlinkDrift?: SymlinkDrift | undefined
+  /** Present when local worktree commit differs from locked commit */
+  commitDrift?: CommitDrift | undefined
 }
 
 // Use Schema.suspend for recursive type
 export const MemberStatus: Schema.Schema<MemberStatus> = Schema.suspend(() =>
   Schema.Struct({
     name: Schema.String,
+    /** Whether the worktree exists in ~/.megarepo (for remote members) */
     exists: Schema.Boolean,
+    /** Whether the symlink exists in repos/<name> */
+    symlinkExists: Schema.Boolean,
     source: Schema.String,
     isLocal: Schema.Boolean,
     lockInfo: Schema.optional(LockInfo),
@@ -76,6 +97,8 @@ export const MemberStatus: Schema.Schema<MemberStatus> = Schema.suspend(() =>
     nestedMembers: Schema.optional(Schema.Array(MemberStatus)),
     gitStatus: Schema.optional(GitStatus),
     symlinkDrift: Schema.optional(SymlinkDrift),
+    /** Present when local worktree commit differs from locked commit */
+    commitDrift: Schema.optional(CommitDrift),
   }),
 )
 
@@ -105,6 +128,8 @@ export type LockStaleness = Schema.Schema.Type<typeof LockStaleness>
  * {
  *   "name": "my-workspace",
  *   "root": "/path/to/workspace",
+ *   "syncNeeded": true,
+ *   "syncReasons": ["Member 'foo' symlink missing", "Lock file stale"],
  *   "members": [...],
  *   "all": false,
  *   "lastSyncTime": "2024-01-30T12:00:00Z",
@@ -119,6 +144,12 @@ export const StatusState = Schema.Struct({
 
   /** Workspace root path */
   root: Schema.String,
+
+  /** Quick boolean: does the workspace need a sync? */
+  syncNeeded: Schema.Boolean,
+
+  /** Human-readable reasons why sync is needed (empty if syncNeeded=false) */
+  syncReasons: Schema.Array(Schema.String),
 
   /** All member statuses (recursive tree when --all is used) */
   members: Schema.Array(MemberStatus),
