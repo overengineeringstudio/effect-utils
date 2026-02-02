@@ -26,7 +26,12 @@ import { extractRefFromSymlinkPath } from '../../lib/ref.ts'
 import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../context.ts'
 import { NotInMegarepoError } from '../errors.ts'
 import { StatusApp, StatusView } from '../renderers/StatusOutput/mod.ts'
-import type { CommitDrift, GitStatus, MemberStatus, SymlinkDrift } from '../renderers/StatusOutput/mod.ts'
+import type {
+  CommitDrift,
+  GitStatus,
+  MemberStatus,
+  SymlinkDrift,
+} from '../renderers/StatusOutput/mod.ts'
 
 /**
  * Recursively scan members and build status tree.

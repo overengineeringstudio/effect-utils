@@ -18,9 +18,15 @@ import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import { MegarepoConfig } from '../lib/config.ts'
 import { createLockedMember, type LockFile, LOCK_FILE_NAME, writeLockFile } from '../lib/lock.ts'
-import { StatusState } from './renderers/StatusOutput/schema.ts'
-import { addCommit, createRepo, initGitRepo, runGitCommand, getGitRev } from '../test-utils/setup.ts'
+import {
+  addCommit,
+  createRepo,
+  initGitRepo,
+  runGitCommand,
+  getGitRev,
+} from '../test-utils/setup.ts'
 import { withTestCtx } from '../test-utils/withTestCtx.ts'
+import { StatusState } from './renderers/StatusOutput/schema.ts'
 
 // Path to the CLI binary
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url))
@@ -48,7 +54,15 @@ const runStatusCommand = ({
   args?: ReadonlyArray<string>
 }) =>
   Effect.gen(function* () {
-    const command = Command.make('bun', 'run', CLI_PATH, 'status', '--output', 'json', ...args).pipe(
+    const command = Command.make(
+      'bun',
+      'run',
+      CLI_PATH,
+      'status',
+      '--output',
+      'json',
+      ...args,
+    ).pipe(
       Command.workingDirectory(cwd),
       Command.env({ PWD: cwd }),
       Command.stdout('pipe'),
@@ -140,10 +154,7 @@ const createTestWorkspace = (args: {
     // Create symlinks if specified
     if (args.createSymlinks) {
       for (const { name, targetPath } of args.createSymlinks) {
-        const symlinkPath = EffectPath.ops.join(
-          reposDir,
-          EffectPath.unsafe.relativeFile(name),
-        )
+        const symlinkPath = EffectPath.ops.join(reposDir, EffectPath.unsafe.relativeFile(name))
         yield* fs.symlink(targetPath, symlinkPath)
       }
     }

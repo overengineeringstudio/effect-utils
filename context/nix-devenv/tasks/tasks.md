@@ -79,19 +79,19 @@ Strict mode (`DEVENV_STRICT=1`) makes setup tasks fail fast.
 
 Import from `inputs.effect-utils.devenvModules.tasks`:
 
-| Module     | Type          | Tasks Provided                                        |
-| ---------- | ------------- | ----------------------------------------------------- |
-| `genie`    | Simple        | `genie:run`, `genie:watch`, `genie:check`             |
+| Module     | Type          | Tasks Provided                                         |
+| ---------- | ------------- | ------------------------------------------------------ |
+| `genie`    | Simple        | `genie:run`, `genie:watch`, `genie:check`              |
 | `megarepo` | Simple        | `megarepo:sync`, `megarepo:generate`, `megarepo:check` |
-| `ts`       | Parameterized | `ts:check`, `ts:watch`, `ts:build`, `ts:clean`        |
-| `setup`    | Parameterized | `devenv:enterShell` wiring, `setup:run`, `setup:gate` |
-| `check`    | Parameterized | `check:quick`, `check:all`                            |
-| `clean`    | Parameterized | `build:clean`                                         |
-| `test`     | Parameterized | `test:run`, `test:watch`, `test:<name>`               |
-| `lint-oxc` | Parameterized | `lint:check`, `lint:fix`, `lint:check:format`         |
-| `bun`      | Parameterized | `bun:install`, `bun:install:<name>`, `bun:clean`      |
-| `pnpm`     | Parameterized | `pnpm:install`, `pnpm:install:<name>`, `pnpm:clean`   |
-| `nix-cli`  | Parameterized | `nix:hash`, `nix:build`, `nix:check`                  |
+| `ts`       | Parameterized | `ts:check`, `ts:watch`, `ts:build`, `ts:clean`         |
+| `setup`    | Parameterized | `devenv:enterShell` wiring, `setup:run`, `setup:gate`  |
+| `check`    | Parameterized | `check:quick`, `check:all`                             |
+| `clean`    | Parameterized | `build:clean`                                          |
+| `test`     | Parameterized | `test:run`, `test:watch`, `test:<name>`                |
+| `lint-oxc` | Parameterized | `lint:check`, `lint:fix`, `lint:check:format`          |
+| `bun`      | Parameterized | `bun:install`, `bun:install:<name>`, `bun:clean`       |
+| `pnpm`     | Parameterized | `pnpm:install`, `pnpm:install:<name>`, `pnpm:clean`    |
+| `nix-cli`  | Parameterized | `nix:hash`, `nix:build`, `nix:check`                   |
 
 ## Repo-Specific Tasks
 

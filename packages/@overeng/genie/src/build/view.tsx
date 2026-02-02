@@ -5,9 +5,9 @@
  * Handles both progress display (TTY) and final output (all modes).
  */
 
+import type { Atom } from '@effect-atom/atom'
 import React, { useMemo } from 'react'
 
-import type { Atom } from '@effect-atom/atom'
 import {
   Box,
   Text,

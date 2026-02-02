@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { packageJson, workspaceRoot, type GenieContext, type GenieValidationContext, type PackageInfo } from '../mod.ts'
+import {
+  packageJson,
+  workspaceRoot,
+  type GenieContext,
+  type GenieValidationContext,
+  type PackageInfo,
+} from '../mod.ts'
 
 /** Mock GenieContext for package tests (nested package location) */
 const mockGenieContext: GenieContext = {
@@ -205,7 +211,9 @@ describe('packageJson with function scripts', () => {
   })
 })
 
-const makePackage = (overrides: Partial<PackageInfo> & { name: string; path: string }): PackageInfo => ({
+const makePackage = (
+  overrides: Partial<PackageInfo> & { name: string; path: string },
+): PackageInfo => ({
   ...overrides,
 })
 

@@ -68,9 +68,8 @@ export const pinCommand = Cli.Command.make(
     output: outputOption,
   },
   ({ member, checkout, dryRun, output }) =>
-    Effect.gen(function* () {
-      yield* Effect.scoped(
-        Effect.gen(function* () {
+    Effect.scoped(
+      Effect.gen(function* () {
           const tui = yield* PinApp.run(
             React.createElement(PinView, { stateAtom: PinApp.stateAtom }),
           )
@@ -458,8 +457,7 @@ export const pinCommand = Cli.Command.make(
             commit: lockedMember.commit,
           })
         }),
-      ).pipe(Effect.provide(outputModeLayer(output)))
-    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/pin')),
+      ).pipe(Effect.provide(outputModeLayer(output)), Effect.provide(StoreLayer), Effect.withSpan('megarepo/pin')),
 ).pipe(Cli.Command.withDescription('Pin a member to a specific ref'))
 
 /**
@@ -505,9 +503,8 @@ export const unpinCommand = Cli.Command.make(
     output: outputOption,
   },
   ({ member, output }) =>
-    Effect.gen(function* () {
-      yield* Effect.scoped(
-        Effect.gen(function* () {
+    Effect.scoped(
+      Effect.gen(function* () {
           const tui = yield* PinApp.run(
             React.createElement(PinView, { stateAtom: PinApp.stateAtom }),
           )
@@ -639,6 +636,5 @@ export const unpinCommand = Cli.Command.make(
             action: 'unpin',
           })
         }),
-      ).pipe(Effect.provide(outputModeLayer(output)))
-    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/unpin')),
+      ).pipe(Effect.provide(outputModeLayer(output)), Effect.provide(StoreLayer), Effect.withSpan('megarepo/unpin'))
 ).pipe(Cli.Command.withDescription('Unpin a member to allow updates'))

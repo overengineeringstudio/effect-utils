@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest'
 import type { GenieValidationContext, PackageInfo } from '../../validation/mod.ts'
 import { validatePackageRecompositionForPackage } from './recompose.ts'
 
-const makePackage = (overrides: Partial<PackageInfo> & { name: string; path: string }): PackageInfo => ({
+const makePackage = (
+  overrides: Partial<PackageInfo> & { name: string; path: string },
+): PackageInfo => ({
   ...overrides,
 })
 

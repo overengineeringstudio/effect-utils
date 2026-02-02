@@ -87,11 +87,11 @@ const simulatePull = (service: string) =>
 
     // 5% chance of failure
     if (Math.random() < 0.05) {
-      return Effect.fail(new Error(`Failed to pull image for ${service}`))
+      return yield* Effect.fail(new Error(`Failed to pull image for ${service}`))
     }
 
     return Effect.void
-  }).pipe(Effect.flatten)
+  })
 
 const simulateStart = (service: string) =>
   Effect.gen(function* () {
@@ -100,11 +100,11 @@ const simulateStart = (service: string) =>
 
     // 3% chance of failure
     if (Math.random() < 0.03) {
-      return Effect.fail(new Error(`Failed to start ${service}`))
+      return yield* Effect.fail(new Error(`Failed to start ${service}`))
     }
 
     return Effect.void
-  }).pipe(Effect.flatten)
+  })
 
 const simulateHealthcheck = (service: string) =>
   Effect.gen(function* () {
@@ -113,11 +113,11 @@ const simulateHealthcheck = (service: string) =>
 
     // 2% chance of failure
     if (Math.random() < 0.02) {
-      return Effect.fail(new Error(`Health check failed for ${service}`))
+      return yield* Effect.fail(new Error(`Health check failed for ${service}`))
     }
 
     return Effect.void
-  }).pipe(Effect.flatten)
+  })
 
 // =============================================================================
 // Main Deploy Function

@@ -79,8 +79,7 @@ export const readLockFile = (
     }
 
     const content = yield* fs.readFileString(lockPath)
-    const json = JSON.parse(content)
-    const parsed = yield* Schema.decodeUnknown(LockFile)(json)
+    const parsed = yield* Schema.decodeUnknown(Schema.parseJson(LockFile))(content)
     return Option.some(parsed)
   })
 
@@ -93,10 +92,11 @@ export const writeLockFile = ({
 }: {
   lockPath: AbsoluteFilePath
   lockFile: LockFile
-}): Effect.Effect<void, PlatformError.PlatformError, FileSystem.FileSystem> =>
+}): Effect.Effect<void, PlatformError.PlatformError | ParseResult.ParseError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const content = JSON.stringify(Schema.encodeSync(LockFile)(lockFile), null, 2)
+    const encoded = yield* Schema.encode(LockFile)(lockFile)
+    const content = JSON.stringify(encoded, null, 2)
     yield* fs.writeFileString(lockPath, content + '\n')
   })
 

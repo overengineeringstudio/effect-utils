@@ -161,9 +161,7 @@ export const fetch = (args: { repoPath: string; remote?: string; prune?: boolean
  * Checkout a specific ref (branch, tag, or commit)
  */
 export const checkout = (args: { repoPath: string; ref: string }) =>
-  Effect.gen(function* () {
-    yield* runGitCommand({ args: ['checkout', args.ref], cwd: args.repoPath })
-  })
+  runGitCommand({ args: ['checkout', args.ref], cwd: args.repoPath }).pipe(Effect.asVoid)
 
 /**
  * Get the current branch name
@@ -181,9 +179,7 @@ export const getCurrentBranch = (repoPath: string) =>
  * Get the current commit SHA
  */
 export const getCurrentCommit = (repoPath: string) =>
-  Effect.gen(function* () {
-    return yield* runGitCommand({ args: ['rev-parse', 'HEAD'], cwd: repoPath })
-  })
+  runGitCommand({ args: ['rev-parse', 'HEAD'], cwd: repoPath })
 
 /**
  * Get the remote URL (origin by default)
@@ -195,29 +191,25 @@ export const getRemoteUrl = ({
   repoPath: string
   remote?: string
 }) =>
-  Effect.gen(function* () {
-    return yield* runGitCommand({
-      args: ['remote', 'get-url', remote],
-      cwd: repoPath,
-    }).pipe(
-      Effect.map(Option.some),
-      Effect.catchAll(() => Effect.succeed(Option.none())),
-    )
-  })
+  runGitCommand({
+    args: ['remote', 'get-url', remote],
+    cwd: repoPath,
+  }).pipe(
+    Effect.map(Option.some),
+    Effect.catchAll(() => Effect.succeed(Option.none())),
+  )
 
 /**
  * Check if a directory is a git repository
  */
 export const isGitRepo = (path: string) =>
-  Effect.gen(function* () {
-    return yield* runGitCommand({
-      args: ['rev-parse', '--git-dir'],
-      cwd: path,
-    }).pipe(
-      Effect.map(() => true),
-      Effect.catchAll(() => Effect.succeed(false)),
-    )
-  })
+  runGitCommand({
+    args: ['rev-parse', '--git-dir'],
+    cwd: path,
+  }).pipe(
+    Effect.map(() => true),
+    Effect.catchAll(() => Effect.succeed(false)),
+  )
 
 // =============================================================================
 // Git Worktree Operations
@@ -362,26 +354,22 @@ export const getDefaultBranch = (args: { url: string } | { repoPath: string; rem
  * Works with branches, tags, and commits
  */
 export const resolveRef = (args: { repoPath: string; ref: string }) =>
-  Effect.gen(function* () {
-    return yield* runGitCommand({
-      args: ['rev-parse', args.ref],
-      cwd: args.repoPath,
-    })
+  runGitCommand({
+    args: ['rev-parse', args.ref],
+    cwd: args.repoPath,
   })
 
 /**
  * Check if a ref exists in the repo
  */
 export const refExists = (args: { repoPath: string; ref: string }) =>
-  Effect.gen(function* () {
-    return yield* runGitCommand({
-      args: ['rev-parse', '--verify', args.ref],
-      cwd: args.repoPath,
-    }).pipe(
-      Effect.map(() => true),
-      Effect.catchAll(() => Effect.succeed(false)),
-    )
-  })
+  runGitCommand({
+    args: ['rev-parse', '--verify', args.ref],
+    cwd: args.repoPath,
+  }).pipe(
+    Effect.map(() => true),
+    Effect.catchAll(() => Effect.succeed(false)),
+  )
 
 // =============================================================================
 // Branch Operations
@@ -476,13 +464,11 @@ export const createWorktreeDetached = (args: {
   worktreePath: string
   commit: string
 }) =>
-  Effect.gen(function* () {
-    // --detach creates the worktree with a detached HEAD at the specified commit
-    yield* runGitCommand({
-      args: ['worktree', 'add', '--detach', args.worktreePath, args.commit],
-      cwd: args.repoPath,
-    })
-  })
+  // --detach creates the worktree with a detached HEAD at the specified commit
+  runGitCommand({
+    args: ['worktree', 'add', '--detach', args.worktreePath, args.commit],
+    cwd: args.repoPath,
+  }).pipe(Effect.asVoid)
 
 /**
  * Worktree status information
@@ -544,12 +530,10 @@ export const updateWorktree = (args: { worktreePath: string; remote?: string }) 
  * Checkout a specific commit in a worktree
  */
 export const checkoutWorktree = (args: { worktreePath: string; ref: string }) =>
-  Effect.gen(function* () {
-    yield* runGitCommand({
-      args: ['checkout', args.ref],
-      cwd: args.worktreePath,
-    })
-  })
+  runGitCommand({
+    args: ['checkout', args.ref],
+    cwd: args.worktreePath,
+  }).pipe(Effect.asVoid)
 
 // =============================================================================
 // Megarepo Name Derivation

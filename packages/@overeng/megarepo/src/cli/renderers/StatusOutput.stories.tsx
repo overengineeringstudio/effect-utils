@@ -361,7 +361,11 @@ const createLockStaleState = (): typeof StatusState.Type => ({
   name: 'my-workspace',
   root: '/Users/dev/workspace',
   syncNeeded: true,
-  syncReasons: ["Member 'new-repo' not in lock file", "Member 'another-repo' not in lock file", "Lock file has extra member 'old-repo'"],
+  syncReasons: [
+    "Member 'new-repo' not in lock file",
+    "Member 'another-repo' not in lock file",
+    "Lock file has extra member 'old-repo'",
+  ],
   members: exampleMembersClean,
   lockStaleness: {
     exists: true,
@@ -459,7 +463,11 @@ const createAllNotSyncedState = (): typeof StatusState.Type => ({
   name: 'new-workspace',
   root: '/Users/dev/new-workspace',
   syncNeeded: true,
-  syncReasons: ["Member 'effect' symlink missing", "Member 'effect-utils' symlink missing", "Member 'livestore' symlink missing"],
+  syncReasons: [
+    "Member 'effect' symlink missing",
+    "Member 'effect-utils' symlink missing",
+    "Member 'livestore' symlink missing",
+  ],
   members: [
     {
       name: 'effect',
@@ -725,7 +733,11 @@ const createMultipleProblemsState = (): typeof StatusState.Type => ({
   name: 'problematic-workspace',
   root: '/Users/dev/problematic-workspace',
   syncNeeded: true,
-  syncReasons: ["Member 'not-synced-repo' symlink missing", "Member 'new-member' not in lock file", "Lock file has extra member 'removed-member'"],
+  syncReasons: [
+    "Member 'not-synced-repo' symlink missing",
+    "Member 'new-member' not in lock file",
+    "Lock file has extra member 'removed-member'",
+  ],
   members: [
     {
       name: 'dirty-repo',
@@ -875,7 +887,10 @@ const createMultipleSymlinkDriftState = (): typeof StatusState.Type => ({
   name: 'my-megarepo',
   root: '/Users/dev/my-megarepo',
   syncNeeded: true,
-  syncReasons: ["Member 'livestore' symlink drift: dev → refactor/genie-igor-ci", "Member 'effect' symlink drift: main → next"],
+  syncReasons: [
+    "Member 'livestore' symlink drift: dev → refactor/genie-igor-ci",
+    "Member 'effect' symlink drift: main → next",
+  ],
   members: [
     {
       name: 'livestore',
