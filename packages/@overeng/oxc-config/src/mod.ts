@@ -16,13 +16,11 @@
  * See: https://github.com/oxc-project/oxc/discussions/10342
  */
 
-import storybookPlugin from 'eslint-plugin-storybook'
+import { rules as storybookRules } from 'eslint-plugin-storybook'
 
 import { exportsFirstRule } from './exports-first.ts'
 import { jsdocRequireExportsRule } from './jsdoc-require-exports.ts'
 import { namedArgsRule } from './named-args.ts'
-
-const storybookRules = storybookPlugin.rules
 
 type Rules = {
   'exports-first': typeof exportsFirstRule

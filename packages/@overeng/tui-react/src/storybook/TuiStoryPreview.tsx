@@ -37,6 +37,7 @@ import { Atom, Registry } from '@effect-atom/atom'
 import { FitAddon } from '@xterm/addon-fit'
 import { Terminal } from '@xterm/xterm'
 import { Schema } from 'effect'
+// oxlint-disable-next-line eslint-plugin-import(no-unassigned-import) -- CSS side-effect import
 import '@xterm/xterm/css/xterm.css'
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 
