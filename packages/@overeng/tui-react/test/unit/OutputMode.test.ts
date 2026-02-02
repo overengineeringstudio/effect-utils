@@ -16,6 +16,7 @@ import {
   ndjson,
   // Detection
   detectOutputMode,
+  isAgentEnv,
   // Type guards
   isReact,
   isJson,
@@ -92,20 +93,195 @@ describe('OutputMode presets', () => {
   })
 })
 
+describe('isAgentEnv', () => {
+  const agentVars = ['AGENT', 'CLAUDE_PROJECT_DIR', 'CLAUDECODE', 'OPENCODE', 'CLINE_ACTIVE', 'CODEX_SANDBOX'] as const
+
+  // Save and clear all agent env vars before each test
+  let savedEnv: Record<string, string | undefined> = {}
+
+  const clearAgentEnv = () => {
+    savedEnv = {}
+    for (const key of agentVars) {
+      savedEnv[key] = process.env[key]
+      delete process.env[key]
+    }
+  }
+
+  const restoreAgentEnv = () => {
+    for (const key of agentVars) {
+      if (savedEnv[key] !== undefined) {
+        process.env[key] = savedEnv[key]
+      } else {
+        delete process.env[key]
+      }
+    }
+  }
+
+  test('returns false when no agent env vars are set', () => {
+    clearAgentEnv()
+    try {
+      expect(isAgentEnv()).toBe(false)
+    } finally {
+      restoreAgentEnv()
+    }
+  })
+
+  test('detects AGENT=1 (OpenCode)', () => {
+    clearAgentEnv()
+    try {
+      process.env.AGENT = '1'
+      expect(isAgentEnv()).toBe(true)
+    } finally {
+      restoreAgentEnv()
+    }
+  })
+
+  test('detects AGENT=amp (Amp)', () => {
+    clearAgentEnv()
+    try {
+      process.env.AGENT = 'amp'
+      expect(isAgentEnv()).toBe(true)
+    } finally {
+      restoreAgentEnv()
+    }
+  })
+
+  test('ignores AGENT=0 and AGENT=false', () => {
+    clearAgentEnv()
+    try {
+      process.env.AGENT = '0'
+      expect(isAgentEnv()).toBe(false)
+      process.env.AGENT = 'false'
+      expect(isAgentEnv()).toBe(false)
+      process.env.AGENT = ''
+      expect(isAgentEnv()).toBe(false)
+    } finally {
+      restoreAgentEnv()
+    }
+  })
+
+  test('detects CLAUDE_PROJECT_DIR (Claude Code)', () => {
+    clearAgentEnv()
+    try {
+      process.env.CLAUDE_PROJECT_DIR = '/some/path'
+      expect(isAgentEnv()).toBe(true)
+    } finally {
+      restoreAgentEnv()
+    }
+  })
+
+  test('detects CLAUDECODE (Amp)', () => {
+    clearAgentEnv()
+    try {
+      process.env.CLAUDECODE = '1'
+      expect(isAgentEnv()).toBe(true)
+    } finally {
+      restoreAgentEnv()
+    }
+  })
+
+  test('detects OPENCODE (OpenCode)', () => {
+    clearAgentEnv()
+    try {
+      process.env.OPENCODE = '1'
+      expect(isAgentEnv()).toBe(true)
+    } finally {
+      restoreAgentEnv()
+    }
+  })
+
+  test('detects CLINE_ACTIVE (Cline)', () => {
+    clearAgentEnv()
+    try {
+      process.env.CLINE_ACTIVE = 'true'
+      expect(isAgentEnv()).toBe(true)
+    } finally {
+      restoreAgentEnv()
+    }
+  })
+
+  test('detects CODEX_SANDBOX (Codex CLI)', () => {
+    clearAgentEnv()
+    try {
+      process.env.CODEX_SANDBOX = 'seatbelt'
+      expect(isAgentEnv()).toBe(true)
+    } finally {
+      restoreAgentEnv()
+    }
+  })
+})
+
 describe('detectOutputMode', () => {
-  test('in non-TTY test environment defaults to pipe mode', () => {
-    const mode = detectOutputMode()
-    // In non-TTY test environment, defaults to pipe (final react output)
-    expect(mode._tag).toBe('react')
-    expect(mode.timing).toBe('final')
+  const agentVars = ['AGENT', 'CLAUDE_PROJECT_DIR', 'CLAUDECODE', 'OPENCODE', 'CLINE_ACTIVE', 'CODEX_SANDBOX'] as const
+  let savedEnv: Record<string, string | undefined> = {}
+
+  const clearAgentEnv = () => {
+    savedEnv = {}
+    for (const key of agentVars) {
+      savedEnv[key] = process.env[key]
+      delete process.env[key]
+    }
+  }
+
+  const restoreAgentEnv = () => {
+    for (const key of agentVars) {
+      if (savedEnv[key] !== undefined) {
+        process.env[key] = savedEnv[key]
+      } else {
+        delete process.env[key]
+      }
+    }
+  }
+
+  test('in non-TTY non-agent environment defaults to pipe mode', () => {
+    clearAgentEnv()
+    try {
+      const mode = detectOutputMode()
+      expect(mode._tag).toBe('react')
+      expect(mode.timing).toBe('final')
+    } finally {
+      restoreAgentEnv()
+    }
+  })
+
+  test('in agent environment defaults to json mode', () => {
+    clearAgentEnv()
+    try {
+      process.env.AGENT = '1'
+      const mode = detectOutputMode()
+      expect(mode._tag).toBe('json')
+      expect(mode.timing).toBe('final')
+    } finally {
+      restoreAgentEnv()
+    }
+  })
+
+  test('TUI_VISUAL=1 overrides agent detection', () => {
+    clearAgentEnv()
+    const savedVisual = process.env.TUI_VISUAL
+    try {
+      process.env.AGENT = '1'
+      process.env.TUI_VISUAL = '1'
+      const mode = detectOutputMode()
+      // TUI_VISUAL forces React mode, overriding agent detection
+      expect(mode._tag).toBe('react')
+    } finally {
+      restoreAgentEnv()
+      if (savedVisual !== undefined) {
+        process.env.TUI_VISUAL = savedVisual
+      } else {
+        delete process.env.TUI_VISUAL
+      }
+    }
   })
 })
 
 describe('resolveOutputMode', () => {
   test('auto resolves based on environment', () => {
     const mode = resolveOutputMode('auto')
-    // In non-TTY test environment, auto resolves to pipe
-    expect(mode._tag).toBe('react')
+    // In test environment, auto resolves via detectOutputMode
+    // (may be 'json' if agent env vars are set, or 'react' pipe mode otherwise)
+    expect(['react', 'json']).toContain(mode._tag)
   })
 
   test('json returns json mode', () => {
