@@ -204,7 +204,7 @@ in
   '';
 
   # TODO: Enable pre-commit check once all checks pass
-  git-hooks.enable = false;
+  git-hooks.enable = !pkgs.stdenv.isDarwin;
   # git-hooks.hooks.check-quick = {
   #   enable = true;
   #   entry = "${pkgs.bash}/bin/bash -c 'dt check:quick'";
