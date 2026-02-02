@@ -29,8 +29,6 @@
 #       genieCoverageExcludes = [ "storybook-static" ];  # optional
 #       # Path to tsconfig for type-aware linting (enables typescript/no-deprecated etc)
 #       tsconfig = "tsconfig.all.json";  # optional
-#       # Path to package with oxlint-tsgolint installed (for type-aware linting)
-#       tsgolintPackage = "packages/@overeng/oxc-config";  # optional
 #     })
 #   ];
 #
@@ -42,11 +40,11 @@
   genieCoverageDirs,
   genieCoverageExcludes ? [],
   lintPaths ? [ "." ],
-  # Type-aware linting options
+  # Type-aware linting: provide tsconfig to enable --type-aware flag.
+  # Requires pkgs.tsgolint in devenv packages (auto-discovered on PATH by oxlint).
   tsconfig ? null,
-  tsgolintPackage ? null,
 }:
-{ lib, ... }:
+{ lib, pkgs, ... }:
 let
   defaultExcludes = [
     "node_modules"
@@ -66,11 +64,11 @@ let
 
   # Type-aware linting flags (enabled when tsconfig is provided)
   typeAwareFlags = if tsconfig != null then "--type-aware --tsconfig ${tsconfig}" else "";
-  # PATH prefix for tsgolint (required for type-aware linting)
-  # TODO use tsgolint from nix to get rid of this complexity
-  tsgolintPathPrefix = if tsgolintPackage != null then "PATH=\"${tsgolintPackage}/node_modules/.bin:$PATH\" " else "";
 in
 {
+  # Provide tsgolint when type-aware linting is enabled
+  packages = lib.optionals (tsconfig != null) [ pkgs.tsgolint ];
+
   tasks = {
     # Lint check tasks
     # Uses default config files (.oxfmtrc.json, .oxlintrc.json) - no -c flags needed
@@ -82,7 +80,7 @@ in
     };
     "lint:check:oxlint" = {
       description = "Run oxlint linter";
-      exec = "${tsgolintPathPrefix}oxlint --import-plugin --deny-warnings ${typeAwareFlags} ${lintPathsArg}";
+      exec = "oxlint --import-plugin --deny-warnings ${typeAwareFlags} ${lintPathsArg}";
       after = [ "genie:run" ];
       execIfModified = execIfModifiedPatterns;
     };
@@ -122,7 +120,7 @@ in
     };
     "lint:fix:oxlint" = {
       description = "Fix lint issues with oxlint";
-      exec = "${tsgolintPathPrefix}oxlint --import-plugin --deny-warnings ${typeAwareFlags} --fix ${lintPathsArg}";
+      exec = "oxlint --import-plugin --deny-warnings ${typeAwareFlags} --fix ${lintPathsArg}";
     };
     "lint:fix" = {
       description = "Fix all lint issues";
