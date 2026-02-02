@@ -7,7 +7,8 @@
 # Usage in devenv.nix:
 #   imports = [
 #     (taskModules.setup {
-#       tasks = [ "pnpm:install" "genie:run" "ts:build" ];
+#       requiredTasks = [ ];
+#       optionalTasks = [ "pnpm:install" "genie:run" "ts:build" ];
 #       completionsCliNames = [ "genie" "mr" ];
 #     })
 #   ];
@@ -46,13 +47,14 @@
 #
 # If you need to run setup during rebase, use: `FORCE_SETUP=1 dt setup:run`
 #
-# ## Soft Dependencies
+# ## Optional Tasks
 #
-# Setup tasks use the `@complete` suffix for non-blocking dependencies.
-# Tasks run on shell entry but failures don't prevent shell loading.
-# See: https://github.com/cachix/devenv/issues/2435
+# Optional tasks are wrapped so failures don't cause devenv to exit non-zero
+# (which would break direnv). Each optional task gets a `setup:opt:<name>`
+# wrapper that runs `devenv tasks run <name> || true`.
+# TODO: Remove wrapper workaround once https://github.com/cachix/devenv/issues/2454 is fixed
+# and use @complete suffix directly instead.
 {
-  tasks ? null,
   requiredTasks ? [ ],
   optionalTasks ? [ ],
   completionsCliNames ? [],
@@ -64,8 +66,8 @@ let
   cache = import ../lib/cache.nix { inherit config; };
   cacheRoot = cache.cacheRoot;
   hashFile = cache.mkCachePath "setup-git-hash";
-  userRequiredTasks = if tasks == null then requiredTasks else tasks;
-  userOptionalTasks = if tasks == null then optionalTasks else [ ];
+  userRequiredTasks = requiredTasks;
+  userOptionalTasks = optionalTasks;
   completionsEnabled = completionsCliNames != [];
   completionsTaskName = "setup:completions";
   completionsCliList = lib.concatStringsSep " " completionsCliNames;
@@ -167,13 +169,28 @@ let
   setupRequiredTasks = userRequiredTasks;
   setupOptionalTasks = userOptionalTasks ++ lib.optionals completionsEnabled [ completionsTaskName ];
   setupTasks = setupRequiredTasks ++ setupOptionalTasks;
-  
+
+  # TODO: Remove wrappers once https://github.com/cachix/devenv/issues/2454 is fixed
+  # Workaround: devenv exits non-zero if any task in the graph fails, even when
+  # the root task succeeds via @complete. We create wrapper tasks that call
+  # `devenv tasks run <task> || true` so they always succeed.
+  mkWrapperName = t: "setup:opt:${t}";
+  wrappedOptionalTasks = map mkWrapperName setupOptionalTasks;
+  wrapperTasks = lib.listToAttrs (map (t: {
+    name = mkWrapperName t;
+    value = {
+      description = "Optional setup: ${t}";
+      exec = "devenv tasks run ${t} || true";
+    };
+  }) setupOptionalTasks);
+  allSetupTasks = setupRequiredTasks ++ wrappedOptionalTasks;
+
   # Status check that skips task if git hash unchanged
   # Returns 0 (skip) if hash matches, non-zero (run) if different
   gitHashStatus = ''
     # Allow bypass via FORCE_SETUP=1
     [ "$FORCE_SETUP" = "1" ] && exit 1
-    
+
     # Allow override via SETUP_GIT_HASH for testing
     current=''${SETUP_GIT_HASH:-$(git rev-parse HEAD 2>/dev/null || echo "no-git")}
     cached=$(cat ${hashFile} 2>/dev/null || echo "")
@@ -187,16 +204,16 @@ let
     ${cache.writeCacheFile hashFile}
   '';
 
-  # Create status overrides for all setup tasks
+  # Create status overrides for required tasks and wrappers
   statusOverrides = lib.optionalAttrs skipIfGitHashUnchanged (
-    lib.genAttrs setupTasks (_: {
+    lib.genAttrs allSetupTasks (_: {
       status = lib.mkDefault gitHashStatus;
     })
   );
 in
 {
-  # Merge status overrides with setup-specific tasks
-  tasks = statusOverrides // lib.optionalAttrs completionsEnabled {
+  # Merge status overrides, wrappers, and setup-specific tasks
+  tasks = statusOverrides // wrapperTasks // lib.optionalAttrs completionsEnabled {
     "${completionsTaskName}" = {
       description = "Install shell completions for CLI tools";
       exec = completionsExec;
@@ -215,9 +232,9 @@ in
           exit 1
         fi
       '';
-      # This makes setup:gate run BEFORE each of the setup tasks
+      # This makes setup:gate run BEFORE each setup task (and wrappers)
       # If gate fails, the tasks will be "skipped due to dependency failure"
-      before = setupTasks;
+      before = allSetupTasks;
     };
 
     # Save git hash after successful setup
@@ -229,12 +246,12 @@ in
       after = setupRequiredTasks;
     };
 
-    # Wire setup tasks to run during shell entry via native soft dependencies.
-    # The @complete suffix means: wait for task to finish, but don't fail if it fails.
+    # Wire setup tasks to run during shell entry.
+    # Required tasks are hard dependencies; wrappers are also hard deps
+    # but they internally swallow failures via `|| true`.
     "devenv:enterShell" = {
-      after = setupRequiredTasks ++
-        (map (t: "${t}@complete") setupOptionalTasks) ++
-        [ "setup:save-hash@complete" ];
+      after = allSetupTasks ++
+        [ "setup:save-hash" ];
     };
 
     # Force-run setup tasks (bypasses git hash check)
