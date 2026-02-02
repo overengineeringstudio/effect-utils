@@ -328,15 +328,49 @@ export const isTTY = (): boolean => typeof process !== 'undefined' && process.st
 export const isNonTTY = (): boolean => !isTTY()
 
 /**
+ * Check if running inside a coding agent's shell environment.
+ *
+ * Detects known coding agents by their environment variables:
+ * - `AGENT` (generic convention): OpenCode sets `AGENT=1`, Amp sets `AGENT=amp`
+ * - `CLAUDE_PROJECT_DIR`: Claude Code (https://docs.anthropic.com/en/docs/claude-code/cli-reference)
+ * - `CLAUDECODE`: Amp compatibility (https://ampcode.com/manual/appendix#toolboxes-reference)
+ * - `OPENCODE`: OpenCode (verified empirically)
+ * - `CLINE_ACTIVE`: Cline VS Code extension (https://github.com/cline/cline/blob/main/src/hosts/vscode/terminal/VscodeTerminalRegistry.ts)
+ * - `CODEX_SANDBOX`: OpenAI Codex CLI (https://github.com/openai/codex/blob/main/codex-rs/core/src/spawn.rs)
+ *
+ * Note: Some agents (Cursor, Windsurf, Aider) don't set identifiable env vars.
+ * Use `--output=json` or `TUI_VISUAL=1` for those.
+ */
+export const isAgentEnv = (): boolean => {
+  if (typeof process === 'undefined') return false
+  const env = process.env
+  return (
+    // Generic agent convention (OpenCode: AGENT=1, Amp: AGENT=amp)
+    (env?.AGENT !== undefined && env.AGENT !== '' && env.AGENT !== '0' && env.AGENT !== 'false') ||
+    // Claude Code
+    env?.CLAUDE_PROJECT_DIR !== undefined ||
+    // Amp (also sets AGENT, but CLAUDECODE is a secondary signal)
+    env?.CLAUDECODE !== undefined ||
+    // OpenCode (also sets AGENT, but OPENCODE is a secondary signal)
+    env?.OPENCODE !== undefined ||
+    // Cline (VS Code extension)
+    env?.CLINE_ACTIVE !== undefined ||
+    // OpenAI Codex CLI
+    env?.CODEX_SANDBOX !== undefined
+  )
+}
+
+/**
  * Auto-detect the appropriate OutputMode based on environment.
  *
  * Detection logic:
  * 1. `TUI_VISUAL=1` env → forces React mode (tty or ci based on TTY)
- * 2. TTY + not CI → `tty` (animated terminal)
- * 3. TTY + CI → `ci` (static terminal)
- * 4. Non-TTY → `pipe` (final output only)
+ * 2. Agent environment detected → `json` (structured output for coding agents)
+ * 3. TTY + not CI → `tty` (animated terminal)
+ * 4. TTY + CI → `ci` (static terminal)
+ * 5. Non-TTY → `pipe` (final output only)
  *
- * Respects `NO_COLOR` environment variable for disabling colors.
+ * Respects `NO_COLOR` and `NO_UNICODE` environment variables.
  *
  * @returns Detected OutputMode
  *
@@ -351,6 +385,7 @@ export const detectOutputMode = (): OutputMode => {
   const forceVisual = isVisualEnvSet()
   const ttyEnv = isTTY()
   const ciEnv = isCIEnv()
+  const agentEnv = isAgentEnv()
   const noColor = isNoColorSet()
   const noUnicode = isNoUnicodeSet()
 
@@ -365,6 +400,11 @@ export const detectOutputMode = (): OutputMode => {
   if (forceVisual) {
     // Forced visual: use tty if actually TTY, otherwise ci mode
     return withEnvOverrides(ttyEnv && !ciEnv ? tty : ci)
+  }
+
+  // Agent environment → JSON output for structured consumption
+  if (agentEnv) {
+    return json
   }
 
   // Auto-detect based on environment
