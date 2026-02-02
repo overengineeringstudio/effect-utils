@@ -148,10 +148,10 @@ These generate the linter and formatter configs. Run `genie` to create `.oxlintr
 ## Initial Setup
 
 ```bash
-mr sync
-mr generate nix
 direnv allow
 ```
+
+The `megarepo:sync` task runs automatically during devenv shell entry on fresh clone/worktree, so manual `mr sync` is typically not needed. Use `mr status` to check sync state or `mr sync` to force re-sync.
 
 ## Updating Inputs
 

@@ -82,7 +82,7 @@ Import from `inputs.effect-utils.devenvModules.tasks`:
 | Module     | Type          | Tasks Provided                                        |
 | ---------- | ------------- | ----------------------------------------------------- |
 | `genie`    | Simple        | `genie:run`, `genie:watch`, `genie:check`             |
-| `megarepo` | Simple        | `megarepo:generate`, `megarepo:check`                 |
+| `megarepo` | Simple        | `megarepo:sync`, `megarepo:generate`, `megarepo:check` |
 | `ts`       | Parameterized | `ts:check`, `ts:watch`, `ts:build`, `ts:clean`        |
 | `setup`    | Parameterized | `devenv:enterShell` wiring, `setup:run`, `setup:gate` |
 | `check`    | Parameterized | `check:quick`, `check:all`                            |
