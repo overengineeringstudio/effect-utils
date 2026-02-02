@@ -30,7 +30,7 @@ describe('validatePackageRecompositionForPackage', () => {
     })
     const ctx = makeContext([pkg])
 
-    const issues = validatePackageRecompositionForPackage(ctx, '@test/app')
+    const issues = validatePackageRecompositionForPackage({ ctx, pkgName: '@test/app' })
     expect(issues).toEqual([])
   })
 
@@ -48,7 +48,7 @@ describe('validatePackageRecompositionForPackage', () => {
     })
     const ctx = makeContext([upstream, downstream])
 
-    const issues = validatePackageRecompositionForPackage(ctx, '@test/app')
+    const issues = validatePackageRecompositionForPackage({ ctx, pkgName: '@test/app' })
     expect(issues).toEqual([])
   })
 
@@ -66,7 +66,7 @@ describe('validatePackageRecompositionForPackage', () => {
     })
     const ctx = makeContext([upstream, downstream])
 
-    const issues = validatePackageRecompositionForPackage(ctx, '@test/app')
+    const issues = validatePackageRecompositionForPackage({ ctx, pkgName: '@test/app' })
     expect(issues).toHaveLength(1)
     expect(issues[0]).toMatchObject({
       severity: 'error',
@@ -92,7 +92,7 @@ describe('validatePackageRecompositionForPackage', () => {
     })
     const ctx = makeContext([upstream, downstream])
 
-    const issues = validatePackageRecompositionForPackage(ctx, '@test/app')
+    const issues = validatePackageRecompositionForPackage({ ctx, pkgName: '@test/app' })
     expect(issues).toHaveLength(1)
     expect(issues[0]).toMatchObject({
       severity: 'error',
@@ -113,7 +113,7 @@ describe('validatePackageRecompositionForPackage', () => {
     })
     const ctx = makeContext([upstream, downstream])
 
-    const issues = validatePackageRecompositionForPackage(ctx, '@test/app')
+    const issues = validatePackageRecompositionForPackage({ ctx, pkgName: '@test/app' })
     expect(issues).toHaveLength(1)
     expect(issues[0]).toMatchObject({
       severity: 'error',
@@ -135,7 +135,7 @@ describe('validatePackageRecompositionForPackage', () => {
     })
     const ctx = makeContext([upstream, downstream])
 
-    const issues = validatePackageRecompositionForPackage(ctx, '@test/example')
+    const issues = validatePackageRecompositionForPackage({ ctx, pkgName: '@test/example' })
     expect(issues).toEqual([])
   })
 
@@ -152,7 +152,7 @@ describe('validatePackageRecompositionForPackage', () => {
     })
     const ctx = makeContext([upstream, downstream])
 
-    const issues = validatePackageRecompositionForPackage(ctx, '@test/app')
+    const issues = validatePackageRecompositionForPackage({ ctx, pkgName: '@test/app' })
     expect(issues).toEqual([])
   })
 
@@ -170,20 +170,20 @@ describe('validatePackageRecompositionForPackage', () => {
     })
     const ctx = makeContext([upstream, downstream])
 
-    const issues = validatePackageRecompositionForPackage(ctx, '@test/app')
+    const issues = validatePackageRecompositionForPackage({ ctx, pkgName: '@test/app' })
     expect(issues).toHaveLength(1)
     expect(issues[0]).toMatchObject({ rule: 'recompose-peer-deps' })
   })
 
   it('returns empty when package not found in context', () => {
     const ctx = makeContext([])
-    const issues = validatePackageRecompositionForPackage(ctx, '@test/nonexistent')
+    const issues = validatePackageRecompositionForPackage({ ctx, pkgName: '@test/nonexistent' })
     expect(issues).toEqual([])
   })
 
   it('returns empty when packageJson context is missing', () => {
     const ctx: GenieValidationContext = { cwd: '/workspace' }
-    const issues = validatePackageRecompositionForPackage(ctx, '@test/app')
+    const issues = validatePackageRecompositionForPackage({ ctx, pkgName: '@test/app' })
     expect(issues).toEqual([])
   })
 
@@ -201,7 +201,7 @@ describe('validatePackageRecompositionForPackage', () => {
     })
     const ctx = makeContext([upstream, downstream])
 
-    const issues = validatePackageRecompositionForPackage(ctx, '@test/app')
+    const issues = validatePackageRecompositionForPackage({ ctx, pkgName: '@test/app' })
     expect(issues).toHaveLength(1)
     expect(issues[0]).toMatchObject({ rule: 'recompose-peer-deps' })
   })

@@ -3,8 +3,10 @@ import type { Effect } from 'effect'
 
 import type { ValidationIssue } from '../package-json/validation.ts'
 
+/** Supported workspace provider backends */
 export type WorkspaceProviderName = 'pnpm' | 'bun' | 'manual'
 
+/** Workspace provider that discovers package.json paths in a monorepo */
 export type WorkspaceProvider = {
   name: WorkspaceProviderName
   discoverPackageJsonPaths: (args: {
@@ -12,6 +14,7 @@ export type WorkspaceProvider = {
   }) => Effect.Effect<string[], Error, FileSystem.FileSystem | Path.Path>
 }
 
+/** Resolved package info from a workspace package.json */
 export type PackageInfo = {
   name: string
   path: string
@@ -22,6 +25,7 @@ export type PackageInfo = {
   pnpm?: { patchedDependencies?: Record<string, string> }
 }
 
+/** Context passed to genie validation hooks */
 export type GenieValidationContext = {
   cwd: string
   packageJson?: {
@@ -31,4 +35,5 @@ export type GenieValidationContext = {
   }
 }
 
+/** A validation issue found during genie validation */
 export type GenieValidationIssue = ValidationIssue

@@ -10,12 +10,15 @@ const DEFAULT_EXCLUDES = ['examples/**', 'apps/**', 'docs/**', 'tests/**']
 const isWorkspaceSpec = (spec: string): boolean =>
   spec.startsWith('workspace:') || spec.startsWith('file:') || spec.startsWith('link:')
 
-const hasOptionalPeer = (
-  meta: Record<string, { optional?: boolean }> | undefined,
-  name: string,
-): boolean => meta?.[name]?.optional === true
+const hasOptionalPeer = ({
+  meta,
+  name,
+}: {
+  meta: Record<string, { optional?: boolean }> | undefined
+  name: string
+}): boolean => meta?.[name]?.optional === true
 
-const shouldExclude = (path: string, patterns: string[]): boolean =>
+const shouldExclude = ({ path, patterns }: { path: string; patterns: string[] }): boolean =>
   matchesAnyPattern({ name: path, patterns })
 
 const validatePackageRecomposition = (args: {
@@ -33,7 +36,7 @@ const validatePackageRecomposition = (args: {
     if (!isWorkspaceSpec(spec)) continue
     const upstream = args.packageMap.get(depName)
     if (!upstream) continue
-    if (shouldExclude(upstream.path, args.excludePatterns)) continue
+    if (shouldExclude({ path: upstream.path, patterns: args.excludePatterns })) continue
 
     const upstreamPeers = Object.keys(upstream.peerDependencies ?? {})
     for (const peer of upstreamPeers) {
@@ -49,8 +52,8 @@ const validatePackageRecomposition = (args: {
       }
 
       if (
-        hasOptionalPeer(upstream.peerDependenciesMeta, peer) &&
-        !hasOptionalPeer(args.pkg.peerDependenciesMeta, peer)
+        hasOptionalPeer({ meta: upstream.peerDependenciesMeta, name: peer }) &&
+        !hasOptionalPeer({ meta: args.pkg.peerDependenciesMeta, name: peer })
       ) {
         issues.push({
           severity: 'error',
@@ -80,18 +83,28 @@ const validatePackageRecomposition = (args: {
   return issues
 }
 
-export const validatePackageRecompositionForPackage = (
-  ctx: GenieValidationContext,
-  pkgName: string,
-  config: RecomposeValidatorConfig = {},
-): ValidationIssue[] => {
+/**
+ * Validate that a package properly re-exports peer dependencies and patches from its workspace dependencies.
+ *
+ * Checks that downstream packages declare all peer deps and patched dependencies
+ * required by their upstream workspace dependencies.
+ */
+export const validatePackageRecompositionForPackage = ({
+  ctx,
+  pkgName,
+  config = {},
+}: {
+  ctx: GenieValidationContext
+  pkgName: string
+  config?: RecomposeValidatorConfig
+}): ValidationIssue[] => {
   const packageJson = ctx.packageJson
   if (!packageJson) return []
 
   const excludePatterns = config.excludePackagePatterns ?? DEFAULT_EXCLUDES
   const pkg = packageJson.byName.get(pkgName)
   if (!pkg) return []
-  if (shouldExclude(pkg.path, excludePatterns)) return []
+  if (shouldExclude({ path: pkg.path, patterns: excludePatterns })) return []
 
   return validatePackageRecomposition({
     pkg,

@@ -621,7 +621,7 @@ export const packageJson = <const T extends PackageJsonData>(
   stringify: (ctx) =>
     JSON.stringify(buildPackageJson({ data, location: ctx.location }), null, 2) + '\n',
   validate: (ctx: GenieValidationContext) =>
-    data.name ? validatePackageRecompositionForPackage(ctx, data.name) : [],
+    data.name ? validatePackageRecompositionForPackage({ ctx, pkgName: data.name }) : [],
 })
 
 /**
