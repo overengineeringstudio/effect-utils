@@ -364,6 +364,12 @@ export const statusCommand = Cli.Command.make(
         })
       }
 
+      // When --all is false, truncate to top-level member only.
+      // This ensures currentMemberPath always matches the flat member list.
+      if (!all && currentMemberPath !== undefined && currentMemberPath.length > 1) {
+        currentMemberPath = [currentMemberPath[0]!]
+      }
+
       // Use StatusApp for all output modes (TTY, CI, JSON, NDJSON)
       yield* Effect.scoped(
         Effect.gen(function* () {
