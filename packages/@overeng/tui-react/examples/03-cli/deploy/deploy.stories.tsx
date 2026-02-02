@@ -13,7 +13,7 @@ import React from 'react'
 
 import { TuiStoryPreview, type OutputTab } from '../../../src/storybook/TuiStoryPreview.tsx'
 import { DeployApp } from './deploy.tsx'
-import type { DeployState, DeployAction} from './schema.ts';
+import type { DeployState, DeployAction } from './schema.ts'
 import { type LogEntry } from './schema.ts'
 import { DeployView } from './view.tsx'
 

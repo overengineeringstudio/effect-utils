@@ -9,8 +9,9 @@
 
 import type { Atom } from '@effect-atom/atom'
 import React from 'react'
+import { useMemo } from 'react'
 
-import { Box, Text, Static, useMemo, useTuiAtomValue } from '@overeng/tui-react'
+import { Box, Text, Static, useTuiAtomValue } from '@overeng/tui-react'
 
 import { computeSyncSummary, type MemberSyncResult } from '../../../lib/sync/schema.ts'
 import {

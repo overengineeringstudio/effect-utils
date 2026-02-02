@@ -308,8 +308,6 @@ describe('Interrupt Handling', () => {
       expect(states.every((s) => s.interrupted === false)).toBe(true)
     })
   })
-
-
 })
 
 // =============================================================================

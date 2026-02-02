@@ -1,6 +1,7 @@
+import { type Atom } from '@effect-atom/atom'
 import React from 'react'
 
-import { type Atom, Box, Text, useTuiAtomValue, useSymbols } from '@overeng/tui-react'
+import { Box, Text, useTuiAtomValue, useSymbols } from '@overeng/tui-react'
 
 import type { DumpState } from './schema.ts'
 

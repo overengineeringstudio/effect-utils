@@ -21,6 +21,7 @@
     "prepare": "effect-language-service patch"
   },
   "dependencies": {
+    "@effect-atom/atom": "0.4.13",
     "@overeng/effect-path": "workspace:*",
     "@overeng/notion-effect-client": "workspace:*",
     "@overeng/notion-effect-schema": "workspace:*",

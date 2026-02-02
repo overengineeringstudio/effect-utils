@@ -34,6 +34,7 @@ export default packageJson(
     },
     dependencies: {
       ...catalog.pick(
+        '@effect-atom/atom',
         '@overeng/effect-path',
         '@overeng/notion-effect-client',
         '@overeng/notion-effect-schema',
