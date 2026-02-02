@@ -83,6 +83,7 @@ let
     { path = "packages/@overeng/effect-react"; name = "effect-react"; port = 6009; }
     { path = "packages/@overeng/effect-schema-form-aria"; name = "effect-schema-form-aria"; port = 6010; }
     { path = "packages/@overeng/react-inspector"; name = "react-inspector"; port = 6011; }
+    { path = "packages/@overeng/notion-cli"; name = "notion-cli"; port = 6012; }
   ];
 in
 {
@@ -203,6 +204,7 @@ in
   '';
 
   # TODO: Enable pre-commit check once all checks pass
+  git-hooks.enable = false;
   # git-hooks.hooks.check-quick = {
   #   enable = true;
   #   entry = "${pkgs.bash}/bin/bash -c 'dt check:quick'";
