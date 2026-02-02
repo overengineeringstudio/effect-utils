@@ -27,13 +27,24 @@ const tree = {
 // =============================================================================
 
 /**
- * Group members by their megarepo path for hierarchical display.
- * Returns a map from megarepo path (as string) to members.
+ * Get the owner path as a string key for grouping.
+ * Root -> '', Nested -> 'foo' or 'foo/bar'
  */
-function groupByMegarepoPath(members: readonly MemberInfo[]): Map<string, MemberInfo[]> {
+function getOwnerKey(member: MemberInfo): string {
+  if (member.owner._tag === 'Root') {
+    return ''
+  }
+  return member.owner.path.join('/')
+}
+
+/**
+ * Group members by their owner for hierarchical display.
+ * Returns a map from owner path (as string) to members.
+ */
+function groupByOwner(members: readonly MemberInfo[]): Map<string, MemberInfo[]> {
   const groups = new Map<string, MemberInfo[]>()
   for (const member of members) {
-    const key = member.megarepoPath.join('/')
+    const key = getOwnerKey(member)
     const group = groups.get(key) ?? []
     group.push(member)
     groups.set(key, group)
@@ -104,7 +115,7 @@ export const LsView = ({ stateAtom }: LsViewProps) => {
   }
 
   // Hierarchical display for --all mode
-  const groups = groupByMegarepoPath(members)
+  const groups = groupByOwner(members)
   const sortedPaths = Array.from(groups.keys()).sort()
 
   return (

@@ -8,6 +8,24 @@
 import { Schema } from 'effect'
 
 // =============================================================================
+// Member Owner (tagged union)
+// =============================================================================
+
+/** Member belongs to the root megarepo */
+export const MemberOwnerRoot = Schema.TaggedStruct('Root', {})
+
+/** Member belongs to a nested megarepo */
+export const MemberOwnerNested = Schema.TaggedStruct('Nested', {
+  /** Path to the owning megarepo (non-empty) */
+  path: Schema.NonEmptyArray(Schema.String),
+})
+
+/** Discriminated union for member ownership */
+export const MemberOwner = Schema.Union(MemberOwnerRoot, MemberOwnerNested)
+
+export type MemberOwner = Schema.Schema.Type<typeof MemberOwner>
+
+// =============================================================================
 // Member Info
 // =============================================================================
 
@@ -16,8 +34,8 @@ export const MemberInfo = Schema.Struct({
   name: Schema.String,
   /** Source string (e.g., "github:org/repo" or "../path") */
   source: Schema.String,
-  /** Path to owning megarepo (empty array = own megarepo) */
-  megarepoPath: Schema.Array(Schema.String),
+  /** Which megarepo owns this member */
+  owner: MemberOwner,
   /** Is this member itself a megarepo? */
   isMegarepo: Schema.Boolean,
 })

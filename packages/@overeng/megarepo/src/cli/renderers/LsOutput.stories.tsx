@@ -19,19 +19,19 @@ const exampleMembers: MemberInfo[] = [
   {
     name: 'effect',
     source: 'effect-ts/effect',
-    megarepoPath: [],
+    owner: { _tag: 'Root' },
     isMegarepo: false,
   },
   {
     name: 'effect-utils',
     source: 'overengineeringstudio/effect-utils',
-    megarepoPath: [],
+    owner: { _tag: 'Root' },
     isMegarepo: true,
   },
   {
     name: 'livestore',
     source: 'livestorejs/livestore',
-    megarepoPath: [],
+    owner: { _tag: 'Root' },
     isMegarepo: false,
   },
 ]
@@ -40,37 +40,37 @@ const nestedMembers: MemberInfo[] = [
   {
     name: 'effect',
     source: 'effect-ts/effect',
-    megarepoPath: [],
+    owner: { _tag: 'Root' },
     isMegarepo: false,
   },
   {
     name: 'effect-utils',
     source: 'overengineeringstudio/effect-utils',
-    megarepoPath: [],
+    owner: { _tag: 'Root' },
     isMegarepo: true,
   },
   {
     name: 'tui-react',
     source: 'local',
-    megarepoPath: ['effect-utils'],
+    owner: { _tag: 'Nested', path: ['effect-utils'] },
     isMegarepo: false,
   },
   {
     name: 'cli-ui',
     source: 'local',
-    megarepoPath: ['effect-utils'],
+    owner: { _tag: 'Nested', path: ['effect-utils'] },
     isMegarepo: false,
   },
   {
     name: 'livestore',
     source: 'livestorejs/livestore',
-    megarepoPath: [],
+    owner: { _tag: 'Root' },
     isMegarepo: true,
   },
   {
     name: 'examples',
     source: 'local',
-    megarepoPath: ['livestore'],
+    owner: { _tag: 'Nested', path: ['livestore'] },
     isMegarepo: false,
   },
 ]
@@ -79,25 +79,25 @@ const deeplyNestedMembers: MemberInfo[] = [
   {
     name: 'level-1',
     source: 'org/level-1',
-    megarepoPath: [],
+    owner: { _tag: 'Root' },
     isMegarepo: true,
   },
   {
     name: 'level-2a',
     source: 'org/level-2a',
-    megarepoPath: ['level-1'],
+    owner: { _tag: 'Nested', path: ['level-1'] },
     isMegarepo: true,
   },
   {
     name: 'level-3',
     source: 'org/level-3',
-    megarepoPath: ['level-1', 'level-2a'],
+    owner: { _tag: 'Nested', path: ['level-1', 'level-2a'] },
     isMegarepo: false,
   },
   {
     name: 'level-2b',
     source: 'org/level-2b',
-    megarepoPath: ['level-1'],
+    owner: { _tag: 'Nested', path: ['level-1'] },
     isMegarepo: false,
   },
 ]
@@ -106,13 +106,13 @@ const localPathMembers: MemberInfo[] = [
   {
     name: 'my-lib',
     source: '../my-lib',
-    megarepoPath: [],
+    owner: { _tag: 'Root' },
     isMegarepo: false,
   },
   {
     name: 'shared-utils',
     source: '/Users/dev/shared-utils',
-    megarepoPath: [],
+    owner: { _tag: 'Root' },
     isMegarepo: false,
   },
 ]
@@ -155,7 +155,7 @@ const createSingleMemberState = (): typeof LsState.Type => ({
     {
       name: 'effect',
       source: 'effect-ts/effect',
-      megarepoPath: [],
+      owner: { _tag: 'Root' },
       isMegarepo: false,
     },
   ],
@@ -181,7 +181,7 @@ const createManyMembersState = (): typeof LsState.Type => ({
   members: Array.from({ length: 15 }, (_, i) => ({
     name: `repo-${String(i + 1).padStart(2, '0')}`,
     source: `org/repo-${i + 1}`,
-    megarepoPath: [],
+    owner: { _tag: 'Root' } as const,
     isMegarepo: i % 5 === 0,
   })),
   all: false,
@@ -194,19 +194,19 @@ const createAllMegareposState = (): typeof LsState.Type => ({
     {
       name: 'effect-utils',
       source: 'overengineeringstudio/effect-utils',
-      megarepoPath: [],
+      owner: { _tag: 'Root' },
       isMegarepo: true,
     },
     {
       name: 'livestore',
       source: 'livestorejs/livestore',
-      megarepoPath: [],
+      owner: { _tag: 'Root' },
       isMegarepo: true,
     },
     {
       name: 'dotfiles',
       source: 'schickling/dotfiles',
-      megarepoPath: [],
+      owner: { _tag: 'Root' },
       isMegarepo: true,
     },
   ],

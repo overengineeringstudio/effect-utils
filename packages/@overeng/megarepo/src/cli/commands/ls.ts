@@ -18,16 +18,17 @@ import { LsApp, LsView } from '../renderers/LsOutput/mod.ts'
 import type { MemberInfo } from '../renderers/LsOutput/schema.ts'
 
 /**
- * Recursively scan members and build flat list with megarepo path info.
+ * Recursively scan members and build flat list with owner info.
  */
 const scanMembersRecursive = ({
   megarepoRoot,
-  megarepoPath = [],
+  ownerPath = undefined,
   visited = new Set<string>(),
   all,
 }: {
   megarepoRoot: AbsoluteDirPath
-  megarepoPath?: readonly string[]
+  /** Path to owning megarepo (undefined = root megarepo) */
+  ownerPath?: readonly [string, ...string[]]
   visited?: Set<string>
   all: boolean
 }): Effect.Effect<
@@ -76,7 +77,7 @@ const scanMembersRecursive = ({
       members.push({
         name: memberName,
         source: sourceString,
-        megarepoPath: [...megarepoPath],
+        owner: ownerPath === undefined ? { _tag: 'Root' } : { _tag: 'Nested', path: ownerPath },
         isMegarepo,
       })
 
@@ -85,9 +86,11 @@ const scanMembersRecursive = ({
         const nestedRoot = EffectPath.unsafe.absoluteDir(
           memberPath.endsWith('/') ? memberPath : `${memberPath}/`,
         )
+        const nestedOwnerPath: [string, ...string[]] =
+          ownerPath === undefined ? [memberName] : [...ownerPath, memberName]
         const nestedMembers = yield* scanMembersRecursive({
           megarepoRoot: nestedRoot,
-          megarepoPath: [...megarepoPath, memberName],
+          ownerPath: nestedOwnerPath,
           visited,
           all,
         })
