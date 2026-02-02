@@ -19,7 +19,7 @@
     }
   },
   "scripts": {
-    "prepare": "effect-language-service patch"
+    "postinstall": "effect-language-service patch"
   },
   "devDependencies": {
     "@effect/experimental": "0.58.0",

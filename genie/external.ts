@@ -255,10 +255,12 @@ export const effectLspDevDeps = () => catalog.pick('@effect/language-service', '
 
 /**
  * Scripts for Effect Language Service setup.
- * The prepare script patches TypeScript to enable compile-time Effect diagnostics.
+ * Patches TypeScript to enable compile-time Effect diagnostics.
+ * Uses postinstall (not prepare) to ensure devDependencies are available
+ * when this package is a workspace member of another package.
  */
 export const effectLspScripts = {
-  prepare: 'effect-language-service patch',
+  postinstall: 'effect-language-service patch',
 } as const
 
 // =============================================================================

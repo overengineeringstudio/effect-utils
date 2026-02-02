@@ -28,10 +28,24 @@
 # Note: `enableGlobalVirtualStore` was previously used but is no longer needed
 # with the `workspace:*` protocol approach. See PNPM-02 in context/workarounds/pnpm-issues.md
 #
-# Installs run in PARALLEL for faster builds (~3x speedup).
-# This is safe because we no longer use enableGlobalVirtualStore (which had race conditions).
-# See: context/workarounds/pnpm-issues.md for history.
+# ---
+# Why installs run SEQUENTIALLY (not in parallel):
 #
+# Each package has a pnpm-workspace.yaml that lists workspace members for the
+# `workspace:*` protocol to resolve internal dependencies. When `pnpm install`
+# runs, it operates on ALL workspace members (not just the current package),
+# installing dependencies into each member's node_modules/.
+#
+# When multiple packages have overlapping workspace members (e.g., both genie
+# and notion-cli include ../utils, ../tui-react), running their installs in
+# parallel causes race conditions - both try to write to the same directories
+# simultaneously, resulting in ENOENT errors.
+#
+# Alternative: Dependency-aware parallelism could be implemented by analyzing
+# workspace overlap and only serializing installs with shared members. This
+# would restore ~3x speedup for non-overlapping packages but adds complexity.
+#
+# ---
 # Shared caching rules live in ../lib/cache.nix (task-specific details below).
 #
 # Cache inputs (per package path):
@@ -63,17 +77,24 @@ let
     in
     sanitize final;
 
-  # Install tasks run without a hard dependency on genie:run.
-  # pnpm-workspace.yaml files are committed, so fresh clones can install first.
-  # Installs run in parallel for ~3x speedup.
-  mkInstallTask = path: {
-    "pnpm:install:${toName path}" = {
-      description = "Install dependencies for ${toName path}";
+  # Build list of {path, name, prevName} for sequential chaining
+  packagesWithPrev = lib.imap0 (i: path: {
+    inherit path;
+    name = toName path;
+    prevName = if i == 0 then null else toName (builtins.elemAt packages (i - 1));
+  }) packages;
+
+  # Install tasks run sequentially to avoid race conditions from overlapping workspaces.
+  # Each task depends on the previous one completing.
+  # Note: pnpm-workspace.yaml files are committed, so fresh clones can install without genie:run.
+  mkInstallTask = { path, name, prevName }: {
+    "pnpm:install:${name}" = {
+      description = "Install dependencies for ${name}";
       # NOTE: Use --config.confirmModulesPurge=false to avoid TTY prompts in non-interactive mode.
       exec = ''
         set -euo pipefail
         mkdir -p "${cacheRoot}"
-        hash_file="${cacheRoot}/${toName path}.hash"
+        hash_file="${cacheRoot}/${name}.hash"
 
         pnpm install --config.confirmModulesPurge=false
 
@@ -88,29 +109,32 @@ let
         ${cache.writeCacheFile ''"$hash_file"''}
       '';
       cwd = path;
-        status = ''
-          set -euo pipefail
-          hash_file="${cacheRoot}/${toName path}.hash"
-          if [ ! -d "node_modules" ]; then
-            exit 1
-          fi
-          if [ ! -f "$hash_file" ]; then
-            exit 1
-          fi
-          if command -v sha256sum >/dev/null 2>&1; then
-            hash_cmd="sha256sum"
-          else
-            hash_cmd="shasum -a 256"
-          fi
-          current_hash="$(cat package.json pnpm-lock.yaml | $hash_cmd | awk '{print $1}')"
-          stored_hash="$(cat "$hash_file")"
-          if [ "$current_hash" != "$stored_hash" ]; then
-            exit 1
-          fi
-          exit 0
-        '';
-      };
+      # Sequential chaining: each task depends on the previous one to avoid race conditions.
+      # First task has no dependency (workspace files are committed).
+      after = if prevName == null then [ ] else [ "pnpm:install:${prevName}" ];
+      status = ''
+        set -euo pipefail
+        hash_file="${cacheRoot}/${name}.hash"
+        if [ ! -d "node_modules" ]; then
+          exit 1
+        fi
+        if [ ! -f "$hash_file" ]; then
+          exit 1
+        fi
+        if command -v sha256sum >/dev/null 2>&1; then
+          hash_cmd="sha256sum"
+        else
+          hash_cmd="shasum -a 256"
+        fi
+        current_hash="$(cat package.json pnpm-lock.yaml | $hash_cmd | awk '{print $1}')"
+        stored_hash="$(cat "$hash_file")"
+        if [ "$current_hash" != "$stored_hash" ]; then
+          exit 1
+        fi
+        exit 0
+      '';
     };
+  };
 
 
   nodeModulesPaths = lib.concatMapStringsSep " " (p: "${p}/node_modules") packages;
@@ -124,7 +148,7 @@ let
   '') packages);
 
 in {
-  tasks = lib.mkMerge (map mkInstallTask packages ++ [
+  tasks = lib.mkMerge (map mkInstallTask packagesWithPrev ++ [
     {
       "pnpm:install" = {
         description = "Install all pnpm dependencies";
