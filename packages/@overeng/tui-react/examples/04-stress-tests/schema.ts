@@ -16,38 +16,45 @@ export const RunningState = Schema.TaggedStruct('Running', {
   progress: Schema.Number,
 })
 
+/** Schema for the finished stress test state with total frames, average FPS, and duration. */
 export const FinishedState = Schema.TaggedStruct('Finished', {
   totalFrames: Schema.Number,
   averageFps: Schema.Number,
   duration: Schema.Number,
 })
 
+/** Schema for the interrupted stress test state preserving last frame, FPS, and progress. */
 export const InterruptedState = Schema.TaggedStruct('Interrupted', {
   frame: Schema.Number,
   fps: Schema.Number,
   progress: Schema.Number,
 })
 
+/** Union schema of all stress test states. */
 export const StressTestState = Schema.Union(RunningState, FinishedState, InterruptedState)
 
+/** Inferred type for the stress test state union. */
 export type StressTestState = Schema.Schema.Type<typeof StressTestState>
 
 // =============================================================================
 // Action Schema
 // =============================================================================
 
+/** Union schema of stress test actions (Tick, Finish, Interrupted). */
 export const StressTestAction = Schema.Union(
   Schema.TaggedStruct('Tick', {}),
   Schema.TaggedStruct('Finish', {}),
   Schema.TaggedStruct('Interrupted', {}),
 )
 
+/** Inferred type for the stress test action union. */
 export type StressTestAction = Schema.Schema.Type<typeof StressTestAction>
 
 // =============================================================================
 // Reducer Factory (needs duration)
 // =============================================================================
 
+/** Creates a stress test reducer parameterized by test duration in milliseconds. */
 export const createStressTestReducer =
   (durationMs: number) =>
   ({ state, action }: { state: StressTestState; action: StressTestAction }): StressTestState => {
@@ -85,4 +92,5 @@ export const createStressTestReducer =
   }
 
 // Simple reducer for Storybook (uses fixed duration)
+/** Pre-configured stress test reducer with a 5-second duration for Storybook use. */
 export const stressTestReducer = createStressTestReducer(5000)

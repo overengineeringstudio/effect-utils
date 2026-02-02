@@ -9,6 +9,7 @@ import { Box, Text, useTuiAtomValue, useSymbols } from '@overeng/tui-react'
 
 import type { AddState } from './schema.ts'
 
+/** Props for the AddView component that renders add command progress and results. */
 export interface AddViewProps {
   stateAtom: Atom.Atom<AddState>
 }

@@ -25,6 +25,7 @@ export type { GitStatus, SymlinkDrift, MemberStatus, LockStaleness }
 // Types
 // =============================================================================
 
+/** Props for the StatusView component that renders workspace status with member tree and warnings. */
 export interface StatusViewProps {
   stateAtom: Atom.Atom<StatusState>
 }

@@ -44,15 +44,18 @@ export const EnvErrorState = Schema.TaggedStruct('Error', {
  */
 export const EnvState = Schema.Union(EnvSuccessState, EnvErrorState)
 
+/** Inferred type for the env command state (success with env vars or error). */
 export type EnvState = Schema.Schema.Type<typeof EnvState>
 
 // =============================================================================
 // Type Guards
 // =============================================================================
 
+/** Type guard that checks if the env state is an error. */
 export const isEnvError = (state: EnvState): state is typeof EnvErrorState.Type =>
   state._tag === 'Error'
 
+/** Type guard that checks if the env state is a successful result with environment variables. */
 export const isEnvSuccess = (state: EnvState): state is typeof EnvSuccessState.Type =>
   state._tag === 'Success'
 
@@ -75,12 +78,14 @@ export const EnvAction = Schema.Union(
   Schema.TaggedStruct('SetError', { error: Schema.String, message: Schema.String }),
 )
 
+/** Inferred type for env actions. */
 export type EnvAction = Schema.Schema.Type<typeof EnvAction>
 
 // =============================================================================
 // Reducer
 // =============================================================================
 
+/** Reduces env actions into state, setting environment variables or error. */
 export const envReducer = ({
   state: _state,
   action,

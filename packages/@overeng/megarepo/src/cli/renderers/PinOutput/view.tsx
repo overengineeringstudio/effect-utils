@@ -9,6 +9,7 @@ import { Box, Text, useTuiAtomValue, useSymbols } from '@overeng/tui-react'
 
 import type { PinState } from './schema.ts'
 
+/** Props for the PinView component that renders pin/unpin command results. */
 export interface PinViewProps {
   stateAtom: Atom.Atom<PinState>
 }

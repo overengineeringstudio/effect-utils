@@ -4,6 +4,7 @@ import React, { useMemo } from 'react'
 import { Box, Text, useTuiAtomValue } from '../../src/mod.ts'
 import type { AppState, Window, Color } from './schema.ts'
 
+/** Renders bouncing windows with colored borders and live system stats using canvas-based rendering. */
 export const BouncingWindowsView = ({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) => {
   const tagAtom = useMemo(() => Atom.map(stateAtom, (s) => s._tag), [stateAtom])
   const tag = useTuiAtomValue(tagAtom)

@@ -4,6 +4,7 @@ import React, { useMemo } from 'react'
 import { Box, Text, useTuiAtomValue } from '../../src/mod.ts'
 import type { StressTestState } from './schema.ts'
 
+/** Renders the stress test UI with frame counter, FPS meter, progress bar, and result summary. */
 export const StressTestView = ({ stateAtom }: { stateAtom: Atom.Atom<StressTestState> }) => {
   const tagAtom = useMemo(() => Atom.map(stateAtom, (s) => s._tag), [stateAtom])
   const tag = useTuiAtomValue(tagAtom)

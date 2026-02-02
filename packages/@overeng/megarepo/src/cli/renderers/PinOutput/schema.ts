@@ -91,24 +91,30 @@ export const PinState = Schema.Union(
   PinErrorState,
 )
 
+/** Inferred type for the pin/unpin command state. */
 export type PinState = Schema.Schema.Type<typeof PinState>
 
 // =============================================================================
 // Type Guards
 // =============================================================================
 
+/** Type guard that checks if the pin state is an error. */
 export const isPinError = (state: PinState): state is typeof PinErrorState.Type =>
   state._tag === 'Error'
 
+/** Type guard that checks if the pin state completed successfully. */
 export const isPinSuccess = (state: PinState): state is typeof PinSuccessState.Type =>
   state._tag === 'Success'
 
+/** Type guard that checks if the member is already in the desired pin/unpin state. */
 export const isPinAlready = (state: PinState): state is typeof PinAlreadyState.Type =>
   state._tag === 'Already'
 
+/** Type guard that checks if the pin state is a dry-run preview. */
 export const isPinDryRun = (state: PinState): state is typeof PinDryRunState.Type =>
   state._tag === 'DryRun'
 
+/** Type guard that checks if the pin state contains a non-fatal warning. */
 export const isPinWarning = (state: PinState): state is typeof PinWarningState.Type =>
   state._tag === 'Warning'
 
@@ -116,6 +122,7 @@ export const isPinWarning = (state: PinState): state is typeof PinWarningState.T
 // Pin Actions
 // =============================================================================
 
+/** Tagged union of actions for the pin/unpin commands. */
 export const PinAction = Schema.Union(
   Schema.TaggedStruct('SetChecking', { member: Schema.String }),
   Schema.TaggedStruct('SetSuccess', {
@@ -151,12 +158,14 @@ export const PinAction = Schema.Union(
   Schema.TaggedStruct('SetError', { error: Schema.String, message: Schema.String }),
 )
 
+/** Inferred type for pin/unpin actions. */
 export type PinAction = Schema.Schema.Type<typeof PinAction>
 
 // =============================================================================
 // Reducer
 // =============================================================================
 
+/** Reduces pin actions into state, handling checking, success, already, dry-run, warning, and error. */
 export const pinReducer = ({
   state: _state,
   action,

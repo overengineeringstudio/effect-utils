@@ -90,6 +90,7 @@ export const isGenerateIdle = (state: GenerateState): state is typeof GenerateId
 // Generate Actions
 // =============================================================================
 
+/** Tagged union of actions for the generate command (start, progress, success, error). */
 export const GenerateAction = Schema.Union(
   Schema.TaggedStruct('Start', { generator: Schema.String }),
   Schema.TaggedStruct('SetProgress', { generator: Schema.String, progress: Schema.String }),
@@ -97,12 +98,14 @@ export const GenerateAction = Schema.Union(
   Schema.TaggedStruct('SetError', { error: Schema.String, message: Schema.String }),
 )
 
+/** Inferred type for generate actions. */
 export type GenerateAction = Schema.Schema.Type<typeof GenerateAction>
 
 // =============================================================================
 // Reducer
 // =============================================================================
 
+/** Reduces generate actions into state, transitioning through idle, running, success, and error. */
 export const generateReducer = ({
   state: _state,
   action,

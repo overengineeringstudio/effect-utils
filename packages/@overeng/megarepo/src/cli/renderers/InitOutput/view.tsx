@@ -11,6 +11,7 @@ import { Box, Text, useTuiAtomValue, useSymbols } from '@overeng/tui-react'
 
 import type { InitState } from './schema.ts'
 
+/** Props for the InitView component that renders init command results. */
 export interface InitViewProps {
   stateAtom: Atom.Atom<InitState>
 }

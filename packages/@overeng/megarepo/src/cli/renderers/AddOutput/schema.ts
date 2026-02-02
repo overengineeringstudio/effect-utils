@@ -50,21 +50,26 @@ export const AddErrorState = Schema.TaggedStruct('Error', {
  */
 export const AddState = Schema.Union(AddIdleState, AddAddingState, AddSuccessState, AddErrorState)
 
+/** Inferred type for the add command state (idle, adding, success, or error). */
 export type AddState = Schema.Schema.Type<typeof AddState>
 
 // =============================================================================
 // Type Guards
 // =============================================================================
 
+/** Type guard that checks if the add state is an error. */
 export const isAddError = (state: AddState): state is typeof AddErrorState.Type =>
   state._tag === 'Error'
 
+/** Type guard that checks if the add state completed successfully. */
 export const isAddSuccess = (state: AddState): state is typeof AddSuccessState.Type =>
   state._tag === 'Success'
 
+/** Type guard that checks if the add state is idle (not yet started). */
 export const isAddIdle = (state: AddState): state is typeof AddIdleState.Type =>
   state._tag === 'Idle'
 
+/** Type guard that checks if the add state is currently adding a member. */
 export const isAddAdding = (state: AddState): state is typeof AddAddingState.Type =>
   state._tag === 'Adding'
 
@@ -72,6 +77,7 @@ export const isAddAdding = (state: AddState): state is typeof AddAddingState.Typ
 // Add Actions
 // =============================================================================
 
+/** Tagged union of actions for the add command (set adding, success, or error). */
 export const AddAction = Schema.Union(
   Schema.TaggedStruct('SetAdding', { member: Schema.String, source: Schema.String }),
   Schema.TaggedStruct('SetSuccess', {
@@ -83,12 +89,14 @@ export const AddAction = Schema.Union(
   Schema.TaggedStruct('SetError', { error: Schema.String, message: Schema.String }),
 )
 
+/** Inferred type for add actions. */
 export type AddAction = Schema.Schema.Type<typeof AddAction>
 
 // =============================================================================
 // Reducer
 // =============================================================================
 
+/** Reduces add actions into state, transitioning through adding, success, and error. */
 export const addReducer = ({
   state: _state,
   action,

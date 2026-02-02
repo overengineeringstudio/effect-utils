@@ -8,6 +8,7 @@ import { Schema } from 'effect'
 // Types
 // =============================================================================
 
+/** A bouncing window with position, velocity, dimensions, title, color, and system stats. */
 export interface Window {
   id: number
   x: number
@@ -21,6 +22,7 @@ export interface Window {
   stats: Stats
 }
 
+/** Simulated system resource statistics (CPU, memory, disk, network). */
 export interface Stats {
   cpu: number
   mem: number
@@ -28,15 +30,20 @@ export interface Stats {
   net: number
 }
 
+/** Color options for bouncing windows. */
 export type Color = 'red' | 'green' | 'yellow' | 'blue' | 'magenta' | 'cyan'
 
 // =============================================================================
 // Constants
 // =============================================================================
 
+/** Available colors for window borders. */
 export const COLORS: Color[] = ['red', 'green', 'yellow', 'blue', 'magenta', 'cyan']
+/** Available titles for bouncing windows. */
 export const TITLES = ['System', 'Monitor', 'Stats', 'Dashboard', 'Metrics', 'Status']
+/** Fixed width of each bouncing window in characters. */
 export const WIN_WIDTH = 22
+/** Fixed height of each bouncing window in rows. */
 export const WIN_HEIGHT = 8
 
 // =============================================================================
@@ -46,6 +53,7 @@ export const WIN_HEIGHT = 8
 const randomBetween = ({ min, max }: { min: number; max: number }) =>
   Math.random() * (max - min) + min
 
+/** Creates a new bouncing window with random velocity and initial stats at a distributed position. */
 export const createWindow = ({
   id,
   count,
@@ -79,6 +87,7 @@ export const createWindow = ({
   }
 }
 
+/** Advances a window's position by its velocity, bouncing off terminal boundaries, and jitters stats. */
 export const updateWindow = ({
   win,
   termWidth,
@@ -142,6 +151,7 @@ const WindowSchema = Schema.Struct({
   }),
 })
 
+/** Schema for the running bouncing windows state with window array, frame count, and terminal size. */
 export const RunningState = Schema.TaggedStruct('Running', {
   windows: Schema.Array(WindowSchema),
   frame: Schema.Number,
@@ -149,24 +159,29 @@ export const RunningState = Schema.TaggedStruct('Running', {
   termHeight: Schema.Number,
 })
 
+/** Schema for the finished bouncing windows state with total frames and window count. */
 export const FinishedState = Schema.TaggedStruct('Finished', {
   totalFrames: Schema.Number,
   windowCount: Schema.Number,
 })
 
+/** Schema for the interrupted bouncing windows state preserving frame and window count. */
 export const InterruptedState = Schema.TaggedStruct('Interrupted', {
   frame: Schema.Number,
   windowCount: Schema.Number,
 })
 
+/** Union schema of all bouncing windows app states. */
 export const AppState = Schema.Union(RunningState, FinishedState, InterruptedState)
 
+/** Inferred type for the bouncing windows app state union. */
 export type AppState = Schema.Schema.Type<typeof AppState>
 
 // =============================================================================
 // Action Schema
 // =============================================================================
 
+/** Union schema of bouncing windows actions (Tick, Resize, Finish, Interrupted). */
 export const AppAction = Schema.Union(
   Schema.TaggedStruct('Tick', {}),
   Schema.TaggedStruct('Resize', { width: Schema.Number, height: Schema.Number }),
@@ -174,12 +189,14 @@ export const AppAction = Schema.Union(
   Schema.TaggedStruct('Interrupted', {}),
 )
 
+/** Inferred type for the bouncing windows app action union. */
 export type AppAction = Schema.Schema.Type<typeof AppAction>
 
 // =============================================================================
 // Reducer
 // =============================================================================
 
+/** Reducer that advances window positions on tick, handles resize, finish, and interrupt. */
 export const appReducer = ({ state, action }: { state: AppState; action: AppAction }): AppState => {
   switch (action._tag) {
     case 'Tick': {

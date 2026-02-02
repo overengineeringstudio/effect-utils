@@ -16,6 +16,7 @@ import type { EnvState } from './schema.ts'
 // Main Component
 // =============================================================================
 
+/** Props for the EnvView component that renders shell export commands for megarepo environment variables. */
 export interface EnvViewProps {
   stateAtom: Atom.Atom<EnvState>
 }

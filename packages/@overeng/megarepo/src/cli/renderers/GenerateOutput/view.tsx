@@ -9,6 +9,7 @@ import { Box, Text, useTuiAtomValue, useSymbols, type Symbols } from '@overeng/t
 
 import type { GenerateState, GenerateResultItem } from './schema.ts'
 
+/** Props for the GenerateView component that renders file generation progress and results. */
 export interface GenerateViewProps {
   stateAtom: Atom.Atom<GenerateState>
 }
