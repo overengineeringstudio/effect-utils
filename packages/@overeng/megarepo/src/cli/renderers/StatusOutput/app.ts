@@ -15,6 +15,8 @@ import { StatusState, StatusAction, statusReducer } from './schema.ts'
 export const createInitialStatusState = (): typeof StatusState.Type => ({
   name: '',
   root: '',
+  syncNeeded: false,
+  syncReasons: [],
   members: [],
   all: false,
 })

@@ -19,26 +19,23 @@
       # Use path: flake ref with $PWD to ensure correct directory resolution
       nix run "path:$PWD#megarepo" -- sync --deep
     '';
-    # Status: skip if all members already have symlinks in repos/
+    # Status: use `mr status --output json` to detect if sync is needed.
+    # The CLI computes syncNeeded based on: missing symlinks/worktrees, symlink drift, lock staleness.
     status = ''
       if [ ! -f ./megarepo.json ]; then
         exit 0
       fi
 
-      # Check if repos/ directory exists
+      # Fast path: if repos/ doesn't exist, definitely need sync
       if [ ! -d ./repos ]; then
         exit 1
       fi
 
-      # Check if all members from megarepo.json have symlinks in repos/
-      members=$(${pkgs.jq}/bin/jq -r '.members | keys[]' ./megarepo.json 2>/dev/null || echo "")
-      for member in $members; do
-        if [ ! -L "./repos/$member" ]; then
-          exit 1
-        fi
-      done
+      # Use mr status to check syncNeeded field
+      status_json=$(nix run "path:$PWD#megarepo" -- status --output json 2>/dev/null) || exit 1
 
-      exit 0
+      # Use the top-level syncNeeded boolean for a simple check
+      echo "$status_json" | ${pkgs.jq}/bin/jq -e '.syncNeeded == false' >/dev/null 2>&1
     '';
   };
 

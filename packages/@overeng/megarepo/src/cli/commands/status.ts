@@ -26,7 +26,7 @@ import { extractRefFromSymlinkPath } from '../../lib/ref.ts'
 import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../context.ts'
 import { NotInMegarepoError } from '../errors.ts'
 import { StatusApp, StatusView } from '../renderers/StatusOutput/mod.ts'
-import type { GitStatus, MemberStatus, SymlinkDrift } from '../renderers/StatusOutput/mod.ts'
+import type { CommitDrift, GitStatus, MemberStatus, SymlinkDrift } from '../renderers/StatusOutput/mod.ts'
 
 /**
  * Recursively scan members and build status tree.
@@ -82,10 +82,25 @@ const scanMembersRecursive = ({
     const members: MemberStatus[] = []
     for (const [memberName, sourceString] of Object.entries(config.members)) {
       const memberPath = getMemberPath({ megarepoRoot, name: memberName })
-      const memberExists = yield* fs.exists(memberPath)
       const source = parseSourceString(sourceString)
       const isLocal = source?.type === 'path'
       const lockedMember = lockFile?.members[memberName]
+
+      // Check if symlink exists in repos/<member>
+      const symlinkPath = memberPath.replace(/\/$/, '')
+      const symlinkExists = yield* fs.exists(symlinkPath)
+
+      // For remote members, also check if the underlying worktree exists
+      // (symlink might exist but point to non-existent worktree)
+      let memberExists = symlinkExists
+      if (symlinkExists && !isLocal) {
+        // Check if symlink target exists
+        const targetExists = yield* fs.readLink(symlinkPath).pipe(
+          Effect.flatMap((target) => fs.exists(target)),
+          Effect.catchAll(() => Effect.succeed(false)),
+        )
+        memberExists = targetExists
+      }
 
       // Check if this member is itself a megarepo
       const nestedConfigPath = EffectPath.ops.join(
@@ -112,6 +127,7 @@ const scanMembersRecursive = ({
       // Get git status if member exists
       let gitStatus: GitStatus | undefined = undefined
       let currentBranch: string | undefined = undefined
+      let fullCommit: string | undefined = undefined
       if (memberExists) {
         // Check if it's a git repo first
         const isGit = yield* Git.isGitRepo(memberPath)
@@ -134,11 +150,11 @@ const scanMembersRecursive = ({
           const branch = Option.getOrElse(branchOpt, () => 'HEAD')
           currentBranch = branch !== 'HEAD' ? branch : undefined
 
-          // Get short rev
-          const shortRev = yield* Git.getCurrentCommit(memberPath).pipe(
-            Effect.map((commit) => commit.slice(0, 7)),
+          // Get current commit (full SHA for drift detection, short for display)
+          fullCommit = yield* Git.getCurrentCommit(memberPath).pipe(
             Effect.catchAll(() => Effect.succeed(undefined)),
           )
+          const shortRev = fullCommit?.slice(0, 7)
 
           gitStatus = {
             isDirty: worktreeStatus.isDirty,
@@ -173,9 +189,21 @@ const scanMembersRecursive = ({
         }
       }
 
+      // Detect commit drift: local worktree commit differs from locked commit
+      let commitDrift: CommitDrift | undefined = undefined
+      if (memberExists && !isLocal && lockedMember && fullCommit) {
+        if (fullCommit !== lockedMember.commit) {
+          commitDrift = {
+            localCommit: fullCommit,
+            lockedCommit: lockedMember.commit,
+          }
+        }
+      }
+
       members.push({
         name: memberName,
         exists: memberExists,
+        symlinkExists,
         source: sourceString,
         isLocal,
         lockInfo: lockedMember
@@ -189,6 +217,7 @@ const scanMembersRecursive = ({
         nestedMembers,
         gitStatus,
         symlinkDrift,
+        commitDrift,
       })
     }
 
@@ -370,6 +399,45 @@ export const statusCommand = Cli.Command.make(
         currentMemberPath = [currentMemberPath[0]!]
       }
 
+      // Compute syncNeeded and syncReasons
+      const syncReasons: string[] = []
+
+      // Helper to collect sync reasons from members recursively
+      const collectMemberSyncReasons = (memberList: readonly MemberStatus[], prefix = '') => {
+        for (const member of memberList) {
+          const memberLabel = prefix ? `${prefix}/${member.name}` : member.name
+          if (!member.symlinkExists) {
+            syncReasons.push(`Member '${memberLabel}' symlink missing`)
+          } else if (!member.exists) {
+            syncReasons.push(`Member '${memberLabel}' worktree missing`)
+          }
+          if (member.symlinkDrift) {
+            syncReasons.push(
+              `Member '${memberLabel}' symlink drift: ${member.symlinkDrift.symlinkRef} → ${member.symlinkDrift.expectedRef}`,
+            )
+          }
+          if (member.nestedMembers) {
+            collectMemberSyncReasons(member.nestedMembers, memberLabel)
+          }
+        }
+      }
+      collectMemberSyncReasons(members)
+
+      // Check lock staleness
+      if (lockStaleness) {
+        if (!lockStaleness.exists) {
+          syncReasons.push('Lock file missing')
+        }
+        for (const name of lockStaleness.missingFromLock) {
+          syncReasons.push(`Member '${name}' not in lock file`)
+        }
+        for (const name of lockStaleness.extraInLock) {
+          syncReasons.push(`Lock file has extra member '${name}'`)
+        }
+      }
+
+      const syncNeeded = syncReasons.length > 0
+
       // Use StatusApp for all output modes (TTY, CI, JSON, NDJSON)
       yield* Effect.scoped(
         Effect.gen(function* () {
@@ -382,6 +450,8 @@ export const statusCommand = Cli.Command.make(
             state: {
               name,
               root: root.value,
+              syncNeeded,
+              syncReasons,
               members,
               all,
               lastSyncTime: lastSyncTime?.toISOString(),
