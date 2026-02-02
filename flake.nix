@@ -106,6 +106,11 @@
       # Use this for releases/CI where hermetic Nix builds are needed.
       lib.mkCliPackages = import ./nix/workspace-tools/lib/mk-cli-packages.nix;
 
+      # npm oxlint with NAPI bindings for JavaScript plugin support.
+      # Usage: effectUtils.lib.mkOxlintNpm { inherit pkgs; bun = pkgs.bun; }
+      lib.mkOxlintNpm = { pkgs, bun }:
+        import ./nix/oxlint-npm.nix { inherit pkgs bun; };
+
       # Note: mkSourceCli is internal-only (not exported).
       # For consuming genie/megarepo from other repos, use:
       #   effectUtils.packages.${system}.genie
