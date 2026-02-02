@@ -45,6 +45,7 @@ const exampleMembers: MemberStatus[] = [
       {
         name: 'dotdot',
         exists: true,
+        symlinkExists: true,
         source: 'local',
         isLocal: true,
         lockInfo: undefined,
@@ -150,6 +151,7 @@ const createWarningsState = (): typeof StatusState.Type => ({
     {
       name: 'effect',
       exists: true,
+      symlinkExists: true,
       source: 'effect-ts/effect',
       isLocal: false,
       lockInfo: { ref: 'main', commit: 'abc1234', pinned: false },
@@ -166,6 +168,7 @@ const createWarningsState = (): typeof StatusState.Type => ({
     {
       name: 'livestore',
       exists: false,
+      symlinkExists: false,
       source: 'livestorejs/livestore',
       isLocal: false,
       lockInfo: { ref: 'dev', commit: 'def5678', pinned: false },
@@ -176,6 +179,7 @@ const createWarningsState = (): typeof StatusState.Type => ({
     {
       name: 'dotfiles',
       exists: true,
+      symlinkExists: true,
       source: 'schickling/dotfiles',
       isLocal: false,
       lockInfo: { ref: 'main', commit: '9876543', pinned: false },
@@ -202,6 +206,7 @@ const createNestedMegareposState = (): typeof StatusState.Type => ({
     {
       name: 'effect-utils',
       exists: true,
+      symlinkExists: true,
       source: 'overengineeringstudio/effect-utils',
       isLocal: false,
       lockInfo: { ref: 'main', commit: 'abc1234', pinned: false },
@@ -210,6 +215,7 @@ const createNestedMegareposState = (): typeof StatusState.Type => ({
         {
           name: 'cli-ui',
           exists: true,
+          symlinkExists: true,
           source: 'local',
           isLocal: true,
           lockInfo: undefined,
@@ -226,6 +232,7 @@ const createNestedMegareposState = (): typeof StatusState.Type => ({
         {
           name: 'tui-react',
           exists: true,
+          symlinkExists: true,
           source: 'local',
           isLocal: true,
           lockInfo: undefined,
@@ -251,6 +258,7 @@ const createNestedMegareposState = (): typeof StatusState.Type => ({
     {
       name: 'livestore',
       exists: true,
+      symlinkExists: true,
       source: 'livestorejs/livestore',
       isLocal: false,
       lockInfo: { ref: 'dev', commit: '9876543', pinned: false },
@@ -259,6 +267,7 @@ const createNestedMegareposState = (): typeof StatusState.Type => ({
         {
           name: 'examples',
           exists: true,
+          symlinkExists: true,
           source: 'local',
           isLocal: true,
           lockInfo: undefined,
@@ -294,6 +303,7 @@ const createCurrentLocationState = (): typeof StatusState.Type => ({
     {
       name: 'effect-utils',
       exists: true,
+      symlinkExists: true,
       source: 'overengineeringstudio/effect-utils',
       isLocal: false,
       lockInfo: { ref: 'main', commit: 'abc1234', pinned: false },
@@ -302,6 +312,7 @@ const createCurrentLocationState = (): typeof StatusState.Type => ({
         {
           name: 'tui-react',
           exists: true,
+          symlinkExists: true,
           source: 'local',
           isLocal: true,
           lockInfo: undefined,
@@ -327,6 +338,7 @@ const createCurrentLocationState = (): typeof StatusState.Type => ({
     {
       name: 'livestore',
       exists: true,
+      symlinkExists: true,
       source: 'livestorejs/livestore',
       isLocal: false,
       lockInfo: { ref: 'dev', commit: '9876543', pinned: false },
@@ -382,6 +394,7 @@ const createPinnedMembersState = (): typeof StatusState.Type => ({
     {
       name: 'effect',
       exists: true,
+      symlinkExists: true,
       source: 'effect-ts/effect',
       isLocal: false,
       lockInfo: { ref: 'v3.0.0', commit: 'abc1234', pinned: true },
@@ -398,6 +411,7 @@ const createPinnedMembersState = (): typeof StatusState.Type => ({
     {
       name: 'effect-utils',
       exists: true,
+      symlinkExists: true,
       source: 'overengineeringstudio/effect-utils',
       isLocal: false,
       lockInfo: { ref: 'main', commit: 'def5678', pinned: false },
@@ -450,6 +464,7 @@ const createAllNotSyncedState = (): typeof StatusState.Type => ({
     {
       name: 'effect',
       exists: false,
+      symlinkExists: false,
       source: 'effect-ts/effect',
       isLocal: false,
       lockInfo: { ref: 'main', commit: 'abc1234', pinned: false },
@@ -460,6 +475,7 @@ const createAllNotSyncedState = (): typeof StatusState.Type => ({
     {
       name: 'effect-utils',
       exists: false,
+      symlinkExists: false,
       source: 'overengineeringstudio/effect-utils',
       isLocal: false,
       lockInfo: { ref: 'main', commit: 'def5678', pinned: false },
@@ -470,6 +486,7 @@ const createAllNotSyncedState = (): typeof StatusState.Type => ({
     {
       name: 'livestore',
       exists: false,
+      symlinkExists: false,
       source: 'livestorejs/livestore',
       isLocal: false,
       lockInfo: { ref: 'dev', commit: '9876543', pinned: false },
@@ -490,6 +507,7 @@ const createAllDirtyState = (): typeof StatusState.Type => ({
     {
       name: 'effect',
       exists: true,
+      symlinkExists: true,
       source: 'effect-ts/effect',
       isLocal: false,
       lockInfo: { ref: 'main', commit: 'abc1234', pinned: false },
@@ -506,6 +524,7 @@ const createAllDirtyState = (): typeof StatusState.Type => ({
     {
       name: 'effect-utils',
       exists: true,
+      symlinkExists: true,
       source: 'overengineeringstudio/effect-utils',
       isLocal: false,
       lockInfo: { ref: 'main', commit: 'def5678', pinned: false },
@@ -522,6 +541,7 @@ const createAllDirtyState = (): typeof StatusState.Type => ({
     {
       name: 'livestore',
       exists: true,
+      symlinkExists: true,
       source: 'livestorejs/livestore',
       isLocal: false,
       lockInfo: { ref: 'dev', commit: '9876543', pinned: false },
@@ -548,6 +568,7 @@ const createLocalPathMembersState = (): typeof StatusState.Type => ({
     {
       name: 'my-lib',
       exists: true,
+      symlinkExists: true,
       source: '../my-lib',
       isLocal: true,
       lockInfo: undefined,
@@ -564,6 +585,7 @@ const createLocalPathMembersState = (): typeof StatusState.Type => ({
     {
       name: 'shared-utils',
       exists: true,
+      symlinkExists: true,
       source: '/Users/dev/shared-utils',
       isLocal: true,
       lockInfo: undefined,
@@ -590,6 +612,7 @@ const createSingleMemberState = (): typeof StatusState.Type => ({
     {
       name: 'effect',
       exists: true,
+      symlinkExists: true,
       source: 'effect-ts/effect',
       isLocal: false,
       lockInfo: { ref: 'main', commit: 'abc1234', pinned: false },
@@ -626,6 +649,7 @@ const createDeeplyNestedState = (): typeof StatusState.Type => ({
     {
       name: 'level-1',
       exists: true,
+      symlinkExists: true,
       source: 'org/level-1',
       isLocal: false,
       lockInfo: { ref: 'main', commit: 'aaa1111', pinned: false },
@@ -634,6 +658,7 @@ const createDeeplyNestedState = (): typeof StatusState.Type => ({
         {
           name: 'level-2a',
           exists: true,
+          symlinkExists: true,
           source: 'org/level-2a',
           isLocal: false,
           lockInfo: { ref: 'main', commit: 'bbb2222', pinned: false },
@@ -642,6 +667,7 @@ const createDeeplyNestedState = (): typeof StatusState.Type => ({
             {
               name: 'level-3',
               exists: true,
+              symlinkExists: true,
               source: 'org/level-3',
               isLocal: false,
               lockInfo: { ref: 'main', commit: 'ccc3333', pinned: false },
@@ -667,6 +693,7 @@ const createDeeplyNestedState = (): typeof StatusState.Type => ({
         {
           name: 'level-2b',
           exists: true,
+          symlinkExists: true,
           source: 'org/level-2b',
           isLocal: false,
           lockInfo: { ref: 'dev', commit: 'ddd4444', pinned: false },
@@ -703,6 +730,7 @@ const createMultipleProblemsState = (): typeof StatusState.Type => ({
     {
       name: 'dirty-repo',
       exists: true,
+      symlinkExists: true,
       source: 'org/dirty-repo',
       isLocal: false,
       lockInfo: { ref: 'main', commit: 'abc1234', pinned: false },
@@ -719,6 +747,7 @@ const createMultipleProblemsState = (): typeof StatusState.Type => ({
     {
       name: 'unpushed-repo',
       exists: true,
+      symlinkExists: true,
       source: 'org/unpushed-repo',
       isLocal: false,
       lockInfo: { ref: 'main', commit: 'def5678', pinned: false },
@@ -735,6 +764,7 @@ const createMultipleProblemsState = (): typeof StatusState.Type => ({
     {
       name: 'not-synced-repo',
       exists: false,
+      symlinkExists: false,
       source: 'org/not-synced-repo',
       isLocal: false,
       lockInfo: { ref: 'dev', commit: '9876543', pinned: false },
@@ -745,6 +775,7 @@ const createMultipleProblemsState = (): typeof StatusState.Type => ({
     {
       name: 'all-problems',
       exists: true,
+      symlinkExists: true,
       source: 'org/all-problems',
       isLocal: false,
       lockInfo: { ref: 'main', commit: 'xyz9999', pinned: false },
@@ -776,6 +807,7 @@ const createSymlinkDriftState = (): typeof StatusState.Type => ({
     {
       name: 'effect',
       exists: true,
+      symlinkExists: true,
       source: 'effect-ts/effect',
       isLocal: false,
       lockInfo: { ref: 'main', commit: 'abc1234def', pinned: false },
@@ -793,6 +825,7 @@ const createSymlinkDriftState = (): typeof StatusState.Type => ({
     {
       name: 'livestore',
       exists: true,
+      symlinkExists: true,
       source: 'livestorejs/livestore',
       isLocal: false,
       lockInfo: { ref: 'refactor/genie-igor-ci', commit: 'def5678abc', pinned: false },
@@ -814,6 +847,7 @@ const createSymlinkDriftState = (): typeof StatusState.Type => ({
     {
       name: 'effect-utils',
       exists: true,
+      symlinkExists: true,
       source: 'overengineeringstudio/effect-utils',
       isLocal: false,
       lockInfo: { ref: 'main', commit: 'fed9876543', pinned: false },
@@ -846,6 +880,7 @@ const createMultipleSymlinkDriftState = (): typeof StatusState.Type => ({
     {
       name: 'livestore',
       exists: true,
+      symlinkExists: true,
       source: 'livestorejs/livestore',
       isLocal: false,
       lockInfo: { ref: 'refactor/genie-igor-ci', commit: 'def5678abc', pinned: false },
@@ -867,6 +902,7 @@ const createMultipleSymlinkDriftState = (): typeof StatusState.Type => ({
     {
       name: 'effect',
       exists: true,
+      symlinkExists: true,
       source: 'effect-ts/effect',
       isLocal: false,
       lockInfo: { ref: 'next', commit: 'abc1234def', pinned: false },
