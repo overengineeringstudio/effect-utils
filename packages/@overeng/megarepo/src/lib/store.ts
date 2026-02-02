@@ -61,7 +61,7 @@ export interface MegarepoStore {
   /** Check if a bare repo exists in the store */
   readonly hasBareRepo: (
     source: MemberSource,
-  ) => Effect.Effect<boolean, PlatformError.PlatformError, FileSystem.FileSystem>
+  ) => Effect.Effect<boolean, PlatformError.PlatformError>
 
   /** Check if a worktree exists for a specific ref.
    * If refType is not provided, uses heuristic-based classification.
@@ -70,7 +70,7 @@ export interface MegarepoStore {
     source: MemberSource
     ref: string
     refType?: RefType
-  }) => Effect.Effect<boolean, PlatformError.PlatformError, FileSystem.FileSystem>
+  }) => Effect.Effect<boolean, PlatformError.PlatformError>
 
   /** List all repos in the store */
   readonly listRepos: () => Effect.Effect<
@@ -78,8 +78,7 @@ export interface MegarepoStore {
       readonly relativePath: RelativeDirPath
       readonly fullPath: AbsoluteDirPath
     }>,
-    PlatformError.PlatformError,
-    FileSystem.FileSystem
+    PlatformError.PlatformError
   >
 
   /** List all worktrees for a repo */
@@ -89,8 +88,7 @@ export interface MegarepoStore {
       readonly refType: RefType
       readonly path: AbsoluteDirPath
     }>,
-    PlatformError.PlatformError,
-    FileSystem.FileSystem
+    PlatformError.PlatformError
   >
 
   // === Legacy compatibility (deprecated) ===
@@ -101,7 +99,7 @@ export interface MegarepoStore {
   /** @deprecated Use hasBareRepo instead */
   readonly hasRepo: (
     source: MemberSource,
-  ) => Effect.Effect<boolean, PlatformError.PlatformError, FileSystem.FileSystem>
+  ) => Effect.Effect<boolean, PlatformError.PlatformError>
 }
 
 /** Store service tag */
@@ -111,7 +109,7 @@ export class Store extends Context.Tag('megarepo/Store')<Store, MegarepoStore>()
 // Store Implementation
 // =============================================================================
 
-const make = (config: StoreConfig): MegarepoStore => {
+const make = (config: StoreConfig, fs: FileSystem.FileSystem): MegarepoStore => {
   const basePath = config.basePath
 
   const getRepoBasePath = (source: MemberSource): AbsoluteDirPath => {
@@ -153,32 +151,15 @@ const make = (config: StoreConfig): MegarepoStore => {
     // Legacy compatibility
     getRepoPath: getRepoBasePath,
 
-    hasBareRepo: (source) =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
-        const barePath = getBareRepoPath(source)
-        return yield* fs.exists(barePath)
-      }),
+    hasBareRepo: (source) => fs.exists(getBareRepoPath(source)),
 
-    hasWorktree: (args) =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
-        const worktreePath = getWorktreePath(args)
-        return yield* fs.exists(worktreePath)
-      }),
+    hasWorktree: (args) => fs.exists(getWorktreePath(args)),
 
     // Legacy compatibility
-    hasRepo: (source) =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
-        const barePath = getBareRepoPath(source)
-        return yield* fs.exists(barePath)
-      }),
+    hasRepo: (source) => fs.exists(getBareRepoPath(source)),
 
     listRepos: () =>
       Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
-
         const exists = yield* fs.exists(basePath)
         if (!exists) {
           return []
@@ -250,7 +231,6 @@ const make = (config: StoreConfig): MegarepoStore => {
 
     listWorktrees: (source) =>
       Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
         const repoBase = getRepoBasePath(source)
         const refsDir = EffectPath.ops.join(repoBase, EffectPath.unsafe.relativeDir('refs/'))
 
@@ -335,18 +315,26 @@ const expandStorePath = (path: string): AbsoluteDirPath => {
 /**
  * Create a Store layer with explicit configuration
  */
-export const makeStoreLayer = (config: StoreConfig) => Layer.succeed(Store, make(config))
+export const makeStoreLayer = (config: StoreConfig) =>
+  Layer.effect(
+    Store,
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      return make(config, fs)
+    }),
+  )
 
 /**
  * Create a Store layer from environment (MEGAREPO_STORE) or default
  */
 export const StoreLayer = Layer.effect(
   Store,
-  Effect.sync(() => {
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
     const storePathRaw = Option.fromNullable(process.env[ENV_VARS.STORE]).pipe(
       Option.getOrElse(() => DEFAULT_STORE_PATH),
     )
     const basePath = expandStorePath(storePathRaw)
-    return make({ basePath })
+    return make({ basePath }, fs)
   }),
 )

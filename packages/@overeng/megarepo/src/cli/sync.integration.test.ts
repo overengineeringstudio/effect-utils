@@ -26,6 +26,23 @@ import {
 import { createWorkspaceWithLock } from '../test-utils/store-setup.ts'
 import { withTestCtx } from '../test-utils/withTestCtx.ts'
 
+/** Schema for parsing JSON output from `mr sync --output json` */
+const SyncJsonOutput = Schema.Struct({
+  results: Schema.Array(
+    Schema.Struct({
+      name: Schema.String,
+      status: Schema.String,
+      lockUpdated: Schema.optional(Schema.Boolean),
+      commit: Schema.optional(Schema.String),
+      ref: Schema.optional(Schema.String),
+      message: Schema.optional(Schema.String),
+      previousCommit: Schema.optional(Schema.String),
+    }),
+  ),
+})
+
+const decodeSyncJsonOutput = Schema.decodeUnknownSync(Schema.parseJson(SyncJsonOutput))
+
 // Path to the CLI binary
 // TODO get rid of this approach and use effect cli command directly and yield its handler
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url))
@@ -770,13 +787,7 @@ describe('default sync mode (no --pull)', () => {
             cwd: workspacePath,
             args: ['--output', 'json'],
           })
-          const json = JSON.parse(result.stdout.trim()) as {
-            results: Array<{
-              name: string
-              status: string
-              lockUpdated?: boolean
-            }>
-          }
+          const json = decodeSyncJsonOutput(result.stdout.trim())
 
           // Should have synced successfully (local path sources are symlinks)
           expect(json.results).toHaveLength(1)
@@ -827,9 +838,7 @@ describe('default sync mode (no --pull)', () => {
             cwd: workspacePath,
             args: ['--output', 'json'],
           })
-          const json = JSON.parse(result.stdout.trim()) as {
-            results: Array<{ name: string; status: string }>
-          }
+          const json = decodeSyncJsonOutput(result.stdout.trim())
 
           expect(json.results).toHaveLength(1)
           const memberResult = json.results[0]
@@ -1000,9 +1009,7 @@ describe('default sync mode (no --pull)', () => {
             cwd: workspacePath,
             args: ['--output', 'json'],
           })
-          const json = JSON.parse(result.stdout.trim()) as {
-            results: Array<{ name: string; status: string }>
-          }
+          const json = decodeSyncJsonOutput(result.stdout.trim())
 
           // Should have synced (updated symlink)
           expect(json.results).toHaveLength(1)
@@ -1094,9 +1101,7 @@ describe('default sync mode (no --pull)', () => {
             cwd: workspacePath,
             args: ['--output', 'json'],
           })
-          const json = JSON.parse(result.stdout.trim()) as {
-            results: Array<{ name: string; status: string; message?: string }>
-          }
+          const json = decodeSyncJsonOutput(result.stdout.trim())
 
           // Should have skipped due to dirty worktree
           expect(json.results).toHaveLength(1)
@@ -1180,9 +1185,7 @@ describe('default sync mode (no --pull)', () => {
             cwd: workspacePath,
             args: ['--output', 'json', '--force'],
           })
-          const json = JSON.parse(result.stdout.trim()) as {
-            results: Array<{ name: string; status: string }>
-          }
+          const json = decodeSyncJsonOutput(result.stdout.trim())
 
           // Should have synced despite dirty worktree
           expect(json.results).toHaveLength(1)
@@ -1310,9 +1313,7 @@ describe('sync --pull mode', () => {
             cwd: workspacePath,
             args: ['--pull', '--output', 'json'],
           })
-          const json = JSON.parse(result.stdout.trim()) as {
-            results: Array<{ name: string; status: string }>
-          }
+          const json = decodeSyncJsonOutput(result.stdout.trim())
 
           // The sync should complete
           expect(json.results).toHaveLength(1)
@@ -1372,9 +1373,7 @@ describe('sync status types', () => {
           cwd: workspacePath,
           args: ['--output', 'json'],
         })
-        const json = JSON.parse(result.stdout.trim()) as {
-          results: Array<{ name: string; status: string }>
-        }
+        const json = decodeSyncJsonOutput(result.stdout.trim())
 
         expect(json.results).toHaveLength(1)
         const memberResult = json.results[0]
@@ -1426,9 +1425,7 @@ describe('sync error handling', () => {
         })
 
         // Parse the JSON output
-        const json = JSON.parse(result.stdout.trim()) as {
-          results: Array<{ name: string; status: string; message?: string }>
-        }
+        const json = decodeSyncJsonOutput(result.stdout.trim())
 
         // Should have results for our member
         expect(json.results).toHaveLength(1)
@@ -1510,9 +1507,7 @@ describe('sync member filtering', () => {
             cwd: workspacePath,
             args: ['--output', 'json', '--only', 'repo1'],
           })
-          const json = JSON.parse(result.stdout.trim()) as {
-            results: Array<{ name: string; status: string }>
-          }
+          const json = decodeSyncJsonOutput(result.stdout.trim())
 
           // Should only have synced repo1
           expect(json.results).toHaveLength(1)
@@ -1575,9 +1570,7 @@ describe('sync member filtering', () => {
             cwd: workspacePath,
             args: ['--output', 'json', '--skip', 'repo2'],
           })
-          const json = JSON.parse(result.stdout.trim()) as {
-            results: Array<{ name: string; status: string }>
-          }
+          const json = decodeSyncJsonOutput(result.stdout.trim())
 
           // Should only have synced repo1 (repo2 was skipped)
           expect(json.results).toHaveLength(1)
@@ -1725,9 +1718,7 @@ describe('sync member removal detection', () => {
           cwd: workspacePath,
           args: ['--output', 'json'],
         })
-        const json = JSON.parse(result.stdout.trim()) as {
-          results: Array<{ name: string; status: string; message?: string }>
-        }
+        const json = decodeSyncJsonOutput(result.stdout.trim())
 
         // Should have results for repo1 (synced) and repo2 (removed)
         expect(json.results).toHaveLength(2)
@@ -1818,9 +1809,7 @@ describe('sync member removal detection', () => {
           cwd: workspacePath,
           args: ['--output', 'json', '--dry-run'],
         })
-        const json = JSON.parse(result.stdout.trim()) as {
-          results: Array<{ name: string; status: string; message?: string }>
-        }
+        const json = decodeSyncJsonOutput(result.stdout.trim())
 
         // Should have results for repo2 as removed
         const repo2Result = json.results.find((r) => r.name === 'repo2')
@@ -1897,9 +1886,7 @@ describe('sync member removal detection', () => {
           cwd: workspacePath,
           args: ['--output', 'json', '--skip', 'repo2'],
         })
-        const json = JSON.parse(result.stdout.trim()) as {
-          results: Array<{ name: string; status: string }>
-        }
+        const json = decodeSyncJsonOutput(result.stdout.trim())
 
         // Should only have result for repo1 (repo2 was skipped, not removed)
         expect(json.results).toHaveLength(1)
@@ -1976,9 +1963,7 @@ describe('sync member removal detection', () => {
           cwd: workspacePath,
           args: ['--output', 'json'],
         })
-        const json = JSON.parse(result.stdout.trim()) as {
-          results: Array<{ name: string; status: string }>
-        }
+        const json = decodeSyncJsonOutput(result.stdout.trim())
 
         // Should not have a 'removed' result for orphan-dir
         const orphanResult = json.results.find((r) => r.name === 'orphan-dir')

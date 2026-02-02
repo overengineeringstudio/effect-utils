@@ -3,6 +3,7 @@ import { Effect } from 'effect'
 
 import { matchesAnyPattern } from '../runtime/package-json/validation.ts'
 import type { WorkspaceProvider, WorkspaceProviderName } from '../runtime/validation/mod.ts'
+import { GenieNotImplementedError } from './errors.ts'
 
 const DEFAULT_SKIP_DIRS = new Set([
   'node_modules',
@@ -174,7 +175,7 @@ export const resolveWorkspaceProvider = Effect.fn('workspace/resolveWorkspacePro
 
   if (providerName === 'bun') {
     return createProvider('bun', () =>
-      Effect.fail(new Error('Bun workspace provider is not implemented yet.')),
+      Effect.fail(new GenieNotImplementedError({ message: 'Bun workspace provider is not implemented yet.' })),
     )
   }
   if (providerName === 'manual') {

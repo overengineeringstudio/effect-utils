@@ -5,7 +5,7 @@ import { buildPackageJsonValidationContext } from '../runtime/package-json/conte
 import { formatValidationIssues, type ValidationIssue } from '../runtime/package-json/validation.ts'
 import type { GenieValidationContext, GenieValidationIssue } from '../runtime/validation/mod.ts'
 import { findGenieFiles } from './discovery.ts'
-import { GenieImportError } from './errors.ts'
+import { GenieImportError, GenieValidationError } from './errors.ts'
 import { resolveWorkspaceProvider } from './workspace.ts'
 
 const importGenieOutput = Effect.fn('genie/importGenieOutput')(function* ({
@@ -114,7 +114,7 @@ export const runGenieValidation = Effect.fn('genie/runValidation')(function* ({
 
   if (issues.length > 0) {
     const formatted = formatValidationIssues(issues)
-    return yield* Effect.fail(new Error(`Genie validation failed:${formatted}`))
+    return yield* new GenieValidationError({ message: `Genie validation failed:${formatted}` })
   }
 
   return issues

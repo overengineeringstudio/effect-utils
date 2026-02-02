@@ -99,8 +99,7 @@ export const writeLockFile = ({
 > =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const encoded = yield* Schema.encode(LockFile)(lockFile)
-    const content = JSON.stringify(encoded, null, 2)
+    const content = yield* Schema.encode(Schema.parseJson(LockFile, { space: 2 }))(lockFile)
     yield* fs.writeFileString(lockPath, content + '\n')
   })
 

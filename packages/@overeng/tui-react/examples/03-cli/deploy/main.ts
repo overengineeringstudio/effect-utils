@@ -21,7 +21,7 @@ import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Effect } from 'effect'
 
 import { outputOption, outputModeLayer } from '../../../src/mod.ts'
-import { runDeploy } from './deploy.tsx'
+import { DeployError, runDeploy } from './deploy.tsx'
 
 // =============================================================================
 // Command Options
@@ -92,7 +92,7 @@ const deploy = Command.make(
       Effect.flatMap((result) => {
         // Exit with appropriate code based on result
         if (!result.success) {
-          return Effect.fail(new Error(result.error ?? 'Deployment failed'))
+          return Effect.fail(new DeployError({ message: result.error ?? 'Deployment failed' }))
         }
         return Effect.succeed(result)
       }),

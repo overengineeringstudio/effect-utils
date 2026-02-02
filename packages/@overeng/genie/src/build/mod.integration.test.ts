@@ -8,6 +8,14 @@ import { describe, it } from '@effect/vitest'
 import { Chunk, Effect, Schema, Stream } from 'effect'
 import { expect } from 'vitest'
 
+/** Schema for parsing generated package.json in tests */
+const GeneratedPackageJson = Schema.Struct({
+  _genieLocation: Schema.optional(Schema.String),
+  dependencies: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+})
+
+const decodeGeneratedPackageJson = Schema.decodeUnknownSync(Schema.parseJson(GeneratedPackageJson))
+
 type TestEnv = {
   root: string
   writeFile: (args: { path: string; content: string }) => Effect.Effect<void, never>
@@ -450,7 +458,7 @@ export default {
             // Read the generated package.json
             const generatedPath = pathSvc.join(realRepoPath, 'packages/pkg-a/package.json')
             const generatedContent = yield* fs.readFileString(generatedPath)
-            const generated = JSON.parse(generatedContent)
+            const generated = decodeGeneratedPackageJson(generatedContent)
 
             // THE KEY ASSERTION: The location should be a simple repo-relative path
             // NOT a path containing ".." that escapes the repo structure
@@ -458,11 +466,11 @@ export default {
 
             // The link: dependency should be a simple relative path
             // NOT something like "link:../../../../../.../packages/pkg-b"
-            const linkPath = generated.dependencies['@test/pkg-b']
+            const linkPath = generated.dependencies?.['@test/pkg-b']
             expect(linkPath).toBe('link:../pkg-b')
 
             // Verify no excessive "../" in the path (the bug symptom)
-            const parentRefCount = (linkPath.match(/\.\.\//g) || []).length
+            const parentRefCount = (String(linkPath).match(/\.\.\//g) || []).length
             expect(parentRefCount).toBeLessThanOrEqual(2) // "../pkg-b" has 1, which is correct
           }),
         )
@@ -577,10 +585,10 @@ export default {
 
             const generatedPath = pathSvc.join(outerRoot, 'repo/packages/pkg-a/package.json')
             const generatedContent = yield* fs.readFileString(generatedPath)
-            const generated = JSON.parse(generatedContent)
+            const generated = decodeGeneratedPackageJson(generatedContent)
 
             expect(generated._genieLocation).toBe('packages/pkg-a')
-            const linkPath = generated.dependencies['@test/pkg-b']
+            const linkPath = generated.dependencies?.['@test/pkg-b']
             expect(linkPath).toBe('link:../pkg-b')
           }),
         )

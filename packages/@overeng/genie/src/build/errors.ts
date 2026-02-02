@@ -49,3 +49,19 @@ export class GenieFileError extends Schema.TaggedError<GenieFileError>()('GenieF
   /** The original error - preserved for TDZ detection and root cause analysis */
   cause: Schema.Defect,
 }) {}
+
+/** Error when genie validation fails */
+export class GenieValidationError extends Schema.TaggedError<GenieValidationError>()(
+  'GenieValidationError',
+  {
+    message: Schema.String,
+  },
+) {}
+
+/** Error when a feature is not yet implemented */
+export class GenieNotImplementedError extends Schema.TaggedError<GenieNotImplementedError>()(
+  'GenieNotImplementedError',
+  {
+    message: Schema.String,
+  },
+) {}

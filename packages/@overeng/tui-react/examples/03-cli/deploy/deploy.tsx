@@ -4,6 +4,7 @@
  * Core deploy logic using createTuiApp for rendering.
  */
 
+import { Schema } from 'effect'
 import type { Scope } from 'effect'
 import { Duration, Effect } from 'effect'
 import React from 'react'
@@ -21,6 +22,10 @@ import {
   type ServiceResult,
 } from './schema.ts'
 import { DeployView } from './view.tsx'
+
+export class DeployError extends Schema.TaggedError<DeployError>()('DeployError', {
+  message: Schema.String,
+}) {}
 
 // =============================================================================
 // TUI App Definition (exported for app-scoped hooks in view.tsx)
@@ -87,7 +92,7 @@ const simulatePull = (service: string) =>
 
     // 5% chance of failure
     if (Math.random() < 0.05) {
-      return yield* Effect.fail(new Error(`Failed to pull image for ${service}`))
+      return yield* Effect.fail(new DeployError({ message: `Failed to pull image for ${service}` }))
     }
   })
 
@@ -98,7 +103,7 @@ const simulateStart = (service: string) =>
 
     // 3% chance of failure
     if (Math.random() < 0.03) {
-      return yield* Effect.fail(new Error(`Failed to start ${service}`))
+      return yield* Effect.fail(new DeployError({ message: `Failed to start ${service}` }))
     }
   })
 
@@ -109,7 +114,7 @@ const simulateHealthcheck = (service: string) =>
 
     // 2% chance of failure
     if (Math.random() < 0.02) {
-      return yield* Effect.fail(new Error(`Health check failed for ${service}`))
+      return yield* Effect.fail(new DeployError({ message: `Health check failed for ${service}` }))
     }
   })
 
