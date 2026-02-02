@@ -5,10 +5,17 @@
 import { Args, Command, Options } from '@effect/cli'
 import { FetchHttpClient, FileSystem, HttpClient } from '@effect/platform'
 import type { Cause, Channel, Sink } from 'effect'
-import { Console, Effect, Layer, Option, Redacted, Schema, Stream } from 'effect'
+import { Effect, Layer, Option, Redacted, Schema, Stream } from 'effect'
 import type { NodeInspectSymbol } from 'effect/Inspectable'
+import React from 'react'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
+import { outputOption as tuiOutputOption, outputModeLayer } from '@overeng/tui-react'
+
+import { DumpApp } from '../../renderers/DumpOutput/app.ts'
+import { DumpView } from '../../renderers/DumpOutput/view.tsx'
+import { InfoApp } from '../../renderers/InfoOutput/app.ts'
+import { InfoView } from '../../renderers/InfoOutput/view.tsx'
 
 /** Re-export internal types for TypeScript declaration emit */
 export type { Cause, Channel, Sink, Stream } from 'effect'
@@ -104,18 +111,6 @@ const checkpointOption = Options.file('checkpoint').pipe(
 const filterOption = Options.text('filter').pipe(
   Options.withDescription('Filter pages by property value (e.g., "Status=Done")'),
   Options.optional,
-)
-
-const verboseOption = Options.boolean('verbose').pipe(
-  Options.withAlias('v'),
-  Options.withDescription('Show verbose output'),
-  Options.withDefault(false),
-)
-
-const quietOption = Options.boolean('quiet').pipe(
-  Options.withAlias('q'),
-  Options.withDescription('Suppress all output except errors'),
-  Options.withDefault(false),
 )
 
 /** Parse a simple filter string like "Status=Done" into a Notion filter */
@@ -249,8 +244,7 @@ const dumpCommand = Command.make(
     sinceLast: sinceLastOption,
     checkpoint: checkpointOption,
     filter: filterOption,
-    verbose: verboseOption,
-    quiet: quietOption,
+    tuiOutput: tuiOutputOption,
   },
   ({
     databaseId,
@@ -264,8 +258,7 @@ const dumpCommand = Command.make(
     sinceLast,
     checkpoint,
     filter,
-    verbose,
-    quiet,
+    tuiOutput,
   }) =>
     Effect.gen(function* () {
       const resolvedToken = yield* resolveNotionToken(token)
@@ -275,80 +268,77 @@ const dumpCommand = Command.make(
         authToken: Redacted.make(resolvedToken),
       })
 
-      const log = (msg: string) => (quiet ? Effect.void : Console.log(msg))
-      const logVerbose = (msg: string) => (verbose && !quiet ? Console.log(msg) : Effect.void)
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const tui = yield* DumpApp.run(
+            React.createElement(DumpView, { stateAtom: DumpApp.stateAtom }),
+          )
 
-      const program = Effect.gen(function* () {
-        yield* log(`Dumping database ${databaseId}...`)
+          const program = Effect.gen(function* () {
+            tui.dispatch({ _tag: 'SetIntrospecting', databaseId })
 
-        // Introspect database for schema
-        const dbInfo = yield* introspectDatabase(databaseId)
-        yield* logVerbose(`Database: ${dbInfo.name}`)
-        yield* logVerbose(`Properties: ${dbInfo.properties.length}`)
+            // Introspect database for schema
+            const dbInfo = yield* introspectDatabase(databaseId)
 
-        // Determine output paths
-        const outputPath = output
-        const schemaPath = output.replace(/\.ndjson$/, '') + '.schema.ts'
-        const checkpointPath = Option.isSome(checkpoint)
-          ? checkpoint.value
-          : output.replace(/\.ndjson$/, '') + '.checkpoint.json'
+            // Determine output paths
+            const outputPath = output
+            const schemaPath = output.replace(/\.ndjson$/, '') + '.schema.ts'
+            const checkpointPath = Option.isSome(checkpoint)
+              ? checkpoint.value
+              : output.replace(/\.ndjson$/, '') + '.checkpoint.json'
 
-        // Handle incremental dump
-        let lastEditedFilter: string | undefined
-        if (sinceLast) {
-          const checkpointExists = yield* fs.exists(checkpointPath)
-          if (checkpointExists) {
-            const checkpointContent = yield* fs.readFileString(checkpointPath)
-            const checkpointData = yield* Schema.decodeUnknown(Schema.parseJson(CheckpointData))(
-              checkpointContent,
-            )
-            lastEditedFilter = checkpointData.lastDumpedAt
-            yield* log(`Incremental dump since ${lastEditedFilter}`)
-          } else {
-            yield* log('No checkpoint found, performing full dump')
-          }
-        } else if (Option.isSome(since)) {
-          lastEditedFilter = since.value
-          yield* log(`Filtering pages modified since ${lastEditedFilter}`)
-        }
+            // Handle incremental dump
+            let lastEditedFilter: string | undefined
+            if (sinceLast) {
+              const checkpointExists = yield* fs.exists(checkpointPath)
+              if (checkpointExists) {
+                const checkpointContent = yield* fs.readFileString(checkpointPath)
+                const checkpointData = yield* Schema.decodeUnknown(
+                  Schema.parseJson(CheckpointData),
+                )(checkpointContent)
+                lastEditedFilter = checkpointData.lastDumpedAt
+              }
+            } else if (Option.isSome(since)) {
+              lastEditedFilter = since.value
+            }
 
-        // Build query options
-        const queryFilter = Option.isSome(filter) ? parseSimpleFilter(filter.value) : undefined
+            // Build query options
+            const queryFilter = Option.isSome(filter) ? parseSimpleFilter(filter.value) : undefined
 
-        // Create combined filter if we have both time and property filters
-        let combinedFilter: DatabaseFilter | undefined
-        if (lastEditedFilter && queryFilter) {
-          combinedFilter = {
-            and: [
-              {
+            // Create combined filter if we have both time and property filters
+            let combinedFilter: DatabaseFilter | undefined
+            if (lastEditedFilter && queryFilter) {
+              combinedFilter = {
+                and: [
+                  {
+                    timestamp: 'last_edited_time',
+                    last_edited_time: { after: lastEditedFilter },
+                  },
+                  queryFilter,
+                ],
+              }
+            } else if (lastEditedFilter) {
+              combinedFilter = {
                 timestamp: 'last_edited_time',
                 last_edited_time: { after: lastEditedFilter },
+              }
+            } else if (queryFilter) {
+              combinedFilter = queryFilter
+            }
+
+            // Generate TypeScript schema using existing codegen
+            const dumpedAt = new Date().toISOString()
+            const schemaCode = generateSchemaCode({
+              dbInfo,
+              schemaName: dbInfo.name,
+              options: {
+                typedOptions: true,
+                schemaMeta: true,
               },
-              queryFilter,
-            ],
-          }
-        } else if (lastEditedFilter) {
-          combinedFilter = {
-            timestamp: 'last_edited_time',
-            last_edited_time: { after: lastEditedFilter },
-          }
-        } else if (queryFilter) {
-          combinedFilter = queryFilter
-        }
+            })
 
-        // Generate TypeScript schema using existing codegen
-        const dumpedAt = new Date().toISOString()
-        const schemaCode = generateSchemaCode({
-          dbInfo,
-          schemaName: dbInfo.name,
-          options: {
-            typedOptions: true,
-            schemaMeta: true,
-          },
-        })
-
-        // Add dump metadata as export
-        const schemaWithMeta = `${schemaCode}
+            // Add dump metadata as export
+            const schemaWithMeta = `${schemaCode}
 
 // -----------------------------------------------------------------------------
 // Dump Metadata
@@ -367,184 +357,174 @@ export const DUMP_META = {
 } as const
 `
 
-        yield* logVerbose(`Writing schema to ${schemaPath}...`)
-        yield* fs.writeFileString(schemaPath, schemaWithMeta)
+            yield* fs.writeFileString(schemaPath, schemaWithMeta)
 
-        // Query pages with pagination
-        yield* log(`Fetching pages to ${outputPath}...`)
+            tui.dispatch({ _tag: 'SetFetching', dbName: dbInfo.name, outputPath })
 
-        const outputFile = EffectPath.unsafe.absoluteFile(outputPath)
-        const outputDir = EffectPath.ops.parent(outputFile)
-        const resolvedAssetsDir: AbsoluteDirPath = Option.isSome(assetsDir)
-          ? EffectPath.unsafe.absoluteDir(assetsDir.value)
-          : EffectPath.ops.join(outputDir, EffectPath.unsafe.relativeDir('assets/'))
+            const outputFile = EffectPath.unsafe.absoluteFile(outputPath)
+            const outputDir = EffectPath.ops.parent(outputFile)
+            const resolvedAssetsDir: AbsoluteDirPath = Option.isSome(assetsDir)
+              ? EffectPath.unsafe.absoluteDir(assetsDir.value)
+              : EffectPath.ops.join(outputDir, EffectPath.unsafe.relativeDir('assets/'))
 
-        // Ensure output directory exists
-        const dirExists = yield* fs.exists(outputDir)
-        if (!dirExists) {
-          yield* fs.makeDirectory(outputDir, { recursive: true })
-        }
-
-        // Track statistics
-        const lines: string[] = []
-        let pageCount = 0
-        let totalAssetsDownloaded = 0
-        let totalAssetBytes = 0
-        let totalAssetsSkipped = 0
-        const failures: { pageId: string; blockId?: string; error: string }[] = []
-        let startCursor: string | undefined
-
-        while (true) {
-          const result = yield* NotionDatabases.query({
-            databaseId,
-            ...(combinedFilter !== undefined ? { filter: combinedFilter } : {}),
-            ...(startCursor !== undefined ? { startCursor } : {}),
-            pageSize: 100,
-          })
-
-          for (const page of result.results) {
-            // Extract properties
-            const properties: Record<string, unknown> = {}
-            for (const [key, value] of Object.entries(page.properties ?? {})) {
-              properties[key] = value
+            // Ensure output directory exists
+            const dirExists = yield* fs.exists(outputDir)
+            if (!dirExists) {
+              yield* fs.makeDirectory(outputDir, { recursive: true })
             }
 
-            // Fetch content blocks if --content flag is set
-            let contentBlocks: (typeof DumpPage.Type)['content'] = undefined
-            if (content) {
-              const blocksStream = NotionBlocks.retrieveAllNested({
-                blockId: page.id,
-                ...(Option.isSome(depth) ? { maxDepth: depth.value } : {}),
-                concurrency: 3,
+            // Track statistics
+            const lines: string[] = []
+            let pageCount = 0
+            let totalAssetsDownloaded = 0
+            let totalAssetBytes = 0
+            let totalAssetsSkipped = 0
+            const failures: { pageId: string; blockId?: string; error: string }[] = []
+            let startCursor: string | undefined
+
+            while (true) {
+              const result = yield* NotionDatabases.query({
+                databaseId,
+                ...(combinedFilter !== undefined ? { filter: combinedFilter } : {}),
+                ...(startCursor !== undefined ? { startCursor } : {}),
+                pageSize: 100,
               })
 
-              const blocks = yield* Stream.runCollect(blocksStream).pipe(
-                Effect.map((chunk) => [...chunk]),
-                Effect.catchAll((error) => {
-                  failures.push({ pageId: page.id, error: String(error) })
-                  return Effect.succeed([] as BlockWithDepth[])
-                }),
-              )
+              for (const page of result.results) {
+                // Extract properties
+                const properties: Record<string, unknown> = {}
+                for (const [key, value] of Object.entries(page.properties ?? {})) {
+                  properties[key] = value
+                }
 
-              // Convert to dump format
-              contentBlocks = blocks.map((b) => ({
-                block: b.block as Record<string, unknown>,
-                depth: b.depth,
-                parentId: b.parentId,
-              }))
+                // Fetch content blocks if --content flag is set
+                let contentBlocks: (typeof DumpPage.Type)['content'] = undefined
+                if (content) {
+                  const blocksStream = NotionBlocks.retrieveAllNested({
+                    blockId: page.id,
+                    ...(Option.isSome(depth) ? { maxDepth: depth.value } : {}),
+                    concurrency: 3,
+                  })
 
-              // Handle assets
-              const pageAssets = extractAssetsFromBlocks(blocks)
-              if (pageAssets.length > 0) {
-                if (assets) {
-                  // Download assets
-                  for (const asset of pageAssets) {
-                    const downloadResult = yield* downloadAsset({
-                      asset,
-                      pageId: page.id,
-                      assetsDir: resolvedAssetsDir,
-                    }).pipe(
-                      Effect.map((r) => ({ success: true as const, ...r })),
-                      Effect.catchAll((error) =>
-                        Effect.succeed({
-                          success: false as const,
-                          error: String(error),
-                          blockId: asset.blockId,
-                        }),
-                      ),
-                    )
+                  const blocks = yield* Stream.runCollect(blocksStream).pipe(
+                    Effect.map((chunk) => [...chunk]),
+                    Effect.catchAll((error) => {
+                      failures.push({ pageId: page.id, error: String(error) })
+                      return Effect.succeed([] as BlockWithDepth[])
+                    }),
+                  )
 
-                    if (downloadResult.success) {
-                      totalAssetsDownloaded++
-                      totalAssetBytes += downloadResult.size
+                  // Convert to dump format
+                  contentBlocks = blocks.map((b) => ({
+                    block: b.block as Record<string, unknown>,
+                    depth: b.depth,
+                    parentId: b.parentId,
+                  }))
+
+                  // Handle assets
+                  const pageAssets = extractAssetsFromBlocks(blocks)
+                  if (pageAssets.length > 0) {
+                    if (assets) {
+                      // Download assets
+                      for (const asset of pageAssets) {
+                        const downloadResult = yield* downloadAsset({
+                          asset,
+                          pageId: page.id,
+                          assetsDir: resolvedAssetsDir,
+                        }).pipe(
+                          Effect.map((r) => ({ success: true as const, ...r })),
+                          Effect.catchAll((error) =>
+                            Effect.succeed({
+                              success: false as const,
+                              error: String(error),
+                              blockId: asset.blockId,
+                            }),
+                          ),
+                        )
+
+                        if (downloadResult.success) {
+                          totalAssetsDownloaded++
+                          totalAssetBytes += downloadResult.size
+                        } else {
+                          failures.push({
+                            pageId: page.id,
+                            blockId: downloadResult.blockId,
+                            error: downloadResult.error,
+                          })
+                        }
+                      }
                     } else {
-                      failures.push({
-                        pageId: page.id,
-                        blockId: downloadResult.blockId,
-                        error: downloadResult.error,
-                      })
+                      // Track skipped assets
+                      totalAssetsSkipped += pageAssets.length
                     }
                   }
-                } else {
-                  // Log info about skipped assets
-                  totalAssetsSkipped += pageAssets.length
                 }
+
+                const dumpPage: typeof DumpPage.Type = {
+                  id: page.id,
+                  url: page.url ?? `https://notion.so/${page.id.replace(/-/g, '')}`,
+                  createdTime: page.created_time,
+                  lastEditedTime: page.last_edited_time,
+                  properties,
+                  content: contentBlocks,
+                }
+
+                lines.push(encodeDumpPage(dumpPage))
+                pageCount++
               }
-            }
 
-            const dumpPage: typeof DumpPage.Type = {
-              id: page.id,
-              url: page.url ?? `https://notion.so/${page.id.replace(/-/g, '')}`,
-              createdTime: page.created_time,
-              lastEditedTime: page.last_edited_time,
-              properties,
-              content: contentBlocks,
-            }
+              // Dispatch page count update after each batch
+              tui.dispatch({ _tag: 'AddPages', count: result.results.length })
 
-            lines.push(encodeDumpPage(dumpPage))
-            pageCount++
-
-            if (verbose && pageCount % 10 === 0) {
-              yield* logVerbose(`  ${pageCount} pages...`)
-            }
-          }
-
-          if (!result.hasMore || Option.isNone(result.nextCursor)) {
-            break
-          }
-          startCursor = result.nextCursor.value
-        }
-
-        // Write all lines to file
-        yield* fs.writeFileString(outputPath, lines.join('\n') + (lines.length > 0 ? '\n' : ''))
-
-        yield* log(`Dumped ${pageCount} pages`)
-
-        // Log asset summary
-        if (content && totalAssetsSkipped > 0) {
-          yield* log(
-            `Info: ${totalAssetsSkipped} assets found but not downloaded (use --assets to download)`,
-          )
-        }
-        if (assets && totalAssetsDownloaded > 0) {
-          const sizeStr =
-            totalAssetBytes > 1024 * 1024
-              ? `${(totalAssetBytes / (1024 * 1024)).toFixed(1)} MB`
-              : `${(totalAssetBytes / 1024).toFixed(1)} KB`
-          yield* log(
-            `Downloaded ${totalAssetsDownloaded} assets (${sizeStr}) to ${resolvedAssetsDir}`,
-          )
-        }
-        if (failures.length > 0) {
-          yield* log(`Warning: ${failures.length} failures occurred during dump`)
-        }
-
-        // Write checkpoint with extended info
-        yield* logVerbose(`Writing checkpoint to ${checkpointPath}...`)
-        const checkpointData = {
-          lastDumpedAt: dumpedAt,
-          pageCount,
-          contentIncluded: content,
-          ...(assets
-            ? {
-                assets: {
-                  count: totalAssetsDownloaded,
-                  totalBytes: totalAssetBytes,
-                  directory: resolvedAssetsDir,
-                },
+              if (!result.hasMore || Option.isNone(result.nextCursor)) {
+                break
               }
-            : {}),
-          ...(failures.length > 0 ? { failures } : {}),
-        }
-        const checkpointJson = yield* Schema.encode(Schema.parseJson(CheckpointData, { space: 2 }))(
-          checkpointData,
-        )
-        yield* fs.writeFileString(checkpointPath, checkpointJson)
+              startCursor = result.nextCursor.value
+            }
 
-        yield* log('Done')
-      })
+            // Write all lines to file
+            yield* fs.writeFileString(outputPath, lines.join('\n') + (lines.length > 0 ? '\n' : ''))
 
-      yield* program.pipe(Effect.provide(Layer.merge(configLayer, FetchHttpClient.layer)))
+            // Write checkpoint with extended info
+            const checkpointData = {
+              lastDumpedAt: dumpedAt,
+              pageCount,
+              contentIncluded: content,
+              ...(assets
+                ? {
+                    assets: {
+                      count: totalAssetsDownloaded,
+                      totalBytes: totalAssetBytes,
+                      directory: resolvedAssetsDir,
+                    },
+                  }
+                : {}),
+              ...(failures.length > 0 ? { failures } : {}),
+            }
+            const checkpointJson = yield* Schema.encode(
+              Schema.parseJson(CheckpointData, { space: 2 }),
+            )(checkpointData)
+            yield* fs.writeFileString(checkpointPath, checkpointJson)
+
+            tui.dispatch({
+              _tag: 'SetDone',
+              assetsDownloaded: totalAssetsDownloaded,
+              assetBytes: totalAssetBytes,
+              assetsSkipped: totalAssetsSkipped,
+              failures: failures.length,
+            })
+          })
+
+          yield* program.pipe(
+            Effect.catchAll((error) =>
+              Effect.sync(() => {
+                tui.dispatch({ _tag: 'SetError', message: String(error) })
+              }),
+            ),
+            Effect.provide(Layer.merge(configLayer, FetchHttpClient.layer)),
+          )
+        }),
+      ).pipe(Effect.provide(outputModeLayer(tuiOutput)))
     }),
 ).pipe(Command.withDescription('Dump a Notion database to NDJSON format with TypeScript schema'))
 
@@ -554,8 +534,8 @@ export const DUMP_META = {
 
 const infoCommand = Command.make(
   'info',
-  { databaseId: databaseIdArg, token: tokenOption },
-  ({ databaseId, token }) =>
+  { databaseId: databaseIdArg, token: tokenOption, output: tuiOutputOption },
+  ({ databaseId, token, output }) =>
     Effect.gen(function* () {
       const resolvedToken = yield* resolveNotionToken(token)
 
@@ -563,31 +543,47 @@ const infoCommand = Command.make(
         authToken: Redacted.make(resolvedToken),
       })
 
-      const program = Effect.gen(function* () {
-        const db = yield* NotionDatabases.retrieve({ databaseId })
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const tui = yield* InfoApp.run(
+            React.createElement(InfoView, { stateAtom: InfoApp.stateAtom }),
+          )
 
-        yield* Console.log(`Database: ${db.title.map((t) => t.plain_text).join('')}`)
-        yield* Console.log(`ID: ${db.id}`)
-        yield* Console.log(`URL: ${db.url}`)
-        yield* Console.log('')
-        yield* Console.log('Properties:')
+          const program = Effect.gen(function* () {
+            const db = yield* NotionDatabases.retrieve({ databaseId })
 
-        const properties = db.properties ?? {}
-        for (const [propName, propValue] of Object.entries(properties)) {
-          const prop = propValue as { type: string; [key: string]: unknown }
-          yield* Console.log(`  - ${propName}: ${prop.type}`)
-        }
+            const properties = db.properties ?? {}
+            const propertyList = Object.entries(properties).map(([propName, propValue]) => {
+              const prop = propValue as { type: string; [key: string]: unknown }
+              return { name: propName, type: prop.type }
+            })
 
-        // Get row count
-        const result = yield* NotionDatabases.query({
-          databaseId,
-          pageSize: 1,
-        })
-        yield* Console.log('')
-        yield* Console.log(`Rows: ${result.hasMore ? '100+' : result.results.length}`)
-      })
+            // Get row count
+            const result = yield* NotionDatabases.query({
+              databaseId,
+              pageSize: 1,
+            })
 
-      yield* program.pipe(Effect.provide(Layer.merge(configLayer, FetchHttpClient.layer)))
+            tui.dispatch({
+              _tag: 'SetResult',
+              dbName: db.title.map((t) => t.plain_text).join(''),
+              dbId: db.id,
+              dbUrl: db.url,
+              properties: propertyList,
+              rowCount: result.hasMore ? '100+' : String(result.results.length),
+            })
+          })
+
+          yield* program.pipe(
+            Effect.catchAll((error) =>
+              Effect.sync(() => {
+                tui.dispatch({ _tag: 'SetError', message: String(error) })
+              }),
+            ),
+            Effect.provide(Layer.merge(configLayer, FetchHttpClient.layer)),
+          )
+        }),
+      ).pipe(Effect.provide(outputModeLayer(output)))
     }),
 ).pipe(Command.withDescription('Display information about a Notion database'))
 

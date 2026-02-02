@@ -17,9 +17,18 @@ importers:
       '@overeng/notion-effect-schema':
         specifier: workspace:*
         version: link:../notion-effect-schema
+      '@overeng/tui-core':
+        specifier: workspace:*
+        version: link:../tui-core
+      '@overeng/tui-react':
+        specifier: workspace:*
+        version: link:../tui-react
       '@overeng/utils':
         specifier: workspace:*
         version: link:../utils
+      react:
+        specifier: 19.2.3
+        version: 19.2.3
     devDependencies:
       '@effect/cli':
         specifier: 0.73.1
@@ -60,6 +69,9 @@ importers:
       '@playwright/test':
         specifier: 1.57.0
         version: 1.57.0
+      '@types/react':
+        specifier: 19.2.7
+        version: 19.2.7
       effect:
         specifier: 3.19.15
         version: 3.19.15

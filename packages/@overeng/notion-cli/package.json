@@ -24,7 +24,10 @@
     "@overeng/effect-path": "workspace:*",
     "@overeng/notion-effect-client": "workspace:*",
     "@overeng/notion-effect-schema": "workspace:*",
-    "@overeng/utils": "workspace:*"
+    "@overeng/tui-core": "workspace:*",
+    "@overeng/tui-react": "workspace:*",
+    "@overeng/utils": "workspace:*",
+    "react": "19.2.3"
   },
   "devDependencies": {
     "@effect/cli": "0.73.1",
@@ -40,6 +43,7 @@
     "@effect/vitest": "0.27.0",
     "@effect/workflow": "0.16.0",
     "@playwright/test": "1.57.0",
+    "@types/react": "19.2.7",
     "effect": "3.19.15",
     "typescript": "5.9.3",
     "vitest": "3.2.4"
