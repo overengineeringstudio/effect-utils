@@ -96,7 +96,17 @@ let
         mkdir -p "${cacheRoot}"
         hash_file="${cacheRoot}/${name}.hash"
 
-        pnpm install --config.confirmModulesPurge=false
+        if [ ! -f pnpm-lock.yaml ]; then
+          echo "[pnpm] Warning: pnpm-lock.yaml missing in ${path}." >&2
+          echo "[pnpm] Install will proceed without a lockfile (non-deterministic)." >&2
+          echo "[pnpm] Fix: run 'dt pnpm:update' to regenerate lockfiles." >&2
+        fi
+
+        if [ -n "${CI:-}" ]; then
+          pnpm install --config.confirmModulesPurge=false --frozen-lockfile
+        else
+          pnpm install --config.confirmModulesPurge=false
+        fi
 
         if command -v sha256sum >/dev/null 2>&1; then
           hash_cmd="sha256sum"
@@ -104,7 +114,12 @@ let
           hash_cmd="shasum -a 256"
         fi
 
-        current_hash="$(cat package.json pnpm-lock.yaml | $hash_cmd | awk '{print $1}')"
+        if [ -f pnpm-lock.yaml ]; then
+          hash_input="package.json pnpm-lock.yaml"
+        else
+          hash_input="package.json"
+        fi
+        current_hash="$(cat $hash_input | $hash_cmd | awk '{print $1}')"
         cache_value="$current_hash"
         ${cache.writeCacheFile ''"$hash_file"''}
       '';
@@ -126,7 +141,12 @@ let
         else
           hash_cmd="shasum -a 256"
         fi
-        current_hash="$(cat package.json pnpm-lock.yaml | $hash_cmd | awk '{print $1}')"
+          if [ -f pnpm-lock.yaml ]; then
+            hash_input="package.json pnpm-lock.yaml"
+          else
+            hash_input="package.json"
+          fi
+          current_hash="$(cat $hash_input | $hash_cmd | awk '{print $1}')"
         stored_hash="$(cat "$hash_file")"
         if [ "$current_hash" != "$stored_hash" ]; then
           exit 1
@@ -142,9 +162,10 @@ let
   pnpmStorePath = "${config.devenv.root}/.pnpm-store";
 
   # Build a shell script that updates lockfiles for all packages
+  # See: https://pnpm.io/cli/install#--fix-lockfile
   updateScript = lib.concatStringsSep "\n" (map (p: ''
     echo "Updating ${p}..."
-    (cd "${p}" && pnpm install --no-frozen-lockfile --config.confirmModulesPurge=false) || echo "Warning: ${p} update failed"
+    (cd "${p}" && pnpm install --fix-lockfile --config.confirmModulesPurge=false) || echo "Warning: ${p} update failed"
   '') packages);
 
 in {
