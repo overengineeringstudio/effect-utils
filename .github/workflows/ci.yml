@@ -15,6 +15,9 @@ jobs:
     defaults:
       run:
         shell: devenv shell bash -- -e {0}
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
     steps:
       - uses: actions/checkout@v4
       - name: Install Nix
@@ -23,10 +26,20 @@ jobs:
         uses: cachix/cachix-action@v16
         with:
           name: devenv
+      - name: Enable project Cachix cache
+        uses: cachix/cachix-action@v16
+        with:
+          name: overeng-effect-utils
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - name: Install devenv
         run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
         shell: bash
-      - run: bun install --frozen-lockfile
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
       - name: Type check
         run: 'dt ts:check'
   lint:
@@ -34,6 +47,9 @@ jobs:
     defaults:
       run:
         shell: devenv shell bash -- -e {0}
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
     steps:
       - uses: actions/checkout@v4
       - name: Install Nix
@@ -42,10 +58,20 @@ jobs:
         uses: cachix/cachix-action@v16
         with:
           name: devenv
+      - name: Enable project Cachix cache
+        uses: cachix/cachix-action@v16
+        with:
+          name: overeng-effect-utils
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - name: Install devenv
         run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
         shell: bash
-      - run: bun install --frozen-lockfile
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
       - name: Format + lint
         run: 'dt lint:check'
   test:
@@ -53,6 +79,9 @@ jobs:
     defaults:
       run:
         shell: devenv shell bash -- -e {0}
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
     steps:
       - uses: actions/checkout@v4
       - name: Install Nix
@@ -61,10 +90,20 @@ jobs:
         uses: cachix/cachix-action@v16
         with:
           name: devenv
+      - name: Enable project Cachix cache
+        uses: cachix/cachix-action@v16
+        with:
+          name: overeng-effect-utils
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - name: Install devenv
         run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
         shell: bash
-      - run: bun install --frozen-lockfile
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
       - name: Unit tests
         run: 'dt test:run'
   nix-check:
@@ -72,6 +111,9 @@ jobs:
     defaults:
       run:
         shell: devenv shell bash -- -e {0}
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
     steps:
       - uses: actions/checkout@v4
       - name: Install Nix
@@ -80,9 +122,19 @@ jobs:
         uses: cachix/cachix-action@v16
         with:
           name: devenv
+      - name: Enable project Cachix cache
+        uses: cachix/cachix-action@v16
+        with:
+          name: overeng-effect-utils
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - name: Install devenv
         run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
         shell: bash
-      - run: bun install --frozen-lockfile
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
       - name: Nix hash check
         run: 'dt nix:check'

@@ -20,17 +20,37 @@ const baseSteps = [
     },
   },
   {
+    name: 'Enable project Cachix cache',
+    uses: 'cachix/cachix-action@v16',
+    with: {
+      name: 'overeng-effect-utils',
+      authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}',
+    },
+  },
+  {
     name: 'Install devenv',
     // Install devenv from the commit pinned in devenv.lock to ensure version consistency
     run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)',
     shell: 'bash',
   },
-  { run: 'bun install --frozen-lockfile' },
+  {
+    name: 'Cache pnpm store',
+    uses: 'actions/cache@v4',
+    with: {
+      path: '~/.local/share/pnpm/store',
+      key: "pnpm-store-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}",
+      'restore-keys': 'pnpm-store-${{ runner.os }}-',
+    },
+  },
 ] as const
 
 const job = (step: { name: string; run: string }) => ({
   'runs-on': 'ubuntu-latest',
   defaults: jobDefaults,
+  env: {
+    FORCE_SETUP: '1',
+    CI: 'true',
+  },
   steps: [...baseSteps, step],
 })
 
