@@ -12,6 +12,17 @@ const config: StorybookConfig = {
       host: '0.0.0.0',
       allowedHosts: true,
     }
+    // Configure esbuild to use automatic JSX runtime for linked workspace packages
+    config.esbuild = {
+      ...config.esbuild,
+      jsx: 'automatic',
+    }
+    config.optimizeDeps = {
+      ...config.optimizeDeps,
+      esbuildOptions: {
+        jsx: 'automatic',
+      },
+    }
     return config
   },
 }

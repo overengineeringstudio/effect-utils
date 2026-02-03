@@ -18,6 +18,12 @@ const config: StorybookConfig = {
       ...config.build,
       target: 'esnext',
     }
+    // Configure esbuild to use automatic JSX runtime for all files
+    // This is needed for linked workspace packages that use jsx: "react-jsx"
+    config.esbuild = {
+      ...config.esbuild,
+      jsx: 'automatic',
+    }
     config.resolve = {
       ...config.resolve,
       // Alias OpenTUI to empty modules in browser - they require Bun runtime
@@ -32,26 +38,34 @@ const config: StorybookConfig = {
       // Vite may resolve these packages to different copies in the monorepo,
       // causing "Cannot read properties of null (reading 'useState')" errors.
       dedupe: ['react', 'react-dom', 'react-reconciler'],
-      // Ensure browser conditions are used for package exports resolution.
-      // This fixes "require is not defined" errors from packages like msgpackr
-      // that have separate browser/node entry points.
-      conditions: ['browser', 'import', 'module', 'default'],
     }
-    // Exclude OpenTUI packages from optimization - they require Bun runtime
-    // Also exclude msgpackr to ensure browser conditions are respected
     config.optimizeDeps = {
       ...config.optimizeDeps,
       esbuildOptions: {
         target: 'esnext',
+        jsx: 'automatic', // Use automatic JSX runtime (React 17+)
       },
-      include: [...(config.optimizeDeps?.include ?? []), 'react-reconciler'],
-      exclude: [
-        ...(config.optimizeDeps?.exclude ?? []),
-        '@opentui/core',
-        '@opentui/react',
-        'msgpackr',
-        'msgpackr-extract',
+      // WORKAROUND: Vite 7+ doesn't properly pre-bundle CJS dependencies of linked workspace
+      // packages in dev mode, causing "require is not defined" errors in the browser.
+      //
+      // When a linked workspace package (e.g., @overeng/tui-react) imports a dependency
+      // (e.g., react-reconciler) that has CJS transitive dependencies (e.g., scheduler),
+      // Vite fails to include those transitive deps in the pre-bundle.
+      //
+      // The fix is to explicitly include CJS dependencies using the nested dependency syntax.
+      // Production builds are unaffected as Rollup handles CJS differently than esbuild.
+      //
+      // Docs: https://vite.dev/guide/dep-pre-bundling#monorepos-and-linked-dependencies
+      // Related: https://github.com/vitejs/vite/issues/10447
+      include: [
+        ...(config.optimizeDeps?.include ?? []),
+        'react-reconciler',
+        'react-reconciler > scheduler', // CJS dep of react-reconciler
+        '@effect/cli > ini', // CJS dep of @effect/cli
+        '@effect/cli > toml', // CJS dep of @effect/cli
       ],
+      // Exclude OpenTUI packages - they require Bun runtime
+      exclude: [...(config.optimizeDeps?.exclude ?? []), '@opentui/core', '@opentui/react'],
     }
     // Also exclude from SSR
     config.ssr = {

@@ -17,6 +17,12 @@ const config: StorybookConfig = {
       ...config.build,
       target: 'esnext',
     }
+    // Configure esbuild to use automatic JSX runtime for all files
+    // This is needed for linked workspace packages that use jsx: "react-jsx"
+    config.esbuild = {
+      ...config.esbuild,
+      jsx: 'automatic',
+    }
     config.resolve = {
       ...config.resolve,
       alias: {
@@ -25,25 +31,26 @@ const config: StorybookConfig = {
         '@opentui/react': new URL('./opentui-stub.ts', import.meta.url).pathname,
       },
       dedupe: ['react', 'react-dom', 'react-reconciler'],
-      // Ensure browser conditions are used for package exports resolution.
-      // This fixes "require is not defined" errors from packages like msgpackr
-      // that have separate browser/node entry points.
-      conditions: ['browser', 'import', 'module', 'default'],
     }
     config.optimizeDeps = {
       ...config.optimizeDeps,
       esbuildOptions: {
         target: 'esnext',
+        jsx: 'automatic',
       },
-      include: [...(config.optimizeDeps?.include ?? []), 'react-reconciler'],
-      // Exclude @opentui packages and msgpackr to ensure browser conditions are respected
-      exclude: [
-        ...(config.optimizeDeps?.exclude ?? []),
-        '@opentui/core',
-        '@opentui/react',
-        'msgpackr',
-        'msgpackr-extract',
+      // WORKAROUND: Vite 7+ doesn't properly pre-bundle CJS dependencies of linked workspace
+      // packages in dev mode, causing "require is not defined" errors in the browser.
+      // Docs: https://vite.dev/guide/dep-pre-bundling#monorepos-and-linked-dependencies
+      // Related: https://github.com/vitejs/vite/issues/10447
+      include: [
+        ...(config.optimizeDeps?.include ?? []),
+        'react-reconciler',
+        'react-reconciler > scheduler',
+        '@effect/cli > ini',
+        '@effect/cli > toml',
       ],
+      // Exclude @opentui packages - they require Bun runtime
+      exclude: [...(config.optimizeDeps?.exclude ?? []), '@opentui/core', '@opentui/react'],
     }
     config.ssr = {
       ...config.ssr,
