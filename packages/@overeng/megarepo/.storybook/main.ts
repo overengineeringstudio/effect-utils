@@ -38,13 +38,20 @@ const config: StorybookConfig = {
       conditions: ['browser', 'import', 'module', 'default'],
     }
     // Exclude OpenTUI packages from optimization - they require Bun runtime
+    // Also exclude msgpackr to ensure browser conditions are respected
     config.optimizeDeps = {
       ...config.optimizeDeps,
       esbuildOptions: {
         target: 'esnext',
       },
       include: [...(config.optimizeDeps?.include ?? []), 'react-reconciler'],
-      exclude: [...(config.optimizeDeps?.exclude ?? []), '@opentui/core', '@opentui/react'],
+      exclude: [
+        ...(config.optimizeDeps?.exclude ?? []),
+        '@opentui/core',
+        '@opentui/react',
+        'msgpackr',
+        'msgpackr-extract',
+      ],
     }
     // Also exclude from SSR
     config.ssr = {

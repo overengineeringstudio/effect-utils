@@ -24,7 +24,8 @@ const config: StorybookConfig = {
         target: 'esnext',
       },
       // Exclude OpenTUI packages - they require Bun runtime and special import syntax
-      exclude: ['@opentui/core', '@opentui/react'],
+      // Also exclude msgpackr to ensure browser conditions are respected
+      exclude: ['@opentui/core', '@opentui/react', 'msgpackr', 'msgpackr-extract'],
     }
     // Also exclude from SSR
     config.ssr = {

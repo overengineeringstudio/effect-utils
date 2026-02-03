@@ -41,7 +41,14 @@ const config: StorybookConfig = {
       include: [...(config.optimizeDeps?.include ?? []), 'react-reconciler'],
       // Exclude @opentui packages - they use `with { type: "file" }` import attributes
       // that esbuild doesn't support
-      exclude: [...(config.optimizeDeps?.exclude ?? []), '@opentui/core', '@opentui/react'],
+      // Also exclude msgpackr to ensure browser conditions are respected
+      exclude: [
+        ...(config.optimizeDeps?.exclude ?? []),
+        '@opentui/core',
+        '@opentui/react',
+        'msgpackr',
+        'msgpackr-extract',
+      ],
     }
     return config
   },

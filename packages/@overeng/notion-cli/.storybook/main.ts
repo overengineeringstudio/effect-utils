@@ -36,7 +36,14 @@ const config: StorybookConfig = {
         target: 'esnext',
       },
       include: [...(config.optimizeDeps?.include ?? []), 'react-reconciler'],
-      exclude: [...(config.optimizeDeps?.exclude ?? []), '@opentui/core', '@opentui/react'],
+      // Exclude @opentui packages and msgpackr to ensure browser conditions are respected
+      exclude: [
+        ...(config.optimizeDeps?.exclude ?? []),
+        '@opentui/core',
+        '@opentui/react',
+        'msgpackr',
+        'msgpackr-extract',
+      ],
     }
     config.ssr = {
       ...config.ssr,
