@@ -352,6 +352,15 @@ interface FileListProps {
   expanded?: boolean
 }
 
+/** Calculate how many lines a file will take when rendered */
+const getFileLineCount = (file: GenieFile, expanded: boolean): number => {
+  // In expanded mode, errors and skipped items with messages take 2 lines
+  if (expanded && file.message && (file.status === 'error' || file.status === 'skipped')) {
+    return 2
+  }
+  return 1
+}
+
 /**
  * Viewport-aware file list that prioritizes important files.
  * Shows errors and active files first, then fills remaining space with others.
@@ -366,18 +375,41 @@ const FileList = ({ files, hasWatchCycle, hasSummary, expanded = false }: FileLi
     const reservedLines = 1 + (hasWatchCycle ? 1 : 0) + 1 + (hasSummary ? 3 : 0) + 1 // +1 for overflow line
     const availableLines = Math.max(1, viewport.rows - reservedLines)
 
-    // If all files fit, no need to sort/truncate
-    if (files.length <= availableLines) {
-      return { visibleFiles: files, hiddenFiles: [] as GenieFile[] }
+    // Sort by priority (errors first, etc.)
+    const sorted = sortFilesByPriority(files)
+
+    // Calculate total lines needed, accounting for multi-line expanded items
+    let totalLinesNeeded = 0
+    for (const file of sorted) {
+      totalLinesNeeded += getFileLineCount(file, expanded)
     }
 
-    // Sort by priority and split into visible/hidden
-    const sorted = sortFilesByPriority(files)
-    return {
-      visibleFiles: sorted.slice(0, availableLines - 1), // -1 for overflow indicator
-      hiddenFiles: sorted.slice(availableLines - 1),
+    // If all files fit, no need to truncate
+    if (totalLinesNeeded <= availableLines) {
+      return { visibleFiles: sorted, hiddenFiles: [] as GenieFile[] }
     }
-  }, [files, viewport.rows, hasWatchCycle, hasSummary])
+
+    // Find how many files we can show within available lines
+    // Reserve 1 line for overflow indicator
+    const budget = availableLines - 1
+    let usedLines = 0
+    let visibleCount = 0
+
+    for (const file of sorted) {
+      const lineCount = getFileLineCount(file, expanded)
+      if (usedLines + lineCount <= budget) {
+        usedLines += lineCount
+        visibleCount++
+      } else {
+        break
+      }
+    }
+
+    return {
+      visibleFiles: sorted.slice(0, visibleCount),
+      hiddenFiles: sorted.slice(visibleCount),
+    }
+  }, [files, viewport.rows, hasWatchCycle, hasSummary, expanded])
 
   return (
     <Box flexShrink={1}>
