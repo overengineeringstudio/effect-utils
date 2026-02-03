@@ -1678,21 +1678,39 @@ describe('sync worktree ref mismatch detection', () => {
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
 
-        const { storePath, worktreePaths } = yield* createStoreFixture([
+        const { storePath, bareRepoPaths } = yield* createStoreFixture([
           {
             host: 'example.com',
             owner: 'org',
             repo: 'test-repo',
-            branches: ['main'],
+            branches: [],
           },
         ])
-        const storeKey = 'example.com/org/test-repo#main'
-        const storeWorktreePath = worktreePaths[storeKey]
-        if (storeWorktreePath === undefined) {
-          throw new Error(`Missing worktree path for ${storeKey}`)
+        const repoKey = 'example.com/org/test-repo'
+        const bareRepoPath = bareRepoPaths[repoKey]
+        if (bareRepoPath === undefined) {
+          throw new Error(`Missing bare repo path for ${repoKey}`)
         }
+        const repoBasePath = EffectPath.ops.join(
+          storePath,
+          EffectPath.unsafe.relativeDir(`${repoKey}/`),
+        )
+        const storeWorktreePath = EffectPath.ops.join(
+          repoBasePath,
+          EffectPath.unsafe.relativeDir('refs/heads/main/'),
+        )
+        const worktreeParent = EffectPath.ops.parent(storeWorktreePath)
+        if (worktreeParent !== undefined) {
+          yield* fs.makeDirectory(worktreeParent, { recursive: true })
+        }
+        yield* runGitCommand(
+          bareRepoPath,
+          'worktree',
+          'add',
+          storeWorktreePath.slice(0, -1),
+          'main',
+        )
 
-        yield* runGitCommand(storeWorktreePath, 'checkout', '-B', 'main')
         const mainCommit = yield* runGitCommand(storeWorktreePath, 'rev-parse', 'HEAD')
 
         // Create workspace with lock file using URL source
@@ -1802,21 +1820,39 @@ describe('sync worktree ref mismatch detection', () => {
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
 
-        const { storePath, worktreePaths } = yield* createStoreFixture([
+        const { storePath, bareRepoPaths } = yield* createStoreFixture([
           {
             host: 'example.com',
             owner: 'org',
             repo: 'test-repo',
-            branches: ['main'],
+            branches: [],
           },
         ])
-        const storeKey = 'example.com/org/test-repo#main'
-        const storeWorktreePath = worktreePaths[storeKey]
-        if (storeWorktreePath === undefined) {
-          throw new Error(`Missing worktree path for ${storeKey}`)
+        const repoKey = 'example.com/org/test-repo'
+        const bareRepoPath = bareRepoPaths[repoKey]
+        if (bareRepoPath === undefined) {
+          throw new Error(`Missing bare repo path for ${repoKey}`)
         }
+        const repoBasePath = EffectPath.ops.join(
+          storePath,
+          EffectPath.unsafe.relativeDir(`${repoKey}/`),
+        )
+        const storeWorktreePath = EffectPath.ops.join(
+          repoBasePath,
+          EffectPath.unsafe.relativeDir('refs/heads/main/'),
+        )
+        const worktreeParent = EffectPath.ops.parent(storeWorktreePath)
+        if (worktreeParent !== undefined) {
+          yield* fs.makeDirectory(worktreeParent, { recursive: true })
+        }
+        yield* runGitCommand(
+          bareRepoPath,
+          'worktree',
+          'add',
+          storeWorktreePath.slice(0, -1),
+          'main',
+        )
 
-        yield* runGitCommand(storeWorktreePath, 'checkout', '-B', 'main')
         const mainCommit = yield* runGitCommand(storeWorktreePath, 'rev-parse', 'HEAD')
 
         // Create workspace with lock file using URL source
