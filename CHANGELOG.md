@@ -19,6 +19,7 @@ All notable changes to this project will be documented in this file.
 
 - **nix/workspace-tools/lib/mk-pnpm-cli.nix**: Deterministic pnpm store tarball creation
   - Normalizes tar output (stable ordering + fixed timestamps)
+  - Strips non-deterministic pnpm store `checkedAt` metadata
   - Prevents pnpm deps hash churn across CI runs
 
 ### Removed

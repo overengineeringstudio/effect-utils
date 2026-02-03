@@ -162,6 +162,8 @@ let
       pkgs.nodejs
       pkgs.cacert
       pkgs.zstd
+      pkgs.findutils
+      pkgs.perl
     ];
 
     dontConfigure = true;
@@ -185,6 +187,12 @@ let
       # Install with network access - this downloads all deps to the store
       # Use --force to skip workspace member validation since we only have package.json files
       pnpm install --frozen-lockfile --ignore-scripts --force
+
+      # Normalize pnpm store metadata (checkedAt timestamps are non-deterministic)
+      if [ -d "$STORE_PATH/index" ]; then
+        find "$STORE_PATH/index" -type f -name "*.json" -print0 \
+          | xargs -0 perl -pi -e 's/"checkedAt":[0-9]+/"checkedAt":0/g'
+      fi
 
       # Create output directory
       mkdir -p $out
