@@ -47,7 +47,7 @@ in
     (taskModules.ts { tsconfigFile = "tsconfig.json"; })
     (taskModules.setup {
       tasks = [
-        "megarepo:generate"
+        "megarepo:sync"
         "pnpm:install"
         "genie:run"
         "ts:build"
@@ -107,13 +107,13 @@ See [flake-packages.md](./flake-packages.md) for package definitions.
 ### .envrc
 
 ```bash
-source_env_if_exists ./.envrc.generated.megarepo
-use devenv ${MEGAREPO_NIX_WORKSPACE:+--override-input effect-utils path:$MEGAREPO_NIX_WORKSPACE/effect-utils}
+source_env_if_exists .envrc.local
+if has devenv && test -f devenv.nix; then
+    use devenv
+fi
 ```
 
-The `.envrc.generated.megarepo` file is created by `mr generate nix` and sets `MEGAREPO_ROOT_*` and `MEGAREPO_NIX_WORKSPACE` environment variables.
-
-The `${VAR:+...}` syntax expands to the override flag only when `MEGAREPO_NIX_WORKSPACE` is set. This makes the same `.envrc` work both inside a megarepo (using local workspace) and standalone (using pinned GitHub URL).
+The megarepo root path is available as `DEVENV_ROOT` (provided by devenv).
 
 ### .gitignore
 
@@ -158,35 +158,6 @@ The `megarepo:sync` task runs automatically during devenv shell entry on fresh c
 ```bash
 devenv update                    # Update all inputs
 devenv update effect-utils       # Update specific input
-```
-
-## Local Overrides
-
-Inside a megarepo, the `.envrc` pattern above automatically uses the local workspace. For repos outside a megarepo, override manually:
-
-```bash
-# One-time override
-devenv shell --override-input effect-utils path:../effect-utils
-
-# Or wire into .envrc permanently
-use devenv --override-input effect-utils path:../effect-utils
-```
-
-Run `direnv allow` after updating `.envrc`.
-
-## Building with Megarepo
-
-Inside a megarepo, build from the generated workspace path (avoids slow `path:.` hashing):
-
-```bash
-nix build --no-write-lock-file --no-link \
-  "path:$MEGAREPO_NIX_WORKSPACE#packages.aarch64-darwin.my-repo.my-cli"
-```
-
-Outside a megarepo, build normally:
-
-```bash
-nix build .#my-cli
 ```
 
 ## Refreshing direnv

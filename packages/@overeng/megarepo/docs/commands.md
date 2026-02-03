@@ -54,30 +54,6 @@ mr sync [--pull] [--force] [--frozen] [--deep] [--only <members>] [--skip <membe
 - Uses locked commits exactly
 - Fails if config has members not in lock
 
-### `mr update`
-
-Re-resolve refs from remotes and update the lock file.
-
-```bash
-mr update [--member <name>] [--force]
-```
-
-**Options:**
-
-| Option         | Description             |
-| -------------- | ----------------------- |
-| `--member, -m` | Update only this member |
-| `--force, -f`  | Update even if pinned   |
-
-**Behavior:**
-
-1. Fetch from remote
-2. Resolve ref to latest commit
-3. Update lock file entry
-4. Checkout new commit in worktree
-
-Skips pinned members unless `--force` or explicitly named.
-
 ### `mr add`
 
 Add a member to `megarepo.json`.
@@ -202,10 +178,7 @@ mr env [--shell bash|zsh|fish] [--json]
 Output:
 
 ```bash
-export MEGAREPO_ROOT_OUTERMOST="/path/to/megarepo"
-export MEGAREPO_ROOT_NEAREST="/path/to/megarepo"
-export MEGAREPO_MEMBERS="effect,other-lib"
-export MEGAREPO_NIX_WORKSPACE="/path/to/megarepo/.direnv/megarepo-nix/workspace"
+export MEGAREPO_STORE="~/.megarepo"
 ```
 
 ## Exec Command
@@ -280,17 +253,7 @@ mr generate all [--json]
 
 Generates based on `generators` config:
 
-- `.envrc.generated.megarepo` + `.direnv/megarepo-nix/workspace` (when `generators.nix.enabled = true`)
-- `.vscode/megarepo.code-workspace` (default: disabled)
-- `schema/megarepo.schema.json` (always)
-
-### `mr generate nix`
-
-Generate the local Nix workspace and `.envrc.generated.megarepo`.
-
-```bash
-mr generate nix [--json]
-```
+- `.vscode/megarepo.code-workspace` (when `generators.vscode.enabled = true`)
 
 ### `mr generate vscode`
 

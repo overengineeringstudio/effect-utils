@@ -113,14 +113,14 @@ use devenv --override-input effect-utils path:../effect-utils
 
 ## Building from Megarepo
 
-Inside a megarepo, use the generated workspace path for faster builds:
+Inside a megarepo, use direct paths for builds:
 
 ```bash
 nix build --no-write-lock-file --no-link \
-  "path:$MEGAREPO_NIX_WORKSPACE#packages.aarch64-darwin.my-repo.my-cli"
+  "path:$DEVENV_ROOT/repos/my-repo#packages.aarch64-darwin.my-cli"
 ```
 
-The megarepo workspace avoids `path:.` hashing of large trees (node_modules, etc.).
+Use `--override-input` to reference local dependencies when needed.
 
 ## Exposing devenvModules
 
@@ -160,7 +160,7 @@ nix build .#my-cli
 
 # With megarepo (frozen mode)
 mr sync --frozen
-nix build "path:$MEGAREPO_NIX_WORKSPACE#packages.x86_64-linux.my-repo.my-cli"
+nix build "path:$DEVENV_ROOT/repos/my-repo#packages.x86_64-linux.my-cli"
 ```
 
 ## References

@@ -115,7 +115,7 @@ bd config set linear.team_id "your-team-uuid"
 
 ```bash
 # Run from overeng-beads directory
-cd "$MEGAREPO_ROOT_OUTERMOST/overeng-beads-public"
+cd "$DEVENV_ROOT/repos/overeng-beads-public"
 
 # Create issue with package label
 bd create "Implement feature X" -p 1 -t feature -l pkg:effect-utils
@@ -139,7 +139,7 @@ The git hook will automatically add a comment to the beads issue.
 
 ```bash
 # Run from overeng-beads directory
-cd "$MEGAREPO_ROOT_OUTERMOST/overeng-beads-public"
+cd "$DEVENV_ROOT/repos/overeng-beads-public"
 
 # Pull from Linear (import team changes)
 bd linear sync --pull

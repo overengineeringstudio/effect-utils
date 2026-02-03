@@ -131,29 +131,14 @@ Note: `DEVENV_ROOT` is provided by devenv automatically and serves as the megare
 ### Root discovery behavior
 
 Commands auto-detect megarepo roots by searching up from `$PWD` for `megarepo.json`.
-The search captures both:
-
-- **Outermost root**: the highest `megarepo.json` in the directory tree (closest to `/`).
-- **Nearest root**: the first `megarepo.json` found when walking upward from `$PWD`.
-
-The `mr env` command and generators expose both values via
-`MEGAREPO_ROOT_OUTERMOST` and `MEGAREPO_ROOT_NEAREST` for tooling to consume.
+When using devenv, `DEVENV_ROOT` provides the megarepo root path.
 
 **Nested megarepos:** When megarepo A contains megarepo B as a member:
 
-- If working inside nested B, the nearest root is B and the outermost root is A.
-- If B is checked out standalone (not as a member), both roots resolve to B.
+- If working inside nested B, `mr` commands operate on B
+- If B is checked out standalone, commands operate on B
 
-The outermost-root rule ensures:
-
-- Consistent environment across the entire development context
-- No accidental scope changes when navigating into nested repos
-- Clear hierarchy: you're always working in the context of one megarepo
-
-**Edge Cases:**
-
-- If either root points to a path that no longer contains `megarepo.json`, consumers should treat it as invalid.
-- Symlinked members: when entering a symlinked member, the outermost root should still point to the top-level megarepo.
+**Symlinked members:** When entering a symlinked member, commands search upward for `megarepo.json`.
 
 ---
 
@@ -229,10 +214,9 @@ interface MegarepoConfig {
 
 interface GeneratorsConfig {
   nix?: {
-    enabled?: boolean // default: false
-    workspaceDir?: string // default: .direnv/megarepo-nix/workspace
+    enabled?: boolean // default: false (enables lock sync)
     lockSync?: {
-      enabled?: boolean // default: true (when nix generator is enabled)
+      enabled?: boolean // default: true (when nix.enabled is true)
       exclude?: string[] // members to exclude from lock sync
     }
   }

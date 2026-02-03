@@ -41,15 +41,13 @@ export const EnvView = ({ stateAtom }: EnvViewProps) => {
     )
   }
 
-  const { MEGAREPO_ROOT_OUTERMOST, MEGAREPO_ROOT_NEAREST, MEGAREPO_MEMBERS, shell = 'bash' } = state
+  const { MEGAREPO_STORE, shell = 'bash' } = state
 
   // Format based on shell type
   if (shell === 'fish') {
     return (
       <Box flexDirection="column">
-        <Text>set -gx MEGAREPO_ROOT_OUTERMOST "{MEGAREPO_ROOT_OUTERMOST}"</Text>
-        <Text>set -gx MEGAREPO_ROOT_NEAREST "{MEGAREPO_ROOT_NEAREST}"</Text>
-        <Text>set -gx MEGAREPO_MEMBERS "{MEGAREPO_MEMBERS}"</Text>
+        <Text>set -gx MEGAREPO_STORE "{MEGAREPO_STORE}"</Text>
       </Box>
     )
   }
@@ -57,9 +55,7 @@ export const EnvView = ({ stateAtom }: EnvViewProps) => {
   // bash/zsh (default)
   return (
     <Box flexDirection="column">
-      <Text>export MEGAREPO_ROOT_OUTERMOST="{MEGAREPO_ROOT_OUTERMOST}"</Text>
-      <Text>export MEGAREPO_ROOT_NEAREST="{MEGAREPO_ROOT_NEAREST}"</Text>
-      <Text>export MEGAREPO_MEMBERS="{MEGAREPO_MEMBERS}"</Text>
+      <Text>export MEGAREPO_STORE="{MEGAREPO_STORE}"</Text>
     </Box>
   )
 }

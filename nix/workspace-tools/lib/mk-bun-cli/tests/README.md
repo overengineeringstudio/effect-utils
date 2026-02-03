@@ -28,11 +28,9 @@ bash effect-utils/nix/workspace-tools/lib/mk-bun-cli/tests/run.sh
 
 ## Notes
 
-- The harness uses `mr sync` + `mr generate nix` to populate
-  `.direnv/megarepo-nix/workspace` and builds via
-  `path:$MEGAREPO_NIX_WORKSPACE#packages.<system>.<repo>.<target>`.
-- Devenv validation overrides `effect-utils` to the generated workspace mirror
-  to avoid path input issues with `.devenv.flake.nix`.
+- The harness uses `mr sync` to populate the `repos/` directory with symlinks.
+- Builds use direct paths like `path:$WORKSPACE/repos/<repo>#packages.<system>.<target>`.
+- Devenv validation overrides `effect-utils` to the repos directory.
 - All builds use `--no-link` to avoid `result` symlinks in the workspace.
 - The peer fixture uses a local file dependency (`shared-lib`) within the repo
   to exercise local deps handling.

@@ -165,16 +165,8 @@ export const MEMBER_ROOT_DIR = 'repos'
 
 /** Environment variable names */
 export const ENV_VARS = {
-  /** Path to the outermost megarepo root */
-  ROOT_OUTERMOST: 'MEGAREPO_ROOT_OUTERMOST',
-  /** Path to the nearest megarepo root */
-  ROOT_NEAREST: 'MEGAREPO_ROOT_NEAREST',
   /** Global store location */
   STORE: 'MEGAREPO_STORE',
-  /** Comma-separated list of member names */
-  MEMBERS: 'MEGAREPO_MEMBERS',
-  /** Local Nix workspace path for generated flake */
-  NIX_WORKSPACE: 'MEGAREPO_NIX_WORKSPACE',
 } as const
 
 // =============================================================================

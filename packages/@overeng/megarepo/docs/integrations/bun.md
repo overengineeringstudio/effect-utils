@@ -16,18 +16,6 @@ Create a `package.json` in your megarepo root with workspace patterns:
 
 **Note:** Since members are symlinks, you reference their actual package paths.
 
-## Discovering Packages
-
-Use environment variables to dynamically discover member packages:
-
-```bash
-# .envrc
-source_env_if_exists .envrc.generated.megarepo
-
-# MEGAREPO_MEMBERS is now available
-# e.g., "effect,other-lib,local-lib"
-```
-
 ## Installing Dependencies
 
 ```bash

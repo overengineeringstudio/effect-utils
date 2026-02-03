@@ -9,7 +9,7 @@ Common usage patterns for megarepo.
 ```bash
 cd my-megarepo
 mr sync          # Ensure everything is up to date
-mr update        # Get latest commits (optional)
+mr sync --pull   # Get latest commits (optional)
 ```
 
 ### Making Changes Across Repos
@@ -92,12 +92,12 @@ git commit -m "Pin dependencies for v1.0 release"
 
 ### Updating Pinned Members
 
-Pinned members are skipped by `mr update`:
+Pinned members are skipped by `mr sync --pull`:
 
 ```bash
-mr update          # effect and other-lib stay pinned
-mr update --force  # Update ALL including pinned
-mr update --member effect --force  # Update just effect
+mr sync --pull                    # effect and other-lib stay pinned
+mr sync --pull --force            # Update ALL including pinned
+mr sync --pull --only effect --force  # Update just effect
 ```
 
 ### Unpinning After Release
@@ -105,7 +105,7 @@ mr update --member effect --force  # Update just effect
 ```bash
 mr unpin effect
 mr unpin other-lib
-mr update  # Now they update normally
+mr sync --pull  # Now they update normally
 ```
 
 ## Switching Branches
@@ -267,24 +267,7 @@ mr store gc --force
 mr store fetch
 ```
 
-## Environment Integration
-
-### Direnv Setup
-
-Generate the local Nix workspace and source environment variables:
-
-```bash
-mr generate nix
-```
-
-In your `.envrc`:
-
-```bash
-source_env_if_exists .envrc.generated.megarepo
-use devenv
-```
-
-### VS Code Workspace
+## VS Code Workspace
 
 Enable in `megarepo.json`:
 
@@ -336,5 +319,5 @@ cd repos/member-name
 git status  # Check what's dirty
 git stash   # Or commit changes
 cd ..
-mr update
+mr sync --pull
 ```

@@ -157,18 +157,11 @@ JSON
 
 sync_megarepo() {
   local root="$1"
-  local env_root="${2:-}"
   if ! command -v bun >/dev/null 2>&1; then
     echo "bun is required to run mr sync" >&2
     exit 1
   fi
-  if [ -n "$env_root" ]; then
-    (cd "$root" && MEGAREPO_ROOT_OUTERMOST="$env_root" bun "$ROOT/packages/@overeng/megarepo/bin/mr.ts" sync)
-    (cd "$root" && MEGAREPO_ROOT_OUTERMOST="$env_root" bun "$ROOT/packages/@overeng/megarepo/bin/mr.ts" generate nix)
-  else
-    (cd "$root" && bun "$ROOT/packages/@overeng/megarepo/bin/mr.ts" sync)
-    (cd "$root" && bun "$ROOT/packages/@overeng/megarepo/bin/mr.ts" generate nix)
-  fi
+  (cd "$root" && bun "$ROOT/packages/@overeng/megarepo/bin/mr.ts" sync)
 }
 
 run_build() {
@@ -190,8 +183,8 @@ run_devenv() {
   local start
   start="$(now)"
   echo "Devenv: $label"
-  if [ -n "${WORKSPACE_REAL:-}" ] && [ -d "$WORKSPACE_REAL/.direnv/megarepo-nix/workspace/effect-utils" ]; then
-    override=(--override-input effect-utils "path:$WORKSPACE_REAL/.direnv/megarepo-nix/workspace/effect-utils")
+  if [ -n "${WORKSPACE_REAL:-}" ] && [ -d "$WORKSPACE_REAL/repos/effect-utils" ]; then
+    override=(--override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils")
   fi
   (cd "$dir" && devenv shell "${override[@]}" -- true)
   print_timing "$label" "$start"
@@ -252,12 +245,13 @@ sync_megarepo "$WORKSPACE_REAL"
 print_timing "workspace setup" "$setup_start"
 
 if [ "$SKIP_EFFECT_UTILS" -eq 0 ]; then
-  run_build "effect-utils (workspace)" "path:$WORKSPACE_REAL/.direnv/megarepo-nix/workspace#packages.$NIX_SYSTEM.effect-utils.genie"
+  run_build "effect-utils (from repos)" "path:$WORKSPACE_REAL/repos/effect-utils#genie"
   run_build "effect-utils (standalone)" "path:$WORKSPACE_REAL/effect-utils#genie"
 fi
 
 if [ "$SKIP_PEER" -eq 0 ]; then
-  run_build "peer app (workspace)" "path:$WORKSPACE_REAL/.direnv/megarepo-nix/workspace#packages.$NIX_SYSTEM.app.app-cli"
+  run_build "peer app (from repos)" "path:$WORKSPACE_REAL/repos/app#app-cli" \
+    "--override-input effect-utils path:$WORKSPACE_REAL/repos/effect-utils"
   run_build "peer app (standalone)" "path:$WORKSPACE_REAL/app#app-cli" \
     "--override-input effect-utils path:$WORKSPACE_REAL/effect-utils"
 fi

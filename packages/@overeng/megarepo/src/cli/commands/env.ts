@@ -5,20 +5,11 @@
  */
 
 import * as Cli from '@effect/cli'
-import { FileSystem } from '@effect/platform'
-import { Effect, Option, Schema } from 'effect'
+import { Effect } from 'effect'
 import React from 'react'
 
-import { EffectPath } from '@overeng/effect-path'
-
-import { CONFIG_FILE_NAME, MegarepoConfig } from '../../lib/config.ts'
-import {
-  Cwd,
-  findMegarepoRoot,
-  findNearestMegarepoRoot,
-  outputOption,
-  outputModeLayer,
-} from '../context.ts'
+import { DEFAULT_STORE_PATH } from '../../lib/config.ts'
+import { outputOption, outputModeLayer } from '../context.ts'
 import { EnvApp, EnvView } from '../renderers/EnvOutput/mod.ts'
 
 /** Print environment variables for shell integration */
@@ -33,8 +24,6 @@ export const envCommand = Cli.Command.make(
   },
   ({ shell, output }) =>
     Effect.gen(function* () {
-      const cwd = yield* Cwd
-
       // Run TuiApp for all output (handles JSON/TTY modes automatically)
       yield* Effect.scoped(
         Effect.gen(function* () {
@@ -42,38 +31,12 @@ export const envCommand = Cli.Command.make(
             React.createElement(EnvView, { stateAtom: EnvApp.stateAtom }),
           )
 
-          // Find the megarepo root
-          const root = yield* findMegarepoRoot(cwd)
-          const nearestRoot = yield* findNearestMegarepoRoot(cwd)
-
-          if (Option.isNone(root)) {
-            tui.dispatch({
-              _tag: 'SetError',
-              error: 'not_found',
-              message: 'No megarepo.json found',
-            })
-            return
-          }
-
-          // Load config to get member names
-          const fs = yield* FileSystem.FileSystem
-          const configPath = EffectPath.ops.join(
-            root.value,
-            EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-          )
-          const configContent = yield* fs.readFileString(configPath)
-          const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
-            configContent,
-          )
-
-          const memberNames = Object.keys(config.members).join(',')
-          const nearestRootValue = Option.getOrElse(nearestRoot, () => root.value)
+          // Get store path from env or use default
+          const storePath = process.env['MEGAREPO_STORE'] ?? DEFAULT_STORE_PATH
 
           tui.dispatch({
             _tag: 'SetEnv',
-            MEGAREPO_ROOT_OUTERMOST: root.value,
-            MEGAREPO_ROOT_NEAREST: nearestRootValue,
-            MEGAREPO_MEMBERS: memberNames,
+            MEGAREPO_STORE: storePath,
             shell,
           })
         }),

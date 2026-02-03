@@ -57,10 +57,9 @@ export default megarepoJson({
 ```ts
 {
   generators: {
-    // Local Nix workspace + envrc generation (default: disabled)
+    // Nix lock sync (default: disabled)
     nix: {
       enabled: true,
-      workspaceDir: '.direnv/megarepo-nix/workspace',
     },
 
     // VSCode workspace file (default: disabled)
