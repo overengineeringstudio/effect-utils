@@ -293,7 +293,15 @@ let
 
     # Check for Nix hash mismatch
     if echo "$output" | grep -qE 'got:\s+sha256-'; then
+      gotHash=$(echo "$output" | grep -oE 'got:\s+sha256-[A-Za-z0-9+/=]+' | grep -oE 'sha256-[A-Za-z0-9+/=]+' | head -1 || true)
+      expectedHash=$(echo "$output" | grep -oE 'specified:\s+sha256-[A-Za-z0-9+/=]+' | grep -oE 'sha256-[A-Za-z0-9+/=]+' | head -1 || true)
       echo "✗ $name: deps hash is stale (run: dt nix:hash:$name)"
+      if [ -n "$expectedHash" ]; then
+        echo "  expected: $expectedHash"
+      fi
+      if [ -n "$gotHash" ]; then
+        echo "  got:      $gotHash"
+      fi
       exit 1
     fi
 
