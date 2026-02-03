@@ -15,13 +15,6 @@ let
     packageDir = "packages/@overeng/genie";
     workspaceRoot = src;
     extraExcludedSourceNames = [ "context" "scripts" ];
-    # Workspace members from pnpm-workspace.yaml (relative paths resolved to absolute)
-    # Their package.json files are included in fetchPnpmDeps source so pnpm fetches their deps
-    workspaceMembers = [
-      "packages/@overeng/tui-core"
-      "packages/@overeng/tui-react"
-      "packages/@overeng/utils"
-    ];
     # Platform-independent hash: pnpm-workspace.yaml has supportedArchitectures configured
     # to download binaries for all platforms (linux/darwin x x64/arm64), so the hash is
     # the same regardless of where the build runs.

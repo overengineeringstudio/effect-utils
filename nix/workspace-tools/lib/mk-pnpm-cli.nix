@@ -10,6 +10,7 @@
 # - The package's pnpm-lock.yaml contains deps for all workspace members
 # - Single fetchPnpmDeps + single pnpm install handles everything
 # - Handles `patchedDependencies` by including patches directory in filtered source
+# - Workspace members are automatically parsed from pnpm-workspace.yaml (no manual list needed)
 #
 # Arguments:
 # - name: Derivation name and default binary name.
@@ -22,10 +23,6 @@
 #                        Not used by the builder itself; accepted for API compatibility.
 #                        Used externally by nix:check:quick to detect package.json changes
 #                        without lockfile update (e.g., forgetting to run `pnpm install`).
-# - workspaceMembers: List of workspace member directories relative to workspaceRoot.
-#                     Only their package.json files are included in fetchPnpmDeps source
-#                     (not full directories) to let pnpm know what to fetch without
-#                     triggering EACCES errors from trying to create node_modules.
 # - patchesDir: Patches directory relative to workspaceRoot (null to disable).
 # - binaryName: Output binary name (defaults to name).
 # - gitRev: Git short revision (defaults to "unknown").
@@ -44,7 +41,6 @@
   pnpmDepsHash,
   lockfileHash ? null,
   packageJsonDepsHash ? null,
-  workspaceMembers ? [],
   patchesDir ? "patches",
   binaryName ? name,
   gitRev ? "unknown",
@@ -64,6 +60,57 @@ let
     else if builtins.isPath workspaceRoot
     then workspaceRoot
     else builtins.toPath workspaceRoot;
+
+  # ==========================================================================
+  # Parse workspace members from pnpm-workspace.yaml
+  # ==========================================================================
+  # Automatically extracts workspace members from pnpm-workspace.yaml instead of
+  # requiring manual specification. Handles the YAML flow syntax format:
+  #   packages: [., ../tui-core, ../tui-react]
+  # And resolves relative paths to workspace-root-relative paths.
+
+  pnpmWorkspaceYamlPath = workspaceRootPath + "/${packageDir}/pnpm-workspace.yaml";
+  pnpmWorkspaceYaml = builtins.readFile pnpmWorkspaceYamlPath;
+
+  # Extract "packages: [...]" line
+  workspaceLines = lib.splitString "\n" pnpmWorkspaceYaml;
+  packagesLine = lib.findFirst (line: lib.hasPrefix "packages:" line) null workspaceLines;
+
+  # Parse the array: "packages: [., ../foo, ../bar]" -> [".", "../foo", "../bar"]
+  packagesArrayStr = lib.removePrefix "packages: " packagesLine;
+  packagesInner = lib.removeSuffix "]" (lib.removePrefix "[" packagesArrayStr);
+  packagesItems = map (s: lib.trim s) (lib.splitString "," packagesInner);
+
+  # Filter out "." (main package itself)
+  relativeWorkspaceMembers = builtins.filter (s: s != ".") packagesItems;
+
+  # Resolve relative paths (e.g., "../tui-core") to workspace-root paths (e.g., "packages/@overeng/tui-core")
+  resolveRelativePath = basePath: relPath:
+    let
+      baseParts = lib.splitString "/" basePath;
+      relParts = lib.splitString "/" relPath;
+
+      # Count leading ".." segments
+      countResult = builtins.foldl'
+        (acc: part:
+          if acc.done then acc
+          else if part == ".." then { count = acc.count + 1; done = false; }
+          else { count = acc.count; done = true; }
+        )
+        { count = 0; done = false; }
+        relParts;
+      upCount = countResult.count;
+
+      # Get remaining path parts after ".."
+      remainingParts = lib.drop upCount relParts;
+
+      # Go up from base path and append remaining
+      resolvedBase = lib.take (lib.length baseParts - upCount) baseParts;
+    in
+    lib.concatStringsSep "/" (resolvedBase ++ remainingParts);
+
+  # Final workspace members list (workspace-root-relative paths)
+  workspaceMembers = map (relPath: resolveRelativePath packageDir relPath) relativeWorkspaceMembers;
 
   # Create filtered source for fetching pnpm deps
   # Includes the main package and ONLY package.json files from workspace members
