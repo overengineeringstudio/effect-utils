@@ -19,10 +19,10 @@
  * Use named presets for common scenarios:
  * - `tty` - Interactive terminal (progressive, animated, colors)
  * - `ci` - CI environment (progressive, static spinners, colors)
- * - `pipe` - Piped output (final, static, colors)
+ * - `pipe` - File-redirected output (final, static, colors)
  * - `log` - Log file (final, static, no colors)
  * - `fullscreen` - Alternate buffer mode (progressive, animated, colors)
- * - `json` - JSON output (final)
+ * - `json` - JSON output (final) - default for piped output (cmd | other)
  * - `ndjson` - NDJSON streaming (progressive)
  *
  * @example
@@ -43,6 +43,8 @@
  *
  * @module
  */
+
+import * as fs from 'node:fs'
 
 import { Context, Layer } from 'effect'
 import React, { createContext, useContext, type ReactNode } from 'react'
@@ -328,6 +330,50 @@ export const isTTY = (): boolean => typeof process !== 'undefined' && process.st
 export const isNonTTY = (): boolean => !isTTY()
 
 /**
+ * Check if stdout is piped to another process (FIFO).
+ *
+ * Uses `fs.fstatSync(1).isFIFO()` to detect if stdout (fd 1) is a pipe/FIFO.
+ * This is true when the command is piped to another process (e.g., `cmd | cat`).
+ *
+ * @returns `true` if stdout is a FIFO (pipe to process), `false` otherwise
+ */
+export const isPiped = (): boolean => {
+  if (typeof process === 'undefined') return false
+  try {
+    const stat = fs.fstatSync(1)
+    return stat.isFIFO()
+  } catch {
+    // If fstat fails (e.g., fd not available), assume not piped
+    return false
+  }
+}
+
+/**
+ * Check if stdout is redirected to a file.
+ *
+ * Uses `fs.fstatSync(1).isFile()` to detect if stdout (fd 1) is a regular file.
+ * This is true when the command output is redirected to a file (e.g., `cmd > file.txt`).
+ *
+ * @returns `true` if stdout is a file, `false` otherwise
+ */
+export const isRedirectedToFile = (): boolean => {
+  if (typeof process === 'undefined') return false
+  try {
+    const stat = fs.fstatSync(1)
+    return stat.isFile()
+  } catch {
+    // If fstat fails (e.g., fd not available), assume not redirected
+    return false
+  }
+}
+
+/**
+ * Check if TUI_PIPE_MODE=visual env var is set to force visual output in pipes.
+ */
+const isPipeModeVisual = (): boolean =>
+  typeof process !== 'undefined' && process.env?.TUI_PIPE_MODE === 'visual'
+
+/**
  * Check if running inside a coding agent's shell environment.
  *
  * Detects known coding agents by their environment variables:
@@ -368,9 +414,10 @@ export const isAgentEnv = (): boolean => {
  * 2. Agent environment detected → `json` (structured output for coding agents)
  * 3. TTY + not CI → `tty` (animated terminal)
  * 4. TTY + CI → `ci` (static terminal)
- * 5. Non-TTY → `pipe` (final output only)
+ * 5. Non-TTY + piped → `json` (machine-readable for downstream tools)
+ * 6. Non-TTY + file redirect → `pipe` (visual output for file storage)
  *
- * Respects `NO_COLOR` and `NO_UNICODE` environment variables.
+ * Respects `NO_COLOR`, `NO_UNICODE`, and `TUI_PIPE_MODE` environment variables.
  *
  * @returns Detected OutputMode
  *
@@ -388,6 +435,8 @@ export const detectOutputMode = (): OutputMode => {
   const agentEnv = isAgentEnv()
   const noColor = isNoColorSet()
   const noUnicode = isNoUnicodeSet()
+  const pipedEnv = isPiped()
+  const forcePipeVisual = isPipeModeVisual()
 
   // Helper to apply noColor and noUnicode
   const withEnvOverrides = (mode: ReactOutputMode): OutputMode => {
@@ -412,8 +461,14 @@ export const detectOutputMode = (): OutputMode => {
     return withEnvOverrides(ciEnv ? ci : tty)
   }
 
-  // Non-TTY defaults to pipe (final React output, useful for piping)
-  // Use json explicitly via --output=json if you want JSON
+  // Non-TTY: distinguish between pipe and file redirect
+  // Piped to another process (cmd | cat) → JSON for machine consumption
+  // Unless TUI_PIPE_MODE=visual is set
+  if (pipedEnv && !forcePipeVisual) {
+    return json
+  }
+
+  // File redirect or TUI_PIPE_MODE=visual → pipe mode (final React output)
   return withEnvOverrides(pipe)
 }
 

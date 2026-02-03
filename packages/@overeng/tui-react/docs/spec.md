@@ -88,11 +88,20 @@ deploy --output ndjson           # Streaming NDJSON
 - Coding agent detected → `json` (structured output agents can parse)
 - TTY → `tty`
 - TTY + `CI` env → `ci`
-- Non-TTY (piped) → `pipe`
+- Non-TTY + piped to process → `json` (machine-readable for downstream tools)
+- Non-TTY + redirected to file → `pipe` (visual output for file storage)
 - `NO_COLOR` environment variable → removes colors from detected mode
 - `NO_UNICODE` environment variable → removes unicode from detected mode
+- `TUI_PIPE_MODE=visual` → forces `pipe` mode (React output) in piped scenarios
 
 **Agent detection:** Commands automatically detect when they're being executed by a coding agent (e.g. Claude Code, OpenCode, Amp, Cline, Codex CLI) by checking for well-known environment variables these tools inject into their shell sessions. The most prominent signal is the `AGENT` env var — a convention adopted by multiple tools (OpenCode sets `AGENT=1`, Amp sets `AGENT=amp`). When an agent is detected, the output defaults to `json` so the agent receives structured, machine-readable data instead of visual terminal output. This can be overridden with `TUI_VISUAL=1` or an explicit `--output` flag.
+
+**Pipe detection:** When stdout is not a TTY, commands distinguish between two scenarios using `fs.fstatSync(1)`:
+
+- **Piped to process** (`cmd | cat`): `isFIFO() = true` → defaults to `json` mode, assuming the consumer is another program that wants structured data
+- **Redirected to file** (`cmd > file.txt`): `isFile() = true` → uses `pipe` mode, preserving visual output suitable for human review
+
+This can be overridden with `TUI_PIPE_MODE=visual` to force React visual output even when piped, useful for commands like `cmd | less -R`.
 
 **Validation & Fallbacks:**
 
