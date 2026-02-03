@@ -101,6 +101,93 @@ ENOENT: no such file or directory, chmod '.../tui-react/node_modules/typescript/
 serialize installs with shared members, restoring parallel execution for non-overlapping
 packages. This adds complexity but could provide ~3x speedup for large monorepos
 
+## Custom Nix Fetcher for Workspace Dependencies
+
+We use a custom pnpm deps fetcher in `mk-pnpm-cli.nix` instead of nixpkgs' standard
+`fetchPnpmDeps`. This was necessary to solve two issues with workspace member dependencies.
+
+### Problem 1: Missing Workspace Member Dependencies
+
+nixpkgs' `fetchPnpmDeps` only fetches dependencies that are visible in the source it
+receives. When a package depends on workspace members (e.g., `@overeng/tui-react`), those
+members have their own dependencies (e.g., `@vitejs/plugin-react`) that need to be fetched.
+
+However, `fetchPnpmDeps` uses a filtered source that only includes the main package
+directory. It doesn't see the workspace members' `package.json` files, so it doesn't
+know to fetch their dependencies.
+
+**Symptom:** Hash mismatch errors on Linux where platform-specific packages like
+`@esbuild/linux-x64` aren't fetched because they're only referenced by workspace
+members, not the main package.
+
+### Problem 2: EACCES Errors in Read-Only Directories
+
+Even if we include workspace member directories in the source filter, pnpm tries to
+create `node_modules` directories inside them during install. In a Nix derivation,
+the source is read-only, causing:
+
+```
+EACCES: permission denied, mkdir '.../tui-react/node_modules'
+```
+
+### Solution: Custom Fixed-Output Derivation
+
+Our custom fetcher (`pnpmDeps` in `mk-pnpm-cli.nix`) solves both issues:
+
+1. **Include workspace member package.json files** in the source filter so pnpm knows
+   what dependencies to fetch
+2. **Make the source tree writable** with `chmod -R +w .` before running `pnpm install`
+3. **Use `pnpm install --force`** instead of `pnpm fetch` to properly resolve all
+   workspace dependencies
+
+```nix
+pnpmDeps = pkgs.stdenvNoCC.mkDerivation {
+  # ...
+  installPhase = ''
+    # Make source writable (critical for workspace members)
+    cd "$NIX_BUILD_TOP/source"
+    chmod -R +w .
+
+    # Install downloads all deps including workspace member deps
+    pnpm install --frozen-lockfile --ignore-scripts --force
+
+    # Archive the store for use in build phase
+    tar -cf - . | zstd -o $out/pnpm-store.tar.zst
+  '';
+
+  outputHashMode = "recursive";
+  outputHash = pnpmDepsHash;
+};
+```
+
+### Platform-Independent Hashes via supportedArchitectures
+
+To avoid needing separate hashes for Linux and macOS, we configure pnpm to download
+platform-specific binaries for all platforms:
+
+```yaml
+# pnpm-workspace.yaml
+supportedArchitectures:
+  os: [linux, darwin]
+  cpu: [x64, arm64]
+```
+
+This makes the pnpm store contents identical regardless of build platform, so a single
+`pnpmDepsHash` works everywhere.
+
+### Auto-Parsing Workspace Members
+
+The builder automatically parses workspace members from `pnpm-workspace.yaml` at Nix
+evaluation time, eliminating the need to manually specify them in `build.nix`:
+
+```nix
+# Before: manual list that could drift from pnpm-workspace.yaml
+workspaceMembers = ["packages/@overeng/tui-core", ...];
+
+# After: automatically parsed from pnpm-workspace.yaml
+# (no workspaceMembers argument needed)
+```
+
 ## Future: Switch to Bun
 
 We're using pnpm temporarily due to bun bugs. Once fixed, we plan to switch back:
