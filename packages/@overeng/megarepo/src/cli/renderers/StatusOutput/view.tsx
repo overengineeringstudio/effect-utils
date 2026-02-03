@@ -411,7 +411,7 @@ const WarningItem = ({ problem }: { problem: Problem }) => {
               {count} member{count > 1 ? 's' : ''}
             </Text>
             <Text> </Text>
-            <Text dim>lock file outdated</Text>
+            <Text dim>lock tracking wrong ref</Text>
           </Box>
           {problem.members.map((m) => {
             const stale = m.staleLock!
@@ -425,7 +425,6 @@ const WarningItem = ({ problem }: { problem: Problem }) => {
                   <Text>{'      '}</Text>
                   <Text dim>lock: </Text>
                   <Text color="yellow">{stale.lockRef}</Text>
-                  <Text dim> (outdated)</Text>
                 </Box>
                 <Box flexDirection="row">
                   <Text>{'      '}</Text>
@@ -440,7 +439,7 @@ const WarningItem = ({ problem }: { problem: Problem }) => {
                 </Box>
                 <Box flexDirection="row">
                   <Text>{'             '}</Text>
-                  <Text dim>→ updates lock to {stale.actualRef}</Text>
+                  <Text dim>→ updates lock ref to {stale.actualRef}</Text>
                 </Box>
               </Box>
             )
@@ -726,6 +725,12 @@ const MemberLine = ({
         <>
           <Text> </Text>
           <Text color="yellow">pinned</Text>
+        </>
+      )}
+      {member.commitDrift && (
+        <>
+          <Text> </Text>
+          <Text dim>({member.commitDrift.localCommit.slice(0, 7)} → lock)</Text>
         </>
       )}
       {member.isMegarepo && (

@@ -241,10 +241,13 @@ const getColor = (
 }
 
 /** Get hint for an issue type */
-const getIssueHint = (
-  issue: StoreWorktreeIssue,
-  worktree: StoreWorktreeStatus,
-): { fix: string; explanation: string } | undefined => {
+const getIssueHint = ({
+  issue,
+  worktree,
+}: {
+  issue: StoreWorktreeIssue
+  worktree: StoreWorktreeStatus
+}): { fix: string; explanation: string } | undefined => {
   switch (issue.type) {
     case 'dirty':
       return {
@@ -311,7 +314,7 @@ const StoreStatusWorktreeRow = ({ worktree }: { worktree: StoreWorktreeStatus })
         <Text bold>{worktree.ref}</Text>
       </Box>
       {worktree.issues.map((issue, i) => {
-        const hint = getIssueHint(issue, worktree)
+        const hint = getIssueHint({ issue, worktree })
         return (
           <Box key={`${issue.type}-${i}`} flexDirection="column">
             <Box flexDirection="row">

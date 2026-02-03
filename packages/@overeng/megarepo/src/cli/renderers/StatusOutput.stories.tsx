@@ -945,6 +945,79 @@ const createSymlinkDriftState = (): typeof StatusState.Type => ({
   },
 })
 
+/**
+ * Commit drift (LOW severity - inline only): local worktree commit differs from locked commit.
+ * This is normal during development - just means `mr sync` will update lock.
+ */
+const createCommitDriftState = (): typeof StatusState.Type => ({
+  all: false,
+  name: 'my-megarepo',
+  root: '/Users/dev/my-megarepo',
+  syncNeeded: false, // commit drift alone doesn't require sync
+  syncReasons: [],
+  members: [
+    {
+      name: 'effect',
+      exists: true,
+      symlinkExists: true,
+      source: 'effect-ts/effect',
+      isLocal: false,
+      lockInfo: { ref: 'main', commit: 'abc1234def', pinned: false },
+      isMegarepo: false,
+      nestedMembers: undefined,
+      gitStatus: {
+        isDirty: false,
+        changesCount: 0,
+        hasUnpushed: false,
+        branch: 'main',
+        shortRev: 'abc1234',
+      },
+    },
+    {
+      name: 'effect-utils',
+      exists: true,
+      symlinkExists: true,
+      source: 'overengineeringstudio/effect-utils',
+      isLocal: false,
+      lockInfo: { ref: 'main', commit: 'old1234abc', pinned: false }, // lock has old commit
+      isMegarepo: false,
+      nestedMembers: undefined,
+      gitStatus: {
+        isDirty: false,
+        changesCount: 0,
+        hasUnpushed: false,
+        branch: 'main',
+        shortRev: 'new5678', // worktree has newer commit
+      },
+      commitDrift: {
+        localCommit: 'new5678def',
+        lockedCommit: 'old1234abc',
+      },
+    },
+    {
+      name: 'livestore',
+      exists: true,
+      symlinkExists: true,
+      source: 'livestorejs/livestore#dev',
+      isLocal: false,
+      lockInfo: { ref: 'dev', commit: '9876543fed', pinned: false },
+      isMegarepo: false,
+      nestedMembers: undefined,
+      gitStatus: {
+        isDirty: true,
+        changesCount: 5,
+        hasUnpushed: false,
+        branch: 'dev',
+        shortRev: 'abc9999', // different from lock
+      },
+      commitDrift: {
+        localCommit: 'abc9999xyz',
+        lockedCommit: '9876543fed',
+      },
+    },
+  ],
+})
+
 /** Issue #88: State showing ref mismatch when user runs git checkout directly in worktree */
 const createRefMismatchState = (): typeof StatusState.Type => ({
   all: false,
@@ -1102,7 +1175,7 @@ export default {
 type Story = StoryObj<typeof StatusView>
 
 // =============================================================================
-// Stories
+// Basic States
 // =============================================================================
 
 export const Default: Story = {
@@ -1114,82 +1187,6 @@ export const Default: Story = {
 export const AllClean: Story = {
   render: () => (
     <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createCleanState()} />
-  ),
-}
-
-export const WithWarnings: Story = {
-  render: () => (
-    <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createWarningsState()} />
-  ),
-}
-
-export const NestedMegarepos: Story = {
-  render: () => (
-    <TuiStoryPreview
-      View={StatusView}
-      app={StatusApp}
-      initialState={createNestedMegareposState()}
-    />
-  ),
-}
-
-export const CurrentLocation: Story = {
-  render: () => (
-    <TuiStoryPreview
-      View={StatusView}
-      app={StatusApp}
-      initialState={createCurrentLocationState()}
-    />
-  ),
-}
-
-export const LockStale: Story = {
-  render: () => (
-    <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createLockStaleState()} />
-  ),
-}
-
-export const LockMissing: Story = {
-  render: () => (
-    <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createLockMissingState()} />
-  ),
-}
-
-export const PinnedMembers: Story = {
-  render: () => (
-    <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createPinnedMembersState()} />
-  ),
-}
-
-export const ManyMembers: Story = {
-  render: () => (
-    <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createManyMembersState()} />
-  ),
-}
-
-// =============================================================================
-// Edge Cases
-// =============================================================================
-
-export const AllNotSynced: Story = {
-  render: () => (
-    <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createAllNotSyncedState()} />
-  ),
-}
-
-export const AllDirty: Story = {
-  render: () => (
-    <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createAllDirtyState()} />
-  ),
-}
-
-export const LocalPathMembers: Story = {
-  render: () => (
-    <TuiStoryPreview
-      View={StatusView}
-      app={StatusApp}
-      initialState={createLocalPathMembersState()}
-    />
   ),
 }
 
@@ -1205,30 +1202,43 @@ export const EmptyWorkspace: Story = {
   ),
 }
 
-export const DeeplyNested: Story = {
+// =============================================================================
+// Lock File Issues
+// =============================================================================
+
+/** Lock file doesn't exist yet */
+export const LockMissing: Story = {
   render: () => (
-    <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createDeeplyNestedState()} />
+    <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createLockMissingState()} />
   ),
 }
 
-export const MultipleProblems: Story = {
+/** Lock file has missing/extra entries compared to megarepo.json */
+export const LockStale: Story = {
   render: () => (
-    <TuiStoryPreview
-      View={StatusView}
-      app={StatusApp}
-      initialState={createMultipleProblemsState()}
-    />
+    <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createLockStaleState()} />
   ),
 }
 
-/** Stale lock: lock is outdated but current state matches source intent */
-export const StaleLock: Story = {
+/** Lock ref is outdated but current state matches source intent (MEDIUM severity) */
+export const StaleLockRef: Story = {
   render: () => (
     <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createStaleLockState()} />
   ),
 }
 
-/** Symlink drift: symlink/lock track different ref than source specifies */
+/** Local commit differs from locked commit (LOW severity - inline indicator) */
+export const CommitDrift: Story = {
+  render: () => (
+    <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createCommitDriftState()} />
+  ),
+}
+
+// =============================================================================
+// Ref Tracking Issues
+// =============================================================================
+
+/** Lock/symlink track different ref than source specifies (MEDIUM severity) */
 export const SymlinkDrift: Story = {
   render: () => (
     <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createSymlinkDriftState()} />
@@ -1246,9 +1256,107 @@ export const MultipleSymlinkDrift: Story = {
   ),
 }
 
-/** Issue #88: Shows ref mismatch detection when user runs git checkout directly in worktree */
+/** Issue #88: git HEAD differs from store path ref (HIGH severity) */
 export const RefMismatch: Story = {
   render: () => (
     <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createRefMismatchState()} />
+  ),
+}
+
+// =============================================================================
+// Working Tree Issues
+// =============================================================================
+
+/** All members have uncommitted changes */
+export const AllDirty: Story = {
+  render: () => (
+    <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createAllDirtyState()} />
+  ),
+}
+
+/** All members need sync (no worktrees exist) */
+export const AllNotSynced: Story = {
+  render: () => (
+    <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createAllNotSyncedState()} />
+  ),
+}
+
+// =============================================================================
+// Special Cases
+// =============================================================================
+
+/** Members pinned to specific refs */
+export const PinnedMembers: Story = {
+  render: () => (
+    <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createPinnedMembersState()} />
+  ),
+}
+
+/** Local path members (../path or /absolute/path) */
+export const LocalPathMembers: Story = {
+  render: () => (
+    <TuiStoryPreview
+      View={StatusView}
+      app={StatusApp}
+      initialState={createLocalPathMembersState()}
+    />
+  ),
+}
+
+/** Nested megarepos (--all flag) */
+export const NestedMegarepos: Story = {
+  render: () => (
+    <TuiStoryPreview
+      View={StatusView}
+      app={StatusApp}
+      initialState={createNestedMegareposState()}
+    />
+  ),
+}
+
+/** Deeply nested megarepos with current location highlighting */
+export const DeeplyNested: Story = {
+  render: () => (
+    <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createDeeplyNestedState()} />
+  ),
+}
+
+/** Current location highlighting */
+export const CurrentLocation: Story = {
+  render: () => (
+    <TuiStoryPreview
+      View={StatusView}
+      app={StatusApp}
+      initialState={createCurrentLocationState()}
+    />
+  ),
+}
+
+// =============================================================================
+// Complex Scenarios
+// =============================================================================
+
+/** Mixed warnings (dirty, not synced, unpushed) */
+export const WithWarnings: Story = {
+  render: () => (
+    <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createWarningsState()} />
+  ),
+}
+
+/** Multiple different types of problems at once */
+export const MultipleProblems: Story = {
+  render: () => (
+    <TuiStoryPreview
+      View={StatusView}
+      app={StatusApp}
+      initialState={createMultipleProblemsState()}
+    />
+  ),
+}
+
+/** Large workspace with many members */
+export const ManyMembers: Story = {
+  render: () => (
+    <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createManyMembersState()} />
   ),
 }
