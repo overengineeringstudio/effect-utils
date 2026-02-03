@@ -994,6 +994,72 @@ use devenv
 
 `mr generate nix` only writes `.envrc.generated.megarepo`. `.envrc.local` is reserved for user customization and is never modified by generators.
 
+### R12 Monitoring
+
+The generated `.envrc.generated.megarepo` includes R12 monitoring functionality that tracks shell reload reasons and detects spurious re-evaluations.
+
+**What it tracks:**
+
+- Flake input fingerprints (from `devenv info --verbose`)
+- Cache hit/miss status
+- What inputs changed between reloads
+- Total reload count
+
+**State file:** `.direnv/megarepo-r12.json`
+
+```json
+{
+  "last_reload": "2026-02-03T13:19:59+01:00",
+  "reload_count": 3,
+  "fingerprints": {
+    "devenv": "f5d7ff568986...",
+    "effect-utils": "929180ed0e8e...",
+    "nixpkgs": "cb369ef2efd4..."
+  },
+  "cache_status": "hit",
+  "last_changes": []
+}
+```
+
+**Usage:**
+
+```bash
+# Check R12 status interactively
+megarepo_r12_status
+
+# Output:
+# === Megarepo R12 Shell Stability Status ===
+# Last reload: 2026-02-03T13:19:59+01:00
+# Total reloads: 3
+# Last cache status: hit
+# ...
+```
+
+**Disable monitoring:**
+
+```bash
+# In .envrc.local or shell
+export MEGAREPO_R12_MONITOR=0
+```
+
+**How it works:**
+
+1. On each shell load, captures fingerprints from `devenv info --verbose` in background
+2. Compares with previous fingerprints stored in state file
+3. If cache miss detected with fingerprint changes, reports which inputs changed
+4. Runs asynchronously to avoid adding latency to shell startup
+
+**R12 violation detection:**
+
+When a reload happens with a cache miss but no expected changes, the monitoring reports:
+
+```
+megarepo R12: Shell reload #5 - 1 input(s) changed:
+  effect-utils: 929180ed... -> 929180ed...;d=b8e1075a...
+```
+
+The `;d=...` suffix indicates dirty tree changes (uncommitted modifications in the repo).
+
 ### Nix Lock Sync
 
 When the nix generator is enabled, megarepo automatically synchronizes `flake.lock` and `devenv.lock` files in member repos to keep them in sync with `megarepo.lock`.
