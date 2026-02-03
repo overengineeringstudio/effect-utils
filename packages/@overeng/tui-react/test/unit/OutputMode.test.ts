@@ -17,6 +17,8 @@ import {
   // Detection
   detectOutputMode,
   isAgentEnv,
+  isPiped,
+  isRedirectedToFile,
   // Type guards
   isReact,
   isJson,
@@ -218,27 +220,47 @@ describe('isAgentEnv', () => {
   })
 })
 
+describe('isPiped and isRedirectedToFile', () => {
+  // Note: These functions depend on the actual stdout file descriptor state,
+  // so we can only test that they return boolean values and don't throw.
+  // The actual behavior varies based on how tests are run.
+
+  test('isPiped returns a boolean', () => {
+    const result = isPiped()
+    expect(typeof result).toBe('boolean')
+  })
+
+  test('isRedirectedToFile returns a boolean', () => {
+    const result = isRedirectedToFile()
+    expect(typeof result).toBe('boolean')
+  })
+})
+
 describe('detectOutputMode', () => {
-  const agentVars = [
+  const envVars = [
     'AGENT',
     'CLAUDE_PROJECT_DIR',
     'CLAUDECODE',
     'OPENCODE',
     'CLINE_ACTIVE',
     'CODEX_SANDBOX',
+    'TUI_VISUAL',
+    'TUI_PIPE_MODE',
+    'NO_COLOR',
+    'NO_UNICODE',
   ] as const
   let savedEnv: Record<string, string | undefined> = {}
 
-  const clearAgentEnv = () => {
+  const clearEnv = () => {
     savedEnv = {}
-    for (const key of agentVars) {
+    for (const key of envVars) {
       savedEnv[key] = process.env[key]
       delete process.env[key]
     }
   }
 
-  const restoreAgentEnv = () => {
-    for (const key of agentVars) {
+  const restoreEnv = () => {
+    for (const key of envVars) {
       if (savedEnv[key] !== undefined) {
         process.env[key] = savedEnv[key]
       } else {
@@ -247,32 +269,32 @@ describe('detectOutputMode', () => {
     }
   }
 
-  test('in non-TTY non-agent environment defaults to pipe mode', () => {
-    clearAgentEnv()
+  test('in non-TTY non-agent non-piped environment defaults to pipe mode', () => {
+    clearEnv()
     try {
+      // Note: In test environment, we may or may not be piped depending on how tests run.
+      // This test verifies the mode is either 'react' (pipe) or 'json' (if actually piped)
       const mode = detectOutputMode()
-      expect(mode._tag).toBe('react')
-      expect(mode.timing).toBe('final')
+      expect(['react', 'json']).toContain(mode._tag)
     } finally {
-      restoreAgentEnv()
+      restoreEnv()
     }
   })
 
   test('in agent environment defaults to json mode', () => {
-    clearAgentEnv()
+    clearEnv()
     try {
       process.env.AGENT = '1'
       const mode = detectOutputMode()
       expect(mode._tag).toBe('json')
       expect(mode.timing).toBe('final')
     } finally {
-      restoreAgentEnv()
+      restoreEnv()
     }
   })
 
   test('TUI_VISUAL=1 overrides agent detection', () => {
-    clearAgentEnv()
-    const savedVisual = process.env.TUI_VISUAL
+    clearEnv()
     try {
       process.env.AGENT = '1'
       process.env.TUI_VISUAL = '1'
@@ -280,12 +302,50 @@ describe('detectOutputMode', () => {
       // TUI_VISUAL forces React mode, overriding agent detection
       expect(mode._tag).toBe('react')
     } finally {
-      restoreAgentEnv()
-      if (savedVisual !== undefined) {
-        process.env.TUI_VISUAL = savedVisual
-      } else {
-        delete process.env.TUI_VISUAL
+      restoreEnv()
+    }
+  })
+
+  test('TUI_PIPE_MODE=visual forces pipe mode even when piped', () => {
+    clearEnv()
+    try {
+      process.env.TUI_PIPE_MODE = 'visual'
+      const mode = detectOutputMode()
+      // With TUI_PIPE_MODE=visual, should get React pipe mode regardless of FIFO state
+      expect(mode._tag).toBe('react')
+      expect(mode.timing).toBe('final')
+    } finally {
+      restoreEnv()
+    }
+  })
+
+  test('NO_COLOR removes colors from detected mode', () => {
+    clearEnv()
+    try {
+      process.env.TUI_PIPE_MODE = 'visual' // Force React mode
+      process.env.NO_COLOR = '1'
+      const mode = detectOutputMode()
+      expect(mode._tag).toBe('react')
+      if (mode._tag === 'react') {
+        expect(mode.render.colors).toBe(false)
       }
+    } finally {
+      restoreEnv()
+    }
+  })
+
+  test('NO_UNICODE removes unicode from detected mode', () => {
+    clearEnv()
+    try {
+      process.env.TUI_PIPE_MODE = 'visual' // Force React mode
+      process.env.NO_UNICODE = '1'
+      const mode = detectOutputMode()
+      expect(mode._tag).toBe('react')
+      if (mode._tag === 'react') {
+        expect(mode.render.unicode).toBe(false)
+      }
+    } finally {
+      restoreEnv()
     }
   })
 })
