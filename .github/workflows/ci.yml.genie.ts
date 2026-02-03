@@ -1,5 +1,15 @@
 import { githubWorkflow } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 
+/**
+ * Namespace runner configuration.
+ * Uses run ID-based labels for runner affinity to prevent queue jumping.
+ */
+const namespaceRunner = (runId: string) =>
+  [
+    'namespace-profile-linux-x86-64',
+    `namespace-features:github.run-id=${runId}`,
+  ] as const
+
 const jobDefaults = {
   run: {
     shell: 'devenv shell bash -- -e {0}',
@@ -13,14 +23,7 @@ const baseSteps = [
     uses: 'cachix/install-nix-action@v31',
   },
   {
-    name: 'Enable devenv Cachix cache',
-    uses: 'cachix/cachix-action@v16',
-    with: {
-      name: 'devenv',
-    },
-  },
-  {
-    name: 'Enable project Cachix cache',
+    name: 'Enable Cachix cache',
     uses: 'cachix/cachix-action@v16',
     with: {
       name: 'overeng-effect-utils',
@@ -45,7 +48,7 @@ const baseSteps = [
 ] as const
 
 const job = (step: { name: string; run: string }) => ({
-  'runs-on': 'ubuntu-latest',
+  'runs-on': namespaceRunner('${{ github.run_id }}'),
   defaults: jobDefaults,
   env: {
     FORCE_SETUP: '1',

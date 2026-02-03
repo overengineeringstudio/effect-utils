@@ -11,7 +11,8 @@ on:
 
 jobs:
   typecheck:
-    runs-on: ubuntu-latest
+    runs-on:
+      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     defaults:
       run:
         shell: devenv shell bash -- -e {0}
@@ -22,11 +23,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install Nix
         uses: cachix/install-nix-action@v31
-      - name: Enable devenv Cachix cache
-        uses: cachix/cachix-action@v16
-        with:
-          name: devenv
-      - name: Enable project Cachix cache
+      - name: Enable Cachix cache
         uses: cachix/cachix-action@v16
         with:
           name: overeng-effect-utils
@@ -43,7 +40,8 @@ jobs:
       - name: Type check
         run: 'dt ts:check'
   lint:
-    runs-on: ubuntu-latest
+    runs-on:
+      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     defaults:
       run:
         shell: devenv shell bash -- -e {0}
@@ -54,11 +52,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install Nix
         uses: cachix/install-nix-action@v31
-      - name: Enable devenv Cachix cache
-        uses: cachix/cachix-action@v16
-        with:
-          name: devenv
-      - name: Enable project Cachix cache
+      - name: Enable Cachix cache
         uses: cachix/cachix-action@v16
         with:
           name: overeng-effect-utils
@@ -75,7 +69,8 @@ jobs:
       - name: Format + lint
         run: 'dt lint:check'
   test:
-    runs-on: ubuntu-latest
+    runs-on:
+      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     defaults:
       run:
         shell: devenv shell bash -- -e {0}
@@ -86,11 +81,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install Nix
         uses: cachix/install-nix-action@v31
-      - name: Enable devenv Cachix cache
-        uses: cachix/cachix-action@v16
-        with:
-          name: devenv
-      - name: Enable project Cachix cache
+      - name: Enable Cachix cache
         uses: cachix/cachix-action@v16
         with:
           name: overeng-effect-utils
@@ -107,7 +98,8 @@ jobs:
       - name: Unit tests
         run: 'dt test:run'
   nix-check:
-    runs-on: ubuntu-latest
+    runs-on:
+      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     defaults:
       run:
         shell: devenv shell bash -- -e {0}
@@ -118,11 +110,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install Nix
         uses: cachix/install-nix-action@v31
-      - name: Enable devenv Cachix cache
-        uses: cachix/cachix-action@v16
-        with:
-          name: devenv
-      - name: Enable project Cachix cache
+      - name: Enable Cachix cache
         uses: cachix/cachix-action@v16
         with:
           name: overeng-effect-utils
