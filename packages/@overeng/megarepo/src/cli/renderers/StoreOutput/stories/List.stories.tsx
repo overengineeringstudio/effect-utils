@@ -7,27 +7,8 @@ import React from 'react'
 
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
-import { StoreApp, StoreView, type StoreRepo, type StoreStateType } from './StoreOutput/mod.ts'
-
-// =============================================================================
-// Example Data
-// =============================================================================
-
-const exampleStoreRepos: StoreRepo[] = [
-  { relativePath: 'github.com/effect-ts/effect' },
-  { relativePath: 'github.com/overengineeringstudio/effect-utils' },
-  { relativePath: 'github.com/schickling/dotfiles' },
-]
-
-// =============================================================================
-// State Factories
-// =============================================================================
-
-const createLsState = (repos: StoreRepo[]): StoreStateType => ({
-  _tag: 'Ls',
-  basePath: '/Users/dev/.megarepo',
-  repos,
-})
+import { StoreApp, StoreView } from '../mod.ts'
+import * as fixtures from './_fixtures.ts'
 
 // =============================================================================
 // Meta
@@ -57,14 +38,14 @@ export const WithRepos: Story = {
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createLsState(exampleStoreRepos)}
+      initialState={fixtures.createLsState(fixtures.exampleStoreRepos)}
     />
   ),
 }
 
 export const Empty: Story = {
   render: () => (
-    <TuiStoryPreview View={StoreView} app={StoreApp} initialState={createLsState([])} />
+    <TuiStoryPreview View={StoreView} app={StoreApp} initialState={fixtures.createLsState([])} />
   ),
 }
 
@@ -73,7 +54,7 @@ export const ManyRepos: Story = {
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createLsState([
+      initialState={fixtures.createLsState([
         { relativePath: 'github.com/effect-ts/effect' },
         { relativePath: 'github.com/effect-ts/effect-schema' },
         { relativePath: 'github.com/effect-ts/effect-platform' },

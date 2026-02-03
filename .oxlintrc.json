@@ -99,6 +99,13 @@
       }
     },
     {
+      "files": ["**/stories/_*.ts", "**/stories/_*.tsx"],
+      "rules": {
+        "overeng/exports-first": "off",
+        "overeng/jsdoc-require-exports": "off"
+      }
+    },
+    {
       "files": ["**/.storybook/**"],
       "rules": {
         "overeng/exports-first": "off",

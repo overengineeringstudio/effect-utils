@@ -7,60 +7,18 @@ import React from 'react'
 
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
-import {
-  StoreApp,
-  StoreView,
-  type StoreGcResult,
-  type StoreGcWarning,
-  type StoreStateType,
-} from './StoreOutput/mod.ts'
-
-// =============================================================================
-// Example Data
-// =============================================================================
-
-const exampleGcResults: StoreGcResult[] = [
-  {
-    repo: 'github.com/effect-ts/effect',
-    ref: 'feat/old-branch',
-    path: '/store/...',
-    status: 'removed',
-  },
-  {
-    repo: 'github.com/effect-ts/effect',
-    ref: 'main',
-    path: '/store/...',
-    status: 'skipped_in_use',
-  },
-  {
-    repo: 'github.com/overengineeringstudio/effect-utils',
-    ref: 'dev',
-    path: '/store/...',
-    status: 'skipped_dirty',
-  },
-]
-
-// =============================================================================
-// State Factory
-// =============================================================================
-
-const createGcState = (opts: {
-  results: StoreGcResult[]
-  dryRun: boolean
-  warning?: StoreGcWarning
-  showForceHint?: boolean
-}): StoreStateType => ({
-  _tag: 'Gc',
-  basePath: '/Users/dev/.megarepo',
-  results: opts.results,
-  dryRun: opts.dryRun,
-  warning: opts.warning,
-  showForceHint: opts.showForceHint ?? true,
-})
+import { StoreApp, StoreView } from '../mod.ts'
+import * as fixtures from './_fixtures.ts'
 
 // =============================================================================
 // Meta
 // =============================================================================
+
+type StoryArgs = {
+  height?: number
+  dryRun: boolean
+  force: boolean
+}
 
 export default {
   component: StoreView,
@@ -74,33 +32,48 @@ export default {
       },
     },
   },
+  args: {
+    dryRun: false,
+    force: false,
+  },
+  argTypes: {
+    dryRun: {
+      description: '--dry-run flag: show what would be removed without removing',
+      control: { type: 'boolean' },
+    },
+    force: {
+      description: '--force flag: remove dirty worktrees too',
+      control: { type: 'boolean' },
+    },
+  },
 } satisfies Meta
 
-type Story = StoryObj<{ height?: number }>
+type Story = StoryObj<StoryArgs>
 
 // =============================================================================
 // Stories
 // =============================================================================
 
 export const Mixed: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createGcState({
-        results: exampleGcResults,
-        dryRun: false,
+      initialState={fixtures.createGcState({
+        results: fixtures.exampleGcResults,
+        dryRun: args.dryRun,
+        showForceHint: !args.force,
       })}
     />
   ),
 }
 
 export const DryRun: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createGcState({
+      initialState={fixtures.createGcState({
         results: [
           {
             repo: 'github.com/effect-ts/effect',
@@ -115,32 +88,34 @@ export const DryRun: Story = {
             status: 'removed',
           },
         ],
-        dryRun: true,
+        dryRun: args.dryRun || true,
+        showForceHint: !args.force,
       })}
     />
   ),
 }
 
 export const OnlyCurrentMegarepo: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createGcState({
-        results: exampleGcResults,
-        dryRun: false,
+      initialState={fixtures.createGcState({
+        results: fixtures.exampleGcResults,
+        dryRun: args.dryRun,
         warning: { type: 'only_current_megarepo' },
+        showForceHint: !args.force,
       })}
     />
   ),
 }
 
 export const NotInMegarepo: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createGcState({
+      initialState={fixtures.createGcState({
         results: [
           {
             repo: 'github.com/effect-ts/effect',
@@ -155,46 +130,49 @@ export const NotInMegarepo: Story = {
             status: 'removed',
           },
         ],
-        dryRun: true,
+        dryRun: args.dryRun || true,
         warning: { type: 'not_in_megarepo' },
+        showForceHint: !args.force,
       })}
     />
   ),
 }
 
 export const CustomWarning: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createGcState({
-        results: exampleGcResults,
-        dryRun: false,
+      initialState={fixtures.createGcState({
+        results: fixtures.exampleGcResults,
+        dryRun: args.dryRun,
         warning: { type: 'custom', message: 'Custom warning message for edge case' },
+        showForceHint: !args.force,
       })}
     />
   ),
 }
 
 export const Empty: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createGcState({
+      initialState={fixtures.createGcState({
         results: [],
-        dryRun: false,
+        dryRun: args.dryRun,
+        showForceHint: !args.force,
       })}
     />
   ),
 }
 
 export const AllSkipped: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createGcState({
+      initialState={fixtures.createGcState({
         results: [
           {
             repo: 'github.com/effect-ts/effect',
@@ -215,18 +193,19 @@ export const AllSkipped: Story = {
             status: 'skipped_in_use',
           },
         ],
-        dryRun: false,
+        dryRun: args.dryRun,
+        showForceHint: !args.force,
       })}
     />
   ),
 }
 
 export const AllRemoved: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createGcState({
+      initialState={fixtures.createGcState({
         results: [
           {
             repo: 'github.com/effect-ts/effect',
@@ -253,18 +232,19 @@ export const AllRemoved: Story = {
             status: 'removed',
           },
         ],
-        dryRun: false,
+        dryRun: args.dryRun,
+        showForceHint: !args.force,
       })}
     />
   ),
 }
 
 export const AllErrors: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createGcState({
+      initialState={fixtures.createGcState({
         results: [
           {
             repo: 'github.com/effect-ts/effect',
@@ -288,18 +268,19 @@ export const AllErrors: Story = {
             message: 'Lock file in use',
           },
         ],
-        dryRun: false,
+        dryRun: args.dryRun,
+        showForceHint: !args.force,
       })}
     />
   ),
 }
 
 export const ManyInUse: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createGcState({
+      initialState={fixtures.createGcState({
         results: [
           {
             repo: 'github.com/effect-ts/effect',
@@ -350,18 +331,19 @@ export const ManyInUse: Story = {
             status: 'skipped_in_use',
           },
         ],
-        dryRun: false,
+        dryRun: args.dryRun,
+        showForceHint: !args.force,
       })}
     />
   ),
 }
 
 export const DirtyWithDetails: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createGcState({
+      initialState={fixtures.createGcState({
         results: [
           {
             repo: 'github.com/effect-ts/effect',
@@ -385,19 +367,19 @@ export const DirtyWithDetails: Story = {
             message: '12 uncommitted change(s)',
           },
         ],
-        dryRun: false,
-        showForceHint: true,
+        dryRun: args.dryRun,
+        showForceHint: !args.force,
       })}
     />
   ),
 }
 
 export const DryRunForceMode: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createGcState({
+      initialState={fixtures.createGcState({
         results: [
           {
             repo: 'github.com/effect-ts/effect',
@@ -412,7 +394,7 @@ export const DryRunForceMode: Story = {
             status: 'removed',
           },
         ],
-        dryRun: true,
+        dryRun: args.dryRun || true,
         showForceHint: false,
       })}
     />
@@ -420,11 +402,11 @@ export const DryRunForceMode: Story = {
 }
 
 export const LargeCleanup: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createGcState({
+      initialState={fixtures.createGcState({
         results: [
           {
             repo: 'github.com/effect-ts/effect',
@@ -471,8 +453,9 @@ export const LargeCleanup: Story = {
             message: 'Permission denied',
           },
         ],
-        dryRun: false,
+        dryRun: args.dryRun,
         warning: { type: 'only_current_megarepo' },
+        showForceHint: !args.force,
       })}
     />
   ),

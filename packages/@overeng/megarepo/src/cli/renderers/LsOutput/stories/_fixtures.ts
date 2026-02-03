@@ -1,21 +1,16 @@
 /**
- * Storybook stories for LsOutput component.
+ * Shared fixtures for LsOutput stories.
+ *
+ * @internal
  */
 
-import type { Meta, StoryObj } from '@storybook/react'
-import React from 'react'
-
-import { TuiStoryPreview } from '@overeng/tui-react/storybook'
-
-import type { LsState, MemberInfo } from './LsOutput/mod.ts'
-import { LsApp } from './LsOutput/mod.ts'
-import { LsView } from './LsOutput/view.tsx'
+import type { LsState as LsStateType, MemberInfo } from '../mod.ts'
 
 // =============================================================================
 // Example Data
 // =============================================================================
 
-const exampleMembers: MemberInfo[] = [
+export const exampleMembers: MemberInfo[] = [
   {
     name: 'effect',
     source: 'effect-ts/effect',
@@ -36,7 +31,7 @@ const exampleMembers: MemberInfo[] = [
   },
 ]
 
-const nestedMembers: MemberInfo[] = [
+export const nestedMembers: MemberInfo[] = [
   {
     name: 'effect',
     source: 'effect-ts/effect',
@@ -75,7 +70,7 @@ const nestedMembers: MemberInfo[] = [
   },
 ]
 
-const deeplyNestedMembers: MemberInfo[] = [
+export const deeplyNestedMembers: MemberInfo[] = [
   {
     name: 'level-1',
     source: 'org/level-1',
@@ -102,7 +97,7 @@ const deeplyNestedMembers: MemberInfo[] = [
   },
 ]
 
-const localPathMembers: MemberInfo[] = [
+export const localPathMembers: MemberInfo[] = [
   {
     name: 'my-lib',
     source: '../my-lib',
@@ -121,35 +116,37 @@ const localPathMembers: MemberInfo[] = [
 // State Factories
 // =============================================================================
 
-const createDefaultState = (): typeof LsState.Type => ({
+type SuccessStateOptions = { all?: boolean }
+
+export const createDefaultState = (options?: SuccessStateOptions): LsStateType => ({
   _tag: 'Success',
   members: exampleMembers,
-  all: false,
+  all: options?.all ?? false,
   megarepoName: 'my-workspace',
 })
 
-const createWithAllFlagState = (): typeof LsState.Type => ({
+export const createWithAllFlagState = (options?: SuccessStateOptions): LsStateType => ({
   _tag: 'Success',
   members: nestedMembers,
-  all: true,
+  all: options?.all ?? true,
   megarepoName: 'my-workspace',
 })
 
-const createDeeplyNestedState = (): typeof LsState.Type => ({
+export const createDeeplyNestedState = (options?: SuccessStateOptions): LsStateType => ({
   _tag: 'Success',
   members: deeplyNestedMembers,
-  all: true,
+  all: options?.all ?? true,
   megarepoName: 'deep-workspace',
 })
 
-const createLocalPathsState = (): typeof LsState.Type => ({
+export const createLocalPathsState = (options?: SuccessStateOptions): LsStateType => ({
   _tag: 'Success',
   members: localPathMembers,
-  all: false,
+  all: options?.all ?? false,
   megarepoName: 'local-dev',
 })
 
-const createSingleMemberState = (): typeof LsState.Type => ({
+export const createSingleMemberState = (options?: SuccessStateOptions): LsStateType => ({
   _tag: 'Success',
   members: [
     {
@@ -159,24 +156,24 @@ const createSingleMemberState = (): typeof LsState.Type => ({
       isMegarepo: false,
     },
   ],
-  all: false,
+  all: options?.all ?? false,
   megarepoName: 'minimal',
 })
 
-const createEmptyState = (): typeof LsState.Type => ({
+export const createEmptyState = (options?: SuccessStateOptions): LsStateType => ({
   _tag: 'Success',
   members: [],
-  all: false,
+  all: options?.all ?? false,
   megarepoName: 'empty-workspace',
 })
 
-const createErrorState = (): typeof LsState.Type => ({
+export const createErrorState = (): LsStateType => ({
   _tag: 'Error',
   error: 'not_found',
   message: 'No megarepo.json found in current directory or any parent',
 })
 
-const createManyMembersState = (): typeof LsState.Type => ({
+export const createManyMembersState = (options?: SuccessStateOptions): LsStateType => ({
   _tag: 'Success',
   members: Array.from({ length: 15 }, (_, i) => ({
     name: `repo-${String(i + 1).padStart(2, '0')}`,
@@ -184,11 +181,11 @@ const createManyMembersState = (): typeof LsState.Type => ({
     owner: { _tag: 'Root' } as const,
     isMegarepo: i % 5 === 0,
   })),
-  all: false,
+  all: options?.all ?? false,
   megarepoName: 'large-workspace',
 })
 
-const createAllMegareposState = (): typeof LsState.Type => ({
+export const createAllMegareposState = (options?: SuccessStateOptions): LsStateType => ({
   _tag: 'Success',
   members: [
     {
@@ -210,77 +207,6 @@ const createAllMegareposState = (): typeof LsState.Type => ({
       isMegarepo: true,
     },
   ],
-  all: false,
+  all: options?.all ?? false,
   megarepoName: 'all-megarepos',
 })
-
-// =============================================================================
-// Meta
-// =============================================================================
-
-export default {
-  title: 'CLI/Ls Output',
-  component: LsView,
-  parameters: {
-    layout: 'padded',
-    docs: {
-      description: {
-        component: 'Ls command output showing megarepo members and their sources.',
-      },
-    },
-  },
-} satisfies Meta<typeof LsView>
-
-type Story = StoryObj<typeof LsView>
-
-// =============================================================================
-// Stories
-// =============================================================================
-
-export const Default: Story = {
-  render: () => <TuiStoryPreview View={LsView} app={LsApp} initialState={createDefaultState()} />,
-}
-
-export const WithAllFlag: Story = {
-  render: () => (
-    <TuiStoryPreview View={LsView} app={LsApp} initialState={createWithAllFlagState()} />
-  ),
-}
-
-export const DeeplyNested: Story = {
-  render: () => (
-    <TuiStoryPreview View={LsView} app={LsApp} initialState={createDeeplyNestedState()} />
-  ),
-}
-
-export const LocalPaths: Story = {
-  render: () => (
-    <TuiStoryPreview View={LsView} app={LsApp} initialState={createLocalPathsState()} />
-  ),
-}
-
-export const SingleMember: Story = {
-  render: () => (
-    <TuiStoryPreview View={LsView} app={LsApp} initialState={createSingleMemberState()} />
-  ),
-}
-
-export const EmptyWorkspace: Story = {
-  render: () => <TuiStoryPreview View={LsView} app={LsApp} initialState={createEmptyState()} />,
-}
-
-export const Error: Story = {
-  render: () => <TuiStoryPreview View={LsView} app={LsApp} initialState={createErrorState()} />,
-}
-
-export const ManyMembers: Story = {
-  render: () => (
-    <TuiStoryPreview View={LsView} app={LsApp} initialState={createManyMembersState()} />
-  ),
-}
-
-export const AllMegarepos: Story = {
-  render: () => (
-    <TuiStoryPreview View={LsView} app={LsApp} initialState={createAllMegareposState()} />
-  ),
-}

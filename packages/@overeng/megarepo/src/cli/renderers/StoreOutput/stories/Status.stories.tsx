@@ -7,90 +7,8 @@ import React from 'react'
 
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
-import {
-  StoreApp,
-  StoreView,
-  type StoreWorktreeStatus,
-  type StoreStateType,
-} from './StoreOutput/mod.ts'
-
-// =============================================================================
-// Example Data
-// =============================================================================
-
-const healthyWorktrees: StoreWorktreeStatus[] = [
-  {
-    repo: 'github.com/effect-ts/effect/',
-    ref: 'main',
-    refType: 'heads',
-    path: '/Users/dev/.megarepo/github.com/effect-ts/effect/refs/heads/main/',
-    issues: [],
-  },
-  {
-    repo: 'github.com/overengineeringstudio/effect-utils/',
-    ref: 'main',
-    refType: 'heads',
-    path: '/Users/dev/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/main/',
-    issues: [],
-  },
-]
-
-const mixedIssuesWorktrees: StoreWorktreeStatus[] = [
-  {
-    repo: 'github.com/effect-ts/effect/',
-    ref: 'main',
-    refType: 'heads',
-    path: '/Users/dev/.megarepo/github.com/effect-ts/effect/refs/heads/main/',
-    issues: [],
-  },
-  {
-    repo: 'github.com/livestorejs/livestore/',
-    ref: 'dev',
-    refType: 'heads',
-    path: '/Users/dev/.megarepo/github.com/livestorejs/livestore/refs/heads/dev/',
-    issues: [
-      {
-        type: 'ref_mismatch',
-        severity: 'error',
-        message: "path says 'dev' but HEAD is 'refactor/genie-igor-ci'",
-      },
-      { type: 'dirty', severity: 'warning', message: '27 uncommitted changes' },
-      { type: 'orphaned', severity: 'info', message: 'not in current megarepo.lock' },
-    ],
-  },
-  {
-    repo: 'github.com/overengineeringstudio/effect-utils/',
-    ref: 'main',
-    refType: 'heads',
-    path: '/Users/dev/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/main/',
-    issues: [{ type: 'dirty', severity: 'warning', message: '36 uncommitted changes' }],
-  },
-  {
-    repo: 'github.com/schickling/dotfiles/',
-    ref: 'main',
-    refType: 'heads',
-    path: '/Users/dev/.megarepo/github.com/schickling/dotfiles/refs/heads/main/',
-    issues: [{ type: 'orphaned', severity: 'info', message: 'not in current megarepo.lock' }],
-  },
-]
-
-// =============================================================================
-// State Factory
-// =============================================================================
-
-const createStatusState = (opts: {
-  repoCount: number
-  worktreeCount: number
-  diskUsage?: string
-  worktrees: StoreWorktreeStatus[]
-}): StoreStateType => ({
-  _tag: 'Status',
-  basePath: '/Users/dev/.megarepo',
-  repoCount: opts.repoCount,
-  worktreeCount: opts.worktreeCount,
-  diskUsage: opts.diskUsage,
-  worktrees: opts.worktrees,
-})
+import { StoreApp, StoreView } from '../mod.ts'
+import * as fixtures from './_fixtures.ts'
 
 // =============================================================================
 // Meta
@@ -121,10 +39,10 @@ export const Healthy: Story = {
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createStatusState({
+      initialState={fixtures.createStatusState({
         repoCount: 2,
         worktreeCount: 2,
-        worktrees: healthyWorktrees,
+        worktrees: fixtures.healthyWorktrees,
       })}
     />
   ),
@@ -135,11 +53,11 @@ export const HealthyWithDiskUsage: Story = {
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createStatusState({
+      initialState={fixtures.createStatusState({
         repoCount: 11,
         worktreeCount: 15,
         diskUsage: '2.3 GB',
-        worktrees: healthyWorktrees,
+        worktrees: fixtures.healthyWorktrees,
       })}
     />
   ),
@@ -150,10 +68,10 @@ export const MixedIssues: Story = {
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createStatusState({
+      initialState={fixtures.createStatusState({
         repoCount: 4,
         worktreeCount: 6,
-        worktrees: mixedIssuesWorktrees,
+        worktrees: fixtures.mixedIssuesWorktrees,
       })}
     />
   ),
@@ -164,7 +82,7 @@ export const RefMismatch: Story = {
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createStatusState({
+      initialState={fixtures.createStatusState({
         repoCount: 2,
         worktreeCount: 2,
         worktrees: [
@@ -205,7 +123,7 @@ export const DirtyWorktrees: Story = {
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createStatusState({
+      initialState={fixtures.createStatusState({
         repoCount: 3,
         worktreeCount: 3,
         worktrees: [
@@ -244,7 +162,7 @@ export const OrphanedWorktrees: Story = {
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createStatusState({
+      initialState={fixtures.createStatusState({
         repoCount: 4,
         worktreeCount: 5,
         worktrees: [
@@ -286,7 +204,7 @@ export const BrokenWorktrees: Story = {
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createStatusState({
+      initialState={fixtures.createStatusState({
         repoCount: 2,
         worktreeCount: 2,
         worktrees: [
@@ -319,7 +237,7 @@ export const AllIssueTypes: Story = {
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createStatusState({
+      initialState={fixtures.createStatusState({
         repoCount: 6,
         worktreeCount: 8,
         diskUsage: '4.7 GB',
@@ -378,7 +296,7 @@ export const Empty: Story = {
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createStatusState({
+      initialState={fixtures.createStatusState({
         repoCount: 0,
         worktreeCount: 0,
         worktrees: [],
@@ -392,12 +310,12 @@ export const LargeStore: Story = {
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createStatusState({
+      initialState={fixtures.createStatusState({
         repoCount: 25,
         worktreeCount: 87,
         diskUsage: '12.4 GB',
         worktrees: [
-          ...mixedIssuesWorktrees,
+          ...fixtures.mixedIssuesWorktrees,
           {
             repo: 'github.com/private/repo1/',
             ref: 'main',

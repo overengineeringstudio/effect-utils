@@ -7,37 +7,8 @@ import React from 'react'
 
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
-import { StoreApp, StoreView, type StoreStateType } from './StoreOutput/mod.ts'
-
-// =============================================================================
-// State Factories
-// =============================================================================
-
-const createAddState = (opts: {
-  status: 'added' | 'already_exists'
-  source: string
-  ref: string
-  commit?: string
-  path: string
-}): StoreStateType => ({
-  _tag: 'Add',
-  status: opts.status,
-  source: opts.source,
-  ref: opts.ref,
-  commit: opts.commit,
-  path: opts.path,
-})
-
-const createErrorState = (opts: {
-  error: string
-  message: string
-  source?: string
-}): StoreStateType => ({
-  _tag: 'Error',
-  error: opts.error,
-  message: opts.message,
-  source: opts.source,
-})
+import { StoreApp, StoreView } from '../mod.ts'
+import * as fixtures from './_fixtures.ts'
 
 // =============================================================================
 // Meta
@@ -67,7 +38,7 @@ export const InvalidSource: Story = {
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createErrorState({
+      initialState={fixtures.createErrorState({
         error: 'invalid_source',
         message: "Invalid source: 'not-a-valid-source'",
         source: 'not-a-valid-source',
@@ -81,7 +52,7 @@ export const LocalPath: Story = {
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createErrorState({
+      initialState={fixtures.createErrorState({
         error: 'local_path',
         message: 'Local paths are not supported. Use a remote URL or owner/repo format.',
       })}
@@ -94,7 +65,7 @@ export const NoUrl: Story = {
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createErrorState({
+      initialState={fixtures.createErrorState({
         error: 'no_url',
         message: 'No URL provided',
       })}
@@ -111,7 +82,7 @@ export const SuccessNew: Story = {
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createAddState({
+      initialState={fixtures.createAddState({
         status: 'added',
         source: 'effect-ts/effect',
         ref: 'main',
@@ -127,7 +98,7 @@ export const SuccessExisting: Story = {
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createAddState({
+      initialState={fixtures.createAddState({
         status: 'already_exists',
         source: 'effect-ts/effect',
         ref: 'main',
@@ -143,7 +114,7 @@ export const SuccessWithRef: Story = {
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createAddState({
+      initialState={fixtures.createAddState({
         status: 'added',
         source: 'effect-ts/effect#feat/new-feature',
         ref: 'feat/new-feature',
@@ -159,7 +130,7 @@ export const SuccessNoCommit: Story = {
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createAddState({
+      initialState={fixtures.createAddState({
         status: 'added',
         source: 'effect-ts/effect',
         ref: 'v3.0.0',
