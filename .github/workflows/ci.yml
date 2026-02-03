@@ -11,78 +11,118 @@ on:
 
 jobs:
   typecheck:
-    runs-on: ubuntu-latest
+    runs-on:
+      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     defaults:
       run:
         shell: devenv shell bash -- -e {0}
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
     steps:
       - uses: actions/checkout@v4
       - name: Install Nix
         uses: cachix/install-nix-action@v31
-      - name: Enable devenv Cachix cache
+      - name: Enable Cachix cache
         uses: cachix/cachix-action@v16
         with:
-          name: devenv
+          name: overeng-effect-utils
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - name: Install devenv
         run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
         shell: bash
-      - run: bun install --frozen-lockfile
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
       - name: Type check
         run: 'dt ts:check'
   lint:
-    runs-on: ubuntu-latest
+    runs-on:
+      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     defaults:
       run:
         shell: devenv shell bash -- -e {0}
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
     steps:
       - uses: actions/checkout@v4
       - name: Install Nix
         uses: cachix/install-nix-action@v31
-      - name: Enable devenv Cachix cache
+      - name: Enable Cachix cache
         uses: cachix/cachix-action@v16
         with:
-          name: devenv
+          name: overeng-effect-utils
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - name: Install devenv
         run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
         shell: bash
-      - run: bun install --frozen-lockfile
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
       - name: Format + lint
         run: 'dt lint:check'
   test:
-    runs-on: ubuntu-latest
+    runs-on:
+      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     defaults:
       run:
         shell: devenv shell bash -- -e {0}
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
     steps:
       - uses: actions/checkout@v4
       - name: Install Nix
         uses: cachix/install-nix-action@v31
-      - name: Enable devenv Cachix cache
+      - name: Enable Cachix cache
         uses: cachix/cachix-action@v16
         with:
-          name: devenv
+          name: overeng-effect-utils
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - name: Install devenv
         run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
         shell: bash
-      - run: bun install --frozen-lockfile
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
       - name: Unit tests
         run: 'dt test:run'
   nix-check:
-    runs-on: ubuntu-latest
+    runs-on:
+      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     defaults:
       run:
         shell: devenv shell bash -- -e {0}
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
     steps:
       - uses: actions/checkout@v4
       - name: Install Nix
         uses: cachix/install-nix-action@v31
-      - name: Enable devenv Cachix cache
+      - name: Enable Cachix cache
         uses: cachix/cachix-action@v16
         with:
-          name: devenv
+          name: overeng-effect-utils
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - name: Install devenv
         run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
         shell: bash
-      - run: bun install --frozen-lockfile
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
       - name: Nix hash check
         run: 'dt nix:check'

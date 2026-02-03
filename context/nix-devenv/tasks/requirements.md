@@ -38,7 +38,7 @@ tasks."verify:full" = { exec = "pnpm test"; };
 
 ### Must be clean and deterministic
 
-- R5 - Tasks must be safe to re-run and deterministic given the same inputs.
+- R5 - Tasks must be safe to re-run and deterministic given the same inputs, regardless of local cache state. A fresh `git clone` followed by task execution must produce the same result as execution on a warmed environment (CI failures that pass locally indicate a caching/state bug).
 - R6 - Setup tasks must not mutate watched `.devenv/*` files (prevents direnv reload loops).
 - R7 - Generated files must be written only when content changes (use compare + atomic replace).
 

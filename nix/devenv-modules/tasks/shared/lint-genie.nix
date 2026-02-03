@@ -12,6 +12,7 @@
     "lint:check:genie" = {
       description = "Check generated files are up to date";
       exec = "genie --check";
+      after = [ "pnpm:install" ];
     };
     "lint:check" = {
       description = "Run all lint checks";
