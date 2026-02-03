@@ -32,27 +32,31 @@ We manage multiple interconnected repositories using a megarepo approach. Each r
 - R10 - Warm devenv shells must initialize in < 500ms. Use git hash caching to skip unchanged setup tasks.
 - R11 - Tasks must be incremental: use `status` checks to skip up-to-date work, `execIfModified` for file-triggered tasks.
 
+### Must be efficient
+
+- R12 - Shell environments must remain stable when nothing meaningful has changed. Avoid spurious re-evaluations triggered by file timestamp changes, syncs, or other non-semantic modifications. Flake inputs and overrides should use content-addressed references (e.g. `git+file:`) rather than timestamp-sensitive ones where possible.
+
 ### Must be resilient
 
-- R12 - Devenv shell entry must not be blocked by transient task failures (e.g. TypeScript errors). The shell must still load, while failures remain visible and easy to run explicitly.
+- R13 - Devenv shell entry must not be blocked by transient task failures (e.g. TypeScript errors). The shell must still load, while failures remain visible and easy to run explicitly.
 
 ### Must be simple
 
-- R13 - In devenv, run in-repo CLIs via `bun` from source; keep flake outputs strict for builds. Exception: bootstrap tasks (e.g. `megarepo:sync`) that run before `node_modules` exist may use `nix run git+file:$PWD#<pkg>` to build and run the CLI via Nix.
-- R14 - Keep `.envrc` minimal; follow the standard pattern: source `.envrc.generated.megarepo`, then `use devenv`.
-- R15 - Use devenv tasks as the task runner with the `dt` wrapper for dependency resolution.
-- R16 - Avoid redundant implementations; prefer shared modules in `effect-utils/devenvModules`.
+- R14 - In devenv, run in-repo CLIs via `bun` from source; keep flake outputs strict for builds. Exception: bootstrap tasks (e.g. `megarepo:sync`) that run before `node_modules` exist may use `nix run git+file:$PWD#<pkg>` to build and run the CLI via Nix.
+- R15 - Keep `.envrc` minimal; follow the standard pattern: source `.envrc.generated.megarepo`, then `use devenv`.
+- R16 - Use devenv tasks as the task runner with the `dt` wrapper for dependency resolution.
+- R17 - Avoid redundant implementations; prefer shared modules in `effect-utils/devenvModules`.
 
 ### Must be clear
 
-- R17 - Provide clear error messages for missing lockfiles / stale dependency hashes. Make refresh easy.
-- R18 - Task descriptions must be concise and discoverable via `dt --help` or shell completions.
+- R18 - Provide clear error messages for missing lockfiles / stale dependency hashes. Make refresh easy.
+- R19 - Task descriptions must be concise and discoverable via `dt --help` or shell completions.
 
 ### Must be verified
 
-- R19 - Nested megarepos must work independently of their parent megarepo.
-- R20 - Devenv can override flake inputs for local development (`--override-input`).
-- R21 - Cover megarepo workspace builds vs standalone `mr sync` in tests.
+- R20 - Nested megarepos must work independently of their parent megarepo.
+- R21 - Devenv can override flake inputs for local development (`--override-input`).
+- R22 - Cover megarepo workspace builds vs standalone `mr sync` in tests.
 
 ## See Also
 
