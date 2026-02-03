@@ -90,6 +90,8 @@
           bun = import ./nix/devenv-modules/tasks/shared/bun.nix;
           pnpm = import ./nix/devenv-modules/tasks/shared/pnpm.nix;
           nix-cli = import ./nix/devenv-modules/tasks/shared/nix-cli.nix;
+          # Workaround for cachix/git-hooks.nix#685 - ensures hooks are actually installed
+          git-hooks-fix = ./nix/devenv-modules/tasks/shared/git-hooks-fix.nix;
           # Note: local/ directory contains effect-utils specific tasks (not exported)
         };
       };
