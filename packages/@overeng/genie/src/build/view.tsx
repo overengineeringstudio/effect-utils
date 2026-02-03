@@ -97,7 +97,16 @@ const StatusIcon = ({ status }: { status: GenieFileStatus }) => {
 // File Item Component
 // =============================================================================
 
-const FileItem = ({ file }: { file: GenieFile }) => {
+interface FileItemProps {
+  file: GenieFile
+  /**
+   * When true, error/skipped messages are shown on multiple lines instead of inline.
+   * Use for final output where readability is more important than compactness.
+   */
+  expanded?: boolean
+}
+
+const FileItem = ({ file, expanded = false }: FileItemProps) => {
   const isActive = file.status === 'active'
   const hasDiffStats = file.linesAdded !== undefined || file.linesRemoved !== undefined
 
@@ -109,7 +118,12 @@ const FileItem = ({ file }: { file: GenieFile }) => {
     file.status === 'skipped' ||
     file.status === 'active'
 
+  // Check if this item should use expanded multi-line format
+  const hasExpandableMessage =
+    expanded && file.message && (file.status === 'error' || file.status === 'skipped')
+
   // Format status label (created, updated, etc.)
+  // In expanded mode, errors/skipped show brief label; full message goes on next line
   const statusLabel = useMemo(() => {
     switch (file.status) {
       case 'active':
@@ -121,14 +135,41 @@ const FileItem = ({ file }: { file: GenieFile }) => {
       case 'unchanged':
         return undefined
       case 'skipped':
+        // In expanded mode, show just "skipped:" with message below
+        if (expanded && file.message) return 'skipped:'
         return file.message ? `skipped: ${file.message}` : 'skipped'
       case 'error':
+        // In expanded mode, show just "error:" with message below
+        if (expanded && file.message) return 'error:'
         return file.message ? `error: ${file.message}` : 'error'
       default:
         return undefined
     }
-  }, [file.status, file.message])
+  }, [file.status, file.message, expanded])
 
+  // For expanded multi-line format (errors and skipped with messages)
+  if (hasExpandableMessage) {
+    return (
+      <Box flexDirection="column">
+        {/* First line: icon + path + brief status label */}
+        <Box flexDirection="row">
+          <StatusIcon status={file.status} />
+          <Text> </Text>
+          <Text color={isHighlighted ? 'white' : undefined} dim={!isHighlighted}>
+            {file.relativePath}
+          </Text>
+          <Text> </Text>
+          <Text color={file.status === 'error' ? 'red' : 'yellow'}>{statusLabel}</Text>
+        </Box>
+        {/* Second line: indented full message */}
+        <Box paddingLeft={4}>
+          <Text dim>{file.message}</Text>
+        </Box>
+      </Box>
+    )
+  }
+
+  // Standard single-line format (progress view or items without expandable content)
   return (
     <Box flexDirection="row">
       <StatusIcon status={file.status} />
@@ -304,6 +345,11 @@ interface FileListProps {
   files: readonly GenieFile[]
   hasWatchCycle: boolean
   hasSummary: boolean
+  /**
+   * When true, error/skipped items use multi-line format for full message visibility.
+   * Use for final output (complete phase) where readability is important.
+   */
+  expanded?: boolean
 }
 
 /**
@@ -311,7 +357,7 @@ interface FileListProps {
  * Shows errors and active files first, then fills remaining space with others.
  * Displays overflow summary when files exceed available viewport height.
  */
-const FileList = ({ files, hasWatchCycle, hasSummary }: FileListProps) => {
+const FileList = ({ files, hasWatchCycle, hasSummary, expanded = false }: FileListProps) => {
   const viewport = useViewport()
 
   const { visibleFiles, hiddenFiles } = useMemo(() => {
@@ -336,7 +382,7 @@ const FileList = ({ files, hasWatchCycle, hasSummary }: FileListProps) => {
   return (
     <Box flexShrink={1}>
       {visibleFiles.map((file) => (
-        <FileItem key={file.path} file={file} />
+        <FileItem key={file.path} file={file} expanded={expanded} />
       ))}
       {hiddenFiles.length > 0 && <Text dim>{getOverflowSummary(hiddenFiles)}</Text>}
     </Box>
@@ -425,6 +471,7 @@ export const GenieView = ({ stateAtom }: GenieViewProps) => {
       <Text> </Text>
 
       {/* Results - viewport aware with priority sorting */}
+      {/* expanded=true for final output to show full error messages on multiple lines */}
       {!hasChanges ? (
         <Box flexDirection="row">
           <Text color="green">{icons.check}</Text>
@@ -436,6 +483,7 @@ export const GenieView = ({ stateAtom }: GenieViewProps) => {
           files={files}
           hasWatchCycle={watchCycle !== undefined && watchCycle > 0}
           hasSummary={summary !== undefined}
+          expanded={true}
         />
       )}
 
