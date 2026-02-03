@@ -1,17 +1,16 @@
 # Test tasks (vitest)
 #
+# Self-contained test tasks - each package uses its own vitest from node_modules.
+# This ensures packages are independently testable without cross-package dependencies.
+#
 # Usage in devenv.nix:
 #   # Per-package tests (recommended):
 #   imports = [
 #     (inputs.effect-utils.devenvModules.tasks.test {
 #       packages = [
 #         { path = "packages/@overeng/genie"; name = "genie"; }
-#         # Use local vitest.config.ts instead of shared config:
-#         { path = "packages/@overeng/tui-core"; name = "tui-core"; useLocalConfig = true; }
+#         { path = "packages/@overeng/tui-core"; name = "tui-core"; }
 #       ];
-#       # Optional: custom vitest binary and config (for monorepo setups)
-#       vitestBin = "packages/@overeng/utils/node_modules/.bin/vitest";
-#       vitestConfig = "packages/@overeng/utils/vitest.config.ts";
 #       # Optional: install task prefix (default: "pnpm", use "bun" for bun:install)
 #       installTaskPrefix = "pnpm";
 #     })
@@ -20,65 +19,45 @@
 #   # Simple tests (no per-package):
 #   imports = [ (inputs.effect-utils.devenvModules.tasks.test {}) ];
 #
+# Each package must have:
+#   - vitest as a devDependency in package.json
+#   - vitest.config.ts in the package root
+#
 # Provides:
 #   - test:run - Run all tests
 #   - test:watch - Run tests in watch mode
 #   - test:<name> - Run tests for specific package (when packages provided)
 {
   packages ? [],
-  vitestBin ? "vitest",
-  vitestConfig ? null,
   installTaskPrefix ? "pnpm",
   extraTests ? [],
 }:
 { lib, ... }:
 let
   hasPackages = packages != [];
-  
-  # Build vitest command with optional config
-  vitestCmd = if vitestConfig != null
-    then "${vitestBin} run --config ${vitestConfig}"
-    else "${vitestBin} run";
-  
-  vitestWatchCmd = if vitestConfig != null
-    then "${vitestBin} --config ${vitestConfig}"
-    else vitestBin;
 
-  # For per-package tests, compute relative path to vitest binary
-  mkTestTask = pkg: 
-    let
-      # Calculate relative path from package to vitest binary
-      # e.g., from "packages/@overeng/genie" to "packages/@overeng/utils/node_modules/.bin/vitest"
-      # becomes "../utils/node_modules/.bin/vitest"
-      depth = lib.length (lib.splitString "/" pkg.path);
-      prefix = lib.concatStringsSep "/" (lib.genList (_: "..") depth);
-      relativeVitestBin = if vitestBin == "vitest" 
-        then "vitest" 
-        else "${prefix}/${vitestBin}";
-      # When useLocalConfig is true, don't pass --config so vitest discovers the package's own vitest.config.ts
-      useLocalConfig = pkg.useLocalConfig or false;
-      relativeVitestConfig = if useLocalConfig || vitestConfig == null
-        then ""
-        else " --config ${prefix}/${vitestConfig}";
-    in {
-      "test:${pkg.name}" = {
-        description = "Run tests for ${pkg.name}";
-        exec = "${relativeVitestBin} run${relativeVitestConfig}";
-        cwd = pkg.path;
-        execIfModified = [
-          "${pkg.path}/src/**/*.ts"
-          "${pkg.path}/src/**/*.tsx"
-          "${pkg.path}/src/**/*.test.ts"
-          "${pkg.path}/src/**/*.test.tsx"
-          "${pkg.path}/test/**/*.ts"
-          "${pkg.path}/test/**/*.tsx"
-          "${pkg.path}/test/**/*.test.ts"
-          "${pkg.path}/test/**/*.test.tsx"
-          "${pkg.path}/vitest.config.ts"
-        ];
-        after = [ "${installTaskPrefix}:install:${pkg.name}" ];
-      };
+  # Per-package test task using package's own vitest
+  mkTestTask = pkg: {
+    "test:${pkg.name}" = {
+      description = "Run tests for ${pkg.name}";
+      # Use package's own vitest from node_modules/.bin/vitest
+      exec = "node_modules/.bin/vitest run";
+      cwd = pkg.path;
+      execIfModified = [
+        "${pkg.path}/src/**/*.ts"
+        "${pkg.path}/src/**/*.tsx"
+        "${pkg.path}/src/**/*.test.ts"
+        "${pkg.path}/src/**/*.test.tsx"
+        "${pkg.path}/test/**/*.ts"
+        "${pkg.path}/test/**/*.tsx"
+        "${pkg.path}/test/**/*.test.ts"
+        "${pkg.path}/test/**/*.test.tsx"
+        "${pkg.path}/vitest.config.ts"
+      ];
+      # Only depends on the package's own install task
+      after = [ "${installTaskPrefix}:install:${pkg.name}" ];
     };
+  };
 
 in {
   tasks = lib.mkMerge (
@@ -86,15 +65,15 @@ in {
     ++ [{
       "test:run" = {
         description = "Run all tests";
-        exec = if hasPackages then null else vitestCmd;
-        after = if hasPackages 
+        exec = if hasPackages then null else "vitest run";
+        after = if hasPackages
           then map (pkg: "test:${pkg.name}") packages ++ extraTests
           else [ "genie:run" ];
       };
 
       "test:watch" = {
         description = "Run tests in watch mode";
-        exec = vitestWatchCmd;
+        exec = "vitest";
         after = [ "genie:run" ];
       };
     }]

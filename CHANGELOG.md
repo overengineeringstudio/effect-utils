@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **nix/devenv-modules/tasks/shared/test.nix**: Self-contained test tasks - each package uses its own vitest
+  - Previously test tasks shared a vitest binary from `@overeng/utils`, violating self-contained packages requirements (R1-R5)
+  - Now each package runs tests using `node_modules/.bin/vitest` from its own dependencies
+  - Added `vitest.config.ts` to packages that were missing one: effect-path, effect-rpc-tanstack, genie, notion-cli, notion-effect-client, notion-effect-schema
+  - Removed deprecated `vitestBin`, `vitestConfig`, and `vitestInstallTask` parameters from test module
+  - This ensures packages are independently testable without cross-package dependencies
+
 ### Removed
 
 - **@overeng/mono**: Removed package entirely — all functionality is now covered by devenv tasks (`dt`). The package had zero consumers across all repos.
