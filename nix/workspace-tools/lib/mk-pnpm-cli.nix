@@ -189,10 +189,12 @@ let
       pnpm install --frozen-lockfile --ignore-scripts --force
 
       # Normalize pnpm store metadata (checkedAt timestamps are non-deterministic)
-      if [ -d "$STORE_PATH/index" ]; then
-        find "$STORE_PATH/index" -type f -name "*.json" -print0 \
-          | xargs -0 perl -pi -e 's/"checkedAt":[0-9]+/"checkedAt":0/g'
-      fi
+      for indexDir in "$STORE_PATH"/v*/index; do
+        if [ -d "$indexDir" ]; then
+          find "$indexDir" -type f -name "*.json" -print0 \
+            | xargs -0 perl -pi -e 's/"checkedAt":[0-9]+/"checkedAt":0/g'
+        fi
+      done
 
       # Create output directory
       mkdir -p $out
