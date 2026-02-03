@@ -151,13 +151,29 @@ const FileItem = ({ file, expanded = false }: FileItemProps) => {
   if (hasExpandableMessage) {
     return (
       <Box flexDirection="column">
-        {/* First line: icon + path + brief status label */}
+        {/* First line: icon + path + diff stats + brief status label */}
         <Box flexDirection="row">
           <StatusIcon status={file.status} />
           <Text> </Text>
           <Text color={isHighlighted ? 'white' : undefined} dim={!isHighlighted}>
             {file.relativePath}
           </Text>
+          {/* Diff stats: +N in green, -M in red */}
+          {hasDiffStats && (
+            <>
+              <Text> </Text>
+              {file.linesAdded !== undefined && file.linesAdded > 0 && (
+                <Text color="green">+{file.linesAdded}</Text>
+              )}
+              {file.linesAdded !== undefined &&
+                file.linesRemoved !== undefined &&
+                file.linesAdded > 0 &&
+                file.linesRemoved > 0 && <Text dim>/</Text>}
+              {file.linesRemoved !== undefined && file.linesRemoved > 0 && (
+                <Text color="red">-{file.linesRemoved}</Text>
+              )}
+            </>
+          )}
           <Text> </Text>
           <Text color={file.status === 'error' ? 'red' : 'yellow'}>{statusLabel}</Text>
         </Box>
@@ -491,9 +507,13 @@ export const GenieView = ({ stateAtom }: GenieViewProps) => {
   // ===================
   // Complete Phase
   // ===================
-  // Check for changes/errors
+  // Check for changes/errors/skipped - anything worth showing in the file list
   const hasChanges = files.some(
-    (f) => f.status === 'created' || f.status === 'updated' || f.status === 'error',
+    (f) =>
+      f.status === 'created' ||
+      f.status === 'updated' ||
+      f.status === 'error' ||
+      f.status === 'skipped',
   )
 
   return (
