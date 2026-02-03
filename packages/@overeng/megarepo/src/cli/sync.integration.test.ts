@@ -1642,10 +1642,14 @@ describe('sync member filtering', () => {
 
           // Should have failed
           expect(result.exitCode).not.toBe(0)
-
-          // Error message should mention mutual exclusivity
-          const output = result.stdout + result.stderr
-          expect(output.toLowerCase()).toContain('mutually exclusive')
+          expect(Exit.isFailure(result.exit)).toBe(true)
+          if (Exit.isFailure(result.exit)) {
+            const cause = result.exit.cause
+            const failureMessages = Chunk.toReadonlyArray(Cause.failures(cause))
+              .map((error: unknown) => String(error))
+              .join('\n')
+            expect(failureMessages.toLowerCase()).toContain('mutually exclusive')
+          }
         }),
       ))
   })
