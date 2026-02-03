@@ -368,7 +368,7 @@ describe('Final state output', () => {
     console.log = originalLog
   })
 
-  test('final-json outputs last state including interrupt', async () => {
+  test('json mode outputs Success wrapper on normal completion', async () => {
     await Effect.gen(function* () {
       const tui = yield* AppWithInterrupt.run()
       tui.dispatch({ _tag: 'SetValue', value: 'final' })
@@ -377,10 +377,83 @@ describe('Final state output', () => {
     expect(capturedOutput).toHaveLength(1)
     const output = JSON.parse(capturedOutput[0]!)
 
+    // Should be wrapped in Success
+    expect(output._tag).toBe('Success')
     // The final state should have the value we set
     expect(output.value).toBe('final')
     // Normal scope close should NOT dispatch Interrupted (only actual fiber interruption does)
     expect(output.interrupted).toBe(false)
+  })
+
+  test('json mode outputs Failure wrapper on defect', async () => {
+    // Catch the defect so the test doesn't fail
+    const result = await Effect.gen(function* () {
+      const tui = yield* AppWithInterrupt.run()
+      tui.dispatch({ _tag: 'SetValue', value: 'partial' })
+      // Simulate a defect (crash)
+      return yield* Effect.die(new Error('Simulated crash'))
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(testModeLayer('json')),
+      Effect.catchAllDefect((defect) => Effect.succeed({ caught: defect })),
+      Effect.runPromise,
+    )
+
+    expect(result).toHaveProperty('caught')
+    expect(capturedOutput).toHaveLength(1)
+    const output = JSON.parse(capturedOutput[0]!)
+
+    // Should be wrapped in Failure
+    expect(output._tag).toBe('Failure')
+    // State at time of failure should be preserved
+    expect(output.state.value).toBe('partial')
+    // Cause should be a Die with the defect
+    expect(output.cause._tag).toBe('Die')
+    expect(output.cause.defect.message).toBe('Simulated crash')
+  })
+
+  test('json mode outputs Failure wrapper on interrupt', async () => {
+    // Create a fresh app instance to avoid state pollution from other tests
+    const InterruptTestApp = createTuiApp({
+      stateSchema: TestState,
+      actionSchema: TestActionWithInterrupt,
+      initial: { value: 'initial', interrupted: false },
+      reducer: testReducerWithInterrupt,
+    })
+
+    // Create a fiber and interrupt it
+    await Effect.gen(function* () {
+      const fiber = yield* Effect.gen(function* () {
+        const tui = yield* InterruptTestApp.run()
+        tui.dispatch({ _tag: 'SetValue', value: 'before interrupt' })
+        // Yield to ensure dispatch is processed
+        yield* Effect.yieldNow()
+        // Wait forever (will be interrupted)
+        yield* Effect.never
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('json')), Effect.fork)
+
+      // Give the fiber time to start and process the dispatch
+      yield* Effect.sleep('50 millis')
+
+      // Interrupt it
+      yield* fiber.interruptAsFork(fiber.id())
+
+      // Wait for it to complete
+      yield* fiber.await
+    }).pipe(Effect.runPromise)
+
+    expect(capturedOutput).toHaveLength(1)
+    const output = JSON.parse(capturedOutput[0]!)
+
+    // Should be wrapped in Failure
+    expect(output._tag).toBe('Failure')
+    // State should be present (exact value may vary due to forking semantics)
+    expect(output.state).toBeDefined()
+    expect(output.state).toHaveProperty('value')
+    // Cause should contain an Interrupt
+    // Note: The cause may be nested (Sequential/Parallel) depending on how interruption propagates
+    const causeJson = JSON.stringify(output.cause)
+    expect(causeJson).toContain('Interrupt')
   })
 })
 

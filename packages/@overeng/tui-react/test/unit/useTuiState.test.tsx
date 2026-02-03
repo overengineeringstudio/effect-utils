@@ -128,7 +128,7 @@ describe('createTuiApp', () => {
   })
 
   describe('json mode', () => {
-    test('outputs JSON on scope close', async () => {
+    test('outputs JSON on scope close with Success wrapper', async () => {
       await Effect.gen(function* () {
         const tui = yield* TestApp.run()
         tui.dispatch({ _tag: 'Start' })
@@ -138,7 +138,9 @@ describe('createTuiApp', () => {
 
       expect(capturedOutput).toHaveLength(1)
       const parsed = JSON.parse(capturedOutput[0]!)
-      expect(parsed).toEqual({ _tag: 'Complete', total: 10 })
+      // State is a union (non-struct), so it's wrapped in `value`
+      expect(parsed._tag).toBe('Success')
+      expect(parsed.value).toEqual({ _tag: 'Complete', total: 10 })
     })
 
     test('outputs final state even if only initial', async () => {
@@ -150,12 +152,14 @@ describe('createTuiApp', () => {
 
       expect(capturedOutput).toHaveLength(1)
       const parsed = JSON.parse(capturedOutput[0]!)
-      expect(parsed).toEqual({ _tag: 'Idle' })
+      // State is a union (non-struct), so it's wrapped in `value`
+      expect(parsed._tag).toBe('Success')
+      expect(parsed.value).toEqual({ _tag: 'Idle' })
     })
   })
 
   describe('ndjson mode', () => {
-    test('outputs NDJSON for each state change', async () => {
+    test('outputs NDJSON with final Success wrapper', async () => {
       await Effect.gen(function* () {
         const tui = yield* TestApp.run()
         // Small delay to allow stream to process
@@ -166,19 +170,22 @@ describe('createTuiApp', () => {
         yield* Effect.sleep('10 millis')
       }).pipe(Effect.scoped, Effect.provide(testModeLayer('ndjson')), Effect.runPromise)
 
-      // Should have multiple JSON lines
-      expect(capturedOutput.length).toBeGreaterThanOrEqual(1)
+      // Should have multiple JSON lines (intermediate raw + final wrapped)
+      expect(capturedOutput.length).toBeGreaterThanOrEqual(2)
 
       // Each line should be valid JSON
       for (const line of capturedOutput) {
         expect(() => JSON.parse(line)).not.toThrow()
       }
 
-      // Last output should be Complete state
-      if (capturedOutput.length > 0) {
-        const lastParsed = JSON.parse(capturedOutput[capturedOutput.length - 1]!)
-        expect(lastParsed._tag).toBe('Complete')
-      }
+      // First output should be raw state (Idle)
+      const firstParsed = JSON.parse(capturedOutput[0]!)
+      expect(firstParsed._tag).toBe('Idle')
+
+      // Last output should be Success wrapper with Complete state
+      const lastParsed = JSON.parse(capturedOutput[capturedOutput.length - 1]!)
+      expect(lastParsed._tag).toBe('Success')
+      expect(lastParsed.value._tag).toBe('Complete')
     })
   })
 

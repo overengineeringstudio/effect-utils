@@ -25,8 +25,4 @@ const program = Cli.Command.run(mrCommand, {
 })(process.argv).pipe(Effect.scoped, Effect.provide(baseLayer))
 
 // Use runTuiMain for proper error handling (errors go to stderr, not stdout)
-// Skip logging SyncFailedError since its details are already in the JSON output
-runTuiMain(NodeRuntime)(program, {
-  shouldLogError: (error) =>
-    !(error !== null && typeof error === 'object' && '_tag' in error && error._tag === 'SyncFailedError'),
-})
+runTuiMain(NodeRuntime)(program)
