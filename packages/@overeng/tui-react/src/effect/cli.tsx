@@ -276,18 +276,23 @@ export const runTuiMain =
         // This ensures errors are visible even with disableErrorReporting
         Effect.tapErrorCause((cause) =>
           Effect.sync(() => {
-            // Check if any failure should be logged
+            // Check if cause has any loggable content:
+            // 1. Typed failures (the E in Effect<A, E>) - filtered by shouldLogError
+            // 2. Defects (crashes, thrown exceptions) - always logged
+            // 3. Interruptions - always logged
             const failures = Cause.failures(cause)
-            const hasLoggableError = failures.pipe(
-              (chunk) => {
-                for (const error of chunk) {
-                  if (shouldLogError(error)) return true
-                }
-                return false
-              },
-            )
+            const hasLoggableFailure = failures.pipe((chunk) => {
+              for (const error of chunk) {
+                if (shouldLogError(error)) return true
+              }
+              return false
+            })
 
-            if (hasLoggableError) {
+            // Always log defects and interruptions - these are unexpected and need visibility
+            const hasDefects = !Cause.defects(cause).pipe((chunk) => chunk.length === 0)
+            const isInterrupted = Cause.isInterrupted(cause)
+
+            if (hasLoggableFailure || hasDefects || isInterrupted) {
               const pretty = Cause.pretty(cause, { renderErrorCause: true })
               process.stderr.write(pretty + '\n')
             }
