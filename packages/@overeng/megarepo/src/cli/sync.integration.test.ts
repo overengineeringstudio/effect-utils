@@ -905,8 +905,8 @@ describe('default sync mode (no --pull)', () => {
           // Create temp directory
           const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
 
-          // Create a local repo with two branches
-          const localRepoPath = yield* createRepo({
+          // Create a local repo without the feature file
+          const baseRepoPath = yield* createRepo({
             basePath: tmpDir,
             fixture: {
               name: 'my-lib',
@@ -914,20 +914,19 @@ describe('default sync mode (no --pull)', () => {
             },
           })
 
-          // Create a feature branch with different content
-          yield* runGitCommand(localRepoPath, 'checkout', '-b', 'feature-branch')
-          yield* fs.writeFileString(
-            EffectPath.ops.join(localRepoPath, EffectPath.unsafe.relativeFile('feature.txt')),
-            'feature content\n',
-          )
-          yield* addCommit({ repoPath: localRepoPath, message: 'Add feature' })
+          // Create a second repo that includes the feature file
+          const featureRepoPath = yield* createRepo({
+            basePath: tmpDir,
+            fixture: {
+              name: 'my-lib-feature',
+              files: {
+                'package.json': '{"name": "my-lib"}',
+                'feature.txt': 'feature content\n',
+              },
+            },
+          })
 
-          // Go back to main branch
-          yield* runGitCommand(localRepoPath, 'checkout', 'main').pipe(
-            Effect.catchAll(() => runGitCommand(localRepoPath, 'checkout', 'master')),
-          )
-
-          // Create workspace pointing to main branch (no #ref means default branch)
+          // Create workspace pointing to the base repo path
           const workspacePath = EffectPath.ops.join(
             tmpDir,
             EffectPath.unsafe.relativeDir('workspace/'),
@@ -935,10 +934,10 @@ describe('default sync mode (no --pull)', () => {
           yield* fs.makeDirectory(workspacePath, { recursive: true })
           yield* initGitRepo(workspacePath)
 
-          // Create initial config pointing to the local repo (uses default branch)
+          // Create initial config pointing to the base repo path
           const initialConfig: typeof MegarepoConfig.Type = {
             members: {
-              'my-lib': localRepoPath,
+              'my-lib': baseRepoPath,
             },
           }
           const configPath = EffectPath.ops.join(
@@ -963,8 +962,8 @@ describe('default sync mode (no --pull)', () => {
           const initialLink = yield* fs.readLink(symlinkPath)
           expect(initialLink).toBeDefined()
 
-          // Verify feature.txt does NOT exist (we're on main branch)
-          const featureFileOnMain = yield* fs
+          // Verify feature.txt does NOT exist for the base repo
+          const featureFileInBase = yield* fs
             .exists(
               EffectPath.ops.join(
                 workspacePath,
@@ -972,30 +971,12 @@ describe('default sync mode (no --pull)', () => {
               ),
             )
             .pipe(Effect.catchAll(() => Effect.succeed(false)))
-          expect(featureFileOnMain).toBe(false)
+          expect(featureFileInBase).toBe(false)
 
-          // Now update config to point to feature-branch
-          // For local paths, we can't use #ref syntax, so this test demonstrates the concept
-          // with a simulated path change that would trigger symlink update
-          // In practice, this would be tested with remote repos where #ref syntax works
-
-          // For local paths, changing the path itself triggers a symlink update
-          // Let's verify the symlink update mechanism works by pointing to a different path
-          const featureBranchPath = yield* createRepo({
-            basePath: tmpDir,
-            fixture: {
-              name: 'my-lib-feature',
-              files: {
-                'package.json': '{"name": "my-lib"}',
-                'feature.txt': 'feature content\n',
-              },
-            },
-          })
-
-          // Update config to point to the feature branch path
+          // Update config to point to the feature repo path
           const updatedConfig: typeof MegarepoConfig.Type = {
             members: {
-              'my-lib': featureBranchPath,
+              'my-lib': featureRepoPath,
             },
           }
           yield* fs.writeFileString(
@@ -1018,16 +999,17 @@ describe('default sync mode (no --pull)', () => {
           // Verify symlink now points to new location
           const updatedLink = yield* fs.readLink(symlinkPath)
           expect(updatedLink).not.toBe(initialLink)
-          expect(updatedLink.replace(/\/$/, '')).toBe(featureBranchPath.replace(/\/$/, ''))
 
-          // Verify feature.txt now exists
-          const featureFileExists = yield* fs.exists(
-            EffectPath.ops.join(
-              workspacePath,
-              EffectPath.unsafe.relativeFile('repos/my-lib/feature.txt'),
-            ),
-          )
-          expect(featureFileExists).toBe(true)
+          const featureFileInFeature = yield* fs
+            .exists(
+              EffectPath.ops.join(
+                workspacePath,
+                EffectPath.unsafe.relativeFile('repos/my-lib/feature.txt'),
+              ),
+            )
+            .pipe(Effect.catchAll(() => Effect.succeed(false)))
+          expect(featureFileInFeature).toBe(true)
+          expect(updatedLink.replace(/\/$/, '')).toBe(featureRepoPath.replace(/\/$/, ''))
         }),
       ))
 
