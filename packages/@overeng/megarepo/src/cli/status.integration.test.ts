@@ -34,7 +34,7 @@ const runStatusCommand = ({
   args?: ReadonlyArray<string>
 }) =>
   Effect.gen(function* () {
-    const { consoleLayer, getLines } = yield* makeConsoleCapture
+    const { consoleLayer, getStdoutLines, getStderrLines } = yield* makeConsoleCapture
     const stderrCapture = yield* Effect.acquireRelease(
       Effect.sync(() => {
         const stderrChunks: Array<string> = []
@@ -71,8 +71,8 @@ const runStatusCommand = ({
     )
     const exit = yield* Effect.exit(effect)
 
-    const stdout = (yield* getLines).join('\n')
-    const stderr = stderrCapture.stderrChunks.join('')
+    const stdout = (yield* getStdoutLines).join('\n')
+    const stderr = [stderrCapture.stderrChunks.join(''), ...(yield* getStderrLines)].join('\n')
 
     // Parse JSON output
     let status: typeof StatusState.Type | undefined

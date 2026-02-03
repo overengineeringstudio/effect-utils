@@ -63,7 +63,7 @@ const runSyncCommand = ({
   env?: Record<string, string>
 }) =>
   Effect.gen(function* () {
-    const { consoleLayer, getLines } = yield* makeConsoleCapture
+    const { consoleLayer, getStdoutLines, getStderrLines } = yield* makeConsoleCapture
     const mergedEnv = { PWD: cwd, ...env }
     const envCapture = yield* Effect.acquireRelease(
       Effect.sync(() => {
@@ -125,8 +125,8 @@ const runSyncCommand = ({
 
     return {
       exit,
-      stdout: (yield* getLines).join('\n'),
-      stderr: stderrCapture.stderrChunks.join(''),
+      stdout: (yield* getStdoutLines).join('\n'),
+      stderr: [stderrCapture.stderrChunks.join(''), ...(yield* getStderrLines)].join('\n'),
       exitCode: Exit.isSuccess(exit) ? 0 : 1,
     }
   }).pipe(Effect.scoped)
