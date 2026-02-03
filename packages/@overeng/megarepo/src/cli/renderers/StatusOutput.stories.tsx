@@ -809,12 +809,18 @@ const createMultipleProblemsState = (): typeof StatusState.Type => ({
   },
 })
 
-const createSymlinkDriftState = (): typeof StatusState.Type => ({
+/**
+ * Stale lock: lock ref is outdated but current state matches source intent.
+ * Happens when user switched branches and lock wasn't updated.
+ */
+const createStaleLockState = (): typeof StatusState.Type => ({
   all: false,
   name: 'my-megarepo',
   root: '/Users/dev/my-megarepo',
   syncNeeded: true,
-  syncReasons: ["Member 'livestore' symlink drift: dev → refactor/genie-igor-ci"],
+  syncReasons: [
+    "Member 'effect-utils' stale lock: lock says 'feat/r12-monitoring' but actual is 'main'",
+  ],
   members: [
     {
       name: 'effect',
@@ -832,27 +838,85 @@ const createSymlinkDriftState = (): typeof StatusState.Type => ({
         branch: 'main',
         shortRev: 'abc1234',
       },
-      symlinkDrift: undefined,
+    },
+    {
+      name: 'effect-utils',
+      exists: true,
+      symlinkExists: true,
+      source: 'overengineeringstudio/effect-utils', // no #ref, defaults to main
+      isLocal: false,
+      lockInfo: { ref: 'feat/r12-monitoring', commit: 'def5678abc', pinned: false }, // outdated
+      isMegarepo: true,
+      nestedMembers: undefined,
+      gitStatus: {
+        isDirty: false,
+        changesCount: 0,
+        hasUnpushed: false,
+        branch: 'main', // matches source intent
+        shortRev: 'fed9876',
+      },
+      staleLock: {
+        lockRef: 'feat/r12-monitoring',
+        actualRef: 'main',
+      },
+    },
+  ],
+  lockStaleness: {
+    exists: true,
+    missingFromLock: [],
+    extraInLock: [],
+  },
+})
+
+/**
+ * True symlink drift: symlink/lock track a different ref than source specifies.
+ * Happens when lock was updated to a branch but megarepo.json wasn't edited.
+ */
+const createSymlinkDriftState = (): typeof StatusState.Type => ({
+  all: false,
+  name: 'my-megarepo',
+  root: '/Users/dev/my-megarepo',
+  syncNeeded: true,
+  syncReasons: [
+    "Member 'livestore' symlink drift: tracking 'refactor/genie-igor-ci' but source says 'dev'",
+  ],
+  members: [
+    {
+      name: 'effect',
+      exists: true,
+      symlinkExists: true,
+      source: 'effect-ts/effect',
+      isLocal: false,
+      lockInfo: { ref: 'main', commit: 'abc1234def', pinned: false },
+      isMegarepo: false,
+      nestedMembers: undefined,
+      gitStatus: {
+        isDirty: false,
+        changesCount: 0,
+        hasUnpushed: false,
+        branch: 'main',
+        shortRev: 'abc1234',
+      },
     },
     {
       name: 'livestore',
       exists: true,
       symlinkExists: true,
-      source: 'livestorejs/livestore',
+      source: 'livestorejs/livestore#dev', // source says dev
       isLocal: false,
-      lockInfo: { ref: 'refactor/genie-igor-ci', commit: 'def5678abc', pinned: false },
+      lockInfo: { ref: 'refactor/genie-igor-ci', commit: 'def5678abc', pinned: false }, // lock says different
       isMegarepo: false,
       nestedMembers: undefined,
       gitStatus: {
         isDirty: true,
         changesCount: 27,
         hasUnpushed: false,
-        branch: 'refactor/genie-igor-ci',
+        branch: 'refactor/genie-igor-ci', // matches lock
         shortRev: 'def5678',
       },
       symlinkDrift: {
-        symlinkRef: 'dev',
-        expectedRef: 'refactor/genie-igor-ci',
+        symlinkRef: 'refactor/genie-igor-ci', // symlink follows lock
+        sourceRef: 'dev', // but source says dev
         actualGitBranch: 'refactor/genie-igor-ci',
       },
     },
@@ -872,7 +936,6 @@ const createSymlinkDriftState = (): typeof StatusState.Type => ({
         branch: 'main',
         shortRev: 'fed9876',
       },
-      symlinkDrift: undefined,
     },
   ],
   lockStaleness: {
@@ -963,15 +1026,15 @@ const createMultipleSymlinkDriftState = (): typeof StatusState.Type => ({
   root: '/Users/dev/my-megarepo',
   syncNeeded: true,
   syncReasons: [
-    "Member 'livestore' symlink drift: dev → refactor/genie-igor-ci",
-    "Member 'effect' symlink drift: main → next",
+    "Member 'livestore' symlink drift: tracking 'refactor/genie-igor-ci' but source says 'dev'",
+    "Member 'effect' symlink drift: tracking 'next' but source says 'main'",
   ],
   members: [
     {
       name: 'livestore',
       exists: true,
       symlinkExists: true,
-      source: 'livestorejs/livestore',
+      source: 'livestorejs/livestore#dev', // source says dev
       isLocal: false,
       lockInfo: { ref: 'refactor/genie-igor-ci', commit: 'def5678abc', pinned: false },
       isMegarepo: false,
@@ -984,8 +1047,8 @@ const createMultipleSymlinkDriftState = (): typeof StatusState.Type => ({
         shortRev: 'def5678',
       },
       symlinkDrift: {
-        symlinkRef: 'dev',
-        expectedRef: 'refactor/genie-igor-ci',
+        symlinkRef: 'refactor/genie-igor-ci', // lock/symlink
+        sourceRef: 'dev', // source
         actualGitBranch: 'refactor/genie-igor-ci',
       },
     },
@@ -993,7 +1056,7 @@ const createMultipleSymlinkDriftState = (): typeof StatusState.Type => ({
       name: 'effect',
       exists: true,
       symlinkExists: true,
-      source: 'effect-ts/effect',
+      source: 'effect-ts/effect', // source defaults to main
       isLocal: false,
       lockInfo: { ref: 'next', commit: 'abc1234def', pinned: false },
       isMegarepo: false,
@@ -1002,13 +1065,13 @@ const createMultipleSymlinkDriftState = (): typeof StatusState.Type => ({
         isDirty: false,
         changesCount: 0,
         hasUnpushed: false,
-        branch: 'main',
+        branch: 'next',
         shortRev: 'abc1234',
       },
       symlinkDrift: {
-        symlinkRef: 'main',
-        expectedRef: 'next',
-        actualGitBranch: 'main',
+        symlinkRef: 'next', // lock/symlink
+        sourceRef: 'main', // source
+        actualGitBranch: 'next',
       },
     },
   ],
@@ -1158,12 +1221,21 @@ export const MultipleProblems: Story = {
   ),
 }
 
+/** Stale lock: lock is outdated but current state matches source intent */
+export const StaleLock: Story = {
+  render: () => (
+    <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createStaleLockState()} />
+  ),
+}
+
+/** Symlink drift: symlink/lock track different ref than source specifies */
 export const SymlinkDrift: Story = {
   render: () => (
     <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createSymlinkDriftState()} />
   ),
 }
 
+/** Multiple members with symlink drift */
 export const MultipleSymlinkDrift: Story = {
   render: () => (
     <TuiStoryPreview

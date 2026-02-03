@@ -139,6 +139,7 @@ type Problem =
   | { _tag: 'unpushed'; members: MemberStatus[] }
   | { _tag: 'lock_missing' }
   | { _tag: 'lock_stale'; missingFromLock: readonly string[]; extraInLock: readonly string[] }
+  | { _tag: 'stale_lock'; members: MemberStatus[] }
   | { _tag: 'symlink_drift'; members: MemberStatus[] }
   | { _tag: 'ref_mismatch'; members: MemberStatus[] }
 
@@ -200,7 +201,13 @@ const analyzeProblems = ({
     warnings.push({ _tag: 'ref_mismatch', members: refMismatched })
   }
 
-  // Symlink drift is also a critical issue
+  // Stale lock: lock ref outdated but current state matches source intent
+  const staleLocked = allMembers.filter((m) => m.staleLock !== undefined)
+  if (staleLocked.length > 0) {
+    warnings.push({ _tag: 'stale_lock', members: staleLocked })
+  }
+
+  // Symlink drift: symlink/lock don't match source intent
   const drifted = allMembers.filter((m) => m.symlinkDrift !== undefined)
   if (drifted.length > 0) {
     warnings.push({ _tag: 'symlink_drift', members: drifted })
@@ -252,6 +259,8 @@ const getProblemKey = (problem: Problem): string => {
       return 'lock_missing'
     case 'lock_stale':
       return `lock_stale-${problem.missingFromLock.join(',')}-${problem.extraInLock.join(',')}`
+    case 'stale_lock':
+      return `stale_lock-${problem.members.map((m) => m.name).join(',')}`
     case 'symlink_drift':
       return `symlink_drift-${problem.members.map((m) => m.name).join(',')}`
     case 'ref_mismatch':
@@ -392,6 +401,53 @@ const WarningItem = ({ problem }: { problem: Problem }) => {
         </Box>
       )
     }
+    case 'stale_lock': {
+      const count = problem.members.length
+      return (
+        <Box>
+          <Box flexDirection="row">
+            <Text>{'  '}</Text>
+            <Text bold color="yellow">
+              {count} member{count > 1 ? 's' : ''}
+            </Text>
+            <Text> </Text>
+            <Text dim>lock file outdated</Text>
+          </Box>
+          {problem.members.map((m) => {
+            const stale = m.staleLock!
+            return (
+              <Box key={m.name}>
+                <Box flexDirection="row">
+                  <Text>{'    '}</Text>
+                  <Text bold>{m.name}</Text>
+                </Box>
+                <Box flexDirection="row">
+                  <Text>{'      '}</Text>
+                  <Text dim>lock: </Text>
+                  <Text color="yellow">{stale.lockRef}</Text>
+                  <Text dim> (outdated)</Text>
+                </Box>
+                <Box flexDirection="row">
+                  <Text>{'      '}</Text>
+                  <Text dim>actual: </Text>
+                  <Text color="green">{stale.actualRef}</Text>
+                  <Text dim> (matches source)</Text>
+                </Box>
+                <Box flexDirection="row">
+                  <Text>{'      '}</Text>
+                  <Text color="cyan">fix: </Text>
+                  <Text>mr sync --only {m.name}</Text>
+                </Box>
+                <Box flexDirection="row">
+                  <Text>{'             '}</Text>
+                  <Text dim>→ updates lock to {stale.actualRef}</Text>
+                </Box>
+              </Box>
+            )
+          })}
+        </Box>
+      )
+    }
     case 'symlink_drift': {
       const count = problem.members.length
       return (
@@ -402,7 +458,7 @@ const WarningItem = ({ problem }: { problem: Problem }) => {
               {count} member{count > 1 ? 's' : ''}
             </Text>
             <Text> </Text>
-            <Text dim>lock ref differs from source (symlink drift)</Text>
+            <Text dim>tracking different ref than source</Text>
           </Box>
           {problem.members.map((m) => {
             const drift = m.symlinkDrift!
@@ -414,34 +470,33 @@ const WarningItem = ({ problem }: { problem: Problem }) => {
                 </Box>
                 <Box flexDirection="row">
                   <Text>{'      '}</Text>
-                  <Text dim>lock: </Text>
-                  <Text color="green">{drift.expectedRef}</Text>
+                  <Text dim>current: </Text>
+                  <Text color="yellow">{drift.symlinkRef}</Text>
+                  <Text dim> (lock + symlink)</Text>
                 </Box>
                 <Box flexDirection="row">
                   <Text>{'      '}</Text>
                   <Text dim>source: </Text>
-                  <Text color="yellow">{drift.symlinkRef}</Text>
+                  <Text color="green">{drift.sourceRef}</Text>
                   <Text dim> (from megarepo.json)</Text>
                 </Box>
                 <Box flexDirection="row">
                   <Text>{'      '}</Text>
                   <Text color="cyan">fix: </Text>
-                  <Text>add #{drift.expectedRef} to megarepo.json</Text>
+                  <Text>add #{drift.symlinkRef} to megarepo.json</Text>
                 </Box>
                 <Box flexDirection="row">
                   <Text>{'             '}</Text>
-                  <Text dim>→ keeps tracking {drift.expectedRef} branch</Text>
+                  <Text dim>→ keeps tracking {drift.symlinkRef}</Text>
                 </Box>
                 <Box flexDirection="row">
                   <Text>{'           '}</Text>
                   <Text dim>or: </Text>
-                  <Text>
-                    mr pin {m.name} -c {drift.symlinkRef}
-                  </Text>
+                  <Text>mr sync --pull --only {m.name}</Text>
                 </Box>
                 <Box flexDirection="row">
                   <Text>{'             '}</Text>
-                  <Text dim>→ switches to {drift.symlinkRef}, updates lock</Text>
+                  <Text dim>→ switches to {drift.sourceRef}, updates lock</Text>
                 </Box>
               </Box>
             )
