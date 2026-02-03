@@ -183,13 +183,12 @@ in
 
 ## Local changes
 
-Inside a megarepo, use the generated local workspace path to avoid slow `path:.`
-hashing and keep builds pure. Build from the local workspace flake instead of
-the repo root:
+For builds, use direct paths and `--override-input` for local dependencies:
 
 ```bash
 nix build --no-write-lock-file --no-link \
-  "path:$MEGAREPO_NIX_WORKSPACE#packages.<system>.my-repo.my-cli"
+  "path:$DEVENV_ROOT/repos/my-repo#packages.<system>.my-cli" \
+  --override-input effect-utils "path:$DEVENV_ROOT/repos/effect-utils"
 ```
 
 For standalone repos (outside a megarepo), use `path:.#my-cli` as usual.

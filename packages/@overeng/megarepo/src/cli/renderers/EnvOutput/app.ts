@@ -11,9 +11,7 @@ import { EnvState, EnvAction, envReducer } from './schema.ts'
  */
 export const createInitialEnvState = (): typeof EnvState.Type => ({
   _tag: 'Success',
-  MEGAREPO_ROOT_OUTERMOST: '',
-  MEGAREPO_ROOT_NEAREST: '',
-  MEGAREPO_MEMBERS: '',
+  MEGAREPO_STORE: '',
   shell: 'bash',
 })
 

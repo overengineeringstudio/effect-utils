@@ -264,5 +264,4 @@ See [bun-issues.md](../workarounds/bun-issues.md) for package manager migration 
 
 ## Notes
 
-- Use the megarepo workspace path (`$MEGAREPO_NIX_WORKSPACE`) for Nix builds inside a megarepo
 - If Effect types mismatch, check for duplicate versions in nested `node_modules`

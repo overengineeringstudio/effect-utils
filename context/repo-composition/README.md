@@ -13,29 +13,26 @@ For setup instructions and file templates, see [setup-guide](../nix-devenv/setup
 
 ## Megarepo Commands
 
-| Command              | Description                                              |
-| -------------------- | -------------------------------------------------------- |
-| `mr sync`            | Materialize repos from lock file                         |
-| `mr sync --frozen`   | CI mode: fail if lock is stale                           |
-| `mr update`          | Re-resolve refs and update lock                          |
-| `mr update <member>` | Update specific member                                   |
-| `mr generate nix`    | Generate `.envrc.generated.megarepo` and workspace flake |
-| `mr status`          | Show megarepo state                                      |
-| `mr pin <member>`    | Pin member to current commit                             |
-| `mr unpin <member>`  | Remove pin                                               |
+| Command              | Description                      |
+| -------------------- | -------------------------------- |
+| `mr sync`            | Materialize repos from lock file |
+| `mr sync --frozen`   | CI mode: fail if lock is stale   |
+| `mr update`          | Re-resolve refs and update lock  |
+| `mr update <member>` | Update specific member           |
+| `mr status`          | Show megarepo state              |
+| `mr pin <member>`    | Pin member to current commit     |
+| `mr unpin <member>`  | Remove pin                       |
 
 > **Auto-setup:** On fresh clone/worktree, `mr sync` runs automatically during devenv shell entry. Use `mr status` to check sync state or `mr status --output json` for scripting.
 
 ## Environment Variables
 
-Set by `mr env` and `.envrc.generated.megarepo`:
+Set by devenv and megarepo:
 
-| Variable                  | Description                          |
-| ------------------------- | ------------------------------------ |
-| `MEGAREPO_ROOT_OUTERMOST` | Path to outermost megarepo root      |
-| `MEGAREPO_ROOT_NEAREST`   | Path to nearest megarepo root        |
-| `MEGAREPO_NIX_WORKSPACE`  | Path to generated nix workspace      |
-| `MEGAREPO_MEMBERS`        | Comma-separated list of member names |
+| Variable         | Description                                                            |
+| ---------------- | ---------------------------------------------------------------------- |
+| `DEVENV_ROOT`    | Path to the devenv project root (provided by devenv)                   |
+| `MEGAREPO_STORE` | Path to global megarepo store (`~/.megarepo/`) for repo symlink target |
 
 ## Further Reading
 

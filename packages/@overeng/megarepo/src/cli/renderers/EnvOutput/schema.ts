@@ -15,18 +15,12 @@ import { Schema } from 'effect'
  * Success state - JSON output:
  * {
  *   "_tag": "Success",
- *   "MEGAREPO_ROOT_OUTERMOST": "/path/to/megarepo",
- *   "MEGAREPO_ROOT_NEAREST": "/path/to/nearest",
- *   "MEGAREPO_MEMBERS": "member1,member2"
+ *   "MEGAREPO_STORE": "~/.megarepo"
  * }
  */
 export const EnvSuccessState = Schema.TaggedStruct('Success', {
-  /** Outermost megarepo root */
-  MEGAREPO_ROOT_OUTERMOST: Schema.String,
-  /** Nearest megarepo root */
-  MEGAREPO_ROOT_NEAREST: Schema.String,
-  /** Comma-separated list of member names */
-  MEGAREPO_MEMBERS: Schema.String,
+  /** Global store location */
+  MEGAREPO_STORE: Schema.String,
   /** Shell type for output formatting (only used in TTY mode) */
   shell: Schema.optional(Schema.Literal('bash', 'zsh', 'fish')),
 })
@@ -69,9 +63,7 @@ export const isEnvSuccess = (state: EnvState): state is typeof EnvSuccessState.T
 export const EnvAction = Schema.Union(
   /** Set success state */
   Schema.TaggedStruct('SetEnv', {
-    MEGAREPO_ROOT_OUTERMOST: Schema.String,
-    MEGAREPO_ROOT_NEAREST: Schema.String,
-    MEGAREPO_MEMBERS: Schema.String,
+    MEGAREPO_STORE: Schema.String,
     shell: Schema.optional(Schema.Literal('bash', 'zsh', 'fish')),
   }),
   /** Set error state */
@@ -97,9 +89,7 @@ export const envReducer = ({
     case 'SetEnv':
       return {
         _tag: 'Success',
-        MEGAREPO_ROOT_OUTERMOST: action.MEGAREPO_ROOT_OUTERMOST,
-        MEGAREPO_ROOT_NEAREST: action.MEGAREPO_ROOT_NEAREST,
-        MEGAREPO_MEMBERS: action.MEGAREPO_MEMBERS,
+        MEGAREPO_STORE: action.MEGAREPO_STORE,
         shell: action.shell,
       }
     case 'SetError':

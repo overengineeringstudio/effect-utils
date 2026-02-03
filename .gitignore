@@ -3,6 +3,7 @@
 *.log
 tmp
 .context
+.cache/
 
 # Node.js
 node_modules
