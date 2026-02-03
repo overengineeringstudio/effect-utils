@@ -42,6 +42,7 @@ const SyncJsonOutput = Schema.Struct({
         Schema.Struct({
           expectedRef: Schema.String,
           actualRef: Schema.String,
+          isDetached: Schema.Boolean,
         }),
       ),
     }),
@@ -1825,11 +1826,165 @@ describe('sync worktree ref mismatch detection', () => {
 
         // Check that the refMismatch structured data is present
         const refMismatch = (
-          memberResult as { refMismatch?: { expectedRef: string; actualRef: string } }
+          memberResult as {
+            refMismatch?: { expectedRef: string; actualRef: string; isDetached: boolean }
+          }
         )?.refMismatch
         expect(refMismatch).toBeDefined()
         expect(refMismatch?.expectedRef).toBe('main')
         expect(refMismatch?.actualRef).toBe('some-feature-branch')
+        expect(refMismatch?.isDetached).toBe(false)
+      }),
+    ))
+
+  it('should detect detached HEAD as ref mismatch in branch worktree (issue #88)', () =>
+    withTestCtx(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+
+        // Create temp directory
+        const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+
+        // Set up a custom store directory
+        const storeDir = EffectPath.ops.join(
+          tmpDir,
+          EffectPath.unsafe.relativeDir('megarepo-store/'),
+        )
+        yield* fs.makeDirectory(storeDir, { recursive: true })
+
+        // Create a "remote" repo
+        const remoteRepoPath = yield* createRepo({
+          basePath: tmpDir,
+          fixture: {
+            name: 'remote-test-repo',
+            files: { 'package.json': '{"name": "test-repo"}' },
+          },
+        })
+
+        // Get the initial commit
+        const mainCommit = yield* runGitCommand(remoteRepoPath, 'rev-parse', 'HEAD')
+
+        // Create store structure: bare repo + worktree
+        const repoStorePath = EffectPath.ops.join(
+          storeDir,
+          EffectPath.unsafe.relativeDir('example.com/org/test-repo/'),
+        )
+        const bareRepoPath = EffectPath.ops.join(
+          repoStorePath,
+          EffectPath.unsafe.relativeDir('.bare/'),
+        )
+        const storeWorktreePath = EffectPath.ops.join(
+          repoStorePath,
+          EffectPath.unsafe.relativeDir('refs/heads/main/'),
+        )
+
+        // Clone bare repo
+        yield* fs.makeDirectory(bareRepoPath, { recursive: true })
+        yield* runGitCommand(bareRepoPath, 'clone', '--bare', remoteRepoPath.slice(0, -1), '.')
+
+        // Create worktree from bare repo
+        yield* runGitCommand(
+          bareRepoPath,
+          'worktree',
+          'add',
+          storeWorktreePath.slice(0, -1),
+          'main',
+        )
+
+        // Create workspace with lock file using URL source
+        const workspacePath = EffectPath.ops.join(
+          tmpDir,
+          EffectPath.unsafe.relativeDir('test-workspace/'),
+        )
+        yield* fs.makeDirectory(workspacePath, { recursive: true })
+        yield* initGitRepo(workspacePath)
+
+        // Create megarepo.json with URL source
+        const config: typeof MegarepoConfig.Type = {
+          members: {
+            'test-repo': 'https://example.com/org/test-repo#main',
+          },
+        }
+        const configContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
+          config,
+        )
+        yield* fs.writeFileString(
+          EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME)),
+          configContent + '\n',
+        )
+
+        // Create lock file
+        const lockPath = EffectPath.ops.join(
+          workspacePath,
+          EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+        )
+        yield* writeLockFile({
+          lockPath,
+          lockFile: {
+            version: 1,
+            members: {
+              'test-repo': createLockedMember({
+                url: 'https://example.com/org/test-repo',
+                ref: 'main',
+                commit: mainCommit,
+              }),
+            },
+          },
+        })
+
+        yield* addCommit({ repoPath: workspacePath, message: 'Initialize megarepo' })
+
+        // Create the symlink to the store worktree
+        const reposDir = EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeDir('repos/'))
+        yield* fs.makeDirectory(reposDir, { recursive: true })
+        yield* fs.symlink(
+          storeWorktreePath.slice(0, -1),
+          EffectPath.ops.join(reposDir, EffectPath.unsafe.relativeFile('test-repo')),
+        )
+
+        // Verify initial state: worktree is on main
+        const initialBranch = yield* runGitCommand(storeWorktreePath, 'branch', '--show-current')
+        expect(initialBranch).toBe('main')
+
+        // NOW SIMULATE THE PROBLEM: User runs `git checkout <sha>` directly in the worktree
+        // This creates a detached HEAD state - mismatch with the branch-based store path
+        yield* runGitCommand(storeWorktreePath, 'checkout', mainCommit)
+
+        // Verify detached HEAD
+        const currentBranch = yield* runGitCommand(storeWorktreePath, 'branch', '--show-current')
+        expect(currentBranch).toBe('') // Empty means detached HEAD
+
+        // Run mr sync - should detect and warn about the detached HEAD mismatch
+        const result = yield* runSyncCommand({
+          cwd: workspacePath,
+          args: ['--output', 'json'],
+          env: {
+            MEGAREPO_STORE: storeDir.slice(0, -1),
+          },
+        })
+        const json = decodeSyncJsonOutput(result.stdout.trim())
+
+        // Should have a result for test-repo
+        expect(json.results).toHaveLength(1)
+        const memberResult = json.results[0]
+        expect(memberResult?.name).toBe('test-repo')
+
+        // Should be skipped with ref mismatch
+        expect(memberResult?.status).toBe('skipped')
+        expect(memberResult?.message).toContain('ref mismatch')
+        expect(memberResult?.message).toContain('main')
+        expect(memberResult?.message).toContain('detached')
+
+        // Check that the refMismatch structured data shows detached state
+        const refMismatch = (
+          memberResult as {
+            refMismatch?: { expectedRef: string; actualRef: string; isDetached: boolean }
+          }
+        )?.refMismatch
+        expect(refMismatch).toBeDefined()
+        expect(refMismatch?.expectedRef).toBe('main')
+        expect(refMismatch?.actualRef).toBe(mainCommit.slice(0, 7)) // Short SHA
+        expect(refMismatch?.isDetached).toBe(true)
       }),
     ))
 })

@@ -17,20 +17,27 @@ import { extractRefFromSymlinkPath } from './ref.ts'
 /**
  * Schema for worktree ref mismatch.
  *
- * This occurs when a user runs `git checkout <branch>` directly inside a store
- * worktree, causing the git HEAD to differ from the ref implied by the store path.
+ * This occurs when a user runs `git checkout <branch>` or `git checkout <sha>`
+ * directly inside a store worktree, causing the git HEAD to differ from the
+ * ref implied by the store path.
  *
- * Example:
+ * Examples:
  * - Store path: ~/.megarepo/github.com/org/repo/refs/heads/main/
  * - Git HEAD: feature-branch (user ran `git checkout feature-branch`)
+ * - Git HEAD: detached at abc123 (user ran `git checkout abc123`)
  *
  * This violates invariant #8: "Worktree path matches HEAD"
  */
 export const RefMismatch = Schema.Struct({
   /** The ref implied by the store worktree path (e.g., 'main') */
   expectedRef: Schema.String,
-  /** The actual git HEAD branch in the worktree (e.g., 'feature-branch') */
+  /**
+   * The actual git HEAD state in the worktree.
+   * Either a branch name (e.g., 'feature-branch') or short commit SHA if detached.
+   */
   actualRef: Schema.String,
+  /** True if the worktree is in detached HEAD state */
+  isDetached: Schema.Boolean,
 })
 
 /** Inferred type for worktree ref mismatch. */
@@ -47,8 +54,12 @@ export type RefMismatch = Schema.Schema.Type<typeof RefMismatch>
  * which would cause the worktree's git HEAD to differ from the ref implied
  * by its store path.
  *
+ * Detects two types of mismatches in branch worktrees:
+ * 1. User checked out a different branch: `git checkout other-branch`
+ * 2. User checked out a commit (detached HEAD): `git checkout abc123`
+ *
  * Only applies to branch worktrees - tags and commits are immutable and
- * checked out in detached HEAD state.
+ * are expected to be in detached HEAD state.
  *
  * @param worktreePath - Path to the worktree directory
  * @param symlinkTarget - The symlink target path (store worktree path)
@@ -67,7 +78,7 @@ export const detectRefMismatch = ({
     if (extracted === undefined) return undefined
 
     // Only check for branches - tags and commits are immutable
-    // (they're in detached HEAD state, so comparison doesn't apply)
+    // (they're expected to be in detached HEAD state)
     if (extracted.type !== 'branch') return undefined
 
     const expectedRef = extracted.ref
@@ -77,8 +88,21 @@ export const detectRefMismatch = ({
       Effect.catchAll(() => Effect.succeed(Option.none<string>())),
     )
 
-    // If we can't get the branch (detached HEAD or error), no mismatch to report
-    if (Option.isNone(actualBranchOpt)) return undefined
+    // If detached HEAD in a branch worktree, that's a mismatch
+    // (user ran `git checkout <sha>` in a branch-based worktree)
+    if (Option.isNone(actualBranchOpt)) {
+      // Get the short commit SHA for display
+      const commitSha = yield* Git.getCurrentCommit(worktreePath).pipe(
+        Effect.map((sha) => sha.slice(0, 7)),
+        Effect.catchAll(() => Effect.succeed('unknown')),
+      )
+
+      return {
+        expectedRef,
+        actualRef: commitSha,
+        isDetached: true,
+      } satisfies RefMismatch
+    }
 
     const actualRef = actualBranchOpt.value
 
@@ -88,6 +112,7 @@ export const detectRefMismatch = ({
     return {
       expectedRef,
       actualRef,
+      isDetached: false,
     } satisfies RefMismatch
   })
 
@@ -101,6 +126,17 @@ export const formatRefMismatchMessage = ({
   refMismatch: RefMismatch
   memberName: string
 }): string => {
+  if (refMismatch.isDetached) {
+    // Detached HEAD case
+    const lines = [
+      `ref mismatch: store path implies '${refMismatch.expectedRef}' but worktree is detached at ${refMismatch.actualRef}`,
+      `  hint: use 'mr pin ${memberName} -c ${refMismatch.actualRef}' to pin this commit,`,
+      `        or 'git checkout ${refMismatch.expectedRef}' to restore expected state`,
+    ]
+    return lines.join('\n')
+  }
+
+  // Different branch case
   const lines = [
     `ref mismatch: store path implies '${refMismatch.expectedRef}' but worktree HEAD is '${refMismatch.actualRef}'`,
     `  hint: use 'mr pin ${memberName} -c ${refMismatch.actualRef}' to create proper worktree,`,
