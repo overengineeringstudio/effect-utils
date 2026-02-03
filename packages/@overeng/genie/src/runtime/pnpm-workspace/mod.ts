@@ -555,6 +555,26 @@ export interface PnpmWorkspaceData {
    */
   settings?: PnpmSettings
 
+  /**
+   * Supported architectures for downloading platform-specific optional dependencies.
+   * When set, pnpm downloads binaries for all specified platforms, making the lockfile
+   * and pnpm store hash consistent across different build machines.
+   *
+   * @see https://pnpm.io/package_json#pnpmsupportedarchitectures
+   * @example
+   * ```ts
+   * supportedArchitectures: {
+   *   os: ['linux', 'darwin'],
+   *   cpu: ['x64', 'arm64'],
+   * }
+   * ```
+   */
+  supportedArchitectures?: {
+    os?: readonly string[]
+    cpu?: readonly string[]
+    libc?: readonly string[]
+  }
+
   // ---------------------------------------------------------------------------
   // Top-level settings (for backwards compatibility)
   // These are merged with settings when stringified
@@ -784,6 +804,10 @@ const buildPnpmWorkspaceYaml = <T extends PnpmWorkspaceData>({
 
   if (data.settings !== undefined) {
     result.settings = { ...data.settings }
+  }
+
+  if (data.supportedArchitectures !== undefined) {
+    result.supportedArchitectures = { ...data.supportedArchitectures }
   }
 
   // Top-level settings (for backwards compatibility)

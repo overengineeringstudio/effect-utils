@@ -3,6 +3,10 @@
 
 packages: [., ../effect-path, ../tui-core, ../tui-react, ../utils]
 
+supportedArchitectures:
+  os: [linux, darwin]
+  cpu: [x64, arm64]
+
 dedupePeerDependents: true
 
 publicHoistPattern: [react, react-dom, react-reconciler]

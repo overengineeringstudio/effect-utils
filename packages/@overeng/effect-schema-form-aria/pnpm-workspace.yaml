@@ -3,6 +3,10 @@
 
 packages: [., ../effect-schema-form]
 
+supportedArchitectures:
+  os: [linux, darwin]
+  cpu: [x64, arm64]
+
 dedupePeerDependents: true
 
 publicHoistPattern: [react, react-dom, react-reconciler]

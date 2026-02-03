@@ -54,12 +54,19 @@ export const catalog = defineCatalog({
 
 /**
  * Pnpm workspace with React hoisting for single-instance React in dev.
+ *
+ * Includes supportedArchitectures to download platform-specific binaries for all
+ * platforms, making the pnpm store hash consistent across Linux and macOS builds.
  */
 export const pnpmWorkspaceReact = (packages: readonly string[]) =>
   pnpmWorkspaceYaml({
     packages: ['.', ...packages],
     publicHoistPattern: ['react', 'react-dom', 'react-reconciler'],
     dedupePeerDependents: true,
+    supportedArchitectures: {
+      os: ['linux', 'darwin'],
+      cpu: ['x64', 'arm64'],
+    },
   })
 
 type PackageJsonGenie = {

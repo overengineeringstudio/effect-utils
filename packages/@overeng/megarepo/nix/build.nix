@@ -23,11 +23,11 @@ let
       "packages/@overeng/tui-react"
       "packages/@overeng/utils"
     ];
-    # Platform-specific hash: pnpm fetches different platform-specific native binaries
-    pnpmDepsHash = if pkgs.stdenv.isDarwin
-      then "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="  # TODO: get Darwin hash
-      else "sha256-iuZYzZbieCwiH/gwNgnWg0n7GVEBV7feLvEcI60tYOY=";
-    lockfileHash = "sha256-cVz9AVt2R+J9nbg/dtYX9YYlBFiWGAnkYYFFjn7HX5w=";
+    # Platform-independent hash: pnpm-workspace.yaml has supportedArchitectures configured
+    # to download binaries for all platforms (linux/darwin x x64/arm64), so the hash is
+    # the same regardless of where the build runs.
+    pnpmDepsHash = "sha256-uVIi0d+oZELM6tY0DuYtllpBc5wx83udGZvT5kQcqq4=";
+    lockfileHash = "sha256-fuf08zY6k1P6qMr+Qe50+Qf7oQryQ75s2nQDnNgMmbY=";
     packageJsonDepsHash = "sha256-tGkiG+aEO0TUw/SVvU9T0cgD4nMjENqRioocT5w3XMQ=";
     smokeTestArgs = [ "--help" ];
     inherit gitRev commitTs dirty;
