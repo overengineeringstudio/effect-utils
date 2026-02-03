@@ -51,14 +51,29 @@
 # Cache inputs (per package path):
 # - package.json contents
 # - pnpm-lock.yaml contents
+# - For packages with injected deps: source file contents (content-addressed)
 #
 # Cache files:
 # - .direnv/task-cache/pnpm-install/<task-name>.hash
+#
+# ---
+# Injected workspace deps and staleness:
+#
+# Packages using `injected: true` in dependenciesMeta get a COPY of the workspace
+# dep instead of a symlink. This copy becomes stale when the source changes.
+# Regular `pnpm install` syncs the copy, but our status check must detect when
+# the source has changed to trigger reinstall.
+#
+# Injected deps are AUTO-DETECTED from each package's package.json by parsing
+# the `dependenciesMeta` section at Nix evaluation time. No manual configuration
+# needed - just add `"injected": true` to dependenciesMeta and it will be tracked.
+#
 { packages }:
 { lib, config, ... }:
 let
   cache = import ../lib/cache.nix { inherit config; };
   cacheRoot = cache.mkCachePath "pnpm-install";
+
   # Convert path to task name:
   # "packages/@scope/foo" -> "foo"
   # "packages/@scope/foo/examples/basic" -> "foo-examples-basic"
@@ -77,17 +92,86 @@ let
     in
     sanitize final;
 
-  # Build list of {path, name, prevName} for sequential chaining
+  # =============================================================================
+  # Auto-detect injected deps from package.json
+  # =============================================================================
+  #
+  # Build a lookup from package name (e.g., "@overeng/tui-react") to path
+  # (e.g., "packages/@overeng/tui-react"). Only includes packages in our list.
+  packageNameToPath = builtins.listToAttrs (
+    builtins.filter (x: x != null) (map (path:
+      let
+        pkgJsonPath = "${config.devenv.root}/${path}/package.json";
+        pkgJsonExists = builtins.pathExists pkgJsonPath;
+        pkgJson = if pkgJsonExists then builtins.fromJSON (builtins.readFile pkgJsonPath) else {};
+        name = pkgJson.name or null;
+      in
+      if name != null then { inherit name; value = path; } else null
+    ) packages)
+  );
+
+  # Get injected dep paths for a package by parsing its package.json
+  # Returns list of paths (e.g., ["packages/@overeng/tui-react"])
+  getInjectedDeps = path:
+    let
+      pkgJsonPath = "${config.devenv.root}/${path}/package.json";
+      pkgJsonExists = builtins.pathExists pkgJsonPath;
+      pkgJson = if pkgJsonExists then builtins.fromJSON (builtins.readFile pkgJsonPath) else {};
+      depsMeta = pkgJson.dependenciesMeta or {};
+      # Get names with injected: true
+      injectedNames = builtins.filter
+        (name: (depsMeta.${name}.injected or false) == true)
+        (builtins.attrNames depsMeta);
+      # Map to paths, filtering out packages not in our list
+      injectedPaths = builtins.filter (p: p != null)
+        (map (name: packageNameToPath.${name} or null) injectedNames);
+    in
+    injectedPaths;
+
+  # Build list of {path, name, prevName, injected} for sequential chaining
   packagesWithPrev = lib.imap0 (i: path: {
     inherit path;
     name = toName path;
     prevName = if i == 0 then null else toName (builtins.elemAt packages (i - 1));
+    # Auto-detect injected deps from package.json
+    injected = getInjectedDeps path;
   }) packages;
+
+  # =============================================================================
+  # Shared hash computation scripts
+  # =============================================================================
+  #
+  # Hash function that works on both Linux (sha256sum) and macOS (shasum)
+  computeHashFn = ''
+    compute_hash() {
+      if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum | awk '{print $1}'
+      else
+        shasum -a 256 | awk '{print $1}'
+      fi
+    }
+  '';
+
+  # Generate cache hash computation script for a package
+  # Takes the list of injected dep paths and a variable name for the result
+  mkComputeCacheHash = { injected, resultVar }: ''
+    if [ -f pnpm-lock.yaml ]; then
+      base_hash="$(cat package.json pnpm-lock.yaml | compute_hash)"
+    else
+      base_hash="$(cat package.json | compute_hash)"
+    fi
+    ${if injected == [] then ''
+      ${resultVar}="$base_hash"
+    '' else ''
+      injected_hash="$(find ${lib.concatMapStringsSep " " (dep: "\"$DEVENV_ROOT/${dep}/src\"") injected} -type f \( -name "*.ts" -o -name "*.tsx" \) -exec cat {} + 2>/dev/null | compute_hash)"
+      ${resultVar}="$base_hash $injected_hash"
+    ''}
+  '';
 
   # Install tasks run sequentially to avoid race conditions from overlapping workspaces.
   # Each task depends on the previous one completing.
   # Note: pnpm-workspace.yaml files are committed, so fresh clones can install without genie:run.
-  mkInstallTask = { path, name, prevName }: {
+  mkInstallTask = { path, name, prevName, injected }: {
     "pnpm:install:${name}" = {
       description = "Install dependencies for ${name}";
       # NOTE: Use --config.confirmModulesPurge=false to avoid TTY prompts in non-interactive mode.
@@ -102,25 +186,14 @@ let
           echo "[pnpm] Fix: run 'dt pnpm:update' to regenerate lockfiles." >&2
         fi
 
-        if [ -n "${CI:-}" ]; then
+        if [ -n "''${CI:-}" ]; then
           pnpm install --config.confirmModulesPurge=false --frozen-lockfile
         else
           pnpm install --config.confirmModulesPurge=false
         fi
 
-        if command -v sha256sum >/dev/null 2>&1; then
-          hash_cmd="sha256sum"
-        else
-          hash_cmd="shasum -a 256"
-        fi
-
-        if [ -f pnpm-lock.yaml ]; then
-          hash_input="package.json pnpm-lock.yaml"
-        else
-          hash_input="package.json"
-        fi
-        current_hash="$(cat $hash_input | $hash_cmd | awk '{print $1}')"
-        cache_value="$current_hash"
+        ${computeHashFn}
+        ${mkComputeCacheHash { inherit injected; resultVar = "cache_value"; }}
         ${cache.writeCacheFile ''"$hash_file"''}
       '';
       cwd = path;
@@ -136,17 +209,8 @@ let
         if [ ! -f "$hash_file" ]; then
           exit 1
         fi
-        if command -v sha256sum >/dev/null 2>&1; then
-          hash_cmd="sha256sum"
-        else
-          hash_cmd="shasum -a 256"
-        fi
-          if [ -f pnpm-lock.yaml ]; then
-            hash_input="package.json pnpm-lock.yaml"
-          else
-            hash_input="package.json"
-          fi
-          current_hash="$(cat $hash_input | $hash_cmd | awk '{print $1}')"
+        ${computeHashFn}
+        ${mkComputeCacheHash { inherit injected; resultVar = "current_hash"; }}
         stored_hash="$(cat "$hash_file")"
         if [ "$current_hash" != "$stored_hash" ]; then
           exit 1

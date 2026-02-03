@@ -106,6 +106,7 @@ in
     (taskModules.clean { packages = allPackages; })
     # Per-package pnpm install tasks
     # NOTE: Using pnpm temporarily. See: context/workarounds/bun-issues.md
+    # Injected deps (for React singleton) are auto-detected from package.json.
     (taskModules.pnpm { packages = allPackages; })
     # Self-contained test tasks: each package uses its own vitest from node_modules
     (taskModules.test {
