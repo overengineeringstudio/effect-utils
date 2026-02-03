@@ -114,7 +114,7 @@ bd config set linear.team_id "your-team-uuid"
 ### Creating Issues
 
 ```bash
-# Run from overeng-beads directory
+# Run from overeng-beads directory (must be a member of current megarepo)
 cd "$DEVENV_ROOT/repos/overeng-beads-public"
 
 # Create issue with package label
@@ -123,6 +123,8 @@ bd create "Implement feature X" -p 1 -t feature -l pkg:effect-utils
 # Check ready work
 bd ready
 ```
+
+> **Note:** `$DEVENV_ROOT` points to the current devenv project root. If working in a nested megarepo, ensure `overeng-beads-public` is a member of that megarepo, or navigate to the outer megarepo first.
 
 ### Referencing Issues in Commits
 
@@ -138,7 +140,7 @@ The git hook will automatically add a comment to the beads issue.
 ### Linear Sync
 
 ```bash
-# Run from overeng-beads directory
+# Run from overeng-beads directory (must be a member of current megarepo)
 cd "$DEVENV_ROOT/repos/overeng-beads-public"
 
 # Pull from Linear (import team changes)
