@@ -34,11 +34,13 @@ This adds a `git-hooks:ensure` task that runs after `devenv:git-hooks:install` a
 
 ### DEVENV-02: Task tracing lacks OTLP export and observability features
 
-**Issue:** No upstream issue exists yet — feature gap relative to R10 requirements
+**Issue:** https://github.com/cachix/devenv/issues/2415 (OTEL support feature request)
 
 **Related issues:**
 - https://github.com/cachix/devenv/issues/1457 (Task Server Protocol - proposes JSON-RPC with timestamps)
-- https://github.com/cachix/devenv/pull/2239 (Added `--trace-format json` in v1.11)
+- https://github.com/cachix/devenv/pull/2239 (Added `--trace-format` option)
+
+**Note:** The `--trace-format json` option (added in PR #2239) currently outputs empty `{}` in devenv 2.0.0. All three formats (json, full, pretty) produce identical TUI-style output. This appears to be a bug or incomplete implementation.
 
 **Affected repos:** All repos using devenv tasks that need CI observability
 
@@ -49,16 +51,23 @@ This adds a `git-hooks:ensure` task that runs after `devenv:git-hooks:install` a
 - No historical metrics tracking across CI runs
 - Dependency graphs not visualizable beyond what's declared in nix
 
-**Current capabilities (devenv 1.11+):**
+**Current capabilities (devenv 2.0.0):**
 
 ```bash
-# Available trace formats
-devenv tasks run <task> --trace-format full   # verbose structured logs (default)
-devenv tasks run <task> --trace-format json   # JSON output for machine consumption
-devenv tasks run <task> --trace-format pretty # human-readable format
+# Verbose mode provides useful trace info
+devenv tasks run <task> --verbose --no-tui
+
+# Output includes:
+# - Flake input fingerprints
+# - Eval/build cache hit status
+# - Per-task: "Running task 'X' with exec_if_modified: [], status: false"
+# - Per-task timing: "Succeeded X (1.79s)"
+# - File state tracking paths
+
+# Note: --trace-format {json,full,pretty} all output empty "{}" - appears broken
 ```
 
-The `--trace-format json` option provides per-task timing and stdout/stderr capture, but lacks:
+The `--verbose` flag provides per-task timing visible in TUI output, but lacks:
 - OTLP/OpenTelemetry export
 - Critical path analysis
 - Summary statistics
@@ -68,16 +77,16 @@ The `--trace-format json` option provides per-task timing and stdout/stderr capt
 
 | Requirement | Status | Notes |
 |-------------|--------|-------|
-| (a) Per-task timing | ⚠️ Partial | Available in TUI and JSON format |
+| (a) Per-task timing | ⚠️ Partial | Visible in `--verbose` text output only |
 | (b) Dependency visualization | ⚠️ Partial | Declared in nix, no graph analysis tool |
-| (c) Stdout/stderr capture | ✅ Available | Captured in JSON format |
-| (d) Structured export (JSON/OTLP) | ⚠️ Partial | JSON exists, OTLP missing |
+| (c) Stdout/stderr capture | ⚠️ Partial | Available with `--show-output`, not structured |
+| (d) Structured export (JSON/OTLP) | ❌ Broken | `--trace-format json` outputs empty `{}` |
 | (e) Summary statistics | ❌ Missing | No parallelism efficiency, cache hit rates |
 | (f) Metrics over time | ❌ Missing | No cross-run tracking |
 
-**Workaround:** For CI observability, parse `--trace-format json` output and forward to your observability platform manually. Consider filing an upstream feature request for native OTLP support.
+**Workaround:** For CI observability, parse the `--verbose --no-tui` text output and forward to your observability platform manually. The `--trace-format json` option is currently broken.
 
-**Potential upstream contribution:** Add OTLP exporter to devenv task runner, building on the existing JSON trace infrastructure.
+**Potential upstream contribution:** Issue #2415 proposes adding OTLP export using `tracing-opentelemetry` crate. The implementation would convert activity events into OTEL spans with attributes like activity kind, derivation path, build phase, and outcome.
 
 ---
 
