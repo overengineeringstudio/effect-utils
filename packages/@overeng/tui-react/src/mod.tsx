@@ -340,6 +340,8 @@ export {
   outputOption,
   outputModeLayer,
   resolveOutputMode,
+  runTuiMain,
   OUTPUT_MODE_VALUES,
   type OutputModeValue,
+  type RunTuiMainOptions,
 } from './effect/cli.tsx'

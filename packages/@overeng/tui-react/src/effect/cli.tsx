@@ -24,9 +24,9 @@
  */
 
 import { Options } from '@effect/cli'
-import type { Layer } from 'effect'
+import { Cause, Effect, Layer, Logger } from 'effect'
 
-import type { OutputModeTag } from './OutputMode.tsx'
+import { OutputModeTag } from './OutputMode.tsx'
 import {
   type OutputMode,
   tty,
@@ -39,6 +39,7 @@ import {
   ndjson,
   detectOutputMode,
   layer,
+  isJson,
 } from './OutputMode.tsx'
 
 // =============================================================================
@@ -119,7 +120,22 @@ const modeMap: Record<Exclude<OutputModeValue, 'auto'>, OutputMode> = {
 }
 
 /**
+ * Create a logger layer that writes to stderr.
+ *
+ * This is used in JSON modes to ensure all log output goes to stderr,
+ * keeping stdout clean for JSON data only.
+ */
+const stderrLoggerLayer: Layer.Layer<never> = Logger.replace(
+  Logger.defaultLogger,
+  Logger.prettyLogger().pipe(Logger.withConsoleError),
+)
+
+/**
  * Create an OutputMode layer from the `--output` flag value.
+ *
+ * For JSON modes (`json`, `ndjson`), this also configures the logger to write
+ * to stderr instead of stdout, ensuring stdout contains only JSON data.
+ * This follows the principle: "stdout = data, stderr = diagnostics".
  *
  * @example
  * ```typescript
@@ -130,16 +146,22 @@ const modeMap: Record<Exclude<OutputModeValue, 'auto'>, OutputMode> = {
  * @example
  * ```typescript
  * // Explicit mode:
- * outputModeLayer('json')  // JSON output
- * outputModeLayer('tty')   // Animated terminal
+ * outputModeLayer('json')  // JSON output (logs go to stderr)
+ * outputModeLayer('tty')   // Animated terminal (logs go to stdout)
  * outputModeLayer('auto')  // Auto-detect from environment
  * ```
  */
 export const outputModeLayer = (value: OutputModeValue): Layer.Layer<OutputModeTag> => {
-  if (value === 'auto') {
-    return layer(detectOutputMode())
+  const mode = value === 'auto' ? detectOutputMode() : modeMap[value]
+  const outputLayer = layer(mode)
+
+  // For JSON modes, configure logger to write to stderr
+  // This keeps stdout clean for JSON data only
+  if (isJson(mode)) {
+    return Layer.merge(outputLayer, stderrLoggerLayer)
   }
-  return layer(modeMap[value])
+
+  return outputLayer
 }
 
 /**
@@ -161,3 +183,121 @@ export const resolveOutputMode = (value: OutputModeValue): OutputMode => {
   }
   return modeMap[value]
 }
+
+// =============================================================================
+// CLI Main Runner
+// =============================================================================
+
+/**
+ * Options for `runTuiMain`.
+ */
+export interface RunTuiMainOptions {
+  /**
+   * Filter function to determine which errors should be logged to stderr.
+   * Return `true` to log the error, `false` to suppress it.
+   *
+   * This is useful for errors that are already represented in the command's
+   * JSON output (like `SyncFailedError` in megarepo) - you can suppress the
+   * stderr logging while still preserving the non-zero exit code.
+   *
+   * @default All errors are logged
+   *
+   * @example
+   * ```typescript
+   * runTuiMain(NodeRuntime)(program, {
+   *   shouldLogError: (error) => error._tag !== 'SyncFailedError'
+   * })
+   * ```
+   */
+  readonly shouldLogError?: (error: unknown) => boolean
+}
+
+/**
+ * Run a TUI CLI application as the main entry point.
+ *
+ * This helper wraps `NodeRuntime.runMain` with proper error handling for TUI apps:
+ * - Errors are written to stderr (not stdout) to avoid polluting JSON output
+ * - Uses `disableErrorReporting` to prevent `runMain` from logging to stdout
+ * - Preserves exit codes from errors
+ * - Optionally filter which errors get logged via `shouldLogError`
+ *
+ * **Important:** This function requires `@effect/platform-node` to be available.
+ * Import `NodeRuntime` from there and pass it to this function.
+ *
+ * @example
+ * ```typescript
+ * import { NodeRuntime } from '@effect/platform-node'
+ * import { runTuiMain, outputModeLayer } from '@overeng/tui-react'
+ *
+ * const program = Cli.Command.run(myCommand, { name: 'my-cli', version: '1.0.0' })(process.argv)
+ *   .pipe(Effect.provide(outputModeLayer('auto')))
+ *
+ * runTuiMain(NodeRuntime)(program)
+ * ```
+ *
+ * @example
+ * ```typescript
+ * // Skip logging for errors already in JSON output:
+ * runTuiMain(NodeRuntime)(program, {
+ *   shouldLogError: (error) =>
+ *     !(error && typeof error === 'object' && '_tag' in error && error._tag === 'SyncFailedError')
+ * })
+ * ```
+ *
+ * @example
+ * ```typescript
+ * // Full CLI entry point pattern:
+ * import { NodeRuntime, NodeContext } from '@effect/platform-node'
+ * import { Effect, Layer } from 'effect'
+ * import { Cwd, myCommand } from './cli/mod.ts'
+ * import { runTuiMain, outputModeLayer } from '@overeng/tui-react'
+ *
+ * const baseLayer = Layer.mergeAll(NodeContext.layer, Cwd.live)
+ *
+ * const program = Cli.Command.run(myCommand, { name: 'my-cli', version: '1.0.0' })(process.argv)
+ *   .pipe(Effect.scoped, Effect.provide(baseLayer))
+ *
+ * runTuiMain(NodeRuntime)(program)
+ * ```
+ */
+export const runTuiMain =
+  (NodeRuntime: {
+    readonly runMain: (options?: {
+      readonly disableErrorReporting?: boolean
+      readonly disablePrettyLogger?: boolean
+    }) => <E, A>(effect: Effect.Effect<A, E>) => void
+  }) =>
+  <E, A>(effect: Effect.Effect<A, E>, options?: RunTuiMainOptions): void => {
+    const shouldLogError = options?.shouldLogError ?? (() => true)
+
+    effect
+      .pipe(
+        // Write errors to stderr before failing
+        // This ensures errors are visible even with disableErrorReporting
+        Effect.tapErrorCause((cause) =>
+          Effect.sync(() => {
+            // Check if any failure should be logged
+            const failures = Cause.failures(cause)
+            const hasLoggableError = failures.pipe(
+              (chunk) => {
+                for (const error of chunk) {
+                  if (shouldLogError(error)) return true
+                }
+                return false
+              },
+            )
+
+            if (hasLoggableError) {
+              const pretty = Cause.pretty(cause, { renderErrorCause: true })
+              process.stderr.write(pretty + '\n')
+            }
+          }),
+        ),
+        // Disable runMain's built-in error reporting to prevent stdout pollution
+        // We handle error reporting ourselves above
+        NodeRuntime.runMain({
+          disableErrorReporting: true,
+          disablePrettyLogger: true,
+        }),
+      )
+  }
