@@ -1,22 +1,12 @@
-# Git hooks fix module - workaround for cachix/devenv#2455
+# DEPRECATED: This module is no longer needed as of devenv 2.0.0+
 #
-# The devenv git-hooks integration has a bug where the install script uses
-# the .pre-commit-config.yaml symlink as a proxy for "hooks are installed".
-# However, devenv:files creates this symlink BEFORE devenv:git-hooks:install
-# runs, causing the install script to skip actual hook installation.
+# The upstream issue https://github.com/cachix/devenv/issues/2455 was fixed
+# in commit 59bdb8c (2026-02-03). If you're using devenv 2.0.0 or later,
+# you can safely remove this import from your devenv.nix.
 #
-# This module adds a task that runs AFTER devenv:git-hooks:install and
-# directly installs any missing hooks using prek.
+# This module is kept for backwards compatibility with older devenv versions.
 #
-# Issue: https://github.com/cachix/devenv/issues/2455
-# Repro: https://github.com/schickling-repros/devenv-git-hooks-not-installed
-#
-# Usage in devenv.nix:
-#   imports = [
-#     inputs.effect-utils.devenvModules.tasks.git-hooks-fix
-#   ];
-#
-# This module should be removed once the upstream issue is fixed.
+# Original issue: https://github.com/cachix/devenv/issues/2455
 { config, lib, pkgs, ... }:
 
 let
