@@ -1703,6 +1703,7 @@ describe('sync worktree ref mismatch detection', () => {
         if (worktreeParent !== undefined) {
           yield* fs.makeDirectory(worktreeParent, { recursive: true })
         }
+        yield* runGitCommand(bareRepoPath, 'branch', '-f', 'main', 'HEAD')
         yield* runGitCommand(
           bareRepoPath,
           'worktree',
@@ -1845,6 +1846,7 @@ describe('sync worktree ref mismatch detection', () => {
         if (worktreeParent !== undefined) {
           yield* fs.makeDirectory(worktreeParent, { recursive: true })
         }
+        yield* runGitCommand(bareRepoPath, 'branch', '-f', 'main', 'HEAD')
         yield* runGitCommand(
           bareRepoPath,
           'worktree',
