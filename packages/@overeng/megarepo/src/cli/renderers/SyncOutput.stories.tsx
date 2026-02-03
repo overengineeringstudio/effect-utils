@@ -375,7 +375,6 @@ export const WithGenerators: Story = {
         generatedFiles: [
           'flake.nix',
           'flake.lock',
-          '.envrc.generated.megarepo',
           '.vscode/megarepo.code-workspace',
         ],
       })}
@@ -429,7 +428,7 @@ export const FirstSync: Story = {
           { name: 'dotfiles', status: 'cloned', ref: 'main' },
         ],
         members: ['effect', 'effect-utils', 'livestore', 'dotfiles'],
-        generatedFiles: ['flake.nix', '.envrc.generated.megarepo'],
+        generatedFiles: ['flake.nix'],
       })}
       height={args.height}
       autoRun={false}
