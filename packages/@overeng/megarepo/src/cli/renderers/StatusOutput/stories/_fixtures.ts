@@ -9,6 +9,12 @@
 import type { StatusState, MemberStatus } from '../mod.ts'
 
 // =============================================================================
+// State Options
+// =============================================================================
+
+type StateOptions = { all?: boolean }
+
+// =============================================================================
 // Example Data
 // =============================================================================
 
@@ -119,27 +125,27 @@ const exampleMembersClean: MemberStatus[] = [
 // Basic States
 // =============================================================================
 
-export const createDefaultState = (): typeof StatusState.Type => ({
+export const createDefaultState = (options?: StateOptions): typeof StatusState.Type => ({
   name: 'my-workspace',
   root: '/Users/dev/workspace',
   syncNeeded: true,
   syncReasons: ["Member 'livestore' symlink missing"],
   members: exampleMembers,
-  all: false,
+  all: options?.all ?? false,
 })
 
-export const createCleanState = (): typeof StatusState.Type => ({
+export const createCleanState = (options?: StateOptions): typeof StatusState.Type => ({
   name: 'my-workspace',
   root: '/Users/dev/workspace',
   syncNeeded: false,
   syncReasons: [],
   members: exampleMembersClean,
-  all: false,
+  all: options?.all ?? false,
   lastSyncTime: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
 })
 
-export const createSingleMemberState = (): typeof StatusState.Type => ({
-  all: false,
+export const createSingleMemberState = (options?: StateOptions): typeof StatusState.Type => ({
+  all: options?.all ?? false,
   name: 'minimal',
   root: '/Users/dev/minimal',
   syncNeeded: false,
@@ -166,8 +172,8 @@ export const createSingleMemberState = (): typeof StatusState.Type => ({
   lastSyncTime: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
 })
 
-export const createEmptyWorkspaceState = (): typeof StatusState.Type => ({
-  all: false,
+export const createEmptyWorkspaceState = (options?: StateOptions): typeof StatusState.Type => ({
+  all: options?.all ?? false,
   name: 'empty-workspace',
   root: '/Users/dev/empty-workspace',
   syncNeeded: false,
@@ -179,8 +185,8 @@ export const createEmptyWorkspaceState = (): typeof StatusState.Type => ({
 // Lock File Issues
 // =============================================================================
 
-export const createLockMissingState = (): typeof StatusState.Type => ({
-  all: false,
+export const createLockMissingState = (options?: StateOptions): typeof StatusState.Type => ({
+  all: options?.all ?? false,
   name: 'my-workspace',
   root: '/Users/dev/workspace',
   syncNeeded: true,
@@ -193,8 +199,8 @@ export const createLockMissingState = (): typeof StatusState.Type => ({
   },
 })
 
-export const createLockStaleState = (): typeof StatusState.Type => ({
-  all: false,
+export const createLockStaleState = (options?: StateOptions): typeof StatusState.Type => ({
+  all: options?.all ?? false,
   name: 'my-workspace',
   root: '/Users/dev/workspace',
   syncNeeded: true,
@@ -211,8 +217,8 @@ export const createLockStaleState = (): typeof StatusState.Type => ({
   },
 })
 
-export const createStaleLockState = (): typeof StatusState.Type => ({
-  all: false,
+export const createStaleLockState = (options?: StateOptions): typeof StatusState.Type => ({
+  all: options?.all ?? false,
   name: 'my-megarepo',
   root: '/Users/dev/my-megarepo',
   syncNeeded: true,
@@ -266,8 +272,8 @@ export const createStaleLockState = (): typeof StatusState.Type => ({
   },
 })
 
-export const createCommitDriftState = (): typeof StatusState.Type => ({
-  all: false,
+export const createCommitDriftState = (options?: StateOptions): typeof StatusState.Type => ({
+  all: options?.all ?? false,
   name: 'my-megarepo',
   root: '/Users/dev/my-megarepo',
   syncNeeded: false,
@@ -339,8 +345,8 @@ export const createCommitDriftState = (): typeof StatusState.Type => ({
 // Ref Tracking Issues
 // =============================================================================
 
-export const createSymlinkDriftState = (): typeof StatusState.Type => ({
-  all: false,
+export const createSymlinkDriftState = (options?: StateOptions): typeof StatusState.Type => ({
+  all: options?.all ?? false,
   name: 'my-megarepo',
   root: '/Users/dev/my-megarepo',
   syncNeeded: true,
@@ -412,8 +418,10 @@ export const createSymlinkDriftState = (): typeof StatusState.Type => ({
   },
 })
 
-export const createMultipleSymlinkDriftState = (): typeof StatusState.Type => ({
-  all: false,
+export const createMultipleSymlinkDriftState = (
+  options?: StateOptions,
+): typeof StatusState.Type => ({
+  all: options?.all ?? false,
   name: 'my-megarepo',
   root: '/Users/dev/my-megarepo',
   syncNeeded: true,
@@ -474,8 +482,8 @@ export const createMultipleSymlinkDriftState = (): typeof StatusState.Type => ({
   },
 })
 
-export const createRefMismatchState = (): typeof StatusState.Type => ({
-  all: false,
+export const createRefMismatchState = (options?: StateOptions): typeof StatusState.Type => ({
+  all: options?.all ?? false,
   name: 'my-megarepo',
   root: '/Users/dev/my-megarepo',
   syncNeeded: true,
@@ -552,8 +560,8 @@ export const createRefMismatchState = (): typeof StatusState.Type => ({
 // Working Tree Issues
 // =============================================================================
 
-export const createAllDirtyState = (): typeof StatusState.Type => ({
-  all: false,
+export const createAllDirtyState = (options?: StateOptions): typeof StatusState.Type => ({
+  all: options?.all ?? false,
   name: 'my-workspace',
   root: '/Users/dev/workspace',
   syncNeeded: false,
@@ -613,8 +621,8 @@ export const createAllDirtyState = (): typeof StatusState.Type => ({
   ],
 })
 
-export const createAllNotSyncedState = (): typeof StatusState.Type => ({
-  all: false,
+export const createAllNotSyncedState = (options?: StateOptions): typeof StatusState.Type => ({
+  all: options?.all ?? false,
   name: 'new-workspace',
   root: '/Users/dev/new-workspace',
   syncNeeded: true,
@@ -660,8 +668,8 @@ export const createAllNotSyncedState = (): typeof StatusState.Type => ({
   ],
 })
 
-export const createWarningsState = (): typeof StatusState.Type => ({
-  all: false,
+export const createWarningsState = (options?: StateOptions): typeof StatusState.Type => ({
+  all: options?.all ?? false,
   name: 'my-workspace',
   root: '/Users/dev/workspace',
   syncNeeded: true,
@@ -719,8 +727,8 @@ export const createWarningsState = (): typeof StatusState.Type => ({
 // Special Cases
 // =============================================================================
 
-export const createPinnedMembersState = (): typeof StatusState.Type => ({
-  all: false,
+export const createPinnedMembersState = (options?: StateOptions): typeof StatusState.Type => ({
+  all: options?.all ?? false,
   name: 'my-workspace',
   root: '/Users/dev/workspace',
   syncNeeded: false,
@@ -763,8 +771,8 @@ export const createPinnedMembersState = (): typeof StatusState.Type => ({
   ],
 })
 
-export const createLocalPathMembersState = (): typeof StatusState.Type => ({
-  all: false,
+export const createLocalPathMembersState = (options?: StateOptions): typeof StatusState.Type => ({
+  all: options?.all ?? false,
   name: 'local-dev',
   root: '/Users/dev/local-dev',
   syncNeeded: false,
@@ -807,8 +815,8 @@ export const createLocalPathMembersState = (): typeof StatusState.Type => ({
   ],
 })
 
-export const createManyMembersState = (): typeof StatusState.Type => ({
-  all: false,
+export const createManyMembersState = (options?: StateOptions): typeof StatusState.Type => ({
+  all: options?.all ?? false,
   name: 'large-workspace',
   root: '/Users/dev/large-workspace',
   syncNeeded: false,
@@ -837,8 +845,8 @@ export const createManyMembersState = (): typeof StatusState.Type => ({
 // Complex / Nested
 // =============================================================================
 
-export const createNestedMegareposState = (): typeof StatusState.Type => ({
-  all: true,
+export const createNestedMegareposState = (options?: StateOptions): typeof StatusState.Type => ({
+  all: options?.all ?? true,
   name: 'mr-all-blue',
   root: '/Users/dev/mr-all-blue',
   syncNeeded: false,
@@ -934,8 +942,8 @@ export const createNestedMegareposState = (): typeof StatusState.Type => ({
   ],
 })
 
-export const createCurrentLocationState = (): typeof StatusState.Type => ({
-  all: true,
+export const createCurrentLocationState = (options?: StateOptions): typeof StatusState.Type => ({
+  all: options?.all ?? true,
   name: 'mr-all-blue',
   root: '/Users/dev/mr-all-blue',
   syncNeeded: false,
@@ -997,8 +1005,8 @@ export const createCurrentLocationState = (): typeof StatusState.Type => ({
   currentMemberPath: ['effect-utils', 'tui-react'],
 })
 
-export const createDeeplyNestedState = (): typeof StatusState.Type => ({
-  all: true,
+export const createDeeplyNestedState = (options?: StateOptions): typeof StatusState.Type => ({
+  all: options?.all ?? true,
   name: 'deep-workspace',
   root: '/Users/dev/deep-workspace',
   syncNeeded: false,
@@ -1078,8 +1086,8 @@ export const createDeeplyNestedState = (): typeof StatusState.Type => ({
   currentMemberPath: ['level-1', 'level-2a', 'level-3'],
 })
 
-export const createMultipleProblemsState = (): typeof StatusState.Type => ({
-  all: false,
+export const createMultipleProblemsState = (options?: StateOptions): typeof StatusState.Type => ({
+  all: options?.all ?? false,
   name: 'problematic-workspace',
   root: '/Users/dev/problematic-workspace',
   syncNeeded: true,

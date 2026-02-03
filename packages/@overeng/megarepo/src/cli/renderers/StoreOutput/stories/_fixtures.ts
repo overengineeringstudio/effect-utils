@@ -13,6 +13,9 @@ import type {
   StoreWorktreeStatus,
 } from '../mod.ts'
 
+// Re-export types for use in stories
+export type { StoreGcResult, StoreGcWarning }
+
 // =============================================================================
 // Add Command - State Factories
 // =============================================================================
@@ -64,6 +67,75 @@ export const createFetchState = (opts: {
 })
 
 // =============================================================================
+// Fetch Command - Timeline Factory for Animated Stories
+// =============================================================================
+
+type FetchTimelineAction = {
+  _tag: 'SetFetch'
+  basePath: string
+  results: StoreFetchResult[]
+  elapsedMs: number
+}
+
+/**
+ * Creates a timeline that animates fetching each repository progressively.
+ * Each repository is fetched one at a time with a delay between them.
+ */
+export const createFetchTimeline = (finalState: {
+  results: StoreFetchResult[]
+  elapsedMs: number
+}): Array<{ at: number; action: FetchTimelineAction }> => {
+  const { results, elapsedMs } = finalState
+
+  if (results.length === 0) {
+    return [
+      {
+        at: 0,
+        action: {
+          _tag: 'SetFetch',
+          basePath: '/Users/dev/.megarepo',
+          results: [],
+          elapsedMs,
+        },
+      },
+    ]
+  }
+
+  const timeline: Array<{ at: number; action: FetchTimelineAction }> = []
+  const stepDuration = 600
+  const elapsedPerStep = elapsedMs / results.length
+
+  // Start with empty results
+  timeline.push({
+    at: 0,
+    action: {
+      _tag: 'SetFetch',
+      basePath: '/Users/dev/.megarepo',
+      results: [],
+      elapsedMs: 0,
+    },
+  })
+
+  // Add each result progressively
+  for (let i = 0; i < results.length; i++) {
+    const currentResults = results.slice(0, i + 1)
+    const currentElapsed = Math.round(elapsedPerStep * (i + 1))
+
+    timeline.push({
+      at: (i + 1) * stepDuration,
+      action: {
+        _tag: 'SetFetch',
+        basePath: '/Users/dev/.megarepo',
+        results: currentResults,
+        elapsedMs: i === results.length - 1 ? elapsedMs : currentElapsed,
+      },
+    })
+  }
+
+  return timeline
+}
+
+// =============================================================================
 // GC Command - Example Data & State Factory
 // =============================================================================
 
@@ -91,6 +163,8 @@ export const exampleGcResults: StoreGcResult[] = [
 export const createGcState = (opts: {
   results: StoreGcResult[]
   dryRun: boolean
+  force?: boolean
+  all?: boolean
   warning?: StoreGcWarning
   showForceHint: boolean
 }): StoreStateType => ({
@@ -101,6 +175,92 @@ export const createGcState = (opts: {
   warning: opts.warning,
   showForceHint: opts.showForceHint,
 })
+
+// =============================================================================
+// GC Command - Timeline Factory for Animated Stories
+// =============================================================================
+
+type GcTimelineAction = {
+  _tag: 'SetGc'
+  basePath: string
+  results: StoreGcResult[]
+  dryRun: boolean
+  warning?: StoreGcWarning
+  showForceHint: boolean
+}
+
+const makeGcAction = (opts: {
+  dryRun: boolean
+  results: StoreGcResult[]
+  showForceHint: boolean
+  warning?: StoreGcWarning
+}): GcTimelineAction => {
+  const action: GcTimelineAction = {
+    _tag: 'SetGc',
+    basePath: '/Users/dev/.megarepo',
+    results: opts.results,
+    dryRun: opts.dryRun,
+    showForceHint: opts.showForceHint,
+  }
+  if (opts.warning !== undefined) {
+    action.warning = opts.warning
+  }
+  return action
+}
+
+/**
+ * Creates a timeline that animates through GC results appearing progressively.
+ * This ensures interactive mode shows the same end result as static mode.
+ */
+export const createGcTimeline = (config: {
+  results: StoreGcResult[]
+  dryRun: boolean
+  force: boolean
+  all: boolean
+  warning?: StoreGcWarning
+  showForceHint: boolean
+}): Array<{ at: number; action: GcTimelineAction }> => {
+  const { results, dryRun, warning, showForceHint } = config
+
+  if (results.length === 0) {
+    // No results - just show complete state
+    return [
+      {
+        at: 0,
+        action: makeGcAction({
+          dryRun,
+          results: [],
+          showForceHint,
+          ...(warning !== undefined ? { warning } : {}),
+        }),
+      },
+    ]
+  }
+
+  const timeline: Array<{ at: number; action: GcTimelineAction }> = []
+  const stepDuration = 600
+
+  // Start with empty results
+  timeline.push({ at: 0, action: makeGcAction({ dryRun, results: [], showForceHint: false }) })
+
+  // Add each result progressively
+  for (let i = 0; i < results.length; i++) {
+    const currentResults = results.slice(0, i + 1)
+    const isLast = i === results.length - 1
+
+    timeline.push({
+      at: (i + 1) * stepDuration,
+      action: makeGcAction({
+        dryRun,
+        results: currentResults,
+        showForceHint: isLast ? showForceHint : false,
+        ...(isLast && warning !== undefined ? { warning } : {}),
+      }),
+    })
+  }
+
+  return timeline
+}
 
 // =============================================================================
 // List Command - Example Data & State Factory

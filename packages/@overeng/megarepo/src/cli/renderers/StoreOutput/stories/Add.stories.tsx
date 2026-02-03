@@ -5,10 +5,26 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
+import type { OutputTab } from '@overeng/tui-react/storybook'
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
 import { StoreApp, StoreView } from '../mod.ts'
 import * as fixtures from './_fixtures.ts'
+
+const ALL_TABS: OutputTab[] = [
+  'tty',
+  'alt-screen',
+  'ci',
+  'ci-plain',
+  'pipe',
+  'log',
+  'json',
+  'ndjson',
+]
+
+type StoryArgs = {
+  height: number
+}
 
 // =============================================================================
 // Meta
@@ -25,16 +41,23 @@ export default {
       },
     },
   },
+  args: { height: 400 },
+  argTypes: {
+    height: {
+      description: 'Terminal height in pixels',
+      control: { type: 'range', min: 200, max: 600, step: 50 },
+    },
+  },
 } satisfies Meta
 
-type Story = StoryObj<{ height?: number }>
+type Story = StoryObj<StoryArgs>
 
 // =============================================================================
 // Error Stories
 // =============================================================================
 
 export const InvalidSource: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
@@ -43,12 +66,14 @@ export const InvalidSource: Story = {
         message: "Invalid source: 'not-a-valid-source'",
         source: 'not-a-valid-source',
       })}
+      height={args.height}
+      tabs={ALL_TABS}
     />
   ),
 }
 
 export const LocalPath: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
@@ -56,12 +81,14 @@ export const LocalPath: Story = {
         error: 'local_path',
         message: 'Local paths are not supported. Use a remote URL or owner/repo format.',
       })}
+      height={args.height}
+      tabs={ALL_TABS}
     />
   ),
 }
 
 export const NoUrl: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
@@ -69,6 +96,8 @@ export const NoUrl: Story = {
         error: 'no_url',
         message: 'No URL provided',
       })}
+      height={args.height}
+      tabs={ALL_TABS}
     />
   ),
 }
@@ -78,7 +107,7 @@ export const NoUrl: Story = {
 // =============================================================================
 
 export const SuccessNew: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
@@ -89,12 +118,14 @@ export const SuccessNew: Story = {
         commit: 'abc1234567890',
         path: '/Users/me/.megarepo/store/github.com/effect-ts/effect/refs/main',
       })}
+      height={args.height}
+      tabs={ALL_TABS}
     />
   ),
 }
 
 export const SuccessExisting: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
@@ -105,12 +136,14 @@ export const SuccessExisting: Story = {
         commit: 'abc1234567890',
         path: '/Users/me/.megarepo/store/github.com/effect-ts/effect/refs/main',
       })}
+      height={args.height}
+      tabs={ALL_TABS}
     />
   ),
 }
 
 export const SuccessWithRef: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
@@ -121,12 +154,14 @@ export const SuccessWithRef: Story = {
         commit: 'def456789012',
         path: '/Users/me/.megarepo/store/github.com/effect-ts/effect/refs/feat/new-feature',
       })}
+      height={args.height}
+      tabs={ALL_TABS}
     />
   ),
 }
 
 export const SuccessNoCommit: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
@@ -136,6 +171,8 @@ export const SuccessNoCommit: Story = {
         ref: 'v3.0.0',
         path: '/Users/me/.megarepo/store/github.com/effect-ts/effect/refs/v3.0.0',
       })}
+      height={args.height}
+      tabs={ALL_TABS}
     />
   ),
 }

@@ -5,10 +5,15 @@
  */
 
 import type { AddStateType } from '../mod.ts'
+import type { AddAction } from '../schema.ts'
 
 // =============================================================================
 // State Factories
 // =============================================================================
+
+export const createIdleState = (): AddStateType => ({
+  _tag: 'Idle',
+})
 
 export const createSuccessState = (): AddStateType => ({
   _tag: 'Success',
@@ -58,3 +63,40 @@ export const createErrorAlreadyExistsState = (): AddStateType => ({
   error: 'already_exists',
   message: "Member 'effect' already exists",
 })
+
+// =============================================================================
+// Timeline Factory for Animated Stories
+// =============================================================================
+
+/**
+ * Creates a timeline that animates through adding a member and ends with the provided state.
+ * This ensures interactive mode shows the same end result as static mode.
+ */
+export const createTimeline = (config: {
+  member: string
+  source: string
+  synced: boolean
+  syncStatus?: 'cloned' | 'synced' | 'error'
+}): Array<{ at: number; action: typeof AddAction.Type }> => {
+  const timeline: Array<{ at: number; action: typeof AddAction.Type }> = []
+
+  // Start: idle -> adding
+  timeline.push({
+    at: 0,
+    action: { _tag: 'SetAdding', member: config.member, source: config.source },
+  })
+
+  // Complete: adding -> success
+  timeline.push({
+    at: config.synced ? 1200 : 600,
+    action: {
+      _tag: 'SetSuccess',
+      member: config.member,
+      source: config.source,
+      synced: config.synced,
+      ...(config.synced && config.syncStatus ? { syncStatus: config.syncStatus } : {}),
+    },
+  })
+
+  return timeline
+}

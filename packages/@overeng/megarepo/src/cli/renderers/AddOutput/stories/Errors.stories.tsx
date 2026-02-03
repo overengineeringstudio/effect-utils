@@ -23,6 +23,10 @@ const ALL_TABS: OutputTab[] = [
   'ndjson',
 ]
 
+type StoryArgs = {
+  height: number
+}
+
 export default {
   component: AddView,
   title: 'CLI/Add/Errors',
@@ -34,17 +38,27 @@ export default {
       },
     },
   },
+  args: {
+    height: 400,
+  },
+  argTypes: {
+    height: {
+      description: 'Terminal height in pixels',
+      control: { type: 'range', min: 200, max: 600, step: 50 },
+    },
+  },
 } satisfies Meta
 
-type Story = StoryObj
+type Story = StoryObj<StoryArgs>
 
 /** Error: not inside a megarepo */
 export const ErrorNotInMegarepo: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={AddView}
       app={AddApp}
       initialState={fixtures.createErrorNotInMegarepoState()}
+      height={args.height}
       tabs={ALL_TABS}
     />
   ),
@@ -52,11 +66,12 @@ export const ErrorNotInMegarepo: Story = {
 
 /** Error: invalid repository reference */
 export const ErrorInvalidRepo: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={AddView}
       app={AddApp}
       initialState={fixtures.createErrorInvalidRepoState()}
+      height={args.height}
       tabs={ALL_TABS}
     />
   ),
@@ -64,11 +79,12 @@ export const ErrorInvalidRepo: Story = {
 
 /** Error: member already exists */
 export const ErrorAlreadyExists: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={AddView}
       app={AddApp}
       initialState={fixtures.createErrorAlreadyExistsState()}
+      height={args.height}
       tabs={ALL_TABS}
     />
   ),

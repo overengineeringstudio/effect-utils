@@ -5,10 +5,26 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
+import type { OutputTab } from '@overeng/tui-react/storybook'
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
 import { StoreApp, StoreView } from '../mod.ts'
 import * as fixtures from './_fixtures.ts'
+
+const ALL_TABS: OutputTab[] = [
+  'tty',
+  'alt-screen',
+  'ci',
+  'ci-plain',
+  'pipe',
+  'log',
+  'json',
+  'ndjson',
+]
+
+type StoryArgs = {
+  height: number
+}
 
 // =============================================================================
 // Meta
@@ -26,16 +42,23 @@ export default {
       },
     },
   },
+  args: { height: 400 },
+  argTypes: {
+    height: {
+      description: 'Terminal height in pixels',
+      control: { type: 'range', min: 200, max: 600, step: 50 },
+    },
+  },
 } satisfies Meta
 
-type Story = StoryObj<{ height?: number }>
+type Story = StoryObj<StoryArgs>
 
 // =============================================================================
 // Stories
 // =============================================================================
 
 export const Healthy: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
@@ -44,12 +67,14 @@ export const Healthy: Story = {
         worktreeCount: 2,
         worktrees: fixtures.healthyWorktrees,
       })}
+      height={args.height}
+      tabs={ALL_TABS}
     />
   ),
 }
 
 export const HealthyWithDiskUsage: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
@@ -59,12 +84,14 @@ export const HealthyWithDiskUsage: Story = {
         diskUsage: '2.3 GB',
         worktrees: fixtures.healthyWorktrees,
       })}
+      height={args.height}
+      tabs={ALL_TABS}
     />
   ),
 }
 
 export const MixedIssues: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
@@ -73,12 +100,14 @@ export const MixedIssues: Story = {
         worktreeCount: 6,
         worktrees: fixtures.mixedIssuesWorktrees,
       })}
+      height={args.height}
+      tabs={ALL_TABS}
     />
   ),
 }
 
 export const RefMismatch: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
@@ -114,12 +143,14 @@ export const RefMismatch: Story = {
           },
         ],
       })}
+      height={args.height}
+      tabs={ALL_TABS}
     />
   ),
 }
 
 export const DirtyWorktrees: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
@@ -153,12 +184,14 @@ export const DirtyWorktrees: Story = {
           },
         ],
       })}
+      height={args.height}
+      tabs={ALL_TABS}
     />
   ),
 }
 
 export const OrphanedWorktrees: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
@@ -195,12 +228,14 @@ export const OrphanedWorktrees: Story = {
           },
         ],
       })}
+      height={args.height}
+      tabs={ALL_TABS}
     />
   ),
 }
 
 export const BrokenWorktrees: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
@@ -228,12 +263,14 @@ export const BrokenWorktrees: Story = {
           },
         ],
       })}
+      height={args.height}
+      tabs={ALL_TABS}
     />
   ),
 }
 
 export const AllIssueTypes: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
@@ -287,12 +324,14 @@ export const AllIssueTypes: Story = {
           },
         ],
       })}
+      height={args.height}
+      tabs={ALL_TABS}
     />
   ),
 }
 
 export const Empty: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
@@ -301,12 +340,14 @@ export const Empty: Story = {
         worktreeCount: 0,
         worktrees: [],
       })}
+      height={args.height}
+      tabs={ALL_TABS}
     />
   ),
 }
 
 export const LargeStore: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
@@ -337,6 +378,8 @@ export const LargeStore: Story = {
           },
         ],
       })}
+      height={args.height}
+      tabs={ALL_TABS}
     />
   ),
 }
