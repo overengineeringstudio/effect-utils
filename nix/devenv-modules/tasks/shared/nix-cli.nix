@@ -247,6 +247,44 @@ let
 
     flakeRef="$1"
     name="$2"
+    buildNix="''${3-}"
+    lockfile="''${4-}"
+
+    # Preflight: ensure lockfile/package.json fingerprints match build.nix
+    # This avoids false passes on warmed Nix stores (R5: deterministic checks).
+    if [ -n "$buildNix" ] && [ -n "$lockfile" ] && [ -f "$lockfile" ]; then
+      packageJson="$(dirname "$lockfile")/package.json"
+
+      currentLockfileHash="sha256-$(nix-hash --type sha256 --base64 "$lockfile")"
+      storedLockfileHash=$(grep -oE 'lockfileHash\s*=\s*"sha256-[^"]+"' "$buildNix" | grep -oE 'sha256-[^"]+' | head -1 || echo "")
+
+      if [ -z "$storedLockfileHash" ]; then
+        echo "⚠ $name: no lockfileHash in build.nix, skipping lockfile check"
+      elif [ "$currentLockfileHash" != "$storedLockfileHash" ]; then
+        echo "✗ $name: lockfile changed (run: dt nix:hash:$name)"
+        echo "  stored:  $storedLockfileHash"
+        echo "  current: $currentLockfileHash"
+        exit 1
+      fi
+
+      if [ -f "$packageJson" ]; then
+        tmpDeps=$(mktemp)
+        ${pkgs.jq}/bin/jq -cS '{dependencies, devDependencies, peerDependencies}' "$packageJson" > "$tmpDeps"
+        currentPackageJsonDepsHash="sha256-$(nix-hash --type sha256 --base64 "$tmpDeps")"
+        rm "$tmpDeps"
+
+        storedPackageJsonDepsHash=$(grep -oE 'packageJsonDepsHash\s*=\s*"sha256-[^"]+"' "$buildNix" | grep -oE 'sha256-[^"]+' | head -1 || echo "")
+
+        if [ -z "$storedPackageJsonDepsHash" ]; then
+          echo "⚠ $name: no packageJsonDepsHash in build.nix, skipping deps check"
+        elif [ "$currentPackageJsonDepsHash" != "$storedPackageJsonDepsHash" ]; then
+          echo "✗ $name: package.json deps changed (run: pnpm install && dt nix:hash:$name)"
+          echo "  stored:  $storedPackageJsonDepsHash"
+          echo "  current: $currentPackageJsonDepsHash"
+          exit 1
+        fi
+      fi
+    fi
 
     if output=$(nix build "$flakeRef" --no-link 2>&1); then
       echo "✓ $name: up to date"
@@ -396,7 +434,7 @@ let
   mkCheckTask = pkg: {
     "nix:check:${pkg.name}" = {
       description = "Check if ${pkg.name} hash is stale (full build)";
-      exec = "${checkHashScript} '${pkg.flakeRef}' '${pkg.name}'";
+      exec = "${checkHashScript} '${pkg.flakeRef}' '${pkg.name}' '${pkg.buildNix}' '${pkg.lockfile or ""}'";
       # Depends on full workspace pnpm:install (not per-package).
       # Nix builds stage the entire workspace, so any stale lockfile in any package
       # breaks the build. Per-package install only updates that package's lockfile,
