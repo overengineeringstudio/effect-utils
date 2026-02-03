@@ -2,10 +2,5 @@
   "members": {
     "effect": "effect-ts/effect",
     "overeng-beads-public": "overengineeringstudio/overeng-beads-public"
-  },
-  "generators": {
-    "nix": {
-      "enabled": true
-    }
   }
 }

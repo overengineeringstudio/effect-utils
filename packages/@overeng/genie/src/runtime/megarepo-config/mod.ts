@@ -70,17 +70,8 @@ export type VscodeGeneratorConfig = {
   settings?: Record<string, unknown>
 }
 
-/** Nix generator configuration */
-export type NixGeneratorConfig = {
-  /** Enable/disable the generator (default: false) */
-  enabled?: boolean
-  /** Workspace directory (relative to megarepo root) */
-  workspaceDir?: string
-}
-
 /** All generator configurations */
 export type GeneratorsConfig = {
-  nix?: NixGeneratorConfig
   vscode?: VscodeGeneratorConfig
 }
 
@@ -140,7 +131,6 @@ export type MegarepoConfigArgs = {
  *     'my-lib': '../my-lib',
  *   },
  *   generators: {
- *     nix: { enabled: true },
  *     vscode: { enabled: true, exclude: ['large-repo'] },
  *   },
  * })

@@ -15,7 +15,6 @@ export default megarepoJson({
     'local-lib': '../shared/lib',
   },
   generators: {
-    nix: { enabled: true },
     vscode: { enabled: true, exclude: ['large-repo'] },
   },
 })

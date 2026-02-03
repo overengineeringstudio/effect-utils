@@ -414,7 +414,6 @@ describe('megarepo.json parsing', () => {
         const config: typeof MegarepoConfig.Type = {
           members: { lib: 'owner/lib' },
           generators: {
-            nix: { enabled: true },
             vscode: { enabled: true, exclude: ['large-repo'] },
           },
         }
