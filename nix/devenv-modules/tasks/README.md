@@ -38,7 +38,7 @@ imports = [
 - `bun.nix` - Bun tasks (legacy)
 - `context.nix` - Context directory tasks
 - `lint-genie.nix` - Genie lint tasks
-- `git-hooks-fix.nix` - Workaround for [cachix/git-hooks.nix#685](https://github.com/cachix/git-hooks.nix/issues/685)
+- `git-hooks-fix.nix` - Workaround for [cachix/devenv#2455](https://github.com/cachix/devenv/issues/2455)
 
 ## `local/` - Effect-Utils Specific
 

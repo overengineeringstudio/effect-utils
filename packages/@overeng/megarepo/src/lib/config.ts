@@ -62,8 +62,20 @@ export class VscodeGeneratorConfig extends Schema.Class<VscodeGeneratorConfig>(
    * Primary accent color for the workspace (hex format, e.g. "#372d8e").
    * Auto-generates titleBar, activityBar, and statusBar background colors
    * with white foreground for contrast.
+   *
+   * Note: Prefer using `colorEnvVar` to keep megarepo.json stable across worktrees.
    */
   color: Schema.optional(Schema.String),
+  /**
+   * Environment variable name to read the workspace color from at generation time.
+   * This allows per-worktree colors without changing megarepo.json.
+   *
+   * Example: Set `colorEnvVar: "MEGAREPO_COLOR"` in config, then in .envrc.local:
+   *   export MEGAREPO_COLOR="#372d8e"
+   *
+   * Takes precedence over the `color` field if both are set.
+   */
+  colorEnvVar: Schema.optional(Schema.String),
   /**
    * Raw VSCode workspace settings passthrough.
    * Merged with (and overrides) auto-generated settings.

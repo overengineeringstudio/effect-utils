@@ -220,12 +220,14 @@ export const generateVscodeContent = (options: VscodeGeneratorOptions): string =
     },
   }
 
-  // Apply color shorthand if provided
-  if (vscodeConfig?.color) {
+  // Apply color: prefer env var (if configured) over static color field
+  const colorFromEnv = vscodeConfig?.colorEnvVar ? process.env[vscodeConfig.colorEnvVar] : undefined
+  const color = colorFromEnv ?? vscodeConfig?.color
+  if (color) {
     settings = deepMerge({
       target: settings,
       source: {
-        'workbench.colorCustomizations': generateColorCustomizations(vscodeConfig.color),
+        'workbench.colorCustomizations': generateColorCustomizations(color),
       },
     })
   }

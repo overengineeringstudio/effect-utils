@@ -46,7 +46,13 @@ tasks."verify:full" = { exec = "pnpm test"; };
 
 - R8 - Prefer `status` and `execIfModified` to skip up-to-date work.
 - R9 - Avoid scanning large trees (e.g. `node_modules`) in task globs.
-- R10 - Task performance bottlenecks must be easy to identify (timings/logs/traces, clear task names).
+- R10 - Task execution must produce detailed traces for debugging and performance analysis:
+  - (a) Per-task timing: start time, duration, and end time for each task
+  - (b) Dependency visualization: which tasks blocked on which, critical path identification
+  - (c) Stdout/stderr capture: full output preserved and attributable to specific tasks
+  - (d) Structured output format: traces should be exportable (JSON/OTLP) for external analysis
+  - (e) Summary statistics: total wall time, parallelism efficiency, cache hit rates
+  - (f) Metrics over time: track key metrics (task durations, cache hit rates, total CI time) across runs to identify regressions and trends
 - R11 - Prefer deterministic, principled caching over ad-hoc shortcuts.
 - R12 - Provide a go-to quick check command that runs warm in under 5 seconds.
 - R13 - Maximize CPU utilization through optimal parallelism. When running parallel tasks that each spawn workers (e.g., vitest), configure worker limits to avoid over-subscription (total workers across all tasks should approximate available cores).

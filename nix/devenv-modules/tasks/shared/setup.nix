@@ -174,13 +174,24 @@ let
   # Workaround: devenv exits non-zero if any task in the graph fails, even when
   # the root task succeeds via @complete. We create wrapper tasks that call
   # `devenv tasks run <task> || true` so they always succeed.
+  #
+  # IMPORTANT: The recursion guard (_DEVENV_SETUP_RUNNING) prevents runaway process
+  # spawning. Without it, nested devenv evaluations can cause hundreds of parallel
+  # `devenv print-dev-env` processes, overwhelming the system.
   mkWrapperName = t: "setup:opt:${t}";
   wrappedOptionalTasks = map mkWrapperName setupOptionalTasks;
   wrapperTasks = lib.listToAttrs (map (t: {
     name = mkWrapperName t;
     value = {
       description = "Optional setup: ${t}";
-      exec = "devenv tasks run ${t} || true";
+      exec = ''
+        # Recursion guard: prevent nested devenv from spawning more wrappers
+        if [ -n "''${_DEVENV_SETUP_RUNNING:-}" ]; then
+          exit 0
+        fi
+        export _DEVENV_SETUP_RUNNING=1
+        devenv tasks run ${t} || true
+      '';
     };
   }) setupOptionalTasks);
   allSetupTasks = setupRequiredTasks ++ wrappedOptionalTasks;
