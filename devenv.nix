@@ -98,7 +98,7 @@ in
     # Playwright browser drivers and environment setup
     inputs.playwright.devenvModules.default
     # Shared task modules
-    # Workaround for cachix/git-hooks.nix#685 - ensures hooks are actually installed
+    # Workaround for cachix/devenv#2455 - ensures hooks are actually installed
     ./nix/devenv-modules/tasks/shared/git-hooks-fix.nix
     taskModules.genie
     (taskModules.ts {})

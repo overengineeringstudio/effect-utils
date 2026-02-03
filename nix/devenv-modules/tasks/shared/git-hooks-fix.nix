@@ -1,4 +1,4 @@
-# Git hooks fix module - workaround for cachix/git-hooks.nix#685
+# Git hooks fix module - workaround for cachix/devenv#2455
 #
 # The devenv git-hooks integration has a bug where the install script uses
 # the .pre-commit-config.yaml symlink as a proxy for "hooks are installed".
@@ -8,7 +8,7 @@
 # This module adds a task that runs AFTER devenv:git-hooks:install and
 # directly installs any missing hooks using prek.
 #
-# Issue: https://github.com/cachix/git-hooks.nix/issues/685
+# Issue: https://github.com/cachix/devenv/issues/2455
 # Repro: https://github.com/schickling-repros/devenv-git-hooks-not-installed
 #
 # Usage in devenv.nix:
@@ -34,7 +34,7 @@ let
 in
 {
   tasks."git-hooks:ensure" = lib.mkIf (config.git-hooks.hooks != { }) {
-    description = "Ensure git hooks are actually installed (workaround for cachix/git-hooks.nix#685)";
+    description = "Ensure git hooks are actually installed (workaround for cachix/devenv#2455)";
     exec = ''
       # Skip if not in a git repo
       if ! git rev-parse --git-dir &>/dev/null; then
