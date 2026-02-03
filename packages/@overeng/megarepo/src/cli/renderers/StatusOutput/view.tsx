@@ -394,7 +394,7 @@ const WarningItem = ({ problem }: { problem: Problem }) => {
               {count} member{count > 1 ? 's' : ''}
             </Text>
             <Text> </Text>
-            <Text dim>symlink points to wrong worktree</Text>
+            <Text dim>lock ref differs from source (symlink drift)</Text>
           </Box>
           {problem.members.map((m) => {
             const drift = m.symlinkDrift!
@@ -406,26 +406,27 @@ const WarningItem = ({ problem }: { problem: Problem }) => {
                 </Box>
                 <Box flexDirection="row">
                   <Text>{'      '}</Text>
-                  <Text dim>symlink: </Text>
-                  <Text color="yellow">{drift.symlinkRef}</Text>
+                  <Text dim>lock: </Text>
+                  <Text color="green">{drift.expectedRef}</Text>
                 </Box>
                 <Box flexDirection="row">
                   <Text>{'      '}</Text>
-                  <Text dim>expected: </Text>
-                  <Text color="green">{drift.expectedRef}</Text>
-                  <Text dim> (from lock)</Text>
+                  <Text dim>source: </Text>
+                  <Text color="yellow">{drift.symlinkRef}</Text>
+                  <Text dim> (from megarepo.json)</Text>
                 </Box>
-                {drift.actualGitBranch && drift.actualGitBranch !== drift.symlinkRef && (
-                  <Box flexDirection="row">
-                    <Text>{'      '}</Text>
-                    <Text dim>git branch: </Text>
-                    <Text color="magenta">{drift.actualGitBranch}</Text>
-                  </Box>
-                )}
                 <Box flexDirection="row">
                   <Text>{'      '}</Text>
                   <Text color="cyan">fix: </Text>
-                  <Text>mr sync --pull --only {m.name}</Text>
+                  <Text>add #{drift.expectedRef} to megarepo.json</Text>
+                </Box>
+                <Box flexDirection="row">
+                  <Text>{'           '}</Text>
+                  <Text dim>or: </Text>
+                  <Text>
+                    mr pin {m.name} -c {drift.symlinkRef}
+                  </Text>
+                  <Text dim> (switch to {drift.symlinkRef})</Text>
                 </Box>
               </Box>
             )
