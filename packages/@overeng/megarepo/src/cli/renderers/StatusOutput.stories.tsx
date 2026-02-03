@@ -882,6 +882,81 @@ const createSymlinkDriftState = (): typeof StatusState.Type => ({
   },
 })
 
+/** Issue #88: State showing ref mismatch when user runs git checkout directly in worktree */
+const createRefMismatchState = (): typeof StatusState.Type => ({
+  all: false,
+  name: 'my-megarepo',
+  root: '/Users/dev/my-megarepo',
+  syncNeeded: true,
+  syncReasons: [
+    "Member 'effect-utils' ref mismatch: store path implies 'main' but git HEAD is 'feature-branch'",
+    "Member 'livestore' ref mismatch: store path implies 'main' but worktree is detached at abc1234",
+  ],
+  members: [
+    {
+      name: 'effect',
+      exists: true,
+      symlinkExists: true,
+      source: 'effect-ts/effect',
+      isLocal: false,
+      lockInfo: { ref: 'main', commit: 'abc1234def', pinned: false },
+      isMegarepo: false,
+      nestedMembers: undefined,
+      gitStatus: {
+        isDirty: false,
+        changesCount: 0,
+        hasUnpushed: false,
+        branch: 'main',
+        shortRev: 'abc1234',
+      },
+    },
+    {
+      name: 'effect-utils',
+      exists: true,
+      symlinkExists: true,
+      source: 'overengineeringstudio/effect-utils',
+      isLocal: false,
+      lockInfo: { ref: 'main', commit: 'def5678abc', pinned: false },
+      isMegarepo: false,
+      nestedMembers: undefined,
+      gitStatus: {
+        isDirty: true,
+        changesCount: 5,
+        hasUnpushed: false,
+        branch: 'feature-branch',
+        shortRev: 'def5678',
+      },
+      refMismatch: {
+        expectedRef: 'main',
+        actualRef: 'feature-branch',
+        isDetached: false,
+      },
+    },
+    {
+      name: 'livestore',
+      exists: true,
+      symlinkExists: true,
+      source: 'livestorejs/livestore',
+      isLocal: false,
+      lockInfo: { ref: 'main', commit: '9876543fed', pinned: false },
+      isMegarepo: false,
+      nestedMembers: undefined,
+      gitStatus: {
+        isDirty: false,
+        changesCount: 0,
+        hasUnpushed: false,
+        branch: undefined, // detached HEAD
+        shortRev: 'abc1234',
+      },
+      refMismatch: {
+        expectedRef: 'main',
+        actualRef: 'abc1234',
+        isDetached: true,
+      },
+    },
+  ],
+})
+
 const createMultipleSymlinkDriftState = (): typeof StatusState.Type => ({
   all: false,
   name: 'my-megarepo',
@@ -1096,5 +1171,12 @@ export const MultipleSymlinkDrift: Story = {
       app={StatusApp}
       initialState={createMultipleSymlinkDriftState()}
     />
+  ),
+}
+
+/** Issue #88: Shows ref mismatch detection when user runs git checkout directly in worktree */
+export const RefMismatch: Story = {
+  render: () => (
+    <TuiStoryPreview View={StatusView} app={StatusApp} initialState={createRefMismatchState()} />
   ),
 }

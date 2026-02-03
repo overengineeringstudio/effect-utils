@@ -312,6 +312,45 @@ export const SkippedMembers: Story = {
   ),
 }
 
+/** Issue #88: Shows ref mismatch detection when user runs git checkout directly in worktree */
+export const RefMismatchDetected: Story = {
+  args: { height: 500 },
+  render: (args) => (
+    <TuiStoryPreview
+      View={SyncView}
+      app={SyncApp}
+      initialState={createBaseState({
+        results: [
+          { name: 'effect', status: 'synced', ref: 'main' },
+          {
+            name: 'effect-utils',
+            status: 'skipped',
+            refMismatch: {
+              expectedRef: 'main',
+              actualRef: 'feature-branch',
+              isDetached: false,
+            },
+          },
+          {
+            name: 'livestore',
+            status: 'skipped',
+            refMismatch: {
+              expectedRef: 'main',
+              actualRef: 'abc1234',
+              isDetached: true,
+            },
+          },
+          { name: 'other-repo', status: 'synced', ref: 'develop' },
+        ],
+        members: ['effect', 'effect-utils', 'livestore', 'other-repo'],
+      })}
+      height={args.height}
+      autoRun={false}
+      tabs={ALL_TABS}
+    />
+  ),
+}
+
 export const NestedMegareposHint: Story = {
   args: { height: 400 },
   render: (args) => (

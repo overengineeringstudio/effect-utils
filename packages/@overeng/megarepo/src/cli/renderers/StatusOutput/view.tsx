@@ -140,6 +140,7 @@ type Problem =
   | { _tag: 'lock_missing' }
   | { _tag: 'lock_stale'; missingFromLock: readonly string[]; extraInLock: readonly string[] }
   | { _tag: 'symlink_drift'; members: MemberStatus[] }
+  | { _tag: 'ref_mismatch'; members: MemberStatus[] }
 
 /** Legend item type with key */
 type LegendItem = {
@@ -193,7 +194,13 @@ const analyzeProblems = ({
   const warnings: Problem[] = []
   const allMembers = flattenMembers(members)
 
-  // Symlink drift is a critical issue - show first
+  // Ref mismatch is a critical issue - show first (Issue #88)
+  const refMismatched = allMembers.filter((m) => m.refMismatch !== undefined)
+  if (refMismatched.length > 0) {
+    warnings.push({ _tag: 'ref_mismatch', members: refMismatched })
+  }
+
+  // Symlink drift is also a critical issue
   const drifted = allMembers.filter((m) => m.symlinkDrift !== undefined)
   if (drifted.length > 0) {
     warnings.push({ _tag: 'symlink_drift', members: drifted })
@@ -247,6 +254,8 @@ const getProblemKey = (problem: Problem): string => {
       return `lock_stale-${problem.missingFromLock.join(',')}-${problem.extraInLock.join(',')}`
     case 'symlink_drift':
       return `symlink_drift-${problem.members.map((m) => m.name).join(',')}`
+    case 'ref_mismatch':
+      return `ref_mismatch-${problem.members.map((m) => m.name).join(',')}`
   }
 }
 
@@ -324,6 +333,52 @@ const WarningBadge = () => {
 /** Single warning item */
 const WarningItem = ({ problem }: { problem: Problem }) => {
   switch (problem._tag) {
+    case 'ref_mismatch': {
+      const count = problem.members.length
+      return (
+        <Box>
+          <Box flexDirection="row">
+            <Text>{'  '}</Text>
+            <Text bold color="red">
+              {count} member{count > 1 ? 's' : ''}
+            </Text>
+            <Text> </Text>
+            <Text dim>git HEAD differs from store path</Text>
+          </Box>
+          {problem.members.map((m) => {
+            const mismatch = m.refMismatch!
+            return (
+              <Box key={m.name}>
+                <Box flexDirection="row">
+                  <Text>{'    '}</Text>
+                  <Text bold>{m.name}</Text>
+                </Box>
+                <Box flexDirection="row">
+                  <Text>{'      '}</Text>
+                  <Text dim>store path: </Text>
+                  <Text color="green">{mismatch.expectedRef}</Text>
+                </Box>
+                <Box flexDirection="row">
+                  <Text>{'      '}</Text>
+                  <Text dim>git HEAD: </Text>
+                  <Text color="yellow">
+                    {mismatch.isDetached ? `detached at ${mismatch.actualRef}` : mismatch.actualRef}
+                  </Text>
+                </Box>
+              </Box>
+            )
+          })}
+          <Box flexDirection="row">
+            <Text>{'    '}</Text>
+            <Text color="cyan">fix:</Text>
+            <Text>
+              {' '}
+              mr pin {'<member>'} -c {'<ref>'} or git checkout {'<expected-ref>'}
+            </Text>
+          </Box>
+        </Box>
+      )
+    }
     case 'symlink_drift': {
       const count = problem.members.length
       return (
