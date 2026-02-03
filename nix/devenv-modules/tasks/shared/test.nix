@@ -14,6 +14,9 @@
 #       vitestConfig = "packages/@overeng/utils/vitest.config.ts";
 #       # Optional: install task prefix (default: "pnpm", use "bun" for bun:install)
 #       installTaskPrefix = "pnpm";
+#       # Optional: install task that provides the vitest binary (when using shared vitest)
+#       # Required when vitestBin points to another package's node_modules
+#       vitestInstallTask = "pnpm:install:utils";
 #     })
 #   ];
 #
@@ -30,6 +33,8 @@
   vitestConfig ? null,
   installTaskPrefix ? "pnpm",
   extraTests ? [],
+  # Install task that provides the vitest binary (when using shared vitest from another package)
+  vitestInstallTask ? null,
 }:
 { lib, ... }:
 let
@@ -60,6 +65,9 @@ let
       relativeVitestConfig = if useLocalConfig || vitestConfig == null
         then ""
         else " --config ${prefix}/${vitestConfig}";
+      # Dependencies: package's own install task + vitest install task (if specified)
+      afterTasks = [ "${installTaskPrefix}:install:${pkg.name}" ]
+        ++ (if vitestInstallTask != null then [ vitestInstallTask ] else []);
     in {
       "test:${pkg.name}" = {
         description = "Run tests for ${pkg.name}";
@@ -76,7 +84,7 @@ let
           "${pkg.path}/test/**/*.test.tsx"
           "${pkg.path}/vitest.config.ts"
         ];
-        after = [ "${installTaskPrefix}:install:${pkg.name}" ];
+        after = afterTasks;
       };
     };
 

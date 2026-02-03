@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **nix/devenv-modules/tasks/shared/test.nix**: Added `vitestInstallTask` parameter to fix CI failures
+  - When using a shared vitest binary from another package (e.g., `packages/@overeng/utils/node_modules/.bin/vitest`), test tasks need to depend on that package's install task
+  - Without this, test tasks would fail with "vitest: No such file or directory" when the vitest-providing package wasn't installed yet
+  - This fix ensures CI is deterministic regardless of cache state (R5 in tasks requirements)
+
 ### Removed
 
 - **@overeng/mono**: Removed package entirely — all functionality is now covered by devenv tasks (`dt`). The package had zero consumers across all repos.
