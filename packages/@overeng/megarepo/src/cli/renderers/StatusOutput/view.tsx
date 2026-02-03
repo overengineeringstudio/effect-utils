@@ -365,17 +365,22 @@ const WarningItem = ({ problem }: { problem: Problem }) => {
                     {mismatch.isDetached ? `detached at ${mismatch.actualRef}` : mismatch.actualRef}
                   </Text>
                 </Box>
+                <Box flexDirection="row">
+                  <Text>{'      '}</Text>
+                  <Text color="cyan">fix: </Text>
+                  <Text>
+                    mr pin {m.name} -c {mismatch.actualRef}
+                  </Text>
+                </Box>
+                <Box flexDirection="row">
+                  <Text>{'           '}</Text>
+                  <Text dim>or: </Text>
+                  <Text>git checkout {mismatch.expectedRef}</Text>
+                  <Text dim> (in repos/{m.name})</Text>
+                </Box>
               </Box>
             )
           })}
-          <Box flexDirection="row">
-            <Text>{'    '}</Text>
-            <Text color="cyan">fix:</Text>
-            <Text>
-              {' '}
-              mr pin {'<member>'} -c {'<ref>'} or git checkout {'<expected-ref>'}
-            </Text>
-          </Box>
         </Box>
       )
     }
@@ -417,14 +422,14 @@ const WarningItem = ({ problem }: { problem: Problem }) => {
                     <Text color="magenta">{drift.actualGitBranch}</Text>
                   </Box>
                 )}
+                <Box flexDirection="row">
+                  <Text>{'      '}</Text>
+                  <Text color="cyan">fix: </Text>
+                  <Text>mr sync --pull --member {m.name}</Text>
+                </Box>
               </Box>
             )
           })}
-          <Box flexDirection="row">
-            <Text>{'    '}</Text>
-            <Text color="cyan">fix:</Text>
-            <Text> mr sync --pull</Text>
-          </Box>
         </Box>
       )
     }
