@@ -2,12 +2,19 @@
  * Tests for TuiApp factory pattern
  */
 
-import { Effect, Schema } from 'effect'
+import { Cause, Effect, FiberId, Schema } from 'effect'
 import React from 'react'
 import { describe, test, expect, beforeEach, afterEach } from 'vitest'
 
 import { testModeLayer } from '../../src/effect/testing.tsx'
-import { createTuiApp, useTuiAtomValue, Box, Text } from '../../src/mod.tsx'
+import {
+  createTuiApp,
+  useTuiAtomValue,
+  deriveOutputSchema,
+  Box,
+  Text,
+  type TuiOutput,
+} from '../../src/mod.tsx'
 
 // =============================================================================
 // Test State and Actions
@@ -123,7 +130,7 @@ describe('createTuiApp', () => {
   })
 
   describe('json mode', () => {
-    test('outputs final state as JSON', async () => {
+    test('outputs final state as JSON with Success wrapper', async () => {
       await Effect.gen(function* () {
         const tui = yield* CounterApp.run()
         tui.dispatch({ _tag: 'Increment' })
@@ -131,7 +138,8 @@ describe('createTuiApp', () => {
       }).pipe(Effect.scoped, Effect.provide(testModeLayer('json')), Effect.runPromise)
 
       expect(capturedOutput).toHaveLength(1)
-      expect(JSON.parse(capturedOutput[0]!)).toEqual({ count: 2 })
+      const output = JSON.parse(capturedOutput[0]!)
+      expect(output).toEqual({ _tag: 'Success', count: 2 })
     })
 
     test('works with view (view is ignored in json mode)', async () => {
@@ -141,12 +149,13 @@ describe('createTuiApp', () => {
       }).pipe(Effect.scoped, Effect.provide(testModeLayer('json')), Effect.runPromise)
 
       expect(capturedOutput).toHaveLength(1)
-      expect(JSON.parse(capturedOutput[0]!)).toEqual({ count: 100 })
+      const output = JSON.parse(capturedOutput[0]!)
+      expect(output).toEqual({ _tag: 'Success', count: 100 })
     })
   })
 
   describe('ndjson mode', () => {
-    test('streams state changes as NDJSON', async () => {
+    test('streams state changes as NDJSON with final Success wrapper', async () => {
       await Effect.gen(function* () {
         const tui = yield* CounterApp.run()
         yield* Effect.sleep('10 millis')
@@ -156,16 +165,19 @@ describe('createTuiApp', () => {
         yield* Effect.sleep('10 millis')
       }).pipe(Effect.scoped, Effect.provide(testModeLayer('ndjson')), Effect.runPromise)
 
-      expect(capturedOutput.length).toBeGreaterThanOrEqual(1)
+      // Should have at least initial state + final wrapped output
+      expect(capturedOutput.length).toBeGreaterThanOrEqual(2)
 
       // Parse all outputs
       const states = capturedOutput.map((line) => JSON.parse(line))
 
-      // Should see progression
+      // Intermediate lines are raw state (for progressive consumption)
       expect(states[0]).toEqual({ count: 0 }) // initial
-      if (states.length >= 3) {
-        expect(states[states.length - 1]).toEqual({ count: 2 }) // final
-      }
+
+      // Final line should be wrapped in Success
+      const finalOutput = states[states.length - 1]
+      expect(finalOutput._tag).toBe('Success')
+      expect(finalOutput.count).toBe(2)
     })
   })
 
@@ -257,6 +269,202 @@ describe('createTuiApp', () => {
 
       expect(result.state1).toEqual({ count: 11 })
       expect(result.state2).toEqual({ count: 19 })
+    })
+  })
+
+  describe('outputSchema', () => {
+    test('exposes derived outputSchema on app', () => {
+      expect(CounterApp.outputSchema).toBeDefined()
+    })
+
+    test('outputSchema type inference works', () => {
+      // Type assertion - if this compiles, types are correct
+      type Output = typeof CounterApp.outputSchema.Type
+      const _successCheck: Output = { _tag: 'Success', count: 42 }
+      const _failureCheck: Output = {
+        _tag: 'Failure',
+        cause: Cause.interrupt(FiberId.none),
+        state: { count: 10 },
+      }
+      expect(_successCheck._tag).toBe('Success')
+      expect(_failureCheck._tag).toBe('Failure')
+    })
+  })
+})
+
+// =============================================================================
+// deriveOutputSchema Tests
+// =============================================================================
+
+describe('deriveOutputSchema', () => {
+  describe('struct state schema', () => {
+    const StateSchema = Schema.Struct({
+      count: Schema.Number,
+      name: Schema.String,
+    })
+    const OutputSchema = deriveOutputSchema(StateSchema)
+
+    test('success: encodes state fields flat with _tag', async () => {
+      const successValue: TuiOutput<typeof StateSchema.Type> = {
+        _tag: 'Success',
+        count: 42,
+        name: 'test',
+      }
+
+      const encoded = await Schema.encode(Schema.parseJson(OutputSchema))(successValue).pipe(
+        Effect.runPromise,
+      )
+      const parsed = JSON.parse(encoded)
+
+      expect(parsed).toEqual({
+        _tag: 'Success',
+        count: 42,
+        name: 'test',
+      })
+    })
+
+    test('success: decodes flat fields to success value', async () => {
+      const json = JSON.stringify({
+        _tag: 'Success',
+        count: 42,
+        name: 'test',
+      })
+
+      const decoded = await Schema.decode(Schema.parseJson(OutputSchema))(json).pipe(
+        Effect.runPromise,
+      )
+
+      expect(decoded).toEqual({
+        _tag: 'Success',
+        count: 42,
+        name: 'test',
+      })
+    })
+
+    test('failure: encodes cause and state', async () => {
+      // Create a real Cause.interrupt value
+      const interruptCause = Cause.interrupt(FiberId.none)
+
+      const failureValue: TuiOutput<typeof StateSchema.Type> = {
+        _tag: 'Failure',
+        cause: interruptCause,
+        state: { count: 10, name: 'partial' },
+      }
+
+      const encoded = await Schema.encode(Schema.parseJson(OutputSchema))(failureValue).pipe(
+        Effect.runPromise,
+      )
+      const parsed = JSON.parse(encoded)
+
+      expect(parsed._tag).toBe('Failure')
+      expect(parsed.state).toEqual({ count: 10, name: 'partial' })
+      expect(parsed.cause).toBeDefined()
+      expect(parsed.cause._tag).toBe('Interrupt')
+    })
+
+    test('failure: decodes cause and state', async () => {
+      // Create an interrupt cause JSON
+      const json = JSON.stringify({
+        _tag: 'Failure',
+        cause: { _tag: 'Interrupt', fiberId: { _tag: 'None' } },
+        state: { count: 10, name: 'partial' },
+      })
+
+      const decoded = await Schema.decode(Schema.parseJson(OutputSchema))(json).pipe(
+        Effect.runPromise,
+      )
+
+      expect(decoded._tag).toBe('Failure')
+      if (decoded._tag === 'Failure') {
+        expect(decoded.state).toEqual({ count: 10, name: 'partial' })
+      }
+    })
+  })
+
+  describe('nested struct state schema', () => {
+    const NestedStateSchema = Schema.Struct({
+      workspace: Schema.Struct({
+        name: Schema.String,
+        root: Schema.String,
+      }),
+      results: Schema.Array(
+        Schema.Struct({
+          name: Schema.String,
+          status: Schema.Literal('ok', 'error'),
+        }),
+      ),
+    })
+    const OutputSchema = deriveOutputSchema(NestedStateSchema)
+
+    test('success: encodes nested state flat', async () => {
+      const successValue: TuiOutput<typeof NestedStateSchema.Type> = {
+        _tag: 'Success',
+        workspace: { name: 'my-repo', root: '/path' },
+        results: [{ name: 'pkg-a', status: 'ok' }],
+      }
+
+      const encoded = await Schema.encode(Schema.parseJson(OutputSchema))(successValue).pipe(
+        Effect.runPromise,
+      )
+      const parsed = JSON.parse(encoded)
+
+      expect(parsed).toEqual({
+        _tag: 'Success',
+        workspace: { name: 'my-repo', root: '/path' },
+        results: [{ name: 'pkg-a', status: 'ok' }],
+      })
+    })
+
+    test('failure: preserves nested state at time of failure', async () => {
+      // Create a real Cause.interrupt value
+      const interruptCause = Cause.interrupt(FiberId.none)
+
+      const failureValue: TuiOutput<typeof NestedStateSchema.Type> = {
+        _tag: 'Failure',
+        cause: interruptCause,
+        state: {
+          workspace: { name: 'my-repo', root: '/path' },
+          results: [{ name: 'pkg-a', status: 'ok' }],
+        },
+      }
+
+      const encoded = await Schema.encode(Schema.parseJson(OutputSchema))(failureValue).pipe(
+        Effect.runPromise,
+      )
+      const parsed = JSON.parse(encoded)
+
+      expect(parsed._tag).toBe('Failure')
+      expect(parsed.state.workspace.name).toBe('my-repo')
+      expect(parsed.state.results).toHaveLength(1)
+    })
+  })
+
+  describe('discriminated union state schema', () => {
+    // Sometimes state itself is a tagged union (e.g., Idle | Loading | Done)
+    const UnionStateSchema = Schema.Union(
+      Schema.TaggedStruct('Idle', {}),
+      Schema.TaggedStruct('Loading', { progress: Schema.Number }),
+      Schema.TaggedStruct('Done', { result: Schema.String }),
+    )
+
+    test('non-struct state: wraps in value field', async () => {
+      // For non-struct schemas, we can't spread fields
+      // The schema should fall back to wrapping in a `value` field
+      const OutputSchema = deriveOutputSchema(UnionStateSchema)
+
+      // This is a limitation - union states get wrapped in `value`
+      const successValue = {
+        _tag: 'Success' as const,
+        value: { _tag: 'Done' as const, result: 'completed' },
+      }
+
+      const encoded = await Schema.encode(Schema.parseJson(OutputSchema))(successValue as any).pipe(
+        Effect.runPromise,
+      )
+      const parsed = JSON.parse(encoded)
+
+      expect(parsed._tag).toBe('Success')
+      expect(parsed.value._tag).toBe('Done')
     })
   })
 })

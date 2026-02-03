@@ -207,13 +207,22 @@ Structured JSON output at command completion.
 - Waits for command completion
 - Outputs single JSON object to stdout
 - Uses `Schema.encode` for serialization
+- **All logging goes to stderr** (keeps stdout clean for JSON parsing)
 
 **Constraints:**
 
-- Strict JSON only: no plain text, no ANSI codes
+- Strict JSON only: no plain text, no ANSI codes on stdout
 - Single output: exactly one JSON object per invocation
 - Errors as JSON: errors must be JSON, not plain text
 - Newline terminated
+- **stdout = data only**: No log messages, progress indicators, or error traces on stdout
+
+**Stream Contract:**
+
+| Stream   | Content                            |
+| -------- | ---------------------------------- |
+| `stdout` | JSON data only (single object)     |
+| `stderr` | Log messages, errors, debug output |
 
 **Format:**
 
@@ -236,6 +245,14 @@ Streaming JSON output (NDJSON format) as state changes.
 - Outputs one JSON object per line as state changes
 - Uses `Schema.encode` for each state emission
 - Flushes after each line for real-time streaming
+- **All logging goes to stderr** (keeps stdout clean for JSON parsing)
+
+**Stream Contract:**
+
+| Stream   | Content                                |
+| -------- | -------------------------------------- |
+| `stdout` | JSON lines only (one per state change) |
+| `stderr` | Log messages, errors, debug output     |
 
 **Format:**
 
@@ -908,6 +925,7 @@ CLI option and layer for output mode selection.
 const outputOption: Cli.Options<OutputModeValue>
 
 // Create layer from option value
+// For JSON modes, this also configures stderr logging
 const outputModeLayer: (value: OutputModeValue) => Layer<OutputMode>
 
 type OutputModeValue =
@@ -921,6 +939,32 @@ type OutputModeValue =
   | 'json'
   | 'ndjson'
 ```
+
+**Note:** For JSON modes (`json`, `ndjson`), `outputModeLayer` also configures the Effect logger to write to stderr instead of stdout. This ensures stdout contains only JSON data, making it safe to pipe to tools like `jq`.
+
+### runTuiMain
+
+Helper for running TUI CLI applications as the main entry point with proper error handling.
+
+```typescript
+import { NodeRuntime } from '@effect/platform-node'
+import { runTuiMain, outputModeLayer } from '@overeng/tui-react'
+
+// Run the CLI with proper error handling
+const program = Cli.Command.run(myCommand, { name: 'my-cli', version: '1.0.0' })(process.argv).pipe(
+  Effect.provide(outputModeLayer('auto')),
+)
+
+runTuiMain(NodeRuntime)(program)
+```
+
+**What it does:**
+
+1. Writes errors to stderr (not stdout) to avoid polluting JSON output
+2. Disables `runMain`'s built-in error reporting to prevent double-logging
+3. Preserves exit codes from errors
+
+**Why use it:** When using `NodeRuntime.runMain` directly, errors are logged to stdout via the pretty logger. This breaks JSON output parsing when commands fail. `runTuiMain` ensures errors go to stderr while keeping stdout clean for JSON data.
 
 ### useViewport
 

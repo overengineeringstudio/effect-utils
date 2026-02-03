@@ -184,9 +184,15 @@ export {
 export {
   createTuiApp,
   tuiAppConfig,
+  deriveOutputSchema,
   type TuiApp,
   type TuiAppConfig,
   type TuiAppApi,
+  type TuiOutput,
+  type TuiOutputSuccess,
+  type TuiOutputFailure,
+  type OutputCause,
+  type OutputCauseEncoded,
   type UnmountOptions as TuiAppUnmountOptions,
   // TUI-specific atom hook (works around multiple React instance issues)
   useTuiAtomValue,
@@ -340,6 +346,9 @@ export {
   outputOption,
   outputModeLayer,
   resolveOutputMode,
+  runTuiMain,
   OUTPUT_MODE_VALUES,
   type OutputModeValue,
+  type RunTuiMainOptions,
+  type TuiRuntime,
 } from './effect/cli.tsx'

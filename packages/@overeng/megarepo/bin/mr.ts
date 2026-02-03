@@ -4,6 +4,7 @@ import * as Cli from '@effect/cli'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Effect, Layer } from 'effect'
 
+import { runTuiMain } from '@overeng/tui-react'
 import { resolveCliVersion } from '@overeng/utils/node/cli-version'
 
 import { Cwd, mrCommand } from '../src/cli/mod.ts'
@@ -21,4 +22,4 @@ const baseLayer = Layer.mergeAll(NodeContext.layer, Cwd.live)
 Cli.Command.run(mrCommand, {
   name: 'mr',
   version,
-})(process.argv).pipe(Effect.scoped, Effect.provide(baseLayer), NodeRuntime.runMain)
+})(process.argv).pipe(Effect.scoped, Effect.provide(baseLayer), runTuiMain(NodeRuntime))

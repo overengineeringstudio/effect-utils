@@ -214,7 +214,7 @@ describe('CLI Integration', () => {
     console.log = originalLog
   })
 
-  test('json mode outputs complete state', async () => {
+  test('json mode outputs complete state with Success wrapper', async () => {
     const result = await runDeploy(['api', 'web']).pipe(
       Effect.provide(testModeLayer('json')),
       Effect.runPromise,
@@ -224,25 +224,31 @@ describe('CLI Integration', () => {
     expect(capturedOutput).toHaveLength(1)
 
     const output = JSON.parse(capturedOutput[0]!)
-    expect(output._tag).toBe('Complete')
-    expect(output.services).toHaveLength(2)
-    expect(output.services[0].name).toBe('api')
-    expect(output.services[1].name).toBe('web')
+    // State is a union (non-struct), so it's wrapped in Success with `value`
+    expect(output._tag).toBe('Success')
+    expect(output.value._tag).toBe('Complete')
+    expect(output.value.services).toHaveLength(2)
+    expect(output.value.services[0].name).toBe('api')
+    expect(output.value.services[1].name).toBe('web')
   })
 
-  test('ndjson mode streams state changes', async () => {
+  test('ndjson mode streams state changes with final Success wrapper', async () => {
     await runDeploy(['api']).pipe(Effect.provide(testModeLayer('ndjson')), Effect.runPromise)
 
-    // Should have multiple JSON outputs
+    // Should have multiple JSON outputs (intermediate raw + final wrapped)
     expect(capturedOutput.length).toBeGreaterThan(1)
 
     // All should be valid JSON
     const parsed = capturedOutput.map((line) => JSON.parse(line))
 
-    // Should see state progression
-    const tags = parsed.map((p) => p._tag)
-    expect(tags).toContain('Idle')
-    expect(tags).toContain('Complete')
+    // Intermediate lines should be raw state
+    const intermediateTags = parsed.slice(0, -1).map((p) => p._tag)
+    expect(intermediateTags).toContain('Idle')
+
+    // Final line should be Success wrapper with Complete state
+    const finalOutput = parsed[parsed.length - 1]
+    expect(finalOutput._tag).toBe('Success')
+    expect(finalOutput.value._tag).toBe('Complete')
   })
 
   test('pipe mode produces final output only', async () => {
