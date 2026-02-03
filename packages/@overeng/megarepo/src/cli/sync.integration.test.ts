@@ -1692,6 +1692,7 @@ describe('sync worktree ref mismatch detection', () => {
           throw new Error(`Missing worktree path for ${storeKey}`)
         }
 
+        yield* runGitCommand(storeWorktreePath, 'checkout', '-B', 'main')
         const mainCommit = yield* runGitCommand(storeWorktreePath, 'rev-parse', 'HEAD')
 
         // Create workspace with lock file using URL source
@@ -1815,6 +1816,7 @@ describe('sync worktree ref mismatch detection', () => {
           throw new Error(`Missing worktree path for ${storeKey}`)
         }
 
+        yield* runGitCommand(storeWorktreePath, 'checkout', '-B', 'main')
         const mainCommit = yield* runGitCommand(storeWorktreePath, 'rev-parse', 'HEAD')
 
         // Create workspace with lock file using URL source
