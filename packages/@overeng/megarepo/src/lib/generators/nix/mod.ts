@@ -200,6 +200,12 @@ const rsyncRepo = Effect.fn('megarepo/nix/rsyncRepo')((source: string, dest: str
       '--exclude',
       '.devenv',
       '--exclude',
+      '.envrc',
+      '--exclude',
+      '.envrc.local',
+      '--exclude',
+      '.envrc.generated.megarepo',
+      '--exclude',
       'result',
       '--exclude',
       'tmp',
@@ -295,6 +301,15 @@ export const generateNix = Effect.fn('megarepo/generate/nix')((options: NixGener
       yield* fs.writeFileString(envrcPath, envrcContent)
     }
 
+    // Neutral .envrc content for workspace mirrors - prevents accidental direnv activation
+    // and stops recursive devenv evaluation when the parent megarepo uses --override-input
+    const neutralEnvrcContent = `# Workspace mirror - managed by megarepo
+# This directory is a read-only mirror for Nix flake input resolution.
+# Do not develop here; use the original repo or the repos/ symlinks instead.
+#
+# This .envrc intentionally does nothing to prevent recursive devenv evaluation.
+`
+
     for (const repo of mirrorRepos) {
       const dest = EffectPath.ops.join(
         workspaceRoot,
@@ -302,6 +317,10 @@ export const generateNix = Effect.fn('megarepo/generate/nix')((options: NixGener
       )
       yield* fs.makeDirectory(dest, { recursive: true })
       yield* rsyncRepo(repo.path, dest)
+
+      // Write neutral .envrc to prevent direnv from activating in workspace mirrors
+      const mirrorEnvrcPath = EffectPath.ops.join(dest, EffectPath.unsafe.relativeFile('.envrc'))
+      yield* fs.writeFileString(mirrorEnvrcPath, neutralEnvrcContent)
     }
 
     return { workspaceRoot, flakePath, envrcPath }
