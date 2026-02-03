@@ -351,15 +351,34 @@ const RemovedLine = ({ result, dryRun }: { result: MemberSyncResult; dryRun: boo
   )
 }
 
-/** Result line for error */
+/** Result line for error - uses multi-line format to show full error message */
 const ErrorLine = ({ result }: { result: MemberSyncResult }) => {
+  // Multi-line format for errors with messages (similar to SkippedLine with refMismatch)
+  if (result.message) {
+    return (
+      <Box flexDirection="column">
+        <Box flexDirection="row">
+          <StatusIcon status="error" variant="sync" />
+          <Text> </Text>
+          <Text bold>{result.name}</Text>
+          <Text> </Text>
+          <Text color="red">error:</Text>
+        </Box>
+        <Box paddingLeft={4}>
+          <Text dim>{result.message}</Text>
+        </Box>
+      </Box>
+    )
+  }
+
+  // Single line for errors without message
   return (
     <Box flexDirection="row">
       <StatusIcon status="error" variant="sync" />
       <Text> </Text>
       <Text bold>{result.name}</Text>
       <Text> </Text>
-      <Text color="red">{result.message ? `error: ${result.message}` : 'error'}</Text>
+      <Text color="red">error</Text>
     </Box>
   )
 }
@@ -400,14 +419,32 @@ const SkippedLine = ({ result }: { result: MemberSyncResult }) => {
     )
   }
 
-  // Standard skipped line (non-ref-mismatch)
+  // Standard skipped line (non-ref-mismatch) - multi-line format for long messages
+  if (result.message) {
+    return (
+      <Box flexDirection="column">
+        <Box flexDirection="row">
+          <StatusIcon status="skipped" variant="sync" />
+          <Text> </Text>
+          <Text bold>{result.name}</Text>
+          <Text> </Text>
+          <Text color="yellow">skipped:</Text>
+        </Box>
+        <Box paddingLeft={4}>
+          <Text dim>{result.message}</Text>
+        </Box>
+      </Box>
+    )
+  }
+
+  // No message - single line
   return (
     <Box flexDirection="row">
       <StatusIcon status="skipped" variant="sync" />
       <Text> </Text>
       <Text bold>{result.name}</Text>
       <Text> </Text>
-      <Text color="yellow">{result.message ? `skipped: ${result.message}` : 'skipped'}</Text>
+      <Text color="yellow">skipped</Text>
     </Box>
   )
 }

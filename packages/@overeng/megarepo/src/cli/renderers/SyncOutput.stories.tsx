@@ -447,11 +447,7 @@ export const WithGenerators: Story = {
           { name: 'dotfiles', status: 'already_synced' },
         ],
         members: ['effect', 'effect-utils', 'livestore', 'dotfiles'],
-        generatedFiles: [
-          'flake.nix',
-          'flake.lock',
-          '.vscode/megarepo.code-workspace',
-        ],
+        generatedFiles: ['flake.nix', 'flake.lock', '.vscode/megarepo.code-workspace'],
       })}
       height={args.height}
       autoRun={false}
