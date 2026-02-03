@@ -192,7 +192,7 @@ let
       # Archive the pnpm store
       cd $STORE_PATH
       LC_ALL=C TZ=UTC tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner -cf - . \
-        | zstd -o $out/pnpm-store.tar.zst
+        | zstd -T1 -q -o $out/pnpm-store.tar.zst
 
       runHook postInstall
     '';
