@@ -7,6 +7,8 @@
 
 import { Schema } from 'effect'
 
+import { RefMismatch } from '../../../lib/issues.ts'
+
 // =============================================================================
 // Git Status
 // =============================================================================
@@ -89,6 +91,11 @@ export interface MemberStatus {
   symlinkDrift?: SymlinkDrift | undefined
   /** Present when local worktree commit differs from locked commit */
   commitDrift?: CommitDrift | undefined
+  /**
+   * Present when worktree git HEAD differs from store path ref (Issue #88).
+   * This happens when a user runs `git checkout <branch>` directly in the worktree.
+   */
+  refMismatch?: RefMismatch | undefined
 }
 
 /** Recursive schema for member status, using `Schema.suspend` to support nested megarepo trees. */
@@ -108,6 +115,11 @@ export const MemberStatus: Schema.Schema<MemberStatus> = Schema.suspend(() =>
     symlinkDrift: Schema.optional(SymlinkDrift),
     /** Present when local worktree commit differs from locked commit */
     commitDrift: Schema.optional(CommitDrift),
+    /**
+     * Present when worktree git HEAD differs from store path ref (Issue #88).
+     * This happens when a user runs `git checkout <branch>` directly in the worktree.
+     */
+    refMismatch: Schema.optional(RefMismatch),
   }),
 )
 

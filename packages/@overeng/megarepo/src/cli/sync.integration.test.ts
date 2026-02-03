@@ -15,6 +15,7 @@ import {
   LOCK_FILE_NAME,
   readLockFile,
   updateLockedMember,
+  writeLockFile,
 } from '../lib/lock.ts'
 import {
   addCommit,
@@ -37,6 +38,12 @@ const SyncJsonOutput = Schema.Struct({
       ref: Schema.optional(Schema.String),
       message: Schema.optional(Schema.String),
       previousCommit: Schema.optional(Schema.String),
+      refMismatch: Schema.optional(
+        Schema.Struct({
+          expectedRef: Schema.String,
+          actualRef: Schema.String,
+        }),
+      ),
     }),
   ),
 })
@@ -65,14 +72,16 @@ const decodeChunks = (chunks: Chunk.Chunk<Uint8Array>): string => {
 const runSyncCommand = ({
   cwd,
   args = [],
+  env = {},
 }: {
   cwd: AbsoluteDirPath
   args?: ReadonlyArray<string>
+  env?: Record<string, string>
 }) =>
   Effect.gen(function* () {
     const command = Command.make('bun', 'run', CLI_PATH, 'sync', ...args).pipe(
       Command.workingDirectory(cwd),
-      Command.env({ PWD: cwd }),
+      Command.env({ PWD: cwd, ...env }),
       Command.stdout('pipe'),
       Command.stderr('pipe'),
     )
@@ -1631,6 +1640,199 @@ describe('sync member filtering', () => {
 // =============================================================================
 // Member Removal Detection Tests
 // =============================================================================
+
+// =============================================================================
+// Worktree Ref Mismatch Detection Tests (Issue #88)
+// =============================================================================
+
+describe('sync worktree ref mismatch detection', () => {
+  /**
+   * REGRESSION TEST for issue #88: mr sync should detect worktree ref mismatch
+   *
+   * When a user runs `git checkout <other-branch>` directly inside a store worktree,
+   * the worktree path no longer matches its git HEAD. This violates invariant #8:
+   * "Worktree path matches HEAD: The ref encoded in a worktree's store path should match its git HEAD"
+   *
+   * Currently, `mr sync` reports "already synced" without detecting this drift.
+   * The expected behavior is to warn about the mismatch.
+   */
+  it('should detect and warn when worktree HEAD differs from store path ref (issue #88)', () =>
+    withTestCtx(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+
+        // Create temp directory
+        const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+
+        // Set up a custom store directory
+        const storeDir = EffectPath.ops.join(
+          tmpDir,
+          EffectPath.unsafe.relativeDir('megarepo-store/'),
+        )
+        yield* fs.makeDirectory(storeDir, { recursive: true })
+
+        // Create a "remote" repo that we'll reference with a URL-like source
+        // Using https:// URL format so it's parsed as URL type, not local path
+        const remoteRepoPath = yield* createRepo({
+          basePath: tmpDir,
+          fixture: {
+            name: 'remote-test-repo',
+            files: { 'package.json': '{"name": "test-repo"}' },
+          },
+        })
+
+        // Get the initial commit
+        const mainCommit = yield* runGitCommand(remoteRepoPath, 'rev-parse', 'HEAD')
+
+        // Create a feature branch with a different commit
+        yield* runGitCommand(remoteRepoPath, 'checkout', '-b', 'some-feature-branch')
+        yield* fs.writeFileString(
+          EffectPath.ops.join(remoteRepoPath, EffectPath.unsafe.relativeFile('feature.txt')),
+          'feature content\n',
+        )
+        yield* addCommit({ repoPath: remoteRepoPath, message: 'Add feature' })
+
+        // Go back to main
+        yield* runGitCommand(remoteRepoPath, 'checkout', 'main').pipe(
+          Effect.catchAll(() => runGitCommand(remoteRepoPath, 'checkout', 'master')),
+        )
+
+        // Create store structure: bare repo + worktree
+        // For a URL source like "https://example.com/org/test-repo", store path would be:
+        // ~/.megarepo/example.com/org/test-repo/.bare/
+        // ~/.megarepo/example.com/org/test-repo/refs/heads/main/
+        const repoStorePath = EffectPath.ops.join(
+          storeDir,
+          EffectPath.unsafe.relativeDir('example.com/org/test-repo/'),
+        )
+        const bareRepoPath = EffectPath.ops.join(
+          repoStorePath,
+          EffectPath.unsafe.relativeDir('.bare/'),
+        )
+        const storeWorktreePath = EffectPath.ops.join(
+          repoStorePath,
+          EffectPath.unsafe.relativeDir('refs/heads/main/'),
+        )
+
+        // Clone bare repo
+        yield* fs.makeDirectory(bareRepoPath, { recursive: true })
+        yield* runGitCommand(bareRepoPath, 'clone', '--bare', remoteRepoPath.slice(0, -1), '.')
+
+        // Create worktree from bare repo
+        yield* runGitCommand(
+          bareRepoPath,
+          'worktree',
+          'add',
+          storeWorktreePath.slice(0, -1),
+          'main',
+        )
+
+        // Also fetch the feature branch into the bare repo so we can checkout to it
+        yield* runGitCommand(
+          bareRepoPath,
+          'fetch',
+          remoteRepoPath.slice(0, -1),
+          'some-feature-branch:some-feature-branch',
+        )
+
+        // Create workspace with lock file using URL source
+        const workspacePath = EffectPath.ops.join(
+          tmpDir,
+          EffectPath.unsafe.relativeDir('test-workspace/'),
+        )
+        yield* fs.makeDirectory(workspacePath, { recursive: true })
+        yield* initGitRepo(workspacePath)
+
+        // Create megarepo.json with URL source (not local path)
+        const config: typeof MegarepoConfig.Type = {
+          members: {
+            // Using https URL so it's treated as URL type, not path type
+            'test-repo': 'https://example.com/org/test-repo#main',
+          },
+        }
+        const configContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
+          config,
+        )
+        yield* fs.writeFileString(
+          EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME)),
+          configContent + '\n',
+        )
+
+        // Create lock file
+        const lockPath = EffectPath.ops.join(
+          workspacePath,
+          EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+        )
+        yield* writeLockFile({
+          lockPath,
+          lockFile: {
+            version: 1,
+            members: {
+              'test-repo': createLockedMember({
+                url: 'https://example.com/org/test-repo',
+                ref: 'main',
+                commit: mainCommit,
+              }),
+            },
+          },
+        })
+
+        yield* addCommit({ repoPath: workspacePath, message: 'Initialize megarepo' })
+
+        // Create the symlink manually to the store worktree (simulate existing synced state)
+        const reposDir = EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeDir('repos/'))
+        yield* fs.makeDirectory(reposDir, { recursive: true })
+        yield* fs.symlink(
+          storeWorktreePath.slice(0, -1),
+          EffectPath.ops.join(reposDir, EffectPath.unsafe.relativeFile('test-repo')),
+        )
+
+        // Verify initial state: worktree is on main
+        const initialBranch = yield* runGitCommand(storeWorktreePath, 'branch', '--show-current')
+        expect(initialBranch).toBe('main')
+
+        // NOW SIMULATE THE PROBLEM: User runs `git checkout` directly in the worktree
+        // This creates a mismatch: store path says 'main' but HEAD is 'some-feature-branch'
+        yield* runGitCommand(storeWorktreePath, 'checkout', 'some-feature-branch')
+
+        // Verify the mismatch exists
+        const currentBranch = yield* runGitCommand(storeWorktreePath, 'branch', '--show-current')
+        expect(currentBranch).toBe('some-feature-branch')
+
+        // Run mr sync with custom store path - should detect and warn about the ref mismatch
+        const result = yield* runSyncCommand({
+          cwd: workspacePath,
+          args: ['--output', 'json'],
+          env: {
+            MEGAREPO_STORE: storeDir.slice(0, -1), // Remove trailing slash
+          },
+        })
+        const json = decodeSyncJsonOutput(result.stdout.trim())
+
+        // Should have a result for test-repo
+        expect(json.results).toHaveLength(1)
+        const memberResult = json.results[0]
+        expect(memberResult?.name).toBe('test-repo')
+
+        // After the fix for issue #88:
+        // - status should be 'skipped' to indicate a problem was detected
+        // - message should explain the ref mismatch
+        // - refMismatch field should contain structured data
+        expect(memberResult?.status).toBe('skipped')
+        expect(memberResult?.message).toContain('ref mismatch')
+        expect(memberResult?.message).toContain('main')
+        expect(memberResult?.message).toContain('some-feature-branch')
+
+        // Check that the refMismatch structured data is present
+        const refMismatch = (
+          memberResult as { refMismatch?: { expectedRef: string; actualRef: string } }
+        )?.refMismatch
+        expect(refMismatch).toBeDefined()
+        expect(refMismatch?.expectedRef).toBe('main')
+        expect(refMismatch?.actualRef).toBe('some-feature-branch')
+      }),
+    ))
+})
 
 describe('sync member removal detection', () => {
   it('should detect and remove orphaned symlinks when member is removed from config', () =>

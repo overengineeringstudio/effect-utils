@@ -21,6 +21,7 @@ import {
   parseSourceString,
 } from '../../lib/config.ts'
 import * as Git from '../../lib/git.ts'
+import { detectRefMismatch, type RefMismatch } from '../../lib/issues.ts'
 import { checkLockStaleness, LOCK_FILE_NAME, readLockFile } from '../../lib/lock.ts'
 import { extractRefFromSymlinkPath } from '../../lib/ref.ts'
 import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../context.ts'
@@ -171,25 +172,26 @@ const scanMembersRecursive = ({
         }
       }
 
+      // Read symlink target for drift detection
+      const symlinkTarget =
+        memberExists && !isLocal
+          ? yield* fs
+              .readLink(memberPath.replace(/\/$/, ''))
+              .pipe(Effect.catchAll(() => Effect.succeed(null)))
+          : null
+
       // Detect symlink drift: symlink target doesn't match expected ref from lock
       let symlinkDrift: SymlinkDrift | undefined = undefined
-      if (memberExists && !isLocal && lockedMember) {
-        // Read symlink target
-        const symlinkTarget = yield* fs
-          .readLink(memberPath.replace(/\/$/, ''))
-          .pipe(Effect.catchAll(() => Effect.succeed(null)))
+      if (symlinkTarget !== null && lockedMember) {
+        // Extract ref from symlink path using shared utility
+        const extracted = extractRefFromSymlinkPath(symlinkTarget)
 
-        if (symlinkTarget !== null) {
-          // Extract ref from symlink path using shared utility
-          const extracted = extractRefFromSymlinkPath(symlinkTarget)
-
-          // Compare with expected ref from lock file
-          if (extracted !== undefined && extracted.ref !== lockedMember.ref) {
-            symlinkDrift = {
-              symlinkRef: extracted.ref,
-              expectedRef: lockedMember.ref,
-              actualGitBranch: currentBranch,
-            }
+        // Compare with expected ref from lock file
+        if (extracted !== undefined && extracted.ref !== lockedMember.ref) {
+          symlinkDrift = {
+            symlinkRef: extracted.ref,
+            expectedRef: lockedMember.ref,
+            actualGitBranch: currentBranch,
           }
         }
       }
@@ -203,6 +205,17 @@ const scanMembersRecursive = ({
             lockedCommit: lockedMember.commit,
           }
         }
+      }
+
+      // Detect ref mismatch: worktree git HEAD differs from store path ref (Issue #88)
+      // This happens when user runs `git checkout <branch>` directly in the worktree
+      let refMismatch: RefMismatch | undefined = undefined
+      if (symlinkTarget !== null) {
+        refMismatch =
+          (yield* detectRefMismatch({
+            worktreePath: memberPath as AbsoluteDirPath,
+            symlinkTarget,
+          })) ?? undefined
       }
 
       members.push({
@@ -223,6 +236,7 @@ const scanMembersRecursive = ({
         gitStatus,
         symlinkDrift,
         commitDrift,
+        refMismatch,
       })
     }
 
@@ -425,6 +439,11 @@ export const statusCommand = Cli.Command.make(
           if (member.symlinkDrift) {
             syncReasons.push(
               `Member '${memberLabel}' symlink drift: ${member.symlinkDrift.symlinkRef} → ${member.symlinkDrift.expectedRef}`,
+            )
+          }
+          if (member.refMismatch) {
+            syncReasons.push(
+              `Member '${memberLabel}' ref mismatch: store path expects '${member.refMismatch.expectedRef}' but git HEAD is '${member.refMismatch.actualRef}'`,
             )
           }
           if (member.nestedMembers) {
