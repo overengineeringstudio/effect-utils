@@ -32,6 +32,55 @@ This adds a `git-hooks:ensure` task that runs after `devenv:git-hooks:install` a
 
 ---
 
+### DEVENV-02: Task tracing lacks OTLP export and observability features
+
+**Issue:** No upstream issue exists yet — feature gap relative to R10 requirements
+
+**Related issues:**
+- https://github.com/cachix/devenv/issues/1457 (Task Server Protocol - proposes JSON-RPC with timestamps)
+- https://github.com/cachix/devenv/pull/2239 (Added `--trace-format json` in v1.11)
+
+**Affected repos:** All repos using devenv tasks that need CI observability
+
+**Symptoms:**
+
+- Cannot export task traces to external observability systems (Datadog, Honeycomb, etc.)
+- No summary statistics (total wall time, parallelism efficiency, cache hit rates)
+- No historical metrics tracking across CI runs
+- Dependency graphs not visualizable beyond what's declared in nix
+
+**Current capabilities (devenv 1.11+):**
+
+```bash
+# Available trace formats
+devenv tasks run <task> --trace-format full   # verbose structured logs (default)
+devenv tasks run <task> --trace-format json   # JSON output for machine consumption
+devenv tasks run <task> --trace-format pretty # human-readable format
+```
+
+The `--trace-format json` option provides per-task timing and stdout/stderr capture, but lacks:
+- OTLP/OpenTelemetry export
+- Critical path analysis
+- Summary statistics
+- Metrics aggregation over time
+
+**R10 requirements gap analysis:**
+
+| Requirement | Status | Notes |
+|-------------|--------|-------|
+| (a) Per-task timing | ⚠️ Partial | Available in TUI and JSON format |
+| (b) Dependency visualization | ⚠️ Partial | Declared in nix, no graph analysis tool |
+| (c) Stdout/stderr capture | ✅ Available | Captured in JSON format |
+| (d) Structured export (JSON/OTLP) | ⚠️ Partial | JSON exists, OTLP missing |
+| (e) Summary statistics | ❌ Missing | No parallelism efficiency, cache hit rates |
+| (f) Metrics over time | ❌ Missing | No cross-run tracking |
+
+**Workaround:** For CI observability, parse `--trace-format json` output and forward to your observability platform manually. Consider filing an upstream feature request for native OTLP support.
+
+**Potential upstream contribution:** Add OTLP exporter to devenv task runner, building on the existing JSON trace infrastructure.
+
+---
+
 ## Cleanup checklist when issues are fixed
 
 - **DEVENV-01 fixed:**
@@ -39,3 +88,8 @@ This adds a `git-hooks:ensure` task that runs after `devenv:git-hooks:install` a
   - Remove `./nix/devenv-modules/tasks/shared/git-hooks-fix.nix` import from effect-utils devenv.nix
   - Optionally remove `git-hooks-fix.nix` module and flake export (or keep for backwards compat)
   - Verify hooks are installed on fresh clone without the workaround
+
+- **DEVENV-02 fixed (native OTLP support added):**
+  - Remove manual JSON parsing workarounds from CI pipelines
+  - Update CI to use native OTLP export
+  - Update R10 status in this document to reflect full compliance
