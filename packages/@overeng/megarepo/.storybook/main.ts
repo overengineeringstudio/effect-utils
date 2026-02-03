@@ -32,6 +32,10 @@ const config: StorybookConfig = {
       // Vite may resolve these packages to different copies in the monorepo,
       // causing "Cannot read properties of null (reading 'useState')" errors.
       dedupe: ['react', 'react-dom', 'react-reconciler'],
+      // Ensure browser conditions are used for package exports resolution.
+      // This fixes "require is not defined" errors from packages like msgpackr
+      // that have separate browser/node entry points.
+      conditions: ['browser', 'import', 'module', 'default'],
     }
     // Exclude OpenTUI packages from optimization - they require Bun runtime
     config.optimizeDeps = {

@@ -48,6 +48,10 @@ const config: StorybookConfig = {
       // Other Storybook packages in this monorepo don't need this because they
       // only use react-dom, not react-reconciler.
       dedupe: ['react', 'react-dom', 'react-reconciler'],
+      // Ensure browser conditions are used for package exports resolution.
+      // This fixes "require is not defined" errors from packages like msgpackr
+      // that have separate browser/node entry points.
+      conditions: ['browser', 'import', 'module', 'default'],
     }
     return config
   },

@@ -40,9 +40,10 @@ let
 
   # Dev servers as processes (long-running, with TUI via process-compose)
   # CI=true prevents storybook from prompting when port is taken - it auto-selects an available port
+  # --host 0.0.0.0 allows access from other machines (useful for remote dev environments)
   mkProcess = pkg: {
     "storybook-${pkg.name}" = {
-      exec = "CI=true ${storybookBin} dev -p ${toString pkg.port}";
+      exec = "CI=true ${storybookBin} dev -p ${toString pkg.port} --host 0.0.0.0";
       cwd = pkg.path;
     };
   };

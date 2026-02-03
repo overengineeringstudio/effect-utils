@@ -25,6 +25,10 @@ const config: StorybookConfig = {
         '@opentui/react': new URL('./opentui-stub.ts', import.meta.url).pathname,
       },
       dedupe: ['react', 'react-dom', 'react-reconciler'],
+      // Ensure browser conditions are used for package exports resolution.
+      // This fixes "require is not defined" errors from packages like msgpackr
+      // that have separate browser/node entry points.
+      conditions: ['browser', 'import', 'module', 'default'],
     }
     config.optimizeDeps = {
       ...config.optimizeDeps,
