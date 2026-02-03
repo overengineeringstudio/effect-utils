@@ -5,9 +5,8 @@
  */
 
 import type { Meta, StoryObj } from '@storybook/react'
-import React from 'react'
 
-import { TuiStoryPreview, type OutputTab } from '@overeng/tui-react/storybook'
+import { type OutputTab, TuiStoryPreview } from '@overeng/tui-react/storybook'
 
 import type { MemberSyncResult } from '../../lib/sync/schema.ts'
 import { SyncApp, type SyncState as SyncStateType } from './SyncOutput/mod.ts'
@@ -37,7 +36,12 @@ const exampleSyncResults: MemberSyncResult[] = [
   { name: 'effect', status: 'already_synced' },
   { name: 'effect-utils', status: 'synced', ref: 'main' },
   { name: 'livestore', status: 'cloned', ref: 'main' },
-  { name: 'dotfiles', status: 'updated', commit: 'abc1234def', previousCommit: '9876543fed' },
+  {
+    name: 'dotfiles',
+    status: 'updated',
+    commit: 'abc1234def',
+    previousCommit: '9876543fed',
+  },
   { name: 'private-repo', status: 'skipped', message: 'dirty worktree' },
 ]
 
@@ -204,8 +208,18 @@ export const FrozenMode: Story = {
         options: { dryRun: false, frozen: true, pull: false, all: false },
         results: [
           { name: 'effect', status: 'synced', ref: 'main', commit: 'abc1234' },
-          { name: 'effect-utils', status: 'synced', ref: 'main', commit: 'def5678' },
-          { name: 'livestore', status: 'cloned', ref: 'v1.0.0', commit: '9876543' },
+          {
+            name: 'effect-utils',
+            status: 'synced',
+            ref: 'main',
+            commit: 'def5678',
+          },
+          {
+            name: 'livestore',
+            status: 'cloned',
+            ref: 'v1.0.0',
+            commit: '9876543',
+          },
         ],
         members: ['effect', 'effect-utils', 'livestore'],
       })}
@@ -225,7 +239,12 @@ export const PullMode: Story = {
       initialState={createBaseState({
         options: { dryRun: false, frozen: false, pull: true, all: false },
         results: [
-          { name: 'effect', status: 'updated', commit: 'abc1234def', previousCommit: '9876543fed' },
+          {
+            name: 'effect',
+            status: 'updated',
+            commit: 'abc1234def',
+            previousCommit: '9876543fed',
+          },
           {
             name: 'effect-utils',
             status: 'updated',
@@ -251,7 +270,12 @@ export const LockUpdates: Story = {
       app={SyncApp}
       initialState={createBaseState({
         results: [
-          { name: 'effect', status: 'locked', commit: 'abc1234def', previousCommit: '9876543fed' },
+          {
+            name: 'effect',
+            status: 'locked',
+            commit: 'abc1234def',
+            previousCommit: '9876543fed',
+          },
           {
             name: 'effect-utils',
             status: 'locked',
@@ -278,8 +302,16 @@ export const RemovedMembers: Story = {
       initialState={createBaseState({
         results: [
           { name: 'effect', status: 'synced', ref: 'main' },
-          { name: 'old-repo', status: 'removed', message: '/store/old-repo-abc123' },
-          { name: 'deprecated', status: 'removed', message: '/store/deprecated-def456' },
+          {
+            name: 'old-repo',
+            status: 'removed',
+            message: '/store/old-repo-abc123',
+          },
+          {
+            name: 'deprecated',
+            status: 'removed',
+            message: '/store/deprecated-def456',
+          },
         ],
         members: ['effect', 'old-repo', 'deprecated'],
       })}
@@ -301,7 +333,11 @@ export const SkippedMembers: Story = {
           { name: 'effect', status: 'synced', ref: 'main' },
           { name: 'dirty-repo', status: 'skipped', message: 'dirty worktree' },
           { name: 'pinned-repo', status: 'skipped', message: 'pinned' },
-          { name: 'private-repo', status: 'skipped', message: 'authentication required' },
+          {
+            name: 'private-repo',
+            status: 'skipped',
+            message: 'authentication required',
+          },
         ],
         members: ['effect', 'dirty-repo', 'pinned-repo', 'private-repo'],
       })}
@@ -437,7 +473,10 @@ export const ManyMembers: Story = {
         View={SyncView}
         app={SyncApp}
         initialState={createBaseState({
-          workspace: { name: 'large-workspace', root: '/Users/dev/large-workspace' },
+          workspace: {
+            name: 'large-workspace',
+            root: '/Users/dev/large-workspace',
+          },
           results,
           members: results.map((r) => r.name),
         })}
@@ -486,9 +525,21 @@ export const AllErrors: Story = {
       initialState={createBaseState({
         results: [
           { name: 'effect', status: 'error', message: 'network timeout' },
-          { name: 'effect-utils', status: 'error', message: 'authentication failed' },
-          { name: 'livestore', status: 'error', message: 'repository not found' },
-          { name: 'private-repo', status: 'error', message: 'permission denied' },
+          {
+            name: 'effect-utils',
+            status: 'error',
+            message: 'authentication failed',
+          },
+          {
+            name: 'livestore',
+            status: 'error',
+            message: 'repository not found',
+          },
+          {
+            name: 'private-repo',
+            status: 'error',
+            message: 'permission denied',
+          },
         ],
         members: ['effect', 'effect-utils', 'livestore', 'private-repo'],
       })}
@@ -508,10 +559,26 @@ export const MixedSkipped: Story = {
       initialState={createBaseState({
         results: [
           { name: 'effect', status: 'already_synced' },
-          { name: 'dirty-repo', status: 'skipped', message: '5 uncommitted changes' },
-          { name: 'pinned-repo', status: 'skipped', message: 'pinned to v1.0.0' },
-          { name: 'auth-repo', status: 'skipped', message: 'authentication required' },
-          { name: 'missing-ref', status: 'skipped', message: 'ref feature/x not found' },
+          {
+            name: 'dirty-repo',
+            status: 'skipped',
+            message: '5 uncommitted changes',
+          },
+          {
+            name: 'pinned-repo',
+            status: 'skipped',
+            message: 'pinned to v1.0.0',
+          },
+          {
+            name: 'auth-repo',
+            status: 'skipped',
+            message: 'authentication required',
+          },
+          {
+            name: 'missing-ref',
+            status: 'skipped',
+            message: 'ref feature/x not found',
+          },
         ],
         members: ['effect', 'dirty-repo', 'pinned-repo', 'auth-repo', 'missing-ref'],
       })}
@@ -574,8 +641,18 @@ export const RefChanges: Story = {
         options: { dryRun: false, frozen: false, pull: true, all: false },
         results: [
           { name: 'effect', status: 'synced', ref: 'v3.1.0' },
-          { name: 'effect-utils', status: 'updated', commit: 'abc1234', previousCommit: 'def5678' },
-          { name: 'livestore', status: 'updated', commit: '1234567', previousCommit: '9876543' },
+          {
+            name: 'effect-utils',
+            status: 'updated',
+            commit: 'abc1234',
+            previousCommit: 'def5678',
+          },
+          {
+            name: 'livestore',
+            status: 'updated',
+            commit: '1234567',
+            previousCommit: '9876543',
+          },
         ],
         members: ['effect', 'effect-utils', 'livestore'],
       })}
@@ -603,8 +680,15 @@ export const LongNames: Story = {
             status: 'synced',
             ref: 'main',
           },
-          { name: '@another-org/another-very-long-package-name', status: 'already_synced' },
-          { name: 'short', status: 'cloned', ref: 'feature/very-long-branch-name-for-testing' },
+          {
+            name: '@another-org/another-very-long-package-name',
+            status: 'already_synced',
+          },
+          {
+            name: 'short',
+            status: 'cloned',
+            ref: 'feature/very-long-branch-name-for-testing',
+          },
         ],
         members: [
           '@organization/extremely-long-package-name-for-testing',
@@ -725,7 +809,12 @@ const syncTimeline: Array<{ at: number; action: typeof SyncAction.Type }> = [
         results: [
           { name: 'effect', status: 'synced', ref: 'main' },
           { name: 'effect-utils', status: 'cloned', ref: 'main' },
-          { name: 'livestore', status: 'updated', commit: 'abc1234', previousCommit: 'def5678' },
+          {
+            name: 'livestore',
+            status: 'updated',
+            commit: 'abc1234',
+            previousCommit: 'def5678',
+          },
         ],
       }),
     },
@@ -742,7 +831,12 @@ const syncTimeline: Array<{ at: number; action: typeof SyncAction.Type }> = [
         results: [
           { name: 'effect', status: 'synced', ref: 'main' },
           { name: 'effect-utils', status: 'cloned', ref: 'main' },
-          { name: 'livestore', status: 'updated', commit: 'abc1234', previousCommit: 'def5678' },
+          {
+            name: 'livestore',
+            status: 'updated',
+            commit: 'abc1234',
+            previousCommit: 'def5678',
+          },
           { name: 'dotfiles', status: 'already_synced' },
         ],
         generatedFiles: ['flake.nix', '.envrc'],
