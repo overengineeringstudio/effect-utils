@@ -28,6 +28,15 @@ All notable changes to this project will be documented in this file.
   - Removed deprecated `vitestBin`, `vitestConfig`, and `vitestInstallTask` parameters from test module
   - This ensures packages are independently testable without cross-package dependencies
 
+- **nix/devenv-modules/tasks/shared/nix-cli.nix**: Preflight lockfile/package.json fingerprint checks in `nix:check`
+  - Prevents warmed Nix stores from masking stale hashes
+  - Makes `nix:check` deterministic in CI vs local runs (R5)
+
+- **nix/workspace-tools/lib/mk-pnpm-cli.nix**: Deterministic pnpm store tarball creation
+  - Normalizes tar output (stable ordering + fixed timestamps)
+  - Strips non-deterministic pnpm store `checkedAt` metadata
+  - Prevents pnpm deps hash churn across CI runs
+
 ### Removed
 
 - **@overeng/mono**: Removed package entirely — all functionality is now covered by devenv tasks (`dt`). The package had zero consumers across all repos.

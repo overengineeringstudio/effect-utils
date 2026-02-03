@@ -162,6 +162,8 @@ let
       pkgs.nodejs
       pkgs.cacert
       pkgs.zstd
+      pkgs.findutils
+      pkgs.perl
     ];
 
     dontConfigure = true;
@@ -186,12 +188,21 @@ let
       # Use --force to skip workspace member validation since we only have package.json files
       pnpm install --frozen-lockfile --ignore-scripts --force
 
+      # Normalize pnpm store metadata (checkedAt timestamps are non-deterministic)
+      for indexDir in "$STORE_PATH"/v*/index; do
+        if [ -d "$indexDir" ]; then
+          find "$indexDir" -type f -name "*.json" -print0 \
+            | xargs -0 perl -pi -e 's/"checkedAt":[0-9]+/"checkedAt":0/g'
+        fi
+      done
+
       # Create output directory
       mkdir -p $out
 
       # Archive the pnpm store
       cd $STORE_PATH
-      tar -cf - . | zstd -o $out/pnpm-store.tar.zst
+      LC_ALL=C TZ=UTC tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner -cf - . \
+        | zstd -T1 -q -o $out/pnpm-store.tar.zst
 
       runHook postInstall
     '';
