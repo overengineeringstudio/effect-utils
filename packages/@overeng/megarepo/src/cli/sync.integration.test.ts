@@ -23,7 +23,7 @@ import {
   initGitRepo,
   runGitCommand,
 } from '../test-utils/setup.ts'
-import { createWorkspaceWithLock } from '../test-utils/store-setup.ts'
+import { createStoreFixture, createWorkspaceWithLock } from '../test-utils/store-setup.ts'
 import { withTestCtx } from '../test-utils/withTestCtx.ts'
 import { Cwd } from './context.ts'
 import { mrCommand } from './mod.ts'
@@ -1678,87 +1678,25 @@ describe('sync worktree ref mismatch detection', () => {
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
 
-        // Create temp directory
-        const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
-
-        // Set up a custom store directory
-        const storeDir = EffectPath.ops.join(
-          tmpDir,
-          EffectPath.unsafe.relativeDir('megarepo-store/'),
-        )
-        yield* fs.makeDirectory(storeDir, { recursive: true })
-
-        // Create a "remote" repo that we'll reference with a URL-like source
-        // Using https:// URL format so it's parsed as URL type, not local path
-        const remoteRepoPath = yield* createRepo({
-          basePath: tmpDir,
-          fixture: {
-            name: 'remote-test-repo',
-            files: { 'package.json': '{"name": "test-repo"}' },
+        const { storePath, worktreePaths } = yield* createStoreFixture([
+          {
+            host: 'example.com',
+            owner: 'org',
+            repo: 'test-repo',
+            branches: ['main'],
           },
-        })
-
-        // Get the initial commit
-        const mainCommit = yield* runGitCommand(remoteRepoPath, 'rev-parse', 'HEAD')
-
-        // Create a feature branch with a different commit
-        yield* runGitCommand(remoteRepoPath, 'checkout', '-b', 'some-feature-branch')
-        yield* fs.writeFileString(
-          EffectPath.ops.join(remoteRepoPath, EffectPath.unsafe.relativeFile('feature.txt')),
-          'feature content\n',
-        )
-        yield* addCommit({ repoPath: remoteRepoPath, message: 'Add feature' })
-
-        // Go back to main
-        yield* runGitCommand(remoteRepoPath, 'checkout', 'main').pipe(
-          Effect.catchAll(() => runGitCommand(remoteRepoPath, 'checkout', 'master')),
-        )
-
-        // Create store structure: bare repo + worktree
-        // For a URL source like "https://example.com/org/test-repo", store path would be:
-        // ~/.megarepo/example.com/org/test-repo/.bare/
-        // ~/.megarepo/example.com/org/test-repo/refs/heads/main/
-        const repoStorePath = EffectPath.ops.join(
-          storeDir,
-          EffectPath.unsafe.relativeDir('example.com/org/test-repo/'),
-        )
-        const bareRepoPath = EffectPath.ops.join(
-          repoStorePath,
-          EffectPath.unsafe.relativeDir('.bare/'),
-        )
-        const storeWorktreePath = EffectPath.ops.join(
-          repoStorePath,
-          EffectPath.unsafe.relativeDir('refs/heads/main/'),
-        )
-
-        // Clone bare repo
-        yield* fs.makeDirectory(bareRepoPath, { recursive: true })
-        const worktreeParent = EffectPath.ops.parent(storeWorktreePath)
-        if (worktreeParent !== undefined) {
-          yield* fs.makeDirectory(worktreeParent, { recursive: true })
+        ])
+        const storeKey = 'example.com/org/test-repo#main'
+        const storeWorktreePath = worktreePaths[storeKey]
+        if (storeWorktreePath === undefined) {
+          throw new Error(`Missing worktree path for ${storeKey}`)
         }
-        yield* runGitCommand(bareRepoPath, 'clone', '--bare', remoteRepoPath.slice(0, -1), '.')
 
-        // Create worktree from bare repo
-        yield* runGitCommand(
-          bareRepoPath,
-          'worktree',
-          'add',
-          storeWorktreePath.slice(0, -1),
-          'main',
-        )
-
-        // Also fetch the feature branch into the bare repo so we can checkout to it
-        yield* runGitCommand(
-          bareRepoPath,
-          'fetch',
-          remoteRepoPath.slice(0, -1),
-          'some-feature-branch:some-feature-branch',
-        )
+        const mainCommit = yield* runGitCommand(storeWorktreePath, 'rev-parse', 'HEAD')
 
         // Create workspace with lock file using URL source
         const workspacePath = EffectPath.ops.join(
-          tmpDir,
+          EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`),
           EffectPath.unsafe.relativeDir('test-workspace/'),
         )
         yield* fs.makeDirectory(workspacePath, { recursive: true })
@@ -1808,13 +1746,14 @@ describe('sync worktree ref mismatch detection', () => {
           EffectPath.ops.join(reposDir, EffectPath.unsafe.relativeFile('test-repo')),
         )
 
-        // Verify initial state: worktree is on main
-        const initialBranch = yield* runGitCommand(storeWorktreePath, 'branch', '--show-current')
-        expect(initialBranch).toBe('main')
-
         // NOW SIMULATE THE PROBLEM: User runs `git checkout` directly in the worktree
         // This creates a mismatch: store path says 'main' but HEAD is 'some-feature-branch'
-        yield* runGitCommand(storeWorktreePath, 'checkout', 'some-feature-branch')
+        yield* runGitCommand(storeWorktreePath, 'checkout', '-b', 'some-feature-branch')
+        yield* fs.writeFileString(
+          EffectPath.ops.join(storeWorktreePath, EffectPath.unsafe.relativeFile('feature.txt')),
+          'feature content\n',
+        )
+        yield* addCommit({ repoPath: storeWorktreePath, message: 'Add feature' })
 
         // Verify the mismatch exists
         const currentBranch = yield* runGitCommand(storeWorktreePath, 'branch', '--show-current')
@@ -1825,7 +1764,7 @@ describe('sync worktree ref mismatch detection', () => {
           cwd: workspacePath,
           args: ['--output', 'json'],
           env: {
-            MEGAREPO_STORE: storeDir.slice(0, -1), // Remove trailing slash
+            MEGAREPO_STORE: storePath.slice(0, -1),
           },
         })
         const json = decodeSyncJsonOutput(result.stdout.trim())
@@ -1862,62 +1801,25 @@ describe('sync worktree ref mismatch detection', () => {
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
 
-        // Create temp directory
-        const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
-
-        // Set up a custom store directory
-        const storeDir = EffectPath.ops.join(
-          tmpDir,
-          EffectPath.unsafe.relativeDir('megarepo-store/'),
-        )
-        yield* fs.makeDirectory(storeDir, { recursive: true })
-
-        // Create a "remote" repo
-        const remoteRepoPath = yield* createRepo({
-          basePath: tmpDir,
-          fixture: {
-            name: 'remote-test-repo',
-            files: { 'package.json': '{"name": "test-repo"}' },
+        const { storePath, worktreePaths } = yield* createStoreFixture([
+          {
+            host: 'example.com',
+            owner: 'org',
+            repo: 'test-repo',
+            branches: ['main'],
           },
-        })
-
-        // Get the initial commit
-        const mainCommit = yield* runGitCommand(remoteRepoPath, 'rev-parse', 'HEAD')
-
-        // Create store structure: bare repo + worktree
-        const repoStorePath = EffectPath.ops.join(
-          storeDir,
-          EffectPath.unsafe.relativeDir('example.com/org/test-repo/'),
-        )
-        const bareRepoPath = EffectPath.ops.join(
-          repoStorePath,
-          EffectPath.unsafe.relativeDir('.bare/'),
-        )
-        const storeWorktreePath = EffectPath.ops.join(
-          repoStorePath,
-          EffectPath.unsafe.relativeDir('refs/heads/main/'),
-        )
-
-        // Clone bare repo
-        yield* fs.makeDirectory(bareRepoPath, { recursive: true })
-        const worktreeParent = EffectPath.ops.parent(storeWorktreePath)
-        if (worktreeParent !== undefined) {
-          yield* fs.makeDirectory(worktreeParent, { recursive: true })
+        ])
+        const storeKey = 'example.com/org/test-repo#main'
+        const storeWorktreePath = worktreePaths[storeKey]
+        if (storeWorktreePath === undefined) {
+          throw new Error(`Missing worktree path for ${storeKey}`)
         }
-        yield* runGitCommand(bareRepoPath, 'clone', '--bare', remoteRepoPath.slice(0, -1), '.')
 
-        // Create worktree from bare repo
-        yield* runGitCommand(
-          bareRepoPath,
-          'worktree',
-          'add',
-          storeWorktreePath.slice(0, -1),
-          'main',
-        )
+        const mainCommit = yield* runGitCommand(storeWorktreePath, 'rev-parse', 'HEAD')
 
         // Create workspace with lock file using URL source
         const workspacePath = EffectPath.ops.join(
-          tmpDir,
+          EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`),
           EffectPath.unsafe.relativeDir('test-workspace/'),
         )
         yield* fs.makeDirectory(workspacePath, { recursive: true })
@@ -1972,7 +1874,7 @@ describe('sync worktree ref mismatch detection', () => {
 
         // NOW SIMULATE THE PROBLEM: User runs `git checkout <sha>` directly in the worktree
         // This creates a detached HEAD state - mismatch with the branch-based store path
-        yield* runGitCommand(storeWorktreePath, 'checkout', mainCommit)
+        yield* runGitCommand(storeWorktreePath, 'checkout', '--detach', mainCommit)
 
         // Verify detached HEAD
         const currentBranch = yield* runGitCommand(storeWorktreePath, 'branch', '--show-current')
@@ -1983,7 +1885,7 @@ describe('sync worktree ref mismatch detection', () => {
           cwd: workspacePath,
           args: ['--output', 'json'],
           env: {
-            MEGAREPO_STORE: storeDir.slice(0, -1),
+            MEGAREPO_STORE: storePath.slice(0, -1),
           },
         })
         const json = decodeSyncJsonOutput(result.stdout.trim())
