@@ -1678,40 +1678,19 @@ describe('sync worktree ref mismatch detection', () => {
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
 
-        const { storePath, bareRepoPaths } = yield* createStoreFixture([
+        const { storePath, worktreePaths } = yield* createStoreFixture([
           {
             host: 'example.com',
             owner: 'org',
             repo: 'test-repo',
-            branches: [],
+            branches: ['main'],
           },
         ])
-        const repoKey = 'example.com/org/test-repo'
-        const bareRepoPath = bareRepoPaths[repoKey]
-        if (bareRepoPath === undefined) {
-          throw new Error(`Missing bare repo path for ${repoKey}`)
+        const storeKey = 'example.com/org/test-repo#main'
+        const storeWorktreePath = worktreePaths[storeKey]
+        if (storeWorktreePath === undefined) {
+          throw new Error(`Missing worktree path for ${storeKey}`)
         }
-        const repoBasePath = EffectPath.ops.join(
-          storePath,
-          EffectPath.unsafe.relativeDir(`${repoKey}/`),
-        )
-        const storeWorktreePath = EffectPath.ops.join(
-          repoBasePath,
-          EffectPath.unsafe.relativeDir('refs/heads/main/'),
-        )
-        const worktreeParent = EffectPath.ops.parent(storeWorktreePath)
-        if (worktreeParent !== undefined) {
-          yield* fs.makeDirectory(worktreeParent, { recursive: true })
-        }
-        yield* runGitCommand(bareRepoPath, 'branch', '-f', 'main', 'HEAD')
-        yield* runGitCommand(
-          bareRepoPath,
-          'worktree',
-          'add',
-          storeWorktreePath.slice(0, -1),
-          'main',
-        )
-
         const mainCommit = yield* runGitCommand(storeWorktreePath, 'rev-parse', 'HEAD')
 
         // Create workspace with lock file using URL source
@@ -1775,10 +1754,6 @@ describe('sync worktree ref mismatch detection', () => {
         )
         yield* addCommit({ repoPath: storeWorktreePath, message: 'Add feature' })
 
-        // Verify the mismatch exists
-        const currentBranch = yield* runGitCommand(storeWorktreePath, 'branch', '--show-current')
-        expect(currentBranch).toBe('some-feature-branch')
-
         // Run mr sync with custom store path - should detect and warn about the ref mismatch
         const result = yield* runSyncCommand({
           cwd: workspacePath,
@@ -1821,40 +1796,19 @@ describe('sync worktree ref mismatch detection', () => {
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
 
-        const { storePath, bareRepoPaths } = yield* createStoreFixture([
+        const { storePath, worktreePaths } = yield* createStoreFixture([
           {
             host: 'example.com',
             owner: 'org',
             repo: 'test-repo',
-            branches: [],
+            branches: ['main'],
           },
         ])
-        const repoKey = 'example.com/org/test-repo'
-        const bareRepoPath = bareRepoPaths[repoKey]
-        if (bareRepoPath === undefined) {
-          throw new Error(`Missing bare repo path for ${repoKey}`)
+        const storeKey = 'example.com/org/test-repo#main'
+        const storeWorktreePath = worktreePaths[storeKey]
+        if (storeWorktreePath === undefined) {
+          throw new Error(`Missing worktree path for ${storeKey}`)
         }
-        const repoBasePath = EffectPath.ops.join(
-          storePath,
-          EffectPath.unsafe.relativeDir(`${repoKey}/`),
-        )
-        const storeWorktreePath = EffectPath.ops.join(
-          repoBasePath,
-          EffectPath.unsafe.relativeDir('refs/heads/main/'),
-        )
-        const worktreeParent = EffectPath.ops.parent(storeWorktreePath)
-        if (worktreeParent !== undefined) {
-          yield* fs.makeDirectory(worktreeParent, { recursive: true })
-        }
-        yield* runGitCommand(bareRepoPath, 'branch', '-f', 'main', 'HEAD')
-        yield* runGitCommand(
-          bareRepoPath,
-          'worktree',
-          'add',
-          storeWorktreePath.slice(0, -1),
-          'main',
-        )
-
         const mainCommit = yield* runGitCommand(storeWorktreePath, 'rev-parse', 'HEAD')
 
         // Create workspace with lock file using URL source
@@ -1907,10 +1861,6 @@ describe('sync worktree ref mismatch detection', () => {
           storeWorktreePath.slice(0, -1),
           EffectPath.ops.join(reposDir, EffectPath.unsafe.relativeFile('test-repo')),
         )
-
-        // Verify initial state: worktree is on main
-        const initialBranch = yield* runGitCommand(storeWorktreePath, 'branch', '--show-current')
-        expect(initialBranch).toBe('main')
 
         // NOW SIMULATE THE PROBLEM: User runs `git checkout <sha>` directly in the worktree
         // This creates a detached HEAD state - mismatch with the branch-based store path
