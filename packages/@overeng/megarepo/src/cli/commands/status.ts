@@ -21,6 +21,7 @@ import {
   parseSourceString,
 } from '../../lib/config.ts'
 import * as Git from '../../lib/git.ts'
+import { detectRefMismatch, type RefMismatch } from '../../lib/issues.ts'
 import { checkLockStaleness, LOCK_FILE_NAME, readLockFile } from '../../lib/lock.ts'
 import { extractRefFromSymlinkPath } from '../../lib/ref.ts'
 import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../context.ts'
@@ -30,6 +31,7 @@ import type {
   CommitDrift,
   GitStatus,
   MemberStatus,
+  StaleLock,
   SymlinkDrift,
 } from '../renderers/StatusOutput/mod.ts'
 
@@ -171,23 +173,47 @@ const scanMembersRecursive = ({
         }
       }
 
-      // Detect symlink drift: symlink target doesn't match expected ref from lock
+      // Read symlink target for drift detection
+      const symlinkTarget =
+        memberExists && !isLocal
+          ? yield* fs
+              .readLink(memberPath.replace(/\/$/, ''))
+              .pipe(Effect.catchAll(() => Effect.succeed(null)))
+          : null
+
+      // Get source ref (what megarepo.json intends)
+      const sourceRef =
+        source && source.type !== 'path' ? Option.getOrElse(source.ref, () => 'main') : undefined
+
+      // Detect stale lock vs symlink drift
+      // These are mutually exclusive scenarios:
+      //
+      // Stale lock: lock.ref ≠ symlink.ref, but symlink.ref === source.ref
+      //   - Current state matches intent, lock is just outdated
+      //   - Fix: mr sync (updates lock)
+      //
+      // Symlink drift: lock.ref === symlink.ref, but lock.ref ≠ source.ref
+      //   - Lock and symlink are in sync, but don't match config intent
+      //   - Fix: mr sync --pull (switch to source ref) or edit megarepo.json
+      let staleLock: StaleLock | undefined = undefined
       let symlinkDrift: SymlinkDrift | undefined = undefined
-      if (memberExists && !isLocal && lockedMember) {
-        // Read symlink target
-        const symlinkTarget = yield* fs
-          .readLink(memberPath.replace(/\/$/, ''))
-          .pipe(Effect.catchAll(() => Effect.succeed(null)))
 
-        if (symlinkTarget !== null) {
-          // Extract ref from symlink path using shared utility
-          const extracted = extractRefFromSymlinkPath(symlinkTarget)
+      if (symlinkTarget !== null && lockedMember && sourceRef) {
+        const extracted = extractRefFromSymlinkPath(symlinkTarget)
+        const symlinkRef = extracted?.ref
 
-          // Compare with expected ref from lock file
-          if (extracted !== undefined && extracted.ref !== lockedMember.ref) {
+        if (symlinkRef && lockedMember.ref !== sourceRef) {
+          if (symlinkRef === sourceRef && symlinkRef !== lockedMember.ref) {
+            // Stale lock: symlink matches source, lock is outdated
+            staleLock = {
+              lockRef: lockedMember.ref,
+              actualRef: symlinkRef,
+            }
+          } else if (symlinkRef === lockedMember.ref && symlinkRef !== sourceRef) {
+            // True symlink drift: symlink follows lock, but lock doesn't match source
             symlinkDrift = {
-              symlinkRef: extracted.ref,
-              expectedRef: lockedMember.ref,
+              symlinkRef,
+              sourceRef,
               actualGitBranch: currentBranch,
             }
           }
@@ -203,6 +229,17 @@ const scanMembersRecursive = ({
             lockedCommit: lockedMember.commit,
           }
         }
+      }
+
+      // Detect ref mismatch: worktree git HEAD differs from store path ref (Issue #88)
+      // This happens when user runs `git checkout <branch>` directly in the worktree
+      let refMismatch: RefMismatch | undefined = undefined
+      if (symlinkTarget !== null) {
+        refMismatch =
+          (yield* detectRefMismatch({
+            worktreePath: memberPath as AbsoluteDirPath,
+            symlinkTarget,
+          })) ?? undefined
       }
 
       members.push({
@@ -221,8 +258,10 @@ const scanMembersRecursive = ({
         isMegarepo,
         nestedMembers,
         gitStatus,
+        staleLock,
         symlinkDrift,
         commitDrift,
+        refMismatch,
       })
     }
 
@@ -422,9 +461,19 @@ export const statusCommand = Cli.Command.make(
           } else if (!member.exists) {
             syncReasons.push(`Member '${memberLabel}' worktree missing`)
           }
+          if (member.staleLock) {
+            syncReasons.push(
+              `Member '${memberLabel}' stale lock: lock says '${member.staleLock.lockRef}' but actual is '${member.staleLock.actualRef}'`,
+            )
+          }
           if (member.symlinkDrift) {
             syncReasons.push(
-              `Member '${memberLabel}' symlink drift: ${member.symlinkDrift.symlinkRef} → ${member.symlinkDrift.expectedRef}`,
+              `Member '${memberLabel}' symlink drift: tracking '${member.symlinkDrift.symlinkRef}' but source says '${member.symlinkDrift.sourceRef}'`,
+            )
+          }
+          if (member.refMismatch) {
+            syncReasons.push(
+              `Member '${memberLabel}' ref mismatch: store path expects '${member.refMismatch.expectedRef}' but git HEAD is '${member.refMismatch.actualRef}'`,
             )
           }
           if (member.nestedMembers) {

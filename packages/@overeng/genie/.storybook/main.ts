@@ -2,7 +2,6 @@ import type { StorybookConfig } from '@storybook/react-vite'
 
 const config: StorybookConfig = {
   stories: ['../src/**/*.stories.@(ts|tsx)'],
-  // Note: In storybook 10.x, addon-essentials is built into the core
   addons: [],
   framework: {
     name: '@storybook/react-vite',
@@ -20,23 +19,35 @@ const config: StorybookConfig = {
       ...config.build,
       target: 'esnext',
     }
+    // Configure esbuild to use automatic JSX runtime for all files
+    // This is needed for linked workspace packages that use jsx: "react-jsx"
+    config.esbuild = {
+      ...config.esbuild,
+      jsx: 'automatic',
+    }
     config.resolve = {
       ...config.resolve,
       // IMPORTANT: Dedupe React packages to avoid multiple instances.
-      // This package uses @overeng/tui-react which uses react-reconciler for its TUI renderer.
-      // React-reconciler shares React's internal dispatcher with react-dom. Without deduplication,
-      // Vite may resolve these packages to different copies in the monorepo,
-      // causing "Cannot read properties of null (reading 'useState')" errors.
       dedupe: ['react', 'react-dom', 'react-reconciler'],
     }
     config.optimizeDeps = {
       ...config.optimizeDeps,
       esbuildOptions: {
         target: 'esnext',
+        jsx: 'automatic',
       },
-      include: [...(config.optimizeDeps?.include ?? []), 'react-reconciler'],
-      // Exclude @opentui packages - they use `with { type: "file" }` import attributes
-      // that esbuild doesn't support
+      // WORKAROUND: Vite 7+ doesn't properly pre-bundle CJS dependencies of linked workspace
+      // packages in dev mode, causing "require is not defined" errors in the browser.
+      // Docs: https://vite.dev/guide/dep-pre-bundling#monorepos-and-linked-dependencies
+      // Related: https://github.com/vitejs/vite/issues/10447
+      include: [
+        ...(config.optimizeDeps?.include ?? []),
+        'react-reconciler',
+        'react-reconciler > scheduler',
+        '@effect/cli > ini',
+        '@effect/cli > toml',
+      ],
+      // Exclude @opentui packages - they use import attributes that esbuild doesn't support
       exclude: [...(config.optimizeDeps?.exclude ?? []), '@opentui/core', '@opentui/react'],
     }
     return config

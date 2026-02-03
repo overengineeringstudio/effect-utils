@@ -19,6 +19,7 @@ import {
   validateMemberName,
 } from '../config.ts'
 import * as Git from '../git.ts'
+import { detectRefMismatch, formatRefMismatchMessage } from '../issues.ts'
 import type { LockFile } from '../lock.ts'
 import { classifyRef, extractRefFromSymlinkPath, isCommitSha, type RefType } from '../ref.ts'
 import { Store } from '../store.ts'
@@ -379,6 +380,22 @@ export const syncMember = <R = never>({
           Effect.catchAll(() => Effect.succeed(Option.none<string>())),
         )
         const currentBranch = Option.getOrUndefined(currentBranchOpt)
+
+        // Check for ref mismatch (invariant #8 violation)
+        // This happens when user runs `git checkout <other-branch>` directly in the worktree
+        const refMismatch = yield* detectRefMismatch({
+          worktreePath: memberPathNormalized,
+          symlinkTarget: currentLinkNormalized,
+        })
+
+        if (refMismatch !== undefined) {
+          return {
+            name,
+            status: 'skipped',
+            message: formatRefMismatchMessage({ refMismatch, memberName: name }),
+            refMismatch,
+          } satisfies MemberSyncResult
+        }
 
         // Determine if lock needs updating
         const previousCommit = lockedMember?.commit

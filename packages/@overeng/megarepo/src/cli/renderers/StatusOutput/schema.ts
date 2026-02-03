@@ -7,6 +7,8 @@
 
 import { Schema } from 'effect'
 
+import { RefMismatch } from '../../../lib/issues.ts'
+
 // =============================================================================
 // Git Status
 // =============================================================================
@@ -24,16 +26,50 @@ export const GitStatus = Schema.Struct({
 export type GitStatus = Schema.Schema.Type<typeof GitStatus>
 
 // =============================================================================
+// Stale Lock
+// =============================================================================
+
+/**
+ * Schema for detecting when the lock file ref doesn't match the current state.
+ *
+ * This happens when:
+ * - User was working on a branch (lock tracked it)
+ * - User switched back to main (via git checkout or mr pin)
+ * - Lock wasn't updated
+ *
+ * The current state (symlink + git HEAD) matches the source intent,
+ * but the lock is outdated.
+ */
+export const StaleLock = Schema.Struct({
+  /** The ref recorded in the lock file (stale) */
+  lockRef: Schema.String,
+  /** The ref from source/symlink/git HEAD (current actual state) */
+  actualRef: Schema.String,
+})
+
+/** Inferred type for stale lock information. */
+export type StaleLock = Schema.Schema.Type<typeof StaleLock>
+
+// =============================================================================
 // Symlink Drift
 // =============================================================================
 
-/** Schema for detecting when a symlink points to a different ref than expected by the lock file. */
+/**
+ * Schema for detecting true symlink drift: symlink follows lock but lock differs from source.
+ *
+ * This happens when:
+ * - Lock was updated to track a branch (e.g., feat/x)
+ * - Symlink points to that branch's worktree
+ * - But megarepo.json says to track a different ref (e.g., main)
+ *
+ * The lock and symlink are in sync, but they don't match the config intent.
+ */
 export const SymlinkDrift = Schema.Struct({
-  /** The ref the symlink path corresponds to (e.g., 'dev' from refs/heads/dev) */
+  /** The ref the symlink path corresponds to (matches lock) */
   symlinkRef: Schema.String,
-  /** The ref we expected based on config/lock (e.g., 'refactor/genie-igor-ci') */
-  expectedRef: Schema.String,
-  /** The actual git branch inside the worktree (may differ from both) */
+  /** The ref from megarepo.json (the intended ref) */
+  sourceRef: Schema.String,
+  /** The actual git branch inside the worktree */
   actualGitBranch: Schema.optional(Schema.String),
 })
 
@@ -86,9 +122,23 @@ export interface MemberStatus {
   isMegarepo: boolean
   nestedMembers?: readonly MemberStatus[] | undefined
   gitStatus?: GitStatus | undefined
+  /**
+   * Present when lock ref doesn't match current state, but current state matches source intent.
+   * Fix: run `mr sync` to update lock.
+   */
+  staleLock?: StaleLock | undefined
+  /**
+   * Present when symlink/lock ref differs from source ref.
+   * Fix: edit megarepo.json or run `mr sync --pull`.
+   */
   symlinkDrift?: SymlinkDrift | undefined
   /** Present when local worktree commit differs from locked commit */
   commitDrift?: CommitDrift | undefined
+  /**
+   * Present when worktree git HEAD differs from store path ref (Issue #88).
+   * This happens when a user runs `git checkout <branch>` directly in the worktree.
+   */
+  refMismatch?: RefMismatch | undefined
 }
 
 /** Recursive schema for member status, using `Schema.suspend` to support nested megarepo trees. */
@@ -105,9 +155,23 @@ export const MemberStatus: Schema.Schema<MemberStatus> = Schema.suspend(() =>
     isMegarepo: Schema.Boolean,
     nestedMembers: Schema.optional(Schema.Array(MemberStatus)),
     gitStatus: Schema.optional(GitStatus),
+    /**
+     * Present when lock ref doesn't match current state, but current state matches source intent.
+     * Fix: run `mr sync` to update lock.
+     */
+    staleLock: Schema.optional(StaleLock),
+    /**
+     * Present when symlink/lock ref differs from source ref.
+     * Fix: edit megarepo.json or run `mr sync --pull`.
+     */
     symlinkDrift: Schema.optional(SymlinkDrift),
     /** Present when local worktree commit differs from locked commit */
     commitDrift: Schema.optional(CommitDrift),
+    /**
+     * Present when worktree git HEAD differs from store path ref (Issue #88).
+     * This happens when a user runs `git checkout <branch>` directly in the worktree.
+     */
+    refMismatch: Schema.optional(RefMismatch),
   }),
 )
 

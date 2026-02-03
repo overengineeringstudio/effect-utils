@@ -139,7 +139,9 @@ type Problem =
   | { _tag: 'unpushed'; members: MemberStatus[] }
   | { _tag: 'lock_missing' }
   | { _tag: 'lock_stale'; missingFromLock: readonly string[]; extraInLock: readonly string[] }
+  | { _tag: 'stale_lock'; members: MemberStatus[] }
   | { _tag: 'symlink_drift'; members: MemberStatus[] }
+  | { _tag: 'ref_mismatch'; members: MemberStatus[] }
 
 /** Legend item type with key */
 type LegendItem = {
@@ -193,7 +195,19 @@ const analyzeProblems = ({
   const warnings: Problem[] = []
   const allMembers = flattenMembers(members)
 
-  // Symlink drift is a critical issue - show first
+  // Ref mismatch is a critical issue - show first (Issue #88)
+  const refMismatched = allMembers.filter((m) => m.refMismatch !== undefined)
+  if (refMismatched.length > 0) {
+    warnings.push({ _tag: 'ref_mismatch', members: refMismatched })
+  }
+
+  // Stale lock: lock ref outdated but current state matches source intent
+  const staleLocked = allMembers.filter((m) => m.staleLock !== undefined)
+  if (staleLocked.length > 0) {
+    warnings.push({ _tag: 'stale_lock', members: staleLocked })
+  }
+
+  // Symlink drift: symlink/lock don't match source intent
   const drifted = allMembers.filter((m) => m.symlinkDrift !== undefined)
   if (drifted.length > 0) {
     warnings.push({ _tag: 'symlink_drift', members: drifted })
@@ -245,8 +259,12 @@ const getProblemKey = (problem: Problem): string => {
       return 'lock_missing'
     case 'lock_stale':
       return `lock_stale-${problem.missingFromLock.join(',')}-${problem.extraInLock.join(',')}`
+    case 'stale_lock':
+      return `stale_lock-${problem.members.map((m) => m.name).join(',')}`
     case 'symlink_drift':
       return `symlink_drift-${problem.members.map((m) => m.name).join(',')}`
+    case 'ref_mismatch':
+      return `ref_mismatch-${problem.members.map((m) => m.name).join(',')}`
   }
 }
 
@@ -324,6 +342,111 @@ const WarningBadge = () => {
 /** Single warning item */
 const WarningItem = ({ problem }: { problem: Problem }) => {
   switch (problem._tag) {
+    case 'ref_mismatch': {
+      const count = problem.members.length
+      return (
+        <Box>
+          <Box flexDirection="row">
+            <Text>{'  '}</Text>
+            <Text bold color="red">
+              {count} member{count > 1 ? 's' : ''}
+            </Text>
+            <Text> </Text>
+            <Text dim>git HEAD differs from store path</Text>
+          </Box>
+          {problem.members.map((m) => {
+            const mismatch = m.refMismatch!
+            return (
+              <Box key={m.name}>
+                <Box flexDirection="row">
+                  <Text>{'    '}</Text>
+                  <Text bold>{m.name}</Text>
+                </Box>
+                <Box flexDirection="row">
+                  <Text>{'      '}</Text>
+                  <Text dim>store path: </Text>
+                  <Text color="green">{mismatch.expectedRef}</Text>
+                </Box>
+                <Box flexDirection="row">
+                  <Text>{'      '}</Text>
+                  <Text dim>git HEAD: </Text>
+                  <Text color="yellow">
+                    {mismatch.isDetached ? `detached at ${mismatch.actualRef}` : mismatch.actualRef}
+                  </Text>
+                </Box>
+                <Box flexDirection="row">
+                  <Text>{'      '}</Text>
+                  <Text color="cyan">fix: </Text>
+                  <Text>
+                    mr pin {m.name} -c {mismatch.actualRef}
+                  </Text>
+                </Box>
+                <Box flexDirection="row">
+                  <Text>{'             '}</Text>
+                  <Text dim>→ creates worktree for {mismatch.actualRef}, updates lock</Text>
+                </Box>
+                <Box flexDirection="row">
+                  <Text>{'           '}</Text>
+                  <Text dim>or: </Text>
+                  <Text>git checkout {mismatch.expectedRef}</Text>
+                  <Text dim> (in repos/{m.name})</Text>
+                </Box>
+                <Box flexDirection="row">
+                  <Text>{'             '}</Text>
+                  <Text dim>→ restores expected state (fails if uncommitted changes)</Text>
+                </Box>
+              </Box>
+            )
+          })}
+        </Box>
+      )
+    }
+    case 'stale_lock': {
+      const count = problem.members.length
+      return (
+        <Box>
+          <Box flexDirection="row">
+            <Text>{'  '}</Text>
+            <Text bold color="yellow">
+              {count} member{count > 1 ? 's' : ''}
+            </Text>
+            <Text> </Text>
+            <Text dim>lock tracking wrong ref</Text>
+          </Box>
+          {problem.members.map((m) => {
+            const stale = m.staleLock!
+            return (
+              <Box key={m.name}>
+                <Box flexDirection="row">
+                  <Text>{'    '}</Text>
+                  <Text bold>{m.name}</Text>
+                </Box>
+                <Box flexDirection="row">
+                  <Text>{'      '}</Text>
+                  <Text dim>lock: </Text>
+                  <Text color="yellow">{stale.lockRef}</Text>
+                </Box>
+                <Box flexDirection="row">
+                  <Text>{'      '}</Text>
+                  <Text dim>actual: </Text>
+                  <Text color="green">{stale.actualRef}</Text>
+                  <Text dim> (matches source)</Text>
+                </Box>
+                <Box flexDirection="row">
+                  <Text>{'      '}</Text>
+                  <Text color="cyan">fix: </Text>
+                  <Text>mr sync --only {m.name}</Text>
+                </Box>
+                <Box flexDirection="row">
+                  <Text>{'             '}</Text>
+                  <Text dim>→ updates lock ref to {stale.actualRef}</Text>
+                </Box>
+              </Box>
+            )
+          })}
+        </Box>
+      )
+    }
     case 'symlink_drift': {
       const count = problem.members.length
       return (
@@ -334,7 +457,7 @@ const WarningItem = ({ problem }: { problem: Problem }) => {
               {count} member{count > 1 ? 's' : ''}
             </Text>
             <Text> </Text>
-            <Text dim>symlink points to wrong worktree</Text>
+            <Text dim>tracking different ref than source</Text>
           </Box>
           {problem.members.map((m) => {
             const drift = m.symlinkDrift!
@@ -346,30 +469,37 @@ const WarningItem = ({ problem }: { problem: Problem }) => {
                 </Box>
                 <Box flexDirection="row">
                   <Text>{'      '}</Text>
-                  <Text dim>symlink: </Text>
+                  <Text dim>current: </Text>
                   <Text color="yellow">{drift.symlinkRef}</Text>
+                  <Text dim> (lock + symlink)</Text>
                 </Box>
                 <Box flexDirection="row">
                   <Text>{'      '}</Text>
-                  <Text dim>expected: </Text>
-                  <Text color="green">{drift.expectedRef}</Text>
-                  <Text dim> (from lock)</Text>
+                  <Text dim>source: </Text>
+                  <Text color="green">{drift.sourceRef}</Text>
+                  <Text dim> (from megarepo.json)</Text>
                 </Box>
-                {drift.actualGitBranch && drift.actualGitBranch !== drift.symlinkRef && (
-                  <Box flexDirection="row">
-                    <Text>{'      '}</Text>
-                    <Text dim>git branch: </Text>
-                    <Text color="magenta">{drift.actualGitBranch}</Text>
-                  </Box>
-                )}
+                <Box flexDirection="row">
+                  <Text>{'      '}</Text>
+                  <Text color="cyan">fix: </Text>
+                  <Text>add #{drift.symlinkRef} to megarepo.json</Text>
+                </Box>
+                <Box flexDirection="row">
+                  <Text>{'             '}</Text>
+                  <Text dim>→ keeps tracking {drift.symlinkRef}</Text>
+                </Box>
+                <Box flexDirection="row">
+                  <Text>{'           '}</Text>
+                  <Text dim>or: </Text>
+                  <Text>mr sync --pull --only {m.name}</Text>
+                </Box>
+                <Box flexDirection="row">
+                  <Text>{'             '}</Text>
+                  <Text dim>→ switches to {drift.sourceRef}, updates lock</Text>
+                </Box>
               </Box>
             )
           })}
-          <Box flexDirection="row">
-            <Text>{'    '}</Text>
-            <Text color="cyan">fix:</Text>
-            <Text> mr sync --pull</Text>
-          </Box>
         </Box>
       )
     }
@@ -595,6 +725,12 @@ const MemberLine = ({
         <>
           <Text> </Text>
           <Text color="yellow">pinned</Text>
+        </>
+      )}
+      {member.commitDrift && (
+        <>
+          <Text> </Text>
+          <Text dim>({member.commitDrift.localCommit.slice(0, 7)} → lock)</Text>
         </>
       )}
       {member.isMegarepo && (

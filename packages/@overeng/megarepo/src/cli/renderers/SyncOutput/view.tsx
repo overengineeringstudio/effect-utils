@@ -366,6 +366,41 @@ const ErrorLine = ({ result }: { result: MemberSyncResult }) => {
 
 /** Result line for skipped member */
 const SkippedLine = ({ result }: { result: MemberSyncResult }) => {
+  // Handle ref mismatch with structured display (multiline hints)
+  if (result.refMismatch) {
+    const { expectedRef, actualRef, isDetached } = result.refMismatch
+    const mismatchDesc = isDetached
+      ? `store path implies '${expectedRef}' but worktree is detached at ${actualRef}`
+      : `store path implies '${expectedRef}' but worktree HEAD is '${actualRef}'`
+
+    return (
+      <Box flexDirection="column">
+        <Box flexDirection="row">
+          <StatusIcon status="skipped" variant="sync" />
+          <Text> </Text>
+          <Text bold>{result.name}</Text>
+          <Text> </Text>
+          <Text color="yellow">ref mismatch</Text>
+        </Box>
+        <Box paddingLeft={4}>
+          <Text dim>{mismatchDesc}</Text>
+        </Box>
+        <Box paddingLeft={4}>
+          <Text dim>
+            hint: use 'mr pin {result.name} -c {actualRef}' to{' '}
+            {isDetached ? 'pin this commit' : 'create proper worktree'},
+          </Text>
+        </Box>
+        <Box paddingLeft={4}>
+          <Text dim>
+            {'      '}or 'git checkout {expectedRef}' to restore expected state
+          </Text>
+        </Box>
+      </Box>
+    )
+  }
+
+  // Standard skipped line (non-ref-mismatch)
   return (
     <Box flexDirection="row">
       <StatusIcon status="skipped" variant="sync" />
@@ -492,6 +527,10 @@ const getResultMessage = (result: MemberSyncResult): string | undefined => {
     case 'already_synced':
       return undefined // No message for already synced
     case 'skipped':
+      // For ref mismatch, show a concise message (full details shown in final view)
+      if (result.refMismatch) {
+        return `ref mismatch (expected ${result.refMismatch.expectedRef})`
+      }
       return result.message ? `skipped: ${result.message}` : 'skipped'
     case 'error':
       return result.message ? `error: ${result.message}` : 'error'

@@ -313,6 +313,11 @@ my-megarepo/repos/effect-utils -> /Users/dev/.megarepo/github.com/overeng/effect
 
 ## Commands
 
+### CLI Design Principles
+
+- **Copy-paste ready hints**: Error messages include concrete values, not placeholders
+- **Filtering with `--only`/`--skip`**: Bulk commands like `sync` use these for member filtering
+
 ### Core Commands
 
 #### `mr sync`
@@ -354,19 +359,37 @@ These options are mutually exclusive. When filtering is applied:
 
 This mode is ideal for local iteration: make commits in worktrees, then `mr sync` to capture the current state in the lock file.
 
-**Symlink drift detection:** In default mode, `mr sync` detects when there's a mismatch between:
+**Lock vs source mismatch detection:** In default mode, `mr sync` and `mr status` detect two distinct scenarios when the lock file ref doesn't match the source:
 
-- The ref in the lock file (e.g., `refactor/feature-branch`)
-- The ref the source string resolves to (e.g., `dev` when no `#ref` is specified)
-
-When drift is detected, the member is skipped with a helpful message:
+**1. Stale lock:** The lock is outdated but current state matches source intent.
 
 ```
-symlink drift: lock says 'refactor/feature-branch' but source resolves to 'dev'
-  hint: run 'mr sync --pull' to update to lock ref, or update megarepo.json to include #refactor/feature-branch
+lock file outdated
+    effect-utils
+      lock: feat/r12-monitoring (outdated)
+      actual: main (matches source)
+      fix: mr sync --only effect-utils
+             → updates lock to main
 ```
 
-This prevents silent "already synced" messages when the lock and config are out of sync.
+This happens when you were working on a branch, switched back, but the lock wasn't updated.
+
+**2. Symlink drift:** The symlink/lock track a different ref than the source specifies.
+
+```
+tracking different ref than source
+    livestore
+      current: feat/refactor (lock + symlink)
+      source: dev (from megarepo.json)
+      fix: add #feat/refactor to megarepo.json
+             → keeps tracking feat/refactor
+           or: mr sync --pull --only livestore
+             → switches to dev, updates lock
+```
+
+This happens when the lock was updated to track a branch but megarepo.json wasn't edited to match.
+
+This distinction prevents silent "already synced" messages and provides targeted fix suggestions.
 
 **Options:**
 
@@ -495,10 +518,10 @@ mr status
 # - Symlink drift warnings (when symlink points to wrong worktree)
 ```
 
-**Symlink drift detection:** Warns when a member's symlink points to a different worktree than expected by the lock file. This can happen when:
+**Lock mismatch detection:** Warns about two distinct scenarios:
 
-- The lock file was updated (e.g., by a teammate) but `mr sync` wasn't run
-- The source string in `megarepo.json` was changed without syncing
+- **Stale lock:** Lock is outdated but current state matches source intent. Fix: `mr sync`
+- **Symlink drift:** Symlink/lock track different ref than source. Fix: edit megarepo.json or `mr sync --pull`
 
 #### `mr env`
 

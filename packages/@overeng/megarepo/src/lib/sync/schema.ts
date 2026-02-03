@@ -7,6 +7,8 @@
 
 import { Schema } from 'effect'
 
+import { RefMismatch } from '../issues.ts'
+
 // =============================================================================
 // Member Sync Result
 // =============================================================================
@@ -34,6 +36,11 @@ export const MemberSyncResult = Schema.Struct({
   previousCommit: Schema.optional(Schema.String),
   ref: Schema.optional(Schema.String),
   lockUpdated: Schema.optional(Schema.Boolean),
+  /**
+   * Present when worktree git HEAD differs from store path ref (Issue #88).
+   * This happens when a user runs `git checkout <branch>` directly in the worktree.
+   */
+  refMismatch: Schema.optional(RefMismatch),
 })
 /** Inferred type for a member's sync result including status, commit info, and optional message. */
 export type MemberSyncResult = Schema.Schema.Type<typeof MemberSyncResult>

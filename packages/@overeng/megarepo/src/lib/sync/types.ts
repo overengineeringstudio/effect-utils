@@ -6,6 +6,8 @@
 
 import type { AbsoluteDirPath } from '@overeng/effect-path'
 
+import type { RefMismatch } from '../issues.ts'
+
 /** Member sync result status */
 export type MemberSyncStatus =
   | 'cloned'
@@ -30,6 +32,11 @@ export interface MemberSyncResult {
   readonly ref?: string | undefined
   /** Whether the lock was updated for this member */
   readonly lockUpdated?: boolean | undefined
+  /**
+   * Present when worktree git HEAD differs from store path ref (Issue #88).
+   * This happens when a user runs `git checkout <branch>` directly in the worktree.
+   */
+  readonly refMismatch?: RefMismatch | undefined
 }
 
 /** Result of syncing a megarepo (including nested) */
