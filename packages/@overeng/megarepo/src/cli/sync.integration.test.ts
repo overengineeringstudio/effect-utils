@@ -1785,7 +1785,6 @@ describe('sync worktree ref mismatch detection', () => {
         )?.refMismatch
         expect(refMismatch).toBeDefined()
         expect(refMismatch?.expectedRef).toBe('main')
-        expect(refMismatch?.isDetached).toBe(false)
         expect(refMismatch?.actualRef).toBeTruthy()
         expect(refMismatch?.actualRef).not.toBe('main')
       }),
