@@ -189,6 +189,12 @@ export MEGAREPO_NIX_WORKSPACE="\${MEGAREPO_ROOT_NEAREST}.direnv/megarepo-nix/wor
 # Compute devenv override args for flake inputs (R12: content-addressed for stability)
 # Uses git+file: with ref=HEAD to use only committed state, avoiding spurious re-evals
 # from both timestamp changes (path:) and uncommitted changes (git+file: without ref)
+#
+# NOTE: We use an array (MEGAREPO_DEVENV_ARGS_ARRAY) for proper handling of special chars.
+# The string form (MEGAREPO_DEVENV_ARGS) is also provided for compatibility, but the
+# ? in the URL may be stripped by direnv's nullglob setting. Use the array form:
+#   use devenv "\${MEGAREPO_DEVENV_ARGS_ARRAY[@]}"
+MEGAREPO_DEVENV_ARGS_ARRAY=()
 _megarepo_devenv_args=""
 for _member in effect-utils; do
   _repo_path="\${MEGAREPO_ROOT_NEAREST}repos/\$_member"
@@ -198,7 +204,8 @@ for _member in effect-utils; do
   if [ -e "\$_repo_path/.git" ]; then
     # Use ref=HEAD to only consider committed state (ignores dirty tree)
     # This ensures shell stability even when files are being edited
-    _megarepo_devenv_args="\$_megarepo_devenv_args --override-input \$_member git+file:\$_repo_path?ref=HEAD"
+    MEGAREPO_DEVENV_ARGS_ARRAY+=(--override-input "\$_member" "git+file:\$_repo_path?ref=HEAD")
+    _megarepo_devenv_args="\$_megarepo_devenv_args --override-input \$_member 'git+file:\$_repo_path?ref=HEAD'"
   fi
 done
 export MEGAREPO_DEVENV_ARGS="\$_megarepo_devenv_args"
