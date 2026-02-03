@@ -19,10 +19,7 @@ const version = resolveCliVersion({
 
 const baseLayer = Layer.mergeAll(NodeContext.layer, CurrentWorkingDirectory.live)
 
-const program = Cli.Command.run(genieCommand, {
+Cli.Command.run(genieCommand, {
   name: 'genie',
   version,
-})(process.argv).pipe(Effect.scoped, Effect.provide(baseLayer))
-
-// Use runTuiMain for proper error handling (errors go to stderr, not stdout)
-runTuiMain(NodeRuntime)(program)
+})(process.argv).pipe(Effect.scoped, Effect.provide(baseLayer), runTuiMain(NodeRuntime))

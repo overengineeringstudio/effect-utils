@@ -350,4 +350,5 @@ export {
   OUTPUT_MODE_VALUES,
   type OutputModeValue,
   type RunTuiMainOptions,
+  type TuiRuntime,
 } from './effect/cli.tsx'

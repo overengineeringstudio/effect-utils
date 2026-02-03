@@ -26,7 +26,7 @@
 import { Options } from '@effect/cli'
 import { Cause, Effect, Layer, Logger } from 'effect'
 
-import { OutputModeTag } from './OutputMode.tsx'
+import type { OutputModeTag } from './OutputMode.tsx'
 import {
   type OutputMode,
   tty,
@@ -201,15 +201,18 @@ export interface RunTuiMainOptions {
    * stderr logging while still preserving the non-zero exit code.
    *
    * @default All errors are logged
-   *
-   * @example
-   * ```typescript
-   * runTuiMain(NodeRuntime)(program, {
-   *   shouldLogError: (error) => error._tag !== 'SyncFailedError'
-   * })
-   * ```
    */
   readonly shouldLogError?: (error: unknown) => boolean
+}
+
+/**
+ * Type for the NodeRuntime parameter required by `runTuiMain`.
+ */
+export interface TuiRuntime {
+  readonly runMain: (options?: {
+    readonly disableErrorReporting?: boolean
+    readonly disablePrettyLogger?: boolean
+  }) => <E, A>(effect: Effect.Effect<A, E>) => void
 }
 
 /**
@@ -221,88 +224,98 @@ export interface RunTuiMainOptions {
  * - Preserves exit codes from errors
  * - Optionally filter which errors get logged via `shouldLogError`
  *
- * **Important:** This function requires `@effect/platform-node` to be available.
- * Import `NodeRuntime` from there and pass it to this function.
+ * Supports Effect's dual API pattern for flexible usage in pipe chains.
  *
  * @example
  * ```typescript
- * import { NodeRuntime } from '@effect/platform-node'
- * import { runTuiMain, outputModeLayer } from '@overeng/tui-react'
- *
- * const program = Cli.Command.run(myCommand, { name: 'my-cli', version: '1.0.0' })(process.argv)
- *   .pipe(Effect.provide(outputModeLayer('auto')))
- *
- * runTuiMain(NodeRuntime)(program)
+ * // Pipeable usage (recommended):
+ * Cli.Command.run(myCommand, { name: 'my-cli', version })(process.argv).pipe(
+ *   Effect.scoped,
+ *   Effect.provide(baseLayer),
+ *   runTuiMain(NodeRuntime)
+ * )
  * ```
  *
  * @example
  * ```typescript
- * // Skip logging for errors already in JSON output:
- * runTuiMain(NodeRuntime)(program, {
- *   shouldLogError: (error) =>
- *     !(error && typeof error === 'object' && '_tag' in error && error._tag === 'SyncFailedError')
- * })
+ * // Data-first usage:
+ * runTuiMain(NodeRuntime, program)
  * ```
  *
  * @example
  * ```typescript
- * // Full CLI entry point pattern:
- * import { NodeRuntime, NodeContext } from '@effect/platform-node'
- * import { Effect, Layer } from 'effect'
- * import { Cwd, myCommand } from './cli/mod.ts'
- * import { runTuiMain, outputModeLayer } from '@overeng/tui-react'
- *
- * const baseLayer = Layer.mergeAll(NodeContext.layer, Cwd.live)
- *
- * const program = Cli.Command.run(myCommand, { name: 'my-cli', version: '1.0.0' })(process.argv)
- *   .pipe(Effect.scoped, Effect.provide(baseLayer))
- *
- * runTuiMain(NodeRuntime)(program)
+ * // With options:
+ * Cli.Command.run(myCommand, { name: 'my-cli', version })(process.argv).pipe(
+ *   Effect.scoped,
+ *   Effect.provide(baseLayer),
+ *   runTuiMain(NodeRuntime, { shouldLogError: (e) => e._tag !== 'MyExpectedError' })
+ * )
  * ```
  */
-export const runTuiMain =
-  (NodeRuntime: {
-    readonly runMain: (options?: {
-      readonly disableErrorReporting?: boolean
-      readonly disablePrettyLogger?: boolean
-    }) => <E, A>(effect: Effect.Effect<A, E>) => void
-  }) =>
-  <E, A>(effect: Effect.Effect<A, E>, options?: RunTuiMainOptions): void => {
-    const shouldLogError = options?.shouldLogError ?? (() => true)
-
-    effect
-      .pipe(
-        // Write errors to stderr before failing
-        // This ensures errors are visible even with disableErrorReporting
-        Effect.tapErrorCause((cause) =>
-          Effect.sync(() => {
-            // Check if cause has any loggable content:
-            // 1. Typed failures (the E in Effect<A, E>) - filtered by shouldLogError
-            // 2. Defects (crashes, thrown exceptions) - always logged
-            // 3. Interruptions - always logged
-            const failures = Cause.failures(cause)
-            const hasLoggableFailure = failures.pipe((chunk) => {
-              for (const error of chunk) {
-                if (shouldLogError(error)) return true
-              }
-              return false
-            })
-
-            // Always log defects and interruptions - these are unexpected and need visibility
-            const hasDefects = !Cause.defects(cause).pipe((chunk) => chunk.length === 0)
-            const isInterrupted = Cause.isInterrupted(cause)
-
-            if (hasLoggableFailure || hasDefects || isInterrupted) {
-              const pretty = Cause.pretty(cause, { renderErrorCause: true })
-              process.stderr.write(pretty + '\n')
-            }
-          }),
-        ),
-        // Disable runMain's built-in error reporting to prevent stdout pollution
-        // We handle error reporting ourselves above
-        NodeRuntime.runMain({
-          disableErrorReporting: true,
-          disablePrettyLogger: true,
-        }),
-      )
+export const runTuiMain: {
+  // Data-last (pipeable): runTuiMain(runtime) or runTuiMain(runtime, options)
+  (runtime: TuiRuntime, options?: RunTuiMainOptions): <E, A>(effect: Effect.Effect<A, E>) => void
+  // Data-first: runTuiMain(runtime, effect) or runTuiMain(runtime, effect, options)
+  <E, A>(runtime: TuiRuntime, effect: Effect.Effect<A, E>, options?: RunTuiMainOptions): void
+} = ((...args: [TuiRuntime, ...Array<unknown>]) => {
+  const [runtime, effectOrOptions, maybeOptions] = args
+  // Check if second argument is an Effect (data-first) or options/undefined (data-last)
+  if (effectOrOptions !== undefined && Effect.isEffect(effectOrOptions)) {
+    // Data-first: runTuiMain(runtime, effect, options?)
+    return runTuiMainImpl({
+      runtime,
+      effect: effectOrOptions as Effect.Effect<unknown, unknown>,
+      options: maybeOptions as RunTuiMainOptions | undefined,
+    })
   }
+  // Data-last: runTuiMain(runtime, options?) returns (effect) => void
+  const options = effectOrOptions as RunTuiMainOptions | undefined
+  return <E, A>(effect: Effect.Effect<A, E>) => runTuiMainImpl({ runtime, effect, options })
+}) as {
+  (runtime: TuiRuntime, options?: RunTuiMainOptions): <E, A>(effect: Effect.Effect<A, E>) => void
+  <E, A>(runtime: TuiRuntime, effect: Effect.Effect<A, E>, options?: RunTuiMainOptions): void
+}
+
+/** Internal implementation of runTuiMain */
+const runTuiMainImpl = <E, A>({
+  runtime,
+  effect,
+  options,
+}: {
+  runtime: TuiRuntime
+  effect: Effect.Effect<A, E>
+  options?: RunTuiMainOptions | undefined
+}): void => {
+  const shouldLogError = options?.shouldLogError ?? (() => true)
+
+  effect.pipe(
+    Effect.tapErrorCause((cause) =>
+      Effect.sync(() => {
+        // Check if cause has any loggable content:
+        // 1. Typed failures (the E in Effect<A, E>) - filtered by shouldLogError
+        // 2. Defects (crashes, thrown exceptions) - always logged
+        // 3. Interruptions - always logged
+        const failures = Cause.failures(cause)
+        const hasLoggableFailure = failures.pipe((chunk) => {
+          for (const error of chunk) {
+            if (shouldLogError(error)) return true
+          }
+          return false
+        })
+
+        // Always log defects and interruptions - these are unexpected and need visibility
+        const hasDefects = !Cause.defects(cause).pipe((chunk) => chunk.length === 0)
+        const isInterrupted = Cause.isInterrupted(cause)
+
+        if (hasLoggableFailure || hasDefects || isInterrupted) {
+          const pretty = Cause.pretty(cause, { renderErrorCause: true })
+          process.stderr.write(pretty + '\n')
+        }
+      }),
+    ),
+    runtime.runMain({
+      disableErrorReporting: true,
+      disablePrettyLogger: true,
+    }),
+  )
+}
