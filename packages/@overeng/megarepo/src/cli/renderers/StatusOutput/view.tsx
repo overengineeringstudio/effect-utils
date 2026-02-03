@@ -373,10 +373,18 @@ const WarningItem = ({ problem }: { problem: Problem }) => {
                   </Text>
                 </Box>
                 <Box flexDirection="row">
+                  <Text>{'             '}</Text>
+                  <Text dim>→ creates worktree for {mismatch.actualRef}, updates lock</Text>
+                </Box>
+                <Box flexDirection="row">
                   <Text>{'           '}</Text>
                   <Text dim>or: </Text>
                   <Text>git checkout {mismatch.expectedRef}</Text>
                   <Text dim> (in repos/{m.name})</Text>
+                </Box>
+                <Box flexDirection="row">
+                  <Text>{'             '}</Text>
+                  <Text dim>→ restores expected state (fails if uncommitted changes)</Text>
                 </Box>
               </Box>
             )
@@ -421,12 +429,19 @@ const WarningItem = ({ problem }: { problem: Problem }) => {
                   <Text>add #{drift.expectedRef} to megarepo.json</Text>
                 </Box>
                 <Box flexDirection="row">
+                  <Text>{'             '}</Text>
+                  <Text dim>→ keeps tracking {drift.expectedRef} branch</Text>
+                </Box>
+                <Box flexDirection="row">
                   <Text>{'           '}</Text>
                   <Text dim>or: </Text>
                   <Text>
                     mr pin {m.name} -c {drift.symlinkRef}
                   </Text>
-                  <Text dim> (switch to {drift.symlinkRef})</Text>
+                </Box>
+                <Box flexDirection="row">
+                  <Text>{'             '}</Text>
+                  <Text dim>→ switches to {drift.symlinkRef}, updates lock</Text>
                 </Box>
               </Box>
             )

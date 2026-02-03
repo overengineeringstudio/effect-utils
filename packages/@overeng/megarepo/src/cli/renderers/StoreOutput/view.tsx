@@ -10,7 +10,13 @@ import React from 'react'
 
 import { Box, Text, useTuiAtomValue, unicodeSymbols } from '@overeng/tui-react'
 
-import type { StoreState, StoreGcResult, StoreWorktreeStatus, StoreGcWarning } from './schema.ts'
+import type {
+  StoreState,
+  StoreGcResult,
+  StoreWorktreeStatus,
+  StoreWorktreeIssue,
+  StoreGcWarning,
+} from './schema.ts'
 
 // =============================================================================
 // Main Component
@@ -234,6 +240,47 @@ const getColor = (
   }
 }
 
+/** Get hint for an issue type */
+const getIssueHint = (
+  issue: StoreWorktreeIssue,
+  worktree: StoreWorktreeStatus,
+): { fix: string; explanation: string } | undefined => {
+  switch (issue.type) {
+    case 'dirty':
+      return {
+        fix: `cd ~/.megarepo/${worktree.repo}/refs/${worktree.refType}/${worktree.ref}`,
+        explanation: 'commit or stash changes',
+      }
+    case 'unpushed':
+      return {
+        fix: `cd ~/.megarepo/${worktree.repo}/refs/${worktree.refType}/${worktree.ref}`,
+        explanation: 'push commits or reset',
+      }
+    case 'ref_mismatch': {
+      // Extract actual ref from message like "path says 'main' but HEAD is 'feat/foo'"
+      const match = issue.message.match(/HEAD is '([^']+)'/)
+      const actualRef = match?.[1] ?? 'actual-ref'
+      return {
+        fix: `mr pin <member> -c ${actualRef}`,
+        explanation: 'create proper worktree for current branch',
+      }
+    }
+    case 'orphaned':
+      return {
+        fix: 'mr store gc',
+        explanation: 'remove unused worktrees',
+      }
+    case 'missing_bare':
+    case 'broken_worktree':
+      return {
+        fix: 'mr store gc --force',
+        explanation: 'remove broken worktree',
+      }
+    default:
+      return undefined
+  }
+}
+
 /** Single worktree with issues */
 const StoreStatusWorktreeRow = ({ worktree }: { worktree: StoreWorktreeStatus }) => {
   // Get highest severity for the header
@@ -263,13 +310,31 @@ const StoreStatusWorktreeRow = ({ worktree }: { worktree: StoreWorktreeStatus })
         <Text dim>/refs/{worktree.refType}/</Text>
         <Text bold>{worktree.ref}</Text>
       </Box>
-      {worktree.issues.map((issue, i) => (
-        <Box key={`${issue.type}-${i}`} flexDirection="row">
-          <Text>{'    '}</Text>
-          <Text color={getColor(issue.severity)}>{issue.type}</Text>
-          <Text dim>: {issue.message}</Text>
-        </Box>
-      ))}
+      {worktree.issues.map((issue, i) => {
+        const hint = getIssueHint(issue, worktree)
+        return (
+          <Box key={`${issue.type}-${i}`} flexDirection="column">
+            <Box flexDirection="row">
+              <Text>{'    '}</Text>
+              <Text color={getColor(issue.severity)}>{issue.type}</Text>
+              <Text dim>: {issue.message}</Text>
+            </Box>
+            {hint && (
+              <>
+                <Box flexDirection="row">
+                  <Text>{'      '}</Text>
+                  <Text color="cyan">fix: </Text>
+                  <Text>{hint.fix}</Text>
+                </Box>
+                <Box flexDirection="row">
+                  <Text>{'             '}</Text>
+                  <Text dim>→ {hint.explanation}</Text>
+                </Box>
+              </>
+            )}
+          </Box>
+        )
+      })}
     </Box>
   )
 }
