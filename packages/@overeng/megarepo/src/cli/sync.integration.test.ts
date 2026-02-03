@@ -1,8 +1,6 @@
-import path from 'node:path'
-import url from 'node:url'
-
-import { Command, FileSystem } from '@effect/platform'
-import { Chunk, Effect, Option, Schema, Stream } from 'effect'
+import * as Cli from '@effect/cli'
+import { FileSystem } from '@effect/platform'
+import { Cause, Chunk, Effect, Exit, Option, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -24,8 +22,11 @@ import {
   initGitRepo,
   runGitCommand,
 } from '../test-utils/setup.ts'
+import { makeConsoleCapture } from '../test-utils/consoleCapture.ts'
 import { createWorkspaceWithLock } from '../test-utils/store-setup.ts'
 import { withTestCtx } from '../test-utils/withTestCtx.ts'
+import { Cwd } from './context.ts'
+import { mrCommand } from './mod.ts'
 
 /** Schema for parsing JSON output from `mr sync --output json` */
 const SyncJsonOutput = Schema.Struct({
@@ -51,25 +52,7 @@ const SyncJsonOutput = Schema.Struct({
 
 const decodeSyncJsonOutput = Schema.decodeUnknownSync(Schema.parseJson(SyncJsonOutput))
 
-// Path to the CLI binary
-// TODO get rid of this approach and use effect cli command directly and yield its handler
-const __dirname = path.dirname(url.fileURLToPath(import.meta.url))
-const CLI_PATH = path.resolve(__dirname, '../../bin/mr.ts')
-
-/** Decode collected chunks to string */
-const decodeChunks = (chunks: Chunk.Chunk<Uint8Array>): string => {
-  const merged = Chunk.reduce(chunks, new Uint8Array(), (acc, chunk) => {
-    const result = new Uint8Array(acc.length + chunk.length)
-    result.set(acc)
-    result.set(chunk, acc.length)
-    return result
-  })
-  return new TextDecoder().decode(merged)
-}
-
-/**
- * Run the sync CLI command and capture output.
- */
+/** Run the sync CLI command and capture output. */
 const runSyncCommand = ({
   cwd,
   args = [],
@@ -80,24 +63,70 @@ const runSyncCommand = ({
   env?: Record<string, string>
 }) =>
   Effect.gen(function* () {
-    const command = Command.make('bun', 'run', CLI_PATH, 'sync', ...args).pipe(
-      Command.workingDirectory(cwd),
-      Command.env({ PWD: cwd, ...env }),
-      Command.stdout('pipe'),
-      Command.stderr('pipe'),
+    const { consoleLayer, getLines } = yield* makeConsoleCapture
+    const mergedEnv = { PWD: cwd, ...env }
+    const envCapture = yield* Effect.acquireRelease(
+      Effect.sync(() => {
+        const previous = new Map<string, string | undefined>()
+        for (const [key, value] of Object.entries(mergedEnv)) {
+          previous.set(key, process.env[key])
+          process.env[key] = value
+        }
+        return previous
+      }),
+      (previous) =>
+        Effect.sync(() => {
+          for (const [key, value] of previous) {
+            if (value === undefined) {
+              delete process.env[key]
+            } else {
+              process.env[key] = value
+            }
+          }
+        }),
     )
 
-    const process = yield* Command.start(command)
-    const [stdoutChunks, stderrChunks, exitCode] = yield* Effect.all([
-      Stream.runCollect(process.stdout),
-      Stream.runCollect(process.stderr),
-      process.exitCode,
-    ])
+    const stderrCapture = yield* Effect.acquireRelease(
+      Effect.sync(() => {
+        const stderrChunks: Array<string> = []
+        const originalStderrWrite = process.stderr.write.bind(process.stderr)
+
+        const captureWrite = (target: Array<string>) =>
+          ((chunk: unknown, encoding?: unknown, cb?: unknown) => {
+            const actualEncoding = typeof encoding === 'function' ? undefined : (encoding as BufferEncoding)
+            const callback = typeof encoding === 'function' ? encoding : cb
+            const text =
+              typeof chunk === 'string'
+                ? chunk
+                : Buffer.from(chunk as Uint8Array).toString(actualEncoding)
+            target.push(text)
+            if (typeof callback === 'function') callback()
+            return true
+          }) as unknown as typeof process.stderr.write
+
+        process.stderr.write = captureWrite(stderrChunks)
+
+        return { stderrChunks, originalStderrWrite }
+      }),
+      (capture) =>
+        Effect.sync(() => {
+          process.stderr.write = capture.originalStderrWrite
+        }),
+    )
+
+    const argv = ['node', 'mr', 'sync', ...args]
+    const effect = Cli.Command.run(mrCommand, { name: 'mr', version: 'test' })(argv).pipe(
+      Effect.provideService(Cwd, cwd),
+      Effect.provide(consoleLayer),
+    )
+    const exit = yield* Effect.exit(effect)
+    void envCapture
 
     return {
-      stdout: decodeChunks(stdoutChunks),
-      stderr: decodeChunks(stderrChunks),
-      exitCode,
+      exit,
+      stdout: (yield* getLines).join('\n'),
+      stderr: stderrCapture.stderrChunks.join(''),
+      exitCode: Exit.isSuccess(exit) ? 0 : 1,
     }
   }).pipe(Effect.scoped)
 
