@@ -34,13 +34,17 @@ This adds a `git-hooks:ensure` task that runs after `devenv:git-hooks:install` a
 
 ### DEVENV-02: Task tracing lacks OTLP export and observability features
 
-**Issue:** https://github.com/cachix/devenv/issues/2415 (OTEL support feature request)
+**Issues:**
 
-**Related issues:**
+- https://github.com/cachix/devenv/issues/2456 (`--trace-format json` outputs empty `{}`)
+- https://github.com/cachix/devenv/issues/2415 (OTEL support feature request)
+
+**Related:**
+
 - https://github.com/cachix/devenv/issues/1457 (Task Server Protocol - proposes JSON-RPC with timestamps)
 - https://github.com/cachix/devenv/pull/2239 (Added `--trace-format` option)
 
-**Note:** The `--trace-format json` option (added in PR #2239) currently outputs empty `{}` in devenv 2.0.0. All three formats (json, full, pretty) produce identical TUI-style output. This appears to be a bug or incomplete implementation.
+**Note:** The `--trace-format json` option (added in PR #2239) currently outputs empty `{}` in devenv 2.0.0. All three formats (json, full, pretty) produce identical TUI-style output.
 
 **Affected repos:** All repos using devenv tasks that need CI observability
 
@@ -68,6 +72,7 @@ devenv tasks run <task> --verbose --no-tui
 ```
 
 The `--verbose` flag provides per-task timing visible in TUI output, but lacks:
+
 - OTLP/OpenTelemetry export
 - Critical path analysis
 - Summary statistics
@@ -75,14 +80,14 @@ The `--verbose` flag provides per-task timing visible in TUI output, but lacks:
 
 **R10 requirements gap analysis:**
 
-| Requirement | Status | Notes |
-|-------------|--------|-------|
-| (a) Per-task timing | ⚠️ Partial | Visible in `--verbose` text output only |
-| (b) Dependency visualization | ⚠️ Partial | Declared in nix, no graph analysis tool |
-| (c) Stdout/stderr capture | ⚠️ Partial | Available with `--show-output`, not structured |
-| (d) Structured export (JSON/OTLP) | ❌ Broken | `--trace-format json` outputs empty `{}` |
-| (e) Summary statistics | ❌ Missing | No parallelism efficiency, cache hit rates |
-| (f) Metrics over time | ❌ Missing | No cross-run tracking |
+| Requirement                       | Status     | Notes                                          |
+| --------------------------------- | ---------- | ---------------------------------------------- |
+| (a) Per-task timing               | ⚠️ Partial | Visible in `--verbose` text output only        |
+| (b) Dependency visualization      | ⚠️ Partial | Declared in nix, no graph analysis tool        |
+| (c) Stdout/stderr capture         | ⚠️ Partial | Available with `--show-output`, not structured |
+| (d) Structured export (JSON/OTLP) | ❌ Broken  | `--trace-format json` outputs empty `{}`       |
+| (e) Summary statistics            | ❌ Missing | No parallelism efficiency, cache hit rates     |
+| (f) Metrics over time             | ❌ Missing | No cross-run tracking                          |
 
 **Workaround:** For CI observability, parse the `--verbose --no-tui` text output and forward to your observability platform manually. The `--trace-format json` option is currently broken.
 
@@ -98,7 +103,7 @@ The `--verbose` flag provides per-task timing visible in TUI output, but lacks:
   - Optionally remove `git-hooks-fix.nix` module and flake export (or keep for backwards compat)
   - Verify hooks are installed on fresh clone without the workaround
 
-- **DEVENV-02 fixed (native OTLP support added):**
-  - Remove manual JSON parsing workarounds from CI pipelines
-  - Update CI to use native OTLP export
-  - Update R10 status in this document to reflect full compliance
+- **DEVENV-02 fixed (JSON trace format working + native OTLP support):**
+  - When #2456 is fixed: can use `--trace-format json` for structured CI traces
+  - When #2415 is fixed: can use native OTLP export to observability platforms
+  - Update R10 status in this document to reflect compliance
