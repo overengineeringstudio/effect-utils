@@ -344,9 +344,8 @@ my-megarepo/repos/effect-utils -> /Users/dev/.megarepo/github.com/overeng/effect
 
 ### CLI Design Principles
 
-- **Consistent member targeting**: Use `--member <name>` (or `-m <name>`) across all commands that operate on specific members
-- **Explicit over implicit**: Named options preferred over positional arguments for clarity
-- **Copy-paste ready hints**: Error messages and hints include concrete values, not placeholders
+- **Copy-paste ready hints**: Error messages include concrete values, not placeholders
+- **Filtering with `--only`/`--skip`**: Bulk commands like `sync` use these for member filtering
 
 ### Core Commands
 
@@ -461,15 +460,15 @@ This commit-based path approach ensures that even if the store's bare repo has b
 
 **CI usage:** In a fresh CI environment, `mr sync --frozen` will clone repos and fetch as needed to materialize the exact commits specified in the lock file, then run generators. This provides reproducible builds without requiring a pre-populated store. The lock file is never modified.
 
-#### `mr pin --member <member> [-c <ref>]`
+#### `mr pin <member> [-c <ref>]`
 
 Point a member to a specific ref and mark it as pinned:
 
 ```bash
-mr pin -m effect                 # pin to current commit
-mr pin -m effect -c main         # pin to main branch
-mr pin -m effect -c v3.0.0       # pin to tag
-mr pin -m effect -c abc123def    # pin to specific commit
+mr pin effect                 # pin to current commit
+mr pin effect -c main         # pin to main branch
+mr pin effect -c v3.0.0       # pin to tag
+mr pin effect -c abc123def    # pin to specific commit
 ```
 
 **Behavior:**
@@ -494,12 +493,12 @@ The ref type determines mutability, not the `pin` command itself:
 
 When pinned, the member stays at its current commit regardless of ref type.
 
-#### `mr unpin --member <member>`
+#### `mr unpin <member>`
 
 Remove pin from a member:
 
 ```bash
-mr unpin -m effect
+mr unpin effect
 ```
 
 - Sets `pinned: false` in lock file
@@ -722,8 +721,8 @@ mr sync --frozen --git-protocol=https
 ### Stabilizing for release
 
 ```bash
-mr pin -m effect              # marks effect as pinned
-mr pin -m other-lib
+mr pin effect              # marks effect as pinned
+mr pin other-lib
 git add megarepo.lock
 git commit -m "Pin dependencies for release"
 
@@ -735,27 +734,27 @@ mr sync --pull             # effect stays pinned, others update
 
 ```bash
 # Switch to a feature branch (preserves main worktree with any uncommitted changes)
-mr pin -m effect -c feature/new-api
+mr pin effect -c feature/new-api
 
 # Work on the feature branch...
 cd repos/effect && git commit -m "implement feature"
 
 # Switch back to main (feature branch worktree preserved)
-mr pin -m effect -c main
+mr pin effect -c main
 
 # Allow updates again
-mr unpin -m effect
+mr unpin effect
 mr sync --pull                   # update to latest main
 ```
 
 ### Investigating a regression
 
 ```bash
-mr pin -m effect -c abc123          # pin to known-good commit
+mr pin effect -c abc123          # pin to known-good commit
 # ... test ...
-mr pin -m effect -c main            # back to main branch
-mr unpin -m effect                  # allow updates
-mr sync --pull                      # update to latest
+mr pin effect -c main            # back to main branch
+mr unpin effect                  # allow updates
+mr sync --pull                   # update to latest
 ```
 
 ### Creating a new feature branch
@@ -1189,7 +1188,7 @@ This occurs when someone uses `git checkout` directly inside a store worktree. T
 
 **Resolution:**
 
-- If the checkout was intentional: use `mr pin -m <member> -c <new-ref>` to create the proper worktree
+- If the checkout was intentional: use `mr pin <member> -c <new-ref>` to create the proper worktree
 - If accidental: `cd` into the worktree and `git checkout <expected-ref>`
 - To prevent: always use `mr pin` to switch refs, not `git checkout`
 

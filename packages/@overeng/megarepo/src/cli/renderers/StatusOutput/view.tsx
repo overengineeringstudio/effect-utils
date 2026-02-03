@@ -425,7 +425,7 @@ const WarningItem = ({ problem }: { problem: Problem }) => {
                 <Box flexDirection="row">
                   <Text>{'      '}</Text>
                   <Text color="cyan">fix: </Text>
-                  <Text>mr sync --pull --member {m.name}</Text>
+                  <Text>mr sync --pull --only {m.name}</Text>
                 </Box>
               </Box>
             )
