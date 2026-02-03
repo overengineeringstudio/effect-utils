@@ -43,16 +43,24 @@
 
   tasks."megarepo:check" = {
     description = "Verify megarepo setup is complete";
-    # Simple check: just verify megarepo.json exists and repos dir is present
+    # Check that repos dir exists and all members have symlinks
     status = ''
       if [ ! -f ./megarepo.json ]; then
         exit 0
       fi
 
-      # Check that repos directory exists (sync has been run)
+      # Check that repos directory exists
       if [ ! -d ./repos ]; then
         exit 1
       fi
+
+      # Verify all configured members have symlinks in repos/
+      members=$(${pkgs.jq}/bin/jq -r '.members | keys[]' ./megarepo.json 2>/dev/null) || exit 1
+      for member in $members; do
+        if [ ! -L "./repos/$member" ] && [ ! -d "./repos/$member" ]; then
+          exit 1
+        fi
+      done
 
       exit 0
     '';
@@ -63,6 +71,21 @@
 
       if [ ! -d ./repos ]; then
         echo "[devenv] Missing repos/ directory." >&2
+        echo "[devenv] Fix: devenv tasks run megarepo:sync" >&2
+        exit 1
+      fi
+
+      # Check for missing member symlinks
+      missing=""
+      members=$(${pkgs.jq}/bin/jq -r '.members | keys[]' ./megarepo.json 2>/dev/null) || exit 1
+      for member in $members; do
+        if [ ! -L "./repos/$member" ] && [ ! -d "./repos/$member" ]; then
+          missing="$missing $member"
+        fi
+      done
+
+      if [ -n "$missing" ]; then
+        echo "[devenv] Missing member symlinks:$missing" >&2
         echo "[devenv] Fix: devenv tasks run megarepo:sync" >&2
         exit 1
       fi
