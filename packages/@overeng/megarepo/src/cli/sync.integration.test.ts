@@ -15,6 +15,7 @@ import {
   updateLockedMember,
   writeLockFile,
 } from '../lib/lock.ts'
+import { makeConsoleCapture } from '../test-utils/consoleCapture.ts'
 import {
   addCommit,
   createRepo,
@@ -22,7 +23,6 @@ import {
   initGitRepo,
   runGitCommand,
 } from '../test-utils/setup.ts'
-import { makeConsoleCapture } from '../test-utils/consoleCapture.ts'
 import { createWorkspaceWithLock } from '../test-utils/store-setup.ts'
 import { withTestCtx } from '../test-utils/withTestCtx.ts'
 import { Cwd } from './context.ts'
@@ -93,7 +93,6 @@ const runSyncCommand = ({
 
         const captureWrite = (target: Array<string>) =>
           ((chunk: unknown, encoding?: unknown, cb?: unknown) => {
-            const actualEncoding = typeof encoding === 'function' ? undefined : (encoding as BufferEncoding)
             const actualEncoding =
               typeof encoding === 'function' ? undefined : (encoding as BufferEncoding)
             const callback = typeof encoding === 'function' ? encoding : cb
