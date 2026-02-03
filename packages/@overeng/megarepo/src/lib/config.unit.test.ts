@@ -441,6 +441,7 @@ describe('config', () => {
       const input = {
         members: {},
         generators: {
+          nix: { enabled: true },
           vscode: { enabled: true, exclude: ['docs'] },
         },
       }

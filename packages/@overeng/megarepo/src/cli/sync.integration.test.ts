@@ -1733,6 +1733,10 @@ describe('sync worktree ref mismatch detection', () => {
 
         // Clone bare repo
         yield* fs.makeDirectory(bareRepoPath, { recursive: true })
+        const worktreeParent = EffectPath.ops.parent(storeWorktreePath)
+        if (worktreeParent !== undefined) {
+          yield* fs.makeDirectory(worktreeParent, { recursive: true })
+        }
         yield* runGitCommand(bareRepoPath, 'clone', '--bare', remoteRepoPath.slice(0, -1), '.')
 
         // Create worktree from bare repo
@@ -1896,6 +1900,10 @@ describe('sync worktree ref mismatch detection', () => {
 
         // Clone bare repo
         yield* fs.makeDirectory(bareRepoPath, { recursive: true })
+        const worktreeParent = EffectPath.ops.parent(storeWorktreePath)
+        if (worktreeParent !== undefined) {
+          yield* fs.makeDirectory(worktreeParent, { recursive: true })
+        }
         yield* runGitCommand(bareRepoPath, 'clone', '--bare', remoteRepoPath.slice(0, -1), '.')
 
         // Create worktree from bare repo
