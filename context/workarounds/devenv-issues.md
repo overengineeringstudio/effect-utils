@@ -34,64 +34,73 @@ This adds a `git-hooks:ensure` task that runs after `devenv:git-hooks:install` a
 
 ### DEVENV-02: Task tracing lacks OTLP export and observability features
 
-**Issues:**
-
-- https://github.com/cachix/devenv/issues/2456 (`--trace-format json` outputs empty `{}`)
-- https://github.com/cachix/devenv/issues/2415 (OTEL support feature request)
+**Issue:** https://github.com/cachix/devenv/issues/2415 (OTEL support feature request)
 
 **Related:**
 
+- https://github.com/cachix/devenv/issues/2456 (docs: clarify `--trace-output` requirement)
 - https://github.com/cachix/devenv/issues/1457 (Task Server Protocol - proposes JSON-RPC with timestamps)
-- https://github.com/cachix/devenv/pull/2239 (Added `--trace-format` option)
-
-**Note:** The `--trace-format json` option (added in PR #2239) currently outputs empty `{}` in devenv 2.0.0. All three formats (json, full, pretty) produce identical TUI-style output.
 
 **Affected repos:** All repos using devenv tasks that need CI observability
 
 **Symptoms:**
 
-- Cannot export task traces to external observability systems (Datadog, Honeycomb, etc.)
+- No native OTLP export to observability systems (Datadog, Honeycomb, etc.)
 - No summary statistics (total wall time, parallelism efficiency, cache hit rates)
 - No historical metrics tracking across CI runs
-- Dependency graphs not visualizable beyond what's declared in nix
 
 **Current capabilities (devenv 2.0.0):**
 
+JSON traces are available but require `--trace-output` (traces are disabled by default):
+
 ```bash
-# Verbose mode provides useful trace info
-devenv tasks run <task> --verbose --no-tui
+# Enable JSON traces to a file
+devenv tasks run <task> --no-tui --trace-output file:/tmp/trace.json --trace-format json
 
-# Output includes:
-# - Flake input fingerprints
-# - Eval/build cache hit status
-# - Per-task: "Running task 'X' with exec_if_modified: [], status: false"
-# - Per-task timing: "Succeeded X (1.79s)"
-# - File state tracking paths
-
-# Note: --trace-format {json,full,pretty} all output empty "{}" - appears broken
+# Or output to stdout/stderr
+devenv tasks run <task> --no-tui --trace-output stdout --trace-format json
 ```
 
-The `--verbose` flag provides per-task timing visible in TUI output, but lacks:
+JSON trace output includes:
 
-- OTLP/OpenTelemetry export
-- Critical path analysis
-- Summary statistics
-- Metrics aggregation over time
+- Per-task start/complete events with timestamps
+- Span context with parent/child relationships (span_id, parent_id)
+- Activity kinds: task, command, evaluate, operation
+- Outcomes: success, cached, failure
+- Command paths executed
+
+Example trace event:
+
+```json
+{
+  "fields": {
+    "event": {
+      "activity_kind": "task",
+      "event": "complete",
+      "id": 9223372036854775817,
+      "name": "ts:check",
+      "outcome": "success",
+      "timestamp": "2026-02-03T14:08:00.556348000Z"
+    }
+  },
+  "span_context": { "span_id": 274877906946, "parent_id": 274877906945 }
+}
+```
 
 **R10 requirements gap analysis:**
 
-| Requirement                       | Status     | Notes                                          |
-| --------------------------------- | ---------- | ---------------------------------------------- |
-| (a) Per-task timing               | ⚠️ Partial | Visible in `--verbose` text output only        |
-| (b) Dependency visualization      | ⚠️ Partial | Declared in nix, no graph analysis tool        |
-| (c) Stdout/stderr capture         | ⚠️ Partial | Available with `--show-output`, not structured |
-| (d) Structured export (JSON/OTLP) | ❌ Broken  | `--trace-format json` outputs empty `{}`       |
-| (e) Summary statistics            | ❌ Missing | No parallelism efficiency, cache hit rates     |
-| (f) Metrics over time             | ❌ Missing | No cross-run tracking                          |
+| Requirement                       | Status       | Notes                                             |
+| --------------------------------- | ------------ | ------------------------------------------------- |
+| (a) Per-task timing               | ✅ Available | Via `--trace-output` JSON with timestamps         |
+| (b) Dependency visualization      | ✅ Available | Via span parent/child relationships in JSON       |
+| (c) Stdout/stderr capture         | ⚠️ Partial   | Available with `--show-output`, not in trace JSON |
+| (d) Structured export (JSON/OTLP) | ⚠️ Partial   | JSON available, OTLP not yet implemented          |
+| (e) Summary statistics            | ❌ Missing   | Must be computed from raw trace events            |
+| (f) Metrics over time             | ❌ Missing   | No built-in cross-run tracking                    |
 
-**Workaround:** For CI observability, parse the `--verbose --no-tui` text output and forward to your observability platform manually. The `--trace-format json` option is currently broken.
+**Workaround:** Use `--trace-output file:<path> --trace-format json` to get structured traces, then post-process for observability platforms.
 
-**Potential upstream contribution:** Issue #2415 proposes adding OTLP export using `tracing-opentelemetry` crate. The implementation would convert activity events into OTEL spans with attributes like activity kind, derivation path, build phase, and outcome.
+**Potential upstream contribution:** Issue #2415 proposes adding native OTLP export using `tracing-opentelemetry` crate.
 
 ---
 
@@ -103,7 +112,7 @@ The `--verbose` flag provides per-task timing visible in TUI output, but lacks:
   - Optionally remove `git-hooks-fix.nix` module and flake export (or keep for backwards compat)
   - Verify hooks are installed on fresh clone without the workaround
 
-- **DEVENV-02 fixed (JSON trace format working + native OTLP support):**
-  - When #2456 is fixed: can use `--trace-format json` for structured CI traces
+- **DEVENV-02 fixed (native OTLP support added via #2415):**
   - When #2415 is fixed: can use native OTLP export to observability platforms
-  - Update R10 status in this document to reflect compliance
+  - Remove manual JSON trace post-processing from CI pipelines
+  - Update R10 status in this document to reflect full compliance
