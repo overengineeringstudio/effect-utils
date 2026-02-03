@@ -81,12 +81,13 @@ in
     "lint:check:oxlint" = {
       description = "Run oxlint linter";
       exec = "oxlint --import-plugin --deny-warnings ${typeAwareFlags} ${lintPathsArg}";
-      after = [ "genie:run" ];
+      after = [ "genie:run" "pnpm:install" ];
       execIfModified = execIfModifiedPatterns;
     };
     "lint:check:genie" = {
       description = "Check generated files are up to date";
       exec = "genie --check";
+      after = [ "pnpm:install" ];
       execIfModified = geniePatterns;
     };
     "lint:check:genie:coverage" = {
