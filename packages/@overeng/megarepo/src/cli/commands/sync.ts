@@ -22,11 +22,7 @@ import {
   MegarepoConfig,
   parseSourceString,
 } from '../../lib/config.ts'
-import {
-  generateAll,
-  getEnabledGenerators,
-  type NixGeneratorError,
-} from '../../lib/generators/mod.ts'
+import { generateAll, getEnabledGenerators } from '../../lib/generators/mod.ts'
 import * as Git from '../../lib/git.ts'
 import {
   checkLockStaleness,
@@ -105,7 +101,6 @@ export const syncMegarepo = <R = never>({
   | NotInMegarepoError
   | LockFileRequiredError
   | StaleLockFileError
-  | NixGeneratorError
   | PlatformError.PlatformError
   | ParseResult.ParseError,
   FileSystem.FileSystem | CommandExecutor.CommandExecutor | Store | R

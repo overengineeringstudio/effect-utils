@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **@overeng/megarepo**: Simplified nix integration - removed workspace generator
+  - Removed `mr generate nix` command and `.envrc.generated.megarepo` file
+  - Removed `.direnv/megarepo-nix/workspace` mirror directory
+  - Removed `MEGAREPO_ROOT_*`, `MEGAREPO_MEMBERS`, `MEGAREPO_NIX_WORKSPACE` env vars
+  - Use `DEVENV_ROOT` (provided by devenv) instead of `MEGAREPO_ROOT_NEAREST`
+  - **Nix lock sync is still available** via `generators.nix.enabled` and `generators.nix.lockSync`
+  - Simplified `.envrc` to just `use devenv` (no generated file needed)
+
+- **nix/devenv-modules/tasks/shared/megarepo.nix**: Simplified megarepo tasks
+  - Removed `megarepo:generate` task (no longer needed)
+  - Simplified `megarepo:check` to just verify repos/ directory exists
+  - Tasks no longer check for `.envrc.generated.megarepo` or workspace flake
+
 ### Fixed
 
 - **nix/devenv-modules/tasks/shared/test.nix**: Self-contained test tasks - each package uses its own vitest
