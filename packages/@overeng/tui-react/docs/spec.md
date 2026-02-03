@@ -219,10 +219,10 @@ Structured JSON output at command completion.
 
 **Stream Contract:**
 
-| Stream   | Content                                |
-| -------- | -------------------------------------- |
-| `stdout` | JSON data only (single object)         |
-| `stderr` | Log messages, errors, debug output     |
+| Stream   | Content                            |
+| -------- | ---------------------------------- |
+| `stdout` | JSON data only (single object)     |
+| `stderr` | Log messages, errors, debug output |
 
 **Format:**
 
@@ -951,8 +951,9 @@ import { NodeRuntime } from '@effect/platform-node'
 import { runTuiMain, outputModeLayer } from '@overeng/tui-react'
 
 // Run the CLI with proper error handling
-const program = Cli.Command.run(myCommand, { name: 'my-cli', version: '1.0.0' })(process.argv)
-  .pipe(Effect.provide(outputModeLayer('auto')))
+const program = Cli.Command.run(myCommand, { name: 'my-cli', version: '1.0.0' })(process.argv).pipe(
+  Effect.provide(outputModeLayer('auto')),
+)
 
 runTuiMain(NodeRuntime)(program)
 ```

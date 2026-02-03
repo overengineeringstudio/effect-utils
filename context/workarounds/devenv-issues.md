@@ -37,6 +37,7 @@ This adds a `git-hooks:ensure` task that runs after `devenv:git-hooks:install` a
 **Issue:** No upstream issue exists yet — feature gap relative to R10 requirements
 
 **Related issues:**
+
 - https://github.com/cachix/devenv/issues/1457 (Task Server Protocol - proposes JSON-RPC with timestamps)
 - https://github.com/cachix/devenv/pull/2239 (Added `--trace-format json` in v1.11)
 
@@ -59,6 +60,7 @@ devenv tasks run <task> --trace-format pretty # human-readable format
 ```
 
 The `--trace-format json` option provides per-task timing and stdout/stderr capture, but lacks:
+
 - OTLP/OpenTelemetry export
 - Critical path analysis
 - Summary statistics
@@ -66,14 +68,14 @@ The `--trace-format json` option provides per-task timing and stdout/stderr capt
 
 **R10 requirements gap analysis:**
 
-| Requirement | Status | Notes |
-|-------------|--------|-------|
-| (a) Per-task timing | ⚠️ Partial | Available in TUI and JSON format |
-| (b) Dependency visualization | ⚠️ Partial | Declared in nix, no graph analysis tool |
-| (c) Stdout/stderr capture | ✅ Available | Captured in JSON format |
-| (d) Structured export (JSON/OTLP) | ⚠️ Partial | JSON exists, OTLP missing |
-| (e) Summary statistics | ❌ Missing | No parallelism efficiency, cache hit rates |
-| (f) Metrics over time | ❌ Missing | No cross-run tracking |
+| Requirement                       | Status       | Notes                                      |
+| --------------------------------- | ------------ | ------------------------------------------ |
+| (a) Per-task timing               | ⚠️ Partial   | Available in TUI and JSON format           |
+| (b) Dependency visualization      | ⚠️ Partial   | Declared in nix, no graph analysis tool    |
+| (c) Stdout/stderr capture         | ✅ Available | Captured in JSON format                    |
+| (d) Structured export (JSON/OTLP) | ⚠️ Partial   | JSON exists, OTLP missing                  |
+| (e) Summary statistics            | ❌ Missing   | No parallelism efficiency, cache hit rates |
+| (f) Metrics over time             | ❌ Missing   | No cross-run tracking                      |
 
 **Workaround:** For CI observability, parse `--trace-format json` output and forward to your observability platform manually. Consider filing an upstream feature request for native OTLP support.
 
