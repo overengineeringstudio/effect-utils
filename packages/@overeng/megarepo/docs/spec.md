@@ -903,6 +903,45 @@ Generated files include a content hash in the header that represents the functio
 - Tools watching for file changes (direnv, file watchers) aren't triggered spuriously
 - Supports R12 requirement: shell environments remain stable when nothing meaningful changed
 
+#### Content-Addressed Flake Inputs
+
+The nix generator uses `git+file:` URLs with `ref=HEAD` for local flake input overrides:
+
+```bash
+--override-input effect-utils git+file:/path/to/repo?ref=HEAD
+```
+
+**Why `git+file:?ref=HEAD` instead of alternatives:**
+
+| Approach             | Behavior                 | R12 Impact                                 |
+| -------------------- | ------------------------ | ------------------------------------------ |
+| `path:`              | Uses file mtimes         | ❌ Any file touch triggers rebuild         |
+| `git+file:` (no ref) | Includes dirty tree hash | ❌ Any uncommitted change triggers rebuild |
+| `git+file:?ref=HEAD` | Uses committed HEAD only | ✅ Stable until you commit                 |
+
+The `ref=HEAD` parameter tells Nix to use only the committed state, ignoring:
+
+- File modification timestamps
+- Uncommitted changes (dirty working tree)
+
+This means:
+
+- Editing files won't trigger shell rebuilds (R12: stable shell)
+- Only committed changes cause shell rebuilds
+- Shell remains stable during active development
+
+**Building dirty changes (R8):** The shell override uses `ref=HEAD`, but explicit builds can still use dirty state:
+
+```bash
+# Explicit build sees uncommitted changes
+nix build "git+file:$MEGAREPO_ROOT_NEAREST/repos/effect-utils#genie"
+
+# Or use the workspace mirror (rsynced copy)
+nix build "path:$MEGAREPO_NIX_WORKSPACE/effect-utils#genie"
+```
+
+This satisfies both R8 (build dirty changes) and R12 (stable shell) from the nix-devenv requirements.
+
 ### Generator Output Locations
 
 | Generator | Output Path                                  |

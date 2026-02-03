@@ -187,7 +187,8 @@ export MEGAREPO_MEMBERS="${memberNames}"
 export MEGAREPO_NIX_WORKSPACE="\${MEGAREPO_ROOT_NEAREST}.direnv/megarepo-nix/workspace"
 
 # Compute devenv override args for flake inputs (R12: content-addressed for stability)
-# Uses git+file: instead of path: to avoid spurious re-evals from timestamp changes
+# Uses git+file: with ref=HEAD to use only committed state, avoiding spurious re-evals
+# from both timestamp changes (path:) and uncommitted changes (git+file: without ref)
 _megarepo_devenv_args=""
 for _member in effect-utils; do
   _repo_path="\${MEGAREPO_ROOT_NEAREST}repos/\$_member"
@@ -195,7 +196,9 @@ for _member in effect-utils; do
   [ -L "\$_repo_path" ] && _repo_path="\$(readlink -f "\$_repo_path")"
   # Check for .git dir or file (worktrees use .git file)
   if [ -e "\$_repo_path/.git" ]; then
-    _megarepo_devenv_args="\$_megarepo_devenv_args --override-input \$_member git+file:\$_repo_path"
+    # Use ref=HEAD to only consider committed state (ignores dirty tree)
+    # This ensures shell stability even when files are being edited
+    _megarepo_devenv_args="\$_megarepo_devenv_args --override-input \$_member git+file:\$_repo_path?ref=HEAD"
   fi
 done
 export MEGAREPO_DEVENV_ARGS="\$_megarepo_devenv_args"
