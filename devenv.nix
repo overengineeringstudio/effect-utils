@@ -60,6 +60,7 @@ let
   ];
 
   # Packages that have vitest tests (subset of allPackages)
+  # Each package uses its own vitest from node_modules (self-contained)
   packagesWithTests = [
     { path = "packages/@overeng/effect-ai-claude-cli"; name = "effect-ai-claude-cli"; }
     { path = "packages/@overeng/effect-path"; name = "effect-path"; }
@@ -70,8 +71,8 @@ let
     { path = "packages/@overeng/notion-effect-client"; name = "notion-effect-client"; }
     { path = "packages/@overeng/notion-effect-schema"; name = "notion-effect-schema"; }
     { path = "packages/@overeng/oxc-config"; name = "oxc-config"; }
-    { path = "packages/@overeng/tui-core"; name = "tui-core"; useLocalConfig = true; }
-    { path = "packages/@overeng/tui-react"; name = "tui-react"; useLocalConfig = true; }
+    { path = "packages/@overeng/tui-core"; name = "tui-core"; }
+    { path = "packages/@overeng/tui-react"; name = "tui-react"; }
     { path = "packages/@overeng/utils"; name = "utils"; }
   ];
 
@@ -108,11 +109,9 @@ in
     # Per-package pnpm install tasks
     # NOTE: Using pnpm temporarily. See: context/workarounds/bun-issues.md
     (taskModules.pnpm { packages = allPackages; })
+    # Self-contained test tasks: each package uses its own vitest from node_modules
     (taskModules.test {
       packages = packagesWithTests;
-      vitestBin = "packages/@overeng/utils/node_modules/.bin/vitest";
-      vitestConfig = "packages/@overeng/utils/vitest.config.ts";
-      vitestInstallTask = "pnpm:install:utils";
       extraTests = [ "nix:test" ];
     })
     (taskModules.storybook {

@@ -6,10 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-- **nix/devenv-modules/tasks/shared/test.nix**: Added `vitestInstallTask` parameter to fix CI failures
-  - When using a shared vitest binary from another package (e.g., `packages/@overeng/utils/node_modules/.bin/vitest`), test tasks need to depend on that package's install task
-  - Without this, test tasks would fail with "vitest: No such file or directory" when the vitest-providing package wasn't installed yet
-  - This fix ensures CI is deterministic regardless of cache state (R5 in tasks requirements)
+- **nix/devenv-modules/tasks/shared/test.nix**: Self-contained test tasks - each package uses its own vitest
+  - Previously test tasks shared a vitest binary from `@overeng/utils`, violating self-contained packages requirements (R1-R5)
+  - Now each package runs tests using `node_modules/.bin/vitest` from its own dependencies
+  - Added `vitest.config.ts` to packages that were missing one: effect-path, effect-rpc-tanstack, genie, notion-cli, notion-effect-client, notion-effect-schema
+  - Removed deprecated `vitestBin`, `vitestConfig`, and `vitestInstallTask` parameters from test module
+  - This ensures packages are independently testable without cross-package dependencies
 
 ### Removed
 
