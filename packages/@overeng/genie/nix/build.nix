@@ -18,7 +18,7 @@ let
     # Platform-independent hash: pnpm-workspace.yaml has supportedArchitectures configured
     # to download binaries for all platforms (linux/darwin x x64/arm64), so the hash is
     # the same regardless of where the build runs.
-    pnpmDepsHash = "sha256-77oT510A/aqHEOypnLmpAcuc86h0cf6mrEc9W9wMn8g=";
+    pnpmDepsHash = "sha256-2tgl2GUgpqveeqPv9lSHx+e6KIdrxfMGqQk9GVe2vrM=";
     lockfileHash = "sha256-BRD+sGpfmuzYXpJZwyTAsatRddWcfQgTWRLkI3Tw0Hc=";
     packageJsonDepsHash = "sha256-slNo40B9ZwvVopL7htF9m0Skywj5G8zVhlAZbE/lCHM=";
     inherit gitRev commitTs dirty;
