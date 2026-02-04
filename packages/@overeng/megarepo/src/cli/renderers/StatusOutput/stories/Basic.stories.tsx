@@ -32,7 +32,7 @@ export default {
   component: StatusView,
   title: 'CLI/Status/Basic',
   parameters: {
-    layout: 'padded',
+    layout: 'fullscreen',
   },
   args: {
     height: 400,
