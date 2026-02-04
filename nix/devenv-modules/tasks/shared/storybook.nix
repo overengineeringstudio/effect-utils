@@ -48,11 +48,16 @@ let
   # Uses automatic port allocation to avoid conflicts
   # --host 0.0.0.0 allows access from other machines (useful for remote dev environments)
   processName = pkg: "storybook-${pkg.name}";
+  
+  # Get the allocated port from config at Nix evaluation time
+  # This follows the same pattern as postgres.nix in devenv
+  getAllocatedPort = pkg: config.processes.${processName pkg}.ports.http.value;
+  
   mkProcess = pkg: {
     "${processName pkg}" = {
       ports.http.allocate = pkg.port;
       exec = ''
-        ${storybookBin} dev -p "$DEVENV_PROCESS_PORT_HTTP" --host 0.0.0.0
+        ${storybookBin} dev -p ${toString (getAllocatedPort pkg)} --host 0.0.0.0
       '';
       cwd = pkg.path;
     };
