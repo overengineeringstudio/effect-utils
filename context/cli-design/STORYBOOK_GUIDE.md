@@ -183,7 +183,7 @@ Group by scenario type:
 
 | File | Purpose |
 |------|---------|
-| `Results.stories.tsx` | Success scenarios, mixed results |
+| `Success.stories.tsx` | Success scenarios, mixed results |
 | `Errors.stories.tsx` | Error handling, failures |
 | `Overflow.stories.tsx` | Viewport truncation, many items |
 
