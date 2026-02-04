@@ -44,6 +44,8 @@ All notable changes to this project will be documented in this file.
   - Normalizes tar output (stable ordering + fixed timestamps)
   - Strips non-deterministic pnpm store `checkedAt` metadata
   - Prevents pnpm deps hash churn across CI runs
+- **nix/workspace-tools/lib/mk-pnpm-cli.nix**: Force `supportedArchitectures` in Nix pnpm installs
+  - Ensures pnpm store hashes remain stable across macOS/Linux (R5)
 
 ### Removed
 

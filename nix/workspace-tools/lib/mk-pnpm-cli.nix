@@ -183,6 +183,7 @@ let
       # Configure pnpm
       pnpm config set store-dir "$STORE_PATH"
       pnpm config set manage-package-manager-versions false
+      ${pnpmSupportedArchitecturesScript}
 
       # Install with network access - this downloads all deps to the store
       # Use --force to skip workspace member validation since we only have package.json files
@@ -238,6 +239,20 @@ let
   nixStampJson = ''{\"type\":\"nix\",\"version\":\"${packageVersion}\",\"rev\":\"${gitRev}\",\"commitTs\":${toString commitTs},\"dirty\":${dirtyStr}}'';
 
   smokeTestArgsStr = lib.escapeShellArgs smokeTestArgs;
+  supportedArchitecturesJson = ''{"os":["linux","darwin"],"cpu":["x64","arm64"]}'';
+  pnpmSupportedArchitecturesScript = ''
+    # Ensure pnpm resolves binaries for all supported platforms (R5 determinism)
+    pnpm config set supportedArchitectures '${supportedArchitecturesJson}'
+    sa="$(pnpm config get supportedArchitectures)"
+    case "$sa" in
+      *linux*darwin* && *x64*arm64* ) ;;
+      *)
+        echo "error: pnpm supportedArchitectures not set as expected"
+        echo "  got: $sa"
+        exit 1
+        ;;
+    esac
+  '';
 
 in
 pkgs.stdenv.mkDerivation {
@@ -285,6 +300,7 @@ pkgs.stdenv.mkDerivation {
     pnpm config set store-dir "$STORE_PATH"
     pnpm config set package-import-method clone-or-copy
     pnpm config set manage-package-manager-versions false
+    ${pnpmSupportedArchitecturesScript}
 
     # Copy workspace source
     echo "Copying workspace source..."
