@@ -7,35 +7,21 @@
  * - commitDrift field
  */
 
-import path from 'node:path'
-import url from 'node:url'
-
-import { Command, FileSystem } from '@effect/platform'
-import { Chunk, Effect, Schema, Stream } from 'effect'
+import * as Cli from '@effect/cli'
+import { FileSystem } from '@effect/platform'
+import { Effect, Exit, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import { MegarepoConfig } from '../lib/config.ts'
 import { createLockedMember, type LockFile, LOCK_FILE_NAME, writeLockFile } from '../lib/lock.ts'
-import { createRepo, initGitRepo, runGitCommand, getGitRev } from '../test-utils/setup.ts'
+import { makeConsoleCapture } from '../test-utils/consoleCapture.ts'
+import { createRepo, getGitRev, initGitRepo, runGitCommand } from '../test-utils/setup.ts'
 import { withTestCtx } from '../test-utils/withTestCtx.ts'
+import { Cwd } from './context.ts'
+import { mrCommand } from './mod.ts'
 import { StatusState } from './renderers/StatusOutput/schema.ts'
-
-// Path to the CLI binary
-const __dirname = path.dirname(url.fileURLToPath(import.meta.url))
-const CLI_PATH = path.resolve(__dirname, '../../bin/mr.ts')
-
-/** Decode collected chunks to string */
-const decodeChunks = (chunks: Chunk.Chunk<Uint8Array>): string => {
-  const merged = Chunk.reduce(chunks, new Uint8Array(), (acc, chunk) => {
-    const result = new Uint8Array(acc.length + chunk.length)
-    result.set(acc)
-    result.set(chunk, acc.length)
-    return result
-  })
-  return new TextDecoder().decode(merged)
-}
 
 /**
  * Run the status CLI command and capture JSON output.
@@ -48,30 +34,45 @@ const runStatusCommand = ({
   args?: ReadonlyArray<string>
 }) =>
   Effect.gen(function* () {
-    const command = Command.make(
-      'bun',
-      'run',
-      CLI_PATH,
-      'status',
-      '--output',
-      'json',
-      ...args,
-    ).pipe(
-      Command.workingDirectory(cwd),
-      Command.env({ PWD: cwd }),
-      Command.stdout('pipe'),
-      Command.stderr('pipe'),
+    const { consoleLayer, getStdoutLines, getStderrLines } = yield* makeConsoleCapture
+    const stderrCapture = yield* Effect.acquireRelease(
+      Effect.sync(() => {
+        const stderrChunks: Array<string> = []
+        const originalStderrWrite = process.stderr.write.bind(process.stderr)
+
+        const captureWrite = (target: Array<string>) =>
+          ((chunk: unknown, encoding?: unknown, cb?: unknown) => {
+            const actualEncoding =
+              typeof encoding === 'function' ? undefined : (encoding as BufferEncoding)
+            const callback = typeof encoding === 'function' ? encoding : cb
+            const text =
+              typeof chunk === 'string'
+                ? chunk
+                : Buffer.from(chunk as Uint8Array).toString(actualEncoding)
+            target.push(text)
+            if (typeof callback === 'function') callback()
+            return true
+          }) as unknown as typeof process.stderr.write
+
+        process.stderr.write = captureWrite(stderrChunks)
+
+        return { stderrChunks, originalStderrWrite }
+      }),
+      (capture) =>
+        Effect.sync(() => {
+          process.stderr.write = capture.originalStderrWrite
+        }),
     )
 
-    const process = yield* Command.start(command)
-    const [stdoutChunks, stderrChunks, exitCode] = yield* Effect.all([
-      Stream.runCollect(process.stdout),
-      Stream.runCollect(process.stderr),
-      process.exitCode,
-    ])
+    const argv = ['node', 'mr', 'status', '--output', 'json', ...args]
+    const effect = Cli.Command.run(mrCommand, { name: 'mr', version: 'test' })(argv).pipe(
+      Effect.provideService(Cwd, cwd),
+      Effect.provide(consoleLayer),
+    )
+    const exit = yield* Effect.exit(effect)
 
-    const stdout = decodeChunks(stdoutChunks)
-    const stderr = decodeChunks(stderrChunks)
+    const stdout = (yield* getStdoutLines).join('\n')
+    const stderr = [stderrCapture.stderrChunks.join(''), ...(yield* getStderrLines)].join('\n')
 
     // Parse JSON output
     let status: typeof StatusState.Type | undefined
@@ -79,7 +80,12 @@ const runStatusCommand = ({
       status = yield* Schema.decodeUnknown(Schema.parseJson(StatusState))(stdout)
     }
 
-    return { stdout, stderr, exitCode, status }
+    return {
+      stdout,
+      stderr,
+      exitCode: Exit.isSuccess(exit) ? 0 : 1,
+      status,
+    }
   }).pipe(Effect.scoped)
 
 /**
@@ -218,23 +224,27 @@ describe('mr status --output json', () => {
         }),
       ))
 
-    it('should report syncNeeded=true when lock file is missing for remote members', () =>
-      withTestCtx(
-        Effect.gen(function* () {
-          // Create workspace with remote member but no lock file
-          const { workspacePath } = yield* createTestWorkspace({
-            members: { effect: 'effect-ts/effect' },
-            // No lock entries - this simulates missing lock
-          })
+    it(
+      'should report syncNeeded=true when lock file is missing for remote members',
+      { timeout: 20000 },
+      () =>
+        withTestCtx(
+          Effect.gen(function* () {
+            // Create workspace with remote member but no lock file
+            const { workspacePath } = yield* createTestWorkspace({
+              members: { effect: 'effect-ts/effect' },
+              // No lock entries - this simulates missing lock
+            })
 
-          const { status, exitCode } = yield* runStatusCommand({ cwd: workspacePath })
+            const { status, exitCode } = yield* runStatusCommand({ cwd: workspacePath })
 
-          expect(exitCode).toBe(0)
-          expect(status).toBeDefined()
-          expect(status!.syncNeeded).toBe(true)
-          expect(status!.syncReasons).toContain('Lock file missing')
-        }),
-      ))
+            expect(exitCode).toBe(0)
+            expect(status).toBeDefined()
+            expect(status!.syncNeeded).toBe(true)
+            expect(status!.syncReasons).toContain('Lock file missing')
+          }),
+        ),
+    )
 
     it('should report syncNeeded=true when member is not in lock file', () =>
       withTestCtx(
