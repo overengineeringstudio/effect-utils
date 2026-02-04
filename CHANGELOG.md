@@ -39,6 +39,11 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/megarepo**: Configure fetch refspec when cloning bare repos (#111)
+  - `git clone --bare` doesn't set `remote.origin.fetch`, breaking `git push --force-with-lease`
+  - Now `cloneBare` configures `+refs/heads/*:refs/remotes/origin/*` after clone
+  - Ensures remote tracking refs are created on fetch for proper git workflows
+
 - **nix/devenv-modules/tasks/shared/test.nix**: Self-contained test tasks - each package uses its own vitest
   - Previously test tasks shared a vitest binary from `@overeng/utils`, violating self-contained packages requirements (R1-R5)
   - Now each package runs tests using `node_modules/.bin/vitest` from its own dependencies
