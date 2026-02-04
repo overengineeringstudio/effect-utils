@@ -24,8 +24,8 @@ Guidelines for creating Storybook stories for CLI output components.
 ```
 CommandOutput/
   stories/
-    _fixtures.ts      # State factories, example data, timeline
-    Results.stories.tsx
+    _fixtures.ts       # State factories, example data, timeline
+    Success.stories.tsx
     Errors.stories.tsx
   mod.ts
   schema.ts
@@ -246,13 +246,25 @@ tabs={ALL_TABS}
 
 ## Checklist
 
-- [ ] Every CLI flag has a corresponding control (R3)
-- [ ] `interactive` toggle for animated vs static view
+**R1 - Semantic equivalence:**
+- [ ] Timeline and static mode use same `stateConfig`
+- [ ] Timeline ends at same final state as static rendering
+- [ ] `interactive` toggle switches mode without changing outcome
+
+**R2 - Realistic scenarios:**
+- [ ] File paths look real (e.g., `packages/foo/package.json`)
+- [ ] Error messages are plausible (e.g., `SyntaxError`, `ENOENT`)
+- [ ] Counts and timing reflect typical usage
+
+**R3 - Flag coverage:**
+- [ ] Every CLI flag has a corresponding control
+- [ ] `useMemo` wraps config dependent on flag args
+- [ ] Controls affect both static and interactive modes
+
+**R4 - Output format coverage:**
+- [ ] `ALL_TABS` used for all stories
 - [ ] `height` control for viewport testing
-- [ ] `useMemo` wraps config dependent on args
-- [ ] Timeline ends at same state as static mode (R1)
-- [ ] Scenario data is realistic - real paths, plausible errors (R2)
-- [ ] ALL_TABS for output format coverage (R4)
-- [ ] State factories are typed and reusable
-- [ ] No hardcoded state in stories
-- [ ] Fixtures extracted to `_fixtures.ts`
+
+**General:**
+- [ ] State factories extracted to `_fixtures.ts`
+- [ ] No hardcoded state in story files
