@@ -701,6 +701,7 @@ export const syncCommand = Cli.Command.make(
                 logs: [],
                 nestedMegarepos: [...syncResult.nestedMegarepos],
                 generatedFiles,
+                lockSyncResults: [],
               },
             })
           }),

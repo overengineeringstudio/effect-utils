@@ -32,6 +32,7 @@ export const createInitialSyncState = (params: {
   logs: [],
   nestedMegarepos: [],
   generatedFiles: [],
+  lockSyncResults: [],
 })
 
 /**
