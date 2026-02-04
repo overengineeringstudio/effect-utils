@@ -1,7 +1,7 @@
 # Generated file - DO NOT EDIT
 # Source: pnpm-workspace.yaml.genie.ts
 
-packages: [., ../utils, examples/basic]
+packages: [., ../utils, ../utils-dev, examples/basic]
 
 supportedArchitectures:
   os: [linux, darwin]
