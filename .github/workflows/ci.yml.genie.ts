@@ -39,8 +39,8 @@ const baseSteps = [
     uses: 'actions/cache@v4',
     with: {
       path: '~/.local/share/pnpm/store',
-      key: "pnpm-store-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}",
-      'restore-keys': 'pnpm-store-${{ runner.os }}-',
+      key: "pnpm-store-v2-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}",
+      'restore-keys': 'pnpm-store-v2-${{ runner.os }}-',
     },
   },
 ] as const
