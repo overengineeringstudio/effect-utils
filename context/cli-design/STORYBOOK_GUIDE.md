@@ -2,6 +2,12 @@
 
 Guidelines for creating Storybook stories for CLI output components.
 
+## Assumptions
+
+- A1 - Stories use `@overeng/tui-react` and `TuiStoryPreview` component for rendering
+- A2 - CLI views follow the app/schema/view pattern with Effect Schema for state
+- A3 - Output supports multiple modes (TTY, CI, JSON, etc.) via the tui-react output system
+
 ## Core Principle
 
 **Every meaningful CLI flag gets a Storybook control.** Users should be able to explore all output variations without touching code.
@@ -174,6 +180,63 @@ Group by scenario type:
 | `Errors.stories.tsx` | Error handling, failures |
 | `Overflow.stories.tsx` | Viewport truncation, many items |
 
+## Anti-Patterns
+
+**Don't** hardcode state in stories - use controls and state factories instead:
+```typescript
+// Bad: hardcoded, can't explore variations
+initialState={{ dryRun: true, results: [...] }}
+
+// Good: driven by controls
+initialState={createState(stateConfig)}
+```
+
+**Don't** duplicate state between interactive and static modes - use same config:
+```typescript
+// Bad: different data paths
+initialState={args.interactive ? someState : differentState}
+
+// Good: same config, different starting point
+initialState={args.interactive ? createState({ phase: 'idle' }) : createState(stateConfig)}
+timeline={args.interactive ? createTimeline(stateConfig) : undefined}
+```
+
+**Don't** put fixtures inline in story files - extract to `_fixtures.ts`:
+```typescript
+// Bad: inline data bloats story file
+const results = [{ name: 'foo', status: 'ok' }, ...]
+
+// Good: import from fixtures
+import { exampleResults, createState } from './_fixtures.ts'
+```
+
+**Don't** forget `useMemo` for arg-dependent config - causes unnecessary re-renders:
+```typescript
+// Bad: recreates config every render
+const config = { dryRun: args.dryRun }
+
+// Good: memoized on arg changes
+const config = useMemo(() => ({ dryRun: args.dryRun }), [args.dryRun])
+```
+
+**Don't** create separate "Demo" stories - every story should have `interactive` toggle:
+```typescript
+// Bad: separate Demo.stories.tsx with animation
+// Bad: static-only stories without interactive option
+
+// Good: each story has interactive control
+args: { interactive: false, ... }
+```
+
+**Don't** omit output tabs - always include ALL_TABS for format coverage:
+```typescript
+// Bad: only testing TTY output
+tabs={['tty']}
+
+// Good: test all output formats
+tabs={ALL_TABS}
+```
+
 ## Checklist
 
 - [ ] Every CLI flag has a corresponding control
@@ -183,3 +246,5 @@ Group by scenario type:
 - [ ] Timeline factory accepts same config as static state
 - [ ] ALL_TABS for output format coverage
 - [ ] State factories are typed and reusable
+- [ ] No hardcoded state in stories
+- [ ] Fixtures extracted to `_fixtures.ts`
