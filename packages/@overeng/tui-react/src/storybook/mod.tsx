@@ -93,33 +93,32 @@ export const defaultStoryArgs = {
  *     app={MyApp}
  *     height={args.height}
  *     tabs={ALL_OUTPUT_TABS}
- *     {...createInteractiveProps(args, {
+ *     {...createInteractiveProps({
+ *       args,
  *       staticState: fixtures.createCompleteState(stateConfig),
  *       idleState: fixtures.createIdleState(),
- *       createTimeline: (state) => fixtures.createTimeline(stateConfig),
+ *       createTimeline: () => fixtures.createTimeline(stateConfig),
  *     })}
  *   />
  * )
  * ```
  */
-export const createInteractiveProps = <S, A>(
-  args: { interactive: boolean; playbackSpeed: number },
-  config: {
-    /** The final state to show in static mode */
-    staticState: S
-    /** The initial state to start from in interactive mode */
-    idleState: S
-    /** Factory to create timeline actions */
-    createTimeline: () => TimelineEvent<A>[]
-  },
-): {
+export const createInteractiveProps = <S, A>(_: {
+  args: { interactive: boolean; playbackSpeed: number }
+  /** The final state to show in static mode */
+  staticState: S
+  /** The initial state to start from in interactive mode */
+  idleState: S
+  /** Factory to create timeline actions */
+  createTimeline: () => TimelineEvent<A>[]
+}): {
   initialState: S
   autoRun: boolean
   playbackSpeed: number
   timeline?: TimelineEvent<A>[]
 } => ({
-  initialState: args.interactive ? config.idleState : config.staticState,
-  autoRun: args.interactive,
-  playbackSpeed: args.playbackSpeed,
-  ...(args.interactive ? { timeline: config.createTimeline() } : {}),
+  initialState: _.args.interactive ? _.idleState : _.staticState,
+  autoRun: _.args.interactive,
+  playbackSpeed: _.args.playbackSpeed,
+  ...(_.args.interactive ? { timeline: _.createTimeline() } : {}),
 })
