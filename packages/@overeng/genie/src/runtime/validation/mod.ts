@@ -19,6 +19,7 @@ export type PackageInfo = {
   name: string
   path: string
   dependencies?: Record<string, string>
+  devDependencies?: Record<string, string>
   optionalDependencies?: Record<string, string>
   peerDependencies?: Record<string, string>
   peerDependenciesMeta?: Record<string, { optional?: boolean }>
@@ -28,6 +29,8 @@ export type PackageInfo = {
 /** Context passed to genie validation hooks */
 export type GenieValidationContext = {
   cwd: string
+  /** Repo-relative path to the current genie file's directory */
+  location?: string
   packageJson?: {
     packages: PackageInfo[]
     byName: Map<string, PackageInfo>

@@ -20,7 +20,6 @@ import {
   type GenieSummary,
   type GenieMode,
 } from './schema.ts'
-import { logTsconfigWarnings, validateTsconfigReferences } from './tsconfig-validation.ts'
 import type { GenieCommandConfig, GenieCommandEnv, GenieCommandError } from './types.ts'
 import { runGenieValidation } from './validation.ts'
 import { GenieView } from './view.tsx'
@@ -226,13 +225,6 @@ export const genieCommand: Cli.Command.Command<
 
         // Persist output before exiting
         yield* tui.unmount({ mode: 'persist' })
-
-        // Validate tsconfig references
-        const warnings = yield* validateTsconfigReferences({
-          genieFiles,
-          cwd: resolvedCwd,
-        })
-        yield* logTsconfigWarnings(warnings)
 
         if (failed > 0) {
           return yield* new GenieGenerationFailedError({

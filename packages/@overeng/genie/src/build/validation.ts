@@ -65,16 +65,22 @@ export const runGenieValidation = ({
     const packageJsonContext = yield* buildPackageJsonValidationContext({ cwd, workspaceProvider })
     const genieFiles = yield* findGenieFiles(cwd)
 
-    const ctx: GenieValidationContext = {
-      cwd,
-      packageJson: packageJsonContext,
-    }
-
     const issues: ValidationIssue[] = []
 
     for (const genieFilePath of genieFiles) {
       const targetFilePath = genieFilePath.replace('.genie.ts', '')
       const isPackageJson = pathService.basename(targetFilePath) === 'package.json'
+
+      // Compute repo-relative location for this genie file
+      const genieDir = pathService.dirname(genieFilePath)
+      const location = pathService.relative(cwd, genieDir).replace(/\\/g, '/')
+
+      // Create per-file validation context with location
+      const ctx: GenieValidationContext = {
+        cwd,
+        location,
+        packageJson: packageJsonContext,
+      }
 
       const output = yield* importGenieOutput({ genieFilePath, cwd }).pipe(
         Effect.catchAll((error) => {
