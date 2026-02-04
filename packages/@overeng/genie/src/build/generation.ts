@@ -173,8 +173,11 @@ const formatWithOxfmt = Effect.fn('formatWithOxfmt')(function* ({
     Effect.catchAll(() => Effect.succeed(content)),
   )
 
-  // If oxfmt returned empty output (e.g., failed to parse), return original content
-  // This handles cases like YAML with ${{ }} expressions in inline arrays that oxfmt can't parse
+  // If oxfmt returned empty output (e.g., failed to parse), return original content.
+  // This handles YAML with GitHub Actions ${{ }} expressions in flow sequences (inline arrays)
+  // which Prettier's YAML parser can't handle - it interprets ${{ as a nested flow mapping.
+  // See: https://github.com/prettier/prettier/issues/6517 (Helm template syntax)
+  // See: https://github.com/eemeli/yaml/issues/328 (flow sequence parsing)
   if (result.length === 0 && content.length > 0) {
     return content
   }
