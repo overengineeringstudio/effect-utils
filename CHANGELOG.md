@@ -19,8 +19,13 @@ All notable changes to this project will be documented in this file.
   - Removed `.direnv/megarepo-nix/workspace` mirror directory
   - Removed `MEGAREPO_ROOT_*`, `MEGAREPO_MEMBERS`, `MEGAREPO_NIX_WORKSPACE` env vars
   - Use `DEVENV_ROOT` (provided by devenv) instead of `MEGAREPO_ROOT_NEAREST`
-  - **Nix lock sync is still available** via `generators.nix.enabled` and `generators.nix.lockSync`
   - Simplified `.envrc` to just `use devenv` (no generated file needed)
+
+- **@overeng/megarepo**: Nix lock sync is now auto-detected and uses top-level config
+  - **Breaking**: Moved from `generators.nix.lockSync` to top-level `lockSync` config
+  - Lock sync is now **auto-detected**: enabled if `devenv.lock` or `flake.lock` exists in megarepo root
+  - No configuration needed for the common case; set `lockSync.enabled: false` to opt-out
+  - Removed vestigial `NixGeneratorConfig` and `generators.nix` config options
 
 - **nix/devenv-modules/tasks/shared/megarepo.nix**: Simplified megarepo tasks
   - Removed `megarepo:generate` task (no longer needed)
@@ -44,6 +49,8 @@ All notable changes to this project will be documented in this file.
   - Normalizes tar output (stable ordering + fixed timestamps)
   - Strips non-deterministic pnpm store `checkedAt` metadata
   - Prevents pnpm deps hash churn across CI runs
+- **nix/workspace-tools/lib/mk-pnpm-cli.nix**: Force `supportedArchitectures` in Nix pnpm installs
+  - Ensures pnpm store hashes remain stable across macOS/Linux (R5)
 
 ### Removed
 

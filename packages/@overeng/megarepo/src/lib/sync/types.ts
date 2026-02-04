@@ -7,6 +7,7 @@
 import type { AbsoluteDirPath } from '@overeng/effect-path'
 
 import type { RefMismatch } from '../issues.ts'
+import type { NixLockSyncResult } from '../nix-lock/mod.ts'
 
 /** Member sync result status */
 export type MemberSyncStatus =
@@ -45,6 +46,8 @@ export interface MegarepoSyncResult {
   readonly results: ReadonlyArray<MemberSyncResult>
   readonly nestedMegarepos: ReadonlyArray<string>
   readonly nestedResults: ReadonlyArray<MegarepoSyncResult>
+  /** Results from syncing Nix lock files (flake.lock, devenv.lock) */
+  readonly lockSyncResults?: NixLockSyncResult | undefined
 }
 
 /** Options for sync operations */

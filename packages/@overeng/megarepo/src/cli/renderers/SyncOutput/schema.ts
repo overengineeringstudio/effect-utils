@@ -10,6 +10,44 @@ import { Schema } from 'effect'
 import { MemberSyncResult, SyncOptions } from '../../../lib/sync/schema.ts'
 
 // =============================================================================
+// Lock Sync Result (for TUI display)
+// =============================================================================
+
+/** Schema for a single lock input update */
+export const LockInputUpdate = Schema.Struct({
+  /** Name of the input in the flake.lock */
+  inputName: Schema.String,
+  /** Name of the megarepo member this input maps to */
+  memberName: Schema.String,
+  /** Previous revision (short) */
+  oldRev: Schema.String,
+  /** New revision (short) */
+  newRev: Schema.String,
+})
+/** Inferred type for a lock input update. */
+export type LockInputUpdate = Schema.Schema.Type<typeof LockInputUpdate>
+
+/** Schema for lock file sync result */
+export const LockFileSyncResult = Schema.Struct({
+  /** Type of lock file */
+  type: Schema.Literal('flake.lock', 'devenv.lock'),
+  /** Inputs that were updated */
+  updatedInputs: Schema.Array(LockInputUpdate),
+})
+/** Inferred type for a lock file sync result. */
+export type LockFileSyncResult = Schema.Schema.Type<typeof LockFileSyncResult>
+
+/** Schema for member lock sync result */
+export const MemberLockSyncResult = Schema.Struct({
+  /** Name of the megarepo member */
+  memberName: Schema.String,
+  /** Lock files synced in this member */
+  files: Schema.Array(LockFileSyncResult),
+})
+/** Inferred type for a member's lock sync result. */
+export type MemberLockSyncResult = Schema.Schema.Type<typeof MemberLockSyncResult>
+
+// =============================================================================
 // Sync Phase
 // =============================================================================
 
@@ -87,6 +125,9 @@ export const SyncState = Schema.Struct({
 
   /** List of generated file paths */
   generatedFiles: Schema.Array(Schema.String),
+
+  /** Lock sync results (flake.lock/devenv.lock updates) */
+  lockSyncResults: Schema.Array(MemberLockSyncResult),
 })
 
 /** Inferred type for sync command state including workspace, options, phase, and results. */
@@ -120,6 +161,11 @@ export const SyncAction = Schema.Union(
   Schema.TaggedStruct('AddLog', {
     type: Schema.Literal('info', 'warn', 'error'),
     message: Schema.String,
+  }),
+
+  /** Set lock sync results */
+  Schema.TaggedStruct('SetLockSyncResults', {
+    results: Schema.Array(MemberLockSyncResult),
   }),
 
   /** Mark sync as complete */
@@ -186,6 +232,12 @@ export const syncReducer = ({
             message: action.message,
           },
         ],
+      }
+
+    case 'SetLockSyncResults':
+      return {
+        ...state,
+        lockSyncResults: action.results,
       }
 
     case 'Complete':

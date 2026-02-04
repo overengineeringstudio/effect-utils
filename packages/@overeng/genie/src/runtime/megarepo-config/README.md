@@ -24,7 +24,8 @@ export default megarepoJson({
 
 - **Type-safe configuration**: All megarepo options are fully typed
 - **Member source formats**: Supports GitHub shorthand, URLs, and local paths
-- **Generator config**: Configure nix and vscode generators
+- **Generator config**: Configure vscode workspace generator
+- **Lock sync**: Auto-sync flake.lock/devenv.lock with megarepo.lock
 - **Programmatic generation**: Use TypeScript to compute members dynamically
 
 ## Programmatic Member Generation
@@ -51,21 +52,25 @@ export default megarepoJson({
 | SSH URL          | `git@github.com:owner/repo`      | SSH clone URL              |
 | Local path       | `./path`, `../path`, `/abs/path` | Local directory            |
 
-## Generator Options
+## Configuration Options
 
 ```ts
 {
+  // Generators
   generators: {
-    // Nix lock sync (default: disabled)
-    nix: {
-      enabled: true,
-    },
-
     // VSCode workspace file (default: disabled)
     vscode: {
       enabled: true,
       exclude: ['member-to-exclude'],
     },
-  }
+  },
+
+  // Lock sync for flake.lock/devenv.lock files
+  // Auto-detected by default (enabled if lock files exist in megarepo root)
+  // Set enabled: false to opt-out
+  lockSync: {
+    enabled: false, // disable auto-sync
+    exclude: ['member-to-exclude'],
+  },
 }
 ```

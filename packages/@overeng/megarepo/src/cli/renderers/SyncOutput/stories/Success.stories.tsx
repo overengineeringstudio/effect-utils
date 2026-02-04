@@ -24,6 +24,7 @@ type StoryArgs = {
   frozen: boolean
   pull: boolean
   all: boolean
+  verbose: boolean
 }
 
 export default {
@@ -38,6 +39,7 @@ export default {
     frozen: false,
     pull: false,
     all: false,
+    verbose: false,
   },
   argTypes: {
     ...commonArgTypes,
@@ -57,6 +59,10 @@ export default {
       description: '--all flag: sync nested megarepos recursively',
       control: { type: 'boolean' },
     },
+    verbose: {
+      description: '--verbose flag: show detailed lock sync information',
+      control: { type: 'boolean' },
+    },
   },
 } satisfies Meta
 
@@ -67,13 +73,19 @@ export const MixedResults: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: { dryRun: args.dryRun, frozen: args.frozen, pull: args.pull, all: args.all },
+        options: {
+          dryRun: args.dryRun,
+          frozen: args.frozen,
+          pull: args.pull,
+          all: args.all,
+          verbose: args.verbose,
+        },
         results: fixtures.exampleSyncResults,
         members: fixtures.exampleSyncResults.map((r) => r.name),
         nestedMegarepos: ['effect-utils'],
         generatedFiles: ['flake.nix', '.envrc'],
       }),
-      [args.dryRun, args.frozen, args.pull, args.all],
+      [args.dryRun, args.frozen, args.pull, args.all, args.verbose],
     )
     return (
       <TuiStoryPreview
@@ -95,12 +107,18 @@ export const AllSynced: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: { dryRun: args.dryRun, frozen: args.frozen, pull: args.pull, all: args.all },
+        options: {
+          dryRun: args.dryRun,
+          frozen: args.frozen,
+          pull: args.pull,
+          all: args.all,
+          verbose: args.verbose,
+        },
         workspace: { name: 'mr-all-blue', root: '/Users/dev/mr-all-blue' },
         results: fixtures.exampleAllSynced,
         members: fixtures.exampleAllSynced.map((r) => r.name),
       }),
-      [args.dryRun, args.frozen, args.pull, args.all],
+      [args.dryRun, args.frozen, args.pull, args.all, args.verbose],
     )
     return (
       <TuiStoryPreview
@@ -122,7 +140,13 @@ export const FirstSync: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: { dryRun: args.dryRun, frozen: args.frozen, pull: args.pull, all: args.all },
+        options: {
+          dryRun: args.dryRun,
+          frozen: args.frozen,
+          pull: args.pull,
+          all: args.all,
+          verbose: args.verbose,
+        },
         workspace: { name: 'new-workspace', root: '/Users/dev/new-workspace' },
         results: [
           { name: 'effect', status: 'cloned' as const, ref: 'main' },
@@ -133,7 +157,7 @@ export const FirstSync: Story = {
         members: ['effect', 'effect-utils', 'livestore', 'dotfiles'],
         generatedFiles: ['flake.nix'],
       }),
-      [args.dryRun, args.frozen, args.pull, args.all],
+      [args.dryRun, args.frozen, args.pull, args.all, args.verbose],
     )
     return (
       <TuiStoryPreview
@@ -155,7 +179,13 @@ export const LockUpdates: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: { dryRun: args.dryRun, frozen: args.frozen, pull: args.pull, all: args.all },
+        options: {
+          dryRun: args.dryRun,
+          frozen: args.frozen,
+          pull: args.pull,
+          all: args.all,
+          verbose: args.verbose,
+        },
         results: [
           {
             name: 'effect',
@@ -173,7 +203,7 @@ export const LockUpdates: Story = {
         ],
         members: ['effect', 'effect-utils', 'livestore'],
       }),
-      [args.dryRun, args.frozen, args.pull, args.all],
+      [args.dryRun, args.frozen, args.pull, args.all, args.verbose],
     )
     return (
       <TuiStoryPreview
@@ -195,7 +225,13 @@ export const RemovedMembers: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: { dryRun: args.dryRun, frozen: args.frozen, pull: args.pull, all: args.all },
+        options: {
+          dryRun: args.dryRun,
+          frozen: args.frozen,
+          pull: args.pull,
+          all: args.all,
+          verbose: args.verbose,
+        },
         results: [
           { name: 'effect', status: 'synced' as const, ref: 'main' },
           {
@@ -211,7 +247,7 @@ export const RemovedMembers: Story = {
         ],
         members: ['effect', 'old-repo', 'deprecated'],
       }),
-      [args.dryRun, args.frozen, args.pull, args.all],
+      [args.dryRun, args.frozen, args.pull, args.all, args.verbose],
     )
     return (
       <TuiStoryPreview
@@ -233,7 +269,13 @@ export const WithGenerators: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: { dryRun: args.dryRun, frozen: args.frozen, pull: args.pull, all: args.all },
+        options: {
+          dryRun: args.dryRun,
+          frozen: args.frozen,
+          pull: args.pull,
+          all: args.all,
+          verbose: args.verbose,
+        },
         results: [
           { name: 'effect', status: 'synced' as const, ref: 'main' },
           { name: 'effect-utils', status: 'synced' as const, ref: 'main' },
@@ -243,7 +285,7 @@ export const WithGenerators: Story = {
         members: ['effect', 'effect-utils', 'livestore', 'dotfiles'],
         generatedFiles: ['flake.nix', 'flake.lock', '.vscode/megarepo.code-workspace'],
       }),
-      [args.dryRun, args.frozen, args.pull, args.all],
+      [args.dryRun, args.frozen, args.pull, args.all, args.verbose],
     )
     return (
       <TuiStoryPreview
@@ -265,11 +307,17 @@ export const SingleMember: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: { dryRun: args.dryRun, frozen: args.frozen, pull: args.pull, all: args.all },
+        options: {
+          dryRun: args.dryRun,
+          frozen: args.frozen,
+          pull: args.pull,
+          all: args.all,
+          verbose: args.verbose,
+        },
         results: [{ name: 'effect', status: 'synced' as const, ref: 'main' }],
         members: ['effect'],
       }),
-      [args.dryRun, args.frozen, args.pull, args.all],
+      [args.dryRun, args.frozen, args.pull, args.all, args.verbose],
     )
     return (
       <TuiStoryPreview
@@ -295,7 +343,13 @@ export const ManyMembers: Story = {
         status: 'already_synced' as const,
       }))
       return {
-        options: { dryRun: args.dryRun, frozen: args.frozen, pull: args.pull, all: args.all },
+        options: {
+          dryRun: args.dryRun,
+          frozen: args.frozen,
+          pull: args.pull,
+          all: args.all,
+          verbose: args.verbose,
+        },
         workspace: {
           name: 'large-workspace',
           root: '/Users/dev/large-workspace',
@@ -303,7 +357,7 @@ export const ManyMembers: Story = {
         results,
         members: results.map((r) => r.name),
       }
-    }, [args.dryRun, args.frozen, args.pull, args.all])
+    }, [args.dryRun, args.frozen, args.pull, args.all, args.verbose])
     return (
       <TuiStoryPreview
         View={SyncView}
@@ -324,7 +378,13 @@ export const NestedMegarepos: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: { dryRun: args.dryRun, frozen: args.frozen, pull: args.pull, all: args.all },
+        options: {
+          dryRun: args.dryRun,
+          frozen: args.frozen,
+          pull: args.pull,
+          all: args.all,
+          verbose: args.verbose,
+        },
         results: [
           { name: 'effect', status: 'synced' as const, ref: 'main' },
           { name: 'effect-utils', status: 'synced' as const, ref: 'main' },
@@ -333,7 +393,48 @@ export const NestedMegarepos: Story = {
         members: ['effect', 'effect-utils', 'livestore'],
         nestedMegarepos: ['effect-utils', 'livestore'],
       }),
-      [args.dryRun, args.frozen, args.pull, args.all],
+      [args.dryRun, args.frozen, args.pull, args.all, args.verbose],
+    )
+    return (
+      <TuiStoryPreview
+        View={SyncView}
+        app={SyncApp}
+        initialState={fixtures.createBaseState(args.interactive ? { phase: 'idle' } : stateConfig)}
+        height={args.height}
+        autoRun={args.interactive}
+        playbackSpeed={args.playbackSpeed}
+        tabs={ALL_TABS}
+        {...(args.interactive ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+      />
+    )
+  },
+}
+
+/** Lock sync results - shows inline badge and verbose expandable section */
+export const WithLockSync: Story = {
+  args: {
+    verbose: true, // Default to verbose to show expandable section
+  },
+  render: (args) => {
+    const stateConfig = useMemo(
+      () => ({
+        options: {
+          dryRun: args.dryRun,
+          frozen: args.frozen,
+          pull: args.pull,
+          all: args.all,
+          verbose: args.verbose,
+        },
+        results: [
+          { name: 'effect', status: 'synced' as const, ref: 'main' },
+          { name: 'effect-utils', status: 'synced' as const, ref: 'main' },
+          { name: 'livestore', status: 'already_synced' as const },
+          { name: 'dotfiles', status: 'synced' as const, ref: 'main' },
+        ],
+        members: ['effect', 'effect-utils', 'livestore', 'dotfiles'],
+        lockSyncResults: fixtures.exampleLockSyncResults,
+      }),
+      [args.dryRun, args.frozen, args.pull, args.all, args.verbose],
     )
     return (
       <TuiStoryPreview
