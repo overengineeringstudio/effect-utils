@@ -24,5 +24,3 @@ export {
 } from './setup.ts'
 
 export { makeConsoleCapture } from './consoleCapture.ts'
-
-export { makeWithTestCtx, withTestCtx } from './withTestCtx.ts'
