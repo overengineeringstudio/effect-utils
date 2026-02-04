@@ -189,60 +189,11 @@ Group by scenario type:
 
 ## Anti-Patterns
 
-**Don't** hardcode state in stories - use controls and state factories instead:
-```typescript
-// Bad: hardcoded, can't explore variations
-initialState={{ dryRun: true, results: [...] }}
-
-// Good: driven by controls
-initialState={createState(stateConfig)}
-```
-
-**Don't** duplicate state between interactive and static modes - use same config:
-```typescript
-// Bad: different data paths
-initialState={args.interactive ? someState : differentState}
-
-// Good: same config, different starting point
-initialState={args.interactive ? createState({ phase: 'idle' }) : createState(stateConfig)}
-timeline={args.interactive ? createTimeline(stateConfig) : undefined}
-```
-
-**Don't** put fixtures inline in story files - extract to `_fixtures.ts`:
-```typescript
-// Bad: inline data bloats story file
-const results = [{ name: 'foo', status: 'ok' }, ...]
-
-// Good: import from fixtures
-import { exampleResults, createState } from './_fixtures.ts'
-```
-
-**Don't** forget `useMemo` for arg-dependent config - causes unnecessary re-renders:
-```typescript
-// Bad: recreates config every render
-const config = { dryRun: args.dryRun }
-
-// Good: memoized on arg changes
-const config = useMemo(() => ({ dryRun: args.dryRun }), [args.dryRun])
-```
-
-**Don't** create separate "Demo" stories - every story should have `interactive` toggle:
-```typescript
-// Bad: separate Demo.stories.tsx with animation
-// Bad: static-only stories without interactive option
-
-// Good: each story has interactive control
-args: { interactive: false, ... }
-```
-
-**Don't** omit output tabs - always include ALL_TABS for format coverage:
-```typescript
-// Bad: only testing TTY output
-tabs={['tty']}
-
-// Good: test all output formats
-tabs={ALL_TABS}
-```
+- **Hardcoded state** - Use controls and state factories, not inline `initialState={{ ... }}`
+- **Divergent interactive/static paths** - Both modes must use same `stateConfig`, only starting point differs
+- **Separate "Demo" stories** - Every story should have `interactive` toggle, not separate animated stories
+- **Subset of output tabs** - Always use `ALL_TABS`, not `tabs={['tty']}`
+- **Fake/placeholder data** - Use realistic paths (`packages/foo/...`), not `test1`, `example.txt`
 
 ## Checklist
 
