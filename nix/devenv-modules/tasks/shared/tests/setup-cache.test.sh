@@ -60,18 +60,14 @@ simulate_git_hash_status() {
     local cache_dir="$cache_root/$dir_name"
     # Directory must exist and contain at least one .hash file
     if [ -d "$cache_dir" ]; then
-      # Use compgen for bash, with fallback to sh -c glob check
-      if command -v compgen >/dev/null 2>&1; then
-        # Bash: use compgen -G for glob matching
-        if compgen -G "$cache_dir/*.hash" >/dev/null 2>&1; then
-          return 0
-        fi
-      else
-        # POSIX fallback: use subshell to check glob expansion
-        if [ -n "$(ls "$cache_dir"/*.hash 2>/dev/null)" ]; then
-          return 0
-        fi
-      fi
+      # Simple and reliable: iterate over files and check suffix
+      for f in "$cache_dir"/*; do
+        case "$f" in
+          *.hash)
+            [ -f "$f" ] && return 0
+            ;;
+        esac
+      done
     fi
   done
 

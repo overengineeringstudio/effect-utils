@@ -271,18 +271,14 @@ let
       cache_dir="${cacheRoot}/$dir_name"
       # Directory must exist and contain at least one .hash file
       if [ -d "$cache_dir" ]; then
-        # Use compgen for bash, with fallback to ls-based check
-        if command -v compgen >/dev/null 2>&1; then
-          # Bash: use compgen -G for glob matching
-          if compgen -G "$cache_dir/*.hash" >/dev/null 2>&1; then
-            exit 0
-          fi
-        else
-          # POSIX fallback: use ls to check glob expansion
-          if [ -n "$(ls "$cache_dir"/*.hash 2>/dev/null)" ]; then
-            exit 0
-          fi
-        fi
+        # Simple and reliable: iterate over files and check suffix
+        for f in "$cache_dir"/*; do
+          case "$f" in
+            *.hash)
+              [ -f "$f" ] && exit 0
+              ;;
+          esac
+        done
       fi
     done
 
