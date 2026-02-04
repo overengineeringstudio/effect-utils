@@ -33,10 +33,16 @@
             "context": "lint"
           },
           {
-            "context": "test"
+            "context": "test (namespace-profile-linux-x86-64)"
           },
           {
-            "context": "nix-check"
+            "context": "test (namespace-profile-macos-arm64)"
+          },
+          {
+            "context": "nix-check (namespace-profile-linux-x86-64)"
+          },
+          {
+            "context": "nix-check (namespace-profile-macos-arm64)"
           }
         ]
       }

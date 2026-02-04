@@ -1,8 +1,5 @@
 import { githubWorkflow, type GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
-import type { CIJobName } from '../../genie/ci.ts'
-
-const RUNNER_PROFILES = ['namespace-profile-linux-x86-64', 'namespace-profile-macos-arm64'] as const
-type RunnerProfile = (typeof RUNNER_PROFILES)[number]
+import { RUNNER_PROFILES, type CIJobName, type RunnerProfile } from '../../genie/ci.ts'
 
 /**
  * Namespace runner configuration.
