@@ -3,14 +3,15 @@ import React from 'react'
 
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
+import * as fixtures from './DumpOutput/_fixtures.ts'
 import { DumpApp } from './DumpOutput/mod.ts'
-import type { DumpAction, DumpState } from './DumpOutput/schema.ts'
+import type { DumpAction } from './DumpOutput/schema.ts'
 import { DumpView } from './DumpOutput/view.tsx'
 
 export default {
   title: 'NotionCLI/Dump Output',
   component: DumpView,
-  parameters: { layout: 'padded' },
+  parameters: { layout: 'fullscreen' },
 } satisfies Meta<typeof DumpView>
 
 type Story = StoryObj<{ autoRun: boolean; playbackSpeed: number; height: number }>
@@ -47,7 +48,7 @@ export const Demo: Story = {
     <TuiStoryPreview
       View={DumpView}
       app={DumpApp}
-      initialState={createLoadingState()}
+      initialState={fixtures.createLoadingState()}
       timeline={dumpTimeline}
       autoRun={args.autoRun}
       playbackSpeed={args.playbackSpeed}
@@ -56,68 +57,59 @@ export const Demo: Story = {
   ),
 }
 
-const createLoadingState = (): DumpState => ({
-  _tag: 'Loading',
-  databaseId: 'abc123',
-})
-
-const createIntrospectingState = (): DumpState => ({
-  _tag: 'Introspecting',
-  databaseId: 'abc123',
-})
-
-const createFetchingState = (pageCount: number): DumpState => ({
-  _tag: 'Fetching',
-  databaseId: 'abc123',
-  dbName: 'Tasks',
-  pageCount,
-  outputPath: './dump/tasks.json',
-})
-
-const createDoneState = (
-  overrides: Partial<Extract<DumpState, { _tag: 'Done' }>> = {},
-): Extract<DumpState, { _tag: 'Done' }> => ({
-  _tag: 'Done',
-  pageCount: 150,
-  assetsDownloaded: 0,
-  assetBytes: 0,
-  assetsSkipped: 0,
-  failures: 0,
-  outputPath: './dump/tasks.json',
-  ...overrides,
-})
-
-const createErrorState = (): DumpState => ({
-  _tag: 'Error',
-  message: 'Rate limited by Notion API',
-})
-
 export const Loading: Story = {
   render: () => (
-    <TuiStoryPreview View={DumpView} app={DumpApp} initialState={createLoadingState()} />
+    <TuiStoryPreview
+      View={DumpView}
+      app={DumpApp}
+      initialState={fixtures.createLoadingState()}
+      autoRun={false}
+    />
   ),
 }
 
 export const Introspecting: Story = {
   render: () => (
-    <TuiStoryPreview View={DumpView} app={DumpApp} initialState={createIntrospectingState()} />
+    <TuiStoryPreview
+      View={DumpView}
+      app={DumpApp}
+      initialState={fixtures.createIntrospectingState()}
+      autoRun={false}
+    />
   ),
 }
 
 export const Fetching: Story = {
   render: () => (
-    <TuiStoryPreview View={DumpView} app={DumpApp} initialState={createFetchingState(42)} />
+    <TuiStoryPreview
+      View={DumpView}
+      app={DumpApp}
+      initialState={fixtures.createFetchingState(42)}
+      autoRun={false}
+    />
   ),
 }
 
 export const FetchingMany: Story = {
   render: () => (
-    <TuiStoryPreview View={DumpView} app={DumpApp} initialState={createFetchingState(1500)} />
+    <TuiStoryPreview
+      View={DumpView}
+      app={DumpApp}
+      initialState={fixtures.createFetchingState(1500)}
+      autoRun={false}
+    />
   ),
 }
 
 export const DoneSimple: Story = {
-  render: () => <TuiStoryPreview View={DumpView} app={DumpApp} initialState={createDoneState()} />,
+  render: () => (
+    <TuiStoryPreview
+      View={DumpView}
+      app={DumpApp}
+      initialState={fixtures.createDoneState()}
+      autoRun={false}
+    />
+  ),
 }
 
 export const DoneWithAssets: Story = {
@@ -125,7 +117,8 @@ export const DoneWithAssets: Story = {
     <TuiStoryPreview
       View={DumpView}
       app={DumpApp}
-      initialState={createDoneState({ assetsDownloaded: 25, assetBytes: 15_728_640 })}
+      initialState={fixtures.createDoneState({ assetsDownloaded: 25, assetBytes: 15_728_640 })}
+      autoRun={false}
     />
   ),
 }
@@ -135,7 +128,8 @@ export const DoneWithSkippedAssets: Story = {
     <TuiStoryPreview
       View={DumpView}
       app={DumpApp}
-      initialState={createDoneState({ assetsSkipped: 12 })}
+      initialState={fixtures.createDoneState({ assetsSkipped: 12 })}
+      autoRun={false}
     />
   ),
 }
@@ -145,7 +139,8 @@ export const DoneWithFailures: Story = {
     <TuiStoryPreview
       View={DumpView}
       app={DumpApp}
-      initialState={createDoneState({ failures: 3 })}
+      initialState={fixtures.createDoneState({ failures: 3 })}
+      autoRun={false}
     />
   ),
 }
@@ -155,16 +150,24 @@ export const DoneFullStats: Story = {
     <TuiStoryPreview
       View={DumpView}
       app={DumpApp}
-      initialState={createDoneState({
+      initialState={fixtures.createDoneState({
         assetsDownloaded: 25,
         assetBytes: 15_728_640,
         assetsSkipped: 12,
         failures: 3,
       })}
+      autoRun={false}
     />
   ),
 }
 
 export const ErrorState: Story = {
-  render: () => <TuiStoryPreview View={DumpView} app={DumpApp} initialState={createErrorState()} />,
+  render: () => (
+    <TuiStoryPreview
+      View={DumpView}
+      app={DumpApp}
+      initialState={fixtures.createErrorState()}
+      autoRun={false}
+    />
+  ),
 }

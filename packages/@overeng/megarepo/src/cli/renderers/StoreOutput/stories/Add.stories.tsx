@@ -5,22 +5,10 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
-import type { OutputTab } from '@overeng/tui-react/storybook'
-import { TuiStoryPreview } from '@overeng/tui-react/storybook'
+import { ALL_OUTPUT_TABS, TuiStoryPreview } from '@overeng/tui-react/storybook'
 
 import { StoreApp, StoreView } from '../mod.ts'
 import * as fixtures from './_fixtures.ts'
-
-const ALL_TABS: OutputTab[] = [
-  'tty',
-  'alt-screen',
-  'ci',
-  'ci-plain',
-  'pipe',
-  'log',
-  'json',
-  'ndjson',
-]
 
 type StoryArgs = {
   height: number
@@ -82,7 +70,7 @@ export const InvalidSource: Story = {
         source: 'not-a-valid-source',
       })}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -97,7 +85,7 @@ export const LocalPath: Story = {
         message: 'Local paths are not supported. Use a remote URL or owner/repo format.',
       })}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -112,7 +100,7 @@ export const NoUrl: Story = {
         message: 'No URL provided',
       })}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -134,7 +122,7 @@ export const SuccessNew: Story = {
         path: '/Users/me/.megarepo/store/github.com/effect-ts/effect/refs/main',
       })}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -152,7 +140,7 @@ export const SuccessExisting: Story = {
         path: '/Users/me/.megarepo/store/github.com/effect-ts/effect/refs/main',
       })}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -170,7 +158,7 @@ export const SuccessWithRef: Story = {
         path: '/Users/me/.megarepo/store/github.com/effect-ts/effect/refs/feat/new-feature',
       })}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -187,7 +175,7 @@ export const SuccessNoCommit: Story = {
         path: '/Users/me/.megarepo/store/github.com/effect-ts/effect/refs/v3.0.0',
       })}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }

@@ -5,23 +5,16 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React, { useMemo } from 'react'
 
-import type { OutputTab } from '@overeng/tui-react/storybook'
-import { TuiStoryPreview } from '@overeng/tui-react/storybook'
+import {
+  ALL_OUTPUT_TABS,
+  commonArgTypes,
+  defaultStoryArgs,
+  TuiStoryPreview,
+} from '@overeng/tui-react/storybook'
 
 import { AddApp } from '../mod.ts'
 import { AddView } from '../view.tsx'
 import * as fixtures from './_fixtures.ts'
-
-const ALL_TABS: OutputTab[] = [
-  'tty',
-  'alt-screen',
-  'ci',
-  'ci-plain',
-  'pipe',
-  'log',
-  'json',
-  'ndjson',
-]
 
 type StoryArgs = {
   height: number
@@ -46,27 +39,13 @@ export default {
     },
   },
   args: {
-    height: 400,
-    interactive: false,
-    playbackSpeed: 1,
+    ...defaultStoryArgs,
     sync: false,
     name: 'effect',
     source: 'effect-ts/effect',
   },
   argTypes: {
-    height: {
-      description: 'Terminal height in pixels',
-      control: { type: 'range', min: 200, max: 600, step: 50 },
-    },
-    interactive: {
-      description: 'Enable animated timeline playback',
-      control: { type: 'boolean' },
-    },
-    playbackSpeed: {
-      description: 'Playback speed multiplier',
-      control: { type: 'range', min: 0.5, max: 3, step: 0.5 },
-      if: { arg: 'interactive' },
-    },
+    ...commonArgTypes,
     sync: {
       description: '--sync flag: sync the added repo immediately',
       control: { type: 'boolean' },
@@ -106,7 +85,7 @@ export const AddSimple: Story = {
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
-        tabs={ALL_TABS}
+        tabs={ALL_OUTPUT_TABS}
         {...(args.interactive ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
     )
@@ -136,7 +115,7 @@ export const AddWithSync: Story = {
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
-        tabs={ALL_TABS}
+        tabs={ALL_OUTPUT_TABS}
         {...(args.interactive ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
     )
@@ -166,7 +145,7 @@ export const AddWithSyncExisting: Story = {
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
-        tabs={ALL_TABS}
+        tabs={ALL_OUTPUT_TABS}
         {...(args.interactive ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
     )
@@ -196,7 +175,7 @@ export const AddWithSyncError: Story = {
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
-        tabs={ALL_TABS}
+        tabs={ALL_OUTPUT_TABS}
         {...(args.interactive ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
     )

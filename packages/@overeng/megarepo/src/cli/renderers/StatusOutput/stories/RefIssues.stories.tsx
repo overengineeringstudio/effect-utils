@@ -5,23 +5,11 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
-import type { OutputTab } from '@overeng/tui-react/storybook'
-import { TuiStoryPreview } from '@overeng/tui-react/storybook'
+import { ALL_OUTPUT_TABS, TuiStoryPreview } from '@overeng/tui-react/storybook'
 
 import { StatusApp } from '../mod.ts'
 import { StatusView } from '../view.tsx'
 import * as fixtures from './_fixtures.ts'
-
-const ALL_TABS: OutputTab[] = [
-  'tty',
-  'alt-screen',
-  'ci',
-  'ci-plain',
-  'pipe',
-  'log',
-  'json',
-  'ndjson',
-]
 
 type StoryArgs = {
   height: number
@@ -60,7 +48,7 @@ export const SymlinkDrift: Story = {
       app={StatusApp}
       initialState={fixtures.createSymlinkDriftState({ all: args.all })}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -73,7 +61,7 @@ export const MultipleSymlinkDrift: Story = {
       app={StatusApp}
       initialState={fixtures.createMultipleSymlinkDriftState({ all: args.all })}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -86,7 +74,7 @@ export const RefMismatch: Story = {
       app={StatusApp}
       initialState={fixtures.createRefMismatchState({ all: args.all })}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }

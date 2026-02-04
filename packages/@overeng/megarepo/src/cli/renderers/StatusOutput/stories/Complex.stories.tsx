@@ -5,23 +5,11 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
-import type { OutputTab } from '@overeng/tui-react/storybook'
-import { TuiStoryPreview } from '@overeng/tui-react/storybook'
+import { ALL_OUTPUT_TABS, TuiStoryPreview } from '@overeng/tui-react/storybook'
 
 import { StatusApp } from '../mod.ts'
 import { StatusView } from '../view.tsx'
 import * as fixtures from './_fixtures.ts'
-
-const ALL_TABS: OutputTab[] = [
-  'tty',
-  'alt-screen',
-  'ci',
-  'ci-plain',
-  'pipe',
-  'log',
-  'json',
-  'ndjson',
-]
 
 type StoryArgs = {
   height: number
@@ -65,7 +53,7 @@ export const NestedMegarepos: Story = {
       app={StatusApp}
       initialState={fixtures.createNestedMegareposState({ all: args.all })}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -79,7 +67,7 @@ export const DeeplyNested: Story = {
       app={StatusApp}
       initialState={fixtures.createDeeplyNestedState({ all: args.all })}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -93,7 +81,7 @@ export const CurrentLocation: Story = {
       app={StatusApp}
       initialState={fixtures.createCurrentLocationState({ all: args.all })}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -110,7 +98,7 @@ export const PinnedMembers: Story = {
       app={StatusApp}
       initialState={fixtures.createPinnedMembersState({ all: args.all })}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -123,7 +111,7 @@ export const LocalPathMembers: Story = {
       app={StatusApp}
       initialState={fixtures.createLocalPathMembersState({ all: args.all })}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -136,7 +124,7 @@ export const ManyMembers: Story = {
       app={StatusApp}
       initialState={fixtures.createManyMembersState({ all: args.all })}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -153,7 +141,7 @@ export const MultipleProblems: Story = {
       app={StatusApp}
       initialState={fixtures.createMultipleProblemsState({ all: args.all })}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }

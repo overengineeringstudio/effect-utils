@@ -5,22 +5,10 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
-import type { OutputTab } from '@overeng/tui-react/storybook'
-import { TuiStoryPreview } from '@overeng/tui-react/storybook'
+import { ALL_OUTPUT_TABS, TuiStoryPreview } from '@overeng/tui-react/storybook'
 
 import { StoreApp, StoreView } from '../mod.ts'
 import * as fixtures from './_fixtures.ts'
-
-const ALL_TABS: OutputTab[] = [
-  'tty',
-  'alt-screen',
-  'ci',
-  'ci-plain',
-  'pipe',
-  'log',
-  'json',
-  'ndjson',
-]
 
 type StoryArgs = {
   height: number
@@ -83,7 +71,7 @@ export const Healthy: Story = {
         worktrees: fixtures.healthyWorktrees,
       })}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -100,7 +88,7 @@ export const HealthyWithDiskUsage: Story = {
         worktrees: fixtures.healthyWorktrees,
       })}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -116,7 +104,7 @@ export const MixedIssues: Story = {
         worktrees: fixtures.mixedIssuesWorktrees,
       })}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -159,7 +147,7 @@ export const RefMismatch: Story = {
         ],
       })}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -200,7 +188,7 @@ export const DirtyWorktrees: Story = {
         ],
       })}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -244,7 +232,7 @@ export const OrphanedWorktrees: Story = {
         ],
       })}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -279,7 +267,7 @@ export const BrokenWorktrees: Story = {
         ],
       })}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -340,7 +328,7 @@ export const AllIssueTypes: Story = {
         ],
       })}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -356,7 +344,7 @@ export const Empty: Story = {
         worktrees: [],
       })}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -394,7 +382,7 @@ export const LargeStore: Story = {
         ],
       })}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }

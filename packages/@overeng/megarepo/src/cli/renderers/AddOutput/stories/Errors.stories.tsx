@@ -5,23 +5,11 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React, { useMemo } from 'react'
 
-import type { OutputTab } from '@overeng/tui-react/storybook'
-import { TuiStoryPreview } from '@overeng/tui-react/storybook'
+import { ALL_OUTPUT_TABS, TuiStoryPreview } from '@overeng/tui-react/storybook'
 
 import { AddApp } from '../mod.ts'
 import { AddView } from '../view.tsx'
 import * as fixtures from './_fixtures.ts'
-
-const ALL_TABS: OutputTab[] = [
-  'tty',
-  'alt-screen',
-  'ci',
-  'ci-plain',
-  'pipe',
-  'log',
-  'json',
-  'ndjson',
-]
 
 type StoryArgs = {
   height: number
@@ -71,7 +59,7 @@ export const ErrorNotInMegarepo: Story = {
       app={AddApp}
       initialState={fixtures.createErrorNotInMegarepoState()}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -86,7 +74,7 @@ export const ErrorInvalidRepo: Story = {
         app={AddApp}
         initialState={state}
         height={args.height}
-        tabs={ALL_TABS}
+        tabs={ALL_OUTPUT_TABS}
       />
     )
   },
@@ -102,7 +90,7 @@ export const ErrorAlreadyExists: Story = {
         app={AddApp}
         initialState={state}
         height={args.height}
-        tabs={ALL_TABS}
+        tabs={ALL_OUTPUT_TABS}
       />
     )
   },
