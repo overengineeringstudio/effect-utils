@@ -56,6 +56,9 @@ All notable changes to this project will be documented in this file.
   - Prevents pnpm deps hash churn across CI runs
 - **nix/workspace-tools/lib/mk-pnpm-cli.nix**: Force `supportedArchitectures` in Nix pnpm installs
   - Ensures pnpm store hashes remain stable across macOS/Linux (R5)
+- **nix/workspace-tools/lib/mk-pnpm-cli.nix**: Accept pnpm `supportedArchitectures` output formats
+  - Handles pnpm versions that print arrays as `os[]=...`/`cpu[]=...`, unblocking `nix:hash`
+- **@overeng/megarepo**: Refresh `pnpmDepsHash` for the current lockfile
 
 ### Removed
 
