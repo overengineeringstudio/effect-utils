@@ -244,6 +244,7 @@ tabs={ALL_TABS}
 - [ ] `height` control for viewport testing
 - [ ] `useMemo` wraps config dependent on args
 - [ ] Timeline factory accepts same config as static state
+- [ ] Timeline ends at same state as static mode (semantic equivalence)
 - [ ] ALL_TABS for output format coverage
 - [ ] State factories are typed and reusable
 - [ ] No hardcoded state in stories
