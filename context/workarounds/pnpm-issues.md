@@ -204,11 +204,43 @@ and a consumer (e.g. @overeng/genie) each import React from their local
 node_modules. A shared pnpm store does not fix this because the store is just a
 cache; separate node_modules still produce distinct module instances.
 
-Workarounds to enforce a single React instance during dev:
+### Solution: `injected: true` in dependenciesMeta
 
-- Add hoisting rules for React-family packages (e.g. public-hoist-pattern for
-  react, react-dom, react-reconciler) in the workspace .npmrc.
-- Centralize React devDependencies in a shared tooling package so libraries do
-  not install local React copies.
-- Add a lint/check rule to prevent direct 'react' imports in CLI packages that
-  should use @overeng/tui-react hooks instead.
+The primary solution is to use pnpm's `injected` feature for workspace deps that
+contain React. This creates a **hard copy** of the workspace dep instead of a
+symlink, ensuring React resolves from the consumer's pnpm store:
+
+```json
+{
+  "dependencies": {
+    "@overeng/tui-react": "workspace:*"
+  },
+  "dependenciesMeta": {
+    "@overeng/tui-react": {
+      "injected": true
+    }
+  }
+}
+```
+
+Combined with `publicHoistPattern` in `pnpm-workspace.yaml`, this ensures all
+React imports resolve to the same instance:
+
+```yaml
+publicHoistPattern: [react, react-dom, react-reconciler]
+```
+
+### Cache Invalidation for Injected Deps
+
+Injected copies become **stale** when the source package changes. The pnpm task
+module (`pnpm.nix`) auto-detects injected deps by parsing each package's
+`dependenciesMeta` at Nix evaluation time. It includes source file content hashes
+in the cache key, triggering `pnpm install` when the injected dep's source changes.
+
+No manual configuration needed - just add `"injected": true` to `dependenciesMeta`
+and cache invalidation works automatically.
+
+### Other Workarounds (not currently used)
+
+- Centralize React devDependencies in a shared tooling package
+- Add a lint/check rule to prevent direct 'react' imports in CLI packages
