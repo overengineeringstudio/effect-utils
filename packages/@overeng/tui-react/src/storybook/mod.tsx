@@ -40,7 +40,7 @@ export { createStaticApp } from './static-app.ts'
 export { tuiPreview } from './preview.ts'
 export { xtermTheme, containerStyles, previewTextStyles } from './theme.ts'
 
-import type { OutputTab } from './TuiStoryPreview.tsx'
+import type { OutputTab, TimelineEvent } from './TuiStoryPreview.tsx'
 
 /** All available output tabs for CLI storybooks */
 export const ALL_OUTPUT_TABS: OutputTab[] = [
@@ -77,8 +77,6 @@ export const defaultStoryArgs = {
   interactive: false,
   playbackSpeed: 1,
 } as const
-
-import type { TimelineEvent } from './TuiStoryPreview.tsx'
 
 /**
  * Helper to create TuiStoryPreview props for interactive timeline stories.
