@@ -1,11 +1,12 @@
+import { it } from '@effect/vitest'
 import { Effect, Fiber } from 'effect'
-import { describe, expect, test } from 'vitest'
+import { describe, expect } from 'vitest'
 
 import { getRepoSemaphore, makeRepoSemaphoreMap } from './member.ts'
 
 describe('getRepoSemaphore', () => {
-  test('returns the same semaphore for the same URL', async () => {
-    const program = Effect.gen(function* () {
+  it.effect('returns the same semaphore for the same URL', () =>
+    Effect.gen(function* () {
       const semaphoreMap = yield* makeRepoSemaphoreMap()
       const sem1 = yield* getRepoSemaphore({
         semaphoreMapRef: semaphoreMap,
@@ -15,15 +16,12 @@ describe('getRepoSemaphore', () => {
         semaphoreMapRef: semaphoreMap,
         url: 'https://github.com/owner/repo.git',
       })
-      return sem1 === sem2
-    })
+      expect(sem1 === sem2).toBe(true)
+    }),
+  )
 
-    const result = await Effect.runPromise(program)
-    expect(result).toBe(true)
-  })
-
-  test('returns different semaphores for different URLs', async () => {
-    const program = Effect.gen(function* () {
+  it.effect('returns different semaphores for different URLs', () =>
+    Effect.gen(function* () {
       const semaphoreMap = yield* makeRepoSemaphoreMap()
       const sem1 = yield* getRepoSemaphore({
         semaphoreMapRef: semaphoreMap,
@@ -33,17 +31,14 @@ describe('getRepoSemaphore', () => {
         semaphoreMapRef: semaphoreMap,
         url: 'https://github.com/owner/repo2.git',
       })
-      return sem1 !== sem2
-    })
+      expect(sem1 !== sem2).toBe(true)
+    }),
+  )
 
-    const result = await Effect.runPromise(program)
-    expect(result).toBe(true)
-  })
-
-  test('is race-condition safe with concurrent access', async () => {
+  it.effect('is race-condition safe with concurrent access', () =>
     // This test verifies that multiple concurrent fibers get the same semaphore
     // for the same URL, demonstrating that the Ref-based implementation is atomic.
-    const program = Effect.gen(function* () {
+    Effect.gen(function* () {
       const semaphoreMap = yield* makeRepoSemaphoreMap()
       const url = 'https://github.com/owner/repo.git'
 
@@ -63,10 +58,7 @@ describe('getRepoSemaphore', () => {
 
       // All semaphores should be the same instance
       const first = semaphores[0]
-      return semaphores.every((sem) => sem === first)
-    })
-
-    const result = await Effect.runPromise(program)
-    expect(result).toBe(true)
-  })
+      expect(semaphores.every((sem) => sem === first)).toBe(true)
+    }),
+  )
 })

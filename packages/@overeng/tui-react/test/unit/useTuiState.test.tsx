@@ -2,8 +2,9 @@
  * Tests for TuiApp (createTuiApp pattern)
  */
 
+import { it } from '@effect/vitest'
 import { Effect, Schema } from 'effect'
-import { describe, test, expect, beforeEach, afterEach } from 'vitest'
+import { describe, expect, beforeEach, afterEach } from 'vitest'
 
 import { createTestTuiState, testModeLayer } from '../../src/effect/testing.tsx'
 import { createTuiApp } from '../../src/effect/TuiApp.tsx'
@@ -82,85 +83,85 @@ describe('createTuiApp', () => {
   })
 
   describe('state management', () => {
-    test('initializes with provided initial state', async () => {
-      const result = await Effect.gen(function* () {
+    it.effect('initializes with provided initial state', () =>
+      Effect.gen(function* () {
         const tui = yield* TestApp.run()
-        return tui.getState()
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe')), Effect.runPromise)
+        const result = tui.getState()
+        expect(result).toEqual({ _tag: 'Idle' })
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe'))),
+    )
 
-      expect(result).toEqual({ _tag: 'Idle' })
-    })
-
-    test('dispatch updates state via reducer', async () => {
-      const result = await Effect.gen(function* () {
+    it.effect('dispatch updates state via reducer', () =>
+      Effect.gen(function* () {
         const tui = yield* TestApp.run()
         tui.dispatch({ _tag: 'Start' })
-        return tui.getState()
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe')), Effect.runPromise)
+        const result = tui.getState()
+        expect(result).toEqual({ _tag: 'Running', count: 0 })
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe'))),
+    )
 
-      expect(result).toEqual({ _tag: 'Running', count: 0 })
-    })
-
-    test('multiple dispatches apply reducer sequentially', async () => {
-      const result = await Effect.gen(function* () {
+    it.effect('multiple dispatches apply reducer sequentially', () =>
+      Effect.gen(function* () {
         const tui = yield* TestApp.run()
         tui.dispatch({ _tag: 'Start' })
         tui.dispatch({ _tag: 'Increment' })
         tui.dispatch({ _tag: 'Increment' })
         tui.dispatch({ _tag: 'Increment' })
-        return tui.getState()
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe')), Effect.runPromise)
+        const result = tui.getState()
+        expect(result).toEqual({ _tag: 'Running', count: 3 })
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe'))),
+    )
 
-      expect(result).toEqual({ _tag: 'Running', count: 3 })
-    })
-
-    test('dispatch with payload', async () => {
-      const result = await Effect.gen(function* () {
+    it.effect('dispatch with payload', () =>
+      Effect.gen(function* () {
         const tui = yield* TestApp.run()
         tui.dispatch({ _tag: 'Start' })
         tui.dispatch({ _tag: 'Increment' })
         tui.dispatch({ _tag: 'Finish', total: 42 })
-        return tui.getState()
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe')), Effect.runPromise)
-
-      expect(result).toEqual({ _tag: 'Complete', total: 42 })
-    })
+        const result = tui.getState()
+        expect(result).toEqual({ _tag: 'Complete', total: 42 })
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe'))),
+    )
   })
 
   describe('json mode', () => {
-    test('outputs JSON on scope close with Success wrapper', async () => {
-      await Effect.gen(function* () {
+    it.effect('outputs JSON on scope close with Success wrapper', () =>
+      Effect.gen(function* () {
         const tui = yield* TestApp.run()
         tui.dispatch({ _tag: 'Start' })
         tui.dispatch({ _tag: 'Increment' })
         tui.dispatch({ _tag: 'Finish', total: 10 })
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('json')), Effect.runPromise)
-
-      expect(capturedOutput).toHaveLength(1)
-      const parsed = JSON.parse(capturedOutput[0]!)
-      // State is a union (non-struct), so it's wrapped in `value`
-      expect(parsed._tag).toBe('Success')
-      expect(parsed.value).toEqual({ _tag: 'Complete', total: 10 })
-    })
-
-    test('outputs final state even if only initial', async () => {
-      await TestApp.run().pipe(
+      }).pipe(
         Effect.scoped,
         Effect.provide(testModeLayer('json')),
-        Effect.runPromise,
-      )
+        Effect.andThen(() => {
+          expect(capturedOutput).toHaveLength(1)
+          const parsed = JSON.parse(capturedOutput[0]!)
+          // State is a union (non-struct), so it's wrapped in `value`
+          expect(parsed._tag).toBe('Success')
+          expect(parsed.value).toEqual({ _tag: 'Complete', total: 10 })
+        }),
+      ),
+    )
 
-      expect(capturedOutput).toHaveLength(1)
-      const parsed = JSON.parse(capturedOutput[0]!)
-      // State is a union (non-struct), so it's wrapped in `value`
-      expect(parsed._tag).toBe('Success')
-      expect(parsed.value).toEqual({ _tag: 'Idle' })
-    })
+    it.effect('outputs final state even if only initial', () =>
+      TestApp.run().pipe(
+        Effect.scoped,
+        Effect.provide(testModeLayer('json')),
+        Effect.andThen(() => {
+          expect(capturedOutput).toHaveLength(1)
+          const parsed = JSON.parse(capturedOutput[0]!)
+          // State is a union (non-struct), so it's wrapped in `value`
+          expect(parsed._tag).toBe('Success')
+          expect(parsed.value).toEqual({ _tag: 'Idle' })
+        }),
+      ),
+    )
   })
 
   describe('ndjson mode', () => {
-    test('outputs NDJSON with final Success wrapper', async () => {
-      await Effect.gen(function* () {
+    it.live('outputs NDJSON with final Success wrapper', () =>
+      Effect.gen(function* () {
         const tui = yield* TestApp.run()
         // Small delay to allow stream to process
         yield* Effect.sleep('10 millis')
@@ -168,44 +169,52 @@ describe('createTuiApp', () => {
         yield* Effect.sleep('10 millis')
         tui.dispatch({ _tag: 'Finish', total: 10 })
         yield* Effect.sleep('10 millis')
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('ndjson')), Effect.runPromise)
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(testModeLayer('ndjson')),
+        Effect.andThen(() => {
+          // Should have multiple JSON lines (intermediate raw + final wrapped)
+          expect(capturedOutput.length).toBeGreaterThanOrEqual(2)
 
-      // Should have multiple JSON lines (intermediate raw + final wrapped)
-      expect(capturedOutput.length).toBeGreaterThanOrEqual(2)
+          // Each line should be valid JSON
+          for (const line of capturedOutput) {
+            expect(() => JSON.parse(line)).not.toThrow()
+          }
 
-      // Each line should be valid JSON
-      for (const line of capturedOutput) {
-        expect(() => JSON.parse(line)).not.toThrow()
-      }
+          // First output should be raw state (Idle)
+          const firstParsed = JSON.parse(capturedOutput[0]!)
+          expect(firstParsed._tag).toBe('Idle')
 
-      // First output should be raw state (Idle)
-      const firstParsed = JSON.parse(capturedOutput[0]!)
-      expect(firstParsed._tag).toBe('Idle')
-
-      // Last output should be Success wrapper with Complete state
-      const lastParsed = JSON.parse(capturedOutput[capturedOutput.length - 1]!)
-      expect(lastParsed._tag).toBe('Success')
-      expect(lastParsed.value._tag).toBe('Complete')
-    })
+          // Last output should be Success wrapper with Complete state
+          const lastParsed = JSON.parse(capturedOutput[capturedOutput.length - 1]!)
+          expect(lastParsed._tag).toBe('Success')
+          expect(lastParsed.value._tag).toBe('Complete')
+        }),
+      ),
+    )
   })
 
   describe('pipe mode', () => {
-    test('does not output anything', async () => {
-      await Effect.gen(function* () {
+    it.effect('does not output anything', () =>
+      Effect.gen(function* () {
         const tui = yield* TestApp.run()
         tui.dispatch({ _tag: 'Start' })
         tui.dispatch({ _tag: 'Finish', total: 10 })
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe')), Effect.runPromise)
-
-      expect(capturedOutput).toHaveLength(0)
-    })
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(testModeLayer('pipe')),
+        Effect.andThen(() => {
+          expect(capturedOutput).toHaveLength(0)
+        }),
+      ),
+    )
   })
 
   describe('stateAtom access', () => {
-    test('stateAtom can be used with getState()', async () => {
+    it.effect('stateAtom can be used with getState()', () => {
       const states: TestState[] = []
 
-      await Effect.gen(function* () {
+      return Effect.gen(function* () {
         const tui = yield* TestApp.run()
 
         // Get current state
@@ -215,16 +224,20 @@ describe('createTuiApp', () => {
         tui.dispatch({ _tag: 'Start' })
         const updated = tui.getState()
         states.push(updated)
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe')), Effect.runPromise)
-
-      expect(states).toEqual([{ _tag: 'Idle' }, { _tag: 'Running', count: 0 }])
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(testModeLayer('pipe')),
+        Effect.andThen(() => {
+          expect(states).toEqual([{ _tag: 'Idle' }, { _tag: 'Running', count: 0 }])
+        }),
+      )
     })
   })
 })
 
 describe('createTestTuiState', () => {
-  test('captures all state changes', async () => {
-    const result = await Effect.gen(function* () {
+  it.live('captures all state changes', () =>
+    Effect.gen(function* () {
       const { api, getStates, getFinalState } = yield* createTestTuiState({
         stateSchema: TestState,
         actionSchema: TestAction,
@@ -240,15 +253,13 @@ describe('createTestTuiState', () => {
       // Small delay to allow stream to process
       yield* Effect.sleep('10 millis')
 
-      return {
-        states: getStates(),
-        final: getFinalState(),
-      }
-    }).pipe(Effect.scoped, Effect.runPromise)
+      const states = getStates()
+      const final = getFinalState()
 
-    expect(result.states).toHaveLength(5) // initial + 4 dispatches
-    expect(result.states[0]).toEqual({ _tag: 'Idle' })
-    expect(result.states[4]).toEqual({ _tag: 'Complete', total: 5 })
-    expect(result.final).toEqual({ _tag: 'Complete', total: 5 })
-  })
+      expect(states).toHaveLength(5) // initial + 4 dispatches
+      expect(states[0]).toEqual({ _tag: 'Idle' })
+      expect(states[4]).toEqual({ _tag: 'Complete', total: 5 })
+      expect(final).toEqual({ _tag: 'Complete', total: 5 })
+    }).pipe(Effect.scoped),
+  )
 })

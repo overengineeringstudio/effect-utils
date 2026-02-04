@@ -2,6 +2,7 @@
  * Tests for OutputMode service
  */
 
+import { it } from '@effect/vitest'
 import { Effect, Layer } from 'effect'
 import { describe, test, expect } from 'vitest'
 import {
@@ -470,40 +471,48 @@ describe('type guards', () => {
 })
 
 describe('layers', () => {
-  test('layer creates a valid layer', async () => {
-    const mode = await OutputModeTag.pipe(Effect.provide(layer(json)), Effect.runPromise)
+  it.effect('layer creates a valid layer', () =>
+    OutputModeTag.pipe(
+      Effect.provide(layer(json)),
+      Effect.tap((mode) =>
+        Effect.sync(() => {
+          expect(mode._tag).toBe('json')
+          expect(mode.timing).toBe('final')
+        }),
+      ),
+    ),
+  )
 
-    expect(mode._tag).toBe('json')
-    expect(mode.timing).toBe('final')
-  })
+  it.effect('ttyLayer provides tty mode', () =>
+    OutputModeTag.pipe(
+      Effect.provide(ttyLayer),
+      Effect.tap((mode) =>
+        Effect.sync(() => {
+          expect(mode._tag).toBe('react')
+          expect(mode.timing).toBe('progressive')
+        }),
+      ),
+    ),
+  )
 
-  test('ttyLayer provides tty mode', async () => {
-    const mode = await OutputModeTag.pipe(Effect.provide(ttyLayer), Effect.runPromise)
-
-    expect(mode._tag).toBe('react')
-    expect(mode.timing).toBe('progressive')
-  })
-
-  test('jsonLayer provides json mode', async () => {
-    const mode = await OutputModeTag.pipe(Effect.provide(jsonLayer), Effect.runPromise)
-
-    expect(mode._tag).toBe('json')
-    expect(mode.timing).toBe('final')
-  })
+  it.effect('jsonLayer provides json mode', () =>
+    OutputModeTag.pipe(
+      Effect.provide(jsonLayer),
+      Effect.tap((mode) =>
+        Effect.sync(() => {
+          expect(mode._tag).toBe('json')
+          expect(mode.timing).toBe('final')
+        }),
+      ),
+    ),
+  )
 })
 
 describe('OutputModeTag service', () => {
-  test('can be yielded in Effect.gen', async () => {
-    const program = Effect.gen(function* () {
+  it.effect('can be yielded in Effect.gen', () =>
+    Effect.gen(function* () {
       const mode = yield* OutputModeTag
-      return mode._tag
-    })
-
-    const result = await program.pipe(
-      Effect.provide(Layer.succeed(OutputModeTag, ndjson)),
-      Effect.runPromise,
-    )
-
-    expect(result).toBe('json')
-  })
+      expect(mode._tag).toBe('json')
+    }).pipe(Effect.provide(Layer.succeed(OutputModeTag, ndjson))),
+  )
 })

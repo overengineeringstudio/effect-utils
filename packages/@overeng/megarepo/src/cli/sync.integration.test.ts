@@ -1,7 +1,9 @@
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
+import { NodeContext } from '@effect/platform-node'
+import { describe, it } from '@effect/vitest'
 import { Cause, Chunk, Effect, Exit, Option, Schema } from 'effect'
-import { describe, expect, it } from 'vitest'
+import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
@@ -24,7 +26,6 @@ import {
   runGitCommand,
 } from '../test-utils/setup.ts'
 import { createStoreFixture, createWorkspaceWithLock } from '../test-utils/store-setup.ts'
-import { withTestCtx } from '../test-utils/withTestCtx.ts'
 import { Cwd } from './context.ts'
 import { mrCommand } from './mod.ts'
 
@@ -133,9 +134,10 @@ const runSyncCommand = ({
 
 describe('mr sync', () => {
   describe('with local path members', () => {
-    it('should create symlinks for local path members', () =>
-      withTestCtx(
-        Effect.gen(function* () {
+    it.effect(
+      'should create symlinks for local path members',
+      Effect.fnUntraced(
+        function* () {
           const fs = yield* FileSystem.FileSystem
 
           // Create a temp directory with a local repo
@@ -172,14 +174,18 @@ describe('mr sync', () => {
 
           // Note: Actually running the sync command would require more setup
           // (proper CLI runner, etc). This test verifies the workspace fixture works.
-        }),
-      ))
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
   })
 
   describe('workspace fixture', () => {
-    it('should create workspace with symlinked repos', () =>
-      withTestCtx(
-        Effect.gen(function* () {
+    it.effect(
+      'should create workspace with symlinked repos',
+      Effect.fnUntraced(
+        function* () {
           const fs = yield* FileSystem.FileSystem
 
           // Create workspace with repos that get symlinked
@@ -212,8 +218,11 @@ describe('mr sync', () => {
           const linkTarget = yield* fs.readLink(symlinkPath)
           // The link target should be the repo path without trailing slash
           expect(linkTarget).toBe(repoPaths['repo1']?.slice(0, -1))
-        }),
-      ))
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
   })
 })
 
@@ -339,9 +348,10 @@ describe('frozen mode', () => {
   })
 
   describe('frozen mode with workspace', () => {
-    it('should have up-to-date lock file when config matches', () =>
-      withTestCtx(
-        Effect.gen(function* () {
+    it.effect(
+      'should have up-to-date lock file when config matches',
+      Effect.fnUntraced(
+        function* () {
           // Create workspace with lock file that matches config
           const { workspacePath } = yield* createWorkspaceWithLock({
             members: {
@@ -371,12 +381,16 @@ describe('frozen mode', () => {
 
           // Should not be stale - frozen mode would succeed
           expect(result.isStale).toBe(false)
-        }),
-      ))
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
 
-    it('should detect missing lock file entries for frozen mode', () =>
-      withTestCtx(
-        Effect.gen(function* () {
+    it.effect(
+      'should detect missing lock file entries for frozen mode',
+      Effect.fnUntraced(
+        function* () {
           // Create workspace with lock file missing an entry
           const { workspacePath } = yield* createWorkspaceWithLock({
             members: {
@@ -409,12 +423,16 @@ describe('frozen mode', () => {
           // Should be stale - frozen mode would fail
           expect(result.isStale).toBe(true)
           expect(result.addedMembers).toContain('lib2')
-        }),
-      ))
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
 
-    it('should detect extra lock file entries for frozen mode', () =>
-      withTestCtx(
-        Effect.gen(function* () {
+    it.effect(
+      'should detect extra lock file entries for frozen mode',
+      Effect.fnUntraced(
+        function* () {
           // Create workspace with lock file having extra entries
           const { workspacePath } = yield* createWorkspaceWithLock({
             members: {
@@ -451,14 +469,18 @@ describe('frozen mode', () => {
           // Should be stale - frozen mode would fail
           expect(result.isStale).toBe(true)
           expect(result.removedMembers).toContain('old-lib')
-        }),
-      ))
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
   })
 
   describe('frozen mode with pinned members', () => {
-    it('should preserve pinned commit in lock file', () =>
-      withTestCtx(
-        Effect.gen(function* () {
+    it.effect(
+      'should preserve pinned commit in lock file',
+      Effect.fnUntraced(
+        function* () {
           const pinnedCommit = 'abc1234567890abcdef1234567890abcdef1234'
 
           // Create workspace with pinned member
@@ -492,8 +514,11 @@ describe('frozen mode', () => {
           const configMemberNames = new Set(['pinned-lib'])
           const result = checkLockStaleness({ lockFile, configMemberNames })
           expect(result.isStale).toBe(false)
-        }),
-      ))
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
   })
 })
 
@@ -579,9 +604,10 @@ const createNestedMegarepoFixture = () =>
 
 describe('--all sync mode', () => {
   describe('nested megarepo detection', () => {
-    it('should detect when a member is itself a megarepo', () =>
-      withTestCtx(
-        Effect.gen(function* () {
+    it.effect(
+      'should detect when a member is itself a megarepo',
+      Effect.fnUntraced(
+        function* () {
           const fs = yield* FileSystem.FileSystem
           const { parentPath, childPath } = yield* createNestedMegarepoFixture()
 
@@ -605,12 +631,16 @@ describe('--all sync mode', () => {
             parentConfigContent,
           )
           expect(parentConfig.members['child-megarepo']).toBe(childPath)
-        }),
-      ))
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
 
-    it('should create valid nested megarepo structure with grandchild', () =>
-      withTestCtx(
-        Effect.gen(function* () {
+    it.effect(
+      'should create valid nested megarepo structure with grandchild',
+      Effect.fnUntraced(
+        function* () {
           const fs = yield* FileSystem.FileSystem
           const { childPath, grandchildPath } = yield* createNestedMegarepoFixture()
 
@@ -631,8 +661,11 @@ describe('--all sync mode', () => {
             EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
           )
           expect(yield* fs.exists(grandchildConfigPath)).toBe(false)
-        }),
-      ))
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
   })
 })
 
@@ -738,9 +771,10 @@ const createDiamondDependencyFixture = () =>
   })
 
 describe('--all sync deduplication', () => {
-  it('should create valid diamond dependency structure', () =>
-    withTestCtx(
-      Effect.gen(function* () {
+  it.effect(
+    'should create valid diamond dependency structure',
+    Effect.fnUntraced(
+      function* () {
         const fs = yield* FileSystem.FileSystem
         const { rootPath, childAPath, childBPath, sharedLibPath } =
           yield* createDiamondDependencyFixture()
@@ -780,8 +814,11 @@ describe('--all sync deduplication', () => {
 
         // Both children reference the SAME path
         expect(childAConfig.members['shared-lib']).toBe(childBConfig.members['shared-lib'])
-      }),
-    ))
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
 })
 
 // =============================================================================
@@ -790,9 +827,10 @@ describe('--all sync deduplication', () => {
 
 describe('default sync mode (no --pull)', () => {
   describe('lock file updates', () => {
-    it('should update lock file when worktree HEAD differs from lock', () =>
-      withTestCtx(
-        Effect.gen(function* () {
+    it.effect(
+      'should update lock file when worktree HEAD differs from lock',
+      Effect.fnUntraced(
+        function* () {
           const fs = yield* FileSystem.FileSystem
 
           // Create a temp directory with a local repo
@@ -835,12 +873,16 @@ describe('default sync mode (no --pull)', () => {
           expect(memberResult?.name).toBe('my-lib')
           // For local paths, status is 'synced' since they create symlinks
           expect(['synced', 'locked', 'already_synced']).toContain(memberResult?.status)
-        }),
-      ))
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
 
-    it('should return already_synced when lock matches current HEAD', () =>
-      withTestCtx(
-        Effect.gen(function* () {
+    it.effect(
+      'should return already_synced when lock matches current HEAD',
+      Effect.fnUntraced(
+        function* () {
           const fs = yield* FileSystem.FileSystem
 
           // Create workspace with local repo
@@ -885,14 +927,18 @@ describe('default sync mode (no --pull)', () => {
           expect(memberResult?.name).toBe('my-lib')
           // After first sync, should be already_synced or synced
           expect(['synced', 'already_synced']).toContain(memberResult?.status)
-        }),
-      ))
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
   })
 
   describe('no remote fetch', () => {
-    it('should NOT fetch from remote in default mode', () =>
-      withTestCtx(
-        Effect.gen(function* () {
+    it.effect(
+      'should NOT fetch from remote in default mode',
+      Effect.fnUntraced(
+        function* () {
           const fs = yield* FileSystem.FileSystem
 
           // Create workspace with a non-existent remote member
@@ -932,14 +978,18 @@ describe('default sync mode (no --pull)', () => {
 
           // The command should complete (might error on clone attempt, but shouldn't hang on fetch)
           expect(result.exitCode).toBeDefined()
-        }),
-      ))
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
   })
 
   describe('ref change detection', () => {
-    it('should update symlink when ref changes in config', () =>
-      withTestCtx(
-        Effect.gen(function* () {
+    it.effect(
+      'should update symlink when ref changes in config',
+      Effect.fnUntraced(
+        function* () {
           const fs = yield* FileSystem.FileSystem
 
           // Create temp directory
@@ -1050,12 +1100,16 @@ describe('default sync mode (no --pull)', () => {
             .pipe(Effect.catchAll(() => Effect.succeed(false)))
           expect(featureFileInFeature).toBe(true)
           expect(updatedLink.replace(/\/$/, '')).toBe(featureRepoPath.replace(/\/$/, ''))
-        }),
-      ))
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
 
-    it('should skip ref change if old worktree has uncommitted changes', () =>
-      withTestCtx(
-        Effect.gen(function* () {
+    it.effect(
+      'should skip ref change if old worktree has uncommitted changes',
+      Effect.fnUntraced(
+        function* () {
           const fs = yield* FileSystem.FileSystem
 
           // Create temp directory
@@ -1137,12 +1191,16 @@ describe('default sync mode (no --pull)', () => {
           )
           const currentLink = yield* fs.readLink(symlinkPath)
           expect(currentLink.replace(/\/$/, '')).toBe(mainRepoPath.replace(/\/$/, ''))
-        }),
-      ))
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
 
-    it('should allow ref change with --force even if old worktree is dirty', () =>
-      withTestCtx(
-        Effect.gen(function* () {
+    it.effect(
+      'should allow ref change with --force even if old worktree is dirty',
+      Effect.fnUntraced(
+        function* () {
           const fs = yield* FileSystem.FileSystem
 
           // Create temp directory
@@ -1220,8 +1278,11 @@ describe('default sync mode (no --pull)', () => {
           )
           const currentLink = yield* fs.readLink(symlinkPath)
           expect(currentLink.replace(/\/$/, '')).toBe(featureRepoPath.replace(/\/$/, ''))
-        }),
-      ))
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
   })
 })
 
@@ -1231,9 +1292,10 @@ describe('default sync mode (no --pull)', () => {
 
 describe('sync --pull mode', () => {
   describe('dirty worktree protection', () => {
-    it('should skip member with uncommitted changes unless --force', () =>
-      withTestCtx(
-        Effect.gen(function* () {
+    it.effect(
+      'should skip member with uncommitted changes unless --force',
+      Effect.fnUntraced(
+        function* () {
           const fs = yield* FileSystem.FileSystem
 
           // Create a dirty local repo
@@ -1282,14 +1344,18 @@ describe('sync --pull mode', () => {
 
           // Should complete without error
           expect(result.exitCode).toBeDefined()
-        }),
-      ))
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
   })
 
   describe('pinned members', () => {
-    it('should skip pinned members in --pull mode', () =>
-      withTestCtx(
-        Effect.gen(function* () {
+    it.effect(
+      'should skip pinned members in --pull mode',
+      Effect.fnUntraced(
+        function* () {
           const fs = yield* FileSystem.FileSystem
 
           // Create a local repo
@@ -1340,8 +1406,11 @@ describe('sync --pull mode', () => {
           // The sync should complete
           expect(json.results).toHaveLength(1)
           // Note: Local path sources behave differently, but this documents the behavior
-        }),
-      ))
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
   })
 })
 
@@ -1350,9 +1419,10 @@ describe('sync --pull mode', () => {
 // =============================================================================
 
 describe('sync status types', () => {
-  it('should return cloned status for new members', () =>
-    withTestCtx(
-      Effect.gen(function* () {
+  it.effect(
+    'should return cloned status for new members',
+    Effect.fnUntraced(
+      function* () {
         const fs = yield* FileSystem.FileSystem
 
         // Create a local repo
@@ -1402,14 +1472,18 @@ describe('sync status types', () => {
         expect(memberResult?.name).toBe('new-lib')
         // For local paths, first sync creates a symlink - status is 'synced'
         expect(memberResult?.status).toBe('synced')
-      }),
-    ))
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
 })
 
 describe('sync error handling', () => {
-  it('should return clear error when remote repo does not exist', () =>
-    withTestCtx(
-      Effect.gen(function* () {
+  it.effect(
+    'should return clear error when remote repo does not exist',
+    Effect.fnUntraced(
+      function* () {
         const fs = yield* FileSystem.FileSystem
 
         // Create a megarepo with a non-existent remote member
@@ -1466,8 +1540,11 @@ describe('sync error handling', () => {
             memberResult?.message?.toLowerCase().includes('not found') ||
             memberResult?.message?.toLowerCase().includes('access'),
         ).toBe(true)
-      }),
-    ))
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
 })
 
 // =============================================================================
@@ -1476,9 +1553,10 @@ describe('sync error handling', () => {
 
 describe('sync member filtering', () => {
   describe('--only flag', () => {
-    it('should only sync specified members with --only', () =>
-      withTestCtx(
-        Effect.gen(function* () {
+    it.effect(
+      'should only sync specified members with --only',
+      Effect.fnUntraced(
+        function* () {
           const fs = yield* FileSystem.FileSystem
 
           // Create temp directory with two local repos
@@ -1534,14 +1612,18 @@ describe('sync member filtering', () => {
           // Should only have synced repo1
           expect(json.results).toHaveLength(1)
           expect(json.results[0]?.name).toBe('repo1')
-        }),
-      ))
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
   })
 
   describe('--skip flag', () => {
-    it('should skip specified members with --skip', () =>
-      withTestCtx(
-        Effect.gen(function* () {
+    it.effect(
+      'should skip specified members with --skip',
+      Effect.fnUntraced(
+        function* () {
           const fs = yield* FileSystem.FileSystem
 
           // Create temp directory with two local repos
@@ -1597,14 +1679,18 @@ describe('sync member filtering', () => {
           // Should only have synced repo1 (repo2 was skipped)
           expect(json.results).toHaveLength(1)
           expect(json.results[0]?.name).toBe('repo1')
-        }),
-      ))
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
   })
 
   describe('--only and --skip mutual exclusivity', () => {
-    it('should reject using both --only and --skip together', () =>
-      withTestCtx(
-        Effect.gen(function* () {
+    it.effect(
+      'should reject using both --only and --skip together',
+      Effect.fnUntraced(
+        function* () {
           const fs = yield* FileSystem.FileSystem
 
           // Create a minimal workspace
@@ -1649,8 +1735,11 @@ describe('sync member filtering', () => {
               .join('\n')
             expect(failureMessages.toLowerCase()).toContain('mutually exclusive')
           }
-        }),
-      ))
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
   })
 })
 
@@ -1673,9 +1762,10 @@ describe('sync worktree ref mismatch detection', () => {
    * Currently, `mr sync` reports "already synced" without detecting this drift.
    * The expected behavior is to warn about the mismatch.
    */
-  it('should detect and warn when worktree HEAD differs from store path ref (issue #88)', () =>
-    withTestCtx(
-      Effect.gen(function* () {
+  it.effect(
+    'should detect and warn when worktree HEAD differs from store path ref (issue #88)',
+    Effect.fnUntraced(
+      function* () {
         const fs = yield* FileSystem.FileSystem
 
         const { storePath, worktreePaths } = yield* createStoreFixture([
@@ -1787,12 +1877,16 @@ describe('sync worktree ref mismatch detection', () => {
         expect(refMismatch?.expectedRef).toBe('main')
         expect(refMismatch?.actualRef).toBeTruthy()
         expect(refMismatch?.actualRef).not.toBe('main')
-      }),
-    ))
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
 
-  it('should detect detached HEAD as ref mismatch in branch worktree (issue #88)', () =>
-    withTestCtx(
-      Effect.gen(function* () {
+  it.effect(
+    'should detect detached HEAD as ref mismatch in branch worktree (issue #88)',
+    Effect.fnUntraced(
+      function* () {
         const fs = yield* FileSystem.FileSystem
 
         const { storePath, worktreePaths } = yield* createStoreFixture([
@@ -1900,14 +1994,18 @@ describe('sync worktree ref mismatch detection', () => {
         expect(refMismatch?.expectedRef).toBe('main')
         expect(refMismatch?.isDetached).toBe(true)
         expect(refMismatch?.actualRef).toBeTruthy()
-      }),
-    ))
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
 })
 
 describe('sync member removal detection', () => {
-  it('should detect and remove orphaned symlinks when member is removed from config', () =>
-    withTestCtx(
-      Effect.gen(function* () {
+  it.effect(
+    'should detect and remove orphaned symlinks when member is removed from config',
+    Effect.fnUntraced(
+      function* () {
         const fs = yield* FileSystem.FileSystem
 
         // Create temp directory with two local repos
@@ -2006,12 +2104,16 @@ describe('sync member removal detection', () => {
 
         // Verify repo2 symlink was removed
         expect(yield* fs.exists(repo2Symlink)).toBe(false)
-      }),
-    ))
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
 
-  it('should report removed status in dry-run mode without actually removing', () =>
-    withTestCtx(
-      Effect.gen(function* () {
+  it.effect(
+    'should report removed status in dry-run mode without actually removing',
+    Effect.fnUntraced(
+      function* () {
         const fs = yield* FileSystem.FileSystem
 
         // Create temp directory with two local repos
@@ -2096,12 +2198,16 @@ describe('sync member removal detection', () => {
           EffectPath.unsafe.relativeFile('repos/repo2'),
         )
         expect(yield* fs.exists(repo2Symlink)).toBe(true)
-      }),
-    ))
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
 
-  it('should not remove symlinks for members skipped via --skip', () =>
-    withTestCtx(
-      Effect.gen(function* () {
+  it.effect(
+    'should not remove symlinks for members skipped via --skip',
+    Effect.fnUntraced(
+      function* () {
         const fs = yield* FileSystem.FileSystem
 
         // Create temp directory with two local repos
@@ -2170,12 +2276,16 @@ describe('sync member removal detection', () => {
           EffectPath.unsafe.relativeFile('repos/repo2'),
         )
         expect(yield* fs.exists(repo2Symlink)).toBe(true)
-      }),
-    ))
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
 
-  it('should only remove symlinks, not actual directories', () =>
-    withTestCtx(
-      Effect.gen(function* () {
+  it.effect(
+    'should only remove symlinks, not actual directories',
+    Effect.fnUntraced(
+      function* () {
         const fs = yield* FileSystem.FileSystem
 
         // Create temp directory with a local repo
@@ -2243,6 +2353,9 @@ describe('sync member removal detection', () => {
 
         // The directory should still exist
         expect(yield* fs.exists(orphanDirPath)).toBe(true)
-      }),
-    ))
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
 })
