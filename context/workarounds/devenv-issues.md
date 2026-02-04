@@ -74,9 +74,60 @@ Example trace event:
 
 ---
 
+## Platform Compatibility Issues
+
+### COMPAT-01: Web coding agents have limited Nix/devenv support
+
+**Note:** Not a devenv issue per se, but a platform limitation affecting devenv usage.
+
+**Upstream issues:**
+
+- https://github.com/openai/codex/issues/7636 (toolchains disappearing after setup)
+- https://github.com/openai/codex/issues/4843 (direnv/devenv env dropped with `bash --login`)
+
+**Affected platforms:**
+
+| Platform           | Status     | Primary Blocker                                      |
+| ------------------ | ---------- | ---------------------------------------------------- |
+| Codex Web (OpenAI) | ⚠️ Partial | PATH/env not persisted across command invocations    |
+| Claude Code Web    | ⚠️ Partial | Network allowlist excludes Nix caches by default     |
+| Codex CLI (local)  | ⚠️ Partial | `bash --login` drops `.devenv/profile/bin` from PATH |
+
+**Codex Web issues:**
+
+- Commands may run in fresh shells, losing PATH/env set during setup
+- Secrets are short-lived (injected during setup, then wiped)
+- Toolchains (e.g., node/npm) present during setup can be missing in later agent commands
+
+**Claude Code Web issues:**
+
+- "Limited" network mode allowlist does not include `cache.nixos.org` or other Nix domains
+- Nix installations fail unless using "Full internet" mode or org-level allowlist customization
+- SessionStart hooks can install devenv, but network policy blocks cache fetches
+
+**Workarounds:**
+
+- **Codex Web:** Wrap all commands to run through devenv shell; don't rely on ambient PATH
+- **Claude Code Web:** Use "Full internet" mode if available, or request Nix domains be allowlisted
+- **Both:** Prefer binary caches (Cachix) to avoid compiling in sandboxes
+- **Both:** Make setup scripts defensively re-assert prerequisites
+
+**Research needed:**
+
+- Monitor upstream for network allowlist updates (Claude Code Web)
+- Track Codex container environment improvements
+- Evaluate alternative approaches (pre-built containers, devcontainers)
+
+---
+
 ## Cleanup checklist when issues are fixed
 
 - **DEVENV-02 fixed (native OTLP support added via #2415):**
   - When #2415 is fixed: can use native OTLP export to observability platforms
   - Remove manual JSON trace post-processing from CI pipelines
   - Update R10 status in this document to reflect full compliance
+
+- **COMPAT-01 improved (web coding agent support):**
+  - When Claude Code Web adds Nix domains to allowlist: update status, remove "Full internet" workaround
+  - When Codex fixes PATH persistence: update status, simplify setup scripts
+  - When either platform has first-class devenv support: document recommended setup
