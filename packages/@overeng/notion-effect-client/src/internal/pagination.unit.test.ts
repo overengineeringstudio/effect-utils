@@ -1,6 +1,7 @@
-import { describe, it } from '@effect/vitest'
 import { Chunk, Effect, Option, Schema, Stream } from 'effect'
 import { expect } from 'vitest'
+
+import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import {
   type PaginatedResponse,
@@ -16,29 +17,29 @@ class PaginationNetworkError extends Schema.TaggedError<PaginationNetworkError>(
   },
 ) {}
 
-describe('paginationParams', () => {
-  it.effect('returns empty object when no options provided', () =>
+Vitest.describe('paginationParams', () => {
+  Vitest.it.effect('returns empty object when no options provided', () =>
     Effect.sync(() => {
       const params = paginationParams({})
       expect(params).toEqual({})
     }),
   )
 
-  it.effect('includes start_cursor when provided', () =>
+  Vitest.it.effect('includes start_cursor when provided', () =>
     Effect.sync(() => {
       const params = paginationParams({ startCursor: 'cursor-abc' })
       expect(params).toEqual({ start_cursor: 'cursor-abc' })
     }),
   )
 
-  it.effect('includes page_size when provided', () =>
+  Vitest.it.effect('includes page_size when provided', () =>
     Effect.sync(() => {
       const params = paginationParams({ pageSize: 50 })
       expect(params).toEqual({ page_size: 50 })
     }),
   )
 
-  it.effect('includes both params when provided', () =>
+  Vitest.it.effect('includes both params when provided', () =>
     Effect.sync(() => {
       const params = paginationParams({
         startCursor: 'cursor-xyz',
@@ -49,8 +50,8 @@ describe('paginationParams', () => {
   )
 })
 
-describe('toPaginatedResult', () => {
-  it.effect('converts response with next cursor', () =>
+Vitest.describe('toPaginatedResult', () => {
+  Vitest.it.effect('converts response with next cursor', () =>
     Effect.sync(() => {
       const response: PaginatedResponse<{ id: string }> = {
         object: 'list',
@@ -68,7 +69,7 @@ describe('toPaginatedResult', () => {
     }),
   )
 
-  it.effect('converts response without next cursor', () =>
+  Vitest.it.effect('converts response without next cursor', () =>
     Effect.sync(() => {
       const response: PaginatedResponse<{ id: string }> = {
         object: 'list',
@@ -85,7 +86,7 @@ describe('toPaginatedResult', () => {
     }),
   )
 
-  it.effect('handles empty results', () =>
+  Vitest.it.effect('handles empty results', () =>
     Effect.sync(() => {
       const response: PaginatedResponse<{ id: string }> = {
         object: 'list',
@@ -103,8 +104,8 @@ describe('toPaginatedResult', () => {
   )
 })
 
-describe('paginatedStream', () => {
-  it.scoped('fetches single page when has_more is false', () =>
+Vitest.describe('paginatedStream', () => {
+  Vitest.it.scoped('fetches single page when has_more is false', () =>
     Effect.gen(function* () {
       let fetchCount = 0
 
@@ -127,7 +128,7 @@ describe('paginatedStream', () => {
     }),
   )
 
-  it.scoped('fetches multiple pages with cursor', () =>
+  Vitest.it.scoped('fetches multiple pages with cursor', () =>
     Effect.gen(function* () {
       const cursors: Option.Option<string>[] = []
 
@@ -175,7 +176,7 @@ describe('paginatedStream', () => {
     }),
   )
 
-  it.effect('handles empty first page', () =>
+  Vitest.it.effect('handles empty first page', () =>
     Effect.gen(function* () {
       const stream = paginatedStream((_cursor) =>
         Effect.sync(() => ({
@@ -192,7 +193,7 @@ describe('paginatedStream', () => {
     }),
   )
 
-  it.effect('propagates errors from fetch function', () =>
+  Vitest.it.effect('propagates errors from fetch function', () =>
     Effect.gen(function* () {
       const stream = paginatedStream((_cursor) =>
         Effect.fail(new PaginationNetworkError({ message: 'Network error' })),
@@ -205,7 +206,7 @@ describe('paginatedStream', () => {
     }),
   )
 
-  it.scoped('stops fetching after last page with items', () =>
+  Vitest.it.scoped('stops fetching after last page with items', () =>
     Effect.gen(function* () {
       let fetchCount = 0
 

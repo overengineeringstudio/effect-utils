@@ -1,19 +1,19 @@
 import { FileSystem } from '@effect/platform'
 import { NodeContext } from '@effect/platform-node'
-import { describe, it } from '@effect/vitest'
 import { Effect } from 'effect'
 import { expect } from 'vitest'
 
 import { EffectPath } from '@overeng/effect-path'
+import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import { writeSchemaToFile } from './output.ts'
 
 /** Layer providing NodeContext for file system operations */
 const TestLayer = NodeContext.layer
 
-describe('output', () => {
-  describe('writeSchemaToFile', () => {
-    it.effect('should create file with read-only permissions by default', () =>
+Vitest.describe('output', () => {
+  Vitest.describe('writeSchemaToFile', () => {
+    Vitest.it.effect('should create file with read-only permissions by default', () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
 
@@ -35,29 +35,31 @@ describe('output', () => {
       }).pipe(Effect.scoped, Effect.provide(TestLayer)),
     )
 
-    it.effect('should create file with read-write permissions when writable option is true', () =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
+    Vitest.it.effect(
+      'should create file with read-write permissions when writable option is true',
+      () =>
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
 
-        const tempDir = EffectPath.unsafe.absoluteDir(yield* fs.makeTempDirectoryScoped())
-        const outputPath = EffectPath.ops.join(
-          tempDir,
-          EffectPath.unsafe.relativeFile('schema.gen.ts'),
-        )
-        const code = '// Generated code\nexport const Test = {}'
+          const tempDir = EffectPath.unsafe.absoluteDir(yield* fs.makeTempDirectoryScoped())
+          const outputPath = EffectPath.ops.join(
+            tempDir,
+            EffectPath.unsafe.relativeFile('schema.gen.ts'),
+          )
+          const code = '// Generated code\nexport const Test = {}'
 
-        yield* writeSchemaToFile({ code, outputPath, writable: true })
+          yield* writeSchemaToFile({ code, outputPath, writable: true })
 
-        const content = yield* fs.readFileString(outputPath)
-        expect(content).toBe(code)
+          const content = yield* fs.readFileString(outputPath)
+          expect(content).toBe(code)
 
-        const stat = yield* fs.stat(outputPath)
-        // Check file is writable (has write bit for owner)
-        expect(stat.mode & 0o200).toBe(0o200)
-      }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+          const stat = yield* fs.stat(outputPath)
+          // Check file is writable (has write bit for owner)
+          expect(stat.mode & 0o200).toBe(0o200)
+        }).pipe(Effect.scoped, Effect.provide(TestLayer)),
     )
 
-    it.effect('should successfully overwrite an existing read-only file', () =>
+    Vitest.it.effect('should successfully overwrite an existing read-only file', () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
 
@@ -89,7 +91,7 @@ describe('output', () => {
       }).pipe(Effect.scoped, Effect.provide(TestLayer)),
     )
 
-    it.effect('should create parent directories if they do not exist', () =>
+    Vitest.it.effect('should create parent directories if they do not exist', () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
 
@@ -114,7 +116,7 @@ describe('output', () => {
       }).pipe(Effect.scoped, Effect.provide(TestLayer)),
     )
 
-    it.effect('should handle switching from writable to read-only on regeneration', () =>
+    Vitest.it.effect('should handle switching from writable to read-only on regeneration', () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
 

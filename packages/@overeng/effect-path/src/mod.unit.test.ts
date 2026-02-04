@@ -1,8 +1,9 @@
 import { FileSystem } from '@effect/platform'
 import { NodeContext } from '@effect/platform-node'
-import { describe, it } from '@effect/vitest'
 import { Effect, Either, Schema } from 'effect'
-import { expect } from 'vitest'
+import { expect, it } from 'vitest'
+
+import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import {
   EffectPath,
@@ -16,16 +17,16 @@ import {
 // Convention-Based Parsing Tests
 // =============================================================================
 
-describe('convention parsing', () => {
-  describe('absoluteFile', () => {
-    it.effect('parses absolute file path (Unix)', () =>
+Vitest.describe('convention parsing', () => {
+  Vitest.describe('absoluteFile', () => {
+    Vitest.it.effect('parses absolute file path (Unix)', () =>
       Effect.gen(function* () {
         const result = yield* EffectPath.convention.absoluteFile('/home/user/file.txt')
         expect(result).toBe('/home/user/file.txt')
       }).pipe(Effect.provide(NodeContext.layer)),
     )
 
-    it.effect('fails on relative path', () =>
+    Vitest.it.effect('fails on relative path', () =>
       Effect.gen(function* () {
         const result = yield* EffectPath.convention
           .absoluteFile('relative/path.txt')
@@ -34,7 +35,7 @@ describe('convention parsing', () => {
       }).pipe(Effect.provide(NodeContext.layer)),
     )
 
-    it.effect('fails on directory path (trailing slash)', () =>
+    Vitest.it.effect('fails on directory path (trailing slash)', () =>
       Effect.gen(function* () {
         const result = yield* EffectPath.convention
           .absoluteFile('/path/to/dir/')
@@ -44,15 +45,15 @@ describe('convention parsing', () => {
     )
   })
 
-  describe('absoluteDir', () => {
-    it.effect('parses absolute directory path', () =>
+  Vitest.describe('absoluteDir', () => {
+    Vitest.it.effect('parses absolute directory path', () =>
       Effect.gen(function* () {
         const result = yield* EffectPath.convention.absoluteDir('/home/user/')
         expect(result).toBe('/home/user/')
       }).pipe(Effect.provide(NodeContext.layer)),
     )
 
-    it.effect('fails on file path (no trailing slash)', () =>
+    Vitest.it.effect('fails on file path (no trailing slash)', () =>
       Effect.gen(function* () {
         const result = yield* EffectPath.convention.absoluteDir('/path/to/file').pipe(Effect.either)
         expect(Either.isLeft(result)).toBe(true)
@@ -60,8 +61,8 @@ describe('convention parsing', () => {
     )
   })
 
-  describe('relativeFile', () => {
-    it.effect('parses relative file path', () =>
+  Vitest.describe('relativeFile', () => {
+    Vitest.it.effect('parses relative file path', () =>
       Effect.gen(function* () {
         const result = yield* EffectPath.convention.relativeFile('src/mod.ts')
         expect(result).toBe('src/mod.ts')
@@ -69,8 +70,8 @@ describe('convention parsing', () => {
     )
   })
 
-  describe('relativeDir', () => {
-    it.effect('parses relative directory path', () =>
+  Vitest.describe('relativeDir', () => {
+    Vitest.it.effect('parses relative directory path', () =>
       Effect.gen(function* () {
         const result = yield* EffectPath.convention.relativeDir('src/components/')
         expect(result).toBe('src/components/')
@@ -78,8 +79,8 @@ describe('convention parsing', () => {
     )
   })
 
-  describe('absoluteFileInfo', () => {
-    it.effect('parses absolute file path and returns PathInfo', () =>
+  Vitest.describe('absoluteFileInfo', () => {
+    Vitest.it.effect('parses absolute file path and returns PathInfo', () =>
       Effect.gen(function* () {
         const result = yield* EffectPath.convention.absoluteFileInfo('/home/user/file.txt')
         expect(result.normalized).toBe('/home/user/file.txt')
@@ -88,7 +89,7 @@ describe('convention parsing', () => {
       }).pipe(Effect.provide(NodeContext.layer)),
     )
 
-    it.effect('parses file with multiple extensions', () =>
+    Vitest.it.effect('parses file with multiple extensions', () =>
       Effect.gen(function* () {
         const result = yield* EffectPath.convention.absoluteFileInfo('/path/to/archive.tar.gz')
         expect(result.baseName).toBe('archive')
@@ -98,8 +99,8 @@ describe('convention parsing', () => {
     )
   })
 
-  describe('absoluteDirInfo', () => {
-    it.effect('parses absolute directory path and returns PathInfo', () =>
+  Vitest.describe('absoluteDirInfo', () => {
+    Vitest.it.effect('parses absolute directory path and returns PathInfo', () =>
       Effect.gen(function* () {
         const result = yield* EffectPath.convention.absoluteDirInfo('/home/user/')
         expect(result.normalized).toBe('/home/user/')
@@ -114,7 +115,7 @@ describe('convention parsing', () => {
 // Unsafe Constructor Tests
 // =============================================================================
 
-describe('unsafe constructors', () => {
+Vitest.describe('unsafe constructors', () => {
   it('absoluteFile creates branded type', () => {
     const path: AbsoluteFilePath = EffectPath.unsafe.absoluteFile('/home/user/file.txt')
     expect(path).toBe('/home/user/file.txt')
@@ -145,8 +146,8 @@ describe('unsafe constructors', () => {
 // Path Operations Tests
 // =============================================================================
 
-describe('path operations', () => {
-  describe('join', () => {
+Vitest.describe('path operations', () => {
+  Vitest.describe('join', () => {
     it('joins directory with file', () => {
       const dir = EffectPath.unsafe.absoluteDir('/home/user/')
       const file = EffectPath.unsafe.relativeFile('file.txt')
@@ -170,7 +171,7 @@ describe('path operations', () => {
     })
   })
 
-  describe('parent', () => {
+  Vitest.describe('parent', () => {
     it('gets parent directory of file', () => {
       const file = EffectPath.unsafe.absoluteFile('/home/user/file.txt')
       const dir = EffectPath.ops.parent(file)
@@ -196,7 +197,7 @@ describe('path operations', () => {
     })
   })
 
-  describe('baseName', () => {
+  Vitest.describe('baseName', () => {
     it('gets filename without extension', () => {
       const file = EffectPath.unsafe.absoluteFile('/path/to/file.txt')
       expect(EffectPath.ops.baseName(file)).toBe('file')
@@ -208,7 +209,7 @@ describe('path operations', () => {
     })
   })
 
-  describe('extension', () => {
+  Vitest.describe('extension', () => {
     it('gets file extension', () => {
       const file = EffectPath.unsafe.absoluteFile('/path/to/file.txt')
       expect(EffectPath.ops.extension(file)).toBe('txt')
@@ -220,14 +221,14 @@ describe('path operations', () => {
     })
   })
 
-  describe('fullExtension', () => {
+  Vitest.describe('fullExtension', () => {
     it('gets full extension for multi-extension files', () => {
       const file = EffectPath.unsafe.absoluteFile('/path/to/archive.tar.gz')
       expect(EffectPath.ops.fullExtension(file)).toBe('tar.gz')
     })
   })
 
-  describe('withExtension', () => {
+  Vitest.describe('withExtension', () => {
     it('changes file extension', () => {
       const file = EffectPath.unsafe.absoluteFile('/path/to/file.txt')
       const result = EffectPath.ops.withExtension({
@@ -247,7 +248,7 @@ describe('path operations', () => {
     })
   })
 
-  describe('withBaseName', () => {
+  Vitest.describe('withBaseName', () => {
     it('changes file name preserving extension', () => {
       const file = EffectPath.unsafe.absoluteFile('/path/to/old.txt')
       const result = EffectPath.ops.withBaseName({ path: file, name: 'new' })
@@ -260,8 +261,8 @@ describe('path operations', () => {
 // Normalization Tests
 // =============================================================================
 
-describe('normalization', () => {
-  describe('lexicalPure', () => {
+Vitest.describe('normalization', () => {
+  Vitest.describe('lexicalPure', () => {
     it('normalizes path with . and ..', () => {
       const path = EffectPath.unsafe.absoluteFile('/home/user/../admin/./file.txt')
       const result = EffectPath.normalize.lexicalPure(path)
@@ -287,8 +288,8 @@ describe('normalization', () => {
     })
   })
 
-  describe('lexical (Effect-based)', () => {
-    it.effect('normalizes path using platform Path service', () =>
+  Vitest.describe('lexical (Effect-based)', () => {
+    Vitest.it.effect('normalizes path using platform Path service', () =>
       Effect.gen(function* () {
         const path = EffectPath.unsafe.absoluteFile('/home/user/../admin/file.txt')
         const result = yield* EffectPath.normalize.lexical(path)
@@ -302,9 +303,9 @@ describe('normalization', () => {
 // Schema Tests
 // =============================================================================
 
-describe('schema', () => {
-  describe('AbsoluteFilePath', () => {
-    it.effect('decodes valid absolute file path', () =>
+Vitest.describe('schema', () => {
+  Vitest.describe('AbsoluteFilePath', () => {
+    Vitest.it.effect('decodes valid absolute file path', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(EffectPath.schema.AbsoluteFilePath)(
           '/home/user/file.txt',
@@ -313,7 +314,7 @@ describe('schema', () => {
       }),
     )
 
-    it.effect('rejects relative path', () =>
+    Vitest.it.effect('rejects relative path', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(EffectPath.schema.AbsoluteFilePath)(
           'relative/file.txt',
@@ -322,7 +323,7 @@ describe('schema', () => {
       }),
     )
 
-    it.effect('rejects directory path', () =>
+    Vitest.it.effect('rejects directory path', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(EffectPath.schema.AbsoluteFilePath)(
           '/path/to/dir/',
@@ -332,15 +333,15 @@ describe('schema', () => {
     )
   })
 
-  describe('AbsoluteDirPath', () => {
-    it.effect('decodes valid absolute directory path', () =>
+  Vitest.describe('AbsoluteDirPath', () => {
+    Vitest.it.effect('decodes valid absolute directory path', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(EffectPath.schema.AbsoluteDirPath)('/home/user/')
         expect(result).toBe('/home/user/')
       }),
     )
 
-    it.effect('rejects file path (no trailing slash)', () =>
+    Vitest.it.effect('rejects file path (no trailing slash)', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(EffectPath.schema.AbsoluteDirPath)(
           '/home/user/file.txt',
@@ -350,8 +351,8 @@ describe('schema', () => {
     )
   })
 
-  describe('RelativeFilePath', () => {
-    it.effect('decodes valid relative file path', () =>
+  Vitest.describe('RelativeFilePath', () => {
+    Vitest.it.effect('decodes valid relative file path', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(EffectPath.schema.RelativeFilePath)('src/mod.ts')
         expect(result).toBe('src/mod.ts')
@@ -359,8 +360,8 @@ describe('schema', () => {
     )
   })
 
-  describe('RelativeDirPath', () => {
-    it.effect('decodes valid relative directory path', () =>
+  Vitest.describe('RelativeDirPath', () => {
+    Vitest.it.effect('decodes valid relative directory path', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(EffectPath.schema.RelativeDirPath)(
           'src/components/',
@@ -370,8 +371,8 @@ describe('schema', () => {
     )
   })
 
-  describe('AbsoluteFileInfo', () => {
-    it.effect('decodes to PathInfo structure', () =>
+  Vitest.describe('AbsoluteFileInfo', () => {
+    Vitest.it.effect('decodes to PathInfo structure', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(EffectPath.schema.AbsoluteFileInfo())(
           '/path/to/file.txt',
@@ -382,7 +383,7 @@ describe('schema', () => {
       }),
     )
 
-    it.effect('encodes back to normalized string by default', () =>
+    Vitest.it.effect('encodes back to normalized string by default', () =>
       Effect.gen(function* () {
         const decoded = yield* Schema.decodeUnknown(EffectPath.schema.AbsoluteFileInfo())(
           '/path/to/file.txt',
@@ -393,8 +394,8 @@ describe('schema', () => {
     )
   })
 
-  describe('RelativeFileInfo', () => {
-    it.effect('uses ./ as parent for root-level relative files', () =>
+  Vitest.describe('RelativeFileInfo', () => {
+    Vitest.it.effect('uses ./ as parent for root-level relative files', () =>
       Effect.gen(function* () {
         const decoded = yield* Schema.decodeUnknown(EffectPath.schema.RelativeFileInfo())(
           'file.txt',
@@ -409,10 +410,10 @@ describe('schema', () => {
 // Sandbox Tests
 // =============================================================================
 
-describe('sandbox', () => {
+Vitest.describe('sandbox', () => {
   const sandbox = EffectPath.sandbox(EffectPath.unsafe.absoluteDir('/home/user/'))
 
-  describe('validate', () => {
+  Vitest.describe('validate', () => {
     it('validates safe relative path', () => {
       const result = sandbox.validate(EffectPath.unsafe.relativeFile('file.txt'))
       expect(Either.isRight(result)).toBe(true)
@@ -447,7 +448,7 @@ describe('sandbox', () => {
     })
   })
 
-  describe('resolve', () => {
+  Vitest.describe('resolve', () => {
     it('resolves relative path to absolute', () => {
       const result = sandbox.resolve(EffectPath.unsafe.relativeFile('file.txt'))
       expect(Either.isRight(result)).toBe(true)
@@ -471,7 +472,7 @@ describe('sandbox', () => {
     })
   })
 
-  describe('contains', () => {
+  Vitest.describe('contains', () => {
     it('returns true for paths inside sandbox', () => {
       const inside = EffectPath.unsafe.absoluteFile('/home/user/file.txt')
       expect(sandbox.contains(inside)).toBe(true)
@@ -503,8 +504,8 @@ describe('sandbox', () => {
 // Utility Function Tests
 // =============================================================================
 
-describe('utility functions', () => {
-  describe('validatePath', () => {
+Vitest.describe('utility functions', () => {
+  Vitest.describe('validatePath', () => {
     it('validates path stays in sandbox', () => {
       const root = EffectPath.unsafe.absoluteDir('/home/user/')
       const path = EffectPath.unsafe.relativeFile('file.txt')
@@ -513,7 +514,7 @@ describe('utility functions', () => {
     })
   })
 
-  describe('isContained', () => {
+  Vitest.describe('isContained', () => {
     it('checks if absolute path is in directory', () => {
       const root = EffectPath.unsafe.absoluteDir('/home/user/')
       const inside = EffectPath.unsafe.absoluteFile('/home/user/file.txt')
@@ -532,16 +533,16 @@ describe('utility functions', () => {
 // Edge Case Tests
 // =============================================================================
 
-describe('edge cases', () => {
-  describe('path validation', () => {
-    it.effect('rejects empty path', () =>
+Vitest.describe('edge cases', () => {
+  Vitest.describe('path validation', () => {
+    Vitest.it.effect('rejects empty path', () =>
       Effect.gen(function* () {
         const result = yield* EffectPath.convention.absoluteFile('').pipe(Effect.either)
         expect(Either.isLeft(result)).toBe(true)
       }).pipe(Effect.provide(NodeContext.layer)),
     )
 
-    it.effect('rejects path with null byte', () =>
+    Vitest.it.effect('rejects path with null byte', () =>
       Effect.gen(function* () {
         const result = yield* EffectPath.convention
           .absoluteFile('/path/to\0file.txt')
@@ -551,7 +552,7 @@ describe('edge cases', () => {
     )
   })
 
-  describe('root directory handling', () => {
+  Vitest.describe('root directory handling', () => {
     it('handles root directory', () => {
       const root = EffectPath.unsafe.absoluteDir('/')
       expect(root).toBe('/')
@@ -564,7 +565,7 @@ describe('edge cases', () => {
     })
   })
 
-  describe('hidden files', () => {
+  Vitest.describe('hidden files', () => {
     it('handles dotfiles', () => {
       const file = EffectPath.unsafe.absoluteFile('/home/user/.bashrc')
       // Dotfiles without a second dot have no extension - .bashrc is the full filename
@@ -584,8 +585,8 @@ describe('edge cases', () => {
 // Symlink Tests
 // =============================================================================
 
-describe('symlink', () => {
-  it.effect('detects and reads symlinks', () =>
+Vitest.describe('symlink', () => {
+  Vitest.it.effect('detects and reads symlinks', () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
       const tmp = yield* fs.makeTempDirectoryScoped()

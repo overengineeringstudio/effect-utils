@@ -29,6 +29,7 @@ export default packageJson({
       ...peerDepNames,
       '@effect/platform-node',
       '@effect/vitest',
+      '@overeng/utils-dev',
       '@types/node',
       'vitest',
     ),

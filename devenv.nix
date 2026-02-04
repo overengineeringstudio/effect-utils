@@ -55,6 +55,7 @@ let
     "packages/@overeng/tui-core"
     "packages/@overeng/tui-react"
     "packages/@overeng/utils"
+    "packages/@overeng/utils-dev"
     "context/opentui"
     "context/effect/socket"
   ];

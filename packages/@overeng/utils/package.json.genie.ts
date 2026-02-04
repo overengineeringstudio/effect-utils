@@ -78,6 +78,7 @@ export default packageJson({
       ...otelSdkDeps,
       // Dev-only deps
       '@effect/vitest',
+      '@overeng/utils-dev',
       '@types/node',
       'vite',
       'vitest',

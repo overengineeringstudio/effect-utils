@@ -1,6 +1,7 @@
-import { describe, it } from '@effect/vitest'
 import { Effect, Option, Schema } from 'effect'
 import { expect } from 'vitest'
+
+import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import { NotionSchema } from './mod.ts'
 
@@ -8,7 +9,7 @@ import { NotionSchema } from './mod.ts'
 // Title Property Tests
 // -----------------------------------------------------------------------------
 
-describe('Title', () => {
+Vitest.describe('Title', () => {
   const sampleTitleProperty = {
     id: 'title',
     type: 'title' as const,
@@ -30,15 +31,15 @@ describe('Title', () => {
     ],
   }
 
-  describe('NotionSchema.title', () => {
-    it.effect('decodes title property to string', () =>
+  Vitest.describe('NotionSchema.title', () => {
+    Vitest.it.effect('decodes title property to string', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.title)(sampleTitleProperty)
         expect(result).toBe('Hello World')
       }),
     )
 
-    it.effect('handles empty title array', () =>
+    Vitest.it.effect('handles empty title array', () =>
       Effect.gen(function* () {
         const emptyTitle = { ...sampleTitleProperty, title: [] }
         const result = yield* Schema.decodeUnknown(NotionSchema.title)(emptyTitle)
@@ -46,7 +47,7 @@ describe('Title', () => {
       }),
     )
 
-    it.effect('concatenates multiple rich text segments', () =>
+    Vitest.it.effect('concatenates multiple rich text segments', () =>
       Effect.gen(function* () {
         const multiSegment = {
           ...sampleTitleProperty,
@@ -87,8 +88,8 @@ describe('Title', () => {
     )
   })
 
-  describe('NotionSchema.titleWriteFromString', () => {
-    it.effect('encodes string to title write payload', () =>
+  Vitest.describe('NotionSchema.titleWriteFromString', () => {
+    Vitest.it.effect('encodes string to title write payload', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.titleWriteFromString)('Test Title')
         expect(result).toEqual({
@@ -97,7 +98,7 @@ describe('Title', () => {
       }),
     )
 
-    it.effect('roundtrip: encode and decode', () =>
+    Vitest.it.effect('roundtrip: encode and decode', () =>
       Effect.gen(function* () {
         const original = 'My Page Title'
         const encoded = yield* Schema.decodeUnknown(NotionSchema.titleWriteFromString)(original)
@@ -106,7 +107,7 @@ describe('Title', () => {
       }),
     )
 
-    it.effect('handles empty string', () =>
+    Vitest.it.effect('handles empty string', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.titleWriteFromString)('')
         expect(result).toEqual({
@@ -116,8 +117,8 @@ describe('Title', () => {
     )
   })
 
-  describe('NotionSchema.titleWrite schema', () => {
-    it.effect('validates valid title write payload', () =>
+  Vitest.describe('NotionSchema.titleWrite schema', () => {
+    Vitest.it.effect('validates valid title write payload', () =>
       Effect.gen(function* () {
         const payload = {
           title: [{ type: 'text' as const, text: { content: 'Test' } }],
@@ -127,7 +128,7 @@ describe('Title', () => {
       }),
     )
 
-    it.effect('accepts title with link', () =>
+    Vitest.it.effect('accepts title with link', () =>
       Effect.gen(function* () {
         const payload = {
           title: [
@@ -151,7 +152,7 @@ describe('Title', () => {
 // Rich Text Property Tests
 // -----------------------------------------------------------------------------
 
-describe('RichText Property', () => {
+Vitest.describe('RichText Property', () => {
   const sampleRichTextProperty = {
     id: 'rich_text',
     type: 'rich_text' as const,
@@ -173,8 +174,8 @@ describe('RichText Property', () => {
     ],
   }
 
-  describe('NotionSchema.richTextString', () => {
-    it.effect('decodes rich text property to string', () =>
+  Vitest.describe('NotionSchema.richTextString', () => {
+    Vitest.it.effect('decodes rich text property to string', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.richTextString)(
           sampleRichTextProperty,
@@ -184,8 +185,8 @@ describe('RichText Property', () => {
     )
   })
 
-  describe('NotionSchema.richTextOption', () => {
-    it.effect('returns Some for non-empty text', () =>
+  Vitest.describe('NotionSchema.richTextOption', () => {
+    Vitest.it.effect('returns Some for non-empty text', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.richTextOption)(
           sampleRichTextProperty,
@@ -195,7 +196,7 @@ describe('RichText Property', () => {
       }),
     )
 
-    it.effect('returns None for empty text', () =>
+    Vitest.it.effect('returns None for empty text', () =>
       Effect.gen(function* () {
         const emptyProp = { ...sampleRichTextProperty, rich_text: [] }
         const result = yield* Schema.decodeUnknown(NotionSchema.richTextOption)(emptyProp)
@@ -203,7 +204,7 @@ describe('RichText Property', () => {
       }),
     )
 
-    it.effect('returns None for whitespace-only text', () =>
+    Vitest.it.effect('returns None for whitespace-only text', () =>
       Effect.gen(function* () {
         const whitespaceProp = {
           ...sampleRichTextProperty,
@@ -230,8 +231,8 @@ describe('RichText Property', () => {
     )
   })
 
-  describe('NotionSchema.richTextWriteFromString', () => {
-    it.effect('encodes string to rich text write payload', () =>
+  Vitest.describe('NotionSchema.richTextWriteFromString', () => {
+    Vitest.it.effect('encodes string to rich text write payload', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.richTextWriteFromString)(
           'Test content',
@@ -242,7 +243,7 @@ describe('RichText Property', () => {
       }),
     )
 
-    it.effect('roundtrip: encode and decode', () =>
+    Vitest.it.effect('roundtrip: encode and decode', () =>
       Effect.gen(function* () {
         const original = 'Some text content'
         const encoded = yield* Schema.decodeUnknown(NotionSchema.richTextWriteFromString)(original)
@@ -252,8 +253,8 @@ describe('RichText Property', () => {
     )
   })
 
-  describe('NotionSchema.richTextNonEmpty', () => {
-    it.effect('returns string for non-empty text', () =>
+  Vitest.describe('NotionSchema.richTextNonEmpty', () => {
+    Vitest.it.effect('returns string for non-empty text', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.richTextNonEmpty)(
           sampleRichTextProperty,
@@ -262,7 +263,7 @@ describe('RichText Property', () => {
       }),
     )
 
-    it.effect('fails for empty text', () =>
+    Vitest.it.effect('fails for empty text', () =>
       Effect.gen(function* () {
         const emptyProp = { ...sampleRichTextProperty, rich_text: [] }
         const result = yield* Schema.decodeUnknown(NotionSchema.richTextNonEmpty)(emptyProp).pipe(
@@ -278,7 +279,7 @@ describe('RichText Property', () => {
 // Number Property Tests
 // -----------------------------------------------------------------------------
 
-describe('Number Property', () => {
+Vitest.describe('Number Property', () => {
   const sampleNumberProperty = {
     id: 'number',
     type: 'number' as const,
@@ -291,15 +292,15 @@ describe('Number Property', () => {
     number: null,
   }
 
-  describe('NotionSchema.number', () => {
-    it.effect('decodes non-null number', () =>
+  Vitest.describe('NotionSchema.number', () => {
+    Vitest.it.effect('decodes non-null number', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.number)(sampleNumberProperty)
         expect(result).toBe(42)
       }),
     )
 
-    it.effect('fails on null number', () =>
+    Vitest.it.effect('fails on null number', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.number)(nullNumberProperty).pipe(
           Effect.flip,
@@ -308,7 +309,7 @@ describe('Number Property', () => {
       }),
     )
 
-    it.effect('decodes decimal numbers', () =>
+    Vitest.it.effect('decodes decimal numbers', () =>
       Effect.gen(function* () {
         const decimalProp = { ...sampleNumberProperty, number: 3.14 }
         const result = yield* Schema.decodeUnknown(NotionSchema.number)(decimalProp)
@@ -317,8 +318,8 @@ describe('Number Property', () => {
     )
   })
 
-  describe('NotionSchema.numberOption', () => {
-    it.effect('returns Some for non-null number', () =>
+  Vitest.describe('NotionSchema.numberOption', () => {
+    Vitest.it.effect('returns Some for non-null number', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.numberOption)(sampleNumberProperty)
         expect(Option.isSome(result)).toBe(true)
@@ -326,7 +327,7 @@ describe('Number Property', () => {
       }),
     )
 
-    it.effect('returns None for null number', () =>
+    Vitest.it.effect('returns None for null number', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.numberOption)(nullNumberProperty)
         expect(Option.isNone(result)).toBe(true)
@@ -334,22 +335,22 @@ describe('Number Property', () => {
     )
   })
 
-  describe('NotionSchema.numberWriteFromNumber', () => {
-    it.effect('encodes number to write payload', () =>
+  Vitest.describe('NotionSchema.numberWriteFromNumber', () => {
+    Vitest.it.effect('encodes number to write payload', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.numberWriteFromNumber)(100)
         expect(result).toEqual({ number: 100 })
       }),
     )
 
-    it.effect('encodes null to write payload', () =>
+    Vitest.it.effect('encodes null to write payload', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.numberWriteFromNumber)(null)
         expect(result).toEqual({ number: null })
       }),
     )
 
-    it.effect('roundtrip: encode and decode', () =>
+    Vitest.it.effect('roundtrip: encode and decode', () =>
       Effect.gen(function* () {
         const original = 99
         const encoded = yield* Schema.decodeUnknown(NotionSchema.numberWriteFromNumber)(original)
@@ -364,7 +365,7 @@ describe('Number Property', () => {
 // Checkbox Property Tests
 // -----------------------------------------------------------------------------
 
-describe('Checkbox Property', () => {
+Vitest.describe('Checkbox Property', () => {
   const checkedProperty = {
     id: 'checkbox',
     type: 'checkbox' as const,
@@ -377,15 +378,15 @@ describe('Checkbox Property', () => {
     checkbox: false,
   }
 
-  describe('NotionSchema.checkbox', () => {
-    it.effect('decodes checked checkbox', () =>
+  Vitest.describe('NotionSchema.checkbox', () => {
+    Vitest.it.effect('decodes checked checkbox', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.checkbox)(checkedProperty)
         expect(result).toBe(true)
       }),
     )
 
-    it.effect('decodes unchecked checkbox', () =>
+    Vitest.it.effect('decodes unchecked checkbox', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.checkbox)(uncheckedProperty)
         expect(result).toBe(false)
@@ -393,22 +394,22 @@ describe('Checkbox Property', () => {
     )
   })
 
-  describe('NotionSchema.checkboxWriteFromBoolean', () => {
-    it.effect('encodes true to write payload', () =>
+  Vitest.describe('NotionSchema.checkboxWriteFromBoolean', () => {
+    Vitest.it.effect('encodes true to write payload', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.checkboxWriteFromBoolean)(true)
         expect(result).toEqual({ checkbox: true })
       }),
     )
 
-    it.effect('encodes false to write payload', () =>
+    Vitest.it.effect('encodes false to write payload', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.checkboxWriteFromBoolean)(false)
         expect(result).toEqual({ checkbox: false })
       }),
     )
 
-    it.effect('roundtrip: encode and decode', () =>
+    Vitest.it.effect('roundtrip: encode and decode', () =>
       Effect.gen(function* () {
         const original = true
         const encoded = yield* Schema.decodeUnknown(NotionSchema.checkboxWriteFromBoolean)(original)
@@ -423,7 +424,7 @@ describe('Checkbox Property', () => {
 // Select Property Tests
 // -----------------------------------------------------------------------------
 
-describe('Select Property', () => {
+Vitest.describe('Select Property', () => {
   const selectedProperty = {
     id: 'select',
     type: 'select' as const,
@@ -440,8 +441,8 @@ describe('Select Property', () => {
     select: null,
   }
 
-  describe('NotionSchema.select', () => {
-    it.effect('returns Some with option', () =>
+  Vitest.describe('NotionSchema.select', () => {
+    Vitest.it.effect('returns Some with option', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.select())(selectedProperty)
         expect(Option.isSome(result)).toBe(true)
@@ -449,7 +450,7 @@ describe('Select Property', () => {
       }),
     )
 
-    it.effect('returns None for null select', () =>
+    Vitest.it.effect('returns None for null select', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.select())(nullSelectProperty)
         expect(Option.isNone(result)).toBe(true)
@@ -457,10 +458,10 @@ describe('Select Property', () => {
     )
   })
 
-  describe('NotionSchema.select(...).pipe(NotionSchema.asName)', () => {
+  Vitest.describe('NotionSchema.select(...).pipe(NotionSchema.asName)', () => {
     const Allowed = Schema.Literal('High', 'Low')
 
-    it.effect('returns Some with allowed name', () =>
+    Vitest.it.effect('returns Some with allowed name', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(
           NotionSchema.select(Allowed).pipe(NotionSchema.asName),
@@ -470,7 +471,7 @@ describe('Select Property', () => {
       }),
     )
 
-    it.effect('fails when option name is not allowed', () =>
+    Vitest.it.effect('fails when option name is not allowed', () =>
       Effect.gen(function* () {
         const invalidProperty = {
           ...selectedProperty,
@@ -484,8 +485,8 @@ describe('Select Property', () => {
     )
   })
 
-  describe('NotionSchema.select(...).pipe(NotionSchema.asNullable)', () => {
-    it.effect('returns option for selected property', () =>
+  Vitest.describe('NotionSchema.select(...).pipe(NotionSchema.asNullable)', () => {
+    Vitest.it.effect('returns option for selected property', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(
           NotionSchema.select().pipe(NotionSchema.asNullable),
@@ -494,7 +495,7 @@ describe('Select Property', () => {
       }),
     )
 
-    it.effect('returns null for null select', () =>
+    Vitest.it.effect('returns null for null select', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(
           NotionSchema.select().pipe(NotionSchema.asNullable),
@@ -504,22 +505,22 @@ describe('Select Property', () => {
     )
   })
 
-  describe('NotionSchema.selectWriteFromName', () => {
-    it.effect('encodes option name to write payload', () =>
+  Vitest.describe('NotionSchema.selectWriteFromName', () => {
+    Vitest.it.effect('encodes option name to write payload', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.selectWriteFromName)('Medium')
         expect(result).toEqual({ select: { name: 'Medium' } })
       }),
     )
 
-    it.effect('encodes null to write payload', () =>
+    Vitest.it.effect('encodes null to write payload', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.selectWriteFromName)(null)
         expect(result).toEqual({ select: null })
       }),
     )
 
-    it.effect('roundtrip: encode and decode', () =>
+    Vitest.it.effect('roundtrip: encode and decode', () =>
       Effect.gen(function* () {
         const original = 'Low'
         const encoded = yield* Schema.decodeUnknown(NotionSchema.selectWriteFromName)(original)
@@ -534,7 +535,7 @@ describe('Select Property', () => {
 // Multi-Select Property Tests
 // -----------------------------------------------------------------------------
 
-describe('MultiSelect Property', () => {
+Vitest.describe('MultiSelect Property', () => {
   const multiSelectProperty = {
     id: 'multi_select',
     type: 'multi_select' as const,
@@ -550,8 +551,8 @@ describe('MultiSelect Property', () => {
     multi_select: [],
   }
 
-  describe('NotionSchema.multiSelect', () => {
-    it.effect('decodes to array of options', () =>
+  Vitest.describe('NotionSchema.multiSelect', () => {
+    Vitest.it.effect('decodes to array of options', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.multiSelect())(multiSelectProperty)
         expect(result).toHaveLength(2)
@@ -559,7 +560,7 @@ describe('MultiSelect Property', () => {
       }),
     )
 
-    it.effect('handles empty array', () =>
+    Vitest.it.effect('handles empty array', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.multiSelect())(
           emptyMultiSelectProperty,
@@ -569,10 +570,10 @@ describe('MultiSelect Property', () => {
     )
   })
 
-  describe('NotionSchema.multiSelect(...).pipe(NotionSchema.asNames)', () => {
+  Vitest.describe('NotionSchema.multiSelect(...).pipe(NotionSchema.asNames)', () => {
     const Allowed = Schema.Literal('Tag1', 'Tag2')
 
-    it.effect('decodes to array of allowed names', () =>
+    Vitest.it.effect('decodes to array of allowed names', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(
           NotionSchema.multiSelect(Allowed).pipe(NotionSchema.asNames),
@@ -581,7 +582,7 @@ describe('MultiSelect Property', () => {
       }),
     )
 
-    it.effect('fails when option name is not allowed', () =>
+    Vitest.it.effect('fails when option name is not allowed', () =>
       Effect.gen(function* () {
         const invalidProperty = {
           ...multiSelectProperty,
@@ -595,8 +596,8 @@ describe('MultiSelect Property', () => {
     )
   })
 
-  describe('NotionSchema.multiSelectWriteFromNames', () => {
-    it.effect('encodes names to write payload', () =>
+  Vitest.describe('NotionSchema.multiSelectWriteFromNames', () => {
+    Vitest.it.effect('encodes names to write payload', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.multiSelectWriteFromNames)([
           'A',
@@ -609,14 +610,14 @@ describe('MultiSelect Property', () => {
       }),
     )
 
-    it.effect('handles empty array', () =>
+    Vitest.it.effect('handles empty array', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.multiSelectWriteFromNames)([])
         expect(result).toEqual({ multi_select: [] })
       }),
     )
 
-    it.effect('roundtrip: encode and decode', () =>
+    Vitest.it.effect('roundtrip: encode and decode', () =>
       Effect.gen(function* () {
         const original = ['X', 'Y', 'Z']
         const encoded = yield* Schema.decodeUnknown(NotionSchema.multiSelectWriteFromNames)(
@@ -633,7 +634,7 @@ describe('MultiSelect Property', () => {
 // Status Property Tests
 // -----------------------------------------------------------------------------
 
-describe('Status Property', () => {
+Vitest.describe('Status Property', () => {
   const statusProperty = {
     id: 'status',
     type: 'status' as const,
@@ -650,8 +651,8 @@ describe('Status Property', () => {
     status: null,
   }
 
-  describe('NotionSchema.status', () => {
-    it.effect('returns Some with status option', () =>
+  Vitest.describe('NotionSchema.status', () => {
+    Vitest.it.effect('returns Some with status option', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.status())(statusProperty)
         expect(Option.isSome(result)).toBe(true)
@@ -659,7 +660,7 @@ describe('Status Property', () => {
       }),
     )
 
-    it.effect('returns None for null status', () =>
+    Vitest.it.effect('returns None for null status', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.status())(nullStatusProperty)
         expect(Option.isNone(result)).toBe(true)
@@ -667,10 +668,10 @@ describe('Status Property', () => {
     )
   })
 
-  describe('NotionSchema.status(...).pipe(NotionSchema.asName)', () => {
+  Vitest.describe('NotionSchema.status(...).pipe(NotionSchema.asName)', () => {
     const Allowed = Schema.Literal('In Progress', 'Blocked')
 
-    it.effect('returns Some with allowed status name', () =>
+    Vitest.it.effect('returns Some with allowed status name', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(
           NotionSchema.status(Allowed).pipe(NotionSchema.asName),
@@ -680,7 +681,7 @@ describe('Status Property', () => {
       }),
     )
 
-    it.effect('fails when status name is not allowed', () =>
+    Vitest.it.effect('fails when status name is not allowed', () =>
       Effect.gen(function* () {
         const invalidProperty = {
           ...statusProperty,
@@ -694,8 +695,8 @@ describe('Status Property', () => {
     )
   })
 
-  describe('NotionSchema.status(...).pipe(NotionSchema.asNullable)', () => {
-    it.effect('returns status option for selected status', () =>
+  Vitest.describe('NotionSchema.status(...).pipe(NotionSchema.asNullable)', () => {
+    Vitest.it.effect('returns status option for selected status', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(
           NotionSchema.status().pipe(NotionSchema.asNullable),
@@ -704,7 +705,7 @@ describe('Status Property', () => {
       }),
     )
 
-    it.effect('returns null for null status', () =>
+    Vitest.it.effect('returns null for null status', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(
           NotionSchema.status().pipe(NotionSchema.asNullable),
@@ -714,15 +715,15 @@ describe('Status Property', () => {
     )
   })
 
-  describe('NotionSchema.statusWriteFromName', () => {
-    it.effect('encodes status name to write payload', () =>
+  Vitest.describe('NotionSchema.statusWriteFromName', () => {
+    Vitest.it.effect('encodes status name to write payload', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.statusWriteFromName)('Done')
         expect(result).toEqual({ status: { name: 'Done' } })
       }),
     )
 
-    it.effect('roundtrip: encode and decode', () =>
+    Vitest.it.effect('roundtrip: encode and decode', () =>
       Effect.gen(function* () {
         const original = 'Blocked'
         const encoded = yield* Schema.decodeUnknown(NotionSchema.statusWriteFromName)(original)
@@ -737,7 +738,7 @@ describe('Status Property', () => {
 // Formula Property Tests
 // -----------------------------------------------------------------------------
 
-describe('Formula Property', () => {
+Vitest.describe('Formula Property', () => {
   const numberFormulaProperty = {
     id: 'formula',
     type: 'formula' as const,
@@ -778,8 +779,8 @@ describe('Formula Property', () => {
     },
   }
 
-  describe('NotionSchema.formulaNumber', () => {
-    it.effect('decodes number formula', () =>
+  Vitest.describe('NotionSchema.formulaNumber', () => {
+    Vitest.it.effect('decodes number formula', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.formulaNumber)(
           numberFormulaProperty,
@@ -788,7 +789,7 @@ describe('Formula Property', () => {
       }),
     )
 
-    it.effect('fails for non-number formula', () =>
+    Vitest.it.effect('fails for non-number formula', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.formulaNumber)(
           stringFormulaProperty,
@@ -798,8 +799,8 @@ describe('Formula Property', () => {
     )
   })
 
-  describe('NotionSchema.formulaString', () => {
-    it.effect('decodes string formula', () =>
+  Vitest.describe('NotionSchema.formulaString', () => {
+    Vitest.it.effect('decodes string formula', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.formulaString)(
           stringFormulaProperty,
@@ -808,7 +809,7 @@ describe('Formula Property', () => {
       }),
     )
 
-    it.effect('fails for non-string formula', () =>
+    Vitest.it.effect('fails for non-string formula', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.formulaString)(
           numberFormulaProperty,
@@ -818,8 +819,8 @@ describe('Formula Property', () => {
     )
   })
 
-  describe('NotionSchema.formulaBoolean', () => {
-    it.effect('decodes boolean formula', () =>
+  Vitest.describe('NotionSchema.formulaBoolean', () => {
+    Vitest.it.effect('decodes boolean formula', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.formulaBoolean)(
           booleanFormulaProperty,
@@ -829,8 +830,8 @@ describe('Formula Property', () => {
     )
   })
 
-  describe('NotionSchema.formulaDate', () => {
-    it.effect('decodes date formula', () =>
+  Vitest.describe('NotionSchema.formulaDate', () => {
+    Vitest.it.effect('decodes date formula', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.formulaDate)(dateFormulaProperty)
         expect(result.start).toBe('2024-01-15')
@@ -843,7 +844,7 @@ describe('Formula Property', () => {
 // Rollup Property Tests
 // -----------------------------------------------------------------------------
 
-describe('Rollup Property', () => {
+Vitest.describe('Rollup Property', () => {
   const numberRollupProperty = {
     id: 'rollup',
     type: 'rollup' as const,
@@ -893,15 +894,15 @@ describe('Rollup Property', () => {
     },
   }
 
-  describe('NotionSchema.rollupNumber', () => {
-    it.effect('decodes number rollup', () =>
+  Vitest.describe('NotionSchema.rollupNumber', () => {
+    Vitest.it.effect('decodes number rollup', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.rollupNumber)(numberRollupProperty)
         expect(result).toBe(7)
       }),
     )
 
-    it.effect('fails for non-number rollup', () =>
+    Vitest.it.effect('fails for non-number rollup', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.rollupNumber)(
           stringRollupProperty,
@@ -911,8 +912,8 @@ describe('Rollup Property', () => {
     )
   })
 
-  describe('NotionSchema.rollupString', () => {
-    it.effect('decodes string rollup', () =>
+  Vitest.describe('NotionSchema.rollupString', () => {
+    Vitest.it.effect('decodes string rollup', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.rollupString)(stringRollupProperty)
         expect(result).toBe('hello')
@@ -920,8 +921,8 @@ describe('Rollup Property', () => {
     )
   })
 
-  describe('NotionSchema.rollupBoolean', () => {
-    it.effect('decodes boolean rollup', () =>
+  Vitest.describe('NotionSchema.rollupBoolean', () => {
+    Vitest.it.effect('decodes boolean rollup', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.rollupBoolean)(
           booleanRollupProperty,
@@ -931,8 +932,8 @@ describe('Rollup Property', () => {
     )
   })
 
-  describe('NotionSchema.rollupDate', () => {
-    it.effect('decodes date rollup', () =>
+  Vitest.describe('NotionSchema.rollupDate', () => {
+    Vitest.it.effect('decodes date rollup', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.rollupDate)(dateRollupProperty)
         expect(result.start).toBe('2024-01-15')
@@ -940,8 +941,8 @@ describe('Rollup Property', () => {
     )
   })
 
-  describe('NotionSchema.rollupArray', () => {
-    it.effect('decodes array rollup', () =>
+  Vitest.describe('NotionSchema.rollupArray', () => {
+    Vitest.it.effect('decodes array rollup', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.rollupArray)(arrayRollupProperty)
         expect(result).toEqual(['a', 'b'])
@@ -954,7 +955,7 @@ describe('Rollup Property', () => {
 // Date Property Tests
 // -----------------------------------------------------------------------------
 
-describe('Date Property', () => {
+Vitest.describe('Date Property', () => {
   const dateProperty = {
     id: 'date',
     type: 'date' as const,
@@ -971,8 +972,8 @@ describe('Date Property', () => {
     date: null,
   }
 
-  describe('NotionSchema.dateOption', () => {
-    it.effect('returns Some with date value', () =>
+  Vitest.describe('NotionSchema.dateOption', () => {
+    Vitest.it.effect('returns Some with date value', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.dateOption)(dateProperty)
         expect(Option.isSome(result)).toBe(true)
@@ -981,7 +982,7 @@ describe('Date Property', () => {
       }),
     )
 
-    it.effect('returns None for null date', () =>
+    Vitest.it.effect('returns None for null date', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.dateOption)(nullDateProperty)
         expect(Option.isNone(result)).toBe(true)
@@ -989,17 +990,17 @@ describe('Date Property', () => {
     )
   })
 
-  describe('NotionSchema.requiredMessage', () => {
+  Vitest.describe('NotionSchema.requiredMessage', () => {
     const schema = NotionSchema.dateOption.pipe(NotionSchema.requiredMessage('Date is required'))
 
-    it.effect('returns date value', () =>
+    Vitest.it.effect('returns date value', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(schema)(dateProperty)
         expect(result.start).toBe('2024-01-15')
       }),
     )
 
-    it.effect('fails for null date', () =>
+    Vitest.it.effect('fails for null date', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(schema)(nullDateProperty).pipe(Effect.either)
         expect(result._tag).toBe('Left')
@@ -1007,8 +1008,8 @@ describe('Date Property', () => {
     )
   })
 
-  describe('NotionSchema.dateDate', () => {
-    it.effect('parses start date to Date object', () =>
+  Vitest.describe('NotionSchema.dateDate', () => {
+    Vitest.it.effect('parses start date to Date object', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.dateDate)(dateProperty)
         expect(Option.isSome(result)).toBe(true)
@@ -1018,7 +1019,7 @@ describe('Date Property', () => {
       }),
     )
 
-    it.effect('returns None for null date', () =>
+    Vitest.it.effect('returns None for null date', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.dateDate)(nullDateProperty)
         expect(Option.isNone(result)).toBe(true)
@@ -1026,15 +1027,15 @@ describe('Date Property', () => {
     )
   })
 
-  describe('NotionSchema.dateWriteFromStart', () => {
-    it.effect('encodes date string to write payload', () =>
+  Vitest.describe('NotionSchema.dateWriteFromStart', () => {
+    Vitest.it.effect('encodes date string to write payload', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.dateWriteFromStart)('2024-06-01')
         expect(result).toEqual({ date: { start: '2024-06-01' } })
       }),
     )
 
-    it.effect('roundtrip: encode and decode', () =>
+    Vitest.it.effect('roundtrip: encode and decode', () =>
       Effect.gen(function* () {
         const original = '2024-12-25'
         const encoded = yield* Schema.decodeUnknown(NotionSchema.dateWriteFromStart)(original)
@@ -1049,7 +1050,7 @@ describe('Date Property', () => {
 // Required Helpers
 // ---------------------------------------------------------------------------
 
-describe('NotionSchema.nullable', () => {
+Vitest.describe('NotionSchema.nullable', () => {
   const schema = Schema.NullOr(Schema.String).pipe(
     NotionSchema.nullable({
       valueSchema: Schema.String,
@@ -1057,14 +1058,14 @@ describe('NotionSchema.nullable', () => {
     }),
   )
 
-  it.effect('returns value when present', () =>
+  Vitest.it.effect('returns value when present', () =>
     Effect.gen(function* () {
       const result = yield* Schema.decodeUnknown(schema)('hello')
       expect(result).toBe('hello')
     }),
   )
 
-  it.effect('fails for null', () =>
+  Vitest.it.effect('fails for null', () =>
     Effect.gen(function* () {
       const result = yield* Schema.decodeUnknown(schema)(null).pipe(Effect.either)
       expect(result._tag).toBe('Left')
@@ -1076,7 +1077,7 @@ describe('NotionSchema.nullable', () => {
 // URL Property Tests
 // -----------------------------------------------------------------------------
 
-describe('URL Property', () => {
+Vitest.describe('URL Property', () => {
   const urlProperty = {
     id: 'url',
     type: 'url' as const,
@@ -1089,8 +1090,8 @@ describe('URL Property', () => {
     url: null,
   }
 
-  describe('NotionSchema.urlOption', () => {
-    it.effect('returns Some with URL', () =>
+  Vitest.describe('NotionSchema.urlOption', () => {
+    Vitest.it.effect('returns Some with URL', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.urlOption)(urlProperty)
         expect(Option.isSome(result)).toBe(true)
@@ -1098,7 +1099,7 @@ describe('URL Property', () => {
       }),
     )
 
-    it.effect('returns None for null URL', () =>
+    Vitest.it.effect('returns None for null URL', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.urlOption)(nullUrlProperty)
         expect(Option.isNone(result)).toBe(true)
@@ -1106,8 +1107,8 @@ describe('URL Property', () => {
     )
   })
 
-  describe('NotionSchema.urlWriteFromString', () => {
-    it.effect('encodes URL string to write payload', () =>
+  Vitest.describe('NotionSchema.urlWriteFromString', () => {
+    Vitest.it.effect('encodes URL string to write payload', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.urlWriteFromString)(
           'https://notion.so',
@@ -1116,7 +1117,7 @@ describe('URL Property', () => {
       }),
     )
 
-    it.effect('roundtrip: encode and decode', () =>
+    Vitest.it.effect('roundtrip: encode and decode', () =>
       Effect.gen(function* () {
         const original = 'https://github.com'
         const encoded = yield* Schema.decodeUnknown(NotionSchema.urlWriteFromString)(original)
@@ -1131,7 +1132,7 @@ describe('URL Property', () => {
 // Email Property Tests
 // -----------------------------------------------------------------------------
 
-describe('Email Property', () => {
+Vitest.describe('Email Property', () => {
   const emailProperty = {
     id: 'email',
     type: 'email' as const,
@@ -1144,8 +1145,8 @@ describe('Email Property', () => {
     email: null,
   }
 
-  describe('NotionSchema.emailOption', () => {
-    it.effect('returns Some with email', () =>
+  Vitest.describe('NotionSchema.emailOption', () => {
+    Vitest.it.effect('returns Some with email', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.emailOption)(emailProperty)
         expect(Option.isSome(result)).toBe(true)
@@ -1153,7 +1154,7 @@ describe('Email Property', () => {
       }),
     )
 
-    it.effect('returns None for null email', () =>
+    Vitest.it.effect('returns None for null email', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.emailOption)(nullEmailProperty)
         expect(Option.isNone(result)).toBe(true)
@@ -1161,8 +1162,8 @@ describe('Email Property', () => {
     )
   })
 
-  describe('NotionSchema.emailWriteFromString', () => {
-    it.effect('encodes email string to write payload', () =>
+  Vitest.describe('NotionSchema.emailWriteFromString', () => {
+    Vitest.it.effect('encodes email string to write payload', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.emailWriteFromString)(
           'test@test.com',
@@ -1171,7 +1172,7 @@ describe('Email Property', () => {
       }),
     )
 
-    it.effect('roundtrip: encode and decode', () =>
+    Vitest.it.effect('roundtrip: encode and decode', () =>
       Effect.gen(function* () {
         const original = 'alice@wonderland.com'
         const encoded = yield* Schema.decodeUnknown(NotionSchema.emailWriteFromString)(original)
@@ -1186,7 +1187,7 @@ describe('Email Property', () => {
 // Phone Number Property Tests
 // -----------------------------------------------------------------------------
 
-describe('PhoneNumber Property', () => {
+Vitest.describe('PhoneNumber Property', () => {
   const phoneProperty = {
     id: 'phone_number',
     type: 'phone_number' as const,
@@ -1199,8 +1200,8 @@ describe('PhoneNumber Property', () => {
     phone_number: null,
   }
 
-  describe('NotionSchema.phoneNumberOption', () => {
-    it.effect('returns Some with phone number', () =>
+  Vitest.describe('NotionSchema.phoneNumberOption', () => {
+    Vitest.it.effect('returns Some with phone number', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.phoneNumberOption)(phoneProperty)
         expect(Option.isSome(result)).toBe(true)
@@ -1208,7 +1209,7 @@ describe('PhoneNumber Property', () => {
       }),
     )
 
-    it.effect('returns None for null phone number', () =>
+    Vitest.it.effect('returns None for null phone number', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.phoneNumberOption)(
           nullPhoneProperty,
@@ -1218,8 +1219,8 @@ describe('PhoneNumber Property', () => {
     )
   })
 
-  describe('NotionSchema.phoneNumberWriteFromString', () => {
-    it.effect('encodes phone string to write payload', () =>
+  Vitest.describe('NotionSchema.phoneNumberWriteFromString', () => {
+    Vitest.it.effect('encodes phone string to write payload', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.phoneNumberWriteFromString)(
           '+44-20-1234-5678',
@@ -1228,7 +1229,7 @@ describe('PhoneNumber Property', () => {
       }),
     )
 
-    it.effect('roundtrip: encode and decode', () =>
+    Vitest.it.effect('roundtrip: encode and decode', () =>
       Effect.gen(function* () {
         const original = '+1-800-CALL-NOW'
         const encoded = yield* Schema.decodeUnknown(NotionSchema.phoneNumberWriteFromString)(
@@ -1245,7 +1246,7 @@ describe('PhoneNumber Property', () => {
 // Relation Property Tests
 // -----------------------------------------------------------------------------
 
-describe('Relation Property', () => {
+Vitest.describe('Relation Property', () => {
   const relationProperty = {
     id: 'relation',
     type: 'relation' as const,
@@ -1258,8 +1259,8 @@ describe('Relation Property', () => {
     relation: [{ id: 'page-1' }],
   }
 
-  describe('NotionSchema.relationIds', () => {
-    it.effect('extracts page IDs', () =>
+  Vitest.describe('NotionSchema.relationIds', () => {
+    Vitest.it.effect('extracts page IDs', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.relationIds)(relationProperty)
         expect(result).toEqual(['page-1', 'page-2'])
@@ -1267,8 +1268,8 @@ describe('Relation Property', () => {
     )
   })
 
-  describe('NotionSchema.relationSingle', () => {
-    it.effect('extracts single relation object', () =>
+  Vitest.describe('NotionSchema.relationSingle', () => {
+    Vitest.it.effect('extracts single relation object', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.relationSingle)(
           singleRelationProperty,
@@ -1277,7 +1278,7 @@ describe('Relation Property', () => {
       }),
     )
 
-    it.effect('fails for multiple relations', () =>
+    Vitest.it.effect('fails for multiple relations', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.relationSingle)(
           relationProperty,
@@ -1287,8 +1288,8 @@ describe('Relation Property', () => {
     )
   })
 
-  describe('NotionSchema.relationSingleId', () => {
-    it.effect('extracts single relation ID', () =>
+  Vitest.describe('NotionSchema.relationSingleId', () => {
+    Vitest.it.effect('extracts single relation ID', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.relationSingleId)(
           singleRelationProperty,
@@ -1297,7 +1298,7 @@ describe('Relation Property', () => {
       }),
     )
 
-    it.effect('fails for multiple relations', () =>
+    Vitest.it.effect('fails for multiple relations', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.relationSingleId)(
           relationProperty,
@@ -1307,8 +1308,8 @@ describe('Relation Property', () => {
     )
   })
 
-  describe('NotionSchema.relationWriteFromIds', () => {
-    it.effect('encodes page IDs to write payload', () =>
+  Vitest.describe('NotionSchema.relationWriteFromIds', () => {
+    Vitest.it.effect('encodes page IDs to write payload', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknown(NotionSchema.relationWriteFromIds)([
           'rel-1',
@@ -1320,7 +1321,7 @@ describe('Relation Property', () => {
       }),
     )
 
-    it.effect('roundtrip: encode and decode', () =>
+    Vitest.it.effect('roundtrip: encode and decode', () =>
       Effect.gen(function* () {
         const original = ['xyz-789', 'uvw-101']
         const encoded = yield* Schema.decodeUnknown(NotionSchema.relationWriteFromIds)(original)

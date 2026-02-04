@@ -24,6 +24,7 @@
     "@effect/platform": "0.94.2",
     "@effect/vitest": "0.27.0",
     "@overeng/utils": "workspace:*",
+    "@overeng/utils-dev": "workspace:*",
     "@types/node": "25.0.3",
     "effect": "3.19.15",
     "typescript": "5.9.3",

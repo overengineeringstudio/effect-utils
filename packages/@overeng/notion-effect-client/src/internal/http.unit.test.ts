@@ -1,15 +1,16 @@
 import type { HttpClientRequest } from '@effect/platform'
-import { describe, it } from '@effect/vitest'
 import { Effect, Option, Redacted, Schema } from 'effect'
 import { expect } from 'vitest'
+
+import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import { NOTION_API_BASE_URL, NOTION_API_VERSION, NotionConfig } from '../config.ts'
 import { NotionApiError } from '../error.ts'
 import { createTestLayer, sampleResponses } from '../test/test-utils.ts'
 import { buildRequest, get, parseRateLimitHeaders, post } from './http.ts'
 
-describe('parseRateLimitHeaders', () => {
-  it.effect('returns None when headers are missing', () =>
+Vitest.describe('parseRateLimitHeaders', () => {
+  Vitest.it.effect('returns None when headers are missing', () =>
     Effect.sync(() => {
       const headers = new Headers()
       const result = parseRateLimitHeaders(headers)
@@ -17,7 +18,7 @@ describe('parseRateLimitHeaders', () => {
     }),
   )
 
-  it.effect('parses rate limit headers correctly', () =>
+  Vitest.it.effect('parses rate limit headers correctly', () =>
     Effect.sync(() => {
       const headers = new Headers({
         'x-ratelimit-remaining': '100',
@@ -32,7 +33,7 @@ describe('parseRateLimitHeaders', () => {
     }),
   )
 
-  it.effect('handles missing retry-after header', () =>
+  Vitest.it.effect('handles missing retry-after header', () =>
     Effect.sync(() => {
       const headers = new Headers({
         'x-ratelimit-remaining': '50',
@@ -47,8 +48,8 @@ describe('parseRateLimitHeaders', () => {
   )
 })
 
-describe('buildRequest', () => {
-  it.effect('builds request with correct headers', () =>
+Vitest.describe('buildRequest', () => {
+  Vitest.it.effect('builds request with correct headers', () =>
     Effect.gen(function* () {
       const request = yield* buildRequest({
         method: 'GET',
@@ -67,7 +68,7 @@ describe('buildRequest', () => {
     ),
   )
 
-  it.effect('returns NotionApiError for JSON-encoding failures', () =>
+  Vitest.it.effect('returns NotionApiError for JSON-encoding failures', () =>
     Effect.gen(function* () {
       const body: Record<string, unknown> = {}
       body.self = body
@@ -90,7 +91,7 @@ describe('buildRequest', () => {
     ),
   )
 
-  it.effect('includes body for POST requests', () =>
+  Vitest.it.effect('includes body for POST requests', () =>
     Effect.gen(function* () {
       const body = {
         filter: { property: 'Status', select: { equals: 'Done' } },
@@ -111,13 +112,13 @@ describe('buildRequest', () => {
   )
 })
 
-describe('executeRequest', () => {
+Vitest.describe('executeRequest', () => {
   const TestSchema = Schema.Struct({
     object: Schema.Literal('database'),
     id: Schema.String,
   })
 
-  it.effect('successfully parses valid response', () =>
+  Vitest.it.effect('successfully parses valid response', () =>
     Effect.gen(function* () {
       const result = yield* get({
         path: '/databases/123',
@@ -136,7 +137,7 @@ describe('executeRequest', () => {
     ),
   )
 
-  it.effect('returns NotionApiError for 4xx responses', () =>
+  Vitest.it.effect('returns NotionApiError for 4xx responses', () =>
     Effect.gen(function* () {
       const result = yield* get({
         path: '/databases/invalid',
@@ -156,7 +157,7 @@ describe('executeRequest', () => {
     ),
   )
 
-  it.effect('returns NotionApiError for 5xx responses', () =>
+  Vitest.it.effect('returns NotionApiError for 5xx responses', () =>
     Effect.gen(function* () {
       const result = yield* get({
         path: '/databases/123',
@@ -176,7 +177,7 @@ describe('executeRequest', () => {
     ),
   )
 
-  it.effect('returns NotionApiError for invalid response schema', () =>
+  Vitest.it.effect('returns NotionApiError for invalid response schema', () =>
     Effect.gen(function* () {
       const result = yield* get({
         path: '/databases/123',
@@ -196,7 +197,7 @@ describe('executeRequest', () => {
     ),
   )
 
-  it.effect('includes request metadata in error', () =>
+  Vitest.it.effect('includes request metadata in error', () =>
     Effect.gen(function* () {
       const result = yield* get({
         path: '/databases/123',
@@ -217,7 +218,7 @@ describe('executeRequest', () => {
     ),
   )
 
-  it.effect('captures x-request-id from error response', () =>
+  Vitest.it.effect('captures x-request-id from error response', () =>
     Effect.gen(function* () {
       const result = yield* get({
         path: '/databases/123',
@@ -237,7 +238,7 @@ describe('executeRequest', () => {
     ),
   )
 
-  it.effect('captures retry-after for rate limited responses', () =>
+  Vitest.it.effect('captures retry-after for rate limited responses', () =>
     Effect.gen(function* () {
       const result = yield* get({
         path: '/databases/123',
@@ -261,7 +262,7 @@ describe('executeRequest', () => {
   )
 })
 
-describe('post', () => {
+Vitest.describe('post', () => {
   const QueryResponseSchema = Schema.Struct({
     object: Schema.Literal('list'),
     results: Schema.Array(
@@ -274,7 +275,7 @@ describe('post', () => {
     next_cursor: Schema.NullOr(Schema.String),
   })
 
-  it.effect('sends body with POST request', () =>
+  Vitest.it.effect('sends body with POST request', () =>
     Effect.gen(function* () {
       let capturedRequest: HttpClientRequest.HttpClientRequest | undefined
 
@@ -301,8 +302,8 @@ describe('post', () => {
   )
 })
 
-describe('NotionApiError.isRetryable', () => {
-  it.effect('rate_limited is retryable', () =>
+Vitest.describe('NotionApiError.isRetryable', () => {
+  Vitest.it.effect('rate_limited is retryable', () =>
     Effect.sync(() => {
       const error = new NotionApiError({
         status: 429,
@@ -317,7 +318,7 @@ describe('NotionApiError.isRetryable', () => {
     }),
   )
 
-  it.effect('internal_server_error is retryable', () =>
+  Vitest.it.effect('internal_server_error is retryable', () =>
     Effect.sync(() => {
       const error = new NotionApiError({
         status: 500,
@@ -332,7 +333,7 @@ describe('NotionApiError.isRetryable', () => {
     }),
   )
 
-  it.effect('service_unavailable is retryable', () =>
+  Vitest.it.effect('service_unavailable is retryable', () =>
     Effect.sync(() => {
       const error = new NotionApiError({
         status: 503,
@@ -347,7 +348,7 @@ describe('NotionApiError.isRetryable', () => {
     }),
   )
 
-  it.effect('invalid_request is not retryable', () =>
+  Vitest.it.effect('invalid_request is not retryable', () =>
     Effect.sync(() => {
       const error = new NotionApiError({
         status: 400,
@@ -362,7 +363,7 @@ describe('NotionApiError.isRetryable', () => {
     }),
   )
 
-  it.effect('object_not_found is not retryable', () =>
+  Vitest.it.effect('object_not_found is not retryable', () =>
     Effect.sync(() => {
       const error = new NotionApiError({
         status: 404,

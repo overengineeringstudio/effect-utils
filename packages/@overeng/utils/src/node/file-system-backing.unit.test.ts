@@ -3,10 +3,11 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 
 import { FileSystem, Path } from '@effect/platform'
-import { describe, it } from '@effect/vitest'
 import { Duration, Effect, Layer, Schema } from 'effect'
 import { DistributedSemaphoreBacking } from 'effect-distributed-lock'
 import { expect } from 'vitest'
+
+import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import * as FileSystemBacking from './file-system-backing.ts'
 
@@ -87,9 +88,9 @@ const makeNodeFsLayer = (): Layer.Layer<FileSystem.FileSystem | Path.Path> => {
 
 const TestLayer = makeNodeFsLayer()
 
-describe('FileSystemBacking', () => {
-  describe('tryAcquire', () => {
-    it.effect('acquires permits when available', () =>
+Vitest.describe('FileSystemBacking', () => {
+  Vitest.describe('tryAcquire', () => {
+    Vitest.it.effect('acquires permits when available', () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
         const tempDir = yield* fs.makeTempDirectory()
@@ -113,7 +114,7 @@ describe('FileSystemBacking', () => {
       }).pipe(Effect.provide(TestLayer), Effect.scoped),
     )
 
-    it.effect('respects permit limit', () =>
+    Vitest.it.effect('respects permit limit', () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
         const tempDir = yield* fs.makeTempDirectory()
@@ -145,7 +146,7 @@ describe('FileSystemBacking', () => {
       }).pipe(Effect.provide(TestLayer), Effect.scoped),
     )
 
-    it.effect('multiple holders can acquire permits up to limit', () =>
+    Vitest.it.effect('multiple holders can acquire permits up to limit', () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
         const tempDir = yield* fs.makeTempDirectory()
@@ -195,7 +196,7 @@ describe('FileSystemBacking', () => {
       }).pipe(Effect.provide(TestLayer), Effect.scoped),
     )
 
-    it.effect('same holder can re-acquire (update permits)', () =>
+    Vitest.it.effect('same holder can re-acquire (update permits)', () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
         const tempDir = yield* fs.makeTempDirectory()
@@ -226,7 +227,7 @@ describe('FileSystemBacking', () => {
       }).pipe(Effect.provide(TestLayer), Effect.scoped),
     )
 
-    it.effect('different keys are independent', () =>
+    Vitest.it.effect('different keys are independent', () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
         const tempDir = yield* fs.makeTempDirectory()
@@ -254,8 +255,8 @@ describe('FileSystemBacking', () => {
     )
   })
 
-  describe('release', () => {
-    it.effect('releases held permits', () =>
+  Vitest.describe('release', () => {
+    Vitest.it.effect('releases held permits', () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
         const tempDir = yield* fs.makeTempDirectory()
@@ -283,7 +284,7 @@ describe('FileSystemBacking', () => {
       }).pipe(Effect.provide(TestLayer), Effect.scoped),
     )
 
-    it.effect('partial release keeps remaining permits', () =>
+    Vitest.it.effect('partial release keeps remaining permits', () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
         const tempDir = yield* fs.makeTempDirectory()
@@ -327,7 +328,7 @@ describe('FileSystemBacking', () => {
       }).pipe(Effect.provide(TestLayer), Effect.scoped),
     )
 
-    it.effect('releasing more than held returns actual released count', () =>
+    Vitest.it.effect('releasing more than held returns actual released count', () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
         const tempDir = yield* fs.makeTempDirectory()
@@ -347,7 +348,7 @@ describe('FileSystemBacking', () => {
       }).pipe(Effect.provide(TestLayer), Effect.scoped),
     )
 
-    it.effect('releasing from nonexistent holder returns 0', () =>
+    Vitest.it.effect('releasing from nonexistent holder returns 0', () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
         const tempDir = yield* fs.makeTempDirectory()
@@ -365,8 +366,8 @@ describe('FileSystemBacking', () => {
     )
   })
 
-  describe('refresh', () => {
-    it.effect('refreshes TTL for held permits', () =>
+  Vitest.describe('refresh', () => {
+    Vitest.it.effect('refreshes TTL for held permits', () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
         const tempDir = yield* fs.makeTempDirectory()
@@ -391,7 +392,7 @@ describe('FileSystemBacking', () => {
       }).pipe(Effect.provide(TestLayer), Effect.scoped),
     )
 
-    it.effect('returns false when permits expired', () =>
+    Vitest.it.effect('returns false when permits expired', () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
         const tempDir = yield* fs.makeTempDirectory()
@@ -415,8 +416,8 @@ describe('FileSystemBacking', () => {
     )
   })
 
-  describe('getCount', () => {
-    it.effect('returns count of held permits', () =>
+  Vitest.describe('getCount', () => {
+    Vitest.it.effect('returns count of held permits', () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
         const tempDir = yield* fs.makeTempDirectory()
@@ -435,7 +436,7 @@ describe('FileSystemBacking', () => {
       }).pipe(Effect.provide(TestLayer), Effect.scoped),
     )
 
-    it.effect('excludes expired permits from count', () =>
+    Vitest.it.effect('excludes expired permits from count', () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
         const tempDir = yield* fs.makeTempDirectory()
@@ -456,7 +457,7 @@ describe('FileSystemBacking', () => {
       }).pipe(Effect.provide(TestLayer), Effect.scoped),
     )
 
-    it.effect('counts permits from multiple holders', () =>
+    Vitest.it.effect('counts permits from multiple holders', () =>
       Effect.gen(function* () {
         const fsService = yield* FileSystem.FileSystem
         const tempDir = yield* fsService.makeTempDirectory()
@@ -478,8 +479,8 @@ describe('FileSystemBacking', () => {
     )
   })
 
-  describe('file structure', () => {
-    it.effect('creates separate lock files per holder', () =>
+  Vitest.describe('file structure', () => {
+    Vitest.it.effect('creates separate lock files per holder', () =>
       Effect.gen(function* () {
         const fsService = yield* FileSystem.FileSystem
         const tempDir = yield* fsService.makeTempDirectory()
@@ -514,7 +515,7 @@ describe('FileSystemBacking', () => {
       }).pipe(Effect.provide(TestLayer), Effect.scoped),
     )
 
-    it.effect('removes lock file on full release', () =>
+    Vitest.it.effect('removes lock file on full release', () =>
       Effect.gen(function* () {
         const fsService = yield* FileSystem.FileSystem
         const tempDir = yield* fsService.makeTempDirectory()
@@ -541,8 +542,8 @@ describe('FileSystemBacking', () => {
     )
   })
 
-  describe('forceRevoke', () => {
-    it.effect('revokes permits from a holder and returns permit count', () =>
+  Vitest.describe('forceRevoke', () => {
+    Vitest.it.effect('revokes permits from a holder and returns permit count', () =>
       Effect.gen(function* () {
         const fsService = yield* FileSystem.FileSystem
         const tempDir = yield* fsService.makeTempDirectory()
@@ -574,7 +575,7 @@ describe('FileSystemBacking', () => {
       }).pipe(Effect.provide(TestLayer), Effect.scoped),
     )
 
-    it.effect('fails with HolderNotFoundError for non-existent holder', () =>
+    Vitest.it.effect('fails with HolderNotFoundError for non-existent holder', () =>
       Effect.gen(function* () {
         const fsService = yield* FileSystem.FileSystem
         const tempDir = yield* fsService.makeTempDirectory()
@@ -594,7 +595,7 @@ describe('FileSystemBacking', () => {
       }).pipe(Effect.provide(TestLayer), Effect.scoped),
     )
 
-    it.effect('allows another holder to acquire after force revoke', () =>
+    Vitest.it.effect('allows another holder to acquire after force revoke', () =>
       Effect.gen(function* () {
         const fsService = yield* FileSystem.FileSystem
         const tempDir = yield* fsService.makeTempDirectory()
@@ -639,7 +640,7 @@ describe('FileSystemBacking', () => {
       }).pipe(Effect.provide(TestLayer), Effect.scoped),
     )
 
-    it.effect('causes victim holder refresh to fail', () =>
+    Vitest.it.effect('causes victim holder refresh to fail', () =>
       Effect.gen(function* () {
         const fsService = yield* FileSystem.FileSystem
         const tempDir = yield* fsService.makeTempDirectory()
@@ -674,8 +675,8 @@ describe('FileSystemBacking', () => {
     )
   })
 
-  describe('listHolders', () => {
-    it.effect('returns empty array when no holders', () =>
+  Vitest.describe('listHolders', () => {
+    Vitest.it.effect('returns empty array when no holders', () =>
       Effect.gen(function* () {
         const fsService = yield* FileSystem.FileSystem
         const tempDir = yield* fsService.makeTempDirectory()
@@ -690,7 +691,7 @@ describe('FileSystemBacking', () => {
       }).pipe(Effect.provide(TestLayer), Effect.scoped),
     )
 
-    it.effect('returns all active holders with their info', () =>
+    Vitest.it.effect('returns all active holders with their info', () =>
       Effect.gen(function* () {
         const fsService = yield* FileSystem.FileSystem
         const tempDir = yield* fsService.makeTempDirectory()
@@ -725,7 +726,7 @@ describe('FileSystemBacking', () => {
       }).pipe(Effect.provide(TestLayer), Effect.scoped),
     )
 
-    it.effect('excludes expired holders', () =>
+    Vitest.it.effect('excludes expired holders', () =>
       Effect.gen(function* () {
         const fsService = yield* FileSystem.FileSystem
         const tempDir = yield* fsService.makeTempDirectory()
@@ -763,8 +764,8 @@ describe('FileSystemBacking', () => {
     )
   })
 
-  describe('forceRevokeAll', () => {
-    it.effect('revokes all holders and returns their info', () =>
+  Vitest.describe('forceRevokeAll', () => {
+    Vitest.it.effect('revokes all holders and returns their info', () =>
       Effect.gen(function* () {
         const fsService = yield* FileSystem.FileSystem
         const tempDir = yield* fsService.makeTempDirectory()
@@ -800,7 +801,7 @@ describe('FileSystemBacking', () => {
       }).pipe(Effect.provide(TestLayer), Effect.scoped),
     )
 
-    it.effect('returns empty array when no holders', () =>
+    Vitest.it.effect('returns empty array when no holders', () =>
       Effect.gen(function* () {
         const fsService = yield* FileSystem.FileSystem
         const tempDir = yield* fsService.makeTempDirectory()

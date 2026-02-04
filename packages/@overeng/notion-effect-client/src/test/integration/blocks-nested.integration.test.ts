@@ -1,13 +1,14 @@
-import { describe, it } from '@effect/vitest'
 import { Effect, Stream } from 'effect'
 import { expect } from 'vitest'
+
+import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import { NotionBlocks } from '../../blocks.ts'
 import { IntegrationTestLayer, SKIP_INTEGRATION, TEST_IDS } from './setup.ts'
 
-describe.skipIf(SKIP_INTEGRATION)('NotionBlocks recursive fetching (integration)', () => {
-  describe('retrieveAllNested', () => {
-    it.effect(
+Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionBlocks recursive fetching (integration)', () => {
+  Vitest.describe('retrieveAllNested', () => {
+    Vitest.it.effect(
       'fetches all nested blocks as flat stream with depth info',
       () =>
         Effect.gen(function* () {
@@ -35,7 +36,7 @@ describe.skipIf(SKIP_INTEGRATION)('NotionBlocks recursive fetching (integration)
       { timeout: 60000 },
     )
 
-    it.effect(
+    Vitest.it.effect(
       'respects maxDepth option',
       () =>
         Effect.gen(function* () {
@@ -54,7 +55,7 @@ describe.skipIf(SKIP_INTEGRATION)('NotionBlocks recursive fetching (integration)
       { timeout: 30000 },
     )
 
-    it.effect(
+    Vitest.it.effect(
       'includes parentId for nested blocks',
       () =>
         Effect.gen(function* () {
@@ -81,8 +82,8 @@ describe.skipIf(SKIP_INTEGRATION)('NotionBlocks recursive fetching (integration)
     )
   })
 
-  describe('retrieveAsTree', () => {
-    it.effect(
+  Vitest.describe('retrieveAsTree', () => {
+    Vitest.it.effect(
       'fetches all nested blocks as tree structure',
       () =>
         Effect.gen(function* () {
@@ -103,7 +104,7 @@ describe.skipIf(SKIP_INTEGRATION)('NotionBlocks recursive fetching (integration)
       { timeout: 60000 },
     )
 
-    it.effect(
+    Vitest.it.effect(
       'respects maxDepth for tree',
       () =>
         Effect.gen(function* () {
@@ -120,7 +121,7 @@ describe.skipIf(SKIP_INTEGRATION)('NotionBlocks recursive fetching (integration)
       { timeout: 30000 },
     )
 
-    it.effect(
+    Vitest.it.effect(
       'includes nested children in tree nodes',
       () =>
         Effect.gen(function* () {

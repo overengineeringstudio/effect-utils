@@ -1,6 +1,7 @@
-import { describe, it } from '@effect/vitest'
 import { Chunk, Effect, Exit, Layer, Logger, LogLevel, Ref, Runtime } from 'effect'
 import { expect } from 'vitest'
+
+import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import { addTracedFinalizer, withScopeDebug, withTracedScope } from './ScopeDebugger.ts'
 
@@ -24,9 +25,9 @@ const makeTestLogger = Effect.fnUntraced(function* () {
   return { logger, getLogs, loggerLayer } as const
 })
 
-describe('ScopeDebugger', () => {
-  describe('addTracedFinalizer', () => {
-    it.effect(
+Vitest.describe('ScopeDebugger', () => {
+  Vitest.describe('addTracedFinalizer', () => {
+    Vitest.it.effect(
       'logs finalizer registration and execution when debugging enabled',
       Effect.fnUntraced(function* () {
         const { getLogs, loggerLayer } = yield* makeTestLogger()
@@ -49,7 +50,7 @@ describe('ScopeDebugger', () => {
       }),
     )
 
-    it.effect(
+    Vitest.it.effect(
       'does not log when debugging disabled',
       Effect.fnUntraced(function* () {
         const { getLogs, loggerLayer } = yield* makeTestLogger()
@@ -71,7 +72,7 @@ describe('ScopeDebugger', () => {
       }),
     )
 
-    it.effect(
+    Vitest.it.effect(
       'executes finalizers in reverse registration order',
       Effect.fnUntraced(function* () {
         const order = yield* Ref.make<string[]>([])
@@ -98,7 +99,7 @@ describe('ScopeDebugger', () => {
       }),
     )
 
-    it.effect(
+    Vitest.it.effect(
       'does not swallow finalizer failures when debugging enabled',
       Effect.fnUntraced(function* () {
         const exit = yield* withScopeDebug(
@@ -113,8 +114,8 @@ describe('ScopeDebugger', () => {
     )
   })
 
-  describe('withTracedScope', () => {
-    it.effect(
+  Vitest.describe('withTracedScope', () => {
+    Vitest.it.effect(
       'logs scope lifecycle',
       Effect.fnUntraced(function* () {
         const { getLogs, loggerLayer } = yield* makeTestLogger()

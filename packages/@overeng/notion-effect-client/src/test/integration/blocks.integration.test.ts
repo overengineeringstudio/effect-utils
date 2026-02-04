@@ -1,14 +1,15 @@
-import { describe, it } from '@effect/vitest'
 import { Effect, Stream } from 'effect'
 import { expect } from 'vitest'
+
+import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import { NotionBlocks } from '../../blocks.ts'
 import { NotionPages } from '../../pages.ts'
 import { IntegrationTestLayer, SKIP_INTEGRATION, SKIP_MUTATIONS, TEST_IDS } from './setup.ts'
 
-describe.skipIf(SKIP_INTEGRATION)('NotionBlocks (integration)', () => {
-  describe('retrieveChildren', () => {
-    it.effect('fetches children of a page', () =>
+Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionBlocks (integration)', () => {
+  Vitest.describe('retrieveChildren', () => {
+    Vitest.it.effect('fetches children of a page', () =>
       Effect.gen(function* () {
         const result = yield* NotionBlocks.retrieveChildren({
           blockId: TEST_IDS.pageWithBlocks,
@@ -20,7 +21,7 @@ describe.skipIf(SKIP_INTEGRATION)('NotionBlocks (integration)', () => {
       }).pipe(Effect.provide(IntegrationTestLayer)),
     )
 
-    it.effect('fetches with page size limit', () =>
+    Vitest.it.effect('fetches with page size limit', () =>
       Effect.gen(function* () {
         const result = yield* NotionBlocks.retrieveChildren({
           blockId: TEST_IDS.pageWithBlocks,
@@ -32,8 +33,8 @@ describe.skipIf(SKIP_INTEGRATION)('NotionBlocks (integration)', () => {
     )
   })
 
-  describe('retrieveChildrenStream', () => {
-    it.effect(
+  Vitest.describe('retrieveChildrenStream', () => {
+    Vitest.it.effect(
       'streams all children',
       () =>
         Effect.gen(function* () {
@@ -54,8 +55,8 @@ describe.skipIf(SKIP_INTEGRATION)('NotionBlocks (integration)', () => {
     )
   })
 
-  describe('retrieve', () => {
-    it.effect('fetches a specific block by ID', () =>
+  Vitest.describe('retrieve', () => {
+    Vitest.it.effect('fetches a specific block by ID', () =>
       Effect.gen(function* () {
         // First get children to find a block ID
         const children = yield* NotionBlocks.retrieveChildren({
@@ -78,8 +79,8 @@ describe.skipIf(SKIP_INTEGRATION)('NotionBlocks (integration)', () => {
     )
   })
 
-  describe.skipIf(SKIP_MUTATIONS)('append', () => {
-    it.effect(
+  Vitest.describe.skipIf(SKIP_MUTATIONS)('append', () => {
+    Vitest.it.effect(
       'appends a block to a page',
       () =>
         Effect.gen(function* () {
@@ -123,8 +124,8 @@ describe.skipIf(SKIP_INTEGRATION)('NotionBlocks (integration)', () => {
     )
   })
 
-  describe.skipIf(SKIP_MUTATIONS)('update', () => {
-    it.effect(
+  Vitest.describe.skipIf(SKIP_MUTATIONS)('update', () => {
+    Vitest.it.effect(
       'updates a block',
       () =>
         Effect.gen(function* () {
@@ -173,8 +174,8 @@ describe.skipIf(SKIP_INTEGRATION)('NotionBlocks (integration)', () => {
     )
   })
 
-  describe.skipIf(SKIP_MUTATIONS)('delete', () => {
-    it.effect(
+  Vitest.describe.skipIf(SKIP_MUTATIONS)('delete', () => {
+    Vitest.it.effect(
       'deletes a block',
       () =>
         Effect.gen(function* () {

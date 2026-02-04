@@ -4,9 +4,10 @@ import nodePath from 'node:path'
 
 import { Command, FileSystem, Path } from '@effect/platform'
 import { NodeContext } from '@effect/platform-node'
-import { describe, it } from '@effect/vitest'
 import { Chunk, Effect, Schema, Stream } from 'effect'
 import { expect } from 'vitest'
+
+import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 /** Schema for parsing generated package.json in tests */
 const GeneratedPackageJson = Schema.Struct({
@@ -96,7 +97,7 @@ const runGenie = Effect.fnUntraced(function* (env: TestEnv, args: ReadonlyArray<
   }
 }, Effect.scoped)
 
-describe('genie cli', () => {
+Vitest.describe('genie cli', () => {
   const withTestEnv = Effect.fnUntraced(function* <A, E, R>(
     fn: (env: TestEnv) => Effect.Effect<A, E, R>,
   ) {
@@ -108,7 +109,7 @@ describe('genie cli', () => {
     }
   })
 
-  it.effect(
+  Vitest.it.effect(
     'reports import errors with clear error message',
     Effect.fnUntraced(
       function* () {
@@ -157,7 +158,7 @@ export default pkg.root({ name: 'genie-cli-test' })
     ),
   )
 
-  it.effect(
+  Vitest.it.effect(
     'skips symlinked directories that resolve inside the root',
     Effect.fnUntraced(
       function* () {
@@ -194,7 +195,7 @@ export default pkg.root({ name: 'genie-cli-test' })
     ),
   )
 
-  it.effect(
+  Vitest.it.effect(
     're-validates on TDZ errors to identify root causes',
     Effect.fnUntraced(
       function* () {
@@ -278,7 +279,7 @@ export default {
     ),
   )
 
-  it.effect(
+  Vitest.it.effect(
     'handles multiple independent root causes',
     Effect.fnUntraced(
       function* () {
@@ -326,7 +327,7 @@ export default { data: {}, stringify: () => '{}' }
     ),
   )
 
-  it.effect(
+  Vitest.it.effect(
     'normalizes symlink cwd to realpath for correct relative path computation',
     Effect.fnUntraced(
       function* () {
@@ -480,7 +481,7 @@ export default {
     ),
   )
 
-  it.effect(
+  Vitest.it.effect(
     'computes locations relative to the nearest repo root (not parent cwd)',
     Effect.fnUntraced(
       function* () {

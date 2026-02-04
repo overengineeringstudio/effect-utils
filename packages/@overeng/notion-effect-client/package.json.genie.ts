@@ -32,6 +32,7 @@ export default packageJson({
       '@effect/platform',
       '@effect/vitest',
       '@overeng/utils',
+      '@overeng/utils-dev',
       '@types/node',
       'effect',
       'vitest',

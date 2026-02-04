@@ -41,6 +41,7 @@ export default packageJson({
     ...tuiReactPkg.data.peerDependencies,
     ...catalog.pick(
       '@overeng/utils',
+      '@overeng/utils-dev',
       '@overeng/tui-react',
       '@effect/cli',
       '@effect/platform',
