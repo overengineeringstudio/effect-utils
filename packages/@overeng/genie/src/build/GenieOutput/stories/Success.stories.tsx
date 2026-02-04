@@ -12,7 +12,16 @@ import { GenieApp } from '../../app.ts'
 import { GenieView } from '../../view.tsx'
 import * as fixtures from './_fixtures.ts'
 
-const ALL_TABS: OutputTab[] = ['tty', 'ci', 'ci-plain', 'log', 'json', 'ndjson']
+const ALL_TABS: OutputTab[] = [
+  'tty',
+  'alt-screen',
+  'ci',
+  'ci-plain',
+  'pipe',
+  'log',
+  'json',
+  'ndjson',
+]
 
 type StoryArgs = {
   height: number
@@ -61,11 +70,72 @@ type Story = StoryObj<StoryArgs>
 export const MixedResults: Story = {
   render: (args) => {
     const stateConfig = useMemo(
-      () => ({
-        mode: args.mode,
-      }),
+      () =>
+        fixtures.createState({
+          mode: args.mode,
+          files: [
+            {
+              path: '/workspace/packages/foo/package.json',
+              relativePath: 'packages/foo/package.json',
+              status: 'created',
+              linesAdded: 42,
+            },
+            {
+              path: '/workspace/packages/foo/tsconfig.json',
+              relativePath: 'packages/foo/tsconfig.json',
+              status: 'updated',
+              linesAdded: 5,
+              linesRemoved: 3,
+            },
+            {
+              path: '/workspace/packages/bar/package.json',
+              relativePath: 'packages/bar/package.json',
+              status: 'unchanged',
+            },
+            {
+              path: '/workspace/.github/workflows/ci.yml',
+              relativePath: '.github/workflows/ci.yml',
+              status: 'updated',
+              linesAdded: 12,
+              linesRemoved: 8,
+            },
+            {
+              path: '/workspace/tsconfig.base.json',
+              relativePath: 'tsconfig.base.json',
+              status: 'unchanged',
+            },
+          ],
+          summary: { created: 1, updated: 2, unchanged: 2, skipped: 0, failed: 0 },
+        }),
       [args.mode],
     )
+
+    const timeline = useMemo(
+      () =>
+        fixtures.createTimeline({
+          mode: args.mode,
+          files: fixtures.sampleFiles,
+          results: [
+            { path: fixtures.sampleFiles[0]!.path, status: 'created', linesAdded: 42 },
+            {
+              path: fixtures.sampleFiles[1]!.path,
+              status: 'updated',
+              linesAdded: 5,
+              linesRemoved: 3,
+            },
+            { path: fixtures.sampleFiles[2]!.path, status: 'unchanged' },
+            {
+              path: fixtures.sampleFiles[3]!.path,
+              status: 'updated',
+              linesAdded: 12,
+              linesRemoved: 8,
+            },
+            { path: fixtures.sampleFiles[4]!.path, status: 'unchanged' },
+          ],
+        }),
+      [args.mode],
+    )
+
     return (
       <TuiStoryPreview
         View={GenieView}
@@ -73,37 +143,13 @@ export const MixedResults: Story = {
         initialState={
           args.interactive
             ? fixtures.createState({ phase: 'discovering', mode: args.mode })
-            : { ...fixtures.createMixedResultsState(), mode: args.mode }
+            : stateConfig
         }
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_TABS}
-        {...(args.interactive
-          ? {
-              timeline: fixtures.createTimeline({
-                mode: stateConfig.mode,
-                files: fixtures.sampleFiles,
-                results: [
-                  { path: fixtures.sampleFiles[0]!.path, status: 'created', linesAdded: 42 },
-                  {
-                    path: fixtures.sampleFiles[1]!.path,
-                    status: 'updated',
-                    linesAdded: 5,
-                    linesRemoved: 3,
-                  },
-                  { path: fixtures.sampleFiles[2]!.path, status: 'unchanged' },
-                  {
-                    path: fixtures.sampleFiles[3]!.path,
-                    status: 'updated',
-                    linesAdded: 12,
-                    linesRemoved: 8,
-                  },
-                  { path: fixtures.sampleFiles[4]!.path, status: 'unchanged' },
-                ],
-              }),
-            }
-          : {})}
+        {...(args.interactive ? { timeline } : {})}
       />
     )
   },
@@ -113,11 +159,28 @@ export const MixedResults: Story = {
 export const AllUnchanged: Story = {
   render: (args) => {
     const stateConfig = useMemo(
-      () => ({
-        mode: args.mode,
-      }),
+      () =>
+        fixtures.createState({
+          mode: args.mode,
+          files: fixtures.sampleFiles.map((f) => ({ ...f, status: 'unchanged' as const })),
+          summary: { created: 0, updated: 0, unchanged: 5, skipped: 0, failed: 0 },
+        }),
       [args.mode],
     )
+
+    const timeline = useMemo(
+      () =>
+        fixtures.createTimeline({
+          mode: args.mode,
+          files: fixtures.sampleFiles,
+          results: fixtures.sampleFiles.map((f) => ({
+            path: f.path,
+            status: 'unchanged' as const,
+          })),
+        }),
+      [args.mode],
+    )
+
     return (
       <TuiStoryPreview
         View={GenieView}
@@ -125,24 +188,13 @@ export const AllUnchanged: Story = {
         initialState={
           args.interactive
             ? fixtures.createState({ phase: 'discovering', mode: args.mode })
-            : { ...fixtures.createAllUnchangedState(), mode: args.mode }
+            : stateConfig
         }
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_TABS}
-        {...(args.interactive
-          ? {
-              timeline: fixtures.createTimeline({
-                mode: stateConfig.mode,
-                files: fixtures.sampleFiles,
-                results: fixtures.sampleFiles.map((f) => ({
-                  path: f.path,
-                  status: 'unchanged' as const,
-                })),
-              }),
-            }
-          : {})}
+        {...(args.interactive ? { timeline } : {})}
       />
     )
   },
@@ -154,12 +206,60 @@ export const DryRun: Story = {
     mode: 'dry-run',
   },
   render: (args) => {
+    const dryRunFiles = [
+      { path: '/workspace/packages/foo/package.json', relativePath: 'packages/foo/package.json' },
+      { path: '/workspace/packages/foo/tsconfig.json', relativePath: 'packages/foo/tsconfig.json' },
+      { path: '/workspace/packages/bar/package.json', relativePath: 'packages/bar/package.json' },
+    ]
+
     const stateConfig = useMemo(
-      () => ({
-        mode: args.mode,
-      }),
+      () =>
+        fixtures.createState({
+          mode: args.mode,
+          files: [
+            {
+              path: '/workspace/packages/foo/package.json',
+              relativePath: 'packages/foo/package.json',
+              status: 'created',
+              linesAdded: 35,
+            },
+            {
+              path: '/workspace/packages/foo/tsconfig.json',
+              relativePath: 'packages/foo/tsconfig.json',
+              status: 'updated',
+              linesAdded: 8,
+              linesRemoved: 3,
+            },
+            {
+              path: '/workspace/packages/bar/package.json',
+              relativePath: 'packages/bar/package.json',
+              status: 'unchanged',
+            },
+          ],
+          summary: { created: 1, updated: 1, unchanged: 1, skipped: 0, failed: 0 },
+        }),
       [args.mode],
     )
+
+    const timeline = useMemo(
+      () =>
+        fixtures.createTimeline({
+          mode: args.mode,
+          files: dryRunFiles,
+          results: [
+            { path: '/workspace/packages/foo/package.json', status: 'created', linesAdded: 35 },
+            {
+              path: '/workspace/packages/foo/tsconfig.json',
+              status: 'updated',
+              linesAdded: 8,
+              linesRemoved: 3,
+            },
+            { path: '/workspace/packages/bar/package.json', status: 'unchanged' },
+          ],
+        }),
+      [args.mode],
+    )
+
     return (
       <TuiStoryPreview
         View={GenieView}
@@ -167,47 +267,13 @@ export const DryRun: Story = {
         initialState={
           args.interactive
             ? fixtures.createState({ phase: 'discovering', mode: args.mode })
-            : { ...fixtures.createDryRunState(), mode: args.mode }
+            : stateConfig
         }
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_TABS}
-        {...(args.interactive
-          ? {
-              timeline: fixtures.createTimeline({
-                mode: stateConfig.mode,
-                files: [
-                  {
-                    path: '/workspace/packages/foo/package.json',
-                    relativePath: 'packages/foo/package.json',
-                  },
-                  {
-                    path: '/workspace/packages/foo/tsconfig.json',
-                    relativePath: 'packages/foo/tsconfig.json',
-                  },
-                  {
-                    path: '/workspace/packages/bar/package.json',
-                    relativePath: 'packages/bar/package.json',
-                  },
-                ],
-                results: [
-                  {
-                    path: '/workspace/packages/foo/package.json',
-                    status: 'created',
-                    linesAdded: 35,
-                  },
-                  {
-                    path: '/workspace/packages/foo/tsconfig.json',
-                    status: 'updated',
-                    linesAdded: 8,
-                    linesRemoved: 3,
-                  },
-                  { path: '/workspace/packages/bar/package.json', status: 'unchanged' },
-                ],
-              }),
-            }
-          : {})}
+        {...(args.interactive ? { timeline } : {})}
       />
     )
   },
@@ -220,11 +286,28 @@ export const CheckModeSuccess: Story = {
   },
   render: (args) => {
     const stateConfig = useMemo(
-      () => ({
-        mode: args.mode,
-      }),
+      () =>
+        fixtures.createState({
+          mode: args.mode,
+          files: fixtures.sampleFiles.map((f) => ({ ...f, status: 'unchanged' as const })),
+          summary: { created: 0, updated: 0, unchanged: 5, skipped: 0, failed: 0 },
+        }),
       [args.mode],
     )
+
+    const timeline = useMemo(
+      () =>
+        fixtures.createTimeline({
+          mode: args.mode,
+          files: fixtures.sampleFiles,
+          results: fixtures.sampleFiles.map((f) => ({
+            path: f.path,
+            status: 'unchanged' as const,
+          })),
+        }),
+      [args.mode],
+    )
+
     return (
       <TuiStoryPreview
         View={GenieView}
@@ -232,24 +315,13 @@ export const CheckModeSuccess: Story = {
         initialState={
           args.interactive
             ? fixtures.createState({ phase: 'discovering', mode: args.mode })
-            : { ...fixtures.createCheckModeState(), mode: args.mode }
+            : stateConfig
         }
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_TABS}
-        {...(args.interactive
-          ? {
-              timeline: fixtures.createTimeline({
-                mode: stateConfig.mode,
-                files: fixtures.sampleFiles,
-                results: fixtures.sampleFiles.map((f) => ({
-                  path: f.path,
-                  status: 'unchanged' as const,
-                })),
-              }),
-            }
-          : {})}
+        {...(args.interactive ? { timeline } : {})}
       />
     )
   },

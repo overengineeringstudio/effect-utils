@@ -3,7 +3,7 @@
  */
 
 import type { Meta, StoryObj } from '@storybook/react'
-import React from 'react'
+import React, { useMemo } from 'react'
 
 import type { OutputTab } from '@overeng/tui-react/storybook'
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
@@ -25,6 +25,8 @@ const ALL_TABS: OutputTab[] = [
 
 type StoryArgs = {
   height: number
+  interactive: boolean
+  playbackSpeed: number
 }
 
 export default {
@@ -35,11 +37,22 @@ export default {
   },
   args: {
     height: 400,
+    interactive: false,
+    playbackSpeed: 1,
   },
   argTypes: {
     height: {
       description: 'Terminal height in pixels',
       control: { type: 'range', min: 200, max: 600, step: 50 },
+    },
+    interactive: {
+      description: 'Enable animated timeline playback',
+      control: { type: 'boolean' },
+    },
+    playbackSpeed: {
+      description: 'Playback speed multiplier',
+      control: { type: 'range', min: 0.5, max: 3, step: 0.5 },
+      if: { arg: 'interactive' },
     },
   },
 } satisfies Meta
@@ -48,26 +61,38 @@ type Story = StoryObj<StoryArgs>
 
 /** Warning: Worktree for pinned ref not available */
 export const WarningWorktreeNotAvailable: Story = {
-  render: (args) => (
-    <TuiStoryPreview
-      View={PinView}
-      app={PinApp}
-      initialState={fixtures.createWarningWorktreeNotAvailable()}
-      height={args.height}
-      tabs={ALL_TABS}
-    />
-  ),
+  render: (args) => {
+    const finalState = useMemo(() => fixtures.createWarningWorktreeNotAvailable(), [])
+    return (
+      <TuiStoryPreview
+        View={PinView}
+        app={PinApp}
+        initialState={args.interactive ? { _tag: 'Idle' } : finalState}
+        height={args.height}
+        autoRun={args.interactive}
+        playbackSpeed={args.playbackSpeed}
+        tabs={ALL_TABS}
+        {...(args.interactive ? { timeline: fixtures.createTimeline(finalState) } : {})}
+      />
+    )
+  },
 }
 
 /** Warning: Member was removed from config */
 export const WarningMemberRemovedFromConfig: Story = {
-  render: (args) => (
-    <TuiStoryPreview
-      View={PinView}
-      app={PinApp}
-      initialState={fixtures.createWarningMemberRemovedFromConfig()}
-      height={args.height}
-      tabs={ALL_TABS}
-    />
-  ),
+  render: (args) => {
+    const finalState = useMemo(() => fixtures.createWarningMemberRemovedFromConfig(), [])
+    return (
+      <TuiStoryPreview
+        View={PinView}
+        app={PinApp}
+        initialState={args.interactive ? { _tag: 'Idle' } : finalState}
+        height={args.height}
+        autoRun={args.interactive}
+        playbackSpeed={args.playbackSpeed}
+        tabs={ALL_TABS}
+        {...(args.interactive ? { timeline: fixtures.createTimeline(finalState) } : {})}
+      />
+    )
+  },
 }

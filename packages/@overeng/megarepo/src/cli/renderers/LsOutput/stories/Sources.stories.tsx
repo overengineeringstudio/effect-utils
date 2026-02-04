@@ -25,6 +25,7 @@ const ALL_TABS: OutputTab[] = [
 
 type StoryArgs = {
   height: number
+  all: boolean
 }
 
 export default {
@@ -35,11 +36,16 @@ export default {
   },
   args: {
     height: 400,
+    all: false,
   },
   argTypes: {
     height: {
       description: 'Terminal height in pixels',
       control: { type: 'range', min: 200, max: 600, step: 50 },
+    },
+    all: {
+      description: '--all flag: show nested megarepo members recursively',
+      control: { type: 'boolean' },
     },
   },
 } satisfies Meta
@@ -52,7 +58,7 @@ export const LocalPaths: Story = {
     <TuiStoryPreview
       View={LsView}
       app={LsApp}
-      initialState={fixtures.createLocalPathsState()}
+      initialState={fixtures.createLocalPathsState({ all: args.all })}
       height={args.height}
       tabs={ALL_TABS}
     />

@@ -30,6 +30,7 @@ type StoryArgs = {
   playbackSpeed: number
   verbose: boolean
   mode: 'parallel' | 'sequential'
+  member: string
 }
 
 export default {
@@ -44,6 +45,7 @@ export default {
     playbackSpeed: 1,
     verbose: false,
     mode: 'parallel',
+    member: '',
   },
   argTypes: {
     height: {
@@ -68,20 +70,100 @@ export default {
       control: { type: 'select' },
       options: ['parallel', 'sequential'],
     },
+    member: {
+      description: '--member / -m flag (filter to single member, empty = all)',
+      control: { type: 'text' },
+    },
   },
 } satisfies Meta
 
 type Story = StoryObj<StoryArgs>
 
-// Helper to create complete state with verbose and mode override
+// Helper to filter members based on --member flag
+const filterMembers = <T extends { name: string }>(_: {
+  members: readonly T[]
+  memberFilter: string
+}): T[] => {
+  if (!_.memberFilter) return [..._.members]
+  return _.members.filter((m) => m.name === _.memberFilter)
+}
+
+// Helper to create complete state with verbose, mode, and member filter override
 const withOverrides = (_: {
   state: ExecStateType
   verbose: boolean
   mode: 'parallel' | 'sequential'
+  member: string
 }): ExecStateType => {
   if (_.state._tag !== 'Complete') return _.state
-  return { ..._.state, verbose: _.verbose, mode: _.mode }
+  const filteredMembers = filterMembers({ members: _.state.members, memberFilter: _.member })
+  return {
+    ..._.state,
+    verbose: _.verbose,
+    mode: _.mode,
+    members: filteredMembers,
+    hasErrors: filteredMembers.some((m) => m.status === 'error'),
+  }
 }
+
+const successMembers = [
+  { name: 'effect', status: 'success' as const, exitCode: 0, stdout: 'v3.0.0' },
+  { name: 'effect-utils', status: 'success' as const, exitCode: 0, stdout: 'v1.2.3' },
+  { name: 'livestore', status: 'success' as const, exitCode: 0, stdout: 'v0.5.0' },
+]
+
+const mixedMembers = [
+  { name: 'effect', status: 'success' as const, exitCode: 0, stdout: 'v3.0.0' },
+  { name: 'effect-utils', status: 'success' as const, exitCode: 0, stdout: 'v1.2.3' },
+  {
+    name: 'livestore',
+    status: 'error' as const,
+    exitCode: 1,
+    stderr: 'Command failed: npm version',
+  },
+]
+
+const skippedMembers = [
+  {
+    name: 'effect',
+    status: 'success' as const,
+    exitCode: 0,
+    stdout: 'added 125 packages in 2.3s',
+  },
+  { name: 'effect-utils', status: 'skipped' as const, stderr: 'Member not synced' },
+  {
+    name: 'livestore',
+    status: 'success' as const,
+    exitCode: 0,
+    stdout: 'added 45 packages in 1.1s',
+  },
+]
+
+const allErrorMembers = [
+  {
+    name: 'effect',
+    status: 'error' as const,
+    exitCode: 1,
+    stderr: 'Command not found: foo',
+  },
+  {
+    name: 'effect-utils',
+    status: 'error' as const,
+    exitCode: 1,
+    stderr: 'Permission denied',
+  },
+  {
+    name: 'livestore',
+    status: 'error' as const,
+    exitCode: 127,
+    stderr: 'sh: command not found',
+  },
+]
+
+const verboseMembers = [
+  { name: 'effect', status: 'success' as const, exitCode: 0, stdout: 'v3.0.0' },
+  { name: 'effect-utils', status: 'success' as const, exitCode: 0, stdout: 'v1.2.3' },
+]
 
 /** All commands completed successfully */
 export const CompleteSuccess: Story = {
@@ -91,13 +173,9 @@ export const CompleteSuccess: Story = {
         command: 'npm version',
         mode: args.mode,
         verbose: args.verbose,
-        members: [
-          { name: 'effect', status: 'success' as const, exitCode: 0, stdout: 'v3.0.0' },
-          { name: 'effect-utils', status: 'success' as const, exitCode: 0, stdout: 'v1.2.3' },
-          { name: 'livestore', status: 'success' as const, exitCode: 0, stdout: 'v0.5.0' },
-        ],
+        members: filterMembers({ members: successMembers, memberFilter: args.member }),
       }),
-      [args.mode, args.verbose],
+      [args.mode, args.verbose, args.member],
     )
     return (
       <TuiStoryPreview
@@ -110,6 +188,7 @@ export const CompleteSuccess: Story = {
                 state: fixtures.completeSuccessState,
                 verbose: args.verbose,
                 mode: args.mode,
+                member: args.member,
               })
         }
         height={args.height}
@@ -130,18 +209,9 @@ export const CompleteMixed: Story = {
         command: 'npm version',
         mode: args.mode,
         verbose: args.verbose,
-        members: [
-          { name: 'effect', status: 'success' as const, exitCode: 0, stdout: 'v3.0.0' },
-          { name: 'effect-utils', status: 'success' as const, exitCode: 0, stdout: 'v1.2.3' },
-          {
-            name: 'livestore',
-            status: 'error' as const,
-            exitCode: 1,
-            stderr: 'Command failed: npm version',
-          },
-        ],
+        members: filterMembers({ members: mixedMembers, memberFilter: args.member }),
       }),
-      [args.mode, args.verbose],
+      [args.mode, args.verbose, args.member],
     )
     return (
       <TuiStoryPreview
@@ -154,6 +224,7 @@ export const CompleteMixed: Story = {
                 state: fixtures.completeMixedState,
                 verbose: args.verbose,
                 mode: args.mode,
+                member: args.member,
               })
         }
         height={args.height}
@@ -174,23 +245,9 @@ export const CompleteWithSkipped: Story = {
         command: 'npm install',
         mode: args.mode,
         verbose: args.verbose,
-        members: [
-          {
-            name: 'effect',
-            status: 'success' as const,
-            exitCode: 0,
-            stdout: 'added 125 packages in 2.3s',
-          },
-          { name: 'effect-utils', status: 'skipped' as const, stderr: 'Member not synced' },
-          {
-            name: 'livestore',
-            status: 'success' as const,
-            exitCode: 0,
-            stdout: 'added 45 packages in 1.1s',
-          },
-        ],
+        members: filterMembers({ members: skippedMembers, memberFilter: args.member }),
       }),
-      [args.mode, args.verbose],
+      [args.mode, args.verbose, args.member],
     )
     return (
       <TuiStoryPreview
@@ -203,6 +260,7 @@ export const CompleteWithSkipped: Story = {
                 state: fixtures.completeWithSkippedState,
                 verbose: args.verbose,
                 mode: args.mode,
+                member: args.member,
               })
         }
         height={args.height}
@@ -223,28 +281,9 @@ export const CompleteAllErrors: Story = {
         command: 'foo',
         mode: args.mode,
         verbose: args.verbose,
-        members: [
-          {
-            name: 'effect',
-            status: 'error' as const,
-            exitCode: 1,
-            stderr: 'Command not found: foo',
-          },
-          {
-            name: 'effect-utils',
-            status: 'error' as const,
-            exitCode: 1,
-            stderr: 'Permission denied',
-          },
-          {
-            name: 'livestore',
-            status: 'error' as const,
-            exitCode: 127,
-            stderr: 'sh: command not found',
-          },
-        ],
+        members: filterMembers({ members: allErrorMembers, memberFilter: args.member }),
       }),
-      [args.mode, args.verbose],
+      [args.mode, args.verbose, args.member],
     )
     return (
       <TuiStoryPreview
@@ -257,6 +296,7 @@ export const CompleteAllErrors: Story = {
                 state: fixtures.completeAllErrorsState,
                 verbose: args.verbose,
                 mode: args.mode,
+                member: args.member,
               })
         }
         height={args.height}
@@ -280,12 +320,9 @@ export const CompleteVerbose: Story = {
         command: 'npm version',
         mode: args.mode,
         verbose: args.verbose,
-        members: [
-          { name: 'effect', status: 'success' as const, exitCode: 0, stdout: 'v3.0.0' },
-          { name: 'effect-utils', status: 'success' as const, exitCode: 0, stdout: 'v1.2.3' },
-        ],
+        members: filterMembers({ members: verboseMembers, memberFilter: args.member }),
       }),
-      [args.mode, args.verbose],
+      [args.mode, args.verbose, args.member],
     )
     return (
       <TuiStoryPreview
@@ -298,6 +335,7 @@ export const CompleteVerbose: Story = {
                 state: fixtures.completeVerboseState,
                 verbose: args.verbose,
                 mode: args.mode,
+                member: args.member,
               })
         }
         height={args.height}

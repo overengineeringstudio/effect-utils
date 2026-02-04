@@ -38,8 +38,8 @@ Every story includes these base controls:
 
 ```typescript
 type StoryArgs = {
-  height: number        // Terminal viewport height
-  interactive: boolean  // Toggle animated vs static
+  height: number // Terminal viewport height
+  interactive: boolean // Toggle animated vs static
   playbackSpeed: number // Timeline speed (conditional on interactive)
   // + all CLI flags as controls
 }
@@ -166,14 +166,14 @@ export const MixedResults: Story = {
 
 ```typescript
 const ALL_TABS: OutputTab[] = [
-  'tty',       // Interactive terminal
+  'tty', // Interactive terminal
   'alt-screen', // Full-screen TUI
-  'ci',        // CI mode with colors
-  'ci-plain',  // CI mode without colors
-  'pipe',      // Piped output
-  'log',       // Structured log format
-  'json',      // JSON output
-  'ndjson',    // Newline-delimited JSON
+  'ci', // CI mode with colors
+  'ci-plain', // CI mode without colors
+  'pipe', // Piped output
+  'log', // Structured log format
+  'json', // JSON output
+  'ndjson', // Newline-delimited JSON
 ]
 ```
 
@@ -181,11 +181,11 @@ const ALL_TABS: OutputTab[] = [
 
 Group by scenario type:
 
-| File | Purpose |
-|------|---------|
-| `Success.stories.tsx` | Success scenarios, mixed results |
-| `Errors.stories.tsx` | Error handling, failures |
-| `Overflow.stories.tsx` | Viewport truncation, many items |
+| File                   | Purpose                          |
+| ---------------------- | -------------------------------- |
+| `Success.stories.tsx`  | Success scenarios, mixed results |
+| `Errors.stories.tsx`   | Error handling, failures         |
+| `Overflow.stories.tsx` | Viewport truncation, many items  |
 
 ## Anti-Patterns
 
@@ -198,24 +198,29 @@ Group by scenario type:
 ## Checklist
 
 **R1 - Semantic equivalence:**
+
 - [ ] Timeline and static mode use same `stateConfig`
 - [ ] Timeline ends at same final state as static rendering
 - [ ] `interactive` toggle switches mode without changing outcome
 
 **R2 - Realistic scenarios:**
+
 - [ ] File paths look real (e.g., `packages/foo/package.json`)
 - [ ] Error messages are plausible (e.g., `SyntaxError`, `ENOENT`)
 - [ ] Counts and timing reflect typical usage
 
 **R3 - Flag coverage:**
+
 - [ ] Every CLI flag has a corresponding control
 - [ ] `useMemo` wraps config dependent on flag args
 - [ ] Controls affect both static and interactive modes
 
 **R4 - Output format coverage:**
+
 - [ ] `ALL_TABS` used for all stories
 - [ ] `height` control for viewport testing
 
 **General:**
+
 - [ ] State factories extracted to `_fixtures.ts`
 - [ ] No hardcoded state in story files

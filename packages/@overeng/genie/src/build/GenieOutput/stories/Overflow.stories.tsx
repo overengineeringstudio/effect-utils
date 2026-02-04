@@ -12,7 +12,16 @@ import { GenieApp } from '../../app.ts'
 import { GenieView } from '../../view.tsx'
 import * as fixtures from './_fixtures.ts'
 
-const ALL_TABS: OutputTab[] = ['tty', 'ci', 'ci-plain', 'log', 'json', 'ndjson']
+const ALL_TABS: OutputTab[] = [
+  'tty',
+  'alt-screen',
+  'ci',
+  'ci-plain',
+  'pipe',
+  'log',
+  'json',
+  'ndjson',
+]
 
 type StoryArgs = {
   height: number
@@ -59,6 +68,14 @@ type Story = StoryObj<StoryArgs>
 
 /** Many files in generating phase - demonstrates viewport overflow during progress */
 export const ManyFilesGenerating: Story = {
+  // Overflow stories focus on viewport truncation testing - interactive mode not applicable
+  args: {
+    interactive: false,
+  },
+  argTypes: {
+    interactive: { control: false },
+    playbackSpeed: { control: false },
+  },
   render: (args) => {
     const initialState = useMemo(() => {
       const state = fixtures.createManyFilesState('generating')
@@ -71,8 +88,7 @@ export const ManyFilesGenerating: Story = {
         app={GenieApp}
         initialState={initialState}
         height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
+        autoRun={false}
         tabs={ALL_TABS}
       />
     )
@@ -81,6 +97,14 @@ export const ManyFilesGenerating: Story = {
 
 /** Many files in complete phase - demonstrates viewport overflow in final output */
 export const ManyFilesComplete: Story = {
+  // Overflow stories focus on viewport truncation testing - interactive mode not applicable
+  args: {
+    interactive: false,
+  },
+  argTypes: {
+    interactive: { control: false },
+    playbackSpeed: { control: false },
+  },
   render: (args) => {
     const initialState = useMemo(() => {
       const state = fixtures.createManyFilesState('complete')
@@ -93,8 +117,7 @@ export const ManyFilesComplete: Story = {
         app={GenieApp}
         initialState={initialState}
         height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
+        autoRun={false}
         tabs={ALL_TABS}
       />
     )

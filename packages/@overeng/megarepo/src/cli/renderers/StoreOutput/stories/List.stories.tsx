@@ -24,6 +24,8 @@ const ALL_TABS: OutputTab[] = [
 
 type StoryArgs = {
   height: number
+  interactive: boolean
+  playbackSpeed: number
 }
 
 // =============================================================================
@@ -41,11 +43,24 @@ export default {
       },
     },
   },
-  args: { height: 400 },
+  args: {
+    height: 400,
+    interactive: false,
+    playbackSpeed: 1,
+  },
   argTypes: {
     height: {
       description: 'Terminal height in pixels',
       control: { type: 'range', min: 200, max: 600, step: 50 },
+    },
+    interactive: {
+      description: 'Enable animated timeline playback (no animation for instant results)',
+      control: { type: 'boolean' },
+    },
+    playbackSpeed: {
+      description: 'Playback speed multiplier (when interactive)',
+      control: { type: 'range', min: 0.5, max: 3, step: 0.5 },
+      if: { arg: 'interactive' },
     },
   },
 } satisfies Meta

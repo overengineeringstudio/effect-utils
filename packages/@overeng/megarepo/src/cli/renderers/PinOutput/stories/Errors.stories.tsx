@@ -3,7 +3,7 @@
  */
 
 import type { Meta, StoryObj } from '@storybook/react'
-import React from 'react'
+import React, { useMemo } from 'react'
 
 import type { OutputTab } from '@overeng/tui-react/storybook'
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
@@ -25,6 +25,8 @@ const ALL_TABS: OutputTab[] = [
 
 type StoryArgs = {
   height: number
+  interactive: boolean
+  playbackSpeed: number
 }
 
 export default {
@@ -35,11 +37,22 @@ export default {
   },
   args: {
     height: 400,
+    interactive: false,
+    playbackSpeed: 1,
   },
   argTypes: {
     height: {
       description: 'Terminal height in pixels',
       control: { type: 'range', min: 200, max: 600, step: 50 },
+    },
+    interactive: {
+      description: 'Enable animated timeline playback',
+      control: { type: 'boolean' },
+    },
+    playbackSpeed: {
+      description: 'Playback speed multiplier',
+      control: { type: 'range', min: 0.5, max: 3, step: 0.5 },
+      if: { arg: 'interactive' },
     },
   },
 } satisfies Meta
@@ -48,65 +61,95 @@ type Story = StoryObj<StoryArgs>
 
 /** Error: Not running in a megarepo workspace */
 export const ErrorNotInMegarepo: Story = {
-  render: (args) => (
-    <TuiStoryPreview
-      View={PinView}
-      app={PinApp}
-      initialState={fixtures.createErrorNotInMegarepo()}
-      height={args.height}
-      tabs={ALL_TABS}
-    />
-  ),
+  render: (args) => {
+    const finalState = useMemo(() => fixtures.createErrorNotInMegarepo(), [])
+    return (
+      <TuiStoryPreview
+        View={PinView}
+        app={PinApp}
+        initialState={args.interactive ? { _tag: 'Idle' } : finalState}
+        height={args.height}
+        autoRun={args.interactive}
+        playbackSpeed={args.playbackSpeed}
+        tabs={ALL_TABS}
+        {...(args.interactive ? { timeline: fixtures.createTimeline(finalState) } : {})}
+      />
+    )
+  },
 }
 
 /** Error: Member not found in configuration */
 export const ErrorMemberNotFound: Story = {
-  render: (args) => (
-    <TuiStoryPreview
-      View={PinView}
-      app={PinApp}
-      initialState={fixtures.createErrorMemberNotFound()}
-      height={args.height}
-      tabs={ALL_TABS}
-    />
-  ),
+  render: (args) => {
+    const finalState = useMemo(() => fixtures.createErrorMemberNotFound(), [])
+    return (
+      <TuiStoryPreview
+        View={PinView}
+        app={PinApp}
+        initialState={args.interactive ? { _tag: 'Idle' } : finalState}
+        height={args.height}
+        autoRun={args.interactive}
+        playbackSpeed={args.playbackSpeed}
+        tabs={ALL_TABS}
+        {...(args.interactive ? { timeline: fixtures.createTimeline(finalState) } : {})}
+      />
+    )
+  },
 }
 
 /** Error: Member not synced yet */
 export const ErrorNotSynced: Story = {
-  render: (args) => (
-    <TuiStoryPreview
-      View={PinView}
-      app={PinApp}
-      initialState={fixtures.createErrorNotSynced()}
-      height={args.height}
-      tabs={ALL_TABS}
-    />
-  ),
+  render: (args) => {
+    const finalState = useMemo(() => fixtures.createErrorNotSynced(), [])
+    return (
+      <TuiStoryPreview
+        View={PinView}
+        app={PinApp}
+        initialState={args.interactive ? { _tag: 'Idle' } : finalState}
+        height={args.height}
+        autoRun={args.interactive}
+        playbackSpeed={args.playbackSpeed}
+        tabs={ALL_TABS}
+        {...(args.interactive ? { timeline: fixtures.createTimeline(finalState) } : {})}
+      />
+    )
+  },
 }
 
 /** Error: Cannot pin local path members */
 export const ErrorLocalPath: Story = {
-  render: (args) => (
-    <TuiStoryPreview
-      View={PinView}
-      app={PinApp}
-      initialState={fixtures.createErrorLocalPath()}
-      height={args.height}
-      tabs={ALL_TABS}
-    />
-  ),
+  render: (args) => {
+    const finalState = useMemo(() => fixtures.createErrorLocalPath(), [])
+    return (
+      <TuiStoryPreview
+        View={PinView}
+        app={PinApp}
+        initialState={args.interactive ? { _tag: 'Idle' } : finalState}
+        height={args.height}
+        autoRun={args.interactive}
+        playbackSpeed={args.playbackSpeed}
+        tabs={ALL_TABS}
+        {...(args.interactive ? { timeline: fixtures.createTimeline(finalState) } : {})}
+      />
+    )
+  },
 }
 
 /** Error: Member not in lock file */
 export const ErrorNotInLock: Story = {
-  render: (args) => (
-    <TuiStoryPreview
-      View={PinView}
-      app={PinApp}
-      initialState={fixtures.createErrorNotInLock()}
-      height={args.height}
-      tabs={ALL_TABS}
-    />
-  ),
+  render: (args) => {
+    const finalState = useMemo(() => fixtures.createErrorNotInLock(), [])
+    return (
+      <TuiStoryPreview
+        View={PinView}
+        app={PinApp}
+        initialState={args.interactive ? { _tag: 'Idle' } : finalState}
+        height={args.height}
+        autoRun={args.interactive}
+        playbackSpeed={args.playbackSpeed}
+        tabs={ALL_TABS}
+        {...(args.interactive ? { timeline: fixtures.createTimeline(finalState) } : {})}
+      />
+    )
+  },
 }

@@ -27,7 +27,11 @@ type StoryArgs = {
   height: number
   interactive: boolean
   playbackSpeed: number
+  // CLI flags
   sync: boolean
+  name: string
+  // Story scenario data
+  source: string
 }
 
 export default {
@@ -46,6 +50,8 @@ export default {
     interactive: false,
     playbackSpeed: 1,
     sync: false,
+    name: 'effect',
+    source: 'effect-ts/effect',
   },
   argTypes: {
     height: {
@@ -65,6 +71,14 @@ export default {
       description: '--sync flag: sync the added repo immediately',
       control: { type: 'boolean' },
     },
+    name: {
+      description: '--name flag: override member name (defaults to repo name)',
+      control: { type: 'text' },
+    },
+    source: {
+      description: 'Repository reference (github shorthand, URL, or path)',
+      control: { type: 'text' },
+    },
   },
 } satisfies Meta
 
@@ -75,18 +89,20 @@ export const AddSimple: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        member: 'effect',
-        source: 'effect-ts/effect',
+        member: args.name,
+        source: args.source,
         synced: args.sync,
         syncStatus: 'cloned' as const,
       }),
-      [args.sync],
+      [args.name, args.source, args.sync],
     )
     return (
       <TuiStoryPreview
         View={AddView}
         app={AddApp}
-        initialState={args.interactive ? fixtures.createIdleState() : fixtures.createSuccessState()}
+        initialState={
+          args.interactive ? fixtures.createIdleState() : fixtures.createSuccessState(stateConfig)
+        }
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
@@ -103,19 +119,19 @@ export const AddWithSync: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        member: 'effect',
-        source: 'effect-ts/effect',
+        member: args.name,
+        source: args.source,
         synced: args.sync,
         syncStatus: 'cloned' as const,
       }),
-      [args.sync],
+      [args.name, args.source, args.sync],
     )
     return (
       <TuiStoryPreview
         View={AddView}
         app={AddApp}
         initialState={
-          args.interactive ? fixtures.createIdleState() : fixtures.createSuccessSyncedState()
+          args.interactive ? fixtures.createIdleState() : fixtures.createSuccessState(stateConfig)
         }
         height={args.height}
         autoRun={args.interactive}
@@ -133,21 +149,19 @@ export const AddWithSyncExisting: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        member: 'effect',
-        source: 'effect-ts/effect',
+        member: args.name,
+        source: args.source,
         synced: args.sync,
         syncStatus: 'synced' as const,
       }),
-      [args.sync],
+      [args.name, args.source, args.sync],
     )
     return (
       <TuiStoryPreview
         View={AddView}
         app={AddApp}
         initialState={
-          args.interactive
-            ? fixtures.createIdleState()
-            : fixtures.createSuccessSyncedExistingState()
+          args.interactive ? fixtures.createIdleState() : fixtures.createSuccessState(stateConfig)
         }
         height={args.height}
         autoRun={args.interactive}
@@ -161,23 +175,23 @@ export const AddWithSyncExisting: Story = {
 
 /** Add with sync - sync failed */
 export const AddWithSyncError: Story = {
-  args: { sync: true },
+  args: { sync: true, name: 'private-repo', source: 'org/private-repo' },
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        member: 'private-repo',
-        source: 'org/private-repo',
+        member: args.name,
+        source: args.source,
         synced: args.sync,
         syncStatus: 'error' as const,
       }),
-      [args.sync],
+      [args.name, args.source, args.sync],
     )
     return (
       <TuiStoryPreview
         View={AddView}
         app={AddApp}
         initialState={
-          args.interactive ? fixtures.createIdleState() : fixtures.createSuccessSyncErrorState()
+          args.interactive ? fixtures.createIdleState() : fixtures.createSuccessState(stateConfig)
         }
         height={args.height}
         autoRun={args.interactive}

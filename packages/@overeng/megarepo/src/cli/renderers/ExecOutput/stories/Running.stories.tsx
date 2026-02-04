@@ -29,6 +29,7 @@ type StoryArgs = {
   playbackSpeed: number
   verbose: boolean
   mode: 'parallel' | 'sequential'
+  member: string
 }
 
 export default {
@@ -43,6 +44,7 @@ export default {
     playbackSpeed: 1,
     verbose: true,
     mode: 'parallel',
+    member: '',
   },
   argTypes: {
     height: {
@@ -67,10 +69,39 @@ export default {
       control: { type: 'select' },
       options: ['parallel', 'sequential'],
     },
+    member: {
+      description: '--member / -m flag (filter to single member, empty = all)',
+      control: { type: 'text' },
+    },
   },
 } satisfies Meta
 
 type Story = StoryObj<StoryArgs>
+
+// Helper to filter members based on --member flag
+const filterMembers = <T extends { name: string }>(_: {
+  members: readonly T[]
+  memberFilter: string
+}): T[] => {
+  if (!_.memberFilter) return [..._.members]
+  return _.members.filter((m) => m.name === _.memberFilter)
+}
+
+const parallelMembers = [
+  { name: 'effect', status: 'success' as const, exitCode: 0, stdout: 'v3.0.0' },
+  { name: 'effect-utils', status: 'success' as const, exitCode: 0, stdout: 'v1.2.3' },
+  { name: 'livestore', status: 'success' as const, exitCode: 0, stdout: 'v0.5.0' },
+]
+
+const sequentialMembers = [
+  { name: 'effect', status: 'success' as const, exitCode: 0, stdout: 'On branch main' },
+  {
+    name: 'effect-utils',
+    status: 'success' as const,
+    exitCode: 0,
+    stdout: 'On branch feature',
+  },
+]
 
 export const RunningVerboseParallel: Story = {
   args: {
@@ -83,23 +114,15 @@ export const RunningVerboseParallel: Story = {
         command: 'npm version',
         mode: args.mode,
         verbose: args.verbose,
-        members: [
-          { name: 'effect', status: 'success' as const, exitCode: 0, stdout: 'v3.0.0' },
-          { name: 'effect-utils', status: 'success' as const, exitCode: 0, stdout: 'v1.2.3' },
-          { name: 'livestore', status: 'success' as const, exitCode: 0, stdout: 'v0.5.0' },
-        ],
+        members: filterMembers({ members: parallelMembers, memberFilter: args.member }),
       }),
-      [args.mode, args.verbose],
+      [args.mode, args.verbose, args.member],
     )
     return (
       <TuiStoryPreview
         View={ExecView}
         app={ExecApp}
-        initialState={
-          args.interactive
-            ? fixtures.createRunningState({ verbose: args.verbose, mode: args.mode })
-            : fixtures.createRunningState({ verbose: args.verbose, mode: args.mode })
-        }
+        initialState={fixtures.createRunningState({ verbose: args.verbose, mode: args.mode })}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
@@ -121,17 +144,9 @@ export const RunningVerboseSequential: Story = {
         command: 'git status',
         mode: args.mode,
         verbose: args.verbose,
-        members: [
-          { name: 'effect', status: 'success' as const, exitCode: 0, stdout: 'On branch main' },
-          {
-            name: 'effect-utils',
-            status: 'success' as const,
-            exitCode: 0,
-            stdout: 'On branch feature',
-          },
-        ],
+        members: filterMembers({ members: sequentialMembers, memberFilter: args.member }),
       }),
-      [args.mode, args.verbose],
+      [args.mode, args.verbose, args.member],
     )
     return (
       <TuiStoryPreview

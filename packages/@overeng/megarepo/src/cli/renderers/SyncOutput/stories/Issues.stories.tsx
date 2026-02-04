@@ -29,6 +29,9 @@ type StoryArgs = {
   interactive: boolean
   playbackSpeed: number
   dryRun: boolean
+  frozen: boolean
+  pull: boolean
+  all: boolean
 }
 
 export default {
@@ -42,6 +45,9 @@ export default {
     interactive: false,
     playbackSpeed: 1,
     dryRun: false,
+    frozen: false,
+    pull: false,
+    all: false,
   },
   argTypes: {
     height: {
@@ -61,6 +67,18 @@ export default {
       description: '--dry-run flag: show what would happen without making changes',
       control: { type: 'boolean' },
     },
+    frozen: {
+      description: '--frozen flag: use exact commits from lock file (CI mode)',
+      control: { type: 'boolean' },
+    },
+    pull: {
+      description: '--pull flag: update to latest commits',
+      control: { type: 'boolean' },
+    },
+    all: {
+      description: '--all flag: sync nested megarepos recursively',
+      control: { type: 'boolean' },
+    },
   },
 } satisfies Meta
 
@@ -71,11 +89,11 @@ export const WithErrors: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: { dryRun: args.dryRun, frozen: false, pull: false, all: false },
+        options: { dryRun: args.dryRun, frozen: args.frozen, pull: args.pull, all: args.all },
         results: fixtures.exampleSyncResultsWithErrors,
         members: fixtures.exampleSyncResultsWithErrors.map((r) => r.name),
       }),
-      [args.dryRun],
+      [args.dryRun, args.frozen, args.pull, args.all],
     )
     return (
       <TuiStoryPreview
@@ -97,7 +115,7 @@ export const AllErrors: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: { dryRun: args.dryRun, frozen: false, pull: false, all: false },
+        options: { dryRun: args.dryRun, frozen: args.frozen, pull: args.pull, all: args.all },
         results: [
           { name: 'effect', status: 'error' as const, message: 'network timeout' },
           { name: 'effect-utils', status: 'error' as const, message: 'authentication failed' },
@@ -106,7 +124,7 @@ export const AllErrors: Story = {
         ],
         members: ['effect', 'effect-utils', 'livestore', 'private-repo'],
       }),
-      [args.dryRun],
+      [args.dryRun, args.frozen, args.pull, args.all],
     )
     return (
       <TuiStoryPreview
@@ -128,7 +146,7 @@ export const SkippedMembers: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: { dryRun: args.dryRun, frozen: false, pull: false, all: false },
+        options: { dryRun: args.dryRun, frozen: args.frozen, pull: args.pull, all: args.all },
         results: [
           { name: 'effect', status: 'synced' as const, ref: 'main' },
           { name: 'dirty-repo', status: 'skipped' as const, message: 'dirty worktree' },
@@ -137,7 +155,7 @@ export const SkippedMembers: Story = {
         ] satisfies MemberSyncResult[],
         members: ['effect', 'dirty-repo', 'pinned-repo', 'private-repo'],
       }),
-      [args.dryRun],
+      [args.dryRun, args.frozen, args.pull, args.all],
     )
     return (
       <TuiStoryPreview
@@ -159,7 +177,7 @@ export const MixedSkipped: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: { dryRun: args.dryRun, frozen: false, pull: false, all: false },
+        options: { dryRun: args.dryRun, frozen: args.frozen, pull: args.pull, all: args.all },
         results: [
           { name: 'effect', status: 'already_synced' as const },
           { name: 'dirty-repo', status: 'skipped' as const, message: '5 uncommitted changes' },
@@ -169,7 +187,7 @@ export const MixedSkipped: Story = {
         ] satisfies MemberSyncResult[],
         members: ['effect', 'dirty-repo', 'pinned-repo', 'auth-repo', 'missing-ref'],
       }),
-      [args.dryRun],
+      [args.dryRun, args.frozen, args.pull, args.all],
     )
     return (
       <TuiStoryPreview
@@ -192,7 +210,7 @@ export const RefMismatchDetected: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: { dryRun: args.dryRun, frozen: false, pull: false, all: false },
+        options: { dryRun: args.dryRun, frozen: args.frozen, pull: args.pull, all: args.all },
         results: [
           { name: 'effect', status: 'synced' as const, ref: 'main' },
           {
@@ -217,7 +235,7 @@ export const RefMismatchDetected: Story = {
         ] satisfies MemberSyncResult[],
         members: ['effect', 'effect-utils', 'livestore', 'other-repo'],
       }),
-      [args.dryRun],
+      [args.dryRun, args.frozen, args.pull, args.all],
     )
     return (
       <TuiStoryPreview
@@ -239,7 +257,7 @@ export const Interrupted: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: { dryRun: args.dryRun, frozen: false, pull: false, all: false },
+        options: { dryRun: args.dryRun, frozen: args.frozen, pull: args.pull, all: args.all },
         phase: 'interrupted' as const,
         members: ['effect', 'effect-utils', 'livestore', 'dotfiles'],
         results: [
@@ -247,7 +265,7 @@ export const Interrupted: Story = {
           { name: 'effect-utils', status: 'cloned' as const, ref: 'main' },
         ] satisfies MemberSyncResult[],
       }),
-      [args.dryRun],
+      [args.dryRun, args.frozen, args.pull, args.all],
     )
     return (
       <TuiStoryPreview

@@ -15,35 +15,21 @@ export const createIdleState = (): AddStateType => ({
   _tag: 'Idle',
 })
 
-export const createSuccessState = (): AddStateType => ({
+/**
+ * Creates a success state from a config object.
+ * This ensures interactive and static modes use the same state configuration.
+ */
+export const createSuccessState = (config: {
+  member: string
+  source: string
+  synced: boolean
+  syncStatus?: 'cloned' | 'synced' | 'error'
+}): AddStateType => ({
   _tag: 'Success',
-  member: 'effect',
-  source: 'effect-ts/effect',
-  synced: false,
-})
-
-export const createSuccessSyncedState = (): AddStateType => ({
-  _tag: 'Success',
-  member: 'effect',
-  source: 'effect-ts/effect',
-  synced: true,
-  syncStatus: 'cloned',
-})
-
-export const createSuccessSyncedExistingState = (): AddStateType => ({
-  _tag: 'Success',
-  member: 'effect',
-  source: 'effect-ts/effect',
-  synced: true,
-  syncStatus: 'synced',
-})
-
-export const createSuccessSyncErrorState = (): AddStateType => ({
-  _tag: 'Success',
-  member: 'private-repo',
-  source: 'org/private-repo',
-  synced: true,
-  syncStatus: 'error',
+  member: config.member,
+  source: config.source,
+  synced: config.synced,
+  ...(config.synced && config.syncStatus ? { syncStatus: config.syncStatus } : {}),
 })
 
 export const createErrorNotInMegarepoState = (): AddStateType => ({
@@ -52,16 +38,16 @@ export const createErrorNotInMegarepoState = (): AddStateType => ({
   message: 'No megarepo.json found',
 })
 
-export const createErrorInvalidRepoState = (): AddStateType => ({
+export const createErrorInvalidRepoState = (repo: string): AddStateType => ({
   _tag: 'Error',
   error: 'invalid_repo',
-  message: 'Invalid repo reference: not-a-valid-repo',
+  message: `Invalid repo reference: ${repo}`,
 })
 
-export const createErrorAlreadyExistsState = (): AddStateType => ({
+export const createErrorAlreadyExistsState = (member: string): AddStateType => ({
   _tag: 'Error',
   error: 'already_exists',
-  message: "Member 'effect' already exists",
+  message: `Member '${member}' already exists`,
 })
 
 // =============================================================================

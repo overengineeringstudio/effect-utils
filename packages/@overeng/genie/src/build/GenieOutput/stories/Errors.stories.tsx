@@ -20,7 +20,16 @@ import type { GenieMode } from '../../schema.ts'
 import { GenieView } from '../../view.tsx'
 import * as fixtures from './_fixtures.ts'
 
-const ALL_TABS: OutputTab[] = ['tty', 'ci', 'ci-plain', 'log', 'json', 'ndjson']
+const ALL_TABS: OutputTab[] = [
+  'tty',
+  'alt-screen',
+  'ci',
+  'ci-plain',
+  'pipe',
+  'log',
+  'json',
+  'ndjson',
+]
 
 type StoryArgs = {
   height: number
