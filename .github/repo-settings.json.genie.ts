@@ -41,13 +41,26 @@ export default githubRuleset({
       type: 'required_status_checks',
       parameters: {
         do_not_enforce_on_create: true, // Allow first push
-        strict_required_status_checks_policy: true,
+        strict_required_status_checks_policy: false, // Merge queue handles this
         required_status_checks: [
           { context: 'typecheck' },
           { context: 'lint' },
           { context: 'test' },
           { context: 'nix-check' },
         ],
+      },
+    },
+    // Use merge queue for automatic rebasing and batched CI
+    {
+      type: 'merge_queue',
+      parameters: {
+        merge_method: 'SQUASH',
+        min_entries_to_merge: 1,
+        max_entries_to_merge: 5,
+        min_entries_to_merge_wait_minutes: 1,
+        max_entries_to_build: 5,
+        check_response_timeout_minutes: 30,
+        grouping_strategy: 'ALLGREEN',
       },
     },
     // Prevent force push
