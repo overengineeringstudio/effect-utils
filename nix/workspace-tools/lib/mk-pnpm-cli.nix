@@ -244,10 +244,11 @@ let
     # Ensure pnpm resolves binaries for all supported platforms (R5 determinism)
     pnpm config set supportedArchitectures '${supportedArchitecturesJson}'
     sa="$(pnpm config get supportedArchitectures)"
-    if ! printf '%s' "$sa" | grep -q '"linux"' ||
-       ! printf '%s' "$sa" | grep -q '"darwin"' ||
-       ! printf '%s' "$sa" | grep -q '"x64"' ||
-       ! printf '%s' "$sa" | grep -q '"arm64"'; then
+    # pnpm config get returns array notation (os[]=linux) not JSON, so check without quotes
+    if ! printf '%s' "$sa" | grep -q 'linux' ||
+       ! printf '%s' "$sa" | grep -q 'darwin' ||
+       ! printf '%s' "$sa" | grep -q 'x64' ||
+       ! printf '%s' "$sa" | grep -q 'arm64'; then
       echo "error: pnpm supportedArchitectures not set as expected"
       echo "  got: $sa"
       exit 1

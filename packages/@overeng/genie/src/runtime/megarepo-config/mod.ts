@@ -76,6 +76,35 @@ export type GeneratorsConfig = {
 }
 
 // =============================================================================
+// Lock Sync Configuration
+// =============================================================================
+
+/**
+ * Configuration for syncing flake.lock and devenv.lock files
+ *
+ * When enabled, megarepo will update the `rev` fields in member repos'
+ * flake.lock and devenv.lock files to match the commits in megarepo.lock.
+ * This keeps all lock files in sync with megarepo as the source of truth.
+ *
+ * Lock sync is **auto-detected** by default: if `devenv.lock` or `flake.lock`
+ * exists in the megarepo root, syncing is enabled automatically.
+ * Set `enabled: false` to opt-out.
+ */
+export type LockSyncConfig = {
+  /**
+   * Enable/disable lock sync.
+   * Default: auto-detected (enabled if devenv.lock or flake.lock exists in megarepo root)
+   * Set to false to opt-out of automatic lock file synchronization
+   */
+  enabled?: boolean
+  /**
+   * Members to exclude from lock sync
+   * These members' lock files will not be modified
+   */
+  exclude?: string[]
+}
+
+// =============================================================================
 // Member Source Types
 // =============================================================================
 
@@ -102,6 +131,11 @@ export type MegarepoConfigArgs = {
   members: Record<string, MemberSource>
   /** Generators: optional config file generation */
   generators?: GeneratorsConfig
+  /**
+   * Lock sync configuration for flake.lock and devenv.lock files.
+   * Auto-detected by default: enabled if devenv.lock or flake.lock exists in megarepo root.
+   */
+  lockSync?: LockSyncConfig
 }
 
 // =============================================================================

@@ -30,6 +30,10 @@ export default githubRuleset({
       parameters: {
         required_approving_review_count: 0,
         dismiss_stale_reviews_on_push: true,
+        require_code_owner_review: false,
+        require_last_push_approval: false,
+        required_review_thread_resolution: false,
+        required_reviewers: [],
       },
     },
     // Require CI to pass
@@ -51,4 +55,5 @@ export default githubRuleset({
     // Prevent branch deletion
     { type: 'deletion' },
   ],
+  bypass_actors: [],
 })
