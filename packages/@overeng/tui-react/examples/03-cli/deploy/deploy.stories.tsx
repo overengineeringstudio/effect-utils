@@ -11,7 +11,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
-import { ALL_OUTPUT_TABS, TuiStoryPreview } from '../../../src/storybook/TuiStoryPreview.tsx'
+import { ALL_OUTPUT_TABS, TuiStoryPreview } from '../../../src/storybook/mod.tsx'
 import { DeployApp } from './deploy.tsx'
 import type { DeployState, DeployAction } from './schema.ts'
 import { type LogEntry } from './schema.ts'
