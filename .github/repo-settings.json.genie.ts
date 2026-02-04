@@ -1,4 +1,5 @@
 import { githubRuleset } from '../packages/@overeng/genie/src/runtime/mod.ts'
+import { requiredCIJobs } from '../genie/ci.ts'
 
 /**
  * GitHub Repository Ruleset for protecting the main branch.
@@ -41,13 +42,21 @@ export default githubRuleset({
       type: 'required_status_checks',
       parameters: {
         do_not_enforce_on_create: true, // Allow first push
-        strict_required_status_checks_policy: true,
-        required_status_checks: [
-          { context: 'typecheck' },
-          { context: 'lint' },
-          { context: 'test' },
-          { context: 'nix-check' },
-        ],
+        strict_required_status_checks_policy: false, // Merge queue handles this
+        required_status_checks: requiredCIJobs.map((context) => ({ context })),
+      },
+    },
+    // Use merge queue for automatic rebasing and batched CI
+    {
+      type: 'merge_queue',
+      parameters: {
+        merge_method: 'SQUASH',
+        min_entries_to_merge: 1,
+        max_entries_to_merge: 5,
+        min_entries_to_merge_wait_minutes: 1,
+        max_entries_to_build: 5,
+        check_response_timeout_minutes: 30,
+        grouping_strategy: 'ALLGREEN',
       },
     },
     // Prevent force push
