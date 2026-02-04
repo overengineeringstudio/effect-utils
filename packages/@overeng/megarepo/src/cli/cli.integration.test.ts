@@ -6,14 +6,15 @@
  */
 
 import { FileSystem } from '@effect/platform'
+import { NodeContext } from '@effect/platform-node'
+import { describe, it } from '@effect/vitest'
 import { Effect, Option, Schema } from 'effect'
-import { describe, expect, it } from 'vitest'
+import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import { CONFIG_FILE_NAME, MegarepoConfig, validateMemberName } from '../lib/config.ts'
 import { initGitRepo, readConfig } from '../test-utils/setup.ts'
-import { withTestCtx } from '../test-utils/withTestCtx.ts'
 
 // =============================================================================
 // Helper: Find megarepo root (extracted from CLI logic)
@@ -51,9 +52,10 @@ const findMegarepoRoot = (startPath: AbsoluteDirPath) =>
 // =============================================================================
 
 describe('mr init', () => {
-  it('should create megarepo.json in git repo', () =>
-    withTestCtx(
-      Effect.gen(function* () {
+  it.effect(
+    'should create megarepo.json in git repo',
+    Effect.fnUntraced(
+      function* () {
         const fs = yield* FileSystem.FileSystem
 
         // Create a temp directory and init git
@@ -87,12 +89,16 @@ describe('mr init', () => {
         const config = yield* readConfig(workDir)
         expect(config.members).toEqual({})
         expect(config.$schema).toBeDefined()
-      }),
-    ))
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
 
-  it('should not overwrite existing megarepo.json', () =>
-    withTestCtx(
-      Effect.gen(function* () {
+  it.effect(
+    'should not overwrite existing megarepo.json',
+    Effect.fnUntraced(
+      function* () {
         const fs = yield* FileSystem.FileSystem
 
         // Create directory with git
@@ -122,8 +128,11 @@ describe('mr init', () => {
         // The config should still have the existing member
         const configAfter = yield* readConfig(workDir)
         expect(configAfter.members['existing-lib']).toBe('owner/existing-lib')
-      }),
-    ))
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
 })
 
 // =============================================================================
@@ -131,9 +140,10 @@ describe('mr init', () => {
 // =============================================================================
 
 describe('mr root', () => {
-  it('should find megarepo root in current directory', () =>
-    withTestCtx(
-      Effect.gen(function* () {
+  it.effect(
+    'should find megarepo root in current directory',
+    Effect.fnUntraced(
+      function* () {
         const fs = yield* FileSystem.FileSystem
 
         // Create workspace with megarepo.json
@@ -152,12 +162,16 @@ describe('mr root', () => {
         const root = yield* findMegarepoRoot(workDir)
         expect(Option.isSome(root)).toBe(true)
         expect(Option.getOrNull(root)).toBe(workDir)
-      }),
-    ))
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
 
-  it('should find megarepo root from subdirectory', () =>
-    withTestCtx(
-      Effect.gen(function* () {
+  it.effect(
+    'should find megarepo root from subdirectory',
+    Effect.fnUntraced(
+      function* () {
         const fs = yield* FileSystem.FileSystem
 
         // Create workspace structure
@@ -177,12 +191,16 @@ describe('mr root', () => {
         const root = yield* findMegarepoRoot(subDir)
         expect(Option.isSome(root)).toBe(true)
         expect(Option.getOrNull(root)).toBe(workDir)
-      }),
-    ))
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
 
-  it('should return outer megarepo for nested megarepos (outer wins)', () =>
-    withTestCtx(
-      Effect.gen(function* () {
+  it.effect(
+    'should return outer megarepo for nested megarepos (outer wins)',
+    Effect.fnUntraced(
+      function* () {
         const fs = yield* FileSystem.FileSystem
 
         // Create nested megarepo structure
@@ -212,12 +230,16 @@ describe('mr root', () => {
         const root = yield* findMegarepoRoot(innerDir)
         expect(Option.isSome(root)).toBe(true)
         expect(Option.getOrNull(root)).toBe(outerDir)
-      }),
-    ))
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
 
-  it('should return none when not in megarepo', () =>
-    withTestCtx(
-      Effect.gen(function* () {
+  it.effect(
+    'should return none when not in megarepo',
+    Effect.fnUntraced(
+      function* () {
         const fs = yield* FileSystem.FileSystem
 
         // Create directory without megarepo.json
@@ -228,8 +250,11 @@ describe('mr root', () => {
         // Find root - should return none
         const root = yield* findMegarepoRoot(workDir)
         expect(Option.isNone(root)).toBe(true)
-      }),
-    ))
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
 })
 
 // =============================================================================
@@ -237,9 +262,10 @@ describe('mr root', () => {
 // =============================================================================
 
 describe('mr add', () => {
-  it('should add member to megarepo.json', () =>
-    withTestCtx(
-      Effect.gen(function* () {
+  it.effect(
+    'should add member to megarepo.json',
+    Effect.fnUntraced(
+      function* () {
         const fs = yield* FileSystem.FileSystem
 
         // Create workspace with empty megarepo.json
@@ -276,12 +302,16 @@ describe('mr add', () => {
         // Verify member was added
         const finalConfig = yield* readConfig(workDir)
         expect(finalConfig.members['effect']).toBe('effect-ts/effect')
-      }),
-    ))
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
 
-  it('should add member with custom name', () =>
-    withTestCtx(
-      Effect.gen(function* () {
+  it.effect(
+    'should add member with custom name',
+    Effect.fnUntraced(
+      function* () {
         const fs = yield* FileSystem.FileSystem
 
         // Create workspace
@@ -312,8 +342,11 @@ describe('mr add', () => {
 
         const finalConfig = yield* readConfig(workDir)
         expect(finalConfig.members['effect-v3']).toBe('effect-ts/effect#v3.0.0')
-      }),
-    ))
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
 
   it('should reject invalid member names', () => {
     // Test member name validation
@@ -323,9 +356,10 @@ describe('mr add', () => {
     expect(validateMemberName('valid-name')).toBeUndefined()
   })
 
-  it('should not add duplicate member', () =>
-    withTestCtx(
-      Effect.gen(function* () {
+  it.effect(
+    'should not add duplicate member',
+    Effect.fnUntraced(
+      function* () {
         const fs = yield* FileSystem.FileSystem
 
         // Create workspace with existing member
@@ -352,8 +386,11 @@ describe('mr add', () => {
 
         // In real CLI, this would fail with "Member already exists"
         expect(memberName in config.members).toBe(true)
-      }),
-    ))
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
 })
 
 // =============================================================================
@@ -361,9 +398,10 @@ describe('mr add', () => {
 // =============================================================================
 
 describe('megarepo.json parsing', () => {
-  it('should parse config with multiple member formats', () =>
-    withTestCtx(
-      Effect.gen(function* () {
+  it.effect(
+    'should parse config with multiple member formats',
+    Effect.fnUntraced(
+      function* () {
         const fs = yield* FileSystem.FileSystem
 
         const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
@@ -394,12 +432,16 @@ describe('megarepo.json parsing', () => {
         expect(parsed.members['github']).toBe('owner/repo')
         expect(parsed.members['github-ref']).toBe('owner/repo#main')
         expect(parsed.members['local']).toBe('./packages/local')
-      }),
-    ))
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
 
-  it('should parse config with generators', () =>
-    withTestCtx(
-      Effect.gen(function* () {
+  it.effect(
+    'should parse config with generators',
+    Effect.fnUntraced(
+      function* () {
         const fs = yield* FileSystem.FileSystem
 
         const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
@@ -423,6 +465,9 @@ describe('megarepo.json parsing', () => {
         const parsed = yield* readConfig(workDir)
         expect(parsed.generators?.vscode?.enabled).toBe(true)
         expect(parsed.generators?.vscode?.exclude).toEqual(['large-repo'])
-      }),
-    ))
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
 })

@@ -9,8 +9,10 @@
 
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
+import { NodeContext } from '@effect/platform-node'
+import { describe, it } from '@effect/vitest'
 import { Effect, Exit, Schema } from 'effect'
-import { describe, expect, it } from 'vitest'
+import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
@@ -18,7 +20,6 @@ import { MegarepoConfig } from '../lib/config.ts'
 import { createLockedMember, type LockFile, LOCK_FILE_NAME, writeLockFile } from '../lib/lock.ts'
 import { makeConsoleCapture } from '../test-utils/consoleCapture.ts'
 import { createRepo, getGitRev, initGitRepo, runGitCommand } from '../test-utils/setup.ts'
-import { withTestCtx } from '../test-utils/withTestCtx.ts'
 import { Cwd } from './context.ts'
 import { mrCommand } from './mod.ts'
 import { StatusState } from './renderers/StatusOutput/schema.ts'
@@ -172,9 +173,10 @@ const createTestWorkspace = (args: {
 
 describe('mr status --output json', () => {
   describe('syncNeeded and syncReasons', () => {
-    it('should report syncNeeded=false when workspace is fully synced', () =>
-      withTestCtx(
-        Effect.gen(function* () {
+    it.effect(
+      'should report syncNeeded=false when workspace is fully synced',
+      Effect.fnUntraced(
+        function* () {
           const fs = yield* FileSystem.FileSystem
 
           // Create a local repo to symlink to
@@ -196,12 +198,16 @@ describe('mr status --output json', () => {
           expect(status).toBeDefined()
           expect(status!.syncNeeded).toBe(false)
           expect(status!.syncReasons).toEqual([])
-        }),
-      ))
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
 
-    it('should report syncNeeded=true when symlink is missing', () =>
-      withTestCtx(
-        Effect.gen(function* () {
+    it.effect(
+      'should report syncNeeded=true when symlink is missing',
+      Effect.fnUntraced(
+        function* () {
           // Create workspace with remote member but no symlink
           const { workspacePath } = yield* createTestWorkspace({
             members: { effect: 'effect-ts/effect' },
@@ -221,34 +227,39 @@ describe('mr status --output json', () => {
           expect(status).toBeDefined()
           expect(status!.syncNeeded).toBe(true)
           expect(status!.syncReasons).toContain("Member 'effect' symlink missing")
-        }),
-      ))
-
-    it(
-      'should report syncNeeded=true when lock file is missing for remote members',
-      { timeout: 20000 },
-      () =>
-        withTestCtx(
-          Effect.gen(function* () {
-            // Create workspace with remote member but no lock file
-            const { workspacePath } = yield* createTestWorkspace({
-              members: { effect: 'effect-ts/effect' },
-              // No lock entries - this simulates missing lock
-            })
-
-            const { status, exitCode } = yield* runStatusCommand({ cwd: workspacePath })
-
-            expect(exitCode).toBe(0)
-            expect(status).toBeDefined()
-            expect(status!.syncNeeded).toBe(true)
-            expect(status!.syncReasons).toContain('Lock file missing')
-          }),
-        ),
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
     )
 
-    it('should report syncNeeded=true when member is not in lock file', () =>
-      withTestCtx(
-        Effect.gen(function* () {
+    it.effect(
+      'should report syncNeeded=true when lock file is missing for remote members',
+      Effect.fnUntraced(
+        function* () {
+          // Create workspace with remote member but no lock file
+          const { workspacePath } = yield* createTestWorkspace({
+            members: { effect: 'effect-ts/effect' },
+            // No lock entries - this simulates missing lock
+          })
+
+          const { status, exitCode } = yield* runStatusCommand({ cwd: workspacePath })
+
+          expect(exitCode).toBe(0)
+          expect(status).toBeDefined()
+          expect(status!.syncNeeded).toBe(true)
+          expect(status!.syncReasons).toContain('Lock file missing')
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+      { timeout: 20000 },
+    )
+
+    it.effect(
+      'should report syncNeeded=true when member is not in lock file',
+      Effect.fnUntraced(
+        function* () {
           // Create workspace with one member in config but lock has different member
           const { workspacePath } = yield* createTestWorkspace({
             members: {
@@ -271,8 +282,11 @@ describe('mr status --output json', () => {
           expect(status).toBeDefined()
           expect(status!.syncNeeded).toBe(true)
           expect(status!.syncReasons).toContain("Member 'another-lib' not in lock file")
-        }),
-      ))
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
   })
 
   // =============================================================================
@@ -280,9 +294,10 @@ describe('mr status --output json', () => {
   // =============================================================================
 
   describe('symlinkExists field', () => {
-    it('should report symlinkExists=true when symlink is present', () =>
-      withTestCtx(
-        Effect.gen(function* () {
+    it.effect(
+      'should report symlinkExists=true when symlink is present',
+      Effect.fnUntraced(
+        function* () {
           const fs = yield* FileSystem.FileSystem
 
           // Create a local repo
@@ -304,12 +319,16 @@ describe('mr status --output json', () => {
           const member = status!.members.find((m) => m.name === 'my-lib')
           expect(member).toBeDefined()
           expect(member!.symlinkExists).toBe(true)
-        }),
-      ))
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
 
-    it('should report symlinkExists=false when symlink is missing', () =>
-      withTestCtx(
-        Effect.gen(function* () {
+    it.effect(
+      'should report symlinkExists=false when symlink is missing',
+      Effect.fnUntraced(
+        function* () {
           // Create workspace without symlinks
           const { workspacePath } = yield* createTestWorkspace({
             members: { effect: 'effect-ts/effect' },
@@ -329,8 +348,11 @@ describe('mr status --output json', () => {
           const member = status!.members.find((m) => m.name === 'effect')
           expect(member).toBeDefined()
           expect(member!.symlinkExists).toBe(false)
-        }),
-      ))
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
   })
 
   // =============================================================================
@@ -338,9 +360,10 @@ describe('mr status --output json', () => {
   // =============================================================================
 
   describe('commitDrift field', () => {
-    it('should report commitDrift when local commit differs from locked commit', () =>
-      withTestCtx(
-        Effect.gen(function* () {
+    it.effect(
+      'should report commitDrift when local commit differs from locked commit',
+      Effect.fnUntraced(
+        function* () {
           const fs = yield* FileSystem.FileSystem
 
           // Create a repo that will have a different commit than the lock
@@ -375,12 +398,16 @@ describe('mr status --output json', () => {
           expect(member!.commitDrift).toBeDefined()
           expect(member!.commitDrift!.localCommit).toBe(actualCommit)
           expect(member!.commitDrift!.lockedCommit).toBe(lockedCommit)
-        }),
-      ))
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
 
-    it('should not report commitDrift when commits match', () =>
-      withTestCtx(
-        Effect.gen(function* () {
+    it.effect(
+      'should not report commitDrift when commits match',
+      Effect.fnUntraced(
+        function* () {
           const fs = yield* FileSystem.FileSystem
 
           // Create a repo
@@ -412,12 +439,16 @@ describe('mr status --output json', () => {
           const member = status!.members.find((m) => m.name === 'synced-lib')
           expect(member).toBeDefined()
           expect(member!.commitDrift).toBeUndefined()
-        }),
-      ))
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
 
-    it('should not report commitDrift for local path members', () =>
-      withTestCtx(
-        Effect.gen(function* () {
+    it.effect(
+      'should not report commitDrift for local path members',
+      Effect.fnUntraced(
+        function* () {
           const fs = yield* FileSystem.FileSystem
 
           // Create a local repo
@@ -441,8 +472,11 @@ describe('mr status --output json', () => {
           expect(member).toBeDefined()
           expect(member!.isLocal).toBe(true)
           expect(member!.commitDrift).toBeUndefined()
-        }),
-      ))
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
   })
 
   // =============================================================================
@@ -450,9 +484,10 @@ describe('mr status --output json', () => {
   // =============================================================================
 
   describe('combined scenarios', () => {
-    it('should correctly report status for mixed local and remote members', () =>
-      withTestCtx(
-        Effect.gen(function* () {
+    it.effect(
+      'should correctly report status for mixed local and remote members',
+      Effect.fnUntraced(
+        function* () {
           const fs = yield* FileSystem.FileSystem
 
           // Create a local repo
@@ -500,7 +535,10 @@ describe('mr status --output json', () => {
           // Overall sync needed due to missing remote member
           expect(status!.syncNeeded).toBe(true)
           expect(status!.syncReasons).toContain("Member 'remote-lib' symlink missing")
-        }),
-      ))
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
   })
 })

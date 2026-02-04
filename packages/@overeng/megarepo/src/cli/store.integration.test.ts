@@ -5,8 +5,10 @@
  */
 
 import { FileSystem } from '@effect/platform'
+import { NodeContext } from '@effect/platform-node'
+import { describe, it } from '@effect/vitest'
 import { Effect, Option } from 'effect'
-import { describe, expect, it } from 'vitest'
+import { expect } from 'vitest'
 
 import { EffectPath } from '@overeng/effect-path'
 
@@ -18,13 +20,13 @@ import {
   createWorkspaceWithLock,
   getWorktreeCommit,
 } from '../test-utils/store-setup.ts'
-import { withTestCtx } from '../test-utils/withTestCtx.ts'
 
 describe('mr store gc', () => {
   describe('with unused worktrees', () => {
-    it('should identify unused worktrees when not in a megarepo', () =>
-      withTestCtx(
-        Effect.gen(function* () {
+    it.effect(
+      'should identify unused worktrees when not in a megarepo',
+      Effect.fnUntraced(
+        function* () {
           const fs = yield* FileSystem.FileSystem
 
           // Create a store with some repos and worktrees
@@ -55,12 +57,16 @@ describe('mr store gc', () => {
           const repos = yield* store.listRepos()
           expect(repos).toHaveLength(1)
           expect(repos[0]?.relativePath).toBe('github.com/test-owner/test-repo/')
-        }),
-      ))
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
 
-    it('should skip dirty worktrees without --force', () =>
-      withTestCtx(
-        Effect.gen(function* () {
+    it.effect(
+      'should skip dirty worktrees without --force',
+      Effect.fnUntraced(
+        function* () {
           const fs = yield* FileSystem.FileSystem
 
           // Create store with a dirty worktree
@@ -89,14 +95,18 @@ describe('mr store gc', () => {
 
           const repos = yield* store.listRepos()
           expect(repos).toHaveLength(1)
-        }),
-      ))
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
   })
 
   describe('with workspace lock file', () => {
-    it('should mark worktrees as in-use when referenced in lock file', () =>
-      withTestCtx(
-        Effect.gen(function* () {
+    it.effect(
+      'should mark worktrees as in-use when referenced in lock file',
+      Effect.fnUntraced(
+        function* () {
           // Create store with worktrees
           const { worktreePaths } = yield* createStoreFixture([
             {
@@ -135,15 +145,19 @@ describe('mr store gc', () => {
           const lockFile = Option.getOrThrow(lockFileOpt)
           expect(lockFile.members['my-lib']).toBeDefined()
           expect(lockFile.members['my-lib']!.ref).toBe('main')
-        }),
-      ))
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
   })
 })
 
 describe('mr store ls', () => {
-  it('should list repos in the store', () =>
-    withTestCtx(
-      Effect.gen(function* () {
+  it.effect(
+    'should list repos in the store',
+    Effect.fnUntraced(
+      function* () {
         // Create store with multiple repos
         const { storePath } = yield* createStoreFixture([
           {
@@ -169,12 +183,16 @@ describe('mr store ls', () => {
         const paths = repos.map((r) => r.relativePath).sort()
         expect(paths).toContain('github.com/owner1/repo-a/')
         expect(paths).toContain('github.com/owner2/repo-b/')
-      }),
-    ))
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
 
-  it('should return empty list for empty store', () =>
-    withTestCtx(
-      Effect.gen(function* () {
+  it.effect(
+    'should return empty list for empty store',
+    Effect.fnUntraced(
+      function* () {
         const fs = yield* FileSystem.FileSystem
 
         // Create empty store directory
@@ -187,14 +205,18 @@ describe('mr store ls', () => {
 
         const repos = yield* store.listRepos()
         expect(repos).toHaveLength(0)
-      }),
-    ))
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
 })
 
 describe('store worktree paths', () => {
-  it('should generate correct worktree paths for different ref types', () =>
-    withTestCtx(
-      Effect.gen(function* () {
+  it.effect(
+    'should generate correct worktree paths for different ref types',
+    Effect.fnUntraced(
+      function* () {
         const fs = yield* FileSystem.FileSystem
 
         // Create store directory
@@ -229,12 +251,16 @@ describe('store worktree paths', () => {
           ref: commitRef,
         })
         expect(commitPath).toContain('refs/commits/')
-      }),
-    ))
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
 
-  it('should encode special characters in ref names', () =>
-    withTestCtx(
-      Effect.gen(function* () {
+  it.effect(
+    'should encode special characters in ref names',
+    Effect.fnUntraced(
+      function* () {
         const fs = yield* FileSystem.FileSystem
 
         const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
@@ -252,14 +278,18 @@ describe('store worktree paths', () => {
         })
         // The slash should be URL-encoded
         expect(pathWithSlash).toContain('feature%2Fmy-branch')
-      }),
-    ))
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
 })
 
 describe('lock file pin/unpin operations', () => {
-  it('should pin a member in the lock file', () =>
-    withTestCtx(
-      Effect.gen(function* () {
+  it.effect(
+    'should pin a member in the lock file',
+    Effect.fnUntraced(
+      function* () {
         const { workspacePath } = yield* createWorkspaceWithLock({
           members: {
             'my-lib': 'owner/repo',
@@ -293,12 +323,16 @@ describe('lock file pin/unpin operations', () => {
         expect(pinnedLockFile.members['my-lib']!.commit).toBe(
           'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
         )
-      }),
-    ))
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
 
-  it('should unpin a member in the lock file', () =>
-    withTestCtx(
-      Effect.gen(function* () {
+  it.effect(
+    'should unpin a member in the lock file',
+    Effect.fnUntraced(
+      function* () {
         const { workspacePath } = yield* createWorkspaceWithLock({
           members: {
             'my-lib': 'owner/repo',
@@ -335,12 +369,16 @@ describe('lock file pin/unpin operations', () => {
         expect(unpinnedLockFile.members['my-lib']!.commit).toBe(
           'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
         )
-      }),
-    ))
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
 
-  it('should not modify other members when pinning/unpinning', () =>
-    withTestCtx(
-      Effect.gen(function* () {
+  it.effect(
+    'should not modify other members when pinning/unpinning',
+    Effect.fnUntraced(
+      function* () {
         const { workspacePath } = yield* createWorkspaceWithLock({
           members: {
             lib1: 'owner/lib1',
@@ -380,14 +418,18 @@ describe('lock file pin/unpin operations', () => {
         expect(pinnedLockFile.members['lib2']!.commit).toBe(
           '2222222222222222222222222222222222222222',
         )
-      }),
-    ))
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
 })
 
 describe('lock file operations', () => {
-  it('should create and read lock file with pinned member', () =>
-    withTestCtx(
-      Effect.gen(function* () {
+  it.effect(
+    'should create and read lock file with pinned member',
+    Effect.fnUntraced(
+      function* () {
         const { workspacePath } = yield* createWorkspaceWithLock({
           members: {
             'pinned-lib': 'owner/repo',
@@ -415,12 +457,16 @@ describe('lock file operations', () => {
         expect(lockFile.members['pinned-lib']!.commit).toBe(
           'abc1234567890abcdef1234567890abcdef1234',
         )
-      }),
-    ))
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
 
-  it('should handle multiple members with different pin states', () =>
-    withTestCtx(
-      Effect.gen(function* () {
+  it.effect(
+    'should handle multiple members with different pin states',
+    Effect.fnUntraced(
+      function* () {
         const { workspacePath } = yield* createWorkspaceWithLock({
           members: {
             lib1: 'owner/lib1',
@@ -460,8 +506,11 @@ describe('lock file operations', () => {
         expect(lockFile.members['lib1']!.pinned).toBe(true)
         expect(lockFile.members['lib2']!.pinned).toBe(false)
         expect(lockFile.members['lib3']!.pinned).toBe(false)
-      }),
-    ))
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
 })
 
 describe('source string parsing', () => {

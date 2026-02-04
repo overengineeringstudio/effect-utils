@@ -6,8 +6,10 @@
  */
 
 import { FileSystem } from '@effect/platform'
+import { NodeContext } from '@effect/platform-node'
+import { describe, it } from '@effect/vitest'
 import { Effect, Option, Schema } from 'effect'
-import { describe, expect, it } from 'vitest'
+import { expect } from 'vitest'
 
 import { EffectPath } from '@overeng/effect-path'
 
@@ -27,7 +29,6 @@ import {
 } from '../lib/lock.ts'
 import { classifyRef } from '../lib/ref.ts'
 import { addCommit, initGitRepo, readConfig } from '../test-utils/setup.ts'
-import { withTestCtx } from '../test-utils/withTestCtx.ts'
 
 /**
  * Create a minimal test setup for pin command testing.
@@ -68,9 +69,10 @@ const createMinimalTestSetup = () =>
 
 describe('mr pin', () => {
   describe('config update logic', () => {
-    it('should update megarepo.json when switching refs', () =>
-      withTestCtx(
-        Effect.gen(function* () {
+    it.effect(
+      'should update megarepo.json when switching refs',
+      Effect.fnUntraced(
+        function* () {
           const fs = yield* FileSystem.FileSystem
           const { workspacePath } = yield* createMinimalTestSetup()
 
@@ -107,12 +109,16 @@ describe('mr pin', () => {
           // Verify the update
           const finalConfig = yield* readConfig(workspacePath)
           expect(finalConfig.members['test-repo']).toBe('test-owner/test-repo#feature-branch')
-        }),
-      ))
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
 
-    it('should replace existing ref when switching', () =>
-      withTestCtx(
-        Effect.gen(function* () {
+    it.effect(
+      'should replace existing ref when switching',
+      Effect.fnUntraced(
+        function* () {
           const fs = yield* FileSystem.FileSystem
           const { workspacePath } = yield* createMinimalTestSetup()
 
@@ -145,14 +151,18 @@ describe('mr pin', () => {
           if (source?.type === 'github') {
             expect(Option.getOrNull(source.ref)).toBe('main')
           }
-        }),
-      ))
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
   })
 
   describe('lock file update logic', () => {
-    it('should create lock entry with pinned=true when using -c', () =>
-      withTestCtx(
-        Effect.gen(function* () {
+    it.effect(
+      'should create lock entry with pinned=true when using -c',
+      Effect.fnUntraced(
+        function* () {
           const { workspacePath } = yield* createMinimalTestSetup()
 
           const lockPath = EffectPath.ops.join(
@@ -191,12 +201,16 @@ describe('mr pin', () => {
             expect(member?.commit).toBe(commit)
             expect(member?.pinned).toBe(true)
           }
-        }),
-      ))
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
 
-    it('should update existing lock entry when switching refs', () =>
-      withTestCtx(
-        Effect.gen(function* () {
+    it.effect(
+      'should update existing lock entry when switching refs',
+      Effect.fnUntraced(
+        function* () {
           const { workspacePath } = yield* createMinimalTestSetup()
 
           const lockPath = EffectPath.ops.join(
@@ -242,8 +256,11 @@ describe('mr pin', () => {
             expect(member?.commit).toBe(newCommit)
             expect(member?.pinned).toBe(true)
           }
-        }),
-      ))
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
   })
 
   describe('ref classification for worktree paths', () => {

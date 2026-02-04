@@ -45,6 +45,7 @@ export default packageJson({
       '@types/react-reconciler',
       'typescript',
       'vitest',
+      '@effect/vitest',
       '@playwright/test',
       '@overeng/utils',
       // Effect ecosystem

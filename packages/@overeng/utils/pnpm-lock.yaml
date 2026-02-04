@@ -93,18 +93,6 @@ importers:
         specifier: 3.2.4
         version: 3.2.4(@types/node@25.0.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
 
-  ../tui-core:
-    devDependencies:
-      '@types/node':
-        specifier: 25.0.3
-        version: 25.0.3
-      typescript:
-        specifier: 5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: 3.2.4
-        version: 3.2.4(@types/node@25.0.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
-
 packages:
 
   '@effect/cluster@0.56.1':

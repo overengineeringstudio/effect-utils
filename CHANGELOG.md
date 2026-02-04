@@ -14,6 +14,11 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **@overeng/megarepo**, **@overeng/tui-react**: Migrated tests from async/await to `@effect/vitest`
+  - All Effect-based tests now use `it.effect()` pattern instead of `async () => { await Effect.runPromise(...) }`
+  - Provides better stack traces, fiber-aware timeouts, and cleaner Effect integration
+  - See [#92](https://github.com/overengineeringstudio/effect-utils/issues/92)
+
 - **@overeng/megarepo**: Simplified nix integration - removed workspace generator
   - Removed `mr generate nix` command and `.envrc.generated.megarepo` file
   - Removed `.direnv/megarepo-nix/workspace` mirror directory

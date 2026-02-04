@@ -34,6 +34,7 @@
     "@effect/cli": "0.73.1",
     "@effect/platform": "0.94.2",
     "@effect/platform-node": "0.104.1",
+    "@effect/vitest": "0.27.0",
     "@opentui/core": "0.1.74",
     "@opentui/react": "0.1.74",
     "@overeng/utils": "workspace:*",
