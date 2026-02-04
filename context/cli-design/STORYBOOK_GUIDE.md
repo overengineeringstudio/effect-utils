@@ -8,6 +8,13 @@ Guidelines for creating Storybook stories for CLI output components.
 - A2 - CLI views follow the app/schema/view pattern with Effect Schema for state
 - A3 - Output supports multiple modes (TTY, CI, JSON, etc.) via the tui-react output system
 
+## Requirements
+
+- R1 - **Semantic equivalence**: Interactive and static modes must end at identical state. Timeline must produce same final state as static rendering.
+- R2 - **Realistic scenarios**: Story data, timing, and error cases must reflect real CLI usage. Use representative file paths, realistic counts, plausible error messages.
+- R3 - **Flag coverage**: Every meaningful CLI flag gets a Storybook control. Users explore all variations without touching code.
+- R4 - **Output format coverage**: All stories test all output modes (TTY, CI, JSON, etc.) via ALL_TABS.
+
 ## Core Principle
 
 **Every meaningful CLI flag gets a Storybook control.** Users should be able to explore all output variations without touching code.
@@ -239,13 +246,13 @@ tabs={ALL_TABS}
 
 ## Checklist
 
-- [ ] Every CLI flag has a corresponding control
+- [ ] Every CLI flag has a corresponding control (R3)
 - [ ] `interactive` toggle for animated vs static view
 - [ ] `height` control for viewport testing
 - [ ] `useMemo` wraps config dependent on args
-- [ ] Timeline factory accepts same config as static state
-- [ ] Timeline ends at same state as static mode (semantic equivalence)
-- [ ] ALL_TABS for output format coverage
+- [ ] Timeline ends at same state as static mode (R1)
+- [ ] Scenario data is realistic - real paths, plausible errors (R2)
+- [ ] ALL_TABS for output format coverage (R4)
 - [ ] State factories are typed and reusable
 - [ ] No hardcoded state in stories
 - [ ] Fixtures extracted to `_fixtures.ts`
