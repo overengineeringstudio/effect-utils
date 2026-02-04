@@ -403,7 +403,7 @@ export const NestedMegarepos: Story = {
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
-        tabs={ALL_TABS}
+        tabs={ALL_OUTPUT_TABS}
         {...(args.interactive ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
     )
