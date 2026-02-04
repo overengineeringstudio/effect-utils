@@ -1,7 +1,8 @@
 import { githubWorkflow, type GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import type { CIJobName } from '../../genie/ci.ts'
 
-type RunnerProfile = 'namespace-profile-linux-x86-64' | 'namespace-profile-macos-arm64'
+const RUNNER_PROFILES = ['namespace-profile-linux-x86-64', 'namespace-profile-macos-arm64'] as const
+type RunnerProfile = (typeof RUNNER_PROFILES)[number]
 
 /**
  * Namespace runner configuration.
@@ -61,7 +62,7 @@ const multiPlatformJob = (step: { name: string; run: string }) => ({
   strategy: {
     'fail-fast': false,
     matrix: {
-      runner: ['namespace-profile-linux-x86-64', 'namespace-profile-macos-arm64'] as RunnerProfile[],
+      runner: [...RUNNER_PROFILES],
     },
   },
   'runs-on': namespaceRunner('${{ matrix.runner }}' as RunnerProfile, '${{ github.run_id }}'),
