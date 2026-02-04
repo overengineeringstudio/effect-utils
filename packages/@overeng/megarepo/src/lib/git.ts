@@ -300,10 +300,18 @@ export const listWorktrees = (repoPath: string) =>
 // =============================================================================
 
 /**
- * Clone a repository as a bare repo
+ * Clone a repository as a bare repo.
+ * Configures fetch refspec so remote tracking refs are created on fetch.
+ * (git clone --bare doesn't set this up by default)
  */
 export const cloneBare = (args: { url: string; targetPath: string }) =>
-  clone({ url: args.url, targetPath: args.targetPath, bare: true })
+  Effect.gen(function* () {
+    yield* clone({ url: args.url, targetPath: args.targetPath, bare: true })
+    yield* runGitCommand({
+      args: ['config', 'remote.origin.fetch', '+refs/heads/*:refs/remotes/origin/*'],
+      cwd: args.targetPath,
+    })
+  })
 
 /**
  * Fetch all refs from remote in a bare repo
