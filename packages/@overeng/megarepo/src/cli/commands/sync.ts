@@ -33,7 +33,7 @@ import {
   upsertLockedMember,
   writeLockFile,
 } from '../../lib/lock.ts'
-import { syncNixLocks } from '../../lib/nix-lock/mod.ts'
+import { syncNixLocks, type NixLockSyncResult } from '../../lib/nix-lock/mod.ts'
 import { type Store, StoreLayer } from '../../lib/store.ts'
 import {
   countSyncResults,
@@ -120,6 +120,7 @@ export const syncMegarepo = <R = never>({
         results: [],
         nestedMegarepos: [],
         nestedResults: [],
+        lockSyncResults: undefined,
       } satisfies MegarepoSyncResult
     }
 
@@ -322,6 +323,9 @@ export const syncMegarepo = <R = never>({
     )
     const nestedMegarepos = nestedMegarepoChecks.filter((name): name is string => name !== null)
 
+    // Track Nix lock sync results (populated if lock sync runs)
+    let nixLockResult: NixLockSyncResult | undefined = undefined
+
     // Update lock file (unless dry run or frozen)
     if (!dryRun && !frozen) {
       // Initialize lock file if needed
@@ -380,7 +384,7 @@ export const syncMegarepo = <R = never>({
 
       if (lockSyncEnabled) {
         const excludeMembers = new Set(config.lockSync?.exclude ?? [])
-        const nixLockResult = yield* syncNixLocks({
+        nixLockResult = yield* syncNixLocks({
           megarepoRoot,
           config,
           lockFile,
@@ -429,6 +433,7 @@ export const syncMegarepo = <R = never>({
               results: [],
               nestedMegarepos: [],
               nestedResults: [],
+              lockSyncResults: undefined,
             } satisfies MegarepoSyncResult),
           ),
         )
@@ -442,6 +447,7 @@ export const syncMegarepo = <R = never>({
       results: allResults,
       nestedMegarepos,
       nestedResults,
+      lockSyncResults: nixLockResult,
     } satisfies MegarepoSyncResult
   })
 
@@ -683,6 +689,21 @@ export const syncCommand = Cli.Command.make(
 
         const generatedFiles = getEnabledGenerators(config)
 
+        // Transform lock sync results to TUI format
+        const lockSyncResults =
+          syncResult.lockSyncResults?.memberResults.map((mr) => ({
+            memberName: mr.memberName,
+            files: mr.files.map((f) => ({
+              type: f.type,
+              updatedInputs: f.updatedInputs.map((u) => ({
+                inputName: u.inputName,
+                memberName: u.memberName,
+                oldRev: u.oldRev.slice(0, 7),
+                newRev: u.newRev.slice(0, 7),
+              })),
+            })),
+          })) ?? []
+
         // Render final state via SyncApp
         yield* Effect.scoped(
           Effect.gen(function* () {
@@ -701,7 +722,7 @@ export const syncCommand = Cli.Command.make(
                 logs: [],
                 nestedMegarepos: [...syncResult.nestedMegarepos],
                 generatedFiles,
-                lockSyncResults: [],
+                lockSyncResults,
               },
             })
           }),
