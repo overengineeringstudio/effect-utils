@@ -16,7 +16,10 @@ const needsQuoting = (str: string): boolean => {
   if (str === '') return true
   if (str === 'true' || str === 'false' || str === 'null') return true
   if (/^\d+$/.test(str) || /^\d+\.\d+$/.test(str)) return true
-  if (str.startsWith('${{') && str.endsWith('}}')) return false
+  // Always quote strings containing ${{ - in flow sequences (inline arrays),
+  // {{ is interpreted as nested flow mapping start, causing YAML parse errors.
+  // GitHub Actions evaluates expressions inside quoted strings, so this is safe.
+  if (str.includes('${{')) return true
   if (/^[{[\]!@#%&*|>?]/.test(str)) return true
   if (/[:#]/.test(str)) return true
   if (str.includes('\n')) return true
