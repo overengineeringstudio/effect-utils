@@ -270,11 +270,17 @@ let
     for dir_name in $inner_cache_dirs; do
       cache_dir="${cacheRoot}/$dir_name"
       # Directory must exist and contain at least one .hash file
-      # Use for loop with -f check (POSIX-compliant, works on Linux and macOS)
+      # Use explicit glob expansion check (more portable across shells)
       if [ -d "$cache_dir" ]; then
-        for f in "$cache_dir"/*.hash; do
-          [ -f "$f" ] && exit 0
-        done
+        # Try to find any .hash file - check if glob expands
+        hash_files=$(echo "$cache_dir"/*.hash)
+        # If glob didn't expand (no matches), it will be literal "*.hash"
+        if [ "$hash_files" != "$cache_dir/*.hash" ]; then
+          # Glob expanded - check if at least one is a regular file
+          for f in $hash_files; do
+            [ -f "$f" ] && exit 0
+          done
+        fi
       fi
     done
 

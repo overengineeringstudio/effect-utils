@@ -56,21 +56,21 @@ simulate_git_hash_status() {
   fi
 
   # Check each configured inner cache dir for *.hash files
-  # DEBUG: print inner_cache_dirs
-  [ -n "${DEBUG_CACHE:-}" ] && echo "  DEBUG(fn): inner_cache_dirs='$inner_cache_dirs'" >&2
   for dir_name in $inner_cache_dirs; do
     local cache_dir="$cache_root/$dir_name"
-    [ -n "${DEBUG_CACHE:-}" ] && echo "  DEBUG(fn): checking cache_dir='$cache_dir'" >&2
     # Directory must exist and contain at least one .hash file
-    # Use for loop with -f check (POSIX-compliant, works on Linux and macOS)
+    # Use explicit test with glob expansion check (more portable than for loop)
     if [ -d "$cache_dir" ]; then
-      [ -n "${DEBUG_CACHE:-}" ] && echo "  DEBUG(fn): dir exists, checking for .hash files" >&2
-      for f in "$cache_dir"/*.hash; do
-        [ -n "${DEBUG_CACHE:-}" ] && echo "  DEBUG(fn): checking f='$f', -f test=$([ -f "$f" ] && echo 'true' || echo 'false')" >&2
-        [ -f "$f" ] && return 0
-      done
-    else
-      [ -n "${DEBUG_CACHE:-}" ] && echo "  DEBUG(fn): dir does not exist" >&2
+      # Try to find any .hash file - set nullglob-like behavior using test
+      local hash_files
+      hash_files=$(echo "$cache_dir"/*.hash)
+      # If glob didn't expand (no matches), it will be literal "*.hash"
+      if [ "$hash_files" != "$cache_dir/*.hash" ]; then
+        # Glob expanded - check if at least one is a regular file
+        for f in $hash_files; do
+          [ -f "$f" ] && return 0
+        done
+      fi
     fi
   done
 
@@ -118,17 +118,10 @@ echo ""
 echo "Test 3: Matching git hash + inner caches with .hash files"
 mkdir -p "$pnpm_cache_dir"
 echo "somehash" > "$pnpm_cache_dir/genie.hash"
-# Debug output for CI
-echo "  DEBUG: pnpm_cache_dir=$pnpm_cache_dir"
-echo "  DEBUG: cache_root=$cache_root"
-echo "  DEBUG: ls -la $pnpm_cache_dir:"
-ls -la "$pnpm_cache_dir" || echo "  DEBUG: ls failed"
-echo "  DEBUG: hash_file contents: $(cat "$hash_file" 2>/dev/null || echo 'MISSING')"
 set +e
-DEBUG_CACHE=1 simulate_git_hash_status "$hash_file" "$cache_root" "abc123"
+simulate_git_hash_status "$hash_file" "$cache_root" "abc123"
 exit_code=$?
 set -e
-echo "  DEBUG: exit_code=$exit_code"
 assert_exit_code 0 "$exit_code" "matching hash + .hash files returns 0 (skip)"
 
 # Test 4: Different git hash -> should return 1 (run) even with inner caches
