@@ -36,10 +36,10 @@ simulate_git_hash_status() {
   local hash_file="$1"
   local cache_root="$2"
   local current_hash="$3"
-  local force_setup="${4:-${FORCE_SETUP:-}}"
+  local force_setup="${4-}"  # Explicit parameter only, ignore env var for testing
   local inner_cache_dirs="${5-pnpm-install}"  # space-separated list, empty = git-hash-only
 
-  # Allow bypass via FORCE_SETUP=1
+  # Allow bypass via force_setup parameter (NOT env var - env var breaks CI tests)
   [ "$force_setup" = "1" ] && return 1
 
   local cached
