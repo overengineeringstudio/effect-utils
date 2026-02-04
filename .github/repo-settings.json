@@ -42,18 +42,6 @@
       }
     },
     {
-      "type": "merge_queue",
-      "parameters": {
-        "merge_method": "SQUASH",
-        "min_entries_to_merge": 1,
-        "max_entries_to_merge": 5,
-        "min_entries_to_merge_wait_minutes": 1,
-        "max_entries_to_build": 5,
-        "check_response_timeout_minutes": 30,
-        "grouping_strategy": "ALLGREEN"
-      }
-    },
-    {
       "type": "non_fast_forward"
     },
     {
