@@ -173,6 +173,12 @@ const formatWithOxfmt = Effect.fn('formatWithOxfmt')(function* ({
     Effect.catchAll(() => Effect.succeed(content)),
   )
 
+  // If oxfmt returned empty output (e.g., failed to parse), return original content
+  // This handles cases like YAML with ${{ }} expressions in inline arrays that oxfmt can't parse
+  if (result.length === 0 && content.length > 0) {
+    return content
+  }
+
   return result
 })
 
@@ -339,6 +345,7 @@ export const getExpectedContent = ({
       content: rawContent,
       configPath: oxfmtConfigPath,
     })
+
     return { targetFilePath, content: header + formattedContent }
   }).pipe(Effect.withSpan('getExpectedContent'))
 

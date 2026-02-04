@@ -69,8 +69,11 @@ jobs:
       - name: Format + lint
         run: 'dt lint:check'
   test:
-    runs-on:
-      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [namespace-profile-linux-x86-64, namespace-profile-macos-arm64]
+    runs-on: [${{ matrix.runner }}, 'namespace-features:github.run-id=${{ github.run_id }}']
     defaults:
       run:
         shell: devenv shell bash -- -e {0}
@@ -98,8 +101,11 @@ jobs:
       - name: Unit tests
         run: 'dt test:run'
   nix-check:
-    runs-on:
-      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [namespace-profile-linux-x86-64, namespace-profile-macos-arm64]
+    runs-on: [${{ matrix.runner }}, 'namespace-features:github.run-id=${{ github.run_id }}']
     defaults:
       run:
         shell: devenv shell bash -- -e {0}
