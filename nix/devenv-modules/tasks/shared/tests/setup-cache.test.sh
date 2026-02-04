@@ -59,18 +59,9 @@ simulate_git_hash_status() {
   for dir_name in $inner_cache_dirs; do
     local cache_dir="$cache_root/$dir_name"
     # Directory must exist and contain at least one .hash file
-    # Use explicit test with glob expansion check (more portable than for loop)
-    if [ -d "$cache_dir" ]; then
-      # Try to find any .hash file - set nullglob-like behavior using test
-      local hash_files
-      hash_files=$(echo "$cache_dir"/*.hash)
-      # If glob didn't expand (no matches), it will be literal "*.hash"
-      if [ "$hash_files" != "$cache_dir/*.hash" ]; then
-        # Glob expanded - check if at least one is a regular file
-        for f in $hash_files; do
-          [ -f "$f" ] && return 0
-        done
-      fi
+    # Use stat to check if any .hash files exist (works reliably across platforms)
+    if [ -d "$cache_dir" ] && stat "$cache_dir"/*.hash >/dev/null 2>&1; then
+      return 0
     fi
   done
 
