@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **@overeng/genie**: GitHub Repository Ruleset generator (`githubRuleset`)
+  - Type-safe configuration for GitHub Repository Rulesets via the REST API
+  - Full support for all 22 rule types with comprehensive JSDoc documentation
+  - Generates JSON config applied via `gh api repos/{owner}/{repo}/rulesets`
+  - Added ruleset configuration for effect-utils protecting the main branch
+
 ### Changed
 
 - **@overeng/megarepo**: Simplified nix integration - removed workspace generator
@@ -41,6 +49,8 @@ All notable changes to this project will be documented in this file.
   - Normalizes tar output (stable ordering + fixed timestamps)
   - Strips non-deterministic pnpm store `checkedAt` metadata
   - Prevents pnpm deps hash churn across CI runs
+- **nix/workspace-tools/lib/mk-pnpm-cli.nix**: Force `supportedArchitectures` in Nix pnpm installs
+  - Ensures pnpm store hashes remain stable across macOS/Linux (R5)
 
 ### Removed
 
