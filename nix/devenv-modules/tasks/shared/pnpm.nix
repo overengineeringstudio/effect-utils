@@ -13,10 +13,12 @@
 #         "packages/website"
 #         "scripts"
 #       ];
+#       # globalCache = true;  # default: share ~/.cache/pnpm across workspaces
 #     })
 #   ];
 #
 # Provides: pnpm:install, pnpm:install:<name>, pnpm:update, pnpm:clean, pnpm:reset-lock-files
+# Sets: env.npm_config_cache (when globalCache = true)
 #
 # ---
 # How we avoid TypeScript TS2742 errors:
@@ -68,7 +70,14 @@
 # the `dependenciesMeta` section at Nix evaluation time. No manual configuration
 # needed - just add `"injected": true` to dependenciesMeta and it will be tracked.
 #
-{ packages }:
+# ---
+# Global content cache:
+#
+# By default, pnpm's content-addressable cache is shared globally at ~/.cache/pnpm.
+# This prevents duplicate downloads across workspaces while keeping stores per-workspace.
+# Set globalCache = false to disable (not recommended for megarepo setups).
+#
+{ packages, globalCache ? true }:
 { lib, config, ... }:
 let
   cache = import ../lib/cache.nix { inherit config; };
@@ -233,6 +242,13 @@ let
   '') packages);
 
 in {
+  # Share pnpm's content-addressable cache globally to prevent duplicate downloads
+  # across workspaces. Each workspace still has its own store (PNPM_STORE_DIR),
+  # but downloaded tarballs are cached in ~/.cache/pnpm.
+  env = lib.mkIf globalCache {
+    npm_config_cache = "$HOME/.cache/pnpm";
+  };
+
   tasks = lib.mkMerge (map mkInstallTask packagesWithPrev ++ [
     {
       "pnpm:install" = {

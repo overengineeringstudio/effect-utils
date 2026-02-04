@@ -190,6 +190,7 @@ in
     pkgs.nodejs_24
     pkgs.bun
     pkgs.typescript
+    pkgs.flock  # Cross-process locking for setup tasks (see setup.nix)
     oxlintNpm
     pkgs.oxfmt
     (mkSourceCli { name = "genie"; entry = "packages/@overeng/genie/bin/genie.tsx"; })

@@ -10,6 +10,7 @@
 #       requiredTasks = [ ];
 #       optionalTasks = [ "pnpm:install" "genie:run" "ts:build" ];
 #       completionsCliNames = [ "genie" "mr" ];
+#       # innerCacheDirs = [ "pnpm-install" ];  # default; set to [] for non-pnpm setups
 #     })
 #   ];
 #
@@ -18,15 +19,25 @@
 #
 # Shared caching rules live in ./lib/cache.nix (task-specific details below).
 #
-# ## Git Hash Caching
+# ## Git Hash Caching (Two-Tier Design)
 #
-# By default, setup tasks are skipped if the git HEAD hash hasn't changed
-# since the last successful setup. This makes warm shell entry nearly instant.
+# Setup tasks use a two-tier caching strategy for R5/R11 compliance:
 #
-# The hash is stored in .direnv/task-cache/setup-git-hash and updated after successful setup.
+# Outer tier: Git hash (fast check)
+# - Stored in .direnv/task-cache/setup-git-hash
+# - Updated after successful setup
 #
-# Cache inputs:
-# - git HEAD (or "no-git" fallback)
+# Inner tier: Per-task content caches (e.g., pnpm-install/*.hash)
+# - Created by individual tasks (pnpm:install writes per-package hashes)
+# - Content-addressed for correctness
+# - Configurable via `innerCacheDirs` parameter
+#
+# Tasks are skipped only when BOTH tiers are valid:
+# - Git hash matches cached value
+# - Inner cache directories contain *.hash files (or innerCacheDirs is empty)
+#
+# This ensures fresh clones/cache-clears populate inner caches correctly.
+# For non-pnpm setups, set `innerCacheDirs = []` to use git-hash-only caching.
 #
 # Cache file:
 # - .direnv/task-cache/setup-git-hash
@@ -60,6 +71,9 @@
   completionsCliNames ? [],
   skipDuringRebase ? true,
   skipIfGitHashUnchanged ? true,
+  # Inner cache directories to check for *.hash files (two-tier caching).
+  # Set to [] for non-pnpm setups to use git-hash-only caching.
+  innerCacheDirs ? [ "pnpm-install" ],
 }:
 { lib, config, ... }:
 let
@@ -178,8 +192,14 @@ let
   # IMPORTANT: The recursion guard (_DEVENV_SETUP_RUNNING) prevents runaway process
   # spawning. Without it, nested devenv evaluations can cause hundreds of parallel
   # `devenv print-dev-env` processes, overwhelming the system.
+  #
+  # Cross-process locking: Uses flock to prevent parallel setup races when multiple
+  # terminals/processes trigger direnv simultaneously (common with Conductor/megarepo).
+  # See: https://github.com/cachix/devenv/issues/2465
   mkWrapperName = t: "setup:opt:${t}";
   wrappedOptionalTasks = map mkWrapperName setupOptionalTasks;
+  # Sanitize task name for use as lockfile name (replace : and / with -)
+  sanitizeForLockfile = s: builtins.replaceStrings [":" "/"] ["-" "-"] s;
   wrapperTasks = lib.listToAttrs (map (t: {
     name = mkWrapperName t;
     value = {
@@ -190,14 +210,41 @@ let
           exit 0
         fi
         export _DEVENV_SETUP_RUNNING=1
+
+        # Cross-process lock to prevent parallel setup races (R5, R13)
+        # Uses flock with 30s timeout - waits for other process to finish rather than skipping
+        lockfile="${cacheRoot}/setup-${sanitizeForLockfile t}.lock"
+        mkdir -p "$(dirname "$lockfile")"
+        exec 200>"$lockfile"
+        if ! flock -w 30 200; then
+          echo "[devenv] ${t} lock timeout after 30s - another process may be stuck" >&2
+          echo "[devenv] Try: FORCE_SETUP=1 dt setup:run" >&2
+          exit 0
+        fi
+
         devenv tasks run ${t} || true
       '';
+      # Include status check directly in wrapper task (can't merge attrsets with //)
+    } // lib.optionalAttrs skipIfGitHashUnchanged {
+      status = gitHashStatus;
     };
   }) setupOptionalTasks);
   allSetupTasks = setupRequiredTasks ++ wrappedOptionalTasks;
 
-  # Status check that skips task if git hash unchanged
-  # Returns 0 (skip) if hash matches, non-zero (run) if different
+  # Status check that skips task if git hash unchanged AND inner caches exist
+  # Returns 0 (skip) if conditions met, non-zero (run) otherwise
+  #
+  # Two-tier cache design (R5, R11 compliance):
+  # - Outer tier: git hash (fast check, updated after setup completes)
+  # - Inner tier: per-task content hashes (e.g., pnpm-install/*.hash)
+  #
+  # We only skip when BOTH tiers are valid. This ensures:
+  # - Fresh clones populate inner caches even if git hash matches
+  # - Cache clearing doesn't leave tasks in broken state
+  #
+  # If innerCacheDirs is empty, we skip the inner cache check (git-hash-only mode).
+  # This is useful for non-pnpm setups that don't have inner caches.
+  innerCacheDirsShell = lib.concatStringsSep " " innerCacheDirs;
   gitHashStatus = ''
     # Allow bypass via FORCE_SETUP=1
     [ "$FORCE_SETUP" = "1" ] && exit 1
@@ -205,7 +252,38 @@ let
     # Allow override via SETUP_GIT_HASH for testing
     current=''${SETUP_GIT_HASH:-$(git rev-parse HEAD 2>/dev/null || echo "no-git")}
     cached=$(cat ${hashFile} 2>/dev/null || echo "")
-    [ "$current" = "$cached" ]
+
+    # If git hash differs, always run
+    if [ "$current" != "$cached" ]; then
+      exit 1
+    fi
+
+    # Git hash matches - check if inner caches are populated
+    inner_cache_dirs="${innerCacheDirsShell}"
+
+    # If no inner cache dirs configured, use git-hash-only mode (skip inner check)
+    if [ -z "$inner_cache_dirs" ]; then
+      exit 0
+    fi
+
+    # Check each configured inner cache dir for *.hash files
+    for dir_name in $inner_cache_dirs; do
+      cache_dir="${cacheRoot}/$dir_name"
+      # Directory must exist and contain at least one .hash file
+      if [ -d "$cache_dir" ]; then
+        # Simple and reliable: iterate over files and check suffix
+        for f in "$cache_dir"/*; do
+          case "$f" in
+            *.hash)
+              [ -f "$f" ] && exit 0
+              ;;
+          esac
+        done
+      fi
+    done
+
+    # No valid inner caches found - run to populate them
+    exit 1
   '';
   writeHashScript = ''
     new_hash="''${SETUP_GIT_HASH:-$(git rev-parse HEAD 2>/dev/null || echo "no-git")}"
@@ -215,9 +293,10 @@ let
     ${cache.writeCacheFile hashFile}
   '';
 
-  # Create status overrides for required tasks and wrappers
+  # Create status overrides for required tasks only
+  # (wrappers have status included directly in their definition to avoid merge issues)
   statusOverrides = lib.optionalAttrs skipIfGitHashUnchanged (
-    lib.genAttrs allSetupTasks (_: {
+    lib.genAttrs setupRequiredTasks (_: {
       status = lib.mkDefault gitHashStatus;
     })
   );
