@@ -17,7 +17,7 @@
 #     - storybook:build:<name> - Build storybook for specific package
 #     - storybook:build - Aggregate task to build all storybooks
 #   Processes (for dev servers):
-#     - storybook-<name> - Run with: devenv up storybook-<name>
+#     - storybook-<name>-<port> - Run with: devenv up storybook-<name>-<port>
 #
 # Port allocation:
 #   Uses devenv's automatic port allocation (processes.<name>.ports.<port>.allocate)
@@ -47,7 +47,8 @@ let
   # Dev servers as processes (long-running, with TUI via process-compose)
   # Uses automatic port allocation to avoid conflicts
   # --host 0.0.0.0 allows access from other machines (useful for remote dev environments)
-  processName = pkg: "storybook-${pkg.name}";
+  # Process name includes port for visibility in process-compose TUI
+  processName = pkg: "storybook-${pkg.name}-${toString pkg.port}";
   
   # Get the allocated port from config at Nix evaluation time
   # This follows the same pattern as postgres.nix in devenv
