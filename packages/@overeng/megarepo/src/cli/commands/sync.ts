@@ -370,17 +370,20 @@ export const syncMegarepo = <R = never>({
       yield* writeLockFile({ lockPath, lockFile })
 
       // Sync Nix lock files (flake.lock, devenv.lock) in member repos
-      // Auto-detected: enabled if devenv.lock or flake.lock exists in megarepo root
-      // Can be explicitly disabled via lockSync.enabled: false
+      // - lockSync.enabled: true → always enable (explicit override)
+      // - lockSync.enabled: false → always disable (explicit override)
+      // - lockSync.enabled: undefined → auto-detect based on root lock file presence
       const fs = yield* FileSystem.FileSystem
-      const lockSyncExplicitlyDisabled = config.lockSync?.enabled === false
+      const lockSyncExplicitSetting = config.lockSync?.enabled
       const devenvLockExists = yield* fs.exists(
         EffectPath.ops.join(megarepoRoot, EffectPath.unsafe.relativeFile('devenv.lock')),
       )
       const flakeLockExists = yield* fs.exists(
         EffectPath.ops.join(megarepoRoot, EffectPath.unsafe.relativeFile('flake.lock')),
       )
-      const lockSyncEnabled = !lockSyncExplicitlyDisabled && (devenvLockExists || flakeLockExists)
+      const lockSyncEnabled =
+        lockSyncExplicitSetting === true ||
+        (lockSyncExplicitSetting !== false && (devenvLockExists || flakeLockExists))
 
       if (lockSyncEnabled) {
         const excludeMembers = new Set(config.lockSync?.exclude ?? [])
