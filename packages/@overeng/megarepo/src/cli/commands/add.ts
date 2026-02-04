@@ -69,7 +69,7 @@ export const addCommand = Cli.Command.make(
     sync: Cli.Options.boolean('sync').pipe(
       Cli.Options.withAlias('s'),
       Cli.Options.withDescription('Sync the added repo immediately'),
-      Cli.Options.withDefault(false),
+      Cli.Options.withDefault(true),
     ),
     output: outputOption,
   },
