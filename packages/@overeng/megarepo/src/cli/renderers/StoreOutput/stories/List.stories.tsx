@@ -5,22 +5,10 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
-import type { OutputTab } from '@overeng/tui-react/storybook'
-import { TuiStoryPreview } from '@overeng/tui-react/storybook'
+import { ALL_OUTPUT_TABS, TuiStoryPreview } from '@overeng/tui-react/storybook'
 
 import { StoreApp, StoreView } from '../mod.ts'
 import * as fixtures from './_fixtures.ts'
-
-const ALL_TABS: OutputTab[] = [
-  'tty',
-  'alt-screen',
-  'ci',
-  'ci-plain',
-  'pipe',
-  'log',
-  'json',
-  'ndjson',
-]
 
 type StoryArgs = {
   height: number
@@ -78,7 +66,7 @@ export const WithRepos: Story = {
       app={StoreApp}
       initialState={fixtures.createLsState(fixtures.exampleStoreRepos)}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -90,7 +78,7 @@ export const Empty: Story = {
       app={StoreApp}
       initialState={fixtures.createLsState([])}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -111,7 +99,7 @@ export const ManyRepos: Story = {
         { relativePath: 'gitlab.com/company/internal-lib' },
       ])}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }

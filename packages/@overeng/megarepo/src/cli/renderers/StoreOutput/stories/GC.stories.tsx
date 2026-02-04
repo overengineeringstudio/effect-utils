@@ -5,8 +5,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React, { useMemo } from 'react'
 
-import type { OutputTab } from '@overeng/tui-react/storybook'
-import { TuiStoryPreview } from '@overeng/tui-react/storybook'
+import { ALL_OUTPUT_TABS, commonArgTypes, defaultStoryArgs, TuiStoryPreview } from '@overeng/tui-react/storybook'
 
 import { StoreApp, StoreView } from '../mod.ts'
 import * as fixtures from './_fixtures.ts'
@@ -14,17 +13,6 @@ import * as fixtures from './_fixtures.ts'
 // =============================================================================
 // Meta
 // =============================================================================
-
-const ALL_TABS: OutputTab[] = [
-  'tty',
-  'alt-screen',
-  'ci',
-  'ci-plain',
-  'pipe',
-  'log',
-  'json',
-  'ndjson',
-]
 
 type StoryArgs = {
   height: number
@@ -42,27 +30,13 @@ export default {
     layout: 'fullscreen',
   },
   args: {
-    height: 400,
-    interactive: false,
-    playbackSpeed: 1,
+    ...defaultStoryArgs,
     dryRun: false,
     force: false,
     all: false,
   },
   argTypes: {
-    height: {
-      description: 'Terminal height in pixels',
-      control: { type: 'range', min: 200, max: 600, step: 50 },
-    },
-    interactive: {
-      description: 'Enable animated timeline playback',
-      control: { type: 'boolean' },
-    },
-    playbackSpeed: {
-      description: 'Playback speed multiplier (when interactive)',
-      control: { type: 'range', min: 0.5, max: 3, step: 0.5 },
-      if: { arg: 'interactive' },
-    },
+    ...commonArgTypes,
     dryRun: {
       description: '--dry-run flag: show what would be removed without removing',
       control: { type: 'boolean' },
@@ -106,7 +80,7 @@ export const Mixed: Story = {
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
-        tabs={ALL_TABS}
+        tabs={ALL_OUTPUT_TABS}
         {...(args.interactive ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
       />
     )
@@ -148,7 +122,7 @@ export const DryRun: Story = {
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
-        tabs={ALL_TABS}
+        tabs={ALL_OUTPUT_TABS}
         {...(args.interactive ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
       />
     )
@@ -178,7 +152,7 @@ export const OnlyCurrentMegarepo: Story = {
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
-        tabs={ALL_TABS}
+        tabs={ALL_OUTPUT_TABS}
         {...(args.interactive ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
       />
     )
@@ -221,7 +195,7 @@ export const NotInMegarepo: Story = {
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
-        tabs={ALL_TABS}
+        tabs={ALL_OUTPUT_TABS}
         {...(args.interactive ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
       />
     )
@@ -251,7 +225,7 @@ export const CustomWarning: Story = {
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
-        tabs={ALL_TABS}
+        tabs={ALL_OUTPUT_TABS}
         {...(args.interactive ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
       />
     )
@@ -278,7 +252,7 @@ export const Empty: Story = {
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
-        tabs={ALL_TABS}
+        tabs={ALL_OUTPUT_TABS}
         {...(args.interactive ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
       />
     )
@@ -326,7 +300,7 @@ export const AllSkipped: Story = {
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
-        tabs={ALL_TABS}
+        tabs={ALL_OUTPUT_TABS}
         {...(args.interactive ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
       />
     )
@@ -380,7 +354,7 @@ export const AllRemoved: Story = {
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
-        tabs={ALL_TABS}
+        tabs={ALL_OUTPUT_TABS}
         {...(args.interactive ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
       />
     )
@@ -431,7 +405,7 @@ export const AllErrors: Story = {
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
-        tabs={ALL_TABS}
+        tabs={ALL_OUTPUT_TABS}
         {...(args.interactive ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
       />
     )
@@ -509,7 +483,7 @@ export const ManyInUse: Story = {
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
-        tabs={ALL_TABS}
+        tabs={ALL_OUTPUT_TABS}
         {...(args.interactive ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
       />
     )
@@ -560,7 +534,7 @@ export const DirtyWithDetails: Story = {
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
-        tabs={ALL_TABS}
+        tabs={ALL_OUTPUT_TABS}
         {...(args.interactive ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
       />
     )
@@ -602,7 +576,7 @@ export const DryRunForceMode: Story = {
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
-        tabs={ALL_TABS}
+        tabs={ALL_OUTPUT_TABS}
         {...(args.interactive ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
       />
     )
@@ -677,7 +651,7 @@ export const LargeCleanup: Story = {
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
-        tabs={ALL_TABS}
+        tabs={ALL_OUTPUT_TABS}
         {...(args.interactive ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
       />
     )

@@ -5,23 +5,11 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React, { useMemo } from 'react'
 
-import type { OutputTab } from '@overeng/tui-react/storybook'
-import { TuiStoryPreview } from '@overeng/tui-react/storybook'
+import { ALL_OUTPUT_TABS, commonArgTypes, defaultStoryArgs, TuiStoryPreview } from '@overeng/tui-react/storybook'
 
 import { GenieApp } from '../../app.ts'
 import { GenieView } from '../../view.tsx'
 import * as fixtures from './_fixtures.ts'
-
-const ALL_TABS: OutputTab[] = [
-  'tty',
-  'alt-screen',
-  'ci',
-  'ci-plain',
-  'pipe',
-  'log',
-  'json',
-  'ndjson',
-]
 
 type StoryArgs = {
   height: number
@@ -37,25 +25,11 @@ export default {
     layout: 'fullscreen',
   },
   args: {
-    height: 400,
-    interactive: false,
-    playbackSpeed: 1,
+    ...defaultStoryArgs,
     mode: 'generate',
   },
   argTypes: {
-    height: {
-      description: 'Terminal height in pixels',
-      control: { type: 'range', min: 200, max: 600, step: 50 },
-    },
-    interactive: {
-      description: 'Enable animated timeline playback',
-      control: { type: 'boolean' },
-    },
-    playbackSpeed: {
-      description: 'Playback speed multiplier (when interactive)',
-      control: { type: 'range', min: 0.5, max: 3, step: 0.5 },
-      if: { arg: 'interactive' },
-    },
+    ...commonArgTypes,
     mode: {
       description: 'Operation mode',
       control: { type: 'select' },
@@ -148,7 +122,7 @@ export const MixedResults: Story = {
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
-        tabs={ALL_TABS}
+        tabs={ALL_OUTPUT_TABS}
         {...(args.interactive ? { timeline } : {})}
       />
     )
@@ -193,7 +167,7 @@ export const AllUnchanged: Story = {
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
-        tabs={ALL_TABS}
+        tabs={ALL_OUTPUT_TABS}
         {...(args.interactive ? { timeline } : {})}
       />
     )
@@ -272,7 +246,7 @@ export const DryRun: Story = {
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
-        tabs={ALL_TABS}
+        tabs={ALL_OUTPUT_TABS}
         {...(args.interactive ? { timeline } : {})}
       />
     )
@@ -320,7 +294,7 @@ export const CheckModeSuccess: Story = {
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
-        tabs={ALL_TABS}
+        tabs={ALL_OUTPUT_TABS}
         {...(args.interactive ? { timeline } : {})}
       />
     )

@@ -11,7 +11,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
-import { TuiStoryPreview, type OutputTab } from '../../../src/storybook/TuiStoryPreview.tsx'
+import { ALL_OUTPUT_TABS, TuiStoryPreview } from '../../../src/storybook/TuiStoryPreview.tsx'
 import { DeployApp } from './deploy.tsx'
 import type { DeployState, DeployAction } from './schema.ts'
 import { type LogEntry } from './schema.ts'
@@ -239,17 +239,6 @@ const deployTimeline: Array<{ at: number; action: typeof DeployAction.Type }> = 
 // Story Meta
 // =============================================================================
 
-const ALL_TABS: OutputTab[] = [
-  'tty',
-  'alt-screen',
-  'ci',
-  'ci-plain',
-  'pipe',
-  'log',
-  'json',
-  'ndjson',
-]
-
 export default {
   component: DeployView,
   title: 'Examples/03 CLI/Deploy',
@@ -328,7 +317,7 @@ export const Demo: Story = {
       autoRun={args.autoRun}
       playbackSpeed={args.playbackSpeed}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -343,7 +332,7 @@ export const Progress: Story = {
       initialState={createProgressState()}
       height={args.height}
       autoRun={false}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -358,7 +347,7 @@ export const Complete: Story = {
       initialState={createCompleteState()}
       height={args.height}
       autoRun={false}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -373,7 +362,7 @@ export const Failed: Story = {
       initialState={createFailedState()}
       height={args.height}
       autoRun={false}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -388,7 +377,7 @@ export const RollingBack: Story = {
       initialState={createRollingBackState()}
       height={args.height}
       autoRun={false}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -403,7 +392,7 @@ export const Validating: Story = {
       initialState={createValidatingState()}
       height={args.height}
       autoRun={false}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -418,7 +407,7 @@ export const Idle: Story = {
       initialState={createIdleState()}
       height={args.height}
       autoRun={false}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -642,7 +631,7 @@ export const LongLines: Story = {
       autoRun={args.autoRun}
       playbackSpeed={args.playbackSpeed}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }

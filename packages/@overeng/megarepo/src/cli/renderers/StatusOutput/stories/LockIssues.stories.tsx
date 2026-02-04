@@ -5,23 +5,11 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
-import type { OutputTab } from '@overeng/tui-react/storybook'
-import { TuiStoryPreview } from '@overeng/tui-react/storybook'
+import { ALL_OUTPUT_TABS, TuiStoryPreview } from '@overeng/tui-react/storybook'
 
 import { StatusApp } from '../mod.ts'
 import { StatusView } from '../view.tsx'
 import * as fixtures from './_fixtures.ts'
-
-const ALL_TABS: OutputTab[] = [
-  'tty',
-  'alt-screen',
-  'ci',
-  'ci-plain',
-  'pipe',
-  'log',
-  'json',
-  'ndjson',
-]
 
 type StoryArgs = {
   height: number
@@ -60,7 +48,7 @@ export const LockMissing: Story = {
       app={StatusApp}
       initialState={fixtures.createLockMissingState({ all: args.all })}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -73,7 +61,7 @@ export const LockStale: Story = {
       app={StatusApp}
       initialState={fixtures.createLockStaleState({ all: args.all })}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -86,7 +74,7 @@ export const StaleLockRef: Story = {
       app={StatusApp}
       initialState={fixtures.createStaleLockState({ all: args.all })}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }
@@ -99,7 +87,7 @@ export const CommitDrift: Story = {
       app={StatusApp}
       initialState={fixtures.createCommitDriftState({ all: args.all })}
       height={args.height}
-      tabs={ALL_TABS}
+      tabs={ALL_OUTPUT_TABS}
     />
   ),
 }

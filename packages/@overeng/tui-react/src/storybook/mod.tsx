@@ -77,3 +77,51 @@ export const defaultStoryArgs = {
   interactive: false,
   playbackSpeed: 1,
 } as const
+
+import type { TimelineEvent } from './TuiStoryPreview.tsx'
+
+/**
+ * Helper to create TuiStoryPreview props for interactive timeline stories.
+ *
+ * Handles the common pattern where:
+ * - In interactive mode: starts from idle state and plays through timeline
+ * - In static mode: shows the final state directly without animation
+ *
+ * @example
+ * ```tsx
+ * render: (args) => (
+ *   <TuiStoryPreview
+ *     View={MyView}
+ *     app={MyApp}
+ *     height={args.height}
+ *     tabs={ALL_OUTPUT_TABS}
+ *     {...createInteractiveProps(args, {
+ *       staticState: fixtures.createCompleteState(stateConfig),
+ *       idleState: fixtures.createIdleState(),
+ *       createTimeline: (state) => fixtures.createTimeline(stateConfig),
+ *     })}
+ *   />
+ * )
+ * ```
+ */
+export const createInteractiveProps = <S, A>(
+  args: { interactive: boolean; playbackSpeed: number },
+  config: {
+    /** The final state to show in static mode */
+    staticState: S
+    /** The initial state to start from in interactive mode */
+    idleState: S
+    /** Factory to create timeline actions */
+    createTimeline: () => TimelineEvent<A>[]
+  },
+): {
+  initialState: S
+  autoRun: boolean
+  playbackSpeed: number
+  timeline?: TimelineEvent<A>[]
+} => ({
+  initialState: args.interactive ? config.idleState : config.staticState,
+  autoRun: args.interactive,
+  playbackSpeed: args.playbackSpeed,
+  ...(args.interactive ? { timeline: config.createTimeline() } : {}),
+})
