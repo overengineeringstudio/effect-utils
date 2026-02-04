@@ -169,6 +169,14 @@ export const baseOxlintOverrides = [
       'overeng/storybook/prefer-pascal-case': 'warn',
     },
   },
+  // Storybook story fixtures (stories/_fixtures.ts, stories/_*.ts)
+  {
+    files: ['**/stories/_*.ts', '**/stories/_*.tsx'],
+    rules: {
+      'overeng/exports-first': 'off',
+      'overeng/jsdoc-require-exports': 'off',
+    },
+  },
   // Storybook config files (.storybook/*) - not story files
   {
     files: ['**/.storybook/**'],

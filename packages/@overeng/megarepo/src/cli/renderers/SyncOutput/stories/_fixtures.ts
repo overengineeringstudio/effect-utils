@@ -1,0 +1,133 @@
+/**
+ * Shared fixtures for SyncOutput stories.
+ *
+ * @internal
+ */
+
+import type { MemberSyncResult } from '../../../../lib/sync/schema.ts'
+import type { SyncState as SyncStateType } from '../mod.ts'
+import type { SyncAction } from '../schema.ts'
+
+// =============================================================================
+// Example Data
+// =============================================================================
+
+export const exampleSyncResults: MemberSyncResult[] = [
+  { name: 'effect', status: 'already_synced' },
+  { name: 'effect-utils', status: 'synced', ref: 'main' },
+  { name: 'livestore', status: 'cloned', ref: 'main' },
+  {
+    name: 'dotfiles',
+    status: 'updated',
+    commit: 'abc1234def',
+    previousCommit: '9876543fed',
+  },
+  { name: 'private-repo', status: 'skipped', message: 'dirty worktree' },
+]
+
+export const exampleSyncResultsWithErrors: MemberSyncResult[] = [
+  { name: 'effect', status: 'synced', ref: 'main' },
+  { name: 'broken-repo', status: 'error', message: 'network timeout' },
+  { name: 'missing-repo', status: 'error', message: 'repository not found' },
+  { name: 'effect-utils', status: 'already_synced' },
+]
+
+export const exampleAllSynced: MemberSyncResult[] = [
+  { name: 'effect', status: 'already_synced' },
+  { name: 'effect-utils', status: 'already_synced' },
+  { name: 'livestore', status: 'already_synced' },
+  { name: 'dotfiles', status: 'already_synced' },
+  { name: 'schickling.dev', status: 'already_synced' },
+]
+
+// =============================================================================
+// State Factories
+// =============================================================================
+
+export const createBaseState = (overrides?: Partial<SyncStateType>): SyncStateType => ({
+  workspace: { name: 'my-workspace', root: '/Users/dev/workspace' },
+  options: { dryRun: false, frozen: false, pull: false, all: false },
+  phase: 'complete',
+  members: [],
+  results: [],
+  logs: [],
+  nestedMegarepos: [],
+  generatedFiles: [],
+  ...overrides,
+})
+
+// =============================================================================
+// Timeline Factory for Animated Stories
+// =============================================================================
+
+/**
+ * Creates a timeline that animates through syncing each member and ends with the provided final state.
+ * This ensures interactive mode shows the same end result as static mode.
+ */
+export const createTimeline = (
+  finalState: Partial<SyncStateType>,
+): Array<{ at: number; action: typeof SyncAction.Type }> => {
+  const results = finalState.results ?? []
+  const members = finalState.members ?? results.map((r) => r.name)
+  const workspace = finalState.workspace ?? { name: 'my-workspace', root: '/Users/dev/workspace' }
+  const options = finalState.options ?? { dryRun: false, frozen: false, pull: false, all: false }
+  const nestedMegarepos = finalState.nestedMegarepos ?? []
+  const generatedFiles = finalState.generatedFiles ?? []
+
+  if (results.length === 0) {
+    // No results - just show complete state
+    return [
+      {
+        at: 0,
+        action: {
+          _tag: 'SetState',
+          state: createBaseState({ ...finalState, phase: 'complete' }),
+        },
+      },
+    ]
+  }
+
+  const timeline: Array<{ at: number; action: typeof SyncAction.Type }> = []
+  const stepDuration = 800
+
+  // Start syncing
+  timeline.push({
+    at: 0,
+    action: {
+      _tag: 'SetState',
+      state: createBaseState({
+        workspace,
+        options,
+        phase: 'syncing',
+        members,
+        activeMember: members[0],
+        results: [],
+      }),
+    },
+  })
+
+  // Add each result progressively
+  for (let i = 0; i < results.length; i++) {
+    const currentResults = results.slice(0, i + 1)
+    const nextMember = i + 1 < members.length ? members[i + 1] : undefined
+
+    timeline.push({
+      at: (i + 1) * stepDuration,
+      action: {
+        _tag: 'SetState',
+        state: createBaseState({
+          workspace,
+          options,
+          phase: i === results.length - 1 ? 'complete' : 'syncing',
+          members,
+          activeMember: nextMember,
+          results: currentResults,
+          nestedMegarepos: i === results.length - 1 ? nestedMegarepos : [],
+          generatedFiles: i === results.length - 1 ? generatedFiles : [],
+        }),
+      },
+    })
+  }
+
+  return timeline
+}

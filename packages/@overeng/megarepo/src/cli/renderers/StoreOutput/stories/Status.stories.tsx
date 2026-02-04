@@ -5,92 +5,28 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
+import type { OutputTab } from '@overeng/tui-react/storybook'
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
-import {
-  StoreApp,
-  StoreView,
-  type StoreWorktreeStatus,
-  type StoreStateType,
-} from './StoreOutput/mod.ts'
+import { StoreApp, StoreView } from '../mod.ts'
+import * as fixtures from './_fixtures.ts'
 
-// =============================================================================
-// Example Data
-// =============================================================================
-
-const healthyWorktrees: StoreWorktreeStatus[] = [
-  {
-    repo: 'github.com/effect-ts/effect/',
-    ref: 'main',
-    refType: 'heads',
-    path: '/Users/dev/.megarepo/github.com/effect-ts/effect/refs/heads/main/',
-    issues: [],
-  },
-  {
-    repo: 'github.com/overengineeringstudio/effect-utils/',
-    ref: 'main',
-    refType: 'heads',
-    path: '/Users/dev/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/main/',
-    issues: [],
-  },
+const ALL_TABS: OutputTab[] = [
+  'tty',
+  'alt-screen',
+  'ci',
+  'ci-plain',
+  'pipe',
+  'log',
+  'json',
+  'ndjson',
 ]
 
-const mixedIssuesWorktrees: StoreWorktreeStatus[] = [
-  {
-    repo: 'github.com/effect-ts/effect/',
-    ref: 'main',
-    refType: 'heads',
-    path: '/Users/dev/.megarepo/github.com/effect-ts/effect/refs/heads/main/',
-    issues: [],
-  },
-  {
-    repo: 'github.com/livestorejs/livestore/',
-    ref: 'dev',
-    refType: 'heads',
-    path: '/Users/dev/.megarepo/github.com/livestorejs/livestore/refs/heads/dev/',
-    issues: [
-      {
-        type: 'ref_mismatch',
-        severity: 'error',
-        message: "path says 'dev' but HEAD is 'refactor/genie-igor-ci'",
-      },
-      { type: 'dirty', severity: 'warning', message: '27 uncommitted changes' },
-      { type: 'orphaned', severity: 'info', message: 'not in current megarepo.lock' },
-    ],
-  },
-  {
-    repo: 'github.com/overengineeringstudio/effect-utils/',
-    ref: 'main',
-    refType: 'heads',
-    path: '/Users/dev/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/main/',
-    issues: [{ type: 'dirty', severity: 'warning', message: '36 uncommitted changes' }],
-  },
-  {
-    repo: 'github.com/schickling/dotfiles/',
-    ref: 'main',
-    refType: 'heads',
-    path: '/Users/dev/.megarepo/github.com/schickling/dotfiles/refs/heads/main/',
-    issues: [{ type: 'orphaned', severity: 'info', message: 'not in current megarepo.lock' }],
-  },
-]
-
-// =============================================================================
-// State Factory
-// =============================================================================
-
-const createStatusState = (opts: {
-  repoCount: number
-  worktreeCount: number
-  diskUsage?: string
-  worktrees: StoreWorktreeStatus[]
-}): StoreStateType => ({
-  _tag: 'Status',
-  basePath: '/Users/dev/.megarepo',
-  repoCount: opts.repoCount,
-  worktreeCount: opts.worktreeCount,
-  diskUsage: opts.diskUsage,
-  worktrees: opts.worktrees,
-})
+type StoryArgs = {
+  height: number
+  interactive: boolean
+  playbackSpeed: number
+}
 
 // =============================================================================
 // Meta
@@ -108,63 +44,89 @@ export default {
       },
     },
   },
+  args: {
+    height: 400,
+    interactive: false,
+    playbackSpeed: 1,
+  },
+  argTypes: {
+    height: {
+      description: 'Terminal height in pixels',
+      control: { type: 'range', min: 200, max: 600, step: 50 },
+    },
+    interactive: {
+      description: 'Enable animated timeline playback (no animation for instant results)',
+      control: { type: 'boolean' },
+    },
+    playbackSpeed: {
+      description: 'Playback speed multiplier (when interactive)',
+      control: { type: 'range', min: 0.5, max: 3, step: 0.5 },
+      if: { arg: 'interactive' },
+    },
+  },
 } satisfies Meta
 
-type Story = StoryObj<{ height?: number }>
+type Story = StoryObj<StoryArgs>
 
 // =============================================================================
 // Stories
 // =============================================================================
 
 export const Healthy: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createStatusState({
+      initialState={fixtures.createStatusState({
         repoCount: 2,
         worktreeCount: 2,
-        worktrees: healthyWorktrees,
+        worktrees: fixtures.healthyWorktrees,
       })}
+      height={args.height}
+      tabs={ALL_TABS}
     />
   ),
 }
 
 export const HealthyWithDiskUsage: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createStatusState({
+      initialState={fixtures.createStatusState({
         repoCount: 11,
         worktreeCount: 15,
         diskUsage: '2.3 GB',
-        worktrees: healthyWorktrees,
+        worktrees: fixtures.healthyWorktrees,
       })}
+      height={args.height}
+      tabs={ALL_TABS}
     />
   ),
 }
 
 export const MixedIssues: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createStatusState({
+      initialState={fixtures.createStatusState({
         repoCount: 4,
         worktreeCount: 6,
-        worktrees: mixedIssuesWorktrees,
+        worktrees: fixtures.mixedIssuesWorktrees,
       })}
+      height={args.height}
+      tabs={ALL_TABS}
     />
   ),
 }
 
 export const RefMismatch: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createStatusState({
+      initialState={fixtures.createStatusState({
         repoCount: 2,
         worktreeCount: 2,
         worktrees: [
@@ -196,16 +158,18 @@ export const RefMismatch: Story = {
           },
         ],
       })}
+      height={args.height}
+      tabs={ALL_TABS}
     />
   ),
 }
 
 export const DirtyWorktrees: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createStatusState({
+      initialState={fixtures.createStatusState({
         repoCount: 3,
         worktreeCount: 3,
         worktrees: [
@@ -235,16 +199,18 @@ export const DirtyWorktrees: Story = {
           },
         ],
       })}
+      height={args.height}
+      tabs={ALL_TABS}
     />
   ),
 }
 
 export const OrphanedWorktrees: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createStatusState({
+      initialState={fixtures.createStatusState({
         repoCount: 4,
         worktreeCount: 5,
         worktrees: [
@@ -277,16 +243,18 @@ export const OrphanedWorktrees: Story = {
           },
         ],
       })}
+      height={args.height}
+      tabs={ALL_TABS}
     />
   ),
 }
 
 export const BrokenWorktrees: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createStatusState({
+      initialState={fixtures.createStatusState({
         repoCount: 2,
         worktreeCount: 2,
         worktrees: [
@@ -310,16 +278,18 @@ export const BrokenWorktrees: Story = {
           },
         ],
       })}
+      height={args.height}
+      tabs={ALL_TABS}
     />
   ),
 }
 
 export const AllIssueTypes: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createStatusState({
+      initialState={fixtures.createStatusState({
         repoCount: 6,
         worktreeCount: 8,
         diskUsage: '4.7 GB',
@@ -369,35 +339,39 @@ export const AllIssueTypes: Story = {
           },
         ],
       })}
+      height={args.height}
+      tabs={ALL_TABS}
     />
   ),
 }
 
 export const Empty: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createStatusState({
+      initialState={fixtures.createStatusState({
         repoCount: 0,
         worktreeCount: 0,
         worktrees: [],
       })}
+      height={args.height}
+      tabs={ALL_TABS}
     />
   ),
 }
 
 export const LargeStore: Story = {
-  render: () => (
+  render: (args) => (
     <TuiStoryPreview
       View={StoreView}
       app={StoreApp}
-      initialState={createStatusState({
+      initialState={fixtures.createStatusState({
         repoCount: 25,
         worktreeCount: 87,
         diskUsage: '12.4 GB',
         worktrees: [
-          ...mixedIssuesWorktrees,
+          ...fixtures.mixedIssuesWorktrees,
           {
             repo: 'github.com/private/repo1/',
             ref: 'main',
@@ -419,6 +393,8 @@ export const LargeStore: Story = {
           },
         ],
       })}
+      height={args.height}
+      tabs={ALL_TABS}
     />
   ),
 }
