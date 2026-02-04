@@ -19,7 +19,7 @@ let
     # to download binaries for all platforms (linux/darwin x x64/arm64), so the hash is
     # the same regardless of where the build runs.
     pnpmDepsHash = "sha256-RVbdCRnWYxoDip1R3AiPuLm/CF7ZIqotNAKcLyAvkbs=";
-    lockfileHash = "sha256-BRD+sGpfmuzYXpJZwyTAsatRddWcfQgTWRLkI3Tw0Hc=";
+    lockfileHash = "sha256-pEOzOVelYWeLCvxwUMRtxjvA2tLGp+yZ72EJz41tFxU=";
     packageJsonDepsHash = "sha256-slNo40B9ZwvVopL7htF9m0Skywj5G8zVhlAZbE/lCHM=";
     inherit gitRev commitTs dirty;
   };
