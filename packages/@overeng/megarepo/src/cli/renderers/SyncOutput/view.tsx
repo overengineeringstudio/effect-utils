@@ -24,7 +24,7 @@ import {
   symbols,
   syncToTaskStatus,
 } from '../../components/mod.ts'
-import type { SyncState, SyncLogEntry } from './schema.ts'
+import type { SyncState, SyncLogEntry, MemberLockSyncResult } from './schema.ts'
 
 // =============================================================================
 // Types
@@ -58,8 +58,10 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
     logs,
     nestedMegarepos,
     generatedFiles,
+    lockSyncResults,
   } = state
   const dryRun = options.dryRun
+  const verbose = options.verbose ?? false
 
   // Build mode indicators
   const modes: string[] = []
@@ -83,6 +85,26 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
 
   // Compute summary counts
   const summaryCounts = useMemo(() => computeSyncSummary(results), [results])
+
+  // Create a map of lock sync results by member name for quick lookup
+  const lockSyncByMember = useMemo(() => {
+    const map = new Map<string, MemberLockSyncResult>()
+    for (const r of lockSyncResults ?? []) {
+      map.set(r.memberName, r)
+    }
+    return map
+  }, [lockSyncResults])
+
+  // Count total lock sync updates
+  const totalLockSyncUpdates = useMemo(() => {
+    let total = 0
+    for (const r of lockSyncResults ?? []) {
+      for (const f of r.files) {
+        total += f.updatedInputs.length
+      }
+    }
+    return total
+  }, [lockSyncResults])
 
   // ===================
   // Progress View (during sync)
@@ -193,16 +215,16 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
       ) : (
         <>
           {cloned.map((r) => (
-            <ClonedLine key={r.name} result={r} />
+            <ClonedLine key={r.name} result={r} lockSync={lockSyncByMember.get(r.name)} />
           ))}
           {synced.map((r) => (
-            <SyncedLine key={r.name} result={r} />
+            <SyncedLine key={r.name} result={r} lockSync={lockSyncByMember.get(r.name)} />
           ))}
           {updated.map((r) => (
-            <UpdatedLine key={r.name} result={r} />
+            <UpdatedLine key={r.name} result={r} lockSync={lockSyncByMember.get(r.name)} />
           ))}
           {locked.map((r) => (
-            <LockedLine key={r.name} result={r} />
+            <LockedLine key={r.name} result={r} lockSync={lockSyncByMember.get(r.name)} />
           ))}
           {removed.map((r) => (
             <RemovedLine key={r.name} result={r} dryRun={dryRun} />
@@ -215,7 +237,13 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
           ))}
           {alreadySynced.length > 0 &&
             (alreadySynced.length <= 5 || hasChanges ? (
-              alreadySynced.map((r) => <AlreadySyncedLine key={r.name} result={r} />)
+              alreadySynced.map((r) => (
+                <AlreadySyncedLine
+                  key={r.name}
+                  result={r}
+                  lockSync={lockSyncByMember.get(r.name)}
+                />
+              ))
             ) : (
               <Box flexDirection="row">
                 <Text dim>
@@ -245,11 +273,47 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
       {/* Generated files */}
       {generatedFiles.length > 0 && <GeneratedFiles files={generatedFiles} dryRun={dryRun} />}
 
+      {/* Lock sync summary */}
+      {totalLockSyncUpdates > 0 && (
+        <LockSyncSection
+          results={lockSyncResults ?? []}
+          totalUpdates={totalLockSyncUpdates}
+          verbose={verbose}
+          dryRun={dryRun}
+        />
+      )}
+
       {/* Nested megarepos hint */}
       {nestedMegarepos.length > 0 && !options.all && (
         <NestedMegareposHint count={nestedMegarepos.length} />
       )}
     </Box>
+  )
+}
+
+// =============================================================================
+// Internal Components - Lock Sync Badge (Option 3: inline indicator)
+// =============================================================================
+
+/** Count total lock input updates for a member */
+const countLockInputUpdates = (lockSync: MemberLockSyncResult | undefined): number => {
+  if (!lockSync) return 0
+  let count = 0
+  for (const f of lockSync.files) {
+    count += f.updatedInputs.length
+  }
+  return count
+}
+
+/** Inline badge showing lock sync updates (Option 3) */
+const LockSyncBadge = ({ lockSync }: { lockSync: MemberLockSyncResult | undefined }) => {
+  const count = countLockInputUpdates(lockSync)
+  if (count === 0) return null
+  return (
+    <Text dim>
+      {' '}
+      {symbols.dot} {count} lock input{count > 1 ? 's' : ''} updated
+    </Text>
   )
 }
 
@@ -275,7 +339,13 @@ const CommitTransition = ({ result }: { result: MemberSyncResult }) => {
 }
 
 /** Result line for cloned member */
-const ClonedLine = ({ result }: { result: MemberSyncResult }) => {
+const ClonedLine = ({
+  result,
+  lockSync,
+}: {
+  result: MemberSyncResult
+  lockSync: MemberLockSyncResult | undefined
+}) => {
   return (
     <Box flexDirection="row">
       <StatusIcon status="cloned" variant="sync" />
@@ -284,12 +354,19 @@ const ClonedLine = ({ result }: { result: MemberSyncResult }) => {
       <Text> </Text>
       <Text color="green">cloned</Text>
       {result.ref && <Text dim> ({result.ref})</Text>}
+      <LockSyncBadge lockSync={lockSync} />
     </Box>
   )
 }
 
 /** Result line for synced member */
-const SyncedLine = ({ result }: { result: MemberSyncResult }) => {
+const SyncedLine = ({
+  result,
+  lockSync,
+}: {
+  result: MemberSyncResult
+  lockSync: MemberLockSyncResult | undefined
+}) => {
   return (
     <Box flexDirection="row">
       <StatusIcon status="synced" variant="sync" />
@@ -298,12 +375,19 @@ const SyncedLine = ({ result }: { result: MemberSyncResult }) => {
       <Text> </Text>
       <Text color="green">synced</Text>
       {result.ref && <Text dim> ({result.ref})</Text>}
+      <LockSyncBadge lockSync={lockSync} />
     </Box>
   )
 }
 
 /** Result line for updated member */
-const UpdatedLine = ({ result }: { result: MemberSyncResult }) => {
+const UpdatedLine = ({
+  result,
+  lockSync,
+}: {
+  result: MemberSyncResult
+  lockSync: MemberLockSyncResult | undefined
+}) => {
   return (
     <Box flexDirection="row">
       <StatusIcon status="updated" variant="sync" />
@@ -313,12 +397,19 @@ const UpdatedLine = ({ result }: { result: MemberSyncResult }) => {
       <Text color="green">updated</Text>
       <Text> </Text>
       <CommitTransition result={result} />
+      <LockSyncBadge lockSync={lockSync} />
     </Box>
   )
 }
 
 /** Result line for locked member */
-const LockedLine = ({ result }: { result: MemberSyncResult }) => {
+const LockedLine = ({
+  result,
+  lockSync,
+}: {
+  result: MemberSyncResult
+  lockSync: MemberLockSyncResult | undefined
+}) => {
   return (
     <Box flexDirection="row">
       <StatusIcon status="locked" variant="sync" />
@@ -328,6 +419,7 @@ const LockedLine = ({ result }: { result: MemberSyncResult }) => {
       <Text color="cyan">lock updated</Text>
       <Text> </Text>
       <CommitTransition result={result} />
+      <LockSyncBadge lockSync={lockSync} />
     </Box>
   )
 }
@@ -450,7 +542,13 @@ const SkippedLine = ({ result }: { result: MemberSyncResult }) => {
 }
 
 /** Result line for already synced member */
-const AlreadySyncedLine = ({ result }: { result: MemberSyncResult }) => {
+const AlreadySyncedLine = ({
+  result,
+  lockSync,
+}: {
+  result: MemberSyncResult
+  lockSync: MemberLockSyncResult | undefined
+}) => {
   return (
     <Box flexDirection="row">
       <StatusIcon status="already_synced" variant="sync" />
@@ -458,6 +556,7 @@ const AlreadySyncedLine = ({ result }: { result: MemberSyncResult }) => {
       <Text bold>{result.name}</Text>
       <Text> </Text>
       <Text dim>already synced</Text>
+      <LockSyncBadge lockSync={lockSync} />
     </Box>
   )
 }
@@ -478,6 +577,67 @@ const GeneratedFiles = ({ files, dryRun }: { files: readonly string[]; dryRun: b
           <Text bold>{file}</Text>
         </Box>
       ))}
+    </Box>
+  )
+}
+
+// =============================================================================
+// Internal Components - Lock Sync Section (Option 2: expandable section)
+// =============================================================================
+
+/** Lock sync summary section with verbose expansion */
+const LockSyncSection = ({
+  results,
+  totalUpdates,
+  verbose,
+  dryRun,
+}: {
+  results: readonly MemberLockSyncResult[]
+  totalUpdates: number
+  verbose: boolean
+  dryRun: boolean
+}) => {
+  const memberCount = results.filter((r) => r.files.some((f) => f.updatedInputs.length > 0)).length
+
+  return (
+    <Box paddingTop={1}>
+      {/* Summary line */}
+      <Box flexDirection="row">
+        <Text color="cyan">{symbols.check}</Text>
+        <Text> </Text>
+        <Text>
+          {dryRun ? 'Would update' : 'Updated'} {totalUpdates} lock input
+          {totalUpdates > 1 ? 's' : ''} across {memberCount} member{memberCount > 1 ? 's' : ''}
+        </Text>
+      </Box>
+
+      {/* Verbose details */}
+      {verbose &&
+        results.map((memberResult) => {
+          const hasUpdates = memberResult.files.some((f) => f.updatedInputs.length > 0)
+          if (!hasUpdates) return null
+
+          return (
+            <Box key={memberResult.memberName} paddingLeft={2} flexDirection="column">
+              <Text dim>{memberResult.memberName}/</Text>
+              {memberResult.files.map((file) => {
+                if (file.updatedInputs.length === 0) return null
+                return (
+                  <Box key={file.type} paddingLeft={2} flexDirection="column">
+                    <Text dim>{file.type}:</Text>
+                    {file.updatedInputs.map((input) => (
+                      <Box key={input.inputName} paddingLeft={2} flexDirection="row">
+                        <Text dim>
+                          {input.inputName}: {input.oldRev} {symbols.arrow} {input.newRev}
+                        </Text>
+                      </Box>
+                    ))}
+                  </Box>
+                )
+              })}
+            </Box>
+          )
+        })}
     </Box>
   )
 }

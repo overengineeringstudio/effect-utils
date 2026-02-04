@@ -164,6 +164,7 @@ export const startSyncUI = (options: {
         logs: [],
         nestedMegarepos: [],
         generatedFiles: [],
+        lockSyncResults: [],
       },
     })
 

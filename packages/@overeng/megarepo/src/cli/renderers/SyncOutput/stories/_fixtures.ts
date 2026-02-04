@@ -6,7 +6,7 @@
 
 import type { MemberSyncResult } from '../../../../lib/sync/schema.ts'
 import type { SyncState as SyncStateType } from '../mod.ts'
-import type { SyncAction } from '../schema.ts'
+import type { MemberLockSyncResult, SyncAction } from '../schema.ts'
 
 // =============================================================================
 // Example Data
@@ -40,19 +40,62 @@ export const exampleAllSynced: MemberSyncResult[] = [
   { name: 'schickling.dev', status: 'already_synced' },
 ]
 
+export const exampleLockSyncResults: MemberLockSyncResult[] = [
+  {
+    memberName: 'effect',
+    files: [
+      {
+        type: 'flake.lock',
+        updatedInputs: [
+          {
+            inputName: 'effect-utils',
+            memberName: 'effect-utils',
+            oldRev: 'abc1234',
+            newRev: 'def5678',
+          },
+          { inputName: 'livestore', memberName: 'livestore', oldRev: '1234567', newRev: '7654321' },
+        ],
+      },
+      {
+        type: 'devenv.lock',
+        updatedInputs: [
+          {
+            inputName: 'effect-utils',
+            memberName: 'effect-utils',
+            oldRev: 'abc1234',
+            newRev: 'def5678',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    memberName: 'dotfiles',
+    files: [
+      {
+        type: 'flake.lock',
+        updatedInputs: [
+          { inputName: 'effect', memberName: 'effect', oldRev: 'fff0000', newRev: 'aaa1111' },
+        ],
+      },
+    ],
+  },
+]
+
 // =============================================================================
 // State Factories
 // =============================================================================
 
 export const createBaseState = (overrides?: Partial<SyncStateType>): SyncStateType => ({
   workspace: { name: 'my-workspace', root: '/Users/dev/workspace' },
-  options: { dryRun: false, frozen: false, pull: false, all: false },
+  options: { dryRun: false, frozen: false, pull: false, all: false, verbose: false },
   phase: 'complete',
   members: [],
   results: [],
   logs: [],
   nestedMegarepos: [],
   generatedFiles: [],
+  lockSyncResults: [],
   ...overrides,
 })
 
