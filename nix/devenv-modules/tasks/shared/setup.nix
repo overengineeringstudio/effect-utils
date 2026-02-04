@@ -10,6 +10,7 @@
 #       requiredTasks = [ ];
 #       optionalTasks = [ "pnpm:install" "genie:run" "ts:build" ];
 #       completionsCliNames = [ "genie" "mr" ];
+#       # innerCacheDirs = [ "pnpm-install" ];  # default; set to [] for non-pnpm setups
 #     })
 #   ];
 #
@@ -29,12 +30,14 @@
 # Inner tier: Per-task content caches (e.g., pnpm-install/*.hash)
 # - Created by individual tasks (pnpm:install writes per-package hashes)
 # - Content-addressed for correctness
+# - Configurable via `innerCacheDirs` parameter
 #
 # Tasks are skipped only when BOTH tiers are valid:
 # - Git hash matches cached value
-# - Inner cache directory exists and has files
+# - Inner cache directories contain *.hash files (or innerCacheDirs is empty)
 #
 # This ensures fresh clones/cache-clears populate inner caches correctly.
+# For non-pnpm setups, set `innerCacheDirs = []` to use git-hash-only caching.
 #
 # Cache file:
 # - .direnv/task-cache/setup-git-hash
@@ -68,6 +71,9 @@
   completionsCliNames ? [],
   skipDuringRebase ? true,
   skipIfGitHashUnchanged ? true,
+  # Inner cache directories to check for *.hash files (two-tier caching).
+  # Set to [] for non-pnpm setups to use git-hash-only caching.
+  innerCacheDirs ? [ "pnpm-install" ],
 }:
 { lib, config, ... }:
 let
@@ -206,12 +212,13 @@ let
         export _DEVENV_SETUP_RUNNING=1
 
         # Cross-process lock to prevent parallel setup races (R5, R13)
-        # Uses flock for atomic locking across processes
+        # Uses flock with 30s timeout - waits for other process to finish rather than skipping
         lockfile="${cacheRoot}/setup-${sanitizeForLockfile t}.lock"
         mkdir -p "$(dirname "$lockfile")"
         exec 200>"$lockfile"
-        if ! flock -n 200; then
-          echo "[devenv] ${t} already running in another process, skipping" >&2
+        if ! flock -w 30 200; then
+          echo "[devenv] ${t} lock timeout after 30s - another process may be stuck" >&2
+          echo "[devenv] Try: FORCE_SETUP=1 dt setup:run" >&2
           exit 0
         fi
 
@@ -234,6 +241,10 @@ let
   # We only skip when BOTH tiers are valid. This ensures:
   # - Fresh clones populate inner caches even if git hash matches
   # - Cache clearing doesn't leave tasks in broken state
+  #
+  # If innerCacheDirs is empty, we skip the inner cache check (git-hash-only mode).
+  # This is useful for non-pnpm setups that don't have inner caches.
+  innerCacheDirsShell = lib.concatStringsSep " " innerCacheDirs;
   gitHashStatus = ''
     # Allow bypass via FORCE_SETUP=1
     [ "$FORCE_SETUP" = "1" ] && exit 1
@@ -248,14 +259,24 @@ let
     fi
 
     # Git hash matches - check if inner caches are populated
-    # pnpm-install dir should have hash files after successful install
-    pnpm_cache_dir="${cacheRoot}/pnpm-install"
-    if [ -d "$pnpm_cache_dir" ] && [ -n "$(ls -A "$pnpm_cache_dir" 2>/dev/null)" ]; then
-      # Both git hash and inner caches valid - safe to skip
+    inner_cache_dirs="${innerCacheDirsShell}"
+
+    # If no inner cache dirs configured, use git-hash-only mode (skip inner check)
+    if [ -z "$inner_cache_dirs" ]; then
       exit 0
     fi
 
-    # Inner caches missing - run to populate them
+    # Check each configured inner cache dir for *.hash files
+    for dir_name in $inner_cache_dirs; do
+      cache_dir="${cacheRoot}/$dir_name"
+      # Directory must exist and contain at least one .hash file
+      if [ -d "$cache_dir" ] && ls "$cache_dir"/*.hash >/dev/null 2>&1; then
+        # Found valid inner cache - safe to skip
+        exit 0
+      fi
+    done
+
+    # No valid inner caches found - run to populate them
     exit 1
   '';
   writeHashScript = ''
