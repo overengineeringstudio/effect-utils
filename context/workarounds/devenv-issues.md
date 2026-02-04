@@ -87,11 +87,11 @@ Example trace event:
 
 **Affected platforms:**
 
-| Platform              | Status       | Primary Blocker                                      |
-| --------------------- | ------------ | ---------------------------------------------------- |
-| Codex Web (OpenAI)    | ⚠️ Partial   | PATH/env not persisted across command invocations    |
-| Claude Code Web       | ⚠️ Partial   | Network allowlist excludes Nix caches by default     |
-| Codex CLI (local)     | ⚠️ Partial   | `bash --login` drops `.devenv/profile/bin` from PATH |
+| Platform           | Status     | Primary Blocker                                      |
+| ------------------ | ---------- | ---------------------------------------------------- |
+| Codex Web (OpenAI) | ⚠️ Partial | PATH/env not persisted across command invocations    |
+| Claude Code Web    | ⚠️ Partial | Network allowlist excludes Nix caches by default     |
+| Codex CLI (local)  | ⚠️ Partial | `bash --login` drops `.devenv/profile/bin` from PATH |
 
 **Codex Web issues:**
 
