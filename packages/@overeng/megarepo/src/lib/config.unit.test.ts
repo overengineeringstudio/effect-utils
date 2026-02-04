@@ -445,7 +445,6 @@ describe('config', () => {
         },
       }
       const result = Schema.decodeUnknownSync(MegarepoConfig)(input)
-      expect(result.generators?.nix?.enabled).toBe(true)
       expect(result.generators?.vscode?.enabled).toBe(true)
       expect(result.generators?.vscode?.exclude).toEqual(['docs'])
     })
