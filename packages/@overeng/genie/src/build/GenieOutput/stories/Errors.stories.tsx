@@ -12,7 +12,12 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React, { useMemo } from 'react'
 
-import { ALL_OUTPUT_TABS, commonArgTypes, defaultStoryArgs, TuiStoryPreview } from '@overeng/tui-react/storybook'
+import {
+  ALL_OUTPUT_TABS,
+  commonArgTypes,
+  defaultStoryArgs,
+  TuiStoryPreview,
+} from '@overeng/tui-react/storybook'
 
 import { GenieApp } from '../../app.ts'
 import type { GenieMode } from '../../schema.ts'

@@ -116,9 +116,10 @@ export const createInteractiveProps = <S, A>(_: {
   autoRun: boolean
   playbackSpeed: number
   timeline?: TimelineEvent<A>[]
-} => ({
-  initialState: _.args.interactive ? _.idleState : _.staticState,
-  autoRun: _.args.interactive,
-  playbackSpeed: _.args.playbackSpeed,
-  ...(_.args.interactive ? { timeline: _.createTimeline() } : {}),
-})
+} =>
+  ({
+    initialState: _.args.interactive ? _.idleState : _.staticState,
+    autoRun: _.args.interactive,
+    playbackSpeed: _.args.playbackSpeed,
+    ...(_.args.interactive ? { timeline: _.createTimeline() } : {}),
+  })

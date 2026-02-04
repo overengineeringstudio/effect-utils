@@ -59,30 +59,57 @@ export const Demo: Story = {
 
 export const Loading: Story = {
   render: () => (
-    <TuiStoryPreview View={DumpView} app={DumpApp} initialState={fixtures.createLoadingState()} autoRun={false} />
+    <TuiStoryPreview
+      View={DumpView}
+      app={DumpApp}
+      initialState={fixtures.createLoadingState()}
+      autoRun={false}
+    />
   ),
 }
 
 export const Introspecting: Story = {
   render: () => (
-    <TuiStoryPreview View={DumpView} app={DumpApp} initialState={fixtures.createIntrospectingState()} autoRun={false} />
+    <TuiStoryPreview
+      View={DumpView}
+      app={DumpApp}
+      initialState={fixtures.createIntrospectingState()}
+      autoRun={false}
+    />
   ),
 }
 
 export const Fetching: Story = {
   render: () => (
-    <TuiStoryPreview View={DumpView} app={DumpApp} initialState={fixtures.createFetchingState(42)} autoRun={false} />
+    <TuiStoryPreview
+      View={DumpView}
+      app={DumpApp}
+      initialState={fixtures.createFetchingState(42)}
+      autoRun={false}
+    />
   ),
 }
 
 export const FetchingMany: Story = {
   render: () => (
-    <TuiStoryPreview View={DumpView} app={DumpApp} initialState={fixtures.createFetchingState(1500)} autoRun={false} />
+    <TuiStoryPreview
+      View={DumpView}
+      app={DumpApp}
+      initialState={fixtures.createFetchingState(1500)}
+      autoRun={false}
+    />
   ),
 }
 
 export const DoneSimple: Story = {
-  render: () => <TuiStoryPreview View={DumpView} app={DumpApp} initialState={fixtures.createDoneState()} autoRun={false} />,
+  render: () => (
+    <TuiStoryPreview
+      View={DumpView}
+      app={DumpApp}
+      initialState={fixtures.createDoneState()}
+      autoRun={false}
+    />
+  ),
 }
 
 export const DoneWithAssets: Story = {
@@ -135,5 +162,12 @@ export const DoneFullStats: Story = {
 }
 
 export const ErrorState: Story = {
-  render: () => <TuiStoryPreview View={DumpView} app={DumpApp} initialState={fixtures.createErrorState()} autoRun={false} />,
+  render: () => (
+    <TuiStoryPreview
+      View={DumpView}
+      app={DumpApp}
+      initialState={fixtures.createErrorState()}
+      autoRun={false}
+    />
+  ),
 }

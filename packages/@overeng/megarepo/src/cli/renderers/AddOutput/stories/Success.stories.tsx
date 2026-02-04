@@ -5,7 +5,12 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React, { useMemo } from 'react'
 
-import { ALL_OUTPUT_TABS, commonArgTypes, defaultStoryArgs, TuiStoryPreview } from '@overeng/tui-react/storybook'
+import {
+  ALL_OUTPUT_TABS,
+  commonArgTypes,
+  defaultStoryArgs,
+  TuiStoryPreview,
+} from '@overeng/tui-react/storybook'
 
 import { AddApp } from '../mod.ts'
 import { AddView } from '../view.tsx'
