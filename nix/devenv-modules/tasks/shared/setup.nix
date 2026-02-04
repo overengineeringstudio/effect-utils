@@ -270,10 +270,11 @@ let
     for dir_name in $inner_cache_dirs; do
       cache_dir="${cacheRoot}/$dir_name"
       # Directory must exist and contain at least one .hash file
-      # Use find instead of ls glob for cross-platform compatibility (Linux vs macOS)
-      if [ -d "$cache_dir" ] && [ -n "$(find "$cache_dir" -maxdepth 1 -name '*.hash' -print -quit 2>/dev/null)" ]; then
-        # Found valid inner cache - safe to skip
-        exit 0
+      # Use for loop with -f check (POSIX-compliant, works on Linux and macOS)
+      if [ -d "$cache_dir" ]; then
+        for f in "$cache_dir"/*.hash; do
+          [ -f "$f" ] && exit 0
+        done
       fi
     done
 

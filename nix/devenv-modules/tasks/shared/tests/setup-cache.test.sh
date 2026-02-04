@@ -59,10 +59,11 @@ simulate_git_hash_status() {
   for dir_name in $inner_cache_dirs; do
     local cache_dir="$cache_root/$dir_name"
     # Directory must exist and contain at least one .hash file
-    # Use find instead of ls glob for cross-platform compatibility (Linux vs macOS)
-    if [ -d "$cache_dir" ] && [ -n "$(find "$cache_dir" -maxdepth 1 -name '*.hash' -print -quit 2>/dev/null)" ]; then
-      # Found valid inner cache - safe to skip
-      return 0
+    # Use for loop with -f check (POSIX-compliant, works on Linux and macOS)
+    if [ -d "$cache_dir" ]; then
+      for f in "$cache_dir"/*.hash; do
+        [ -f "$f" ] && return 0
+      done
     fi
   done
 
