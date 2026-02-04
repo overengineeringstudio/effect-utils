@@ -366,12 +366,20 @@ export const syncMegarepo = <R = never>({
       yield* writeLockFile({ lockPath, lockFile })
 
       // Sync Nix lock files (flake.lock, devenv.lock) in member repos
-      // This is opt-out: enabled by default when nix generator is enabled
-      const nixLockSyncEnabled =
-        config.generators?.nix?.enabled === true &&
-        config.generators.nix.lockSync?.enabled !== false
-      if (nixLockSyncEnabled) {
-        const excludeMembers = new Set(config.generators?.nix?.lockSync?.exclude ?? [])
+      // Auto-detected: enabled if devenv.lock or flake.lock exists in megarepo root
+      // Can be explicitly disabled via lockSync.enabled: false
+      const fs = yield* FileSystem.FileSystem
+      const lockSyncExplicitlyDisabled = config.lockSync?.enabled === false
+      const devenvLockExists = yield* fs.exists(
+        EffectPath.ops.join(megarepoRoot, EffectPath.unsafe.relativeFile('devenv.lock')),
+      )
+      const flakeLockExists = yield* fs.exists(
+        EffectPath.ops.join(megarepoRoot, EffectPath.unsafe.relativeFile('flake.lock')),
+      )
+      const lockSyncEnabled = !lockSyncExplicitlyDisabled && (devenvLockExists || flakeLockExists)
+
+      if (lockSyncEnabled) {
+        const excludeMembers = new Set(config.lockSync?.exclude ?? [])
         const nixLockResult = yield* syncNixLocks({
           megarepoRoot,
           config,

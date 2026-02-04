@@ -18,6 +18,9 @@
         },
         "generators": {
           "$ref": "#/$defs/GeneratorsConfig"
+        },
+        "lockSync": {
+          "$ref": "#/$defs/LockSyncConfig"
         }
       },
       "additionalProperties": false
@@ -26,29 +29,39 @@
       "type": "object",
       "required": [],
       "properties": {
-        "nix": {
-          "$ref": "#/$defs/NixGeneratorConfig"
-        },
         "vscode": {
           "$ref": "#/$defs/VscodeGeneratorConfig"
         }
       },
       "additionalProperties": false
     },
-    "NixGeneratorConfig": {
+    "VscodeGeneratorConfig": {
       "type": "object",
       "required": [],
       "properties": {
         "enabled": {
           "type": "boolean"
         },
-        "workspaceDir": {
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "color": {
           "type": "string"
+        },
+        "colorEnvVar": {
+          "type": "string"
+        },
+        "settings": {
+          "type": "object",
+          "additionalProperties": {}
         }
       },
       "additionalProperties": false
     },
-    "VscodeGeneratorConfig": {
+    "LockSyncConfig": {
       "type": "object",
       "required": [],
       "properties": {

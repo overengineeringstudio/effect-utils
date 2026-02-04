@@ -870,7 +870,7 @@ Default mode does NOT fetch from remote. It reads current worktree state and upd
 
 ### Nix Lock Sync
 
-When the nix generator is enabled, megarepo automatically synchronizes `flake.lock` and `devenv.lock` files in member repos to keep them in sync with `megarepo.lock`.
+Megarepo automatically synchronizes `flake.lock` and `devenv.lock` files in member repos to keep them in sync with `megarepo.lock`. Lock sync is **auto-detected**: it is enabled if `devenv.lock` or `flake.lock` exists in the megarepo root directory.
 
 **The Problem:**
 
@@ -893,17 +893,12 @@ During `mr sync`, after `megarepo.lock` is updated, megarepo scans each member r
 
 **Configuration:**
 
-Lock sync is **enabled by default** when the nix generator is enabled. To opt out:
+Lock sync is **auto-detected** by default (enabled if `devenv.lock` or `flake.lock` exists in the megarepo root). To opt out:
 
 ```json
 {
-  "generators": {
-    "nix": {
-      "enabled": true,
-      "lockSync": {
-        "enabled": false
-      }
-    }
+  "lockSync": {
+    "enabled": false
   }
 }
 ```
@@ -912,13 +907,8 @@ To exclude specific members from lock sync:
 
 ```json
 {
-  "generators": {
-    "nix": {
-      "enabled": true,
-      "lockSync": {
-        "exclude": ["member-to-skip"]
-      }
-    }
+  "lockSync": {
+    "exclude": ["member-to-skip"]
   }
 }
 ```

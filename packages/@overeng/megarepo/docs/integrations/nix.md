@@ -127,18 +127,13 @@ Megarepo solves this with **Nix Lock Sync**: during `mr sync`, it automatically 
 
 ### Configuration
 
-Lock sync is **enabled by default** when the nix generator is enabled.
+Lock sync is **auto-detected** by default: it is enabled if `devenv.lock` or `flake.lock` exists in the megarepo root directory. No configuration needed for the common case.
 
 To disable:
 
 ```json
 {
-  "generators": {
-    "nix": {
-      "enabled": true,
-      "lockSync": { "enabled": false }
-    }
-  }
+  "lockSync": { "enabled": false }
 }
 ```
 
@@ -146,12 +141,7 @@ To exclude specific members:
 
 ```json
 {
-  "generators": {
-    "nix": {
-      "enabled": true,
-      "lockSync": { "exclude": ["member-name"] }
-    }
-  }
+  "lockSync": { "exclude": ["member-name"] }
 }
 ```
 
