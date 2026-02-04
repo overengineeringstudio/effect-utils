@@ -4,6 +4,7 @@ import {
   effectLspScripts,
   packageJson,
   privatePackageDefaults,
+  type PackageJsonData,
 } from '../../../genie/internal.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
@@ -39,4 +40,4 @@ export default packageJson({
   },
   // Expose @overeng/utils peer deps transitively (consumers need them)
   peerDependencies: utilsPkg.data.peerDependencies,
-})
+} satisfies PackageJsonData)

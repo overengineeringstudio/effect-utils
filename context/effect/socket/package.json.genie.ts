@@ -1,4 +1,4 @@
-import { catalog, packageJson } from '../../../genie/internal.ts'
+import { catalog, packageJson, type PackageJsonData } from '../../../genie/internal.ts'
 
 export default packageJson({
   name: 'effect-socket-examples',
@@ -10,4 +10,4 @@ export default packageJson({
   devDependencies: {
     ...catalog.pick('@types/node'),
   },
-})
+} satisfies PackageJsonData)

@@ -1,4 +1,4 @@
-import { githubWorkflow } from '../../packages/@overeng/genie/src/runtime/mod.ts'
+import { githubWorkflow, type GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import type { CIJobName } from '../../genie/ci.ts'
 
 /**
@@ -87,4 +87,4 @@ export default githubWorkflow({
     pull_request: { branches: ['main'] },
   },
   jobs,
-})
+} satisfies GitHubWorkflowArgs)

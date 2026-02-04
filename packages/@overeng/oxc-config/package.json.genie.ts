@@ -8,7 +8,12 @@
  *
  * See `nix/oxlint-npm.nix` for update instructions when bumping oxlint version.
  */
-import { catalog, packageJson, privatePackageDefaults } from '../../../genie/internal.ts'
+import {
+  catalog,
+  packageJson,
+  privatePackageDefaults,
+  type PackageJsonData,
+} from '../../../genie/internal.ts'
 
 export default packageJson({
   name: '@overeng/oxc-config',
@@ -32,4 +37,4 @@ export default packageJson({
       'oxlint-tsgolint',
     ),
   },
-})
+} satisfies PackageJsonData)

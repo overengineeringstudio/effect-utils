@@ -4,6 +4,7 @@ import {
   effectLspScripts,
   packageJson,
   privatePackageDefaults,
+  type PackageJsonData,
 } from '../../../genie/internal.ts'
 
 const peerDepNames = [
@@ -50,4 +51,4 @@ export default packageJson({
     ...effectLspDevDeps(),
   },
   peerDependencies: catalog.peers(...peerDepNames),
-})
+} satisfies PackageJsonData)

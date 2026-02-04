@@ -4,6 +4,7 @@ import {
   effectLspScripts,
   packageJson,
   privatePackageDefaults,
+  type PackageJsonData,
 } from '../../../genie/internal.ts'
 import tuiReactPkg from '../tui-react/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
@@ -86,4 +87,4 @@ export default packageJson({
       ...tuiReactPkg.data.pnpm?.patchedDependencies,
     },
   },
-})
+} satisfies PackageJsonData)

@@ -6,6 +6,7 @@ import {
   effectLspScripts,
   packageJson,
   privatePackageDefaults,
+  type PackageJsonData,
 } from '../../../genie/internal.ts'
 
 /** Packages exposed as peer deps (consumers provide) + included in devDeps (for local dev/test) */
@@ -84,4 +85,4 @@ export default packageJson({
     ...effectLspDevDeps(),
   },
   peerDependencies: catalog.peers(...peerDepNames),
-})
+} satisfies PackageJsonData)
