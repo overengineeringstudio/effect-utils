@@ -119,6 +119,11 @@ type PullRequestRule = {
      * @since GitHub Enterprise Server 3.13+
      */
     allowed_merge_methods?: Array<'merge' | 'squash' | 'rebase'>
+    /**
+     * Users or teams required to review.
+     * Required by API even if empty.
+     */
+    required_reviewers?: Array<{ reviewer_id: number; reviewer_type: 'User' | 'Team' }>
   }
 }
 
