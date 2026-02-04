@@ -8,12 +8,12 @@
 
 - When at odds, optimize for catching typos instead of optimizing for autocomplete.
 
-### Using `satisfies` for IDE support
+### IDE Support (JSDoc & Jump-to-Definition)
 
-When calling genie factory functions, use `satisfies` at the call site to enable full IDE support:
+Genie factory functions now provide full IDE support out of the box:
 
 ```ts
-import { githubRuleset, type GithubRulesetArgs } from '@overeng/genie'
+import { githubRuleset } from '@overeng/genie'
 
 export default githubRuleset({
   name: 'protect-main',
@@ -26,28 +26,24 @@ export default githubRuleset({
       },
     },
   ],
-} satisfies GithubRulesetArgs)
+})
 ```
 
-**Why this pattern?**
-
-Genie uses `Strict<T, TBase>` generics to catch typos (extra properties) at compile time while preserving literal types. However, TypeScript doesn't "back-propagate" JSDoc or source locations from the constraint type to the inferred literal. Adding `satisfies` tells TypeScript to check the object against the expected type, which enables:
+**What you get:**
 
 - **Jump to definition** - Cmd+click on properties navigates to the interface definition
 - **JSDoc hover** - Hovering shows property documentation
-- **Typo detection** - Both from `Strict` and from `satisfies`
-- **Literal type preservation** - `const` inference happens before `satisfies`
+- **Typo detection** - Extra properties are caught at compile time
+- **Literal type preservation** - `const` inference preserves exact types
 
-**Available types:**
+**How it works:**
 
-| Factory               | Type to use with `satisfies` |
-| --------------------- | ---------------------------- |
-| `githubRuleset()`     | `GithubRulesetArgs`          |
-| `githubWorkflow()`    | `GitHubWorkflowArgs`         |
-| `packageJson()`       | `PackageJsonData`            |
-| `workspaceRoot()`     | `WorkspaceRootData`          |
-| `tsconfigJson()`      | `TSConfigArgs`               |
-| `pnpmWorkspaceYaml()` | `PnpmWorkspaceData`          |
-| `oxlintConfig()`      | `OxlintConfigArgs`           |
-| `oxfmtConfig()`       | `OxfmtConfigArgs`            |
-| `megarepoJson()`      | `MegarepoConfigArgs`         |
+Genie uses the "Base-First Intersection" pattern internally:
+
+```ts
+const fn = <const T extends Args>(args: Args & Strict<T, Args>): Output<T>
+```
+
+This puts the base type (`Args`) first in the intersection, which tells TypeScript to associate JSDoc and source locations with it, while `Strict<T, Args>` still catches typos/extra properties at compile time.
+
+**Note:** The `satisfies` pattern is no longer required. Previous versions required importing an extra type and using `satisfies` at the call site, but this is no longer necessary.

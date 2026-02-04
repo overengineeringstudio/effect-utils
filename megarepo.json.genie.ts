@@ -1,6 +1,5 @@
 import {
   megarepoJson,
-  type MegarepoConfigArgs,
 } from './packages/@overeng/genie/src/runtime/megarepo-config/mod.ts'
 
 export default megarepoJson({
@@ -8,4 +7,4 @@ export default megarepoJson({
     effect: 'effect-ts/effect',
     'overeng-beads-public': 'overengineeringstudio/overeng-beads-public',
   },
-} satisfies MegarepoConfigArgs)
+})

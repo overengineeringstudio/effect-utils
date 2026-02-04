@@ -3,7 +3,7 @@ import {
   domLib,
   packageTsconfigCompilerOptions,
 } from '../../../genie/internal.ts'
-import { tsconfigJson, type TSConfigArgs } from '../genie/src/runtime/mod.ts'
+import { tsconfigJson } from '../genie/src/runtime/mod.ts'
 
 export default tsconfigJson({
   compilerOptions: {
@@ -12,4 +12,4 @@ export default tsconfigJson({
     lib: [...domLib],
   },
   include: ['src/**/*'],
-} satisfies TSConfigArgs)
+})

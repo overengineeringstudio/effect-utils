@@ -1,5 +1,5 @@
 import { baseTsconfigCompilerOptions, reactJsx } from '../../../genie/internal.ts'
-import { tsconfigJson, type TSConfigArgs } from '../genie/src/runtime/mod.ts'
+import { tsconfigJson } from '../genie/src/runtime/mod.ts'
 
 /** react-inspector is a git submodule with relaxed type checking for legacy code */
 export default tsconfigJson({
@@ -21,4 +21,4 @@ export default tsconfigJson({
     noImplicitReturns: false,
   },
   include: ['src/**/*'],
-} satisfies TSConfigArgs)
+})

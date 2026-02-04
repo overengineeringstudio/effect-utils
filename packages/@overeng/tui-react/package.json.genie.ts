@@ -1,9 +1,4 @@
-import {
-  catalog,
-  packageJson,
-  privatePackageDefaults,
-  type PackageJsonData,
-} from '../../../genie/internal.ts'
+import { catalog, packageJson, privatePackageDefaults } from '../../../genie/internal.ts'
 
 const peerDepNames = [
   'effect',
@@ -74,4 +69,4 @@ export default packageJson({
     ),
   },
   peerDependencies: catalog.peers(...peerDepNames, ...effectAtomDeps, ...opentuiDeps),
-} satisfies PackageJsonData)
+})

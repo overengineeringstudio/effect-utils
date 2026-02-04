@@ -4,7 +4,6 @@ import {
   effectLspScripts,
   packageJson,
   privatePackageDefaults,
-  type PackageJsonData,
 } from '../../../genie/internal.ts'
 
 const peerDepNames = ['effect', 'react', 'react-aria-components', 'react-dom'] as const
@@ -42,4 +41,4 @@ export default packageJson({
     ...effectLspDevDeps(),
   },
   peerDependencies: catalog.peers(...peerDepNames),
-} satisfies PackageJsonData)
+})

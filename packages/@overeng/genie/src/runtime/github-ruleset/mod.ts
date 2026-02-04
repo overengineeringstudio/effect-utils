@@ -832,8 +832,8 @@ export interface GithubRulesetArgs {
  * ```
  */
 export const githubRuleset = <const T extends GithubRulesetArgs>(
-  args: Strict<T, GithubRulesetArgs>,
+  args: GithubRulesetArgs & Strict<T, GithubRulesetArgs>,
 ): GenieOutput<T> => ({
-  data: args,
+  data: args as T,
   stringify: (_ctx) => JSON.stringify(args, null, 2) + '\n',
 })

@@ -2,7 +2,7 @@ import {
   baseTsconfigCompilerOptions,
   packageTsconfigCompilerOptions,
 } from '../../../genie/internal.ts'
-import { tsconfigJson, type TSConfigArgs } from './src/runtime/mod.ts'
+import { tsconfigJson } from './src/runtime/mod.ts'
 
 export default tsconfigJson({
   compilerOptions: {
@@ -12,4 +12,4 @@ export default tsconfigJson({
     jsx: 'react-jsx',
   },
   include: ['src/**/*.ts', 'src/**/*.tsx', 'bin/**/*.ts', 'bin/**/*.tsx'],
-} satisfies TSConfigArgs)
+})

@@ -1,9 +1,4 @@
-import {
-  catalog,
-  packageJson,
-  privatePackageDefaults,
-  type PackageJsonData,
-} from '../../../../../genie/internal.ts'
+import { catalog, packageJson, privatePackageDefaults } from '../../../../../genie/internal.ts'
 
 export default packageJson({
   name: 'effect-rpc-tanstack-example-basic',
@@ -38,4 +33,4 @@ export default packageJson({
       'vite',
     ),
   },
-} satisfies PackageJsonData)
+})

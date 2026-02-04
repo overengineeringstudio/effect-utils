@@ -1,4 +1,4 @@
-import { catalog, packageJson, type PackageJsonData } from '../../genie/internal.ts'
+import { catalog, packageJson } from '../../genie/internal.ts'
 
 export default packageJson({
   name: 'opentui-examples',
@@ -26,4 +26,4 @@ export default packageJson({
       ...catalog.pick('effect', '@effect/platform', '@effect/experimental', '@effect/rpc'),
     },
   },
-} satisfies PackageJsonData)
+})

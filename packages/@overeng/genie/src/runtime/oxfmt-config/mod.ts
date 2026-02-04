@@ -75,7 +75,7 @@ export type OxfmtConfigArgs = {
  * ```
  */
 export const oxfmtConfig = <const T extends OxfmtConfigArgs>(
-  args: Strict<T, OxfmtConfigArgs>,
+  args: OxfmtConfigArgs & Strict<T, OxfmtConfigArgs>,
 ): GenieOutput<T> => {
   const buildConfig = (): Record<string, unknown> => {
     const config: Record<string, unknown> = {
@@ -102,7 +102,7 @@ export const oxfmtConfig = <const T extends OxfmtConfigArgs>(
   }
 
   return {
-    data: args,
+    data: args as T,
     stringify: (_ctx) => JSON.stringify(buildConfig(), null, 2) + '\n',
   }
 }

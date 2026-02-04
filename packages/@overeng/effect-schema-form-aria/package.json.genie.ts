@@ -4,7 +4,6 @@ import {
   effectLspScripts,
   packageJson,
   privatePackageDefaults,
-  type PackageJsonData,
 } from '../../../genie/internal.ts'
 import schemaFormPkg from '../effect-schema-form/package.json.genie.ts'
 
@@ -53,4 +52,4 @@ export default packageJson({
     ...schemaFormPkg.data.peerDependencies,
     ...catalog.peers(...peerDepNames),
   },
-} satisfies PackageJsonData)
+})

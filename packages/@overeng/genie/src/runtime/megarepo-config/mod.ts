@@ -179,10 +179,10 @@ export type MegarepoConfigArgs = {
  * ```
  */
 export const megarepoJson = <const T extends MegarepoConfigArgs>(
-  args: Strict<T, MegarepoConfigArgs>,
+  args: MegarepoConfigArgs & Strict<T, MegarepoConfigArgs>,
 ): GenieOutput<T> => {
   return {
-    data: args,
+    data: args as T,
     stringify: (_ctx) => JSON.stringify(args, null, 2) + '\n',
   }
 }

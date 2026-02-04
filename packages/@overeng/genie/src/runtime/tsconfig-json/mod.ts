@@ -298,7 +298,7 @@ export type TSConfigArgs = {
  * ```
  */
 export const tsconfigJson = <const T extends TSConfigArgs>(
-  args: Strict<T, TSConfigArgs>,
+  args: TSConfigArgs & Strict<T, TSConfigArgs>,
 ): GenieOutput<T> => {
   if (args.extends !== undefined) {
     console.warn(
@@ -309,7 +309,7 @@ export const tsconfigJson = <const T extends TSConfigArgs>(
   }
 
   return {
-    data: args,
+    data: args as T,
     stringify: (_ctx) => JSON.stringify(args, null, 2) + '\n',
   }
 }

@@ -1,4 +1,4 @@
-import { tsconfigJson, type TSConfigArgs } from './packages/@overeng/genie/src/runtime/mod.ts'
+import { tsconfigJson } from './packages/@overeng/genie/src/runtime/mod.ts'
 
 // All packages must be listed here to ensure TypeScript's incremental build
 // properly detects cross-package changes. Missing packages can cause stale
@@ -29,4 +29,4 @@ const references = [
 export default tsconfigJson({
   references: references.map((path) => ({ path })),
   files: [],
-} satisfies TSConfigArgs)
+})

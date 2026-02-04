@@ -277,8 +277,8 @@ export type GitHubWorkflowArgs = {
  * ```
  */
 export const githubWorkflow = <const T extends GitHubWorkflowArgs>(
-  args: Strict<T, GitHubWorkflowArgs>,
+  args: GitHubWorkflowArgs & Strict<T, GitHubWorkflowArgs>,
 ): GenieOutput<T> => ({
-  data: args,
+  data: args as T,
   stringify: (_ctx) => yaml.stringify(args),
 })

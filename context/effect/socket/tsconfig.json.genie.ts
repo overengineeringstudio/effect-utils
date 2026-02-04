@@ -1,8 +1,5 @@
 import { baseTsconfigCompilerOptions, domLib } from '../../../genie/internal.ts'
-import {
-  tsconfigJson,
-  type TSConfigArgs,
-} from '../../../packages/@overeng/genie/src/runtime/mod.ts'
+import { tsconfigJson } from '../../../packages/@overeng/genie/src/runtime/mod.ts'
 
 export default tsconfigJson({
   compilerOptions: {
@@ -16,4 +13,4 @@ export default tsconfigJson({
   },
   include: ['examples/**/*.ts'],
   exclude: ['*.genie.ts'],
-} satisfies TSConfigArgs)
+})

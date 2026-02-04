@@ -1,4 +1,4 @@
-import { githubWorkflow, type GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
+import { githubWorkflow } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import { RUNNER_PROFILES, type CIJobName, type RunnerProfile } from '../../genie/ci.ts'
 
 /**
@@ -100,4 +100,4 @@ export default githubWorkflow({
     pull_request: { branches: ['main'] },
   },
   jobs,
-} satisfies GitHubWorkflowArgs)
+})

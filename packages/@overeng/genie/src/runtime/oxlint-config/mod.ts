@@ -93,7 +93,7 @@ export type OxlintConfigArgs = {
  * for composition with other genie files.
  */
 export const oxlintConfig = <const T extends OxlintConfigArgs>(
-  args: Strict<T, OxlintConfigArgs>,
+  args: OxlintConfigArgs & Strict<T, OxlintConfigArgs>,
 ): GenieOutput<T> => {
   const buildConfig = (): Record<string, unknown> => {
     const config: Record<string, unknown> = {
@@ -116,7 +116,7 @@ export const oxlintConfig = <const T extends OxlintConfigArgs>(
   }
 
   return {
-    data: args,
+    data: args as T,
     stringify: (_ctx) => JSON.stringify(buildConfig(), null, 2) + '\n',
   }
 }

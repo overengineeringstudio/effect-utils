@@ -925,9 +925,9 @@ const buildPnpmWorkspaceYaml = <T extends PnpmWorkspaceData>({
  * ```
  */
 export const pnpmWorkspaceYaml = <const T extends PnpmWorkspaceData>(
-  config: Strict<T, PnpmWorkspaceData>,
+  config: PnpmWorkspaceData & Strict<T, PnpmWorkspaceData>,
 ): GenieOutput<T> => ({
-  data: config,
+  data: config as T,
   stringify: (ctx) => stringify(buildPnpmWorkspaceYaml({ data: config, location: ctx.location })),
 })
 

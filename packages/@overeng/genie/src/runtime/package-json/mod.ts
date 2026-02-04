@@ -618,9 +618,9 @@ const buildPackageJson = <T extends PackageJsonData>({
  * ```
  */
 export const packageJson = <const T extends PackageJsonData>(
-  data: Strict<T, PackageJsonData>,
+  data: PackageJsonData & Strict<T, PackageJsonData>,
 ): GenieOutput<T> => ({
-  data,
+  data: data as T,
   stringify: (ctx) =>
     JSON.stringify(buildPackageJson({ data, location: ctx.location }), null, 2) + '\n',
   validate: (ctx: GenieValidationContext) =>
@@ -656,9 +656,9 @@ export const packageJson = <const T extends PackageJsonData>(
  * ```
  */
 export const workspaceRoot = <const T extends WorkspaceRootData>(
-  data: Strict<T, WorkspaceRootData>,
+  data: WorkspaceRootData & Strict<T, WorkspaceRootData>,
 ): GenieOutput<T> => ({
-  data,
+  data: data as T,
   stringify: (ctx) =>
     JSON.stringify(buildPackageJson({ data, location: ctx.location }), null, 2) + '\n',
 })
