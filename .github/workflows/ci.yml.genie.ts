@@ -1,15 +1,12 @@
 import { githubWorkflow, type GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
-import type { CIJobName } from '../../genie/ci.ts'
+import { RUNNER_PROFILES, type CIJobName, type RunnerProfile } from '../../genie/ci.ts'
 
 /**
  * Namespace runner configuration.
  * Uses run ID-based labels for runner affinity to prevent queue jumping.
  */
-const namespaceRunner = (runId: string) =>
-  [
-    'namespace-profile-linux-x86-64',
-    `namespace-features:github.run-id=${runId}`,
-  ] as const
+const namespaceRunner = (profile: RunnerProfile, runId: string) =>
+  [profile, `namespace-features:github.run-id=${runId}`] as const
 
 const jobDefaults = {
   run: {
@@ -49,7 +46,23 @@ const baseSteps = [
 ] as const
 
 const job = (step: { name: string; run: string }) => ({
-  'runs-on': namespaceRunner('${{ github.run_id }}'),
+  'runs-on': namespaceRunner('namespace-profile-linux-x86-64', '${{ github.run_id }}'),
+  defaults: jobDefaults,
+  env: {
+    FORCE_SETUP: '1',
+    CI: 'true',
+  },
+  steps: [...baseSteps, step],
+})
+
+const multiPlatformJob = (step: { name: string; run: string }) => ({
+  strategy: {
+    'fail-fast': false,
+    matrix: {
+      runner: [...RUNNER_PROFILES],
+    },
+  },
+  'runs-on': namespaceRunner('${{ matrix.runner }}' as RunnerProfile, '${{ github.run_id }}'),
   defaults: jobDefaults,
   env: {
     FORCE_SETUP: '1',
@@ -59,7 +72,7 @@ const job = (step: { name: string; run: string }) => ({
 })
 
 // Jobs keyed by CIJobName for type safety with required status checks
-const jobs: Record<CIJobName, ReturnType<typeof job>> = {
+const jobs: Record<CIJobName, ReturnType<typeof job> | ReturnType<typeof multiPlatformJob>> = {
   typecheck: job({
     name: 'Type check',
     run: 'dt ts:check',
@@ -68,13 +81,13 @@ const jobs: Record<CIJobName, ReturnType<typeof job>> = {
     name: 'Format + lint',
     run: 'dt lint:check',
   }),
-  test: job({
+  test: multiPlatformJob({
     name: 'Unit tests',
     run: 'dt test:run',
   }),
   // Verify Nix hashes are up-to-date (pnpmDepsHash + localDeps)
   // This catches stale hashes before they break downstream consumers
-  'nix-check': job({
+  'nix-check': multiPlatformJob({
     name: 'Nix hash check',
     run: 'dt nix:check',
   }),

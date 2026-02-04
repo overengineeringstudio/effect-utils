@@ -44,6 +44,11 @@ All notable changes to this project will be documented in this file.
   - Now `cloneBare` configures `+refs/heads/*:refs/remotes/origin/*` after clone
   - Ensures remote tracking refs are created on fetch for proper git workflows
 
+- **@overeng/genie**: Fix YAML serializer producing empty output with matrix strategy
+  - When GitHub Actions workflows use `${{ }}` expressions inside inline arrays (e.g., `runs-on: [${{ matrix.runner }}]`), oxfmt fails to parse the YAML
+  - The `formatWithOxfmt` function now returns original content when oxfmt produces empty output
+  - Closes [#108](https://github.com/overengineeringstudio/effect-utils/issues/108)
+
 - **nix/devenv-modules/tasks/shared/test.nix**: Self-contained test tasks - each package uses its own vitest
   - Previously test tasks shared a vitest binary from `@overeng/utils`, violating self-contained packages requirements (R1-R5)
   - Now each package runs tests using `node_modules/.bin/vitest` from its own dependencies

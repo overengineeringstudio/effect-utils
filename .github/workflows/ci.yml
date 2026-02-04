@@ -27,7 +27,7 @@ jobs:
         uses: cachix/cachix-action@v16
         with:
           name: overeng-effect-utils
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
       - name: Install devenv
         run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
         shell: bash
@@ -35,8 +35,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.local/share/pnpm/store
-          key: pnpm-store-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: pnpm-store-${{ runner.os }}-
+          key: "pnpm-store-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          restore-keys: 'pnpm-store-${{ runner.os }}-'
       - name: Type check
         run: 'dt ts:check'
   lint:
@@ -56,7 +56,7 @@ jobs:
         uses: cachix/cachix-action@v16
         with:
           name: overeng-effect-utils
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
       - name: Install devenv
         run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
         shell: bash
@@ -64,13 +64,16 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.local/share/pnpm/store
-          key: pnpm-store-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: pnpm-store-${{ runner.os }}-
+          key: "pnpm-store-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          restore-keys: 'pnpm-store-${{ runner.os }}-'
       - name: Format + lint
         run: 'dt lint:check'
   test:
-    runs-on:
-      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [namespace-profile-linux-x86-64, namespace-profile-macos-arm64]
+    runs-on: ['${{ matrix.runner }}', 'namespace-features:github.run-id=${{ github.run_id }}']
     defaults:
       run:
         shell: devenv shell bash -- -e {0}
@@ -85,7 +88,7 @@ jobs:
         uses: cachix/cachix-action@v16
         with:
           name: overeng-effect-utils
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
       - name: Install devenv
         run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
         shell: bash
@@ -93,13 +96,16 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.local/share/pnpm/store
-          key: pnpm-store-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: pnpm-store-${{ runner.os }}-
+          key: "pnpm-store-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          restore-keys: 'pnpm-store-${{ runner.os }}-'
       - name: Unit tests
         run: 'dt test:run'
   nix-check:
-    runs-on:
-      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [namespace-profile-linux-x86-64, namespace-profile-macos-arm64]
+    runs-on: ['${{ matrix.runner }}', 'namespace-features:github.run-id=${{ github.run_id }}']
     defaults:
       run:
         shell: devenv shell bash -- -e {0}
@@ -114,7 +120,7 @@ jobs:
         uses: cachix/cachix-action@v16
         with:
           name: overeng-effect-utils
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
       - name: Install devenv
         run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
         shell: bash
@@ -122,7 +128,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.local/share/pnpm/store
-          key: pnpm-store-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: pnpm-store-${{ runner.os }}-
+          key: "pnpm-store-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          restore-keys: 'pnpm-store-${{ runner.os }}-'
       - name: Nix hash check
         run: 'dt nix:check'
