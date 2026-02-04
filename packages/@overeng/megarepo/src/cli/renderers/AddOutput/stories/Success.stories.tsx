@@ -40,14 +40,14 @@ export default {
   },
   args: {
     ...defaultStoryArgs,
-    sync: false,
+    sync: true,
     name: 'effect',
     source: 'effect-ts/effect',
   },
   argTypes: {
     ...commonArgTypes,
     sync: {
-      description: '--sync flag: sync the added repo immediately',
+      description: '--sync/--no-sync flag: sync the added repo immediately (default: true)',
       control: { type: 'boolean' },
     },
     name: {
@@ -63,8 +63,8 @@ export default {
 
 type Story = StoryObj<StoryArgs>
 
-/** Simple add without sync */
-export const AddSimple: Story = {
+/** Default add behavior - adds and syncs (clones) the member */
+export const AddDefault: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
@@ -92,8 +92,37 @@ export const AddSimple: Story = {
   },
 }
 
-/** Add with sync - member cloned */
-export const AddWithSync: Story = {
+/** Add with --no-sync flag - skips syncing */
+export const AddNoSync: Story = {
+  args: { sync: false },
+  render: (args) => {
+    const stateConfig = useMemo(
+      () => ({
+        member: args.name,
+        source: args.source,
+        synced: false,
+      }),
+      [args.name, args.source],
+    )
+    return (
+      <TuiStoryPreview
+        View={AddView}
+        app={AddApp}
+        initialState={
+          args.interactive ? fixtures.createIdleState() : fixtures.createSuccessState(stateConfig)
+        }
+        height={args.height}
+        autoRun={args.interactive}
+        playbackSpeed={args.playbackSpeed}
+        tabs={ALL_OUTPUT_TABS}
+        {...(args.interactive ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+      />
+    )
+  },
+}
+
+/** Add with sync - member cloned (explicit --sync flag) */
+export const AddWithSyncCloned: Story = {
   args: { sync: true },
   render: (args) => {
     const stateConfig = useMemo(

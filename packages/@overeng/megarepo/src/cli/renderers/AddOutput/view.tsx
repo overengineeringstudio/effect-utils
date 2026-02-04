@@ -7,6 +7,7 @@ import React from 'react'
 
 import { Box, Text, useTuiAtomValue, useSymbols } from '@overeng/tui-react'
 
+import { StatusIcon } from '../../components/mod.ts'
 import type { AddState } from './schema.ts'
 
 /** Props for the AddView component that renders add command progress and results. */
@@ -58,20 +59,26 @@ export const AddView = ({ stateAtom }: AddViewProps) => {
             <Text color="green">{symbols.status.check}</Text>
             <Text> Added </Text>
             <Text bold>{state.member}</Text>
+            {!state.synced && <Text dim> (sync skipped)</Text>}
           </Box>
 
           {state.synced && state.syncStatus && (
-            <>
-              <Text dim>Syncing...</Text>
-              <Box flexDirection="row">
-                <Text color={state.syncStatus === 'error' ? 'red' : 'green'}>
-                  {state.syncStatus === 'error' ? symbols.status.cross : symbols.status.check}
-                </Text>
-                <Text> </Text>
-                <Text bold>{state.member}</Text>
-                <Text dim> ({state.syncStatus === 'cloned' ? 'cloned' : state.syncStatus})</Text>
-              </Box>
-            </>
+            <Box flexDirection="row">
+              <StatusIcon
+                status={
+                  state.syncStatus === 'cloned'
+                    ? 'cloned'
+                    : state.syncStatus === 'synced'
+                      ? 'synced'
+                      : 'error'
+                }
+                variant="sync"
+              />
+              <Text> </Text>
+              <Text bold>{state.member}</Text>
+              <Text> </Text>
+              <Text color={state.syncStatus === 'error' ? 'red' : 'green'}>{state.syncStatus}</Text>
+            </Box>
           )}
         </Box>
       )
