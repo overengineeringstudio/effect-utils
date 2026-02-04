@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **@overeng/genie**: GitHub Repository Ruleset generator (`githubRuleset`)
+  - Type-safe configuration for GitHub Repository Rulesets via the REST API
+  - Full support for all 22 rule types with comprehensive JSDoc documentation
+  - Generates JSON config applied via `gh api repos/{owner}/{repo}/rulesets`
+  - Added ruleset configuration for effect-utils protecting the main branch
+
 ### Changed
 
 - **@overeng/megarepo**: Simplified nix integration - removed workspace generator
