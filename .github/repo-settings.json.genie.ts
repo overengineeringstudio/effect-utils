@@ -1,4 +1,4 @@
-import { githubRuleset } from '../packages/@overeng/genie/src/runtime/mod.ts'
+import { githubRuleset, type GithubRulesetArgs } from '../packages/@overeng/genie/src/runtime/mod.ts'
 import { requiredCIJobs } from '../genie/ci.ts'
 
 /**
@@ -52,4 +52,4 @@ export default githubRuleset({
     { type: 'deletion' },
   ],
   bypass_actors: [],
-})
+} satisfies GithubRulesetArgs)

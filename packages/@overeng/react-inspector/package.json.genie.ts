@@ -1,4 +1,4 @@
-import { catalog, packageJson } from '../../../genie/internal.ts'
+import { catalog, packageJson, type PackageJsonData } from '../../../genie/internal.ts'
 
 const peerDepNames = ['effect', 'react'] as const
 
@@ -51,4 +51,4 @@ export default packageJson({
       optional: true,
     },
   },
-})
+} satisfies PackageJsonData)

@@ -11,14 +11,28 @@ import {
   CatalogBrand,
   defineCatalog,
   definePatchedDependencies,
+  githubRuleset,
+  githubWorkflow,
+  megarepoJson,
+  oxfmtConfig,
+  oxlintConfig,
   packageJson,
   pnpmWorkspaceYaml,
+  tsconfigJson,
   workspaceRoot,
+  type GithubRulesetArgs,
+  type GitHubWorkflowArgs,
+  type MegarepoConfigArgs,
+  type OxfmtConfigArgs,
+  type OxlintConfigArgs,
+  type PackageJsonData,
   type PatchesRegistry,
   type PnpmSettings,
   type PnpmWorkspaceData,
   type ScriptValue,
+  type TSConfigArgs,
   type TSConfigCompilerOptions,
+  type WorkspaceRootData,
 } from '../packages/@overeng/genie/src/runtime/mod.ts'
 
 /** Re-export so TypeScript can reference it in generated declaration files */
@@ -26,11 +40,31 @@ export {
   CatalogBrand,
   defineCatalog,
   definePatchedDependencies,
+  githubRuleset,
+  githubWorkflow,
+  megarepoJson,
+  oxfmtConfig,
+  oxlintConfig,
   packageJson,
   pnpmWorkspaceYaml,
+  tsconfigJson,
   workspaceRoot,
 }
-export type { PatchesRegistry, PnpmSettings, PnpmWorkspaceData, ScriptValue, TSConfigCompilerOptions }
+export type {
+  GithubRulesetArgs,
+  GitHubWorkflowArgs,
+  MegarepoConfigArgs,
+  OxfmtConfigArgs,
+  OxlintConfigArgs,
+  PackageJsonData,
+  PatchesRegistry,
+  PnpmSettings,
+  PnpmWorkspaceData,
+  ScriptValue,
+  TSConfigArgs,
+  TSConfigCompilerOptions,
+  WorkspaceRootData,
+}
 
 // =============================================================================
 // pnpm Workspace Helpers

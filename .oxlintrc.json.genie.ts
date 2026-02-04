@@ -5,7 +5,7 @@ import {
   baseOxlintPlugins,
   baseOxlintRules,
 } from './genie/oxlint-base.ts'
-import { oxlintConfig } from './packages/@overeng/genie/src/runtime/mod.ts'
+import { oxlintConfig, type OxlintConfigArgs } from './packages/@overeng/genie/src/runtime/mod.ts'
 
 /** Path to custom oxlint rules plugin */
 const OXC_PLUGIN_PATH = './packages/@overeng/oxc-config/src/mod.ts'
@@ -33,4 +33,4 @@ export default oxlintConfig({
       },
     },
   ],
-})
+} satisfies OxlintConfigArgs)

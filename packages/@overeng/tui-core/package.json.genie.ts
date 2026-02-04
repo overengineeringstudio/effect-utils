@@ -1,4 +1,9 @@
-import { catalog, packageJson, privatePackageDefaults } from '../../../genie/internal.ts'
+import {
+  catalog,
+  packageJson,
+  privatePackageDefaults,
+  type PackageJsonData,
+} from '../../../genie/internal.ts'
 
 export default packageJson({
   name: '@overeng/tui-core',
@@ -16,4 +21,4 @@ export default packageJson({
   devDependencies: {
     ...catalog.pick('@types/node', 'typescript', 'vitest'),
   },
-})
+} satisfies PackageJsonData)

@@ -2,7 +2,7 @@ import {
   baseTsconfigCompilerOptions,
   packageTsconfigCompilerOptions,
 } from '../../../genie/internal.ts'
-import { tsconfigJson } from '../genie/src/runtime/mod.ts'
+import { tsconfigJson, type TSConfigArgs } from '../genie/src/runtime/mod.ts'
 
 export default tsconfigJson({
   compilerOptions: {
@@ -10,4 +10,4 @@ export default tsconfigJson({
     ...packageTsconfigCompilerOptions,
   },
   include: ['src/**/*.ts'],
-})
+} satisfies TSConfigArgs)
