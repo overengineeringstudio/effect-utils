@@ -6,8 +6,8 @@
  * tsconfig reference to enable proper TypeScript project references.
  */
 
+import type { GenieContext } from '../../mod.ts'
 import type { ValidationIssue } from '../../package-json/validation.ts'
-import type { GenieValidationContext } from '../../validation/mod.ts'
 import type { TSConfigArgs } from '../mod.ts'
 
 /**
@@ -45,17 +45,17 @@ export const validateTsconfigReferences = ({
   ctx,
   references,
 }: {
-  ctx: GenieValidationContext
+  ctx: GenieContext
   references: TSConfigArgs['references']
 }): ValidationIssue[] => {
-  // Need package.json context and location to validate
-  if (!ctx.packageJson || !ctx.location) return []
+  // Need workspace context and location to validate
+  if (!ctx.workspace) return []
 
   const issues: ValidationIssue[] = []
   const currentRefs = new Set((references ?? []).map((r) => r.path))
 
   // Find current package from location
-  const currentPkg = [...ctx.packageJson.byName.values()].find((p) => p.path === ctx.location)
+  const currentPkg = [...ctx.workspace.byName.values()].find((p) => p.path === ctx.location)
   if (!currentPkg) return []
 
   // Get workspace dependencies (both deps and devDeps)
@@ -70,7 +70,7 @@ export const validateTsconfigReferences = ({
 
   // Check each workspace dep has a corresponding tsconfig reference
   for (const [depName] of workspaceDeps) {
-    const depPkg = ctx.packageJson.byName.get(depName)
+    const depPkg = ctx.workspace.byName.get(depName)
     if (!depPkg) continue
 
     const expectedRef = computeRelativeRef({ from: ctx.location, to: depPkg.path })

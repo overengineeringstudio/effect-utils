@@ -1,9 +1,10 @@
 import { type Error as PlatformError, FileSystem, Path } from '@effect/platform'
 import { Effect } from 'effect'
 
+import type { GenieContext } from '../runtime/mod.ts'
 import { buildPackageJsonValidationContext } from '../runtime/package-json/context.ts'
 import { formatValidationIssues, type ValidationIssue } from '../runtime/package-json/validation.ts'
-import type { GenieValidationContext, GenieValidationIssue } from '../runtime/validation/mod.ts'
+import type { GenieValidationIssue } from '../runtime/validation/mod.ts'
 import { findGenieFiles } from './discovery.ts'
 import { GenieImportError, GenieValidationError } from './errors.ts'
 import { resolveWorkspaceProvider } from './workspace.ts'
@@ -43,7 +44,7 @@ const importGenieOutput = Effect.fn('genie/importGenieOutput')(function* ({
 
   return exported as {
     data: unknown
-    validate?: (ctx: GenieValidationContext) => GenieValidationIssue[]
+    validate?: (ctx: GenieContext) => GenieValidationIssue[]
   }
 })
 
@@ -75,11 +76,14 @@ export const runGenieValidation = ({
       const genieDir = pathService.dirname(genieFilePath)
       const location = pathService.relative(cwd, genieDir).replace(/\\/g, '/')
 
-      // Create per-file validation context with location
-      const ctx: GenieValidationContext = {
+      // Create per-file context with location and workspace data
+      const ctx: GenieContext = {
         cwd,
         location,
-        packageJson: packageJsonContext,
+        workspace: {
+          packages: packageJsonContext.packages,
+          byName: packageJsonContext.byName,
+        },
       }
 
       const output = yield* importGenieOutput({ genieFilePath, cwd }).pipe(

@@ -26,17 +26,5 @@ export type PackageInfo = {
   pnpm?: { patchedDependencies?: Record<string, string> }
 }
 
-/** Context passed to genie validation hooks */
-export type GenieValidationContext = {
-  cwd: string
-  /** Repo-relative path to the current genie file's directory */
-  location?: string
-  packageJson?: {
-    packages: PackageInfo[]
-    byName: Map<string, PackageInfo>
-    workspaceProvider: WorkspaceProvider
-  }
-}
-
 /** A validation issue found during genie validation */
 export type GenieValidationIssue = ValidationIssue

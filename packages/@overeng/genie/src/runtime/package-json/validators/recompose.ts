@@ -1,4 +1,5 @@
-import type { GenieValidationContext, PackageInfo } from '../../validation/mod.ts'
+import type { GenieContext } from '../../mod.ts'
+import type { PackageInfo } from '../../validation/mod.ts'
 import { matchesAnyPattern, type ValidationIssue } from '../validation.ts'
 
 type RecomposeValidatorConfig = {
@@ -94,21 +95,21 @@ export const validatePackageRecompositionForPackage = ({
   pkgName,
   config = {},
 }: {
-  ctx: GenieValidationContext
+  ctx: GenieContext
   pkgName: string
   config?: RecomposeValidatorConfig
 }): ValidationIssue[] => {
-  const packageJson = ctx.packageJson
-  if (!packageJson) return []
+  const workspace = ctx.workspace
+  if (!workspace) return []
 
   const excludePatterns = config.excludePackagePatterns ?? DEFAULT_EXCLUDES
-  const pkg = packageJson.byName.get(pkgName)
+  const pkg = workspace.byName.get(pkgName)
   if (!pkg) return []
   if (shouldExclude({ path: pkg.path, patterns: excludePatterns })) return []
 
   return validatePackageRecomposition({
     pkg,
-    packageMap: packageJson.byName,
+    packageMap: workspace.byName,
     excludePatterns,
   })
 }

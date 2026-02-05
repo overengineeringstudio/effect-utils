@@ -1,9 +1,16 @@
+import type { GenieValidationIssue, PackageInfo } from './validation/mod.ts'
+
 /** Context passed to genie generator functions */
 export type GenieContext = {
   /** Repo-relative path to the directory containing this genie file (e.g., 'packages/@overeng/utils') */
   location: string
   /** Absolute path to the working directory (repo root) */
   cwd: string
+  /** All workspace packages — populated during validation, undefined during stringify */
+  workspace?: {
+    packages: PackageInfo[]
+    byName: Map<string, PackageInfo>
+  }
 }
 
 /**
@@ -46,8 +53,6 @@ export type Strict<T, TBase> = T & {
  * })
  * ```
  */
-import type { GenieValidationContext, GenieValidationIssue } from './validation/mod.ts'
-
 /** Standard output shape returned by genie factory functions, containing structured data and a serializer. */
 export type GenieOutput<T> = {
   /** The structured configuration data */
@@ -55,7 +60,7 @@ export type GenieOutput<T> = {
   /** Serialize the data to a string for file output */
   stringify: (ctx: GenieContext) => string
   /** Optional validation hook for genie --check */
-  validate?: (ctx: GenieValidationContext) => GenieValidationIssue[]
+  validate?: (ctx: GenieContext) => GenieValidationIssue[]
 }
 
 export * from './github-ruleset/mod.ts'

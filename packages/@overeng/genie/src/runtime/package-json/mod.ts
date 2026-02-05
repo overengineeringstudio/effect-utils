@@ -7,8 +7,7 @@
  * Reference: https://github.com/sindresorhus/type-fest/blob/main/source/package-json.d.ts
  */
 
-import type { GenieOutput, Strict } from '../mod.ts'
-import type { GenieValidationContext } from '../validation/mod.ts'
+import type { GenieContext, GenieOutput, Strict } from '../mod.ts'
 import { validatePackageRecompositionForPackage } from './validators/recompose.ts'
 
 // Re-export catalog utilities (useful for defining version catalogs)
@@ -623,7 +622,7 @@ export const packageJson = <const T extends PackageJsonData>(
   data,
   stringify: (ctx) =>
     JSON.stringify(buildPackageJson({ data, location: ctx.location }), null, 2) + '\n',
-  validate: (ctx: GenieValidationContext) =>
+  validate: (ctx: GenieContext) =>
     data.name ? validatePackageRecompositionForPackage({ ctx, pkgName: data.name }) : [],
 })
 
