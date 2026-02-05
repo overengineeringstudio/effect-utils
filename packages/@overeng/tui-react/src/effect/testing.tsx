@@ -20,7 +20,7 @@
 
 import { Atom, Registry } from '@effect-atom/atom'
 import type { Scope } from 'effect'
-import { Effect, Layer, PubSub, Runtime, Schema, Stream } from 'effect'
+import { Effect, type Exit, Layer, PubSub, Runtime, Schema, Stream } from 'effect'
 
 import {
   type OutputMode,
@@ -59,13 +59,15 @@ export interface RunTestCommandOptions<S, Args> {
 /**
  * Result of running a test command.
  */
-export interface TestCommandResult<S> {
+export interface TestCommandResult<S, E> {
   /** All state values emitted during execution (from JSON output) */
   states: S[]
-  /** Final state value */
-  finalState: S
+  /** Final state value (undefined when no states were emitted) */
+  finalState: S | undefined
   /** Captured JSON output lines */
   jsonOutput: string[]
+  /** The exit value — inspect to check for success or failure */
+  exit: Exit.Exit<unknown, E>
 }
 
 /**
@@ -131,7 +133,7 @@ export const runTestCommand = async <S, Args, E>({
 }: {
   commandFn: (args: Args) => Effect.Effect<unknown, E, OutputModeTag>
   options: RunTestCommandOptions<S, Args>
-}): Promise<TestCommandResult<S>> => {
+}): Promise<TestCommandResult<S, E>> => {
   const jsonOutput: string[] = []
 
   // Capture console.log for JSON output
@@ -140,11 +142,11 @@ export const runTestCommand = async <S, Args, E>({
     jsonOutput.push(msg)
   }
 
+  let exit: Exit.Exit<unknown, E>
   try {
-    await commandFn(options.args).pipe(
-      Effect.catchAll(() => Effect.void),
+    exit = await commandFn(options.args).pipe(
       Effect.provide(testModeLayer(options.mode)),
-      Effect.runPromise,
+      Effect.runPromiseExit,
     )
   } finally {
     console.log = originalLog
@@ -161,8 +163,9 @@ export const runTestCommand = async <S, Args, E>({
 
   return {
     states: parsedStates,
-    finalState: parsedStates[parsedStates.length - 1]!,
+    finalState: parsedStates[parsedStates.length - 1],
     jsonOutput,
+    exit,
   }
 }
 
