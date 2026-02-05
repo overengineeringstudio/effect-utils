@@ -31,6 +31,8 @@ All notable changes to this project will be documented in this file.
   - Use `DEVENV_ROOT` (provided by devenv) instead of `MEGAREPO_ROOT_NEAREST`
   - Simplified `.envrc` to just `use devenv` (no generated file needed)
 
+- **@overeng/megarepo**: Split `pnpmDepsHash` by platform to fix Linux/Darwin store divergence
+
 - **@overeng/megarepo**: Nix lock sync is now auto-detected and uses top-level config
   - **Breaking**: Moved from `generators.nix.lockSync` to top-level `lockSync` config
   - Lock sync is now **auto-detected**: enabled if `devenv.lock` or `flake.lock` exists in megarepo root

@@ -15,10 +15,11 @@ let
     workspaceRoot = src;
     # Patches are in packages/@overeng/utils/patches/ (referenced by pnpm-lock.yaml)
     patchesDir = "packages/@overeng/utils/patches";
-    # Platform-independent hash: pnpm-workspace.yaml has supportedArchitectures configured
-    # to download binaries for all platforms (linux/darwin x x64/arm64), so the hash is
-    # the same regardless of where the build runs.
-    pnpmDepsHash = "sha256-nRY4sF0CreFriGwuA60Gndd0rTKXVJtVc0+F9Fc/mYk=";
+    # Pnpm store differs across platforms due to optional/os-specific deps.
+    pnpmDepsHash =
+      if pkgs.stdenv.isDarwin
+      then "sha256-nRY4sF0CreFriGwuA60Gndd0rTKXVJtVc0+F9Fc/mYk="
+      else "sha256-2q+5YiwberB0qQbZ4byJpXFbVeju94FL0ZZhXf9yB/I=";
     lockfileHash = "sha256-raPeotA57lO9N0y4w9t6fXFF8KSVvj4kGthXZhqIoY0=";
     packageJsonDepsHash = "sha256-tGkiG+aEO0TUw/SVvU9T0cgD4nMjENqRioocT5w3XMQ=";
     smokeTestArgs = [ "--help" ];
