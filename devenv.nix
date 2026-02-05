@@ -101,7 +101,11 @@ in
     inputs.playwright.devenvModules.default
     # Shared task modules
     taskModules.genie
-    (taskModules.ts {})
+    # Use package-local tsc patched by effect-language-service (same pattern as vitest in test.nix)
+    (taskModules.ts {
+      tscBin = "packages/@overeng/utils/node_modules/.bin/tsc";
+      lspPatchCmd = "packages/@overeng/utils/node_modules/.bin/effect-language-service patch --dir packages/@overeng/utils/node_modules/typescript";
+    })
     taskModules.megarepo
     (taskModules.check { extraChecks = [ "workspace:check" ]; })
     (taskModules.clean { packages = allPackages; })
@@ -133,17 +137,25 @@ in
         # packages: root level config files
         "packages/@overeng/*/*.ts"
         "packages/@overeng/*/*.js"
-        # packages: bin, .storybook, stress-test directories
+        # packages: bin, .storybook, stories, stress-test directories
         "packages/@overeng/*/bin/*.ts"
         "packages/@overeng/*/.storybook/*.ts"
         "packages/@overeng/*/.storybook/*.tsx"
+        "packages/@overeng/*/stories/**/*.ts"
+        "packages/@overeng/*/stories/**/*.tsx"
         "packages/@overeng/*/stress-test/**/*.ts"
+        # packages: test directories and setup files
+        "packages/@overeng/*/test/**/*.ts"
+        "packages/@overeng/*/test/**/*.tsx"
+        "packages/@overeng/*/vitest.setup.ts"
         # packages/examples: specific paths (examples/basic has node_modules)
         "packages/@overeng/*/examples/*/*.ts"
         "packages/@overeng/*/examples/*/*.tsx"
         "packages/@overeng/*/examples/*/src/**/*.ts"
         "packages/@overeng/*/examples/*/src/**/*.tsx"
         "packages/@overeng/*/examples/*/tests/*.ts"
+        "packages/@overeng/*/examples/**/*.ts"
+        "packages/@overeng/*/examples/**/*.tsx"
         # scripts
         "scripts/*.ts"
         "scripts/commands/**/*.ts"

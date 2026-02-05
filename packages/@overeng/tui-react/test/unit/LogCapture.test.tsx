@@ -197,14 +197,13 @@ describe('createLogCapture', () => {
 
       yield* Effect.log('should not print').pipe(Effect.provide(loggerLayer))
       yield* Fiber.join(fiber)
-    })
-      .pipe(Effect.scoped)
-      .pipe(
-        Effect.andThen(() => {
-          // The Effect.log message should not appear as direct stdout output
-          expect(printed.filter((p) => p.includes('should not print'))).toHaveLength(0)
-        }),
-      )
+    }).pipe(
+      Effect.scoped,
+      Effect.andThen(() => {
+        // The Effect.log message should not appear as direct stdout output
+        expect(printed.filter((p) => p.includes('should not print'))).toHaveLength(0)
+      }),
+    )
   })
 })
 

@@ -284,18 +284,12 @@ export const reactJsx = { jsx: 'react-jsx' as const }
 /**
  * DevDependencies required for Effect Language Service.
  * Includes both the language service and typescript (required for patching).
+ *
+ * Patching is handled centrally by the `ts:patch-lsp` devenv task (see ts.nix),
+ * not by per-package postinstall scripts. Packages still need these devDeps
+ * for tsconfig plugin module resolution.
  */
 export const effectLspDevDeps = () => catalog.pick('@effect/language-service', 'typescript')
-
-/**
- * Scripts for Effect Language Service setup.
- * Patches TypeScript to enable compile-time Effect diagnostics.
- * Uses postinstall (not prepare) to ensure devDependencies are available
- * when this package is a workspace member of another package.
- */
-export const effectLspScripts = {
-  postinstall: 'effect-language-service patch',
-} as const
 
 // =============================================================================
 // TypeScript Reference Helpers

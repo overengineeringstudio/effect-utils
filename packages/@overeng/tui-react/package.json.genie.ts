@@ -1,5 +1,6 @@
 import {
   catalog,
+  effectLspDevDeps,
   packageJson,
   privatePackageDefaults,
   type PackageJsonData,
@@ -42,13 +43,13 @@ export default packageJson({
     ...catalog.pick('yoga-layout', 'string-width', 'cli-truncate', '@overeng/tui-core'),
   },
   devDependencies: {
+    ...effectLspDevDeps(),
     ...catalog.pick(
       ...peerDepNames,
       // TypeScript & testing
       '@types/node',
       '@types/react',
       '@types/react-reconciler',
-      'typescript',
       'vitest',
       '@effect/vitest',
       '@playwright/test',

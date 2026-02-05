@@ -1,7 +1,6 @@
 import {
   catalog,
   effectLspDevDeps,
-  effectLspScripts,
   packageJson,
   privatePackageDefaults,
   type PackageJsonData,
@@ -35,9 +34,6 @@ export default packageJson({
       './server': './dist/server.js',
       './router': './dist/router.js',
     },
-  },
-  scripts: {
-    ...effectLspScripts,
   },
   devDependencies: {
     ...catalog.pick(

@@ -17,6 +17,13 @@ import {
   type TuiOutput,
 } from '../../src/mod.tsx'
 
+const decodeJson = <A, I>(schema: Schema.Schema<A, I, never>, json: string): A =>
+  Schema.decodeSync(Schema.parseJson(schema))(json)
+const decodeJsonEncoded = <A, I>(schema: Schema.Schema<A, I, never>, json: string): I =>
+  Schema.decodeSync(Schema.parseJson(Schema.encodedSchema(schema)))(json)
+const encodeJsonEncoded = <A, I>(schema: Schema.Schema<A, I, never>, value: I): string =>
+  Schema.encodeSync(Schema.parseJson(Schema.encodedSchema(schema)))(value)
+
 // =============================================================================
 // Test State and Actions
 // =============================================================================
@@ -138,7 +145,7 @@ describe('createTuiApp', () => {
         Effect.provide(testModeLayer('json')),
         Effect.andThen(() => {
           expect(capturedOutput).toHaveLength(1)
-          const output = JSON.parse(capturedOutput[0]!)
+          const output = decodeJson(CounterApp.outputSchema, capturedOutput[0]!)
           expect(output).toEqual({ _tag: 'Success', count: 2 })
         }),
       ),
@@ -153,7 +160,7 @@ describe('createTuiApp', () => {
         Effect.provide(testModeLayer('json')),
         Effect.andThen(() => {
           expect(capturedOutput).toHaveLength(1)
-          const output = JSON.parse(capturedOutput[0]!)
+          const output = decodeJson(CounterApp.outputSchema, capturedOutput[0]!)
           expect(output).toEqual({ _tag: 'Success', count: 100 })
         }),
       ),
@@ -176,16 +183,19 @@ describe('createTuiApp', () => {
           // Should have at least initial state + final wrapped output
           expect(capturedOutput.length).toBeGreaterThanOrEqual(2)
 
-          // Parse all outputs
-          const states = capturedOutput.map((line) => JSON.parse(line))
-
           // Intermediate lines are raw state (for progressive consumption)
-          expect(states[0]).toEqual({ count: 0 }) // initial
+          const initialState = decodeJson(CounterState, capturedOutput[0]!)
+          expect(initialState).toEqual({ count: 0 })
 
           // Final line should be wrapped in Success
-          const finalOutput = states[states.length - 1]
+          const finalOutput = decodeJson(
+            CounterApp.outputSchema,
+            capturedOutput[capturedOutput.length - 1]!,
+          )
           expect(finalOutput._tag).toBe('Success')
-          expect(finalOutput.count).toBe(2)
+          if (finalOutput._tag === 'Success') {
+            expect(finalOutput.count).toBe(2)
+          }
         }),
       ),
     )
@@ -313,7 +323,7 @@ describe('deriveOutputSchema', () => {
         }
 
         const encoded = yield* Schema.encode(Schema.parseJson(OutputSchema))(successValue)
-        const parsed = JSON.parse(encoded)
+        const parsed = decodeJsonEncoded(OutputSchema, encoded)
 
         expect(parsed).toEqual({
           _tag: 'Success',
@@ -325,7 +335,7 @@ describe('deriveOutputSchema', () => {
 
     it.effect('success: decodes flat fields to success value', () =>
       Effect.gen(function* () {
-        const json = JSON.stringify({
+        const json = encodeJsonEncoded(OutputSchema, {
           _tag: 'Success',
           count: 42,
           name: 'test',
@@ -353,23 +363,26 @@ describe('deriveOutputSchema', () => {
         }
 
         const encoded = yield* Schema.encode(Schema.parseJson(OutputSchema))(failureValue)
-        const parsed = JSON.parse(encoded)
+        const parsed = decodeJsonEncoded(OutputSchema, encoded)
 
         expect(parsed._tag).toBe('Failure')
-        expect(parsed.state).toEqual({ count: 10, name: 'partial' })
-        expect(parsed.cause).toBeDefined()
-        expect(parsed.cause._tag).toBe('Interrupt')
+        if (parsed._tag === 'Failure') {
+          expect(parsed.state).toEqual({ count: 10, name: 'partial' })
+          expect(parsed.cause).toBeDefined()
+          expect(parsed.cause._tag).toBe('Interrupt')
+        }
       }),
     )
 
     it.effect('failure: decodes cause and state', () =>
       Effect.gen(function* () {
-        // Create an interrupt cause JSON
-        const json = JSON.stringify({
+        const interruptCause = Cause.interrupt(FiberId.none)
+        const failureValue: TuiOutput<typeof StateSchema.Type> = {
           _tag: 'Failure',
-          cause: { _tag: 'Interrupt', fiberId: { _tag: 'None' } },
+          cause: interruptCause,
           state: { count: 10, name: 'partial' },
-        })
+        }
+        const json = yield* Schema.encode(Schema.parseJson(OutputSchema))(failureValue)
 
         const decoded = yield* Schema.decode(Schema.parseJson(OutputSchema))(json)
 
@@ -405,7 +418,7 @@ describe('deriveOutputSchema', () => {
         }
 
         const encoded = yield* Schema.encode(Schema.parseJson(OutputSchema))(successValue)
-        const parsed = JSON.parse(encoded)
+        const parsed = decodeJsonEncoded(OutputSchema, encoded)
 
         expect(parsed).toEqual({
           _tag: 'Success',
@@ -430,11 +443,13 @@ describe('deriveOutputSchema', () => {
         }
 
         const encoded = yield* Schema.encode(Schema.parseJson(OutputSchema))(failureValue)
-        const parsed = JSON.parse(encoded)
+        const parsed = decodeJsonEncoded(OutputSchema, encoded)
 
         expect(parsed._tag).toBe('Failure')
-        expect(parsed.state.workspace.name).toBe('my-repo')
-        expect(parsed.state.results).toHaveLength(1)
+        if (parsed._tag === 'Failure') {
+          expect(parsed.state.workspace.name).toBe('my-repo')
+          expect(parsed.state.results).toHaveLength(1)
+        }
       }),
     )
   })
@@ -446,24 +461,33 @@ describe('deriveOutputSchema', () => {
       Schema.TaggedStruct('Loading', { progress: Schema.Number }),
       Schema.TaggedStruct('Done', { result: Schema.String }),
     )
+    const OutputSchema = deriveOutputSchema(UnionStateSchema)
+    const OutputEncodedSchema = Schema.Union(
+      Schema.TaggedStruct('Success', { value: UnionStateSchema }),
+      Schema.TaggedStruct('Failure', {
+        cause: Schema.Cause({ error: Schema.Never, defect: Schema.Defect }),
+        state: UnionStateSchema,
+      }),
+    )
 
     it.effect('non-struct state: wraps in value field', () =>
       Effect.gen(function* () {
         // For non-struct schemas, we can't spread fields
         // The schema should fall back to wrapping in a `value` field
-        const OutputSchema = deriveOutputSchema(UnionStateSchema)
-
         // This is a limitation - union states get wrapped in `value`
-        const successValue = {
-          _tag: 'Success' as const,
-          value: { _tag: 'Done' as const, result: 'completed' },
+        const successValue: Schema.Schema.Encoded<typeof OutputEncodedSchema> = {
+          _tag: 'Success',
+          value: { _tag: 'Done', result: 'completed' },
         }
 
-        const encoded = yield* Schema.encode(Schema.parseJson(OutputSchema))(successValue as any)
-        const parsed = JSON.parse(encoded)
+        const encoded = encodeJsonEncoded(OutputEncodedSchema, successValue)
+        const parsed = decodeJsonEncoded(OutputEncodedSchema, encoded)
+        yield* Schema.decode(Schema.parseJson(OutputSchema))(encoded)
 
         expect(parsed._tag).toBe('Success')
-        expect(parsed.value._tag).toBe('Done')
+        if (parsed._tag === 'Success') {
+          expect(parsed.value._tag).toBe('Done')
+        }
       }),
     )
   })

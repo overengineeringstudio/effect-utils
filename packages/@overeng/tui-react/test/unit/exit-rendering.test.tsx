@@ -440,7 +440,7 @@ describe('Final state output', () => {
         // Yield to ensure dispatch is processed
         yield* Effect.yieldNow()
         // Wait forever (will be interrupted)
-        yield* Effect.never
+        return yield* Effect.never
       }).pipe(Effect.scoped, Effect.provide(testModeLayer('json')), Effect.fork)
 
       // Give the fiber time to start and process the dispatch

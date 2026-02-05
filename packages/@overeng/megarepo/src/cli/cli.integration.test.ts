@@ -481,8 +481,7 @@ describe('megarepo.json parsing', () => {
 // =============================================================================
 
 /** TUI output envelope for RootState (non-struct schema wraps in { _tag, value }) */
-const RootOutputEnvelope = Schema.Struct({
-  _tag: Schema.Literal('Success'),
+const RootOutputEnvelope = Schema.TaggedStruct('Success', {
   value: RootState,
 })
 

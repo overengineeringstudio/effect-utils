@@ -3,7 +3,6 @@ import {
   catalog,
   definePatchedDependencies,
   effectLspDevDeps,
-  effectLspScripts,
   packageJson,
   privatePackageDefaults,
   type PackageJsonData,
@@ -32,9 +31,6 @@ const utilsPatches = definePatchedDependencies({
 export default packageJson({
   name: '@overeng/utils',
   ...privatePackageDefaults,
-  scripts: {
-    ...effectLspScripts,
-  },
   pnpm: {
     patchedDependencies: utilsPatches,
   },

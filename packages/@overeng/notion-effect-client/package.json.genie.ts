@@ -1,7 +1,6 @@
 import {
   catalog,
   effectLspDevDeps,
-  effectLspScripts,
   packageJson,
   privatePackageDefaults,
   type PackageJsonData,
@@ -11,9 +10,6 @@ import utilsPkg from '../utils/package.json.genie.ts'
 export default packageJson({
   name: '@overeng/notion-effect-client',
   ...privatePackageDefaults,
-  scripts: {
-    ...effectLspScripts,
-  },
   exports: {
     '.': './src/mod.ts',
     './test': './src/test/integration/setup.ts',

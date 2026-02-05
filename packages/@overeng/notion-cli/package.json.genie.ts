@@ -1,7 +1,6 @@
 import {
   catalog,
   effectLspDevDeps,
-  effectLspScripts,
   packageJson,
   privatePackageDefaults,
   type PackageJsonData,
@@ -16,7 +15,6 @@ export default packageJson({
   name: '@overeng/notion-cli',
   ...privatePackageDefaults,
   scripts: {
-    ...effectLspScripts,
     storybook: 'storybook dev -p 6012',
     'storybook:build': 'storybook build',
   },
