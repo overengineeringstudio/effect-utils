@@ -12,10 +12,11 @@ mkPnpmCli {
   packageDir = "packages/@overeng/otel-cli";
   workspaceRoot = src;
   extraExcludedSourceNames = [ "context" "scripts" ];
-  # Placeholder hashes — run `dt nix:hash` to compute real values
-  # after first successful local build.
-  pnpmDepsHash = pkgs.lib.fakeHash;
-  lockfileHash = pkgs.lib.fakeHash;
-  packageJsonDepsHash = pkgs.lib.fakeHash;
+  # Skip smoke test — otel CLI requires OTEL_EXPORTER_OTLP_ENDPOINT at startup
+  smokeTestArgs = [];
+  # Managed by `dt nix:hash:otel-cli` — do not edit manually.
+  pnpmDepsHash = "sha256-QgyRUS2pBhp44BkrZUuVb/hVAYUalq0Aeuooyzea5YM=";
+  lockfileHash = "sha256-3k6hdK8jBBcBVbpfVkYgTdz/oEFStO7IWqE2sCseg8g=";
+  packageJsonDepsHash = "sha256-EKqAx1VuDdi8BOR+eq+fxCKehKj2SnqB4bXyJSPVuEs=";
   inherit gitRev commitTs dirty;
 }

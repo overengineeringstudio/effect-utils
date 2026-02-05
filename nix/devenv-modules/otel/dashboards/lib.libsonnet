@@ -54,4 +54,23 @@ local g = import 'g.libsonnet';
     + g.panel.stat.gridPos.withY(y)
     + g.panel.stat.gridPos.withW(w)
     + g.panel.stat.gridPos.withH(h),
+
+  // Create a TraceQL metrics query target (for time series panels)
+  // Uses queryType=traceqlmetrics which produces time series data from trace spans.
+  // Requires Tempo local_blocks metrics_generator + Grafana traceqlMetrics datasource flag.
+  tempoMetricsQuery(query, refId='A', step='30s')::
+    g.query.tempo.new(self.tempoDatasource, query, [])
+    + g.query.tempo.withQueryType('traceqlmetrics')
+    + g.query.tempo.withStep(step)
+    + g.query.tempo.withRefId(refId),
+
+  // Time series panel with duration unit (seconds)
+  durationTimeSeries(title, targets)::
+    g.panel.timeSeries.new(title)
+    + g.panel.timeSeries.queryOptions.withTargets(targets)
+    + g.panel.timeSeries.standardOptions.withUnit('s')
+    + g.panel.timeSeries.fieldConfig.defaults.custom.withLineWidth(1)
+    + g.panel.timeSeries.fieldConfig.defaults.custom.withFillOpacity(10)
+    + g.panel.timeSeries.fieldConfig.defaults.custom.withPointSize(5)
+    + g.panel.timeSeries.fieldConfig.defaults.custom.withShowPoints('auto'),
 }
