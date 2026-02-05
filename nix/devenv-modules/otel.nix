@@ -31,6 +31,7 @@
 #
 # Shell helpers:
 #   - otel-span: emit OTLP trace spans from shell scripts (see otel-span --help)
+#   - otel-check: diagnose the OTEL stack health (see otel-check --help)
 #
 {
   # Fixed base port (null = derive from $DEVENV_ROOT hash)
@@ -467,12 +468,265 @@ let
     exit "$exit_code"
   '';
 
+  # =========================================================================
+  # otel-check: CLI diagnostic tool for the OTEL stack
+  # =========================================================================
+  #
+  # Checks health of Grafana, Tempo, Collector, and provisioned dashboards.
+  # Uses the Grafana HTTP API (anonymous auth, no tokens needed).
+  #
+  # Usage:
+  #   otel-check              # full health check
+  #   otel-check dashboards   # list provisioned dashboards
+  #   otel-check traces       # query Tempo for recent traces
+  #   otel-check --help
+  #
+  otelCheck = pkgs.writeShellScriptBin "otel-check" ''
+    set -euo pipefail
+
+    GRAFANA_URL="''${OTEL_GRAFANA_URL:-}"
+    COLLECTOR_URL="''${OTEL_EXPORTER_OTLP_ENDPOINT:-}"
+
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[0;33m'
+    BLUE='\033[0;34m'
+    BOLD='\033[1m'
+    NC='\033[0m'
+
+    ok()   { echo -e "  ''${GREEN}✓''${NC} $1"; }
+    fail() { echo -e "  ''${RED}✗''${NC} $1"; }
+    warn() { echo -e "  ''${YELLOW}!''${NC} $1"; }
+    info() { echo -e "  ''${BLUE}→''${NC} $1"; }
+
+    usage() {
+      cat <<'USAGE'
+    Usage: otel-check [command]
+
+    Diagnoses the OTEL observability stack health.
+
+    Commands:
+      (none)        Full health check (Grafana + Tempo + Collector + dashboards)
+      dashboards    List all provisioned Grafana dashboards
+      traces        Query Tempo for recent traces via Grafana API
+      datasources   Show configured Grafana datasources
+      --help        Show this help
+
+    Environment:
+      OTEL_GRAFANA_URL               Grafana URL (set by otel.nix)
+      OTEL_EXPORTER_OTLP_ENDPOINT    Collector URL (set by otel.nix)
+    USAGE
+      exit 0
+    }
+
+    check_endpoint() {
+      local name="$1" url="$2" path="$3"
+      local response
+      response=$(${pkgs.curl}/bin/curl -sf --max-time 3 "$url$path" 2>/dev/null) && {
+        echo "$response"
+        return 0
+      } || {
+        return 1
+      }
+    }
+
+    cmd_health() {
+      echo -e "''${BOLD}OTEL Stack Health''${NC}"
+      echo ""
+
+      # Grafana
+      echo -e "''${BOLD}Grafana''${NC} ($GRAFANA_URL)"
+      local grafana_health
+      if grafana_health=$(check_endpoint "Grafana" "$GRAFANA_URL" "/api/health"); then
+        local version db_status
+        version=$(echo "$grafana_health" | ${pkgs.jq}/bin/jq -r '.version // "unknown"')
+        db_status=$(echo "$grafana_health" | ${pkgs.jq}/bin/jq -r '.database // "unknown"')
+        ok "Healthy (v$version, db=$db_status)"
+      else
+        fail "Not reachable"
+      fi
+
+      # Dashboards
+      local dashboards
+      if dashboards=$(check_endpoint "Grafana" "$GRAFANA_URL" "/api/search?type=dash-db"); then
+        local count
+        count=$(echo "$dashboards" | ${pkgs.jq}/bin/jq 'length')
+        ok "$count dashboards provisioned"
+      else
+        fail "Cannot list dashboards"
+      fi
+
+      # Datasources
+      local datasources
+      if datasources=$(check_endpoint "Grafana" "$GRAFANA_URL" "/api/datasources"); then
+        local tempo_ds
+        tempo_ds=$(echo "$datasources" | ${pkgs.jq}/bin/jq -r '.[] | select(.type == "tempo") | .name // empty')
+        if [[ -n "$tempo_ds" ]]; then
+          ok "Tempo datasource: $tempo_ds"
+        else
+          fail "No Tempo datasource found"
+        fi
+      else
+        fail "Cannot list datasources"
+      fi
+
+      echo ""
+
+      # Tempo (via Grafana datasource health proxy)
+      echo -e "''${BOLD}Tempo''${NC}"
+      local ds_health
+      if ds_health=$(check_endpoint "Tempo" "$GRAFANA_URL" "/api/datasources/uid/tempo/health" 2>/dev/null); then
+        ok "Healthy via Grafana proxy"
+      else
+        # Try direct Tempo endpoint as fallback
+        local tempo_url="http://127.0.0.1:${toString tempoQueryPort}"
+        if check_endpoint "Tempo" "$tempo_url" "/ready" >/dev/null 2>&1; then
+          ok "Healthy (direct: $tempo_url)"
+        else
+          fail "Not reachable"
+        fi
+      fi
+
+      echo ""
+
+      # OTEL Collector
+      echo -e "''${BOLD}OTEL Collector''${NC} ($COLLECTOR_URL)"
+      # Collector doesn't have a /health endpoint on the OTLP port,
+      # but the metrics port serves Prometheus metrics
+      local metrics_url="http://127.0.0.1:${toString otelMetricsPort}"
+      if check_endpoint "Collector" "$metrics_url" "/metrics" >/dev/null 2>&1; then
+        ok "Healthy (metrics endpoint)"
+      else
+        fail "Not reachable"
+      fi
+
+      echo ""
+    }
+
+    cmd_dashboards() {
+      echo -e "''${BOLD}Provisioned Dashboards''${NC}"
+      echo ""
+      local dashboards
+      if dashboards=$(check_endpoint "Grafana" "$GRAFANA_URL" "/api/search?type=dash-db"); then
+        echo "$dashboards" | ${pkgs.jq}/bin/jq -r '.[] | "  \(.title)\t\(.uid)\t\(.url)"' | ${pkgs.util-linux}/bin/column -t -s $'\t'
+        echo ""
+        local count
+        count=$(echo "$dashboards" | ${pkgs.jq}/bin/jq 'length')
+        info "$count dashboards total"
+        echo ""
+        echo "  Open in browser:"
+        echo "$dashboards" | ${pkgs.jq}/bin/jq -r '.[] | "    '$GRAFANA_URL'\(.url)"'
+      else
+        fail "Grafana not reachable at $GRAFANA_URL"
+        info "Start the stack with: devenv up"
+      fi
+      echo ""
+    }
+
+    cmd_traces() {
+      echo -e "''${BOLD}Recent Traces''${NC}"
+      echo ""
+
+      local query="''${1:-\{\}}"
+      local limit="''${2:-10}"
+
+      local payload
+      payload=$(${pkgs.jq}/bin/jq -n \
+        --arg query "$query" \
+        --arg limit "$limit" \
+        '{
+          queries: [{
+            refId: "A",
+            datasource: { uid: "tempo", type: "tempo" },
+            queryType: "traceql",
+            query: $query,
+            limit: ($limit | tonumber),
+            tableType: "traces"
+          }],
+          from: "now-1h",
+          to: "now"
+        }')
+
+      local response
+      if response=$(${pkgs.curl}/bin/curl -sf --max-time 10 \
+          -X POST "$GRAFANA_URL/api/ds/query" \
+          -H "Content-Type: application/json" \
+          -d "$payload" 2>/dev/null); then
+
+        # Extract trace results from the Grafana query response
+        local trace_count
+        trace_count=$(echo "$response" | ${pkgs.jq}/bin/jq '[.results.A.frames[]?.data.values // [] | .[0] // [] | length] | add // 0')
+
+        if [[ "$trace_count" -gt 0 ]]; then
+          ok "$trace_count traces found (query: $query, last 1h)"
+          echo ""
+          # Try to extract trace IDs and service names from the response
+          echo "$response" | ${pkgs.jq}/bin/jq -r '
+            .results.A.frames[]? |
+            .data as $data |
+            .schema.fields as $fields |
+            ($fields | to_entries | map({(.value.name): .key}) | add) as $idx |
+            if ($data.values | length) > 0 then
+              range($data.values[0] | length) as $i |
+              "  " +
+              (if $idx["traceID"] then $data.values[$idx["traceID"]][$i] // "-" else "-" end) +
+              "\t" +
+              (if $idx["rootServiceName"] then $data.values[$idx["rootServiceName"]][$i] // "-" else "-" end) +
+              "\t" +
+              (if $idx["rootTraceName"] then $data.values[$idx["rootTraceName"]][$i] // "-" else "-" end)
+            else empty end
+          ' 2>/dev/null | head -20 | ${pkgs.util-linux}/bin/column -t -s $'\t' || true
+        else
+          warn "No traces found for query: $query (last 1h)"
+          info "Run some dt tasks first, then check again"
+        fi
+      else
+        fail "Cannot query Tempo via Grafana"
+        info "Make sure the stack is running: devenv up"
+      fi
+      echo ""
+    }
+
+    cmd_datasources() {
+      echo -e "''${BOLD}Grafana Datasources''${NC}"
+      echo ""
+      local datasources
+      if datasources=$(check_endpoint "Grafana" "$GRAFANA_URL" "/api/datasources"); then
+        echo "$datasources" | ${pkgs.jq}/bin/jq -r '.[] | "  \(.name)\t\(.type)\t\(.url)\t\(if .isDefault then "(default)" else "" end)"' | ${pkgs.util-linux}/bin/column -t -s $'\t'
+      else
+        fail "Grafana not reachable at $GRAFANA_URL"
+      fi
+      echo ""
+    }
+
+    # Preflight
+    if [[ -z "$GRAFANA_URL" ]]; then
+      echo "otel-check: OTEL_GRAFANA_URL not set" >&2
+      echo "Are you inside a devenv shell with the otel module?" >&2
+      exit 1
+    fi
+
+    case "''${1:-}" in
+      --help|-h) usage ;;
+      dashboards) cmd_dashboards ;;
+      traces) shift; cmd_traces "$@" ;;
+      datasources) cmd_datasources ;;
+      "") cmd_health ;;
+      *)
+        echo "otel-check: unknown command: $1" >&2
+        echo "Run 'otel-check --help' for usage" >&2
+        exit 1
+        ;;
+    esac
+  '';
+
 in {
   packages = [
     pkgs.opentelemetry-collector-contrib
     pkgs.tempo
     pkgs.grafana
     otelSpan
+    otelCheck
   ];
 
   # Set OTEL endpoint so TS code (Effect OTEL layers) and future devenv native
@@ -483,7 +737,7 @@ in {
   enterShell = ''
     echo "[otel] Collector: $OTEL_EXPORTER_OTLP_ENDPOINT"
     echo "[otel] Grafana:   $OTEL_GRAFANA_URL"
-    echo "[otel] Start with: devenv up"
+    echo "[otel] Start with: devenv up | Check with: otel-check"
   '';
 
   # =========================================================================
