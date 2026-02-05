@@ -4,6 +4,8 @@
  * Services and helpers used across all CLI commands.
  */
 
+import { resolve } from 'node:path'
+
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
 import { Context, Effect, Layer, Option } from 'effect'
@@ -11,6 +13,7 @@ import { Context, Effect, Layer, Option } from 'effect'
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import { CONFIG_FILE_NAME } from '../lib/config.ts'
+import { InvalidCwdError } from './errors.ts'
 
 // =============================================================================
 // CLI Context Services
@@ -38,11 +41,52 @@ export class Cwd extends Context.Tag('megarepo/Cwd')<Cwd, AbsoluteDirPath>() {
       return EffectPath.unsafe.absoluteDir(cwd.endsWith('/') ? cwd : `${cwd}/`)
     }),
   )
+
+  /** Create a Cwd layer from a specific path, validating it exists and is a directory */
+  static fromPath = (path: string) =>
+    Layer.effect(
+      Cwd,
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+
+        // Use $PWD (logical path) as base for relative path resolution,
+        // consistent with Cwd.live's symlink-aware behavior
+        const base = process.env.PWD?.length ? process.env.PWD : process.cwd()
+        const resolved = resolve(base, path)
+        const resolvedDir = resolved.endsWith('/') ? resolved : `${resolved}/`
+
+        // Validate the path exists
+        const exists = yield* fs.exists(resolvedDir)
+        if (!exists) {
+          return yield* new InvalidCwdError({
+            path: resolvedDir,
+            message: `--cwd directory does not exist: ${resolvedDir}`,
+          })
+        }
+
+        // Validate it's a directory
+        const info = yield* fs.stat(resolvedDir)
+        if (info.type !== 'Directory') {
+          return yield* new InvalidCwdError({
+            path: resolvedDir,
+            message: `--cwd path is not a directory: ${resolvedDir}`,
+          })
+        }
+
+        return EffectPath.unsafe.absoluteDir(resolvedDir)
+      }),
+    )
 }
 
 // =============================================================================
 // Common Options
 // =============================================================================
+
+/** Override the working directory */
+export const cwdOption = Cli.Options.text('cwd').pipe(
+  Cli.Options.withDescription('Override the working directory'),
+  Cli.Options.optional,
+)
 
 /** JSON output format option */
 export const jsonOption = Cli.Options.boolean('json').pipe(

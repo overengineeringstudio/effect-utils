@@ -20,7 +20,6 @@ import { MegarepoConfig } from '../lib/config.ts'
 import { createLockedMember, type LockFile, LOCK_FILE_NAME, writeLockFile } from '../lib/lock.ts'
 import { makeConsoleCapture } from '../test-utils/consoleCapture.ts'
 import { createRepo, getGitRev, initGitRepo, runGitCommand } from '../test-utils/setup.ts'
-import { Cwd } from './context.ts'
 import { mrCommand } from './mod.ts'
 import { StatusState } from './renderers/StatusOutput/schema.ts'
 
@@ -35,45 +34,15 @@ const runStatusCommand = ({
   args?: ReadonlyArray<string>
 }) =>
   Effect.gen(function* () {
-    const { consoleLayer, getStdoutLines, getStderrLines } = yield* makeConsoleCapture
-    const stderrCapture = yield* Effect.acquireRelease(
-      Effect.sync(() => {
-        const stderrChunks: Array<string> = []
-        const originalStderrWrite = process.stderr.write.bind(process.stderr)
+    const { consoleLayer, getStdoutLines } = yield* makeConsoleCapture
 
-        const captureWrite = (target: Array<string>) =>
-          ((chunk: unknown, encoding?: unknown, cb?: unknown) => {
-            const actualEncoding =
-              typeof encoding === 'function' ? undefined : (encoding as BufferEncoding)
-            const callback = typeof encoding === 'function' ? encoding : cb
-            const text =
-              typeof chunk === 'string'
-                ? chunk
-                : Buffer.from(chunk as Uint8Array).toString(actualEncoding)
-            target.push(text)
-            if (typeof callback === 'function') callback()
-            return true
-          }) as unknown as typeof process.stderr.write
-
-        process.stderr.write = captureWrite(stderrChunks)
-
-        return { stderrChunks, originalStderrWrite }
-      }),
-      (capture) =>
-        Effect.sync(() => {
-          process.stderr.write = capture.originalStderrWrite
-        }),
-    )
-
-    const argv = ['node', 'mr', 'status', '--output', 'json', ...args]
+    const argv = ['node', 'mr', '--cwd', cwd, 'status', '--output', 'json', ...args]
     const effect = Cli.Command.run(mrCommand, { name: 'mr', version: 'test' })(argv).pipe(
-      Effect.provideService(Cwd, cwd),
       Effect.provide(consoleLayer),
     )
     const exit = yield* Effect.exit(effect)
 
     const stdout = (yield* getStdoutLines).join('\n')
-    const stderr = [stderrCapture.stderrChunks.join(''), ...(yield* getStderrLines)].join('\n')
 
     // Parse JSON output
     let status: typeof StatusState.Type | undefined
@@ -83,7 +52,6 @@ const runStatusCommand = ({
 
     return {
       stdout,
-      stderr,
       exitCode: Exit.isSuccess(exit) ? 0 : 1,
       status,
     }
