@@ -1,14 +1,16 @@
 #!/usr/bin/env bun
 
 import * as Cli from '@effect/cli'
+import { FetchHttpClient } from '@effect/platform'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Effect, Layer } from 'effect'
 
 import { runTuiMain } from '@overeng/tui-react'
 
 import { otelCommand } from '../src/cli.ts'
+import { OtelConfig } from '../src/services/OtelConfig.ts'
 
-const baseLayer = Layer.mergeAll(NodeContext.layer)
+const baseLayer = Layer.mergeAll(NodeContext.layer, FetchHttpClient.layer, OtelConfig.live)
 
 Cli.Command.run(otelCommand, {
   name: 'otel',
