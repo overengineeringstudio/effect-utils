@@ -230,8 +230,15 @@ let
   '';
 
   # Grafana provisioning: auto-configure Tempo as a datasource
+  # Grafana datasource provisioning with stable UID.
+  # The deleteDatasources + datasources pattern ensures the UID is always "tempo",
+  # even if Grafana previously auto-generated a different one. On each startup,
+  # Grafana deletes the old datasource by name+orgId, then re-creates it with our UID.
   grafanaDatasources = pkgs.writeText "grafana-datasources.yaml" ''
     apiVersion: 1
+    deleteDatasources:
+      - name: Tempo
+        orgId: 1
     datasources:
       - name: Tempo
         uid: tempo
@@ -477,9 +484,11 @@ let
   # Uses the Grafana HTTP API (anonymous auth, no tokens needed).
   #
   # Usage:
-  #   otel-check              # full health check
-  #   otel-check dashboards   # list provisioned dashboards
-  #   otel-check traces       # query Tempo for recent traces
+  #   otel-check                    # full health check
+  #   otel-check dashboards         # list provisioned dashboards
+  #   otel-check dashboards --validate  # validate each dashboard
+  #   otel-check traces             # query Tempo for recent traces
+  #   otel-check send-test          # end-to-end smoke test
   #   otel-check --help
   #
   otelCheck = pkgs.writeShellScriptBin "otel-check" ''
@@ -493,6 +502,7 @@ let
     YELLOW='\033[0;33m'
     BLUE='\033[0;34m'
     BOLD='\033[1m'
+    DIM='\033[2m'
     NC='\033[0m'
 
     ok()   { echo -e "  ''${GREEN}✓''${NC} $1"; }
@@ -502,16 +512,25 @@ let
 
     usage() {
       cat <<'USAGE'
-    Usage: otel-check [command]
+    Usage: otel-check [command] [options]
 
     Diagnoses the OTEL observability stack health.
 
     Commands:
-      (none)        Full health check (Grafana + Tempo + Collector + dashboards)
-      dashboards    List all provisioned Grafana dashboards
-      traces        Query Tempo for recent traces via Grafana API
-      datasources   Show configured Grafana datasources
-      --help        Show this help
+      (none)              Full health check (Grafana + Tempo + Collector + dashboards)
+      dashboards          List all provisioned Grafana dashboards
+      dashboards --validate   Load each dashboard and check for errors
+      traces [query]      Query Tempo for recent traces (default: non-internal)
+      send-test           End-to-end smoke test: send span → verify in Tempo
+      datasources         Show configured Grafana datasources
+      --help              Show this help
+
+    Examples:
+      otel-check                                          # full health
+      otel-check traces                                   # recent non-internal traces
+      otel-check traces '{resource.service.name="dt"}'    # dt task traces only
+      otel-check traces '{}' 20                           # all traces, limit 20
+      otel-check send-test                                # end-to-end pipeline test
 
     Environment:
       OTEL_GRAFANA_URL               Grafana URL (set by otel.nix)
@@ -529,6 +548,16 @@ let
       } || {
         return 1
       }
+    }
+
+    # Resolve the Tempo datasource UID from Grafana (cached per invocation)
+    _tempo_uid=""
+    get_tempo_uid() {
+      if [[ -z "$_tempo_uid" ]]; then
+        _tempo_uid=$(${pkgs.curl}/bin/curl -sf --max-time 3 "$GRAFANA_URL/api/datasources" 2>/dev/null \
+          | ${pkgs.jq}/bin/jq -r '.[] | select(.type == "tempo") | .uid' 2>/dev/null) || true
+      fi
+      echo "$_tempo_uid"
     }
 
     cmd_health() {
@@ -563,7 +592,7 @@ let
         local tempo_ds
         tempo_ds=$(echo "$datasources" | ${pkgs.jq}/bin/jq -r '.[] | select(.type == "tempo") | .name // empty')
         if [[ -n "$tempo_ds" ]]; then
-          ok "Tempo datasource: $tempo_ds"
+          ok "Tempo datasource: $tempo_ds (uid=$(get_tempo_uid))"
         else
           fail "No Tempo datasource found"
         fi
@@ -581,7 +610,14 @@ let
       if [[ "$tempo_resp" == "ready" ]]; then
         ok "Ready"
       elif [[ -n "$tempo_resp" ]]; then
-        warn "Warming up: $tempo_resp"
+        # Parse warmup message for friendlier display
+        if echo "$tempo_resp" | grep -q "waiting for"; then
+          local wait_time
+          wait_time=$(echo "$tempo_resp" | grep -oP '\d+s' | head -1)
+          warn "Warming up (''${wait_time:-~15s} startup delay) — try again shortly"
+        else
+          warn "Not ready: $tempo_resp"
+        fi
       else
         fail "Not reachable"
       fi
@@ -590,8 +626,6 @@ let
 
       # OTEL Collector
       echo -e "''${BOLD}OTEL Collector''${NC} ($COLLECTOR_URL)"
-      # Collector doesn't have a /health endpoint on the OTLP port,
-      # but the metrics port serves Prometheus metrics
       local metrics_url="http://127.0.0.1:${toString otelMetricsPort}"
       if check_endpoint "Collector" "$metrics_url" "/metrics" >/dev/null 2>&1; then
         ok "Healthy (metrics endpoint)"
@@ -603,21 +637,83 @@ let
     }
 
     cmd_dashboards() {
+      local validate=false
+      if [[ "''${1:-}" == "--validate" ]]; then
+        validate=true
+      fi
+
       echo -e "''${BOLD}Provisioned Dashboards''${NC}"
       echo ""
       local dashboards
-      if dashboards=$(check_endpoint "Grafana" "$GRAFANA_URL" "/api/search?type=dash-db"); then
+      if ! dashboards=$(check_endpoint "Grafana" "$GRAFANA_URL" "/api/search?type=dash-db"); then
+        fail "Grafana not reachable at $GRAFANA_URL"
+        info "Start the stack with: devenv up"
+        echo ""
+        return
+      fi
+
+      local count
+      count=$(echo "$dashboards" | ${pkgs.jq}/bin/jq 'length')
+
+      if [[ "$validate" == "true" ]]; then
+        # Validate each dashboard by loading its full model
+        local errors=0
+        local uid title
+        for uid in $(echo "$dashboards" | ${pkgs.jq}/bin/jq -r '.[].uid'); do
+          title=$(echo "$dashboards" | ${pkgs.jq}/bin/jq -r --arg uid "$uid" '.[] | select(.uid == $uid) | .title')
+          local dash_resp
+          if dash_resp=$(check_endpoint "Grafana" "$GRAFANA_URL" "/api/dashboards/uid/$uid"); then
+            # Check for panel count
+            local panel_count
+            panel_count=$(echo "$dash_resp" | ${pkgs.jq}/bin/jq '.dashboard.panels | length')
+
+            # Check all panels have valid datasource references
+            local broken_panels
+            broken_panels=$(echo "$dash_resp" | ${pkgs.jq}/bin/jq '[
+              .dashboard.panels[]? |
+              select(.type != "row" and .type != "text") |
+              select(
+                (.targets // [] | length == 0) or
+                (.targets[]? | .datasource.uid // "" | test("^$"))
+              ) |
+              .title
+            ] | length')
+
+            # Check for unresolved datasource template variables
+            local unresolved_vars
+            unresolved_vars=$(echo "$dash_resp" | ${pkgs.jq}/bin/jq '
+              [.dashboard | tostring | scan("\\$\\{DS_[A-Z_]+\\}")] | length
+            ')
+
+            if [[ "$broken_panels" -gt 0 ]]; then
+              fail "$title ($uid): $broken_panels panel(s) with missing targets/datasource"
+              errors=$((errors + 1))
+            elif [[ "$unresolved_vars" -gt 0 ]]; then
+              fail "$title ($uid): $unresolved_vars unresolved datasource variable(s)"
+              errors=$((errors + 1))
+            else
+              ok "$title ($uid): $panel_count panels, all valid"
+            fi
+          else
+            fail "$title ($uid): failed to load"
+            errors=$((errors + 1))
+          fi
+        done
+        echo ""
+        if [[ "$errors" -eq 0 ]]; then
+          ok "All $count dashboards validated successfully"
+        else
+          fail "$errors of $count dashboards have issues"
+        fi
+      else
         echo "$dashboards" | ${pkgs.jq}/bin/jq -r '.[] | "  \(.title)\t\(.uid)\t\(.url)"' | ${pkgs.util-linux}/bin/column -t -s $'\t'
         echo ""
-        local count
-        count=$(echo "$dashboards" | ${pkgs.jq}/bin/jq 'length')
         info "$count dashboards total"
         echo ""
         echo "  Open in browser:"
         echo "$dashboards" | ${pkgs.jq}/bin/jq -r '.[] | "    '$GRAFANA_URL'\(.url)"'
-      else
-        fail "Grafana not reachable at $GRAFANA_URL"
-        info "Start the stack with: devenv up"
+        echo ""
+        info "Run 'otel-check dashboards --validate' to check for errors"
       fi
       echo ""
     }
@@ -626,14 +722,13 @@ let
       echo -e "''${BOLD}Recent Traces''${NC}"
       echo ""
 
-      local default_query='{}'
+      # Default: exclude internal Tempo traces for cleaner output
+      local default_query='{resource.service.name!="tempo-all"}'
       local query="''${1:-$default_query}"
       local limit="''${2:-10}"
 
-      # Look up the Tempo datasource UID dynamically (may not be "tempo")
       local tempo_uid
-      tempo_uid=$(${pkgs.curl}/bin/curl -sf --max-time 3 "$GRAFANA_URL/api/datasources" 2>/dev/null \
-        | ${pkgs.jq}/bin/jq -r '.[] | select(.type == "tempo") | .uid' 2>/dev/null) || true
+      tempo_uid=$(get_tempo_uid)
       if [[ -z "$tempo_uid" ]]; then
         fail "Cannot find Tempo datasource in Grafana"
         info "Make sure the stack is running: devenv up"
@@ -665,7 +760,6 @@ let
           -H "Content-Type: application/json" \
           -d "$payload" 2>/dev/null); then
 
-        # Extract trace results from the Grafana query response
         local trace_count
         trace_count=$(echo "$response" | ${pkgs.jq}/bin/jq '[.results.A.frames[]?.data.values // [] | .[0] // [] | length] | add // 0')
 
@@ -673,7 +767,6 @@ let
           ok "$trace_count traces found (query: $query, last 1h)"
           echo ""
           printf "  %-34s\t%-20s\t%-30s\t%s\n" "TRACE ID" "SERVICE" "NAME" "DURATION" | ${pkgs.util-linux}/bin/column -t -s $'\t'
-          # Extract trace details from the response
           echo "$response" | ${pkgs.jq}/bin/jq -r '
             .results.A.frames[]? |
             .data as $data |
@@ -702,12 +795,182 @@ let
       echo ""
     }
 
+    cmd_send_test() {
+      echo -e "''${BOLD}End-to-End Smoke Test''${NC}"
+      echo ""
+
+      # Step 1: Check prerequisites
+      info "Checking stack health..."
+      local grafana_ok=false tempo_ok=false collector_ok=false
+
+      if check_endpoint "Grafana" "$GRAFANA_URL" "/api/health" >/dev/null 2>&1; then
+        grafana_ok=true
+        ok "Grafana reachable"
+      else
+        fail "Grafana not reachable"
+      fi
+
+      local tempo_url="http://127.0.0.1:${toString tempoQueryPort}"
+      local tempo_resp
+      tempo_resp=$(${pkgs.curl}/bin/curl -s --max-time 3 "$tempo_url/ready" 2>/dev/null) || true
+      if [[ "$tempo_resp" == "ready" ]]; then
+        tempo_ok=true
+        ok "Tempo ready"
+      else
+        fail "Tempo not ready''${tempo_resp:+ ($tempo_resp)}"
+      fi
+
+      local metrics_url="http://127.0.0.1:${toString otelMetricsPort}"
+      if check_endpoint "Collector" "$metrics_url" "/metrics" >/dev/null 2>&1; then
+        collector_ok=true
+        ok "Collector reachable"
+      else
+        fail "Collector not reachable"
+      fi
+
+      if [[ "$grafana_ok" != "true" ]] || [[ "$tempo_ok" != "true" ]] || [[ "$collector_ok" != "true" ]]; then
+        echo ""
+        fail "Prerequisites not met — start the stack with: devenv up"
+        echo ""
+        return 1
+      fi
+
+      echo ""
+
+      # Step 2: Generate a unique trace ID and send a test span
+      local test_trace_id
+      test_trace_id=$(${pkgs.coreutils}/bin/od -An -tx1 -N16 /dev/urandom | tr -d ' \n')
+      local test_span_id
+      test_span_id=$(${pkgs.coreutils}/bin/od -An -tx1 -N8 /dev/urandom | tr -d ' \n')
+      local now_ns
+      now_ns=$(${pkgs.coreutils}/bin/date +%s%N)
+      local end_ns=$((now_ns + 1000000))  # 1ms duration
+
+      info "Sending test span (trace_id=$test_trace_id)..."
+
+      local payload='{
+        "resourceSpans": [{
+          "resource": {
+            "attributes": [
+              {"key": "service.name", "value": {"stringValue": "otel-check-test"}}
+            ]
+          },
+          "scopeSpans": [{
+            "scope": {"name": "otel-check"},
+            "spans": [{
+              "traceId": "'"$test_trace_id"'",
+              "spanId": "'"$test_span_id"'",
+              "name": "smoke-test",
+              "kind": 1,
+              "startTimeUnixNano": "'"$now_ns"'",
+              "endTimeUnixNano": "'"$end_ns"'",
+              "attributes": [
+                {"key": "test.type", "value": {"stringValue": "smoke-test"}}
+              ],
+              "status": {"code": 1}
+            }]
+          }]
+        }]
+      }'
+
+      local send_resp
+      send_resp=$(${pkgs.curl}/bin/curl -s -w "\n%{http_code}" -X POST \
+        "$COLLECTOR_URL/v1/traces" \
+        -H "Content-Type: application/json" \
+        -d "$payload" \
+        --max-time 5 2>/dev/null) || true
+      local send_http_code
+      send_http_code=$(echo "$send_resp" | tail -1)
+
+      if [[ "$send_http_code" == "200" ]]; then
+        ok "Span sent to Collector (HTTP 200)"
+      else
+        fail "Failed to send span (HTTP $send_http_code)"
+        echo ""
+        return 1
+      fi
+
+      # Step 3: Wait for the span to be ingested (collector batches at 1s)
+      info "Waiting for ingestion (2s for batch + flush)..."
+      sleep 2
+
+      # Step 4: Query Tempo for the trace by service name
+      # (TraceQL doesn't support trace ID filters; use the unique service name instead)
+      local tempo_uid
+      tempo_uid=$(get_tempo_uid)
+      local query_payload
+      query_payload=$(${pkgs.jq}/bin/jq -n \
+        --arg uid "$tempo_uid" \
+        '{
+          queries: [{
+            refId: "A",
+            datasource: { uid: $uid, type: "tempo" },
+            queryType: "traceql",
+            query: "{resource.service.name=\"otel-check-test\"}",
+            limit: 1,
+            tableType: "traces"
+          }],
+          from: "now-5m",
+          to: "now"
+        }')
+
+      local found=false
+      local attempts=0
+      local max_attempts=5
+      local tempo_direct="http://127.0.0.1:${toString tempoQueryPort}"
+
+      while [[ "$attempts" -lt "$max_attempts" ]]; do
+        attempts=$((attempts + 1))
+
+        # Try direct Tempo API first (more reliable, no Grafana proxy)
+        if ${pkgs.curl}/bin/curl -sf --max-time 5 "$tempo_direct/api/traces/$test_trace_id" >/dev/null 2>&1; then
+          found=true
+          break
+        fi
+
+        if [[ "$attempts" -lt "$max_attempts" ]]; then
+          info "Not found yet, retrying ($attempts/$max_attempts)..."
+          sleep 2
+        fi
+      done
+
+      echo ""
+      if [[ "$found" == "true" ]]; then
+        ok "Trace $test_trace_id found in Tempo after ''${attempts} attempt(s)"
+        echo ""
+        # Also verify the Grafana query path works
+        local grafana_ok=false
+        local query_resp
+        if query_resp=$(${pkgs.curl}/bin/curl -sf --max-time 10 \
+            -X POST "$GRAFANA_URL/api/ds/query" \
+            -H "Content-Type: application/json" \
+            -d "$query_payload" 2>/dev/null); then
+          local found_count
+          found_count=$(echo "$query_resp" | ${pkgs.jq}/bin/jq '[.results.A.frames[]?.data.values // [] | .[0] // [] | length] | add // 0')
+          if [[ "$found_count" -gt 0 ]]; then
+            grafana_ok=true
+          fi
+        fi
+        if [[ "$grafana_ok" == "true" ]]; then
+          ok "End-to-end verified: otel-span → Collector → Tempo → Grafana query"
+        else
+          ok "Collector → Tempo pipeline works"
+          warn "Grafana query returned no results (may need a moment to sync)"
+        fi
+      else
+        fail "Trace not found after $max_attempts attempts"
+        warn "The span was sent successfully but didn't appear in Tempo"
+        info "This may indicate a Collector→Tempo forwarding issue"
+      fi
+      echo ""
+    }
+
     cmd_datasources() {
       echo -e "''${BOLD}Grafana Datasources''${NC}"
       echo ""
       local datasources
       if datasources=$(check_endpoint "Grafana" "$GRAFANA_URL" "/api/datasources"); then
-        echo "$datasources" | ${pkgs.jq}/bin/jq -r '.[] | "  \(.name)\t\(.type)\t\(.url)\t\(if .isDefault then "(default)" else "" end)"' | ${pkgs.util-linux}/bin/column -t -s $'\t'
+        echo "$datasources" | ${pkgs.jq}/bin/jq -r '.[] | "  \(.name)\t\(.type)\t\(.uid)\t\(.url)\t\(if .isDefault then "(default)" else "" end)"' | ${pkgs.util-linux}/bin/column -t -s $'\t'
       else
         fail "Grafana not reachable at $GRAFANA_URL"
       fi
@@ -723,8 +986,9 @@ let
 
     case "''${1:-}" in
       --help|-h) usage ;;
-      dashboards) cmd_dashboards ;;
+      dashboards) shift; cmd_dashboards "$@" ;;
       traces) shift; cmd_traces "$@" ;;
+      send-test) cmd_send_test ;;
       datasources) cmd_datasources ;;
       "") cmd_health ;;
       *)

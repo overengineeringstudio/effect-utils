@@ -138,7 +138,7 @@ No configuration changes needed -- the collector accepts any OTLP source.
 
 - **Anonymous auth**: enabled with Admin role (local dev, no login needed)
 - **Bind address**: `0.0.0.0` (accessible via Tailscale from other machines)
-- **Tempo datasource**: auto-provisioned on every start
+- **Tempo datasource**: auto-provisioned with stable UID via delete+recreate pattern
 - **Dashboards**: provisioned via Nix-built Grafonnet (see [dashboards.md](./dashboards.md))
 - **Analytics/updates**: disabled
 - **Log level**: warn (minimal console noise)
@@ -151,8 +151,18 @@ Shell helper for diagnosing stack health via Grafana's HTTP API. No tokens neede
 | --- | --- |
 | `otel-check` | Full health: Grafana + Tempo + Collector + dashboard count |
 | `otel-check dashboards` | List provisioned dashboards with browser URLs |
-| `otel-check traces` | Query Tempo for recent traces (last 1h) |
-| `otel-check datasources` | Show configured Grafana datasources |
+| `otel-check dashboards --validate` | Load each dashboard, check panels, datasource refs, template vars |
+| `otel-check traces` | Query Tempo for recent non-internal traces (last 1h) |
+| `otel-check traces '<traceql>'` | Query with custom TraceQL filter |
+| `otel-check send-test` | End-to-end smoke test: send span → Collector → Tempo → query |
+| `otel-check datasources` | Show configured Grafana datasources with UIDs |
+
+### Dashboard Validation
+
+`otel-check dashboards --validate` loads each dashboard via the Grafana API and checks:
+- Panel count (non-zero)
+- All non-row/text panels have targets with valid datasource UIDs
+- No unresolved datasource template variables
 
 ### API Endpoints Used
 
@@ -160,8 +170,10 @@ Shell helper for diagnosing stack health via Grafana's HTTP API. No tokens neede
 | --- | --- |
 | `GET /api/health` | Grafana health (no auth required) |
 | `GET /api/search?type=dash-db` | List dashboards |
-| `GET /api/datasources` | List datasources |
-| `GET /api/datasources/uid/tempo/health` | Tempo datasource health proxy |
+| `GET /api/dashboards/uid/:uid` | Load full dashboard model (for validation) |
+| `GET /api/datasources` | List datasources (resolves Tempo UID dynamically) |
 | `POST /api/ds/query` | Query Tempo via TraceQL |
-| `GET http://127.0.0.1:<tempo-port>/ready` | Direct Tempo readiness (fallback) |
+| `POST <collector>/v1/traces` | Send test OTLP span (for send-test) |
+| `GET http://127.0.0.1:<tempo-port>/ready` | Direct Tempo readiness check |
+| `GET http://127.0.0.1:<tempo-port>/api/traces/:id` | Direct trace lookup (for send-test) |
 | `GET http://127.0.0.1:<metrics-port>/metrics` | Collector Prometheus metrics |
