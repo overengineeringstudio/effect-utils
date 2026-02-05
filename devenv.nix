@@ -52,6 +52,7 @@ let
     "packages/@overeng/notion-cli"
     "packages/@overeng/notion-effect-client"
     "packages/@overeng/notion-effect-schema"
+    "packages/@overeng/otel-cli"
     "packages/@overeng/oxc-config"
     "packages/@overeng/react-inspector"
     "packages/@overeng/tui-core"
@@ -73,6 +74,7 @@ let
     { path = "packages/@overeng/notion-cli"; name = "notion-cli"; }
     { path = "packages/@overeng/notion-effect-client"; name = "notion-effect-client"; }
     { path = "packages/@overeng/notion-effect-schema"; name = "notion-effect-schema"; }
+    { path = "packages/@overeng/otel-cli"; name = "otel-cli"; }
     { path = "packages/@overeng/oxc-config"; name = "oxc-config"; }
     { path = "packages/@overeng/tui-core"; name = "tui-core"; }
     { path = "packages/@overeng/tui-react"; name = "tui-react"; }
@@ -88,6 +90,7 @@ let
     { path = "packages/@overeng/effect-schema-form-aria"; name = "effect-schema-form-aria"; port = 6010; }
     { path = "packages/@overeng/react-inspector"; name = "react-inspector"; port = 6011; }
     { path = "packages/@overeng/notion-cli"; name = "notion-cli"; port = 6012; }
+    { path = "packages/@overeng/otel-cli"; name = "otel-cli"; port = 6013; }
   ];
 in
 {
@@ -219,6 +222,7 @@ in
     pkgs.oxfmt
     (mkSourceCli { name = "genie"; entry = "packages/@overeng/genie/bin/genie.tsx"; })
     (mkSourceCli { name = "mr"; entry = "packages/@overeng/megarepo/bin/mr.ts"; })
+    (mkSourceCli { name = "otel"; entry = "packages/@overeng/otel-cli/bin/otel.ts"; })
     cliBuildStamp.package
   ];
 
