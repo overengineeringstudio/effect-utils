@@ -5,9 +5,13 @@
  */
 
 import * as Cli from '@effect/cli'
-import { Effect } from 'effect'
+import { Effect, Option } from 'effect'
+import React from 'react'
 
-import { outputOption, outputModeLayer } from '@overeng/tui-react'
+import { outputModeLayer, outputOption } from '@overeng/tui-react'
+
+import { LsApp, LsView } from '../../renderers/TraceLsOutput/mod.ts'
+import { searchTraces } from '../../services/GrafanaClient.ts'
 
 /** List recent traces from Tempo. */
 export const lsCommand = Cli.Command.make(
@@ -26,9 +30,41 @@ export const lsCommand = Cli.Command.make(
       Cli.Options.withDefault(false),
     ),
   },
-  ({ output, query: _query, limit: _limit, all: _all }) =>
-    Effect.gen(function* () {
-      // TODO: Phase 4 implementation
-      yield* Effect.log('otel trace ls - not yet implemented')
-    }).pipe(Effect.provide(outputModeLayer(output))),
+  ({ output, query: queryOption, limit, all }) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const tui = yield* LsApp.run(React.createElement(LsView, { stateAtom: LsApp.stateAtom }))
+
+        const queryValue = Option.getOrUndefined(queryOption)
+
+        const traces = yield* Effect.catchAll(
+          searchTraces({
+            query: queryValue,
+            limit,
+            includeInternal: all,
+          }),
+          (error) =>
+            Effect.gen(function* () {
+              tui.dispatch({
+                _tag: 'SetError',
+                error: error.reason,
+                message: error.message,
+              })
+              return yield* Effect.fail(error)
+            }),
+        )
+
+        tui.dispatch({
+          _tag: 'SetTraces',
+          traces: traces.map((t) => ({
+            traceId: t.traceId,
+            serviceName: t.serviceName,
+            spanName: t.spanName,
+            durationMs: t.durationMs,
+          })),
+          query: queryValue,
+          limit,
+        })
+      }),
+    ).pipe(Effect.provide(outputModeLayer(output))),
 ).pipe(Cli.Command.withDescription('List recent traces'))
