@@ -1044,8 +1044,8 @@ in {
       exec = ''
         mkdir -p ${dataDir}/grafana-data ${dataDir}/grafana-logs ${dataDir}/grafana-plugins
         mkdir -p ${dataDir}/grafana-provisioning/datasources ${dataDir}/grafana-provisioning/dashboards
-        cp ${grafanaDatasources} ${dataDir}/grafana-provisioning/datasources/tempo.yaml
-        cp ${grafanaDashboardProvision} ${dataDir}/grafana-provisioning/dashboards/otel.yaml
+        install -m 644 ${grafanaDatasources} ${dataDir}/grafana-provisioning/datasources/tempo.yaml
+        install -m 644 ${grafanaDashboardProvision} ${dataDir}/grafana-provisioning/dashboards/otel.yaml
         exec ${pkgs.grafana}/bin/grafana server \
           --config ${grafanaIni} \
           --homepath ${pkgs.grafana}/share/grafana
