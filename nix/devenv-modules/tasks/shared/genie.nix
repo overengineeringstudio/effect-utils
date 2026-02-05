@@ -11,12 +11,15 @@
 #   tasks."genie:run".after = [ "pnpm:install:genie" ];
 #   tasks."genie:watch".after = [ "pnpm:install:genie" ];
 #   tasks."genie:check".after = [ "pnpm:install:genie" ];
-{ ... }:
+{ lib, ... }:
+let
+  trace = import ../lib/trace.nix { inherit lib; };
+in
 {
   tasks = {
     "genie:run" = {
       description = "Generate config files from .genie.ts sources";
-      exec = "genie";
+      exec = trace.exec "genie:run" "genie";
     };
     "genie:watch" = {
       description = "Watch and regenerate config files";
@@ -24,7 +27,7 @@
     };
     "genie:check" = {
       description = "Check if generated files are up to date (CI)";
-      exec = "genie --check";
+      exec = trace.exec "genie:check" "genie --check";
     };
   };
 }

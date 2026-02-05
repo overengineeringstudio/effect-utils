@@ -80,6 +80,7 @@
 { packages, globalCache ? true }:
 { lib, config, ... }:
 let
+  trace = import ../lib/trace.nix { inherit lib; };
   cache = import ../lib/cache.nix { inherit config; };
   cacheRoot = cache.mkCachePath "pnpm-install";
 
@@ -188,7 +189,7 @@ let
     "pnpm:install:${name}" = {
       description = "Install dependencies for ${name}";
       # NOTE: Use --config.confirmModulesPurge=false to avoid TTY prompts in non-interactive mode.
-      exec = ''
+      exec = trace.exec "pnpm:install:${name}" ''
         set -euo pipefail
         mkdir -p "${cacheRoot}"
         hash_file="${cacheRoot}/${name}.hash"
@@ -264,7 +265,7 @@ in {
         description = "Update all pnpm lockfiles (use when adding new dependencies)";
         # Ensure generated package.json files are up to date before updating lockfiles.
         after = [ "genie:run" ];
-        exec = ''
+        exec = trace.exec "pnpm:update" ''
           echo "Updating pnpm lockfiles for all packages..."
           ${updateScript}
           echo "Lockfiles updated. Run 'dt nix:hash' to update Nix hashes."
@@ -272,11 +273,11 @@ in {
       };
       "pnpm:clean" = {
         description = "Remove node_modules for all managed packages";
-        exec = "rm -rf ${nodeModulesPaths} ${pnpmStorePath}";
+        exec = trace.exec "pnpm:clean" "rm -rf ${nodeModulesPaths} ${pnpmStorePath}";
       };
       "pnpm:reset-lock-files" = {
         description = "Remove pnpm lock files for all managed packages (⚠ destructive, last resort)";
-        exec = "rm -f ${lockFilePaths}";
+        exec = trace.exec "pnpm:reset-lock-files" "rm -f ${lockFilePaths}";
       };
     }
   ]);

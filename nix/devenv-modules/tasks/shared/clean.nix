@@ -12,6 +12,7 @@
 { packages, extraDirs ? [] }:
 { lib, ... }:
 let
+  trace = import ../lib/trace.nix { inherit lib; };
   # Clean dist, .next, and .tsbuildinfo for each package
   packageCleanCommands = lib.concatMapStringsSep "\n" (p: ''
     rm -rf ${p}/dist ${p}/.next
@@ -25,7 +26,7 @@ in
   tasks = {
     "build:clean" = {
       description = "Remove build artifacts (dist, .next, tsbuildinfo${if extraDirs != [] then ", " + builtins.concatStringsSep ", " extraDirs else ""})";
-      exec = ''
+      exec = trace.exec "build:clean" ''
         echo "Cleaning build artifacts..."
         ${packageCleanCommands}
         ${extraDirCommands}

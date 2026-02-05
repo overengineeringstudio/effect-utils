@@ -23,11 +23,11 @@ open $OTEL_GRAFANA_URL          # Grafana UI -> Explore -> Tempo
 
 ## Environment Variables
 
-| Variable | Set by | Purpose |
-| --- | --- | --- |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | `otel.nix` | Collector HTTP endpoint. Read by TS code, `otel-span`, future devenv OTEL. |
-| `OTEL_GRAFANA_URL` | `otel.nix` | Grafana UI URL for opening dashboards. |
-| `TRACEPARENT` | `otel-span` | W3C Trace Context. Propagated to child processes for parent-child trace linking. |
+| Variable                      | Set by      | Purpose                                                                          |
+| ----------------------------- | ----------- | -------------------------------------------------------------------------------- |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `otel.nix`  | Collector HTTP endpoint. Read by TS code, `otel-span`, future devenv OTEL.       |
+| `OTEL_GRAFANA_URL`            | `otel.nix`  | Grafana UI URL for opening dashboards.                                           |
+| `TRACEPARENT`                 | `otel-span` | W3C Trace Context. Propagated to child processes for parent-child trace linking. |
 
 ## Shell Helpers
 
@@ -128,11 +128,11 @@ End-to-End Smoke Test
 
 Started via `devenv up`. Process names include ports for visibility in the process-compose TUI:
 
-| Process | Purpose |
-| --- | --- |
-| `otel-collector-<port>` | Receives OTLP/HTTP, batches, forwards to Tempo |
-| `tempo-<port>` | Trace storage (local filesystem) |
-| `grafana-<port>` | Dashboard UI with Tempo pre-configured (binds 0.0.0.0 for Tailscale access) |
+| Process                 | Purpose                                                                     |
+| ----------------------- | --------------------------------------------------------------------------- |
+| `otel-collector-<port>` | Receives OTLP/HTTP, batches, forwards to Tempo                              |
+| `tempo-<port>`          | Trace storage (local filesystem)                                            |
+| `grafana-<port>`        | Dashboard UI with Tempo pre-configured (binds 0.0.0.0 for Tailscale access) |
 
 ## Import in Other Repos
 

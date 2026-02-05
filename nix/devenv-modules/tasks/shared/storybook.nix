@@ -30,6 +30,7 @@
 }:
 { lib, config, ... }:
 let
+  trace = import ../lib/trace.nix { inherit lib; };
   hasPackages = packages != [];
 
   # Use storybook binary directly from package's node_modules (relative to cwd)
@@ -38,7 +39,7 @@ let
   mkBuildTask = pkg: {
     "storybook:build:${pkg.name}" = {
       description = "Build storybook for ${pkg.name}";
-      exec = "${storybookBin} build";
+      exec = trace.exec "storybook:build:${pkg.name}" "${storybookBin} build";
       cwd = pkg.path;
       after = [ "${installTaskPrefix}:install:${pkg.name}" ];
     };

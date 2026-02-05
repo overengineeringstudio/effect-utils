@@ -30,15 +30,16 @@
 #   This replaces per-package postinstall scripts, centralizing the patch in dt.
 #   Example: "packages/@overeng/utils/node_modules/.bin/effect-language-service patch"
 { tsconfigFile ? "tsconfig.all.json", tscBin ? "tsc", lspPatchCmd ? null }:
-{ ... }:
+{ lib, ... }:
 let
+  trace = import ../lib/trace.nix { inherit lib; };
   lspAfter = if lspPatchCmd != null then [ "ts:patch-lsp" ] else [];
 in
 {
   tasks = {
     "ts:check" = {
       description = "Run TypeScript type checking";
-      exec = "${tscBin} --build ${tsconfigFile}";
+      exec = trace.exec "ts:check" "${tscBin} --build ${tsconfigFile}";
       after = [ "genie:run" "pnpm:install" ] ++ lspAfter;
     };
     "ts:watch" = {
@@ -48,13 +49,13 @@ in
     };
     "ts:build" = {
       description = "Build all packages (tsc --build)";
-      exec = "${tscBin} --build ${tsconfigFile}";
+      exec = trace.exec "ts:build" "${tscBin} --build ${tsconfigFile}";
       after = [ "genie:run" "pnpm:install" ] ++ lspAfter;
     };
     "ts:clean" = {
       description = "Remove TypeScript build artifacts";
       # Use Nix tsc (always available) since clean doesn't need the Effect LSP patch
-      exec = "tsc --build --clean ${tsconfigFile}";
+      exec = trace.exec "ts:clean" "tsc --build --clean ${tsconfigFile}";
     };
   } // (if lspPatchCmd != null then {
     "ts:patch-lsp" = {
