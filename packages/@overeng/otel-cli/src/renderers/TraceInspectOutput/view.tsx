@@ -171,7 +171,7 @@ const SpanNode = ({
           {span.serviceName}
         </Text>
         <Text color="gray"> / </Text>
-        <Text>{span.operationName}</Text>
+        <Text>{span.name}</Text>
         <Text color="gray"> ({formatDuration(span.durationMs)})</Text>
         <Text> </Text>
         <WaterfallBar
@@ -225,7 +225,7 @@ const FlatSpanList = ({
               {span.serviceName}
             </Text>
             <Text color="gray"> / </Text>
-            <Text>{span.operationName}</Text>
+            <Text>{span.name}</Text>
             <Text color="gray"> ({formatDuration(span.durationMs)})</Text>
             <Text> </Text>
             <WaterfallBar

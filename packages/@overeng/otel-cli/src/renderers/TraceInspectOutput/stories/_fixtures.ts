@@ -13,7 +13,7 @@ import type { InspectState, ProcessedSpan } from '../schema.ts'
 /** Create a span with sensible defaults. */
 const span = (overrides: {
   spanId: string
-  operationName: string
+  name: string
   serviceName?: string
   parentSpanId?: string
   startTimeMs: number
@@ -24,7 +24,7 @@ const span = (overrides: {
 }): ProcessedSpan => ({
   spanId: overrides.spanId,
   parentSpanId: overrides.parentSpanId,
-  operationName: overrides.operationName,
+  name: overrides.name,
   serviceName: overrides.serviceName ?? 'dt-task',
   startTimeMs: overrides.startTimeMs,
   endTimeMs: overrides.startTimeMs + overrides.durationMs,
@@ -65,7 +65,7 @@ export const simpleTraceState = (): InspectState => ({
   rootSpans: [
     span({
       spanId: 'span-root',
-      operationName: 'check:quick',
+      name: 'check:quick',
       serviceName: 'dt',
       startTimeMs: 0,
       durationMs: 5000,
@@ -74,7 +74,7 @@ export const simpleTraceState = (): InspectState => ({
         span({
           spanId: 'span-ts',
           parentSpanId: 'span-root',
-          operationName: 'ts:check',
+          name: 'ts:check',
           serviceName: 'dt-task',
           startTimeMs: 100,
           durationMs: 3500,
@@ -83,7 +83,7 @@ export const simpleTraceState = (): InspectState => ({
         span({
           spanId: 'span-lint',
           parentSpanId: 'span-root',
-          operationName: 'lint:check',
+          name: 'lint:check',
           serviceName: 'dt-task',
           startTimeMs: 200,
           durationMs: 2000,
@@ -106,7 +106,7 @@ export const realisticTraceState = (): InspectState => ({
   rootSpans: [
     span({
       spanId: 'root',
-      operationName: 'check:quick',
+      name: 'check:quick',
       serviceName: 'dt',
       startTimeMs: 0,
       durationMs: 22000,
@@ -115,7 +115,7 @@ export const realisticTraceState = (): InspectState => ({
         span({
           spanId: 'ts-check',
           parentSpanId: 'root',
-          operationName: 'ts:check',
+          name: 'ts:check',
           serviceName: 'dt-task',
           startTimeMs: 50,
           durationMs: 14000,
@@ -124,7 +124,7 @@ export const realisticTraceState = (): InspectState => ({
             span({
               spanId: 'tsc-genie',
               parentSpanId: 'ts-check',
-              operationName: 'genie',
+              name: 'genie',
               serviceName: 'tsc-project',
               startTimeMs: 100,
               durationMs: 890,
@@ -133,7 +133,7 @@ export const realisticTraceState = (): InspectState => ({
             span({
               spanId: 'tsc-utils',
               parentSpanId: 'ts-check',
-              operationName: 'utils',
+              name: 'utils',
               serviceName: 'tsc-project',
               startTimeMs: 1000,
               durationMs: 2200,
@@ -142,7 +142,7 @@ export const realisticTraceState = (): InspectState => ({
             span({
               spanId: 'tsc-tui-core',
               parentSpanId: 'ts-check',
-              operationName: 'tui-core',
+              name: 'tui-core',
               serviceName: 'tsc-project',
               startTimeMs: 3300,
               durationMs: 3100,
@@ -151,7 +151,7 @@ export const realisticTraceState = (): InspectState => ({
             span({
               spanId: 'tsc-tui-react',
               parentSpanId: 'ts-check',
-              operationName: 'tui-react',
+              name: 'tui-react',
               serviceName: 'tsc-project',
               startTimeMs: 6500,
               durationMs: 4500,
@@ -160,7 +160,7 @@ export const realisticTraceState = (): InspectState => ({
             span({
               spanId: 'tsc-megarepo',
               parentSpanId: 'ts-check',
-              operationName: 'megarepo',
+              name: 'megarepo',
               serviceName: 'tsc-project',
               startTimeMs: 11100,
               durationMs: 2800,
@@ -171,7 +171,7 @@ export const realisticTraceState = (): InspectState => ({
         span({
           spanId: 'lint-oxlint',
           parentSpanId: 'root',
-          operationName: 'lint:check:oxlint',
+          name: 'lint:check:oxlint',
           serviceName: 'dt-task',
           startTimeMs: 100,
           durationMs: 5600,
@@ -180,7 +180,7 @@ export const realisticTraceState = (): InspectState => ({
         span({
           spanId: 'lint-format',
           parentSpanId: 'root',
-          operationName: 'lint:check:format',
+          name: 'lint:check:format',
           serviceName: 'dt-task',
           startTimeMs: 100,
           durationMs: 1200,
@@ -189,7 +189,7 @@ export const realisticTraceState = (): InspectState => ({
         span({
           spanId: 'lint-genie',
           parentSpanId: 'root',
-          operationName: 'lint:check:genie',
+          name: 'lint:check:genie',
           serviceName: 'dt-task',
           startTimeMs: 50,
           durationMs: 800,
@@ -198,7 +198,7 @@ export const realisticTraceState = (): InspectState => ({
         span({
           spanId: 'megarepo-check',
           parentSpanId: 'root',
-          operationName: 'megarepo:check',
+          name: 'megarepo:check',
           serviceName: 'dt-task',
           startTimeMs: 14100,
           durationMs: 400,
@@ -228,7 +228,7 @@ export const errorSpanTraceState = (): InspectState => ({
   rootSpans: [
     span({
       spanId: 'root',
-      operationName: 'check:quick',
+      name: 'check:quick',
       serviceName: 'dt',
       startTimeMs: 0,
       durationMs: 1500,
@@ -238,7 +238,7 @@ export const errorSpanTraceState = (): InspectState => ({
         span({
           spanId: 'ts-check',
           parentSpanId: 'root',
-          operationName: 'ts:check',
+          name: 'ts:check',
           serviceName: 'dt-task',
           startTimeMs: 50,
           durationMs: 1400,
@@ -248,7 +248,7 @@ export const errorSpanTraceState = (): InspectState => ({
         span({
           spanId: 'lint',
           parentSpanId: 'root',
-          operationName: 'lint:check',
+          name: 'lint:check',
           serviceName: 'dt-task',
           startTimeMs: 100,
           durationMs: 500,
