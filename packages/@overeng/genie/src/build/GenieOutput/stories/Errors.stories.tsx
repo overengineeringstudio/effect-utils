@@ -438,21 +438,7 @@ export const ValidationFailed: Story = {
   },
   render: (args) => {
     const stateConfig = useMemo(
-      () =>
-        fixtures.createState({
-          phase: 'error',
-          mode: args.mode,
-          error: `Genie validation failed:
-
-  packages/@overeng/megarepo/package.json
-    ✗ [tsconfig-references] Missing tsconfig reference "../effect-path" for workspace dep "@overeng/effect-path"
-    ✗ [tsconfig-references] Missing tsconfig reference "../utils" for workspace dep "@overeng/utils"
-
-  packages/@overeng/genie/package.json
-    ✗ [tsconfig-references] Missing tsconfig reference "../tui-react" for workspace dep "@overeng/tui-react"
-    ✗ [recompose-peer-deps] Missing peer dep "effect" required by "@overeng/utils"`,
-          files: [],
-        }),
+      () => fixtures.createValidationFailedState({ mode: args.mode }),
       [args.mode],
     )
 
