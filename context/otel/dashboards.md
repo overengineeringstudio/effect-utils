@@ -8,12 +8,12 @@ Dashboards are authored in [Grafonnet](https://github.com/grafana/grafonnet), Gr
 
 ### Why Grafonnet
 
-| Approach | Maintainability | Iteration speed | Tooling overhead | Review-friendliness |
-| --- | --- | --- | --- | --- |
-| Raw JSON | Poor (verbose, fragile) | Fast (copy-paste from UI) | None | Poor (1000+ line diffs) |
-| Nix `builtins.toJSON` | Moderate | Slow (manual panel IDs) | None | Moderate |
-| **Grafonnet (Jsonnet)** | **Good (composable DSL)** | **Moderate** | **`go-jsonnet` in devenv** | **Good (30-100 line diffs)** |
-| TypeScript generator | Good | Moderate | bun + @grafana/schema | Good |
+| Approach                | Maintainability           | Iteration speed           | Tooling overhead           | Review-friendliness          |
+| ----------------------- | ------------------------- | ------------------------- | -------------------------- | ---------------------------- |
+| Raw JSON                | Poor (verbose, fragile)   | Fast (copy-paste from UI) | None                       | Poor (1000+ line diffs)      |
+| Nix `builtins.toJSON`   | Moderate                  | Slow (manual panel IDs)   | None                       | Moderate                     |
+| **Grafonnet (Jsonnet)** | **Good (composable DSL)** | **Moderate**              | **`go-jsonnet` in devenv** | **Good (30-100 line diffs)** |
+| TypeScript generator    | Good                      | Moderate                  | bun + @grafana/schema      | Good                         |
 
 Grafonnet wins on maintainability vs raw JSON and avoids adding a TS build step for infrastructure config. The `go-jsonnet` binary is ~15MB in nixpkgs.
 
@@ -66,7 +66,7 @@ providers:
     disableDeletion: true
     updateIntervalSeconds: 0
     options:
-      path: /nix/store/.../otel-dashboards  # linkFarm output
+      path: /nix/store/.../otel-dashboards # linkFarm output
 ```
 
 ### Iteration Workflow
@@ -94,57 +94,57 @@ All dashboards query Tempo's TraceQL. The datasource variable `${DS_TEMPO}` is r
 
 **Purpose**: Landing page. Single-pane summary of recent activity.
 
-| Panel | Type | Query |
-| --- | --- | --- |
-| Recent traces | Table | `{}` (last 20 traces) |
+| Panel             | Type      | Query                                     |
+| ----------------- | --------- | ----------------------------------------- |
+| Recent traces     | Table     | `{}` (last 20 traces)                     |
 | Traces by service | Bar chart | `{} \| count() by(resource.service.name)` |
-| Error count (24h) | Stat | `{status.code = error}` |
-| Avg span duration | Stat | `{} \| avg(duration)` |
+| Error count (24h) | Stat      | `{status.code = error}`                   |
+| Avg span duration | Stat      | `{} \| avg(duration)`                     |
 
 ### 2. dt Task Performance
 
 **Purpose**: Answer "how long do my `dt` tasks take?" and "are caches working?". This is the primary dashboard for the PR #114 use case.
 
-| Panel | Type | Query |
-| --- | --- | --- |
-| Task duration over time | Time series | `{resource.service.name = "dt"} \| rate() by(name)` |
-| Slowest tasks (p95) | Bar chart | `{resource.service.name = "dt"} \| quantile_over_time(duration, 0.95) by(name)` |
-| Task cache hit rate | Stat | `{resource.service.name = "dt" && cached = "true"} \| count()` vs total |
-| Task failure rate | Stat | `{resource.service.name = "dt" && status.code = error} \| count()` |
-| Recent task traces | Table | `{resource.service.name = "dt"}` (last 50) |
+| Panel                   | Type        | Query                                                                           |
+| ----------------------- | ----------- | ------------------------------------------------------------------------------- |
+| Task duration over time | Time series | `{resource.service.name = "dt"} \| rate() by(name)`                             |
+| Slowest tasks (p95)     | Bar chart   | `{resource.service.name = "dt"} \| quantile_over_time(duration, 0.95) by(name)` |
+| Task cache hit rate     | Stat        | `{resource.service.name = "dt" && cached = "true"} \| count()` vs total         |
+| Task failure rate       | Stat        | `{resource.service.name = "dt" && status.code = error} \| count()`              |
+| Recent task traces      | Table       | `{resource.service.name = "dt"}` (last 50)                                      |
 
 ### 3. Shell Entry (enterShell)
 
 **Purpose**: Answer "how long does `direnv allow` take?" with breakdown by phase.
 
-| Panel | Type | Query |
-| --- | --- | --- |
-| Shell entry duration | Time series | `{name = "devenv:enterShell"}` |
-| Breakdown by setup phase | Stacked bar | `{name =~ "setup:opt:.*"}` durations |
-| pnpm:install vs cached | Stat | cached vs uncached enterShell durations |
-| Time since last uncached entry | Stat | time since last `{name = "pnpm:install" && cached = "false"}` |
+| Panel                          | Type        | Query                                                         |
+| ------------------------------ | ----------- | ------------------------------------------------------------- |
+| Shell entry duration           | Time series | `{name = "devenv:enterShell"}`                                |
+| Breakdown by setup phase       | Stacked bar | `{name =~ "setup:opt:.*"}` durations                          |
+| pnpm:install vs cached         | Stat        | cached vs uncached enterShell durations                       |
+| Time since last uncached entry | Stat        | time since last `{name = "pnpm:install" && cached = "false"}` |
 
 ### 4. pnpm Install Deep-Dive
 
 **Purpose**: Per-package install analysis. Directly addresses network overhead from #110.
 
-| Panel | Type | Query |
-| --- | --- | --- |
-| Per-package install duration | Heatmap | `{resource.service.name = "dt" && name =~ "pnpm:install:.*"} \| duration` |
-| Sequential chain waterfall | Trace view | Single trace showing all 20 packages in sequence |
-| Total install time trend | Time series | `{name = "pnpm:install"} \| duration` over time |
-| Network download indicator | Stat | Uncached installs (duration > threshold = likely network) |
+| Panel                        | Type        | Query                                                                     |
+| ---------------------------- | ----------- | ------------------------------------------------------------------------- |
+| Per-package install duration | Heatmap     | `{resource.service.name = "dt" && name =~ "pnpm:install:.*"} \| duration` |
+| Sequential chain waterfall   | Trace view  | Single trace showing all 20 packages in sequence                          |
+| Total install time trend     | Time series | `{name = "pnpm:install"} \| duration` over time                           |
+| Network download indicator   | Stat        | Uncached installs (duration > threshold = likely network)                 |
 
 ### 5. TS App Traces
 
 **Purpose**: General-purpose trace exploration for Effect OTEL layers.
 
-| Panel | Type | Query |
-| --- | --- | --- |
-| Service map | Node graph | `{} \| by(resource.service.name)` |
+| Panel                         | Type        | Query                                                                  |
+| ----------------------------- | ----------- | ---------------------------------------------------------------------- |
+| Service map                   | Node graph  | `{} \| by(resource.service.name)`                                      |
 | Request latency (p50/p95/p99) | Time series | `{resource.service.name != "dt"} \| quantile_over_time(duration, ...)` |
-| Error traces | Table | `{status.code = error && resource.service.name != "dt"}` |
-| Trace search | Search | Tempo native search panel |
+| Error traces                  | Table       | `{status.code = error && resource.service.name != "dt"}`               |
+| Trace search                  | Search      | Tempo native search panel                                              |
 
 ---
 
@@ -154,19 +154,19 @@ For dashboards to work reliably, spans must follow these attribute conventions:
 
 ### Resource Attributes
 
-| Attribute | Required | Values | Set by |
-| --- | --- | --- | --- |
-| `service.name` | Yes | `"dt"`, app name | `otel-span`, Effect layer |
-| `devenv.root` | Yes | Absolute path | `otel-span`, Effect layer |
+| Attribute      | Required | Values           | Set by                    |
+| -------------- | -------- | ---------------- | ------------------------- |
+| `service.name` | Yes      | `"dt"`, app name | `otel-span`, Effect layer |
+| `devenv.root`  | Yes      | Absolute path    | `otel-span`, Effect layer |
 
 ### Span Attributes (dt tasks)
 
-| Attribute | Type | Description | Example |
-| --- | --- | --- | --- |
-| `name` | span name | Task name | `"pnpm:install"`, `"ts:check"` |
-| `exit.code` | int | Process exit code | `0`, `1` |
-| `dt.args` | string | Full dt command args | `"check:quick"` |
-| `cached` | string | Whether task was cached | `"true"`, `"false"` |
+| Attribute   | Type      | Description             | Example                        |
+| ----------- | --------- | ----------------------- | ------------------------------ |
+| `name`      | span name | Task name               | `"pnpm:install"`, `"ts:check"` |
+| `exit.code` | int       | Process exit code       | `0`, `1`                       |
+| `dt.args`   | string    | Full dt command args    | `"check:quick"`                |
+| `cached`    | string    | Whether task was cached | `"true"`, `"false"`            |
 
 > **Note**: `cached` is not yet emitted by `otel-span`. Adding it requires the `dt` wrapper to detect the devenv task's `status` check result before running. This is a future enhancement -- see the checklist below.
 

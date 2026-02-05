@@ -22,11 +22,11 @@ We run many devenv worktrees in parallel on the same machine. Each needs local o
 
 ### Protocol
 
-| Segment | Protocol | Format |
-| --- | --- | --- |
+| Segment             | Protocol  | Format                    |
+| ------------------- | --------- | ------------------------- |
 | Source -> Collector | OTLP/HTTP | JSON (`application/json`) |
-| Collector -> Tempo | OTLP/gRPC | Protobuf |
-| Grafana -> Tempo | HTTP API | JSON |
+| Collector -> Tempo  | OTLP/gRPC | Protobuf                  |
+| Grafana -> Tempo    | HTTP API  | JSON                      |
 
 The TS Effect OTEL layers use `FetchHttpClient` + `OtlpSerialization.layerJson`, matching the Collector's HTTP/JSON receiver. No gRPC or protobuf needed on the client side.
 
@@ -56,14 +56,14 @@ base = portRangeStart + (parseInt(sha256(root)[0:7], 16) % (portRangeEnd - portR
 
 6 consecutive ports from `base`:
 
-| Offset | Service | Default equivalent |
-| --- | --- | --- |
-| +0 | OTEL Collector OTLP HTTP receiver | 4318 |
-| +1 | Tempo OTLP gRPC ingest | 4317 |
-| +2 | Tempo HTTP query API | 3200 |
-| +3 | Grafana HTTP UI | 3000 |
-| +4 | Collector internal Prometheus metrics | 8888 |
-| +5 | Tempo internal gRPC | 9095 |
+| Offset | Service                               | Default equivalent |
+| ------ | ------------------------------------- | ------------------ |
+| +0     | OTEL Collector OTLP HTTP receiver     | 4318               |
+| +1     | Tempo OTLP gRPC ingest                | 4317               |
+| +2     | Tempo HTTP query API                  | 3200               |
+| +3     | Grafana HTTP UI                       | 3000               |
+| +4     | Collector internal Prometheus metrics | 8888               |
+| +5     | Tempo internal gRPC                   | 9095               |
 
 Range: 10000-60000 (50K range, ~0.012% collision probability for 2 worktrees).
 
@@ -87,12 +87,12 @@ Lightweight shell helper that wraps commands in OTLP trace spans. Uses `curl` to
 
 ### Span Attributes
 
-| Attribute | Type | Source |
-| --- | --- | --- |
-| `service.name` | resource + span | First positional arg |
-| `devenv.root` | resource + span | `$DEVENV_ROOT` |
-| `exit.code` | span | Command exit code |
-| Custom (`--attr`) | span | User-provided key=value pairs |
+| Attribute         | Type            | Source                        |
+| ----------------- | --------------- | ----------------------------- |
+| `service.name`    | resource + span | First positional arg          |
+| `devenv.root`     | resource + span | `$DEVENV_ROOT`                |
+| `exit.code`       | span            | Command exit code             |
+| Custom (`--attr`) | span            | User-provided key=value pairs |
 
 ### dt Integration
 
@@ -107,13 +107,13 @@ otel-span "dt" "$task_name" --attr "dt.args=$*" -- devenv tasks run "$@" --mode 
 
 All state lives in `$DEVENV_ROOT/.devenv/otel/`:
 
-| Directory | Contents | Retention |
-| --- | --- | --- |
-| `tempo-data/` | Compacted trace blocks | 72h (configurable) |
-| `tempo-wal/` | Write-ahead log | Flushed on compaction |
-| `tempo-metrics/` | Tempo metrics generator state | Rolling |
-| `grafana-data/` | Grafana database (dashboards, prefs) | Persistent |
-| `grafana-provisioning/` | Auto-provisioned Tempo datasource | Regenerated on start |
+| Directory               | Contents                             | Retention             |
+| ----------------------- | ------------------------------------ | --------------------- |
+| `tempo-data/`           | Compacted trace blocks               | 72h (configurable)    |
+| `tempo-wal/`            | Write-ahead log                      | Flushed on compaction |
+| `tempo-metrics/`        | Tempo metrics generator state        | Rolling               |
+| `grafana-data/`         | Grafana database (dashboards, prefs) | Persistent            |
+| `grafana-provisioning/` | Auto-provisioned Tempo datasource    | Regenerated on start  |
 
 The `.devenv/` directory is gitignored. Clean with `rm -rf .devenv/otel/`.
 
@@ -122,6 +122,7 @@ The `.devenv/` directory is gitignored. Clean with `rm -rf .devenv/otel/`.
 ### devenv Native OTEL (cachix/devenv#2415)
 
 When devenv adds native OTEL support, it will:
+
 1. Read `OTEL_EXPORTER_OTLP_ENDPOINT` (same env var this module sets)
 2. Export build/eval/fetch spans to the same collector
 3. Appear alongside `dt` and TS traces in Grafana
@@ -147,33 +148,34 @@ No configuration changes needed -- the collector accepts any OTLP source.
 
 Shell helper for diagnosing stack health via Grafana's HTTP API. No tokens needed (anonymous auth).
 
-| Command | What it does |
-| --- | --- |
-| `otel-check` | Full health: Grafana + Tempo + Collector + dashboard count |
-| `otel-check dashboards` | List provisioned dashboards with browser URLs |
+| Command                            | What it does                                                      |
+| ---------------------------------- | ----------------------------------------------------------------- |
+| `otel-check`                       | Full health: Grafana + Tempo + Collector + dashboard count        |
+| `otel-check dashboards`            | List provisioned dashboards with browser URLs                     |
 | `otel-check dashboards --validate` | Load each dashboard, check panels, datasource refs, template vars |
-| `otel-check traces` | Query Tempo for recent non-internal traces (last 1h) |
-| `otel-check traces '<traceql>'` | Query with custom TraceQL filter |
-| `otel-check send-test` | End-to-end smoke test: send span → Collector → Tempo → query |
-| `otel-check datasources` | Show configured Grafana datasources with UIDs |
+| `otel-check traces`                | Query Tempo for recent non-internal traces (last 1h)              |
+| `otel-check traces '<traceql>'`    | Query with custom TraceQL filter                                  |
+| `otel-check send-test`             | End-to-end smoke test: send span → Collector → Tempo → query      |
+| `otel-check datasources`           | Show configured Grafana datasources with UIDs                     |
 
 ### Dashboard Validation
 
 `otel-check dashboards --validate` loads each dashboard via the Grafana API and checks:
+
 - Panel count (non-zero)
 - All non-row/text panels have targets with valid datasource UIDs
 - No unresolved datasource template variables
 
 ### API Endpoints Used
 
-| Endpoint | Purpose |
-| --- | --- |
-| `GET /api/health` | Grafana health (no auth required) |
-| `GET /api/search?type=dash-db` | List dashboards |
-| `GET /api/dashboards/uid/:uid` | Load full dashboard model (for validation) |
-| `GET /api/datasources` | List datasources (resolves Tempo UID dynamically) |
-| `POST /api/ds/query` | Query Tempo via TraceQL |
-| `POST <collector>/v1/traces` | Send test OTLP span (for send-test) |
-| `GET http://127.0.0.1:<tempo-port>/ready` | Direct Tempo readiness check |
-| `GET http://127.0.0.1:<tempo-port>/api/traces/:id` | Direct trace lookup (for send-test) |
-| `GET http://127.0.0.1:<metrics-port>/metrics` | Collector Prometheus metrics |
+| Endpoint                                           | Purpose                                           |
+| -------------------------------------------------- | ------------------------------------------------- |
+| `GET /api/health`                                  | Grafana health (no auth required)                 |
+| `GET /api/search?type=dash-db`                     | List dashboards                                   |
+| `GET /api/dashboards/uid/:uid`                     | Load full dashboard model (for validation)        |
+| `GET /api/datasources`                             | List datasources (resolves Tempo UID dynamically) |
+| `POST /api/ds/query`                               | Query Tempo via TraceQL                           |
+| `POST <collector>/v1/traces`                       | Send test OTLP span (for send-test)               |
+| `GET http://127.0.0.1:<tempo-port>/ready`          | Direct Tempo readiness check                      |
+| `GET http://127.0.0.1:<tempo-port>/api/traces/:id` | Direct trace lookup (for send-test)               |
+| `GET http://127.0.0.1:<metrics-port>/metrics`      | Collector Prometheus metrics                      |

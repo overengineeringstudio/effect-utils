@@ -11,10 +11,13 @@
 # use source-mode megarepo via pnpm should add the dependency in their devenv.nix:
 #   tasks."megarepo:sync".after = [ "pnpm:install:megarepo" ];
 { lib, pkgs, ... }:
+let
+  trace = import ../lib/trace.nix { inherit lib; };
+in
 {
   tasks."megarepo:sync" = {
     description = "Sync megarepo members (clone repos, create symlinks)";
-    exec = ''
+    exec = trace.exec "megarepo:sync" ''
       if [ ! -f ./megarepo.json ]; then
         exit 0
       fi
@@ -65,7 +68,7 @@
 
       exit 0
     '';
-    exec = ''
+    exec = trace.exec "megarepo:check" ''
       if [ ! -f ./megarepo.json ]; then
         exit 0
       fi

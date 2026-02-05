@@ -38,6 +38,7 @@
 { cliPackages ? [] }:
 { pkgs, lib, ... }:
 let
+  trace = import ../lib/trace.nix { inherit lib; };
   # Script to update all hashes in a build.nix file
   # Handles pnpmDepsHash/bunDepsHash, lockfileHash, and packageJsonDepsHash
   # Iteratively updates hashes until build succeeds
@@ -425,7 +426,7 @@ let
   mkHashTask = pkg: {
     "nix:hash:${pkg.name}" = {
       description = "Update Nix hashes for ${pkg.name}";
-      exec = "${updateHashScript} '${pkg.flakeRef}' '${pkg.buildNix}' '${pkg.name}' '${pkg.lockfile or ""}'";
+      exec = trace.exec "nix:hash:${pkg.name}" "${updateHashScript} '${pkg.flakeRef}' '${pkg.buildNix}' '${pkg.name}' '${pkg.lockfile or ""}'";
       # pnpm:install ensures lockfile is current before we compute hashes.
       # Hash computation reads the lockfile to update lockfileHash fingerprint.
       after = [ "pnpm:install:${pkg.name}" ];
@@ -435,14 +436,14 @@ let
   mkBuildTask = pkg: {
     "nix:build:${pkg.name}" = {
       description = "Build ${pkg.name} Nix package";
-      exec = "nix build '${pkg.flakeRef}' --no-link -L";
+      exec = trace.exec "nix:build:${pkg.name}" "nix build '${pkg.flakeRef}' --no-link -L";
     };
   };
 
   mkCheckTask = pkg: {
     "nix:check:${pkg.name}" = {
       description = "Check if ${pkg.name} hash is stale (full build)";
-      exec = "${checkHashScript} '${pkg.flakeRef}' '${pkg.name}' '${pkg.buildNix}' '${pkg.lockfile or ""}'";
+      exec = trace.exec "nix:check:${pkg.name}" "${checkHashScript} '${pkg.flakeRef}' '${pkg.name}' '${pkg.buildNix}' '${pkg.lockfile or ""}'";
       # Depends on full workspace pnpm:install (not per-package).
       # Nix builds stage the entire workspace, so any stale lockfile in any package
       # breaks the build. Per-package install only updates that package's lockfile,
@@ -455,7 +456,7 @@ let
   mkQuickCheckTask = pkg: lib.optionalAttrs (pkg ? lockfile) {
     "nix:check:quick:${pkg.name}" = {
       description = "Quick lockfile check for ${pkg.name}";
-      exec = "${quickCheckScript} '${pkg.name}' '${pkg.buildNix}' '${pkg.lockfile}'";
+      exec = trace.exec "nix:check:quick:${pkg.name}" "${quickCheckScript} '${pkg.name}' '${pkg.buildNix}' '${pkg.lockfile}'";
     };
   };
 
@@ -475,7 +476,7 @@ in lib.mkIf hasPackages {
     [{
       "nix:test" = {
         description = "Run nix-cli tooling tests";
-        exec = "${nixTestsScript}";
+        exec = trace.exec "nix:test" "${nixTestsScript}";
       };
 
       "nix:hash" = {
@@ -500,7 +501,7 @@ in lib.mkIf hasPackages {
 
       "nix:flake:check" = {
         description = "Full nix flake validation (builds all flake packages)";
-        exec = "nix flake check";
+        exec = trace.exec "nix:flake:check" "nix flake check";
       };
     }]
   );
