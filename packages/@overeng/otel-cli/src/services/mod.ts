@@ -28,3 +28,15 @@ export {
   getTrace,
   type TempoTraceResponse,
 } from './TempoClient.ts'
+export {
+  MetricsError,
+  getCollectorMetrics,
+  getTags,
+  getTagValues,
+  queryMetrics,
+  type CollectorMetrics,
+  type MetricDataPoint,
+  type ParsedMetricSeries,
+  type PrometheusMetric,
+  type SpanAttribute,
+} from './MetricsClient.ts'
