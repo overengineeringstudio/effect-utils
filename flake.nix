@@ -72,6 +72,8 @@
       devenvModules = {
         # `dt` command wrapper for devenv tasks with shell completions
         dt = ./nix/devenv-modules/dt.nix;
+        # OpenTelemetry observability stack (Collector + Tempo + Grafana)
+        otel = import ./nix/devenv-modules/otel.nix;
         # Shared task modules (parameterized) - meant for reuse in other repos
         tasks = {
           # Simple tasks (no config needed)
