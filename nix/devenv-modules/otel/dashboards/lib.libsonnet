@@ -57,11 +57,15 @@ local g = import 'g.libsonnet';
     + g.panel.stat.gridPos.withH(h),
 
   // Create a TraceQL metrics query target (for time series panels)
-  // Uses queryType=traceqlmetrics which produces time series data from trace spans.
+  // Produces time series data from trace spans using metrics functions like rate(), quantile_over_time().
   // Requires Tempo local_blocks metrics_generator + Grafana traceqlMetrics datasource flag.
+  //
+  // Note: We use queryType='traceql' (not 'traceqlmetrics') because Grafana's backend
+  // only recognizes 'traceql'. The 'traceqlmetrics' type is frontend-only and causes
+  // "unsupported query type" errors when used in dashboard panels via /api/ds/query.
   tempoMetricsQuery(query, refId='A', step='30s')::
     g.query.tempo.new(self.tempoDatasource, query, [])
-    + g.query.tempo.withQueryType('traceqlmetrics')
+    + g.query.tempo.withQueryType('traceql')
     + g.query.tempo.withStep(step)
     + g.query.tempo.withRefId(refId),
 
