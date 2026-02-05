@@ -53,6 +53,8 @@ tasks."verify:full" = { exec = "pnpm test"; };
   - (d) Structured output format: traces should be exportable (JSON/OTLP) for external analysis
   - (e) Summary statistics: total wall time, parallelism efficiency, cache hit rates
   - (f) Metrics over time: track key metrics (task durations, cache hit rates, total CI time) across runs to identify regressions and trends
+  - (g) Observability must be transparent: tracing instrumentation must not alter user-visible output (no extra diagnostics noise on success; errors must still surface clearly on failure)
+  - (h) Observability overhead must stay below 10% wall-time compared to uninstrumented execution; when tracing is unavailable, tasks must run with zero overhead (no conditional flags, no parsing)
 - R11 - Prefer deterministic, principled caching over ad-hoc shortcuts.
 - R12 - Provide a go-to quick check command that runs warm in under 5 seconds.
 - R13 - Maximize CPU utilization through optimal parallelism. When running parallel tasks that each spawn workers (e.g., vitest), configure worker limits to avoid over-subscription (total workers across all tasks should approximate available cores).
