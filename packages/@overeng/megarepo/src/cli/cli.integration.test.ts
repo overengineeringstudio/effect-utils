@@ -5,16 +5,20 @@
  * These tests verify the core logic without invoking the CLI directly.
  */
 
+import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
 import { NodeContext } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Effect, Option, Schema } from 'effect'
+import { Effect, Exit, Option, Schema } from 'effect'
 import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import { CONFIG_FILE_NAME, MegarepoConfig, validateMemberName } from '../lib/config.ts'
+import { makeConsoleCapture } from '../test-utils/consoleCapture.ts'
 import { initGitRepo, readConfig } from '../test-utils/setup.ts'
+import { mrCommand } from './mod.ts'
+import { RootState } from './renderers/RootOutput/schema.ts'
 
 // =============================================================================
 // Helper: Find megarepo root (extracted from CLI logic)
@@ -465,6 +469,98 @@ describe('megarepo.json parsing', () => {
         const parsed = yield* readConfig(workDir)
         expect(parsed.generators?.vscode?.enabled).toBe(true)
         expect(parsed.generators?.vscode?.exclude).toEqual(['large-repo'])
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
+})
+
+// =============================================================================
+// --cwd Option Tests
+// =============================================================================
+
+/** TUI output envelope for RootState (non-struct schema wraps in { _tag, value }) */
+const RootOutputEnvelope = Schema.Struct({
+  _tag: Schema.Literal('Success'),
+  value: RootState,
+})
+
+/**
+ * Run the root CLI command with --cwd and capture JSON output.
+ * Does NOT provide Cwd explicitly — relies on Command.provide from --cwd.
+ */
+const runRootWithCwd = ({ cwdPath }: { cwdPath: string }) =>
+  Effect.gen(function* () {
+    const { consoleLayer, getStdoutLines } = yield* makeConsoleCapture
+
+    const argv = ['node', 'mr', '--cwd', cwdPath, 'root', '--output', 'json']
+    const effect = Cli.Command.run(mrCommand, { name: 'mr', version: 'test' })(argv).pipe(
+      Effect.provide(consoleLayer),
+    )
+    const exit = yield* Effect.exit(effect)
+
+    const stdout = (yield* getStdoutLines).join('\n')
+
+    let state: typeof RootState.Type | undefined
+    if (stdout.trim()) {
+      const envelope = yield* Schema.decodeUnknown(Schema.parseJson(RootOutputEnvelope))(stdout)
+      state = envelope.value
+    }
+
+    return {
+      exitCode: Exit.isSuccess(exit) ? 0 : 1,
+      state,
+    }
+  }).pipe(Effect.scoped)
+
+describe('--cwd option', () => {
+  it.effect(
+    'should find megarepo root when --cwd points to a workspace',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+
+        // Create a workspace with megarepo.json
+        const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+        const workDir = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('workspace/'))
+        yield* fs.makeDirectory(workDir, { recursive: true })
+        yield* initGitRepo(workDir)
+
+        const configPath = EffectPath.ops.join(
+          workDir,
+          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+        )
+        yield* fs.writeFileString(configPath, '{"members":{}}')
+
+        const { exitCode, state } = yield* runRootWithCwd({ cwdPath: workDir })
+
+        expect(exitCode).toBe(0)
+        expect(state).toBeDefined()
+        expect(state!._tag).toBe('Success')
+        if (state!._tag === 'Success') {
+          expect(state!.root).toBe(workDir)
+        }
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'should report not found when --cwd points to a non-megarepo directory',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+
+        // Create a plain directory without megarepo.json
+        const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+
+        const { exitCode, state } = yield* runRootWithCwd({ cwdPath: tmpDir })
+
+        expect(exitCode).toBe(0)
+        expect(state).toBeDefined()
+        expect(state!._tag).toBe('Error')
       },
       Effect.provide(NodeContext.layer),
       Effect.scoped,

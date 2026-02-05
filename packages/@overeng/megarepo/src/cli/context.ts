@@ -41,13 +41,16 @@ export class Cwd extends Context.Tag('megarepo/Cwd')<Cwd, AbsoluteDirPath>() {
     }),
   )
 
-  /** Create a Cwd layer from a specific path (resolves relative paths against process.cwd()) */
+  /** Create a Cwd layer from a specific path (resolves relative paths against $PWD to preserve symlinks) */
   static fromPath = (path: string) =>
     Layer.succeed(
       Cwd,
       EffectPath.unsafe.absoluteDir(
         (() => {
-          const resolved = resolve(path)
+          // Use $PWD (logical path) as base for relative path resolution,
+          // consistent with Cwd.live's symlink-aware behavior
+          const base = process.env.PWD?.length ? process.env.PWD : process.cwd()
+          const resolved = resolve(base, path)
           return resolved.endsWith('/') ? resolved : `${resolved}/`
         })(),
       ),
