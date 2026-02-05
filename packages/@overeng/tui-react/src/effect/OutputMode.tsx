@@ -49,6 +49,8 @@ import * as fs from 'node:fs'
 import { Context, Layer } from 'effect'
 import React, { createContext, useContext, type ReactNode } from 'react'
 
+import type { LogCaptureHandle } from './LogCapture.ts'
+
 // =============================================================================
 // Types
 // =============================================================================
@@ -77,6 +79,8 @@ export interface ReactOutputMode {
   readonly timing: 'progressive' | 'final'
   /** Render configuration for React components */
   readonly render: RenderConfig
+  /** If present, logs are being captured and accessible via useCapturedLogs() */
+  readonly capturedLogs?: LogCaptureHandle
 }
 
 /**

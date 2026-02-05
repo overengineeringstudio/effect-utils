@@ -339,6 +339,18 @@ export {
 } from './effect/TuiLogger.ts'
 
 // =============================================================================
+// Log Capture - automatic capture of logs in progressive modes
+// =============================================================================
+
+export {
+  useCapturedLogs,
+  CapturedLogsProvider,
+  createLogCapture,
+  type LogCaptureHandle,
+  type LogCaptureResult,
+} from './effect/LogCapture.ts'
+
+// =============================================================================
 // Effect CLI Integration
 // =============================================================================
 

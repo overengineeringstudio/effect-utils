@@ -262,6 +262,76 @@ Streaming JSON output (NDJSON format) as state changes.
 {"_tag":"Complete","services":[...],"duration":3421}
 ```
 
+### Log Capture (Progressive Modes)
+
+In progressive-visual modes (`tty`, `ci`, `ci-plain`, `alt-screen`), accidental `console.log` or `Effect.log` calls would corrupt TUI terminal output by writing directly to stdout/stderr. To prevent this, `outputModeLayer()` automatically captures all log output for these modes.
+
+**What gets captured:**
+
+| Source                   | Captured | Original destination            |
+| ------------------------ | -------- | ------------------------------- |
+| `Effect.log()`           | Yes      | stdout (default logger)         |
+| `Effect.logDebug()`      | Yes      | stdout (default logger)         |
+| `Effect.logWarning()`    | Yes      | stdout (default logger)         |
+| `Effect.logError()`      | Yes      | stdout (default logger)         |
+| `console.log()`          | Yes      | stdout                          |
+| `console.info()`         | Yes      | stdout                          |
+| `console.debug()`        | Yes      | stdout                          |
+| `console.warn()`         | Yes      | stderr                          |
+| `console.error()`        | Yes      | stderr                          |
+| `process.stdout.write()` | No       | stdout (TUI renderer uses this) |
+
+**How it works:**
+
+1. `outputModeLayer()` creates a scoped `LogCaptureHandle` for progressive modes
+2. The Effect default logger is replaced with a capturing logger
+3. All `console.*` methods are overridden to capture instead of print
+4. Captured entries are stored in a `SubscriptionRef<readonly TuiLogEntry[]>`
+5. React components access captured logs via `useCapturedLogs()` hook
+6. On scope finalization, original console methods are restored
+
+> **Note:** Only one log capture may be active per process. Overlapping or nested captures are not supported.
+
+**Stream contract for progressive-visual modes:**
+
+| Stream   | Content                                                      |
+| -------- | ------------------------------------------------------------ |
+| `stdout` | TUI renderer output only (via `process.stdout.write`)        |
+| `stderr` | Empty for Effect logs + console (native writes not captured) |
+| Captured | Effect logs + console output (via `useCapturedLogs()`)       |
+
+**Rendering captured logs:**
+
+```tsx
+import { useCapturedLogs, Static, Text } from '@overeng/tui-react'
+
+function MyView({ stateAtom }) {
+  const state = useTuiAtomValue(stateAtom)
+  const logs = useCapturedLogs()
+
+  return (
+    <>
+      <Static items={logs}>
+        {(log) => (
+          <Text key={log.id} dim>
+            [{log.level}] {log.message}
+          </Text>
+        )}
+      </Static>
+      <Text>Dynamic content: {state.count}</Text>
+    </>
+  )
+}
+```
+
+**Mode-specific behavior:**
+
+| Mode category               | Log behavior                          |
+| --------------------------- | ------------------------------------- |
+| Progressive React           | Captured → `useCapturedLogs()` (auto) |
+| JSON (`json`, `ndjson`)     | Redirected to stderr (unchanged)      |
+| Final React (`pipe`, `log`) | No capture (single render at end)     |
+
 ---
 
 ## Architecture
@@ -940,7 +1010,11 @@ type OutputModeValue =
   | 'ndjson'
 ```
 
-**Note:** For JSON modes (`json`, `ndjson`), `outputModeLayer` also configures the Effect logger to write to stderr instead of stdout. This ensures stdout contains only JSON data, making it safe to pipe to tools like `jq`.
+**Note:** `outputModeLayer` configures logging behavior per mode:
+
+- **Progressive modes** (`tty`, `ci`, `ci-plain`, `alt-screen`): Captures all Effect logs and `console.*` output to prevent TUI corruption. Access captured logs in components via `useCapturedLogs()`.
+- **JSON modes** (`json`, `ndjson`): Redirects the Effect logger to stderr, keeping stdout clean for JSON data.
+- **Final modes** (`pipe`, `log`): No special log handling (single render at end).
 
 ### runTuiMain
 
@@ -965,6 +1039,30 @@ runTuiMain(NodeRuntime)(program)
 3. Preserves exit codes from errors
 
 **Why use it:** When using `NodeRuntime.runMain` directly, errors are logged to stdout via the pretty logger. This breaks JSON output parsing when commands fail. `runTuiMain` ensures errors go to stderr while keeping stdout clean for JSON data.
+
+### useCapturedLogs
+
+Hook for accessing log entries captured by the automatic log capture system.
+
+```typescript
+const logs: readonly TuiLogEntry[] = useCapturedLogs()
+```
+
+Returns captured log entries in progressive-visual modes. Returns an empty array if no capture is active (JSON modes, final modes, tests without capture).
+
+Each `TuiLogEntry` contains:
+
+```typescript
+interface TuiLogEntry {
+  id: number
+  level: string // 'INFO', 'DEBUG', 'WARNING', 'ERROR'
+  message: string
+  timestamp: Date
+  fiberId: string
+  annotations: Record<string, unknown>
+  span?: string
+}
+```
 
 ### useViewport
 

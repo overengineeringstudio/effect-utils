@@ -6,6 +6,15 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/tui-react**: Automatic log capture for progressive-visual modes (breaking change)
+  - `outputModeLayer()` now captures all Effect logs and `console.*` output in tty/ci/alt-screen modes
+  - Captured logs accessible via `useCapturedLogs()` hook in React components
+  - Prevents accidental log output from corrupting TUI terminal rendering
+  - Console methods (`log`, `error`, `warn`, `info`, `debug`) are scoped and restored on cleanup
+  - New `LogCapture.ts` module with `createLogCapture()`, `CapturedLogsProvider`, `useCapturedLogs()`
+  - New example `06-log-capture/` demonstrating the feature
+  - Updated spec.md with log capture documentation
+
 - **@overeng/utils-dev**: New package with enhanced Vitest utilities for Effect-based testing
   - `makeWithTestCtx` / `withTestCtx` for automatic layer provisioning, OTEL integration, and timeouts
   - `asProp` for property-based testing with shrinking phase visibility
