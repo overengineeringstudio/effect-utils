@@ -37,6 +37,14 @@ OXC (oxlint, oxfmt) configuration.
 
 Testing patterns and conventions.
 
+### [otel/](./otel/)
+
+OpenTelemetry observability stack (Collector + Tempo + Grafana).
+
+- [README.md](./otel/README.md) - Quick start, env vars, shell helper
+- [spec.md](./otel/spec.md) - Architecture, port allocation, forward compatibility
+- [dashboards.md](./otel/dashboards.md) - Grafonnet dashboards, span conventions
+
 ## Workflows
 
 ### [workflows/](./workflows/)
