@@ -234,6 +234,24 @@ export const createGlobalErrorState = (): GenieState =>
   })
 
 /**
+ * Validation failed state - for phase='error' when genie validation finds issues.
+ * Error message format matches real `formatValidationIssues()` output.
+ */
+export const createValidationFailedState = (overrides: { mode?: GenieMode } = {}): GenieState =>
+  createState({
+    phase: 'error',
+    mode: overrides.mode ?? 'check',
+    error: `Genie validation failed:
+\n@overeng/megarepo:
+  ⚠ Missing tsconfig reference "../effect-path" for workspace dependency "@overeng/effect-path"
+  ⚠ Missing tsconfig reference "../utils" for workspace dependency "@overeng/utils"
+\n@overeng/genie:
+  ⚠ Missing tsconfig reference "../tui-react" for workspace dependency "@overeng/tui-react"
+  ✗ Missing peer dep "effect" (required by "@overeng/utils")`,
+    files: [],
+  })
+
+/**
  * Mixed error types - combination of errors + skipped + success.
  */
 export const createMixedErrorTypesState = (): GenieState =>

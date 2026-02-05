@@ -1,12 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  packageJson,
-  workspaceRoot,
-  type GenieContext,
-  type GenieValidationContext,
-  type PackageInfo,
-} from '../mod.ts'
+import { packageJson, workspaceRoot, type GenieContext, type PackageInfo } from '../mod.ts'
 
 /** Mock GenieContext for package tests (nested package location) */
 const mockGenieContext: GenieContext = {
@@ -217,17 +211,12 @@ const makePackage = (
   ...overrides,
 })
 
-const makeValidationContext = (packages: PackageInfo[]): GenieValidationContext => ({
+const makeValidationContext = (packages: PackageInfo[]): GenieContext => ({
+  location: '.',
   cwd: '/workspace',
-  packageJson: {
+  workspace: {
     packages,
     byName: new Map(packages.map((p) => [p.name, p])),
-    workspaceProvider: {
-      name: 'pnpm',
-      discoverPackageJsonPaths: () => {
-        throw new Error('not implemented')
-      },
-    },
   },
 })
 

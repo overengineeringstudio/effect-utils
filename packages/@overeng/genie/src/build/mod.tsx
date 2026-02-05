@@ -20,7 +20,6 @@ import {
   type GenieSummary,
   type GenieMode,
 } from './schema.ts'
-import { logTsconfigWarnings, validateTsconfigReferences } from './tsconfig-validation.ts'
 import type { GenieCommandConfig, GenieCommandEnv, GenieCommandError } from './types.ts'
 import { runGenieValidation } from './validation.ts'
 import { GenieView } from './view.tsx'
@@ -214,42 +213,46 @@ export const genieCommand: Cli.Command.Command<
         )
 
         const failed = results.filter((r) => !r.success).length
-        const summary: GenieSummary = {
-          created: 0,
-          updated: 0,
-          unchanged: results.filter((r) => r.success).length,
-          skipped: 0,
-          failed,
-        }
-
-        tui.dispatch({ _tag: 'Complete', summary })
-
-        // Persist output before exiting
-        yield* tui.unmount({ mode: 'persist' })
-
-        // Validate tsconfig references
-        const warnings = yield* validateTsconfigReferences({
-          genieFiles,
-          cwd: resolvedCwd,
-        })
-        yield* logTsconfigWarnings(warnings)
 
         if (failed > 0) {
+          const summary: GenieSummary = {
+            created: 0,
+            updated: 0,
+            unchanged: results.filter((r) => r.success).length,
+            skipped: 0,
+            failed,
+          }
+          tui.dispatch({ _tag: 'Complete', summary })
+          yield* tui.unmount({ mode: 'persist' })
           return yield* new GenieGenerationFailedError({
             failedCount: failed,
             message: `${failed} file(s) are out of date`,
           })
         }
 
-        yield* runGenieValidation({ cwd: resolvedCwd }).pipe(
-          Effect.mapError(
-            (error) =>
-              new GenieGenerationFailedError({
-                failedCount: 1,
-                message: error instanceof Error ? error.message : String(error),
-              }),
-          ),
-        )
+        // Run validation before completing — ensures UI reflects validation failures
+        const validationResult = yield* runGenieValidation({ cwd: resolvedCwd }).pipe(Effect.either)
+
+        if (Either.isLeft(validationResult)) {
+          const error = validationResult.left
+          const message = error instanceof Error ? error.message : String(error)
+          tui.dispatch({ _tag: 'Error', message })
+          yield* tui.unmount({ mode: 'persist' })
+          return yield* new GenieGenerationFailedError({
+            failedCount: 1,
+            message,
+          })
+        }
+
+        const summary: GenieSummary = {
+          created: 0,
+          updated: 0,
+          unchanged: results.filter((r) => r.success).length,
+          skipped: 0,
+          failed: 0,
+        }
+        tui.dispatch({ _tag: 'Complete', summary })
+        yield* tui.unmount({ mode: 'persist' })
 
         return
       }

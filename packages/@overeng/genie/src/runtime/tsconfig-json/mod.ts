@@ -3,7 +3,8 @@
  * Reference: https://www.typescriptlang.org/tsconfig
  */
 
-import type { GenieOutput, Strict } from '../mod.ts'
+import type { GenieContext, GenieOutput, Strict } from '../mod.ts'
+import { validateTsconfigReferences } from './validators/references.ts'
 
 type Target =
   | 'ES3'
@@ -311,5 +312,7 @@ export const tsconfigJson = <const T extends TSConfigArgs>(
   return {
     data: args,
     stringify: (_ctx) => JSON.stringify(args, null, 2) + '\n',
+    validate: (ctx: GenieContext) =>
+      validateTsconfigReferences({ ctx, references: args.references }),
   }
 }

@@ -42,12 +42,5 @@ export type GenerateSuccess =
   | { _tag: 'unchanged'; targetFilePath: string }
   | { _tag: 'skipped'; targetFilePath: string; reason: string }
 
-/** Warning info for tsconfig references that don't match workspace dependencies */
-export type TsconfigReferencesWarning = {
-  tsconfigPath: string
-  missingReferences: string[]
-  extraReferences: string[]
-}
-
 /** Result of attempting to stat a file - handles broken symlinks gracefully */
 export type StatResult = { type: 'directory' } | { type: 'file' } | { type: 'skip'; reason: string }

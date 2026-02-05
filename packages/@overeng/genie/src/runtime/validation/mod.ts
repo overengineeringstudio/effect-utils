@@ -19,20 +19,11 @@ export type PackageInfo = {
   name: string
   path: string
   dependencies?: Record<string, string>
+  devDependencies?: Record<string, string>
   optionalDependencies?: Record<string, string>
   peerDependencies?: Record<string, string>
   peerDependenciesMeta?: Record<string, { optional?: boolean }>
   pnpm?: { patchedDependencies?: Record<string, string> }
-}
-
-/** Context passed to genie validation hooks */
-export type GenieValidationContext = {
-  cwd: string
-  packageJson?: {
-    packages: PackageInfo[]
-    byName: Map<string, PackageInfo>
-    workspaceProvider: WorkspaceProvider
-  }
 }
 
 /** A validation issue found during genie validation */

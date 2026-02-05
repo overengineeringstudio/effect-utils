@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import type { GenieValidationContext, PackageInfo } from '../../validation/mod.ts'
+import type { GenieContext } from '../../mod.ts'
+import type { PackageInfo } from '../../validation/mod.ts'
 import { validatePackageRecompositionForPackage } from './recompose.ts'
 
 const makePackage = (
@@ -9,17 +10,12 @@ const makePackage = (
   ...overrides,
 })
 
-const makeContext = (packages: PackageInfo[]): GenieValidationContext => ({
+const makeContext = (packages: PackageInfo[]): GenieContext => ({
+  location: '.',
   cwd: '/workspace',
-  packageJson: {
+  workspace: {
     packages,
     byName: new Map(packages.map((p) => [p.name, p])),
-    workspaceProvider: {
-      name: 'pnpm',
-      discoverPackageJsonPaths: () => {
-        throw new Error('not implemented')
-      },
-    },
   },
 })
 
@@ -184,7 +180,7 @@ describe('validatePackageRecompositionForPackage', () => {
   })
 
   it('returns empty when packageJson context is missing', () => {
-    const ctx: GenieValidationContext = { cwd: '/workspace' }
+    const ctx: GenieContext = { location: '.', cwd: '/workspace' }
     const issues = validatePackageRecompositionForPackage({ ctx, pkgName: '@test/app' })
     expect(issues).toEqual([])
   })
