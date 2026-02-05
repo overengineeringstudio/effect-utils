@@ -490,15 +490,16 @@ in {
   # Processes (started via `devenv up`)
   # =========================================================================
 
+  # Process names include port for visibility in process-compose TUI
   processes = {
-    otel-collector = {
+    "otel-collector-${toString otelCollectorPort}" = {
       exec = ''
         exec ${pkgs.opentelemetry-collector-contrib}/bin/otelcol-contrib \
           --config ${otelCollectorConfig}
       '';
     };
 
-    tempo = {
+    "tempo-${toString tempoQueryPort}" = {
       exec = ''
         mkdir -p ${dataDir}/tempo-data ${dataDir}/tempo-wal ${dataDir}/tempo-metrics
         exec ${pkgs.tempo}/bin/tempo \
@@ -506,7 +507,7 @@ in {
       '';
     };
 
-    grafana = {
+    "grafana-${toString grafanaPort}" = {
       exec = ''
         mkdir -p ${dataDir}/grafana-data ${dataDir}/grafana-logs ${dataDir}/grafana-plugins
         mkdir -p ${dataDir}/grafana-provisioning/datasources ${dataDir}/grafana-provisioning/dashboards
