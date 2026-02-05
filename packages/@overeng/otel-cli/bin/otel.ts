@@ -6,11 +6,17 @@ import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Effect, Layer } from 'effect'
 
 import { runTuiMain } from '@overeng/tui-react'
+import { makeOtelCliLayer } from '@overeng/utils/node/otel-cli'
 
 import { otelCommand } from '../src/cli.ts'
 import { OtelConfig } from '../src/services/OtelConfig.ts'
 
-const baseLayer = Layer.mergeAll(NodeContext.layer, FetchHttpClient.layer, OtelConfig.live)
+const baseLayer = Layer.mergeAll(
+  NodeContext.layer,
+  FetchHttpClient.layer,
+  OtelConfig.live,
+  makeOtelCliLayer({ serviceName: 'otel-cli' }),
+)
 
 Cli.Command.run(otelCommand, {
   name: 'otel',
