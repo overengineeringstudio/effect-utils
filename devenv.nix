@@ -102,7 +102,10 @@ in
     # Shared task modules
     taskModules.genie
     # Use package-local tsc patched by effect-language-service (same pattern as vitest in test.nix)
-    (taskModules.ts { tscBin = "packages/@overeng/utils/node_modules/.bin/tsc"; })
+    (taskModules.ts {
+      tscBin = "packages/@overeng/utils/node_modules/.bin/tsc";
+      lspPatchCmd = "packages/@overeng/utils/node_modules/.bin/effect-language-service patch --dir packages/@overeng/utils/node_modules/typescript";
+    })
     taskModules.megarepo
     (taskModules.check { extraChecks = [ "workspace:check" ]; })
     (taskModules.clean { packages = allPackages; })

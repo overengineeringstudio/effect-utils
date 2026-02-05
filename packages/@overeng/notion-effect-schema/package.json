@@ -12,9 +12,6 @@
       ".": "./dist/mod.js"
     }
   },
-  "scripts": {
-    "postinstall": "effect-language-service patch"
-  },
   "devDependencies": {
     "@effect/language-service": "0.69.2",
     "@effect/vitest": "0.27.0",

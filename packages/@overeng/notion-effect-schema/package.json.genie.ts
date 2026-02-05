@@ -1,7 +1,6 @@
 import {
   catalog,
   effectLspDevDeps,
-  effectLspScripts,
   packageJson,
   privatePackageDefaults,
   type PackageJsonData,
@@ -20,9 +19,6 @@ export default packageJson({
     exports: {
       '.': './dist/mod.js',
     },
-  },
-  scripts: {
-    ...effectLspScripts,
   },
   devDependencies: {
     ...catalog.pick(

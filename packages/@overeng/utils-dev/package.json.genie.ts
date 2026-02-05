@@ -1,7 +1,6 @@
 import {
   catalog,
   effectLspDevDeps,
-  effectLspScripts,
   packageJson,
   privatePackageDefaults,
 } from '../../../genie/internal.ts'
@@ -19,7 +18,6 @@ const peerDepNames = [
 export default packageJson({
   name: '@overeng/utils-dev',
   ...privatePackageDefaults,
-  scripts: effectLspScripts,
   exports: {
     './node-vitest': './src/node-vitest/mod.ts',
   },

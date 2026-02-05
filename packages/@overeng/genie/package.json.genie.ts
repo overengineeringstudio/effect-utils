@@ -1,7 +1,6 @@
 import {
   catalog,
   effectLspDevDeps,
-  effectLspScripts,
   packageJson,
   privatePackageDefaults,
   type PackageJsonData,
@@ -13,7 +12,6 @@ export default packageJson({
   name: '@overeng/genie',
   ...privatePackageDefaults,
   scripts: {
-    ...effectLspScripts,
     storybook: 'storybook dev -p 6008',
     'storybook:build': 'storybook build',
   },

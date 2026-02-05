@@ -19,7 +19,6 @@ export {
   definePatchedDependencies,
   domLib,
   effectLspDevDeps,
-  effectLspScripts,
   effectUtilsPackages,
   githubRuleset,
   githubWorkflow,

@@ -1,7 +1,6 @@
 import {
   catalog,
   effectLspDevDeps,
-  effectLspScripts,
   packageJson,
   type PackageJsonData,
 } from '../../../genie/internal.ts'
@@ -28,7 +27,6 @@ export default packageJson({
     },
   },
   scripts: {
-    ...effectLspScripts,
     storybook: 'storybook dev -p 6011',
     'storybook:build': 'storybook build',
   },

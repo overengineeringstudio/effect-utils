@@ -28,6 +28,17 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **devenv/ts.nix**: Centralized Effect Language Service patching via `ts:patch-lsp` task
+  - Removed per-package `postinstall: 'effect-language-service patch'` scripts from all 15 packages
+  - Added `lspPatchCmd` parameter to `ts.nix` that creates a `ts:patch-lsp` task
+  - Fixes consumer install failures for published packages (e.g. `@overeng/react-inspector`)
+  - Effect LSP patching now runs automatically before `ts:check`, `ts:watch`, `ts:build`
+
+- **devenv/ts.nix**: Use package-local patched tsc binary for Effect Language Service diagnostics
+  - Added `tscBin` parameter (default: `"tsc"`) to specify a patched TypeScript binary
+  - Nix-provided tsc is unpatched and silently skips Effect plugin diagnostics
+  - `ts:clean` uses Nix tsc (always available, doesn't need the patch)
+
 - **@overeng/megarepo**, **@overeng/tui-react**: Migrated tests from async/await to `@effect/vitest`
   - All Effect-based tests now use `it.effect()` pattern instead of `async () => { await Effect.runPromise(...) }`
   - Provides better stack traces, fiber-aware timeouts, and cleaner Effect integration

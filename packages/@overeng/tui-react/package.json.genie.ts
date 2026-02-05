@@ -1,7 +1,6 @@
 import {
   catalog,
   effectLspDevDeps,
-  effectLspScripts,
   packageJson,
   privatePackageDefaults,
   type PackageJsonData,
@@ -27,7 +26,6 @@ export default packageJson({
     './opentui': './src/effect/opentui/mod.tsx',
   },
   scripts: {
-    ...effectLspScripts,
     storybook: 'storybook dev -p 6006',
     'storybook:build': 'storybook build',
     'test:e2e': 'playwright test',

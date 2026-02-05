@@ -18,9 +18,6 @@
       "./router": "./dist/router.js"
     }
   },
-  "scripts": {
-    "postinstall": "effect-language-service patch"
-  },
   "devDependencies": {
     "@effect/experimental": "0.58.0",
     "@effect/language-service": "0.69.2",

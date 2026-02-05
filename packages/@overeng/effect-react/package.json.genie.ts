@@ -1,7 +1,6 @@
 import {
   catalog,
   effectLspDevDeps,
-  effectLspScripts,
   packageJson,
   privatePackageDefaults,
   type PackageJsonData,
@@ -24,7 +23,6 @@ export default packageJson({
     },
   },
   scripts: {
-    ...effectLspScripts,
     storybook: 'storybook dev -p 6009',
     'storybook:build': 'storybook build',
   },
