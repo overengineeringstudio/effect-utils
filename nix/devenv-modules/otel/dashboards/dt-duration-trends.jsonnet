@@ -133,7 +133,7 @@ g.dashboard.new('dt Task Duration Trends')
 + g.dashboard.withDescription('Track task duration over time with p50/p95/p99 percentiles — identify regressions and improvements')
 + g.dashboard.graphTooltip.withSharedCrosshair()
 + g.dashboard.withTimezone('browser')
-+ g.dashboard.time.withFrom('now-24h')
++ g.dashboard.time.withFrom('now-3h')  // TraceQL metrics max range is 3h by default
 + g.dashboard.time.withTo('now')
 + g.dashboard.withPanels([
 
