@@ -1,9 +1,9 @@
-import { describe, it } from '@effect/vitest'
 import { Effect, Schema } from 'effect'
 import { expect } from 'vitest'
 
 import { DatabaseSchema } from '@overeng/notion-effect-schema'
 import { shouldNeverHappen } from '@overeng/utils'
+import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import { SchemaHelpers } from './schema-helpers.ts'
 
@@ -28,9 +28,9 @@ const makeDatabase = (properties: Record<string, unknown>) =>
     properties,
   })
 
-describe('SchemaHelpers', () => {
-  describe('getProperties', () => {
-    it('decodes typed property definitions from database schema properties', () => {
+Vitest.describe('SchemaHelpers', () => {
+  Vitest.describe('getProperties', () => {
+    Vitest.it('decodes typed property definitions from database schema properties', () => {
       const db = makeDatabase({
         B: { id: 'prop-b', type: 'title', title: {} },
         A: {
@@ -64,8 +64,8 @@ describe('SchemaHelpers', () => {
     })
   })
 
-  describe('validateProperties', () => {
-    it.effect('succeeds when required properties exist', () =>
+  Vitest.describe('validateProperties', () => {
+    Vitest.it.effect('succeeds when required properties exist', () =>
       Effect.gen(function* () {
         const db = makeDatabase({
           Name: { id: 'prop-name', type: 'title', title: {} },
@@ -87,7 +87,7 @@ describe('SchemaHelpers', () => {
       }),
     )
 
-    it.effect('fails when required properties are missing', () =>
+    Vitest.it.effect('fails when required properties are missing', () =>
       Effect.gen(function* () {
         const db = makeDatabase({
           Name: { id: 'prop-name', type: 'title', title: {} },
@@ -110,8 +110,8 @@ describe('SchemaHelpers', () => {
     )
   })
 
-  describe('getRelationTargetOrFail', () => {
-    it.effect('returns relation target when available', () =>
+  Vitest.describe('getRelationTargetOrFail', () => {
+    Vitest.it.effect('returns relation target when available', () =>
       Effect.gen(function* () {
         const db = makeDatabase({
           Customer: {
@@ -136,7 +136,7 @@ describe('SchemaHelpers', () => {
       }),
     )
 
-    it.effect('fails when relation target is missing', () =>
+    Vitest.it.effect('fails when relation target is missing', () =>
       Effect.gen(function* () {
         const db = makeDatabase({
           Customer: { id: 'prop-customer', type: 'title', title: {} },

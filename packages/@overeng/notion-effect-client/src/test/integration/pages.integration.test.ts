@@ -1,13 +1,14 @@
-import { describe, it } from '@effect/vitest'
 import { Effect } from 'effect'
 import { expect } from 'vitest'
+
+import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import { NotionPages } from '../../pages.ts'
 import { IntegrationTestLayer, SKIP_INTEGRATION, SKIP_MUTATIONS, TEST_IDS } from './setup.ts'
 
-describe.skipIf(SKIP_INTEGRATION)('NotionPages (integration)', () => {
-  describe('retrieve', () => {
-    it.effect('fetches page by ID', () =>
+Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionPages (integration)', () => {
+  Vitest.describe('retrieve', () => {
+    Vitest.it.effect('fetches page by ID', () =>
       Effect.gen(function* () {
         const page = yield* NotionPages.retrieve({
           pageId: TEST_IDS.pageWithBlocks,
@@ -19,7 +20,7 @@ describe.skipIf(SKIP_INTEGRATION)('NotionPages (integration)', () => {
       }).pipe(Effect.provide(IntegrationTestLayer)),
     )
 
-    it.effect('fetches database row as page', () =>
+    Vitest.it.effect('fetches database row as page', () =>
       Effect.gen(function* () {
         const page = yield* NotionPages.retrieve({
           pageId: TEST_IDS.rows.alpha,
@@ -32,10 +33,10 @@ describe.skipIf(SKIP_INTEGRATION)('NotionPages (integration)', () => {
     )
   })
 
-  describe.skipIf(SKIP_MUTATIONS)('create', () => {
+  Vitest.describe.skipIf(SKIP_MUTATIONS)('create', () => {
     const createdPageIds: string[] = []
 
-    it.effect(
+    Vitest.it.effect(
       'creates a new page in database',
       () =>
         Effect.gen(function* () {
@@ -65,8 +66,8 @@ describe.skipIf(SKIP_INTEGRATION)('NotionPages (integration)', () => {
     )
   })
 
-  describe.skipIf(SKIP_MUTATIONS)('update', () => {
-    it.effect(
+  Vitest.describe.skipIf(SKIP_MUTATIONS)('update', () => {
+    Vitest.it.effect(
       'updates page properties',
       () =>
         Effect.gen(function* () {
@@ -103,8 +104,8 @@ describe.skipIf(SKIP_INTEGRATION)('NotionPages (integration)', () => {
     )
   })
 
-  describe.skipIf(SKIP_MUTATIONS)('archive', () => {
-    it.effect(
+  Vitest.describe.skipIf(SKIP_MUTATIONS)('archive', () => {
+    Vitest.it.effect(
       'archives a page',
       () =>
         Effect.gen(function* () {

@@ -1,5 +1,6 @@
-import { describe, it } from '@effect/vitest'
-import { expect } from 'vitest'
+import { expect, it } from 'vitest'
+
+import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import { classifyError } from './claude-cli.ts'
 import {
@@ -9,8 +10,8 @@ import {
   ClaudeCliRateLimitError,
 } from './errors.ts'
 
-describe('classifyError', () => {
-  describe('ClaudeCliNotLoggedInError detection', () => {
+Vitest.describe('classifyError', () => {
+  Vitest.describe('ClaudeCliNotLoggedInError detection', () => {
     it('detects "not logged in" message', () => {
       const error = classifyError({
         exitCode: 1,
@@ -63,7 +64,7 @@ describe('classifyError', () => {
     })
   })
 
-  describe('ClaudeCliAuthError detection', () => {
+  Vitest.describe('ClaudeCliAuthError detection', () => {
     it('detects "unauthorized" message', () => {
       const error = classifyError({
         exitCode: 1,
@@ -106,7 +107,7 @@ describe('classifyError', () => {
     })
   })
 
-  describe('ClaudeCliRateLimitError detection', () => {
+  Vitest.describe('ClaudeCliRateLimitError detection', () => {
     it('detects "rate limit" message', () => {
       const error = classifyError({
         exitCode: 1,
@@ -139,7 +140,7 @@ describe('classifyError', () => {
     })
   })
 
-  describe('ClaudeCliExitError fallback', () => {
+  Vitest.describe('ClaudeCliExitError fallback', () => {
     it('returns ClaudeCliExitError for unrecognized errors', () => {
       const error = classifyError({
         exitCode: 42,
@@ -219,7 +220,7 @@ describe('classifyError', () => {
     })
   })
 
-  describe('error detection priority', () => {
+  Vitest.describe('error detection priority', () => {
     it('prefers login errors over auth errors', () => {
       // "not logged in" should take precedence
       const error = classifyError({
@@ -250,7 +251,7 @@ describe('classifyError', () => {
   })
 })
 
-describe('error types', () => {
+Vitest.describe('error types', () => {
   it('ClaudeCliNotLoggedInError has correct tag', () => {
     const error = new ClaudeCliNotLoggedInError({ message: 'test' })
     expect(error._tag).toBe('ClaudeCliNotLoggedInError')

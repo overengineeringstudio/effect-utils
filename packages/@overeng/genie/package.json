@@ -39,6 +39,7 @@
     "@opentui/react": "^0.1.74",
     "@overeng/tui-react": "workspace:*",
     "@overeng/utils": "workspace:*",
+    "@overeng/utils-dev": "workspace:*",
     "@playwright/test": "^1.57.0",
     "@storybook/react": "10.2.1",
     "@storybook/react-vite": "10.2.1",

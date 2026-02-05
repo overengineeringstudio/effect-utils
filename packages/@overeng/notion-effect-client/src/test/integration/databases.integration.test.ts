@@ -1,13 +1,14 @@
-import { describe, it } from '@effect/vitest'
 import { Effect, Option, Stream } from 'effect'
 import { expect } from 'vitest'
+
+import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import { NotionDatabases } from '../../databases.ts'
 import { IntegrationTestLayer, SKIP_INTEGRATION, TEST_IDS } from './setup.ts'
 
-describe.skipIf(SKIP_INTEGRATION)('NotionDatabases (integration)', () => {
-  describe('retrieve', () => {
-    it.effect('fetches database by ID', () =>
+Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionDatabases (integration)', () => {
+  Vitest.describe('retrieve', () => {
+    Vitest.it.effect('fetches database by ID', () =>
       Effect.gen(function* () {
         const database = yield* NotionDatabases.retrieve({
           databaseId: TEST_IDS.database,
@@ -20,8 +21,8 @@ describe.skipIf(SKIP_INTEGRATION)('NotionDatabases (integration)', () => {
     )
   })
 
-  describe('query', () => {
-    it.effect('queries all rows', () =>
+  Vitest.describe('query', () => {
+    Vitest.it.effect('queries all rows', () =>
       Effect.gen(function* () {
         const result = yield* NotionDatabases.query({
           databaseId: TEST_IDS.database,
@@ -32,7 +33,7 @@ describe.skipIf(SKIP_INTEGRATION)('NotionDatabases (integration)', () => {
       }).pipe(Effect.provide(IntegrationTestLayer)),
     )
 
-    it.effect('queries with filter', () =>
+    Vitest.it.effect('queries with filter', () =>
       Effect.gen(function* () {
         const result = yield* NotionDatabases.query({
           databaseId: TEST_IDS.database,
@@ -47,7 +48,7 @@ describe.skipIf(SKIP_INTEGRATION)('NotionDatabases (integration)', () => {
       }).pipe(Effect.provide(IntegrationTestLayer)),
     )
 
-    it.effect('queries with sort', () =>
+    Vitest.it.effect('queries with sort', () =>
       Effect.gen(function* () {
         const result = yield* NotionDatabases.query({
           databaseId: TEST_IDS.database,
@@ -58,7 +59,7 @@ describe.skipIf(SKIP_INTEGRATION)('NotionDatabases (integration)', () => {
       }).pipe(Effect.provide(IntegrationTestLayer)),
     )
 
-    it.effect('queries with page size limit', () =>
+    Vitest.it.effect('queries with page size limit', () =>
       Effect.gen(function* () {
         const result = yield* NotionDatabases.query({
           databaseId: TEST_IDS.database,
@@ -72,7 +73,7 @@ describe.skipIf(SKIP_INTEGRATION)('NotionDatabases (integration)', () => {
       }).pipe(Effect.provide(IntegrationTestLayer)),
     )
 
-    it.effect('queries with cursor for pagination', () =>
+    Vitest.it.effect('queries with cursor for pagination', () =>
       Effect.gen(function* () {
         // First page
         const firstPage = yield* NotionDatabases.query({
@@ -97,8 +98,8 @@ describe.skipIf(SKIP_INTEGRATION)('NotionDatabases (integration)', () => {
     )
   })
 
-  describe('queryStream', () => {
-    it.effect(
+  Vitest.describe('queryStream', () => {
+    Vitest.it.effect(
       'streams all results across pages',
       () =>
         Effect.gen(function* () {
@@ -120,7 +121,7 @@ describe.skipIf(SKIP_INTEGRATION)('NotionDatabases (integration)', () => {
       { timeout: 30000 },
     )
 
-    it.effect('streams with filter', () =>
+    Vitest.it.effect('streams with filter', () =>
       Effect.gen(function* () {
         const stream = NotionDatabases.queryStream({
           databaseId: TEST_IDS.database,

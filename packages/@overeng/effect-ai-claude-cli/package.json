@@ -20,6 +20,7 @@
     "@effect/language-service": "0.69.2",
     "@effect/platform": "0.94.2",
     "@effect/vitest": "0.27.0",
+    "@overeng/utils-dev": "workspace:*",
     "effect": "3.19.15",
     "typescript": "5.9.3",
     "vite": "7.3.0",

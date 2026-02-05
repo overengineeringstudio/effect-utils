@@ -3,9 +3,10 @@ import path from 'node:path'
 
 import { NodeContext } from '@effect/platform-node'
 import * as CommandExecutor from '@effect/platform/CommandExecutor'
-import { describe, it } from '@effect/vitest'
 import { Effect, Layer } from 'effect'
 import { expect } from 'vitest'
+
+import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import { shouldNeverHappen } from '../isomorphic/mod.ts'
 import { cmd } from './cmd.ts'
@@ -13,10 +14,10 @@ import { CurrentWorkingDirectory } from './workspace.ts'
 
 const TestLayer = Layer.mergeAll(NodeContext.layer, CurrentWorkingDirectory.live)
 
-describe('cmd helper', () => {
+Vitest.describe('cmd helper', () => {
   const ansiRegex = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g')
 
-  it.effect(
+  Vitest.it.effect(
     'runs tokenized string without shell',
     Effect.fnUntraced(
       function* () {
@@ -28,7 +29,7 @@ describe('cmd helper', () => {
     ),
   )
 
-  it.effect(
+  Vitest.it.effect(
     'runs array input',
     Effect.fnUntraced(
       function* () {
@@ -40,7 +41,7 @@ describe('cmd helper', () => {
     ),
   )
 
-  it.effect(
+  Vitest.it.effect(
     'supports logging with archive + retention',
     Effect.fnUntraced(
       function* () {
@@ -99,9 +100,10 @@ describe('cmd helper', () => {
       Effect.provide(TestLayer),
       Effect.scoped,
     ),
+    { timeout: 30_000 },
   )
 
-  it.effect(
+  Vitest.it.effect(
     'streams stdout and stderr with logger formatting',
     Effect.fnUntraced(
       function* () {

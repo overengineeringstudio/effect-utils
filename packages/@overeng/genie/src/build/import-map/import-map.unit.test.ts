@@ -4,9 +4,10 @@ import { pathToFileURL } from 'node:url'
 
 import { FileSystem } from '@effect/platform'
 import { NodeFileSystem } from '@effect/platform-node'
-import { it } from '@effect/vitest'
 import { Effect, Option, Schema } from 'effect'
-import { afterEach, beforeEach, describe, expect } from 'vitest'
+import { afterEach, beforeEach, expect, it } from 'vitest'
+
+import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import {
   extractImportMap,
@@ -53,7 +54,7 @@ const writeFile = Effect.fnUntraced(function* (filePath: string, content: string
   yield* fs.writeFileString(filePath, content)
 })
 
-describe('import-map', () => {
+Vitest.describe('import-map', () => {
   let tempDir: string
 
   beforeEach(async () => {
@@ -64,8 +65,8 @@ describe('import-map', () => {
     await Effect.runPromise(removeTempDir(tempDir).pipe(Effect.provide(TestLayer)))
   })
 
-  describe('findNearestPackageJson', () => {
-    it.effect(
+  Vitest.describe('findNearestPackageJson', () => {
+    Vitest.it.effect(
       'finds package.json in the same directory',
       Effect.fnUntraced(function* () {
         const packageJsonPath = path.join(tempDir, 'package.json')
@@ -78,7 +79,7 @@ describe('import-map', () => {
       }, Effect.provide(TestLayer)),
     )
 
-    it.effect(
+    Vitest.it.effect(
       'finds package.json in parent directory',
       Effect.fnUntraced(function* () {
         const packageJsonPath = path.join(tempDir, 'package.json')
@@ -91,7 +92,7 @@ describe('import-map', () => {
       }, Effect.provide(TestLayer)),
     )
 
-    it.effect(
+    Vitest.it.effect(
       'finds nearest package.json when multiple exist',
       Effect.fnUntraced(function* () {
         // Root package.json
@@ -109,7 +110,7 @@ describe('import-map', () => {
       }, Effect.provide(TestLayer)),
     )
 
-    it.effect(
+    Vitest.it.effect(
       'returns None when no package.json exists',
       Effect.fnUntraced(
         function* () {
@@ -123,8 +124,8 @@ describe('import-map', () => {
     )
   })
 
-  describe('findPackageJsonWithImports', () => {
-    it.effect(
+  Vitest.describe('findPackageJsonWithImports', () => {
+    Vitest.it.effect(
       'finds package.json with imports field',
       Effect.fnUntraced(function* () {
         const packageJsonPath = path.join(tempDir, 'package.json')
@@ -143,7 +144,7 @@ describe('import-map', () => {
       }, Effect.provide(TestLayer)),
     )
 
-    it.effect(
+    Vitest.it.effect(
       'skips package.json without imports and finds one with imports',
       Effect.fnUntraced(function* () {
         // Root package.json with imports
@@ -167,7 +168,7 @@ describe('import-map', () => {
       }, Effect.provide(TestLayer)),
     )
 
-    it.effect(
+    Vitest.it.effect(
       'returns None when no package.json with imports exists',
       Effect.fnUntraced(function* () {
         // Package.json without imports
@@ -181,8 +182,8 @@ describe('import-map', () => {
     )
   })
 
-  describe('extractImportMap', () => {
-    it.effect(
+  Vitest.describe('extractImportMap', () => {
+    Vitest.it.effect(
       'extracts imports field from package.json',
       Effect.fnUntraced(function* () {
         const packageJsonPath = path.join(tempDir, 'package.json')
@@ -205,7 +206,7 @@ describe('import-map', () => {
       }, Effect.provide(TestLayer)),
     )
 
-    it.effect(
+    Vitest.it.effect(
       'returns empty object when imports field is missing',
       Effect.fnUntraced(function* () {
         const packageJsonPath = path.join(tempDir, 'package.json')
@@ -216,7 +217,7 @@ describe('import-map', () => {
       }, Effect.provide(TestLayer)),
     )
 
-    it.effect(
+    Vitest.it.effect(
       'returns empty object when file does not exist',
       Effect.fnUntraced(function* () {
         const result = yield* extractImportMap(path.join(tempDir, 'nonexistent.json'))
@@ -224,7 +225,7 @@ describe('import-map', () => {
       }, Effect.provide(TestLayer)),
     )
 
-    it.effect(
+    Vitest.it.effect(
       'returns empty object when file is invalid JSON',
       Effect.fnUntraced(function* () {
         const packageJsonPath = path.join(tempDir, 'package.json')
@@ -235,7 +236,7 @@ describe('import-map', () => {
       }, Effect.provide(TestLayer)),
     )
 
-    it.effect(
+    Vitest.it.effect(
       'extracts imports from package.json.genie.ts when package.json has no imports (bootstrap)',
       Effect.fnUntraced(function* () {
         const packageJsonPath = path.join(tempDir, 'package.json')
@@ -265,7 +266,7 @@ export default workspaceRoot({
       }, Effect.provide(TestLayer)),
     )
 
-    it.effect(
+    Vitest.it.effect(
       'prefers package.json imports over genie source',
       Effect.fnUntraced(function* () {
         const packageJsonPath = path.join(tempDir, 'package.json')
@@ -289,7 +290,7 @@ export default workspaceRoot({
     )
   })
 
-  describe('isImportMapSpecifier', () => {
+  Vitest.describe('isImportMapSpecifier', () => {
     it('returns true for # prefixed specifiers', () => {
       expect(isImportMapSpecifier('#genie/mod.ts')).toBe(true)
       expect(isImportMapSpecifier('#lib')).toBe(true)
@@ -304,7 +305,7 @@ export default workspaceRoot({
     })
   })
 
-  describe('resolveImportMapSpecifier', () => {
+  Vitest.describe('resolveImportMapSpecifier', () => {
     const packageJsonDir = '/project'
 
     it('resolves exact match', () => {
@@ -360,8 +361,8 @@ export default workspaceRoot({
     })
   })
 
-  describe('resolveImportMapSpecifierForImporter', () => {
-    it.effect(
+  Vitest.describe('resolveImportMapSpecifierForImporter', () => {
+    Vitest.it.effect(
       'resolves a specifier using the nearest import map',
       Effect.fnUntraced(function* () {
         const packageJsonPath = path.join(tempDir, 'package.json')
@@ -386,8 +387,8 @@ export default workspaceRoot({
     )
   })
 
-  describe('resolveImportMapSpecifierForImporterSync', () => {
-    it.effect(
+  Vitest.describe('resolveImportMapSpecifierForImporterSync', () => {
+    Vitest.it.effect(
       'resolves a specifier using the nearest import map',
       Effect.fnUntraced(function* () {
         const packageJsonPath = path.join(tempDir, 'package.json')
@@ -412,8 +413,8 @@ export default workspaceRoot({
     )
   })
 
-  describe('resolveImportMapsInSource', () => {
-    it.effect(
+  Vitest.describe('resolveImportMapsInSource', () => {
+    Vitest.it.effect(
       'transforms import statements with # specifiers',
       Effect.fnUntraced(function* () {
         const packageJsonPath = path.join(tempDir, 'package.json')
@@ -436,7 +437,7 @@ export default workspaceRoot({
       }, Effect.provide(TestLayer)),
     )
 
-    it.effect(
+    Vitest.it.effect(
       'transforms export statements with # specifiers',
       Effect.fnUntraced(function* () {
         const packageJsonPath = path.join(tempDir, 'package.json')
@@ -459,7 +460,7 @@ export default workspaceRoot({
       }, Effect.provide(TestLayer)),
     )
 
-    it.effect(
+    Vitest.it.effect(
       'handles multiple imports',
       Effect.fnUntraced(function* () {
         const packageJsonPath = path.join(tempDir, 'package.json')
@@ -486,7 +487,7 @@ import { baz } from './local.ts'`
       }, Effect.provide(TestLayer)),
     )
 
-    it.effect(
+    Vitest.it.effect(
       'preserves non-# imports unchanged',
       Effect.fnUntraced(function* () {
         const packageJsonPath = path.join(tempDir, 'package.json')
@@ -511,7 +512,7 @@ import { bar } from '../parent.ts'`
       }, Effect.provide(TestLayer)),
     )
 
-    it.effect(
+    Vitest.it.effect(
       'returns source unchanged when no package.json found',
       Effect.fnUntraced(function* () {
         const filePath = path.join(tempDir, 'src', 'file.ts')
@@ -527,7 +528,7 @@ import { bar } from '../parent.ts'`
       }, Effect.provide(TestLayer)),
     )
 
-    it.effect(
+    Vitest.it.effect(
       'returns source unchanged when no imports field in package.json',
       Effect.fnUntraced(function* () {
         const packageJsonPath = path.join(tempDir, 'package.json')
@@ -545,7 +546,7 @@ import { bar } from '../parent.ts'`
       }, Effect.provide(TestLayer)),
     )
 
-    it.effect(
+    Vitest.it.effect(
       'handles double-quoted imports',
       Effect.fnUntraced(function* () {
         const packageJsonPath = path.join(tempDir, 'package.json')
@@ -568,7 +569,7 @@ import { bar } from '../parent.ts'`
       }, Effect.provide(TestLayer)),
     )
 
-    it.effect(
+    Vitest.it.effect(
       'handles type imports',
       Effect.fnUntraced(function* () {
         const packageJsonPath = path.join(tempDir, 'package.json')
@@ -591,7 +592,7 @@ import { bar } from '../parent.ts'`
       }, Effect.provide(TestLayer)),
     )
 
-    it.effect(
+    Vitest.it.effect(
       'handles re-exports',
       Effect.fnUntraced(function* () {
         const packageJsonPath = path.join(tempDir, 'package.json')
@@ -614,7 +615,7 @@ import { bar } from '../parent.ts'`
       }, Effect.provide(TestLayer)),
     )
 
-    it.effect(
+    Vitest.it.effect(
       'resolves relative imports to file URLs when requested',
       Effect.fnUntraced(function* () {
         const packageJsonPath = path.join(tempDir, 'package.json')

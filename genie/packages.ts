@@ -20,6 +20,7 @@ export const internalPackages = [
   'tui-core',
   'tui-react',
   'utils',
+  'utils-dev',
 ] as const
 
 /** Short name of an internal @overeng/* package. */

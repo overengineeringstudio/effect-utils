@@ -1,6 +1,7 @@
-import { describe, it } from '@effect/vitest'
 import { Chunk, Duration, Effect, Layer, Logger, LogLevel, Ref, Runtime } from 'effect'
 import { expect } from 'vitest'
+
+import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import {
   dumpActiveHandles,
@@ -29,9 +30,9 @@ const makeTestLogger = Effect.fnUntraced(function* () {
   return { getLogs, loggerLayer } as const
 })
 
-describe('ActiveHandlesDebugger', () => {
-  describe('dumpActiveHandles', () => {
-    it.effect(
+Vitest.describe('ActiveHandlesDebugger', () => {
+  Vitest.describe('dumpActiveHandles', () => {
+    Vitest.it.effect(
       'returns active handles info',
       Effect.fnUntraced(function* () {
         const info = yield* dumpActiveHandles
@@ -47,7 +48,7 @@ describe('ActiveHandlesDebugger', () => {
       }),
     )
 
-    it.effect(
+    Vitest.it.effect(
       'includes handle type and details',
       Effect.fnUntraced(function* () {
         const info = yield* dumpActiveHandles
@@ -63,7 +64,7 @@ describe('ActiveHandlesDebugger', () => {
       }),
     )
 
-    it.effect(
+    Vitest.it.effect(
       'detects new handles when created',
       Effect.fnUntraced(function* () {
         // Get baseline handle count
@@ -85,8 +86,8 @@ describe('ActiveHandlesDebugger', () => {
     )
   })
 
-  describe('logActiveHandles', () => {
-    it.effect(
+  Vitest.describe('logActiveHandles', () => {
+    Vitest.it.effect(
       'logs handles info',
       Effect.fnUntraced(function* () {
         const { getLogs, loggerLayer } = yield* makeTestLogger()
@@ -99,7 +100,7 @@ describe('ActiveHandlesDebugger', () => {
       }),
     )
 
-    it.effect(
+    Vitest.it.effect(
       'returns the handles info',
       Effect.fnUntraced(function* () {
         const info = yield* logActiveHandles
@@ -110,8 +111,8 @@ describe('ActiveHandlesDebugger', () => {
     )
   })
 
-  describe('monitorActiveHandles', () => {
-    it.effect(
+  Vitest.describe('monitorActiveHandles', () => {
+    Vitest.it.effect(
       'returns void immediately after forking the monitor',
       Effect.fnUntraced(function* () {
         // monitorActiveHandles forks internally and returns void
@@ -125,7 +126,7 @@ describe('ActiveHandlesDebugger', () => {
       }),
     )
 
-    it.effect(
+    Vitest.it.effect(
       'forks a background fiber that is cleaned up when scope closes',
       Effect.fnUntraced(function* () {
         // monitorActiveHandles forks scoped, so it returns immediately
@@ -138,8 +139,8 @@ describe('ActiveHandlesDebugger', () => {
     )
   })
 
-  describe('withActiveHandlesDumpOnSigint', () => {
-    it.effect(
+  Vitest.describe('withActiveHandlesDumpOnSigint', () => {
+    Vitest.it.effect(
       'runs the wrapped effect normally',
       Effect.fnUntraced(function* () {
         const result = yield* withActiveHandlesDumpOnSigint(Effect.succeed(42))
@@ -147,12 +148,12 @@ describe('ActiveHandlesDebugger', () => {
       }),
     )
 
-    it.effect('cleans up handler after effect completes', () =>
+    Vitest.it.effect('cleans up handler after effect completes', () =>
       // Just verify it doesn't throw and completes normally
       withActiveHandlesDumpOnSigint(Effect.void),
     )
 
-    it.effect(
+    Vitest.it.effect(
       'propagates errors from wrapped effect',
       Effect.fnUntraced(function* () {
         const exit = yield* withActiveHandlesDumpOnSigint(Effect.fail('test-error')).pipe(

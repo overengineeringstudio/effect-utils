@@ -2,9 +2,8 @@
  * Integration tests for db dump command
  */
 
-import { describe, it } from '@effect/vitest'
 import { Effect, Option, Stream } from 'effect'
-import { expect } from 'vitest'
+import { expect, it } from 'vitest'
 
 import { NotionBlocks, NotionDatabases } from '@overeng/notion-effect-client'
 import {
@@ -12,6 +11,7 @@ import {
   SKIP_INTEGRATION,
   TEST_IDS,
 } from '@overeng/notion-effect-client/test'
+import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import {
   decodeDumpPage,
@@ -20,8 +20,8 @@ import {
   encodeDumpPage,
 } from '../../dump/schema.ts'
 
-describe.skipIf(SKIP_INTEGRATION)('db dump - content fetching', () => {
-  it.effect(
+Vitest.describe.skipIf(SKIP_INTEGRATION)('db dump - content fetching', () => {
+  Vitest.it.effect(
     'should fetch page content blocks using retrieveAllNested',
     () =>
       Effect.gen(function* () {
@@ -51,7 +51,7 @@ describe.skipIf(SKIP_INTEGRATION)('db dump - content fetching', () => {
     { timeout: 60000 },
   )
 
-  it.effect(
+  Vitest.it.effect(
     'should respect maxDepth option when fetching content',
     () =>
       Effect.gen(function* () {
@@ -86,7 +86,7 @@ describe.skipIf(SKIP_INTEGRATION)('db dump - content fetching', () => {
     { timeout: 60000 },
   )
 
-  it.effect(
+  Vitest.it.effect(
     'should convert BlockWithDepth to DumpBlockWithDepth format',
     () =>
       Effect.gen(function* () {
@@ -129,8 +129,8 @@ describe.skipIf(SKIP_INTEGRATION)('db dump - content fetching', () => {
   )
 })
 
-describe.skipIf(SKIP_INTEGRATION)('db dump - database queries', () => {
-  it.effect(
+Vitest.describe.skipIf(SKIP_INTEGRATION)('db dump - database queries', () => {
+  Vitest.it.effect(
     'should query database and fetch pages',
     () =>
       Effect.gen(function* () {
@@ -153,7 +153,7 @@ describe.skipIf(SKIP_INTEGRATION)('db dump - database queries', () => {
     { timeout: 30000 },
   )
 
-  it.effect(
+  Vitest.it.effect(
     'should handle pagination correctly',
     () =>
       Effect.gen(function* () {
@@ -188,8 +188,8 @@ describe.skipIf(SKIP_INTEGRATION)('db dump - database queries', () => {
   )
 })
 
-describe.skipIf(SKIP_INTEGRATION)('db dump - DumpPage schema', () => {
-  it.effect(
+Vitest.describe.skipIf(SKIP_INTEGRATION)('db dump - DumpPage schema', () => {
+  Vitest.it.effect(
     'should encode and decode DumpPage with content',
     () =>
       Effect.gen(function* () {

@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/utils-dev**: New package with enhanced Vitest utilities for Effect-based testing
+  - `makeWithTestCtx` / `withTestCtx` for automatic layer provisioning, OTEL integration, and timeouts
+  - `asProp` for property-based testing with shrinking phase visibility
+  - Migrated 22 test files across 7 packages to the new pattern
+
 - **@overeng/genie**: GitHub Repository Ruleset generator (`githubRuleset`)
   - Type-safe configuration for GitHub Repository Rulesets via the REST API
   - Full support for all 22 rule types with comprehensive JSDoc documentation
@@ -25,6 +30,8 @@ All notable changes to this project will be documented in this file.
   - Removed `MEGAREPO_ROOT_*`, `MEGAREPO_MEMBERS`, `MEGAREPO_NIX_WORKSPACE` env vars
   - Use `DEVENV_ROOT` (provided by devenv) instead of `MEGAREPO_ROOT_NEAREST`
   - Simplified `.envrc` to just `use devenv` (no generated file needed)
+
+- **@overeng/megarepo**: Split `pnpmDepsHash` by platform to fix Linux/Darwin store divergence
 
 - **@overeng/megarepo**: Nix lock sync is now auto-detected and uses top-level config
   - **Breaking**: Moved from `generators.nix.lockSync` to top-level `lockSync` config
@@ -66,6 +73,12 @@ All notable changes to this project will be documented in this file.
   - Prevents pnpm deps hash churn across CI runs
 - **nix/workspace-tools/lib/mk-pnpm-cli.nix**: Force `supportedArchitectures` in Nix pnpm installs
   - Ensures pnpm store hashes remain stable across macOS/Linux (R5)
+- **nix/workspace-tools/lib/mk-pnpm-cli.nix**: Generate pnpm store with recursive install
+  - Aligns store generation scope with offline install (R6)
+  - Prevents missing tarballs during `nix:check` for multi-package workspaces
+- **nix/workspace-tools/lib/mk-pnpm-cli.nix**: Force dev dependencies during pnpm store generation
+  - Avoids production-only installs that drop dev-only tarballs
+  - Fixes `ERR_PNPM_NO_OFFLINE_TARBALL` in `nix build`/`nix:check`
 
 ### Removed
 

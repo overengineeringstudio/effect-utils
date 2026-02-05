@@ -207,7 +207,7 @@ Vitest.asProp(
       })(test),
       Effect.logDuration(`Run ${runIndex + 1}/${numRuns}`),
     ),
-  { fastCheck: { numRuns: IS_CI ? 6 : 20 } },
+  { fastCheck: { numRuns: Vitest.IS_CI ? 6 : 20 } },
 )
 ```
 
@@ -232,7 +232,7 @@ Vitest.scopedLive.prop('processes any todo', [TodoSchema], ([todo], test) =>
 
 ### Debugger-Aware Configuration
 
-Use `Vitest.DEBUGGER_ACTIVE` to switch between debug and CI configurations:
+Use `Vitest.DEBUGGER_ACTIVE` and `Vitest.IS_CI` to switch between debug and CI configurations:
 
 ```typescript
 Vitest.asProp(
@@ -255,7 +255,7 @@ Vitest.asProp(
     }).pipe(withTestCtx()(test)),
   Vitest.DEBUGGER_ACTIVE
     ? { fastCheck: { numRuns: 1 }, timeout: testTimeout * 100 }
-    : { fastCheck: { numRuns: IS_CI ? 6 : 20 } },
+    : { fastCheck: { numRuns: Vitest.IS_CI ? 6 : 20 } },
 )
 ```
 

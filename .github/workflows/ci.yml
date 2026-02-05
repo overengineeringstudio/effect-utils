@@ -35,8 +35,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.local/share/pnpm/store
-          key: "pnpm-store-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
-          restore-keys: 'pnpm-store-${{ runner.os }}-'
+          key: "pnpm-store-v2-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          restore-keys: 'pnpm-store-v2-${{ runner.os }}-'
       - name: Type check
         run: 'dt ts:check'
   lint:
@@ -64,8 +64,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.local/share/pnpm/store
-          key: "pnpm-store-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
-          restore-keys: 'pnpm-store-${{ runner.os }}-'
+          key: "pnpm-store-v2-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          restore-keys: 'pnpm-store-v2-${{ runner.os }}-'
       - name: Format + lint
         run: 'dt lint:check'
   test:
@@ -96,8 +96,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.local/share/pnpm/store
-          key: "pnpm-store-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
-          restore-keys: 'pnpm-store-${{ runner.os }}-'
+          key: "pnpm-store-v2-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          restore-keys: 'pnpm-store-v2-${{ runner.os }}-'
       - name: Unit tests
         run: 'dt test:run'
   nix-check:
@@ -128,7 +128,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.local/share/pnpm/store
-          key: "pnpm-store-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
-          restore-keys: 'pnpm-store-${{ runner.os }}-'
+          key: "pnpm-store-v2-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          restore-keys: 'pnpm-store-v2-${{ runner.os }}-'
       - name: Nix hash check
         run: 'dt nix:check'

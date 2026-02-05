@@ -1,13 +1,14 @@
-import { describe, it } from '@effect/vitest'
 import { Effect, Stream } from 'effect'
 import { expect } from 'vitest'
+
+import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import { NotionUsers } from '../../users.ts'
 import { IntegrationTestLayer, SKIP_INTEGRATION } from './setup.ts'
 
-describe.skipIf(SKIP_INTEGRATION)('NotionUsers (integration)', () => {
-  describe('me', () => {
-    it.effect('fetches the bot user', () =>
+Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionUsers (integration)', () => {
+  Vitest.describe('me', () => {
+    Vitest.it.effect('fetches the bot user', () =>
       Effect.gen(function* () {
         const user = yield* NotionUsers.me()
 
@@ -17,8 +18,8 @@ describe.skipIf(SKIP_INTEGRATION)('NotionUsers (integration)', () => {
     )
   })
 
-  describe('list', () => {
-    it.effect('lists workspace users', () =>
+  Vitest.describe('list', () => {
+    Vitest.it.effect('lists workspace users', () =>
       Effect.gen(function* () {
         const result = yield* NotionUsers.list()
 
@@ -27,7 +28,7 @@ describe.skipIf(SKIP_INTEGRATION)('NotionUsers (integration)', () => {
       }).pipe(Effect.provide(IntegrationTestLayer)),
     )
 
-    it.effect('lists with page size limit', () =>
+    Vitest.it.effect('lists with page size limit', () =>
       Effect.gen(function* () {
         const result = yield* NotionUsers.list({ pageSize: 1 })
 
@@ -36,8 +37,8 @@ describe.skipIf(SKIP_INTEGRATION)('NotionUsers (integration)', () => {
     )
   })
 
-  describe('listStream', () => {
-    it.effect(
+  Vitest.describe('listStream', () => {
+    Vitest.it.effect(
       'streams all users',
       () =>
         Effect.gen(function* () {
@@ -54,8 +55,8 @@ describe.skipIf(SKIP_INTEGRATION)('NotionUsers (integration)', () => {
     )
   })
 
-  describe('retrieve', () => {
-    it.effect('fetches a specific user by ID', () =>
+  Vitest.describe('retrieve', () => {
+    Vitest.it.effect('fetches a specific user by ID', () =>
       Effect.gen(function* () {
         // First get the bot user ID
         const bot = yield* NotionUsers.me()

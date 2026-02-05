@@ -47,6 +47,7 @@
     "@effect/workflow": "^0.16.0",
     "@opentui/core": "^0.1.74",
     "@opentui/react": "^0.1.74",
+    "@overeng/utils-dev": "workspace:*",
     "@playwright/test": "^1.57.0",
     "@storybook/react": "10.2.1",
     "@storybook/react-vite": "10.2.1",

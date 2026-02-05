@@ -1,7 +1,13 @@
 # Generated file - DO NOT EDIT
 # Source: pnpm-workspace.yaml.genie.ts
 
-packages: [., ../effect-path, ../tui-core, ../tui-react, ../utils]
+packages:
+  - .
+  - ../effect-path
+  - ../tui-core
+  - ../tui-react
+  - ../utils
+  - ../utils-dev
 
 supportedArchitectures:
   os: [linux, darwin]

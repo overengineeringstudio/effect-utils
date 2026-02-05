@@ -1,13 +1,14 @@
-import { describe, it } from '@effect/vitest'
 import { Effect, Stream } from 'effect'
 import { expect } from 'vitest'
+
+import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import { NotionSearch } from '../../search.ts'
 import { IntegrationTestLayer, SKIP_INTEGRATION } from './setup.ts'
 
-describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
-  describe('search', () => {
-    it.effect('searches for pages and databases', () =>
+Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
+  Vitest.describe('search', () => {
+    Vitest.it.effect('searches for pages and databases', () =>
       Effect.gen(function* () {
         const result = yield* NotionSearch.search({
           query: 'Test',
@@ -18,7 +19,7 @@ describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
       }).pipe(Effect.provide(IntegrationTestLayer)),
     )
 
-    it.effect('filters to pages only', () =>
+    Vitest.it.effect('filters to pages only', () =>
       Effect.gen(function* () {
         const result = yield* NotionSearch.search({
           query: 'Test',
@@ -32,7 +33,7 @@ describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
       }).pipe(Effect.provide(IntegrationTestLayer)),
     )
 
-    it.effect('filters to databases only', () =>
+    Vitest.it.effect('filters to databases only', () =>
       Effect.gen(function* () {
         const result = yield* NotionSearch.search({
           query: 'Test',
@@ -46,7 +47,7 @@ describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
       }).pipe(Effect.provide(IntegrationTestLayer)),
     )
 
-    it.effect('sorts by last_edited_time', () =>
+    Vitest.it.effect('sorts by last_edited_time', () =>
       Effect.gen(function* () {
         const result = yield* NotionSearch.search({
           sort: { direction: 'descending', timestamp: 'last_edited_time' },
@@ -57,7 +58,7 @@ describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
       }).pipe(Effect.provide(IntegrationTestLayer)),
     )
 
-    it.effect('paginates results', () =>
+    Vitest.it.effect('paginates results', () =>
       Effect.gen(function* () {
         const result = yield* NotionSearch.search({
           pageSize: 1,
@@ -68,8 +69,8 @@ describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
     )
   })
 
-  describe('searchStream', () => {
-    it.effect(
+  Vitest.describe('searchStream', () => {
+    Vitest.it.effect(
       'streams all search results',
       () =>
         Effect.gen(function* () {
@@ -85,7 +86,7 @@ describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
       { timeout: 30000 },
     )
 
-    it.effect('streams with filter', () =>
+    Vitest.it.effect('streams with filter', () =>
       Effect.gen(function* () {
         const stream = NotionSearch.searchStream({
           filter: { property: 'object', value: 'database' },

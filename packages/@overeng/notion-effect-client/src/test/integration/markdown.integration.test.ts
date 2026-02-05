@@ -1,15 +1,15 @@
-import { describe, it } from '@effect/vitest'
 import { Effect } from 'effect'
 import { expect } from 'vitest'
 
 import { RichTextUtils } from '@overeng/notion-effect-schema'
+import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import { BlockHelpers, NotionMarkdown } from '../../markdown.ts'
 import { IntegrationTestLayer, SKIP_INTEGRATION, TEST_IDS } from './setup.ts'
 
-describe.skipIf(SKIP_INTEGRATION)('NotionMarkdown (integration)', () => {
-  describe('pageToMarkdown', () => {
-    it.effect(
+Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionMarkdown (integration)', () => {
+  Vitest.describe('pageToMarkdown', () => {
+    Vitest.it.effect(
       'converts all block types correctly',
       () =>
         Effect.gen(function* () {
@@ -68,7 +68,7 @@ describe.skipIf(SKIP_INTEGRATION)('NotionMarkdown (integration)', () => {
       { timeout: 60000 },
     )
 
-    it.effect(
+    Vitest.it.effect(
       'converts a page with rich text formatting',
       () =>
         Effect.gen(function* () {
@@ -86,7 +86,7 @@ describe.skipIf(SKIP_INTEGRATION)('NotionMarkdown (integration)', () => {
       { timeout: 60000 },
     )
 
-    it.effect(
+    Vitest.it.effect(
       'converts nested blocks correctly',
       () =>
         Effect.gen(function* () {
@@ -102,7 +102,7 @@ describe.skipIf(SKIP_INTEGRATION)('NotionMarkdown (integration)', () => {
       { timeout: 60000 },
     )
 
-    it.effect(
+    Vitest.it.effect(
       'handles empty page',
       () =>
         Effect.gen(function* () {
@@ -115,7 +115,7 @@ describe.skipIf(SKIP_INTEGRATION)('NotionMarkdown (integration)', () => {
       { timeout: 30000 },
     )
 
-    it.effect(
+    Vitest.it.effect(
       'supports custom transformers with BlockHelpers',
       () =>
         Effect.gen(function* () {

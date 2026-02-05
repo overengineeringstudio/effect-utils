@@ -61,6 +61,7 @@ export default packageJson({
     ...catalog.pick(
       ...ownPeerDepNames,
       '@effect/vitest',
+      '@overeng/utils-dev',
       '@storybook/react',
       '@storybook/react-vite',
       '@types/react',
