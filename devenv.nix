@@ -99,6 +99,8 @@ in
     })
     # `dt` (devenv tasks) wrapper script and shell completions
     ./nix/devenv-modules/dt.nix
+    # OpenTelemetry observability stack (Collector + Tempo + Grafana)
+    (import ./nix/devenv-modules/otel.nix {})
     # Playwright browser drivers and environment setup
     inputs.playwright.devenvModules.default
     # Shared task modules
