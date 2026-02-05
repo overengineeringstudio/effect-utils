@@ -234,6 +234,7 @@ let
     apiVersion: 1
     datasources:
       - name: Tempo
+        uid: tempo
         type: tempo
         access: proxy
         url: http://127.0.0.1:${toString tempoQueryPort}
@@ -572,19 +573,17 @@ let
 
       echo ""
 
-      # Tempo (via Grafana datasource health proxy)
-      echo -e "''${BOLD}Tempo''${NC}"
-      local ds_health
-      if ds_health=$(check_endpoint "Tempo" "$GRAFANA_URL" "/api/datasources/uid/tempo/health" 2>/dev/null); then
-        ok "Healthy via Grafana proxy"
+      # Tempo (direct readiness check)
+      echo -e "''${BOLD}Tempo''${NC} (http://127.0.0.1:${toString tempoQueryPort})"
+      local tempo_url="http://127.0.0.1:${toString tempoQueryPort}"
+      local tempo_resp
+      tempo_resp=$(${pkgs.curl}/bin/curl -s --max-time 3 "$tempo_url/ready" 2>/dev/null) || true
+      if [[ "$tempo_resp" == "ready" ]]; then
+        ok "Ready"
+      elif [[ -n "$tempo_resp" ]]; then
+        warn "Warming up: $tempo_resp"
       else
-        # Try direct Tempo endpoint as fallback
-        local tempo_url="http://127.0.0.1:${toString tempoQueryPort}"
-        if check_endpoint "Tempo" "$tempo_url" "/ready" >/dev/null 2>&1; then
-          ok "Healthy (direct: $tempo_url)"
-        else
-          fail "Not reachable"
-        fi
+        fail "Not reachable"
       fi
 
       echo ""
@@ -627,17 +626,30 @@ let
       echo -e "''${BOLD}Recent Traces''${NC}"
       echo ""
 
-      local query="''${1:-\{\}}"
+      local default_query='{}'
+      local query="''${1:-$default_query}"
       local limit="''${2:-10}"
+
+      # Look up the Tempo datasource UID dynamically (may not be "tempo")
+      local tempo_uid
+      tempo_uid=$(${pkgs.curl}/bin/curl -sf --max-time 3 "$GRAFANA_URL/api/datasources" 2>/dev/null \
+        | ${pkgs.jq}/bin/jq -r '.[] | select(.type == "tempo") | .uid' 2>/dev/null) || true
+      if [[ -z "$tempo_uid" ]]; then
+        fail "Cannot find Tempo datasource in Grafana"
+        info "Make sure the stack is running: devenv up"
+        echo ""
+        return
+      fi
 
       local payload
       payload=$(${pkgs.jq}/bin/jq -n \
         --arg query "$query" \
         --arg limit "$limit" \
+        --arg uid "$tempo_uid" \
         '{
           queries: [{
             refId: "A",
-            datasource: { uid: "tempo", type: "tempo" },
+            datasource: { uid: $uid, type: "tempo" },
             queryType: "traceql",
             query: $query,
             limit: ($limit | tonumber),
@@ -660,7 +672,8 @@ let
         if [[ "$trace_count" -gt 0 ]]; then
           ok "$trace_count traces found (query: $query, last 1h)"
           echo ""
-          # Try to extract trace IDs and service names from the response
+          printf "  %-34s\t%-20s\t%-30s\t%s\n" "TRACE ID" "SERVICE" "NAME" "DURATION" | ${pkgs.util-linux}/bin/column -t -s $'\t'
+          # Extract trace details from the response
           echo "$response" | ${pkgs.jq}/bin/jq -r '
             .results.A.frames[]? |
             .data as $data |
@@ -671,9 +684,11 @@ let
               "  " +
               (if $idx["traceID"] then $data.values[$idx["traceID"]][$i] // "-" else "-" end) +
               "\t" +
-              (if $idx["rootServiceName"] then $data.values[$idx["rootServiceName"]][$i] // "-" else "-" end) +
+              (if $idx["traceService"] then $data.values[$idx["traceService"]][$i] // "-" else "-" end) +
               "\t" +
-              (if $idx["rootTraceName"] then $data.values[$idx["rootTraceName"]][$i] // "-" else "-" end)
+              (if $idx["traceName"] then $data.values[$idx["traceName"]][$i] // "-" else "-" end) +
+              "\t" +
+              (if $idx["traceDuration"] then ($data.values[$idx["traceDuration"]][$i] // 0 | tostring) + "ms" else "-" end)
             else empty end
           ' 2>/dev/null | head -20 | ${pkgs.util-linux}/bin/column -t -s $'\t' || true
         else
