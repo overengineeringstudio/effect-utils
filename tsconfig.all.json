@@ -58,6 +58,9 @@
     },
     {
       "path": "./packages/@overeng/utils"
+    },
+    {
+      "path": "./packages/@overeng/utils-dev"
     }
   ],
   "files": []

@@ -1,4 +1,10 @@
-import { catalog, packageJson, type PackageJsonData } from '../../../genie/internal.ts'
+import {
+  catalog,
+  effectLspDevDeps,
+  effectLspScripts,
+  packageJson,
+  type PackageJsonData,
+} from '../../../genie/internal.ts'
 
 const peerDepNames = ['effect', 'react'] as const
 
@@ -22,6 +28,7 @@ export default packageJson({
     },
   },
   scripts: {
+    ...effectLspScripts,
     storybook: 'storybook dev -p 6011',
     'storybook:build': 'storybook build',
   },
@@ -29,6 +36,7 @@ export default packageJson({
     ...catalog.pick('is-dom'),
   },
   devDependencies: {
+    ...effectLspDevDeps(),
     ...catalog.pick(
       ...peerDepNames,
       '@storybook/react',

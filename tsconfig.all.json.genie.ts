@@ -23,6 +23,7 @@ const references = [
   './packages/@overeng/tui-react',
   './packages/@overeng/tui-core',
   './packages/@overeng/utils',
+  './packages/@overeng/utils-dev',
 ]
 
 // This file is meant for convenience to built all TS projects in the workspace at once

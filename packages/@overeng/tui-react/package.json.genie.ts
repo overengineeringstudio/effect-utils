@@ -1,5 +1,7 @@
 import {
   catalog,
+  effectLspDevDeps,
+  effectLspScripts,
   packageJson,
   privatePackageDefaults,
   type PackageJsonData,
@@ -25,6 +27,7 @@ export default packageJson({
     './opentui': './src/effect/opentui/mod.tsx',
   },
   scripts: {
+    ...effectLspScripts,
     storybook: 'storybook dev -p 6006',
     'storybook:build': 'storybook build',
     'test:e2e': 'playwright test',
@@ -42,13 +45,13 @@ export default packageJson({
     ...catalog.pick('yoga-layout', 'string-width', 'cli-truncate', '@overeng/tui-core'),
   },
   devDependencies: {
+    ...effectLspDevDeps(),
     ...catalog.pick(
       ...peerDepNames,
       // TypeScript & testing
       '@types/node',
       '@types/react',
       '@types/react-reconciler',
-      'typescript',
       'vitest',
       '@effect/vitest',
       '@playwright/test',

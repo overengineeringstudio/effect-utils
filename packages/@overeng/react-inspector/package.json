@@ -17,6 +17,7 @@
     }
   },
   "scripts": {
+    "postinstall": "effect-language-service patch",
     "storybook": "storybook dev -p 6011",
     "storybook:build": "storybook build"
   },
@@ -24,6 +25,7 @@
     "is-dom": "1.1.0"
   },
   "devDependencies": {
+    "@effect/language-service": "0.69.2",
     "@storybook/react": "10.2.1",
     "@storybook/react-vite": "10.2.1",
     "@testing-library/react": "16.3.1",
@@ -36,6 +38,7 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "storybook": "10.2.1",
+    "typescript": "5.9.3",
     "vite": "7.3.0",
     "vitest": "3.2.4"
   },

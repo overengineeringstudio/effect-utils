@@ -17,6 +17,7 @@
     }
   },
   "scripts": {
+    "postinstall": "effect-language-service patch",
     "storybook": "storybook dev -p 6006",
     "storybook:build": "storybook build",
     "test:e2e": "playwright test",
@@ -32,6 +33,7 @@
     "@effect-atom/atom": "0.4.13",
     "@effect-atom/atom-react": "0.4.5",
     "@effect/cli": "0.73.1",
+    "@effect/language-service": "0.69.2",
     "@effect/platform": "0.94.2",
     "@effect/platform-node": "0.104.1",
     "@effect/vitest": "0.27.0",

@@ -18,28 +18,35 @@
 #   results. If you suspect stale cache issues (e.g., cross-package signature
 #   changes not detected), run `dt ts:clean` first to clear the cache.
 #   Ensure all packages are listed in tsconfig.all.json references.
-{ tsconfigFile ? "tsconfig.all.json" }:
+#
+# tscBin:
+#   Path to the tsc binary. Use a package-local node_modules/.bin/tsc to pick up
+#   the Effect Language Service patch (effect-language-service patch runs as a
+#   postinstall and patches node_modules/typescript). The Nix-provided tsc is
+#   unpatched, so Effect plugin diagnostics are silently skipped unless a patched
+#   binary is used.
+{ tsconfigFile ? "tsconfig.all.json", tscBin ? "tsc" }:
 { ... }:
 {
   tasks = {
     "ts:check" = {
       description = "Run TypeScript type checking";
-      exec = "tsc --build ${tsconfigFile}";
+      exec = "${tscBin} --build ${tsconfigFile}";
       after = [ "genie:run" "pnpm:install" ];
     };
     "ts:watch" = {
       description = "Run TypeScript in watch mode";
-      exec = "tsc --build --watch ${tsconfigFile}";
+      exec = "${tscBin} --build --watch ${tsconfigFile}";
       after = [ "genie:run" "pnpm:install" ];
     };
     "ts:build" = {
       description = "Build all packages (tsc --build)";
-      exec = "tsc --build ${tsconfigFile}";
+      exec = "${tscBin} --build ${tsconfigFile}";
       after = [ "genie:run" "pnpm:install" ];
     };
     "ts:clean" = {
       description = "Remove TypeScript build artifacts";
-      exec = "tsc --build --clean ${tsconfigFile}";
+      exec = "${tscBin} --build --clean ${tsconfigFile}";
     };
   };
 }
