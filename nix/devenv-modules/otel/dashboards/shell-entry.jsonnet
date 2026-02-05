@@ -1,52 +1,73 @@
 // Shell Entry (enterShell) dashboard
-// How long does `direnv allow` take, with breakdown by setup phase.
+// How long do shell entry tasks take, with breakdown by task.
+//
+// Shell entry runs optional tasks: pnpm:install, genie:run, megarepo:sync, ts:build
+// These tasks are only executed when their dependencies change (git hash caching).
+// Use FORCE_SETUP=1 to force re-run even when cached.
 local g = import 'g.libsonnet';
 local lib = import 'lib.libsonnet';
 
+// Helper for trace table (sorted by time, relative display)
+local traceTable(title, query, limit=50) =
+  g.panel.table.new(title)
+  + g.panel.table.queryOptions.withTargets([
+    lib.tempoQuery(query, 'A', limit),
+  ])
+  + g.panel.table.options.withSortBy([
+    g.panel.table.options.sortBy.withDisplayName('startTime')
+    + g.panel.table.options.sortBy.withDesc(true),
+  ])
+  + {
+    fieldConfig+: {
+      overrides: [
+        {
+          matcher: { id: 'byName', options: 'startTime' },
+          properties: [{ id: 'unit', value: 'dateTimeFromNow' }],
+        },
+      ],
+    },
+  };
+
 g.dashboard.new('Shell Entry Performance')
 + g.dashboard.withUid('otel-shell-entry')
-+ g.dashboard.withDescription('Performance breakdown of devenv shell entry (direnv allow)')
++ g.dashboard.withDescription('Performance breakdown of devenv shell entry tasks (pnpm:install, genie:run, megarepo:sync, ts:build)')
 + g.dashboard.graphTooltip.withSharedCrosshair()
++ g.dashboard.withTimezone('browser')
 + g.dashboard.withPanels(
   g.util.grid.makeGrid([
-    // Row: Overall timing
-    g.panel.row.new('Shell Entry'),
+    // Row: All shell entry tasks
+    g.panel.row.new('Shell Entry Tasks'),
 
-    lib.tempoTable(
-      'Recent shell entry traces',
-      '{resource.service.name="dt" && name=~"setup:.*"}',
-      'A',
+    traceTable(
+      'All shell entry tasks (pnpm:install, genie:run, megarepo:sync, ts:build)',
+      '{resource.service.name="dt-task" && name=~"pnpm:install|genie:run|megarepo:sync|ts:build"}',
       50,
     ),
 
-    // Row: Setup phases
-    g.panel.row.new('Setup Phases'),
+    // Row: Individual task breakdown
+    g.panel.row.new('Task Breakdown'),
 
-    lib.tempoTable(
-      'pnpm:install during setup',
-      '{resource.service.name="dt" && name="pnpm:install"}',
-      'A',
+    traceTable(
+      'pnpm:install',
+      '{resource.service.name="dt-task" && name="pnpm:install"}',
       30,
     ),
 
-    lib.tempoTable(
-      'genie:run during setup',
-      '{resource.service.name="dt" && name="genie:run"}',
-      'A',
+    traceTable(
+      'genie:run',
+      '{resource.service.name="dt-task" && name="genie:run"}',
       30,
     ),
 
-    lib.tempoTable(
-      'ts:build during setup',
-      '{resource.service.name="dt" && name="ts:build"}',
-      'A',
+    traceTable(
+      'ts:build',
+      '{resource.service.name="dt-task" && name="ts:build"}',
       30,
     ),
 
-    lib.tempoTable(
-      'megarepo:sync during setup',
-      '{resource.service.name="dt" && name="megarepo:sync"}',
-      'A',
+    traceTable(
+      'megarepo:sync',
+      '{resource.service.name="dt-task" && name="megarepo:sync"}',
       30,
     ),
   ], panelWidth=24, panelHeight=10)
