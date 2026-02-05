@@ -20,17 +20,20 @@
  *   return <Box><Text>{state._tag}</Text></Box>
  * }
  *
- * // 3. Run with view
- * const runDeploy = Effect.gen(function* () {
- *   const tui = yield* DeployApp.run(<DeployView />)
- *   tui.dispatch({ _tag: 'Start' })
- * }).pipe(Effect.scoped)
+ * // 3. Run with handler callback (scope managed internally)
+ * yield* run(DeployApp, (tui) =>
+ *   Effect.gen(function* () {
+ *     tui.dispatch({ _tag: 'Start' })
+ *   }),
+ *   { view: <DeployView /> }
+ * )
  *
  * // Or run headless (JSON modes, testing)
- * const runHeadless = Effect.gen(function* () {
- *   const tui = yield* DeployApp.run()
- *   tui.dispatch({ _tag: 'Start' })
- * }).pipe(Effect.scoped)
+ * yield* run(DeployApp, (tui) =>
+ *   Effect.gen(function* () {
+ *     tui.dispatch({ _tag: 'Start' })
+ *   })
+ * )
  * ```
  *
  * @module
@@ -38,7 +41,7 @@
 
 import { Atom, Registry } from '@effect-atom/atom'
 import type { Scope } from 'effect'
-import { Cause, Console, Effect, PubSub, Runtime, Schema, Stream } from 'effect'
+import { Cause, Console, Effect, Function as Fn, PubSub, Runtime, Schema, Stream } from 'effect'
 import React, { type ReactElement, type ReactNode, createContext } from 'react'
 
 import { renderToString } from '../renderToString.ts'
@@ -52,6 +55,20 @@ import {
   RenderConfigProvider,
   stripAnsi,
 } from './OutputMode.tsx'
+
+// =============================================================================
+// TuiApp TypeId (for dual API dispatch)
+// =============================================================================
+
+/** Type brand for TuiApp instances, used by the dual `run` API for dispatch. */
+export const TuiAppTypeId: unique symbol = Symbol.for('@overeng/tui-react/TuiApp')
+
+/** Type brand for TuiApp instances. */
+export type TuiAppTypeId = typeof TuiAppTypeId
+
+/** Check if a value is a TuiApp instance. */
+export const isTuiApp = (u: unknown): u is TuiApp<unknown, unknown> =>
+  typeof u === 'object' && u !== null && TuiAppTypeId in u
 
 // =============================================================================
 // TUI Registry Context (avoids multiple React instance issues with @effect-atom/atom-react)
@@ -169,10 +186,14 @@ export interface TuiAppConfig<S, A> {
 
 /**
  * The Cause schema used for Failure output.
- * Contains no expected errors (Schema.Never), only defects and interrupts.
+ * Uses Schema.Defect for both error and defect fields.
+ *
+ * Typed errors (Fail nodes) are serialized lossily as { name, message }.
+ * Structured error details should be carried in state (for JSON consumers),
+ * while typed errors still propagate via the Effect channel for in-process handling.
  */
 const OutputCauseSchema = Schema.Cause({
-  error: Schema.Never,
+  error: Schema.Defect,
   defect: Schema.Defect,
 })
 
@@ -289,6 +310,8 @@ export interface TuiAppApi<S, A> {
  * A TUI application definition with atoms for state management.
  */
 export interface TuiApp<S, A> {
+  readonly [TuiAppTypeId]: TuiAppTypeId
+
   /**
    * Atom containing the current state. Use with `useTuiAtomValue(App.stateAtom)`.
    */
@@ -446,7 +469,7 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
 
   // Check once if schema has Interrupted variant
   const interruptedAction = createInterruptedAction(config.actionSchema)
-  const run = (
+  const run_ = (
     view?: ReactElement,
   ): Effect.Effect<TuiAppApi<S, A>, never, Scope.Scope | OutputModeTag> =>
     Effect.gen(function* () {
@@ -541,9 +564,10 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
     })
 
   return {
+    [TuiAppTypeId]: TuiAppTypeId,
     stateAtom,
     outputSchema,
-    run,
+    run: run_,
     config,
   }
 }
@@ -795,3 +819,71 @@ const setupProgressiveJsonWithAtom = <S,>({
  * Create a typed app config. Useful for type inference at definition site.
  */
 export const tuiAppConfig = <S, A>(config: TuiAppConfig<S, A>): TuiAppConfig<S, A> => config
+
+// =============================================================================
+// Standalone run (dual API)
+// =============================================================================
+
+/**
+ * Options for `run`.
+ */
+export interface TuiAppRunOptions {
+  /**
+   * Optional React element to render in visual modes.
+   * Omit for headless mode (JSON modes, testing).
+   */
+  readonly view?: ReactElement
+}
+
+// oxlint-disable-next-line overeng/named-args -- dual API pattern requires positional args
+const runImpl = <S, A, B, E, R>(
+  app: TuiApp<S, A>,
+  handler: (api: TuiAppApi<S, A>) => Effect.Effect<B, E, R>,
+  options?: TuiAppRunOptions,
+): Effect.Effect<B, E, R | OutputModeTag> =>
+  Effect.scoped(app.run(options?.view).pipe(Effect.flatMap(handler)))
+
+/**
+ * Run a TuiApp with a handler callback.
+ *
+ * Manages scope internally — consumers do not need `Effect.scoped`.
+ * The error type `E` is inferred from the handler, so typed errors
+ * propagate naturally via the Effect channel.
+ *
+ * Supports Effect's dual/pipeable pattern:
+ *
+ * @example
+ * ```typescript
+ * // Data-first:
+ * yield* run(DeployApp, (tui) =>
+ *   Effect.gen(function* () {
+ *     tui.dispatch({ _tag: 'Start' })
+ *     // ...work...
+ *     return tui.getState()
+ *   }),
+ *   { view: <DeployView stateAtom={DeployApp.stateAtom} /> }
+ * )
+ *
+ * // Data-last (pipeable):
+ * yield* pipe(DeployApp, run((tui) =>
+ *   Effect.gen(function* () {
+ *     tui.dispatch({ _tag: 'Start' })
+ *   }),
+ *   { view: <DeployView stateAtom={DeployApp.stateAtom} /> }
+ * ))
+ * ```
+ */
+export const run: {
+  // Data-last (pipeable): run(handler, options?) returns (app) => Effect
+  <S, A, B, E, R>(
+    handler: (api: TuiAppApi<S, A>) => Effect.Effect<B, E, R>,
+    options?: TuiAppRunOptions,
+  ): (app: TuiApp<S, A>) => Effect.Effect<B, E, R | OutputModeTag>
+
+  // Data-first: run(app, handler, options?) returns Effect
+  <S, A, B, E, R>(
+    app: TuiApp<S, A>,
+    handler: (api: TuiAppApi<S, A>) => Effect.Effect<B, E, R>,
+    options?: TuiAppRunOptions,
+  ): Effect.Effect<B, E, R | OutputModeTag>
+} = Fn.dual((args) => isTuiApp(args[0]), runImpl)

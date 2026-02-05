@@ -15,7 +15,7 @@ import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Duration, Effect } from 'effect'
 import React from 'react'
 
-import { createTuiApp, outputOption, outputModeLayer } from '../../src/mod.ts'
+import { createTuiApp, run, outputOption, outputModeLayer } from '../../src/mod.ts'
 import { TaskRunnerState, TaskRunnerAction, taskRunnerReducer } from './schema.ts'
 import { TaskRunnerView } from './view.tsx'
 
@@ -25,38 +25,41 @@ import { TaskRunnerView } from './view.tsx'
 
 const tasks = ['lint', 'typecheck', 'test', 'build']
 
-const runTaskRunner = Effect.gen(function* () {
-  const App = createTuiApp({
-    stateSchema: TaskRunnerState,
-    actionSchema: TaskRunnerAction,
-    initial: {
-      _tag: 'Running',
-      tasks: tasks.map((name) => ({ name, status: 'pending' as const })),
-      currentTaskName: '',
-    } as typeof TaskRunnerState.Type,
-    reducer: taskRunnerReducer,
-  })
+const App = createTuiApp({
+  stateSchema: TaskRunnerState,
+  actionSchema: TaskRunnerAction,
+  initial: {
+    _tag: 'Running',
+    tasks: tasks.map((name) => ({ name, status: 'pending' as const })),
+    currentTaskName: '',
+  } as typeof TaskRunnerState.Type,
+  reducer: taskRunnerReducer,
+})
 
-  const tui = yield* App.run(<TaskRunnerView stateAtom={App.stateAtom} />)
+const runTaskRunner = run(
+  App,
+  (tui) =>
+    Effect.gen(function* () {
+      // Simulate running tasks with mixed log sources
+      for (const taskName of tasks) {
+        // These logs are captured in tty mode, not printed to stdout
+        yield* Effect.log(`Starting task: ${taskName}`)
+        tui.dispatch({ _tag: 'StartTask', name: taskName })
 
-  // Simulate running tasks with mixed log sources
-  for (const taskName of tasks) {
-    // These logs are captured in tty mode, not printed to stdout
-    yield* Effect.log(`Starting task: ${taskName}`)
-    tui.dispatch({ _tag: 'StartTask', name: taskName })
+        yield* Effect.sleep(Duration.millis(500))
 
-    yield* Effect.sleep(Duration.millis(500))
+        // console.log is also captured
+        console.log(`Task ${taskName} completed successfully`)
+        tui.dispatch({ _tag: 'CompleteTask', name: taskName })
 
-    // console.log is also captured
-    console.log(`Task ${taskName} completed successfully`)
-    tui.dispatch({ _tag: 'CompleteTask', name: taskName })
+        yield* Effect.sleep(Duration.millis(200))
+      }
 
-    yield* Effect.sleep(Duration.millis(200))
-  }
-
-  yield* Effect.log('All tasks finished')
-  tui.dispatch({ _tag: 'Finish' })
-}).pipe(Effect.scoped)
+      yield* Effect.log('All tasks finished')
+      tui.dispatch({ _tag: 'Finish' })
+    }),
+  { view: <TaskRunnerView stateAtom={App.stateAtom} /> },
+)
 
 // =============================================================================
 // CLI Command

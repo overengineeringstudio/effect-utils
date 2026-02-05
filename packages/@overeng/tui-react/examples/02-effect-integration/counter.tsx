@@ -21,7 +21,7 @@ import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Duration, Effect } from 'effect'
 import React from 'react'
 
-import { createTuiApp, outputOption, outputModeLayer } from '../../src/mod.ts'
+import { createTuiApp, run, outputOption, outputModeLayer } from '../../src/mod.ts'
 // Import from shared modules
 import { CounterState, CounterAction, counterReducer } from './schema.ts'
 import { CounterView } from './view.tsx'
@@ -30,48 +30,51 @@ import { CounterView } from './view.tsx'
 // Main Program
 // =============================================================================
 
-const runCounter = Effect.gen(function* () {
-  const CounterApp = createTuiApp({
-    stateSchema: CounterState,
-    actionSchema: CounterAction,
-    initial: {
-      _tag: 'Running',
-      count: 0,
-      status: 'idle',
-      history: [],
-    } as typeof CounterState.Type,
-    reducer: counterReducer,
-  })
+const CounterApp = createTuiApp({
+  stateSchema: CounterState,
+  actionSchema: CounterAction,
+  initial: {
+    _tag: 'Running',
+    count: 0,
+    status: 'idle',
+    history: [],
+  } as typeof CounterState.Type,
+  reducer: counterReducer,
+})
 
-  const tui = yield* CounterApp.run(<CounterView stateAtom={CounterApp.stateAtom} />)
+const runCounter = run(
+  CounterApp,
+  (tui) =>
+    Effect.gen(function* () {
+      // Increment a few times
+      for (let i = 0; i < 3; i++) {
+        if (tui.getState()._tag !== 'Running') break
+        tui.dispatch({ _tag: 'Increment' })
+        yield* Effect.sleep(Duration.millis(400))
+      }
 
-  // Increment a few times
-  for (let i = 0; i < 3; i++) {
-    if (tui.getState()._tag !== 'Running') break
-    tui.dispatch({ _tag: 'Increment' })
-    yield* Effect.sleep(Duration.millis(400))
-  }
+      // Show loading state
+      if (tui.getState()._tag === 'Running') {
+        tui.dispatch({ _tag: 'SetLoading' })
+        yield* Effect.sleep(Duration.millis(800))
+      }
 
-  // Show loading state
-  if (tui.getState()._tag === 'Running') {
-    tui.dispatch({ _tag: 'SetLoading' })
-    yield* Effect.sleep(Duration.millis(800))
-  }
+      // Decrement once
+      if (tui.getState()._tag === 'Running') {
+        tui.dispatch({ _tag: 'Decrement' })
+        yield* Effect.sleep(Duration.millis(400))
+      }
 
-  // Decrement once
-  if (tui.getState()._tag === 'Running') {
-    tui.dispatch({ _tag: 'Decrement' })
-    yield* Effect.sleep(Duration.millis(400))
-  }
+      // Complete
+      if (tui.getState()._tag === 'Running') {
+        const state = tui.getState() as Extract<typeof CounterState.Type, { _tag: 'Running' }>
+        tui.dispatch({ _tag: 'SetComplete', message: `Final count: ${state.count}` })
+      }
 
-  // Complete
-  if (tui.getState()._tag === 'Running') {
-    const state = tui.getState() as Extract<typeof CounterState.Type, { _tag: 'Running' }>
-    tui.dispatch({ _tag: 'SetComplete', message: `Final count: ${state.count}` })
-  }
-
-  return { finalCount: (tui.getState() as any).finalCount ?? (tui.getState() as any).count }
-}).pipe(Effect.scoped)
+      return { finalCount: (tui.getState() as any).finalCount ?? (tui.getState() as any).count }
+    }),
+  { view: <CounterView stateAtom={CounterApp.stateAtom} /> },
+)
 
 // =============================================================================
 // CLI Command

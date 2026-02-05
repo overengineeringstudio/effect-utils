@@ -22,7 +22,7 @@ import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Effect, Fiber } from 'effect'
 import React from 'react'
 
-import { createTuiApp, outputOption, outputModeLayer } from '../../src/mod.ts'
+import { createTuiApp, run, outputOption, outputModeLayer } from '../../src/mod.ts'
 // Import from shared modules
 import { AppState, AppAction, appReducer, createWindow } from './schema.ts'
 import { BouncingWindowsView } from './view.tsx'
@@ -64,57 +64,61 @@ const runBouncingWindows = ({
 }: {
   windowCount: number
   durationMs: number
-}) =>
-  Effect.gen(function* () {
-    const clampedCount = Math.min(Math.max(windowCount, 1), 6)
-    const { width, height } = getTermSize()
+}) => {
+  const clampedCount = Math.min(Math.max(windowCount, 1), 6)
+  const { width, height } = getTermSize()
 
-    const BouncingApp = createTuiApp({
-      stateSchema: AppState,
-      actionSchema: AppAction,
-      initial: {
-        _tag: 'Running',
-        windows: Array.from({ length: clampedCount }, (_, i) =>
-          createWindow({ id: i, count: clampedCount, width, height }),
-        ),
-        frame: 0,
-        termWidth: width,
-        termHeight: height,
-      } as typeof AppState.Type,
-      reducer: appReducer,
-    })
+  const BouncingApp = createTuiApp({
+    stateSchema: AppState,
+    actionSchema: AppAction,
+    initial: {
+      _tag: 'Running',
+      windows: Array.from({ length: clampedCount }, (_, i) =>
+        createWindow({ id: i, count: clampedCount, width, height }),
+      ),
+      frame: 0,
+      termWidth: width,
+      termHeight: height,
+    } as typeof AppState.Type,
+    reducer: appReducer,
+  })
 
-    const tui = yield* BouncingApp.run(<BouncingWindowsView stateAtom={BouncingApp.stateAtom} />)
-
-    // Handle terminal resize
-    const resizeHandler = () => {
-      const { width, height } = getTermSize()
-      tui.dispatch({ _tag: 'Resize', width, height })
-    }
-    process.stdout.on('resize', resizeHandler)
-
-    // Animation loop
-    const animationFiber = yield* Effect.fork(
+  return run(
+    BouncingApp,
+    (tui) =>
       Effect.gen(function* () {
-        while (tui.getState()._tag === 'Running') {
-          tui.dispatch({ _tag: 'Tick' })
-          yield* Effect.sleep(`${FRAME_MS} millis`)
+        // Handle terminal resize
+        const resizeHandler = () => {
+          const { width, height } = getTermSize()
+          tui.dispatch({ _tag: 'Resize', width, height })
         }
+        process.stdout.on('resize', resizeHandler)
+
+        // Animation loop
+        const animationFiber = yield* Effect.fork(
+          Effect.gen(function* () {
+            while (tui.getState()._tag === 'Running') {
+              tui.dispatch({ _tag: 'Tick' })
+              yield* Effect.sleep(`${FRAME_MS} millis`)
+            }
+          }),
+        )
+
+        // Wait for duration
+        yield* Effect.sleep(`${durationMs} millis`)
+
+        // Only finish if still running
+        if (tui.getState()._tag === 'Running') {
+          tui.dispatch({ _tag: 'Finish' })
+        }
+
+        // Cleanup
+        process.stdout.off('resize', resizeHandler)
+        yield* Fiber.interrupt(animationFiber)
       }),
-    )
-
-    // Wait for duration
-    yield* Effect.sleep(`${durationMs} millis`)
-
-    // Only finish if still running
-    if (tui.getState()._tag === 'Running') {
-      tui.dispatch({ _tag: 'Finish' })
-    }
-
-    // Cleanup
-    process.stdout.off('resize', resizeHandler)
-    yield* Fiber.interrupt(animationFiber)
-  }).pipe(Effect.scoped)
+    { view: <BouncingWindowsView stateAtom={BouncingApp.stateAtom} /> },
+  )
+}
 
 // =============================================================================
 // CLI Command

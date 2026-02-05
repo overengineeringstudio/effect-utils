@@ -8,19 +8,20 @@
  * import { runTestCommand, createTestTuiState } from '@overeng/tui-react'
  *
  * test('deploy command outputs JSON', async () => {
- *   const { jsonOutput, finalState } = await runTestCommand(runDeploy, {
- *     args: ['api-server'],
- *     mode: 'final-json',
+ *   const { exit, finalState } = await runTestCommand({
+ *     commandFn: (args) => runDeploy(args),
+ *     options: { args: ['api-server'], mode: 'json', schema: DeployOutputSchema },
  *   })
  *
- *   expect(finalState._tag).toBe('Complete')
+ *   expect(Exit.isSuccess(exit)).toBe(true)
+ *   expect(finalState?._tag).toBe('Complete')
  * })
  * ```
  */
 
 import { Atom, Registry } from '@effect-atom/atom'
 import type { Scope } from 'effect'
-import { Effect, Layer, PubSub, Runtime, Schema, Stream } from 'effect'
+import { Effect, type Exit, Layer, PubSub, Runtime, Schema, Stream } from 'effect'
 
 import {
   type OutputMode,
@@ -59,13 +60,15 @@ export interface RunTestCommandOptions<S, Args> {
 /**
  * Result of running a test command.
  */
-export interface TestCommandResult<S> {
+export interface TestCommandResult<S, E> {
   /** All state values emitted during execution (from JSON output) */
   states: S[]
-  /** Final state value */
-  finalState: S
+  /** Final state value (undefined when no states were emitted) */
+  finalState: S | undefined
   /** Captured JSON output lines */
   jsonOutput: string[]
+  /** The exit value — inspect to check for success or failure */
+  exit: Exit.Exit<unknown, E>
 }
 
 /**
@@ -118,20 +121,21 @@ export const testModeLayer = (preset: TestModePreset): Layer.Layer<OutputModeTag
  * @example
  * ```typescript
  * const result = await runTestCommand({
- *   commandFn: (services) => runDeploy(services),
- *   options: { args: ['api-server'], mode: 'final-json' }
+ *   commandFn: (args) => runDeploy(args),
+ *   options: { args: ['api-server'], mode: 'json', schema: DeployOutputSchema }
  * })
  *
- * expect(result.finalState._tag).toBe('Complete')
+ * expect(Exit.isSuccess(result.exit)).toBe(true)
+ * expect(result.finalState?._tag).toBe('Complete')
  * ```
  */
-export const runTestCommand = async <S, Args>({
+export const runTestCommand = async <S, Args, E>({
   commandFn,
   options,
 }: {
-  commandFn: (args: Args) => Effect.Effect<unknown, never, Scope.Scope | OutputModeTag>
+  commandFn: (args: Args) => Effect.Effect<unknown, E, OutputModeTag>
   options: RunTestCommandOptions<S, Args>
-}): Promise<TestCommandResult<S>> => {
+}): Promise<TestCommandResult<S, E>> => {
   const jsonOutput: string[] = []
 
   // Capture console.log for JSON output
@@ -140,11 +144,11 @@ export const runTestCommand = async <S, Args>({
     jsonOutput.push(msg)
   }
 
+  let exit: Exit.Exit<unknown, E>
   try {
-    await commandFn(options.args).pipe(
-      Effect.scoped,
+    exit = await commandFn(options.args).pipe(
       Effect.provide(testModeLayer(options.mode)),
-      Effect.runPromise,
+      Effect.runPromiseExit,
     )
   } finally {
     console.log = originalLog
@@ -161,8 +165,9 @@ export const runTestCommand = async <S, Args>({
 
   return {
     states: parsedStates,
-    finalState: parsedStates[parsedStates.length - 1]!,
+    finalState: parsedStates[parsedStates.length - 1],
     jsonOutput,
+    exit,
   }
 }
 

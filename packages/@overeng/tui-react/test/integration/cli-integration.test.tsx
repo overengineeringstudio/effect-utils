@@ -11,6 +11,7 @@ import { describe, expect, beforeEach, afterEach } from 'vitest'
 
 import {
   createTuiApp,
+  run,
   useTuiAtomValue,
   detectOutputMode,
   Box,
@@ -172,38 +173,42 @@ const DeployView = () => {
 // =============================================================================
 
 const runDeploy = (services: string[]) =>
-  Effect.gen(function* () {
-    const tui = yield* DeployApp.run(<DeployView />)
-    const logs: string[] = []
-    const startTime = Date.now()
+  run(
+    DeployApp,
+    (tui) =>
+      Effect.gen(function* () {
+        const logs: string[] = []
+        const startTime = Date.now()
 
-    // Phase 1: Validating
-    logs.push('Validating configuration...')
-    tui.dispatch({ _tag: 'StartValidation', logs: [...logs] })
-    yield* Effect.sleep(Duration.millis(10))
+        // Phase 1: Validating
+        logs.push('Validating configuration...')
+        tui.dispatch({ _tag: 'StartValidation', logs: [...logs] })
+        yield* Effect.sleep(Duration.millis(10))
 
-    // Phase 2: Progress
-    logs.push('Starting deployment...')
-    const serviceStates = services.map((name) => ({ name, status: 'pending' as const }))
-    tui.dispatch({ _tag: 'StartProgress', services: serviceStates, logs: [...logs] })
+        // Phase 2: Progress
+        logs.push('Starting deployment...')
+        const serviceStates = services.map((name) => ({ name, status: 'pending' as const }))
+        tui.dispatch({ _tag: 'StartProgress', services: serviceStates, logs: [...logs] })
 
-    // Deploy each service
-    for (let i = 0; i < services.length; i++) {
-      tui.dispatch({ _tag: 'UpdateService', index: i, status: 'deploying' })
-      yield* Effect.sleep(Duration.millis(10))
-      tui.dispatch({ _tag: 'UpdateService', index: i, status: 'healthy' })
-    }
+        // Deploy each service
+        for (let i = 0; i < services.length; i++) {
+          tui.dispatch({ _tag: 'UpdateService', index: i, status: 'deploying' })
+          yield* Effect.sleep(Duration.millis(10))
+          tui.dispatch({ _tag: 'UpdateService', index: i, status: 'healthy' })
+        }
 
-    // Phase 3: Complete
-    const totalDuration = Date.now() - startTime
-    tui.dispatch({
-      _tag: 'Complete',
-      services: services.map((name) => ({ name, result: 'updated' as const, duration: 10 })),
-      totalDuration,
-    })
+        // Phase 3: Complete
+        const totalDuration = Date.now() - startTime
+        tui.dispatch({
+          _tag: 'Complete',
+          services: services.map((name) => ({ name, result: 'updated' as const, duration: 10 })),
+          totalDuration,
+        })
 
-    return { success: true, totalDuration }
-  }).pipe(Effect.scoped)
+        return { success: true, totalDuration }
+      }),
+    { view: <DeployView /> },
+  )
 
 // =============================================================================
 // Tests

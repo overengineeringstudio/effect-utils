@@ -10,6 +10,7 @@ import { Effect, Option, type ParseResult, Schema } from 'effect'
 import React from 'react'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
+import { run } from '@overeng/tui-react'
 
 import { CONFIG_FILE_NAME, getMemberPath, MegarepoConfig } from '../../lib/config.ts'
 import * as Git from '../../lib/git.ts'
@@ -117,31 +118,32 @@ export const lsCommand = Cli.Command.make(
       const root = yield* findMegarepoRoot(cwd)
 
       // Run TuiApp for all output (handles JSON/TTY modes automatically)
-      yield* Effect.scoped(
-        Effect.gen(function* () {
-          const tui = yield* LsApp.run(React.createElement(LsView, { stateAtom: LsApp.stateAtom }))
+      yield* run(
+        LsApp,
+        (tui) =>
+          Effect.gen(function* () {
+            if (Option.isNone(root)) {
+              // Dispatch error state
+              tui.dispatch({
+                _tag: 'SetError',
+                error: 'not_found',
+                message: 'No megarepo.json found',
+              })
+              return
+            }
 
-          if (Option.isNone(root)) {
-            // Dispatch error state
-            tui.dispatch({
-              _tag: 'SetError',
-              error: 'not_found',
-              message: 'No megarepo.json found',
+            // Get megarepo name
+            const megarepoName = yield* Git.deriveMegarepoName(root.value)
+
+            // Scan members (recursively if --all)
+            const members = yield* scanMembersRecursive({
+              megarepoRoot: root.value,
+              all,
             })
-            return
-          }
 
-          // Get megarepo name
-          const megarepoName = yield* Git.deriveMegarepoName(root.value)
-
-          // Scan members (recursively if --all)
-          const members = yield* scanMembersRecursive({
-            megarepoRoot: root.value,
-            all,
-          })
-
-          tui.dispatch({ _tag: 'SetMembers', members, all, megarepoName })
-        }),
+            tui.dispatch({ _tag: 'SetMembers', members, all, megarepoName })
+          }),
+        { view: React.createElement(LsView, { stateAtom: LsApp.stateAtom }) },
       ).pipe(Effect.provide(outputModeLayer(output)))
     }).pipe(Effect.withSpan('megarepo/ls')),
 ).pipe(Cli.Command.withDescription('List all members in the megarepo'))

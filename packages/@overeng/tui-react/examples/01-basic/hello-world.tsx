@@ -19,7 +19,7 @@ import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Effect } from 'effect'
 import React from 'react'
 
-import { createTuiApp, outputOption, outputModeLayer } from '../../src/mod.ts'
+import { createTuiApp, run, outputOption, outputModeLayer } from '../../src/mod.ts'
 // Import from shared modules
 import { AppState, AppAction, appReducer } from './schema.ts'
 import { HelloWorldView } from './view.tsx'
@@ -38,32 +38,36 @@ const durationOption = Options.integer('duration').pipe(
 // Main Program
 // =============================================================================
 
-const runHelloWorld = (durationSeconds: number) =>
-  Effect.gen(function* () {
-    const HelloApp = createTuiApp({
-      stateSchema: AppState,
-      actionSchema: AppAction,
-      initial: {
-        _tag: 'Displaying',
-        secondsRemaining: durationSeconds,
-      } as typeof AppState.Type,
-      reducer: appReducer,
-    })
+const runHelloWorld = (durationSeconds: number) => {
+  const HelloApp = createTuiApp({
+    stateSchema: AppState,
+    actionSchema: AppAction,
+    initial: {
+      _tag: 'Displaying',
+      secondsRemaining: durationSeconds,
+    } as typeof AppState.Type,
+    reducer: appReducer,
+  })
 
-    const tui = yield* HelloApp.run(<HelloWorldView stateAtom={HelloApp.stateAtom} />)
+  return run(
+    HelloApp,
+    (tui) =>
+      Effect.gen(function* () {
+        // Countdown timer
+        for (let i = durationSeconds; i > 0; i--) {
+          yield* Effect.sleep('1 second')
+          if (tui.getState()._tag !== 'Displaying') break
+          tui.dispatch({ _tag: 'Tick' })
+        }
 
-    // Countdown timer
-    for (let i = durationSeconds; i > 0; i--) {
-      yield* Effect.sleep('1 second')
-      if (tui.getState()._tag !== 'Displaying') break
-      tui.dispatch({ _tag: 'Tick' })
-    }
-
-    // Finish if still displaying
-    if (tui.getState()._tag === 'Displaying') {
-      tui.dispatch({ _tag: 'Finish' })
-    }
-  }).pipe(Effect.scoped)
+        // Finish if still displaying
+        if (tui.getState()._tag === 'Displaying') {
+          tui.dispatch({ _tag: 'Finish' })
+        }
+      }),
+    { view: <HelloWorldView stateAtom={HelloApp.stateAtom} /> },
+  )
+}
 
 // =============================================================================
 // CLI Command

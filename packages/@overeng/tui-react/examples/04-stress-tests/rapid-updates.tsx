@@ -19,7 +19,7 @@ import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Effect, Fiber } from 'effect'
 import React from 'react'
 
-import { createTuiApp, outputOption, outputModeLayer } from '../../src/mod.ts'
+import { createTuiApp, run, outputOption, outputModeLayer } from '../../src/mod.ts'
 // Import from shared modules
 import { StressTestState, StressTestAction, createStressTestReducer } from './schema.ts'
 import { StressTestView } from './view.tsx'
@@ -44,44 +44,48 @@ const FRAME_MS = 16 // ~60fps
 // Main Program
 // =============================================================================
 
-const runStressTest = (durationMs: number) =>
-  Effect.gen(function* () {
-    const StressTestApp = createTuiApp({
-      stateSchema: StressTestState,
-      actionSchema: StressTestAction,
-      initial: {
-        _tag: 'Running',
-        frame: 0,
-        startTime: Date.now(),
-        fps: 0,
-        progress: 0,
-      } as typeof StressTestState.Type,
-      reducer: createStressTestReducer(durationMs),
-    })
+const runStressTest = (durationMs: number) => {
+  const StressTestApp = createTuiApp({
+    stateSchema: StressTestState,
+    actionSchema: StressTestAction,
+    initial: {
+      _tag: 'Running',
+      frame: 0,
+      startTime: Date.now(),
+      fps: 0,
+      progress: 0,
+    } as typeof StressTestState.Type,
+    reducer: createStressTestReducer(durationMs),
+  })
 
-    const tui = yield* StressTestApp.run(<StressTestView stateAtom={StressTestApp.stateAtom} />)
-
-    // Run the animation loop
-    const animationFiber = yield* Effect.fork(
+  return run(
+    StressTestApp,
+    (tui) =>
       Effect.gen(function* () {
-        while (tui.getState()._tag === 'Running') {
-          tui.dispatch({ _tag: 'Tick' })
-          yield* Effect.sleep(`${FRAME_MS} millis`)
+        // Run the animation loop
+        const animationFiber = yield* Effect.fork(
+          Effect.gen(function* () {
+            while (tui.getState()._tag === 'Running') {
+              tui.dispatch({ _tag: 'Tick' })
+              yield* Effect.sleep(`${FRAME_MS} millis`)
+            }
+          }),
+        )
+
+        // Wait for duration to complete
+        yield* Effect.sleep(`${durationMs} millis`)
+
+        // Only finish if still running (might have been interrupted)
+        if (tui.getState()._tag === 'Running') {
+          tui.dispatch({ _tag: 'Finish' })
         }
+
+        // Cancel animation fiber
+        yield* Fiber.interrupt(animationFiber)
       }),
-    )
-
-    // Wait for duration to complete
-    yield* Effect.sleep(`${durationMs} millis`)
-
-    // Only finish if still running (might have been interrupted)
-    if (tui.getState()._tag === 'Running') {
-      tui.dispatch({ _tag: 'Finish' })
-    }
-
-    // Cancel animation fiber
-    yield* Fiber.interrupt(animationFiber)
-  }).pipe(Effect.scoped)
+    { view: <StressTestView stateAtom={StressTestApp.stateAtom} /> },
+  )
+}
 
 // =============================================================================
 // CLI Command
