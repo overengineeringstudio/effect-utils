@@ -30,12 +30,17 @@
 #   This replaces per-package postinstall scripts, centralizing the patch in dt.
 #   Example: "packages/@overeng/utils/node_modules/.bin/effect-language-service patch"
 #
+# lspPatchAfter:
+#   Dependencies for the ts:patch-lsp task. Defaults to ["pnpm:install"].
+#   For faster startup, specify only the package containing the patch binary:
+#   Example: ["pnpm:install:utils"] to depend only on packages/@overeng/utils
+#
 # OTEL tracing:
 #   When OTEL is available, ts:check and ts:build run with --extendedDiagnostics
 #   --verbose (adds ~3% overhead) and emit per-project child spans with timing
 #   attributes (tsc.check_time_s, tsc.parse_time_s, etc.). The diagnostics
 #   output is suppressed from the user — only errors are shown on failure.
-{ tsconfigFile ? "tsconfig.all.json", tscBin ? "tsc", lspPatchCmd ? null }:
+{ tsconfigFile ? "tsconfig.all.json", tscBin ? "tsc", lspPatchCmd ? null, lspPatchAfter ? [ "pnpm:install" ] }:
 { lib, pkgs, ... }:
 let
   trace = import ../lib/trace.nix { inherit lib; };
@@ -188,8 +193,8 @@ in
   } // (if lspPatchCmd != null then {
     "ts:patch-lsp" = {
       description = "Patch TypeScript with Effect Language Service";
-      exec = lspPatchCmd;
-      after = [ "pnpm:install" ];
+      exec = trace.exec "ts:patch-lsp" lspPatchCmd;
+      after = lspPatchAfter;
     };
   } else {});
 }
