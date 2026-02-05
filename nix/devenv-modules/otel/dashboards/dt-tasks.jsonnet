@@ -7,14 +7,7 @@
 // individually traced — they appear as part of the parent task's duration.
 local g = import 'g.libsonnet';
 local lib = import 'lib.libsonnet';
-
-// Helper: position a panel at specific grid coordinates
-local at(panel, x, y, w, h) =
-  panel
-  + g.panel.stat.gridPos.withX(x)
-  + g.panel.stat.gridPos.withY(y)
-  + g.panel.stat.gridPos.withW(w)
-  + g.panel.stat.gridPos.withH(h);
+local at = lib.at;
 
 // Track y position manually for clean layout
 local y = {
