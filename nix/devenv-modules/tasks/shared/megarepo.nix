@@ -43,6 +43,7 @@
 
   tasks."megarepo:check" = {
     description = "Verify megarepo setup is complete";
+    after = [ "megarepo:sync" ];
     # Check that repos dir exists and all members have symlinks
     status = ''
       if [ ! -f ./megarepo.json ]; then
