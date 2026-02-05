@@ -40,7 +40,12 @@ let
   # All packages for per-package install tasks
   # NOTE: Using pnpm temporarily due to bun bugs. Plan to switch back once fixed.
   # See: context/workarounds/bun-issues.md
+  # NOTE: Order matters for sequential pnpm install chain.
+  # Packages near the front complete first, enabling dependent tasks to start sooner.
+  # utils is first because ts:patch-lsp depends on it (for Effect Language Service).
   allPackages = [
+    "packages/@overeng/utils"
+    "packages/@overeng/utils-dev"
     "packages/@overeng/effect-ai-claude-cli"
     "packages/@overeng/effect-path"
     "packages/@overeng/effect-react"
@@ -58,8 +63,6 @@ let
     "packages/@overeng/react-inspector"
     "packages/@overeng/tui-core"
     "packages/@overeng/tui-react"
-    "packages/@overeng/utils"
-    "packages/@overeng/utils-dev"
     "context/opentui"
     "context/effect/socket"
   ];
@@ -113,6 +116,8 @@ in
     (taskModules.ts {
       tscBin = "packages/@overeng/utils/node_modules/.bin/tsc";
       lspPatchCmd = "packages/@overeng/utils/node_modules/.bin/effect-language-service patch --dir packages/@overeng/utils/node_modules/typescript";
+      # Depend only on utils package install (not full pnpm:install) for faster parallel startup
+      lspPatchAfter = [ "pnpm:install:utils" ];
     })
     taskModules.megarepo
     (taskModules.check { extraChecks = [ "workspace:check" ]; })
