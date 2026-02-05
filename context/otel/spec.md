@@ -67,7 +67,7 @@ base = portRangeStart + (parseInt(sha256(root)[0:7], 16) % (portRangeEnd - portR
 
 Range: 10000-60000 (50K range, ~0.012% collision probability for 2 worktrees).
 
-All services bind to `127.0.0.1` only.
+Collector and Tempo bind to `127.0.0.1`. Grafana binds to `0.0.0.0` for Tailscale access.
 
 ### Override
 
@@ -137,7 +137,31 @@ No configuration changes needed -- the collector accepts any OTLP source.
 ## Grafana Configuration
 
 - **Anonymous auth**: enabled with Admin role (local dev, no login needed)
+- **Bind address**: `0.0.0.0` (accessible via Tailscale from other machines)
 - **Tempo datasource**: auto-provisioned on every start
-- **Dashboards**: provisioned via Nix (see [dashboards.md](./dashboards.md) when available)
+- **Dashboards**: provisioned via Nix-built Grafonnet (see [dashboards.md](./dashboards.md))
 - **Analytics/updates**: disabled
 - **Log level**: warn (minimal console noise)
+
+## CLI Diagnostics: `otel-check`
+
+Shell helper for diagnosing stack health via Grafana's HTTP API. No tokens needed (anonymous auth).
+
+| Command | What it does |
+| --- | --- |
+| `otel-check` | Full health: Grafana + Tempo + Collector + dashboard count |
+| `otel-check dashboards` | List provisioned dashboards with browser URLs |
+| `otel-check traces` | Query Tempo for recent traces (last 1h) |
+| `otel-check datasources` | Show configured Grafana datasources |
+
+### API Endpoints Used
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/health` | Grafana health (no auth required) |
+| `GET /api/search?type=dash-db` | List dashboards |
+| `GET /api/datasources` | List datasources |
+| `GET /api/datasources/uid/tempo/health` | Tempo datasource health proxy |
+| `POST /api/ds/query` | Query Tempo via TraceQL |
+| `GET http://127.0.0.1:<tempo-port>/ready` | Direct Tempo readiness (fallback) |
+| `GET http://127.0.0.1:<metrics-port>/metrics` | Collector Prometheus metrics |

@@ -29,7 +29,9 @@ open $OTEL_GRAFANA_URL          # Grafana UI -> Explore -> Tempo
 | `OTEL_GRAFANA_URL` | `otel.nix` | Grafana UI URL for opening dashboards. |
 | `TRACEPARENT` | `otel-span` | W3C Trace Context. Propagated to child processes for parent-child trace linking. |
 
-## Shell Helper: `otel-span`
+## Shell Helpers
+
+### `otel-span` -- Emit trace spans
 
 Wrap any command in an OTLP trace span:
 
@@ -46,15 +48,50 @@ otel-span dt ts:check -- tsc --noEmit
 
 The `dt` wrapper calls `otel-span` automatically -- no manual wrapping needed for task runs.
 
+### `otel-check` -- Diagnose the stack
+
+CLI diagnostic tool using Grafana's HTTP API (anonymous auth, no tokens needed):
+
+```bash
+# Full health check (Grafana + Tempo + Collector + dashboards)
+otel-check
+
+# List all provisioned dashboards with URLs
+otel-check dashboards
+
+# Query Tempo for recent traces (last 1h)
+otel-check traces
+
+# Show configured datasources
+otel-check datasources
+```
+
+Example output of `otel-check`:
+
+```
+OTEL Stack Health
+
+Grafana (http://127.0.0.1:56608)
+  ✓ Healthy (v11.4.0, db=ok)
+  ✓ 5 dashboards provisioned
+  ✓ Tempo datasource: Tempo
+
+Tempo
+  ✓ Healthy (direct: http://127.0.0.1:56607)
+
+OTEL Collector (http://127.0.0.1:56605)
+  ✓ Healthy (metrics endpoint)
+```
+
 ## Processes
 
-Started via `devenv up`:
+Started via `devenv up`. Process names include ports for visibility in the process-compose TUI:
 
 | Process | Purpose |
 | --- | --- |
-| `otel-collector` | Receives OTLP/HTTP, batches, forwards to Tempo |
-| `tempo` | Trace storage (local filesystem) |
-| `grafana` | Dashboard UI with Tempo pre-configured |
+| `otel-collector-<port>` | Receives OTLP/HTTP, batches, forwards to Tempo |
+| `tempo-<port>` | Trace storage (local filesystem) |
+| `grafana-<port>` | Dashboard UI with Tempo pre-configured (binds 0.0.0.0 for Tailscale access) |
 
 ## Import in Other Repos
 
