@@ -34,15 +34,6 @@ const baseSteps = [
     run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)',
     shell: 'bash',
   },
-  {
-    name: 'Cache pnpm store',
-    uses: 'actions/cache@v4',
-    with: {
-      path: '~/.local/share/pnpm/store',
-      key: "pnpm-store-v2-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}",
-      'restore-keys': 'pnpm-store-v2-${{ runner.os }}-',
-    },
-  },
 ] as const
 
 const job = (step: { name: string; run: string }) => ({
