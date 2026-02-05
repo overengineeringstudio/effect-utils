@@ -37,7 +37,10 @@ export const SpanAttribute = Schema.Struct({
 
 /** Schema for a span's status. */
 export const SpanStatus = Schema.Struct({
-  code: Schema.optional(Schema.Number),
+  // Tempo returns status.code as a string enum or number depending on format:
+  // - OTLP JSON: "STATUS_CODE_UNSET" | "STATUS_CODE_OK" | "STATUS_CODE_ERROR"
+  // - OTLP proto (via grpc-gateway): 0 | 1 | 2
+  code: Schema.optional(Schema.Union(Schema.String, Schema.Number)),
   message: Schema.optional(Schema.String),
 })
 
@@ -46,7 +49,8 @@ export const TempoSpan = Schema.Struct({
   traceId: Schema.String,
   spanId: Schema.String,
   parentSpanId: Schema.optional(Schema.String),
-  operationName: Schema.String,
+  // Tempo returns 'name' (OTLP standard), not 'operationName' (Jaeger legacy)
+  name: Schema.String,
   startTimeUnixNano: Schema.Union(Schema.String, Schema.Number),
   endTimeUnixNano: Schema.Union(Schema.String, Schema.Number),
   status: Schema.optional(SpanStatus),

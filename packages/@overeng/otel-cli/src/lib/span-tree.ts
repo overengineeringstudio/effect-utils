@@ -16,7 +16,7 @@ import type { TempoTraceResponse } from '../services/TempoClient.ts'
 interface FlatSpan {
   readonly spanId: string
   readonly parentSpanId: string | undefined
-  readonly operationName: string
+  readonly name: string
   readonly serviceName: string
   readonly startTimeMs: number
   readonly endTimeMs: number
@@ -101,7 +101,7 @@ export const buildSpanTree = (args: {
     return {
       spanId: args.flat.spanId,
       parentSpanId: args.flat.parentSpanId,
-      operationName: args.flat.operationName,
+      name: args.flat.name,
       serviceName: args.flat.serviceName,
       startTimeMs: args.flat.startTimeMs,
       endTimeMs: args.flat.endTimeMs,
@@ -152,12 +152,12 @@ const extractFlatSpans = (response: TempoTraceResponse): Array<FlatSpan> => {
         results.push({
           spanId: span.spanId,
           parentSpanId: span.parentSpanId,
-          operationName: span.operationName,
+          name: span.name,
           serviceName,
           startTimeMs,
           endTimeMs,
           durationMs: endTimeMs - startTimeMs,
-          statusCode: span.status?.code,
+          statusCode: normalizeStatusCode(span.status?.code),
           statusMessage: span.status?.message,
           attributes: (span.attributes ?? []).map((attr) => ({
             key: attr.key,
@@ -192,4 +192,24 @@ const extractAttributeValue = (value: {
   if (value.intValue !== undefined) return String(value.intValue)
   if (value.boolValue !== undefined) return String(value.boolValue)
   return ''
+}
+
+/** Convert OTEL status code to a number.
+ * Tempo returns status.code as either:
+ * - A string enum: "STATUS_CODE_UNSET" | "STATUS_CODE_OK" | "STATUS_CODE_ERROR"
+ * - A number: 0 | 1 | 2
+ */
+const normalizeStatusCode = (code: string | number | undefined): number | undefined => {
+  if (code === undefined) return undefined
+  if (typeof code === 'number') return code
+  switch (code) {
+    case 'STATUS_CODE_UNSET':
+      return 0
+    case 'STATUS_CODE_OK':
+      return 1
+    case 'STATUS_CODE_ERROR':
+      return 2
+    default:
+      return undefined
+  }
 }

@@ -21,7 +21,7 @@ export const SpanAttributeEntry = Schema.Struct({
 export interface ProcessedSpan {
   readonly spanId: string
   readonly parentSpanId?: string | undefined
-  readonly operationName: string
+  readonly name: string
   readonly serviceName: string
   readonly startTimeMs: number
   readonly endTimeMs: number
@@ -38,7 +38,7 @@ export const ProcessedSpanSchema: Schema.Schema<ProcessedSpan> = Schema.suspend(
   Schema.Struct({
     spanId: Schema.String,
     parentSpanId: Schema.optional(Schema.String),
-    operationName: Schema.String,
+    name: Schema.String,
     serviceName: Schema.String,
     startTimeMs: Schema.Number,
     endTimeMs: Schema.Number,
