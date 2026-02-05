@@ -75,7 +75,7 @@ let
     { path = "packages/@overeng/notion-cli"; name = "notion-cli"; }
     { path = "packages/@overeng/notion-effect-client"; name = "notion-effect-client"; }
     { path = "packages/@overeng/notion-effect-schema"; name = "notion-effect-schema"; }
-    { path = "packages/@overeng/otel-cli"; name = "otel-cli"; }
+
     { path = "packages/@overeng/oxc-config"; name = "oxc-config"; }
     { path = "packages/@overeng/tui-core"; name = "tui-core"; }
     { path = "packages/@overeng/tui-react"; name = "tui-react"; }

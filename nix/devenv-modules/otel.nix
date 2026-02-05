@@ -95,7 +95,7 @@ let
   '';
 
   # All dashboards as a linkFarm (Nix store path with JSON files)
-  dashboardNames = [ "overview" "dt-tasks" "shell-entry" "pnpm-install" "ts-app-traces" ];
+  dashboardNames = [ "overview" "dt-tasks" "dt-duration-trends" "shell-entry" "pnpm-install" "ts-app-traces" ];
   allDashboards = pkgs.linkFarm "otel-dashboards" (map (name: {
     name = "${name}.json";
     path = "${buildDashboard name}/${name}.json";
@@ -225,8 +225,19 @@ let
         block_retention: 72h
 
     metrics_generator:
+      processor:
+        local_blocks:
+          flush_to_storage: false
       storage:
         path: ${dataDir}/tempo-metrics
+      traces_storage:
+        path: ${dataDir}/tempo-data
+
+    overrides:
+      defaults:
+        metrics_generator:
+          processors:
+            - local-blocks
   '';
 
   # Grafana provisioning: auto-configure Tempo as a datasource
@@ -247,6 +258,8 @@ let
         url: http://127.0.0.1:${toString tempoQueryPort}
         isDefault: true
         editable: false
+        jsonData:
+          traceqlMetrics: true
   '';
 
   grafanaIni = pkgs.writeText "grafana.ini" ''
