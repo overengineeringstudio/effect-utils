@@ -44,6 +44,7 @@ import React, { type ReactElement, type ReactNode, createContext } from 'react'
 import { renderToString } from '../renderToString.ts'
 import { createRoot, type Root } from '../root.tsx'
 import { useContext, useSyncExternalStore, useCallback } from './hooks.tsx'
+import { CapturedLogsProvider, type LogCaptureHandle } from './LogCapture.ts'
 import {
   OutputModeTag,
   type OutputMode,
@@ -575,6 +576,7 @@ const setupMode = <S,>({
             registry,
             view,
             renderConfig: mode.render,
+            ...(mode.capturedLogs ? { capturedLogs: mode.capturedLogs } : {}),
           })
         : Effect.succeed(null)
     } else {
@@ -606,20 +608,29 @@ const setupProgressiveVisualWithView = ({
   registry,
   view,
   renderConfig,
+  capturedLogs,
 }: {
   registry: Registry.Registry
   view: ReactElement
   renderConfig: RenderConfig
+  capturedLogs?: LogCaptureHandle
 }): Effect.Effect<Root, never, Scope.Scope> =>
   Effect.gen(function* () {
     const root = createRoot({ terminalOrStream: process.stdout })
 
     // Wrapper that provides Registry via our own context (avoids multiple React instance issues)
-    const TuiAppWrapper = (): ReactNode => (
-      <TuiRegistryContext.Provider value={registry}>
+    const TuiAppWrapper = (): ReactNode => {
+      let content: ReactNode = (
         <RenderConfigProvider config={renderConfig}>{view}</RenderConfigProvider>
-      </TuiRegistryContext.Provider>
-    )
+      )
+
+      // Wrap with captured logs provider if log capture is active
+      if (capturedLogs) {
+        content = <CapturedLogsProvider handle={capturedLogs}>{content}</CapturedLogsProvider>
+      }
+
+      return <TuiRegistryContext.Provider value={registry}>{content}</TuiRegistryContext.Provider>
+    }
 
     root.render(<TuiAppWrapper />)
 

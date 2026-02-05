@@ -26,6 +26,7 @@
 import { Options } from '@effect/cli'
 import { Cause, Effect, Layer, Logger } from 'effect'
 
+import { createLogCapture } from './LogCapture.ts'
 import type { OutputModeTag } from './OutputMode.tsx'
 import {
   type OutputMode,
@@ -40,6 +41,7 @@ import {
   detectOutputMode,
   layer,
   isJson,
+  isReact,
 } from './OutputMode.tsx'
 
 // =============================================================================
@@ -133,35 +135,47 @@ const stderrLoggerLayer: Layer.Layer<never> = Logger.replace(
 /**
  * Create an OutputMode layer from the `--output` flag value.
  *
- * For JSON modes (`json`, `ndjson`), this also configures the logger to write
- * to stderr instead of stdout, ensuring stdout contains only JSON data.
- * This follows the principle: "stdout = data, stderr = diagnostics".
+ * Behavior by mode type:
+ * - **Progressive React modes** (`tty`, `ci`, `ci-plain`, `alt-screen`): Captures all
+ *   Effect logs and console output to prevent TUI corruption. Captured logs are
+ *   accessible via `useCapturedLogs()` in React components.
+ * - **JSON modes** (`json`, `ndjson`): Redirects logs to stderr, keeping stdout
+ *   clean for JSON data only.
+ * - **Final React modes** (`pipe`, `log`): No log capture (single render at end).
  *
  * @example
  * ```typescript
  * // In command handler:
  * myProgram().pipe(Effect.provide(outputModeLayer(output)))
  * ```
- *
- * @example
- * ```typescript
- * // Explicit mode:
- * outputModeLayer('json')  // JSON output (logs go to stderr)
- * outputModeLayer('tty')   // Animated terminal (logs go to stdout)
- * outputModeLayer('auto')  // Auto-detect from environment
- * ```
  */
 export const outputModeLayer = (value: OutputModeValue): Layer.Layer<OutputModeTag> => {
   const mode = value === 'auto' ? detectOutputMode() : modeMap[value]
-  const outputLayer = layer(mode)
 
   // For JSON modes, configure logger to write to stderr
   // This keeps stdout clean for JSON data only
   if (isJson(mode)) {
-    return Layer.merge(outputLayer, stderrLoggerLayer)
+    return Layer.merge(layer(mode), stderrLoggerLayer)
   }
 
-  return outputLayer
+  // For progressive React modes, capture logs to prevent TUI corruption
+  if (isReact(mode) && mode.timing === 'progressive') {
+    return Layer.unwrapScoped(
+      Effect.gen(function* () {
+        const { handle, loggerLayer } = yield* createLogCapture()
+
+        const modeWithCapture: OutputMode = {
+          ...mode,
+          capturedLogs: handle,
+        }
+
+        return Layer.merge(layer(modeWithCapture), loggerLayer)
+      }),
+    )
+  }
+
+  // Final React modes (pipe, log) -- no capture needed
+  return layer(mode)
 }
 
 /**
