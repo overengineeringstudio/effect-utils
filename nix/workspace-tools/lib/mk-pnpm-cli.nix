@@ -122,6 +122,12 @@ let
       filter = path: type:
         let
           relPath = lib.removePrefix (toString workspaceRootPath + "/") (toString path);
+          baseName = baseNameOf path;
+          excludedNames = [
+            ".git" ".direnv" ".devenv" ".cache" ".turbo" ".next" ".bun"
+            "node_modules" "dist" "result" "coverage" "tmp" "out"
+          ];
+          isExcluded = lib.elem baseName excludedNames;
           # Include everything under the main package directory
           isInPackage = lib.hasPrefix "${pkgDir}/" relPath || relPath == pkgDir;
           # Include parent directories needed for structure
@@ -134,6 +140,10 @@ let
           isWorkspaceMemberPackageJson = lib.any (memberDir:
             relPath == "${memberDir}/package.json"
           ) workspaceMembers;
+          # Include full workspace member contents for recursive installs
+          isInWorkspaceMember = lib.any (memberDir:
+            lib.hasPrefix "${memberDir}/" relPath
+          ) workspaceMembers;
           isWorkspaceMemberDir = type == "directory" && lib.any (memberDir:
             relPath == memberDir
           ) workspaceMembers;
@@ -142,8 +152,8 @@ let
             in lib.any (n: relPath == lib.concatStringsSep "/" (lib.take n memberParts)) (lib.range 1 (lib.length memberParts - 1))
           ) workspaceMembers;
         in
-        type == "directory" || isInPackage || isInPatches || isParentDir ||
-        isWorkspaceMemberPackageJson || isWorkspaceMemberDir || isWorkspaceMemberParentDir;
+        (!isExcluded && type == "directory") || isInPackage || isInPatches || isParentDir ||
+        isWorkspaceMemberPackageJson || isInWorkspaceMember || isWorkspaceMemberDir || isWorkspaceMemberParentDir;
     };
 
   # Custom pnpm deps fetcher that handles workspace members
@@ -179,6 +189,10 @@ let
 
       export HOME=$PWD
       export STORE_PATH=$PWD/.pnpm-store
+      # Ensure devDependencies are included in the store (avoid production-only installs)
+      export NPM_CONFIG_PRODUCTION=false
+      export npm_config_production=false
+      export NODE_ENV=development
 
       # Configure pnpm
       pnpm config set store-dir "$STORE_PATH"
@@ -186,8 +200,11 @@ let
       ${pnpmSupportedArchitecturesScript}
 
       # Install with network access - this downloads all deps to the store
+      # Use --recursive to match the offline install scope (R6 determinism)
       # Use --force to skip workspace member validation since we only have package.json files
-      pnpm install --frozen-lockfile --ignore-scripts --force
+      pnpm install --frozen-lockfile --ignore-scripts --force --recursive
+      # Ensure all tarballs referenced in the lockfile are present in the store
+      pnpm fetch --frozen-lockfile --recursive
 
       # Normalize pnpm store metadata (checkedAt timestamps are non-deterministic)
       for indexDir in "$STORE_PATH"/v*/index; do
@@ -291,6 +308,10 @@ pkgs.stdenv.mkDerivation {
 
     export HOME=$PWD
     export STORE_PATH=$(mktemp -d)
+    # Ensure devDependencies are installed in offline mode as well
+    export NPM_CONFIG_PRODUCTION=false
+    export npm_config_production=false
+    export NODE_ENV=development
 
     # Extract pnpm store
     echo "Extracting pnpm store..."

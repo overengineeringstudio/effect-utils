@@ -71,6 +71,12 @@ All notable changes to this project will be documented in this file.
   - Prevents pnpm deps hash churn across CI runs
 - **nix/workspace-tools/lib/mk-pnpm-cli.nix**: Force `supportedArchitectures` in Nix pnpm installs
   - Ensures pnpm store hashes remain stable across macOS/Linux (R5)
+- **nix/workspace-tools/lib/mk-pnpm-cli.nix**: Generate pnpm store with recursive install
+  - Aligns store generation scope with offline install (R6)
+  - Prevents missing tarballs during `nix:check` for multi-package workspaces
+- **nix/workspace-tools/lib/mk-pnpm-cli.nix**: Force dev dependencies during pnpm store generation
+  - Avoids production-only installs that drop dev-only tarballs
+  - Fixes `ERR_PNPM_NO_OFFLINE_TARBALL` in `nix build`/`nix:check`
 
 ### Removed
 
