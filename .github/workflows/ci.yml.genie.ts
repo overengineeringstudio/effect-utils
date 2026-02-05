@@ -19,6 +19,15 @@ const baseSteps = [
   {
     name: 'Install Nix',
     uses: 'cachix/install-nix-action@v31',
+    with: {
+      // Ensure cache.nixos.org is available as a fallback substituter.
+      // Without this, macOS ARM64 runners can fail with "path is not valid"
+      // during Darwin stdenv bootstrap when low-level store paths get GC'd
+      // and aren't in our Cachix cache.
+      // See: https://github.com/NixOS/nix/issues/9052
+      //      https://github.com/cachix/cachix-action/issues/44
+      extra_nix_config: 'extra-substituters = https://cache.nixos.org\nextra-trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=',
+    },
   },
   {
     name: 'Enable Cachix cache',
