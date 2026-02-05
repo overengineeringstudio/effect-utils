@@ -5,6 +5,10 @@
  * - Parent span propagation across process boundaries
  * - OTEL exporter layer for Playwright test traces
  *
+ * NOTE: This module uses the root @effect/opentelemetry import which requires
+ * @opentelemetry/sdk-* peer dependencies. This is needed for `currentOtelSpan`
+ * which accesses the underlying OTEL span for cross-process context propagation.
+ *
  * @module
  */
 
