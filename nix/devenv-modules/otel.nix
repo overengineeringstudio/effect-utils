@@ -45,6 +45,74 @@ let
   dataDir = "${config.devenv.root}/.devenv/otel";
 
   # =========================================================================
+  # Grafonnet: build dashboards from Jsonnet source at Nix eval time
+  # =========================================================================
+
+  grafonnetSrc = pkgs.fetchFromGitHub {
+    owner = "grafana";
+    repo = "grafonnet";
+    rev = "7380c9c64fb973f34c3ec46265621a2b0dee0058";
+    sha256 = "sha256-WS3Z/k9fDSleK6RVPTFQ9Um26GRFv/kxZhARXpGkS10=";
+  };
+
+  # Grafonnet's transitive dependencies (jsonnet-bundler style imports)
+  xtdSrc = pkgs.fetchFromGitHub {
+    owner = "jsonnet-libs";
+    repo = "xtd";
+    rev = "4d7f8cb24d613430799f9d56809cc6964f35cea9";
+    sha256 = "sha256-MWinI7gX39UIDVh9kzkHFH6jsKZoI294paQUWd/4+ag=";
+  };
+
+  docsonnetSrc = pkgs.fetchFromGitHub {
+    owner = "jsonnet-libs";
+    repo = "docsonnet";
+    rev = "6ac6c69685b8c29c54515448eaca583da2d88150";
+    sha256 = "sha256-Uy86lIQbFjebNiAAp0dJ8rAtv16j4V4pXMPcl+llwBA=";
+  };
+
+  dashboardsSrcDir = ./otel/dashboards;
+
+  # Create a JPATH root so `github.com/...` vendored imports resolve correctly.
+  # Grafonnet and its deps use jsonnet-bundler style import paths.
+  grafonnetJpath = pkgs.linkFarm "grafonnet-jpath" [
+    { name = "github.com/grafana/grafonnet"; path = grafonnetSrc; }
+    { name = "github.com/jsonnet-libs/xtd"; path = xtdSrc; }
+    { name = "github.com/jsonnet-libs/docsonnet"; path = docsonnetSrc; }
+  ];
+
+  # Build a single dashboard from Jsonnet source
+  buildDashboard = name: pkgs.runCommand "grafana-dashboard-${name}" {
+    nativeBuildInputs = [ pkgs.go-jsonnet ];
+  } ''
+    mkdir -p $out
+    jsonnet \
+      -J ${grafonnetJpath} \
+      -J ${grafonnetSrc} \
+      -J ${dashboardsSrcDir} \
+      ${dashboardsSrcDir}/${name}.jsonnet \
+      -o $out/${name}.json
+  '';
+
+  # All dashboards as a linkFarm (Nix store path with JSON files)
+  dashboardNames = [ "overview" "dt-tasks" "shell-entry" "pnpm-install" "ts-app-traces" ];
+  allDashboards = pkgs.linkFarm "otel-dashboards" (map (name: {
+    name = "${name}.json";
+    path = "${buildDashboard name}/${name}.json";
+  }) dashboardNames);
+
+  # Grafana dashboard provisioning config
+  grafanaDashboardProvision = pkgs.writeText "grafana-dashboards.yaml" ''
+    apiVersion: 1
+    providers:
+      - name: otel
+        type: file
+        disableDeletion: true
+        updateIntervalSeconds: 0
+        options:
+          path: ${allDashboards}
+  '';
+
+  # =========================================================================
   # Port allocation: deterministic hash-based ports from DEVENV_ROOT
   # =========================================================================
   #
@@ -441,8 +509,9 @@ in {
     grafana = {
       exec = ''
         mkdir -p ${dataDir}/grafana-data ${dataDir}/grafana-logs ${dataDir}/grafana-plugins
-        mkdir -p ${dataDir}/grafana-provisioning/datasources
+        mkdir -p ${dataDir}/grafana-provisioning/datasources ${dataDir}/grafana-provisioning/dashboards
         cp ${grafanaDatasources} ${dataDir}/grafana-provisioning/datasources/tempo.yaml
+        cp ${grafanaDashboardProvision} ${dataDir}/grafana-provisioning/dashboards/otel.yaml
         exec ${pkgs.grafana}/bin/grafana server \
           --config ${grafanaIni} \
           --homepath ${pkgs.grafana}/share/grafana
