@@ -2,8 +2,9 @@
 local g = import 'g.libsonnet';
 
 {
-  // Tempo datasource reference (matches the name provisioned by otel.nix)
-  tempoDatasource:: 'Tempo',
+  // Tempo datasource reference (matches the UID provisioned by otel.nix)
+  // Note: This is the UID, not the name. The provisioned UID is lowercase 'tempo'.
+  tempoDatasource:: 'tempo',
 
   // Create a Tempo TraceQL query target
   tempoQuery(query, refId='A', limit=20)::
