@@ -46,7 +46,8 @@
     };
     "ts:clean" = {
       description = "Remove TypeScript build artifacts";
-      exec = "${tscBin} --build --clean ${tsconfigFile}";
+      # Use Nix tsc (always available) since clean doesn't need the Effect LSP patch
+      exec = "tsc --build --clean ${tsconfigFile}";
     };
   };
 }
