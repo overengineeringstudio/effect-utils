@@ -34,7 +34,10 @@ export * from '@effect/vitest'
 // ============================================================================
 
 /** True when running under a debugger (Node inspector or DEBUGGER_ACTIVE env var). */
-export const DEBUGGER_ACTIVE = Boolean(process.env.DEBUGGER_ACTIVE ?? inspector.url() !== undefined)
+export const DEBUGGER_ACTIVE =
+  process.env.DEBUGGER_ACTIVE === '1' ||
+  process.env.DEBUGGER_ACTIVE === 'true' ||
+  inspector.url() !== undefined
 
 /** True when running in CI environment. */
 export const IS_CI = process.env.CI === 'true'
@@ -56,7 +59,8 @@ export interface OtelVitestConfig {
 /**
  * Creates an OTEL layer for Vitest tests.
  *
- * Returns `Layer.empty` if no OTEL endpoint is configured.
+ * Always wraps the test in a root span. When an OTEL endpoint is configured,
+ * also sets up the OTLP exporter to send traces.
  * Use `DEBUGGER_ACTIVE` or `forceOtel` to enable OTEL in local dev.
  */
 export const makeOtelVitestLayer = (
@@ -168,7 +172,8 @@ export const withTestCtx =
       // provided layer from the effect dependencies
       | Exclude<R, ROut | Scope.Scope>
     > => {
-      const spanName = `${testContext.task.suite?.name}:${testContext.task.name}${suffix ? `:${suffix}` : ''}`
+      const suiteName = testContext.task.suite?.name
+      const spanName = `${suiteName ? `${suiteName}:` : ''}${testContext.task.name}${suffix ? `:${suffix}` : ''}`
       const layer = makeLayer?.(testContext) ?? Layer.empty
 
       const otelLayer =
@@ -251,7 +256,7 @@ const normalizePropOptions = <Arbs extends Vitest.Vitest.Arbitraries>(
   }
 
   // If fastCheck exists but no numRuns, add our default
-  if (propOptions.fastCheck && !propOptions.fastCheck.numRuns) {
+  if (propOptions.fastCheck && propOptions.fastCheck.numRuns == null) {
     return {
       ...propOptions,
       fastCheck: {

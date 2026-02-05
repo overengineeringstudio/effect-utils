@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/utils-dev**: New package with enhanced Vitest utilities for Effect-based testing
+  - `makeWithTestCtx` / `withTestCtx` for automatic layer provisioning, OTEL integration, and timeouts
+  - `asProp` for property-based testing with shrinking phase visibility
+  - Migrated 22 test files across 7 packages to the new pattern
+
 - **@overeng/genie**: GitHub Repository Ruleset generator (`githubRuleset`)
   - Type-safe configuration for GitHub Repository Rulesets via the REST API
   - Full support for all 22 rule types with comprehensive JSDoc documentation
