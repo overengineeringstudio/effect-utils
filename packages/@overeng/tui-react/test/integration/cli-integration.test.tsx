@@ -18,6 +18,16 @@ import {
   testModeLayer,
 } from '../../src/mod.tsx'
 
+const parseJson = (json: string) =>
+  Schema.decodeSync(
+    Schema.parseJson(
+      Schema.Record({
+        key: Schema.String,
+        value: Schema.Unknown,
+      }),
+    ),
+  )(json)
+
 // =============================================================================
 // Test State Schema (simulating a deploy command)
 // =============================================================================
@@ -222,13 +232,17 @@ describe('CLI Integration', () => {
       expect(result.success).toBe(true)
       expect(capturedOutput).toHaveLength(1)
 
-      const output = JSON.parse(capturedOutput[0]!)
+      const output = parseJson(capturedOutput[0]!) as {
+        _tag: string
+        value: { _tag: string; services: Array<{ name: string }> }
+      }
       // State is a union (non-struct), so it's wrapped in Success with `value`
       expect(output._tag).toBe('Success')
       expect(output.value._tag).toBe('Complete')
-      expect(output.value.services).toHaveLength(2)
-      expect(output.value.services[0].name).toBe('api')
-      expect(output.value.services[1].name).toBe('web')
+      const services = output.value.services
+      expect(services).toHaveLength(2)
+      expect(services[0]!.name).toBe('api')
+      expect(services[1]!.name).toBe('web')
     }).pipe(Effect.provide(testModeLayer('json'))),
   )
 
@@ -240,14 +254,19 @@ describe('CLI Integration', () => {
       expect(capturedOutput.length).toBeGreaterThan(1)
 
       // All should be valid JSON
-      const parsed = capturedOutput.map((line) => JSON.parse(line))
+      const parsed = capturedOutput.map(
+        (line) => parseJson(line) as { _tag: string; value?: { _tag: string } },
+      )
 
       // Intermediate lines should be raw state
       const intermediateTags = parsed.slice(0, -1).map((p) => p._tag)
       expect(intermediateTags).toContain('Idle')
 
       // Final line should be Success wrapper with Complete state
-      const finalOutput = parsed[parsed.length - 1]
+      const finalOutput = parsed[parsed.length - 1] as {
+        _tag: string
+        value: { _tag: string }
+      }
       expect(finalOutput._tag).toBe('Success')
       expect(finalOutput.value._tag).toBe('Complete')
     }).pipe(Effect.provide(testModeLayer('ndjson'))),

@@ -17,6 +17,17 @@ import {
   type TuiOutput,
 } from '../../src/mod.tsx'
 
+const parseJson = (json: string) =>
+  Schema.decodeSync(
+    Schema.parseJson(
+      Schema.Record({
+        key: Schema.String,
+        value: Schema.Unknown,
+      }),
+    ),
+  )(json)
+const encodeJson = (value: unknown) => Schema.encodeSync(Schema.parseJson(Schema.Unknown))(value)
+
 // =============================================================================
 // Test State and Actions
 // =============================================================================
@@ -138,7 +149,7 @@ describe('createTuiApp', () => {
         Effect.provide(testModeLayer('json')),
         Effect.andThen(() => {
           expect(capturedOutput).toHaveLength(1)
-          const output = JSON.parse(capturedOutput[0]!)
+          const output = parseJson(capturedOutput[0]!)
           expect(output).toEqual({ _tag: 'Success', count: 2 })
         }),
       ),
@@ -153,7 +164,7 @@ describe('createTuiApp', () => {
         Effect.provide(testModeLayer('json')),
         Effect.andThen(() => {
           expect(capturedOutput).toHaveLength(1)
-          const output = JSON.parse(capturedOutput[0]!)
+          const output = parseJson(capturedOutput[0]!)
           expect(output).toEqual({ _tag: 'Success', count: 100 })
         }),
       ),
@@ -177,13 +188,13 @@ describe('createTuiApp', () => {
           expect(capturedOutput.length).toBeGreaterThanOrEqual(2)
 
           // Parse all outputs
-          const states = capturedOutput.map((line) => JSON.parse(line))
+          const states = capturedOutput.map((line) => parseJson(line))
 
           // Intermediate lines are raw state (for progressive consumption)
           expect(states[0]).toEqual({ count: 0 }) // initial
 
           // Final line should be wrapped in Success
-          const finalOutput = states[states.length - 1]
+          const finalOutput = states[states.length - 1] as { _tag: string; count: number }
           expect(finalOutput._tag).toBe('Success')
           expect(finalOutput.count).toBe(2)
         }),
@@ -313,7 +324,7 @@ describe('deriveOutputSchema', () => {
         }
 
         const encoded = yield* Schema.encode(Schema.parseJson(OutputSchema))(successValue)
-        const parsed = JSON.parse(encoded)
+        const parsed = parseJson(encoded) as any
 
         expect(parsed).toEqual({
           _tag: 'Success',
@@ -325,7 +336,7 @@ describe('deriveOutputSchema', () => {
 
     it.effect('success: decodes flat fields to success value', () =>
       Effect.gen(function* () {
-        const json = JSON.stringify({
+        const json = encodeJson({
           _tag: 'Success',
           count: 42,
           name: 'test',
@@ -353,7 +364,7 @@ describe('deriveOutputSchema', () => {
         }
 
         const encoded = yield* Schema.encode(Schema.parseJson(OutputSchema))(failureValue)
-        const parsed = JSON.parse(encoded)
+        const parsed = parseJson(encoded) as any
 
         expect(parsed._tag).toBe('Failure')
         expect(parsed.state).toEqual({ count: 10, name: 'partial' })
@@ -365,7 +376,7 @@ describe('deriveOutputSchema', () => {
     it.effect('failure: decodes cause and state', () =>
       Effect.gen(function* () {
         // Create an interrupt cause JSON
-        const json = JSON.stringify({
+        const json = encodeJson({
           _tag: 'Failure',
           cause: { _tag: 'Interrupt', fiberId: { _tag: 'None' } },
           state: { count: 10, name: 'partial' },
@@ -405,7 +416,7 @@ describe('deriveOutputSchema', () => {
         }
 
         const encoded = yield* Schema.encode(Schema.parseJson(OutputSchema))(successValue)
-        const parsed = JSON.parse(encoded)
+        const parsed = parseJson(encoded) as any
 
         expect(parsed).toEqual({
           _tag: 'Success',
@@ -430,7 +441,7 @@ describe('deriveOutputSchema', () => {
         }
 
         const encoded = yield* Schema.encode(Schema.parseJson(OutputSchema))(failureValue)
-        const parsed = JSON.parse(encoded)
+        const parsed = parseJson(encoded) as any
 
         expect(parsed._tag).toBe('Failure')
         expect(parsed.state.workspace.name).toBe('my-repo')
@@ -460,7 +471,7 @@ describe('deriveOutputSchema', () => {
         }
 
         const encoded = yield* Schema.encode(Schema.parseJson(OutputSchema))(successValue as any)
-        const parsed = JSON.parse(encoded)
+        const parsed = parseJson(encoded) as any
 
         expect(parsed._tag).toBe('Success')
         expect(parsed.value._tag).toBe('Done')

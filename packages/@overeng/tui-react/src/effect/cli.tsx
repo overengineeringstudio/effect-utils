@@ -266,28 +266,37 @@ export interface TuiRuntime {
  * )
  * ```
  */
-export const runTuiMain: {
-  // Data-last (pipeable): runTuiMain(runtime) or runTuiMain(runtime, options)
-  (runtime: TuiRuntime, options?: RunTuiMainOptions): <E, A>(effect: Effect.Effect<A, E>) => void
-  // Data-first: runTuiMain(runtime, effect) or runTuiMain(runtime, effect, options)
-  <E, A>(runtime: TuiRuntime, effect: Effect.Effect<A, E>, options?: RunTuiMainOptions): void
-} = ((...args: [TuiRuntime, ...Array<unknown>]) => {
+// Data-last (pipeable): runTuiMain(runtime) or runTuiMain(runtime, options)
+export function runTuiMain(
+  runtime: TuiRuntime,
+  options?: RunTuiMainOptions,
+): <E, A>(effect: Effect.Effect<A, E>) => void
+// Data-first: runTuiMain(runtime, effect) or runTuiMain(runtime, effect, options)
+export function runTuiMain<E, A>(
+  runtime: TuiRuntime,
+  effect: Effect.Effect<A, E>,
+  options?: RunTuiMainOptions,
+): void
+export function runTuiMain<E, A>(
+  ...args: [
+    runtime: TuiRuntime,
+    effectOrOptions?: Effect.Effect<A, E> | RunTuiMainOptions,
+    maybeOptions?: RunTuiMainOptions,
+  ]
+): ((effect: Effect.Effect<A, E>) => void) | void {
   const [runtime, effectOrOptions, maybeOptions] = args
   // Check if second argument is an Effect (data-first) or options/undefined (data-last)
   if (effectOrOptions !== undefined && Effect.isEffect(effectOrOptions)) {
     // Data-first: runTuiMain(runtime, effect, options?)
     return runTuiMainImpl({
       runtime,
-      effect: effectOrOptions as Effect.Effect<unknown, unknown>,
-      options: maybeOptions as RunTuiMainOptions | undefined,
+      effect: effectOrOptions,
+      options: maybeOptions,
     })
   }
   // Data-last: runTuiMain(runtime, options?) returns (effect) => void
   const options = effectOrOptions as RunTuiMainOptions | undefined
-  return <E, A>(effect: Effect.Effect<A, E>) => runTuiMainImpl({ runtime, effect, options })
-}) as {
-  (runtime: TuiRuntime, options?: RunTuiMainOptions): <E, A>(effect: Effect.Effect<A, E>) => void
-  <E, A>(runtime: TuiRuntime, effect: Effect.Effect<A, E>, options?: RunTuiMainOptions): void
+  return (effect: Effect.Effect<A, E>) => runTuiMainImpl({ runtime, effect, options })
 }
 
 /** Internal implementation of runTuiMain */

@@ -94,7 +94,7 @@ const simulatePull = (service: string) =>
 
     // 5% chance of failure
     if (Math.random() < 0.05) {
-      return yield* Effect.fail(new DeployError({ message: `Failed to pull image for ${service}` }))
+      return yield* new DeployError({ message: `Failed to pull image for ${service}` })
     }
   })
 
@@ -105,7 +105,7 @@ const simulateStart = (service: string) =>
 
     // 3% chance of failure
     if (Math.random() < 0.03) {
-      return yield* Effect.fail(new DeployError({ message: `Failed to start ${service}` }))
+      return yield* new DeployError({ message: `Failed to start ${service}` })
     }
   })
 
@@ -116,7 +116,7 @@ const simulateHealthcheck = (service: string) =>
 
     // 2% chance of failure
     if (Math.random() < 0.02) {
-      return yield* Effect.fail(new DeployError({ message: `Health check failed for ${service}` }))
+      return yield* new DeployError({ message: `Health check failed for ${service}` })
     }
   })
 
