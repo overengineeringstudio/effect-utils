@@ -290,13 +290,15 @@ In progressive-visual modes (`tty`, `ci`, `ci-plain`, `alt-screen`), accidental 
 5. React components access captured logs via `useCapturedLogs()` hook
 6. On scope finalization, original console methods are restored
 
+> **Note:** Only one log capture may be active per process. Overlapping or nested captures are not supported.
+
 **Stream contract for progressive-visual modes:**
 
-| Stream   | Content                                                |
-| -------- | ------------------------------------------------------ |
-| `stdout` | TUI renderer output only (via `process.stdout.write`)  |
-| `stderr` | Empty (no log leaks)                                   |
-| Captured | Effect logs + console output (via `useCapturedLogs()`) |
+| Stream   | Content                                                      |
+| -------- | ------------------------------------------------------------ |
+| `stdout` | TUI renderer output only (via `process.stdout.write`)        |
+| `stderr` | Empty for Effect logs + console (native writes not captured) |
+| Captured | Effect logs + console output (via `useCapturedLogs()`)       |
 
 **Rendering captured logs:**
 

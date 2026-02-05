@@ -3,12 +3,29 @@
  */
 
 import { it } from '@effect/vitest'
-import { Effect, SubscriptionRef } from 'effect'
+import { Chunk, Effect, Fiber, Stream } from 'effect'
 import { describe, expect, beforeEach, afterEach } from 'vitest'
 
 import { createLogCapture } from '../../src/effect/LogCapture.ts'
+import type { LogCaptureHandle } from '../../src/effect/LogCapture.ts'
 import { testModeLayer } from '../../src/effect/testing.tsx'
+import type { TuiLogEntry } from '../../src/effect/TuiLogger.ts'
 import { createTuiApp } from '../../src/mod.tsx'
+
+/**
+ * Wait for captured logs to satisfy a predicate by subscribing to ref.changes.
+ * Deterministic — completes as soon as the condition is met, no sleeps.
+ */
+const awaitLogs = (
+  handle: LogCaptureHandle,
+  predicate: (logs: readonly TuiLogEntry[]) => boolean,
+): Effect.Effect<readonly TuiLogEntry[]> =>
+  handle.logsRef.changes.pipe(
+    Stream.filter(predicate),
+    Stream.take(1),
+    Stream.runCollect,
+    Effect.map((chunk) => Chunk.unsafeGet(chunk, 0)),
+  )
 
 // =============================================================================
 // createLogCapture Tests
@@ -42,12 +59,11 @@ describe('createLogCapture', () => {
     Effect.gen(function* () {
       const { handle, loggerLayer } = yield* createLogCapture()
 
+      const fiber = yield* Effect.fork(awaitLogs(handle, (logs) => logs.length >= 1))
+
       yield* Effect.log('hello from effect').pipe(Effect.provide(loggerLayer))
 
-      // Give the forked fiber time to complete the SubscriptionRef update
-      yield* Effect.sleep('20 millis')
-
-      const logs = yield* SubscriptionRef.get(handle.logsRef)
+      const logs = yield* Fiber.join(fiber)
       expect(logs).toHaveLength(1)
       expect(logs[0]!.message).toBe('hello from effect')
       expect(logs[0]!.level).toBe('INFO')
@@ -58,12 +74,13 @@ describe('createLogCapture', () => {
     Effect.gen(function* () {
       const { handle } = yield* createLogCapture()
 
+      const fiber = yield* Effect.fork(
+        awaitLogs(handle, (logs) => logs.some((l) => l.message === 'hello from console')),
+      )
+
       console.log('hello from console')
 
-      // Give the async append time to settle
-      yield* Effect.sleep('20 millis')
-
-      const logs = yield* SubscriptionRef.get(handle.logsRef)
+      const logs = yield* Fiber.join(fiber)
       expect(logs.some((l) => l.message === 'hello from console')).toBe(true)
     }).pipe(Effect.scoped),
   )
@@ -72,10 +89,13 @@ describe('createLogCapture', () => {
     Effect.gen(function* () {
       const { handle } = yield* createLogCapture()
 
-      console.error('error message')
-      yield* Effect.sleep('20 millis')
+      const fiber = yield* Effect.fork(
+        awaitLogs(handle, (logs) => logs.some((l) => l.message === 'error message')),
+      )
 
-      const logs = yield* SubscriptionRef.get(handle.logsRef)
+      console.error('error message')
+
+      const logs = yield* Fiber.join(fiber)
       const errorLog = logs.find((l) => l.message === 'error message')
       expect(errorLog).toBeDefined()
       expect(errorLog!.level).toBe('ERROR')
@@ -86,10 +106,13 @@ describe('createLogCapture', () => {
     Effect.gen(function* () {
       const { handle } = yield* createLogCapture()
 
-      console.warn('warning message')
-      yield* Effect.sleep('20 millis')
+      const fiber = yield* Effect.fork(
+        awaitLogs(handle, (logs) => logs.some((l) => l.message === 'warning message')),
+      )
 
-      const logs = yield* SubscriptionRef.get(handle.logsRef)
+      console.warn('warning message')
+
+      const logs = yield* Fiber.join(fiber)
       const warnLog = logs.find((l) => l.message === 'warning message')
       expect(warnLog).toBeDefined()
       expect(warnLog!.level).toBe('WARNING')
@@ -100,11 +123,19 @@ describe('createLogCapture', () => {
     Effect.gen(function* () {
       const { handle } = yield* createLogCapture()
 
+      const fiber = yield* Effect.fork(
+        awaitLogs(
+          handle,
+          (logs) =>
+            logs.some((l) => l.message === 'info message') &&
+            logs.some((l) => l.message === 'debug message'),
+        ),
+      )
+
       console.info('info message')
       console.debug('debug message')
-      yield* Effect.sleep('20 millis')
 
-      const logs = yield* SubscriptionRef.get(handle.logsRef)
+      const logs = yield* Fiber.join(fiber)
       expect(logs.some((l) => l.message === 'info message' && l.level === 'INFO')).toBe(true)
       expect(logs.some((l) => l.message === 'debug message' && l.level === 'DEBUG')).toBe(true)
     }).pipe(Effect.scoped),
@@ -129,14 +160,17 @@ describe('createLogCapture', () => {
     Effect.gen(function* () {
       const { handle } = yield* createLogCapture({ maxEntries: 3 })
 
+      const fiber = yield* Effect.fork(
+        awaitLogs(handle, (logs) => logs.some((l) => l.message === 'five')),
+      )
+
       console.log('one')
       console.log('two')
       console.log('three')
       console.log('four')
       console.log('five')
-      yield* Effect.sleep('50 millis')
 
-      const logs = yield* SubscriptionRef.get(handle.logsRef)
+      const logs = yield* Fiber.join(fiber)
       expect(logs.length).toBeLessThanOrEqual(3)
       // Most recent entries should be kept
       const messages = logs.map((l) => l.message)
@@ -148,18 +182,21 @@ describe('createLogCapture', () => {
     const printed: string[] = []
 
     return Effect.gen(function* () {
-      const { loggerLayer } = yield* createLogCapture()
+      const { handle, loggerLayer } = yield* createLogCapture()
 
       // Replace console.log with a tracker (after capture has already replaced it)
       const capturedConsoleLog = console.log
       console.log = (...args: unknown[]) => {
-        // Only track if this is the original (restored) console.log
         printed.push(args.map(String).join(' '))
         capturedConsoleLog(...args)
       }
 
+      const fiber = yield* Effect.fork(
+        awaitLogs(handle, (logs) => logs.some((l) => l.message === 'should not print')),
+      )
+
       yield* Effect.log('should not print').pipe(Effect.provide(loggerLayer))
-      yield* Effect.sleep('20 millis')
+      yield* Fiber.join(fiber)
     })
       .pipe(Effect.scoped)
       .pipe(

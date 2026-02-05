@@ -30,6 +30,8 @@
  * @module
  */
 
+import { formatWithOptions } from 'node:util'
+
 import type { Layer, Scope } from 'effect'
 import { Effect, Fiber, FiberId, Logger, Runtime, Stream, SubscriptionRef } from 'effect'
 import React, { createContext, type ReactNode } from 'react'
@@ -155,6 +157,10 @@ let logCaptureEntryId = 0
  * - Overrides console.log/error/warn/info/debug to capture to the same ref
  * - Restores console methods on scope finalization
  *
+ * **Assumes a single active capture per process.** Overlapping or nested
+ * captures are not supported — the first scope to close will restore the
+ * original console methods, which may break a still-active capture.
+ *
  * @param options.maxEntries - Maximum log entries to keep (default: 500)
  * @returns Scoped effect yielding LogCaptureResult
  */
@@ -212,7 +218,7 @@ export const createLogCapture = (options?: {
         const entry: TuiLogEntry = {
           id: ++logCaptureEntryId,
           level,
-          message: args.map(String).join(' '),
+          message: formatWithOptions({ depth: 4 }, ...args),
           timestamp: new Date(),
           fiberId: 'console',
           annotations: {},
