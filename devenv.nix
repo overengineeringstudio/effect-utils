@@ -219,7 +219,7 @@ in
   git-hooks.enable = true;
   git-hooks.hooks.check-quick = {
     enable = true;
-    entry = "${pkgs.bash}/bin/bash -c 'dt check:quick'";
+    entry = "dt check:quick";
     stages = ["pre-commit"];
     always_run = true;
     pass_filenames = false;

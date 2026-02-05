@@ -67,6 +67,16 @@ in
     # effect-utils packages available for Node resolution
     export NODE_PATH="${effectUtilsRoot}/packages''${NODE_PATH:+:$NODE_PATH}"
   '';
+
+  # Git hooks via devenv's prek integration
+  git-hooks.enable = true;
+  git-hooks.hooks.check-quick = {
+    enable = true;
+    entry = "dt check:quick";
+    stages = ["pre-commit"];
+    always_run = true;
+    pass_filenames = false;
+  };
 }
 ```
 
