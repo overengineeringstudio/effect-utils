@@ -227,7 +227,11 @@ let
     metrics_generator:
       processor:
         local_blocks:
-          flush_to_storage: false
+          # flush_to_storage: true is required for TraceQL metrics queries on historical data.
+          # Without this, metrics queries only work on very recent in-memory data.
+          flush_to_storage: true
+          # Include all spans, not just server spans (default filters to server only)
+          filter_server_spans: false
       storage:
         path: ${dataDir}/tempo-metrics
       traces_storage:
