@@ -12,6 +12,27 @@ local g = import 'g.libsonnet';
 local lib = import 'lib.libsonnet';
 local at = lib.at;
 
+// Helper: trace table with sorting by startTime (descending) and relative time display
+local traceTable(title, query, limit=50) =
+  g.panel.table.new(title)
+  + g.panel.table.queryOptions.withTargets([
+    lib.tempoQuery(query, 'A', limit),
+  ])
+  + g.panel.table.options.withSortBy([
+    g.panel.table.options.sortBy.withDisplayName('startTime')
+    + g.panel.table.options.sortBy.withDesc(true),
+  ])
+  + {
+    fieldConfig+: {
+      overrides: [
+        {
+          matcher: { id: 'byName', options: 'startTime' },
+          properties: [{ id: 'unit', value: 'dateTimeFromNow' }],
+        },
+      ],
+    },
+  };
+
 local y = {
   // Row 1: Overview stats
   statsRow: 0,
@@ -80,10 +101,7 @@ g.dashboard.new('dt Task Performance')
   at(g.panel.row.new('Top-Level dt Invocations'), 0, y.topLevelRow, 24, 1),
 
   at(
-    g.panel.table.new('Recent dt calls (click trace ID to see sub-task waterfall)')
-    + g.panel.table.queryOptions.withTargets([
-      lib.tempoQuery('{resource.service.name="dt"}', 'A', 50),
-    ]),
+    traceTable('Recent dt calls (click trace ID to see sub-task waterfall)', '{resource.service.name="dt"}', 50),
     0, y.topLevel, 24, 10,
   ),
 
@@ -93,10 +111,7 @@ g.dashboard.new('dt Task Performance')
   at(g.panel.row.new('Sub-Task Breakdown (Bottleneck Finder)'), 0, y.subtaskRow, 24, 1),
 
   at(
-    g.panel.table.new('All executed sub-tasks — cached tasks are invisible (correctly: 0 cost)')
-    + g.panel.table.queryOptions.withTargets([
-      lib.tempoQuery('{resource.service.name="dt-task"}', 'A', 200),
-    ]),
+    traceTable('All executed sub-tasks — cached tasks are invisible (correctly: 0 cost)', '{resource.service.name="dt-task"}', 200),
     0, y.subtask, 24, 10,
   ),
 
@@ -106,10 +121,7 @@ g.dashboard.new('dt Task Performance')
   at(g.panel.row.new('Slow Sub-Tasks (> 5s)'), 0, y.slowRow, 24, 1),
 
   at(
-    g.panel.table.new('Sub-tasks exceeding 5 seconds — these are your bottlenecks')
-    + g.panel.table.queryOptions.withTargets([
-      lib.tempoQuery('{resource.service.name="dt-task" && duration > 5s}', 'A', 100),
-    ]),
+    traceTable('Sub-tasks exceeding 5 seconds — these are your bottlenecks', '{resource.service.name="dt-task" && duration > 5s}', 100),
     0, y.slow, 24, 10,
   ),
 
@@ -119,10 +131,7 @@ g.dashboard.new('dt Task Performance')
   at(g.panel.row.new('Failures'), 0, y.failRow, 24, 1),
 
   at(
-    g.panel.table.new('Failed tasks (root and sub-task)')
-    + g.panel.table.queryOptions.withTargets([
-      lib.tempoQuery('{resource.service.name=~"dt|dt-task" && status.code=error}', 'A', 50),
-    ]),
+    traceTable('Failed tasks (root and sub-task)', '{resource.service.name=~"dt|dt-task" && status.code=error}', 50),
     0, y.fail, 24, 10,
   ),
 ])

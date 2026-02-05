@@ -40,11 +40,28 @@ local g = import 'g.libsonnet';
     + g.panel.stat.gridPos.withH(4),
 
   // Table panel with Tempo query
+  // Sorted by startTime descending (most recent first), with relative time display
   tempoTable(title, query, refId='A', limit=50)::
     g.panel.table.new(title)
     + g.panel.table.queryOptions.withTargets([
       self.tempoQuery(query, refId, limit),
     ])
+    + g.panel.table.options.withSortBy([
+      g.panel.table.options.sortBy.withDisplayName('startTime')
+      + g.panel.table.options.sortBy.withDesc(true),
+    ])
+    // Field overrides for better display:
+    // - startTime: show as relative time (e.g., "5 minutes ago")
+    + {
+      fieldConfig+: {
+        overrides: [
+          {
+            matcher: { id: 'byName', options: 'startTime' },
+            properties: [{ id: 'unit', value: 'dateTimeFromNow' }],
+          },
+        ],
+      },
+    }
     + g.panel.table.gridPos.withW(24)
     + g.panel.table.gridPos.withH(10),
 
