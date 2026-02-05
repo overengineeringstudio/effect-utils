@@ -18,7 +18,7 @@ let
     # Platform-independent hash: pnpm-workspace.yaml has supportedArchitectures configured
     # to download binaries for all platforms (linux/darwin x x64/arm64), so the hash is
     # the same regardless of where the build runs.
-    pnpmDepsHash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+    pnpmDepsHash = "sha256-MQ+aRsDGEim1jXMxv2se7uf4/Qccbn7Gkiw9JMcgk1s=";
     lockfileHash = "sha256-KyV3mcf/uNBUA/r4I1bs0NJCIudKrx+iwa6YleUITQE=";
     packageJsonDepsHash = "sha256-tGkiG+aEO0TUw/SVvU9T0cgD4nMjENqRioocT5w3XMQ=";
     smokeTestArgs = [ "--help" ];
