@@ -123,7 +123,8 @@ export const runGenieValidation = ({
       }
     }
 
-    if (issues.length > 0) {
+    const errors = issues.filter((i) => i.severity === 'error')
+    if (errors.length > 0) {
       const formatted = formatValidationIssues(issues)
       return yield* new GenieValidationError({ message: `Genie validation failed:${formatted}` })
     }
