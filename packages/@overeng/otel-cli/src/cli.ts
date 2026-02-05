@@ -7,6 +7,7 @@
 
 import * as Cli from '@effect/cli'
 
+import { apiCommand } from './commands/api.ts'
 import { debugCommand } from './commands/debug/mod.ts'
 import { healthCommand } from './commands/health.ts'
 import { traceCommand } from './commands/trace/mod.ts'
@@ -17,7 +18,7 @@ import { traceCommand } from './commands/trace/mod.ts'
 
 /** Root CLI command */
 export const otelCommand = Cli.Command.make('otel').pipe(
-  Cli.Command.withSubcommands([traceCommand, healthCommand, debugCommand]),
+  Cli.Command.withSubcommands([traceCommand, healthCommand, debugCommand, apiCommand]),
   Cli.Command.withDescription(
     'OTEL observability stack CLI - trace inspection, health checks, diagnostics',
   ),
