@@ -242,7 +242,7 @@ let
 
   grafanaIni = pkgs.writeText "grafana.ini" ''
     [server]
-    http_addr = 127.0.0.1
+    http_addr = 0.0.0.0
     http_port = ${toString grafanaPort}
     root_url = http://127.0.0.1:${toString grafanaPort}
 
