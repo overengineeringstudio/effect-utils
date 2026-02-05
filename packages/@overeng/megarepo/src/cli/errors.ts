@@ -118,6 +118,16 @@ export class InvalidOptionsError extends Schema.TaggedError<InvalidOptionsError>
 ) {}
 
 // =============================================================================
+// CLI Option Errors
+// =============================================================================
+
+/** Error when --cwd path is invalid (doesn't exist or not a directory) */
+export class InvalidCwdError extends Schema.TaggedError<InvalidCwdError>()('InvalidCwdError', {
+  message: Schema.String,
+  path: Schema.String,
+}) {}
+
+// =============================================================================
 // Command-Specific Errors
 // =============================================================================
 

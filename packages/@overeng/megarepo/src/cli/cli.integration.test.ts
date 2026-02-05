@@ -566,4 +566,24 @@ describe('--cwd option', () => {
       Effect.scoped,
     ),
   )
+
+  it.effect(
+    'should fail when --cwd points to a nonexistent directory',
+    Effect.fnUntraced(
+      function* () {
+        const { consoleLayer } = yield* makeConsoleCapture
+
+        const cwdPath = '/nonexistent/path/that/does/not/exist/'
+        const argv = ['node', 'mr', '--cwd', cwdPath, 'root', '--output', 'json']
+        const effect = Cli.Command.run(mrCommand, { name: 'mr', version: 'test' })(argv).pipe(
+          Effect.provide(consoleLayer),
+        )
+        const exit = yield* Effect.exit(effect)
+
+        expect(Exit.isFailure(exit)).toBe(true)
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
 })
