@@ -94,14 +94,28 @@ Lightweight shell helper that wraps commands in OTLP trace spans. Uses `curl` to
 | `exit.code`       | span            | Command exit code             |
 | Custom (`--attr`) | span            | User-provided key=value pairs |
 
-### dt Integration
+### dt Integration (Two-Level Tracing)
 
-The `dt` wrapper auto-detects `otel-span` on PATH and wraps every task run:
+The tracing has two levels that produce parent-child span hierarchies:
+
+**Level 1 — Root span** (`service.name="dt"`): The `dt` wrapper wraps the entire `devenv tasks run` invocation:
 
 ```bash
 # What dt does internally when OTEL is available:
 otel-span "dt" "$task_name" --attr "dt.args=$*" -- devenv tasks run "$@" --mode before
 ```
+
+**Level 2 — Child spans** (`service.name="dt-task"`): Each task module's `exec` is wrapped via the `trace.nix` helper:
+
+```nix
+# In task modules (e.g., ts.nix):
+trace = import ../lib/trace.nix { inherit lib; };
+exec = trace.exec "ts:check" "tsc --build tsconfig.all.json";
+```
+
+This produces multi-span traces: a `dt check:quick` invocation creates a root span plus child spans for each actually-executed sub-task (`ts:check`, `lint:check:format`, `genie:run`, etc.). Cached sub-tasks don't emit spans since devenv skips their exec.
+
+The `TRACEPARENT` environment variable chains the spans: `dt` wrapper exports it → `devenv tasks run` inherits it → each task `exec` reads it via `otel-span`.
 
 ## Storage
 
