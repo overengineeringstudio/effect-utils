@@ -5,12 +5,11 @@
  */
 
 import { Schema } from 'effect'
-import type { Scope } from 'effect'
 import { Duration, Effect } from 'effect'
 import React from 'react'
 
-import type { OutputModeTag } from '../../../src/mod.ts'
-import { createTuiApp } from '../../../src/mod.ts'
+import type { OutputModeTag, TuiAppApi } from '../../../src/mod.ts'
+import { createTuiApp, run } from '../../../src/mod.ts'
 import {
   DeployState,
   DeployAction,
@@ -62,7 +61,7 @@ const setState = ({
   tui,
   state,
 }: {
-  tui: ReturnType<typeof DeployApp.run> extends Effect.Effect<infer A, any, any> ? A : never
+  tui: TuiAppApi<DeployState, DeployAction>
   state: DeployState
 }) => {
   tui.dispatch({ _tag: 'SetState', state })
@@ -75,7 +74,7 @@ const updateService = ({
   status,
   message,
 }: {
-  tui: ReturnType<typeof DeployApp.run> extends Effect.Effect<infer A, any, any> ? A : never
+  tui: TuiAppApi<DeployState, DeployAction>
   index: number
   status: ServiceProgress['status']
   message?: string
@@ -127,229 +126,235 @@ const simulateHealthcheck = (service: string) =>
 /** Runs a simulated multi-service deployment with validation, progress tracking, and error handling. */
 export const runDeploy = (
   options: DeployOptions,
-): Effect.Effect<DeployResult, never, Scope.Scope | OutputModeTag> =>
-  Effect.gen(function* () {
-    const { services, environment, dryRun = false } = options
-    // Pass the atom directly to the view - no connected wrapper needed!
-    const tui = yield* DeployApp.run(<DeployView stateAtom={DeployApp.stateAtom} />)
+): Effect.Effect<DeployResult, never, OutputModeTag> =>
+  run(
+    DeployApp,
+    (tui) =>
+      Effect.gen(function* () {
+        const { services, environment, dryRun = false } = options
 
-    const logs: LogEntry[] = []
-    const log = (entry: { level: LogEntry['level']; message: string; service?: string }) => {
-      logs.push(createLog(entry))
-    }
+        const logs: LogEntry[] = []
+        const log = (entry: { level: LogEntry['level']; message: string; service?: string }) => {
+          logs.push(createLog(entry))
+        }
 
-    const startedAt = Date.now()
+        const startedAt = Date.now()
 
-    // ===================
-    // Phase 1: Validation
-    // ===================
-    log({ level: 'info', message: `Starting deployment to ${environment}` })
-    log({ level: 'info', message: `Services: ${services.join(', ')}` })
+        // ===================
+        // Phase 1: Validation
+        // ===================
+        log({ level: 'info', message: `Starting deployment to ${environment}` })
+        log({ level: 'info', message: `Services: ${services.join(', ')}` })
 
-    setState({
-      tui,
-      state: {
-        _tag: 'Validating',
-        environment,
-        services,
-        logs: [...logs],
-      },
-    })
-
-    yield* Effect.sleep(Duration.millis(500))
-    log({ level: 'info', message: 'Configuration validated' })
-
-    if (dryRun) {
-      log({ level: 'info', message: 'Dry run mode - skipping actual deployment' })
-      const results: ServiceResult[] = services.map((name) => ({
-        name,
-        result: 'unchanged' as const,
-        duration: 0,
-      }))
-
-      setState({
-        tui,
-        state: {
-          _tag: 'Complete',
-          environment,
-          services: results,
-          logs: [...logs],
-          startedAt,
-          completedAt: Date.now(),
-          totalDuration: Date.now() - startedAt,
-        },
-      })
-
-      return { success: true, services: results, totalDuration: Date.now() - startedAt }
-    }
-
-    // ===================
-    // Phase 2: Deploy
-    // ===================
-    const serviceStates: ServiceProgress[] = services.map((name) => ({
-      name,
-      status: 'pending' as const,
-    }))
-
-    setState({
-      tui,
-      state: {
-        _tag: 'Progress',
-        environment,
-        services: serviceStates,
-        logs: [...logs],
-        startedAt,
-      },
-    })
-
-    const results: ServiceResult[] = []
-    let failed = false
-    let failedService: string | undefined
-    let failedError: string | undefined
-
-    for (let i = 0; i < services.length; i++) {
-      const service = services[i]!
-      const serviceStart = Date.now()
-
-      // Update to pulling
-      log({ level: 'info', message: 'Pulling image...', service })
-      updateService({ tui, index: i, status: 'pulling', message: 'Pulling image...' })
-      // Also update logs in state
-      setState({
-        tui,
-        state: {
-          ...(tui.getState() as Extract<DeployState, { _tag: 'Progress' }>),
-          logs: [...logs],
-        },
-      })
-
-      const pullResult = yield* simulatePull(service).pipe(Effect.either)
-      if (pullResult._tag === 'Left') {
-        failed = true
-        failedService = service
-        failedError = pullResult.left.message
-        log({ level: 'error', message: pullResult.left.message, service })
-        results.push({
-          name: service,
-          result: 'failed',
-          duration: Date.now() - serviceStart,
-          error: pullResult.left.message,
+        setState({
+          tui,
+          state: {
+            _tag: 'Validating',
+            environment,
+            services,
+            logs: [...logs],
+          },
         })
-        break
-      }
 
-      // Update to starting
-      log({ level: 'info', message: 'Starting container...', service })
-      updateService({ tui, index: i, status: 'starting', message: 'Starting...' })
-      setState({
-        tui,
-        state: {
-          ...(tui.getState() as Extract<DeployState, { _tag: 'Progress' }>),
-          logs: [...logs],
-        },
-      })
+        yield* Effect.sleep(Duration.millis(500))
+        log({ level: 'info', message: 'Configuration validated' })
 
-      const startResult = yield* simulateStart(service).pipe(Effect.either)
-      if (startResult._tag === 'Left') {
-        failed = true
-        failedService = service
-        failedError = startResult.left.message
-        log({ level: 'error', message: startResult.left.message, service })
-        results.push({
-          name: service,
-          result: 'failed',
-          duration: Date.now() - serviceStart,
-          error: startResult.left.message,
+        if (dryRun) {
+          log({ level: 'info', message: 'Dry run mode - skipping actual deployment' })
+          const results: ServiceResult[] = services.map((name) => ({
+            name,
+            result: 'unchanged' as const,
+            duration: 0,
+          }))
+
+          setState({
+            tui,
+            state: {
+              _tag: 'Complete',
+              environment,
+              services: results,
+              logs: [...logs],
+              startedAt,
+              completedAt: Date.now(),
+              totalDuration: Date.now() - startedAt,
+            },
+          })
+
+          return { success: true, services: results, totalDuration: Date.now() - startedAt }
+        }
+
+        // ===================
+        // Phase 2: Deploy
+        // ===================
+        const serviceStates: ServiceProgress[] = services.map((name) => ({
+          name,
+          status: 'pending' as const,
+        }))
+
+        setState({
+          tui,
+          state: {
+            _tag: 'Progress',
+            environment,
+            services: serviceStates,
+            logs: [...logs],
+            startedAt,
+          },
         })
-        break
-      }
 
-      // Update to healthcheck
-      log({ level: 'info', message: 'Running health check...', service })
-      updateService({ tui, index: i, status: 'healthcheck', message: 'Health check...' })
-      setState({
-        tui,
-        state: {
-          ...(tui.getState() as Extract<DeployState, { _tag: 'Progress' }>),
-          logs: [...logs],
-        },
-      })
+        const results: ServiceResult[] = []
+        let failed = false
+        let failedService: string | undefined
+        let failedError: string | undefined
 
-      const healthResult = yield* simulateHealthcheck(service).pipe(Effect.either)
-      if (healthResult._tag === 'Left') {
-        failed = true
-        failedService = service
-        failedError = healthResult.left.message
-        log({ level: 'error', message: healthResult.left.message, service })
-        results.push({
-          name: service,
-          result: 'failed',
-          duration: Date.now() - serviceStart,
-          error: healthResult.left.message,
+        for (let i = 0; i < services.length; i++) {
+          const service = services[i]!
+          const serviceStart = Date.now()
+
+          // Update to pulling
+          log({ level: 'info', message: 'Pulling image...', service })
+          updateService({ tui, index: i, status: 'pulling', message: 'Pulling image...' })
+          // Also update logs in state
+          setState({
+            tui,
+            state: {
+              ...(tui.getState() as Extract<DeployState, { _tag: 'Progress' }>),
+              logs: [...logs],
+            },
+          })
+
+          const pullResult = yield* simulatePull(service).pipe(Effect.either)
+          if (pullResult._tag === 'Left') {
+            failed = true
+            failedService = service
+            failedError = pullResult.left.message
+            log({ level: 'error', message: pullResult.left.message, service })
+            results.push({
+              name: service,
+              result: 'failed',
+              duration: Date.now() - serviceStart,
+              error: pullResult.left.message,
+            })
+            break
+          }
+
+          // Update to starting
+          log({ level: 'info', message: 'Starting container...', service })
+          updateService({ tui, index: i, status: 'starting', message: 'Starting...' })
+          setState({
+            tui,
+            state: {
+              ...(tui.getState() as Extract<DeployState, { _tag: 'Progress' }>),
+              logs: [...logs],
+            },
+          })
+
+          const startResult = yield* simulateStart(service).pipe(Effect.either)
+          if (startResult._tag === 'Left') {
+            failed = true
+            failedService = service
+            failedError = startResult.left.message
+            log({ level: 'error', message: startResult.left.message, service })
+            results.push({
+              name: service,
+              result: 'failed',
+              duration: Date.now() - serviceStart,
+              error: startResult.left.message,
+            })
+            break
+          }
+
+          // Update to healthcheck
+          log({ level: 'info', message: 'Running health check...', service })
+          updateService({ tui, index: i, status: 'healthcheck', message: 'Health check...' })
+          setState({
+            tui,
+            state: {
+              ...(tui.getState() as Extract<DeployState, { _tag: 'Progress' }>),
+              logs: [...logs],
+            },
+          })
+
+          const healthResult = yield* simulateHealthcheck(service).pipe(Effect.either)
+          if (healthResult._tag === 'Left') {
+            failed = true
+            failedService = service
+            failedError = healthResult.left.message
+            log({ level: 'error', message: healthResult.left.message, service })
+            results.push({
+              name: service,
+              result: 'failed',
+              duration: Date.now() - serviceStart,
+              error: healthResult.left.message,
+            })
+            break
+          }
+
+          // Success!
+          log({ level: 'info', message: 'Deployed successfully', service })
+          updateService({ tui, index: i, status: 'healthy' })
+          setState({
+            tui,
+            state: {
+              ...(tui.getState() as Extract<DeployState, { _tag: 'Progress' }>),
+              logs: [...logs],
+            },
+          })
+
+          results.push({
+            name: service,
+            result: 'updated',
+            duration: Date.now() - serviceStart,
+          })
+        }
+
+        // ===================
+        // Phase 3: Complete or Failed
+        // ===================
+        if (failed) {
+          log({ level: 'error', message: `Deployment failed: ${failedError}` })
+
+          setState({
+            tui,
+            state: {
+              _tag: 'Failed',
+              environment,
+              services: results,
+              error: `Service "${failedService}" failed: ${failedError}`,
+              logs: [...logs],
+              startedAt,
+              failedAt: Date.now(),
+            },
+          })
+
+          return {
+            success: false,
+            services: results,
+            totalDuration: Date.now() - startedAt,
+            error: failedError,
+          }
+        }
+
+        const totalDuration = Date.now() - startedAt
+        log({
+          level: 'info',
+          message: `Deployment complete in ${(totalDuration / 1000).toFixed(1)}s`,
         })
-        break
-      }
 
-      // Success!
-      log({ level: 'info', message: 'Deployed successfully', service })
-      updateService({ tui, index: i, status: 'healthy' })
-      setState({
-        tui,
-        state: {
-          ...(tui.getState() as Extract<DeployState, { _tag: 'Progress' }>),
-          logs: [...logs],
-        },
-      })
+        setState({
+          tui,
+          state: {
+            _tag: 'Complete',
+            environment,
+            services: results,
+            logs: [...logs],
+            startedAt,
+            completedAt: Date.now(),
+            totalDuration,
+          },
+        })
 
-      results.push({
-        name: service,
-        result: 'updated',
-        duration: Date.now() - serviceStart,
-      })
-    }
-
-    // ===================
-    // Phase 3: Complete or Failed
-    // ===================
-    if (failed) {
-      log({ level: 'error', message: `Deployment failed: ${failedError}` })
-
-      setState({
-        tui,
-        state: {
-          _tag: 'Failed',
-          environment,
-          services: results,
-          error: `Service "${failedService}" failed: ${failedError}`,
-          logs: [...logs],
-          startedAt,
-          failedAt: Date.now(),
-        },
-      })
-
-      return {
-        success: false,
-        services: results,
-        totalDuration: Date.now() - startedAt,
-        error: failedError,
-      }
-    }
-
-    const totalDuration = Date.now() - startedAt
-    log({ level: 'info', message: `Deployment complete in ${(totalDuration / 1000).toFixed(1)}s` })
-
-    setState({
-      tui,
-      state: {
-        _tag: 'Complete',
-        environment,
-        services: results,
-        logs: [...logs],
-        startedAt,
-        completedAt: Date.now(),
-        totalDuration,
-      },
-    })
-
-    return { success: true, services: results, totalDuration }
-  }).pipe(Effect.scoped)
+        return { success: true, services: results, totalDuration }
+      }),
+    { view: <DeployView stateAtom={DeployApp.stateAtom} /> },
+  )

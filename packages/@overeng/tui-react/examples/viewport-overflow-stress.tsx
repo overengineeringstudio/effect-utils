@@ -22,6 +22,7 @@ import React, { useMemo } from 'react'
 
 import {
   createTuiApp,
+  run,
   outputModeLayer,
   Box,
   Text,
@@ -286,58 +287,60 @@ const CombinedView = ({ stateAtom }: { stateAtom: Atom.Atom<typeof VerticalState
 // Command Logic
 // =============================================================================
 
-const runFooter = ({ fileCount, delayMs }: { fileCount: number; delayMs: number }) =>
-  Effect.gen(function* () {
-    const files = Array.from({ length: fileCount }, (_, i) => ({
-      name: `packages/@overeng/pkg-${i}/config.json`,
-      status: 'pending',
-    }))
+const runFooter = ({ fileCount, delayMs }: { fileCount: number; delayMs: number }) => {
+  const files = Array.from({ length: fileCount }, (_, i) => ({
+    name: `packages/@overeng/pkg-${i}/config.json`,
+    status: 'pending',
+  }))
 
-    const App = createTuiApp({
-      stateSchema: AppState,
-      actionSchema: AppAction,
-      initial: { _tag: 'Discovering', files } as AppState,
-      reducer: appReducer,
-    })
+  const FooterApp = createTuiApp({
+    stateSchema: AppState,
+    actionSchema: AppAction,
+    initial: { _tag: 'Discovering', files } as AppState,
+    reducer: appReducer,
+  })
 
-    const tui = yield* App.run(<StressView stateAtom={App.stateAtom} />)
+  return run(
+    FooterApp,
+    (tui) =>
+      Effect.gen(function* () {
+        // Phase 1: Discovery
+        yield* Effect.sleep('200 millis')
 
-    // Phase 1: Discovery
-    yield* Effect.sleep('200 millis')
+        // Phase 2: Start generating
+        tui.dispatch({ _tag: 'StartGenerating' })
+        yield* Effect.sleep('100 millis')
 
-    // Phase 2: Start generating
-    tui.dispatch({ _tag: 'StartGenerating' })
-    yield* Effect.sleep('100 millis')
+        // Phase 3: Process files one by one
+        for (let i = 0; i < fileCount; i++) {
+          tui.dispatch({ _tag: 'MarkActive', index: i })
+          yield* Effect.sleep(`${delayMs} millis`)
 
-    // Phase 3: Process files one by one
-    for (let i = 0; i < fileCount; i++) {
-      tui.dispatch({ _tag: 'MarkActive', index: i })
-      yield* Effect.sleep(`${delayMs} millis`)
+          const status: FileStatus = i % 5 === 0 ? 'error' : i % 3 === 0 ? 'unchanged' : 'ok'
+          tui.dispatch({ _tag: 'ProcessFile', index: i, status })
+        }
 
-      const status: FileStatus = i % 5 === 0 ? 'error' : i % 3 === 0 ? 'unchanged' : 'ok'
-      tui.dispatch({ _tag: 'ProcessFile', index: i, status })
-    }
+        // Phase 4: Complete — dispatch and give one render cycle before scope closes
+        tui.dispatch({ _tag: 'Finish' })
+        yield* Effect.sleep('50 millis')
+      }),
+    { view: <StressView stateAtom={FooterApp.stateAtom} /> },
+  )
+}
 
-    // Phase 4: Complete — dispatch and give one render cycle before scope closes
-    tui.dispatch({ _tag: 'Finish' })
-    yield* Effect.sleep('50 millis')
-  }).pipe(Effect.scoped)
+const runStatic = ({ mode, count }: { mode: 'vertical' | 'combined'; count: number }) => {
+  const StaticApp = createTuiApp({
+    stateSchema: VerticalState,
+    actionSchema: VerticalAction,
+    initial: { _tag: 'Showing', count } as typeof VerticalState.Type,
+    reducer: verticalReducer,
+  })
 
-const runStatic = ({ mode, count }: { mode: 'vertical' | 'combined'; count: number }) =>
-  Effect.gen(function* () {
-    const App = createTuiApp({
-      stateSchema: VerticalState,
-      actionSchema: VerticalAction,
-      initial: { _tag: 'Showing', count } as typeof VerticalState.Type,
-      reducer: verticalReducer,
-    })
-
-    const View = mode === 'vertical' ? VerticalView : CombinedView
-    yield* App.run(<View stateAtom={App.stateAtom} />)
-
-    // Just show for a moment then exit
-    yield* Effect.sleep('500 millis')
-  }).pipe(Effect.scoped)
+  const View = mode === 'vertical' ? VerticalView : CombinedView
+  return run(StaticApp, () => Effect.sleep('500 millis'), {
+    view: <View stateAtom={StaticApp.stateAtom} />,
+  })
+}
 
 // =============================================================================
 // CLI

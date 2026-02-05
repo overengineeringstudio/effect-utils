@@ -12,7 +12,7 @@ import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'
 import { NotionConfig, NotionDatabases } from '@overeng/notion-effect-client'
-import { outputOption as tuiOutputOption, outputModeLayer } from '@overeng/tui-react'
+import { outputOption as tuiOutputOption, outputModeLayer, run } from '@overeng/tui-react'
 
 import { DiffApp } from '../../renderers/DiffOutput/app.ts'
 import { DiffView } from '../../renderers/DiffOutput/view.tsx'
@@ -224,98 +224,97 @@ const generateCommand = Command.make(
         authToken: Redacted.make(resolvedToken),
       })
 
-      yield* Effect.scoped(
-        Effect.gen(function* () {
-          const tui = yield* GenerateApp.run(
-            React.createElement(GenerateView, { stateAtom: GenerateApp.stateAtom }),
-          )
+      yield* run(
+        GenerateApp,
+        (tui) =>
+          Effect.gen(function* () {
+            const program = Effect.gen(function* () {
+              tui.dispatch({ _tag: 'SetIntrospecting', databaseId })
+              const dbInfo = yield* introspectDatabase(databaseId)
 
-          const program = Effect.gen(function* () {
-            tui.dispatch({ _tag: 'SetIntrospecting', databaseId })
-            const dbInfo = yield* introspectDatabase(databaseId)
+              const schemaName = name._tag === 'Some' ? name.value : dbInfo.name
+              tui.dispatch({ _tag: 'SetGenerating', schemaName })
 
-            const schemaName = name._tag === 'Some' ? name.value : dbInfo.name
-            tui.dispatch({ _tag: 'SetGenerating', schemaName })
-
-            const rawCode = generateSchemaCode({
-              dbInfo,
-              schemaName,
-              options: generateOptions,
-            })
-            const code = yield* formatCode(rawCode)
-
-            if (dryRun) {
-              if (includeApi) {
-                const schemaFileName = basename(output)
-                const rawApiCode = generateApiCode({
-                  dbInfo,
-                  schemaName,
-                  schemaFileName,
-                  options: generateOptions,
-                })
-                const apiCode = yield* formatCode(rawApiCode)
-                const apiOutput = output.replace(/\.ts$/, '.api.ts')
-
-                tui.dispatch({
-                  _tag: 'SetDryRun',
-                  code,
-                  apiCode,
-                  outputPath: output,
-                  apiOutputPath: apiOutput,
-                })
-              } else {
-                tui.dispatch({
-                  _tag: 'SetDryRun',
-                  code,
-                  outputPath: output,
-                })
-              }
-            } else {
-              tui.dispatch({ _tag: 'SetWriting', outputPath: output })
-              yield* writeSchemaToFile({
-                code,
-                outputPath: EffectPath.unsafe.absoluteFile(output),
-                writable,
+              const rawCode = generateSchemaCode({
+                dbInfo,
+                schemaName,
+                options: generateOptions,
               })
+              const code = yield* formatCode(rawCode)
 
-              if (includeApi) {
-                const schemaFileName = basename(output)
-                const rawApiCode = generateApiCode({
-                  dbInfo,
-                  schemaName,
-                  schemaFileName,
-                  options: generateOptions,
-                })
-                const apiCode = yield* formatCode(rawApiCode)
-                const apiOutput = output.replace(/\.ts$/, '.api.ts')
+              if (dryRun) {
+                if (includeApi) {
+                  const schemaFileName = basename(output)
+                  const rawApiCode = generateApiCode({
+                    dbInfo,
+                    schemaName,
+                    schemaFileName,
+                    options: generateOptions,
+                  })
+                  const apiCode = yield* formatCode(rawApiCode)
+                  const apiOutput = output.replace(/\.ts$/, '.api.ts')
 
-                yield* writeSchemaToFile({
-                  code: apiCode,
-                  outputPath: EffectPath.unsafe.absoluteFile(apiOutput),
-                  writable,
-                })
-
-                tui.dispatch({
-                  _tag: 'SetDone',
-                  outputPath: output,
-                  writable,
-                  apiOutputPath: apiOutput,
-                })
+                  tui.dispatch({
+                    _tag: 'SetDryRun',
+                    code,
+                    apiCode,
+                    outputPath: output,
+                    apiOutputPath: apiOutput,
+                  })
+                } else {
+                  tui.dispatch({
+                    _tag: 'SetDryRun',
+                    code,
+                    outputPath: output,
+                  })
+                }
               } else {
-                tui.dispatch({ _tag: 'SetDone', outputPath: output, writable })
-              }
-            }
-          })
+                tui.dispatch({ _tag: 'SetWriting', outputPath: output })
+                yield* writeSchemaToFile({
+                  code,
+                  outputPath: EffectPath.unsafe.absoluteFile(output),
+                  writable,
+                })
 
-          yield* program.pipe(
-            Effect.catchAll((error) =>
-              Effect.sync(() => {
-                tui.dispatch({ _tag: 'SetError', message: String(error) })
-              }),
-            ),
-            Effect.provide(Layer.merge(configLayer, FetchHttpClient.layer)),
-          )
-        }),
+                if (includeApi) {
+                  const schemaFileName = basename(output)
+                  const rawApiCode = generateApiCode({
+                    dbInfo,
+                    schemaName,
+                    schemaFileName,
+                    options: generateOptions,
+                  })
+                  const apiCode = yield* formatCode(rawApiCode)
+                  const apiOutput = output.replace(/\.ts$/, '.api.ts')
+
+                  yield* writeSchemaToFile({
+                    code: apiCode,
+                    outputPath: EffectPath.unsafe.absoluteFile(apiOutput),
+                    writable,
+                  })
+
+                  tui.dispatch({
+                    _tag: 'SetDone',
+                    outputPath: output,
+                    writable,
+                    apiOutputPath: apiOutput,
+                  })
+                } else {
+                  tui.dispatch({ _tag: 'SetDone', outputPath: output, writable })
+                }
+              }
+            })
+
+            yield* program.pipe(
+              Effect.catchAll((error) =>
+                Effect.sync(() => {
+                  tui.dispatch({ _tag: 'SetError', message: String(error) })
+                }),
+              ),
+              Effect.provide(Layer.merge(configLayer, FetchHttpClient.layer)),
+            )
+          }),
+        { view: React.createElement(GenerateView, { stateAtom: GenerateApp.stateAtom }) },
       ).pipe(Effect.provide(outputModeLayer(tuiOutput)))
     }),
 ).pipe(Command.withDescription('Generate Effect schema from a Notion database'))
@@ -339,72 +338,72 @@ const introspectCommand = Command.make(
         authToken: Redacted.make(resolvedToken),
       })
 
-      yield* Effect.scoped(
-        Effect.gen(function* () {
-          const tui = yield* IntrospectApp.run(
-            React.createElement(IntrospectView, { stateAtom: IntrospectApp.stateAtom }),
-          )
+      yield* run(
+        IntrospectApp,
+        (tui) =>
+          Effect.gen(function* () {
+            const program = Effect.gen(function* () {
+              const db = yield* NotionDatabases.retrieve({ databaseId })
 
-          const program = Effect.gen(function* () {
-            const db = yield* NotionDatabases.retrieve({ databaseId })
+              const properties = db.properties ?? {}
+              const propertyList = Object.entries(properties).map(([propName, propValue]) => {
+                const prop = propValue as { type: string; [key: string]: unknown }
+                const result: {
+                  name: string
+                  type: string
+                  options?: string[]
+                  groups?: string[]
+                  relationDatabase?: string
+                } = { name: propName, type: prop.type }
 
-            const properties = db.properties ?? {}
-            const propertyList = Object.entries(properties).map(([propName, propValue]) => {
-              const prop = propValue as { type: string; [key: string]: unknown }
-              const result: {
-                name: string
-                type: string
-                options?: string[]
-                groups?: string[]
-                relationDatabase?: string
-              } = { name: propName, type: prop.type }
+                if (prop.type === 'select' || prop.type === 'multi_select') {
+                  const options = (prop[prop.type] as { options?: Array<{ name: string }> })
+                    ?.options
+                  if (options && options.length > 0) {
+                    result.options = options.map((o) => o.name)
+                  }
+                }
+                if (prop.type === 'status') {
+                  const statusConfig = prop.status as {
+                    options?: Array<{ name: string }>
+                    groups?: Array<{ name: string }>
+                  }
+                  if (statusConfig?.options && statusConfig.options.length > 0) {
+                    result.options = statusConfig.options.map((o) => o.name)
+                  }
+                  if (statusConfig?.groups && statusConfig.groups.length > 0) {
+                    result.groups = statusConfig.groups.map((g) => g.name)
+                  }
+                }
+                if (prop.type === 'relation') {
+                  const relationConfig = prop.relation as { database_id?: string }
+                  if (relationConfig?.database_id) {
+                    result.relationDatabase = relationConfig.database_id
+                  }
+                }
 
-              if (prop.type === 'select' || prop.type === 'multi_select') {
-                const options = (prop[prop.type] as { options?: Array<{ name: string }> })?.options
-                if (options && options.length > 0) {
-                  result.options = options.map((o) => o.name)
-                }
-              }
-              if (prop.type === 'status') {
-                const statusConfig = prop.status as {
-                  options?: Array<{ name: string }>
-                  groups?: Array<{ name: string }>
-                }
-                if (statusConfig?.options && statusConfig.options.length > 0) {
-                  result.options = statusConfig.options.map((o) => o.name)
-                }
-                if (statusConfig?.groups && statusConfig.groups.length > 0) {
-                  result.groups = statusConfig.groups.map((g) => g.name)
-                }
-              }
-              if (prop.type === 'relation') {
-                const relationConfig = prop.relation as { database_id?: string }
-                if (relationConfig?.database_id) {
-                  result.relationDatabase = relationConfig.database_id
-                }
-              }
+                return result
+              })
 
-              return result
+              tui.dispatch({
+                _tag: 'SetResult',
+                dbName: db.title.map((t) => t.plain_text).join(''),
+                dbId: db.id,
+                dbUrl: db.url,
+                properties: propertyList,
+              })
             })
 
-            tui.dispatch({
-              _tag: 'SetResult',
-              dbName: db.title.map((t) => t.plain_text).join(''),
-              dbId: db.id,
-              dbUrl: db.url,
-              properties: propertyList,
-            })
-          })
-
-          yield* program.pipe(
-            Effect.catchAll((error) =>
-              Effect.sync(() => {
-                tui.dispatch({ _tag: 'SetError', message: String(error) })
-              }),
-            ),
-            Effect.provide(Layer.merge(configLayer, FetchHttpClient.layer)),
-          )
-        }),
+            yield* program.pipe(
+              Effect.catchAll((error) =>
+                Effect.sync(() => {
+                  tui.dispatch({ _tag: 'SetError', message: String(error) })
+                }),
+              ),
+              Effect.provide(Layer.merge(configLayer, FetchHttpClient.layer)),
+            )
+          }),
+        { view: React.createElement(IntrospectView, { stateAtom: IntrospectApp.stateAtom }) },
       ).pipe(Effect.provide(outputModeLayer(output)))
     }),
 ).pipe(Command.withDescription('Introspect a Notion database and display its schema'))
@@ -443,97 +442,98 @@ const generateFromConfigCommand = Command.make(
         authToken: Redacted.make(resolvedToken),
       })
 
-      yield* Effect.scoped(
-        Effect.gen(function* () {
-          const tui = yield* GenerateConfigApp.run(
-            React.createElement(GenerateConfigView, { stateAtom: GenerateConfigApp.stateAtom }),
-          )
-
-          const program = Effect.gen(function* () {
-            tui.dispatch({
-              _tag: 'SetConfig',
-              configPath: resolvedConfigPath,
-              databases: resolvedConfig.databases.map((db) => ({
-                id: db.id,
-                name: db.name ?? db.id,
-                outputPath: db.output,
-              })),
-            })
-
-            for (const dbConfig of resolvedConfig.databases) {
-              tui.dispatch({ _tag: 'UpdateDatabase', id: dbConfig.id, status: 'introspecting' })
-              const dbInfo = yield* introspectDatabase(dbConfig.id)
-
-              const schemaName = dbConfig.name ?? dbInfo.name
+      yield* run(
+        GenerateConfigApp,
+        (tui) =>
+          Effect.gen(function* () {
+            const program = Effect.gen(function* () {
               tui.dispatch({
-                _tag: 'UpdateDatabase',
-                id: dbConfig.id,
-                status: 'generating',
-                name: schemaName,
+                _tag: 'SetConfig',
+                configPath: resolvedConfigPath,
+                databases: resolvedConfig.databases.map((db) => ({
+                  id: db.id,
+                  name: db.name ?? db.id,
+                  outputPath: db.output,
+                })),
               })
 
-              const generateOptions: GenerateOptions = {
-                transforms: dbConfig.transforms ?? {},
-                includeWrite: dbConfig.includeWrite ?? false,
-                typedOptions: dbConfig.typedOptions ?? false,
-                schemaMeta: dbConfig.schemaMeta ?? true,
-                includeApi: dbConfig.includeApi ?? false,
-                generatorVersion,
-                ...(dbConfig.name !== undefined ? { schemaNameOverride: dbConfig.name } : {}),
-              }
+              for (const dbConfig of resolvedConfig.databases) {
+                tui.dispatch({ _tag: 'UpdateDatabase', id: dbConfig.id, status: 'introspecting' })
+                const dbInfo = yield* introspectDatabase(dbConfig.id)
 
-              const rawCode = generateSchemaCode({
-                dbInfo,
-                schemaName,
-                options: generateOptions,
-              })
-              const code = yield* formatCode(rawCode)
-
-              if (dryRun) {
-                // In dry-run mode, still show progress but don't write files
-                tui.dispatch({ _tag: 'UpdateDatabase', id: dbConfig.id, status: 'done' })
-              } else {
-                tui.dispatch({ _tag: 'UpdateDatabase', id: dbConfig.id, status: 'writing' })
-                yield* writeSchemaToFile({
-                  code,
-                  outputPath: EffectPath.unsafe.absoluteFile(dbConfig.output),
-                  writable,
+                const schemaName = dbConfig.name ?? dbInfo.name
+                tui.dispatch({
+                  _tag: 'UpdateDatabase',
+                  id: dbConfig.id,
+                  status: 'generating',
+                  name: schemaName,
                 })
 
-                if (generateOptions.includeApi) {
-                  const schemaFileName = basename(dbConfig.output)
-                  const rawApiCode = generateApiCode({
-                    dbInfo,
-                    schemaName,
-                    schemaFileName,
-                    options: generateOptions,
-                  })
-                  const apiCode = yield* formatCode(rawApiCode)
-                  const apiOutput = dbConfig.output.replace(/\.ts$/, '.api.ts')
-
-                  yield* writeSchemaToFile({
-                    code: apiCode,
-                    outputPath: EffectPath.unsafe.absoluteFile(apiOutput),
-                    writable,
-                  })
+                const generateOptions: GenerateOptions = {
+                  transforms: dbConfig.transforms ?? {},
+                  includeWrite: dbConfig.includeWrite ?? false,
+                  typedOptions: dbConfig.typedOptions ?? false,
+                  schemaMeta: dbConfig.schemaMeta ?? true,
+                  includeApi: dbConfig.includeApi ?? false,
+                  generatorVersion,
+                  ...(dbConfig.name !== undefined ? { schemaNameOverride: dbConfig.name } : {}),
                 }
 
-                tui.dispatch({ _tag: 'UpdateDatabase', id: dbConfig.id, status: 'done' })
+                const rawCode = generateSchemaCode({
+                  dbInfo,
+                  schemaName,
+                  options: generateOptions,
+                })
+                const code = yield* formatCode(rawCode)
+
+                if (dryRun) {
+                  // In dry-run mode, still show progress but don't write files
+                  tui.dispatch({ _tag: 'UpdateDatabase', id: dbConfig.id, status: 'done' })
+                } else {
+                  tui.dispatch({ _tag: 'UpdateDatabase', id: dbConfig.id, status: 'writing' })
+                  yield* writeSchemaToFile({
+                    code,
+                    outputPath: EffectPath.unsafe.absoluteFile(dbConfig.output),
+                    writable,
+                  })
+
+                  if (generateOptions.includeApi) {
+                    const schemaFileName = basename(dbConfig.output)
+                    const rawApiCode = generateApiCode({
+                      dbInfo,
+                      schemaName,
+                      schemaFileName,
+                      options: generateOptions,
+                    })
+                    const apiCode = yield* formatCode(rawApiCode)
+                    const apiOutput = dbConfig.output.replace(/\.ts$/, '.api.ts')
+
+                    yield* writeSchemaToFile({
+                      code: apiCode,
+                      outputPath: EffectPath.unsafe.absoluteFile(apiOutput),
+                      writable,
+                    })
+                  }
+
+                  tui.dispatch({ _tag: 'UpdateDatabase', id: dbConfig.id, status: 'done' })
+                }
               }
-            }
 
-            tui.dispatch({ _tag: 'SetDone', count: resolvedConfig.databases.length })
-          })
+              tui.dispatch({ _tag: 'SetDone', count: resolvedConfig.databases.length })
+            })
 
-          yield* program.pipe(
-            Effect.catchAll((error) =>
-              Effect.sync(() => {
-                tui.dispatch({ _tag: 'SetError', message: String(error) })
-              }),
-            ),
-            Effect.provide(Layer.merge(configLayer, FetchHttpClient.layer)),
-          )
-        }),
+            yield* program.pipe(
+              Effect.catchAll((error) =>
+                Effect.sync(() => {
+                  tui.dispatch({ _tag: 'SetError', message: String(error) })
+                }),
+              ),
+              Effect.provide(Layer.merge(configLayer, FetchHttpClient.layer)),
+            )
+          }),
+        {
+          view: React.createElement(GenerateConfigView, { stateAtom: GenerateConfigApp.stateAtom }),
+        },
       ).pipe(Effect.provide(outputModeLayer(output)))
     }),
 ).pipe(Command.withDescription('Generate schemas for all databases in a config file'))
@@ -574,71 +574,70 @@ const diffCommand = Command.make(
         authToken: Redacted.make(resolvedToken),
       })
 
-      yield* Effect.scoped(
-        Effect.gen(function* () {
-          const tui = yield* DiffApp.run(
-            React.createElement(DiffView, { stateAtom: DiffApp.stateAtom }),
-          )
-
-          const program = Effect.gen(function* () {
-            const fileContent = yield* fs.readFileString(file)
-            const parsedSchema = parseGeneratedFile(fileContent)
-            if (!parsedSchema.readSchemaFound) {
-              return yield* new GeneratedSchemaFileParseError({
-                file,
-                message:
-                  'Could not find a "*PageProperties = Schema.Struct({ ... })" read schema in file',
-              })
-            }
-
-            const dbInfo = yield* introspectDatabase(databaseId)
-            const diff = computeDiff({ live: dbInfo, generated: parsedSchema })
-
-            if (hasDifferences(diff)) {
-              tui.dispatch({
-                _tag: 'SetResult',
-                databaseId,
-                filePath: file,
-                properties: diff.properties.map((p) => ({
-                  name: p.name,
-                  type: p.type,
-                  liveType: p.live?.type,
-                  liveTransform: p.live?.transform,
-                  generatedTransformKey: p.generated?.transformKey,
-                })),
-                options: diff.options.map((o) => ({
-                  name: o.name,
-                  added: [...o.added],
-                  removed: [...o.removed],
-                })),
-                hasDifferences: true,
-              })
-
-              if (exitCode) {
-                return yield* new SchemaDriftDetectedError({
-                  databaseId,
+      yield* run(
+        DiffApp,
+        (tui) =>
+          Effect.gen(function* () {
+            const program = Effect.gen(function* () {
+              const fileContent = yield* fs.readFileString(file)
+              const parsedSchema = parseGeneratedFile(fileContent)
+              if (!parsedSchema.readSchemaFound) {
+                return yield* new GeneratedSchemaFileParseError({
                   file,
-                  message: 'Schema drift detected',
+                  message:
+                    'Could not find a "*PageProperties = Schema.Struct({ ... })" read schema in file',
                 })
               }
-            } else {
-              tui.dispatch({
-                _tag: 'SetNoDifferences',
-                databaseId,
-                filePath: file,
-              })
-            }
-          })
 
-          yield* program.pipe(
-            Effect.catchAll((error) =>
-              Effect.sync(() => {
-                tui.dispatch({ _tag: 'SetError', message: String(error) })
-              }),
-            ),
-            Effect.provide(Layer.merge(configLayer, FetchHttpClient.layer)),
-          )
-        }),
+              const dbInfo = yield* introspectDatabase(databaseId)
+              const diff = computeDiff({ live: dbInfo, generated: parsedSchema })
+
+              if (hasDifferences(diff)) {
+                tui.dispatch({
+                  _tag: 'SetResult',
+                  databaseId,
+                  filePath: file,
+                  properties: diff.properties.map((p) => ({
+                    name: p.name,
+                    type: p.type,
+                    liveType: p.live?.type,
+                    liveTransform: p.live?.transform,
+                    generatedTransformKey: p.generated?.transformKey,
+                  })),
+                  options: diff.options.map((o) => ({
+                    name: o.name,
+                    added: [...o.added],
+                    removed: [...o.removed],
+                  })),
+                  hasDifferences: true,
+                })
+
+                if (exitCode) {
+                  return yield* new SchemaDriftDetectedError({
+                    databaseId,
+                    file,
+                    message: 'Schema drift detected',
+                  })
+                }
+              } else {
+                tui.dispatch({
+                  _tag: 'SetNoDifferences',
+                  databaseId,
+                  filePath: file,
+                })
+              }
+            })
+
+            yield* program.pipe(
+              Effect.catchAll((error) =>
+                Effect.sync(() => {
+                  tui.dispatch({ _tag: 'SetError', message: String(error) })
+                }),
+              ),
+              Effect.provide(Layer.merge(configLayer, FetchHttpClient.layer)),
+            )
+          }),
+        { view: React.createElement(DiffView, { stateAtom: DiffApp.stateAtom }) },
       ).pipe(Effect.provide(outputModeLayer(output)))
     }),
 ).pipe(

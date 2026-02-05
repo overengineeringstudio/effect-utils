@@ -12,6 +12,7 @@ import { Effect, Option, type ParseResult, Schema } from 'effect'
 import React from 'react'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
+import { run } from '@overeng/tui-react'
 
 import {
   CONFIG_FILE_NAME,
@@ -708,27 +709,26 @@ export const syncCommand = Cli.Command.make(
           })) ?? []
 
         // Render final state via SyncApp
-        yield* Effect.scoped(
-          Effect.gen(function* () {
-            const tui = yield* SyncApp.run(
-              React.createElement(SyncView, { stateAtom: SyncApp.stateAtom }),
-            )
-
-            tui.dispatch({
-              _tag: 'SetState',
-              state: {
-                workspace: { name, root: root.value },
-                options: syncDisplayOptions,
-                phase: 'complete',
-                members: memberNames,
-                results: syncResult.results,
-                logs: [],
-                nestedMegarepos: [...syncResult.nestedMegarepos],
-                generatedFiles,
-                lockSyncResults,
-              },
-            })
-          }),
+        yield* run(
+          SyncApp,
+          (tui) =>
+            Effect.sync(() => {
+              tui.dispatch({
+                _tag: 'SetState',
+                state: {
+                  workspace: { name, root: root.value },
+                  options: syncDisplayOptions,
+                  phase: 'complete',
+                  members: memberNames,
+                  results: syncResult.results,
+                  logs: [],
+                  nestedMegarepos: [...syncResult.nestedMegarepos],
+                  generatedFiles,
+                  lockSyncResults,
+                },
+              })
+            }),
+          { view: React.createElement(SyncView, { stateAtom: SyncApp.stateAtom }) },
         ).pipe(Effect.provide(outputModeLayer(output)))
 
         // Check for sync errors and fail if any occurred

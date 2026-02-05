@@ -125,11 +125,11 @@ export const testModeLayer = (preset: TestModePreset): Layer.Layer<OutputModeTag
  * expect(result.finalState._tag).toBe('Complete')
  * ```
  */
-export const runTestCommand = async <S, Args>({
+export const runTestCommand = async <S, Args, E>({
   commandFn,
   options,
 }: {
-  commandFn: (args: Args) => Effect.Effect<unknown, never, Scope.Scope | OutputModeTag>
+  commandFn: (args: Args) => Effect.Effect<unknown, E, OutputModeTag>
   options: RunTestCommandOptions<S, Args>
 }): Promise<TestCommandResult<S>> => {
   const jsonOutput: string[] = []
@@ -142,7 +142,7 @@ export const runTestCommand = async <S, Args>({
 
   try {
     await commandFn(options.args).pipe(
-      Effect.scoped,
+      Effect.catchAll(() => Effect.void),
       Effect.provide(testModeLayer(options.mode)),
       Effect.runPromise,
     )

@@ -3,13 +3,14 @@
  */
 
 import { it } from '@effect/vitest'
-import { Cause, Effect, FiberId, Schema } from 'effect'
+import { Cause, Effect, FiberId, pipe, Schema } from 'effect'
 import React from 'react'
 import { describe, expect, beforeEach, afterEach, test } from 'vitest'
 
 import { testModeLayer } from '../../src/effect/testing.tsx'
 import {
   createTuiApp,
+  run,
   useTuiAtomValue,
   deriveOutputSchema,
   Box,
@@ -300,6 +301,228 @@ describe('createTuiApp', () => {
       expect(_failureCheck._tag).toBe('Failure')
     })
   })
+})
+
+// =============================================================================
+// Issue #129 Reproduction: ParseError masks real errors in JSON output
+// https://github.com/overengineeringstudio/effect-utils/issues/129
+// =============================================================================
+
+describe('Issue #129: Typed errors properly encoded in JSON output', () => {
+  let originalLog: typeof console.log
+  let capturedOutput: string[]
+
+  beforeEach(() => {
+    originalLog = console.log
+    capturedOutput = []
+    console.log = (msg: string) => {
+      capturedOutput.push(msg)
+    }
+  })
+
+  afterEach(() => {
+    console.log = originalLog
+  })
+
+  // Simulate a typed error like GenieGenerationFailedError
+  class GenerationFailed extends Schema.TaggedError<GenerationFailed>()('GenerationFailed', {
+    message: Schema.String,
+    failedCount: Schema.Number,
+  }) {}
+
+  it.effect('json mode: typed error in handler produces Failure JSON output', () =>
+    run(CounterApp, (tui) =>
+      Effect.gen(function* () {
+        tui.dispatch({ _tag: 'Set', value: 42 })
+        return yield* new GenerationFailed({
+          message: '3 file(s) failed to generate',
+          failedCount: 3,
+        })
+      }),
+    ).pipe(
+      Effect.provide(testModeLayer('json')),
+      Effect.catchAllCause((cause) =>
+        Effect.sync(() => {
+          // FIX: JSON output IS produced with Failure wrapper
+          expect(capturedOutput).toHaveLength(1)
+          const output = JSON.parse(capturedOutput[0]!)
+          expect(output._tag).toBe('Failure')
+          expect(output.state.count).toBe(42)
+          expect(output.cause).toBeDefined()
+
+          // FIX: No ParseError defect — typed error encoded safely via Schema.Defect
+          const defects = [...Cause.defects(cause)]
+          const parseError = defects.find(
+            (d) => d instanceof Error && d.message.includes('Expected never'),
+          )
+          expect(parseError).toBeUndefined()
+
+          // The typed error is still in the cause for in-process handling
+          const failures = [...Cause.failures(cause)]
+          expect(failures.some((e) => e instanceof GenerationFailed)).toBe(true)
+        }),
+      ),
+    ),
+  )
+
+  it.live('ndjson mode: typed error produces final Failure line', () =>
+    run(CounterApp, (tui) =>
+      Effect.gen(function* () {
+        yield* Effect.sleep('10 millis')
+        tui.dispatch({ _tag: 'Set', value: 42 })
+        yield* Effect.sleep('10 millis')
+        return yield* new GenerationFailed({
+          message: '3 file(s) failed to generate',
+          failedCount: 3,
+        })
+      }),
+    ).pipe(
+      Effect.provide(testModeLayer('ndjson')),
+      Effect.catchAllCause((cause) =>
+        Effect.sync(() => {
+          // Intermediate state lines are output correctly
+          const intermediateLines = capturedOutput.filter((line) => {
+            try {
+              const parsed = JSON.parse(line)
+              return !('_tag' in parsed)
+            } catch {
+              return false
+            }
+          })
+          expect(intermediateLines.length).toBeGreaterThan(0)
+
+          // FIX: The final Failure-wrapped line IS present
+          const failureLines = capturedOutput.filter((line) => {
+            try {
+              const parsed = JSON.parse(line)
+              return '_tag' in parsed && parsed._tag === 'Failure'
+            } catch {
+              return false
+            }
+          })
+          expect(failureLines).toHaveLength(1)
+          const failureOutput = JSON.parse(failureLines[0]!)
+          expect(failureOutput.state.count).toBe(42)
+
+          // FIX: No ParseError defect
+          const defects = [...Cause.defects(cause)]
+          expect(
+            defects.some((d) => d instanceof Error && d.message.includes('Expected never')),
+          ).toBe(false)
+        }),
+      ),
+    ),
+  )
+})
+
+// =============================================================================
+// Standalone run() dual API tests
+// =============================================================================
+
+describe('run (standalone dual API)', () => {
+  let originalLog: typeof console.log
+  let capturedOutput: string[]
+
+  beforeEach(() => {
+    originalLog = console.log
+    capturedOutput = []
+    console.log = (msg: string) => {
+      capturedOutput.push(msg)
+    }
+  })
+
+  afterEach(() => {
+    console.log = originalLog
+  })
+
+  class TestError extends Schema.TaggedError<TestError>()('TestError', {
+    message: Schema.String,
+  }) {}
+
+  it.effect('data-first: dispatch updates state', () =>
+    run(CounterApp, (tui) =>
+      Effect.gen(function* () {
+        tui.dispatch({ _tag: 'Increment' })
+        tui.dispatch({ _tag: 'Increment' })
+        expect(tui.getState()).toEqual({ count: 2 })
+      }),
+    ).pipe(Effect.provide(testModeLayer('pipe'))),
+  )
+
+  it.effect('data-last (pipeable): dispatch updates state', () =>
+    pipe(
+      CounterApp,
+      run((tui) =>
+        Effect.sync(() => {
+          tui.dispatch({ _tag: 'Set', value: 42 })
+          expect(tui.getState()).toEqual({ count: 42 })
+        }),
+      ),
+      Effect.provide(testModeLayer('pipe')),
+    ),
+  )
+
+  it.effect('handler return value is propagated', () =>
+    run(CounterApp, (tui) =>
+      Effect.gen(function* () {
+        tui.dispatch({ _tag: 'Set', value: 99 })
+        return tui.getState().count
+      }),
+    ).pipe(
+      Effect.provide(testModeLayer('pipe')),
+      Effect.map((count) => {
+        expect(count).toBe(99)
+      }),
+    ),
+  )
+
+  it.effect('typed errors are propagated via Effect channel', () =>
+    run(CounterApp, () => new TestError({ message: 'test error' })).pipe(
+      Effect.provide(testModeLayer('pipe')),
+      Effect.catchAll((error) =>
+        Effect.sync(() => {
+          expect(error).toBeInstanceOf(TestError)
+          expect(error.message).toBe('test error')
+        }),
+      ),
+    ),
+  )
+
+  it.effect('no Scope.Scope in requirements (scope managed internally)', () =>
+    // This compiles without Effect.scoped — verifying the return type
+    run(CounterApp, (tui) =>
+      Effect.gen(function* () {
+        tui.dispatch({ _tag: 'Increment' })
+      }),
+    ).pipe(Effect.provide(testModeLayer('pipe'))),
+  )
+
+  it.effect('json mode outputs Success for successful handler', () =>
+    run(CounterApp, (tui) =>
+      Effect.gen(function* () {
+        tui.dispatch({ _tag: 'Set', value: 77 })
+      }),
+    ).pipe(
+      Effect.provide(testModeLayer('json')),
+      Effect.andThen(() => {
+        expect(capturedOutput).toHaveLength(1)
+        const output = JSON.parse(capturedOutput[0]!)
+        expect(output).toEqual({ _tag: 'Success', count: 77 })
+      }),
+    ),
+  )
+
+  it.effect('view option is passed through', () =>
+    run(
+      CounterApp,
+      (tui) =>
+        Effect.gen(function* () {
+          tui.dispatch({ _tag: 'Set', value: 100 })
+          expect(tui.getState()).toEqual({ count: 100 })
+        }),
+      { view: <CounterView /> },
+    ).pipe(Effect.provide(testModeLayer('tty'))),
+  )
 })
 
 // =============================================================================

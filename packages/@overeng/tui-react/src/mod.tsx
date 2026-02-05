@@ -183,11 +183,15 @@ export {
 
 export {
   createTuiApp,
+  run,
+  isTuiApp,
+  TuiAppTypeId,
   tuiAppConfig,
   deriveOutputSchema,
   type TuiApp,
   type TuiAppConfig,
   type TuiAppApi,
+  type TuiAppRunOptions,
   type TuiOutput,
   type TuiOutputSuccess,
   type TuiOutputFailure,

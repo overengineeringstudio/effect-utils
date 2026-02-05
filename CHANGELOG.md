@@ -6,6 +6,24 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/tui-react**: Standalone `run` function with dual (data-first/data-last) API (#129)
+  - `run(app, handler, { view })` replaces `Effect.scoped(Effect.gen(function* () { const tui = yield* app.run(view); ... }))`
+  - Scope managed internally — consumers no longer need `Effect.scoped`
+  - Error type `E` inferred from handler (no explicit error schema needed)
+  - Added `TuiAppTypeId` brand and `isTuiApp` predicate for runtime type detection
+
+### Fixed
+
+- **@overeng/tui-react**: Fix `OutputCauseSchema` using `Schema.Never` for error field (#129)
+  - Changed `error: Schema.Never` to `error: Schema.Defect` in `OutputCauseSchema`
+  - Previously, typed errors (e.g. `GenieGenerationFailedError`) caused `ParseError: Expected never` during JSON encoding, masking the real error
+
+### Changed
+
+- **@overeng/tui-react**, **@overeng/megarepo**, **@overeng/notion-cli**, **@overeng/genie**: Migrated all consumers to standalone `run` API (#129)
+  - All command files now use `run(App, handler, { view })` instead of manual `Effect.scoped` + `app.run()`
+  - Updated test utilities (`runTestCommand`) to not require `Scope.Scope`
+
 - **@overeng/tui-react**: Automatic log capture for progressive-visual modes (breaking change)
   - `outputModeLayer()` now captures all Effect logs and `console.*` output in tty/ci/alt-screen modes
   - Captured logs accessible via `useCapturedLogs()` hook in React components

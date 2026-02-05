@@ -11,6 +11,7 @@ import { Effect, Option, type ParseResult, Schema } from 'effect'
 import React from 'react'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
+import { run } from '@overeng/tui-react'
 
 import {
   CONFIG_FILE_NAME,
@@ -499,27 +500,26 @@ export const statusCommand = Cli.Command.make(
       const syncNeeded = syncReasons.length > 0
 
       // Use StatusApp for all output modes (TTY, CI, JSON, NDJSON)
-      yield* Effect.scoped(
-        Effect.gen(function* () {
-          const tui = yield* StatusApp.run(
-            React.createElement(StatusView, { stateAtom: StatusApp.stateAtom }),
-          )
-
-          tui.dispatch({
-            _tag: 'SetState',
-            state: {
-              name,
-              root: root.value,
-              syncNeeded,
-              syncReasons,
-              members,
-              all,
-              lastSyncTime: lastSyncTime?.toISOString(),
-              lockStaleness,
-              currentMemberPath,
-            },
-          })
-        }),
+      yield* run(
+        StatusApp,
+        (tui) =>
+          Effect.sync(() => {
+            tui.dispatch({
+              _tag: 'SetState',
+              state: {
+                name,
+                root: root.value,
+                syncNeeded,
+                syncReasons,
+                members,
+                all,
+                lastSyncTime: lastSyncTime?.toISOString(),
+                lockStaleness,
+                currentMemberPath,
+              },
+            })
+          }),
+        { view: React.createElement(StatusView, { stateAtom: StatusApp.stateAtom }) },
       ).pipe(Effect.provide(outputModeLayer(output)))
     }).pipe(Effect.withSpan('megarepo/status')),
 ).pipe(Cli.Command.withDescription('Show workspace status and member states'))

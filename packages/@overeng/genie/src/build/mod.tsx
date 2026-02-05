@@ -5,7 +5,7 @@ import { type Error as PlatformError, FileSystem } from '@effect/platform'
 import { Effect, Either, Option, pipe, Stream } from 'effect'
 import React from 'react'
 
-import { outputOption, outputModeLayer } from '@overeng/tui-react'
+import { outputOption, outputModeLayer, run } from '@overeng/tui-react'
 import { assertNever } from '@overeng/utils'
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
 
@@ -134,344 +134,347 @@ export const genieCommand: Cli.Command.Command<
       // Determine mode
       const mode: GenieMode = check ? 'check' : dryRun ? 'dry-run' : 'generate'
 
-      // Start TUI
-      const tui = yield* GenieApp.run(<GenieView stateAtom={GenieApp.stateAtom} />)
+      yield* run(
+        GenieApp,
+        (tui) =>
+          Effect.gen(function* () {
+            // Set initial state
+            tui.dispatch({
+              _tag: 'SetState',
+              state: createInitialGenieState({ cwd: resolvedCwd, mode }),
+            })
 
-      // Set initial state
-      tui.dispatch({
-        _tag: 'SetState',
-        state: createInitialGenieState({ cwd: resolvedCwd, mode }),
-      })
+            // Discover genie files
+            const genieFiles = yield* findGenieFiles(resolvedCwd)
 
-      // Discover genie files
-      const genieFiles = yield* findGenieFiles(resolvedCwd)
-
-      const targetCounts = new Map<string, number>()
-      for (const genieFilePath of genieFiles) {
-        const targetFilePath = genieFilePath.replace('.genie.ts', '')
-        targetCounts.set(targetFilePath, (targetCounts.get(targetFilePath) ?? 0) + 1)
-      }
-      const duplicateTargets = Array.from(targetCounts.entries()).filter(([, count]) => count > 1)
-      assertNever({
-        condition: duplicateTargets.length === 0,
-        msg: () =>
-          `Duplicate genie targets detected: ${duplicateTargets
-            .map(([target, count]) => `${target} (${count}x)`)
-            .join(', ')}`,
-      })
-
-      if (genieFiles.length === 0) {
-        tui.dispatch({
-          _tag: 'Complete',
-          summary: { created: 0, updated: 0, unchanged: 0, skipped: 0, failed: 0 },
-        })
-        yield* tui.unmount({ mode: 'persist' })
-        return
-      }
-
-      // Dispatch files discovered
-      tui.dispatch({
-        _tag: 'FilesDiscovered',
-        files: genieFiles.map((filePath) => ({
-          path: filePath,
-          relativePath: path.relative(resolvedCwd, filePath.replace('.genie.ts', '')),
-        })),
-      })
-
-      if (check) {
-        // Check mode - verify all files are up to date
-        const results = yield* Effect.all(
-          genieFiles.map((genieFilePath) =>
-            Effect.gen(function* () {
+            const targetCounts = new Map<string, number>()
+            for (const genieFilePath of genieFiles) {
               const targetFilePath = genieFilePath.replace('.genie.ts', '')
-              tui.dispatch({ _tag: 'FileStarted', path: genieFilePath })
+              targetCounts.set(targetFilePath, (targetCounts.get(targetFilePath) ?? 0) + 1)
+            }
+            const duplicateTargets = Array.from(targetCounts.entries()).filter(
+              ([, count]) => count > 1,
+            )
+            assertNever({
+              condition: duplicateTargets.length === 0,
+              msg: () =>
+                `Duplicate genie targets detected: ${duplicateTargets
+                  .map(([target, count]) => `${target} (${count}x)`)
+                  .join(', ')}`,
+            })
 
-              const result = yield* checkFile({
-                genieFilePath,
-                cwd: resolvedCwd,
-                oxfmtConfigPath,
-              }).pipe(
-                Effect.map(() => ({ success: true as const })),
-                Effect.catchAll((error) => Effect.succeed({ success: false as const, error })),
+            if (genieFiles.length === 0) {
+              tui.dispatch({
+                _tag: 'Complete',
+                summary: { created: 0, updated: 0, unchanged: 0, skipped: 0, failed: 0 },
+              })
+              return
+            }
+
+            // Dispatch files discovered
+            tui.dispatch({
+              _tag: 'FilesDiscovered',
+              files: genieFiles.map((filePath) => ({
+                path: filePath,
+                relativePath: path.relative(resolvedCwd, filePath.replace('.genie.ts', '')),
+              })),
+            })
+
+            if (check) {
+              // Check mode - verify all files are up to date
+              const results = yield* Effect.all(
+                genieFiles.map((genieFilePath) =>
+                  Effect.gen(function* () {
+                    const targetFilePath = genieFilePath.replace('.genie.ts', '')
+                    tui.dispatch({ _tag: 'FileStarted', path: genieFilePath })
+
+                    const result = yield* checkFile({
+                      genieFilePath,
+                      cwd: resolvedCwd,
+                      oxfmtConfigPath,
+                    }).pipe(
+                      Effect.map(() => ({ success: true as const })),
+                      Effect.catchAll((error) =>
+                        Effect.succeed({ success: false as const, error }),
+                      ),
+                    )
+
+                    if (result.success) {
+                      tui.dispatch({
+                        _tag: 'FileCompleted',
+                        path: genieFilePath,
+                        status: 'unchanged',
+                      })
+                    } else {
+                      tui.dispatch({
+                        _tag: 'FileCompleted',
+                        path: genieFilePath,
+                        status: 'error',
+                        message: result.error.message,
+                      })
+                    }
+
+                    return result
+                  }),
+                ),
+                { concurrency: 'unbounded' },
               )
 
-              if (result.success) {
-                tui.dispatch({ _tag: 'FileCompleted', path: genieFilePath, status: 'unchanged' })
-              } else {
-                tui.dispatch({
-                  _tag: 'FileCompleted',
-                  path: genieFilePath,
-                  status: 'error',
-                  message: result.error.message,
+              const failed = results.filter((r) => !r.success).length
+
+              if (failed > 0) {
+                const summary: GenieSummary = {
+                  created: 0,
+                  updated: 0,
+                  unchanged: results.filter((r) => r.success).length,
+                  skipped: 0,
+                  failed,
+                }
+                tui.dispatch({ _tag: 'Complete', summary })
+                return yield* new GenieGenerationFailedError({
+                  failedCount: failed,
+                  message: `${failed} file(s) are out of date`,
                 })
               }
 
-              return result
-            }),
-          ),
-          { concurrency: 'unbounded' },
-        )
+              // Run validation before completing — ensures UI reflects validation failures
+              const validationResult = yield* runGenieValidation({ cwd: resolvedCwd }).pipe(
+                Effect.either,
+              )
 
-        const failed = results.filter((r) => !r.success).length
-
-        if (failed > 0) {
-          const summary: GenieSummary = {
-            created: 0,
-            updated: 0,
-            unchanged: results.filter((r) => r.success).length,
-            skipped: 0,
-            failed,
-          }
-          tui.dispatch({ _tag: 'Complete', summary })
-          yield* tui.unmount({ mode: 'persist' })
-          return yield* new GenieGenerationFailedError({
-            failedCount: failed,
-            message: `${failed} file(s) are out of date`,
-          })
-        }
-
-        // Run validation before completing — ensures UI reflects validation failures
-        const validationResult = yield* runGenieValidation({ cwd: resolvedCwd }).pipe(Effect.either)
-
-        if (Either.isLeft(validationResult)) {
-          const error = validationResult.left
-          const message = error instanceof Error ? error.message : String(error)
-          tui.dispatch({ _tag: 'Error', message })
-          yield* tui.unmount({ mode: 'persist' })
-          return yield* new GenieGenerationFailedError({
-            failedCount: 1,
-            message,
-          })
-        }
-
-        const summary: GenieSummary = {
-          created: 0,
-          updated: 0,
-          unchanged: results.filter((r) => r.success).length,
-          skipped: 0,
-          failed: 0,
-        }
-        tui.dispatch({ _tag: 'Complete', summary })
-        yield* tui.unmount({ mode: 'persist' })
-
-        return
-      }
-
-      // Generate mode (including dry-run)
-      const results = yield* Effect.all(
-        genieFiles.map((genieFilePath) =>
-          Effect.gen(function* () {
-            tui.dispatch({ _tag: 'FileStarted', path: genieFilePath })
-
-            const result = yield* generateFile({
-              genieFilePath,
-              cwd: resolvedCwd,
-              readOnly,
-              dryRun,
-              oxfmtConfigPath,
-            }).pipe(Effect.either)
-
-            if (Either.isRight(result)) {
-              const status = mapResultToStatus(result.right)
-              const message = result.right._tag === 'updated' ? result.right.diffSummary : undefined
-              tui.dispatch({
-                _tag: 'FileCompleted',
-                path: genieFilePath,
-                status,
-                message,
-              })
-              return result
-            } else {
-              tui.dispatch({
-                _tag: 'FileCompleted',
-                path: genieFilePath,
-                status: 'error',
-                message: result.left.message,
-              })
-              return result
-            }
-          }),
-        ),
-        { concurrency: 'unbounded' },
-      )
-
-      // Partition results
-      const successes = results.filter(Either.isRight).map((r) => r.right)
-      const failures = results.filter(Either.isLeft).map((r) => r.left)
-
-      // Check for TDZ errors
-      const hasTdzErrors = failures.some((f) => isTdzError(f.cause))
-
-      if (failures.length > 0 && hasTdzErrors) {
-        // Re-validate sequentially to identify root causes
-        const revalidateErrors: Array<{
-          genieFilePath: string
-          error: GenieCheckError | GenieImportError | PlatformError.PlatformError
-          isRootCause: boolean
-        }> = []
-
-        for (const genieFilePath of genieFiles) {
-          const result = yield* checkFile({
-            genieFilePath,
-            cwd: resolvedCwd,
-            oxfmtConfigPath,
-          }).pipe(Effect.either)
-
-          if (Either.isLeft(result)) {
-            const error = result.left
-            revalidateErrors.push({
-              genieFilePath,
-              error,
-              isRootCause: errorOriginatesInFile({
-                error,
-                filePath: genieFilePath,
-              }),
-            })
-          }
-        }
-
-        const rootCauses = revalidateErrors.filter((e) => e.isRootCause)
-        const dependentCount = revalidateErrors.length - rootCauses.length
-
-        // Update state with revalidated errors
-        for (const { genieFilePath, error, isRootCause } of revalidateErrors) {
-          tui.dispatch({
-            _tag: 'FileCompleted',
-            path: genieFilePath,
-            status: 'error',
-            message: isRootCause ? error.message : 'Failed due to dependency error',
-          })
-        }
-
-        const summary: GenieSummary = {
-          created: successes.filter((s) => s._tag === 'created').length,
-          updated: successes.filter((s) => s._tag === 'updated').length,
-          unchanged: successes.filter((s) => s._tag === 'unchanged').length,
-          skipped: successes.filter((s) => s._tag === 'skipped').length,
-          failed: revalidateErrors.length,
-        }
-
-        tui.dispatch({ _tag: 'Complete', summary })
-
-        // Persist output before exiting
-        yield* tui.unmount({ mode: 'persist' })
-
-        return yield* new GenieGenerationFailedError({
-          failedCount: revalidateErrors.length,
-          message: `${rootCauses.length} root cause error(s), ${dependentCount} dependent failure(s)`,
-        })
-      }
-
-      // No TDZ errors - compute summary
-      const summary: GenieSummary = {
-        created: successes.filter((s) => s._tag === 'created').length,
-        updated: successes.filter((s) => s._tag === 'updated').length,
-        unchanged: successes.filter((s) => s._tag === 'unchanged').length,
-        skipped: successes.filter((s) => s._tag === 'skipped').length,
-        failed: failures.length,
-      }
-
-      tui.dispatch({ _tag: 'Complete', summary })
-
-      // Persist output before exiting (non-watch mode)
-      if (!watch || dryRun) {
-        yield* tui.unmount({ mode: 'persist' })
-      }
-
-      // Exit with error code if any files failed
-      if (summary.failed > 0) {
-        return yield* new GenieGenerationFailedError({
-          failedCount: summary.failed,
-          message: `${summary.failed} file(s) failed to generate`,
-        })
-      }
-
-      if (watch && !dryRun) {
-        // Watch mode
-        yield* pipe(
-          fs.watch(resolvedCwd),
-          Stream.filter(({ path: p }) => p.endsWith('.genie.ts')),
-          Stream.tap(({ path: p }) => {
-            const genieFilePath = path.join(resolvedCwd, p)
-
-            // Reset for new watch cycle
-            tui.dispatch({ _tag: 'WatchReset' })
-
-            return Effect.gen(function* () {
-              // Re-discover files (in case new ones were added)
-              const newGenieFiles = yield* findGenieFiles(resolvedCwd)
-
-              tui.dispatch({
-                _tag: 'FilesDiscovered',
-                files: newGenieFiles.map((filePath) => ({
-                  path: filePath,
-                  relativePath: path.relative(resolvedCwd, filePath.replace('.genie.ts', '')),
-                })),
-              })
-
-              // Regenerate the changed file
-              tui.dispatch({ _tag: 'FileStarted', path: genieFilePath })
-
-              const result = yield* generateFile({
-                genieFilePath,
-                cwd: resolvedCwd,
-                readOnly,
-                oxfmtConfigPath,
-              }).pipe(Effect.either)
-
-              if (Either.isRight(result)) {
-                const message =
-                  result.right._tag === 'updated' ? result.right.diffSummary : undefined
-                tui.dispatch({
-                  _tag: 'FileCompleted',
-                  path: genieFilePath,
-                  status: mapResultToStatus(result.right),
+              if (Either.isLeft(validationResult)) {
+                const error = validationResult.left
+                const message = error instanceof Error ? error.message : String(error)
+                tui.dispatch({ _tag: 'Error', message })
+                return yield* new GenieGenerationFailedError({
+                  failedCount: 1,
                   message,
                 })
-              } else {
-                tui.dispatch({
-                  _tag: 'FileCompleted',
-                  path: genieFilePath,
-                  status: 'error',
-                  message: result.left.message,
-                })
               }
 
-              // Mark all other files as unchanged
-              for (const otherFile of newGenieFiles) {
-                if (otherFile !== genieFilePath) {
-                  tui.dispatch({
-                    _tag: 'FileCompleted',
-                    path: otherFile,
-                    status: 'unchanged',
+              const summary: GenieSummary = {
+                created: 0,
+                updated: 0,
+                unchanged: results.filter((r) => r.success).length,
+                skipped: 0,
+                failed: 0,
+              }
+              tui.dispatch({ _tag: 'Complete', summary })
+
+              return
+            }
+
+            // Generate mode (including dry-run)
+            const results = yield* Effect.all(
+              genieFiles.map((genieFilePath) =>
+                Effect.gen(function* () {
+                  tui.dispatch({ _tag: 'FileStarted', path: genieFilePath })
+
+                  const result = yield* generateFile({
+                    genieFilePath,
+                    cwd: resolvedCwd,
+                    readOnly,
+                    dryRun,
+                    oxfmtConfigPath,
+                  }).pipe(Effect.either)
+
+                  if (Either.isRight(result)) {
+                    const status = mapResultToStatus(result.right)
+                    const message =
+                      result.right._tag === 'updated' ? result.right.diffSummary : undefined
+                    tui.dispatch({
+                      _tag: 'FileCompleted',
+                      path: genieFilePath,
+                      status,
+                      message,
+                    })
+                    return result
+                  } else {
+                    tui.dispatch({
+                      _tag: 'FileCompleted',
+                      path: genieFilePath,
+                      status: 'error',
+                      message: result.left.message,
+                    })
+                    return result
+                  }
+                }),
+              ),
+              { concurrency: 'unbounded' },
+            )
+
+            // Partition results
+            const successes = results.filter(Either.isRight).map((r) => r.right)
+            const failures = results.filter(Either.isLeft).map((r) => r.left)
+
+            // Check for TDZ errors
+            const hasTdzErrors = failures.some((f) => isTdzError(f.cause))
+
+            if (failures.length > 0 && hasTdzErrors) {
+              // Re-validate sequentially to identify root causes
+              const revalidateErrors: Array<{
+                genieFilePath: string
+                error: GenieCheckError | GenieImportError | PlatformError.PlatformError
+                isRootCause: boolean
+              }> = []
+
+              for (const genieFilePath of genieFiles) {
+                const result = yield* checkFile({
+                  genieFilePath,
+                  cwd: resolvedCwd,
+                  oxfmtConfigPath,
+                }).pipe(Effect.either)
+
+                if (Either.isLeft(result)) {
+                  const error = result.left
+                  revalidateErrors.push({
+                    genieFilePath,
+                    error,
+                    isRootCause: errorOriginatesInFile({
+                      error,
+                      filePath: genieFilePath,
+                    }),
                   })
                 }
               }
 
-              const watchSummary: GenieSummary = Either.isRight(result)
-                ? {
-                    created: result.right._tag === 'created' ? 1 : 0,
-                    updated: result.right._tag === 'updated' ? 1 : 0,
-                    unchanged:
-                      newGenieFiles.length - 1 + (result.right._tag === 'unchanged' ? 1 : 0),
-                    skipped: result.right._tag === 'skipped' ? 1 : 0,
-                    failed: 0,
-                  }
-                : {
-                    created: 0,
-                    updated: 0,
-                    unchanged: newGenieFiles.length - 1,
-                    skipped: 0,
-                    failed: 1,
-                  }
+              const rootCauses = revalidateErrors.filter((e) => e.isRootCause)
+              const dependentCount = revalidateErrors.length - rootCauses.length
 
-              tui.dispatch({ _tag: 'Complete', summary: watchSummary })
-            })
+              // Update state with revalidated errors
+              for (const { genieFilePath, error, isRootCause } of revalidateErrors) {
+                tui.dispatch({
+                  _tag: 'FileCompleted',
+                  path: genieFilePath,
+                  status: 'error',
+                  message: isRootCause ? error.message : 'Failed due to dependency error',
+                })
+              }
+
+              const summary: GenieSummary = {
+                created: successes.filter((s) => s._tag === 'created').length,
+                updated: successes.filter((s) => s._tag === 'updated').length,
+                unchanged: successes.filter((s) => s._tag === 'unchanged').length,
+                skipped: successes.filter((s) => s._tag === 'skipped').length,
+                failed: revalidateErrors.length,
+              }
+
+              tui.dispatch({ _tag: 'Complete', summary })
+
+              return yield* new GenieGenerationFailedError({
+                failedCount: revalidateErrors.length,
+                message: `${rootCauses.length} root cause error(s), ${dependentCount} dependent failure(s)`,
+              })
+            }
+
+            // No TDZ errors - compute summary
+            const summary: GenieSummary = {
+              created: successes.filter((s) => s._tag === 'created').length,
+              updated: successes.filter((s) => s._tag === 'updated').length,
+              unchanged: successes.filter((s) => s._tag === 'unchanged').length,
+              skipped: successes.filter((s) => s._tag === 'skipped').length,
+              failed: failures.length,
+            }
+
+            tui.dispatch({ _tag: 'Complete', summary })
+
+            // Exit with error code if any files failed
+            if (summary.failed > 0) {
+              return yield* new GenieGenerationFailedError({
+                failedCount: summary.failed,
+                message: `${summary.failed} file(s) failed to generate`,
+              })
+            }
+
+            if (watch && !dryRun) {
+              // Watch mode
+              yield* pipe(
+                fs.watch(resolvedCwd),
+                Stream.filter(({ path: p }) => p.endsWith('.genie.ts')),
+                Stream.tap(({ path: p }) => {
+                  const genieFilePath = path.join(resolvedCwd, p)
+
+                  // Reset for new watch cycle
+                  tui.dispatch({ _tag: 'WatchReset' })
+
+                  return Effect.gen(function* () {
+                    // Re-discover files (in case new ones were added)
+                    const newGenieFiles = yield* findGenieFiles(resolvedCwd)
+
+                    tui.dispatch({
+                      _tag: 'FilesDiscovered',
+                      files: newGenieFiles.map((filePath) => ({
+                        path: filePath,
+                        relativePath: path.relative(resolvedCwd, filePath.replace('.genie.ts', '')),
+                      })),
+                    })
+
+                    // Regenerate the changed file
+                    tui.dispatch({ _tag: 'FileStarted', path: genieFilePath })
+
+                    const result = yield* generateFile({
+                      genieFilePath,
+                      cwd: resolvedCwd,
+                      readOnly,
+                      oxfmtConfigPath,
+                    }).pipe(Effect.either)
+
+                    if (Either.isRight(result)) {
+                      const message =
+                        result.right._tag === 'updated' ? result.right.diffSummary : undefined
+                      tui.dispatch({
+                        _tag: 'FileCompleted',
+                        path: genieFilePath,
+                        status: mapResultToStatus(result.right),
+                        message,
+                      })
+                    } else {
+                      tui.dispatch({
+                        _tag: 'FileCompleted',
+                        path: genieFilePath,
+                        status: 'error',
+                        message: result.left.message,
+                      })
+                    }
+
+                    // Mark all other files as unchanged
+                    for (const otherFile of newGenieFiles) {
+                      if (otherFile !== genieFilePath) {
+                        tui.dispatch({
+                          _tag: 'FileCompleted',
+                          path: otherFile,
+                          status: 'unchanged',
+                        })
+                      }
+                    }
+
+                    const watchSummary: GenieSummary = Either.isRight(result)
+                      ? {
+                          created: result.right._tag === 'created' ? 1 : 0,
+                          updated: result.right._tag === 'updated' ? 1 : 0,
+                          unchanged:
+                            newGenieFiles.length - 1 + (result.right._tag === 'unchanged' ? 1 : 0),
+                          skipped: result.right._tag === 'skipped' ? 1 : 0,
+                          failed: 0,
+                        }
+                      : {
+                          created: 0,
+                          updated: 0,
+                          unchanged: newGenieFiles.length - 1,
+                          skipped: 0,
+                          failed: 1,
+                        }
+
+                    tui.dispatch({ _tag: 'Complete', summary: watchSummary })
+                  })
+                }),
+                Stream.runDrain,
+              )
+            }
           }),
-          Stream.runDrain,
-        )
-      }
-    }).pipe(Effect.provide(outputModeLayer(output)), Effect.scoped, Effect.withSpan('genie'))
+        { view: <GenieView stateAtom={GenieApp.stateAtom} /> },
+      )
+    }).pipe(Effect.provide(outputModeLayer(output)), Effect.withSpan('genie'))
     return handler
   },
 )

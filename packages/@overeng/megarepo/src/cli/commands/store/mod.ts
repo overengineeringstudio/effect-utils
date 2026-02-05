@@ -10,6 +10,7 @@ import { Effect, Option, Schema } from 'effect'
 import React from 'react'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
+import { run } from '@overeng/tui-react'
 
 import {
   CONFIG_FILE_NAME,
@@ -34,18 +35,17 @@ const storeLsCommand = Cli.Command.make('ls', { output: outputOption }, ({ outpu
     const store = yield* Store
     const repos = yield* store.listRepos()
 
-    yield* Effect.scoped(
-      Effect.gen(function* () {
-        const tui = yield* StoreApp.run(
-          React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }),
-        )
-
-        tui.dispatch({
-          _tag: 'SetLs',
-          basePath: store.basePath,
-          repos: repos.map((r) => ({ relativePath: r.relativePath })),
-        })
-      }),
+    yield* run(
+      StoreApp,
+      (tui) =>
+        Effect.sync(() => {
+          tui.dispatch({
+            _tag: 'SetLs',
+            basePath: store.basePath,
+            repos: repos.map((r) => ({ relativePath: r.relativePath })),
+          })
+        }),
+      { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
     ).pipe(Effect.provide(outputModeLayer(output)))
   }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/ls')),
 ).pipe(Cli.Command.withDescription('List repositories in the store'))
@@ -222,20 +222,19 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
     }
 
     // Use TuiApp for output
-    yield* Effect.scoped(
-      Effect.gen(function* () {
-        const tui = yield* StoreApp.run(
-          React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }),
-        )
-
-        tui.dispatch({
-          _tag: 'SetStatus',
-          basePath: store.basePath,
-          repoCount: repos.length,
-          worktreeCount: totalWorktreeCount,
-          worktrees: worktreeStatuses,
-        })
-      }),
+    yield* run(
+      StoreApp,
+      (tui) =>
+        Effect.sync(() => {
+          tui.dispatch({
+            _tag: 'SetStatus',
+            basePath: store.basePath,
+            repoCount: repos.length,
+            worktreeCount: totalWorktreeCount,
+            worktrees: worktreeStatuses,
+          })
+        }),
+      { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
     ).pipe(Effect.provide(outputModeLayer(output)))
   }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/status')),
 ).pipe(Cli.Command.withDescription('Show store status and detect issues'))
@@ -277,19 +276,18 @@ const storeFetchCommand = Cli.Command.make('fetch', { output: outputOption }, ({
     const elapsed = Date.now() - startTime
 
     // Use StoreApp for all output modes
-    yield* Effect.scoped(
-      Effect.gen(function* () {
-        const tui = yield* StoreApp.run(
-          React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }),
-        )
-
-        tui.dispatch({
-          _tag: 'SetFetch',
-          basePath: store.basePath,
-          results: results,
-          elapsedMs: elapsed,
-        })
-      }),
+    yield* run(
+      StoreApp,
+      (tui) =>
+        Effect.sync(() => {
+          tui.dispatch({
+            _tag: 'SetFetch',
+            basePath: store.basePath,
+            results: results,
+            elapsedMs: elapsed,
+          })
+        }),
+      { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
     ).pipe(Effect.provide(outputModeLayer(output)))
   }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/fetch')),
 ).pipe(Cli.Command.withDescription('Fetch all repositories in the store'))
@@ -500,21 +498,20 @@ const storeGcCommand = Cli.Command.make(
       }
 
       // Use TuiApp for output
-      yield* Effect.scoped(
-        Effect.gen(function* () {
-          const tui = yield* StoreApp.run(
-            React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }),
-          )
-
-          tui.dispatch({
-            _tag: 'SetGc',
-            basePath: store.basePath,
-            results: results,
-            dryRun,
-            warning: gcWarning,
-            showForceHint: !force,
-          })
-        }),
+      yield* run(
+        StoreApp,
+        (tui) =>
+          Effect.sync(() => {
+            tui.dispatch({
+              _tag: 'SetGc',
+              basePath: store.basePath,
+              results: results,
+              dryRun,
+              warning: gcWarning,
+              showForceHint: !force,
+            })
+          }),
+        { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
       ).pipe(Effect.provide(outputModeLayer(output)))
     }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/gc')),
 ).pipe(Cli.Command.withDescription('Garbage collect unused worktrees'))
@@ -539,51 +536,51 @@ const storeAddCommand = Cli.Command.make(
       // Parse the source string
       const source = parseSourceString(sourceString)
       if (source === undefined) {
-        yield* Effect.scoped(
-          Effect.gen(function* () {
-            const tui = yield* StoreApp.run(
-              React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }),
-            )
-            tui.dispatch({
-              _tag: 'SetError',
-              error: 'invalid_source',
-              message: `Invalid source string: ${sourceString}`,
-              source: sourceString,
-            })
-          }),
+        yield* run(
+          StoreApp,
+          (tui) =>
+            Effect.sync(() => {
+              tui.dispatch({
+                _tag: 'SetError',
+                error: 'invalid_source',
+                message: `Invalid source string: ${sourceString}`,
+                source: sourceString,
+              })
+            }),
+          { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
         ).pipe(Effect.provide(outputModeLayer(output)))
         return yield* new StoreCommandError({ message: 'Invalid source' })
       }
 
       if (!isRemoteSource(source)) {
-        yield* Effect.scoped(
-          Effect.gen(function* () {
-            const tui = yield* StoreApp.run(
-              React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }),
-            )
-            tui.dispatch({
-              _tag: 'SetError',
-              error: 'local_path',
-              message: 'Cannot add local path to store',
-            })
-          }),
+        yield* run(
+          StoreApp,
+          (tui) =>
+            Effect.sync(() => {
+              tui.dispatch({
+                _tag: 'SetError',
+                error: 'local_path',
+                message: 'Cannot add local path to store',
+              })
+            }),
+          { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
         ).pipe(Effect.provide(outputModeLayer(output)))
         return yield* new StoreCommandError({ message: 'Cannot add local path' })
       }
 
       const cloneUrl = getCloneUrl(source)
       if (cloneUrl === undefined) {
-        yield* Effect.scoped(
-          Effect.gen(function* () {
-            const tui = yield* StoreApp.run(
-              React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }),
-            )
-            tui.dispatch({
-              _tag: 'SetError',
-              error: 'no_url',
-              message: 'Cannot determine clone URL',
-            })
-          }),
+        yield* run(
+          StoreApp,
+          (tui) =>
+            Effect.sync(() => {
+              tui.dispatch({
+                _tag: 'SetError',
+                error: 'no_url',
+                message: 'Cannot determine clone URL',
+              })
+            }),
+          { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
         ).pipe(Effect.provide(outputModeLayer(output)))
         return yield* new StoreCommandError({ message: 'Cannot get clone URL' })
       }
@@ -659,21 +656,20 @@ const storeAddCommand = Cli.Command.make(
 
       // Use TuiApp for output
       const alreadyExists = bareExists && worktreeExists
-      yield* Effect.scoped(
-        Effect.gen(function* () {
-          const tui = yield* StoreApp.run(
-            React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }),
-          )
-
-          tui.dispatch({
-            _tag: 'SetAdd',
-            status: alreadyExists ? 'already_exists' : 'added',
-            source: sourceString,
-            ref: targetRef,
-            commit,
-            path: worktreePath,
-          })
-        }),
+      yield* run(
+        StoreApp,
+        (tui) =>
+          Effect.sync(() => {
+            tui.dispatch({
+              _tag: 'SetAdd',
+              status: alreadyExists ? 'already_exists' : 'added',
+              source: sourceString,
+              ref: targetRef,
+              commit,
+              path: worktreePath,
+            })
+          }),
+        { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
       ).pipe(Effect.provide(outputModeLayer(output)))
     }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/add')),
 ).pipe(Cli.Command.withDescription('Add a repository to the store (without adding to megarepo)'))

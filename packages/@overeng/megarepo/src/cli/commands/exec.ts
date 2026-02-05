@@ -10,6 +10,7 @@ import { Effect, Option, Schema } from 'effect'
 import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'
+import { run } from '@overeng/tui-react'
 
 import { CONFIG_FILE_NAME, getMemberPath, MegarepoConfig } from '../../lib/config.ts'
 import { Cwd, findMegarepoRoot, outputOption, outputModeLayer, verboseOption } from '../context.ts'
@@ -42,123 +43,122 @@ export const execCommand = Cli.Command.make(
       const cwd = yield* Cwd
       const root = yield* findMegarepoRoot(cwd)
 
-      yield* Effect.scoped(
-        Effect.gen(function* () {
-          const tui = yield* ExecApp.run(
-            React.createElement(ExecView, { stateAtom: ExecApp.stateAtom }),
-          )
+      yield* run(
+        ExecApp,
+        (tui) =>
+          Effect.gen(function* () {
+            if (Option.isNone(root)) {
+              tui.dispatch({
+                _tag: 'SetError',
+                error: 'not_found',
+                message: 'No megarepo.json found',
+              })
+              return
+            }
 
-          if (Option.isNone(root)) {
-            tui.dispatch({
-              _tag: 'SetError',
-              error: 'not_found',
-              message: 'No megarepo.json found',
+            // Load config
+            const fs = yield* FileSystem.FileSystem
+            const configPath = EffectPath.ops.join(
+              root.value,
+              EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+            )
+            const configContent = yield* fs.readFileString(configPath)
+            const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
+              configContent,
+            )
+
+            // Filter members
+            const membersToRun = Option.match(member, {
+              onNone: () => Object.keys(config.members),
+              onSome: (m) => (m in config.members ? [m] : []),
             })
-            return
-          }
 
-          // Load config
-          const fs = yield* FileSystem.FileSystem
-          const configPath = EffectPath.ops.join(
-            root.value,
-            EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-          )
-          const configContent = yield* fs.readFileString(configPath)
-          const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
-            configContent,
-          )
+            if (membersToRun.length === 0) {
+              tui.dispatch({
+                _tag: 'SetError',
+                error: 'not_found',
+                message: 'Member not found',
+              })
+              return
+            }
 
-          // Filter members
-          const membersToRun = Option.match(member, {
-            onNone: () => Object.keys(config.members),
-            onSome: (m) => (m in config.members ? [m] : []),
-          })
-
-          if (membersToRun.length === 0) {
+            // Start exec with members
             tui.dispatch({
-              _tag: 'SetError',
-              error: 'not_found',
-              message: 'Member not found',
+              _tag: 'Start',
+              command: cmd,
+              mode,
+              verbose,
+              members: membersToRun,
             })
-            return
-          }
 
-          // Start exec with members
-          tui.dispatch({
-            _tag: 'Start',
-            command: cmd,
-            mode,
-            verbose,
-            members: membersToRun,
-          })
+            /** Run command in a single member */
+            const runInMember = (name: string) =>
+              Effect.gen(function* () {
+                const memberPath = getMemberPath({ megarepoRoot: root.value, name })
+                const exists = yield* fs.exists(memberPath)
 
-          /** Run command in a single member */
-          const runInMember = (name: string) =>
-            Effect.gen(function* () {
-              const memberPath = getMemberPath({ megarepoRoot: root.value, name })
-              const exists = yield* fs.exists(memberPath)
+                if (!exists) {
+                  tui.dispatch({
+                    _tag: 'UpdateMember',
+                    name,
+                    status: 'skipped',
+                    stderr: 'Member not synced',
+                  })
+                  return
+                }
 
-              if (!exists) {
+                // Mark as running
                 tui.dispatch({
                   _tag: 'UpdateMember',
                   name,
-                  status: 'skipped',
-                  stderr: 'Member not synced',
+                  status: 'running',
                 })
-                return
-              }
 
-              // Mark as running
-              tui.dispatch({
-                _tag: 'UpdateMember',
-                name,
-                status: 'running',
+                // Run the command
+                yield* Effect.gen(function* () {
+                  const shellCmd = Command.make('sh', '-c', cmd).pipe(
+                    Command.workingDirectory(memberPath),
+                  )
+                  const output = yield* Command.string(shellCmd)
+                  tui.dispatch({
+                    _tag: 'UpdateMember',
+                    name,
+                    status: 'success',
+                    exitCode: 0,
+                    stdout: output,
+                  })
+                }).pipe(
+                  Effect.catchAll((error) =>
+                    Effect.sync(() => {
+                      tui.dispatch({
+                        _tag: 'UpdateMember',
+                        name,
+                        status: 'error',
+                        exitCode: 1,
+                        stderr: error instanceof Error ? error.message : String(error),
+                      })
+                    }),
+                  ),
+                )
               })
 
-              // Run the command
-              yield* Effect.gen(function* () {
-                const shellCmd = Command.make('sh', '-c', cmd).pipe(
-                  Command.workingDirectory(memberPath),
-                )
-                const output = yield* Command.string(shellCmd)
-                tui.dispatch({
-                  _tag: 'UpdateMember',
-                  name,
-                  status: 'success',
-                  exitCode: 0,
-                  stdout: output,
-                })
-              }).pipe(
-                Effect.catchAll((error) =>
-                  Effect.sync(() => {
-                    tui.dispatch({
-                      _tag: 'UpdateMember',
-                      name,
-                      status: 'error',
-                      exitCode: 1,
-                      stderr: error instanceof Error ? error.message : String(error),
-                    })
-                  }),
-                ),
+            if (mode === 'parallel') {
+              // Run all commands in parallel
+              yield* Effect.all(
+                membersToRun.map((name) => runInMember(name)),
+                { concurrency: 'unbounded' },
               )
-            })
-
-          if (mode === 'parallel') {
-            // Run all commands in parallel
-            yield* Effect.all(
-              membersToRun.map((name) => runInMember(name)),
-              { concurrency: 'unbounded' },
-            )
-          } else {
-            // Run commands sequentially
-            for (const name of membersToRun) {
-              yield* runInMember(name)
+            } else {
+              // Run commands sequentially
+              for (const name of membersToRun) {
+                yield* runInMember(name)
+              }
             }
-          }
 
-          // Mark exec as complete
-          tui.dispatch({ _tag: 'Complete' })
-        }),
+            // Mark exec as complete
+            tui.dispatch({ _tag: 'Complete' })
+          }),
+        { view: React.createElement(ExecView, { stateAtom: ExecApp.stateAtom }) },
       ).pipe(Effect.provide(outputModeLayer(output)))
     }).pipe(Effect.withSpan('megarepo/exec')),
 ).pipe(Cli.Command.withDescription('Execute a command in member directories'))

@@ -10,6 +10,7 @@ import { Effect, Schema } from 'effect'
 import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'
+import { run } from '@overeng/tui-react'
 
 import { CONFIG_FILE_NAME, MegarepoConfig } from '../../lib/config.ts'
 import * as Git from '../../lib/git.ts'
@@ -23,51 +24,50 @@ export const initCommand = Cli.Command.make('init', { output: outputOption }, ({
     const fs = yield* FileSystem.FileSystem
 
     // Run TuiApp for all output (handles JSON/TTY modes automatically)
-    yield* Effect.scoped(
-      Effect.gen(function* () {
-        const tui = yield* InitApp.run(
-          React.createElement(InitView, { stateAtom: InitApp.stateAtom }),
-        )
+    yield* run(
+      InitApp,
+      (tui) =>
+        Effect.gen(function* () {
+          // Check if already in a git repo
+          const isGit = yield* Git.isGitRepo(cwd)
+          if (!isGit) {
+            tui.dispatch({
+              _tag: 'SetError',
+              error: 'not_git_repo',
+              message: 'Not a git repository',
+            })
+            return
+          }
 
-        // Check if already in a git repo
-        const isGit = yield* Git.isGitRepo(cwd)
-        if (!isGit) {
-          tui.dispatch({
-            _tag: 'SetError',
-            error: 'not_git_repo',
-            message: 'Not a git repository',
-          })
-          return
-        }
+          const configPath = EffectPath.ops.join(
+            cwd,
+            EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+          )
 
-        const configPath = EffectPath.ops.join(
-          cwd,
-          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-        )
+          // Check if config already exists
+          const exists = yield* fs.exists(configPath)
+          if (exists) {
+            // Already initialized
+            tui.dispatch({ _tag: 'SetAlreadyInitialized', path: configPath })
+            return
+          }
 
-        // Check if config already exists
-        const exists = yield* fs.exists(configPath)
-        if (exists) {
-          // Already initialized
-          tui.dispatch({ _tag: 'SetAlreadyInitialized', path: configPath })
-          return
-        }
+          // Create initial config
+          const initialConfig = {
+            $schema:
+              'https://raw.githubusercontent.com/overengineeringstudio/megarepo/main/schema/megarepo.schema.json',
+            members: {},
+          }
 
-        // Create initial config
-        const initialConfig = {
-          $schema:
-            'https://raw.githubusercontent.com/overengineeringstudio/megarepo/main/schema/megarepo.schema.json',
-          members: {},
-        }
+          const configContent = yield* Schema.encode(
+            Schema.parseJson(MegarepoConfig, { space: 2 }),
+          )(initialConfig)
+          yield* fs.writeFileString(configPath, configContent + '\n')
 
-        const configContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
-          initialConfig,
-        )
-        yield* fs.writeFileString(configPath, configContent + '\n')
-
-        // Output success
-        tui.dispatch({ _tag: 'SetInitialized', path: configPath })
-      }),
+          // Output success
+          tui.dispatch({ _tag: 'SetInitialized', path: configPath })
+        }),
+      { view: React.createElement(InitView, { stateAtom: InitApp.stateAtom }) },
     ).pipe(Effect.provide(outputModeLayer(output)))
   }).pipe(Effect.withSpan('megarepo/init')),
 ).pipe(Cli.Command.withDescription('Initialize a new megarepo in the current directory'))
