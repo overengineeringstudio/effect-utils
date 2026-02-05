@@ -5,7 +5,7 @@
  */
 
 import * as Cli from '@effect/cli'
-import { Effect } from 'effect'
+import { Option } from 'effect'
 
 import { MR_VERSION } from '../lib/version.ts'
 // Import extracted commands
@@ -28,21 +28,22 @@ import {
 export {
   Cwd,
   createSymlink,
+  cwdOption,
   findMegarepoRoot,
   findNearestMegarepoRoot,
   outputOption,
   verboseOption,
 } from './context.ts'
 
-// Import Cwd for CLI assembly
-import { Cwd } from './context.ts'
+// Import Cwd and cwdOption for CLI assembly
+import { Cwd, cwdOption } from './context.ts'
 
 // =============================================================================
 // Main CLI
 // =============================================================================
 
 /** Root CLI command */
-export const mrCommand = Cli.Command.make('mr', {}).pipe(
+export const mrCommand = Cli.Command.make('mr', { cwd: cwdOption }).pipe(
   Cli.Command.withSubcommands([
     initCommand,
     rootCommand,
@@ -57,6 +58,7 @@ export const mrCommand = Cli.Command.make('mr', {}).pipe(
     storeCommand,
     generateCommand,
   ]),
+  Cli.Command.provide(({ cwd }) => (Option.isSome(cwd) ? Cwd.fromPath(cwd.value) : Cwd.live)),
   Cli.Command.withDescription('Multi-repo workspace management tool'),
 )
 
@@ -64,4 +66,4 @@ export const mrCommand = Cli.Command.make('mr', {}).pipe(
 export const cli = Cli.Command.run(mrCommand, {
   name: 'mr',
   version: MR_VERSION,
-})(process.argv).pipe(Effect.provide(Cwd.live))
+})(process.argv)

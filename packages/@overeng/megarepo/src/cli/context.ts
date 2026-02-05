@@ -4,6 +4,8 @@
  * Services and helpers used across all CLI commands.
  */
 
+import { resolve } from 'node:path'
+
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
 import { Context, Effect, Layer, Option } from 'effect'
@@ -38,11 +40,29 @@ export class Cwd extends Context.Tag('megarepo/Cwd')<Cwd, AbsoluteDirPath>() {
       return EffectPath.unsafe.absoluteDir(cwd.endsWith('/') ? cwd : `${cwd}/`)
     }),
   )
+
+  /** Create a Cwd layer from a specific path (resolves relative paths against process.cwd()) */
+  static fromPath = (path: string) =>
+    Layer.succeed(
+      Cwd,
+      EffectPath.unsafe.absoluteDir(
+        (() => {
+          const resolved = resolve(path)
+          return resolved.endsWith('/') ? resolved : `${resolved}/`
+        })(),
+      ),
+    )
 }
 
 // =============================================================================
 // Common Options
 // =============================================================================
+
+/** Override the working directory */
+export const cwdOption = Cli.Options.text('cwd').pipe(
+  Cli.Options.withDescription('Override the working directory'),
+  Cli.Options.optional,
+)
 
 /** JSON output format option */
 export const jsonOption = Cli.Options.boolean('json').pipe(
