@@ -31,7 +31,8 @@ const computeRelativeRef = ({ from, to }: { from: string; to: string }): string 
 
   const upCount = fromParts.length - common
   const downPath = toParts.slice(common).join('/')
-  return '../'.repeat(upCount) + downPath
+  const result = '../'.repeat(upCount) + downPath
+  return result.endsWith('/') ? result.slice(0, -1) : result
 }
 
 /**
