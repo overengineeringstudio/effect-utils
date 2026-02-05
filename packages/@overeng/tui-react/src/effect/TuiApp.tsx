@@ -188,11 +188,9 @@ export interface TuiAppConfig<S, A> {
  * The Cause schema used for Failure output.
  * Uses Schema.Defect for both error and defect fields.
  *
- * This means typed errors (Fail nodes) are serialized lossily as { name, message },
- * which is safe because:
- * 1. The state already contains all structured error details
- * 2. Typed errors propagate via Effect channel for in-process handling
- * 3. No serialization boundary to cross (unlike RPC)
+ * Typed errors (Fail nodes) are serialized lossily as { name, message }.
+ * Structured error details should be carried in state (for JSON consumers),
+ * while typed errors still propagate via the Effect channel for in-process handling.
  */
 const OutputCauseSchema = Schema.Cause({
   error: Schema.Defect,

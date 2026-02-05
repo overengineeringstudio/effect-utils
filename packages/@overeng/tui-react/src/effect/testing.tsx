@@ -8,12 +8,13 @@
  * import { runTestCommand, createTestTuiState } from '@overeng/tui-react'
  *
  * test('deploy command outputs JSON', async () => {
- *   const { jsonOutput, finalState } = await runTestCommand(runDeploy, {
- *     args: ['api-server'],
- *     mode: 'final-json',
+ *   const { exit, finalState } = await runTestCommand({
+ *     commandFn: (args) => runDeploy(args),
+ *     options: { args: ['api-server'], mode: 'json', schema: DeployOutputSchema },
  *   })
  *
- *   expect(finalState._tag).toBe('Complete')
+ *   expect(Exit.isSuccess(exit)).toBe(true)
+ *   expect(finalState?._tag).toBe('Complete')
  * })
  * ```
  */
@@ -120,11 +121,12 @@ export const testModeLayer = (preset: TestModePreset): Layer.Layer<OutputModeTag
  * @example
  * ```typescript
  * const result = await runTestCommand({
- *   commandFn: (services) => runDeploy(services),
- *   options: { args: ['api-server'], mode: 'final-json' }
+ *   commandFn: (args) => runDeploy(args),
+ *   options: { args: ['api-server'], mode: 'json', schema: DeployOutputSchema }
  * })
  *
- * expect(result.finalState._tag).toBe('Complete')
+ * expect(Exit.isSuccess(result.exit)).toBe(true)
+ * expect(result.finalState?._tag).toBe('Complete')
  * ```
  */
 export const runTestCommand = async <S, Args, E>({
