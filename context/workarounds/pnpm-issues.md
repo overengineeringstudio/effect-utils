@@ -269,6 +269,7 @@ File not found: packages/@overeng/effect-rpc-tanstack/examples/basic/node_module
 ### Workaround
 
 Re-run the failed CI job. If it recurs frequently, consider:
+
 - Filing an upstream oxfmt bug for broken symlink handling
 - Wrapping the oxfmt invocation with `find ... -prune` to avoid `node_modules/` at the
   filesystem level instead of relying on oxfmt's internal skip
