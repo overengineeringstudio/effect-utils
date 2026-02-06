@@ -31,7 +31,7 @@
 #
 # Shell helpers:
 #   - otel-span: emit OTLP trace spans from shell scripts (see otel-span --help)
-#   - otel-check: diagnose the OTEL stack health (see otel-check --help)
+#   - otel health: diagnose the OTEL stack health (see otel health --help)
 #
 {
   # Fixed base port (null = derive from $DEVENV_ROOT hash)
