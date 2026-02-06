@@ -127,6 +127,12 @@ const deployJobs = {
         run: 'devenv tasks run storybook:build --mode before || true',
       },
       {
+        name: 'Install netlify-cli',
+        // Pre-install to avoid bunx cache contention when
+        // multiple deploy tasks run in parallel.
+        run: 'bunx netlify-cli --version',
+      },
+      {
         name: 'Deploy storybooks to Netlify',
         run: [
           'if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then',
