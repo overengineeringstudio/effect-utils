@@ -8,7 +8,7 @@ import * as Cli from '@effect/cli'
 import { Effect, Option } from 'effect'
 import React from 'react'
 
-import { outputModeLayer, outputOption } from '@overeng/tui-react'
+import { outputModeLayer, outputOption } from '@overeng/tui-react/node'
 
 import { LsApp, LsView } from '../../renderers/TraceLsOutput/mod.ts'
 import { searchTraces } from '../../services/GrafanaClient.ts'
@@ -50,7 +50,7 @@ export const lsCommand = Cli.Command.make(
                 error: error.reason,
                 message: error.message,
               })
-              return yield* Effect.fail(error)
+              return yield* error
             }),
         )
 
