@@ -90,7 +90,7 @@ let
 in
 {
   imports = [
-    # Beads commit correlation for issue tracking
+    # Beads integration: env vars, sync task, commit correlation hook
     (inputs.overeng-beads-public.devenvModules.beads {
       beadsPrefix = "oep";
       beadsRepoName = "overeng-beads-public";
