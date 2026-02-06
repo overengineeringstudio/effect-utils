@@ -125,8 +125,7 @@ jobs:
       - name: Nix hash check
         run: 'dt nix:check'
   deploy-storybooks:
-    runs-on:
-      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    runs-on: ubuntu-latest
     needs: [typecheck, lint, test]
     defaults:
       run:

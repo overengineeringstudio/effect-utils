@@ -96,7 +96,9 @@ const jobs: Record<CIJobName, ReturnType<typeof job> | ReturnType<typeof multiPl
 // Deploy job — NOT a required status check (separate from CIJobName)
 const deployJobs = {
   'deploy-storybooks': {
-    'runs-on': namespaceRunner('namespace-profile-linux-x86-64', '${{ github.run_id }}'),
+    // Namespace runners occasionally have a stale/corrupt /nix/store which can break devenv evaluation.
+    // This job is non-blocking, so keep it reliable by using GitHub-hosted runners.
+    'runs-on': 'ubuntu-latest',
     needs: ['typecheck', 'lint', 'test'],
     defaults: jobDefaults,
     env: {

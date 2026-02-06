@@ -37,6 +37,9 @@ let
   mkDeployTask = pkg: {
     "netlify:deploy:${pkg.name}" = {
       description = "Deploy ${pkg.name} storybook to Netlify";
+      # Ensure the storybook exists before deploying.
+      # `dt` runs tasks in "before" mode by default, so this will build first in CI and locally.
+      after = [ "${buildTaskPrefix}:${pkg.name}" ];
       exec = ''
         set -euo pipefail
 
