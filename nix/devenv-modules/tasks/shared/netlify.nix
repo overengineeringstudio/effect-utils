@@ -6,6 +6,7 @@
 # Usage in devenv.nix:
 #   imports = [
 #     (inputs.effect-utils.devenvModules.tasks.netlify {
+#       site = "my-netlify-site";
 #       packages = [
 #         { path = "packages/@overeng/tui-react"; name = "tui-react"; }
 #         { path = "packages/@overeng/megarepo"; name = "megarepo"; }
@@ -22,9 +23,11 @@
 #   Tasks:
 #     - netlify:deploy:<name> - Deploy storybook for specific package
 #     - netlify:deploy        - Aggregate: deploy all storybooks
+#
+# NOTE: pkg.name must be a valid Netlify alias slug (lowercase, alphanumeric, hyphens only).
 {
   packages ? [],
-  site ? "overeng-utils",
+  site,  # Required — Netlify site name (e.g. "overeng-utils")
   buildTaskPrefix ? "storybook:build",
 }:
 { lib, pkgs, ... }:
@@ -36,6 +39,12 @@ let
       description = "Deploy ${pkg.name} storybook to Netlify";
       exec = ''
         set -euo pipefail
+
+        if [ -z "''${NETLIFY_AUTH_TOKEN:-}" ]; then
+          echo "Error: NETLIFY_AUTH_TOKEN is not set." >&2
+          echo "Set it via: export NETLIFY_AUTH_TOKEN=\$(op read 'op://...')" >&2
+          exit 1
+        fi
 
         deploy_dir="${pkg.path}/storybook-static"
 
