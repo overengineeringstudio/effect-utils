@@ -62,6 +62,39 @@ let
   scanDirsArg = builtins.concatStringsSep " " genieCoverageDirs;
   lintPathsArg = builtins.concatStringsSep " " lintPaths;
 
+  # oxfmt should never enumerate node_modules. Even if node_modules is ignored,
+  # scanning large directory trees can race with concurrent installs in CI.
+  # We instead format only tracked files selected via git pathspec globs.
+  #
+  # Note: We intentionally limit to common source/config docs that oxfmt supports.
+  formatExtensions = [
+    "ts"
+    "tsx"
+    "js"
+    "jsx"
+    "mts"
+    "cts"
+    "mjs"
+    "cjs"
+    "json"
+    "md"
+  ];
+  formatPathspecs =
+    lib.concatMap
+      (p:
+        map
+          (ext:
+            let
+              glob = "**/*.${ext}";
+              prefix = if p == "." then "" else "${p}/";
+            in
+            ":(glob)${prefix}${glob}"
+          )
+          formatExtensions
+      )
+      lintPaths;
+  formatPathspecArg = builtins.concatStringsSep " " (map lib.escapeShellArg formatPathspecs);
+
   # Type-aware linting flags (enabled when tsconfig is provided)
   typeAwareFlags = if tsconfig != null then "--type-aware --tsconfig ${tsconfig}" else "";
 in
@@ -74,7 +107,17 @@ in
     # Uses default config files (.oxfmtrc.json, .oxlintrc.json) - no -c flags needed
     "lint:check:format" = {
       description = "Check code formatting with oxfmt";
-      exec = "oxfmt --check ${lintPathsArg}";
+      exec = ''
+        set -euo pipefail
+
+        bytes="$(git ls-files -z -- ${formatPathspecArg} | wc -c)"
+        if [ "''${bytes}" -eq 0 ]; then
+          echo "[oxfmt] No tracked files found for formatting."
+          exit 0
+        fi
+
+        git ls-files -z -- ${formatPathspecArg} | xargs -0 -n 200 oxfmt --check
+      '';
       after = [ "genie:run" ];
       execIfModified = execIfModifiedPatterns;
     };
@@ -117,7 +160,17 @@ in
     # Lint fix tasks
     "lint:fix:format" = {
       description = "Fix code formatting with oxfmt";
-      exec = "oxfmt ${lintPathsArg}";
+      exec = ''
+        set -euo pipefail
+
+        bytes="$(git ls-files -z -- ${formatPathspecArg} | wc -c)"
+        if [ "''${bytes}" -eq 0 ]; then
+          echo "[oxfmt] No tracked files found for formatting."
+          exit 0
+        fi
+
+        git ls-files -z -- ${formatPathspecArg} | xargs -0 -n 200 oxfmt
+      '';
     };
     "lint:fix:oxlint" = {
       description = "Fix lint issues with oxlint";
