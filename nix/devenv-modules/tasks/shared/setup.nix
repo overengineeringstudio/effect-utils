@@ -75,8 +75,9 @@
   # Set to [] for non-pnpm setups to use git-hash-only caching.
   innerCacheDirs ? [ "pnpm-install" ],
 }:
-{ lib, config, ... }:
+{ lib, config, pkgs, ... }:
 let
+  flock = "${pkgs.flock}/bin/flock";
   cache = import ../lib/cache.nix { inherit config; };
   cacheRoot = cache.cacheRoot;
   hashFile = cache.mkCachePath "setup-git-hash";
@@ -216,7 +217,7 @@ let
         lockfile="${cacheRoot}/setup-${sanitizeForLockfile t}.lock"
         mkdir -p "$(dirname "$lockfile")"
         exec 200>"$lockfile"
-        if ! flock -w 30 200; then
+        if ! ${flock} -w 30 200; then
           echo "[devenv] ${t} lock timeout after 30s - another process may be stuck" >&2
           echo "[devenv] Try: FORCE_SETUP=1 dt setup:run" >&2
           exit 0
