@@ -26,7 +26,7 @@ in
     '';
     # Status: use `mr status --output json` to detect if sync is needed.
     # The CLI computes syncNeeded based on: missing symlinks/worktrees, symlink drift, lock staleness.
-    status = ''
+    status = trace.status "megarepo:sync" ''
       if [ ! -f ./megarepo.json ]; then
         exit 0
       fi
@@ -48,7 +48,7 @@ in
     description = "Verify megarepo setup is complete";
     after = [ "megarepo:sync" ];
     # Check that repos dir exists and all members have symlinks
-    status = ''
+    status = trace.status "megarepo:check" ''
       if [ ! -f ./megarepo.json ]; then
         exit 0
       fi
