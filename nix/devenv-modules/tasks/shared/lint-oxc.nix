@@ -62,9 +62,23 @@ let
   scanDirsArg = builtins.concatStringsSep " " genieCoverageDirs;
   lintPathsArg = builtins.concatStringsSep " " lintPaths;
 
-  # oxfmt should never enumerate node_modules. Even if node_modules is ignored,
-  # scanning large directory trees can race with concurrent installs in CI.
-  # We instead format only tracked files selected via git pathspec globs.
+  # oxfmt should never enumerate node_modules.
+  #
+  # Why this exists (CI flake prevention):
+  # - lint:check:format historically ran `oxfmt --check <dir>...`, which makes
+  #   oxfmt walk directory trees.
+  # - In this repo, pnpm creates node_modules entries that are *symlinks* into
+  #   workspace packages (e.g. node_modules/@overeng/utils -> ../../../../../utils).
+  # - When installs are running (or cached tasks are interleaving), directory
+  #   traversal can observe transient filesystem states under node_modules and
+  #   fail with "File not found: .../node_modules/...". Ignore patterns help with
+  #   what gets formatted, but they don't fully eliminate traversal/stat races.
+  #
+  # Fix: format only an explicit file list (git-tracked files via pathspec globs),
+  # which avoids directory walking entirely and guarantees node_modules is never
+  # touched.
+  #
+  # Trade-off: untracked files aren't checked until they are added to git.
   #
   # Note: We intentionally limit to common source/config docs that oxfmt supports.
   formatExtensions = [

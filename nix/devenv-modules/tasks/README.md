@@ -28,6 +28,10 @@ imports = [
 - `clean.nix` - Clean tasks
 - `genie.nix` - Genie config generation tasks
 - `lint-oxc.nix` - Linting tasks (oxlint, oxfmt)
+  - Note: `lint:check:format`/`lint:fix:format` run oxfmt on an explicit file list
+    (git-tracked files) instead of `oxfmt <dir>...` directory walking. This avoids
+    flaky "File not found" errors when pnpm is concurrently mutating/symlinking
+    `node_modules` during CI.
 - `megarepo.nix` - Megarepo workspace tasks
 - `nix-cli.nix` - Nix CLI build tasks (nix:hash, nix:build, nix:flake:check)
 - `pnpm.nix` - pnpm install tasks
