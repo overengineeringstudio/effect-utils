@@ -162,7 +162,7 @@ jobs:
     needs: [typecheck, lint, test]
     defaults:
       run:
-        shell: devenv shell bash -- -e {0}
+        shell: bash
     env:
       FORCE_SETUP: '1'
       CI: 'true'

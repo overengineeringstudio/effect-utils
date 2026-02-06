@@ -14,6 +14,13 @@ const jobDefaults = {
   },
 } as const
 
+// For jobs that invoke `devenv` directly (without entering a devenv shell).
+const bashDefaults = {
+  run: {
+    shell: 'bash',
+  },
+} as const
+
 const baseSteps = [
   { uses: 'actions/checkout@v4' },
   {
@@ -112,7 +119,9 @@ const deployJobs = {
   'deploy-storybooks': {
     'runs-on': namespaceRunner('namespace-profile-linux-x86-64', '${{ github.run_id }}'),
     needs: ['typecheck', 'lint', 'test'],
-    defaults: jobDefaults,
+    // Avoid `devenv shell ...` here: it can fail due to invalid cached store paths on CI runners.
+    // Running tasks via `devenv tasks run` is sufficient.
+    defaults: bashDefaults,
     env: {
       FORCE_SETUP: '1',
       CI: 'true',
