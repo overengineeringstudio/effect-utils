@@ -42,7 +42,7 @@ const parseTraceparent = (
 }
 
 /**
- * Creates an Effect OTEL parent span from the W3C TRACEPARENT env var (when present and valid).
+ * Gets the parent span from the W3C TRACEPARENT env var (when present and valid).
  *
  * This allows a CLI process to emit spans into the same trace as the
  * parent dt task by constructing an external parent span.
@@ -50,19 +50,24 @@ const parseTraceparent = (
  * The `otel-span` shell helper automatically exports TRACEPARENT for child processes,
  * so this works out of the box with dt task tracing.
  */
-export const parentSpanFromTraceparent: Effect.Effect<Tracer.ExternalSpan | undefined> =
-  Effect.sync(() => {
-    const traceparent = process.env.TRACEPARENT
-    if (traceparent === undefined) return undefined
+const getParentSpanFromTraceparent = (): Tracer.ExternalSpan | undefined => {
+  const traceparent = process.env.TRACEPARENT
+  if (traceparent === undefined) return undefined
 
-    const parsed = parseTraceparent(traceparent)
-    if (parsed === undefined) return undefined
+  const parsed = parseTraceparent(traceparent)
+  if (parsed === undefined) return undefined
 
-    return Tracer.externalSpan({
-      traceId: parsed.traceId,
-      spanId: parsed.spanId,
-    })
+  return Tracer.externalSpan({
+    traceId: parsed.traceId,
+    spanId: parsed.spanId,
   })
+}
+
+/**
+ * Effect version of getParentSpanFromTraceparent for external use.
+ */
+export const parentSpanFromTraceparent: Effect.Effect<Tracer.ExternalSpan | undefined> =
+  Effect.sync(getParentSpanFromTraceparent)
 
 /** Configuration options for the CLI OTEL tracing layer. */
 export interface OtelCliLayerConfig {
@@ -117,41 +122,37 @@ export const makeOtelCliLayer = (config: OtelCliLayerConfig): Layer.Layer<never>
     exportInterval = 250,
   } = config
 
-  return Layer.unwrapEffect(
-    Effect.gen(function* () {
-      const endpoint = process.env[endpointEnvVar]
+  // Use Layer.suspend instead of Layer.unwrapEffect to ensure proper scope propagation.
+  // Layer.unwrapEffect doesn't properly chain scopes, causing OTEL exporter finalizers
+  // (which flush spans via HTTP) to not be awaited on shutdown.
+  return Layer.suspend(() => {
+    const endpoint = process.env[endpointEnvVar]
 
-      // No endpoint configured - return empty layer (zero overhead)
-      if (endpoint === undefined) {
-        return Layer.empty
-      }
+    // No endpoint configured - return empty layer (zero overhead)
+    if (endpoint === undefined) {
+      return Layer.empty
+    }
 
-      yield* Effect.logDebug('[otel-cli] Building OTEL layer', {
-        serviceName,
-        endpoint,
-      })
+    const parentSpan = getParentSpanFromTraceparent()
 
-      const parentSpan = yield* parentSpanFromTraceparent
+    // Create root span that optionally links to parent dt task span
+    const rootSpanLive = Layer.span(`${serviceName}.root`, {
+      parent: parentSpan,
+      attributes: Option.fromNullable(parentSpan).pipe(
+        Option.map((span) => ({ 'cli.parentSpan._tag': span._tag })),
+        Option.getOrElse(() => ({})),
+      ),
+    })
 
-      // Create root span that optionally links to parent dt task span
-      const rootSpanLive = Layer.span(`${serviceName}.root`, {
-        parent: parentSpan,
-        attributes: Option.fromNullable(parentSpan).pipe(
-          Option.map((span) => ({ 'cli.parentSpan._tag': span._tag })),
-          Option.getOrElse(() => ({})),
-        ),
-      })
+    // Otlp.layerJson expects the base URL (it appends /v1/traces, /v1/logs, etc.)
+    const baseUrl = endpoint.endsWith('/') ? endpoint.slice(0, -1) : endpoint
 
-      // Otlp.layerJson expects the base URL (it appends /v1/traces, /v1/logs, etc.)
-      const baseUrl = endpoint.endsWith('/') ? endpoint.slice(0, -1) : endpoint
+    const exporterLive = Otlp.layerJson({
+      baseUrl,
+      resource: { serviceName },
+      tracerExportInterval: exportInterval,
+    }).pipe(Layer.provide(FetchHttpClient.layer))
 
-      const exporterLive = Otlp.layerJson({
-        baseUrl,
-        resource: { serviceName },
-        tracerExportInterval: exportInterval,
-      }).pipe(Layer.provide(FetchHttpClient.layer))
-
-      return Layer.mergeAll(rootSpanLive, exporterLive)
-    }),
-  )
+    return Layer.mergeAll(rootSpanLive, exporterLive)
+  })
 }
