@@ -107,6 +107,12 @@ const deployJobs = {
     steps: [
       ...baseSteps,
       {
+        name: 'Build storybooks',
+        // Build all storybooks, allowing individual failures.
+        // Storybooks that fail to build will be skipped during deploy.
+        run: 'devenv tasks run storybook:build --mode before || true',
+      },
+      {
         name: 'Deploy storybooks to Netlify',
         run: [
           'if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then',

@@ -14,9 +14,9 @@
 #   ];
 #
 # Deploy modes (via --input):
-#   dt netlify:deploy:tui-react                                        # draft (unique URL)
-#   dt netlify:deploy:tui-react --input type=prod                     # prod alias
-#   dt netlify:deploy:tui-react --input type=pr --input pr=42         # PR preview alias
+#   dt storybook:build:tui-react && dt netlify:deploy:tui-react                          # draft (unique URL)
+#   dt storybook:build:tui-react && dt netlify:deploy:tui-react --input type=prod        # prod alias
+#   dt storybook:build:tui-react && dt netlify:deploy:tui-react --input type=pr --input pr=42  # PR preview alias
 #
 # Provides:
 #   Tasks:
@@ -34,16 +34,15 @@ let
   mkDeployTask = pkg: {
     "netlify:deploy:${pkg.name}" = {
       description = "Deploy ${pkg.name} storybook to Netlify";
-      after = [ "${buildTaskPrefix}:${pkg.name}" ];
       exec = ''
         set -euo pipefail
 
         deploy_dir="${pkg.path}/storybook-static"
 
         if [ ! -d "$deploy_dir" ]; then
-          echo "Error: Build output not found at $deploy_dir" >&2
+          echo "Skipping ${pkg.name}: no build output at $deploy_dir" >&2
           echo "Run 'dt ${buildTaskPrefix}:${pkg.name}' first." >&2
-          exit 1
+          exit 0
         fi
 
         # Parse deploy context from DEVENV_TASK_INPUT (set by devenv --input flag)

@@ -151,6 +151,8 @@ jobs:
       - name: Install devenv
         run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
         shell: bash
+      - name: Build storybooks
+        run: 'devenv tasks run storybook:build --mode before || true'
       - name: Deploy storybooks to Netlify
         run: |
           if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
