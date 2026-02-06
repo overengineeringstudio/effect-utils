@@ -102,6 +102,10 @@ const deployJobs = {
     // This job is non-blocking, so keep it reliable by using GitHub-hosted runners.
     'runs-on': 'ubuntu-latest',
     needs: ['typecheck', 'lint', 'test'],
+    permissions: {
+      contents: 'read',
+      'pull-requests': 'write',
+    },
     defaults: jobDefaults,
     env: {
       FORCE_SETUP: '1',
@@ -124,6 +128,9 @@ const deployJobs = {
         name: 'Post deploy URLs',
         if: "always() && !cancelled()",
         shell: 'bash',
+        env: {
+          GH_TOKEN: '${{ github.token }}',
+        },
         run: [
           `site="${NETLIFY_SITE}"`,
           'if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then',
