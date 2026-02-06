@@ -157,3 +157,54 @@ jobs:
           elif [ "${{ github.event_name }}" = "pull_request" ]; then
             dt netlify:deploy --input type=pr --input pr=${{ github.event.pull_request.number }}
           fi
+      - name: Post deploy URLs
+        if: always() && !cancelled()
+        shell: bash
+        run: |
+          site="overeng-utils"
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            suffix=""
+            label="prod"
+          elif [ "${{ github.event_name }}" = "pull_request" ]; then
+            suffix="-pr-${{ github.event.pull_request.number }}"
+            label="PR #${{ github.event.pull_request.number }}"
+          else
+            exit 0
+          fi
+
+          # Collect deployed storybooks by checking for build output
+          rows=""
+          for dir in packages/@overeng/*/storybook-static; do
+            [ -d "$dir" ] || continue
+            name="${dir#packages/@overeng/}"
+            name="${name%/storybook-static}"
+            url="https://${name}${suffix}--${site}.netlify.app"
+            rows="${rows}| ${name} | ${url} |\n"
+          done
+
+          if [ -z "$rows" ]; then
+            echo "No storybooks were deployed." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # Write job summary
+          {
+            echo "## Storybook Previews (${label})"
+            echo ""
+            echo "| Package | URL |"
+            echo "| --- | --- |"
+            echo -e "$rows"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Post/update PR comment
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            {
+              echo "## Storybook Previews"
+              echo ""
+              echo "| Package | URL |"
+              echo "| --- | --- |"
+              echo -e "$rows"
+            } > /tmp/comment.md
+            gh pr comment "${{ github.event.pull_request.number }}" --body-file /tmp/comment.md --edit-last 2>/dev/null \
+              || gh pr comment "${{ github.event.pull_request.number }}" --body-file /tmp/comment.md
+          fi
