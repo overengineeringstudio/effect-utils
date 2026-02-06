@@ -40,6 +40,9 @@
   genieCoverageDirs,
   genieCoverageExcludes ? [],
   lintPaths ? [ "." ],
+  # Optional extra task deps to run formatting after (e.g. "pnpm:install") to avoid
+  # races while node_modules is being mutated.
+  formatAfter ? [],
   # Type-aware linting: provide tsconfig to enable --type-aware flag.
   # Requires pkgs.tsgolint in devenv packages (auto-discovered on PATH by oxlint).
   tsconfig ? null,
@@ -75,7 +78,7 @@ in
     "lint:check:format" = {
       description = "Check code formatting with oxfmt";
       exec = "oxfmt --check ${lintPathsArg}";
-      after = [ "genie:run" ];
+      after = [ "genie:run" ] ++ formatAfter;
       execIfModified = execIfModifiedPatterns;
     };
     "lint:check:oxlint" = {
@@ -118,6 +121,7 @@ in
     "lint:fix:format" = {
       description = "Fix code formatting with oxfmt";
       exec = "oxfmt ${lintPathsArg}";
+      after = formatAfter;
     };
     "lint:fix:oxlint" = {
       description = "Fix lint issues with oxlint";

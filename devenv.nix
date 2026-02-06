@@ -126,6 +126,8 @@ in
         "scripts"
         "context"
       ];
+      # Avoid oxfmt walking node_modules while pnpm installs are mutating it in parallel.
+      formatAfter = [ "pnpm:install" ];
       # Explicit patterns that avoid node_modules traversal
       # Key insight: patterns like "packages/*/src/**" are safe because src/ never contains node_modules
       execIfModifiedPatterns = [
