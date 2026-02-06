@@ -1,5 +1,5 @@
 import type { GenieContext } from '../../mod.ts'
-import type { PackageInfo } from '../../validation/mod.ts'
+import type { PackageInfo } from '../../../common/types.ts'
 import { matchesAnyPattern, type ValidationIssue } from '../validation.ts'
 
 type RecomposeValidatorConfig = {

@@ -30,8 +30,6 @@ export {
   type ExtendedOverridesInput,
 } from './overrides.ts'
 
-export { buildPackageJsonValidationContext } from './context.ts'
-
 export { validatePackageRecompositionForPackage } from './validators/recompose.ts'
 
 /**

@@ -1,7 +1,18 @@
 import { FileSystem, Path } from '@effect/platform'
 import { Effect } from 'effect'
 
-import type { PackageInfo, WorkspaceProvider } from '../validation/mod.ts'
+import type { PackageInfo } from '../common/types.ts'
+
+/** Workspace provider that discovers package.json paths in a monorepo */
+export type WorkspaceProviderName = 'pnpm' | 'bun' | 'manual'
+
+/** Workspace provider that discovers package.json paths in a monorepo */
+export type WorkspaceProvider = {
+  name: WorkspaceProviderName
+  discoverPackageJsonPaths: (args: {
+    cwd: string
+  }) => Effect.Effect<string[], Error, FileSystem.FileSystem | Path.Path>
+}
 
 const normalizePath = (input: string): string => input.replace(/\\/g, '/')
 
