@@ -476,6 +476,12 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
       const mode = yield* OutputModeTag
       const { stateSchema } = config
 
+      // Mount stateAtom to prevent registry GC between async operations.
+      // Without this, the atom node can be removed via microtask when nothing
+      // subscribes (e.g. json mode), causing registry.get() to return stale initial values.
+      const unmountAtom = registry.mount(stateAtom)
+      yield* Effect.addFinalizer(() => Effect.sync(unmountAtom))
+
       // Create action PubSub for streaming
       const actionPubSub = yield* PubSub.unbounded<A>()
       const runtime = yield* Effect.runtime<never>()

@@ -9,6 +9,8 @@ import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
 
+import { GenieApp } from './app.ts'
+
 /** Schema for parsing generated package.json in tests */
 const GeneratedPackageJson = Schema.Struct({
   _genieLocation: Schema.optional(Schema.String),
@@ -591,6 +593,103 @@ export default {
             expect(generated._genieLocation).toBe('packages/pkg-a')
             const linkPath = generated.dependencies?.['@test/pkg-b']
             expect(linkPath).toBe('link:../pkg-b')
+          }),
+        )
+      },
+      Effect.provide(TestLayer),
+      Effect.scoped,
+    ),
+  )
+
+  Vitest.it.effect(
+    'Issue #135: --output json includes files array and cwd on failure',
+    Effect.fnUntraced(
+      function* () {
+        yield* withTestEnv((env) =>
+          Effect.gen(function* () {
+            // Working file
+            yield* env.writeFile({
+              path: 'working.json.genie.ts',
+              content: `export default {
+  data: { hello: 'world' },
+  stringify: () => JSON.stringify({ hello: 'world' }),
+}`,
+            })
+
+            // Broken file (throws at import time)
+            yield* env.writeFile({
+              path: 'broken.json.genie.ts',
+              content: `throw new Error('intentional failure for repro')
+export default { data: {}, stringify: () => '{}' }`,
+            })
+
+            const { stdout, exitCode } = yield* runGenie(env, ['--output', 'json'])
+
+            expect(exitCode).not.toBe(0)
+
+            // Parse JSON output using the typed output schema
+            const output = yield* Schema.decodeUnknown(Schema.parseJson(GenieApp.outputSchema))(
+              stdout.trim(),
+            )
+
+            expect(output._tag).toBe('Failure')
+            if (output._tag !== 'Failure') return
+
+            // Bug #135: files array must NOT be empty
+            expect(output.state.files.length).toBe(2)
+            // Bug #135: cwd must NOT be empty
+            expect(output.state.cwd).not.toBe('')
+            // Summary should be correct
+            expect(output.state.summary?.failed).toBe(1)
+            expect(output.state.summary?.unchanged).toBe(1)
+            // Per-file error details should be present
+            const errorFile = output.state.files.find((f) => f.status === 'error')
+            expect(errorFile).toBeDefined()
+            expect(errorFile!.message).toContain('intentional failure')
+          }),
+        )
+      },
+      Effect.provide(TestLayer),
+      Effect.scoped,
+    ),
+  )
+
+  Vitest.it.effect(
+    'Issue #135: --output ndjson final line includes files and cwd on failure',
+    Effect.fnUntraced(
+      function* () {
+        yield* withTestEnv((env) =>
+          Effect.gen(function* () {
+            yield* env.writeFile({
+              path: 'working.json.genie.ts',
+              content: `export default {
+  data: { hello: 'world' },
+  stringify: () => JSON.stringify({ hello: 'world' }),
+}`,
+            })
+
+            yield* env.writeFile({
+              path: 'broken.json.genie.ts',
+              content: `throw new Error('intentional failure for repro')
+export default { data: {}, stringify: () => '{}' }`,
+            })
+
+            const { stdout, exitCode } = yield* runGenie(env, ['--output', 'ndjson'])
+
+            expect(exitCode).not.toBe(0)
+
+            // Parse final line (Failure-wrapped) using the typed output schema
+            const lines = stdout.trim().split('\n')
+            const finalLine = yield* Schema.decodeUnknown(Schema.parseJson(GenieApp.outputSchema))(
+              lines[lines.length - 1]!,
+            )
+
+            expect(finalLine._tag).toBe('Failure')
+            if (finalLine._tag !== 'Failure') return
+
+            expect(finalLine.state.files.length).toBe(2)
+            expect(finalLine.state.cwd).not.toBe('')
+            expect(finalLine.state.summary?.failed).toBe(1)
           }),
         )
       },

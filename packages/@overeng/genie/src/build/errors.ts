@@ -1,5 +1,7 @@
 import { Schema } from 'effect'
 
+import { GenieFile } from './schema.ts'
+
 /**
  * Error when importing a .genie.ts file fails.
  *
@@ -29,6 +31,8 @@ export class GenieGenerationFailedError extends Schema.TaggedError<GenieGenerati
   {
     failedCount: Schema.Number,
     message: Schema.String,
+    /** Per-file details including error messages for failed files */
+    files: Schema.Array(GenieFile),
   },
 ) {}
 
