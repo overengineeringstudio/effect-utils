@@ -1,7 +1,7 @@
 import { Atom } from '@effect-atom/atom'
 import React, { useMemo } from 'react'
 
-import { Box, Text, useTuiAtomValue } from '../../src/mod.ts'
+import { Box, Text, useTuiAtomValue } from '../../src/mod.tsx'
 import type { StressTestState } from './schema.ts'
 
 /** Renders the stress test UI with frame counter, FPS meter, progress bar, and result summary. */

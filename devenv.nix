@@ -17,6 +17,7 @@ let
     test = import ./nix/devenv-modules/tasks/shared/test.nix;
     test-playwright = import ./nix/devenv-modules/tasks/shared/test-playwright.nix;
     storybook = import ./nix/devenv-modules/tasks/shared/storybook.nix;
+    netlify = import ./nix/devenv-modules/tasks/shared/netlify.nix;
     lint-genie = ./nix/devenv-modules/tasks/shared/lint-genie.nix;
     lint-oxc = import ./nix/devenv-modules/tasks/shared/lint-oxc.nix;
     bun = import ./nix/devenv-modules/tasks/shared/bun.nix;
@@ -118,6 +119,10 @@ in
       extraTests = [ "nix:test" ];
     })
     (taskModules.storybook {
+      packages = packagesWithStorybook;
+    })
+    (taskModules.netlify {
+      site = "overeng-utils";
       packages = packagesWithStorybook;
     })
     (taskModules.lint-oxc {

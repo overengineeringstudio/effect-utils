@@ -86,6 +86,7 @@
           test = import ./nix/devenv-modules/tasks/shared/test.nix;
           test-playwright = import ./nix/devenv-modules/tasks/shared/test-playwright.nix;
           storybook = import ./nix/devenv-modules/tasks/shared/storybook.nix;
+          netlify = import ./nix/devenv-modules/tasks/shared/netlify.nix;
           lint-oxc = import ./nix/devenv-modules/tasks/shared/lint-oxc.nix;
           bun = import ./nix/devenv-modules/tasks/shared/bun.nix;
           pnpm = import ./nix/devenv-modules/tasks/shared/pnpm.nix;

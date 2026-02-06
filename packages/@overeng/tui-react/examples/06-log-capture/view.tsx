@@ -8,7 +8,7 @@
 import { Atom } from '@effect-atom/atom'
 import React, { useMemo } from 'react'
 
-import { Box, Text, Static, Spinner, useTuiAtomValue, useCapturedLogs } from '../../src/mod.ts'
+import { Box, Text, Static, Spinner, useTuiAtomValue, useCapturedLogs } from '../../src/mod.tsx'
 import type { TaskRunnerState } from './schema.ts'
 
 /** Renders the task runner with captured logs in Static region and task progress below. */

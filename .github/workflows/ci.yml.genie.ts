@@ -43,6 +43,13 @@ const baseSteps = [
     run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)',
     shell: 'bash',
   },
+  {
+    name: 'Repair Nix store',
+    // Namespace runners may have stale/invalid paths in their bundled nix store cache.
+    // This removes invalid DB entries so nix re-fetches them from substituters on demand.
+    run: 'nix-store --verify --repair 2>&1 | tail -5 || true',
+    shell: 'bash',
+  },
 ] as const
 
 const job = (step: { name: string; run: string }) => ({
@@ -93,11 +100,103 @@ const jobs: Record<CIJobName, ReturnType<typeof job> | ReturnType<typeof multiPl
   }),
 }
 
+const NETLIFY_SITE = 'overeng-utils'
+
+// Deploy job — NOT a required status check (separate from CIJobName)
+const deployJobs = {
+  'deploy-storybooks': {
+    // Namespace runners occasionally have a stale/corrupt /nix/store which can break devenv evaluation.
+    // This job is non-blocking, so keep it reliable by using GitHub-hosted runners.
+    'runs-on': 'ubuntu-latest',
+    needs: ['typecheck', 'lint', 'test'],
+    permissions: {
+      contents: 'read',
+      'pull-requests': 'write',
+    },
+    defaults: jobDefaults,
+    env: {
+      FORCE_SETUP: '1',
+      CI: 'true',
+      NETLIFY_AUTH_TOKEN: '${{ secrets.NETLIFY_AUTH_TOKEN }}',
+    },
+    steps: [
+      ...baseSteps,
+      {
+        name: 'Deploy storybooks to Netlify',
+        run: [
+          'if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then',
+          '  dt netlify:deploy --input type=prod',
+          'elif [ "${{ github.event_name }}" = "pull_request" ]; then',
+          '  dt netlify:deploy --input type=pr --input pr=${{ github.event.pull_request.number }}',
+          'fi',
+        ].join('\n'),
+      },
+      {
+        name: 'Post deploy URLs',
+        if: "always() && !cancelled()",
+        shell: 'bash',
+        env: {
+          GH_TOKEN: '${{ github.token }}',
+        },
+        run: [
+          `site="${NETLIFY_SITE}"`,
+          'if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then',
+          '  suffix=""',
+          '  label="prod"',
+          'elif [ "${{ github.event_name }}" = "pull_request" ]; then',
+          '  suffix="-pr-${{ github.event.pull_request.number }}"',
+          '  label="PR #${{ github.event.pull_request.number }}"',
+          'else',
+          '  exit 0',
+          'fi',
+          '',
+          '# Collect deployed storybooks by checking for build output',
+          'rows=""',
+          'for dir in packages/@overeng/*/storybook-static; do',
+          '  [ -d "$dir" ] || continue',
+          '  name="${dir#packages/@overeng/}"',
+          '  name="${name%/storybook-static}"',
+          '  url="https://${name}${suffix}--${site}.netlify.app"',
+          '  rows="${rows}| ${name} | ${url} |\\n"',
+          'done',
+          '',
+          'if [ -z "$rows" ]; then',
+          '  echo "No storybooks were deployed." >> "$GITHUB_STEP_SUMMARY"',
+          '  exit 0',
+          'fi',
+          '',
+          '# Write job summary',
+          '{',
+          '  echo "## Storybook Previews (${label})"',
+          '  echo ""',
+          '  echo "| Package | URL |"',
+          '  echo "| --- | --- |"',
+          '  echo -e "$rows"',
+          '} >> "$GITHUB_STEP_SUMMARY"',
+          '',
+          '# Post/update PR comment',
+          'if [ "${{ github.event_name }}" = "pull_request" ]; then',
+          '  {',
+          '    echo "## Storybook Previews"',
+          '    echo ""',
+          '    echo "| Package | URL |"',
+          '    echo "| --- | --- |"',
+          '    echo -e "$rows"',
+          '  } > /tmp/comment.md',
+          '  gh pr comment "${{ github.event.pull_request.number }}" --body-file /tmp/comment.md --edit-last 2>/dev/null \\',
+          '    || gh pr comment "${{ github.event.pull_request.number }}" --body-file /tmp/comment.md',
+          'fi',
+        ].join('\n'),
+      },
+    ],
+  },
+} as const
+
 export default githubWorkflow({
   name: 'CI',
   on: {
     push: { branches: ['main'] },
     pull_request: { branches: ['main'] },
   },
-  jobs,
+  jobs: { ...jobs, ...deployJobs },
 } satisfies GitHubWorkflowArgs)

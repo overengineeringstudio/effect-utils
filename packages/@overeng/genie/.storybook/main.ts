@@ -27,6 +27,13 @@ const config: StorybookConfig = {
     }
     config.resolve = {
       ...config.resolve,
+      // OpenTUI requires Bun runtime and uses import attributes that Vite can't bundle.
+      // Stub it out for Storybook builds.
+      alias: {
+        ...config.resolve?.alias,
+        '@opentui/core': new URL('./opentui-stub.ts', import.meta.url).pathname,
+        '@opentui/react': new URL('./opentui-stub.ts', import.meta.url).pathname,
+      },
       // IMPORTANT: Dedupe React packages to avoid multiple instances.
       dedupe: ['react', 'react-dom', 'react-reconciler'],
     }
@@ -49,6 +56,12 @@ const config: StorybookConfig = {
       ],
       // Exclude @opentui packages - they use import attributes that esbuild doesn't support
       exclude: [...(config.optimizeDeps?.exclude ?? []), '@opentui/core', '@opentui/react'],
+    }
+
+    // Also exclude from SSR
+    config.ssr = {
+      ...config.ssr,
+      external: ['@opentui/core', '@opentui/react'],
     }
     return config
   },

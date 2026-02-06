@@ -10,7 +10,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
-import { createTuiApp } from '../../src/mod.ts'
+import { createTuiApp } from '../../src/mod.tsx'
 import { TuiStoryPreview } from '../../src/storybook/TuiStoryPreview.tsx'
 import { AppState, AppAction, appReducer } from './schema.ts'
 import { HelloWorldView } from './view.tsx'

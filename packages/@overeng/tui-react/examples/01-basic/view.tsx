@@ -1,7 +1,7 @@
 import { Atom } from '@effect-atom/atom'
 import React, { useMemo } from 'react'
 
-import { Box, Text, useTuiAtomValue } from '../../src/mod.ts'
+import { Box, Text, useTuiAtomValue } from '../../src/mod.tsx'
 import type { AppState } from './schema.ts'
 
 /** Renders the hello world example with countdown, colors, and completion states. */

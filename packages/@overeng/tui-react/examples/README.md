@@ -102,7 +102,7 @@ export const appReducer = ({ state, action }: { state: AppState; action: AppActi
 
 ```typescript
 import React from 'react'
-import { Box, Text } from '../../../src/mod.ts'
+import { Box, Text } from '../../../src/mod.tsx'
 import type { AppState } from './schema.ts'
 
 export const AppView: React.FC<{ state: AppState }> = ({ state }) => {
@@ -123,7 +123,7 @@ import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Effect } from 'effect'
 import React from 'react'
 
-import { createTuiApp, outputOption, outputModeLayer } from '../../../src/mod.ts'
+import { createTuiApp, outputOption, outputModeLayer } from '../../../src/mod.tsx'
 import { AppState, AppAction } from './schema.ts'
 import { appReducer } from './reducer.ts'
 import { AppView } from './view.tsx'

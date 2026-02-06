@@ -1,7 +1,7 @@
 import { Atom } from '@effect-atom/atom'
 import React, { useMemo } from 'react'
 
-import { Box, Text, Spinner, useTuiAtomValue } from '../../src/mod.ts'
+import { Box, Text, Spinner, useTuiAtomValue } from '../../src/mod.tsx'
 import type { CounterState } from './schema.ts'
 
 /** Renders the counter example with running count, loading spinner, and completion states. */
