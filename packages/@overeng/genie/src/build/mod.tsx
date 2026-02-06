@@ -234,6 +234,7 @@ export const genieCommand: Cli.Command.Command<
                 return yield* new GenieGenerationFailedError({
                   failedCount: failed,
                   message: `${failed} file(s) are out of date`,
+                  files: tui.getState().files,
                 })
               }
 
@@ -249,6 +250,7 @@ export const genieCommand: Cli.Command.Command<
                 return yield* new GenieGenerationFailedError({
                   failedCount: 1,
                   message,
+                  files: tui.getState().files,
                 })
               }
 
@@ -364,6 +366,7 @@ export const genieCommand: Cli.Command.Command<
               return yield* new GenieGenerationFailedError({
                 failedCount: revalidateErrors.length,
                 message: `${rootCauses.length} root cause error(s), ${dependentCount} dependent failure(s)`,
+                files: tui.getState().files,
               })
             }
 
@@ -383,6 +386,7 @@ export const genieCommand: Cli.Command.Command<
               return yield* new GenieGenerationFailedError({
                 failedCount: summary.failed,
                 message: `${summary.failed} file(s) failed to generate`,
+                files: tui.getState().files,
               })
             }
 
