@@ -57,6 +57,7 @@ directories (e.g. `oxfmt packages scripts context`). Instead, it formats an expl
 file list (git-tracked files) via `git ls-files | xargs oxfmt`.
 
 Rationale:
+
 - `node_modules` is highly dynamic during installs, and pnpm uses symlinks for
   workspace deps (some paths under `node_modules/@overeng/*` point into workspace
   packages).

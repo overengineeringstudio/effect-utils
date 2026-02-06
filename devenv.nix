@@ -164,6 +164,9 @@ in
         "context/effect/socket/*.genie.ts"
         "context/effect/socket/examples/*.ts"
         "context/opentui/*.genie.ts"
+        # context: docs/config (safe; no node_modules under context/)
+        "context/**/*.md"
+        "context/**/*.json"
         # linter config files (changes should trigger lint)
         ".oxfmtrc.json"
         ".oxlintrc.json"

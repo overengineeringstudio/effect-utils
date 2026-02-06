@@ -18,12 +18,14 @@ imports = [
 ```
 
 ### Characteristics:
+
 - **Configurable** via function parameters
 - **No repo-specific assumptions** (paths, package names, etc.)
 - **Exported** in `flake.nix` under `devenvModules.tasks`
 - **Documented** with clear usage examples
 
 ### Available Modules:
+
 - `check.nix` - Aggregate check tasks (check:quick, check:all)
 - `clean.nix` - Clean tasks
 - `genie.nix` - Genie config generation tasks
@@ -50,22 +52,26 @@ These tasks are **local to the effect-utils repo** and NOT meant for reuse.
 They assume the effect-utils repo structure and are not exported in flake.nix.
 
 ### Characteristics:
+
 - **Hardcoded paths** (e.g., `packages/@overeng/*`, `devenv.nix` location)
 - **No parameters** - simple inline definitions
 - **Not exported** in flake.nix
 - **Repo-specific logic** that wouldn't make sense elsewhere
 
 ### Available Modules:
+
 - `workspace-check.nix` - Validates `allPackages` in devenv.nix matches filesystem
 
 ## `lib/` - Shared Utilities
 
 Helper functions used by task modules:
+
 - `cache.nix` - Task caching utilities
 
 ## Adding New Tasks
 
 ### For Shared Tasks:
+
 1. Create file in `shared/<name>.nix`
 2. Make it a function that accepts configuration parameters
 3. Document usage in this README
@@ -73,6 +79,7 @@ Helper functions used by task modules:
 5. Keep it generic - no hardcoded paths
 
 ### For Local Tasks:
+
 1. Create file in `local/<name>.nix`
 2. Define tasks directly (no parameterization needed)
 3. Import directly in `devenv.nix` via relative path:
