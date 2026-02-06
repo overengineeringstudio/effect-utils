@@ -46,7 +46,7 @@ Keep `CHANGELOG.md` updated:
 4. **PUSH TO REMOTE** - This is MANDATORY:
    ```bash
    git pull --rebase
-   bd sync
+   dt beads:sync    # sync beads JSONL to git (pull + commit + push)
    git push
    git status  # MUST show "up to date with origin"
    ```

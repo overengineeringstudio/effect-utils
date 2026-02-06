@@ -79,27 +79,49 @@ We use [beads](https://github.com/steveyegge/beads) (`bd`) as a git-backed issue
 
 ### Code Repo Setup (via devenv)
 
-1. Add `overeng-beads-public` as flake input in `devenv.yaml`:
+The beads devenv module uses `--no-db` mode (JSONL as source of truth) which works cleanly with megarepo's bare+worktree git layout. The beads repo must be a megarepo member.
+
+1. Add the beads repo as a megarepo member in `megarepo.json`:
+
+```json
+{
+  "members": {
+    "overeng-beads-public": "overengineeringstudio/overeng-beads-public"
+  }
+}
+```
+
+2. Add the flake input in `devenv.yaml`:
 
 ```yaml
 inputs:
   overeng-beads-public:
     url: github:overengineeringstudio/overeng-beads-public
-    flake: true
 ```
 
-2. Import the module in `devenv.nix`:
+3. Import the module in `devenv.nix`:
 
 ```nix
 { inputs, ... }: {
   imports = [
+    # Beads integration: env vars, sync task, commit correlation hook
     (inputs.overeng-beads-public.devenvModules.beads {
-      beadsPrefix = "eu";                    # or "sch" for personal projects
+      beadsPrefix = "oep";                   # or "sch" for personal projects
       beadsRepoName = "overeng-beads-public"; # or "schickling-beads"
+      # beadsRepoPath = "repos/overeng-beads-public";  # default, can be overridden
     })
   ];
 }
 ```
+
+> **Tip:** For local iteration on the module, temporarily switch to
+> `import ./repos/overeng-beads-public/nix/devenv-module.nix { ... }` (don't commit this).
+
+This provides:
+
+- `bd` shell wrapper (runs in `--no-db` mode from the beads repo)
+- `dt beads:sync` task (git pull + commit + push JSONL changes)
+- Commit correlation git hook (cross-references commits with beads issues)
 
 ### Linear Sync (in overeng-beads-public)
 
@@ -114,17 +136,12 @@ bd config set linear.team_id "your-team-uuid"
 ### Creating Issues
 
 ```bash
-# Run from overeng-beads directory (must be a member of current megarepo)
-cd "$DEVENV_ROOT/repos/overeng-beads-public"
-
-# Create issue with package label
+# The `bd` wrapper runs from the beads repo automatically (no need to cd)
 bd create "Implement feature X" -p 1 -t feature -l pkg:effect-utils
 
 # Check ready work
 bd ready
 ```
-
-> **Note:** `$DEVENV_ROOT` points to the current devenv project root. If working in a nested megarepo, ensure `overeng-beads-public` is a member of that megarepo, or navigate to the outer megarepo first.
 
 ### Referencing Issues in Commits
 
@@ -137,12 +154,16 @@ git commit -m "Add retry logic (eu-abc123)"
 
 The git hook will automatically add a comment to the beads issue.
 
+### Syncing with Git
+
+```bash
+# Push JSONL changes to the beads repo (git pull + commit + push)
+dt beads:sync
+```
+
 ### Linear Sync
 
 ```bash
-# Run from overeng-beads directory (must be a member of current megarepo)
-cd "$DEVENV_ROOT/repos/overeng-beads-public"
-
 # Pull from Linear (import team changes)
 bd linear sync --pull
 
@@ -156,14 +177,14 @@ bd linear sync
 ### Viewing Issues
 
 ```bash
-# From overeng-beads
+# bd wrapper works from anywhere in the devenv
 bd list
 
 # Filter by package
 bd list --label pkg:effect-utils
 
 # Show issue with comments (including commit references)
-bd show eu-abc123
+bd show oep-abc123
 ```
 
 ## Commit Correlation
@@ -175,111 +196,46 @@ bd show eu-abc123
 3. Hook extracts issue ID and adds comment to beads issue
 4. Comment includes: commit SHA, repo name, commit message
 
-### Post-Commit Hook
+### How the Hook Works (devenv module)
 
-Install this hook in each code repo at `.git/hooks/post-commit`:
+The devenv module installs the post-commit hook automatically via `git-hooks.hooks.beads-commit-correlation`. No manual hook installation needed.
 
-```bash
-#!/usr/bin/env bash
-# Post-commit hook: Add comments to beads issues referenced in commit messages
-# Pattern: (prefix-xxx) where prefix is configured in BEADS_PREFIX
+The hook:
 
-set -euo pipefail
-
-# Configuration via environment (set in .envrc)
-BEADS_DB="${BEADS_DB:-}"
-BEADS_PREFIX="${BEADS_PREFIX:-eu}"
-
-if [ -z "$BEADS_DB" ]; then
-    exit 0  # Skip if not configured
-fi
-
-# Get commit info
-COMMIT_SHA=$(git rev-parse HEAD)
-COMMIT_SHORT=$(git rev-parse --short HEAD)
-COMMIT_MSG=$(git log -1 --format=%B)
-REPO_NAME=$(basename "$(git rev-parse --show-toplevel)")
-
-# Extract issue references matching (prefix-xxx) pattern
-ISSUES=$(echo "$COMMIT_MSG" | grep -oE "\(${BEADS_PREFIX}-[a-z0-9]+\)" | tr -d '()' || true)
-
-if [ -z "$ISSUES" ]; then
-    exit 0
-fi
-
-# Check if bd is available
-if ! command -v bd &> /dev/null; then
-    BD_CMD="nix shell github:steveyegge/beads --command bd"
-else
-    BD_CMD="bd"
-fi
-
-# Add comment to each referenced issue
-for issue_id in $ISSUES; do
-    comment="Commit ${COMMIT_SHORT} in ${REPO_NAME}: ${COMMIT_MSG%%$'\n'*}"
-    $BD_CMD --no-daemon --db "$BEADS_DB" comment "$issue_id" "$comment" 2>/dev/null || true
-done
-```
-
-Make it executable:
-
-```bash
-chmod +x .git/hooks/post-commit
-```
-
-### Devenv Integration
-
-For projects using devenv, add hook installation to `devenv.nix`:
-
-```nix
-{
-  enterShell = ''
-    # Install beads post-commit hook if not present
-    if [ ! -f .git/hooks/post-commit ]; then
-      cp ${./scripts/beads-post-commit.sh} .git/hooks/post-commit
-      chmod +x .git/hooks/post-commit
-    fi
-  '';
-}
-```
+1. Reads the commit message
+2. Extracts issue references matching `(prefix-xxx)` pattern
+3. Runs `bd --no-daemon --no-db comment` from the beads repo
+4. Adds a comment with commit SHA, repo name, and message
+5. Skips silently if beads repo isn't materialized
 
 ## Configuration
 
-### Environment Variables (Code Repos)
+### Environment Variables
 
-Add to `.envrc` in each code repo:
+The beads devenv module sets these automatically:
 
 ```bash
-# Beads configuration for commit correlation
-export BEADS_DB="$PWD/../overeng-beads/.beads/beads.db"
-export BEADS_PREFIX="eu"
+BEADS_PREFIX="oep"           # Issue prefix (set by module)
+BEADS_REPO="$DEVENV_ROOT/repos/overeng-beads-public"  # Beads repo path
 ```
 
-### Environment Variables (overeng-beads)
+The `bd` shell wrapper handles `--no-db` and `--no-daemon` flags and cds to the beads repo automatically.
+
+### Linear Credentials (overeng-beads-public)
 
 ```bash
-# Disable daemon (recommended for simpler setup)
-export BEADS_NO_DAEMON=true
-
-# Linear credentials (alternative to bd config)
+# Set Linear credentials (alternative to bd config)
 export LINEAR_API_KEY="lin_api_..."
 export LINEAR_TEAM_ID="team-uuid"
-```
-
-### Beads Config (`overeng-beads/.beads/config.yaml`)
-
-```yaml
-issue_prefix: eu
-sync-branch: 'main'
 ```
 
 ## Constraints
 
 ### What NOT to do
 
-1. **Don't create `.beads/` in code repos** - Use the centralized `overeng-beads` repo
-2. **Don't forget parentheses** - Commit format must be `(eu-xxx)` not just `eu-xxx`
-3. **Don't run `bd` commands from code repos** - Always run from `overeng-beads`
+1. **Don't create `.beads/` in code repos** - Use the centralized beads repo
+2. **Don't forget parentheses** - Commit format must be `(oep-xxx)` not just `oep-xxx`
+3. **Don't use `bd` with `--db` flag** - The wrapper uses `--no-db` mode (JSONL as source of truth)
 
 ### Trade-offs
 
@@ -393,7 +349,5 @@ bd list --label <undefined-label> --json | jq -r '.[].id'
 
 ## Future Considerations
 
-- [ ] Create reusable hook script in shared location (e.g., `dotfiles/scripts/beads-post-commit.sh`)
-- [ ] Add hook auto-installation to devenv for all code repos
 - [ ] Explore beads feature request for cross-repo orphan detection ([#1196](https://github.com/steveyegge/beads/issues/1196))
 - [ ] Consider Linear label sync ([#1191](https://github.com/steveyegge/beads/issues/1191))

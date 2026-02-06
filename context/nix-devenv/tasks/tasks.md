@@ -50,6 +50,23 @@ Notes from the upstream docs:
 - `execIfModified` uses timestamps plus content hashing to avoid false positives.
 - Namespaces can be executed as a group (e.g. `devenv tasks run lint`).
 
+## Formatter Behavior (oxfmt)
+
+In this repo, `lint:check:format` does **not** run `oxfmt` by pointing it at whole
+directories (e.g. `oxfmt packages scripts context`). Instead, it formats an explicit
+file list (git-tracked files) via `git ls-files | xargs oxfmt`.
+
+Rationale:
+
+- `node_modules` is highly dynamic during installs, and pnpm uses symlinks for
+  workspace deps (some paths under `node_modules/@overeng/*` point into workspace
+  packages).
+- Directory walking can race with concurrent installs and produce flaky
+  "File not found: .../node_modules/..." errors in CI even if ignore patterns
+  are configured.
+
+Trade-off: untracked files are not checked until they are added to git.
+
 ## Setup Tasks (Shell Entry)
 
 Wire tasks to run automatically when entering the devenv shell:
