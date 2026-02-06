@@ -535,6 +535,16 @@ export const updateWorktree = (args: { worktreePath: string; remote?: string }) 
   })
 
 /**
+ * Fast-forward merge a ref into the current branch of a worktree
+ * Used to update branch worktrees after fetching new commits
+ */
+export const mergeFFOnly = (args: { worktreePath: string; ref: string }) =>
+  runGitCommand({
+    args: ['merge', '--ff-only', args.ref],
+    cwd: args.worktreePath,
+  }).pipe(Effect.asVoid)
+
+/**
  * Checkout a specific commit in a worktree
  */
 export const checkoutWorktree = (args: { worktreePath: string; ref: string }) =>

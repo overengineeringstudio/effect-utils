@@ -1412,6 +1412,133 @@ describe('sync --pull mode', () => {
       ),
     )
   })
+
+  describe('fast-forward branch worktrees', () => {
+    it.effect(
+      'should fast-forward existing branch worktree when remote has new commits',
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+
+          // Create temp directory for all test artifacts
+          const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+
+          // 1. Create source repo (acts as the remote origin)
+          const sourceRepoPath = EffectPath.ops.join(
+            tmpDir,
+            EffectPath.unsafe.relativeDir('source-repo/'),
+          )
+          yield* fs.makeDirectory(sourceRepoPath, { recursive: true })
+          yield* initGitRepo(sourceRepoPath)
+          // Force branch name to 'main' regardless of git config default
+          yield* runGitCommand(sourceRepoPath, 'checkout', '-b', 'main').pipe(
+            Effect.catchAll(() => Effect.void),
+          )
+          yield* fs.writeFileString(
+            EffectPath.ops.join(sourceRepoPath, EffectPath.unsafe.relativeFile('README.md')),
+            '# Test Repo\n',
+          )
+          yield* runGitCommand(sourceRepoPath, 'add', '-A')
+          yield* runGitCommand(sourceRepoPath, 'commit', '--no-verify', '-m', 'Initial commit')
+          const initialCommit = yield* runGitCommand(sourceRepoPath, 'rev-parse', 'HEAD')
+
+          // 2. Create store with bare repo cloned from source
+          const storePath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('.megarepo/'))
+          const repoBasePath = EffectPath.ops.join(
+            storePath,
+            EffectPath.unsafe.relativeDir('github.com/test-owner/test-repo/'),
+          )
+          const bareRepoPath = EffectPath.ops.join(
+            repoBasePath,
+            EffectPath.unsafe.relativeDir('.bare/'),
+          )
+          yield* fs.makeDirectory(repoBasePath, { recursive: true })
+          yield* runGitCommand(tmpDir, 'clone', '--bare', sourceRepoPath, bareRepoPath)
+          // Configure fetch refspec (git clone --bare doesn't set this up)
+          yield* runGitCommand(
+            bareRepoPath,
+            'config',
+            'remote.origin.fetch',
+            '+refs/heads/*:refs/remotes/origin/*',
+          )
+          // Fetch to populate refs/remotes/origin/*
+          yield* runGitCommand(bareRepoPath, 'fetch', '--tags', '--prune', 'origin')
+
+          // 3. Create branch-tracking worktree
+          const worktreePath = EffectPath.ops.join(
+            repoBasePath,
+            EffectPath.unsafe.relativeDir('refs/heads/main/'),
+          )
+          yield* fs.makeDirectory(
+            EffectPath.ops.join(repoBasePath, EffectPath.unsafe.relativeDir('refs/heads/')),
+            { recursive: true },
+          )
+          yield* runGitCommand(bareRepoPath, 'worktree', 'add', worktreePath, 'main')
+
+          // Verify worktree is at initial commit
+          const worktreeHeadBefore = yield* runGitCommand(worktreePath, 'rev-parse', 'HEAD')
+          expect(worktreeHeadBefore).toBe(initialCommit)
+
+          // 4. Create workspace with config, lock, and symlink
+          const { workspacePath } = yield* createWorkspaceWithLock({
+            members: {
+              'test-repo': 'test-owner/test-repo',
+            },
+            lockEntries: {
+              'test-repo': {
+                url: `https://github.com/test-owner/test-repo`,
+                ref: 'main',
+                commit: initialCommit,
+              },
+            },
+          })
+
+          // Create symlink manually
+          const reposDir = EffectPath.ops.join(
+            workspacePath,
+            EffectPath.unsafe.relativeDir('repos/'),
+          )
+          yield* fs.makeDirectory(reposDir, { recursive: true })
+          yield* fs.symlink(
+            worktreePath.replace(/\/$/, ''),
+            EffectPath.ops.join(reposDir, EffectPath.unsafe.relativeFile('test-repo')),
+          )
+
+          // 5. Add new commit to source repo (simulate remote advancing)
+          yield* fs.writeFileString(
+            EffectPath.ops.join(sourceRepoPath, EffectPath.unsafe.relativeFile('new-file.txt')),
+            'new content\n',
+          )
+          yield* runGitCommand(sourceRepoPath, 'add', '-A')
+          yield* runGitCommand(sourceRepoPath, 'commit', '--no-verify', '-m', 'Second commit')
+          const newCommit = yield* runGitCommand(sourceRepoPath, 'rev-parse', 'HEAD')
+          expect(newCommit).not.toBe(initialCommit)
+
+          // 6. Run mr sync --pull
+          const result = yield* runSyncCommand({
+            cwd: workspacePath,
+            args: ['--pull', '--output', 'json'],
+            env: { MEGAREPO_STORE: storePath },
+          })
+          const json = decodeSyncJsonOutput(result.stdout.trim())
+
+          // 7. Verify result
+          expect(json.results).toHaveLength(1)
+          const memberResult = json.results[0]!
+          expect(memberResult.status).toBe('updated')
+          expect(memberResult.commit).toBe(newCommit)
+          expect(memberResult.previousCommit).toBe(initialCommit)
+
+          // 8. Verify worktree HEAD is actually updated
+          const worktreeHeadAfter = yield* runGitCommand(worktreePath, 'rev-parse', 'HEAD')
+          expect(worktreeHeadAfter).toBe(newCommit)
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+      { timeout: 30_000 },
+    )
+  })
 })
 
 // =============================================================================

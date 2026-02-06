@@ -700,6 +700,52 @@ export const syncMember = <R = never>({
       }
     }
 
+    // Fast-forward existing branch worktrees when pulling
+    let pullUpdated = false
+    let pullPreviousCommit: string | undefined
+    if (worktreeExists && pull && !dryRun && actualRefType === 'branch' && !useCommitBasedPath) {
+      // Verify the worktree is actually on the expected branch before merging.
+      // If the user ran `git checkout <other-branch>` inside the worktree,
+      // we must not merge into the wrong branch.
+      const worktreeBranch = yield* Git.getCurrentBranch(worktreePath).pipe(
+        Effect.catchAll(() => Effect.succeed(Option.none<string>())),
+      )
+      const onExpectedBranch = Option.isSome(worktreeBranch) && worktreeBranch.value === targetRef
+
+      if (onExpectedBranch) {
+        const currentCommit = yield* Git.getCurrentCommit(worktreePath).pipe(
+          Effect.catchAll(() => Effect.succeed(undefined)),
+        )
+        if (
+          currentCommit !== undefined &&
+          targetCommit !== undefined &&
+          currentCommit !== targetCommit
+        ) {
+          // Capture narrowed value for use in closures
+          const resolvedCommit = targetCommit
+          // Merge by exact commit SHA to avoid hard-coding remote name
+          yield* Git.mergeFFOnly({ worktreePath, ref: resolvedCommit }).pipe(
+            Effect.mapError(
+              (error) =>
+                new Git.GitCommandError({
+                  args: ['merge', '--ff-only', resolvedCommit],
+                  exitCode: 1,
+                  stderr:
+                    error instanceof Git.GitCommandError
+                      ? `Cannot fast-forward worktree to ${resolvedCommit.slice(0, 8)}: ${error.stderr}`
+                      : `Cannot fast-forward worktree to ${resolvedCommit.slice(0, 8)}`,
+                }),
+            ),
+          )
+          // Re-read HEAD to confirm actual state after merge
+          const headAfterMerge = yield* Git.getCurrentCommit(worktreePath)
+          targetCommit = headAfterMerge
+          pullPreviousCommit = currentCommit
+          pullUpdated = true
+        }
+      }
+    }
+
     // Create symlink from workspace to worktree
     const existingLink = yield* fs
       .readLink(memberPathNormalized)
@@ -708,9 +754,11 @@ export const syncMember = <R = never>({
       if (existingLink.replace(/\/$/, '') === worktreePath.replace(/\/$/, '')) {
         return {
           name,
-          status: 'already_synced',
+          status: pullUpdated ? 'updated' : 'already_synced',
           commit: targetCommit,
+          previousCommit: pullPreviousCommit,
           ref: targetRef,
+          lockUpdated: pullUpdated ? true : undefined,
         } satisfies MemberSyncResult
       }
       if (!dryRun) {
