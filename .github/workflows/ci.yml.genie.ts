@@ -43,6 +43,20 @@ const baseSteps = [
     run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)',
     shell: 'bash',
   },
+  {
+    name: 'Verify devenv shell',
+    // Pre-evaluate devenv shell and repair nix store if needed.
+    // Namespace runners can have stale store paths ("path is not valid")
+    // due to garbage collection between jobs.
+    run: [
+      'if ! devenv shell -- true; then',
+      '  echo "::warning::Nix store has invalid paths, repairing..."',
+      '  nix-store --verify --check-contents --repair 2>/dev/null || true',
+      '  devenv shell -- true',
+      'fi',
+    ].join('\n'),
+    shell: 'bash',
+  },
 ] as const
 
 const job = (step: { name: string; run: string }) => ({

@@ -35,6 +35,14 @@ jobs:
       - name: Install devenv
         run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
         shell: bash
+      - name: Verify devenv shell
+        run: |
+          if ! devenv shell -- true; then
+            echo "::warning::Nix store has invalid paths, repairing..."
+            nix-store --verify --check-contents --repair 2>/dev/null || true
+            devenv shell -- true
+          fi
+        shell: bash
       - name: Type check
         run: 'dt ts:check'
   lint:
@@ -61,6 +69,14 @@ jobs:
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
       - name: Install devenv
         run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
+        shell: bash
+      - name: Verify devenv shell
+        run: |
+          if ! devenv shell -- true; then
+            echo "::warning::Nix store has invalid paths, repairing..."
+            nix-store --verify --check-contents --repair 2>/dev/null || true
+            devenv shell -- true
+          fi
         shell: bash
       - name: Format + lint
         run: 'dt lint:check'
@@ -92,6 +108,14 @@ jobs:
       - name: Install devenv
         run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
         shell: bash
+      - name: Verify devenv shell
+        run: |
+          if ! devenv shell -- true; then
+            echo "::warning::Nix store has invalid paths, repairing..."
+            nix-store --verify --check-contents --repair 2>/dev/null || true
+            devenv shell -- true
+          fi
+        shell: bash
       - name: Unit tests
         run: 'dt test:run'
   nix-check:
@@ -122,6 +146,14 @@ jobs:
       - name: Install devenv
         run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
         shell: bash
+      - name: Verify devenv shell
+        run: |
+          if ! devenv shell -- true; then
+            echo "::warning::Nix store has invalid paths, repairing..."
+            nix-store --verify --check-contents --repair 2>/dev/null || true
+            devenv shell -- true
+          fi
+        shell: bash
       - name: Nix hash check
         run: 'dt nix:check'
   deploy-storybooks:
@@ -150,6 +182,14 @@ jobs:
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
       - name: Install devenv
         run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
+        shell: bash
+      - name: Verify devenv shell
+        run: |
+          if ! devenv shell -- true; then
+            echo "::warning::Nix store has invalid paths, repairing..."
+            nix-store --verify --check-contents --repair 2>/dev/null || true
+            devenv shell -- true
+          fi
         shell: bash
       - name: Build storybooks
         run: 'devenv tasks run storybook:build --mode before || true'
