@@ -11,6 +11,20 @@ import { Data, Effect, Schema } from 'effect'
 import { OtelConfig } from './OtelConfig.ts'
 
 // =============================================================================
+// Constants
+// =============================================================================
+
+/** Default limit for trace search results. */
+const DEFAULT_TRACE_SEARCH_LIMIT = 10
+
+/** Default time range for trace searches. */
+const DEFAULT_TIME_RANGE_FROM = 'now-1h'
+const DEFAULT_TIME_RANGE_TO = 'now'
+
+/** HTTP status code threshold for errors. */
+const HTTP_ERROR_STATUS_THRESHOLD = 400
+
+// =============================================================================
 // Errors
 // =============================================================================
 
@@ -284,7 +298,7 @@ export const searchTraces = (options: {
     const client = yield* HttpClient.HttpClient
     const tempoUid = yield* getTempoUid()
 
-    const limit = options.limit ?? 10
+    const limit = options.limit ?? DEFAULT_TRACE_SEARCH_LIMIT
     const baseQuery = options.query ?? '{}'
     const query =
       options.includeInternal === true
@@ -304,8 +318,8 @@ export const searchTraces = (options: {
           tableType: 'traces',
         },
       ],
-      from: 'now-1h',
-      to: 'now',
+      from: DEFAULT_TIME_RANGE_FROM,
+      to: DEFAULT_TIME_RANGE_TO,
     }
 
     const request = yield* HttpClientRequest.bodyJson(body)(
@@ -334,7 +348,7 @@ export const searchTraces = (options: {
       ),
     )
 
-    if (response.status >= 400) {
+    if (response.status >= HTTP_ERROR_STATUS_THRESHOLD) {
       const text = yield* response.text.pipe(Effect.orElseSucceed(() => '<no body>'))
       return yield* new GrafanaError({
         reason: 'RequestFailed',

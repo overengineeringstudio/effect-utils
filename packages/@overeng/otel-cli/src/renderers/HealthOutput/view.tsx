@@ -74,6 +74,12 @@ export const HealthView = ({ stateAtom }: HealthViewProps) => {
 }
 
 // =============================================================================
+// Constants
+// =============================================================================
+
+const COMPONENT_NAME_COLUMN_WIDTH = 16
+
+// =============================================================================
 // Internal Components
 // =============================================================================
 
@@ -88,7 +94,7 @@ const ComponentRow = ({ component }: { readonly component: ComponentHealth }) =>
         <Text color="red">{symbols.status.cross}</Text>
       )}
       <Text> </Text>
-      <Text bold>{component.name.padEnd(16)}</Text>
+      <Text bold>{component.name.padEnd(COMPONENT_NAME_COLUMN_WIDTH)}</Text>
       {component.version !== undefined ? <Text color="gray"> v{component.version}</Text> : null}
       {component.message !== undefined ? (
         <Text color={component.healthy ? 'gray' : 'red'}> {component.message}</Text>

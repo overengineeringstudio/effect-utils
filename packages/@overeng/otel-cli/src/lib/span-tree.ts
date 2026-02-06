@@ -9,6 +9,13 @@ import type { ProcessedSpan } from '../renderers/TraceInspectOutput/schema.ts'
 import type { TempoTraceResponse } from '../services/TempoClient.ts'
 
 // =============================================================================
+// Constants
+// =============================================================================
+
+/** Conversion factor from nanoseconds to milliseconds. */
+const NANOSECONDS_TO_MILLISECONDS = 1_000_000n
+
+// =============================================================================
 // Types
 // =============================================================================
 
@@ -146,8 +153,8 @@ const extractFlatSpans = (response: TempoTraceResponse): Array<FlatSpan> => {
       for (const span of ss.spans) {
         const startNano = BigInt(span.startTimeUnixNano)
         const endNano = BigInt(span.endTimeUnixNano)
-        const startTimeMs = Number(startNano / 1_000_000n)
-        const endTimeMs = Number(endNano / 1_000_000n)
+        const startTimeMs = Number(startNano / NANOSECONDS_TO_MILLISECONDS)
+        const endTimeMs = Number(endNano / NANOSECONDS_TO_MILLISECONDS)
 
         results.push({
           spanId: span.spanId,

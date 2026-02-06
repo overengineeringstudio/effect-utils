@@ -89,6 +89,27 @@ export const QueryView = ({ stateAtom }: QueryViewProps) => {
 // Internal Components
 // =============================================================================
 
+// =============================================================================
+// Constants
+// =============================================================================
+
+const SPARKLINE_WIDTH = 30
+const SPARKLINE_CHARACTERS = '▁▂▃▄▅▆▇█'
+
+// Value formatting thresholds
+const VALUE_BILLION = 1e9
+const VALUE_MILLION = 1e6
+const VALUE_THOUSAND = 1e3
+const VALUE_SMALL_THRESHOLD = 0.01
+
+// Time formatting thresholds (in seconds)
+const SECONDS_PER_HOUR = 3600
+const SECONDS_PER_DAY = 86400
+
+// =============================================================================
+// Internal Components
+// =============================================================================
+
 const SeriesView = ({ series }: { readonly series: MetricSeries }) => {
   const labelStr = Object.entries(series.labels)
     .filter(([k]) => k !== '__name__')
@@ -96,7 +117,7 @@ const SeriesView = ({ series }: { readonly series: MetricSeries }) => {
     .join(', ')
 
   const stats = computeStats(series.samples)
-  const sparkline = generateSparkline({ samples: series.samples, width: 30 })
+  const sparkline = generateSparkline({ samples: series.samples, width: SPARKLINE_WIDTH })
 
   return (
     <Box flexDirection="column" marginBottom={1}>
@@ -166,7 +187,7 @@ const generateSparkline = (options: {
 }): string => {
   if (options.samples.length === 0) return ''
 
-  const chars = '▁▂▃▄▅▆▇█'
+  const chars = SPARKLINE_CHARACTERS
   const values = options.samples.map((s) => s.value)
 
   // Downsample if needed
@@ -196,10 +217,10 @@ const generateSparkline = (options: {
 const formatValue = (value: number): string => {
   if (!Number.isFinite(value)) return 'N/A'
   if (value === 0) return '0'
-  if (Math.abs(value) >= 1e9) return `${(value / 1e9).toFixed(2)}B`
-  if (Math.abs(value) >= 1e6) return `${(value / 1e6).toFixed(2)}M`
-  if (Math.abs(value) >= 1e3) return `${(value / 1e3).toFixed(2)}K`
-  if (Math.abs(value) < 0.01) return value.toExponential(2)
+  if (Math.abs(value) >= VALUE_BILLION) return `${(value / VALUE_BILLION).toFixed(2)}B`
+  if (Math.abs(value) >= VALUE_MILLION) return `${(value / VALUE_MILLION).toFixed(2)}M`
+  if (Math.abs(value) >= VALUE_THOUSAND) return `${(value / VALUE_THOUSAND).toFixed(2)}K`
+  if (Math.abs(value) < VALUE_SMALL_THRESHOLD) return value.toExponential(2)
   if (Number.isInteger(value)) return String(value)
   return value.toFixed(2)
 }
@@ -207,7 +228,7 @@ const formatValue = (value: number): string => {
 /** Format a time range for display. */
 const formatTimeRange = (options: { readonly start: number; readonly end: number }): string => {
   const duration = options.end - options.start
-  if (duration < 3600) return `${Math.round(duration / 60)}m`
-  if (duration < 86400) return `${(duration / 3600).toFixed(1)}h`
-  return `${(duration / 86400).toFixed(1)}d`
+  if (duration < SECONDS_PER_HOUR) return `${Math.round(duration / 60)}m`
+  if (duration < SECONDS_PER_DAY) return `${(duration / SECONDS_PER_HOUR).toFixed(1)}h`
+  return `${(duration / SECONDS_PER_DAY).toFixed(1)}d`
 }

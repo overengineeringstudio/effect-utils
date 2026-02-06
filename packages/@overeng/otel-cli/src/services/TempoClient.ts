@@ -11,6 +11,14 @@ import { Data, Effect, Schema } from 'effect'
 import { OtelConfig } from './OtelConfig.ts'
 
 // =============================================================================
+// Constants
+// =============================================================================
+
+/** HTTP status codes. */
+const HTTP_STATUS_NOT_FOUND = 404
+const HTTP_ERROR_STATUS_THRESHOLD = 400
+
+// =============================================================================
 // Errors
 // =============================================================================
 
@@ -111,7 +119,7 @@ export const checkReady = (): Effect.Effect<
       ),
     )
 
-    if (response.status >= 400) {
+    if (response.status >= HTTP_ERROR_STATUS_THRESHOLD) {
       return false
     }
 
@@ -152,14 +160,14 @@ export const getTrace = (
       ),
     )
 
-    if (response.status === 404) {
+    if (response.status === HTTP_STATUS_NOT_FOUND) {
       return yield* new TempoError({
         reason: 'NotFound',
         message: `Trace ${traceId} not found in Tempo`,
       })
     }
 
-    if (response.status >= 400) {
+    if (response.status >= HTTP_ERROR_STATUS_THRESHOLD) {
       return yield* new TempoError({
         reason: 'RequestFailed',
         message: `Tempo returned status ${String(response.status)} for trace ${traceId}`,

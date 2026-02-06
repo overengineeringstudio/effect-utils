@@ -79,25 +79,44 @@ export const LsView = ({ stateAtom }: LsViewProps) => {
       {/* Header row */}
       <Box flexDirection="row">
         <Text color="gray" bold>
-          {'NAME'.padEnd(50)}
+          {'NAME'.padEnd(METRIC_NAME_COLUMN_WIDTH)}
         </Text>
         <Text color="gray" bold>
-          {'TYPE'.padEnd(12)}
+          {'TYPE'.padEnd(METRIC_TYPE_COLUMN_WIDTH)}
         </Text>
         <Text color="gray" bold>
-          {'VALUE'.padStart(15)}
+          {'VALUE'.padStart(METRIC_VALUE_COLUMN_WIDTH)}
         </Text>
       </Box>
       {/* Data rows */}
-      {state.metrics.slice(0, 30).map((metric: MetricSummary, idx: number) => (
+      {state.metrics.slice(0, MAX_METRICS_DISPLAY).map((metric: MetricSummary, idx: number) => (
         <MetricRow key={`${metric.name}-${String(idx)}`} metric={metric} />
       ))}
-      {state.metrics.length > 30 ? (
-        <Text color="gray">... and {String(state.metrics.length - 30)} more</Text>
+      {state.metrics.length > MAX_METRICS_DISPLAY ? (
+        <Text color="gray">... and {String(state.metrics.length - MAX_METRICS_DISPLAY)} more</Text>
       ) : null}
     </Box>
   )
 }
+
+// =============================================================================
+// Constants
+// =============================================================================
+
+// Column widths for table layout
+const METRIC_NAME_COLUMN_WIDTH = 50
+const METRIC_TYPE_COLUMN_WIDTH = 12
+const METRIC_VALUE_COLUMN_WIDTH = 15
+
+// Display limits
+const MAX_METRICS_DISPLAY = 30
+const METRIC_NAME_TRUNCATE_LENGTH = 48
+
+// Value formatting thresholds
+const VALUE_BILLION = 1e9
+const VALUE_MILLION = 1e6
+const VALUE_THOUSAND = 1e3
+const VALUE_SMALL_THRESHOLD = 0.01
 
 // =============================================================================
 // Internal Components
@@ -111,9 +130,11 @@ const MetricRow = ({ metric }: { readonly metric: MetricSummary }) => {
 
   return (
     <Box flexDirection="row">
-      <Text color="yellow">{displayName.slice(0, 48).padEnd(50)}</Text>
-      <Text color="green">{metric.type.padEnd(12)}</Text>
-      <Text color="white">{formatValue(metric.value).padStart(15)}</Text>
+      <Text color="yellow">
+        {displayName.slice(0, METRIC_NAME_TRUNCATE_LENGTH).padEnd(METRIC_NAME_COLUMN_WIDTH)}
+      </Text>
+      <Text color="green">{metric.type.padEnd(METRIC_TYPE_COLUMN_WIDTH)}</Text>
+      <Text color="white">{formatValue(metric.value).padStart(METRIC_VALUE_COLUMN_WIDTH)}</Text>
     </Box>
   )
 }
@@ -125,10 +146,10 @@ const MetricRow = ({ metric }: { readonly metric: MetricSummary }) => {
 /** Format a metric value for display. */
 const formatValue = (value: number): string => {
   if (value === 0) return '0'
-  if (Math.abs(value) >= 1e9) return `${(value / 1e9).toFixed(2)}B`
-  if (Math.abs(value) >= 1e6) return `${(value / 1e6).toFixed(2)}M`
-  if (Math.abs(value) >= 1e3) return `${(value / 1e3).toFixed(2)}K`
-  if (Math.abs(value) < 0.01) return value.toExponential(2)
+  if (Math.abs(value) >= VALUE_BILLION) return `${(value / VALUE_BILLION).toFixed(2)}B`
+  if (Math.abs(value) >= VALUE_MILLION) return `${(value / VALUE_MILLION).toFixed(2)}M`
+  if (Math.abs(value) >= VALUE_THOUSAND) return `${(value / VALUE_THOUSAND).toFixed(2)}K`
+  if (Math.abs(value) < VALUE_SMALL_THRESHOLD) return value.toExponential(2)
   if (Number.isInteger(value)) return String(value)
   return value.toFixed(2)
 }

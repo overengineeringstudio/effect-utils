@@ -79,16 +79,16 @@ export const LsView = ({ stateAtom }: LsViewProps) => {
       {/* Header row */}
       <Box flexDirection="row">
         <Text color="gray" bold>
-          {'TRACE ID'.padEnd(34)}
+          {'TRACE ID'.padEnd(TRACE_ID_COLUMN_WIDTH)}
         </Text>
         <Text color="gray" bold>
-          {'SERVICE'.padEnd(20)}
+          {'SERVICE'.padEnd(SERVICE_COLUMN_WIDTH)}
         </Text>
         <Text color="gray" bold>
-          {'SPAN'.padEnd(24)}
+          {'SPAN'.padEnd(SPAN_NAME_COLUMN_WIDTH)}
         </Text>
         <Text color="gray" bold>
-          {'DURATION'.padStart(10)}
+          {'DURATION'.padStart(DURATION_COLUMN_WIDTH)}
         </Text>
       </Box>
       {/* Data rows */}
@@ -100,15 +100,40 @@ export const LsView = ({ stateAtom }: LsViewProps) => {
 }
 
 // =============================================================================
+// Constants
+// =============================================================================
+
+// Column widths for table layout
+const TRACE_ID_COLUMN_WIDTH = 34
+const SERVICE_COLUMN_WIDTH = 20
+const SPAN_NAME_COLUMN_WIDTH = 24
+const DURATION_COLUMN_WIDTH = 10
+
+// String truncation lengths (2 chars less than column width for spacing)
+const TRACE_ID_TRUNCATE_LENGTH = 32
+const SERVICE_TRUNCATE_LENGTH = 18
+const SPAN_NAME_TRUNCATE_LENGTH = 22
+
+// Duration formatting thresholds
+const MILLISECOND_THRESHOLD = 1
+const MICROSECONDS_PER_MILLISECOND = 1000
+const MILLISECONDS_PER_SECOND = 1000
+const MILLISECONDS_PER_MINUTE = 60000
+
+// =============================================================================
 // Internal Components
 // =============================================================================
 
 const TraceRow = ({ trace }: { readonly trace: TraceSummary }) => (
   <Box flexDirection="row">
-    <Text color="yellow">{trace.traceId.slice(0, 32).padEnd(34)}</Text>
-    <Text color="green">{trace.serviceName.slice(0, 18).padEnd(20)}</Text>
-    <Text>{trace.spanName.slice(0, 22).padEnd(24)}</Text>
-    <Text color="gray">{formatDuration(trace.durationMs).padStart(10)}</Text>
+    <Text color="yellow">
+      {trace.traceId.slice(0, TRACE_ID_TRUNCATE_LENGTH).padEnd(TRACE_ID_COLUMN_WIDTH)}
+    </Text>
+    <Text color="green">
+      {trace.serviceName.slice(0, SERVICE_TRUNCATE_LENGTH).padEnd(SERVICE_COLUMN_WIDTH)}
+    </Text>
+    <Text>{trace.spanName.slice(0, SPAN_NAME_TRUNCATE_LENGTH).padEnd(SPAN_NAME_COLUMN_WIDTH)}</Text>
+    <Text color="gray">{formatDuration(trace.durationMs).padStart(DURATION_COLUMN_WIDTH)}</Text>
   </Box>
 )
 
@@ -118,8 +143,9 @@ const TraceRow = ({ trace }: { readonly trace: TraceSummary }) => (
 
 /** Format a duration in milliseconds to a human-readable string. */
 const formatDuration = (ms: number): string => {
-  if (ms < 1) return `${String(Math.round(ms * 1000))}µs`
-  if (ms < 1000) return `${String(Math.round(ms))}ms`
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
-  return `${(ms / 60000).toFixed(1)}m`
+  if (ms < MILLISECOND_THRESHOLD)
+    return `${String(Math.round(ms * MICROSECONDS_PER_MILLISECOND))}µs`
+  if (ms < MILLISECONDS_PER_SECOND) return `${String(Math.round(ms))}ms`
+  if (ms < MILLISECONDS_PER_MINUTE) return `${(ms / MILLISECONDS_PER_SECOND).toFixed(1)}s`
+  return `${(ms / MILLISECONDS_PER_MINUTE).toFixed(1)}m`
 }
