@@ -146,6 +146,17 @@ All dashboards query Tempo's TraceQL. The datasource variable `${DS_TEMPO}` is r
 | Error traces                  | Table       | `{status.code = error && resource.service.name != "dt"}`               |
 | Trace search                  | Search      | Tempo native search panel                                              |
 
+### 6. dt Duration Trends
+
+**Purpose**: Track p50/p95/p99 percentiles over time for all traced tasks.
+
+| Panel                                      | Type        | Query                                                                                               |
+| ------------------------------------------ | ----------- | --------------------------------------------------------------------------------------------------- |
+| Core Pipeline (check:quick, etc.)          | Time series | `{resource.service.name="dt" && name="check:quick"} \| quantile_over_time(duration, 0.5/0.95/0.99)` |
+| TypeScript Operations                      | Time series | `{resource.service.name="dt" && name=~"ts:.*"} \| quantile_over_time(duration, ...)`                |
+| Lint Components                            | Time series | `{resource.service.name="dt-task" && name=~"lint:.*"} \| quantile_over_time(duration, ...)`         |
+| Test / Nix / Megarepo / Shell / pnpm / tsc | Time series | Per-category p50/p95/p99 duration trends                                                            |
+
 ---
 
 ## Span Conventions
@@ -161,27 +172,27 @@ For dashboards to work reliably, spans must follow these attribute conventions:
 
 ### Span Attributes (dt tasks)
 
-| Attribute   | Type      | Description             | Example                        |
-| ----------- | --------- | ----------------------- | ------------------------------ |
-| `name`      | span name | Task name               | `"pnpm:install"`, `"ts:check"` |
-| `exit.code` | int       | Process exit code       | `0`, `1`                       |
-| `dt.args`   | string    | Full dt command args    | `"check:quick"`                |
-| `cached`    | string    | Whether task was cached | `"true"`, `"false"`            |
+| Attribute     | Type      | Description             | Example                        |
+| ------------- | --------- | ----------------------- | ------------------------------ |
+| `name`        | span name | Task name               | `"pnpm:install"`, `"ts:check"` |
+| `exit.code`   | int       | Process exit code       | `0`, `1`                       |
+| `dt.args`     | string    | Full dt command args    | `"check:quick"`                |
+| `task.cached` | string    | Whether task was cached | `"true"`, `"false"`            |
 
-> **Note**: `cached` is not yet emitted by `otel-span`. Adding it requires the `dt` wrapper to detect the devenv task's `status` check result before running. This is a future enhancement -- see the checklist below.
+> **Note**: Cache status is tracked via `task.cached` attribute. `trace.exec` adds `task.cached=false` for executed tasks, and `trace.status` adds `task.cached=true` for cached tasks. See `nix/devenv-modules/tasks/lib/trace.nix`.
 
 ---
 
 ## Implementation Checklist
 
-- [ ] Add `go-jsonnet` to devenv packages
-- [ ] Fetch grafonnet as `pkgs.fetchFromGitHub` in otel.nix
-- [ ] Create `nix/devenv-modules/otel/dashboards/` directory with `.jsonnet` files
-- [ ] Wire `linkFarm` + Grafana dashboard provisioning in otel.nix
-- [ ] Build overview dashboard
-- [ ] Build dt-tasks dashboard
-- [ ] Build shell-entry dashboard
-- [ ] Build pnpm-install dashboard
-- [ ] Build ts-app-traces dashboard
-- [ ] Add `cached` attribute to `otel-span` / `dt` wrapper
-- [ ] Document TraceQL queries in this file for each panel
+- [x] Add `go-jsonnet` to devenv packages
+- [x] Fetch grafonnet as `pkgs.fetchFromGitHub` in otel.nix
+- [x] Create `nix/devenv-modules/otel/dashboards/` directory with `.jsonnet` files
+- [x] Wire `linkFarm` + Grafana dashboard provisioning in otel.nix
+- [x] Build overview dashboard
+- [x] Build dt-tasks dashboard
+- [x] Build shell-entry dashboard
+- [x] Build pnpm-install dashboard
+- [x] Build ts-app-traces dashboard
+- [x] Add `cached` attribute to `otel-span` / `dt` wrapper
+- [x] Document TraceQL queries in this file for each panel

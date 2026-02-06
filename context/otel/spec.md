@@ -158,27 +158,11 @@ No configuration changes needed -- the collector accepts any OTLP source.
 - **Analytics/updates**: disabled
 - **Log level**: warn (minimal console noise)
 
-## CLI Diagnostics: `otel-check`
+## CLI Diagnostics: `otel` CLI
 
-Shell helper for diagnosing stack health via Grafana's HTTP API. No tokens needed (anonymous auth).
+The `@overeng/otel-cli` package replaces the previous bash `otel-check` script with a full Effect CLI. Commands: `otel health`, `otel trace ls`, `otel trace inspect`, `otel metrics ls/query/tags`, `otel api`, `otel debug test/dashboards`.
 
-| Command                            | What it does                                                      |
-| ---------------------------------- | ----------------------------------------------------------------- |
-| `otel-check`                       | Full health: Grafana + Tempo + Collector + dashboard count        |
-| `otel-check dashboards`            | List provisioned dashboards with browser URLs                     |
-| `otel-check dashboards --validate` | Load each dashboard, check panels, datasource refs, template vars |
-| `otel-check traces`                | Query Tempo for recent non-internal traces (last 1h)              |
-| `otel-check traces '<traceql>'`    | Query with custom TraceQL filter                                  |
-| `otel-check send-test`             | End-to-end smoke test: send span → Collector → Tempo → query      |
-| `otel-check datasources`           | Show configured Grafana datasources with UIDs                     |
-
-### Dashboard Validation
-
-`otel-check dashboards --validate` loads each dashboard via the Grafana API and checks:
-
-- Panel count (non-zero)
-- All non-row/text panels have targets with valid datasource UIDs
-- No unresolved datasource template variables
+See [README.md](./README.md) for usage examples.
 
 ### API Endpoints Used
 
@@ -189,7 +173,7 @@ Shell helper for diagnosing stack health via Grafana's HTTP API. No tokens neede
 | `GET /api/dashboards/uid/:uid`                     | Load full dashboard model (for validation)        |
 | `GET /api/datasources`                             | List datasources (resolves Tempo UID dynamically) |
 | `POST /api/ds/query`                               | Query Tempo via TraceQL                           |
-| `POST <collector>/v1/traces`                       | Send test OTLP span (for send-test)               |
+| `POST <collector>/v1/traces`                       | Send test OTLP span (for smoke test)              |
 | `GET http://127.0.0.1:<tempo-port>/ready`          | Direct Tempo readiness check                      |
-| `GET http://127.0.0.1:<tempo-port>/api/traces/:id` | Direct trace lookup (for send-test)               |
+| `GET http://127.0.0.1:<tempo-port>/api/traces/:id` | Direct trace lookup (for smoke test)              |
 | `GET http://127.0.0.1:<metrics-port>/metrics`      | Collector Prometheus metrics                      |
