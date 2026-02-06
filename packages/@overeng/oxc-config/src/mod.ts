@@ -5,6 +5,7 @@
  * - exports-first: Enforce exported declarations appear before non-exported declarations
  * - named-args: Enforce functions have at most one parameter (use options objects)
  * - jsdoc-require-exports: Require JSDoc comments on type/wildcard exports
+ * - no-external-imports: Disallow value imports from npm packages (for dependency-free modules)
  *
  * It also re-exports selected rules from eslint-plugin-storybook under the
  * `overeng/storybook/*` namespace for enforcing Storybook best practices.
@@ -21,11 +22,13 @@ import { rules as storybookRules } from 'eslint-plugin-storybook'
 import { exportsFirstRule } from './exports-first.ts'
 import { jsdocRequireExportsRule } from './jsdoc-require-exports.ts'
 import { namedArgsRule } from './named-args.ts'
+import { noExternalImportsRule } from './no-external-imports.ts'
 
 type Rules = {
   'exports-first': typeof exportsFirstRule
   'jsdoc-require-exports': typeof jsdocRequireExportsRule
   'named-args': typeof namedArgsRule
+  'no-external-imports': typeof noExternalImportsRule
   'storybook/meta-satisfies-type': (typeof storybookRules)['meta-satisfies-type']
   'storybook/default-exports': (typeof storybookRules)['default-exports']
   'storybook/story-exports': (typeof storybookRules)['story-exports']
@@ -40,6 +43,7 @@ const rules: Rules = {
   'exports-first': exportsFirstRule,
   'jsdoc-require-exports': jsdocRequireExportsRule,
   'named-args': namedArgsRule,
+  'no-external-imports': noExternalImportsRule,
 
   // Re-exported storybook rules (use as overeng/storybook/*)
   'storybook/meta-satisfies-type': storybookRules['meta-satisfies-type'],

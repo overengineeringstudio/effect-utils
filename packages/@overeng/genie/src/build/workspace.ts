@@ -2,8 +2,8 @@ import { FileSystem, Path } from '@effect/platform'
 import { Effect } from 'effect'
 
 import { matchesAnyPattern } from '../runtime/package-json/validation.ts'
-import type { WorkspaceProvider, WorkspaceProviderName } from './package-json-context.ts'
 import { GenieNotImplementedError } from './errors.ts'
+import type { WorkspaceProvider, WorkspaceProviderName } from './package-json-context.ts'
 
 const DEFAULT_SKIP_DIRS = new Set([
   'node_modules',

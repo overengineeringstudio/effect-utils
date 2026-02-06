@@ -18,6 +18,15 @@ export default oxlintConfig({
   ignorePatterns: baseOxlintIgnorePatterns,
   overrides: [
     ...baseOxlintOverrides,
+    // Genie runtime must be dependency-free (issue #138)
+    {
+      files: ['**/genie/src/runtime/**'],
+      rules: { 'overeng/no-external-imports': 'error' },
+    },
+    {
+      files: ['**/genie/src/runtime/**/*.test.ts'],
+      rules: { 'overeng/no-external-imports': 'off' },
+    },
     // effect-utils specific: react-inspector is a fork with its own style
     {
       files: ['**/react-inspector/**'],
