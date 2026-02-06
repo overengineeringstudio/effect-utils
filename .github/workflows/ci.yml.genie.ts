@@ -93,11 +93,38 @@ const jobs: Record<CIJobName, ReturnType<typeof job> | ReturnType<typeof multiPl
   }),
 }
 
+// Deploy job — NOT a required status check (separate from CIJobName)
+const deployJobs = {
+  'deploy-storybooks': {
+    'runs-on': namespaceRunner('namespace-profile-linux-x86-64', '${{ github.run_id }}'),
+    needs: ['typecheck', 'lint', 'test'],
+    defaults: jobDefaults,
+    env: {
+      FORCE_SETUP: '1',
+      CI: 'true',
+      NETLIFY_AUTH_TOKEN: '${{ secrets.NETLIFY_AUTH_TOKEN }}',
+    },
+    steps: [
+      ...baseSteps,
+      {
+        name: 'Deploy storybooks to Netlify',
+        run: [
+          'if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then',
+          '  devenv tasks run netlify:deploy --mode before --input type=prod',
+          'elif [ "${{ github.event_name }}" = "pull_request" ]; then',
+          '  devenv tasks run netlify:deploy --mode before --input type=pr --input pr=${{ github.event.pull_request.number }}',
+          'fi',
+        ].join('\n'),
+      },
+    ],
+  },
+} as const
+
 export default githubWorkflow({
   name: 'CI',
   on: {
     push: { branches: ['main'] },
     pull_request: { branches: ['main'] },
   },
-  jobs,
+  jobs: { ...jobs, ...deployJobs },
 } satisfies GitHubWorkflowArgs)

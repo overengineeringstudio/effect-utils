@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **devenv**: Netlify deploy tasks for storybook preview deployments
+  - New shared `netlify.nix` task module with `netlify:deploy:<name>` per-package tasks
+  - Supports prod, PR preview (alias), and local draft deploy modes via `--input` flags
+  - CI job `deploy-storybooks` deploys all 7 storybooks on PRs and pushes to main
+  - Replaces Vercel-based storybook deployments
+
 - **@overeng/tui-react**: Standalone `run` function with dual (data-first/data-last) API (#129)
   - `run(app, handler, { view })` replaces `Effect.scoped(Effect.gen(function* () { const tui = yield* app.run(view); ... }))`
   - Scope managed internally — consumers no longer need `Effect.scoped`

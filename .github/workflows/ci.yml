@@ -124,3 +124,37 @@ jobs:
         shell: bash
       - name: Nix hash check
         run: 'dt nix:check'
+  deploy-storybooks:
+    runs-on:
+      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    needs: [typecheck, lint, test]
+    defaults:
+      run:
+        shell: devenv shell bash -- -e {0}
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      NETLIFY_AUTH_TOKEN: '${{ secrets.NETLIFY_AUTH_TOKEN }}'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            extra-substituters = https://cache.nixos.org
+            extra-trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=
+      - name: Enable Cachix cache
+        uses: cachix/cachix-action@v16
+        with:
+          name: overeng-effect-utils
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+      - name: Install devenv
+        run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
+        shell: bash
+      - name: Deploy storybooks to Netlify
+        run: |
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            devenv tasks run netlify:deploy --mode before --input type=prod
+          elif [ "${{ github.event_name }}" = "pull_request" ]; then
+            devenv tasks run netlify:deploy --mode before --input type=pr --input pr=${{ github.event.pull_request.number }}
+          fi
