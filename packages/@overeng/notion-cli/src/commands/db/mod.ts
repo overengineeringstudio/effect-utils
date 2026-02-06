@@ -10,7 +10,8 @@ import type { NodeInspectSymbol } from 'effect/Inspectable'
 import React from 'react'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
-import { outputOption as tuiOutputOption, outputModeLayer, run } from '@overeng/tui-react'
+import { run } from '@overeng/tui-react'
+import { outputOption as tuiOutputOption, outputModeLayer } from '@overeng/tui-react/node'
 
 import { DumpApp } from '../../renderers/DumpOutput/app.ts'
 import { DumpView } from '../../renderers/DumpOutput/view.tsx'

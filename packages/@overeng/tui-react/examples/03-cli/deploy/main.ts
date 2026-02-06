@@ -20,7 +20,7 @@ import { Command, Options } from '@effect/cli'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Effect } from 'effect'
 
-import { outputOption, outputModeLayer } from '../../../src/mod.ts'
+import { outputOption, outputModeLayer } from '../../../src/node/mod.ts'
 import { DeployError, runDeploy } from './deploy.tsx'
 
 // =============================================================================

@@ -116,7 +116,7 @@ export {
   outputModeLayer,
   type OutputModeValue,
   resolveOutputMode,
-} from '@overeng/tui-react'
+} from '@overeng/tui-react/node'
 
 // =============================================================================
 // Filesystem Helpers

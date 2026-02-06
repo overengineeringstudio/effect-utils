@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/mod.tsx",
+    "./node": "./src/node/mod.ts",
     "./opentui": "./src/effect/opentui/mod.tsx",
     "./storybook": "./src/storybook/mod.tsx"
   },
@@ -12,6 +13,7 @@
     "access": "public",
     "exports": {
       ".": "./dist/mod.js",
+      "./node": "./dist/node/mod.js",
       "./storybook": "./dist/storybook/mod.js",
       "./opentui": "./dist/effect/opentui/mod.js"
     }

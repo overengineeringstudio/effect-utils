@@ -4,7 +4,7 @@ import * as Cli from '@effect/cli'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Effect } from 'effect'
 
-import { runTuiMain } from '@overeng/tui-react'
+import { runTuiMain } from '@overeng/tui-react/node'
 import { resolveCliVersion } from '@overeng/utils/node/cli-version'
 
 import { mrCommand } from '../src/cli/mod.ts'
