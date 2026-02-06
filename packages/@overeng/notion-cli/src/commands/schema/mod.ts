@@ -12,7 +12,8 @@ import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'
 import { NotionConfig, NotionDatabases } from '@overeng/notion-effect-client'
-import { outputOption as tuiOutputOption, outputModeLayer, run } from '@overeng/tui-react'
+import { run } from '@overeng/tui-react'
+import { outputOption as tuiOutputOption, outputModeLayer } from '@overeng/tui-react/node'
 
 import { DiffApp } from '../../renderers/DiffOutput/app.ts'
 import { DiffView } from '../../renderers/DiffOutput/view.tsx'

@@ -5,7 +5,8 @@ import { type Error as PlatformError, FileSystem } from '@effect/platform'
 import { Effect, Either, Option, pipe, Stream } from 'effect'
 import React from 'react'
 
-import { outputOption, outputModeLayer, run } from '@overeng/tui-react'
+import { run } from '@overeng/tui-react'
+import { outputOption, outputModeLayer } from '@overeng/tui-react/node'
 import { assertNever } from '@overeng/utils'
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
 

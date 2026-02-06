@@ -30,10 +30,17 @@
  * @module
  */
 
-import { formatWithOptions } from 'node:util'
-
 import type { Layer, Scope } from 'effect'
-import { Effect, Fiber, FiberId, Logger, Runtime, Stream, SubscriptionRef } from 'effect'
+import {
+  Effect,
+  Fiber,
+  FiberId,
+  Inspectable,
+  Logger,
+  Runtime,
+  Stream,
+  SubscriptionRef,
+} from 'effect'
 import React, { createContext, type ReactNode } from 'react'
 
 import { useContext, useSyncExternalStore } from './hooks.tsx'
@@ -218,7 +225,7 @@ export const createLogCapture = (options?: {
         const entry: TuiLogEntry = {
           id: ++logCaptureEntryId,
           level,
-          message: formatWithOptions({ depth: 4 }, ...args),
+          message: args.map((a) => Inspectable.toStringUnknown(a)).join(' '),
           timestamp: new Date(),
           fiberId: 'console',
           annotations: {},

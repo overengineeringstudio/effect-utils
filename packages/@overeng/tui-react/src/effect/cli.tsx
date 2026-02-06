@@ -27,6 +27,7 @@ import { Options } from '@effect/cli'
 import { Cause, Effect, Layer, Logger } from 'effect'
 
 import { createLogCapture } from './LogCapture.ts'
+import { detectOutputMode } from './OutputMode.node.ts'
 import type { OutputModeTag } from './OutputMode.tsx'
 import {
   type OutputMode,
@@ -38,7 +39,6 @@ import {
   altScreen,
   json,
   ndjson,
-  detectOutputMode,
   layer,
   isJson,
   isReact,
