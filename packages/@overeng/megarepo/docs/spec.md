@@ -833,7 +833,7 @@ Default mode does NOT fetch from remote. It reads current worktree state and upd
 1. **Fetch:** Get latest refs from remote
 2. **Check dirty:** Fail if worktree has uncommitted changes (unless `--force`)
 3. **Resolve:** Find current commit for the ref
-4. **Update worktree:** Checkout new commit
+4. **Fast-forward:** If worktree exists and is a branch, `git merge --ff-only` to update working tree
 5. **Update lock:** Write new commit to lock file
 
 ### `mr sync --frozen` Strategy
