@@ -19,6 +19,23 @@ import { Data, Effect, Schema } from 'effect'
 import { OtelConfig } from './OtelConfig.ts'
 
 // =============================================================================
+// Constants
+// =============================================================================
+
+/** Default time range for metrics queries (in seconds). */
+const DEFAULT_TIME_RANGE_SECONDS = 3600 // 1 hour
+
+/** Default step for metrics queries (in seconds). */
+const DEFAULT_STEP_SECONDS = 60
+
+/** HTTP status code threshold for errors. */
+const HTTP_ERROR_STATUS_THRESHOLD = 400
+
+/** String offsets for parsing Prometheus HELP and TYPE comments. */
+const PROMETHEUS_HELP_PREFIX_LENGTH = 7 // "# HELP "
+const PROMETHEUS_TYPE_PREFIX_LENGTH = 7 // "# TYPE "
+
+// =============================================================================
 // Errors
 // =============================================================================
 
@@ -161,9 +178,9 @@ export const queryMetrics = (options: {
     const client = yield* HttpClient.HttpClient
 
     const now = Math.floor(Date.now() / 1000)
-    const start = options.start ?? now - 3600 // 1 hour ago
+    const start = options.start ?? now - DEFAULT_TIME_RANGE_SECONDS
     const end = options.end ?? now
-    const step = options.step ?? 60
+    const step = options.step ?? DEFAULT_STEP_SECONDS
     const query = options.query
 
     const params = new URLSearchParams({
@@ -188,7 +205,7 @@ export const queryMetrics = (options: {
       ),
     )
 
-    if (response.status >= 400) {
+    if (response.status >= HTTP_ERROR_STATUS_THRESHOLD) {
       const text = yield* response.text.pipe(Effect.orElseSucceed(() => '<no body>'))
       // Check for TraceQL parse errors
       if (text.includes('parse error') || text.includes('syntax error')) {
@@ -421,7 +438,7 @@ const parsePrometheusMetrics = (text: string): CollectorMetrics => {
 
     // Parse HELP comments
     if (trimmed.startsWith('# HELP ')) {
-      const rest = trimmed.slice(7)
+      const rest = trimmed.slice(PROMETHEUS_HELP_PREFIX_LENGTH)
       const spaceIdx = rest.indexOf(' ')
       currentHelp = spaceIdx > 0 ? rest.slice(spaceIdx + 1) : undefined
       continue
@@ -429,7 +446,7 @@ const parsePrometheusMetrics = (text: string): CollectorMetrics => {
 
     // Parse TYPE comments
     if (trimmed.startsWith('# TYPE ')) {
-      const rest = trimmed.slice(7)
+      const rest = trimmed.slice(PROMETHEUS_TYPE_PREFIX_LENGTH)
       const parts = rest.split(' ')
       const typeStr = parts[1] ?? 'unknown'
       currentType =

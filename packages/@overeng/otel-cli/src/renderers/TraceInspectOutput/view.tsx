@@ -88,6 +88,16 @@ export const InspectView = ({ stateAtom }: InspectViewProps) => {
 const WATERFALL_WIDTH = 40
 const INDENT_SIZE = 2
 
+// Duration formatting thresholds
+const MILLISECOND_THRESHOLD = 1
+const MICROSECONDS_PER_MILLISECOND = 1000
+const MILLISECONDS_PER_SECOND = 1000
+const MILLISECONDS_PER_MINUTE = 60000
+
+// Status code values (OpenTelemetry spec)
+const STATUS_CODE_OK = 1
+const STATUS_CODE_ERROR = 2
+
 // =============================================================================
 // Header
 // =============================================================================
@@ -283,17 +293,18 @@ const WaterfallBar = ({
 
 /** Get color based on span status code. */
 const getStatusColor = (statusCode: number | undefined): ColorName => {
-  if (statusCode === 2) return 'red' // ERROR
-  if (statusCode === 1) return 'green' // OK
+  if (statusCode === STATUS_CODE_ERROR) return 'red'
+  if (statusCode === STATUS_CODE_OK) return 'green'
   return 'white' // UNSET
 }
 
 /** Format a duration in milliseconds to a human-readable string. */
 const formatDuration = (ms: number): string => {
-  if (ms < 1) return `${String(Math.round(ms * 1000))}µs`
-  if (ms < 1000) return `${String(Math.round(ms))}ms`
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
-  return `${(ms / 60000).toFixed(1)}m`
+  if (ms < MILLISECOND_THRESHOLD)
+    return `${String(Math.round(ms * MICROSECONDS_PER_MILLISECOND))}µs`
+  if (ms < MILLISECONDS_PER_SECOND) return `${String(Math.round(ms))}ms`
+  if (ms < MILLISECONDS_PER_MINUTE) return `${(ms / MILLISECONDS_PER_SECOND).toFixed(1)}s`
+  return `${(ms / MILLISECONDS_PER_MINUTE).toFixed(1)}m`
 }
 
 /** Flatten a span tree into a flat list preserving depth. */

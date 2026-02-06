@@ -11,6 +11,25 @@ import { Data, Effect } from 'effect'
 import { OtelConfig } from './OtelConfig.ts'
 
 // =============================================================================
+// Constants
+// =============================================================================
+
+/** HTTP status code threshold for errors. */
+const HTTP_ERROR_STATUS_THRESHOLD = 400
+
+/** Conversion factor from milliseconds to nanoseconds. */
+const MILLISECONDS_TO_NANOSECONDS = 1_000_000n
+
+/** Test span duration in nanoseconds (100ms). */
+const TEST_SPAN_DURATION_NANOS = 100_000_000n
+
+/** OpenTelemetry span kind: INTERNAL. */
+const SPAN_KIND_INTERNAL = 1
+
+/** OpenTelemetry status code: OK. */
+const STATUS_CODE_OK = 1
+
+// =============================================================================
 // Errors
 // =============================================================================
 
@@ -50,7 +69,7 @@ export const checkHealth = (): Effect.Effect<
       ),
     )
 
-    return response.status < 400
+    return response.status < HTTP_ERROR_STATUS_THRESHOLD
   }).pipe(Effect.withSpan('CollectorClient.checkHealth'))
 
 /**
@@ -67,8 +86,10 @@ export const sendTestSpan = (options: {
     const config = yield* OtelConfig
     const client = yield* HttpClient.HttpClient
 
-    const nowNano = String(BigInt(Date.now()) * 1_000_000n)
-    const endNano = String(BigInt(Date.now()) * 1_000_000n + 100_000_000n) // +100ms
+    const nowNano = String(BigInt(Date.now()) * MILLISECONDS_TO_NANOSECONDS)
+    const endNano = String(
+      BigInt(Date.now()) * MILLISECONDS_TO_NANOSECONDS + TEST_SPAN_DURATION_NANOS,
+    )
 
     const body = {
       resourceSpans: [
@@ -88,10 +109,10 @@ export const sendTestSpan = (options: {
                   traceId: options.traceId,
                   spanId: options.spanId,
                   name: options.spanName,
-                  kind: 1,
+                  kind: SPAN_KIND_INTERNAL,
                   startTimeUnixNano: nowNano,
                   endTimeUnixNano: endNano,
-                  status: { code: 1 },
+                  status: { code: STATUS_CODE_OK },
                 },
               ],
             },
@@ -126,7 +147,7 @@ export const sendTestSpan = (options: {
       ),
     )
 
-    if (response.status >= 400) {
+    if (response.status >= HTTP_ERROR_STATUS_THRESHOLD) {
       const text = yield* response.text.pipe(Effect.orElseSucceed(() => '<no body>'))
       return yield* new CollectorError({
         reason: 'RequestFailed',
