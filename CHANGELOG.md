@@ -8,6 +8,33 @@ All notable changes to this project will be documented in this file.
 
 - **@overeng/genie**: Validate `pnpmWorkspaceYaml` rejects absolute paths in `packages` during `genie:check` (#152)
 
+- **@overeng/otel-cli**: New Effect CLI package for OTEL stack diagnostics and trace exploration
+  - `otel health` — per-component health status (Grafana, Tempo, Collector)
+  - `otel trace ls` — tabular trace listing with TraceQL query filtering
+  - `otel trace inspect` — span tree with ASCII waterfall visualization
+  - `otel metrics ls/query/tags` — TraceQL metrics querying with sparkline rendering
+  - `otel api` — raw HTTP calls to Grafana, Tempo, Collector APIs
+  - `otel debug test/dashboards` — E2E smoke tests and dashboard inspection
+
+- **devenv/otel.nix**: Full OTEL observability stack as reusable devenv module
+  - OTEL Collector + Grafana Tempo + Grafana with hash-based deterministic port allocation
+  - Auto-provisioned dashboards via Grafonnet (Jsonnet DSL) build pipeline
+  - `otel-span` shell helper for wrapping commands in OTLP trace spans
+  - Compatible with Effect OTEL layers (same env var/protocol)
+
+- **devenv/tasks/lib/trace.nix**: Task tracing helper with cache status tracking
+  - `trace.exec` wraps task exec scripts with `otel-span` for child span emission
+  - `trace.status` emits spans with `task.cached=true` for cached tasks
+  - Applied to all shared task modules (ts, genie, lint, pnpm, test, megarepo, etc.)
+
+- **devenv/otel/dashboards**: 6 Grafonnet dashboards with manual grid positioning
+  - Overview, dt Task Performance, Shell Entry, pnpm Install Deep-Dive, TS App Traces, dt Duration Trends
+  - dt-tasks dashboard with cache status filtering (executed vs cached)
+
+- **@overeng/utils**: `node/otel-cli` module for Effect-native OTEL instrumentation in CLI apps
+  - `makeOtelCliLayer()` wires OTLP exporter with W3C TRACEPARENT propagation from `dt` tasks
+  - Zero overhead when `OTEL_EXPORTER_OTLP_ENDPOINT` is not set
+
 - **devenv**: Netlify deploy tasks for storybook preview deployments
   - New shared `netlify.nix` task module with `netlify:deploy:<name>` per-package tasks
   - Supports prod, PR preview (alias), and local draft deploy modes via `--input` flags
@@ -40,6 +67,14 @@ All notable changes to this project will be documented in this file.
   - Previously, typed errors (e.g. `GenieGenerationFailedError`) caused `ParseError: Expected never` during JSON encoding, masking the real error
 
 ### Changed
+
+- **devenv/tasks**: Optimized `check:quick` by prioritizing utils package install
+  - Moved utils and utils-dev to front of install queue for earlier `ts:patch-lsp` start
+  - `check:quick` improved from ~18-28s to ~14-15s through better task parallelism
+
+- **devenv/ts.nix**: Per-project tsc tracing via `--extendedDiagnostics` parsing
+  - When OTEL is available, `ts:check` and `ts:build` emit per-project child spans with timing attributes
+  - ~3% overhead when active, zero overhead when OTEL unavailable
 
 - **@overeng/tui-react**, **@overeng/megarepo**, **@overeng/notion-cli**, **@overeng/genie**: Migrated all consumers to standalone `run` API (#129)
   - All command files now use `run(App, handler, { view })` instead of manual `Effect.scoped` + `app.run()`

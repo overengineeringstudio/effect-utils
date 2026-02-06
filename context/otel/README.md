@@ -48,80 +48,33 @@ otel-span dt ts:check -- tsc --noEmit
 
 The `dt` wrapper calls `otel-span` automatically -- no manual wrapping needed for task runs.
 
-### `otel-check` -- Diagnose the stack
+### `otel` CLI -- Diagnose and explore the stack
 
-CLI diagnostic tool using Grafana's HTTP API (anonymous auth, no tokens needed):
+The `@overeng/otel-cli` package provides a full Effect CLI for OTEL stack management:
 
 ```bash
-# Full health check (Grafana + Tempo + Collector + dashboards)
-otel-check
+# Health check (Grafana + Tempo + Collector)
+otel health
 
-# List all provisioned dashboards with URLs
-otel-check dashboards
+# List recent traces
+otel trace ls
 
-# Validate each dashboard (panel count, datasource refs, template vars)
-otel-check dashboards --validate
+# Inspect a trace with span tree + waterfall
+otel trace inspect <trace-id>
+otel trace inspect              # auto-resolves most recent trace
 
-# Query Tempo for recent traces (excludes internal Tempo traces)
-otel-check traces
+# Query metrics
+otel metrics ls                 # list available metrics
+otel metrics query '{...}'      # TraceQL metrics query
+otel metrics tags               # available span attributes
 
-# Query with custom TraceQL filter
-otel-check traces '{resource.service.name="dt"}'
+# Raw API calls
+otel api grafana GET /api/search
+otel api tempo GET /api/search -q limit=10
 
-# End-to-end smoke test: send span → Collector → Tempo → query back
-otel-check send-test
-
-# Show configured datasources
-otel-check datasources
-```
-
-Example output of `otel-check`:
-
-```
-OTEL Stack Health
-
-Grafana (http://127.0.0.1:56608)
-  ✓ Healthy (v12.3.2, db=ok)
-  ✓ 5 dashboards provisioned
-  ✓ Tempo datasource: Tempo (uid=tempo)
-
-Tempo (http://127.0.0.1:56607)
-  ✓ Ready
-
-OTEL Collector (http://127.0.0.1:56605)
-  ✓ Healthy (metrics endpoint)
-```
-
-Example output of `otel-check dashboards --validate`:
-
-```
-Provisioned Dashboards
-
-  ✓ dt Task Performance (otel-dt-tasks): 15 panels, all valid
-  ✓ OTEL Overview (otel-overview): 9 panels, all valid
-  ✓ pnpm Install Deep-Dive (otel-pnpm-install): 10 panels, all valid
-  ✓ Shell Entry Performance (otel-shell-entry): 7 panels, all valid
-  ✓ TS App Traces (otel-ts-app-traces): 10 panels, all valid
-
-  ✓ All 5 dashboards validated successfully
-```
-
-Example output of `otel-check send-test`:
-
-```
-End-to-End Smoke Test
-
-  → Checking stack health...
-  ✓ Grafana reachable
-  ✓ Tempo ready
-  ✓ Collector reachable
-
-  → Sending test span (trace_id=16be05cf...)...
-  ✓ Span sent to Collector (HTTP 200)
-  → Waiting for ingestion (2s for batch + flush)...
-
-  ✓ Trace found in Tempo after 1 attempt(s)
-  ✓ End-to-end verified: otel-span → Collector → Tempo → Grafana query
+# Debug commands
+otel debug test                 # E2E smoke test (send span → verify)
+otel debug dashboards           # list provisioned dashboards
 ```
 
 ## Processes
