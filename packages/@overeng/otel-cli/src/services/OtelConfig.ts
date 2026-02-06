@@ -8,6 +8,17 @@
 import { Context, Effect, Layer } from 'effect'
 
 // =============================================================================
+// Constants
+// =============================================================================
+
+/**
+ * Port offsets for OTEL stack services.
+ * Base port scheme: +0=Collector, +1=Tempo gRPC, +2=Tempo HTTP, +3=Grafana, +4=Metrics, +5=Tempo internal gRPC
+ */
+const TEMPO_QUERY_PORT_OFFSET = 2
+const METRICS_PORT_OFFSET = 4
+
+// =============================================================================
 // Types
 // =============================================================================
 
@@ -46,23 +57,26 @@ export class OtelConfig extends Context.Tag('OtelConfig')<OtelConfig, OtelConfig
 
       if (collectorUrl === undefined || collectorUrl.length === 0) {
         return yield* Effect.die(
-          new Error('OTEL_EXPORTER_OTLP_ENDPOINT is not set. Is the OTEL devenv module enabled?'),
+          new Error(
+            'OTEL endpoint not configured. Enable the OTEL devenv module or set OTEL_EXPORTER_OTLP_ENDPOINT.',
+          ),
         )
       }
 
       if (grafanaUrl === undefined || grafanaUrl.length === 0) {
         return yield* Effect.die(
-          new Error('OTEL_GRAFANA_URL is not set. Is the OTEL devenv module enabled?'),
+          new Error(
+            'Grafana URL not configured. Enable the OTEL devenv module or set OTEL_GRAFANA_URL.',
+          ),
         )
       }
 
       // Derive other URLs from the collector base port.
-      // Port scheme: +0=Collector, +1=Tempo gRPC, +2=Tempo HTTP, +3=Grafana, +4=Metrics, +5=Tempo internal gRPC
       const collectorPort = new URL(collectorUrl).port
       const basePort = parseInt(collectorPort, 10)
 
-      const tempoQueryUrl = `http://127.0.0.1:${String(basePort + 2)}`
-      const metricsUrl = `http://127.0.0.1:${String(basePort + 4)}`
+      const tempoQueryUrl = `http://127.0.0.1:${String(basePort + TEMPO_QUERY_PORT_OFFSET)}`
+      const metricsUrl = `http://127.0.0.1:${String(basePort + METRICS_PORT_OFFSET)}`
 
       return {
         collectorUrl,
