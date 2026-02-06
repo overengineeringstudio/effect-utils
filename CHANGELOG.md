@@ -20,6 +20,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **CI/storybook**: Fix storybook builds used by Netlify preview deploys
+  - Stub `@opentui/*` in `@overeng/genie` Storybook build (OpenTUI requires Bun runtime)
+  - Fix `@overeng/tui-react` examples importing `src/mod.ts` (actual entry is `src/mod.tsx`)
+
 - **@overeng/tui-react**: Fix `OutputCauseSchema` using `Schema.Never` for error field (#129)
   - Changed `error: Schema.Never` to `error: Schema.Defect` in `OutputCauseSchema`
   - Previously, typed errors (e.g. `GenieGenerationFailedError`) caused `ParseError: Expected never` during JSON encoding, masking the real error

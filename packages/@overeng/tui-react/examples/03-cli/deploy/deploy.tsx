@@ -8,8 +8,8 @@ import { Schema } from 'effect'
 import { Duration, Effect } from 'effect'
 import React from 'react'
 
-import type { OutputModeTag, TuiAppApi } from '../../../src/mod.ts'
-import { createTuiApp, run } from '../../../src/mod.ts'
+import type { OutputModeTag, TuiAppApi } from '../../../src/mod.tsx'
+import { createTuiApp, run } from '../../../src/mod.tsx'
 import {
   DeployState,
   DeployAction,

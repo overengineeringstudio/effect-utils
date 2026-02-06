@@ -19,7 +19,7 @@ import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Effect } from 'effect'
 import React from 'react'
 
-import { createTuiApp, run } from '../../src/mod.ts'
+import { createTuiApp, run } from '../../src/mod.tsx'
 import { outputOption, outputModeLayer } from '../../src/node/mod.ts'
 // Import from shared modules
 import { AppState, AppAction, appReducer } from './schema.ts'

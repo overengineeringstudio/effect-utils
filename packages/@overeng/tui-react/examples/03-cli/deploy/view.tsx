@@ -5,7 +5,7 @@
 import { Atom } from '@effect-atom/atom'
 import React, { useMemo } from 'react'
 
-import { Box, Text, Spinner, Static, useTuiAtomValue } from '../../../src/mod.ts'
+import { Box, Text, Spinner, Static, useTuiAtomValue } from '../../../src/mod.tsx'
 import type { DeployState, LogEntry, ServiceProgress, ServiceResult } from './schema.ts'
 
 // =============================================================================

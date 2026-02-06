@@ -1,7 +1,7 @@
 import { Atom } from '@effect-atom/atom'
 import React, { useMemo } from 'react'
 
-import { Box, Text, useTuiAtomValue } from '../../src/mod.ts'
+import { Box, Text, useTuiAtomValue } from '../../src/mod.tsx'
 import type { AppState, Window, Color } from './schema.ts'
 
 /** Renders bouncing windows with colored borders and live system stats using canvas-based rendering. */

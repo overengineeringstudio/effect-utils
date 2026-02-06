@@ -14,13 +14,6 @@ const jobDefaults = {
   },
 } as const
 
-// For jobs that invoke `devenv` directly (without entering a devenv shell).
-const bashDefaults = {
-  run: {
-    shell: 'bash',
-  },
-} as const
-
 const baseSteps = [
   { uses: 'actions/checkout@v4' },
   {
@@ -48,20 +41,6 @@ const baseSteps = [
     name: 'Install devenv',
     // Install devenv from the commit pinned in devenv.lock to ensure version consistency
     run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)',
-    shell: 'bash',
-  },
-  {
-    name: 'Verify devenv shell',
-    // Pre-evaluate devenv shell and repair nix store if needed.
-    // Namespace runners can have stale store paths ("path is not valid")
-    // due to garbage collection between jobs.
-    run: [
-      'if ! devenv shell -- true; then',
-      '  echo "::warning::Nix store has invalid paths, repairing..."',
-      '  nix-store --verify --check-contents --repair 2>/dev/null || true',
-      '  devenv shell -- true',
-      'fi',
-    ].join('\n'),
     shell: 'bash',
   },
 ] as const
@@ -119,9 +98,7 @@ const deployJobs = {
   'deploy-storybooks': {
     'runs-on': namespaceRunner('namespace-profile-linux-x86-64', '${{ github.run_id }}'),
     needs: ['typecheck', 'lint', 'test'],
-    // Avoid `devenv shell ...` here: it can fail due to invalid cached store paths on CI runners.
-    // Running tasks via `devenv tasks run` is sufficient.
-    defaults: bashDefaults,
+    defaults: jobDefaults,
     env: {
       FORCE_SETUP: '1',
       CI: 'true',
@@ -130,24 +107,12 @@ const deployJobs = {
     steps: [
       ...baseSteps,
       {
-        name: 'Build storybooks',
-        // Build all storybooks, allowing individual failures.
-        // Storybooks that fail to build will be skipped during deploy.
-        run: 'devenv tasks run storybook:build --mode before || true',
-      },
-      {
-        name: 'Install netlify-cli',
-        // Pre-install to avoid bunx cache contention when
-        // multiple deploy tasks run in parallel.
-        run: 'bunx netlify-cli --version',
-      },
-      {
         name: 'Deploy storybooks to Netlify',
         run: [
           'if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then',
-          '  devenv tasks run netlify:deploy --mode before --input type=prod',
+          '  dt netlify:deploy --input type=prod',
           'elif [ "${{ github.event_name }}" = "pull_request" ]; then',
-          '  devenv tasks run netlify:deploy --mode before --input type=pr --input pr=${{ github.event.pull_request.number }}',
+          '  dt netlify:deploy --input type=pr --input pr=${{ github.event.pull_request.number }}',
           'fi',
         ].join('\n'),
       },
