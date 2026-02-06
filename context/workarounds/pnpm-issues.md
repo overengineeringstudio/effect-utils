@@ -244,3 +244,32 @@ and cache invalidation works automatically.
 
 - Centralize React devDependencies in a shared tooling package
 - Add a lint/check rule to prevent direct 'react' imports in CLI packages
+
+## Issue: Broken Symlinks in CI Causing oxfmt Crashes
+
+In CI (GitHub Actions), `pnpm install` can occasionally produce broken symlinks inside
+nested `node_modules/` directories. When `oxfmt --check packages` traverses the directory
+tree, it crashes on these broken symlinks before it can apply its default `node_modules`
+skip logic:
+
+```
+File not found: packages/@overeng/effect-rpc-tanstack/examples/basic/node_modules/@overeng/utils/node_modules/effect/src/internal/trie.ts
+```
+
+### Observations
+
+- **Not reproducible locally or on dev3** - only seen in CI environments
+- **Transient** - re-running the failed CI job typically succeeds
+- **oxfmt skips `node_modules/` by default** (opt-in via `--with-node-modules`), but the
+  crash occurs during filesystem traversal before the skip logic applies
+- **oxlint is unaffected** - it handles broken symlinks gracefully
+- **`lintPaths` configuration is fine** - `[ "packages" "scripts" "context" ]` is correct;
+  the issue is in oxfmt's symlink handling, not the paths
+
+### Workaround
+
+Re-run the failed CI job. If it recurs frequently, consider:
+
+- Filing an upstream oxfmt bug for broken symlink handling
+- Wrapping the oxfmt invocation with `find ... -prune` to avoid `node_modules/` at the
+  filesystem level instead of relying on oxfmt's internal skip

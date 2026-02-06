@@ -152,9 +152,7 @@ export {
   altScreen,
   json,
   ndjson,
-  // Detection
-  detectOutputMode,
-  // Environment helpers
+  // Environment helpers (browser-safe)
   isTTY,
   isNonTTY,
   // Type guards
@@ -174,7 +172,6 @@ export {
   altScreenLayer,
   jsonLayer,
   ndjsonLayer,
-  detectLayer,
 } from './effect/OutputMode.tsx'
 
 // =============================================================================
@@ -357,14 +354,6 @@ export {
 // =============================================================================
 // Effect CLI Integration
 // =============================================================================
-
-export {
-  outputOption,
-  outputModeLayer,
-  resolveOutputMode,
-  runTuiMain,
-  OUTPUT_MODE_VALUES,
-  type OutputModeValue,
-  type RunTuiMainOptions,
-  type TuiRuntime,
-} from './effect/cli.tsx'
+// Node.js-specific CLI exports (outputOption, outputModeLayer, runTuiMain, etc.)
+// have been moved to '@overeng/tui-react/node' to keep this entry point
+// browser-safe for Storybook and other browser environments.

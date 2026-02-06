@@ -9,15 +9,8 @@ import { Effect, Duration, Schema } from 'effect'
 import React from 'react'
 import { describe, expect, beforeEach, afterEach } from 'vitest'
 
-import {
-  createTuiApp,
-  run,
-  useTuiAtomValue,
-  detectOutputMode,
-  Box,
-  Text,
-  testModeLayer,
-} from '../../src/mod.tsx'
+import { detectOutputMode } from '../../src/effect/OutputMode.node.ts'
+import { createTuiApp, run, useTuiAtomValue, Box, Text, testModeLayer } from '../../src/mod.tsx'
 
 const parseJson = (json: string) =>
   Schema.decodeSync(

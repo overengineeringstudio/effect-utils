@@ -15,7 +15,8 @@ import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Duration, Effect } from 'effect'
 import React from 'react'
 
-import { createTuiApp, run, outputOption, outputModeLayer } from '../../src/mod.ts'
+import { createTuiApp, run } from '../../src/mod.ts'
+import { outputOption, outputModeLayer } from '../../src/node/mod.ts'
 import { TaskRunnerState, TaskRunnerAction, taskRunnerReducer } from './schema.ts'
 import { TaskRunnerView } from './view.tsx'
 

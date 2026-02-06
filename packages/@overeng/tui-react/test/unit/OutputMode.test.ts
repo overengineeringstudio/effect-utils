@@ -15,11 +15,6 @@ import {
   altScreen,
   json,
   ndjson,
-  // Detection
-  detectOutputMode,
-  isAgentEnv,
-  isPiped,
-  isRedirectedToFile,
   // Type guards
   isReact,
   isJson,
@@ -33,6 +28,13 @@ import {
   ttyLayer,
   jsonLayer,
 } from '../../src/effect/OutputMode.tsx'
+import {
+  // Detection (Node-only)
+  detectOutputMode,
+  isAgentEnv,
+  isPiped,
+  isRedirectedToFile,
+} from '../../src/effect/OutputMode.node.ts'
 
 import { resolveOutputMode } from '../../src/effect/cli.tsx'
 

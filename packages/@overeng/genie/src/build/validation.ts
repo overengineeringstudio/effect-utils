@@ -2,11 +2,11 @@ import { type Error as PlatformError, FileSystem, Path } from '@effect/platform'
 import { Effect } from 'effect'
 
 import type { GenieContext } from '../runtime/mod.ts'
-import { buildPackageJsonValidationContext } from '../runtime/package-json/context.ts'
 import { formatValidationIssues, type ValidationIssue } from '../runtime/package-json/validation.ts'
 import type { GenieValidationIssue } from '../runtime/validation/mod.ts'
 import { findGenieFiles } from './discovery.ts'
 import { GenieImportError, GenieValidationError } from './errors.ts'
+import { buildPackageJsonValidationContext } from './package-json-context.ts'
 import { resolveWorkspaceProvider } from './workspace.ts'
 
 const importGenieOutput = Effect.fn('genie/importGenieOutput')(function* ({

@@ -22,6 +22,7 @@ export default packageJson({
   ...privatePackageDefaults,
   exports: {
     '.': './src/mod.tsx',
+    './node': './src/node/mod.ts',
     './storybook': './src/storybook/mod.tsx',
     './opentui': './src/effect/opentui/mod.tsx',
   },
@@ -35,6 +36,7 @@ export default packageJson({
     access: 'public',
     exports: {
       '.': './dist/mod.js',
+      './node': './dist/node/mod.js',
       './storybook': './dist/storybook/mod.js',
       './opentui': './dist/effect/opentui/mod.js',
     },

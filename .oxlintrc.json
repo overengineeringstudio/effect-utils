@@ -150,6 +150,18 @@
       }
     },
     {
+      "files": ["**/genie/src/runtime/**"],
+      "rules": {
+        "overeng/no-external-imports": "error"
+      }
+    },
+    {
+      "files": ["**/genie/src/runtime/**/*.test.ts"],
+      "rules": {
+        "overeng/no-external-imports": "off"
+      }
+    },
+    {
       "files": ["**/react-inspector/**"],
       "rules": {
         "func-style": "off",

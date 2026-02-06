@@ -20,16 +20,8 @@ import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Effect, Schema } from 'effect'
 import React, { useMemo } from 'react'
 
-import {
-  createTuiApp,
-  run,
-  outputModeLayer,
-  Box,
-  Text,
-  Spinner,
-  useViewport,
-  useTuiAtomValue,
-} from '../src/mod.tsx'
+import { createTuiApp, run, Box, Text, Spinner, useViewport, useTuiAtomValue } from '../src/mod.tsx'
+import { outputModeLayer } from '../src/node/mod.ts'
 
 // =============================================================================
 // State & Actions
