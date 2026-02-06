@@ -95,6 +95,7 @@ let
   '';
 
   # All dashboards as a linkFarm (Nix store path with JSON files)
+  # NOTE: dashboardNames order determines build; add/remove to force rebuild
   dashboardNames = [ "overview" "dt-tasks" "dt-duration-trends" "shell-entry" "pnpm-install" "ts-app-traces" ];
   allDashboards = pkgs.linkFarm "otel-dashboards" (map (name: {
     name = "${name}.json";
