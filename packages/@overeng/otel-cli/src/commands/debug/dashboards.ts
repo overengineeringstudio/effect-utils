@@ -7,7 +7,7 @@
 import * as Cli from '@effect/cli'
 import { Effect } from 'effect'
 
-import { outputModeLayer, outputOption } from '@overeng/tui-react'
+import { outputModeLayer, outputOption } from '@overeng/tui-react/node'
 
 import { listDashboards, listDatasources } from '../../services/GrafanaClient.ts'
 

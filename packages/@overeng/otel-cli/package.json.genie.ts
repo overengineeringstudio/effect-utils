@@ -1,7 +1,6 @@
 import {
   catalog,
   effectLspDevDeps,
-  effectLspScripts,
   packageJson,
   privatePackageDefaults,
   type PackageJsonData,
@@ -17,7 +16,6 @@ export default packageJson({
   name: '@overeng/otel-cli',
   ...privatePackageDefaults,
   scripts: {
-    ...effectLspScripts,
     storybook: 'storybook dev -p 6013',
     'storybook:build': 'storybook build',
   },

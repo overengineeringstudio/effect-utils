@@ -8,7 +8,7 @@ import * as Cli from '@effect/cli'
 import { Effect, Option } from 'effect'
 import React from 'react'
 
-import { outputModeLayer, outputOption } from '@overeng/tui-react'
+import { outputModeLayer, outputOption } from '@overeng/tui-react/node'
 
 import { QueryApp, QueryView } from '../../renderers/MetricsQueryOutput/mod.ts'
 import { queryMetrics } from '../../services/MetricsClient.ts'

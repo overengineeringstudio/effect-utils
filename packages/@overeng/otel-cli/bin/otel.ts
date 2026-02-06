@@ -5,7 +5,7 @@ import { FetchHttpClient } from '@effect/platform'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Effect, Layer } from 'effect'
 
-import { runTuiMain } from '@overeng/tui-react'
+import { runTuiMain } from '@overeng/tui-react/node'
 import { makeOtelCliLayer } from '@overeng/utils/node/otel-cli'
 
 import { otelCommand } from '../src/cli.ts'

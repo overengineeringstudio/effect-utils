@@ -16,7 +16,7 @@ mkPnpmCli {
   smokeTestArgs = [];
   # Managed by `dt nix:hash:otel-cli` — do not edit manually.
   pnpmDepsHash = "sha256-QgyRUS2pBhp44BkrZUuVb/hVAYUalq0Aeuooyzea5YM=";
-  lockfileHash = "sha256-3k6hdK8jBBcBVbpfVkYgTdz/oEFStO7IWqE2sCseg8g=";
+  lockfileHash = "sha256-6Zww34YZgzSsZXjAAjjDsxFhCX82tPeaN1R1YCRp4mA=";
   packageJsonDepsHash = "sha256-EKqAx1VuDdi8BOR+eq+fxCKehKj2SnqB4bXyJSPVuEs=";
   inherit gitRev commitTs dirty;
 }

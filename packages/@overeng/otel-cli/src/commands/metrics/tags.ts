@@ -8,7 +8,7 @@ import * as Cli from '@effect/cli'
 import { Effect, Option } from 'effect'
 import React from 'react'
 
-import { outputModeLayer, outputOption } from '@overeng/tui-react'
+import { outputModeLayer, outputOption } from '@overeng/tui-react/node'
 
 import { LsApp, LsView, type MetricSummary } from '../../renderers/MetricsLsOutput/mod.ts'
 import { getTags, getTagValues } from '../../services/MetricsClient.ts'

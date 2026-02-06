@@ -9,7 +9,7 @@ import * as Cli from '@effect/cli'
 import { Effect } from 'effect'
 import React from 'react'
 
-import { outputModeLayer, outputOption } from '@overeng/tui-react'
+import { outputModeLayer, outputOption } from '@overeng/tui-react/node'
 
 import { DebugTestApp, DebugTestView, type TestStep } from '../../renderers/DebugTestOutput/mod.ts'
 import { sendTestSpan } from '../../services/CollectorClient.ts'

@@ -8,7 +8,7 @@ import * as Cli from '@effect/cli'
 import { Effect } from 'effect'
 import React from 'react'
 
-import { outputModeLayer, outputOption } from '@overeng/tui-react'
+import { outputModeLayer, outputOption } from '@overeng/tui-react/node'
 
 import { HealthApp, HealthView, type ComponentHealth } from '../renderers/HealthOutput/mod.ts'
 import { checkHealth as checkCollectorHealth } from '../services/CollectorClient.ts'

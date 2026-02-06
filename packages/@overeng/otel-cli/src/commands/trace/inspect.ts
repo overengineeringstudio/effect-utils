@@ -10,7 +10,7 @@ import type { HttpClient } from '@effect/platform'
 import { Effect, Option } from 'effect'
 import React from 'react'
 
-import { outputModeLayer, outputOption } from '@overeng/tui-react'
+import { outputModeLayer, outputOption } from '@overeng/tui-react/node'
 
 import { buildSpanTree } from '../../lib/span-tree.ts'
 import { InspectApp, InspectView } from '../../renderers/TraceInspectOutput/mod.ts'
@@ -62,7 +62,7 @@ export const inspectCommand = Cli.Command.make(
               error: error.reason,
               message: error.message,
             })
-            return yield* Effect.fail(error)
+            return yield* error
           }),
         )
 
