@@ -171,8 +171,6 @@ in
         "packages/@overeng/*/examples/*/src/**/*.ts"
         "packages/@overeng/*/examples/*/src/**/*.tsx"
         "packages/@overeng/*/examples/*/tests/*.ts"
-        "packages/@overeng/*/examples/**/*.ts"
-        "packages/@overeng/*/examples/**/*.tsx"
         # scripts
         "scripts/*.ts"
         "scripts/commands/**/*.ts"
