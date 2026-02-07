@@ -197,7 +197,7 @@ in
       requiredTasks = [ ];
       # Keep shell entry resilient (R12): optional tasks run via @complete.
       # Ordering ensures source CLIs have deps before use.
-      optionalTasks = [ "pnpm:install" "genie:run" "megarepo:sync" "ts:build" "beads:daemon:ensure" ];
+      optionalTasks = [ "pnpm:install" "genie:run" "megarepo:sync" "ts:build" ];
       completionsCliNames = [ "genie" "mr" ];
     })
     # Nix CLI build and hash management
@@ -225,6 +225,13 @@ in
   tasks."genie:watch".after = [ "pnpm:install:genie" ];
   tasks."genie:check".after = [ "pnpm:install:genie" ];
   tasks."megarepo:sync".after = [ "pnpm:install:megarepo" ];
+
+  # TODO: After merging overeng-beads-public PR #1 and updating the flake input,
+  # wire beads:daemon:ensure directly to shell entry (not via optionalTasks).
+  # The setup module's gitHashStatus cache would prevent re-checking the daemon
+  # after it stops without a new commit. The beads module's own status check
+  # (is daemon running?) is the correct gate for this task.
+  # tasks."devenv:enterShell".after = [ "beads:daemon:ensure" ];
 
   # Repo-local pnpm store for consistent local installs (not used by Nix builds).
   env.PNPM_STORE_DIR = "${config.devenv.root}/.pnpm-store";
