@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/genie**: Validate `pnpmWorkspaceYaml` rejects absolute paths in `packages` during `genie:check` (#152)
+
 - **devenv**: Netlify deploy tasks for storybook preview deployments
   - New shared `netlify.nix` task module with `netlify:deploy:<name>` per-package tasks
   - Supports prod, PR preview (alias), and local draft deploy modes via `--input` flags
