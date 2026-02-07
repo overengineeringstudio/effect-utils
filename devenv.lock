@@ -110,40 +110,6 @@
         "type": "github"
       }
     },
-    "nixpkgs_2": {
-      "locked": {
-        "lastModified": 1770197578,
-        "narHash": "sha256-AYqlWrX09+HvGs8zM6ebZ1pwUqjkfpnv8mewYwAo+iM=",
-        "owner": "NixOS",
-        "repo": "nixpkgs",
-        "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-        "type": "github"
-      },
-      "original": {
-        "owner": "NixOS",
-        "ref": "nixos-unstable",
-        "repo": "nixpkgs",
-        "type": "github"
-      }
-    },
-    "overeng-beads-public": {
-      "inputs": {
-        "nixpkgs": "nixpkgs_2"
-      },
-      "locked": {
-        "lastModified": 1770389392,
-        "narHash": "sha256-/X/oF1J2AagNEZkxcEFWSgKbZNe44RBXye/9m4tIrRg=",
-        "owner": "overengineeringstudio",
-        "repo": "overeng-beads-public",
-        "rev": "ba138d8f442da625de73e3e7c68be0e83c577a57",
-        "type": "github"
-      },
-      "original": {
-        "owner": "overengineeringstudio",
-        "repo": "overeng-beads-public",
-        "type": "github"
-      }
-    },
     "playwright": {
       "inputs": {
         "nixpkgs": [
@@ -188,7 +154,6 @@
         "devenv": "devenv",
         "git-hooks": "git-hooks",
         "nixpkgs": "nixpkgs",
-        "overeng-beads-public": "overeng-beads-public",
         "playwright": "playwright"
       }
     },

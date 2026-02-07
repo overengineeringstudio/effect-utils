@@ -20,19 +20,19 @@ We use [beads](https://github.com/steveyegge/beads) (`bd`) as a git-backed issue
 │  ├── schickling.dev/   → uses schickling-beads              │
 │  └── ...                                                     │
 │                                                              │
-│  Module Host:                                                │
-│  └── overeng-beads-public/nix/devenv-module.nix             │
-│      (reusable devenv module for daemon + commit correlation)│
+│  Devenv Module (in effect-utils):                            │
+│  └── nix/devenv-modules/tasks/shared/beads.nix              │
+│      (daemon, sync, commit correlation, BEADS_DIR export)   │
 │                                                              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ## Beads Repos
 
-| Repo                   | Visibility | Prefix | Purpose                                  |
-| ---------------------- | ---------- | ------ | ---------------------------------------- |
-| `overeng-beads-public` | Public     | `eu`   | Overengineering projects + devenv module |
-| `schickling-beads`     | Private    | `sch`  | Personal projects                        |
+| Repo                   | Visibility | Prefix | Purpose                               |
+| ---------------------- | ---------- | ------ | ------------------------------------- |
+| `overeng-beads-public` | Public     | `eu`   | Overengineering projects (issue data) |
+| `schickling-beads`     | Private    | `sch`  | Personal projects                     |
 
 ## Key Principles
 
@@ -44,7 +44,7 @@ We use [beads](https://github.com/steveyegge/beads) (`bd`) as a git-backed issue
 
 ### 2. Commit correlation via devenv
 
-- Code repos import the devenv module from `overeng-beads-public`
+- Code repos use the shared beads devenv module from `effect-utils`
 - Hook detects issue references in format `(prefix-xxx)`
 - Adds comment to beads issue with commit SHA + message
 
@@ -61,13 +61,12 @@ We use [beads](https://github.com/steveyegge/beads) (`bd`) as a git-backed issue
 
 ```
 <megarepo-root>/
-├── overeng-beads-public/  # Public beads + devenv module
-│   ├── .beads/
-│   ├── nix/devenv-module.nix
-│   └── flake.nix
+├── overeng-beads-public/  # Public beads (issue data only)
+│   └── .beads/
 ├── schickling-beads/      # Private beads
 │   └── .beads/
-├── effect-utils/          # Code repo (no .beads/)
+├── effect-utils/          # Code repo + devenv module host
+│   └── nix/devenv-modules/tasks/shared/beads.nix
 └── ...
 ```
 
@@ -85,35 +84,32 @@ The beads devenv module runs a daemon for auto-sync (DB + JSONL, with JSONL as g
 }
 ```
 
-2. Add the flake input in `devenv.yaml`:
-
-```yaml
-inputs:
-  overeng-beads-public:
-    url: github:overengineeringstudio/overeng-beads-public
-```
-
-3. Import the module in `devenv.nix`:
+2. Import the beads module in `devenv.nix`:
 
 ```nix
-{ inputs, ... }: {
-  imports = [
-    # Beads integration: env vars, sync task, commit correlation hook
-    (inputs.overeng-beads-public.devenvModules.beads {
-      beadsPrefix = "oep";                   # or "sch" for personal projects
-      beadsRepoName = "overeng-beads-public"; # or "schickling-beads"
-      # beadsRepoPath = "repos/overeng-beads-public";  # default, can be overridden
-    })
-  ];
-}
+taskModules = {
+  beads = import ./nix/devenv-modules/tasks/shared/beads.nix;
+  # ...
+};
+
+imports = [
+  (taskModules.beads {
+    beadsPrefix = "oep";                   # or "sch" for personal projects
+    beadsRepoName = "overeng-beads-public"; # or "schickling-beads"
+    # beadsRepoPath = "repos/overeng-beads-public";  # default, can be overridden
+  })
+];
 ```
 
-> **Tip:** For local iteration on the module, temporarily switch to
-> `import ./repos/overeng-beads-public/nix/devenv-module.nix { ... }` (don't commit this).
+3. Wire `beads:daemon:ensure` to shell entry (outside `optionalTasks` to avoid git-hash caching):
+
+```nix
+tasks."devenv:enterShell".after = lib.mkAfter [ "beads:daemon:ensure" ];
+```
 
 This provides:
 
-- `bd` shell wrapper (runs from the beads repo)
+- `BEADS_DIR` env var (enables `bd` to work from anywhere, including via direnv)
 - `dt beads:daemon:ensure` task (starts daemon if not running, idempotent)
 - `dt beads:daemon:stop` task (stops daemon)
 - `dt beads:sync` task (git pull + commit + push JSONL changes)
@@ -124,7 +120,7 @@ This provides:
 ### Creating Issues
 
 ```bash
-# The `bd` wrapper runs from the beads repo automatically (no need to cd)
+# BEADS_DIR is set automatically — bd works from anywhere (no cd needed)
 bd create "Implement feature X" -p 1 -t feature -l pkg:effect-utils
 
 # Check ready work
@@ -152,7 +148,7 @@ dt beads:sync
 ### Viewing Issues
 
 ```bash
-# bd wrapper works from anywhere in the devenv
+# bd works from anywhere (BEADS_DIR is set)
 bd list
 
 # Filter by package
@@ -187,14 +183,15 @@ The hook:
 
 ### Environment Variables
 
-The beads devenv module sets these automatically:
+The beads devenv module exports these via `env` (available in tasks, shell, and direnv):
 
 ```bash
-BEADS_PREFIX="oep"           # Issue prefix (set by module)
-BEADS_REPO="$DEVENV_ROOT/repos/overeng-beads-public"  # Beads repo path
+BEADS_PREFIX="oep"                                           # Issue prefix
+BEADS_REPO="$DEVENV_ROOT/repos/overeng-beads-public"         # Beads repo path
+BEADS_DIR="$DEVENV_ROOT/repos/overeng-beads-public/.beads"   # Database discovery
 ```
 
-The `bd` shell wrapper cds to the beads repo automatically. When daemon is enabled, commands go through the daemon's RPC for serialized access.
+With `BEADS_DIR` set, `bd` discovers the database from anywhere — no wrapper script or shell function needed. This works with direnv (env vars survive export, unlike shell functions).
 
 ## Constraints
 
@@ -208,11 +205,11 @@ The `bd` shell wrapper cds to the beads repo automatically. When daemon is enabl
 
 This centralized pattern:
 
-| Benefit                           | Trade-off                                      |
-| --------------------------------- | ---------------------------------------------- |
-| No branch conflicts in code repos | Need to switch to beads repo for `bd` commands |
-| Single source of truth            | Commit correlation requires hook setup         |
-| Clean code repo history           | Issues not versioned with code                 |
+| Benefit                           | Trade-off                              |
+| --------------------------------- | -------------------------------------- |
+| No branch conflicts in code repos | Beads repo must be a megarepo member   |
+| Single source of truth            | Commit correlation requires hook setup |
+| Clean code repo history           | Issues not versioned with code         |
 
 ## Label Taxonomy
 

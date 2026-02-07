@@ -1,4 +1,4 @@
-{ pkgs, inputs, config, ... }:
+{ pkgs, inputs, config, lib, ... }:
 let
   cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
   # Use npm oxlint with NAPI bindings to enable JavaScript plugin support
@@ -25,6 +25,7 @@ let
     megarepo = ./nix/devenv-modules/tasks/shared/megarepo.nix;
     nix-cli = import ./nix/devenv-modules/tasks/shared/nix-cli.nix;
     context = ./nix/devenv-modules/tasks/shared/context.nix;
+    beads = import ./nix/devenv-modules/tasks/shared/beads.nix;
   };
   # Use bun source entrypoints for in-repo CLIs in devenv (flake builds stay strict).
   mkSourceCli = import ./nix/devenv-modules/lib/mk-source-cli.nix { inherit pkgs; };
@@ -91,8 +92,8 @@ let
 in
 {
   imports = [
-    # Beads integration: env vars, sync task, commit correlation hook
-    (inputs.overeng-beads-public.devenvModules.beads {
+    # Beads integration: bd wrapper, daemon, sync task, commit correlation hook
+    (taskModules.beads {
       beadsPrefix = "oep";
       beadsRepoName = "overeng-beads-public";
     })
@@ -226,12 +227,11 @@ in
   tasks."genie:check".after = [ "pnpm:install:genie" ];
   tasks."megarepo:sync".after = [ "pnpm:install:megarepo" ];
 
-  # TODO: After merging overeng-beads-public PR #1 and updating the flake input,
-  # wire beads:daemon:ensure directly to shell entry (not via optionalTasks).
+  # Wire beads:daemon:ensure directly to shell entry (not via optionalTasks).
   # The setup module's gitHashStatus cache would prevent re-checking the daemon
   # after it stops without a new commit. The beads module's own status check
   # (is daemon running?) is the correct gate for this task.
-  # tasks."devenv:enterShell".after = [ "beads:daemon:ensure" ];
+  tasks."devenv:enterShell".after = lib.mkAfter [ "beads:daemon:ensure" ];
 
   # Repo-local pnpm store for consistent local installs (not used by Nix builds).
   env.PNPM_STORE_DIR = "${config.devenv.root}/.pnpm-store";
