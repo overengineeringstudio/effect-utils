@@ -84,7 +84,11 @@ Vitest.describe('playwright/otel', () => {
       Effect.fnUntraced(function* () {
         process.env.OTEL_EXPORTER_OTLP_ENDPOINT = 'http://localhost:4318'
 
-        const layer = makeOtelPlaywrightLayer({ serviceName: 'test-pw' })
+        const layer = makeOtelPlaywrightLayer({
+          serviceName: 'test-pw',
+          shutdownTimeout: 100,
+          exportInterval: 60_000,
+        })
 
         const result = yield* Effect.withSpan('test-span')(currentParentSpanContextJson).pipe(
           Effect.provide(Layer.mergeAll(layer, FetchHttpClient.layer)),
@@ -109,7 +113,11 @@ Vitest.describe('playwright/otel', () => {
       Effect.fnUntraced(function* () {
         process.env.OTEL_EXPORTER_OTLP_ENDPOINT = 'http://localhost:4318'
 
-        const layer = makeOtelPlaywrightLayer({ serviceName: 'test-pw' })
+        const layer = makeOtelPlaywrightLayer({
+          serviceName: 'test-pw',
+          shutdownTimeout: 100,
+          exportInterval: 60_000,
+        })
 
         const result = yield* Effect.withSpan('test-span')(currentParentSpanContextJson).pipe(
           Effect.provide(Layer.mergeAll(layer, FetchHttpClient.layer)),
@@ -251,7 +259,10 @@ Vitest.describe('playwright/otel', () => {
         process.env.OTEL_EXPORTER_OTLP_ENDPOINT = 'http://localhost:4318'
         delete process.env[PW_SPAN_CONTEXT_ENV_VAR]
 
-        const layer = makeOtelPlaywrightLayer()
+        const layer = makeOtelPlaywrightLayer({
+          shutdownTimeout: 100,
+          exportInterval: 60_000,
+        })
 
         yield* Effect.gen(function* () {
           const tracer = yield* Effect.serviceOption(Tracer.Tracer)
@@ -280,7 +291,11 @@ Vitest.describe('playwright/otel', () => {
         process.env.CUSTOM_OTEL_ENDPOINT = 'http://localhost:4318'
         delete process.env[PW_SPAN_CONTEXT_ENV_VAR]
 
-        const layer = makeOtelPlaywrightLayer({ endpointEnvVar: 'CUSTOM_OTEL_ENDPOINT' })
+        const layer = makeOtelPlaywrightLayer({
+          endpointEnvVar: 'CUSTOM_OTEL_ENDPOINT',
+          shutdownTimeout: 100,
+          exportInterval: 60_000,
+        })
 
         yield* Effect.void.pipe(
           Effect.provide(Layer.mergeAll(layer, FetchHttpClient.layer)),
@@ -315,7 +330,7 @@ Vitest.describe('playwright/otel', () => {
         process.env.OTEL_EXPORTER_OTLP_ENDPOINT = 'http://localhost:4318'
         delete process.env[PW_SPAN_CONTEXT_ENV_VAR]
 
-        const layer = makeOtelPlaywrightLayer({ exportInterval: 500 })
+        const layer = makeOtelPlaywrightLayer({ exportInterval: 500, shutdownTimeout: 100 })
 
         yield* Effect.void.pipe(
           Effect.provide(Layer.mergeAll(layer, FetchHttpClient.layer)),
@@ -336,7 +351,10 @@ Vitest.describe('playwright/otel', () => {
         })
         process.env[PW_SPAN_CONTEXT_ENV_VAR] = validContext
 
-        const layer = makeOtelPlaywrightLayer()
+        const layer = makeOtelPlaywrightLayer({
+          shutdownTimeout: 100,
+          exportInterval: 60_000,
+        })
 
         yield* Effect.gen(function* () {
           const tracer = yield* Effect.serviceOption(Tracer.Tracer)
@@ -389,7 +407,11 @@ Vitest.describe('playwright/otel', () => {
         process.env.OTEL_EXPORTER_OTLP_ENDPOINT = 'http://localhost:4318'
         delete process.env[PW_SPAN_CONTEXT_ENV_VAR]
 
-        const layer = makeOtelPlaywrightLayer({ serviceName: 'parent-process' })
+        const layer = makeOtelPlaywrightLayer({
+          serviceName: 'parent-process',
+          shutdownTimeout: 100,
+          exportInterval: 60_000,
+        })
 
         // Simulate parent process
         const spanContextJson = yield* Effect.withSpan('parent-span')(
@@ -402,7 +424,11 @@ Vitest.describe('playwright/otel', () => {
           // Simulate child process reading the env var
           process.env[PW_SPAN_CONTEXT_ENV_VAR] = spanContextJson
 
-          const childLayer = makeOtelPlaywrightLayer({ serviceName: 'child-process' })
+          const childLayer = makeOtelPlaywrightLayer({
+            serviceName: 'child-process',
+            shutdownTimeout: 100,
+            exportInterval: 60_000,
+          })
 
           yield* Effect.gen(function* () {
             const tracer = yield* Effect.serviceOption(Tracer.Tracer)
