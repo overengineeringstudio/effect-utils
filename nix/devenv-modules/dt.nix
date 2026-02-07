@@ -12,11 +12,24 @@
 # TODO: Remove once devenv supports defaultMode for tasks (https://github.com/cachix/devenv/issues/2417)
 { pkgs, ... }:
 {
-  # Wrapper that runs tasks with --mode before so dependencies run automatically
+  # Wrapper that runs tasks with --mode before so dependencies run automatically.
+  # When OTEL is configured (otel-span on PATH + OTEL_EXPORTER_OTLP_ENDPOINT set),
+  # wraps execution in an OTLP trace span for observability.
   scripts.dt.exec = ''
-    if ! devenv tasks run "$@" --mode before; then
-      echo "dt: task failed. Re-run with: devenv tasks run $* --mode before --no-tui" >&2
-      exit 1
+    task_name="''${1:-unknown}"
+
+    if command -v otel-span >/dev/null 2>&1 && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
+      # OTEL available: wrap task in a trace span
+      if ! otel-span "dt" "$task_name" --attr "dt.args=$*" -- devenv tasks run "$@" --mode before; then
+        echo "dt: task failed. Re-run with: devenv tasks run $* --mode before --no-tui" >&2
+        exit 1
+      fi
+    else
+      # No OTEL: run directly
+      if ! devenv tasks run "$@" --mode before; then
+        echo "dt: task failed. Re-run with: devenv tasks run $* --mode before --no-tui" >&2
+        exit 1
+      fi
     fi
   '';
 

@@ -46,6 +46,7 @@
 }:
 { lib, pkgs, ... }:
 let
+  trace = import ../lib/trace.nix { inherit lib; };
   defaultExcludes = [
     "node_modules"
     "dist"
@@ -121,7 +122,7 @@ in
     # Uses default config files (.oxfmtrc.json, .oxlintrc.json) - no -c flags needed
     "lint:check:format" = {
       description = "Check code formatting with oxfmt";
-      exec = ''
+      exec = trace.exec "lint:check:format" ''
         set -euo pipefail
 
         bytes="$(git ls-files -z -- ${formatPathspecArg} | wc -c)"
@@ -137,19 +138,19 @@ in
     };
     "lint:check:oxlint" = {
       description = "Run oxlint linter";
-      exec = "oxlint --import-plugin --deny-warnings ${typeAwareFlags} ${lintPathsArg}";
+      exec = trace.exec "lint:check:oxlint" "oxlint --import-plugin --deny-warnings ${typeAwareFlags} ${lintPathsArg}";
       after = [ "genie:run" "pnpm:install" ];
       execIfModified = execIfModifiedPatterns;
     };
     "lint:check:genie" = {
       description = "Check generated files are up to date";
-      exec = "genie --check";
+      exec = trace.exec "lint:check:genie" "genie --check";
       after = [ "pnpm:install" ];
       execIfModified = geniePatterns;
     };
     "lint:check:genie:coverage" = {
       description = "Check all config files have .genie.ts sources";
-      exec = ''
+      exec = trace.exec "lint:check:genie:coverage" ''
         missing=$(find ${scanDirsArg} \
           -type f \( -name "package.json" -o -name "tsconfig.json" \) \
           ${excludeArgs} \
@@ -174,7 +175,7 @@ in
     # Lint fix tasks
     "lint:fix:format" = {
       description = "Fix code formatting with oxfmt";
-      exec = ''
+      exec = trace.exec "lint:fix:format" ''
         set -euo pipefail
 
         bytes="$(git ls-files -z -- ${formatPathspecArg} | wc -c)"
@@ -188,7 +189,7 @@ in
     };
     "lint:fix:oxlint" = {
       description = "Fix lint issues with oxlint";
-      exec = "oxlint --import-plugin --deny-warnings ${typeAwareFlags} --fix ${lintPathsArg}";
+      exec = trace.exec "lint:fix:oxlint" "oxlint --import-plugin --deny-warnings ${typeAwareFlags} --fix ${lintPathsArg}";
     };
     "lint:fix" = {
       description = "Fix all lint issues";

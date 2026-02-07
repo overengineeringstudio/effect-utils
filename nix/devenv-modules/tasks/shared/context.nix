@@ -4,12 +4,15 @@
 #   imports = [ ./nix/devenv-modules/tasks/context.nix ];
 #
 # Provides: context:examples
-{ ... }:
+{ lib, ... }:
+let
+  trace = import ../lib/trace.nix { inherit lib; };
+in
 {
   tasks = {
     "context:examples" = {
       description = "Run all context socket example scripts";
-      exec = ''
+      exec = trace.exec "context:examples" ''
         set -e
         SOCKET_DIR="$WORKSPACE_ROOT/context/effect/socket"
         

@@ -34,6 +34,7 @@
 }:
 { lib, ... }:
 let
+  trace = import ../lib/trace.nix { inherit lib; };
   hasPackages = packages != [];
 
   # Per-package test task using package's own vitest
@@ -41,7 +42,7 @@ let
     "test:${pkg.name}" = {
       description = "Run tests for ${pkg.name}";
       # Use package's own vitest from node_modules/.bin/vitest
-      exec = "node_modules/.bin/vitest run";
+      exec = trace.exec "test:${pkg.name}" "node_modules/.bin/vitest run";
       cwd = pkg.path;
       execIfModified = [
         "${pkg.path}/src/**/*.ts"

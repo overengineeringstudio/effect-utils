@@ -23,10 +23,11 @@
 }:
 { lib, ... }:
 let
+  trace = import ../lib/trace.nix { inherit lib; };
   mkTestTask = pkg: {
     "test:pw:${pkg.name}" = {
       description = "Run playwright tests for ${pkg.name}";
-      exec = "${playwrightBin} test";
+      exec = trace.exec "test:pw:${pkg.name}" "${playwrightBin} test";
       cwd = pkg.path;
       after = [ "${installTaskPrefix}:${pkg.installName or pkg.name}" ];
     };

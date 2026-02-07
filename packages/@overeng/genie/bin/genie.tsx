@@ -7,6 +7,7 @@ import { Effect, Layer } from 'effect'
 import { runTuiMain } from '@overeng/tui-react/node'
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
 import { resolveCliVersion } from '@overeng/utils/node/cli-version'
+import { makeOtelCliLayer } from '@overeng/utils/node/otel-cli'
 
 import { genieCommand } from '../src/build/mod.tsx'
 
@@ -17,7 +18,11 @@ const version = resolveCliVersion({
   buildStamp,
 })
 
-const baseLayer = Layer.mergeAll(NodeContext.layer, CurrentWorkingDirectory.live)
+const baseLayer = Layer.mergeAll(
+  NodeContext.layer,
+  CurrentWorkingDirectory.live,
+  makeOtelCliLayer({ serviceName: 'genie' }),
+)
 
 Cli.Command.run(genieCommand, {
   name: 'genie',

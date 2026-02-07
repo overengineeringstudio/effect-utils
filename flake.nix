@@ -32,6 +32,10 @@
             inherit pkgs gitRev commitTs dirty;
             src = self;
           };
+          otel = import (rootPath + "/packages/@overeng/otel-cli/nix/build.nix") {
+            inherit pkgs gitRev commitTs dirty;
+            src = self;
+          };
         };
         cliPackagesDirty = {
           genie = import (rootPath + "/packages/@overeng/genie/nix/build.nix") {
@@ -44,6 +48,11 @@
             src = self;
             dirty = true;
           };
+          otel = import (rootPath + "/packages/@overeng/otel-cli/nix/build.nix") {
+            inherit pkgs gitRev commitTs;
+            src = self;
+            dirty = true;
+          };
         };
       in
       {
@@ -51,16 +60,19 @@
           cli-build-stamp = cliBuildStamp.package;
           genie-dirty = cliPackagesDirty.genie;
           megarepo-dirty = cliPackagesDirty.megarepo;
+          otel-dirty = cliPackagesDirty.otel;
         };
 
         # Direnv helper for comparing expected CLI outputs to PATH entries.
         cliOutPaths = {
           genie = cliPackages.genie.outPath;
           megarepo = cliPackages.megarepo.outPath;
+          otel = cliPackages.otel.outPath;
         };
         cliOutPathsDirty = {
           genie = cliPackagesDirty.genie.outPath;
           megarepo = cliPackagesDirty.megarepo.outPath;
+          otel = cliPackagesDirty.otel.outPath;
         };
 
         apps.update-bun-hashes = flake-utils.lib.mkApp {
@@ -72,6 +84,8 @@
       devenvModules = {
         # `dt` command wrapper for devenv tasks with shell completions
         dt = ./nix/devenv-modules/dt.nix;
+        # OpenTelemetry observability stack (Collector + Tempo + Grafana)
+        otel = import ./nix/devenv-modules/otel.nix;
         # Shared task modules (parameterized) - meant for reuse in other repos
         tasks = {
           # Simple tasks (no config needed)
@@ -116,9 +130,10 @@
         import ./nix/oxlint-npm.nix { inherit pkgs bun; };
 
       # Note: mkSourceCli is internal-only (not exported).
-      # For consuming genie/megarepo from other repos, use:
+      # For consuming CLIs from other repos, use:
       #   effectUtils.packages.${system}.genie
       #   effectUtils.packages.${system}.megarepo
+      #   effectUtils.packages.${system}.otel
       # See: context/nix-devenv/cli-patterns.md
     };
 }

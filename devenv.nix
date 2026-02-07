@@ -34,12 +34,18 @@ let
   nixCliPackages = [
     { name = "genie"; flakeRef = ".#genie"; buildNix = "packages/@overeng/genie/nix/build.nix"; lockfile = "packages/@overeng/genie/pnpm-lock.yaml"; }
     { name = "megarepo"; flakeRef = ".#megarepo"; buildNix = "packages/@overeng/megarepo/nix/build.nix"; lockfile = "packages/@overeng/megarepo/pnpm-lock.yaml"; }
+    { name = "otel-cli"; flakeRef = ".#otel"; buildNix = "packages/@overeng/otel-cli/nix/build.nix"; lockfile = "packages/@overeng/otel-cli/pnpm-lock.yaml"; }
   ];
 
   # All packages for per-package install tasks
   # NOTE: Using pnpm temporarily due to bun bugs. Plan to switch back once fixed.
   # See: context/workarounds/bun-issues.md
+  # NOTE: Order matters for sequential pnpm install chain.
+  # Packages near the front complete first, enabling dependent tasks to start sooner.
+  # utils is first because ts:patch-lsp depends on it (for Effect Language Service).
   allPackages = [
+    "packages/@overeng/utils"
+    "packages/@overeng/utils-dev"
     "packages/@overeng/effect-ai-claude-cli"
     "packages/@overeng/effect-path"
     "packages/@overeng/effect-react"
@@ -52,12 +58,11 @@ let
     "packages/@overeng/notion-cli"
     "packages/@overeng/notion-effect-client"
     "packages/@overeng/notion-effect-schema"
+    "packages/@overeng/otel-cli"
     "packages/@overeng/oxc-config"
     "packages/@overeng/react-inspector"
     "packages/@overeng/tui-core"
     "packages/@overeng/tui-react"
-    "packages/@overeng/utils"
-    "packages/@overeng/utils-dev"
     "context/opentui"
     "context/effect/socket"
   ];
@@ -73,6 +78,7 @@ let
     { path = "packages/@overeng/notion-cli"; name = "notion-cli"; }
     { path = "packages/@overeng/notion-effect-client"; name = "notion-effect-client"; }
     { path = "packages/@overeng/notion-effect-schema"; name = "notion-effect-schema"; }
+
     { path = "packages/@overeng/oxc-config"; name = "oxc-config"; }
     { path = "packages/@overeng/tui-core"; name = "tui-core"; }
     { path = "packages/@overeng/tui-react"; name = "tui-react"; }
@@ -88,6 +94,7 @@ let
     { path = "packages/@overeng/effect-schema-form-aria"; name = "effect-schema-form-aria"; port = 6010; }
     { path = "packages/@overeng/react-inspector"; name = "react-inspector"; port = 6011; }
     { path = "packages/@overeng/notion-cli"; name = "notion-cli"; port = 6012; }
+    { path = "packages/@overeng/otel-cli"; name = "otel-cli"; port = 6013; }
   ];
 in
 {
@@ -99,6 +106,8 @@ in
     })
     # `dt` (devenv tasks) wrapper script and shell completions
     ./nix/devenv-modules/dt.nix
+    # OpenTelemetry observability stack (Collector + Tempo + Grafana)
+    (import ./nix/devenv-modules/otel.nix {})
     # Playwright browser drivers and environment setup
     inputs.playwright.devenvModules.default
     # Shared task modules
@@ -107,6 +116,8 @@ in
     (taskModules.ts {
       tscBin = "packages/@overeng/utils/node_modules/.bin/tsc";
       lspPatchCmd = "packages/@overeng/utils/node_modules/.bin/effect-language-service patch --dir packages/@overeng/utils/node_modules/typescript";
+      # Depend only on utils package install (not full pnpm:install) for faster parallel startup
+      lspPatchAfter = [ "pnpm:install:utils" ];
     })
     taskModules.megarepo
     (taskModules.check { extraChecks = [ "workspace:check" ]; })
@@ -160,8 +171,6 @@ in
         "packages/@overeng/*/examples/*/src/**/*.ts"
         "packages/@overeng/*/examples/*/src/**/*.tsx"
         "packages/@overeng/*/examples/*/tests/*.ts"
-        "packages/@overeng/*/examples/**/*.ts"
-        "packages/@overeng/*/examples/**/*.tsx"
         # scripts
         "scripts/*.ts"
         "scripts/commands/**/*.ts"
@@ -217,6 +226,7 @@ in
     pkgs.oxfmt
     (mkSourceCli { name = "genie"; entry = "packages/@overeng/genie/bin/genie.tsx"; })
     (mkSourceCli { name = "mr"; entry = "packages/@overeng/megarepo/bin/mr.ts"; })
+    (mkSourceCli { name = "otel"; entry = "packages/@overeng/otel-cli/bin/otel.ts"; })
     cliBuildStamp.package
   ];
 
