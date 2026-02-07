@@ -16,7 +16,6 @@ Current pain points:
 - Beads
 - Dots
 - Notion
-- Linear
 - Custom solution
 
 ## Requirements

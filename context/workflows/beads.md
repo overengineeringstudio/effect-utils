@@ -11,7 +11,7 @@ We use [beads](https://github.com/steveyegge/beads) (`bd`) as a git-backed issue
 │                      megarepo root                           │
 │                                                              │
 │  Beads Repos (issue storage):                               │
-│  ├── overeng-beads-public/   # Public, prefix: eu, Linear   │
+│  ├── overeng-beads-public/   # Public, prefix: eu            │
 │  └── schickling-beads/       # Private, prefix: sch         │
 │                                                              │
 │  Code Repos (no .beads/):                                   │
@@ -20,27 +20,19 @@ We use [beads](https://github.com/steveyegge/beads) (`bd`) as a git-backed issue
 │  ├── schickling.dev/   → uses schickling-beads              │
 │  └── ...                                                     │
 │                                                              │
-│  Module Host:                                                │
-│  └── overeng-beads-public/nix/devenv-module.nix             │
-│      (reusable devenv module for commit correlation)        │
+│  Devenv Module (in effect-utils):                            │
+│  └── nix/devenv-modules/tasks/shared/beads.nix              │
+│      (daemon, sync, commit correlation, BEADS_DIR export)   │
 │                                                              │
-└─────────────────────────────────────────────────────────────┘
-                             │
-                             │ Linear sync (overeng-beads-public only)
-                             ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Linear EU Team                                              │
-│  - Issues synced from overeng-beads-public                  │
-│  - Labels: pkg:*, size:*, qa:*, meta:*                      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ## Beads Repos
 
-| Repo                   | Visibility | Prefix | Linear Sync   | Purpose                                  |
-| ---------------------- | ---------- | ------ | ------------- | ---------------------------------------- |
-| `overeng-beads-public` | Public     | `eu`   | Yes (EU team) | Overengineering projects + devenv module |
-| `schickling-beads`     | Private    | `sch`  | No            | Personal projects                        |
+| Repo                   | Visibility | Prefix | Purpose                               |
+| ---------------------- | ---------- | ------ | ------------------------------------- |
+| `overeng-beads-public` | Public     | `eu`   | Overengineering projects (issue data) |
+| `schickling-beads`     | Private    | `sch`  | Personal projects                     |
 
 ## Key Principles
 
@@ -52,14 +44,16 @@ We use [beads](https://github.com/steveyegge/beads) (`bd`) as a git-backed issue
 
 ### 2. Commit correlation via devenv
 
-- Code repos import the devenv module from `overeng-beads-public`
+- Code repos use the shared beads devenv module from `effect-utils`
 - Hook detects issue references in format `(prefix-xxx)`
 - Adds comment to beads issue with commit SHA + message
 
-### 3. Linear sync (optional)
+### 3. Daemon mode (auto-sync)
 
-- `overeng-beads-public` syncs with Linear team EU
-- `schickling-beads` does not sync to Linear
+- Daemon serializes concurrent `bd` access via RPC (safe for shared worktrees)
+- Auto-commits JSONL changes directly to `main`
+- Auto-pulls remote changes (every 30s)
+- Git push still requires manual `dt beads:sync` (daemon `--auto-push` has upstream detection bug)
 
 ## Setup
 
@@ -67,19 +61,18 @@ We use [beads](https://github.com/steveyegge/beads) (`bd`) as a git-backed issue
 
 ```
 <megarepo-root>/
-├── overeng-beads-public/  # Public beads + devenv module
-│   ├── .beads/
-│   ├── nix/devenv-module.nix
-│   └── flake.nix
+├── overeng-beads-public/  # Public beads (issue data only)
+│   └── .beads/
 ├── schickling-beads/      # Private beads
 │   └── .beads/
-├── effect-utils/          # Code repo (no .beads/)
+├── effect-utils/          # Code repo + devenv module host
+│   └── nix/devenv-modules/tasks/shared/beads.nix
 └── ...
 ```
 
 ### Code Repo Setup (via devenv)
 
-The beads devenv module uses `--no-db` mode (JSONL as source of truth) which works cleanly with megarepo's bare+worktree git layout. The beads repo must be a megarepo member.
+The beads devenv module runs a daemon for auto-sync (DB + JSONL, with JSONL as git-portable source of truth). The beads repo must be a megarepo member.
 
 1. Add the beads repo as a megarepo member in `megarepo.json`:
 
@@ -91,52 +84,43 @@ The beads devenv module uses `--no-db` mode (JSONL as source of truth) which wor
 }
 ```
 
-2. Add the flake input in `devenv.yaml`:
-
-```yaml
-inputs:
-  overeng-beads-public:
-    url: github:overengineeringstudio/overeng-beads-public
-```
-
-3. Import the module in `devenv.nix`:
+2. Import the beads module in `devenv.nix`:
 
 ```nix
-{ inputs, ... }: {
-  imports = [
-    # Beads integration: env vars, sync task, commit correlation hook
-    (inputs.overeng-beads-public.devenvModules.beads {
-      beadsPrefix = "oep";                   # or "sch" for personal projects
-      beadsRepoName = "overeng-beads-public"; # or "schickling-beads"
-      # beadsRepoPath = "repos/overeng-beads-public";  # default, can be overridden
-    })
-  ];
-}
+taskModules = {
+  beads = import ./nix/devenv-modules/tasks/shared/beads.nix;
+  # ...
+};
+
+imports = [
+  (taskModules.beads {
+    beadsPrefix = "oep";                   # or "sch" for personal projects
+    beadsRepoName = "overeng-beads-public"; # or "schickling-beads"
+    # beadsRepoPath = "repos/overeng-beads-public";  # default, can be overridden
+  })
+];
 ```
 
-> **Tip:** For local iteration on the module, temporarily switch to
-> `import ./repos/overeng-beads-public/nix/devenv-module.nix { ... }` (don't commit this).
+3. Wire `beads:daemon:ensure` to shell entry (outside `optionalTasks` to avoid git-hash caching):
+
+```nix
+tasks."devenv:enterShell".after = lib.mkAfter [ "beads:daemon:ensure" ];
+```
 
 This provides:
 
-- `bd` shell wrapper (runs in `--no-db` mode from the beads repo)
-- `dt beads:sync` task (git pull + commit + push JSONL changes)
+- `BEADS_DIR` env var (upstream `bd` env var for database discovery, works with direnv)
+- `dt beads:daemon:ensure` task (starts daemon if not running, idempotent)
+- `dt beads:daemon:stop` task (stops daemon)
+- `dt beads:sync` task (push JSONL changes to remote)
 - Commit correlation git hook (cross-references commits with beads issues)
-
-### Linear Sync (in overeng-beads-public)
-
-```bash
-cd overeng-beads-public
-bd config set linear.api_key "$LINEAR_API_KEY"
-bd config set linear.team_id "your-team-uuid"
-```
 
 ## Daily Workflow
 
 ### Creating Issues
 
 ```bash
-# The `bd` wrapper runs from the beads repo automatically (no need to cd)
+# BEADS_DIR is set automatically — bd works from anywhere (no cd needed)
 bd create "Implement feature X" -p 1 -t feature -l pkg:effect-utils
 
 # Check ready work
@@ -161,23 +145,10 @@ The git hook will automatically add a comment to the beads issue.
 dt beads:sync
 ```
 
-### Linear Sync
-
-```bash
-# Pull from Linear (import team changes)
-bd linear sync --pull
-
-# Push local changes to Linear
-bd linear sync --push
-
-# Bidirectional sync
-bd linear sync
-```
-
 ### Viewing Issues
 
 ```bash
-# bd wrapper works from anywhere in the devenv
+# bd works from anywhere (BEADS_DIR is set)
 bd list
 
 # Filter by package
@@ -212,22 +183,13 @@ The hook:
 
 ### Environment Variables
 
-The beads devenv module sets these automatically:
+The beads devenv module exports one env var via `env` (available in tasks, shell, and direnv):
 
 ```bash
-BEADS_PREFIX="oep"           # Issue prefix (set by module)
-BEADS_REPO="$DEVENV_ROOT/repos/overeng-beads-public"  # Beads repo path
+BEADS_DIR="$DEVENV_ROOT/repos/overeng-beads-public/.beads"   # Upstream bd env var
 ```
 
-The `bd` shell wrapper handles `--no-db` and `--no-daemon` flags and cds to the beads repo automatically.
-
-### Linear Credentials (overeng-beads-public)
-
-```bash
-# Set Linear credentials (alternative to bd config)
-export LINEAR_API_KEY="lin_api_..."
-export LINEAR_TEAM_ID="team-uuid"
-```
+`BEADS_DIR` is the upstream `bd` env var for database discovery. With it set, `bd` works from anywhere — no wrapper script or shell function needed. This works with direnv (env vars survive export, unlike shell functions).
 
 ## Constraints
 
@@ -235,17 +197,17 @@ export LINEAR_TEAM_ID="team-uuid"
 
 1. **Don't create `.beads/` in code repos** - Use the centralized beads repo
 2. **Don't forget parentheses** - Commit format must be `(oep-xxx)` not just `oep-xxx`
-3. **Don't use `bd` with `--db` flag** - The wrapper uses `--no-db` mode (JSONL as source of truth)
+3. **Don't use `bd` with explicit `--no-db` flag** - The daemon manages DB↔JSONL sync automatically
 
 ### Trade-offs
 
 This centralized pattern:
 
-| Benefit                           | Trade-off                                      |
-| --------------------------------- | ---------------------------------------------- |
-| No branch conflicts in code repos | Need to switch to beads repo for `bd` commands |
-| Single source of truth            | Commit correlation requires hook setup         |
-| Clean code repo history           | Issues not versioned with code                 |
+| Benefit                           | Trade-off                              |
+| --------------------------------- | -------------------------------------- |
+| No branch conflicts in code repos | Beads repo must be a megarepo member   |
+| Single source of truth            | Commit correlation requires hook setup |
+| Clean code repo history           | Issues not versioned with code         |
 
 ## Label Taxonomy
 
@@ -350,4 +312,4 @@ bd list --label <undefined-label> --json | jq -r '.[].id'
 ## Future Considerations
 
 - [ ] Explore beads feature request for cross-repo orphan detection ([#1196](https://github.com/steveyegge/beads/issues/1196))
-- [ ] Consider Linear label sync ([#1191](https://github.com/steveyegge/beads/issues/1191))
+- [ ] Investigate `--auto-push` fix upstream (currently broken: "no upstream configured" even with proper upstream)
