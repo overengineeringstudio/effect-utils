@@ -86,6 +86,11 @@ export interface OtelCliLayerConfig {
    * @default 250
    */
   exportInterval?: number
+  /**
+   * Timeout for graceful shutdown (final span flush) in milliseconds.
+   * @default 2000
+   */
+  shutdownTimeout?: number
 }
 
 /**
@@ -120,6 +125,7 @@ export const makeOtelCliLayer = (config: OtelCliLayerConfig): Layer.Layer<never>
     serviceName,
     endpointEnvVar = 'OTEL_EXPORTER_OTLP_ENDPOINT',
     exportInterval = 250,
+    shutdownTimeout = 2000,
   } = config
 
   // Use Layer.suspend instead of Layer.unwrapEffect to ensure proper scope propagation.
@@ -151,6 +157,7 @@ export const makeOtelCliLayer = (config: OtelCliLayerConfig): Layer.Layer<never>
       baseUrl,
       resource: { serviceName },
       tracerExportInterval: exportInterval,
+      shutdownTimeout,
     }).pipe(Layer.provide(FetchHttpClient.layer))
 
     return Layer.mergeAll(rootSpanLive, exporterLive)

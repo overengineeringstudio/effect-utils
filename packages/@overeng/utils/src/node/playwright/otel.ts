@@ -51,7 +51,7 @@ export const currentParentSpanContextJson: Effect.Effect<string | undefined, nev
       traceId: ctx.traceId,
       spanId: ctx.spanId,
     }).pipe(Effect.orDie)
-  }).pipe(Effect.withSpan('pw.otel.currentParentSpanContextJson'))
+  })
 
 /**
  * Creates an Effect OTEL parent span from an env var (when present and valid).
@@ -102,6 +102,11 @@ export interface OtelPlaywrightLayerConfig {
    * @default 250
    */
   exportInterval?: number
+  /**
+   * Timeout for graceful shutdown (final span flush) in milliseconds.
+   * @default 2000
+   */
+  shutdownTimeout?: number
 }
 
 /**
@@ -132,6 +137,7 @@ export const makeOtelPlaywrightLayer = (
     endpointEnvVar = 'OTEL_EXPORTER_OTLP_ENDPOINT',
     parentSpanEnvVar = PW_SPAN_CONTEXT_ENV_VAR,
     exportInterval = 250,
+    shutdownTimeout = 2000,
   } = config
 
   return Layer.unwrapEffect(
@@ -156,6 +162,7 @@ export const makeOtelPlaywrightLayer = (
         url: endpoint,
         resource: { serviceName },
         exportInterval,
+        shutdownTimeout,
       }).pipe(
         Layer.provideMerge(FetchHttpClient.layer),
         Layer.provideMerge(OtlpSerialization.layerJson),
