@@ -51,7 +51,7 @@ We use [beads](https://github.com/steveyegge/beads) (`bd`) as a git-backed issue
 ### 3. Daemon mode (auto-sync)
 
 - Daemon serializes concurrent `bd` access via RPC (safe for shared worktrees)
-- Auto-commits JSONL changes to `beads-sync` branch
+- Auto-commits JSONL changes directly to `main`
 - Auto-pulls remote changes (every 30s)
 - Git push still requires manual `dt beads:sync` (daemon `--auto-push` has upstream detection bug)
 
