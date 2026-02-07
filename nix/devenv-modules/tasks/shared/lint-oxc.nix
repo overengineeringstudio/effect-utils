@@ -75,18 +75,26 @@ in
     "lint:check:format" = {
       description = "Check code formatting with oxfmt";
       exec = "oxfmt --check ${lintPathsArg}";
+      # TODO: Drop "pnpm:install" dep once devenv supports glob negation patterns (e.g. !**/node_modules/**)
+      #   Upstream issue: https://github.com/cachix/devenv/issues/2422
+      #   Upstream fix:   https://github.com/cachix/devenv/pull/2423
       after = [ "genie:run" "pnpm:install" ];
       execIfModified = execIfModifiedPatterns;
     };
     "lint:check:oxlint" = {
       description = "Run oxlint linter";
       exec = "oxlint --import-plugin --deny-warnings ${typeAwareFlags} ${lintPathsArg}";
+      # TODO: Drop "pnpm:install" dep once devenv supports glob negation patterns (e.g. !**/node_modules/**)
+      #   Upstream issue: https://github.com/cachix/devenv/issues/2422
+      #   Upstream fix:   https://github.com/cachix/devenv/pull/2423
       after = [ "genie:run" "pnpm:install" ];
       execIfModified = execIfModifiedPatterns;
     };
     "lint:check:genie" = {
       description = "Check generated files are up to date";
       exec = "genie --check";
+      # TODO: Drop "pnpm:install" dep once devenv supports glob negation patterns
+      #   See: https://github.com/cachix/devenv/issues/2422, https://github.com/cachix/devenv/pull/2423
       after = [ "pnpm:install" ];
       execIfModified = geniePatterns;
     };
@@ -118,6 +126,8 @@ in
     "lint:fix:format" = {
       description = "Fix code formatting with oxfmt";
       exec = "oxfmt ${lintPathsArg}";
+      # TODO: Drop "pnpm:install" dep once devenv supports glob negation patterns
+      #   See: https://github.com/cachix/devenv/issues/2422, https://github.com/cachix/devenv/pull/2423
       after = [ "pnpm:install" ];
     };
     "lint:fix:oxlint" = {
