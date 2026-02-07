@@ -23,4 +23,5 @@ export const requiredCIJobs = [
   // Matrix jobs - GitHub reports these with the matrix value in parentheses
   ...RUNNER_PROFILES.map((runner) => `test (${runner})`),
   ...RUNNER_PROFILES.map((runner) => `nix-check (${runner})`),
+  'deploy-storybooks',
 ] as const

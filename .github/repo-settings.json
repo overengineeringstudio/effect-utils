@@ -43,6 +43,9 @@
           },
           {
             "context": "nix-check (namespace-profile-macos-arm64)"
+          },
+          {
+            "context": "deploy-storybooks"
           }
         ]
       }
