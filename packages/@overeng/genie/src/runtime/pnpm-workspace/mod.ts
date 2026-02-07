@@ -7,6 +7,7 @@
 
 import type { GenieOutput, Strict } from '../mod.ts'
 import { stringify } from '../utils/yaml.ts'
+import type { GenieValidationIssue } from '../validation/mod.ts'
 
 // =============================================================================
 // Settings Types
@@ -929,7 +930,38 @@ export const pnpmWorkspaceYaml = <const T extends PnpmWorkspaceData>(
 ): GenieOutput<T> => ({
   data: config,
   stringify: (ctx) => stringify(buildPnpmWorkspaceYaml({ data: config, location: ctx.location })),
+  validate: (ctx) => validatePnpmWorkspaceData({ data: config, location: ctx.location }),
 })
+
+// =============================================================================
+// Validation
+// =============================================================================
+
+const validatePnpmWorkspaceData = ({
+  data,
+  location,
+}: {
+  data: PnpmWorkspaceData
+  location: string
+}): GenieValidationIssue[] => {
+  const issues: GenieValidationIssue[] = []
+
+  if (data.packages !== undefined) {
+    for (const pkg of data.packages) {
+      if (pkg.startsWith('/')) {
+        issues.push({
+          severity: 'error',
+          packageName: location,
+          dependency: pkg,
+          message: `pnpm workspace packages must use relative paths, got absolute path: ${pkg}`,
+          rule: 'pnpm-workspace-absolute-path',
+        })
+      }
+    }
+  }
+
+  return issues
+}
 
 // =============================================================================
 // Legacy Export (deprecated)
