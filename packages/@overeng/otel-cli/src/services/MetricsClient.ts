@@ -392,7 +392,9 @@ export const getCollectorMetrics = (): Effect.Effect<
 // =============================================================================
 
 /** Parse TraceQL metrics response into structured series. */
-const parseMetricsSeries = (response: TraceQLMetricsResponse): ReadonlyArray<ParsedMetricSeries> =>
+export const parseMetricsSeries = (
+  response: TraceQLMetricsResponse,
+): ReadonlyArray<ParsedMetricSeries> =>
   response.series.map((series) => {
     const labels: Record<string, string> = {}
     let name = 'metric'
@@ -422,7 +424,7 @@ const parseMetricsSeries = (response: TraceQLMetricsResponse): ReadonlyArray<Par
   })
 
 /** Parse Prometheus text format into structured metrics. */
-const parsePrometheusMetrics = (text: string): CollectorMetrics => {
+export const parsePrometheusMetrics = (text: string): CollectorMetrics => {
   const lines = text.split('\n')
   const metrics: PrometheusMetric[] = []
   const metricNamesSet = new Set<string>()

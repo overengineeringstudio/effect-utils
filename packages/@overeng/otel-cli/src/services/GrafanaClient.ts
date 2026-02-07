@@ -389,7 +389,9 @@ export const searchTraces = (options: {
  * Parse Grafana data frames into trace search results.
  * Data frames use columnar format: schema.fields describes columns, data.values holds arrays.
  */
-const parseDataFrames = (response: GrafanaQueryResponse): ReadonlyArray<TraceSearchResult> => {
+export const parseDataFrames = (
+  response: GrafanaQueryResponse,
+): ReadonlyArray<TraceSearchResult> => {
   const frames = response.results.A.frames ?? []
   const results: Array<TraceSearchResult> = []
 
