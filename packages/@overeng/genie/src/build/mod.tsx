@@ -380,16 +380,35 @@ export const genieCommand: Cli.Command.Command<
               failed: failures.length,
             }
 
-            tui.dispatch({ _tag: 'Complete', summary })
-
             // Exit with error code if any files failed
             if (summary.failed > 0) {
+              tui.dispatch({ _tag: 'Complete', summary })
               return yield* new GenieGenerationFailedError({
                 failedCount: summary.failed,
                 message: `${summary.failed} file(s) failed to generate`,
                 files: tui.getState().files,
               })
             }
+
+            // Run validation hooks after successful generation
+            if (!dryRun) {
+              const validationResult = yield* runGenieValidation({ cwd: resolvedCwd }).pipe(
+                Effect.either,
+              )
+
+              if (Either.isLeft(validationResult)) {
+                const error = validationResult.left
+                const message = error instanceof Error ? error.message : String(error)
+                tui.dispatch({ _tag: 'Error', message })
+                return yield* new GenieGenerationFailedError({
+                  failedCount: 1,
+                  message,
+                  files: tui.getState().files,
+                })
+              }
+            }
+
+            tui.dispatch({ _tag: 'Complete', summary })
 
             if (watch && !dryRun) {
               // Watch mode

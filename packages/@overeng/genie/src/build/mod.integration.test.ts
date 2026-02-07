@@ -655,6 +655,42 @@ export default { data: {}, stringify: () => '{}' }`,
   )
 
   Vitest.it.effect(
+    'Issue #153: validate hooks run during generation and fail the command',
+    Effect.fnUntraced(
+      function* () {
+        yield* withTestEnv((env) =>
+          Effect.gen(function* () {
+            /**
+             * Validate hooks should run after successful generation.
+             * If a validate hook returns errors, the command should fail
+             * even though the file was generated successfully.
+             */
+
+            yield* env.writeFile({
+              path: 'config.json.genie.ts',
+              content: `export default {
+  data: { key: 'value' },
+  stringify: () => JSON.stringify({ key: 'value' }),
+  validate: () => [{ severity: 'error', message: 'config key must not be "value"' }],
+}`,
+            })
+
+            // Generate mode (no --check flag)
+            const { stdout, stderr, exitCode } = yield* runGenie(env, [])
+            const output = `${stdout}\n${stderr}`
+
+            expect(exitCode).not.toBe(0)
+            expect(output).toContain('Genie validation failed')
+            expect(output).toContain('config key must not be "value"')
+          }),
+        )
+      },
+      Effect.provide(TestLayer),
+      Effect.scoped,
+    ),
+  )
+
+  Vitest.it.effect(
     'Issue #135: --output ndjson final line includes files and cwd on failure',
     Effect.fnUntraced(
       function* () {
