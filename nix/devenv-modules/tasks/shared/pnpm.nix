@@ -90,11 +90,15 @@ let
   # "apps/example.com" -> "example-com"
   # "tests/wa-sqlite" -> "tests-wa-sqlite"
   # "scripts" -> "scripts"
+  # "repos/effect-utils/packages/@overeng/oxc-config" -> "oxc-config"
   toName = path:
     let
       sanitize = s: builtins.replaceStrings ["/" "."] ["-" "-"] s;
+      # Strip "repos/*/packages/" prefix for megarepo peer repo paths
+      repoStripped = let m = builtins.match "repos/[^/]+/packages/(.*)" path;
+        in if m != null then builtins.head m else path;
       # Only strip "packages/" or "apps/" prefix, keep others like "tests/"
-      stripped = lib.removePrefix "apps/" (lib.removePrefix "packages/" path);
+      stripped = lib.removePrefix "apps/" (lib.removePrefix "packages/" repoStripped);
       # Strip @scope/ pattern (e.g., "@overeng/foo" -> "foo")
       m = builtins.match "@[^/]+/(.*)" stripped;
       final = if m != null then builtins.head m else stripped;
