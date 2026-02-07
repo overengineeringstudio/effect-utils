@@ -109,10 +109,10 @@ tasks."devenv:enterShell".after = lib.mkAfter [ "beads:daemon:ensure" ];
 
 This provides:
 
-- `BEADS_DIR` env var (enables `bd` to work from anywhere, including via direnv)
+- `BEADS_DIR` env var (upstream `bd` env var for database discovery, works with direnv)
 - `dt beads:daemon:ensure` task (starts daemon if not running, idempotent)
 - `dt beads:daemon:stop` task (stops daemon)
-- `dt beads:sync` task (git pull + commit + push JSONL changes)
+- `dt beads:sync` task (push JSONL changes to remote)
 - Commit correlation git hook (cross-references commits with beads issues)
 
 ## Daily Workflow
@@ -183,15 +183,13 @@ The hook:
 
 ### Environment Variables
 
-The beads devenv module exports these via `env` (available in tasks, shell, and direnv):
+The beads devenv module exports one env var via `env` (available in tasks, shell, and direnv):
 
 ```bash
-BEADS_PREFIX="oep"                                           # Issue prefix
-BEADS_REPO="$DEVENV_ROOT/repos/overeng-beads-public"         # Beads repo path
-BEADS_DIR="$DEVENV_ROOT/repos/overeng-beads-public/.beads"   # Database discovery
+BEADS_DIR="$DEVENV_ROOT/repos/overeng-beads-public/.beads"   # Upstream bd env var
 ```
 
-With `BEADS_DIR` set, `bd` discovers the database from anywhere — no wrapper script or shell function needed. This works with direnv (env vars survive export, unlike shell functions).
+`BEADS_DIR` is the upstream `bd` env var for database discovery. With it set, `bd` works from anywhere — no wrapper script or shell function needed. This works with direnv (env vars survive export, unlike shell functions).
 
 ## Constraints
 

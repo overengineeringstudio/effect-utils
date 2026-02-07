@@ -92,7 +92,7 @@ let
 in
 {
   imports = [
-    # Beads integration: bd wrapper, daemon, sync task, commit correlation hook
+    # Beads integration: daemon, sync task, commit correlation hook
     (taskModules.beads {
       beadsPrefix = "oep";
       beadsRepoName = "overeng-beads-public";
