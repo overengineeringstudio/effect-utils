@@ -59,7 +59,7 @@ export type GenieOutput<T> = {
   data: T
   /** Serialize the data to a string for file output */
   stringify: (ctx: GenieContext) => string
-  /** Optional validation hook for genie --check */
+  /** Optional validation hook — runs during both generation and check */
   validate?: (ctx: GenieContext) => GenieValidationIssue[]
 }
 

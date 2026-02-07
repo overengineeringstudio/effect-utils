@@ -455,6 +455,39 @@ export const ValidationFailed: Story = {
   },
 }
 
+/** Validation failed during generation (Issue #153) */
+export const ValidationFailedDuringGeneration: Story = {
+  args: {
+    mode: 'generate',
+    interactive: false,
+  },
+  argTypes: {
+    interactive: {
+      control: false,
+    },
+    playbackSpeed: {
+      control: false,
+    },
+  },
+  render: (args) => {
+    const stateConfig = useMemo(
+      () => fixtures.createValidationFailedState({ mode: args.mode }),
+      [args.mode],
+    )
+
+    return (
+      <TuiStoryPreview
+        View={GenieView}
+        app={GenieApp}
+        initialState={stateConfig}
+        height={args.height}
+        autoRun={false}
+        tabs={ALL_OUTPUT_TABS}
+      />
+    )
+  },
+}
+
 /** Files skipped (parent directory missing, etc.) */
 export const WithSkipped: Story = {
   render: (args) => {
