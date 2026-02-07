@@ -78,10 +78,11 @@
 # Set globalCache = false to disable (not recommended for megarepo setups).
 #
 { packages, globalCache ? true }:
-{ lib, config, ... }:
+{ lib, config, pkgs, ... }:
 let
   cache = import ../lib/cache.nix { inherit config; };
   cacheRoot = cache.mkCachePath "pnpm-install";
+  flockBin = "${pkgs.flock}/bin/flock";
 
   # Convert path to task name:
   # "packages/@scope/foo" -> "foo"
@@ -188,6 +189,13 @@ let
         set -euo pipefail
         mkdir -p "${cacheRoot}"
         hash_file="${cacheRoot}/${name}.hash"
+
+        # Prevent concurrent readers (e.g. oxfmt) from observing transient
+        # node_modules state while pnpm is mutating it.
+        lock_file="$DEVENV_ROOT/.devenv/locks/node-modules.lock"
+        mkdir -p "$(dirname "$lock_file")"
+        exec 9>"$lock_file"
+        ${flockBin} 9
 
         if [ ! -f pnpm-lock.yaml ]; then
           echo "[pnpm] Warning: pnpm-lock.yaml missing in ${path}." >&2

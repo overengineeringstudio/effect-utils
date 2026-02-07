@@ -46,6 +46,7 @@
 }:
 { lib, pkgs, ... }:
 let
+  flockBin = "${pkgs.flock}/bin/flock";
   defaultExcludes = [
     "node_modules"
     "dist"
@@ -124,6 +125,14 @@ in
       exec = ''
         set -euo pipefail
 
+        # oxfmt can read from node_modules (e.g. during experimental import sorting).
+        # Acquire the same lock used by pnpm install tasks so we never observe
+        # transient filesystem state while installs are mutating node_modules.
+        lock_file="$DEVENV_ROOT/.devenv/locks/node-modules.lock"
+        mkdir -p "$(dirname "$lock_file")"
+        exec 9>"$lock_file"
+        ${flockBin} 9
+
         bytes="$(git ls-files -z -- ${formatPathspecArg} | wc -c)"
         if [ "''${bytes}" -eq 0 ]; then
           echo "[oxfmt] No tracked files found for formatting."
@@ -132,9 +141,7 @@ in
 
         git ls-files -z -- ${formatPathspecArg} | xargs -0 -n 200 oxfmt --check
       '';
-      # oxfmt may still need to load TypeScript deps for some files; make sure
-      # installs are complete so we don't read transient node_modules state.
-      after = [ "genie:run" "pnpm:install" ];
+      after = [ "genie:run" ];
       execIfModified = execIfModifiedPatterns;
     };
     "lint:check:oxlint" = {
@@ -179,6 +186,11 @@ in
       exec = ''
         set -euo pipefail
 
+        lock_file="$DEVENV_ROOT/.devenv/locks/node-modules.lock"
+        mkdir -p "$(dirname "$lock_file")"
+        exec 9>"$lock_file"
+        ${flockBin} 9
+
         bytes="$(git ls-files -z -- ${formatPathspecArg} | wc -c)"
         if [ "''${bytes}" -eq 0 ]; then
           echo "[oxfmt] No tracked files found for formatting."
@@ -187,7 +199,7 @@ in
 
         git ls-files -z -- ${formatPathspecArg} | xargs -0 -n 200 oxfmt
       '';
-      after = [ "genie:run" "pnpm:install" ];
+      after = [ "genie:run" ];
     };
     "lint:fix:oxlint" = {
       description = "Fix lint issues with oxlint";

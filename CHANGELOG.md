@@ -22,7 +22,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-- **CI/lint**: Make `lint:check:format` wait for `pnpm:install` to avoid flaky oxfmt "File not found: .../node_modules/..." failures
+- **CI/lint**: Avoid flaky oxfmt "File not found: .../node_modules/..." by serializing `lint:check:format` with pnpm installs via a shared lock (without making format depend on `pnpm:install`)
 
 - **CI/storybook**: Fix storybook builds used by Netlify preview deploys
   - Stub `@opentui/*` in `@overeng/genie` Storybook build (OpenTUI requires Bun runtime)
