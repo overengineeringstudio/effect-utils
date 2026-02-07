@@ -132,7 +132,9 @@ in
 
         git ls-files -z -- ${formatPathspecArg} | xargs -0 -n 200 oxfmt --check
       '';
-      after = [ "genie:run" ];
+      # oxfmt may still need to load TypeScript deps for some files; make sure
+      # installs are complete so we don't read transient node_modules state.
+      after = [ "genie:run" "pnpm:install" ];
       execIfModified = execIfModifiedPatterns;
     };
     "lint:check:oxlint" = {
@@ -185,6 +187,7 @@ in
 
         git ls-files -z -- ${formatPathspecArg} | xargs -0 -n 200 oxfmt
       '';
+      after = [ "genie:run" "pnpm:install" ];
     };
     "lint:fix:oxlint" = {
       description = "Fix lint issues with oxlint";

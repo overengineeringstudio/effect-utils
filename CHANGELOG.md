@@ -22,6 +22,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **CI/lint**: Make `lint:check:format` wait for `pnpm:install` to avoid flaky oxfmt "File not found: .../node_modules/..." failures
+
 - **CI/storybook**: Fix storybook builds used by Netlify preview deploys
   - Stub `@opentui/*` in `@overeng/genie` Storybook build (OpenTUI requires Bun runtime)
   - Fix `@overeng/tui-react` examples importing `src/mod.ts` (actual entry is `src/mod.tsx`)
