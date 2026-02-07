@@ -150,7 +150,11 @@ Vitest.describe('otel-cli', () => {
         process.env.OTEL_EXPORTER_OTLP_ENDPOINT = 'http://localhost:4318'
         delete process.env.TRACEPARENT
 
-        const layer = makeOtelCliLayer({ serviceName: 'test-cli' })
+        const layer = makeOtelCliLayer({
+          serviceName: 'test-cli',
+          shutdownTimeout: 100,
+          exportInterval: 60_000,
+        })
 
         // Should be able to create spans within the layer
         yield* Effect.gen(function* () {
@@ -168,7 +172,11 @@ Vitest.describe('otel-cli', () => {
         process.env.OTEL_EXPORTER_OTLP_ENDPOINT = 'http://localhost:4318'
         process.env.TRACEPARENT = '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01'
 
-        const layer = makeOtelCliLayer({ serviceName: 'test-cli' })
+        const layer = makeOtelCliLayer({
+          serviceName: 'test-cli',
+          shutdownTimeout: 100,
+          exportInterval: 60_000,
+        })
 
         // Should include parent span when creating the root span
         yield* Effect.gen(function* () {
@@ -187,7 +195,11 @@ Vitest.describe('otel-cli', () => {
         process.env.OTEL_EXPORTER_OTLP_ENDPOINT = 'http://localhost:4318'
         process.env.TRACEPARENT = 'invalid-traceparent'
 
-        const layer = makeOtelCliLayer({ serviceName: 'test-cli' })
+        const layer = makeOtelCliLayer({
+          serviceName: 'test-cli',
+          shutdownTimeout: 100,
+          exportInterval: 60_000,
+        })
 
         yield* Effect.gen(function* () {
           const tracer = yield* Effect.serviceOption(Tracer.Tracer)
@@ -208,6 +220,7 @@ Vitest.describe('otel-cli', () => {
         const layer = makeOtelCliLayer({
           serviceName: 'test-cli',
           exportInterval: 500,
+          shutdownTimeout: 100,
         })
 
         yield* Effect.void.pipe(
@@ -225,7 +238,11 @@ Vitest.describe('otel-cli', () => {
         process.env.OTEL_EXPORTER_OTLP_ENDPOINT = 'http://localhost:4318/'
         delete process.env.TRACEPARENT
 
-        const layer = makeOtelCliLayer({ serviceName: 'test-cli' })
+        const layer = makeOtelCliLayer({
+          serviceName: 'test-cli',
+          shutdownTimeout: 100,
+          exportInterval: 60_000,
+        })
 
         yield* Effect.void.pipe(
           Effect.provide(Layer.mergeAll(layer, FetchHttpClient.layer)),
@@ -242,7 +259,11 @@ Vitest.describe('otel-cli', () => {
         process.env.OTEL_EXPORTER_OTLP_ENDPOINT = 'http://localhost:4318'
         delete process.env.TRACEPARENT
 
-        const otelLayer = makeOtelCliLayer({ serviceName: 'test-cli' })
+        const otelLayer = makeOtelCliLayer({
+          serviceName: 'test-cli',
+          shutdownTimeout: 100,
+          exportInterval: 60_000,
+        })
         const testLayer = Layer.succeed('TestService' as any, { foo: 'bar' })
         const combined = Layer.mergeAll(otelLayer, testLayer, FetchHttpClient.layer)
 
