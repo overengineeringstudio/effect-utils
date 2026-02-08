@@ -44,6 +44,22 @@ let
     else
       builtins.toPath src;
 
+  # Ensure pnpm fetches binaries for all supported platforms so the FOD hash
+  # is stable across linux-x64, darwin-arm64, etc. (same pattern as mk-pnpm-cli.nix)
+  supportedArchitecturesJson = ''{"os":["linux","darwin"],"cpu":["x64","arm64"]}'';
+  pnpmSupportedArchitecturesScript = ''
+    pnpm config set supportedArchitectures '${supportedArchitecturesJson}'
+    sa="$(pnpm config get supportedArchitectures)"
+    if ! printf '%s' "$sa" | grep -q 'linux' ||
+       ! printf '%s' "$sa" | grep -q 'darwin' ||
+       ! printf '%s' "$sa" | grep -q 'x64' ||
+       ! printf '%s' "$sa" | grep -q 'arm64'; then
+      echo "error: pnpm supportedArchitectures not set as expected"
+      echo "  got: $sa"
+      exit 1
+    fi
+  '';
+
   # Filtered source for pnpm dep fetching (only needs package.json + lockfile)
   depsSrc = lib.cleanSourceWith {
     src = srcPath;
@@ -99,8 +115,9 @@ let
       # Configure pnpm
       pnpm config set store-dir "$STORE_PATH"
       pnpm config set manage-package-manager-versions false
+      ${pnpmSupportedArchitecturesScript}
 
-      # Install deps
+      # Install deps (fetches for all platforms due to supportedArchitectures)
       pnpm install --frozen-lockfile --ignore-scripts
       pnpm fetch --frozen-lockfile
 
@@ -198,6 +215,7 @@ pkgs.stdenv.mkDerivation {
     pnpm config set store-dir "$STORE_PATH"
     pnpm config set package-import-method clone-or-copy
     pnpm config set manage-package-manager-versions false
+    ${pnpmSupportedArchitecturesScript}
 
     # Copy source
     echo "Copying source..."

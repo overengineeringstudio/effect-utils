@@ -75,7 +75,8 @@ let
   typeAwareFlags = if tsconfig != null then "--type-aware --tsconfig ${tsconfig}" else "";
 
   # When jsPlugins are provided, inject them into the config at runtime.
-  # Creates a temporary config merging .oxlintrc.json with the jsPlugins paths.
+  # Replaces any existing jsPlugins in .oxlintrc.json with the Nix-provided paths.
+  # This ensures stale/unresolvable source paths from the genie template are dropped.
   hasJsPlugins = jsPlugins != [ ];
   jsPluginsJson = builtins.toJSON jsPlugins;
   mkOxlintCmd =
@@ -86,7 +87,7 @@ let
         tmpconfig=$(mktemp --suffix=.json)
         trap 'rm -f "$tmpconfig"' EXIT
         ${pkgs.jq}/bin/jq --argjson plugins '${jsPluginsJson}' \
-          '.jsPlugins = (.jsPlugins // []) + $plugins' \
+          '.jsPlugins = $plugins' \
           .oxlintrc.json > "$tmpconfig"
         oxlint -c "$tmpconfig" --import-plugin ${flags} ${typeAwareFlags} ${lintPathsArg}
       ''
