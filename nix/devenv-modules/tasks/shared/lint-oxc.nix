@@ -29,6 +29,9 @@
 #       genieCoverageExcludes = [ "storybook-static" ];  # optional
 #       # Path to tsconfig for type-aware linting (enables typescript/no-deprecated etc)
 #       tsconfig = "tsconfig.all.json";  # optional
+#       # Pre-built JS plugin paths to inject at runtime (for repos without node_modules)
+#       # These are merged into .oxlintrc.json's jsPlugins field at runtime.
+#       # jsPlugins = [ "${oxcConfigPlugin}/plugin.js" ];  # optional
 #     })
 #   ];
 #
@@ -38,11 +41,16 @@
   execIfModifiedPatterns,
   geniePatterns,
   genieCoverageDirs,
-  genieCoverageExcludes ? [],
+  genieCoverageExcludes ? [ ],
   lintPaths ? [ "." ],
   # Type-aware linting: provide tsconfig to enable --type-aware flag.
   # Requires pkgs.tsgolint in devenv packages (auto-discovered on PATH by oxlint).
   tsconfig ? null,
+  # Pre-built JS plugin paths to inject into oxlint config at runtime.
+  # When provided, the oxlint task creates a temporary config merging these
+  # jsPlugins into the project's .oxlintrc.json, allowing overeng/* rules
+  # without needing effect-utils' node_modules installed.
+  jsPlugins ? [ ],
 }:
 { lib, pkgs, ... }:
 let
@@ -65,6 +73,25 @@ let
 
   # Type-aware linting flags (enabled when tsconfig is provided)
   typeAwareFlags = if tsconfig != null then "--type-aware --tsconfig ${tsconfig}" else "";
+
+  # When jsPlugins are provided, inject them into the config at runtime.
+  # Creates a temporary config merging .oxlintrc.json with the jsPlugins paths.
+  hasJsPlugins = jsPlugins != [ ];
+  jsPluginsJson = builtins.toJSON jsPlugins;
+  mkOxlintCmd =
+    flags:
+    if hasJsPlugins then
+      ''
+        set -euo pipefail
+        tmpconfig=$(mktemp --suffix=.json)
+        trap 'rm -f "$tmpconfig"' EXIT
+        ${pkgs.jq}/bin/jq --argjson plugins '${jsPluginsJson}' \
+          '.jsPlugins = (.jsPlugins // []) + $plugins' \
+          .oxlintrc.json > "$tmpconfig"
+        oxlint -c "$tmpconfig" --import-plugin ${flags} ${typeAwareFlags} ${lintPathsArg}
+      ''
+    else
+      "oxlint --import-plugin ${flags} ${typeAwareFlags} ${lintPathsArg}";
 in
 {
   # Provide tsgolint when type-aware linting is enabled
@@ -79,16 +106,22 @@ in
       # TODO: Drop "pnpm:install" dep once devenv supports glob negation patterns (e.g. !**/node_modules/**)
       #   Upstream issue: https://github.com/cachix/devenv/issues/2422
       #   Upstream fix:   https://github.com/cachix/devenv/pull/2423
-      after = [ "genie:run" "pnpm:install" ];
+      after = [
+        "genie:run"
+        "pnpm:install"
+      ];
       execIfModified = execIfModifiedPatterns;
     };
     "lint:check:oxlint" = {
       description = "Run oxlint linter";
-      exec = trace.exec "lint:check:oxlint" "oxlint --import-plugin --deny-warnings ${typeAwareFlags} ${lintPathsArg}";
+      exec = trace.exec "lint:check:oxlint" (mkOxlintCmd "--deny-warnings");
       # TODO: Drop "pnpm:install" dep once devenv supports glob negation patterns (e.g. !**/node_modules/**)
       #   Upstream issue: https://github.com/cachix/devenv/issues/2422
       #   Upstream fix:   https://github.com/cachix/devenv/pull/2423
-      after = [ "genie:run" "pnpm:install" ];
+      after = [
+        "genie:run"
+        "pnpm:install"
+      ];
       execIfModified = execIfModifiedPatterns;
     };
     "lint:check:genie" = {
@@ -120,7 +153,12 @@ in
     };
     "lint:check" = {
       description = "Run all lint checks";
-      after = [ "lint:check:format" "lint:check:oxlint" "lint:check:genie" "lint:check:genie:coverage" ];
+      after = [
+        "lint:check:format"
+        "lint:check:oxlint"
+        "lint:check:genie"
+        "lint:check:genie:coverage"
+      ];
     };
 
     # Lint fix tasks
@@ -133,11 +171,14 @@ in
     };
     "lint:fix:oxlint" = {
       description = "Fix lint issues with oxlint";
-      exec = trace.exec "lint:fix:oxlint" "oxlint --import-plugin --deny-warnings ${typeAwareFlags} --fix ${lintPathsArg}";
+      exec = trace.exec "lint:fix:oxlint" (mkOxlintCmd "--deny-warnings --fix");
     };
     "lint:fix" = {
       description = "Fix all lint issues";
-      after = [ "lint:fix:format" "lint:fix:oxlint" ];
+      after = [
+        "lint:fix:format"
+        "lint:fix:oxlint"
+      ];
     };
   };
 }
