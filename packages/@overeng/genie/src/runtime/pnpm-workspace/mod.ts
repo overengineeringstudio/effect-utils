@@ -6,6 +6,7 @@
  */
 
 import type { GenieOutput, Strict } from '../mod.ts'
+import type { PackageJsonData } from '../package-json/mod.ts'
 import { stringify } from '../utils/yaml.ts'
 import type { GenieValidationIssue } from '../validation/mod.ts'
 
@@ -687,8 +688,17 @@ export interface PnpmWorkspaceData {
 
 /**
  * Compute relative path from one repo-relative location to another.
+ *
+ * @example
+ * ```ts
+ * computeRelativePath({ from: 'packages/app', to: 'packages/@local/shared' })
+ * // => '../@local/shared'
+ *
+ * computeRelativePath({ from: '.', to: 'packages/utils' })
+ * // => 'packages/utils'
+ * ```
  */
-const computeRelativePath = ({ from, to }: { from: string; to: string }): string => {
+export const computeRelativePath = ({ from, to }: { from: string; to: string }): string => {
   const normalizedFrom = from === '.' ? '' : from
   const fromParts = normalizedFrom.split('/').filter(Boolean)
   const toParts = to.split('/').filter(Boolean)
@@ -737,6 +747,141 @@ const resolvePatchPaths = ({
     }
   }
   return resolved
+}
+
+// =============================================================================
+// Workspace Deps Resolver Factory
+// =============================================================================
+
+/**
+ * Creates a resolver that traverses package dependency graphs to find workspace packages.
+ *
+ * Given a package and its imported deps (as `GenieOutput<PackageJsonData>` objects),
+ * the resolver performs BFS through dependencies/devDependencies/peerDependencies,
+ * collecting all internal packages matching the configured prefixes.
+ *
+ * Returns a function that produces sorted workspace-relative paths — callers compose
+ * these paths with `pnpmWorkspaceYaml()` and their own workspace settings.
+ *
+ * @example
+ * ```ts
+ * // Flat siblings layout (e.g. effect-utils)
+ * const resolveDeps = createWorkspaceDepsResolver({
+ *   prefixes: ['@overeng/'],
+ *   resolveWorkspacePath: (name) => `../${name.split('/')[1]}`,
+ * })
+ *
+ * export default pnpmWorkspaceYaml({
+ *   packages: ['.', ...resolveDeps({ pkg, deps, location: '.' })],
+ *   dedupePeerDependents: true,
+ * })
+ *
+ * // Registry-based paths (e.g. multi-repo with submodules)
+ * const resolveDeps = createWorkspaceDepsResolver({
+ *   prefixes: ['@overeng/', '@local/'],
+ *   resolveWorkspacePath: (name, from) => {
+ *     const target = packageLocations[name]
+ *     return computeRelativePath({ from, to: target })
+ *   },
+ * })
+ * ```
+ */
+export const createWorkspaceDepsResolver = (config: {
+  /** Package name prefixes identifying internal packages */
+  prefixes: readonly string[]
+  /** Resolve package name to workspace-relative path from calling location */
+  resolveWorkspacePath: (packageName: string, fromLocation: string) => string
+}) => {
+  type PkgInput = GenieOutput<PackageJsonData>
+
+  const collectInternalPackageNames = (pkg: PkgInput): string[] => {
+    const names = new Set<string>()
+    const collect = (deps?: Record<string, string>) => {
+      if (!deps) return
+      for (const name of Object.keys(deps)) {
+        if (config.prefixes.some((prefix) => name.startsWith(prefix))) {
+          names.add(name)
+        }
+      }
+    }
+
+    collect(pkg.data.dependencies)
+    collect(pkg.data.devDependencies)
+    collect(pkg.data.peerDependencies)
+
+    return [...names]
+  }
+
+  const buildRegistry = (packages: readonly PkgInput[]): ReadonlyMap<string, PkgInput> => {
+    const registry = new Map<string, PkgInput>()
+    for (const pkg of packages) {
+      const name = pkg.data.name
+      if (name) {
+        registry.set(name, pkg)
+      }
+    }
+    return registry
+  }
+
+  const collectWorkspacePackagesRecursive = ({
+    pkg,
+    registry,
+    location,
+    visited = new Set(),
+  }: {
+    pkg: PkgInput
+    registry: ReadonlyMap<string, PkgInput>
+    location: string
+    visited?: Set<string>
+  }): Set<string> => {
+    const result = new Set<string>()
+
+    const directDeps = collectInternalPackageNames(pkg)
+    for (const depName of directDeps) {
+      if (visited.has(depName)) continue
+      visited.add(depName)
+
+      result.add(config.resolveWorkspacePath(depName, location))
+
+      const depPkg = registry.get(depName)
+      if (depPkg) {
+        const transitiveDeps = collectWorkspacePackagesRecursive({
+          pkg: depPkg,
+          registry,
+          location,
+          visited,
+        })
+        for (const path of transitiveDeps) {
+          result.add(path)
+        }
+      }
+    }
+
+    return result
+  }
+
+  return (args: {
+    pkg: PkgInput
+    deps: readonly PkgInput[]
+    location: string
+    extraPackages?: readonly string[]
+  }): string[] => {
+    const registry = buildRegistry([args.pkg, ...args.deps])
+    const workspacePaths = new Set<string>()
+
+    for (const p of [args.pkg, ...args.deps]) {
+      const paths = collectWorkspacePackagesRecursive({ pkg: p, registry, location: args.location })
+      for (const path of paths) {
+        workspacePaths.add(path)
+      }
+    }
+
+    for (const extra of args.extraPackages ?? []) {
+      workspacePaths.add(extra)
+    }
+
+    return [...workspacePaths].toSorted((a, b) => a.localeCompare(b))
+  }
 }
 
 // =============================================================================

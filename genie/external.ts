@@ -9,6 +9,8 @@
 
 import {
   CatalogBrand,
+  computeRelativePath,
+  createWorkspaceDepsResolver,
   defineCatalog,
   definePatchedDependencies,
   githubRuleset,
@@ -20,6 +22,7 @@ import {
   pnpmWorkspaceYaml,
   tsconfigJson,
   workspaceRoot,
+  type GenieOutput,
   type GithubRulesetArgs,
   type GitHubWorkflowArgs,
   type MegarepoConfigArgs,
@@ -38,6 +41,8 @@ import {
 /** Re-export so TypeScript can reference it in generated declaration files */
 export {
   CatalogBrand,
+  computeRelativePath,
+  createWorkspaceDepsResolver,
   defineCatalog,
   definePatchedDependencies,
   githubRuleset,
@@ -51,6 +56,7 @@ export {
   workspaceRoot,
 }
 export type {
+  GenieOutput,
   GithubRulesetArgs,
   GitHubWorkflowArgs,
   MegarepoConfigArgs,
@@ -118,6 +124,9 @@ export const pnpmWorkspace = (...patterns: string[]) => {
     dedupePeerDependents: true,
   })
 }
+
+/** A package.json genie output, used as input for workspace deps resolution. */
+export type PackageJsonGenie = GenieOutput<PackageJsonData>
 
 /**
  * Catalog versions - single source of truth for dependency versions
@@ -331,27 +340,6 @@ export const createEffectUtilsRefs = (basePath: string) =>
 const patches = {
   'effect-distributed-lock@0.0.11': 'packages/@overeng/utils/patches/effect-distributed-lock@0.0.11.patch',
 } as const satisfies PatchesRegistry
-
-/**
- * Compute relative path from one repo-relative location to another.
- */
-const computeRelativePath = ({ from, to }: { from: string; to: string }): string => {
-  const fromParts = from.split('/').filter(Boolean)
-  const toParts = to.split('/').filter(Boolean)
-
-  let common = 0
-  while (
-    common < fromParts.length &&
-    common < toParts.length &&
-    fromParts[common] === toParts[common]
-  ) {
-    common++
-  }
-
-  const upCount = fromParts.length - common
-  const downPath = toParts.slice(common).join('/')
-  return '../'.repeat(upCount) + downPath || '.'
-}
 
 /**
  * Parse a patch specifier into package name and version.
