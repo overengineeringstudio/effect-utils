@@ -249,9 +249,12 @@ in {
   # Share pnpm's content-addressable cache globally to prevent duplicate downloads
   # across workspaces. Each workspace still has its own store (PNPM_STORE_DIR),
   # but downloaded tarballs are cached in ~/.cache/pnpm.
-  env = lib.mkIf globalCache {
-    npm_config_cache = "$HOME/.cache/pnpm";
-  };
+  # Note: This must be set in enterShell (not env) so that $HOME is expanded by
+  # bash at runtime. Nix strings don't do shell variable expansion, and
+  # builtins.getEnv "HOME" returns "" in pure flake evaluation.
+  enterShell = lib.mkIf globalCache ''
+    export npm_config_cache="$HOME/.cache/pnpm"
+  '';
 
   tasks = lib.mkMerge (map mkInstallTask packagesWithPrev ++ [
     {
