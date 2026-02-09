@@ -7,6 +7,7 @@ import type { PlatformError } from '@effect/platform/Error'
 import type { Scope } from 'effect'
 import {
   Cause,
+  Chunk,
   type Duration,
   Effect,
   Fiber,
@@ -278,6 +279,93 @@ export const cmdText: (
     Command.string,
   )
 })
+
+/** Result of collecting stdout/stderr from a command. */
+export interface CmdCollectResult {
+  readonly stdout: readonly string[]
+  readonly stderr: readonly string[]
+  readonly exitCode: number
+}
+
+/**
+ * Run a command and collect stdout/stderr as line arrays.
+ *
+ * Each stream is decoded as UTF-8 and split into lines. An optional
+ * `onOutput` callback is invoked for every line (useful for streaming
+ * progress to a UI). The callback may return an Effect that requires
+ * additional context `R` – this requirement propagates to the return type.
+ *
+ * Errors:
+ * - Propagates `PlatformError` for execution failures.
+ */
+export const cmdCollect: <R = never>(
+  commandInput: string | (string | undefined)[],
+  options?: {
+    onOutput?: (stream: 'stdout' | 'stderr', line: string) => Effect.Effect<void, never, R>
+    env?: Record<string, string | undefined>
+    shell?: boolean
+    workingDirectory?: string
+  },
+) => Effect.Effect<
+  CmdCollectResult,
+  PlatformError,
+  CommandExecutor.CommandExecutor | CurrentWorkingDirectory | R
+> = Effect.fn('cmdCollect')(function* (commandInput, options) {
+  const cwd = options?.workingDirectory ?? (yield* CurrentWorkingDirectory)
+
+  const parts = Array.isArray(commandInput)
+    ? (commandInput as (string | undefined)[]).filter(isNotUndefined)
+    : (commandInput as string).split(' ')
+
+  const [command, ...args] = parts
+  if (command === undefined) {
+    return yield* Effect.die('Command is missing')
+  }
+
+  const useShell = !!options?.shell
+
+  yield* Effect.logDebug(`Collecting '${parts.join(' ')}' in '${cwd}'`)
+
+  const cmd = buildCommand({ input: parts, useShell }).pipe(
+    Command.stdout('pipe'),
+    Command.stderr('pipe'),
+    Command.workingDirectory(cwd),
+    useShell ? Command.runInShell(true) : identity,
+    Command.env(options?.env ?? {}),
+  )
+
+  const safeOnOutput = (stream: 'stdout' | 'stderr', line: string) =>
+    options?.onOutput
+      ? options.onOutput(stream, line).pipe(Effect.catchAll(() => Effect.void))
+      : Effect.void
+
+  return yield* Effect.scoped(
+    Command.start(cmd).pipe(
+      Effect.flatMap((proc) =>
+        Effect.all(
+          {
+            stdout: proc.stdout.pipe(
+              Stream.decodeText('utf8'),
+              Stream.splitLines,
+              Stream.tap((line) => safeOnOutput('stdout', line)),
+              Stream.runCollect,
+              Effect.map(Chunk.toReadonlyArray),
+            ),
+            stderr: proc.stderr.pipe(
+              Stream.decodeText('utf8'),
+              Stream.splitLines,
+              Stream.tap((line) => safeOnOutput('stderr', line)),
+              Stream.runCollect,
+              Effect.map(Chunk.toReadonlyArray),
+            ),
+            exitCode: proc.exitCode,
+          },
+          { concurrency: 'unbounded' },
+        ),
+      ),
+    ),
+  )
+}) as any
 
 /** Internal error for process signal operations */
 class ProcessSignalError extends Schema.TaggedError<ProcessSignalError>()('ProcessSignalError', {
