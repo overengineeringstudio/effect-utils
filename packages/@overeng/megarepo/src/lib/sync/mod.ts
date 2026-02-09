@@ -18,9 +18,12 @@ export {
 } from './member.ts'
 export {
   countSyncResults,
+  collectAllMemberResults,
+  collectSyncErrors,
   flattenSyncResults,
   type MegarepoSyncResult,
   type MemberSyncResult,
   type MemberSyncStatus,
+  type SyncMemberError,
   type SyncOptions,
 } from './types.ts'

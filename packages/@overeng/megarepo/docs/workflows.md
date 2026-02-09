@@ -227,10 +227,10 @@ mr sync
 
 # Note about nested megarepos will be shown
 # Note: 1 member(s) contain nested megarepos (member-name)
-#       Run 'mr sync --deep' to sync them, or 'cd repos/<member> && mr sync'
+#       Run 'mr sync --all' to sync them, or 'cd repos/<member> && mr sync'
 
 # Sync recursively
-mr sync --deep
+mr sync --all
 ```
 
 ## Store Management

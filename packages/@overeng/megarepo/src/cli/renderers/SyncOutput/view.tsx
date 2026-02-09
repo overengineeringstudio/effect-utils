@@ -13,7 +13,11 @@ import { useMemo } from 'react'
 
 import { Box, Text, Static, useTuiAtomValue } from '@overeng/tui-react'
 
-import { computeSyncSummary, type MemberSyncResult } from '../../../lib/sync/schema.ts'
+import {
+  computeSyncSummary,
+  type MemberSyncResult,
+  type SyncErrorItem,
+} from '../../../lib/sync/schema.ts'
 import {
   Header,
   TaskItem,
@@ -43,15 +47,15 @@ export interface SyncViewProps {
  * SyncView - Unified view for sync command.
  *
  * Handles both:
- * - Progress display during sync (phase='syncing')
- * - Final output after sync (phase='complete' or 'idle')
+ * - Progress display during sync (_tag='Syncing')
+ * - Final output after sync (_tag='Success' or _tag='Error')
  */
 export const SyncView = ({ stateAtom }: SyncViewProps) => {
   const state = useTuiAtomValue(stateAtom)
   const {
+    _tag,
     workspace,
     options,
-    phase,
     members,
     activeMember,
     results,
@@ -59,6 +63,8 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
     nestedMegarepos,
     generatedFiles,
     lockSyncResults,
+    syncErrors,
+    syncErrorCount,
   } = state
   const dryRun = options.dryRun
   const verbose = options.verbose ?? false
@@ -80,8 +86,8 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
     return map
   }, [results])
 
-  // Count errors in results
-  const errorCount = useMemo(() => results.filter((r) => r.status === 'error').length, [results])
+  // Count errors in the full sync tree (root + nested)
+  const errorCount = syncErrorCount
 
   // Compute summary counts
   const summaryCounts = useMemo(() => computeSyncSummary(results), [results])
@@ -109,7 +115,7 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
   // ===================
   // Progress View (during sync)
   // ===================
-  if (phase === 'syncing') {
+  if (_tag === 'Syncing') {
     return (
       <>
         {/* Static region: logs */}
@@ -154,7 +160,7 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
   // ===================
   // Interrupted View
   // ===================
-  if (phase === 'interrupted') {
+  if (_tag === 'Interrupted') {
     return (
       <Box>
         <Header name={workspace.name} root={workspace.root} modes={modes} />
@@ -187,6 +193,7 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
   const locked = results.filter((r) => r.status === 'locked')
   const removed = results.filter((r) => r.status === 'removed')
   const errors = results.filter((r) => r.status === 'error')
+  const nestedErrors = syncErrors.filter((e) => e.megarepoRoot !== workspace.root)
   const skipped = results.filter((r) => r.status === 'skipped')
   const alreadySynced = results.filter((r) => r.status === 'already_synced')
 
@@ -232,6 +239,16 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
           {errors.map((r) => (
             <ErrorLine key={r.name} result={r} />
           ))}
+          {nestedErrors.length > 0 && (
+            <Box flexDirection="column">
+              <Text color="red" bold>
+                {symbols.circle} nested errors
+              </Text>
+              {nestedErrors.map((e) => (
+                <NestedErrorLine key={`${e.megarepoRoot}:${e.memberName}`} error={e} />
+              ))}
+            </Box>
+          )}
           {skipped.map((r) => (
             <SkippedLine key={r.name} result={r} />
           ))}
@@ -264,7 +281,7 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
           updated: summaryCounts.updated,
           locked: summaryCounts.locked,
           removed: summaryCounts.removed,
-          errors: summaryCounts.errors,
+          errors: errorCount,
           alreadySynced: summaryCounts.alreadySynced,
         }}
         dryRun={dryRun}
@@ -286,6 +303,25 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
       {/* Nested megarepos hint */}
       {nestedMegarepos.length > 0 && !options.all && (
         <NestedMegareposHint count={nestedMegarepos.length} />
+      )}
+    </Box>
+  )
+}
+
+const NestedErrorLine = ({ error }: { error: SyncErrorItem }) => {
+  return (
+    <Box flexDirection="column" paddingLeft={2}>
+      <Box flexDirection="row">
+        <StatusIcon status="error" variant="sync" />
+        <Text> </Text>
+        <Text bold>{error.memberName}</Text>
+        <Text> </Text>
+        <Text dim>({error.megarepoRoot})</Text>
+      </Box>
+      {error.message && (
+        <Box paddingLeft={4}>
+          <Text dim>{error.message}</Text>
+        </Box>
       )}
     </Box>
   )

@@ -147,6 +147,7 @@ export const startSyncUI = (options: {
     tui.dispatch({
       _tag: 'SetState',
       state: {
+        _tag: 'Syncing',
         workspace: { name: workspaceName, root: workspaceRoot },
         options: {
           dryRun: dryRun ?? false,
@@ -158,13 +159,22 @@ export const startSyncUI = (options: {
           skippedMembers:
             skippedMembers && skippedMembers.length > 0 ? [...skippedMembers] : undefined,
         },
-        phase: 'syncing',
         members: [...memberNames],
+        activeMember: null,
         results: [],
         logs: [],
+        startedAt: Date.now(),
         nestedMegarepos: [],
         generatedFiles: [],
         lockSyncResults: [],
+        syncTree: {
+          root: workspaceRoot,
+          results: [],
+          nestedMegarepos: [],
+          nestedResults: [],
+        },
+        syncErrors: [],
+        syncErrorCount: 0,
       },
     })
 

@@ -325,7 +325,7 @@ my-megarepo/repos/effect-utils -> /Users/dev/.megarepo/github.com/overeng/effect
 Bidirectional sync between worktrees and lock file. The default mode ensures members exist and updates the lock file to match current worktree HEADs.
 
 ```bash
-mr sync [--pull] [--frozen] [--force] [--deep] [--only <members...>] [--skip <members...>] [--git-protocol <ssh|https|auto>] [--create-branches]
+mr sync [--pull] [--frozen] [--force] [--all] [--only <members...>] [--skip <members...>] [--git-protocol <ssh|https|auto>] [--create-branches]
 ```
 
 **Modes:**
@@ -396,11 +396,25 @@ This distinction prevents silent "already synced" messages and provides targeted
 - `--pull` - Fetch from remote and update to latest commits (like old `mr update`)
 - `--frozen` - CI mode: fail if lock is missing or stale, apply lock exactly
 - `--force` / `-f` - Override dirty worktree check, update pinned members
-- `--deep` - Recursively sync nested megarepos
+- `--all` - Recursively sync nested megarepos
 - `--only <members>` - Only sync specified members (comma-separated, mutually exclusive with `--skip`)
 - `--skip <members>` - Skip specified members (comma-separated, mutually exclusive with `--only`)
 - `--git-protocol <ssh|https|auto>` - Git protocol for cloning (see below)
 - `--create-branches` - Create branches that don't exist (from default branch)
+
+#### Sync JSON Output
+
+When using `--output json` or `--output ndjson`, `mr sync` outputs a structured state object.
+
+Important fields:
+
+- `_tag`: `Syncing` | `Success` | `Error` | `Interrupted`
+- `results`: sync results for the current megarepo's direct members
+- `syncErrorCount`: total number of errors across the full sync tree (root + nested)
+- `syncErrors`: flattened list of all errors across the full sync tree with `megarepoRoot` context
+- `syncTree`: recursive tree of sync results (includes nested megarepos when `--all` is used)
+
+Nested sync semantics are strict: when `--all` is used, errors in nested megarepos contribute to the final `_tag: "Error"` and a non-zero exit code.
 
 #### Git Protocol Selection
 
@@ -806,11 +820,11 @@ Members can themselves be megarepos with their own `megarepo.json`. When a membe
 **Sync Behavior for Nested Megarepos:**
 
 - **Default (shallow):** `mr sync` only syncs the current megarepo's direct members
-- **Recursive:** `mr sync --deep` syncs nested megarepos recursively
+- **Recursive:** `mr sync --all` syncs nested megarepos recursively
 
 ```bash
 mr sync          # Shallow - only direct members
-mr sync --deep   # Recursive - includes nested megarepos
+mr sync --all    # Recursive - includes nested megarepos
 ```
 
 ---

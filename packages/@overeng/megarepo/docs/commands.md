@@ -21,7 +21,7 @@ mr init
 Ensure worktrees exist and symlinks are correct.
 
 ```bash
-mr sync [--pull] [--force] [--frozen] [--deep] [--only <members>] [--skip <members>] [--dry-run]
+mr sync [--pull] [--force] [--frozen] [--all] [--only <members>] [--skip <members>] [--dry-run]
 ```
 
 **Options:**
@@ -31,7 +31,7 @@ mr sync [--pull] [--force] [--frozen] [--deep] [--only <members>] [--skip <membe
 | `--pull`    | Fetch from remote and update to latest commits |
 | `--force`   | Override dirty worktree checks                 |
 | `--frozen`  | CI mode: fail if lock is missing or stale      |
-| `--deep`    | Recursively sync nested megarepos              |
+| `--all`     | Recursively sync nested megarepos              |
 | `--only`    | Only sync specified members (comma-separated)  |
 | `--skip`    | Skip specified members (comma-separated)       |
 | `--dry-run` | Show what would be done without making changes |
@@ -53,6 +53,18 @@ mr sync [--pull] [--force] [--frozen] [--deep] [--only <members>] [--skip <membe
 - Lock MUST cover all config members
 - Uses locked commits exactly
 - Fails if config has members not in lock
+
+**JSON output (`--output json` / `--output ndjson`):**
+
+The sync command emits a machine-readable state object.
+
+- `_tag`: one of `Syncing` | `Success` | `Error` | `Interrupted`
+- `results`: root megarepo member results (direct members only)
+- `syncErrors`: flattened list of all errors across the full nested tree (includes nested megarepos)
+- `syncErrorCount`: total number of errors across the full nested tree
+- `syncTree`: full recursive tree for `--all` runs (root + nested results)
+
+This means `mr sync --all` can fail because of nested errors even if all root-level members succeeded; the nested failures are discoverable via `syncErrors` and `syncTree`.
 
 ### `mr add`
 

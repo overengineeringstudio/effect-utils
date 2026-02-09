@@ -78,7 +78,9 @@ export const WithErrors: Story = {
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createBaseState(args.interactive ? { phase: 'idle' } : stateConfig)}
+        initialState={fixtures.createBaseState(
+          args.interactive ? { _tag: 'Success' } : stateConfig,
+        )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
@@ -109,7 +111,9 @@ export const AllErrors: Story = {
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createBaseState(args.interactive ? { phase: 'idle' } : stateConfig)}
+        initialState={fixtures.createBaseState(
+          args.interactive ? { _tag: 'Success' } : stateConfig,
+        )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
@@ -140,7 +144,9 @@ export const SkippedMembers: Story = {
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createBaseState(args.interactive ? { phase: 'idle' } : stateConfig)}
+        initialState={fixtures.createBaseState(
+          args.interactive ? { _tag: 'Success' } : stateConfig,
+        )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
@@ -172,7 +178,9 @@ export const MixedSkipped: Story = {
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createBaseState(args.interactive ? { phase: 'idle' } : stateConfig)}
+        initialState={fixtures.createBaseState(
+          args.interactive ? { _tag: 'Success' } : stateConfig,
+        )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
@@ -220,7 +228,9 @@ export const RefMismatchDetected: Story = {
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createBaseState(args.interactive ? { phase: 'idle' } : stateConfig)}
+        initialState={fixtures.createBaseState(
+          args.interactive ? { _tag: 'Success' } : stateConfig,
+        )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
@@ -237,7 +247,7 @@ export const Interrupted: Story = {
     const stateConfig = useMemo(
       () => ({
         options: { dryRun: args.dryRun, frozen: args.frozen, pull: args.pull, all: args.all },
-        phase: 'interrupted' as const,
+        _tag: 'Interrupted' as const,
         members: ['effect', 'effect-utils', 'livestore', 'dotfiles'],
         results: [
           { name: 'effect', status: 'synced' as const, ref: 'main' },
@@ -250,7 +260,9 @@ export const Interrupted: Story = {
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createBaseState(args.interactive ? { phase: 'idle' } : stateConfig)}
+        initialState={fixtures.createBaseState(
+          args.interactive ? { _tag: 'Success' } : stateConfig,
+        )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
