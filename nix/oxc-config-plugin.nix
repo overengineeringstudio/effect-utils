@@ -22,7 +22,7 @@
 
 let
   lib = pkgs.lib;
-  pnpmPlatform = import ./workspace-tools/lib/pnpm-platform.nix;
+  pnpmDepsHelper = import ./workspace-tools/lib/mk-pnpm-deps.nix { inherit pkgs; };
   packageDir = "packages/@overeng/oxc-config";
   pnpmDepsHash = "sha256-38BuFU/nIAMeSZLFFalgmbHM+uIVafwer1Hc/vnezmA=";
 
@@ -35,7 +35,7 @@ let
       builtins.toPath src;
 
   # Filtered source: only the package directory (for pnpm dep fetching)
-  mkPackageSrc = lib.cleanSourceWith {
+  packageSrc = lib.cleanSourceWith {
     src = srcPath;
     filter =
       path: type:
@@ -50,63 +50,6 @@ let
           lib.range 1 (lib.length (lib.splitString "/" packageDir))
         )
       );
-  };
-
-  # Fetch pnpm dependencies (fixed-output derivation with network access)
-  pnpmDeps = pkgs.stdenvNoCC.mkDerivation {
-    pname = "oxc-config-pnpm-deps";
-    version = "0.0.0";
-
-    src = mkPackageSrc;
-    sourceRoot = "source/${packageDir}";
-
-    nativeBuildInputs = [
-      pkgs.pnpm
-      pkgs.nodejs
-      pkgs.cacert
-      pkgs.zstd
-      pkgs.findutils
-      pkgs.perl
-    ];
-
-    dontConfigure = true;
-    dontBuild = true;
-
-    installPhase = ''
-      runHook preInstall
-
-      export HOME=$PWD
-      export STORE_PATH=$PWD/.pnpm-store
-      export NPM_CONFIG_PRODUCTION=false
-      export npm_config_production=false
-      export NODE_ENV=development
-      export CI=true
-
-      pnpm config set store-dir "$STORE_PATH"
-      pnpm config set manage-package-manager-versions false
-      ${pnpmPlatform.setupScript}
-
-      pnpm install --frozen-lockfile --ignore-scripts
-      pnpm fetch --frozen-lockfile
-
-      # Normalize pnpm store metadata (non-deterministic timestamps)
-      for indexDir in "$STORE_PATH"/v*/index; do
-        if [ -d "$indexDir" ]; then
-          find "$indexDir" -type f -name "*.json" -print0 \
-            | xargs -0 perl -pi -e 's/"checkedAt":[0-9]+/"checkedAt":0/g'
-        fi
-      done
-
-      mkdir -p $out
-      cd $STORE_PATH
-      LC_ALL=C TZ=UTC tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner -cf - . \
-        | zstd -T1 -q -o $out/pnpm-store.tar.zst
-
-      runHook postInstall
-    '';
-
-    outputHashMode = "recursive";
-    outputHash = pnpmDepsHash;
   };
 
   # Full source for building (includes .ts files, excludes node_modules etc.)
@@ -146,6 +89,13 @@ let
       );
   };
 
+  pnpmDeps = pnpmDepsHelper.mkDeps {
+    name = "oxc-config";
+    src = packageSrc;
+    sourceRoot = "source/${packageDir}";
+    inherit pnpmDepsHash;
+  };
+
 in
 pkgs.stdenv.mkDerivation {
   pname = "oxc-config-plugin";
@@ -165,19 +115,7 @@ pkgs.stdenv.mkDerivation {
     set -euo pipefail
     runHook preBuild
 
-    export HOME=$PWD
-    export STORE_PATH=$(mktemp -d)
-    export NPM_CONFIG_PRODUCTION=false
-    export npm_config_production=false
-    export NODE_ENV=development
-
-    zstd -d -c ${pnpmDeps}/pnpm-store.tar.zst | tar -xf - -C $STORE_PATH
-    chmod -R +w $STORE_PATH
-
-    pnpm config set store-dir "$STORE_PATH"
-    pnpm config set package-import-method clone-or-copy
-    pnpm config set manage-package-manager-versions false
-    ${pnpmPlatform.setupScript}
+    ${pnpmDepsHelper.mkRestoreScript { deps = pnpmDeps; }}
 
     cp -r ${buildSrc} workspace
     chmod -R +w workspace

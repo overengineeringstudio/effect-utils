@@ -32,6 +32,8 @@
 #       # Pre-built JS plugin paths to inject at runtime (for repos without node_modules)
 #       # These are merged into .oxlintrc.json's jsPlugins field at runtime.
 #       # jsPlugins = [ "${oxcConfigPlugin}/plugin.js" ];  # optional
+#       # Whether to fail on warnings (default: true for CI strictness)
+#       # denyWarnings = false;  # optional
 #     })
 #   ];
 #
@@ -51,6 +53,9 @@
   # jsPlugins into the project's .oxlintrc.json, allowing overeng/* rules
   # without needing effect-utils' node_modules installed.
   jsPlugins ? [ ],
+  # Whether to treat warnings as errors. Set to false for repos with many
+  # existing warnings that can't be fixed immediately.
+  denyWarnings ? true,
 }:
 { lib, pkgs, ... }:
 let
@@ -73,6 +78,7 @@ let
 
   # Type-aware linting flags (enabled when tsconfig is provided)
   typeAwareFlags = if tsconfig != null then "--type-aware --tsconfig ${tsconfig}" else "";
+  warningsFlag = if denyWarnings then "--deny-warnings" else "";
 
   # When jsPlugins are provided, inject them into the config at runtime.
   # Replaces any existing jsPlugins in .oxlintrc.json with the Nix-provided paths.
@@ -80,7 +86,10 @@ let
   hasJsPlugins = jsPlugins != [ ];
   jsPluginsJson = builtins.toJSON jsPlugins;
   mkOxlintCmd =
-    flags:
+    extraFlags:
+    let
+      flags = "${warningsFlag} ${extraFlags}";
+    in
     if hasJsPlugins then
       ''
         set -euo pipefail
@@ -115,7 +124,7 @@ in
     };
     "lint:check:oxlint" = {
       description = "Run oxlint linter";
-      exec = trace.exec "lint:check:oxlint" (mkOxlintCmd "--deny-warnings");
+      exec = trace.exec "lint:check:oxlint" (mkOxlintCmd "");
       # TODO: Drop "pnpm:install" dep once devenv supports glob negation patterns (e.g. !**/node_modules/**)
       #   Upstream issue: https://github.com/cachix/devenv/issues/2422
       #   Upstream fix:   https://github.com/cachix/devenv/pull/2423
@@ -172,7 +181,7 @@ in
     };
     "lint:fix:oxlint" = {
       description = "Fix lint issues with oxlint";
-      exec = trace.exec "lint:fix:oxlint" (mkOxlintCmd "--deny-warnings --fix");
+      exec = trace.exec "lint:fix:oxlint" (mkOxlintCmd "--fix");
     };
     "lint:fix" = {
       description = "Fix all lint issues";

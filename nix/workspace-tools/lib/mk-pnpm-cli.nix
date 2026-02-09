@@ -198,77 +198,22 @@ let
         || isWorkspaceMemberParentDir;
     };
 
-  # Custom pnpm deps fetcher that handles workspace members
-  # Standard fetchPnpmDeps fails because workspace member directories are read-only
-  # and pnpm tries to create node_modules in them. This fetcher makes the source
-  # writable before running pnpm install.
-  pnpmDeps = pkgs.stdenvNoCC.mkDerivation {
-    pname = "${name}-pnpm-deps";
-    version = "0.0.0";
-
+  # Fetch pnpm dependencies using the shared helper.
+  # Uses --force --recursive because workspace member directories only contain
+  # package.json files (not full sources), and pnpm needs to handle them.
+  pnpmDeps = pnpmDepsHelper.mkDeps {
+    inherit name pnpmDepsHash;
     src = mkPackageSource packageDir;
     sourceRoot = "source/${packageDir}";
-
-    nativeBuildInputs = [
-      pkgs.pnpm
-      pkgs.nodejs
-      pkgs.cacert
-      pkgs.zstd
-      pkgs.findutils
-      pkgs.perl
-    ];
-
-    dontConfigure = true;
-    dontBuild = true;
-
-    installPhase = ''
-      runHook preInstall
-
-      # Make the entire source tree writable (critical for workspace members)
+    # Make the entire source tree writable (critical for workspace members
+    # whose directories are read-only in the Nix store)
+    preInstall = ''
       cd "$NIX_BUILD_TOP/source"
       chmod -R +w .
       cd "$NIX_BUILD_TOP/source/${packageDir}"
-
-      export HOME=$PWD
-      export STORE_PATH=$PWD/.pnpm-store
-      # Ensure devDependencies are included in the store (avoid production-only installs)
-      export NPM_CONFIG_PRODUCTION=false
-      export npm_config_production=false
-      export NODE_ENV=development
-
-      # Configure pnpm
-      pnpm config set store-dir "$STORE_PATH"
-      pnpm config set manage-package-manager-versions false
-      ${pnpmSupportedArchitecturesScript}
-
-      # Install with network access - this downloads all deps to the store
-      # Use --recursive to match the offline install scope (R6 determinism)
-      # Use --force to skip workspace member validation since we only have package.json files
-      pnpm install --frozen-lockfile --ignore-scripts --force --recursive
-      # Ensure all tarballs referenced in the lockfile are present in the store
-      pnpm fetch --frozen-lockfile --recursive
-
-      # Normalize pnpm store metadata (checkedAt timestamps are non-deterministic)
-      for indexDir in "$STORE_PATH"/v*/index; do
-        if [ -d "$indexDir" ]; then
-          find "$indexDir" -type f -name "*.json" -print0 \
-            | xargs -0 perl -pi -e 's/"checkedAt":[0-9]+/"checkedAt":0/g'
-        fi
-      done
-
-      # Create output directory
-      mkdir -p $out
-
-      # Archive the pnpm store
-      cd $STORE_PATH
-      LC_ALL=C TZ=UTC tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner -cf - . \
-        | zstd -T1 -q -o $out/pnpm-store.tar.zst
-
-      runHook postInstall
     '';
-
-    outputHashMode = "recursive";
-    outputHash = pnpmDepsHash;
+    installFlags = "--force --recursive";
+    fetchFlags = "--recursive";
   };
 
   # Full workspace source for building
@@ -313,8 +258,7 @@ let
   nixStampJson = ''{\"type\":\"nix\",\"version\":\"${packageVersion}\",\"rev\":\"${gitRev}\",\"commitTs\":${toString commitTs},\"dirty\":${dirtyStr}}'';
 
   smokeTestArgsStr = lib.escapeShellArgs smokeTestArgs;
-  pnpmPlatform = import ./pnpm-platform.nix;
-  pnpmSupportedArchitecturesScript = pnpmPlatform.setupScript;
+  pnpmDepsHelper = import ./mk-pnpm-deps.nix { inherit pkgs; };
 
 in
 pkgs.stdenv.mkDerivation {
@@ -356,23 +300,7 @@ pkgs.stdenv.mkDerivation {
         ""
     }
 
-    export HOME=$PWD
-    export STORE_PATH=$(mktemp -d)
-    # Ensure devDependencies are installed in offline mode as well
-    export NPM_CONFIG_PRODUCTION=false
-    export npm_config_production=false
-    export NODE_ENV=development
-
-    # Extract pnpm store
-    echo "Extracting pnpm store..."
-    zstd -d -c ${pnpmDeps}/pnpm-store.tar.zst | tar -xf - -C $STORE_PATH
-    chmod -R +w $STORE_PATH
-
-    # Configure pnpm
-    pnpm config set store-dir "$STORE_PATH"
-    pnpm config set package-import-method clone-or-copy
-    pnpm config set manage-package-manager-versions false
-    ${pnpmSupportedArchitecturesScript}
+    ${pnpmDepsHelper.mkRestoreScript { deps = pnpmDeps; }}
 
     # Copy workspace source
     echo "Copying workspace source..."
