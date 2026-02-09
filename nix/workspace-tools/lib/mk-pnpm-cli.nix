@@ -47,7 +47,7 @@
   commitTs ? 0,
   dirty ? false,
   smokeTestArgs ? [ "--help" ],
-  extraExcludedSourceNames ? [],
+  extraExcludedSourceNames ? [ ],
 }:
 
 let
@@ -55,11 +55,12 @@ let
 
   # Convert workspaceRoot to path
   workspaceRootPath =
-    if builtins.isAttrs workspaceRoot && builtins.hasAttr "outPath" workspaceRoot
-    then workspaceRoot.outPath
-    else if builtins.isPath workspaceRoot
-    then workspaceRoot
-    else builtins.toPath workspaceRoot;
+    if builtins.isAttrs workspaceRoot && builtins.hasAttr "outPath" workspaceRoot then
+      workspaceRoot.outPath
+    else if builtins.isPath workspaceRoot then
+      workspaceRoot
+    else
+      builtins.toPath workspaceRoot;
 
   # ==========================================================================
   # Parse workspace members from pnpm-workspace.yaml
@@ -85,20 +86,35 @@ let
   relativeWorkspaceMembers = builtins.filter (s: s != ".") packagesItems;
 
   # Resolve relative paths (e.g., "../tui-core") to workspace-root paths (e.g., "packages/@overeng/tui-core")
-  resolveRelativePath = basePath: relPath:
+  resolveRelativePath =
+    basePath: relPath:
     let
       baseParts = lib.splitString "/" basePath;
       relParts = lib.splitString "/" relPath;
 
       # Count leading ".." segments
-      countResult = builtins.foldl'
-        (acc: part:
-          if acc.done then acc
-          else if part == ".." then { count = acc.count + 1; done = false; }
-          else { count = acc.count; done = true; }
-        )
-        { count = 0; done = false; }
-        relParts;
+      countResult =
+        builtins.foldl'
+          (
+            acc: part:
+            if acc.done then
+              acc
+            else if part == ".." then
+              {
+                count = acc.count + 1;
+                done = false;
+              }
+            else
+              {
+                count = acc.count;
+                done = true;
+              }
+          )
+          {
+            count = 0;
+            done = false;
+          }
+          relParts;
       upCount = countResult.count;
 
       # Get remaining path parts after ".."
@@ -116,132 +132,118 @@ let
   # Includes the main package and ONLY package.json files from workspace members
   # (not full directories) to let pnpm know what deps to fetch without trying
   # to create node_modules in read-only sibling directories
-  mkPackageSource = pkgDir:
+  mkPackageSource =
+    pkgDir:
     lib.cleanSourceWith {
       src = workspaceRootPath;
-      filter = path: type:
+      filter =
+        path: type:
         let
           relPath = lib.removePrefix (toString workspaceRootPath + "/") (toString path);
           baseName = baseNameOf path;
           excludedNames = [
-            ".git" ".direnv" ".devenv" ".cache" ".turbo" ".next" ".bun"
-            "node_modules" "dist" "result" "coverage" "tmp" "out"
+            ".git"
+            ".direnv"
+            ".devenv"
+            ".cache"
+            ".turbo"
+            ".next"
+            ".bun"
+            "node_modules"
+            "dist"
+            "result"
+            "coverage"
+            "tmp"
+            "out"
           ];
           isExcluded = lib.elem baseName excludedNames;
           # Include everything under the main package directory
           isInPackage = lib.hasPrefix "${pkgDir}/" relPath || relPath == pkgDir;
           # Include parent directories needed for structure
           parts = lib.splitString "/" pkgDir;
-          isParentDir = lib.any (n: relPath == lib.concatStringsSep "/" (lib.take n parts)) (lib.range 1 (lib.length parts));
+          isParentDir = lib.any (n: relPath == lib.concatStringsSep "/" (lib.take n parts)) (
+            lib.range 1 (lib.length parts)
+          );
           # Check if path is under patches directory
-          isInPatches = patchesDir != null && (lib.hasPrefix "${patchesDir}/" relPath || relPath == patchesDir);
+          isInPatches =
+            patchesDir != null && (lib.hasPrefix "${patchesDir}/" relPath || relPath == patchesDir);
           # Include workspace member package.json files (not full directories)
           # Also include their parent directories as directories
-          isWorkspaceMemberPackageJson = lib.any (memberDir:
-            relPath == "${memberDir}/package.json"
+          isWorkspaceMemberPackageJson = lib.any (
+            memberDir: relPath == "${memberDir}/package.json"
           ) workspaceMembers;
           # Include full workspace member contents for recursive installs
-          isInWorkspaceMember = lib.any (memberDir:
-            lib.hasPrefix "${memberDir}/" relPath
-          ) workspaceMembers;
-          isWorkspaceMemberDir = type == "directory" && lib.any (memberDir:
-            relPath == memberDir
-          ) workspaceMembers;
-          isWorkspaceMemberParentDir = type == "directory" && lib.any (memberDir:
-            let memberParts = lib.splitString "/" memberDir;
-            in lib.any (n: relPath == lib.concatStringsSep "/" (lib.take n memberParts)) (lib.range 1 (lib.length memberParts - 1))
-          ) workspaceMembers;
+          isInWorkspaceMember = lib.any (memberDir: lib.hasPrefix "${memberDir}/" relPath) workspaceMembers;
+          isWorkspaceMemberDir =
+            type == "directory" && lib.any (memberDir: relPath == memberDir) workspaceMembers;
+          isWorkspaceMemberParentDir =
+            type == "directory"
+            && lib.any (
+              memberDir:
+              let
+                memberParts = lib.splitString "/" memberDir;
+              in
+              lib.any (n: relPath == lib.concatStringsSep "/" (lib.take n memberParts)) (
+                lib.range 1 (lib.length memberParts - 1)
+              )
+            ) workspaceMembers;
         in
-        (!isExcluded && type == "directory") || isInPackage || isInPatches || isParentDir ||
-        isWorkspaceMemberPackageJson || isInWorkspaceMember || isWorkspaceMemberDir || isWorkspaceMemberParentDir;
+        (!isExcluded && type == "directory")
+        || isInPackage
+        || isInPatches
+        || isParentDir
+        || isWorkspaceMemberPackageJson
+        || isInWorkspaceMember
+        || isWorkspaceMemberDir
+        || isWorkspaceMemberParentDir;
     };
 
-  # Custom pnpm deps fetcher that handles workspace members
-  # Standard fetchPnpmDeps fails because workspace member directories are read-only
-  # and pnpm tries to create node_modules in them. This fetcher makes the source
-  # writable before running pnpm install.
-  pnpmDeps = pkgs.stdenvNoCC.mkDerivation {
-    pname = "${name}-pnpm-deps";
-    version = "0.0.0";
-
+  # Fetch pnpm dependencies using the shared helper.
+  # Uses --force --recursive because workspace member directories only contain
+  # package.json files (not full sources), and pnpm needs to handle them.
+  pnpmDeps = pnpmDepsHelper.mkDeps {
+    inherit name pnpmDepsHash;
     src = mkPackageSource packageDir;
     sourceRoot = "source/${packageDir}";
-
-    nativeBuildInputs = [
-      pkgs.pnpm
-      pkgs.nodejs
-      pkgs.cacert
-      pkgs.zstd
-      pkgs.findutils
-      pkgs.perl
-    ];
-
-    dontConfigure = true;
-    dontBuild = true;
-
-    installPhase = ''
-      runHook preInstall
-
-      # Make the entire source tree writable (critical for workspace members)
+    # Make the entire source tree writable (critical for workspace members
+    # whose directories are read-only in the Nix store)
+    preInstall = ''
       cd "$NIX_BUILD_TOP/source"
       chmod -R +w .
       cd "$NIX_BUILD_TOP/source/${packageDir}"
-
-      export HOME=$PWD
-      export STORE_PATH=$PWD/.pnpm-store
-      # Ensure devDependencies are included in the store (avoid production-only installs)
-      export NPM_CONFIG_PRODUCTION=false
-      export npm_config_production=false
-      export NODE_ENV=development
-
-      # Configure pnpm
-      pnpm config set store-dir "$STORE_PATH"
-      pnpm config set manage-package-manager-versions false
-      ${pnpmSupportedArchitecturesScript}
-
-      # Install with network access - this downloads all deps to the store
-      # Use --recursive to match the offline install scope (R6 determinism)
-      # Use --force to skip workspace member validation since we only have package.json files
-      pnpm install --frozen-lockfile --ignore-scripts --force --recursive
-      # Ensure all tarballs referenced in the lockfile are present in the store
-      pnpm fetch --frozen-lockfile --recursive
-
-      # Normalize pnpm store metadata (checkedAt timestamps are non-deterministic)
-      for indexDir in "$STORE_PATH"/v*/index; do
-        if [ -d "$indexDir" ]; then
-          find "$indexDir" -type f -name "*.json" -print0 \
-            | xargs -0 perl -pi -e 's/"checkedAt":[0-9]+/"checkedAt":0/g'
-        fi
-      done
-
-      # Create output directory
-      mkdir -p $out
-
-      # Archive the pnpm store
-      cd $STORE_PATH
-      LC_ALL=C TZ=UTC tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner -cf - . \
-        | zstd -T1 -q -o $out/pnpm-store.tar.zst
-
-      runHook postInstall
     '';
-
-    outputHashMode = "recursive";
-    outputHash = pnpmDepsHash;
+    installFlags = "--force --recursive";
+    fetchFlags = "--recursive";
   };
 
   # Full workspace source for building
   workspaceSrc = lib.cleanSourceWith {
     src = workspaceRootPath;
-    filter = path: type:
+    filter =
+      path: type:
       let
         baseName = baseNameOf path;
       in
       # Exclude common non-essential directories
-      lib.cleanSourceFilter path type &&
-      !(lib.elem baseName ([
-        ".git" ".direnv" ".devenv" ".cache" ".turbo" ".next" ".bun"
-        "node_modules" "dist" "result" "coverage" "tmp" "out"
-      ] ++ extraExcludedSourceNames));
+      lib.cleanSourceFilter path type
+      && !(lib.elem baseName (
+        [
+          ".git"
+          ".direnv"
+          ".devenv"
+          ".cache"
+          ".turbo"
+          ".next"
+          ".bun"
+          "node_modules"
+          "dist"
+          "result"
+          "coverage"
+          "tmp"
+          "out"
+        ]
+        ++ extraExcludedSourceNames
+      ));
   };
 
   # Read package.json for version
@@ -256,21 +258,7 @@ let
   nixStampJson = ''{\"type\":\"nix\",\"version\":\"${packageVersion}\",\"rev\":\"${gitRev}\",\"commitTs\":${toString commitTs},\"dirty\":${dirtyStr}}'';
 
   smokeTestArgsStr = lib.escapeShellArgs smokeTestArgs;
-  supportedArchitecturesJson = ''{"os":["linux","darwin"],"cpu":["x64","arm64"]}'';
-  pnpmSupportedArchitecturesScript = ''
-    # Ensure pnpm resolves binaries for all supported platforms (R5 determinism)
-    pnpm config set supportedArchitectures '${supportedArchitecturesJson}'
-    sa="$(pnpm config get supportedArchitectures)"
-    # pnpm config get returns array notation (os[]=linux) not JSON, so check without quotes
-    if ! printf '%s' "$sa" | grep -q 'linux' ||
-       ! printf '%s' "$sa" | grep -q 'darwin' ||
-       ! printf '%s' "$sa" | grep -q 'x64' ||
-       ! printf '%s' "$sa" | grep -q 'arm64'; then
-      echo "error: pnpm supportedArchitectures not set as expected"
-      echo "  got: $sa"
-      exit 1
-    fi
-  '';
+  pnpmDepsHelper = import ./mk-pnpm-deps.nix { inherit pkgs; };
 
 in
 pkgs.stdenv.mkDerivation {
@@ -282,7 +270,8 @@ pkgs.stdenv.mkDerivation {
     pkgs.bun
     pkgs.cacert
     pkgs.zstd
-  ] ++ lib.optionals (lockfileHash != null) [ pkgs.nix ];
+  ]
+  ++ lib.optionals (lockfileHash != null) [ pkgs.nix ];
 
   inherit pnpmDeps;
 
@@ -293,36 +282,25 @@ pkgs.stdenv.mkDerivation {
     set -euo pipefail
     runHook preBuild
 
-    ${if lockfileHash != null then ''
-    # Validate lockfile hash (early failure with clear message)
-    currentHash="sha256-$(nix-hash --type sha256 --base64 ${workspaceSrc}/${packageDir}/pnpm-lock.yaml)"
-    if [ "$currentHash" != "${lockfileHash}" ]; then
-      echo ""
-      echo "error: lockfileHash is stale (run: dt nix:hash)"
-      echo "  expected: ${lockfileHash}"
-      echo "  actual:   $currentHash"
-      echo ""
-      exit 1
-    fi
-    '' else ""}
+    ${
+      if lockfileHash != null then
+        ''
+          # Validate lockfile hash (early failure with clear message)
+          currentHash="sha256-$(nix-hash --type sha256 --base64 ${workspaceSrc}/${packageDir}/pnpm-lock.yaml)"
+          if [ "$currentHash" != "${lockfileHash}" ]; then
+            echo ""
+            echo "error: lockfileHash is stale (run: dt nix:hash)"
+            echo "  expected: ${lockfileHash}"
+            echo "  actual:   $currentHash"
+            echo ""
+            exit 1
+          fi
+        ''
+      else
+        ""
+    }
 
-    export HOME=$PWD
-    export STORE_PATH=$(mktemp -d)
-    # Ensure devDependencies are installed in offline mode as well
-    export NPM_CONFIG_PRODUCTION=false
-    export npm_config_production=false
-    export NODE_ENV=development
-
-    # Extract pnpm store
-    echo "Extracting pnpm store..."
-    zstd -d -c ${pnpmDeps}/pnpm-store.tar.zst | tar -xf - -C $STORE_PATH
-    chmod -R +w $STORE_PATH
-
-    # Configure pnpm
-    pnpm config set store-dir "$STORE_PATH"
-    pnpm config set package-import-method clone-or-copy
-    pnpm config set manage-package-manager-versions false
-    ${pnpmSupportedArchitecturesScript}
+    ${pnpmDepsHelper.mkRestoreScript { deps = pnpmDeps; }}
 
     # Copy workspace source
     echo "Copying workspace source..."

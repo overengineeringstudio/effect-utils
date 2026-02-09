@@ -10,14 +10,22 @@
     flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { self, nixpkgs, flake-utils, ... }:
+  outputs =
+    {
+      self,
+      nixpkgs,
+      flake-utils,
+      ...
+    }:
     let
-      gitRev = self.sourceInfo.dirtyShortRev or self.sourceInfo.shortRev or self.sourceInfo.rev or "unknown";
+      gitRev =
+        self.sourceInfo.dirtyShortRev or self.sourceInfo.shortRev or self.sourceInfo.rev or "unknown";
       # lastModified is the git commit timestamp (Unix seconds)
       commitTs = self.sourceInfo.lastModified or 0;
       dirty = self.sourceInfo ? dirtyShortRev;
     in
-    flake-utils.lib.eachDefaultSystem (system:
+    flake-utils.lib.eachDefaultSystem (
+      system:
       let
         pkgs = import nixpkgs { inherit system; };
         mkBunCli = import ./nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs; };
@@ -25,15 +33,30 @@
         rootPath = self.outPath;
         cliPackages = {
           genie = import (rootPath + "/packages/@overeng/genie/nix/build.nix") {
-            inherit pkgs gitRev commitTs dirty;
+            inherit
+              pkgs
+              gitRev
+              commitTs
+              dirty
+              ;
             src = self;
           };
           megarepo = import (rootPath + "/packages/@overeng/megarepo/nix/build.nix") {
-            inherit pkgs gitRev commitTs dirty;
+            inherit
+              pkgs
+              gitRev
+              commitTs
+              dirty
+              ;
             src = self;
           };
           otel = import (rootPath + "/packages/@overeng/otel-cli/nix/build.nix") {
-            inherit pkgs gitRev commitTs dirty;
+            inherit
+              pkgs
+              gitRev
+              commitTs
+              dirty
+              ;
             src = self;
           };
         };
@@ -61,6 +84,12 @@
           genie-dirty = cliPackagesDirty.genie;
           megarepo-dirty = cliPackagesDirty.megarepo;
           otel-dirty = cliPackagesDirty.otel;
+          # npm oxlint with NAPI bindings + pre-bundled @overeng/oxc-config plugin
+          oxlint-npm = import ./nix/oxlint-npm.nix {
+            inherit pkgs;
+            bun = pkgs.bun;
+            src = self;
+          };
         };
 
         # Direnv helper for comparing expected CLI outputs to PATH entries.
@@ -79,7 +108,8 @@
           drv = import ./nix/workspace-tools/lib/update-bun-hashes.nix { inherit pkgs; };
         };
       }
-    ) // {
+    )
+    // {
       # Devenv modules for importing into other repos
       devenvModules = {
         # `dt` command wrapper for devenv tasks with shell completions
@@ -113,21 +143,27 @@
       };
 
       # Builder function for external repos to create their own Bun CLIs
-      lib.mkBunCli = { pkgs }:
-        import ./nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs; };
+      lib.mkBunCli = { pkgs }: import ./nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs; };
 
       # Shell helper for runtime CLI build stamps.
-      lib.cliBuildStamp = { pkgs }:
-        import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
+      lib.cliBuildStamp =
+        { pkgs }: import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
 
       # Convenience helper for bundling the common genie/megarepo CLIs.
       # Use this for releases/CI where hermetic Nix builds are needed.
       lib.mkCliPackages = import ./nix/workspace-tools/lib/mk-cli-packages.nix;
 
       # npm oxlint with NAPI bindings for JavaScript plugin support.
-      # Usage: effectUtils.lib.mkOxlintNpm { inherit pkgs; bun = pkgs.bun; }
-      lib.mkOxlintNpm = { pkgs, bun }:
-        import ./nix/oxlint-npm.nix { inherit pkgs bun; };
+      # When `src` is provided (the effect-utils source), the @overeng/oxc-config
+      # plugin is bundled alongside and exposed via passthru.pluginPath.
+      # Usage: effectUtils.lib.mkOxlintNpm { inherit pkgs; bun = pkgs.bun; src = inputs.effect-utils; }
+      lib.mkOxlintNpm =
+        {
+          pkgs,
+          bun,
+          src ? null,
+        }:
+        import ./nix/oxlint-npm.nix { inherit pkgs bun src; };
 
       # Note: mkSourceCli is internal-only (not exported).
       # For consuming CLIs from other repos, use:

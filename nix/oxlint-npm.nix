@@ -4,7 +4,14 @@
 # execute JS plugins. The npm version uses NAPI bindings to run Rust code from
 # a JS runtime (Bun), enabling jsPlugins support.
 #
-# Usage: import ./oxlint-npm.nix { inherit pkgs bun; }
+# When `src` is provided (the effect-utils source), the @overeng/oxc-config
+# plugin is bundled alongside (via nix/oxc-config-plugin.nix) and exposed as
+# passthru.pluginPath for consumer repos to inject into oxlint configs.
+#
+# Usage:
+#   oxlintNpm = import ./oxlint-npm.nix { inherit pkgs bun; src = self; };
+#   # => oxlintNpm provides the `oxlint` command on PATH
+#   # => oxlintNpm.pluginPath is the absolute path to the bundled plugin JS file (or null)
 #
 # =============================================================================
 # Updating to a new version
@@ -38,8 +45,14 @@
 #    mono lint  # should show "WARNING: JS plugins are experimental..."
 #
 # =============================================================================
-{ pkgs, bun }:
+{
+  pkgs,
+  bun,
+  src ? null,
+}:
 let
+  lib = pkgs.lib;
+
   # https://github.com/oxc-project/oxc/releases for latest version
   version = "1.39.0";
 
@@ -75,11 +88,18 @@ let
   # Fetch the platform-specific binary package
   # npm scoped packages use a different URL pattern
   binaryPackage = pkgs.fetchurl {
-    url = "https://registry.npmjs.org/${platformPkg.name}/-/${builtins.replaceStrings ["@oxlint/"] [""] platformPkg.name}-${version}.tgz";
+    url = "https://registry.npmjs.org/${platformPkg.name}/-/${
+      builtins.replaceStrings [ "@oxlint/" ] [ "" ] platformPkg.name
+    }-${version}.tgz";
     hash = platformPkg.hash;
   };
 
-in pkgs.stdenv.mkDerivation {
+  # Optional: build the @overeng/oxc-config plugin bundle when src is provided
+  hasPlugin = src != null;
+  pluginBundle = if hasPlugin then import ./oxc-config-plugin.nix { inherit pkgs bun src; } else null;
+
+in
+pkgs.stdenv.mkDerivation {
   pname = "oxlint-npm";
   inherit version;
 
@@ -101,6 +121,11 @@ in pkgs.stdenv.mkDerivation {
     # Extract platform-specific binary package
     tar -xzf ${binaryPackage} -C $out/lib/node_modules/${platformPkg.name} --strip-components=1
 
+    ${lib.optionalString hasPlugin ''
+      # Symlink pre-bundled oxc-config plugin for discoverability
+      ln -s ${pluginBundle}/plugin.js $out/lib/oxc-config-plugin.js
+    ''}
+
     runHook postBuild
   '';
 
@@ -114,6 +139,9 @@ in pkgs.stdenv.mkDerivation {
 
     runHook postInstall
   '';
+
+  # Expose plugin path for consumers (e.g., lint-oxc.nix jsPlugins parameter).
+  passthru.pluginPath = if hasPlugin then "${pluginBundle}/plugin.js" else null;
 
   meta = with pkgs.lib; {
     description = "npm oxlint with NAPI bindings for JavaScript plugin support";
