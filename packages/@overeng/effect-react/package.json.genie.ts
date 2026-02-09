@@ -29,6 +29,7 @@ export default packageJson({
   devDependencies: {
     ...catalog.pick(
       ...peerDepNames,
+      '@overeng/utils',
       '@storybook/react',
       '@storybook/react-vite',
       '@types/react',

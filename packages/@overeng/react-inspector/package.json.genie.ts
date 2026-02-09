@@ -37,6 +37,7 @@ export default packageJson({
     ...effectLspDevDeps(),
     ...catalog.pick(
       ...peerDepNames,
+      '@overeng/utils',
       '@storybook/react',
       '@storybook/react-vite',
       '@testing-library/react',
