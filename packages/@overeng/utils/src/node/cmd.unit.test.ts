@@ -151,7 +151,7 @@ Vitest.describe('cmdCollect', () => {
     'collects stdout lines',
     Effect.fnUntraced(
       function* () {
-        const result = yield* cmdCollect(['echo', 'hello'])
+        const result = yield* cmdCollect({ commandInput: ['echo', 'hello'] })
         expect(result.stdout).toEqual(['hello'])
         expect(result.exitCode).toBe(0)
       },
@@ -164,7 +164,7 @@ Vitest.describe('cmdCollect', () => {
     'collects stderr lines',
     Effect.fnUntraced(
       function* () {
-        const result = yield* cmdCollect(['bun', '-e', "console.error('oops')"])
+        const result = yield* cmdCollect({ commandInput: ['bun', '-e', "console.error('oops')"] })
         expect(result.stderr).toEqual(['oops'])
         expect(result.exitCode).toBe(0)
       },
@@ -178,15 +178,17 @@ Vitest.describe('cmdCollect', () => {
     Effect.fnUntraced(
       function* () {
         const lines: Array<{ stream: string; line: string }> = []
-        const result = yield* cmdCollect(
-          ['bun', '-e', "console.log('out1'); console.log('out2'); console.error('err1')"],
-          {
-            onOutput: (stream, line) =>
-              Effect.sync(() => {
-                lines.push({ stream, line })
-              }),
-          },
-        )
+        const result = yield* cmdCollect({
+          commandInput: [
+            'bun',
+            '-e',
+            "console.log('out1'); console.log('out2'); console.error('err1')",
+          ],
+          onOutput: (stream, line) =>
+            Effect.sync(() => {
+              lines.push({ stream, line })
+            }),
+        })
         expect(result.stdout).toEqual(['out1', 'out2'])
         expect(result.stderr).toEqual(['err1'])
         expect(result.exitCode).toBe(0)
@@ -203,7 +205,7 @@ Vitest.describe('cmdCollect', () => {
     'returns non-zero exit code without failing',
     Effect.fnUntraced(
       function* () {
-        const result = yield* cmdCollect(['bun', '-e', 'process.exit(42)'])
+        const result = yield* cmdCollect({ commandInput: ['bun', '-e', 'process.exit(42)'] })
         expect(result.exitCode).toBe(42)
       },
       Effect.provide(TestLayer),
