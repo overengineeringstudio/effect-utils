@@ -93,7 +93,11 @@ let
     if hasJsPlugins then
       ''
         set -euo pipefail
-        tmpconfig=$(mktemp)
+        if [ ! -f .oxlintrc.json ]; then
+          echo "error: jsPlugins requires .oxlintrc.json but none was found" >&2
+          exit 1
+        fi
+        tmpconfig=$(${pkgs.coreutils}/bin/mktemp)
         trap 'rm -f "$tmpconfig"' EXIT
         ${pkgs.jq}/bin/jq --argjson plugins '${jsPluginsJson}' \
           '.jsPlugins = $plugins' \

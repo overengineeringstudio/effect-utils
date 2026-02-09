@@ -133,7 +133,9 @@ pkgs.stdenv.mkDerivation {
   '';
 
   checkPhase = ''
-    # Verify the bundle is self-contained (no missing modules like jiti)
+    # Verify the bundle is self-contained (no missing modules like jiti).
+    # buildPhase leaves CWD in workspace/${packageDir} where plugin.js was produced.
+    test -f plugin.js || { echo "error: plugin.js not found in $(pwd)"; exit 1; }
     bun -e "const p = require('./plugin.js'); if (!p || typeof p !== 'object') throw new Error('plugin did not export an object')"
   '';
 
