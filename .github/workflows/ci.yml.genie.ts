@@ -108,7 +108,7 @@ const deployJobs = {
     // Namespace runners occasionally have a stale/corrupt /nix/store which can break devenv evaluation.
     // This job is non-blocking, so keep it reliable by using GitHub-hosted runners.
     'runs-on': 'ubuntu-latest',
-    needs: ['typecheck', 'lint', 'test'],
+    // No `needs` — run in parallel with other jobs for faster feedback
     permissions: {
       contents: 'read',
       'pull-requests': 'write',
