@@ -228,81 +228,55 @@ Each package needs its own `pnpm-workspace.yaml` that declares which packages ar
 - Parallel installs work (~3x faster)
 - No need for `enableGlobalVirtualStore` or other workarounds
 
-## Workspace Dependency Graph Pattern
+## Explicit Workspace Members Pattern
 
 ### Problem
 
-Each package's `pnpm-workspace.yaml` must list ALL transitive workspace deps. With `createWorkspaceDepsResolver`, every transitive dep's `package.json.genie.ts` must be imported into the `deps` array. If A depends on B and B depends on C, A's workspace genie file must import both B and C. This is error-prone and breaks silently when upstream adds new internal deps.
+Each package's `pnpm-workspace.yaml` must list ALL workspace members it needs (including transitive deps). With `createWorkspaceDepsResolver`, every transitive dep's `package.json.genie.ts` must be imported into the `deps` array. This is error-prone and breaks silently when upstream adds new internal deps.
 
 ### Solution
 
-Declare a static dependency graph in `genie/repo.ts` and resolve transitive deps automatically:
+Use a simple helper that resolves package names to relative paths, and have each `pnpm-workspace.yaml.genie.ts` explicitly list all workspace members it needs:
 
 ```typescript
-// genie/repo.ts
-import { pnpmWorkspaceYaml } from '#genie/pnpm-workspace/mod.ts'
+// genie/internal.ts
+import { computeRelativePath, pnpmWorkspaceYaml } from '#genie/external.ts'
+import { packageLocations } from './packages.ts'
 
-/** Direct workspace deps for each package (short dir names) */
-const workspaceDeps: Record<string, readonly string[]> = {
-  utils: [],
-  common: ['utils', 'webmesh', 'utils-dev'],
-  react: ['common', 'framework-toolkit', 'livestore', 'utils', 'adapter-web', 'utils-dev'],
-}
+const resolveWorkspacePaths = (location: string, deps: string[]): string[] =>
+  deps.map((dep) => {
+    const targetLocation = packageLocations[dep]
+    if (!targetLocation) throw new Error(`Unknown internal package: ${dep}`)
+    return computeRelativePath({ from: location, to: targetLocation })
+  })
 
-/** Walk the graph to compute transitive closure */
-const resolveTransitiveDeps = (patterns: string[]): string[] => {
-  const result = new Set<string>()
-  const visit = (dirName: string) => {
-    if (result.has(dirName)) return
-    result.add(dirName)
-    const deps = workspaceDeps[dirName]
-    if (deps) for (const dep of deps) visit(dep)
-  }
-  for (const p of patterns) {
-    const match = p.match(/^\.\.\/(.+)$/)
-    if (match) visit(match[1])
-    else result.add(p) // pass through non-relative patterns
-  }
-  return [...result].map((_) => `../${_}`)
-}
-
-export const pnpmWorkspace = (...patterns: string[]) =>
+export const pnpmWorkspace = (location: string, ...deps: string[]) =>
   pnpmWorkspaceYaml({
-    packages: ['.', ...resolveTransitiveDeps(patterns)],
+    packages: ['.', ...resolveWorkspacePaths(location, deps)],
     dedupePeerDependents: true,
   })
 ```
 
-Per-package workspace files just list direct deps:
+Per-package workspace files explicitly list all members (including transitive):
 
 ```typescript
-// packages/@livestore/common/pnpm-workspace.yaml.genie.ts
-import { pnpmWorkspace } from '../../../genie/repo.ts'
-export default pnpmWorkspace('../utils', '../webmesh', '../utils-dev')
-// Transitive deps of utils, webmesh, etc. are resolved automatically
-```
+// packages/app/pnpm-workspace.yaml.genie.ts
+import { pnpmWorkspace } from '../../genie/internal.ts'
 
-### Cross-repo variant
-
-For repos consuming `@overeng` packages from effect-utils, the graph includes cross-repo packages with full names. A path resolver maps names to relative paths:
-
-```typescript
-// genie/repo.ts (consumer repo)
-const workspaceDeps: Record<string, readonly string[]> = {
-  '@overeng/utils': [],
-  '@overeng/genie': ['@overeng/utils'],
-  '@local/my-pkg': ['@overeng/utils', '@overeng/genie'],
-}
-
-const resolvePackagePath = (name: string): string => {
-  if (name.startsWith('@overeng/')) return `../../effect-utils/packages/${name}`
-  return `../${name.replace(/^@local\//, '')}`
-}
+export default pnpmWorkspace(
+  'packages/app',
+  '@local/shared',
+  '@overeng/notion-cli',
+  '@overeng/notion-effect-client',
+  '@overeng/notion-effect-schema',
+  '@overeng/utils',
+  '@overeng/utils-dev',
+)
 ```
 
 ### When to use
 
-Use this pattern instead of `createWorkspaceDepsResolver` when you need guaranteed transitive resolution without importing all transitive `package.json.genie.ts` files. The graph approach is simpler because it is declarative -- no imports, no runtime introspection of package.json configs.
+Use this pattern instead of `createWorkspaceDepsResolver` when you want explicit control over workspace members without importing `package.json.genie.ts` files. The `packageLocations` map provides a single source of truth for name-to-path resolution, while each workspace template owns its full member list.
 
 ## Required Root Config Files
 
