@@ -154,10 +154,7 @@
         "devenv": "devenv",
         "git-hooks": "git-hooks",
         "nixpkgs": "nixpkgs",
-        "playwright": "playwright",
-        "pre-commit-hooks": [
-          "git-hooks"
-        ]
+        "playwright": "playwright"
       }
     },
     "systems": {

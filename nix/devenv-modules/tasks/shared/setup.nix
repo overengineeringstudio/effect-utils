@@ -14,8 +14,13 @@
 #     })
 #   ];
 #
-# The tasks will run in parallel (respecting their own dependencies)
-# as part of the shell entry process.
+# The tasks will run as part of shell entry.
+#
+# Optional task failures:
+# We model optional shell-entry work via `@complete` dependencies so failures don't block
+# entering the shell (direnv expects `devenv shell` to exit 0 on success).
+#
+# See: https://github.com/cachix/devenv/issues/2454
 #
 # Shared caching rules live in ./lib/cache.nix (task-specific details below).
 #
@@ -60,31 +65,38 @@
 #
 # ## Optional Tasks
 #
-# Optional tasks are wrapped so failures don't cause devenv to exit non-zero
-# (which would break direnv). Each optional task gets a `setup:opt:<name>`
-# wrapper that runs `devenv tasks run <name> || true`.
-# TODO: Remove wrapper workaround once https://github.com/cachix/devenv/issues/2454 is fixed
-# and use @complete suffix directly instead.
+# Optional tasks are wired through a single gate task (`setup:optional`) which:
+#
+# - depends on optional tasks using the `@complete` suffix so failures don't block
+#   shell entry (direnv expects `devenv shell` to exit 0 on success)
+# - carries the git-hash/inner-cache skip logic so optional tasks aren't skipped
+#   when run directly via `dt <task>`
+#
+# Related: https://github.com/cachix/devenv/issues/2454
 {
   requiredTasks ? [ ],
   optionalTasks ? [ ],
-  completionsCliNames ? [],
+  completionsCliNames ? [ ],
   skipDuringRebase ? true,
   skipIfGitHashUnchanged ? true,
   # Inner cache directories to check for *.hash files (two-tier caching).
   # Set to [] for non-pnpm setups to use git-hash-only caching.
   innerCacheDirs ? [ "pnpm-install" ],
 }:
-{ lib, config, pkgs, ... }:
+{
+  lib,
+  config,
+  pkgs,
+  ...
+}:
 let
   git = "${pkgs.git}/bin/git";
-  flock = "${pkgs.flock}/bin/flock";
   cache = import ../lib/cache.nix { inherit config; };
   cacheRoot = cache.cacheRoot;
   hashFile = cache.mkCachePath "setup-git-hash";
   userRequiredTasks = requiredTasks;
   userOptionalTasks = optionalTasks;
-  completionsEnabled = completionsCliNames != [];
+  completionsEnabled = completionsCliNames != [ ];
   completionsTaskName = "setup:completions";
   completionsCliList = lib.concatStringsSep " " completionsCliNames;
   completionsExec = ''
@@ -186,52 +198,10 @@ let
   setupOptionalTasks = userOptionalTasks ++ lib.optionals completionsEnabled [ completionsTaskName ];
   setupTasks = setupRequiredTasks ++ setupOptionalTasks;
 
-  # TODO: Remove wrappers once https://github.com/cachix/devenv/issues/2454 is fixed
-  # Workaround: devenv exits non-zero if any task in the graph fails, even when
-  # the root task succeeds via @complete. We create wrapper tasks that call
-  # `devenv tasks run <task> || true` so they always succeed.
-  #
-  # IMPORTANT: The recursion guard (_DEVENV_SETUP_RUNNING) prevents runaway process
-  # spawning. Without it, nested devenv evaluations can cause hundreds of parallel
-  # `devenv print-dev-env` processes, overwhelming the system.
-  #
-  # Cross-process locking: Uses flock to prevent parallel setup races when multiple
-  # terminals/processes trigger direnv simultaneously (common with Conductor/megarepo).
-  # See: https://github.com/cachix/devenv/issues/2465
-  mkWrapperName = t: "setup:opt:${t}";
-  wrappedOptionalTasks = map mkWrapperName setupOptionalTasks;
-  # Sanitize task name for use as lockfile name (replace : and / with -)
-  sanitizeForLockfile = s: builtins.replaceStrings [":" "/"] ["-" "-"] s;
-  wrapperTasks = lib.listToAttrs (map (t: {
-    name = mkWrapperName t;
-    value = {
-      description = "Optional setup: ${t}";
-      exec = ''
-        # Recursion guard: prevent nested devenv from spawning more wrappers
-        if [ -n "''${_DEVENV_SETUP_RUNNING:-}" ]; then
-          exit 0
-        fi
-        export _DEVENV_SETUP_RUNNING=1
-
-        # Cross-process lock to prevent parallel setup races (R5, R13)
-        # Uses flock with 30s timeout - waits for other process to finish rather than skipping
-        lockfile="${cacheRoot}/setup-${sanitizeForLockfile t}.lock"
-        mkdir -p "$(dirname "$lockfile")"
-        exec 200>"$lockfile"
-        if ! ${flock} -w 30 200; then
-          echo "[devenv] ${t} lock timeout after 30s - another process may be stuck" >&2
-          echo "[devenv] Try: FORCE_SETUP=1 dt setup:run" >&2
-          exit 0
-        fi
-
-        devenv tasks run ${t} || true
-      '';
-      # Include status check directly in wrapper task (can't merge attrsets with //)
-    } // lib.optionalAttrs skipIfGitHashUnchanged {
-      status = gitHashStatus;
-    };
-  }) setupOptionalTasks);
-  allSetupTasks = setupRequiredTasks ++ wrappedOptionalTasks;
+  optionalGateTaskName = "setup:optional";
+  optionalGateDeps = map (t: "${t}@complete") setupOptionalTasks;
+  allSetupTasks =
+    setupRequiredTasks ++ lib.optionals (setupOptionalTasks != [ ]) [ optionalGateTaskName ];
 
   # Status check that skips task if git hash unchanged AND inner caches exist
   # Returns 0 (skip) if conditions met, non-zero (run) otherwise
@@ -296,7 +266,7 @@ let
   '';
 
   # Create status overrides for required tasks only
-  # (wrappers have status included directly in their definition to avoid merge issues)
+  # Optional tasks are gated by setup:optional (below) so they aren't affected.
   statusOverrides = lib.optionalAttrs skipIfGitHashUnchanged (
     lib.genAttrs setupRequiredTasks (_: {
       status = lib.mkDefault gitHashStatus;
@@ -304,56 +274,74 @@ let
   );
 in
 {
-  # Merge status overrides, wrappers, and setup-specific tasks
-  tasks = statusOverrides // wrapperTasks // lib.optionalAttrs completionsEnabled {
-    "${completionsTaskName}" = {
-      description = "Install shell completions for CLI tools";
-      exec = completionsExec;
-      status = completionsStatus;
-    };
-  } // {
-    # Gate task that fails during rebase, causing dependent tasks to skip
-    # Uses `before` to inject itself as a dependency of each setup task
-    "setup:gate" = lib.mkIf skipDuringRebase {
-      description = "Check if setup should run (fails during rebase to skip setup)";
-      exec = ''
-        _git_dir=$(${git} rev-parse --git-dir 2>/dev/null)
-        if [ -d "$_git_dir/rebase-merge" ] || [ -d "$_git_dir/rebase-apply" ]; then
-          echo "Skipping setup during git rebase/cherry-pick"
-          echo "Run 'FORCE_SETUP=1 dt setup:run' manually if needed"
-          exit 1
-        fi
-      '';
-      # This makes setup:gate run BEFORE each setup task (and wrappers)
-      # If gate fails, the tasks will be "skipped due to dependency failure"
-      before = allSetupTasks;
-    };
+  # Merge status overrides and setup-specific tasks
+  tasks =
+    statusOverrides
+    // lib.optionalAttrs completionsEnabled {
+      "${completionsTaskName}" = {
+        description = "Install shell completions for CLI tools";
+        exec = completionsExec;
+        status = completionsStatus;
+      };
+    }
+    // {
+      # Gate for shell-entry optional tasks.
+      #
+      # - Runs optional tasks as upstream dependencies, marked with @complete so failures
+      #   don't block the shell.
+      # - Applies the git-hash/inner-cache skip logic without mutating the optional tasks
+      #   themselves (so `dt ts:build` etc still behave normally).
+      "${optionalGateTaskName}" = lib.mkIf (setupOptionalTasks != [ ]) (
+        {
+          description = "Shell entry optional tasks (best effort)";
+          exec = "exit 0";
+          after = optionalGateDeps;
+        }
+        // lib.optionalAttrs skipIfGitHashUnchanged {
+          status = gitHashStatus;
+        }
+      );
 
-    # Save git hash after successful setup
-    "setup:save-hash" = {
-      description = "Save git hash after successful setup";
-      exec = ''
-        ${writeHashScript}
-      '';
-      after = setupRequiredTasks;
-    };
+      # Gate task that fails during rebase, causing dependent tasks to skip
+      # Uses `before` to inject itself as a dependency of each setup task
+      "setup:gate" = lib.mkIf skipDuringRebase {
+        description = "Check if setup should run (fails during rebase to skip setup)";
+        exec = ''
+          _git_dir=$(${git} rev-parse --git-dir 2>/dev/null)
+          if [ -d "$_git_dir/rebase-merge" ] || [ -d "$_git_dir/rebase-apply" ]; then
+            echo "Skipping setup during git rebase/cherry-pick"
+            echo "Run 'FORCE_SETUP=1 dt setup:run' manually if needed"
+            exit 1
+          fi
+        '';
+        # This makes setup:gate run BEFORE each setup task
+        # If gate fails, the tasks will be "skipped due to dependency failure"
+        before = allSetupTasks;
+      };
 
-    # Wire setup tasks to run during shell entry.
-    # Required tasks are hard dependencies; wrappers are also hard deps
-    # but they internally swallow failures via `|| true`.
-    "devenv:enterShell" = {
-      after = allSetupTasks ++
-        [ "setup:save-hash" ];
-    };
+      # Save git hash after successful setup
+      "setup:save-hash" = {
+        description = "Save git hash after successful setup";
+        exec = ''
+          ${writeHashScript}
+        '';
+        after = allSetupTasks;
+      };
 
-    # Force-run setup tasks (bypasses git hash check)
-    # Useful during rebase or when you want to force a rebuild
-    "setup:run" = {
-      description = "Force run setup tasks (ignores git hash cache)";
-      exec = ''
-        FORCE_SETUP=1 devenv tasks run ${lib.concatStringsSep " " setupTasks} --mode before
-        ${writeHashScript}
-      '';
+      # Wire setup tasks to run during shell entry.
+      # Required tasks are hard dependencies; optional tasks are best-effort via @complete.
+      "devenv:enterShell" = {
+        after = [ "setup:save-hash" ];
+      };
+
+      # Force-run setup tasks (bypasses git hash check)
+      # Useful during rebase or when you want to force a rebuild
+      "setup:run" = {
+        description = "Force run setup tasks (ignores git hash cache)";
+        exec = ''
+          FORCE_SETUP=1 devenv tasks run ${lib.concatStringsSep " " setupTasks} --mode before
+          ${writeHashScript}
+        '';
+      };
     };
-  };
 }
