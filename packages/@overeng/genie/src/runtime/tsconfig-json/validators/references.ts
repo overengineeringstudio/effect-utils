@@ -6,6 +6,9 @@
  * tsconfig reference to enable proper TypeScript project references.
  */
 
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
 import type { GenieContext } from '../../mod.ts'
 import type { ValidationIssue } from '../../package-json/validation.ts'
 import type { TSConfigArgs } from '../mod.ts'
@@ -74,10 +77,17 @@ export const validateTsconfigReferences = ({
     const depPkg = ctx.workspace.byName.get(depName)
     if (!depPkg) continue
 
+    // Skip deps that can't be valid project reference targets:
+    // - No tsconfig.json (e.g. meta-packages like peer-deps)
+    // - composite: false (e.g. Astro sites, CLI tools)
+    const depTsconfigPath = join(ctx.cwd, depPkg.path, 'tsconfig.json')
+    if (!existsSync(depTsconfigPath)) continue
+    if (!isCompositeProject(depTsconfigPath)) continue
+
     const expectedRef = computeRelativeRef({ from: ctx.location, to: depPkg.path })
     if (!currentRefs.has(expectedRef)) {
       issues.push({
-        severity: 'warning',
+        severity: 'error',
         packageName: currentPkg.name,
         dependency: depName,
         message: `Missing tsconfig reference "${expectedRef}" for workspace dependency "${depName}"`,
@@ -91,4 +101,17 @@ export const validateTsconfigReferences = ({
   // So we don't report them as issues
 
   return issues
+}
+
+/** Check if a tsconfig.json has composite: true (required for project reference targets). */
+const isCompositeProject = (tsconfigPath: string): boolean => {
+  try {
+    const content = readFileSync(tsconfigPath, 'utf-8')
+    // Strip single-line comments for basic JSON-with-comments support
+    const stripped = content.replace(/\/\/.*$/gm, '')
+    const parsed = JSON.parse(stripped) as { compilerOptions?: { composite?: boolean } }
+    return parsed.compilerOptions?.composite !== false
+  } catch {
+    return false
+  }
 }
