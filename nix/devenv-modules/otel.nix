@@ -40,7 +40,12 @@
   portRangeStart ? 10000,
   portRangeEnd ? 60000,
 }:
-{ pkgs, config, lib, ... }:
+{
+  pkgs,
+  config,
+  lib,
+  ...
+}:
 let
   # Data directory for Tempo and Grafana state
   dataDir = "${config.devenv.root}/.devenv/otel";
@@ -78,31 +83,53 @@ let
   # Create a JPATH root so `github.com/...` vendored imports resolve correctly.
   # Grafonnet and its deps use jsonnet-bundler style import paths.
   grafonnetJpath = pkgs.linkFarm "grafonnet-jpath" [
-    { name = "github.com/grafana/grafonnet"; path = grafonnetSrc; }
-    { name = "github.com/jsonnet-libs/xtd"; path = xtdSrc; }
-    { name = "github.com/jsonnet-libs/docsonnet"; path = docsonnetSrc; }
+    {
+      name = "github.com/grafana/grafonnet";
+      path = grafonnetSrc;
+    }
+    {
+      name = "github.com/jsonnet-libs/xtd";
+      path = xtdSrc;
+    }
+    {
+      name = "github.com/jsonnet-libs/docsonnet";
+      path = docsonnetSrc;
+    }
   ];
 
   # Build a single dashboard from Jsonnet source
-  buildDashboard = name: pkgs.runCommand "grafana-dashboard-${name}" {
-    nativeBuildInputs = [ pkgs.go-jsonnet ];
-  } ''
-    mkdir -p $out
-    jsonnet \
-      -J ${grafonnetJpath} \
-      -J ${grafonnetSrc} \
-      -J ${dashboardsSrcDir} \
-      ${dashboardsSrcDir}/${name}.jsonnet \
-      -o $out/${name}.json
-  '';
+  buildDashboard =
+    name:
+    pkgs.runCommand "grafana-dashboard-${name}"
+      {
+        nativeBuildInputs = [ pkgs.go-jsonnet ];
+      }
+      ''
+        mkdir -p $out
+        jsonnet \
+          -J ${grafonnetJpath} \
+          -J ${grafonnetSrc} \
+          -J ${dashboardsSrcDir} \
+          ${dashboardsSrcDir}/${name}.jsonnet \
+          -o $out/${name}.json
+      '';
 
   # All dashboards as a linkFarm (Nix store path with JSON files)
   # NOTE: dashboardNames order determines build; add/remove to force rebuild
-  dashboardNames = [ "overview" "dt-tasks" "dt-duration-trends" "shell-entry" "pnpm-install" "ts-app-traces" ];
-  allDashboards = pkgs.linkFarm "otel-dashboards" (map (name: {
-    name = "${name}.json";
-    path = "${buildDashboard name}/${name}.json";
-  }) dashboardNames);
+  dashboardNames = [
+    "overview"
+    "dt-tasks"
+    "dt-duration-trends"
+    "shell-entry"
+    "pnpm-install"
+    "ts-app-traces"
+  ];
+  allDashboards = pkgs.linkFarm "otel-dashboards" (
+    map (name: {
+      name = "${name}.json";
+      path = "${buildDashboard name}/${name}.json";
+    }) dashboardNames
+  );
 
   # Grafana dashboard provisioning config
   grafanaDashboardProvision = pkgs.writeText "grafana-dashboards.yaml" ''
@@ -133,20 +160,41 @@ let
   portRange = portRangeEnd - portRangeStart - 6;
   pathHash = builtins.hashString "sha256" config.devenv.root;
   # Convert hex char to int (0-15)
-  hexCharToInt = c:
+  hexCharToInt =
+    c:
     let
-      chars = ["0" "1" "2" "3" "4" "5" "6" "7" "8" "9" "a" "b" "c" "d" "e" "f"];
-      findIdx = i:
-        if i >= 16 then 0
-        else if builtins.elemAt chars i == c then i
-        else findIdx (i + 1);
-    in findIdx 0;
+      chars = [
+        "0"
+        "1"
+        "2"
+        "3"
+        "4"
+        "5"
+        "6"
+        "7"
+        "8"
+        "9"
+        "a"
+        "b"
+        "c"
+        "d"
+        "e"
+        "f"
+      ];
+      findIdx =
+        i:
+        if i >= 16 then
+          0
+        else if builtins.elemAt chars i == c then
+          i
+        else
+          findIdx (i + 1);
+    in
+    findIdx 0;
   # Take first 7 hex chars -> convert to int -> mod into port range
   # (7 hex chars = max 268M, fits in Nix int; 8 might overflow on 32-bit)
   hexChars = lib.stringToCharacters (builtins.substring 0 7 pathHash);
-  hashInt = lib.mod
-    (builtins.foldl' (acc: c: acc * 16 + hexCharToInt c) 0 hexChars)
-    portRange;
+  hashInt = lib.mod (builtins.foldl' (acc: c: acc * 16 + hexCharToInt c) 0 hexChars) portRange;
   derivedBasePort = portRangeStart + hashInt;
   effectiveBasePort = if basePort != null then basePort else derivedBasePort;
 
@@ -516,7 +564,8 @@ let
     exit "$exit_code"
   '';
 
-in {
+in
+{
   packages = [
     pkgs.opentelemetry-collector-contrib
     pkgs.tempo

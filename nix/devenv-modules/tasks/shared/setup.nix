@@ -271,10 +271,28 @@ in
         before = allSetupTasks;
       };
 
+      # Emit a root span for shell entry traces (best effort).
+      #
+      # Upstream devenv runs tasks from a shell hook during activation. When a task fails,
+      # some setups end up without a root span, making it harder to correlate and debug
+      # activation failures.
+      "setup:otel-root-span" = {
+        description = "Emit root OTEL span for shell entry (best effort)";
+        exec = ''
+          if command -v otel-span >/dev/null 2>&1 \
+            && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] \
+            && [ -n "''${TRACEPARENT:-}" ]; then
+            otel-span "devenv" "shell:entry" --attr "entry.type=setup" -- true 2>/dev/null || true
+          fi
+          exit 0
+        '';
+        after = allSetupTasks;
+      };
+
       # Wire setup tasks to run during shell entry.
       # Required tasks are hard dependencies; optional tasks are best-effort via wrappers.
       "devenv:enterShell" = {
-        after = allSetupTasks;
+        after = allSetupTasks ++ [ "setup:otel-root-span" ];
       };
 
       # Run setup tasks explicitly.
