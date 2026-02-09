@@ -6,7 +6,7 @@
  */
 
 import * as Cli from '@effect/cli'
-import { Effect } from 'effect'
+import { Effect, Schedule } from 'effect'
 import React from 'react'
 
 import { outputModeLayer, outputOption } from '@overeng/tui-react/node'
@@ -29,10 +29,12 @@ export const testCommand = Cli.Command.make(
           React.createElement(DebugTestView, { stateAtom: DebugTestApp.stateAtom }),
         )
 
-        // Generate unique IDs for the test span
+        // Generate unique IDs so each test run produces a distinct trace
+        // that won't collide with previous runs in Tempo's search index.
         const testTraceId = randomHex(32)
         const testSpanId = randomHex(16)
-        const serviceName = 'otel-cli-test'
+        const testSuffix = randomHex(8)
+        const serviceName = `otel-cli-test-${testSuffix}`
         const spanName = `smoke-test-${Date.now()}`
 
         const steps: Array<TestStep> = [
@@ -96,23 +98,25 @@ export const testCommand = Cli.Command.make(
           message: `trace ${testTraceId.slice(0, 8)}... found`,
         })
 
-        // Step 4: Verify via Grafana TraceQL
+        // Step 4: Verify via Grafana TraceQL (retry — search index may lag behind ingest)
+        // Tempo's search index needs ~9s after ingestion to become searchable.
+        // Direct trace lookup (step 3) works immediately via the WAL, but search
+        // requires the ingester to flush blocks.
         updateStep({ index: 3, status: 'running' })
-        const searchResult = yield* Effect.either(
-          searchTraces({
-            query: `{resource.service.name="${serviceName}"}`,
-            limit: 1,
-            includeInternal: true,
-          }),
+
+        const found = yield* searchTraces({
+          query: `{resource.service.name="${serviceName}"}`,
+          limit: 1,
+          includeInternal: true,
+        }).pipe(
+          Effect.flatMap((results) =>
+            results.some((t) => t.traceId === testTraceId)
+              ? Effect.succeed(true)
+              : Effect.fail('not-found' as const),
+          ),
+          Effect.retry(Schedule.spaced('3 seconds').pipe(Schedule.intersect(Schedule.recurs(4)))),
+          Effect.orElseSucceed(() => false),
         )
-
-        if (searchResult._tag === 'Left') {
-          updateStep({ index: 3, status: 'failed', message: searchResult.left.message })
-          tui.dispatch({ _tag: 'Complete', steps: [...steps], allPassed: false })
-          return
-        }
-
-        const found = searchResult.right.some((t) => t.traceId === testTraceId)
         if (found) {
           updateStep({ index: 3, status: 'passed', message: 'trace found via TraceQL' })
         } else {
