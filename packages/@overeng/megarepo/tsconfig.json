@@ -48,6 +48,12 @@
   "references": [
     {
       "path": "../tui-react"
+    },
+    {
+      "path": "../effect-path"
+    },
+    {
+      "path": "../utils"
     }
   ]
 }

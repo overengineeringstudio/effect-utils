@@ -13,5 +13,5 @@ export default tsconfigJson({
     lib: ['ES2024'],
   },
   include: ['src/**/*', 'test/**/*', 'examples/**/*'],
-  references: [{ path: '../tui-core' }],
+  references: [{ path: '../tui-core' }, { path: '../utils' }],
 } satisfies TSConfigArgs)

@@ -13,9 +13,12 @@ export default tsconfigJson({
   },
   include: ['src/**/*', 'bin/**/*.ts'],
   references: [
+    { path: '../effect-path' },
     { path: '../notion-effect-client' },
     { path: '../notion-effect-schema' },
+    { path: '../tui-core' },
     { path: '../tui-react' },
     { path: '../utils' },
+    { path: '../utils-dev' },
   ],
 } satisfies TSConfigArgs)
