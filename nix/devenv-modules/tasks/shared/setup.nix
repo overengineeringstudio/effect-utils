@@ -40,13 +40,9 @@
 #
 # ## Optional Tasks
 #
-# Optional tasks are wired through a single gate task (`setup:optional`) which:
-#
-# - depends on optional tasks using the `@complete` suffix so failures don't block
-#   shell entry (direnv expects `devenv shell` to exit 0 on success)
-#
-# This module intentionally does not try to "skip" work via an outer caching layer.
-# Individual tasks should implement correct `status` checks.
+# Optional tasks are wired through a gate task (`setup:optional`) which depends on
+# wrapper tasks (`setup:opt:*`). Wrappers always exit 0 so shell entry remains resilient
+# even if upstream failure handling regresses.
 {
   requiredTasks ? [ ],
   optionalTasks ? [ ],
@@ -288,7 +284,6 @@ in
         '';
         after = allSetupTasks;
       };
-
       # Wire setup tasks to run during shell entry.
       # Required tasks are hard dependencies; optional tasks are best-effort via wrappers.
       "devenv:enterShell" = {
