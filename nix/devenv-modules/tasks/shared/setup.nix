@@ -236,13 +236,13 @@ in
     ))
     // {
 
-      # Strict variant of shell-entry optional tasks.
+      # Strict variant of setup tasks.
       #
       # Use for CI or explicit runs (R16): failures should be enforced.
-      "setup:strict" = lib.mkIf (setupOptionalTasks != [ ]) {
-        description = "Shell entry optional tasks (strict)";
+      "setup:strict" = lib.mkIf (setupTasks != [ ]) {
+        description = "Setup tasks (strict)";
         exec = "exit 0";
-        after = setupOptionalTasks;
+        after = setupTasks;
       };
 
       # Gate task that fails during rebase, causing dependent tasks to skip
