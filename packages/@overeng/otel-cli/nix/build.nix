@@ -15,8 +15,8 @@ mkPnpmCli {
   # Skip smoke test — otel CLI requires OTEL_EXPORTER_OTLP_ENDPOINT at startup
   smokeTestArgs = [];
   # Managed by `dt nix:hash:otel-cli` — do not edit manually.
-  pnpmDepsHash = "sha256-QgyRUS2pBhp44BkrZUuVb/hVAYUalq0Aeuooyzea5YM=";
-  lockfileHash = "sha256-6Zww34YZgzSsZXjAAjjDsxFhCX82tPeaN1R1YCRp4mA=";
+  pnpmDepsHash = "sha256-ZxH/bKKzlAqSQb+0FC+LPUlqUDngn5WZ5WCCumeLCKg=";
+  lockfileHash = "sha256-xdr+vkueeTjl00ENADLXXfjKuf3/vFm57wDY9NnCS5A=";
   packageJsonDepsHash = "sha256-EKqAx1VuDdi8BOR+eq+fxCKehKj2SnqB4bXyJSPVuEs=";
   inherit gitRev commitTs dirty;
 }

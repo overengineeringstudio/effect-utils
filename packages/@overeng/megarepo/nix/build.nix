@@ -20,7 +20,7 @@ let
       if pkgs.stdenv.isDarwin
       then "sha256-nRY4sF0CreFriGwuA60Gndd0rTKXVJtVc0+F9Fc/mYk="
       else "sha256-2q+5YiwberB0qQbZ4byJpXFbVeju94FL0ZZhXf9yB/I=";
-    lockfileHash = "sha256-yVhkcyt1pfMShhfvdqTow5qkuHRC0rWn8axyXPmcSR0=";
+    lockfileHash = "sha256-7oYF4DF6Ue44gRUSL5OmZ1A244v61TWsoX6vyiC74n8=";
     packageJsonDepsHash = "sha256-tGkiG+aEO0TUw/SVvU9T0cgD4nMjENqRioocT5w3XMQ=";
     smokeTestArgs = [ "--help" ];
     inherit gitRev commitTs dirty;
