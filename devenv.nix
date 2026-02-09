@@ -248,9 +248,23 @@ in
 
 
   enterShell = ''
+    export SHELL_ENTRY_TIME_NS=$(date +%s%N)
     export WORKSPACE_ROOT="$PWD"
     export PATH="$WORKSPACE_ROOT/node_modules/.bin:$PATH"
     ${cliBuildStamp.shellHook}
+
+    # Detect cold vs warm start
+    _cold_start="false"
+    if [ ! -f .direnv/task-cache/setup-git-hash ]; then
+      _cold_start="true"
+    elif [ "$(git rev-parse HEAD 2>/dev/null || echo no-git)" != "$(cat .direnv/task-cache/setup-git-hash 2>/dev/null || echo "")" ]; then
+      _cold_start="true"
+    fi
+
+    # Emit shell:ready marker span with cold-start attribute
+    if command -v otel-span >/dev/null 2>&1 && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
+      otel-span "devenv" "shell:ready" --attr "cold_start=$_cold_start" -- true 2>/dev/null || true
+    fi
   '';
 
   git-hooks.enable = true;

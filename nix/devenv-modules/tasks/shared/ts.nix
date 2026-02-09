@@ -123,36 +123,42 @@ let
           [ -n "$_memory" ] && _attrs="$_attrs"',{"key":"tsc.memory_kb","value":{"intValue":"'"$_memory"'"}}'
           _attrs="$_attrs"',{"key":"devenv.root","value":{"stringValue":"'"$DEVENV_ROOT"'"}}]'
 
-          # Emit OTLP span (fire-and-forget)
-          ${pkgs.curl}/bin/curl -s -X POST \
-            "$OTEL_EXPORTER_OTLP_ENDPOINT/v1/traces" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "resourceSpans": [{
-                "resource": {
-                  "attributes": [
-                    {"key": "service.name", "value": {"stringValue": "tsc-project"}},
-                    {"key": "devenv.root", "value": {"stringValue": "'"$DEVENV_ROOT"'"}}
-                  ]
-                },
-                "scopeSpans": [{
-                  "scope": {"name": "tsc-diagnostics"},
-                  "spans": [{
-                    "traceId": "'"$_tp_trace"'",
-                    "spanId": "'"$_span_id"'",
-                    "parentSpanId": "'"$_tp_parent"'",
-                    "name": "'"$_current_project"'",
-                    "kind": 1,
-                    "startTimeUnixNano": "'"$_start_ns"'",
-                    "endTimeUnixNano": "'"$_end_ns"'",
-                    "attributes": '"$_attrs"',
-                    "status": {"code": 1}
-                  }]
+          # Emit OTLP span via spool file (near-zero overhead)
+          _tsc_payload='{
+            "resourceSpans": [{
+              "resource": {
+                "attributes": [
+                  {"key": "service.name", "value": {"stringValue": "tsc-project"}},
+                  {"key": "devenv.root", "value": {"stringValue": "'"$DEVENV_ROOT"'"}}
+                ]
+              },
+              "scopeSpans": [{
+                "scope": {"name": "tsc-diagnostics"},
+                "spans": [{
+                  "traceId": "'"$_tp_trace"'",
+                  "spanId": "'"$_span_id"'",
+                  "parentSpanId": "'"$_tp_parent"'",
+                  "name": "'"$_current_project"'",
+                  "kind": 1,
+                  "startTimeUnixNano": "'"$_start_ns"'",
+                  "endTimeUnixNano": "'"$_end_ns"'",
+                  "attributes": '"$_attrs"',
+                  "status": {"code": 1}
                 }]
               }]
-            }' \
-            --max-time 2 \
-            >/dev/null 2>&1 || true
+            }]
+          }'
+          _tsc_spool="''${OTEL_SPAN_SPOOL_DIR:-}"
+          if [ -n "$_tsc_spool" ] && [ -d "$_tsc_spool" ]; then
+            printf '%s\n' "$_tsc_payload" >> "$_tsc_spool/spans.jsonl"
+          else
+            ${pkgs.curl}/bin/curl -s -X POST \
+              "$OTEL_EXPORTER_OTLP_ENDPOINT/v1/traces" \
+              -H "Content-Type: application/json" \
+              -d "$_tsc_payload" \
+              --max-time 2 \
+              >/dev/null 2>&1 || true
+          fi
 
           _current_project=""
           _diag_block=""

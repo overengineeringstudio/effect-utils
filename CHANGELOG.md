@@ -4,7 +4,38 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **devenv/otel.nix**: Replace `curl` with file spool (`otlpjsonfilereceiver`) in `otel-span`
+  - Spans are written to `$OTEL_SPAN_SPOOL_DIR/spans.jsonl` instead of HTTP POST
+  - Collector picks up spans via `otlpjsonfilereceiver` (500ms poll, delete after read)
+  - Falls back to `curl` if spool dir not available
+  - Reduces per-span overhead from ~58ms to <1ms
+
+- **devenv/tasks/lib/trace.nix**: Skip tracing for status checks (internal machinery)
+  - `trace.status` and `withStatus` status now pass through without emitting spans
+  - Reduces shell entry overhead by removing unnecessary span emission
+
 ### Added
+
+- **devenv/otel.nix**: TRACEPARENT propagation for shell entry waterfall tracing
+  - `setup:gate` generates root TRACEPARENT for shell entry traces
+  - `setup:save-hash` emits a `devenv:shell:entry` root span
+  - `trace.nix` generates fallback TRACEPARENT when not already set
+  - Enables end-to-end waterfall view in Grafana Tempo for shell startup
+
+- **devenv.nix**: Nix eval visibility and cold-start detection
+  - `SHELL_ENTRY_TIME_NS` captured at enterShell start
+  - `shell:ready` marker span with `cold_start` attribute
+  - `dt.nix` adds `shell.ready_ms` attribute for eval+setup time tracking
+
+- **devenv/otel.nix**: `otel:test` task for shell-level unit tests
+  - Validates JSON format, TRACEPARENT propagation, spool write, and fallback
+  - Runs offline (~2s) without requiring `devenv up`
+
+- **@overeng/otel-cli**: Spool file verification in `otel debug test`
+  - Tests both HTTP and file spool delivery paths end-to-end
+  - Gracefully skips spool test when `OTEL_SPAN_SPOOL_DIR` not set
 
 - **@overeng/genie**: Validate `pnpmWorkspaceYaml` rejects absolute paths in `packages` during `genie:check` (#152)
 

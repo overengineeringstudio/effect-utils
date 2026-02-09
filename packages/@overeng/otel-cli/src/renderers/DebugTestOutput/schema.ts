@@ -14,7 +14,7 @@ import { Schema } from 'effect'
 /** A single test step with its status. */
 export const TestStep = Schema.Struct({
   name: Schema.String,
-  status: Schema.Literal('pending', 'running', 'passed', 'failed'),
+  status: Schema.Literal('pending', 'running', 'passed', 'failed', 'skipped'),
   message: Schema.optional(Schema.String),
 })
 
@@ -86,9 +86,11 @@ export const testReducer = (_input: { state: TestState; action: TestAction }): T
 export const createInitialTestState = (): TestState => ({
   _tag: 'Running',
   steps: [
-    { name: 'Send test span to Collector', status: 'pending' },
+    { name: 'Send test span via HTTP', status: 'pending' },
+    { name: 'Send test span via spool file', status: 'pending' },
     { name: 'Wait for ingestion', status: 'pending' },
-    { name: 'Verify span in Tempo', status: 'pending' },
+    { name: 'Verify HTTP span in Tempo', status: 'pending' },
+    { name: 'Verify spool span in Tempo', status: 'pending' },
     { name: 'Verify via Grafana TraceQL', status: 'pending' },
   ],
 })

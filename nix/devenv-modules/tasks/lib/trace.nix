@@ -37,69 +37,49 @@ let
   # Returns: string - A new exec script that wraps the original with otel-span
   traceExec = taskName: execBody: ''
     if command -v otel-span >/dev/null 2>&1 && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
+      # Generate TRACEPARENT if not already set (ensures trace linkage)
+      if [ -z "''${TRACEPARENT:-}" ]; then
+        _ft_trace=$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')
+        _ft_span=$(od -An -tx1 -N8 /dev/urandom | tr -d ' \n')
+        export TRACEPARENT="00-''${_ft_trace:0:32}-''${_ft_span:0:16}-01"
+      fi
       otel-span "dt-task" "${taskName}" --attr "task.cached=false" -- bash -c ${lib.escapeShellArg execBody}
     else
       ${execBody}
     fi
   '';
 
-  # Wrap a task's exec and status scripts to track cache hits.
-  # When the status check passes (task is cached), emits a minimal span with task.cached=true.
-  # When the task runs, emits a normal span with task.cached=false.
+  # Wrap a task's exec script with otel-span tracing.
+  # Status checks are passed through without tracing (internal machinery).
   #
   # Args:
   #   taskName: string - The span name (e.g., "pnpm:install:genie")
   #   taskAttrs: attrset - Must contain { exec, status } strings, may contain other attrs
   #
-  # Returns: attrset - Modified { exec, status } with tracing, other attrs preserved
-  #
-  # Note: The status script emits a span only when cached (exit 0).
-  # This adds minimal overhead since otel-span with "true" is fast (~5ms).
+  # Returns: attrset - Modified { exec } with tracing, status and other attrs preserved
   withStatus = taskName: { exec, status, ... }@attrs:
     attrs // {
       exec = ''
         if command -v otel-span >/dev/null 2>&1 && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
+          # Generate TRACEPARENT if not already set (ensures trace linkage)
+          if [ -z "''${TRACEPARENT:-}" ]; then
+            _ft_trace=$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')
+            _ft_span=$(od -An -tx1 -N8 /dev/urandom | tr -d ' \n')
+            export TRACEPARENT="00-''${_ft_trace:0:32}-''${_ft_span:0:16}-01"
+          fi
           otel-span "dt-task" "${taskName}" --attr "task.cached=false" -- bash -c ${lib.escapeShellArg exec}
         else
           ${exec}
         fi
       '';
-      status = ''
-        _trace_status_exit=0
-        (${status}) || _trace_status_exit=$?
-        if [ "$_trace_status_exit" -eq 0 ]; then
-          # Task is cached - emit a minimal span to record it
-          if command -v otel-span >/dev/null 2>&1 && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
-            otel-span "dt-task" "${taskName}" --attr "task.cached=true" -- true 2>/dev/null || true
-          fi
-        fi
-        exit "$_trace_status_exit"
-      '';
+      # Don't trace status checks — they're internal devenv machinery and
+      # the overhead isn't worth it (status checks run frequently)
+      inherit status;
     };
 
-  # Wrap only the status script to emit a span when cached.
-  # Use this when exec is already wrapped with trace.exec or doesn't need tracing.
-  #
-  # Args:
-  #   taskName: string - The span name
-  #   statusBody: string - The original status script body
-  #
-  # Returns: string - Modified status script that emits span when cached
-  #
-  # Note: Spans are emitted even without TRACEPARENT (as orphan spans) so they
-  # still appear in queries. This is necessary because devenv runs status checks
-  # before dt sets up the parent trace context.
-  traceStatus = taskName: statusBody: ''
-    _trace_status_exit=0
-    (${statusBody}) || _trace_status_exit=$?
-    if [ "$_trace_status_exit" -eq 0 ]; then
-      # Task is cached - emit a minimal span to record it
-      if command -v otel-span >/dev/null 2>&1 && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
-        otel-span "dt-task" "${taskName}" --attr "task.cached=true" -- true 2>/dev/null || true
-      fi
-    fi
-    exit "$_trace_status_exit"
-  '';
+  # Pass-through for status scripts — status checks are not traced because
+  # they're internal devenv machinery and the overhead isn't worth it.
+  traceStatus = _taskName: statusBody: statusBody;
 in
 {
   exec = traceExec;

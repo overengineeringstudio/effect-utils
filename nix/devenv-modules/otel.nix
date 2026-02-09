@@ -44,6 +44,8 @@
 let
   # Data directory for Tempo and Grafana state
   dataDir = "${config.devenv.root}/.devenv/otel";
+  # Spool directory for otel-span file-based span delivery
+  spoolDir = "${dataDir}/spool";
 
   # =========================================================================
   # Grafonnet: build dashboards from Jsonnet source at Nix eval time
@@ -166,6 +168,13 @@ let
         protocols:
           http:
             endpoint: "127.0.0.1:${toString otelCollectorPort}"
+      otlpjsonfile:
+        include:
+          - "${spoolDir}/*.jsonl"
+        start_at: beginning
+        poll_interval: 500ms
+        delete_after_read: true
+        storage: file_storage/spool
 
     processors:
       batch:
@@ -178,7 +187,12 @@ let
         tls:
           insecure: true
 
+    extensions:
+      file_storage/spool:
+        directory: ${dataDir}/spool-offsets
+
     service:
+      extensions: [file_storage/spool]
       telemetry:
         metrics:
           readers:
@@ -189,7 +203,7 @@ let
                     port: ${toString otelMetricsPort}
       pipelines:
         traces:
-          receivers: [otlp]
+          receivers: [otlp, otlpjsonfile]
           processors: [batch]
           exporters: [otlp]
   '';
@@ -307,8 +321,9 @@ let
   # otel-span: shell helper for emitting OTLP trace spans from bash
   # =========================================================================
   #
-  # This is the OTEL compat layer for shell scripts. It uses curl to POST
-  # OTLP JSON to the collector. No heavy SDK needed.
+  # This is the OTEL compat layer for shell scripts. It writes OTLP JSON
+  # to a spool file for the collector's otlpjsonfilereceiver to pick up.
+  # Falls back to curl POST if the spool dir is not available.
   #
   # Usage:
   #   otel-span <service-name> <span-name> -- <command> [args...]
@@ -483,13 +498,19 @@ let
       }]
     }'
 
-    # Send to collector (fire-and-forget, don't block on failure)
-    ${pkgs.curl}/bin/curl -s -X POST \
-      "$ENDPOINT/v1/traces" \
-      -H "Content-Type: application/json" \
-      -d "$payload" \
-      --max-time 2 \
-      >/dev/null 2>&1 || true
+    # Write span to spool file for collector to pick up (near-zero overhead)
+    _spool_dir="''${OTEL_SPAN_SPOOL_DIR:-}"
+    if [ -n "$_spool_dir" ] && [ -d "$_spool_dir" ]; then
+      printf '%s\n' "$payload" >> "$_spool_dir/spans.jsonl"
+    else
+      # Fallback to HTTP if spool dir not available
+      ${pkgs.curl}/bin/curl -s -X POST \
+        "$ENDPOINT/v1/traces" \
+        -H "Content-Type: application/json" \
+        -d "$payload" \
+        --max-time 2 \
+        >/dev/null 2>&1 || true
+    fi
 
     exit "$exit_code"
   '';
@@ -506,6 +527,7 @@ in {
   # OTEL can discover the collector automatically
   env.OTEL_EXPORTER_OTLP_ENDPOINT = "http://127.0.0.1:${toString otelCollectorPort}";
   env.OTEL_GRAFANA_URL = "http://127.0.0.1:${toString grafanaPort}";
+  env.OTEL_SPAN_SPOOL_DIR = spoolDir;
 
   enterShell = ''
     echo "[otel] Collector: $OTEL_EXPORTER_OTLP_ENDPOINT"
@@ -521,8 +543,10 @@ in {
   processes = {
     "otel-collector-${toString otelCollectorPort}" = {
       exec = ''
+        mkdir -p ${spoolDir} ${dataDir}/spool-offsets
         exec ${pkgs.opentelemetry-collector-contrib}/bin/otelcol-contrib \
-          --config ${otelCollectorConfig}
+          --config ${otelCollectorConfig} \
+          --feature-gates=filelog.allowFileDeletion
       '';
     };
 
@@ -545,5 +569,85 @@ in {
           --homepath ${pkgs.grafana}/share/grafana
       '';
     };
+  };
+
+  # =========================================================================
+  # Tasks
+  # =========================================================================
+
+  tasks."otel:test" = {
+    description = "Run otel-span shell-level unit tests (offline, no devenv up needed)";
+    exec = ''
+      set -euo pipefail
+      _pass=0
+      _fail=0
+      _tmp=$(mktemp -d)
+      trap 'rm -rf "$_tmp"' EXIT
+
+      _check() {
+        local name="$1"
+        shift
+        if "$@"; then
+          echo "PASS: $name"
+          _pass=$((_pass + 1))
+        else
+          echo "FAIL: $name"
+          _fail=$((_fail + 1))
+        fi
+      }
+
+      # Test 1: JSON format validation
+      _test_json_format() {
+        local spool="$_tmp/json-test"
+        mkdir -p "$spool"
+        OTEL_SPAN_SPOOL_DIR="$spool" otel-span "test" "json-check" -- true >/dev/null 2>&1
+        [ -f "$spool/spans.jsonl" ] || return 1
+        local line
+        line=$(head -1 "$spool/spans.jsonl")
+        # Validate required OTLP fields
+        echo "$line" | ${pkgs.jq}/bin/jq -e '.resourceSpans[0].scopeSpans[0].spans[0] | .traceId and .spanId and .name and .startTimeUnixNano and .endTimeUnixNano' >/dev/null 2>&1
+      }
+      _check "JSON format" _test_json_format
+
+      # Test 2: TRACEPARENT propagation
+      _test_traceparent() {
+        local spool="$_tmp/tp-test"
+        mkdir -p "$spool"
+        local child_tp
+        child_tp=$(OTEL_SPAN_SPOOL_DIR="$spool" otel-span "test" "parent" -- bash -c 'echo $TRACEPARENT' 2>/dev/null)
+        # Must match W3C format: 00-{32hex}-{16hex}-01
+        [[ "$child_tp" =~ ^00-[0-9a-f]{32}-[0-9a-f]{16}-01$ ]] || return 1
+        # Trace ID in child must match the span's trace ID in the spool file
+        local span_trace
+        span_trace=$(head -1 "$spool/spans.jsonl" | ${pkgs.jq}/bin/jq -r '.resourceSpans[0].scopeSpans[0].spans[0].traceId')
+        local child_trace
+        child_trace=$(echo "$child_tp" | cut -d- -f2)
+        [ "$span_trace" = "$child_trace" ]
+      }
+      _check "TRACEPARENT propagation" _test_traceparent
+
+      # Test 3: Spool fallback (nonexistent dir)
+      _test_spool_fallback() {
+        # With nonexistent spool dir, should still succeed (falls back to curl which may fail silently)
+        OTEL_SPAN_SPOOL_DIR="/nonexistent" OTEL_EXPORTER_OTLP_ENDPOINT="http://127.0.0.1:1" otel-span "test" "fallback" -- true >/dev/null 2>&1
+      }
+      _check "Spool fallback" _test_spool_fallback
+
+      # Test 4: Spool file write
+      _test_spool_write() {
+        local spool="$_tmp/write-test"
+        mkdir -p "$spool"
+        OTEL_SPAN_SPOOL_DIR="$spool" otel-span "test" "write-check" -- true >/dev/null 2>&1
+        [ -f "$spool/spans.jsonl" ] || return 1
+        local lines
+        lines=$(wc -l < "$spool/spans.jsonl")
+        [ "$lines" -eq 1 ]
+      }
+      _check "Spool write" _test_spool_write
+
+      echo ""
+      echo "$_pass passed, $_fail failed"
+      [ "$_fail" -eq 0 ]
+    '';
   };
 }

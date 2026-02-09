@@ -5,6 +5,9 @@
  * Provides health checking and span submission.
  */
 
+import * as NodeFs from 'node:fs'
+import * as NodePath from 'node:path'
+
 import { HttpClient, HttpClientRequest } from '@effect/platform'
 import { Data, Effect } from 'effect'
 
@@ -156,6 +159,83 @@ export const sendTestSpan = (options: {
     }
   }).pipe(
     Effect.withSpan('CollectorClient.sendTestSpan', {
+      attributes: {
+        serviceName: options.serviceName,
+        spanName: options.spanName,
+      },
+    }),
+  )
+
+/**
+ * Send a test OTLP span via the spool file path (otlpjsonfilereceiver).
+ * Writes OTLP JSON as a single line to `$OTEL_SPAN_SPOOL_DIR/spans.jsonl`.
+ */
+export const sendTestSpanViaSpool = (options: {
+  readonly serviceName: string
+  readonly spanName: string
+  readonly traceId: string
+  readonly spanId: string
+}): Effect.Effect<void, CollectorError> =>
+  Effect.gen(function* () {
+    const spoolDir = process.env['OTEL_SPAN_SPOOL_DIR']
+
+    if (spoolDir === undefined || spoolDir.length === 0) {
+      return yield* new CollectorError({
+        reason: 'Unreachable',
+        message: 'OTEL_SPAN_SPOOL_DIR not set — spool path not available',
+      })
+    }
+
+    const nowNano = String(BigInt(Date.now()) * MILLISECONDS_TO_NANOSECONDS)
+    const endNano = String(
+      BigInt(Date.now()) * MILLISECONDS_TO_NANOSECONDS + TEST_SPAN_DURATION_NANOS,
+    )
+
+    const body = {
+      resourceSpans: [
+        {
+          resource: {
+            attributes: [
+              {
+                key: 'service.name',
+                value: { stringValue: options.serviceName },
+              },
+            ],
+          },
+          scopeSpans: [
+            {
+              spans: [
+                {
+                  traceId: options.traceId,
+                  spanId: options.spanId,
+                  name: options.spanName,
+                  kind: SPAN_KIND_INTERNAL,
+                  startTimeUnixNano: nowNano,
+                  endTimeUnixNano: endNano,
+                  status: { code: STATUS_CODE_OK },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    }
+
+    const filePath = NodePath.join(spoolDir, 'spans.jsonl')
+
+    yield* Effect.try({
+      try: () => {
+        NodeFs.appendFileSync(filePath, JSON.stringify(body) + '\n')
+      },
+      catch: (error) =>
+        new CollectorError({
+          reason: 'RequestFailed',
+          message: `Failed to write span to spool file at ${filePath}`,
+          cause: error,
+        }),
+    })
+  }).pipe(
+    Effect.withSpan('CollectorClient.sendTestSpanViaSpool', {
       attributes: {
         serviceName: options.serviceName,
         spanName: options.spanName,
