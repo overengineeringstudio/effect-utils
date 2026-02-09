@@ -37,21 +37,21 @@ import {
 import { syncNixLocks, type NixLockSyncResult } from '../../lib/nix-lock/mod.ts'
 import { type Store, StoreLayer } from '../../lib/store.ts'
 import {
-  countSyncResults,
   type GitProtocol,
   makeRepoSemaphoreMap,
   type MissingRefAction,
   type MissingRefInfo,
+  collectSyncErrors,
   syncMember,
   type MegarepoSyncResult,
   type MemberSyncResult,
 } from '../../lib/sync/mod.ts'
+import type { MegarepoSyncTree as MegarepoSyncTreeType } from '../../lib/sync/schema.ts'
 import { Cwd, findMegarepoRoot, outputOption, outputModeLayer, verboseOption } from '../context.ts'
 import {
   NotInMegarepoError,
   LockFileRequiredError,
   StaleLockFileError,
-  SyncFailedError,
   InvalidOptionsError,
 } from '../errors.ts'
 import {
@@ -455,6 +455,13 @@ export const syncMegarepo = <R = never>({
     } satisfies MegarepoSyncResult
   })
 
+const toMegarepoSyncTree = (r: MegarepoSyncResult): MegarepoSyncTreeType => ({
+  root: r.root,
+  results: r.results,
+  nestedMegarepos: r.nestedMegarepos,
+  nestedResults: r.nestedResults.map(toMegarepoSyncTree),
+})
+
 /** Parse comma-separated member names */
 const parseMemberList = (value: string): ReadonlyArray<string> =>
   value
@@ -653,25 +660,50 @@ export const syncCommand = Cli.Command.make(
 
         // Mark complete and finish UI
         const generatedFiles = getEnabledGenerators(config)
-        ui.dispatch({
-          _tag: 'Complete',
-          nestedMegarepos: [...syncResult.nestedMegarepos],
-          generatedFiles,
-        })
-        yield* finishSyncUI(ui)
 
-        // Check for sync errors and fail if any occurred
-        const counts = countSyncResults(syncResult)
-        if (counts.errors > 0) {
-          const failedMembers = syncResult.results
-            .filter((r) => r.status === 'error')
-            .map((r) => r.name)
-          return yield* new SyncFailedError({
-            message: `${counts.errors} member(s) failed to sync`,
-            errorCount: counts.errors,
-            failedMembers,
-          })
-        }
+        // Transform lock sync results to TUI format
+        const lockSyncResults =
+          syncResult.lockSyncResults?.memberResults.map((mr) => ({
+            memberName: mr.memberName,
+            files: mr.files.map((f) => ({
+              type: f.type,
+              updatedInputs: f.updatedInputs.map((u) => ({
+                inputName: u.inputName,
+                memberName: u.memberName,
+                oldRev: u.oldRev.slice(0, 7),
+                newRev: u.newRev.slice(0, 7),
+              })),
+            })),
+          })) ?? []
+
+        const syncErrors = collectSyncErrors(syncResult)
+        const syncErrorItems = syncErrors.map((e) => ({
+          megarepoRoot: e.megarepoRoot,
+          memberName: e.member.name,
+          message: e.member.message ?? null,
+        }))
+
+        ui.dispatch({
+          _tag: 'SetState',
+          state: {
+            _tag: syncErrorItems.length > 0 ? 'Error' : 'Success',
+            workspace: { name, root: root.value },
+            options: syncDisplayOptions,
+            members: memberNames,
+            activeMember: null,
+            results: syncResult.results,
+            logs: [],
+            startedAt: null,
+            nestedMegarepos: [...syncResult.nestedMegarepos],
+            generatedFiles,
+            lockSyncResults: lockSyncResults,
+            syncTree: toMegarepoSyncTree(syncResult),
+            syncErrors: syncErrorItems,
+            syncErrorCount: syncErrorItems.length,
+          },
+        })
+
+        yield* finishSyncUI(ui)
 
         return syncResult
       } else {
@@ -713,36 +745,35 @@ export const syncCommand = Cli.Command.make(
           SyncApp,
           (tui) =>
             Effect.sync(() => {
+              const syncErrors = collectSyncErrors(syncResult)
+              const syncErrorItems = syncErrors.map((e) => ({
+                megarepoRoot: e.megarepoRoot,
+                memberName: e.member.name,
+                message: e.member.message ?? null,
+              }))
+
               tui.dispatch({
                 _tag: 'SetState',
                 state: {
+                  _tag: syncErrorItems.length > 0 ? 'Error' : 'Success',
                   workspace: { name, root: root.value },
                   options: syncDisplayOptions,
-                  phase: 'complete',
                   members: memberNames,
+                  activeMember: null,
                   results: syncResult.results,
                   logs: [],
+                  startedAt: null,
                   nestedMegarepos: [...syncResult.nestedMegarepos],
                   generatedFiles,
                   lockSyncResults,
+                  syncTree: toMegarepoSyncTree(syncResult),
+                  syncErrors: syncErrorItems,
+                  syncErrorCount: syncErrorItems.length,
                 },
               })
             }),
           { view: React.createElement(SyncView, { stateAtom: SyncApp.stateAtom }) },
         ).pipe(Effect.provide(outputModeLayer(output)))
-
-        // Check for sync errors and fail if any occurred
-        const counts = countSyncResults(syncResult)
-        if (counts.errors > 0) {
-          const failedMembers = syncResult.results
-            .filter((r) => r.status === 'error')
-            .map((r) => r.name)
-          return yield* new SyncFailedError({
-            message: `${counts.errors} member(s) failed to sync`,
-            errorCount: counts.errors,
-            failedMembers,
-          })
-        }
 
         return syncResult
       }

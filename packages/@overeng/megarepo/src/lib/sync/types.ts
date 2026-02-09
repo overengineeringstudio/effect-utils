@@ -50,6 +50,12 @@ export interface MegarepoSyncResult {
   readonly lockSyncResults?: NixLockSyncResult | undefined
 }
 
+/** A member sync error with megarepo root context (includes nested megarepos). */
+export interface SyncMemberError {
+  readonly megarepoRoot: AbsoluteDirPath
+  readonly member: MemberSyncResult
+}
+
 /** Options for sync operations */
 export interface SyncOptions {
   readonly json: boolean
@@ -107,4 +113,20 @@ export const countSyncResults = (
     errors: errors + nested.errors,
     removed: removed + nested.removed,
   }
+}
+
+/** Collect all member errors across the full nested sync tree. */
+export const collectSyncErrors = (r: MegarepoSyncResult): ReadonlyArray<SyncMemberError> => {
+  const current: SyncMemberError[] = r.results
+    .filter((m) => m.status === 'error')
+    .map((member) => ({ megarepoRoot: r.root, member }))
+
+  const nested = r.nestedResults.flatMap((nr) => collectSyncErrors(nr))
+  return [...current, ...nested]
+}
+
+/** Collect all member results across the full nested sync tree. */
+export const collectAllMemberResults = (r: MegarepoSyncResult): ReadonlyArray<MemberSyncResult> => {
+  const nested = r.nestedResults.flatMap((nr) => collectAllMemberResults(nr))
+  return [...r.results, ...nested]
 }

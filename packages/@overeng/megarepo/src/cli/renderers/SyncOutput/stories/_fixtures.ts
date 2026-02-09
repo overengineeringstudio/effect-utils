@@ -87,15 +87,25 @@ export const exampleLockSyncResults: MemberLockSyncResult[] = [
 // =============================================================================
 
 export const createBaseState = (overrides?: Partial<SyncStateType>): SyncStateType => ({
+  _tag: 'Success',
   workspace: { name: 'my-workspace', root: '/Users/dev/workspace' },
   options: { dryRun: false, frozen: false, pull: false, all: false, verbose: false },
-  phase: 'complete',
   members: [],
+  activeMember: null,
   results: [],
   logs: [],
+  startedAt: null,
   nestedMegarepos: [],
   generatedFiles: [],
   lockSyncResults: [],
+  syncTree: {
+    root: '/Users/dev/workspace',
+    results: [],
+    nestedMegarepos: [],
+    nestedResults: [],
+  },
+  syncErrors: [],
+  syncErrorCount: 0,
   ...overrides,
 })
 
@@ -124,7 +134,7 @@ export const createTimeline = (
         at: 0,
         action: {
           _tag: 'SetState',
-          state: createBaseState({ ...finalState, phase: 'complete' }),
+          state: createBaseState({ ...finalState, _tag: 'Success' }),
         },
       },
     ]
@@ -141,10 +151,11 @@ export const createTimeline = (
       state: createBaseState({
         workspace,
         options,
-        phase: 'syncing',
+        _tag: 'Syncing',
         members,
-        activeMember: members[0],
+        activeMember: members[0] ?? null,
         results: [],
+        startedAt: Date.now(),
       }),
     },
   })
@@ -152,7 +163,9 @@ export const createTimeline = (
   // Add each result progressively
   for (let i = 0; i < results.length; i++) {
     const currentResults = results.slice(0, i + 1)
-    const nextMember = i + 1 < members.length ? members[i + 1] : undefined
+    const nextMember = i + 1 < members.length ? (members[i + 1] ?? null) : null
+    const isFinal = i === results.length - 1
+    const hasErrors = isFinal && currentResults.some((r) => r.status === 'error')
 
     timeline.push({
       at: (i + 1) * stepDuration,
@@ -161,7 +174,7 @@ export const createTimeline = (
         state: createBaseState({
           workspace,
           options,
-          phase: i === results.length - 1 ? 'complete' : 'syncing',
+          _tag: isFinal ? (hasErrors ? 'Error' : 'Success') : 'Syncing',
           members,
           activeMember: nextMember,
           results: currentResults,

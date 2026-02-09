@@ -90,6 +90,38 @@ export const SyncSummary = Schema.Struct({
 /** Inferred type for aggregated sync summary counts. */
 export type SyncSummary = Schema.Schema.Type<typeof SyncSummary>
 
+// =============================================================================
+// Nested Sync Tree (for --all)
+// =============================================================================
+
+/** Recursive schema for nested megarepo sync results. */
+export type MegarepoSyncTree = {
+  readonly root: string
+  readonly results: readonly MemberSyncResult[]
+  readonly nestedMegarepos: readonly string[]
+  readonly nestedResults: readonly MegarepoSyncTree[]
+}
+
+/** Recursive schema for nested megarepo sync results. */
+export const MegarepoSyncTree: Schema.Schema<MegarepoSyncTree> = Schema.suspend(() =>
+  Schema.Struct({
+    root: Schema.String,
+    results: Schema.Array(MemberSyncResult),
+    nestedMegarepos: Schema.Array(Schema.String),
+    nestedResults: Schema.Array(MegarepoSyncTree),
+  }),
+)
+
+/** Flattened error item (includes nested megarepo root). */
+export const SyncErrorItem = Schema.Struct({
+  megarepoRoot: Schema.String,
+  memberName: Schema.String,
+  message: Schema.NullOr(Schema.String),
+})
+
+/** Inferred type for a flattened sync error item. */
+export type SyncErrorItem = Schema.Schema.Type<typeof SyncErrorItem>
+
 /** Compute summary from results */
 export const computeSyncSummary = (results: readonly MemberSyncResult[]): SyncSummary => {
   let cloned = 0

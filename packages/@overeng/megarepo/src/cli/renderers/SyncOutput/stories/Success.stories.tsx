@@ -91,7 +91,9 @@ export const MixedResults: Story = {
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createBaseState(args.interactive ? { phase: 'idle' } : stateConfig)}
+        initialState={fixtures.createBaseState(
+          args.interactive ? { _tag: 'Success' } : stateConfig,
+        )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
@@ -124,7 +126,9 @@ export const AllSynced: Story = {
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createBaseState(args.interactive ? { phase: 'idle' } : stateConfig)}
+        initialState={fixtures.createBaseState(
+          args.interactive ? { _tag: 'Success' } : stateConfig,
+        )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
@@ -163,7 +167,9 @@ export const FirstSync: Story = {
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createBaseState(args.interactive ? { phase: 'idle' } : stateConfig)}
+        initialState={fixtures.createBaseState(
+          args.interactive ? { _tag: 'Success' } : stateConfig,
+        )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
@@ -209,7 +215,9 @@ export const LockUpdates: Story = {
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createBaseState(args.interactive ? { phase: 'idle' } : stateConfig)}
+        initialState={fixtures.createBaseState(
+          args.interactive ? { _tag: 'Success' } : stateConfig,
+        )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
@@ -253,7 +261,9 @@ export const RemovedMembers: Story = {
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createBaseState(args.interactive ? { phase: 'idle' } : stateConfig)}
+        initialState={fixtures.createBaseState(
+          args.interactive ? { _tag: 'Success' } : stateConfig,
+        )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
@@ -291,7 +301,9 @@ export const WithGenerators: Story = {
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createBaseState(args.interactive ? { phase: 'idle' } : stateConfig)}
+        initialState={fixtures.createBaseState(
+          args.interactive ? { _tag: 'Success' } : stateConfig,
+        )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
@@ -323,7 +335,9 @@ export const SingleMember: Story = {
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createBaseState(args.interactive ? { phase: 'idle' } : stateConfig)}
+        initialState={fixtures.createBaseState(
+          args.interactive ? { _tag: 'Success' } : stateConfig,
+        )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
@@ -362,7 +376,9 @@ export const ManyMembers: Story = {
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createBaseState(args.interactive ? { phase: 'idle' } : stateConfig)}
+        initialState={fixtures.createBaseState(
+          args.interactive ? { _tag: 'Success' } : stateConfig,
+        )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
@@ -399,7 +415,9 @@ export const NestedMegarepos: Story = {
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createBaseState(args.interactive ? { phase: 'idle' } : stateConfig)}
+        initialState={fixtures.createBaseState(
+          args.interactive ? { _tag: 'Success' } : stateConfig,
+        )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
@@ -440,7 +458,9 @@ export const WithLockSync: Story = {
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createBaseState(args.interactive ? { phase: 'idle' } : stateConfig)}
+        initialState={fixtures.createBaseState(
+          args.interactive ? { _tag: 'Success' } : stateConfig,
+        )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}

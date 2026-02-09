@@ -16,6 +16,7 @@ export const createInitialSyncState = (params: {
   workspaceName: string
   workspaceRoot: string
 }): typeof SyncState.Type => ({
+  _tag: 'Syncing',
   workspace: {
     name: params.workspaceName,
     root: params.workspaceRoot,
@@ -26,13 +27,22 @@ export const createInitialSyncState = (params: {
     pull: false,
     all: false,
   },
-  phase: 'idle',
   members: [],
+  activeMember: null,
   results: [],
   logs: [],
+  startedAt: null,
   nestedMegarepos: [],
   generatedFiles: [],
   lockSyncResults: [],
+  syncTree: {
+    root: params.workspaceRoot,
+    results: [],
+    nestedMegarepos: [],
+    nestedResults: [],
+  },
+  syncErrors: [],
+  syncErrorCount: 0,
 })
 
 /**
@@ -57,9 +67,8 @@ export const SyncApp = createTuiApp({
   initial: createInitialSyncState({ workspaceName: '', workspaceRoot: '' }),
   reducer: syncReducer,
   exitCode: (state) => {
-    if (state.phase === 'interrupted') return 130 // SIGINT
-    const hasErrors = state.results.some((r) => r.status === 'error')
-    if (hasErrors) return 1
+    if (state._tag === 'Interrupted') return 130 // SIGINT
+    if (state._tag === 'Error') return 1
     return 0
   },
 })

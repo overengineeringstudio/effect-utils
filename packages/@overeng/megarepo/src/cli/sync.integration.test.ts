@@ -17,6 +17,7 @@ import {
   updateLockedMember,
   writeLockFile,
 } from '../lib/lock.ts'
+import { MegarepoSyncTree, SyncErrorItem } from '../lib/sync/schema.ts'
 import { makeConsoleCapture } from '../test-utils/consoleCapture.ts'
 import {
   addCommit,
@@ -667,6 +668,98 @@ describe('--all sync mode', () => {
       ),
     )
   })
+})
+
+describe('--all nested error reporting', () => {
+  it.effect(
+    'should include nested member errors in JSON output',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+
+        // Create temp directory
+        const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+
+        // Create child megarepo with an invalid member source (guaranteed error, no network)
+        const childPath = EffectPath.ops.join(
+          tmpDir,
+          EffectPath.unsafe.relativeDir('child-megarepo/'),
+        )
+        yield* fs.makeDirectory(childPath, { recursive: true })
+        yield* initGitRepo(childPath)
+        yield* fs.writeFileString(
+          EffectPath.ops.join(childPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME)),
+          (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))({
+            members: {
+              bad: 'not-a-valid-source',
+            },
+          })) + '\n',
+        )
+        yield* addCommit({ repoPath: childPath, message: 'Initialize child megarepo' })
+
+        // Create parent megarepo that includes child as a local path member
+        const parentPath = EffectPath.ops.join(
+          tmpDir,
+          EffectPath.unsafe.relativeDir('parent-megarepo/'),
+        )
+        yield* fs.makeDirectory(parentPath, { recursive: true })
+        yield* initGitRepo(parentPath)
+        yield* fs.writeFileString(
+          EffectPath.ops.join(parentPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME)),
+          (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))({
+            members: {
+              child: childPath,
+            },
+          })) + '\n',
+        )
+        yield* addCommit({ repoPath: parentPath, message: 'Initialize parent megarepo' })
+
+        // When syncing nested megarepos, the nested root is the workspace member path (repos/<name>/)
+        const childNestedRoot = EffectPath.ops.join(
+          parentPath,
+          EffectPath.unsafe.relativeDir('repos/child/'),
+        )
+
+        const result = yield* runSyncCommand({
+          cwd: parentPath,
+          args: ['--output', 'json', '--all'],
+        })
+
+        expect(result.stdout.trim()).not.toBe('')
+
+        const SyncOutput = Schema.TaggedStruct('Error', {
+          syncErrorCount: Schema.Number,
+          syncErrors: Schema.Array(SyncErrorItem),
+          syncTree: MegarepoSyncTree,
+        })
+        const out = yield* Schema.decodeUnknown(Schema.parseJson(SyncOutput))(result.stdout.trim())
+
+        // The command should surface nested errors in output (and set process.exitCode via SyncApp)
+        expect(out.syncErrorCount).toBe(1)
+        expect(out.syncErrors).toHaveLength(1)
+        const firstError = out.syncErrors[0]
+        expect(firstError).toBeDefined()
+        if (firstError) {
+          expect(firstError.megarepoRoot).toBe(childNestedRoot)
+          expect(firstError.memberName).toBe('bad')
+        }
+
+        // Nested sync tree should include the child result with the failing member
+        expect(out.syncTree.root).toBe(parentPath)
+        expect(out.syncTree.nestedResults).toHaveLength(1)
+        const firstNested = out.syncTree.nestedResults[0]
+        expect(firstNested).toBeDefined()
+        if (firstNested) {
+          expect(firstNested.root).toBe(childNestedRoot)
+
+          const nestedResults = firstNested.results
+          expect(nestedResults.some((r) => r.name === 'bad' && r.status === 'error')).toBe(true)
+        }
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
 })
 
 /**

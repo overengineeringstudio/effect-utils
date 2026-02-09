@@ -7,7 +7,12 @@
 
 import { Schema } from 'effect'
 
-import { MemberSyncResult, SyncOptions } from '../../../lib/sync/schema.ts'
+import {
+  MemberSyncResult,
+  SyncErrorItem,
+  SyncOptions,
+  MegarepoSyncTree,
+} from '../../../lib/sync/schema.ts'
 
 // =============================================================================
 // Lock Sync Result (for TUI display)
@@ -48,13 +53,13 @@ export const MemberLockSyncResult = Schema.Struct({
 export type MemberLockSyncResult = Schema.Schema.Type<typeof MemberLockSyncResult>
 
 // =============================================================================
-// Sync Phase
+// Sync Outcome
 // =============================================================================
 
-/** Schema for the current phase of a sync operation. */
-export const SyncPhase = Schema.Literal('idle', 'syncing', 'complete', 'interrupted')
-/** Inferred type for sync phase literals. */
-export type SyncPhase = Schema.Schema.Type<typeof SyncPhase>
+/** Schema for the sync command outcome/progress state. */
+export const SyncOutcome = Schema.Literal('Syncing', 'Success', 'Error', 'Interrupted')
+/** Inferred type for sync outcome literals. */
+export type SyncOutcome = Schema.Schema.Type<typeof SyncOutcome>
 
 // =============================================================================
 // Log Entry (for TTY progress display)
@@ -93,6 +98,9 @@ export type SyncLogEntry = Schema.Schema.Type<typeof SyncLogEntry>
  * ```
  */
 export const SyncState = Schema.Struct({
+  /** Sync outcome/progress state. */
+  _tag: SyncOutcome,
+
   /** Workspace info */
   workspace: Schema.Struct({
     name: Schema.String,
@@ -102,14 +110,11 @@ export const SyncState = Schema.Struct({
   /** Sync options/flags */
   options: SyncOptions,
 
-  /** Current sync phase */
-  phase: SyncPhase,
-
   /** All member names being synced (populated at start for progress tracking) */
   members: Schema.Array(Schema.String),
 
   /** Currently syncing member (for spinner display) */
-  activeMember: Schema.optional(Schema.String),
+  activeMember: Schema.NullOr(Schema.String),
 
   /** Sync results for each member (populated progressively) */
   results: Schema.Array(MemberSyncResult),
@@ -118,7 +123,7 @@ export const SyncState = Schema.Struct({
   logs: Schema.Array(SyncLogEntry),
 
   /** Timestamp when sync started */
-  startedAt: Schema.optional(Schema.Number),
+  startedAt: Schema.NullOr(Schema.Number),
 
   /** Members that are themselves megarepos (for --all hint) */
   nestedMegarepos: Schema.Array(Schema.String),
@@ -128,6 +133,15 @@ export const SyncState = Schema.Struct({
 
   /** Lock sync results (flake.lock/devenv.lock updates) */
   lockSyncResults: Schema.Array(MemberLockSyncResult),
+
+  /** Full nested sync tree (includes nested megarepos when --all is used). */
+  syncTree: MegarepoSyncTree,
+
+  /** Flattened list of all sync errors (root + nested). */
+  syncErrors: Schema.Array(SyncErrorItem),
+
+  /** Total number of sync errors (root + nested). */
+  syncErrorCount: Schema.Number,
 })
 
 /** Inferred type for sync command state including workspace, options, phase, and results. */
@@ -151,7 +165,7 @@ export const SyncAction = Schema.Union(
 
   /** Set the currently active member (for spinner) */
   Schema.TaggedStruct('SetActiveMember', {
-    name: Schema.optional(Schema.String),
+    name: Schema.String,
   }),
 
   /** Add a completed member result */
@@ -200,11 +214,20 @@ export const syncReducer = ({
     case 'StartSync':
       return {
         ...state,
-        phase: 'syncing',
+        _tag: 'Syncing',
         members: action.members,
+        activeMember: null,
         results: [],
         logs: [],
         startedAt: Date.now(),
+        syncTree: {
+          root: state.workspace.root,
+          results: [],
+          nestedMegarepos: [],
+          nestedResults: [],
+        },
+        syncErrors: [],
+        syncErrorCount: 0,
       }
 
     case 'SetActiveMember':
@@ -218,7 +241,20 @@ export const syncReducer = ({
         ...state,
         results: [...state.results, action.result],
         // Clear active member if this was the active one
-        activeMember: state.activeMember === action.result.name ? undefined : state.activeMember,
+        activeMember: state.activeMember === action.result.name ? null : state.activeMember,
+        syncErrors:
+          action.result.status === 'error'
+            ? [
+                ...state.syncErrors,
+                {
+                  megarepoRoot: state.workspace.root,
+                  memberName: action.result.name,
+                  message: action.result.message ?? null,
+                },
+              ]
+            : state.syncErrors,
+        syncErrorCount:
+          action.result.status === 'error' ? state.syncErrorCount + 1 : state.syncErrorCount,
       }
 
     case 'AddLog':
@@ -243,8 +279,8 @@ export const syncReducer = ({
     case 'Complete':
       return {
         ...state,
-        phase: 'complete',
-        activeMember: undefined,
+        _tag: state.syncErrorCount > 0 ? 'Error' : 'Success',
+        activeMember: null,
         nestedMegarepos: action.nestedMegarepos,
         generatedFiles: action.generatedFiles,
       }
@@ -252,8 +288,8 @@ export const syncReducer = ({
     case 'Interrupted':
       return {
         ...state,
-        phase: 'interrupted',
-        activeMember: undefined,
+        _tag: 'Interrupted',
+        activeMember: null,
       }
   }
 }
