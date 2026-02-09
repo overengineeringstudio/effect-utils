@@ -78,7 +78,7 @@
 # Set globalCache = false to disable (not recommended for megarepo setups).
 #
 { packages, globalCache ? true }:
-{ lib, config, ... }:
+{ lib, config, pkgs, ... }:
 let
   trace = import ../lib/trace.nix { inherit lib; };
   cache = import ../lib/cache.nix { inherit config; };
@@ -156,13 +156,10 @@ let
   # =============================================================================
   #
   # Hash function that works on both Linux (sha256sum) and macOS (shasum)
+  sha256sum = "${pkgs.coreutils}/bin/sha256sum";
   computeHashFn = ''
     compute_hash() {
-      if command -v sha256sum >/dev/null 2>&1; then
-        sha256sum | awk '{print $1}'
-      else
-        shasum -a 256 | awk '{print $1}'
-      fi
+      ${sha256sum} | awk '{print $1}'
     }
   '';
 

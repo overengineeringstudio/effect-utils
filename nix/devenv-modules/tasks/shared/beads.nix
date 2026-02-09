@@ -32,6 +32,7 @@
 { beadsPrefix, beadsRepoName, beadsRepoPath ? "repos/${beadsRepoName}" }:
 { pkgs, config, ... }:
 let
+  git = "${pkgs.git}/bin/git";
   beadsRepoRelPath = beadsRepoPath;
 in
 {
@@ -98,13 +99,13 @@ in
       cd "''${BEADS_DIR%/.beads}"
 
       # Safety: commit any uncommitted changes (in case daemon wasn't running)
-      if ! git diff --quiet .beads/ 2>/dev/null || ! git diff --cached --quiet .beads/ 2>/dev/null; then
-        git add .beads/
-        git commit -m "beads: sync issues" 2>&1
+      if ! ${git} diff --quiet .beads/ 2>/dev/null || ! ${git} diff --cached --quiet .beads/ 2>/dev/null; then
+        ${git} add .beads/
+        ${git} commit -m "beads: sync issues" 2>&1
       fi
 
       echo "[beads] Pushing..."
-      git push 2>&1
+      ${git} push 2>&1
       echo "[beads] Sync complete."
     '';
   };
@@ -117,15 +118,15 @@ in
     entry = "${pkgs.writeShellScript "beads-post-commit" ''
       set -euo pipefail
 
-      GIT_ROOT="$(git rev-parse --show-toplevel)"
+      GIT_ROOT="$(${git} rev-parse --show-toplevel)"
       BEADS_REPO="''${GIT_ROOT}/${beadsRepoRelPath}"
 
       # Skip if beads repo doesn't exist
       [ ! -d "$BEADS_REPO/.beads" ] && exit 0
 
       # Get commit info
-      COMMIT_SHORT=$(git rev-parse --short HEAD)
-      COMMIT_MSG=$(git log -1 --format=%B)
+      COMMIT_SHORT=$(${git} rev-parse --short HEAD)
+      COMMIT_MSG=$(${git} log -1 --format=%B)
       REPO_NAME=$(basename "$GIT_ROOT")
 
       # Extract issue references matching (prefix-xxx) pattern

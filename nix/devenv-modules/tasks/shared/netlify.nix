@@ -32,6 +32,7 @@
 }:
 { lib, pkgs, ... }:
 let
+  git = "${pkgs.git}/bin/git";
   hasPackages = packages != [];
 
   mkDeployTask = pkg: {
@@ -60,7 +61,7 @@ let
         # Parse deploy context from DEVENV_TASK_INPUT (set by devenv --input flag)
         input="''${DEVENV_TASK_INPUT:-"{}"}"
         deploy_type="$(echo "$input" | ${pkgs.jq}/bin/jq -r '.type // "draft"')"
-        short_sha="$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")"
+        short_sha="$(${git} rev-parse --short HEAD 2>/dev/null || echo "unknown")"
 
         alias_flag=""
         message="${pkg.name}"
