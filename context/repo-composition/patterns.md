@@ -236,47 +236,32 @@ Each package's `pnpm-workspace.yaml` must list ALL workspace members it needs (i
 
 ### Solution
 
-Use a simple helper that resolves package names to relative paths, and have each `pnpm-workspace.yaml.genie.ts` explicitly list all workspace members it needs:
-
-```typescript
-// genie/internal.ts
-import { computeRelativePath, pnpmWorkspaceYaml } from '#genie/external.ts'
-import { packageLocations } from './packages.ts'
-
-const resolveWorkspacePaths = (location: string, deps: string[]): string[] =>
-  deps.map((dep) => {
-    const targetLocation = packageLocations[dep]
-    if (!targetLocation) throw new Error(`Unknown internal package: ${dep}`)
-    return computeRelativePath({ from: location, to: targetLocation })
-  })
-
-export const pnpmWorkspace = (location: string, ...deps: string[]) =>
-  pnpmWorkspaceYaml({
-    packages: ['.', ...resolveWorkspacePaths(location, deps)],
-    dedupePeerDependents: true,
-  })
-```
-
-Per-package workspace files explicitly list all members (including transitive):
+Each `pnpm-workspace.yaml.genie.ts` calls `pnpmWorkspaceYaml` directly with explicit relative paths. Use path prefix constants to keep paths DRY:
 
 ```typescript
 // packages/app/pnpm-workspace.yaml.genie.ts
-import { pnpmWorkspace } from '../../genie/internal.ts'
+import { pnpmWorkspaceYaml } from '../../repos/effect-utils/genie/external.ts'
 
-export default pnpmWorkspace(
-  'packages/app',
-  '@local/shared',
-  '@overeng/notion-cli',
-  '@overeng/notion-effect-client',
-  '@overeng/notion-effect-schema',
-  '@overeng/utils',
-  '@overeng/utils-dev',
-)
+const local = '../@local'
+const overeng = '../../repos/effect-utils/packages/@overeng'
+
+export default pnpmWorkspaceYaml({
+  packages: [
+    '.',
+    `${local}/shared`,
+    `${overeng}/notion-cli`,
+    `${overeng}/notion-effect-client`,
+    `${overeng}/notion-effect-schema`,
+    `${overeng}/utils`,
+    `${overeng}/utils-dev`,
+  ],
+  dedupePeerDependents: true,
+})
 ```
 
 ### When to use
 
-Use this pattern instead of `createWorkspaceDepsResolver` when you want explicit control over workspace members without importing `package.json.genie.ts` files. The `packageLocations` map provides a single source of truth for name-to-path resolution, while each workspace template owns its full member list.
+Use this pattern instead of `createWorkspaceDepsResolver` when you want explicit control over workspace members without importing `package.json.genie.ts` files. Each workspace template owns its full member list with no indirection.
 
 ## Required Root Config Files
 
