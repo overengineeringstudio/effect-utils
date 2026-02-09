@@ -1,3 +1,3 @@
-import { createStorybookConfig } from '@overeng/utils/node/storybook/config'
+import { createDomStorybookConfig } from '@overeng/utils/node/storybook/config'
 
-export default createStorybookConfig({})
+export default createDomStorybookConfig({})

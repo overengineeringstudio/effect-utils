@@ -1,5 +1,6 @@
 export {
-  createStorybookConfig,
-  type StorybookConfigOptions,
-  type StorybookVariant,
+  createDomStorybookConfig,
+  createTuiStorybookConfig,
+  type DomStorybookConfigOptions,
+  type TuiStorybookConfigOptions,
 } from './config/mod.ts'

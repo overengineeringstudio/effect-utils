@@ -1,6 +1,5 @@
-import { createStorybookConfig } from '@overeng/utils/node/storybook/config'
+import { createTuiStorybookConfig } from '@overeng/utils/node/storybook/config'
 
-export default createStorybookConfig({
-  variant: 'tui',
+export default createTuiStorybookConfig({
   stories: ['../src/**/*.stories.@(ts|tsx)', '../examples/**/*.stories.@(ts|tsx)'],
 })

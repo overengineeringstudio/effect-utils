@@ -1,3 +1,3 @@
-import { createStorybookConfig } from '@overeng/utils/node/storybook/config'
+import { createDomStorybookConfig } from '@overeng/utils/node/storybook/config'
 
-export default createStorybookConfig({ stories: ['../stories/*.*'], disableMinify: true })
+export default createDomStorybookConfig({ stories: ['../stories/*.*'], disableMinify: true })
