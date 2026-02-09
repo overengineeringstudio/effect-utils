@@ -46,6 +46,7 @@
 }:
 { lib, pkgs, ... }:
 let
+  trace = import ../lib/trace.nix { inherit lib; };
   defaultExcludes = [
     "node_modules"
     "dist"
@@ -74,7 +75,7 @@ in
     # Uses default config files (.oxfmtrc.json, .oxlintrc.json) - no -c flags needed
     "lint:check:format" = {
       description = "Check code formatting with oxfmt";
-      exec = "oxfmt --check ${lintPathsArg}";
+      exec = trace.exec "lint:check:format" "oxfmt --check ${lintPathsArg}";
       # TODO: Drop "pnpm:install" dep once devenv supports glob negation patterns (e.g. !**/node_modules/**)
       #   Upstream issue: https://github.com/cachix/devenv/issues/2422
       #   Upstream fix:   https://github.com/cachix/devenv/pull/2423
@@ -83,7 +84,7 @@ in
     };
     "lint:check:oxlint" = {
       description = "Run oxlint linter";
-      exec = "oxlint --import-plugin --deny-warnings ${typeAwareFlags} ${lintPathsArg}";
+      exec = trace.exec "lint:check:oxlint" "oxlint --import-plugin --deny-warnings ${typeAwareFlags} ${lintPathsArg}";
       # TODO: Drop "pnpm:install" dep once devenv supports glob negation patterns (e.g. !**/node_modules/**)
       #   Upstream issue: https://github.com/cachix/devenv/issues/2422
       #   Upstream fix:   https://github.com/cachix/devenv/pull/2423
@@ -92,7 +93,7 @@ in
     };
     "lint:check:genie" = {
       description = "Check generated files are up to date";
-      exec = "genie --check";
+      exec = trace.exec "lint:check:genie" "genie --check";
       # TODO: Drop "pnpm:install" dep once devenv supports glob negation patterns
       #   See: https://github.com/cachix/devenv/issues/2422, https://github.com/cachix/devenv/pull/2423
       after = [ "pnpm:install" ];
@@ -100,7 +101,7 @@ in
     };
     "lint:check:genie:coverage" = {
       description = "Check all config files have .genie.ts sources";
-      exec = ''
+      exec = trace.exec "lint:check:genie:coverage" ''
         missing=$(find ${scanDirsArg} \
           -type f \( -name "package.json" -o -name "tsconfig.json" \) \
           ${excludeArgs} \
@@ -125,14 +126,14 @@ in
     # Lint fix tasks
     "lint:fix:format" = {
       description = "Fix code formatting with oxfmt";
-      exec = "oxfmt ${lintPathsArg}";
+      exec = trace.exec "lint:fix:format" "oxfmt ${lintPathsArg}";
       # TODO: Drop "pnpm:install" dep once devenv supports glob negation patterns
       #   See: https://github.com/cachix/devenv/issues/2422, https://github.com/cachix/devenv/pull/2423
       after = [ "pnpm:install" ];
     };
     "lint:fix:oxlint" = {
       description = "Fix lint issues with oxlint";
-      exec = "oxlint --import-plugin --deny-warnings ${typeAwareFlags} --fix ${lintPathsArg}";
+      exec = trace.exec "lint:fix:oxlint" "oxlint --import-plugin --deny-warnings ${typeAwareFlags} --fix ${lintPathsArg}";
     };
     "lint:fix" = {
       description = "Fix all lint issues";

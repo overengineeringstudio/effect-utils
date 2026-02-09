@@ -4,11 +4,14 @@
 # It validates repo-specific configuration like allPackages in devenv.nix.
 #
 # Provides: workspace:check
-{ pkgs, ... }:
+{ pkgs, lib, ... }:
+let
+  trace = import ../lib/trace.nix { inherit lib; };
+in
 {
   tasks."workspace:check" = {
     description = "Validate workspace configuration (allPackages)";
-    exec = ''
+    exec = trace.exec "workspace:check" ''
       set -euo pipefail
 
       echo "Checking allPackages matches filesystem packages..."

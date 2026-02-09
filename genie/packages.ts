@@ -17,6 +17,7 @@ export const internalPackages = [
   'notion-cli',
   'notion-effect-client',
   'notion-effect-schema',
+  'otel-cli',
   'tui-core',
   'tui-react',
   'utils',

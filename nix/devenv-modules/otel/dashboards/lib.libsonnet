@@ -1,0 +1,98 @@
+// Shared helpers for OTEL dashboards
+local g = import 'g.libsonnet';
+
+{
+  // Tempo datasource reference (matches the UID provisioned by otel.nix)
+  // Note: This is the UID, not the name. The provisioned UID is lowercase 'tempo'.
+  tempoDatasource:: 'tempo',
+
+  // Create a Tempo TraceQL query target
+  tempoQuery(query, refId='A', limit=20)::
+    g.query.tempo.new(self.tempoDatasource, query, [])
+    + g.query.tempo.withQueryType('traceql')
+    + g.query.tempo.withLimit(limit)
+    + g.query.tempo.withTableType('traces')
+    + g.query.tempo.withRefId(refId),
+
+  // Shorthand for a full-width panel
+  fullWidth(panel)::
+    panel
+    + g.panel.timeSeries.gridPos.withW(24)
+    + g.panel.timeSeries.gridPos.withH(8),
+
+  halfWidth(panel)::
+    panel
+    + g.panel.timeSeries.gridPos.withW(12)
+    + g.panel.timeSeries.gridPos.withH(8),
+
+  quarterWidth(panel)::
+    panel
+    + g.panel.timeSeries.gridPos.withW(6)
+    + g.panel.timeSeries.gridPos.withH(4),
+
+  // Stat panel with Tempo query
+  tempoStat(title, query, refId='A')::
+    g.panel.stat.new(title)
+    + g.panel.stat.queryOptions.withTargets([
+      self.tempoQuery(query, refId),
+    ])
+    + g.panel.stat.gridPos.withW(6)
+    + g.panel.stat.gridPos.withH(4),
+
+  // Table panel with Tempo query
+  // Sorted by startTime descending (most recent first), with relative time display
+  tempoTable(title, query, refId='A', limit=50)::
+    g.panel.table.new(title)
+    + g.panel.table.queryOptions.withTargets([
+      self.tempoQuery(query, refId, limit),
+    ])
+    + g.panel.table.options.withSortBy([
+      g.panel.table.options.sortBy.withDisplayName('startTime')
+      + g.panel.table.options.sortBy.withDesc(true),
+    ])
+    // Field overrides for better display:
+    // - startTime: show as relative time (e.g., "5 minutes ago")
+    + {
+      fieldConfig+: {
+        overrides: [
+          {
+            matcher: { id: 'byName', options: 'startTime' },
+            properties: [{ id: 'unit', value: 'dateTimeFromNow' }],
+          },
+        ],
+      },
+    }
+    + g.panel.table.gridPos.withW(24)
+    + g.panel.table.gridPos.withH(10),
+
+  // Position a panel at specific grid coordinates
+  at(panel, x, y, w, h)::
+    panel
+    + g.panel.stat.gridPos.withX(x)
+    + g.panel.stat.gridPos.withY(y)
+    + g.panel.stat.gridPos.withW(w)
+    + g.panel.stat.gridPos.withH(h),
+
+  // Create a TraceQL metrics query target (for time series panels)
+  // Produces time series data from trace spans using metrics functions like rate(), quantile_over_time().
+  // Requires Tempo local_blocks metrics_generator + Grafana traceqlMetrics datasource flag.
+  //
+  // Note: We use queryType='traceql' (not 'traceqlmetrics') because Grafana's backend
+  // only recognizes 'traceql'. The 'traceqlmetrics' type is frontend-only and causes
+  // "unsupported query type" errors when used in dashboard panels via /api/ds/query.
+  tempoMetricsQuery(query, refId='A', step='30s')::
+    g.query.tempo.new(self.tempoDatasource, query, [])
+    + g.query.tempo.withQueryType('traceql')
+    + g.query.tempo.withStep(step)
+    + g.query.tempo.withRefId(refId),
+
+  // Time series panel with duration unit (seconds)
+  durationTimeSeries(title, targets)::
+    g.panel.timeSeries.new(title)
+    + g.panel.timeSeries.queryOptions.withTargets(targets)
+    + g.panel.timeSeries.standardOptions.withUnit('s')
+    + g.panel.timeSeries.fieldConfig.defaults.custom.withLineWidth(1)
+    + g.panel.timeSeries.fieldConfig.defaults.custom.withFillOpacity(10)
+    + g.panel.timeSeries.fieldConfig.defaults.custom.withPointSize(5)
+    + g.panel.timeSeries.fieldConfig.defaults.custom.withShowPoints('auto'),
+}

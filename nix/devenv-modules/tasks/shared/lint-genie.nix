@@ -6,12 +6,15 @@
 #   ];
 #
 # Provides: lint:check, lint:check:genie, lint:fix
-{ ... }:
+{ lib, ... }:
+let
+  trace = import ../lib/trace.nix { inherit lib; };
+in
 {
   tasks = {
     "lint:check:genie" = {
       description = "Check generated files are up to date";
-      exec = "genie --check";
+      exec = trace.exec "lint:check:genie" "genie --check";
       after = [ "pnpm:install" ];
     };
     "lint:check" = {

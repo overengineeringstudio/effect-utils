@@ -105,10 +105,8 @@ const NETLIFY_SITE = 'overeng-utils'
 // Deploy job — NOT a required status check (separate from CIJobName)
 const deployJobs = {
   'deploy-storybooks': {
-    // Namespace runners occasionally have a stale/corrupt /nix/store which can break devenv evaluation.
-    // This job is non-blocking, so keep it reliable by using GitHub-hosted runners.
-    'runs-on': 'ubuntu-latest',
-    needs: ['typecheck', 'lint', 'test'],
+    'runs-on': namespaceRunner('namespace-profile-linux-x86-64', '${{ github.run_id }}'),
+    // No `needs` — run in parallel with other jobs for faster feedback
     permissions: {
       contents: 'read',
       'pull-requests': 'write',

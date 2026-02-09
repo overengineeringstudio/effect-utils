@@ -20,4 +20,8 @@ in
     inherit pkgs gitRev commitTs dirty;
     src = workspaceRoot;
   };
+  otel = import (workspaceRootPath + "/packages/@overeng/otel-cli/nix/build.nix") {
+    inherit pkgs gitRev commitTs dirty;
+    src = workspaceRoot;
+  };
 }

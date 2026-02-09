@@ -38,6 +38,7 @@ export default packageJson({
     '.': './src/isomorphic/mod.ts',
     './node': './src/node/mod.ts',
     './node/cli-version': './src/node/cli-version.ts',
+    './node/otel': './src/node/otel.ts',
     './node/playwright': './src/node/playwright/mod.ts',
     // Separate config export avoids runtime @playwright/test import.
     './node/playwright/config': './src/node/playwright/config/mod.ts',
@@ -54,6 +55,7 @@ export default packageJson({
       '.': './dist/isomorphic/mod.js',
       './node': './dist/node/mod.js',
       './node/cli-version': './dist/node/cli-version.js',
+      './node/otel': './dist/node/otel.js',
       './node/playwright': './dist/node/playwright/mod.js',
       './node/playwright/config': './dist/node/playwright/config/mod.js',
       './browser': './dist/browser/mod.js',

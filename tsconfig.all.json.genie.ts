@@ -18,6 +18,7 @@ const references = [
   './packages/@overeng/notion-cli',
   './packages/@overeng/notion-effect-client',
   './packages/@overeng/notion-effect-schema',
+  './packages/@overeng/otel-cli',
   './packages/@overeng/oxc-config',
   './packages/@overeng/react-inspector',
   './packages/@overeng/tui-react',
