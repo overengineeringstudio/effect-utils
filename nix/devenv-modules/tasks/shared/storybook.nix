@@ -48,6 +48,9 @@ let
   # Dev servers as processes (long-running, with TUI via process-compose)
   # Uses automatic port allocation to avoid conflicts
   # --host 0.0.0.0 allows access from other machines (useful for remote dev environments)
+  # --no-open prevents auto-opening browser tabs
+  # --ci disables interactive prompts (defense-in-depth: if the devenv-allocated port is
+  #   unexpectedly taken, storybook auto-selects a free port instead of hanging on a prompt)
   # Process name includes port for visibility in process-compose TUI
   processName = pkg: "storybook-${pkg.name}-${toString pkg.port}";
   
@@ -59,7 +62,7 @@ let
     "${processName pkg}" = {
       ports.http.allocate = pkg.port;
       exec = ''
-        ${storybookBin} dev -p ${toString (getAllocatedPort pkg)} --host 0.0.0.0
+        ${storybookBin} dev -p ${toString (getAllocatedPort pkg)} --host 0.0.0.0 --no-open --ci
       '';
       cwd = pkg.path;
     };

@@ -42,6 +42,9 @@ export default packageJson({
     './node/playwright': './src/node/playwright/mod.ts',
     // Separate config export avoids runtime @playwright/test import.
     './node/playwright/config': './src/node/playwright/config/mod.ts',
+    './node/storybook': './src/node/storybook/mod.ts',
+    // Separate config export avoids runtime storybook import in non-storybook contexts.
+    './node/storybook/config': './src/node/storybook/config/mod.ts',
     './browser': './src/browser/mod.ts',
     './cuid': {
       browser: './src/cuid/cuid.browser.ts',
@@ -58,6 +61,8 @@ export default packageJson({
       './node/otel': './dist/node/otel.js',
       './node/playwright': './dist/node/playwright/mod.js',
       './node/playwright/config': './dist/node/playwright/config/mod.js',
+      './node/storybook': './dist/node/storybook/mod.js',
+      './node/storybook/config': './dist/node/storybook/config/mod.js',
       './browser': './dist/browser/mod.js',
       './cuid': {
         browser: './dist/cuid/cuid.browser.js',
@@ -78,6 +83,7 @@ export default packageJson({
       '@effect/vitest',
       '@overeng/utils-dev',
       '@types/node',
+      '@storybook/react-vite',
       'vite',
       'vitest',
     ),

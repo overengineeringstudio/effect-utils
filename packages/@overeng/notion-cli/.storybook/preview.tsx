@@ -1,22 +1,3 @@
-import type { Preview } from '@storybook/react'
+import { tuiPreview } from '@overeng/tui-react/storybook'
 
-const preview: Preview = {
-  parameters: {
-    layout: 'padded',
-    backgrounds: {
-      default: 'dark',
-      values: [
-        { name: 'dark', value: '#0d1117' },
-        { name: 'light', value: '#ffffff' },
-      ],
-    },
-    controls: {
-      matchers: {
-        color: /(background|color)$/i,
-        date: /Date$/i,
-      },
-    },
-  },
-}
-
-export default preview
+export default tuiPreview

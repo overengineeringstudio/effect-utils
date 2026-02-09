@@ -25,6 +25,7 @@
   },
   "devDependencies": {
     "@effect/language-service": "0.69.2",
+    "@overeng/utils": "workspace:*",
     "@storybook/react": "10.2.1",
     "@storybook/react-vite": "10.2.1",
     "@testing-library/react": "16.3.1",

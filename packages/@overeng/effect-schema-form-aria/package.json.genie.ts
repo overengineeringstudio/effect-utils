@@ -34,6 +34,7 @@ export default packageJson({
       // From @overeng/effect-schema-form peer deps
       'effect',
       'react',
+      '@overeng/utils',
       '@storybook/react',
       '@storybook/react-vite',
       '@tailwindcss/vite',

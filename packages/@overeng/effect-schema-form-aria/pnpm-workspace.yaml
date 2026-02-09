@@ -1,7 +1,7 @@
 # Generated file - DO NOT EDIT
 # Source: pnpm-workspace.yaml.genie.ts
 
-packages: [., ../effect-schema-form]
+packages: [., ../effect-schema-form, ../utils, ../utils-dev]
 
 supportedArchitectures:
   os: [linux, darwin]

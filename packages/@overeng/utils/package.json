@@ -15,7 +15,9 @@
     "./node/cli-version": "./src/node/cli-version.ts",
     "./node/otel": "./src/node/otel.ts",
     "./node/playwright": "./src/node/playwright/mod.ts",
-    "./node/playwright/config": "./src/node/playwright/config/mod.ts"
+    "./node/playwright/config": "./src/node/playwright/config/mod.ts",
+    "./node/storybook": "./src/node/storybook/mod.ts",
+    "./node/storybook/config": "./src/node/storybook/config/mod.ts"
   },
   "publishConfig": {
     "access": "public",
@@ -26,6 +28,8 @@
       "./node/otel": "./dist/node/otel.js",
       "./node/playwright": "./dist/node/playwright/mod.js",
       "./node/playwright/config": "./dist/node/playwright/config/mod.js",
+      "./node/storybook": "./dist/node/storybook/mod.js",
+      "./node/storybook/config": "./dist/node/storybook/config/mod.js",
       "./browser": "./dist/browser/mod.js",
       "./cuid": {
         "browser": "./dist/cuid/cuid.browser.js",
@@ -59,6 +63,7 @@
     "@opentelemetry/semantic-conventions": "1.38.0",
     "@overeng/utils-dev": "workspace:*",
     "@playwright/test": "1.57.0",
+    "@storybook/react-vite": "10.2.1",
     "@types/node": "25.0.3",
     "effect": "3.19.15",
     "typescript": "5.9.3",
