@@ -20,40 +20,6 @@
 # We model optional shell-entry work via `@complete` dependencies so failures don't block
 # entering the shell (direnv expects `devenv shell` to exit 0 on success).
 #
-# See: https://github.com/cachix/devenv/issues/2454
-#
-# Shared caching rules live in ./lib/cache.nix (task-specific details below).
-#
-# ## Git Hash Caching (Two-Tier Design)
-#
-# Setup tasks use a two-tier caching strategy for R5/R11 compliance:
-#
-# Outer tier: Git hash (fast check)
-# - Stored in .direnv/task-cache/setup-git-hash
-# - Updated after successful setup
-#
-# Inner tier: Per-task content caches (e.g., pnpm-install/*.hash)
-# - Created by individual tasks (pnpm:install writes per-package hashes)
-# - Content-addressed for correctness
-# - Configurable via `innerCacheDirs` parameter
-#
-# Tasks are skipped only when BOTH tiers are valid:
-# - Git hash matches cached value
-# - Inner cache directories contain *.hash files (or innerCacheDirs is empty)
-#
-# This ensures fresh clones/cache-clears populate inner caches correctly.
-# For non-pnpm setups, set `innerCacheDirs = []` to use git-hash-only caching.
-#
-# Cache file:
-# - .direnv/task-cache/setup-git-hash
-#
-# To force tasks to run despite unchanged hash:
-#   FORCE_SETUP=1 dt genie:run
-#   dt setup:run  # Always forces all setup tasks
-#
-# For testing, you can override the git hash:
-#   SETUP_GIT_HASH=test-hash-123 devenv shell
-#
 # ## Rebase Guard
 #
 # During git rebase/cherry-pick, setup tasks are skipped to avoid
@@ -61,7 +27,7 @@
 # will intentionally fail during rebase, causing dependent tasks to
 # be "skipped due to dependency failure".
 #
-# If you need to run setup during rebase, use: `FORCE_SETUP=1 dt setup:run`
+# If you need to run setup during rebase, use: `dt setup:run`
 #
 # ## Optional Tasks
 #
@@ -69,18 +35,17 @@
 #
 # - depends on optional tasks using the `@complete` suffix so failures don't block
 #   shell entry (direnv expects `devenv shell` to exit 0 on success)
-# - carries the git-hash/inner-cache skip logic so optional tasks aren't skipped
-#   when run directly via `dt <task>`
 #
-# Related: https://github.com/cachix/devenv/issues/2454
+# This module intentionally does not try to "skip" work via an outer caching layer.
+# Individual tasks should implement correct `status` checks.
 {
   requiredTasks ? [ ],
   optionalTasks ? [ ],
   completionsCliNames ? [ ],
   skipDuringRebase ? true,
+  # Deprecated: setup-level skipping is intentionally not implemented.
+  # Keep these args for backwards compatibility with repos importing this module.
   skipIfGitHashUnchanged ? true,
-  # Inner cache directories to check for *.hash files (two-tier caching).
-  # Set to [] for non-pnpm setups to use git-hash-only caching.
   innerCacheDirs ? [ "pnpm-install" ],
 }:
 {
@@ -91,9 +56,6 @@
 }:
 let
   git = "${pkgs.git}/bin/git";
-  cache = import ../lib/cache.nix { inherit config; };
-  cacheRoot = cache.cacheRoot;
-  hashFile = cache.mkCachePath "setup-git-hash";
   userRequiredTasks = requiredTasks;
   userOptionalTasks = optionalTasks;
   completionsEnabled = completionsCliNames != [ ];
@@ -202,82 +164,10 @@ let
   optionalGateDeps = map (t: "${t}@complete") setupOptionalTasks;
   allSetupTasks =
     setupRequiredTasks ++ lib.optionals (setupOptionalTasks != [ ]) [ optionalGateTaskName ];
-
-  # Status check that skips task if git hash unchanged AND inner caches exist
-  # Returns 0 (skip) if conditions met, non-zero (run) otherwise
-  #
-  # Two-tier cache design (R5, R11 compliance):
-  # - Outer tier: git hash (fast check, updated after setup completes)
-  # - Inner tier: per-task content hashes (e.g., pnpm-install/*.hash)
-  #
-  # We only skip when BOTH tiers are valid. This ensures:
-  # - Fresh clones populate inner caches even if git hash matches
-  # - Cache clearing doesn't leave tasks in broken state
-  #
-  # If innerCacheDirs is empty, we skip the inner cache check (git-hash-only mode).
-  # This is useful for non-pnpm setups that don't have inner caches.
-  innerCacheDirsShell = lib.concatStringsSep " " innerCacheDirs;
-  gitHashStatus = ''
-    # Allow bypass via FORCE_SETUP=1
-    [ "$FORCE_SETUP" = "1" ] && exit 1
-
-    # Allow override via SETUP_GIT_HASH for testing
-    current=''${SETUP_GIT_HASH:-$(${git} rev-parse HEAD 2>/dev/null || echo "no-git")}
-    cached=$(cat ${hashFile} 2>/dev/null || echo "")
-
-    # If git hash differs, always run
-    if [ "$current" != "$cached" ]; then
-      exit 1
-    fi
-
-    # Git hash matches - check if inner caches are populated
-    inner_cache_dirs="${innerCacheDirsShell}"
-
-    # If no inner cache dirs configured, use git-hash-only mode (skip inner check)
-    if [ -z "$inner_cache_dirs" ]; then
-      exit 0
-    fi
-
-    # Check each configured inner cache dir for *.hash files
-    for dir_name in $inner_cache_dirs; do
-      cache_dir="${cacheRoot}/$dir_name"
-      # Directory must exist and contain at least one .hash file
-      if [ -d "$cache_dir" ]; then
-        # Simple and reliable: iterate over files and check suffix
-        for f in "$cache_dir"/*; do
-          case "$f" in
-            *.hash)
-              [ -f "$f" ] && exit 0
-              ;;
-          esac
-        done
-      fi
-    done
-
-    # No valid inner caches found - run to populate them
-    exit 1
-  '';
-  writeHashScript = ''
-    new_hash="''${SETUP_GIT_HASH:-$(${git} rev-parse HEAD 2>/dev/null || echo "no-git")}"
-    cache_dir="$(dirname ${hashFile})"
-    mkdir -p "$cache_dir"
-    cache_value="$new_hash"
-    ${cache.writeCacheFile hashFile}
-  '';
-
-  # Create status overrides for required tasks only
-  # Optional tasks are gated by setup:optional (below) so they aren't affected.
-  statusOverrides = lib.optionalAttrs skipIfGitHashUnchanged (
-    lib.genAttrs setupRequiredTasks (_: {
-      status = lib.mkDefault gitHashStatus;
-    })
-  );
 in
 {
-  # Merge status overrides and setup-specific tasks
   tasks =
-    statusOverrides
-    // lib.optionalAttrs completionsEnabled {
+    lib.optionalAttrs completionsEnabled {
       "${completionsTaskName}" = {
         description = "Install shell completions for CLI tools";
         exec = completionsExec;
@@ -289,18 +179,20 @@ in
       #
       # - Runs optional tasks as upstream dependencies, marked with @complete so failures
       #   don't block the shell.
-      # - Applies the git-hash/inner-cache skip logic without mutating the optional tasks
-      #   themselves (so `dt ts:build` etc still behave normally).
-      "${optionalGateTaskName}" = lib.mkIf (setupOptionalTasks != [ ]) (
-        {
-          description = "Shell entry optional tasks (best effort)";
-          exec = "exit 0";
-          after = optionalGateDeps;
-        }
-        // lib.optionalAttrs skipIfGitHashUnchanged {
-          status = gitHashStatus;
-        }
-      );
+      "${optionalGateTaskName}" = lib.mkIf (setupOptionalTasks != [ ]) ({
+        description = "Shell entry optional tasks (best effort)";
+        exec = "exit 0";
+        after = optionalGateDeps;
+      });
+
+      # Strict variant of shell-entry optional tasks.
+      #
+      # Use for CI or explicit runs (R16): failures should be enforced.
+      "setup:strict" = lib.mkIf (setupOptionalTasks != [ ]) {
+        description = "Shell entry optional tasks (strict)";
+        exec = "exit 0";
+        after = setupOptionalTasks;
+      };
 
       # Gate task that fails during rebase, causing dependent tasks to skip
       # Uses `before` to inject itself as a dependency of each setup task
@@ -310,7 +202,7 @@ in
           _git_dir=$(${git} rev-parse --git-dir 2>/dev/null)
           if [ -d "$_git_dir/rebase-merge" ] || [ -d "$_git_dir/rebase-apply" ]; then
             echo "Skipping setup during git rebase/cherry-pick"
-            echo "Run 'FORCE_SETUP=1 dt setup:run' manually if needed"
+            echo "Run 'dt setup:run' manually if needed"
             exit 1
           fi
 
@@ -328,32 +220,31 @@ in
         before = allSetupTasks;
       };
 
-      # Save git hash after successful setup
-      "setup:save-hash" = {
-        description = "Save git hash after successful setup";
-        exec = ''
-          ${writeHashScript}
-          # Emit root span for shell entry trace
-          if command -v otel-span >/dev/null 2>&1 && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] && [ -n "''${TRACEPARENT:-}" ]; then
-            otel-span "devenv" "shell:entry" --attr "entry.type=setup" -- true 2>/dev/null || true
-          fi
-        '';
-        after = allSetupTasks;
-      };
-
       # Wire setup tasks to run during shell entry.
       # Required tasks are hard dependencies; optional tasks are best-effort via @complete.
       "devenv:enterShell" = {
-        after = [ "setup:save-hash" ];
+        after = allSetupTasks;
       };
 
-      # Force-run setup tasks (bypasses git hash check)
-      # Useful during rebase or when you want to force a rebuild
+      # Run setup tasks explicitly.
+      #
+      # - Default: best-effort (mirrors shell entry, doesn't fail the command)
+      # - DEVENV_STRICT=1: strict mode (fails on task errors)
       "setup:run" = {
-        description = "Force run setup tasks (ignores git hash cache)";
+        description = "Run setup tasks (DEVENV_STRICT=1 to fail on errors)";
         exec = ''
-          FORCE_SETUP=1 devenv tasks run ${lib.concatStringsSep " " setupTasks} --mode before
-          ${writeHashScript}
+          set -euo pipefail
+
+          if [ "''${DEVENV_STRICT:-}" = "1" ]; then
+            devenv tasks run setup:strict --mode before
+            exit 0
+          fi
+
+          # Best effort: run each task but swallow failures (devenv tasks run
+          # can still exit non-zero if any task in the graph failed).
+          for t in ${lib.concatStringsSep " " setupTasks}; do
+            devenv tasks run "$t" --mode before || true
+          done
         '';
       };
     };

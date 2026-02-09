@@ -20,6 +20,12 @@ in
     "genie:run" = {
       description = "Generate config files from .genie.ts sources";
       exec = trace.exec "genie:run" "genie";
+      status = trace.status "genie:run" ''
+        set -euo pipefail
+        # Skip when generated files are already up to date.
+        # Silence output to keep shell entry clean.
+        genie --check >/dev/null 2>&1
+      '';
     };
     "genie:watch" = {
       description = "Watch and regenerate config files";
