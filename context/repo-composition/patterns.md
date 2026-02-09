@@ -228,6 +228,41 @@ Each package needs its own `pnpm-workspace.yaml` that declares which packages ar
 - Parallel installs work (~3x faster)
 - No need for `enableGlobalVirtualStore` or other workarounds
 
+## Explicit Workspace Members Pattern
+
+### Problem
+
+Each package's `pnpm-workspace.yaml` must list ALL workspace members it needs (including transitive deps). With `createWorkspaceDepsResolver`, every transitive dep's `package.json.genie.ts` must be imported into the `deps` array. This is error-prone and breaks silently when upstream adds new internal deps.
+
+### Solution
+
+Each `pnpm-workspace.yaml.genie.ts` calls `pnpmWorkspaceYaml` directly with explicit relative paths. Use path prefix constants to keep paths DRY:
+
+```typescript
+// packages/app/pnpm-workspace.yaml.genie.ts
+import { pnpmWorkspaceYaml } from '../../repos/effect-utils/genie/external.ts'
+
+const local = '../@local'
+const overeng = '../../repos/effect-utils/packages/@overeng'
+
+export default pnpmWorkspaceYaml({
+  packages: [
+    '.',
+    `${local}/shared`,
+    `${overeng}/notion-cli`,
+    `${overeng}/notion-effect-client`,
+    `${overeng}/notion-effect-schema`,
+    `${overeng}/utils`,
+    `${overeng}/utils-dev`,
+  ],
+  dedupePeerDependents: true,
+})
+```
+
+### When to use
+
+Use this pattern instead of `createWorkspaceDepsResolver` when you want explicit control over workspace members without importing `package.json.genie.ts` files. Each workspace template owns its full member list with no indirection.
+
 ## Required Root Config Files
 
 Every repo must have these config files at the root:
