@@ -6,7 +6,8 @@
  * tsconfig reference to enable proper TypeScript project references.
  */
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { join } from 'node:path'
 
 import type { GenieContext } from '../../mod.ts'
@@ -106,11 +107,13 @@ export const validateTsconfigReferences = ({
 /** Check if a tsconfig.json has composite: true (required for project reference targets). */
 const isCompositeProject = (tsconfigPath: string): boolean => {
   try {
-    const content = readFileSync(tsconfigPath, 'utf-8')
-    // Strip single-line comments for basic JSON-with-comments support
-    const stripped = content.replace(/\/\/.*$/gm, '')
-    const parsed = JSON.parse(stripped) as { compilerOptions?: { composite?: boolean } }
-    return parsed.compilerOptions?.composite !== false
+    // Resolve typescript from the consumer workspace (not from genie's own location)
+    // since genie runtime files may be loaded from a cache outside node_modules.
+    const require = createRequire(tsconfigPath)
+    const ts: typeof import('typescript') = require('typescript')
+    const { config, error } = ts.readConfigFile(tsconfigPath, ts.sys.readFile)
+    if (error || !config) return false
+    return config.compilerOptions?.composite !== false
   } catch {
     return false
   }
