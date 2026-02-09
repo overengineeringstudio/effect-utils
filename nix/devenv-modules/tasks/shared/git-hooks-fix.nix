@@ -10,6 +10,7 @@
 { config, lib, pkgs, ... }:
 
 let
+  git = "${pkgs.git}/bin/git";
   # Get the list of hook stages from git-hooks config
   # We need to check if the actual hook files exist for each configured stage
   configuredStages = lib.pipe config.git-hooks.hooks [
@@ -27,7 +28,7 @@ in
     description = "Ensure git hooks are actually installed (workaround for cachix/devenv#2455)";
     exec = ''
       # Skip if not in a git repo
-      if ! git rev-parse --git-dir &>/dev/null; then
+      if ! ${git} rev-parse --git-dir &>/dev/null; then
         exit 0
       fi
 
@@ -36,23 +37,23 @@ in
         exit 0
       fi
 
-      HOOKS_DIR=$(git rev-parse --git-common-dir)/hooks
+      HOOKS_DIR=$(${git} rev-parse --git-common-dir)/hooks
       INSTALLED_ANY=0
 
       for stage in ${stagesStr}; do
         if [ ! -f "$HOOKS_DIR/$stage" ]; then
           echo "[git-hooks:ensure] Installing missing hook: $stage"
           # Clear core.hooksPath temporarily so prek doesn't refuse
-          HOOKS_PATH=$(git config --local core.hooksPath 2>/dev/null || true)
+          HOOKS_PATH=$(${git} config --local core.hooksPath 2>/dev/null || true)
           if [ -n "$HOOKS_PATH" ]; then
-            git config --local --unset core.hooksPath
+            ${git} config --local --unset core.hooksPath
           fi
 
           ${prek}/bin/prek install -c .pre-commit-config.yaml -t "$stage" 2>/dev/null || true
 
           # Restore core.hooksPath
           if [ -n "$HOOKS_PATH" ]; then
-            git config --local core.hooksPath "$HOOKS_PATH"
+            ${git} config --local core.hooksPath "$HOOKS_PATH"
           fi
 
           INSTALLED_ANY=1

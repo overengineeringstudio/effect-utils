@@ -15,6 +15,8 @@ let
   trace = import ../lib/trace.nix { inherit lib; };
 in
 {
+  # mr shells out to git for clone/fetch/worktree operations
+  packages = [ pkgs.git pkgs.openssh ];
   tasks."megarepo:sync" = {
     description = "Sync megarepo members (clone repos, create symlinks)";
     exec = trace.exec "megarepo:sync" ''
