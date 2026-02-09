@@ -97,7 +97,6 @@ let
   # Optional: build the @overeng/oxc-config plugin bundle when src is provided
   hasPlugin = src != null;
   pluginBundle = if hasPlugin then import ./oxc-config-plugin.nix { inherit pkgs bun src; } else null;
-  pluginPath = if hasPlugin then "${pluginBundle}/plugin.js" else null;
 
 in
 pkgs.stdenv.mkDerivation {
@@ -123,8 +122,8 @@ pkgs.stdenv.mkDerivation {
     tar -xzf ${binaryPackage} -C $out/lib/node_modules/${platformPkg.name} --strip-components=1
 
     ${lib.optionalString hasPlugin ''
-      # Install pre-bundled oxc-config plugin
-      cp ${pluginBundle}/plugin.js $out/lib/oxc-config-plugin.js
+      # Symlink pre-bundled oxc-config plugin for discoverability
+      ln -s ${pluginBundle}/plugin.js $out/lib/oxc-config-plugin.js
     ''}
 
     runHook postBuild
@@ -141,8 +140,8 @@ pkgs.stdenv.mkDerivation {
     runHook postInstall
   '';
 
-  # Expose plugin path for consumers (e.g., lint-oxc.nix jsPlugins parameter)
-  passthru = { inherit pluginPath; };
+  # Expose plugin path for consumers (e.g., lint-oxc.nix jsPlugins parameter).
+  passthru.pluginPath = if hasPlugin then "${pluginBundle}/plugin.js" else null;
 
   meta = with pkgs.lib; {
     description = "npm oxlint with NAPI bindings for JavaScript plugin support";

@@ -84,7 +84,7 @@ let
     if hasJsPlugins then
       ''
         set -euo pipefail
-        tmpconfig=$(mktemp --suffix=.json)
+        tmpconfig=$(mktemp)
         trap 'rm -f "$tmpconfig"' EXIT
         ${pkgs.jq}/bin/jq --argjson plugins '${jsPluginsJson}' \
           '.jsPlugins = $plugins' \

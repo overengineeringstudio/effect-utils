@@ -194,6 +194,11 @@ pkgs.stdenv.mkDerivation {
     runHook postBuild
   '';
 
+  checkPhase = ''
+    # Verify the bundle is self-contained (no missing modules like jiti)
+    bun -e "const p = require('./plugin.js'); if (!p || typeof p !== 'object') throw new Error('plugin did not export an object')"
+  '';
+
   installPhase = ''
     runHook preInstall
     mkdir -p $out
