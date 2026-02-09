@@ -47,7 +47,7 @@
   commitTs ? 0,
   dirty ? false,
   smokeTestArgs ? [ "--help" ],
-  extraExcludedSourceNames ? [],
+  extraExcludedSourceNames ? [ ],
 }:
 
 let
@@ -55,11 +55,12 @@ let
 
   # Convert workspaceRoot to path
   workspaceRootPath =
-    if builtins.isAttrs workspaceRoot && builtins.hasAttr "outPath" workspaceRoot
-    then workspaceRoot.outPath
-    else if builtins.isPath workspaceRoot
-    then workspaceRoot
-    else builtins.toPath workspaceRoot;
+    if builtins.isAttrs workspaceRoot && builtins.hasAttr "outPath" workspaceRoot then
+      workspaceRoot.outPath
+    else if builtins.isPath workspaceRoot then
+      workspaceRoot
+    else
+      builtins.toPath workspaceRoot;
 
   # ==========================================================================
   # Parse workspace members from pnpm-workspace.yaml
@@ -85,20 +86,35 @@ let
   relativeWorkspaceMembers = builtins.filter (s: s != ".") packagesItems;
 
   # Resolve relative paths (e.g., "../tui-core") to workspace-root paths (e.g., "packages/@overeng/tui-core")
-  resolveRelativePath = basePath: relPath:
+  resolveRelativePath =
+    basePath: relPath:
     let
       baseParts = lib.splitString "/" basePath;
       relParts = lib.splitString "/" relPath;
 
       # Count leading ".." segments
-      countResult = builtins.foldl'
-        (acc: part:
-          if acc.done then acc
-          else if part == ".." then { count = acc.count + 1; done = false; }
-          else { count = acc.count; done = true; }
-        )
-        { count = 0; done = false; }
-        relParts;
+      countResult =
+        builtins.foldl'
+          (
+            acc: part:
+            if acc.done then
+              acc
+            else if part == ".." then
+              {
+                count = acc.count + 1;
+                done = false;
+              }
+            else
+              {
+                count = acc.count;
+                done = true;
+              }
+          )
+          {
+            count = 0;
+            done = false;
+          }
+          relParts;
       upCount = countResult.count;
 
       # Get remaining path parts after ".."
@@ -116,44 +132,70 @@ let
   # Includes the main package and ONLY package.json files from workspace members
   # (not full directories) to let pnpm know what deps to fetch without trying
   # to create node_modules in read-only sibling directories
-  mkPackageSource = pkgDir:
+  mkPackageSource =
+    pkgDir:
     lib.cleanSourceWith {
       src = workspaceRootPath;
-      filter = path: type:
+      filter =
+        path: type:
         let
           relPath = lib.removePrefix (toString workspaceRootPath + "/") (toString path);
           baseName = baseNameOf path;
           excludedNames = [
-            ".git" ".direnv" ".devenv" ".cache" ".turbo" ".next" ".bun"
-            "node_modules" "dist" "result" "coverage" "tmp" "out"
+            ".git"
+            ".direnv"
+            ".devenv"
+            ".cache"
+            ".turbo"
+            ".next"
+            ".bun"
+            "node_modules"
+            "dist"
+            "result"
+            "coverage"
+            "tmp"
+            "out"
           ];
           isExcluded = lib.elem baseName excludedNames;
           # Include everything under the main package directory
           isInPackage = lib.hasPrefix "${pkgDir}/" relPath || relPath == pkgDir;
           # Include parent directories needed for structure
           parts = lib.splitString "/" pkgDir;
-          isParentDir = lib.any (n: relPath == lib.concatStringsSep "/" (lib.take n parts)) (lib.range 1 (lib.length parts));
+          isParentDir = lib.any (n: relPath == lib.concatStringsSep "/" (lib.take n parts)) (
+            lib.range 1 (lib.length parts)
+          );
           # Check if path is under patches directory
-          isInPatches = patchesDir != null && (lib.hasPrefix "${patchesDir}/" relPath || relPath == patchesDir);
+          isInPatches =
+            patchesDir != null && (lib.hasPrefix "${patchesDir}/" relPath || relPath == patchesDir);
           # Include workspace member package.json files (not full directories)
           # Also include their parent directories as directories
-          isWorkspaceMemberPackageJson = lib.any (memberDir:
-            relPath == "${memberDir}/package.json"
+          isWorkspaceMemberPackageJson = lib.any (
+            memberDir: relPath == "${memberDir}/package.json"
           ) workspaceMembers;
           # Include full workspace member contents for recursive installs
-          isInWorkspaceMember = lib.any (memberDir:
-            lib.hasPrefix "${memberDir}/" relPath
-          ) workspaceMembers;
-          isWorkspaceMemberDir = type == "directory" && lib.any (memberDir:
-            relPath == memberDir
-          ) workspaceMembers;
-          isWorkspaceMemberParentDir = type == "directory" && lib.any (memberDir:
-            let memberParts = lib.splitString "/" memberDir;
-            in lib.any (n: relPath == lib.concatStringsSep "/" (lib.take n memberParts)) (lib.range 1 (lib.length memberParts - 1))
-          ) workspaceMembers;
+          isInWorkspaceMember = lib.any (memberDir: lib.hasPrefix "${memberDir}/" relPath) workspaceMembers;
+          isWorkspaceMemberDir =
+            type == "directory" && lib.any (memberDir: relPath == memberDir) workspaceMembers;
+          isWorkspaceMemberParentDir =
+            type == "directory"
+            && lib.any (
+              memberDir:
+              let
+                memberParts = lib.splitString "/" memberDir;
+              in
+              lib.any (n: relPath == lib.concatStringsSep "/" (lib.take n memberParts)) (
+                lib.range 1 (lib.length memberParts - 1)
+              )
+            ) workspaceMembers;
         in
-        (!isExcluded && type == "directory") || isInPackage || isInPatches || isParentDir ||
-        isWorkspaceMemberPackageJson || isInWorkspaceMember || isWorkspaceMemberDir || isWorkspaceMemberParentDir;
+        (!isExcluded && type == "directory")
+        || isInPackage
+        || isInPatches
+        || isParentDir
+        || isWorkspaceMemberPackageJson
+        || isInWorkspaceMember
+        || isWorkspaceMemberDir
+        || isWorkspaceMemberParentDir;
     };
 
   # Custom pnpm deps fetcher that handles workspace members
@@ -232,16 +274,31 @@ let
   # Full workspace source for building
   workspaceSrc = lib.cleanSourceWith {
     src = workspaceRootPath;
-    filter = path: type:
+    filter =
+      path: type:
       let
         baseName = baseNameOf path;
       in
       # Exclude common non-essential directories
-      lib.cleanSourceFilter path type &&
-      !(lib.elem baseName ([
-        ".git" ".direnv" ".devenv" ".cache" ".turbo" ".next" ".bun"
-        "node_modules" "dist" "result" "coverage" "tmp" "out"
-      ] ++ extraExcludedSourceNames));
+      lib.cleanSourceFilter path type
+      && !(lib.elem baseName (
+        [
+          ".git"
+          ".direnv"
+          ".devenv"
+          ".cache"
+          ".turbo"
+          ".next"
+          ".bun"
+          "node_modules"
+          "dist"
+          "result"
+          "coverage"
+          "tmp"
+          "out"
+        ]
+        ++ extraExcludedSourceNames
+      ));
   };
 
   # Read package.json for version
@@ -256,21 +313,8 @@ let
   nixStampJson = ''{\"type\":\"nix\",\"version\":\"${packageVersion}\",\"rev\":\"${gitRev}\",\"commitTs\":${toString commitTs},\"dirty\":${dirtyStr}}'';
 
   smokeTestArgsStr = lib.escapeShellArgs smokeTestArgs;
-  supportedArchitecturesJson = ''{"os":["linux","darwin"],"cpu":["x64","arm64"]}'';
-  pnpmSupportedArchitecturesScript = ''
-    # Ensure pnpm resolves binaries for all supported platforms (R5 determinism)
-    pnpm config set supportedArchitectures '${supportedArchitecturesJson}'
-    sa="$(pnpm config get supportedArchitectures)"
-    # pnpm config get returns array notation (os[]=linux) not JSON, so check without quotes
-    if ! printf '%s' "$sa" | grep -q 'linux' ||
-       ! printf '%s' "$sa" | grep -q 'darwin' ||
-       ! printf '%s' "$sa" | grep -q 'x64' ||
-       ! printf '%s' "$sa" | grep -q 'arm64'; then
-      echo "error: pnpm supportedArchitectures not set as expected"
-      echo "  got: $sa"
-      exit 1
-    fi
-  '';
+  pnpmPlatform = import ./pnpm-platform.nix;
+  pnpmSupportedArchitecturesScript = pnpmPlatform.setupScript;
 
 in
 pkgs.stdenv.mkDerivation {
@@ -282,7 +326,8 @@ pkgs.stdenv.mkDerivation {
     pkgs.bun
     pkgs.cacert
     pkgs.zstd
-  ] ++ lib.optionals (lockfileHash != null) [ pkgs.nix ];
+  ]
+  ++ lib.optionals (lockfileHash != null) [ pkgs.nix ];
 
   inherit pnpmDeps;
 
@@ -293,18 +338,23 @@ pkgs.stdenv.mkDerivation {
     set -euo pipefail
     runHook preBuild
 
-    ${if lockfileHash != null then ''
-    # Validate lockfile hash (early failure with clear message)
-    currentHash="sha256-$(nix-hash --type sha256 --base64 ${workspaceSrc}/${packageDir}/pnpm-lock.yaml)"
-    if [ "$currentHash" != "${lockfileHash}" ]; then
-      echo ""
-      echo "error: lockfileHash is stale (run: dt nix:hash)"
-      echo "  expected: ${lockfileHash}"
-      echo "  actual:   $currentHash"
-      echo ""
-      exit 1
-    fi
-    '' else ""}
+    ${
+      if lockfileHash != null then
+        ''
+          # Validate lockfile hash (early failure with clear message)
+          currentHash="sha256-$(nix-hash --type sha256 --base64 ${workspaceSrc}/${packageDir}/pnpm-lock.yaml)"
+          if [ "$currentHash" != "${lockfileHash}" ]; then
+            echo ""
+            echo "error: lockfileHash is stale (run: dt nix:hash)"
+            echo "  expected: ${lockfileHash}"
+            echo "  actual:   $currentHash"
+            echo ""
+            exit 1
+          fi
+        ''
+      else
+        ""
+    }
 
     export HOME=$PWD
     export STORE_PATH=$(mktemp -d)

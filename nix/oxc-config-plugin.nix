@@ -1,27 +1,15 @@
 # Build pre-bundled @overeng/oxc-config JS plugin for oxlint.
 #
-# This bundles the custom overeng rules + eslint-plugin-storybook into a single
-# self-contained JS file that can be used as an oxlint jsPlugin without needing
-# node_modules. This enables consumer repos (like dotfiles) to use overeng/*
-# rules in CI where effect-utils' node_modules aren't available.
-#
-# Usage:
-#   oxcConfigPlugin = import ./oxc-config-plugin.nix {
-#     inherit pkgs;
-#     bun = pkgs.bun;
-#     src = self;  # effect-utils flake source
-#   };
-#   # => oxcConfigPlugin is a path to the bundled plugin directory
-#   # => "${oxcConfigPlugin}/plugin.js" is the plugin file
+# Bundles the custom overeng rules + eslint-plugin-storybook into a single
+# self-contained JS file usable as an oxlint jsPlugin without node_modules.
+# Imported by oxlint-npm.nix when src is provided.
 #
 # =============================================================================
-# Updating the pnpmDepsHash
+# Updating the pnpmDepsHash (after changing oxc-config's dependencies)
 # =============================================================================
 #
-# When dependencies in packages/@overeng/oxc-config/package.json change:
-#
-# 1. Run: nix build .#oxc-config-plugin 2>&1
-#    (it will fail with the expected vs actual hash)
+# 1. Run: nix build .#oxlint-npm 2>&1
+#    (the FOD will fail with expected vs actual hash)
 #
 # 2. Update pnpmDepsHash below with the actual hash from the error
 #
@@ -34,7 +22,9 @@
 
 let
   lib = pkgs.lib;
+  pnpmPlatform = import ./workspace-tools/lib/pnpm-platform.nix;
   packageDir = "packages/@overeng/oxc-config";
+  pnpmDepsHash = "sha256-38BuFU/nIAMeSZLFFalgmbHM+uIVafwer1Hc/vnezmA=";
 
   srcPath =
     if builtins.isAttrs src && builtins.hasAttr "outPath" src then
@@ -44,42 +34,22 @@ let
     else
       builtins.toPath src;
 
-  # Ensure pnpm fetches binaries for all supported platforms so the FOD hash
-  # is stable across linux-x64, darwin-arm64, etc. (same pattern as mk-pnpm-cli.nix)
-  supportedArchitecturesJson = ''{"os":["linux","darwin"],"cpu":["x64","arm64"]}'';
-  pnpmSupportedArchitecturesScript = ''
-    pnpm config set supportedArchitectures '${supportedArchitecturesJson}'
-    sa="$(pnpm config get supportedArchitectures)"
-    if ! printf '%s' "$sa" | grep -q 'linux' ||
-       ! printf '%s' "$sa" | grep -q 'darwin' ||
-       ! printf '%s' "$sa" | grep -q 'x64' ||
-       ! printf '%s' "$sa" | grep -q 'arm64'; then
-      echo "error: pnpm supportedArchitectures not set as expected"
-      echo "  got: $sa"
-      exit 1
-    fi
-  '';
-
-  # Filtered source for pnpm dep fetching (only needs package.json + lockfile)
-  depsSrc = lib.cleanSourceWith {
+  # Filtered source: only the package directory (for pnpm dep fetching)
+  mkPackageSrc = lib.cleanSourceWith {
     src = srcPath;
     filter =
       path: type:
       let
         relPath = lib.removePrefix (toString srcPath + "/") (toString path);
-        baseName = baseNameOf path;
       in
-      # Include package directory files needed for pnpm install
       lib.hasPrefix "${packageDir}/" relPath
       || relPath == packageDir
-      ||
-        # Include parent directory structure
-        (
-          type == "directory"
-          && lib.any (n: relPath == lib.concatStringsSep "/" (lib.take n (lib.splitString "/" packageDir))) (
-            lib.range 1 (lib.length (lib.splitString "/" packageDir))
-          )
-        );
+      || (
+        type == "directory"
+        && lib.any (n: relPath == lib.concatStringsSep "/" (lib.take n (lib.splitString "/" packageDir))) (
+          lib.range 1 (lib.length (lib.splitString "/" packageDir))
+        )
+      );
   };
 
   # Fetch pnpm dependencies (fixed-output derivation with network access)
@@ -87,7 +57,7 @@ let
     pname = "oxc-config-pnpm-deps";
     version = "0.0.0";
 
-    src = depsSrc;
+    src = mkPackageSrc;
     sourceRoot = "source/${packageDir}";
 
     nativeBuildInputs = [
@@ -112,12 +82,10 @@ let
       export NODE_ENV=development
       export CI=true
 
-      # Configure pnpm
       pnpm config set store-dir "$STORE_PATH"
       pnpm config set manage-package-manager-versions false
-      ${pnpmSupportedArchitecturesScript}
+      ${pnpmPlatform.setupScript}
 
-      # Install deps (fetches for all platforms due to supportedArchitectures)
       pnpm install --frozen-lockfile --ignore-scripts
       pnpm fetch --frozen-lockfile
 
@@ -129,7 +97,6 @@ let
         fi
       done
 
-      # Archive the pnpm store
       mkdir -p $out
       cd $STORE_PATH
       LC_ALL=C TZ=UTC tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner -cf - . \
@@ -139,10 +106,10 @@ let
     '';
 
     outputHashMode = "recursive";
-    outputHash = "sha256-38BuFU/nIAMeSZLFFalgmbHM+uIVafwer1Hc/vnezmA=";
+    outputHash = pnpmDepsHash;
   };
 
-  # Full source for building (includes .ts source files)
+  # Full source for building (includes .ts files, excludes node_modules etc.)
   buildSrc = lib.cleanSourceWith {
     src = srcPath;
     filter =
@@ -191,8 +158,6 @@ pkgs.stdenv.mkDerivation {
     pkgs.zstd
   ];
 
-  inherit pnpmDeps;
-
   dontUnpack = true;
   dontFixup = true;
 
@@ -206,31 +171,24 @@ pkgs.stdenv.mkDerivation {
     export npm_config_production=false
     export NODE_ENV=development
 
-    # Extract pnpm store
-    echo "Extracting pnpm store..."
     zstd -d -c ${pnpmDeps}/pnpm-store.tar.zst | tar -xf - -C $STORE_PATH
     chmod -R +w $STORE_PATH
 
-    # Configure pnpm
     pnpm config set store-dir "$STORE_PATH"
     pnpm config set package-import-method clone-or-copy
     pnpm config set manage-package-manager-versions false
-    ${pnpmSupportedArchitecturesScript}
+    ${pnpmPlatform.setupScript}
 
-    # Copy source
-    echo "Copying source..."
     cp -r ${buildSrc} workspace
     chmod -R +w workspace
     cd workspace/${packageDir}
 
-    # Install deps from offline store
     pnpm install --offline --frozen-lockfile --ignore-scripts
 
-    # Bundle into single JS file
+    # Bundle into single JS file.
     # --external jiti: eslint's config loader uses jiti for dynamic imports, but
     # oxlint's JS plugin runtime never invokes the config loader, so jiti is safe
     # to exclude. This avoids bundling issues with jiti's native module resolution.
-    echo "Bundling plugin..."
     bun build src/mod.ts --bundle --target=bun --external jiti --outfile=plugin.js
 
     runHook postBuild
@@ -238,10 +196,8 @@ pkgs.stdenv.mkDerivation {
 
   installPhase = ''
     runHook preInstall
-
     mkdir -p $out
     cp plugin.js $out/
-
     runHook postInstall
   '';
 

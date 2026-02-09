@@ -84,8 +84,8 @@
           genie-dirty = cliPackagesDirty.genie;
           megarepo-dirty = cliPackagesDirty.megarepo;
           otel-dirty = cliPackagesDirty.otel;
-          # Pre-bundled oxlint JS plugin with all deps (for consumer repos without node_modules)
-          oxc-config-plugin = import ./nix/oxc-config-plugin.nix {
+          # npm oxlint with NAPI bindings + pre-bundled @overeng/oxc-config plugin
+          oxlint-npm = import ./nix/oxlint-npm.nix {
             inherit pkgs;
             bun = pkgs.bun;
             src = self;
@@ -154,20 +154,16 @@
       lib.mkCliPackages = import ./nix/workspace-tools/lib/mk-cli-packages.nix;
 
       # npm oxlint with NAPI bindings for JavaScript plugin support.
-      # Usage: effectUtils.lib.mkOxlintNpm { inherit pkgs; bun = pkgs.bun; }
-      lib.mkOxlintNpm = { pkgs, bun }: import ./nix/oxlint-npm.nix { inherit pkgs bun; };
-
-      # Pre-bundled @overeng/oxc-config JS plugin for oxlint.
-      # Use this in consumer repos that don't have effect-utils' node_modules.
-      # Usage: effectUtils.lib.mkOxcConfigPlugin { inherit pkgs; bun = pkgs.bun; src = effectUtilsSrc; }
-      # Returns a derivation with plugin.js at $out/plugin.js
-      lib.mkOxcConfigPlugin =
+      # When `src` is provided (the effect-utils source), the @overeng/oxc-config
+      # plugin is bundled alongside and exposed via passthru.pluginPath.
+      # Usage: effectUtils.lib.mkOxlintNpm { inherit pkgs; bun = pkgs.bun; src = inputs.effect-utils; }
+      lib.mkOxlintNpm =
         {
           pkgs,
           bun,
-          src,
+          src ? null,
         }:
-        import ./nix/oxc-config-plugin.nix { inherit pkgs bun src; };
+        import ./nix/oxlint-npm.nix { inherit pkgs bun src; };
 
       # Note: mkSourceCli is internal-only (not exported).
       # For consuming CLIs from other repos, use:
