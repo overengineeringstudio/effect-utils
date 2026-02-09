@@ -121,8 +121,8 @@
           # Simple tasks (no config needed)
           genie = ./nix/devenv-modules/tasks/shared/genie.nix;
           lint-genie = ./nix/devenv-modules/tasks/shared/lint-genie.nix;
-          megarepo = ./nix/devenv-modules/tasks/shared/megarepo.nix;
           # Parameterized tasks (pass config)
+          megarepo = import ./nix/devenv-modules/tasks/shared/megarepo.nix;
           ts = import ./nix/devenv-modules/tasks/shared/ts.nix;
           setup = import ./nix/devenv-modules/tasks/shared/setup.nix;
           check = import ./nix/devenv-modules/tasks/shared/check.nix;

@@ -22,7 +22,7 @@ let
     lint-oxc = import ./nix/devenv-modules/tasks/shared/lint-oxc.nix;
     bun = import ./nix/devenv-modules/tasks/shared/bun.nix;
     pnpm = import ./nix/devenv-modules/tasks/shared/pnpm.nix;
-    megarepo = ./nix/devenv-modules/tasks/shared/megarepo.nix;
+    megarepo = import ./nix/devenv-modules/tasks/shared/megarepo.nix;
     nix-cli = import ./nix/devenv-modules/tasks/shared/nix-cli.nix;
     context = ./nix/devenv-modules/tasks/shared/context.nix;
     beads = import ./nix/devenv-modules/tasks/shared/beads.nix;
@@ -119,7 +119,7 @@ in
       # Depend only on utils package install (not full pnpm:install) for faster parallel startup
       lspPatchAfter = [ "pnpm:install:utils" ];
     })
-    taskModules.megarepo
+    (taskModules.megarepo {})
     (taskModules.check { extraChecks = [ "workspace:check" ]; })
     (taskModules.clean { packages = allPackages; })
     # Per-package pnpm install tasks
