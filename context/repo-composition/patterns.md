@@ -332,8 +332,8 @@ steps:
   - run: nix profile install github:org/effect-utils#megarepo
   # 2. Sync repos (creates repos/ symlinks that genie needs)
   - run: mr sync --frozen --verbose
-  # 3. Now install devenv — pin to the version in devenv.lock to avoid skew
-  - run: nix profile install --accept-flake-config github:cachix/devenv/$DEVENV_VERSION
+  # 3. Install devenv pinned to the rev in devenv.lock (avoids version skew)
+  - run: nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)
   - run: devenv test # runs setup tasks including genie:run
 ```
 
