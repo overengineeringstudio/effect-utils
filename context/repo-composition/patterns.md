@@ -315,7 +315,7 @@ In CI workflows that use devenv (e.g. GitHub Actions), there is a bootstrap depe
 2. `.genie.ts` files import from `repos/effect-utils/...` via standard relative paths
 3. `repos/` only exists after `mr sync` creates the bare repos + worktree symlinks
 4. `mr sync` requires the `mr` CLI, which is normally provided by devenv
-5. But devenv tasks (including `genie:run`) run *after* devenv is installed
+5. But devenv tasks (including `genie:run`) run _after_ devenv is installed
 
 This creates a chicken-and-egg: devenv provides `mr`, but `mr sync` must run before devenv tasks can work (because genie needs `repos/`).
 
@@ -332,9 +332,9 @@ steps:
   - run: nix profile install github:org/effect-utils#megarepo
   # 2. Sync repos (creates repos/ symlinks that genie needs)
   - run: mr sync --frozen --verbose
-  # 3. Now install devenv (genie:run can find repos/)
-  - run: nix profile install github:cachix/devenv/latest
-  - run: devenv test  # runs setup tasks including genie:run
+  # 3. Now install devenv — pin to the version in devenv.lock to avoid skew
+  - run: nix profile install --accept-flake-config github:cachix/devenv/$DEVENV_VERSION
+  - run: devenv test # runs setup tasks including genie:run
 ```
 
 ### Why `mr sync --frozen`
