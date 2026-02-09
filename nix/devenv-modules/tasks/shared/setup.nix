@@ -10,15 +10,24 @@
 #       requiredTasks = [ ];
 #       optionalTasks = [ "pnpm:install" "genie:run" "ts:emit" ];
 #       completionsCliNames = [ "genie" "mr" ];
-#       # innerCacheDirs = [ "pnpm-install" ];  # default; set to [] for non-pnpm setups
 #     })
 #   ];
 #
 # The tasks will run as part of shell entry.
 #
 # Optional task failures:
-# We model optional shell-entry work via `@complete` dependencies so failures don't block
-# entering the shell (direnv expects `devenv shell` to exit 0 on success).
+#
+# Upstream devenv regression: optional task failures can cause `devenv shell` / direnv
+# activation to exit non-zero again (R15). We work around this by introducing wrapper
+# tasks for shell entry optional work.
+#
+# Upstream issue:
+# - https://github.com/cachix/devenv/issues/2480
+#
+# Cleanup checklist once upstream is fixed:
+# - Remove wrapper tasks (setup:opt:*) and switch back to native `@complete` deps.
+# - Remove nested `devenv tasks run` calls from wrappers.
+# - Consider reintroducing a single optional gate task without wrappers.
 #
 # ## Rebase Guard
 #
@@ -43,10 +52,6 @@
   optionalTasks ? [ ],
   completionsCliNames ? [ ],
   skipDuringRebase ? true,
-  # Deprecated: setup-level skipping is intentionally not implemented.
-  # Keep these args for backwards compatibility with repos importing this module.
-  skipIfGitHashUnchanged ? true,
-  innerCacheDirs ? [ "pnpm-install" ],
 }:
 {
   lib,
@@ -160,8 +165,13 @@ let
   setupOptionalTasks = userOptionalTasks ++ lib.optionals completionsEnabled [ completionsTaskName ];
   setupTasks = setupRequiredTasks ++ setupOptionalTasks;
 
+  # Shell entry optional tasks run via wrapper tasks that never fail.
+  # This keeps direnv activation resilient even when upstream dependency failure
+  # handling regresses.
+  mkOptionalWrapperTaskName = t: "setup:opt:${lib.replaceStrings [ ":" ] [ "-" ] t}";
+  optionalWrapperTasks = map mkOptionalWrapperTaskName setupOptionalTasks;
+
   optionalGateTaskName = "setup:optional";
-  optionalGateDeps = map (t: "${t}@complete") setupOptionalTasks;
   allSetupTasks =
     setupRequiredTasks ++ lib.optionals (setupOptionalTasks != [ ]) [ optionalGateTaskName ];
 in
@@ -177,13 +187,54 @@ in
     // {
       # Gate for shell-entry optional tasks.
       #
-      # - Runs optional tasks as upstream dependencies, marked with @complete so failures
-      #   don't block the shell.
+      # - Runs wrapper tasks as dependencies; wrappers swallow failures so shell entry
+      #   stays resilient.
       "${optionalGateTaskName}" = lib.mkIf (setupOptionalTasks != [ ]) ({
         description = "Shell entry optional tasks (best effort)";
         exec = "exit 0";
-        after = optionalGateDeps;
+        after = optionalWrapperTasks;
       });
+
+      # Wrapper tasks for shell entry optional work.
+      #
+      # Why wrappers?
+      # - We cannot depend directly on optional tasks (or use @complete) without risking
+      #   `devenv shell` returning non-zero on failures in some upstream versions.
+      # - Wrappers run the real task via a nested `devenv tasks run ...` and always exit 0.
+      #
+      # Strict mode (`setup:strict` / DEVENV_STRICT=1) still depends on the real tasks
+      # so failures are enforced when explicitly requested.
+    }
+    // (lib.listToAttrs (
+      map (
+        t:
+        let
+          wrapper = mkOptionalWrapperTaskName t;
+        in
+        {
+          name = wrapper;
+          value = {
+            description = "Optional setup wrapper (best effort): ${t}";
+            exec = ''
+              set -u
+              set -o pipefail
+
+              echo "[devenv] optional setup: ${t}" >&2
+
+              if devenv tasks run "${t}" --mode before --no-tui --show-output; then
+                exit 0
+              fi
+
+              code=$?
+              echo "[devenv] WARN: optional setup task failed: ${t} (exit $code)" >&2
+              echo "[devenv] WARN: shell continues; re-run with: dt ${t}" >&2
+              exit 0
+            '';
+          };
+        }
+      ) setupOptionalTasks
+    ))
+    // {
 
       # Strict variant of shell-entry optional tasks.
       #
@@ -221,7 +272,7 @@ in
       };
 
       # Wire setup tasks to run during shell entry.
-      # Required tasks are hard dependencies; optional tasks are best-effort via @complete.
+      # Required tasks are hard dependencies; optional tasks are best-effort via wrappers.
       "devenv:enterShell" = {
         after = allSetupTasks;
       };
