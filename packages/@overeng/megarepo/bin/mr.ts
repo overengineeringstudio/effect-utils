@@ -6,7 +6,7 @@ import { Effect, Layer } from 'effect'
 
 import { runTuiMain } from '@overeng/tui-react/node'
 import { resolveCliVersion } from '@overeng/utils/node/cli-version'
-import { makeOtelCliLayer } from '@overeng/utils/node/otel-cli'
+import { makeOtelCliLayer } from '@overeng/utils/node/otel'
 
 import { mrCommand } from '../src/cli/mod.ts'
 import { MR_VERSION } from '../src/lib/version.ts'

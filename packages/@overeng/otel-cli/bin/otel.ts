@@ -6,7 +6,7 @@ import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Effect, Layer } from 'effect'
 
 import { runTuiMain } from '@overeng/tui-react/node'
-import { makeOtelCliLayer } from '@overeng/utils/node/otel-cli'
+import { makeOtelCliLayer } from '@overeng/utils/node/otel'
 
 import { otelCommand } from '../src/cli.ts'
 import { OtelConfig } from '../src/services/OtelConfig.ts'

@@ -31,7 +31,7 @@ All notable changes to this project will be documented in this file.
   - Overview, dt Task Performance, Shell Entry, pnpm Install Deep-Dive, TS App Traces, dt Duration Trends
   - dt-tasks dashboard with cache status filtering (executed vs cached)
 
-- **@overeng/utils**: `node/otel-cli` module for Effect-native OTEL instrumentation in CLI apps
+- **@overeng/utils**: `node/otel` module for Effect-native OTEL instrumentation in CLI apps
   - `makeOtelCliLayer()` wires OTLP exporter with W3C TRACEPARENT propagation from `dt` tasks
   - Zero overhead when `OTEL_EXPORTER_OTLP_ENDPOINT` is not set
 

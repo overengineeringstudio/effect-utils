@@ -98,7 +98,7 @@ Vitest.describe('misc', () => {
       const header = getTraceParentHeader(parentSpan)
 
       // Child process would set this as TRACEPARENT env var
-      // And parse it back using parseTraceparent (tested in otel-cli.unit.test.ts)
+      // And parse it back using parseTraceparent (tested in otel.unit.test.ts)
       expect(header).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/)
     })
 

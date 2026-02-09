@@ -7,7 +7,7 @@ import { Effect, Layer } from 'effect'
 import { runTuiMain } from '@overeng/tui-react/node'
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
 import { resolveCliVersion } from '@overeng/utils/node/cli-version'
-import { makeOtelCliLayer } from '@overeng/utils/node/otel-cli'
+import { makeOtelCliLayer } from '@overeng/utils/node/otel'
 
 import { genieCommand } from '../src/build/mod.tsx'
 

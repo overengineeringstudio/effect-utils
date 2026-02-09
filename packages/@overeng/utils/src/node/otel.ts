@@ -105,7 +105,7 @@ export interface OtelCliLayerConfig {
  * @example
  * ```typescript
  * // In bin/my-cli.ts
- * import { makeOtelCliLayer } from '@overeng/utils/node/otel-cli'
+ * import { makeOtelCliLayer } from '@overeng/utils/node/otel'
  *
  * const baseLayer = Layer.mergeAll(
  *   NodeContext.layer,

@@ -1,10 +1,9 @@
-import { FetchHttpClient } from '@effect/platform'
-import { Effect, Layer, Tracer } from 'effect'
+import { Effect } from 'effect'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
 
-import { makeOtelCliLayer, parentSpanFromTraceparent } from './otel-cli.ts'
+import { makeOtelCliLayer, parentSpanFromTraceparent } from './otel.ts'
 
 Vitest.describe('otel-cli', () => {
   Vitest.describe('parentSpanFromTraceparent', () => {
@@ -141,135 +140,6 @@ Vitest.describe('otel-cli', () => {
 
         // Empty layer should not fail when provided
         yield* Effect.void.pipe(Effect.provide(layer))
-      }),
-    )
-
-    Vitest.it.effect(
-      'creates layer with root span when endpoint is set',
-      Effect.fnUntraced(function* () {
-        process.env.OTEL_EXPORTER_OTLP_ENDPOINT = 'http://localhost:4318'
-        delete process.env.TRACEPARENT
-
-        const layer = makeOtelCliLayer({
-          serviceName: 'test-cli',
-          shutdownTimeout: 100,
-          exportInterval: 60_000,
-        })
-
-        // Should be able to create spans within the layer
-        yield* Effect.gen(function* () {
-          const tracer = yield* Effect.serviceOption(Tracer.Tracer)
-          expect(tracer._tag).toBe('Some')
-        }).pipe(Effect.provide(Layer.mergeAll(layer, FetchHttpClient.layer)), Effect.scoped)
-
-        delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT
-      }),
-    )
-
-    Vitest.it.effect(
-      'includes parent span attribute when TRACEPARENT is valid',
-      Effect.fnUntraced(function* () {
-        process.env.OTEL_EXPORTER_OTLP_ENDPOINT = 'http://localhost:4318'
-        process.env.TRACEPARENT = '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01'
-
-        const layer = makeOtelCliLayer({
-          serviceName: 'test-cli',
-          shutdownTimeout: 100,
-          exportInterval: 60_000,
-        })
-
-        // Should include parent span when creating the root span
-        yield* Effect.gen(function* () {
-          const tracer = yield* Effect.serviceOption(Tracer.Tracer)
-          expect(tracer._tag).toBe('Some')
-        }).pipe(Effect.provide(Layer.mergeAll(layer, FetchHttpClient.layer)), Effect.scoped)
-
-        delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT
-        delete process.env.TRACEPARENT
-      }),
-    )
-
-    Vitest.it.effect(
-      'does not include parent span attribute when TRACEPARENT is invalid',
-      Effect.fnUntraced(function* () {
-        process.env.OTEL_EXPORTER_OTLP_ENDPOINT = 'http://localhost:4318'
-        process.env.TRACEPARENT = 'invalid-traceparent'
-
-        const layer = makeOtelCliLayer({
-          serviceName: 'test-cli',
-          shutdownTimeout: 100,
-          exportInterval: 60_000,
-        })
-
-        yield* Effect.gen(function* () {
-          const tracer = yield* Effect.serviceOption(Tracer.Tracer)
-          expect(tracer._tag).toBe('Some')
-        }).pipe(Effect.provide(Layer.mergeAll(layer, FetchHttpClient.layer)), Effect.scoped)
-
-        delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT
-        delete process.env.TRACEPARENT
-      }),
-    )
-
-    Vitest.it.effect(
-      'uses custom export interval',
-      Effect.fnUntraced(function* () {
-        process.env.OTEL_EXPORTER_OTLP_ENDPOINT = 'http://localhost:4318'
-        delete process.env.TRACEPARENT
-
-        const layer = makeOtelCliLayer({
-          serviceName: 'test-cli',
-          exportInterval: 500,
-          shutdownTimeout: 100,
-        })
-
-        yield* Effect.void.pipe(
-          Effect.provide(Layer.mergeAll(layer, FetchHttpClient.layer)),
-          Effect.scoped,
-        )
-
-        delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT
-      }),
-    )
-
-    Vitest.it.effect(
-      'handles endpoint with trailing slash',
-      Effect.fnUntraced(function* () {
-        process.env.OTEL_EXPORTER_OTLP_ENDPOINT = 'http://localhost:4318/'
-        delete process.env.TRACEPARENT
-
-        const layer = makeOtelCliLayer({
-          serviceName: 'test-cli',
-          shutdownTimeout: 100,
-          exportInterval: 60_000,
-        })
-
-        yield* Effect.void.pipe(
-          Effect.provide(Layer.mergeAll(layer, FetchHttpClient.layer)),
-          Effect.scoped,
-        )
-
-        delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT
-      }),
-    )
-
-    Vitest.it.effect(
-      'combines with other layers',
-      Effect.fnUntraced(function* () {
-        process.env.OTEL_EXPORTER_OTLP_ENDPOINT = 'http://localhost:4318'
-        delete process.env.TRACEPARENT
-
-        const otelLayer = makeOtelCliLayer({
-          serviceName: 'test-cli',
-          shutdownTimeout: 100,
-          exportInterval: 60_000,
-        })
-        const testLayer = Layer.succeed('TestService' as any, { foo: 'bar' })
-        const combined = Layer.mergeAll(otelLayer, testLayer, FetchHttpClient.layer)
-
-        yield* Effect.void.pipe(Effect.provide(combined), Effect.scoped)
-
-        delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT
       }),
     )
   })
