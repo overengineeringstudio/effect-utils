@@ -263,6 +263,48 @@ export default pnpmWorkspaceYaml({
 
 Use this pattern instead of `createWorkspaceDepsResolver` when you want explicit control over workspace members without importing `package.json.genie.ts` files. Each workspace template owns its full member list with no indirection.
 
+## CI Deployment with Megarepo Repos
+
+### Problem
+
+CI environments (e.g. Vercel) don't run `mr sync`, so `repos/` directories are missing at build time. Packages that depend on other megarepo members (via relative `../` paths) will fail to install.
+
+### Solution
+
+Use a lightweight install script that reads `megarepo.lock` and shallow-clones the required repos at the pinned commit:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+COMMIT=$(node -e "console.log(JSON.parse(require('fs').readFileSync('megarepo.lock','utf8')).members['effect-utils'].commit)")
+REPO_URL="https://github.com/org/effect-utils"
+
+rm -rf repos/effect-utils
+git init repos/effect-utils
+git -C repos/effect-utils fetch --depth 1 "$REPO_URL" "$COMMIT"
+git -C repos/effect-utils checkout FETCH_HEAD
+```
+
+Then reference it from `vercel.json` (each package that deploys to Vercel):
+
+```json
+{
+  "installCommand": "cd ../.. && bash scripts/vercel-install.sh && cd - && pnpm install --no-frozen-lockfile"
+}
+```
+
+**Key details:**
+
+- `megarepo.lock` is the source of truth for which commit to clone (same as `mr sync` uses locally)
+- `--depth 1` keeps the clone fast and small
+- `--no-frozen-lockfile` is needed because the lockfile may drift when transitive workspace deps change
+- The script runs from the repo root (`cd ../..`) before returning to the package dir for `pnpm install`
+
+### When to use
+
+Any CI/CD environment that needs to build a package from a megarepo but doesn't have access to `mr sync` or the devenv shell. The pattern generalizes to any CI provider — just call the script before the package manager install step.
+
 ## Required Root Config Files
 
 Every repo must have these config files at the root:
