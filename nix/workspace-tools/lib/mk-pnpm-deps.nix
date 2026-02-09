@@ -73,11 +73,17 @@ in
         pnpm install --frozen-lockfile --ignore-scripts ${installFlags}
         pnpm fetch --frozen-lockfile ${fetchFlags}
 
-        # Normalize pnpm store metadata (checkedAt timestamps are non-deterministic)
+        # Normalize pnpm store metadata for cross-platform determinism
         for indexDir in "$STORE_PATH"/v*/index; do
           if [ -d "$indexDir" ]; then
             find "$indexDir" -type f -name "*.json" -print0 \
-              | xargs -0 perl -pi -e 's/"checkedAt":[0-9]+/"checkedAt":0/g'
+              | xargs -0 perl -pi -e '
+                # checkedAt timestamps are non-deterministic
+                s/"checkedAt":[0-9]+/"checkedAt":0/g;
+                # Patched dependency sideEffects keys contain the build platform
+                # (e.g. "darwin;arm64;node24;patch=...") — normalize to a canonical form
+                s/"(linux|darwin);(x64|arm64);(node\d+);/"_platform;/g;
+              '
           fi
         done
 
