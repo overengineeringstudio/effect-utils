@@ -305,6 +305,51 @@ Then reference it from `vercel.json` (each package that deploys to Vercel):
 
 Any CI/CD environment that needs to build a package from a megarepo but doesn't have access to `mr sync` or the devenv shell. The pattern generalizes to any CI provider — just call the script before the package manager install step.
 
+## CI Bootstrap with Devenv (GitHub Actions)
+
+### Problem
+
+In CI workflows that use devenv (e.g. GitHub Actions), there is a bootstrap dependency chain:
+
+1. **`genie:run`** (a devenv task) needs to evaluate `.genie.ts` files
+2. `.genie.ts` files import from `repos/effect-utils/...` via standard relative paths
+3. `repos/` only exists after `mr sync` creates the bare repos + worktree symlinks
+4. `mr sync` requires the `mr` CLI, which is normally provided by devenv
+5. But devenv tasks (including `genie:run`) run *after* devenv is installed
+
+This creates a chicken-and-egg: devenv provides `mr`, but `mr sync` must run before devenv tasks can work (because genie needs `repos/`).
+
+### Solution
+
+Install `mr` independently before devenv, then sync:
+
+```yaml
+# .github/workflows/ci.yml
+steps:
+  - uses: actions/checkout@v4
+  - uses: cachix/install-nix-action@v30
+  # 1. Install mr CLI independently (before devenv)
+  - run: nix profile install github:org/effect-utils#megarepo
+  # 2. Sync repos (creates repos/ symlinks that genie needs)
+  - run: mr sync --frozen --verbose
+  # 3. Now install devenv (genie:run can find repos/)
+  - run: nix profile install github:cachix/devenv/latest
+  - run: devenv test  # runs setup tasks including genie:run
+```
+
+### Why `mr sync --frozen`
+
+Use `--frozen` (not `--all`) in CI:
+
+- `--frozen` syncs root members to the exact commits in `megarepo.lock` — deterministic and fast
+- `--all` additionally recurses into nested megarepos (e.g. effect-utils has its own members), which can fail in CI due to git credential scoping and version mismatches between the standalone `mr` and the devenv-pinned `mr`
+
+The devenv `megarepo:sync` task uses `--all` by default. In CI, root members are already synced by the initial `mr sync --frozen` step, so the recursive nested sync during devenv warmup is redundant and may fail (see [#176](https://github.com/overengineeringstudio/effect-utils/issues/176)).
+
+### Key insight
+
+The **genie CLI binary** is installed via Nix/devenv (`effectUtils.packages.${system}.genie`), but the **genie runtime library** (catalogs, config helpers, TypeScript compiler options) is loaded from `repos/effect-utils/` via standard Node.js module resolution in `.genie.ts` files. There is no import remapping — the `repos/` symlinks must exist on disk.
+
 ## Required Root Config Files
 
 Every repo must have these config files at the root:
