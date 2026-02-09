@@ -73,7 +73,7 @@ in
         pnpm install --frozen-lockfile --ignore-scripts ${installFlags}
         pnpm fetch --frozen-lockfile ${fetchFlags}
 
-        # Normalize pnpm store metadata for cross-platform determinism
+        # Normalize pnpm store metadata for cross-platform determinism.
         for indexDir in "$STORE_PATH"/v*/index; do
           if [ -d "$indexDir" ]; then
             find "$indexDir" -type f -name "*.json" -print0 \
