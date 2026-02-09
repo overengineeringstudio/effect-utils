@@ -313,20 +313,21 @@ export const cmdCollect: <R = never>(
 > = Effect.fn('cmdCollect')(function* (commandInput, options) {
   const cwd = options?.workingDirectory ?? (yield* CurrentWorkingDirectory)
 
-  const parts = Array.isArray(commandInput)
-    ? (commandInput as (string | undefined)[]).filter(isNotUndefined)
-    : (commandInput as string).split(' ')
-
-  const [command, ...args] = parts
-  if (command === undefined) {
-    return yield* Effect.die('Command is missing')
-  }
-
   const useShell = !!options?.shell
 
-  yield* Effect.logDebug(`Collecting '${parts.join(' ')}' in '${cwd}'`)
+  // Preserve raw string input for buildCommand's shell-mode path (avoids
+  // splitting on spaces, which would break leading-whitespace commands).
+  const normalizedInput: string | string[] = Array.isArray(commandInput)
+    ? (commandInput as (string | undefined)[]).filter(isNotUndefined)
+    : useShell
+      ? (commandInput as string)
+      : (commandInput as string).split(' ')
 
-  const cmd = buildCommand({ input: parts, useShell }).pipe(
+  const debugStr = Array.isArray(normalizedInput) ? normalizedInput.join(' ') : normalizedInput
+
+  yield* Effect.logDebug(`Collecting '${debugStr}' in '${cwd}'`)
+
+  const cmd = buildCommand({ input: normalizedInput, useShell }).pipe(
     Command.stdout('pipe'),
     Command.stderr('pipe'),
     Command.workingDirectory(cwd),
