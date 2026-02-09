@@ -2,26 +2,6 @@
 
 ## Active Workarounds
 
-### DEVENV-03: Shell entry optional tasks need `@complete` semantics
-
-**Issue:** https://github.com/cachix/devenv/issues/2454
-
-**Symptoms:**
-
-- Repos want shell entry to be resilient: “optional” setup tasks (e.g. `pnpm:install`, `genie:run`, `ts:build`) may fail without breaking `direnv` / `devenv shell`.
-- Today, failures in the task graph can still make `devenv` exit non-zero even when the top-level intent is “best effort”.
-
-**Current workaround:**
-
-- `nix/devenv-modules/tasks/shared/setup.nix` wires shell entry optional work through a gate task (`setup:optional`).
-- The gate depends on optional tasks using `@complete` so failures don’t block entering the shell.
-- The gate also carries our git-hash/inner-cache skip logic so optional tasks aren’t accidentally skipped when run directly.
-
-**Notes:**
-
-- `devenv shell` behavior appears fixed on newer devenv builds (root task success exits 0 even if `@complete` deps fail), but `devenv tasks run` can still exit non-zero when any task in the graph failed.
-- We lock `pnpm install` itself to avoid concurrent writers racing in `node_modules/.pnpm`.
-
 ### DEVENV-02: Task tracing lacks OTLP export and observability features
 
 **Issue:** https://github.com/cachix/devenv/issues/2415 (OTEL support feature request)
