@@ -9,7 +9,7 @@ import { expect } from 'vitest'
 import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import { shouldNeverHappen } from '../isomorphic/mod.ts'
-import { cmd } from './cmd.ts'
+import { cmd, cmdCollect } from './cmd.ts'
 import { CurrentWorkingDirectory } from './workspace.ts'
 
 const TestLayer = Layer.mergeAll(NodeContext.layer, CurrentWorkingDirectory.live)
@@ -144,4 +144,72 @@ Vitest.describe('cmd helper', () => {
   // TODO: Test timeouts with streaming processes - Effect.timeout doesn't interrupt stream-based I/O properly
   // when combined with scoped resources. This needs deeper investigation or a different approach.
   // For now, the core cleanup functionality is covered by acquireRelease in the cmd implementation.
+})
+
+Vitest.describe('cmdCollect', () => {
+  Vitest.it.effect(
+    'collects stdout lines',
+    Effect.fnUntraced(
+      function* () {
+        const result = yield* cmdCollect({ commandInput: ['echo', 'hello'] })
+        expect(result.stdout).toEqual(['hello'])
+        expect(result.exitCode).toBe(0)
+      },
+      Effect.provide(TestLayer),
+      Effect.scoped,
+    ),
+  )
+
+  Vitest.it.effect(
+    'collects stderr lines',
+    Effect.fnUntraced(
+      function* () {
+        const result = yield* cmdCollect({ commandInput: ['bun', '-e', "console.error('oops')"] })
+        expect(result.stderr).toEqual(['oops'])
+        expect(result.exitCode).toBe(0)
+      },
+      Effect.provide(TestLayer),
+      Effect.scoped,
+    ),
+  )
+
+  Vitest.it.effect(
+    'invokes onOutput callback for each line',
+    Effect.fnUntraced(
+      function* () {
+        const lines: Array<{ stream: string; line: string }> = []
+        const result = yield* cmdCollect({
+          commandInput: [
+            'bun',
+            '-e',
+            "console.log('out1'); console.log('out2'); console.error('err1')",
+          ],
+          onOutput: (stream, line) =>
+            Effect.sync(() => {
+              lines.push({ stream, line })
+            }),
+        })
+        expect(result.stdout).toEqual(['out1', 'out2'])
+        expect(result.stderr).toEqual(['err1'])
+        expect(result.exitCode).toBe(0)
+        expect(lines).toContainEqual({ stream: 'stdout', line: 'out1' })
+        expect(lines).toContainEqual({ stream: 'stdout', line: 'out2' })
+        expect(lines).toContainEqual({ stream: 'stderr', line: 'err1' })
+      },
+      Effect.provide(TestLayer),
+      Effect.scoped,
+    ),
+  )
+
+  Vitest.it.effect(
+    'returns non-zero exit code without failing',
+    Effect.fnUntraced(
+      function* () {
+        const result = yield* cmdCollect({ commandInput: ['bun', '-e', 'process.exit(42)'] })
+        expect(result.exitCode).toBe(42)
+      },
+      Effect.provide(TestLayer),
+      Effect.scoped,
+    ),
+  )
 })

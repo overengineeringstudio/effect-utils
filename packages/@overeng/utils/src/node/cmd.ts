@@ -7,6 +7,7 @@ import type { PlatformError } from '@effect/platform/Error'
 import type { Scope } from 'effect'
 import {
   Cause,
+  Chunk,
   type Duration,
   Effect,
   Fiber,
@@ -278,6 +279,90 @@ export const cmdText: (
     Command.string,
   )
 })
+
+/** Result of collecting stdout/stderr from a command. */
+export interface CmdCollectResult {
+  readonly stdout: readonly string[]
+  readonly stderr: readonly string[]
+  readonly exitCode: number
+}
+
+/**
+ * Run a command and collect stdout/stderr as line arrays.
+ *
+ * Each stream is decoded as UTF-8 and split into lines. An optional
+ * `onOutput` callback is invoked for every line (useful for streaming
+ * progress to a UI). The callback may return an Effect that requires
+ * additional context `R` – this requirement propagates to the return type.
+ *
+ * Errors:
+ * - Propagates `PlatformError` for execution failures.
+ */
+export const cmdCollect = <R = never>(opts: {
+  readonly commandInput: string | (string | undefined)[]
+  readonly onOutput?: (stream: 'stdout' | 'stderr', line: string) => Effect.Effect<void, never, R>
+  readonly env?: Record<string, string | undefined>
+  readonly shell?: boolean
+  readonly workingDirectory?: string
+}): Effect.Effect<
+  CmdCollectResult,
+  PlatformError,
+  CommandExecutor.CommandExecutor | CurrentWorkingDirectory | R
+> =>
+  Effect.gen(function* () {
+    const cwd = opts.workingDirectory ?? (yield* CurrentWorkingDirectory)
+
+    const useShell = !!opts.shell
+
+    // Preserve raw string input for buildCommand's shell-mode path (avoids
+    // splitting on spaces, which would break leading-whitespace commands).
+    const normalizedInput: string | string[] = Array.isArray(opts.commandInput)
+      ? (opts.commandInput as (string | undefined)[]).filter(isNotUndefined)
+      : useShell
+        ? (opts.commandInput as string)
+        : (opts.commandInput as string).split(' ')
+
+    const debugStr = Array.isArray(normalizedInput) ? normalizedInput.join(' ') : normalizedInput
+
+    yield* Effect.logDebug(`Collecting '${debugStr}' in '${cwd}'`)
+
+    const cmd = buildCommand({ input: normalizedInput, useShell }).pipe(
+      Command.stdout('pipe'),
+      Command.stderr('pipe'),
+      Command.workingDirectory(cwd),
+      useShell ? Command.runInShell(true) : identity,
+      Command.env(opts.env ?? {}),
+    )
+
+    const { onOutput } = opts
+
+    return yield* Effect.scoped(
+      Command.start(cmd).pipe(
+        Effect.flatMap((proc) =>
+          Effect.all(
+            {
+              stdout: proc.stdout.pipe(
+                Stream.decodeText('utf8'),
+                Stream.splitLines,
+                Stream.tap((line) => (onOutput ? onOutput('stdout', line) : Effect.void)),
+                Stream.runCollect,
+                Effect.map(Chunk.toReadonlyArray),
+              ),
+              stderr: proc.stderr.pipe(
+                Stream.decodeText('utf8'),
+                Stream.splitLines,
+                Stream.tap((line) => (onOutput ? onOutput('stderr', line) : Effect.void)),
+                Stream.runCollect,
+                Effect.map(Chunk.toReadonlyArray),
+              ),
+              exitCode: proc.exitCode,
+            },
+            { concurrency: 'unbounded' },
+          ),
+        ),
+      ),
+    )
+  }).pipe(Effect.withSpan('cmdCollect'))
 
 /** Internal error for process signal operations */
 class ProcessSignalError extends Schema.TaggedError<ProcessSignalError>()('ProcessSignalError', {
