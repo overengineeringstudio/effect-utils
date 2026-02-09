@@ -110,6 +110,7 @@ const isCompositeProject = (tsconfigPath: string): boolean => {
     // Resolve typescript from the consumer workspace (not from genie's own location)
     // since genie runtime files may be loaded from a cache outside node_modules.
     const require = createRequire(tsconfigPath)
+    // oxlint-disable-next-line typescript-eslint/consistent-type-imports -- dynamic require needs runtime type annotation
     const ts: typeof import('typescript') = require('typescript')
     const { config, error } = ts.readConfigFile(tsconfigPath, ts.sys.readFile)
     if (error || !config) return false
