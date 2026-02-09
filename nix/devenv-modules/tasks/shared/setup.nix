@@ -77,6 +77,7 @@
 }:
 { lib, config, pkgs, ... }:
 let
+  git = "${pkgs.git}/bin/git";
   flock = "${pkgs.flock}/bin/flock";
   cache = import ../lib/cache.nix { inherit config; };
   cacheRoot = cache.cacheRoot;
@@ -251,7 +252,7 @@ let
     [ "$FORCE_SETUP" = "1" ] && exit 1
 
     # Allow override via SETUP_GIT_HASH for testing
-    current=''${SETUP_GIT_HASH:-$(git rev-parse HEAD 2>/dev/null || echo "no-git")}
+    current=''${SETUP_GIT_HASH:-$(${git} rev-parse HEAD 2>/dev/null || echo "no-git")}
     cached=$(cat ${hashFile} 2>/dev/null || echo "")
 
     # If git hash differs, always run
@@ -287,7 +288,7 @@ let
     exit 1
   '';
   writeHashScript = ''
-    new_hash="''${SETUP_GIT_HASH:-$(git rev-parse HEAD 2>/dev/null || echo "no-git")}"
+    new_hash="''${SETUP_GIT_HASH:-$(${git} rev-parse HEAD 2>/dev/null || echo "no-git")}"
     cache_dir="$(dirname ${hashFile})"
     mkdir -p "$cache_dir"
     cache_value="$new_hash"
@@ -316,7 +317,7 @@ in
     "setup:gate" = lib.mkIf skipDuringRebase {
       description = "Check if setup should run (fails during rebase to skip setup)";
       exec = ''
-        _git_dir=$(git rev-parse --git-dir 2>/dev/null)
+        _git_dir=$(${git} rev-parse --git-dir 2>/dev/null)
         if [ -d "$_git_dir/rebase-merge" ] || [ -d "$_git_dir/rebase-apply" ]; then
           echo "Skipping setup during git rebase/cherry-pick"
           echo "Run 'FORCE_SETUP=1 dt setup:run' manually if needed"
