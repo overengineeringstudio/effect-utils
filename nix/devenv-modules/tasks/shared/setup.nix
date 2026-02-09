@@ -313,6 +313,15 @@ in
             echo "Run 'FORCE_SETUP=1 dt setup:run' manually if needed"
             exit 1
           fi
+
+          # Generate root trace context for shell entry if OTEL is available
+          if command -v otel-span >/dev/null 2>&1 && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
+            if [ -z "''${TRACEPARENT:-}" ]; then
+              _root_trace=$(${pkgs.coreutils}/bin/od -An -tx1 -N16 /dev/urandom | tr -d ' \n')
+              _root_span=$(${pkgs.coreutils}/bin/od -An -tx1 -N8 /dev/urandom | tr -d ' \n')
+              export TRACEPARENT="00-''${_root_trace:0:32}-''${_root_span:0:16}-01"
+            fi
+          fi
         '';
         # This makes setup:gate run BEFORE each setup task
         # If gate fails, the tasks will be "skipped due to dependency failure"
@@ -324,6 +333,10 @@ in
         description = "Save git hash after successful setup";
         exec = ''
           ${writeHashScript}
+          # Emit root span for shell entry trace
+          if command -v otel-span >/dev/null 2>&1 && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] && [ -n "''${TRACEPARENT:-}" ]; then
+            otel-span "devenv" "shell:entry" --attr "entry.type=setup" -- true 2>/dev/null || true
+          fi
         '';
         after = allSetupTasks;
       };

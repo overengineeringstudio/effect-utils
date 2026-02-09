@@ -12,11 +12,13 @@ import type { TestAction, TestState, TestStep } from '../schema.ts'
 // Step Names
 // =============================================================================
 
-/** The 4 E2E smoke test steps. */
+/** The 6 E2E smoke test steps. */
 const STEP_NAMES = [
-  'Send test span to Collector',
+  'Send test span via HTTP',
+  'Send test span via spool file',
   'Wait for ingestion',
-  'Verify span in Tempo',
+  'Verify HTTP span in Tempo',
+  'Verify spool span in Tempo',
   'Verify via Grafana TraceQL',
 ] as const
 
@@ -27,20 +29,34 @@ const STEP_NAMES = [
 /** Configuration for creating a final test state. */
 export interface TestStateConfig {
   /** Final status for each step. */
-  steps: Array<{ status: 'passed' | 'failed'; message?: string }>
+  steps: Array<{ status: 'passed' | 'failed' | 'skipped'; message?: string }>
   /** Whether all steps passed. */
   allPassed: boolean
 }
 
 /** All steps pass config. */
 export const allPassedConfig: TestStateConfig = {
-  steps: [{ status: 'passed' }, { status: 'passed' }, { status: 'passed' }, { status: 'passed' }],
+  steps: [
+    { status: 'passed' },
+    { status: 'passed' },
+    { status: 'passed' },
+    { status: 'passed' },
+    { status: 'passed' },
+    { status: 'passed' },
+  ],
   allPassed: true,
 }
 
-/** Partial progress config (2 passed, 1 running, 1 pending). */
+/** Partial progress config (some passed, rest pending). */
 export const partialProgressConfig: TestStateConfig = {
-  steps: [{ status: 'passed' }, { status: 'passed' }, { status: 'passed' }, { status: 'passed' }],
+  steps: [
+    { status: 'passed' },
+    { status: 'passed' },
+    { status: 'passed' },
+    { status: 'passed' },
+    { status: 'passed' },
+    { status: 'passed' },
+  ],
   allPassed: true,
 }
 
@@ -48,8 +64,10 @@ export const partialProgressConfig: TestStateConfig = {
 export const someFailedConfig: TestStateConfig = {
   steps: [
     { status: 'passed' },
+    { status: 'skipped', message: 'OTEL_SPAN_SPOOL_DIR not set' },
     { status: 'passed' },
     { status: 'failed', message: 'Span not found in Tempo after 30s timeout' },
+    { status: 'skipped', message: 'spool not available' },
     { status: 'failed', message: 'TraceQL query returned 0 results' },
   ],
   allPassed: false,
@@ -65,14 +83,16 @@ export const runningState = (): TestState => ({
   steps: STEP_NAMES.map((name) => ({ name, status: 'pending' as const })),
 })
 
-/** Partial progress state - 2 passed, 1 running, 1 pending. */
+/** Partial progress state - 3 passed, 1 running, 2 pending. */
 export const partialProgressState = (): TestState => ({
   _tag: 'Running',
   steps: [
     { name: STEP_NAMES[0], status: 'passed' },
     { name: STEP_NAMES[1], status: 'passed' },
-    { name: STEP_NAMES[2], status: 'running' },
-    { name: STEP_NAMES[3], status: 'pending' },
+    { name: STEP_NAMES[2], status: 'passed' },
+    { name: STEP_NAMES[3], status: 'running' },
+    { name: STEP_NAMES[4], status: 'pending' },
+    { name: STEP_NAMES[5], status: 'pending' },
   ],
 })
 
@@ -129,7 +149,9 @@ const buildSteps = (_: { config: TestStateConfig; currentIndex: number }): TestS
  * - at 1200: Step 1 done, step 2 running
  * - at 1800: Step 2 done, step 3 running
  * - at 2400: Step 3 done, step 4 running
- * - at 3000: Complete with final results
+ * - at 3000: Step 4 done, step 5 running
+ * - at 3600: Step 5 done, step 6 running
+ * - at 4200: Complete with final results
  */
 export const createTimeline = (
   config: TestStateConfig,

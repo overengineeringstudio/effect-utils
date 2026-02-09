@@ -19,8 +19,16 @@
     task_name="''${1:-unknown}"
 
     if command -v otel-span >/dev/null 2>&1 && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
+      # Calculate time since shell entry (approximates Nix eval + setup time)
+      _eval_attr=""
+      if [ -n "''${SHELL_ENTRY_TIME_NS:-}" ]; then
+        _now_ns=$(date +%s%N)
+        _elapsed_ms=$(( (_now_ns - SHELL_ENTRY_TIME_NS) / 1000000 ))
+        _eval_attr="--attr shell.ready_ms=$_elapsed_ms"
+      fi
+
       # OTEL available: wrap task in a trace span
-      if ! otel-span "dt" "$task_name" --attr "dt.args=$*" -- devenv tasks run "$@" --mode before; then
+      if ! otel-span "dt" "$task_name" $_eval_attr --attr "dt.args=$*" -- devenv tasks run "$@" --mode before; then
         echo "dt: task failed. Re-run with: devenv tasks run $* --mode before --no-tui" >&2
         exit 1
       fi
