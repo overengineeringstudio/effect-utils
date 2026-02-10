@@ -72,7 +72,17 @@
       originHeadRef="$($git symbolic-ref --quiet refs/remotes/${remoteName}/HEAD 2>/dev/null || true)"
       defaultBranch="${fallbackDefaultBranch}"
       if [ -n "$originHeadRef" ]; then
-        defaultBranch="''${originHeadRef##*/}"
+        remotePrefix="refs/remotes/${remoteName}/"
+        case "$originHeadRef" in
+          "$remotePrefix"*)
+            # Keep multi-segment branch names (e.g. refs/remotes/origin/release/main -> release/main)
+            defaultBranch="''${originHeadRef#"$remotePrefix"}"
+            ;;
+          *)
+            # Unexpected format, fallback to last segment (best effort)
+            defaultBranch="''${originHeadRef##*/}"
+            ;;
+        esac
       fi
 
       branch="$($git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
