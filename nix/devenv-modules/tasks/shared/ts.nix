@@ -150,7 +150,7 @@ let
           }'
           _tsc_spool="''${OTEL_SPAN_SPOOL_DIR:-}"
           if [ -n "$_tsc_spool" ] && [ -d "$_tsc_spool" ]; then
-            printf '%s\n' "$_tsc_payload" >> "$_tsc_spool/spans.jsonl"
+            printf '%s\n' "$_tsc_payload" | ${pkgs.jq}/bin/jq -c . >> "$_tsc_spool/spans.jsonl"
           else
             ${pkgs.curl}/bin/curl -s -X POST \
               "$OTEL_EXPORTER_OTLP_ENDPOINT/v1/traces" \
