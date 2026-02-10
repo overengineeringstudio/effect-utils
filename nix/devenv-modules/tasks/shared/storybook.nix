@@ -62,6 +62,8 @@ let
     "${processName pkg}" = {
       ports.http.allocate = pkg.port;
       exec = ''
+        _host="''${TS_HOSTNAME:-localhost}"
+        echo "[storybook] ${pkg.name}: http://$_host:${toString (getAllocatedPort pkg)}"
         ${storybookBin} dev -p ${toString (getAllocatedPort pkg)} --host 0.0.0.0 --no-open --ci --exact-port
       '';
       cwd = pkg.path;
