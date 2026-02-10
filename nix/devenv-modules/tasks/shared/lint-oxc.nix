@@ -60,6 +60,7 @@
 { lib, pkgs, ... }:
 let
   trace = import ../lib/trace.nix { inherit lib; };
+  git = "${pkgs.git}/bin/git";
   defaultExcludes = [
     "node_modules"
     "dist"
@@ -149,12 +150,30 @@ in
     "lint:check:genie:coverage" = {
       description = "Check all config files have .genie.ts sources";
       exec = trace.exec "lint:check:genie:coverage" ''
-        missing=$(find ${scanDirsArg} \
-          -type f \( -name "package.json" -o -name "tsconfig.json" \) \
-          ${excludeArgs} \
-          | while read -r f; do
-              [ ! -f "$f.genie.ts" ] && echo "$f"
-            done | sort)
+        set -euo pipefail
+
+        # Enumerate config files via git instead of scanning the filesystem.
+        #
+        # Rationale:
+        # - Avoids traversing huge trees (node_modules) even when excluded.
+        # - Correctly checks files that are tracked or about to be committed
+        #   (untracked but not ignored).
+        # - Prevents false negatives from caching based only on *.genie.ts files.
+        files=$(
+          {
+            ${git} ls-files -- ${scanDirsArg}
+            ${git} ls-files --others --exclude-standard -- ${scanDirsArg}
+          } | sort -u | while IFS= read -r f; do
+            case "$f" in
+              */package.json|*/tsconfig.json) echo "$f" ;;
+            esac
+          done
+        )
+
+        missing=$(echo "$files" | while IFS= read -r f; do
+          [ -z "$f" ] && continue
+          [ -f "$f.genie.ts" ] || echo "$f"
+        done | sort)
         if [ -n "$missing" ]; then
           echo "Missing .genie.ts sources for:"
           echo "$missing"
@@ -162,8 +181,8 @@ in
         fi
         echo "All config files have .genie.ts sources"
       '';
-      # Cache based on genie files - if no new .genie.ts files added, coverage is unchanged
-      execIfModified = geniePatterns;
+      # Intentionally no execIfModified caching: new unmanaged config files are exactly
+      # what this task exists to detect.
     };
     "lint:check" = {
       description = "Run all lint checks";
