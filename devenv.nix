@@ -1,4 +1,10 @@
-{ pkgs, inputs, config, lib, ... }:
+{
+  pkgs,
+  inputs,
+  config,
+  lib,
+  ...
+}:
 let
   cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
   # Use npm oxlint with NAPI bindings to enable JavaScript plugin support
@@ -32,10 +38,31 @@ let
 
   # CLI packages built with Nix (for hash management)
   nixCliPackages = [
-    { name = "genie"; flakeRef = ".#genie"; buildNix = "packages/@overeng/genie/nix/build.nix"; lockfile = "packages/@overeng/genie/pnpm-lock.yaml"; }
-    { name = "megarepo"; flakeRef = ".#megarepo"; buildNix = "packages/@overeng/megarepo/nix/build.nix"; lockfile = "packages/@overeng/megarepo/pnpm-lock.yaml"; }
-    { name = "otel-cli"; flakeRef = ".#otel"; buildNix = "packages/@overeng/otel-cli/nix/build.nix"; lockfile = "packages/@overeng/otel-cli/pnpm-lock.yaml"; }
-    { name = "oxlint-npm"; flakeRef = ".#oxlint-npm"; buildNix = "nix/oxc-config-plugin.nix"; lockfile = "packages/@overeng/oxc-config/pnpm-lock.yaml"; pnpmInstallTask = "oxc-config"; }
+    {
+      name = "genie";
+      flakeRef = ".#genie";
+      buildNix = "packages/@overeng/genie/nix/build.nix";
+      lockfile = "packages/@overeng/genie/pnpm-lock.yaml";
+    }
+    {
+      name = "megarepo";
+      flakeRef = ".#megarepo";
+      buildNix = "packages/@overeng/megarepo/nix/build.nix";
+      lockfile = "packages/@overeng/megarepo/pnpm-lock.yaml";
+    }
+    {
+      name = "otel-cli";
+      flakeRef = ".#otel";
+      buildNix = "packages/@overeng/otel-cli/nix/build.nix";
+      lockfile = "packages/@overeng/otel-cli/pnpm-lock.yaml";
+    }
+    {
+      name = "oxlint-npm";
+      flakeRef = ".#oxlint-npm";
+      buildNix = "nix/oxc-config-plugin.nix";
+      lockfile = "packages/@overeng/oxc-config/pnpm-lock.yaml";
+      pnpmInstallTask = "oxc-config";
+    }
   ];
 
   # All packages for per-package install tasks
@@ -71,31 +98,99 @@ let
   # Packages that have vitest tests (subset of allPackages)
   # Each package uses its own vitest from node_modules (self-contained)
   packagesWithTests = [
-    { path = "packages/@overeng/effect-ai-claude-cli"; name = "effect-ai-claude-cli"; }
-    { path = "packages/@overeng/effect-path"; name = "effect-path"; }
-    { path = "packages/@overeng/effect-rpc-tanstack"; name = "effect-rpc-tanstack"; }
-    { path = "packages/@overeng/genie"; name = "genie"; }
-    { path = "packages/@overeng/megarepo"; name = "megarepo"; }
-    { path = "packages/@overeng/notion-cli"; name = "notion-cli"; }
-    { path = "packages/@overeng/notion-effect-client"; name = "notion-effect-client"; }
-    { path = "packages/@overeng/notion-effect-schema"; name = "notion-effect-schema"; }
+    {
+      path = "packages/@overeng/effect-ai-claude-cli";
+      name = "effect-ai-claude-cli";
+    }
+    {
+      path = "packages/@overeng/effect-path";
+      name = "effect-path";
+    }
+    {
+      path = "packages/@overeng/effect-rpc-tanstack";
+      name = "effect-rpc-tanstack";
+    }
+    {
+      path = "packages/@overeng/genie";
+      name = "genie";
+    }
+    {
+      path = "packages/@overeng/megarepo";
+      name = "megarepo";
+    }
+    {
+      path = "packages/@overeng/notion-cli";
+      name = "notion-cli";
+    }
+    {
+      path = "packages/@overeng/notion-effect-client";
+      name = "notion-effect-client";
+    }
+    {
+      path = "packages/@overeng/notion-effect-schema";
+      name = "notion-effect-schema";
+    }
 
-    { path = "packages/@overeng/oxc-config"; name = "oxc-config"; }
-    { path = "packages/@overeng/tui-core"; name = "tui-core"; }
-    { path = "packages/@overeng/tui-react"; name = "tui-react"; }
-    { path = "packages/@overeng/utils"; name = "utils"; }
+    {
+      path = "packages/@overeng/oxc-config";
+      name = "oxc-config";
+    }
+    {
+      path = "packages/@overeng/tui-core";
+      name = "tui-core";
+    }
+    {
+      path = "packages/@overeng/tui-react";
+      name = "tui-react";
+    }
+    {
+      path = "packages/@overeng/utils";
+      name = "utils";
+    }
   ];
 
   # Packages that have storybook (subset of allPackages)
   packagesWithStorybook = [
-    { path = "packages/@overeng/tui-react"; name = "tui-react"; port = 6006; }
-    { path = "packages/@overeng/megarepo"; name = "megarepo"; port = 6007; }
-    { path = "packages/@overeng/genie"; name = "genie"; port = 6008; }
-    { path = "packages/@overeng/effect-react"; name = "effect-react"; port = 6009; }
-    { path = "packages/@overeng/effect-schema-form-aria"; name = "effect-schema-form-aria"; port = 6010; }
-    { path = "packages/@overeng/react-inspector"; name = "react-inspector"; port = 6011; }
-    { path = "packages/@overeng/notion-cli"; name = "notion-cli"; port = 6012; }
-    { path = "packages/@overeng/otel-cli"; name = "otel-cli"; port = 6013; }
+    {
+      path = "packages/@overeng/tui-react";
+      name = "tui-react";
+      port = 6006;
+    }
+    {
+      path = "packages/@overeng/megarepo";
+      name = "megarepo";
+      port = 6007;
+    }
+    {
+      path = "packages/@overeng/genie";
+      name = "genie";
+      port = 6008;
+    }
+    {
+      path = "packages/@overeng/effect-react";
+      name = "effect-react";
+      port = 6009;
+    }
+    {
+      path = "packages/@overeng/effect-schema-form-aria";
+      name = "effect-schema-form-aria";
+      port = 6010;
+    }
+    {
+      path = "packages/@overeng/react-inspector";
+      name = "react-inspector";
+      port = 6011;
+    }
+    {
+      path = "packages/@overeng/notion-cli";
+      name = "notion-cli";
+      port = 6012;
+    }
+    {
+      path = "packages/@overeng/otel-cli";
+      name = "otel-cli";
+      port = 6013;
+    }
   ];
 in
 {
@@ -108,7 +203,7 @@ in
     # `dt` (devenv tasks) wrapper script and shell completions
     ./nix/devenv-modules/dt.nix
     # OpenTelemetry observability stack (Collector + Tempo + Grafana)
-    (import ./nix/devenv-modules/otel.nix {})
+    (import ./nix/devenv-modules/otel.nix { })
     # Playwright browser drivers and environment setup
     inputs.playwright.devenvModules.default
     # Shared task modules
@@ -121,7 +216,7 @@ in
       # Depend only on utils package install (not full pnpm:install) for faster parallel startup
       lspPatchAfter = [ "pnpm:install:utils" ];
     })
-    (taskModules.megarepo {})
+    (taskModules.megarepo { })
     (taskModules.check { extraChecks = [ "workspace:check" ]; })
     (taskModules.clean { packages = allPackages; })
     # Per-package pnpm install tasks
@@ -209,8 +304,18 @@ in
       requiredTasks = [ ];
       # Keep shell entry resilient (R12): optional tasks run via @complete.
       # Ordering ensures source CLIs have deps before use.
-      optionalTasks = [ "pnpm:install" "genie:run" "megarepo:sync" "ts:patch-lsp" "ts:emit" ];
-      completionsCliNames = [ "genie" "mr" ];
+      optionalTasks = [
+        "pnpm:install"
+        "genie:run"
+        "megarepo:sync"
+        "ts:patch-lsp"
+        "ts:emit"
+      ];
+      completionsCliNames = [
+        "genie"
+        "mr"
+        "otel"
+      ];
     })
     # Nix CLI build and hash management
     (taskModules.nix-cli { cliPackages = nixCliPackages; })
@@ -223,12 +328,21 @@ in
     pkgs.nodejs_24
     pkgs.bun
     pkgs.typescript
-    pkgs.flock  # Cross-process locking for setup tasks (see setup.nix)
+    pkgs.flock # Cross-process locking for setup tasks (see setup.nix)
     oxlintNpm
     pkgs.oxfmt
-    (mkSourceCli { name = "genie"; entry = "packages/@overeng/genie/bin/genie.tsx"; })
-    (mkSourceCli { name = "mr"; entry = "packages/@overeng/megarepo/bin/mr.ts"; })
-    (mkSourceCli { name = "otel"; entry = "packages/@overeng/otel-cli/bin/otel.ts"; })
+    (mkSourceCli {
+      name = "genie";
+      entry = "packages/@overeng/genie/bin/genie.tsx";
+    })
+    (mkSourceCli {
+      name = "mr";
+      entry = "packages/@overeng/megarepo/bin/mr.ts";
+    })
+    (mkSourceCli {
+      name = "otel";
+      entry = "packages/@overeng/otel-cli/bin/otel.ts";
+    })
     cliBuildStamp.package
   ];
 
@@ -247,7 +361,6 @@ in
 
   # Repo-local pnpm store for consistent local installs (not used by Nix builds).
   env.PNPM_STORE_DIR = "${config.devenv.root}/.pnpm-store";
-
 
   enterShell = ''
     export SHELL_ENTRY_TIME_NS=$(date +%s%N)
@@ -274,7 +387,7 @@ in
     enable = true;
     # Can't use `dt` here — git hooks run outside the devenv shell where `dt` isn't on $PATH
     entry = "devenv tasks run check:quick --mode before";
-    stages = ["pre-commit"];
+    stages = [ "pre-commit" ];
     always_run = true;
     pass_filenames = false;
   };
