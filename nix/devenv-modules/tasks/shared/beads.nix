@@ -33,6 +33,8 @@
 { pkgs, config, ... }:
 let
   git = "${pkgs.git}/bin/git";
+  bdPackage = import ../../../beads.nix { inherit pkgs; };
+  bd = "${bdPackage}/bin/bd";
   beadsRepoRelPath = beadsRepoPath;
 in
 {
@@ -56,20 +58,29 @@ in
       cd "''${BEADS_DIR%/.beads}"
 
       # If daemon already running (e.g. started by another workspace), skip
-      if command bd daemon status >/dev/null 2>&1; then
+      if ${bd} daemon status >/dev/null 2>&1; then
         exit 0
+      fi
+
+      # Cold-start: create DB from JSONL on fresh checkout (daemon can't auto-create).
+      # Uses `bd list` instead of `bd init` because init refuses to run in git
+      # worktrees (which megarepo always creates). `bd list` auto-creates the DB
+      # from JSONL as a side effect without the worktree guard.
+      if [ ! -f "$BEADS_DIR/beads.db" ] && [ -f "$BEADS_DIR/issues.jsonl" ]; then
+        echo "[beads] No database found, initializing from JSONL..."
+        ${bd} list --no-daemon --quiet >/dev/null 2>&1 || true
       fi
 
       # Start daemon in background with auto-commit + auto-pull.
       # NOTE: --auto-push is not used because beads' upstream detection
       # doesn't work reliably in megarepo's bare+worktree git layout.
       # Git push is handled by the beads:sync task instead.
-      command bd daemon start --auto-commit --auto-pull 2>&1 || true
+      ${bd} daemon start --auto-commit --auto-pull 2>&1 || true
     '';
     status = ''
       [ ! -d "$BEADS_DIR" ] && exit 0
       cd "''${BEADS_DIR%/.beads}"
-      command bd daemon status >/dev/null 2>&1
+      ${bd} daemon status >/dev/null 2>&1
     '';
   };
 
@@ -78,7 +89,7 @@ in
     exec = ''
       [ ! -d "$BEADS_DIR" ] && exit 0
       cd "''${BEADS_DIR%/.beads}"
-      command bd daemons stop . 2>&1 || true
+      ${bd} daemons stop . 2>&1 || true
       echo "[beads] Daemon stopped."
     '';
   };
@@ -137,7 +148,7 @@ in
       # Add comment to each referenced issue (uses --no-db mode for reliability)
       for issue_id in $ISSUES; do
         comment="Commit ''${COMMIT_SHORT} in ''${REPO_NAME}: ''${COMMIT_MSG%%$'\n'*}"
-        (cd "$BEADS_REPO" && command bd --no-daemon --no-db comment "$issue_id" "$comment") 2>/dev/null || true
+        (cd "$BEADS_REPO" && ${bd} --no-daemon --no-db comment "$issue_id" "$comment") 2>/dev/null || true
       done
     ''}";
     stages = ["post-commit"];

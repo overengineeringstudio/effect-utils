@@ -109,8 +109,9 @@ tasks."devenv:enterShell".after = lib.mkAfter [ "beads:daemon:ensure" ];
 
 This provides:
 
+- `bd` binary via Nix (hermetic, available in CI)
 - `BEADS_DIR` env var (upstream `bd` env var for database discovery, works with direnv)
-- `dt beads:daemon:ensure` task (starts daemon if not running, idempotent)
+- `dt beads:daemon:ensure` task (starts daemon if not running, auto-inits DB from JSONL on fresh checkout)
 - `dt beads:daemon:stop` task (stops daemon)
 - `dt beads:sync` task (push JSONL changes to remote)
 - Commit correlation git hook (cross-references commits with beads issues)

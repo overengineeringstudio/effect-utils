@@ -80,6 +80,7 @@
       in
       {
         packages = cliPackages // {
+          beads = import ./nix/beads.nix { inherit pkgs; };
           cli-build-stamp = cliBuildStamp.package;
           genie-dirty = cliPackagesDirty.genie;
           megarepo-dirty = cliPackagesDirty.megarepo;
@@ -164,6 +165,10 @@
           src ? null,
         }:
         import ./nix/oxlint-npm.nix { inherit pkgs bun src; };
+
+      # Beads (bd) pre-built binary package from GitHub releases.
+      # Usage: effectUtils.lib.mkBeads { inherit pkgs; }
+      lib.mkBeads = { pkgs }: import ./nix/beads.nix { inherit pkgs; };
 
       # Note: mkSourceCli is internal-only (not exported).
       # For consuming CLIs from other repos, use:
