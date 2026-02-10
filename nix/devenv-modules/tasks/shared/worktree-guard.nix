@@ -78,10 +78,6 @@
             # Keep multi-segment branch names (e.g. refs/remotes/origin/release/main -> release/main)
             defaultBranch="''${originHeadRef#"$remotePrefix"}"
             ;;
-          *)
-            # Unexpected format, fallback to last segment (best effort)
-            defaultBranch="''${originHeadRef##*/}"
-            ;;
         esac
       fi
 
