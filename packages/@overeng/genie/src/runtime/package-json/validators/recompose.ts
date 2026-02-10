@@ -51,7 +51,10 @@ const validatePackageRecomposition = (args: {
         continue
       }
 
+      /** Only check peerDependenciesMeta when the dep is actually in peerDependencies */
+      const isInPeerDeps = args.pkg.peerDependencies && peer in args.pkg.peerDependencies
       if (
+        isInPeerDeps &&
         hasOptionalPeer({ meta: upstream.peerDependenciesMeta, name: peer }) &&
         !hasOptionalPeer({ meta: args.pkg.peerDependenciesMeta, name: peer })
       ) {

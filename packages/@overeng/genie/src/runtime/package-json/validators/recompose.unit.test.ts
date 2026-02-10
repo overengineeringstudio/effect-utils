@@ -99,6 +99,26 @@ describe('validatePackageRecompositionForPackage', () => {
     })
   })
 
+  it('private package: skips peer meta check when dep satisfied via dependencies', () => {
+    const upstream = makePackage({
+      name: '@test/utils',
+      path: 'packages/utils',
+      peerDependencies: { react: '^19.0.0' },
+      peerDependenciesMeta: { react: { optional: true } },
+    })
+    const downstream = makePackage({
+      name: '@test/example',
+      path: 'examples/my-example',
+      private: true,
+      dependencies: { '@test/utils': 'workspace:*', react: '^19.0.0' },
+      // no peerDependencies or peerDependenciesMeta — should be fine for private packages
+    })
+    const ctx = makeContext([upstream, downstream])
+
+    const issues = validatePackageRecompositionForPackage({ ctx, pkgName: '@test/example' })
+    expect(issues).toEqual([])
+  })
+
   it('reports missing patch from upstream', () => {
     const upstream = makePackage({
       name: '@test/utils',
