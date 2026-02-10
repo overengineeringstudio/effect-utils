@@ -111,6 +111,7 @@ All notable changes to this project will be documented in this file.
 - **devenv/ts.nix**: Per-project tsc tracing via `--extendedDiagnostics` parsing
   - When OTEL is available, `ts:check` and `ts:build` emit per-project child spans with timing attributes
   - ~3% overhead when active, zero overhead when OTEL unavailable
+  - Renamed `ts:watch` to `ts:build-watch`
 
 - **@overeng/tui-react**, **@overeng/megarepo**, **@overeng/notion-cli**, **@overeng/genie**: Migrated all consumers to standalone `run` API (#129)
   - All command files now use `run(App, handler, { view })` instead of manual `Effect.scoped` + `app.run()`
@@ -142,7 +143,7 @@ All notable changes to this project will be documented in this file.
   - Removed per-package `postinstall: 'effect-language-service patch'` scripts from all 15 packages
   - Added `lspPatchCmd` parameter to `ts.nix` that creates a `ts:patch-lsp` task
   - Fixes consumer install failures for published packages (e.g. `@overeng/react-inspector`)
-  - Effect LSP patching now runs automatically before `ts:check`, `ts:watch`, `ts:build`
+- Effect LSP patching now runs automatically before `ts:check`, `ts:build-watch`, `ts:build`
 
 - **devenv/ts.nix**: Use package-local patched tsc binary for Effect Language Service diagnostics
   - Added `tscBin` parameter (default: `"tsc"`) to specify a patched TypeScript binary

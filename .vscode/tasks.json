@@ -36,9 +36,9 @@
       }
     },
     {
-      "label": "ts:watch",
+      "label": "ts:build-watch",
       "type": "shell",
-      "command": "dt ts:watch",
+      "command": "dt ts:build-watch",
       "problemMatcher": ["$tsc-watch"],
       "isBackground": true,
       "presentation": {
@@ -63,9 +63,9 @@
       }
     },
     {
-      "label": "ts:clean:watch",
+      "label": "ts:clean:build-watch",
       "type": "shell",
-      "command": "dt ts:clean && dt ts:watch",
+      "command": "dt ts:clean && dt ts:build-watch",
       "problemMatcher": ["$tsc-watch"],
       "isBackground": true,
       "presentation": {

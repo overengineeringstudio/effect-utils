@@ -7,7 +7,7 @@
 #     (inputs.effect-utils.devenvModules.tasks.ts { tsconfigFile = "tsconfig.dev.json"; })
 #   ];
 #
-# Provides: ts:check, ts:watch, ts:build, ts:clean, and optionally ts:patch-lsp
+# Provides: ts:check, ts:build-watch, ts:build, ts:clean, and optionally ts:patch-lsp
 #
 # Dependencies:
 #   - genie:run: config files must be generated before tsc can resolve paths
@@ -26,7 +26,7 @@
 #
 # lspPatchCmd:
 #   Command to patch TypeScript with the Effect Language Service plugin. When set,
-#   creates a ts:patch-lsp task that runs before ts:check/ts:watch/ts:build.
+#   creates a ts:patch-lsp task that runs before ts:check/ts:build-watch/ts:build.
 #   This replaces per-package postinstall scripts, centralizing the patch in dt.
 #   Example: "packages/@overeng/utils/node_modules/.bin/effect-language-service patch"
 #
@@ -185,8 +185,8 @@ in
       exec = trace.exec "ts:check" (tscWithDiagnostics tsconfigFile "");
       after = [ "genie:run" "pnpm:install" ] ++ lspAfter;
     };
-    "ts:watch" = {
-      description = "Run TypeScript in watch mode";
+    "ts:build-watch" = {
+      description = "Build all packages in watch mode (tsc --build --watch)";
       exec = "${tscBin} --build --watch ${tsconfigFile}";
       after = [ "genie:run" "pnpm:install" ] ++ lspAfter;
     };
