@@ -375,6 +375,24 @@ export default oxfmtConfig()
 
 See [bun-issues.md](../workarounds/bun-issues.md) for package manager migration plans.
 
+## Git Workflow (Worktrees)
+
+To enforce a worktree workflow (no commits on the default branch, and optionally no commits from the primary worktree), import the reusable effect-utils devenv module:
+
+```nix
+imports = [
+  (inputs.effect-utils.devenvModules.tasks.worktree-guard {
+    # Detects default branch from refs/remotes/<remoteName>/HEAD (fallback below).
+    remoteName = "origin";
+    fallbackDefaultBranch = "main";
+    enforcePrimaryWorktree = true;
+    # In megarepo store worktrees (~/.megarepo/.../refs/heads/<ref>), prevent
+    # committing when the path-implied ref doesn't match git HEAD (use `mr pin`).
+    enforceMegarepoStoreRefMatch = true;
+  })
+];
+```
+
 ## Tips
 
 - Define `ownPeerDepNames` locally with only packages NOT in upstream (delta pattern)

@@ -45,6 +45,7 @@ imports = [
 - `context.nix` - Context directory tasks
 - `lint-genie.nix` - Genie lint tasks
 - `git-hooks-fix.nix` - Workaround for [cachix/devenv#2455](https://github.com/cachix/devenv/issues/2455)
+- `worktree-guard.nix` - Git hook: prevent commits on default branch (optionally enforce linked worktrees)
 
 ## `local/` - Effect-Utils Specific
 

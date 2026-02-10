@@ -4,6 +4,7 @@
 tmp
 .context
 .cache/
+.codex/
 
 # Node.js
 node_modules

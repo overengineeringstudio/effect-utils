@@ -18,6 +18,11 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **devenv/tasks/shared/worktree-guard.nix**: Git hook to enforce worktree workflow
+  - Refuses commits on the default branch (detected via `refs/remotes/<remote>/HEAD` with fallback)
+  - Optionally refuses commits from the primary worktree
+  - Detects megarepo store worktrees and prevents commits when the path-implied ref doesn't match `HEAD`
+
 - **devenv/tasks/shared/ts.nix**: Add `ts:emit` task (`tsc --build --noCheck`) and use it for shell entry
   - Keeps `ts:build` as the typechecked build
   - Improves shell entry performance by skipping full type checking during emit

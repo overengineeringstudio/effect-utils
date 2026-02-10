@@ -139,6 +139,8 @@
           beads = import ./nix/devenv-modules/tasks/shared/beads.nix;
           # Workaround for cachix/devenv#2455 - ensures hooks are actually installed
           git-hooks-fix = ./nix/devenv-modules/tasks/shared/git-hooks-fix.nix;
+          # Prevent commits on default branch and optionally enforce worktree-only workflow
+          worktree-guard = import ./nix/devenv-modules/tasks/shared/worktree-guard.nix;
           # Note: local/ directory contains effect-utils specific tasks (not exported)
         };
       };
