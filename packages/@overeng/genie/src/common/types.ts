@@ -2,6 +2,7 @@
 export type PackageInfo = {
   name: string
   path: string
+  private?: boolean
   dependencies?: Record<string, string>
   devDependencies?: Record<string, string>
   optionalDependencies?: Record<string, string>
