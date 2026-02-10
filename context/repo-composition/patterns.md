@@ -375,6 +375,16 @@ export default oxfmtConfig()
 
 See [bun-issues.md](../workarounds/bun-issues.md) for package manager migration plans.
 
+## Git Workflow (Worktrees)
+
+To enforce a worktree workflow (no commits on the default branch, and optionally no commits from the primary worktree), import the reusable effect-utils devenv module:
+
+```nix
+imports = [
+  (inputs.effect-utils.devenvModules.tasks.worktree-guard {})
+];
+```
+
 ## Tips
 
 - Define `ownPeerDepNames` locally with only packages NOT in upstream (delta pattern)

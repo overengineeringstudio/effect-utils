@@ -17,6 +17,7 @@ let
   taskModules = {
     genie = ./nix/devenv-modules/tasks/shared/genie.nix;
     ts = import ./nix/devenv-modules/tasks/shared/ts.nix;
+    worktree-guard = import ./nix/devenv-modules/tasks/shared/worktree-guard.nix;
     setup = import ./nix/devenv-modules/tasks/shared/setup.nix;
     check = import ./nix/devenv-modules/tasks/shared/check.nix;
     clean = import ./nix/devenv-modules/tasks/shared/clean.nix;
@@ -202,6 +203,8 @@ in
     })
     # `dt` (devenv tasks) wrapper script and shell completions
     ./nix/devenv-modules/dt.nix
+    # Git hook: prevent commits on default branch + enforce linked worktrees
+    (taskModules.worktree-guard {})
     # OpenTelemetry observability stack (Collector + Tempo + Grafana)
     (import ./nix/devenv-modules/otel.nix { })
     # Playwright browser drivers and environment setup
