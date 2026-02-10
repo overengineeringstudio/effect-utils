@@ -160,6 +160,9 @@ export const makeOtelCliLayer = (config: OtelCliLayerConfig): Layer.Layer<never>
       shutdownTimeout,
     }).pipe(Layer.provide(FetchHttpClient.layer))
 
-    return Layer.mergeAll(rootSpanLive, exporterLive)
+    // exporterLive must build before rootSpanLive so the OTEL tracer is
+    // installed when the root span is created (Layer.mergeAll builds concurrently,
+    // causing the span to be created by the noop tracer and never exported).
+    return rootSpanLive.pipe(Layer.provideMerge(exporterLive))
   })
 }

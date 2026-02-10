@@ -169,7 +169,8 @@ let
 
   optionalGateTaskName = "setup:optional";
   allSetupTasks =
-    setupRequiredTasks ++ lib.optionals (setupOptionalTasks != [ ]) [ optionalGateTaskName ];
+    setupRequiredTasks
+    ++ lib.optionals (setupOptionalTasks != [ ]) (optionalWrapperTasks ++ [ optionalGateTaskName ]);
 in
 {
   tasks =
