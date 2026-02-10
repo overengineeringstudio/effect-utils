@@ -15,11 +15,8 @@ let
     workspaceRoot = src;
     # Patches are in packages/@overeng/utils/patches/ (referenced by pnpm-lock.yaml)
     patchesDir = "packages/@overeng/utils/patches";
-    # Pnpm store differs across platforms due to optional/os-specific deps.
-    pnpmDepsHash =
-      if pkgs.stdenv.isDarwin
-      then "sha256-nRY4sF0CreFriGwuA60Gndd0rTKXVJtVc0+F9Fc/mYk="
-      else "sha256-2q+5YiwberB0qQbZ4byJpXFbVeju94FL0ZZhXf9yB/I=";
+    # Managed by `dt nix:hash:megarepo` — do not edit manually.
+    pnpmDepsHash = "sha256-KzuiBld8JkKiMh33SGT3QmM4+9KPTIXy1aKGXKo+36w=";
     lockfileHash = "sha256-7oYF4DF6Ue44gRUSL5OmZ1A244v61TWsoX6vyiC74n8=";
     packageJsonDepsHash = "sha256-tGkiG+aEO0TUw/SVvU9T0cgD4nMjENqRioocT5w3XMQ=";
     smokeTestArgs = [ "--help" ];
