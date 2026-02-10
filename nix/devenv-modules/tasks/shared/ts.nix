@@ -40,7 +40,11 @@
 #   --verbose (adds ~3% overhead) and emit per-project child spans with timing
 #   attributes (tsc.check_time_s, tsc.parse_time_s, etc.). The diagnostics
 #   output is suppressed from the user — only errors are shown on failure.
-{ tsconfigFile ? "tsconfig.all.json", tscBin ? "tsc", lspPatchCmd ? null, lspPatchAfter ? [ "pnpm:install" ] }:
+#
+# Status checks:
+#   - ts:emit uses `tsc --build --dry --noCheck` to skip when no outputs would be produced.
+#   - ts:patch-lsp can be cached by providing `lspPatchDir` (the TypeScript dir being patched).
+{ tsconfigFile ? "tsconfig.all.json", tscBin ? "tsc", lspPatchCmd ? null, lspPatchAfter ? [ "pnpm:install" ], lspPatchDir ? null }:
 { lib, pkgs, ... }:
 let
   trace = import ../lib/trace.nix { inherit lib; };
@@ -191,9 +195,16 @@ in
       exec = trace.exec "ts:build" (tscWithDiagnostics tsconfigFile "");
       after = [ "genie:run" "pnpm:install" ] ++ lspAfter;
     };
-    "ts:emit" = {
+    "ts:emit" = trace.withStatus "ts:emit" {
       description = "Emit build outputs without full type checking (tsc --build --noCheck)";
-      exec = trace.exec "ts:emit" (tscWithDiagnostics tsconfigFile "--noCheck");
+      exec = tscWithDiagnostics tsconfigFile "--noCheck";
+      status = ''
+        set -euo pipefail
+
+        _out="$(${tscBin} --build ${tsconfigFile} --dry --noCheck --verbose --pretty false 2>&1)" || exit 1
+        echo "$_out" | grep -q "A non-dry build would build project" && exit 1
+        exit 0
+      '';
       after = [ "genie:run" "pnpm:install" ];
     };
     "ts:clean" = {
@@ -202,10 +213,26 @@ in
       exec = trace.exec "ts:clean" "tsc --build --clean ${tsconfigFile}";
     };
   } // (if lspPatchCmd != null then {
-    "ts:patch-lsp" = {
-      description = "Patch TypeScript with Effect Language Service";
-      exec = trace.exec "ts:patch-lsp" lspPatchCmd;
-      after = lspPatchAfter;
-    };
+    "ts:patch-lsp" =
+      if lspPatchDir != null then
+        trace.withStatus "ts:patch-lsp" {
+          description = "Patch TypeScript with Effect Language Service";
+          exec = lspPatchCmd;
+          status = ''
+            set -euo pipefail
+
+            _tsc_js="${lspPatchDir}/lib/_tsc.js"
+            [ -f "$_tsc_js" ] || exit 1
+            grep -q "@effect/language-service/embedded-typescript-copy" "$_tsc_js" && exit 0
+            exit 1
+          '';
+          after = lspPatchAfter;
+        }
+      else
+        {
+          description = "Patch TypeScript with Effect Language Service";
+          exec = trace.exec "ts:patch-lsp" lspPatchCmd;
+          after = lspPatchAfter;
+        };
   } else {});
 }
