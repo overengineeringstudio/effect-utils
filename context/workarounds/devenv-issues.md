@@ -74,6 +74,33 @@ Example trace event:
 
 ---
 
+### DEVENV-03: Automatic port allocation (`ports.<name>.allocate`) does not pick a free port
+
+**Issue:** https://github.com/cachix/devenv/issues/2484
+
+**Repro:** https://github.com/schickling-repros/2026-02-devenv-port-allocation-ignored
+
+**Affected repos:** Any repo that runs multiple concurrent dev servers across multiple devenv instances
+
+**Symptoms:**
+
+- `config.processes.<name>.ports.<port>.value` stays equal to the base port even when that port is already in use
+- Downstream servers fail with `EADDRINUSE`, or (worse) tools like Storybook auto-select a different port and collide with other servers
+
+**Impact on Storybook:**
+
+- Storybook with `--ci` will silently choose another port when the requested port is taken, which can drift into other storybook ports (e.g. base `6009` drifts into `6014`) and cause cascading failures
+
+**Workaround (recommended):**
+
+- Force deterministic failure instead of port drifting by using Storybook `--exact-port` for all Storybook dev processes.
+
+**Additional mitigation:**
+
+- If base ports are contiguous (e.g. `6006..6013`), consider spacing them out to reduce the blast radius when any tool auto-selects ports.
+
+---
+
 ## Platform Compatibility Issues
 
 ### COMPAT-01: Web coding agents have limited Nix/devenv support
