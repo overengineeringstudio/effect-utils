@@ -637,9 +637,12 @@ let
       if [ -n "''${TS_HOSTNAME:-}" ]; then
         _url="''${_url//127.0.0.1/$TS_HOSTNAME}"
       fi
-      # Always emit OSC 8 — enterShell/dt are inherently interactive;
-      # unsupporting terminals silently ignore the sequences.
-      printf '\e]8;;%s\x07[otel] Trace: %s\e]8;;\x07\n' "$_url" "$_url" >&2
+      _trace_label="trace:$TRACE_ID"
+      if [ -t 2 ]; then
+        printf '[otel] \e]8;;%s\x07\e[4m%s\e[24m\e]8;;\x07\n' "$_url" "$_trace_label" >&2
+      else
+        printf '[otel] %s %s\n' "$_trace_label" "$_url" >&2
+      fi
     fi
 
     exit "$exit_code"
@@ -677,10 +680,15 @@ in
     else
       _grafana_link_url="$_otel_grafana"
     fi
-    if [ -t 1 ]; then
-      _grafana_display="$(printf '\e]8;;%s\x07\e[4mTrace\e[24m\e]8;;\x07' "$_grafana_link_url")"
+    if [ -n "''${_otel_trace_id:-}" ]; then
+      _trace_label="trace:$_otel_trace_id"
     else
-      _grafana_display="$_grafana_link_url"
+      _trace_label="grafana"
+    fi
+    if [ -t 1 ]; then
+      _grafana_display="$(printf '\e]8;;%s\x07\e[4m%s\e[24m\e]8;;\x07' "$_grafana_link_url" "$_trace_label")"
+    else
+      _grafana_display="$_trace_label $_grafana_link_url"
     fi
     echo "[otel] Start with: devenv up | $_grafana_display"
 
