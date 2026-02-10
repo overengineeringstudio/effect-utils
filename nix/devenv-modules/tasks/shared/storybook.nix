@@ -25,13 +25,13 @@
 #   The port specified in the package config is the base port; if unavailable,
 #   devenv will automatically find the next available port.
 {
-  packages ? [],
+  packages ? [ ],
   installTaskPrefix ? "pnpm",
 }:
 { lib, config, ... }:
 let
   trace = import ../lib/trace.nix { inherit lib; };
-  hasPackages = packages != [];
+  hasPackages = packages != [ ];
 
   # Use storybook binary directly from package's node_modules (relative to cwd)
   storybookBin = "./node_modules/.bin/storybook";
@@ -53,36 +53,35 @@ let
   #   unexpectedly taken, storybook auto-selects a free port instead of hanging on a prompt)
   # Process name includes port for visibility in process-compose TUI
   processName = pkg: "storybook-${pkg.name}-${toString pkg.port}";
-  
+
   # Get the allocated port from config at Nix evaluation time
   # This follows the same pattern as postgres.nix in devenv
   getAllocatedPort = pkg: config.processes.${processName pkg}.ports.http.value;
-  
+
   mkProcess = pkg: {
     "${processName pkg}" = {
       ports.http.allocate = pkg.port;
       exec = ''
-        ${storybookBin} dev -p ${toString (getAllocatedPort pkg)} --host 0.0.0.0 --no-open --ci
+        ${storybookBin} dev -p ${toString (getAllocatedPort pkg)} --host 0.0.0.0 --no-open --ci --exact-port
       '';
       cwd = pkg.path;
     };
   };
 
-in {
+in
+{
   tasks = lib.mkMerge (
-    (if hasPackages then map mkBuildTask packages else [])
-    ++ [{
-      "storybook:build" = {
-        description = "Build all storybooks";
-        exec = null;
-        after = if hasPackages
-          then map (pkg: "storybook:build:${pkg.name}") packages
-          else [];
-      };
-    }]
+    (if hasPackages then map mkBuildTask packages else [ ])
+    ++ [
+      {
+        "storybook:build" = {
+          description = "Build all storybooks";
+          exec = null;
+          after = if hasPackages then map (pkg: "storybook:build:${pkg.name}") packages else [ ];
+        };
+      }
+    ]
   );
 
-  processes = lib.mkMerge (
-    if hasPackages then map mkProcess packages else []
-  );
+  processes = lib.mkMerge (if hasPackages then map mkProcess packages else [ ]);
 }
