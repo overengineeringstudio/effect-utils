@@ -157,6 +157,10 @@ export const pnpmWorkspaceWithDeps = ({
   return pnpmWorkspaceYaml({
     packages: ['.', ...packages],
     dedupePeerDependents: true,
+    supportedArchitectures: {
+      os: ['linux', 'darwin'],
+      cpu: ['x64', 'arm64'],
+    },
   })
 }
 
