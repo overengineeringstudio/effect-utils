@@ -27,6 +27,8 @@ export interface TextStyle {
   italic?: boolean | undefined
   underline?: boolean | undefined
   strikethrough?: boolean | undefined
+  /** OSC 8 hyperlink URL (clickable in supported terminals) */
+  href?: string | undefined
 }
 
 /** Box element - container with flexbox layout */

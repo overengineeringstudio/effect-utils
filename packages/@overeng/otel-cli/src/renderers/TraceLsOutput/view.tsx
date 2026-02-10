@@ -10,6 +10,7 @@ import React from 'react'
 
 import { Box, Text, useTuiAtomValue, useSymbols } from '@overeng/tui-react'
 
+import { buildGrafanaTraceUrl } from '../../services/GrafanaClient.ts'
 import type { LsState, TraceSummary } from './schema.ts'
 
 // =============================================================================
@@ -97,7 +98,7 @@ export const LsView = ({ stateAtom }: LsViewProps) => {
       </Box>
       {/* Data rows */}
       {state.traces.map((trace: TraceSummary) => (
-        <TraceRow key={trace.traceId} trace={trace} />
+        <TraceRow key={trace.traceId} trace={trace} grafanaUrl={state.grafanaUrl} />
       ))}
     </Box>
   )
@@ -134,10 +135,19 @@ const MILLISECONDS_PER_MINUTE = 60000
 // Internal Components
 // =============================================================================
 
-const TraceRow = ({ trace }: { readonly trace: TraceSummary }) => (
+const TraceRow = ({
+  trace,
+  grafanaUrl,
+}: {
+  readonly trace: TraceSummary
+  readonly grafanaUrl: string
+}) => (
   <Box flexDirection="row">
-    <Text color="yellow">
-      {trace.traceId.slice(0, TRACE_ID_TRUNCATE_LENGTH).padEnd(TRACE_ID_COLUMN_WIDTH)}
+    <Text color="yellow" href={buildGrafanaTraceUrl({ grafanaUrl, traceId: trace.traceId })}>
+      {trace.traceId.slice(0, TRACE_ID_TRUNCATE_LENGTH)}
+    </Text>
+    <Text>
+      {' '.repeat(TRACE_ID_COLUMN_WIDTH - Math.min(trace.traceId.length, TRACE_ID_TRUNCATE_LENGTH))}
     </Text>
     <Text color="green">
       {trace.serviceName.slice(0, SERVICE_TRUNCATE_LENGTH).padEnd(SERVICE_COLUMN_WIDTH)}

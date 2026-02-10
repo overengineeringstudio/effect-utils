@@ -13,6 +13,7 @@ import {
   italic,
   underline,
   strikethrough,
+  hyperlink,
   fg,
   bg,
   bgCode,
@@ -95,6 +96,10 @@ const applyStyles = ({ text, style }: { text: string; style: TextStyle }): strin
   if (style.strikethrough) result = strikethrough(result)
   if (style.color) result = fg({ color: style.color, text: result })
   if (style.backgroundColor) result = bg({ color: style.backgroundColor, text: result })
+  if (style.href) {
+    result = underline(result)
+    result = hyperlink({ url: style.href, text: result })
+  }
 
   return result
 }

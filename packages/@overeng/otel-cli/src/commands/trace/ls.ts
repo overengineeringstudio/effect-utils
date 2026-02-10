@@ -12,6 +12,7 @@ import { outputModeLayer, outputOption } from '@overeng/tui-react/node'
 
 import { LsApp, LsView } from '../../renderers/TraceLsOutput/mod.ts'
 import { searchTraces } from '../../services/GrafanaClient.ts'
+import { OtelConfig } from '../../services/OtelConfig.ts'
 
 /** List recent traces from Tempo. */
 export const lsCommand = Cli.Command.make(
@@ -34,6 +35,7 @@ export const lsCommand = Cli.Command.make(
     Effect.scoped(
       Effect.gen(function* () {
         const tui = yield* LsApp.run(React.createElement(LsView, { stateAtom: LsApp.stateAtom }))
+        const config = yield* OtelConfig
 
         const queryValue = Option.getOrUndefined(queryOption)
 
@@ -65,6 +67,7 @@ export const lsCommand = Cli.Command.make(
           })),
           query: queryValue,
           limit,
+          grafanaUrl: config.grafanaUrl,
         })
       }),
     ).pipe(Effect.provide(outputModeLayer(output))),

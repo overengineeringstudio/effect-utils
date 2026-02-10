@@ -7,8 +7,8 @@ import { parseTempoTraces } from './GrafanaClient.ts'
 // Helpers
 // =============================================================================
 
-/** Create a Tempo search trace entry with nanosecond timestamps. */
-const makeTrace = (opts: {
+/** Create a minimal Tempo search trace with only root span info (no spanSets). */
+const makeRootOnlyTrace = (opts: {
   traceID: string
   rootServiceName: string
   rootTraceName: string
@@ -20,6 +20,40 @@ const makeTrace = (opts: {
   rootTraceName: opts.rootTraceName,
   durationMs: opts.durationMs,
   startTimeUnixNano: String(BigInt(opts.startTimeMs) * BigInt(1_000_000)),
+  spanSets: [],
+})
+
+/** Create a Tempo search trace with a matched span in spanSets (from `| select(name)`). */
+const makeTraceWithSpanSet = (opts: {
+  traceID: string
+  rootServiceName: string
+  rootTraceName: string
+  matched: {
+    name: string
+    serviceName: string
+    startTimeMs: number
+    durationMs: number
+  }
+}) => ({
+  traceID: opts.traceID,
+  rootServiceName: opts.rootServiceName,
+  rootTraceName: opts.rootTraceName,
+  durationMs: 99999,
+  startTimeUnixNano: '0',
+  spanSets: [
+    {
+      spans: [
+        {
+          spanID: 'abcdef0123456789',
+          name: opts.matched.name,
+          startTimeUnixNano: String(BigInt(opts.matched.startTimeMs) * BigInt(1_000_000)),
+          durationNanos: String(BigInt(opts.matched.durationMs) * BigInt(1_000_000)),
+          attributes: [{ key: 'service.name', value: { stringValue: opts.matched.serviceName } }],
+        },
+      ],
+      matched: 1,
+    },
+  ],
 })
 
 // =============================================================================
@@ -31,9 +65,9 @@ describe('parseTempoTraces', () => {
     expect(parseTempoTraces([])).toEqual([])
   })
 
-  it('parses a single trace correctly', () => {
+  it('falls back to root span info when spanSets are empty', () => {
     const traces = [
-      makeTrace({
+      makeRootOnlyTrace({
         traceID: 'abc123',
         rootServiceName: 'my-svc',
         rootTraceName: 'GET /api',
@@ -55,42 +89,60 @@ describe('parseTempoTraces', () => {
     ])
   })
 
-  it('sorts by startTime descending', () => {
+  it('uses matched span data from spanSets over root span info', () => {
     const traces = [
-      makeTrace({
-        traceID: 'aaa',
-        rootServiceName: 'svc',
-        rootTraceName: 'op-1',
-        durationMs: 10,
-        startTimeMs: 1_000,
-      }),
-      makeTrace({
-        traceID: 'bbb',
-        rootServiceName: 'svc',
-        rootTraceName: 'op-2',
-        durationMs: 20,
-        startTimeMs: 3_000,
-      }),
-      makeTrace({
-        traceID: 'ccc',
-        rootServiceName: 'svc',
-        rootTraceName: 'op-3',
-        durationMs: 30,
-        startTimeMs: 2_000,
+      makeTraceWithSpanSet({
+        traceID: 'trace-1',
+        rootServiceName: 'devenv',
+        rootTraceName: 'shell:entry',
+        matched: {
+          name: 'ts:check',
+          serviceName: 'dt',
+          startTimeMs: 5_000,
+          durationMs: 2900,
+        },
       }),
     ]
 
     const results = parseTempoTraces(traces)
 
-    expect(results).toHaveLength(3)
-    expect(results[0]!.traceId).toBe('bbb')
-    expect(results[1]!.traceId).toBe('ccc')
-    expect(results[2]!.traceId).toBe('aaa')
+    expect(results).toEqual([
+      {
+        traceId: 'trace-1',
+        serviceName: 'dt',
+        spanName: 'ts:check',
+        durationMs: 2900,
+        startTime: DateTime.unsafeMake(5_000),
+      },
+    ])
+  })
+
+  it('sorts by matched span startTime descending', () => {
+    const traces = [
+      makeTraceWithSpanSet({
+        traceID: 'old',
+        rootServiceName: 'devenv',
+        rootTraceName: 'shell:entry',
+        matched: { name: 'op-1', serviceName: 'dt', startTimeMs: 1_000, durationMs: 10 },
+      }),
+      makeTraceWithSpanSet({
+        traceID: 'new',
+        rootServiceName: 'devenv',
+        rootTraceName: 'shell:entry',
+        matched: { name: 'op-2', serviceName: 'dt', startTimeMs: 3_000, durationMs: 20 },
+      }),
+    ]
+
+    const results = parseTempoTraces(traces)
+
+    expect(results).toHaveLength(2)
+    expect(results[0]!.traceId).toBe('new')
+    expect(results[1]!.traceId).toBe('old')
   })
 
   it('converts nanosecond timestamps to millisecond DateTime', () => {
     const traces = [
-      makeTrace({
+      makeRootOnlyTrace({
         traceID: 'aaa',
         rootServiceName: 'svc',
         rootTraceName: 'op',
@@ -102,5 +154,27 @@ describe('parseTempoTraces', () => {
     const results = parseTempoTraces(traces)
 
     expect(DateTime.toEpochMillis(results[0]!.startTime)).toBe(1_700_000_000_000)
+  })
+
+  it('handles "<root span not yet received>" by using matched span data', () => {
+    const traces = [
+      makeTraceWithSpanSet({
+        traceID: 'pending-root',
+        rootServiceName: '<root span not yet received>',
+        rootTraceName: '',
+        matched: {
+          name: 'megarepo/status',
+          serviceName: 'megarepo',
+          startTimeMs: 2_000,
+          durationMs: 130,
+        },
+      }),
+    ]
+
+    const results = parseTempoTraces(traces)
+
+    expect(results[0]!.serviceName).toBe('megarepo')
+    expect(results[0]!.spanName).toBe('megarepo/status')
+    expect(results[0]!.durationMs).toBe(130)
   })
 })

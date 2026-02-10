@@ -271,9 +271,34 @@ let
             grpc:
               endpoint: "127.0.0.1:${toString tempoOtlpPort}"
 
+    # Optimized for low-scale local dev: prioritize search latency over throughput.
+    # Traces become searchable in ~2-4s instead of the default 6-11s.
+    ingester:
+      # How often the ingester sweeps traces through the pipeline (default: 10s).
+      # Primary bottleneck for search latency — reduced to match trace_idle_period.
+      flush_check_period: 2s
+      # Time after last span before a trace is flushed to WAL (default: 5s).
+      # Lower means completed traces appear in WAL-based search sooner.
+      trace_idle_period: 2s
+      # Max time a trace stays in the head block before forced WAL flush (default: 30m).
+      # Head block is searched synchronously, so this mainly affects WAL visibility.
+      max_block_duration: 5m
+      # Max head block size before cutting a new one (default: 500MB).
+      # Keeps blocks small for faster search at low throughput.
+      max_block_bytes: 10000000
+      # How long completed blocks stay in the ingester before backend flush (default: 15m).
+      # Shorter for dev since we don't need long ingester retention.
+      complete_block_timeout: 5m
+
     memberlist:
       bind_addr:
         - "127.0.0.1"
+
+    query_frontend:
+      search:
+        # Don't search the slow backend storage for traces newer than 30m (default: 15m).
+        # Forces recent searches to use the fast ingester path only.
+        query_backend_after: 30m
 
     storage:
       trace:
@@ -282,6 +307,9 @@ let
           path: ${dataDir}/tempo-data
         wal:
           path: ${dataDir}/tempo-wal
+        # How often to poll backend for new blocks (default: 5m).
+        # Faster discovery of flushed blocks for search.
+        blocklist_poll: 30s
 
     compactor:
       compaction:
@@ -403,6 +431,7 @@ let
       --span-id ID          Use specific span ID (default: random)
       --parent-span-id ID   Use specific parent span ID (default: from TRACEPARENT)
       --start-time-ns NS    Override start timestamp in nanoseconds (default: now)
+      --log-url             Print Grafana trace URL to stderr after span emission
       --help                Show this help
 
     Environment:
@@ -424,6 +453,7 @@ let
     SPAN_ID=""
     PARENT_SPAN_ID=""
     START_TIME_NS=""
+    LOG_URL=""
     CMD_ARGS=()
 
     while [[ $# -gt 0 ]]; do
@@ -448,6 +478,10 @@ let
         --start-time-ns)
           START_TIME_NS="$2"
           shift 2
+          ;;
+        --log-url)
+          LOG_URL="1"
+          shift
           ;;
         --)
           shift
@@ -571,6 +605,19 @@ let
         -d "$payload" \
         --max-time 2 \
         >/dev/null 2>&1 || true
+    fi
+
+    # Print Grafana trace URL to stderr if --log-url was set
+    if [ -n "$LOG_URL" ] && [ -n "''${OTEL_GRAFANA_URL:-}" ]; then
+      _panes='{"a":{"datasource":{"type":"tempo","uid":"tempo"},"queries":[{"refId":"A","datasource":{"type":"tempo","uid":"tempo"},"queryType":"traceql","query":"'"$TRACE_ID"'"}],"range":{"from":"now-1h","to":"now"}}}'
+      _encoded=$(printf '%s' "$_panes" | ${pkgs.gnused}/bin/sed 's/{/%7B/g;s/}/%7D/g;s/\[/%5B/g;s/\]/%5D/g;s/"/%22/g;s/:/%3A/g;s/,/%2C/g;s/ /%20/g')
+      _url="$OTEL_GRAFANA_URL/explore?schemaVersion=1&panes=$_encoded&orgId=1"
+      if [ -t 2 ]; then
+        # OSC 8 hyperlink for clickable URLs in supported terminals
+        printf '\e]8;;%s\x07[otel] Trace: %s\e]8;;\x07\n' "$_url" "$_url" >&2
+      else
+        printf '[otel] Trace: %s\n' "$_url" >&2
+      fi
     fi
 
     exit "$exit_code"
@@ -731,7 +778,24 @@ in
       }
       _check "--start-time-ns override" _test_start_time_override
 
-      # Test 7: No TRACEPARENT produces root span (no parentSpanId)
+      # Test 7: --log-url outputs Grafana trace URL to stderr
+      _test_log_url() {
+        local spool="$_tmp/logurl-test"
+        mkdir -p "$spool"
+        local stderr_output
+        stderr_output=$(OTEL_SPAN_SPOOL_DIR="$spool" OTEL_GRAFANA_URL="http://localhost:3000" otel-span "test" "url-check" --log-url -- true 2>&1 1>/dev/null)
+        # Must contain [otel] Trace: prefix
+        echo "$stderr_output" | grep -q '\[otel\] Trace:' || return 1
+        # Must contain the Grafana explore URL
+        echo "$stderr_output" | grep -q 'localhost:3000/explore' || return 1
+        # Must contain the trace ID from the span
+        local trace_id
+        trace_id=$(head -1 "$spool/spans.jsonl" | ${pkgs.jq}/bin/jq -r '.resourceSpans[0].scopeSpans[0].spans[0].traceId')
+        echo "$stderr_output" | grep -q "$trace_id" || return 1
+      }
+      _check "--log-url output" _test_log_url
+
+      # Test 8: No TRACEPARENT produces root span (no parentSpanId)
       _test_no_traceparent_root() {
         local spool="$_tmp/root-test"
         mkdir -p "$spool"

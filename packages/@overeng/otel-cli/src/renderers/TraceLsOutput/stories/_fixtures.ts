@@ -52,6 +52,9 @@ export const exampleTraces: TraceSummary[] = [
   },
 ]
 
+/** Example Grafana URL for stories. */
+const EXAMPLE_GRAFANA_URL = 'http://127.0.0.1:3000'
+
 // =============================================================================
 // State Config
 // =============================================================================
@@ -87,6 +90,7 @@ export const createState = (config: StateConfig): LsState => ({
   traces: config.traces,
   ...(config.query !== undefined ? { query: config.query } : {}),
   limit: config.limit,
+  grafanaUrl: EXAMPLE_GRAFANA_URL,
 })
 
 /** Error state for connection failures. */
@@ -119,6 +123,7 @@ export const createTimeline = (config: StateConfig): Array<{ at: number; action:
         traces: config.traces.slice(0, i + 1),
         ...(config.query !== undefined ? { query: config.query } : {}),
         limit: config.limit,
+        grafanaUrl: EXAMPLE_GRAFANA_URL,
       },
     })
   }
@@ -132,6 +137,7 @@ export const createTimeline = (config: StateConfig): Array<{ at: number; action:
         traces: [],
         ...(config.query !== undefined ? { query: config.query } : {}),
         limit: config.limit,
+        grafanaUrl: EXAMPLE_GRAFANA_URL,
       },
     })
   }

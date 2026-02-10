@@ -58,6 +58,7 @@ export {
   italic,
   underline,
   strikethrough,
+  hyperlink,
   fg,
   bg,
   fgCode,

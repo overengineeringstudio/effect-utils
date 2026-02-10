@@ -397,9 +397,10 @@ in
           --trace-id "$_trace_id" \
           --span-id "$_span_id" \
           --start-time-ns "$OTEL_SHELL_ENTRY_NS" \
+          --log-url \
           --attr "cold_start=$_cold_start" \
           -- true
-      ) 2>/dev/null || true
+      ) || true
     fi
   '';
 

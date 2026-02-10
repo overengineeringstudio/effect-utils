@@ -72,14 +72,55 @@ export const GrafanaDashboard = Schema.Struct({
 /** Type for a decoded Grafana dashboard. */
 export type GrafanaDashboard = typeof GrafanaDashboard.Type
 
-/** A trace from Tempo's native search API (`/api/search`). */
+/** A key-value attribute in Tempo's OTLP-style span representation. */
+const TempoAttribute = Schema.Struct({
+  key: Schema.String,
+  value: Schema.Struct({
+    stringValue: Schema.String,
+  }),
+})
+
+/**
+ * A span matched by a TraceQL query, returned inside `spanSets`.
+ * Only present when the query includes a pipeline stage like `| select(name)`.
+ */
+const TempoMatchedSpan = Schema.Struct({
+  spanID: Schema.String,
+  /** Span operation name. Projected by `| select(name)` in the TraceQL query. */
+  name: Schema.optionalWith(Schema.String, { default: () => '' }),
+  startTimeUnixNano: Schema.String,
+  /** Duration as a string of nanoseconds (e.g. "5957502611"). */
+  durationNanos: Schema.String,
+  /** Resource/span attributes matching the query filter (e.g. `service.name`). */
+  attributes: Schema.optionalWith(Schema.Array(TempoAttribute), { default: () => [] }),
+})
+
+/** A set of spans matching a TraceQL query within a single trace. */
+const TempoSpanSet = Schema.Struct({
+  spans: Schema.Array(TempoMatchedSpan),
+  /** Total number of spans matching the query in this trace. */
+  matched: Schema.Number,
+})
+
+/**
+ * A trace from Tempo's native search API (`/api/search`).
+ *
+ * Root-level fields (`rootServiceName`, `rootTraceName`) describe the trace's
+ * root span. When the query includes `| select(name)`, `spanSets` contains
+ * the actual matched spans with span-level details — these may differ from the
+ * root span (e.g. `dt/ts:check` is a child of `devenv/shell:entry`).
+ */
 const TempoSearchTrace = Schema.Struct({
   traceID: Schema.String,
+  /** Service name of the root span. Literal `<root span not yet received>` when unavailable. */
   rootServiceName: Schema.String,
-  /** Missing when root span hasn't been received yet. */
+  /** Operation name of the root span. Missing when root span hasn't been received yet. */
   rootTraceName: Schema.optionalWith(Schema.String, { default: () => '' }),
-  durationMs: Schema.Number,
+  /** Trace-level duration in milliseconds (covers the entire trace, not individual spans). */
+  durationMs: Schema.optionalWith(Schema.Number, { default: () => 0 }),
   startTimeUnixNano: Schema.String,
+  /** Matched span sets from TraceQL pipeline stages (e.g. `| select(name)`). */
+  spanSets: Schema.optionalWith(Schema.Array(TempoSpanSet), { default: () => [] }),
 })
 
 /** Response from Tempo's native search API. */
@@ -359,7 +400,7 @@ export const searchTraces = (options: {
     const limit = options.limit ?? DEFAULT_TRACE_SEARCH_LIMIT
     const query = yield* buildTraceQuery(options)
 
-    const params = new URLSearchParams({ q: query, limit: String(limit) })
+    const params = new URLSearchParams({ q: query, limit: String(limit), spss: '1' })
     const url = `${config.grafanaUrl}/api/datasources/proxy/uid/${tempoUid}/api/search?${params.toString()}`
 
     const request = HttpClientRequest.get(url)
@@ -408,6 +449,37 @@ export const searchTraces = (options: {
   }).pipe(Effect.withSpan('GrafanaClient.searchTraces'))
 
 // =============================================================================
+// Grafana URL Builder
+// =============================================================================
+
+const TEMPO_DATASOURCE = { type: 'tempo', uid: 'tempo' } as const
+
+/** Build a Grafana Explore URL that opens a specific trace by ID. */
+export const buildGrafanaTraceUrl = ({
+  grafanaUrl,
+  traceId,
+}: {
+  readonly grafanaUrl: string
+  readonly traceId: string
+}): string => {
+  const panes = {
+    a: {
+      datasource: TEMPO_DATASOURCE,
+      queries: [
+        {
+          refId: 'A',
+          datasource: TEMPO_DATASOURCE,
+          queryType: 'traceql',
+          query: traceId,
+        },
+      ],
+      range: { from: 'now-1h', to: 'now' },
+    },
+  }
+  return `${grafanaUrl}/explore?schemaVersion=1&panes=${encodeURIComponent(Schema.encodeSync(Schema.parseJson(Schema.Unknown))(panes))}&orgId=1`
+}
+
+// =============================================================================
 // Internal Helpers
 // =============================================================================
 
@@ -417,6 +489,10 @@ export const searchTraces = (options: {
  * Uses a positive regex filter (`=~`) on `resource.service.name` built from
  * discovered service names, because TraceQL negation filters (`!=`) are
  * unreliable (see grafana/tempo#2618, grafana/tempo#1988).
+ *
+ * Appends `| select(name)` to project the matched span's operation name into
+ * the response `spanSets`, enabling display of child span names (e.g.
+ * `dt/ts:check`) instead of only root span info (`devenv/shell:entry`).
  */
 const buildTraceQuery = (options: {
   readonly query?: string | undefined
@@ -424,31 +500,55 @@ const buildTraceQuery = (options: {
 }): Effect.Effect<string, GrafanaError, OtelConfig | HttpClient.HttpClient> =>
   Effect.gen(function* () {
     const baseQuery = options.query ?? '{}'
-    if (options.includeInternal === true) return baseQuery
+    if (options.includeInternal === true) return `${baseQuery} | select(name)`
     // Only inject the service filter when the user hasn't provided a custom query
     // (custom queries may already filter by service name).
-    if (baseQuery !== '{}') return baseQuery
+    if (baseQuery !== '{}') return `${baseQuery} | select(name)`
 
     const serviceNames = yield* getServiceNames
     const userServices = serviceNames.filter((s) => s !== TEMPO_INTERNAL_SERVICE)
 
     // Fall back to unfiltered query if no user services are found
-    if (userServices.length === 0) return '{}'
+    if (userServices.length === 0) return '{} | select(name)'
 
-    return `{resource.service.name=~"${userServices.join('|')}"}`
+    return `{resource.service.name=~"${userServices.join('|')}"} | select(name)`
   })
 
-/** Convert Tempo search API traces to our domain type. */
+/**
+ * Convert Tempo search API traces to our domain type.
+ *
+ * Prefers matched span data from `spanSets` (populated by `| select(name)`)
+ * over root span data. This surfaces child spans like `dt/ts:check` that would
+ * otherwise be hidden behind the root span `devenv/shell:entry`.
+ */
 export const parseTempoTraces = (
   traces: ReadonlyArray<typeof TempoSearchTrace.Type>,
 ): ReadonlyArray<TraceSearchResult> => {
-  const results = traces.map((t) => ({
-    traceId: t.traceID,
-    serviceName: t.rootServiceName,
-    spanName: t.rootTraceName,
-    durationMs: t.durationMs,
-    startTime: DateTime.unsafeMake(Number(BigInt(t.startTimeUnixNano) / BigInt(NANOS_PER_MS))),
-  }))
+  const results = traces.map((t) => {
+    const matched = t.spanSets[0]?.spans[0]
+    if (matched !== undefined) {
+      const serviceName =
+        matched.attributes.find((a) => a.key === 'service.name')?.value.stringValue ??
+        t.rootServiceName
+      return {
+        traceId: t.traceID,
+        serviceName,
+        spanName: matched.name,
+        durationMs: Number(BigInt(matched.durationNanos) / BigInt(NANOS_PER_MS)),
+        startTime: DateTime.unsafeMake(
+          Number(BigInt(matched.startTimeUnixNano) / BigInt(NANOS_PER_MS)),
+        ),
+      }
+    }
+    // Fallback to root span info when spanSets are absent
+    return {
+      traceId: t.traceID,
+      serviceName: t.rootServiceName,
+      spanName: t.rootTraceName,
+      durationMs: t.durationMs,
+      startTime: DateTime.unsafeMake(Number(BigInt(t.startTimeUnixNano) / BigInt(NANOS_PER_MS))),
+    }
+  })
 
   // Tempo returns traces sorted by most recent first, but we sort explicitly
   // to guarantee the contract.
