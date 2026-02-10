@@ -1,84 +1,48 @@
 import { DateTime } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import type { GrafanaQueryResponse } from './GrafanaClient.ts'
-import { parseDataFrames } from './GrafanaClient.ts'
+import { parseTempoTraces } from './GrafanaClient.ts'
 
 // =============================================================================
 // Helpers
 // =============================================================================
 
-/** Create a Grafana query response with standard trace search columns. */
-const makeQueryResponse = (
-  rows: Array<{
-    traceId: string
-    serviceName: string
-    spanName: string
-    durationMs: number
-    startTimeMs?: number
-  }>,
-): GrafanaQueryResponse => ({
-  results: {
-    A: {
-      frames: [
-        {
-          schema: {
-            fields: [
-              { name: 'traceID' },
-              { name: 'traceService' },
-              { name: 'traceName' },
-              { name: 'traceDuration' },
-              { name: 'startTime' },
-            ],
-          },
-          data: {
-            values: [
-              rows.map((r) => r.traceId),
-              rows.map((r) => r.serviceName),
-              rows.map((r) => r.spanName),
-              rows.map((r) => r.durationMs),
-              rows.map((r) => r.startTimeMs ?? 0),
-            ],
-          },
-        },
-      ],
-    },
-  },
+/** Create a Tempo search trace entry with nanosecond timestamps. */
+const makeTrace = (opts: {
+  traceID: string
+  rootServiceName: string
+  rootTraceName: string
+  durationMs: number
+  startTimeMs: number
+}) => ({
+  traceID: opts.traceID,
+  rootServiceName: opts.rootServiceName,
+  rootTraceName: opts.rootTraceName,
+  durationMs: opts.durationMs,
+  startTimeUnixNano: String(BigInt(opts.startTimeMs) * BigInt(1_000_000)),
 })
 
 // =============================================================================
 // Tests
 // =============================================================================
 
-describe('parseDataFrames', () => {
-  it('returns empty array when no frames', () => {
-    const response: GrafanaQueryResponse = {
-      results: { A: {} },
-    }
-
-    expect(parseDataFrames(response)).toEqual([])
+describe('parseTempoTraces', () => {
+  it('returns empty array when no traces', () => {
+    expect(parseTempoTraces([])).toEqual([])
   })
 
-  it('returns empty array when frames is empty', () => {
-    const response: GrafanaQueryResponse = {
-      results: { A: { frames: [] } },
-    }
-
-    expect(parseDataFrames(response)).toEqual([])
-  })
-
-  it('parses a single row correctly', () => {
-    const response = makeQueryResponse([
-      {
-        traceId: 'abc123',
-        serviceName: 'my-svc',
-        spanName: 'GET /api',
+  it('parses a single trace correctly', () => {
+    const traces = [
+      makeTrace({
+        traceID: 'abc123',
+        rootServiceName: 'my-svc',
+        rootTraceName: 'GET /api',
         durationMs: 42,
         startTimeMs: 1_000,
-      },
-    ])
+      }),
+    ]
 
-    const results = parseDataFrames(response)
+    const results = parseTempoTraces(traces)
 
     expect(results).toEqual([
       {
@@ -91,32 +55,32 @@ describe('parseDataFrames', () => {
     ])
   })
 
-  it('parses multiple rows and sorts by startTime descending', () => {
-    const response = makeQueryResponse([
-      {
-        traceId: 'aaa',
-        serviceName: 'svc-a',
-        spanName: 'op-1',
+  it('sorts by startTime descending', () => {
+    const traces = [
+      makeTrace({
+        traceID: 'aaa',
+        rootServiceName: 'svc',
+        rootTraceName: 'op-1',
         durationMs: 10,
         startTimeMs: 1_000,
-      },
-      {
-        traceId: 'bbb',
-        serviceName: 'svc-b',
-        spanName: 'op-2',
+      }),
+      makeTrace({
+        traceID: 'bbb',
+        rootServiceName: 'svc',
+        rootTraceName: 'op-2',
         durationMs: 20,
         startTimeMs: 3_000,
-      },
-      {
-        traceId: 'ccc',
-        serviceName: 'svc-c',
-        spanName: 'op-3',
+      }),
+      makeTrace({
+        traceID: 'ccc',
+        rootServiceName: 'svc',
+        rootTraceName: 'op-3',
         durationMs: 30,
         startTimeMs: 2_000,
-      },
-    ])
+      }),
+    ]
 
-    const results = parseDataFrames(response)
+    const results = parseTempoTraces(traces)
 
     expect(results).toHaveLength(3)
     expect(results[0]!.traceId).toBe('bbb')
@@ -124,134 +88,19 @@ describe('parseDataFrames', () => {
     expect(results[2]!.traceId).toBe('aaa')
   })
 
-  it('skips frames missing required columns', () => {
-    const response: GrafanaQueryResponse = {
-      results: {
-        A: {
-          frames: [
-            {
-              schema: {
-                fields: [{ name: 'traceID' }, { name: 'someOtherField' }],
-              },
-              data: {
-                values: [['abc'], [123]],
-              },
-            },
-          ],
-        },
-      },
-    }
+  it('converts nanosecond timestamps to millisecond DateTime', () => {
+    const traces = [
+      makeTrace({
+        traceID: 'aaa',
+        rootServiceName: 'svc',
+        rootTraceName: 'op',
+        durationMs: 10,
+        startTimeMs: 1_700_000_000_000,
+      }),
+    ]
 
-    expect(parseDataFrames(response)).toEqual([])
-  })
+    const results = parseTempoTraces(traces)
 
-  it('handles columns in non-standard order', () => {
-    const response: GrafanaQueryResponse = {
-      results: {
-        A: {
-          frames: [
-            {
-              schema: {
-                fields: [
-                  { name: 'traceDuration' },
-                  { name: 'traceName' },
-                  { name: 'traceID' },
-                  { name: 'traceService' },
-                ],
-              },
-              data: {
-                values: [[100], ['op'], ['trace-1'], ['svc']],
-              },
-            },
-          ],
-        },
-      },
-    }
-
-    const results = parseDataFrames(response)
-
-    expect(results).toEqual([
-      {
-        traceId: 'trace-1',
-        serviceName: 'svc',
-        spanName: 'op',
-        durationMs: 100,
-        startTime: DateTime.unsafeMake(0),
-      },
-    ])
-  })
-
-  it('combines results from multiple frames', () => {
-    const response: GrafanaQueryResponse = {
-      results: {
-        A: {
-          frames: [
-            {
-              schema: {
-                fields: [
-                  { name: 'traceID' },
-                  { name: 'traceService' },
-                  { name: 'traceName' },
-                  { name: 'traceDuration' },
-                ],
-              },
-              data: {
-                values: [['aaa'], ['svc-1'], ['op-1'], [10]],
-              },
-            },
-            {
-              schema: {
-                fields: [
-                  { name: 'traceID' },
-                  { name: 'traceService' },
-                  { name: 'traceName' },
-                  { name: 'traceDuration' },
-                ],
-              },
-              data: {
-                values: [['bbb'], ['svc-2'], ['op-2'], [20]],
-              },
-            },
-          ],
-        },
-      },
-    }
-
-    const results = parseDataFrames(response)
-
-    expect(results).toHaveLength(2)
-    expect(results[0]!.traceId).toBe('aaa')
-    expect(results[1]!.traceId).toBe('bbb')
-  })
-
-  it('coerces non-string values via String()', () => {
-    const response: GrafanaQueryResponse = {
-      results: {
-        A: {
-          frames: [
-            {
-              schema: {
-                fields: [
-                  { name: 'traceID' },
-                  { name: 'traceService' },
-                  { name: 'traceName' },
-                  { name: 'traceDuration' },
-                ],
-              },
-              data: {
-                values: [[12345], [null], [undefined], ['50']],
-              },
-            },
-          ],
-        },
-      },
-    }
-
-    const results = parseDataFrames(response)
-
-    expect(results).toHaveLength(1)
-    expect(results[0]!.traceId).toBe('12345')
-    expect(results[0]!.durationMs).toBe(50)
-    expect(results[0]!.startTime).toEqual(DateTime.unsafeMake(0))
+    expect(DateTime.toEpochMillis(results[0]!.startTime)).toBe(1_700_000_000_000)
   })
 })
