@@ -50,7 +50,7 @@ describe('validatePackageRecompositionForPackage', () => {
     expect(issues).toEqual([])
   })
 
-  it('reports missing peer dep from upstream', () => {
+  it('reports missing peer dep from upstream (non-private)', () => {
     const upstream = makePackage({
       name: '@test/utils',
       path: 'packages/utils',
@@ -71,6 +71,7 @@ describe('validatePackageRecompositionForPackage', () => {
       packageName: '@test/app',
       dependency: 'react',
       rule: 'recompose-peer-deps',
+      message: 'Missing peer dep "react" required by "@test/utils"',
     })
   })
 
@@ -98,6 +99,26 @@ describe('validatePackageRecompositionForPackage', () => {
     })
   })
 
+  it('private package: skips peer meta check when dep satisfied via dependencies', () => {
+    const upstream = makePackage({
+      name: '@test/utils',
+      path: 'packages/utils',
+      peerDependencies: { react: '^19.0.0' },
+      peerDependenciesMeta: { react: { optional: true } },
+    })
+    const downstream = makePackage({
+      name: '@test/example',
+      path: 'examples/my-example',
+      private: true,
+      dependencies: { '@test/utils': 'workspace:*', react: '^19.0.0' },
+      // no peerDependencies or peerDependenciesMeta — should be fine for private packages
+    })
+    const ctx = makeContext([upstream, downstream])
+
+    const issues = validatePackageRecompositionForPackage({ ctx, pkgName: '@test/example' })
+    expect(issues).toEqual([])
+  })
+
   it('reports missing patch from upstream', () => {
     const upstream = makePackage({
       name: '@test/utils',
@@ -119,7 +140,7 @@ describe('validatePackageRecompositionForPackage', () => {
     })
   })
 
-  it('skips excluded packages (default: examples/**, apps/**, docs/**, tests/**)', () => {
+  it('private package: accepts peer dep satisfied via dependencies', () => {
     const upstream = makePackage({
       name: '@test/utils',
       path: 'packages/utils',
@@ -128,13 +149,77 @@ describe('validatePackageRecompositionForPackage', () => {
     const downstream = makePackage({
       name: '@test/example',
       path: 'examples/my-example',
-      dependencies: { '@test/utils': 'workspace:*' },
-      // missing peer dep - but should be excluded
+      private: true,
+      dependencies: { '@test/utils': 'workspace:*', effect: '^3.0.0' },
     })
     const ctx = makeContext([upstream, downstream])
 
     const issues = validatePackageRecompositionForPackage({ ctx, pkgName: '@test/example' })
     expect(issues).toEqual([])
+  })
+
+  it('private package: accepts peer dep satisfied via devDependencies', () => {
+    const upstream = makePackage({
+      name: '@test/utils',
+      path: 'packages/utils',
+      peerDependencies: { effect: '^3.0.0' },
+    })
+    const downstream = makePackage({
+      name: '@test/example',
+      path: 'examples/my-example',
+      private: true,
+      dependencies: { '@test/utils': 'workspace:*' },
+      devDependencies: { effect: '^3.0.0' },
+    })
+    const ctx = makeContext([upstream, downstream])
+
+    const issues = validatePackageRecompositionForPackage({ ctx, pkgName: '@test/example' })
+    expect(issues).toEqual([])
+  })
+
+  it('private package: accepts peer dep satisfied via peerDependencies', () => {
+    const upstream = makePackage({
+      name: '@test/utils',
+      path: 'packages/utils',
+      peerDependencies: { effect: '^3.0.0' },
+    })
+    const downstream = makePackage({
+      name: '@test/example',
+      path: 'examples/my-example',
+      private: true,
+      dependencies: { '@test/utils': 'workspace:*' },
+      peerDependencies: { effect: '^3.0.0' },
+    })
+    const ctx = makeContext([upstream, downstream])
+
+    const issues = validatePackageRecompositionForPackage({ ctx, pkgName: '@test/example' })
+    expect(issues).toEqual([])
+  })
+
+  it('private package: reports missing dep when not in any dep field', () => {
+    const upstream = makePackage({
+      name: '@test/utils',
+      path: 'packages/utils',
+      peerDependencies: { effect: '^3.0.0' },
+    })
+    const downstream = makePackage({
+      name: '@test/example',
+      path: 'examples/my-example',
+      private: true,
+      dependencies: { '@test/utils': 'workspace:*' },
+    })
+    const ctx = makeContext([upstream, downstream])
+
+    const issues = validatePackageRecompositionForPackage({ ctx, pkgName: '@test/example' })
+    expect(issues).toHaveLength(1)
+    expect(issues[0]).toMatchObject({
+      severity: 'error',
+      packageName: '@test/example',
+      dependency: 'effect',
+      rule: 'recompose-peer-deps',
+      message:
+        'Missing dep "effect" (peer dep of "@test/utils") in dependencies or devDependencies',
+    })
   })
 
   it('skips non-workspace dependencies', () => {

@@ -1,12 +1,6 @@
 import type { PackageInfo } from '../../../common/types.ts'
 import type { GenieContext } from '../../mod.ts'
-import { matchesAnyPattern, type ValidationIssue } from '../validation.ts'
-
-type RecomposeValidatorConfig = {
-  excludePackagePatterns?: string[]
-}
-
-const DEFAULT_EXCLUDES = ['examples/**', 'apps/**', 'docs/**', 'tests/**']
+import type { ValidationIssue } from '../validation.ts'
 
 const isWorkspaceSpec = (spec: string): boolean =>
   spec.startsWith('workspace:') || spec.startsWith('file:') || spec.startsWith('link:')
@@ -19,40 +13,48 @@ const hasOptionalPeer = ({
   name: string
 }): boolean => meta?.[name]?.optional === true
 
-const shouldExclude = ({ path, patterns }: { path: string; patterns: string[] }): boolean =>
-  matchesAnyPattern({ name: path, patterns })
-
 const validatePackageRecomposition = (args: {
   pkg: PackageInfo
   packageMap: Map<string, PackageInfo>
-  excludePatterns: string[]
 }): ValidationIssue[] => {
   const issues: ValidationIssue[] = []
   const deps = {
     ...args.pkg.dependencies,
     ...args.pkg.optionalDependencies,
   }
+  const isPrivate = args.pkg.private === true
 
   for (const [depName, spec] of Object.entries(deps)) {
     if (!isWorkspaceSpec(spec)) continue
     const upstream = args.packageMap.get(depName)
     if (!upstream) continue
-    if (shouldExclude({ path: upstream.path, patterns: args.excludePatterns })) continue
 
     const upstreamPeers = Object.keys(upstream.peerDependencies ?? {})
     for (const peer of upstreamPeers) {
-      if (!args.pkg.peerDependencies || !(peer in args.pkg.peerDependencies)) {
+      const isSatisfied = isPrivate
+        ? peer in (args.pkg.dependencies ?? {}) ||
+          peer in (args.pkg.devDependencies ?? {}) ||
+          peer in (args.pkg.peerDependencies ?? {})
+        : args.pkg.peerDependencies !== undefined && peer in args.pkg.peerDependencies
+
+      if (!isSatisfied) {
+        const message = isPrivate
+          ? `Missing dep "${peer}" (peer dep of "${depName}") in dependencies or devDependencies`
+          : `Missing peer dep "${peer}" required by "${depName}"`
         issues.push({
           severity: 'error',
           packageName: args.pkg.name,
           dependency: peer,
-          message: `Missing peer dep "${peer}" required by "${depName}"`,
+          message,
           rule: 'recompose-peer-deps',
         })
         continue
       }
 
+      /** Only check peerDependenciesMeta when the dep is actually in peerDependencies */
+      const isInPeerDeps = args.pkg.peerDependencies && peer in args.pkg.peerDependencies
       if (
+        isInPeerDeps &&
         hasOptionalPeer({ meta: upstream.peerDependenciesMeta, name: peer }) &&
         !hasOptionalPeer({ meta: args.pkg.peerDependenciesMeta, name: peer })
       ) {
@@ -87,29 +89,24 @@ const validatePackageRecomposition = (args: {
 /**
  * Validate that a package properly re-exports peer dependencies and patches from its workspace dependencies.
  *
- * Checks that downstream packages declare all peer deps and patched dependencies
- * required by their upstream workspace dependencies.
+ * For non-private (library) packages: upstream peer deps must appear in peerDependencies (delta pattern).
+ * For private (app) packages: upstream peer deps must appear in dependencies, devDependencies, or peerDependencies.
  */
 export const validatePackageRecompositionForPackage = ({
   ctx,
   pkgName,
-  config = {},
 }: {
   ctx: GenieContext
   pkgName: string
-  config?: RecomposeValidatorConfig
 }): ValidationIssue[] => {
   const workspace = ctx.workspace
   if (!workspace) return []
 
-  const excludePatterns = config.excludePackagePatterns ?? DEFAULT_EXCLUDES
   const pkg = workspace.byName.get(pkgName)
   if (!pkg) return []
-  if (shouldExclude({ path: pkg.path, patterns: excludePatterns })) return []
 
   return validatePackageRecomposition({
     pkg,
     packageMap: workspace.byName,
-    excludePatterns,
   })
 }
