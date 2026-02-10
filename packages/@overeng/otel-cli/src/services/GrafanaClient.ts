@@ -6,7 +6,7 @@
  */
 
 import { HttpClient, HttpClientRequest } from '@effect/platform'
-import { Data, Effect, Schema } from 'effect'
+import { Data, DateTime, Effect, Schema } from 'effect'
 
 import { OtelConfig } from './OtelConfig.ts'
 
@@ -17,12 +17,16 @@ import { OtelConfig } from './OtelConfig.ts'
 /** Default limit for trace search results. */
 const DEFAULT_TRACE_SEARCH_LIMIT = 10
 
-/** Default time range for trace searches. */
-const DEFAULT_TIME_RANGE_FROM = 'now-1h'
-const DEFAULT_TIME_RANGE_TO = 'now'
+/** Tempo's internal service name, excluded from trace search by default. */
+const TEMPO_INTERNAL_SERVICE = 'tempo-all'
+/** Tempo sentinel value when the root span hasn't been ingested yet. */
+const ROOT_SPAN_NOT_RECEIVED = '<root span not yet received>'
 
 /** HTTP status code threshold for errors. */
 const HTTP_ERROR_STATUS_THRESHOLD = 400
+
+/** Nanoseconds per millisecond for Tempo timestamp conversion. */
+const NANOS_PER_MS = 1_000_000
 
 // =============================================================================
 // Errors
@@ -70,32 +74,66 @@ export const GrafanaDashboard = Schema.Struct({
 /** Type for a decoded Grafana dashboard. */
 export type GrafanaDashboard = typeof GrafanaDashboard.Type
 
-/** Schema field descriptor from a Grafana data frame. */
-export const GrafanaFrameField = Schema.Struct({
-  name: Schema.String,
-})
-
-/** Schema for a Grafana data frame. */
-export const GrafanaDataFrame = Schema.Struct({
-  schema: Schema.Struct({
-    fields: Schema.Array(GrafanaFrameField),
-  }),
-  data: Schema.Struct({
-    values: Schema.Array(Schema.Array(Schema.Unknown)),
+/** A key-value attribute in Tempo's OTLP-style span representation. */
+const TempoAttribute = Schema.Struct({
+  key: Schema.String,
+  value: Schema.Struct({
+    stringValue: Schema.String,
   }),
 })
 
-/** Schema for TraceQL search results via /api/ds/query. */
-export const GrafanaQueryResponse = Schema.Struct({
-  results: Schema.Struct({
-    A: Schema.Struct({
-      frames: Schema.optional(Schema.Array(GrafanaDataFrame)),
-    }),
-  }),
+/**
+ * A span matched by a TraceQL query, returned inside `spanSets`.
+ * Only present when the query includes a pipeline stage like `| select(name)`.
+ */
+const TempoMatchedSpan = Schema.Struct({
+  spanID: Schema.String,
+  /** Span operation name. Projected by `| select(name)` in the TraceQL query. */
+  name: Schema.optionalWith(Schema.String, { default: () => '' }),
+  startTimeUnixNano: Schema.String,
+  /** Duration as a string of nanoseconds (e.g. "5957502611"). */
+  durationNanos: Schema.String,
+  /** Resource/span attributes matching the query filter (e.g. `service.name`). */
+  attributes: Schema.optionalWith(Schema.Array(TempoAttribute), { default: () => [] }),
 })
 
-/** Type for the decoded Grafana query response. */
-export type GrafanaQueryResponse = typeof GrafanaQueryResponse.Type
+/** A set of spans matching a TraceQL query within a single trace. */
+const TempoSpanSet = Schema.Struct({
+  spans: Schema.Array(TempoMatchedSpan),
+  /** Total number of spans matching the query in this trace. */
+  matched: Schema.Number,
+})
+
+/**
+ * A trace from Tempo's native search API (`/api/search`).
+ *
+ * Root-level fields (`rootServiceName`, `rootTraceName`) describe the trace's
+ * root span. When the query includes `| select(name)`, `spanSets` contains
+ * the actual matched spans with span-level details — these may differ from the
+ * root span (e.g. `dt/ts:check` is a child of `devenv/shell:entry`).
+ */
+const TempoSearchTrace = Schema.Struct({
+  traceID: Schema.String,
+  /** Service name of the root span. Literal `<root span not yet received>` when unavailable. */
+  rootServiceName: Schema.String,
+  /** Operation name of the root span. Missing when root span hasn't been received yet. */
+  rootTraceName: Schema.optionalWith(Schema.String, { default: () => '' }),
+  /** Trace-level duration in milliseconds (covers the entire trace, not individual spans). */
+  durationMs: Schema.optionalWith(Schema.Number, { default: () => 0 }),
+  startTimeUnixNano: Schema.String,
+  /** Matched span sets from TraceQL pipeline stages (e.g. `| select(name)`). */
+  spanSets: Schema.optionalWith(Schema.Array(TempoSpanSet), { default: () => [] }),
+})
+
+/** Response from Tempo's native search API. */
+const TempoSearchResponse = Schema.Struct({
+  traces: Schema.optionalWith(Schema.Array(TempoSearchTrace), { default: () => [] }),
+})
+
+/** Response from Tempo's tag values API (`/api/search/tag/{tag}/values`). */
+const TempoTagValuesResponse = Schema.Struct({
+  tagValues: Schema.optionalWith(Schema.Array(Schema.String), { default: () => [] }),
+})
 
 // =============================================================================
 // Trace search result (parsed from data frames)
@@ -107,6 +145,7 @@ export interface TraceSearchResult {
   readonly serviceName: string
   readonly spanName: string
   readonly durationMs: number
+  readonly startTime: DateTime.Utc
 }
 
 // =============================================================================
@@ -281,8 +320,70 @@ export const listDashboards = (): Effect.Effect<
   }).pipe(Effect.withSpan('GrafanaClient.listDashboards'))
 
 /**
- * Search traces using TraceQL via Grafana datasource proxy.
- * Calls `POST /api/ds/query` with a TraceQL query.
+ * Get service names from Tempo's tag values API.
+ * Calls `GET /api/datasources/proxy/uid/{tempo}/api/search/tag/service.name/values`.
+ */
+const getServiceNames: Effect.Effect<
+  ReadonlyArray<string>,
+  GrafanaError,
+  OtelConfig | HttpClient.HttpClient
+> = Effect.gen(function* () {
+  const config = yield* OtelConfig
+  const client = yield* HttpClient.HttpClient
+  const tempoUid = yield* getTempoUid()
+
+  const url = `${config.grafanaUrl}/api/datasources/proxy/uid/${tempoUid}/api/search/tag/service.name/values`
+
+  const request = HttpClientRequest.get(url)
+  const response = yield* client.execute(request).pipe(
+    Effect.mapError(
+      (error) =>
+        new GrafanaError({
+          reason: 'RequestFailed',
+          message: 'Failed to fetch service names from Tempo',
+          cause: error,
+        }),
+    ),
+  )
+
+  const json = yield* response.json.pipe(
+    Effect.mapError(
+      (error) =>
+        new GrafanaError({
+          reason: 'ParseError',
+          message: 'Failed to parse tag values response',
+          cause: error,
+        }),
+    ),
+  )
+
+  const decoded = yield* Schema.decodeUnknown(TempoTagValuesResponse)(json).pipe(
+    Effect.mapError(
+      (error) =>
+        new GrafanaError({
+          reason: 'ParseError',
+          message: 'Failed to decode tag values response',
+          cause: error,
+        }),
+    ),
+  )
+
+  return decoded.tagValues
+}).pipe(Effect.withSpan('GrafanaClient.getServiceNames'))
+
+/**
+ * Search traces via Tempo's native search API through the Grafana datasource proxy.
+ *
+ * Uses `GET /api/datasources/proxy/uid/{tempo}/api/search` with a positive
+ * regex filter on `resource.service.name` to exclude internal Tempo traces.
+ *
+ * TraceQL negation filters (`!=`) are unreliable: spans missing the attribute
+ * are excluded (grafana/tempo#2618) and search results are intentionally
+ * non-deterministic (grafana/tempo#1988). Grafana's ds/query endpoint also
+ * doesn't support TraceQL properly (grafana/grafana#95042).
+ *
+ * Instead, we query Tempo's native search API directly, discover available
+ * service names via the tag values API, and build a positive regex filter.
  */
 export const searchTraces = (options: {
   readonly query?: string | undefined
@@ -299,50 +400,18 @@ export const searchTraces = (options: {
     const tempoUid = yield* getTempoUid()
 
     const limit = options.limit ?? DEFAULT_TRACE_SEARCH_LIMIT
-    const baseQuery = options.query ?? '{}'
-    const query =
-      options.includeInternal === true
-        ? baseQuery
-        : baseQuery === '{}'
-          ? '{resource.service.name!="tempo-all"}'
-          : baseQuery
+    const query = yield* buildTraceQuery(options)
 
-    const body = {
-      queries: [
-        {
-          refId: 'A',
-          datasource: { uid: tempoUid, type: 'tempo' },
-          queryType: 'traceql',
-          query,
-          limit,
-          tableType: 'traces',
-        },
-      ],
-      from: DEFAULT_TIME_RANGE_FROM,
-      to: DEFAULT_TIME_RANGE_TO,
-    }
+    const params = new URLSearchParams({ q: query, limit: String(limit), spss: '1' })
+    const url = `${config.grafanaUrl}/api/datasources/proxy/uid/${tempoUid}/api/search?${params.toString()}`
 
-    const request = yield* HttpClientRequest.bodyJson(body)(
-      HttpClientRequest.post(`${config.grafanaUrl}/api/ds/query`).pipe(
-        HttpClientRequest.setHeader('Content-Type', 'application/json'),
-      ),
-    ).pipe(
-      Effect.mapError(
-        (error) =>
-          new GrafanaError({
-            reason: 'RequestFailed',
-            message: 'Failed to build TraceQL query request',
-            cause: error,
-          }),
-      ),
-    )
-
+    const request = HttpClientRequest.get(url)
     const response = yield* client.execute(request).pipe(
       Effect.mapError(
         (error) =>
           new GrafanaError({
             reason: 'RequestFailed',
-            message: 'Failed to execute TraceQL search',
+            message: 'Failed to execute trace search',
             cause: error,
           }),
       ),
@@ -352,7 +421,7 @@ export const searchTraces = (options: {
       const text = yield* response.text.pipe(Effect.orElseSucceed(() => '<no body>'))
       return yield* new GrafanaError({
         reason: 'RequestFailed',
-        message: `Grafana TraceQL query failed with status ${String(response.status)}: ${text}`,
+        message: `Tempo search failed with status ${String(response.status)}: ${text}`,
       })
     }
 
@@ -361,79 +430,137 @@ export const searchTraces = (options: {
         (error) =>
           new GrafanaError({
             reason: 'ParseError',
-            message: 'Failed to parse TraceQL search response',
+            message: 'Failed to parse trace search response',
             cause: error,
           }),
       ),
     )
 
-    const decoded = yield* Schema.decodeUnknown(GrafanaQueryResponse)(json).pipe(
+    const decoded = yield* Schema.decodeUnknown(TempoSearchResponse)(json).pipe(
       Effect.mapError(
         (error) =>
           new GrafanaError({
             reason: 'ParseError',
-            message: 'Failed to decode TraceQL search response',
+            message: 'Failed to decode trace search response',
             cause: error,
           }),
       ),
     )
 
-    return parseDataFrames(decoded)
+    return parseTempoTraces(decoded.traces)
   }).pipe(Effect.withSpan('GrafanaClient.searchTraces'))
+
+// =============================================================================
+// Grafana URL Builder
+// =============================================================================
+
+const TEMPO_DATASOURCE = { type: 'tempo', uid: 'tempo' } as const
+
+/** Build a Grafana Explore URL that opens a specific trace by ID. */
+export const buildGrafanaTraceUrl = ({
+  grafanaUrl,
+  traceId,
+}: {
+  readonly grafanaUrl: string
+  readonly traceId: string
+}): string => {
+  const panes = {
+    a: {
+      datasource: TEMPO_DATASOURCE,
+      queries: [
+        {
+          refId: 'A',
+          datasource: TEMPO_DATASOURCE,
+          queryType: 'traceql',
+          query: traceId,
+        },
+      ],
+      range: { from: 'now-1h', to: 'now' },
+    },
+  }
+  const tsHostname = process.env['TS_HOSTNAME']
+  const publicUrl =
+    tsHostname !== undefined && tsHostname.length > 0
+      ? grafanaUrl.replace('127.0.0.1', tsHostname)
+      : grafanaUrl
+  return `${publicUrl}/explore?schemaVersion=1&panes=${encodeURIComponent(Schema.encodeSync(Schema.parseJson(Schema.Unknown))(panes))}&orgId=1`
+}
 
 // =============================================================================
 // Internal Helpers
 // =============================================================================
 
 /**
- * Parse Grafana data frames into trace search results.
- * Data frames use columnar format: schema.fields describes columns, data.values holds arrays.
+ * Build a TraceQL query that excludes internal Tempo traces unless requested.
+ *
+ * Uses a positive regex filter (`=~`) on `resource.service.name` built from
+ * discovered service names, because TraceQL negation filters (`!=`) are
+ * unreliable (see grafana/tempo#2618, grafana/tempo#1988).
+ *
+ * Appends `| select(name)` to populate `spanSets` with matched spans, used
+ * as fallback when the root span hasn't been ingested yet.
  */
-export const parseDataFrames = (
-  response: GrafanaQueryResponse,
+const buildTraceQuery = (options: {
+  readonly query?: string | undefined
+  readonly includeInternal?: boolean | undefined
+}): Effect.Effect<string, GrafanaError, OtelConfig | HttpClient.HttpClient> =>
+  Effect.gen(function* () {
+    const baseQuery = options.query ?? '{}'
+    if (options.includeInternal === true) return `${baseQuery} | select(name)`
+    // Only inject the service filter when the user hasn't provided a custom query
+    // (custom queries may already filter by service name).
+    if (baseQuery !== '{}') return `${baseQuery} | select(name)`
+
+    const serviceNames = yield* getServiceNames
+    const userServices = serviceNames.filter((s) => s !== TEMPO_INTERNAL_SERVICE)
+
+    // Fall back to unfiltered query if no user services are found
+    if (userServices.length === 0) return '{} | select(name)'
+
+    return `{resource.service.name=~"${userServices.join('|')}"} | select(name)`
+  })
+
+/**
+ * Convert Tempo search API traces to our domain type.
+ *
+ * Uses root span info (service name, trace name, duration) for trace identity.
+ * Falls back to matched span data from `spanSets` only when the root span
+ * hasn't been ingested yet (`<root span not yet received>`).
+ */
+export const parseTempoTraces = (
+  traces: ReadonlyArray<typeof TempoSearchTrace.Type>,
 ): ReadonlyArray<TraceSearchResult> => {
-  const frames = response.results.A.frames ?? []
-  const results: Array<TraceSearchResult> = []
-
-  for (const frame of frames) {
-    const { fields } = frame.schema
-    const { values } = frame.data
-
-    // Build field index map
-    const fieldIndex: Record<string, number> = {}
-    for (let i = 0; i < fields.length; i++) {
-      const field = fields[i]
-      if (field !== undefined) {
-        fieldIndex[field.name] = i
+  const results = traces.map((t) => {
+    // When the root span hasn't been ingested yet, fall back to matched span data
+    if (t.rootServiceName === ROOT_SPAN_NOT_RECEIVED) {
+      const matched = t.spanSets[0]?.spans[0]
+      if (matched !== undefined) {
+        const serviceName =
+          matched.attributes.find((a) => a.key === 'service.name')?.value.stringValue ??
+          t.rootServiceName
+        return {
+          traceId: t.traceID,
+          serviceName,
+          spanName: matched.name,
+          durationMs: Number(BigInt(matched.durationNanos) / BigInt(NANOS_PER_MS)),
+          startTime: DateTime.unsafeMake(
+            Number(BigInt(matched.startTimeUnixNano) / BigInt(NANOS_PER_MS)),
+          ),
+        }
       }
     }
-
-    const traceIdCol = fieldIndex['traceID']
-    const serviceCol = fieldIndex['traceService']
-    const nameCol = fieldIndex['traceName']
-    const durationCol = fieldIndex['traceDuration']
-
-    if (
-      traceIdCol === undefined ||
-      serviceCol === undefined ||
-      nameCol === undefined ||
-      durationCol === undefined
-    ) {
-      continue
+    return {
+      traceId: t.traceID,
+      serviceName: t.rootServiceName,
+      spanName: t.rootTraceName,
+      durationMs: t.durationMs,
+      startTime: DateTime.unsafeMake(Number(BigInt(t.startTimeUnixNano) / BigInt(NANOS_PER_MS))),
     }
+  })
 
-    const traceIds = values[traceIdCol] ?? []
-    const rowCount = traceIds.length
-
-    for (let i = 0; i < rowCount; i++) {
-      results.push({
-        traceId: String(values[traceIdCol]?.[i] ?? ''),
-        serviceName: String(values[serviceCol]?.[i] ?? ''),
-        spanName: String(values[nameCol]?.[i] ?? ''),
-        durationMs: Number(values[durationCol]?.[i] ?? 0),
-      })
-    }
-  }
-
-  return results
+  // Tempo returns traces sorted by most recent first, but we sort explicitly
+  // to guarantee the contract.
+  return results.toSorted(
+    (a, b) => DateTime.toEpochMillis(b.startTime) - DateTime.toEpochMillis(a.startTime),
+  )
 }

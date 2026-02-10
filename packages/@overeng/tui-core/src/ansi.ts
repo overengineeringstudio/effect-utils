@@ -115,6 +115,10 @@ export const underline = (text: string): string => `${CSI}4m${text}${CSI}24m`
 /** Strikethrough text */
 export const strikethrough = (text: string): string => `${CSI}9m${text}${CSI}29m`
 
+/** Wrap text in an OSC 8 hyperlink (clickable in supported terminals) */
+export const hyperlink = ({ url, text }: { url: string; text: string }): string =>
+  `${OSC}8;;${url}\x07${text}${OSC}8;;\x07`
+
 // =============================================================================
 // Colors
 // =============================================================================
@@ -189,7 +193,7 @@ export const bgReset = (): string => `${CSI}49m`
 const CSI = '\x1b['
 
 /** OSC (Operating System Command) prefix */
-const _OSC = '\x1b]'
+const OSC = '\x1b]'
 
 /** Color name to ANSI foreground code */
 const fgCodes: Record<ColorName, number> = {

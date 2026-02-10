@@ -10,49 +10,24 @@
 #       requiredTasks = [ ];
 #       optionalTasks = [ "pnpm:install" "genie:run" "ts:emit" ];
 #       completionsCliNames = [ "genie" "mr" ];
-#       # innerCacheDirs = [ "pnpm-install" ];  # default; set to [] for non-pnpm setups
 #     })
 #   ];
 #
 # The tasks will run as part of shell entry.
 #
 # Optional task failures:
-# We model optional shell-entry work via `@complete` dependencies so failures don't block
-# entering the shell (direnv expects `devenv shell` to exit 0 on success).
 #
-# See: https://github.com/cachix/devenv/issues/2454
+# Upstream devenv regression: optional task failures can cause `devenv shell` / direnv
+# activation to exit non-zero again (R15). We work around this by introducing wrapper
+# tasks for shell entry optional work.
 #
-# Shared caching rules live in ./lib/cache.nix (task-specific details below).
+# Upstream issue:
+# - https://github.com/cachix/devenv/issues/2480
 #
-# ## Git Hash Caching (Two-Tier Design)
-#
-# Setup tasks use a two-tier caching strategy for R5/R11 compliance:
-#
-# Outer tier: Git hash (fast check)
-# - Stored in .direnv/task-cache/setup-git-hash
-# - Updated after successful setup
-#
-# Inner tier: Per-task content caches (e.g., pnpm-install/*.hash)
-# - Created by individual tasks (pnpm:install writes per-package hashes)
-# - Content-addressed for correctness
-# - Configurable via `innerCacheDirs` parameter
-#
-# Tasks are skipped only when BOTH tiers are valid:
-# - Git hash matches cached value
-# - Inner cache directories contain *.hash files (or innerCacheDirs is empty)
-#
-# This ensures fresh clones/cache-clears populate inner caches correctly.
-# For non-pnpm setups, set `innerCacheDirs = []` to use git-hash-only caching.
-#
-# Cache file:
-# - .direnv/task-cache/setup-git-hash
-#
-# To force tasks to run despite unchanged hash:
-#   FORCE_SETUP=1 dt genie:run
-#   dt setup:run  # Always forces all setup tasks
-#
-# For testing, you can override the git hash:
-#   SETUP_GIT_HASH=test-hash-123 devenv shell
+# Cleanup checklist once upstream is fixed:
+# - Remove wrapper tasks (setup:opt:*) and switch back to native `@complete` deps.
+# - Remove nested `devenv tasks run` calls from wrappers.
+# - Consider reintroducing a single optional gate task without wrappers.
 #
 # ## Rebase Guard
 #
@@ -61,27 +36,18 @@
 # will intentionally fail during rebase, causing dependent tasks to
 # be "skipped due to dependency failure".
 #
-# If you need to run setup during rebase, use: `FORCE_SETUP=1 dt setup:run`
+# If you need to run setup during rebase, use: `dt setup:run`
 #
 # ## Optional Tasks
 #
-# Optional tasks are wired through a single gate task (`setup:optional`) which:
-#
-# - depends on optional tasks using the `@complete` suffix so failures don't block
-#   shell entry (direnv expects `devenv shell` to exit 0 on success)
-# - carries the git-hash/inner-cache skip logic so optional tasks aren't skipped
-#   when run directly via `dt <task>`
-#
-# Related: https://github.com/cachix/devenv/issues/2454
+# Optional tasks are wired through a gate task (`setup:optional`) which depends on
+# wrapper tasks (`setup:opt:*`). Wrappers always exit 0 so shell entry remains resilient
+# even if upstream failure handling regresses.
 {
   requiredTasks ? [ ],
   optionalTasks ? [ ],
   completionsCliNames ? [ ],
   skipDuringRebase ? true,
-  skipIfGitHashUnchanged ? true,
-  # Inner cache directories to check for *.hash files (two-tier caching).
-  # Set to [] for non-pnpm setups to use git-hash-only caching.
-  innerCacheDirs ? [ "pnpm-install" ],
 }:
 {
   lib,
@@ -91,9 +57,6 @@
 }:
 let
   git = "${pkgs.git}/bin/git";
-  cache = import ../lib/cache.nix { inherit config; };
-  cacheRoot = cache.cacheRoot;
-  hashFile = cache.mkCachePath "setup-git-hash";
   userRequiredTasks = requiredTasks;
   userOptionalTasks = optionalTasks;
   completionsEnabled = completionsCliNames != [ ];
@@ -198,86 +161,20 @@ let
   setupOptionalTasks = userOptionalTasks ++ lib.optionals completionsEnabled [ completionsTaskName ];
   setupTasks = setupRequiredTasks ++ setupOptionalTasks;
 
+  # Shell entry optional tasks run via wrapper tasks that never fail.
+  # This keeps direnv activation resilient even when upstream dependency failure
+  # handling regresses.
+  mkOptionalWrapperTaskName = t: "setup:opt:${lib.replaceStrings [ ":" ] [ "-" ] t}";
+  optionalWrapperTasks = map mkOptionalWrapperTaskName setupOptionalTasks;
+
   optionalGateTaskName = "setup:optional";
-  optionalGateDeps = map (t: "${t}@complete") setupOptionalTasks;
   allSetupTasks =
-    setupRequiredTasks ++ lib.optionals (setupOptionalTasks != [ ]) [ optionalGateTaskName ];
-
-  # Status check that skips task if git hash unchanged AND inner caches exist
-  # Returns 0 (skip) if conditions met, non-zero (run) otherwise
-  #
-  # Two-tier cache design (R5, R11 compliance):
-  # - Outer tier: git hash (fast check, updated after setup completes)
-  # - Inner tier: per-task content hashes (e.g., pnpm-install/*.hash)
-  #
-  # We only skip when BOTH tiers are valid. This ensures:
-  # - Fresh clones populate inner caches even if git hash matches
-  # - Cache clearing doesn't leave tasks in broken state
-  #
-  # If innerCacheDirs is empty, we skip the inner cache check (git-hash-only mode).
-  # This is useful for non-pnpm setups that don't have inner caches.
-  innerCacheDirsShell = lib.concatStringsSep " " innerCacheDirs;
-  gitHashStatus = ''
-    # Allow bypass via FORCE_SETUP=1
-    [ "$FORCE_SETUP" = "1" ] && exit 1
-
-    # Allow override via SETUP_GIT_HASH for testing
-    current=''${SETUP_GIT_HASH:-$(${git} rev-parse HEAD 2>/dev/null || echo "no-git")}
-    cached=$(cat ${hashFile} 2>/dev/null || echo "")
-
-    # If git hash differs, always run
-    if [ "$current" != "$cached" ]; then
-      exit 1
-    fi
-
-    # Git hash matches - check if inner caches are populated
-    inner_cache_dirs="${innerCacheDirsShell}"
-
-    # If no inner cache dirs configured, use git-hash-only mode (skip inner check)
-    if [ -z "$inner_cache_dirs" ]; then
-      exit 0
-    fi
-
-    # Check each configured inner cache dir for *.hash files
-    for dir_name in $inner_cache_dirs; do
-      cache_dir="${cacheRoot}/$dir_name"
-      # Directory must exist and contain at least one .hash file
-      if [ -d "$cache_dir" ]; then
-        # Simple and reliable: iterate over files and check suffix
-        for f in "$cache_dir"/*; do
-          case "$f" in
-            *.hash)
-              [ -f "$f" ] && exit 0
-              ;;
-          esac
-        done
-      fi
-    done
-
-    # No valid inner caches found - run to populate them
-    exit 1
-  '';
-  writeHashScript = ''
-    new_hash="''${SETUP_GIT_HASH:-$(${git} rev-parse HEAD 2>/dev/null || echo "no-git")}"
-    cache_dir="$(dirname ${hashFile})"
-    mkdir -p "$cache_dir"
-    cache_value="$new_hash"
-    ${cache.writeCacheFile hashFile}
-  '';
-
-  # Create status overrides for required tasks only
-  # Optional tasks are gated by setup:optional (below) so they aren't affected.
-  statusOverrides = lib.optionalAttrs skipIfGitHashUnchanged (
-    lib.genAttrs setupRequiredTasks (_: {
-      status = lib.mkDefault gitHashStatus;
-    })
-  );
+    setupRequiredTasks
+    ++ lib.optionals (setupOptionalTasks != [ ]) (optionalWrapperTasks ++ [ optionalGateTaskName ]);
 in
 {
-  # Merge status overrides and setup-specific tasks
   tasks =
-    statusOverrides
-    // lib.optionalAttrs completionsEnabled {
+    lib.optionalAttrs completionsEnabled {
       "${completionsTaskName}" = {
         description = "Install shell completions for CLI tools";
         exec = completionsExec;
@@ -287,40 +184,94 @@ in
     // {
       # Gate for shell-entry optional tasks.
       #
-      # - Runs optional tasks as upstream dependencies, marked with @complete so failures
-      #   don't block the shell.
-      # - Applies the git-hash/inner-cache skip logic without mutating the optional tasks
-      #   themselves (so `dt ts:build` etc still behave normally).
-      "${optionalGateTaskName}" = lib.mkIf (setupOptionalTasks != [ ]) (
-        {
-          description = "Shell entry optional tasks (best effort)";
-          exec = "exit 0";
-          after = optionalGateDeps;
-        }
-        // lib.optionalAttrs skipIfGitHashUnchanged {
-          status = gitHashStatus;
-        }
-      );
+      # - Runs wrapper tasks as dependencies; wrappers swallow failures so shell entry
+      #   stays resilient.
+      "${optionalGateTaskName}" = lib.mkIf (setupOptionalTasks != [ ]) ({
+        description = "Shell entry optional tasks (best effort)";
+        exec = "exit 0";
+        after = optionalWrapperTasks;
+      });
 
-      # Gate task that fails during rebase, causing dependent tasks to skip
-      # Uses `before` to inject itself as a dependency of each setup task
+      # Wrapper tasks for shell entry optional work.
+      #
+      # Why wrappers?
+      # - We cannot depend directly on optional tasks (or use @complete) without risking
+      #   `devenv shell` returning non-zero on failures in some upstream versions.
+      # - Wrappers run the real task via a nested `devenv tasks run ...` and always exit 0.
+      #
+      # Strict mode (`setup:strict` / DEVENV_STRICT=1) still depends on the real tasks
+      # so failures are enforced when explicitly requested.
+    }
+    // (lib.listToAttrs (
+      map (
+        t:
+        let
+          wrapper = mkOptionalWrapperTaskName t;
+        in
+        {
+          name = wrapper;
+          value = {
+            description = "Optional setup wrapper (best effort): ${t}";
+            exec = ''
+              set -u
+              set -o pipefail
+
+              echo "[devenv] optional setup: ${t}" >&2
+
+              if devenv tasks run "${t}" --mode before --no-tui --show-output; then
+                exit 0
+              fi
+
+              code=$?
+              echo "[devenv] WARN: optional setup task failed: ${t} (exit $code)" >&2
+              echo "[devenv] WARN: shell continues; re-run with: dt ${t}" >&2
+              exit 0
+            '';
+          };
+        }
+      ) setupOptionalTasks
+    ))
+    // {
+
+      # Strict variant of setup tasks.
+      #
+      # Use for CI or explicit runs (R16): failures should be enforced.
+      "setup:strict" = lib.mkIf (setupTasks != [ ]) {
+        description = "Setup tasks (strict)";
+        exec = "exit 0";
+        after = setupTasks;
+      };
+
+      # Gate task that fails during rebase, causing dependent tasks to skip.
+      # Uses `before` to inject itself as a dependency of each setup task.
+      #
+      # OTEL trace propagation:
+      # Generates a W3C TRACEPARENT and propagates it to dependent tasks via
+      # devenv's native task output → env mechanism (devenv.env convention).
+      # When a task writes {"devenv":{"env":{"KEY":"VAL"}}} to $DEVENV_TASK_OUTPUT_FILE,
+      # devenv injects those as env vars into all subsequent task subprocesses.
+      # Ref: https://github.com/cachix/devenv/blob/main/devenv-tasks/src/task_state.rs#L134-L154
+      # Ref: https://devenv.sh/tasks/ (Task Inputs and Outputs)
       "setup:gate" = lib.mkIf skipDuringRebase {
         description = "Check if setup should run (fails during rebase to skip setup)";
         exec = ''
           _git_dir=$(${git} rev-parse --git-dir 2>/dev/null)
           if [ -d "$_git_dir/rebase-merge" ] || [ -d "$_git_dir/rebase-apply" ]; then
             echo "Skipping setup during git rebase/cherry-pick"
-            echo "Run 'FORCE_SETUP=1 dt setup:run' manually if needed"
+            echo "Run 'dt setup:run' manually if needed"
             exit 1
           fi
 
-          # Generate root trace context for shell entry if OTEL is available
-          if command -v otel-span >/dev/null 2>&1 && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
-            if [ -z "''${TRACEPARENT:-}" ]; then
-              _root_trace=$(${pkgs.coreutils}/bin/od -An -tx1 -N16 /dev/urandom | tr -d ' \n')
-              _root_span=$(${pkgs.coreutils}/bin/od -An -tx1 -N8 /dev/urandom | tr -d ' \n')
-              export TRACEPARENT="00-''${_root_trace:0:32}-''${_root_span:0:16}-01"
-            fi
+          # Generate root trace context and propagate via devenv task output.
+          # Dependent tasks automatically receive TRACEPARENT + OTEL_SHELL_ENTRY_NS
+          # as env vars, linking all shell entry spans into a single trace.
+          if [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] && [ -n "''${DEVENV_TASK_OUTPUT_FILE:-}" ]; then
+            _root_trace=$(${pkgs.coreutils}/bin/od -An -tx1 -N16 /dev/urandom | tr -d ' \n')
+            _root_span=$(${pkgs.coreutils}/bin/od -An -tx1 -N8 /dev/urandom | tr -d ' \n')
+            _tp="00-''${_root_trace:0:32}-''${_root_span:0:16}-01"
+            _now_ns=$(${pkgs.coreutils}/bin/date +%s%N)
+            printf '{"devenv":{"env":{"TRACEPARENT":"%s","OTEL_SHELL_ENTRY_NS":"%s"}}}' \
+              "$_tp" "$_now_ns" > "$DEVENV_TASK_OUTPUT_FILE"
           fi
         '';
         # This makes setup:gate run BEFORE each setup task
@@ -328,32 +279,33 @@ in
         before = allSetupTasks;
       };
 
-      # Save git hash after successful setup
-      "setup:save-hash" = {
-        description = "Save git hash after successful setup";
-        exec = ''
-          ${writeHashScript}
-          # Emit root span for shell entry trace
-          if command -v otel-span >/dev/null 2>&1 && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] && [ -n "''${TRACEPARENT:-}" ]; then
-            otel-span "devenv" "shell:entry" --attr "entry.type=setup" -- true 2>/dev/null || true
-          fi
-        '';
+      # Wire setup tasks to run during shell entry.
+      # Required tasks are hard dependencies; optional tasks are best-effort via wrappers.
+      # The root OTEL span is emitted in enterShell (devenv.nix) where SHELL_ENTRY_TIME_NS
+      # is available, using TRACEPARENT propagated from setup:gate via devenv.env.
+      "devenv:enterShell" = {
         after = allSetupTasks;
       };
 
-      # Wire setup tasks to run during shell entry.
-      # Required tasks are hard dependencies; optional tasks are best-effort via @complete.
-      "devenv:enterShell" = {
-        after = [ "setup:save-hash" ];
-      };
-
-      # Force-run setup tasks (bypasses git hash check)
-      # Useful during rebase or when you want to force a rebuild
+      # Run setup tasks explicitly.
+      #
+      # - Default: best-effort (mirrors shell entry, doesn't fail the command)
+      # - DEVENV_STRICT=1: strict mode (fails on task errors)
       "setup:run" = {
-        description = "Force run setup tasks (ignores git hash cache)";
+        description = "Run setup tasks (DEVENV_STRICT=1 to fail on errors)";
         exec = ''
-          FORCE_SETUP=1 devenv tasks run ${lib.concatStringsSep " " setupTasks} --mode before
-          ${writeHashScript}
+          set -euo pipefail
+
+          if [ "''${DEVENV_STRICT:-}" = "1" ]; then
+            devenv tasks run setup:strict --mode before
+            exit 0
+          fi
+
+          # Best effort: run each task but swallow failures (devenv tasks run
+          # can still exit non-zero if any task in the graph failed).
+          for t in ${lib.concatStringsSep " " setupTasks}; do
+            devenv tasks run "$t" --mode before || true
+          done
         '';
       };
     };

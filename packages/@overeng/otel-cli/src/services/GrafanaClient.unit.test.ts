@@ -1,215 +1,190 @@
+import { DateTime } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import type { GrafanaQueryResponse } from './GrafanaClient.ts'
-import { parseDataFrames } from './GrafanaClient.ts'
+import { parseTempoTraces } from './GrafanaClient.ts'
 
 // =============================================================================
 // Helpers
 // =============================================================================
 
-/** Create a Grafana query response with standard trace search columns. */
-const makeQueryResponse = (
-  rows: Array<{
-    traceId: string
+/** Create a minimal Tempo search trace with only root span info (no spanSets). */
+const makeRootOnlyTrace = (opts: {
+  traceID: string
+  rootServiceName: string
+  rootTraceName: string
+  durationMs: number
+  startTimeMs: number
+}) => ({
+  traceID: opts.traceID,
+  rootServiceName: opts.rootServiceName,
+  rootTraceName: opts.rootTraceName,
+  durationMs: opts.durationMs,
+  startTimeUnixNano: String(BigInt(opts.startTimeMs) * BigInt(1_000_000)),
+  spanSets: [],
+})
+
+/** Create a Tempo search trace with a matched span in spanSets (from `| select(name)`). */
+const makeTraceWithSpanSet = (opts: {
+  traceID: string
+  rootServiceName: string
+  rootTraceName: string
+  durationMs: number
+  startTimeMs: number
+  matched: {
+    name: string
     serviceName: string
-    spanName: string
+    startTimeMs: number
     durationMs: number
-  }>,
-): GrafanaQueryResponse => ({
-  results: {
-    A: {
-      frames: [
+  }
+}) => ({
+  traceID: opts.traceID,
+  rootServiceName: opts.rootServiceName,
+  rootTraceName: opts.rootTraceName,
+  durationMs: opts.durationMs,
+  startTimeUnixNano: String(BigInt(opts.startTimeMs) * BigInt(1_000_000)),
+  spanSets: [
+    {
+      spans: [
         {
-          schema: {
-            fields: [
-              { name: 'traceID' },
-              { name: 'traceService' },
-              { name: 'traceName' },
-              { name: 'traceDuration' },
-            ],
-          },
-          data: {
-            values: [
-              rows.map((r) => r.traceId),
-              rows.map((r) => r.serviceName),
-              rows.map((r) => r.spanName),
-              rows.map((r) => r.durationMs),
-            ],
-          },
+          spanID: 'abcdef0123456789',
+          name: opts.matched.name,
+          startTimeUnixNano: String(BigInt(opts.matched.startTimeMs) * BigInt(1_000_000)),
+          durationNanos: String(BigInt(opts.matched.durationMs) * BigInt(1_000_000)),
+          attributes: [{ key: 'service.name', value: { stringValue: opts.matched.serviceName } }],
         },
       ],
+      matched: 1,
     },
-  },
+  ],
 })
 
 // =============================================================================
 // Tests
 // =============================================================================
 
-describe('parseDataFrames', () => {
-  it('returns empty array when no frames', () => {
-    const response: GrafanaQueryResponse = {
-      results: { A: {} },
-    }
-
-    expect(parseDataFrames(response)).toEqual([])
+describe('parseTempoTraces', () => {
+  it('returns empty array when no traces', () => {
+    expect(parseTempoTraces([])).toEqual([])
   })
 
-  it('returns empty array when frames is empty', () => {
-    const response: GrafanaQueryResponse = {
-      results: { A: { frames: [] } },
-    }
+  it('falls back to root span info when spanSets are empty', () => {
+    const traces = [
+      makeRootOnlyTrace({
+        traceID: 'abc123',
+        rootServiceName: 'my-svc',
+        rootTraceName: 'GET /api',
+        durationMs: 42,
+        startTimeMs: 1_000,
+      }),
+    ]
 
-    expect(parseDataFrames(response)).toEqual([])
-  })
-
-  it('parses a single row correctly', () => {
-    const response = makeQueryResponse([
-      { traceId: 'abc123', serviceName: 'my-svc', spanName: 'GET /api', durationMs: 42 },
-    ])
-
-    const results = parseDataFrames(response)
+    const results = parseTempoTraces(traces)
 
     expect(results).toEqual([
-      { traceId: 'abc123', serviceName: 'my-svc', spanName: 'GET /api', durationMs: 42 },
+      {
+        traceId: 'abc123',
+        serviceName: 'my-svc',
+        spanName: 'GET /api',
+        durationMs: 42,
+        startTime: DateTime.unsafeMake(1_000),
+      },
     ])
   })
 
-  it('parses multiple rows', () => {
-    const response = makeQueryResponse([
-      { traceId: 'aaa', serviceName: 'svc-a', spanName: 'op-1', durationMs: 10 },
-      { traceId: 'bbb', serviceName: 'svc-b', spanName: 'op-2', durationMs: 20 },
-      { traceId: 'ccc', serviceName: 'svc-c', spanName: 'op-3', durationMs: 30 },
-    ])
-
-    const results = parseDataFrames(response)
-
-    expect(results).toHaveLength(3)
-    expect(results[0]!.traceId).toBe('aaa')
-    expect(results[2]!.durationMs).toBe(30)
-  })
-
-  it('skips frames missing required columns', () => {
-    const response: GrafanaQueryResponse = {
-      results: {
-        A: {
-          frames: [
-            {
-              schema: {
-                fields: [{ name: 'traceID' }, { name: 'someOtherField' }],
-              },
-              data: {
-                values: [['abc'], [123]],
-              },
-            },
-          ],
+  it('uses root span info even when spanSets contain matched child spans', () => {
+    const traces = [
+      makeTraceWithSpanSet({
+        traceID: 'trace-1',
+        rootServiceName: 'devenv',
+        rootTraceName: 'shell:entry',
+        durationMs: 510,
+        startTimeMs: 3_000,
+        matched: {
+          name: 'ts:check',
+          serviceName: 'dt',
+          startTimeMs: 5_000,
+          durationMs: 2900,
         },
-      },
-    }
+      }),
+    ]
 
-    expect(parseDataFrames(response)).toEqual([])
-  })
-
-  it('handles columns in non-standard order', () => {
-    const response: GrafanaQueryResponse = {
-      results: {
-        A: {
-          frames: [
-            {
-              schema: {
-                fields: [
-                  { name: 'traceDuration' },
-                  { name: 'traceName' },
-                  { name: 'traceID' },
-                  { name: 'traceService' },
-                ],
-              },
-              data: {
-                values: [[100], ['op'], ['trace-1'], ['svc']],
-              },
-            },
-          ],
-        },
-      },
-    }
-
-    const results = parseDataFrames(response)
+    const results = parseTempoTraces(traces)
 
     expect(results).toEqual([
-      { traceId: 'trace-1', serviceName: 'svc', spanName: 'op', durationMs: 100 },
+      {
+        traceId: 'trace-1',
+        serviceName: 'devenv',
+        spanName: 'shell:entry',
+        durationMs: 510,
+        startTime: DateTime.unsafeMake(3_000),
+      },
     ])
   })
 
-  it('combines results from multiple frames', () => {
-    const response: GrafanaQueryResponse = {
-      results: {
-        A: {
-          frames: [
-            {
-              schema: {
-                fields: [
-                  { name: 'traceID' },
-                  { name: 'traceService' },
-                  { name: 'traceName' },
-                  { name: 'traceDuration' },
-                ],
-              },
-              data: {
-                values: [['aaa'], ['svc-1'], ['op-1'], [10]],
-              },
-            },
-            {
-              schema: {
-                fields: [
-                  { name: 'traceID' },
-                  { name: 'traceService' },
-                  { name: 'traceName' },
-                  { name: 'traceDuration' },
-                ],
-              },
-              data: {
-                values: [['bbb'], ['svc-2'], ['op-2'], [20]],
-              },
-            },
-          ],
-        },
-      },
-    }
+  it('sorts by trace-level startTime descending', () => {
+    const traces = [
+      makeTraceWithSpanSet({
+        traceID: 'old',
+        rootServiceName: 'devenv',
+        rootTraceName: 'shell:entry',
+        durationMs: 100,
+        startTimeMs: 1_000,
+        matched: { name: 'op-1', serviceName: 'dt', startTimeMs: 1_500, durationMs: 10 },
+      }),
+      makeTraceWithSpanSet({
+        traceID: 'new',
+        rootServiceName: 'devenv',
+        rootTraceName: 'shell:entry',
+        durationMs: 200,
+        startTimeMs: 3_000,
+        matched: { name: 'op-2', serviceName: 'dt', startTimeMs: 3_500, durationMs: 20 },
+      }),
+    ]
 
-    const results = parseDataFrames(response)
+    const results = parseTempoTraces(traces)
 
     expect(results).toHaveLength(2)
-    expect(results[0]!.traceId).toBe('aaa')
-    expect(results[1]!.traceId).toBe('bbb')
+    expect(results[0]!.traceId).toBe('new')
+    expect(results[1]!.traceId).toBe('old')
   })
 
-  it('coerces non-string values via String()', () => {
-    const response: GrafanaQueryResponse = {
-      results: {
-        A: {
-          frames: [
-            {
-              schema: {
-                fields: [
-                  { name: 'traceID' },
-                  { name: 'traceService' },
-                  { name: 'traceName' },
-                  { name: 'traceDuration' },
-                ],
-              },
-              data: {
-                values: [[12345], [null], [undefined], ['50']],
-              },
-            },
-          ],
+  it('converts nanosecond timestamps to millisecond DateTime', () => {
+    const traces = [
+      makeRootOnlyTrace({
+        traceID: 'aaa',
+        rootServiceName: 'svc',
+        rootTraceName: 'op',
+        durationMs: 10,
+        startTimeMs: 1_700_000_000_000,
+      }),
+    ]
+
+    const results = parseTempoTraces(traces)
+
+    expect(DateTime.toEpochMillis(results[0]!.startTime)).toBe(1_700_000_000_000)
+  })
+
+  it('falls back to matched span data when root span not yet received', () => {
+    const traces = [
+      makeTraceWithSpanSet({
+        traceID: 'pending-root',
+        rootServiceName: '<root span not yet received>',
+        rootTraceName: '',
+        durationMs: 0,
+        startTimeMs: 0,
+        matched: {
+          name: 'megarepo/status',
+          serviceName: 'megarepo',
+          startTimeMs: 2_000,
+          durationMs: 130,
         },
-      },
-    }
+      }),
+    ]
 
-    const results = parseDataFrames(response)
+    const results = parseTempoTraces(traces)
 
-    expect(results).toHaveLength(1)
-    expect(results[0]!.traceId).toBe('12345')
-    expect(results[0]!.durationMs).toBe(50)
+    expect(results[0]!.serviceName).toBe('megarepo')
+    expect(results[0]!.spanName).toBe('megarepo/status')
+    expect(results[0]!.durationMs).toBe(130)
   })
 })

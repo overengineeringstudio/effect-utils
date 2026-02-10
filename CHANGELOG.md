@@ -27,7 +27,6 @@ All notable changes to this project will be documented in this file.
   - Keeps `ts:build` as the typechecked build
   - Improves shell entry performance by skipping full type checking during emit
   - Shell entry now runs `ts:patch-lsp` separately; `ts:emit` no longer depends on patching so it can be used standalone
-
 - **devenv/otel.nix**: TRACEPARENT propagation for shell entry waterfall tracing
   - `setup:gate` generates root TRACEPARENT for shell entry traces
   - `setup:save-hash` emits a `devenv:shell:entry` root span

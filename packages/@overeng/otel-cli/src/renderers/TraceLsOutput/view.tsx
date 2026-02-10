@@ -5,10 +5,12 @@
  */
 
 import type { Atom } from '@effect-atom/atom'
+import { DateTime } from 'effect'
 import React from 'react'
 
 import { Box, Text, useTuiAtomValue, useSymbols } from '@overeng/tui-react'
 
+import { buildGrafanaTraceUrl } from '../../services/GrafanaClient.ts'
 import type { LsState, TraceSummary } from './schema.ts'
 
 // =============================================================================
@@ -88,12 +90,15 @@ export const LsView = ({ stateAtom }: LsViewProps) => {
           {'SPAN'.padEnd(SPAN_NAME_COLUMN_WIDTH)}
         </Text>
         <Text color="gray" bold>
+          {'TIME'.padStart(TIME_COLUMN_WIDTH)}
+        </Text>
+        <Text color="gray" bold>
           {'DURATION'.padStart(DURATION_COLUMN_WIDTH)}
         </Text>
       </Box>
       {/* Data rows */}
       {state.traces.map((trace: TraceSummary) => (
-        <TraceRow key={trace.traceId} trace={trace} />
+        <TraceRow key={trace.traceId} trace={trace} grafanaUrl={state.grafanaUrl} />
       ))}
     </Box>
   )
@@ -107,12 +112,18 @@ export const LsView = ({ stateAtom }: LsViewProps) => {
 const TRACE_ID_COLUMN_WIDTH = 34
 const SERVICE_COLUMN_WIDTH = 20
 const SPAN_NAME_COLUMN_WIDTH = 24
+const TIME_COLUMN_WIDTH = 10
 const DURATION_COLUMN_WIDTH = 10
 
 // String truncation lengths (2 chars less than column width for spacing)
 const TRACE_ID_TRUNCATE_LENGTH = 32
 const SERVICE_TRUNCATE_LENGTH = 18
 const SPAN_NAME_TRUNCATE_LENGTH = 22
+
+// Relative time thresholds
+const SECONDS_PER_MINUTE = 60_000
+const MINUTES_PER_HOUR = 3_600_000
+const HOURS_PER_DAY = 86_400_000
 
 // Duration formatting thresholds
 const MILLISECOND_THRESHOLD = 1
@@ -124,15 +135,25 @@ const MILLISECONDS_PER_MINUTE = 60000
 // Internal Components
 // =============================================================================
 
-const TraceRow = ({ trace }: { readonly trace: TraceSummary }) => (
+const TraceRow = ({
+  trace,
+  grafanaUrl,
+}: {
+  readonly trace: TraceSummary
+  readonly grafanaUrl: string
+}) => (
   <Box flexDirection="row">
-    <Text color="yellow">
-      {trace.traceId.slice(0, TRACE_ID_TRUNCATE_LENGTH).padEnd(TRACE_ID_COLUMN_WIDTH)}
+    <Text color="yellow" href={buildGrafanaTraceUrl({ grafanaUrl, traceId: trace.traceId })}>
+      {trace.traceId.slice(0, TRACE_ID_TRUNCATE_LENGTH)}
+    </Text>
+    <Text>
+      {' '.repeat(TRACE_ID_COLUMN_WIDTH - Math.min(trace.traceId.length, TRACE_ID_TRUNCATE_LENGTH))}
     </Text>
     <Text color="green">
       {trace.serviceName.slice(0, SERVICE_TRUNCATE_LENGTH).padEnd(SERVICE_COLUMN_WIDTH)}
     </Text>
     <Text>{trace.spanName.slice(0, SPAN_NAME_TRUNCATE_LENGTH).padEnd(SPAN_NAME_COLUMN_WIDTH)}</Text>
+    <Text color="gray">{formatRelativeTime(trace.startTime).padStart(TIME_COLUMN_WIDTH)}</Text>
     <Text color="gray">{formatDuration(trace.durationMs).padStart(DURATION_COLUMN_WIDTH)}</Text>
   </Box>
 )
@@ -140,6 +161,15 @@ const TraceRow = ({ trace }: { readonly trace: TraceSummary }) => (
 // =============================================================================
 // Helpers
 // =============================================================================
+
+/** Format a DateTime.Utc as relative time (e.g. "2m ago", "1h ago"). */
+const formatRelativeTime = (startTime: DateTime.Utc): string => {
+  const diffMs = Date.now() - DateTime.toEpochMillis(startTime)
+  if (diffMs < SECONDS_PER_MINUTE) return `${String(Math.round(diffMs / 1_000))}s ago`
+  if (diffMs < MINUTES_PER_HOUR) return `${String(Math.round(diffMs / 60_000))}m ago`
+  if (diffMs < HOURS_PER_DAY) return `${String(Math.round(diffMs / 3_600_000))}h ago`
+  return `${String(Math.round(diffMs / 86_400_000))}d ago`
+}
 
 /** Format a duration in milliseconds to a human-readable string. */
 const formatDuration = (ms: number): string => {

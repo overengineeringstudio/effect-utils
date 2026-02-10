@@ -14,7 +14,7 @@
 
 import * as Otlp from '@effect/opentelemetry/Otlp'
 import { FetchHttpClient } from '@effect/platform'
-import { Effect, Layer, Option, Tracer } from 'effect'
+import { Effect, Layer, Tracer } from 'effect'
 
 /**
  * Parses a W3C Trace Context TRACEPARENT header/env var.
@@ -98,7 +98,6 @@ export interface OtelCliLayerConfig {
  *
  * Features:
  * - Optionally joins an existing trace via W3C TRACEPARENT env var (dt task integration)
- * - Creates root span for the CLI invocation
  * - Exports to OTLP endpoint if configured
  * - Zero overhead when OTEL_EXPORTER_OTLP_ENDPOINT is not set
  *
@@ -141,16 +140,11 @@ export const makeOtelCliLayer = (config: OtelCliLayerConfig): Layer.Layer<never>
 
     const parentSpan = getParentSpanFromTraceparent()
 
-    // Create root span that optionally links to parent dt task span
-    const rootSpanLive = Layer.span(`${serviceName}.root`, {
-      parent: parentSpan,
-      attributes: Option.fromNullable(parentSpan).pipe(
-        Option.map((span) => ({ 'cli.parentSpan._tag': span._tag })),
-        Option.getOrElse(() => ({})),
-      ),
-    })
+    // Propagate parent trace context from TRACEPARENT without creating a bridge span.
+    // Layer.parentSpan sets the external parent so child spans (e.g. command-level
+    // Effect.withSpan) appear under the dt task span in the trace.
+    const parentLive = parentSpan !== undefined ? Layer.parentSpan(parentSpan) : Layer.empty
 
-    // Otlp.layerJson expects the base URL (it appends /v1/traces, /v1/logs, etc.)
     const baseUrl = endpoint.endsWith('/') ? endpoint.slice(0, -1) : endpoint
 
     const exporterLive = Otlp.layerJson({
@@ -160,6 +154,6 @@ export const makeOtelCliLayer = (config: OtelCliLayerConfig): Layer.Layer<never>
       shutdownTimeout,
     }).pipe(Layer.provide(FetchHttpClient.layer))
 
-    return Layer.mergeAll(rootSpanLive, exporterLive)
+    return parentLive.pipe(Layer.provideMerge(exporterLive))
   })
 }

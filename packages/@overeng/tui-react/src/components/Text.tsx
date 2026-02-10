@@ -28,6 +28,8 @@ export interface TextProps {
   underline?: boolean | undefined
   /** Strikethrough text */
   strikethrough?: boolean | undefined
+  /** OSC 8 hyperlink URL (clickable in supported terminals) */
+  href?: string | undefined
   /** Text wrap mode */
   wrap?: 'wrap' | 'truncate' | 'truncate-end' | 'truncate-middle' | undefined
   /** Children (text content) */

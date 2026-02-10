@@ -17,6 +17,7 @@ export const TraceSummary = Schema.Struct({
   serviceName: Schema.String,
   spanName: Schema.String,
   durationMs: Schema.Number,
+  startTime: Schema.DateTimeUtcFromSelf,
 })
 
 /** Type for a trace summary. */
@@ -36,6 +37,7 @@ export const LsSuccessState = Schema.TaggedStruct('Success', {
   traces: Schema.Array(TraceSummary),
   query: Schema.optional(Schema.String),
   limit: Schema.Number,
+  grafanaUrl: Schema.String,
 })
 
 /** Error state. */
@@ -59,6 +61,7 @@ export const SetTracesAction = Schema.TaggedStruct('SetTraces', {
   traces: Schema.Array(TraceSummary),
   query: Schema.optional(Schema.String),
   limit: Schema.Number,
+  grafanaUrl: Schema.String,
 })
 
 /** Set an error. */
@@ -87,6 +90,7 @@ export const lsReducer = (_input: { state: LsState; action: LsAction }): LsState
         traces: action.traces,
         query: action.query,
         limit: action.limit,
+        grafanaUrl: action.grafanaUrl,
       }
     case 'SetError':
       return {

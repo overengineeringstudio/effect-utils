@@ -44,11 +44,17 @@
 # Status checks:
 #   - ts:emit uses `tsc --build --dry --noCheck` to skip when no outputs would be produced.
 #   - ts:patch-lsp can be cached by providing `lspPatchDir` (the TypeScript dir being patched).
-{ tsconfigFile ? "tsconfig.all.json", tscBin ? "tsc", lspPatchCmd ? null, lspPatchAfter ? [ "pnpm:install" ], lspPatchDir ? null }:
+{
+  tsconfigFile ? "tsconfig.all.json",
+  tscBin ? "tsc",
+  lspPatchCmd ? null,
+  lspPatchAfter ? [ "pnpm:install" ],
+  lspPatchDir ? null,
+}:
 { lib, pkgs, ... }:
 let
   trace = import ../lib/trace.nix { inherit lib; };
-  lspAfter = if lspPatchCmd != null then [ "ts:patch-lsp" ] else [];
+  lspAfter = if lspPatchCmd != null then [ "ts:patch-lsp" ] else [ ];
 
   # Script that runs tsc --build with --extendedDiagnostics --verbose,
   # parses per-project timing, and emits OTEL child spans.
@@ -127,8 +133,8 @@ let
           [ -n "$_memory" ] && _attrs="$_attrs"',{"key":"tsc.memory_kb","value":{"intValue":"'"$_memory"'"}}'
           _attrs="$_attrs"',{"key":"devenv.root","value":{"stringValue":"'"$DEVENV_ROOT"'"}}]'
 
-          # Emit OTLP span via spool file (near-zero overhead)
-          _tsc_payload='{
+          # Emit OTLP span via otel-emit-span
+          printf '%s\n' '{
             "resourceSpans": [{
               "resource": {
                 "attributes": [
@@ -151,18 +157,7 @@ let
                 }]
               }]
             }]
-          }'
-          _tsc_spool="''${OTEL_SPAN_SPOOL_DIR:-}"
-          if [ -n "$_tsc_spool" ] && [ -d "$_tsc_spool" ]; then
-            printf '%s\n' "$_tsc_payload" | ${pkgs.jq}/bin/jq -c . >> "$_tsc_spool/spans.jsonl"
-          else
-            ${pkgs.curl}/bin/curl -s -X POST \
-              "$OTEL_EXPORTER_OTLP_ENDPOINT/v1/traces" \
-              -H "Content-Type: application/json" \
-              -d "$_tsc_payload" \
-              --max-time 2 \
-              >/dev/null 2>&1 || true
-          fi
+          }' | otel-emit-span
 
           _current_project=""
           _diag_block=""
@@ -183,17 +178,29 @@ in
     "ts:check" = {
       description = "Type check the whole workspace (tsc --build; emits by design with project references)";
       exec = trace.exec "ts:check" (tscWithDiagnostics tsconfigFile "");
-      after = [ "genie:run" "pnpm:install" ] ++ lspAfter;
+      after = [
+        "genie:run"
+        "pnpm:install"
+      ]
+      ++ lspAfter;
     };
     "ts:build-watch" = {
       description = "Build all packages in watch mode (tsc --build --watch)";
       exec = "${tscBin} --build --watch ${tsconfigFile}";
-      after = [ "genie:run" "pnpm:install" ] ++ lspAfter;
+      after = [
+        "genie:run"
+        "pnpm:install"
+      ]
+      ++ lspAfter;
     };
     "ts:build" = {
       description = "Build all packages with type checking (tsc --build)";
       exec = trace.exec "ts:build" (tscWithDiagnostics tsconfigFile "");
-      after = [ "genie:run" "pnpm:install" ] ++ lspAfter;
+      after = [
+        "genie:run"
+        "pnpm:install"
+      ]
+      ++ lspAfter;
     };
     "ts:emit" = trace.withStatus "ts:emit" {
       description = "Emit build outputs without full type checking (tsc --build --noCheck)";
@@ -209,34 +216,43 @@ in
         echo "$_out" | grep -q "A non-dry build would" && exit 1
         exit 0
       '';
-      after = [ "genie:run" "pnpm:install" ];
+      after = [
+        "genie:run"
+        "pnpm:install"
+      ];
     };
     "ts:clean" = {
       description = "Remove TypeScript build artifacts";
       # Use Nix tsc (always available) since clean doesn't need the Effect LSP patch
       exec = trace.exec "ts:clean" "tsc --build --clean ${tsconfigFile}";
     };
-  } // (if lspPatchCmd != null then {
-    "ts:patch-lsp" =
-      if lspPatchDir != null then
-        trace.withStatus "ts:patch-lsp" {
-          description = "Patch TypeScript with Effect Language Service";
-          exec = lspPatchCmd;
-          status = ''
-            set -euo pipefail
+  }
+  // (
+    if lspPatchCmd != null then
+      {
+        "ts:patch-lsp" =
+          if lspPatchDir != null then
+            trace.withStatus "ts:patch-lsp" {
+              description = "Patch TypeScript with Effect Language Service";
+              exec = lspPatchCmd;
+              status = ''
+                set -euo pipefail
 
-            _tsc_js="${lspPatchDir}/lib/_tsc.js"
-            [ -f "$_tsc_js" ] || exit 1
-            grep -q "@effect/language-service/embedded-typescript-copy" "$_tsc_js" && exit 0
-            exit 1
-          '';
-          after = lspPatchAfter;
-        }
-      else
-        {
-          description = "Patch TypeScript with Effect Language Service";
-          exec = trace.exec "ts:patch-lsp" lspPatchCmd;
-          after = lspPatchAfter;
-        };
-  } else {});
+                _tsc_js="${lspPatchDir}/lib/_tsc.js"
+                [ -f "$_tsc_js" ] || exit 1
+                grep -q "@effect/language-service/embedded-typescript-copy" "$_tsc_js" && exit 0
+                exit 1
+              '';
+              after = lspPatchAfter;
+            }
+          else
+            {
+              description = "Patch TypeScript with Effect Language Service";
+              exec = trace.exec "ts:patch-lsp" lspPatchCmd;
+              after = lspPatchAfter;
+            };
+      }
+    else
+      { }
+  );
 }

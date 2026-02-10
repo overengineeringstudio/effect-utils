@@ -35,7 +35,7 @@ Use namespaced names consistently across repos:
 | `lint:`   | `lint:check`, `lint:fix`, `lint:check:format`                   |
 | `test:`   | `test:run`, `test:watch`, `test:unit`                           |
 | `check:`  | `check:quick`, `check:all`                                      |
-| `setup:`  | `setup:run`, `setup:gate`, `setup:save-hash`                    |
+| `setup:`  | `setup:run`, `setup:gate`, `setup:optional`, `setup:strict`     |
 | `nix:`    | `nix:build`, `nix:hash`, `nix:check`                            |
 
 Reminder: `devenv tasks run check` executes all `check:*` tasks and does not run a plain `check` task.
@@ -74,7 +74,8 @@ Wire tasks to run automatically when entering the devenv shell:
 ```nix
 imports = [
   (inputs.effect-utils.devenvModules.tasks.setup {
-    tasks = [ "megarepo:generate" "pnpm:install" "genie:run" "ts:emit" ];
+    requiredTasks = [ ];
+    optionalTasks = [ "pnpm:install" "genie:run" "megarepo:sync" "ts:emit" ];
     completionsCliNames = [ "genie" "mr" ];
   })
 ];
@@ -84,13 +85,13 @@ This creates:
 
 - `devenv:enterShell` depends on your tasks
 - `setup:gate` blocks during git rebase
-- `setup:save-hash` caches git hash to skip unchanged setups
-- `setup:run` forces re-run with `FORCE_SETUP=1`
+- `setup:run` runs the setup tasks explicitly
 - Shell entry is non-blocking by default; failures print warnings
 - Set `DEVENV_STRICT=1` to enforce setup tasks and fail fast
 
-For warm shells (< 500ms), the git hash check skips setup when HEAD hasn't changed.
-Strict mode (`DEVENV_STRICT=1`) makes setup tasks fail fast.
+Note: shell entry optional tasks are best-effort. If upstream devenv task dependency
+handling regresses, the setup module may temporarily use wrapper tasks to keep direnv
+activation exiting with code 0.
 
 ## Available Task Modules
 
