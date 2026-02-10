@@ -381,15 +381,7 @@ To enforce a worktree workflow (no commits on the default branch, and optionally
 
 ```nix
 imports = [
-  (inputs.effect-utils.devenvModules.tasks.worktree-guard {
-    # Detects default branch from refs/remotes/<remoteName>/HEAD (fallback below).
-    remoteName = "origin";
-    fallbackDefaultBranch = "main";
-    enforcePrimaryWorktree = true;
-    # In megarepo store worktrees (~/.megarepo/.../refs/heads/<ref>), prevent
-    # committing when the path-implied ref doesn't match git HEAD (use `mr pin`).
-    enforceMegarepoStoreRefMatch = true;
-  })
+  (inputs.effect-utils.devenvModules.tasks.worktree-guard {})
 ];
 ```
 
