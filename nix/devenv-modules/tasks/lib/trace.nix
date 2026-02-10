@@ -35,14 +35,14 @@ let
   #   execBody: string - The original exec script body
   #
   # Returns: string - A new exec script that wraps the original with otel-span
+  # TRACEPARENT propagation:
+  # - Via `dt` wrapper: TRACEPARENT is set by otel-span in the dt script
+  # - During shell entry: TRACEPARENT is set by setup:gate via devenv's native
+  #   task output → env propagation (devenv.env convention)
+  #   Ref: https://github.com/cachix/devenv/blob/main/devenv-tasks/src/task_state.rs#L134-L154
+  # - Neither: otel-span creates a standalone root span (no orphaned parent)
   traceExec = taskName: execBody: ''
     if command -v otel-span >/dev/null 2>&1 && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
-      # Generate TRACEPARENT if not already set (ensures trace linkage)
-      if [ -z "''${TRACEPARENT:-}" ]; then
-        _ft_trace=$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')
-        _ft_span=$(od -An -tx1 -N8 /dev/urandom | tr -d ' \n')
-        export TRACEPARENT="00-''${_ft_trace:0:32}-''${_ft_span:0:16}-01"
-      fi
       otel-span "dt-task" "${taskName}" --attr "task.cached=false" -- bash -c ${lib.escapeShellArg execBody}
     else
       ${execBody}
@@ -61,12 +61,6 @@ let
     attrs // {
       exec = ''
         if command -v otel-span >/dev/null 2>&1 && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
-          # Generate TRACEPARENT if not already set (ensures trace linkage)
-          if [ -z "''${TRACEPARENT:-}" ]; then
-            _ft_trace=$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')
-            _ft_span=$(od -An -tx1 -N8 /dev/urandom | tr -d ' \n')
-            export TRACEPARENT="00-''${_ft_trace:0:32}-''${_ft_span:0:16}-01"
-          fi
           otel-span "dt-task" "${taskName}" --attr "task.cached=false" -- bash -c ${lib.escapeShellArg exec}
         else
           ${exec}

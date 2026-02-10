@@ -241,8 +241,16 @@ in
         after = setupTasks;
       };
 
-      # Gate task that fails during rebase, causing dependent tasks to skip
-      # Uses `before` to inject itself as a dependency of each setup task
+      # Gate task that fails during rebase, causing dependent tasks to skip.
+      # Uses `before` to inject itself as a dependency of each setup task.
+      #
+      # OTEL trace propagation:
+      # Generates a W3C TRACEPARENT and propagates it to dependent tasks via
+      # devenv's native task output → env mechanism (devenv.env convention).
+      # When a task writes {"devenv":{"env":{"KEY":"VAL"}}} to $DEVENV_TASK_OUTPUT_FILE,
+      # devenv injects those as env vars into all subsequent task subprocesses.
+      # Ref: https://github.com/cachix/devenv/blob/main/devenv-tasks/src/task_state.rs#L134-L154
+      # Ref: https://devenv.sh/tasks/ (Task Inputs and Outputs)
       "setup:gate" = lib.mkIf skipDuringRebase {
         description = "Check if setup should run (fails during rebase to skip setup)";
         exec = ''
@@ -253,13 +261,16 @@ in
             exit 1
           fi
 
-          # Generate root trace context for shell entry if OTEL is available
-          if command -v otel-span >/dev/null 2>&1 && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
-            if [ -z "''${TRACEPARENT:-}" ]; then
-              _root_trace=$(${pkgs.coreutils}/bin/od -An -tx1 -N16 /dev/urandom | tr -d ' \n')
-              _root_span=$(${pkgs.coreutils}/bin/od -An -tx1 -N8 /dev/urandom | tr -d ' \n')
-              export TRACEPARENT="00-''${_root_trace:0:32}-''${_root_span:0:16}-01"
-            fi
+          # Generate root trace context and propagate via devenv task output.
+          # Dependent tasks automatically receive TRACEPARENT + OTEL_SHELL_ENTRY_NS
+          # as env vars, linking all shell entry spans into a single trace.
+          if [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] && [ -n "''${DEVENV_TASK_OUTPUT_FILE:-}" ]; then
+            _root_trace=$(${pkgs.coreutils}/bin/od -An -tx1 -N16 /dev/urandom | tr -d ' \n')
+            _root_span=$(${pkgs.coreutils}/bin/od -An -tx1 -N8 /dev/urandom | tr -d ' \n')
+            _tp="00-''${_root_trace:0:32}-''${_root_span:0:16}-01"
+            _now_ns=$(${pkgs.coreutils}/bin/date +%s%N)
+            printf '{"devenv":{"env":{"TRACEPARENT":"%s","OTEL_SHELL_ENTRY_NS":"%s"}}}' \
+              "$_tp" "$_now_ns" > "$DEVENV_TASK_OUTPUT_FILE"
           fi
         '';
         # This makes setup:gate run BEFORE each setup task
@@ -267,27 +278,12 @@ in
         before = allSetupTasks;
       };
 
-      # Emit a root span for shell entry traces (best effort).
-      #
-      # Upstream devenv runs tasks from a shell hook during activation. When a task fails,
-      # some setups end up without a root span, making it harder to correlate and debug
-      # activation failures.
-      "setup:otel-root-span" = {
-        description = "Emit root OTEL span for shell entry (best effort)";
-        exec = ''
-          if command -v otel-span >/dev/null 2>&1 \
-            && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] \
-            && [ -n "''${TRACEPARENT:-}" ]; then
-            otel-span "devenv" "shell:entry" --attr "entry.type=setup" -- true 2>/dev/null || true
-          fi
-          exit 0
-        '';
-        after = allSetupTasks;
-      };
       # Wire setup tasks to run during shell entry.
       # Required tasks are hard dependencies; optional tasks are best-effort via wrappers.
+      # The root OTEL span is emitted in enterShell (devenv.nix) where SHELL_ENTRY_TIME_NS
+      # is available, using TRACEPARENT propagated from setup:gate via devenv.env.
       "devenv:enterShell" = {
-        after = allSetupTasks ++ [ "setup:otel-root-span" ];
+        after = allSetupTasks;
       };
 
       # Run setup tasks explicitly.

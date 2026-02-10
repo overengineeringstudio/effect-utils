@@ -398,10 +398,12 @@ let
     OTEL Collector at $OTEL_EXPORTER_OTLP_ENDPOINT.
 
     Options:
-      --attr KEY=VALUE    Add a span attribute (repeatable)
-      --trace-id ID       Use specific trace ID (default: from TRACEPARENT or random)
-      --parent-span-id ID Use specific parent span ID (default: from TRACEPARENT)
-      --help              Show this help
+      --attr KEY=VALUE      Add a span attribute (repeatable)
+      --trace-id ID         Use specific trace ID (default: from TRACEPARENT or random)
+      --span-id ID          Use specific span ID (default: random)
+      --parent-span-id ID   Use specific parent span ID (default: from TRACEPARENT)
+      --start-time-ns NS    Override start timestamp in nanoseconds (default: now)
+      --help                Show this help
 
     Environment:
       OTEL_EXPORTER_OTLP_ENDPOINT  Collector endpoint (required)
@@ -419,7 +421,9 @@ let
     SPAN_NAME=""
     ATTRS=()
     TRACE_ID=""
+    SPAN_ID=""
     PARENT_SPAN_ID=""
+    START_TIME_NS=""
     CMD_ARGS=()
 
     while [[ $# -gt 0 ]]; do
@@ -433,8 +437,16 @@ let
           TRACE_ID="$2"
           shift 2
           ;;
+        --span-id)
+          SPAN_ID="$2"
+          shift 2
+          ;;
         --parent-span-id)
           PARENT_SPAN_ID="$2"
+          shift 2
+          ;;
+        --start-time-ns)
+          START_TIME_NS="$2"
           shift 2
           ;;
         --)
@@ -482,13 +494,13 @@ let
     fi
 
     TRACE_ID="''${TRACE_ID:-$(gen_hex 16)}"
-    SPAN_ID="$(gen_hex 8)"
+    SPAN_ID="''${SPAN_ID:-$(gen_hex 8)}"
 
     # Export TRACEPARENT for child processes
     export TRACEPARENT="00-$TRACE_ID-$SPAN_ID-01"
 
-    # Timestamps in nanoseconds
-    start_ns="$(${pkgs.coreutils}/bin/date +%s%N)"
+    # Timestamps in nanoseconds (--start-time-ns overrides for retroactive root spans)
+    start_ns="''${START_TIME_NS:-$(${pkgs.coreutils}/bin/date +%s%N)}"
 
     # Run the command
     exit_code=0
@@ -694,6 +706,46 @@ in
         [ "$lines" -eq 1 ]
       }
       _check "Spool write" _test_spool_write
+
+      # Test 5: --span-id override
+      _test_span_id_override() {
+        local spool="$_tmp/spanid-test"
+        mkdir -p "$spool"
+        OTEL_SPAN_SPOOL_DIR="$spool" otel-span "test" "spanid-check" --span-id "abcdef0123456789" -- true >/dev/null 2>&1
+        [ -f "$spool/spans.jsonl" ] || return 1
+        local actual
+        actual=$(head -1 "$spool/spans.jsonl" | ${pkgs.jq}/bin/jq -r '.resourceSpans[0].scopeSpans[0].spans[0].spanId')
+        [ "$actual" = "abcdef0123456789" ]
+      }
+      _check "--span-id override" _test_span_id_override
+
+      # Test 6: --start-time-ns override
+      _test_start_time_override() {
+        local spool="$_tmp/startns-test"
+        mkdir -p "$spool"
+        OTEL_SPAN_SPOOL_DIR="$spool" otel-span "test" "startns-check" --start-time-ns "1234567890000000000" -- true >/dev/null 2>&1
+        [ -f "$spool/spans.jsonl" ] || return 1
+        local actual
+        actual=$(head -1 "$spool/spans.jsonl" | ${pkgs.jq}/bin/jq -r '.resourceSpans[0].scopeSpans[0].spans[0].startTimeUnixNano')
+        [ "$actual" = "1234567890000000000" ]
+      }
+      _check "--start-time-ns override" _test_start_time_override
+
+      # Test 7: No TRACEPARENT produces root span (no parentSpanId)
+      _test_no_traceparent_root() {
+        local spool="$_tmp/root-test"
+        mkdir -p "$spool"
+        (
+          unset TRACEPARENT
+          OTEL_SPAN_SPOOL_DIR="$spool" otel-span "test" "root-check" -- true >/dev/null 2>&1
+        )
+        [ -f "$spool/spans.jsonl" ] || return 1
+        # parentSpanId must be absent (not an orphaned reference)
+        local has_parent
+        has_parent=$(head -1 "$spool/spans.jsonl" | ${pkgs.jq}/bin/jq '.resourceSpans[0].scopeSpans[0].spans[0] | has("parentSpanId")')
+        [ "$has_parent" = "false" ]
+      }
+      _check "No TRACEPARENT = root span" _test_no_traceparent_root
 
       echo ""
       echo "$_pass passed, $_fail failed"
