@@ -149,21 +149,25 @@ in
     };
     "lint:check:genie:coverage" = {
       description = "Check all config files have .genie.ts sources";
+      # Tradeoff: this check only considers tracked config files.
+      #
+      # Rationale:
+      # - keeps the implementation fast and deterministic (git enumeration, no FS scan)
+      # - enables safe caching via a git-diff based status check
+      #
+      # Consequence:
+      # - an unmanaged untracked config file (not `git add`ed) will not be reported
+      #   until it becomes tracked.
       exec = trace.exec "lint:check:genie:coverage" ''
         set -euo pipefail
 
-        # Enumerate config files via git instead of scanning the filesystem.
+        # Enumerate tracked config files via git instead of scanning the filesystem.
         #
         # Rationale:
         # - Avoids traversing huge trees (node_modules) even when excluded.
-        # - Correctly checks files that are tracked or about to be committed
-        #   (untracked but not ignored).
-        # - Prevents false negatives from caching based only on *.genie.ts files.
+        # - Avoids false failures caused by accidental cache dirs inside the repo.
         files=$(
-          {
-            ${git} ls-files -- ${scanDirsArg}
-            ${git} ls-files --others --exclude-standard -- ${scanDirsArg}
-          } | sort -u | while IFS= read -r f; do
+          ${git} ls-files -- ${scanDirsArg} | while IFS= read -r f; do
             case "$f" in
               package.json|tsconfig.json|*/package.json|*/tsconfig.json) echo "$f" ;;
             esac
@@ -181,8 +185,18 @@ in
         fi
         echo "All config files have .genie.ts sources"
       '';
-      # Intentionally no execIfModified caching: new unmanaged config files are exactly
-      # what this task exists to detect.
+      status = trace.status "lint:check:genie:coverage" ''
+        set -euo pipefail
+
+        # Skip when there are no working tree or index changes under the scanned dirs.
+        #
+        # This intentionally does not consider untracked files. See the tradeoff note
+        # above.
+        if ${git} diff --quiet -- ${scanDirsArg} && ${git} diff --cached --quiet -- ${scanDirsArg}; then
+          exit 0
+        fi
+        exit 1
+      '';
     };
     "lint:check" = {
       description = "Run all lint checks";
