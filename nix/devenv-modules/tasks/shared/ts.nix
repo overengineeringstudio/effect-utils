@@ -202,7 +202,11 @@ in
         set -euo pipefail
 
         _out="$(${tscBin} --build ${tsconfigFile} --dry --noCheck --verbose --pretty false 2>&1)" || exit 1
-        echo "$_out" | grep -q "A non-dry build would build project" && exit 1
+        # tsc --build --dry reports pending work as:
+        # - "A non-dry build would build project ..."
+        # - "A non-dry build would update timestamps for output of project ..."
+        # and potentially other variants. Treat any of them as "needs emit".
+        echo "$_out" | grep -q "A non-dry build would" && exit 1
         exit 0
       '';
       after = [ "genie:run" "pnpm:install" ];
