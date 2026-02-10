@@ -108,6 +108,10 @@ export const pnpmWorkspaceStandalone = () =>
   pnpmWorkspaceYaml({
     packages: ['.'],
     dedupePeerDependents: true,
+    supportedArchitectures: {
+      os: ['linux', 'darwin'],
+      cpu: ['x64', 'arm64'],
+    },
   })
 
 /**
@@ -119,6 +123,10 @@ export const pnpmWorkspaceStandaloneReact = () =>
     packages: ['.'],
     publicHoistPattern: ['react', 'react-dom', 'react-reconciler'],
     dedupePeerDependents: true,
+    supportedArchitectures: {
+      os: ['linux', 'darwin'],
+      cpu: ['x64', 'arm64'],
+    },
   })
 
 /**
@@ -149,6 +157,10 @@ export const pnpmWorkspaceWithDeps = ({
   return pnpmWorkspaceYaml({
     packages: ['.', ...packages],
     dedupePeerDependents: true,
+    supportedArchitectures: {
+      os: ['linux', 'darwin'],
+      cpu: ['x64', 'arm64'],
+    },
   })
 }
 

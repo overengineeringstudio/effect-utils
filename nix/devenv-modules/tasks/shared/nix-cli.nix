@@ -151,7 +151,7 @@ let
       echo "=== Iteration $iteration ==="
       
       set +e
-      output=$(nix build "$flakeRef" --no-link 2>&1)
+      output=$(nix build "$flakeRef" --no-link --option substituters "https://cache.nixos.org" 2>&1)
       status=$?
       set -e
 
@@ -287,7 +287,7 @@ let
       fi
     fi
 
-    if output=$(nix build "$flakeRef" --no-link 2>&1); then
+    if output=$(nix build "$flakeRef" --no-link --option substituters "https://cache.nixos.org" 2>&1); then
       echo "✓ $name: up to date"
       exit 0
     fi
@@ -429,7 +429,9 @@ let
       exec = trace.exec "nix:hash:${pkg.name}" "${updateHashScript} '${pkg.flakeRef}' '${pkg.buildNix}' '${pkg.name}' '${pkg.lockfile or ""}'";
       # pnpm:install ensures lockfile is current before we compute hashes.
       # Hash computation reads the lockfile to update lockfileHash fingerprint.
-      after = [ "pnpm:install:${pkg.name}" ];
+      # pnpmInstallTask allows overriding when the pnpm task name differs from pkg.name
+      # (e.g. oxlint-npm's deps come from pnpm:install:oxc-config).
+      after = [ "pnpm:install:${pkg.pnpmInstallTask or pkg.name}" ];
     };
   };
 

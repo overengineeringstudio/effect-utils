@@ -35,6 +35,7 @@ let
     { name = "genie"; flakeRef = ".#genie"; buildNix = "packages/@overeng/genie/nix/build.nix"; lockfile = "packages/@overeng/genie/pnpm-lock.yaml"; }
     { name = "megarepo"; flakeRef = ".#megarepo"; buildNix = "packages/@overeng/megarepo/nix/build.nix"; lockfile = "packages/@overeng/megarepo/pnpm-lock.yaml"; }
     { name = "otel-cli"; flakeRef = ".#otel"; buildNix = "packages/@overeng/otel-cli/nix/build.nix"; lockfile = "packages/@overeng/otel-cli/pnpm-lock.yaml"; }
+    { name = "oxlint-npm"; flakeRef = ".#oxlint-npm"; buildNix = "nix/oxc-config-plugin.nix"; lockfile = "packages/@overeng/oxc-config/pnpm-lock.yaml"; pnpmInstallTask = "oxc-config"; }
   ];
 
   # All packages for per-package install tasks
