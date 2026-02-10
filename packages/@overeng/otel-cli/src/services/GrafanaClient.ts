@@ -476,7 +476,12 @@ export const buildGrafanaTraceUrl = ({
       range: { from: 'now-1h', to: 'now' },
     },
   }
-  return `${grafanaUrl}/explore?schemaVersion=1&panes=${encodeURIComponent(Schema.encodeSync(Schema.parseJson(Schema.Unknown))(panes))}&orgId=1`
+  const tsHostname = process.env['TS_HOSTNAME']
+  const publicUrl =
+    tsHostname !== undefined && tsHostname.length > 0
+      ? grafanaUrl.replace('127.0.0.1', tsHostname)
+      : grafanaUrl
+  return `${publicUrl}/explore?schemaVersion=1&panes=${encodeURIComponent(Schema.encodeSync(Schema.parseJson(Schema.Unknown))(panes))}&orgId=1`
 }
 
 // =============================================================================

@@ -612,6 +612,10 @@ let
       _panes='{"a":{"datasource":{"type":"tempo","uid":"tempo"},"queries":[{"refId":"A","datasource":{"type":"tempo","uid":"tempo"},"queryType":"traceql","query":"'"$TRACE_ID"'"}],"range":{"from":"now-1h","to":"now"}}}'
       _encoded=$(printf '%s' "$_panes" | ${pkgs.gnused}/bin/sed 's/{/%7B/g;s/}/%7D/g;s/\[/%5B/g;s/\]/%5D/g;s/"/%22/g;s/:/%3A/g;s/,/%2C/g;s/ /%20/g')
       _url="$OTEL_GRAFANA_URL/explore?schemaVersion=1&panes=$_encoded&orgId=1"
+      # Rewrite localhost to Tailscale hostname for remote dev servers
+      if [ -n "''${TS_HOSTNAME:-}" ]; then
+        _url="''${_url//127.0.0.1/$TS_HOSTNAME}"
+      fi
       if [ -t 2 ]; then
         # OSC 8 hyperlink for clickable URLs in supported terminals
         printf '\e]8;;%s\x07[otel] Trace: %s\e]8;;\x07\n' "$_url" "$_url" >&2
@@ -639,8 +643,12 @@ in
   env.OTEL_SPAN_SPOOL_DIR = spoolDir;
 
   enterShell = ''
+    _grafana_display="$OTEL_GRAFANA_URL"
+    if [ -n "''${TS_HOSTNAME:-}" ]; then
+      _grafana_display="''${_grafana_display//127.0.0.1/$TS_HOSTNAME}"
+    fi
     echo "[otel] Collector: $OTEL_EXPORTER_OTLP_ENDPOINT"
-    echo "[otel] Grafana:   $OTEL_GRAFANA_URL"
+    echo "[otel] Grafana:   $_grafana_display"
     echo "[otel] Start with: devenv up | Check with: otel health"
   '';
 
