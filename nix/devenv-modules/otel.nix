@@ -499,9 +499,10 @@ let
     }'
 
     # Write span to spool file for collector to pick up (near-zero overhead)
+    # Compact to single-line JSONL — otlpjsonfilereceiver reads one JSON object per line
     _spool_dir="''${OTEL_SPAN_SPOOL_DIR:-}"
     if [ -n "$_spool_dir" ] && [ -d "$_spool_dir" ]; then
-      printf '%s\n' "$payload" >> "$_spool_dir/spans.jsonl"
+      printf '%s\n' "$payload" | ${pkgs.jq}/bin/jq -c . >> "$_spool_dir/spans.jsonl"
     else
       # Fallback to HTTP if spool dir not available
       ${pkgs.curl}/bin/curl -s -X POST \
