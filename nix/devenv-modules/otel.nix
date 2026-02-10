@@ -394,6 +394,33 @@ let
   '';
 
   # =========================================================================
+  # otel-emit-span: low-level helper that delivers an OTLP JSON payload
+  # =========================================================================
+  #
+  # Reads one OTLP JSON object from stdin and delivers it via:
+  #   1. Spool file (if OTEL_SPAN_SPOOL_DIR is set and exists) — compact JSONL
+  #   2. HTTP POST fallback to OTEL_EXPORTER_OTLP_ENDPOINT
+  #
+  otelEmitSpan = pkgs.writeShellScriptBin "otel-emit-span" ''
+    set -euo pipefail
+    payload=$(cat)
+    _spool_dir="''${OTEL_SPAN_SPOOL_DIR:-}"
+    if [ -n "$_spool_dir" ] && [ -d "$_spool_dir" ]; then
+      printf '%s\n' "$payload" | ${pkgs.jq}/bin/jq -c . >> "$_spool_dir/spans.jsonl"
+    else
+      _endpoint="''${OTEL_EXPORTER_OTLP_ENDPOINT:-}"
+      if [ -n "$_endpoint" ]; then
+        ${pkgs.curl}/bin/curl -s -X POST \
+          "$_endpoint/v1/traces" \
+          -H "Content-Type: application/json" \
+          -d "$payload" \
+          --max-time 2 \
+          >/dev/null 2>&1 || true
+      fi
+    fi
+  '';
+
+  # =========================================================================
   # otel-span: shell helper for emitting OTLP trace spans from bash
   # =========================================================================
   #
@@ -431,6 +458,7 @@ let
       --span-id ID          Use specific span ID (default: random)
       --parent-span-id ID   Use specific parent span ID (default: from TRACEPARENT)
       --start-time-ns NS    Override start timestamp in nanoseconds (default: now)
+      --end-time-ns NS      Override end timestamp in nanoseconds (default: now after command)
       --log-url             Print Grafana trace URL to stderr after span emission
       --help                Show this help
 
@@ -453,6 +481,7 @@ let
     SPAN_ID=""
     PARENT_SPAN_ID=""
     START_TIME_NS=""
+    END_TIME_NS=""
     LOG_URL=""
     CMD_ARGS=()
 
@@ -477,6 +506,10 @@ let
           ;;
         --start-time-ns)
           START_TIME_NS="$2"
+          shift 2
+          ;;
+        --end-time-ns)
+          END_TIME_NS="$2"
           shift 2
           ;;
         --log-url)
@@ -540,7 +573,7 @@ let
     exit_code=0
     "''${CMD_ARGS[@]}" || exit_code=$?
 
-    end_ns="$(${pkgs.coreutils}/bin/date +%s%N)"
+    end_ns="''${END_TIME_NS:-$(${pkgs.coreutils}/bin/date +%s%N)}"
 
     # Build attributes JSON
     attrs_json='[{"key":"service.name","value":{"stringValue":"'"$SERVICE_NAME"'"}}'
@@ -592,20 +625,8 @@ let
       }]
     }'
 
-    # Write span to spool file for collector to pick up (near-zero overhead)
-    # Compact to single-line JSONL — otlpjsonfilereceiver reads one JSON object per line
-    _spool_dir="''${OTEL_SPAN_SPOOL_DIR:-}"
-    if [ -n "$_spool_dir" ] && [ -d "$_spool_dir" ]; then
-      printf '%s\n' "$payload" | ${pkgs.jq}/bin/jq -c . >> "$_spool_dir/spans.jsonl"
-    else
-      # Fallback to HTTP if spool dir not available
-      ${pkgs.curl}/bin/curl -s -X POST \
-        "$ENDPOINT/v1/traces" \
-        -H "Content-Type: application/json" \
-        -d "$payload" \
-        --max-time 2 \
-        >/dev/null 2>&1 || true
-    fi
+    # Deliver span via otel-emit-span (spool file or HTTP fallback)
+    printf '%s\n' "$payload" | ${otelEmitSpan}/bin/otel-emit-span
 
     # Print Grafana trace URL to stderr if --log-url was set
     if [ -n "$LOG_URL" ] && [ -n "''${OTEL_GRAFANA_URL:-}" ]; then
@@ -616,12 +637,9 @@ let
       if [ -n "''${TS_HOSTNAME:-}" ]; then
         _url="''${_url//127.0.0.1/$TS_HOSTNAME}"
       fi
-      if [ -t 2 ]; then
-        # OSC 8 hyperlink for clickable URLs in supported terminals
-        printf '\e]8;;%s\x07[otel] Trace: %s\e]8;;\x07\n' "$_url" "$_url" >&2
-      else
-        printf '[otel] Trace: %s\n' "$_url" >&2
-      fi
+      # Always emit OSC 8 — enterShell/dt are inherently interactive;
+      # unsupporting terminals silently ignore the sequences.
+      printf '\e]8;;%s\x07[otel] Trace: %s\e]8;;\x07\n' "$_url" "$_url" >&2
     fi
 
     exit "$exit_code"
@@ -633,6 +651,7 @@ in
     pkgs.opentelemetry-collector-contrib
     pkgs.tempo
     pkgs.grafana
+    otelEmitSpan
     otelSpan
   ];
 
@@ -643,13 +662,23 @@ in
   env.OTEL_SPAN_SPOOL_DIR = spoolDir;
 
   enterShell = ''
-    _grafana_display="$OTEL_GRAFANA_URL"
+    # TMP: debug enterShell env var propagation
+    echo "[TMP otel.nix] TRACEPARENT=''${TRACEPARENT:-NOT_SET} OTEL_SHELL_ENTRY_NS=''${OTEL_SHELL_ENTRY_NS:-NOT_SET}"
+    _otel_grafana="$OTEL_GRAFANA_URL"
     if [ -n "''${TS_HOSTNAME:-}" ]; then
-      _grafana_display="''${_grafana_display//127.0.0.1/$TS_HOSTNAME}"
+      _otel_grafana="''${_otel_grafana//127.0.0.1/$TS_HOSTNAME}"
     fi
-    echo "[otel] Collector: $OTEL_EXPORTER_OTLP_ENDPOINT"
-    echo "[otel] Grafana:   $_grafana_display"
-    echo "[otel] Start with: devenv up | Check with: otel health"
+    # Build Grafana link: trace-specific when TRACEPARENT is available, dashboard otherwise
+    if [ -n "''${TRACEPARENT:-}" ]; then
+      IFS='-' read -r _ _otel_trace_id _ _ <<< "$TRACEPARENT"
+      _panes='{"a":{"datasource":{"type":"tempo","uid":"tempo"},"queries":[{"refId":"A","datasource":{"type":"tempo","uid":"tempo"},"queryType":"traceql","query":"'"$_otel_trace_id"'"}],"range":{"from":"now-1h","to":"now"}}}'
+      _encoded=$(printf '%s' "$_panes" | sed 's/{/%7B/g;s/}/%7D/g;s/\[/%5B/g;s/\]/%5D/g;s/"/%22/g;s/:/%3A/g;s/,/%2C/g;s/ /%20/g')
+      _grafana_link_url="$_otel_grafana/explore?schemaVersion=1&panes=$_encoded&orgId=1"
+    else
+      _grafana_link_url="$_otel_grafana"
+    fi
+    _grafana_link="$(printf '\e]8;;%s\x07\e[4mGrafana\e[24m\e]8;;\x07' "$_grafana_link_url")"
+    echo "[otel] Start with: devenv up | $_grafana_link"
   '';
 
   # =========================================================================
@@ -786,7 +815,19 @@ in
       }
       _check "--start-time-ns override" _test_start_time_override
 
-      # Test 7: --log-url outputs Grafana trace URL to stderr
+      # Test 7: --end-time-ns override
+      _test_end_time_override() {
+        local spool="$_tmp/endns-test"
+        mkdir -p "$spool"
+        OTEL_SPAN_SPOOL_DIR="$spool" otel-span "test" "endns-check" --end-time-ns "9999999999999999999" -- true >/dev/null 2>&1
+        [ -f "$spool/spans.jsonl" ] || return 1
+        local actual
+        actual=$(head -1 "$spool/spans.jsonl" | ${pkgs.jq}/bin/jq -r '.resourceSpans[0].scopeSpans[0].spans[0].endTimeUnixNano')
+        [ "$actual" = "9999999999999999999" ]
+      }
+      _check "--end-time-ns override" _test_end_time_override
+
+      # Test 8: --log-url outputs Grafana trace URL to stderr
       _test_log_url() {
         local spool="$_tmp/logurl-test"
         mkdir -p "$spool"
@@ -803,7 +844,7 @@ in
       }
       _check "--log-url output" _test_log_url
 
-      # Test 8: No TRACEPARENT produces root span (no parentSpanId)
+      # Test 9: No TRACEPARENT produces root span (no parentSpanId)
       _test_no_traceparent_root() {
         local spool="$_tmp/root-test"
         mkdir -p "$spool"
@@ -818,6 +859,173 @@ in
         [ "$has_parent" = "false" ]
       }
       _check "No TRACEPARENT = root span" _test_no_traceparent_root
+
+      echo ""
+      echo "$_pass passed, $_fail failed"
+      [ "$_fail" -eq 0 ]
+    '';
+  };
+
+  tasks."otel:test:trace-structure" = {
+    description = "Validate trace structure invariants from spool file data (offline)";
+    exec = ''
+      set -euo pipefail
+      _pass=0
+      _fail=0
+      _tmp=$(mktemp -d)
+      trap 'rm -rf "$_tmp"' EXIT
+
+      _check() {
+        local name="$1"
+        shift
+        if "$@"; then
+          echo "PASS: $name"
+          _pass=$((_pass + 1))
+        else
+          echo "FAIL: $name"
+          _fail=$((_fail + 1))
+        fi
+      }
+
+      # Helper functions for span field extraction, count, IDs
+      _span_field() {
+        local file="$1" line_num="$2" field="$3"
+        ${pkgs.gawk}/bin/awk "NR==$line_num" "$file" | ${pkgs.jq}/bin/jq -r ".resourceSpans[0].scopeSpans[0].spans[0].$field"
+      }
+      _span_count() {
+        local file="$1"
+        wc -l < "$file" | tr -d ' '
+      }
+      _all_span_ids() {
+        local file="$1"
+        ${pkgs.jq}/bin/jq -r '.resourceSpans[0].scopeSpans[0].spans[0].spanId' "$file"
+      }
+      _all_parent_ids() {
+        local file="$1"
+        ${pkgs.jq}/bin/jq -r '.resourceSpans[0].scopeSpans[0].spans[0].parentSpanId // ""' "$file"
+      }
+
+      # Generate 5-span trace tree with explicit IDs
+      _spool="$_tmp/trace-struct"
+      mkdir -p "$_spool"
+      _trace_id="aabbccdd11223344aabbccdd11223344"
+
+      # Root span (no parent)
+      (unset TRACEPARENT; OTEL_SPAN_SPOOL_DIR="$_spool" otel-span "devenv" "shell:entry" --trace-id "$_trace_id" --span-id "0000000000000001" --start-time-ns "1000000000000000" --end-time-ns "11000000000000000" -- true >/dev/null 2>&1)
+
+      # Child 1 of root
+      OTEL_SPAN_SPOOL_DIR="$_spool" otel-span "dt-task" "ts:check" --trace-id "$_trace_id" --span-id "0000000000000002" --parent-span-id "0000000000000001" --start-time-ns "1100000000000000" --end-time-ns "6000000000000000" -- true >/dev/null 2>&1
+
+      # Grandchild 1 of child 1
+      OTEL_SPAN_SPOOL_DIR="$_spool" otel-span "tsc-project" "utils" --trace-id "$_trace_id" --span-id "0000000000000003" --parent-span-id "0000000000000002" --start-time-ns "1200000000000000" --end-time-ns "4000000000000000" -- true >/dev/null 2>&1
+
+      # Grandchild 2 of child 1
+      OTEL_SPAN_SPOOL_DIR="$_spool" otel-span "tsc-project" "core" --trace-id "$_trace_id" --span-id "0000000000000004" --parent-span-id "0000000000000002" --start-time-ns "4100000000000000" --end-time-ns "5800000000000000" -- true >/dev/null 2>&1
+
+      # Child 2 of root
+      OTEL_SPAN_SPOOL_DIR="$_spool" otel-span "dt-task" "lint:check" --trace-id "$_trace_id" --span-id "0000000000000005" --parent-span-id "0000000000000001" --start-time-ns "1200000000000000" --end-time-ns "4000000000000000" -- true >/dev/null 2>&1
+
+      _sf="$_spool/spans.jsonl"
+
+      # Test 1: correct span count
+      _test_span_count() {
+        [ "$(_span_count "$_sf")" -eq 5 ]
+      }
+      _check "5 spans emitted" _test_span_count
+
+      # Test 2: all spans share the same traceId
+      _test_same_trace_id() {
+        local unique
+        unique=$(_all_span_ids "$_sf" | wc -l)
+        local trace_ids
+        trace_ids=$(${pkgs.jq}/bin/jq -r '.resourceSpans[0].scopeSpans[0].spans[0].traceId' "$_sf" | sort -u | wc -l)
+        [ "$trace_ids" -eq 1 ]
+      }
+      _check "all spans share traceId" _test_same_trace_id
+
+      # Test 3: exactly one root span (no parentSpanId)
+      _test_single_root() {
+        local roots
+        roots=$(${pkgs.jq}/bin/jq -r 'if .resourceSpans[0].scopeSpans[0].spans[0] | has("parentSpanId") then "child" else "root" end' "$_sf" | grep -c "root")
+        [ "$roots" -eq 1 ]
+      }
+      _check "single root span" _test_single_root
+
+      # Test 4: no orphan spans (every parentSpanId references an existing spanId)
+      _test_no_orphans() {
+        local span_ids parent_ids
+        span_ids=$(_all_span_ids "$_sf")
+        parent_ids=$(_all_parent_ids "$_sf" | grep -v '^$' || true)
+        while IFS= read -r pid; do
+          echo "$span_ids" | grep -qF "$pid" || return 1
+        done <<< "$parent_ids"
+        return 0
+      }
+      _check "no orphan spans" _test_no_orphans
+
+      # Test 5: root span encloses all children (timing)
+      _test_root_timing() {
+        local root_start root_end
+        root_start=$(_span_field "$_sf" 1 "startTimeUnixNano")
+        root_end=$(_span_field "$_sf" 1 "endTimeUnixNano")
+        for i in 2 3 4 5; do
+          local s e
+          s=$(_span_field "$_sf" "$i" "startTimeUnixNano")
+          e=$(_span_field "$_sf" "$i" "endTimeUnixNano")
+          [ "$s" -ge "$root_start" ] || return 1
+          [ "$e" -le "$root_end" ] || return 1
+        done
+        return 0
+      }
+      _check "root encloses all children" _test_root_timing
+
+      # Test 6: parent-child timing (child within parent)
+      _test_parent_child_timing() {
+        # child 1 (line 2, parent=line 1)
+        local p_start p_end c_start c_end
+        p_start=$(_span_field "$_sf" 1 "startTimeUnixNano")
+        p_end=$(_span_field "$_sf" 1 "endTimeUnixNano")
+        c_start=$(_span_field "$_sf" 2 "startTimeUnixNano")
+        c_end=$(_span_field "$_sf" 2 "endTimeUnixNano")
+        [ "$c_start" -ge "$p_start" ] && [ "$c_end" -le "$p_end" ] || return 1
+        # grandchild 1 (line 3, parent=line 2)
+        p_start=$(_span_field "$_sf" 2 "startTimeUnixNano")
+        p_end=$(_span_field "$_sf" 2 "endTimeUnixNano")
+        c_start=$(_span_field "$_sf" 3 "startTimeUnixNano")
+        c_end=$(_span_field "$_sf" 3 "endTimeUnixNano")
+        [ "$c_start" -ge "$p_start" ] && [ "$c_end" -le "$p_end" ] || return 1
+        return 0
+      }
+      _check "parent-child timing valid" _test_parent_child_timing
+
+      # Test 7: no duplicate span IDs
+      _test_no_duplicate_ids() {
+        local total unique
+        total=$(_all_span_ids "$_sf" | wc -l)
+        unique=$(_all_span_ids "$_sf" | sort -u | wc -l)
+        [ "$total" -eq "$unique" ]
+      }
+      _check "no duplicate spanIds" _test_no_duplicate_ids
+
+      # Test 8: detect orphan (negative test — inject an orphan and verify detection)
+      _test_detect_orphan() {
+        local orphan_spool="$_tmp/orphan-test"
+        mkdir -p "$orphan_spool"
+        # Emit a span with a parentSpanId that doesn't exist
+        OTEL_SPAN_SPOOL_DIR="$orphan_spool" otel-span "test" "orphan" --trace-id "$_trace_id" --span-id "0000000000000099" --parent-span-id "DOES_NOT_EXIST_00" --start-time-ns "2000000000000000" --end-time-ns "3000000000000000" -- true >/dev/null 2>&1
+        local of="$orphan_spool/spans.jsonl"
+        local span_ids parent_ids
+        span_ids=$(_all_span_ids "$of")
+        parent_ids=$(_all_parent_ids "$of" | grep -v '^$' || true)
+        # The orphan's parent should NOT be in span_ids — so this check should fail
+        while IFS= read -r pid; do
+          if ! echo "$span_ids" | grep -qF "$pid"; then
+            return 0  # correctly detected orphan
+          fi
+        done <<< "$parent_ids"
+        return 1  # failed to detect orphan
+      }
+      _check "detect orphan (negative test)" _test_detect_orphan
 
       echo ""
       echo "$_pass passed, $_fail failed"

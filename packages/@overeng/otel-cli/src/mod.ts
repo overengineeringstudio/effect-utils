@@ -27,3 +27,9 @@ export {
   getTrace,
   type TempoTraceResponse,
 } from './services/mod.ts'
+
+export {
+  validateTraceStructure,
+  type TraceValidationFinding,
+  type TraceValidationResult,
+} from './lib/trace-validate.ts'

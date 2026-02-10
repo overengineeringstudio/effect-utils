@@ -366,6 +366,8 @@ in
   env.PNPM_STORE_DIR = "${config.devenv.root}/.pnpm-store";
 
   enterShell = ''
+    # TMP: debug enterShell env var propagation
+    echo "[TMP devenv.nix] TRACEPARENT=''${TRACEPARENT:-NOT_SET} OTEL_SHELL_ENTRY_NS=''${OTEL_SHELL_ENTRY_NS:-NOT_SET}"
     export SHELL_ENTRY_TIME_NS=$(date +%s%N)
     export WORKSPACE_ROOT="$PWD"
     export PATH="$WORKSPACE_ROOT/node_modules/.bin:$PATH"
@@ -397,6 +399,7 @@ in
           --trace-id "$_trace_id" \
           --span-id "$_span_id" \
           --start-time-ns "$OTEL_SHELL_ENTRY_NS" \
+          --end-time-ns "$(date +%s%N)" \
           --log-url \
           --attr "cold_start=$_cold_start" \
           -- true

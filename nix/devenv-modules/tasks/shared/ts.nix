@@ -133,8 +133,8 @@ let
           [ -n "$_memory" ] && _attrs="$_attrs"',{"key":"tsc.memory_kb","value":{"intValue":"'"$_memory"'"}}'
           _attrs="$_attrs"',{"key":"devenv.root","value":{"stringValue":"'"$DEVENV_ROOT"'"}}]'
 
-          # Emit OTLP span via spool file (near-zero overhead)
-          _tsc_payload='{
+          # Emit OTLP span via otel-emit-span
+          printf '%s\n' '{
             "resourceSpans": [{
               "resource": {
                 "attributes": [
@@ -157,18 +157,7 @@ let
                 }]
               }]
             }]
-          }'
-          _tsc_spool="''${OTEL_SPAN_SPOOL_DIR:-}"
-          if [ -n "$_tsc_spool" ] && [ -d "$_tsc_spool" ]; then
-            printf '%s\n' "$_tsc_payload" | ${pkgs.jq}/bin/jq -c . >> "$_tsc_spool/spans.jsonl"
-          else
-            ${pkgs.curl}/bin/curl -s -X POST \
-              "$OTEL_EXPORTER_OTLP_ENDPOINT/v1/traces" \
-              -H "Content-Type: application/json" \
-              -d "$_tsc_payload" \
-              --max-time 2 \
-              >/dev/null 2>&1 || true
-          fi
+          }' | otel-emit-span
 
           _current_project=""
           _diag_block=""

@@ -113,6 +113,7 @@ export const genieCommand: Cli.Command.Command<
     output: outputOption,
   },
   ({ cwd, writeable, watch, check, dryRun, oxfmtConfig, output }) => {
+    const cliMode = watch ? 'watch' : check ? 'check' : dryRun ? 'dry-run' : 'generate'
     const handler = Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
       const readOnly = !writeable
@@ -498,7 +499,10 @@ export const genieCommand: Cli.Command.Command<
           }),
         { view: <GenieView stateAtom={GenieApp.stateAtom} /> },
       )
-    }).pipe(Effect.provide(outputModeLayer(output)), Effect.withSpan('genie'))
+    }).pipe(
+      Effect.provide(outputModeLayer(output)),
+      Effect.withSpan(`genie/${cliMode}`, { attributes: { 'cli.mode': cliMode } }),
+    )
     return handler
   },
 )
