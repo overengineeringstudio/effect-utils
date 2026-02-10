@@ -165,7 +165,7 @@ in
             ${git} ls-files --others --exclude-standard -- ${scanDirsArg}
           } | sort -u | while IFS= read -r f; do
             case "$f" in
-              */package.json|*/tsconfig.json) echo "$f" ;;
+              package.json|tsconfig.json|*/package.json|*/tsconfig.json) echo "$f" ;;
             esac
           done
         )
