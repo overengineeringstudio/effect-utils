@@ -6,7 +6,7 @@
 
 Use `dt <task>` (devenv tasks) to execute tasks with dependencies:
 
-- **TypeScript**: `dt ts:check` or `dt ts:watch` (watch mode) or `dt ts:clean`
+- **TypeScript**: `dt ts:check` or `dt ts:build-watch` (watch mode) or `dt ts:clean`
 - **Linting**: `dt lint:check` or `dt lint:fix`
 - **Testing**: `dt test:run` (all) or `dt test:<pkg>` (single package) or `dt test:watch` or `dt test:integration`
 - **Build**: `dt ts:build`

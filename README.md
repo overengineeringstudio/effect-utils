@@ -149,6 +149,12 @@ dt bun:install
 dt ts:build
 ```
 
+Fast emit-only build (skips full type checking):
+
+```bash
+dt ts:emit
+```
+
 ### Run Tests
 
 ```bash
@@ -171,7 +177,7 @@ dt test:watch
 Continuous type checking across the entire monorepo (project references):
 
 ```bash
-dt ts:watch
+dt ts:build-watch
 ```
 
 Or one-off type check:

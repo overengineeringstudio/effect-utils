@@ -50,7 +50,7 @@ in
         "megarepo:sync"
         "pnpm:install"
         "genie:run"
-        "ts:build"
+        "ts:emit"
       ];
     })
   ];

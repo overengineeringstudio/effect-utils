@@ -7,7 +7,7 @@
 #     (inputs.effect-utils.devenvModules.tasks.ts { tsconfigFile = "tsconfig.dev.json"; })
 #   ];
 #
-# Provides: ts:check, ts:watch, ts:build, ts:clean, and optionally ts:patch-lsp
+# Provides: ts:check, ts:build-watch, ts:build, ts:clean, and optionally ts:patch-lsp
 #
 # Dependencies:
 #   - genie:run: config files must be generated before tsc can resolve paths
@@ -26,7 +26,7 @@
 #
 # lspPatchCmd:
 #   Command to patch TypeScript with the Effect Language Service plugin. When set,
-#   creates a ts:patch-lsp task that runs before ts:check/ts:watch/ts:build.
+#   creates a ts:patch-lsp task that runs before ts:check/ts:build-watch/ts:build.
 #   This replaces per-package postinstall scripts, centralizing the patch in dt.
 #   Example: "packages/@overeng/utils/node_modules/.bin/effect-language-service patch"
 #
@@ -40,7 +40,11 @@
 #   --verbose (adds ~3% overhead) and emit per-project child spans with timing
 #   attributes (tsc.check_time_s, tsc.parse_time_s, etc.). The diagnostics
 #   output is suppressed from the user — only errors are shown on failure.
-{ tsconfigFile ? "tsconfig.all.json", tscBin ? "tsc", lspPatchCmd ? null, lspPatchAfter ? [ "pnpm:install" ] }:
+#
+# Status checks:
+#   - ts:emit uses `tsc --build --dry --noCheck` to skip when no outputs would be produced.
+#   - ts:patch-lsp can be cached by providing `lspPatchDir` (the TypeScript dir being patched).
+{ tsconfigFile ? "tsconfig.all.json", tscBin ? "tsc", lspPatchCmd ? null, lspPatchAfter ? [ "pnpm:install" ], lspPatchDir ? null }:
 { lib, pkgs, ... }:
 let
   trace = import ../lib/trace.nix { inherit lib; };
@@ -51,7 +55,7 @@ let
   # The outer trace.exec wrapper provides the parent ts:check/ts:build span.
   #
   # When OTEL is not available, runs plain tsc --build (no diagnostics flags).
-  tscWithDiagnostics = tsconfigArg: ''
+  tscWithDiagnostics = tsconfigArg: extraArgs: ''
     set -euo pipefail
 
     # Only add diagnostics flags when OTEL tracing is active
@@ -60,7 +64,7 @@ let
       trap 'rm -f "$_tsc_output"' EXIT
 
       _tsc_exit=0
-      ${tscBin} --build ${tsconfigArg} --extendedDiagnostics --verbose > "$_tsc_output" 2>&1 || _tsc_exit=$?
+      ${tscBin} --build ${tsconfigArg} ${extraArgs} --extendedDiagnostics --verbose > "$_tsc_output" 2>&1 || _tsc_exit=$?
 
       # On failure, show the user the error output (filtered to useful lines)
       if [ "$_tsc_exit" -ne 0 ]; then
@@ -168,7 +172,7 @@ let
       exit "$_tsc_exit"
     else
       # No OTEL: run plain tsc (no diagnostics overhead)
-      ${tscBin} --build ${tsconfigArg}
+      ${tscBin} --build ${tsconfigArg} ${extraArgs}
     fi
   '';
 in
@@ -177,19 +181,35 @@ in
 
   tasks = {
     "ts:check" = {
-      description = "Run TypeScript type checking";
-      exec = trace.exec "ts:check" (tscWithDiagnostics tsconfigFile);
+      description = "Type check the whole workspace (tsc --build; emits by design with project references)";
+      exec = trace.exec "ts:check" (tscWithDiagnostics tsconfigFile "");
       after = [ "genie:run" "pnpm:install" ] ++ lspAfter;
     };
-    "ts:watch" = {
-      description = "Run TypeScript in watch mode";
+    "ts:build-watch" = {
+      description = "Build all packages in watch mode (tsc --build --watch)";
       exec = "${tscBin} --build --watch ${tsconfigFile}";
       after = [ "genie:run" "pnpm:install" ] ++ lspAfter;
     };
     "ts:build" = {
-      description = "Build all packages (tsc --build)";
-      exec = trace.exec "ts:build" (tscWithDiagnostics tsconfigFile);
+      description = "Build all packages with type checking (tsc --build)";
+      exec = trace.exec "ts:build" (tscWithDiagnostics tsconfigFile "");
       after = [ "genie:run" "pnpm:install" ] ++ lspAfter;
+    };
+    "ts:emit" = trace.withStatus "ts:emit" {
+      description = "Emit build outputs without full type checking (tsc --build --noCheck)";
+      exec = tscWithDiagnostics tsconfigFile "--noCheck";
+      status = ''
+        set -euo pipefail
+
+        _out="$(${tscBin} --build ${tsconfigFile} --dry --noCheck --verbose --pretty false 2>&1)" || exit 1
+        # tsc --build --dry reports pending work as:
+        # - "A non-dry build would build project ..."
+        # - "A non-dry build would update timestamps for output of project ..."
+        # and potentially other variants. Treat any of them as "needs emit".
+        echo "$_out" | grep -q "A non-dry build would" && exit 1
+        exit 0
+      '';
+      after = [ "genie:run" "pnpm:install" ];
     };
     "ts:clean" = {
       description = "Remove TypeScript build artifacts";
@@ -197,10 +217,26 @@ in
       exec = trace.exec "ts:clean" "tsc --build --clean ${tsconfigFile}";
     };
   } // (if lspPatchCmd != null then {
-    "ts:patch-lsp" = {
-      description = "Patch TypeScript with Effect Language Service";
-      exec = trace.exec "ts:patch-lsp" lspPatchCmd;
-      after = lspPatchAfter;
-    };
+    "ts:patch-lsp" =
+      if lspPatchDir != null then
+        trace.withStatus "ts:patch-lsp" {
+          description = "Patch TypeScript with Effect Language Service";
+          exec = lspPatchCmd;
+          status = ''
+            set -euo pipefail
+
+            _tsc_js="${lspPatchDir}/lib/_tsc.js"
+            [ -f "$_tsc_js" ] || exit 1
+            grep -q "@effect/language-service/embedded-typescript-copy" "$_tsc_js" && exit 0
+            exit 1
+          '';
+          after = lspPatchAfter;
+        }
+      else
+        {
+          description = "Patch TypeScript with Effect Language Service";
+          exec = trace.exec "ts:patch-lsp" lspPatchCmd;
+          after = lspPatchAfter;
+        };
   } else {});
 }

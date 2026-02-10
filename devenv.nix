@@ -117,6 +117,7 @@ in
     (taskModules.ts {
       tscBin = "packages/@overeng/utils/node_modules/.bin/tsc";
       lspPatchCmd = "packages/@overeng/utils/node_modules/.bin/effect-language-service patch --dir packages/@overeng/utils/node_modules/typescript";
+      lspPatchDir = "packages/@overeng/utils/node_modules/typescript";
       # Depend only on utils package install (not full pnpm:install) for faster parallel startup
       lspPatchAfter = [ "pnpm:install:utils" ];
     })
@@ -208,7 +209,7 @@ in
       requiredTasks = [ ];
       # Keep shell entry resilient (R12): optional tasks run via @complete.
       # Ordering ensures source CLIs have deps before use.
-      optionalTasks = [ "pnpm:install" "genie:run" "megarepo:sync" "ts:build" ];
+      optionalTasks = [ "pnpm:install" "genie:run" "megarepo:sync" "ts:patch-lsp" "ts:emit" ];
       completionsCliNames = [ "genie" "mr" ];
     })
     # Nix CLI build and hash management

@@ -8,7 +8,7 @@
 #   imports = [
 #     (taskModules.setup {
 #       requiredTasks = [ ];
-#       optionalTasks = [ "pnpm:install" "genie:run" "ts:build" ];
+#       optionalTasks = [ "pnpm:install" "genie:run" "ts:emit" ];
 #       completionsCliNames = [ "genie" "mr" ];
 #       # innerCacheDirs = [ "pnpm-install" ];  # default; set to [] for non-pnpm setups
 #     })
