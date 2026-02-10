@@ -677,8 +677,12 @@ in
     else
       _grafana_link_url="$_otel_grafana"
     fi
-    _grafana_link="$(printf '\e]8;;%s\x07\e[4mGrafana\e[24m\e]8;;\x07' "$_grafana_link_url")"
-    echo "[otel] Start with: devenv up | $_grafana_link"
+    if [ -t 1 ]; then
+      _grafana_display="$(printf '\e]8;;%s\x07\e[4mTrace\e[24m\e]8;;\x07' "$_grafana_link_url")"
+    else
+      _grafana_display="$_grafana_link_url"
+    fi
+    echo "[otel] Start with: devenv up | $_grafana_display"
 
     # Detect cold vs warm start (setup-git-hash written by setup.nix)
     _cold_start="false"
@@ -686,6 +690,30 @@ in
       _cold_start="true"
     elif [ "$(git rev-parse HEAD 2>/dev/null || echo no-git)" != "$(cat .direnv/task-cache/setup-git-hash 2>/dev/null || echo "")" ]; then
       _cold_start="true"
+    fi
+
+    # Detect what triggered this shell reload by comparing watched file mtimes.
+    # Uses devenv's input-paths.txt (nix inputs that affect the shell derivation),
+    # excluding .devenv/bootstrap/ files which are regenerated on every eval.
+    # xargs stat is ~2ms for ~50 files — negligible overhead.
+    _reload_trigger="unknown"
+    _otel_mtime_snapshot=".direnv/otel-watch-mtimes"
+    if [ -f ".devenv/input-paths.txt" ]; then
+      _otel_current=$(grep -v '\.devenv/bootstrap/' .devenv/input-paths.txt \
+        | xargs stat -c '%Y %n' 2>/dev/null | sort -k2)
+      if [ ! -f "$_otel_mtime_snapshot" ]; then
+        _reload_trigger="initial"
+      elif [ "$_otel_current" = "$(cat "$_otel_mtime_snapshot" 2>/dev/null)" ]; then
+        _reload_trigger="env-change"
+      else
+        _otel_changed=$(diff <(cat "$_otel_mtime_snapshot") <(echo "$_otel_current") 2>/dev/null \
+          | grep '^[<>]' | awk '{print $NF}' | sort -u \
+          | sed "s|^''${DEVENV_ROOT:-.}/||" \
+          | head -5 | paste -sd ',' -)
+        _reload_trigger="''${_otel_changed:-unknown}"
+      fi
+      mkdir -p .direnv
+      echo "$_otel_current" > "$_otel_mtime_snapshot"
     fi
 
     # Emit root shell:entry span covering the full setup duration.
@@ -703,8 +731,8 @@ in
           --span-id "$_span_id" \
           --start-time-ns "$OTEL_SHELL_ENTRY_NS" \
           --end-time-ns "$(date +%s%N)" \
-          --log-url \
           --attr "cold_start=$_cold_start" \
+          --attr "reload.trigger=$_reload_trigger" \
           -- true
       ) || true
     fi
