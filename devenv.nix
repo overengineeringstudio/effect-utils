@@ -208,7 +208,7 @@ in
       requiredTasks = [ ];
       # Keep shell entry resilient (R12): optional tasks run via @complete.
       # Ordering ensures source CLIs have deps before use.
-      optionalTasks = [ "pnpm:install" "genie:run" "megarepo:sync" "ts:build" ];
+      optionalTasks = [ "pnpm:install" "genie:run" "megarepo:sync" "ts:emit" ];
       completionsCliNames = [ "genie" "mr" ];
     })
     # Nix CLI build and hash management

@@ -18,6 +18,10 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **devenv/tasks/shared/ts.nix**: Add `ts:emit` task (`tsc --build --noCheck`) and use it for shell entry
+  - Keeps `ts:build` as the typechecked build
+  - Improves shell entry performance by skipping full type checking during emit
+
 - **devenv/otel.nix**: TRACEPARENT propagation for shell entry waterfall tracing
   - `setup:gate` generates root TRACEPARENT for shell entry traces
   - `setup:save-hash` emits a `devenv:shell:entry` root span

@@ -51,7 +51,7 @@ let
   # The outer trace.exec wrapper provides the parent ts:check/ts:build span.
   #
   # When OTEL is not available, runs plain tsc --build (no diagnostics flags).
-  tscWithDiagnostics = tsconfigArg: ''
+  tscWithDiagnostics = tsconfigArg: extraArgs: ''
     set -euo pipefail
 
     # Only add diagnostics flags when OTEL tracing is active
@@ -60,7 +60,7 @@ let
       trap 'rm -f "$_tsc_output"' EXIT
 
       _tsc_exit=0
-      ${tscBin} --build ${tsconfigArg} --extendedDiagnostics --verbose > "$_tsc_output" 2>&1 || _tsc_exit=$?
+      ${tscBin} --build ${tsconfigArg} ${extraArgs} --extendedDiagnostics --verbose > "$_tsc_output" 2>&1 || _tsc_exit=$?
 
       # On failure, show the user the error output (filtered to useful lines)
       if [ "$_tsc_exit" -ne 0 ]; then
@@ -168,7 +168,7 @@ let
       exit "$_tsc_exit"
     else
       # No OTEL: run plain tsc (no diagnostics overhead)
-      ${tscBin} --build ${tsconfigArg}
+      ${tscBin} --build ${tsconfigArg} ${extraArgs}
     fi
   '';
 in
@@ -178,7 +178,7 @@ in
   tasks = {
     "ts:check" = {
       description = "Run TypeScript type checking";
-      exec = trace.exec "ts:check" (tscWithDiagnostics tsconfigFile);
+      exec = trace.exec "ts:check" (tscWithDiagnostics tsconfigFile "");
       after = [ "genie:run" "pnpm:install" ] ++ lspAfter;
     };
     "ts:watch" = {
@@ -188,7 +188,12 @@ in
     };
     "ts:build" = {
       description = "Build all packages (tsc --build)";
-      exec = trace.exec "ts:build" (tscWithDiagnostics tsconfigFile);
+      exec = trace.exec "ts:build" (tscWithDiagnostics tsconfigFile "");
+      after = [ "genie:run" "pnpm:install" ] ++ lspAfter;
+    };
+    "ts:emit" = {
+      description = "Emit build outputs without full type checking (tsc --build --noCheck)";
+      exec = trace.exec "ts:emit" (tscWithDiagnostics tsconfigFile "--noCheck");
       after = [ "genie:run" "pnpm:install" ] ++ lspAfter;
     };
     "ts:clean" = {

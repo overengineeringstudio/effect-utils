@@ -149,6 +149,12 @@ dt bun:install
 dt ts:build
 ```
 
+Fast emit-only build (skips full type checking):
+
+```bash
+dt ts:emit
+```
+
 ### Run Tests
 
 ```bash

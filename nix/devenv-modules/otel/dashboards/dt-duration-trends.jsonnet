@@ -8,7 +8,7 @@
 //
 // Main tasks tracked:
 //   - check:quick (the most common developer workflow)
-//   - ts:check, ts:build (TypeScript compilation)
+//   - ts:check, ts:build, ts:emit (TypeScript compilation)
 //   - pnpm:install (dependency installation)
 //   - genie:run (config generation)
 //   - lint:check (linting)
@@ -191,18 +191,23 @@ g.dashboard.new('dt Task Duration Trends')
   ),
 
   // =========================================================================
-  // Row 3: TypeScript — ts:check and ts:build
+  // Row 3: TypeScript — ts:check, ts:build, and ts:emit
   // =========================================================================
   at(g.panel.row.new('TypeScript Compilation'), 0, y.tsRow, 24, 1),
 
   at(
     taskDurationPanel('ts:check duration (p50 / p95 / p99)', 'ts:check'),
-    0, y.tsContent, 12, 8,
+    0, y.tsContent, 8, 8,
   ),
 
   at(
     taskDurationPanel('ts:build duration (p50 / p95 / p99)', 'ts:build'),
-    12, y.tsContent, 12, 8,
+    8, y.tsContent, 8, 8,
+  ),
+
+  at(
+    taskDurationPanel('ts:emit duration (p50 / p95 / p99)', 'ts:emit'),
+    16, y.tsContent, 8, 8,
   ),
 
   // =========================================================================

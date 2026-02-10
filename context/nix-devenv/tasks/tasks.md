@@ -26,17 +26,17 @@ Under the hood, `dt` runs `devenv tasks run "$@" --mode before`, which executes 
 
 Use namespaced names consistently across repos:
 
-| Namespace | Examples                                         |
-| --------- | ------------------------------------------------ |
-| `pnpm:`   | `pnpm:install`, `pnpm:install:app`, `pnpm:clean` |
-| `bun:`    | `bun:install`, `bun:install:scripts`             |
-| `ts:`     | `ts:check`, `ts:build`, `ts:watch`, `ts:clean`   |
-| `genie:`  | `genie:run`, `genie:check`, `genie:watch`        |
-| `lint:`   | `lint:check`, `lint:fix`, `lint:check:format`    |
-| `test:`   | `test:run`, `test:watch`, `test:unit`            |
-| `check:`  | `check:quick`, `check:all`                       |
-| `setup:`  | `setup:run`, `setup:gate`, `setup:save-hash`     |
-| `nix:`    | `nix:build`, `nix:hash`, `nix:check`             |
+| Namespace | Examples                                                  |
+| --------- | --------------------------------------------------------- |
+| `pnpm:`   | `pnpm:install`, `pnpm:install:app`, `pnpm:clean`          |
+| `bun:`    | `bun:install`, `bun:install:scripts`                      |
+| `ts:`     | `ts:check`, `ts:build`, `ts:emit`, `ts:watch`, `ts:clean` |
+| `genie:`  | `genie:run`, `genie:check`, `genie:watch`                 |
+| `lint:`   | `lint:check`, `lint:fix`, `lint:check:format`             |
+| `test:`   | `test:run`, `test:watch`, `test:unit`                     |
+| `check:`  | `check:quick`, `check:all`                                |
+| `setup:`  | `setup:run`, `setup:gate`, `setup:save-hash`              |
+| `nix:`    | `nix:build`, `nix:hash`, `nix:check`                      |
 
 Reminder: `devenv tasks run check` executes all `check:*` tasks and does not run a plain `check` task.
 
@@ -74,7 +74,7 @@ Wire tasks to run automatically when entering the devenv shell:
 ```nix
 imports = [
   (inputs.effect-utils.devenvModules.tasks.setup {
-    tasks = [ "megarepo:generate" "pnpm:install" "genie:run" "ts:build" ];
+    tasks = [ "megarepo:generate" "pnpm:install" "genie:run" "ts:emit" ];
     completionsCliNames = [ "genie" "mr" ];
   })
 ];
@@ -96,19 +96,19 @@ Strict mode (`DEVENV_STRICT=1`) makes setup tasks fail fast.
 
 Import from `inputs.effect-utils.devenvModules.tasks`:
 
-| Module     | Type          | Tasks Provided                                         |
-| ---------- | ------------- | ------------------------------------------------------ |
-| `genie`    | Simple        | `genie:run`, `genie:watch`, `genie:check`              |
-| `megarepo` | Simple        | `megarepo:sync`, `megarepo:generate`, `megarepo:check` |
-| `ts`       | Parameterized | `ts:check`, `ts:watch`, `ts:build`, `ts:clean`         |
-| `setup`    | Parameterized | `devenv:enterShell` wiring, `setup:run`, `setup:gate`  |
-| `check`    | Parameterized | `check:quick`, `check:all`                             |
-| `clean`    | Parameterized | `build:clean`                                          |
-| `test`     | Parameterized | `test:run`, `test:watch`, `test:<name>`                |
-| `lint-oxc` | Parameterized | `lint:check`, `lint:fix`, `lint:check:format`          |
-| `bun`      | Parameterized | `bun:install`, `bun:install:<name>`, `bun:clean`       |
-| `pnpm`     | Parameterized | `pnpm:install`, `pnpm:install:<name>`, `pnpm:clean`    |
-| `nix-cli`  | Parameterized | `nix:hash`, `nix:build`, `nix:check`                   |
+| Module     | Type          | Tasks Provided                                            |
+| ---------- | ------------- | --------------------------------------------------------- |
+| `genie`    | Simple        | `genie:run`, `genie:watch`, `genie:check`                 |
+| `megarepo` | Simple        | `megarepo:sync`, `megarepo:generate`, `megarepo:check`    |
+| `ts`       | Parameterized | `ts:check`, `ts:watch`, `ts:build`, `ts:emit`, `ts:clean` |
+| `setup`    | Parameterized | `devenv:enterShell` wiring, `setup:run`, `setup:gate`     |
+| `check`    | Parameterized | `check:quick`, `check:all`                                |
+| `clean`    | Parameterized | `build:clean`                                             |
+| `test`     | Parameterized | `test:run`, `test:watch`, `test:<name>`                   |
+| `lint-oxc` | Parameterized | `lint:check`, `lint:fix`, `lint:check:format`             |
+| `bun`      | Parameterized | `bun:install`, `bun:install:<name>`, `bun:clean`          |
+| `pnpm`     | Parameterized | `pnpm:install`, `pnpm:install:<name>`, `pnpm:clean`       |
+| `nix-cli`  | Parameterized | `nix:hash`, `nix:build`, `nix:check`                      |
 
 ## Repo-Specific Tasks
 

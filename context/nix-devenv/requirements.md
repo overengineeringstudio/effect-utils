@@ -16,7 +16,7 @@ We manage multiple interconnected repositories using a megarepo approach. Each r
 
 - R1 - Nested megarepos must be independent: a child megarepo must work without its parent's context (no reliance on parent's env vars, workspace, or store paths).
 - R2 - Share devenv task modules via `effect-utils/devenvModules`; avoid repo-specific implementations of common patterns.
-- R3 - Use namespaced task names (e.g. `pnpm:install`, `ts:build`, `check:all`) consistently across repos.
+- R3 - Use namespaced task names (e.g. `pnpm:install`, `ts:emit`, `check:all`) consistently across repos.
 
 ### Must be clean and deterministic
 

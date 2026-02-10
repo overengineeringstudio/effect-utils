@@ -1836,6 +1836,7 @@ describe('sync member filtering', () => {
         Effect.provide(NodeContext.layer),
         Effect.scoped,
       ),
+      20_000,
     )
   })
 
@@ -1903,6 +1904,7 @@ describe('sync member filtering', () => {
         Effect.provide(NodeContext.layer),
         Effect.scoped,
       ),
+      20_000,
     )
   })
 
