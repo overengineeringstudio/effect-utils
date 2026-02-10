@@ -5,43 +5,50 @@
  * Trace data is kept as constants to avoid regeneration.
  */
 
+import { DateTime } from 'effect'
+
 import type { LsAction, LsState, TraceSummary } from '../schema.ts'
 
 // =============================================================================
 // Example Trace Data
 // =============================================================================
 
-/** Realistic trace summaries for default stories. */
+/** Realistic trace summaries for default stories (sorted most recent first). */
 export const exampleTraces: TraceSummary[] = [
   {
     traceId: 'f47ac10b58cc4372a5670e02b2c3d479',
     serviceName: 'dt',
     spanName: 'check:quick',
     durationMs: 22000,
+    startTime: DateTime.unsafeMake(Date.now() - 2 * 60_000),
   },
   {
     traceId: 'abc123def456789012345678abcdef01',
     serviceName: 'dt',
     spanName: 'check:quick',
     durationMs: 18500,
+    startTime: DateTime.unsafeMake(Date.now() - 5 * 60_000),
   },
   {
     traceId: 'deadbeef12345678deadbeef12345678',
     serviceName: 'dt',
     spanName: 'ts:check',
     durationMs: 14200,
+    startTime: DateTime.unsafeMake(Date.now() - 12 * 60_000),
   },
   {
     traceId: '0123456789abcdef0123456789abcdef',
     serviceName: 'dt',
     spanName: 'check:all',
     durationMs: 45600,
+    startTime: DateTime.unsafeMake(Date.now() - 30 * 60_000),
   },
   {
     traceId: 'cafebabe00112233cafebabe00112233',
     serviceName: 'dt',
     spanName: 'check:quick',
     durationMs: 19800,
+    startTime: DateTime.unsafeMake(Date.now() - 55 * 60_000),
   },
 ]
 

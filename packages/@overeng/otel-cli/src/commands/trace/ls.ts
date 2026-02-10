@@ -61,6 +61,7 @@ export const lsCommand = Cli.Command.make(
             serviceName: t.serviceName,
             spanName: t.spanName,
             durationMs: t.durationMs,
+            startTime: t.startTime,
           })),
           query: queryValue,
           limit,

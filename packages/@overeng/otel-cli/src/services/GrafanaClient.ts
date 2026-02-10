@@ -6,7 +6,7 @@
  */
 
 import { HttpClient, HttpClientRequest } from '@effect/platform'
-import { Data, Effect, Schema } from 'effect'
+import { Data, DateTime, Effect, Schema } from 'effect'
 
 import { OtelConfig } from './OtelConfig.ts'
 
@@ -107,6 +107,7 @@ export interface TraceSearchResult {
   readonly serviceName: string
   readonly spanName: string
   readonly durationMs: number
+  readonly startTime: DateTime.Utc
 }
 
 // =============================================================================
@@ -412,6 +413,7 @@ export const parseDataFrames = (
     const serviceCol = fieldIndex['traceService']
     const nameCol = fieldIndex['traceName']
     const durationCol = fieldIndex['traceDuration']
+    const startTimeCol = fieldIndex['startTime']
 
     if (
       traceIdCol === undefined ||
@@ -426,14 +428,20 @@ export const parseDataFrames = (
     const rowCount = traceIds.length
 
     for (let i = 0; i < rowCount; i++) {
+      const startTimeRaw = startTimeCol !== undefined ? values[startTimeCol]?.[i] : undefined
+      const startTimeMs = startTimeRaw !== undefined ? Number(startTimeRaw) : 0
+
       results.push({
         traceId: String(values[traceIdCol]?.[i] ?? ''),
         serviceName: String(values[serviceCol]?.[i] ?? ''),
         spanName: String(values[nameCol]?.[i] ?? ''),
         durationMs: Number(values[durationCol]?.[i] ?? 0),
+        startTime: DateTime.unsafeMake(startTimeMs),
       })
     }
   }
+
+  results.sort((a, b) => DateTime.toEpochMillis(b.startTime) - DateTime.toEpochMillis(a.startTime))
 
   return results
 }

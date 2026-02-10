@@ -1,3 +1,4 @@
+import { DateTime } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import type { GrafanaQueryResponse } from './GrafanaClient.ts'
@@ -14,6 +15,7 @@ const makeQueryResponse = (
     serviceName: string
     spanName: string
     durationMs: number
+    startTimeMs?: number
   }>,
 ): GrafanaQueryResponse => ({
   results: {
@@ -26,6 +28,7 @@ const makeQueryResponse = (
               { name: 'traceService' },
               { name: 'traceName' },
               { name: 'traceDuration' },
+              { name: 'startTime' },
             ],
           },
           data: {
@@ -34,6 +37,7 @@ const makeQueryResponse = (
               rows.map((r) => r.serviceName),
               rows.map((r) => r.spanName),
               rows.map((r) => r.durationMs),
+              rows.map((r) => r.startTimeMs ?? 0),
             ],
           },
         },
@@ -65,28 +69,59 @@ describe('parseDataFrames', () => {
 
   it('parses a single row correctly', () => {
     const response = makeQueryResponse([
-      { traceId: 'abc123', serviceName: 'my-svc', spanName: 'GET /api', durationMs: 42 },
+      {
+        traceId: 'abc123',
+        serviceName: 'my-svc',
+        spanName: 'GET /api',
+        durationMs: 42,
+        startTimeMs: 1_000,
+      },
     ])
 
     const results = parseDataFrames(response)
 
     expect(results).toEqual([
-      { traceId: 'abc123', serviceName: 'my-svc', spanName: 'GET /api', durationMs: 42 },
+      {
+        traceId: 'abc123',
+        serviceName: 'my-svc',
+        spanName: 'GET /api',
+        durationMs: 42,
+        startTime: DateTime.unsafeMake(1_000),
+      },
     ])
   })
 
-  it('parses multiple rows', () => {
+  it('parses multiple rows and sorts by startTime descending', () => {
     const response = makeQueryResponse([
-      { traceId: 'aaa', serviceName: 'svc-a', spanName: 'op-1', durationMs: 10 },
-      { traceId: 'bbb', serviceName: 'svc-b', spanName: 'op-2', durationMs: 20 },
-      { traceId: 'ccc', serviceName: 'svc-c', spanName: 'op-3', durationMs: 30 },
+      {
+        traceId: 'aaa',
+        serviceName: 'svc-a',
+        spanName: 'op-1',
+        durationMs: 10,
+        startTimeMs: 1_000,
+      },
+      {
+        traceId: 'bbb',
+        serviceName: 'svc-b',
+        spanName: 'op-2',
+        durationMs: 20,
+        startTimeMs: 3_000,
+      },
+      {
+        traceId: 'ccc',
+        serviceName: 'svc-c',
+        spanName: 'op-3',
+        durationMs: 30,
+        startTimeMs: 2_000,
+      },
     ])
 
     const results = parseDataFrames(response)
 
     expect(results).toHaveLength(3)
-    expect(results[0]!.traceId).toBe('aaa')
-    expect(results[2]!.durationMs).toBe(30)
+    expect(results[0]!.traceId).toBe('bbb')
+    expect(results[1]!.traceId).toBe('ccc')
+    expect(results[2]!.traceId).toBe('aaa')
   })
 
   it('skips frames missing required columns', () => {
@@ -136,7 +171,13 @@ describe('parseDataFrames', () => {
     const results = parseDataFrames(response)
 
     expect(results).toEqual([
-      { traceId: 'trace-1', serviceName: 'svc', spanName: 'op', durationMs: 100 },
+      {
+        traceId: 'trace-1',
+        serviceName: 'svc',
+        spanName: 'op',
+        durationMs: 100,
+        startTime: DateTime.unsafeMake(0),
+      },
     ])
   })
 
@@ -211,5 +252,6 @@ describe('parseDataFrames', () => {
     expect(results).toHaveLength(1)
     expect(results[0]!.traceId).toBe('12345')
     expect(results[0]!.durationMs).toBe(50)
+    expect(results[0]!.startTime).toEqual(DateTime.unsafeMake(0))
   })
 })

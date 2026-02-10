@@ -17,6 +17,7 @@ export const TraceSummary = Schema.Struct({
   serviceName: Schema.String,
   spanName: Schema.String,
   durationMs: Schema.Number,
+  startTime: Schema.DateTimeUtcFromSelf,
 })
 
 /** Type for a trace summary. */
