@@ -661,9 +661,9 @@ in
   env.OTEL_GRAFANA_URL = "http://127.0.0.1:${toString grafanaPort}";
   env.OTEL_SPAN_SPOOL_DIR = spoolDir;
 
-  enterShell = ''
-    # TMP: debug enterShell env var propagation
-    echo "[TMP otel.nix] TRACEPARENT=''${TRACEPARENT:-NOT_SET} OTEL_SHELL_ENTRY_NS=''${OTEL_SHELL_ENTRY_NS:-NOT_SET}"
+  # mkAfter ensures this runs after setup.nix's task execution and load-exports
+  # sourcing, so TRACEPARENT (from setup:gate) is available regardless of import order.
+  enterShell = lib.mkAfter ''
     _otel_grafana="$OTEL_GRAFANA_URL"
     if [ -n "''${TS_HOSTNAME:-}" ]; then
       _otel_grafana="''${_otel_grafana//127.0.0.1/$TS_HOSTNAME}"
@@ -679,6 +679,39 @@ in
     fi
     _grafana_link="$(printf '\e]8;;%s\x07\e[4mGrafana\e[24m\e]8;;\x07' "$_grafana_link_url")"
     echo "[otel] Start with: devenv up | $_grafana_link"
+
+    # Detect cold vs warm start (setup-git-hash written by setup.nix)
+    _cold_start="false"
+    if [ ! -f .direnv/task-cache/setup-git-hash ]; then
+      _cold_start="true"
+    elif [ "$(git rev-parse HEAD 2>/dev/null || echo no-git)" != "$(cat .direnv/task-cache/setup-git-hash 2>/dev/null || echo "")" ]; then
+      _cold_start="true"
+    fi
+
+    # Emit root shell:entry span covering the full setup duration.
+    # TRACEPARENT and OTEL_SHELL_ENTRY_NS are propagated from setup:gate via
+    # devenv's native task output -> env mechanism (devenv.env convention).
+    if command -v otel-span >/dev/null 2>&1 \
+      && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] \
+      && [ -n "''${TRACEPARENT:-}" ] \
+      && [ -n "''${OTEL_SHELL_ENTRY_NS:-}" ]; then
+      IFS='-' read -r _ _trace_id _span_id _ <<< "$TRACEPARENT"
+      (
+        unset TRACEPARENT
+        otel-span "devenv" "shell:entry" \
+          --trace-id "$_trace_id" \
+          --span-id "$_span_id" \
+          --start-time-ns "$OTEL_SHELL_ENTRY_NS" \
+          --end-time-ns "$(date +%s%N)" \
+          --log-url \
+          --attr "cold_start=$_cold_start" \
+          -- true
+      ) || true
+    fi
+
+    # Mark the moment the shell becomes interactive (after all setup + OTEL work).
+    # Consumed by dt.nix for the shell.ready_ms span attribute.
+    export SHELL_ENTRY_TIME_NS=$(date +%s%N)
   '';
 
   # =========================================================================
@@ -702,6 +735,28 @@ in
         exec ${pkgs.tempo}/bin/tempo \
           -config.file ${tempoConfig}
       '';
+      # Auto-restart on WAL corruption: Tempo's /ready stays healthy even when
+      # WAL files are missing, so we probe the search API which exercises the
+      # storage path and returns 500 when the WAL is corrupt.
+      # Auto-restart on WAL corruption: Tempo's /ready stays healthy even when
+      # WAL files are missing, so we probe the search API which exercises the
+      # storage path and returns 500 when the WAL is corrupt.
+      # Readiness probe failures trigger restart via availability policy.
+      process-compose = {
+        readiness_probe = {
+          exec.command = "${pkgs.curl}/bin/curl -sf http://127.0.0.1:${toString tempoQueryPort}/api/search/tag/service.name/values -o /dev/null";
+          initial_delay_seconds = 15;
+          period_seconds = 30;
+          timeout_seconds = 5;
+          success_threshold = 1;
+          failure_threshold = 3;
+        };
+        availability = {
+          restart = "always";
+          backoff_seconds = 3;
+          max_restarts = 10;
+        };
+      };
     };
 
     "grafana-${toString grafanaPort}" = {

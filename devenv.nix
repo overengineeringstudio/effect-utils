@@ -366,45 +366,9 @@ in
   env.PNPM_STORE_DIR = "${config.devenv.root}/.pnpm-store";
 
   enterShell = ''
-    # TMP: debug enterShell env var propagation
-    echo "[TMP devenv.nix] TRACEPARENT=''${TRACEPARENT:-NOT_SET} OTEL_SHELL_ENTRY_NS=''${OTEL_SHELL_ENTRY_NS:-NOT_SET}"
-    export SHELL_ENTRY_TIME_NS=$(date +%s%N)
     export WORKSPACE_ROOT="$PWD"
     export PATH="$WORKSPACE_ROOT/node_modules/.bin:$PATH"
     ${cliBuildStamp.shellHook}
-
-    # Detect cold vs warm start
-    _cold_start="false"
-    if [ ! -f .direnv/task-cache/setup-git-hash ]; then
-      _cold_start="true"
-    elif [ "$(git rev-parse HEAD 2>/dev/null || echo no-git)" != "$(cat .direnv/task-cache/setup-git-hash 2>/dev/null || echo "")" ]; then
-      _cold_start="true"
-    fi
-
-    # Emit root shell:entry span covering the full setup duration.
-    # TRACEPARENT and OTEL_SHELL_ENTRY_NS are propagated from setup:gate via
-    # devenv's native task output → env mechanism (devenv.env convention).
-    # The root span uses --span-id to match the ID that child task spans reference
-    # as their parent, and --start-time-ns to capture the actual setup start time.
-    if command -v otel-span >/dev/null 2>&1 \
-      && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] \
-      && [ -n "''${TRACEPARENT:-}" ] \
-      && [ -n "''${OTEL_SHELL_ENTRY_NS:-}" ]; then
-      # Parse trace ID and span ID from TRACEPARENT (00-{traceId}-{spanId}-{flags})
-      IFS='-' read -r _ _trace_id _span_id _ <<< "$TRACEPARENT"
-      # Emit root span in subshell (unset TRACEPARENT so otel-span has no parent)
-      (
-        unset TRACEPARENT
-        otel-span "devenv" "shell:entry" \
-          --trace-id "$_trace_id" \
-          --span-id "$_span_id" \
-          --start-time-ns "$OTEL_SHELL_ENTRY_NS" \
-          --end-time-ns "$(date +%s%N)" \
-          --log-url \
-          --attr "cold_start=$_cold_start" \
-          -- true
-      ) || true
-    fi
   '';
 
   git-hooks.enable = true;
