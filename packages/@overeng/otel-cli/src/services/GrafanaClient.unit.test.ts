@@ -28,6 +28,8 @@ const makeTraceWithSpanSet = (opts: {
   traceID: string
   rootServiceName: string
   rootTraceName: string
+  durationMs: number
+  startTimeMs: number
   matched: {
     name: string
     serviceName: string
@@ -38,8 +40,8 @@ const makeTraceWithSpanSet = (opts: {
   traceID: opts.traceID,
   rootServiceName: opts.rootServiceName,
   rootTraceName: opts.rootTraceName,
-  durationMs: 99999,
-  startTimeUnixNano: '0',
+  durationMs: opts.durationMs,
+  startTimeUnixNano: String(BigInt(opts.startTimeMs) * BigInt(1_000_000)),
   spanSets: [
     {
       spans: [
@@ -89,12 +91,14 @@ describe('parseTempoTraces', () => {
     ])
   })
 
-  it('uses matched span data from spanSets over root span info', () => {
+  it('uses root span info even when spanSets contain matched child spans', () => {
     const traces = [
       makeTraceWithSpanSet({
         traceID: 'trace-1',
         rootServiceName: 'devenv',
         rootTraceName: 'shell:entry',
+        durationMs: 510,
+        startTimeMs: 3_000,
         matched: {
           name: 'ts:check',
           serviceName: 'dt',
@@ -109,27 +113,31 @@ describe('parseTempoTraces', () => {
     expect(results).toEqual([
       {
         traceId: 'trace-1',
-        serviceName: 'dt',
-        spanName: 'ts:check',
-        durationMs: 2900,
-        startTime: DateTime.unsafeMake(5_000),
+        serviceName: 'devenv',
+        spanName: 'shell:entry',
+        durationMs: 510,
+        startTime: DateTime.unsafeMake(3_000),
       },
     ])
   })
 
-  it('sorts by matched span startTime descending', () => {
+  it('sorts by trace-level startTime descending', () => {
     const traces = [
       makeTraceWithSpanSet({
         traceID: 'old',
         rootServiceName: 'devenv',
         rootTraceName: 'shell:entry',
-        matched: { name: 'op-1', serviceName: 'dt', startTimeMs: 1_000, durationMs: 10 },
+        durationMs: 100,
+        startTimeMs: 1_000,
+        matched: { name: 'op-1', serviceName: 'dt', startTimeMs: 1_500, durationMs: 10 },
       }),
       makeTraceWithSpanSet({
         traceID: 'new',
         rootServiceName: 'devenv',
         rootTraceName: 'shell:entry',
-        matched: { name: 'op-2', serviceName: 'dt', startTimeMs: 3_000, durationMs: 20 },
+        durationMs: 200,
+        startTimeMs: 3_000,
+        matched: { name: 'op-2', serviceName: 'dt', startTimeMs: 3_500, durationMs: 20 },
       }),
     ]
 
@@ -156,12 +164,14 @@ describe('parseTempoTraces', () => {
     expect(DateTime.toEpochMillis(results[0]!.startTime)).toBe(1_700_000_000_000)
   })
 
-  it('handles "<root span not yet received>" by using matched span data', () => {
+  it('falls back to matched span data when root span not yet received', () => {
     const traces = [
       makeTraceWithSpanSet({
         traceID: 'pending-root',
         rootServiceName: '<root span not yet received>',
         rootTraceName: '',
+        durationMs: 0,
+        startTimeMs: 0,
         matched: {
           name: 'megarepo/status',
           serviceName: 'megarepo',

@@ -19,6 +19,8 @@ const DEFAULT_TRACE_SEARCH_LIMIT = 10
 
 /** Tempo's internal service name, excluded from trace search by default. */
 const TEMPO_INTERNAL_SERVICE = 'tempo-all'
+/** Tempo sentinel value when the root span hasn't been ingested yet. */
+const ROOT_SPAN_NOT_RECEIVED = '<root span not yet received>'
 
 /** HTTP status code threshold for errors. */
 const HTTP_ERROR_STATUS_THRESHOLD = 400
@@ -495,9 +497,8 @@ export const buildGrafanaTraceUrl = ({
  * discovered service names, because TraceQL negation filters (`!=`) are
  * unreliable (see grafana/tempo#2618, grafana/tempo#1988).
  *
- * Appends `| select(name)` to project the matched span's operation name into
- * the response `spanSets`, enabling display of child span names (e.g.
- * `dt/ts:check`) instead of only root span info (`devenv/shell:entry`).
+ * Appends `| select(name)` to populate `spanSets` with matched spans, used
+ * as fallback when the root span hasn't been ingested yet.
  */
 const buildTraceQuery = (options: {
   readonly query?: string | undefined
@@ -522,30 +523,32 @@ const buildTraceQuery = (options: {
 /**
  * Convert Tempo search API traces to our domain type.
  *
- * Prefers matched span data from `spanSets` (populated by `| select(name)`)
- * over root span data. This surfaces child spans like `dt/ts:check` that would
- * otherwise be hidden behind the root span `devenv/shell:entry`.
+ * Uses root span info (service name, trace name, duration) for trace identity.
+ * Falls back to matched span data from `spanSets` only when the root span
+ * hasn't been ingested yet (`<root span not yet received>`).
  */
 export const parseTempoTraces = (
   traces: ReadonlyArray<typeof TempoSearchTrace.Type>,
 ): ReadonlyArray<TraceSearchResult> => {
   const results = traces.map((t) => {
-    const matched = t.spanSets[0]?.spans[0]
-    if (matched !== undefined) {
-      const serviceName =
-        matched.attributes.find((a) => a.key === 'service.name')?.value.stringValue ??
-        t.rootServiceName
-      return {
-        traceId: t.traceID,
-        serviceName,
-        spanName: matched.name,
-        durationMs: Number(BigInt(matched.durationNanos) / BigInt(NANOS_PER_MS)),
-        startTime: DateTime.unsafeMake(
-          Number(BigInt(matched.startTimeUnixNano) / BigInt(NANOS_PER_MS)),
-        ),
+    // When the root span hasn't been ingested yet, fall back to matched span data
+    if (t.rootServiceName === ROOT_SPAN_NOT_RECEIVED) {
+      const matched = t.spanSets[0]?.spans[0]
+      if (matched !== undefined) {
+        const serviceName =
+          matched.attributes.find((a) => a.key === 'service.name')?.value.stringValue ??
+          t.rootServiceName
+        return {
+          traceId: t.traceID,
+          serviceName,
+          spanName: matched.name,
+          durationMs: Number(BigInt(matched.durationNanos) / BigInt(NANOS_PER_MS)),
+          startTime: DateTime.unsafeMake(
+            Number(BigInt(matched.startTimeUnixNano) / BigInt(NANOS_PER_MS)),
+          ),
+        }
       }
     }
-    // Fallback to root span info when spanSets are absent
     return {
       traceId: t.traceID,
       serviceName: t.rootServiceName,
