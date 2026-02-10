@@ -177,7 +177,7 @@ in
 
   tasks = {
     "ts:check" = {
-      description = "Run TypeScript type checking";
+      description = "Type check the whole workspace (tsc --build; emits by design with project references)";
       exec = trace.exec "ts:check" (tscWithDiagnostics tsconfigFile "");
       after = [ "genie:run" "pnpm:install" ] ++ lspAfter;
     };
@@ -187,14 +187,14 @@ in
       after = [ "genie:run" "pnpm:install" ] ++ lspAfter;
     };
     "ts:build" = {
-      description = "Build all packages (tsc --build)";
+      description = "Build all packages with type checking (tsc --build)";
       exec = trace.exec "ts:build" (tscWithDiagnostics tsconfigFile "");
       after = [ "genie:run" "pnpm:install" ] ++ lspAfter;
     };
     "ts:emit" = {
       description = "Emit build outputs without full type checking (tsc --build --noCheck)";
       exec = trace.exec "ts:emit" (tscWithDiagnostics tsconfigFile "--noCheck");
-      after = [ "genie:run" "pnpm:install" ] ++ lspAfter;
+      after = [ "genie:run" "pnpm:install" ];
     };
     "ts:clean" = {
       description = "Remove TypeScript build artifacts";
