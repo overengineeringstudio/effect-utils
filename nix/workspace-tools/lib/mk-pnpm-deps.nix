@@ -75,47 +75,72 @@ in
         # Normalize pnpm store for cross-platform/cross-run determinism.
         # See: https://github.com/NixOS/nixpkgs/issues/422889
 
-        # 1. Canonicalize index JSON AND normalize store file names.
+        # 1. Canonicalize index JSON, normalize CAS file names, and remove orphans.
         #    Eliminates non-determinism from: checkedAt timestamps, mode values
-        #    (umask-dependent), sideEffects (platform/patch-dependent), JSON key
-        #    ordering, and -exec suffix inconsistency (cross-partition hardlinks,
-        #    see NixOS/nixpkgs#422889).
-        find "$STORE_PATH"/v*/index -type f -name "*.json" -print0 \
-          | xargs -0 node -e '
-            const fs = require("fs");
-            const sp = process.env.STORE_PATH;
-            for (const p of process.argv.slice(1)) {
-              const d = JSON.parse(fs.readFileSync(p, "utf8"));
-              if (d.files) {
-                const sorted = {};
-                for (const k of Object.keys(d.files).sort()) {
-                  const f = d.files[k];
-                  const isExec = !!(f.mode & 0o111);
-                  sorted[k] = { checkedAt: 0, integrity: f.integrity, mode: isExec ? 493 : 420, size: f.size };
-                  /* Normalize -exec suffix on the actual store file to match canonical mode.
-                     pnpm CAS path: v10/files/HH/REST[-exec] where HH+REST = hex(integrity). */
-                  const m = f.integrity.match(/^[^-]+-(.+)$/);
-                  if (m) {
-                    const hex = Buffer.from(m[1], "base64").toString("hex");
-                    const dir = hex.slice(0, 2);
-                    const rest = hex.slice(2);
-                    const base = sp + "/v10/files/" + dir + "/" + rest;
-                    const exec = base + "-exec";
-                    if (isExec) {
-                      if (fs.existsSync(base) && !fs.existsSync(exec)) fs.renameSync(base, exec);
-                    } else {
-                      if (fs.existsSync(exec) && !fs.existsSync(base)) fs.renameSync(exec, base);
-                    }
-                  }
-                }
-                d.files = sorted;
-              }
-              delete d.sideEffects;
-              const out = {};
-              for (const k of Object.keys(d).sort()) out[k] = d[k];
-              fs.writeFileSync(p, JSON.stringify(out));
+        #    (umask-dependent), sideEffects/requiresBuild (platform-dependent),
+        #    JSON key ordering, -exec suffix inconsistency (cross-partition
+        #    hardlinks, see NixOS/nixpkgs#422889), and orphan CAS files.
+        node -e '
+          const fs = require("fs");
+          const p = require("path");
+          const sp = process.env.STORE_PATH;
+
+          /* Recursive file walker */
+          function walk(dir, out) {
+            for (const e of fs.readdirSync(dir, {withFileTypes:true})) {
+              const fp = p.join(dir, e.name);
+              if (e.isDirectory()) walk(fp, out); else out.push(fp);
             }
-          '
+            return out;
+          }
+
+          /* Find the v* directory (e.g. v10) */
+          const vdirs = fs.readdirSync(sp).filter(d => /^v\d+$/.test(d));
+          if (!vdirs.length) { console.log("store-norm: no v* dir found"); process.exit(0); }
+          const vdir = p.join(sp, vdirs[0]);
+
+          /* Phase 1: Normalize index JSON + collect referenced CAS paths */
+          const referenced = new Set();
+          const indexDir = p.join(vdir, "index");
+          const indexFiles = walk(indexDir, []).filter(f => f.endsWith(".json"));
+          for (const ip of indexFiles) {
+            const d = JSON.parse(fs.readFileSync(ip, "utf8"));
+            if (d.files) {
+              const sorted = {};
+              for (const k of Object.keys(d.files).sort()) {
+                const f = d.files[k];
+                const isExec = !!(f.mode & 0o111);
+                sorted[k] = { checkedAt: 0, integrity: f.integrity, mode: isExec ? 493 : 420, size: f.size };
+                const m = f.integrity.match(/^[^-]+-(.+)$/);
+                if (m) {
+                  const hex = Buffer.from(m[1], "base64").toString("hex");
+                  const base = p.join(vdir, "files", hex.slice(0,2), hex.slice(2));
+                  const exec = base + "-exec";
+                  const target = isExec ? exec : base;
+                  const other = isExec ? base : exec;
+                  referenced.add(target);
+                  if (!fs.existsSync(target) && fs.existsSync(other)) fs.renameSync(other, target);
+                }
+              }
+              d.files = sorted;
+            }
+            delete d.sideEffects;
+            delete d.requiresBuild;
+            const out = {};
+            for (const k of Object.keys(d).sort()) out[k] = d[k];
+            fs.writeFileSync(ip, JSON.stringify(out));
+          }
+
+          /* Phase 2: Remove orphan CAS files (not referenced by any index) */
+          const filesDir = p.join(vdir, "files");
+          if (fs.existsSync(filesDir)) {
+            let orphans = 0;
+            for (const f of walk(filesDir, [])) {
+              if (!referenced.has(f)) { fs.unlinkSync(f); orphans++; }
+            }
+            if (orphans) console.log("store-norm: removed " + orphans + " orphan CAS files");
+          }
+        '
 
         # 2. Remove everything except files/ and index/ — defensive cleanup.
         #    projects/ contains path-dependent symlinks, tmp/ has random names,
