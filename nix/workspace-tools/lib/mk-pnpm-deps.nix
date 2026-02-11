@@ -73,10 +73,7 @@ in
         pnpm install --frozen-lockfile --ignore-scripts ${installFlags}
         pnpm fetch --frozen-lockfile ${fetchFlags}
 
-        # Normalize pnpm store for cross-platform/cross-run determinism.
-        # See: https://github.com/NixOS/nixpkgs/issues/422889
-
-        # 1. Normalize index JSON metadata (timestamps, platform keys, modes, sideEffects).
+        # Normalize pnpm store metadata for cross-platform determinism.
         for indexDir in "$STORE_PATH"/v*/index; do
           if [ -d "$indexDir" ]; then
             find "$indexDir" -type f -name "*.json" -print0 \
@@ -86,29 +83,9 @@ in
                 # Patched dependency sideEffects keys contain the build platform
                 # (e.g. "darwin;arm64;node24;patch=...") — normalize to a canonical form
                 s/"(linux|darwin);(x64|arm64);(node\d+);/"_platform;/g;
-                # File mode values depend on umask (e.g. 384/0600 vs 420/0644).
-                # Normalize: executable (any +x bit) -> 493/0755, else -> 420/0644.
-                s/"mode":(\d+)/qq{"mode":} . ($1 & 0111 ? 493 : 420)/ge;
-                # sideEffects records patch results including umask-dependent file
-                # lists and modes — strip entirely (pnpm re-applies patches on install).
-                s/,"sideEffects":\{.*\}(?=\}$)//;
               '
           fi
         done
-
-        # 2. Remove projects/ dir — contains symlinks named after sha256(build_path),
-        #    which changes when derivation inputs change (e.g. source .ts files).
-        #    Not needed for offline installs.
-        rm -rf "$STORE_PATH"/v*/projects
-
-        # 3. Remove tmp/ dir — pnpm 10 can leave randomly-named temp dirs (defensive).
-        rm -rf "$STORE_PATH"/v*/tmp
-
-        # 4. Normalize file permissions — umask can differ across CI runners/sandbox
-        #    environments, and tar captures permissions. Following nixpkgs PR #422975.
-        find "$STORE_PATH" -type d -exec chmod 755 {} +
-        find "$STORE_PATH" -type f -name "*-exec" -exec chmod 555 {} +
-        find "$STORE_PATH" -type f ! -name "*-exec" -exec chmod 444 {} +
 
         mkdir -p $out
         cd $STORE_PATH
