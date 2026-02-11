@@ -16,7 +16,8 @@ let
     workspaceRoot = src;
     extraExcludedSourceNames = [ "context" "scripts" ];
     # Managed by `dt nix:hash:genie` — do not edit manually.
-    pnpmDepsHash = if pkgs.stdenv.isDarwin then "sha256-RVbdCRnWYxoDip1R3AiPuLm/CF7ZIqotNAKcLyAvkbs=" else "sha256-KM/b5cqgy2B3ndT9fpQkZEDSZxnpmwtccWH6gxrDJT0=";
+    # FOD normalization (mk-pnpm-deps.nix) makes this hash platform-independent.
+    pnpmDepsHash = "sha256-FAOsuH+3A57sXp8H+v0BbDN/W8eicQPgRaHr/5HZRo0=";
     lockfileHash = "sha256-AyG56WSvfSkPO2J7KizNIfOyAS35TjV4A69tID4d+NE=";
     packageJsonDepsHash = "sha256-vGC5f0D1JP3TyazuWez475pUTd4XD/slhT89ybmI0Cs=";
     inherit gitRev commitTs dirty;
