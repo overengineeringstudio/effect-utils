@@ -71,183 +71,185 @@ const resolveHome = (p: string) =>
   })
 
 /** Sync dashboard JSON files from source to target/{project}/. */
-export const sync = (opts: {
+export const sync = Effect.fn('DashboardManager.sync')(function* (opts: {
   project: string
   source: string
   target?: string
-}) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const path = yield* Path.Path
+}) {
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
 
-    const target = yield* resolveHome(opts.target ?? getDefaultTarget())
-    const source = path.resolve(opts.source)
-    const projectDir = path.join(target, opts.project)
+  const target = yield* resolveHome(opts.target ?? getDefaultTarget())
+  const source = path.resolve(opts.source)
+  const projectDir = path.join(target, opts.project)
 
-    const sourceExists = yield* fs.exists(source)
-    if (!sourceExists) {
-      return yield* new DashboardError({
-        reason: 'NotFound',
-        message: `Source directory not found: ${source}`,
-      })
-    }
+  const sourceExists = yield* fs.exists(source)
+  if (!sourceExists) {
+    return yield* new DashboardError({
+      reason: 'NotFound',
+      message: `Source directory not found: ${source}`,
+    })
+  }
 
-    yield* fs.makeDirectory(projectDir, { recursive: true }).pipe(
-      Effect.mapError(
-        (cause) =>
-          new DashboardError({
-            reason: 'WriteFailed',
-            message: `Failed to create project directory: ${projectDir}`,
-            cause,
-          }),
-      ),
-    )
+  yield* fs.makeDirectory(projectDir, { recursive: true }).pipe(
+    Effect.mapError(
+      (cause) =>
+        new DashboardError({
+          reason: 'WriteFailed',
+          message: `Failed to create project directory: ${projectDir}`,
+          cause,
+        }),
+    ),
+  )
 
-    const entries = yield* fs.readDirectory(source).pipe(
+  const entries = yield* fs.readDirectory(source).pipe(
+    Effect.mapError(
+      (cause) =>
+        new DashboardError({
+          reason: 'ReadFailed',
+          message: `Failed to read source directory: ${source}`,
+          cause,
+        }),
+    ),
+  )
+
+  const jsonFiles = entries.filter((f) => f.endsWith('.json'))
+  const dashboards: Array<{ filename: string }> = []
+
+  for (const filename of jsonFiles) {
+    const srcPath = path.join(source, filename)
+    const dstPath = path.join(projectDir, filename)
+
+    const content = yield* fs.readFileString(srcPath).pipe(
       Effect.mapError(
         (cause) =>
           new DashboardError({
             reason: 'ReadFailed',
-            message: `Failed to read source directory: ${source}`,
+            message: `Failed to read dashboard: ${srcPath}`,
             cause,
           }),
       ),
     )
 
-    const jsonFiles = entries.filter((f) => f.endsWith('.json'))
-    const dashboards: Array<{ filename: string }> = []
+    yield* fs.writeFileString(dstPath, content).pipe(
+      Effect.mapError(
+        (cause) =>
+          new DashboardError({
+            reason: 'WriteFailed',
+            message: `Failed to write dashboard: ${dstPath}`,
+            cause,
+          }),
+      ),
+    )
 
-    for (const filename of jsonFiles) {
-      const srcPath = path.join(source, filename)
-      const dstPath = path.join(projectDir, filename)
+    dashboards.push({ filename })
+  }
 
-      const content = yield* fs.readFileString(srcPath).pipe(
-        Effect.mapError(
-          (cause) =>
-            new DashboardError({
-              reason: 'ReadFailed',
-              message: `Failed to read dashboard: ${srcPath}`,
-              cause,
-            }),
-        ),
-      )
+  const manifest: DashboardManifest = {
+    project: opts.project,
+    source,
+    syncedAt: new Date().toISOString(),
+    dashboards,
+  }
 
-      yield* fs.writeFileString(dstPath, content).pipe(
-        Effect.mapError(
-          (cause) =>
-            new DashboardError({
-              reason: 'WriteFailed',
-              message: `Failed to write dashboard: ${dstPath}`,
-              cause,
-            }),
-        ),
-      )
+  const manifestJson = yield* Schema.encode(Schema.parseJson(DashboardManifest, { space: 2 }))(
+    manifest,
+  )
 
-      dashboards.push({ filename })
-    }
+  yield* fs.writeFileString(path.join(projectDir, MANIFEST_FILENAME), manifestJson).pipe(
+    Effect.mapError(
+      (cause) =>
+        new DashboardError({
+          reason: 'WriteFailed',
+          message: `Failed to write manifest`,
+          cause,
+        }),
+    ),
+  )
 
-    const manifest: DashboardManifest = {
-      project: opts.project,
-      source,
-      syncedAt: new Date().toISOString(),
-      dashboards,
-    }
-
-    yield* fs
-      .writeFileString(path.join(projectDir, MANIFEST_FILENAME), JSON.stringify(manifest, null, 2))
-      .pipe(
-        Effect.mapError(
-          (cause) =>
-            new DashboardError({
-              reason: 'WriteFailed',
-              message: `Failed to write manifest`,
-              cause,
-            }),
-        ),
-      )
-
-    return manifest
-  }).pipe(Effect.withSpan('DashboardManager.sync'))
+  return manifest
+})
 
 /** List all synced projects from target directory. */
-export const list = (opts?: { target?: string }) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const path = yield* Path.Path
+export const list = Effect.fn('DashboardManager.list')(function* (opts?: { target?: string }) {
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
 
-    const target = yield* resolveHome(opts?.target ?? getDefaultTarget())
-    const exists = yield* fs.exists(target)
-    if (!exists) return []
+  const target = yield* resolveHome(opts?.target ?? getDefaultTarget())
+  const exists = yield* fs.exists(target)
+  if (!exists) return []
 
-    const entries = yield* fs.readDirectory(target).pipe(
-      Effect.mapError(
-        (cause) =>
-          new DashboardError({
-            reason: 'ReadFailed',
-            message: `Failed to read target directory: ${target}`,
-            cause,
-          }),
+  const entries = yield* fs.readDirectory(target).pipe(
+    Effect.mapError(
+      (cause) =>
+        new DashboardError({
+          reason: 'ReadFailed',
+          message: `Failed to read target directory: ${target}`,
+          cause,
+        }),
+    ),
+  )
+
+  const manifests: Array<DashboardManifest> = []
+
+  for (const entry of entries) {
+    const manifestPath = path.join(target, entry, MANIFEST_FILENAME)
+    const manifestExists = yield* fs.exists(manifestPath)
+    if (!manifestExists) continue
+
+    const raw = yield* fs.readFileString(manifestPath).pipe(Effect.orElseSucceed(() => ''))
+    if (raw.length === 0) continue
+
+    const parsed = yield* Schema.decodeUnknown(Schema.parseJson(DashboardManifest))(raw).pipe(
+      Effect.orElseSucceed(
+        () =>
+          ({
+            project: entry,
+            source: 'unknown',
+            syncedAt: 'unknown',
+            dashboards: [],
+          }) satisfies DashboardManifest,
       ),
     )
 
-    const manifests: Array<DashboardManifest> = []
+    manifests.push(parsed)
+  }
 
-    for (const entry of entries) {
-      const manifestPath = path.join(target, entry, MANIFEST_FILENAME)
-      const manifestExists = yield* fs.exists(manifestPath)
-      if (!manifestExists) continue
-
-      const raw = yield* fs.readFileString(manifestPath).pipe(Effect.orElseSucceed(() => ''))
-      if (raw.length === 0) continue
-
-      const parsed = yield* Schema.decodeUnknown(DashboardManifest)(JSON.parse(raw)).pipe(
-        Effect.orElseSucceed(
-          () =>
-            ({
-              project: entry,
-              source: 'unknown',
-              syncedAt: 'unknown',
-              dashboards: [],
-            }) satisfies DashboardManifest,
-        ),
-      )
-
-      manifests.push(parsed)
-    }
-
-    return manifests
-  }).pipe(Effect.withSpan('DashboardManager.list'))
+  return manifests
+})
 
 /** Remove a project's dashboards from the target directory. */
-export const remove = (opts: { project: string; target?: string }) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const path = yield* Path.Path
+export const remove = Effect.fn('DashboardManager.remove')(function* (opts: {
+  project: string
+  target?: string
+}) {
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
 
-    const target = yield* resolveHome(opts.target ?? getDefaultTarget())
-    const projectDir = path.join(target, opts.project)
+  const target = yield* resolveHome(opts.target ?? getDefaultTarget())
+  const projectDir = path.join(target, opts.project)
 
-    const exists = yield* fs.exists(projectDir)
-    if (!exists) {
-      return yield* new DashboardError({
-        reason: 'NotFound',
-        message: `Project not found: ${opts.project}`,
-      })
-    }
+  const exists = yield* fs.exists(projectDir)
+  if (!exists) {
+    return yield* new DashboardError({
+      reason: 'NotFound',
+      message: `Project not found: ${opts.project}`,
+    })
+  }
 
-    yield* fs.remove(projectDir, { recursive: true }).pipe(
-      Effect.mapError(
-        (cause) =>
-          new DashboardError({
-            reason: 'WriteFailed',
-            message: `Failed to remove project directory: ${projectDir}`,
-            cause,
-          }),
-      ),
-    )
+  yield* fs.remove(projectDir, { recursive: true }).pipe(
+    Effect.mapError(
+      (cause) =>
+        new DashboardError({
+          reason: 'WriteFailed',
+          message: `Failed to remove project directory: ${projectDir}`,
+          cause,
+        }),
+    ),
+  )
 
-    return { project: opts.project, removed: true }
-  }).pipe(Effect.withSpan('DashboardManager.remove'))
+  return { project: opts.project, removed: true }
+})
 
 /** Auto-detect project config from .otel/dashboards.json or fallback paths.
  *
@@ -256,76 +258,75 @@ export const remove = (opts: { project: string; target?: string }) =>
  * 2. OTEL_DASHBOARDS_DIR env var (Nix-built dashboard directory)
  * 3. .devenv/otel/dashboards/ directory
  */
-export const detectProjectConfig = (cwd: string) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const path = yield* Path.Path
+export const detectProjectConfig = Effect.fn('DashboardManager.detectProjectConfig')(function* (
+  cwd: string,
+) {
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
 
-    const configPath = path.join(cwd, '.otel', 'dashboards.json')
-    const configExists = yield* fs.exists(configPath)
+  const configPath = path.join(cwd, '.otel', 'dashboards.json')
+  const configExists = yield* fs.exists(configPath)
 
-    if (configExists) {
-      const raw = yield* fs.readFileString(configPath).pipe(
-        Effect.mapError(
-          (cause) =>
-            new DashboardError({
-              reason: 'ReadFailed',
-              message: `Failed to read config: ${configPath}`,
-              cause,
-            }),
-        ),
-      )
+  if (configExists) {
+    const raw = yield* fs.readFileString(configPath).pipe(
+      Effect.mapError(
+        (cause) =>
+          new DashboardError({
+            reason: 'ReadFailed',
+            message: `Failed to read config: ${configPath}`,
+            cause,
+          }),
+      ),
+    )
 
-      const config = yield* Schema.decodeUnknown(DashboardProjectConfig)(JSON.parse(raw)).pipe(
-        Effect.mapError(
-          (cause) =>
-            new DashboardError({
-              reason: 'ParseFailed',
-              message: `Invalid .otel/dashboards.json`,
-              cause,
-            }),
-        ),
-      )
+    const config = yield* Schema.decodeUnknown(Schema.parseJson(DashboardProjectConfig))(raw).pipe(
+      Effect.mapError(
+        (cause) =>
+          new DashboardError({
+            reason: 'ParseFailed',
+            message: `Invalid .otel/dashboards.json`,
+            cause,
+          }),
+      ),
+    )
 
-      /* Resolve source: if it starts with $, expand the env var */
-      let source = config.source
-      if (source.startsWith('$')) {
-        const envVar = source.includes('/') ? source.slice(1, source.indexOf('/')) : source.slice(1)
-        const envVal = process.env[envVar]
-        if (envVal) {
-          source = source.includes('/')
-            ? `${envVal}${source.slice(source.indexOf('/'))}`
-            : envVal
-        }
-      }
-
-      return {
-        project: config.project,
-        source: path.resolve(cwd, source),
+    /* Resolve source: if it starts with $, expand the env var */
+    let source = config.source
+    if (source.startsWith('$')) {
+      const envVar = source.includes('/') ? source.slice(1, source.indexOf('/')) : source.slice(1)
+      const envVal = process.env[envVar]
+      if (envVal) {
+        source = source.includes('/') ? `${envVal}${source.slice(source.indexOf('/'))}` : envVal
       }
     }
 
-    /* Fallback: OTEL_DASHBOARDS_DIR env var (set by Nix devenv module) */
-    const nixDashboardsDir = process.env['OTEL_DASHBOARDS_DIR']
-    if (nixDashboardsDir) {
-      const dirExists = yield* fs.exists(nixDashboardsDir)
-      if (dirExists) {
-        const project = path.basename(cwd)
-        return { project, source: nixDashboardsDir }
-      }
+    return {
+      project: config.project,
+      source: path.resolve(cwd, source),
     }
+  }
 
-    /* Fallback: check .devenv/otel/dashboards/ */
-    const devenvPath = path.join(cwd, '.devenv', 'otel', 'dashboards')
-    const devenvExists = yield* fs.exists(devenvPath)
-
-    if (devenvExists) {
+  /* Fallback: OTEL_DASHBOARDS_DIR env var (set by Nix devenv module) */
+  const nixDashboardsDir = process.env['OTEL_DASHBOARDS_DIR']
+  if (nixDashboardsDir) {
+    const dirExists = yield* fs.exists(nixDashboardsDir)
+    if (dirExists) {
       const project = path.basename(cwd)
-      return { project, source: devenvPath }
+      return { project, source: nixDashboardsDir }
     }
+  }
 
-    return yield* new DashboardError({
-      reason: 'NotFound',
-      message: `No dashboard config found. Create .otel/dashboards.json, set OTEL_DASHBOARDS_DIR, or have .devenv/otel/dashboards/ present.`,
-    })
-  }).pipe(Effect.withSpan('DashboardManager.detectProjectConfig'))
+  /* Fallback: check .devenv/otel/dashboards/ */
+  const devenvPath = path.join(cwd, '.devenv', 'otel', 'dashboards')
+  const devenvExists = yield* fs.exists(devenvPath)
+
+  if (devenvExists) {
+    const project = path.basename(cwd)
+    return { project, source: devenvPath }
+  }
+
+  return yield* new DashboardError({
+    reason: 'NotFound',
+    message: `No dashboard config found. Create .otel/dashboards.json, set OTEL_DASHBOARDS_DIR, or have .devenv/otel/dashboards/ present.`,
+  })
+})

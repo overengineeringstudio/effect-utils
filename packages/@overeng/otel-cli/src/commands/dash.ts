@@ -125,7 +125,7 @@ const removeCommand = Cli.Command.make(
       })
       yield* Effect.log(`Removed dashboards for "${project}"`)
     }).pipe(Effect.provide(outputModeLayer(output))),
-).pipe(Cli.Command.withDescription('Remove a project\'s dashboards'))
+).pipe(Cli.Command.withDescription("Remove a project's dashboards"))
 
 // =============================================================================
 // otel dash (parent command)
