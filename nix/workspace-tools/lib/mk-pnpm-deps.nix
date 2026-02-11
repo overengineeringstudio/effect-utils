@@ -49,7 +49,6 @@ in
         pkgs.cacert
         pkgs.zstd
         pkgs.findutils
-        pkgs.perl
       ];
 
       dontConfigure = true;
@@ -76,25 +75,29 @@ in
         # Normalize pnpm store for cross-platform/cross-run determinism.
         # See: https://github.com/NixOS/nixpkgs/issues/422889
 
-        # 1. Normalize index JSON metadata (timestamps, platform keys, modes, sideEffects).
-        for indexDir in "$STORE_PATH"/v*/index; do
-          if [ -d "$indexDir" ]; then
-            find "$indexDir" -type f -name "*.json" -print0 \
-              | xargs -0 perl -pi -e '
-                # checkedAt timestamps are non-deterministic
-                s/"checkedAt":[0-9]+/"checkedAt":0/g;
-                # Patched dependency sideEffects keys contain the build platform
-                # (e.g. "darwin;arm64;node24;patch=...") — normalize to a canonical form
-                s/"(linux|darwin);(x64|arm64);(node\d+);/"_platform;/g;
-                # File mode values depend on umask (e.g. 384/0600 vs 420/0644).
-                # Normalize: executable (any +x bit) -> 493/0755, else -> 420/0644.
-                s/"mode":(\d+)/qq{"mode":} . ($1 & 0111 ? 493 : 420)/ge;
-                # sideEffects records patch results including umask-dependent file
-                # lists and modes — strip entirely (pnpm re-applies patches on install).
-                s/,"sideEffects":\{.*\}(?=\}$)//;
-              '
-          fi
-        done
+        # 1. Canonicalize index JSON — parse, normalize values, sort keys, re-serialize.
+        #    Eliminates non-determinism from: checkedAt timestamps, mode values
+        #    (umask-dependent), sideEffects (platform/patch-dependent), and any
+        #    JSON key ordering differences across pnpm versions or filesystems.
+        find "$STORE_PATH"/v*/index -type f -name "*.json" -print0 \
+          | xargs -0 node -e '
+            const fs = require("fs");
+            for (const p of process.argv.slice(1)) {
+              const d = JSON.parse(fs.readFileSync(p, "utf8"));
+              if (d.files) {
+                const sorted = {};
+                for (const k of Object.keys(d.files).sort()) {
+                  const f = d.files[k];
+                  sorted[k] = { checkedAt: 0, integrity: f.integrity, mode: f.mode & 0o111 ? 493 : 420, size: f.size };
+                }
+                d.files = sorted;
+              }
+              delete d.sideEffects;
+              const out = {};
+              for (const k of Object.keys(d).sort()) out[k] = d[k];
+              fs.writeFileSync(p, JSON.stringify(out));
+            }
+          '
 
         # 2. Remove projects/ dir — contains symlinks named after sha256(build_path),
         #    which changes when derivation inputs change (e.g. source .ts files).
