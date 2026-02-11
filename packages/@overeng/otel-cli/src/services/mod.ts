@@ -10,6 +10,15 @@ export {
   sendTestSpan,
 } from './CollectorClient.ts'
 export {
+  DashboardError,
+  DashboardManifest,
+  DashboardProjectConfig,
+  sync as syncDashboards,
+  list as listDashboards_,
+  remove as removeDashboards,
+  detectProjectConfig,
+} from './DashboardManager.ts'
+export {
   GrafanaError,
   checkHealth as checkGrafanaHealth,
   getTempoUid,
