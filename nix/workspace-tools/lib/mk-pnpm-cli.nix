@@ -188,14 +188,16 @@ let
               )
             ) workspaceMembers;
         in
-        (!isExcluded && type == "directory")
-        || isInPackage
-        || isInPatches
-        || isParentDir
-        || isWorkspaceMemberPackageJson
-        || isInWorkspaceMember
-        || isWorkspaceMemberDir
-        || isWorkspaceMemberParentDir;
+        !isExcluded
+        && (
+          isInPackage
+          || isInPatches
+          || isParentDir
+          || isWorkspaceMemberPackageJson
+          || isInWorkspaceMember
+          || isWorkspaceMemberDir
+          || isWorkspaceMemberParentDir
+        );
     };
 
   # Fetch pnpm dependencies using the shared helper.
