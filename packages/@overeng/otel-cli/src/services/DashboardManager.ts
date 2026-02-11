@@ -60,6 +60,15 @@ const getDefaultTarget = () => {
 // Operations
 // =============================================================================
 
+/** Reject project names that could escape the target directory. */
+const validateProjectName = (project: string) =>
+  project.includes('..') || project.includes('/')
+    ? new DashboardError({
+        reason: 'ParseFailed',
+        message: `Invalid project name "${project}": must not contain ".." or "/"`,
+      })
+    : Effect.succeed(project)
+
 /** Resolve ~ to home directory. */
 const resolveHome = (p: string) =>
   Effect.sync(() => {
@@ -76,6 +85,7 @@ export const sync = Effect.fn('DashboardManager.sync')(function* (opts: {
   source: string
   target?: string
 }) {
+  yield* validateProjectName(opts.project)
   const fs = yield* FileSystem.FileSystem
   const path = yield* Path.Path
 
@@ -223,6 +233,7 @@ export const remove = Effect.fn('DashboardManager.remove')(function* (opts: {
   project: string
   target?: string
 }) {
+  yield* validateProjectName(opts.project)
   const fs = yield* FileSystem.FileSystem
   const path = yield* Path.Path
 
