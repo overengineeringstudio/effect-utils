@@ -151,7 +151,7 @@ let
       echo "=== Iteration $iteration ==="
       
       set +e
-      output=$(nix build "$flakeRef" --no-link --option substituters "https://cache.nixos.org" 2>&1)
+      output=$(nix build "$flakeRef" --no-link -L --option substituters "https://cache.nixos.org" 2>&1)
       status=$?
       set -e
 
@@ -287,7 +287,7 @@ let
       fi
     fi
 
-    if output=$(nix build "$flakeRef" --no-link --option substituters "https://cache.nixos.org" 2>&1); then
+    if output=$(nix build "$flakeRef" --no-link -L --option substituters "https://cache.nixos.org" 2>&1); then
       echo "✓ $name: up to date"
       exit 0
     fi
