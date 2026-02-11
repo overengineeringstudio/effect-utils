@@ -17,7 +17,7 @@ import {
   unicodeSymbols,
 } from '@overeng/tui-react'
 
-import type { GenieState, GenieFile, GenieFileStatus } from './schema.ts'
+import type { GenieState, GenieFile, GenieFileStatus } from '../core/schema.ts'
 
 // =============================================================================
 // Icons (matching megarepo design system)

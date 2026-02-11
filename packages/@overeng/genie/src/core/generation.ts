@@ -2,12 +2,12 @@ import { createHash } from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
 
+import type { Path } from '@effect/platform'
 import {
   Command,
   type CommandExecutor,
   type Error as PlatformError,
   FileSystem,
-  Path,
 } from '@effect/platform'
 import { Duration, Effect, Option } from 'effect'
 

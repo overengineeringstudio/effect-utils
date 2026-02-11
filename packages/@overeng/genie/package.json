@@ -5,13 +5,15 @@
   "type": "module",
   "exports": {
     ".": "./src/runtime/mod.ts",
-    "./cli": "./src/build/mod.tsx"
+    "./cli": "./src/build/mod.tsx",
+    "./sdk": "./src/sdk/mod.ts"
   },
   "publishConfig": {
     "access": "public",
     "exports": {
       ".": "./dist/src/runtime/mod.js",
-      "./cli": "./dist/src/build/mod.js"
+      "./cli": "./dist/src/build/mod.js",
+      "./sdk": "./dist/src/sdk/mod.js"
     }
   },
   "scripts": {
