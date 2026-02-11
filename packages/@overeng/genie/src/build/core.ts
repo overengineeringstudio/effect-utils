@@ -12,7 +12,7 @@ import { GenieFileError, GenieGenerationFailedError } from './errors.ts'
 import { type GenieEvent, type GenieEventBus, emit } from './events.ts'
 import { checkFile, errorOriginatesInFile, generateFile, isTdzError } from './generation.ts'
 import type { GenieFileStatus, GenieSummary } from './schema.ts'
-import type { GenerateSuccess } from './types.ts'
+import type { GenerateSuccess } from './types.sdk.ts'
 import { runGenieValidation } from './validation.ts'
 
 // ---------------------------------------------------------------------------

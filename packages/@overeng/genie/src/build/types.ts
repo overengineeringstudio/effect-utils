@@ -7,9 +7,6 @@ import type { CurrentWorkingDirectory } from '@overeng/utils/node'
 
 import type { GenieCheckError, GenieGenerationFailedError, GenieImportError } from './errors.ts'
 
-// Re-export GenieContext from runtime (single source of truth)
-export type { GenieContext } from '../runtime/mod.ts'
-
 /** Configuration options for genie commands */
 export type GenieCommandConfig = {
   cwd: string
@@ -34,13 +31,3 @@ export type GenieCommandError =
   | GenieGenerationFailedError
   | GenieImportError
   | PlatformError.PlatformError
-
-/** Successful generation of a single file */
-export type GenerateSuccess =
-  | { _tag: 'created'; targetFilePath: string }
-  | { _tag: 'updated'; targetFilePath: string; diffSummary?: string }
-  | { _tag: 'unchanged'; targetFilePath: string }
-  | { _tag: 'skipped'; targetFilePath: string; reason: string }
-
-/** Result of attempting to stat a file - handles broken symlinks gracefully */
-export type StatResult = { type: 'directory' } | { type: 'file' } | { type: 'skip'; reason: string }

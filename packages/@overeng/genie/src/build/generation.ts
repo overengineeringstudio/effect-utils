@@ -16,7 +16,7 @@ import { FileSystemBacking } from '@overeng/utils/node'
 
 import { ensureImportMapResolver } from './discovery.ts'
 import { GenieCheckError, GenieFileError, GenieImportError } from './errors.ts'
-import type { GenerateSuccess, GenieContext } from './types.ts'
+import type { GenerateSuccess, GenieContext } from './types.sdk.ts'
 
 /**
  * Safely convert error to string.

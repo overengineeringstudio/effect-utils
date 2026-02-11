@@ -22,6 +22,9 @@ All notable changes to this project will be documented in this file.
   logic from TypeScript without the CLI. Core orchestration extracted into shared `core.ts` using
   PubSub + Stream event bus pattern, consumed by both CLI (TUI progress) and SDK (silent).
 
+- **genie**: Separate SDK types from CLI/TUI types so `@overeng/genie/sdk` no longer transitively
+  pulls in `@overeng/tui-react` — consumers no longer need `jsx` in their tsconfig.
+
 - **devenv/tasks/shared/worktree-guard.nix**: Git hook to enforce worktree workflow
   - Refuses commits on the default branch (detected via `refs/remotes/<remote>/HEAD` with fallback)
   - Optionally refuses commits from the primary worktree
