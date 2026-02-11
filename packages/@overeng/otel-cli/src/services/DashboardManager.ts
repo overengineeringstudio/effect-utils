@@ -2,7 +2,7 @@
  * DashboardManager service
  *
  * Filesystem operations for syncing Grafana dashboard JSON files from project
- * source directories to the system-level ~/.otel/dashboards/ target.
+ * source directories to the system-level ~/.local/state/otel/dashboards/ target.
  * Uses @effect/platform FileSystem + Path for all IO.
  */
 
@@ -49,7 +49,12 @@ export class DashboardError extends Data.TaggedError('DashboardError')<{
 // =============================================================================
 
 const MANIFEST_FILENAME = '_manifest.json'
-const DEFAULT_TARGET = '~/.otel/dashboards'
+
+const getDefaultTarget = () => {
+  const home = process.env['HOME'] ?? process.env['USERPROFILE'] ?? '/tmp'
+  const stateHome = process.env['XDG_STATE_HOME'] ?? `${home}/.local/state`
+  return `${stateHome}/otel/dashboards`
+}
 
 // =============================================================================
 // Operations
@@ -75,7 +80,7 @@ export const sync = (opts: {
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
 
-    const target = yield* resolveHome(opts.target ?? DEFAULT_TARGET)
+    const target = yield* resolveHome(opts.target ?? getDefaultTarget())
     const source = path.resolve(opts.source)
     const projectDir = path.join(target, opts.project)
 
@@ -170,7 +175,7 @@ export const list = (opts?: { target?: string }) =>
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
 
-    const target = yield* resolveHome(opts?.target ?? DEFAULT_TARGET)
+    const target = yield* resolveHome(opts?.target ?? getDefaultTarget())
     const exists = yield* fs.exists(target)
     if (!exists) return []
 
@@ -219,7 +224,7 @@ export const remove = (opts: { project: string; target?: string }) =>
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
 
-    const target = yield* resolveHome(opts.target ?? DEFAULT_TARGET)
+    const target = yield* resolveHome(opts.target ?? getDefaultTarget())
     const projectDir = path.join(target, opts.project)
 
     const exists = yield* fs.exists(projectDir)

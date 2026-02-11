@@ -2,7 +2,7 @@
  * otel dash
  *
  * Dashboard provisioning commands for syncing project dashboards
- * to the system-level Grafana instance at ~/.otel/dashboards/.
+ * to the system-level Grafana instance at ~/.local/state/otel/dashboards/.
  */
 
 import * as Cli from '@effect/cli'
@@ -27,7 +27,7 @@ const sourceOption = Cli.Options.text('source').pipe(
 )
 
 const targetOption = Cli.Options.text('target').pipe(
-  Cli.Options.withDescription('Target base directory (default: ~/.otel/dashboards)'),
+  Cli.Options.withDescription('Target base directory (default: ~/.local/state/otel/dashboards)'),
   Cli.Options.optional,
 )
 
@@ -67,7 +67,7 @@ const syncCommand = Cli.Command.make(
         yield* Effect.log(`  ${db.filename}`)
       }
     }).pipe(Effect.provide(outputModeLayer(output))),
-).pipe(Cli.Command.withDescription('Sync project dashboards to ~/.otel/dashboards/'))
+).pipe(Cli.Command.withDescription('Sync project dashboards to ~/.local/state/otel/dashboards/'))
 
 // =============================================================================
 // otel dash list
