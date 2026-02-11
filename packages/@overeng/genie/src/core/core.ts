@@ -8,8 +8,8 @@ import { Effect, Either, Option } from 'effect'
 import { assertNever } from '@overeng/utils'
 
 import { findGenieFiles } from './discovery.ts'
-import { GenieFileError, GenieGenerationFailedError } from './errors.ts'
-import { type GenieEvent, type GenieEventBus, emit } from './events.ts'
+import { GenieGenerationFailedError } from './errors.ts'
+import { type GenieEventBus, emit } from './events.ts'
 import { checkFile, errorOriginatesInFile, generateFile, isTdzError } from './generation.ts'
 import type { GenieFileStatus, GenieSummary } from './schema.ts'
 import type { GenerateSuccess } from './types.ts'
@@ -59,6 +59,7 @@ export const mapResultToStatus = (result: { _tag: string }): GenieFileStatus => 
 // Core types
 // ---------------------------------------------------------------------------
 
+/** Internal options passed to the core generation pipeline. */
 export type CoreGenerateOptions = {
   cwd: string
   readOnly: boolean
@@ -66,11 +67,13 @@ export type CoreGenerateOptions = {
   oxfmtConfigPath: Option.Option<string>
 }
 
+/** Internal options passed to the core check (up-to-date verification) pipeline. */
 export type CoreCheckOptions = {
   cwd: string
   oxfmtConfigPath: Option.Option<string>
 }
 
+/** Aggregate result of a full generation run including per-file outcomes and summary counts. */
 export type GenieGenerateResult = {
   summary: GenieSummary
   files: Array<GenerateSuccess>
@@ -102,7 +105,13 @@ const discoverAndValidate = Effect.fn('genie/discoverAndValidate')(function* (cw
 })
 
 /** Compute summary counts from a list of successes and a failure count. */
-const computeSummary = (successes: Array<GenerateSuccess>, failedCount: number): GenieSummary => ({
+const computeSummary = ({
+  successes,
+  failedCount,
+}: {
+  successes: Array<GenerateSuccess>
+  failedCount: number
+}): GenieSummary => ({
   created: successes.filter((s) => s._tag === 'created').length,
   updated: successes.filter((s) => s._tag === 'updated').length,
   unchanged: successes.filter((s) => s._tag === 'unchanged').length,
@@ -140,7 +149,7 @@ export const generateAll = ({
     const genieFiles = yield* discoverAndValidate(cwd)
 
     if (genieFiles.length === 0) {
-      const summary = computeSummary([], 0)
+      const summary = computeSummary({ successes: [], failedCount: 0 })
       yield* emit({ _tag: 'Complete', summary })
       return { summary, files: [] }
     }
@@ -230,7 +239,7 @@ export const generateAll = ({
         })
       }
 
-      const summary = computeSummary(successes, revalidateErrors.length)
+      const summary = computeSummary({ successes, failedCount: revalidateErrors.length })
       yield* emit({ _tag: 'Complete', summary })
 
       return yield* new GenieGenerationFailedError({
@@ -253,7 +262,7 @@ export const generateAll = ({
     }
 
     // No TDZ errors
-    const summary = computeSummary(successes, failures.length)
+    const summary = computeSummary({ successes, failedCount: failures.length })
 
     if (summary.failed > 0) {
       yield* emit({ _tag: 'Complete', summary })
@@ -301,7 +310,7 @@ export const checkAll = ({
     const genieFiles = yield* discoverAndValidate(cwd)
 
     if (genieFiles.length === 0) {
-      yield* emit({ _tag: 'Complete', summary: computeSummary([], 0) })
+      yield* emit({ _tag: 'Complete', summary: computeSummary({ successes: [], failedCount: 0 }) })
       return
     }
 

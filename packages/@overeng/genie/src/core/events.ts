@@ -25,7 +25,8 @@ export const GenieEvent = Schema.Union(
 
   Schema.TaggedStruct('Error', { message: Schema.String }),
 )
-export type GenieEvent = Schema.Schema.Type<typeof GenieEvent>
+/** Inferred union of all progress events emitted during generation/check. */
+export type GenieEvent = typeof GenieEvent.Type
 
 /** PubSub for genie progress events, injected via Context. */
 export class GenieEventBus extends Context.Tag('@overeng/genie/EventBus')<

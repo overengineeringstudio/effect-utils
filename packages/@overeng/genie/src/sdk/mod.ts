@@ -3,22 +3,28 @@ import path from 'node:path'
 import { type Error as PlatformError, FileSystem } from '@effect/platform'
 import type * as CommandExecutor from '@effect/platform/CommandExecutor'
 import type { Path } from '@effect/platform/Path'
-import { Effect, Layer, Option, PubSub } from 'effect'
+import { Effect, Option, PubSub } from 'effect'
 
-import { type GenieGenerateResult, checkAll, generateAll, resolveOxfmtConfigPath } from './core.ts'
-import type { GenieGenerationFailedError } from './errors.ts'
-import { type GenieEvent, GenieEventBus } from './events.ts'
+import {
+  type GenieGenerateResult,
+  checkAll,
+  generateAll,
+  resolveOxfmtConfigPath,
+} from '../core/core.ts'
+import type { GenieGenerationFailedError } from '../core/errors.ts'
+import { type GenieEvent, GenieEventBus } from '../core/events.ts'
 
-export type { GenieGenerateResult } from './core.ts'
-export type { GenieSummary } from './schema.ts'
-export type { GenerateSuccess } from './types.ts'
-export { GenieCheckError, GenieGenerationFailedError, GenieImportError } from './errors.ts'
-export { type GenieEvent, GenieEventBus } from './events.ts'
+export type { GenieGenerateResult } from '../core/core.ts'
+export type { GenieSummary } from '../core/schema.ts'
+export type { GenerateSuccess } from '../core/types.ts'
+export { GenieCheckError, GenieGenerationFailedError, GenieImportError } from '../core/errors.ts'
+export { type GenieEvent, GenieEventBus } from '../core/events.ts'
 
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
+/** Options controlling which workspace to generate and how to write output files. */
 export type GenieGenerateOptions = {
   cwd: string
   writeable?: boolean
@@ -27,6 +33,7 @@ export type GenieGenerateOptions = {
   oxfmtConfigPath?: string
 }
 
+/** Options for verifying that all generated files are up to date. */
 export type GenieCheckOptions = {
   cwd: string
   env?: Record<string, string>
@@ -34,10 +41,13 @@ export type GenieCheckOptions = {
 }
 
 /** Temporarily set env vars, run an effect, then restore original values. */
-const withEnv = <A, E, R>(
-  env: Record<string, string>,
-  effect: Effect.Effect<A, E, R>,
-): Effect.Effect<A, E, R> =>
+const withEnv = <A, E, R>({
+  env,
+  effect,
+}: {
+  env: Record<string, string>
+  effect: Effect.Effect<A, E, R>
+}): Effect.Effect<A, E, R> =>
   Effect.acquireUseRelease(
     Effect.sync(() => {
       const saved: Record<string, string | undefined> = {}
@@ -103,7 +113,7 @@ export const generate = ({
   })
 
   if (env && Object.keys(env).length > 0) {
-    return withEnv(env, core)
+    return withEnv({ env, effect: core })
   }
   return core
 }
@@ -128,7 +138,7 @@ export const check = ({
   })
 
   if (env && Object.keys(env).length > 0) {
-    return withEnv(env, core)
+    return withEnv({ env, effect: core })
   }
   return core
 }

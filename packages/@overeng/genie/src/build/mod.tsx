@@ -9,19 +9,19 @@ import { run } from '@overeng/tui-react'
 import { outputOption, outputModeLayer } from '@overeng/tui-react/node'
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
 
-import { GenieApp } from './app.ts'
 import {
   checkAll,
   generateAll,
   mapResultToStatus,
   OXFMT_CONFIG_CONVENTION_PATHS,
   resolveOxfmtConfigPath,
-} from './core.ts'
-import { findGenieFiles } from './discovery.ts'
-import { GenieGenerationFailedError } from './errors.ts'
-import { type GenieEvent, GenieEventBus } from './events.ts'
-import { generateFile } from './generation.ts'
-import { createInitialGenieState, type GenieSummary, type GenieMode } from './schema.ts'
+} from '../core/core.ts'
+import { findGenieFiles } from '../core/discovery.ts'
+import { GenieGenerationFailedError } from '../core/errors.ts'
+import { type GenieEvent, GenieEventBus } from '../core/events.ts'
+import { generateFile } from '../core/generation.ts'
+import { createInitialGenieState, type GenieSummary, type GenieMode } from '../core/schema.ts'
+import { GenieApp } from './app.ts'
 import type { GenieCommandConfig, GenieCommandEnv, GenieCommandError } from './types.ts'
 import { GenieView } from './view.tsx'
 
@@ -30,7 +30,7 @@ export {
   GenieFileError,
   GenieGenerationFailedError,
   GenieImportError,
-} from './errors.ts'
+} from '../core/errors.ts'
 
 /** Bridge GenieEvent stream to TUI dispatch. */
 const dispatchEvent = (tui: { dispatch: (action: any) => void }, event: GenieEvent): void => {

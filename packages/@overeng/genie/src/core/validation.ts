@@ -11,10 +11,10 @@ import { resolveWorkspaceProvider } from './workspace.ts'
 
 const importGenieOutput = Effect.fn('genie/importGenieOutput')(function* ({
   genieFilePath,
-  cwd,
+  _cwd,
 }: {
   genieFilePath: string
-  cwd: string
+  _cwd: string
 }) {
   const importPath = `${genieFilePath}?import=${Date.now()}`
   const module = yield* Effect.tryPromise({
@@ -48,6 +48,7 @@ const importGenieOutput = Effect.fn('genie/importGenieOutput')(function* ({
   }
 })
 
+/** Import all genie files in a workspace and run their validation hooks, collecting any issues. */
 export const runGenieValidation = ({
   cwd,
   requirePackageJsonValidate = process.env.GENIE_REQUIRE_PACKAGE_JSON_VALIDATE === '1',
@@ -86,7 +87,7 @@ export const runGenieValidation = ({
         },
       }
 
-      const output = yield* importGenieOutput({ genieFilePath, cwd }).pipe(
+      const output = yield* importGenieOutput({ genieFilePath, _cwd: cwd }).pipe(
         Effect.catchAll((error) => {
           issues.push({
             severity: 'error',

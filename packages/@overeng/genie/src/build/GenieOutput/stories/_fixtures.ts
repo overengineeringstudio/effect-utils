@@ -10,7 +10,7 @@ import type {
   GenieFileStatus,
   GenieMode,
   GenieState,
-} from '../../schema.ts'
+} from '../../../core/schema.ts'
 
 // =============================================================================
 // Example Data

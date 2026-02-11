@@ -7,7 +7,7 @@
 
 import { createTuiApp } from '@overeng/tui-react'
 
-import { GenieState, GenieAction, genieReducer, createInitialGenieState } from './schema.ts'
+import { GenieState, GenieAction, genieReducer, createInitialGenieState } from '../core/schema.ts'
 
 /**
  * TuiApp for genie output.
