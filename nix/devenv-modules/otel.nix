@@ -698,7 +698,7 @@ in
       # Override env vars to point to the system-level stack
       export OTEL_EXPORTER_OTLP_ENDPOINT="http://127.0.0.1:4318"
       export OTEL_GRAFANA_URL="http://127.0.0.1:3000"
-      export OTEL_SPAN_SPOOL_DIR="''${XDG_RUNTIME_DIR:-/tmp}/otel/spool"
+      export OTEL_SPAN_SPOOL_DIR="$HOME/.otel/spool"
       export OTEL_SPOOL_MULTI_WRITER="1"
       echo "[otel] Using system-level OTEL stack (mode=$OTEL_MODE)"
     else
