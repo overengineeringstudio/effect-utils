@@ -158,14 +158,18 @@ const discoverManualPackageJsonPaths = Effect.fn('workspace/discoverManualPackag
   },
 )
 
-const createProvider = (
-  name: WorkspaceProviderName,
-  discover: WorkspaceProvider['discoverPackageJsonPaths'],
-) => ({
+const createProvider = ({
+  name,
+  discover,
+}: {
+  name: WorkspaceProviderName
+  discover: WorkspaceProvider['discoverPackageJsonPaths']
+}) => ({
   name,
   discoverPackageJsonPaths: discover,
 })
 
+/** Detect the workspace package manager (pnpm, bun, manual) and return the matching provider. */
 export const resolveWorkspaceProvider = Effect.fn('workspace/resolveWorkspaceProvider')(function* ({
   cwd,
 }: {
@@ -174,25 +178,39 @@ export const resolveWorkspaceProvider = Effect.fn('workspace/resolveWorkspacePro
   const providerName = (process.env.GENIE_WORKSPACE_PROVIDER ?? '').toLowerCase()
 
   if (providerName === 'bun') {
-    return createProvider('bun', () =>
-      Effect.fail(
-        new GenieNotImplementedError({ message: 'Bun workspace provider is not implemented yet.' }),
-      ),
-    )
+    return createProvider({
+      name: 'bun',
+      discover: () =>
+        Effect.fail(
+          new GenieNotImplementedError({
+            message: 'Bun workspace provider is not implemented yet.',
+          }),
+        ),
+    })
   }
   if (providerName === 'manual') {
-    return createProvider('manual', ({ cwd: root }) =>
-      discoverManualPackageJsonPaths({ cwd: root }),
-    )
+    return createProvider({
+      name: 'manual',
+      discover: ({ cwd: root }) => discoverManualPackageJsonPaths({ cwd: root }),
+    })
   }
   if (providerName === 'pnpm') {
-    return createProvider('pnpm', ({ cwd: root }) => discoverPnpmPackageJsonPaths({ cwd: root }))
+    return createProvider({
+      name: 'pnpm',
+      discover: ({ cwd: root }) => discoverPnpmPackageJsonPaths({ cwd: root }),
+    })
   }
 
   const pnpmWorkspaceFiles = yield* findFiles({ root: cwd, fileName: 'pnpm-workspace.yaml' })
   if (pnpmWorkspaceFiles.length > 0) {
-    return createProvider('pnpm', ({ cwd: root }) => discoverPnpmPackageJsonPaths({ cwd: root }))
+    return createProvider({
+      name: 'pnpm',
+      discover: ({ cwd: root }) => discoverPnpmPackageJsonPaths({ cwd: root }),
+    })
   }
 
-  return createProvider('manual', ({ cwd: root }) => discoverManualPackageJsonPaths({ cwd: root }))
+  return createProvider({
+    name: 'manual',
+    discover: ({ cwd: root }) => discoverManualPackageJsonPaths({ cwd: root }),
+  })
 })

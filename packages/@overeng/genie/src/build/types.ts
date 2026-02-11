@@ -5,7 +5,11 @@ import type { Option } from 'effect'
 import type { OutputModeValue } from '@overeng/tui-react/node'
 import type { CurrentWorkingDirectory } from '@overeng/utils/node'
 
-import type { GenieCheckError, GenieGenerationFailedError, GenieImportError } from './errors.ts'
+import type {
+  GenieCheckError,
+  GenieGenerationFailedError,
+  GenieImportError,
+} from '../core/errors.ts'
 
 /** Configuration options for genie commands */
 export type GenieCommandConfig = {

@@ -19,8 +19,8 @@ import {
   TuiStoryPreview,
 } from '@overeng/tui-react/storybook'
 
+import type { GenieMode } from '../../../core/schema.ts'
 import { GenieApp } from '../../app.ts'
-import type { GenieMode } from '../../schema.ts'
 import { GenieView } from '../../view.tsx'
 import * as fixtures from './_fixtures.ts'
 

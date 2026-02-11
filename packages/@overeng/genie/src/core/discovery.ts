@@ -5,7 +5,7 @@ import { type Error as PlatformError, FileSystem, Path } from '@effect/platform'
 import { Effect } from 'effect'
 
 import { resolveImportMapSpecifierForImporterSync } from './import-map/mod.ts'
-import type { StatResult } from './types.sdk.ts'
+import type { StatResult } from './types.ts'
 
 let importMapResolverRegistered = false
 
