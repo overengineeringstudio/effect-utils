@@ -47,7 +47,7 @@ const baseSteps = [
     name: 'Repair Nix store',
     // Namespace runners may have stale/invalid paths in their bundled nix store cache.
     // This removes invalid DB entries so nix re-fetches them from substituters on demand.
-    run: 'nix-store --verify --repair 2>&1 | tail -5 || true',
+    run: 'nix-store --verify --repair',
     shell: 'bash',
   },
 ] as const

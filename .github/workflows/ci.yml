@@ -36,7 +36,7 @@ jobs:
         run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
         shell: bash
       - name: Repair Nix store
-        run: nix-store --verify --repair 2>&1 | tail -5 || true
+        run: nix-store --verify --repair
         shell: bash
       - name: Type check
         run: 'dt ts:check'
@@ -66,7 +66,7 @@ jobs:
         run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
         shell: bash
       - name: Repair Nix store
-        run: nix-store --verify --repair 2>&1 | tail -5 || true
+        run: nix-store --verify --repair
         shell: bash
       - name: Format + lint
         run: 'dt lint:check'
@@ -99,7 +99,7 @@ jobs:
         run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
         shell: bash
       - name: Repair Nix store
-        run: nix-store --verify --repair 2>&1 | tail -5 || true
+        run: nix-store --verify --repair
         shell: bash
       - name: Unit tests
         run: 'dt test:run'
@@ -132,7 +132,7 @@ jobs:
         run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
         shell: bash
       - name: Repair Nix store
-        run: nix-store --verify --repair 2>&1 | tail -5 || true
+        run: nix-store --verify --repair
         shell: bash
       - name: Nix hash check
         run: 'dt nix:check'
@@ -166,7 +166,7 @@ jobs:
         run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
         shell: bash
       - name: Repair Nix store
-        run: nix-store --verify --repair 2>&1 | tail -5 || true
+        run: nix-store --verify --repair
         shell: bash
       - name: Deploy storybooks to Netlify
         run: |
