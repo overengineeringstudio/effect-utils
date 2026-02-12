@@ -688,7 +688,7 @@ in
     # Resolve "auto" to "system" or "local" at runtime by probing for the
     # system-level OTEL stack (home-manager otel-stack module).
     if [ "$OTEL_MODE" = "auto" ]; then
-      _otel_state_dir="''${XDG_STATE_HOME:-$HOME/.local/state}/otel"
+      _otel_state_dir="''${OTEL_STATE_DIR:-''${XDG_STATE_HOME:-$HOME/.local/state}/otel}"
       if [ -d "$_otel_state_dir/spool" ] || \
          ${pkgs.curl}/bin/curl -sf --max-time 0.5 http://127.0.0.1:4318/ >/dev/null 2>&1; then
         OTEL_MODE="system"
@@ -698,12 +698,12 @@ in
     fi
 
     if [ "$OTEL_MODE" = "system" ]; then
-      _otel_state_dir="''${XDG_STATE_HOME:-$HOME/.local/state}/otel"
+      _otel_state_dir="''${OTEL_STATE_DIR:-''${XDG_STATE_HOME:-$HOME/.local/state}/otel}"
       # Override env vars to point to the system-level stack
       export OTEL_EXPORTER_OTLP_ENDPOINT="http://127.0.0.1:4318"
       export OTEL_GRAFANA_URL="http://127.0.0.1:3700"
       export OTEL_STATE_DIR="$_otel_state_dir"
-      export OTEL_SPAN_SPOOL_DIR="$_otel_state_dir/spool"
+      export OTEL_SPAN_SPOOL_DIR="''${OTEL_SPAN_SPOOL_DIR:-$_otel_state_dir/spool}"
       export OTEL_SPOOL_MULTI_WRITER="1"
       echo "[otel] Using system-level OTEL stack (mode=$OTEL_MODE)"
     else
