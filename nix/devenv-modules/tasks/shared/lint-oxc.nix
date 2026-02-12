@@ -25,8 +25,8 @@
 #       ];
 #       # Directories to scan for genie coverage check
 #       genieCoverageDirs = [ "packages" "scripts" ];  # required
-#       # Extra directories to exclude from genie coverage
-#       genieCoverageExcludes = [ "storybook-static" ];  # optional
+#       # Path prefixes to exclude from genie coverage (git pathspec patterns)
+#       genieCoverageExcludes = [ "packages/vendored/" "packages/**/.yarn/sdks/" ];  # optional
 #       # Path to tsconfig for type-aware linting (enables typescript/no-deprecated etc)
 #       tsconfig = "tsconfig.all.json";  # optional
 #       # Pre-built JS plugin paths to inject at runtime (for repos without node_modules)
@@ -61,20 +61,9 @@
 let
   trace = import ../lib/trace.nix { inherit lib; };
   git = "${pkgs.git}/bin/git";
-  defaultExcludes = [
-    "node_modules"
-    "dist"
-    ".git"
-    ".direnv"
-    ".devenv"
-    "tmp"
-    ".next"
-    ".vercel"
-    ".contentlayer"
-  ];
-  allExcludes = defaultExcludes ++ genieCoverageExcludes;
-  excludeArgs = builtins.concatStringsSep " " (map (d: "-not -path \"*/${d}/*\"") allExcludes);
   scanDirsArg = builtins.concatStringsSep " " genieCoverageDirs;
+  # Git pathspec exclusion patterns applied to coverage check (e.g. "packages/vendored/")
+  excludePathspecs = builtins.concatStringsSep " " (map (p: "':(exclude)${p}'") genieCoverageExcludes);
   lintPathsArg = builtins.concatStringsSep " " lintPaths;
 
   # Type-aware linting flags (enabled when tsconfig is provided)
@@ -161,8 +150,8 @@ in
         # - Prevents false negatives from caching based only on *.genie.ts files.
         files=$(
           {
-            ${git} ls-files -- ${scanDirsArg}
-            ${git} ls-files --others --exclude-standard -- ${scanDirsArg}
+            ${git} ls-files -- ${scanDirsArg} ${excludePathspecs}
+            ${git} ls-files --others --exclude-standard -- ${scanDirsArg} ${excludePathspecs}
           } | sort -u | while IFS= read -r f; do
             case "$f" in
               package.json|tsconfig.json|*/package.json|*/tsconfig.json) echo "$f" ;;

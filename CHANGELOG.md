@@ -16,6 +16,12 @@ All notable changes to this project will be documented in this file.
   - `trace.status` and `withStatus` status now pass through without emitting spans
   - Reduces shell entry overhead by removing unnecessary span emission
 
+### Fixed
+
+- **devenv/tasks/shared/lint-oxc.nix**: Wire up `genieCoverageExcludes` in coverage check (#198)
+  - `genieCoverageExcludes` was accepted but never applied; now uses git pathspec exclusion
+  - Removed dead `defaultExcludes`/`excludeArgs` code from obsolete `find`-based approach
+
 ### Added
 
 - **genie**: Add programmatic TS SDK (`@overeng/genie/sdk`) for calling genie's generate/check
