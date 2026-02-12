@@ -50,12 +50,12 @@ When in system mode, project dashboards are automatically copied to `$OTEL_STATE
 
 ## Environment Variables
 
-| Variable                      | Set by      | Purpose                                                    |
-| ----------------------------- | ----------- | ---------------------------------------------------------- |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | `otel.nix`  | Collector HTTP endpoint (hash-based port)                  |
-| `OTEL_GRAFANA_URL`            | `otel.nix`  | Grafana UI URL                                             |
+| Variable                      | Set by       | Purpose                                                               |
+| ----------------------------- | ------------ | --------------------------------------------------------------------- |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `otel.nix`   | Collector HTTP endpoint (hash-based port)                             |
+| `OTEL_GRAFANA_URL`            | `otel.nix`   | Grafana UI URL                                                        |
 | `OTEL_STATE_DIR`              | system stack | System-level state directory; presence triggers system-mode detection |
-| `TRACEPARENT`                 | `otel-span` | W3C Trace Context, propagated for parent-child trace links |
+| `TRACEPARENT`                 | `otel-span`  | W3C Trace Context, propagated for parent-child trace links            |
 
 ## Port Allocation
 
