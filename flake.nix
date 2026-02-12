@@ -135,6 +135,12 @@
       lib.cliBuildStamp =
         { pkgs }: import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
 
+      # Build Grafonnet dashboards against the shared OTEL dashboard library.
+      # Returns a linkFarm (Nix store path) containing compiled JSON files.
+      lib.buildOtelDashboards =
+        { pkgs, src, dashboardNames }:
+        import ./nix/devenv-modules/otel/build-dashboards.nix { inherit pkgs src dashboardNames; };
+
       # Convenience helper for bundling the common genie/megarepo CLIs.
       # Use this for releases/CI where hermetic Nix builds are needed.
       lib.mkCliPackages = import ./nix/workspace-tools/lib/mk-cli-packages.nix;

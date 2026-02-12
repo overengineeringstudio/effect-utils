@@ -41,6 +41,10 @@
   portRangeEnd ? 60000,
   # Mode: "auto" detects system stack, "local" always uses local, "system" always uses system
   mode ? "auto",
+  # Pre-compiled project-specific dashboards to provision alongside built-in ones.
+  # Each entry: { name = "my-project"; path = <nix-store-path-with-json-files>; }
+  # Use lib.buildOtelDashboards to compile Jsonnet sources into the expected format.
+  extraDashboards ? [],
 }:
 {
   pkgs,
@@ -58,83 +62,22 @@ let
   # Grafonnet: build dashboards from Jsonnet source at Nix eval time
   # =========================================================================
 
-  grafonnetSrc = pkgs.fetchFromGitHub {
-    owner = "grafana";
-    repo = "grafonnet";
-    rev = "7380c9c64fb973f34c3ec46265621a2b0dee0058";
-    sha256 = "sha256-WS3Z/k9fDSleK6RVPTFQ9Um26GRFv/kxZhARXpGkS10=";
+  # Built-in dashboards compiled via the shared build helper
+  allDashboards = import ./otel/build-dashboards.nix {
+    inherit pkgs;
+    src = ./otel/dashboards;
+    dashboardNames = [
+      "overview"
+      "dt-tasks"
+      "dt-duration-trends"
+      "shell-entry"
+      "pnpm-install"
+      "ts-app-traces"
+    ];
   };
-
-  # Grafonnet's transitive dependencies (jsonnet-bundler style imports)
-  xtdSrc = pkgs.fetchFromGitHub {
-    owner = "jsonnet-libs";
-    repo = "xtd";
-    rev = "4d7f8cb24d613430799f9d56809cc6964f35cea9";
-    sha256 = "sha256-MWinI7gX39UIDVh9kzkHFH6jsKZoI294paQUWd/4+ag=";
-  };
-
-  docsonnetSrc = pkgs.fetchFromGitHub {
-    owner = "jsonnet-libs";
-    repo = "docsonnet";
-    rev = "6ac6c69685b8c29c54515448eaca583da2d88150";
-    sha256 = "sha256-Uy86lIQbFjebNiAAp0dJ8rAtv16j4V4pXMPcl+llwBA=";
-  };
-
-  dashboardsSrcDir = ./otel/dashboards;
-
-  # Create a JPATH root so `github.com/...` vendored imports resolve correctly.
-  # Grafonnet and its deps use jsonnet-bundler style import paths.
-  grafonnetJpath = pkgs.linkFarm "grafonnet-jpath" [
-    {
-      name = "github.com/grafana/grafonnet";
-      path = grafonnetSrc;
-    }
-    {
-      name = "github.com/jsonnet-libs/xtd";
-      path = xtdSrc;
-    }
-    {
-      name = "github.com/jsonnet-libs/docsonnet";
-      path = docsonnetSrc;
-    }
-  ];
-
-  # Build a single dashboard from Jsonnet source
-  buildDashboard =
-    name:
-    pkgs.runCommand "grafana-dashboard-${name}"
-      {
-        nativeBuildInputs = [ pkgs.go-jsonnet ];
-      }
-      ''
-        mkdir -p $out
-        jsonnet \
-          -J ${grafonnetJpath} \
-          -J ${grafonnetSrc} \
-          -J ${dashboardsSrcDir} \
-          ${dashboardsSrcDir}/${name}.jsonnet \
-          -o $out/${name}.json
-      '';
-
-  # All dashboards as a linkFarm (Nix store path with JSON files)
-  # NOTE: dashboardNames order determines build; add/remove to force rebuild
-  dashboardNames = [
-    "overview"
-    "dt-tasks"
-    "dt-duration-trends"
-    "shell-entry"
-    "pnpm-install"
-    "ts-app-traces"
-  ];
-  allDashboards = pkgs.linkFarm "otel-dashboards" (
-    map (name: {
-      name = "${name}.json";
-      path = "${buildDashboard name}/${name}.json";
-    }) dashboardNames
-  );
 
   # Grafana dashboard provisioning config
-  grafanaDashboardProvision = pkgs.writeText "grafana-dashboards.yaml" ''
+  grafanaDashboardProvision = pkgs.writeText "grafana-dashboards.yaml" (''
     apiVersion: 1
     providers:
       - name: otel
@@ -143,7 +86,14 @@ let
         updateIntervalSeconds: 0
         options:
           path: ${allDashboards}
-  '';
+  '' + builtins.concatStringsSep "" (map (group: ''
+      - name: ${group.name}
+        type: file
+        disableDeletion: true
+        updateIntervalSeconds: 0
+        options:
+          path: ${group.path}
+  '') extraDashboards));
 
   # =========================================================================
   # Port allocation: deterministic hash-based ports from DEVENV_ROOT
@@ -697,13 +647,20 @@ in
       if [ -z "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
         echo "[otel] WARNING: OTEL_STATE_DIR is set but OTEL_EXPORTER_OTLP_ENDPOINT is missing" >&2
       fi
-      # Copy project dashboards to system stack for Grafana provisioning
-      if [ -n "''${OTEL_DASHBOARDS_DIR:-}" ]; then
+      # Copy built-in dashboards to system stack for Grafana provisioning
+      if [ -n "''${OTEL_STATE_DIR:-}" ]; then
         _project_name=$(basename "$DEVENV_ROOT")
         _dash_target="$OTEL_STATE_DIR/dashboards/$_project_name"
         mkdir -p "$_dash_target"
-        cp -f "$OTEL_DASHBOARDS_DIR"/*.json "$_dash_target/" 2>/dev/null || true
+        cp -f ${allDashboards}/*.json "$_dash_target/" 2>/dev/null || true
       fi
+      ${builtins.concatStringsSep "\n      " (map (group: ''
+      # Copy extra dashboards: ${group.name}
+      if [ -n "''${OTEL_STATE_DIR:-}" ]; then
+        mkdir -p "$OTEL_STATE_DIR/dashboards/${group.name}"
+        cp -f ${group.path}/*.json "$OTEL_STATE_DIR/dashboards/${group.name}/" 2>/dev/null || true
+      fi
+      '') extraDashboards)}
       echo "[otel] Using system-level OTEL stack (mode=$OTEL_MODE)"
     else
       # Local devenv stack — set env vars with local hash-derived ports
