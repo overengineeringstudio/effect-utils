@@ -2,7 +2,11 @@
 
 Per-project OpenTelemetry tracing for `dt` tasks, TS app code, and (future) devenv native telemetry. Provides a local Collector + Tempo + Grafana stack via `devenv up`, with auto-detection of an existing system-level stack.
 
-The system-level OTEL stack (home-manager services, `otel` CLI, architecture overview) is documented in **dotfiles `context/otel-stack.md`**.
+## System Stack Assumptions
+
+The devenv module auto-detects a globally running OTEL stack on fixed well-known ports (Collector `:4318`, Tempo `:3200`, Grafana `:3700`). When detected, the devenv module reuses the system endpoints instead of starting its own services.
+
+To run a **local** per-project stack instead (e.g. when no system stack is available), the module starts Collector + Tempo + Grafana on hash-derived ports via `devenv up`.
 
 ## Quick Start
 
@@ -165,7 +169,7 @@ jsonnet -J path/to/grafonnet dt-tasks.jsonnet | jq .
 
 ### Project Dashboards (`.otel/dashboards.json`)
 
-Projects define their own dashboards in `.otel/dashboards.json`. These are synced to the system Grafana via `otel dash sync` (from the `otel` CLI, installed system-wide via dotfiles).
+Projects define their own dashboards in `.otel/dashboards.json`. When a system-level OTEL stack is running, these are synced to its Grafana via `otel dash sync`.
 
 ## Data Storage
 
@@ -196,6 +200,5 @@ nix/devenv-modules/
 
 ## Related
 
-- **dotfiles `context/otel-stack.md`** -- System-level stack, CLI reference, architecture
 - **`nix/devenv-modules/tasks/tasks.md`** -- `dt` wrapper and task modules
 - **[cachix/devenv#2415](https://github.com/cachix/devenv/issues/2415)** -- Upstream native OTEL support
