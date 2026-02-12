@@ -69,7 +69,7 @@ base = portRangeStart + (parseInt(sha256(root)[0:7], 16) % (portRangeEnd - portR
 | +1     | Tempo OTLP gRPC ingest                |
 | +2     | Tempo HTTP query API                  |
 | +3     | Grafana HTTP UI                       |
-| +4     | Collector internal Prometheus metrics  |
+| +4     | Collector internal Prometheus metrics |
 | +5     | Tempo internal gRPC                   |
 
 Range: 10000-60000 (~0.012% collision probability for 2 worktrees).
@@ -157,10 +157,10 @@ jsonnet -J path/to/grafonnet dt-tasks.jsonnet | jq .
 | Dashboard            | Purpose                                        |
 | -------------------- | ---------------------------------------------- |
 | `overview`           | Landing page: recent traces, service breakdown |
-| `dt-tasks`           | Task duration, cache hit rate, failure rate     |
-| `shell-entry`        | `direnv allow` / enterShell duration breakdown  |
-| `pnpm-install`       | Per-package install analysis, waterfall view    |
-| `ts-app-traces`      | General-purpose trace exploration for Effect    |
+| `dt-tasks`           | Task duration, cache hit rate, failure rate    |
+| `shell-entry`        | `direnv allow` / enterShell duration breakdown |
+| `pnpm-install`       | Per-package install analysis, waterfall view   |
+| `ts-app-traces`      | General-purpose trace exploration for Effect   |
 | `dt-duration-trends` | p50/p95/p99 percentiles over time by category  |
 
 ### Project Dashboards (`.otel/dashboards.json`)
