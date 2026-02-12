@@ -47,7 +47,7 @@ mode = "auto" (default)
   └── if not   → "local": starts per-project Collector/Tempo/Grafana
 ```
 
-When in system mode, `otel dash sync` copies project dashboards to `~/.otel/dashboards/{project}/` for the system Grafana to pick up.
+When in system mode, project dashboards are copied to `~/.otel/dashboards/{project}/` for the system Grafana to pick up. The devenv module handles this automatically; alternatively, copy the files manually or use the `otel dash sync` command if available.
 
 ## Environment Variables
 
@@ -169,7 +169,7 @@ jsonnet -J path/to/grafonnet dt-tasks.jsonnet | jq .
 
 ### Project Dashboards (`.otel/dashboards.json`)
 
-Projects define their own dashboards in `.otel/dashboards.json`. When a system-level OTEL stack is running, these are synced to its Grafana via `otel dash sync`.
+Projects define their own dashboards in `.otel/dashboards.json`. When a system-level OTEL stack is running, these are copied to `~/.otel/dashboards/{project}/` for its Grafana to pick up. The devenv module handles this automatically in system mode; alternatively, copy the files manually or use the `otel dash sync` command if available.
 
 ## Data Storage
 
