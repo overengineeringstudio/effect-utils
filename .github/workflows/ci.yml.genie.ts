@@ -47,10 +47,21 @@ const baseSteps = [
     name: 'Repair Nix store',
     // Namespace runners may have stale/invalid paths in their bundled nix store cache.
     // This removes invalid DB entries so nix re-fetches them from substituters on demand.
-    run: 'nix-store --verify --repair 2>&1 | tail -5 || true',
+    // Tracking issue: https://github.com/overengineeringstudio/effect-utils/issues/201
+    run: 'nix-store --verify --repair',
     shell: 'bash',
   },
 ] as const
+
+const failureReminderStep = {
+  name: 'Failure note',
+  if: 'failure()',
+  shell: 'bash',
+  run: [
+    'echo "If this looks like Namespace macOS Nix store corruption (e.g. \\"... is not valid\\", \\"config.cachix\\", \\"cachix.package\\"), add the run link + full nix-store output to:"',
+    'echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"',
+  ].join('\n'),
+} as const
 
 const job = (step: { name: string; run: string }) => ({
   'runs-on': namespaceRunner('namespace-profile-linux-x86-64', '${{ github.run_id }}'),
@@ -59,7 +70,7 @@ const job = (step: { name: string; run: string }) => ({
     FORCE_SETUP: '1',
     CI: 'true',
   },
-  steps: [...baseSteps, step],
+  steps: [...baseSteps, step, failureReminderStep],
 })
 
 const multiPlatformJob = (step: { name: string; run: string }) => ({
@@ -75,7 +86,7 @@ const multiPlatformJob = (step: { name: string; run: string }) => ({
     FORCE_SETUP: '1',
     CI: 'true',
   },
-  steps: [...baseSteps, step],
+  steps: [...baseSteps, step, failureReminderStep],
 })
 
 // Jobs keyed by CIJobName for type safety with required status checks
