@@ -348,7 +348,7 @@ g.dashboard.new('dt Task Duration Trends')
   at(
     taskDurationPanel(
       'pnpm:install per-package (p50 / p95)',
-      'pnpm:install:otel-cli|pnpm:install:tui-react|pnpm:install:megarepo|pnpm:install:genie|pnpm:install:notion-cli|pnpm:install:utils|pnpm:install:effect-path|pnpm:install:effect-react|pnpm:install:effect-rpc-tanstack|pnpm:install:effect-schema-form|pnpm:install:effect-schema-form-aria|pnpm:install:effect-ai-claude-cli|pnpm:install:react-inspector|pnpm:install:tui-core|pnpm:install:notion-effect-client|pnpm:install:notion-effect-schema|pnpm:install:oxc-config|pnpm:install:utils-dev',
+      'pnpm:install:tui-react|pnpm:install:megarepo|pnpm:install:genie|pnpm:install:notion-cli|pnpm:install:utils|pnpm:install:effect-path|pnpm:install:effect-react|pnpm:install:effect-rpc-tanstack|pnpm:install:effect-schema-form|pnpm:install:effect-schema-form-aria|pnpm:install:effect-ai-claude-cli|pnpm:install:react-inspector|pnpm:install:tui-core|pnpm:install:notion-effect-client|pnpm:install:notion-effect-schema|pnpm:install:oxc-config|pnpm:install:utils-dev',
     ),
     0, y.pkgInstallContent, 24, 8,
   ),
