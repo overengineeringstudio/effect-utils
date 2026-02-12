@@ -40,6 +40,12 @@ jobs:
         shell: bash
       - name: Type check
         run: 'dt ts:check'
+      - name: Failure note
+        if: failure()
+        shell: bash
+        run: |
+          echo "If this looks like Namespace macOS Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
+          echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
   lint:
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
@@ -70,6 +76,12 @@ jobs:
         shell: bash
       - name: Format + lint
         run: 'dt lint:check'
+      - name: Failure note
+        if: failure()
+        shell: bash
+        run: |
+          echo "If this looks like Namespace macOS Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
+          echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
   test:
     strategy:
       fail-fast: false
@@ -103,6 +115,12 @@ jobs:
         shell: bash
       - name: Unit tests
         run: 'dt test:run'
+      - name: Failure note
+        if: failure()
+        shell: bash
+        run: |
+          echo "If this looks like Namespace macOS Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
+          echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
   nix-check:
     strategy:
       fail-fast: false
@@ -136,6 +154,12 @@ jobs:
         shell: bash
       - name: Nix hash check
         run: 'dt nix:check'
+      - name: Failure note
+        if: failure()
+        shell: bash
+        run: |
+          echo "If this looks like Namespace macOS Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
+          echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
   deploy-storybooks:
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
