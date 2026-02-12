@@ -18,9 +18,11 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-- **devenv/tasks/shared/lint-oxc.nix**: Wire up `genieCoverageExcludes` in coverage check (#198)
+- **devenv/tasks/shared/lint-oxc.nix**: Wire up `genieCoverageExcludes` and add `genieCoverageFiles` (#198)
   - `genieCoverageExcludes` was accepted but never applied; now uses git pathspec exclusion
+  - New `genieCoverageFiles` parameter (default: `["package.json" "tsconfig.json"]`) makes checked file types configurable
   - Removed dead `defaultExcludes`/`excludeArgs` code from obsolete `find`-based approach
+  - Made doc examples more generic (removed `@overeng`-specific paths)
 
 ### Added
 
