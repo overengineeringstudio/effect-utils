@@ -673,10 +673,6 @@ in
     pkgs.grafana
   ];
 
-  # Default env vars point to local stack; enterShell overrides for system/auto mode
-  env.OTEL_EXPORTER_OTLP_ENDPOINT = "http://127.0.0.1:${toString otelCollectorPort}";
-  env.OTEL_GRAFANA_URL = "http://127.0.0.1:${toString grafanaPort}";
-  env.OTEL_SPAN_SPOOL_DIR = spoolDir;
   env.OTEL_MODE = mode;
   # Nix store path to compiled dashboard JSON files (built from jsonnet at eval time)
   env.OTEL_DASHBOARDS_DIR = "${allDashboards}";
@@ -685,12 +681,11 @@ in
   # sourcing, so TRACEPARENT (from setup:gate) is available regardless of import order.
   enterShell = lib.mkAfter ''
     # ── Mode detection ──────────────────────────────────────────────────
-    # Resolve "auto" to "system" or "local" at runtime by probing for the
-    # system-level OTEL stack (home-manager otel-stack module).
+    # Resolve "auto" to "system" or "local" at runtime.
+    # Contract: a system-level OTEL stack (e.g. home-manager otel-stack module)
+    # advertises itself by setting OTEL_STATE_DIR as a session variable.
     if [ "$OTEL_MODE" = "auto" ]; then
-      _otel_state_dir="''${OTEL_STATE_DIR:-''${XDG_STATE_HOME:-$HOME/.local/state}/otel}"
-      if [ -d "$_otel_state_dir/spool" ] || \
-         ${pkgs.curl}/bin/curl -sf --max-time 0.5 http://127.0.0.1:4318/ >/dev/null 2>&1; then
+      if [ -n "''${OTEL_STATE_DIR:-}" ]; then
         OTEL_MODE="system"
       else
         OTEL_MODE="local"
@@ -698,15 +693,23 @@ in
     fi
 
     if [ "$OTEL_MODE" = "system" ]; then
-      _otel_state_dir="''${OTEL_STATE_DIR:-''${XDG_STATE_HOME:-$HOME/.local/state}/otel}"
-      # Override env vars to point to the system-level stack
-      export OTEL_EXPORTER_OTLP_ENDPOINT="http://127.0.0.1:4318"
-      export OTEL_GRAFANA_URL="http://127.0.0.1:3700"
-      export OTEL_STATE_DIR="$_otel_state_dir"
-      export OTEL_SPAN_SPOOL_DIR="''${OTEL_SPAN_SPOOL_DIR:-$_otel_state_dir/spool}"
-      export OTEL_SPOOL_MULTI_WRITER="1"
+      # System stack provides all OTEL env vars via session variables (e.g. home-manager).
+      if [ -z "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
+        echo "[otel] WARNING: OTEL_STATE_DIR is set but OTEL_EXPORTER_OTLP_ENDPOINT is missing" >&2
+      fi
+      # Copy project dashboards to system stack for Grafana provisioning
+      if [ -n "''${OTEL_DASHBOARDS_DIR:-}" ]; then
+        _project_name=$(basename "$DEVENV_ROOT")
+        _dash_target="$OTEL_STATE_DIR/dashboards/$_project_name"
+        mkdir -p "$_dash_target"
+        cp -f "$OTEL_DASHBOARDS_DIR"/*.json "$_dash_target/" 2>/dev/null || true
+      fi
       echo "[otel] Using system-level OTEL stack (mode=$OTEL_MODE)"
     else
+      # Local devenv stack — set env vars with local hash-derived ports
+      export OTEL_EXPORTER_OTLP_ENDPOINT="http://127.0.0.1:${toString otelCollectorPort}"
+      export OTEL_GRAFANA_URL="http://127.0.0.1:${toString grafanaPort}"
+      export OTEL_SPAN_SPOOL_DIR="${spoolDir}"
       echo "[otel] Using local devenv OTEL stack (mode=$OTEL_MODE)"
     fi
 

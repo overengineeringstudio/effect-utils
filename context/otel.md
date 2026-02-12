@@ -4,7 +4,7 @@ Per-project OpenTelemetry tracing for `dt` tasks, TS app code, and (future) deve
 
 ## System Stack Assumptions
 
-The devenv module auto-detects a globally running OTEL stack on fixed well-known ports (Collector `:4318`, Tempo `:3200`, Grafana `:3700`). When detected, the devenv module reuses the system endpoints instead of starting its own services.
+The devenv module auto-detects a system-level OTEL stack by checking for the `OTEL_STATE_DIR` session variable. When set, the devenv module trusts the system-provided env vars (`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_GRAFANA_URL`, etc.) instead of starting its own services.
 
 To run a **local** per-project stack instead (e.g. when no system stack is available), the module starts Collector + Tempo + Grafana on hash-derived ports via `devenv up`.
 
@@ -42,12 +42,11 @@ imports = [
 
 ```
 mode = "auto" (default)
-  ├── probes $OTEL_STATE_DIR/spool or curl :4318
-  ├── if found → "system": uses system endpoints, skips local services
-  └── if not   → "local": starts per-project Collector/Tempo/Grafana
+  ├── OTEL_STATE_DIR set? → "system": uses session env vars, skips local services
+  └── not set?            → "local": starts per-project Collector/Tempo/Grafana
 ```
 
-When in system mode, project dashboards are copied to `$OTEL_STATE_DIR/dashboards/{project}/` for the system Grafana to pick up. The devenv module handles this automatically; alternatively, copy the files manually.
+When in system mode, project dashboards are automatically copied to `$OTEL_STATE_DIR/dashboards/{project}/` on each shell entry for the system Grafana to pick up.
 
 ## Environment Variables
 
@@ -55,6 +54,7 @@ When in system mode, project dashboards are copied to `$OTEL_STATE_DIR/dashboard
 | ----------------------------- | ----------- | ---------------------------------------------------------- |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `otel.nix`  | Collector HTTP endpoint (hash-based port)                  |
 | `OTEL_GRAFANA_URL`            | `otel.nix`  | Grafana UI URL                                             |
+| `OTEL_STATE_DIR`              | system stack | System-level state directory; presence triggers system-mode detection |
 | `TRACEPARENT`                 | `otel-span` | W3C Trace Context, propagated for parent-child trace links |
 
 ## Port Allocation
@@ -169,7 +169,7 @@ jsonnet -J path/to/grafonnet dt-tasks.jsonnet | jq .
 
 ### Project Dashboards (`.otel/dashboards.json`)
 
-Projects define their own dashboards in `.otel/dashboards.json`. When a system-level OTEL stack is running, these are copied to `$OTEL_STATE_DIR/dashboards/{project}/` for its Grafana to pick up. The devenv module handles this automatically in system mode; alternatively, copy the files manually.
+Projects define their own dashboards in `.otel/dashboards.json`. When a system-level OTEL stack is running, these are automatically copied to `$OTEL_STATE_DIR/dashboards/{project}/` on each shell entry for its Grafana to pick up.
 
 ## Data Storage
 
