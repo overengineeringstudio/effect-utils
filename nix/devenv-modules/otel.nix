@@ -39,6 +39,8 @@
   # Port range for hash-based allocation (only used when basePort is null)
   portRangeStart ? 10000,
   portRangeEnd ? 60000,
+  # Mode: "auto" detects system stack, "local" always uses local, "system" always uses system
+  mode ? "auto",
 }:
 {
   pkgs,
@@ -406,7 +408,15 @@ let
     payload=$(cat)
     _spool_dir="''${OTEL_SPAN_SPOOL_DIR:-}"
     if [ -n "$_spool_dir" ] && [ -d "$_spool_dir" ]; then
-      printf '%s\n' "$payload" | ${pkgs.jq}/bin/jq -c . >> "$_spool_dir/spans.jsonl"
+      if [ "''${OTEL_SPOOL_MULTI_WRITER:-}" = "1" ]; then
+        # Atomic unique file (system-level, multi-writer safe)
+        _tmp=$(mktemp "$_spool_dir/.tmp.XXXXXXXXXX")
+        printf '%s\n' "$payload" | ${pkgs.jq}/bin/jq -c . > "$_tmp"
+        mv "$_tmp" "''${_spool_dir}/$(date +%s%N)-$$.jsonl"
+      else
+        # Single file append (local devenv, single-writer)
+        printf '%s\n' "$payload" | ${pkgs.jq}/bin/jq -c . >> "$_spool_dir/spans.jsonl"
+      fi
     else
       _endpoint="''${OTEL_EXPORTER_OTLP_ENDPOINT:-}"
       if [ -n "$_endpoint" ]; then
@@ -648,25 +658,58 @@ let
     exit "$exit_code"
   '';
 
+  # Whether to include local OTEL infrastructure (collector, tempo, grafana processes)
+  needsLocalInfra = mode != "system";
+
 in
 {
   packages = [
+    otelEmitSpan
+    otelSpan
+  ]
+  ++ lib.optionals needsLocalInfra [
     pkgs.opentelemetry-collector-contrib
     pkgs.tempo
     pkgs.grafana
-    otelEmitSpan
-    otelSpan
   ];
 
-  # Set OTEL endpoint so TS code (Effect OTEL layers) and future devenv native
-  # OTEL can discover the collector automatically
+  # Default env vars point to local stack; enterShell overrides for system/auto mode
   env.OTEL_EXPORTER_OTLP_ENDPOINT = "http://127.0.0.1:${toString otelCollectorPort}";
   env.OTEL_GRAFANA_URL = "http://127.0.0.1:${toString grafanaPort}";
   env.OTEL_SPAN_SPOOL_DIR = spoolDir;
+  env.OTEL_MODE = mode;
+  # Nix store path to compiled dashboard JSON files (built from jsonnet at eval time)
+  env.OTEL_DASHBOARDS_DIR = "${allDashboards}";
 
   # mkAfter ensures this runs after setup.nix's task execution and load-exports
   # sourcing, so TRACEPARENT (from setup:gate) is available regardless of import order.
   enterShell = lib.mkAfter ''
+    # ── Mode detection ──────────────────────────────────────────────────
+    # Resolve "auto" to "system" or "local" at runtime by probing for the
+    # system-level OTEL stack (home-manager otel-stack module).
+    if [ "$OTEL_MODE" = "auto" ]; then
+      _otel_state_dir="''${XDG_STATE_HOME:-$HOME/.local/state}/otel"
+      if [ -d "$_otel_state_dir/spool" ] || \
+         ${pkgs.curl}/bin/curl -sf --max-time 0.5 http://127.0.0.1:4318/ >/dev/null 2>&1; then
+        OTEL_MODE="system"
+      else
+        OTEL_MODE="local"
+      fi
+    fi
+
+    if [ "$OTEL_MODE" = "system" ]; then
+      _otel_state_dir="''${XDG_STATE_HOME:-$HOME/.local/state}/otel"
+      # Override env vars to point to the system-level stack
+      export OTEL_EXPORTER_OTLP_ENDPOINT="http://127.0.0.1:4318"
+      export OTEL_GRAFANA_URL="http://127.0.0.1:3700"
+      export OTEL_STATE_DIR="$_otel_state_dir"
+      export OTEL_SPAN_SPOOL_DIR="$_otel_state_dir/spool"
+      export OTEL_SPOOL_MULTI_WRITER="1"
+      echo "[otel] Using system-level OTEL stack (mode=$OTEL_MODE)"
+    else
+      echo "[otel] Using local devenv OTEL stack (mode=$OTEL_MODE)"
+    fi
+
     _otel_grafana="$OTEL_GRAFANA_URL"
     if [ -n "''${TS_HOSTNAME:-}" ]; then
       _otel_grafana="''${_otel_grafana//127.0.0.1/$TS_HOSTNAME}"
@@ -755,7 +798,8 @@ in
   # =========================================================================
 
   # Process names include port for visibility in process-compose TUI
-  processes = {
+  # Processes are only defined when running in local mode (auto also needs them as fallback)
+  processes = lib.mkIf needsLocalInfra {
     "otel-collector-${toString otelCollectorPort}" = {
       exec = ''
         mkdir -p ${spoolDir} ${dataDir}/spool-offsets

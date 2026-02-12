@@ -49,7 +49,6 @@ in
         pkgs.cacert
         pkgs.zstd
         pkgs.findutils
-        pkgs.perl
       ];
 
       dontConfigure = true;
@@ -68,28 +67,127 @@ in
 
         pnpm config set store-dir "$STORE_PATH"
         pnpm config set manage-package-manager-versions false
+        pnpm config set side-effects-cache false
         ${pnpmPlatform.setupScript}
 
         pnpm install --frozen-lockfile --ignore-scripts ${installFlags}
-        pnpm fetch --frozen-lockfile ${fetchFlags}
 
-        # Normalize pnpm store metadata for cross-platform determinism.
-        for indexDir in "$STORE_PATH"/v*/index; do
-          if [ -d "$indexDir" ]; then
-            find "$indexDir" -type f -name "*.json" -print0 \
-              | xargs -0 perl -pi -e '
-                # checkedAt timestamps are non-deterministic
-                s/"checkedAt":[0-9]+/"checkedAt":0/g;
-                # Patched dependency sideEffects keys contain the build platform
-                # (e.g. "darwin;arm64;node24;patch=...") — normalize to a canonical form
-                s/"(linux|darwin);(x64|arm64);(node\d+);/"_platform;/g;
-              '
-          fi
+        # Normalize pnpm store for cross-platform/cross-run determinism.
+        # See: https://github.com/NixOS/nixpkgs/issues/422889
+        #
+        # Key insight: the CAS file name (-exec suffix or not) is set during
+        # initial fetch from the tarball and is deterministic. But the index
+        # JSON mode field can change non-deterministically due to cross-partition
+        # hardlink behavior (pnpm flips exec bits on bin entries via hardlinks;
+        # on same-partition this propagates to the CAS file's mode, on cross-
+        # partition it doesn't). So we derive exec status from the CAS file
+        # name (deterministic source of truth), not the index mode.
+
+        # 1. Canonicalize index JSON and remove orphan CAS files.
+        node -e '
+          const fs = require("fs");
+          const p = require("path");
+          const sp = process.env.STORE_PATH;
+
+          function walk(dir, out) {
+            for (const e of fs.readdirSync(dir, {withFileTypes:true})) {
+              const fp = p.join(dir, e.name);
+              if (e.isDirectory()) walk(fp, out); else out.push(fp);
+            }
+            return out;
+          }
+
+          const vdirs = fs.readdirSync(sp).filter(d => /^v\d+$/.test(d));
+          if (!vdirs.length) { console.log("store-norm: no v* dir found"); process.exit(0); }
+          const vdir = p.join(sp, vdirs[0]);
+
+          /* Phase 1: Build CAS file existence set (source of truth for exec status) */
+          const filesDir = p.join(vdir, "files");
+          const casFiles = new Set();
+          if (fs.existsSync(filesDir)) {
+            for (const f of walk(filesDir, [])) casFiles.add(f);
+          }
+
+          /* Phase 2: Normalize index JSON using CAS file names for exec detection */
+          const referenced = new Set();
+          const indexDir = p.join(vdir, "index");
+          const indexFiles = walk(indexDir, []).filter(f => f.endsWith(".json")).sort();
+          for (const ip of indexFiles) {
+            const d = JSON.parse(fs.readFileSync(ip, "utf8"));
+            if (d.files) {
+              const sorted = {};
+              for (const k of Object.keys(d.files).sort()) {
+                const f = d.files[k];
+                const m = f.integrity.match(/^[^-]+-(.+)$/);
+                let isExec = false;
+                if (m) {
+                  const hex = Buffer.from(m[1], "base64").toString("hex");
+                  const base = p.join(vdir, "files", hex.slice(0,2), hex.slice(2));
+                  const exec = base + "-exec";
+                  /* Derive exec from CAS file name, not index mode */
+                  if (casFiles.has(exec)) {
+                    isExec = true;
+                    referenced.add(exec);
+                  } else if (casFiles.has(base)) {
+                    referenced.add(base);
+                  }
+                }
+                sorted[k] = { checkedAt: 0, integrity: f.integrity, mode: isExec ? 493 : 420, size: f.size };
+              }
+              d.files = sorted;
+            }
+            delete d.sideEffects;
+            delete d.requiresBuild;
+            const out = {};
+            for (const k of Object.keys(d).sort()) out[k] = d[k];
+            fs.writeFileSync(ip, JSON.stringify(out));
+          }
+
+          /* Phase 3: Remove orphan CAS files (not referenced by any index) */
+          if (fs.existsSync(filesDir)) {
+            let orphans = 0;
+            for (const f of walk(filesDir, [])) {
+              if (!referenced.has(f)) { fs.unlinkSync(f); orphans++; }
+            }
+            if (orphans) console.log("store-norm: removed " + orphans + " orphan CAS files");
+          }
+        '
+
+        # 2. Remove empty directories left after orphan cleanup.
+        find "$STORE_PATH" -type d -empty -delete 2>/dev/null || true
+
+        # 3. Remove everything except files/ and index/ — defensive cleanup.
+        #    projects/ contains path-dependent symlinks, tmp/ has random names,
+        #    and any other dirs pnpm may create are not needed for offline installs.
+        for vdir in "$STORE_PATH"/v*/; do
+          for entry in "$vdir"*/; do
+            case "$(basename "$entry")" in
+              files|index) ;;
+              *) rm -rf "$entry" ;;
+            esac
+          done
         done
+
+        # 4. Normalize file permissions — umask can differ across CI runners/sandbox
+        #    environments, and tar captures permissions. Following nixpkgs PR #422975.
+        find "$STORE_PATH" -type d -exec chmod 755 {} +
+        find "$STORE_PATH" -type f -name "*-exec" -exec chmod 555 {} +
+        find "$STORE_PATH" -type f ! -name "*-exec" -exec chmod 444 {} +
+
+        # 5. Print diagnostic hashes (helps debug cross-runner non-determinism).
+        echo "store-diag: top-dirs=$(ls -1 "$STORE_PATH"/v*/ | tr '\n' ',')"
+        echo "store-diag: index-hash=$(find "$STORE_PATH"/v*/index -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)"
+        echo "store-diag: files-hash=$(find "$STORE_PATH"/v*/files -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)"
+        echo "store-diag: files-count=$(find "$STORE_PATH"/v*/files -type f | wc -l)"
+        echo "store-diag: index-count=$(find "$STORE_PATH"/v*/index -type f | wc -l)"
+        echo "store-diag: symlink-count=$(find "$STORE_PATH" -type l | wc -l)"
+        echo "store-diag: exec-files-count=$(find "$STORE_PATH"/v*/files -name '*-exec' | wc -l)"
+        echo "store-diag: total-size=$(du -sb "$STORE_PATH" | cut -f1)"
 
         mkdir -p $out
         cd $STORE_PATH
-        LC_ALL=C TZ=UTC tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner -cf - . \
+        LC_ALL=C TZ=UTC tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
+          --format=gnu --no-acls --no-selinux --no-xattrs -cf - . \
           | zstd -T1 -q -o $out/pnpm-store.tar.zst
 
         runHook postInstall

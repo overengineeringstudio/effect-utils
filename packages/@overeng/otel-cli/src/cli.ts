@@ -8,6 +8,7 @@
 import * as Cli from '@effect/cli'
 
 import { apiCommand } from './commands/api.ts'
+import { dashCommand } from './commands/dash.ts'
 import { debugCommand } from './commands/debug/mod.ts'
 import { healthCommand } from './commands/health.ts'
 import { metricsCommand } from './commands/metrics/mod.ts'
@@ -23,6 +24,7 @@ export const otelCommand = Cli.Command.make('otel').pipe(
     traceCommand,
     metricsCommand,
     healthCommand,
+    dashCommand,
     debugCommand,
     apiCommand,
   ]),
