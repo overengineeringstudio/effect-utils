@@ -52,12 +52,6 @@ let
       lockfile = "packages/@overeng/megarepo/pnpm-lock.yaml";
     }
     {
-      name = "otel-cli";
-      flakeRef = ".#otel";
-      buildNix = "packages/@overeng/otel-cli/nix/build.nix";
-      lockfile = "packages/@overeng/otel-cli/pnpm-lock.yaml";
-    }
-    {
       name = "oxlint-npm";
       flakeRef = ".#oxlint-npm";
       buildNix = "nix/oxc-config-plugin.nix";
@@ -87,7 +81,6 @@ let
     "packages/@overeng/notion-cli"
     "packages/@overeng/notion-effect-client"
     "packages/@overeng/notion-effect-schema"
-    "packages/@overeng/otel-cli"
     "packages/@overeng/oxc-config"
     "packages/@overeng/react-inspector"
     "packages/@overeng/tui-core"
@@ -186,11 +179,6 @@ let
       path = "packages/@overeng/notion-cli";
       name = "notion-cli";
       port = 6012;
-    }
-    {
-      path = "packages/@overeng/otel-cli";
-      name = "otel-cli";
-      port = 6013;
     }
   ];
 in
@@ -317,7 +305,6 @@ in
       completionsCliNames = [
         "genie"
         "mr"
-        "otel"
       ];
     })
     # Nix CLI build and hash management
@@ -341,10 +328,6 @@ in
     (mkSourceCli {
       name = "mr";
       entry = "packages/@overeng/megarepo/bin/mr.ts";
-    })
-    (mkSourceCli {
-      name = "otel";
-      entry = "packages/@overeng/otel-cli/bin/otel.ts";
     })
     cliBuildStamp.package
   ];

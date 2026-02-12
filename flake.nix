@@ -50,15 +50,6 @@
               ;
             src = self;
           };
-          otel = import (rootPath + "/packages/@overeng/otel-cli/nix/build.nix") {
-            inherit
-              pkgs
-              gitRev
-              commitTs
-              dirty
-              ;
-            src = self;
-          };
         };
         cliPackagesDirty = {
           genie = import (rootPath + "/packages/@overeng/genie/nix/build.nix") {
@@ -71,11 +62,6 @@
             src = self;
             dirty = true;
           };
-          otel = import (rootPath + "/packages/@overeng/otel-cli/nix/build.nix") {
-            inherit pkgs gitRev commitTs;
-            src = self;
-            dirty = true;
-          };
         };
       in
       {
@@ -84,7 +70,6 @@
           cli-build-stamp = cliBuildStamp.package;
           genie-dirty = cliPackagesDirty.genie;
           megarepo-dirty = cliPackagesDirty.megarepo;
-          otel-dirty = cliPackagesDirty.otel;
           # npm oxlint with NAPI bindings + pre-bundled @overeng/oxc-config plugin
           oxlint-npm = import ./nix/oxlint-npm.nix {
             inherit pkgs;
@@ -97,12 +82,10 @@
         cliOutPaths = {
           genie = cliPackages.genie.outPath;
           megarepo = cliPackages.megarepo.outPath;
-          otel = cliPackages.otel.outPath;
         };
         cliOutPathsDirty = {
           genie = cliPackagesDirty.genie.outPath;
           megarepo = cliPackagesDirty.megarepo.outPath;
-          otel = cliPackagesDirty.otel.outPath;
         };
 
         apps.update-bun-hashes = flake-utils.lib.mkApp {
@@ -176,7 +159,6 @@
       # For consuming CLIs from other repos, use:
       #   effectUtils.packages.${system}.genie
       #   effectUtils.packages.${system}.megarepo
-      #   effectUtils.packages.${system}.otel
       # See: context/nix-devenv/cli-patterns.md
     };
 }

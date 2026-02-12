@@ -45,9 +45,6 @@
       "path": "./packages/@overeng/notion-effect-schema"
     },
     {
-      "path": "./packages/@overeng/otel-cli"
-    },
-    {
       "path": "./packages/@overeng/oxc-config"
     },
     {
