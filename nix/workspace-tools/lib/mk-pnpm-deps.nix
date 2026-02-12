@@ -71,7 +71,6 @@ in
         ${pnpmPlatform.setupScript}
 
         pnpm install --frozen-lockfile --ignore-scripts ${installFlags}
-        pnpm fetch --frozen-lockfile ${fetchFlags}
 
         # Normalize pnpm store for cross-platform/cross-run determinism.
         # See: https://github.com/NixOS/nixpkgs/issues/422889
@@ -154,7 +153,10 @@ in
           }
         '
 
-        # 2. Remove everything except files/ and index/ — defensive cleanup.
+        # 2. Remove empty directories left after orphan cleanup.
+        find "$STORE_PATH" -type d -empty -delete 2>/dev/null || true
+
+        # 3. Remove everything except files/ and index/ — defensive cleanup.
         #    projects/ contains path-dependent symlinks, tmp/ has random names,
         #    and any other dirs pnpm may create are not needed for offline installs.
         for vdir in "$STORE_PATH"/v*/; do
@@ -166,13 +168,13 @@ in
           done
         done
 
-        # 3. Normalize file permissions — umask can differ across CI runners/sandbox
+        # 4. Normalize file permissions — umask can differ across CI runners/sandbox
         #    environments, and tar captures permissions. Following nixpkgs PR #422975.
         find "$STORE_PATH" -type d -exec chmod 755 {} +
         find "$STORE_PATH" -type f -name "*-exec" -exec chmod 555 {} +
         find "$STORE_PATH" -type f ! -name "*-exec" -exec chmod 444 {} +
 
-        # 4. Print diagnostic hashes (helps debug cross-runner non-determinism).
+        # 5. Print diagnostic hashes (helps debug cross-runner non-determinism).
         echo "store-diag: top-dirs=$(ls -1 "$STORE_PATH"/v*/ | tr '\n' ',')"
         echo "store-diag: index-hash=$(find "$STORE_PATH"/v*/index -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)"
         echo "store-diag: files-hash=$(find "$STORE_PATH"/v*/files -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)"
