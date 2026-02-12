@@ -6,6 +6,10 @@
 #
 # Then use: dt check:quick, dt lint:fix, dt test:run, etc.
 #
+# Flags:
+#   -f / --fresh   Bypass task caches (passes --refresh-task-cache to devenv).
+#                  Requires devenv >= ef99a1f (2026-02-12).
+#
 # Fish completions are managed via home-manager (see dotfiles repo).
 # Bash/zsh completions are set up automatically via enterShell.
 #
@@ -16,6 +20,21 @@
   # When OTEL is configured (otel-span on PATH + OTEL_EXPORTER_OTLP_ENDPOINT set),
   # wraps execution in an OTLP trace span for observability.
   scripts.dt.exec = ''
+    # Parse dt-specific flags before forwarding to devenv
+    _dt_extra_args=""
+    _dt_args=()
+    for arg in "$@"; do
+      case "$arg" in
+        -f|--fresh)
+          _dt_extra_args="$_dt_extra_args --refresh-task-cache"
+          ;;
+        *)
+          _dt_args+=("$arg")
+          ;;
+      esac
+    done
+    set -- "''${_dt_args[@]}"
+
     task_name="''${1:-unknown}"
 
     if command -v otel-span >/dev/null 2>&1 && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
@@ -28,13 +47,13 @@
       fi
 
       # OTEL available: wrap task in a trace span
-      if ! otel-span "dt" "$task_name" --log-url $_eval_attr --attr "dt.args=$*" -- devenv tasks run "$@" --mode before; then
+      if ! otel-span "dt" "$task_name" --log-url $_eval_attr --attr "dt.args=$*" -- devenv tasks run "$@" --mode before $_dt_extra_args; then
         echo "dt: task failed. Re-run with: devenv tasks run $* --mode before --no-tui" >&2
         exit 1
       fi
     else
       # No OTEL: run directly
-      if ! devenv tasks run "$@" --mode before; then
+      if ! devenv tasks run "$@" --mode before $_dt_extra_args; then
         echo "dt: task failed. Re-run with: devenv tasks run $* --mode before --no-tui" >&2
         exit 1
       fi
