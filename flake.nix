@@ -141,7 +141,7 @@
         { pkgs, src, dashboardNames }:
         import ./nix/devenv-modules/otel/build-dashboards.nix { inherit pkgs src dashboardNames; };
 
-      # Standalone otel-span + otel-emit-span shell helpers.
+      # Standalone otel-span CLI (run + emit subcommands).
       # Can be added to devenv packages without importing the full OTEL module.
       lib.mkOtelSpan = { pkgs }: import ./nix/devenv-modules/otel/otel-span.nix { inherit pkgs; };
 

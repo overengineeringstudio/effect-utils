@@ -133,7 +133,7 @@ let
           [ -n "$_memory" ] && _attrs="$_attrs"',{"key":"tsc.memory_kb","value":{"intValue":"'"$_memory"'"}}'
           _attrs="$_attrs"',{"key":"devenv.root","value":{"stringValue":"'"$DEVENV_ROOT"'"}}]'
 
-          # Emit OTLP span via otel-emit-span
+          # Emit OTLP span via otel-span emit
           printf '%s\n' '{
             "resourceSpans": [{
               "resource": {
@@ -157,7 +157,7 @@ let
                 }]
               }]
             }]
-          }' | otel-emit-span
+          }' | otel-span emit
 
           _current_project=""
           _diag_block=""

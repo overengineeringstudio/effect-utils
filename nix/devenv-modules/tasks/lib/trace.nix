@@ -43,7 +43,7 @@ let
   # - Neither: otel-span creates a standalone root span (no orphaned parent)
   traceExec = taskName: execBody: ''
     if command -v otel-span >/dev/null 2>&1 && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
-      otel-span "dt-task" "${taskName}" --attr "task.cached=false" -- bash -c ${lib.escapeShellArg execBody}
+      otel-span run "dt-task" "${taskName}" --attr "task.cached=false" -- bash -c ${lib.escapeShellArg execBody}
     else
       ${execBody}
     fi
@@ -61,7 +61,7 @@ let
     attrs // {
       exec = ''
         if command -v otel-span >/dev/null 2>&1 && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
-          otel-span "dt-task" "${taskName}" --attr "task.cached=false" -- bash -c ${lib.escapeShellArg exec}
+          otel-span run "dt-task" "${taskName}" --attr "task.cached=false" -- bash -c ${lib.escapeShellArg exec}
         else
           ${exec}
         fi

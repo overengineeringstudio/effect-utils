@@ -47,7 +47,7 @@
       fi
 
       # OTEL available: wrap task in a trace span
-      if ! otel-span "dt" "$task_name" --log-url $_eval_attr --attr "dt.args=$*" -- devenv tasks run "$@" --mode before $_dt_extra_args; then
+      if ! otel-span run "dt" "$task_name" --log-url $_eval_attr --attr "dt.args=$*" -- devenv tasks run "$@" --mode before $_dt_extra_args; then
         echo "dt: task failed. Re-run with: devenv tasks run $* --mode before --no-tui" >&2
         exit 1
       fi
