@@ -370,9 +370,9 @@ export const syncMegarepo = <R = never>({
       // Write lock file only if content changed (avoids unnecessary dirty-tree hash changes
       // that trigger direnv re-evaluation → devenv:enterShell → megarepo:sync feedback loop)
       const newContent = yield* Schema.encode(Schema.parseJson(LockFile, { space: 2 }))(lockFile)
-      const existingContent = yield* fs.readFileString(lockPath).pipe(
-        Effect.catchAll(() => Effect.succeed('')),
-      )
+      const existingContent = yield* fs
+        .readFileString(lockPath)
+        .pipe(Effect.catchAll(() => Effect.succeed('')))
       if (newContent + '\n' !== existingContent) {
         yield* fs.writeFileString(lockPath, newContent + '\n')
       }
