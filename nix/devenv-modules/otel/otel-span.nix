@@ -1,7 +1,9 @@
-# otel-span: unified OTLP trace span CLI.
+# otel-span: OTLP trace span CLI.
+#
+# Delivers spans via spool file ($OTEL_SPAN_SPOOL_DIR) or HTTP POST (fallback).
 #
 # Subcommands:
-#   run   — wrap a command execution in an OTLP trace span
+#   run   — wrap a command in an OTLP trace span
 #   emit  — deliver a raw OTLP JSON payload from stdin
 #
 # Usage:
@@ -48,8 +50,9 @@ pkgs.writeShellScriptBin "otel-span" ''
       cat <<'USAGE'
 Usage: otel-span run <service-name> <span-name> [options] -- <command> [args...]
 
-Wraps a command execution in an OTLP trace span and sends it to the
-OTEL Collector at $OTEL_EXPORTER_OTLP_ENDPOINT.
+Wraps a command in an OTLP trace span. Delivers via spool file
+($OTEL_SPAN_SPOOL_DIR) when available, falls back to HTTP POST.
+No-op when neither endpoint nor spool dir is configured.
 
 Options:
   --attr KEY=VALUE      Add a span attribute (repeatable)
@@ -62,7 +65,9 @@ Options:
   --help                Show this help
 
 Environment:
-  OTEL_EXPORTER_OTLP_ENDPOINT  Collector endpoint (required)
+  OTEL_EXPORTER_OTLP_ENDPOINT  Collector HTTP endpoint (fallback delivery)
+  OTEL_SPAN_SPOOL_DIR          Spool directory for file-based delivery (preferred)
+  OTEL_GRAFANA_URL             Grafana base URL (used by --log-url)
   TRACEPARENT                   W3C Trace Context parent (optional)
 
 Examples:
@@ -241,8 +246,10 @@ USAGE
     cat <<'HELP'
 Usage: otel-span <subcommand> [args...]
 
+OTLP trace span CLI. Delivers spans via spool file or HTTP POST.
+
 Subcommands:
-  run   Wrap a command execution in an OTLP trace span
+  run   Wrap a command in an OTLP trace span
   emit  Deliver a raw OTLP JSON payload from stdin
 
 Run 'otel-span <subcommand> --help' for subcommand-specific help.

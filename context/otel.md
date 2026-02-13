@@ -82,6 +82,8 @@ Range: 10000-60000 (~0.012% collision probability for 2 worktrees).
 
 ### `otel-span` -- Trace span CLI
 
+Delivers spans via spool file (`$OTEL_SPAN_SPOOL_DIR`) when available, falls back to HTTP POST to the collector. No-op when neither is configured.
+
 Subcommands:
 
 - `otel-span run` — wrap a command in an OTLP trace span
@@ -197,6 +199,8 @@ When devenv adds native OTEL support, it will read `OTEL_EXPORTER_OTLP_ENDPOINT`
 ```
 nix/devenv-modules/
   otel.nix                    — devenv module: processes, env vars, auto-detection, dashboards
+  otel/otel-span.nix          — standalone otel-span CLI (run + emit subcommands)
+  otel/build-dashboards.nix   — Grafonnet build helper for compiling dashboards
   otel/dashboards/            — Grafonnet source files
   tasks/lib/trace.nix         — otel-span wrapper for task exec tracing
   tasks/lib/cache.nix         — cache status tracking (sets task.cached attribute)
