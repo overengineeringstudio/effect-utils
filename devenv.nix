@@ -339,6 +339,17 @@ in
   tasks."genie:check".after = [ "pnpm:install:genie" ];
   tasks."megarepo:sync".after = [ "pnpm:install:megarepo" ];
 
+  tasks."gh:apply-settings" = {
+    after = [ "genie:run" ];
+    exec = ''
+      set -euo pipefail
+      ruleset_id=$(gh api repos/overengineeringstudio/effect-utils/rulesets --jq '.[0].id')
+      gh api "repos/overengineeringstudio/effect-utils/rulesets/$ruleset_id" --method PUT --input .github/repo-settings.json
+      echo "Applied repo-settings.json to ruleset $ruleset_id"
+    '';
+    description = "Apply .github/repo-settings.json to GitHub ruleset";
+  };
+
   # Wire beads:daemon:ensure directly to shell entry (not via optionalTasks).
   # The setup module's gitHashStatus cache would prevent re-checking the daemon
   # after it stops without a new commit. The beads module's own status check
