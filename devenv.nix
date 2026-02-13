@@ -345,6 +345,12 @@ in
   # (is daemon running?) is the correct gate for this task.
   tasks."devenv:enterShell".after = lib.mkAfter [ "beads:daemon:ensure" ];
 
+  # Keep git-hook installation out of the shell-entry path.
+  # If needed, install with `devenv tasks run devenv:git-hooks:install`.
+  # TODO(cachix/git-hooks.nix#688): remove this once the upstream git-hooks.nix issue
+  # is fixed; currently this workaround prevents shell-entry failures with core.hooksPath.
+  tasks."devenv:git-hooks:install".before = lib.mkForce [ ];
+
   # Repo-local pnpm store for consistent local installs (not used by Nix builds).
   env.PNPM_STORE_DIR = "${config.devenv.root}/.pnpm-store";
 
