@@ -25,7 +25,8 @@ let
     };
   };
 
-  platformInfo = sources.${pkgs.system} or (throw "Unsupported system: ${pkgs.system}");
+  system = pkgs.stdenv.hostPlatform.system;
+  platformInfo = sources.${system} or (throw "Unsupported system: ${system}");
 in
 pkgs.stdenv.mkDerivation {
   pname = "beads";
