@@ -80,23 +80,26 @@ Range: 10000-60000 (~0.012% collision probability for 2 worktrees).
 
 ## Shell Helpers
 
-### `otel-span` -- Emit trace spans
+### `otel-span` -- Trace span CLI
 
-Wraps any command in an OTLP trace span. Fire-and-forget POST to collector (2s timeout, failure silenced). No-op when collector is down.
+Subcommands:
+- `otel-span run` — wrap a command in an OTLP trace span
+- `otel-span emit` — deliver a raw OTLP JSON payload from stdin
 
 ```bash
-otel-span <service-name> <span-name> -- <command> [args...]
-otel-span dt pnpm:install --attr cached=false -- pnpm install
+otel-span run <service-name> <span-name> -- <command> [args...]
+otel-span run dt pnpm:install --attr cached=false -- pnpm install
+printf '%s' "$otlp_json" | otel-span emit
 ```
 
-The `dt` wrapper calls `otel-span` automatically -- no manual wrapping needed for task runs.
+The `dt` wrapper calls `otel-span run` automatically -- no manual wrapping needed for task runs.
 
 ## Two-Level Tracing (`dt` + `dt-task`)
 
 **Level 1 -- Root span** (`service.name="dt"`): `dt` wraps the entire `devenv tasks run`:
 
 ```bash
-otel-span "dt" "$task_name" --attr "dt.args=$*" -- devenv tasks run "$@" --mode before
+otel-span run "dt" "$task_name" --attr "dt.args=$*" -- devenv tasks run "$@" --mode before
 ```
 
 **Level 2 -- Child spans** (`service.name="dt-task"`): Each task's `exec` is wrapped via `trace.nix`:

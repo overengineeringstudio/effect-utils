@@ -58,9 +58,8 @@ let
   # Spool directory for otel-span file-based span delivery
   spoolDir = "${dataDir}/spool";
 
-  # otel-span / otel-emit-span shell helpers (standalone package)
+  # otel-span shell helper (standalone package with run + emit subcommands)
   otelSpan = import ./otel/otel-span.nix { inherit pkgs; };
-  otelEmitSpan = otelSpan.passthru.otelEmitSpan;
 
   # =========================================================================
   # Grafonnet: build dashboards from Jsonnet source at Nix eval time
@@ -349,7 +348,7 @@ let
     enabled = false
   '';
 
-  # otel-span / otel-emit-span are imported from ./otel/otel-span.nix above
+  # otel-span is imported from ./otel/otel-span.nix above
 
   # Whether to include local OTEL infrastructure (collector, tempo, grafana processes)
   needsLocalInfra = mode != "system";
@@ -357,7 +356,6 @@ let
 in
 {
   packages = [
-    otelEmitSpan
     otelSpan
   ]
   ++ lib.optionals needsLocalInfra [
@@ -480,7 +478,7 @@ in
       IFS='-' read -r _ _trace_id _span_id _ <<< "$TRACEPARENT"
       (
         unset TRACEPARENT
-        otel-span "devenv" "shell:entry" \
+        otel-span run "devenv" "shell:entry" \
           --trace-id "$_trace_id" \
           --span-id "$_span_id" \
           --start-time-ns "$OTEL_SHELL_ENTRY_NS" \
@@ -584,7 +582,7 @@ in
       _test_json_format() {
         local spool="$_tmp/json-test"
         mkdir -p "$spool"
-        OTEL_SPAN_SPOOL_DIR="$spool" otel-span "test" "json-check" -- true >/dev/null 2>&1
+        OTEL_SPAN_SPOOL_DIR="$spool" otel-span run "test" "json-check" -- true >/dev/null 2>&1
         [ -f "$spool/spans.jsonl" ] || return 1
         local line
         line=$(head -1 "$spool/spans.jsonl")
@@ -598,7 +596,7 @@ in
         local spool="$_tmp/tp-test"
         mkdir -p "$spool"
         local child_tp
-        child_tp=$(OTEL_SPAN_SPOOL_DIR="$spool" otel-span "test" "parent" -- bash -c 'echo $TRACEPARENT' 2>/dev/null)
+        child_tp=$(OTEL_SPAN_SPOOL_DIR="$spool" otel-span run "test" "parent" -- bash -c 'echo $TRACEPARENT' 2>/dev/null)
         # Must match W3C format: 00-{32hex}-{16hex}-01
         [[ "$child_tp" =~ ^00-[0-9a-f]{32}-[0-9a-f]{16}-01$ ]] || return 1
         # Trace ID in child must match the span's trace ID in the spool file
@@ -613,7 +611,7 @@ in
       # Test 3: Spool fallback (nonexistent dir)
       _test_spool_fallback() {
         # With nonexistent spool dir, should still succeed (falls back to curl which may fail silently)
-        OTEL_SPAN_SPOOL_DIR="/nonexistent" OTEL_EXPORTER_OTLP_ENDPOINT="http://127.0.0.1:1" otel-span "test" "fallback" -- true >/dev/null 2>&1
+        OTEL_SPAN_SPOOL_DIR="/nonexistent" OTEL_EXPORTER_OTLP_ENDPOINT="http://127.0.0.1:1" otel-span run "test" "fallback" -- true >/dev/null 2>&1
       }
       _check "Spool fallback" _test_spool_fallback
 
@@ -621,7 +619,7 @@ in
       _test_spool_write() {
         local spool="$_tmp/write-test"
         mkdir -p "$spool"
-        OTEL_SPAN_SPOOL_DIR="$spool" otel-span "test" "write-check" -- true >/dev/null 2>&1
+        OTEL_SPAN_SPOOL_DIR="$spool" otel-span run "test" "write-check" -- true >/dev/null 2>&1
         [ -f "$spool/spans.jsonl" ] || return 1
         local lines
         lines=$(wc -l < "$spool/spans.jsonl")
@@ -633,7 +631,7 @@ in
       _test_span_id_override() {
         local spool="$_tmp/spanid-test"
         mkdir -p "$spool"
-        OTEL_SPAN_SPOOL_DIR="$spool" otel-span "test" "spanid-check" --span-id "abcdef0123456789" -- true >/dev/null 2>&1
+        OTEL_SPAN_SPOOL_DIR="$spool" otel-span run "test" "spanid-check" --span-id "abcdef0123456789" -- true >/dev/null 2>&1
         [ -f "$spool/spans.jsonl" ] || return 1
         local actual
         actual=$(head -1 "$spool/spans.jsonl" | ${pkgs.jq}/bin/jq -r '.resourceSpans[0].scopeSpans[0].spans[0].spanId')
@@ -645,7 +643,7 @@ in
       _test_start_time_override() {
         local spool="$_tmp/startns-test"
         mkdir -p "$spool"
-        OTEL_SPAN_SPOOL_DIR="$spool" otel-span "test" "startns-check" --start-time-ns "1234567890000000000" -- true >/dev/null 2>&1
+        OTEL_SPAN_SPOOL_DIR="$spool" otel-span run "test" "startns-check" --start-time-ns "1234567890000000000" -- true >/dev/null 2>&1
         [ -f "$spool/spans.jsonl" ] || return 1
         local actual
         actual=$(head -1 "$spool/spans.jsonl" | ${pkgs.jq}/bin/jq -r '.resourceSpans[0].scopeSpans[0].spans[0].startTimeUnixNano')
@@ -657,7 +655,7 @@ in
       _test_end_time_override() {
         local spool="$_tmp/endns-test"
         mkdir -p "$spool"
-        OTEL_SPAN_SPOOL_DIR="$spool" otel-span "test" "endns-check" --end-time-ns "9999999999999999999" -- true >/dev/null 2>&1
+        OTEL_SPAN_SPOOL_DIR="$spool" otel-span run "test" "endns-check" --end-time-ns "9999999999999999999" -- true >/dev/null 2>&1
         [ -f "$spool/spans.jsonl" ] || return 1
         local actual
         actual=$(head -1 "$spool/spans.jsonl" | ${pkgs.jq}/bin/jq -r '.resourceSpans[0].scopeSpans[0].spans[0].endTimeUnixNano')
@@ -670,7 +668,7 @@ in
         local spool="$_tmp/logurl-test"
         mkdir -p "$spool"
         local stderr_output
-        stderr_output=$(OTEL_SPAN_SPOOL_DIR="$spool" OTEL_GRAFANA_URL="http://localhost:3000" otel-span "test" "url-check" --log-url -- true 2>&1 1>/dev/null)
+        stderr_output=$(OTEL_SPAN_SPOOL_DIR="$spool" OTEL_GRAFANA_URL="http://localhost:3000" otel-span run "test" "url-check" --log-url -- true 2>&1 1>/dev/null)
         # Must contain [otel] Trace: prefix
         echo "$stderr_output" | grep -q '\[otel\] Trace:' || return 1
         # Must contain the Grafana explore URL
@@ -688,7 +686,7 @@ in
         mkdir -p "$spool"
         (
           unset TRACEPARENT
-          OTEL_SPAN_SPOOL_DIR="$spool" otel-span "test" "root-check" -- true >/dev/null 2>&1
+          OTEL_SPAN_SPOOL_DIR="$spool" otel-span run "test" "root-check" -- true >/dev/null 2>&1
         )
         [ -f "$spool/spans.jsonl" ] || return 1
         # parentSpanId must be absent (not an orphaned reference)
@@ -749,19 +747,19 @@ in
       _trace_id="aabbccdd11223344aabbccdd11223344"
 
       # Root span (no parent)
-      (unset TRACEPARENT; OTEL_SPAN_SPOOL_DIR="$_spool" otel-span "devenv" "shell:entry" --trace-id "$_trace_id" --span-id "0000000000000001" --start-time-ns "1000000000000000" --end-time-ns "11000000000000000" -- true >/dev/null 2>&1)
+      (unset TRACEPARENT; OTEL_SPAN_SPOOL_DIR="$_spool" otel-span run "devenv" "shell:entry" --trace-id "$_trace_id" --span-id "0000000000000001" --start-time-ns "1000000000000000" --end-time-ns "11000000000000000" -- true >/dev/null 2>&1)
 
       # Child 1 of root
-      OTEL_SPAN_SPOOL_DIR="$_spool" otel-span "dt-task" "ts:check" --trace-id "$_trace_id" --span-id "0000000000000002" --parent-span-id "0000000000000001" --start-time-ns "1100000000000000" --end-time-ns "6000000000000000" -- true >/dev/null 2>&1
+      OTEL_SPAN_SPOOL_DIR="$_spool" otel-span run "dt-task" "ts:check" --trace-id "$_trace_id" --span-id "0000000000000002" --parent-span-id "0000000000000001" --start-time-ns "1100000000000000" --end-time-ns "6000000000000000" -- true >/dev/null 2>&1
 
       # Grandchild 1 of child 1
-      OTEL_SPAN_SPOOL_DIR="$_spool" otel-span "tsc-project" "utils" --trace-id "$_trace_id" --span-id "0000000000000003" --parent-span-id "0000000000000002" --start-time-ns "1200000000000000" --end-time-ns "4000000000000000" -- true >/dev/null 2>&1
+      OTEL_SPAN_SPOOL_DIR="$_spool" otel-span run "tsc-project" "utils" --trace-id "$_trace_id" --span-id "0000000000000003" --parent-span-id "0000000000000002" --start-time-ns "1200000000000000" --end-time-ns "4000000000000000" -- true >/dev/null 2>&1
 
       # Grandchild 2 of child 1
-      OTEL_SPAN_SPOOL_DIR="$_spool" otel-span "tsc-project" "core" --trace-id "$_trace_id" --span-id "0000000000000004" --parent-span-id "0000000000000002" --start-time-ns "4100000000000000" --end-time-ns "5800000000000000" -- true >/dev/null 2>&1
+      OTEL_SPAN_SPOOL_DIR="$_spool" otel-span run "tsc-project" "core" --trace-id "$_trace_id" --span-id "0000000000000004" --parent-span-id "0000000000000002" --start-time-ns "4100000000000000" --end-time-ns "5800000000000000" -- true >/dev/null 2>&1
 
       # Child 2 of root
-      OTEL_SPAN_SPOOL_DIR="$_spool" otel-span "dt-task" "lint:check" --trace-id "$_trace_id" --span-id "0000000000000005" --parent-span-id "0000000000000001" --start-time-ns "1200000000000000" --end-time-ns "4000000000000000" -- true >/dev/null 2>&1
+      OTEL_SPAN_SPOOL_DIR="$_spool" otel-span run "dt-task" "lint:check" --trace-id "$_trace_id" --span-id "0000000000000005" --parent-span-id "0000000000000001" --start-time-ns "1200000000000000" --end-time-ns "4000000000000000" -- true >/dev/null 2>&1
 
       _sf="$_spool/spans.jsonl"
 
@@ -850,7 +848,7 @@ in
         local orphan_spool="$_tmp/orphan-test"
         mkdir -p "$orphan_spool"
         # Emit a span with a parentSpanId that doesn't exist
-        OTEL_SPAN_SPOOL_DIR="$orphan_spool" otel-span "test" "orphan" --trace-id "$_trace_id" --span-id "0000000000000099" --parent-span-id "DOES_NOT_EXIST_00" --start-time-ns "2000000000000000" --end-time-ns "3000000000000000" -- true >/dev/null 2>&1
+        OTEL_SPAN_SPOOL_DIR="$orphan_spool" otel-span run "test" "orphan" --trace-id "$_trace_id" --span-id "0000000000000099" --parent-span-id "DOES_NOT_EXIST_00" --start-time-ns "2000000000000000" --end-time-ns "3000000000000000" -- true >/dev/null 2>&1
         local of="$orphan_spool/spans.jsonl"
         local span_ids parent_ids
         span_ids=$(_all_span_ids "$of")

@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **devenv/otel-span**: Consolidate `otel-span` and `otel-emit-span` into single CLI with subcommands
+  - `otel-span run <service> <span-name> [opts] -- <cmd>` replaces bare `otel-span <service> ...`
+  - `otel-span emit` replaces `otel-emit-span` (reads OTLP JSON from stdin)
+  - Breaking: subcommand is now required
+
 - **devenv/otel.nix**: Replace `curl` with file spool (`otlpjsonfilereceiver`) in `otel-span`
   - Spans are written to `$OTEL_SPAN_SPOOL_DIR/spans.jsonl` instead of HTTP POST
   - Collector picks up spans via `otlpjsonfilereceiver` (500ms poll, delete after read)
