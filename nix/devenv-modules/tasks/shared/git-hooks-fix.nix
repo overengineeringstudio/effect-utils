@@ -6,6 +6,9 @@
 #
 # This module is kept for backwards compatibility with older devenv versions.
 #
+# TODO: Remove this workaround when https://github.com/cachix/git-hooks.nix/issues/688
+# is fixed upstream.
+#
 # Original issue: https://github.com/cachix/devenv/issues/2455
 { config, lib, pkgs, ... }:
 

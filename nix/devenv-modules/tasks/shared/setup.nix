@@ -216,9 +216,40 @@ in
               set -u
               set -o pipefail
 
+              # Guard: prevent recursive fork bomb. Each wrapper calls `devenv tasks run`
+              # which may re-evaluate enterShell, spawning wrappers again (6^n explosion).
+              if [ "''${_DEVENV_SETUP_OPT_ACTIVE:-}" = "1" ]; then
+                exit 0
+              fi
+              export _DEVENV_SETUP_OPT_ACTIVE=1
+
+              # Secondary guard in case environment is not propagated to recursive
+              # task invocations: create a per-wrapper filesystem lock.
+              _setup_opt_lock_root="''${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/devenv-setup-opt-locks"
+              _setup_opt_lock_dir="$_setup_opt_lock_root/${wrapper}"
+              mkdir -p "$_setup_opt_lock_root"
+
+              if ! mkdir "$_setup_opt_lock_dir" 2>/dev/null; then
+                if [ -f "$_setup_opt_lock_dir/pid" ]; then
+                  _setup_opt_pid="$(cat "$_setup_opt_lock_dir/pid" 2>/dev/null || true)"
+                  if [ -n "''${_setup_opt_pid:-}" ] && kill -0 "$_setup_opt_pid" 2>/dev/null; then
+                    exit 0
+                  fi
+                fi
+
+                rm -rf "$_setup_opt_lock_dir"
+                if ! mkdir "$_setup_opt_lock_dir" 2>/dev/null; then
+                  exit 0
+                fi
+              fi
+
+              echo "$$" > "$_setup_opt_lock_dir/pid"
+              trap 'rm -rf "$_setup_opt_lock_dir"' EXIT
+
               echo "[devenv] optional setup: ${t}" >&2
 
-              if devenv tasks run "${t}" --mode before --no-tui --show-output; then
+              if DEVENV_SETUP_FROM_WRAPPER=1 \
+              devenv tasks run "${t}" --mode before --no-tui --show-output; then
                 exit 0
               fi
 

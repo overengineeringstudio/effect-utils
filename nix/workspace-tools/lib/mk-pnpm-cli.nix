@@ -83,7 +83,47 @@ let
   packagesItems = map (s: lib.trim s) (lib.splitString "," packagesInner);
 
   # Filter out "." (main package itself)
-  relativeWorkspaceMembers = builtins.filter (s: s != ".") packagesItems;
+  packagesLineTrimmed = if packagesLine == null then "" else lib.trim packagesLine;
+  isPackagesInline = packagesLine != null && lib.hasPrefix "packages: [" packagesLineTrimmed;
+  workspaceLinesAfterPackagesHeader =
+    let
+      dropUntilPackagesHeader =
+        lines:
+        if lines == [ ] then
+          [ ]
+        else if lib.hasPrefix "packages:" (lib.trim (builtins.head lines)) then
+          lib.tail lines
+        else
+          dropUntilPackagesHeader (lib.tail lines);
+    in
+    dropUntilPackagesHeader workspaceLines;
+  parsePackagesMultiline =
+    let
+      parseLines =
+        lines:
+        if lines == [ ] then
+          [ ]
+        else
+          let
+            line = lib.trim (builtins.head lines);
+            rest = lib.tail lines;
+          in
+            if line == "" || lib.hasPrefix "#" line then
+              parseLines rest
+            else if lib.hasPrefix "- " line then
+              [ lib.trim (lib.removePrefix "- " line) ] ++ parseLines rest
+            else if lib.hasPrefix "-" line then
+              [ lib.trim (lib.removePrefix "-" line) ] ++ parseLines rest
+            else
+              [ ];
+    in
+    parseLines workspaceLinesAfterPackagesHeader;
+  workspaceMemberItems = builtins.filter builtins.isString (
+    if isPackagesInline then packagesItems else parsePackagesMultiline
+  );
+
+  # Filter out "." (main package itself)
+  relativeWorkspaceMembers = builtins.filter (s: s != ".") workspaceMemberItems;
 
   # Resolve relative paths (e.g., "../tui-core") to workspace-root paths (e.g., "packages/@overeng/tui-core")
   resolveRelativePath =
@@ -166,7 +206,20 @@ let
           );
           # Check if path is under patches directory
           isInPatches =
-            patchesDir != null && (lib.hasPrefix "${patchesDir}/" relPath || relPath == patchesDir);
+            patchesDir != null
+            && (
+              # Root-level patches dir
+              lib.hasPrefix "${patchesDir}/" relPath
+              || relPath == patchesDir
+              # Workspace-member patches dirs (`packages/.../patches/...`)
+              || lib.any
+                (
+                  memberDir:
+                  lib.hasPrefix "${memberDir}/${patchesDir}/" relPath
+                  || relPath == "${memberDir}/${patchesDir}"
+                )
+                workspaceMembers
+            );
           # Include workspace member package.json files (not full directories)
           # Also include their parent directories as directories
           isWorkspaceMemberPackageJson = lib.any (
