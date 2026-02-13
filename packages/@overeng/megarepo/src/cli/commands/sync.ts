@@ -29,6 +29,7 @@ import {
   checkLockStaleness,
   createEmptyLockFile,
   LOCK_FILE_NAME,
+  LockFile,
   readLockFile,
   syncLockWithConfig,
   upsertLockedMember,
@@ -367,8 +368,15 @@ export const syncMegarepo = <R = never>({
         })
       }
 
-      // Write lock file
-      yield* writeLockFile({ lockPath, lockFile })
+      // Write lock file only if content changed (avoids unnecessary dirty-tree hash changes
+      // that trigger direnv re-evaluation → devenv:enterShell → megarepo:sync feedback loop)
+      const newContent = yield* Schema.encode(Schema.parseJson(LockFile, { space: 2 }))(lockFile)
+      const existingContent = yield* fs.readFileString(lockPath).pipe(
+        Effect.catchAll(() => Effect.succeed('')),
+      )
+      if (newContent + '\n' !== existingContent) {
+        yield* fs.writeFileString(lockPath, newContent + '\n')
+      }
 
       // Sync Nix lock files (flake.lock, devenv.lock) in member repos
       // - lockSync.enabled: true → always enable (explicit override)

@@ -19,15 +19,25 @@
 { lib, pkgs, ... }:
 let
   trace = import ../lib/trace.nix { inherit lib; };
+  flock = "${pkgs.flock}/bin/flock";
 in
 {
   # mr shells out to git for clone/fetch/worktree operations
-  packages = [ pkgs.git pkgs.openssh ];
+  packages = [ pkgs.git pkgs.openssh pkgs.flock ];
   tasks."megarepo:sync" = {
     description = "Sync megarepo members (clone repos, create symlinks)";
     exec = trace.exec "megarepo:sync" ''
       if [ ! -f ./megarepo.json ]; then
         exit 0
+      fi
+
+      lockfile=".direnv/megarepo-sync.lock"
+      mkdir -p .direnv
+      exec 200>"$lockfile"
+      if ! ${flock} -w 600 200; then
+        echo "[megarepo] Sync lock timeout after 600s: $lockfile" >&2
+        echo "[megarepo] Another megarepo sync may be stuck; try: dt megarepo:sync" >&2
+        exit 1
       fi
 
       mr sync${if syncAll then " --all" else ""}
@@ -45,7 +55,7 @@ in
       fi
 
       # Use mr status to check syncNeeded field
-      status_json=$(nix run "git+file:$PWD#megarepo" -- status --output json 2>/dev/null) || exit 1
+      status_json=$(mr status --output json 2>/dev/null) || exit 1
 
       # Use the top-level syncNeeded boolean for a simple check
       echo "$status_json" | ${pkgs.jq}/bin/jq -e '.syncNeeded == false' >/dev/null 2>&1
