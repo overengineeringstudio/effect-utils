@@ -83,6 +83,7 @@ Range: 10000-60000 (~0.012% collision probability for 2 worktrees).
 ### `otel-span` -- Trace span CLI
 
 Subcommands:
+
 - `otel-span run` — wrap a command in an OTLP trace span
 - `otel-span emit` — deliver a raw OTLP JSON payload from stdin
 
