@@ -501,6 +501,14 @@ export const generateFile = ({
       return { _tag: 'updated', targetFilePath, diffSummary } as const
     }
 
+    if (isUnchanged) {
+      // Restore read-only permissions if needed (e.g. after a --writeable run or manual chmod)
+      if (readOnly) {
+        yield* fs.chmod(targetFilePath, 0o444).pipe(Effect.catchAll(() => Effect.void))
+      }
+      return { _tag: 'unchanged', targetFilePath } as const
+    }
+
     // Atomically write the file (write to temp, then rename)
     yield* withTargetLock({
       cwd,
@@ -512,12 +520,8 @@ export const generateFile = ({
       }),
     })
 
-    // Determine result status
     if (!fileExists) {
       return { _tag: 'created', targetFilePath } as const
-    }
-    if (isUnchanged) {
-      return { _tag: 'unchanged', targetFilePath } as const
     }
 
     return { _tag: 'updated', targetFilePath, diffSummary } as const

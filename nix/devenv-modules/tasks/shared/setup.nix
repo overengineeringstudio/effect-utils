@@ -216,6 +216,13 @@ in
               set -u
               set -o pipefail
 
+              # Guard: prevent recursive fork bomb. Each wrapper calls `devenv tasks run`
+              # which may re-evaluate enterShell, spawning wrappers again (6^n explosion).
+              if [ "''${_DEVENV_SETUP_OPT_ACTIVE:-}" = "1" ]; then
+                exit 0
+              fi
+              export _DEVENV_SETUP_OPT_ACTIVE=1
+
               echo "[devenv] optional setup: ${t}" >&2
 
               if devenv tasks run "${t}" --mode before --no-tui --show-output; then
