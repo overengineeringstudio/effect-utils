@@ -23,6 +23,7 @@ let
 in
 {
   # mr shells out to git for clone/fetch/worktree operations
+  # NOTE: `mr` CLI must be on PATH (provided by the importing repo's devenv.nix)
   packages = [ pkgs.git pkgs.openssh pkgs.flock ];
   tasks."megarepo:sync" = {
     description = "Sync megarepo members (clone repos, create symlinks)";

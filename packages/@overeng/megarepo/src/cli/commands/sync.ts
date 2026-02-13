@@ -33,7 +33,6 @@ import {
   readLockFile,
   syncLockWithConfig,
   upsertLockedMember,
-  writeLockFile,
 } from '../../lib/lock.ts'
 import { syncNixLocks, type NixLockSyncResult } from '../../lib/nix-lock/mod.ts'
 import { type Store, StoreLayer } from '../../lib/store.ts'
