@@ -141,6 +141,10 @@
         { pkgs, src, dashboardNames }:
         import ./nix/devenv-modules/otel/build-dashboards.nix { inherit pkgs src dashboardNames; };
 
+      # Standalone otel-span + otel-emit-span shell helpers.
+      # Can be added to devenv packages without importing the full OTEL module.
+      lib.mkOtelSpan = { pkgs }: import ./nix/devenv-modules/otel/otel-span.nix { inherit pkgs; };
+
       # Convenience helper for bundling the common genie/megarepo CLIs.
       # Use this for releases/CI where hermetic Nix builds are needed.
       lib.mkCliPackages = import ./nix/workspace-tools/lib/mk-cli-packages.nix;
