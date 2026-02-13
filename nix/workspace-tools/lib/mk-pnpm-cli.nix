@@ -206,7 +206,20 @@ let
           );
           # Check if path is under patches directory
           isInPatches =
-            patchesDir != null && (lib.hasPrefix "${patchesDir}/" relPath || relPath == patchesDir);
+            patchesDir != null
+            && (
+              # Root-level patches dir
+              lib.hasPrefix "${patchesDir}/" relPath
+              || relPath == patchesDir
+              # Workspace-member patches dirs (`packages/.../patches/...`)
+              || lib.any
+                (
+                  memberDir:
+                  lib.hasPrefix "${memberDir}/${patchesDir}/" relPath
+                  || relPath == "${memberDir}/${patchesDir}"
+                )
+                workspaceMembers
+            );
           # Include workspace member package.json files (not full directories)
           # Also include their parent directories as directories
           isWorkspaceMemberPackageJson = lib.any (
