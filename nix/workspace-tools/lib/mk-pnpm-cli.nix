@@ -83,7 +83,47 @@ let
   packagesItems = map (s: lib.trim s) (lib.splitString "," packagesInner);
 
   # Filter out "." (main package itself)
-  relativeWorkspaceMembers = builtins.filter (s: s != ".") packagesItems;
+  packagesLineTrimmed = if packagesLine == null then "" else lib.trim packagesLine;
+  isPackagesInline = packagesLine != null && lib.hasPrefix "packages: [" packagesLineTrimmed;
+  workspaceLinesAfterPackagesHeader =
+    let
+      dropUntilPackagesHeader =
+        lines:
+        if lines == [ ] then
+          [ ]
+        else if lib.hasPrefix "packages:" (lib.trim (builtins.head lines)) then
+          lib.tail lines
+        else
+          dropUntilPackagesHeader (lib.tail lines);
+    in
+    dropUntilPackagesHeader workspaceLines;
+  parsePackagesMultiline =
+    let
+      parseLines =
+        lines:
+        if lines == [ ] then
+          [ ]
+        else
+          let
+            line = lib.trim (builtins.head lines);
+            rest = lib.tail lines;
+          in
+            if line == "" || lib.hasPrefix "#" line then
+              parseLines rest
+            else if lib.hasPrefix "- " line then
+              [ lib.trim (lib.removePrefix "- " line) ] ++ parseLines rest
+            else if lib.hasPrefix "-" line then
+              [ lib.trim (lib.removePrefix "-" line) ] ++ parseLines rest
+            else
+              [ ];
+    in
+    parseLines workspaceLinesAfterPackagesHeader;
+  workspaceMemberItems = builtins.filter builtins.isString (
+    if isPackagesInline then packagesItems else parsePackagesMultiline
+  );
+
+  # Filter out "." (main package itself)
+  relativeWorkspaceMembers = builtins.filter (s: s != ".") workspaceMemberItems;
 
   # Resolve relative paths (e.g., "../tui-core") to workspace-root paths (e.g., "packages/@overeng/tui-core")
   resolveRelativePath =
