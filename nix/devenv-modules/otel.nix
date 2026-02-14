@@ -61,6 +61,9 @@ let
   # otel-span shell helper (standalone package with run + emit subcommands)
   otelSpan = import ./otel/otel-span.nix { inherit pkgs; };
 
+  # Shared OTEL task tracing helper used by task-level OTEL tests.
+  traceHelpers = import ./tasks/lib/trace.nix { inherit lib; };
+
   # =========================================================================
   # Grafonnet: build dashboards from Jsonnet source at Nix eval time
   # =========================================================================
@@ -726,6 +729,39 @@ in
         [ "$has_parent" = "false" ]
       }
       _check "No TRACEPARENT = root span" _test_no_traceparent_root
+
+      # Test 10: status spans dedupe by trace/parent/task key
+      _test_status_span_dedupe() {
+        local spool="$_tmp/status-dedupe"
+        local cache_dir="$_tmp/status-dedupe-cache"
+        local status_traceparent="00-deaddeaddeaddeaddeaddeaddeaddeadde-0000000000000042-01"
+        local alt_status_traceparent="00-deaddeaddeaddeaddeaddeaddeaddeadde-0000000000000043-01"
+
+        mkdir -p "$spool"
+
+        OTEL_SPAN_SPOOL_DIR="$spool" \
+          OTEL_TASK_TRACEPARENT="$status_traceparent" \
+          OTEL_STATUS_SPAN_CACHE_DIR="$cache_dir" \
+          bash -c ${lib.escapeShellArg (traceHelpers.status "otel:test:status-dedupe" "true")}
+
+        OTEL_SPAN_SPOOL_DIR="$spool" \
+          OTEL_TASK_TRACEPARENT="$status_traceparent" \
+          OTEL_STATUS_SPAN_CACHE_DIR="$cache_dir" \
+          bash -c ${lib.escapeShellArg (traceHelpers.status "otel:test:status-dedupe" "true")}
+
+        local status_count
+        status_count=$( ${pkgs.jq}/bin/jq -r '.resourceSpans[0].scopeSpans[0].spans[] | select(.name=="otel:test:status-dedupe:status") | .spanId' "$spool/spans.jsonl" | wc -l | tr -d ' ')
+        [ "$status_count" -eq 1 ] || return 1
+
+        OTEL_SPAN_SPOOL_DIR="$spool" \
+          OTEL_TASK_TRACEPARENT="$alt_status_traceparent" \
+          OTEL_STATUS_SPAN_CACHE_DIR="$cache_dir" \
+          bash -c ${lib.escapeShellArg (traceHelpers.status "otel:test:status-dedupe" "true")}
+
+        status_count=$( ${pkgs.jq}/bin/jq -r '.resourceSpans[0].scopeSpans[0].spans[] | select(.name=="otel:test:status-dedupe:status") | .spanId' "$spool/spans.jsonl" | wc -l | tr -d ' ')
+        [ "$status_count" -eq 2 ]
+      }
+      _check "status span dedupe key" _test_status_span_dedupe
 
       echo ""
       echo "$_pass passed, $_fail failed"

@@ -33,6 +33,15 @@ All notable changes to this project will be documented in this file.
   - Status exits are preserved; `task.cached=true` indicates a skip result, `task.cached=false` indicates work required
   - Makes skipped `check:quick` dependencies visible in traces without changing execution behavior
 
+- **devenv/tasks/lib/trace.nix**: Deduplicate repeated task status spans within a single trace
+  - `trace.status` emits each `:status` span at most once per trace parent+task pair
+  - Prevents inflated duplicate status spans when the task graph evaluates the same dependency multiple times
+  - Uses cache key `trace_id + parent_span_id + taskName` and can be redirected via `OTEL_STATUS_SPAN_CACHE_DIR`
+
+- **devenv/otel.nix**: Add OTEL regression test for status span deduplication
+  - `dt otel:test` now exercises `:status` span emission and confirms duplicated checks
+    emit only once per trace/parent/task key
+
 - **devenv/tasks/shared/lint-oxc.nix**: Wire up `genieCoverageExcludes` and add `genieCoverageFiles` (#198)
   - `genieCoverageExcludes` was accepted but never applied; now uses git pathspec exclusion
   - New `genieCoverageFiles` parameter (default: `["package.json" "tsconfig.json"]`) makes checked file types configurable

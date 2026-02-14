@@ -26,7 +26,7 @@
 let
   traceEnvArgs = ''
     trace_args=()
-    _task_traceparent="''${OTEL_TASK_TRACEPARENT:-}"
+    _task_traceparent="''${OTEL_TASK_TRACEPARENT:-''${TRACEPARENT:-}}"
     if [ -n "$_task_traceparent" ]; then
       IFS='-' read -r _ _trace_id _parent_span_id _ <<< "$_task_traceparent"
       if [ -n "$_trace_id" ] && [ -n "$_parent_span_id" ]; then
@@ -77,12 +77,27 @@ let
         _task_cached=false
       fi
 
-      otel-span run "dt-task" "${taskName}:status" "''${trace_args[@]}" \
-        --attr "task.phase=status" \
-        --attr "task.cached=$_task_cached" \
-        --start-time-ns "$_status_start_ns" \
-        --end-time-ns "$_status_end_ns" \
-        -- true
+      _trace_status_should_emit=true
+      if [ -n "''${_task_traceparent:-}" ]; then
+        _trace_status_should_emit=false
+        _trace_status_cache_dir="''${OTEL_STATUS_SPAN_CACHE_DIR:-''${TMPDIR:-/tmp}/.dt-otel-status-spans}"
+        _trace_status_key=$(printf '%s' "''${_trace_id:-na}-''${_parent_span_id:-na}-${taskName}:status" | tr -cs 'A-Za-z0-9._-' '_')
+        _trace_status_cache_file="''${_trace_status_cache_dir}/''${_trace_status_key}"
+
+        mkdir -p "''${_trace_status_cache_dir}" >/dev/null 2>&1 || true
+        if (set -o noclobber; : > "''${_trace_status_cache_file}") 2>/dev/null; then
+          _trace_status_should_emit=true
+        fi
+      fi
+
+      if [ "$_trace_status_should_emit" = true ]; then
+        otel-span run "dt-task" "${taskName}:status" "''${trace_args[@]}" \
+          --attr "task.phase=status" \
+          --attr "task.cached=$_task_cached" \
+          --start-time-ns "$_status_start_ns" \
+          --end-time-ns "$_status_end_ns" \
+          -- true
+      fi
 
       exit "$_status_exit"
     else
