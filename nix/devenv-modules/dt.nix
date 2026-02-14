@@ -35,9 +35,26 @@
     done
     set -- "''${_dt_args[@]}"
 
-    # Auto-detect non-interactive environments (CI, piped output, git hooks)
+    # Detect coding agent environments (mirrors isAgentEnv from tui-react)
+    _dt_is_agent_env() {
+      # AGENT: generic convention (OpenCode: AGENT=1, Amp: AGENT=amp)
+      if [ -n "''${AGENT:-}" ] && [ "''${AGENT}" != "0" ] && [ "''${AGENT}" != "false" ]; then return 0; fi
+      # Claude Code
+      [ -n "''${CLAUDE_PROJECT_DIR:-}" ] && return 0
+      # Amp
+      [ -n "''${CLAUDECODE:-}" ] && return 0
+      # OpenCode
+      [ -n "''${OPENCODE:-}" ] && return 0
+      # Cline (VS Code extension)
+      [ -n "''${CLINE_ACTIVE:-}" ] && return 0
+      # OpenAI Codex CLI
+      [ -n "''${CODEX_SANDBOX:-}" ] && return 0
+      return 1
+    }
+
+    # Auto-detect non-interactive environments (CI, piped output, git hooks, coding agents)
     _dt_tui_flag=""
-    if [ -n "''${CI:-}" ] || ! [ -t 1 ]; then
+    if [ -n "''${CI:-}" ] || ! [ -t 1 ] || _dt_is_agent_env; then
       _dt_tui_flag="--no-tui"
     fi
 
