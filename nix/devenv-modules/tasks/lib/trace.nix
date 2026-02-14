@@ -24,6 +24,17 @@
 #
 { lib }:
 let
+  traceEnvArgs = ''
+    trace_args=()
+    _task_traceparent="''${OTEL_TASK_TRACEPARENT:-''${TRACEPARENT:-}}"
+    if [ -n "$_task_traceparent" ]; then
+      IFS='-' read -r _ _trace_id _parent_span_id _ <<< "$_task_traceparent"
+      if [ -n "$_trace_id" ] && [ -n "$_parent_span_id" ]; then
+        trace_args=(--trace-id "$_trace_id" --parent-span-id "$_parent_span_id")
+      fi
+    fi
+  '';
+
   # Wrap a task exec string with otel-span tracing.
   # When OTEL is available, the exec body runs inside an otel-span child span.
   # When OTEL is not available, the exec body runs directly (zero overhead).
@@ -36,14 +47,16 @@ let
   #
   # Returns: string - A new exec script that wraps the original with otel-span
   # TRACEPARENT propagation:
-  # - Via `dt` wrapper: TRACEPARENT is set by otel-span in the dt script
+  # - Via `dt` wrapper: explicit `OTEL_TASK_TRACEPARENT` is preferred when available,
+  #   because task runner internals may reset `TRACEPARENT`.
   # - During shell entry: TRACEPARENT is set by setup:gate via devenv's native
   #   task output → env propagation (devenv.env convention)
   #   Ref: https://github.com/cachix/devenv/blob/main/devenv-tasks/src/task_state.rs#L134-L154
   # - Neither: otel-span creates a standalone root span (no orphaned parent)
   traceExec = taskName: execBody: ''
     if command -v otel-span >/dev/null 2>&1 && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
-      otel-span run "dt-task" "${taskName}" --attr "task.cached=false" -- bash -c ${lib.escapeShellArg execBody}
+      ${traceEnvArgs}
+      otel-span run "dt-task" "${taskName}" "''${trace_args[@]}" --attr "task.cached=false" -- bash -c ${lib.escapeShellArg execBody}
     else
       ${execBody}
     fi
@@ -57,11 +70,15 @@ let
   #   taskAttrs: attrset - Must contain { exec, status } strings, may contain other attrs
   #
   # Returns: attrset - Modified { exec } with tracing, status and other attrs preserved
-  withStatus = taskName: { exec, status, ... }@attrs:
-    attrs // {
+  withStatus =
+    taskName:
+    { exec, status, ... }@attrs:
+    attrs
+    // {
       exec = ''
         if command -v otel-span >/dev/null 2>&1 && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
-          otel-span run "dt-task" "${taskName}" --attr "task.cached=false" -- bash -c ${lib.escapeShellArg exec}
+          ${traceEnvArgs}
+          otel-span run "dt-task" "${taskName}" "''${trace_args[@]}" --attr "task.cached=false" -- bash -c ${lib.escapeShellArg exec}
         else
           ${exec}
         fi
