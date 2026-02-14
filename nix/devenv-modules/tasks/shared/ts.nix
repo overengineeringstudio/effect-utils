@@ -56,12 +56,12 @@ let
   trace = import ../lib/trace.nix { inherit lib; };
   lspAfter = if lspPatchCmd != null then [ "ts:patch-lsp" ] else [ ];
 
-  # Script that runs tsc --build with --extendedDiagnostics --verbose,
+  # Script that runs tsc with --extendedDiagnostics --verbose,
   # parses per-project timing, and emits OTEL child spans.
   # The outer trace.exec wrapper provides the parent ts:check/ts:build span.
   #
-  # When OTEL is not available, runs plain tsc --build (no diagnostics flags).
-  tscWithDiagnostics = tsconfigArg: extraArgs: ''
+  # When OTEL is not available, runs plain tsc (no diagnostics flags).
+  tscWithDiagnostics = tscInvocation: extraArgs: ''
     set -euo pipefail
 
     # Only add diagnostics flags when OTEL tracing is active
@@ -70,7 +70,11 @@ let
       trap 'rm -f "$_tsc_output"' EXIT
 
       _tsc_exit=0
-      ${tscBin} --build ${tsconfigArg} ${extraArgs} --extendedDiagnostics --verbose > "$_tsc_output" 2>&1 || _tsc_exit=$?
+      if [[ "${tscInvocation}" == --build* ]]; then
+        ${tscBin} ${tscInvocation} ${extraArgs} --extendedDiagnostics --verbose > "$_tsc_output" 2>&1 || _tsc_exit=$?
+      else
+        ${tscBin} ${tscInvocation} ${extraArgs} > "$_tsc_output" 2>&1 || _tsc_exit=$?
+      fi
 
       # On failure, show the user the error output (filtered to useful lines)
       if [ "$_tsc_exit" -ne 0 ]; then
@@ -78,14 +82,15 @@ let
         grep -v -E "^(Files:|Lines of|Identifiers:|Symbols:|Types:|Instantiations:|Memory used:|Assignability|Identity|Subtype|Strict subtype|I/O|Parse time:|ResolveModule|ResolveTypeReference|ResolveLibrary|Program time:|Bind time:|Check time:|Emit time:|Total time:|Build time:|Aggregate)" "$_tsc_output" || true
       fi
 
-      # Parse TRACEPARENT to get trace ID and current span ID (our parent)
-      IFS='-' read -r _tp_ver _tp_trace _tp_parent _tp_flags <<< "$TRACEPARENT"
+      if [[ "${tscInvocation}" == --build* ]]; then
+        # Parse TRACEPARENT to get trace ID and current span ID (our parent)
+        IFS='-' read -r _tp_ver _tp_trace _tp_parent _tp_flags <<< "$TRACEPARENT"
 
-      # Parse the diagnostics output for per-project timing
-      # Pattern: "Building project '...'" followed by a diagnostics block ending with "Total time: X.XXs"
-      _current_project=""
-      _diag_block=""
-      while IFS= read -r line; do
+        # Parse the diagnostics output for per-project timing
+        # Pattern: "Building project '...'" followed by a diagnostics block ending with "Total time: X.XXs"
+        _current_project=""
+        _diag_block=""
+        while IFS= read -r line; do
         # Match "Building project '/path/to/tsconfig.json'..."
         if [[ "$line" =~ "Building project '"(.+)"'" ]]; then
           _current_project="''${BASH_REMATCH[1]}"
@@ -162,12 +167,13 @@ let
           _current_project=""
           _diag_block=""
         fi
-      done < "$_tsc_output"
+        done < "$_tsc_output"
+      fi
 
       exit "$_tsc_exit"
     else
       # No OTEL: run plain tsc (no diagnostics overhead)
-      ${tscBin} --build ${tsconfigArg} ${extraArgs}
+      ${tscBin} ${tscInvocation} ${extraArgs}
     fi
   '';
 in
@@ -176,8 +182,8 @@ in
 
   tasks = {
     "ts:check" = {
-      description = "Type check the whole workspace (tsc --build; emits by design with project references)";
-      exec = trace.exec "ts:check" (tscWithDiagnostics tsconfigFile "");
+      description = "Type check the whole workspace (tsc -p; emits by design with project references)";
+      exec = trace.exec "ts:check" (tscWithDiagnostics "-p ${tsconfigFile}" "--noEmit");
       after = [
         "genie:run"
         "pnpm:install"
@@ -195,7 +201,7 @@ in
     };
     "ts:build" = {
       description = "Build all packages with type checking (tsc --build)";
-      exec = trace.exec "ts:build" (tscWithDiagnostics tsconfigFile "");
+      exec = trace.exec "ts:build" (tscWithDiagnostics "--build ${tsconfigFile}" "");
       after = [
         "genie:run"
         "pnpm:install"
