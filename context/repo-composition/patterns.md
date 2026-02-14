@@ -385,6 +385,39 @@ imports = [
 ];
 ```
 
+### What worktree-guard enforces
+
+The module registers two git hooks:
+
+**Pre-commit** (`branch-worktree-guard`):
+
+- Refuses commits on the default branch
+- Refuses commits from the primary worktree (enforces linked worktrees)
+- Refuses commits when HEAD doesn't match the store-implied ref (megarepo stores)
+
+**Post-checkout** (`branch-worktree-guard-checkout`):
+
+- Prevents `git switch`, `git checkout -b`, etc. in megarepo store worktrees
+- Automatically restores the expected ref when a switch is detected
+- Covers branch, tag, and commit worktrees
+- Skips during rebase/bisect operations (temporary HEAD changes are expected)
+
+### Configuration options
+
+All options default to `true`:
+
+```nix
+(inputs.effect-utils.devenvModules.tasks.worktree-guard {
+  remoteName = "origin";
+  fallbackDefaultBranch = "main";
+  enforcePrimaryWorktree = true;
+  enforceMegarepoStoreRefMatch = true;
+  enforceMegarepoStoreCheckout = true;
+})
+```
+
+Set `enforceMegarepoStoreCheckout = false` to disable the post-checkout guard while keeping the pre-commit guards.
+
 ## Tips
 
 - Define `ownPeerDepNames` locally with only packages NOT in upstream (delta pattern)

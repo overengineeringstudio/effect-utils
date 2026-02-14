@@ -14,7 +14,7 @@ Use `dt <task>` (devenv tasks) to execute tasks with dependencies:
 - **Genie**: `dt genie:run` or `dt genie:watch` or `dt genie:check`
 - **Check all**: `dt check:quick` (ts + lint) or `dt check:all` (ts + lint + test)
 
-Use the `--no-tui` flag to see all output. If tools aren't directly in `$PATH`, prefix commands with `direnv exec .` (e.g., `direnv exec . dt ts:check`).
+Use the `--no-tui` flag to see all output. If tools aren't directly in `$PATH`, enter the dev environment first with `devenv shell`.
 
 We're using megarepo for repo management. We're using `pnpm` temporarily for installs (bun is still used to run scripts) and `devenv` to manage the development environment.
 
@@ -33,6 +33,14 @@ Keep `CHANGELOG.md` updated:
 
 - Add entries under `[Unreleased]` when making changes
 - When cutting a release, move `[Unreleased]` entries to a new version section with the release date
+
+# Task Management (Beads)
+
+This repo uses [beads](../overeng-beads-public) for task tracking via the megarepo setup.
+
+- Create an **epic** for larger work items and correlate it with the PR
+- Create **follow-up beads** (or a follow-up epic for larger scope) for out-of-scope work discovered during implementation
+- Run `dt beads:sync` before pushing to keep beads in sync with git
 
 ## Landing the Plane (Session Completion)
 
