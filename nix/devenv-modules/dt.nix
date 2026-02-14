@@ -52,12 +52,14 @@
         _eval_attr="--attr shell.ready_ms=$_elapsed_ms"
       fi
 
-      # Preserve current task trace context explicitly for task subprocesses,
-      # because task runner subshells may rewrite TRACEPARENT internally.
+      # Preserve current task trace context explicitly for task subprocesses.
+      # Prefer OTEL_TASK_TRACEPARENT when called from a nested dt/task wrapper.
+      # Never inherit ambient TRACEPARENT; always start from a clean trace unless
+      # the parent context is explicitly passed in.
       _trace_id=""
       _parent_span_id=""
-      if [ -n "''${TRACEPARENT:-}" ]; then
-        IFS='-' read -r _ _trace_id _parent_span_id _ <<< "''${TRACEPARENT}"
+      if [ -n "''${OTEL_TASK_TRACEPARENT:-}" ]; then
+        IFS='-' read -r _ _trace_id _parent_span_id _ <<< "''${OTEL_TASK_TRACEPARENT}"
       fi
 
       if [ -z "$_trace_id" ]; then
@@ -75,7 +77,7 @@
       fi
 
       # OTEL available: wrap task in a trace span
-      if ! OTEL_TASK_TRACEPARENT="$_task_traceparent" otel-span run "dt" "$task_name" $_dt_span_opts --log-url $_eval_attr --attr "dt.args=$*" \
+      if ! TRACEPARENT="" OTEL_TASK_TRACEPARENT="$_task_traceparent" otel-span run "dt" "$task_name" $_dt_span_opts --log-url $_eval_attr --attr "dt.args=$*" \
         -- devenv tasks run "$@" --mode before $_dt_extra_args $_dt_tui_flag; then
         echo "dt: task failed. Re-run with: devenv tasks run $* --mode before --no-tui" >&2
         exit 1

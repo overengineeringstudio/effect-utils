@@ -24,9 +24,9 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 - **devenv/dt + tasks tracing**: Preserve and propagate `TRACEPARENT` context for nested task spans
-  - `dt` now emits task runs with explicit `--trace-id`/`--span-id` and exports `OTEL_TASK_TRACEPARENT`
-  - `trace.exec`/`withStatus` prefer `OTEL_TASK_TRACEPARENT` so child tasks reliably attach to the `dt` parent
-  - Fixes missing `dt-task` spans in `check:quick`/`ts:check` trace trees in OTEL local/system setups
+  - `dt` now starts each invocation from a clean per-command trace unless `OTEL_TASK_TRACEPARENT` is explicitly provided
+  - `trace.exec`/`withStatus` now consume `OTEL_TASK_TRACEPARENT` as the task trace source of truth
+  - This prevents stale shell `TRACEPARENT` values from merging unrelated `dt` runs into a single trace by explicitly clearing ambient trace context before spawning the root `dt` span
 
 - **devenv/tasks/shared/lint-oxc.nix**: Wire up `genieCoverageExcludes` and add `genieCoverageFiles` (#198)
   - `genieCoverageExcludes` was accepted but never applied; now uses git pathspec exclusion

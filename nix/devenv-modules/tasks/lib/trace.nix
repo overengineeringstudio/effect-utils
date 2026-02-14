@@ -26,7 +26,7 @@
 let
   traceEnvArgs = ''
     trace_args=()
-    _task_traceparent="''${OTEL_TASK_TRACEPARENT:-''${TRACEPARENT:-}}"
+    _task_traceparent="''${OTEL_TASK_TRACEPARENT:-}"
     if [ -n "$_task_traceparent" ]; then
       IFS='-' read -r _ _trace_id _parent_span_id _ <<< "$_task_traceparent"
       if [ -n "$_trace_id" ] && [ -n "$_parent_span_id" ]; then
@@ -47,11 +47,11 @@ let
   #
   # Returns: string - A new exec script that wraps the original with otel-span
   # TRACEPARENT propagation:
-  # - Via `dt` wrapper: explicit `OTEL_TASK_TRACEPARENT` is preferred when available,
-  #   because task runner internals may reset `TRACEPARENT`.
-  # - During shell entry: TRACEPARENT is set by setup:gate via devenv's native
-  #   task output → env propagation (devenv.env convention)
-  #   Ref: https://github.com/cachix/devenv/blob/main/devenv-tasks/src/task_state.rs#L134-L154
+  # - Via `dt` wrapper: consume explicit `OTEL_TASK_TRACEPARENT`, because task
+  #   runner internals may rewrite `TRACEPARENT` and shell-provided values can be
+  #   stale across runs.
+  # - During direct `devenv tasks run` usage without `dt`, `TRACEPARENT` can still
+  #   be consumed by the runtime's own task wiring as part of the process env.
   # - Neither: otel-span creates a standalone root span (no orphaned parent)
   traceExec = taskName: execBody: ''
     if command -v otel-span >/dev/null 2>&1 && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
