@@ -2,6 +2,7 @@
  * @overeng/oxc-config custom oxlint rules plugin.
  *
  * This plugin provides custom lint rules for the overeng monorepo:
+ * - explicit-boolean-compare: Enforce explicit boolean-literal comparisons in condition positions
  * - exports-first: Enforce exported declarations appear before non-exported declarations
  * - named-args: Enforce functions have at most one parameter (use options objects)
  * - jsdoc-require-exports: Require JSDoc comments on type/wildcard exports
@@ -19,12 +20,14 @@
 
 import { rules as storybookRules } from 'eslint-plugin-storybook'
 
+import { explicitBooleanCompareRule } from './explicit-boolean-compare.ts'
 import { exportsFirstRule } from './exports-first.ts'
 import { jsdocRequireExportsRule } from './jsdoc-require-exports.ts'
 import { namedArgsRule } from './named-args.ts'
 import { noExternalImportsRule } from './no-external-imports.ts'
 
 type Rules = {
+  'explicit-boolean-compare': typeof explicitBooleanCompareRule
   'exports-first': typeof exportsFirstRule
   'jsdoc-require-exports': typeof jsdocRequireExportsRule
   'named-args': typeof namedArgsRule
@@ -40,6 +43,7 @@ type Rules = {
 
 const rules: Rules = {
   // Custom overeng rules
+  'explicit-boolean-compare': explicitBooleanCompareRule,
   'exports-first': exportsFirstRule,
   'jsdoc-require-exports': jsdocRequireExportsRule,
   'named-args': namedArgsRule,
