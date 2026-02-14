@@ -50,7 +50,6 @@ OpenTelemetry observability stack (Collector + Tempo + Grafana).
 ### [workflows/](./workflows/)
 
 - [beads.md](./workflows/beads.md) - Beads workflow
-- [plan-files.md](./workflows/plan-files.md) - Plan file conventions
 
 ## Workarounds
 

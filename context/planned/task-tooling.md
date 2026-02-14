@@ -90,4 +90,4 @@ task complete [--failed]      # Mark task as done
 ## Related
 
 - Session Card Enrichment: `oi/tasks/2026-01-17-session-card-enrichment/`
-- Plan Files Workflow: `context/workflows/plan-files.md`
+- Beads Workflow: `context/workflows/beads.md`
