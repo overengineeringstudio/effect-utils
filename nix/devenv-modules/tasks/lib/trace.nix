@@ -39,7 +39,7 @@ let
   # When OTEL is available, the exec body runs inside an otel-span child span.
   # When OTEL is not available, the exec body runs directly (zero overhead).
   #
-  # The span includes task.cached=false attribute to distinguish from cached runs.
+  # The span includes task.cached=false (OTEL bool attribute) to distinguish from cached runs.
   #
   # Args:
   #   taskName: string - The span name (e.g., "ts:check", "pnpm:install:genie")

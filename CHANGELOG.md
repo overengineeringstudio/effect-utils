@@ -23,6 +23,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **devenv/otel-span + dt-task tracing**: Emit OTEL boolean attributes from `--attr`
+  - `--attr` now serializes `true`/`false` values as `boolValue` while preserving string values for all others
+  - `task.cached=false` now arrives as a boolean, which aligns dashboard filters with actual type semantics
+
 - **devenv/dt + tasks tracing**: Preserve and propagate `TRACEPARENT` context for nested task spans
   - `dt` now starts each invocation from a clean per-command trace unless `OTEL_TASK_TRACEPARENT` is explicitly provided
   - `trace.exec`/`withStatus` now consume `OTEL_TASK_TRACEPARENT` as the task trace source of truth

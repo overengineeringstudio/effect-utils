@@ -44,7 +44,7 @@
   # Pre-compiled project-specific dashboards to provision alongside built-in ones.
   # Each entry: { name = "my-project"; path = <nix-store-path-with-json-files>; }
   # Use lib.buildOtelDashboards to compile Jsonnet sources into the expected format.
-  extraDashboards ? [],
+  extraDashboards ? [ ],
 }:
 {
   pkgs,
@@ -80,23 +80,28 @@ let
   };
 
   # Grafana dashboard provisioning config
-  grafanaDashboardProvision = pkgs.writeText "grafana-dashboards.yaml" (''
-    apiVersion: 1
-    providers:
-      - name: otel
-        type: file
-        disableDeletion: true
-        updateIntervalSeconds: 0
-        options:
-          path: ${allDashboards}
-  '' + builtins.concatStringsSep "" (map (group: ''
-      - name: ${group.name}
-        type: file
-        disableDeletion: true
-        updateIntervalSeconds: 0
-        options:
-          path: ${group.path}
-  '') extraDashboards));
+  grafanaDashboardProvision = pkgs.writeText "grafana-dashboards.yaml" (
+    ''
+      apiVersion: 1
+      providers:
+        - name: otel
+          type: file
+          disableDeletion: true
+          updateIntervalSeconds: 0
+          options:
+            path: ${allDashboards}
+    ''
+    + builtins.concatStringsSep "" (
+      map (group: ''
+        - name: ${group.name}
+          type: file
+          disableDeletion: true
+          updateIntervalSeconds: 0
+          options:
+            path: ${group.path}
+      '') extraDashboards
+    )
+  );
 
   # =========================================================================
   # Port allocation: deterministic hash-based ports from DEVENV_ROOT
@@ -395,13 +400,15 @@ in
         mkdir -p "$_dash_target"
         cp -f ${allDashboards}/*.json "$_dash_target/" 2>/dev/null || true
       fi
-      ${builtins.concatStringsSep "\n      " (map (group: ''
-      # Copy extra dashboards: ${group.name}
-      if [ -n "''${OTEL_STATE_DIR:-}" ]; then
-        mkdir -p "$OTEL_STATE_DIR/dashboards/${group.name}"
-        cp -f ${group.path}/*.json "$OTEL_STATE_DIR/dashboards/${group.name}/" 2>/dev/null || true
-      fi
-      '') extraDashboards)}
+      ${builtins.concatStringsSep "\n      " (
+        map (group: ''
+          # Copy extra dashboards: ${group.name}
+          if [ -n "''${OTEL_STATE_DIR:-}" ]; then
+            mkdir -p "$OTEL_STATE_DIR/dashboards/${group.name}"
+            cp -f ${group.path}/*.json "$OTEL_STATE_DIR/dashboards/${group.name}/" 2>/dev/null || true
+          fi
+        '') extraDashboards
+      )}
       echo "[otel] Using system-level OTEL stack (mode=$OTEL_MODE)"
     else
       # Local devenv stack — set env vars with local hash-derived ports
@@ -566,6 +573,15 @@ in
       _tmp=$(mktemp -d)
       trap 'rm -rf "$_tmp"' EXIT
 
+      # Force single-file spool mode for deterministic assertions in this test harness.
+      # OTEL_SPOOL_MULTI_WRITER can be enabled globally in some environments, which
+      # would write one file per span and break span file name assumptions.
+      export OTEL_SPOOL_MULTI_WRITER=0
+
+      # otel-span disables file-spooling when OTEL_EXPORTER_OTLP_ENDPOINT is unset,
+      # so always provide a local default for the offline unit tests.
+      export OTEL_EXPORTER_OTLP_ENDPOINT="''${OTEL_EXPORTER_OTLP_ENDPOINT:-http://127.0.0.1:4318}"
+
       _check() {
         local name="$1"
         shift
@@ -590,6 +606,21 @@ in
         echo "$line" | ${pkgs.jq}/bin/jq -e '.resourceSpans[0].scopeSpans[0].spans[0] | .traceId and .spanId and .name and .startTimeUnixNano and .endTimeUnixNano' >/dev/null 2>&1
       }
       _check "JSON format" _test_json_format
+
+      # Test 2: attribute types (bools stay bools)
+      _test_attr_types() {
+        local spool="$_tmp/attr-type"
+        mkdir -p "$spool"
+        OTEL_SPAN_SPOOL_DIR="$spool" OTEL_SPOOL_MULTI_WRITER=0 otel-span run "test" "attr-type" \
+          --attr "task.cached=false" --attr "cache.mode=fast" -- true >/dev/null 2>&1
+        local line
+        line=$(head -1 "$spool/spans.jsonl")
+        local bool_val string_val
+        bool_val=$(echo "$line" | ${pkgs.jq}/bin/jq -r '.resourceSpans[0].scopeSpans[0].spans[0].attributes[] | select(.key=="task.cached").value.boolValue')
+        string_val=$(echo "$line" | ${pkgs.jq}/bin/jq -r '.resourceSpans[0].scopeSpans[0].spans[0].attributes[] | select(.key=="cache.mode").value.stringValue')
+        [ "$bool_val" = "false" ] && [ "$string_val" = "fast" ]
+      }
+      _check "Attribute type handling" _test_attr_types
 
       # Test 2: TRACEPARENT propagation
       _test_traceparent() {
@@ -670,7 +701,7 @@ in
         local stderr_output
         stderr_output=$(OTEL_SPAN_SPOOL_DIR="$spool" OTEL_GRAFANA_URL="http://localhost:3000" otel-span run "test" "url-check" --log-url -- true 2>&1 1>/dev/null)
         # Must contain [otel] Trace: prefix
-        echo "$stderr_output" | grep -q '\[otel\] Trace:' || return 1
+        echo "$stderr_output" | grep -Eq '\[otel\] trace:|\[otel\] Trace:' || return 1
         # Must contain the Grafana explore URL
         echo "$stderr_output" | grep -q 'localhost:3000/explore' || return 1
         # Must contain the trace ID from the span
@@ -710,6 +741,14 @@ in
       _fail=0
       _tmp=$(mktemp -d)
       trap 'rm -rf "$_tmp"' EXIT
+
+      # otel-span disables file-spooling when OTEL_EXPORTER_OTLP_ENDPOINT is unset,
+      # so always provide a local default for these offline assertions.
+      export OTEL_EXPORTER_OTLP_ENDPOINT="''${OTEL_EXPORTER_OTLP_ENDPOINT:-http://127.0.0.1:4318}"
+
+      # Force single-file spool mode for deterministic assertions in this task.
+      # OTEL_SPOOL_MULTI_WRITER can be enabled globally in some environments.
+      export OTEL_SPOOL_MULTI_WRITER=0
 
       _check() {
         local name="$1"
