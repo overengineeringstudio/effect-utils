@@ -191,12 +191,12 @@ in
         tag)
           currentBranch="$($git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
           if [ -n "$currentBranch" ]; then
-            restoreTarget="tags/$storeExpectedRef"
+            restoreTarget="refs/tags/$storeExpectedRef"
           else
             currentSha="$($git rev-parse HEAD 2>/dev/null)"
-            expectedSha="$($git rev-parse "tags/''${storeExpectedRef}^{}" 2>/dev/null || true)"
+            expectedSha="$($git rev-parse "refs/tags/''${storeExpectedRef}^{}" 2>/dev/null || true)"
             if [ -n "$expectedSha" ] && [ "$currentSha" != "$expectedSha" ]; then
-              restoreTarget="tags/$storeExpectedRef"
+              restoreTarget="refs/tags/$storeExpectedRef"
             fi
           fi
           ;;
