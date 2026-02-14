@@ -49,7 +49,7 @@ OpenTelemetry observability stack (Collector + Tempo + Grafana).
 
 ### [workflows/](./workflows/)
 
-- [beads.md](./workflows/beads.md) - Beads workflow
+- [cron/](./workflows/cron/) - Consistency checks and dependency update workflows
 
 ## Workarounds
 
