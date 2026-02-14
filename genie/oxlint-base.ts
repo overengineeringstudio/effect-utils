@@ -68,6 +68,9 @@ export const baseOxlintRules = {
   // Prefer function expressions over declarations
   'func-style': ['warn', 'expression', { allowArrowFunctions: true }],
 
+  // Enforce explicit boolean-literal comparisons in condition positions (1701 occurrences)
+  'overeng/explicit-boolean-compare': 'off',
+
   // Enforce exported declarations come before non-exported declarations
   'overeng/exports-first': 'warn',
 
@@ -97,7 +100,7 @@ export const baseOxlintRules = {
   // TODO: Re-enable - detects unnecessary type assertions (48 occurrences)
   'typescript/no-unnecessary-type-assertion': 'off',
 
-  // TODO: Re-enable - detects unnecessary boolean literal comparisons (46 occurrences)
+  // Keep off — conflicts with overeng/explicit-boolean-compare (team prefers explicit comparisons)
   'typescript/no-unnecessary-boolean-literal-compare': 'off',
 
   // TODO: Re-enable - detects misused spread operators (18 occurrences)
