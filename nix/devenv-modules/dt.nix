@@ -69,8 +69,11 @@
         _eval_attr="--attr shell.ready_ms=$_elapsed_ms"
       fi
 
-      # OTEL available: wrap task in a trace span
-      if ! otel-span run "dt" "$task_name" --log-url $_eval_attr --attr "dt.args=$*" -- devenv tasks run "$@" --mode before $_dt_extra_args $_dt_tui_flag; then
+      # Clear TRACEPARENT to avoid inheriting stale context from devenv shell
+      # re-evaluations. otel-span reads OTEL_TASK_TRACEPARENT instead (which
+      # survives re-evaluations) and exports both for child processes.
+      if ! TRACEPARENT="" otel-span run "dt" "$task_name" --log-url $_eval_attr --attr "dt.args=$*" \
+        -- devenv tasks run "$@" --mode before $_dt_extra_args $_dt_tui_flag; then
         echo "dt: task failed. Re-run with: devenv tasks run $* --mode before --no-tui" >&2
         exit 1
       fi

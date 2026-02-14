@@ -17,11 +17,29 @@ All notable changes to this project will be documented in this file.
   - Falls back to `curl` if spool dir not available
   - Reduces per-span overhead from ~58ms to <1ms
 
-- **devenv/tasks/lib/trace.nix**: Skip tracing for status checks (internal machinery)
-  - `trace.status` and `withStatus` status now pass through without emitting spans
-  - Reduces shell entry overhead by removing unnecessary span emission
-
 ### Fixed
+
+- **devenv/otel-span**: Emit boolean attributes and manage task trace context
+  - `--attr` now serializes `true`/`false` values as `boolValue` (aligns dashboard TraceQL filters)
+  - `otel-span` reads `OTEL_TASK_TRACEPARENT` (preferred over `TRACEPARENT`) and exports both for child processes
+  - This isolates task traces from stale shell `TRACEPARENT` values caused by devenv shell re-evaluations
+
+- **devenv/dt**: Simplify trace context propagation
+  - `dt` now clears `TRACEPARENT` and delegates context management entirely to `otel-span`
+  - Removes manual trace/span ID generation that was previously duplicated between `dt.nix` and `otel-span`
+
+- **devenv/otel-span**: Add `--status-attr KEY` flag for status check spans
+  - Derives bool attribute from exit code (0=true, non-zero=false)
+  - Forces span status to OK (status checks aren't errors, exit 1 means "not cached")
+  - Used by `trace.status` to set `task.cached` without masking the real exit code
+
+- **devenv/tasks/lib/trace.nix**: Trace status checks with method and sub-trace support
+  - `trace.status` now accepts a `method` parameter (`"binary"`, `"hash"`, `"path"`)
+  - Status body runs INSIDE `otel-span` (not post-hoc) so sub-programs inherit TRACEPARENT
+  - Binary status checks (e.g. `genie --check`, `mr status`) now produce child spans
+  - `task.cached` is derived from exit code via `--status-attr` (no explicit bool passing)
+  - Each real status execution gets its own span (no deduplication — duplicate spans from devenv's
+    shell re-evaluations accurately reflect what actually happened)
 
 - **devenv/tasks/shared/lint-oxc.nix**: Wire up `genieCoverageExcludes` and add `genieCoverageFiles` (#198)
   - `genieCoverageExcludes` was accepted but never applied; now uses git pathspec exclusion

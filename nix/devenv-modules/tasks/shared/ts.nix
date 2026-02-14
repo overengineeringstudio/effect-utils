@@ -208,7 +208,7 @@ in
       ]
       ++ lspAfter;
     };
-    "ts:emit" = trace.withStatus "ts:emit" {
+    "ts:emit" = trace.withStatus "ts:emit" "binary" {
       description = "Emit build outputs without full type checking (tsc --build --noCheck)";
       exec = tscWithDiagnostics tsconfigFile "--noCheck";
       status = ''
@@ -238,7 +238,7 @@ in
       {
         "ts:patch-lsp" =
           if lspPatchDir != null then
-            trace.withStatus "ts:patch-lsp" {
+            trace.withStatus "ts:patch-lsp" "path" {
               description = "Patch TypeScript with Effect Language Service";
               exec = lspPatchCmd;
               status = ''
