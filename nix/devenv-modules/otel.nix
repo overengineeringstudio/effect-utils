@@ -61,9 +61,6 @@ let
   # otel-span shell helper (standalone package with run + emit subcommands)
   otelSpan = import ./otel/otel-span.nix { inherit pkgs; };
 
-  # Shared OTEL task tracing helper used by task-level OTEL tests.
-  traceHelpers = import ./tasks/lib/trace.nix { inherit lib; };
-
   # =========================================================================
   # Grafonnet: build dashboards from Jsonnet source at Nix eval time
   # =========================================================================
@@ -714,12 +711,12 @@ in
       }
       _check "--log-url output" _test_log_url
 
-      # Test 9: No TRACEPARENT produces root span (no parentSpanId)
+      # Test 9: No trace context produces root span (no parentSpanId)
       _test_no_traceparent_root() {
         local spool="$_tmp/root-test"
         mkdir -p "$spool"
         (
-          unset TRACEPARENT
+          unset TRACEPARENT OTEL_TASK_TRACEPARENT
           OTEL_SPAN_SPOOL_DIR="$spool" otel-span run "test" "root-check" -- true >/dev/null 2>&1
         )
         [ -f "$spool/spans.jsonl" ] || return 1
@@ -728,40 +725,105 @@ in
         has_parent=$(head -1 "$spool/spans.jsonl" | ${pkgs.jq}/bin/jq '.resourceSpans[0].scopeSpans[0].spans[0] | has("parentSpanId")')
         [ "$has_parent" = "false" ]
       }
-      _check "No TRACEPARENT = root span" _test_no_traceparent_root
+      _check "No trace context = root span" _test_no_traceparent_root
 
-      # Test 10: status spans dedupe by trace/parent/task key
-      _test_status_span_dedupe() {
-        local spool="$_tmp/status-dedupe"
-        local cache_dir="$_tmp/status-dedupe-cache"
-        local status_traceparent="00-deaddeaddeaddeaddeaddeaddeaddeadde-0000000000000042-01"
-        local alt_status_traceparent="00-deaddeaddeaddeaddeaddeaddeaddeadde-0000000000000043-01"
-
+      # Test 10: OTEL_TASK_TRACEPARENT takes precedence over TRACEPARENT
+      _test_task_traceparent_precedence() {
+        local spool="$_tmp/task-tp-test"
         mkdir -p "$spool"
-
-        OTEL_SPAN_SPOOL_DIR="$spool" \
-          OTEL_TASK_TRACEPARENT="$status_traceparent" \
-          OTEL_STATUS_SPAN_CACHE_DIR="$cache_dir" \
-          bash -c ${lib.escapeShellArg (traceHelpers.status "otel:test:status-dedupe" "true")}
-
-        OTEL_SPAN_SPOOL_DIR="$spool" \
-          OTEL_TASK_TRACEPARENT="$status_traceparent" \
-          OTEL_STATUS_SPAN_CACHE_DIR="$cache_dir" \
-          bash -c ${lib.escapeShellArg (traceHelpers.status "otel:test:status-dedupe" "true")}
-
-        local status_count
-        status_count=$( ${pkgs.jq}/bin/jq -r '.resourceSpans[0].scopeSpans[0].spans[] | select(.name=="otel:test:status-dedupe:status") | .spanId' "$spool/spans.jsonl" | wc -l | tr -d ' ')
-        [ "$status_count" -eq 1 ] || return 1
-
-        OTEL_SPAN_SPOOL_DIR="$spool" \
-          OTEL_TASK_TRACEPARENT="$alt_status_traceparent" \
-          OTEL_STATUS_SPAN_CACHE_DIR="$cache_dir" \
-          bash -c ${lib.escapeShellArg (traceHelpers.status "otel:test:status-dedupe" "true")}
-
-        status_count=$( ${pkgs.jq}/bin/jq -r '.resourceSpans[0].scopeSpans[0].spans[] | select(.name=="otel:test:status-dedupe:status") | .spanId' "$spool/spans.jsonl" | wc -l | tr -d ' ')
-        [ "$status_count" -eq 2 ]
+        local task_trace="aaaaaaaabbbbbbbbccccccccdddddddd"
+        local task_parent="1111111122222222"
+        local stale_trace="eeeeeeeeffffffff0000000011111111"
+        local stale_parent="3333333344444444"
+        (
+          export OTEL_TASK_TRACEPARENT="00-$task_trace-$task_parent-01"
+          export TRACEPARENT="00-$stale_trace-$stale_parent-01"
+          OTEL_SPAN_SPOOL_DIR="$spool" otel-span run "test" "tp-pref" -- true >/dev/null 2>&1
+        )
+        [ -f "$spool/spans.jsonl" ] || return 1
+        local actual_trace actual_parent
+        actual_trace=$(head -1 "$spool/spans.jsonl" | ${pkgs.jq}/bin/jq -r '.resourceSpans[0].scopeSpans[0].spans[0].traceId')
+        actual_parent=$(head -1 "$spool/spans.jsonl" | ${pkgs.jq}/bin/jq -r '.resourceSpans[0].scopeSpans[0].spans[0].parentSpanId')
+        [ "$actual_trace" = "$task_trace" ] && [ "$actual_parent" = "$task_parent" ]
       }
-      _check "status span dedupe key" _test_status_span_dedupe
+      _check "OTEL_TASK_TRACEPARENT precedence" _test_task_traceparent_precedence
+
+      # Test 11: --status-attr derives bool from exit code (cached case, exit 0)
+      _test_status_attr_cached() {
+        local spool="$_tmp/status-cached"
+        mkdir -p "$spool"
+        OTEL_SPAN_SPOOL_DIR="$spool" otel-span run "test" "status-cached" \
+          --status-attr "task.cached" -- true >/dev/null 2>&1
+        [ -f "$spool/spans.jsonl" ] || return 1
+        local line
+        line=$(head -1 "$spool/spans.jsonl")
+        # task.cached should be true (exit 0)
+        local cached_val
+        cached_val=$(echo "$line" | ${pkgs.jq}/bin/jq -r '.resourceSpans[0].scopeSpans[0].spans[0].attributes[] | select(.key=="task.cached").value.boolValue')
+        [ "$cached_val" = "true" ] || return 1
+        # Span status should be OK (code 1) despite any exit code
+        local status_code
+        status_code=$(echo "$line" | ${pkgs.jq}/bin/jq -r '.resourceSpans[0].scopeSpans[0].spans[0].status.code')
+        [ "$status_code" = "1" ]
+      }
+      _check "--status-attr cached (exit 0)" _test_status_attr_cached
+
+      # Test 12: --status-attr derives bool from exit code (uncached case, exit 1)
+      _test_status_attr_uncached() {
+        local spool="$_tmp/status-uncached"
+        mkdir -p "$spool"
+        OTEL_SPAN_SPOOL_DIR="$spool" otel-span run "test" "status-uncached" \
+          --status-attr "task.cached" -- bash -c 'exit 1' >/dev/null 2>&1 || true
+        [ -f "$spool/spans.jsonl" ] || return 1
+        local line
+        line=$(head -1 "$spool/spans.jsonl")
+        # task.cached should be false (exit 1)
+        local cached_val
+        cached_val=$(echo "$line" | ${pkgs.jq}/bin/jq -r '.resourceSpans[0].scopeSpans[0].spans[0].attributes[] | select(.key=="task.cached").value.boolValue')
+        [ "$cached_val" = "false" ] || return 1
+        # Span status should still be OK (code 1) — status checks aren't errors
+        local status_code
+        status_code=$(echo "$line" | ${pkgs.jq}/bin/jq -r '.resourceSpans[0].scopeSpans[0].spans[0].status.code')
+        [ "$status_code" = "1" ]
+      }
+      _check "--status-attr uncached (exit 1)" _test_status_attr_uncached
+
+      # Test 13: --status-attr propagates TRACEPARENT to child (sub-traces)
+      _test_status_attr_subtrace() {
+        local spool="$_tmp/status-subtrace"
+        mkdir -p "$spool"
+        local child_tp
+        child_tp=$(OTEL_SPAN_SPOOL_DIR="$spool" otel-span run "test" "status-parent" \
+          --status-attr "task.cached" -- bash -c 'echo $TRACEPARENT' 2>/dev/null)
+        # Child must have TRACEPARENT (enabling sub-traces)
+        [[ "$child_tp" =~ ^00-[0-9a-f]{32}-[0-9a-f]{16}-01$ ]] || return 1
+        # Trace ID in child must match the span
+        local span_trace
+        span_trace=$(head -1 "$spool/spans.jsonl" | ${pkgs.jq}/bin/jq -r '.resourceSpans[0].scopeSpans[0].spans[0].traceId')
+        local child_trace
+        child_trace=$(echo "$child_tp" | cut -d- -f2)
+        [ "$span_trace" = "$child_trace" ]
+      }
+      _check "--status-attr sub-trace propagation" _test_status_attr_subtrace
+
+      # Test 14: otel-span exports OTEL_TASK_TRACEPARENT to child processes
+      _test_task_traceparent_export() {
+        local spool="$_tmp/task-tp-export"
+        mkdir -p "$spool"
+        local child_task_tp
+        child_task_tp=$(
+          unset TRACEPARENT OTEL_TASK_TRACEPARENT
+          OTEL_SPAN_SPOOL_DIR="$spool" otel-span run "test" "tp-export" -- bash -c 'echo $OTEL_TASK_TRACEPARENT' 2>/dev/null
+        )
+        [[ "$child_task_tp" =~ ^00-[0-9a-f]{32}-[0-9a-f]{16}-01$ ]] || return 1
+        # Must match the span's own trace ID
+        local span_trace
+        span_trace=$(head -1 "$spool/spans.jsonl" | ${pkgs.jq}/bin/jq -r '.resourceSpans[0].scopeSpans[0].spans[0].traceId')
+        local child_trace
+        child_trace=$(echo "$child_task_tp" | cut -d- -f2)
+        [ "$span_trace" = "$child_trace" ]
+      }
+      _check "OTEL_TASK_TRACEPARENT export" _test_task_traceparent_export
 
       echo ""
       echo "$_pass passed, $_fail failed"
@@ -822,7 +884,7 @@ in
       _trace_id="aabbccdd11223344aabbccdd11223344"
 
       # Root span (no parent)
-      (unset TRACEPARENT; OTEL_SPAN_SPOOL_DIR="$_spool" otel-span run "devenv" "shell:entry" --trace-id "$_trace_id" --span-id "0000000000000001" --start-time-ns "1000000000000000" --end-time-ns "11000000000000000" -- true >/dev/null 2>&1)
+      (unset TRACEPARENT OTEL_TASK_TRACEPARENT; OTEL_SPAN_SPOOL_DIR="$_spool" otel-span run "devenv" "shell:entry" --trace-id "$_trace_id" --span-id "0000000000000001" --start-time-ns "1000000000000000" --end-time-ns "11000000000000000" -- true >/dev/null 2>&1)
 
       # Child 1 of root
       OTEL_SPAN_SPOOL_DIR="$_spool" otel-span run "dt-task" "ts:check" --trace-id "$_trace_id" --span-id "0000000000000002" --parent-span-id "0000000000000001" --start-time-ns "1100000000000000" --end-time-ns "6000000000000000" -- true >/dev/null 2>&1

@@ -19,28 +19,27 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-- **devenv/otel-span + dt-task tracing**: Emit OTEL boolean attributes from `--attr`
-  - `--attr` now serializes `true`/`false` values as `boolValue` while preserving string values for all others
-  - `task.cached=false` now arrives as a boolean, which aligns dashboard filters with actual type semantics
+- **devenv/otel-span**: Emit boolean attributes and manage task trace context
+  - `--attr` now serializes `true`/`false` values as `boolValue` (aligns dashboard TraceQL filters)
+  - `otel-span` reads `OTEL_TASK_TRACEPARENT` (preferred over `TRACEPARENT`) and exports both for child processes
+  - This isolates task traces from stale shell `TRACEPARENT` values caused by devenv shell re-evaluations
 
-- **devenv/dt + tasks tracing**: Preserve and propagate `TRACEPARENT` context for nested task spans
-  - `dt` now starts each invocation from a clean per-command trace unless `OTEL_TASK_TRACEPARENT` is explicitly provided
-  - `trace.exec`/`withStatus` now consume `OTEL_TASK_TRACEPARENT` as the task trace source of truth
-  - This prevents stale shell `TRACEPARENT` values from merging unrelated `dt` runs into a single trace by explicitly clearing ambient trace context before spawning the root `dt` span
+- **devenv/dt**: Simplify trace context propagation
+  - `dt` now clears `TRACEPARENT` and delegates context management entirely to `otel-span`
+  - Removes manual trace/span ID generation that was previously duplicated between `dt.nix` and `otel-span`
 
-- **devenv/tasks/lib/trace.nix**: Trace status checks so skipped tasks are represented in OTEL
-  - `trace.status` now emits a lightweight `dt-task` span with `task.phase=status`
-  - Status exits are preserved; `task.cached=true` indicates a skip result, `task.cached=false` indicates work required
-  - Makes skipped `check:quick` dependencies visible in traces without changing execution behavior
+- **devenv/otel-span**: Add `--status-attr KEY` flag for status check spans
+  - Derives bool attribute from exit code (0=true, non-zero=false)
+  - Forces span status to OK (status checks aren't errors, exit 1 means "not cached")
+  - Used by `trace.status` to set `task.cached` without masking the real exit code
 
-- **devenv/tasks/lib/trace.nix**: Deduplicate repeated task status spans within a single trace
-  - `trace.status` emits each `:status` span at most once per trace parent+task pair
-  - Prevents inflated duplicate status spans when the task graph evaluates the same dependency multiple times
-  - Uses cache key `trace_id + parent_span_id + taskName` and can be redirected via `OTEL_STATUS_SPAN_CACHE_DIR`
-
-- **devenv/otel.nix**: Add OTEL regression test for status span deduplication
-  - `dt otel:test` now exercises `:status` span emission and confirms duplicated checks
-    emit only once per trace/parent/task key
+- **devenv/tasks/lib/trace.nix**: Trace status checks with method and sub-trace support
+  - `trace.status` now accepts a `method` parameter (`"binary"`, `"hash"`, `"path"`)
+  - Status body runs INSIDE `otel-span` (not post-hoc) so sub-programs inherit TRACEPARENT
+  - Binary status checks (e.g. `genie --check`, `mr status`) now produce child spans
+  - `task.cached` is derived from exit code via `--status-attr` (no explicit bool passing)
+  - Each real status execution gets its own span (no deduplication — duplicate spans from devenv's
+    shell re-evaluations accurately reflect what actually happened)
 
 - **devenv/tasks/shared/lint-oxc.nix**: Wire up `genieCoverageExcludes` and add `genieCoverageFiles` (#198)
   - `genieCoverageExcludes` was accepted but never applied; now uses git pathspec exclusion

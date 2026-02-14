@@ -268,7 +268,7 @@ let
         # Sequential chaining: each task depends on the previous one to avoid race conditions.
         # First task has no dependency (workspace files are committed).
         after = if prevName == null then [ ] else [ "pnpm:install:${prevName}" ];
-        status = trace.status "pnpm:install:${name}" ''
+        status = trace.status "pnpm:install:${name}" "hash" ''
           set -euo pipefail
           hash_file="${cacheRoot}/${name}.hash"
           if [ ! -d "node_modules" ]; then
