@@ -17,10 +17,6 @@ All notable changes to this project will be documented in this file.
   - Falls back to `curl` if spool dir not available
   - Reduces per-span overhead from ~58ms to <1ms
 
-- **devenv/tasks/lib/trace.nix**: Skip tracing for status checks (internal machinery)
-  - `trace.status` and `withStatus` status now pass through without emitting spans
-  - Reduces shell entry overhead by removing unnecessary span emission
-
 ### Fixed
 
 - **devenv/otel-span + dt-task tracing**: Emit OTEL boolean attributes from `--attr`
@@ -31,6 +27,11 @@ All notable changes to this project will be documented in this file.
   - `dt` now starts each invocation from a clean per-command trace unless `OTEL_TASK_TRACEPARENT` is explicitly provided
   - `trace.exec`/`withStatus` now consume `OTEL_TASK_TRACEPARENT` as the task trace source of truth
   - This prevents stale shell `TRACEPARENT` values from merging unrelated `dt` runs into a single trace by explicitly clearing ambient trace context before spawning the root `dt` span
+
+- **devenv/tasks/lib/trace.nix**: Trace status checks so skipped tasks are represented in OTEL
+  - `trace.status` now emits a lightweight `dt-task` span with `task.phase=status`
+  - Status exits are preserved; `task.cached=true` indicates a skip result, `task.cached=false` indicates work required
+  - Makes skipped `check:quick` dependencies visible in traces without changing execution behavior
 
 - **devenv/tasks/shared/lint-oxc.nix**: Wire up `genieCoverageExcludes` and add `genieCoverageFiles` (#198)
   - `genieCoverageExcludes` was accepted but never applied; now uses git pathspec exclusion

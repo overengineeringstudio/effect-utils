@@ -62,8 +62,37 @@ let
     fi
   '';
 
+  # Trace status scripts so cached/skipped decisions become visible in traces.
+  traceStatus = taskName: statusBody: ''
+    if command -v otel-span >/dev/null 2>&1 && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
+      ${traceEnvArgs}
+      _status_start_ns=$(date +%s%N)
+      _status_exit=0
+      bash -c ${lib.escapeShellArg statusBody} || _status_exit=$?
+      _status_end_ns=$(date +%s%N)
+
+      if [ "$_status_exit" -eq 0 ]; then
+        _task_cached=true
+      else
+        _task_cached=false
+      fi
+
+      otel-span run "dt-task" "${taskName}:status" "''${trace_args[@]}" \
+        --attr "task.phase=status" \
+        --attr "task.cached=$_task_cached" \
+        --start-time-ns "$_status_start_ns" \
+        --end-time-ns "$_status_end_ns" \
+        -- true
+
+      exit "$_status_exit"
+    else
+      ${statusBody}
+    fi
+  '';
+
   # Wrap a task's exec script with otel-span tracing.
-  # Status checks are passed through without tracing (internal machinery).
+  # Status checks are traced with a lightweight span that records the cached
+  # decision (`task.cached=true` when status succeeds, `task.cached=false` otherwise).
   #
   # Args:
   #   taskName: string - The span name (e.g., "pnpm:install:genie")
@@ -83,14 +112,9 @@ let
           ${exec}
         fi
       '';
-      # Don't trace status checks — they're internal devenv machinery and
-      # the overhead isn't worth it (status checks run frequently)
-      inherit status;
+      # Status spans are traced to capture cached/skipped decisions.
+      status = traceStatus taskName status;
     };
-
-  # Pass-through for status scripts — status checks are not traced because
-  # they're internal devenv machinery and the overhead isn't worth it.
-  traceStatus = _taskName: statusBody: statusBody;
 in
 {
   exec = traceExec;
