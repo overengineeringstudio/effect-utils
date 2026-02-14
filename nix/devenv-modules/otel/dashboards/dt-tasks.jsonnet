@@ -25,8 +25,8 @@ local taskFilterVar =
     'task_filter',
     [
       { key: 'All Tasks', value: '' },
-      { key: 'Executed Only', value: ' && span.task.cached="false"' },
-      { key: 'Cached Only', value: ' && span.task.cached="true"' },
+      { key: 'Executed Only', value: ' && span.task.cached=false' },
+      { key: 'Cached Only', value: ' && span.task.cached=true' },
     ],
   )
   + var.custom.generalOptions.withLabel('Task Filter')
@@ -108,7 +108,7 @@ g.dashboard.new('dt Task Performance')
   at(
     g.panel.stat.new('Executed tasks')
     + g.panel.stat.queryOptions.withTargets([
-      lib.tempoQuery('{resource.service.name="dt-task" && span.task.cached="false"}', 'A', 500),
+      lib.tempoQuery('{resource.service.name="dt-task" && span.task.cached=false}', 'A', 500),
     ])
     + g.panel.stat.options.withColorMode('value')
     + g.panel.stat.standardOptions.color.withMode('fixed')
@@ -119,7 +119,7 @@ g.dashboard.new('dt Task Performance')
   at(
     g.panel.stat.new('Cached tasks')
     + g.panel.stat.queryOptions.withTargets([
-      lib.tempoQuery('{resource.service.name="dt-task" && span.task.cached="true"}', 'A', 500),
+      lib.tempoQuery('{resource.service.name="dt-task" && span.task.cached=true}', 'A', 500),
     ])
     + g.panel.stat.options.withColorMode('value')
     + g.panel.stat.standardOptions.color.withMode('fixed')
@@ -191,7 +191,7 @@ g.dashboard.new('dt Task Performance')
   at(g.panel.row.new('Slow Sub-Tasks (> 5s)'), 0, y.slowRow, 24, 1),
 
   at(
-    traceTable('Sub-tasks exceeding 5 seconds — these are your bottlenecks', '{resource.service.name="dt-task" && duration > 5s && span.task.cached="false"}', 100),
+      traceTable('Sub-tasks exceeding 5 seconds — these are your bottlenecks', '{resource.service.name="dt-task" && duration > 5s && span.task.cached=false}', 100),
     0, y.slow, 24, 10,
   ),
 

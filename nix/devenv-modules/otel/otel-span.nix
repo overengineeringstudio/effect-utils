@@ -56,6 +56,8 @@ No-op when neither endpoint nor spool dir is configured.
 
 Options:
   --attr KEY=VALUE      Add a span attribute (repeatable)
+  --status-attr KEY     Derive bool attribute from exit code (0=true, else=false)
+                        and force span status to OK (for status checks, not errors)
   --trace-id ID         Use specific trace ID (default: from TRACEPARENT or random)
   --span-id ID          Use specific span ID (default: random)
   --parent-span-id ID   Use specific parent span ID (default: from TRACEPARENT)
@@ -65,10 +67,11 @@ Options:
   --help                Show this help
 
 Environment:
-  OTEL_EXPORTER_OTLP_ENDPOINT  Collector HTTP endpoint (fallback delivery)
-  OTEL_SPAN_SPOOL_DIR          Spool directory for file-based delivery (preferred)
-  OTEL_GRAFANA_URL             Grafana base URL (used by --log-url)
-  TRACEPARENT                   W3C Trace Context parent (optional)
+  OTEL_EXPORTER_OTLP_ENDPOINT   Collector HTTP endpoint (fallback delivery)
+  OTEL_SPAN_SPOOL_DIR           Spool directory for file-based delivery (preferred)
+  OTEL_GRAFANA_URL              Grafana base URL (used by --log-url)
+  OTEL_TASK_TRACEPARENT         Task-level trace context (survives devenv shell re-evaluations)
+  TRACEPARENT                    W3C Trace Context parent (optional, OTEL_TASK_TRACEPARENT preferred)
 
 Examples:
   otel-span run dt pnpm:install -- pnpm install
@@ -80,6 +83,7 @@ USAGE
     SERVICE_NAME=""
     SPAN_NAME=""
     ATTRS=()
+    STATUS_ATTR=""
     TRACE_ID=""
     SPAN_ID=""
     PARENT_SPAN_ID=""
@@ -93,6 +97,10 @@ USAGE
         --help) _run_usage ;;
         --attr)
           ATTRS+=("$2")
+          shift 2
+          ;;
+        --status-attr)
+          STATUS_ATTR="$2"
           shift 2
           ;;
         --trace-id)
@@ -155,9 +163,12 @@ USAGE
       ${pkgs.coreutils}/bin/od -An -tx1 -N"$len" /dev/urandom | tr -d ' \n'
     }
 
-    # Parse TRACEPARENT (W3C Trace Context: version-traceid-parentid-flags)
-    if [[ -n "''${TRACEPARENT:-}" ]]; then
-      IFS='-' read -r _tp_ver _tp_trace _tp_parent _tp_flags <<< "$TRACEPARENT"
+    # Resolve parent trace context.
+    # OTEL_TASK_TRACEPARENT takes precedence because devenv shell re-evaluations
+    # overwrite TRACEPARENT on each enterShell, making it unreliable for task spans.
+    _tp_source="''${OTEL_TASK_TRACEPARENT:-''${TRACEPARENT:-}}"
+    if [[ -n "$_tp_source" ]]; then
+      IFS='-' read -r _tp_ver _tp_trace _tp_parent _tp_flags <<< "$_tp_source"
       TRACE_ID="''${TRACE_ID:-$_tp_trace}"
       PARENT_SPAN_ID="''${PARENT_SPAN_ID:-$_tp_parent}"
     fi
@@ -166,6 +177,7 @@ USAGE
     SPAN_ID="''${SPAN_ID:-$(gen_hex 8)}"
 
     export TRACEPARENT="00-$TRACE_ID-$SPAN_ID-01"
+    export OTEL_TASK_TRACEPARENT="$TRACEPARENT"
 
     start_ns="''${START_TIME_NS:-$(${pkgs.coreutils}/bin/date +%s%N)}"
 
@@ -174,18 +186,31 @@ USAGE
 
     end_ns="''${END_TIME_NS:-$(${pkgs.coreutils}/bin/date +%s%N)}"
 
-    # Build attributes JSON
+    # Build attributes JSON (true/false emitted as boolValue, everything else as stringValue)
     attrs_json='[{"key":"service.name","value":{"stringValue":"'"$SERVICE_NAME"'"}}'
     attrs_json+=',{"key":"exit.code","value":{"intValue":"'"$exit_code"'"}}'
     attrs_json+=',{"key":"devenv.root","value":{"stringValue":"'"$DEVENV_ROOT"'"}}'
     for attr in "''${ATTRS[@]}"; do
       key="''${attr%%=*}"
       val="''${attr#*=}"
-      attrs_json+=',{"key":"'"$key"'","value":{"stringValue":"'"$val"'"}}'
+      if [ "$val" = "true" ] || [ "$val" = "false" ]; then
+        attrs_json+=',{"key":"'"$key"'","value":{"boolValue":'"$val"'}}'
+      else
+        attrs_json+=',{"key":"'"$key"'","value":{"stringValue":"'"$val"'"}}'
+      fi
     done
+    # --status-attr: derive bool attribute from exit code (0=true, non-zero=false)
+    if [[ -n "$STATUS_ATTR" ]]; then
+      if [[ "$exit_code" -eq 0 ]]; then
+        attrs_json+=',{"key":"'"$STATUS_ATTR"'","value":{"boolValue":true}}'
+      else
+        attrs_json+=',{"key":"'"$STATUS_ATTR"'","value":{"boolValue":false}}'
+      fi
+    fi
     attrs_json+=']'
 
-    if [[ "$exit_code" -eq 0 ]]; then
+    # --status-attr forces OK status (status checks aren't errors, exit 1 means "not cached")
+    if [[ -n "$STATUS_ATTR" ]] || [[ "$exit_code" -eq 0 ]]; then
       status_json='{"code":1}'
     else
       status_json='{"code":2,"message":"exit code '"$exit_code"'"}'

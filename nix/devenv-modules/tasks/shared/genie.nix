@@ -20,7 +20,7 @@ in
     "genie:run" = {
       description = "Generate config files from .genie.ts sources";
       exec = trace.exec "genie:run" "genie";
-      status = trace.status "genie:run" ''
+      status = trace.status "genie:run" "binary" ''
         set -euo pipefail
         # Skip when generated files are already up to date.
         # Silence output to keep shell entry clean.
