@@ -13,11 +13,9 @@ Nix and devenv setup, requirements, and patterns.
 - [tasks.md](./nix-devenv/tasks.md) - Devenv tasks, `dt` wrapper, shared modules
 - [flake-packages.md](./nix-devenv/flake-packages.md) - Flake package definitions
 
-### [repo-composition/](./repo-composition/)
+### [Megarepo Spec](../packages/@overeng/megarepo/docs/spec.md)
 
-Multi-repo composition with megarepo.
-
-- [Megarepo Spec](../packages/@overeng/megarepo/docs/spec.md) - Full specification
+Full megarepo specification.
 
 ### [bun-cli-build/](./bun-cli-build/)
 
