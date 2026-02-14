@@ -504,12 +504,13 @@ export const baseTsconfigCompilerOptions = {
   plugins: [
     {
       // Important: Do not disable/weaken these warnings.
-      // We want to embrace these emitted suggestions/warnings to make our code better.
+      // Keep Effect Language Service checks active in CLI so they are visible during
+      // typecheck/build. These remain non-fatal but are reported as CLI warnings.
       name: '@effect/language-service',
       reportSuggestionsAsWarningsInTsc: true,
       pipeableMinArgCount: 2,
       diagnosticSeverity: {
-        missedPipeableOpportunity: 'suggestion',
+        missedPipeableOpportunity: 'warning',
         schemaUnionOfLiterals: 'warning',
         anyUnknownInErrorContext: 'warning',
         preferSchemaOverJson: 'warning',
@@ -522,10 +523,7 @@ export const baseTsconfigCompilerOptions = {
 // Oxlint Configuration Helpers
 // =============================================================================
 
-import type {
-  OxlintConfigArgs,
-  OxlintOverride,
-} from '../packages/@overeng/genie/src/runtime/oxlint-config/mod.ts'
+import type { OxlintOverride } from '../packages/@overeng/genie/src/runtime/oxlint-config/mod.ts'
 
 /** Standard oxlint plugins for Effect/TypeScript projects (includes oxc for custom rules) */
 export const baseOxlintPlugins = ['import', 'typescript', 'unicorn', 'oxc'] as const

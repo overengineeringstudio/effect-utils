@@ -115,6 +115,10 @@ All notable changes to this project will be documented in this file.
   - Added `pnpm:install` dependency to ensure stable `node_modules` state during formatting
   - Investigation confirmed `experimentalSortImports` uses string-based classification (no filesystem reads)
 
+- **@effect/language-service/TypeScript config**: Elevate `missedPipeableOpportunity` diagnostics to warnings
+  - `missedPipeableOpportunity` now emits as `warning` so Effect LSP findings are visible in non-IDE CLI typechecks
+  - Keeps `ts:check` in `--noEmit` mode while preserving the existing `ts:check`/`ts:build` behavior split (#218)
+
 - **CI/storybook**: Fix storybook builds used by Netlify preview deploys
   - Stub `@opentui/*` in `@overeng/genie` Storybook build (OpenTUI requires Bun runtime)
   - Fix `@overeng/tui-react` examples importing `src/mod.ts` (actual entry is `src/mod.tsx`)
