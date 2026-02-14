@@ -35,6 +35,12 @@
     done
     set -- "''${_dt_args[@]}"
 
+    # Auto-detect non-interactive environments (CI, piped output, git hooks)
+    _dt_tui_flag=""
+    if [ -n "''${CI:-}" ] || ! [ -t 1 ]; then
+      _dt_tui_flag="--no-tui"
+    fi
+
     task_name="''${1:-unknown}"
 
     if command -v otel-span >/dev/null 2>&1 && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
@@ -47,13 +53,13 @@
       fi
 
       # OTEL available: wrap task in a trace span
-      if ! otel-span run "dt" "$task_name" --log-url $_eval_attr --attr "dt.args=$*" -- devenv tasks run "$@" --mode before $_dt_extra_args; then
+      if ! otel-span run "dt" "$task_name" --log-url $_eval_attr --attr "dt.args=$*" -- devenv tasks run "$@" --mode before $_dt_extra_args $_dt_tui_flag; then
         echo "dt: task failed. Re-run with: devenv tasks run $* --mode before --no-tui" >&2
         exit 1
       fi
     else
       # No OTEL: run directly
-      if ! devenv tasks run "$@" --mode before $_dt_extra_args; then
+      if ! devenv tasks run "$@" --mode before $_dt_extra_args $_dt_tui_flag; then
         echo "dt: task failed. Re-run with: devenv tasks run $* --mode before --no-tui" >&2
         exit 1
       fi
