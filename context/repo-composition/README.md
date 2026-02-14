@@ -2,28 +2,10 @@
 
 Compose multiple repos into a unified development environment using megarepo. Each repo remains independent while sharing dependencies through relative paths.
 
-For setup instructions and file templates, see [setup-guide](../nix-devenv/setup-guide.md).
+For megarepo CLI usage (`mr sync`, `mr pin`, store layout, etc.), see the `sk-megarepo` skill in dotfiles.
+For composition patterns (package structure, dependency conventions, CI), see the `sk-repo-composition` skill in dotfiles.
 
-## Core Principles
-
-1. **Megarepo root with `repos/`** - Members live under `repos/` as symlinks to the global store
-2. **Simple `../` paths** - Dependencies use relative paths that work across tools (bun, nix, node)
-3. **Single source of truth** - Shared dependency versions live in effect-utils
-4. **Independent repos** - Each repo keeps its own git history and CI
-
-## Megarepo Commands
-
-| Command              | Description                      |
-| -------------------- | -------------------------------- |
-| `mr sync`            | Materialize repos from lock file |
-| `mr sync --frozen`   | CI mode: fail if lock is stale   |
-| `mr update`          | Re-resolve refs and update lock  |
-| `mr update <member>` | Update specific member           |
-| `mr status`          | Show megarepo state              |
-| `mr pin <member>`    | Pin member to current commit     |
-| `mr unpin <member>`  | Remove pin                       |
-
-> **Auto-setup:** On fresh clone/worktree, `mr sync` runs automatically during devenv shell entry. Use `mr status` to check sync state or `mr status --output json` for scripting.
+This directory contains effect-utils-specific details not covered by the skills.
 
 ## Environment Variables
 
@@ -36,6 +18,6 @@ Set by devenv and megarepo:
 
 ## Further Reading
 
-- [Architecture](./architecture.md) - Workspace structure and composition hierarchy
-- [Patterns](./patterns.md) - Genie patterns, dependency conventions, TypeScript config
+- [Patterns](./patterns.md) - Effect-utils-specific patterns and workarounds
 - [Megarepo Spec](../../packages/@overeng/megarepo/docs/spec.md) - Full specification
+- [Setup Guide](../nix-devenv/setup-guide.md) - File templates and setup for new megarepos

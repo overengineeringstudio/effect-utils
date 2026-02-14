@@ -15,11 +15,9 @@ Nix and devenv setup, requirements, and patterns.
 
 ### [repo-composition/](./repo-composition/)
 
-Multi-repo composition with megarepo.
+Effect-utils-specific composition details. For general megarepo and composition patterns, see `sk-megarepo` and `sk-repo-composition` skills in dotfiles.
 
-- [README.md](./repo-composition/README.md) - Quick start and commands
-- [architecture.md](./repo-composition/architecture.md) - Workspace structure
-- [patterns.md](./repo-composition/patterns.md) - Genie patterns, dependency conventions
+- [patterns.md](./repo-composition/patterns.md) - Workarounds and effect-utils-specific patterns
 
 ### [bun-cli-build/](./bun-cli-build/)
 
