@@ -619,3 +619,22 @@ export const testFilesOxlintOverride = {
 
 /** Re-export oxlint ignore patterns from oxlint-base */
 export { baseOxlintIgnorePatterns } from './oxlint-base.ts'
+
+// =============================================================================
+// CI Workflow Helpers
+// =============================================================================
+
+export {
+  checkoutStep,
+  cachixStep,
+  devenvShellDefaults,
+  installDevenvFromLockStep,
+  installMegarepoStep,
+  installNixStep,
+  namespaceRunner,
+  repairNixStoreStep,
+  standardCIEnv,
+  syncMegarepoStep,
+  RUNNER_PROFILES,
+  type RunnerProfile,
+} from './ci-workflow.ts'

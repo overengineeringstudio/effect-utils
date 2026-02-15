@@ -1,56 +1,24 @@
 import { githubWorkflow, type GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
-import { RUNNER_PROFILES, type CIJobName, type RunnerProfile } from '../../genie/ci.ts'
-
-/**
- * Namespace runner configuration.
- * Uses run ID-based labels for runner affinity to prevent queue jumping.
- */
-const namespaceRunner = (profile: RunnerProfile, runId: string) =>
-  [profile, `namespace-features:github.run-id=${runId}`] as const
-
-const jobDefaults = {
-  run: {
-    shell: 'devenv shell bash -- -e {0}',
-  },
-} as const
+import { type CIJobName } from '../../genie/ci.ts'
+import {
+  RUNNER_PROFILES,
+  type RunnerProfile,
+  checkoutStep,
+  installNixStep,
+  cachixStep,
+  installDevenvFromLockStep,
+  repairNixStoreStep,
+  devenvShellDefaults,
+  standardCIEnv,
+  namespaceRunner,
+} from '../../genie/ci-workflow.ts'
 
 const baseSteps = [
-  { uses: 'actions/checkout@v4' },
-  {
-    name: 'Install Nix',
-    uses: 'cachix/install-nix-action@v31',
-    with: {
-      // Ensure cache.nixos.org is available as a fallback substituter.
-      // Without this, macOS ARM64 runners can fail with "path is not valid"
-      // during Darwin stdenv bootstrap when low-level store paths get GC'd
-      // and aren't in our Cachix cache.
-      // See: https://github.com/NixOS/nix/issues/9052
-      //      https://github.com/cachix/cachix-action/issues/44
-      extra_nix_config: 'extra-substituters = https://cache.nixos.org\nextra-trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=',
-    },
-  },
-  {
-    name: 'Enable Cachix cache',
-    uses: 'cachix/cachix-action@v16',
-    with: {
-      name: 'overeng-effect-utils',
-      authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}',
-    },
-  },
-  {
-    name: 'Install devenv',
-    // Install devenv from the commit pinned in devenv.lock to ensure version consistency
-    run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)',
-    shell: 'bash',
-  },
-  {
-    name: 'Repair Nix store',
-    // Namespace runners may have stale/invalid paths in their bundled nix store cache.
-    // This removes invalid DB entries so nix re-fetches them from substituters on demand.
-    // Tracking issue: https://github.com/overengineeringstudio/effect-utils/issues/201
-    run: 'nix-store --verify --repair',
-    shell: 'bash',
-  },
+  checkoutStep(),
+  installNixStep(),
+  cachixStep({ name: 'overeng-effect-utils', authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}' }),
+  installDevenvFromLockStep,
+  repairNixStoreStep,
 ] as const
 
 const failureReminderStep = {
@@ -65,11 +33,8 @@ const failureReminderStep = {
 
 const job = (step: { name: string; run: string }) => ({
   'runs-on': namespaceRunner('namespace-profile-linux-x86-64', '${{ github.run_id }}'),
-  defaults: jobDefaults,
-  env: {
-    FORCE_SETUP: '1',
-    CI: 'true',
-  },
+  defaults: devenvShellDefaults,
+  env: standardCIEnv,
   steps: [...baseSteps, step, failureReminderStep],
 })
 
@@ -81,11 +46,8 @@ const multiPlatformJob = (step: { name: string; run: string }) => ({
     },
   },
   'runs-on': namespaceRunner('${{ matrix.runner }}' as RunnerProfile, '${{ github.run_id }}'),
-  defaults: jobDefaults,
-  env: {
-    FORCE_SETUP: '1',
-    CI: 'true',
-  },
+  defaults: devenvShellDefaults,
+  env: standardCIEnv,
   steps: [...baseSteps, step, failureReminderStep],
 })
 
@@ -122,10 +84,9 @@ const deployJobs = {
       contents: 'read',
       'pull-requests': 'write',
     },
-    defaults: jobDefaults,
+    defaults: devenvShellDefaults,
     env: {
-      FORCE_SETUP: '1',
-      CI: 'true',
+      ...standardCIEnv,
       NETLIFY_AUTH_TOKEN: '${{ secrets.NETLIFY_AUTH_TOKEN }}',
     },
     steps: [
